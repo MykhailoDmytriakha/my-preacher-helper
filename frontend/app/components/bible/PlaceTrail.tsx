@@ -174,7 +174,7 @@ export function PlaceTrailOnList({ trail, bible, locale, onOpen }: {
   }, [bible, onOpen]);
   if (trail.links.length === 0) return null;
   return (
-    <div className="flex w-fit max-w-full items-center rounded-2xl border border-gray-200 bg-white pl-3 dark:border-gray-700 dark:bg-gray-900">
+    <div className="flex w-full items-center rounded-2xl border border-gray-200 bg-white pl-3 dark:border-gray-700 dark:bg-gray-900">
       <span aria-hidden="true" className="shrink-0 text-indigo-700 dark:text-indigo-300">{ROUTE_ICON}</span>
       <PlaceTrailStrip trail={trail} bible={bible} locale={locale} look="page" onGo={go} />
     </div>

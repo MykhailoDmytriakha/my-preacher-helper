@@ -140,6 +140,25 @@ async function fetchWithin(fetchFn: typeof fetch, url: string, deadlineMs: numbe
 }
 
 /**
+ * One book from the device's copy only — no network: what can be read at once, offline too. A copy
+ * that fails the check is thrown away, as `fetchBookText` does, and counts as none.
+ */
+export async function keptBookText(
+  bookId: string,
+  bible: BibleId,
+  { cacheStorage = defaultCacheStorage() }: Pick<TextSources, 'cacheStorage'> = {},
+): Promise<BookText | null> {
+  const url = bookTextUrl(bookId, bible);
+  const cache = await openTextCache(cacheStorage);
+  const kept = await keptCopy(cache, url);
+  if (!kept) return null;
+  const data = await readJson(kept);
+  if (isBookText(data, bookId, bible)) return data;
+  await forget(cache, url);
+  return null;
+}
+
+/**
  * One book: the copy on the device first, the network only when there is no good copy. The page
  * keeps the copy itself rather than relying on the service worker, which may not control the page
  * yet (the first visit) or at all (`npm run dev:no-pwa`). A bad copy is thrown away and fetched again.

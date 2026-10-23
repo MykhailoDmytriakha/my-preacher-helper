@@ -430,10 +430,11 @@ describe('BibleBookReader', () => {
     render(<BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={null} onOpenBook={onOpenBook} />);
     await screen.findByText('Третья глава');
     await userEvent.click(screen.getByRole('button', { name: 'bible.changeBook' }));
-    const line = screen.getByRole('textbox');
-    await userEvent.type(line, 'Ин 30');
-    expect(screen.getByText('bible.goToNotFound')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'bible.goTo' })).toBeDisabled();
+    const line = screen.getByRole('combobox');
+    // A chapter the book does not have is said, with the way to fix it, and opens nothing.
+    await userEvent.type(line, 'Ин 30{Enter}');
+    expect(await screen.findByText('bible.search.badChapterTitle')).toBeInTheDocument();
+    expect(onOpenBook).not.toHaveBeenCalled();
     await userEvent.clear(line);
     await userEvent.type(line, 'Пс 22{Enter}');
     expect(onOpenBook).toHaveBeenCalledWith('psalms', { chapter: 22, verse: 1 }, expect.objectContaining({ slug: 'ruth' }));
@@ -441,9 +442,43 @@ describe('BibleBookReader', () => {
 
     scrollIntoView.mockClear();
     await userEvent.click(screen.getByRole('button', { name: 'bible.changeBook' }));
-    await userEvent.type(screen.getByRole('textbox'), 'Руф 3{Enter}');
+    await userEvent.type(screen.getByRole('combobox'), 'Руф 3{Enter}');
     expect(scrollIntoView.mock.contexts).toEqual([document.querySelector('[data-chapter="3"]')]);
     expect(onOpenBook).toHaveBeenCalledTimes(1);
+  });
+
+  it('has a search of its own in the book\'s line: it opens empty, and «3» there opens a chapter of this book', async () => {
+    const onOpenBook = jest.fn();
+    render(<BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={null} onOpenBook={onOpenBook} />);
+    await screen.findByText('Третья глава');
+    // The owner, 2026-10-23: «кнопку поиска нужно, когда книгу читаешь, чтобы было видно».
+    await userEvent.click(screen.getAllByRole('button', { name: 'bible.search.openSearch' })[0]);
+    const line = screen.getByRole('combobox');
+    expect(line).toHaveValue('');
+    scrollIntoView.mockClear();
+    await userEvent.type(line, '3{Enter}');
+    expect(scrollIntoView.mock.contexts).toEqual([document.querySelector('[data-chapter="3"]')]);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(onOpenBook).not.toHaveBeenCalled();
+  });
+
+  it('keeps Tab inside the search window: the reader\'s buttons behind it are out of reach (Codex review, 2026-10-23)', async () => {
+    render(<BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={null} onOpenBook={jest.fn()} />);
+    await screen.findByText('Третья глава');
+    await userEvent.click(screen.getAllByRole('button', { name: 'bible.search.openSearch' })[0]);
+    const dialog = screen.getByRole('dialog');
+    for (let press = 0; press < 6; press += 1) {
+      await userEvent.tab({ shift: true });
+      expect(dialog.contains(document.activeElement)).toBe(true);
+    }
+    for (let press = 0; press < 6; press += 1) {
+      await userEvent.tab();
+      expect(dialog.contains(document.activeElement)).toBe(true);
+    }
+    expect(screen.getAllByRole('dialog')).toHaveLength(1);
+    // The window opens on «Как искать» (nothing searched yet): one Escape closes it, not only the help.
+    await userEvent.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
   describe('another Bible', () => {
@@ -761,7 +796,7 @@ describe('BibleBookReader', () => {
       const sheet = screen.getByRole('dialog', { name: 'bible.chooseChapter' });
       expect(within(sheet).getByRole('button', { current: true })).toHaveTextContent('3');
       // A phone: no keyboard over the chapters until the line is tapped.
-      expect(within(sheet).getByRole('textbox')).not.toHaveFocus();
+      expect(within(sheet).getByRole('combobox')).not.toHaveFocus();
       await userEvent.click(within(sheet).getByText('2'));
       expect(onOpen).toHaveBeenCalledWith('Ruth', { chapter: 2, verse: 1 });
       await userEvent.click(screen.getByRole('button', { name: 'bible.navigate' }));

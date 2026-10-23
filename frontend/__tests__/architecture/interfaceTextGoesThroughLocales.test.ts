@@ -24,6 +24,7 @@ const ALLOWED: Record<string, string> = {
   [join('utils', 'scriptureReferenceParser.ts')]: 'reference spellings people type, to read them',
   [join('utils', 'scriptureReferenceNormalizer.ts')]: 'reference spellings people type, to read them',
   [join('utils', 'russianOrdinals.ts')]: 'Russian ordinal words, to read references such as «первое послание»',
+  [join('utils', 'bibleSearch')]: 'what people type and say to search the Bible — parts of it, numbers in words, the keyboard layout — to read it',
   [join('components', 'calendar', 'calendarAnalytics.ts')]: 'reference spellings people type, to read them',
   [join('utils', 'structureTags.ts')]: 'section names people type, to recognise them',
   [join('utils', 'council.ts')]: "example councils for the first opening, in the owner's words",

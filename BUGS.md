@@ -50,6 +50,22 @@
 
 ## 🟠 P2 — открыто
 
+### BUG-20261023-windows-let-tab-out · В 14 окнах приложения Tab уходит из окна на кнопки страницы под ним
+**P2** — касается того, кто работает с клавиатуры: мышью и пальцем окно закрывает страницу как надо. Найден 2026-10-23 при ревью Codex поиска по Библии: Shift+Tab из окна поиска доходил до кнопки перевода в читалке, и над окном открывалось второе.
+**Якоря.** `frontend/app/hooks/useModalLayer.ts` держит прокрутку и Escape, но не Tab; держит его отдельный `frontend/app/hooks/useFocusTrap.ts`. Окна читалки (`BiblePicker.tsx` `PickerWindow`, `ReaderSheet.tsx`, `VerseSheet.tsx`) и `FormDialog` его подключают; три окна держат Tab своей копией (`CreateSermonFromNoteModal.tsx`, `CustomTimePicker.tsx`, `SourceNotePickerModal.tsx`).
+**Ожидалось.** Пока окно открыто, Tab и Shift+Tab ходят по кругу внутри него.
+**Получилось.** Фокус выходит на страницу под окном; Enter там открывает второе окно или действует на скрытой странице.
+**Воспроизведение.** Открыть любое окно из списка ниже → нажимать Shift+Tab → фокус уходит за окно.
+**Как должно работать для пользователя.** Открытое окно — единственное, что отвечает клавиатуре; Escape закрывает его и возвращает фокус к кнопке, которая его открыла.
+**Класс (механизмом):** окно, нарисованное вручную на `useModalLayer` без `useFocusTrap`.
+| место | вердикт | почему |
+|---|---|---|
+| `studies/AnalysisConfirmationModal.tsx`, `studies/components/ShareNoteModal.tsx`, `studies/ScriptureRefPicker.tsx`, `studies/TagCatalogModal.tsx` | поражено | нет ни `useFocusTrap`, ни своей обработки Tab |
+| `components/audio/ChunkEditorModal.tsx`, `components/AudioExportModal.tsx`, `components/calendar/BibleBookSermonsModal.tsx`, `components/calendar/MonthlySermonsModal.tsx`, `components/ColorPickerModal.tsx` | поражено | то же |
+| `components/navigation/FeedbackModal.tsx`, `components/plan-editor/PlanEditorModal.tsx`, `components/plan/KeyFragmentsModal.tsx`, `components/SectionTimePicker.tsx`, `components/ui/ConfirmModal.tsx` | поражено | то же |
+| `components/bible/BiblePicker.tsx` (`PickerWindow`: книга, глава, место, перевод, поиск) | не поражено | починено 2026-10-23, тест `BibleBookReader.test.tsx` «keeps Tab inside the search window» |
+**Фикс (направление).** Подключить `useFocusTrap(panelRef, open)` к панели каждого окна из таблицы, по окну, с проверкой его собственных клавиш (Escape, стрелки).
+
 ### BUG-20261019-reconnect-restart-drops-failure-backoff · Собственный таймаут клиента выключает «связь», а её возврат перезапрашивает все списки и документы, выбрасывая паузу между отказами
 **P2** — шторм запросов при любом медленном ответе сервера; после фикса BUG-20261019-quota-outage-burns-vercel-functions главный источник медленных ответов (молчащая база) закрыт на сервере, остался класс на клиенте.
 **Найден.** 2026-10-19, разбор шторма 19.10 (логи Vercel: пачки каждые ~7,6 с при таймауте клиента 8 с).

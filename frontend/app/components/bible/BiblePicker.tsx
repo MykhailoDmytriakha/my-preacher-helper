@@ -5,6 +5,7 @@ import { useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, 
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useModalLayer } from '@/hooks/useModalLayer';
 import { getLocalizedAbbrev, getLocalizedBookName } from '@/utils/bibleBooks';
 import { BIBLE_IDS, BIBLES, type BibleId } from '@/utils/bibles';
@@ -12,12 +13,12 @@ import { fetchBookText, verseWords, type BookText } from '@/utils/bibleText';
 import { chapterCount } from '@/utils/versification';
 
 import { booksOf } from './bookOrder';
-import { placeFromReference, type GoToPlace } from './goTo';
+import { BibleSearch } from './search/BibleSearch';
 
 import type { AppLocale } from '@/utils/appLocale';
 
 
-type Place = { chapter: number; verse: number };
+type Place = { chapter: number; verse: number; toVerse?: number };
 
 /** Room kept between a window and the edges of the screen. */
 const GUTTER = 16;
@@ -43,15 +44,19 @@ type PickerWindowProps = {
   width?: number;
   /** A computer: a window under its button. A phone: a sheet that rises from the bottom edge. */
   wide: boolean;
+  /** A phone's sheet as tall as the screen allows: a line typed in at its top stays above the keyboard. */
+  tall?: boolean;
   label: string;
   children: ReactNode;
 };
 
 /**
  * A window of the reader's pickers: a modal layer like every window here (`.howto/open-a-modal.md`) —
- * portalled, the page held still, Escape and a press beside it close it.
+ * portalled, the page held still, Escape and a press beside it close it, and Tab kept inside it: the
+ * reader's buttons behind it are out of the keyboard's reach (Codex review, 2026-10-23 — Shift+Tab
+ * from the search window opened the translation's window over it).
  */
-function PickerWindow({ open, onClose, anchorRef, align, width, wide, label, children }: PickerWindowProps) {
+function PickerWindow({ open, onClose, anchorRef, align, width, wide, tall = false, label, children }: PickerWindowProps) {
   const { t } = useTranslation();
   const [anchor, setAnchor] = useState<DOMRect | null>(null);
 
@@ -64,6 +69,8 @@ function PickerWindow({ open, onClose, anchorRef, align, width, wide, label, chi
     if (open && wide) setAnchor(anchorRef.current?.getBoundingClientRect() ?? null);
   }, [anchorRef, open, wide]);
   const layer = useModalLayer({ onClose, active: open });
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  useFocusTrap(panelRef, open);
 
   if (!open || typeof document === 'undefined') return null;
 
@@ -92,13 +99,14 @@ function PickerWindow({ open, onClose, anchorRef, align, width, wide, label, chi
         className="absolute inset-0 h-full w-full cursor-default bg-gray-950/30 dark:bg-gray-950/50"
       />
       <div
+        ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-label={label}
         style={placed}
         className={wide
           ? 'absolute overflow-y-auto rounded-2xl border border-gray-200 bg-white p-4 shadow-2xl sm:p-5 dark:border-gray-700 dark:bg-gray-900'
-          : 'absolute inset-x-0 bottom-0 max-h-[80dvh] overflow-y-auto rounded-t-3xl border-t border-gray-200 bg-white px-4 pb-[calc(1.75rem+env(safe-area-inset-bottom))] pt-2.5 shadow-2xl dark:border-gray-700 dark:bg-gray-900'}
+          : `absolute inset-x-0 bottom-0 ${tall ? 'h-[85dvh]' : 'max-h-[80dvh]'} overflow-y-auto rounded-t-3xl border-t border-gray-200 bg-white px-4 pb-[calc(1.75rem+env(safe-area-inset-bottom))] pt-2.5 shadow-2xl dark:border-gray-700 dark:bg-gray-900`}
       >
         {wide ? null : <span aria-hidden="true" className="mx-auto mb-3 block h-1 w-10 rounded-full bg-gray-300 dark:bg-gray-600" />}
         {children}
@@ -291,62 +299,6 @@ function BookChoices({ bookId, bible, locale, wide, focusCurrent, onPick }: Book
   );
 }
 
-/**
- * The reader's own numbering — the Synodal text's, as its headings show it — so it is spelled here,
- * like the reader's other labels, and not through the stored-reference formatter (which renumbers psalms).
- */
-const placeName = (place: GoToPlace, locale: AppLocale) =>
-  `${getLocalizedBookName(place.bookId, locale)} ${place.chapter}${place.verse > 1 ? `:${place.verse}` : ''}`;
-
-/** "John 3:16" in one line: the place it points to shows under it while typing; Enter opens it. */
-function GoToLine({ bible, locale, wide, onGo }: { bible: BibleId; locale: AppLocale; wide: boolean; onGo: (place: GoToPlace) => void }) {
-  const { t } = useTranslation();
-  const [query, setQuery] = useState('');
-  const typed = query.trim() !== '';
-  const place = typed ? placeFromReference(query, bible) : null;
-  const hint = !typed
-    ? t('bible.goToHint')
-    : place ? t('bible.goToTarget', { place: placeName(place, locale) }) : t('bible.goToNotFound');
-  const hintTone = !typed
-    ? 'text-gray-500 dark:text-gray-400'
-    : place ? 'text-indigo-700 dark:text-indigo-300' : 'text-rose-700 dark:text-rose-300';
-
-  return (
-    // As wide as what the window holds below it, never wider: the hint must not widen a short book's window.
-    <form className="mb-4 w-0 min-w-full" onSubmit={(event) => { event.preventDefault(); if (place) onGo(place); }}>
-      <div className="flex gap-2">
-        <label className="flex min-h-11 min-w-0 flex-1 items-center gap-2.5 rounded-xl border border-gray-300 bg-white px-3 focus-within:border-indigo-400 focus-within:ring-2 focus-within:ring-indigo-500/30 dark:border-gray-600 dark:bg-gray-950">
-          <MagnifyingGlassIcon className="h-[18px] w-[18px] shrink-0 text-gray-400" aria-hidden="true" />
-          <span className="sr-only">{t('bible.goToLabel')}</span>
-          <input
-            type="text"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            // A computer: type at once. A phone: no keyboard over the list until the line is tapped.
-            autoFocus={wide}
-            autoComplete="off"
-            autoCorrect="off"
-            autoCapitalize="off"
-            spellCheck={false}
-            enterKeyHint="go"
-            placeholder={t('bible.goToPlaceholder')}
-            // 16px: a smaller field makes iOS zoom the page in on focus.
-            className="min-w-0 flex-1 bg-transparent text-base text-gray-900 outline-none placeholder:text-gray-400 dark:text-white dark:placeholder:text-gray-500"
-          />
-        </label>
-        <button
-          type="submit"
-          disabled={!place}
-          className="min-h-11 shrink-0 rounded-xl border border-indigo-500 bg-indigo-600 px-4 text-sm font-semibold text-white transition hover:bg-indigo-500 disabled:cursor-default disabled:border-gray-200 disabled:bg-gray-100 disabled:text-gray-400 dark:disabled:border-gray-700 dark:disabled:bg-gray-800 dark:disabled:text-gray-500"
-        >
-          {t('bible.goTo')}
-        </button>
-      </div>
-      <p aria-live="polite" className={`mt-2 text-[13px] leading-5 ${hintTone}`}>{hint}</p>
-    </form>
-  );
-}
-
 type NavigatorProps = {
   /** Where the window opens: every book, or the open book's chapters (the phone's bar at the bottom). */
   start: 'books' | 'chapters';
@@ -393,39 +345,50 @@ function BookNavigator({ start, bookId, bible, currentChapter, text, locale, wid
   const stepWords = step && pointed ? firstWordsOf(step.text, pointed) : null;
 
   return (
-    <PickerWindow open onClose={onClose} anchorRef={anchorRef} align="start" width={step ? undefined : 780} wide={wide} label={step ? t('bible.chooseChapter') : t('bible.chooseBook')}>
-      <GoToLine bible={bible} locale={locale} wide={wide} onGo={({ bookId: chosen, chapter, verse }) => onOpen(chosen, { chapter, verse })} />
-      {step && stepLabel ? (
-        <>
-          <div className="mb-3 flex flex-wrap items-center gap-3">
-            <button
-              type="button"
-              onClick={() => { setStep(null); setPointed(null); }}
-              className="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-gray-200 px-3 text-sm font-medium text-indigo-700 transition hover:bg-indigo-50 dark:border-gray-700 dark:text-indigo-300 dark:hover:bg-indigo-950/40"
-            >
-              <ChevronLeftIcon className="h-4 w-4" aria-hidden="true" />
-              {t('bible.allBooks')}
-            </button>
-            <span className="text-[17px] font-bold text-gray-900 dark:text-white">{getLocalizedBookName(step.bookId, locale)}</span>
-            <span className="text-sm text-gray-500 dark:text-gray-400">{countLabel(step.bookId, bible)}</span>
-          </div>
-          <div>
-            <ChapterGrid
-              count={chapterCount(bible, step.bookId)}
-              current={step.bookId === bookId ? currentChapter : undefined}
-              chapterLabel={stepLabel}
-              wide={wide}
-              onPick={(chapter) => onOpen(step.bookId, { chapter, verse: 1 })}
-              onPoint={wide ? setPointed : undefined}
-            />
-          </div>
-          {wide ? (
-            <PointedLine text={pointed && stepWords ? t('bible.chapterStartsWith', { chapter: stepLabel(pointed), text: stepWords }) : t('bible.pickChapterOfBook')} />
-          ) : null}
-        </>
-      ) : (
-        <BookChoices bookId={bookId} bible={bible} locale={locale} wide={wide} focusCurrent={!wide} onPick={pickBook} />
-      )}
+    <PickerWindow open onClose={onClose} anchorRef={anchorRef} align="start" width={780} wide={wide} label={step ? t('bible.chooseChapter') : t('bible.chooseBook')}>
+      <BibleSearch
+        bible={bible}
+        locale={locale}
+        wide={wide}
+        surface="window"
+        hereBook={bookId}
+        autoFocus={wide}
+        onOpen={({ bookId: chosen, chapter, verse, toVerse }) => onOpen(chosen, { chapter, verse, toVerse })}
+      >
+        <div className="mt-4">
+          {step && stepLabel ? (
+            <>
+              <div className="mb-3 flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => { setStep(null); setPointed(null); }}
+                  className="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-gray-200 px-3 text-sm font-medium text-indigo-700 transition hover:bg-indigo-50 dark:border-gray-700 dark:text-indigo-300 dark:hover:bg-indigo-950/40"
+                >
+                  <ChevronLeftIcon className="h-4 w-4" aria-hidden="true" />
+                  {t('bible.allBooks')}
+                </button>
+                <span className="text-[17px] font-bold text-gray-900 dark:text-white">{getLocalizedBookName(step.bookId, locale)}</span>
+                <span className="text-sm text-gray-500 dark:text-gray-400">{countLabel(step.bookId, bible)}</span>
+              </div>
+              <div>
+                <ChapterGrid
+                  count={chapterCount(bible, step.bookId)}
+                  current={step.bookId === bookId ? currentChapter : undefined}
+                  chapterLabel={stepLabel}
+                  wide={wide}
+                  onPick={(chapter) => onOpen(step.bookId, { chapter, verse: 1 })}
+                  onPoint={wide ? setPointed : undefined}
+                />
+              </div>
+              {wide ? (
+                <PointedLine text={pointed && stepWords ? t('bible.chapterStartsWith', { chapter: stepLabel(pointed), text: stepWords }) : t('bible.pickChapterOfBook')} />
+              ) : null}
+            </>
+          ) : (
+            <BookChoices bookId={bookId} bible={bible} locale={locale} wide={wide} focusCurrent={!wide} onPick={pickBook} />
+          )}
+        </div>
+      </BibleSearch>
     </PickerWindow>
   );
 }
@@ -486,6 +449,68 @@ export function BookPicker({ bookId, bible, currentChapter, text, locale, wide, 
           onOpen={(chosen, place) => { close(); onOpen(chosen, place); }}
         />
       ) : null}
+    </>
+  );
+}
+
+type SearchPickerProps = {
+  bookId: string;
+  bible: BibleId;
+  locale: AppLocale;
+  wide: boolean;
+  /** In a phone's bar under the thumb, round like its neighbours; else in the book's line. */
+  look: 'line' | 'bar';
+  onOpen: (bookId: string, place: Place) => void;
+};
+
+/**
+ * The search while reading (the owner, 2026-10-23: «кнопку поиска нужно, когда книгу читаешь, чтобы было
+ * видно»): in the book's line — «Поиск» by its magnifier on a computer, the magnifier alone on a phone —
+ * and in the phone's bar under the thumb once that line has gone. It opens the one line, empty, with the
+ * searches kept under it; «8:28» there opens in this book.
+ */
+export function SearchPicker({ bookId, bible, locale, wide, look, onOpen }: SearchPickerProps) {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const label = t('bible.search.openSearch');
+
+  const close = () => {
+    setOpen(false);
+    triggerRef.current?.focus();
+  };
+
+  const shape = look === 'bar'
+    ? 'pointer-events-auto h-12 w-12 justify-center rounded-full border-gray-300 bg-white/90 text-gray-800 shadow-lg shadow-gray-900/15 backdrop-blur-md dark:border-gray-600 dark:bg-gray-900/90 dark:text-gray-100 dark:shadow-black/40'
+    : `min-h-11 rounded-xl text-gray-600 hover:bg-indigo-50 hover:text-indigo-700 dark:text-gray-300 dark:hover:bg-indigo-950/40 dark:hover:text-indigo-300 ${wide ? 'ml-1 gap-1.5 pl-2.5 pr-3 text-[15px] font-medium' : 'w-11 justify-center'} ${open ? TRIGGER_OPEN : 'border-gray-200 dark:border-gray-700'}`;
+
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        type="button"
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        aria-label={label}
+        title={label}
+        onClick={() => (open ? close() : setOpen(true))}
+        className={`inline-flex shrink-0 items-center border transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${shape}`}
+      >
+        <MagnifyingGlassIcon className="h-5 w-5 shrink-0" aria-hidden="true" />
+        {wide && look === 'line' ? <span aria-hidden="true">{t('bible.search.searchButton')}</span> : null}
+      </button>
+      <PickerWindow open={open} onClose={close} anchorRef={triggerRef} align="start" width={780} wide={wide} tall label={label}>
+        <BibleSearch
+          bible={bible}
+          locale={locale}
+          wide={wide}
+          surface="window"
+          hereBook={bookId}
+          autoFocus
+          openWithRecent
+          onOpen={({ bookId: chosen, chapter, verse, toVerse }) => { close(); onOpen(chosen, { chapter, verse, toVerse }); }}
+        />
+      </PickerWindow>
     </>
   );
 }
