@@ -37,6 +37,11 @@ beforeEach(() => {
   resetLastSearchForTests();
 });
 
+// Many rows: the options are read from the page itself — a role query names each of a hundred rows and alone
+// took seconds on the build machine (2026-10-23).
+const options = () => Array.from(document.querySelectorAll<HTMLElement>('[role="option"]'));
+const showMore = () => screen.getByText(/^bible\.search\.showMore/);
+
 function renderLine(props: Partial<React.ComponentProps<typeof BibleSearch>> = {}) {
   const onOpen = jest.fn();
   render(<BibleSearch bible="rst" locale="ru" wide surface="page" onOpen={onOpen} {...props}><p>the books</p></BibleSearch>);
@@ -176,24 +181,27 @@ describe('the one line', () => {
     expect(screen.getByRole('heading', { name: 'bible.search.help' })).toBeInTheDocument();
   });
 
+  // Lines are pasted, not typed, where the test is about what follows: every keystroke searches the whole
+  // New Testament again, and the build machine (two cores) ran out of its 15 s on a typed one (2026-10-23).
   it('shows forty verses, and forty more at a press, the arrows on the first of them', async () => {
     const { line } = renderLine();
-    await userEvent.type(line, 'НЗ благодать');
+    await userEvent.click(line);
+    await userEvent.paste('НЗ благодать');
     await screen.findByText('bible.search.verses{"count":120}');
-    expect(screen.getAllByRole('option').filter((option) => /bible\.search\.showMore/.test(option.textContent ?? ''))).toHaveLength(1);
+    expect(options()).toHaveLength(41);
+    expect(showMore().closest('[role="option"]')).toBe(options()[40]);
     expect(screen.getByText('bible.search.shownOf{"shown":40,"count":120}')).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('option', { name: /bible\.search\.showMore\{"count":40\}/ }));
+    await userEvent.click(showMore());
     expect(screen.getByText('bible.search.shownOf{"shown":80,"count":120}')).toBeInTheDocument();
-    const verses = screen.getAllByRole('option').filter((option) => !/showMore/.test(option.textContent ?? ''));
-    expect(verses).toHaveLength(80);
-    expect(verses[40]).toHaveAttribute('aria-selected', 'true');
-    // The last step shows the rest, and nothing is left to press.
-    await userEvent.keyboard('{ArrowDown}'.repeat(40));
-    await userEvent.keyboard('{Enter}');
-    expect(screen.getAllByRole('option')).toHaveLength(120);
+    expect(options()).toHaveLength(81);
+    expect(options()[40]).toHaveAttribute('aria-selected', 'true');
+    // The last step shows the rest, and nothing is left to press (Enter on it: `rowForEnter`, searchModel.test.ts).
+    await userEvent.click(showMore());
+    expect(options()).toHaveLength(120);
+    expect(screen.queryByText(/^bible\.search\.showMore/)).not.toBeInTheDocument();
     // Another line starts again from the first forty.
-    await userEvent.type(line, ' Христа');
-    await waitFor(() => expect(screen.getAllByRole('option').length).toBeLessThanOrEqual(41));
+    await userEvent.paste(' Христа');
+    await waitFor(() => expect(options().length).toBeLessThanOrEqual(41));
   });
 
   describe('on a touch screen', () => {
@@ -274,27 +282,33 @@ describe('the line under pressure (Codex review, 2026-10-23)', () => {
   // and with two spaces between the words, which the history keeps as one (r7).
   it.each(['НЗ благодать', 'YP ,kfujlfnm', 'НЗ  благодать', 'YP  ,kfujlfnm'])('a search of the history comes back on a verse found after «Показать ещё», the same verses shown: «%s» (Codex review, 2026-10-23)', async (typed) => {
     const first = renderLine();
-    await userEvent.type(first.line, typed);
+    await userEvent.click(first.line);
+    await userEvent.paste(typed);
     await screen.findByText('bible.search.verses{"count":120}');
-    await userEvent.click(screen.getByRole('option', { name: /bible\.search\.showMore/ }));
+    await userEvent.click(showMore());
     await userEvent.keyboard('{Enter}');                     // the 41st verse, where «Показать ещё» put the arrows
     const opened = first.onOpen.mock.calls[0][0];
     document.body.innerHTML = '';
     render(<BibleSearch bible="rst" locale="ru" wide surface="window" openWithRecent autoFocus onOpen={jest.fn()} />);
     await userEvent.keyboard('{Enter}');                     // the first search of the history
     await screen.findByText('bible.search.shownOf{"shown":80,"count":120}');
-    const selected = await screen.findByRole('option', { selected: true });
+    const selected = await waitFor(() => {
+      const chosen = document.querySelector<HTMLElement>('[role="option"][aria-selected="true"]');
+      expect(chosen).not.toBeNull();
+      return chosen as HTMLElement;
+    });
     expect(selected.textContent).toContain(`${opened.chapter}:${opened.verse}`);
     expect(selected.textContent).toContain('bible.search.seen');
   });
 
   it('one search whatever its case: verses opened from «НЗ благодать» and «нз благодать» are both marked (Codex review r8)', async () => {
     const first = renderLine();
-    await userEvent.type(first.line, 'НЗ благодать');
+    await userEvent.click(first.line);
+    await userEvent.paste('НЗ благодать');
     await screen.findByText('bible.search.verses{"count":120}');
     await userEvent.keyboard('{Enter}');                     // A, the first verse
     await userEvent.clear(first.line);
-    await userEvent.type(first.line, 'нз благодать');
+    await userEvent.paste('нз благодать');
     await screen.findByText('bible.search.verses{"count":120}');
     await userEvent.keyboard('{ArrowDown}{Enter}');          // B, the second
     document.body.innerHTML = '';
