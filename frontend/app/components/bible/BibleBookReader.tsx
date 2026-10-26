@@ -499,30 +499,49 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, dec
   // The light is kept by the verses (`"chapter:verse"`), not by their elements: a chapter of a big book
   // that leaves the page and comes back within the light's time is lit as it was.
   const arrivalTimersRef = useRef<number[]>([]);
-  const arrivalRef = useRef<{ keys: string[]; phase: 'on' | 'off' } | null>(null);
+  const arrivalRef = useRef<{ keys: string[]; fadeAt: number } | null>(null);
   const paintArrival = useCallback(() => {
     const root = textRef.current;
     const lit = arrivalRef.current;
+    const now = Date.now();
+    const active = lit && now < lit.fadeAt + ARRIVAL_FADE_MS ? lit : null;
     // A new passage takes the light from the one before.
     root?.querySelectorAll<HTMLElement>(`[${ARRIVAL_ATTRIBUTE}]`).forEach((row) => {
-      if (!lit || !lit.keys.includes(row.dataset.verse ?? '')) row.removeAttribute(ARRIVAL_ATTRIBUTE);
+      if (active?.keys.includes(row.dataset.verse ?? '')) return;
+      row.removeAttribute(ARRIVAL_ATTRIBUTE);
+      row.style.removeProperty('--arrival-fade-delay');
+      row.style.removeProperty('--arrival-fade-duration');
     });
-    lit?.keys.forEach((key) => root?.querySelector(`[data-verse="${key}"]`)?.setAttribute(ARRIVAL_ATTRIBUTE, lit.phase));
+    if (!active) return;
+    const phase = now < active.fadeAt ? 'on' : 'off';
+    for (const key of active.keys) {
+      const row = root?.querySelector<HTMLElement>(`[data-verse="${key}"]`);
+      if (!row || row.getAttribute(ARRIVAL_ATTRIBUTE) === phase) continue;
+      // A replacement row joins the original fade; an existing animation keeps its own clock.
+      row.style.setProperty('--arrival-fade-delay', `${Math.min(0, active.fadeAt - now)}ms`);
+      row.style.setProperty('--arrival-fade-duration', `${ARRIVAL_FADE_MS}ms`);
+      row.setAttribute(ARRIVAL_ATTRIBUTE, phase);
+    }
   }, []);
-  const lightArrival = useCallback((keys: string[], litMs: number) => {
+  const lightArrival = useCallback((keys: string[], fadeAt: number) => {
     arrivalTimersRef.current.forEach((timer) => window.clearTimeout(timer));
-    arrivalRef.current = { keys, phase: 'on' };
+    arrivalTimersRef.current = [];
+    arrivalRef.current = { keys, fadeAt };
     paintArrival();
-    arrivalTimersRef.current = [
-      window.setTimeout(() => {
-        arrivalRef.current = { keys, phase: 'off' };
-        paintArrival();
-      }, litMs),
-      window.setTimeout(() => {
-        arrivalRef.current = null;
-        paintArrival();
-      }, litMs + ARRIVAL_FADE_MS),
-    ];
+    // A timeout can reach its boundary before Date.now() ticks; it is a wake-up, not the clock.
+    const at = (deadline: number, apply: () => void) => {
+      const wake = () => {
+        const left = deadline - Date.now();
+        if (left > 0) arrivalTimersRef.current.push(window.setTimeout(wake, left));
+        else apply();
+      };
+      arrivalTimersRef.current.push(window.setTimeout(wake, Math.max(0, deadline - Date.now())));
+    };
+    at(fadeAt, paintArrival);
+    at(fadeAt + ARRIVAL_FADE_MS, () => {
+      arrivalRef.current = null;
+      paintArrival();
+    });
   }, [paintArrival]);
   useEffect(() => () => arrivalTimersRef.current.forEach((timer) => window.clearTimeout(timer)), []);
   useLayoutEffect(() => {
@@ -568,10 +587,10 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, dec
     const arrival = passageEnd ? readEntryArrival() : null;
     const litMs = arrival?.link === link ? arrival.litUntil - Date.now() : 0;
     const lightPassage = () => {
-      if (!(litMs > 0 && passageEnd && startChapter && startVerse)) return;
+      if (!(arrival?.link === link && litMs > -ARRIVAL_FADE_MS && passageEnd && startChapter && startVerse)) return;
       const keys = scripturePassageKeys({ bible: initialBible, book: bookId, chapter: startChapter, fromVerse: startVerse,
         ...(passageEndChapter ? { endChapter: passageEndChapter } : {}), toVerse: passageEnd }, bible);
-      lightArrival(keys, litMs);
+      lightArrival(keys, arrival.litUntil);
     };
     if (target) {
       jumpTo(target, lightPassage);
@@ -727,7 +746,7 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, dec
   const openPlace = useCallback((chosenBook: string, place: Place & { toVerse?: number }) => {
     if (chosenBook === bookId) {
       arrive(place);
-      jumpTo(place, place.toVerse ? () => lightArrival(scripturePassageKeys({ bible, book: bookId, chapter: place.chapter, fromVerse: place.verse, toVerse: place.toVerse }, bible), ARRIVAL_LIT_MS) : undefined);
+      jumpTo(place, place.toVerse ? () => lightArrival(scripturePassageKeys({ bible, book: bookId, chapter: place.chapter, fromVerse: place.verse, toVerse: place.toVerse }, bible), Date.now() + ARRIVAL_LIT_MS) : undefined);
       return;
     }
     flushPlaceRef.current();
@@ -746,7 +765,7 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, dec
   landedPlaceRef.current = presentation.landed;
 
   const lightReference = useCallback((reference: CrossReference) => {
-    lightArrival(scripturePassageKeys({ ...reference, bible }, bible), ARRIVAL_LIT_MS);
+    lightArrival(scripturePassageKeys({ ...reference, bible }, bible), Date.now() + ARRIVAL_LIT_MS);
   }, [bible, lightArrival]);
   const openElsewhere = useCallback((reference: CrossReference, origin: Place) => {
     flushPlaceRef.current();

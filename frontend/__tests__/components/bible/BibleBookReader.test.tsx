@@ -528,6 +528,59 @@ describe('BibleBookReader', () => {
     }
   });
 
+  it('starts the remaining arrival fade if a timer arrives before the wall clock boundary', async () => {
+    jest.useFakeTimers({ advanceTimers: true });
+    const clock = Date.now;
+    let clockBehind = false;
+    const now = jest.spyOn(Date, 'now').mockImplementation(() => clock() - (clockBehind ? 1 : 0));
+    try {
+      const view = render(<BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={{ chapter: 1, verse: 1 }} passageEnd={2} onOpenBook={jest.fn()} />);
+      await screen.findByText('Итак прежде всего');
+      const fadeAt = window.history.state.bibleArrival.litUntil as number;
+      const row = view.container.querySelector<HTMLElement>('[data-verse="1:2"]')!;
+      act(() => { jest.advanceTimersByTime(Math.max(0, fadeAt - Date.now() - 1)); });
+      clockBehind = true;
+      act(() => { jest.advanceTimersByTime(1); });
+      clockBehind = false;
+      act(() => { jest.advanceTimersByTime(1); });
+      expect(row).toHaveAttribute('data-arrival', 'off');
+      act(() => { jest.advanceTimersByTime(Math.max(0, fadeAt + 3601 - Date.now())); });
+      expect(row).not.toHaveAttribute('data-arrival');
+      view.unmount();
+    } finally {
+      now.mockRestore();
+      jest.useRealTimers();
+      window.history.replaceState(null, '');
+    }
+  });
+
+  it.each([5500, 9000])('keeps the original arrival lifetime when this history entry remounts after %i ms', async (elapsed) => {
+    jest.useFakeTimers({ advanceTimers: true });
+    try {
+      const props = { bible: 'rst', initialBible: 'rst', bookId: 'Ruth', initialPlace: { chapter: 1, verse: 1 }, passageEnd: 2 } as const;
+      const first = render(<BibleBookReader {...props} onChangeBible={jest.fn()} onOpenBook={jest.fn()} />);
+      await screen.findByText('Итак прежде всего');
+      const fadeAt = window.history.state.bibleArrival.litUntil as number;
+      act(() => { jest.advanceTimersByTime(Math.max(0, fadeAt - 5000 + elapsed - Date.now())); });
+      first.unmount();
+      saveEntryPlace(currentEntryId(), { chapter: 1, verse: 1, bible: 'rst' });
+      const second = render(<BibleBookReader {...props} onChangeBible={jest.fn()} onOpenBook={jest.fn()} />);
+      await screen.findByText('Итак прежде всего');
+      const row = second.container.querySelector<HTMLElement>('[data-verse="1:2"]')!;
+      if (elapsed < 8600) {
+        expect(row).toHaveAttribute('data-arrival', 'off');
+        expect(parseFloat(row.style.getPropertyValue('--arrival-fade-delay'))).toBeLessThanOrEqual(-500);
+        expect(parseFloat(row.style.getPropertyValue('--arrival-fade-delay'))).toBeGreaterThan(-3600);
+        act(() => { jest.advanceTimersByTime(Math.max(0, fadeAt + 3601 - Date.now())); });
+      }
+      expect(row).not.toHaveAttribute('data-arrival');
+      second.unmount();
+    } finally {
+      jest.useRealTimers();
+      window.history.replaceState(null, '');
+    }
+  });
+
   // Codex review 2026-10-15: the timers of the passage before were cleared, its light was not — it stayed lit for good.
   it('takes the light from the passage before when another link opens in the same reader', async () => {
     jest.useFakeTimers({ advanceTimers: true });
@@ -1026,6 +1079,39 @@ describe('BibleBookReader', () => {
       expect(document.querySelector('section[data-chapter="3"]')).not.toHaveAttribute('data-box');
       expect(screen.getByText('Psalm 3:1')).toBeInTheDocument();
       expect(document.querySelector('[data-verse="100:1"]')).toBeNull();
+    });
+
+    it('resumes the remaining arrival fade when a virtual chapter is drawn again', async () => {
+      jest.useFakeTimers({ advanceTimers: true });
+      servePsalms();
+      try {
+        const view = render(<BibleBookReader bible="kjv" initialBible="kjv" onChangeBible={jest.fn()} bookId="Psalms" initialPlace={{ chapter: 120, verse: 2 }} passageEnd={3} onOpenBook={jest.fn()} />);
+        await screen.findByText('Psalm 120:2');
+        const fadeAt = window.history.state.bibleArrival.litUntil as number;
+        await userEvent.click(screen.getByRole('button', { name: 'bible.changeChapter' }));
+        await hold(tile(screen.getByRole('dialog', { name: 'bible.chooseChapter' }), '3'));
+        expect(document.querySelector('[data-verse="120:2"]')).toBeNull();
+        act(() => { jest.advanceTimersByTime(Math.max(0, fadeAt + 400 - Date.now())); });
+        await userEvent.click(screen.getByRole('button', { name: 'bible.changeChapter' }));
+        await hold(tile(screen.getByRole('dialog', { name: 'bible.chooseChapter' }), '120'));
+        const row = document.querySelector<HTMLElement>('[data-verse="120:2"]')!;
+        expect(row).toHaveAttribute('data-arrival', 'off');
+        const delay = row.style.getPropertyValue('--arrival-fade-delay');
+        expect(parseFloat(delay)).toBeLessThanOrEqual(-400);
+        expect(parseFloat(delay)).toBeGreaterThan(-3600);
+        // Drawing nearby chapters must not advance an already-running row's animation a second time.
+        await userEvent.click(screen.getByRole('button', { name: 'bible.changeChapter' }));
+        await hold(tile(screen.getByRole('dialog', { name: 'bible.chooseChapter' }), '119'));
+        expect(document.querySelector('[data-verse="120:2"]')).toBe(row);
+        expect(row.style.getPropertyValue('--arrival-fade-delay')).toBe(delay);
+        act(() => { jest.advanceTimersByTime(Math.max(0, fadeAt + 3601 - Date.now())); });
+        expect(row).not.toHaveAttribute('data-arrival');
+        expect(row.style.getPropertyValue('--arrival-fade-delay')).toBe('');
+        view.unmount();
+      } finally {
+        jest.useRealTimers();
+        window.history.replaceState(null, '');
+      }
     });
 
     it('lights the passage a link named in a psalm far from the start', async () => {

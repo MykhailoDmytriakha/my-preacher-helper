@@ -263,6 +263,12 @@ input[type="search"]::-webkit-search-results-decoration {
   line-height: 1.55;
 }
 
+/* A replacement verse joins its arrival's original fade through a negative animation delay. */
+@keyframes bible-arrival-fade {
+  from { background-color: var(--arrival-color); }
+  to { background-color: transparent; }
+}
+
 /* Focus Mode animations */
 @keyframes fadeIn {
   from {

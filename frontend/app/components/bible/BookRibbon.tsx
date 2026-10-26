@@ -32,7 +32,7 @@ function Segment({ segment }: { segment: Extract<VerseSegment, { kind: 'text' }>
 }
 
 /**
- * A verse a link came to is lit at once (`data-arrival="on"`) and, the attribute taken away, fades
+ * A verse a link came to is lit at once (`data-arrival="on"`) and, switched to "off", fades
  * back to the page on its own. The light is one layer under the text (`::before`, below the text
  * card's own layer — the card is `isolate`), 6 px wider than the verse on every side, so it moves
  * no line. One layer, not a background plus a ring: rows stand on fractional pixels, and the two
@@ -45,7 +45,9 @@ const ARRIVAL_CLASSES = [
   'relative before:pointer-events-none before:absolute before:-inset-1.5 before:-z-10 before:rounded-lg',
   '[[data-arrival]+&]:before:rounded-t-none [&:has(+[data-arrival])]:before:rounded-b-none',
   'before:transition-[background-color] before:duration-[3600ms] before:ease-out data-[arrival=on]:before:duration-0',
-  'data-[arrival=on]:before:bg-[#e8e8fd] dark:data-[arrival=on]:before:bg-[#272f51]',
+  '[--arrival-color:#e8e8fd] dark:[--arrival-color:#272f51]',
+  'data-[arrival=on]:before:[background-color:var(--arrival-color)]',
+  'data-[arrival=off]:before:animate-[bible-arrival-fade_var(--arrival-fade-duration,3600ms)_ease-out_var(--arrival-fade-delay,0ms)_both]',
 ].join(' ');
 /**
  * Cross references drawn with the verses (`utils/crossReferences.ts` counts them): a verse that has
