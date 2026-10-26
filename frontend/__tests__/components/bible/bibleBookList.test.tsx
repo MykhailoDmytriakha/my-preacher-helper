@@ -1,10 +1,11 @@
-import { render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { BibleBookList } from '@/components/bible/BibleBookList';
 import { arriveOnTrail, resetPlaceTrailForTests } from '@/components/bible/placeTrailStore';
+import { LONG_PRESS_MS } from '@/hooks/useLongPress';
 import { getLocalizedAbbrev } from '@/utils/bibleBooks';
-import { placeIn } from '@/utils/versification';
+import { placeIn, verseCount } from '@/utils/versification';
 
 /*
  * The list of books: in place of "Continue" the trail of places, the place the person stopped lit; a link
@@ -18,7 +19,22 @@ beforeEach(() => {
   })) as unknown as typeof window.matchMedia;
   window.localStorage.clear();
   resetPlaceTrailForTests();
+  // The window asks for the book's text, for how chapters begin; none is served here.
+  global.fetch = jest.fn(async () => { throw new Error('offline'); }) as unknown as typeof fetch;
 });
+
+/** A finger held half a second, then lifted. jsdom has no PointerEvent: a mouse event under its name (`marks.test.tsx`). */
+async function hold(target: Element) {
+  const pointer = (type: 'pointerdown' | 'pointerup') => {
+    const event = new MouseEvent(type, { bubbles: true, cancelable: true, clientX: 10, clientY: 10, button: 0 });
+    Object.defineProperties(event, { pointerType: { value: 'touch' }, pointerId: { value: 1 } });
+    fireEvent(target, event);
+  };
+  pointer('pointerdown');
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, LONG_PRESS_MS + 30)); });
+  pointer('pointerup');
+}
+const tile = (window_: HTMLElement, number: string) => within(window_).getByText(number, { selector: 'span' }).closest('button') as HTMLElement;
 
 const label = (book: string, chapter: number, verse: number) => `${getLocalizedAbbrev(book, 'en')} ${chapter}:${verse}`;
 const lastPlace = { slug: 'matthew', chapter: 1, verse: 2, bible: 'rst' as const };
@@ -51,6 +67,65 @@ describe('BibleBookList', () => {
     const trail = screen.getByRole('navigation', { name: 'bible.trail.title' });
     await userEvent.click(within(trail).getByRole('button', { name: label('Psalms', 22, inSynodal!.verse) }));
     expect(onOpen).toHaveBeenCalledWith('psalms', { chapter: 22, verse: inSynodal!.verse });
+  });
+
+  // The owner, 2026-10-23: a book on this list works as one in the reader's window — a press goes a step on, a hold opens.
+  it('opens a book\'s chapters in a window when pressed, a chapter\'s verses next, and a verse there, lit', async () => {
+    const onOpen = jest.fn();
+    render(<BibleBookList bible="rst" lastPlace={null} onOpen={onOpen} onChangeBible={jest.fn()} />);
+    expect(screen.getByText('bible.holdBookHint')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Romans' }));
+    const chapters = screen.getByRole('dialog', { name: 'bible.chooseChapter' });
+    expect(within(chapters).getAllByRole('button', { name: 'bible.chapter' })).toHaveLength(16);
+    expect(onOpen).not.toHaveBeenCalled();
+
+    await userEvent.click(tile(chapters, '8'));
+    const verses = screen.getByRole('dialog', { name: 'bible.chooseVerse' });
+    expect(within(verses).getAllByRole('button', { name: 'bible.verseNumber' })).toHaveLength(verseCount('rst', 'Romans', 8));
+    await userEvent.click(tile(verses, '28'));
+    expect(onOpen).toHaveBeenCalledWith('romans', { chapter: 8, verse: 28, toVerse: 28 });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('opens a book held at its start, and a chapter held in its window at that chapter\'s start', async () => {
+    const onOpen = jest.fn();
+    render(<BibleBookList bible="rst" lastPlace={null} onOpen={onOpen} onChangeBible={jest.fn()} />);
+
+    await hold(screen.getByRole('button', { name: 'Genesis' }));
+    expect(onOpen).toHaveBeenLastCalledWith('genesis', { chapter: 1, verse: 1 });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Romans' }));
+    await hold(tile(screen.getByRole('dialog'), '5'));
+    expect(onOpen).toHaveBeenLastCalledWith('romans', { chapter: 5, verse: 1 });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('fills where the person stopped when that book is pressed, and shows a book of one chapter at its verses', async () => {
+    render(<BibleBookList bible="rst" lastPlace={lastPlace} onOpen={jest.fn()} onChangeBible={jest.fn()} />);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Matthew' }));
+    expect(within(screen.getByRole('dialog')).getByRole('button', { current: true })).toHaveTextContent('1');
+    await userEvent.click(tile(screen.getByRole('dialog'), '1'));
+    expect(within(screen.getByRole('dialog', { name: 'bible.chooseVerse' })).getByRole('button', { current: true })).toHaveTextContent('2');
+    await userEvent.keyboard('{Escape}');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Jude' }));
+    expect(screen.getByRole('dialog', { name: 'bible.chooseVerse' })).toBeInTheDocument();
+  });
+
+  it('closes a book\'s window on Escape, and leaves «Как искать» open over the line alone', async () => {
+    render(<BibleBookList bible="rst" lastPlace={null} onOpen={jest.fn()} onChangeBible={jest.fn()} />);
+    await userEvent.click(screen.getByRole('button', { name: 'bible.search.help' }));
+    expect(screen.getByText('bible.search.sections.where')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Romans' }));
+    expect(screen.getByRole('dialog', { name: 'bible.chooseChapter' })).toBeInTheDocument();
+    await userEvent.keyboard('{Escape}');
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByText('bible.search.sections.where')).toBeInTheDocument();
   });
 
   it('keeps "Continue" on a device with no trail yet', async () => {

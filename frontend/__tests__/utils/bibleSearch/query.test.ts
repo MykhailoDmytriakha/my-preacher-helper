@@ -1,0 +1,141 @@
+import { SYNODAL_BOOKS, PROTESTANT_BOOKS } from '@/components/bible/bookOrder';
+import { readLine, readPlace, readSearch, booksBeginningWith } from '@/utils/bibleSearch/query';
+
+const ru = { bible: 'rst' as const, books: SYNODAL_BOOKS };
+const en = { bible: 'kjv' as const, books: PROTESTANT_BOOKS };
+
+describe('readLine — a place', () => {
+  it.each([
+    ['Ин 3:16', { bookId: 'John', chapter: 3, verse: 16 }],
+    ['Иоанна 3 16', { bookId: 'John', chapter: 3, verse: 16 }],
+    ['Иоанна три шестнадцать', { bookId: 'John', chapter: 3, verse: 16 }],
+    ['Евангелие от Иоанна 3:16', { bookId: 'John', chapter: 3, verse: 16 }],
+    ['Иоанна 3 глава 16 стих', { bookId: 'John', chapter: 3, verse: 16 }],
+    ['Иоанна третья глава шестнадцатый стих', { bookId: 'John', chapter: 3, verse: 16 }],
+    ['псалом двадцать второй', { bookId: 'Psalms', chapter: 22, verse: null }],
+    ['двадцать второй псалом', { bookId: 'Psalms', chapter: 22, verse: null }],
+    ['Пс 118:176', { bookId: 'Psalms', chapter: 118, verse: 176 }],
+    ['1 Кор 13', { bookId: '1 Corinthians', chapter: 13, verse: null }],
+    ['первое послание к Коринфянам 13', { bookId: '1 Corinthians', chapter: 13, verse: null }],
+    ['Иуд 3', { bookId: 'Jude', chapter: 1, verse: 3 }],
+  ])('%s', (line, expected) => {
+    expect(readLine(line, ru)).toMatchObject({ kind: 'place', ...expected });
+  });
+
+  it('keeps a passage: «Рим 8:28-39» lights to 39', () => {
+    expect(readLine('Рим 8:28-39', ru)).toMatchObject({ kind: 'place', bookId: 'Romans', chapter: 8, verse: 28, toVerse: 39 });
+  });
+
+  it('reads English the same way', () => {
+    expect(readLine('John three sixteen', en)).toMatchObject({ kind: 'place', bookId: 'John', chapter: 3, verse: 16 });
+  });
+
+  it('a book alone is the book', () => {
+    expect(readLine('Рим', ru)).toEqual({ kind: 'book', bookId: 'Romans' });
+  });
+
+  it('digits run together offer the places they can be', () => {
+    expect(readLine('Иоанна 316', ru)).toMatchObject({ kind: 'choices', bookId: 'John', choices: [{ chapter: 3, verse: 16 }] });
+  });
+
+  it('a chapter the book does not have', () => {
+    expect(readLine('Мф 33', ru)).toMatchObject({ kind: 'badChapter', bookId: 'Matthew', chapter: 33 });
+  });
+
+  it('a verse the chapter does not have', () => {
+    expect(readLine('Ин 3:99', ru)).toMatchObject({ kind: 'badVerse', bookId: 'John', chapter: 3, verse: 99 });
+  });
+
+  it('«8:28» is a place in the book being read, and needs a book elsewhere', () => {
+    expect(readLine('8:28', { ...ru, hereBook: 'Romans' })).toMatchObject({ kind: 'place', bookId: 'Romans', chapter: 8, verse: 28, relative: true });
+    expect(readLine('8:28', ru)).toEqual({ kind: 'needBook' });
+  });
+
+  it('the beginning of a name is not a book', () => {
+    expect(readPlace('Ио', ru)).toBeNull();
+    expect(booksBeginningWith('Ио', ['ru'])).toEqual(expect.arrayContaining(['John', '1 John']));
+  });
+});
+
+describe('readLine — a search', () => {
+  const search = (line: string, context = ru) => {
+    const reading = readLine(line, context);
+    if (reading.kind !== 'search') throw new Error(`${line}: ${reading.kind}`);
+    return reading.query;
+  };
+
+  it.each([
+    ['Иоанна хлеб', 'John'],
+    ['Ин хлеб', 'John'],
+    ['Евангелие от Иоанна хлеб', 'John'],
+    ['Римлянам благодать', 'Romans'],
+  ])('%s — in a book', (line, bookId) => {
+    expect(search(line)).toMatchObject({ scope: { kind: 'book', bookId, chapter: null }, terms: [expect.any(String)] });
+  });
+
+  it.each([
+    ['Рим 4 вера', 4, ['вера']],
+    ['Римлянам четыре веры', 4, ['веры']],
+    ['Римлянам глава 4 вера', 4, ['вера']],
+  ])('%s — in a chapter', (line, chapter, terms) => {
+    expect(search(line)).toMatchObject({ scope: { kind: 'book', bookId: 'Romans', chapter }, terms });
+  });
+
+  it('a passage', () => {
+    expect(search('Ин 6:25-59 хлеб')).toMatchObject({ scope: { kind: 'book', bookId: 'John', chapter: 6, fromVerse: 25, toVerse: 59 }, terms: ['хлеб'] });
+  });
+
+  it.each([
+    ['НЗ благодать', 'new'],
+    ['Новый Завет благодать', 'new'],
+    ['в Новом Завете благодать', 'new'],
+    ['ВЗ утешение', 'old'],
+    ['Евангелия хлеб', 'gospels'],
+    ['Пророки утешение', 'prophets'],
+    ['Послания любовь', 'epistles'],
+  ])('%s — in a part of the Bible', (line, part) => {
+    expect(search(line).scope).toMatchObject({ kind: 'part', part });
+  });
+
+  it('the parts hold their books', () => {
+    const gospels = search('Евангелия хлеб').scope;
+    expect(gospels?.kind === 'part' && gospels.bookIds).toEqual(['Matthew', 'Mark', 'Luke', 'John']);
+    const nt = search('НЗ благодать').scope;
+    expect(nt?.kind === 'part' && nt.bookIds.length).toBe(27);
+  });
+
+  it('words in quotes are a phrase; signs stay in a word', () => {
+    expect(search('"хлеб жизни"')).toMatchObject({ scope: null, terms: [], phrases: [['хлеб', 'жизни']] });
+    expect(search('«хлеб жизни»')).toMatchObject({ phrases: [['хлеб', 'жизни']] });
+    expect(search('благодат*').terms).toEqual(['благодат*']);
+    expect(search('Ил_я').terms).toEqual(['ил_я']);
+  });
+
+  it('numbers said among plain words stay words', () => {
+    expect(search('семь хлебов').terms).toEqual(['семь', 'хлебов']);
+  });
+
+  it('a book name that is an everyday word is read as the book and says so', () => {
+    expect(search('плач скрежет').scope).toMatchObject({ kind: 'book', bookId: 'Lamentations', wordLike: true, said: 'плач' });
+    expect(readSearch('плач скрежет', { ...ru, asWords: true })).toMatchObject({ scope: null, terms: ['плач', 'скрежет'] });
+  });
+
+  it('the words without the scope, as a line to widen with', () => {
+    expect(search('Рим 4 вера').text).toBe('вера');
+    expect(search('Ин "хлеб жизни"').text).toBe('"хлеб жизни"');
+  });
+
+  it('a part alone lists its books; a chapter the book lacks keeps the words', () => {
+    expect(readLine('Пророки', ru)).toMatchObject({ kind: 'part', scope: { part: 'prophets' } });
+    expect(readLine('Рим 40 вера', ru)).toMatchObject({ kind: 'scopeBadChapter', bookId: 'Romans', chapter: 40 });
+  });
+
+  it('a pattern of one letter is too short', () => {
+    expect(readLine('б*', ru).kind).toBe('tooShort');
+  });
+
+  it('plain words with no book', () => {
+    expect(search('пастырь мой')).toMatchObject({ scope: null, terms: ['пастырь', 'мой'] });
+    expect(search('в начале было слово').terms).toEqual(['начале', 'было', 'слово']);
+  });
+});
