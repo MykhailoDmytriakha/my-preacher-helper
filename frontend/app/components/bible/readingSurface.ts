@@ -6,6 +6,8 @@
  * are (BUG-20260905-ipad-study-scroll-handoff). One description of the reading position for all that
  * reads or moves it: the reader, its room under the book, the place it keeps, the minimap.
  */
+import { pinnedPageScrollTop, scrollPinnedPageBy } from '@/hooks/useScrollLock';
+
 export type ReadingSurface = {
   /** Where its scroll events come from. */
   target: Window | HTMLElement;
@@ -31,8 +33,12 @@ export function readingSurface(pane: HTMLElement | null): ReadingSurface {
   if (!pane) {
     return {
       target: window,
-      top: () => window.scrollY,
-      scrollTo: (top) => window.scrollTo({ top }),
+      top: () => pinnedPageScrollTop() ?? window.scrollY,
+      scrollTo: (top) => {
+        const pinned = pinnedPageScrollTop();
+        if (pinned === null) window.scrollTo({ top });
+        else scrollPinnedPageBy(top - pinned);
+      },
       height: () => window.innerHeight,
       contentHeight: () => document.documentElement.scrollHeight,
       edge: () => 0,

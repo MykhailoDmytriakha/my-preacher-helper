@@ -1,4 +1,5 @@
 import { renderHook } from '@testing-library/react';
+import { readingSurface } from '@/components/bible/readingSurface';
 import { scrollPinnedPageBy, useScrollLock } from '@/hooks/useScrollLock';
 
 describe('useScrollLock', () => {
@@ -126,6 +127,22 @@ describe('useScrollLock — more than one lock, and more than one platform', () 
             expect(window.scrollTo).not.toHaveBeenCalled();
             second.unmount();
             expect(window.scrollTo).toHaveBeenCalledWith(0, 300);
+        });
+
+        it('exposes the pinned reading offset and moves that same anchor before unlock', () => {
+            const { unmount } = renderHook(() => useScrollLock(true));
+            try {
+                Object.defineProperty(window, 'scrollY', { configurable: true, value: 0 });
+                const surface = readingSurface(null);
+                expect(surface.top()).toBe(240);
+                surface.scrollTo(320);
+                expect(surface.top()).toBe(320);
+                expect(document.body.style.top).toBe('-320px');
+                expect(window.scrollTo).not.toHaveBeenCalled();
+            } finally {
+                unmount();
+            }
+            expect(window.scrollTo).toHaveBeenCalledWith(0, 320);
         });
 
         it('bounds a corrected anchor at the page start and ignores invalid offsets', () => {

@@ -261,6 +261,67 @@ describe('BibleBookReader', () => {
     }
   });
 
+  it.each([false, true])('handles page notices without undoing deliberate reading: later scroll %s', async (laterScroll) => {
+    const order = ['1:1', '1:2', '2:1', '3:1', '4:1'];
+    let offset = 0;
+    let noticeHeight = 0;
+    const originalRect = Element.prototype.getBoundingClientRect;
+    const originalObserver = globalThis.ResizeObserver;
+    const observers = new Map<ResizeObserver, { targets: Set<Element>; run: () => void }>();
+    Object.defineProperty(window, 'scrollY', { configurable: true, get: () => offset });
+    Element.prototype.getBoundingClientRect = function (this: HTMLElement) {
+      const verse = this.dataset?.verse;
+      if (!verse && !this.matches('article')) return originalRect.call(this);
+      const top = verse ? 16 + order.indexOf(verse) * 40 + noticeHeight - offset : 0;
+      return { top, bottom: top + 40, height: 40, left: 0, right: 100, width: 100, x: 0, y: top, toJSON: () => ({}) } as DOMRect;
+    };
+    scrollIntoView.mockImplementation(function (this: HTMLElement) {
+      const key = this.dataset.verse ?? `${this.dataset.chapter}:1`;
+      offset = order.indexOf(key) * 40 + noticeHeight;
+    });
+    globalThis.ResizeObserver = class {
+      constructor(callback: ResizeObserverCallback) {
+        const instance = this as unknown as ResizeObserver;
+        observers.set(instance, { targets: new Set(), run: () => callback([], instance) });
+      }
+      observe(target: Element) { observers.get(this as unknown as ResizeObserver)!.targets.add(target); }
+      unobserve(target: Element) { observers.get(this as unknown as ResizeObserver)!.targets.delete(target); }
+      disconnect() { observers.delete(this as unknown as ResizeObserver); }
+    } as unknown as typeof ResizeObserver;
+    const view = render(<BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={{ chapter: 1, verse: 2 }} onOpenBook={jest.fn()} />);
+    try {
+      await screen.findByText('Итак прежде всего');
+      const target = document.querySelector<HTMLElement>('[data-verse="1:2"]')!;
+      expect(target.getBoundingClientRect().top).toBe(16);
+      if (laterScroll) {
+        act(() => { offset = 120; window.dispatchEvent(new Event('scroll')); });
+        expect(screen.getByRole('button', { name: 'bible.changeChapter' })).toHaveTextContent('3:1');
+      }
+      const pageResized = () => act(() => {
+        for (const { targets, run } of [...observers.values()]) if (targets.has(document.documentElement)) run();
+      });
+      noticeHeight = 180;
+      pageResized();
+      if (laterScroll) {
+        expect(offset).toBe(120);
+        expect(screen.getByRole('button', { name: 'bible.changeChapter' })).toHaveTextContent('3:1');
+      } else {
+        expect(target.getBoundingClientRect().top).toBe(16);
+        expect(screen.getByRole('button', { name: 'bible.changeChapter' })).toHaveTextContent('1:2');
+      }
+      noticeHeight = 0;
+      pageResized();
+      expect(offset).toBe(laterScroll ? 120 : 40);
+    } finally {
+      view.unmount();
+      Element.prototype.getBoundingClientRect = originalRect;
+      scrollIntoView.mockReset();
+      Object.defineProperty(window, 'scrollY', { configurable: true, value: 0 });
+      if (originalObserver) globalThis.ResizeObserver = originalObserver;
+      else Reflect.deleteProperty(globalThis, 'ResizeObserver');
+    }
+  });
+
   it('keeps the visible verse while text size changes in an iOS pinned page and after the size window closes', async () => {
     const order = ['1:1', '1:2', '2:1', '3:1', '4:1'];
     const descriptors = {

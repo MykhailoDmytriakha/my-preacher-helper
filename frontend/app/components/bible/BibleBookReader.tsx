@@ -482,8 +482,13 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, dec
     });
     if (readerRef.current) observer.observe(readerRef.current);
     if (textRef.current) observer.observe(textRef.current);
+    // A notice above the phone reader moves its landing without resizing either watched element.
+    if (surface.target === window) {
+      observer.observe(document.documentElement);
+      observer.observe(document.body);
+    }
     return () => observer.disconnect();
-  }, [jumpTo, text]);
+  }, [jumpTo, surface, text]);
 
   // THE VERSE A LINK CAME TO: lit at once, then fading back on its own — near the end of a book it
   // cannot be told by where it stands. The light belongs to the arrival, not to the text it was put

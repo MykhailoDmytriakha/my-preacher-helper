@@ -99,6 +99,11 @@ function acquire(): void {
   }
 }
 
+/** The page's reading offset while fixed positioning makes the browser report zero. */
+export function pinnedPageScrollTop(): number | null {
+  return page?.pinned ? page.scrollY : null;
+}
+
 /** Move the pinned reading anchor after content reflows; release uses this same offset. */
 export function scrollPinnedPageBy(deltaY: number): boolean {
   if (!page?.pinned || !Number.isFinite(deltaY)) return false;
