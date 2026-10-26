@@ -1134,6 +1134,18 @@ describe('BibleBookReader', () => {
       expect(screen.getByRole('dialog', { name: 'bible.chooseBook' })).toBeInTheDocument();
     });
 
+    it('keeps the complete phone place and restores its trigger after Escape', async () => {
+      render(<ReadingPill bookId="Ruth" bible="rst" currentChapter={3} currentVerse={1} text={{ id: 'Ruth', chapters: book.chapters }} locale="en" onOpen={jest.fn()} />);
+      const trigger = screen.getByRole('button', { name: 'bible.navigate' });
+      expect(trigger).toHaveTextContent('Ruth 3:1');
+      await userEvent.click(trigger);
+      expect(screen.getByRole('dialog', { name: 'bible.chooseChapter' })).toBeInTheDocument();
+      await userEvent.keyboard('{Escape}');
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      expect(trigger).toHaveFocus();
+      expect(trigger).toHaveTextContent('Ruth 3:1');
+    });
+
     it('opens, on a phone, a book of one chapter at its verses from the pill', async () => {
       render(<ReadingPill bookId="Jude" bible="rst" currentChapter={1} currentVerse={3} text={{ id: 'Jude', chapters: [['¶Иуда, раб Иисуса Христа']] }} locale="en" onOpen={jest.fn()} />);
       await userEvent.click(screen.getByRole('button', { name: 'bible.navigate' }));

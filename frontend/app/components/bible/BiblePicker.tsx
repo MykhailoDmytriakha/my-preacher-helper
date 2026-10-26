@@ -1,6 +1,6 @@
 'use client';
 
-import { CheckIcon, ChevronDownIcon, ChevronLeftIcon, ChevronUpIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';
+import { CheckIcon, ChevronDownIcon, ChevronLeftIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';
 import { useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 
@@ -741,7 +741,7 @@ export function SearchPicker({ bookId, bible, locale, wide, look, onOpen }: Sear
   };
 
   const shape = look === 'bar'
-    ? 'pointer-events-auto h-12 w-12 justify-center rounded-full border-gray-300 bg-white/90 text-gray-800 shadow-lg shadow-gray-900/15 backdrop-blur-md dark:border-gray-600 dark:bg-gray-900/90 dark:text-gray-100 dark:shadow-black/40'
+    ? 'pointer-events-auto h-12 w-11 justify-center rounded-full border-gray-300 bg-white/90 text-gray-800 shadow-lg shadow-gray-900/15 backdrop-blur-md dark:border-gray-600 dark:bg-gray-900/90 dark:text-gray-100 dark:shadow-black/40'
     : `min-h-11 rounded-xl text-gray-600 hover:bg-indigo-50 hover:text-indigo-700 dark:text-gray-300 dark:hover:bg-indigo-950/40 dark:hover:text-indigo-300 ${wide ? 'ml-1 gap-1.5 pl-2.5 pr-3 text-[15px] font-medium' : 'w-11 justify-center'} ${open ? TRIGGER_OPEN : 'border-gray-200 dark:border-gray-700'}`;
 
   return (
@@ -801,10 +801,9 @@ export function ReadingPill({ bookId, bible, currentChapter, currentVerse, text,
         aria-expanded={open}
         aria-label={t('bible.navigate', { place: label })}
         onClick={() => setOpen(true)}
-        className="inline-flex min-h-12 items-center gap-2 rounded-full border border-gray-300 bg-white/90 pl-5 pr-4 text-base font-bold text-gray-900 shadow-lg shadow-gray-900/15 backdrop-blur-md transition dark:border-gray-600 dark:bg-gray-900/90 dark:text-white dark:shadow-black/40"
+        className="inline-flex min-h-12 min-w-11 shrink-0 items-center whitespace-nowrap rounded-full border border-gray-300 bg-white/90 px-1.5 text-sm font-bold text-gray-900 shadow-lg shadow-gray-900/15 backdrop-blur-md transition dark:border-gray-600 dark:bg-gray-900/90 dark:text-white dark:shadow-black/40"
       >
         {label}
-        <ChevronUpIcon className="h-4 w-4" aria-hidden="true" />
       </button>
       {open ? (
         <BookNavigator

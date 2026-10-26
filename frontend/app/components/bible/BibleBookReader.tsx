@@ -82,7 +82,7 @@ function WayBack({ label, floating, onClick }: { label: string; floating: boolea
       onClick={onClick}
       aria-label={t('bible.backToLabel', { place: label })}
       className={floating
-        ? 'pointer-events-auto inline-flex min-h-12 shrink-0 items-center rounded-full border border-gray-300 bg-white/90 px-4 text-sm font-semibold text-indigo-700 shadow-lg shadow-gray-900/15 backdrop-blur-md dark:border-gray-600 dark:bg-gray-900/90 dark:text-indigo-300 dark:shadow-black/40'
+        ? 'pointer-events-auto inline-flex min-h-12 min-w-11 shrink-0 items-center whitespace-nowrap rounded-full border border-gray-300 bg-white/90 px-1.5 text-sm font-semibold text-indigo-700 shadow-lg shadow-gray-900/15 backdrop-blur-md dark:border-gray-600 dark:bg-gray-900/90 dark:text-indigo-300 dark:shadow-black/40'
         : 'mr-3 inline-flex min-h-9 shrink-0 items-center rounded-full border border-gray-200 bg-white px-3 text-[13px] font-semibold text-indigo-700 transition hover:border-indigo-300 hover:bg-indigo-50 dark:border-gray-700 dark:bg-gray-900 dark:text-indigo-300 dark:hover:bg-indigo-950/40'}
     >
       {t('bible.backTo', { place: label })}
@@ -168,7 +168,7 @@ function PhoneBar({ wayBack, onWayBack, trailButton, showPill, bookId, bible, cu
 }) {
   if (!wayBack && !showPill && !trailButton) return null;
   return (
-    <div className="pointer-events-none fixed inset-x-4 bottom-[calc(1.25rem+env(safe-area-inset-bottom))] z-30 flex items-center justify-center gap-2">
+    <div className="pointer-events-none fixed inset-x-4 bottom-[calc(1.25rem+env(safe-area-inset-bottom))] z-30 flex items-center justify-center gap-1">
       {wayBack ? <WayBack label={wayBack} floating onClick={onWayBack} /> : null}
       {trailButton}
       {showPill ? <SearchPicker bookId={bookId} bible={bible} locale={locale} wide={false} look="bar" onOpen={onOpen} /> : null}

@@ -47,7 +47,7 @@ function buttonClasses(shown: boolean, floating: boolean): string {
     ? 'border-indigo-300 bg-indigo-50 dark:border-indigo-500/60 dark:bg-indigo-950/50'
     : floating ? 'border-gray-300 bg-white/90 dark:border-gray-600 dark:bg-gray-900/90' : 'border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900';
   return floating
-    ? `pointer-events-auto inline-flex min-h-12 shrink-0 items-center gap-1.5 rounded-full border px-4 text-sm font-semibold tabular-nums text-indigo-700 shadow-lg shadow-gray-900/15 backdrop-blur-md dark:text-indigo-300 dark:shadow-black/40 ${state}`
+    ? `pointer-events-auto inline-flex min-h-12 min-w-11 shrink-0 items-center gap-1 rounded-full border px-1.5 text-sm font-semibold tabular-nums text-indigo-700 shadow-lg shadow-gray-900/15 backdrop-blur-md dark:text-indigo-300 dark:shadow-black/40 ${state}`
     : `mr-3 inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-full border px-3 text-[13px] font-semibold tabular-nums text-indigo-700 transition hover:border-indigo-300 dark:text-indigo-300 ${state}`;
 }
 
