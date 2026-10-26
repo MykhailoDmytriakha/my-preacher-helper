@@ -194,6 +194,7 @@ jest.mock('date-fns/isValid', () => ({
 }));
 
 import { fireEvent, render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import React from 'react';
 import { format } from 'date-fns';
 import AnalyticsSection from '../../../app/components/calendar/AnalyticsSection';
@@ -276,6 +277,64 @@ describe('AnalyticsSection', () => {
         '2024-01-15': [mockSermons[1]],
         '2024-01-20': [mockSermons[2]],
     };
+
+    describe('analytics tile keyboard activation', () => {
+        const keyboard = () => userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+        const activeMonth = () => screen.getByTitle(/: 3 проповеди$/);
+
+        it('includes populated months in Tab order and skips empty tiles', async () => {
+            render(<AnalyticsSection sermonsByDate={sermonsByDate} />);
+            const user = keyboard();
+            const month = activeMonth();
+            const emptyBook = screen.getByTestId('book-tile-Genesis');
+            const emptyMonths = screen.getAllByTitle(/2024: 0 проповедей$/);
+            screen.getByRole('combobox', { name: 'Год' }).focus();
+            const visited: Element[] = [];
+            for (let index = 0; index < 12; index++) {
+                await user.tab();
+                visited.push(document.activeElement!);
+            }
+            expect(visited).toContain(month);
+            expect(visited).not.toContain(emptyBook);
+            expect(emptyMonths.every(tile => !visited.includes(tile))).toBe(true);
+        });
+
+        it.each(['{Enter}', ' '])('opens the month with %s and restores its opener after Escape', async key => {
+            render(<AnalyticsSection sermonsByDate={sermonsByDate} />);
+            const user = keyboard();
+            const month = activeMonth();
+            month.focus();
+            await user.keyboard(key);
+            const dialog = screen.getByTestId('monthly-sermons-modal');
+            expect(within(dialog).getByText('Sermon 1')).toBeInTheDocument();
+            expect(dialog).toContainElement(document.activeElement as HTMLElement);
+            await user.keyboard('{Escape}');
+            expect(screen.queryByTestId('monthly-sermons-modal')).not.toBeInTheDocument();
+            expect(month).toHaveFocus();
+        });
+
+        it.each(['Proverbs', '1 Peter'])('opens the %s book with Space and restores focus after Escape', async book => {
+            render(<AnalyticsSection sermonsByDate={sermonsByDate} />);
+            const user = keyboard();
+            const tile = screen.getByTestId(`book-tile-${book}`);
+            tile.focus();
+            await user.keyboard(' ');
+            const dialog = screen.getByRole('dialog');
+            expect(within(dialog).getByText(book === 'Proverbs' ? 'Sermon 3' : 'Sermon 1')).toBeInTheDocument();
+            await user.keyboard('{Escape}');
+            expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+            expect(tile).toHaveFocus();
+        });
+
+        it('does not open an empty month or book from a pointer', async () => {
+            render(<AnalyticsSection sermonsByDate={sermonsByDate} />);
+            const user = keyboard();
+            const emptyMonth = screen.getAllByTitle(/2024: 0 проповедей$/)[0];
+            await user.click(emptyMonth);
+            await user.click(screen.getByTestId('book-tile-Genesis'));
+            expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        });
+    });
 
     it('correctly extracts multi-word Bible book names', () => {
         render(<AnalyticsSection sermonsByDate={sermonsByDate} />);
@@ -826,8 +885,7 @@ describe('AnalyticsSection', () => {
             render(<AnalyticsSection sermonsByDate={monthlySermons} />);
 
             // Find Jan card and click. There might be multiple "Янв 24" (heading and chart label)
-            const janCards = screen.getAllByText('Янв 24');
-            const janCard = janCards.find(el => el.closest('div')?.onclick || el.parentElement?.onclick || true)?.closest('div');
+            const janCard = screen.getAllByTitle(/2024: 1 проповедь$/)[0];
             expect(janCard).toBeTruthy();
             fireEvent.click(janCard as HTMLElement);
 
@@ -861,7 +919,7 @@ describe('AnalyticsSection', () => {
             expect(screen.queryByText(/Бытие/)).not.toBeInTheDocument();
         });
 
-        it('opens book modal via mouse and keyboard (covering NT and Enter key)', () => {
+        it('opens book modal via mouse and keyboard (covering NT and Enter key)', async () => {
             const ntSermons = {
                 '2024-01-01': [
                     {
@@ -879,17 +937,20 @@ describe('AnalyticsSection', () => {
             expect(romansTile).toBeTruthy();
 
             // Test Enter key branch
-            fireEvent.keyDown(romansTile, { key: 'Enter' });
-            expect(screen.getByText(/Римлянам/)).toBeInTheDocument();
+            const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+            romansTile.focus();
+            expect(romansTile).toHaveFocus();
+            await user.keyboard('{Enter}');
+            expect(within(screen.getByRole('dialog')).getByText('Sermon 1')).toBeInTheDocument();
 
             // Close it
             const closeBtn = screen.getByRole('button', { name: /Закрыть|Close/i });
             fireEvent.click(closeBtn);
-            expect(screen.queryByText(/Римлянам/)).not.toBeInTheDocument();
+            expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
 
             // Test click branch for NT
             fireEvent.click(romansTile);
-            expect(screen.getByText(/Римлянам/)).toBeInTheDocument();
+            expect(within(screen.getByRole('dialog')).getByText('Sermon 1')).toBeInTheDocument();
         });
 
         it('Date Parsing Fallbacks: handles unusual formats (redundant check for coverage)', () => {

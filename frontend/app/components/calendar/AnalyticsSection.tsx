@@ -230,7 +230,8 @@ export default function AnalyticsSection({ sermonsByDate }: AnalyticsSectionProp
                                 };
 
                                 return (
-                                    <div
+                                    <button
+                                        type="button"
                                         key={book.id}
                                         data-testid={`book-tile-${book.id}`}
                                         className={`relative p-2 rounded-lg border border-gray-200 dark:border-gray-600 transition-colors group ${isClickable ? 'cursor-pointer hover:border-purple-300 dark:hover:border-purple-500' : 'cursor-default opacity-80'}`}
@@ -241,30 +242,25 @@ export default function AnalyticsSection({ sermonsByDate }: AnalyticsSectionProp
                                         }}
                                         title={`${book.names[appLocale]}: ${countPhrase(count)}`}
                                         onClick={handleOpenBook}
-                                        role={isClickable ? 'button' : undefined}
-                                        tabIndex={isClickable ? 0 : undefined}
-                                        onKeyDown={isClickable ? (event) => {
-                                            if (event.key === 'Enter') handleOpenBook();
-                                        } : undefined}
-                                        aria-disabled={isClickable ? undefined : true}
+                                        disabled={!isClickable}
                                     >
-                                        <div className="text-center">
-                                            <div className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate">
+                                        <span className="block text-center">
+                                            <span className="block text-xs font-medium text-gray-700 dark:text-gray-300 truncate">
                                                 {book.abbrev[appLocale] || book.abbrev.en}
-                                            </div>
+                                            </span>
                                             {count > 0 && (
-                                                <div className="text-xs font-bold text-purple-600 dark:text-purple-400 mt-1">
+                                                <span className="block text-xs font-bold text-purple-600 dark:text-purple-400 mt-1">
                                                     {count}
-                                                </div>
+                                                </span>
                                             )}
-                                        </div>
+                                        </span>
                                         {count > 0 && (
-                                            <div
+                                            <span
                                                 className="absolute bottom-0 left-0 right-0 h-1 bg-purple-500 rounded-b-lg opacity-60"
                                                 style={{ width: `${intensity}%` }}
                                             />
                                         )}
-                                    </div>
+                                    </button>
                                 );
                             })}
                         </div>
@@ -287,7 +283,8 @@ export default function AnalyticsSection({ sermonsByDate }: AnalyticsSectionProp
                                 };
 
                                 return (
-                                    <div
+                                    <button
+                                        type="button"
                                         key={book.id}
                                         data-testid={`book-tile-${book.id}`}
                                         className={`relative p-2 rounded-lg border border-gray-200 dark:border-gray-600 transition-colors group ${isClickable ? 'cursor-pointer hover:border-purple-300 dark:hover:border-purple-500' : 'cursor-default opacity-80'}`}
@@ -298,30 +295,25 @@ export default function AnalyticsSection({ sermonsByDate }: AnalyticsSectionProp
                                         }}
                                         title={`${book.names[appLocale]}: ${countPhrase(count)}`}
                                         onClick={handleOpenBook}
-                                        role={isClickable ? 'button' : undefined}
-                                        tabIndex={isClickable ? 0 : undefined}
-                                        onKeyDown={isClickable ? (event) => {
-                                            if (event.key === 'Enter') handleOpenBook();
-                                        } : undefined}
-                                        aria-disabled={isClickable ? undefined : true}
+                                        disabled={!isClickable}
                                     >
-                                        <div className="text-center">
-                                            <div className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate">
+                                        <span className="block text-center">
+                                            <span className="block text-xs font-medium text-gray-700 dark:text-gray-300 truncate">
                                                 {book.abbrev[appLocale] || book.abbrev.en}
-                                            </div>
+                                            </span>
                                             {count > 0 && (
-                                                <div className="text-xs font-bold text-purple-600 dark:text-purple-400 mt-1">
+                                                <span className="block text-xs font-bold text-purple-600 dark:text-purple-400 mt-1">
                                                     {count}
-                                                </div>
+                                                </span>
                                             )}
-                                        </div>
+                                        </span>
                                         {count > 0 && (
-                                            <div
+                                            <span
                                                 className="absolute bottom-0 left-0 right-0 h-1 bg-purple-500 rounded-b-lg opacity-60"
                                                 style={{ width: `${intensity}%` }}
                                             />
                                         )}
-                                    </div>
+                                    </button>
                                 );
                             })}
                         </div>
@@ -357,9 +349,11 @@ export default function AnalyticsSection({ sermonsByDate }: AnalyticsSectionProp
                             const monthDate = new Date(year, monthNum - 1, 1);
 
                             return (
-                                <div
+                                <button
+                                    type="button"
                                     key={month}
-                                    className="relative p-3 rounded-lg border border-gray-200 dark:border-gray-600 hover:border-amber-300 dark:hover:border-amber-500 transition-colors cursor-pointer group"
+                                    disabled={count === 0}
+                                    className={`relative p-3 rounded-lg border border-gray-200 dark:border-gray-600 transition-colors group ${count > 0 ? 'cursor-pointer hover:border-amber-300 dark:hover:border-amber-500' : 'cursor-default'}`}
                                     style={{
                                         backgroundColor: count > 0
                                             ? `rgba(245, 158, 11, ${intensity / 100 * 0.2})`
@@ -373,23 +367,23 @@ export default function AnalyticsSection({ sermonsByDate }: AnalyticsSectionProp
                                         }
                                     }}
                                 >
-                                    <div className="text-center">
-                                        <div className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate">
+                                    <span className="block text-center">
+                                        <span className="block text-xs font-medium text-gray-700 dark:text-gray-300 truncate">
                                             {format(monthDate, 'LLL yy', { locale: dateLocale }).replace('.', '').replace(/^./, str => str.toUpperCase())}
-                                        </div>
+                                        </span>
                                         {count > 0 && (
-                                            <div className="text-sm font-bold text-amber-600 dark:text-amber-400 mt-1">
+                                            <span className="block text-sm font-bold text-amber-600 dark:text-amber-400 mt-1">
                                                 {count}
-                                            </div>
+                                            </span>
                                         )}
-                                    </div>
+                                    </span>
                                     {count > 0 && (
-                                        <div
+                                        <span
                                             className="absolute bottom-0 left-0 right-0 h-1 bg-amber-500 rounded-b-lg opacity-60"
                                             style={{ width: `${intensity}%` }}
                                         />
                                     )}
-                                </div>
+                                </button>
                             );
                         })}
                     </div>
