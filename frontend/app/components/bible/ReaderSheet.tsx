@@ -4,6 +4,7 @@ import { XMarkIcon } from '@heroicons/react/24/outline';
 import { createPortal } from 'react-dom';
 
 import { useModalLayer } from '@/hooks/useModalLayer';
+import { BIBLE_READER_COLORS } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
 
 import type { ReactNode } from 'react';
@@ -49,7 +50,7 @@ export function ReaderSheet({ titleId, onClose, layerClassName = 'z-[120]', dept
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className={`relative w-full rounded-t-3xl bg-white px-5 pb-[calc(1.5rem+env(safe-area-inset-bottom))] pt-2 shadow-2xl dark:bg-gray-900 xl:rounded-3xl xl:pb-5 xl:pt-4 ${frame}`}
+        className={`relative w-full rounded-t-3xl px-5 pb-[calc(1.5rem+env(safe-area-inset-bottom))] pt-2 shadow-2xl xl:rounded-3xl xl:pb-5 xl:pt-4 ${BIBLE_READER_COLORS.surface} ${frame}`}
       >
         <div aria-hidden="true" className="mx-auto mb-2 h-1 w-10 shrink-0 rounded-full bg-gray-300 xl:hidden dark:bg-gray-600" />
         {children}

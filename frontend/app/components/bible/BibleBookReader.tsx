@@ -16,6 +16,7 @@ import { wayBackKind } from '@/utils/bibleLink';
 import { BIBLES, type BibleId } from '@/utils/bibles';
 import { bookSlug, fetchBookText, verseWords, type BookText } from '@/utils/bibleText';
 import { revealBelow } from '@/utils/revealBelow';
+import { BIBLE_READER_COLORS } from '@/utils/themeColors';
 import { placeIn } from '@/utils/versification';
 import { useTranslation } from '@locales/useTranslation';
 
@@ -881,7 +882,7 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, dec
               ref={textRef}
               data-gesture-ignore={marks.gestureIgnore}
               data-pen-surface={marks.penSurface}
-              className={`isolate min-w-0 rounded-2xl border border-gray-200 bg-white px-3 py-5 sm:px-6 dark:border-gray-700 dark:bg-gray-900 ${marks.textClass}`}
+              className={`isolate min-w-0 rounded-2xl border border-gray-200 px-3 py-5 sm:px-6 dark:border-gray-700 ${BIBLE_READER_COLORS.surface} ${marks.textClass}`}
             >
               <BookRibbon text={text} lang={BIBLES[bible].language} chapterWord={chapterWord} crossRefs={crossRefs.ribbon} signs={marks.signs} mine={mine.ribbon} boxes={chapterWindow.boxes} />
               <BookEnd bookId={bookId} bible={bible} locale={locale} wide={wide} onOpen={(chosen) => openPlace(chosen, { chapter: 1, verse: 1 })} />

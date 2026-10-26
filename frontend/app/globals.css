@@ -266,7 +266,7 @@ input[type="search"]::-webkit-search-results-decoration {
 /* A replacement verse joins its arrival's original fade through a negative animation delay. */
 @keyframes bible-arrival-fade {
   from { background-color: var(--arrival-color); }
-  to { background-color: transparent; }
+  to { background-color: var(--bible-reader-surface); }
 }
 
 /* Focus Mode animations */

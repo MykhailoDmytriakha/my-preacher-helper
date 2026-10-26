@@ -5,6 +5,7 @@ import { Fragment, memo } from 'react';
 
 import { Chip } from '@/components/ui/Chip';
 import { parseVerse, type BookText, type VerseSegment } from '@/utils/bibleText';
+import { BIBLE_READER_COLORS } from '@/utils/themeColors';
 
 import { MineBadge as MineBadgeButton, MineMoreBadge } from './MineBadge';
 
@@ -38,14 +39,15 @@ function Segment({ segment }: { segment: Extract<VerseSegment, { kind: 'text' }>
  * no line. One layer, not a background plus a ring: rows stand on fractional pixels, and the two
  * edges, each smoothed on its own, left a light line between lit verses. The colour is solid, the
  * indigo tint already mixed into the card: the layers of a passage overlap, and a see-through tint
- * darkens where they meet. Lit verses standing together are one block — only the first rounds its
+ * darkens where they meet. The fade stays opaque as it approaches the shared reader surface.
+ * Lit verses standing together are one block — only the first rounds its
  * top corners and only the last its bottom ones, so the edges run straight.
  */
 const ARRIVAL_CLASSES = [
   'relative before:pointer-events-none before:absolute before:-inset-1.5 before:-z-10 before:rounded-lg',
   '[[data-arrival]+&]:before:rounded-t-none [&:has(+[data-arrival])]:before:rounded-b-none',
   'before:transition-[background-color] before:duration-[3600ms] before:ease-out data-[arrival=on]:before:duration-0',
-  '[--arrival-color:#e8e8fd] dark:[--arrival-color:#272f51]',
+  BIBLE_READER_COLORS.arrival,
   'data-[arrival=on]:before:[background-color:var(--arrival-color)]',
   'data-[arrival=off]:before:animate-[bible-arrival-fade_var(--arrival-fade-duration,3600ms)_ease-out_var(--arrival-fade-delay,0ms)_both]',
 ].join(' ');

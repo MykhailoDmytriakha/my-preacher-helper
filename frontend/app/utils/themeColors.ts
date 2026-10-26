@@ -36,6 +36,12 @@ export const APP_THEME_COLORS = {
   background: '#ffffff',
 } as const;
 
+// Reader surfaces and an arrival's opaque fade share the same background.
+export const BIBLE_READER_COLORS = {
+  surface: '[--bible-reader-surface:#ffffff] dark:[--bible-reader-surface:#111827] [background-color:var(--bible-reader-surface)]',
+  arrival: '[--arrival-color:#e8e8fd] dark:[--arrival-color:#272f51]',
+} as const;
+
 export const SERMON_SECTION_COLORS = {
   introduction: {
     base: "#d97706",       // Amber-600

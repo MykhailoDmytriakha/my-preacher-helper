@@ -9,6 +9,7 @@ import { resolveAppLocale } from '@/utils/appLocale';
 import { BIBLES, type BibleId } from '@/utils/bibles';
 import { fetchBookText, type BookText } from '@/utils/bibleText';
 import { formatScriptureReference } from '@/utils/scriptureReference';
+import { BIBLE_READER_COLORS } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
 
 import { visibleVerseRange } from './BibleMinimap';
@@ -297,7 +298,7 @@ function Sheet({ reference, onClose, keepVisible, related, openInBible }: { refe
         role="dialog"
         aria-modal="true"
         aria-label={label}
-        className="absolute inset-x-0 bottom-0 top-6 flex flex-col overflow-hidden rounded-t-3xl border border-b-0 border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900 sm:inset-x-auto sm:bottom-4 sm:left-1/2 sm:top-4 sm:w-[min(48rem,calc(100%-3rem))] sm:-translate-x-1/2 sm:rounded-2xl sm:border-b"
+        className={`absolute inset-x-0 bottom-0 top-6 flex flex-col overflow-hidden rounded-t-3xl border border-b-0 border-gray-200 shadow-2xl dark:border-gray-700 sm:inset-x-auto sm:bottom-4 sm:left-1/2 sm:top-4 sm:w-[min(48rem,calc(100%-3rem))] sm:-translate-x-1/2 sm:rounded-2xl sm:border-b ${BIBLE_READER_COLORS.surface}`}
       >
         <div aria-hidden="true" className="mx-auto mt-2 h-1.5 w-10 shrink-0 rounded-full bg-gray-300 dark:bg-gray-600 sm:hidden" />
         <div className="flex shrink-0 items-center gap-3 border-b border-gray-200 py-3 pl-5 pr-3 dark:border-gray-700 sm:pl-6">
