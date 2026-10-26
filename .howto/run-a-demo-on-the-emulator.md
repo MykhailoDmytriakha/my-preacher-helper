@@ -53,3 +53,8 @@ An emulator outage does not imply every warm tab has received a failed request. 
 After restarting the owned emulator and application, a collection can recover on its ordinary observer before a planned Retry click. If the button is gone, verify the actual successful browser collection response, cleared global line and truthful current list state. Click Retry only while it is still offered. A profile whose opening failed may still need its own Settings Retry; verify that actual button and successful profile read separately. Keep automatic recovery and a clicked retry as different evidence claims.
 
 A native scenario must use the screen's actual panel: council detail has its own `council.readFailed` panel; it does not use the generic `data-record-unavailable` selector. Preserve failed scenario reports and correct the predicate instead of calling an unmet test assumption a product defect. Evidence: `settings-outage-131-native-v{1,2,3}-adjudication-v1.json`.
+
+
+## Hold a real marks read across native visibility
+
+A warm Back or initial list-backed marks opening need not issue a document GET. Require an actual intercepted request before judging a pending-read scenario. Capture the real local response, hold only its delivery, and record native hidden/visible timestamps plus the request's cancellation event. The8s CRUD network timeout can fire before the10s outer owner-request deadline: crossing a guessed deadline does not prove the failure happened while hidden. Unit171 keeps the excluded no-interception and wrong-time-window probes beside the accepted native cases. A clean replay preserves the owner-reported bug; it is not a fix or administrative closure.
