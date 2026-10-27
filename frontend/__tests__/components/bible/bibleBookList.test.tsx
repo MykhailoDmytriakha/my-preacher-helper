@@ -12,9 +12,13 @@ import { placeIn, verseCount } from '@/utils/versification';
  * opens its place in the Bible being read. A device with no trail yet keeps "Continue" (the owner,
  * 2026-10-20, case 2026-10-12-block-diagram, 2.14).
  */
+/** The screen's width: a `(min-width: …)` query holds from its width up; any other query does not. */
+let screenWidth = 390;
+
 beforeEach(() => {
+  screenWidth = 390;
   window.matchMedia = jest.fn((query: string) => ({
-    matches: false, media: query, onchange: null,
+    matches: Number(/min-width:\s*(\d+)px/.exec(query)?.[1] ?? Infinity) <= screenWidth, media: query, onchange: null,
     addEventListener: jest.fn(), removeEventListener: jest.fn(), addListener: jest.fn(), removeListener: jest.fn(), dispatchEvent: jest.fn(),
   })) as unknown as typeof window.matchMedia;
   window.localStorage.clear();
@@ -135,5 +139,58 @@ describe('BibleBookList', () => {
     expect(screen.queryByRole('navigation', { name: 'bible.trail.title' })).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'bible.continueReading' }));
     expect(onOpen).toHaveBeenCalledWith('matthew', { chapter: 1, verse: 2 });
+  });
+});
+
+// The owner, 2026-10-26: as in the reader, on a wide screen the trail stands as a column in the empty margin,
+// left of the Testaments, newest on top.
+describe('BibleBookList — the trail as a column on a wide screen', () => {
+  const threePlaces = () => {
+    arriveOnTrail({ book: 'Isaiah', chapter: 19, verse: 1, bible: 'rst' });
+    arriveOnTrail({ book: 'Exodus', chapter: 12, verse: 12, bible: 'rst' });
+    arriveOnTrail({ book: 'Joshua', chapter: 2, verse: 11, bible: 'rst' });
+  };
+
+  it('from 1024 px stands left of the Testaments, newest on top, the page widened by it, and a link opens its place', async () => {
+    screenWidth = 1680;
+    threePlaces();
+    const onOpen = jest.fn();
+    const { container } = render(<BibleBookList bible="rst" lastPlace={lastPlace} onOpen={onOpen} onChangeBible={jest.fn()} />);
+
+    const trail = screen.getByRole('navigation', { name: 'bible.trail.title' });
+    const links = within(trail).getAllByRole('button');
+    expect(links.map((link) => link.textContent)).toEqual([label('Joshua', 2, 11), label('Exodus', 12, 12), label('Isaiah', 19, 1)]);
+    expect(links[0]).toHaveAttribute('aria-current', 'location');
+    expect(container.firstElementChild).toHaveClass('max-w-[1464px]');
+    // The column and the Testaments share one row: the column is not a band above them.
+    expect(trail.parentElement?.parentElement).toContainElement(screen.getByRole('region', { name: 'bible.oldTestament' }));
+
+    await userEvent.click(links[1]);
+    expect(onOpen).toHaveBeenCalledWith('exodus', { chapter: 12, verse: 12 });
+  });
+
+  it('its switch is kept on the device and widens the page; the places stay when their texts cannot be had', async () => {
+    screenWidth = 1680;
+    threePlaces();
+    const { container } = render(<BibleBookList bible="rst" lastPlace={null} onOpen={jest.fn()} onChangeBible={jest.fn()} />);
+    const trail = screen.getByRole('navigation', { name: 'bible.trail.title' });
+    const verseStart = within(trail).getByRole('switch', { name: 'bible.trail.verseStart' });
+    expect(verseStart).not.toBeChecked();
+
+    await userEvent.click(verseStart);
+    expect(verseStart).toBeChecked();
+    expect(container.firstElementChild).toHaveClass('max-w-[1544px]');
+    expect(within(trail).getAllByRole('button')).toHaveLength(3);
+    expect(JSON.parse(window.localStorage.getItem('bible:place-trail-prefs') ?? '{}')).toEqual(expect.objectContaining({ verseStart: true }));
+  });
+
+  it('below 1024 px (an iPad standing) stays the row above the Testaments, without the switch', () => {
+    screenWidth = 820;
+    threePlaces();
+    const { container } = render(<BibleBookList bible="rst" lastPlace={null} onOpen={jest.fn()} onChangeBible={jest.fn()} />);
+    const trail = screen.getByRole('navigation', { name: 'bible.trail.title' });
+    expect(within(trail).getAllByRole('button').map((link) => link.textContent)).toEqual([label('Isaiah', 19, 1), label('Exodus', 12, 12), label('Joshua', 2, 11)]);
+    expect(within(trail).queryByRole('switch')).not.toBeInTheDocument();
+    expect(container.firstElementChild).toHaveClass('max-w-7xl');
   });
 });

@@ -67,10 +67,18 @@ describe('the trail of places on this device', () => {
   });
 
   it('numbers the settings do not offer fall back to the defaults', () => {
-    window.localStorage.setItem('bible:place-trail-prefs', JSON.stringify({ history: 37, recent: 0, shown: 'yes' }));
+    window.localStorage.setItem('bible:place-trail-prefs', JSON.stringify({ history: 37, recent: 0, shown: 'yes', verseStart: 1 }));
     saveTrailPrefs({}, 'settings');
     arriveOnTrail(at('Ruth', 1));
     resetPlaceTrailForTests();
     expect(JSON.parse(window.localStorage.getItem('bible:place-trail-prefs') ?? '{}')).toEqual(expect.objectContaining(DEFAULT_TRAIL_PREFS));
+  });
+
+  it('the verse start under the places is off at first, kept on the device once switched, and said in the details', () => {
+    expect(DEFAULT_TRAIL_PREFS.verseStart).toBe(false);
+    saveTrailPrefs({ verseStart: true }, 'reader');
+    resetPlaceTrailForTests();
+    expect(JSON.parse(window.localStorage.getItem('bible:place-trail-prefs') ?? '{}')).toEqual(expect.objectContaining({ verseStart: true }));
+    expect(diagnosticEvents().at(-1)?.data).toEqual(expect.objectContaining({ source: 'reader', code: 'placeTrail-verseStart', result: 'on' }));
   });
 });

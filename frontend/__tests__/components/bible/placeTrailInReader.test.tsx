@@ -9,7 +9,7 @@ import { arriveOnTrail, readPlaceTrail, resetPlaceTrailForTests, stepOnTrail } f
 import { bibleCrossRefsBase } from '@/utils/bibleCrossRefsCache';
 import { crossReferenceLabel, crossReferencesAt, forgetLoadedCrossRefs, isMainReference, type CrossRefsBook } from '@/utils/crossReferences';
 
-import type { BookText } from '@/utils/bibleText';
+import { verseWords, type BookText } from '@/utils/bibleText';
 
 // The reader's marks keep one form of the data engine per book; these tests mount no engine.
 jest.mock('@/data-engine/react.client', () => ({
@@ -52,9 +52,13 @@ const withinChapter = (() => {
 
 const answer = (body: unknown) => ({ ok: true, status: 200, json: async () => body, clone() { return this; }, headers: new Headers({ 'content-type': 'application/json' }) });
 
+/** The screen's width: a `(min-width: …)` query holds from its width up; any other query does not. */
+let screenWidth = 390;
+
 beforeEach(() => {
+  screenWidth = 390;
   window.matchMedia = jest.fn((query: string) => ({
-    matches: false, media: query, onchange: null,
+    matches: Number(/min-width:\s*(\d+)px/.exec(query)?.[1] ?? Infinity) <= screenWidth, media: query, onchange: null,
     addEventListener: jest.fn(), removeEventListener: jest.fn(), addListener: jest.fn(), removeListener: jest.fn(), dispatchEvent: jest.fn(),
   })) as unknown as typeof window.matchMedia;
   window.history.replaceState(null, '');
@@ -195,5 +199,57 @@ describe('the trail of places in the reader', () => {
       Element.prototype.getBoundingClientRect = realRect;
       Object.defineProperty(window, 'scrollY', { value: 0, configurable: true });
     }
+  });
+});
+
+/** Ruth 1:1 → 2:3 → 4:2, the reader open at the last: three links, the last lit. */
+const renderThreePlaces = async () => {
+  arriveOnTrail({ book: 'Ruth', chapter: 1, verse: 1, bible: 'rst' });
+  arriveOnTrail({ book: 'Ruth', chapter: 2, verse: 3, bible: 'rst' });
+  const view = render(<BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={{ chapter: 4, verse: 2 }} onOpenBook={jest.fn()} />);
+  await waitFor(() => expect(readPlaceTrail()).toEqual(expect.objectContaining({ at: 2 })));
+  await userEvent.click(screen.getByRole('button', { name: 'bible.trail.toggle' }));
+  return { reader: view.container.querySelector('[data-reader-panes]'), trail: screen.getByRole('navigation', { name: 'bible.trail.title' }) };
+};
+
+// The owner, 2026-10-26 (canvas v67, row «История слева»): on a wide screen the trail moves into the empty
+// margin left of the text, newest on top, and the verse's start comes only with the switch.
+describe('the trail as a column on a wide screen', () => {
+  it('from 1024 px the trail is a column left of the text, newest on top, the reader widened by it', async () => {
+    screenWidth = 1680;
+    const { reader, trail } = await renderThreePlaces();
+    const links = within(trail).getAllByRole('button');
+    expect(links.map((link) => link.textContent)).toEqual([expect.stringContaining('4:2'), expect.stringContaining('2:3'), expect.stringContaining('1:1')]);
+    expect(links[0]).toHaveAttribute('aria-current', 'location');
+    expect(trail.parentElement).toContainElement(reader?.querySelector('article') ?? null);
+    expect(reader).toHaveClass('max-w-[1464px]');
+
+    await userEvent.click(links[2]);
+    expect(readPlaceTrail().at).toBe(0);
+    expect(within(trail).getAllByRole('button')[2]).toHaveAttribute('aria-current', 'location');
+  });
+
+  it('its switch puts the first words of each verse under the places, widens the column and is kept on the device', async () => {
+    screenWidth = 1680;
+    const { reader, trail } = await renderThreePlaces();
+    const words = verseWords(ruthText.chapters[3][1]).trim();
+    const verseStart = within(trail).getByRole('switch', { name: 'bible.trail.verseStart' });
+    expect(verseStart).not.toBeChecked();
+    expect(within(trail).getAllByRole('button')[0]).not.toHaveTextContent(words);
+
+    await userEvent.click(verseStart);
+    expect(verseStart).toBeChecked();
+    await waitFor(() => expect(within(trail).getAllByRole('button')[0]).toHaveTextContent(words));
+    expect(within(trail).getAllByRole('button')[1]).toHaveTextContent(verseWords(ruthText.chapters[1][2]).trim());
+    expect(reader).toHaveClass('max-w-[1544px]');
+    expect(JSON.parse(window.localStorage.getItem('bible:place-trail-prefs') ?? '{}')).toEqual(expect.objectContaining({ shown: true, verseStart: true }));
+  });
+
+  it('from 768 to 1024 px (an iPad standing) the trail stays a row under the book line, without the switch', async () => {
+    screenWidth = 820;
+    const { reader, trail } = await renderThreePlaces();
+    expect(within(trail).getAllByRole('button').map((link) => link.textContent)).toEqual([expect.stringContaining('1:1'), expect.stringContaining('2:3'), expect.stringContaining('4:2')]);
+    expect(within(trail).queryByRole('switch')).not.toBeInTheDocument();
+    expect(reader).toHaveClass('max-w-7xl');
   });
 });

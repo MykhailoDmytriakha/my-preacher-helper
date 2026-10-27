@@ -1,4 +1,4 @@
-import { arriveAt, DEFAULT_TRAIL_LIMITS, EMPTY_TRAIL, keepWithin, linkBefore, readOn, sameChapter, type Trail, type TrailPlace } from '@/utils/placeTrail';
+import { litLinkKey, arriveAt, DEFAULT_TRAIL_LIMITS, EMPTY_TRAIL, keepWithin, linkBefore, readOn, sameChapter, type Trail, type TrailPlace } from '@/utils/placeTrail';
 
 const at = (book: string, chapter: number, verse = 1, bible: TrailPlace['bible'] = 'rst'): TrailPlace => ({ book, chapter, verse, bible });
 const walk = (places: TrailPlace[], limits = DEFAULT_TRAIL_LIMITS, from: Trail = EMPTY_TRAIL) =>
@@ -108,5 +108,32 @@ describe('the trail of places', () => {
     expect(names(read)).toEqual(['Isaiah 19:2', 'Exodus 12:12']);
     expect(read.at).toBe(0);
     expect(readOn(trail, at('Ruth', 1), at('Ruth', 2), DEFAULT_TRAIL_LIMITS)).toBe(trail);
+  });
+});
+
+// Codex review, 2026-10-26: the column jumped back to the lit link while the person read on and scrolled it.
+describe('where the light stands among the links', () => {
+  it('stays while only the lit link moves — reading on within the chapter or into the next one: the column stays where it was scrolled', () => {
+    const trail = walk([isaiah, exodus, joshua]);
+    const within = readOn(trail, joshua, at('Joshua', 2, 15), DEFAULT_TRAIL_LIMITS);
+    const next = readOn(within, at('Joshua', 2, 15), at('Joshua', 3, 1), DEFAULT_TRAIL_LIMITS);
+    expect(names(next)).toEqual(['Isaiah 19:1', 'Exodus 12:12', 'Joshua 3:1']);
+    expect(litLinkKey(within)).toBe(litLinkKey(trail));
+    expect(litLinkKey(next)).toBe(litLinkKey(trail));
+  });
+
+  it('changes when the light goes to another link or the links shift: a recent place lit, a place added, a place added to the full trail, reading into a chapter on the trail', () => {
+    const trail = walk([isaiah, exodus, joshua]);
+    expect(litLinkKey(arriveAt(trail, exodus, DEFAULT_TRAIL_LIMITS))).not.toBe(litLinkKey(trail));
+    expect(litLinkKey(arriveAt(trail, at('Ruth', 1), DEFAULT_TRAIL_LIMITS))).not.toBe(litLinkKey(trail));
+    const full = walk([isaiah, exodus, joshua], { history: 3, recent: 2 });
+    const moved = arriveAt(full, at('Ruth', 1), { history: 3, recent: 2 });
+    expect(moved.links).toHaveLength(3);
+    expect(moved.at).toBe(full.at);
+    expect(litLinkKey(moved)).not.toBe(litLinkKey(full));
+    // Reading on into a chapter that is a recent link lights that link: the light moved, so it is shown.
+    const intoRecent = readOn(walk([at('Ruth', 1), at('Ruth', 2), at('Ruth', 1)]), at('Ruth', 1, 22), at('Ruth', 2, 1), DEFAULT_TRAIL_LIMITS);
+    expect(intoRecent.at).toBe(1);
+    expect(litLinkKey(intoRecent)).not.toBe(litLinkKey(walk([at('Ruth', 1), at('Ruth', 2), at('Ruth', 1)])));
   });
 });
