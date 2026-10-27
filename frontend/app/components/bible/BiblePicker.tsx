@@ -856,8 +856,8 @@ export function TranslationPicker({ bible, wide, onPick, returnFocusRef }: { bib
         onClick={() => setOpen((value) => !value)}
         className={`inline-flex min-h-11 min-w-0 max-w-full items-center gap-1.5 rounded-xl border px-2.5 text-sm text-gray-600 transition hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-white ${triggerBorder(open)}`}
       >
-        {/* Short of room, the name is cut, never the line broken: the colours of a tool in hand need the
-            room in the reader's line (`MarkToolbar`), and a line broken in two moved the whole text down. */}
+        {/* The name can surrender room while the surrounding reader/list layout keeps the action
+            reachable. The tablet reader reserves its tools row before a palette opens (`BookLine`). */}
         <span lang={BIBLES[bible].language} className="truncate">{name(bible)}</span>
         <ChevronDownIcon className="h-4 w-4 shrink-0" aria-hidden="true" />
       </button>

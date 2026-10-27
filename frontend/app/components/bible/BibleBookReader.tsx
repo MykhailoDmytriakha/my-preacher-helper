@@ -236,10 +236,11 @@ function useKeepPlaceOnPresentation(placeRef: { current: Place | null }, jumpTo:
 }
 
 /**
- * THE BOOK'S LINE, from 768 px: the book, the chapter and the search at the text's left edge, the translation at
- * its right one, above the text's pane, so both are at hand anywhere in the book. It stays one row — a tool's
- * colours open in it (`MarkToolbar`), and a second row would move the whole text down — so short of room the
- * translation's name is cut, never the book's. A phone lends its controls to the app's header (`PhoneHeader`).
+ * THE BOOK'S LINE, from 768 px: navigation and the tools remain at hand above the text's pane.
+ * On a tablet the tools and translation have their own row even while no tool is taken: opening the
+ * colours must never add a row and move the text. From 1280 px everything fits on one line. The book's
+ * name stays whole; the translation may shorten but keeps a usable button. A phone lends its controls
+ * to the app's header (`PhoneHeader`) and uses its separate tool column.
  */
 function BookLine({ lineRef, wayBack, onWayBack, trailButton, tools, translationClass, bookId, bible, currentChapter, currentVerse, text, locale, onOpen, onChangeBible }: {
   lineRef: (element: HTMLElement | null) => void; wayBack: string | null; onWayBack: () => void; trailButton: ReactNode; tools: ReactNode; translationClass: string;
@@ -247,16 +248,18 @@ function BookLine({ lineRef, wayBack, onWayBack, trailButton, tools, translation
   onOpen: (bookId: string, place: Place) => void; onChangeBible: (bible: BibleId) => void;
 }) {
   return (
-    <header ref={lineRef} className="relative z-30 mb-3 flex shrink-0 flex-wrap items-center gap-x-1 gap-y-0.5 bg-white/90 py-1.5 backdrop-blur-md md:flex-nowrap dark:bg-gray-900/90">
+    <header ref={lineRef} className={`relative z-30 mb-3 flex shrink-0 flex-wrap items-center gap-x-1 gap-y-0.5 bg-white/90 py-1.5 backdrop-blur-md dark:bg-gray-900/90 ${tools ? 'xl:flex-nowrap' : 'md:flex-nowrap'}`}>
       {wayBack ? <WayBack label={wayBack} onClick={onWayBack} /> : null}
       {trailButton}
       <BookPicker bookId={bookId} bible={bible} currentChapter={currentChapter} currentVerse={currentVerse} text={text} locale={locale} wide onOpen={onOpen} />
       {text ? <ChapterControl bookId={bookId} bible={bible} locale={locale} current={currentChapter} verse={currentVerse} text={text} wide onOpen={(place) => onOpen(bookId, place)} /> : null}
       <SearchPicker bookId={bookId} bible={bible} locale={locale} wide look="line" onOpen={onOpen} />
-      {tools}
-      <span className={`flex min-w-0 ${translationClass}`}>
-        <TranslationPicker bible={bible} wide onPick={onChangeBible} />
-      </span>
+      <div className={`flex min-w-0 items-center gap-1 ${tools ? 'w-full xl:w-auto xl:flex-1' : 'ml-auto'}`}>
+        {tools}
+        <span className={`flex min-w-11 ${translationClass}`}>
+          <TranslationPicker bible={bible} wide onPick={onChangeBible} />
+        </span>
+      </div>
       {/* The gap under the stuck line shows a strip of the verse above the one read: it fades out
           instead of being cut by a hard edge. */}
       <span aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-full h-4 bg-gradient-to-b from-white/90 to-transparent dark:from-gray-900/90" />
