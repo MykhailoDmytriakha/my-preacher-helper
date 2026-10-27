@@ -26,13 +26,20 @@ export type ReadingSurface = {
   anchoring: (on: boolean) => void;
 };
 
-/** The pane when the text has one, else the page. */
-export function readingSurface(pane: HTMLElement | null): ReadingSurface {
+/**
+ * The pane when the text has one, else the page. `pageMoved` hears of each move the reader makes of the
+ * page itself: a phone's header folds for the person reading, not for the reader keeping its place.
+ */
+export function readingSurface(pane: HTMLElement | null, pageMoved?: () => void): ReadingSurface {
   if (!pane) {
     return {
       target: window,
       top: () => window.scrollY,
-      scrollTo: (top) => window.scrollTo({ top }),
+      scrollTo: (top) => {
+        const was = window.scrollY;
+        window.scrollTo({ top });
+        if (window.scrollY !== was) pageMoved?.();
+      },
       height: () => window.innerHeight,
       contentHeight: () => document.documentElement.scrollHeight,
       edge: () => 0,

@@ -1,7 +1,7 @@
 'use client';
 
 import { Dialog, DialogBackdrop, DialogPanel, DialogTitle } from '@headlessui/react';
-import { ArrowRightOnRectangleIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { ArrowRightOnRectangleIcon, ChatBubbleLeftEllipsisIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { User } from "firebase/auth";
 import Link from "next/link";
 import { useEffect, useRef, useState } from 'react';
@@ -16,6 +16,7 @@ import "@locales/i18n";
 
 interface MobileMenuProps {
   isOpen: boolean;
+  onFeedback?: () => void;
   onLogout: () => Promise<void>;
   pathname?: string | null;
   onNavigate?: () => void;
@@ -24,7 +25,7 @@ interface MobileMenuProps {
   user?: User | null;
 }
 
-export default function MobileMenu({ isOpen, onLogout, pathname, onNavigate, onClose, user = null }: MobileMenuProps) {
+export default function MobileMenu({ isOpen, onLogout, pathname, onNavigate, onClose, onFeedback, user = null }: MobileMenuProps) {
   const { t } = useTranslation();
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const close = () => (onClose ?? onNavigate)?.();
@@ -85,6 +86,13 @@ export default function MobileMenu({ isOpen, onLogout, pathname, onNavigate, onC
           </div>
           <div className="min-h-0 overflow-y-auto overscroll-contain px-3 pb-3">
             <div className="space-y-1 py-2">
+              {onFeedback ? (
+                <button type="button" onClick={() => { close(); onFeedback(); }} aria-label={t('feedback.button')}
+                  className="flex min-h-12 w-full items-center gap-2 rounded-md px-3 py-2 text-base font-medium text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800">
+                  <ChatBubbleLeftEllipsisIcon className="h-5 w-5 text-purple-600 dark:text-purple-400" aria-hidden="true" />
+                  {t('navigation.feedbackShort')}
+                </button>
+              ) : null}
               {navItems.map((item) => {
                 const active = isNavItemActive(pathname || null, item.matchers);
                 const Icon = item.icon;

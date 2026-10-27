@@ -1,4 +1,5 @@
-import { act, fireEvent, render, renderHook, screen, waitFor, within } from '@testing-library/react';
+import { ReaderShell } from '../../../test-utils/reader-shell';
+import { act, fireEvent, render as renderUI, renderHook, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -15,6 +16,8 @@ import { bibleCrossRefsBase } from '@/utils/bibleCrossRefsCache';
 import { coversChapter, crossReferenceLabel, crossReferencesAt, forgetLoadedCrossRefs, isMainReference, type CrossReference, type CrossRefsBook } from '@/utils/crossReferences';
 
 import { bookSlug, verseWords, type BookText } from '@/utils/bibleText';
+
+const render = (ui: React.ReactNode, options?: Parameters<typeof renderUI>[1]) => renderUI(ui, { wrapper: ReaderShell, ...options });
 
 // The reader's marks keep one form of the data engine per book; these tests mount no engine.
 jest.mock('@/data-engine/react.client', () => ({
@@ -394,7 +397,7 @@ describe('the cross-reference settings', () => {
     );
     await screen.findByTestId(`cross-refs-${key}`);
     await userEvent.click(await screen.findByLabelText('Text size'));
-    const menu = screen.getByRole('dialog', { name: 'Text size' });
+    const menu = screen.getByRole('group', { name: 'Text size' });
     expect(within(menu).getByRole('slider', { name: 'Text size slider' })).toBeInTheDocument();
     expect(within(menu).queryByTestId('cross-reference-settings')).not.toBeInTheDocument();
     expect(within(menu).getByRole('link', { name: 'bible.settingsLink' })).toHaveAttribute('href', '/settings/bible');

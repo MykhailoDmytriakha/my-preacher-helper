@@ -29,9 +29,30 @@ import { isConductRoute } from '@/utils/usageGrace';
 import { AppUpdateButton } from "./AppUpdateButton";
 import ModeToggle, { type SermonMode } from "./ModeToggle";
 import { OfflineIndicator } from "./OfflineIndicator";
+import { usePublishedShellHeader, useShellHeaderCollapse } from './shellHeader';
 
 /** The gap a word leaves behind on the bar when it is dropped. */
 const BAR_GAP = 8;
+
+/** A phone's row: the app's own, or a page's header (`shellHeader.tsx`) open or folded while reading. */
+type PhoneRow = 'own' | 'open' | 'folded';
+const PHONE_ROW_PADDING: Record<PhoneRow, string> = { own: 'py-3', open: 'py-1', folded: 'py-0' };
+const PHONE_MENU_SIZE: Record<PhoneRow, string> = { own: 'h-12 w-12', open: 'h-12 w-12', folded: 'h-9 w-9' };
+
+/** A page's header in the phone row; folded, only its place, which opens it again. */
+function PublishedRow({ header, folded, onExpand }: { header: NonNullable<ReturnType<typeof usePublishedShellHeader>>; folded: boolean; onExpand: () => void }) {
+  const { t } = useTranslation();
+  return (
+    <div className="min-w-0 flex-1">
+      {folded ? (
+        <button type="button" onClick={onExpand} aria-label={t('bible.expandHeader')}
+          className="block h-9 w-full truncate pl-10 text-center text-sm font-semibold text-gray-900 dark:text-gray-100">
+          {header.compact}
+        </button>
+      ) : header.content}
+    </div>
+  );
+}
 /**
  * The room a state must have TO SPARE before the bar settles into it. It exists only to
  * absorb layout rounding — hiding a word does not always hand the zone back exactly the
@@ -63,6 +84,10 @@ export default function DashboardNav() {
   const { hasAccess: showWizardButton, loading: prepModeLoading } = usePrepModeAccess();
   debugLog('🔧 DashboardNav: showWizardButton:', showWizardButton, 'prepModeLoading:', prepModeLoading);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const header = usePublishedShellHeader();
+  const hasHeader = header !== null;
+  const { rowRef: phoneRowRef, collapsed: headerCollapsed, expand: expandHeader } = useShellHeaderCollapse(hasHeader);
+  const phoneRow: PhoneRow = !header ? 'own' : headerCollapsed ? 'folded' : 'open';
   const pathname = useShellPathname();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -373,7 +398,10 @@ export default function DashboardNav() {
     />
   ) : null;
 
-  const renderNavigation = (usageGrace: UsageGraceViewModel | null) => (
+  const renderNavigation = (usageGrace: UsageGraceViewModel | null) => {
+    // The indicators that exist, in the phone's own row or in a page's open header.
+    const indicators = <>{usageGrace && <UsageGraceIndicator model={usageGrace} placement="mobile" />}<AppUpdateButton /><OfflineIndicator /></>;
+    return (
     <nav className="sticky top-0 z-40 border-b border-gray-200/80 bg-white/95 shadow-sm backdrop-blur dark:border-gray-700/70 dark:bg-gray-950/95">
       <div className={`relative w-full px-4 sm:px-6 lg:px-8 ${modeToggle ? 'lg:grid lg:h-16 lg:grid-cols-[max-content_minmax(0,1fr)_max-content] lg:items-center lg:gap-4' : ''}`}>
         {/* Desktop Layout */}
@@ -518,50 +546,51 @@ export default function DashboardNav() {
         </div>
 
         {/* Mobile Layout */}
-        <div className="lg:hidden py-3">
-          <div data-testid="mobile-navigation-controls" className="grid grid-cols-[3rem_minmax(0,1fr)_3rem] items-center gap-2">
-            <button
-              type="button"
-              onClick={handleFeedbackClick}
-              className="flex h-12 w-12 flex-col items-center justify-center gap-0.5 rounded-xl text-gray-500 transition hover:bg-gray-100 hover:text-gray-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600 dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-gray-100"
-              aria-label={t('feedback.button', { defaultValue: 'Feedback' })}
-            >
-              <ChatBubbleLeftEllipsisIcon className="h-6 w-6 text-purple-600 dark:text-purple-400" aria-hidden="true" />
-              <span className="text-[10px] font-medium leading-tight">{t('navigation.feedbackShort', { defaultValue: 'Feedback' })}</span>
-            </button>
+        <div ref={phoneRowRef} className={`lg:hidden ${PHONE_ROW_PADDING[phoneRow]}`}>
+          <div data-testid="mobile-navigation-controls" className={header ? 'flex min-w-0 items-center gap-1' : 'grid grid-cols-[3rem_minmax(0,1fr)_3rem] items-center gap-2'}>
+            {header ? <PublishedRow header={header} folded={phoneRow === 'folded'} onExpand={expandHeader} /> : (
+              <>
+                <button
+                  type="button"
+                  onClick={handleFeedbackClick}
+                  className="flex h-12 w-12 flex-col items-center justify-center gap-0.5 rounded-xl text-gray-500 transition hover:bg-gray-100 hover:text-gray-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600 dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-gray-100"
+                  aria-label={t('feedback.button', { defaultValue: 'Feedback' })}
+                >
+                  <ChatBubbleLeftEllipsisIcon className="h-6 w-6 text-purple-600 dark:text-purple-400" aria-hidden="true" />
+                  <span className="text-[10px] font-medium leading-tight">{t('navigation.feedbackShort', { defaultValue: 'Feedback' })}</span>
+                </button>
 
-            {modeToggle ? <div aria-hidden="true" /> : <Link
-              href={currentNavItem?.href || "/dashboard"}
-              prefetch
-              className="min-w-0 break-words bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-center text-lg font-bold leading-tight text-transparent"
-            >
-              <span suppressHydrationWarning={true}>
-                {currentNavItem?.label || t('navigation.dashboard')}
-              </span>
-            </Link>}
+                {modeToggle ? <div aria-hidden="true" /> : <Link
+                  href={currentNavItem?.href || "/dashboard"}
+                  prefetch
+                  className="min-w-0 break-words bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-center text-lg font-bold leading-tight text-transparent"
+                >
+                  <span suppressHydrationWarning={true}>
+                    {currentNavItem?.label || t('navigation.dashboard')}
+                  </span>
+                </Link>}
 
+              </>
+            )}
+            {phoneRow === 'open' ? <div className="flex shrink-0 items-center gap-1 empty:hidden">{indicators}</div> : null}
             <button
               type="button"
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
               aria-label={t('navigation.openMenu', { defaultValue: 'Open menu' })}
               aria-haspopup="dialog"
               aria-expanded={mobileMenuOpen}
-              className="flex h-12 w-12 flex-col items-center justify-center gap-0.5 rounded-xl text-gray-500 transition hover:bg-gray-100 hover:text-gray-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600 dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-gray-100"
+              className={`flex shrink-0 ${PHONE_MENU_SIZE[phoneRow]} flex-col items-center justify-center gap-0.5 rounded-xl text-gray-500 transition hover:bg-gray-100 hover:text-gray-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600 dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-gray-100`}
             >
               <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                   d={mobileMenuOpen ? 'M6 18L18 6M6 6l12 12' : 'M4 6h16M4 12h16M4 18h16'} />
               </svg>
-              <span className="text-[10px] font-medium leading-tight">{t('navigation.menu', { defaultValue: 'Menu' })}</span>
+              {phoneRow === 'folded' ? null : <span className="text-[10px] font-medium leading-tight">{t('navigation.menu', { defaultValue: 'Menu' })}</span>}
             </button>
           </div>
-          <div className="flex justify-end gap-2 empty:hidden [&_button]:min-h-12 [&_button]:min-w-12">
-            {usageGrace && <UsageGraceIndicator model={usageGrace} placement="mobile" />}
-            <AppUpdateButton />
-            <OfflineIndicator />
-          </div>
+          {phoneRow === 'own' ? <div className="flex justify-end gap-2 empty:hidden [&_button]:min-h-12 [&_button]:min-w-12">{indicators}</div> : null}
         </div>
-        {modeToggle && (
+        {modeToggle && phoneRow === 'own' && (
           <div className="absolute left-[4.5rem] right-[4.5rem] top-3 flex h-12 min-w-0 items-center justify-center sm:left-20 sm:right-20 lg:static lg:col-start-2 lg:row-start-1 lg:h-auto">
             {modeToggle}
           </div>
@@ -571,6 +600,7 @@ export default function DashboardNav() {
       {/* Mobile menu */}
       <MobileMenu
         isOpen={mobileMenuOpen}
+        onFeedback={header ? handleFeedbackClick : undefined}
         onLogout={handleLogout}
         user={user}
         pathname={pathname || ''}
@@ -585,7 +615,8 @@ export default function DashboardNav() {
         onSubmit={submitFeedbackWithUser}
       />
     </nav>
-  );
+    );
+  };
 
   if (isConductRoute(pathname)) return renderNavigation(null);
 

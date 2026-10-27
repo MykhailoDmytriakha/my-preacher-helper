@@ -321,6 +321,8 @@
     "discard": "Відхилити"
   },
   "bible": {
+    "toolsAndText": "Інструменти й текст",
+    "expandHeader": "Розгорнути панель читання",
     "preview": {
       "untitled": "Без назви",
       "excludesCurrent": "Поточна нотатка не входить до цього списку",

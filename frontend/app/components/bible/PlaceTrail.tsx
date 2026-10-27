@@ -1,5 +1,7 @@
 'use client';
 
+import { Dialog, DialogBackdrop, DialogPanel, DialogTitle } from '@headlessui/react';
+import { XMarkIcon } from '@heroicons/react/24/outline';
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -12,6 +14,7 @@ import { placeIn } from '@/utils/versification';
 
 import { ownTrailPlace, saveTrailPrefs, usePlaceTrail, useTrailPrefs } from './placeTrailStore';
 import { useBookTexts } from './useBookTexts';
+import { useFollowAfterClose } from './useFollowAfterClose';
 
 
 import type { AppLocale } from '@/utils/appLocale';
@@ -23,7 +26,7 @@ import type { BibleId } from '@/utils/bibles';
  * sideways, the place being read lit. Every link looks the same — which ones are recent is the rule's
  * business, not the person's (the owner, 2026-10-20). On a screen from 1024 px the trail is a column left
  * of the text, in the margin that stood empty, newest on top (the owner, 2026-10-26); from 768 px the row
- * stands under the book's line; on a phone above the bar with the way back, under the thumb; on the list
+ * stands under the book's line; on a phone in a drawer opened from the shell header; on the list
  * of books in place of "Continue", the lit link being where the person stopped (the owner, 2026-10-20).
  */
 
@@ -47,12 +50,18 @@ const ROUTE_ICON = (
   </svg>
 );
 
-function buttonClasses(shown: boolean, floating: boolean): string {
+/** The trail's name: its column's and row's label, the drawer's title. */
+const TRAIL_TITLE = 'bible.trail.title';
+
+/** Where the trail's button stands: in a wide reader's line, or small in a phone's shell header. */
+type ButtonLook = 'line' | 'header';
+
+function buttonClasses(shown: boolean, look: ButtonLook = 'line'): string {
   const state = shown
     ? 'border-indigo-300 bg-indigo-50 dark:border-indigo-500/60 dark:bg-indigo-950/50'
-    : floating ? 'border-gray-300 bg-white/90 dark:border-gray-600 dark:bg-gray-900/90' : 'border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900';
-  return floating
-    ? `pointer-events-auto inline-flex min-h-12 shrink-0 items-center gap-1.5 rounded-full border px-4 text-sm font-semibold tabular-nums text-indigo-700 shadow-lg shadow-gray-900/15 backdrop-blur-md dark:text-indigo-300 dark:shadow-black/40 ${state}`
+    : 'border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900';
+  return look === 'header'
+    ? `inline-flex h-9 shrink-0 items-center gap-0.5 rounded-full border px-1.5 text-[11px] font-semibold tabular-nums text-indigo-700 dark:text-indigo-300 [&_svg]:h-3.5 [&_svg]:w-3.5 ${state}`
     : `mr-3 inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-full border px-3 text-[13px] font-semibold tabular-nums text-indigo-700 transition hover:border-indigo-300 dark:text-indigo-300 ${state}`;
 }
 
@@ -62,15 +71,19 @@ function linkClasses(here: boolean): string {
     : 'border-gray-200 bg-white text-indigo-700 hover:border-indigo-300 hover:bg-indigo-50 dark:border-gray-700 dark:bg-gray-900 dark:text-indigo-300 dark:hover:bg-indigo-950/40'}`;
 }
 
-export function PlaceTrailButton({ count, shown, floating, onToggle }: { count: number; shown: boolean; floating: boolean; onToggle: () => void }) {
+/** In the line it shows and hides the trail; in a phone's header it opens the trail's drawer. */
+export function PlaceTrailButton({ count, shown, look = 'line', onToggle }: { count: number; shown: boolean; look?: ButtonLook; onToggle: () => void }) {
   const { t } = useTranslation();
+  const opensDrawer = look === 'header';
   return (
     <button
       type="button"
       onClick={onToggle}
-      aria-pressed={shown}
+      aria-pressed={opensDrawer ? undefined : shown}
+      aria-haspopup={opensDrawer ? 'dialog' : undefined}
+      aria-expanded={opensDrawer ? shown : undefined}
       aria-label={t('bible.trail.toggle', { count })}
-      className={buttonClasses(shown, floating)}
+      className={buttonClasses(shown, look)}
     >
       {ROUTE_ICON}
       {count}
@@ -78,15 +91,14 @@ export function PlaceTrailButton({ count, shown, floating, onToggle }: { count: 
   );
 }
 
-/** Where the row stands: under the reader's line, floating over a phone's bar, or on the list of books. */
-type StripLook = 'line' | 'floating' | 'page';
+/** Where the row stands: under the wide reader's line or on the list of books. */
+type StripLook = 'line' | 'page';
 
 /** The row's frame. A capsule's links stand 7 px in on every side, so their rounding (18 px) runs alongside
  *  the capsule's (25 px) — on a wide reader a capsule like the phone's, not a band cut square at the
  *  column's edges (the owner, 2026-10-21). */
 const STRIP_FRAMES: Record<StripLook, string> = {
   line: 'relative z-20 mb-3 shrink-0 overflow-hidden rounded-full border border-gray-200 bg-gray-50 p-1.5 dark:border-gray-700 dark:bg-gray-950',
-  floating: 'pointer-events-auto fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom))] left-4 right-20 z-30 overflow-hidden rounded-full border border-gray-200 bg-white/95 px-2 py-1.5 shadow-lg shadow-gray-900/15 backdrop-blur-md dark:border-gray-700 dark:bg-gray-900/95 dark:shadow-black/40',
   page: 'relative min-w-0 py-1.5',
 };
 
@@ -142,7 +154,7 @@ export function PlaceTrailStrip({ trail, bible, locale, look, onGo }: {
     row.scrollLeft = Math.max(0, current.offsetLeft - (row.clientWidth - current.offsetWidth) / 2);
   }, [light]);
   return (
-    <nav aria-label={t('bible.trail.title')} className={STRIP_FRAMES[look]}>
+    <nav aria-label={t(TRAIL_TITLE)} className={STRIP_FRAMES[look]}>
       <div ref={rowRef} className={`overflow-x-auto overscroll-contain ${look === 'page' ? 'px-4' : ''} ${FADED_ENDS[hidden]}`}>
         <ol className="flex w-max items-center gap-1.5">
           {trail.links.map((link, index) => {
@@ -195,7 +207,7 @@ function centreLit(list: HTMLElement | null) {
 export function PlaceTrailColumn({ trail, bible, locale, verseStart, onToggleVerseStart, onGo, look = 'reader' }: {
   trail: Trail; bible: BibleId; locale: AppLocale; verseStart: boolean; onToggleVerseStart: () => void; onGo: (link: TrailPlace) => void;
   /** In the reader the column ends above the screen's edge, as the minimap does; on the list of books, with the Testaments. */
-  look?: 'reader' | 'page';
+  look?: 'reader' | 'page' | 'drawer';
 }) {
   const { t } = useTranslation();
   const titleId = useId();
@@ -212,10 +224,10 @@ export function PlaceTrailColumn({ trail, bible, locale, verseStart, onToggleVer
   // On the list of books the column takes the Testaments' height and scrolls its places inside: standing in
   // the flow, thirty places would make it longer than the page and push its switch off the screen.
   const column = (
-    <nav aria-labelledby={titleId} className={look === 'reader' ? `mb-4 shrink-0 self-stretch ${width} ${frame}` : `absolute inset-0 ${frame}`}>
-      <div id={titleId} className="flex h-11 shrink-0 items-center gap-2 border-b border-gray-100 px-3.5 text-[13px] font-semibold text-gray-500 dark:border-gray-800 dark:text-gray-400">
+    <nav aria-labelledby={titleId} className={look === 'drawer' ? 'flex min-h-0 flex-1 flex-col' : look === 'reader' ? `mb-4 shrink-0 self-stretch ${width} ${frame}` : `absolute inset-0 ${frame}`}>
+      <div id={titleId} className={`${look === 'drawer' ? 'sr-only' : ''} flex h-11 shrink-0 items-center gap-2 border-b border-gray-100 px-3.5 text-[13px] font-semibold text-gray-500 dark:border-gray-800 dark:text-gray-400`}>
         <span aria-hidden="true" className="text-indigo-700 dark:text-indigo-300">{ROUTE_ICON}</span>
-        {t('bible.trail.title')}
+        {t(TRAIL_TITLE)}
       </div>
       <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-2.5 pt-1.5">
         <ol>
@@ -259,7 +271,7 @@ export function PlaceTrailColumn({ trail, bible, locale, verseStart, onToggleVer
       </div>
     </nav>
   );
-  return look === 'reader' ? column : <div className={`relative shrink-0 ${width}`}>{column}</div>;
+  return look !== 'page' ? column : <div className={`relative shrink-0 ${width}`}>{column}</div>;
 }
 
 /**
@@ -315,7 +327,7 @@ export function useTrailOnList({ trail, bible, locale, onOpen }: {
 export function PlaceTrailSample({ labels }: { labels: string[] }) {
   return (
     <div aria-hidden="true" className="flex flex-wrap items-center gap-y-2">
-      <span className={buttonClasses(false, false)}>
+      <span className={buttonClasses(false)}>
         {ROUTE_ICON}
         {labels.length}
       </span>
@@ -342,25 +354,32 @@ export type TrailBack =
 /**
  * The trail in the reader, where the screen puts it: on a screen from 1024 px the button in the book's
  * line and the column left of the text (`beside`), the reader widening by it (`readerWidth`); from 768 px
- * the button in the line and the row under it; on a phone the button in the bar with the way back and the
- * row above that bar. A trail of one link — the place being read — has nothing to show. A link opens its
+ * the button in the line and the row under it; on a phone the button in the shell header and a drawer from the left edge. A trail of one link — the place being
+ * read — has nothing to show. A link opens its
  * place through the reader's own move to a place (`openPlace`), which brings it to the trail. `back` is
  * the reader's way back: the link left of the place being read (the owner, 2026-10-20: "←" goes left
  * along the trail).
  */
 export function useReaderTrail({ bible, locale, wide, here, openPlace }: {
   bible: BibleId; locale: AppLocale; wide: boolean; here: TrailPlace; openPlace: (book: string, place: { chapter: number; verse: number }) => void;
-}): { inLine: ReactNode; underLine: ReactNode; beside: ReactNode; readerWidth: string; inBar: ReactNode; overBar: ReactNode; back: TrailBack | null } {
+}): { inLine: ReactNode; underLine: ReactNode; beside: ReactNode; readerWidth: string; phoneButton: ReactNode; drawer: ReactNode; back: TrailBack | null } {
   const trail = usePlaceTrail();
   const prefs = useTrailPrefs();
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const closeDrawer = useCallback(() => setDrawerOpen(false), []);
+  const openAfterClose = useFollowAfterClose(drawerOpen, closeDrawer, openPlace);
+  useEffect(() => { if (wide) closeDrawer(); }, [wide, closeDrawer]);
   // An iPad standing (820 px) keeps the row: a column there would leave the text some 430 px.
   const roomForColumn = useMediaQuery('(min-width: 1024px)', false);
   const toggle = useCallback(() => saveTrailPrefs({ shown: !prefs.shown }, 'reader'), [prefs.shown]);
   const toggleVerseStart = useCallback(() => saveTrailPrefs({ verseStart: !prefs.verseStart }, 'reader'), [prefs.verseStart]);
   const go = useCallback((link: TrailPlace) => {
     const place = trailPlaceIn(bible, link);
-    if (place) openPlace(link.book, place);
-  }, [bible, openPlace]);
+    if (place) {
+      if (wide) openPlace(link.book, place);
+      else openAfterClose(link.book, place);
+    }
+  }, [bible, openPlace, openAfterClose, wide]);
   // From the place this page last put on the trail: a jump that did not scroll tells the reader nothing.
   const mine = ownTrailPlace() ?? here;
   const screen = trail.links[ownLink(trail, mine)]?.screen;
@@ -370,17 +389,43 @@ export function useReaderTrail({ bible, locale, wide, here, openPlace }: {
   const back: TrailBack | null = screen
     ? { kind: 'screen', screen }
     : link && place ? { kind: 'link', index: before, book: link.book, place, label: linkLabel(link, bible, locale) } : null;
-  if (trail.links.length < 2) return { inLine: null, underLine: null, beside: null, readerWidth: READER_WIDTH.alone, inBar: null, overBar: null, back };
-  const button = <PlaceTrailButton count={trail.links.length} shown={prefs.shown} floating={!wide} onToggle={toggle} />;
+  if (trail.links.length < 2) return { inLine: null, underLine: null, beside: null, readerWidth: READER_WIDTH.alone, phoneButton: null, drawer: null, back };
+  const button = <PlaceTrailButton count={trail.links.length} shown={prefs.shown} onToggle={toggle} />;
   if (wide && roomForColumn) {
     const column = prefs.shown
       ? <PlaceTrailColumn trail={trail} bible={bible} locale={locale} verseStart={prefs.verseStart} onToggleVerseStart={toggleVerseStart} onGo={go} />
       : null;
     const readerWidth = !prefs.shown ? READER_WIDTH.alone : prefs.verseStart ? READER_WIDTH.verses : READER_WIDTH.places;
-    return { inLine: button, underLine: null, beside: column, readerWidth, inBar: null, overBar: null, back };
+    return { inLine: button, underLine: null, beside: column, readerWidth, phoneButton: null, drawer: null, back };
   }
-  const row = prefs.shown ? <PlaceTrailStrip trail={trail} bible={bible} locale={locale} look={wide ? 'line' : 'floating'} onGo={go} /> : null;
+  const row = wide && prefs.shown ? <PlaceTrailStrip trail={trail} bible={bible} locale={locale} look="line" onGo={go} /> : null;
   return wide
-    ? { inLine: button, underLine: row, beside: null, readerWidth: READER_WIDTH.alone, inBar: null, overBar: null, back }
-    : { inLine: null, underLine: null, beside: null, readerWidth: READER_WIDTH.alone, inBar: button, overBar: row, back };
+    ? { inLine: button, underLine: row, beside: null, readerWidth: READER_WIDTH.alone, phoneButton: null, drawer: null, back }
+    : {
+      inLine: null, underLine: null, beside: null, readerWidth: READER_WIDTH.alone, back,
+      phoneButton: <PlaceTrailButton count={trail.links.length} shown={drawerOpen} look="header" onToggle={() => setDrawerOpen(true)} />,
+      drawer: (
+        <TrailDrawer open={drawerOpen} onClose={closeDrawer}>
+          <PlaceTrailColumn trail={trail} bible={bible} locale={locale} verseStart={prefs.verseStart} onToggleVerseStart={toggleVerseStart} onGo={go} look="drawer" />
+        </TrailDrawer>
+      ),
+    };
+}
+
+function TrailDrawer({ open, onClose, children }: { open: boolean; onClose: () => void; children: ReactNode }) {
+  const { t } = useTranslation();
+  return (
+    <Dialog open={open} onClose={onClose} className="relative z-[90]">
+      <DialogBackdrop data-testid="trail-drawer-backdrop" className="fixed inset-0 bg-gray-950/40 backdrop-blur-sm" />
+      <DialogPanel className="fixed inset-y-0 left-0 flex h-dvh w-[min(300px,80vw)] flex-col border-r border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900" style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}>
+        <div className="flex shrink-0 items-center justify-between border-b border-gray-200 px-3 dark:border-gray-700">
+          <DialogTitle className="font-semibold text-gray-900 dark:text-gray-100">{t(TRAIL_TITLE)}</DialogTitle>
+          <button type="button" onClick={onClose} aria-label={t('common.close')} className="flex h-11 w-11 items-center justify-center rounded-xl text-gray-500 hover:bg-gray-100 focus-visible:ring-2 focus-visible:ring-indigo-500 dark:text-gray-300 dark:hover:bg-gray-800">
+            <XMarkIcon className="h-5 w-5" aria-hidden="true" />
+          </button>
+        </div>
+        {children}
+      </DialogPanel>
+    </Dialog>
+  );
 }

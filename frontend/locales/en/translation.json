@@ -317,6 +317,8 @@
     "discard": "Discard"
   },
   "bible": {
+    "toolsAndText": "Tools and text",
+    "expandHeader": "Expand reader header",
     "preview": {
       "untitled": "Untitled",
       "excludesCurrent": "The current note is not included in this list",

@@ -31,11 +31,8 @@ import type { BookText } from '@/utils/bibleText';
 type ReaderMarks = {
   /** The three tools for the reader's line on a wider screen, or nothing. */
   tools: ReactNode;
-  /**
-   * A phone: the tools always stand at the bottom right in a column over the "T", under the thumb, and
-   * never in the line, which has no room for them (the owner, 2026-10-16, from his Android phone).
-   */
-  floatingTools: ReactNode;
+  /** The same tool state for the phone's combined tools and text button. */
+  phoneTool: ReturnType<typeof useMarkTool> | null;
   /** What the colours mean, for the "T" menu, or nothing. */
   legend: ReactNode;
   /** The translation's place in the line: after the tools on a wide screen. */
@@ -143,16 +140,9 @@ export function useReaderMarks({ textRef, text, ready, bible, bookId, drawn }: {
   const armed = marking && tool.inHand !== null;
   return {
     tools: showTools ? <MarkToolbar tool={tool} className="max-md:hidden md:ml-auto" /> : null,
-    floatingTools: showTools ? (
-      <div className="fixed bottom-[calc(10rem+env(safe-area-inset-bottom))] right-[1.125rem] z-30 rounded-full bg-white/95 p-1 shadow-lg ring-1 ring-gray-900/10 backdrop-blur-md md:hidden dark:bg-gray-900/95 dark:ring-white/10">
-        <MarkToolbar tool={tool} vertical />
-      </div>
-    ) : null,
-    legend: marking ? (
-      <div className="mt-1 border-t border-gray-200 pt-1 dark:border-gray-700">
-        <MarkLegend />
-      </div>
-    ) : null,
+    phoneTool: showTools ? tool : null,
+    // The "T" card puts its rule above what it is given: a rule of the legend's own drew a second one.
+    legend: marking ? <MarkLegend /> : null,
     translationClass: showTools ? 'ml-auto md:ml-3' : 'ml-auto',
     gestureIgnore: armed ? '' : undefined,
     penSurface: marking ? '' : undefined,

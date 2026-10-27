@@ -1,10 +1,11 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import FloatingTextScaleControls from '@/components/FloatingTextScaleControls';
+import { useRevealShellHeader, useShellHeader, useShellHeaderPageMoved } from '@/components/navigation/shellHeader';
 import { LeavingBar } from '@/components/ui/LeavingBar';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { STICKY_PANEL_GAP_PX, useStickyOffsets } from '@/hooks/useStickyOffsets';
@@ -26,16 +27,17 @@ import { MarkedElsewhereSheet } from './marks/MarkedElsewhereSheet';
 import { useReaderMarks } from './marks/useReaderMarks';
 import { MineSheet } from './MineSheet';
 import { buildMinimapLayout } from './minimapLayout';
-import { useReaderTrail } from './PlaceTrail';
+import { PhoneReaderTools } from './PhoneReaderTools';
+import { useReaderTrail, type TrailBack } from './PlaceTrail';
 import { arriveOnTrail, readOnTrail, stepOnTrail } from './placeTrailStore';
 import { readingSurface } from './readingSurface';
 import { useBookCrossRefs } from './useBookCrossRefs';
 import { useBookUsage } from './useBookUsage';
 import { chapterAtLine, useChapterWindow } from './useChapterWindow';
+import { useFollowAfterClose } from './useFollowAfterClose';
 
 import type { AppLocale } from '@/utils/appLocale';
 import type { CrossReference } from '@/utils/crossReferences';
-import type { ReactNode } from 'react';
 
 type Place = { chapter: number; verse: number };
 
@@ -66,15 +68,15 @@ const ARRIVAL_LIT_MS = 5000;
 const ARRIVAL_FADE_MS = 3600;
 
 /** "← Rom 5": back to the place in the book this one was opened from. */
-function WayBack({ label, floating, onClick }: { label: string; floating: boolean; onClick: () => void }) {
+function WayBack({ label, phone = false, onClick }: { label: string; phone?: boolean; onClick: () => void }) {
   const { t } = useTranslation();
   return (
     <button
       type="button"
       onClick={onClick}
       aria-label={t('bible.backToLabel', { place: label })}
-      className={floating
-        ? 'pointer-events-auto inline-flex min-h-12 shrink-0 items-center rounded-full border border-gray-300 bg-white/90 px-4 text-sm font-semibold text-indigo-700 shadow-lg shadow-gray-900/15 backdrop-blur-md dark:border-gray-600 dark:bg-gray-900/90 dark:text-indigo-300 dark:shadow-black/40'
+      className={phone
+        ? 'inline-flex min-h-9 min-w-4 max-w-[4.5rem] items-center truncate whitespace-nowrap text-xs font-semibold text-indigo-700 dark:text-indigo-300'
         : 'mr-3 inline-flex min-h-9 shrink-0 items-center rounded-full border border-gray-200 bg-white px-3 text-[13px] font-semibold text-indigo-700 transition hover:border-indigo-300 hover:bg-indigo-50 dark:border-gray-700 dark:bg-gray-900 dark:text-indigo-300 dark:hover:bg-indigo-950/40'}
     >
       {t('bible.backTo', { place: label })}
@@ -153,49 +155,64 @@ function LoadNotice({ status, onRetry }: { status: LoadState['status']; onRetry:
   );
 }
 
-/** A phone, reading: the way back, the trail's button, the search and the book's pill under the thumb. Nothing when none is due. */
-function PhoneBar({ wayBack, onWayBack, trailButton, showPill, bookId, bible, currentChapter, currentVerse, text, locale, onOpen }: {
-  wayBack: string | null; onWayBack: () => void; trailButton: ReactNode; showPill: boolean;
-  bookId: string; bible: BibleId; currentChapter: number; currentVerse: number; text: BookText; locale: AppLocale; onOpen: (bookId: string, place: Place) => void;
+/**
+ * The way back as a phone's header says it: «← 8:7» within this book, the place's own label elsewhere —
+ * the book's name is already beside it (BUG-20261023-phone-bar-crowded: «← Рим 8:7» did not fit at 360 px).
+ */
+function shortWayBack(returnTo: Place | null, back: TrailBack | null, bookId: string, label: string | null): string | null {
+  if (returnTo) return `${returnTo.chapter}:${returnTo.verse}`;
+  if (back?.kind === 'link' && back.book === bookId) return `${back.place.chapter}:${back.place.verse}`;
+  return label;
+}
+
+/**
+ * A phone's controls, lent to the app's header (`shellHeader.tsx`): the way back, the place, the trail, the search.
+ * While the text loads, or did not load, the book's own picker stands for the place: another book and the search
+ * stay at hand (Codex, 2026-10-26: a book that answered 503 left only «Повторить»).
+ */
+function PhoneHeader({ wayBack, onWayBack, trailButton, bookId, bible, currentChapter, currentVerse, text, locale, onOpen }: {
+  wayBack: string | null; onWayBack: () => void; trailButton: ReactNode;
+  bookId: string; bible: BibleId; currentChapter: number; currentVerse: number; text: BookText | null; locale: AppLocale; onOpen: (bookId: string, place: Place) => void;
 }) {
-  if (!wayBack && !showPill && !trailButton) return null;
   return (
-    <div className="pointer-events-none fixed inset-x-4 bottom-[calc(1.25rem+env(safe-area-inset-bottom))] z-30 flex items-center justify-center gap-2">
-      {wayBack ? <WayBack label={wayBack} floating onClick={onWayBack} /> : null}
+    <div className="flex min-w-0 items-center gap-1 whitespace-nowrap">
+      {wayBack ? <WayBack label={wayBack} phone onClick={onWayBack} /> : null}
+      {text
+        ? <ReadingPill bookId={bookId} bible={bible} currentChapter={currentChapter} currentVerse={currentVerse} text={text} locale={locale} onOpen={onOpen} look="header" />
+        : <BookPicker bookId={bookId} bible={bible} currentChapter={currentChapter} currentVerse={currentVerse} text={null} locale={locale} wide={false} onOpen={onOpen} />}
       {trailButton}
-      {showPill ? <SearchPicker bookId={bookId} bible={bible} locale={locale} wide={false} look="bar" onOpen={onOpen} /> : null}
-      {showPill ? (
-        <span className="pointer-events-auto">
-          <ReadingPill bookId={bookId} bible={bible} currentChapter={currentChapter} currentVerse={currentVerse} text={text} locale={locale} onOpen={onOpen} />
-        </span>
-      ) : null}
+      <SearchPicker bookId={bookId} bible={bible} locale={locale} wide={false} look="header" onOpen={onOpen} />
     </div>
   );
 }
 
 /**
- * An action from a window over the reader — "Open" in the window of links, "Open in this translation"
- * in the window of a verse marked in another Bible: the window closes first and the reader acts a frame
- * later. On iOS the window pins the page (`useScrollLock`) and, released, puts it back where it was — a
- * jump made while it was pinned was undone, the passage lit out of sight, and a place written down then
- * is not the one read. The pending action is kept until the frame runs, so an effect run again in
- * between schedules it anew instead of losing it.
+ * THE BOOK'S LINE, from 768 px: the book, the chapter and the search at the text's left edge, the translation at
+ * its right one, above the text's pane, so both are at hand anywhere in the book. It stays one row — a tool's
+ * colours open in it (`MarkToolbar`), and a second row would move the whole text down — so short of room the
+ * translation's name is cut, never the book's. A phone lends its controls to the app's header (`PhoneHeader`).
  */
-function useFollowAfterClose<Args extends unknown[]>(open: boolean, close: () => void, follow: (...args: Args) => void) {
-  const pendingRef = useRef<Args | null>(null);
-  useEffect(() => {
-    const pending = pendingRef.current;
-    if (open || !pending) return undefined;
-    const frame = window.requestAnimationFrame(() => {
-      pendingRef.current = null;
-      follow(...pending);
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [follow, open]);
-  return useCallback((...args: Args) => {
-    pendingRef.current = args;
-    close();
-  }, [close]);
+function BookLine({ lineRef, wayBack, onWayBack, trailButton, tools, translationClass, bookId, bible, currentChapter, currentVerse, text, locale, onOpen, onChangeBible }: {
+  lineRef: (element: HTMLElement | null) => void; wayBack: string | null; onWayBack: () => void; trailButton: ReactNode; tools: ReactNode; translationClass: string;
+  bookId: string; bible: BibleId; currentChapter: number; currentVerse: number; text: BookText | null; locale: AppLocale;
+  onOpen: (bookId: string, place: Place) => void; onChangeBible: (bible: BibleId) => void;
+}) {
+  return (
+    <header ref={lineRef} className="relative z-30 mb-3 flex shrink-0 flex-wrap items-center gap-x-1 gap-y-0.5 bg-white/90 py-1.5 backdrop-blur-md md:flex-nowrap dark:bg-gray-900/90">
+      {wayBack ? <WayBack label={wayBack} onClick={onWayBack} /> : null}
+      {trailButton}
+      <BookPicker bookId={bookId} bible={bible} currentChapter={currentChapter} currentVerse={currentVerse} text={text} locale={locale} wide onOpen={onOpen} />
+      {text ? <ChapterControl bookId={bookId} bible={bible} locale={locale} current={currentChapter} verse={currentVerse} text={text} wide onOpen={(place) => onOpen(bookId, place)} /> : null}
+      <SearchPicker bookId={bookId} bible={bible} locale={locale} wide look="line" onOpen={onOpen} />
+      {tools}
+      <span className={`flex min-w-0 ${translationClass}`}>
+        <TranslationPicker bible={bible} wide onPick={onChangeBible} />
+      </span>
+      {/* The gap under the stuck line shows a strip of the verse above the one read: it fades out
+          instead of being cut by a hard edge. */}
+      <span aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-full h-4 bg-gradient-to-b from-white/90 to-transparent dark:from-gray-900/90" />
+    </header>
+  );
 }
 
 /** How long the line saying "going to another screen" waits for that screen before it gives up. */
@@ -244,12 +261,13 @@ export function roomBelow(lastVerseTop: number, readingTop: number, viewportHeig
 /**
  * The reader's frame: on a computer the page stands still, the book's line stands above the text,
  * and the text scrolls in its own pane beside the minimap — focusable, so the keys scroll it as they
- * scrolled the page (`readingSurface.ts`); on a phone the page scrolls and leaves room for the pill.
+ * scrolled the page (`readingSurface.ts`); on a phone the page scrolls and leaves room for its tools.
  */
 function readerFrame(wide: boolean) {
   return wide
-    ? { root: 'flex min-h-0 flex-1 flex-col', line: 'z-30 shrink-0 py-1.5', row: 'min-h-0 flex-1', pane: 'min-h-0 min-w-0 flex-1 self-stretch overflow-y-auto overscroll-contain', paneTabIndex: 0 }
-    : { root: 'pb-24', line: 'py-1', row: '', pane: 'min-w-0 flex-1', paneTabIndex: undefined };
+    ? { root: 'flex min-h-0 flex-1 flex-col', row: 'min-h-0 flex-1', pane: 'min-h-0 min-w-0 flex-1 self-stretch overflow-y-auto overscroll-contain', paneTabIndex: 0, card: 'rounded-2xl border border-gray-200 px-3 py-5 sm:px-6 dark:border-gray-700' }
+    // A phone's text has no card: the page's own 16 px sides are its margins.
+    : { root: 'pb-24', row: '', pane: 'min-w-0 flex-1', paneTabIndex: undefined, card: '' };
 }
 
 export function BibleBookReader({ bookId, bible, initialPlace, initialBible, passageEnd = null, cameFrom = null, onOpenBook, onChangeBible }: BibleBookReaderProps) {
@@ -261,8 +279,6 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
   const [attempt, setAttempt] = useState(0);
   const [currentChapter, setCurrentChapter] = useState(1);
   const [currentVerse, setCurrentVerse] = useState(1);
-  const [row, setRow] = useState<HTMLElement | null>(null);
-  const [rowGone, setRowGone] = useState(false);
   const textRef = useRef<HTMLElement | null>(null);
   const entryRef = useRef<string | null>(null);
   const placeRef = useRef<Place | null>(null);
@@ -275,7 +291,9 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
   // it, so a finger on the minimap is the minimap's even while the text still glides (`readingSurface.ts`).
   // The pane is drawn before the text comes: the first jump and the room under the book use it.
   const [pane, setPane] = useState<HTMLElement | null>(null);
-  const surface = useMemo(() => readingSurface(wide ? pane : null), [pane, wide]);
+  // The page's own moves are told to a phone's header, which folds for the person reading only.
+  const pageMoved = useShellHeaderPageMoved();
+  const surface = useMemo(() => readingSurface(wide ? pane : null, pageMoved), [pageMoved, pane, wide]);
   const surfaceRef = useRef(surface);
   surfaceRef.current = surface;
 
@@ -287,10 +305,7 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
   const readingInset = (wide ? 0 : navHeight) + STICKY_PANEL_GAP_PX;
   const readingInsetRef = useRef(readingInset);
   readingInsetRef.current = readingInset;
-  const setRowRef = useCallback((element: HTMLElement | null) => {
-    setHeaderRef(element);
-    setRow(element);
-  }, [setHeaderRef]);
+
 
   const isPsalms = bookId === 'Psalms';
   const chapterWord = useCallback(
@@ -383,7 +398,10 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
   // the end of a book cannot reach the top, and the verse that does is not where the person is.
   // A chapter of a big book not drawn yet is drawn first; `then` runs once the jump is made.
   const broughtRef = useRef<{ place: Place; scrollY: number } | null>(null);
+  // A phone's header folded while reading opens on a jump: the way back is what the person needs then.
+  const revealHeader = useRevealShellHeader();
   const jumpTo = useCallback(({ chapter, verse }: Place, then?: () => void) => {
+    revealHeader();
     showChapter({ chapter }, () => {
       const root = textRef.current;
       const row = verse > 1 ? root?.querySelector<HTMLElement>(`[data-verse="${chapter}:${verse}"]`) : null;
@@ -391,14 +409,19 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
       if (!target) return;
       // The room first: without it a verse near the end of the book cannot come to the top.
       fitRoom();
+      // On a phone the page itself moves: the shell's header is told, so it does not fold for it. Asked of the
+      // surface, not of the width — a jump that changed with the width ran the opening's jump again (Codex, 2026-10-26).
+      const surface = surfaceRef.current;
+      const was = surface.top();
       target.scrollIntoView({ block: 'start' });
+      if (surface.target === window && surface.top() !== was) pageMoved();
       broughtRef.current = { place: { chapter, verse: row ? verse : 1 }, scrollY: surfaceRef.current.top() };
       // While the verse holds, the reader keeps it (jumped to again as the text grows); the browser's own
       // scroll to keep what shows would be taken for the person's and let the verse go early.
       surfaceRef.current.anchoring(false);
       then?.();
     });
-  }, [fitRoom, showChapter]);
+  }, [fitRoom, pageMoved, revealHeader, showChapter]);
   useEffect(() => {
     keepPlaceRef.current = () => {
       if (placeRef.current) jumpTo(placeRef.current);
@@ -642,17 +665,6 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
     };
   }, [bible, bookId, followChapter, jumping, surface, text]);
 
-  // A phone: once the book's line has scrolled away, a pill at the bottom holds the book and chapter.
-  useEffect(() => {
-    if (wide || !row || typeof IntersectionObserver === 'undefined') {
-      setRowGone(false);
-      return undefined;
-    }
-    const observer = new IntersectionObserver(([entry]) => setRowGone(!entry.isIntersecting));
-    observer.observe(row);
-    return () => observer.disconnect();
-  }, [row, wide]);
-
   // THE TRAIL OF PLACES (`placeTrailStore.ts`): every move the person makes to a place within the book —
   // a link followed, a chapter chosen, the way back, a link of the trail — comes to it; another book comes
   // to it when it opens. The place left is written first, so its link keeps the verse the person stopped at.
@@ -753,6 +765,21 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
     }
   };
 
+  useShellHeader(!wide ? (
+    <PhoneHeader
+      wayBack={shortWayBack(returnTo, trailBack, bookId, backLabel)}
+      onWayBack={goBack}
+      trailButton={trail.phoneButton}
+      bookId={bookId}
+      bible={bible}
+      currentChapter={currentChapter}
+      currentVerse={currentVerse}
+      text={text}
+      locale={locale}
+      onOpen={openPlace}
+    />
+  ) : null, `${abbrev} ${currentChapter}:${currentVerse}`);
+
   return (
     // With the minimap the reader holds its panes and the page itself stands still (`data-reader-panes`, globals.css).
     <div
@@ -761,31 +788,24 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
       className={`mx-auto w-full ${trail.readerWidth} ${frame.root}`}
       style={{ '--reading-top': `${readingInset}px` } as CSSProperties}
     >
-      {/* THE BOOK'S LINE, from the start: the book, the chapter and the search at the text's left edge, the
-          translation at its right one. On a computer it stands above the text's pane, so both buttons
-          are at hand anywhere in the book; on a phone it stays at the top and a pill at the bottom
-          takes over while reading. On a phone a long name wraps; on a wide screen the line stays one row —
-          a tool's colours open in it (`MarkToolbar`), and a second row would move the whole text down — so
-          short of room the translation's name is cut, never the book's. */}
-      <header
-        ref={setRowRef}
-        className={`${frame.line} relative mb-3 flex flex-wrap items-center gap-x-1 gap-y-0.5 bg-white/90 backdrop-blur-md md:flex-nowrap dark:bg-gray-900/90`}
-      >
-        {wide && wayBackLabel ? <WayBack label={wayBackLabel} floating={false} onClick={goBack} /> : null}
-        {trail.inLine}
-        <BookPicker bookId={bookId} bible={bible} currentChapter={currentChapter} currentVerse={currentVerse} text={text} locale={locale} wide={wide} onOpen={openPlace} />
-        {text ? <ChapterControl bookId={bookId} bible={bible} locale={locale} current={currentChapter} verse={currentVerse} text={text} wide={wide} onOpen={(place) => openPlace(bookId, place)} /> : null}
-        <SearchPicker bookId={bookId} bible={bible} locale={locale} wide={wide} look="line" onOpen={openPlace} />
-        {marks.tools}
-        <span className={`flex min-w-0 ${marks.translationClass}`}>
-          <TranslationPicker bible={bible} wide={wide} onPick={changeBible} />
-        </span>
-        {/* The gap under the stuck line shows a strip of the verse above the one read: it fades out
-            instead of being cut by a hard edge. */}
-        {wide ? (
-          <span aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-full h-4 bg-gradient-to-b from-white/90 to-transparent dark:from-gray-900/90" />
-        ) : null}
-      </header>
+      {wide ? (
+        <BookLine
+          lineRef={setHeaderRef}
+          wayBack={wayBackLabel}
+          onWayBack={goBack}
+          trailButton={trail.inLine}
+          tools={marks.tools}
+          translationClass={marks.translationClass}
+          bookId={bookId}
+          bible={bible}
+          currentChapter={currentChapter}
+          currentVerse={currentVerse}
+          text={text}
+          locale={locale}
+          onOpen={openPlace}
+          onChangeBible={changeBible}
+        />
+      ) : null}
       {trail.underLine}
 
       <LoadNotice status={state.status} onRetry={() => setAttempt((value) => value + 1)} />
@@ -803,7 +823,7 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
               ref={textRef}
               data-gesture-ignore={marks.gestureIgnore}
               data-pen-surface={marks.penSurface}
-              className={`isolate min-w-0 rounded-2xl border border-gray-200 bg-white px-3 py-5 sm:px-6 dark:border-gray-700 dark:bg-gray-900 ${marks.textClass}`}
+              className={`isolate min-w-0 bg-white dark:bg-gray-900 ${frame.card} ${marks.textClass}`}
             >
               <BookRibbon text={text} lang={BIBLES[bible].language} chapterWord={chapterWord} crossRefs={crossRefs.ribbon} signs={marks.signs} mine={mine.ribbon} boxes={chapterWindow.boxes} />
               <BookEnd bookId={bookId} bible={bible} locale={locale} wide={wide} onOpen={(chosen) => openPlace(chosen, { chapter: 1, verse: 1 })} />
@@ -829,23 +849,7 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
         ) : null}
       </div>
 
-      {marks.floatingTools}
-      {!wide && text ? (
-        <PhoneBar
-          wayBack={wayBackLabel}
-          onWayBack={goBack}
-          trailButton={trail.inBar}
-          showPill={rowGone}
-          bookId={bookId}
-          bible={bible}
-          currentChapter={currentChapter}
-          currentVerse={currentVerse}
-          text={text}
-          locale={locale}
-          onOpen={openPlace}
-        />
-      ) : null}
-      {trail.overBar}
+      {trail.drawer}
 
       <CrossReferenceSheet
         at={crossRefs.openAt}
@@ -876,12 +880,20 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
         onClose={marks.elsewhere.close}
         onOpenBible={openInBible}
       />
-      {/* The "T" of every reading screen — the text size, and here the marks' legend and the way to the
-          Bible's own settings (Settings → Bible). On a phone it stands above the bar with the way back and the book's pill. */}
-      <FloatingTextScaleControls className="max-md:!bottom-24">
-        {marks.legend}
-        <BibleSettingsLink />
-      </FloatingTextScaleControls>
+      {wide ? (
+        <FloatingTextScaleControls>
+          {marks.legend}
+          <BibleSettingsLink />
+        </FloatingTextScaleControls>
+      ) : (
+        <PhoneReaderTools tool={marks.phoneTool}>
+          {(returnFocusRef) => <>
+            {marks.legend}
+            <TranslationPicker bible={bible} wide={false} onPick={changeBible} returnFocusRef={returnFocusRef} />
+            <BibleSettingsLink />
+          </>}
+        </PhoneReaderTools>
+      )}
     </div>
   );
 }

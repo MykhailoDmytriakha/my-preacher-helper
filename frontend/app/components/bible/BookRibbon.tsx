@@ -115,7 +115,7 @@ function MineBadges({ badges, mine, chapter, verse, testId }: { badges: readonly
   );
 }
 
-const VERSE_NUMBER_CLASSES = 'w-7 shrink-0 select-none pt-[0.35rem] text-right text-xs font-semibold tabular-nums text-gray-400 dark:text-gray-500';
+const VERSE_NUMBER_CLASSES = 'mr-1 inline-block select-none align-super text-[10px] font-semibold tabular-nums text-gray-400 md:mr-0 md:w-7 md:shrink-0 md:pt-[0.35rem] md:text-right md:text-xs dark:text-gray-500';
 
 /** Where a verse or a chapter jumped to stands: the reading top, where "the verse I am at" is measured from. */
 const READING_TOP = 'var(--reading-top)';
@@ -127,16 +127,16 @@ const VERSE_TEXT_STYLE = { fontSize: 'calc(1.1875rem * var(--text-scale, 1))' };
  * The chip after a verse: how many places its links lead to; pressed, it opens their list. Without
  * `onOpen` it is only its look — Settings → Bible shows a verse with it as it stands in the reader.
  */
-export function CrossRefsChip({ count, label, onOpen, testId }: { count: number; label?: string; onOpen?: () => void; testId?: string }) {
+export function CrossRefsChip({ count, label, onOpen, testId, phone = false }: { count: number; label?: string; onOpen?: () => void; testId?: string; phone?: boolean }) {
   return (
     <Chip
       size="sm"
       tone="indigo"
       weight="bold"
-      icon={<ArrowsRightLeftIcon className="h-3 w-3" aria-hidden="true" />}
+      icon={phone ? <><span className="md:hidden" aria-hidden="true">⇄</span><ArrowsRightLeftIcon className="hidden h-3 w-3 md:block" aria-hidden="true" /></> : <ArrowsRightLeftIcon className="h-3 w-3" aria-hidden="true" />}
       ariaLabel={label}
       onClick={onOpen}
-      className="align-[0.15em] font-sans"
+      className={`align-[0.15em] font-sans ${phone ? 'max-md:gap-0 max-md:border-0 max-md:bg-transparent dark:max-md:bg-transparent max-md:px-0 max-md:py-0 max-md:align-super max-md:text-[10px]' : ''}`}
       data-testid={testId}
     >
       {count}
@@ -162,7 +162,7 @@ function VerseRow({ chapter, verse, raw, lang, crossRefs, signs, mine, detached 
       data-verse={detached ? undefined : `${chapter}:${verse}`}
       {...(lit ? { [ARRIVAL_ATTRIBUTE]: 'on' } : {})}
       style={{ scrollMarginTop: READING_TOP }}
-      className={`flex gap-3 ${ARRIVAL_CLASSES} ${opensParagraph && verse > 1 ? 'mt-2' : ''}`}
+      className={`mb-2.5 md:mb-0 md:flex md:gap-3 ${ARRIVAL_CLASSES} ${opensParagraph && verse > 1 ? 'md:mt-2' : ''}`}
     >
       {signs && sign ? (
         <button
@@ -189,7 +189,7 @@ function VerseRow({ chapter, verse, raw, lang, crossRefs, signs, mine, detached 
       ) : (
         <span className={VERSE_NUMBER_CLASSES}>{verse}</span>
       )}
-      <p style={VERSE_TEXT_STYLE} className="min-w-0 flex-1 font-serif leading-[1.65] text-gray-800 dark:text-gray-100">
+      <p style={VERSE_TEXT_STYLE} className="inline min-w-0 font-serif md:block md:flex-1 leading-[1.65] text-gray-800 dark:text-gray-100">
         {/* The verse's own words, apart from the chip: marks count and paint them (`marks/verseWordDom.ts`).
             They are in their Bible's language whatever the interface speaks: a screen reader reads them so. */}
         <span data-verse-text={detached ? undefined : ''} lang={lang}>
@@ -201,6 +201,7 @@ function VerseRow({ chapter, verse, raw, lang, crossRefs, signs, mine, detached 
           <>
             {' '}
             <CrossRefsChip
+              phone
               count={shown}
               label={crossRefs.chipLabel(verse, shown)}
               onOpen={() => crossRefs.onOpen(chapter, verse)}
@@ -208,7 +209,7 @@ function VerseRow({ chapter, verse, raw, lang, crossRefs, signs, mine, detached 
             />
           </>
         ) : null}
-        {mine && badges ? <MineBadges badges={badges} mine={mine} chapter={chapter} verse={verse} testId={`mine-${chapter}:${verse}`} /> : null}
+        {mine && badges ? <span className="md:contents max-md:inline-block max-md:origin-left max-md:scale-90 max-md:align-super"><MineBadges badges={badges} mine={mine} chapter={chapter} verse={verse} testId={`mine-${chapter}:${verse}`} /></span> : null}
       </p>
     </div>
   );
@@ -239,7 +240,7 @@ export const BookRibbon = memo(function BookRibbon({ text, lang, chapterWord, cr
             style={box && boxes ? { scrollMarginTop: READING_TOP, height: `${boxes.height(chapter)}px` } : { scrollMarginTop: READING_TOP }}
             className={chapterIndex === 0 ? '' : 'mt-6'}
           >
-            <div className="flex items-center gap-3 pb-2 pl-10">
+            <div className="flex items-center gap-3 pb-2 md:pl-10">
               <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400">{chapterWord(chapter)}</h2>
               {mine && mine.chapters.get(chapter) ? (
                 <span className="-ml-2 inline-flex items-center">

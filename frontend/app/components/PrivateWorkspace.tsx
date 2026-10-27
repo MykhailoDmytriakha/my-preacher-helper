@@ -12,6 +12,7 @@ import Breadcrumbs from '@/components/navigation/Breadcrumbs';
 import DashboardNav from '@/components/navigation/DashboardNav';
 import DevQuickNav from '@/components/navigation/DevQuickNav';
 import PageGestures from '@/components/navigation/PageGestures';
+import { ShellHeaderProvider } from '@/components/navigation/shellHeader';
 import { ShellTitlesProvider } from '@/components/navigation/shellTitles';
 import { OfflinePageMemory } from '@/components/OfflinePageMemory';
 import { OutboxConflictBanner } from '@/components/OutboxConflictBanner';
@@ -32,7 +33,7 @@ export function PrivateWorkspace({ children }: { children: ReactNode }) {
     <DataEngineWorkspace>
       <UserSettingsProvider>
         <TechnicalDetailsDialog />
-        <ShellTitlesProvider>{children}</ShellTitlesProvider>
+        <ShellTitlesProvider><ShellHeaderProvider>{children}</ShellHeaderProvider></ShellTitlesProvider>
       </UserSettingsProvider>
     </DataEngineWorkspace>
   );

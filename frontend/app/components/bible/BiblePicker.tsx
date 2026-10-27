@@ -722,8 +722,8 @@ type SearchPickerProps = {
   bible: BibleId;
   locale: AppLocale;
   wide: boolean;
-  /** In a phone's bar under the thumb, round like its neighbours; else in the book's line. */
-  look: 'line' | 'bar';
+  /** Compact in the phone's shell header; labelled in the wide reader's own line. */
+  look: 'line' | 'header';
   onOpen: (bookId: string, place: Place) => void;
 };
 
@@ -744,8 +744,8 @@ export function SearchPicker({ bookId, bible, locale, wide, look, onOpen }: Sear
     triggerRef.current?.focus();
   };
 
-  const shape = look === 'bar'
-    ? 'pointer-events-auto h-12 w-12 justify-center rounded-full border-gray-300 bg-white/90 text-gray-800 shadow-lg shadow-gray-900/15 backdrop-blur-md dark:border-gray-600 dark:bg-gray-900/90 dark:text-gray-100 dark:shadow-black/40'
+  const shape = look === 'header'
+    ? 'h-9 w-7 justify-center rounded-lg border-transparent text-gray-600 dark:text-gray-300'
     : `min-h-11 rounded-xl text-gray-600 hover:bg-indigo-50 hover:text-indigo-700 dark:text-gray-300 dark:hover:bg-indigo-950/40 dark:hover:text-indigo-300 ${wide ? 'ml-1 gap-1.5 pl-2.5 pr-3 text-[15px] font-medium' : 'w-11 justify-center'} ${open ? TRIGGER_OPEN : 'border-gray-200 dark:border-gray-700'}`;
 
   return (
@@ -780,10 +780,10 @@ export function SearchPicker({ bookId, bible, locale, wide, look, onOpen }: Sear
 }
 
 /**
- * A phone, reading: "Gen 12 ▴" under the thumb once the line at the top has gone. It opens the same
+ * A phone, reading: its place in the shell header. It opens the same
  * window at this book's chapters — a book of one chapter at its verses; "All books" there leads to every book.
  */
-export function ReadingPill({ bookId, bible, currentChapter, currentVerse, text, locale, onOpen }: Omit<BookPickerProps, 'wide'>) {
+export function ReadingPill({ bookId, bible, currentChapter, currentVerse, text, locale, onOpen, look = 'floating' }: Omit<BookPickerProps, 'wide'> & { look?: 'floating' | 'header' }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
@@ -805,10 +805,13 @@ export function ReadingPill({ bookId, bible, currentChapter, currentVerse, text,
         aria-expanded={open}
         aria-label={t('bible.navigate', { place: label })}
         onClick={() => setOpen(true)}
-        className="inline-flex min-h-12 items-center gap-2 rounded-full border border-gray-300 bg-white/90 pl-5 pr-4 text-base font-bold text-gray-900 shadow-lg shadow-gray-900/15 backdrop-blur-md transition dark:border-gray-600 dark:bg-gray-900/90 dark:text-white dark:shadow-black/40"
+        data-reading-pill=""
+        className={look === 'header'
+          ? 'inline-flex h-9 min-w-10 flex-1 items-center gap-1 text-sm font-bold text-gray-900 dark:text-white'
+          : 'inline-flex min-h-12 items-center gap-2 rounded-full border border-gray-300 bg-white/90 pl-5 pr-4 text-base font-bold text-gray-900 shadow-lg shadow-gray-900/15 backdrop-blur-md transition dark:border-gray-600 dark:bg-gray-900/90 dark:text-white dark:shadow-black/40'}
       >
-        {label}
-        <ChevronUpIcon className="h-4 w-4" aria-hidden="true" />
+        <span className="truncate">{label}</span>
+        <ChevronUpIcon className={`h-4 w-4 shrink-0 ${look === 'header' ? 'rotate-180' : ''}`} aria-hidden="true" />
       </button>
       {open ? (
         <BookNavigator
@@ -833,7 +836,7 @@ export function ReadingPill({ bookId, bible, currentChapter, currentVerse, text,
  * The Bible being read, at the right edge of the book's line: every Bible the app has, named in its
  * own language. Choosing one reads the same place in it.
  */
-export function TranslationPicker({ bible, wide, onPick }: { bible: BibleId; wide: boolean; onPick: (bible: BibleId) => void }) {
+export function TranslationPicker({ bible, wide, onPick, returnFocusRef }: { bible: BibleId; wide: boolean; onPick: (bible: BibleId) => void; returnFocusRef?: RefObject<HTMLButtonElement | null> }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
@@ -841,7 +844,9 @@ export function TranslationPicker({ bible, wide, onPick }: { bible: BibleId; wid
 
   const close = () => {
     setOpen(false);
-    triggerRef.current?.focus();
+    // A phone's text card may have folded while this portalled picker held focus.
+    if (returnFocusRef) returnFocusRef.current?.focus({ preventScroll: true });
+    else triggerRef.current?.focus();
   };
 
   return (
