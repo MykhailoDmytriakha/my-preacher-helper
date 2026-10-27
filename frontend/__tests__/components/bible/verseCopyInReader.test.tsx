@@ -10,7 +10,7 @@ import { resetPlaceTrailForTests } from '@/components/bible/placeTrailStore';
 import { LONG_PRESS_MS } from '@/hooks/useLongPress';
 import { verseWords, type BookText } from '@/utils/bibleText';
 import { forgetLoadedCrossRefs } from '@/utils/crossReferences';
-import { quotesFor, verseCopyText } from '@/utils/verseCopy';
+import { verseCopyText } from '@/utils/verseCopy';
 
 jest.mock('@/data-engine/react.client', () => ({
   ...jest.requireActual('@/data-engine/react.client'),
@@ -28,9 +28,11 @@ const render = (ui: React.ReactNode) => renderUI(ui, { wrapper: ReaderShell });
 const publicFile = (path: string) => JSON.parse(readFileSync(join(__dirname, '../../../public', path), 'utf8'));
 const ruth: BookText = publicFile('bible-text/rst/v1/ruth.json');
 const words = (chapter: number, verse: number) => verseWords(ruth.chapters[chapter - 1][verse - 1]);
-const BIBLE = 'bible.translations.rst.name';
+// The test's interface speaks English (jest.setup.js), so the Synodal Bible is not its own and is marked with its short
+// name — the mock answers a key with the key. The unmarked case is the King James test below.
+const MARK = 'bible.translations.rst.short';
 const squeeze = (text: string) => text.replace(/\s+/g, ' ').trim();
-const NAMES = { book: 'Руф', bible: BIBLE, quotes: quotesFor('ru') };
+const NAMES = { book: 'Руф', mark: MARK };
 /** The quote of a verse as `utils/verseCopy.ts` makes it (its own test holds the form). */
 const quote = (...verses: number[]) => verseCopyText(verses.map((verse) => ({ chapter: 1, verse, words: words(1, verse) })), 'quote', NAMES);
 
@@ -88,9 +90,23 @@ describe('taking verses out of the reader', () => {
     expect(within(menu).queryByRole('menuitem', { name: 'bible.copy.share' })).toBeNull();
     await userEvent.click(within(menu).getByRole('menuitem', { name: 'bible.copy.copy' }));
     expect(writeText).toHaveBeenCalledWith(quote(16));
-    expect(writeText.mock.calls[0][0]).toContain(`— Руф 1:16 (${BIBLE})`);
+    // Ruth 1:16 stops at a semicolon, so the quote ends with «…».
+    expect(writeText.mock.calls[0][0]).toBe(`Руф 1:16 (${MARK}): "${words(1, 16).slice(0, -1)}…"`);
     expect(screen.queryByRole('menu')).toBeNull();
     expect(row('1:16')).not.toHaveAttribute('data-verse-held');
+  });
+
+  // The owner, 2026-10-27: the Bible is not named when it is the interface's own (the test's interface is English).
+  it('a verse of the interface’s own Bible is copied with no mark: the place, a colon, the words', async () => {
+    const kjvRuth: BookText = publicFile('bible-text/kjv/v1/ruth.json');
+    render(<BibleBookReader bible="kjv" initialBible="kjv" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={{ chapter: 1, verse: 16 }} onOpenBook={jest.fn()} />);
+    await screen.findByTestId('cross-refs-1:16');
+    await hold(verseText('1:16'));
+    await userEvent.click(within(screen.getByRole('menu', { name: 'bible.copy.menu' })).getByRole('menuitem', { name: 'bible.copy.copy' }));
+    const copied = writeText.mock.calls[0][0] as string;
+    expect(copied).toBe(verseCopyText([{ chapter: 1, verse: 16, words: verseWords(kjvRuth.chapters[0][15]) }], 'quote', { book: 'Ruth' }));
+    expect(copied.startsWith('Ruth 1:16: "')).toBe(true);
+    expect(copied).not.toContain('bible.translations');
   });
 
   it('a touch that moves is a scroll, and a press on a verse’s chip is the chip’s: no menu', async () => {
@@ -172,7 +188,7 @@ describe('taking verses out of the reader', () => {
     fireEvent.click(verseText('1:20'), { shiftKey: true });
     expect(within(bar).getByText('Руф 1:16–20')).toBeInTheDocument();
     await userEvent.click(within(bar).getByRole('button', { name: 'bible.copy.copy' }));
-    expect(writeText).toHaveBeenCalledWith([`Руф 1:16–20 (${BIBLE})`, ...[16, 17, 18, 19, 20].map((verse) => `${verse} ${words(1, verse)}`)].join('\n'));
+    expect(writeText).toHaveBeenCalledWith([`Руф 1:16–20 (${MARK}):`, ...[16, 17, 18, 19, 20].map((verse) => `${verse} ${words(1, verse)}`)].join('\n'));
     expect(screen.queryByRole('region', { name: /Руф/ })).toBeNull();
     expect(document.querySelector('[data-verse-chosen]')).toBeNull();
   });
@@ -277,7 +293,7 @@ describe('taking verses out of the reader', () => {
     document.dispatchEvent(event);
     expect(event.defaultPrevented).toBe(true);
     expect(setData).toHaveBeenCalledWith('text/plain', [
-      `Руф 1:16–17 (${BIBLE})`,
+      `Руф 1:16–17 (${MARK}):`,
       `16 …${squeeze(verseText('1:16').textContent!.slice(4))}`,
       `17 ${squeeze(to.data.slice(0, 12))}…`,
     ].join('\n'));
