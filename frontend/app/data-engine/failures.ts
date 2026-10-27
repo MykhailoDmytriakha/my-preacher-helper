@@ -35,6 +35,19 @@ export class AddressedFailures extends Error {
   }
 }
 
+/** An opening interrupted while its tab could not read; retain the original refusal for explicit actions. */
+export class PausedReadFailure extends Error {
+  readonly code?: string;
+
+  constructor(error: unknown) {
+    const message = (error as { message?: unknown } | null)?.message;
+    super(typeof message === 'string' ? message : 'Document read interrupted', { cause: error });
+    this.name = 'PausedReadFailure';
+    const code = failureCode(error);
+    if (code !== null) this.code = code;
+  }
+}
+
 /** Each failure with its address: the list's entries, or the error itself with the address given. */
 export function eachFailure(error: unknown, about?: FailureAddress): AddressedFailure[] {
   return error instanceof AddressedFailures ? [...error.failures] : [{ error, ...(about ? { about } : {}) }];

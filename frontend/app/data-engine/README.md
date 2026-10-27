@@ -91,6 +91,10 @@ function NoteContent({ id }: { id: string }) {
   content and disable mutations; do not keep a skeleton merely because `editor` is
   absent. The shared facade restores editing when storage answers. Do not copy the
   fallback into a component-local editable draft or queue actions for later replay.
+  A first opening without a device copy waits while hidden or offline. If its transport
+  started earlier but fails after readability is lost, the shared opening resumes once
+  visible and online through `onceReachable`. It preserves the original error code and
+  cause, and never repeats an explicit recovery/save or reclassifies a storage failure.
 - **Update:** `update(current => next)` uses the latest editor value. It persists
   locally immediately; default autosave delays delivery by 750 ms. Apply the user's
   patch to `current`; do not replace it with a render-time stale object.

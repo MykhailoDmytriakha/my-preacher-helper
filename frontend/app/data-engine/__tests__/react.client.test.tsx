@@ -6,6 +6,7 @@ import { useAuth } from '@/providers/AuthProvider';
 import { createBrowserDataEngine, type BrowserDataEngine } from '../browser.client';
 import { DataSyncStatus } from '../DataSyncStatus';
 import { ENGINE_OWNED_COLLECTIONS } from '../engineOwnedCollections';
+import { PausedReadFailure } from '../failures';
 import { useRecoveryDiscovery } from '../useRecoveryDiscovery';
 import { UNKNOWN_RECORD_PRESENCE } from '../recordPresence';
 import { DataDocumentProvider, DataEngineProvider, DataEngineWorkspace, isCollectionOnEngine, isDataEngineEnabled, shouldPersistLegacyQuery, useDataCollection, useDataDocument, useDataEngine, useDataForm } from '../react.client';
@@ -837,6 +838,33 @@ describe('React collection and explicit recovery APIs', () => {
     await act(async () => pending.resolve(late.editor));
     expect(late.editor.dispose).toHaveBeenCalledTimes(1); expect(b.engine.recoverEditor).toHaveBeenCalledTimes(1);
     expect(result.current.data).toEqual({ content: 'base' }); expect(result.current.error).toBeNull();
+  });
+
+  it('keeps an interrupted explicit recovery for the person to retry', async () => {
+    const b = makeBrowser();
+    const original = Object.assign(new Error('The server could not be reached'), { code: 'unavailable' });
+    const failure = new PausedReadFailure(original);
+    b.engine.recoverEditor.mockRejectedValueOnce(failure);
+    const onceReachable = jest.fn(() => () => undefined);
+    Object.assign(b.engine, { onceReachable });
+    jest.mocked(createBrowserDataEngine).mockReturnValue(b.browser);
+    const { result } = renderHook(() => useDataDocument(resource, { autoSave: false }), { wrapper: Wrapper });
+    await waitFor(() => expect(result.current.data).toEqual({ content: 'base' }));
+    let recovering!: Promise<void>;
+    await act(async () => { recovering = result.current.recover('source'); void recovering.catch(() => undefined); });
+    let rejected: unknown;
+    await act(async () => { await recovering.catch(error => { rejected = error; }); });
+    expect(rejected).toBe(failure);
+    expect(failure.code).toBe('unavailable'); expect(failure.cause).toBe(original);
+    expect(b.engine.recoverEditor).toHaveBeenCalledTimes(1);
+    expect(onceReachable).not.toHaveBeenCalled();
+    await act(async () => jest.advanceTimersByTime(10000));
+    expect(b.engine.recoverEditor).toHaveBeenCalledTimes(1);
+    let retry!: Promise<void>;
+    await act(async () => { retry = result.current.retry(); });
+    await act(async () => retry);
+    expect(b.engine.recoverEditor).toHaveBeenCalledTimes(2);
+    expect(result.current.error).toBeNull();
   });
 
   it('uses fresh IDs on repeated recovery, retries errors, and fences old-owner discovery results', async () => {

@@ -1,10 +1,12 @@
+import { isConnectionFailure } from '@/utils/connectionFailure';
+
 import { collectionDocumentViews } from './collectionView';
 import { CommitQueue, type CommitRequest, type CommitStore } from './commits';
 import { EditorController, InactiveEditorError, type CheckpointRecoveryStore, type CheckpointStore, type EditorRecord, type EditorState, type RecoveryCheckpoint } from './controller';
 import { captureCouncilCarry, pinCouncilDestination } from './councilCarry';
 import { canReplaceDocumentIntent, isDirectLegacyDocumentIntent, savedDocumentAnswer } from './documentDelivery';
 import { ACTION_SLOT, editorSlot } from './editorIdentity';
-import { AddressedFailures, eachFailure } from './failures';
+import { AddressedFailures, eachFailure, PausedReadFailure } from './failures';
 import { collectionHeadRef } from './feed';
 import { LocalWriteback, type LocalWriteHandoff } from './localWriteback';
 import { assertDurableManualChoice, assertManualChoiceInput, assertManualComparison, manualComparison, type ManualComparison } from './manualComparison';
@@ -133,9 +135,10 @@ const hasFormWork = (owner: string, resource: ResourceRef, requests: readonly Co
   && sameResource(request.baseline.resource, resource) && !['acknowledged', 'cancelled'].includes(request.state) && editorSlot(request.editorId) === null);
 const SERVER_SNAPSHOT_IDENTITY_MISMATCH = 'Server snapshot identity mismatch';
 const CACHED_IDENTITY_MISMATCH = 'Cached snapshot identity mismatch';
-/** A read refused only because this device holds no copy and the server cannot be asked now (hidden tab, offline). */
+/** An opening may continue once this tab can read: initially unreachable, or interrupted in transit. */
 const NEEDS_CONNECTION = 'needs-connection';
-export const needsConnection = (error: unknown): boolean => (error as { code?: unknown } | null)?.code === NEEDS_CONNECTION;
+export const needsConnection = (error: unknown): boolean => error instanceof PausedReadFailure
+  || (error as { code?: unknown } | null)?.code === NEEDS_CONNECTION;
 const cacheKey = (owner: string, resource: ResourceRef) => JSON.stringify([owner, resource.collection, resource.id]);
 const COUNCIL_CARRY = 'council-carry';
 const ENGINE_DISPOSED = 'DataEngine has been disposed';
@@ -926,7 +929,16 @@ export class DataEngine {
     const cached = await this.knownSnapshot(owner, generation, resource);
     if (cached) return cached;
     if (!this.online || !this.visible) throw Object.assign(new Error('The document is not available in the local cache'), { code: NEEDS_CONNECTION });
-    const server = await this.options.transport.read(owner, resource);
+    let server: ResourceSnapshot;
+    try {
+      server = await this.options.transport.read(owner, resource);
+    } catch (error) {
+      this.assertCurrent(owner, generation);
+      // The first request may have started before the tab went hidden or lost its connection.
+      // Reuse the opening's reachability continuation; storage and explicit actions never replay here.
+      if (!this.canRead() && isConnectionFailure(error)) throw new PausedReadFailure(error);
+      throw error;
+    }
     this.assertCurrent(owner, generation);
     if (!sameResource(server.resource, resource)) throw new Error(SERVER_SNAPSHOT_IDENTITY_MISMATCH);
     return this.persistSnapshot(owner, generation, server);
