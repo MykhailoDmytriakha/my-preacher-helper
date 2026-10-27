@@ -1,4 +1,5 @@
-import { act, render, screen, waitFor, within } from '@testing-library/react';
+import { ReaderShell } from '../../../test-utils/reader-shell';
+import { act, render as renderUI, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -10,6 +11,8 @@ import { bibleCrossRefsBase } from '@/utils/bibleCrossRefsCache';
 import { crossReferenceLabel, crossReferencesAt, forgetLoadedCrossRefs, isMainReference, type CrossRefsBook } from '@/utils/crossReferences';
 
 import { verseWords, type BookText } from '@/utils/bibleText';
+
+const render = (ui: React.ReactNode, options?: Parameters<typeof renderUI>[1]) => renderUI(ui, { wrapper: ReaderShell, ...options });
 
 // The reader's marks keep one form of the data engine per book; these tests mount no engine.
 jest.mock('@/data-engine/react.client', () => ({
@@ -96,30 +99,52 @@ describe('the trail of places in the reader', () => {
     expect(screen.queryByRole('button', { name: 'bible.trail.toggle' })).not.toBeInTheDocument();
   });
 
-  it('a link followed within the book joins the trail; its button counts the links and shows and hides them', async () => {
+  it('a link followed within the book joins the trail; its header button opens a left drawer, newest first', async () => {
     renderRuth();
     await followTheLink();
     const toggle = await screen.findByRole('button', { name: 'bible.trail.toggle' });
     expect(toggle).toHaveTextContent('2');
-    expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    expect(toggle).toHaveAttribute('aria-haspopup', 'dialog');
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
     expect(screen.queryByRole('navigation', { name: 'bible.trail.title' })).not.toBeInTheDocument();
 
     await userEvent.click(toggle);
     expect(trailLinks()).toHaveLength(2);
-    expect(lit()).toBe(1);
+    expect(lit()).toBe(0);
     expect(readPlaceTrail().links[1]).toEqual(expect.objectContaining({ book: 'Ruth', chapter: subject.inside.chapter, verse: subject.inside.fromVerse }));
 
-    await userEvent.click(screen.getByRole('button', { name: 'bible.trail.toggle' }));
-    expect(screen.queryByRole('navigation', { name: 'bible.trail.title' })).not.toBeInTheDocument();
+    const drawer = screen.getByRole('dialog', { name: 'bible.trail.title' });
+    expect(within(drawer).getByRole('navigation').parentElement).toHaveClass('left-0', 'h-dvh', 'w-[min(300px,80vw)]');
+    await userEvent.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(toggle).toHaveFocus();
+  });
+
+  it('the drawer keeps keyboard focus inside and closes on its backdrop', async () => {
+    renderRuth();
+    await followTheLink();
+    const toggle = screen.getByRole('button', { name: 'bible.trail.toggle' });
+    expect(toggle).toHaveAttribute('aria-haspopup', 'dialog');
+    await userEvent.click(toggle);
+    const drawer = screen.getByRole('dialog', { name: 'bible.trail.title' });
+    expect(within(drawer).getByRole('switch', { name: 'bible.trail.verseStart' })).toBeInTheDocument();
+    for (let press = 0; press < 7; press += 1) {
+      await userEvent.tab();
+      expect(drawer).toContainElement(document.activeElement as HTMLElement);
+    }
+    await userEvent.tab({ shift: true });
+    expect(drawer).toContainElement(document.activeElement as HTMLElement);
+    await userEvent.click(screen.getByTestId('trail-drawer-backdrop'));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(toggle).toHaveFocus();
   });
 
   it('the way back to the verse only lights its link: nothing is added', async () => {
     renderRuth();
     await followTheLink();
-    await userEvent.click(screen.getByRole('button', { name: 'bible.trail.toggle' }));
     await userEvent.click(screen.getByRole('button', { name: 'bible.backToLabel' }));
-    expect(trailLinks()).toHaveLength(2);
-    expect(lit()).toBe(0);
+    expect(readPlaceTrail().links).toHaveLength(2);
+    expect(readPlaceTrail().at).toBe(0);
   });
 
   // The owner, 2026-10-20: "←" swapped between the last two places and never reached Zeph 3:10 on the trail.
@@ -139,12 +164,13 @@ describe('the trail of places in the reader', () => {
   it('a link of the trail opens its place, and going there again and again adds nothing', async () => {
     renderRuth();
     await followTheLink();
-    await userEvent.click(screen.getByRole('button', { name: 'bible.trail.toggle' }));
     for (const index of [0, 1, 0, 1]) {
-      await userEvent.click(trailLinks()[index]);
-      expect(lit()).toBe(index);
+      await userEvent.click(screen.getByRole('button', { name: 'bible.trail.toggle' }));
+      await userEvent.click(trailLinks()[1 - index]);
+      await waitFor(() => expect(readPlaceTrail().at).toBe(index));
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     }
-    expect(trailLinks()).toHaveLength(2);
+    expect(readPlaceTrail().links).toHaveLength(2);
     expect(Element.prototype.scrollIntoView).toHaveBeenCalled();
   });
   // An independent review, 2026-10-20: a note → Ruth → Romans → "← Ruth" lost the way back to the note,

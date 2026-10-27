@@ -2,6 +2,7 @@
 
 import { useEffect, type CSSProperties } from 'react';
 
+import { hasOpenLayer } from '@/hooks/useModalLayer';
 import { MARK_COLORS, PENCIL_COLORS, type PencilColor } from '@/utils/bibleMarks';
 import { pointerHover } from '@/utils/pointerHover';
 import { useTranslation } from '@locales/useTranslation';
@@ -89,7 +90,7 @@ export function MarkToolbar({ tool, vertical = false, className = '' }: { tool: 
   useEffect(() => {
     if (!holding) return undefined;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') putAway();
+      if (event.key === 'Escape' && !hasOpenLayer()) putAway();
     };
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);

@@ -127,20 +127,48 @@ const WORD_LIKE_BOOKS = new Set([
   'mark', 'acts', 'job', 'numbers', 'judges', 'kings', 'lamentations', 'revelation', 'proverbs', 'exodus',
 ]);
 const CHAPTER_WORDS = /^(глав|розділ|chapter)/;
+/** A word of a place's numbers after its book: «34:16», «3416», «29-31», «глава», «стих». */
+const PLACE_WORD = /^([\d:.\-–]+|(глав|стих|розділ|вірш|chapter|verse)\p{L}*)$/u;
 
 const languageOf = (bible: BibleId): SearchLanguage => BIBLES[bible].language;
 const isDigits = (word: string | undefined): boolean => word !== undefined && /^\d+$/.test(word);
 
-/**
- * Book names as said without their little word: «Иоанна» for «От Иоанна», «Івана» for «Від Івана»,
- * «Римлянам» for «К Римлянам» — in every language, so a Ukrainian name works with any Bible open.
- */
+/** A book's name as said without its little word: «Иоанна» for «От Иоанна», «Івана» for «Від Івана», «Римлянам» for «К Римлянам». */
+const bareName = (name: string): string => normalizeWord(name).replace(/^(от|к|до|від)\s+/, '');
+
+/** Book names as said, in every language, so a Ukrainian name works with any Bible open. */
 const BARE_NAMES = new Map<string, string>(
-  BIBLE_BOOKS_DATA.flatMap((book) => (['ru', 'uk', 'en'] as const).map((language) => {
-    const bare = normalizeWord(book.names[language]).replace(/^(от|к|до|від)\s+/, '');
-    return [bare, book.id] as const;
-  }))
+  BIBLE_BOOKS_DATA.flatMap((book) => (['ru', 'uk', 'en'] as const).map((language) => [bareName(book.names[language]), book.id] as const))
 );
+
+/**
+ * The word each name calls its book by, with the book's number apart: «4 Царств» is 4 and «царств»,
+ * «Плач Иеремии» is «плач» — the word «Иеремии» there is Jeremiah's name, not the book's.
+ */
+const CALLING_WORDS = BIBLE_BOOKS_DATA.flatMap((book) => (['ru', 'uk', 'en'] as const).map((language) => {
+  const bare = bareName(book.names[language]);
+  const [first, second] = bare.split(' ');
+  const number = second !== undefined && /^[1-4]$/.test(first) ? first : null;
+  // «От Марка», «К Римлянам» already stand in a case after their little word, and dictation writes them so.
+  const inCase = bare !== normalizeWord(book.names[language]);
+  return { bookId: book.id, language, number, word: number ? second : first, inCase };
+}));
+
+/** What a name's last letter becomes when it is said after «книга», «от», «из», «к»: «Исаия» → «Исаии», «Исаию». */
+const NAME_CASE_ENDINGS = new Set(['а', 'я', 'и', 'у', 'ю', 'е', 'і', 'ї']);
+
+/**
+ * Whether a word is a book's name said in another case, as dictation writes it: «Исаии», «Иеремии», «Даниила»,
+ * «Иезекииля», «Єремії». Only the name's ending changes. The rule of word forms (`wordForms.ts`) is wider than
+ * a name: it read «суда 5» as Judges («Судей»), «луком 5» as Luke and «marking 5» as Mark (Codex, 2026-10-26).
+ * A name after its little word is in a case already («От Марка»: «марки» is not Mark), and English names are
+ * not declined: for them only the first letters count.
+ */
+function isNameSaidInCase(said: string, name: { word: string; language: SearchLanguage; inCase: boolean }): boolean {
+  if (name.language === 'en' || name.inCase) return false;
+  const stem = /[аеиоуыэюяьйієї]$/.test(name.word) ? name.word.slice(0, -1) : name.word;
+  return stem.length >= 3 && said.length === stem.length + 1 && said.startsWith(stem) && NAME_CASE_ENDINGS.has(said.slice(-1));
+}
 
 /** The book a run of words names exactly — a name, an abbreviation, a known alias; never a guess from first letters. */
 function bookNamed(words: readonly string[], language: SearchLanguage): string | null {
@@ -225,6 +253,29 @@ function bookAtStart(words: readonly string[], language: SearchLanguage, spoken:
   return null;
 }
 
+/**
+ * A book named loosely before a place: by the first letters of its name («иса 34:16» — Исаия), as
+ * typed in a hurry, or by its name in another case («Исаии 34 16», «Иеремии 29 11»), as dictation
+ * writes it. Only when nothing but the place's numbers follows — a search drops numbers, so they can
+ * mean only the place, while «иса пророк» stays words — and only when the word calls one book:
+ * «ио 3:16» begins John, Job, Joel and Jonah and stays a search. A numbered book needs its number.
+ */
+function bookBeforePlace(words: readonly string[]): { bookId: string; start: number; end: number } | null {
+  let start = 0;
+  while (start < words.length - 1 && INTRO.has(words[start])) start += 1;
+  // «4 Царств» is the one book numbered past three.
+  const number = /^4$/.test(words[start] ?? '') ? '4' : bookNumber(words[start], false);
+  const at = number ? start + 1 : start;
+  const said = words[at];
+  const place = words.slice(at + 1);
+  if (!said || said.length < 3 || !/^\p{L}+$/u.test(said)) return null;
+  if (!place.some((word) => /\d/.test(word)) || !place.every((word) => PLACE_WORD.test(word))) return null;
+  const books = new Set(CALLING_WORDS
+    .filter((name) => name.number === number && (name.word.startsWith(said) || isNameSaidInCase(said, name)))
+    .map((name) => name.bookId));
+  return books.size === 1 ? { bookId: [...books][0], start, end: at + 1 } : null;
+}
+
 function scopeAt(words: readonly string[], language: SearchLanguage, books: BookGroups): (SearchScope & { used: number }) | null {
   const book = bookAtStart(words, language, true);
   if (book) {
@@ -280,13 +331,16 @@ export function readSearch(raw: string, { bible, books, asWords = false }: Pick<
 /** The matchers of a query's words. */
 export const matchersOf = (query: SearchQuery): WordMatcher[] => query.terms.map((term) => matcherOf(term, query.language));
 
-/** Books whose name or abbreviation begins with what is typed («Ио» — От Иоанна, 1 Иоанна…), for a line that names none yet. */
+/**
+ * Books whose name or abbreviation begins with what is typed («Ио» — От Иоанна, 1 Иоанна…), or whose
+ * name it is in another case, as dictated («Исаии» — Исаия), for a line that names none yet.
+ */
 export function booksBeginningWith(raw: string, languages: readonly SearchLanguage[]): string[] {
   const key = normalizeWord(raw).trim();
   if (!key || /\d/.test(key) || key.includes(' ')) return [];
-  const bare = (name: string) => normalizeWord(name).replace(/^(от|к|до|від)\s+/, '');
-  return BIBLE_BOOKS_DATA.filter((book) => languages.some((language) => {
-    const name = bare(book.names[language]);
+  const formOf = new Set(CALLING_WORDS.filter((name) => languages.includes(name.language) && isNameSaidInCase(key, name)).map((name) => name.bookId));
+  return BIBLE_BOOKS_DATA.filter((book) => formOf.has(book.id) || languages.some((language) => {
+    const name = bareName(book.names[language]);
     return name.startsWith(key) || normalizeWord(book.abbrev[language]).startsWith(key) || (key.length >= 2 && name.split(' ').some((word) => word.startsWith(key)));
   })).map((book) => book.id).slice(0, 12);
 }
@@ -339,10 +393,11 @@ export function readPlace(raw: string, { bible, hereBook }: Pick<LineContext, 'b
 
   // «двадцать третий псалом», «23 псалом»: the number before the book's name.
   const words = tokens.length === 2 && isDigits(tokens[0]) && bookNamed([tokens[1]], language) ? [tokens[1], tokens[0]] : tokens;
-  // A book named exactly at the start — «Ио» is not John, it only begins its name. Its words are then
-  // written as the book's abbreviation, which the reader of references knows in every language, and
-  // «3 глава 16 стих» as «3:16» (`normalizeSpokenScriptureReferences`).
-  const lead = bookAtStart(words, language, false);
+  // A book named exactly at the start, or loosely when only the place follows («иса 3416», «Исаии 34 16»);
+  // «Ио» alone is not John, it only begins its name. Its words are then written as the book's
+  // abbreviation, which the reader of references knows in every language, and «3 глава 16 стих» as
+  // «3:16» (`normalizeSpokenScriptureReferences`).
+  const lead = bookAtStart(words, language, false) ?? bookBeforePlace(words);
   if (!lead) return null;
   const text = normalizeSpokenScriptureReferences([getLocalizedAbbrev(lead.bookId, language), ...words.slice(lead.end)].join(' '));
   const ref = referenceFromText(text, bible);

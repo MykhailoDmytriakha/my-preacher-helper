@@ -1,4 +1,5 @@
-import { act, fireEvent, render, renderHook, screen, waitFor, within } from '@testing-library/react';
+import { ReaderShell, readerPlaceButton } from '../../../test-utils/reader-shell';
+import { act, fireEvent, render as renderUI, renderHook, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -15,6 +16,8 @@ import { bibleCrossRefsBase } from '@/utils/bibleCrossRefsCache';
 import { coversChapter, crossReferenceLabel, crossReferencesAt, forgetLoadedCrossRefs, isMainReference, type CrossReference, type CrossRefsBook } from '@/utils/crossReferences';
 
 import { bookSlug, verseWords, type BookText } from '@/utils/bibleText';
+
+const render = (ui: React.ReactNode, options?: Parameters<typeof renderUI>[1]) => renderUI(ui, { wrapper: ReaderShell, ...options });
 
 // The reader's marks keep one form of the data engine per book; these tests mount no engine.
 jest.mock('@/data-engine/react.client', () => ({
@@ -112,10 +115,10 @@ describe('cross references in the Bible reader', () => {
     if (pendingSize) jest.useFakeTimers();
     try {
       render(<TextScaleProvider>{pendingSize ? <SizeChoice /> : null}<BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={{ chapter: 2, verse: 3 }} onOpenBook={jest.fn()} /></TextScaleProvider>);
-      await screen.findByRole('button', { name: 'bible.changeChapter' });
+      await waitFor(readerPlaceButton);
       const target = document.querySelector<HTMLElement>('[data-verse="2:3"]')!;
       expect(target.getBoundingClientRect().top).toBe(16);
-      expect(screen.getByRole('button', { name: 'bible.changeChapter' })).toHaveTextContent('2:3');
+      expect(readerPlaceButton()).toHaveTextContent('2:3');
       if (pendingSize) {
         fireEvent.click(screen.getByRole('button', { name: 'Choose pending size' }));
         expect(screen.getByTestId('qa-pending-size')).toHaveTextContent('1.6:1.3');
@@ -127,7 +130,7 @@ describe('cross references in the Bible reader', () => {
         window.dispatchEvent(new Event('scroll'));
       });
       expect(target.getBoundingClientRect().top).toBe(16);
-      expect(screen.getByRole('button', { name: 'bible.changeChapter' })).toHaveTextContent('2:3');
+      expect(readerPlaceButton()).toHaveTextContent('2:3');
       if (pendingSize) {
         act(() => { jest.advanceTimersByTime(30); });
         act(() => { jest.advanceTimersByTime(30); });
@@ -140,12 +143,12 @@ describe('cross references in the Bible reader', () => {
         Object.defineProperty(window, 'scrollY', { configurable: true, value: window.scrollY + 80 });
         window.dispatchEvent(new Event('scroll'));
       });
-      expect(screen.getByRole('button', { name: 'bible.changeChapter' })).toHaveTextContent('2:5');
+      expect(readerPlaceButton()).toHaveTextContent('2:5');
       const current = document.querySelector<HTMLElement>('[data-verse="2:5"]')!;
       for (const change of [{ mode: 'all' as const }, { show: false }, { show: true }]) {
         act(() => { saveCrossReferencePrefs(change); });
         expect(current.getBoundingClientRect().top).toBe(16);
-        expect(screen.getByRole('button', { name: 'bible.changeChapter' })).toHaveTextContent('2:5');
+        expect(readerPlaceButton()).toHaveTextContent('2:5');
       }
     } finally {
       deliver(answer(ruthSet));
@@ -473,7 +476,7 @@ describe('the cross-reference settings', () => {
     );
     await screen.findByTestId(`cross-refs-${key}`);
     await userEvent.click(await screen.findByLabelText('Text size'));
-    const menu = screen.getByRole('dialog', { name: 'Text size' });
+    const menu = screen.getByRole('group', { name: 'Text size' });
     expect(within(menu).getByRole('slider', { name: 'Text size slider' })).toBeInTheDocument();
     expect(within(menu).queryByTestId('cross-reference-settings')).not.toBeInTheDocument();
     expect(within(menu).getByRole('link', { name: 'bible.settingsLink' })).toHaveAttribute('href', '/settings/bible');

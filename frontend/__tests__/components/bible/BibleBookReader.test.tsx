@@ -1,4 +1,5 @@
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { ReaderShell, readerPlaceButton } from '../../../test-utils/reader-shell';
+import { act, fireEvent, render as renderUI, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { BibleBookReader, roomBelow } from '@/components/bible/BibleBookReader';
@@ -8,6 +9,8 @@ import { TextScaleProvider, useTextScale } from '@/providers/TextScaleProvider';
 import { arriveOnTrail, readPlaceTrail, resetPlaceTrailForTests } from '@/components/bible/placeTrailStore';
 import { LONG_PRESS_MS } from '@/hooks/useLongPress';
 import { verseCount } from '@/utils/versification';
+
+const render = (ui: React.ReactNode, options?: Parameters<typeof renderUI>[1]) => renderUI(ui, { wrapper: ReaderShell, ...options });
 
 // The reader's marks keep one form of the data engine per book; these tests mount no engine.
 jest.mock('@/data-engine/react.client', () => ({
@@ -60,13 +63,20 @@ async function hold(target: Element) {
 /** The button of a number in a window's grid: its text sits in a span above the hold's fill. */
 const tile = (window_: HTMLElement, number: string) => within(window_).getByText(number, { selector: 'span' }).closest('button') as HTMLElement;
 
+/** The same place control lives in the phone shell or the wide book line. */
+
+async function openBooks() {
+  await userEvent.click(screen.getByRole('button', { name: 'bible.navigate' }));
+  await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'bible.allBooks' }));
+}
+
 /** A computer (768 px and wider) or a phone: what `matchMedia` answers the reader. */
-let wideScreen = false;
+let screenWidth = 390;
 
 beforeEach(() => {
-  wideScreen = false;
+  screenWidth = 390;
   window.matchMedia = jest.fn((query: string) => ({
-    matches: wideScreen, media: query, onchange: null,
+    matches: query === '(hover: hover)' ? screenWidth >= 1024 : Number(/min-width:\s*(\d+)px/.exec(query)?.[1] ?? Infinity) <= screenWidth, media: query, onchange: null,
     addEventListener: jest.fn(), removeEventListener: jest.fn(), addListener: jest.fn(), removeListener: jest.fn(), dispatchEvent: jest.fn(),
   })) as unknown as typeof window.matchMedia;
   // Every test starts on a fresh history entry: a place saved by one must not open the next.
@@ -82,7 +92,7 @@ beforeEach(() => {
 
 describe('BibleBookReader', () => {
   it.each([true, false])('claims shell panes only for a mounted wide reader: wide=%s', async (wide) => {
-    wideScreen = wide;
+    screenWidth = wide ? 1024 : 390;
     const { container, unmount } = render(
       <div id="app-shell"><div data-page-gesture="idle">
         <BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={null} onOpenBook={jest.fn()} />
@@ -108,12 +118,12 @@ describe('BibleBookReader', () => {
 
     expect(await screen.findByText('Павел, Апостол')).toBeInTheDocument();
     expect(global.fetch).toHaveBeenCalledWith('/bible-text/rst/v1/ruth.json', expect.objectContaining({ signal: expect.anything() }));
-    expect(screen.getByRole('heading', { level: 1, name: 'Ruth' })).toBeInTheDocument();
+    expect(within(screen.getByTestId('reader-shell-header')).getByRole('button', { name: 'bible.navigate' })).toHaveTextContent('Ruth');
     expect(screen.getAllByRole('region', { name: 'bible.chapter' })).toHaveLength(4);
     expect(screen.getByText('Итак прежде всего')).toBeInTheDocument();
     expect(screen.getByText('мир')).toHaveClass('text-rose-800');
     expect(screen.getByText('вам')).toHaveClass('italic');
-    await userEvent.click(screen.getByRole('button', { name: 'bible.changeChapter' }));
+    await userEvent.click(screen.getByRole('button', { name: 'bible.navigate' }));
     const window_ = screen.getByRole('dialog', { name: 'bible.chooseChapter' });
     expect(within(window_).getAllByRole('button', { name: 'bible.chapter' }).map((cell) => cell.textContent)).toEqual(['1', '2', '3', '4']);
     expect(screen.getByText('Павел, Апостол')).toHaveAttribute('lang', 'ru');
@@ -167,21 +177,21 @@ describe('BibleBookReader', () => {
     try {
       render(<TextScaleProvider><SizeChoice /><BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={{ chapter: 1, verse: 2 }} onOpenBook={jest.fn()} /></TextScaleProvider>);
       await screen.findByText('Итак прежде всего');
-      expect(screen.getByRole('button', { name: 'bible.changeChapter' })).toHaveTextContent('1:2');
+      expect(readerPlaceButton()).toHaveTextContent('1:2');
       jumpedAfterReflow.length = 0;
       fireEvent.click(screen.getByRole('button', { name: 'Set text size' }));
       if (mode === 'choose another chapter before reflow') {
-        fireEvent.click(screen.getByRole('button', { name: 'bible.changeChapter' }));
+        fireEvent.click(readerPlaceButton());
         fireEvent.click(within(screen.getByRole('dialog', { name: 'bible.chooseChapter' })).getByText('3'));
         fireEvent.click(within(screen.getByRole('dialog', { name: 'bible.chooseVerse' })).getByText('1'));
-        expect(screen.getByRole('button', { name: 'bible.changeChapter' })).toHaveTextContent('3:1');
+        expect(readerPlaceButton()).toHaveTextContent('3:1');
       }
       act(() => { jest.advanceTimersByTime(30); });
       act(() => { jest.advanceTimersByTime(30); });
       act(() => { jest.advanceTimersByTime(30); });
       expect(reflowed).toBe(true);
       expect(screen.getByTestId('qa-text-size')).toHaveTextContent(mode === 'replacement during reflow' ? '1.8:1.8' : '1.6:1.6');
-      expect(screen.getByRole('button', { name: 'bible.changeChapter' })).toHaveTextContent(mode === 'choose another chapter before reflow' ? '3:1' : '1:2');
+      expect(readerPlaceButton()).toHaveTextContent(mode === 'choose another chapter before reflow' ? '3:1' : '1:2');
       expect(jumpedAfterReflow.at(-1)).toBe(true);
       if (mode === 'cancel then deliberately scroll') {
         fireEvent.click(screen.getByRole('button', { name: 'Next text size' }));
@@ -189,11 +199,11 @@ describe('BibleBookReader', () => {
         expect(screen.getByTestId('qa-text-size')).toHaveTextContent('1.6:1.6');
         topRow = '3:1';
         act(() => { movePage(); });
-        expect(screen.getByRole('button', { name: 'bible.changeChapter' })).toHaveTextContent('3:1');
+        expect(readerPlaceButton()).toHaveTextContent('3:1');
         fireEvent.click(screen.getByRole('button', { name: 'Next text size' }));
         act(() => { jest.advanceTimersByTime(30); });
         act(() => { jest.advanceTimersByTime(30); });
-        expect(screen.getByRole('button', { name: 'bible.changeChapter' })).toHaveTextContent('3:1');
+        expect(readerPlaceButton()).toHaveTextContent('3:1');
       }
     } finally {
       write.mockRestore();
@@ -236,21 +246,21 @@ describe('BibleBookReader', () => {
       const reading = (key: string) => document.querySelector<HTMLElement>(`[data-verse="${key}"]`)!.getBoundingClientRect().top;
       const scroll = (top: number) => act(() => { offset = top; window.dispatchEvent(new Event('scroll')); });
       scroll(120);
-      expect(screen.getByRole('button', { name: 'bible.changeChapter' })).toHaveTextContent('3:1');
+      expect(readerPlaceButton()).toHaveTextContent('3:1');
       width = 200;
       if (newInput) fireEvent.wheel(window, { deltaY: 40 });
       scroll(newInput ? 160 : 80);
       act(() => { for (const callback of [...callbacks]) callback(); });
       expect(reading(newInput ? '4:1' : '3:1')).toBe(16);
-      expect(screen.getByRole('button', { name: 'bible.changeChapter' })).toHaveTextContent(newInput ? '4:1' : '3:1');
+      expect(readerPlaceButton()).toHaveTextContent(newInput ? '4:1' : '3:1');
       // A later deliberate scroll owns the next restored place, rather than the initial link.
       scroll(newInput ? 120 : 160);
-      expect(screen.getByRole('button', { name: 'bible.changeChapter' })).toHaveTextContent(newInput ? '3:1' : '4:1');
+      expect(readerPlaceButton()).toHaveTextContent(newInput ? '3:1' : '4:1');
       width = 100;
       scroll(80);
       act(() => { for (const callback of [...callbacks]) callback(); });
       expect(reading(newInput ? '3:1' : '4:1')).toBe(16);
-      expect(screen.getByRole('button', { name: 'bible.changeChapter' })).toHaveTextContent(newInput ? '3:1' : '4:1');
+      expect(readerPlaceButton()).toHaveTextContent(newInput ? '3:1' : '4:1');
     } finally {
       view.unmount();
       Element.prototype.getBoundingClientRect = originalRect;
@@ -295,7 +305,7 @@ describe('BibleBookReader', () => {
       expect(target.getBoundingClientRect().top).toBe(16);
       if (laterScroll) {
         act(() => { offset = 120; window.dispatchEvent(new Event('scroll')); });
-        expect(screen.getByRole('button', { name: 'bible.changeChapter' })).toHaveTextContent('3:1');
+        expect(readerPlaceButton()).toHaveTextContent('3:1');
       }
       const pageResized = () => act(() => {
         for (const { targets, run } of [...observers.values()]) if (targets.has(document.documentElement)) run();
@@ -304,10 +314,10 @@ describe('BibleBookReader', () => {
       pageResized();
       if (laterScroll) {
         expect(offset).toBe(120);
-        expect(screen.getByRole('button', { name: 'bible.changeChapter' })).toHaveTextContent('3:1');
+        expect(readerPlaceButton()).toHaveTextContent('3:1');
       } else {
         expect(target.getBoundingClientRect().top).toBe(16);
-        expect(screen.getByRole('button', { name: 'bible.changeChapter' })).toHaveTextContent('1:2');
+        expect(readerPlaceButton()).toHaveTextContent('1:2');
       }
       noticeHeight = 0;
       pageResized();
@@ -322,7 +332,7 @@ describe('BibleBookReader', () => {
     }
   });
 
-  it('keeps the visible verse while text size changes in an iOS pinned page and after the size window closes', async () => {
+  it('keeps the visible verse when pending text size applies under an iOS-pinned translation picker', async () => {
     const order = ['1:1', '1:2', '2:1', '3:1', '4:1'];
     const descriptors = {
       userAgent: Object.getOwnPropertyDescriptor(navigator, 'userAgent'),
@@ -371,18 +381,20 @@ describe('BibleBookReader', () => {
       const verse = document.querySelector<HTMLElement>('[data-verse="1:2"]')!;
       expect(verse.getBoundingClientRect().top).toBe(16);
       fireEvent.click(screen.getByRole('button', { name: 'Text size' }));
-      expect(document.body.style.position).toBe('fixed');
       fireEvent.keyDown(screen.getByRole('slider', { name: 'Text size slider' }), { key: 'End' });
+      // The phone text card is now nonmodal. Its nested translation picker pins iOS while the size is pending.
+      fireEvent.click(screen.getByRole('button', { name: 'bible.changeTranslation' }));
+      expect(document.body.style.position).toBe('fixed');
       act(() => { jest.advanceTimersByTime(30); });
       act(() => { jest.advanceTimersByTime(30); });
       expect(style.getPropertyValue('--text-scale')).toBe('2');
       expect(verse.getBoundingClientRect().top).toBe(16);
-      expect(screen.getByRole('button', { name: 'bible.changeChapter' })).toHaveTextContent('1:2');
+      expect(readerPlaceButton()).toHaveTextContent('1:2');
       fireEvent.keyDown(document, { key: 'Escape' });
       act(() => { jest.advanceTimersByTime(30); });
       expect(document.body.style.position).toBe('');
       expect(verse.getBoundingClientRect().top).toBe(16);
-      expect(screen.getByRole('button', { name: 'bible.changeChapter' })).toHaveTextContent('1:2');
+      expect(readerPlaceButton()).toHaveTextContent('1:2');
     } finally {
       view?.unmount();
       write.mockRestore();
@@ -468,10 +480,10 @@ describe('BibleBookReader', () => {
     }
   });
 
-  it('names the place on the chapter button as a reference names it', async () => {
+  it('names the place on the phone header button as a reference names it', async () => {
     render(<BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={{ chapter: 1, verse: 2 }} onOpenBook={jest.fn()} />);
     await screen.findByText('Итак прежде всего');
-    expect(screen.getByRole('button', { name: 'bible.changeChapter' })).toHaveTextContent('1:2');
+    expect(screen.getByRole('button', { name: 'bible.navigate' })).toHaveTextContent('1:2');
   });
 
   it('lights a URL passage across chapters without lighting either neighbour', async () => {
@@ -697,7 +709,7 @@ describe('BibleBookReader', () => {
     await screen.findByText('Итак прежде всего');
     expect(scrollIntoView).not.toHaveBeenCalled();
     expect(window.scrollTo).toHaveBeenCalledWith({ top: 0 });
-    await userEvent.click(screen.getByRole('button', { name: 'bible.changeChapter' }));
+    await userEvent.click(screen.getByRole('button', { name: 'bible.navigate' }));
     expect(screen.getByRole('button', { current: true })).toHaveTextContent('1');
   });
 
@@ -741,7 +753,7 @@ describe('BibleBookReader', () => {
       await screen.findByText('Третья глава');
       window.dispatchEvent(new Event('scroll'));
       // The book's button is in the line at the top: no scrolling up to reach it.
-      await userEvent.click(screen.getByRole('button', { name: 'bible.changeBook' }));
+      await openBooks();
       await hold(screen.getByRole('button', { name: 'Jude' }));
       expect(onOpenBook).toHaveBeenCalledWith('jude', { chapter: 1, verse: 1 }, { slug: 'ruth', chapter: 3, verse: 1, bible: 'rst' });
       await new Promise((resolve) => setTimeout(resolve, 500));
@@ -777,7 +789,7 @@ describe('BibleBookReader', () => {
   it('on a computer keeps the book and the chapter in a line above the text, which scrolls in its own pane beside the minimap', async () => {
     // A page coasting under the finger took a finger put on the minimap nested in it (iPad): the
     // page stands still, and the text and the minimap are sibling panes.
-    wideScreen = true;
+    screenWidth = 1024;
     const { container } = render(<BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={null} onOpenBook={jest.fn()} />);
     await screen.findByText('Третья глава');
     const line = screen.getByRole('heading', { level: 1, name: 'Ruth' }).closest('header');
@@ -813,7 +825,7 @@ describe('BibleBookReader', () => {
     const onOpenBook = jest.fn();
     render(<BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={null} onOpenBook={onOpenBook} />);
     await screen.findByText('Третья глава');
-    await userEvent.click(screen.getByRole('button', { name: 'bible.changeBook' }));
+    await openBooks();
     const line = screen.getByRole('combobox');
     // A chapter the book does not have is said, with the way to fix it, and opens nothing.
     await userEvent.type(line, 'Ин 30{Enter}');
@@ -825,7 +837,7 @@ describe('BibleBookReader', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
 
     scrollIntoView.mockClear();
-    await userEvent.click(screen.getByRole('button', { name: 'bible.changeBook' }));
+    await openBooks();
     await userEvent.type(screen.getByRole('combobox'), 'Руф 3{Enter}');
     expect(scrollIntoView.mock.contexts).toEqual([document.querySelector('[data-chapter="3"]')]);
     expect(onOpenBook).toHaveBeenCalledTimes(1);
@@ -865,6 +877,21 @@ describe('BibleBookReader', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
+  it('the phone text card keeps the existing translation picker usable', async () => {
+    const onChangeBible = jest.fn();
+    render(<BibleBookReader bible="rst" initialBible="rst" onChangeBible={onChangeBible} bookId="Ruth" initialPlace={null} onOpenBook={jest.fn()} />);
+    await screen.findByText('Третья глава');
+    await userEvent.click(screen.getByRole('button', { name: 'Text size' }));
+    await userEvent.click(screen.getByRole('button', { name: 'bible.changeTranslation' }));
+    await userEvent.keyboard('{Escape}');
+    expect(screen.getByRole('button', { name: 'Text size' })).toHaveFocus();
+    await userEvent.click(screen.getByRole('button', { name: 'Text size' }));
+    await userEvent.click(screen.getByRole('button', { name: 'bible.changeTranslation' }));
+    const choices = screen.getByRole('dialog', { name: 'bible.chooseTranslation' });
+    await userEvent.click(within(choices).getByText('bible.translations.kjv.name'));
+    expect(onChangeBible).toHaveBeenCalledWith('kjv');
+  });
+
   describe('another Bible', () => {
     // The King James Psalter: 150 psalms of their own lengths, the reader's check of a book file.
     const kjvPsalms = { id: 'Psalms', chapters: Array.from({ length: 150 }, (_, index) => Array.from({ length: verseCount('kjv', 'Psalms', index + 1) }, (__, verse) => `¶Psalm ${index + 1}:${verse + 1}`)) };
@@ -872,7 +899,8 @@ describe('BibleBookReader', () => {
       global.fetch = jest.fn(async () => ({ ok: true, status: 200, json: async () => kjvPsalms, clone() { return this; } })) as unknown as typeof fetch;
     };
 
-    it('is chosen at the right edge of the line, and the page is asked to read the same place in it', async () => {
+    it('is chosen at the right edge of the wide line, and the page is asked to read the same place in it', async () => {
+      screenWidth = 768;
       const onChangeBible = jest.fn();
       render(<BibleBookReader bible="rst" initialBible="rst" onChangeBible={onChangeBible} bookId="Ruth" initialPlace={null} onOpenBook={jest.fn()} />);
       await screen.findByText('Третья глава');
@@ -1073,7 +1101,7 @@ describe('BibleBookReader', () => {
       render(<BibleBookReader bible="kjv" initialBible="kjv" onChangeBible={jest.fn()} bookId="Psalms" initialPlace={{ chapter: 100, verse: 1 }} onOpenBook={jest.fn()} />);
       await screen.findByText('Psalm 100:1');
       scrollIntoView.mockClear();
-      await userEvent.click(screen.getByRole('button', { name: 'bible.changeChapter' }));
+      await userEvent.click(screen.getByRole('button', { name: 'bible.navigate' }));
       await hold(tile(screen.getByRole('dialog', { name: 'bible.chooseChapter' }), '3'));
       expect(scrollIntoView.mock.contexts).toEqual([document.querySelector('[data-chapter="3"]')]);
       expect(document.querySelector('section[data-chapter="3"]')).not.toHaveAttribute('data-box');
@@ -1088,11 +1116,11 @@ describe('BibleBookReader', () => {
         const view = render(<BibleBookReader bible="kjv" initialBible="kjv" onChangeBible={jest.fn()} bookId="Psalms" initialPlace={{ chapter: 120, verse: 2 }} passageEnd={3} onOpenBook={jest.fn()} />);
         await screen.findByText('Psalm 120:2');
         const fadeAt = window.history.state.bibleArrival.litUntil as number;
-        await userEvent.click(screen.getByRole('button', { name: 'bible.changeChapter' }));
+        await userEvent.click(readerPlaceButton());
         await hold(tile(screen.getByRole('dialog', { name: 'bible.chooseChapter' }), '3'));
         expect(document.querySelector('[data-verse="120:2"]')).toBeNull();
         act(() => { jest.advanceTimersByTime(Math.max(0, fadeAt + 400 - Date.now())); });
-        await userEvent.click(screen.getByRole('button', { name: 'bible.changeChapter' }));
+        await userEvent.click(readerPlaceButton());
         await hold(tile(screen.getByRole('dialog', { name: 'bible.chooseChapter' }), '120'));
         const row = document.querySelector<HTMLElement>('[data-verse="120:2"]')!;
         expect(row).toHaveAttribute('data-arrival', 'off');
@@ -1100,7 +1128,7 @@ describe('BibleBookReader', () => {
         expect(parseFloat(delay)).toBeLessThanOrEqual(-400);
         expect(parseFloat(delay)).toBeGreaterThan(-3600);
         // Drawing nearby chapters must not advance an already-running row's animation a second time.
-        await userEvent.click(screen.getByRole('button', { name: 'bible.changeChapter' }));
+        await userEvent.click(readerPlaceButton());
         await hold(tile(screen.getByRole('dialog', { name: 'bible.chooseChapter' }), '119'));
         expect(document.querySelector('[data-verse="120:2"]')).toBe(row);
         expect(row.style.getPropertyValue('--arrival-fade-delay')).toBe(delay);
@@ -1123,10 +1151,10 @@ describe('BibleBookReader', () => {
         expect(document.querySelector('[data-verse="120:2"]')).toHaveAttribute('data-arrival', 'on');
         expect(document.querySelector('[data-verse="120:3"]')).toHaveAttribute('data-arrival', 'on');
         // The psalm leaves the page and comes back within the light's time: lit as it was (Codex, 2026-10-16).
-        await userEvent.click(screen.getByRole('button', { name: 'bible.changeChapter' }));
+        await userEvent.click(screen.getByRole('button', { name: 'bible.navigate' }));
         await hold(tile(screen.getByRole('dialog', { name: 'bible.chooseChapter' }), '3'));
         expect(document.querySelector('[data-verse="120:2"]')).toBeNull();
-        await userEvent.click(screen.getByRole('button', { name: 'bible.changeChapter' }));
+        await userEvent.click(screen.getByRole('button', { name: 'bible.navigate' }));
         await hold(tile(screen.getByRole('dialog', { name: 'bible.chooseChapter' }), '120'));
         expect(document.querySelector('[data-verse="120:2"]')).toHaveAttribute('data-arrival', 'on');
       } finally {
@@ -1140,7 +1168,7 @@ describe('BibleBookReader', () => {
     it('shows every chapter ten to a row; a chapter pressed shows its verses, and a verse pressed jumps there lit and closes', async () => {
       const { container } = render(<BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={null} onOpenBook={jest.fn()} />);
       await screen.findByText('Третья глава');
-      await userEvent.click(screen.getByRole('button', { name: 'bible.changeChapter' }));
+      await userEvent.click(screen.getByRole('button', { name: 'bible.navigate' }));
       const chapters = screen.getByRole('dialog', { name: 'bible.chooseChapter' });
       expect(within(chapters).getByRole('button', { current: true })).toHaveTextContent('1');
       expect(within(chapters).getByRole('button', { name: 'bible.chapter', current: true }).parentElement).toHaveClass('grid-cols-10');
@@ -1159,7 +1187,7 @@ describe('BibleBookReader', () => {
     it('opens a chapter held half a second at its start, unlit, and closes', async () => {
       const { container } = render(<BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={null} onOpenBook={jest.fn()} />);
       await screen.findByText('Третья глава');
-      await userEvent.click(screen.getByRole('button', { name: 'bible.changeChapter' }));
+      await userEvent.click(screen.getByRole('button', { name: 'bible.navigate' }));
       scrollIntoView.mockClear();
       await hold(tile(screen.getByRole('dialog'), '3'));
       expect(scrollIntoView.mock.contexts).toEqual([document.querySelector('[data-chapter="3"]')]);
@@ -1170,7 +1198,7 @@ describe('BibleBookReader', () => {
     it('fills the verse being read among its chapter\'s verses, and goes back to the chapters', async () => {
       render(<BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={{ chapter: 1, verse: 2 }} onOpenBook={jest.fn()} />);
       await screen.findByText('Третья глава');
-      await userEvent.click(screen.getByRole('button', { name: 'bible.changeChapter' }));
+      await userEvent.click(screen.getByRole('button', { name: 'bible.navigate' }));
       await userEvent.click(tile(screen.getByRole('dialog'), '1'));
       const verses = screen.getByRole('dialog', { name: 'bible.chooseVerse' });
       expect(within(verses).getByRole('button', { current: true })).toHaveTextContent('2');
@@ -1182,7 +1210,7 @@ describe('BibleBookReader', () => {
     it('goes on to the verses from the keyboard too: nothing is reached by a hold alone', async () => {
       render(<BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={null} onOpenBook={jest.fn()} />);
       await screen.findByText('Третья глава');
-      await userEvent.click(screen.getByRole('button', { name: 'bible.changeChapter' }));
+      await userEvent.click(screen.getByRole('button', { name: 'bible.navigate' }));
       // The window gives the focus to the chapter being read; Enter is its press.
       expect(within(screen.getByRole('dialog')).getByRole('button', { current: true })).toHaveFocus();
       await userEvent.keyboard('{Enter}');
@@ -1195,7 +1223,7 @@ describe('BibleBookReader', () => {
     it('closes on Escape without choosing', async () => {
       render(<BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={null} onOpenBook={jest.fn()} />);
       await screen.findByText('Третья глава');
-      await userEvent.click(screen.getByRole('button', { name: 'bible.changeChapter' }));
+      await userEvent.click(screen.getByRole('button', { name: 'bible.navigate' }));
       await userEvent.keyboard('{Escape}');
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     });
@@ -1204,7 +1232,7 @@ describe('BibleBookReader', () => {
       const onOpenBook = jest.fn();
       render(<BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={null} onOpenBook={onOpenBook} />);
       await screen.findByText('Третья глава');
-      await userEvent.click(screen.getByRole('button', { name: 'bible.changeBook' }));
+      await openBooks();
       const books = screen.getByRole('dialog', { name: 'bible.chooseBook' });
       expect(within(books).getByRole('button', { current: true })).toHaveTextContent('Ruth');
       expect(within(books).getByText('bible.holdBookHint')).toBeInTheDocument();
@@ -1215,7 +1243,7 @@ describe('BibleBookReader', () => {
       await hold(tile(psalms, '23'));
       expect(onOpenBook).toHaveBeenLastCalledWith('psalms', { chapter: 23, verse: 1 }, { slug: 'ruth', chapter: 1, verse: 1, bible: 'rst' });
 
-      await userEvent.click(screen.getByRole('button', { name: 'bible.changeBook' }));
+      await openBooks();
       await userEvent.click(screen.getByRole('button', { name: 'Psalms' }));
       await userEvent.click(tile(screen.getByRole('dialog'), '22'));
       const verses = screen.getByRole('dialog', { name: 'bible.chooseVerse' });
@@ -1228,7 +1256,7 @@ describe('BibleBookReader', () => {
       const onOpenBook = jest.fn();
       render(<BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={null} onOpenBook={onOpenBook} />);
       await screen.findByText('Третья глава');
-      await userEvent.click(screen.getByRole('button', { name: 'bible.changeBook' }));
+      await openBooks();
       await userEvent.click(screen.getByRole('button', { name: 'Jude' }));
       const verses = screen.getByRole('dialog', { name: 'bible.chooseVerse' });
       expect(within(verses).getAllByRole('button', { name: 'bible.verseNumber' })).toHaveLength(verseCount('rst', 'Jude', 1));
@@ -1245,7 +1273,7 @@ describe('BibleBookReader', () => {
       const onOpenBook = jest.fn();
       render(<BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={null} onOpenBook={onOpenBook} />);
       await screen.findByText('Третья глава');
-      await userEvent.click(screen.getByRole('button', { name: 'bible.changeBook' }));
+      await openBooks();
       await userEvent.click(screen.getByRole('button', { name: 'Ruth' }));
       scrollIntoView.mockClear();
       await hold(tile(screen.getByRole('dialog'), '2'));
@@ -1259,10 +1287,10 @@ describe('BibleBookReader', () => {
       await screen.findByText('Иуда, раб Иисуса Христа');
       expect(screen.queryByRole('button', { name: 'bible.changeChapter' })).not.toBeInTheDocument();
       // No button, but the place still named as a reference names it.
-      expect(screen.getByLabelText('bible.placeVerse')).toHaveTextContent('1:1');
+      expect(screen.getByRole('button', { name: 'bible.navigate' })).toHaveTextContent('Jude 1');
     });
 
-    it('opens, on a phone, the chapters of the book being read from the pill at the bottom, says what a hold does, and every book from there', async () => {
+    it('opens, on a phone, the chapters of the book being read from its pill, says what a hold does, and every book from there', async () => {
       const onOpen = jest.fn();
       render(<ReadingPill bookId="Ruth" bible="rst" currentChapter={3} currentVerse={1} text={{ id: 'Ruth', chapters: book.chapters }} locale="en" onOpen={onOpen} />);
       await userEvent.click(screen.getByRole('button', { name: 'bible.navigate' }));
@@ -1312,7 +1340,7 @@ describe('BibleBookReader', () => {
       };
       try {
         render(<ChapterPicker bookId="Ruth" bible="rst" current={1} verse={1} text={{ id: 'Ruth', chapters: book.chapters }} locale="en" wide onOpen={jest.fn()} />);
-        await userEvent.click(screen.getByRole('button', { name: 'bible.changeChapter' }));
+        await userEvent.click(readerPlaceButton());
         expect(screen.getByRole('dialog')).toHaveStyle({ top: '122px' });
       } finally {
         Element.prototype.getBoundingClientRect = realRect;
@@ -1322,7 +1350,7 @@ describe('BibleBookReader', () => {
     it('tells a finger on a wide screen (an iPad) nothing about pointing at a verse', async () => {
       // `matchMedia` answers no to every query here: wide by the prop, and no hover — an iPad.
       render(<ChapterPicker bookId="Ruth" bible="rst" current={1} verse={1} text={{ id: 'Ruth', chapters: book.chapters }} locale="en" wide onOpen={jest.fn()} />);
-      await userEvent.click(screen.getByRole('button', { name: 'bible.changeChapter' }));
+      await userEvent.click(readerPlaceButton());
       await userEvent.click(tile(screen.getByRole('dialog'), '1'));
       expect(screen.getByRole('dialog', { name: 'bible.chooseVerse' })).toBeInTheDocument();
       expect(screen.queryByText('bible.verseHint')).not.toBeInTheDocument();
@@ -1337,7 +1365,7 @@ describe('BibleBookReader', () => {
       };
       try {
         render(<ChapterPicker bookId="Romans" bible="rst" current={8} verse={1} text={null} locale="en" wide onOpen={jest.fn()} />);
-        await userEvent.click(screen.getByRole('button', { name: 'bible.changeChapter' }));
+        await userEvent.click(readerPlaceButton());
         // 68 px from the bottom: the window stands on the button's top edge, as high as the room above it.
         expect(screen.getByRole('dialog')).toHaveStyle({ bottom: '76px', maxHeight: `${window.innerHeight - 68 - 8 - 16}px` });
         expect(screen.getByRole('dialog').style.top).toBe('');
@@ -1354,7 +1382,7 @@ describe('BibleBookReader', () => {
       };
       try {
         render(<ChapterPicker bookId="Romans" bible="rst" current={8} verse={1} text={null} locale="en" wide onOpen={jest.fn()} />);
-        await userEvent.click(screen.getByRole('button', { name: 'bible.changeChapter' }));
+        await userEvent.click(readerPlaceButton());
         await userEvent.click(tile(screen.getByRole('dialog'), '6'));
         // Ten verses a row: the window is that wide, and its right edge stays 16 px inside the screen.
         expect(screen.getByRole('dialog')).toHaveStyle({ width: '536px', left: `${window.innerWidth - 16 - 536}px` });
@@ -1365,7 +1393,7 @@ describe('BibleBookReader', () => {
 
     it('sizes a computer window of numbers by its row in the page\'s own font: a short book stays compact, a larger font keeps ten whole', async () => {
       const { unmount } = render(<ChapterPicker bookId="Ruth" bible="rst" current={1} verse={1} text={{ id: 'Ruth', chapters: book.chapters }} locale="en" wide onOpen={jest.fn()} />);
-      await userEvent.click(screen.getByRole('button', { name: 'bible.changeChapter' }));
+      await userEvent.click(readerPlaceButton());
       // Four chapters: no wider than the line under them needs.
       expect(screen.getByRole('dialog')).toHaveStyle({ width: '380px' });
       unmount();
@@ -1373,7 +1401,7 @@ describe('BibleBookReader', () => {
       document.documentElement.style.fontSize = '20px';
       try {
         render(<ChapterPicker bookId="Romans" bible="rst" current={8} verse={1} text={null} locale="en" wide onOpen={jest.fn()} />);
-        await userEvent.click(screen.getByRole('button', { name: 'bible.changeChapter' }));
+        await userEvent.click(readerPlaceButton());
         // (10 × 2.75 + 9 × 0.375 + 2 × 1.25) rem at 20 px, and the border: 669.5 → 670.
         expect(screen.getByRole('dialog')).toHaveStyle({ width: '670px' });
       } finally {
@@ -1382,10 +1410,10 @@ describe('BibleBookReader', () => {
     });
 
     it('says on a computer how the chapter under the pointer begins, what a hold does, and what the verse under it says', async () => {
-      wideScreen = true;
+      screenWidth = 1024;
       const text = { id: 'Ruth', chapters: book.chapters };
       render(<ChapterPicker bookId="Ruth" bible="rst" current={1} verse={1} text={text} locale="en" wide onOpen={jest.fn()} />);
-      await userEvent.click(screen.getByRole('button', { name: 'bible.changeChapter' }));
+      await userEvent.click(readerPlaceButton());
       // Four chapters make a row of four on a computer, not a row of ten with six empty places.
       expect(tile(screen.getByRole('dialog'), '1').parentElement).toHaveStyle({ gridTemplateColumns: 'repeat(4, 2.75rem)' });
       expect(screen.getByText('bible.holdChapterHint')).toBeInTheDocument();
