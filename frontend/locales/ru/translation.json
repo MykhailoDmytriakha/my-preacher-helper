@@ -407,7 +407,8 @@
     "settingsLink": "Настройки Библии",
     "trail": {
       "title": "Лента мест",
-      "toggle": "Лента мест: {{count}}"
+      "toggle": "Лента мест: {{count}}",
+      "verseStart": "Начало стиха"
     },
     "placeVerse": "{{chapter}}, стих {{verse}}",
     "wayBack": {

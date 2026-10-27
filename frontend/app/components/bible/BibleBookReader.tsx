@@ -758,7 +758,7 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
     <div
       ref={readerRef}
       data-reader-panes={wide ? '' : undefined}
-      className={`mx-auto w-full max-w-7xl ${frame.root}`}
+      className={`mx-auto w-full ${trail.readerWidth} ${frame.root}`}
       style={{ '--reading-top': `${readingInset}px` } as CSSProperties}
     >
       {/* THE BOOK'S LINE, from the start: the book, the chapter and the search at the text's left edge, the
@@ -792,6 +792,8 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
       {marks.syncStatus}
 
       <div className={`flex items-start gap-5 ${frame.row}`}>
+        {/* The trail as a column, on a screen with room for it: the reader has widened left by it. */}
+        {trail.beside}
         <div ref={setPane} tabIndex={frame.paneTabIndex} className={frame.pane}>
           {text && layout ? (
             // Where marks can be made the text answers a pull along the line and still scrolls up and down

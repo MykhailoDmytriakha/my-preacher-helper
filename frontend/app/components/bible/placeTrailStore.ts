@@ -26,9 +26,11 @@ import {
 export type TrailPrefs = TrailLimits & {
   /** The trail under the reader's line (or above the phone's bar); hidden, its button still counts the links. */
   shown: boolean;
+  /** The column of a wide reader shows the first words of each place's verse under it (the owner, 2026-10-26). */
+  verseStart: boolean;
 };
 
-export const DEFAULT_TRAIL_PREFS: TrailPrefs = { ...DEFAULT_TRAIL_LIMITS, shown: false };
+export const DEFAULT_TRAIL_PREFS: TrailPrefs = { ...DEFAULT_TRAIL_LIMITS, shown: false, verseStart: false };
 
 const isCount = (value: unknown): value is number => typeof value === 'number' && Number.isInteger(value) && value > 0;
 
@@ -61,6 +63,7 @@ function parsePrefs(raw: string | null): TrailPrefs {
     const value = JSON.parse(raw) as Partial<TrailPrefs>;
     return {
       shown: typeof value.shown === 'boolean' ? value.shown : DEFAULT_TRAIL_PREFS.shown,
+      verseStart: typeof value.verseStart === 'boolean' ? value.verseStart : DEFAULT_TRAIL_PREFS.verseStart,
       history: (TRAIL_HISTORY_CHOICES as readonly number[]).includes(value.history as number) ? value.history as number : DEFAULT_TRAIL_PREFS.history,
       recent: (TRAIL_RECENT_CHOICES as readonly number[]).includes(value.recent as number) ? value.recent as number : DEFAULT_TRAIL_PREFS.recent,
     };
@@ -113,7 +116,7 @@ export function readOnTrail(place: TrailPlace): void {
 }
 
 /** Where a change came from, for the technical details a feedback report sends. */
-export type TrailPrefsSource = 'reader' | 'settings';
+export type TrailPrefsSource = 'reader' | 'list' | 'settings';
 
 // The diagnostics keep letters and hyphens only (`appDiagnostics` `safeData`): a number goes as a word.
 const NUMBER_WORDS: Record<number, string> = { 5: 'five', 7: 'seven', 10: 'ten', 30: 'thirty', 50: 'fifty', 100: 'hundred' };

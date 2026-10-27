@@ -98,6 +98,18 @@ export function ownLink(trail: Trail, here: TrailPlace): number {
   return lit && sameChapter(lit, here) ? trail.at : findLast(trail.links, (link) => sameChapter(link, here), -1);
 }
 
+/**
+ * Where the light stands among the links: which link is lit, and the place of every other one. It changes
+ * when the light goes to another link (a recent place, "←", reading into a chapter already on the trail,
+ * another tab) or the links shift (a place added, the oldest gone); it stays while only the lit link's own
+ * chapter and verse move — reading on, a jump within its chapter. A column or a row brings the lit link
+ * into view on this key, so a list the person scrolled stays put while they read (Codex review,
+ * 2026-10-26: the column jumped back to the top as the text was read on).
+ */
+export function litLinkKey(trail: Trail): string {
+  return `${trail.at}|${trail.links.map((link, index) => (index === trail.at ? '*' : `${link.bible}:${link.book}:${link.chapter}`)).join('|')}`;
+}
+
 /** No more than `history` links: the oldest leave first, the one being read never does. */
 export function keepWithin(trail: Trail, history: number): Trail {
   const limit = Math.max(1, history);

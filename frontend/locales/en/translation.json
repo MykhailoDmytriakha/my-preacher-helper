@@ -397,7 +397,8 @@
     "settingsLink": "Bible settings",
     "trail": {
       "title": "Trail of places",
-      "toggle": "Trail of places: {{count}}"
+      "toggle": "Trail of places: {{count}}",
+      "verseStart": "Verse start"
     },
     "placeVerse": "{{chapter}}, verse {{verse}}",
     "wayBack": {

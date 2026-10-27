@@ -1,5 +1,6 @@
 'use client';
 
+import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { useMediaQuery } from '@/hooks/useMediaQuery';
@@ -10,7 +11,7 @@ import { placeIn } from '@/utils/versification';
 
 import { BookOnList, TranslationPicker } from './BiblePicker';
 import { booksOf } from './bookOrder';
-import { PlaceTrailOnList } from './PlaceTrail';
+import { useTrailOnList } from './PlaceTrail';
 import { usePlaceTrail } from './placeTrailStore';
 import { BibleSearch } from './search/BibleSearch';
 
@@ -37,6 +38,8 @@ export function BibleBookList({ bible, lastPlace, onOpen, onChangeBible }: Bible
     : null;
   const wide = useMediaQuery('(min-width: 768px)', false);
   const trail = usePlaceTrail();
+  const openTrailLink = useCallback((book: string, place: { chapter: number; verse: number }) => onOpen(bookSlug(book), place), [onOpen]);
+  const trailOnList = useTrailOnList({ trail, bible, locale, onOpen: openTrailLink });
 
   const testaments = booksOf(bible).map((testament) => ({
     ...testament,
@@ -44,7 +47,7 @@ export function BibleBookList({ bible, lastPlace, onOpen, onChangeBible }: Bible
   }));
 
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
+    <div className={`mx-auto flex w-full ${trailOnList.pageWidth} flex-col gap-6`}>
       {/* The translation at the right edge, where the reader's line has it. */}
       <div className="flex items-center gap-3">
         <h1 className="text-2xl font-extrabold tracking-tight text-gray-900 sm:text-3xl dark:text-white">{t('bible.title')}</h1>
@@ -65,9 +68,7 @@ export function BibleBookList({ bible, lastPlace, onOpen, onChangeBible }: Bible
       >
         <div className="mt-6 flex flex-col gap-6">
           {/* Where the person has been, the place they stopped lit; "Continue" only for a device with no trail yet. */}
-          {trail.links.length > 0 ? (
-            <PlaceTrailOnList trail={trail} bible={bible} locale={locale} onOpen={(book, place) => onOpen(bookSlug(book), place)} />
-          ) : lastPlace && continueAt ? (
+          {trail.links.length > 0 ? trailOnList.above : lastPlace && continueAt ? (
             <div>
               <button
                 type="button"
@@ -79,40 +80,45 @@ export function BibleBookList({ bible, lastPlace, onOpen, onChangeBible }: Bible
             </div>
           ) : null}
 
-          <div className="grid gap-6 lg:grid-cols-2">
-            {testaments.map((testament) => (
-              <section
-                key={testament.key}
-                aria-label={testament.title}
-                className="flex flex-col gap-5 rounded-2xl border border-gray-200 bg-white p-5 sm:p-6 dark:border-gray-700 dark:bg-gray-900"
-              >
-                <h2 className="text-lg font-bold text-gray-900 dark:text-white">{testament.title}</h2>
-                {testament.groups.map((group) => (
-                  <div key={group.key} className="flex flex-col gap-2">
-                    <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                      {t(`bible.groups.${group.key}`)}
-                    </h3>
-                    <ul className="flex flex-wrap gap-1.5">
-                      {group.ids.map((bookId) => (
-                        <li key={bookId}>
-                          {/* A press: its chapters, then a chapter's verses; a hold: the book at its start — as in the reader. */}
-                          <BookOnList
-                            bookId={bookId}
-                            bible={bible}
-                            locale={locale}
-                            wide={wide}
-                            here={bookId === lastBookId && continueAt ? { chapter: continueAt.chapter, verse: continueAt.verse } : undefined}
-                            onOpen={(book, place) => onOpen(bookSlug(book), place)}
-                          />
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ))}
-              </section>
-            ))}
+          {/* From 1024 px the trail stands as a column left of the Testaments, in the margin that stood empty,
+              as tall as they are; the hint stays under them. */}
+          <div className={trailOnList.beside ? 'grid grid-cols-[auto_minmax(0,1fr)] gap-x-5 gap-y-3' : 'flex flex-col gap-3'}>
+            {trailOnList.beside}
+            <div className="grid gap-6 lg:grid-cols-2">
+              {testaments.map((testament) => (
+                <section
+                  key={testament.key}
+                  aria-label={testament.title}
+                  className="flex flex-col gap-5 rounded-2xl border border-gray-200 bg-white p-5 sm:p-6 dark:border-gray-700 dark:bg-gray-900"
+                >
+                  <h2 className="text-lg font-bold text-gray-900 dark:text-white">{testament.title}</h2>
+                  {testament.groups.map((group) => (
+                    <div key={group.key} className="flex flex-col gap-2">
+                      <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                        {t(`bible.groups.${group.key}`)}
+                      </h3>
+                      <ul className="flex flex-wrap gap-1.5">
+                        {group.ids.map((bookId) => (
+                          <li key={bookId}>
+                            {/* A press: its chapters, then a chapter's verses; a hold: the book at its start — as in the reader. */}
+                            <BookOnList
+                              bookId={bookId}
+                              bible={bible}
+                              locale={locale}
+                              wide={wide}
+                              here={bookId === lastBookId && continueAt ? { chapter: continueAt.chapter, verse: continueAt.verse } : undefined}
+                              onOpen={(book, place) => onOpen(bookSlug(book), place)}
+                            />
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </section>
+              ))}
+            </div>
+            <p className={`${trailOnList.beside ? 'col-start-2 ' : ''}text-[13px] leading-5 text-gray-500 dark:text-gray-400`}>{t('bible.holdBookHint')}</p>
           </div>
-          <p className="-mt-3 text-[13px] leading-5 text-gray-500 dark:text-gray-400">{t('bible.holdBookHint')}</p>
         </div>
       </BibleSearch>
     </div>

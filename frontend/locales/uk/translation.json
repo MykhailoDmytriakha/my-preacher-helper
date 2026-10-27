@@ -407,7 +407,8 @@
     "settingsLink": "Налаштування Біблії",
     "trail": {
       "title": "Стрічка місць",
-      "toggle": "Стрічка місць: {{count}}"
+      "toggle": "Стрічка місць: {{count}}",
+      "verseStart": "Початок вірша"
     },
     "placeVerse": "{{chapter}}, вірш {{verse}}",
     "wayBack": {
