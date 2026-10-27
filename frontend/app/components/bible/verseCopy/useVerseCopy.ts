@@ -7,10 +7,10 @@ import { toast } from 'sonner';
 import { hasOpenLayer } from '@/hooks/useModalLayer';
 import { resolveAppLocale } from '@/utils/appLocale';
 import { getLocalizedAbbrev } from '@/utils/bibleBooks';
-import { BIBLES, type BibleId } from '@/utils/bibles';
+import { BIBLES, bibleForLocale, type BibleId } from '@/utils/bibles';
 import { verseWords, type BookText } from '@/utils/bibleText';
 import { copyPlainText } from '@/utils/clipboard';
-import { copiedPlace, defaultCopyFormat, quotesFor, verseCopyText, type CopyFormat, type CopyNames } from '@/utils/verseCopy';
+import { copiedPlace, defaultCopyFormat, verseCopyText, type CopyFormat, type CopyNames } from '@/utils/verseCopy';
 
 import { VERSE_CHOSEN_ATTRIBUTE, VERSE_HELD_ATTRIBUTE, type RibbonCrossRefs } from '../BookRibbon';
 
@@ -22,13 +22,20 @@ import { selectedVerses, verseKey, type VerseAt } from './selectedVerses';
  */
 export type VerseMenuAt = VerseAt & { x: number; y: number; touch: boolean; held: boolean; row: { top: number; left: number; width: number; height: number } };
 
-/** The book and the Bible named in the Bible's own language, whatever the interface speaks: the words copied are that Bible's. */
+/**
+ * The book named in the Bible's own language, whatever the interface speaks: the words copied are that Bible's. The Bible
+ * itself is named — by its short mark in the interface's language — only when it is not the Bible of the interface's
+ * language (the owner, 2026-10-27), like every reference mark in the app.
+ */
 export function useCopyNames(bible: BibleId, bookId: string): CopyNames {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const language = BIBLES[bible].language;
+  const isInterfaceBible = bibleForLocale(resolveAppLocale(i18n.language)) === bible;
   return useMemo(
-    () => ({ book: getLocalizedAbbrev(bookId, language), bible: t(`bible.translations.${bible}.name`), quotes: quotesFor(language) }),
-    [bible, bookId, language, t]
+    () => (isInterfaceBible
+      ? { book: getLocalizedAbbrev(bookId, language) }
+      : { book: getLocalizedAbbrev(bookId, language), mark: t(`bible.translations.${bible}.short`) }),
+    [bible, bookId, isInterfaceBible, language, t]
   );
 }
 

@@ -1,19 +1,21 @@
 /*
  * A VERSE TAKEN OUT OF THE BIBLE — the text a copy or a send carries, made from the verses themselves and never
  * from what the page shows around them (numbers, link chips, badges). The owner, 2026-10-27: a verse is copied
- * to make a sermon of it, to send it to someone as a wish, or to take a few verses while preparing. So one verse
- * goes as a quote with its place and its Bible, several as the place and the verses numbered.
+ * to make a sermon of it, to send it to someone as a wish, or to take a few verses while preparing. The place goes
+ * first, then the words — the way a verse is cited in a sermon:
  *
- *   «Притом знаем, что любящим Бога… ко благу.»
- *   — Рим 8:28 (Синодальный перевод)
+ *   Ис 47:4: "Искупитель наш — Господь Саваоф имя Ему, Святый Израилев."
+ *   Isa 47:4 (KJV): "As for our redeemer, the LORD of hosts is his name, the Holy One of Israel."
  *
- *   Рим 8:28–30 (Синодальный перевод)
+ *   Рим 8:28–30:
  *   28 Притом знаем…
  *   29 Ибо кого Он предузнал…
  *
- * A quote looks whole: where the words start in the middle of a sentence (a small letter, or a piece cut from a
- * verse) it opens with «…», and where they stop at a comma or are cut it ends with «…». The words of Scripture
- * are never changed otherwise.
+ * The quotation marks are the straight double ones in every language; quotation marks inside a verse stay as the
+ * Bible has them. The Bible is named (its short mark, in parentheses after the place) only when it is not the Bible
+ * of the interface's language — the same rule as every reference mark in the app. A quote looks whole: where the
+ * words start in the middle of a sentence (a small letter, or a piece cut from a verse) it opens with «…», and where
+ * they stop at a comma or are cut it ends with «…». The words of Scripture are never changed otherwise.
  */
 
 export type CopyFormat = 'quote' | 'numbered';
@@ -21,12 +23,11 @@ export type CopyFormat = 'quote' | 'numbered';
 /** One verse as it goes into a copy; a piece of a verse says on which side it was cut. */
 export type VerseForCopy = { chapter: number; verse: number; words: string; cutStart?: boolean; cutEnd?: boolean };
 
-/** The book as the Bible's own language shortens it, the Bible's own name, and the quotation marks of its language. */
-export type CopyNames = { book: string; bible: string; quotes: readonly [string, string] };
-
-const QUOTES: Record<'ru' | 'uk' | 'en', readonly [string, string]> = { ru: ['«', '»'], uk: ['«', '»'], en: ['“', '”'] };
-
-export const quotesFor = (language: 'ru' | 'uk' | 'en'): readonly [string, string] => QUOTES[language];
+/**
+ * The book as the Bible's own language shortens it, and the Bible's short mark — present only where the Bible is not
+ * the interface's own, so that a reader of that Bible would otherwise take the place for one in theirs.
+ */
+export type CopyNames = { book: string; mark?: string };
 
 /** One verse goes as a quote, several as numbered verses: the person changes it in the bar. */
 export const defaultCopyFormat = (count: number): CopyFormat => (count === 1 ? 'quote' : 'numbered');
@@ -86,22 +87,25 @@ function whole(words: string, cutStart: boolean, cutEnd: boolean): string {
   return `${opensMidSentence ? ELLIPSIS : ''}${text}`;
 }
 
-const placeLine = (verses: readonly VerseForCopy[], names: CopyNames) => `${copiedPlace(names.book, verses)} (${names.bible})`;
+/** «Рим 8:28–30», and «Isa 47:4 (KJV)» where the Bible must be named. */
+const placeLine = (verses: readonly VerseForCopy[], names: CopyNames) => {
+  const place = copiedPlace(names.book, verses);
+  return names.mark ? `${place} (${names.mark})` : place;
+};
 
 export function verseCopyText(verses: readonly VerseForCopy[], format: CopyFormat, names: CopyNames, chapterLength?: ChapterLength): string {
   const runs = runsOf(verses, chapterLength);
   if (runs.length === 0) return '';
-  const [open, shut] = names.quotes;
   if (format === 'quote') {
     const body = runs
       .map((run) => whole(run.map((verse) => verse.words).join(' '), Boolean(run[0].cutStart), Boolean(run[run.length - 1].cutEnd)))
       // A gap between runs is said, unless the next run already opens with «…».
       .map((text, index) => (index > 0 && !text.startsWith(ELLIPSIS) ? `${ELLIPSIS} ${text}` : text))
       .join(' ');
-    return `${open}${body}${shut}\n— ${placeLine(verses, names)}`;
+    return `${placeLine(verses, names)}: "${body}"`;
   }
   const severalChapters = new Set(verses.map((verse) => verse.chapter)).size > 1;
-  const lines = [placeLine(verses, names)];
+  const lines = [`${placeLine(verses, names)}:`];
   runs.forEach((run, index) => {
     if (index > 0) lines.push(ELLIPSIS);
     for (const verse of run) {

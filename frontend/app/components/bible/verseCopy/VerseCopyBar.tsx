@@ -63,7 +63,7 @@ export function VerseCopyBar({ copy, wide }: { copy: VerseCopy; wide: boolean })
   const shell = 'fixed z-[110] rounded-2xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900';
   return wide ? (
     <div role="region" aria-label={place} className={`${shell} bottom-6 left-1/2 flex w-[min(44rem,calc(100vw-2rem))] -translate-x-1/2 items-center gap-3 py-2.5 pl-5 pr-2.5`}>
-      <div className="min-w-[7.5rem] flex-1">
+      <div className="min-w-0 flex-1">
         <div data-copy-place="" className="truncate font-bold text-gray-900 dark:text-white">{place}</div>
         <div className="text-xs text-gray-500 dark:text-gray-400">{count}</div>
       </div>
