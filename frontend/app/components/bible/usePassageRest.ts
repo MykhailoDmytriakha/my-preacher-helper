@@ -3,25 +3,13 @@
 import { useCallback, useLayoutEffect, useRef, type RefObject } from 'react';
 
 import { readingSurface } from './readingSurface';
+import { scrollInput } from './scrollInput';
 import { restingScrollTop, type PassageBox } from './verseSheetGeometry';
 
 type Layout = { width: number; height: number; textWidth: number; textHeight: number };
 type Rest = { top: number; layout: Layout; smooth: boolean };
 
 const sameLayout = (a: Layout, b: Layout) => Object.keys(a).every(key => Math.abs(a[key as keyof Layout] - b[key as keyof Layout]) < 1);
-
-const SCROLL_KEYS = new Set(['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' ', 'Spacebar']);
-
-function scrollInput(event: Event, pane: HTMLElement): boolean {
-  if (event.type === 'wheel') return (event as WheelEvent).deltaY !== 0;
-  if (event.type === 'keydown') {
-    const key = (event as KeyboardEvent).key;
-    const onButton = event.target instanceof Element && event.target.closest('button, [role="button"]');
-    return SCROLL_KEYS.has(key) && !((key === ' ' || key === 'Spacebar') && onButton);
-  }
-  if (event.type.startsWith('pointer')) return event.target === pane;
-  return event.type === 'touchmove';
-}
 
 /** Keep a passage centered through layout changes until the person scrolls away. */
 export function usePassageRest({ paneRef, textRef, box, enabled, onLayout }: {

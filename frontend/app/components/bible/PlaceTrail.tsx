@@ -2,7 +2,7 @@
 
 import { Dialog, DialogBackdrop, DialogPanel, DialogTitle } from '@headlessui/react';
 import { XMarkIcon } from '@heroicons/react/24/outline';
-import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { useCallback, useEffect, useId, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import Switch from '@/components/ui/Switch';
@@ -15,6 +15,7 @@ import { placeIn } from '@/utils/versification';
 import { ownTrailPlace, saveTrailPrefs, usePlaceTrail, useTrailPrefs } from './placeTrailStore';
 import { useBookTexts } from './useBookTexts';
 import { useFollowAfterClose } from './useFollowAfterClose';
+import { useTrailCentering } from './useTrailCentering';
 
 
 import type { AppLocale } from '@/utils/appLocale';
@@ -147,13 +148,7 @@ export function PlaceTrailStrip({ trail, bible, locale, look, onGo }: {
   // links shift — a new link at the end, the light moved back; while only the lit link's verse moves
   // (reading on) the row stays where it was scrolled.
   const light = litLinkKey(trail);
-  // The scrolling row remains the offset parent, excluding the frame's inset.
-  useLayoutEffect(() => {
-    const row = rowRef.current;
-    const current = row?.querySelector<HTMLElement>('[aria-current="location"]');
-    if (!row || !current) return;
-    row.scrollLeft = Math.max(0, current.offsetLeft - (row.clientWidth - current.offsetWidth) / 2);
-  }, [light]);
+  useTrailCentering(rowRef, 'horizontal', `${light}|${look}`);
   return (
     <nav aria-label={t(TRAIL_TITLE)} className={STRIP_FRAMES[look]}>
       <div ref={rowRef} className={`relative overflow-x-auto overscroll-contain ${look === 'page' ? 'px-4' : ''} ${FADED_ENDS[hidden]}`}>
@@ -188,15 +183,6 @@ export function PlaceTrailStrip({ trail, bible, locale, look, onGo }: {
 const COLUMN_WIDTH = { places: 'w-[164px]', verses: 'w-[244px]' } as const;
 const READER_WIDTH = { alone: 'max-w-7xl', places: 'max-w-[1464px]', verses: 'max-w-[1544px]' } as const;
 
-/** Where the link being read stands: in the middle of the column, measured against the column's own box. */
-function centreLit(list: HTMLElement | null) {
-  const current = list?.querySelector<HTMLElement>('[aria-current="location"]');
-  if (!list || !current) return;
-  const box = list.getBoundingClientRect();
-  const at = current.getBoundingClientRect();
-  list.scrollTop = Math.max(0, list.scrollTop + at.top - box.top - (list.clientHeight - at.height) / 2);
-}
-
 /**
  * The trail as a column left of the text, newest on top: the place just reached is the first line, the
  * one under it is where "←" goes, and stepping back moves the light down the column, as it moves left
@@ -218,7 +204,7 @@ export function PlaceTrailColumn({ trail, bible, locale, verseStart, onToggleVer
   // The light going to another link (or the links shifting) brings it into view; reading on, which only
   // moves the lit link's verse, leaves the column where the person scrolled it.
   const light = litLinkKey(trail);
-  useLayoutEffect(() => centreLit(listRef.current), [light, verseStart]);
+  useTrailCentering(listRef, 'vertical', `${light}|${verseStart}|${look}`);
   const newestFirst = trail.links.map((link, index) => ({ link, index })).reverse();
   const width = verseStart ? COLUMN_WIDTH.verses : COLUMN_WIDTH.places;
   const frame = 'flex flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900';
