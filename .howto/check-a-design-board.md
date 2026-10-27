@@ -1,4 +1,4 @@
-when: check a Design canvas board · board fine locally, broken on the canvas · numbers do not fit the tiles · dc-runtime.js · support.js · .dc.html · Play does nothing · проверить доску холста · на доске цифры вылезли · на холсте не работает · доска Design
+when: check a Design canvas board · board fine locally, broken on the canvas · numbers do not fit the tiles · dc-runtime.js · support.js · .dc.html · Play does nothing · setState stale · state comes back · проверить доску холста · на доске цифры вылезли · на холсте не работает · доска Design · выбор не снимается
 
 # Check a Design canvas board
 
@@ -22,6 +22,8 @@ A board on the owner's Design canvas (claude.ai, files `project/*.dc.html`) is c
 - **A button keeps the browser's own padding.** The app's Tailwind preflight removes it; a board does not. Give tile buttons `padding: 0`.
 - **The Chrome extension cannot drive a board.** The canvas renders it in a frame on another domain, so clicks never arrive. The canvas's own runtime, run here, replaces the extension.
 - **Play reaches every button.** A button the owner can press and that does nothing reads as broken — «Все книги» on the 5.2 boards did. Wire it, or leave it out of the board.
+- **Two `setState` in one press read a stale state.** `DCLogic.setState` is not applied at once: a second change that merges into `this.state` (copy, then its passing words) brings back what the first one removed. On 2026-10-27 the verses stayed chosen after «Копировать». Keep a frame's state in a module-level store, merge every change into it, and pass the store to `setState` (`demo-copy-verses/build2.py`, `store`).
+- **Playwright scrolls inner panes to what it presses.** A click inside a scrolling window moved the window's own scroll by 78 px, and the screenshot showed its title gone. Read the pane's `scrollTop` before the press and set it back before the shot; never take that shot as the board's look (`play2.cjs`).
 
 ## Why
 

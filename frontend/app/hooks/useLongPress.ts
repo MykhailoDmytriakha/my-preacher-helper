@@ -62,7 +62,7 @@ export function useLongPress({ onPress, onLongPress }: { onPress: () => void; on
         // Enter or Space clicks with no pointer behind it (`detail` 0): always a press, whatever a pointer did
         // before — a press dragged off the button sends no click, and its mark must not eat a key's (Codex review).
         const byPointer = event.detail > 0;
-        const ignored = byPointer && (abandoned.current || Date.now() < heldUntil.current);
+        const ignored = byPointer && (abandoned.current || performance.now() < heldUntil.current);
         abandoned.current = false;
         if (ignored) {
           event.preventDefault();
@@ -93,7 +93,8 @@ export function useLongPress({ onPress, onLongPress }: { onPress: () => void; on
         const held = armed.current;
         reset();
         if (!held) return;
-        heldUntil.current = Date.now() + CLICK_AFTER_HOLD_MS;
+        // A duration on the page's own clock, which never jumps with the wall clock.
+        heldUntil.current = performance.now() + CLICK_AFTER_HOLD_MS;
         onLongPress();
       },
       // A touch leaves its button right after the lift, before the click: only a press still held is given up.

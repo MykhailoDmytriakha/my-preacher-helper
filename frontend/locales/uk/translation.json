@@ -745,6 +745,26 @@
           "tooShort": "bl*"
         }
       }
+    },
+    "copy": {
+      "menu": "Вірш {{place}}",
+      "copy": "Копіювати",
+      "share": "Надіслати",
+      "several": "Вибрати кілька",
+      "links": "Посилання",
+      "linksCount": "Посилання · {{count}}",
+      "copied": "Скопійовано · {{place}}",
+      "copiedWithPlace": "Скопійовано з посиланням · {{place}}",
+      "failed": "Не вдалося скопіювати",
+      "shareFailed": "Не вдалося надіслати",
+      "severalHint": "Торкайтеся віршів — вони додадуться. Утримання — уривок",
+      "severalHintMouse": "Клацайте вірші — вони додадуться; Shift+клацання — уривок",
+      "format": "Як копіювати",
+      "asQuote": "Цитатою",
+      "numbered": "З номерами",
+      "clear": "Зняти вибір",
+      "copyVerse": "Копіювати вірш {{place}}",
+      "copiedVerse": "Скопійовано: {{place}}"
     }
   },
   "navigation": {

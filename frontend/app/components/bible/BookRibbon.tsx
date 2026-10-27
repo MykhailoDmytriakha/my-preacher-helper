@@ -22,6 +22,9 @@ import type { ScriptureUsageKind } from '@/utils/scriptureUsage';
 
 /** The attribute that lights a row: "on" lit, "off" fading back, absent dark. */
 export const ARRIVAL_ATTRIBUTE = 'data-arrival';
+/** A verse held under a finger or a mouse, and the verses chosen to copy: set on the row by the reader (`verseCopy/`), like the arrival. */
+export const VERSE_HELD_ATTRIBUTE = 'data-verse-held';
+export const VERSE_CHOSEN_ATTRIBUTE = 'data-verse-chosen';
 
 function Segment({ segment }: { segment: Extract<VerseSegment, { kind: 'text' }> }) {
   const className = [
@@ -46,6 +49,15 @@ const ARRIVAL_CLASSES = [
   '[[data-arrival]+&]:before:rounded-t-none [&:has(+[data-arrival])]:before:rounded-b-none',
   'before:transition-[background-color] before:duration-[3600ms] before:ease-out data-[arrival=on]:before:duration-0',
   'data-[arrival=on]:before:bg-[#e8e8fd] dark:data-[arrival=on]:before:bg-[#272f51]',
+].join(' ');
+/**
+ * A held or chosen verse lies on a light of its own under the arrival's, solid so that verses chosen one after
+ * another read as one passage — rows overlap their lights — and quick both ways, unlike the arrival's slow fade.
+ */
+const CHOSEN_CLASSES = [
+  'after:pointer-events-none after:absolute after:-inset-1.5 after:-z-10 after:rounded-lg after:transition-[background-color] after:duration-150',
+  '[[data-verse-chosen]+&]:after:rounded-t-none [&:has(+[data-verse-chosen])]:after:rounded-b-none',
+  'data-[verse-held]:after:bg-[#eef0fe] data-[verse-chosen]:after:bg-[#dfe3fc] dark:data-[verse-held]:after:bg-[#1f2547] dark:data-[verse-chosen]:after:bg-[#2c3566]',
 ].join(' ');
 /**
  * Cross references drawn with the verses (`utils/crossReferences.ts` counts them): a verse that has
@@ -121,7 +133,7 @@ const VERSE_NUMBER_CLASSES = 'mr-1 inline-block select-none align-super text-[10
 const READING_TOP = 'var(--reading-top)';
 
 /** The verse text follows the app's text size (`--text-scale`, the "T" button), like the sermon and meeting screens. */
-const VERSE_TEXT_STYLE = { fontSize: 'calc(1.1875rem * var(--text-scale, 1))' };
+export const VERSE_TEXT_STYLE = { fontSize: 'calc(1.1875rem * var(--text-scale, 1))' };
 
 /**
  * The chip after a verse: how many places its links lead to; pressed, it opens their list. Without
@@ -162,7 +174,7 @@ function VerseRow({ chapter, verse, raw, lang, crossRefs, signs, mine, detached 
       data-verse={detached ? undefined : `${chapter}:${verse}`}
       {...(lit ? { [ARRIVAL_ATTRIBUTE]: 'on' } : {})}
       style={{ scrollMarginTop: READING_TOP }}
-      className={`mb-2.5 md:mb-0 md:flex md:gap-3 ${ARRIVAL_CLASSES} ${opensParagraph && verse > 1 ? 'md:mt-2' : ''}`}
+      className={`mb-2.5 md:mb-0 md:flex md:gap-3 ${ARRIVAL_CLASSES} ${detached ? '' : CHOSEN_CLASSES} ${opensParagraph && verse > 1 ? 'md:mt-2' : ''}`}
     >
       {signs && sign ? (
         <button

@@ -745,6 +745,26 @@
           "tooShort": "bl*"
         }
       }
+    },
+    "copy": {
+      "menu": "Стих {{place}}",
+      "copy": "Копировать",
+      "share": "Отправить",
+      "several": "Выбрать несколько",
+      "links": "Ссылки",
+      "linksCount": "Ссылки · {{count}}",
+      "copied": "Скопировано · {{place}}",
+      "copiedWithPlace": "Скопировано со ссылкой · {{place}}",
+      "failed": "Не удалось скопировать",
+      "shareFailed": "Не удалось отправить",
+      "severalHint": "Нажимайте стихи — они добавятся. Удержание — отрывок",
+      "severalHintMouse": "Щёлкайте стихи — они добавятся; Shift+щелчок — отрывок",
+      "format": "Как скопировать",
+      "asQuote": "Цитатой",
+      "numbered": "С номерами",
+      "clear": "Снять выбор",
+      "copyVerse": "Копировать стих {{place}}",
+      "copiedVerse": "Скопировано: {{place}}"
     }
   },
   "navigation": {

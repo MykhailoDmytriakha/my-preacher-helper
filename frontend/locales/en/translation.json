@@ -725,6 +725,26 @@
           "tooShort": "bl*"
         }
       }
+    },
+    "copy": {
+      "menu": "Verse {{place}}",
+      "copy": "Copy",
+      "share": "Share",
+      "several": "Select several",
+      "links": "Links",
+      "linksCount": "Links · {{count}}",
+      "copied": "Copied · {{place}}",
+      "copiedWithPlace": "Copied with the reference · {{place}}",
+      "failed": "Couldn’t copy",
+      "shareFailed": "Couldn’t share",
+      "severalHint": "Tap verses to add them. Press and hold for a passage",
+      "severalHintMouse": "Click verses to add them; Shift+click for a passage",
+      "format": "How to copy",
+      "asQuote": "As a quote",
+      "numbered": "Numbered",
+      "clear": "Clear selection",
+      "copyVerse": "Copy verse {{place}}",
+      "copiedVerse": "Copied: {{place}}"
     }
   },
   "navigation": {

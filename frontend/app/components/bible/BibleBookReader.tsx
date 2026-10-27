@@ -35,6 +35,10 @@ import { useBookCrossRefs } from './useBookCrossRefs';
 import { useBookUsage } from './useBookUsage';
 import { chapterAtLine, useChapterWindow } from './useChapterWindow';
 import { useFollowAfterClose } from './useFollowAfterClose';
+import { useVerseCopy } from './verseCopy/useVerseCopy';
+import { VerseCopyBar } from './verseCopy/VerseCopyBar';
+import { VerseHoldSurface } from './verseCopy/VerseHoldSurface';
+import { VerseMenu } from './verseCopy/VerseMenu';
 
 import type { AppLocale } from '@/utils/appLocale';
 import type { CrossReference } from '@/utils/crossReferences';
@@ -359,6 +363,8 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
 
   // MARKS IN THE TEXT: the tools, the legend and the text's manner while a tool is in hand (`marks/`).
   const marks = useReaderMarks({ textRef, text, ready: Boolean(text && layout), bible, bookId, drawn: drawnSpan });
+  // TAKING VERSES OUT: a verse held opens its menu, several are chosen for the bar (`verseCopy/`).
+  const verseCopy = useVerseCopy({ textRef, text, bible, bookId, drawn: drawnSpan, crossRefs: crossRefs.ribbon, enabled: !marks.toolInHand });
   // The links' chips and the signs of marks shape a chapter's height: those measured before are doubted.
   const doubtHeights = chapterWindow.doubt;
   useEffect(() => {
@@ -818,16 +824,18 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
           {text && layout ? (
             // Where marks can be made the text answers a pull along the line and still scrolls up and down
             // (`marks.textClass`, set once); a tool in hand keeps the page's own swipe back off it
-            // (`data-gesture-ignore`, navigation/gestures).
-            <article
-              ref={textRef}
-              data-gesture-ignore={marks.gestureIgnore}
-              data-pen-surface={marks.penSurface}
-              className={`isolate min-w-0 bg-white dark:bg-gray-900 ${frame.card} ${marks.textClass}`}
+            // (`data-gesture-ignore`, navigation/gestures). A finger's hold opens a verse's menu, never the
+            // system's selection: on a touch screen the words are not selected.
+            <VerseHoldSurface
+              copy={verseCopy}
+              articleRef={textRef}
+              gestureIgnore={marks.gestureIgnore}
+              penSurface={marks.penSurface}
+              className={`isolate min-w-0 bg-white dark:bg-gray-900 [-webkit-touch-callout:none] [@media(hover:none)]:select-none ${frame.card} ${marks.textClass}`}
             >
               <BookRibbon text={text} lang={BIBLES[bible].language} chapterWord={chapterWord} crossRefs={crossRefs.ribbon} signs={marks.signs} mine={mine.ribbon} boxes={chapterWindow.boxes} />
               <BookEnd bookId={bookId} bible={bible} locale={locale} wide={wide} onOpen={(chosen) => openPlace(chosen, { chapter: 1, verse: 1 })} />
-            </article>
+            </VerseHoldSurface>
           ) : null}
         </div>
         {wide && text && layout ? (
@@ -880,7 +888,10 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
         onClose={marks.elsewhere.close}
         onOpenBible={openInBible}
       />
-      {wide ? (
+      <VerseMenu copy={verseCopy} />
+      <VerseCopyBar copy={verseCopy} wide={wide} />
+      {/* While verses are chosen their bar stands where the tools are: the tools wait. */}
+      {verseCopy.picking ? null : wide ? (
         <FloatingTextScaleControls>
           {marks.legend}
           <BibleSettingsLink />

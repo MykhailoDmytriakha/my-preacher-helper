@@ -39,6 +39,8 @@ type ReaderMarks = {
   translationClass: string;
   /** While a tool is in hand: the text keeps the page's swipe back off (`navigation/gestures`). */
   gestureIgnore: '' | undefined;
+  /** A tool is in hand: a press on the text paints, and is nothing else's (a verse's menu waits). */
+  toolInHand: boolean;
   /** A text the Apple Pencil writes on: a Pencil there never starts the page's swipe back. */
   penSurface: '' | undefined;
   /**
@@ -145,6 +147,7 @@ export function useReaderMarks({ textRef, text, ready, bible, bookId, drawn }: {
     legend: marking ? <MarkLegend /> : null,
     translationClass: showTools ? 'ml-auto md:ml-3' : 'ml-auto',
     gestureIgnore: armed ? '' : undefined,
+    toolInHand: armed,
     penSurface: marking ? '' : undefined,
     textClass: canMark && owner ? `${armed || !zoomed ? '[touch-action:pan-y_pinch-zoom] ' : ''}[-webkit-touch-callout:none]` : '',
     signs,
