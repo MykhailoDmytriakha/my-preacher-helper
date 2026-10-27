@@ -168,6 +168,25 @@ describe('useLongPress', () => {
     expect(onPress).toHaveBeenCalledTimes(1);
   });
 
+  it.each(['touch', 'mouse'])('takes a separate new %s press immediately after a hold', pointerType => {
+    const onPress = jest.fn();
+    const onLongPress = jest.fn();
+    render(<Tile onPress={onPress} onLongPress={onLongPress} />);
+    const tile = screen.getByRole('button');
+    pointer(tile, 'pointerdown', { pointerType });
+    act(() => { jest.advanceTimersByTime(LONG_PRESS_MS); });
+    pointer(tile, 'pointerup', { pointerType });
+    click(tile);
+    expect(onLongPress).toHaveBeenCalledTimes(1);
+    expect(onPress).not.toHaveBeenCalled();
+    act(() => { jest.advanceTimersByTime(20); });
+    pointer(tile, 'pointerdown', { pointerType });
+    pointer(tile, 'pointerup', { pointerType });
+    click(tile);
+    expect(onPress).toHaveBeenCalledTimes(1);
+    expect(onLongPress).toHaveBeenCalledTimes(1);
+  });
+
   it('is an ordinary button without a long action: the press, and the system menu left alone', () => {
     const onPress = jest.fn();
     render(<Tile onPress={onPress} />);

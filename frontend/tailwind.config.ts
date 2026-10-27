@@ -79,12 +79,18 @@ const config: Config = {
         'ai-orbit': {
           to: { transform: 'rotate(360deg)' },
         },
+        // A verse lifted under a finger for its menu (`components/bible/verseCopy/VerseMenu.tsx`).
+        'verse-lift': {
+          '0%': { transform: 'scale(0.97)', boxShadow: 'none' },
+          '100%': { transform: 'scale(1)' },
+        },
       },
       animation: {
         'countdown-pop': 'countdown-pop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards',
         'pulse-fast': 'pulse-fast 0.3s ease-in-out infinite',
         // Eased, never linear: the easing is what makes the tail stretch and catch up.
         'ai-orbit': 'ai-orbit 1.6s cubic-bezier(0.65, 0, 0.35, 1) infinite',
+        'verse-lift': 'verse-lift 0.2s cubic-bezier(0.2, 0.9, 0.3, 1.2)',
       },
     },
   },

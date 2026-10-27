@@ -2,15 +2,18 @@
 
 
 import { ArrowDownIcon, ArrowUpIcon } from '@heroicons/react/20/solid';
-import { ChevronDownIcon } from '@heroicons/react/24/outline';
+import { CheckIcon, ChevronDownIcon, DocumentDuplicateIcon } from '@heroicons/react/24/outline';
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { toast } from 'sonner';
 
 import Switch from '@/components/ui/Switch';
+import { useClipboard } from '@/hooks/useClipboard';
 import { getBookIds, getLocalizedAbbrev, getLocalizedBookName } from '@/utils/bibleBooks';
 import { BIBLES } from '@/utils/bibles';
 import { verseWords, type BookText } from '@/utils/bibleText';
 import { coversChapter, crossReferenceLabel, crossReferenceNumbers, crossReferencesAt, isMainReference, type CrossReference, type CrossRefsBook } from '@/utils/crossReferences';
 import { versesHeldIn } from '@/utils/scriptureReferenceNumbering';
+import { verseCopyText } from '@/utils/verseCopy';
 import { useTranslation } from '@locales/useTranslation';
 
 import { ARRIVAL_ATTRIBUTE, ChapterVerses } from './BookRibbon';
@@ -18,6 +21,7 @@ import { saveCrossReferencePrefs, useCrossReferencePrefs } from './crossReferenc
 import { ReaderSheet, SheetCloseButton } from './ReaderSheet';
 import { useBookTexts } from './useBookTexts';
 import { usePassageRest } from './usePassageRest';
+import { useCopyNames } from './verseCopy/useVerseCopy';
 import { passageAway, type PassageBox } from './verseSheetGeometry';
 
 import type { AppLocale } from '@/utils/appLocale';
@@ -215,6 +219,39 @@ function ReferenceRow({ reference, label, text, onPick }: {
   );
 }
 
+/**
+ * The verse's copy sign, at the end of its words (the owner, 2026-10-27: a known sign needs no caption; it stands
+ * after the text, a little low). Pressed, it turns into a tick for a moment: the verse is in the clipboard.
+ */
+function CopyVerseButton({ text, place }: { text: string; place: string }) {
+  const { t } = useTranslation();
+  const { isCopied, copyToClipboard } = useClipboard({ successDuration: 2000, onError: () => toast.error(t('bible.copy.failed')) });
+  const label = t(isCopied ? 'bible.copy.copiedVerse' : 'bible.copy.copyVerse', { place });
+  return (
+    <button
+      type="button"
+      onClick={() => { void copyToClipboard(text); }}
+      aria-label={label}
+      title={label}
+      className="-my-2 ml-0.5 inline-flex h-8 w-8 items-center justify-center rounded-lg align-[-0.55em] text-indigo-600 hover:bg-gray-100 dark:text-indigo-300 dark:hover:bg-gray-800"
+    >
+      {isCopied
+        ? <CheckIcon className="h-5 w-5 text-green-600 dark:text-green-400" aria-hidden="true" />
+        : <DocumentDuplicateIcon className="h-5 w-5" aria-hidden="true" />}
+    </button>
+  );
+}
+
+/** The verse's own words under the window's title, its copy sign at their end. */
+function VerseLine({ words, copyText, place }: { words: string; copyText?: string; place: string }) {
+  return (
+    <p className="mb-2 font-serif text-[15px] leading-snug text-gray-600 dark:text-gray-400">
+      {words}
+      {copyText ? <CopyVerseButton text={copyText} place={place} /> : null}
+    </p>
+  );
+}
+
 /** The rest of a verse's links, a row per book in the Bible's order, each named by its numbers. */
 function OtherReferences({ references, bible, locale, onPick }: {
   references: CrossReference[]; bible: BibleId; locale: AppLocale; onPick: (reference: CrossReference) => void;
@@ -256,8 +293,8 @@ function OtherReferences({ references, bible, locale, onPick }: {
  * their text or only as references, the person's choice (`othersAsVerses`, also in Settings → Bible). The
  * switch stands in the rest's row before its chevron while they are open (the owner, 2026-10-16).
  */
-function ReferenceList({ references, loading, place, verseText, titleId, bible, locale, texts, othersOpen, onToggleOthers, onPick, onClose }: {
-  references: CrossReference[]; loading: boolean; place: string; verseText?: string; titleId: string;
+function ReferenceList({ references, loading, place, verseText, copyText, titleId, bible, locale, texts, othersOpen, onToggleOthers, onPick, onClose }: {
+  references: CrossReference[]; loading: boolean; place: string; verseText?: string; copyText?: string; titleId: string;
   bible: BibleId; locale: AppLocale; texts: ReadonlyMap<string, BookText>;
   othersOpen: boolean; onToggleOthers: () => void;
   onPick: (reference: CrossReference) => void; onClose: () => void;
@@ -274,7 +311,7 @@ function ReferenceList({ references, loading, place, verseText, titleId, bible, 
         <h3 id={titleId} className="text-lg font-bold text-gray-900 dark:text-white">{t('bible.crossRefs.listTitle', { place })}</h3>
         <SheetCloseButton onClose={onClose} />
       </div>
-      {verseText ? <p className="mb-2 font-serif text-[15px] leading-snug text-gray-600 dark:text-gray-400">{verseText}</p> : null}
+      {verseText ? <VerseLine words={verseText} copyText={copyText} place={place} /> : null}
       {loading ? <p className="py-3 text-sm text-gray-600 dark:text-gray-400">{t('common.loading')}</p> : null}
       {main.length > 0 ? (
         <section>
@@ -368,9 +405,11 @@ export function CrossReferenceSheet({ at, bookId, bible, locale, set, verseText,
     [references, picked, othersOpen, othersAsVerses]
   );
   const texts = useBookTexts(textBooks, bible);
+  const names = useCopyNames(bible, bookId);
 
   if (!at) return null;
   const place = `${getLocalizedAbbrev(bookId, locale)} ${at.chapter}:${at.verse}`;
+  const copyText = verseText ? verseCopyText([{ ...at, words: verseText }], 'quote', names) : undefined;
 
   return (
     <>
@@ -381,6 +420,7 @@ export function CrossReferenceSheet({ at, bookId, bible, locale, set, verseText,
           loading={!set}
           place={place}
           verseText={verseText}
+          copyText={copyText}
           titleId={titleId}
           bible={bible}
           locale={locale}
