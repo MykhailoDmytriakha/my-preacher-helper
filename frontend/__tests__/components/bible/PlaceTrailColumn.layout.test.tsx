@@ -76,7 +76,7 @@ function geometry() {
 const list = () => screen.getByRole('navigation', { name: 'bible.trail.title' }).querySelector('ol')!.parentElement!;
 const centerError = () => {
   const pane = list();
-  const current = pane.querySelector<HTMLElement>('[aria-current="location"]')!.getBoundingClientRect();
+  const current = pane.querySelector<HTMLElement>('[data-trail-at]')!.getBoundingClientRect();
   return current.top + current.height / 2 - pane.getBoundingClientRect().top - pane.clientHeight / 2;
 };
 
@@ -104,7 +104,11 @@ it.each(looks)('keeps the selected link centered when the %s column content grow
 
 it.each(looks)('centers a %s column whose viewport is already settled', look => {
   const g = geometry(); g.layout.height = 700;
-  try { render(column(look)); expect(Math.abs(centerError())).toBeLessThanOrEqual(2); }
+  try {
+    render(column(look));
+    expect(list().querySelector('[aria-current="location"]')).toBeNull();
+    expect(Math.abs(centerError())).toBeLessThanOrEqual(2);
+  }
   finally { g.restore(); }
 });
 
@@ -142,7 +146,7 @@ it('centers a newly selected link after the person manually scrolled the list', 
 it.each(['line', 'page'] as const)('centers the selected link after the %s row viewport changes width', look => {
   const g = geometry(); g.layout.horizontal = true; g.layout.width = 700;
   const error = () => {
-    const pane = list(); const selected = pane.querySelector<HTMLElement>('[aria-current="location"]')!.getBoundingClientRect();
+    const pane = list(); const selected = pane.querySelector<HTMLElement>('[data-trail-at]')!.getBoundingClientRect();
     return selected.left + selected.width / 2 - pane.getBoundingClientRect().left - pane.clientWidth / 2;
   };
   try {
@@ -163,7 +167,7 @@ it.each(['line', 'page'] as const)('keeps the %s row under manual horizontal con
     view.rerender(row({ ...trail, links: [...trail.links] }));
     expect(list().scrollLeft).toBe(300);
     view.rerender(row({ ...trail, at: 10 }));
-    const selected = list().querySelector<HTMLElement>('[aria-current="location"]')!.getBoundingClientRect();
+    const selected = list().querySelector<HTMLElement>('[data-trail-at]')!.getBoundingClientRect();
     expect(Math.abs(selected.left + selected.width / 2 - list().clientWidth / 2)).toBeLessThanOrEqual(2);
   } finally { g.restore(); }
 });
@@ -172,7 +176,7 @@ it('keeps button Space activation eligible for later column layout correction', 
   const g = geometry(); g.layout.height = 700;
   try {
     render(column('reader'));
-    fireEvent.keyDown(list().querySelector('[aria-current="location"]')!, { key: ' ' });
+    fireEvent.keyDown(list().querySelector('[data-trail-at]')!, { key: ' ' });
     g.layout.height = 600; g.resize();
     expect(Math.abs(centerError())).toBeLessThanOrEqual(2);
   } finally { g.restore(); }

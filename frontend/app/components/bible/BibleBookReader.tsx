@@ -16,6 +16,7 @@ import { getLocalizedAbbrev, getLocalizedBookName } from '@/utils/bibleBooks';
 import { wayBackKind } from '@/utils/bibleLink';
 import { BIBLES, type BibleId } from '@/utils/bibles';
 import { bookSlug, fetchBookText, verseWords, type BookText } from '@/utils/bibleText';
+import { actedVerses, linkOnScreen, type SeenVerses } from '@/utils/placeTrail';
 import { revealBelow } from '@/utils/revealBelow';
 import { BIBLE_READER_COLORS } from '@/utils/themeColors';
 import { placeIn } from '@/utils/versification';
@@ -34,7 +35,7 @@ import { MineSheet } from './MineSheet';
 import { buildMinimapLayout } from './minimapLayout';
 import { PhoneReaderTools } from './PhoneReaderTools';
 import { useReaderTrail, type TrailBack } from './PlaceTrail';
-import { arriveOnTrail, readOnTrail, stepOnTrail } from './placeTrailStore';
+import { arriveOnTrail, changeTranslationOnTrail, leaveOnTrail, openedForTranslation, ownTrailPlace, stepOnTrail } from './placeTrailStore';
 import { readingSurface } from './readingSurface';
 import { useBookCrossRefs } from './useBookCrossRefs';
 import { useBookUsage } from './useBookUsage';
@@ -313,6 +314,25 @@ function readerFrame(wide: boolean) {
     : { root: 'pb-24', row: '', pane: 'min-w-0 flex-1', paneTabIndex: undefined, card: '' };
 }
 
+/**
+ * A ribbon's way into a verse's window (its links, its badges, its signs of marks elsewhere) that also puts the
+ * verse on the trail: opening a verse's window is an act on it (the owner, 2026-10-27).
+ */
+function useActedOpen<T extends { onOpen: (chapter: number, verse: never) => void }>(
+  ribbon: T | undefined, acted: (chapter: number, verse: number) => void
+): T | undefined {
+  return useMemo(() => {
+    if (!ribbon) return undefined;
+    const open = ribbon.onOpen as (chapter: number, verse: number | null) => void;
+    // A whole chapter's window (the badges of what names a chapter, `verse` null) is no verse's.
+    const onOpen = (chapter: number, verse: number | null) => {
+      if (verse !== null) acted(chapter, verse);
+      open(chapter, verse);
+    };
+    return { ...ribbon, onOpen } as T;
+  }, [acted, ribbon]);
+}
+
 export function BibleBookReader({ bookId, bible, initialPlace, initialBible, decideMarksOnArrival = false, passageEnd = null, passageEndChapter = null, cameFrom = null, onOpenBook, onChangeBible }: BibleBookReaderProps) {
   const { t, language: interfaceLanguage } = useTranslation();
   const router = useRouter();
@@ -404,10 +424,25 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, dec
   const drawnRef = useRef(drawnSpan);
   drawnRef.current = drawnSpan;
 
+  // An act on verses — a mark, a copy, a send, their links or badges opened, a verse's menu — puts each on the
+  // trail: one link a run of verses, in the order they were chosen (the owner, 2026-10-27). The way back then goes
+  // along the trail from it, not to a verse a link was opened from before (Codex review, 2026-10-27).
+  const [returnTo, setReturnTo] = useState<Place | null>(null);
+  const actOn = useCallback((verses: readonly Place[]) => {
+    const length = (chapter: number) => text?.chapters[chapter - 1]?.length;
+    const acted = actedVerses(verses, length);
+    if (acted.length) setReturnTo(null);
+    for (const at of acted) arriveOnTrail({ book: bookId, chapter: at.chapter, verse: at.verse, bible });
+  }, [bible, bookId, text]);
+  const actOnVerse = useCallback((chapter: number, verse: number) => actOn([{ chapter, verse }]), [actOn]);
+  const ribbonCrossRefs = useActedOpen(crossRefs.ribbon, actOnVerse);
+  const ribbonMine = useActedOpen(mine.ribbon, actOnVerse);
+
   // MARKS IN THE TEXT: the tools, the legend and the text's manner while a tool is in hand (`marks/`).
-  const marks = useReaderMarks({ textRef, text, ready: Boolean(text && layout), bible, bookId, drawn: drawnSpan });
+  const marks = useReaderMarks({ textRef, text, ready: Boolean(text && layout), bible, bookId, drawn: drawnSpan, onMarked: actOnVerse });
+  const ribbonSigns = useActedOpen(marks.signs, actOnVerse);
   // TAKING VERSES OUT: a verse held opens its menu, several are chosen for the bar (`verseCopy/`).
-  const verseCopy = useVerseCopy({ textRef, text, bible, bookId, drawn: drawnSpan, crossRefs: crossRefs.ribbon, enabled: !marks.toolInHand });
+  const verseCopy = useVerseCopy({ textRef, text, bible, bookId, drawn: drawnSpan, crossRefs: ribbonCrossRefs, enabled: !marks.toolInHand, onActed: actOn });
   // The links' chips and the signs of marks shape a chapter's height: those measured before are doubted.
   const doubtHeights = chapterWindow.doubt;
   useEffect(() => {
@@ -607,7 +642,10 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, dec
     // The book opened at its place comes to the trail of places: a link from another book, a book chosen,
     // Back or Forward, a reload — the last ones land on a recent link and only light it.
     // Opened from a screen of the app (a note's reference): the link keeps it, and the way back from it goes there.
-    arriveOnTrail({ book: bookId, ...(target ?? { chapter: 1, verse: 1 }), bible, ...(cameFrom ? { screen: cameFrom } : {}) });
+    // The same place in another translation is no arrival: the trail stays as it was.
+    if (!openedForTranslation(bookId)) {
+      arriveOnTrail({ book: bookId, ...(target ?? { chapter: 1, verse: 1 }), bible, ...(cameFrom ? { screen: cameFrom } : {}) });
+    }
     // The passage the link named, each verse found in this Bible: "Rom 12:1-2" lights both — once its
     // chapter is in the page.
     const link = `${bookId} ${initialBible} ${startChapter}:${startVerse}-${passageEndChapter ? `${passageEndChapter}:` : ''}${passageEnd}`;
@@ -683,6 +721,16 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, dec
   // leaving within the wait must not lose the place.
   const flushPlaceRef = useRef<() => void>(() => undefined);
   const leavingRef = useRef(false);
+  // The verses on the screen: the trail lights its link only while its verse is among them.
+  const seenRef = useRef<SeenVerses | null>(null);
+  const [seen, setSeen] = useState<SeenVerses | null>(null);
+  const noteSeen = useCallback((next: SeenVerses) => {
+    const now = seenRef.current;
+    if (now && now.first.chapter === next.first.chapter && now.first.verse === next.first.verse
+      && now.last.chapter === next.last.chapter && now.last.verse === next.last.verse) return;
+    seenRef.current = next;
+    setSeen(next);
+  }, []);
   useEffect(() => {
     if (!text) return;
     leavingRef.current = false;
@@ -705,8 +753,6 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, dec
       const place = kept && opened && opened.chapter === current.chapter && opened.verse === current.verse ? kept : { ...current, bible };
       saveLastPlace({ slug: bookSlug(bookId), ...place });
       if (entryRef.current) saveEntryPlace(entryRef.current, place);
-      // Reading on: the trail's link being read follows the verse.
-      readOnTrail({ book: bookId, chapter: current.chapter, verse: current.verse, bible });
     };
     const note = () => {
       // Leaving, or a jump waiting for its chapter: the page is not where the person reads.
@@ -724,7 +770,9 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, dec
         rowsOf = drawnRef.current;
       }
       const box = textRef.current ? chapterAtLine(textRef.current, line) : null;
-      const here = broughtRef.current?.place ?? (box?.box ? { chapter: box.chapter, verse: 1 } : visibleVerseRange(rows, line, surface.bottom())?.[0]);
+      const range = visibleVerseRange(rows, line, surface.bottom());
+      const here = broughtRef.current?.place ?? (box?.box ? { chapter: box.chapter, verse: 1 } : range?.[0]);
+      if (range) noteSeen({ first: range[0], last: range[1] });
       if (here) {
         placeRef.current = here;
         setCurrentChapter(here.chapter);
@@ -744,18 +792,47 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, dec
       flushPlaceRef.current = () => undefined;
       notePlaceRef.current = () => undefined;
     };
-  }, [bible, bookId, canReadPosition, followChapter, jumping, surface, text]);
+  }, [bible, bookId, canReadPosition, followChapter, jumping, noteSeen, surface, text]);
 
-  // THE TRAIL OF PLACES (`placeTrailStore.ts`): every move the person makes to a place within the book —
-  // a link followed, a chapter chosen, the way back, a link of the trail — comes to it; another book comes
-  // to it when it opens. The place left is written first, so its link keeps the verse the person stopped at.
-  const [returnTo, setReturnTo] = useState<Place | null>(null);
-  const arrive = useCallback((place: Place) => {
+  // THE TRAIL OF PLACES (`placeTrailStore.ts`, the rule `utils/placeTrail.ts`): every move the person makes to
+  // a place within the book — a link followed, a chapter chosen, the way back, a link of the trail — comes to it;
+  // another book comes to it when it opens; so does every act on a verse (a mark, a copy, its links, its menu).
+  // Reading writes nothing there. Leaving, the verse the person stopped at joins it — unless the place last put
+  // there is still on the screen: then that is where they are (the owner, 2026-10-27).
+  const leaveHere = useCallback(() => {
+    const stop = placeRef.current;
+    if (!stop || linkOnScreen(ownTrailPlace(), bookId, seenRef.current, bible)) return;
+    leaveOnTrail({ book: bookId, chapter: stop.chapter, verse: stop.verse, bible });
+  }, [bible, bookId]);
+  const leave = useCallback(() => {
     flushPlaceRef.current();
+    leaveHere();
+  }, [leaveHere]);
+  const arrive = useCallback((place: Place) => {
+    leave();
     // Any move to a place forgets the way back to a verse of the same chapter.
     setReturnTo(null);
     arriveOnTrail({ book: bookId, chapter: place.chapter, verse: place.verse, bible });
-  }, [bible, bookId]);
+  }, [bible, bookId, leave]);
+  // Leaving the reader for another screen, the app closing or put away (an iPhone's installed app is only hidden,
+  // never closed): where the person stopped joins the trail.
+  const leaveHereRef = useRef(leaveHere);
+  leaveHereRef.current = leaveHere;
+  useEffect(() => {
+    const away = () => {
+      if (!leavingRef.current) leaveHereRef.current();
+    };
+    const hidden = () => {
+      if (document.visibilityState === 'hidden') away();
+    };
+    window.addEventListener('pagehide', away);
+    document.addEventListener('visibilitychange', hidden);
+    return () => {
+      window.removeEventListener('pagehide', away);
+      document.removeEventListener('visibilitychange', hidden);
+      away();
+    };
+  }, []);
 
   // The same book: a jump within the ribbon. Another: a new history entry that carries this place
   // as its way back. The place is written first, and the scroll that follows is not taken for reading.
@@ -766,13 +843,19 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, dec
       jumpTo(place, place.toVerse ? () => lightArrival(scripturePassageKeys({ bible, book: bookId, chapter: place.chapter, fromVerse: place.verse, toVerse: place.toVerse }, bible), Date.now() + ARRIVAL_LIT_MS) : undefined);
       return;
     }
-    flushPlaceRef.current();
+    leave();
     leavingRef.current = true;
     const here = placeRef.current ?? { chapter: currentChapter, verse: 1 };
     onOpenBook(bookSlug(chosenBook), place, { slug: bookSlug(bookId), chapter: here.chapter, verse: here.verse, bible });
-  }, [arrive, bible, bookId, currentChapter, jumpTo, lightArrival, onOpenBook]);
+  }, [arrive, bible, bookId, currentChapter, jumpTo, leave, lightArrival, onOpenBook]);
 
-  const trail = useReaderTrail({ bible, locale, wide, here: { book: bookId, chapter: currentChapter, verse: currentVerse, bible }, openPlace });
+  // A verse chosen on the minimap — pointed at and pressed, its place said under the pointer — is a move to a place
+  // (the owner, 2026-10-27); a drag along the map is reading.
+  const jumpFromMap = useCallback((place: Place, then?: () => void) => {
+    arrive(place);
+    jumpTo(place, then);
+  }, [arrive, jumpTo]);
+  const trail = useReaderTrail({ bible, locale, wide, here: { book: bookId, chapter: currentChapter, verse: currentVerse, bible }, seen, openPlace });
 
   // A cross reference opened. In this book: a jump that leaves the way back to the verse it was opened
   // from ("← Ис 19:1"). In another: a new history entry, as any other book, whose way back is that
@@ -785,14 +868,14 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, dec
     lightArrival(scripturePassageKeys({ ...reference, bible }, bible), Date.now() + ARRIVAL_LIT_MS);
   }, [bible, lightArrival]);
   const openElsewhere = useCallback((reference: CrossReference, origin: Place) => {
-    flushPlaceRef.current();
+    leave();
     leavingRef.current = true;
     onOpenBook(
       bookSlug(reference.book),
       { chapter: reference.chapter, verse: reference.fromVerse, toVerse: reference.toVerse, ...(reference.endChapter ? { endChapter: reference.endChapter } : {}) },
       { slug: bookSlug(bookId), chapter: origin.chapter, verse: origin.verse, bible }
     );
-  }, [bible, bookId, onOpenBook]);
+  }, [bible, bookId, leave, onOpenBook]);
   const followReference = useCrossReferenceTravel({ bookId, jumpTo, light: lightReference, openElsewhere, arrive, keepWayBack: setReturnTo });
   const openReference = useFollowAfterClose(Boolean(crossRefs.openAt), closeCrossRefs, followReference);
 
@@ -801,8 +884,9 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, dec
   const changeBible = useCallback((next: BibleId) => {
     flushPlaceRef.current();
     leavingRef.current = true;
+    changeTranslationOnTrail(bookId);
     onChangeBible(next);
-  }, [onChangeBible]);
+  }, [bookId, onChangeBible]);
 
   const openInBible = useFollowAfterClose(Boolean(marks.elsewhere.at), marks.elsewhere.close, changeBible);
   // A row of the person's list leaves the Bible for that note or sermon: the window closes first, so the
@@ -840,12 +924,13 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, dec
       jumpTo(returnTo);
       return;
     }
-    flushPlaceRef.current();
+    // The light steps back first; leaving then adds where the person stopped without moving it.
+    if (trailBack?.kind === 'link') stepOnTrail(trailBack.index);
+    leave();
     if (trailBack?.kind === 'screen') {
       leavingRef.current = true;
       router.push(trailBack.screen);
     } else if (trailBack) {
-      stepOnTrail(trailBack.index);
       openPlace(trailBack.book, trailBack.place);
     }
   };
@@ -912,7 +997,7 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, dec
               penSurface={marks.penSurface}
               className={`isolate min-w-0 ${BIBLE_READER_COLORS.surface} [-webkit-touch-callout:none] [@media(hover:none)]:select-none ${frame.card} ${marks.textClass}`}
             >
-              <BookRibbon text={text} lang={BIBLES[bible].language} chapterWord={chapterWord} crossRefs={crossRefs.ribbon} signs={marks.signs} mine={mine.ribbon} boxes={chapterWindow.boxes} />
+              <BookRibbon text={text} lang={BIBLES[bible].language} chapterWord={chapterWord} crossRefs={ribbonCrossRefs} signs={ribbonSigns} mine={ribbonMine} boxes={chapterWindow.boxes} />
               <BookEnd bookId={bookId} bible={bible} locale={locale} wide={wide} onOpen={(chosen) => openPlace(chosen, { chapter: 1, verse: 1 })} />
             </VerseHoldSurface>
           ) : null}
@@ -930,7 +1015,7 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, dec
               readingInset={readingInset}
               drawn={drawnSpan}
               marks={mine.mapMarks}
-              onJump={jumpTo}
+              onJump={jumpFromMap}
             />
           </aside>
         ) : null}

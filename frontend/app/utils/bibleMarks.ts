@@ -155,6 +155,20 @@ export function applyStroke(book: BookMarks, order: VerseOrder, start: WordAt, e
   return next;
 }
 
+/**
+ * The first verse, in the book's order, whose marks a change made different — or null: an eraser drawn over words
+ * that bore nothing, a colour laid over the same colour, changed nothing (the owner, 2026-10-27: such a stroke is no
+ * act on a verse).
+ */
+export function firstChangedVerse(before: BookMarks, after: BookMarks, order: VerseOrder): string | null {
+  let first: string | null = null;
+  for (const verse of new Set([...Object.keys(before), ...Object.keys(after)])) {
+    if (JSON.stringify(before[verse] ?? null) === JSON.stringify(after[verse] ?? null)) continue;
+    if (first === null || (order.position.get(verse) ?? Infinity) < (order.position.get(first) ?? Infinity)) first = verse;
+  }
+  return first;
+}
+
 /** Only well-formed marks survive a read from storage: a broken record never breaks the reader. */
 export function readBookMarks(value: unknown): BookMarks {
   if (!value || typeof value !== 'object') return {};

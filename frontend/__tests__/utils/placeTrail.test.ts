@@ -1,4 +1,4 @@
-import { litLinkKey, arriveAt, DEFAULT_TRAIL_LIMITS, EMPTY_TRAIL, keepWithin, linkBefore, readOn, sameChapter, type Trail, type TrailPlace } from '@/utils/placeTrail';
+import { actedVerses, arriveAt, DEFAULT_TRAIL_LIMITS, EMPTY_TRAIL, keepWithin, leaveAt, linkBefore, linkOnScreen, litLinkKey, sameVerse, type Trail, type TrailPlace } from '@/utils/placeTrail';
 
 const at = (book: string, chapter: number, verse = 1, bible: TrailPlace['bible'] = 'rst'): TrailPlace => ({ book, chapter, verse, bible });
 const walk = (places: TrailPlace[], limits = DEFAULT_TRAIL_LIMITS, from: Trail = EMPTY_TRAIL) =>
@@ -34,15 +34,17 @@ describe('the trail of places', () => {
     expect(trail.links).toHaveLength(9);
   });
 
-  it('a place is a chapter: another verse of a chapter among the recent ones is the same link, now at that verse', () => {
-    const trail = walk([isaiah, at('Isaiah', 13, 1), isaiah, at('Isaiah', 13, 7)]);
-    expect(names(trail)).toEqual(['Isaiah 19:1', 'Isaiah 13:7']);
-    expect(trail.at).toBe(1);
+  // The owner, 2026-10-27: every act on a verse is a point of its own — a mark, a copy, its links.
+  it('a place is a verse: verses of one chapter are links of their own; the same verse again is that link', () => {
+    const trail = walk([at('Romans', 8, 28), at('Romans', 8, 30), at('Romans', 8, 31), at('Romans', 8, 28)]);
+    expect(names(trail)).toEqual(['Romans 8:28', 'Romans 8:30', 'Romans 8:31']);
+    expect(trail.at).toBe(0);
   });
 
-  it('the same chapter whichever Bible numbers it: Synodal Psalm 22 is King James Psalm 23', () => {
-    expect(sameChapter(at('Psalms', 22, 1, 'rst'), at('Psalms', 23, 1, 'kjv'))).toBe(true);
-    expect(sameChapter(at('Psalms', 22, 1, 'rst'), at('Psalms', 22, 1, 'kjv'))).toBe(false);
+  it('the same verse whichever Bible numbers it: Synodal Psalm 22:1 is King James Psalm 23:1', () => {
+    expect(sameVerse(at('Psalms', 22, 1, 'rst'), at('Psalms', 23, 1, 'kjv'))).toBe(true);
+    expect(sameVerse(at('Psalms', 22, 1, 'rst'), at('Psalms', 22, 1, 'kjv'))).toBe(false);
+    expect(sameVerse(at('Psalms', 22, 2, 'rst'), at('Psalms', 23, 1, 'kjv'))).toBe(false);
     const trail = walk([at('Psalms', 22, 1, 'rst'), at('John', 3, 16, 'kjv'), at('Psalms', 23, 1, 'kjv')]);
     expect(trail.links).toHaveLength(2);
     expect(trail.at).toBe(0);
@@ -62,13 +64,50 @@ describe('the trail of places', () => {
     expect(names(kept)).toEqual(['Isaiah 19:1', 'Ruth 1:1', 'Job 1:1']);
   });
 
-  it('reading on moves the link being read, into the next chapter too; the same verse changes nothing', () => {
+  // Codex review, 2026-10-27: where one Bible joins two verses, the match held one way only.
+  it('a verse joined in one Bible is the same place either way round', () => {
+    const joined = at('Acts', 19, 40, 'rst');
+    const kingJames = [at('Acts', 19, 40, 'kjv'), at('Acts', 19, 41, 'kjv')];
+    for (const verse of kingJames) {
+      expect(sameVerse(joined, verse)).toBe(true);
+      expect(sameVerse(verse, joined)).toBe(true);
+    }
+    expect(walk([kingJames[1], at('John', 3, 16, 'kjv'), joined]).links).toHaveLength(2);
+  });
+
+  // Codex review r2, 2026-10-27: the light went out while the second of two joined verses was read.
+  it('a link is on the screen while any verse it covers in the Bible read is', () => {
+    const link = at('Acts', 19, 40, 'rst');
+    const seen = (from: number, to: number) => ({ first: { chapter: 19, verse: from }, last: { chapter: 20, verse: to } });
+    expect(linkOnScreen(link, 'Acts', seen(41, 5), 'kjv')).toBe(true);
+    expect(linkOnScreen(link, 'Acts', { first: { chapter: 20, verse: 1 }, last: { chapter: 20, verse: 9 } }, 'kjv')).toBe(false);
+    expect(linkOnScreen(link, 'Romans', seen(1, 5), 'kjv')).toBe(false);
+    expect(linkOnScreen(link, 'Acts', null, 'kjv')).toBe(false);
+  });
+
+  it('a passage across a chapter\'s end is one run where the chapter\'s length is known', () => {
+    const passage = [{ chapter: 1, verse: 22 }, { chapter: 2, verse: 1 }];
+    expect(actedVerses(passage, (chapter) => ({ 1: 22, 2: 23 } as Record<number, number>)[chapter])).toEqual([{ chapter: 1, verse: 22 }]);
+    expect(actedVerses(passage)).toEqual(passage);
+  });
+
+  // The owner, 2026-10-27: «если вышли, то он уже попадёт в историю, как тот, где ты остановился».
+  it('leaving, the verse the person stopped at joins the end and the light stays; one already there, or the lit one, adds nothing', () => {
     const trail = walk([isaiah, exodus]);
-    const read = readOn(trail, exodus, at('Exodus', 13, 2), DEFAULT_TRAIL_LIMITS);
-    expect(names(read)).toEqual(['Isaiah 19:1', 'Exodus 13:2']);
-    expect(read.at).toBe(1);
-    expect(readOn(read, at('Exodus', 13, 2), at('Exodus', 13, 2), DEFAULT_TRAIL_LIMITS)).toBe(read);
-    expect(readOn(EMPTY_TRAIL, isaiah, at('Isaiah', 19, 2), DEFAULT_TRAIL_LIMITS)).toBe(EMPTY_TRAIL);
+    const left = leaveAt(trail, at('Exodus', 13, 4), DEFAULT_TRAIL_LIMITS);
+    expect(names(left)).toEqual(['Isaiah 19:1', 'Exodus 12:12', 'Exodus 13:4']);
+    expect(left.at).toBe(1);
+    expect(leaveAt(trail, exodus, DEFAULT_TRAIL_LIMITS)).toBe(trail);
+    expect(leaveAt(left, at('Exodus', 13, 4), DEFAULT_TRAIL_LIMITS)).toBe(left);
+    expect(leaveAt(EMPTY_TRAIL, isaiah, DEFAULT_TRAIL_LIMITS)).toEqual({ links: [isaiah], at: 0 });
+  });
+
+  // The owner, 2026-10-27: 9:10 chosen, then 7:10–12, then 8:13 → 9:10, 7:10, 8:13.
+  it('an act on several verses leaves one verse a run — its first — in the order the runs were chosen', () => {
+    const chosen = [{ chapter: 9, verse: 10 }, { chapter: 7, verse: 11 }, { chapter: 7, verse: 10 }, { chapter: 7, verse: 12 }, { chapter: 8, verse: 13 }, { chapter: 7, verse: 11 }];
+    expect(actedVerses(chosen)).toEqual([{ chapter: 9, verse: 10 }, { chapter: 7, verse: 10 }, { chapter: 8, verse: 13 }]);
+    expect(actedVerses([{ chapter: 1, verse: 1 }])).toEqual([{ chapter: 1, verse: 1 }]);
+    expect(actedVerses([])).toEqual([]);
   });
 
   // The owner, 2026-10-20: "←" goes left along the trail, one link at a time.
@@ -78,51 +117,28 @@ describe('the trail of places', () => {
     expect(linkBefore(trail, at('Malachi', 2, 8))).toBe(2);
     expect(linkBefore({ ...trail, at: 1 }, at('Zephaniah', 3, 10))).toBe(0);
     expect(linkBefore({ ...trail, at: 0 }, at('Isaiah', 18, 7))).toBe(-1);
-    // Another tab lit a link meanwhile: the way back is still from this reader's place.
-    expect(linkBefore({ ...trail, at: 3 }, at('Zephaniah', 3, 12))).toBe(0);
+    // Another tab lit a link meanwhile: the way back is still from the verse this reader put on the trail.
+    expect(linkBefore({ ...trail, at: 3 }, at('Zephaniah', 3, 10))).toBe(0);
     expect(linkBefore(trail, at('Ruth', 1))).toBe(-1);
   });
 
-  it('a place arriving where the light already is stays that link, however old: the way back adds nothing', () => {
+  it('a verse arriving where the light already is stays that link, however old: the way back adds nothing', () => {
     const books = ['Genesis', 'Exodus', 'Leviticus', 'Numbers', 'Deuteronomy', 'Joshua', 'Judges', 'Ruth', '1 Samuel'];
     const trail = walk(books.map((book) => at(book, 1)));
-    const stepped = arriveAt({ ...trail, at: 0 }, at('Genesis', 1, 5), DEFAULT_TRAIL_LIMITS);
+    const stepped = arriveAt({ ...trail, at: 0 }, at('Genesis', 1, 1), DEFAULT_TRAIL_LIMITS);
     expect(stepped.links).toHaveLength(9);
     expect(stepped.at).toBe(0);
-    expect(names(stepped)[0]).toBe('Genesis 1:5');
-  });
-
-  // An independent review, 2026-10-20: Ruth 1 → Ruth 2 → back to Ruth 1, read on to 2:2 — the link of
-  // Ruth 1 became a second link of Ruth 2, and a tap on the first lit the second.
-  it('reading on into a chapter among the recent links lights that link; the one left keeps where the person stopped', () => {
-    const trail = walk([at('Ruth', 1, 1), at('Ruth', 2, 1), at('Ruth', 1, 20)]);
-    const read = readOn(trail, at('Ruth', 1, 20), at('Ruth', 2, 2), DEFAULT_TRAIL_LIMITS);
-    expect(names(read)).toEqual(['Ruth 1:20', 'Ruth 2:2']);
-    expect(read.at).toBe(1);
-  });
-
-  // The same review: the trail is shared by the tabs of a device; another tab lit its own place since.
-  it('reading on moves the reader\'s own link, not the one another tab lit since', () => {
-    const trail: Trail = { links: [isaiah, exodus], at: 1 };
-    const read = readOn(trail, isaiah, at('Isaiah', 19, 2), DEFAULT_TRAIL_LIMITS);
-    expect(names(read)).toEqual(['Isaiah 19:2', 'Exodus 12:12']);
-    expect(read.at).toBe(0);
-    expect(readOn(trail, at('Ruth', 1), at('Ruth', 2), DEFAULT_TRAIL_LIMITS)).toBe(trail);
   });
 });
 
 // Codex review, 2026-10-26: the column jumped back to the lit link while the person read on and scrolled it.
 describe('where the light stands among the links', () => {
-  it('stays while only the lit link moves — reading on within the chapter or into the next one: the column stays where it was scrolled', () => {
+  it('stays while nothing moves: the same verse arriving again keeps the column where it was scrolled', () => {
     const trail = walk([isaiah, exodus, joshua]);
-    const within = readOn(trail, joshua, at('Joshua', 2, 15), DEFAULT_TRAIL_LIMITS);
-    const next = readOn(within, at('Joshua', 2, 15), at('Joshua', 3, 1), DEFAULT_TRAIL_LIMITS);
-    expect(names(next)).toEqual(['Isaiah 19:1', 'Exodus 12:12', 'Joshua 3:1']);
-    expect(litLinkKey(within)).toBe(litLinkKey(trail));
-    expect(litLinkKey(next)).toBe(litLinkKey(trail));
+    expect(litLinkKey(arriveAt(trail, joshua, DEFAULT_TRAIL_LIMITS))).toBe(litLinkKey(trail));
   });
 
-  it('changes when the light goes to another link or the links shift: a recent place lit, a place added, a place added to the full trail, reading into a chapter on the trail', () => {
+  it('changes when the light goes to another link or the links shift: a recent verse lit, a verse added, a verse added to the full trail, a stop left', () => {
     const trail = walk([isaiah, exodus, joshua]);
     expect(litLinkKey(arriveAt(trail, exodus, DEFAULT_TRAIL_LIMITS))).not.toBe(litLinkKey(trail));
     expect(litLinkKey(arriveAt(trail, at('Ruth', 1), DEFAULT_TRAIL_LIMITS))).not.toBe(litLinkKey(trail));
@@ -131,9 +147,6 @@ describe('where the light stands among the links', () => {
     expect(moved.links).toHaveLength(3);
     expect(moved.at).toBe(full.at);
     expect(litLinkKey(moved)).not.toBe(litLinkKey(full));
-    // Reading on into a chapter that is a recent link lights that link: the light moved, so it is shown.
-    const intoRecent = readOn(walk([at('Ruth', 1), at('Ruth', 2), at('Ruth', 1)]), at('Ruth', 1, 22), at('Ruth', 2, 1), DEFAULT_TRAIL_LIMITS);
-    expect(intoRecent.at).toBe(1);
-    expect(litLinkKey(intoRecent)).not.toBe(litLinkKey(walk([at('Ruth', 1), at('Ruth', 2), at('Ruth', 1)])));
+    expect(litLinkKey(leaveAt(trail, at('Joshua', 2, 20), DEFAULT_TRAIL_LIMITS))).not.toBe(litLinkKey(trail));
   });
 });

@@ -7,7 +7,7 @@ import {
   DEFAULT_TRAIL_LIMITS,
   EMPTY_TRAIL,
   keepWithin,
-  readOn,
+  leaveAt,
   TRAIL_HISTORY_CHOICES,
   TRAIL_RECENT_CHOICES,
   type Trail,
@@ -85,18 +85,19 @@ const write = (next: Trail) => {
 };
 
 /**
- * The place this page's reader last put on the trail. Reading on moves that link — the reader's own —
- * not whichever link another tab of the app lit since (the trail is shared by the tabs of the device).
+ * The place this page's reader last put on the trail: the way back goes from that link — the reader's own —
+ * not from whichever link another tab of the app lit since (the trail is shared by the tabs of the device).
  */
 let own: TrailPlace | null = null;
 
-/** The person came to a place (a link followed, a book or chapter chosen, Back, a link of the trail). */
+/** The person came to a verse or did something with it (a link followed, a book or chapter chosen, Back, a link of the trail, a mark, a copy). */
 export function arriveOnTrail(place: TrailPlace): void {
+  switching = null;
   own = place;
   write(arriveAt(trailChoice.read(), place, prefsChoice.read()));
 }
 
-/** The place this page's reader last put on the trail — where it is, without waiting for a scroll to say so. */
+/** The place this page's reader last put on the trail — where the way back goes from. */
 export function ownTrailPlace(): TrailPlace | null {
   return own;
 }
@@ -107,12 +108,30 @@ export function stepOnTrail(index: number): void {
   if (index >= 0 && index < trail.links.length && index !== trail.at) trailChoice.save({ links: trail.links, at: index });
 }
 
-/** The place read moved by reading: the reader's link follows it. */
-export function readOnTrail(place: TrailPlace): void {
-  if (!own) return;
-  const from = own;
-  own = place;
-  write(readOn(trailChoice.read(), from, place, prefsChoice.read()));
+/**
+ * A change of translation reopens the reader at the same place: that opening is no arrival (the owner, 2026-10-27:
+ * the trail follows moves and acts). The reader says so before it asks the page for the other Bible, and the next
+ * opening of that book takes the word back (Codex review, 2026-10-27: guessed from the place's stored Bible, a
+ * switch back added the place, and Back from another book was taken for a switch).
+ */
+let switching: string | null = null;
+export function changeTranslationOnTrail(book: string): void {
+  switching = book;
+}
+/**
+ * The book opens for a change of translation; the word is taken back either way. No clock: a slow load and its retry
+ * still open for the change (Codex review r3, 2026-10-27), and any other move on the trail first takes the word back.
+ */
+export function openedForTranslation(book: string): boolean {
+  const was = switching === book;
+  switching = null;
+  return was;
+}
+
+/** The person leaves the verse they stopped at (`leaveAt`): it joins the trail, the light stays. */
+export function leaveOnTrail(place: TrailPlace): void {
+  switching = null;
+  write(leaveAt(trailChoice.read(), place, prefsChoice.read()));
 }
 
 /** Where a change came from, for the technical details a feedback report sends. */
@@ -143,6 +162,7 @@ export function readPlaceTrail(): Trail {
 }
 
 export function resetPlaceTrailForTests(): void {
+  switching = null;
   own = null;
   trailChoice.resetForTests();
   prefsChoice.resetForTests();

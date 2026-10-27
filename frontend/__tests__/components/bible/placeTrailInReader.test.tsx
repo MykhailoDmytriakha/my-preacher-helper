@@ -89,7 +89,27 @@ const followTheLink = async () => {
 };
 
 const trailLinks = () => within(screen.getByRole('navigation', { name: 'bible.trail.title' })).getAllByRole('button');
-const lit = () => trailLinks().findIndex((link) => link.getAttribute('aria-current') === 'location');
+/** The light's link — the one the way back counts from; shown lit only while its verse is on the screen. */
+const lit = () => trailLinks().findIndex((link) => link.hasAttribute('data-trail-at'));
+const shownLit = () => trailLinks().findIndex((link) => link.getAttribute('aria-current') === 'location');
+
+/** Lays the rows of the ribbon out, 40 px each, `top` at the reading line, and scrolls the page there. */
+function scrollTo(top: string) {
+  const realRect = Element.prototype.getBoundingClientRect;
+  Element.prototype.getBoundingClientRect = function (this: HTMLElement) {
+    const verse = this.dataset?.verse;
+    if (!verse) return realRect.call(this);
+    const order = Array.from(document.querySelectorAll<HTMLElement>('[data-verse]')).map((row) => row.dataset.verse);
+    const y = 16 + (order.indexOf(verse) - order.indexOf(top)) * 40;
+    return { top: y, bottom: y + 40, left: 0, right: 100, width: 100, height: 40, x: 0, y, toJSON: () => ({}) } as DOMRect;
+  };
+  Object.defineProperty(window, 'scrollY', { value: 5000 + Math.random(), configurable: true });
+  act(() => { window.dispatchEvent(new Event('scroll')); });
+  return () => {
+    Element.prototype.getBoundingClientRect = realRect;
+    Object.defineProperty(window, 'scrollY', { value: 0, configurable: true });
+  };
+}
 
 describe('the trail of places in the reader', () => {
   it('the book opened is the first link; a trail of one link has no button', async () => {
@@ -198,14 +218,17 @@ describe('the trail of places in the reader', () => {
 
   // The same review: after a link within the chapter, the minimap or a scroll into another chapter kept
   // "← <verse>" and took the person back there instead of along the trail.
-  it('the way back to a verse of the same chapter is forgotten once the reading leaves that chapter', async () => {
+  // Since 2026-10-27 the verse a link was opened from is a link of the trail itself: the way back reaches it
+  // along the trail, whatever the reading did meanwhile.
+  it('after a link within the chapter, reading into another chapter adds nothing and the way back still goes to the verse it was opened from', async () => {
     render(<BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={{ chapter: withinChapter.chapter, verse: withinChapter.verse }} onOpenBook={jest.fn()} />);
     await userEvent.click(await screen.findByTestId(`cross-refs-${withinChapter.chapter}:${withinChapter.verse}`));
     const list = screen.getByRole('dialog', { name: 'bible.crossRefs.listTitle' });
     await userEvent.click(within(list).getByText(crossReferenceLabel(withinChapter.near, 'rst', 'en')));
     await userEvent.click(screen.getByRole('button', { name: 'bible.crossRefs.open' }));
     expect(await screen.findByRole('button', { name: 'bible.backToLabel' })).toBeInTheDocument();
-    expect(readPlaceTrail().links).toHaveLength(1);
+    // A verse is a place of its own (the owner, 2026-10-27): the verse linked to joined the trail.
+    expect(readPlaceTrail().links).toHaveLength(2);
 
     // The person reads on into the next chapter: the verse at the reading top is its first one.
     const other = withinChapter.chapter === ruthText.chapters.length ? 1 : withinChapter.chapter + 1;
@@ -220,11 +243,81 @@ describe('the trail of places in the reader', () => {
     try {
       Object.defineProperty(window, 'scrollY', { value: 5000, configurable: true });
       act(() => { window.dispatchEvent(new Event('scroll')); });
-      await waitFor(() => expect(screen.queryByRole('button', { name: 'bible.backToLabel' })).not.toBeInTheDocument());
+      await waitFor(() => expect(readPlaceTrail().links).toHaveLength(2));
+      await userEvent.click(screen.getByRole('button', { name: 'bible.backToLabel' }));
+      const trail = readPlaceTrail();
+      expect(trail.links[trail.at]).toEqual(expect.objectContaining({ chapter: withinChapter.chapter, verse: withinChapter.verse }));
     } finally {
       Element.prototype.getBoundingClientRect = realRect;
       Object.defineProperty(window, 'scrollY', { value: 0, configurable: true });
     }
+  });
+});
+
+// The owner, 2026-10-27: reading writes nothing on the trail; a link is lit only while one stands on its verse;
+// leaving, the verse one stopped at joins the trail.
+describe('the trail follows acts and moves, never the reading', () => {
+  it('a link is lit only while its verse is on the screen; scrolling adds nothing; leaving adds the verse stopped at', async () => {
+    arriveOnTrail({ book: 'Ruth', chapter: 1, verse: 1, bible: 'rst' });
+    arriveOnTrail({ book: 'Ruth', chapter: 2, verse: 3, bible: 'rst' });
+    render(<BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={{ chapter: 4, verse: 2 }} onOpenBook={jest.fn()} />);
+    await waitFor(() => expect(readPlaceTrail()).toEqual(expect.objectContaining({ at: 2 })));
+    await userEvent.click(await screen.findByRole('button', { name: 'bible.trail.toggle' }));
+
+    let restore = scrollTo('4:2');
+    try {
+      await waitFor(() => expect(shownLit()).toBe(0));
+    } finally {
+      restore();
+    }
+    restore = scrollTo('4:12');
+    try {
+      await waitFor(() => expect(shownLit()).toBe(-1));
+      expect(readPlaceTrail().links.map((link) => `${link.chapter}:${link.verse}`)).toEqual(['1:1', '2:3', '4:2']);
+      expect(lit()).toBe(0);
+      await userEvent.click(trailLinks()[1]);
+      await waitFor(() => expect(readPlaceTrail().links.map((link) => `${link.chapter}:${link.verse}`)).toEqual(['1:1', '2:3', '4:2', '4:12']));
+      expect(readPlaceTrail().at).toBe(1);
+    } finally {
+      restore();
+    }
+  });
+
+  // Codex review, 2026-10-27: an iPhone's installed app is only hidden, never closed — no pagehide comes.
+  it('the app put away keeps the verse stopped at, as leaving does', async () => {
+    arriveOnTrail({ book: 'Ruth', chapter: 1, verse: 1, bible: 'rst' });
+    render(<BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={{ chapter: 4, verse: 2 }} onOpenBook={jest.fn()} />);
+    await waitFor(() => expect(readPlaceTrail()).toEqual(expect.objectContaining({ at: 1 })));
+    const restore = scrollTo('4:12');
+    try {
+      Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
+      act(() => { document.dispatchEvent(new Event('visibilitychange')); });
+      expect(readPlaceTrail().links.map((link) => `${link.chapter}:${link.verse}`)).toEqual(['1:1', '4:2', '4:12']);
+      expect(readPlaceTrail().at).toBe(1);
+    } finally {
+      Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+      restore();
+    }
+  });
+
+  // Codex review, 2026-10-27: after a link within the chapter, an act on another verse left "← to the first verse"
+  // standing, and the way back skipped the verse the link had led to.
+  it('an act on a verse after a link within the chapter makes the way back go along the trail from it', async () => {
+    render(<BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={{ chapter: withinChapter.chapter, verse: withinChapter.verse }} onOpenBook={jest.fn()} />);
+    await userEvent.click(await screen.findByTestId(`cross-refs-${withinChapter.chapter}:${withinChapter.verse}`));
+    const list = screen.getByRole('dialog', { name: 'bible.crossRefs.listTitle' });
+    await userEvent.click(within(list).getByText(crossReferenceLabel(withinChapter.near, 'rst', 'en')));
+    await userEvent.click(screen.getByRole('button', { name: 'bible.crossRefs.open' }));
+    await waitFor(() => expect(readPlaceTrail().links).toHaveLength(2));
+    // Another verse's links opened: an act on it.
+    const other = ruthText.chapters[withinChapter.chapter - 1].findIndex((_, index) => index + 1 !== withinChapter.verse && index + 1 !== withinChapter.near.fromVerse
+      && document.querySelector(`[data-testid="cross-refs-${withinChapter.chapter}:${index + 1}"]`)) + 1;
+    await userEvent.click(screen.getByTestId(`cross-refs-${withinChapter.chapter}:${other}`));
+    await userEvent.keyboard('{Escape}');
+    expect(readPlaceTrail().links).toHaveLength(3);
+    await userEvent.click(screen.getByRole('button', { name: 'bible.backToLabel' }));
+    const trail = readPlaceTrail();
+    expect(trail.links[trail.at]).toEqual(expect.objectContaining({ chapter: withinChapter.near.chapter, verse: withinChapter.near.fromVerse }));
   });
 });
 
@@ -246,13 +339,13 @@ describe('the trail as a column on a wide screen', () => {
     const { reader, trail } = await renderThreePlaces();
     const links = within(trail).getAllByRole('button');
     expect(links.map((link) => link.textContent)).toEqual([expect.stringContaining('4:2'), expect.stringContaining('2:3'), expect.stringContaining('1:1')]);
-    expect(links[0]).toHaveAttribute('aria-current', 'location');
+    expect(links[0]).toHaveAttribute('data-trail-at');
     expect(trail.parentElement).toContainElement(reader?.querySelector('article') ?? null);
     expect(reader).toHaveClass('max-w-[1464px]');
 
     await userEvent.click(links[2]);
     expect(readPlaceTrail().at).toBe(0);
-    expect(within(trail).getAllByRole('button')[2]).toHaveAttribute('aria-current', 'location');
+    expect(within(trail).getAllByRole('button')[2]).toHaveAttribute('data-trail-at');
   });
 
   it('its switch puts the first words of each verse under the places, widens the column and is kept on the device', async () => {

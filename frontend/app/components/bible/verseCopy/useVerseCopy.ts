@@ -59,7 +59,7 @@ function setOnRows(root: HTMLElement | null, attribute: string, keys: ReadonlySe
  * is `utils/verseCopy.ts`. The rows' lights are set on the rows themselves, like the arrival: the ribbon is not
  * drawn again for a choice.
  */
-export function useVerseCopy({ textRef, text, bible, bookId, drawn, crossRefs, enabled }: {
+export function useVerseCopy({ textRef, text, bible, bookId, drawn, crossRefs, enabled, onActed }: {
   textRef: RefObject<HTMLElement | null>;
   text: BookText | null;
   bible: BibleId;
@@ -69,6 +69,8 @@ export function useVerseCopy({ textRef, text, bible, bookId, drawn, crossRefs, e
   crossRefs?: RibbonCrossRefs;
   /** Off while a mark tool is in hand: a press then paints. */
   enabled: boolean;
+  /** Verses acted on — a menu opened, copied, sent — in the order chosen (the reader puts them on the trail). */
+  onActed?: (verses: VerseAt[]) => void;
 }) {
   const { t, i18n } = useTranslation();
   const locale = resolveAppLocale(i18n.language);
@@ -83,6 +85,13 @@ export function useVerseCopy({ textRef, text, bible, bookId, drawn, crossRefs, e
     setPicked(null);
     setFormat(null);
   }, []);
+  const actedRef = useRef(onActed);
+  actedRef.current = onActed;
+  const acted = useCallback((verses: VerseAt[]) => actedRef.current?.(verses), []);
+  const openMenu = useCallback((at: VerseMenuAt) => {
+    setMenu(at);
+    acted([{ chapter: at.chapter, verse: at.verse }]);
+  }, [acted]);
   const done = useCallback(() => {
     setMenu(null);
     clear();
@@ -116,6 +125,8 @@ export function useVerseCopy({ textRef, text, bible, bookId, drawn, crossRefs, e
   const copy = useCallback(async (verses: VerseAt[], chosen: CopyFormat) => {
     const from = pickedRef.current;
     setMenu(null);
+    // The act is the press: a clipboard that answers late must not put these verses after a newer act.
+    acted(verses);
     try {
       await copyPlainText(textOf(verses, chosen));
       toast.success(t('bible.copy.copied', { place: placeOf(verses) }));
@@ -123,20 +134,21 @@ export function useVerseCopy({ textRef, text, bible, bookId, drawn, crossRefs, e
     } catch {
       toast.error(t('bible.copy.failed'));
     }
-  }, [clearIfStill, placeOf, t, textOf]);
+  }, [acted, clearIfStill, placeOf, t, textOf]);
 
   // The system's share window must be asked for in the press itself: nothing awaited before it.
   const share = useCallback(async (verses: VerseAt[], chosen: CopyFormat) => {
     const from = pickedRef.current;
     const sending = navigator.share({ text: textOf(verses, chosen) });
     setMenu(null);
+    acted(verses);
     try {
       await sending;
       clearIfStill(from);
     } catch (error) {
       if ((error as { name?: string } | null)?.name !== 'AbortError') toast.error(t('bible.copy.shareFailed'));
     }
-  }, [clearIfStill, t, textOf]);
+  }, [acted, clearIfStill, t, textOf]);
 
   const startPicking = useCallback((at: VerseAt, touch: boolean) => {
     setMenu(null);
@@ -216,6 +228,7 @@ export function useVerseCopy({ textRef, text, bible, bookId, drawn, crossRefs, e
       event.preventDefault();
       event.clipboardData.setData('text/plain', verseCopyText(verses, defaultCopyFormat(verses.length), now.names, now.chapterLength));
       toast.success(now.t('bible.copy.copiedWithPlace', { place: copiedPlace(now.names.book, verses) }));
+      actedRef.current?.(verses);
     };
     document.addEventListener('copy', onCopy);
     return () => document.removeEventListener('copy', onCopy);
@@ -223,7 +236,7 @@ export function useVerseCopy({ textRef, text, bible, bookId, drawn, crossRefs, e
 
   return {
     enabled,
-    menu, openMenu: setMenu, closeMenu: useCallback(() => setMenu(null), []),
+    menu, openMenu, closeMenu: useCallback(() => setMenu(null), []),
     hold: setHeld,
     picked, picking: choosing, startPicking, toggle, rangeTo, clear,
     format: format ?? defaultCopyFormat(picked?.length ?? 1), setFormat,

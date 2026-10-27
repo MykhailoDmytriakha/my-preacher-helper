@@ -14,7 +14,7 @@ export function useTrailCentering(ref: RefObject<HTMLElement | null>, axis: Scro
     let previous = dimensions();
     let following = true;
     const center = () => {
-      const current = list.querySelector<HTMLElement>('[aria-current="location"]');
+      const current = list.querySelector<HTMLElement>('[data-trail-at]');
       if (!current) return;
       const box = list.getBoundingClientRect();
       const at = current.getBoundingClientRect();
