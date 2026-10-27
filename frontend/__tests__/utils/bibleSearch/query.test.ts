@@ -4,6 +4,50 @@ import { readLine, readPlace, readSearch, booksBeginningWith } from '@/utils/bib
 const ru = { bible: 'rst' as const, books: SYNODAL_BOOKS };
 const en = { bible: 'kjv' as const, books: PROTESTANT_BOOKS };
 
+// BUG-20261026-search-book-prefix-place: «иса 3416» searched the words «Исаия» while «кол 418» opened Col 4:18. A book
+// is typed in a hurry by its first letters and dictated in another case («Исаии», «Иеремии»); with the place's numbers
+// after it, a word that points to one book is that book.
+describe('readLine — a book by the beginning or a form of its name, with the place after it', () => {
+  it.each([
+    ['иса 3416', { kind: 'choices', bookId: 'Isaiah', choices: [{ chapter: 34, verse: 16 }] }],
+    ['иса 34:16', { kind: 'place', bookId: 'Isaiah', chapter: 34, verse: 16 }],
+    ['исаии 34 16', { kind: 'place', bookId: 'Isaiah', chapter: 34, verse: 16 }],
+    ['исаии 3416', { kind: 'choices', bookId: 'Isaiah', choices: [{ chapter: 34, verse: 16 }] }],
+    ['исаию 34', { kind: 'place', bookId: 'Isaiah', chapter: 34, verse: null }],
+    ['иеремии 29 11', { kind: 'place', bookId: 'Jeremiah', chapter: 29, verse: 11 }],
+    ['иезекииля 36 26', { kind: 'place', bookId: 'Ezekiel', chapter: 36, verse: 26 }],
+    ['даниила 3 1', { kind: 'place', bookId: 'Daniel', chapter: 3, verse: 1 }],
+    ['осии 6 4', { kind: 'place', bookId: 'Hosea', chapter: 6, verse: 4 }],
+    ['мат 5 3', { kind: 'place', bookId: 'Matthew', chapter: 5, verse: 3 }],
+    ['1 иоан 3 16', { kind: 'place', bookId: '1 John', chapter: 3, verse: 16 }],
+    ['1 коринф 13', { kind: 'place', bookId: '1 Corinthians', chapter: 13, verse: null }],
+    ['4 царст 5', { kind: 'place', bookId: '2 Kings', chapter: 5, verse: null }],
+  ])('«%s» is that book’s place', (line, expected) => {
+    expect(readLine(line, ru)).toMatchObject(expected);
+  });
+
+  it('stays a search when the letters begin several books, or words follow instead of numbers', () => {
+    expect(readLine('ио 3:16', ru).kind).toBe('search');
+    expect(readLine('иса пророк', ru).kind).toBe('search');
+    expect(readLine('иса 34 пророк', ru).kind).toBe('search');
+    // A numbered book needs its number; a word of a name that is not the word calling the book is not the book.
+    expect(readLine('коринф 13', ru).kind).toBe('search');
+    expect(readLine('закона 5', ru).kind).toBe('search');
+    expect(readLine('кол 418', ru)).toMatchObject({ kind: 'choices', bookId: 'Colossians', choices: [{ chapter: 4, verse: 18 }] });
+  });
+
+  // Codex, 2026-10-26: the general word forms read everyday words before a number as books.
+  it.each(['суда 5', 'луком 5', 'марки 5', 'marking 5', 'acting 5', 'judged 5'])('«%s» is a word, not a book in another case', (line) => {
+    expect(readLine(line, ru).kind).toBe('search');
+    expect(readLine(line, en).kind).toBe('search');
+  });
+
+  it('a dictated form alone searches its words and offers the book, as its first letters do', () => {
+    expect(readLine('исаии', ru)).toMatchObject({ kind: 'search', prefixBooks: ['Isaiah'] });
+    expect(readLine('иеремии', ru)).toMatchObject({ kind: 'search', prefixBooks: expect.arrayContaining(['Jeremiah']) });
+  });
+});
+
 describe('readLine — a place', () => {
   it.each([
     ['Ин 3:16', { bookId: 'John', chapter: 3, verse: 16 }],

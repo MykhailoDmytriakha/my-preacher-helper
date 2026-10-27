@@ -1,4 +1,4 @@
-When: search the Bible · find a verse by its words · search button in the reader · show more results · first 40 of · поиск в читалке · показать ещё · word not finished · beginning of a word · недописанное слово · по началу слова · bible search line · search in a book · search in a chapter · search in the New Testament · word forms · wildcard * _ · exact phrase · search history · how to search help · поиск по Библии · найти стих по словам · строка Библии · где + что · Иоанна хлеб · формы слова · звёздочка · подчёркивание · история поиска · как искать · readLine · readSearch · BibleSearch
+When: search the Bible · find a verse by its words · search button in the reader · show more results · first 40 of · поиск в читалке · показать ещё · word not finished · beginning of a word · недописанное слово · по началу слова · bible search line · search in a book · search in a chapter · search in the New Testament · word forms · wildcard * _ · exact phrase · search history · how to search help · поиск по Библии · найти стих по словам · строка Библии · где + что · Иоанна хлеб · формы слова · звёздочка · подчёркивание · история поиска · как искать · readLine · readSearch · BibleSearch · book by first letters · dictated book name · иса 3416 · Исаии 34 16 · падеж книги · bookBeforePlace
 
 # Search the Bible with the one line
 
@@ -24,6 +24,7 @@ It has three doors, one component (`BibleSearch`):
 ## How
 
 - **A new way of writing a scope** (a part of the Bible, a spoken form): add it to `PART_WORDS` or `BEFORE_BOOK` in `query.ts`, with a case in `__tests__/utils/bibleSearch/query.test.ts`.
+- **A book written loosely before a place** («иса 3416», dictated «Исаии 34 16», «Иеремии 29 11»): `bookBeforePlace` in `query.ts` reads it when the exact name fails. The word must begin, or be a form (`matcherOf`) of, the word that calls exactly one book (`CALLING_WORDS`: the name's first word without «от/к/до/від», the number apart), and only the place's numbers may follow. The book suggestions under the line (`booksBeginningWith`) accept the same form. Never add aliases to the book data for this: the list is never complete (BUG-20261026-search-book-prefix-place).
 - **More results:** forty at a time (`SHOWN_VERSES`); the last option «Показать ещё N» adds the next forty and puts the arrows on the first of them. Another line starts from forty again.
 - **A new state under the line:** add it to `buildSearchModel` and a sequence to `__tests__/components/bible/bibleSearch.test.tsx`. The test runs over the real texts in `public/bible-text`.
 - **The texts the help shows:**
@@ -42,6 +43,7 @@ It has three doors, one component (`BibleSearch`):
 - Enter must read the line as typed now: the rows may still be of a shorter line («Пс 2» for «Пс 22», `useDeferredValue`).
 - Keys belong to the panel in sight. Escape is handled on the whole line, so a focused result button does not let it close the picker window.
 - Widening to the whole Bible writes the words «as words» when they would read as a book («Мф плач» → «плач»).
+- Compare a loose word with the word that calls the book, not with every word of its name: «Иеремии» is also the second word of «Плач Иеремии», and with all words «иеремии 29 11» was two books and stayed a search, while «закона 5» opened Deuteronomy through «Повторення Закону». A scope before words («Рим 4 вера») stays exact on purpose: a wrong guess there narrows the search silently.
 - Never say «nowhere in the Bible» while some books did not load. The model's coverage says saved or loaded.
 - `__tests__/architecture/interfaceTextGoesThroughLocales.test.ts` allows Cyrillic in `utils/bibleSearch` as parser vocabulary. User-facing words still go to the locales.
 
