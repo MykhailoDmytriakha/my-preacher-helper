@@ -53,7 +53,7 @@ export function VerseHoldSurface({ copy, articleRef, className, gestureIgnore, p
     },
     onLongPress: () => {
       const press = pressRef.current;
-      if (!press) return;
+      if (!press || !copy.enabled) return;
       if (copy.picking) copy.rangeTo(press);
       else copy.openMenu(menuAt(press, press.touch, true));
     },
