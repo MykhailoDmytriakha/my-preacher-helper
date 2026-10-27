@@ -354,6 +354,73 @@ describe('SermonOutline Component', () => {
     expect(mockOnOutlineUpdate).not.toHaveBeenCalled();
   });
 
+  test.each([375, 1280])('keeps a manual section choice when the same sermon refreshes at %ipx', (width) => {
+    const previousWidth = window.innerWidth;
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: width });
+    try {
+      const { rerender } = render(<SermonOutline sermon={mockSermon} />);
+      const section = screen.getByTestId('outline-section-mainPart');
+      const wasOpen = width >= 640;
+      expect(Boolean(within(section).queryByText('Main point 1'))).toBe(wasOpen);
+      fireEvent.click(within(section).getByRole('button', { name: wasOpen ? 'common.collapse' : 'common.expand' }));
+      expect(Boolean(within(section).queryByText('Main point 1'))).toBe(!wasOpen);
+      rerender(<SermonOutline sermon={{ ...mockSermon, outline: {
+        ...mockSermon.outline!, main: [{ id: 'main1', text: 'Updated main point' }],
+      } }} />);
+      expect(Boolean(within(section).queryByText('Updated main point'))).toBe(!wasOpen);
+      expect(mockUpdateSermonOutline).not.toHaveBeenCalled();
+    } finally {
+      Object.defineProperty(window, 'innerWidth', { configurable: true, value: previousWidth });
+    }
+  });
+
+  test('keeps a manually closed section while an untouched section receives late content', () => {
+    const initial = { ...mockSermon, outline: { introduction: mockSermon.outline!.introduction, main: [], conclusion: [] } };
+    const { rerender } = render(<SermonOutline sermon={initial} />);
+    const intro = screen.getByTestId('outline-section-introduction');
+    fireEvent.click(within(intro).getByRole('button', { name: 'common.collapse' }));
+    rerender(<SermonOutline sermon={mockSermon} />);
+    expect(within(intro).queryByText('Introduction point 1')).not.toBeInTheDocument();
+    expect(screen.getByText('Main point 1')).toBeInTheDocument();
+    expect(mockUpdateSermonOutline).not.toHaveBeenCalled();
+  });
+
+  test('keeps a manually opened phone section after cancelling point editing', () => {
+    const previousWidth = window.innerWidth;
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 375 });
+    try {
+      render(<SermonOutline sermon={mockSermon} />);
+      const section = screen.getByTestId('outline-section-mainPart');
+      fireEvent.click(within(section).getByRole('button', { name: 'common.expand' }));
+      fireEvent.doubleClick(within(section).getByText('Main point 1'));
+      fireEvent.change(within(section).getByPlaceholderText('structure.editPointPlaceholder'), { target: { value: 'Cancelled words' } });
+      fireEvent.click(within(section).getByRole('button', { name: 'common.cancel' }));
+      expect(within(section).getByText('Main point 1')).toBeInTheDocument();
+      expect(screen.queryByText('Cancelled words')).not.toBeInTheDocument();
+      expect(mockUpdateSermonOutline).not.toHaveBeenCalled();
+    } finally {
+      Object.defineProperty(window, 'innerWidth', { configurable: true, value: previousWidth });
+    }
+  });
+
+  test('opens untouched desktop sections when their content arrives late', () => {
+    const { rerender } = render(<SermonOutline sermon={{ ...mockSermon, outline: undefined }} />);
+    expect(screen.queryByText('Main point 1')).not.toBeInTheDocument();
+    rerender(<SermonOutline sermon={mockSermon} />);
+    expect(screen.getByText('Introduction point 1')).toBeInTheDocument();
+    expect(screen.getByText('Main point 1')).toBeInTheDocument();
+  });
+
+  test('resets manual section choices for another sermon or owner', () => {
+    const { rerender } = render(<SermonOutline sermon={mockSermon} />);
+    fireEvent.click(within(screen.getByTestId('outline-section-mainPart')).getByRole('button', { name: 'common.collapse' }));
+    rerender(<SermonOutline sermon={{ ...mockSermon, id: 'another-sermon' }} />);
+    expect(screen.getByText('Main point 1')).toBeInTheDocument();
+    fireEvent.click(within(screen.getByTestId('outline-section-mainPart')).getByRole('button', { name: 'common.collapse' }));
+    rerender(<SermonOutline sermon={{ ...mockSermon, id: 'another-sermon', userId: 'another-owner' }} />);
+    expect(screen.getByText('Main point 1')).toBeInTheDocument();
+  });
+
   test('updates a pristine outline from the parent and resets when the sermon changes', () => {
     const { rerender } = render(<SermonOutline sermon={mockSermon} />);
     const changed = { ...mockSermon, outline: { introduction: [{ id: 'new', text: 'Updated outline' }], main: [], conclusion: [] } };

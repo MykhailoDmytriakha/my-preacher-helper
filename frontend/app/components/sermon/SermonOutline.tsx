@@ -109,6 +109,8 @@ const SermonOutlineEditor: React.FC<SermonOutlineProps> = ({
    * the server with itself and agree every time.
    */
   const baseOutlineRef = useRef<SermonOutline | null>(sermon.outline ?? null);
+  // A section's fold choice belongs to this view, independently of edits and delivery.
+  const chosenSectionsRef = useRef(new Set<SectionType>());
   /**
    * Counts edits and newly opened draft fields, including nested subpoint inputs.
    * A response from before that draft must not replace its list or merge baseline.
@@ -145,7 +147,13 @@ const SermonOutlineEditor: React.FC<SermonOutlineProps> = ({
     if (settledGenerationRef.current !== saveGenerationRef.current) return;
     setSectionPoints(mapOutline(sermon.outline));
     baseOutlineRef.current = sermon.outline ?? null;
-    if (saveGenerationRef.current === 0) setExpandedSections(expandedOutline(sermon.outline));
+    if (saveGenerationRef.current === 0) {
+      setExpandedSections(previous => {
+        const next = expandedOutline(sermon.outline);
+        for (const section of chosenSectionsRef.current) next[section] = previous[section];
+        return next;
+      });
+    }
   }, [sermon.outline, editingPointId, addingNewToSection]);
 
   const mountedRef = useRef(true);
@@ -235,10 +243,11 @@ const SermonOutlineEditor: React.FC<SermonOutlineProps> = ({
 
 
   const toggleSection = (section: SectionType) => {
-    setExpandedSections({
-      ...expandedSections,
-      [section]: !expandedSections[section],
-    });
+    chosenSectionsRef.current.add(section);
+    setExpandedSections(previous => ({
+      ...previous,
+      [section]: !previous[section],
+    }));
   };
 
   // Handle outside clicks to close the add point form
