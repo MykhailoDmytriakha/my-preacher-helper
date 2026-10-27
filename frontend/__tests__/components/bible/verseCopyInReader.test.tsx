@@ -6,7 +6,7 @@ import { join } from 'node:path';
 
 import { BibleBookReader } from '@/components/bible/BibleBookReader';
 import { resetCrossReferencePrefsForTests } from '@/components/bible/crossReferencePrefs';
-import { resetPlaceTrailForTests } from '@/components/bible/placeTrailStore';
+import { readPlaceTrail, resetPlaceTrailForTests } from '@/components/bible/placeTrailStore';
 import { LONG_PRESS_MS } from '@/hooks/useLongPress';
 import { verseWords, type BookText } from '@/utils/bibleText';
 import { forgetLoadedCrossRefs } from '@/utils/crossReferences';
@@ -276,6 +276,41 @@ describe('taking verses out of the reader', () => {
     expect(setData).not.toHaveBeenCalled();
     field.remove();
     window.getSelection()!.removeAllRanges();
+  });
+
+  // The owner, 2026-10-27: an act on a verse is a point of the trail; several verses leave one point a run, in the
+  // order they were chosen.
+  it('a verse’s menu, its links window and a copy of several put their verses on the trail', async () => {
+    await renderRuth();
+    const points = () => readPlaceTrail().links.map((link) => `${link.chapter}:${link.verse}`);
+    expect(points()).toEqual(['1:16']);
+    await hold(verseText('1:18'));
+    expect(points()).toEqual(['1:16', '1:18']);
+    await userEvent.keyboard('{Escape}');
+    await userEvent.click(screen.getByTestId('cross-refs-1:19'));
+    expect(points()).toEqual(['1:16', '1:18', '1:19']);
+    await userEvent.keyboard('{Escape}');
+    await hold(verseText('2:3'));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'bible.copy.several' }));
+    await userEvent.click(verseText('1:5'));
+    await userEvent.click(verseText('1:6'));
+    await userEvent.click(screen.getByRole('button', { name: 'bible.copy.copy' }));
+    expect(points()).toEqual(['1:16', '1:18', '1:19', '2:3', '1:5']);
+  });
+
+  // Codex review, 2026-10-27: a copy that answered late put its verse on the trail after a newer act.
+  it('a copy that answers late leaves the newer act where it is on the trail', async () => {
+    let answer: () => void = () => undefined;
+    writeText.mockImplementationOnce(() => new Promise<void>((resolve) => { answer = resolve; }));
+    await renderRuth();
+    await hold(verseText('1:18'));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'bible.copy.copy' }));
+    expect(writeText).toHaveBeenCalledTimes(1);
+    await hold(verseText('1:20'));
+    expect(screen.getByRole('menu')).toBeInTheDocument();
+    await act(async () => { answer(); });
+    const trail = readPlaceTrail();
+    expect(`${trail.links[trail.at].chapter}:${trail.links[trail.at].verse}`).toBe('1:20');
   });
 
   it('a selection copied by the system carries the words alone, with the place and the Bible', async () => {

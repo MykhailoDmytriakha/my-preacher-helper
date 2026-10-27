@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { useAuth } from '@/providers/AuthProvider';
-import { countVerseWords, markedElsewhere, signsHere, verseOrder, versesElsewhere, type MarkedElsewhere } from '@/utils/bibleMarks';
+import { countVerseWords, firstChangedVerse, markedElsewhere, signsHere, verseOrder, versesElsewhere, type MarkedElsewhere } from '@/utils/bibleMarks';
 import { usePageZoomed } from '@/utils/pageZoom';
 
 import { MarkLegend } from './MarkLegend';
@@ -60,7 +60,7 @@ type ReaderMarks = {
 
 const subscribeNever = () => () => undefined;
 
-export function useReaderMarks({ textRef, text, ready, bible, bookId, drawn }: {
+export function useReaderMarks({ textRef, text, ready, bible, bookId, drawn, onMarked }: {
   textRef: RefObject<HTMLElement | null>;
   text: BookText | null;
   /** The ribbon is on the page. */
@@ -69,6 +69,8 @@ export function useReaderMarks({ textRef, text, ready, bible, bookId, drawn }: {
   bookId: string;
   /** The chapters drawn of a big book (`useChapterWindow`): verses come into the page and leave it. */
   drawn?: unknown;
+  /** A stroke that changed marks — made or wiped some: the first verse it changed (the reader puts it on the trail). */
+  onMarked?: (chapter: number, verse: number) => void;
 }): ReaderMarks {
   const { t } = useTranslation();
   const { user } = useAuth();
@@ -105,14 +107,21 @@ export function useReaderMarks({ textRef, text, ready, bible, bookId, drawn }: {
   const painter = useMarkHighlights(textRef, ready && marking, stored, text, drawn);
   // A stroke begun before a choice and let go while it runs is checked again when it would be kept;
   // one whose save fails is no longer shown.
+  const markedRef = useRef(onMarked);
+  markedRef.current = onMarked;
+  const marksNow = useRef(stored);
+  marksNow.current = stored;
   const keep = useCallback((change: MarksChange) => {
     if (writableRef.current) {
+      const first = order ? firstChangedVerse(marksNow.current, change(marksNow.current), order) : null;
       save(change, () => painter.drop(change));
+      const [chapter, verse] = first ? first.split(':').map(Number) : [];
+      if (chapter && verse) markedRef.current?.(chapter, verse);
       return true;
     }
     sayWhy();
     return false;
-  }, [painter, save, sayWhy]);
+  }, [order, painter, save, sayWhy]);
   useMarkStrokes({
     rootRef: textRef,
     ready,

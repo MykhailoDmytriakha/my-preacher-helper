@@ -54,7 +54,9 @@ describe('BibleBookList', () => {
     const trail = screen.getByRole('navigation', { name: 'bible.trail.title' });
     const links = within(trail).getAllByRole('button').map((button) => button.textContent);
     expect(links).toEqual([label('Isaiah', 19, 1), label('Exodus', 12, 12), label('Joshua', 2, 11)]);
-    expect(within(trail).getByRole('button', { name: label('Joshua', 2, 11) })).toHaveAttribute('aria-current', 'location');
+    // Nothing is read on the list: the place stopped at is the light's link, drawn like every other.
+    expect(within(trail).getByRole('button', { name: label('Joshua', 2, 11) })).toHaveAttribute('data-trail-at');
+    expect(trail.querySelector('[aria-current]')).toBeNull();
     expect(screen.queryByRole('button', { name: 'bible.continueReading' })).not.toBeInTheDocument();
 
     await userEvent.click(within(trail).getByRole('button', { name: label('Exodus', 12, 12) }));
@@ -160,7 +162,8 @@ describe('BibleBookList — the trail as a column on a wide screen', () => {
     const trail = screen.getByRole('navigation', { name: 'bible.trail.title' });
     const links = within(trail).getAllByRole('button');
     expect(links.map((link) => link.textContent)).toEqual([label('Joshua', 2, 11), label('Exodus', 12, 12), label('Isaiah', 19, 1)]);
-    expect(links[0]).toHaveAttribute('aria-current', 'location');
+    expect(links[0]).toHaveAttribute('data-trail-at');
+    expect(trail.querySelector('[aria-current]')).toBeNull();
     expect(container.firstElementChild).toHaveClass('max-w-[1464px]');
     // The column and the Testaments share one row: the column is not a band above them.
     expect(trail.parentElement?.parentElement).toContainElement(screen.getByRole('region', { name: 'bible.oldTestament' }));

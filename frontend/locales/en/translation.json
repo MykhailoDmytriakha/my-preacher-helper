@@ -1455,13 +1455,13 @@
       },
       "trail": {
         "title": "Trail of places",
-        "intro": "The trail is a chain of chapters you have moved to — along a cross-reference or by picking a chapter, for example — with a verse remembered in each. Tap a place on the trail to go back to that verse. “←” goes back along the trail, and beside the arrow it says exactly where you will return — a place in the Bible or another part of the app, such as a note. When you simply read on, the trail does not grow; the verse you are at updates on it.",
+        "intro": "The trail is the verses you have moved to or done something with: opened a place (a book, a chapter, a verse, a verse found, a cross-reference), marked a verse, copied or shared it, opened its links or its menu. Tap a place on the trail to go back to that verse. “←” goes back along the trail, and beside the arrow it says exactly where you will return — a place in the Bible or another part of the app, such as a note. While you simply read, the trail does not change; when you leave, the verse you stopped at joins it.",
         "sampleCaption": "This is how the trail looks in the Bible:",
         "button": "The button with the number of places (the first one in the example) shows and hides the trail; in the Bible it stands by “←”. It appears once there are two places or more.",
         "history": "How many places to keep",
         "historyHint": "When there are more, the oldest leave the trail; the place you are at always stays. Lower the number while the trail is long and the extra old places leave at once, for good.",
         "recent": "Don’t repeat recent places",
-        "recentHint": "If the same chapter is already among the trail’s last {{count}} places, going there does not add it again: the trail highlights that place and keeps the new verse in it. If the chapter appears earlier on the trail, going there adds it to the end again."
+        "recentHint": "If the same verse is already among the trail’s last {{count}} places, it is not added again: the trail moves to that place. If the verse appears earlier on the trail, it is added to the end again."
       },
       "device": "These settings and the trail of places are kept on this device. Another phone or computer has its own.",
       "mine": {

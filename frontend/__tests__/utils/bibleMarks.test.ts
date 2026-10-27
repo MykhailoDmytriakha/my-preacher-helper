@@ -1,5 +1,5 @@
 import { mergeFields } from '@/data-engine/protocol';
-import { applyStroke, decodeBookMarks, encodeBookMarks, markedElsewhere, marksOnWord, readBookMarks, signsHere, strokeErases, verseOrder, versesElsewhere, type BookMarks } from '@/utils/bibleMarks';
+import { applyStroke, decodeBookMarks, encodeBookMarks, firstChangedVerse, markedElsewhere, marksOnWord, readBookMarks, signsHere, strokeErases, verseOrder, versesElsewhere, type BookMarks } from '@/utils/bibleMarks';
 
 const words = (raw: string) => raw.split(/\s+/).filter(Boolean).length;
 // Two chapters: 1:1 has four words, 1:2 three, 2:1 two.
@@ -92,6 +92,19 @@ describe('bibleMarks', () => {
     expect(decodeBookMarks({ v2_1: { m: '0-1-red,x-1-red,4-2-red,0-0-pink' }, nonsense: { m: '0-0-red' }, v3_1: 'broken', v4_1: { p: ['1-2-blue'] } }))
       .toEqual({ '2:1': { m: [[0, 1, 'red']] }, '4:1': { p: [[1, 2, 'blue']] } });
     expect(decodeBookMarks(undefined)).toEqual({});
+  });
+});
+
+// The owner, 2026-10-27: an eraser over a verse that bore nothing is no act on it — the trail takes only a real change.
+describe('the first verse a stroke changed', () => {
+  it('is the first verse in the book\'s order whose marks are different; none when nothing changed', () => {
+    const marked = applyStroke({}, order, { verse: '1:2', index: 0 }, { verse: '2:1', index: 0 }, { tool: 'marker', color: 'blue' }, false);
+    expect(firstChangedVerse({}, marked, order)).toBe('1:2');
+    const erasedOverNothing = applyStroke({}, order, { verse: '1:1', index: 0 }, { verse: '1:2', index: 1 }, { tool: 'eraser' }, false);
+    expect(firstChangedVerse({}, erasedOverNothing, order)).toBeNull();
+    // An eraser over 1:1 and 1:2 takes only what 1:2 bore: 1:2 is the verse changed.
+    const erased = applyStroke(marked, order, { verse: '1:1', index: 0 }, { verse: '1:2', index: 1 }, { tool: 'eraser' }, false);
+    expect(firstChangedVerse(marked, erased, order)).toBe('1:2');
   });
 });
 

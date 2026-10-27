@@ -9,7 +9,7 @@ import Switch from '@/components/ui/Switch';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { getLocalizedAbbrev } from '@/utils/bibleBooks';
 import { verseWords } from '@/utils/bibleText';
-import { litLinkKey, linkBefore, ownLink, type Trail, type TrailPlace } from '@/utils/placeTrail';
+import { linkBefore, linkOnScreen, litLinkKey, ownLink, type SeenVerses, type Trail, type TrailPlace } from '@/utils/placeTrail';
 import { placeIn } from '@/utils/versification';
 
 import { ownTrailPlace, saveTrailPrefs, usePlaceTrail, useTrailPrefs } from './placeTrailStore';
@@ -137,8 +137,10 @@ function useHiddenEnds(rowRef: RefObject<HTMLElement | null>): keyof typeof FADE
   return ends;
 }
 
-export function PlaceTrailStrip({ trail, bible, locale, look, onGo }: {
+export function PlaceTrailStrip({ trail, bible, locale, look, onGo, lit = false }: {
   trail: Trail; bible: BibleId; locale: AppLocale; look: StripLook; onGo: (link: TrailPlace) => void;
+  /** The light's link is shown lit — only while its verse is on the screen (`useReaderTrail`). */
+  lit?: boolean;
 }) {
   const { t } = useTranslation();
   const rowRef = useRef<HTMLDivElement | null>(null);
@@ -149,7 +151,7 @@ export function PlaceTrailStrip({ trail, bible, locale, look, onGo }: {
   const light = litLinkKey(trail);
   useLayoutEffect(() => {
     const row = rowRef.current;
-    const current = row?.querySelector<HTMLElement>('[aria-current="location"]');
+    const current = row?.querySelector<HTMLElement>('[data-trail-at]');
     if (!row || !current) return;
     row.scrollLeft = Math.max(0, current.offsetLeft - (row.clientWidth - current.offsetWidth) / 2);
   }, [light]);
@@ -158,13 +160,14 @@ export function PlaceTrailStrip({ trail, bible, locale, look, onGo }: {
       <div ref={rowRef} className={`overflow-x-auto overscroll-contain ${look === 'page' ? 'px-4' : ''} ${FADED_ENDS[hidden]}`}>
         <ol className="flex w-max items-center gap-1.5">
           {trail.links.map((link, index) => {
-            const here = index === trail.at;
+            const here = lit && index === trail.at;
             return (
-              <li key={`${index}:${link.book}:${link.chapter}`} className="flex items-center gap-1.5">
+              <li key={`${index}:${link.book}:${link.chapter}:${link.verse}`} className="flex items-center gap-1.5">
                 {index > 0 ? <span aria-hidden="true" className="text-gray-400 dark:text-gray-500">›</span> : null}
                 <button
                   type="button"
                   onClick={() => onGo(link)}
+                  data-trail-at={index === trail.at ? '' : undefined}
                   aria-current={here ? 'location' : undefined}
                   className={linkClasses(here)}
                 >
@@ -187,9 +190,9 @@ export function PlaceTrailStrip({ trail, bible, locale, look, onGo }: {
 const COLUMN_WIDTH = { places: 'w-[164px]', verses: 'w-[244px]' } as const;
 const READER_WIDTH = { alone: 'max-w-7xl', places: 'max-w-[1464px]', verses: 'max-w-[1544px]' } as const;
 
-/** Where the link being read stands: in the middle of the column, measured against the column's own box. */
+/** Where the light's link stands: in the middle of the column, measured against the column's own box. */
 function centreLit(list: HTMLElement | null) {
-  const current = list?.querySelector<HTMLElement>('[aria-current="location"]');
+  const current = list?.querySelector<HTMLElement>('[data-trail-at]');
   if (!list || !current) return;
   const box = list.getBoundingClientRect();
   const at = current.getBoundingClientRect();
@@ -204,8 +207,10 @@ function centreLit(list: HTMLElement | null) {
  * places fit (the owner, 2026-10-26: «только с начала стиха переключателем показывается»). The texts of
  * the places' books are fetched only while it is on.
  */
-export function PlaceTrailColumn({ trail, bible, locale, verseStart, onToggleVerseStart, onGo, look = 'reader' }: {
+export function PlaceTrailColumn({ trail, bible, locale, verseStart, onToggleVerseStart, onGo, look = 'reader', lit = false }: {
   trail: Trail; bible: BibleId; locale: AppLocale; verseStart: boolean; onToggleVerseStart: () => void; onGo: (link: TrailPlace) => void;
+  /** The light's link is shown lit — only while its verse is on the screen (`useReaderTrail`). */
+  lit?: boolean;
   /** In the reader the column ends above the screen's edge, as the minimap does; on the list of books, with the Testaments. */
   look?: 'reader' | 'page' | 'drawer';
 }) {
@@ -232,13 +237,13 @@ export function PlaceTrailColumn({ trail, bible, locale, verseStart, onToggleVer
       <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-2.5 pt-1.5">
         <ol>
           {newestFirst.map(({ link, index }, position) => {
-            const here = index === trail.at;
+            const here = lit && index === trail.at;
             const place = trailPlaceIn(bible, link) ?? link;
             const verse = verseStart ? texts.get(link.book)?.chapters[place.chapter - 1]?.[place.verse - 1] : undefined;
             // One link (the list of books shows even one) has no line to run along.
             const line = newestFirst.length === 1 ? 'hidden' : position === 0 ? 'top-1/2 bottom-0' : position === newestFirst.length - 1 ? 'top-0 bottom-1/2' : 'inset-y-0';
             return (
-              <li key={`${index}:${link.book}:${link.chapter}`} className="relative flex items-stretch pl-5">
+              <li key={`${index}:${link.book}:${link.chapter}:${link.verse}`} className="relative flex items-stretch pl-5">
                 <span aria-hidden="true" className={`absolute left-[7px] w-0.5 bg-gray-200 dark:bg-gray-700 ${line}`} />
                 <span
                   aria-hidden="true"
@@ -249,6 +254,7 @@ export function PlaceTrailColumn({ trail, bible, locale, verseStart, onToggleVer
                 <button
                   type="button"
                   onClick={() => onGo(link)}
+                  data-trail-at={index === trail.at ? '' : undefined}
                   aria-current={here ? 'location' : undefined}
                   className={`my-px flex min-w-0 flex-1 flex-col justify-center gap-0.5 rounded-[10px] px-2.5 py-1.5 text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${verseStart ? 'min-h-[54px]' : 'min-h-[34px]'} ${here ? 'bg-indigo-600 dark:bg-indigo-500' : 'hover:bg-indigo-50 dark:hover:bg-indigo-950/40'}`}
                 >
@@ -275,8 +281,8 @@ export function PlaceTrailColumn({ trail, bible, locale, verseStart, onToggleVer
 }
 
 /**
- * The trail on the list of books, in place of "Continue": the trail's sign, then its row, the lit link
- * where the person stopped. A link opens the reader at its place (`onOpen`), and the reader's arrival
+ * The trail on the list of books, in place of "Continue": the trail's sign, then its row, every link alike —
+ * nothing is being read here (the owner, 2026-10-27: a link is lit only while its verse is on the screen). A link opens the reader at its place (`onOpen`), and the reader's arrival
  * lights it or adds it, as a tap on the row in the reader does. An empty trail shows nothing.
  */
 export function PlaceTrailOnList({ trail, bible, locale, onOpen }: {
@@ -360,8 +366,11 @@ export type TrailBack =
  * the reader's way back: the link left of the place being read (the owner, 2026-10-20: "←" goes left
  * along the trail).
  */
-export function useReaderTrail({ bible, locale, wide, here, openPlace }: {
-  bible: BibleId; locale: AppLocale; wide: boolean; here: TrailPlace; openPlace: (book: string, place: { chapter: number; verse: number }) => void;
+export function useReaderTrail({ bible, locale, wide, here, seen, openPlace }: {
+  bible: BibleId; locale: AppLocale; wide: boolean; here: TrailPlace;
+  /** The verses on the screen, first and last: the light's link is lit only while its verse is among them. */
+  seen: SeenVerses | null;
+  openPlace: (book: string, place: { chapter: number; verse: number }) => void;
 }): { inLine: ReactNode; underLine: ReactNode; beside: ReactNode; readerWidth: string; phoneButton: ReactNode; drawer: ReactNode; back: TrailBack | null } {
   const trail = usePlaceTrail();
   const prefs = useTrailPrefs();
@@ -389,16 +398,18 @@ export function useReaderTrail({ bible, locale, wide, here, openPlace }: {
   const back: TrailBack | null = screen
     ? { kind: 'screen', screen }
     : link && place ? { kind: 'link', index: before, book: link.book, place, label: linkLabel(link, bible, locale) } : null;
+  // Lit only while its verse is on the screen (the owner, 2026-10-27: «выделяется, когда ты прямо на этом стихе»).
+  const lit = linkOnScreen(trail.links[trail.at], here.book, seen, bible);
   if (trail.links.length < 2) return { inLine: null, underLine: null, beside: null, readerWidth: READER_WIDTH.alone, phoneButton: null, drawer: null, back };
   const button = <PlaceTrailButton count={trail.links.length} shown={prefs.shown} onToggle={toggle} />;
   if (wide && roomForColumn) {
     const column = prefs.shown
-      ? <PlaceTrailColumn trail={trail} bible={bible} locale={locale} verseStart={prefs.verseStart} onToggleVerseStart={toggleVerseStart} onGo={go} />
+      ? <PlaceTrailColumn trail={trail} bible={bible} locale={locale} verseStart={prefs.verseStart} onToggleVerseStart={toggleVerseStart} onGo={go} lit={lit} />
       : null;
     const readerWidth = !prefs.shown ? READER_WIDTH.alone : prefs.verseStart ? READER_WIDTH.verses : READER_WIDTH.places;
     return { inLine: button, underLine: null, beside: column, readerWidth, phoneButton: null, drawer: null, back };
   }
-  const row = wide && prefs.shown ? <PlaceTrailStrip trail={trail} bible={bible} locale={locale} look="line" onGo={go} /> : null;
+  const row = wide && prefs.shown ? <PlaceTrailStrip trail={trail} bible={bible} locale={locale} look="line" onGo={go} lit={lit} /> : null;
   return wide
     ? { inLine: button, underLine: row, beside: null, readerWidth: READER_WIDTH.alone, phoneButton: null, drawer: null, back }
     : {
@@ -406,7 +417,7 @@ export function useReaderTrail({ bible, locale, wide, here, openPlace }: {
       phoneButton: <PlaceTrailButton count={trail.links.length} shown={drawerOpen} look="header" onToggle={() => setDrawerOpen(true)} />,
       drawer: (
         <TrailDrawer open={drawerOpen} onClose={closeDrawer}>
-          <PlaceTrailColumn trail={trail} bible={bible} locale={locale} verseStart={prefs.verseStart} onToggleVerseStart={toggleVerseStart} onGo={go} look="drawer" />
+          <PlaceTrailColumn trail={trail} bible={bible} locale={locale} verseStart={prefs.verseStart} onToggleVerseStart={toggleVerseStart} onGo={go} look="drawer" lit={lit} />
         </TrailDrawer>
       ),
     };

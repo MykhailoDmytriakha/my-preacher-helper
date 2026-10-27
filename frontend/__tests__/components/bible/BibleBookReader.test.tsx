@@ -5,7 +5,7 @@ import userEvent from '@testing-library/user-event';
 import { BibleBookReader, roomBelow } from '@/components/bible/BibleBookReader';
 import { ChapterPicker, ReadingPill } from '@/components/bible/BiblePicker';
 import { currentEntryId, saveEntryPlace } from '@/components/bible/lastPlace';
-import { arriveOnTrail, readPlaceTrail, resetPlaceTrailForTests } from '@/components/bible/placeTrailStore';
+import { arriveOnTrail, changeTranslationOnTrail, readPlaceTrail, resetPlaceTrailForTests } from '@/components/bible/placeTrailStore';
 import { LONG_PRESS_MS } from '@/hooks/useLongPress';
 import { verseCount } from '@/utils/versification';
 
@@ -552,6 +552,31 @@ describe('BibleBookReader', () => {
       expect(global.fetch).toHaveBeenCalledWith('/bible-text/kjv/v1/psalms.json', expect.anything());
       expect(scrollIntoView.mock.contexts).toEqual([document.querySelector('[data-chapter="23"]')]);
       expect(document.querySelector('[data-verse="23:1"] [data-verse-text]')).toHaveAttribute('lang', 'en');
+      window.history.replaceState(null, '');
+    });
+
+    // Codex review, 2026-10-27 (two rounds): the reader opened again for a change of translation put the place read on
+    // the trail; the change is said by the reader that asks for it, never guessed from a place's stored Bible.
+    it('the same place opened for a change of translation adds nothing to the trail', async () => {
+      servePsalms();
+      window.history.replaceState({ bibleEntry: 'entry-switch' }, '');
+      saveEntryPlace('entry-switch', { chapter: 22, verse: 5, bible: 'rst' });
+      arriveOnTrail({ book: 'Psalms', chapter: 22, verse: 1, bible: 'rst' });
+      changeTranslationOnTrail('Psalms');
+      render(<BibleBookReader bible="kjv" initialBible="kjv" onChangeBible={jest.fn()} bookId="Psalms" initialPlace={null} onOpenBook={jest.fn()} />);
+      await screen.findByText('Psalm 23:4');
+      expect(readPlaceTrail().links).toEqual([{ book: 'Psalms', chapter: 22, verse: 1, bible: 'rst' }]);
+      window.history.replaceState(null, '');
+    });
+
+    it('Back to a place read in another Bible, with no change of translation, is an arrival', async () => {
+      servePsalms();
+      window.history.replaceState({ bibleEntry: 'entry-back' }, '');
+      saveEntryPlace('entry-back', { chapter: 22, verse: 5, bible: 'rst' });
+      arriveOnTrail({ book: 'Psalms', chapter: 22, verse: 1, bible: 'rst' });
+      render(<BibleBookReader bible="kjv" initialBible="kjv" onChangeBible={jest.fn()} bookId="Psalms" initialPlace={null} onOpenBook={jest.fn()} />);
+      await screen.findByText('Psalm 23:4');
+      expect(readPlaceTrail()).toEqual({ links: [{ book: 'Psalms', chapter: 22, verse: 1, bible: 'rst' }, { book: 'Psalms', chapter: 23, verse: 5, bible: 'kjv' }], at: 1 });
       window.history.replaceState(null, '');
     });
 
