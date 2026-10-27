@@ -339,4 +339,58 @@ describe('Browser DataEngine lifecycle composition', () => {
     expect(() => createBrowserDataEngine()).toThrow('cannot subscribe');
     expect(jest.getTimerCount()).toBe(0);
   });
+
+  it('repairs a refused manual stage through provider replacement only for its original owner', async () => {
+    const s = setup(); setOnline(false); installStorageHarness();
+    const store = jest.requireActual<typeof import('../manualScopes.client')>('../manualScopes.client').createIndexedDbManualScopes();
+    jest.mocked(createIndexedDbManualScopes).mockReturnValue(store);
+    let available = true;
+    const put = store.put.bind(store);
+    jest.spyOn(store, 'put').mockImplementation(async record => {
+      if (!available) throw new Error('Device storage unavailable');
+      await put(record);
+    });
+    const first = createBrowserDataEngine({ onError: jest.fn() });
+    s.authCallbacks[0].next(user('owner')); await settle();
+    const editor = await first.engine.openEditor(resource, first.editorId(resource));
+    const form = editor.form('content', [['content']]); await form.begin();
+    available = false;
+    await expect(form.update(current => ({ ...current, content: 'Words across provider replacement' }))).rejects.toThrow();
+    first.dispose(); await settle();
+    const second = createBrowserDataEngine({ onError: jest.fn() });
+    try {
+      s.authCallbacks[1].next(user('another-owner')); await settle();
+      available = true;
+      await second.engine.retry();
+      expect(await store.list('another-owner')).toEqual([]);
+      expect((await store.list('owner'))[0].record.stage[0]).toEqual({ exists: true, value: 'base' });
+      s.authCallbacks[1].next(user('owner')); await second.engine.retry(); await settle();
+      expect((await store.list('owner'))[0].record.stage[0]).toEqual({ exists: true, value: 'Words across provider replacement' });
+      expect(s.transport.send).not.toHaveBeenCalled();
+    } finally { available = true; second.dispose(); await settle(); }
+  });
+
+  it('repairs a refused closed checkpoint after its browser provider has been replaced', async () => {
+    const s = setup(); setOnline(false);
+    const store = createIndexedDbCheckpoints();
+    const put = store.put;
+    let available = true;
+    store.put = jest.fn(async (record: EditorRecord) => {
+      if (!available) throw new Error('Device storage unavailable');
+      await put(record);
+    });
+    const first = createBrowserDataEngine({ onError: jest.fn() });
+    s.authCallbacks[0].next(user('owner')); await settle();
+    const id = first.editorId(resource), editor = await first.engine.openEditor(resource, id);
+    available = false;
+    void editor.edit({ userId: 'owner', content: 'Checkpoint across provider replacement' }).catch(() => undefined);
+    first.dispose(); await settle();
+    const second = createBrowserDataEngine({ onError: jest.fn() });
+    try {
+      available = true;
+      s.authCallbacks[1].next(user('owner')); await second.engine.retry(); await settle();
+      expect(s.checkpoints.get(id)?.checkpoint.draft?.content).toBe('Checkpoint across provider replacement');
+      expect(s.transport.send).not.toHaveBeenCalled();
+    } finally { available = true; second.dispose(); await settle(); }
+  });
 });

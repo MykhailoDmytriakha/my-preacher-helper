@@ -15,6 +15,7 @@ import { watchEditQueue } from './editDiagnostics.client';
 import { editorIdentity } from './editorIdentity';
 import { DataEngine } from './engine';
 import { createIndexedDbJournal } from './journal.client';
+import { LocalWriteback } from './localWriteback';
 import { createIndexedDbManualScopes } from './manualScopes.client';
 import { createIndexedDbMembershipScopes } from './membershipScopes.client';
 import { ResourceObserver } from './observer';
@@ -36,7 +37,10 @@ export interface BrowserDataEngine {
   editorId(resource: ResourceRef, slot?: string): string;
 }
 
-/** Create once per mounted provider and dispose on unmount. No module-level browser state. */
+// Only unfinished device copies outlive a provider; no account, read cache or transport lives here.
+const retiredWrites = new LocalWriteback();
+
+/** Create once per mounted provider and dispose its account/read/network lifecycle on unmount. */
 export function createBrowserDataEngine({ onError }: { onError?: (error: unknown, about?: FailureAddress) => void } = {}): BrowserDataEngine {
   if (typeof window === 'undefined' || typeof document === 'undefined') throw new Error('DataEngine requires a browser');
   const report = onError ?? ((error: unknown) => { console.error('DataEngine background operation failed', error); });
@@ -48,7 +52,7 @@ export function createBrowserDataEngine({ onError }: { onError?: (error: unknown
   const collections = new CollectionReader({ transport, observer, snapshots, cursors: createIndexedDbCollectionCursors(), onError: report });
   const engine = new DataEngine({
     runtime, observer, transport, checkpoints: createIndexedDbCheckpoints(), collections,
-    snapshots, operationId: newClientId, onError: report,
+    snapshots, operationId: newClientId, onError: report, localWriteback: retiredWrites,
     commits: createIndexedDbCommitStore(), manualScopes: createIndexedDbManualScopes(), membershipScopes: createIndexedDbMembershipScopes(),
   });
   let active = true;

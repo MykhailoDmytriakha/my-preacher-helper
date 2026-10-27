@@ -1,4 +1,5 @@
 import { prepareDomainCommand } from './domainPolicy';
+import { retireLocalWrite, type LocalWriteHandoff } from './localWriteback';
 import { projectMembershipAction, type MembershipAction } from './membershipIntent';
 import { equalValues, isValidIdentifier } from './protocol';
 import { validateResourceDocument } from './resourceSchemas';
@@ -117,14 +118,14 @@ export class MembershipScope {
     validateCreation(next);
     projectMembershipAction(this.values(), action);
     this.record = next; this.record.generation += 1; this.durable = false; this.emit();
-    return this.enqueue(() => this.write());
+    return this.enqueuePersistence();
   }
   updateCreation(value: DocumentData): Promise<void> {
     this.assertEditing();
     if (!this.record.creation) throw new Error('Open a creation stage first');
     const next = { ...this.record, creation: { ...this.record.creation, value: clone(value) } };
     validateCreation(next); this.record = next;
-    this.record.generation += 1; this.durable = false; this.emit(); return this.enqueue(() => this.write());
+    this.record.generation += 1; this.durable = false; this.emit(); return this.enqueuePersistence();
   }
   pinCreationSeries(pins: readonly MembershipPin[]): Promise<void> {
     this.assertEditing();
@@ -138,7 +139,7 @@ export class MembershipScope {
     const next = { ...this.record, action, pins: clone([...pins]), creation };
     // Missing preset targets leave the stage untouched, so recovery cannot silently unlink it.
     validateMembershipScope(next); this.record = next;
-    this.record.generation += 1; this.durable = false; this.emit(); return this.enqueue(() => this.write());
+    this.record.generation += 1; this.durable = false; this.emit(); return this.enqueuePersistence();
   }
   save(): Promise<string[]> {
     this.assertCurrent();
@@ -164,11 +165,16 @@ export class MembershipScope {
   }
   cancel(): Promise<void> {
     this.assertEditing(); this.record.phase = 'cancelled'; this.record.action = null; this.durable = false; this.emit();
-    return this.enqueue(() => this.write());
+    return this.enqueuePersistence();
   }
-  retryPersistence(): Promise<void> { this.assertCurrent(); return this.enqueue(() => this.write()); }
+  retryPersistence(): Promise<void> { this.assertCurrent(); return this.enqueuePersistence(); }
   settled(): Promise<void> { return this.queue.then(() => { this.assertCurrent(); }); }
   dispose(): void { this.closed = true; this.listeners.clear(); }
+  retire(): LocalWriteHandoff {
+    return retireLocalWrite({ owner: this.record.owner, kind: 'membership', id: this.record.scopeId,
+      ...(this.record.creation ? { resource: this.record.creation.resource } : {}) }, this.queue,
+      () => this.dispose(), () => this.durable, () => this.writeLocal());
+  }
   private values() { return new Map(this.record.pins.map(pin => [pin.baseline.resource.id, ancestor(pin)])); }
   private captures(): AtomicCapture[] {
     const next = projectMembershipAction(this.values(), this.record.action);
@@ -191,12 +197,23 @@ export class MembershipScope {
         editGeneration: this.record.generation, conflicts: [], remoteCandidate: null, pending: {} } }, ...membership];
   }
   private async write(): Promise<void> {
-    this.assertCurrent(); this.durable = false;
+    this.assertCurrent();
+    await this.writeLocal();
+    this.assertCurrent();
+  }
+  private async writeLocal(): Promise<void> {
+    this.durable = false;
     const submitted = clone(this.record);
     const stored = await this.port.persist(submitted, this.revision);
-    this.assertCurrent(); this.revision = stored.revision; this.record.revision = stored.revision;
+    this.revision = stored.revision; this.record.revision = stored.revision;
     if (equalValues({ ...submitted, revision: stored.revision }, this.record)) this.durable = true;
     this.emit();
+  }
+  private enqueuePersistence(): Promise<void> {
+    const result = this.queue.catch(() => undefined).then(() => this.writeLocal());
+    this.queue = result;
+    void result.catch(() => { this.durable = false; this.emit(); });
+    return result.then(() => { this.assertCurrent(); });
   }
   private enqueue<T>(action: () => Promise<T>): Promise<T> {
     const result = this.queue.catch(() => undefined).then(() => { this.assertCurrent(); return action(); });

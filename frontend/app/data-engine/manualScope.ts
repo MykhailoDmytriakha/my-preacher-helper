@@ -1,4 +1,5 @@
 import { CaptureContinuations } from './captureContinuations';
+import { retireLocalWrite, type LocalWriteHandoff } from './localWriteback';
 import { equalValues, getResourcePolicy, isValidIdentifier } from './protocol';
 import { validateResourceDocument } from './resourceSchemas';
 
@@ -79,7 +80,7 @@ export class ManualScope {
     validateOptions(options);
     if (!options.port.isCurrent()) throw new Error(OWNER_CHANGED);
     const scope = new ManualScope(options, captureRecord(options, generation));
-    scope.persist();
+    scope.enqueue(() => scope.write());
     return scope;
   }
 
@@ -196,7 +197,7 @@ export class ManualScope {
     this.record.generation += 1;
     this.record.active = false;
     this.durable = false;
-    return this.enqueue(() => this.write());
+    return this.enqueuePersistence(() => this.writeLocal());
   }
 
   /** Cancel only this stage. A previously durable Save survives cancellation. */
@@ -206,10 +207,10 @@ export class ManualScope {
     this.record.generation += 1;
     this.record.active = false;
     this.durable = false;
-    return this.enqueue(async () => {
+    return this.enqueuePersistence(async () => {
       this.captures.retire(captures);
       this.record.stage = copy(this.record.savedSelection);
-      await this.write();
+      await this.writeLocal();
     });
   }
 
@@ -233,15 +234,30 @@ export class ManualScope {
   }
   dispose(): void { this.captures.retire(); this.closed = true; }
 
+  retire(options: { finishPending?: boolean } = {}): LocalWriteHandoff {
+    return retireLocalWrite({ owner: this.record.owner, kind: 'manual', id: this.record.scopeId, resource: this.record.resource },
+      this.queue, () => this.dispose(), () => this.durable, () => this.writeLocal(), options.finishPending);
+  }
+
   private value(): DocumentData { return project(this.record.predecessor?.value ?? this.record.baseline.value!, this.record.selection, this.record.stage); }
-  private persist(): Promise<void> { this.durable = false; return this.enqueue(() => this.write()); }
+  private persist(): Promise<void> { this.durable = false; return this.enqueuePersistence(() => this.writeLocal()); }
   private async write(): Promise<void> {
     this.assertCurrent();
+    await this.writeLocal();
+    this.assertCurrent();
+  }
+  private async writeLocal(): Promise<void> {
     this.durable = false;
     const record = copy(this.record);
     await this.options.port.persist(record);
-    this.assertCurrent();
     if (equalValues(record, this.record)) this.durable = true;
+  }
+  private enqueuePersistence(operation: () => Promise<void>): Promise<void> {
+    // The invocation already checked authority. Only its original device copy may outlive it.
+    const next = this.queue.catch(() => undefined).then(operation);
+    this.queue = next;
+    void next.catch(() => undefined);
+    return next.then(() => { this.assertCurrent(); });
   }
   private enqueue<T>(operation: () => Promise<T>): Promise<T> {
     const next = this.queue.catch(() => undefined).then(() => { this.assertCurrent(); return operation(); });

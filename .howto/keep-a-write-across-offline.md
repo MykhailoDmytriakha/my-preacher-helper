@@ -62,6 +62,16 @@ Each new opening keeps its backup at `new~<creationId>`, separate from the event
 
 A surviving local precreate source can resolve an already captured or accepted row; do not create it twice. Confirmed creation IDs alone retire its precreate lineage, including the later tombstone of an explicitly deleted creation. This is not permission to retire later words at the actual document address. Legacy `new` sources remain explicitly recoverable; fresh openings never share that slot. The note autosave receives its exact `draftDocId`, with legacy `new` as its compatibility default; cleanup never scans unrelated new drafts. Fresh raw audio uses the reserved canonical creation ID through the same opening hook; legacy exact-linked sources and the explicit unassigned-audio copy archive use the canonical recording store. Audio-only default-note metadata adopts only source links; authored question/type and text remain explicit recovery. See `.howto/record-and-transcribe-audio.md`.
 
+## Retain the last device copy after a form retires
+
+`data-engine/localWriteback.ts` owns only retired local-write handoffs. Live forms keep their existing serializer. `ManualScope.retire`, `MembershipScope.retire` and the closing controller handoff first await the old queue, then repair its final local copy under the original owner/kind/id. `browser.client.ts` shares this pure holder across provider replacement; reads, transport, auth and command authority retain their ordinary lifetime.
+
+- Already-authorized local update/Cancel may finish after UI retirement. Save/proposal producers still require the original current owner. Ordinary same-owner parent-close lets an already-invoked manual Save finish; retirement itself never manufactures Save.
+- Reopen/discovery repairs matching pending handoffs before reading the same identity, so a late old write cannot overwrite new typing. `engine.retry` repairs local debt even offline. Preserve the original failure address on every retry.
+- Keep membership CAS and its actual returned revision. A local completion can update revision/durability without publishing to a retired UI. Completed or queued Cancel remains cancelled.
+- Do not put every live write into another global tail: a queued Save may otherwise wait behind a later update that already waits on that Save. An empty handoff set returns synchronously; adding an unconditional empty await changed background ordering and broke `collectionReturn` regressions.
+- Verify with a native IndexedDB transaction held while earlier and latest words are typed, actual signout, and explicit recovery. Separately abort actual device transactions, replace the provider, restore storage and retry the original owner. Tests and RAM retention do not prove survival of browser termination while every device write is refused.
+
 ## Why
 
 - 2026-03-16: optimistic records were persisted but retries lived in component refs; a reload, redirect or auth bounce stranded local edits for good.

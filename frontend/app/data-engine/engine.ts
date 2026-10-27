@@ -6,6 +6,7 @@ import { canReplaceDocumentIntent, isDirectLegacyDocumentIntent, savedDocumentAn
 import { ACTION_SLOT, editorSlot } from './editorIdentity';
 import { AddressedFailures, eachFailure } from './failures';
 import { collectionHeadRef } from './feed';
+import { LocalWriteback, type LocalWriteHandoff } from './localWriteback';
 import { ManualScope, sameManualSelection, type ManualCapture, type ManualPath, type ManualSavedIntent } from './manualScope';
 import { captureMembershipPins } from './membershipCapture';
 import { describeActionDelivery, describeMembershipDelivery, type MembershipDelivery } from './membershipDelivery';
@@ -49,6 +50,8 @@ export interface DataEngineOptions {
   commits: CommitStore;
   manualScopes?: ManualScopeStore;
   membershipScopes?: MembershipScopeStore;
+  /** Retired device writes survive replacement of the browser provider. */
+  localWriteback?: LocalWriteback;
   /** A failure of background work, with the document or collection it concerns when there is one. */
   onError?: (error: unknown, about?: FailureAddress) => void;
 }
@@ -138,6 +141,7 @@ const initialObservation = (): Observation => ({ snapshot: null, source: null, r
 
 /** Public lifecycle boundary: callers never manage replay, baselines, or transport choice. */
 export class DataEngine {
+  private readonly localWriteback: LocalWriteback;
   private owner: string | null = null;
   private generation = 0;
   private online = true;
@@ -172,6 +176,7 @@ export class DataEngine {
   private councilCarries = new Map<string, Promise<ResourceSnapshot>>();
 
   constructor(private readonly options: DataEngineOptions) {
+    this.localWriteback = options.localWriteback ?? new LocalWriteback();
     this.commits = new CommitQueue({ store: options.commits, runtime: options.runtime,
       operationId: options.operationId, readConfirmed: resource => this.read(resource),
       readWriteTarget: resource => this.readWriteTarget(resource),
@@ -203,17 +208,17 @@ export class DataEngine {
     const previous = this.owner, previousGeneration = this.generation;
     const unwritten = [...this.editors.values()].flatMap(entry => {
       const record = entry.controller && !entry.closed ? this.unwrittenRecord(entry.controller) : null;
-      return record ? [record] : [];
+      return record ? [{ record, pending: entry.controller!.settled() }] : [];
     });
     const retiringEditors = [...this.editors.values()];
     this.editors.clear();
     this.owner = owner;
     this.generation += 1;
     for (const entry of retiringEditors) this.close(entry);
-    if (previous) for (const record of unwritten) this.keepUnwritten(record, previous, previousGeneration);
-    for (const manual of this.manualForms.values()) manual.scope?.dispose();
+    if (previous) for (const { record, pending } of unwritten) this.keepUnwritten(record, previous, previousGeneration, pending);
+    for (const manual of this.manualForms.values()) if (manual.scope) this.retainLocal(manual.scope.retire(), previousGeneration);
     this.manualForms.clear();
-    for (const scope of this.membershipForms.values()) scope.dispose();
+    for (const scope of [...this.membershipForms.values(), ...this.membershipReleases.values()]) this.retainLocal(scope.retire(), previousGeneration);
     this.membershipForms.clear();
     this.membershipOpenings.clear();
     this.membershipReleases.clear();
@@ -458,6 +463,9 @@ export class DataEngine {
     if (existing) return existing;
     if (opening) return opening;
     const restoring = (async () => {
+      const repairing = this.localWriteback.retry(owner, address => address.kind === 'membership' && address.id === scopeId);
+      if (repairing) await repairing;
+      this.assertCurrent(owner, generation);
       const record = await this.options.membershipScopes!.read(owner, scopeId); this.assertCurrent(owner, generation);
       if (!record) throw Object.assign(new Error('Membership recovery no longer exists'), { code: 'draft-gone' });
       const scope = MembershipScope.restore(record, this.membershipPort(owner, generation));
@@ -483,7 +491,7 @@ export class DataEngine {
       if (record.phase === 'editing' && record.action === null && !record.creation) await scope.cancel();
       await this.options.membershipScopes!.compact(owner, scopeId);
     }).finally(() => {
-      scope.dispose();
+      this.retainLocal(scope.retire(), generation);
       if (this.membershipReleases.get(scopeId) === scope) this.membershipReleases.delete(scopeId);
       if (this.current(owner, generation)) this.emitMembership();
     }), owner, generation, about);
@@ -493,6 +501,8 @@ export class DataEngine {
     const owner = this.requireOwner(), generation = this.generation;
     const store = this.options.membershipScopes;
     if (!store) return [];
+    const repairing = this.localWriteback.retry(owner, address => address.kind === 'membership');
+    if (repairing) await repairing; this.assertCurrent(owner, generation);
     const records = await store.list(owner); this.assertCurrent(owner, generation);
     for (const record of records) { await store.compact(owner, record.scopeId); this.assertCurrent(owner, generation); }
     const remaining = await store.list(owner); this.assertCurrent(owner, generation);
@@ -558,8 +568,8 @@ export class DataEngine {
     return {
       isCurrent: () => this.current(owner, generation),
       persist: async (record, revision) => {
-        this.assertCurrent(owner, generation);
-        const saved = await store.persist(record, revision); this.assertCurrent(owner, generation); return saved;
+        if (record.owner !== owner) throw new Error('Membership persistence owner changed');
+        return store.persist(record, revision);
       },
       save: async captures => {
         this.assertCurrent(owner, generation);
@@ -577,6 +587,9 @@ export class DataEngine {
     const owner = this.requireOwner();
     if (resource) this.validateResource(resource, owner);
     const generation = this.generation;
+    const repairing = this.localWriteback.retry(owner, address => address.kind === 'checkpoint' && (!resource || Boolean(address.resource && sameResource(address.resource, resource))));
+    if (repairing) await repairing;
+    this.assertCurrent(owner, generation);
     const records = await this.recoveryStore().listRecoverable(owner, resource && copy(resource));
     const requests = await this.commits.list();
     this.assertCurrent(owner, generation);
@@ -765,6 +778,8 @@ export class DataEngine {
     if (this.disposed || !this.owner) return;
     const owner = this.requireOwner();
     const generation = this.generation;
+    const repairing = this.localWriteback.retry(owner);
+    if (repairing) await repairing; this.assertCurrent(owner, generation);
     // Repair local ownership even offline. A failed first checkpoint or journal
     // insertion has no queued remote result that could repair it through replay.
     // The first failure ends the retry, as it always did, and stays about its own document
@@ -960,6 +975,9 @@ export class DataEngine {
       if (entry.closed) throw this.abortError();
     };
     try {
+      const repairing = this.localWriteback.retry(owner, address => address.kind === 'checkpoint' && address.id === editorId);
+      if (repairing) await repairing;
+      assertOpening();
       const requests = creating ? [] : await this.commits.list();
       assertOpening();
       requests.forEach(request => this.rememberCommit(request));
@@ -1167,11 +1185,12 @@ export class DataEngine {
           // With no request taking the last words along, the checkpoint left behind is where they live:
           // it must hold what the screen showed, also when that came a moment before closing.
           const unwritten = current && !leaving ? this.unwrittenRecord(controller) : null;
+          const pending = unwritten ? controller.settled() : Promise.resolve();
           // The entry closes now, synchronously: the same editor identity may reopen at once
           // (navigation back to this document), and an open entry would refuse it.
           this.close(entry);
           if (this.editors.get(editorId) === entry) this.editors.delete(editorId);
-          if (unwritten) this.keepUnwritten(unwritten, owner, generation, frozen);
+          if (unwritten) this.keepUnwritten(unwritten, owner, generation, pending, frozen);
           if (!leaving) return;
           // The request belongs to the engine's queue, not to the controller that just closed:
           // it is delivered by any editor or tab of this owner, now or after a reload.
@@ -1209,11 +1228,16 @@ export class DataEngine {
     try { return controller.unwrittenRecord(); } catch { return null; }
   }
 
-  /** Write a retired editor's last checkpoint at once; storage refusing it, even synchronously, is a failure like any other. */
-  private keepUnwritten(record: EditorRecord, owner: string, generation: number, about?: FailureAddress): void {
-    let writing: Promise<void>;
-    try { writing = this.options.checkpoints.put(record); } catch (error) { writing = Promise.reject(error); }
-    this.background(writing, owner, generation, about);
+  /** The old queue finishes before its immutable last checkpoint can repair the same identity. */
+  private keepUnwritten(record: EditorRecord, owner: string, generation: number, pending: Promise<unknown>, about?: FailureAddress): void {
+    this.retainLocal({ address: { owner, kind: 'checkpoint', id: record.editorId, resource: record.checkpoint.confirmed.resource },
+      persist: async () => { await pending.catch(() => undefined); await this.options.checkpoints.put(record); } }, generation, about);
+  }
+
+  private retainLocal(handoff: LocalWriteHandoff, generation: number, failureAddress?: FailureAddress): void {
+    const resource = failureAddress ?? handoff.address.resource ?? (handoff.address.kind === 'membership' ? { collection: 'series' } : undefined);
+    this.background(this.localWriteback.write(handoff.address, () => resource ? about(resource, handoff.persist()) : handoff.persist()),
+      handoff.address.owner, generation, resource);
   }
 
   private abortError(): Error {
@@ -1263,6 +1287,9 @@ export class DataEngine {
       // Keep what the user actually saw pinned while IndexedDB/provenance reads await.
       const pinned = copy(parent.controller!.getState().checkpoint);
       const run = async (attempt = 0): Promise<void> => {
+        if (state.scope) { this.retainLocal(state.scope.retire(), generation); state.scope = null; }
+        const repairing = this.localWriteback.retry(owner, address => address.kind === 'manual' && (address.id === state.scopeId || address.id === sourceScopeId));
+        if (repairing) await repairing; active();
         const records = await this.commits.list(); active();
         records.forEach(request => this.rememberCommit(request));
         const source = sourceScopeId ? await store.read(owner, sourceScopeId) : undefined; active();
@@ -1309,7 +1336,6 @@ export class DataEngine {
           },
         };
         const options = { owner, resource, scopeId: targetId, selection, port };
-        state.scope?.dispose(); state.scope = null;
         const scope = existing?.record ? ManualScope.restore(options, { ...copy(existing.record), scopeId: targetId, active: true }) : ManualScope.begin(options, existing ? existing.watermark.generation + 1 : 0);
         try {
           if (existing?.record) {
@@ -1376,6 +1402,8 @@ export class DataEngine {
       }),
       listRecoverable: async () => {
         active();
+        const repairing = this.localWriteback.retry(owner, address => address.kind === 'manual' && Boolean(address.resource && sameResource(address.resource, resource)));
+        if (repairing) await repairing; active();
         const values = await store.list(owner, resource);
         const requests = await this.commits.list(); active();
         const settled = new Set(requests.filter(request => ['acknowledged', 'cancelled'].includes(request.state)).map(request => request.id));
@@ -1498,6 +1526,10 @@ export class DataEngine {
 
   private close(entry: EditorEntry): void {
     entry.closed = true;
+    for (const [key, manual] of this.manualForms) if (manual.parent === entry) {
+      if (manual.scope) this.retainLocal(manual.scope.retire({ finishPending: this.owner !== null }), this.generation);
+      this.manualForms.delete(key);
+    }
     entry.stopObservation?.();
     entry.stopObservation = null;
     entry.stopController?.();
