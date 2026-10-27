@@ -12,6 +12,7 @@ import { useTranslation } from '@locales/useTranslation';
 
 import { createBrowserDataEngine, type BrowserDataEngine } from './browser.client';
 import { isCollectionOnEngine, isDataEngineEnabled } from './clientPolicy';
+import { isInactiveEditorError as inactiveEditor } from './controller';
 import { isDirectLegacyDocumentIntent, savedDocumentAnswer, type DocumentAnswer } from './documentDelivery';
 import { ACTION_SLOT, editorSlot } from './editorIdentity';
 import { needsConnection } from './engine';
@@ -49,6 +50,9 @@ export type { OpenDocumentAnswer } from './openDocumentAnswers';
 export function isRecoveryHeldOpen(records: readonly EditorRecord[], answers: readonly OpenDocumentAnswer[]): boolean { return heldOpen(records, answers); }
 /** Capture shown recovery work through the public engine facade. */
 export function captureRecoveryChoice(records: readonly EditorRecord[]): RecoveryChoiceScope { return captureChoice(records); }
+
+/** Whether a pending edit was cancelled because its editor retired. */
+export function isInactiveEditorError(error: unknown): boolean { return inactiveEditor(error); }
 
 /** A refusal only because this device holds no copy and the server cannot be asked now (offline, hidden tab). */
 export const needsConnectionFailure = (error: unknown): boolean => needsConnection(error);

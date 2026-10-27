@@ -2,7 +2,7 @@ import { DragDropContext, Draggable, DraggableProvided, DraggableStateSnapshot, 
 import { ChevronDownIcon, PlusIcon } from '@heroicons/react/20/solid';
 import { Bars3Icon, CheckIcon, PencilIcon, TrashIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import Link from 'next/link';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import { SubPointList } from '@/components/column/SubPointList';
 import { useStructureWriter } from '@/components/sermon/structureWriter';
@@ -79,6 +79,11 @@ const SermonOutlineEditor: React.FC<SermonOutlineProps> = ({
   const { confirm, confirmDialog } = useConfirm();
   const writer = useStructureWriter();
   const outlineCapture = useMemo(() => new OutlineCapture(writer, sermon.id, 'preferMine'), [writer, sermon.id]);
+  const parentOutlineRef = useRef<SermonOutline | null>(sermon.outline ?? null);
+  useLayoutEffect(() => {
+    parentOutlineRef.current = sermon.outline ?? null;
+    outlineCapture.observeView(sermon.outline);
+  }, [outlineCapture, sermon.outline]);
 
   // --- All useState hooks at the top ---
   const [error, setError] = useState<FailureWords | null>(null);
@@ -206,17 +211,18 @@ const SermonOutlineEditor: React.FC<SermonOutlineProps> = ({
     };
     setError(null);
     outlineCapture.schedule({ outline: outlineToSave, base: baseOutlineRef.current, begin: () => ({
-      stored: saved => {
+      stored: (saved, sameView) => {
         if (!mountedRef.current || generationAtRequest !== saveGenerationRef.current) return;
+        const visible = sameView ? saved : parentOutlineRef.current;
         const committed: SermonOutline = {
-          introduction: saved.introduction ?? outlineToSave.introduction,
-          main: saved.main ?? outlineToSave.main,
-          conclusion: saved.conclusion ?? outlineToSave.conclusion,
+          introduction: visible?.introduction ?? [],
+          main: visible?.main ?? [],
+          conclusion: visible?.conclusion ?? [],
         };
         baseOutlineRef.current = committed;
         settledGenerationRef.current = generationAtRequest;
         setSectionPoints({ introduction: committed.introduction, mainPart: committed.main, conclusion: committed.conclusion });
-        onOutlineUpdate?.(committed);
+        if (sameView) onOutlineUpdate?.(committed);
       },
       failed: err => {
         if (!mountedRef.current || generationAtRequest !== saveGenerationRef.current) return;

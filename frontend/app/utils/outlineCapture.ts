@@ -7,7 +7,7 @@ export interface OutlineInputSequence {
 }
 
 interface OutlineHandlers {
-  stored: (stored: SermonOutline) => void;
+  stored: (stored: SermonOutline, sameView: boolean) => void;
   failed: (error: unknown, mine: SermonOutline, base: SermonOutline | null) => void;
 }
 interface OutlineInput {
@@ -21,6 +21,8 @@ export class OutlineCapture {
   private latest: OutlineInput | null = null;
   private readonly pending = new Set<Promise<void>>();
   private readonly sequence: OutlineInputSequence;
+  private viewIdentity: unknown;
+  private viewGeneration = 0;
 
   constructor(private readonly writer: Pick<StructureWriter, 'updateSermonOutline'>,
     private readonly id: string, private readonly collision?: 'refuse' | 'preferMine') {
@@ -34,15 +36,23 @@ export class OutlineCapture {
     } };
   }
 
+  /** Track committed parent-view changes separately from captured write evidence. */
+  observeView(identity: unknown): void {
+    if (this.viewIdentity === identity) return;
+    this.viewIdentity = identity;
+    this.viewGeneration += 1;
+  }
+
   schedule(input: OutlineInput): void {
     this.latest = input;
     const handlers = input.begin();
+    const viewAtRequest = this.viewGeneration;
     let writing: Promise<SermonOutline | null>;
     try {
       writing = this.writer.updateSermonOutline(this.id, input.outline, input.base, this.collision, this.sequence);
     } catch (error) { writing = Promise.reject(error); }
     const settled = writing.then(stored => {
-      if (this.latest === input) handlers.stored(stored ?? input.outline);
+      if (this.latest === input) handlers.stored(stored ?? input.outline, viewAtRequest === this.viewGeneration);
     }, error => {
       if (this.latest === input) handlers.failed(error, input.outline, input.base);
     });

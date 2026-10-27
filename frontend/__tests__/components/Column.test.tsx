@@ -1213,7 +1213,8 @@ describe('Column Component', () => {
           // make an unrelated test fail whenever the base is refined.
           expect.anything(),
           // …and the collision mode this caller asks for.
-          expect.anything()
+          expect.anything(),
+          expect.objectContaining({ apply: expect.any(Function) })
         );
       });
 
@@ -1238,7 +1239,8 @@ describe('Column Component', () => {
           }),
           expect.anything(),
           // …and the collision mode this caller asks for.
-          expect.anything()
+          expect.anything(),
+          expect.objectContaining({ apply: expect.any(Function) })
         );
       });
     });

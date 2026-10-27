@@ -23,6 +23,11 @@ export class InactiveEditorError extends Error {
   constructor() { super('Editor is no longer active'); this.name = 'InactiveEditorError'; }
 }
 
+/** A retired editor's cancellation is distinct from a refused device write. */
+export function isInactiveEditorError(error: unknown): error is InactiveEditorError {
+  return error instanceof InactiveEditorError;
+}
+
 export interface EditorRecord {
   owner: string;
   editorId: string;

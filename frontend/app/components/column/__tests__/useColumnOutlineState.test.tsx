@@ -112,7 +112,8 @@ describe("useColumnOutlineState", () => {
       // that reaches the plan, not about the merge, so it is left unpinned.
       expect.anything(),
       // …and the collision mode this caller asks for.
-      "preferMine"
+      "preferMine",
+      expect.objectContaining({ apply: expect.any(Function) })
     );
 
     act(() => {
@@ -148,7 +149,8 @@ describe("useColumnOutlineState", () => {
       // that reaches the plan, not about the merge, so it is left unpinned.
       expect.anything(),
       // …and the collision mode this caller asks for.
-      "preferMine"
+      "preferMine",
+      expect.objectContaining({ apply: expect.any(Function) })
     );
   });
 
@@ -179,7 +181,8 @@ describe("useColumnOutlineState", () => {
       // that reaches the plan, not about the merge, so it is left unpinned.
       expect.anything(),
       // …and the collision mode this caller asks for.
-      "preferMine"
+      "preferMine",
+      expect.objectContaining({ apply: expect.any(Function) })
     );
 
     act(() => {

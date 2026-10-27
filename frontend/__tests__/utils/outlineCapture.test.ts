@@ -125,3 +125,35 @@ describe('immediate outline capture through the current engine draft', () => {
     expect(screen.view.failures).toEqual([]);
   });
 });
+
+
+describe('outline capture presentation ownership', () => {
+  it.each([
+    ['the same parent is observed again', false, false, true],
+    ['a newer parent has been adopted', true, false, false],
+    ['the parent changes and returns to its original identity', true, true, false],
+  ] as const)('keeps the captured result distinct when %s', async (_label, advance, returnToOriginal, sameView) => {
+    const opened = outline('First', 'Second');
+    const intended = outline('Edited first', 'Second');
+    const state = fixture(opened);
+    const actualWriter = jest.spyOn(state.writer, 'updateSermonOutline');
+    let release!: () => void;
+    state.persist(() => new Promise<void>(resolve => { release = resolve; }));
+    const capture = new OutlineCapture(state.writer, 'sermon');
+    const stored = jest.fn();
+    const failed = jest.fn();
+    capture.observeView(opened);
+    capture.schedule({ outline: intended, base: opened, begin: () => ({ stored, failed }) });
+    const captured = state.stored();
+    const newerParent = outline('Edited first', 'Later second');
+    capture.observeView(advance ? newerParent : opened);
+    if (returnToOriginal) capture.observeView(opened);
+    release();
+    await capture.flush();
+    expect(stored).toHaveBeenCalledTimes(1);
+    expect(stored).toHaveBeenCalledWith(captured, sameView);
+    expect(stored.mock.calls[0][0]).toBe(await actualWriter.mock.results[0].value);
+    expect(texts(captured)).toEqual(['Edited first', 'Second']);
+    expect(failed).not.toHaveBeenCalled();
+  });
+});

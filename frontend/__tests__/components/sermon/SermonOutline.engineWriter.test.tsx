@@ -157,4 +157,26 @@ describe('the sermon page outline on an engine document', () => {
     rerenderWith(documentCopy);
     expect(await screen.findByText('From the phone')).toBeInTheDocument();
   });
+  it('shows the newer parent outline after an earlier completed capture returns', async () => {
+    documentCopy = { ...documentCopy, outline: { introduction: [{ id: 'p1', text: 'First impression' }, { id: 'p2', text: 'Original second point' }], main: [], conclusion: [] } };
+    const actual = createEngineStructureWriter(fakeDocument, OWNER);
+    let release!: () => void;
+    const held = new Promise<void>(resolve => { release = resolve; });
+    const writer = { ...actual, updateSermonOutline: async (...args: Parameters<typeof actual.updateSermonOutline>) => {
+      const captured = await actual.updateSermonOutline(...args);
+      await held;
+      return captured;
+    } };
+    const tree = (sermon: Sermon) => <StructureWriterContext.Provider value={writer}><SermonOutline sermon={sermon} /></StructureWriterContext.Provider>;
+    const view = render(tree(documentCopy));
+    fireEvent.click(within(introSection()).getAllByLabelText('common.edit')[0]);
+    fireEvent.change(screen.getByDisplayValue('First impression'), { target: { value: 'First accepted words' } });
+    await act(async () => { fireEvent.keyDown(screen.getByDisplayValue('First accepted words'), { key: 'Enter', code: 'Enter' }); });
+    const newer: Sermon = { ...documentCopy, outline: { ...documentCopy.outline!, introduction: documentCopy.outline!.introduction.map(point => point.id === 'p2' ? { ...point, text: 'Later parent words' } : point) } };
+    documentCopy = newer;
+    view.rerender(tree(newer));
+    await act(async () => { release(); });
+    expect(screen.getByText('Later parent words')).toBeInTheDocument();
+  });
+
 });

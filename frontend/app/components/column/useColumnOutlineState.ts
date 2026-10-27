@@ -1,13 +1,15 @@
 
 import { type DropResult } from "@hello-pangea/dnd";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { useStructureWriter } from "@/components/sermon/structureWriter";
+import { isInactiveEditorError } from "@/data-engine/react.client";
 import {
   generateSermonPointsForSection,
 } from "@/services/outline.service";
 import { newClientId } from "@/utils/clientId";
+import { OutlineCapture } from "@/utils/outlineCapture";
 import { capitalizeFirstLetter, normalizeCapitalizedTitle } from "@/utils/textNormalization";
 import { writeFailureTranslationKey } from '@/utils/writeRecovery';
 
@@ -35,6 +37,10 @@ const SECTION_FIELD_BY_TYPE: Record<SectionType, keyof SermonOutline> = {
   mainPart: "main",
   conclusion: "conclusion",
 };
+
+const sectionOutline = (field: keyof SermonOutline, points: SermonPoint[]): SermonOutline => ({
+  introduction: [], main: [], conclusion: [], [field]: points,
+});
 
 interface UseColumnOutlineStateOptions {
   id: string;
@@ -74,34 +80,27 @@ export function useColumnOutlineState({
   const [localSermonPoints, setLocalSermonPoints] = useState<SermonPoint[]>(initialSermonPoints);
   const [deletePointId, setDeletePointId] = useState<string | null>(null);
 
-  /** Counts scheduled saves, so an older one cannot cancel a newer one. */
-  const saveGenerationRef = useRef(0);
+  const sectionType = mapColumnIdToSectionType(id);
+  const field = sectionType ? SECTION_FIELD_BY_TYPE[sectionType] : 'main';
+  const incomingOutline = useMemo(() => sectionOutline(field, initialSermonPoints), [field, initialSermonPoints]);
+  const captureOwner = useMemo(() => ({ capture: new OutlineCapture(writer, sermonId ?? '', 'preferMine'), active: true }), [writer, sermonId, id]);
   const editInputRef = useRef<HTMLInputElement>(null);
   const addInputRef = useRef<HTMLInputElement>(null);
   const insertInputRef = useRef<HTMLInputElement>(null);
 
   const pointToDeleteDetail = localSermonPoints.find((point) => point.id === deletePointId);
 
-  /**
-   * The points this column last KNEW to be stored — its base for merging.
-   *
-   * Reset together with the visible list: a new list arriving from above is what the
-   * person now sees, so it is what their next edit is built on.
-   */
-  const baseSectionPointsRef = useRef<SermonPoint[]>(initialSermonPoints);
-  /**
-   * On the engine: the points last handed over and not answered yet. The engine lays hand-overs on its
-   * draft in order, so one still unanswered is already in it — the next edit is built on that, not on
-   * the plan from before it (renamed and renamed back, the middle wording won otherwise).
-   */
-  const pendingHandedRef = useRef<SermonPoint[] | null>(null);
-
+  // The exact base object stays stable until this view adopts a parent or a returned section.
+  const baseOutlineRef = useRef<SermonOutline>(incomingOutline);
+  useLayoutEffect(() => {
+    captureOwner.active = true;
+    return () => { captureOwner.active = false; captureOwner.capture.observeView({}); };
+  }, [captureOwner]);
+  useLayoutEffect(() => { captureOwner.capture.observeView(incomingOutline); }, [captureOwner, incomingOutline]);
   useEffect(() => {
     setLocalSermonPoints(initialSermonPoints);
-    baseSectionPointsRef.current = initialSermonPoints;
-    // A list from above is the document as it stands, every hand-over laid on it included.
-    pendingHandedRef.current = null;
-  }, [initialSermonPoints]);
+    baseOutlineRef.current = incomingOutline;
+  }, [initialSermonPoints, incomingOutline]);
 
   useEffect(() => {
     if (addingNewPoint && addInputRef.current) {
@@ -126,42 +125,27 @@ export function useColumnOutlineState({
    * No read first: only this column's section is known here, so the other two go in as the same empty
    * placeholder on both sides of the merge — unchanged — and the document keeps what it holds.
    */
-  const handToEngine = async (sectionType: SectionType, updatedPoints: SermonPoint[]) => {
-    if (!sermonId) return;
-    const field = SECTION_FIELD_BY_TYPE[sectionType];
-    const untouched: SermonOutline = { introduction: [], main: [], conclusion: [] };
-    const outlineToSave: SermonOutline = { ...untouched, [field]: updatedPoints };
-    const baseOutline: SermonOutline = { ...untouched, [field]: pendingHandedRef.current ?? baseSectionPointsRef.current };
-    pendingHandedRef.current = updatedPoints;
-    const generation = saveGenerationRef.current + 1;
-    saveGenerationRef.current = generation;
-    try {
-      // `preferMine`: this view has nowhere to hold a refused plan.
-      const saved = await writer.updateSermonOutline(sermonId, outlineToSave, baseOutline, 'preferMine');
-      // A newer edit was handed over meanwhile: its own answer moves the base and the list together.
-      if (generation !== saveGenerationRef.current) return;
-      pendingHandedRef.current = null;
-      const committedPoints = saved?.[field] ?? updatedPoints;
-      baseSectionPointsRef.current = committedPoints;
-      setLocalSermonPoints(committedPoints);
-      // Only the document's own outline goes up: the other two sections were never read here.
-      if (saved) onOutlineUpdate?.(saved);
-    } catch (error) {
-      if (generation === saveGenerationRef.current) pendingHandedRef.current = null;
-      console.error("Error saving sermon outline:", error);
-      toast.error(t(writeFailureTranslationKey(error, SAVE_OUTLINE_ERROR_KEY)));
-    }
-  };
-
   const triggerSaveOutline = (updatedPoints: SermonPoint[]) => {
     if (!sermonId) return;
-    // Not stopped by the connection icon (owner's rule 3): a save that cannot be sent says so itself.
-    const sectionType = mapColumnIdToSectionType(id);
     if (!sectionType) {
       console.error("Cannot save outline: Invalid section ID", id);
       return;
     }
-    void handToEngine(sectionType, updatedPoints);
+    const intended = sectionOutline(field, updatedPoints);
+    captureOwner.capture.schedule({ outline: intended, base: baseOutlineRef.current, begin: () => ({
+      stored: (saved, sameView) => {
+        if (!captureOwner.active || !sameView) return;
+        const committedPoints = saved[field];
+        baseOutlineRef.current = sectionOutline(field, committedPoints);
+        setLocalSermonPoints(committedPoints);
+        onOutlineUpdate?.(saved);
+      },
+      failed: error => {
+        if (!captureOwner.active && isInactiveEditorError(error)) return;
+        console.error("Error saving sermon outline:", error);
+        toast.error(t(writeFailureTranslationKey(error, SAVE_OUTLINE_ERROR_KEY)));
+      },
+    }) });
   };
 
   const startAddingNewPoint = () => {
