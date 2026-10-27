@@ -69,14 +69,88 @@ describe('the one line', () => {
   it('finds words where the first words say, with the forms and the wider places', async () => {
     const { line } = renderLine();
     await userEvent.type(line, 'Рим 4 вера');
-    expect(await screen.findByText('bible.search.verses{"count":9}')).toBeInTheDocument();
+    // 9 of «вера» and Rom 4:24 «верующим» — its kin, since 2026-10-27.
+    expect(await screen.findByText('bible.search.verses{"count":10}')).toBeInTheDocument();
     expect(screen.getByText('bible.search.scopeChapter{"book":"К Римлянам","chapter":4}')).toBeInTheDocument();
     expect(screen.getByText('bible.search.formsFound')).toBeInTheDocument();
-    expect(screen.getAllByRole('option')).toHaveLength(9);
+    expect(screen.getAllByRole('option')).toHaveLength(10);
     // A wider step writes its place into the line.
     await userEvent.click(screen.getByRole('button', { name: /bible\.search\.widerBook/ }));
     expect(line).toHaveValue('Рим вера');
-    expect(await screen.findByText('bible.search.verses{"count":36}')).toBeInTheDocument();
+    expect(await screen.findByText('bible.search.verses{"count":51}')).toBeInTheDocument();
+  });
+
+  // The owner, 2026-10-27: «нажал на стих — он пока что просто выделяется»; the search stays, to think over it.
+  it('a verse pressed is only chosen; its own buttons copy it, with a tick, or open it in the Bible', async () => {
+    const writeText = jest.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    Object.defineProperty(window, 'isSecureContext', { value: true, configurable: true });
+    const { onOpen, line } = renderLine();
+    await userEvent.type(line, '"хлеб жизни"');
+    await screen.findByText('bible.search.verses{"count":2}');
+    const [, second] = screen.getAllByRole('option');
+    await userEvent.click(second);
+    expect(onOpen).not.toHaveBeenCalled();
+    expect(second).toHaveAttribute('aria-selected', 'true');
+    expect(line).toHaveValue('"хлеб жизни"');
+    await userEvent.click(within(second).getByRole('button', { name: /bible\.copy\.copy/, hidden: true }));
+    expect(writeText).toHaveBeenCalledWith(expect.stringMatching(/^Ин 6:48: "Я есмь хлеб жизни/));
+    expect(second.querySelector('[data-copied]')).not.toBeNull();
+    expect(onOpen).not.toHaveBeenCalled();
+    await userEvent.click(within(second).getByRole('button', { name: /bible\.search\.openInBible/, hidden: true }));
+    expect(onOpen).toHaveBeenCalledWith({ bookId: 'John', chapter: 6, verse: 48, toVerse: 48 });
+  });
+
+  // Codex review, 2026-10-27: the buttons are for a mouse and a finger; the keyboard copies the chosen verse with
+  // ⌘C / Ctrl+C while nothing is selected in the line, and a press keeps the line its keys in a narrow window too.
+  it('copies the chosen verse from the keyboard, and a press in a narrow window keeps the line its keys', async () => {
+    const writeText = jest.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    Object.defineProperty(window, 'isSecureContext', { value: true, configurable: true });
+    const { line } = renderLine({ wide: false });
+    await userEvent.type(line, '"хлеб жизни"');
+    await screen.findByText('bible.search.verses{"count":2}');
+    const [, second] = screen.getAllByRole('option');
+    await userEvent.click(second);
+    expect(line).toHaveFocus();
+    await userEvent.keyboard('{Control>}c{/Control}');
+    expect(writeText).toHaveBeenCalledWith(expect.stringMatching(/^Ин 6:48: "/));
+    expect(second.querySelector('[data-copied]')).not.toBeNull();
+    // A selection in the line is the line's to copy.
+    writeText.mockClear();
+    (line as HTMLInputElement).setSelectionRange(1, 5);
+    await userEvent.keyboard('{Control>}c{/Control}');
+    expect(writeText).not.toHaveBeenCalledWith(expect.stringMatching(/^Ин /));
+  });
+
+  // Codex review, 2026-10-27: a screen reader on a touch screen reaches the chosen verse's Copy and Open outside the
+  // list; an iPad's keyboard arrows light the verse they reach.
+  it('gives the chosen verse its Copy and Open outside the list, and lights a verse the arrows reach on a touch screen', async () => {
+    const writeText = jest.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    Object.defineProperty(window, 'isSecureContext', { value: true, configurable: true });
+    const matchMedia = window.matchMedia;
+    window.matchMedia = ((query: string) => ({
+      matches: query.includes('coarse'), media: query, onchange: null,
+      addEventListener: () => undefined, removeEventListener: () => undefined, addListener: () => undefined, removeListener: () => undefined, dispatchEvent: () => false,
+    })) as unknown as typeof window.matchMedia;
+    try {
+      const { onOpen, line } = renderLine();
+      await userEvent.type(line, '"хлеб жизни"');
+      await screen.findByText('bible.search.verses{"count":2}');
+      const [first, second] = screen.getAllByRole('option');
+      // On a touch screen the first row is chosen only for Enter: nothing is lit until a press or an arrow.
+      expect(first).toHaveAttribute('aria-selected', 'false');
+      await userEvent.keyboard('{ArrowDown}');
+      expect(second).toHaveAttribute('aria-selected', 'true');
+      const actions = screen.getByRole('group', { name: 'bible.copy.menu{"place":"Ин 6:48"}' });
+      await userEvent.click(within(actions).getByRole('button', { name: 'bible.copy.copy' }));
+      expect(writeText).toHaveBeenCalledWith(expect.stringMatching(/^Ин 6:48: "/));
+      await userEvent.click(within(actions).getByRole('button', { name: 'bible.search.openInBible' }));
+      expect(onOpen).toHaveBeenCalledWith({ bookId: 'John', chapter: 6, verse: 48, toVerse: 48 });
+    } finally {
+      window.matchMedia = matchMedia;
+    }
   });
 
   it('moves the choice with the arrows and opens it with Enter, lighting the verse', async () => {
@@ -189,17 +263,21 @@ describe('the one line', () => {
     const { line } = renderLine();
     await userEvent.click(line);
     await userEvent.paste('НЗ благодать');
-    await screen.findByText('bible.search.verses{"count":120}');
+    await screen.findByText('bible.search.verses{"count":122}');
     expect(options()).toHaveLength(41);
     expect(showMore().closest('[role="option"]')).toBe(options()[40]);
-    expect(screen.getByText('bible.search.shownOf{"shown":40,"count":120}')).toBeInTheDocument();
+    expect(screen.getByText('bible.search.shownOf{"shown":40,"count":122}')).toBeInTheDocument();
     await userEvent.click(showMore());
-    expect(screen.getByText('bible.search.shownOf{"shown":80,"count":120}')).toBeInTheDocument();
+    expect(screen.getByText('bible.search.shownOf{"shown":80,"count":122}')).toBeInTheDocument();
     expect(options()).toHaveLength(81);
     expect(options()[40]).toHaveAttribute('aria-selected', 'true');
-    // The last step shows the rest, and nothing is left to press (Enter on it: `rowForEnter`, searchModel.test.ts).
+    // The last steps show the rest — the word's own 120 verses, then its 2 of the same stem under their line — and
+    // nothing is left to press (Enter on it: `rowForEnter`, searchModel.test.ts).
     await userEvent.click(showMore());
-    expect(options()).toHaveLength(120);
+    expect(options()).toHaveLength(121);
+    await userEvent.click(showMore());
+    expect(options()).toHaveLength(122);
+    expect(screen.getByText(/^bible\.search\.kinHead/)).toBeInTheDocument();
     expect(screen.queryByText(/^bible\.search\.showMore/)).not.toBeInTheDocument();
     // Another line starts again from the first forty.
     await userEvent.paste(' Христа');
@@ -286,14 +364,14 @@ describe('the line under pressure (Codex review, 2026-10-23)', () => {
     const first = renderLine();
     await userEvent.click(first.line);
     await userEvent.paste(typed);
-    await screen.findByText('bible.search.verses{"count":120}');
+    await screen.findByText('bible.search.verses{"count":122}');
     await userEvent.click(showMore());
     await userEvent.keyboard('{Enter}');                     // the 41st verse, where «Показать ещё» put the arrows
     const opened = first.onOpen.mock.calls[0][0];
     document.body.innerHTML = '';
     render(<BibleSearch bible="rst" locale="ru" wide surface="window" openWithRecent autoFocus onOpen={jest.fn()} />);
     await userEvent.keyboard('{Enter}');                     // the first search of the history
-    await screen.findByText('bible.search.shownOf{"shown":80,"count":120}');
+    await screen.findByText('bible.search.shownOf{"shown":80,"count":122}');
     const selected = await waitFor(() => {
       const chosen = document.querySelector<HTMLElement>('[role="option"][aria-selected="true"]');
       expect(chosen).not.toBeNull();
@@ -307,17 +385,17 @@ describe('the line under pressure (Codex review, 2026-10-23)', () => {
     const first = renderLine();
     await userEvent.click(first.line);
     await userEvent.paste('НЗ благодать');
-    await screen.findByText('bible.search.verses{"count":120}');
+    await screen.findByText('bible.search.verses{"count":122}');
     await userEvent.keyboard('{Enter}');                     // A, the first verse
     await userEvent.clear(first.line);
     await userEvent.paste('нз благодать');
-    await screen.findByText('bible.search.verses{"count":120}');
+    await screen.findByText('bible.search.verses{"count":122}');
     await userEvent.keyboard('{ArrowDown}{Enter}');          // B, the second
     document.body.innerHTML = '';
     render(<BibleSearch bible="rst" locale="ru" wide surface="window" openWithRecent autoFocus onOpen={jest.fn()} />);
     expect(screen.getAllByRole('button', { name: /благодать/i }).filter((button) => !/historyRemove/.test(button.getAttribute('aria-label') ?? ''))).toHaveLength(1);
     await userEvent.keyboard('{Enter}');
-    await screen.findByText('bible.search.verses{"count":120}');
+    await screen.findByText('bible.search.verses{"count":122}');
     expect(screen.getAllByText('bible.search.seen')).toHaveLength(2);
   });
 

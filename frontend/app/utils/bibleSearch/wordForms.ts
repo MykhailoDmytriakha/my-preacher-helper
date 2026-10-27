@@ -76,14 +76,14 @@ export function fitsPattern(word: string, pattern: string): boolean {
  * the base with it dropped or put back: «любовь», «любовью» and «любви» share «любов» and «любв»; «отца»
  * finds «отец». The same set whichever form was typed, so the forms found do not depend on it.
  */
+/** The word without its ending, as its forms are built on it: «светом» → «свет», «духо» → «дух». */
+export function withoutEnding(term: string, language: SearchLanguage): string {
+  const ending = cutsByLanguage[language].find((cut) => term.endsWith(cut) && term.length - cut.length >= 3);
+  return ending ? term.slice(0, -ending.length) : term;
+}
+
 function basesOf(term: string, language: SearchLanguage): string[] {
-  let base = term;
-  for (const ending of cutsByLanguage[language]) {
-    if (term.endsWith(ending) && term.length - ending.length >= 3) {
-      base = term.slice(0, -ending.length);
-      break;
-    }
-  }
+  const base = withoutEnding(term, language);
   const bases = new Set([base]);
   if (language !== 'en' && base.length >= 3) {
     const last = base[base.length - 1];

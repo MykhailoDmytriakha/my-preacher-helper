@@ -629,7 +629,9 @@
       "searchAsWords": "Искать «{{words}}» во всей Библии",
       "searchOnly": "Искать только {{words}}",
       "searchInBook": "Искать в книге «{{book}}»",
+      "searchInBooks": "Искать в {{books}}",
       "asWordLink": "Искать «{{word}}» как слово",
+      "asWordsLink": "Искать «{{words}}» как слова",
       "savedNothingTitle": "В сохранённых книгах не нашлось",
       "savedNothingText": "Появится соединение — поиск пройдёт по всем книгам.",
       "offline": "Нет соединения. Искали только в книгах, сохранённых на устройстве — {{kept}} из {{total}}{{named}}.",
@@ -638,6 +640,8 @@
       "layoutFixed": "Раскладка исправлена:",
       "keysPick": "выбрать",
       "keysOpen": "открыть",
+      "keysCopy": "копировать",
+      "openInBible": "Открыть в Библии",
       "keysClose": "закрыть",
       "keysClear": "очистить",
       "keysAgain": "искать снова",
@@ -744,7 +748,13 @@
           "needBook": "Rom 8:28",
           "tooShort": "bl*"
         }
-      }
+      },
+      "kinHead": "Однокоренные: {{words}} · {{count}}",
+      "booksChapterTitle": "Глава — в одной книге",
+      "booksChapterText": "В нескольких книгах ищу по книгам целиком: {{books}}. Уберите главу или оставьте одну книгу.",
+      "booksPlaceTitle": "Какая книга?",
+      "booksPlaceText": "Это место есть в каждой из них: {{books}}.",
+      "booksWhole": "Искать по книгам целиком"
     },
     "copy": {
       "menu": "Стих {{place}}",

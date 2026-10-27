@@ -1,7 +1,7 @@
 import { getLocalizedAbbrev } from '@/utils/bibleBooks';
 
 import { matchersOf, partBooks, type BookGroups, type SearchQuery, type SearchScope } from './query';
-import { matcherOf, type SearchLanguage, type WordMatcher } from './wordForms';
+import { matcherOf, withoutEnding, type SearchLanguage, type WordMatcher } from './wordForms';
 import { wordsOfText } from './words';
 
 
@@ -29,6 +29,11 @@ export type SearchAnswer = {
   matchers: WordMatcher[];
   /** The words searched as beginnings: the Bible has none of them whole («оде» while «одежда» is typed). */
   begun: string[];
+  /**
+   * The words of the same stem, after the word's own forms: the first `own` hits hold the word itself, the rest only
+   * its kin («свет» — «светильник», «светлый»); `forms` are those kin words, the commonest first. Null — none searched.
+   */
+  kin: { own: number; forms: string[] } | null;
 };
 
 const TESTAMENT_WORDS: Readonly<Record<SearchLanguage, Record<'old' | 'new', string>>> = {
@@ -47,26 +52,92 @@ export function scopeBookIds(scope: SearchScope): readonly string[] {
 
 function inScope(hit: VerseHit, scope: SearchScope | null): boolean {
   if (!scope) return true;
-  if (scope.kind === 'part') return scope.bookIds.includes(hit.book);
+  if (scope.kind !== 'book') return scope.bookIds.includes(hit.book);
   if (hit.book !== scope.bookId) return false;
   if (scope.chapter !== null && hit.chapter !== scope.chapter) return false;
   if (scope.fromVerse !== null && (hit.verse < scope.fromVerse || hit.verse > (scope.toVerse ?? scope.fromVerse))) return false;
   return true;
 }
 
+/** A word exactly as typed: whether the Bible has it so, not in some other form. */
+const exactly = (term: string): WordMatcher => ({ term, pattern: false, tooShort: false, key: `x:${term}`, test: (word) => word === term });
+
+/** Whether the Bible has this word as written: «иисус», «петр», «коринф» are words; «корин», «духо» are not. */
+export const isBibleWord = (index: BibleSearchIndex, word: string): boolean => index.knows(exactly(word));
+
+const eitherOf = (one: WordMatcher, other: WordMatcher): WordMatcher => ({ ...one, key: `${one.key}|${other.key}`, test: (word) => one.test(word) || other.test(word) });
+
 /**
- * The matchers a search runs with. A word the Bible has in no form is read as the beginning of one: the
- * line is read at every keystroke, so «НЗ оде» finds «одежда» before it is typed to the end, and a word
- * finished — «одежд» — is back to its own forms. A word the Bible has keeps to them: «мир» is not «мирра».
+ * The matchers a search runs with, and what each widens to with its kin. A word the Bible has as typed keeps to its
+ * forms — «мир» is not «мирра» — and widens to its kin. Letters it has not as a word are the beginning of one, whether
+ * the person is still typing them or went on to the next word: «духо» finds «духовные», and the forms its letters
+ * would guess («дух», «духе») follow as its kin (the owner, 2026-10-27: «набирал пару букв, а потом уже следующее
+ * слово идёт, а они в поиск не попадают»). A form the text lacks that begins no word keeps to the word's other forms.
  */
-function matchersIn(index: BibleSearchIndex, query: SearchQuery): { matchers: WordMatcher[]; begun: string[] } {
+function matchersIn(index: BibleSearchIndex, query: SearchQuery): { matchers: WordMatcher[]; widened: WordMatcher[]; begun: string[] } {
   const begun: string[] = [];
-  const matchers = matchersOf(query).map((matcher) => {
-    if (matcher.pattern || index.knows(matcher)) return matcher;
-    begun.push(matcher.term);
-    return matcherOf(`${matcher.term}*`, query.language);
-  });
-  return { matchers, begun };
+  const matchers: WordMatcher[] = [];
+  const widened: WordMatcher[] = [];
+  for (const own of matchersOf(query)) {
+    const kin = withKin(own, query.language) ?? own;
+    const beginning = own.pattern || index.knows(exactly(own.term)) ? null : matcherOf(`${own.term}*`, query.language);
+    const known = beginning !== null && index.knows(own);
+    if (beginning && (index.knows(beginning) || !known)) {
+      begun.push(own.term);
+      matchers.push(beginning);
+      widened.push(known ? eitherOf(beginning, kin) : beginning);
+    } else {
+      matchers.push(own);
+      widened.push(kin);
+    }
+  }
+  return { matchers, widened, begun };
+}
+
+/**
+ * The stems whose kin are searched with a word. From four letters, any word the stem begins: «свет» finds «светильник»
+ * and «светлый». Three letters begin other words too often — «гор» begins «город» (479 verses), «вер» «верблюд» and
+ * «верх», «бог» «богатство», «мол» «молоко» — so their kin are only the words a word-forming suffix makes of them:
+ * a verb's or its noun's «-и-», «-у-», «-ь-» («суд» — «судить», «судилище», «судья»; «род» — «родила»; «вера» —
+ * «верующий»), «-ост-» («милость», «радости»), «-ен-» («верен»), «-ов-», «-евн-» («духовный», «душевный»), «-ес-»
+ * («небо» — «небесный»), «-н-», «-ьн-», «-ск-», «-ств-» («мирный», «сильный», «царство»). Chosen on the Synodal text, 2026-10-27, after the owner's
+ * «дух», «душ» and «суд»: a vowel «-о-», «-а-», «-е-» brings mostly other words, «-ев-» alone «верёвки»; the few the
+ * chosen ones let in — «левиты» for «лев», «весьма» for «весь», «делить» for «дело» — come after the word's own verses.
+ * English keeps to four letters.
+ */
+const KIN_STEM_LETTERS = 4;
+const SHORT_STEM_LETTERS = 3;
+const SHORT_STEM_SUFFIXES: Readonly<Record<SearchLanguage, readonly string[]>> = {
+  ru: ['и', 'у', 'ь', 'ост', 'ен', 'ов', 'евн', 'ес', 'н', 'ск', 'ств'],
+  uk: ['и', 'і', 'у', 'ь', 'іст', 'ен', 'ов', 'евн', 'ес', 'н', 'ськ', 'ств'],
+  en: [],
+};
+
+/**
+ * The stem a word's kin begin with: the word without its ending and a last vowel or soft sign — «слава» → «слав»,
+ * «светом» → «свет» like «свет» (Codex review, 2026-10-27: «Прит светом» lost the kin «Прит свет» finds); null — too short.
+ */
+export function stemOf(term: string, language: SearchLanguage): string | null {
+  const stem = withoutEnding(term, language).replace(/[аеёиоуыэюяьйіїєъaeiouy]$/u, '');
+  return stem.length >= SHORT_STEM_LETTERS && /^\p{L}+$/u.test(stem) ? stem : null;
+}
+
+/** The words of a stem: any it begins, or for a short one those a word-forming suffix makes; null — none searched. */
+function kinOf(stem: string, language: SearchLanguage): WordMatcher | null {
+  if (stem.length >= KIN_STEM_LETTERS) return matcherOf(`${stem}*`, language);
+  const suffixes = SHORT_STEM_SUFFIXES[language];
+  if (!suffixes.length) return null;
+  return {
+    term: stem, pattern: false, tooShort: false, key: `s:${language}:${stem}`,
+    test: (word) => word.startsWith(stem) && suffixes.some((suffix) => word.startsWith(suffix, stem.length)),
+  };
+}
+
+/** The word in its forms or any word of its stem (the owner, 2026-10-27: «Прит свет» did not find «светильник»). */
+function withKin(own: WordMatcher, language: SearchLanguage): WordMatcher | null {
+  const stem = own.pattern ? null : stemOf(own.term, language);
+  const kin = stem ? kinOf(stem, language) : null;
+  return kin ? { ...eitherOf(own, kin), key: `k:${own.key}|${kin.key}` } : null;
 }
 
 /** The forms found, the commonest first — read from the first verses: enough to name them, and «Господь»
@@ -104,12 +175,40 @@ function widerSteps(all: readonly VerseHit[], query: SearchQuery, books: BookGro
   return wider;
 }
 
+const hitKey = (hit: VerseHit) => `${hit.book} ${hit.chapter}:${hit.verse}`;
+
+/**
+ * The words themselves first, then their kin: a word searched whole also brings the verses where only a word of its
+ * stem stands («свет» → «светильник»), after its own — the verses of the word itself come first, as the person asked.
+ */
 export function answerSearch(index: BibleSearchIndex, query: SearchQuery, books: BookGroups): SearchAnswer {
-  const { matchers, begun } = matchersIn(index, query);
-  const all = index.search(matchers, query.phrases);
-  const hits = all.filter((hit) => inScope(hit, query.scope));
+  const { matchers, widened, begun } = matchersIn(index, query);
+  const kinned = widened.some((matcher, k) => matcher !== matchers[k]);
+  // One pass over the index: the widened words find every verse, and a verse is the word's own when each own word
+  // stands in it — the line is read at every keystroke (Codex review, 2026-10-27: two searches per reading).
+  const found = index.search(kinned ? widened : matchers, query.phrases);
+  const isOwn = (hit: VerseHit) => {
+    const words = wordsOfText(hit.text);
+    return matchers.every((matcher) => words.some((word) => matcher.test(word)));
+  };
+  const ownAll = kinned ? found.filter(isOwn) : found;
+  const ownKeys = new Set(ownAll.map(hitKey));
+  const kinAll = kinned ? found.filter((hit) => !ownKeys.has(hitKey(hit))) : [];
+  const all = [...ownAll, ...kinAll];
+  const ownHits = ownAll.filter((hit) => inScope(hit, query.scope));
+  const kinHits = kinAll.filter((hit) => inScope(hit, query.scope));
+  const hits = [...ownHits, ...kinHits];
   const byBook = new Map<string, number>();
   hits.forEach((hit) => byBook.set(hit.book, (byBook.get(hit.book) ?? 0) + 1));
   const wider = widerSteps(all, query, books).filter((step) => step.count > hits.length);
-  return { hits, everywhere: all.length, byBook, forms: formsIn(hits, matchers, query.phrases), wider, matchers, begun };
+  const ownForms = formsIn(ownHits, matchers, query.phrases);
+  // The kin words: for each word, what its widened matcher takes in the kin verses and its own does not — «Прит свет
+  // светильник» names «светлый» for «свет» though «светильник» is a word searched itself (Codex review, 2026-10-27).
+  const kinForms = Array.from(new Set(widened.flatMap((matcher, k) => (matcher === matchers[k]
+    ? []
+    : formsIn(kinHits, [matcher], []).filter((form) => !matchers[k].test(form))))));
+  return {
+    hits, everywhere: all.length, byBook, forms: ownForms, wider, matchers: kinned ? widened : matchers, begun,
+    kin: kinHits.length ? { own: ownHits.length, forms: kinForms } : null,
+  };
 }

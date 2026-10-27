@@ -629,7 +629,9 @@
       "searchAsWords": "Шукати «{{words}}» в усій Біблії",
       "searchOnly": "Шукати лише {{words}}",
       "searchInBook": "Шукати в книзі «{{book}}»",
+      "searchInBooks": "Шукати в {{books}}",
       "asWordLink": "Шукати «{{word}}» як слово",
+      "asWordsLink": "Шукати «{{words}}» як слова",
       "savedNothingTitle": "У збережених книгах не знайшлося",
       "savedNothingText": "З’явиться з’єднання — пошук пройде всіма книгами.",
       "offline": "Немає з’єднання. Шукали лише в книгах, збережених на пристрої, — {{kept}} з {{total}}{{named}}.",
@@ -638,6 +640,8 @@
       "layoutFixed": "Розкладку виправлено:",
       "keysPick": "вибрати",
       "keysOpen": "відкрити",
+      "keysCopy": "копіювати",
+      "openInBible": "Відкрити в Біблії",
       "keysClose": "закрити",
       "keysClear": "очистити",
       "keysAgain": "шукати знову",
@@ -744,7 +748,13 @@
           "needBook": "Rom 8:28",
           "tooShort": "bl*"
         }
-      }
+      },
+      "kinHead": "Спільнокореневі: {{words}} · {{count}}",
+      "booksChapterTitle": "Розділ — в одній книзі",
+      "booksChapterText": "У кількох книгах шукаю по книгах цілком: {{books}}. Приберіть розділ або залиште одну книгу.",
+      "booksPlaceTitle": "Яка книга?",
+      "booksPlaceText": "Це місце є в кожній з них: {{books}}.",
+      "booksWhole": "Шукати по книгах цілком"
     },
     "copy": {
       "menu": "Вірш {{place}}",

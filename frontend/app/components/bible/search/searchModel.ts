@@ -6,6 +6,7 @@ import { chapterCount, verseCount } from '@/utils/versification';
 
 import type { AppLocale } from '@/utils/appLocale';
 import type { BibleId } from '@/utils/bibles';
+import type { BooksBegun } from '@/utils/bibleSearch/lineChoice';
 import type { SearchIndexState } from '@/utils/bibleSearch/searchIndexStore';
 import type { WordMatcher } from '@/utils/bibleSearch/wordForms';
 import type { TFunction } from 'i18next';
@@ -101,16 +102,27 @@ export type ModelInput = {
   offline: boolean;
   /** The line as read after turning the English layout, when it was typed so. */
   layoutFixed: string | null;
+  /** The books the line's first letters may stand for, and which reading is shown (`chooseReading`). */
+  booksBegun: BooksBegun | null;
 };
 
 const placeKey = (bookId: string, chapter: number, verse: number) => `${bookId} ${chapter}:${verse}`;
+/** How many kin words the line over them names: «светильник, светило, светлый, светлеет, светлом». */
+const KIN_FORMS_SHOWN = 5;
 
 export function verseRef(bookId: string, chapter: number, verse: number, locale: AppLocale): string {
   return `${getLocalizedAbbrev(bookId, locale)} ${chapter}:${verse}`;
 }
 
+/** «Притчи и Екклесиаст», «Притчи, Екклесиаст и Песнь Песней» — the way the interface's language lists names. */
+function bookList(bookIds: readonly string[], locale: AppLocale): string {
+  const names = bookIds.map((bookId) => getLocalizedBookName(bookId, locale));
+  return new Intl.ListFormat(locale, { style: 'long', type: 'conjunction' }).format(names);
+}
+
 export function scopeLabel(scope: SearchScope, locale: AppLocale, t: TFunction): string {
   if (scope.kind === 'part') return t(`bible.search.parts.${scope.part}`);
+  if (scope.kind === 'books') return bookList(scope.bookIds, locale);
   const name = getLocalizedBookName(scope.bookId, locale);
   if (scope.chapter === null) return name;
   if (scope.fromVerse !== null) return `${name} ${scope.chapter}:${scope.fromVerse}${scope.toVerse !== null && scope.toVerse > scope.fromVerse ? `–${scope.toVerse}` : ''}`;
@@ -131,6 +143,7 @@ function notFoundTitle(scope: SearchScope, locale: AppLocale, t: TFunction): str
     if (scope.part === 'old') return t('bible.search.notInOld');
     return t('bible.search.notInPart', { part: t(`bible.search.parts.${scope.part}`) });
   }
+  if (scope.kind === 'books') return t('bible.search.notInPlace', { place: bookList(scope.bookIds, locale) });
   if (scope.chapter === null) return t('bible.search.notInBook', { book: getLocalizedBookName(scope.bookId, locale) });
   return t('bible.search.notInPlace', { place: scopeLabel(scope, locale, t) });
 }
@@ -231,14 +244,69 @@ function placeRows(input: ModelInput, verseTextOf: VerseTextOf): ModelRow[] {
   }
 }
 
-/** «Пророки», «НЗ» alone: the books of that part, each written into the line when chosen. */
-function partRows(input: ModelInput, scope: Extract<SearchScope, { kind: 'part' }>): ModelRow[] {
-  const { t } = input;
+/** The way back to words from a book that is also a word: «лев» as a word, «лев Иуды» as words. */
+const asWordsLabel = (scope: Extract<SearchScope, { kind: 'book' | 'books' }>, t: TFunction): string => (scope.kind === 'books'
+  ? t('bible.search.asWordsLink', { words: scope.said })
+  : t('bible.search.asWordLink', { word: scope.said }));
+
+/** «Пророки», «НЗ» alone — or several books named and no words yet: the books, each written into the line when chosen. */
+function partRows(input: ModelInput, scope: Extract<SearchScope, { kind: 'part' | 'books' }>): ModelRow[] {
+  const { t, locale } = input;
   const words = vocabulary(input);
+  const title = scope.kind === 'part' ? t(`bible.search.parts.${scope.part}`) : bookList(scope.bookIds, locale);
+  // «лев Иуды»: the first book is also a word — the line may be words, and searching them stays a tap away.
+  const asWords: ModelRow[] = scope.kind === 'books' && scope.wordLike
+    ? [{ type: 'book', key: 'as-words', title: asWordsLabel(scope, t), sub: '', run: { kind: 'asWords', on: true } }]
+    : [];
   return [
-    { type: 'head', key: 'head', title: `${t(`bible.search.parts.${scope.part}`)} · ${t('bible.search.books', { count: scope.bookIds.length })}` },
+    ...asWords,
+    { type: 'head', key: 'head', title: `${title} · ${t('bible.search.books', { count: scope.bookIds.length })}` },
     ...scope.bookIds.map((bookId): ModelRow => ({ type: 'book', key: `book-${bookId}`, title: words.name(bookId), sub: words.chapters(bookId), run: words.write(`${words.abbrev(bookId)} `) })),
   ];
+}
+
+/** «3», «3:1», «3:1-8» — a chapter and its verses as a line writes them. */
+function placeAt({ chapter, fromVerse, toVerse }: { chapter: number; fromVerse: number | null; toVerse: number | null }): string {
+  if (fromVerse === null) return `${chapter}`;
+  return toVerse !== null && toVerse !== fromVerse ? `${chapter}:${fromVerse}-${toVerse}` : `${chapter}:${fromVerse}`;
+}
+
+/**
+ * The books whole with the same words, as a line that reads back so — the line is read by the same rules as the
+ * person's own. The abbreviations first, the person's own names of the books if those read otherwise («Лев» second
+ * in a list is the word); null if neither does (Codex review, 2026-10-27: «Прит Левит 3 свет» wrote «Притч Лев свет»).
+ */
+function booksWholeLine(input: ModelInput, scope: Extract<SearchScope, { kind: 'books' }>, query: SearchQuery): string | null {
+  const words = vocabulary(input);
+  const lines = [scope.bookIds.map(words.abbrev).join(' '), scope.said].map((books) => [books, query.text].filter(Boolean).join(' '));
+  return lines.find((line) => {
+    const read = readSearch(line, { bible: input.bible, books: input.books });
+    return read.scope?.kind === 'books' && !read.scope.chapter && read.scope.bookIds.join() === scope.bookIds.join() && read.text === query.text;
+  }) ?? null;
+}
+
+/**
+ * «Прит Еккл 3 свет»: a chapter belongs to one book. Said, with the ways on: the books whole, or each book that has
+ * that chapter (Codex review, 2026-10-27: the chapter was dropped silently and the books searched whole). With no
+ * words it is a place — «корин 13:4» — and the ways are the place in each book (the owner, 2026-10-27).
+ */
+function booksChapterRow(input: ModelInput, reading: Extract<LineReading, { kind: 'booksChapter' }>): ModelRow {
+  const { t, locale, bible } = input;
+  const words = vocabulary(input);
+  const { scope, query } = reading;
+  const at = scope.chapter;
+  const inBooks = scope.bookIds
+    .filter((bookId) => !at || at.chapter <= chapterCount(bible, bookId))
+    .map((bookId) => [`${words.abbrev(bookId)}${at ? ` ${placeAt(at)}` : ''}`, query.text].filter(Boolean).join(' '));
+  if (!query.text) {
+    return fix(t('bible.search.booksPlaceTitle'), t('bible.search.booksPlaceText', { books: bookList(scope.bookIds, locale) }),
+      inBooks.map((line, k) => ({ label: line, primary: k === 0, run: words.write(line) })));
+  }
+  const whole = booksWholeLine(input, scope, query);
+  return fix(t('bible.search.booksChapterTitle'), t('bible.search.booksChapterText', { books: bookList(scope.bookIds, locale) }), [
+    ...(whole ? [{ label: t('bible.search.booksWhole'), primary: true, run: words.write(whole) }] : []),
+    ...inBooks.map((line, k) => ({ label: t('bible.search.searchOnly', { words: `«${line}»` }), primary: !whole && k === 0, run: words.write(line) })),
+  ]);
 }
 
 /** «Рим 40 вера»: the book's chapters, each keeping the words; or the whole book. */
@@ -262,7 +330,11 @@ function formsLabelOf(input: ModelInput, query: SearchQuery, answer: SearchAnswe
   const { t, asWords } = input;
   if (asWords) return t('bible.search.asWords');
   if (query.terms.some((term) => /[*_]/.test(term))) return t('bible.search.byPattern');
-  if (answer.begun.length) return t('bible.search.begun', { words: answer.begun.map((word) => t('bible.search.quote', { text: word })).join(', ') });
+  // «Слова на «жизн»» names what the forms begin — so only when each of them does: «хлеб жизн» found forms of both.
+  if (answer.begun.length && answer.forms.every((form) => answer.begun.some((word) => form.startsWith(word)))) {
+    return t('bible.search.begun', { words: answer.begun.map((word) => t('bible.search.quote', { text: word })).join(', ') });
+  }
+  if (answer.begun.length) return t('bible.search.formsFound');
   if (!query.terms.length) return t('bible.search.phrase');
   return answer.forms.length > query.terms.length ? t('bible.search.formsFound') : null;
 }
@@ -285,9 +357,22 @@ function whereOf(input: ModelInput, scope: SearchScope | null, coverage: Coverag
 }
 
 function asWordsLinkOf(input: ModelInput, scope: SearchScope | null): SearchHead['asWordsLink'] {
-  const { t, asWords, bookReadAs } = input;
+  const { t, asWords, bookReadAs, booksBegun } = input;
+  // «корин душ»: the other reading of first letters that may be books — the words, or the books where they find verses.
+  // Back to words: the letters written with a star, never a book's name — «Мф корин* свет» keeps Matthew (Codex review,
+  // 2026-10-27: «искать как слово» read the whole line as words and lost it).
+  if (booksBegun?.chosen) {
+    const said = { word: booksBegun.said, words: booksBegun.said };
+    return { label: t(booksBegun.said.includes(' ') ? 'bible.search.asWordsLink' : 'bible.search.asWordLink', said), run: vocabulary(input).write(booksBegun.asWords) };
+  }
+  if (booksBegun?.found) {
+    const label = booksBegun.bookIds.length > 1
+      ? t('bible.search.searchInBooks', { books: bookList(booksBegun.bookIds, input.locale) })
+      : t('bible.search.searchInBook', { book: vocabulary(input).name(booksBegun.bookIds[0]) });
+    return { label, run: vocabulary(input).write(booksBegun.line) };
+  }
   if (asWords && bookReadAs) return { label: t('bible.search.searchInBook', { book: vocabulary(input).name(bookReadAs) }), run: { kind: 'asWords', on: false } };
-  if (scope?.kind === 'book' && scope.wordLike) return { label: t('bible.search.asWordLink', { word: scope.said }), run: { kind: 'asWords', on: true } };
+  if ((scope?.kind === 'book' || scope?.kind === 'books') && scope.wordLike) return { label: asWordsLabel(scope, t), run: { kind: 'asWords', on: true } };
   return null;
 }
 
@@ -338,7 +423,7 @@ function nothingRow(input: ModelInput, query: SearchQuery, answer: SearchAnswer,
     ? t(partial ? (coverage === 'saved' ? 'bible.search.everywhereSaved' : 'bible.search.everywhereLoaded') : 'bible.search.everywhere', { words: quoted, verses: words.verses(answer.everywhere) })
     : '';
   const notThere = partial ? t(coverage === 'saved' ? 'bible.search.savedNothingText' : 'bible.search.loadedNothingText') : t('bible.search.nowhere');
-  if (scope?.kind === 'book' && scope.wordLike) {
+  if ((scope?.kind === 'book' || scope?.kind === 'books') && scope.wordLike) {
     const said = scope.said.charAt(0).toUpperCase() + scope.said.slice(1);
     return fix(
       notFoundTitle(scope, locale, t),
@@ -383,7 +468,11 @@ function searchModel(input: ModelInput, reading: Extract<LineReading, { kind: 's
     else rows.push(fix(t('bible.search.unavailableTitle'), t('bible.search.unavailableText')));
     return { ...empty, rows };
   }
-  answer.hits.slice(0, limit).forEach((hit) => {
+  answer.hits.slice(0, limit).forEach((hit, position) => {
+    // After the word's own verses, its kin: named, so the person sees why «светильник» is there.
+    if (answer.kin && position === answer.kin.own) {
+      rows.push({ type: 'head', key: 'kin-head', title: t('bible.search.kinHead', { words: answer.kin.forms.slice(0, KIN_FORMS_SHOWN).join(', '), count: answer.hits.length - answer.kin.own }) });
+    }
     const key = placeKey(hit.book, hit.chapter, hit.verse);
     rows.push({
       type: 'verse', key, ref: verseRef(hit.book, hit.chapter, hit.verse, locale), pieces: litPieces(hit.text, query, answer.matchers), seen: opened.has(key),
@@ -419,7 +508,10 @@ export function buildSearchModel(input: ModelInput, verseTextOf: VerseTextOf): S
     case 'empty':
       return { ...empty, layout: null };
     case 'part':
+    case 'books':
       return { ...empty, rows: partRows(input, reading.scope) };
+    case 'booksChapter':
+      return { ...empty, rows: [booksChapterRow(input, reading)] };
     case 'scopeBadChapter':
       return { ...empty, rows: scopeBadChapterRows(input, reading) };
     case 'tooShort':

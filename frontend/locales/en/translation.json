@@ -609,7 +609,9 @@
       "searchAsWords": "Search “{{words}}” in the whole Bible",
       "searchOnly": "Search only {{words}}",
       "searchInBook": "Search in {{book}}",
+      "searchInBooks": "Search in {{books}}",
       "asWordLink": "Search “{{word}}” as a word",
+      "asWordsLink": "Search “{{words}}” as words",
       "savedNothingTitle": "Not found in the saved books",
       "savedNothingText": "When the connection returns, the search covers every book.",
       "offline": "No connection. Searched only the books saved on this device — {{kept}} of {{total}}{{named}}.",
@@ -618,6 +620,8 @@
       "layoutFixed": "Keyboard layout corrected:",
       "keysPick": "choose",
       "keysOpen": "open",
+      "keysCopy": "copy",
+      "openInBible": "Open in the Bible",
       "keysClose": "close",
       "keysClear": "clear",
       "keysAgain": "search again",
@@ -724,7 +728,13 @@
           "needBook": "Rom 8:28",
           "tooShort": "bl*"
         }
-      }
+      },
+      "kinHead": "Related words: {{words}} · {{count}}",
+      "booksChapterTitle": "A chapter is in one book",
+      "booksChapterText": "In several books I search each whole: {{books}}. Drop the chapter or keep one book.",
+      "booksPlaceTitle": "Which book?",
+      "booksPlaceText": "The place is in each of them: {{books}}.",
+      "booksWhole": "Search the books whole"
     },
     "copy": {
       "menu": "Verse {{place}}",

@@ -1,6 +1,6 @@
 'use client';
 
-import { CheckIcon, ChevronDownIcon, ChevronRightIcon, QuestionMarkCircleIcon, SignalSlashIcon } from '@heroicons/react/24/outline';
+import { CheckIcon, ChevronDownIcon, ChevronRightIcon, DocumentDuplicateIcon, QuestionMarkCircleIcon, SignalSlashIcon } from '@heroicons/react/24/outline';
 import { useTranslation } from 'react-i18next';
 
 import { HOVER_ROW, KEYCAP, SELECTED_ROW } from './searchStyles';
@@ -17,19 +17,24 @@ import type { Intent, ModelRow, SearchModel } from './searchModel';
  */
 type Props = {
   model: SearchModel;
-  /** The key of the row the arrows are on. */
+  /** The key of the row the arrows are on, or the verse pressed. */
   selectedKey: string | null;
   wide: boolean;
   touch: boolean;
   /** «Как искать» under a fix: only where the line has no «?» of its own at hand. */
   showHowTo: boolean;
-  keysHint: { esc: string } | null;
+  keysHint: { esc: string; copy: string | null } | null;
   /** The id of the list of choices: the line's `aria-controls`. */
   listId: string;
   /** The language of the Bible's text (`lang` of the verses). */
   textLang: string;
   optionId: (key: string) => string;
   onRun: (intent: Intent) => void;
+  /** A verse pressed: chosen, not opened. */
+  onChoose: (key: string) => void;
+  /** A verse copied, and which one was just copied — its sign is a tick for a moment. */
+  onCopy: (row: VerseRow) => void;
+  copiedKey: string | null;
   onHowTo: () => void;
   onToggleBooks: () => void;
 };
@@ -68,18 +73,27 @@ function ChapterTiles({ count, touch, onPick }: { count: number; touch: boolean;
 type OptionRow = Extract<ModelRow, { type: 'place' | 'book' | 'verse' | 'showMore' }>;
 const isOption = (row: ModelRow): row is OptionRow => row.type === 'place' || row.type === 'book' || row.type === 'verse' || row.type === 'showMore';
 
-type OptionProps = { selected: boolean; wide: boolean; touch: boolean; textLang: string; id: string; onRun: (intent: Intent) => void };
+export type VerseRow = Extract<ModelRow, { type: 'verse' }>;
+type OptionProps = {
+  selected: boolean; wide: boolean; touch: boolean; textLang: string; id: string; onRun: (intent: Intent) => void;
+  onChoose: (key: string) => void; onCopy: (row: VerseRow) => void; copiedKey: string | null;
+};
 
-/** An option of the list: pressed as a whole; on a computer the press keeps the cursor in the line. */
-function Option({ row, selected, wide, id, onRun, className, children }: OptionProps & { row: OptionRow; className: string; children: React.ReactNode }) {
+/**
+ * An option of the list: pressed as a whole; on a computer the press keeps the cursor in the line. A verse pressed is
+ * only chosen — the search stays, to think over it — and it is copied or opened by its own buttons (the owner,
+ * 2026-10-27: «нажал на стих — он пока что просто выделяется»); Enter still opens the chosen one.
+ */
+function Option({ row, selected, wide, touch, id, onRun, onChoose, className, children }: OptionProps & { row: OptionRow; className: string; children: React.ReactNode }) {
   return (
     <li
       id={id}
       role="option"
       aria-selected={selected}
-      onMouseDown={(event) => { if (wide) event.preventDefault(); }}
-      onClick={() => onRun(row.run)}
-      className={`cursor-pointer border-b border-gray-100 last:border-b-0 dark:border-gray-800 ${selected && wide ? SELECTED_ROW : HOVER_ROW} ${className}`}
+      // A mouse keeps the line its keys, in a narrow window too; a finger lets the phone's keyboard down.
+      onMouseDown={(event) => { if (wide || !touch) event.preventDefault(); }}
+      onClick={() => (row.type === 'verse' ? onChoose(row.key) : onRun(row.run))}
+      className={`cursor-pointer border-b border-gray-100 last:border-b-0 dark:border-gray-800 ${selected && (wide || row.type === 'verse') ? SELECTED_ROW : HOVER_ROW} ${className}`}
     >
       {children}
     </li>
@@ -123,7 +137,48 @@ function BookOption({ row, ...props }: OptionProps & { row: Extract<ModelRow, { 
   );
 }
 
-function VerseOption({ row, ...props }: OptionProps & { row: Extract<ModelRow, { type: 'verse' }> }) {
+/**
+ * The chosen verse's own buttons, for a mouse and a finger: they act, the row is not pressed under them. Copied, the
+ * sign turns into a tick for a moment, as the links window's does (the owner, 2026-10-27). The keyboard has the same
+ * two — Enter and ⌘C / Ctrl+C on the line — so the buttons are drawn, as «Открыть ↵» of a place is, not announced
+ * inside the list's option (Codex review, 2026-10-27).
+ */
+function VerseActions({ row, wide, touch, onRun, onCopy, copiedKey }: OptionProps & { row: VerseRow }) {
+  const { t } = useTranslation();
+  const height = touch ? 'h-11' : 'h-8';
+  const keep = (event: React.MouseEvent) => { if (wide || !touch) event.preventDefault(); };
+  return (
+    <span aria-hidden="true" className="mt-2.5 flex flex-wrap gap-2">
+      <button type="button" tabIndex={-1} onMouseDown={keep} onClick={(event) => { event.stopPropagation(); onCopy(row); }} className={`${SECONDARY} ${height} gap-1.5`}>
+        {copiedKey === row.key
+          ? <CheckIcon data-copied="" className="h-4 w-4 text-green-600 dark:text-green-400" aria-hidden="true" />
+          : <DocumentDuplicateIcon className="h-4 w-4" aria-hidden="true" />}
+        {t('bible.copy.copy')}
+      </button>
+      <button type="button" tabIndex={-1} onMouseDown={keep} onClick={(event) => { event.stopPropagation(); onRun(row.run); }} className={`${PRIMARY} ${height} ${wide ? 'pr-2' : ''}`}>
+        {t('bible.search.openInBible')}
+        {wide ? <EnterKey /> : null}
+      </button>
+    </span>
+  );
+}
+
+/**
+ * The chosen verse's Copy and Open for a screen reader and the Tab key — outside the list, whose options hold no
+ * controls — out of sight until a key reaches them (Codex review, 2026-10-27: on a touch screen with VoiceOver the
+ * drawn buttons were all there was).
+ */
+function ChosenVerseActions({ row, onRun, onCopy }: { row: VerseRow; onRun: (intent: Intent) => void; onCopy: (row: VerseRow) => void }) {
+  const { t } = useTranslation();
+  return (
+    <div role="group" aria-label={t('bible.copy.menu', { place: row.ref })} className="sr-only flex gap-2 border-b border-gray-100 px-4 py-2 focus-within:not-sr-only dark:border-gray-800">
+      <button type="button" onClick={() => onCopy(row)} className={`${SECONDARY} h-9`}>{t('bible.copy.copy')}</button>
+      <button type="button" onClick={() => onRun(row.run)} className={`${PRIMARY} h-9`}>{t('bible.search.openInBible')}</button>
+    </div>
+  );
+}
+
+function VerseOption({ row, ...props }: OptionProps & { row: VerseRow }) {
   const { t } = useTranslation();
   return (
     <Option row={row} {...props} className={`grid items-baseline gap-3 px-4 py-2.5 ${props.wide ? 'grid-cols-[5rem_minmax(0,1fr)]' : 'grid-cols-[4.25rem_minmax(0,1fr)]'}`}>
@@ -141,6 +196,7 @@ function VerseOption({ row, ...props }: OptionProps & { row: Extract<ModelRow, {
             {t('bible.search.seen')}
           </span>
         ) : null}
+        {props.selected ? <VerseActions row={row} {...props} /> : null}
       </span>
     </Option>
   );
@@ -259,7 +315,7 @@ function SearchHeadView({ head, chipHeight, onRun, onToggleBooks }: { head: NonN
   );
 }
 
-export function SearchResults({ model, selectedKey, wide, touch, showHowTo, keysHint, listId, textLang, optionId, onRun, onHowTo, onToggleBooks }: Props) {
+export function SearchResults({ model, selectedKey, wide, touch, showHowTo, keysHint, listId, textLang, optionId, onRun, onChoose, onCopy, copiedKey, onHowTo, onToggleBooks }: Props) {
   const { t } = useTranslation();
   const { head } = model;
   const chipHeight = touch ? 'h-11' : 'h-7';
@@ -271,7 +327,8 @@ export function SearchResults({ model, selectedKey, wide, touch, showHowTo, keys
   const choices = first < 0 ? [] : model.rows.slice(first, last + 1);
   const after = first < 0 ? [] : model.rows.slice(last + 1);
   const other = (row: ModelRow) => (isOption(row) ? null : <OtherRow key={row.key} row={row} touch={touch} showHowTo={showHowTo} onRun={onRun} onHowTo={onHowTo} />);
-  const optionProps = (row: OptionRow): OptionProps => ({ selected: row.key === selectedKey, wide, touch, textLang, id: optionId(row.key), onRun });
+  const chosenVerse = choices.find((row): row is VerseRow => row.type === 'verse' && row.key === selectedKey) ?? null;
+  const optionProps = (row: OptionRow): OptionProps => ({ selected: row.key === selectedKey, wide, touch, textLang, id: optionId(row.key), onRun, onChoose, onCopy, copiedKey });
   return (
     <div>
       {model.offline ? (
@@ -307,11 +364,13 @@ export function SearchResults({ model, selectedKey, wide, touch, showHowTo, keys
           })}
         </ul>
       ) : null}
+      {chosenVerse ? <ChosenVerseActions row={chosenVerse} onRun={onRun} onCopy={onCopy} /> : null}
       {after.map(other)}
       {keysHint ? (
         <p className="flex flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-gray-100 px-4 py-2.5 text-xs text-gray-500 dark:border-gray-800 dark:text-gray-400">
           <span className="inline-flex items-center gap-1"><kbd className={KEYCAP}>↑</kbd><kbd className={KEYCAP}>↓</kbd> {t('bible.search.keysPick')}</span>
           <span className="inline-flex items-center gap-1"><kbd className={KEYCAP}>↵</kbd> {t('bible.search.keysOpen')}</span>
+          {keysHint.copy ? <span className="inline-flex items-center gap-1"><kbd className={KEYCAP}>{keysHint.copy}</kbd> {t('bible.search.keysCopy')}</span> : null}
           <span className="inline-flex items-center gap-1"><kbd className={KEYCAP}>Esc</kbd> {keysHint.esc}</span>
         </p>
       ) : null}

@@ -1,5 +1,5 @@
 import { SYNODAL_BOOKS, PROTESTANT_BOOKS } from '@/components/bible/bookOrder';
-import { readLine, readPlace, readSearch, booksBeginningWith } from '@/utils/bibleSearch/query';
+import { readBooksBegun, readLine, readPlace, readSearch, booksBeginningWith } from '@/utils/bibleSearch/query';
 
 const ru = { bible: 'rst' as const, books: SYNODAL_BOOKS };
 const en = { bible: 'kjv' as const, books: PROTESTANT_BOOKS };
@@ -169,6 +169,12 @@ describe('readLine — a search', () => {
     expect(search('Ин "хлеб жизни"').text).toBe('"хлеб жизни"');
   });
 
+  it('several books named and no words yet list those books', () => {
+    expect(readLine('Прит Еккл', ru)).toMatchObject({ kind: 'books', scope: { kind: 'books', bookIds: ['Proverbs', 'Ecclesiastes'] } });
+    // A book named again is a word: «Иоанн» after «Ин» is searched (Codex review r2, 2026-10-27).
+    expect(readSearch('Мф Ин Иоанн', ru)).toMatchObject({ scope: { kind: 'books', bookIds: ['Matthew', 'John'] }, terms: ['иоанн'] });
+  });
+
   it('a part alone lists its books; a chapter the book lacks keeps the words', () => {
     expect(readLine('Пророки', ru)).toMatchObject({ kind: 'part', scope: { part: 'prophets' } });
     expect(readLine('Рим 40 вера', ru)).toMatchObject({ kind: 'scopeBadChapter', bookId: 'Romans', chapter: 40 });
@@ -183,3 +189,35 @@ describe('readLine — a search', () => {
     expect(search('в начале было слово').terms).toEqual(['начале', 'было', 'слово']);
   });
 });
+
+// BUG-20261027-search-related-words: «корин душ» searched the city Corinth; «коринфянам душ» found nothing — a book's
+// first letters, or a numbered book's name without its number, were never its books when a word followed.
+describe('the books a line may begin with though it names none exactly', () => {
+  it.each([
+    ['корин душ', { line: '1Кор 2Кор душ', bookIds: ['1 Corinthians', '2 Corinthians'], said: 'корин' }],
+    ['коринфянам душ', { line: '1Кор 2Кор душ', bookIds: ['1 Corinthians', '2 Corinthians'], said: 'коринфянам' }],
+    ['Прит Екклес свет', { line: 'Притч Еккл свет', bookIds: ['Proverbs', 'Ecclesiastes'], said: 'екклес' }],
+    // A name is a word too: which it is, the verses found say (`chooseReading`).
+    ['петр сказал', { line: '1Пет 2Пет сказал', bookIds: ['1 Peter', '2 Peter'], said: 'петр' }],
+  ])('«%s» may be read with its books', (line, begun) => {
+    expect(readBooksBegun(line, 'rst')).toMatchObject(begun);
+  });
+
+  it('says whether only a place follows, and the line with the letters as words', () => {
+    expect(readBooksBegun('корин 13:4', 'rst')).toMatchObject({ line: '1Кор 2Кор 13:4', place: true, asWords: 'корин* 13:4' });
+    expect(readBooksBegun('Мф корин свет', 'rst')).toMatchObject({ place: false, asWords: 'мф корин* свет' });
+    // «в» is no number: «Иисус в» is not a place.
+    expect(readBooksBegun('Иисус в', 'rst')).toMatchObject({ place: false });
+    expect(readBooksBegun('корин "любовь долготерпит"', 'rst')).toMatchObject({ line: '1Кор 2Кор "любовь долготерпит"', place: false });
+  });
+
+  it.each([
+    ['Прит свет', 'the books are named exactly'],
+    ['корин', 'nothing follows the letters: a name still being typed'],
+    ['царст небесн', 'the letters begin two names — Samuel and Kings are both «Царств»'],
+    ['свет корин', 'a name stands first'],
+  ])('«%s» is not: %s', (line) => {
+    expect(readBooksBegun(line, 'rst')).toBeNull();
+  });
+});
+

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
+
 import { hasOpenLayer } from '@/hooks/useModalLayer';
 import { resolveAppLocale } from '@/utils/appLocale';
 import { getLocalizedAbbrev } from '@/utils/bibleBooks';
@@ -16,6 +17,8 @@ import { VERSE_CHOSEN_ATTRIBUTE, VERSE_HELD_ATTRIBUTE, type RibbonCrossRefs } fr
 
 import { selectedVerses, verseKey, type VerseAt } from './selectedVerses';
 
+import type { TFunction } from 'i18next';
+
 /**
  * Where the verse's menu was asked for: the press, the row as it stood, whether a finger asked, and whether a hold
  * opened it — the click that ends a hold may land on the menu.
@@ -27,16 +30,15 @@ export type VerseMenuAt = VerseAt & { x: number; y: number; touch: boolean; held
  * itself is named — by its short mark in the interface's language — only when it is not the Bible of the interface's
  * language (the owner, 2026-10-27), like every reference mark in the app.
  */
+export function copyNamesOf(bible: BibleId, bookId: string, interfaceLanguage: string, t: TFunction): CopyNames {
+  const book = getLocalizedAbbrev(bookId, BIBLES[bible].language);
+  return bibleForLocale(resolveAppLocale(interfaceLanguage)) === bible ? { book } : { book, mark: t(`bible.translations.${bible}.short`) };
+}
+
+/** `copyNamesOf` for the book being read. */
 export function useCopyNames(bible: BibleId, bookId: string): CopyNames {
   const { t, i18n } = useTranslation();
-  const language = BIBLES[bible].language;
-  const isInterfaceBible = bibleForLocale(resolveAppLocale(i18n.language)) === bible;
-  return useMemo(
-    () => (isInterfaceBible
-      ? { book: getLocalizedAbbrev(bookId, language) }
-      : { book: getLocalizedAbbrev(bookId, language), mark: t(`bible.translations.${bible}.short`) }),
-    [bible, bookId, isInterfaceBible, language, t]
-  );
+  return useMemo(() => copyNamesOf(bible, bookId, i18n.language, t), [bible, bookId, i18n.language, t]);
 }
 
 const subscribeNever = () => () => undefined;
