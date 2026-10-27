@@ -1,3 +1,4 @@
+import type { PreparationTextBinding } from '@/components/common/manualTextBinding';
 import type { ExegeticalPlanNode } from '@/models/models';
 
 /** One change of the plan, applied to the newest plan the document holds. */
@@ -14,8 +15,7 @@ export interface ExegeticalPlanModuleProps {
   onEdit?: (edit: PlanEdit) => Promise<void> | void;
   onSave?: (nodes: ExegeticalPlanNode[]) => Promise<void> | void;
   saving?: boolean;
-  authorIntent?: string;
-  onSaveAuthorIntent?: (text: string) => Promise<void> | void;
+  authorIntentField?: PreparationTextBinding;
 }
 
 export interface TreeNodeProps {
@@ -37,6 +37,7 @@ export interface TreeNodeProps {
 }
 
 export interface AuthorIntentSectionProps {
+  disabled?: boolean;
   value: string;
   onChange: (value: string) => void;
   onCancel?: () => void;

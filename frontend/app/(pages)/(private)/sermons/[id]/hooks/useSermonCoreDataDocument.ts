@@ -1,5 +1,8 @@
+import { manualFormDecision } from '@/components/common/manualTextBinding';
 import { usePublishShellTitle } from '@/components/navigation/shellTitles';
 import { useDataDocument, useDataEngine, useDataForm } from '@/data-engine/react.client';
+
+import { useSermonPreparationFields } from './useSermonPreparationFields';
 
 import type { ManualTextBinding } from '@/components/common/manualTextBinding';
 import type { DocumentData, Json } from '@/data-engine/types';
@@ -30,6 +33,8 @@ export function useSermonCoreDataDocument(sermonId: string | null) {
   usePublishShellTitle('sermons', sermonId, document.data);
   const titleForm = useDataForm(sermonId ? { collection: 'sermons', id: sermonId } : null, 'title', [['title']]);
   const verseForm = useDataForm(sermonId ? { collection: 'sermons', id: sermonId } : null, 'verse', [['verse']]);
+  const prepResource = sermonId ? { collection: 'sermons', id: sermonId } : null;
+  const preparationFields = useSermonPreparationFields(prepResource);
   const textBinding = (form: typeof titleForm, field: 'title' | 'verse'): ManualTextBinding => ({
     active: form.active, busy: form.busy, value: typeof form.data?.[field] === 'string' ? form.data[field] : '',
     begin: form.begin, cancel: form.cancel,
@@ -70,9 +75,14 @@ export function useSermonCoreDataDocument(sermonId: string | null) {
       preparation: edit((current.preparation ?? {}) as Preparation) as DocumentData,
     })));
   };
+  const fieldDecision = manualFormDecision(titleForm) ?? manualFormDecision(verseForm) ?? preparationFields.decision;
   return {
     ...document,
+    ...(fieldDecision ? { syncSubject: fieldDecision.subject, status: fieldDecision.status, error: fieldDecision.error,
+      errorWords: undefined, keepLocal: fieldDecision.keepLocal, acceptRemote: fieldDecision.acceptRemote, retry: fieldDecision.retry } : {}),
+    syncComparison: fieldDecision?.comparison,
     titleForm, verseForm,
+    ...preparationFields,
     titleBinding: textBinding(titleForm, 'title'), verseBinding: textBinding(verseForm, 'verse'),
     coreValues: {
       title: typeof document.data?.title === 'string' ? document.data.title : '',

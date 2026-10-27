@@ -324,10 +324,13 @@ export function mergeFields(base: FieldValue, mine: FieldValue, theirs: FieldVal
 } {
   if (equalValues(mine, base)) return { value: theirs, conflicts: [] };
   if (equalValues(theirs, base) || equalValues(mine, theirs)) return { value: mine, conflicts: [] };
+  const newMap = !base.exists && path.length > 0 && !path[path.length - 1].startsWith('id:');
+  if (mine.exists && theirs.exists && object(mine.value) && object(theirs.value)
+    && !isAtomicScriptureReference(path) && (newMap || (base.exists && object(base.value)))) {
+    // Independently added map fields share an empty ancestor; deletion and keyed identity stay whole.
+    return mergeObjects(base.exists ? base.value as DocumentData : {}, mine.value, theirs.value, path);
+  }
   if (base.exists && mine.exists && theirs.exists) {
-    if (object(base.value) && object(mine.value) && object(theirs.value)) {
-      if (!isAtomicScriptureReference(path)) return mergeObjects(base.value, mine.value, theirs.value, path);
-    }
     if (Array.isArray(base.value) && Array.isArray(mine.value) && Array.isArray(theirs.value)) {
       const merged = mergeArrays(base.value, mine.value, theirs.value, path);
       const children = identityTreeChildren(path);

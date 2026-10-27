@@ -25,6 +25,8 @@ import { DataDocumentProvider } from '@/data-engine/react.client';
 
 import { TestProviders } from '../../../test-utils/test-providers';
 
+import { preparationBinding } from '@test-utils/preparationBinding';
+
 import type { Preparation } from '@/models/models';
 
 jest.mock('@/utils/recordingDraftStore', () => ({
@@ -156,6 +158,12 @@ describe('SermonPage mode transitions', () => {
       patchPreparation: jest.fn(async () => ({ delivery: 'queued' as const })), keepLocal: jest.fn(), acceptRemote: jest.fn(),
       titleBinding: { active: false, busy: false, value: data.title, begin: jest.fn(), update: jest.fn(), save: jest.fn(), cancel: jest.fn() },
       verseBinding: { active: false, busy: false, value: data.verse, begin: jest.fn(), update: jest.fn(), save: jest.fn(), cancel: jest.fn() },
+      authorIntentField: preparationBinding(''), modernTranslationField: preparationBinding(''),
+      textContextFields: Object.fromEntries(['verse', 'passageSummary', 'contextNotes', 'repeatedWords'].map(name => [name, preparationBinding('', name)])),
+      homileticPlanFields: Object.fromEntries(['updatedPlan', 'sermonPlan'].map(name => [name, { ...preparationBinding('', name), value: [], edit: jest.fn() }])),
+      goalFields: Object.fromEntries(['timelessTruth', 'christConnection', 'statement', 'type'].map(name => [name, preparationBinding('', name)])),
+      thesisFields: Object.fromEntries(['exegetical', 'homiletical', 'questionWord', 'pluralKey', 'transitionSentence', 'oneSentence', 'sermonInOneSentence', 'whyPreach', 'impactOnChurch', 'practicalQuestions'].map(name => [name, preparationBinding('', name)])),
+      mainIdeaFields: Object.fromEntries(['contextIdea', 'textIdea', 'argumentation'].map(name => [name, { subject: name, value: '', ready: true, active: true, busy: false, dirty: false, error: null, begin: jest.fn(), update: jest.fn(async () => undefined), save: jest.fn(async () => undefined), cancel: jest.fn(async () => undefined), retry: jest.fn(async () => undefined), recovery: { choices: [], loading: false, error: null, recover: jest.fn() } }])),
     } as unknown as ReturnType<typeof useSermonCoreDataDocument>;
     searchParamsMock = new URLSearchParams();
     routerMock = { push: jest.fn(), replace: jest.fn() };
@@ -252,20 +260,24 @@ searchParamsMock.set('mode', 'prep');
     const spiritual = jest.mocked(SpiritualStepContent).mock.calls.at(-1)![0];
     const exegetical = jest.mocked(ExegeticalPlanStepContent).mock.calls.at(-1)![0];
     mockCore.preparation = { textContext: { passageSummary: 'Another saved summary', contextNotes: 'Latest sibling' } };
-    await text.onSavePassageSummary!('My summary');
-    await text.onSaveContextNotes!('My context');
-    await text.onSaveRepeatedWords!([]);
+    await text.fields!.passageSummary!.save('My summary');
+    await text.fields!.contextNotes!.save('My context');
+    await text.fields!.repeatedWords!.save('');
     await text.onToggleReadWholeBookOnce!(false);
-    await thesis.onSaveHomiletical!('My thesis');
+    await thesis.fields!.homiletical!.save('My thesis');
+    expect(mockCore.thesisFields.homiletical.save).toHaveBeenCalledWith('My thesis');
     await spiritual.savePreparation({ textContext: { contextNotes: 'Stale accidental sibling' }, spiritual: { readAndPrayedConfirmed: true } });
-    await exegetical.onSaveAuthorIntent!('My intention');
-    await text.onSaveVerse('Acts 1');
-    expect(jest.mocked(mockCore.patchPreparation).mock.calls.map(([patch]) => patch)).toEqual([
-      { textContext: { passageSummary: 'My summary' } }, { textContext: { contextNotes: 'My context' } },
-      { textContext: { repeatedWords: [] } }, { textContext: { readWholeBookOnceConfirmed: false } },
-      { thesis: { homiletical: 'My thesis' } }, { spiritual: { readAndPrayedConfirmed: true } }, { authorIntent: 'My intention' },
-    ]);
-    expect(mockCore.patchCore).toHaveBeenCalledWith({ verse: 'Acts 1' });
+    await exegetical.authorIntentField!.save('My intention');
+    await text.fields!.verse!.save('Acts 1');
+    expect(mockCore.patchPreparation).toHaveBeenCalledTimes(2);
+    expect(mockCore.patchPreparation).toHaveBeenCalledWith({ textContext: { readWholeBookOnceConfirmed: false } });
+    expect(mockCore.patchPreparation).toHaveBeenCalledWith({ spiritual: { readAndPrayedConfirmed: true } });
+    expect(mockCore.textContextFields.passageSummary.save).toHaveBeenCalledWith('My summary');
+    expect(mockCore.textContextFields.contextNotes.save).toHaveBeenCalledWith('My context');
+    expect(mockCore.textContextFields.repeatedWords.save).toHaveBeenCalledWith('');
+    expect(mockCore.authorIntentField.save).toHaveBeenCalledWith('My intention');
+    expect(mockCore.textContextFields.verse.save).toHaveBeenCalledWith('Acts 1');
+    expect(mockCore.patchCore).not.toHaveBeenCalled();
   });
 
   test('on the engine the exegetical plan edits the document, applied to its newest preparation', () => {

@@ -58,6 +58,18 @@ A screen on an engine collection reads and edits only through `frontend/app/data
 
 - The breadcrumbs (or other chrome around a page) keep an old name after a rename → they read the legacy React Query cache, which engine writes never update. Do not give the chrome its own reader: a collection reader opens the whole collection for one word (review counted ~650 reads/hour for 50 sermons while the legacy road is open) and can lag the open document. The hook that already holds the document publishes its title with `usePublishShellTitle` (`components/navigation/shellTitles.tsx`), and the chrome reads `useShellTitle` (BUG-20261004-breadcrumb-keeps-old-sermon-title).
 
+## Preparation fields with explicit Save
+
+The sermon preparation's25fields use `useSermonPreparationFields`, backed by `usePreparationField` and the public `useDataForm` facade. Text,choice and plan-list controls share that owner. `usePreparationFieldOpening` begins a stage only when its control is rendered; folding keeps an existing durable stage. Do not begin every hidden field merely because the core sermon hook mounted.
+
+A manual selected stage may hold the raw value being typed: repeated-word CSV can remain a string there, while plan points keep stable IDs and untrimmed titles. `preparationFieldValues` owns conversion for explicit Save and Keep-local. `keepLocal(updater)` captures normalization synchronously before awaiting persistence; never update,await,and then submit a possibly newer stage. Raw form values do not enter the autosaving document or transport. Returning to the opening view restores its original typed value,including absence.
+
+Only an actually answered ancestor of the selected field supplies `comparison`. Its identity covers request,stage and the shown stored snapshot. A choice rechecks that identity before and after suspension/retained observation; the existing parent controller also guards its queued record. Ordinary Accept-remote still refuses unsent typing. The separate `discardStageAndAcceptRemote` action is offered only for a durable,known field comparison and uses the existing discard confirmation. A changed comparison withdraws that confirmation.
+
+One persistent `DataSyncStatus` owns the actions. Public `SyncOutlet` can move its presentation beside the visible field and back to the header when folded; `components/common/syncOutlet` owns only DOM destinations,not data or a second question. Compare both word versions,cap long panes with internal keyboard/touch scrolling,and use saved-version wording for one person on sequential devices. Healthy comparisons show two choices; actual action/read failures keep Retry. Generic `SaveConflictBanner` consumers retain their existing words.
+
+Local browser checks use actual Auth/Firestore emulators and canonical commands. Source/tests,real-browser checks,root visual inspection,fresh acceptance and production verification remain separate evidence boundaries. Unit180's local artifacts retain causal failures,including ambiguous QA locators and bookkeeping expectations that were corrected without changing product data rules.
+
 ## Why
 
 - 2026-09-19: a green suite missed it — a checkpoint compacted after ACK, the reopened editor reused its ID and restarted its edit counter behind the dedupe watermark. The regression saves, compacts, closes, reopens and saves again on the real storage adapter (`frontend/app/data-engine/__tests__/browser.client.test.ts`); a memory map that keeps clean records forever hides it.

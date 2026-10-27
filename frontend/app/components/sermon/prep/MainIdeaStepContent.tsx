@@ -1,84 +1,25 @@
 'use client';
 
-import { Lightbulb, BookText, ListChecks, Check, X } from 'lucide-react';
+import { Lightbulb, BookText, ListChecks } from 'lucide-react';
 import React from 'react';
 
 import '@locales/i18n';
 
-import { useFieldDraft } from '@/hooks/useFieldDraft';
 import { UI_COLORS } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
 
-// Module-level constants to avoid duplicate strings
-const MAIN_IDEA_SAVE_FALLBACK = "Save";
-const MAIN_IDEA_CANCEL_FALLBACK = "Cancel";
+import { PreparationTextarea } from './PreparationTextarea';
+
+import type { PreparationTextBinding } from '@/components/common/manualTextBinding';
 
 interface MainIdeaStepContentProps {
-  initialContextIdea?: string;
-  onSaveContextIdea?: (text: string) => Promise<void> | void;
-  initialTextIdea?: string;
-  onSaveTextIdea?: (text: string) => Promise<void> | void;
-  initialArgumentation?: string;
-  onSaveArgumentation?: (text: string) => Promise<void> | void;
+  contextIdea?: PreparationTextBinding;
+  textIdea?: PreparationTextBinding;
+  argumentation?: PreparationTextBinding;
 }
 
-const MainIdeaStepContent: React.FC<MainIdeaStepContentProps> = ({
-  initialContextIdea = '',
-  onSaveContextIdea,
-  initialTextIdea = '',
-  onSaveTextIdea,
-  initialArgumentation = '',
-  onSaveArgumentation,
-}) => {
+const MainIdeaStepContent: React.FC<MainIdeaStepContentProps> = ({ contextIdea, textIdea, argumentation }) => {
   const { t } = useTranslation();
-
-  // Title functions to avoid duplicate strings
-  const getSaveTitle = () => t('actions.save') || MAIN_IDEA_SAVE_FALLBACK;
-  const getCancelTitle = () => t('actions.cancel') || MAIN_IDEA_CANCEL_FALLBACK;
-
-  const [contextDraft, setContextDraft] = useFieldDraft(initialContextIdea || '');
-  const [textDraft, setTextDraft] = useFieldDraft(initialTextIdea || '');
-  const [argumentationDraft, setArgumentationDraft] = useFieldDraft(initialArgumentation || '');
-  const [isSavingContext, setIsSavingContext] = React.useState<boolean>(false);
-  const [isSavingText, setIsSavingText] = React.useState<boolean>(false);
-  const [isSavingArgumentation, setIsSavingArgumentation] = React.useState<boolean>(false);
-
-
-
-
-  const contextHasChanges = React.useMemo(() => (initialContextIdea || '') !== contextDraft, [initialContextIdea, contextDraft]);
-  const textHasChanges = React.useMemo(() => (initialTextIdea || '') !== textDraft, [initialTextIdea, textDraft]);
-  const argumentationHasChanges = React.useMemo(() => (initialArgumentation || '') !== argumentationDraft, [initialArgumentation, argumentationDraft]);
-
-  const handleSaveContext = async () => {
-    if (!onSaveContextIdea) return;
-    try {
-      setIsSavingContext(true);
-      await onSaveContextIdea(contextDraft);
-    } finally {
-      setIsSavingContext(false);
-    }
-  };
-
-  const handleSaveText = async () => {
-    if (!onSaveTextIdea) return;
-    try {
-      setIsSavingText(true);
-      await onSaveTextIdea(textDraft);
-    } finally {
-      setIsSavingText(false);
-    }
-  };
-
-  const handleSaveArgumentation = async () => {
-    if (!onSaveArgumentation) return;
-    try {
-      setIsSavingArgumentation(true);
-      await onSaveArgumentation(argumentationDraft);
-    } finally {
-      setIsSavingArgumentation(false);
-    }
-  };
 
   return (
     <div className="space-y-3">
@@ -92,38 +33,7 @@ const MainIdeaStepContent: React.FC<MainIdeaStepContentProps> = ({
           <li>{t('wizard.steps.mainIdea.contextIdea.instruction')}</li>
         </ul>
         
-        {onSaveContextIdea && (
-          <>
-            <textarea
-              rows={3}
-              value={contextDraft}
-              onChange={(e) => setContextDraft(e.target.value)}
-              placeholder={t('wizard.steps.mainIdea.contextIdea.placeholder')}
-              className={`w-full rounded-md border px-3 py-2 bg-white dark:bg-gray-800 ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder} focus:outline-none focus:ring-2 focus:ring-offset-0`}
-            />
-            {contextHasChanges && (
-              <div className="mt-2 flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={handleSaveContext}
-                  disabled={isSavingContext}
-                  className={`inline-flex items-center justify-center px-3 py-1.5 rounded-md text-xs font-semibold shadow-sm ${UI_COLORS.button.primary.bg} ${UI_COLORS.button.primary.hover} dark:${UI_COLORS.button.primary.darkBg} dark:${UI_COLORS.button.primary.darkHover} ${UI_COLORS.button.primary.text}`}
-                  title={getSaveTitle()}
-                >
-                  <Check className="w-4 h-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setContextDraft(initialContextIdea || '')}
-                  className={`inline-flex items-center justify-center px-3 py-1.5 rounded-md text-xs font-medium border ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder}`}
-                  title={getCancelTitle()}
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            )}
-          </>
-        )}
+        {contextIdea && <PreparationTextarea binding={contextIdea} placeholder={t('wizard.steps.mainIdea.contextIdea.placeholder')} />}
       </div>
 
       {/* Text main idea */}
@@ -137,38 +47,7 @@ const MainIdeaStepContent: React.FC<MainIdeaStepContentProps> = ({
           <li>{t('wizard.steps.mainIdea.textIdea.instruction2')}</li>
         </ul>
         
-        {onSaveTextIdea && (
-          <>
-            <textarea
-              rows={3}
-              value={textDraft}
-              onChange={(e) => setTextDraft(e.target.value)}
-              placeholder={t('wizard.steps.mainIdea.textIdea.placeholder')}
-              className={`w-full rounded-md border px-3 py-2 bg-white dark:bg-gray-800 ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder} focus:outline-none focus:ring-2 focus:ring-offset-0`}
-            />
-            {textHasChanges && (
-              <div className="mt-2 flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={handleSaveText}
-                  disabled={isSavingText}
-                  className={`inline-flex items-center justify-center px-3 py-1.5 rounded-md text-xs font-semibold shadow-sm ${UI_COLORS.button.primary.bg} ${UI_COLORS.button.primary.hover} dark:${UI_COLORS.button.primary.darkBg} dark:${UI_COLORS.button.primary.darkHover} ${UI_COLORS.button.primary.text}`}
-                  title={getSaveTitle()}
-                >
-                  <Check className="w-4 h-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setTextDraft(initialTextIdea || '')}
-                  className={`inline-flex items-center justify-center px-3 py-1.5 rounded-md text-xs font-medium border ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder}`}
-                  title={getCancelTitle()}
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            )}
-          </>
-        )}
+        {textIdea && <PreparationTextarea binding={textIdea} placeholder={t('wizard.steps.mainIdea.textIdea.placeholder')} />}
         
         {/* Note moved inside text main idea section */}
         <div className={`mt-3 p-3 rounded-md border ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder} ${UI_COLORS.neutral.bg} dark:${UI_COLORS.neutral.darkBg}`}>
@@ -191,38 +70,7 @@ const MainIdeaStepContent: React.FC<MainIdeaStepContentProps> = ({
           <li>{t('wizard.steps.mainIdea.argumentation.instruction')}</li>
         </ul>
         
-        {onSaveArgumentation && (
-          <>
-            <textarea
-              rows={3}
-              value={argumentationDraft}
-              onChange={(e) => setArgumentationDraft(e.target.value)}
-              placeholder={t('wizard.steps.mainIdea.argumentation.placeholder')}
-              className={`w-full rounded-md border px-3 py-2 bg-white dark:bg-gray-800 ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder} focus:outline-none focus:ring-2 focus:ring-offset-0`}
-            />
-            {argumentationHasChanges && (
-              <div className="mt-2 flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={handleSaveArgumentation}
-                  disabled={isSavingArgumentation}
-                  className={`inline-flex items-center justify-center px-3 py-1.5 rounded-md text-xs font-semibold shadow-sm ${UI_COLORS.button.primary.bg} ${UI_COLORS.button.primary.hover} dark:${UI_COLORS.button.primary.darkBg} dark:${UI_COLORS.button.primary.darkHover} ${UI_COLORS.button.primary.text}`}
-                  title={getSaveTitle()}
-                >
-                  <Check className="w-4 h-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setArgumentationDraft(initialArgumentation || '')}
-                  className={`inline-flex items-center justify-center px-3 py-1.5 rounded-md text-xs font-medium border ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder}`}
-                  title={getCancelTitle()}
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            )}
-          </>
-        )}
+        {argumentation && <PreparationTextarea binding={argumentation} placeholder={t('wizard.steps.mainIdea.argumentation.placeholder')} />}
       </div>
     </div>
   );

@@ -6,6 +6,32 @@ jest.mock('@locales/i18n', () => ({}));
 jest.mock('react-i18next', () => ({ useTranslation: () => ({ t: (k: string) => k }) }));
 
 import MainIdeaStepContent from '@/components/sermon/prep/MainIdeaStepContent';
+import { useFieldDraft } from '@/hooks/useFieldDraft';
+
+import type { PreparationTextBinding } from '@/components/common/manualTextBinding';
+
+interface FixtureProps {
+  initialContextIdea?: string; initialTextIdea?: string; initialArgumentation?: string;
+  onSaveContextIdea?: (value: string) => Promise<void> | void;
+  onSaveTextIdea?: (value: string) => Promise<void> | void;
+  onSaveArgumentation?: (value: string) => Promise<void> | void;
+}
+/** Presentation-only parent: persistence and ancestry are covered by preparationFieldSave.test.tsx. */
+function MainIdeaFixture(props: FixtureProps) {
+  const usePresentationField = (value = '', onSave?: FixtureProps['onSaveContextIdea']): PreparationTextBinding => {
+    const [draft, update] = useFieldDraft(value);
+    const [busy, setBusy] = React.useState(false);
+    return { subject: 'presentation-field', value: draft, ready: true, active: true, busy, dirty: draft !== value, error: null,
+      begin: async () => undefined, update: async next => { update(next); }, cancel: async () => { update(value); }, retry: async () => undefined,
+      recovery: { choices: [], loading: false, error: null, recover: async () => undefined, refresh: async () => undefined },
+      save: async next => { setBusy(true); try { await onSave?.(next); } finally { setBusy(false); } } };
+  };
+  const context = usePresentationField(props.initialContextIdea, props.onSaveContextIdea);
+  const text = usePresentationField(props.initialTextIdea, props.onSaveTextIdea);
+  const argument = usePresentationField(props.initialArgumentation, props.onSaveArgumentation);
+  return <MainIdeaStepContent contextIdea={props.onSaveContextIdea ? context : undefined}
+    textIdea={props.onSaveTextIdea ? text : undefined} argumentation={props.onSaveArgumentation ? argument : undefined} />;
+}
 
 describe('MainIdeaStepContent', () => {
   const mockOnSaveContextIdea = jest.fn();
@@ -17,7 +43,7 @@ describe('MainIdeaStepContent', () => {
   });
 
   it('renders sections using translation keys', () => {
-    render(<MainIdeaStepContent />);
+    render(<MainIdeaFixture />);
     expect(screen.getByText('wizard.steps.mainIdea.note.title')).toBeInTheDocument();
     expect(screen.getByText('wizard.steps.mainIdea.contextIdea.title')).toBeInTheDocument();
     expect(screen.getByText('wizard.steps.mainIdea.textIdea.title')).toBeInTheDocument();
@@ -26,7 +52,7 @@ describe('MainIdeaStepContent', () => {
 
   it('renders input fields when save handlers are provided', () => {
     render(
-      <MainIdeaStepContent
+      <MainIdeaFixture
         onSaveContextIdea={mockOnSaveContextIdea}
         onSaveTextIdea={mockOnSaveTextIdea}
         onSaveArgumentation={mockOnSaveArgumentation}
@@ -39,7 +65,7 @@ describe('MainIdeaStepContent', () => {
   });
 
   it('does not render input fields when save handlers are not provided', () => {
-    render(<MainIdeaStepContent />);
+    render(<MainIdeaFixture />);
 
     expect(screen.queryByPlaceholderText('wizard.steps.mainIdea.contextIdea.placeholder')).not.toBeInTheDocument();
     expect(screen.queryByPlaceholderText('wizard.steps.mainIdea.textIdea.placeholder')).not.toBeInTheDocument();
@@ -48,7 +74,7 @@ describe('MainIdeaStepContent', () => {
 
   it('initializes with provided initial values', () => {
     render(
-      <MainIdeaStepContent
+      <MainIdeaFixture
         initialContextIdea="Initial context"
         initialTextIdea="Initial text idea"
         initialArgumentation="Initial argumentation"
@@ -65,7 +91,7 @@ describe('MainIdeaStepContent', () => {
 
   it('shows save/cancel buttons only when there are changes', () => {
     render(
-      <MainIdeaStepContent
+      <MainIdeaFixture
         onSaveContextIdea={mockOnSaveContextIdea}
         onSaveTextIdea={mockOnSaveTextIdea}
         onSaveArgumentation={mockOnSaveArgumentation}
@@ -89,7 +115,7 @@ describe('MainIdeaStepContent', () => {
     mockOnSaveContextIdea.mockResolvedValue(undefined);
 
     render(
-      <MainIdeaStepContent
+      <MainIdeaFixture
         onSaveContextIdea={mockOnSaveContextIdea}
         onSaveTextIdea={mockOnSaveTextIdea}
         onSaveArgumentation={mockOnSaveArgumentation}
@@ -109,7 +135,7 @@ describe('MainIdeaStepContent', () => {
 
   it('resets field value when cancel button is clicked', () => {
     render(
-      <MainIdeaStepContent
+      <MainIdeaFixture
         initialContextIdea="Initial context"
         onSaveContextIdea={mockOnSaveContextIdea}
         onSaveTextIdea={mockOnSaveTextIdea}
@@ -129,7 +155,7 @@ describe('MainIdeaStepContent', () => {
 
   it('handles multiple fields independently', () => {
     render(
-      <MainIdeaStepContent
+      <MainIdeaFixture
         onSaveContextIdea={mockOnSaveContextIdea}
         onSaveTextIdea={mockOnSaveTextIdea}
         onSaveArgumentation={mockOnSaveArgumentation}
@@ -161,7 +187,7 @@ describe('MainIdeaStepContent', () => {
     mockOnSaveContextIdea.mockReturnValue(savePromise);
 
     render(
-      <MainIdeaStepContent
+      <MainIdeaFixture
         onSaveContextIdea={mockOnSaveContextIdea}
         onSaveTextIdea={mockOnSaveTextIdea}
         onSaveArgumentation={mockOnSaveArgumentation}
@@ -186,7 +212,7 @@ describe('MainIdeaStepContent', () => {
 
   it('handles empty initial values correctly', () => {
     render(
-      <MainIdeaStepContent
+      <MainIdeaFixture
         initialContextIdea=""
         initialTextIdea=""
         initialArgumentation=""
@@ -207,7 +233,7 @@ describe('MainIdeaStepContent', () => {
 
   it('updates draft state when typing', () => {
     render(
-      <MainIdeaStepContent
+      <MainIdeaFixture
         onSaveContextIdea={mockOnSaveContextIdea}
         onSaveTextIdea={mockOnSaveTextIdea}
         onSaveArgumentation={mockOnSaveArgumentation}
@@ -221,7 +247,7 @@ describe('MainIdeaStepContent', () => {
   });
 
   it('shows note section inside text main idea section', () => {
-    render(<MainIdeaStepContent />);
+    render(<MainIdeaFixture />);
     
     // Find the text idea section by looking for its title and then finding the parent container
     const textIdeaTitle = screen.getByText('wizard.steps.mainIdea.textIdea.title');

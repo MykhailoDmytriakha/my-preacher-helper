@@ -10,6 +10,10 @@ import ExegeticalPlanModule from '@/components/sermon/prep/exegeticalPlan/Exeget
 import GoalsStepContent from '@/components/sermon/prep/GoalsStepContent';
 import HomileticPlanStepContent from '@/components/sermon/prep/HomileticPlanStepContent';
 import MainIdeaStepContent from '@/components/sermon/prep/MainIdeaStepContent';
+
+import { PreparationBindingFixture, repeatedWordsCodec, trimmedTextCodec } from '@test-utils/preparationPresentations';
+
+import type { PreparationPlanBinding } from '@/components/sermon/prep/PreparationPlanList';
 import TextContextStepContent from '@/components/sermon/prep/TextContextStepContent';
 import ThesisStepContent from '@/components/sermon/prep/ThesisStepContent';
 
@@ -29,36 +33,55 @@ type Case = {
   render: (value: string) => React.ReactElement;
 };
 
+type Item = { id: string; title: string };
+function PlanPresentationFixture({ items, children }: { items: Item[]; children(binding: PreparationPlanBinding): React.ReactNode }) {
+  const [value, setValue] = React.useState(items);
+  const [confirmed, setConfirmed] = React.useState(items);
+  React.useEffect(() => {
+    if (JSON.stringify(value) === JSON.stringify(confirmed)) {
+      setValue(items);
+      setConfirmed(items);
+    }
+  }, [items, value, confirmed]);
+  const binding: PreparationPlanBinding = {
+    subject: 'plan-fixture', value, ready: true, active: true, busy: false, dirty: JSON.stringify(value) !== JSON.stringify(confirmed), error: null,
+    begin: async () => undefined, update: async next => setValue(next), save: async () => setConfirmed(value), cancel: async () => setValue(confirmed),
+    retry: async () => undefined, recovery: { choices: [], loading: false, error: null, recover: async () => undefined, refresh: async () => undefined },
+    edit: async updater => setValue(current => updater(current)),
+  };
+  return <>{children(binding)}</>;
+}
+
 const cases: Case[] = [
   {
     name: 'main idea of the context',
     placeholder: 'wizard.steps.mainIdea.contextIdea.placeholder',
-    render: value => <MainIdeaStepContent initialContextIdea={value} onSaveContextIdea={jest.fn()} />,
+    render: value => <PreparationBindingFixture value={value}>{binding => <MainIdeaStepContent contextIdea={binding} />}</PreparationBindingFixture>,
   },
   {
     name: 'timeless truth',
     placeholder: 'wizard.steps.goals.timelessTruth.placeholder',
-    render: value => <GoalsStepContent initialTimelessTruth={value} onSaveTimelessTruth={jest.fn()} />,
+    render: value => <PreparationBindingFixture value={value}>{binding => <GoalsStepContent timelessTruth={binding} />}</PreparationBindingFixture>,
   },
   {
     name: 'passage summary',
     placeholder: 'wizard.steps.textContext.passageSummary.placeholder',
-    render: value => <TextContextStepContent initialVerse="John 1:1" onSaveVerse={jest.fn()} initialPassageSummary={value} onSavePassageSummary={jest.fn()} />,
+    render: value => <PreparationBindingFixture value={value}>{binding => <TextContextStepContent fields={{ passageSummary: binding }} />}</PreparationBindingFixture>,
   },
   {
     name: 'exegetical thesis',
     placeholder: 'wizard.steps.thesis.exegetical.placeholder',
-    render: value => <ThesisStepContent exegetical={value} onSaveExegetical={jest.fn()} />,
+    render: value => <PreparationBindingFixture value={value}>{binding => <ThesisStepContent fields={{ exegetical: binding }} />}</PreparationBindingFixture>,
   },
   {
     name: 'modern translation',
     placeholder: 'wizard.steps.homileticPlan.fields.modernTranslation.placeholder',
-    render: value => <HomileticPlanStepContent initialModernTranslation={value} onSaveModernTranslation={jest.fn()} />,
+    render: value => <PreparationBindingFixture value={value}>{binding => <HomileticPlanStepContent modernTranslation={binding} />}</PreparationBindingFixture>,
   },
   {
     name: "author's intent",
     placeholder: 'wizard.steps.exegeticalPlan.authorIntent.placeholder',
-    render: value => <ExegeticalPlanModule value={[]} onEdit={jest.fn()} authorIntent={value} onSaveAuthorIntent={jest.fn()} />,
+    render: value => <PreparationBindingFixture value={value}>{binding => <ExegeticalPlanModule value={[]} authorIntentField={binding} />}</PreparationBindingFixture>,
   },
 ];
 
@@ -79,6 +102,7 @@ describe.each(cases)('the $name field', ({ placeholder, render: field }) => {
   it('follows the next copy again once the typed words are saved', () => {
     const view = render(field('Stored words'));
     fireEvent.change(screen.getByPlaceholderText(placeholder), { target: { value: 'Saved here' } });
+    fireEvent.click(screen.getAllByTitle(/actions\.save$/)[0]);
     view.rerender(field('Saved here'));
     view.rerender(field('Written on the phone'));
     expect(screen.getByPlaceholderText(placeholder)).toHaveValue('Written on the phone');
@@ -86,35 +110,31 @@ describe.each(cases)('the $name field', ({ placeholder, render: field }) => {
 });
 
 describe('a field whose Save stores a cleaned-up value', () => {
-  const summary = (value: string, onSave = jest.fn()) => (
-    <TextContextStepContent initialVerse="John 1:1" onSaveVerse={jest.fn()} initialPassageSummary={value} onSavePassageSummary={onSave} />
-  );
-  const repeated = (words: string[]) => (
-    <TextContextStepContent initialVerse="John 1:1" onSaveVerse={jest.fn()} initialRepeatedWords={words} onSaveRepeatedWords={jest.fn()} />
-  );
+  const summary = (value: string) => <PreparationBindingFixture value={value} codec={trimmedTextCodec}>{binding => <TextContextStepContent fields={{ passageSummary: binding }} />}</PreparationBindingFixture>;
+  const repeated = (value: string) => <PreparationBindingFixture value={value} codec={repeatedWordsCodec}>{binding => <TextContextStepContent fields={{ repeatedWords: binding }} />}</PreparationBindingFixture>;
 
   it('follows the next copy after a save trimmed the words', () => {
     const view = render(summary('Stored'));
     fireEvent.change(screen.getByPlaceholderText('wizard.steps.textContext.passageSummary.placeholder'), { target: { value: '  Mine  ' } });
-    fireEvent.click(screen.getByTitle('actions.save'));
+    fireEvent.click(screen.getByTitle(/actions\.save$/));
     view.rerender(summary('Mine'));
     view.rerender(summary('Written on the phone'));
     expect(screen.getByPlaceholderText('wizard.steps.textContext.passageSummary.placeholder')).toHaveValue('Written on the phone');
   });
 
   it('follows the next copy after a save tidied a list of words', () => {
-    const view = render(repeated(['old']));
+    const view = render(repeated('old'));
     fireEvent.change(screen.getByPlaceholderText('wizard.steps.textContext.repeatedInput.placeholder'), { target: { value: 'a,b , , c' } });
-    fireEvent.click(screen.getByTitle('actions.save'));
-    view.rerender(repeated(['a', 'b', 'c']));
-    view.rerender(repeated(['from', 'phone']));
+    fireEvent.click(screen.getByTitle(/actions\.save$/));
+    view.rerender(repeated('a, b, c'));
+    view.rerender(repeated('from, phone'));
     expect(screen.getByPlaceholderText('wizard.steps.textContext.repeatedInput.placeholder')).toHaveValue('from, phone');
   });
 });
 
 describe('Cancel', () => {
   it("brings back the stored author's intent and keeps following it", () => {
-    const planStep = (value: string) => <ExegeticalPlanModule value={[]} onEdit={jest.fn()} authorIntent={value} onSaveAuthorIntent={jest.fn()} />;
+    const planStep = (value: string) => <PreparationBindingFixture value={value}>{binding => <ExegeticalPlanModule value={[]} authorIntentField={binding} />}</PreparationBindingFixture>;
     const view = render(planStep('Stored intent'));
     const field = () => screen.getByPlaceholderText('wizard.steps.exegeticalPlan.authorIntent.placeholder');
     fireEvent.change(field(), { target: { value: 'Mine' } });
@@ -125,7 +145,7 @@ describe('Cancel', () => {
   });
 
   it('brings back the current verse, not the one the page opened with', () => {
-    const step = (verse: string) => <TextContextStepContent initialVerse={verse} onSaveVerse={jest.fn()} />;
+    const step = (verse: string) => <PreparationBindingFixture value={verse} codec={trimmedTextCodec} valid={value => value.trim().length > 0}>{binding => <TextContextStepContent fields={{ verse: binding }} />}</PreparationBindingFixture>;
     const view = render(step('John 1:1'));
     view.rerender(step('John 3:16'));
     const field = () => screen.getByPlaceholderText('wizard.steps.textContext.passageInput.placeholder');
@@ -139,7 +159,7 @@ describe('Cancel', () => {
 
 describe('edge cases found in review', () => {
   it('lets a cleared verse be cancelled back to the current one', () => {
-    const step = (verse: string) => <TextContextStepContent initialVerse={verse} onSaveVerse={jest.fn()} />;
+    const step = (verse: string) => <PreparationBindingFixture value={verse} codec={trimmedTextCodec} valid={value => value.trim().length > 0}>{binding => <TextContextStepContent fields={{ verse: binding }} />}</PreparationBindingFixture>;
     const view = render(step('John 3:16'));
     const field = () => screen.getByPlaceholderText('wizard.steps.textContext.passageInput.placeholder');
     fireEvent.change(field(), { target: { value: '' } });
@@ -150,12 +170,12 @@ describe('edge cases found in review', () => {
   });
 
   it('follows the next copy after a save whose echo writes the same points with fields in another order', () => {
-    type Item = { id: string; title: string };
-    const step = (items: Item[]) => <HomileticPlanStepContent initialUpdatedPlan={items} onSaveUpdatedPlan={jest.fn()} />;
+    const step = (items: Item[]) => <PlanPresentationFixture items={items}>{binding => <HomileticPlanStepContent planFields={{ updatedPlan: binding, sermonPlan: { ...binding, subject: 'sermon-plan-fixture' } }} />}</PlanPresentationFixture>;
     const view = render(step([{ id: '1', title: 'One' }]));
-    fireEvent.change(screen.getByDisplayValue('One'), { target: { value: 'Mine' } });
-    view.rerender(step([{ title: 'Mine', id: '1' } as Item]));
+    fireEvent.change(screen.getAllByDisplayValue('One')[0], { target: { value: 'Mine' } });
+    fireEvent.click(screen.getAllByTitle(/actions\.save$/)[0]);
+    view.rerender(step([{ title: 'Mine', id: '1' }]));
     view.rerender(step([{ id: '1', title: 'From the phone' }]));
-    expect(screen.getByDisplayValue('From the phone')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('wizard.steps.homileticPlan.fields.updatedPlan.itemPlaceholder')).toHaveValue('From the phone');
   });
 });

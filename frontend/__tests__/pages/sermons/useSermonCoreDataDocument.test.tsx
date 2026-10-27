@@ -12,6 +12,7 @@ const mockDocument = {
 jest.mock('@/data-engine/react.client', () => ({
   useDataEngine: () => ({ owner: 'u1' }),
   useDataDocument: () => mockDocument,
+  useRecoveryDiscovery: () => ({ choices: [], loading: false, error: null, recover: jest.fn() }),
   useDataForm: () => ({ active: false, busy: false, data: null, begin: jest.fn(), cancel: jest.fn(), update: jest.fn(), save: jest.fn() }),
 }));
 jest.mock('@/components/navigation/shellTitles', () => ({ usePublishShellTitle: jest.fn() }));

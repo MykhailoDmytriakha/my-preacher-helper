@@ -9,7 +9,7 @@ import { useSermonCoreDataDocument } from '../useSermonCoreDataDocument';
 import type { SermonCorePatch } from '../useSermonCoreDataDocument';
 import type { DocumentData } from '@/data-engine/types';
 
-jest.mock('@/data-engine/react.client', () => ({ useDataDocument: jest.fn(), useDataEngine: jest.fn(), useDataForm: jest.fn() }));
+jest.mock('@/data-engine/react.client', () => ({ useDataDocument: jest.fn(), useDataEngine: jest.fn(), useDataForm: jest.fn(), useRecoveryDiscovery: jest.fn(() => ({ choices: [], loading: false, error: null, recover: jest.fn(), refresh: jest.fn() })) }));
 function setup(value: DocumentData | null = { userId: 'owner', title: 'Original', verse: 'John 1', thoughts: [], preparation: {
   authorIntent: 'Keep', textContext: { passage: 'Keep passage', contextNotes: 'Old notes' },
 } }) {
@@ -37,8 +37,8 @@ function setup(value: DocumentData | null = { userId: 'owner', title: 'Original'
   jest.mocked(useDataDocument).mockImplementation(() => api);
   jest.mocked(useDataEngine).mockReturnValue({ owner: 'owner', browser: null, failures: {} });
   jest.mocked(useDataForm).mockImplementation(() => ({
-    data: api.data, initialData: api.data, openingData: api.data, recoveryIdentity: {}, readOnly: false, active: false, busy: false, loading: false, durable: true, dirty: false, status: null, error: null,
-    propose: jest.fn(), keepLocal: jest.fn(), acceptRemote: jest.fn(), begin: jest.fn(), update: jest.fn(), save: jest.fn(), cancel: jest.fn(), retry: jest.fn(), listRecoverable: jest.fn(), recover: jest.fn(),
+    data: api.data, initialData: api.data, openingData: api.data, recoveryIdentity: {}, readOnly: false, active: false, busy: false, loading: false, durable: true, capturing: false, comparison: null, canDiscardStage: false, discardStageAndAcceptRemote: jest.fn(), dirty: false, status: null, error: null,
+    propose: jest.fn(), keepLocal: jest.fn(), acceptRemote: jest.fn(), begin: jest.fn(async () => undefined), follow: jest.fn(async () => undefined), update: jest.fn(), save: jest.fn(), cancel: jest.fn(), retry: jest.fn(), listRecoverable: jest.fn(), recover: jest.fn(),
   }));
   return { api, session, defer: (promise: Promise<void>) => { durable = promise; } };
 }
@@ -54,7 +54,7 @@ describe('useSermonCoreDataDocument', () => {
     expect(result.current.isReadOnly).toBe(false);
     expect(result.current.recover).toBe(s.api.recover);
     expect(result.current.keepLocal).toBe(s.api.keepLocal);
-    rerender({ id: null }); expect(useDataDocument).toHaveBeenLastCalledWith(null, { slot: 'core' });
+    rerender({ id: null }); expect(useDataDocument).toHaveBeenCalledWith(null, { slot: 'core' });
   });
 
   it('binds title and verse forms to selected fields and stages typing without a document commit', async () => {

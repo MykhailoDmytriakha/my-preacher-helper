@@ -36,6 +36,7 @@ jest.mock('react-i18next', () => ({
 }));
 
 import { ExegeticalPlanModule } from '@/components/sermon/prep/exegeticalPlan';
+import { PreparationBindingFixture } from '@test-utils/preparationPresentations';
 
 import type { ExegeticalPlanNode } from '@/models/models';
 
@@ -80,7 +81,7 @@ describe('ExegeticalPlanModule', () => {
           {
             name: 'pre-fills author intent textarea',
             run: () => {
-              render(<ExegeticalPlanModule authorIntent="Initial author intent" />);
+              render(<PreparationBindingFixture value="Initial author intent">{authorIntentField => <ExegeticalPlanModule authorIntentField={authorIntentField} />}</PreparationBindingFixture>);
               const textarea = screen.getByPlaceholderText('Describe the author\'s intent...') as HTMLTextAreaElement;
               expect(textarea.value).toBe('Initial author intent');
             }
@@ -203,7 +204,7 @@ describe('ExegeticalPlanModule', () => {
           {
             name: 'shows save button when draft changes',
             run: () => {
-              render(<ExegeticalPlanModule authorIntent="" onSaveAuthorIntent={mockOnSaveAuthorIntent} />);
+              render(<PreparationBindingFixture value="" onSave={mockOnSaveAuthorIntent}>{authorIntentField => <ExegeticalPlanModule authorIntentField={authorIntentField} />}</PreparationBindingFixture>);
               fireEvent.change(screen.getByPlaceholderText('Describe the author\'s intent...'), {
                 target: { value: 'New intent' }
               });
@@ -213,7 +214,7 @@ describe('ExegeticalPlanModule', () => {
           {
             name: 'persists intent via save action',
             run: async () => {
-              render(<ExegeticalPlanModule authorIntent="" onSaveAuthorIntent={mockOnSaveAuthorIntent} />);
+              render(<PreparationBindingFixture value="" onSave={mockOnSaveAuthorIntent}>{authorIntentField => <ExegeticalPlanModule authorIntentField={authorIntentField} />}</PreparationBindingFixture>);
               fireEvent.change(screen.getByPlaceholderText('Describe the author\'s intent...'), {
                 target: { value: 'My intent' }
               });
@@ -224,7 +225,7 @@ describe('ExegeticalPlanModule', () => {
           {
             name: 'cancels draft edits',
             run: () => {
-              render(<ExegeticalPlanModule authorIntent="Original" onSaveAuthorIntent={mockOnSaveAuthorIntent} />);
+              render(<PreparationBindingFixture value="Original" onSave={mockOnSaveAuthorIntent}>{authorIntentField => <ExegeticalPlanModule authorIntentField={authorIntentField} />}</PreparationBindingFixture>);
               const textarea = screen.getByPlaceholderText('Describe the author\'s intent...') as HTMLTextAreaElement;
               fireEvent.change(textarea, { target: { value: 'Modified' } });
               fireEvent.click(screen.getByText('Cancel'));
@@ -236,11 +237,10 @@ describe('ExegeticalPlanModule', () => {
           {
             name: 'syncs textarea when external prop updates',
             run: () => {
-              const { rerender } = render(
-                <ExegeticalPlanModule authorIntent="Initial" onSaveAuthorIntent={mockOnSaveAuthorIntent} />
-              );
+              const step = (value: string) => <PreparationBindingFixture value={value} onSave={mockOnSaveAuthorIntent}>{authorIntentField => <ExegeticalPlanModule authorIntentField={authorIntentField} />}</PreparationBindingFixture>;
+              const { rerender } = render(step('Initial'));
               rerender(
-                <ExegeticalPlanModule authorIntent="Updated" onSaveAuthorIntent={mockOnSaveAuthorIntent} />
+                step('Updated')
               );
               expect(
                 screen.getByPlaceholderText('Describe the author\'s intent...') as HTMLTextAreaElement
@@ -374,9 +374,9 @@ describe('ExegeticalPlanModule', () => {
             }
           },
           {
-            name: 'handles missing onSaveAuthorIntent callback',
+            name: 'shows Save when the presentation fixture has no external save observer',
             run: () => {
-              render(<ExegeticalPlanModule authorIntent="" />);
+              render(<PreparationBindingFixture value="">{authorIntentField => <ExegeticalPlanModule authorIntentField={authorIntentField} />}</PreparationBindingFixture>);
               fireEvent.change(screen.getByPlaceholderText('Describe the author\'s intent...'), {
                 target: { value: 'Intent' }
               });
@@ -441,7 +441,7 @@ describe('ExegeticalPlanModule', () => {
           {
             name: 'edits author intent and saves',
             run: async () => {
-              render(<ExegeticalPlanModule authorIntent="" onSaveAuthorIntent={mockOnSaveAuthorIntent} />);
+              render(<PreparationBindingFixture value="" onSave={mockOnSaveAuthorIntent}>{authorIntentField => <ExegeticalPlanModule authorIntentField={authorIntentField} />}</PreparationBindingFixture>);
               fireEvent.change(screen.getByPlaceholderText('Describe the author\'s intent...'), {
                 target: { value: 'The author intends to...' }
               });

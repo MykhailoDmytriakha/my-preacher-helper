@@ -480,3 +480,27 @@ it('says a retry that the server could not answer in the person\'s words', async
   expect(screen.getByRole('alert')).toHaveTextContent(en.dataSync.failure.serverUnavailable);
   expect(screen.queryByText(/Data engine/)).not.toBeInTheDocument();
 });
+
+
+it.each([
+  ['saved label', 'Use saved version'],
+  ['comparison direction', 'This field has another version saved from your other device. Compare the versions above and choose which to keep.'],
+])('names the field comparison with a clear %s', (_case, text) => {
+  render(<DataSyncStatus subject="field-choice" status={status('conflict', { canKeepLocal: true, canAcceptRemote: true })}
+    comparison={{ identity: 'copy-b', mine: 'Earlier words', stored: 'Later words' }} onKeepLocal={jest.fn()} onAcceptRemote={jest.fn()} />);
+  expect(screen.getByText(text)).toBeInTheDocument();
+});
+
+it('offers only the two version choices for a healthy field comparison', () => {
+  render(<DataSyncStatus subject="field-choice" status={status('conflict', { canKeepLocal: true, canAcceptRemote: true })}
+    comparison={{ identity: 'copy-b', mine: 'Earlier words', stored: 'Later words' }} onKeepLocal={jest.fn()} onAcceptRemote={jest.fn()} onRetry={jest.fn()} />);
+  expect(screen.queryByRole('button', { name: en.dataSync.retry })).not.toBeInTheDocument();
+});
+
+
+it('still offers retry when the field comparison has an actual action failure', () => {
+  render(<DataSyncStatus subject="field-choice" status={status('conflict', { canKeepLocal: true, canAcceptRemote: true })}
+    comparison={{ identity: 'copy-b', mine: 'Earlier words', stored: 'Later words' }} error="Action failed"
+    onKeepLocal={jest.fn()} onAcceptRemote={jest.fn()} onRetry={jest.fn()} />);
+  expect(screen.getByRole('button', { name: en.dataSync.retry })).toBeInTheDocument();
+});

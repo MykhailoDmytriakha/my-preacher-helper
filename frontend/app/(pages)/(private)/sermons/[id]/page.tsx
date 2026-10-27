@@ -18,7 +18,7 @@ import ClassicThoughtsPanel from '@/components/sermon/ClassicThoughtsPanel';
 import KnowledgeSection from "@/components/sermon/KnowledgeSection";
 import { LegacyPreparationRecovery } from '@/components/sermon/LegacyPreparationRecovery';
 import ExegeticalPlanStepContent from '@/components/sermon/prep/ExegeticalPlanStepContent';
-import GoalsStepContent, { GoalType } from '@/components/sermon/prep/GoalsStepContent';
+import GoalsStepContent from '@/components/sermon/prep/GoalsStepContent';
 import HomileticPlanStepContent from '@/components/sermon/prep/HomileticPlanStepContent';
 import { getActiveStepId } from '@/components/sermon/prep/logic';
 import MainIdeaStepContent from '@/components/sermon/prep/MainIdeaStepContent';
@@ -257,8 +257,6 @@ function SermonPageContent({ id }: { id: string }) {
     await core.patchPreparation({ [field]: child ? { [child]: value } : value } as Partial<Preparation>);
   }, [core]);
   // One answer of the homiletical thesis, keeping the other answers (BUG-20261011-thesis-answers-save-nowhere).
-  const saveHomileticalAnswer = useCallback((answer: 'whyPreach' | 'impactOnChurch' | 'practicalQuestions', text: string) =>
-    savePrepField('thesis', { ...prepDraft?.thesis?.homileticalAnswers, [answer]: text }, 'homileticalAnswers'), [prepDraft, savePrepField]);
 
   const { allTags } = useTags(sermon?.userId);
   const allowedTags = useMemo(
@@ -548,16 +546,9 @@ function SermonPageContent({ id }: { id: string }) {
       ),
       textContext: (
         <TextContextStepContent
-          initialVerse={sermon?.verse || ''}
-          onSaveVerse={async (nextVerse: string) => { await core.patchCore({ verse: nextVerse }); }}
+          fields={core.textContextFields}
           readWholeBookOnceConfirmed={Boolean(prepDraft?.textContext?.readWholeBookOnceConfirmed)}
           onToggleReadWholeBookOnce={(checked) => savePrepField('textContext', checked, 'readWholeBookOnceConfirmed')}
-          initialPassageSummary={prepDraft?.textContext?.passageSummary || ''}
-          onSavePassageSummary={(summary) => savePrepField('textContext', summary, 'passageSummary')}
-          initialContextNotes={prepDraft?.textContext?.contextNotes || ''}
-          onSaveContextNotes={(notes) => savePrepField('textContext', notes, 'contextNotes')}
-          initialRepeatedWords={prepDraft?.textContext?.repeatedWords || []}
-          onSaveRepeatedWords={(words) => savePrepField('textContext', words, 'repeatedWords')}
         />
       ),
       exegeticalPlan: (
@@ -568,64 +559,31 @@ function SermonPageContent({ id }: { id: string }) {
           // Each plan edit goes straight into the document, which saves and merges it.
           onEdit={(edit) => core.editPreparation(prep => ({ ...prep, exegeticalPlan: edit(prep.exegeticalPlan ?? []) }))}
           saving={savingPrep}
-          authorIntent={prepDraft?.authorIntent || ''}
-          onSaveAuthorIntent={(text) => savePrepField('authorIntent', text)}
+          authorIntentField={core.authorIntentField}
         />
       ),
       mainIdea: (
         <MainIdeaStepContent
-          initialContextIdea={prepDraft?.mainIdea?.contextIdea || ''}
-          onSaveContextIdea={(text) => savePrepField('mainIdea', text, 'contextIdea')}
-          initialTextIdea={prepDraft?.mainIdea?.textIdea || ''}
-          onSaveTextIdea={(text) => savePrepField('mainIdea', text, 'textIdea')}
-          initialArgumentation={prepDraft?.mainIdea?.argumentation || ''}
-          onSaveArgumentation={(text) => savePrepField('mainIdea', text, 'argumentation')}
+          contextIdea={core.mainIdeaFields.contextIdea}
+          textIdea={core.mainIdeaFields.textIdea}
+          argumentation={core.mainIdeaFields.argumentation}
         />
       ),
       goals: (
         <GoalsStepContent
-          initialTimelessTruth={prepDraft?.timelessTruth || ''}
-          onSaveTimelessTruth={(text) => savePrepField('timelessTruth', text)}
-          initialChristConnection={prepDraft?.christConnection || ''}
-          onSaveChristConnection={(text) => savePrepField('christConnection', text)}
-          initialGoalStatement={prepDraft?.preachingGoal?.statement || ''}
-          onSaveGoalStatement={(text) => savePrepField('preachingGoal', text, 'statement')}
-          initialGoalType={(prepDraft?.preachingGoal?.type as GoalType) || ''}
-          onSaveGoalType={(type) => savePrepField('preachingGoal', type, 'type')}
+          timelessTruth={core.goalFields.timelessTruth}
+          christConnection={core.goalFields.christConnection}
+          goalStatement={core.goalFields.statement}
+          goalType={core.goalFields.type}
         />
       ),
       thesis: (
-        <ThesisStepContent
-          exegetical={prepDraft?.thesis?.exegetical || ''}
-          onSaveExegetical={(text) => savePrepField('thesis', text, 'exegetical')}
-          homiletical={prepDraft?.thesis?.homiletical || ''}
-          onSaveHomiletical={(text) => savePrepField('thesis', text, 'homiletical')}
-          pluralKey={prepDraft?.thesis?.pluralKey || ''}
-          onSavePluralKey={(text) => savePrepField('thesis', text, 'pluralKey')}
-          transitionSentence={prepDraft?.thesis?.transitionSentence || ''}
-          onSaveTransitionSentence={(text) => savePrepField('thesis', text, 'transitionSentence')}
-          oneSentence={prepDraft?.thesis?.oneSentence || ''}
-          onSaveOneSentence={(text) => savePrepField('thesis', text, 'oneSentence')}
-          sermonInOneSentence={prepDraft?.thesis?.sermonInOneSentence || ''}
-          onSaveSermonInOneSentence={(text) => savePrepField('thesis', text, 'sermonInOneSentence')}
-          questionWord={prepDraft?.thesis?.questionWord || ''}
-          onSaveQuestionWord={(text) => savePrepField('thesis', text, 'questionWord')}
-          whyPreach={prepDraft?.thesis?.homileticalAnswers?.whyPreach || ''}
-          onSaveWhyPreach={(text) => saveHomileticalAnswer('whyPreach', text)}
-          impactOnChurch={prepDraft?.thesis?.homileticalAnswers?.impactOnChurch || ''}
-          onSaveImpactOnChurch={(text) => saveHomileticalAnswer('impactOnChurch', text)}
-          practicalQuestions={prepDraft?.thesis?.homileticalAnswers?.practicalQuestions || ''}
-          onSavePracticalQuestions={(text) => saveHomileticalAnswer('practicalQuestions', text)}
-        />
+        <ThesisStepContent fields={core.thesisFields} />
       ),
       homileticPlan: (
         <HomileticPlanStepContent
-          initialModernTranslation={prepDraft?.homileticPlan?.modernTranslation || ''}
-          onSaveModernTranslation={(text) => savePrepField('homileticPlan', text, 'modernTranslation')}
-          initialUpdatedPlan={prepDraft?.homileticPlan?.updatedPlan || []}
-          onSaveUpdatedPlan={(items) => savePrepField('homileticPlan', items, 'updatedPlan')}
-          initialSermonPlan={prepDraft?.homileticPlan?.sermonPlan || []}
-          onSaveSermonPlan={(items) => savePrepField('homileticPlan', items, 'sermonPlan')}
+          modernTranslation={core.modernTranslationField}
+          planFields={core.homileticPlanFields}
         />
       ),
     };
@@ -664,7 +622,7 @@ function SermonPageContent({ id }: { id: string }) {
   if (sermonIsMissing(sermon, { loading, awaitingFirstAnswer })) {
     return (
       <div className="space-y-4 py-8">
-        <DataSyncStatus subject={core.recoveryIdentity} status={core.status} error={core.error} errorWords={core.errorWords}
+        <DataSyncStatus subject={core.syncSubject ?? core.recoveryIdentity} status={core.status} error={core.error} errorWords={core.errorWords}
           onKeepLocal={core.keepLocal} onAcceptRemote={core.acceptRemote} onRetry={core.retry} />
         <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow border border-gray-200 dark:border-gray-700 text-center">
           <h2 className="text-xl font-semibold mb-2">
@@ -695,7 +653,7 @@ function SermonPageContent({ id }: { id: string }) {
     <div className="space-y-4 sm:space-y-6 pb-4 sm:pb-8">
       {/* No top padding: the page frame under the breadcrumbs already gives it. */}
       <SermonHeader sermon={sermon} series={series} editor={{
-        subject: core.recoveryIdentity, values: core.coreValues, isReadOnly: core.isReadOnly, status: core.status, error: core.error, errorWords: core.errorWords,
+        subject: core.syncSubject ?? core.recoveryIdentity, values: core.coreValues, isReadOnly: core.isReadOnly, status: core.status, comparison: core.syncComparison, error: core.error, errorWords: core.errorWords,
         titleForm: core.titleBinding, verseForm: core.verseBinding,
         keepLocal: core.keepLocal, acceptRemote: core.acceptRemote, retry: core.retry,
       }} />

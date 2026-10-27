@@ -2,7 +2,9 @@ import { CaptureContinuations } from './captureContinuations';
 import { retireLocalWrite, type LocalWriteHandoff } from './localWriteback';
 import { equalValues, getResourcePolicy, isValidIdentifier } from './protocol';
 import { validateResourceDocument } from './resourceSchemas';
+import { canReplaceSnapshot } from './snapshotFreshness';
 
+import type { CommitRequest } from './commits';
 import type { SessionCheckpoint } from './session';
 import type { DocumentData, FieldValue, Json, ResourceRef, ResourceSnapshot } from './types';
 
@@ -35,18 +37,24 @@ export interface ManualScopeRecord {
   savedSelection: FieldValue[];
   /** Immutable per opening; older saved records may lack this evidence. */
   openingSelection?: FieldValue[];
+  /** Bounds canonical Save identities belonging to this opening, including retired capture returns. */
+  openingGeneration?: number;
   generation: number;
   savedGeneration: number | null;
   active: boolean;
 }
+export type ManualSave = (scopeId: string, captured: SessionCheckpoint, options: { predecessorId?: string | null }) => Promise<ManualSavedIntent>;
 export interface ManualScopePort {
   capture(): ManualCapture;
   isCurrent(): boolean;
   /** Delivery succeeded, or the person explicitly retired the failed intent. */
   isSettled?(requestId: string): boolean;
+  /** A retired saved intent remains ancestry evidence, never a new request dependency. */
+  isCancelled?(requestId: string): boolean;
   /** Dedicated manual records must not enter ordinary editor autosave/recovery. */
   persist(record: ManualScopeRecord): Promise<void>;
-  save(scopeId: string, captured: SessionCheckpoint, options: { predecessorId?: string | null }): Promise<ManualSavedIntent>;
+  save: ManualSave;
+  admitSave?(scopeId: string, captured: SessionCheckpoint): ManualSave;
 }
 interface ScopeOptions {
   owner: string;
@@ -94,6 +102,7 @@ export class ManualScope {
       || !Number.isSafeInteger(record.generation) || record.generation < 0 || typeof record.active !== 'boolean'
       || (record.savedGeneration !== null && (!Number.isSafeInteger(record.savedGeneration) || record.savedGeneration < 0 || record.savedGeneration > record.generation || !record.predecessor))) throw new Error('Manual recovery identity mismatch');
     if (record.openingSelection !== undefined && (!Array.isArray(record.openingSelection) || record.openingSelection.length !== options.selection.length)) throw new Error('Invalid manual opening selection');
+    if (record.openingGeneration !== undefined && (!Number.isSafeInteger(record.openingGeneration) || record.openingGeneration < 0 || record.openingGeneration > record.generation)) throw new Error('Invalid manual opening generation');
     if (!options.port.isCurrent()) throw new Error(OWNER_CHANGED);
     if (record.predecessor !== null) {
       validateIntent(record.predecessor, options);
@@ -119,7 +128,9 @@ export class ManualScope {
   getState() {
     this.assertCurrent();
     const opening = this.record.openingSelection ?? (this.record.savedGeneration === null ? this.record.savedSelection : null);
-    return { ...(this.captures.failed ? { captureFailed: true } : {}), record: copy(this.record), openingValue: opening ? project(this.record.baseline.value!, this.record.selection, opening) : null, value: this.value(), dirty: !equalValues(this.record.stage, this.record.savedSelection), durable: this.durable };
+    const choiceRequired = !equalValues(this.record.stage, this.record.savedSelection)
+      && Boolean(this.record.predecessor && this.options.port.isCancelled?.(this.record.predecessor.id));
+    return { capturing: this.captures.capturing, ...(choiceRequired ? { choiceRequired: true as const } : {}), ...(this.captures.failed ? { captureFailed: true } : {}), record: copy(this.record), openingValue: opening ? project(this.record.baseline.value!, this.record.selection, opening) : null, value: this.value(), dirty: !equalValues(this.record.stage, this.record.savedSelection), durable: this.durable };
   }
 
   update(updater: (current: DocumentData) => DocumentData): Promise<void> {
@@ -154,33 +165,41 @@ export class ManualScope {
 
   save(): Promise<{ delivery: 'queued'; requestId: string } | null> {
     this.assertActive();
+    if (this.getState().choiceRequired) throw Object.assign(new Error('Choose which field words to keep before saving'), { code: 'resolve-version-first' });
     const captured = copy(this.record);
     const running = this.saves.get(captured.generation);
     if (running) return running;
     if (equalValues(captured.stage, this.tail?.stage ?? captured.savedSelection)) return this.settled().then(() => null);
+    const frozenValue = project(captured.predecessor?.value ?? captured.baseline.value!, captured.selection, captured.stage);
+    const frozen: SessionCheckpoint = { confirmed: captured.baseline, draft: frozenValue, dirty: true,
+      editGeneration: captured.generation, remoteCandidate: null, conflicts: [], pending: {} };
+    const admitted = this.options.port.admitSave?.(captured.scopeId, frozen);
     this.tail = { generation: captured.generation, stage: copy(captured.stage) };
-    const saving = this.enqueue(this.captures.register(async captureComplete => {
+    const saving = this.enqueuePersistence(this.captures.register(async captureComplete => {
+      if (!admitted) this.assertCurrent();
       if (this.record.savedGeneration === captured.generation && this.record.predecessor) {
         captureComplete();
-        await this.write();
+        await (admitted ? this.writeLocal() : this.write());
         return { delivery: 'queued' as const, requestId: this.record.predecessor.id };
       }
       // Earlier Saves may finish local persistence while this invocation waits.
       // Only its selected stage is frozen; the predecessor is the preceding durable Save.
       const predecessor = copy(this.record.predecessor);
-      const value = project(predecessor?.value ?? captured.baseline.value!, captured.selection, captured.stage);
-      const checkpoint: SessionCheckpoint = { confirmed: captured.baseline, draft: value, dirty: true, editGeneration: captured.generation,
+      const baseline = captured.baseline;
+      const value = project(predecessor?.value ?? baseline.value!, captured.selection, captured.stage);
+      const checkpoint: SessionCheckpoint = { confirmed: baseline, draft: value, dirty: true, editGeneration: captured.generation,
         remoteCandidate: null, conflicts: [], pending: {} };
-      const request = await this.options.port.save(captured.scopeId, checkpoint, { predecessorId: predecessor?.id ?? null });
-      this.assertCurrent();
+      const request = await (admitted ?? this.options.port.save)(captured.scopeId, checkpoint, { predecessorId: predecessor?.id ?? null });
+      if (!admitted) this.assertCurrent();
       validateIntent(request, this.options);
       if (!equalValues(request.value, value) || request.predecessorId !== (predecessor?.id ?? null)) throw new Error('Manual save identity mismatch');
+      this.record.baseline = copy(baseline);
       this.record.predecessor = copy(request);
       this.record.savedSelection = copy(captured.stage);
       this.record.savedGeneration = captured.generation;
       captureComplete();
-      // Later typing remains a separate stage, while future Saves depend on this request.
-      await this.write();
+      // The receipt is local evidence even after UI authority ends; later words stay separate.
+      await (admitted ? this.writeLocal() : this.write());
       return { delivery: 'queued' as const, requestId: request.id };
     }));
     this.saves.set(captured.generation, saving);
@@ -214,6 +233,19 @@ export class ManualScope {
     });
   }
 
+  /** A visible, untouched control follows its document; a keystroke or Save always wins. */
+  follow(captured: ManualCapture): Promise<void> {
+    this.assertCurrent();
+    const capture = copy(captured);
+    return this.enqueue(async () => {
+      if (!this.record.active || this.captures.pending || !equalValues(this.record.stage, this.record.savedSelection)) return;
+      const options = { ...this.options, port: { ...this.options.port, capture: () => capture } };
+      this.record = captureRecord(options, this.record.generation + 1);
+      this.saves.clear(); this.tail = null; this.proposalVersion += 1;
+      await this.write();
+    });
+  }
+
   /** A completed form can start a fresh pinned stage without resetting its save identity. */
   restart(): Promise<void> {
     this.assertCurrent();
@@ -232,7 +264,40 @@ export class ManualScope {
     this.assertCurrent();
     return this.enqueue(async () => { await this.captures.retry(); await this.write(); });
   }
-  dispose(): void { this.captures.retire(); this.closed = true; }
+  dispose(): void { if (!this.options.port.admitSave) this.captures.retire(); this.closed = true; }
+
+  /** A document choice retired this form's saved predecessor, not its later unsent words. */
+  continueAfterChoice(captured: ManualCapture, retiredPredecessor: string): Promise<void> {
+    this.assertCurrent();
+    const capture = copy(captured);
+    return this.enqueue(async () => {
+      if (this.record.predecessor?.id !== retiredPredecessor) return;
+      const before = copy(this.record);
+      const baseline = capture.checkpoint.confirmed;
+      if (!sameResource(baseline.resource, this.options.resource)) throw new Error('Manual form resource changed');
+      if (!baseline.value || baseline.metadata?.deleted) return;
+      validateDocument(baseline.value, this.options);
+      const options = { ...this.options, port: { ...this.options.port, capture: () => capture } };
+      const predecessor = selectPredecessor(options, capture);
+      const ancestor = predecessor?.value ?? baseline.value;
+      const selected = before.selection.map(path => readSelection(ancestor, path));
+      const dirty = !equalValues(before.stage, before.savedSelection);
+      const draftMatches = before.selection.every((path, index) => equalValues(readSelection(capture.checkpoint.draft, path), selected[index]));
+      // A cached copy from before this saved intent cannot prove the remaining stage was accepted.
+      const renewed = Boolean(predecessor) || (canReplaceSnapshot(before.baseline, baseline) && !canReplaceSnapshot(baseline, before.baseline));
+      if (draftMatches && (!dirty || (renewed && selected.every((value, index) => equalValues(value, before.savedSelection[index]) || equalValues(value, before.stage[index]))))) {
+        this.record = { ...captureRecord(options, before.generation + 1), active: before.active,
+          ...(before.openingSelection ? { openingSelection: before.openingSelection } : {}), ...(dirty ? { stage: before.stage } : {}) };
+      } else {
+        // Keep the real saved ancestor for the remaining stage. In particular, returning to the
+        // original sentence is still an edit against that ancestor. Its retired request remains
+        // retained evidence; choiceRequired prevents using it as a new delivery dependency.
+        this.record = { ...before, generation: before.generation + 1 };
+      }
+      this.captures.retire(); this.saves.clear(); this.tail = null; this.proposalVersion += 1;
+      await this.write();
+    });
+  }
 
   retire(options: { finishPending?: boolean } = {}): LocalWriteHandoff {
     return retireLocalWrite({ owner: this.record.owner, kind: 'manual', id: this.record.scopeId, resource: this.record.resource },
@@ -252,12 +317,12 @@ export class ManualScope {
     await this.options.port.persist(record);
     if (equalValues(record, this.record)) this.durable = true;
   }
-  private enqueuePersistence(operation: () => Promise<void>): Promise<void> {
+  private enqueuePersistence<T>(operation: () => Promise<T>): Promise<T> {
     // The invocation already checked authority. Only its original device copy may outlive it.
     const next = this.queue.catch(() => undefined).then(operation);
     this.queue = next;
     void next.catch(() => undefined);
-    return next.then(() => { this.assertCurrent(); });
+    return next.then(value => { this.assertCurrent(); return value; });
   }
   private enqueue<T>(operation: () => Promise<T>): Promise<T> {
     const next = this.queue.catch(() => undefined).then(() => { this.assertCurrent(); return operation(); });
@@ -280,7 +345,7 @@ function validateOptions(options: ScopeOptions): void {
     if (options.selection.some((other, otherIndex) => index !== otherIndex && path.length <= other.length && samePath(path, other.slice(0, path.length)))) throw new Error('Overlapping manual selections');
   });
 }
-function validateIntent(intent: ManualSavedIntent, options: ScopeOptions): void {
+function validateIntent(intent: ManualSavedIntent, options: Pick<ScopeOptions, 'owner' | 'resource'>): void {
   if (!intent || !isValidIdentifier(intent.id) || intent.owner !== options.owner || !sameResource(intent.resource, options.resource) || !object(intent.value)
     || (intent.predecessorId !== null && (!isValidIdentifier(intent.predecessorId) || intent.predecessorId === intent.id))) throw new Error('Manual predecessor identity mismatch');
   validateDocument(intent.value, options);
@@ -355,13 +420,13 @@ function presentValue(field: FieldValue): Json {
   return field.value;
 }
 
-function validateDocument(value: DocumentData, options: ScopeOptions): void {
+function validateDocument(value: DocumentData, options: Pick<ScopeOptions, 'owner' | 'resource'>): void {
   const policy = getResourcePolicy(options.resource.collection);
   if (policy.ownerField === 'id' ? options.resource.id !== options.owner : value[policy.ownerField] !== options.owner) throw new Error('Manual document ownership mismatch');
   validateResourceDocument(options.resource.collection, value, { kind: 'update', changedFields: [] });
 }
 
-function validateAncestry(request: ManualSavedIntent, records: Map<string, ManualSavedIntent>, options: ScopeOptions): Set<string> {
+function validateAncestry(request: ManualSavedIntent, records: Map<string, ManualSavedIntent>, options: Pick<ScopeOptions, 'owner' | 'resource'>): Set<string> {
   const found = new Set<string>();
   let current: ManualSavedIntent | undefined = request;
   while (current) {
@@ -385,8 +450,33 @@ function captureRecord(options: ScopeOptions, generation: number): ManualScopeRe
       throw new Error('An unsaved editor already owns a selected field');
     }
     return { kind: 'manual', version: 1, owner: options.owner, resource: copy(options.resource), scopeId: options.scopeId,
-      selection: copy([...options.selection]), baseline, predecessor, stage, savedSelection: copy(stage), openingSelection: copy(stage), generation, savedGeneration: null, active: true };
+      selection: copy([...options.selection]), baseline, predecessor, stage, savedSelection: copy(stage), openingSelection: copy(stage), openingGeneration: generation, generation, savedGeneration: null, active: true };
 
+}
+
+/** Recover a request already captured by this exact opening before its form receipt was written. */
+export function reconcileManualCaptures(record: ManualScopeRecord, requests: readonly CommitRequest[]): ManualScopeRecord {
+  const floor = record.openingGeneration ?? record.generation;
+  const candidates = requests.filter(request => request.owner === record.owner && request.editorId === record.scopeId
+    && sameResource(request.baseline.resource, record.resource) && request.value
+    && request.editGeneration >= floor && request.editGeneration <= record.generation
+    && request.editGeneration > (record.savedGeneration ?? -1));
+  if (!candidates.length) return record;
+  const captured = candidates.sort((a, b) => b.editGeneration - a.editGeneration)[0];
+  if (candidates.some(other => other.id !== captured.id && other.editGeneration === captured.editGeneration)) throw new Error('Ambiguous manual capture identity');
+  const options = { owner: record.owner, resource: record.resource };
+  const intent = (request: CommitRequest): ManualSavedIntent => ({ id: request.id, owner: request.owner,
+    resource: request.baseline.resource, value: copy(request.value!), predecessorId: request.predecessor });
+  const saved = intent(captured);
+  validateIntent(saved, options);
+  const ancestors = validateAncestry(saved, new Map(requests.filter(request => request.value).map(request => [request.id, intent(request)])), options);
+  if (record.predecessor && !ancestors.has(record.predecessor.id)) throw new Error('Recovered manual capture changed its saved ancestry');
+  const selected = record.selection.map(path => readSelection(saved.value, path));
+  if (captured.editGeneration === record.generation && !equalValues(record.stage, selected)) throw new Error('Recovered manual generation changed its words');
+  // A queued Cancel discarded only unsent words. The durable Save still owns its captured value.
+  const cancelledStage = !record.active && equalValues(record.stage, record.savedSelection);
+  return { ...copy(record), baseline: copy(captured.baseline), predecessor: saved, savedSelection: selected,
+    savedGeneration: captured.editGeneration, stage: cancelledStage ? copy(selected) : copy(record.stage) };
 }
 
 /** Selection projection is shared with the parent editor; it never merges or sends. */

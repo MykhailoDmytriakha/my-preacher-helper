@@ -7,7 +7,8 @@ import { ACTION_SLOT, editorSlot } from './editorIdentity';
 import { AddressedFailures, eachFailure } from './failures';
 import { collectionHeadRef } from './feed';
 import { LocalWriteback, type LocalWriteHandoff } from './localWriteback';
-import { ManualScope, sameManualSelection, type ManualCapture, type ManualPath, type ManualSavedIntent } from './manualScope';
+import { assertDurableManualChoice, assertManualChoiceInput, assertManualComparison, manualComparison, type ManualComparison } from './manualComparison';
+import { ManualScope, reconcileManualCaptures, sameManualSelection, type ManualCapture, type ManualPath, type ManualSavedIntent } from './manualScope';
 import { captureMembershipPins } from './membershipCapture';
 import { describeActionDelivery, describeMembershipDelivery, type MembershipDelivery } from './membershipDelivery';
 import { CREATION_SCOPE_PREFIX, MembershipScope, type MembershipScopeRecord } from './membershipScope';
@@ -57,15 +58,16 @@ export interface DataEngineOptions {
 }
 
 export interface ManagedManualForm {
-  getState(): ReturnType<ManualScope['getState']> | null;
+  getState(): (ReturnType<ManualScope['getState']> & { comparison?: ManualComparison }) | null;
   subscribe(listener: () => void): () => void;
   begin(): Promise<void>;
+  follow(): Promise<void>;
   update(updater: (value: DocumentData) => DocumentData): Promise<void>;
   propose(producer: (source: DocumentData) => Promise<DocumentData>, signal?: AbortSignal): Promise<void>;
   save(updater?: (value: DocumentData) => DocumentData): Promise<void>;
   cancel(): Promise<void>;
   retry(): Promise<void>;
-  resolve(choice: 'local' | 'remote'): Promise<void>;
+  resolve(choice: 'local' | 'remote', options?: { discardStage?: boolean; expectedComparison?: ManualComparison; updater?: (current: DocumentData) => DocumentData }): Promise<void>;
   listRecoverable(): Promise<StoredManualScope[]>;
   recover(sourceScopeId: string): Promise<void>;
 }
@@ -1172,8 +1174,8 @@ export class DataEngine {
         removeWithReceipt: options => withReceipt(captured => remove(captured, options?.captureScope)),
         save: async () => { active(); await controller.save(); active(); this.backgroundDrain(); this.prepareCommitsInBackground(); active(); },
         remove: () => remove(),
-        acceptRemote: async expected => { active(); await controller.acceptRemote(undefined, expected); },
-        keepLocal: async expected => { active(); await controller.keepLocal(undefined, undefined, expected); },
+        acceptRemote: async expected => { active(); await this.resolveEditorChoice(entry, owner, generation, 'remote', expected); active(); },
+        keepLocal: async expected => { active(); await this.resolveEditorChoice(entry, owner, generation, 'local', expected); active(); },
         dispose: () => {
           this.close(entry);
           if (this.editors.get(editorId) === entry) this.editors.delete(editorId);
@@ -1244,6 +1246,80 @@ export class DataEngine {
     return Object.assign(new Error('Editor opening was cancelled'), { name: 'AbortError' });
   }
 
+  private captureManual(parent: EditorEntry, owner: string, selection: readonly ManualPath[], checkpoint = parent.controller!.getState().checkpoint): ManualCapture {
+    const pending = Object.entries(checkpoint.pending).sort((a, b) => b[1].generation - a[1].generation);
+    const provenance = selection.flatMap(path => {
+      const match = pending.find(([id]) => {
+        const request = this.commitRecords.get(id);
+        return request?.value && request.state !== 'cancelled'
+          && !sameManualSelection(request.baseline.value, request.value, path)
+          && sameManualSelection(checkpoint.draft, request.value, path);
+      });
+      return match ? [{ path, requestId: match[0] }] : [];
+    });
+    return { checkpoint, provenance, requests: [...this.commitRecords.values()].filter(request => request.owner === owner && request.value)
+      .map(request => ({ id: request.id, owner: request.owner, resource: request.baseline.resource, value: copy(request.value!), predecessorId: request.predecessor })) };
+  }
+
+  /** A retained conflict receipt is a real server copy even when a reopened cache is older. */
+  private async observeManualChoice(parent: EditorEntry, owner: string, generation: number, predecessorId: string): Promise<void> {
+    const request = this.commitRecords.get(predecessorId);
+    const result = request?.state === 'cancelled' ? request.result : null;
+    const snapshot = result && 'snapshot' in result ? result.snapshot : null;
+    const controller = parent.controller;
+    if (!snapshot || !controller || parent.closed || !sameResource(snapshot.resource, request!.baseline.resource)
+      || !snapshotBelongsToOwner(owner, snapshot)) return;
+    if (!storesNewCopy(controller.getState().checkpoint.confirmed, snapshot)) return;
+    await controller.observe(snapshot, 'server'); this.assertCurrent(owner, generation);
+  }
+
+  private async resolveEditorChoice(parent: EditorEntry, owner: string, generation: number, choice: 'local' | 'remote', expected?: EditorRecord): Promise<void> {
+    const controller = parent.controller!;
+    const checkpoint = controller.getState().checkpoint;
+    const about = copy(checkpoint.confirmed.resource);
+    const pending = checkpoint.pending;
+    const affected = [...this.manualForms.values()].filter(item => {
+      if (item.parent !== parent || !item.scope) return false;
+      const state = item.scope.getState();
+      return (state.record.active || state.dirty) && Boolean(state.record.predecessor && pending[state.record.predecessor.id]);
+    }).map(item => ({ item, scope: item.scope! }));
+    let failure: unknown;
+    try {
+      if (choice === 'remote') await controller.acceptRemote(undefined, expected);
+      else {
+        await controller.keepLocal(undefined, undefined, expected);
+        // The explicit document choice owns its replacement; field stages keep their later words.
+        if (affected.length) {
+          await controller.save(); this.assertCurrent(owner, generation);
+          this.prepareCommitsInBackground(); this.backgroundDrain();
+        }
+      }
+    } catch (error) { failure = error; }
+    const repairFields = async () => {
+      this.assertCurrent(owner, generation);
+      if (!parent.closed) {
+        const requests = await this.commits.list(); this.assertCurrent(owner, generation);
+        requests.forEach(request => this.rememberCommit(request));
+        for (const { item, scope } of affected) {
+          if (item.scope !== scope || ![...this.manualForms.values()].includes(item)) continue;
+          await scope.settled().catch(() => undefined); this.assertCurrent(owner, generation);
+          const predecessor = scope.getState().record.predecessor;
+          if (predecessor && requests.some(request => request.id === predecessor.id && request.state === 'cancelled')) {
+            await scope.continueAfterChoice(this.captureManual(parent, owner, item.selection), predecessor.id);
+            item.emit();
+          }
+        }
+      }
+    };
+    try {
+      await repairFields();
+    } catch (error) {
+      if (failure) { if (this.current(owner, generation)) this.reportFailure(error, about); }
+      else throw error;
+    }
+    if (failure) throw failure;
+  }
+
   private manualForm(owner: string, generation: number, resource: ResourceRef, parentEditorId: string, parent: EditorEntry, slot: string, selection: readonly ManualPath[], recovery: ManualRecoveryPolicy): ManagedManualForm {
     if (!this.options.manualScopes) throw new Error('Manual form storage is not configured');
     const registryKey = JSON.stringify([parentEditorId, slot, recovery]);
@@ -1261,20 +1337,7 @@ export class DataEngine {
     let opening: Promise<void> | null = null;
     const active = () => { this.assertCurrent(owner, generation); if (parent.closed || this.manualForms.get(registryKey) !== state) throw new Error('Manual parent editor changed'); };
     const intent = (request: CommitRequest): ManualSavedIntent => ({ id: request.id, owner: request.owner, resource: request.baseline.resource, value: copy(request.value!), predecessorId: request.predecessor });
-    const capture = (): ManualCapture => {
-      active();
-      const checkpoint = parent.controller!.getState().checkpoint;
-      const pending = Object.entries(checkpoint.pending).sort((a, b) => b[1].generation - a[1].generation);
-      const provenance = selection.flatMap(path => {
-        const match = pending.find(([id]) => {
-          const request = this.commitRecords.get(id);
-          return request?.value && !sameManualSelection(request.baseline.value, request.value, path)
-            && sameManualSelection(checkpoint.draft, request.value, path);
-        });
-        return match ? [{ path, requestId: match[0] }] : [];
-      });
-      return { checkpoint, provenance, requests: [...this.commitRecords.values()].filter(request => request.owner === owner && request.value).map(intent) };
-    };
+    const capture = (): ManualCapture => { active(); return this.captureManual(parent, owner, selection); };
     const execute = (action: () => Promise<unknown>): Promise<void> => {
       active();
       const result = action(); emit();
@@ -1286,30 +1349,30 @@ export class DataEngine {
       if (!sourceScopeId && state.scope?.getState().record.active) return state.scope.settled();
       // Keep what the user actually saw pinned while IndexedDB/provenance reads await.
       const pinned = copy(parent.controller!.getState().checkpoint);
+      const readRecord = async (records: readonly CommitRequest[]) => {
+        const source = sourceScopeId ? await store.read(owner, sourceScopeId) : undefined; active();
+        if (sourceScopeId && !source?.record) throw Object.assign(new Error('Manual recovery record no longer exists'), { code: 'draft-gone' });
+        if (source?.record && ((recovery === 'same-slot' && source.slot !== slot) || !sameResource(source.record.resource, resource) || !equalValues(source.record.selection, selection))) throw new Error('Manual recovery selection mismatch');
+        const targetId = source ? JSON.stringify([parentEditorId, 'manual', slot, this.options.operationId()]) : state.scopeId;
+        let existing = source ?? await store.read(owner, targetId); active();
+        if (existing?.record) existing = { ...existing, record: reconcileManualCaptures(existing.record, records) };
+        if (existing && !source && existing.parentEditorId !== parentEditorId) throw new Error('Manual form storage identity mismatch');
+        return { existing, targetId, source };
+      };
       const run = async (attempt = 0): Promise<void> => {
         if (state.scope) { this.retainLocal(state.scope.retire(), generation); state.scope = null; }
         const repairing = this.localWriteback.retry(owner, address => address.kind === 'manual' && (address.id === state.scopeId || address.id === sourceScopeId));
         if (repairing) await repairing; active();
         const records = await this.commits.list(); active();
         records.forEach(request => this.rememberCommit(request));
-        const source = sourceScopeId ? await store.read(owner, sourceScopeId) : undefined; active();
-        if (sourceScopeId && !source?.record) throw Object.assign(new Error('Manual recovery record no longer exists'), { code: 'draft-gone' });
-        if (source?.record && ((recovery === 'same-slot' && source.slot !== slot) || !sameResource(source.record.resource, resource) || !equalValues(source.record.selection, selection))) throw new Error('Manual recovery selection mismatch');
-        const targetId = source ? JSON.stringify([parentEditorId, 'manual', slot, this.options.operationId()]) : state.scopeId;
-        const existing = source ?? await store.read(owner, targetId); active();
-        if (existing && !source && existing.parentEditorId !== parentEditorId) throw new Error('Manual form storage identity mismatch');
+        const { existing, targetId, source } = await readRecord(records); active();
+        if (existing?.record?.predecessor) { await this.observeManualChoice(parent, owner, generation, existing.record.predecessor.id); active(); }
         let creating = !existing || Boolean(source);
         const accepted = Object.entries(pinned.pending).sort((a, b) => a[1].generation - b[1].generation)
           .flatMap(([id]) => { const request = this.commitRecords.get(id); return request?.state === 'acknowledged' && request.result?.kind === 'acknowledged' ? [request] : []; });
         // Reconcile only work held by the original displayed copy, never a later parent render.
         const openingCheckpoint = reconcileRecoveryRecord({ owner, editorId: parentEditorId, checkpoint: pinned, prepared: null, unfinalized: [] }, accepted).checkpoint;
-        const frozenCapture = capture(); frozenCapture.checkpoint = openingCheckpoint;
-        frozenCapture.provenance = selection.flatMap(path => {
-          const pending = Object.entries(openingCheckpoint.pending).sort((a, b) => b[1].generation - a[1].generation);
-          const match = pending.find(([id]) => { const request = this.commitRecords.get(id); return request?.value
-            && !sameManualSelection(request.baseline.value, request.value, path) && sameManualSelection(openingCheckpoint.draft, request.value, path); });
-          return match ? [{ path, requestId: match[0] }] : [];
-        });
+        const frozenCapture = this.captureManual(parent, owner, selection, openingCheckpoint);
         state.scopeId = targetId;
         let initializing = true;
         const port = {
@@ -1317,10 +1380,25 @@ export class DataEngine {
           isCurrent: () => this.current(owner, generation)
             && (!initializing || (!parent.closed && this.manualForms.get(registryKey) === state)),
           isSettled: (id: string) => ['acknowledged', 'cancelled'].includes(this.commitRecords.get(id)?.state ?? ''),
+          isCancelled: (id: string) => this.commitRecords.get(id)?.state === 'cancelled',
           persist: async (record: ReturnType<ManualScope['getState']>['record']) => {
             const envelope: StoredManualScope = { owner, scopeId: targetId, parentEditorId, slot, record, commitReferences: record.predecessor ? [record.predecessor.id] : [] };
             if (creating) { await store.create(envelope); creating = false; } else await store.put(envelope);
             if (!record.active) await store.compact(owner, targetId);
+          },
+          admitSave: (scopeId: string, checkpoint: SessionCheckpoint) => {
+            active();
+            const frozen = copy(checkpoint), admitted = this.commits.admitSave(scopeId, frozen);
+            return async (submittedScope: string, submitted: SessionCheckpoint, options: { predecessorId?: string | null }) => {
+              if (submittedScope !== scopeId || !equalValues(submitted, frozen)) throw new Error('Admitted manual Save changed its words');
+              const request = await admitted(options);
+              if (!request?.value) throw new Error('Manual Save did not create an intent');
+              if (this.current(owner, generation)) {
+                if (!parent.closed) await parent.controller!.adoptManualCommit(request, selection);
+                this.prepareCommitsInBackground(); this.backgroundDrain();
+              }
+              return intent(request);
+            };
           },
           save: async (scopeId: string, checkpoint: import('./session').SessionCheckpoint, options: { predecessorId?: string | null }) => {
             // Save was invoked while the form was active. Its captured intent belongs to the
@@ -1342,6 +1420,8 @@ export class DataEngine {
             const restarting = !source && !existing.record.active && equalValues(existing.record.stage, existing.record.savedSelection)
               && (!existing.record.predecessor || port.isSettled(existing.record.predecessor.id));
             await (restarting ? scope.restart() : scope.reopen());
+            const predecessor = scope.getState().record.predecessor;
+            if (predecessor && port.isCancelled(predecessor.id)) await scope.continueAfterChoice(capture(), predecessor.id);
           } else await scope.settled();
           active();
         } catch (error) {
@@ -1358,10 +1438,40 @@ export class DataEngine {
       return opening;
     };
     const requireScope = () => { active(); if (!state.scope) throw new Error('Open the manual form before editing'); return state.scope; };
+    // Admission and capture stay above; this continuation owns the queued parent decision.
+    const finishChoice = async (choice: 'local' | 'remote', scope: ManualScope | null,
+      staged: ReturnType<ManualScope['getState']> | undefined, updating: Promise<void> | undefined,
+      assertComparison: () => void, checked: boolean) => {
+        const amendment = staged?.dirty ? { base: staged.record.predecessor?.value ?? staged.record.baseline.value!, value: staged.value } : undefined;
+        parent.controller!.assertManualResolution(selection);
+        // Freeze the form before awaiting retirement; amended input keeps a durable recovery copy.
+        if (scope) await Promise.all([updating, amendment ? scope.suspend() : scope.cancel()]);
+        active(); assertComparison();
+        if (staged?.choiceRequired) { await this.observeManualChoice(parent, owner, generation, staged.record.predecessor!.id); active(); assertComparison(); }
+        const expectedParent = checked ? parent.controller!.captureRecoveryChoice() : undefined;
+        if (choice === 'remote') {
+          await parent.controller!.acceptRemote(selection, expectedParent); active();
+          if (amendment && scope) await scope.cancel();
+        } else {
+          await parent.controller!.keepLocal(selection, amendment, expectedParent); active();
+          await parent.controller!.save(undefined, selection); active();
+          // Only the durable replacement request may retire the suspended correction copy.
+          if (amendment && scope) await scope.cancel();
+          this.prepareCommitsInBackground(); this.backgroundDrain();
+        }
+        active();
+        // Reopen from the resolved document, never from the retired form's displayed values.
+        if (parent.controller!.getState().checkpoint.draft) await start();
+    };
     state.form = {
-      getState: () => { active(); return state.scope?.getState() ?? null; },
+      getState: () => {
+        active();
+        const form = state.scope?.getState();
+        return form ? { ...form, comparison: manualComparison(form, parent.controller!.getState().checkpoint, this.commitRecords) } : null;
+      },
       subscribe: listener => { active(); listeners.add(listener); return () => { listeners.delete(listener); }; },
       begin: () => start(),
+      follow: () => execute(() => requireScope().follow(capture())),
       update: updater => execute(() => requireScope().update(updater)),
       propose: (producer, signal) => execute(() => requireScope().propose(async source => {
         const proposed = await producer(source); active(); return proposed;
@@ -1377,28 +1487,32 @@ export class DataEngine {
       }),
       cancel: () => execute(() => requireScope().cancel()),
       retry: () => execute(async () => { if (state.scope) await state.scope.retryPersistence(); else await start(); await this.retry(resource); }),
-      resolve: choice => execute(async () => {
+      resolve: (choice, options) => execute(async () => {
+        const expected = options?.expectedComparison;
+        let expectedIdentity = expected?.identity;
+        const assertComparison = () => {
+          assertManualComparison(expectedIdentity, state.form.getState()?.comparison);
+        };
+        assertComparison();
         const scope = state.scope;
+        assertDurableManualChoice(scope?.getState());
+        const updating = choice === 'local' && options?.updater && scope ? scope.update(options.updater) : undefined;
+        // Normalization is synchronous; later input is checked against this exact chosen stage.
+        if (updating && expected) expectedIdentity = state.form.getState()?.comparison?.identity;
         const staged = scope?.getState();
         const failed = this.editorDelivery(parent, this.pending).some(entry => ['conflict', 'refused'].includes(entry.state));
-        if (staged?.dirty && (choice !== 'local' || !failed)) throw Object.assign(new Error('Save or cancel the unsent form before resolving delivery'), { code: 'unsent-form-first' });
-        if (staged && !staged.durable) throw Object.assign(new Error('Persist the manual form before resolving delivery'), { code: 'not-on-device-yet' });
-        const amendment = staged?.dirty ? { base: staged.record.predecessor?.value ?? staged.record.baseline.value!, value: staged.value } : undefined;
-        parent.controller!.assertManualResolution(selection);
-        // Freeze the form before awaiting retirement; amended input keeps a durable recovery copy.
-        if (scope) await (amendment ? scope.suspend() : scope.cancel());
-        active();
-        if (choice === 'remote') await parent.controller!.acceptRemote(selection);
-        else {
-          await parent.controller!.keepLocal(selection, amendment); active();
-          await parent.controller!.save(undefined, selection); active();
-          // Only the durable replacement request may retire the suspended correction copy.
-          if (amendment && scope) await scope.cancel();
-          this.prepareCommitsInBackground(); this.backgroundDrain();
+        const discardStage = choice === 'remote' && options?.discardStage && Boolean(state.form.getState()?.comparison);
+        assertManualChoiceInput(staged, choice, failed, Boolean(discardStage));
+        // The parent already made its decision. Taking those words now discards only this
+        // remaining stage; it must not cancel a newer parent request or repeat its decision.
+        if (choice === 'remote' && staged?.choiceRequired && scope) {
+          await scope.suspend(); active(); assertComparison();
+          await this.observeManualChoice(parent, owner, generation, staged.record.predecessor!.id); active(); assertComparison();
+          await scope.cancel(); active();
+          if (parent.controller!.getState().checkpoint.draft) await start();
+          return;
         }
-        active();
-        // Reopen from the resolved document, never from the retired form's displayed values.
-        if (parent.controller!.getState().checkpoint.draft) await start();
+        await finishChoice(choice, scope, staged, updating, assertComparison, Boolean(expected));
       }),
       listRecoverable: async () => {
         active();
@@ -1548,6 +1662,7 @@ export class DataEngine {
     for (const listener of entry.listeners) {
       try { listener(); } catch { /* UI rendering never changes data delivery. */ }
     }
+    for (const manual of this.manualForms.values()) if (manual.parent === entry) manual.emit();
     this.publishOpenAnswers();
   }
 

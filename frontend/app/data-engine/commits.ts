@@ -199,17 +199,34 @@ export class CommitQueue {
   async save(editorId: string, captured: SessionCheckpoint, options?: CommitSaveOptions): Promise<CommitRequest | null> {
     const owner = this.owner, generation = this.generation;
     if (!owner) throw new Error(AUTHENTICATION_REQUIRED);
+    return this.captureSaved(owner, editorId, captured, options, () => this.assertCurrent(owner, generation), saved => {
+      this.emit(saved); this.requested = true;
+    });
+  }
+
+  /** Admit exactly these immutable words now; later retirement may finish only their local capture. */
+  admitSave(editorId: string, captured: SessionCheckpoint): (options?: CommitSaveOptions) => Promise<CommitRequest | null> {
+    const owner = this.owner, generation = this.generation;
+    if (!owner) throw new Error(AUTHENTICATION_REQUIRED);
+    const frozen = clone(captured);
+    return options => this.captureSaved(owner, editorId, frozen, options, () => undefined, saved => {
+      if (this.current(owner, generation)) { this.emit(saved); this.requested = true; }
+    });
+  }
+
+  private async captureSaved(owner: string, editorId: string, captured: SessionCheckpoint, options: CommitSaveOptions | undefined,
+    check: () => void, publish: (request: CommitRequest) => void): Promise<CommitRequest | null> {
     const intent = clone(captured);
     const frozenOptions = options && { ...options, predecessorIds: options.predecessorIds && [...options.predecessorIds] };
     const records = await this.options.store.list(owner);
-    this.assertCurrent(owner, generation);
+    check();
     const existing = records.find(record => record.editorId === editorId && record.editGeneration === intent.editGeneration);
     const predecessor = selectSavePredecessor(records, owner, editorId, intent.confirmed.resource, frozenOptions);
     if (existing) {
       if (existing.retentionScope !== frozenOptions?.retentionScope) throw new Error('Saved capture retention cannot change');
       if (intent.dirty && !equalValues(existing.value, intent.draft)) throw new Error('Saved generation cannot change its captured intent');
       const saved = frozenOptions?.checkpoint ? await this.captureRequest(existing, frozenOptions.checkpoint) : existing;
-      this.assertCurrent(owner, generation);
+      check();
       return clone(saved);
     }
     if (!intent.dirty && (!predecessor || equalValues(predecessor.value, intent.draft))) return null;
@@ -223,9 +240,8 @@ export class CommitQueue {
       command: null, submitted: null, sequence: 0, state: 'queued', result: null, unfinalized: [],
     };
     const saved = await this.captureRequest(record, frozenOptions?.checkpoint);
-    this.assertCurrent(owner, generation);
-    this.emit(saved);
-    this.requested = true;
+    check();
+    publish(saved);
     return clone(saved);
   }
 

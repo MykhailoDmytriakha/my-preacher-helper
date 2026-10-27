@@ -184,3 +184,23 @@ describe('Shared synchronization status', () => {
   });
 
 });
+
+
+it('offers an explicit choice for a retained stage after its saved ancestor was retired', async () => {
+  const editor = state();
+  const form = ManualScope.begin({ owner: 'owner', resource: snapshot.resource, scopeId: 'retired-form', selection: [['content']], port: {
+    isCurrent: () => true, capture: () => ({ checkpoint: editor.checkpoint, provenance: [], requests: [] }),
+    persist: async () => undefined, save: jest.fn(),
+  } });
+  await form.settled(); await form.update(value => ({ ...value, content: 'Retained words' }));
+  const staged = { ...form.getState(), choiceRequired: true as const };
+  const parent = describeSync(editor, observation, []);
+  expect(describeManualSync(staged, editor, parent, null)).toMatchObject({
+    phase: 'conflict', canSave: false, canKeepLocal: true, canAcceptRemote: true,
+  });
+  editor.checkpoint.pending = { unknown: { generation: 1, value: editor.checkpoint.draft } };
+  expect(describeManualSync(staged, editor, { ...parent, phase: 'unknown' }, null)).toMatchObject({
+    phase: 'conflict', canKeepLocal: false, canAcceptRemote: true,
+  });
+  form.dispose();
+});

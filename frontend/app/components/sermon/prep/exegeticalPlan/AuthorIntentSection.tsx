@@ -15,7 +15,8 @@ const AuthorIntentSection: React.FC<AuthorIntentSectionProps> = ({
   onCancel,
   onSave,
   isSaving,
-  hasChanges
+  hasChanges,
+  disabled = false
 }) => {
   const { t } = useTranslation();
 
@@ -47,6 +48,7 @@ const AuthorIntentSection: React.FC<AuthorIntentSectionProps> = ({
         <textarea
           className="w-full text-sm rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-2.5 focus:outline-none focus:border-blue-500 dark:focus:border-blue-400 transition-colors placeholder-gray-400 dark:placeholder-gray-500 resize-none"
           rows={3}
+          disabled={disabled}
           placeholder={t('wizard.steps.exegeticalPlan.authorIntent.placeholder') as string}
           value={value}
           onChange={(e) => onChange(e.target.value)}

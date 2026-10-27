@@ -1,7 +1,10 @@
 'use client';
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 
+
+import { useSyncOutlet } from '@/components/common/syncOutlet';
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
 import { useConfirm, useDiscardQuestion } from '@/hooks/useConfirm';
 import { useFailureNotice } from '@/hooks/useFailureNotice';
@@ -15,6 +18,8 @@ import { isSyncTrouble } from './status';
 
 import type { SyncStatus } from './status';
 
+export { SyncOutlet } from '@/components/common/syncOutlet';
+
 export { STATUS_SETTLE_MS } from '@/hooks/useLasting';
 
 export interface RecoveryChoice {
@@ -22,7 +27,9 @@ export interface RecoveryChoice {
   title: string;
   preview?: string;
 }
+export interface TextComparison { identity?: string; mine: string; stored: string; title?: string }
 export interface DataSyncStatusProps {
+  comparison?: TextComparison;
   /**
    * What this status speaks about: the hook's `recoveryIdentity`, or any value that changes exactly
    * when the block starts speaking about something else. Screens pass fresh callbacks on every
@@ -48,14 +55,34 @@ export interface DataSyncStatusProps {
 }
 
 
+function FieldComparison({ comparison }: { comparison: TextComparison }) {
+  const { t } = useTranslation();
+  return <div className="space-y-2 rounded-md border border-rose-200 bg-rose-50/60 p-3 dark:border-rose-800 dark:bg-rose-950/20">
+    {comparison.title && <p className="font-medium">{comparison.title}</p>}
+    <div className="grid gap-3 sm:grid-cols-2">
+      {([['yourFieldVersion', comparison.mine], ['storedFieldVersion', comparison.stored]] as const).map(([key, value]) =>
+        <div key={key} className="min-w-0"><p className="mb-1 font-medium">{t(`dataSync.${key}`)}</p>
+          <p tabIndex={0} aria-label={t(`dataSync.${key}`)} className="max-h-48 overflow-y-auto whitespace-pre-wrap break-words">{value}</p>
+        </div>)}
+    </div>
+  </div>;
+}
+
 /** No subject is ever this: the block was taken off the screen. */
 const GONE = Symbol('gone');
 
 /** Present the engine's decisions; conflict detection and merge policy stay in the engine. */
-export function DataSyncStatus({ subject, status, error, errorWords, onKeepLocal, onAcceptRemote, onRetry, recoveryChoices = [], onRecover, recoveryLoading = false, recoveryError, title, className = '' }: DataSyncStatusProps) {
+export function DataSyncStatus({ subject, status, error, errorWords, onKeepLocal, onAcceptRemote, onRetry, recoveryChoices = [], onRecover, recoveryLoading = false, recoveryError, title, comparison, className = '' }: DataSyncStatusProps) {
   const { t } = useTranslation();
+  const outlet = useSyncOutlet(subject);
   const sayNotice = useFailureNotice();
   const { askBeforeDiscard, discardDialog, withdraw } = useDiscardQuestion('text');
+  const comparisonIdentity = comparison?.identity;
+  const currentComparison = useRef(comparisonIdentity);
+  useLayoutEffect(() => {
+    currentComparison.current = comparisonIdentity;
+    return withdraw;
+  }, [comparisonIdentity, withdraw]);
   const { confirm: confirmDelete, confirmDialog: deleteDialog, withdraw: withdrawDelete } = useConfirm();
   const deleting = Boolean(status?.deleting && status.canKeepLocal);
   const deletionAllowed = deleting && Boolean(onKeepLocal);
@@ -135,14 +162,16 @@ export function DataSyncStatus({ subject, status, error, errorWords, onKeepLocal
   useEffect(() => { if (troublePhase) recordDiagnostic('sync-trouble', { code: troublePhase }); }, [troublePhase]);
   // Unfinished drafts from earlier sessions are a choice for the person, so they are announced.
   const showPhase = Boolean(status) && (trouble || recoveryChoices.length > 0);
-  const showRetry = Boolean(onRetry && (failure || readTrouble || trouble));
+  const showRetry = Boolean(onRetry && (failure || readTrouble || (trouble && !(comparison && conflictBanner))));
   const said = [showPhase, showFreshness, readTrouble, failure, recoveryChoices.length, recoveryError, keep, accept, showRetry];
   if (!said.some(Boolean)) return <>{discardDialog}{deleteDialog}</>;
   const buttonClass = 'rounded-lg border border-current px-3 py-1.5 text-sm disabled:opacity-50';
-  return <>
-  <div ref={rootRef} className={`space-y-3 text-sm ${className}`} {...(title ? { role: 'region', 'aria-label': title } : {})}>
+  const content = <>
+  <div ref={rootRef} className={`space-y-3 text-sm ${className}`} {...(comparison ? { role: 'region', 'aria-label': t('dataSync.versionComparison') } : title ? { role: 'region', 'aria-label': title } : {})}>
     {title && <p className="font-medium">{title}</p>}
-    {conflictBanner ? <SaveConflictBanner onKeepMine={() => keepChecked(keep)} onTakeTheirs={() => run(() => askBeforeDiscard(true, accept, () => currentSubject.current === subject))} busy={busy} /> : status && (showPhase || showFreshness || readTrouble) && <div role="status" aria-live="polite" className="text-gray-600 dark:text-gray-300">
+    {comparison && <FieldComparison comparison={comparison} />}
+    {conflictBanner ? <SaveConflictBanner description={comparison ? t('dataSync.fieldVersionChanged') : undefined}
+      takeTheirsLabel={comparison ? t('dataSync.useStoredVersion') : undefined} onKeepMine={() => keepChecked(keep)} onTakeTheirs={() => run(() => askBeforeDiscard(true, accept, () => currentSubject.current === subject && currentComparison.current === comparisonIdentity))} busy={busy} /> : status && (showPhase || showFreshness || readTrouble) && <div role="status" aria-live="polite" className="text-gray-600 dark:text-gray-300">
       {showPhase && <p>{t(deleting ? (status.phase === 'refused' ? 'dataSync.deleteRefusedTitle' : 'dataSync.deleteConflictTitle') : trouble ? `dataSync.phase.${status.phase}` : 'dataSync.unfinishedWork')}</p>}
       {showPhase && deleting && <p>{t(status.phase === 'refused' ? 'dataSync.deleteRefusedBody' : 'dataSync.deleteConflictBody')}</p>}
       {showFreshness && <p className="mt-1 text-xs">{t(`dataSync.freshness.${status.freshness}`)}</p>}
@@ -151,7 +180,7 @@ export function DataSyncStatus({ subject, status, error, errorWords, onKeepLocal
     {failure && <p role="alert" className="text-rose-700 dark:text-rose-300">{failure}</p>}
     {((!conflictBanner && (keep || accept)) || showRetry) && <div className="flex flex-wrap gap-2">
       {!conflictBanner && keep && <button type="button" className={buttonClass} disabled={busy} onClick={deleting ? repeatDeletion : () => keepChecked(keep)}>{t(deleting ? (status?.phase === 'refused' ? 'dataSync.retryDelete' : 'dataSync.deleteAnyway') : 'dataSync.keepLocal')}</button>}
-      {!conflictBanner && accept && <button type="button" className={buttonClass} disabled={busy} onClick={() => run(deleting ? accept : () => askBeforeDiscard(true, accept, () => currentSubject.current === subject))}>{t(deleting ? 'dataSync.keepRecord' : 'dataSync.acceptRemote')}</button>}
+      {!conflictBanner && accept && <button type="button" className={buttonClass} disabled={busy} onClick={() => run(deleting ? accept : () => askBeforeDiscard(true, accept, () => currentSubject.current === subject && currentComparison.current === comparisonIdentity))}>{t(deleting ? 'dataSync.keepRecord' : 'dataSync.acceptRemote')}</button>}
       {showRetry && onRetry && <button type="button" className={buttonClass} disabled={busy} onClick={() => run(onRetry)}>{t('dataSync.retry')}</button>}
     </div>}
     {recoveryError && <p role="alert" className="text-rose-700 dark:text-rose-300">{recoveryError}</p>}
@@ -169,4 +198,5 @@ export function DataSyncStatus({ subject, status, error, errorWords, onKeepLocal
   </div>
   {discardDialog}{deleteDialog}
   </>;
+  return outlet ? createPortal(content, outlet) : content;
 }

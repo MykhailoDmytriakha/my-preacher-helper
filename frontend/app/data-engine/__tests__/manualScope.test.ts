@@ -310,3 +310,38 @@ it('does not call a producer until the source is durably owned', async () => {
   const scope = ManualScope.begin(test.options), producer = jest.fn(async source => source);
   await expect(scope.propose(producer)).rejects.toThrow('Storage full'); expect(producer).not.toHaveBeenCalled();
 });
+
+
+describe('pristine preparation field follow', () => {
+  it('follows a genuine current copy without submitting anything', async () => {
+    const test = fixture(), scope = ManualScope.begin(test.options); await scope.settled();
+    test.captured.checkpoint = new DataSession(snapshot('Phone', 'remote sibling', 2)).checkpoint();
+    await scope.follow(test.captured);
+    expect(scope.getState()).toMatchObject({ dirty: false, durable: true, value: { title: 'Phone' },
+      record: { baseline: { metadata: { revision: 2 } }, savedSelection: [{ exists: true, value: 'Phone' }] } });
+    expect(test.save).not.toHaveBeenCalled();
+  });
+  it('keeps a keystroke that arrives before queued pristine follow executes', async () => {
+    const test = fixture(), scope = ManualScope.begin(test.options); await scope.settled();
+    test.captured.checkpoint = new DataSession(snapshot('Phone', 'remote sibling', 2)).checkpoint();
+    const following = scope.follow(test.captured);
+    const typing = scope.update(value => ({ ...value, title: 'Typed before follow' }));
+    await Promise.all([following, typing]);
+    expect(scope.getState()).toMatchObject({ dirty: true, value: { title: 'Typed before follow' },
+      record: { baseline: { metadata: { revision: 1 } } } });
+    await scope.save();
+    expect(test.save.mock.calls[0][1]).toMatchObject({ confirmed: { metadata: { revision: 1 } }, draft: { title: 'Typed before follow' } });
+  });
+  it('keeps a failed explicit Save and its later return to the opening words', async () => {
+    const test = fixture(), scope = ManualScope.begin(test.options); await scope.settled();
+    await scope.update(value => ({ ...value, title: 'Saved before return' }));
+    test.save.mockRejectedValueOnce(new Error('Disk full'));
+    await expect(scope.save()).rejects.toThrow('Disk full');
+    await scope.update(value => ({ ...value, title: 'A' }));
+    test.captured.checkpoint = new DataSession(snapshot('Phone', 'remote sibling', 2)).checkpoint();
+    await scope.follow(test.captured);
+    expect(scope.getState()).toMatchObject({ captureFailed: true, value: { title: 'A' }, record: { baseline: { metadata: { revision: 1 } } } });
+    await scope.retryPersistence();
+    expect(scope.getState()).toMatchObject({ dirty: true, value: { title: 'A' }, record: { predecessor: { value: { title: 'Saved before return' } } } });
+  });
+});

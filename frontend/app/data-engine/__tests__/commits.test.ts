@@ -587,3 +587,20 @@ describe('Durable commit requests', () => {
     expect((await queue.list()).find(record => record.id === manual!.id)?.state).toBe('cancelled');
   });
 });
+
+
+it('captures only immutable admitted Save words under their original owner after retirement', async () => {
+  const s = setup(), { queue } = s.makeQueue();
+  const draft = new DataSession(initial()); draft.edit({ ...initial().value, title: 'Explicit admitted words' });
+  const checkpoint = draft.checkpoint(), generation = checkpoint.editGeneration;
+  const admitted = queue.admitSave('manual-editor', checkpoint);
+  checkpoint.draft!.title = 'Mutation after admission'; checkpoint.editGeneration += 1;
+  const events = jest.fn(); queue.subscribe(events); queue.setOwner(null);
+  expect(() => queue.admitSave('new-editor', checkpoint)).toThrow('Authentication required');
+  const captured = await admitted({ predecessorId: null });
+  expect(captured).toMatchObject({ owner: 'owner', editorId: 'manual-editor', editGeneration: generation,
+    value: { title: 'Explicit admitted words' } });
+  expect(await admitted({ predecessorId: null })).toMatchObject({ id: captured!.id });
+  expect(await s.requests.list('owner')).toHaveLength(1); expect(await s.requests.list('another-owner')).toEqual([]);
+  expect(events).not.toHaveBeenCalled(); expect(s.transport.send).not.toHaveBeenCalled();
+});

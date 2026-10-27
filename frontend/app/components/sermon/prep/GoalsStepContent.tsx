@@ -1,81 +1,37 @@
 'use client';
 
-import { BookOpen, Check, Info, Link as LinkIcon, ScrollText, Target, X } from 'lucide-react';
+import { BookOpen, Info, Link as LinkIcon, ScrollText, Target } from 'lucide-react';
 import React from 'react';
 
-import Select from '@/components/ui/Select';
 import '@locales/i18n';
-import { useFieldDraft } from '@/hooks/useFieldDraft';
+
 import { UI_COLORS } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
 
-// Module-level constants to avoid duplicate strings
-const GOALS_SAVE_FALLBACK = "Save";
-const GOALS_CANCEL_FALLBACK = "Cancel";
+import { PreparationSelect } from './PreparationSelect';
+import { PreparationTextarea } from './PreparationTextarea';
+
+import type { PreparationTextBinding } from '@/components/common/manualTextBinding';
 
 export type GoalType = '' | 'informative' | 'proclamation' | 'didactic' | 'exhortative';
 
 interface GoalsStepContentProps {
-  initialTimelessTruth?: string;
-  onSaveTimelessTruth?: (text: string) => Promise<void> | void;
-  initialChristConnection?: string;
-  onSaveChristConnection?: (text: string) => Promise<void> | void;
-  initialGoalStatement?: string;
-  onSaveGoalStatement?: (text: string) => Promise<void> | void;
-  initialGoalType?: GoalType;
-  onSaveGoalType?: (type: Exclude<GoalType, ''>) => Promise<void> | void;
+  timelessTruth?: PreparationTextBinding;
+  christConnection?: PreparationTextBinding;
+  goalStatement?: PreparationTextBinding;
+  goalType?: PreparationTextBinding;
 }
 
 const GoalsStepContent: React.FC<GoalsStepContentProps> = ({
-  initialTimelessTruth = '',
-  onSaveTimelessTruth,
-  initialChristConnection = '',
-  onSaveChristConnection,
-  initialGoalStatement = '',
-  onSaveGoalStatement,
-  initialGoalType = '',
-  onSaveGoalType,
+  timelessTruth,
+  christConnection,
+  goalStatement,
+  goalType,
 }) => {
   const { t } = useTranslation();
 
-  // Title functions to avoid duplicate strings
-  const getSaveTitle = () => t('actions.save') || GOALS_SAVE_FALLBACK;
-  const getCancelTitle = () => t('actions.cancel') || GOALS_CANCEL_FALLBACK;
-
-  const [timelessDraft, setTimelessDraft] = useFieldDraft(initialTimelessTruth || '');
-  const [christDraft, setChristDraft] = useFieldDraft(initialChristConnection || '');
-  const [goalDraft, setGoalDraft] = useFieldDraft(initialGoalStatement || '');
-  const [typeDraft, setTypeDraft] = useFieldDraft<GoalType>(initialGoalType || '');
-
-  const [savingTimeless, setSavingTimeless] = React.useState(false);
-  const [savingChrist, setSavingChrist] = React.useState(false);
-  const [savingGoal, setSavingGoal] = React.useState(false);
-  const [savingType, setSavingType] = React.useState(false);
-
   const [showInstruction, setShowInstruction] = React.useState<boolean>(false);
 
-
-  const timelessChanged = (initialTimelessTruth || '') !== timelessDraft;
-  const christChanged = (initialChristConnection || '') !== christDraft;
-  const goalChanged = (initialGoalStatement || '') !== goalDraft;
-  const typeChanged = (initialGoalType || '') !== typeDraft;
-
-  const handleSaveTimeless = async () => {
-    if (!onSaveTimelessTruth) return;
-    try { setSavingTimeless(true); await onSaveTimelessTruth(timelessDraft); } finally { setSavingTimeless(false); }
-  };
-  const handleSaveChrist = async () => {
-    if (!onSaveChristConnection) return;
-    try { setSavingChrist(true); await onSaveChristConnection(christDraft); } finally { setSavingChrist(false); }
-  };
-  const handleSaveGoal = async () => {
-    if (!onSaveGoalStatement) return;
-    try { setSavingGoal(true); await onSaveGoalStatement(goalDraft); } finally { setSavingGoal(false); }
-  };
-  const handleSaveType = async () => {
-    if (!onSaveGoalType || !typeDraft) return;
-    try { setSavingType(true); await onSaveGoalType(typeDraft); } finally { setSavingType(false); }
-  };
 
   return (
     <div className="space-y-3">
@@ -204,34 +160,8 @@ const GoalsStepContent: React.FC<GoalsStepContentProps> = ({
           <h4 className="text-sm font-semibold">{t('wizard.steps.goals.timelessTruth.title')}</h4>
         </div>
         <p className="text-sm text-gray-700 dark:text-gray-300 mb-2">{t('wizard.steps.goals.timelessTruth.instruction')}</p>
-        <textarea
-          rows={3}
-          value={timelessDraft}
-          onChange={(e) => setTimelessDraft(e.target.value)}
-          placeholder={t('wizard.steps.goals.timelessTruth.placeholder') || ''}
-          className={`w-full rounded-md border px-3 py-2 bg-white dark:bg-gray-800 ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder} focus:outline-none focus:ring-2 focus:ring-offset-0`}
-        />
-        {timelessChanged && (
-          <div className="mt-2 flex items-center justify-end gap-2">
-            <button
-              type="button"
-              onClick={handleSaveTimeless}
-              disabled={savingTimeless}
-              className={`inline-flex items-center justify-center px-3 py-1.5 rounded-md text-xs font-semibold shadow-sm ${UI_COLORS.button.primary.bg} ${UI_COLORS.button.primary.hover} dark:${UI_COLORS.button.primary.darkBg} dark:${UI_COLORS.button.primary.darkHover} ${UI_COLORS.button.primary.text}`}
-              title={getSaveTitle()}
-            >
-              <Check className="w-4 h-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => setTimelessDraft(initialTimelessTruth || '')}
-              className={`inline-flex items-center justify-center px-3 py-1.5 rounded-md text-xs font-medium border ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder}`}
-              title={getCancelTitle()}
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        )}
+        {timelessTruth && <PreparationTextarea binding={timelessTruth} placeholder={t('wizard.steps.goals.timelessTruth.placeholder')} />}
+
       </div>
 
       {/* Christ Connection */}
@@ -241,40 +171,14 @@ const GoalsStepContent: React.FC<GoalsStepContentProps> = ({
           <h4 className="text-sm font-semibold">{t('wizard.steps.goals.christConnection.title')}</h4>
         </div>
         <p className="text-sm text-gray-700 dark:text-gray-300 mb-2">{t('wizard.steps.goals.christConnection.instruction')}</p>
-        <textarea
-          rows={3}
-          value={christDraft}
-          onChange={(e) => setChristDraft(e.target.value)}
-          placeholder={t('wizard.steps.goals.christConnection.placeholder') || ''}
-          className={`w-full rounded-md border px-3 py-2 bg-white dark:bg-gray-800 ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder} focus:outline-none focus:ring-2 focus:ring-offset-0`}
-        />
+        {christConnection && <PreparationTextarea binding={christConnection} placeholder={t('wizard.steps.goals.christConnection.placeholder')} />}
         <div className={`mt-2 p-2 rounded border text-xs ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder}`}>
           <div className="flex items-center gap-2">
             <Info className="w-4 h-4 text-gray-500" />
             <span className="text-gray-600 dark:text-gray-400">{t('wizard.steps.goals.christConnection.warning')}</span>
           </div>
         </div>
-        {christChanged && (
-          <div className="mt-2 flex items-center justify-end gap-2">
-            <button
-              type="button"
-              onClick={handleSaveChrist}
-              disabled={savingChrist}
-              className={`inline-flex items-center justify-center px-3 py-1.5 rounded-md text-xs font-semibold shadow-sm ${UI_COLORS.button.primary.bg} ${UI_COLORS.button.primary.hover} dark:${UI_COLORS.button.primary.darkBg} dark:${UI_COLORS.button.primary.darkHover} ${UI_COLORS.button.primary.text}`}
-              title={getSaveTitle()}
-            >
-              <Check className="w-4 h-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => setChristDraft(initialChristConnection || '')}
-              className={`inline-flex items-center justify-center px-3 py-1.5 rounded-md text-xs font-medium border ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder}`}
-              title={getCancelTitle()}
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        )}
+
       </div>
 
       {/* Goal */}
@@ -286,75 +190,23 @@ const GoalsStepContent: React.FC<GoalsStepContentProps> = ({
         <div className="grid sm:grid-cols-3 gap-2 mb-2">
           <label className="text-sm font-medium sm:col-span-1 flex items-center">{t('wizard.steps.goals.goal.typeLabel')}</label>
           <div className="sm:col-span-2">
-            <Select
-              accent="blue"
-              value={typeDraft}
-              onChange={(e) => setTypeDraft(e.target.value as GoalType)}
-              aria-label={t('wizard.steps.goals.goal.typeLabel')}
-            >
+            {goalType && <PreparationSelect binding={goalType} label={t('wizard.steps.goals.goal.typeLabel')}>
               <option value="">{t('wizard.steps.goals.goal.typePlaceholder')}</option>
               <option value="informative">{t('wizard.steps.goals.goal.types.informative')}</option>
               <option value="proclamation">{t('wizard.steps.goals.goal.types.proclamation')}</option>
               <option value="didactic">{t('wizard.steps.goals.goal.types.didactic')}</option>
               <option value="exhortative">{t('wizard.steps.goals.goal.types.exhortative')}</option>
-            </Select>
-            {typeChanged && (
-              <div className="mt-2 flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={handleSaveType}
-                  disabled={savingType || !typeDraft}
-                  className={`inline-flex items-center justify-center px-3 py-1.5 rounded-md text-xs font-semibold shadow-sm ${UI_COLORS.button.primary.bg} ${UI_COLORS.button.primary.hover} dark:${UI_COLORS.button.primary.darkBg} dark:${UI_COLORS.button.primary.darkHover} ${UI_COLORS.button.primary.text}`}
-                  title={getSaveTitle()}
-                >
-                  <Check className="w-4 h-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setTypeDraft(initialGoalType || '')}
-                  className={`inline-flex items-center justify-center px-3 py-1.5 rounded-md text-xs font-medium border ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder}`}
-                  title={getCancelTitle()}
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            )}
+            </PreparationSelect>}
           </div>
         </div>
-        <textarea
-          rows={3}
-          value={goalDraft}
-          onChange={(e) => setGoalDraft(e.target.value)}
-          placeholder={t('wizard.steps.goals.goal.placeholder') || ''}
-          className={`w-full rounded-md border px-3 py-2 bg-white dark:bg-gray-800 ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder} focus:outline-none focus:ring-2 focus:ring-offset-0`}
-        />
+        {goalStatement && <PreparationTextarea binding={goalStatement} placeholder={t('wizard.steps.goals.goal.placeholder')} />}
         <div className={`mt-2 p-2 rounded border text-xs ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder}`}>
           <div className="flex items-center gap-2">
             <Info className="w-4 h-4 text-gray-500" />
             <span className="text-gray-600 dark:text-gray-400">{t('wizard.steps.goals.goal.note')}</span>
           </div>
         </div>
-        {goalChanged && (
-          <div className="mt-2 flex items-center justify-end gap-2">
-            <button
-              type="button"
-              onClick={handleSaveGoal}
-              disabled={savingGoal}
-              className={`inline-flex items-center justify-center px-3 py-1.5 rounded-md text-xs font-semibold shadow-sm ${UI_COLORS.button.primary.bg} ${UI_COLORS.button.primary.hover} dark:${UI_COLORS.button.primary.darkBg} dark:${UI_COLORS.button.primary.darkHover} ${UI_COLORS.button.primary.text}`}
-              title={getSaveTitle()}
-            >
-              <Check className="w-4 h-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => setGoalDraft(initialGoalStatement || '')}
-              className={`inline-flex items-center justify-center px-3 py-1.5 rounded-md text-xs font-medium border ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder}`}
-              title={getCancelTitle()}
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        )}
+
       </div>
     </div>
   );

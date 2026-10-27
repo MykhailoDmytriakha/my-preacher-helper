@@ -28,6 +28,7 @@ import { getSeriesForRef } from '@utils/seriesMembership';
 import { getSermonPlanData, preachingRoute } from '@utils/sermonPlanAccess';
 
 import type { ManualTextBinding } from '@/components/common/manualTextBinding';
+import type { TextComparison } from '@/data-engine/DataSyncStatus';
 import type { SyncStatus } from '@/data-engine/status';
 import type { Sermon, Series } from '@/models/models';
 import type { FailureWords } from '@/utils/actionFailureMessage';
@@ -43,6 +44,7 @@ export interface SermonHeaderEditor {
   status: SyncStatus | null;
   error?: string | null;
   errorWords?: FailureWords;
+  comparison?: TextComparison;
   titleForm: ManualTextBinding;
   verseForm: ManualTextBinding;
   keepLocal: () => Promise<void>;
@@ -112,7 +114,7 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], editor
   return (
     <div className="flex flex-col gap-4">
       {/* The document's delivery and any choice it needs (keep mine / take theirs) speak here. */}
-      <DataSyncStatus subject={editor.subject} status={editor.status} error={editor.error} errorWords={editor.errorWords}
+      <DataSyncStatus subject={editor.subject} status={editor.status} comparison={editor.comparison} error={editor.error} errorWords={editor.errorWords}
         onKeepLocal={editor.keepLocal} onAcceptRemote={editor.acceptRemote} onRetry={editor.retry} />
       <div className="grid grid-cols-1 gap-x-4 gap-y-2 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
       {/* Title and identity share the top row with the actions on wide screens. */}

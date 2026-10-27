@@ -26,6 +26,9 @@ export interface SaveConflictBannerProps {
    * an open editor (the note page keeps it on screen).
    */
   pendingText?: string;
+  /** Context-specific words when the compared versions are already visible. */
+  description?: string;
+  takeTheirsLabel?: string;
   /**
    * Save it anyway, on top of the newer version. The caller must re-state the
    * server's CURRENT revision first — otherwise the resend carries the same old
@@ -42,6 +45,7 @@ export interface SaveConflictBannerProps {
 export function SaveConflictBanner({
   entityKey = 'entityRecord',
   pendingText,
+  description, takeTheirsLabel,
   onKeepMine,
   onTakeTheirs,
   busy = false,
@@ -61,7 +65,7 @@ export function SaveConflictBanner({
             {t('freshness.conflictTitle')}
           </p>
           <p className="mt-0.5 text-rose-800/80 dark:text-rose-200/70">
-            {t('freshness.conflictDescription', { entity })}
+            {description ?? t('freshness.conflictDescription', { entity })}
           </p>
         </div>
         <div className="flex shrink-0 gap-2">
@@ -79,7 +83,7 @@ export function SaveConflictBanner({
             disabled={busy}
             className="rounded-lg border border-rose-300 px-3 py-1.5 font-medium text-rose-900 transition-colors hover:bg-rose-100 disabled:opacity-60 dark:border-rose-500/40 dark:text-rose-200 dark:hover:bg-rose-500/20"
           >
-            {t('freshness.conflictTakeTheirs')}
+            {takeTheirsLabel ?? t('freshness.conflictTakeTheirs')}
           </button>
         </div>
       </div>

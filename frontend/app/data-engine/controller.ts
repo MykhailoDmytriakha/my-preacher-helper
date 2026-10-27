@@ -165,6 +165,12 @@ export class EditorController {
     }
   }
 
+  /** Freeze the same record guarded by explicit recovery decisions. */
+  captureRecoveryChoice(): EditorRecord {
+    this.assertCurrent();
+    return JSON.parse(JSON.stringify(this.record())) as EditorRecord;
+  }
+
   getState(): EditorState {
     this.assertCurrent();
     const checkpoint = this.session.checkpoint();

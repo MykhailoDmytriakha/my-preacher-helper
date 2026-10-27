@@ -1,127 +1,31 @@
 'use client';
 
-import { Info, Check, X, Plus, Trash2, ArrowUp, ArrowDown, ListChecks, BookOpen } from 'lucide-react';
+import { Info, ListChecks, BookOpen } from 'lucide-react';
 import React, { useState } from 'react';
 
 import '@locales/i18n';
 
-import { useFieldDraft } from '@/hooks/useFieldDraft';
 import { UI_COLORS } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
 
-interface HomileticPlanItem {
-  id: string;
-  title: string;
-}
+import { PreparationPlanList } from './PreparationPlanList';
+import { PreparationTextarea } from './PreparationTextarea';
+
+import type { PreparationPlanBinding } from './PreparationPlanList';
+import type { PreparationTextBinding } from '@/components/common/manualTextBinding';
+
+
 
 interface HomileticPlanStepContentProps {
-  // Modern translation
-  initialModernTranslation?: string;
-  onSaveModernTranslation?: (text: string) => Promise<void> | void;
-
-  // Updated (actualized) plan
-  initialUpdatedPlan?: HomileticPlanItem[];
-  onSaveUpdatedPlan?: (items: HomileticPlanItem[]) => Promise<void> | void;
-
-  // Sermon plan
-  initialSermonPlan?: HomileticPlanItem[];
-  onSaveSermonPlan?: (items: HomileticPlanItem[]) => Promise<void> | void;
+  modernTranslation?: PreparationTextBinding;
+  planFields?: { updatedPlan: PreparationPlanBinding; sermonPlan: PreparationPlanBinding };
 }
 
-const genId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-
-/** Two lists of plan points say the same thing: the same points, in the same order, with the same words. */
-const samePlanItems = (a: HomileticPlanItem[], b: HomileticPlanItem[]) =>
-  a.length === b.length && a.every((item, i) => item.id === b[i].id && (item.title || '') === (b[i].title || ''));
-
 const HomileticPlanStepContent: React.FC<HomileticPlanStepContentProps> = ({
-  initialModernTranslation = '',
-  onSaveModernTranslation,
-  initialUpdatedPlan = [],
-  onSaveUpdatedPlan,
-  initialSermonPlan = [],
-  onSaveSermonPlan,
+  modernTranslation, planFields,
 }) => {
   const { t } = useTranslation();
-
-  // Use unique fallback literals to avoid duplicate string warnings
-
-  // Instruction collapse
   const [showInstruction, setShowInstruction] = useState<boolean>(false);
-
-  // Modern translation draft
-  const [modernDraft, setModernDraft] = useFieldDraft(initialModernTranslation || '');
-  const modernHasChanges = (modernDraft || '') !== (initialModernTranslation || '');
-  const [savingModern, setSavingModern] = useState(false);
-
-  const handleSaveModern = async () => {
-    if (!onSaveModernTranslation) return;
-    try {
-      setSavingModern(true);
-      await onSaveModernTranslation(modernDraft || '');
-    } finally {
-      setSavingModern(false);
-    }
-  };
-
-  // Updated plan (list) draft
-  const [updatedPlanDraft, setUpdatedPlanDraft] = useFieldDraft<HomileticPlanItem[]>(initialUpdatedPlan || [], samePlanItems);
-  const updatedPlanHasChanges = !samePlanItems(initialUpdatedPlan || [], updatedPlanDraft || []);
-
-  const addUpdatedItem = () => {
-    setUpdatedPlanDraft(prev => [...prev, { id: genId(), title: '' }]);
-  };
-  const removeUpdatedItem = (id: string) => {
-    setUpdatedPlanDraft(prev => prev.filter(it => it.id !== id));
-  };
-  const moveUpdatedItem = (index: number, dir: -1 | 1) => {
-    setUpdatedPlanDraft(prev => {
-      const next = [...prev];
-      const newIndex = index + dir;
-      if (newIndex < 0 || newIndex >= next.length) return prev;
-      const tmp = next[index];
-      next[index] = next[newIndex];
-      next[newIndex] = tmp;
-      return next;
-    });
-  };
-
-  const handleSaveUpdatedPlan = async () => {
-    if (!onSaveUpdatedPlan) return;
-    // The draft becomes what is stored, so the list follows the next copy (useFieldDraft).
-    const items = updatedPlanDraft.map(it => ({ id: it.id, title: (it.title || '').trim() }));
-    setUpdatedPlanDraft(items);
-    await onSaveUpdatedPlan(items);
-  };
-
-  // Sermon plan (list) draft
-  const [sermonPlanDraft, setSermonPlanDraft] = useFieldDraft<HomileticPlanItem[]>(initialSermonPlan || [], samePlanItems);
-  const sermonPlanHasChanges = !samePlanItems(initialSermonPlan || [], sermonPlanDraft || []);
-
-  const addSermonPlanItem = () => {
-    setSermonPlanDraft(prev => [...prev, { id: genId(), title: '' }]);
-  };
-  const removeSermonPlanItem = (id: string) => {
-    setSermonPlanDraft(prev => prev.filter(it => it.id !== id));
-  };
-  const moveSermonPlanItem = (index: number, dir: -1 | 1) => {
-    setSermonPlanDraft(prev => {
-      const next = [...prev];
-      const newIndex = index + dir;
-      if (newIndex < 0 || newIndex >= next.length) return prev;
-      const tmp = next[index];
-      next[index] = next[newIndex];
-      next[newIndex] = tmp;
-      return next;
-    });
-  };
-
-  const handleSaveSermonPlan = async () => {
-    if (!onSaveSermonPlan) return;
-    const items = sermonPlanDraft.map(it => ({ id: it.id, title: (it.title || '').trim() }));
-    setSermonPlanDraft(items);
-    await onSaveSermonPlan(items);
-  };
 
   return (
     <div className="space-y-4">
@@ -315,203 +219,13 @@ const HomileticPlanStepContent: React.FC<HomileticPlanStepContentProps> = ({
         <label className="block text-xs font-medium mb-1" htmlFor="modern-translation-textarea">
           {t('wizard.steps.homileticPlan.fields.modernTranslation.label')}
         </label>
-        <textarea
-          id="modern-translation-textarea"
-          rows={4}
-          value={modernDraft}
-          onChange={(e) => setModernDraft(e.target.value)}
-          placeholder={t('wizard.steps.homileticPlan.fields.modernTranslation.placeholder')}
-          className={`w-full rounded-md border px-3 py-2 bg-white dark:bg-gray-800 ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder} focus:outline-none focus:ring-2 focus:ring-offset-0`}
-          aria-label={t('wizard.steps.homileticPlan.fields.modernTranslation.label')}
-        />
-        <div className="mt-2 flex items-center justify-end gap-2">
-          {modernHasChanges && (
-            <>
-              <button
-                type="button"
-                onClick={handleSaveModern}
-                disabled={savingModern || (modernDraft.trim().length === 0)}
-                className={`inline-flex items-center justify-center px-3 py-1.5 rounded-md text-xs font-semibold shadow-sm ${UI_COLORS.button.primary.bg} ${UI_COLORS.button.primary.hover} dark:${UI_COLORS.button.primary.darkBg} dark:${UI_COLORS.button.primary.darkHover} ${UI_COLORS.button.primary.text}`}
-                title={t('homiletic.actions.save')}
-              >
-                <Check className="w-4 h-4" />
-              </button>
-              <button
-                type="button"
-                onClick={() => setModernDraft(initialModernTranslation || '')}
-                className={`inline-flex items-center justify-center px-3 py-1.5 rounded-md text-xs font-medium border ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder}`}
-                title={t('homiletic.actions.cancel')}
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </>
-          )}
-        </div>
+        {modernTranslation && <PreparationTextarea binding={modernTranslation} id="modern-translation-textarea" rows={4}
+          label={t('wizard.steps.homileticPlan.fields.modernTranslation.label')} placeholder={t('wizard.steps.homileticPlan.fields.modernTranslation.placeholder')}
+          saveLabelKey="homiletic.actions.save" cancelLabelKey="homiletic.actions.cancel" />}
       </div>
 
-      {/* Updated (actualized) plan list */}
-      <div className={`p-3 rounded-md border ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder}`}>
-        <div className="flex items-center justify-between mb-2">
-          <label className="text-xs font-medium" htmlFor="updated-plan-add-input">
-            {t('wizard.steps.homileticPlan.fields.updatedPlan.label')}
-          </label>
-          <button
-            type="button"
-            onClick={addUpdatedItem}
-            className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs border ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder}`}
-            title={t('wizard.steps.homileticPlan.fields.updatedPlan.addItem') as string}
-          >
-            <Plus className="w-4 h-4" /> {t('wizard.steps.homileticPlan.fields.updatedPlan.addItem')}
-          </button>
-        </div>
-        <ul className="space-y-2">
-          {updatedPlanDraft.map((item, idx) => (
-            <li key={item.id} className="flex items-center gap-2">
-              <input
-                type="text"
-                value={item.title}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setUpdatedPlanDraft(prev => prev.map((it, i) => i === idx ? { ...it, title: val } : it));
-                }}
-                placeholder={t('wizard.steps.homileticPlan.fields.updatedPlan.itemPlaceholder')}
-                className={`flex-1 rounded-md border px-3 py-2 bg-white dark:bg-gray-800 ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder} focus:outline-none focus:ring-2 focus:ring-offset-0`}
-                aria-label={t('wizard.steps.homileticPlan.fields.updatedPlan.itemLabel')}
-              />
-              <button
-                type="button"
-                onClick={() => moveUpdatedItem(idx, -1)}
-                className={`inline-flex items-center justify-center px-2 py-1 rounded-md text-xs border ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder}`}
-                title={t('wizard.steps.homileticPlan.fields.updatedPlan.moveUp') as string}
-                aria-label={t('wizard.steps.homileticPlan.fields.updatedPlan.moveUp')}
-              >
-                <ArrowUp className="w-4 h-4" />
-              </button>
-              <button
-                type="button"
-                onClick={() => moveUpdatedItem(idx, 1)}
-                className={`inline-flex items-center justify-center px-2 py-1 rounded-md text-xs border ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder}`}
-                title={t('wizard.steps.homileticPlan.fields.updatedPlan.moveDown') as string}
-                aria-label={t('wizard.steps.homileticPlan.fields.updatedPlan.moveDown')}
-              >
-                <ArrowDown className="w-4 h-4" />
-              </button>
-              <button
-                type="button"
-                onClick={() => removeUpdatedItem(item.id)}
-                className={`inline-flex items-center justify-center px-2 py-1 rounded-md text-xs border ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder}`}
-                title={t('wizard.steps.homileticPlan.fields.updatedPlan.remove') as string}
-                aria-label={t('wizard.steps.homileticPlan.fields.updatedPlan.remove')}
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
-            </li>
-          ))}
-        </ul>
-        {updatedPlanHasChanges && (
-          <div className="mt-2 flex items-center justify-end gap-2">
-            <button
-              type="button"
-              onClick={handleSaveUpdatedPlan}
-              disabled={updatedPlanDraft.some(it => (it.title || '').trim().length === 0)}
-              className={`inline-flex items-center justify-center px-3 py-1.5 rounded-md text-xs font-semibold shadow-sm ${UI_COLORS.button.primary.bg} ${UI_COLORS.button.primary.hover} dark:${UI_COLORS.button.primary.darkBg} dark:${UI_COLORS.button.primary.darkHover} ${UI_COLORS.button.primary.text}`}
-              title={t('actions.save')}
-            >
-              <Check className="w-4 h-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => setUpdatedPlanDraft(initialUpdatedPlan || [])}
-              className={`inline-flex items-center justify-center px-3 py-1.5 rounded-md text-xs font-medium border ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder}`}
-              title={t('actions.cancel')}
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* Sermon plan list */}
-      <div className={`p-3 rounded-md border ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder}`}>
-        <div className="flex items-center justify-between mb-2">
-          <label className="text-xs font-medium" htmlFor="sermon-plan-add-input">
-            {t('wizard.steps.homileticPlan.fields.sermonPlan.label')}
-          </label>
-          <button
-            type="button"
-            onClick={addSermonPlanItem}
-            className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs border ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder}`}
-            title={t('wizard.steps.homileticPlan.fields.sermonPlan.addItem') as string}
-          >
-            <Plus className="w-4 h-4" /> {t('wizard.steps.homileticPlan.fields.sermonPlan.addItem')}
-          </button>
-        </div>
-        <ul className="space-y-2">
-          {sermonPlanDraft.map((item, idx) => (
-            <li key={item.id} className="flex items-center gap-2">
-              <input
-                type="text"
-                value={item.title}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setSermonPlanDraft(prev => prev.map((it, i) => i === idx ? { ...it, title: val } : it));
-                }}
-                placeholder={t('wizard.steps.homileticPlan.fields.sermonPlan.itemPlaceholder')}
-                className={`flex-1 rounded-md border px-3 py-2 bg-white dark:bg-gray-800 ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder} focus:outline-none focus:ring-2 focus:ring-offset-0`}
-                aria-label={t('wizard.steps.homileticPlan.fields.sermonPlan.itemLabel')}
-              />
-              <button
-                type="button"
-                onClick={() => moveSermonPlanItem(idx, -1)}
-                className={`inline-flex items-center justify-center px-2 py-1 rounded-md text-xs border ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder}`}
-                title={t('wizard.steps.homileticPlan.fields.sermonPlan.moveUp') as string}
-                aria-label={t('wizard.steps.homileticPlan.fields.sermonPlan.moveUp')}
-              >
-                <ArrowUp className="w-4 h-4" />
-              </button>
-              <button
-                type="button"
-                onClick={() => moveSermonPlanItem(idx, 1)}
-                className={`inline-flex items-center justify-center px-2 py-1 rounded-md text-xs border ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder}`}
-                title={t('wizard.steps.homileticPlan.fields.sermonPlan.moveDown') as string}
-                aria-label={t('wizard.steps.homileticPlan.fields.sermonPlan.moveDown')}
-              >
-                <ArrowDown className="w-4 h-4" />
-              </button>
-              <button
-                type="button"
-                onClick={() => removeSermonPlanItem(item.id)}
-                className={`inline-flex items-center justify-center px-2 py-1 rounded-md text-xs border ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder}`}
-                title={t('wizard.steps.homileticPlan.fields.sermonPlan.remove') as string}
-                aria-label={t('wizard.steps.homileticPlan.fields.sermonPlan.remove')}
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
-            </li>
-          ))}
-        </ul>
-        {sermonPlanHasChanges && (
-          <div className="mt-2 flex items-center justify-end gap-2">
-            <button
-              type="button"
-              onClick={handleSaveSermonPlan}
-              disabled={sermonPlanDraft.some(it => (it.title || '').trim().length === 0)}
-              className={`inline-flex items-center justify-center px-3 py-1.5 rounded-md text-xs font-semibold shadow-sm ${UI_COLORS.button.primary.bg} ${UI_COLORS.button.primary.hover} dark:${UI_COLORS.button.primary.darkBg} dark:${UI_COLORS.button.primary.darkHover} ${UI_COLORS.button.primary.text}`}
-              title={t('actions.save')}
-            >
-              <Check className="w-4 h-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => setSermonPlanDraft(initialSermonPlan || [])}
-              className={`inline-flex items-center justify-center px-3 py-1.5 rounded-md text-xs font-medium border ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder}`}
-              title={t('actions.cancel')}
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        )}
-      </div>
+      <PreparationPlanList binding={planFields?.updatedPlan} kind="updatedPlan" />
+      <PreparationPlanList binding={planFields?.sermonPlan} kind="sermonPlan" />
     </div>
   );
 };

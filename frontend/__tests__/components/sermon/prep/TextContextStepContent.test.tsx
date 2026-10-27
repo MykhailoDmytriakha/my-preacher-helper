@@ -6,6 +6,7 @@ jest.mock('@locales/i18n', () => ({}));
 jest.mock('react-i18next', () => ({ useTranslation: () => ({ t: (k: string) => k }) }));
 
 import TextContextStepContent from '@/components/sermon/prep/TextContextStepContent';
+import { PreparationBindingFixture, repeatedWordsCodec } from '@test-utils/preparationPresentations';
 
 describe('TextContextStepContent', () => {
   const setup = () => {
@@ -15,16 +16,14 @@ describe('TextContextStepContent', () => {
     const onSaveRepeatedWords = jest.fn();
 
     render(
-      <TextContextStepContent
-        initialVerse="John 3:16"
-        onSaveVerse={onSaveVerse}
-        readWholeBookOnceConfirmed={false}
-        onToggleReadWholeBookOnce={onToggleReadWholeBookOnce}
-        initialContextNotes=""
-        onSaveContextNotes={onSaveContextNotes}
-        initialRepeatedWords={['faith']}
-        onSaveRepeatedWords={onSaveRepeatedWords}
-      />
+      <PreparationBindingFixture value="John 3:16" onSave={onSaveVerse}>{verse =>
+        <PreparationBindingFixture value="" onSave={onSaveContextNotes}>{contextNotes =>
+          <PreparationBindingFixture value="faith" codec={repeatedWordsCodec} onSave={onSaveRepeatedWords}>{repeatedWords =>
+            <TextContextStepContent fields={{ verse, contextNotes, repeatedWords }} readWholeBookOnceConfirmed={false}
+              onToggleReadWholeBookOnce={onToggleReadWholeBookOnce} />
+          }</PreparationBindingFixture>
+        }</PreparationBindingFixture>
+      }</PreparationBindingFixture>
     );
 
     return { onSaveVerse, onToggleReadWholeBookOnce, onSaveContextNotes, onSaveRepeatedWords };

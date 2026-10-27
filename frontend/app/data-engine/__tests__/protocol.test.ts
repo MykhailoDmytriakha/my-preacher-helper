@@ -207,3 +207,25 @@ describe('DataEngine command protocol', () => {
     expect(applyCommand(completeBaseline, snapshot({ userId: 'owner' }))).toMatchObject({ kind: 'conflict' });
   });
 });
+
+
+it('merges independent newly created map fields without treating their shared absent container as authored text', () => {
+  const base = { userId: 'owner' };
+  const mine = { ...base, preparation: { mainIdea: { contextIdea: 'Context words' } } };
+  const theirs = { ...base, preparation: { mainIdea: { textIdea: 'Text words' } } };
+  const result = applyCommand(update(base, mine), snapshot(theirs));
+  expect(result).toMatchObject({ kind: 'acknowledged', snapshot: { value: {
+    preparation: { mainIdea: { contextIdea: 'Context words', textIdea: 'Text words' } } } } });
+  expect(mergeDocumentFields(base, mine, theirs)).toMatchObject({ conflicts: [], value: { value: {
+    preparation: { mainIdea: { contextIdea: 'Context words', textIdea: 'Text words' } } } } });
+});
+
+it('still compares newly created same-leaf words and scalar or deleted ancestors', () => {
+  const missing: FieldValue = { exists: false };
+  expect(mergeFields(missing, field({ value: 'Mine' }), field({ value: 'Theirs' }), ['preparation']).conflicts).toHaveLength(1);
+  expect(mergeFields(field('Old scalar'), field({ value: 'Mine' }), field({ value: 'Theirs' }), ['preparation']).conflicts).toHaveLength(1);
+  expect(mergeFields(field({ before: 'Old' }), field({ before: 'Old', added: 'Mine' }), missing, ['preparation']).conflicts).toHaveLength(1);
+  expect(mergeFields(missing, field({ quote: 'Mine' }), field({ location: 'Theirs' }), ['scriptureRefs', 'id:ref']).conflicts).toHaveLength(1);
+  expect(mergeFields(missing, field({ title: 'Mine' }), field({ verse: 'Theirs' })).conflicts).toHaveLength(1);
+  expect(mergeFields(missing, field({ id: 'same', title: 'Mine' }), field({ id: 'same', verse: 'Theirs' }), ['points', 'id:same']).conflicts).toHaveLength(1);
+});

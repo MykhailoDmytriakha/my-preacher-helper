@@ -144,89 +144,77 @@ jest.mock('@/services/thought.service', () => ({
   createAudioThought: jest.fn(),
 }));
 
+// These mock controls open their binding explicitly; actual mount/readiness is tested on the real controls.
+async function mockSavePreparation<T>(binding: { active: boolean; begin(): Promise<void>; save(value: T): Promise<void> }, value: T) {
+  if (!binding.active) await binding.begin();
+  await binding.save(value);
+}
+
 // Prep components that call back with fixed values, to see what the page stores
 jest.mock('@/components/sermon/prep/TextContextStepContent', () => ({
-  onSavePassageSummary,
+  fields,
   onToggleReadWholeBookOnce,
-  onSaveContextNotes,
-  onSaveRepeatedWords,
-  onSaveVerse,
 }: any) => (
   <div>
-    <button data-testid="save-passage-summary" onClick={() => onSavePassageSummary('summary')}>Save Summary</button>
+    <button data-testid="save-passage-summary" onClick={() => mockSavePreparation(fields.passageSummary, 'summary')}>Save Summary</button>
     <button data-testid="toggle-read-book" onClick={() => onToggleReadWholeBookOnce(true)}>Toggle Read Book</button>
-    <button data-testid="save-context-notes" onClick={() => onSaveContextNotes('context-notes')}>Save Context Notes</button>
-    <button data-testid="save-repeated-words" onClick={() => onSaveRepeatedWords(['word'])}>Save Repeated Words</button>
-    <button data-testid="save-verse" onClick={() => onSaveVerse('Acts 1:8')}>Save Verse</button>
+    <button data-testid="save-context-notes" onClick={() => mockSavePreparation(fields.contextNotes, 'context-notes')}>Save Context Notes</button>
+    <button data-testid="save-repeated-words" onClick={() => mockSavePreparation(fields.repeatedWords, 'word')}>Save Repeated Words</button>
+    <button data-testid="save-verse" onClick={() => mockSavePreparation(fields.verse, 'Acts 1:8')}>Save Verse</button>
   </div>
 ));
 jest.mock('@/components/sermon/prep/ExegeticalPlanStepContent', () => ({
   onEdit,
-  onSaveAuthorIntent,
+  authorIntentField,
 }: any) => (
   <div>
     <button data-testid="save-exegetical" onClick={() => onEdit((nodes: unknown[]) => [...nodes, { id: 'n1', title: 'Node', children: [] }])}>Save Exegetical</button>
-    <button data-testid="save-author-intent" onClick={() => onSaveAuthorIntent('intent')}>Save Author Intent</button>
+    <button data-testid="save-author-intent" onClick={() => mockSavePreparation(authorIntentField, 'intent')}>Save Author Intent</button>
   </div>
 ));
-jest.mock('@/components/sermon/prep/MainIdeaStepContent', () => ({
-  onSaveTextIdea,
-  onSaveContextIdea,
-  onSaveArgumentation,
-}: any) => (
+jest.mock('@/components/sermon/prep/MainIdeaStepContent', () => ({ textIdea, contextIdea, argumentation }: any) => (
   <div>
-    <button data-testid="save-main-idea" onClick={() => onSaveTextIdea('idea')}>Save Main Idea</button>
-    <button data-testid="save-context-idea" onClick={() => onSaveContextIdea('context idea')}>Save Context Idea</button>
-    <button data-testid="save-argumentation" onClick={() => onSaveArgumentation('argumentation')}>Save Argumentation</button>
+    <button data-testid="save-main-idea" onClick={() => mockSavePreparation(textIdea, 'idea')}>Save Main Idea</button>
+    <button data-testid="save-context-idea" onClick={() => mockSavePreparation(contextIdea, 'context idea')}>Save Context Idea</button>
+    <button data-testid="save-argumentation" onClick={() => mockSavePreparation(argumentation, 'argumentation')}>Save Argumentation</button>
   </div>
 ));
 jest.mock('@/components/sermon/prep/GoalsStepContent', () => ({
-  onSaveGoalStatement,
-  onSaveTimelessTruth,
-  onSaveChristConnection,
-  onSaveGoalType,
+  goalStatement,
+  timelessTruth,
+  christConnection,
+  goalType,
 }: any) => (
   <div>
-    <button data-testid="save-goals" onClick={() => onSaveGoalStatement('goal')}>Save Goal</button>
-    <button data-testid="save-timeless-truth" onClick={() => onSaveTimelessTruth('truth')}>Save Timeless Truth</button>
-    <button data-testid="save-christ-connection" onClick={() => onSaveChristConnection('connection')}>Save Christ Connection</button>
-    <button data-testid="save-goal-type" onClick={() => onSaveGoalType('didactic')}>Save Goal Type</button>
+    <button data-testid="save-goals" onClick={() => mockSavePreparation(goalStatement, 'goal')}>Save Goal</button>
+    <button data-testid="save-timeless-truth" onClick={() => mockSavePreparation(timelessTruth, 'truth')}>Save Timeless Truth</button>
+    <button data-testid="save-christ-connection" onClick={() => mockSavePreparation(christConnection, 'connection')}>Save Christ Connection</button>
+    <button data-testid="save-goal-type" onClick={() => mockSavePreparation(goalType, 'didactic')}>Save Goal Type</button>
   </div>
 ));
-jest.mock('@/components/sermon/prep/ThesisStepContent', () => ({
-  onSaveHomiletical,
-  onSaveExegetical,
-  onSavePluralKey,
-  onSaveTransitionSentence,
-  onSaveOneSentence,
-  onSaveSermonInOneSentence,
-  onSaveQuestionWord,
-  onSaveWhyPreach,
-  onSaveImpactOnChurch,
-  onSavePracticalQuestions,
+jest.mock('@/components/sermon/prep/ThesisStepContent', () => ({ fields,
 }: any) => (
   <div>
-    <button data-testid="save-question-word" onClick={() => onSaveQuestionWord?.('question')}>Save Question Word</button>
-    <button data-testid="save-why-preach" onClick={() => onSaveWhyPreach?.('why')}>Save Why Preach</button>
-    <button data-testid="save-impact-on-church" onClick={() => onSaveImpactOnChurch?.('impact')}>Save Impact</button>
-    <button data-testid="save-practical-questions" onClick={() => onSavePracticalQuestions?.('practical')}>Save Practical</button>
-    <button data-testid="save-thesis" onClick={() => onSaveHomiletical('thesis')}>Save Thesis</button>
-    <button data-testid="save-thesis-exegetical" onClick={() => onSaveExegetical('exegetical')}>Save Thesis Exegetical</button>
-    <button data-testid="save-plural-key" onClick={() => onSavePluralKey('plural')}>Save Plural Key</button>
-    <button data-testid="save-transition-sentence" onClick={() => onSaveTransitionSentence('transition')}>Save Transition Sentence</button>
-    <button data-testid="save-one-sentence" onClick={() => onSaveOneSentence('one sentence')}>Save One Sentence</button>
-    <button data-testid="save-sermon-one-sentence" onClick={() => onSaveSermonInOneSentence('sermon one sentence')}>Save Sermon One Sentence</button>
+    <button data-testid="save-question-word" onClick={() => mockSavePreparation(fields.questionWord, 'question')}>Save Question Word</button>
+    <button data-testid="save-why-preach" onClick={() => mockSavePreparation(fields.whyPreach, 'why')}>Save Why Preach</button>
+    <button data-testid="save-impact-on-church" onClick={() => mockSavePreparation(fields.impactOnChurch, 'impact')}>Save Impact</button>
+    <button data-testid="save-practical-questions" onClick={() => mockSavePreparation(fields.practicalQuestions, 'practical')}>Save Practical</button>
+    <button data-testid="save-thesis" onClick={() => mockSavePreparation(fields.homiletical, 'thesis')}>Save Thesis</button>
+    <button data-testid="save-thesis-exegetical" onClick={() => mockSavePreparation(fields.exegetical, 'exegetical')}>Save Thesis Exegetical</button>
+    <button data-testid="save-plural-key" onClick={() => mockSavePreparation(fields.pluralKey, 'plural')}>Save Plural Key</button>
+    <button data-testid="save-transition-sentence" onClick={() => mockSavePreparation(fields.transitionSentence, 'transition')}>Save Transition Sentence</button>
+    <button data-testid="save-one-sentence" onClick={() => mockSavePreparation(fields.oneSentence, 'one sentence')}>Save One Sentence</button>
+    <button data-testid="save-sermon-one-sentence" onClick={() => mockSavePreparation(fields.sermonInOneSentence, 'sermon one sentence')}>Save Sermon One Sentence</button>
   </div>
 ));
 jest.mock('@/components/sermon/prep/HomileticPlanStepContent', () => ({
-  onSaveModernTranslation,
-  onSaveUpdatedPlan,
-  onSaveSermonPlan,
+  modernTranslation,
+  planFields,
 }: any) => (
   <div>
-    <button data-testid="save-homiletic" onClick={() => onSaveModernTranslation('translation')}>Save Homiletic</button>
-    <button data-testid="save-updated-plan" onClick={() => onSaveUpdatedPlan([{ id: 'u1', title: 'updated' }])}>Save Updated Plan</button>
-    <button data-testid="save-sermon-plan" onClick={() => onSaveSermonPlan([{ id: 's1', title: 'sermon plan' }])}>Save Sermon Plan</button>
+    <button data-testid="save-homiletic" onClick={() => mockSavePreparation(modernTranslation, 'translation')}>Save Homiletic</button>
+    <button data-testid="save-updated-plan" onClick={() => mockSavePreparation(planFields.updatedPlan, [{ id: 'u1', title: 'updated' }])}>Save Updated Plan</button>
+    <button data-testid="save-sermon-plan" onClick={() => mockSavePreparation(planFields.sermonPlan, [{ id: 's1', title: 'sermon plan' }])}>Save Sermon Plan</button>
   </div>
 ));
 jest.mock('@/components/sermon/prep/SpiritualStepContent', () => () => <div data-testid="spiritual-step">Spiritual Step</div>);

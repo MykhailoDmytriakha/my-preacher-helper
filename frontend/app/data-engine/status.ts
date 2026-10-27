@@ -47,7 +47,8 @@ export function describeManualSync(form: ReturnType<ManualScope['getState']> | n
   if (parent?.phase === 'refused' && !parent.hasForeignChange) parent = { ...parent, canAcceptRemote: false };
   // A selected-field form never owns a whole-document deletion, including while it opens.
   if (parent?.deleting) parent = { ...parent, deleting: false };
-  if (!form?.record.active || !editor || !parent) return parent;
+  if (!form || (!form.record.active && !form.choiceRequired) || !editor || !parent) return parent;
+  if (form.choiceRequired) return describeManualChoice(form, editor, parent, error);
   // Explicit Keep local may include durable corrections to a known failed command.
   // Accept remote still cannot discard an unsent stage, and unknown outcomes stay immutable.
   if (form.dirty && form.durable && ['conflict', 'refused'].includes(parent.phase)) {
@@ -70,6 +71,16 @@ export function describeManualSync(form: ReturnType<ManualScope['getState']> | n
   return { ...parent, phase, hasForeignChange: changed,
     canSave: form.dirty && form.durable && !deleted && !form.captureFailed, canRemove: false,
     canAcceptRemote: false, canKeepLocal: false };
+}
+
+function describeManualChoice(form: ReturnType<ManualScope['getState']>, editor: EditorState, parent: SyncStatus, error: string | null): SyncStatus {
+    const pending = Object.keys(editor.checkpoint.pending).length > 0;
+    const observed = editor.checkpoint.remoteCandidate ?? editor.checkpoint.confirmed;
+    const deleted = observed.value === null || Boolean(observed.metadata?.deleted);
+    const ready = form.durable && !form.captureFailed;
+    return { ...parent, phase: ready ? 'conflict' : error ? 'localFailure' : 'savingLocally',
+      canSave: false, canRemove: false, canAcceptRemote: ready,
+      canKeepLocal: ready && !deleted && (!pending || parent.canKeepLocal) };
 }
 
 /** Status describes proven state; an SDK echo of our command is not a foreign edit. */

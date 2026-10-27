@@ -6,6 +6,7 @@ jest.mock('@locales/i18n', () => ({}));
 jest.mock('react-i18next', () => ({ useTranslation: () => ({ t: (k: string) => k }) }));
 
 import ExegeticalPlanStepContent from '@/components/sermon/prep/ExegeticalPlanStepContent';
+import { PreparationBindingFixture } from '@test-utils/preparationPresentations';
 
 describe('ExegeticalPlanStepContent', () => {
   it('renders builder and allows editing title', () => {
@@ -43,12 +44,9 @@ describe('ExegeticalPlanStepContent', () => {
     const onSave = jest.fn();
     const onSaveAuthorIntent = jest.fn();
     render(
-      <ExegeticalPlanStepContent
-        value={[{ id: '1', title: 'A', children: [] }]}
-        onSave={onSave}
-        authorIntent=""
-        onSaveAuthorIntent={onSaveAuthorIntent}
-      />
+      <PreparationBindingFixture value="" onSave={onSaveAuthorIntent}>{authorIntentField =>
+        <ExegeticalPlanStepContent value={[{ id: '1', title: 'A', children: [] }]} onSave={onSave} authorIntentField={authorIntentField} />
+      }</PreparationBindingFixture>
     );
 
     // First make a change to the tree to enable the save button

@@ -3,9 +3,8 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 
 import { useConfirm } from '@/hooks/useConfirm';
-import { useFieldDraft } from '@/hooks/useFieldDraft';
 
-import AuthorIntentSection from './AuthorIntentSection';
+import { AuthorIntentField } from './AuthorIntentField';
 import BlockDiagramSection from './BlockDiagramSection';
 import InstructionSection from './InstructionSection';
 import TreeBuilder from './TreeBuilder';
@@ -38,8 +37,7 @@ const ExegeticalPlanModule: React.FC<ExegeticalPlanModuleProps> = ({
   onEdit,
   onSave,
   saving,
-  authorIntent = '',
-  onSaveAuthorIntent
+  authorIntentField
 }) => {
   const { confirm, confirmDialog, withdraw } = useConfirm();
   const currentSubject = useRef(subject);
@@ -56,8 +54,6 @@ const ExegeticalPlanModule: React.FC<ExegeticalPlanModuleProps> = ({
   );
   const [expand, setExpand] = useState<Record<string, boolean>>({});
   const [focusedId, setFocusedId] = useState<string | null>(null);
-  const [authorIntentDraft, setAuthorIntentDraft] = useFieldDraft(authorIntent || '');
-  const [isSavingAuthorIntent, setIsSavingAuthorIntent] = useState<boolean>(false);
   const [autoSaveEnabled, setAutoSaveEnabled] = useState(true);
 
   const prevSavingRef = useRef<boolean>(saving);
@@ -93,9 +89,6 @@ const ExegeticalPlanModule: React.FC<ExegeticalPlanModuleProps> = ({
     return !areTreesEqual(currentTreeWithDrafts, value || []);
   }, [onEdit, draftTree, draftTitles, value]);
 
-  const hasAuthorIntentChanges = useMemo(() => {
-    return authorIntentDraft !== (authorIntent || '');
-  }, [authorIntentDraft, authorIntent]);
 
   // 2. Callbacks
   const handleTitleChange = useCallback((id: string, title: string) => {
@@ -182,15 +175,6 @@ const ExegeticalPlanModule: React.FC<ExegeticalPlanModuleProps> = ({
     await onSave?.(treeWithTitles);
   }, [draftTree, draftTitles, onSave]);
 
-  const handleSaveAuthorIntent = useCallback(async () => {
-    if (!onSaveAuthorIntent) return;
-    try {
-      setIsSavingAuthorIntent(true);
-      await onSaveAuthorIntent(authorIntentDraft);
-    } finally {
-      setIsSavingAuthorIntent(false);
-    }
-  }, [authorIntentDraft, onSaveAuthorIntent]);
 
   // 3. Effects
   // Sync with external value after successful save (own draft only)
@@ -260,14 +244,7 @@ const ExegeticalPlanModule: React.FC<ExegeticalPlanModuleProps> = ({
       </div>
 
       <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
-        <AuthorIntentSection
-          value={authorIntentDraft}
-          onChange={setAuthorIntentDraft}
-          onCancel={() => setAuthorIntentDraft(authorIntent || '')}
-          onSave={handleSaveAuthorIntent}
-          isSaving={isSavingAuthorIntent}
-          hasChanges={hasAuthorIntentChanges}
-        />
+        {authorIntentField && <AuthorIntentField key={authorIntentField.subject} binding={authorIntentField} />}
       </div>
     </div>
   );
