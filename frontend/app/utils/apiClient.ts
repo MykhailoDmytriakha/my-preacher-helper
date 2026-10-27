@@ -2,6 +2,7 @@ import {
   notifyUsageRequestSettled,
   throwIfUsageCapReached,
 } from '@/services/usageCapClient';
+import { markConnectionFailure } from '@/utils/connectionFailure';
 import {
   beginConnectivityRequest,
   getConnectivityStatus,
@@ -65,9 +66,6 @@ export { getConnectivityStatus } from '@/utils/connectivity';
 export const onConnectivityChange = (observer: (isOnline: boolean) => void) =>
   subscribeToConnectivity(() => observer(getConnectivityStatus()));
 
-/** Failures this module saw fail to reach the server — marked where the request was made. */
-const connectionFailures = new WeakSet<object>();
-
 /** What a failed `fetch` looks like, as only this module sees it: no answer came back at all. */
 const fetchDidNotReach = (err: Error & { name?: string }): boolean =>
   err instanceof FetchTimeoutError ||
@@ -75,24 +73,8 @@ const fetchDidNotReach = (err: Error & { name?: string }): boolean =>
   err.name === 'TypeError' ||
   Boolean(err.message?.includes('NetworkError'));
 
-/**
- * DID THIS FAILURE COME FROM NOT REACHING THE SERVER — as opposed to the server answering "no"?
- *
- * Decided where the request was made, not guessed from a sentence: a service that turns a 403 into
- * `new Error('Failed to fetch share links')` is reporting an answer, and a TypeError from our own code
- * is not a network (Codex review 2026-10-11). Yes for an error `apiClient` marked as not reaching the
- * server, for a transport's `unavailable` / `deadline-exceeded`, for Firebase Auth failing to fetch a
- * token (`auth/network-request-failed`, before `apiClient` runs), and for the Firestore SDK saying the
- * client is offline.
- */
-export function isConnectionFailure(error: unknown): boolean {
-  if (!error || typeof error !== 'object') return false;
-  if (connectionFailures.has(error)) return true;
-  const { code, message } = error as { code?: unknown; message?: unknown };
-  const bare = typeof code === 'string' ? code.replace(/^firestore\//, '') : '';
-  if (bare === 'unavailable' || bare === 'deadline-exceeded' || bare === 'auth/network-request-failed') return true;
-  return typeof message === 'string' && /client is offline/i.test(message);
-}
+/** Keep the existing public import while the rule is shared with non-HTTP readers. */
+export { isConnectionFailure } from '@/utils/connectionFailure';
 
 /**
  * THE HEADERS CAME, THE BODY DID NOT (BUG-20261011-body-read-failure-drops-saved-copy).
@@ -122,7 +104,7 @@ function markBodyCutOff(response: Response, requestId: number, slowIsNormal: boo
     } catch (error) {
       const outOfTime = error instanceof FetchTimeoutError && !slowIsNormal;
       if (untouched() && !cancelledBy(signal, error) && (error instanceof TypeError || outOfTime)) {
-        connectionFailures.add(error);
+        markConnectionFailure(error);
         // Reported under the request it belongs to: a newer answer already heard wins.
         reportServerUnreachable(requestId);
       }
@@ -217,7 +199,7 @@ async function performApiRequest(
     // A slow AI/audio operation is not evidence that unrelated reads lost their network.
     const slowGeneration = err instanceof FetchTimeoutError && (category === 'ai' || category === 'audio');
     const isConnectivityError = !slowGeneration && !cancelledBy(fetchOptions.signal, error) && fetchDidNotReach(err);
-    if (isConnectivityError && typeof error === 'object' && error !== null) connectionFailures.add(error);
+    if (isConnectivityError && typeof error === 'object' && error !== null) markConnectionFailure(error);
 
     if (isConnectivityError) {
       debugLog('apiClient: connectivity issue detected', { 

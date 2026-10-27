@@ -7,6 +7,7 @@ Before writing a rule, find the one that already exists: the recipe of that oper
 ## How
 
 - Move first, change second. Extract the rule verbatim into its shared module, point every caller at it, run the tests. Then write the behaviour test, watch it go red with the rule switched off, and only then change the behaviour.
+- A connection-failure rule needed outside the browser HTTP adapter lives in dependency-free `utils/connectionFailure.ts`. It owns the one observed-error WeakSet and the existing `isConnectionFailure` predicate. Transports call `markConnectionFailure` only where the request actually failed; generic TypeError or a server refusal is not automatically a network failure. `apiClient.ts` re-exports the predicate for existing callers. Move this rule without changing its byte-identical logic before changing read-recovery policy; preserve normal online Retry and explicit-action semantics.
 - Delete every old copy in the same change and grep the old names to zero. Anything less just adds one more copy.
 - Every partial `jest.mock` of the shared module keeps `...jest.requireActual(...)`; without it the mock breaks the moment the module grows an export (`scriptureReferenceSearchText is not a function`).
 - A test stub fires a handler once, like a click. With an awaited in-app confirm (`useConfirm`), a stub that calls `onDelete` on every render asks for ever and hangs the suite.
