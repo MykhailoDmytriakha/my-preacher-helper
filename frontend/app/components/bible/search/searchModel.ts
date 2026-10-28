@@ -74,8 +74,10 @@ export function rowForEnter(rows: readonly ModelRow[], selectedKey: string | nul
   return choices.find((row) => row.key === selectedKey) ?? choices.find((row) => row.type !== 'showMore') ?? null;
 }
 
-/** Verses shown at first, and added by each «Показать ещё». */
-export const SHOWN_VERSES = 40;
+/** Verses shown at first, and added by each «Показать ещё» (the owner, 2026-10-27: a hundred, not forty). */
+export const SHOWN_VERSES = 100;
+/** Found more than this, the head offers the books they are in — as when forty were a page. */
+const BOOKS_OFFERED_ABOVE = 40;
 const PHONE_BOOK_CHIPS = 4;
 const WIDE_BOOK_CHIPS = 6;
 
@@ -394,7 +396,7 @@ function searchHead(input: ModelInput, query: SearchQuery, answer: SearchAnswer,
     booksToggle: null,
   };
   // Many: the books with the most, in the Bible's order; «Ещё» shows them all.
-  if (answer.hits.length > SHOWN_VERSES && answer.byBook.size > 1) {
+  if (answer.hits.length > BOOKS_OFFERED_ABOVE && answer.byBook.size > 1) {
     const order = Array.from(answer.byBook.keys());
     const limit = wide ? WIDE_BOOK_CHIPS : PHONE_BOOK_CHIPS;
     const count = (bookId: string) => answer.byBook.get(bookId) ?? 0;

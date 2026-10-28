@@ -1,6 +1,7 @@
 'use client';
 
 import { CheckIcon, ChevronDownIcon, ChevronRightIcon, DocumentDuplicateIcon, QuestionMarkCircleIcon, SignalSlashIcon } from '@heroicons/react/24/outline';
+import { memo } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { HOVER_ROW, KEYCAP, SELECTED_ROW } from './searchStyles';
@@ -315,7 +316,8 @@ function SearchHeadView({ head, chipHeight, onRun, onToggleBooks }: { head: NonN
   );
 }
 
-export function SearchResults({ model, selectedKey, wide, touch, showHowTo, keysHint, listId, textLang, optionId, onRun, onChoose, onCopy, copiedKey, onHowTo, onToggleBooks }: Props) {
+/** Memoized: the line's letters do not draw the results again; a new model, choice or copy does. */
+export const SearchResults = memo(function SearchResults({ model, selectedKey, wide, touch, showHowTo, keysHint, listId, textLang, optionId, onRun, onChoose, onCopy, copiedKey, onHowTo, onToggleBooks }: Props) {
   const { t } = useTranslation();
   const { head } = model;
   const chipHeight = touch ? 'h-11' : 'h-7';
@@ -376,4 +378,4 @@ export function SearchResults({ model, selectedKey, wide, touch, showHowTo, keys
       ) : null}
     </div>
   );
-}
+});

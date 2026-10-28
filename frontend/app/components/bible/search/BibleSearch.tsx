@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 
 import { useClipboard } from '@/hooks/useClipboard';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
+import { useStableHandler } from '@/hooks/useStableHandler';
 import { BIBLES, type BibleId } from '@/utils/bibles';
 import { chooseReading } from '@/utils/bibleSearch/lineChoice';
 import { readSearch, type LineReading } from '@/utils/bibleSearch/query';
@@ -391,7 +392,20 @@ export function BibleSearch({ bible, locale, wide, surface, hereBook = null, aut
   const listId = `${baseId}-list`;
   const historyId = `${baseId}-history`;
   const showResults = typed && panel === 'none';
-  const keysHint = !touch && pickable.length > 1 ? { esc: t('bible.search.keysClear'), copy: activeRow?.type === 'verse' ? withModifier('C') : null } : null;
+  // The results are drawn again only when they change: a letter typed leaves the hundred verses shown alone while the
+  // deferred search catches up (Codex review, 2026-10-27; `SearchResults` is memoized).
+  const onResultRun = useStableHandler((intent: Intent) => run(intent));
+  const onResultChoose = useStableHandler((key: string) => {
+    setSelectedKey(key);
+    setChosenKey(key);
+    keepShown();
+  });
+  const onResultCopy = useStableHandler(copyVerse);
+  const onResultHowTo = useStableHandler(() => setPanel('help'));
+  const onResultToggleBooks = useStableHandler(() => setAllBooks((now) => !now));
+  const showKeys = !touch && pickable.length > 1;
+  const keysCopy = activeRow?.type === 'verse' ? withModifier('C') : null;
+  const keysHint = useMemo(() => (showKeys ? { esc: t('bible.search.keysClear'), copy: keysCopy } : null), [showKeys, keysCopy, t]);
   const card = surface === 'page'
     ? 'mt-2 w-full overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900'
     : 'mt-2';
@@ -527,12 +541,12 @@ export function BibleSearch({ bible, locale, wide, surface, hereBook = null, aut
             showHowTo={touch && !wide && !focused && surface === 'page'}
             keysHint={keysHint}
             optionId={optionId}
-            onRun={run}
-            onChoose={(key) => { setSelectedKey(key); setChosenKey(key); keepShown(); }}
-            onCopy={copyVerse}
+            onRun={onResultRun}
+            onChoose={onResultChoose}
+            onCopy={onResultCopy}
             copiedKey={isCopied ? copiedKey : null}
-            onHowTo={() => setPanel('help')}
-            onToggleBooks={() => setAllBooks((now) => !now)}
+            onHowTo={onResultHowTo}
+            onToggleBooks={onResultToggleBooks}
           />
         </div>
       ) : null}

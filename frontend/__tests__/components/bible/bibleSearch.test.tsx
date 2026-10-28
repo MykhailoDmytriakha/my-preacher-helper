@@ -259,29 +259,35 @@ describe('the one line', () => {
 
   // Lines are pasted, not typed, where the test is about what follows: every keystroke searches the whole
   // New Testament again, and the build machine (two cores) ran out of its 15 s on a typed one (2026-10-23).
-  it('shows forty verses, and forty more at a press, the arrows on the first of them', async () => {
+  // The owner, 2026-10-27: a hundred at a time, not forty.
+  it('shows a hundred verses, and the next hundred at a press, the arrows on the first of them', async () => {
     const { line } = renderLine();
     await userEvent.click(line);
     await userEvent.paste('НЗ благодать');
     await screen.findByText('bible.search.verses{"count":122}');
-    expect(options()).toHaveLength(41);
-    expect(showMore().closest('[role="option"]')).toBe(options()[40]);
-    expect(screen.getByText('bible.search.shownOf{"shown":40,"count":122}')).toBeInTheDocument();
-    await userEvent.click(showMore());
-    expect(screen.getByText('bible.search.shownOf{"shown":80,"count":122}')).toBeInTheDocument();
-    expect(options()).toHaveLength(81);
-    expect(options()[40]).toHaveAttribute('aria-selected', 'true');
-    // The last steps show the rest — the word's own 120 verses, then its 2 of the same stem under their line — and
-    // nothing is left to press (Enter on it: `rowForEnter`, searchModel.test.ts).
-    await userEvent.click(showMore());
-    expect(options()).toHaveLength(121);
+    expect(options()).toHaveLength(101);
+    expect(showMore().closest('[role="option"]')).toBe(options()[100]);
+    expect(screen.getByText('bible.search.shownOf{"shown":100,"count":122}')).toBeInTheDocument();
+    // The rest at the press — the word's own 120 verses, then its 2 of the same stem under their line — and nothing is
+    // left to press (Enter on it: `rowForEnter`, searchModel.test.ts).
     await userEvent.click(showMore());
     expect(options()).toHaveLength(122);
+    expect(options()[100]).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByText(/^bible\.search\.kinHead/)).toBeInTheDocument();
     expect(screen.queryByText(/^bible\.search\.showMore/)).not.toBeInTheDocument();
-    // Another line starts again from the first forty.
+    // Another line starts again from the first hundred.
     await userEvent.paste(' Христа');
-    await waitFor(() => expect(options().length).toBeLessThanOrEqual(41));
+    await waitFor(() => expect(options().length).toBeLessThanOrEqual(101));
+  });
+
+  // A page is a hundred now; the books are still offered past forty, as when forty were a page.
+  it('offers the books of a search past forty verses, though they fit in one page: «Евангелия хлеб»', async () => {
+    const { line } = renderLine();
+    await userEvent.click(line);
+    await userEvent.paste('Евангелия хлеб');
+    await screen.findByText('bible.search.verses{"count":80}');
+    expect(screen.queryByText(/^bible\.search\.showMore/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^От Матфея/ })).toBeInTheDocument();
   });
 
   describe('on a touch screen', () => {
@@ -366,12 +372,13 @@ describe('the line under pressure (Codex review, 2026-10-23)', () => {
     await userEvent.paste(typed);
     await screen.findByText('bible.search.verses{"count":122}');
     await userEvent.click(showMore());
-    await userEvent.keyboard('{Enter}');                     // the 41st verse, where «Показать ещё» put the arrows
+    await userEvent.keyboard('{Enter}');                     // the 101st verse, where «Показать ещё» put the arrows
     const opened = first.onOpen.mock.calls[0][0];
     document.body.innerHTML = '';
     render(<BibleSearch bible="rst" locale="ru" wide surface="window" openWithRecent autoFocus onOpen={jest.fn()} />);
     await userEvent.keyboard('{Enter}');                     // the first search of the history
-    await screen.findByText('bible.search.shownOf{"shown":80,"count":122}');
+    // All 122 shown again, as when the verse was opened.
+    await waitFor(() => expect(options()).toHaveLength(122));
     const selected = await waitFor(() => {
       const chosen = document.querySelector<HTMLElement>('[role="option"][aria-selected="true"]');
       expect(chosen).not.toBeNull();
