@@ -18,15 +18,17 @@ import { withModifier } from '@/utils/keyboardModifier';
 import { verseCopyText } from '@/utils/verseCopy';
 
 import { booksOf, bookSequence } from '../bookOrder';
-import { clearSearchHistory, forgetSearch, rememberSearch, restoreSearchHistory, useSearchHistory, type SearchHistoryEntry } from '../searchHistoryStore';
+import { clearSearchHistory, rememberSearch, restoreSearchHistory, useSearchHistory, type SearchHistoryEntry } from '../searchHistoryStore';
 import { copyNamesOf } from '../verseCopy/useVerseCopy';
 
 import { lastSearchOf, openedFrom, rememberOpened } from './lastSearch';
 import { SearchHelp } from './SearchHelp';
 import { SearchHistory, type HistoryRow } from './SearchHistory';
+import { searchToKeep } from './searchKeeping';
 import { buildSearchModel, rowForEnter, SHOWN_VERSES, type Intent, type OpenTarget } from './searchModel';
 import { SearchResults, type VerseRow } from './SearchResults';
 import { SignBar, type SearchSign } from './SignBar';
+import { useSearchKeeping } from './useSearchKeeping';
 
 import type { AppLocale } from '@/utils/appLocale';
 
@@ -60,6 +62,24 @@ export type BibleSearchProps = {
 };
 
 const ICON_BUTTON = 'inline-flex shrink-0 items-center justify-center rounded-[10px] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500';
+
+/** The row lit in the results: on a touch screen only one chosen by a press or the arrows, on a computer the arrows' row. */
+const litKeyOf = (touch: boolean, chosenKey: string | null, activeKey: string | null): string | null => {
+  if (!touch) return activeKey;
+  return chosenKey !== null && chosenKey === activeKey ? chosenKey : null;
+};
+
+/**
+ * The line let go: the bar of signs leaves after the press that took the focus has landed — it stands above the
+ * results, and gone at once it moved them under the finger, a pressed verse was missed (2026-10-27).
+ */
+const blurAfterPress = (input: HTMLInputElement | null, setFocused: (focused: boolean) => void) => {
+  window.setTimeout(() => { if (document.activeElement !== input) setFocused(false); }, 0);
+};
+
+/** ⌘C / Ctrl+C on the line with nothing selected in it: the chosen verse is copied, a selection stays the line's. */
+const isCopyVerseKey = (event: React.KeyboardEvent<HTMLInputElement>) =>
+  (event.metaKey || event.ctrlKey) && event.code === 'KeyC' && event.currentTarget.selectionStart === event.currentTarget.selectionEnd;
 
 export function BibleSearch({ bible, locale, wide, surface, hereBook = null, autoFocus = false, openWithRecent = false, onOpen, children }: BibleSearchProps) {
   const { t, i18n } = useTranslation();
@@ -108,11 +128,16 @@ export function BibleSearch({ bible, locale, wide, surface, hereBook = null, aut
       opened: openedFrom(bible, searched, asWords), offline, layoutFixed, limit: limitFor(text),
       booksBegun,
     }, (bookId, chapter, verse) => index.index.verseText(bookId, chapter, verse));
-    return { model, searched };
+    return { model, searched, keep: searchToKeep(reading, answer, searched, asWords, model.rows.some((row) => row.type === 'verse')) };
     // `index` changes whenever a book joins it: a new book answers again.
   }, [bible, books, hereBook, asWords, index, answering, locale, t, wide, allBooks, fixChapters, offline, limitFor]);
 
-  const { model, searched: searchedLine } = useMemo(() => understand(deferred), [understand, deferred]);
+  const { model, searched: searchedLine, keep } = useMemo(() => understand(deferred), [understand, deferred]);
+
+  // The history keeps a search worked with (`searchKeeping.ts`).
+  // An IME's word being composed is not yet the line: no clock, no keys (Codex review, 2026-10-27).
+  const [composing, setComposing] = useState(false);
+  const { keepLine, keepShown, forgetEntry, declineAll, launched } = useSearchKeeping(keep, bible, line.trim() !== '' && panel === 'none' && deferred === line && !composing, line);
 
   const pickable = model.rows.filter((row) => row.type === 'place' || row.type === 'book' || row.type === 'verse' || row.type === 'showMore');
   // Nothing chosen yet: the first row. A chosen row that left the list (beyond those shown) chooses
@@ -165,6 +190,8 @@ export function BibleSearch({ bible, locale, wide, surface, hereBook = null, aut
    */
   const writeAgain = (entry: SearchHistoryEntry) => {
     const wordsOn = Boolean(entry.asWords);
+    // Run again, it is used again: to the top at once.
+    rememberSearch(entry.line, bible, wordsOn);
     write(entry.line, wordsOn);
     const last = lastSearchOf(bible, entry.line, wordsOn);
     if (last) {
@@ -182,6 +209,7 @@ export function BibleSearch({ bible, locale, wide, surface, hereBook = null, aut
     if (row.run.kind !== 'open') return;
     const { bookId, chapter, verse } = row.run.target;
     setCopiedKey(row.key);
+    keepShown();
     void copyToClipboard(verseCopyText([{ chapter, verse, words: row.pieces.map((piece) => piece.text).join('') }], 'quote', copyNamesOf(bible, bookId, i18n.language, t)));
   };
 
@@ -191,16 +219,18 @@ export function BibleSearch({ bible, locale, wide, surface, hereBook = null, aut
     switch (intent.kind) {
       case 'open': {
         if (intent.fromSearch) {
-          rememberSearch(from, bible, asWords);
+          keepLine(from, asWords);
           rememberOpened(bible, from, asWords, `${intent.target.bookId} ${intent.target.chapter}:${intent.target.verse}`, limitFor(typed));
         }
         onOpen(intent.target);
         break;
       }
       case 'write':
+        launched(intent.line, Boolean(intent.asWords), intent.line);
         write(intent.line, intent.asWords);
         break;
       case 'asWords':
+        launched(from, intent.on, line);
         setAsWords(intent.on);
         setSelectedKey(null);
         if (!touch) focusLine();
@@ -209,6 +239,7 @@ export function BibleSearch({ bible, locale, wide, surface, hereBook = null, aut
         setFixChapters(true);
         break;
       case 'more':
+        keepShown();
         setMore({ line: lineKey(typed), asWords, limit: intent.limit });
         setSelectedKey(intent.next);
         if (!touch) {
@@ -254,13 +285,14 @@ export function BibleSearch({ bible, locale, wide, surface, hereBook = null, aut
 
   const step = (event: React.KeyboardEvent) => (event.key === 'ArrowDown' ? 1 : -1);
   const onKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.nativeEvent.isComposing) return;
     const choosing = event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Enter';
     // The keys belong to what is in sight: the history walks its searches, the help takes none, and only
     // the results — when nothing covers them — are chosen and opened.
     // Shift+Delete takes the chosen search out of the history, as in a browser's address line.
     if (panel === 'history' && event.key === 'Delete' && event.shiftKey && historyActive !== null) {
       event.preventDefault();
-      forgetSearch(history[historyActive]);
+      forgetEntry(history[historyActive]);
       return;
     }
     if (panel === 'history' && choosing) {
@@ -275,8 +307,7 @@ export function BibleSearch({ bible, locale, wide, surface, hereBook = null, aut
       return;
     }
     // ⌘C / Ctrl+C with nothing selected in the line copies the chosen verse: the keyboard's «Копировать».
-    if (panel === 'none' && (event.metaKey || event.ctrlKey) && event.code === 'KeyC' && activeRow?.type === 'verse'
-      && event.currentTarget.selectionStart === event.currentTarget.selectionEnd) {
+    if (panel === 'none' && isCopyVerseKey(event) && activeRow?.type === 'verse') {
       event.preventDefault();
       copyVerse(activeRow);
       return;
@@ -287,6 +318,8 @@ export function BibleSearch({ bible, locale, wide, surface, hereBook = null, aut
       const next = pickable[Math.max(0, Math.min(pickable.length - 1, now + step(event)))].key;
       setSelectedKey(next);
       setChosenKey(next);
+      // A verse reached is a verse chosen; a book's name among the suggestions is still being typed («Иоа»).
+      if (pickable.find((row) => row.key === next)?.type === 'verse') keepShown();
       bringIntoSight(next);
       return;
     }
@@ -399,9 +432,9 @@ export function BibleSearch({ bible, locale, wide, surface, hereBook = null, aut
             }}
             onKeyDown={onKeyDown}
             onFocus={() => setFocused(true)}
-            // The bar of signs leaves after the press that took the focus has landed: it stands above the results,
-            // and gone at once it moved them under the finger — a pressed verse was missed (2026-10-27).
-            onBlur={() => { window.setTimeout(() => { if (document.activeElement !== inputRef.current) setFocused(false); }, 0); }}
+            onCompositionStart={() => setComposing(true)}
+            onCompositionEnd={() => setComposing(false)}
+            onBlur={() => blurAfterPress(inputRef.current, setFocused)}
             autoFocus={autoFocus}
             autoComplete="off"
             autoCorrect="off"
@@ -461,8 +494,11 @@ export function BibleSearch({ bible, locale, wide, surface, hereBook = null, aut
             example={t(`bible.search.examples.${bible}.book`)}
             onPick={writeAgain}
             onTry={(example) => write(example)}
-            onRemove={forgetSearch}
-            onClear={() => setCleared(clearSearchHistory())}
+            onRemove={forgetEntry}
+            onClear={() => {
+              declineAll();
+              setCleared(clearSearchHistory());
+            }}
             onUndo={() => {
               if (cleared) restoreSearchHistory(cleared);
               setCleared(null);
@@ -485,15 +521,14 @@ export function BibleSearch({ bible, locale, wide, surface, hereBook = null, aut
             model={model}
             listId={listId}
             textLang={language}
-            // On a touch screen nothing is under the arrows: only a verse pressed is lit.
-            selectedKey={touch ? (chosenKey !== null && chosenKey === activeKey ? chosenKey : null) : activeKey}
+            selectedKey={litKeyOf(touch, chosenKey, activeKey)}
             wide={wide}
             touch={touch}
             showHowTo={touch && !wide && !focused && surface === 'page'}
             keysHint={keysHint}
             optionId={optionId}
             onRun={run}
-            onChoose={(key) => { setSelectedKey(key); setChosenKey(key); }}
+            onChoose={(key) => { setSelectedKey(key); setChosenKey(key); keepShown(); }}
             onCopy={copyVerse}
             copiedKey={isCopied ? copiedKey : null}
             onHowTo={() => setPanel('help')}

@@ -3,9 +3,9 @@ import { keptLine, lineKey } from '@/utils/bibleSearch/words';
 import { deviceChoice } from '@/utils/deviceChoice';
 
 /*
- * THE SEARCH HISTORY ON THIS DEVICE: the searches a verse was opened from, newest first (the owner,
- * 2026-10-23: a button by «?» in the line). A search joins when a verse is opened from it, not on every
- * keystroke, so «Ио», «Иоа», «Иоан» never fill it. It lives on the device, as the trail of places does —
+ * THE SEARCH HISTORY ON THIS DEVICE: the searches worked with, newest first (the owner, 2026-10-23: a button
+ * by «?» in the line). Which search joins and when is `search/searchKeeping.ts` — an act on its results, or
+ * ten seconds unchanged in sight — never every keystroke, so «Ио», «Иоа», «Иоан» never fill it. It lives on the device, as the trail of places does —
  * nothing is written to the account on a move through the Bible — and each search keeps the Bible it
  * was typed for: words of the Synodal text find nothing in the King James.
  */
@@ -48,7 +48,8 @@ export function rememberSearch(line: string, bible: BibleId, asWords = false, at
 }
 
 export function forgetSearch(entry: SearchHistoryEntry): void {
-  historyChoice.save({ entries: historyChoice.read().entries.filter((each) => each !== entry && !(each.at === entry.at && each.line === entry.line)) });
+  const isIt = (each: SearchHistoryEntry) => each === entry || (each.at === entry.at && sameSearch(each, entry.line, entry.bible, Boolean(entry.asWords)));
+  historyChoice.save({ entries: historyChoice.read().entries.filter((each) => !isIt(each)) });
 }
 
 /** Clears the history and gives back what it held, for «Вернуть». */
@@ -58,8 +59,11 @@ export function clearSearchHistory(): SearchHistoryEntry[] {
   return before;
 }
 
+/** «Вернуть»: what was cleared comes back under what was kept since — a later search is not lost (Codex, 2026-10-27). */
 export function restoreSearchHistory(entries: SearchHistoryEntry[]): void {
-  historyChoice.save({ entries: entries.slice(0, KEPT) });
+  const since = historyChoice.read().entries;
+  const back = entries.filter((entry) => !since.some((each) => sameSearch(each, entry.line, entry.bible, Boolean(entry.asWords))));
+  historyChoice.save({ entries: [...since, ...back].slice(0, KEPT) });
 }
 
 export function useSearchHistory(): SearchHistoryEntry[] {
