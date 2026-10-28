@@ -15,7 +15,9 @@ import { diagnosticEvents } from '@/utils/appDiagnostics';
 import { bibleCrossRefsBase } from '@/utils/bibleCrossRefsCache';
 import { coversChapter, crossReferenceLabel, crossReferencesAt, forgetLoadedCrossRefs, isMainReference, type CrossReference, type CrossRefsBook } from '@/utils/crossReferences';
 
+import { getLocalizedAbbrev } from '@/utils/bibleBooks';
 import { bookSlug, verseWords, type BookText } from '@/utils/bibleText';
+import { verseCopyText } from '@/utils/verseCopy';
 
 const render = (ui: React.ReactNode, options?: Parameters<typeof renderUI>[1]) => renderUI(ui, { wrapper: ReaderShell, ...options });
 
@@ -97,8 +99,30 @@ describe('cross references in the Bible reader', () => {
   it('shows a main link\'s verse whole, never cut after two lines', async () => {
     renderRuth();
     const dialog = await openLinksOfSubject();
-    const row = within(dialog).getByText(label(subject.main[0])).closest('button') as HTMLElement;
+    const row = within(dialog).getByText(label(subject.main[0])).closest('li') as HTMLElement;
     expect(row.querySelector('.line-clamp-2')).toBeNull();
+  });
+
+  // The owner, 2026-10-27: a link's own copy sign by its name — shown where a mouse comes over the row, always where
+  // there is no hover — copies its whole passage, and turns into a tick.
+  it('a link copies its passage from its own sign, which turns into a tick; a press on the row still opens it', async () => {
+    const writeText = jest.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    Object.defineProperty(window, 'isSecureContext', { value: true, configurable: true });
+    renderRuth();
+    const dialog = await openLinksOfSubject();
+    const reference = subject.main[0];
+    const row = within(dialog).getByRole('button', { name: label(reference) }).closest('li') as HTMLElement;
+    await userEvent.click(await within(row).findByRole('button', { name: 'bible.copy.copyVerse' }));
+    const text = publicFile(`bible-text/rst/v1/${bookSlug(reference.book)}.json`) as BookText;
+    const verses = text.chapters[reference.chapter - 1].slice(reference.fromVerse - 1, reference.toVerse)
+      .map((verse, k) => ({ chapter: reference.chapter, verse: reference.fromVerse + k, words: verseWords(verse) }));
+    expect(writeText).toHaveBeenCalledWith(verseCopyText(verses, 'quote', { book: getLocalizedAbbrev(reference.book, 'ru'), mark: 'bible.translations.rst.short' }));
+    await waitFor(() => expect(within(row).getByRole('button', { name: 'bible.copy.copiedVerse' })).toBeInTheDocument());
+    // The sign is its own button: the copy did not open the link; a press on the row does.
+    expect(screen.queryByRole('heading', { name: label(reference) })).not.toBeInTheDocument();
+    await userEvent.click(within(row).getByText(label(reference)));
+    expect(screen.getByRole('heading', { name: label(reference) })).toBeInTheDocument();
   });
 
   it('the rest of a verse\'s links: a switch beside the open row shows them as verses with their text, the same choice as in the "T" menu', async () => {
@@ -120,7 +144,8 @@ describe('cross references in the Bible reader', () => {
     const verses = publicFile(`bible-text/rst/v1/${bookSlug(others[0].book)}.json`).chapters[others[0].chapter - 1] as string[];
     const start = verseWords(verses[others[0].fromVerse - 1]).split(' ').slice(0, 4).join(' ');
     expect(await within(dialog).findByText((text) => text.startsWith(start))).toBeInTheDocument();
-    expect(within(dialog).queryByRole('button', { name: label(first) })).not.toBeInTheDocument();
+    // Each place now stands with its verse's words, not as a chip alone.
+    expect(within(dialog).getByRole('button', { name: label(others[0]) }).closest('li')?.textContent).toContain(start);
   });
 
   // The owner's iPad, 2026-10-16: a small switch laid over the row's own button; a finger a few pixels

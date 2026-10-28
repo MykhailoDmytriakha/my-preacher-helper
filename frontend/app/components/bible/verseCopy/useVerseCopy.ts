@@ -11,7 +11,7 @@ import { getLocalizedAbbrev } from '@/utils/bibleBooks';
 import { BIBLES, bibleForLocale, type BibleId } from '@/utils/bibles';
 import { verseWords, type BookText } from '@/utils/bibleText';
 import { copyPlainText } from '@/utils/clipboard';
-import { copiedPlace, defaultCopyFormat, verseCopyText, type CopyFormat, type CopyNames } from '@/utils/verseCopy';
+import { copiedPlace, DEFAULT_COPY_FORMAT, verseCopyText, type CopyFormat, type CopyNames } from '@/utils/verseCopy';
 
 import { VERSE_CHOSEN_ATTRIBUTE, VERSE_HELD_ATTRIBUTE, type RibbonCrossRefs } from '../BookRibbon';
 
@@ -228,7 +228,7 @@ export function useVerseCopy({ textRef, text, bible, bookId, drawn, crossRefs, e
       if (!verses.length) return;
       const now = copyRef.current;
       event.preventDefault();
-      event.clipboardData.setData('text/plain', verseCopyText(verses, defaultCopyFormat(verses.length), now.names, now.chapterLength));
+      event.clipboardData.setData('text/plain', verseCopyText(verses, DEFAULT_COPY_FORMAT, now.names, now.chapterLength));
       toast.success(now.t('bible.copy.copiedWithPlace', { place: copiedPlace(now.names.book, verses) }));
       actedRef.current?.(verses);
     };
@@ -241,7 +241,7 @@ export function useVerseCopy({ textRef, text, bible, bookId, drawn, crossRefs, e
     menu, openMenu, closeMenu: useCallback(() => setMenu(null), []),
     hold: setHeld,
     picked, picking: choosing, startPicking, toggle, rangeTo, clear,
-    format: format ?? defaultCopyFormat(picked?.length ?? 1), setFormat,
+    format: format ?? DEFAULT_COPY_FORMAT, setFormat,
     copy, share, canShare,
     wordsOf, labelOf, placeOf, linksOf, openLinks,
   };

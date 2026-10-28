@@ -174,7 +174,7 @@ describe('taking verses out of the reader', () => {
     window.getSelection()!.removeAllRanges();
   });
 
-  it('«Выбрать несколько»: presses choose verses, Shift chooses a passage, the bar copies them numbered', async () => {
+  it('«Выбрать несколько»: presses choose verses, Shift chooses a passage, the bar copies them as a quote', async () => {
     await renderRuth();
     await hold(verseText('1:16'));
     await userEvent.click(screen.getByRole('menuitem', { name: 'bible.copy.several' }));
@@ -188,7 +188,8 @@ describe('taking verses out of the reader', () => {
     fireEvent.click(verseText('1:20'), { shiftKey: true });
     expect(within(bar).getByText('Руф 1:16–20')).toBeInTheDocument();
     await userEvent.click(within(bar).getByRole('button', { name: 'bible.copy.copy' }));
-    expect(writeText).toHaveBeenCalledWith([`Руф 1:16–20 (${MARK}):`, ...[16, 17, 18, 19, 20].map((verse) => `${verse} ${words(1, verse)}`)].join('\n'));
+    // The owner, 2026-10-27: a quote by default, several verses too.
+    expect(writeText).toHaveBeenCalledWith(quote(16, 17, 18, 19, 20));
     expect(screen.queryByRole('region', { name: /Руф/ })).toBeNull();
     expect(document.querySelector('[data-verse-chosen]')).toBeNull();
   });
@@ -223,14 +224,14 @@ describe('taking verses out of the reader', () => {
     expect(screen.getByRole('region', { name: 'Руф 1:16, 19' })).toBeInTheDocument();
   });
 
-  it('the bar copies as a quote when asked, and Escape lets the choice go', async () => {
+  it('the bar copies numbered when asked, and Escape lets the choice go', async () => {
     await renderRuth();
     await hold(verseText('1:16'));
     await userEvent.click(screen.getByRole('menuitem', { name: 'bible.copy.several' }));
     await userEvent.click(verseText('1:17'));
-    await userEvent.click(screen.getByRole('button', { name: 'bible.copy.asQuote' }));
+    await userEvent.click(screen.getByRole('button', { name: 'bible.copy.numbered' }));
     await userEvent.click(screen.getByRole('button', { name: 'bible.copy.copy' }));
-    expect(writeText).toHaveBeenCalledWith(quote(16, 17));
+    expect(writeText).toHaveBeenCalledWith([`Руф 1:16–17 (${MARK}):`, `16 ${words(1, 16)}`, `17 ${words(1, 17)}`].join('\n'));
 
     await hold(verseText('1:16'));
     await userEvent.click(screen.getByRole('menuitem', { name: 'bible.copy.several' }));
@@ -327,11 +328,10 @@ describe('taking verses out of the reader', () => {
     Object.defineProperty(event, 'clipboardData', { value: { setData } });
     document.dispatchEvent(event);
     expect(event.defaultPrevented).toBe(true);
-    expect(setData).toHaveBeenCalledWith('text/plain', [
-      `Руф 1:16–17 (${MARK}):`,
-      `16 …${squeeze(verseText('1:16').textContent!.slice(4))}`,
-      `17 ${squeeze(to.data.slice(0, 12))}…`,
-    ].join('\n'));
+    // A quote, as every copy by default: cut at both ends, and so said.
+    const copied = setData.mock.calls[0][1] as string;
+    expect(copied.startsWith(`Руф 1:16–17 (${MARK}): "…${squeeze(verseText('1:16').textContent!.slice(4))}`)).toBe(true);
+    expect(copied.endsWith(`${squeeze(to.data.slice(0, 12))}…"`)).toBe(true);
     window.getSelection()!.removeAllRanges();
   });
 });

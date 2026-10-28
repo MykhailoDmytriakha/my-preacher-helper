@@ -29,8 +29,8 @@ export type VerseForCopy = { chapter: number; verse: number; words: string; cutS
  */
 export type CopyNames = { book: string; mark?: string };
 
-/** One verse goes as a quote, several as numbered verses: the person changes it in the bar. */
-export const defaultCopyFormat = (count: number): CopyFormat => (count === 1 ? 'quote' : 'numbered');
+/** Verses go as a quote, one or several: the numbers are asked for in the bar (the owner, 2026-10-27). */
+export const DEFAULT_COPY_FORMAT: CopyFormat = 'quote';
 
 const ELLIPSIS = '…';
 

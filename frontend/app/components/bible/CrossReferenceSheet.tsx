@@ -12,13 +12,13 @@ import { getBookIds, getLocalizedAbbrev, getLocalizedBookName } from '@/utils/bi
 import { BIBLES } from '@/utils/bibles';
 import { verseWords, type BookText } from '@/utils/bibleText';
 import { coversChapter, crossReferenceLabel, crossReferencesAt, isMainReference, type CrossReference, type CrossRefsBook } from '@/utils/crossReferences';
-import { verseCopyText } from '@/utils/verseCopy';
+import { verseCopyText, type CopyNames } from '@/utils/verseCopy';
 
 import { ARRIVAL_ATTRIBUTE, ChapterVerses } from './BookRibbon';
 import { saveCrossReferencePrefs, useCrossReferencePrefs } from './crossReferencePrefs';
 import { ReaderSheet, SheetCloseButton } from './ReaderSheet';
 import { useBookTexts } from './useBookTexts';
-import { useCopyNames } from './verseCopy/useVerseCopy';
+import { copyNamesOf, useCopyNames } from './verseCopy/useVerseCopy';
 import { passageAway, restingScrollTop, type PassageBox } from './verseSheetGeometry';
 
 import type { AppLocale } from '@/utils/appLocale';
@@ -46,6 +46,13 @@ type CrossReferenceSheetProps = {
   /** The layer of one link's window, opened over this one: a step above `layerClassName`. */
   linkLayerClassName?: string;
 };
+
+/** A link's whole passage as copied: the place, then its words — all its verses, not only those shown. */
+function passageCopy(text: BookText | undefined, reference: CrossReference, names: CopyNames): string | null {
+  const verses = text?.chapters[reference.chapter - 1]?.slice(reference.fromVerse - 1, reference.toVerse);
+  if (!verses?.length) return null;
+  return verseCopyText(verses.map((verse, k) => ({ chapter: reference.chapter, verse: reference.fromVerse + k, words: verseWords(verse) })), 'quote', names);
+}
 
 function passageText(text: BookText | undefined, reference: CrossReference): string | null {
   const verses = text?.chapters[reference.chapter - 1];
@@ -217,16 +224,19 @@ function inBibleOrder(references: readonly CrossReference[]): CrossReference[] {
 /**
  * One link as a verse: its name and its whole text. How many sources give it is not written: the
  * main and the rest already say it (the owner, 2026-10-19, did not read "5 independent sources").
+ * A press anywhere on it opens it (the name's button covers the row); its copy sign stands by the name — shown
+ * where a mouse comes over the row, always where there is no hover (the owner, 2026-10-27).
  */
-function ReferenceRow({ reference, label, text, onPick }: {
-  reference: CrossReference; label: string; text: string | null; onPick: (reference: CrossReference) => void;
+function ReferenceRow({ reference, label, text, copyText, onPick }: {
+  reference: CrossReference; label: string; text: string | null; copyText: string | null; onPick: (reference: CrossReference) => void;
 }) {
   return (
-    <li className="border-b border-gray-100 last:border-b-0 dark:border-gray-800">
-      <button type="button" onClick={() => onPick(reference)} className="block w-full py-2.5 text-left">
-        <span className="block font-semibold text-indigo-700 dark:text-indigo-300">{label}</span>
-        <span className="mt-0.5 block font-serif text-[15px] leading-snug text-gray-700 dark:text-gray-300">{text ?? '…'}</span>
-      </button>
+    <li className="group relative border-b border-gray-100 py-2.5 last:border-b-0 dark:border-gray-800">
+      <span className="flex items-center">
+        <button type="button" onClick={() => onPick(reference)} className="text-left font-semibold text-indigo-700 after:absolute after:inset-0 dark:text-indigo-300">{label}</button>
+        {copyText ? <CopyVerseButton text={copyText} place={label} revealOnHover /> : null}
+      </span>
+      <span className="mt-0.5 block font-serif text-[15px] leading-snug text-gray-700 dark:text-gray-300">{text ?? '…'}</span>
     </li>
   );
 }
@@ -235,7 +245,7 @@ function ReferenceRow({ reference, label, text, onPick }: {
  * The verse's copy sign, at the end of its words (the owner, 2026-10-27: a known sign needs no caption; it stands
  * after the text, a little low). Pressed, it turns into a tick for a moment: the verse is in the clipboard.
  */
-function CopyVerseButton({ text, place }: { text: string; place: string }) {
+function CopyVerseButton({ text, place, revealOnHover = false }: { text: string; place: string; revealOnHover?: boolean }) {
   const { t } = useTranslation();
   const { isCopied, copyToClipboard } = useClipboard({ successDuration: 2000, onError: () => toast.error(t('bible.copy.failed')) });
   const label = t(isCopied ? 'bible.copy.copiedVerse' : 'bible.copy.copyVerse', { place });
@@ -245,7 +255,7 @@ function CopyVerseButton({ text, place }: { text: string; place: string }) {
       onClick={() => { void copyToClipboard(text); }}
       aria-label={label}
       title={label}
-      className="-my-2 ml-0.5 inline-flex h-8 w-8 items-center justify-center rounded-lg align-[-0.55em] text-indigo-600 hover:bg-gray-100 dark:text-indigo-300 dark:hover:bg-gray-800"
+      className={`-my-2 ml-0.5 inline-flex h-8 w-8 items-center justify-center rounded-lg align-[-0.55em] text-indigo-600 hover:bg-gray-100 dark:text-indigo-300 dark:hover:bg-gray-800 ${revealOnHover ? `relative z-10 transition-opacity focus-visible:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100 ${isCopied ? 'opacity-100' : 'opacity-0'}` : ''}`}
     >
       {isCopied
         ? <CheckIcon className="h-5 w-5 text-green-600 dark:text-green-400" aria-hidden="true" />
@@ -313,12 +323,13 @@ function ReferenceList({ references, loading, place, verseText, copyText, titleI
   othersOpen: boolean; onToggleOthers: () => void;
   onPick: (reference: CrossReference) => void; onClose: () => void;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { othersAsVerses } = useCrossReferencePrefs();
   const main = references.filter(isMainReference);
   const others = references.filter((reference) => !isMainReference(reference));
   const label = (reference: CrossReference) => crossReferenceLabel(reference, bible, locale);
   const textOf = (reference: CrossReference) => passageText(texts.get(reference.book), reference);
+  const copyOf = (reference: CrossReference) => passageCopy(texts.get(reference.book), reference, copyNamesOf(bible, reference.book, i18n.language, t));
   return (
     <>
       <div className="flex items-center justify-between gap-2">
@@ -332,7 +343,7 @@ function ReferenceList({ references, loading, place, verseText, copyText, titleI
           <h4 className="mt-2 text-xs font-bold uppercase tracking-wide text-gray-600 dark:text-gray-400">{t('bible.crossRefs.mainSection', { number: main.length })}</h4>
           <ul>
             {main.map((reference) => (
-              <ReferenceRow key={label(reference)} reference={reference} label={label(reference)} text={textOf(reference)} onPick={onPick} />
+              <ReferenceRow key={label(reference)} reference={reference} label={label(reference)} text={textOf(reference)} copyText={copyOf(reference)} onPick={onPick} />
             ))}
           </ul>
         </section>
@@ -376,7 +387,7 @@ function ReferenceList({ references, loading, place, verseText, copyText, titleI
           {othersOpen && othersAsVerses ? (
             <ul className="border-t border-gray-100 dark:border-gray-800">
               {inBibleOrder(others).map((reference) => (
-                <ReferenceRow key={label(reference)} reference={reference} label={label(reference)} text={textOf(reference)} onPick={onPick} />
+                <ReferenceRow key={label(reference)} reference={reference} label={label(reference)} text={textOf(reference)} copyText={copyOf(reference)} onPick={onPick} />
               ))}
             </ul>
           ) : othersOpen ? <OtherReferences references={others} bible={bible} locale={locale} onPick={onPick} /> : null}
