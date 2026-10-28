@@ -1,4 +1,4 @@
-import { copiedPlace, defaultCopyFormat, verseCopyText } from '@/utils/verseCopy';
+import { copiedPlace, DEFAULT_COPY_FORMAT, verseCopyText } from '@/utils/verseCopy';
 
 // The names of a reader whose interface speaks the Bible's language: the Bible is not named.
 const ru = { book: 'Рим' };
@@ -88,8 +88,8 @@ describe('verseCopy — a verse taken out of the Bible', () => {
 
   it('the place of verses, and the form a count of verses starts with', () => {
     expect(copiedPlace('Рим', [{ chapter: 8, verse: 32 }, { chapter: 8, verse: 28 }, { chapter: 8, verse: 29 }, { chapter: 8, verse: 28 }])).toBe('Рим 8:28–29, 32');
-    expect(defaultCopyFormat(1)).toBe('quote');
-    expect(defaultCopyFormat(3)).toBe('numbered');
+    // The owner, 2026-10-27: several verses go as a quote too, unless the numbers are asked for in the bar.
+    expect(DEFAULT_COPY_FORMAT).toBe('quote');
     expect(verseCopyText([], 'quote', ru)).toBe('');
   });
 });

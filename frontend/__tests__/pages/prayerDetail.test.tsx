@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 
 import PrayerDetailPage from '@/(pages)/(private)/prayers/[id]/page';
@@ -416,6 +416,44 @@ describe('PrayerDetailPage', () => {
       expect(scrolledElement?.tagName).toBe('MARK');
     } finally {
       Element.prototype.scrollIntoView = originalScrollIntoView;
+    }
+  });
+
+  // BUG-20261027-plan-scrolls-back-to-section, its class: the address's way in is taken once — the prayer saved or
+  // coming again from the server never scrolls back to the target and flashes it again.
+  it('scrolls once and removes its arrival ring even when the prayer changes', async () => {
+    jest.useFakeTimers();
+    const originalScrollIntoView = Element.prototype.scrollIntoView;
+    const scrollIntoView = jest.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    mockSearchParams = new URLSearchParams('q=update&focus=update&updateId=u2');
+    const prayerWithUpdates = {
+      ...activePrayer,
+      updates: [{ id: 'u2', text: 'An update', createdAt: '2026-03-04T00:00:00.000Z' }],
+    };
+    mockUsePrayerDetail.mockReturnValue({ prayer: prayerWithUpdates, isLoading: false });
+    mockUsePrayerRequests.mockReturnValue({
+      prayerRequests: [prayerWithUpdates],
+      loading: false,
+      updatePrayer: jest.fn().mockResolvedValue(undefined),
+      deletePrayer: jest.fn().mockResolvedValue(undefined),
+      addUpdate: jest.fn().mockResolvedValue(undefined),
+      setStatus: jest.fn().mockResolvedValue(undefined),
+    });
+    try {
+      const { rerender } = render(<PrayerDetailPage />);
+      act(() => { jest.advanceTimersByTime(50); });
+      expect(scrollIntoView).toHaveBeenCalledTimes(1);
+      const target = document.getElementById('prayer-update-u2');
+      expect(target).toHaveClass('ring-2');
+      mockUsePrayerDetail.mockReturnValue({ prayer: { ...prayerWithUpdates, title: 'Saved a moment ago' }, isLoading: false });
+      rerender(<PrayerDetailPage />);
+      act(() => { jest.advanceTimersByTime(2200); });
+      expect(target).not.toHaveClass('ring-2');
+      expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    } finally {
+      Element.prototype.scrollIntoView = originalScrollIntoView;
+      jest.useRealTimers();
     }
   });
 

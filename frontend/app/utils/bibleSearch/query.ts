@@ -40,7 +40,13 @@ export type SearchScope =
     /** The book's name is also an everyday word («Плач», «Лев», «Числа»). */
     wordLike: boolean;
   }
-  | { kind: 'part'; part: PartKey; bookIds: readonly string[]; said: string };
+  | { kind: 'part'; part: PartKey; bookIds: readonly string[]; said: string }
+  /**
+   * Several books named one after another («Прит Еккл свет», «Притчи и Екклесиаст свет»). `wordLike` — the first is
+   * also an everyday word («лев Иуды»), so the line may be meant as words; `chapter` — a chapter written after them,
+   * which several books cannot take (the line says so instead of searching them whole silently).
+   */
+  | { kind: 'books'; bookIds: readonly string[]; said: string; wordLike: boolean; chapter: { chapter: number; fromVerse: number | null; toVerse: number | null } | null };
 
 export type SearchQuery = {
   scope: SearchScope | null;
@@ -67,6 +73,10 @@ export type LineReading =
   | { kind: 'empty' }
   | PlaceReading
   | { kind: 'part'; scope: Extract<SearchScope, { kind: 'part' }> }
+  /** Several books and no words yet: the books, each a tap away. */
+  | { kind: 'books'; scope: Extract<SearchScope, { kind: 'books' }> }
+  /** Several books and a chapter after them («Прит Еккл 3 свет»): a chapter belongs to one book — the line says so. */
+  | { kind: 'booksChapter'; query: SearchQuery; scope: Extract<SearchScope, { kind: 'books' }> }
   | { kind: 'scopeBadChapter'; bookId: string; chapter: number; query: SearchQuery }
   | { kind: 'tooShort'; query: SearchQuery }
   | { kind: 'search'; query: SearchQuery; prefixBooks: string[] };
@@ -276,12 +286,116 @@ function bookBeforePlace(words: readonly string[]): { bookId: string; start: num
   return books.size === 1 ? { bookId: [...books][0], start, end: at + 1 } : null;
 }
 
-function scopeAt(words: readonly string[], language: SearchLanguage, books: BookGroups): (SearchScope & { used: number }) | null {
-  const book = bookAtStart(words, language, true);
+/** Words that join the books of a search: «Прит и Еккл свет», «Proverbs and Ecclesiastes light». */
+const BOOKS_JOINED_BY = new Set(['и', 'та', 'й', 'and', '+', '&']);
+
+/**
+ * The books named right after the first, one after another, joined or not: «Прит Еккл», «Прит и Еккл», «Прит, Еккл»
+ * (the owner, 2026-10-27: «поискать в двух книгах, в Притчах и Экклезиасте, «свет»»). A name that is also an
+ * everyday word («плач», «числа») is never a second book: «Прит плач» searches «плач» in Proverbs. Nor is a book
+ * named again: «Мф Ин Иоанн» searches «Иоанн» in Matthew and John (Codex review, 2026-10-27).
+ */
+function booksAfter(words: readonly string[], from: number, language: SearchLanguage, phraseAt: number, first: string): { bookIds: string[]; end: number } {
+  const bookIds: string[] = [first];
+  let end = from;
+  for (let at = from; at < words.length;) {
+    const start = BOOKS_JOINED_BY.has(words[at]) ? at + 1 : at;
+    // A phrase in quotes ends the books: «Мф "Иисус" Иоанн» searches the two words in Matthew (Codex review, 2026-10-27).
+    const next = bookAtStart(words.slice(start, phraseAt), language, true);
+    if (!next || next.start !== 0) break;
+    const said = words.slice(start, start + next.end).join(' ');
+    if ((next.end === 1 && WORD_LIKE_BOOKS.has(said)) || bookIds.includes(next.bookId)) break;
+    bookIds.push(next.bookId);
+    at = start + next.end;
+    end = at;
+  }
+  return { bookIds: bookIds.slice(1), end };
+}
+
+/**
+ * A line's other reading with the books its first letters may stand for: that line, the books, the letters read as
+ * books, whether nothing but a place follows them («корин 13:4»), and the line with those letters as words.
+ */
+export type BooksBegunLine = { line: string; bookIds: string[]; said: string; place: boolean; asWords: string };
+
+/**
+ * The books whose name a word begins, or is without its number: «корин», «коринфянам» — 1 and 2 Corinthians; «екклес» —
+ * Ecclesiastes; with a number before it, that one book: «1 корин». Null unless it is one name — «царст» begins «Царств»
+ * of Samuel and of Kings.
+ */
+function booksNameBegins(word: string | undefined, number: string | null = null): string[] | null {
+  if (!word || word.length < 3 || !/^\p{L}+$/u.test(word)) return null;
+  const named = new Set(CALLING_WORDS.filter((name) => name.word.startsWith(word) && (!number || name.number === number)).map((name) => name.bookId));
+  const bookIds = BIBLE_BOOKS_DATA.filter((book) => named.has(book.id)).map((book) => book.id);
+  return bookIds.length && new Set(bookIds.map((bookId) => bookId.replace(/^[1-4] /, ''))).size === 1 ? bookIds : null;
+}
+
+/**
+ * The book named at a word — exactly, or by the first letters of its name (`said`), with its number apart as «1 Кор» is
+ * written: «1 корин»; null — no book there.
+ */
+function nameAt(words: readonly string[], start: number, lastName: number, language: SearchLanguage): { bookIds: string[]; said: string | null; end: number } | null {
+  const exact = bookAtStart(words.slice(start), language, true);
+  if (exact?.start === 0) return { bookIds: [exact.bookId], said: null, end: start + exact.end };
+  const number = start + 1 > lastName ? null : bookNumber(words[start], true);
+  const name = number ? start + 1 : start;
+  const begun = booksNameBegins(words[name], number);
+  return begun ? { bookIds: begun, said: words[name], end: name + 1 } : null;
+}
+
+/**
+ * The line with the books it may begin with though it names none exactly — a name's first letters, or a numbered book's
+ * name without its number, before the words searched: «корин душ» is «1Кор 2Кор душ», «Прит Екклес свет» is «Притч Еккл
+ * свет» (the owner, 2026-10-27). First letters are never a book by themselves — in a line a word is a word, «петр
+ * сказал» is the apostle — so this is the line's other reading, and the verses each finds choose (`lineChoice.ts`).
+ */
+export function readBooksBegun(raw: string, bible: BibleId): BooksBegunLine | null {
+  const language = languageOf(bible);
+  const quoteAt = raw.search(/["«»„“”]/);
+  const words = searchWordsOf(quoteAt < 0 ? raw : raw.slice(0, quoteAt));
+  // A name is followed by what is searched in it — words or a phrase in quotes; the last word may be still being typed.
+  const lastName = quoteAt < 0 ? words.length - 2 : words.length - 1;
+  const bookIds: string[] = [];
+  const said: string[] = [];
+  let at = 0;
+  for (;;) {
+    const start = bookIds.length && BOOKS_JOINED_BY.has(words[at]) ? at + 1 : at;
+    const named = start > lastName ? null : nameAt(words, start, lastName, language);
+    if (!named) break;
+    bookIds.push(...named.bookIds);
+    if (named.said) said.push(named.said);
+    at = named.end;
+  }
+  if (!said.length) return null;
+  const ids = Array.from(new Set(bookIds));
+  const quoted = quoteAt < 0 ? '' : raw.slice(quoteAt);
+  const after = words.slice(at);
+  // «13 : 4» as the person writes it: «13:4».
+  const rest = [after.join(' ').replace(/\s*([:-])\s*/g, '$1'), quoted].filter(Boolean).join(' ');
+  if (!rest) return null;
+  return {
+    line: `${ids.map((bookId) => getLocalizedAbbrev(bookId, language)).join(' ')} ${rest}`,
+    bookIds: ids,
+    said: said.join(' '),
+    place: !quoted && after.every((word) => PLACE_WORD.test(word)),
+    // The same line with those letters as words: a word with a star is never a book's name.
+    asWords: [...words.slice(0, at).map((word) => (said.includes(word) ? `${word}*` : word)), rest].join(' '),
+  };
+}
+
+function scopeAt(words: readonly string[], language: SearchLanguage, books: BookGroups, phraseAt = words.length): (SearchScope & { used: number }) | null {
+  const book = bookAtStart(words.slice(0, phraseAt), language, true);
   if (book) {
+    const first = words.slice(book.start, book.end).join(' ');
+    const wordLike = book.end - book.start === 1 && WORD_LIKE_BOOKS.has(first);
+    const { bookIds: more, end } = booksAfter(words, book.end, language, phraseAt, book.bookId);
+    if (more.length) {
+      const after = chapterAfter(words, end);
+      const chapter = after.chapter === null ? null : { chapter: after.chapter, fromVerse: after.fromVerse, toVerse: after.toVerse };
+      return { kind: 'books', bookIds: [book.bookId, ...more], said: words.slice(book.start, end).join(' '), wordLike, chapter, used: after.used };
+    }
     const { chapter, fromVerse, toVerse, used } = chapterAfter(words, book.end);
-    const said = words.slice(book.start, book.end).join(' ');
-    return { kind: 'book', bookId: book.bookId, chapter, fromVerse, toVerse, said, wordLike: book.end - book.start === 1 && WORD_LIKE_BOOKS.has(said), used };
+    return { kind: 'book', bookId: book.bookId, chapter, fromVerse, toVerse, said: first, wordLike, used };
   }
   // A part of the Bible, perhaps after «в»/«in».
   const start = words[0] === 'в' || words[0] === 'во' || words[0] === 'у' || words[0] === 'in' ? 1 : 0;
@@ -321,7 +435,9 @@ export function readSearch(raw: string, { bible, books, asWords = false }: Pick<
     return ' ';
   });
   const words = searchWordsOf(outside);
-  const found = asWords ? null : scopeAt(words, language, books);
+  const quoteAt = raw.search(/["«»„“”]/);
+  const phraseAt = quoteAt < 0 ? words.length : searchWordsOf(raw.slice(0, quoteAt)).length;
+  const found = asWords ? null : scopeAt(words, language, books, phraseAt);
   const rest = words.slice(found ? found.used : 0);
   const terms = rest.filter((word) => !STOP.has(word) && !isDigits(word) && word !== ':' && word !== '-' && (word.length > 1 || /[*_]/.test(word)));
   const asLine = (list: string[]) => [list.filter((word) => word !== ':' && word !== '-').join(' '), ...phrases.map((phrase) => `"${phrase.join(' ')}"`)].filter(Boolean).join(' ');
@@ -405,6 +521,19 @@ export function readPlace(raw: string, { bible, hereBook }: Pick<LineContext, 'b
   return placeIn(bible, ref.book, ref.chapter ?? null, ref.fromVerse ?? null, ref.toVerse ?? null, false);
 }
 
+/**
+ * A place said with nothing to search in it is the place itself — a book or a part to open, several books to list —
+ * and a chapter after several books is said to belong to one of them («Прит Еккл 3:1 свет»).
+ */
+function scopeReading(query: SearchQuery, hasWords: boolean, bible: BibleId): LineReading | null {
+  const { scope } = query;
+  if (scope?.kind === 'books' && scope.chapter) return { kind: 'booksChapter', query, scope };
+  if (!scope || hasWords) return null;
+  if (scope.kind === 'part') return { kind: 'part', scope };
+  if (scope.kind === 'books') return { kind: 'books', scope };
+  return placeIn(bible, scope.bookId, scope.chapter, scope.fromVerse, scope.toVerse, false);
+}
+
 /** What the line means, in the order a person means it: a place first, then a search. */
 export function readLine(raw: string, context: LineContext): LineReading {
   if (!raw.trim()) return { kind: 'empty' };
@@ -426,11 +555,9 @@ export function readLine(raw: string, context: LineContext): LineReading {
       query.scope = { ...query.scope, fromVerse: from, toVerse: Math.min(Math.max(toVerse ?? from, from), verses) };
     }
   }
+  const scoped = scopeReading(query, hasWords, context.bible);
+  if (scoped) return scoped;
   const { scope } = query;
-  if (scope?.kind === 'part' && !hasWords) return { kind: 'part', scope };
-  if (scope?.kind === 'book' && !hasWords) {
-    return placeIn(context.bible, scope.bookId, scope.chapter, scope.fromVerse, scope.toVerse, false);
-  }
   if (matchersOf(query).some((matcher) => matcher.tooShort)) return { kind: 'tooShort', query };
   const languages: SearchLanguage[] = Array.from(new Set([languageOf(context.bible), 'ru', 'uk', 'en'] as SearchLanguage[]));
   // Words searched as words offer no book their first letters begin («плач» is not «Плач Иеремии» then).

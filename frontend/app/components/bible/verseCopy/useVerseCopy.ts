@@ -4,17 +4,20 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
+
 import { hasOpenLayer } from '@/hooks/useModalLayer';
 import { resolveAppLocale } from '@/utils/appLocale';
 import { getLocalizedAbbrev } from '@/utils/bibleBooks';
 import { BIBLES, bibleForLocale, type BibleId } from '@/utils/bibles';
 import { verseWords, type BookText } from '@/utils/bibleText';
 import { copyPlainText } from '@/utils/clipboard';
-import { copiedPlace, defaultCopyFormat, verseCopyText, type CopyFormat, type CopyNames } from '@/utils/verseCopy';
+import { copiedPlace, DEFAULT_COPY_FORMAT, verseCopyText, type CopyFormat, type CopyNames } from '@/utils/verseCopy';
 
 import { VERSE_CHOSEN_ATTRIBUTE, VERSE_HELD_ATTRIBUTE, type RibbonCrossRefs } from '../BookRibbon';
 
 import { selectedVerses, verseKey, type VerseAt } from './selectedVerses';
+
+import type { TFunction } from 'i18next';
 
 /**
  * Where the verse's menu was asked for: the press, the row as it stood, whether a finger asked, and whether a hold
@@ -27,16 +30,15 @@ export type VerseMenuAt = VerseAt & { x: number; y: number; touch: boolean; held
  * itself is named — by its short mark in the interface's language — only when it is not the Bible of the interface's
  * language (the owner, 2026-10-27), like every reference mark in the app.
  */
+export function copyNamesOf(bible: BibleId, bookId: string, interfaceLanguage: string, t: TFunction): CopyNames {
+  const book = getLocalizedAbbrev(bookId, BIBLES[bible].language);
+  return bibleForLocale(resolveAppLocale(interfaceLanguage)) === bible ? { book } : { book, mark: t(`bible.translations.${bible}.short`) };
+}
+
+/** `copyNamesOf` for the book being read. */
 export function useCopyNames(bible: BibleId, bookId: string): CopyNames {
   const { t, i18n } = useTranslation();
-  const language = BIBLES[bible].language;
-  const isInterfaceBible = bibleForLocale(resolveAppLocale(i18n.language)) === bible;
-  return useMemo(
-    () => (isInterfaceBible
-      ? { book: getLocalizedAbbrev(bookId, language) }
-      : { book: getLocalizedAbbrev(bookId, language), mark: t(`bible.translations.${bible}.short`) }),
-    [bible, bookId, isInterfaceBible, language, t]
-  );
+  return useMemo(() => copyNamesOf(bible, bookId, i18n.language, t), [bible, bookId, i18n.language, t]);
 }
 
 const subscribeNever = () => () => undefined;
@@ -226,7 +228,7 @@ export function useVerseCopy({ textRef, text, bible, bookId, drawn, crossRefs, e
       if (!verses.length) return;
       const now = copyRef.current;
       event.preventDefault();
-      event.clipboardData.setData('text/plain', verseCopyText(verses, defaultCopyFormat(verses.length), now.names, now.chapterLength));
+      event.clipboardData.setData('text/plain', verseCopyText(verses, DEFAULT_COPY_FORMAT, now.names, now.chapterLength));
       toast.success(now.t('bible.copy.copiedWithPlace', { place: copiedPlace(now.names.book, verses) }));
       actedRef.current?.(verses);
     };
@@ -239,7 +241,7 @@ export function useVerseCopy({ textRef, text, bible, bookId, drawn, crossRefs, e
     menu, openMenu, closeMenu: useCallback(() => setMenu(null), []),
     hold: setHeld,
     picked, picking: choosing, startPicking, toggle, rangeTo, clear,
-    format: format ?? defaultCopyFormat(picked?.length ?? 1), setFormat,
+    format: format ?? DEFAULT_COPY_FORMAT, setFormat,
     copy, share, canShare,
     wordsOf, labelOf, placeOf, linksOf, openLinks,
   };

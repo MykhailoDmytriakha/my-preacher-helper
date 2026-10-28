@@ -3,25 +3,33 @@
 import { ClockIcon, MagnifyingGlassIcon, QuestionMarkCircleIcon, XCircleIcon } from '@heroicons/react/24/outline';
 import { useCallback, useDeferredValue, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import { toast } from 'sonner';
 
+import { useClipboard } from '@/hooks/useClipboard';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
+import { useStableHandler } from '@/hooks/useStableHandler';
 import { BIBLES, type BibleId } from '@/utils/bibles';
-import { fromEnglishLayout } from '@/utils/bibleSearch/keyboardLayout';
-import { readLine, readSearch, type LineReading } from '@/utils/bibleSearch/query';
-import { answerSearch, type SearchAnswer } from '@/utils/bibleSearch/results';
+import { chooseReading } from '@/utils/bibleSearch/lineChoice';
+import { readSearch, type LineReading } from '@/utils/bibleSearch/query';
+import { answerSearch, isBibleWord } from '@/utils/bibleSearch/results';
 import { useSearchIndex } from '@/utils/bibleSearch/searchIndexStore';
 import { lineKey } from '@/utils/bibleSearch/words';
 import { isBrowserOffline } from '@/utils/connectivity';
+import { withModifier } from '@/utils/keyboardModifier';
+import { verseCopyText } from '@/utils/verseCopy';
 
 import { booksOf, bookSequence } from '../bookOrder';
-import { clearSearchHistory, forgetSearch, rememberSearch, restoreSearchHistory, useSearchHistory, type SearchHistoryEntry } from '../searchHistoryStore';
+import { clearSearchHistory, rememberSearch, restoreSearchHistory, useSearchHistory, type SearchHistoryEntry } from '../searchHistoryStore';
+import { copyNamesOf } from '../verseCopy/useVerseCopy';
 
 import { lastSearchOf, openedFrom, rememberOpened } from './lastSearch';
 import { SearchHelp } from './SearchHelp';
 import { SearchHistory, type HistoryRow } from './SearchHistory';
+import { searchToKeep } from './searchKeeping';
 import { buildSearchModel, rowForEnter, SHOWN_VERSES, type Intent, type OpenTarget } from './searchModel';
-import { SearchResults } from './SearchResults';
+import { SearchResults, type VerseRow } from './SearchResults';
 import { SignBar, type SearchSign } from './SignBar';
+import { useSearchKeeping } from './useSearchKeeping';
 
 import type { AppLocale } from '@/utils/appLocale';
 
@@ -56,8 +64,26 @@ export type BibleSearchProps = {
 
 const ICON_BUTTON = 'inline-flex shrink-0 items-center justify-center rounded-[10px] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500';
 
+/** The row lit in the results: on a touch screen only one chosen by a press or the arrows, on a computer the arrows' row. */
+const litKeyOf = (touch: boolean, chosenKey: string | null, activeKey: string | null): string | null => {
+  if (!touch) return activeKey;
+  return chosenKey !== null && chosenKey === activeKey ? chosenKey : null;
+};
+
+/**
+ * The line let go: the bar of signs leaves after the press that took the focus has landed — it stands above the
+ * results, and gone at once it moved them under the finger, a pressed verse was missed (2026-10-27).
+ */
+const blurAfterPress = (input: HTMLInputElement | null, setFocused: (focused: boolean) => void) => {
+  window.setTimeout(() => { if (document.activeElement !== input) setFocused(false); }, 0);
+};
+
+/** ⌘C / Ctrl+C on the line with nothing selected in it: the chosen verse is copied, a selection stays the line's. */
+const isCopyVerseKey = (event: React.KeyboardEvent<HTMLInputElement>) =>
+  (event.metaKey || event.ctrlKey) && event.code === 'KeyC' && event.currentTarget.selectionStart === event.currentTarget.selectionEnd;
+
 export function BibleSearch({ bible, locale, wide, surface, hereBook = null, autoFocus = false, openWithRecent = false, onOpen, children }: BibleSearchProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const touch = useMediaQuery('(pointer: coarse)', false);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const baseId = useId();
@@ -68,6 +94,9 @@ export function BibleSearch({ bible, locale, wide, surface, hereBook = null, aut
   const [asWords, setAsWords] = useState(false);
   // The row the arrows are on, by what it is — a verse that moves down as books arrive stays chosen.
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  // A row chosen by the person — pressed, or reached by the arrows (an iPad's keyboard too): on a touch screen it alone
+  // is lit with its buttons; the first row is chosen by itself only for Enter.
+  const [chosenKey, setChosenKey] = useState<string | null>(null);
   // «Показать ещё» for the line it was pressed on: another line starts again from the first forty.
   const [more, setMore] = useState<{ line: string; asWords: boolean; limit: number } | null>(null);
   const [allBooks, setAllBooks] = useState(false);
@@ -87,33 +116,29 @@ export function BibleSearch({ bible, locale, wide, surface, hereBook = null, aut
   const offline = isBrowserOffline();
   // How many verses a line shows: forty, or as many as «Показать ещё» opened on this very line.
   const limitFor = useCallback((text: string) => (more && more.line === lineKey(text) && more.asWords === asWords ? more.limit : SHOWN_VERSES), [more, asWords]);
+  const answering = useMemo(() => ({
+    answerFor: (each: LineReading) => (each.kind === 'search' && index.indexed > 0 ? answerSearch(index.index, each.query, books) : null),
+    isWord: (word: string) => isBibleWord(index.index, word),
+  }), [index, books]);
   const understand = useCallback((text: string) => {
-    const context = { bible, books, hereBook, asWords };
-    const answerFor = (each: LineReading) => (each.kind === 'search' && index.indexed > 0 ? answerSearch(index.index, each.query, books) : null);
-    let reading = readLine(text, context);
-    let answer: SearchAnswer | null = answerFor(reading);
-    let layoutFixed: string | null = null;
-    const turned = language === 'en' ? null : fromEnglishLayout(text, language);
-    if (turned && reading.kind === 'search' && !reading.prefixBooks.length && (answer?.hits.length ?? 0) === 0) {
-      const second = readLine(turned, context);
-      const secondAnswer = answerFor(second);
-      if (second.kind !== 'search' || second.prefixBooks.length || (secondAnswer?.hits.length ?? 0) > 0) {
-        reading = second;
-        answer = secondAnswer;
-        layoutFixed = turned;
-      }
-    }
+    const { reading, answer, layoutFixed, booksBegun } = chooseReading(text, { bible, books, hereBook, asWords }, answering);
     const searched = layoutFixed ?? text;
     const readAs = asWords ? readSearch(searched, { bible, books }).scope : null;
     const model = buildSearchModel({
       reading, books, answer, index, bible, locale, t, wide, asWords, bookReadAs: readAs?.kind === 'book' ? readAs.bookId : null, allBooks, fixChapters,
       opened: openedFrom(bible, searched, asWords), offline, layoutFixed, limit: limitFor(text),
+      booksBegun,
     }, (bookId, chapter, verse) => index.index.verseText(bookId, chapter, verse));
-    return { model, searched };
+    return { model, searched, keep: searchToKeep(reading, answer, searched, asWords, model.rows.some((row) => row.type === 'verse')) };
     // `index` changes whenever a book joins it: a new book answers again.
-  }, [bible, books, hereBook, asWords, index, language, locale, t, wide, allBooks, fixChapters, offline, limitFor]);
+  }, [bible, books, hereBook, asWords, index, answering, locale, t, wide, allBooks, fixChapters, offline, limitFor]);
 
-  const { model, searched: searchedLine } = useMemo(() => understand(deferred), [understand, deferred]);
+  const { model, searched: searchedLine, keep } = useMemo(() => understand(deferred), [understand, deferred]);
+
+  // The history keeps a search worked with (`searchKeeping.ts`).
+  // An IME's word being composed is not yet the line: no clock, no keys (Codex review, 2026-10-27).
+  const [composing, setComposing] = useState(false);
+  const { keepLine, keepShown, forgetEntry, declineAll, launched } = useSearchKeeping(keep, bible, line.trim() !== '' && panel === 'none' && deferred === line && !composing, line);
 
   const pickable = model.rows.filter((row) => row.type === 'place' || row.type === 'book' || row.type === 'verse' || row.type === 'showMore');
   // Nothing chosen yet: the first row. A chosen row that left the list (beyond those shown) chooses
@@ -166,6 +191,8 @@ export function BibleSearch({ bible, locale, wide, surface, hereBook = null, aut
    */
   const writeAgain = (entry: SearchHistoryEntry) => {
     const wordsOn = Boolean(entry.asWords);
+    // Run again, it is used again: to the top at once.
+    rememberSearch(entry.line, bible, wordsOn);
     write(entry.line, wordsOn);
     const last = lastSearchOf(bible, entry.line, wordsOn);
     if (last) {
@@ -175,22 +202,36 @@ export function BibleSearch({ bible, locale, wide, surface, hereBook = null, aut
     }
   };
 
+  // A verse copied from the results, as the reader copies it: «Ис 47:4: "…"», the Bible named when not the interface's.
+  // One way for the button and for ⌘C / Ctrl+C, so the tick stands on the verse copied either way.
+  const { isCopied, copyToClipboard } = useClipboard({ successDuration: 2000, onError: () => toast.error(t('bible.copy.failed')) });
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const copyVerse = (row: VerseRow) => {
+    if (row.run.kind !== 'open') return;
+    const { bookId, chapter, verse } = row.run.target;
+    setCopiedKey(row.key);
+    keepShown();
+    void copyToClipboard(verseCopyText([{ chapter, verse, words: row.pieces.map((piece) => piece.text).join('') }], 'quote', copyNamesOf(bible, bookId, i18n.language, t)));
+  };
+
   // `from`: the line as searched (turned from the English layout when it was typed so); `typed`: as it
   // stands in the field — what «Показать ещё» is kept by.
   const run = (intent: Intent, from = searchedLine, typed = deferred) => {
     switch (intent.kind) {
       case 'open': {
         if (intent.fromSearch) {
-          rememberSearch(from, bible, asWords);
+          keepLine(from, asWords);
           rememberOpened(bible, from, asWords, `${intent.target.bookId} ${intent.target.chapter}:${intent.target.verse}`, limitFor(typed));
         }
         onOpen(intent.target);
         break;
       }
       case 'write':
+        launched(intent.line, Boolean(intent.asWords), intent.line);
         write(intent.line, intent.asWords);
         break;
       case 'asWords':
+        launched(from, intent.on, line);
         setAsWords(intent.on);
         setSelectedKey(null);
         if (!touch) focusLine();
@@ -199,6 +240,7 @@ export function BibleSearch({ bible, locale, wide, surface, hereBook = null, aut
         setFixChapters(true);
         break;
       case 'more':
+        keepShown();
         setMore({ line: lineKey(typed), asWords, limit: intent.limit });
         setSelectedKey(intent.next);
         if (!touch) {
@@ -214,13 +256,14 @@ export function BibleSearch({ bible, locale, wide, surface, hereBook = null, aut
   const historyKey = history.map((entry) => `${entry.at}:${entry.asWords ? 1 : 0}:${entry.line}`).join('|');
   const historyCounts = useMemo(() => {
     if (panel !== 'history' || index.loading || !index.indexed) return null;
+    // Counted as the line is shown: with the books its first letters begin, or its layout turned, when so it finds more.
     return history.map((entry) => {
-      const each = readLine(entry.line, { bible, books, asWords: entry.asWords });
-      return each.kind === 'search' ? answerSearch(index.index, each.query, books).hits.length : null;
+      const { reading, answer } = chooseReading(entry.line, { bible, books, asWords: entry.asWords }, answering);
+      return reading.kind === 'search' ? answer?.hits.length ?? 0 : null;
     });
     // `historyKey` stands for the entries; `index.version` for the books searched.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [panel, historyKey, index.version, bible, books]);
+  }, [panel, historyKey, index.version, bible, books, answering]);
   const historyRows: HistoryRow[] = history.map((entry, i) => ({ entry, count: historyCounts?.[i] ?? null }));
   const historyActive = history.length ? Math.min(historySelected, history.length - 1) : null;
 
@@ -243,13 +286,14 @@ export function BibleSearch({ bible, locale, wide, surface, hereBook = null, aut
 
   const step = (event: React.KeyboardEvent) => (event.key === 'ArrowDown' ? 1 : -1);
   const onKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.nativeEvent.isComposing) return;
     const choosing = event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Enter';
     // The keys belong to what is in sight: the history walks its searches, the help takes none, and only
     // the results — when nothing covers them — are chosen and opened.
     // Shift+Delete takes the chosen search out of the history, as in a browser's address line.
     if (panel === 'history' && event.key === 'Delete' && event.shiftKey && historyActive !== null) {
       event.preventDefault();
-      forgetSearch(history[historyActive]);
+      forgetEntry(history[historyActive]);
       return;
     }
     if (panel === 'history' && choosing) {
@@ -263,11 +307,20 @@ export function BibleSearch({ bible, locale, wide, surface, hereBook = null, aut
       if (event.key === 'Enter') event.preventDefault();
       return;
     }
+    // ⌘C / Ctrl+C with nothing selected in the line copies the chosen verse: the keyboard's «Копировать».
+    if (panel === 'none' && isCopyVerseKey(event) && activeRow?.type === 'verse') {
+      event.preventDefault();
+      copyVerse(activeRow);
+      return;
+    }
     if ((event.key === 'ArrowDown' || event.key === 'ArrowUp') && pickable.length) {
       event.preventDefault();
       const now = active ?? -1;
       const next = pickable[Math.max(0, Math.min(pickable.length - 1, now + step(event)))].key;
       setSelectedKey(next);
+      setChosenKey(next);
+      // A verse reached is a verse chosen; a book's name among the suggestions is still being typed («Иоа»).
+      if (pickable.find((row) => row.key === next)?.type === 'verse') keepShown();
       bringIntoSight(next);
       return;
     }
@@ -339,7 +392,20 @@ export function BibleSearch({ bible, locale, wide, surface, hereBook = null, aut
   const listId = `${baseId}-list`;
   const historyId = `${baseId}-history`;
   const showResults = typed && panel === 'none';
-  const keysHint = !touch && pickable.length > 1 ? { esc: t('bible.search.keysClear') } : null;
+  // The results are drawn again only when they change: a letter typed leaves the hundred verses shown alone while the
+  // deferred search catches up (Codex review, 2026-10-27; `SearchResults` is memoized).
+  const onResultRun = useStableHandler((intent: Intent) => run(intent));
+  const onResultChoose = useStableHandler((key: string) => {
+    setSelectedKey(key);
+    setChosenKey(key);
+    keepShown();
+  });
+  const onResultCopy = useStableHandler(copyVerse);
+  const onResultHowTo = useStableHandler(() => setPanel('help'));
+  const onResultToggleBooks = useStableHandler(() => setAllBooks((now) => !now));
+  const showKeys = !touch && pickable.length > 1;
+  const keysCopy = activeRow?.type === 'verse' ? withModifier('C') : null;
+  const keysHint = useMemo(() => (showKeys ? { esc: t('bible.search.keysClear'), copy: keysCopy } : null), [showKeys, keysCopy, t]);
   const card = surface === 'page'
     ? 'mt-2 w-full overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900'
     : 'mt-2';
@@ -380,7 +446,9 @@ export function BibleSearch({ bible, locale, wide, surface, hereBook = null, aut
             }}
             onKeyDown={onKeyDown}
             onFocus={() => setFocused(true)}
-            onBlur={() => setFocused(false)}
+            onCompositionStart={() => setComposing(true)}
+            onCompositionEnd={() => setComposing(false)}
+            onBlur={() => blurAfterPress(inputRef.current, setFocused)}
             autoFocus={autoFocus}
             autoComplete="off"
             autoCorrect="off"
@@ -440,8 +508,11 @@ export function BibleSearch({ bible, locale, wide, surface, hereBook = null, aut
             example={t(`bible.search.examples.${bible}.book`)}
             onPick={writeAgain}
             onTry={(example) => write(example)}
-            onRemove={forgetSearch}
-            onClear={() => setCleared(clearSearchHistory())}
+            onRemove={forgetEntry}
+            onClear={() => {
+              declineAll();
+              setCleared(clearSearchHistory());
+            }}
             onUndo={() => {
               if (cleared) restoreSearchHistory(cleared);
               setCleared(null);
@@ -464,15 +535,18 @@ export function BibleSearch({ bible, locale, wide, surface, hereBook = null, aut
             model={model}
             listId={listId}
             textLang={language}
-            selectedKey={!touch && activeRow ? activeRow.key : null}
+            selectedKey={litKeyOf(touch, chosenKey, activeKey)}
             wide={wide}
             touch={touch}
             showHowTo={touch && !wide && !focused && surface === 'page'}
             keysHint={keysHint}
             optionId={optionId}
-            onRun={run}
-            onHowTo={() => setPanel('help')}
-            onToggleBooks={() => setAllBooks((now) => !now)}
+            onRun={onResultRun}
+            onChoose={onResultChoose}
+            onCopy={onResultCopy}
+            copiedKey={isCopied ? copiedKey : null}
+            onHowTo={onResultHowTo}
+            onToggleBooks={onResultToggleBooks}
           />
         </div>
       ) : null}
