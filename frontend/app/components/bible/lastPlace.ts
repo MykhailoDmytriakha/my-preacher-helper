@@ -78,19 +78,9 @@ export function placeInBook(chapters: string[][], place: Place | null): Place | 
  * copies them into the state it is given (pushState/replaceState integration).
  */
 const ENTRY_PREFIX = 'bible:entry:';
-/** The place in another book this entry was opened from: the reader's way back ("← Rom 5"). */
-const FROM_KEY = 'bibleFrom';
 
-/** The state for a new entry that opens a book; `from` when it was opened from another book. */
-export const newEntryState = (from?: LastPlace | null): Record<string, unknown> => ({
-  [HISTORY_ENTRY_KEY]: newHistoryEntryId(),
-  ...(from ? { [FROM_KEY]: from } : {}),
-});
-
-/** Where the current entry was opened from, when that was another book. Call after mount. */
-export function readEntryFrom(): LastPlace | null {
-  return asLastPlace(((window.history.state ?? {}) as Record<string, unknown>)[FROM_KEY]);
-}
+/** The state for a new book visit; the trail owns where it was opened from. */
+export const newEntryState = (): Record<string, unknown> => ({ [HISTORY_ENTRY_KEY]: newHistoryEntryId() });
 
 /** The id of the current entry, giving it one when it has none (a deep link, a reload). Call after mount. */
 export function currentEntryId(): string {

@@ -16,9 +16,12 @@ jest.mock('@/providers/AuthProvider', () => ({ useAuth: () => ({ user: mockOwner
 jest.mock('@/data-engine/browser.client', () => ({ createBrowserDataEngine: jest.fn() }));
 jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
 const mockNavigate = jest.fn();
+let mockPathname = '/care/council/council-undo';
 jest.mock('next/navigation', () => ({
   useRouter: () => ({ push: mockNavigate }),
   useParams: () => ({ id: 'council-undo' }),
+  usePathname: () => mockPathname,
+  useSearchParams: () => new URLSearchParams(),
 }));
 jest.mock('sonner', () => ({ toast: { error: jest.fn(), success: jest.fn(), message: jest.fn() } }));
 jest.mock('@/data-engine/DataSyncStatus', () => ({ DataSyncStatus: () => null }));
@@ -40,6 +43,7 @@ function setup(initialView: 'conduct' | 'detail' = 'conduct') {
   let leave: () => void = () => undefined;
   function Host() {
     const [view, setView] = useState<'conduct' | 'detail' | 'away'>(initialView);
+    mockPathname = view === 'away' ? '/outside-council' : `/care/council/council-undo${view === 'conduct' ? '/conduct' : ''}`;
     mockNavigate.mockImplementation(() => setView('detail'));
     leave = () => setView('away');
     return <DataEngineProvider>{view === 'conduct' ? <CouncilConductPage /> : view === 'detail' ? <CouncilDetailPage /> : <p>Another screen</p>}</DataEngineProvider>;

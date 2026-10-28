@@ -17,9 +17,9 @@ EXPECTED_UK_JAR_SHA256 = '463d9054b8d4cfacb9cd69566395826a6fe32fb6e7da91dbf79d37
 UK_POM_SHA256 = '6a66d8efe6a5c774932401b04411a8feca7d6628631e4ef80819cfafa133dc38'
 RU_PYMORPHY_WHEEL_SHA256 = '0254317c02ce3ea17e080b7fc9d675e44662b3a5296bae68605b7a41d25b36c3'
 RU_DICT_WHEEL_SHA256 = '718bac64c73c10c16073a199402657283d9b64c04188b694f6d3e9b0d85440f4'
-EXPECTED_NORMALIZER_SHA256 = 'a889120b282b1d88f493a8cf2ee63bc9d5e785bef3ee4d82d5cfe68faa9f0f41'
+EXPECTED_NORMALIZER_SHA256 = 'e37e50c9b93bf5dbb03f5b8e46e5b42b10aad95a134fd8612b4693be7355f38b'
 TOKEN_FILTER = "complete single search tokens: raw form starts/ends with Unicode letter; internal Unicode letters or apostrophes only; no digits, hyphens, compounds, or truncated leading-apostrophe forms"
-APOSTROPHES = "'’ʼ`"
+APOSTROPHES = ""
 
 
 def sha(path: Path) -> str:
@@ -31,7 +31,7 @@ def sha(path: Path) -> str:
 
 
 def norm(word: str) -> str:
-    return re.sub(r"['’ʼ`\u0300\u0301]", '', word.lower().replace('ё', 'е'))
+    return re.sub("[" + re.escape(APOSTROPHES) + r"\u0300\u0301]", '', word.lower().replace('ё', 'е'))
 
 
 def one_token(word: str) -> bool:
@@ -145,7 +145,7 @@ const crypto = require('crypto');
 const Module = require('module');
 const original = Module._load;
 const stubs = {
-  '@/utils/bibleBooks': { BIBLE_BOOKS_DATA: [] },
+  '@/utils/bibleBooks': require(path.join(process.argv[3], 'frontend/app/utils/bibleBooks.ts')),
   '@/utils/bibles': { BIBLES: {} },
   '@/utils/bibleTextCache': { BIBLE_TEXT_CACHE: 'unused', isBookShaped: () => false },
   '@/utils/versification': { chapterCount: () => 0 },
@@ -159,6 +159,8 @@ const { verseWords } = require(process.argv[2]);
 const root = process.argv[3];
 const out = process.argv[4];
 const result = { schema: 1, vocabularies: { ru: new Set(), uk: new Set() }, corpus: {}, sourceHashes: {} };
+const apostrophes = stubs['@/utils/bibleBooks'].APOSTROPHES;
+result.apostrophes = Array.from({ length: 65536 }, (_, code) => String.fromCharCode(code)).filter(char => { apostrophes.lastIndex = 0; return apostrophes.test(char); }).join('');
 for (const [bible, language] of [['rst', 'ru'], ['ubio', 'uk']]) {
   const dir = path.join(root, 'frontend/public/bible-text', bible, 'v1');
   const files = fs.readdirSync(dir).filter(name => name.endsWith('.json')).sort();
@@ -181,6 +183,7 @@ for (const [bible, language] of [['rst', 'ru'], ['ubio', 'uk']]) {
   }
   result.vocabularies[language] = [...result.vocabularies[language]].sort();
 }
+result.sourceHashes.bibleBooksTs = crypto.createHash('sha256').update(fs.readFileSync(path.join(root, 'frontend/app/utils/bibleBooks.ts'))).digest('hex');
 result.sourceHashes.wordsTs = crypto.createHash('sha256').update(fs.readFileSync(process.argv[1])).digest('hex');
 result.sourceHashes.bibleTextTs = crypto.createHash('sha256').update(fs.readFileSync(process.argv[2])).digest('hex');
 fs.writeFileSync(out, JSON.stringify(result));
@@ -201,6 +204,10 @@ console.log(JSON.stringify({ counts: Object.fromEntries(Object.entries(result.vo
         doc = json.loads(vocab_path.read_text(encoding='utf-8'))
     finally:
         vocab_path.unlink(missing_ok=True)
+    global APOSTROPHES
+    APOSTROPHES = doc['apostrophes']
+    if not APOSTROPHES:
+        raise SystemExit('Canonical apostrophe extraction is empty')
     if doc['sourceHashes']['wordsTs'] != EXPECTED_NORMALIZER_SHA256:
         raise SystemExit('words.ts changed from the pinned normalizer reviewed for this data')
     return {lang: set(tokens) for lang, tokens in doc['vocabularies'].items()}, {

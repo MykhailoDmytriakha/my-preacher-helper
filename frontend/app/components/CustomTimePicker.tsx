@@ -165,8 +165,8 @@ const CustomTimePicker: React.FC<CustomTimePickerProps> = ({
     };
   }, []);
 
-  /* Escape and the page lock come from the one shared rule (`useModalLayer`). */
-  const layer = useModalLayer({ onClose: onCancel });
+  /* Escape, the page lock and Tab kept inside come from the one shared rule (`useModalLayer`). */
+  const layer = useModalLayer({ onClose: onCancel, focusRing: dialogRef });
 
   // Render modal
 

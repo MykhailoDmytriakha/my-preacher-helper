@@ -10,6 +10,7 @@ const sha = (relative: string) => createHash('sha256').update(fs.readFileSync(pa
 describe('the generated lexical data follows the current Bible text and normalizer', () => {
   it('was generated with the current application text functions', () => {
     expect(sha('frontend/app/utils/bibleSearch/words.ts')).toBe(sources.corpus.sourceHashes.wordsTs);
+    expect(sha('frontend/app/utils/bibleBooks.ts')).toBe(sources.corpus.sourceHashes.bibleBooksTs);
     expect(sha('frontend/app/utils/bibleText.ts')).toBe(sources.corpus.sourceHashes.bibleTextTs);
   });
 

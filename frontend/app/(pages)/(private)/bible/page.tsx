@@ -76,13 +76,13 @@ export default function BiblePage() {
     };
   }, [bible]);
 
-  const openBook = useCallback((nextSlug: string, at?: { chapter: number; verse: number; toVerse?: number; endChapter?: number }, from?: LastPlace) => {
+  const openBook = useCallback((nextSlug: string, at?: { chapter: number; verse: number; toVerse?: number; endChapter?: number }) => {
     const query = new URLSearchParams({ book: nextSlug });
     if (at) query.set('at', `${at.chapter}:${at.verse}`);
     if (at && bible) query.set('tr', bible);
     // A passage (a cross reference followed) is lit on arrival, as a link's is.
     if (at?.toVerse) query.set('to', at.endChapter && at.endChapter > at.chapter ? `${at.endChapter}:${at.toVerse}` : String(Math.max(at.toVerse, at.verse)));
-    window.history.pushState(newEntryState(from), '', `/bible?${query.toString()}`);
+    window.history.pushState(newEntryState(), '', `/bible?${query.toString()}`);
   }, [bible]);
 
   const chooseBible = useCallback((next: Parameters<typeof changeBible>[0]) => {

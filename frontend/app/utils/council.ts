@@ -1,3 +1,4 @@
+import { textLanguage, type AppLocale } from '@/utils/appLocale';
 import { newClientId } from '@/utils/clientId';
 
 import type {
@@ -18,6 +19,15 @@ export const newTopic = (title = ''): CouncilTopic => ({
   questions: [],
   options: [],
 });
+
+/**
+ * The language a council is written in, by all its words — title, sections, questions, answers: a reference in one
+ * line is read in it («1Цар» is 1 Kings in a Ukrainian council), not by that line alone.
+ */
+export const councilLanguage = (council: Council): AppLocale | null => textLanguage([
+  council.title,
+  ...council.topics.flatMap((topic) => [topic.title, topic.summary, ...(topic.questions ?? []).flatMap((question) => [question.question, question.answer])]),
+].filter(Boolean).join(' '));
 
 /**
  * HOW MANY SECTIONS A CARD SHOWS, and what it says about the rest.

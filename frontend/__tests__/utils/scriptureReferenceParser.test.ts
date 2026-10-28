@@ -172,3 +172,83 @@ describe('a book as people write it', () => {
     expect(parseReferenceText('1 Kgs 19:12')?.book).toBe('1 Kings');
   });
 });
+
+/*
+ * A book as Ukrainian preachers write it (case 2026-10-12-block-diagram, L4): the titles of Огієнко's Bible and the
+ * abbreviations of Ukrainian church usage, as the Ukrainian Wikipedia lists them («Книги Біблії», «Скорочені назви книг
+ * Біблії», read 2026-10-27) — «1 М.» and «1 Мойс.» for the books of Moses, «Мр.», «Пр.», «Фил.», «1 Петр.», «Об.» —
+ * with the apostrophe typed any of the three ways a Ukrainian keyboard gives it.
+ */
+describe('a book as Ukrainian preachers write it', () => {
+  const ukrainian: Array<[string, string]> = [
+    ['1 М.', 'Genesis'], ['1 Мойс.', 'Genesis'], ['1 Мойсеєва', 'Genesis'], ['Бут.', 'Genesis'], ['Буття', 'Genesis'],
+    ['2 М.', 'Exodus'], ['2 Мойс.', 'Exodus'], ['Вих.', 'Exodus'], ['Вихід', 'Exodus'],
+    ['3 М.', 'Leviticus'], ['3 Мойс.', 'Leviticus'], ['Лев.', 'Leviticus'],
+    ['4 М.', 'Numbers'], ['4 Мойс.', 'Numbers'], ['Чис.', 'Numbers'], ['Числ.', 'Numbers'],
+    ['5 М.', 'Deuteronomy'], ['5 Мойс.', 'Deuteronomy'], ['Повт.', 'Deuteronomy'], ['Повторення Закону', 'Deuteronomy'],
+    ['Єг.', 'Joshua'], ['Ісус Навин', 'Joshua'], ['Нав.', 'Joshua'],
+    ['Суд.', 'Judges'], ['Суддів', 'Judges'],
+    ['Рут', 'Ruth'],
+    ['1 Сам.', '1 Samuel'], ['1 Самуїлова', '1 Samuel'], ['2 Сам.', '2 Samuel'],
+    ['1 Цар.', '1 Kings'], ['1 Царів', '1 Kings'], ['2 Цар.', '2 Kings'],
+    ['1 Хр.', '1 Chronicles'], ['1 Хроніки', '1 Chronicles'], ['2 Хр.', '2 Chronicles'],
+    ['Езд.', 'Ezra'], ['Ездри', 'Ezra'], ['Неем.', 'Nehemiah'], ['Неемія', 'Nehemiah'], ['Ест.', 'Esther'], ['Естер', 'Esther'],
+    ['Йов', 'Job'], ['Пс.', 'Psalms'], ['Псалми', 'Psalms'],
+    ['Пр.', 'Proverbs'], ['Приповісті', 'Proverbs'], ['Приповістей', 'Proverbs'],
+    ['Екл.', 'Ecclesiastes'], ['Екклезіяст', 'Ecclesiastes'], ['Проповідник', 'Ecclesiastes'],
+    ['Пісн.', 'Song of Solomon'], ['Пісня над піснями', 'Song of Solomon'],
+    ['Іс.', 'Isaiah'], ['Ісая', 'Isaiah'], ['Єр.', 'Jeremiah'], ['Єремія', 'Jeremiah'], ['Плач Єремії', 'Lamentations'],
+    ['Єз.', 'Ezekiel'], ['Єзекіїль', 'Ezekiel'], ['Дан.', 'Daniel'], ['Даниїл', 'Daniel'],
+    ['Ос.', 'Hosea'], ['Осія', 'Hosea'], ['Йоіл', 'Joel'], ['Йоїл', 'Joel'], ['Ам.', 'Amos'], ['Овд.', 'Obadiah'], ['Овдій', 'Obadiah'],
+    ['Йона', 'Jonah'], ['Мих.', 'Micah'], ['Михей', 'Micah'], ['Наум', 'Nahum'], ['Ав.', 'Habakkuk'], ['Авакум', 'Habakkuk'],
+    ['Соф.', 'Zephaniah'], ['Софонія', 'Zephaniah'], ['Ог.', 'Haggai'], ['Огій', 'Haggai'], ['Зах.', 'Zechariah'], ['Захарія', 'Zechariah'],
+    ['Мал.', 'Malachi'], ['Малахія', 'Malachi'],
+    ['Мт.', 'Matthew'], ['Від Матвія', 'Matthew'], ['Матвія', 'Matthew'],
+    ['Мр.', 'Mark'], ['Мк.', 'Mark'], ['Від Марка', 'Mark'],
+    ['Лк.', 'Luke'], ['Від Луки', 'Luke'],
+    ['Ів.', 'John'], ['Ін.', 'John'], ['Від Івана', 'John'],
+    ['Дії', 'Acts'], ['Дії апостолів', 'Acts'],
+    ['Рим.', 'Romans'], ['До римлян', 'Romans'], ['Римлян', 'Romans'],
+    ['1 Кор.', '1 Corinthians'], ['1 Коринтян', '1 Corinthians'], ['2 Кор.', '2 Corinthians'],
+    ['Гал.', 'Galatians'], ['Галатів', 'Galatians'], ['Еф.', 'Ephesians'], ['Ефесян', 'Ephesians'],
+    ['Фил.', 'Philippians'], ['Філ.', 'Philippians'], ['Флп.', 'Philippians'],
+    ["Филип'ян", 'Philippians'], ['Филип’ян', 'Philippians'], ['Филипʼян', 'Philippians'], ["До филип'ян", 'Philippians'],
+    ['Кол.', 'Colossians'], ['Колосян', 'Colossians'],
+    ['1 Сол.', '1 Thessalonians'], ['1 Солунян', '1 Thessalonians'], ['2 Сол.', '2 Thessalonians'],
+    ['1 Тим.', '1 Timothy'], ['1 Тимофія', '1 Timothy'], ['2 Тим.', '2 Timothy'],
+    ['Тит.', 'Titus'], ['Тита', 'Titus'], ['Филим.', 'Philemon'], ['Флм.', 'Philemon'], ['Филимона', 'Philemon'],
+    ['Євр.', 'Hebrews'], ['Євреїв', 'Hebrews'], ['Як.', 'James'], ['Якова', 'James'],
+    ['1 Петр.', '1 Peter'], ['1 Пет.', '1 Peter'], ['1 Петра', '1 Peter'], ['2 Петр.', '2 Peter'],
+    ['1 Ів.', '1 John'], ['1 Івана', '1 John'], ['2 Ів.', '2 John'], ['3 Ів.', '3 John'],
+    ['Юд.', 'Jude'], ['Юди', 'Jude'],
+    ['Об.', 'Revelation'], ['Одкр.', 'Revelation'], ['Апок.', 'Revelation'],
+    ["Об'явлення", 'Revelation'], ['Об’явлення', 'Revelation'], ['Обʼявлення', 'Revelation'],
+    // Codex review 2026-10-27: forms of other Ukrainian editions, and the apostrophe left out.
+    ['Іс. Нав.', 'Joshua'], ['1 Ін.', '1 John'], ['2 Ін.', '2 John'], ['3 Ін.', '3 John'], ['Пісн. Піс.', 'Song of Solomon'],
+    ['Повтор.', 'Deuteronomy'], ['Филипян', 'Philippians'], ['Обявлення', 'Revelation'], ['Об‘явлення', 'Revelation'],
+  ];
+
+  it('reads every Ukrainian title and abbreviation as its book, in Ukrainian', () => {
+    const misread = ukrainian
+      .map(([form, book]) => [form, book, parseReferenceText(`${form} 1:1`, { locale: 'uk' })?.book ?? 'nothing'] as const)
+      .filter(([, book, read]) => read !== book)
+      .map(([form, book, read]) => `"${form}" → ${read} (${book})`);
+    expect(misread).toEqual([]);
+  });
+
+  it('reads «Фил» as Philippians in every language — Philemon is «Флм», «Филим» and has one chapter', () => {
+    expect(parseReferenceText('Фил 4:13')?.book).toBe('Philippians');
+    expect(parseReferenceText('Фил 4:13', { locale: 'ru' })?.book).toBe('Philippians');
+    expect(parseReferenceText('Филим 1:6', { locale: 'ru' })?.book).toBe('Philemon');
+  });
+
+  it('keeps the short Ukrainian forms out of a Russian reading: there «пр» and «ав» begin words being typed', () => {
+    expect(parseReferenceText('Пр 3:5', { locale: 'uk' })?.book).toBe('Proverbs');
+    expect(parseReferenceText('Ав 2:4', { locale: 'uk' })?.book).toBe('Habakkuk');
+    expect(parseReferenceText('1 М 3:15', { locale: 'uk' })?.book).toBe('Genesis');
+    expect(parseReferenceText('Ав 2:4', { locale: 'ru' })?.book).not.toBe('Habakkuk');
+    expect(parseReferenceText('1 М 3:15', { locale: 'ru' })?.book).not.toBe('Genesis');
+    // With no language to go by, the form one language alone writes is read last.
+    expect(parseReferenceText('Пр 3:5')?.book).toBe('Proverbs');
+  });
+});

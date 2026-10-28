@@ -193,3 +193,28 @@ describe('a numbered book abbreviated alike in two languages', () => {
     expect(extractBookIdsFromVerse(verse, locale)).toEqual([book]);
   });
 });
+
+/*
+ * The calendar reads a sermon's verse with the one reader of book names (case 2026-10-12-block-diagram, L4; Codex
+ * review 2026-10-27): its own guess read the Ukrainian «Ав.» as Obadiah and «1 Мойс.» as nothing.
+ */
+describe('calendarAnalytics reads a book the way the rest of the app does', () => {
+  it.each([
+    ['Ав 2:4', 'Habakkuk'],
+    ['1 Мойс. 3:15', 'Genesis'],
+    ['Пр. 3:5', 'Proverbs'],
+  ])('reads %p in Ukrainian', (verse, book) => {
+    expect(extractBookIdsFromVerse(verse, 'uk')).toEqual([book]);
+  });
+
+  // Codex review 2026-10-27: a name glued to its numbers was read only when the name was the book's own.
+  it.each([
+    ['Обявлення3:20', 'uk', 'Revelation'],
+    ['1Мойс3:15', 'uk', 'Genesis'],
+    ['1Кор13:4', 'ru', '1 Corinthians'],
+    ['1М3:15', 'uk', 'Genesis'],
+    ['5М3:15', 'uk', 'Deuteronomy'],
+  ])('reads %p glued to its numbers (%s)', (verse, locale, book) => {
+    expect(extractBookIdsFromVerse(verse, locale)).toEqual([book]);
+  });
+});

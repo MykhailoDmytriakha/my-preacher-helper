@@ -29,9 +29,12 @@ jest.mock('@/utils/bibleBooks', () => {
     });
 
     return {
+        // The rest of the module as it is: the calendar reads names through the shared reference reader too,
+        // which needs it (a blanket mock left it without its helpers).
+        ...jest.requireActual('@/utils/bibleBooks'),
         BIBLE_BOOKS_DATA: [...baseBooks, ...fillerBooks],
         // The books here are this test's own table, read through getBookByName below; the lookup by
-        // written form finds nothing, so every name takes that path.
+        // written form finds nothing. The shared reader's own aliases (exactBook) may name a book first.
         getBookByWrittenName: jest.fn(() => undefined),
         getBookByName: jest.fn((name: string, _locale?: string) => {
             const books: Record<string, any> = {

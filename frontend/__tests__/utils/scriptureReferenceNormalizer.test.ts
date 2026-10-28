@@ -110,3 +110,23 @@ describe('normalizeScriptureReferencesForTts', () => {
     expect(normalizeScriptureReferencesForTts('Read John 3:16 today.')).toBe('Read John 3:16 today.');
   });
 });
+
+/*
+ * A reference a preacher writes stays the book they meant (case 2026-10-12-block-diagram, L4): the text's own language
+ * reads it — «1 Цар» in Ukrainian is 1 Kings and was rewritten «1Сам.» — and «Фил» is Philippians, never Philemon,
+ * which has one chapter (Russian «Фил 4:13» was rewritten «Флм. 4:13», a place that does not exist).
+ */
+describe('a reference keeps the book it was written for', () => {
+  it('reads a Ukrainian text in Ukrainian', () => {
+    expect(normalizeSpokenScriptureReferences('Читаємо 1 Цар 3:5 і молимось')).toBe('Читаємо 1Цар. 3:5 і молимось');
+  });
+
+  it('knows a Ukrainian name whatever the shape of its apostrophe', () => {
+    expect(normalizeSpokenScriptureReferences('Об’явлення 3:20 — Ісус стукає')).toBe('Об. 3:20 — Ісус стукає');
+    expect(normalizeSpokenScriptureReferences('Филипʼян 4:13 — все можу')).toBe('Флп. 4:13 — все можу');
+  });
+
+  it('reads «Фил» as Philippians', () => {
+    expect(normalizeSpokenScriptureReferences('Фил 4:13 все могу')).toBe('Флп. 4:13 все могу');
+  });
+});

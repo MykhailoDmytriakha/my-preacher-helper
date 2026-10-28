@@ -130,12 +130,20 @@ const bookByAbbrevEN = new Map(BIBLE_BOOKS_DATA.map((b) => [b.abbrev.en.toLowerC
 const bookByAbbrevRU = new Map(BIBLE_BOOKS_DATA.map((b) => [b.abbrev.ru.toLowerCase(), b]));
 const bookByAbbrevUK = new Map(BIBLE_BOOKS_DATA.map((b) => [b.abbrev.uk.toLowerCase(), b]));
 
+/**
+ * Every shape a keyboard gives the apostrophe of a Ukrainian name — «'», «’», «ʼ», «‘» — and the name typed
+ * without it: «Об'явлення», «Об’явлення» and «Обявлення» are one book. The Bible search drops it from every word
+ * the same way (`bibleSearch/words.ts`).
+ */
+export const APOSTROPHES = /['’ʼ‘`´]/g;
+export const withoutApostrophe = (text: string): string => text.replace(APOSTROPHES, '');
+
 /*
- * A BOOK AS PEOPLE WRITE IT: case, spaces and dots do not count — "1 Ин", "1Ин" and "1ин" are one
- * book, "И.Нав" and "И Нав" another. A language given is the only one read: "1Цар" is 1 Samuel in
+ * A BOOK AS PEOPLE WRITE IT: case, spaces, dots and the apostrophe do not count — "1 Ин", "1Ин" and "1ин"
+ * are one book, "И.Нав" and "И Нав" another. A language given is the only one read: "1Цар" is 1 Samuel in
  * Russian (1 Царств) and 1 Kings in Ukrainian (1 Царів).
  */
-const writtenKey = (word: string) => word.toLowerCase().replace(/[\s.]/g, '');
+const writtenKey = (word: string) => withoutApostrophe(word.toLowerCase()).replace(/[\s.]/g, '');
 const WRITTEN_LOCALES: AppLocale[] = ['en', 'ru', 'uk'];
 const writtenNames = Object.fromEntries(WRITTEN_LOCALES.map((locale) => [locale, new Map(BIBLE_BOOKS_DATA.map((b) => [writtenKey(b.names[locale]), b]))])) as Record<AppLocale, Map<string, BookInfo>>;
 const writtenAbbrevs = Object.fromEntries(WRITTEN_LOCALES.map((locale) => [locale, new Map(BIBLE_BOOKS_DATA.map((b) => [writtenKey(b.abbrev[locale]), b]))])) as Record<AppLocale, Map<string, BookInfo>>;

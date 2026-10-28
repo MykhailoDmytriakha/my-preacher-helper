@@ -72,7 +72,7 @@ export default function SourceNotePickerModal({
   useEffect(() => setMounted(true), []);
 
   // The shared layer keeps Tab inside and restores the surviving menu control on close.
-  const layer = useModalLayer({ onClose, closeDisabled: saving, returnFocusTo });
+  const layer = useModalLayer({ onClose, closeDisabled: saving, returnFocusTo, focusRing: dialogRef });
   useEffect(() => {
     if (mounted) searchRef.current?.focus();
   }, [mounted]);

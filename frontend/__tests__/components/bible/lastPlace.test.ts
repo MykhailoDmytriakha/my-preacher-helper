@@ -1,5 +1,5 @@
 import {
-  currentEntryId, newEntryState, parsePlaceParam, placeInBook, readEntryFrom, readEntryPlace, readLastPlace, saveEntryPlace, saveLastPlace,
+  currentEntryId, newEntryState, parsePlaceParam, placeInBook, readEntryPlace, readLastPlace, saveEntryPlace, saveLastPlace,
 } from '@/components/bible/lastPlace';
 
 beforeEach(() => {
@@ -49,13 +49,6 @@ describe('the place of a history entry', () => {
     window.history.pushState(newEntryState(), '', '/bible?book=psalms');
     window.sessionStorage.setItem(`bible:entry:${currentEntryId()}`, '{"chapter":22,"verse":1}');
     expect(readEntryPlace(currentEntryId())).toEqual({ chapter: 22, verse: 1, bible: 'rst' });
-  });
-
-  it('keeps the place in another book an entry was opened from, and none for an entry opened otherwise', () => {
-    window.history.pushState(newEntryState({ slug: 'romans', chapter: 5, verse: 9, bible: 'kjv' }), '', '/bible?book=genesis');
-    expect(readEntryFrom()).toEqual({ slug: 'romans', chapter: 5, verse: 9, bible: 'kjv' });
-    window.history.pushState(newEntryState(), '', '/bible?book=john');
-    expect(readEntryFrom()).toBeNull();
   });
 });
 

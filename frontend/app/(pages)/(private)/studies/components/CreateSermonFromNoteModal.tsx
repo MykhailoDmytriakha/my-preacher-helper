@@ -334,7 +334,7 @@ export default function CreateSermonFromNoteModal({
    * one a retry would answer — there is nothing here a person can be trapped into.
    */
   const close = useCallback(() => { onClose(); }, [onClose]);
-  const layer = useModalLayer({ onClose: close, returnFocusTo });
+  const layer = useModalLayer({ onClose: close, returnFocusTo, focusRing: dialogRef });
 
   const setStep = (key: string, status: StepStatus) => {
     if (!aliveRef.current) return;

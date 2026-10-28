@@ -1,5 +1,6 @@
 /** Visibility and availability without layout measurements, which are absent in jsdom. */
 export function isAvailableFocusTarget(element: HTMLElement): boolean {
+  if (typeof element.checkVisibility === 'function' && !element.checkVisibility({ visibilityProperty: true })) return false;
   if (element.matches(':disabled, input[type="hidden"]') || element.closest('[hidden], [inert], [aria-hidden="true"]')) return false;
   for (let node: HTMLElement | null = element; node; node = node.parentElement) {
     const style = getComputedStyle(node);
@@ -10,7 +11,7 @@ export function isAvailableFocusTarget(element: HTMLElement): boolean {
 
 /** Controls in the browser's Tab sequence. */
 export function focusableElements(container: HTMLElement): HTMLElement[] {
-  const candidates = container.querySelectorAll<HTMLElement>('a[href], button, input, textarea, select, [tabindex], [contenteditable="true"]');
+  const candidates = container.querySelectorAll<HTMLElement>('a[href], button, input, textarea, select, summary, [tabindex], [contenteditable="true"]');
   const available = [...candidates].filter(element => isAvailableFocusTarget(element) &&
     (element.tabIndex >= 0 || (!element.hasAttribute('tabindex') && element.getAttribute('contenteditable') === 'true')));
   return available.filter(element => {

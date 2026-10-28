@@ -1,5 +1,5 @@
 import { ScriptureReference } from '@/models/models';
-import { getBookByName, getBookByWrittenName, getBookIds } from '@/utils/bibleBooks';
+import { getBookByName, getBookByWrittenName, getBookIds, withoutApostrophe } from '@/utils/bibleBooks';
 
 import type { AppLocale } from '@/utils/appLocale';
 
@@ -11,13 +11,13 @@ type BookMatch = { book: string; remaining: string[] };
  */
 const ORDERED_BOOKS: Array<{ english: string; aliases: string[] }> = [
   // Old Testament - Pentateuch
-  { english: 'Genesis', aliases: ['бытие', 'книга бытие', 'быт', 'буття', 'бут'] },
-  { english: 'Exodus', aliases: ['исход', 'книга исход', 'исх', 'исхода', 'вихід', 'вих'] },
-  { english: 'Leviticus', aliases: ['левит', 'книга левит', 'лев'] },
-  { english: 'Numbers', aliases: ['числа', 'книга числа', 'чис'] },
-  { english: 'Deuteronomy', aliases: ['второзаконие', 'второзакония', 'книга второзакония', 'втор', 'второзак', 'повторення закону', 'повт'] },
+  { english: 'Genesis', aliases: ['бытие', 'книга бытие', 'быт', 'буття', 'бут', '1 мойс', '1мойс', '1 мойсеєва'] },
+  { english: 'Exodus', aliases: ['исход', 'книга исход', 'исх', 'исхода', 'вихід', 'вих', '2 мойс', '2мойс', '2 мойсеєва'] },
+  { english: 'Leviticus', aliases: ['левит', 'книга левит', 'лев', '3 мойс', '3мойс', '3 мойсеєва'] },
+  { english: 'Numbers', aliases: ['числа', 'книга числа', 'чис', '4 мойс', '4мойс', '4 мойсеєва'] },
+  { english: 'Deuteronomy', aliases: ['второзаконие', 'второзакония', 'книга второзакония', 'втор', 'второзак', 'повторення закону', 'повт', '5 мойс', '5мойс', '5 мойсеєва'] },
   // Historical
-  { english: 'Joshua', aliases: ['иисус навин', 'книга иисуса навина', 'навин', 'нав', 'ісус навин', 'і.нав'] },
+  { english: 'Joshua', aliases: ['иисус навин', 'книга иисуса навина', 'навин', 'нав', 'ісус навин', 'і.нав', 'іс нав', 'єг'] },
   { english: 'Judges', aliases: ['судьи', 'книга судей', 'судья', 'суд', 'суддів'] },
   { english: 'Ruth', aliases: ['руфь', 'книга руфь', 'руф', 'рут'] },
   // Note: RU 1-2 Царств = EN 1-2 Samuel, UK 1-2 Самуїлова
@@ -46,15 +46,15 @@ const ORDERED_BOOKS: Array<{ english: string; aliases: string[] }> = [
     english: '2 Chronicles',
     aliases: ['2 паралипоменон', '2-я книга паралипоменон', 'вторая книга паралипоменон', '2 пар', '2пар', '2 хроніки', '2хр'],
   },
-  { english: 'Ezra', aliases: ['ездра', 'книга ездра', 'ез', 'езд'] },
+  { english: 'Ezra', aliases: ['ездра', 'книга ездра', 'ез', 'езд', 'ездри'] },
   { english: 'Nehemiah', aliases: ['неемия', 'книга неемии', 'неем', 'неемія'] },
   { english: 'Esther', aliases: ['есфирь', 'книга есфири', 'эстирь', 'есф', 'естер', 'ест'] },
   // Wisdom/Poetry
   { english: 'Job', aliases: ['иов', 'книга иова', 'йов'] },
   { english: 'Psalms', aliases: ['псалтирь', 'пс', 'псал', 'псалми', 'псалом', 'псалмы', 'psalm'] },
-  { english: 'Proverbs', aliases: ['притчи', 'поу́чения', 'притч', 'притчи соломоновы', 'прит', 'приповістки', 'прип'] },
-  { english: 'Ecclesiastes', aliases: ['екклесиаст', 'проповедник', 'екк', 'ек', 'екклезіяст', 'еккл'] },
-  { english: 'Song of Solomon', aliases: ['песнь песней', 'песнь-песней', 'песн', 'песнь', 'пісня пісень', 'пісн'] },
+  { english: 'Proverbs', aliases: ['притчи', 'поу́чения', 'притч', 'притчи соломоновы', 'прит', 'приповістки', 'прип', 'приповісті', 'приповістей'] },
+  { english: 'Ecclesiastes', aliases: ['екклесиаст', 'проповедник', 'екк', 'ек', 'екклезіяст', 'еккл', 'екл', 'проповідник'] },
+  { english: 'Song of Solomon', aliases: ['песнь песней', 'песнь-песней', 'песн', 'песнь', 'пісня пісень', 'пісн', 'пісня над піснями', 'пісн піс'] },
   // Major Prophets
   { english: 'Isaiah', aliases: ['исаия', 'книга исаии', 'ис', 'ісая', 'іс'] },
   { english: 'Jeremiah', aliases: ['иеремия', 'книга иеремии', 'иер', 'єремія', 'єр'] },
@@ -63,7 +63,7 @@ const ORDERED_BOOKS: Array<{ english: string; aliases: string[] }> = [
   { english: 'Daniel', aliases: ['даниил', 'книга даниила', 'дан', 'даниїл'] },
   // Minor Prophets
   { english: 'Hosea', aliases: ['осия', 'книга осии', 'ос', 'осія'] },
-  { english: 'Joel', aliases: ['иоиль', 'книга иоиля', 'иоил', 'йоїл'] },
+  { english: 'Joel', aliases: ['иоиль', 'книга иоиля', 'иоил', 'йоїл', 'йоіл'] },
   { english: 'Amos', aliases: ['амос', 'книга амоса', 'ам'] },
   { english: 'Obadiah', aliases: ['авдий', 'обадия', 'авд', 'овдій', 'овд'] },
   { english: 'Jonah', aliases: ['иона', 'книга ионы', 'ион', 'йона', 'йон'] },
@@ -77,7 +77,7 @@ const ORDERED_BOOKS: Array<{ english: string; aliases: string[] }> = [
   // Gospels
   {
     english: 'Matthew',
-    aliases: ['матфей', 'евангелие от матфея', 'евангелие матфея', 'матф', 'мат', 'матфея', 'від матвія', 'мт'],
+    aliases: ['матфей', 'евангелие от матфея', 'евангелие матфея', 'матф', 'мат', 'матфея', 'від матвія', 'мт', 'матвія'],
   },
   {
     english: 'Mark',
@@ -89,10 +89,10 @@ const ORDERED_BOOKS: Array<{ english: string; aliases: string[] }> = [
   },
   {
     english: 'John',
-    aliases: ['иоанн', 'иоанна', 'от иоанна', 'евангелие от иоанна', 'евангелие иоанна', 'иоанн', 'иоан', 'ин', 'від івана', 'ів'],
+    aliases: ['иоанн', 'иоанна', 'от иоанна', 'евангелие от иоанна', 'евангелие иоанна', 'иоанн', 'иоан', 'ин', 'від івана', 'ів', 'ін', 'івана'],
   },
   // History
-  { english: 'Acts', aliases: ['деяния', 'деяния апостолов', 'дея', 'деян', 'дії'] },
+  { english: 'Acts', aliases: ['деяния', 'деяния апостолов', 'дея', 'деян', 'дії', 'дії апостолів'] },
   // Pauline Epistles
   { english: 'Romans', aliases: ['римлянам', 'послание к римлянам', 'рим', 'до римлян'] },
   {
@@ -103,11 +103,11 @@ const ORDERED_BOOKS: Array<{ english: string; aliases: string[] }> = [
     english: '2 Corinthians',
     aliases: ['2 коринфянам', '2-е послание к коринфянам', '2 кор', '2кор', '2 коринтян'],
   },
-  { english: 'Galatians', aliases: ['галатам', 'послание к галатам', 'гал', 'до галатів'] },
+  { english: 'Galatians', aliases: ['галатам', 'послание к галатам', 'гал', 'до галатів', 'галатів'] },
   { english: 'Ephesians', aliases: ['ефесянам', 'послание к ефесянам', 'ефес', 'еф', 'до ефесян'] },
   {
     english: 'Philippians',
-    aliases: ['филиппийцам', 'послание к филиппийцам', 'филип', 'филп', 'флп', "до филип'ян"],
+    aliases: ['филиппийцам', 'послание к филиппийцам', 'филип', 'филп', 'флп', 'фил', "до филип'ян", "филип'ян", "філіп'ян", 'філ'],
   },
   {
     english: 'Colossians',
@@ -130,29 +130,29 @@ const ORDERED_BOOKS: Array<{ english: string; aliases: string[] }> = [
     aliases: ['2 тимофею', '2-е послание к тимофею', '2 тим', '2тим', '2т', '2 тимофія'],
   },
   { english: 'Titus', aliases: ['титу', 'послание к титу', 'тит', 'до тита'] },
-  { english: 'Philemon', aliases: ['филимону', 'послание к филимону', 'филим', 'фил', 'флм', 'до филимона'] },
+  { english: 'Philemon', aliases: ['филимону', 'послание к филимону', 'филим', 'флм', 'до филимона'] },
   // General Epistles
-  { english: 'Hebrews', aliases: ['евреям', 'послание к евреям', 'евр', 'до євреїв', 'євр'] },
+  { english: 'Hebrews', aliases: ['евреям', 'послание к евреям', 'евр', 'до євреїв', 'євр', 'євреїв'] },
   { english: 'James', aliases: ['якову', 'послание иакову', 'иакову', 'иак', 'иа', 'якова', 'як'] },
-  { english: '1 Peter', aliases: ['1 петра', '1-е послание петра', '1 пет', '1пет', '1п', '1пт'] },
-  { english: '2 Peter', aliases: ['2 петра', '2-е послание петра', '2 пет', '2пет', '2п', '2пт'] },
+  { english: '1 Peter', aliases: ['1 петра', '1-е послание петра', '1 пет', '1пет', '1п', '1пт', '1 петр', '1петр'] },
+  { english: '2 Peter', aliases: ['2 петра', '2-е послание петра', '2 пет', '2пет', '2п', '2пт', '2 петр', '2петр'] },
   {
     english: '1 John',
-    aliases: ['1 иоанна', '1-е послание иоанна', '1 иоан', '1иоан', '1и', '1 івана', '1ів'],
+    aliases: ['1 иоанна', '1-е послание иоанна', '1 иоан', '1иоан', '1и', '1 івана', '1ів', '1 ін', '1ін'],
   },
   {
     english: '2 John',
-    aliases: ['2 иоанна', '2-е послание иоанна', '2 иоан', '2иоан', '2и', '2 івана', '2ів'],
+    aliases: ['2 иоанна', '2-е послание иоанна', '2 иоан', '2иоан', '2и', '2 івана', '2ів', '2 ін', '2ін'],
   },
   {
     english: '3 John',
-    aliases: ['3 иоанна', '3-е послание иоанна', '3 иоан', '3иоан', '3и', '3 івана', '3ів'],
+    aliases: ['3 иоанна', '3-е послание иоанна', '3 иоан', '3иоан', '3и', '3 івана', '3ів', '3 ін', '3ін'],
   },
   { english: 'Jude', aliases: ['иуде', 'иуда', 'иуды', 'послание иуде', 'послание иуды', 'иуд', 'иу', 'юди', 'юд'] },
   // Apocalypse
   {
     english: 'Revelation',
-    aliases: ['откровение иоанна богослова', 'откровение', 'откр', 'отк', 'апокалипсис', "об'явлення", 'об'],
+    aliases: ['откровение иоанна богослова', 'откровение', 'откр', 'отк', 'апокалипсис', "об'явлення", 'об', 'одкр', 'одкровення', 'апок'],
   },
 ];
 
@@ -169,15 +169,53 @@ const BOOK_ALIAS_ENTRIES = ORDERED_BOOKS.flatMap(({ english, aliases }) => {
   return Array.from(aliasSet).map((alias) => [alias, english] as [string, string]);
 });
 
+/** Looked up without the apostrophe, as every name is read («Филип'ян» and «Филипян»); listed as written. */
 const BOOK_ALIASES = BOOK_ALIAS_ENTRIES.reduce<Record<string, string>>((acc, [alias, book]) => {
-  acc[alias] = book;
+  acc[withoutApostrophe(alias)] = book;
   return acc;
 }, {});
 
-export const getReferenceBookAliases = (): string[] => Array.from(new Set(BOOK_ALIAS_ENTRIES.map(([alias]) => alias)));
+/**
+ * Forms one language writes for a book that the shared list above cannot hold, because another language reads
+ * them otherwise: Ukrainian church usage writes «Пр.» for Proverbs and «Ав.» for Habakkuk, «1 М.» … «5 М.» for the
+ * books of Moses (the Ukrainian Wikipedia, «Скорочені назви книг Біблії», read 2026-10-27), and names in Russian
+ * letters that Russian reads as its own words or their beginnings, typed in the search line: «праведный», «Авраам»,
+ * «повтор», «число», «Тита», «Римлян» (Codex review, 2026-10-27). They are read in their own language, and with no
+ * language given after every shared reading.
+ */
+const OWN_LANGUAGE_BOOKS: Partial<Record<AppLocale, Array<{ english: string; aliases: string[] }>>> = {
+  uk: [
+    { english: 'Genesis', aliases: ['1 м', '1м'] },
+    { english: 'Exodus', aliases: ['2 м', '2м'] },
+    { english: 'Leviticus', aliases: ['3 м', '3м'] },
+    { english: 'Numbers', aliases: ['4 м', '4м'] },
+    { english: 'Deuteronomy', aliases: ['5 м', '5м'] },
+    { english: 'Proverbs', aliases: ['пр'] },
+    { english: 'Habakkuk', aliases: ['ав'] },
+    { english: 'Deuteronomy', aliases: ['повтор'] },
+    { english: 'Numbers', aliases: ['числ'] },
+    { english: 'Romans', aliases: ['римлян'] },
+    { english: 'Ephesians', aliases: ['ефесян'] },
+    { english: 'Colossians', aliases: ['колосян'] },
+    { english: 'Titus', aliases: ['тита'] },
+    { english: 'Philemon', aliases: ['филимона'] },
+  ],
+};
+
+const OWN_LANGUAGE_ALIASES = Object.fromEntries(
+  Object.entries(OWN_LANGUAGE_BOOKS).map(([locale, books]) => [
+    locale,
+    new Map(books.flatMap(({ english, aliases }) => aliases.map((alias) => [withoutApostrophe(alias), english] as const))),
+  ])
+) as Partial<Record<AppLocale, Map<string, string>>>;
+
+export const getReferenceBookAliases = (): string[] => Array.from(new Set([
+  ...BOOK_ALIAS_ENTRIES.map(([alias]) => alias),
+  ...Object.values(OWN_LANGUAGE_ALIASES).flatMap((aliases) => Array.from(aliases.keys())),
+]));
 
 const normalizeInput = (raw: string): { dashNormalized: string; normalized: string } => {
-  const dashNormalized = raw.replace(/[–—−‒‑﹘﹣]/g, '-');
+  const dashNormalized = withoutApostrophe(raw).replace(/[–—−‒‑﹘﹣]/g, '-');
   const normalized = dashNormalized.replace(/[:,.;]/g, ' ');
   return { dashNormalized, normalized };
 };
@@ -236,6 +274,9 @@ const exactBookOf = (input: string, locale?: AppLocale): string | null => {
   // The language it is written in first: "1Цар" is 1 Samuel in Russian and 1 Kings in Ukrainian.
   const own = locale ? getBookByWrittenName(input, locale) : undefined;
   if (own) return own.id;
+  const written = locale && WRITING_LANGUAGES.includes(locale) ? locale : null;
+  const ownForm = written ? OWN_LANGUAGE_ALIASES[written]?.get(input.toLowerCase()) : undefined;
+  if (ownForm) return ownForm;
 
   const direct = BOOK_ALIASES[input.toLowerCase()];
   if (direct) return direct;
@@ -245,7 +286,14 @@ const exactBookOf = (input: string, locale?: AppLocale): string | null => {
   if (bookInfo) return bookInfo.id;
 
   // As people write it: "1 Ин" for "1Ин", "1Иоанна" for "1 Иоанна", "И Нав" for "И.Нав" (dots are spaces by now).
-  return getBookByWrittenName(input)?.id ?? null;
+  const asWritten = getBookByWrittenName(input)?.id;
+  if (asWritten || written) return asWritten ?? null;
+  // No language to go by: a form one language alone writes, in the order the languages are read.
+  for (const language of WRITING_LANGUAGES) {
+    const form = OWN_LANGUAGE_ALIASES[language]?.get(input.toLowerCase());
+    if (form) return form;
+  }
+  return null;
 };
 
 /**
@@ -259,7 +307,7 @@ export function exactBook(name: string, locale?: AppLocale): string | null {
 }
 
 /** A book's name as its words, the way names are kept: dashes and dots are spaces ("Песнь-Песней", "Рим."). */
-const nameWords = (name: string): string => name.replace(/[–—−‒‑﹘﹣]/g, '-').replace(/[:,.;]/g, ' ').split(/[\s-]+/).filter(Boolean).join(' ');
+const nameWords = (name: string): string => withoutApostrophe(name).replace(/[–—−‒‑﹘﹣]/g, '-').replace(/[:,.;]/g, ' ').split(/[\s-]+/).filter(Boolean).join(' ');
 
 /**
  * The languages whose own names and abbreviations write a book so: "Ps" English alone, "Иоил" Russian,

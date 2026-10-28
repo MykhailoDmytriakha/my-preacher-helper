@@ -7,7 +7,7 @@ import CouncilListPage from '@/(pages)/(private)/care/council/page';
 
 const mockRefresh = jest.fn();
 const mockState = { error: 'Read refused', loading: false, councils: [] };
-jest.mock('next/navigation', () => ({ useRouter: () => ({ push: jest.fn() }), useParams: () => ({ id: 'council-1' }) }));
+jest.mock('next/navigation', () => ({ useRouter: () => ({ push: jest.fn() }), useParams: () => ({ id: 'council-1' }), usePathname: () => '/care/council/council-1', useSearchParams: () => new URLSearchParams() }));
 jest.mock('@/providers/AuthProvider', () => ({ useAuth: () => ({ user: { uid: 'owner' } }) }));
 jest.mock('@/hooks/useUserSettings', () => ({ useUserSettings: () => ({ settings: { firstDayOfWeek: 'monday' } }) }));
 jest.mock('@/hooks/useCouncilsDataCollection', () => ({ useCouncilsDataCollection: () => ({ ...mockState, knownIds: new Set(), refresh: mockRefresh }) }));

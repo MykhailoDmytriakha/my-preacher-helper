@@ -180,12 +180,8 @@ const MarkdownDisplay = ({ content, className = '', compact = false, searchQuery
                                         <span>{title}</span>
                                     </div>
                                     <div className="text-gray-800 dark:text-gray-200">
-                                        {searchQuery ? (
-                                            <HighlightedText text={String(children).replace(/\n$/, '')} searchQuery={searchQuery} />
-                                        ) : (
-                                            // A quote often names its passage: it opens like any other reference.
-                                            <ScriptureText text={String(children).replace(/\n$/, '')} />
-                                        )}
+                                        {/* A quote often names its passage: it opens like any other reference, searched or not. */}
+                                        <ScriptureText text={String(children).replace(/\n$/, '')} searchQuery={searchQuery} />
                                     </div>
                                 </div>
                             );

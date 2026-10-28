@@ -50,6 +50,19 @@ describe('ScriptureLinks — a reference in text is a link where a screen opens 
     expect(screen.getByRole('button', { name: 'Рим 12:1–2' })).toBeInTheDocument();
   });
 
+  // Case 2026-10-12-block-diagram, L8: the notes' search drew a quote callout as plain lit words, and its reference
+  // stopped opening while the search was on. The words stay lit and the reference stays a link, its match lit in it.
+  it('keeps a reference in a quote callout a link while the notes are searched', () => {
+    const onOpen = jest.fn();
+    render(<ScriptureLinks onOpen={onOpen}><MarkdownDisplay content={'[Quote: Прочитайте Рим 12:1–2 вслух]'} searchQuery="прочитайте 12:1" /></ScriptureLinks>);
+    // The accessible name the test library computes puts a space around the <mark> («Рим 12:1 –2»); a browser does not.
+    const link = screen.getByText((_, element) => element?.tagName === 'BUTTON' && element.textContent === 'Рим 12:1–2');
+    expect(link.querySelector('mark')).toHaveTextContent('12:1');
+    expect(screen.getByText('Прочитайте', { selector: 'mark' })).toBeInTheDocument();
+    fireEvent.click(link);
+    expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ book: 'Romans', chapter: 12, fromVerse: 1, toVerse: 2 }));
+  });
+
   it('leaves a document drawn inside a linking page — a PDF — with its references as words', () => {
     render(<ScriptureLinks onOpen={jest.fn()}><WithoutScriptureLinks><PlanMarkdown markdown={plan} /></WithoutScriptureLinks></ScriptureLinks>);
     expect(screen.queryAllByRole('button')).toHaveLength(0);

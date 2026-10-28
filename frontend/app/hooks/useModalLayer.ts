@@ -5,7 +5,7 @@ import { useEffect, useInsertionEffect, useLayoutEffect, useRef } from 'react';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useScrollLock } from '@/hooks/useScrollLock';
 import { isAvailableFocusTarget } from '@/utils/focusableElements';
-import { hasExternalDialogFocus, isTopmostLayer, registerModalLayer } from '@/utils/modalLayerRegistry';
+import { hasExternalDialogFocus, isTopmostLayer, registerModalLayer, updateModalLayerFocusRing } from '@/utils/modalLayerRegistry';
 
 export { hasOpenLayer, isTopmostLayer } from '@/utils/modalLayerRegistry';
 
@@ -39,6 +39,8 @@ export interface ModalLayerOptions {
   closeOnEscape?: boolean;
   /** An opener inside a menu may have disappeared before this dialog mounts. */
   returnFocusTo?: React.RefObject<HTMLElement | null>;
+  /** An explicit Tab ring inside the layer, when the overlay includes other reading content. */
+  focusRing?: React.RefObject<HTMLElement | null>;
 }
 
 export interface ModalLayerProps<T extends HTMLElement = HTMLDivElement> {
@@ -52,6 +54,7 @@ export function useModalLayer<T extends HTMLElement = HTMLDivElement>({
   active = true,
   closeOnEscape = true,
   returnFocusTo,
+  focusRing,
 }: ModalLayerOptions): ModalLayerProps<T> {
   const ref = useRef<T>(null);
   useScrollLock(active);
@@ -67,17 +70,20 @@ export function useModalLayer<T extends HTMLElement = HTMLDivElement>({
   // element keeps its registration, so typing/rerenders never reset focus or the return target.
   useLayoutEffect(() => {
     const element = active ? ref.current : null;
-    if (registration.current?.element === element) return;
+    if (registration.current?.element === element) {
+      if (element) updateModalLayerFocusRing(element, focusRing?.current ?? element);
+      return;
+    }
     registration.current?.release();
     registration.current = element
-      ? { element, release: registerModalLayer(element, returnFocusTo?.current ?? null, opener.current) }
+      ? { element, release: registerModalLayer(element, returnFocusTo?.current ?? null, opener.current, focusRing?.current ?? element) }
       : null;
   });
   useLayoutEffect(() => () => {
     registration.current?.release();
     registration.current = null;
   }, []);
-  useFocusTrap(ref, active);
+  useFocusTrap(focusRing ?? ref, active);
 
   useEffect(() => {
     if (!active || !closeOnEscape || closeDisabled) return;

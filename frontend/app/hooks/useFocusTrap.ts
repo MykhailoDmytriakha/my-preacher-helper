@@ -3,19 +3,20 @@
 import { useEffect, type RefObject } from 'react';
 
 import { focusableElements, focusInside, isAvailableFocusTarget } from '@/utils/focusableElements';
-import { hasExternalDialogFocus, hasOpenLayer, isTopmostLayer } from '@/utils/modalLayerRegistry';
+import { EXTERNAL_FOCUS_SURFACES, hasExternalDialogFocus, hasModalLayers, isTopmostLayer } from '@/utils/modalLayerRegistry';
 
 /** One Tab ring for a modal, or a full-screen workspace when no modal is above it. */
 export function useFocusTrap(containerRef: RefObject<HTMLElement | null>, active = true): void {
   useEffect(() => {
     if (!active) return undefined;
+    const beneath = new Set(document.querySelectorAll(EXTERNAL_FOCUS_SURFACES));
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Tab' || event.defaultPrevented) return;
       const container = containerRef.current;
-      if (!container || !isAvailableFocusTarget(container) || hasExternalDialogFocus(container)) return;
+      if (!container || !isAvailableFocusTarget(container) || hasExternalDialogFocus(container, beneath)) return;
       // A window opened above this one (a question asked over it) has the keyboard.
       const layer = container.closest<HTMLElement>('[data-modal-layer]');
-      if (layer ? !isTopmostLayer(layer) : hasOpenLayer()) return;
+      if (layer ? !isTopmostLayer(layer) : hasModalLayers()) return;
       event.stopPropagation();
       const reachable = focusableElements(container);
       if (reachable.length === 0) {
