@@ -69,3 +69,11 @@ export function parseFocusModeFromUrl(url: string): { mode: string | null; secti
     return { mode: null, section: null, sermonId: null };
   }
 }
+
+/** The address without one of its parameters, as a path — null when it has none such: «…/plan?section=main» → «…/plan». */
+export function addressWithout(href: string, name: string): string | null {
+  const url = new URL(href, 'http://localhost');
+  if (!url.searchParams.has(name)) return null;
+  url.searchParams.delete(name);
+  return `${url.pathname}${url.search}${url.hash}`;
+}

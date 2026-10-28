@@ -108,7 +108,7 @@ jest.mock('@/components/sermon/prep/TextContextStepContent', () => ({ __esModule
 jest.mock('@/components/sermon/prep/SpiritualStepContent', () => ({ __esModule: true, default: jest.fn(() => <div data-testid="spiritual" />) }));
 jest.mock('@/components/sermon/prep/ThesisStepContent', () => ({ __esModule: true, default: jest.fn(() => <div data-testid="thesis" />) }));
 jest.mock('@/components/sermon/prep/ExegeticalPlanStepContent', () => ({ __esModule: true, default: jest.fn(() => <div data-testid="exegetical" />) }));
-jest.mock('@/components/sermon/prep/PrepStepCard', () => ({ __esModule: true, default: ({ children }: { children: React.ReactNode }) => <div>{children}</div> }));
+jest.mock('@/components/sermon/prep/PrepStepCard', () => ({ __esModule: true, default: ({ children, stepRef }: { children: React.ReactNode; stepRef?: (el: HTMLDivElement | null) => void }) => <div ref={stepRef}>{children}</div> }));
 jest.mock('@/components/sermon/BrainstormModule', () => ({ __esModule: true, default: ({}) => <div data-testid="brainstorm" /> }));
 jest.mock('@/components/sermon/ThoughtList', () => ({ __esModule: true, default: jest.fn(() => <div data-testid="thought-list" />) }));
 jest.mock('@/components/sermon/ThoughtFilterControls', () => ({ __esModule: true, default: ({}) => null }));
@@ -406,6 +406,26 @@ mockCore.data = null; mockCore.loading = false;
     // Should render in prep mode
     expect(await screen.findByTestId('audio-recorder')).toBeInTheDocument();
     expect(screen.queryByTestId('brainstorm')).not.toBeInTheDocument();
+  });
+
+  // BUG-20261027-plan-scrolls-back-to-section, its class: the step the address names is scrolled to once — a step
+  // finished moves the active one, and that never sends the person back to the address's step.
+  test('scrolls to the deep-linked step once, never again when the active step moves', async () => {
+    const originalScrollIntoView = Element.prototype.scrollIntoView;
+    const scrollIntoView = jest.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    searchParamsMock.set('mode', 'prep');
+    searchParamsMock.set('prepStep', 'thesis');
+    try {
+      const { rerender } = render(<TestProviders><SermonPage /></TestProviders>);
+      await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(1));
+      mockCore = { ...mockCore, preparation: { ...mockCore.preparation, spiritual: { readAndPrayedConfirmed: true } } } as typeof mockCore;
+      rerender(<TestProviders><SermonPage /></TestProviders>);
+      await act(async () => { await new Promise((resolve) => setTimeout(resolve, 150)); });
+      expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    } finally {
+      Element.prototype.scrollIntoView = originalScrollIntoView;
+    }
   });
 
   test('handles multiple search params correctly', async () => {

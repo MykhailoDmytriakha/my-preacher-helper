@@ -24,6 +24,7 @@ import { SaveConflictBanner } from '@/components/SaveConflictBanner';
 import { Chip } from '@/components/ui/Chip';
 import { usePrayerDetail } from '@/hooks/usePrayerDetail';
 import { usePrayerRequests } from '@/hooks/usePrayerRequests';
+import { useWayInOnce } from '@/hooks/useWayInOnce';
 import { PrayerStatus } from '@/models/models';
 import { useAuth } from '@/providers/AuthProvider';
 import { PRAYER_CORE_AGGREGATE, PRAYER_STATUS_AGGREGATE } from '@/services/prayerRequests.client';
@@ -115,17 +116,21 @@ export default function PrayerDetailPage() {
     return null;
   }, [focus, focusUpdateId, highlightQuery]);
 
+  // The address's way in, taken once: the prayer saved or coming again never scrolls back to it and flashes it again
+  // (BUG-20261027-plan-scrolls-back-to-section). The ring leaves on its own clock, whatever the prayer does meanwhile.
+  const wayIn = useWayInOnce();
   useEffect(() => {
-    if (!focusTargetId || !prayer || typeof window === 'undefined') {
+    const wayInKey = focusTargetId ? `${id}:${focusTargetId}` : null;
+    if (!wayIn.arriving(wayInKey) || !wayInKey || !focusTargetId || !prayer || typeof window === 'undefined') {
       return;
     }
 
-    let removeRingTimeoutId: number | undefined;
     const timeoutId = window.setTimeout(() => {
       const targetElement = document.getElementById(focusTargetId);
       if (!targetElement) {
         return;
       }
+      wayIn.take(wayInKey);
 
       const exactMatch = targetElement.querySelector('mark');
       const scrollTarget = exactMatch ?? targetElement;
@@ -138,7 +143,7 @@ export default function PrayerDetailPage() {
         'dark:ring-rose-700',
         'dark:ring-offset-gray-900'
       );
-      removeRingTimeoutId = window.setTimeout(() => {
+      window.setTimeout(() => {
         targetElement.classList.remove(
           'ring-2',
           'ring-rose-300',
@@ -149,13 +154,8 @@ export default function PrayerDetailPage() {
       }, 2200);
     }, 50);
 
-    return () => {
-      window.clearTimeout(timeoutId);
-      if (removeRingTimeoutId !== undefined) {
-        window.clearTimeout(removeRingTimeoutId);
-      }
-    };
-  }, [focusTargetId, prayer]);
+    return () => window.clearTimeout(timeoutId);
+  }, [focusTargetId, prayer, id, wayIn]);
 
   if (loading || detailLoading) {
     return (

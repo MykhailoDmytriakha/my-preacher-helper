@@ -362,6 +362,38 @@ describe('PrayerDetailPage', () => {
     }
   });
 
+  // BUG-20261027-plan-scrolls-back-to-section, its class: the address's way in is taken once — the prayer saved or
+  // coming again from the server never scrolls back to the target and flashes it again.
+  it('scrolls to the target once on arrival, never again when the prayer changes', async () => {
+    const originalScrollIntoView = Element.prototype.scrollIntoView;
+    const scrollIntoView = jest.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    mockSearchParams = new URLSearchParams('q=update&focus=update&updateId=u2');
+    const prayerWithUpdates = {
+      ...activePrayer,
+      updates: [{ id: 'u2', text: 'An update', createdAt: '2026-03-04T00:00:00.000Z' }],
+    };
+    mockUsePrayerDetail.mockReturnValue({ prayer: prayerWithUpdates, isLoading: false });
+    mockUsePrayerRequests.mockReturnValue({
+      prayerRequests: [prayerWithUpdates],
+      loading: false,
+      updatePrayer: jest.fn().mockResolvedValue(undefined),
+      deletePrayer: jest.fn().mockResolvedValue(undefined),
+      addUpdate: jest.fn().mockResolvedValue(undefined),
+      setStatus: jest.fn().mockResolvedValue(undefined),
+    });
+    try {
+      const { rerender } = render(<PrayerDetailPage />);
+      await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(1));
+      mockUsePrayerDetail.mockReturnValue({ prayer: { ...prayerWithUpdates, title: 'Saved a moment ago' }, isLoading: false });
+      rerender(<PrayerDetailPage />);
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    } finally {
+      Element.prototype.scrollIntoView = originalScrollIntoView;
+    }
+  });
+
   it('renders answered prayers, update timeline, and the restore action', async () => {
     const setStatus = jest.fn().mockResolvedValue(undefined);
 

@@ -1,6 +1,6 @@
 import { runScenarios } from '@test-utils/scenarioRunner';
 
-import { getFocusModeUrl, getStructureUrl, parseFocusModeFromUrl } from '../../app/utils/urlUtils';
+import { addressWithout, getFocusModeUrl, getStructureUrl, parseFocusModeFromUrl } from '../../app/utils/urlUtils';
 
 describe('urlUtils', () => {
   describe('getFocusModeUrl', () => {
@@ -145,5 +145,16 @@ describe('urlUtils', () => {
         })),
       );
     });
+  });
+});
+
+// BUG-20261027-plan-scrolls-back-to-section: «Сохранить» takes the section out of the address, the rest stays.
+describe('addressWithout', () => {
+  it('drops one parameter and keeps the others and the hash', () => {
+    expect(addressWithout('https://x.test/sermons/a/plan?section=introduction&planView=edit#top', 'section')).toBe('/sermons/a/plan?planView=edit#top');
+    expect(addressWithout('/sermons/a/plan?section=main', 'section')).toBe('/sermons/a/plan');
+  });
+  it('is null when the address has no such parameter', () => {
+    expect(addressWithout('/sermons/a/plan?planView=edit', 'section')).toBeNull();
   });
 });

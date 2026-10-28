@@ -15,6 +15,7 @@ import { useAiUsage } from "@/hooks/useAiUsage";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useRouteId } from "@/hooks/useRouteId";
 import { useScrollLock } from '@/hooks/useScrollLock';
+import { useWayInOnce, type WayIn } from "@/hooks/useWayInOnce";
 import { SermonPoint, Sermon, Thought } from "@/models/models";
 import { TimerPhase } from "@/types/TimerState";
 import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
@@ -28,6 +29,7 @@ import { persistedWrite, refusedWrite, type WriteSubmission } from '@/utils/reco
 import { hasPlan } from "@/utils/sermonPlanAccess";
 import { getVisualOrderedThoughtsForOutlinePoint } from "@/utils/sermonVisualOrder";
 import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
+import { addressWithout } from "@/utils/urlUtils";
 import { writeFailureTranslationKey } from '@/utils/writeRecovery';
 
 import { useEngineSermonSource } from "../hooks/useEngineSermonSource";
@@ -154,16 +156,18 @@ function EnginePlanPage({ sermonId }: { sermonId: string }) {
   // the other one fresh, as the swap did. Nothing seeded from the copy reaches the editor.
   // It offers nothing the copy could not keep; why is said once, for the app, by DeviceStorageNotice.
   const onCopy = document.readOnly && !preaching;
+  // The address's way in is held here, above the copy and the editor: the copy giving way is not a new arrival.
+  const wayIn = useWayInOnce();
   return <PlanWriterContext.Provider value={writer}>
     {!document.readOnly && <div className="px-4 pt-4 empty:hidden"><DataSyncStatus subject={document.recoveryIdentity} status={document.status} error={document.error} onRetry={document.retry}
       onKeepLocal={document.keepLocal} onAcceptRemote={document.acceptRemote} /></div>}
-    <PlanPageContent key={onCopy ? 'copy' : 'editor'} source={source} readOnly={onCopy} />
+    <PlanPageContent key={onCopy ? 'copy' : 'editor'} source={source} readOnly={onCopy} wayIn={wayIn} />
   </PlanWriterContext.Provider>;
 }
 
 type SermonSource = ReturnType<typeof useEngineSermonSource>;
 
-function PlanPageContent({ source, readOnly = false }: { source: SermonSource; readOnly?: boolean }) {
+function PlanPageContent({ source, readOnly = false, wayIn }: { source: SermonSource; readOnly?: boolean; wayIn: WayIn }) {
   const { t } = useTranslation();
   const planWriter = usePlanWriter();
   const noContentText = t(TRANSLATION_KEYS.NO_CONTENT);
@@ -460,12 +464,15 @@ function PlanPageContent({ source, readOnly = false }: { source: SermonSource; r
     }
   }, [isPlanImmersive, resetImmersiveCopyStatus]);
 
-  // Auto-scroll to section based on URL parameter
+  // Auto-scroll to section based on URL parameter — once on arrival: the sermon changing under it (a save, the server's
+  // answer) never sends the person back (BUG-20261027-plan-scrolls-back-to-section).
   useLayoutEffect(() => {
     const sectionParam = searchParams.get('section');
+    const wayInKey = sectionParam ? `${sermonId}:${sectionParam}` : null;
 
-    if (sectionParam && sermon) {
+    if (wayIn.arriving(wayInKey) && sectionParam && wayInKey && sermon) {
       const scrollToSection = () => {
+        if (wayIn.isTaken(wayInKey)) return;
         // Try refs first (for main layout)
         let targetElement = (() => {
           switch (sectionParam) {
@@ -486,6 +493,7 @@ function PlanPageContent({ source, readOnly = false }: { source: SermonSource; r
         }
 
         if (targetElement) {
+          wayIn.take(wayInKey);
           targetElement.scrollIntoView({
             behavior: 'smooth',
             block: 'start'
@@ -493,12 +501,19 @@ function PlanPageContent({ source, readOnly = false }: { source: SermonSource; r
         }
       };
 
-      // Wait for DOM to be fully rendered
-      requestAnimationFrame(() => {
-        setTimeout(scrollToSection, 150);
+      // Wait for DOM to be fully rendered — and let it go when the address or the page moves on first: Back within
+      // the wait went to the section left (Codex review, 2026-10-27).
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const frame = requestAnimationFrame(() => {
+        timer = setTimeout(scrollToSection, 150);
       });
+      return () => {
+        cancelAnimationFrame(frame);
+        if (timer !== undefined) clearTimeout(timer);
+      };
     }
-  }, [searchParams, sermon, introductionSectionRef, mainSectionRef, conclusionSectionRef]);
+    return undefined;
+  }, [searchParams, sermon, sermonId, wayIn, introductionSectionRef, mainSectionRef, conclusionSectionRef]);
 
   useEffect(() => {
     if (isLoading) return;
@@ -656,6 +671,16 @@ function PlanPageContent({ source, readOnly = false }: { source: SermonSource; r
     aiBlocked,
     planTextBaseline,
   });
+
+  // «Сохранить» settles the person where they are: `?section=` — the way in, taken — leaves the address with no
+  // navigation, so nothing moves or blinks (the owner, 2026-10-27).
+  const saveSermonPointHere = useCallback((...args: Parameters<typeof saveSermonPoint>) => {
+    const settled = addressWithout(window.location.href, 'section');
+    // No state of our own: Next keeps its router's and reads the new address into useSearchParams — its own state passed
+    // back made it skip the sync, and the next view change brought `section` back (Codex review, 2026-10-27).
+    if (settled) window.history.replaceState(null, '', settled);
+    return saveSermonPoint(...args);
+  }, [saveSermonPoint]);
 
   // Toggle edit mode for an outline point
   const toggleEditMode = (outlinePointId: string) => {
@@ -1183,7 +1208,7 @@ function PlanPageContent({ source, readOnly = false }: { source: SermonSource; r
         onThoughtSave={handleThoughtSave}
         getThoughtsForSermonPoint={getThoughtsForSermonPoint}
         onGenerate={generateSermonPointContent}
-        onSaveSermonPoint={saveSermonPoint}
+        onSaveSermonPoint={saveSermonPointHere}
         onToggleEditMode={toggleEditMode}
         onSyncPairHeights={syncPairHeights}
         onUpdateCombinedPlan={updateCombinedPlan}

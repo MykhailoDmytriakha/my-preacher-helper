@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 
 import '@testing-library/jest-dom';
@@ -256,6 +256,30 @@ describe('a plan screen when device storage answers again', () => {
 
     expect(screen.queryByText('Text removed on this device')).toBeNull();
     expect(screen.getAllByText('He called on God').length).toBeGreaterThan(0);
+  });
+
+  // BUG-20261027-plan-scrolls-back-to-section, Codex review: the copy giving way to the editor mounts the screen anew,
+  // and that is no new arrival — the section named in the address is not scrolled to again.
+  it('scrolls to the section once though the copy gives way to the editor', async () => {
+    const originalScrollIntoView = Element.prototype.scrollIntoView;
+    const scrollIntoView = jest.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    mockSearchParams = new URLSearchParams('section=introduction');
+    mockReadOnly = true;
+    mockSermon = sermonFixture();
+    try {
+      const view = renderPage(<AiPlanPage />);
+      await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(1));
+      mockReadOnly = false;
+      mockSermon = sermonFixture();
+      act(() => {
+        view.rerender(<QueryClientProvider client={new QueryClient()}><AiPlanPage /></QueryClientProvider>);
+      });
+      await act(async () => { await new Promise((resolve) => setTimeout(resolve, 400)); });
+      expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    } finally {
+      Element.prototype.scrollIntoView = originalScrollIntoView;
+    }
   });
 
   /** The AI plan kept its page while preaching at HEAD too; the preacher's timer runs on. */

@@ -41,6 +41,7 @@ import { useSeries } from "@/hooks/useSeries";
 import { sermonIsMissing } from "@/hooks/useSermonRead";
 import { useTags } from "@/hooks/useTags";
 import { useUserSettings } from "@/hooks/useUserSettings";
+import { useWayInOnce } from "@/hooks/useWayInOnce";
 import { useAuth } from "@/providers/AuthProvider";
 import { logFailureOnce, type FailureWords } from '@/utils/actionFailureMessage';
 import { ranOutOfTime } from "@/utils/aiTimeFailure";
@@ -339,15 +340,20 @@ function SermonPageContent({ id }: { id: string }) {
   }, [activeStepId]);
 
   const prepStepParam = searchParams?.get('prepStep');
+  // The address's way in, taken once: a step finished, the sermon saved, never sends the person back to the step the
+  // address named, nor opens it again after it was closed (BUG-20261027-plan-scrolls-back-to-section).
+  const prepWayIn = useWayInOnce();
   useEffect(() => {
     const target = prepStepParam as PrepStepId | null;
-    if (target && PREP_STEP_IDS.includes(target)) {
+    const wayInKey = target && PREP_STEP_IDS.includes(target) ? `${id}:${target}` : null;
+    if (prepWayIn.arriving(wayInKey) && target && wayInKey) {
       if (target !== activeStepId && !manuallyExpanded.has(target)) {
         setManuallyExpanded(prev => new Set(prev).add(target));
       }
       const timer = setTimeout(() => {
         const el = stepRefs.current[target!];
         if (el && typeof el.scrollIntoView === 'function') {
+          prepWayIn.take(wayInKey);
           el.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
       }, 50);

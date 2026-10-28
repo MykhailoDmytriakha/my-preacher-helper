@@ -959,6 +959,101 @@ describe('Sermon Plan Page UI Smoke Test', () => {
       await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
     });
 
+    // BUG-20261027-plan-scrolls-back-to-section: after «Сохранить», or when the sermon came again from the server,
+    // the page went back to the section named in the address — it is the way in, scrolled to once.
+    it('scrolls to the section once on arrival, never again when the sermon changes', async () => {
+      const scrollIntoView = jest.fn();
+      Element.prototype.scrollIntoView = scrollIntoView;
+      mockSearchParams = new URLSearchParams('section=introduction');
+
+      renderWithQueryClient(<SermonPlanPage />);
+
+      await screen.findByTestId('plan-introduction-left-section');
+      await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(1));
+      await act(async () => { await harness.remote({ planText: { 'intro-p1': 'Saved on this device a moment ago' } }); });
+      await act(async () => { await new Promise((resolve) => setTimeout(resolve, 400)); });
+      expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    });
+
+    // BUG-20261027-plan-scrolls-back-to-section: «Сохранить» settles the person where they are — the section leaves
+    // the address without a navigation, the other parameters stay.
+    // Codex review, 2026-10-27: Back within the wait went to the section left.
+    it('lets a pending scroll go when the address moves on first', async () => {
+      const scrollIntoView = jest.fn();
+      Element.prototype.scrollIntoView = scrollIntoView;
+      mockSearchParams = new URLSearchParams('section=introduction');
+      renderWithQueryClient(<SermonPlanPage />);
+      await screen.findByTestId('plan-introduction-left-section');
+      // Within the wait, the address names another section.
+      mockSearchParams = new URLSearchParams('section=main');
+      await act(async () => { await harness.remote({ planText: { 'intro-p1': 'Drawn again' } }); });
+      await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
+      await act(async () => { await new Promise((resolve) => setTimeout(resolve, 400)); });
+      expect(scrollIntoView).toHaveBeenCalledTimes(1);
+      expect((scrollIntoView.mock.contexts[0] as Element).closest('[data-section]')?.getAttribute('data-section')).toBe('main');
+    });
+
+    // Codex review r3, 2026-10-27: to Main and back to Introduction before Main's scroll came.
+    it('back to the first section before another one was scrolled to is a new arrival there', async () => {
+      const scrollIntoView = jest.fn();
+      Element.prototype.scrollIntoView = scrollIntoView;
+      mockSearchParams = new URLSearchParams('section=introduction');
+      jest.useFakeTimers({ doNotFake: ['queueMicrotask', 'nextTick'] });
+      try {
+        renderWithQueryClient(<SermonPlanPage />);
+        await screen.findByTestId('plan-introduction-left-section');
+        await act(async () => { jest.advanceTimersByTime(300); });
+        expect(scrollIntoView).toHaveBeenCalledTimes(1);
+        // To Main and back, the clock standing: Main's scroll has not come.
+        mockSearchParams = new URLSearchParams('section=main');
+        await act(async () => { await harness.remote({ planText: { 'intro-p1': 'To main' } }); });
+        mockSearchParams = new URLSearchParams('section=introduction');
+        await act(async () => { await harness.remote({ planText: { 'intro-p1': 'And back' } }); });
+        await act(async () => { jest.advanceTimersByTime(300); });
+        expect(scrollIntoView).toHaveBeenCalledTimes(2);
+        expect((scrollIntoView.mock.contexts[1] as Element).closest('[data-section]')?.getAttribute('data-section')).toBe('introduction');
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('the same section named again after the address let it go is a new arrival', async () => {
+      const scrollIntoView = jest.fn();
+      Element.prototype.scrollIntoView = scrollIntoView;
+      mockSearchParams = new URLSearchParams('section=introduction');
+      renderWithQueryClient(<SermonPlanPage />);
+      await screen.findByTestId('plan-introduction-left-section');
+      await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(1));
+      // The address lets it go (a save, a link without it), the page draws again, then it names it again.
+      mockSearchParams = new URLSearchParams();
+      await act(async () => { await harness.remote({ planText: { 'intro-p1': 'Drawn again' } }); });
+      mockSearchParams = new URLSearchParams('section=introduction');
+      await act(async () => { await harness.remote({ planText: { 'intro-p1': 'Drawn once more' } }); });
+      await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(2));
+    });
+
+    it('a save takes the section out of the address quietly', async () => {
+      Element.prototype.scrollIntoView = jest.fn();
+      // The router's own mark in the state, as Next keeps it: passed back, it would make Next skip reading the address.
+      window.history.replaceState({ __NA: true }, '', '/sermons/test-sermon-id/plan?section=introduction&planView=edit');
+      mockSearchParams = new URLSearchParams('section=introduction');
+      try {
+        renderWithQueryClient(<SermonPlanPage />);
+        await screen.findByTestId('plan-introduction-right-section');
+        fireEvent.click(screen.getAllByTitle('Edit Mode')[0]);
+        fireEvent.change((await screen.findAllByPlaceholderText('No content'))[0], { target: { value: 'Saved here' } });
+        fireEvent.click((await screen.findAllByTitle('Save'))[0]);
+        expect(window.location.pathname + window.location.search).toBe('/sermons/test-sermon-id/plan?planView=edit');
+        // No state of our own: Next keeps its router's and reads the new address (Codex review, 2026-10-27).
+        expect(window.history.state).toBeNull();
+        expect(mockPush).not.toHaveBeenCalled();
+        expect(mockReplace).not.toHaveBeenCalled();
+        await waitFor(() => expect(storedPlanText()['intro-p1']).toBe('Saved here'));
+      } finally {
+        window.history.replaceState(null, '', '/');
+      }
+    });
+
     it('auto-scrolls to the main section when the main section param is provided', async () => {
       const scrollIntoView = jest.fn();
       Element.prototype.scrollIntoView = scrollIntoView;
