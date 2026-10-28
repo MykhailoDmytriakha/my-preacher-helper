@@ -142,6 +142,20 @@ describe('dashboard panels fill the height the grid row hands them', () => {
     ]);
   });
 
+  it('says a comment by its first words, its place a chip below, not twice its place', async () => {
+    mockNotes = [{
+      ...notes[0], id: 'comment-1', type: 'comment' as const, title: '', tags: [],
+      content: 'Ждать Господа — не бездействие, а доверие.',
+      scriptureRefs: [{ id: 'r', bible: 'rst', book: 'Isaiah', chapter: 40, fromVerse: 31 }],
+    }] as never;
+
+    render(<DashboardPage />);
+
+    const row = await screen.findByRole('link', { name: /Ждать Господа — не бездействие, а доверие\./ });
+    expect(row).toHaveTextContent('dashboardHome.sections.studies.commentTag');
+    expect(row.textContent?.match(/40:31/g)).toHaveLength(1);
+  });
+
   it('stops at the last note instead of inventing rows to fill the card', async () => {
     mockNotes = notes.slice(0, 4);
 
