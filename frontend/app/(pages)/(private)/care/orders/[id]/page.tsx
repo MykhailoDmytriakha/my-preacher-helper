@@ -3,9 +3,9 @@
 import { ArrowLeft, Plus, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 
-import { WrittenInMark } from '@/components/bible/ScriptureLinks';
+import { ScriptureLinks, ScriptureText, WrittenInMark } from '@/components/bible/ScriptureLinks';
 import { useVerseWindow } from '@/components/bible/VerseWindow';
 import { RecordUnavailable } from '@/components/RecordUnavailable';
 import { Chip } from '@/components/ui/Chip';
@@ -152,11 +152,11 @@ function RetainedOrderSteps({ steps, refsDraft }: { steps: ServiceOrderStep[]; r
           {steps.map((step, index) => (
             <li key={step.id} className="text-sm">
               <p className="font-bold text-gray-900 dark:text-white">
-                {index + 1}. {step.title}
+                {index + 1}. <ScriptureText text={step.title} />
               </p>
               {step.body && (
                 <p className="mt-1 whitespace-pre-wrap leading-relaxed text-gray-700 dark:text-gray-300">
-                  {step.body}
+                  <ScriptureText text={step.body} />
                 </p>
               )}
               {/* As typed, comma and all, if he was in the middle of the field when it happened. */}
@@ -177,9 +177,6 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
   const { t } = useTranslation();
   const { locale } = useAppLocale();
   const { confirm, confirmDialog } = useConfirm();
-  // A step's passage opens over the order; the Bible is one press away from the window.
-  const verseWindow = useVerseWindow();
-
   const { orders, loading, isOnline, updateSteps, openedWith, closedEditing, recheck, orderPresence, renameOrder, deleteOrder } =
     useServiceOrders();
   const cachedOrder = orders.find((candidate) => candidate.id === orderId);
@@ -190,8 +187,6 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
     if (!acceptedOrder && cachedOrder) setAcceptedOrder(cachedOrder);
   }, [acceptedOrder, cachedOrder]);
   const order = cachedOrder ? acceptedOrder ?? cachedOrder : undefined;
-  // The language the order is written in, for a step's reference Russian and Ukrainian write alike ("1Цар").
-  const orderWrittenIn = serviceOrderLanguage(order);
   const confirmContent = (patch: Partial<ServiceOrder>) => {
     setAcceptedOrder(current => current ? { ...current, ...patch } : current);
   };
@@ -273,6 +268,13 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
    * deleted elsewhere. What is not held is what cannot be shown back to him.
    */
   const [titleDraft, setTitleDraft] = useState<string | null>(null);
+  // The shown local words decide a reference's language, even before delivery or on a retained copy.
+  const shownOrder = order ?? lastKnown.current;
+  const orderWrittenIn = serviceOrderLanguage(shownOrder ? {
+    ...shownOrder,
+    title: titleDraft ?? shownOrder.title,
+    steps: typed ?? shownOrder.steps,
+  } : null);
 
   const [verdict, setVerdict] = useState<'checking' | 'absent' | 'unreachable' | null>(null);
   const rechecked = useRef(false);
@@ -749,6 +751,9 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
    * plainly and selectably, with what happened said above them.
    */
   const hasLocalChanges = typed !== null || titleDraft !== null || pending.current.size > 0 || unresolved.current.size > 0 || rearranging;
+  // Reading is safe while words are kept here; leaving is offered only after this sitting has no unfinished work.
+  const canLeaveReading = Boolean(order) && presence?.kind !== 'absent' && presence?.kind !== 'deleting' && !hasLocalChanges;
+  const verseWindow = useVerseWindow({ toBible: canLeaveReading });
   /*
    * THE ENGINE ROW IS ALREADY THE ANSWER. Its value is the server's copy plus this device's own
    * submitted work. With nothing unsaved on screen the page follows the row; a new title starts a
@@ -760,25 +765,33 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
     setAcceptedOrder(cachedOrder);
   }, [cachedOrder, hasLocalChanges, acceptedOrder]);
 
+  // Both the current and retained reading copy open through the same screen-owned window.
+  const reading = (children: ReactNode) => (
+    <ScriptureLinks onOpen={verseWindow.open} writtenIn={orderWrittenIn}>
+      {children}
+      {verseWindow.sheet}
+    </ScriptureLinks>
+  );
+
   if (presence?.kind === 'absent' || presence?.kind === 'deleting') {
     const kept = cachedOrder ?? lastKnown.current;
-    return <RecordUnavailable presence={presence} onBack={() => router.push('/care/orders')}
+    return reading(<RecordUnavailable presence={presence} onBack={() => router.push('/care/orders')}
       onRetry={() => recheck(orderId)}>
       {kept && <section className="space-y-4">
-        <h2 className="text-xl font-bold">{titleDraft ?? kept.title}</h2>
+        <h2 className="text-xl font-bold"><ScriptureText text={titleDraft ?? kept.title} /></h2>
         <ServiceOrderFailure message={t(presence.kind === 'absent' ? 'serviceOrders.goneWithWords' : 'recordAvailability.deleting') as string} testId="service-order-gone" />
         <RetainedOrderSteps steps={typed ?? kept.steps} refsDraft={refsDraft} />
       </section>}
-    </RecordUnavailable>;
+    </RecordUnavailable>);
   }
 
   if (!order && (typed || titleDraft || unresolved.current.size > 0) && lastKnown.current) {
-    return (
+    return reading(
       <div className="mx-auto w-full max-w-3xl">
         <BackToList />
 
         <h1 className="mt-4 text-2xl font-extrabold tracking-tight text-gray-900 sm:text-3xl dark:text-white">
-          {titleDraft ?? lastKnown.current.title}
+          <ScriptureText text={titleDraft ?? lastKnown.current.title} />
         </h1>
 
         <p role="status" className="mt-4 text-sm text-gray-600 dark:text-gray-300">
@@ -958,7 +971,7 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
     }
   };
 
-  return (
+  return reading(
     <div className="mx-auto w-full max-w-3xl">
       {/*
         THE WAY BACK IS ON THE PAGE, not only in the trail above it. The owner looked for it
@@ -988,7 +1001,7 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
             />
           ) : (
             <h1 className="min-w-0 text-2xl font-extrabold tracking-tight text-gray-900 sm:text-3xl dark:text-white">
-              {order.title}
+              <ScriptureText text={order.title} />
             </h1>
           )}
 
@@ -1007,7 +1020,7 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
 
         {order.summary && !editing && (
           <p className="mt-2 text-sm leading-relaxed text-gray-600 dark:text-gray-400">
-            {order.summary}
+            <ScriptureText text={order.summary} />
           </p>
         )}
       </header>
@@ -1154,7 +1167,7 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
                   <>
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="text-[15px] font-bold tracking-tight text-gray-900 dark:text-gray-100">
-                        {step.title}
+                        <ScriptureText text={step.title} />
                       </span>
                       {step.flagged && (
                         <Chip tone="amber" size="xs" weight="bold">
@@ -1165,7 +1178,7 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
 
                     {step.body ? (
                       <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-gray-700 dark:text-gray-300">
-                        {step.body}
+                        <ScriptureText text={step.body} />
                       </p>
                     ) : (
                       // Says the words are missing rather than showing a specimen he could
@@ -1230,7 +1243,6 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
         </div>
       )}
       {confirmDialog}
-      {verseWindow.sheet}
     </div>
   );
 }

@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import React from 'react';
 
 import { PointThoughtLane, UnassignedThoughtLane } from '@/components/column/ThoughtLanes';
+import { ScriptureLinks } from '@/components/bible/ScriptureLinks';
 
 import type { Item, SubPoint } from '@/models/models';
 
@@ -19,6 +20,25 @@ const item = (id: string, position?: number, subPointId?: string): Item => ({ id
 const renderItem = (entry: Item, label?: string | null) => <div key={entry.id} data-testid={`thought-${entry.id}`}>{entry.content}{label && ` / ${label}`}</div>;
 const base = { containerId: 'main', outlinePointId: 'point', setNodeRef: jest.fn(), isOver: false, renderItem, t: (key: string) => key };
 beforeEach(() => { mockTargets.clear(); mockOver = null; });
+
+it('opens a scripture reference in a sub-point lane heading', () => {
+  const onOpen = jest.fn();
+  render(
+    <ScriptureLinks onOpen={onOpen}>
+      <PointThoughtLane
+        {...base}
+        pointItems={[]}
+        subPoints={[{ id: 'sub-ruth', text: 'Read Ruth 1:2', position: 1 }]}
+        hasItems
+      />
+    </ScriptureLinks>
+  );
+
+  fireEvent.click(screen.getByRole('button', { name: 'Ruth 1:2' }));
+
+  expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ book: 'Ruth', chapter: 1, fromVerse: 2, label: 'Ruth 1:2' }));
+  expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+});
 
 it('keeps interleaved cards and gap metadata linked to the nearest real items across empty subpoints', () => {
   const subPoints: SubPoint[] = [

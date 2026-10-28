@@ -100,7 +100,7 @@ function ScriptureLink({ found, children }: { found: Pick<ReferenceInText, 'raw'
   };
   return (
     <>
-      <button type="button" onClick={open} className={SCRIPTURE_LINK_CLASSES} {...{ [SCRIPTURE_LINK_MARK]: '' }}>
+      <button type="button" onClick={open} onDoubleClick={(event) => event.stopPropagation()} className={SCRIPTURE_LINK_CLASSES} {...{ [SCRIPTURE_LINK_MARK]: '' }}>
         {children}
       </button>
       {found.writtenIn ? <WrittenInMark bible={found.writtenIn} /> : null}

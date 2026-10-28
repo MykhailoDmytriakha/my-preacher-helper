@@ -1,3 +1,4 @@
+import { ScriptureLinks } from '@/components/bible/ScriptureLinks';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import React from 'react';
 
@@ -181,3 +182,16 @@ describe('PointNote editing', () => {
   });
 });
 
+it.each([false, true])('opens a verse from a displayed reminder without editing it (read-only=%s)', (isReadOnly) => {
+  const onOpen = jest.fn();
+  const onChange = jest.fn();
+  render(<ScriptureLinks onOpen={onOpen}><PointNote note="Read Ruth 1:2" onChange={onChange} isReadOnly={isReadOnly} /></ScriptureLinks>);
+  fireEvent.click(screen.getByRole('button', { name: 'Ruth 1:2' }));
+  expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ book: 'Ruth', chapter: 1, fromVerse: 2, label: 'Ruth 1:2' }));
+  expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+  expect(onChange).not.toHaveBeenCalled();
+  if (!isReadOnly) {
+    fireEvent.click(screen.getByText('Read', { exact: true }));
+    expect(screen.getByRole('textbox')).toHaveValue('Read Ruth 1:2');
+  }
+});

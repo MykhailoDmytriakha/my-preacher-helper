@@ -1,5 +1,6 @@
 'use client';
 
+
 import {
   DndContext,
   DragOverlay,
@@ -14,6 +15,7 @@ import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import TextareaAutosize from 'react-textarea-autosize';
 
+import { ScriptureText } from '@/components/bible/ScriptureLinks';
 import PointNote from '@/components/PointNote';
 import { useDndKitAccessibility } from '@/hooks/useDragAnnouncements';
 import { useModalLayer } from '@/hooks/useModalLayer';
@@ -558,7 +560,7 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
           title={sp.text}
           onDoubleClick={() => startEditingSubPoint(sp)}
         >
-          {sp.text}
+          <ScriptureText text={sp.text} />
         </span>
         {!isReadOnly && (
           <div className="flex w-10 flex-shrink-0 items-center justify-end gap-0.5 opacity-100 lg:opacity-40 transition-opacity lg:group-hover/subpoint:opacity-100">
@@ -922,7 +924,7 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
                                     setAddingToSection(null);
                                   }}
                                 >
-                                  {point.text}
+                                  <ScriptureText text={point.text} />
                                 </span>
                               </div>
                             </div>

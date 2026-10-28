@@ -3,6 +3,7 @@ import React from 'react';
 
 import '@testing-library/jest-dom';
 import OutlineBoard from '@/components/plan-editor/OutlineBoard';
+import { ScriptureLinks } from '@/components/bible/ScriptureLinks';
 import { useModalLayer } from '@/hooks/useModalLayer';
 
 import type { ScratchNote, SermonOutline } from '@/models/models';
@@ -12,6 +13,40 @@ const empty = (): SermonOutline => ({ introduction: [], main: [], conclusion: []
 afterEach(cleanup);
 
 describe('OutlineBoard', () => {
+  it('opens point and sub-point references without changing the outline or entering edit mode', () => {
+    const value: SermonOutline = {
+      introduction: [],
+      main: [{
+        id: 'p-ruth',
+        text: 'Read Ruth 1:2',
+        subPoints: [{ id: 'sp-ruth', text: 'Read Ruth 2:1', position: 1000 }],
+      }],
+      conclusion: [],
+    };
+    const onChange = jest.fn();
+    const onOpen = jest.fn();
+    render(
+      <ScriptureLinks onOpen={onOpen}>
+        <OutlineBoard value={value} onChange={onChange} />
+      </ScriptureLinks>
+    );
+
+    const pointReference = screen.getByRole('button', { name: 'Ruth 1:2' });
+    const subPointReference = screen.getByRole('button', { name: 'Ruth 2:1' });
+    fireEvent.click(pointReference);
+    fireEvent.click(subPointReference);
+
+    expect(onOpen).toHaveBeenNthCalledWith(1, expect.objectContaining({ book: 'Ruth', chapter: 1, fromVerse: 2, label: 'Ruth 1:2' }));
+    expect(onOpen).toHaveBeenNthCalledWith(2, expect.objectContaining({ book: 'Ruth', chapter: 2, fromVerse: 1, label: 'Ruth 2:1' }));
+    expect(onChange).not.toHaveBeenCalled();
+
+    fireEvent.doubleClick(pointReference);
+    fireEvent.doubleClick(subPointReference);
+    expect(screen.queryByPlaceholderText('structure.editPointPlaceholder')).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('structure.subPointPlaceholder')).not.toBeInTheDocument();
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
   it('renders three section columns', () => {
     render(<OutlineBoard value={empty()} onChange={jest.fn()} />);
     expect(screen.getByTestId('outline-board-column-introduction')).toBeInTheDocument();

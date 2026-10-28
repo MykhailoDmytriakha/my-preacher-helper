@@ -1,9 +1,11 @@
 "use client";
 
+
 import { useDroppable } from '@dnd-kit/core';
 import { PlusIcon, CheckIcon, XMarkIcon, TrashIcon, Bars3Icon, SparklesIcon, ChevronDownIcon } from '@heroicons/react/24/outline';
 import React from 'react';
 
+import { ScriptureText } from '@/components/bible/ScriptureLinks';
 import { FlatRecorderButton } from '@/components/FlatRecorderButton';
 import { FocusRecorderButton } from '@/components/FocusRecorderButton';
 import { LockToggleButton } from '@/components/LockToggleButton';
@@ -300,7 +302,7 @@ export const OutlinePointCard: React.FC<{
           className={`font-medium text-sm min-w-0 truncate select-none ${isPointLocked ? 'cursor-default' : 'cursor-text hover:bg-black/5 dark:hover:bg-white/10 rounded px-1 -mx-1 transition-colors'} ${headerColor ? 'text-gray-800 dark:text-gray-200' : colors.headerText}`}
           title={!isPointLocked ? t('common.clickToEdit', { defaultValue: 'Click to edit' }) : undefined}
         >
-          {point.text}
+          <ScriptureText text={point.text} />
         </h4>
         {isFocusMode && onAiSortPoint && (
           <button

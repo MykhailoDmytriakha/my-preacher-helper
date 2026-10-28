@@ -1,9 +1,11 @@
 "use client";
 
+
 import { useDroppable } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import React from 'react';
 
+import { ScriptureText } from '@/components/bible/ScriptureLinks';
 import PointNote from '@/components/PointNote';
 import { structureBodyPaddingClass, structureSubPointInsetClass } from '@/utils/structureBoardLayout';
 import { buildSubPointRenderableEntries } from '@/utils/subPoints';
@@ -161,7 +163,7 @@ const SubPointDropTarget: React.FC<{
             }`}
           />
           <span className="min-w-0 truncate text-xs font-semibold text-slate-600 dark:text-slate-300" title={subPoint.text}>
-            {subPoint.text}
+            <ScriptureText text={subPoint.text} />
           </span>
         </div>
         {renderRecorder ? (

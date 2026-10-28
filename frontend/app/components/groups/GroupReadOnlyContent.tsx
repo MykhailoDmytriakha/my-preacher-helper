@@ -1,10 +1,13 @@
 'use client';
 
+
 import { ArrowLeftIcon, CalendarDaysIcon, MapPinIcon, PlayIcon, UsersIcon } from '@heroicons/react/24/outline';
 import Link from 'next/link';
 
+import { ScriptureText, ScriptureWrittenIn } from '@/components/bible/ScriptureLinks';
 import { FlowItemSummary } from '@/components/groups/FlowItemSummary';
 import MarkdownDisplay from '@/components/MarkdownDisplay';
+import { groupLanguage } from '@/utils/documentLanguage';
 import { normalizeFlow } from '@/utils/groupFlow';
 import { useTranslation } from '@locales/useTranslation';
 
@@ -14,7 +17,7 @@ import type { Group, GroupBlockTemplate } from '@/models/models';
 function BlockDetails({ template }: { template: GroupBlockTemplate }) {
   return <>
     {template.summary && <div className="mt-1 text-xs text-gray-600 dark:text-gray-300"><MarkdownDisplay content={template.summary} compact className="!text-xs" /></div>}
-    {template.scriptureRefs?.length ? <p className="mt-1 break-words text-xs font-medium text-gray-600 dark:text-gray-300">{template.scriptureRefs.join(' · ')}</p> : null}
+    {template.scriptureRefs?.length ? <p className="mt-1 break-words text-xs font-medium text-gray-600 dark:text-gray-300"><ScriptureText text={template.scriptureRefs.join(' · ')} /></p> : null}
     {template.questions?.length ? <ul className="mt-1 list-disc space-y-0.5 pl-4 text-xs text-gray-600 dark:text-gray-300">
       {template.questions.map((question, index) => <li key={index}><MarkdownDisplay content={question} compact className="!text-xs [&_p]:my-0" /></li>)}
     </ul> : null}
@@ -38,13 +41,14 @@ export function GroupReadOnlyContent({ group, allowConduct = true }: { group: Gr
   const meetings = group.meetingDates ?? [];
 
   return (
+    <ScriptureWrittenIn language={groupLanguage(group)}>
     <section className="space-y-6">
       <header className="rounded-3xl border border-gray-200/70 bg-gradient-to-br from-emerald-600/10 via-cyan-600/10 to-blue-600/10 p-6 shadow-sm dark:border-gray-800 dark:from-emerald-500/10 dark:via-cyan-500/10 dark:to-blue-500/10">
         <Link href="/groups" className="mb-5 inline-flex items-center gap-2 rounded-full bg-white/70 px-3 py-1 text-sm font-medium text-gray-700 shadow-sm ring-1 ring-gray-200 transition hover:-translate-y-0.5 hover:shadow-md dark:bg-gray-900/80 dark:text-gray-200 dark:ring-gray-800">
           <ArrowLeftIcon className="h-4 w-4" />
           {t('navigation.groups', { defaultValue: 'Groups' })}
         </Link>
-        <h1 className="break-words text-2xl font-bold text-gray-900 dark:text-gray-100">{group.title}</h1>
+        <h1 className="break-words text-2xl font-bold text-gray-900 dark:text-gray-100"><ScriptureText text={group.title} /></h1>
         {group.description && <div className="mt-2 text-sm text-gray-700 dark:text-gray-300"><MarkdownDisplay content={group.description} compact /></div>}
         {meetings.map(meeting => (
           <div key={meeting.id} className="mt-4 space-y-2 text-sm text-gray-700 dark:text-gray-300">
@@ -97,7 +101,7 @@ export function GroupReadOnlyContent({ group, allowConduct = true }: { group: Gr
           <ul className="space-y-2">
             {unplaced.map(template => (
               <li key={template.id} className="rounded-xl border border-gray-200 px-4 py-3 dark:border-gray-700">
-                <p className="break-words text-sm font-semibold text-gray-800 dark:text-gray-100">{template.title}</p>
+                <p className="break-words text-sm font-semibold text-gray-800 dark:text-gray-100"><ScriptureText text={template.title} /></p>
                 {template.content && <MarkdownDisplay content={template.content} compact className="!text-xs !text-gray-500 dark:!text-gray-400" />}
                 <BlockDetails template={template} />
               </li>
@@ -106,5 +110,6 @@ export function GroupReadOnlyContent({ group, allowConduct = true }: { group: Gr
         </div>
       )}
     </section>
+    </ScriptureWrittenIn>
   );
 }

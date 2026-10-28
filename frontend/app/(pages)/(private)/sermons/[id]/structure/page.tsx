@@ -1,11 +1,14 @@
 "use client";
 
+
 import { DndContext, DragOverlay, type DragEndEvent, type Over } from "@dnd-kit/core";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import React, { useState, useEffect, Suspense, useRef, useCallback, useMemo } from "react";
 import { toast } from 'sonner';
 
+import { ScriptureText } from '@/components/bible/ScriptureLinks';
+import { ScriptureLinksInWindow } from '@/components/bible/VerseWindow';
 import Column from "@/components/Column";
 import { TechnicalDetailsButton } from '@/components/diagnostics/TechnicalDetailsButton';
 import EditThoughtModal from "@/components/EditThoughtModal";
@@ -23,6 +26,7 @@ import { Item, Sermon, SermonPoint, Thought, SermonOutline } from "@/models/mode
 import "@locales/i18n";
 import { isOfflineQueuedError } from "@/services/conflictSafeUpdate.client";
 import { newClientId } from "@/utils/clientId";
+import { sermonLanguage } from '@/utils/documentLanguage';
 import { getExportContent } from "@/utils/exportContent";
 import { outlinePointText } from '@/utils/outlineDnd';
 import {
@@ -848,6 +852,7 @@ function StructureBoard({ sermonId, engine, holdingRef, syncStatus, readOnly = f
   }
 
   return (
+    <ScriptureLinksInWindow writtenIn={sermonLanguage(sermon)} toBible={false}>
     <div className="px-4 pb-4">
       {/* `empty:hidden`: a silent status leaves no margin behind. */}
       <div className="mb-4 empty:hidden">{syncStatus}</div>
@@ -865,7 +870,7 @@ function StructureBoard({ sermonId, engine, holdingRef, syncStatus, readOnly = f
             <span className="hidden h-4 w-px bg-gray-200 dark:bg-gray-700 sm:block" aria-hidden="true" />
             <h1 className="min-w-0 truncate text-base font-semibold text-gray-800 dark:text-gray-100 md:text-lg">
               <span className="font-normal text-gray-400 dark:text-gray-500">{t('structure.title')} </span>
-              {sermon.title}
+              <ScriptureText text={sermon.title} />
             </h1>
           </div>
 
@@ -1099,5 +1104,6 @@ function StructureBoard({ sermonId, engine, holdingRef, syncStatus, readOnly = f
       </div>
       {confirmDialog}
     </div>
+    </ScriptureLinksInWindow>
   );
 }

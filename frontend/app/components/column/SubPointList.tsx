@@ -1,5 +1,6 @@
 "use client";
 
+
 import {
   DragDropContext,
   Draggable,
@@ -12,6 +13,7 @@ import {
 import { PlusIcon, PencilIcon, CheckIcon, XMarkIcon, TrashIcon, Bars2Icon } from "@heroicons/react/24/outline";
 import React, { useEffect, useRef, useState } from "react";
 
+import { ScriptureText } from '@/components/bible/ScriptureLinks';
 import PointNote from "@/components/PointNote";
 import { usePangeaAnnouncements } from '@/hooks/useDragAnnouncements';
 import { sortSubPointsByPosition, subPointDeletionNeedsConfirm } from "@/utils/subPoints";
@@ -204,7 +206,7 @@ export const SubPointList: React.FC<SubPointListProps> = ({
         title={sp.text}
         onDoubleClick={() => startEditingSubPoint(sp)}
       >
-        {sp.text}
+        <ScriptureText text={sp.text} />
       </span>
       {!isPointLocked && (
         <div className="flex w-10 flex-shrink-0 items-center justify-end gap-0.5 opacity-100 lg:opacity-40 transition-opacity lg:group-hover/sp:opacity-100">

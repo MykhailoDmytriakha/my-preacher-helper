@@ -1,3 +1,5 @@
+import { ScriptureLinks } from '@/components/bible/ScriptureLinks';
+import { fireEvent } from '@testing-library/react';
 import { render, screen } from '@testing-library/react';
 import React from 'react';
 
@@ -122,4 +124,13 @@ it('orders displayed subpoints without mutating the parent-owned outline', () =>
   const earlier = screen.getByTestId('sub-point-drop-earlier');
   const later = screen.getByTestId('sub-point-drop-later');
   expect(earlier.compareDocumentPosition(later) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+});
+
+it('opens references in a displayed column point instead of editing its title', () => {
+  const onOpen = jest.fn();
+  render(<ScriptureLinks onOpen={onOpen}><Column id="main" title="Main" items={[]} outlinePoints={[{ id: 'ref-point', text: 'Read Ruth 1:2' }]} /></ScriptureLinks>);
+  const links = screen.getAllByRole('button', { name: 'Ruth 1:2' });
+  for (const link of links) fireEvent.click(link);
+  expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ book: 'Ruth', chapter: 1, fromVerse: 2, label: 'Ruth 1:2' }));
+  expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
 });

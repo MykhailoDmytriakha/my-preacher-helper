@@ -1,3 +1,5 @@
+import { ScriptureLinks } from '@/components/bible/ScriptureLinks';
+import { fireEvent } from '@testing-library/react';
 import { render, screen, within } from '@testing-library/react';
 
 import { GroupReadOnlyContent } from '@/components/groups/GroupReadOnlyContent';
@@ -38,4 +40,15 @@ it('wraps a long meeting place or audience inside its row instead of widening th
   const value = screen.getByText(place);
   expect(value).toHaveClass('min-w-0', 'break-words');
   expect(value.parentElement).toHaveClass('max-w-full');
+});
+
+it.each(['title', 'unplaced-title', 'kept-reference'])('opens a verse from the read-only group %s without adding an editor', (field) => {
+  const onOpen = jest.fn();
+  const group = { id: 'g', title: field === 'title' ? 'Read Ruth 1:2' : 'Prepared group',
+    templates: [{ id: 'unused', title: field === 'unplaced-title' ? 'Read Ruth 1:2' : 'Unplaced block', scriptureRefs: field === 'kept-reference' ? ['Ruth 1:2'] : [] }],
+    flow: [], meetingDates: [] } as unknown as Group;
+  render(<ScriptureLinks onOpen={onOpen}><GroupReadOnlyContent group={group} /></ScriptureLinks>);
+  fireEvent.click(screen.getByRole('button', { name: 'Ruth 1:2' }));
+  expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ book: 'Ruth', chapter: 1, fromVerse: 2, label: 'Ruth 1:2' }));
+  expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
 });

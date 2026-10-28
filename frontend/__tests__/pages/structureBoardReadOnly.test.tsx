@@ -1,3 +1,9 @@
+import type { SermonOutline, Thought } from '@/models/models';
+jest.unmock('react-markdown');
+jest.unmock('remark-gfm');
+jest.unmock('rehype-raw');
+jest.unmock('rehype-sanitize');
+
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import React from 'react';
@@ -135,4 +141,23 @@ describe('the structure board on a copy for reading', () => {
     expect(screen.queryByTestId('structure-read-only-board')).toBeNull();
     expect(document.querySelector('[aria-roledescription="sortable"]')).not.toBeNull();
   });
+  it('links the read-only board point, subpoint, reminders and thought without enabling any writes', async () => {
+    const sermon = sermonFixture();
+    const outline = sermon.outline as SermonOutline;
+    const thoughts = sermon.thoughts as Thought[];
+    outline.introduction[0].text = 'Read Ruth 1:1';
+    outline.introduction[0].note = 'Read Ruth 1:2';
+    outline.main[0].subPoints![0].text = 'Read Ruth 1:3';
+    outline.main[0].subPoints![0].note = 'Read Ruth 1:4';
+    thoughts[0].text = 'Read Ruth 1:5';
+    mockSermon = sermon;
+    renderPage();
+    const board = await screen.findByTestId('structure-read-only-board');
+    for (let verse = 1; verse <= 5; verse++) {
+      expect(within(board).getByRole('button', { name: `Ruth 1:${verse}` })).toBeInTheDocument();
+    }
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+    expect(writes).toEqual([]);
+  });
+
 });

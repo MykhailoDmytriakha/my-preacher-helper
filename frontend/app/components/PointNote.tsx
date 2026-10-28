@@ -1,9 +1,11 @@
 'use client';
 
+
 import { LightBulbIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import TextareaAutosize from 'react-textarea-autosize';
 
+import { ScriptureText } from '@/components/bible/ScriptureLinks';
 import { useConfirm, type ConfirmKey } from '@/hooks/useConfirm';
 import { useTranslation } from '@locales/useTranslation';
 
@@ -190,7 +192,7 @@ const PointNote: React.FC<PointNoteProps> = ({
           title={isReadOnly ? undefined : labelText}
         >
           <LightBulbIcon className={`mt-px h-3 w-3 flex-shrink-0 not-italic ${bulbClass}`} />
-          <span className="min-w-0 flex-1 break-words whitespace-pre-wrap">{note}</span>
+          <span className="min-w-0 flex-1 break-words whitespace-pre-wrap"><ScriptureText text={note} /></span>
           {!isReadOnly && !hideClearButton && (
             <button type="button"
               ref={clearButtonRef}

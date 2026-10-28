@@ -1,3 +1,4 @@
+import { fetchBookText } from '@/utils/bibleText';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import React from 'react';
 
@@ -1476,4 +1477,75 @@ describe('One service following the engine row', () => {
     // The rename is judged in the sitting that saw the old title, so it can be refused.
     expect(mockRenameOrder).toHaveBeenCalledWith('order-1', 'Typed here', mockOpenedWith.mock.calls[0][2]);
   });
+});
+
+
+jest.mock('@/utils/bibleText', () => ({ ...jest.requireActual('@/utils/bibleText'), fetchBookText: jest.fn().mockResolvedValue({ id: 'Ruth', chapters: [['First verse', 'Second verse']] }) }));
+
+describe('References in the words of a service', () => {
+  it.each(['title', 'summary', 'step-title', 'step-body'])('opens the verse from %s in the existing window without saving or leaving', async (field) => {
+    jest.clearAllMocks();
+    const first = step('ref-step', 'Read this', 'Read this');
+    const service = order([first]);
+    if (field === 'title') service.title = 'Read Ruth 1:2';
+    if (field === 'summary') service.summary = 'Read Ruth 1:2';
+    if (field === 'step-title') first.title = 'Read Ruth 1:2';
+    if (field === 'step-body') first.body = 'Read Ruth 1:2';
+    state.orders = [service]; state.loading = false; state.isOnline = true; state.orderPresence = undefined;
+    render(<ServiceOrderPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Ruth 1:2' }));
+    expect(await screen.findByRole('dialog', { name: 'Ruth 1:2' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'bible.sheet.openInBible' })).toBeInTheDocument();
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+    expect(mockUpdateSteps).not.toHaveBeenCalled();
+    expect(mockRenameOrder).not.toHaveBeenCalled();
+    expect(mockPush).not.toHaveBeenCalled();
+  });
+});
+
+
+describe('Verse reading from a retained service', () => {
+  it.each(['confirmed-absent', 'unreachable'])('opens the kept words when the document is %s', async (kind) => {
+    jest.clearAllMocks();
+    state.loading = false; state.isOnline = true; state.orderPresence = undefined;
+    state.orders = [order([step('ref-step', 'Read Ruth 1:1', 'Read Ruth 1:2')])];
+    if (kind === 'confirmed-absent') state.orderPresence = () => ({ kind: 'absent', source: 'server', snapshot: {
+      resource: { collection: 'serviceOrders', id: 'order-1' }, value: null,
+      metadata: { protocol: 1, generation: 'g', revision: 2, deleted: true },
+    } });
+    const view = render(<ServiceOrderPage />);
+    if (kind === 'unreachable') {
+      fireEvent.click(screen.getByRole('button', { name: 'serviceOrders.edit' }));
+      fireEvent.change(screen.getAllByRole('textbox', { name: 'serviceOrders.stepWords' })[0], { target: { value: 'Draft Ruth 1:2' } });
+      state.orders = [];
+      view.rerender(<ServiceOrderPage />);
+    }
+    fireEvent.click(screen.getByRole('button', { name: 'Ruth 1:2' }));
+    expect(await screen.findByRole('dialog', { name: 'Ruth 1:2' })).toBeVisible();
+    const leave = screen.queryByRole('button', { name: 'bible.sheet.openInBible' });
+    // Queued words can be projected into a retained copy after the local editing mirror resets.
+    expect(leave).not.toBeInTheDocument();
+    expect(mockPush).not.toHaveBeenCalled();
+    expect(mockRenameOrder).not.toHaveBeenCalled();
+  });
+});
+
+
+it('reads an ambiguous reference in the language of the retained local words', async () => {
+  jest.clearAllMocks();
+  state.loading = false; state.isOnline = true; state.orderPresence = undefined;
+  const service = order([step('language-step', 'Как быть мудрым', 'Вы были призваны слышать мудрые слова')]);
+  service.title = 'Как быть мудрым'; service.summary = 'Слышать и быть верным';
+  state.orders = [service];
+  const view = render(<ServiceOrderPage />);
+  fireEvent.click(screen.getByRole('button', { name: 'serviceOrders.edit' }));
+  fireEvent.change(screen.getAllByRole('textbox', { name: 'serviceOrders.stepWords' })[0], { target: { value: 'Ісус є світло, Його любові і вірності. Прочитайте 1Цар 3:9.' } });
+  state.orderPresence = () => ({ kind: 'absent', source: 'server', snapshot: {
+    resource: { collection: 'serviceOrders', id: 'order-1' }, value: null,
+    metadata: { protocol: 1, generation: 'g', revision: 2, deleted: true },
+  } });
+  view.rerender(<ServiceOrderPage />);
+  fireEvent.click(screen.getByRole('button', { name: '1Цар 3:9' }));
+  await waitFor(() => expect(fetchBookText).toHaveBeenCalledWith('1 Kings', expect.any(String)));
+  expect(mockPush).not.toHaveBeenCalled();
 });

@@ -4,6 +4,7 @@ import { createInstance } from 'i18next';
 import React from 'react';
 
 import { OutlinePointCard } from '@/components/column/OutlinePointCard';
+import { ScriptureLinks } from '@/components/bible/ScriptureLinks';
 import { SortableItemActions } from '@/components/SortableItem';
 import { createAudioThought } from '@/services/thought.service';
 import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
@@ -54,6 +55,22 @@ const point = { id: 'point', text: 'Point', note: 'Point note', isReviewed: fals
 const item = (id: string, isLocked = false): Item => ({ id, content: id, customTagNames: [], outlinePointId: 'point', isLocked });
 const base = { point, pointItems: [], containerId: 'main', t, isOnline: true, setAudioError: jest.fn(), onClearAudioError: jest.fn(), renderItem: (entry: Item) => <p key={entry.id}>{entry.content}</p> };
 beforeEach(() => jest.clearAllMocks());
+
+it('opens a scripture reference in the point title without entering point edit mode', () => {
+  const onOpen = jest.fn();
+  const onSaveEdit = jest.fn();
+  render(
+    <ScriptureLinks onOpen={onOpen}>
+      <OutlinePointCard {...base} point={{ ...point, text: 'Read Ruth 1:2' }} onSaveEdit={onSaveEdit} />
+    </ScriptureLinks>
+  );
+
+  fireEvent.click(screen.getByRole('button', { name: 'Ruth 1:2' }));
+
+  expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ book: 'Ruth', chapter: 1, fromVerse: 2, label: 'Ruth 1:2' }));
+  expect(onSaveEdit).not.toHaveBeenCalled();
+  expect(screen.queryByPlaceholderText('structure.editPointPlaceholder')).not.toBeInTheDocument();
+});
 
 it('keeps normalized inline save, blank rejection, cancel, delete and collapse local to the card', () => {
   const onSaveEdit = jest.fn(); const onDeletePoint = jest.fn();

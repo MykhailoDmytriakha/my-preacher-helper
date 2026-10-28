@@ -4,6 +4,7 @@ import { Bars3Icon, CheckIcon, PencilIcon, TrashIcon, XMarkIcon } from '@heroico
 import Link from 'next/link';
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
+import { ScriptureText } from '@/components/bible/ScriptureLinks';
 import { SubPointList } from '@/components/column/SubPointList';
 import { useStructureWriter } from '@/components/sermon/structureWriter';
 import { useConfirm } from '@/hooks/useConfirm';
@@ -504,7 +505,7 @@ const SermonOutlineEditor: React.FC<SermonOutlineProps> = ({
             className={`text-sm text-gray-800 dark:text-gray-200 flex-grow truncate ${isReadOnly ? '' : 'cursor-text'}`}
             onDoubleClick={() => handleStartEdit(point)}
           >
-            {point.text}
+            <ScriptureText text={point.text} />
           </span>
         </div>
         <div className="flex items-center space-x-1 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 lg:group-focus-within:opacity-100 transition-opacity">

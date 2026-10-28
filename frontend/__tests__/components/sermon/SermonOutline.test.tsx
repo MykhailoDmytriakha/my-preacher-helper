@@ -1,3 +1,4 @@
+import { ScriptureLinks } from '@/components/bible/ScriptureLinks';
 import { act, fireEvent, render as rtlRender, screen, waitFor, within } from '@testing-library/react';
 import React from 'react';
 
@@ -736,4 +737,17 @@ describe('SermonOutline Component', () => {
     expect(addButton).toBeDisabled();
     expect(addButton).toHaveClass('opacity-50');
   });
+  test('opens point and subpoint references through the existing reader without editing the outline', async () => {
+    const onOpen = jest.fn();
+    render(<ScriptureLinks onOpen={onOpen}><SermonOutline sermon={{ ...mockSermon, outline: {
+      introduction: [{ id: 'ref-point', text: 'Read Ruth 1:2', subPoints: [{ id: 'ref-sub', text: 'Then Ruth 2:1', position: 1 }] }], main: [], conclusion: [],
+    } }} isReadOnly /></ScriptureLinks>);
+    for (const [label, chapter, verse] of [['Ruth 1:2', 1, 2], ['Ruth 2:1', 2, 1]] as const) {
+      fireEvent.click(await screen.findByRole('button', { name: label }));
+      expect(onOpen).toHaveBeenLastCalledWith(expect.objectContaining({ book: 'Ruth', chapter, fromVerse: verse, label }));
+    }
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+    expect(mockUpdateSermonOutline).not.toHaveBeenCalled();
+  });
+
 });

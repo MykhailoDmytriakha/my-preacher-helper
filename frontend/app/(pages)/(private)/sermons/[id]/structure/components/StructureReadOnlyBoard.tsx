@@ -2,6 +2,7 @@
 
 import React from "react";
 
+import { ScriptureText } from '@/components/bible/ScriptureLinks';
 import CardContent from "@/components/CardContent";
 import { buildColumnItemIndex } from "@/components/column/columnItemModel";
 import { TRANSLATION_STRUCTURE_UNASSIGNED_THOUGHTS } from "@/components/column/constants";
@@ -53,7 +54,7 @@ function PointCard({ point, items, sectionId, headerColor }: {
         className={`rounded-t-lg border-b border-opacity-20 px-4 py-2 dark:border-opacity-30 ${headerColor ? "" : colors.header}`}
         style={headerColor ? { backgroundColor: `${headerColor}20` } : {}}
       >
-        <h4 className={`text-sm font-medium ${headerColor ? "text-gray-800 dark:text-gray-200" : colors.headerText}`}>{point.text}</h4>
+        <h4 className={`text-sm font-medium ${headerColor ? "text-gray-800 dark:text-gray-200" : colors.headerText}`}><ScriptureText text={point.text} /></h4>
         <PointNote note={point.note} onChange={noop} isReadOnly />
       </div>
       <div className={`space-y-4 ${structureBodyPaddingClass}`}>
@@ -61,7 +62,7 @@ function PointCard({ point, items, sectionId, headerColor }: {
           <ThoughtCard key={entry.item.id} item={entry.item} />
         ) : (
           <div key={entry.subPoint.id} className={`${structureSubPointInsetClass} rounded-2xl border border-slate-200/90 bg-slate-50/90 py-3 dark:border-slate-700/70 dark:bg-slate-900/30`}>
-            <p className="pl-1 text-xs font-semibold text-slate-600 dark:text-slate-300">{entry.subPoint.text}</p>
+            <p className="pl-1 text-xs font-semibold text-slate-600 dark:text-slate-300"><ScriptureText text={entry.subPoint.text} /></p>
             <div className="pl-1"><PointNote note={entry.subPoint.note} onChange={noop} isReadOnly /></div>
             {entry.items.length > 0 && <div className="mt-3 space-y-4 pl-0 sm:pl-1">
               {entry.items.map((item) => <ThoughtCard key={item.id} item={item} />)}

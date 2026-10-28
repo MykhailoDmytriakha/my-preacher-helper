@@ -7,7 +7,7 @@ jest.unmock('rehype-sanitize');
 
 import { fireEvent, render, screen } from '@testing-library/react';
 
-import { SCRIPTURE_LINK_MARK, ScriptureLinks, ScriptureWrittenIn, WithoutScriptureLinks } from '@/components/bible/ScriptureLinks';
+import { SCRIPTURE_LINK_MARK, ScriptureText, ScriptureLinks, ScriptureWrittenIn, WithoutScriptureLinks } from '@/components/bible/ScriptureLinks';
 import ScriptureOpening from '@/components/common/ScriptureOpening';
 import { leadingReference } from '@/utils/bibleLink';
 import MarkdownDisplay from '@/components/MarkdownDisplay';
@@ -154,4 +154,16 @@ describe('ScriptureLinks — a document inside another', () => {
     render(<ScriptureOpening text={text} reference={leadingReference(text, { locale: 'ru' })} onOpen={jest.fn()} />);
     expect(screen.getByRole('button', { name: 'Пс 22:1' })).toHaveAttribute(SCRIPTURE_LINK_MARK);
   });
+});
+
+
+it('keeps a reference click and double-click out of a display-text editor', () => {
+  const onOpen = jest.fn();
+  const edit = jest.fn();
+  render(<ScriptureLinks onOpen={onOpen}><div onDoubleClick={edit}><ScriptureText text="Read Ruth 1:2" /></div></ScriptureLinks>);
+  const link = screen.getByRole('button', { name: 'Ruth 1:2' });
+  fireEvent.click(link);
+  fireEvent.doubleClick(link);
+  expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ book: 'Ruth', chapter: 1, fromVerse: 2 }));
+  expect(edit).not.toHaveBeenCalled();
 });

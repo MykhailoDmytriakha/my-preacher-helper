@@ -30,11 +30,36 @@ jest.mock('@hello-pangea/dnd', () => {
 });
 
 import { SubPointList } from '@/components/column/SubPointList';
+import { ScriptureLinks } from '@/components/bible/ScriptureLinks';
 
 const t = (key: string, options?: Record<string, unknown>) =>
   typeof options?.defaultValue === 'string' ? options.defaultValue : key;
 
 describe('SubPointList', () => {
+  it('opens a scripture reference in the sub-point label without entering edit mode', () => {
+    const onOpen = jest.fn();
+    const onEdit = jest.fn();
+    render(
+      <ScriptureLinks onOpen={onOpen}>
+        <SubPointList
+          subPoints={[{ id: 'sub-ruth', text: 'Read Ruth 1:2', position: 1000 }]}
+          outlinePointId="point-1"
+          isPointLocked={false}
+          onAdd={jest.fn()}
+          onEdit={onEdit}
+          onDelete={jest.fn()}
+          t={t}
+        />
+      </ScriptureLinks>
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ruth 1:2' }));
+
+    expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ book: 'Ruth', chapter: 1, fromVerse: 2, label: 'Ruth 1:2' }));
+    expect(onEdit).not.toHaveBeenCalled();
+    expect(screen.queryByDisplayValue('Read Ruth 1:2')).not.toBeInTheDocument();
+  });
+
   // A drag placeholder takes part in the list's sibling spacing, so a drop at the end landed a few
   // pixels off (BUG-20260927-outline-dnd-spacing-late-snap). The gap belongs to each row.
   it('carries the gap on each reorderable row, not on the list around them', () => {
