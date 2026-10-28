@@ -254,9 +254,14 @@ describe('taking verses out of the reader', () => {
     await renderRuth();
     await userEvent.click(screen.getByTestId('cross-refs-1:16'));
     const dialog = await screen.findByRole('dialog');
-    await userEvent.click(within(dialog).getByRole('button', { name: 'bible.copy.copyVerse' }));
+    // Every link's row has a copy sign too, and the test's keys carry no place: the verse's own is found by its line,
+    // after the rows have their texts — the order of the build machine, where a query over the whole window found
+    // several (2026-10-27).
+    await waitFor(() => expect(within(dialog).getAllByRole('button', { name: 'bible.copy.copyVerse' }).length).toBeGreaterThan(1));
+    const line = within(dialog).getByText((_, element) => element?.tagName === 'P' && squeeze(element.textContent ?? '') === squeeze(words(1, 16)));
+    await userEvent.click(within(line).getByRole('button', { name: 'bible.copy.copyVerse' }));
     expect(writeText).toHaveBeenCalledWith(quote(16));
-    await waitFor(() => expect(within(dialog).getByRole('button', { name: 'bible.copy.copiedVerse' })).toBeInTheDocument());
+    await waitFor(() => expect(within(line).getByRole('button', { name: 'bible.copy.copiedVerse' })).toBeInTheDocument());
   });
 
   // Codex review, 2026-10-27: a field keeps its own selection apart from the page's (Firefox).
