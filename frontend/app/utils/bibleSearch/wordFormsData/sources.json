@@ -1,0 +1,741 @@
+{
+  "compactFormat": "schema 1; sorted lemma entries [lemma, commonPrefix, paradigmId]; sorted suffix sets in space-separated paradigm strings; empty suffixes retained; exact reconstruction asserted",
+  "corpus": {
+    "corpus": {
+      "rst": [
+        {
+          "path": "frontend/public/bible-text/rst/v1/1-chronicles.json",
+          "sha256": "ca94dda7474cbe07643daa8f08081129ab31f00c68e0bf26196913189fb4e200",
+          "verses": 942
+        },
+        {
+          "path": "frontend/public/bible-text/rst/v1/1-corinthians.json",
+          "sha256": "cbb9cd1e4a5a8196aaa64a1a995ca3454a7cc2ab2ca8840c16d514597754f60d",
+          "verses": 437
+        },
+        {
+          "path": "frontend/public/bible-text/rst/v1/1-john.json",
+          "sha256": "c035a0261cfc75f1a282077214acedfe21075c51b0109705a16af47f3af81184",
+          "verses": 105
+        },
+        {
+          "path": "frontend/public/bible-text/rst/v1/1-kings.json",
+          "sha256": "1a697ee3c7c33b2a0a2c51eef7edb81577e78cfe905bdaa7c742ab61de2882f6",
+          "verses": 816
+        },
+        {
+          "path": "frontend/public/bible-text/rst/v1/1-peter.json",
+          "sha256": "b7e25a1b0b53fb6f29df936a42b9fd91410ae2a695272449098160e2bfc7560a",
+          "verses": 105
+        },
+        {
+          "path": "frontend/public/bible-text/rst/v1/1-samuel.json",
+          "sha256": "582c8f089eaca1bda9201fd698ca22cbeaebfaf6618998d4e20eefd46aec2afc",
+          "verses": 811
+        },
+        {
+          "path": "frontend/public/bible-text/rst/v1/1-thessalonians.json",
+          "sha256": "e0f37d7bf55662451a183702af06ba35d4504a69512fa981b8cf6b2610e92e2d",
+          "verses": 89
+        },
+        {
+          "path": "frontend/public/bible-text/rst/v1/1-timothy.json",
+          "sha256": "7f9df5912ba405eee22a456b4eb25c8af6efb51da99d8752d522e9d67c3fa03a",
+          "verses": 113
+        },
+        {
+          "path": "frontend/public/bible-text/rst/v1/2-chronicles.json",
+          "sha256": "4f6da9fd918d21580d4958d16e4ca3cfdb52d5be38e5140204af6ec2d5a97299",
+          "verses": 822
+        },
+        {
+          "path": "frontend/public/bible-text/rst/v1/2-corinthians.json",
+          "sha256": "f3f5bcbcae0a6be9584203950609f40b27fe27985a35b37f5b0b9111b214d6b6",
+          "verses": 255
+        },
+        {
+          "path": "frontend/public/bible-text/rst/v1/2-john.json",
+          "sha256": "a39c904c27e5c1c21fe07652157882a7c1123d6c1a8d0dcd44107aece9234698",
+          "verses": 13
+        },
+        {
+          "path": "frontend/public/bible-text/rst/v1/2-kings.json",
+          "sha256": "fa026883ffec60d8ad81c592f4272874a7c12e1b1143b95de7ce89fb5575fc6b",
+          "verses": 719
+        },
+        {
+          "path": "frontend/public/bible-text/rst/v1/2-peter.json",
+          "sha256": "42c8fb0ff9546c0ff73b9dd7923ca11ecacfda83699ef2ae5d2af69f5dc0c606",
+          "verses": 61
+        },
+        {
+          "path": "frontend/public/bible-text/rst/v1/2-samuel.json",
+          "sha256": "cd97a93910f49a703dc791b0e0a472acb87f84b21d6191562ef9cc18c57df2eb",
+          "verses": 695
+        },
+        {
+          "path": "frontend/public/bible-text/rst/v1/2-thessalonians.json",
+          "sha256": "9675b8dbb6a28d60f8a60c495930179a286ab805a495b2562ff1b22d53fb7b1f",
+          "verses": 47
+        },
+        {
+          "path": "frontend/public/bible-text/rst/v1/2-timothy.json",
+          "sha256": "9391a561ac2944e66fc0695d7cdec76f1aa1e0443afa248bec97f74c31de02c3",
+          "verses": 83
+        },
+        {
+          "path": "frontend/public/bible-text/rst/v1/3-john.json",
+          "sha256": "126de8c7efa20b2dc96ed51d91707f1b412caf01b43668b10ca74020114f69e3",
+          "verses": 15
+        },
+        {
+          "path": "frontend/public/bible-text/rst/v1/acts.json",
+          "sha256": "6d0c38e484df83f77c109319ce481ba7e9e3430ad8bcc82f70a224f6aadcffce",
+          "verses": 1006
+        },
+        {
+          "path": "frontend/public/bible-text/rst/v1/amos.json",
+          "sha256": "528a29c6c8467c972c3accd7f8d042e1e5fba494a5ddc72714b1383335e695ef",
+          "verses": 146
+        },
+        {
+          "path": "frontend/public/bible-text/rst/v1/colossians.json",
+          "sha256": "321e2df7c8a343fcbf6af175a284db873381414837947339cea349afca1c7f9b",
+          "verses": 95
+        },
+        {
+          "path": "frontend/public/bible-text/rst/v1/daniel.json",
+          "sha256": "5d1617fb9626475afbcc4edb56229c0b1bc985b93042ea0f0d3a2b0c9555c31e",
+          "verses": 357
+        },
+        {
+          "path": "frontend/public/bible-text/rst/v1/deuteronomy.json",
+          "sha256": "3832f0e9352ba0bebe85e20d224485b35bc80b35e2c36eb862e238b77881600c",
+          "verses": 959
+        },
+        {
+          "path": "frontend/public/bible-text/rst/v1/ecclesiastes.json",
+          "sha256": "49346d2302352fe64b8e1aea436a751f244586e95c6902067374cf70fae872ca",
+          "verses": 222
+        },
+        {
+          "path": "frontend/public/bible-text/rst/v1/ephesians.json",
+          "sha256": "a692970f21eaa8326de99843f25eda140214a24746971b5976a6acae2ebad8e0",
+          "verses": 155
+        },
+        {
+          "path": "frontend/public/bible-text/rst/v1/esther.json",
+          "sha256": "b618ca3834b2035e19fd8fd92d62bf89ca2352903c4c3ac39814cd45385d3387",
+          "verses": 167
+        },
+        {
+          "path": "frontend/public/bible-text/rst/v1/exodus.json",
+          "sha256": "03460ed85a7e4a576eb878675ced6ddd4ce82e66fa3f18f7f4437ac637c941b4",
+          "verses": 1213
+        },
+        {
+          "path": "frontend/public/bible-text/rst/v1/ezekiel.json",
+          "sha256": "e5798cb1346b93d7a691ba228ceeaecb1ef657caf73d79b37f1cd8c4ea9efe04",
+          "verses": 1273
+        },
+        {
+          "path": "frontend/public/bible-text/rst/v1/ezra.json",
+          "sha256": "2771816eab6d45d7073a553449f41194caf5a8c63a8240dd39bf140f7c9d50d0",
+          "verses": 280
+        },
+        {
+          "path": "frontend/public/bible-text/rst/v1/galatians.json",
+          "sha256": "f6ea2de4a1b1fe2cb4b838704143ae5038debf633d41d0621133cefac0db7ad0",
+          "verses": 149
+        },
+        {
+          "path": "frontend/public/bible-text/rst/v1/genesis.json",
+          "sha256": "b473f021f2a367e1aaf8eed9906bb990430ee4e68a8df795aa0ef4b08a83047e",
+          "verses": 1533
+        },
+        {
+          "path": "frontend/public/bible-text/rst/v1/habakkuk.json",
+          "sha256": "c1f0013fcf169a2ec3a9f55d16532e58e4de12e54554617fb3d2ba7a24657f7c",
+          "verses": 56
+        },
+        {
+          "path": "frontend/public/bible-text/rst/v1/haggai.json",
+          "sha256": "3043e6b55aa7ddf8b1ab41a06f627a9ce7abef55adfbb13c4d03fb4a90315645",
+          "verses": 38
+        },
+        {
+          "path": "frontend/public/bible-text/rst/v1/hebrews.json",
+          "sha256": "e8b163c9952e21231a3a4dc15758db4d927b9f3a293fbc6b5d446429627ed642",
+          "verses": 303
+        },
+        {
+          "path": "frontend/public/bible-text/rst/v1/hosea.json",
+          "sha256": "5c5f7576d1662febeb60ddeaabf4bb7d51eef886fd528074820985a5df5f1783",
+          "verses": 197
+        },
+        {
+          "path": "frontend/public/bible-text/rst/v1/isaiah.json",
+          "sha256": "e6790927b39114679239ed646d589b1c6d2db5bb5ee58ef93f3f2c4cc1850ee8",
+          "verses": 1291
+        },
+        {
+          "path": "frontend/public/bible-text/rst/v1/james.json",
+          "sha256": "fb22d288cf80e69e9031dd8e60fd9ac3dd226cb244e2e4d13d8d9061a5fa6f22",
+          "verses": 108
+        },
+        {
+          "path": "frontend/public/bible-text/rst/v1/jeremiah.json",
+          "sha256": "2e0dca20e1a654ca18f22d710c5aedc8708fd8e091d5ead46af3ec1bfd301380",
+          "verses": 1364
+        },
+        {
+          "path": "frontend/public/bible-text/rst/v1/job.json",
+          "sha256": "ea1ab27da243aa7122a71ce9b7af9b9fe684e2b94e18f6b92a25762d6240ebbb",
+          "verses": 1070
+        },
+        {
+          "path": "frontend/public/bible-text/rst/v1/joel.json",
+          "sha256": "e462fa51ff22daf7e70a3c064932825d78371b88bc1789e07f742c5b0ebecc12",
+          "verses": 73
+        },
+        {
+          "path": "frontend/public/bible-text/rst/v1/john.json",
+          "sha256": "d66102429c561cbf65cedb7a0cef749dc079f92ddf366a1bbf6be5903e7f6c70",
+          "verses": 879
+        },
+        {
+          "path": "frontend/public/bible-text/rst/v1/jonah.json",
+          "sha256": "9add1140ff4b7df5b8321f9fc847b46a12da2213a4ba286b3495cce501722b70",
+          "verses": 48
+        },
+        {
+          "path": "frontend/public/bible-text/rst/v1/joshua.json",
+          "sha256": "760b3c4df3e3bcc189a0f001f2780836c4ee5ac0a626526910bfb3d43fe7499e",
+          "verses": 658
+        },
+        {
+          "path": "frontend/public/bible-text/rst/v1/jude.json",
+          "sha256": "02d9361b96e1823b9504fa5dd835f44bf76fe13068056a78f0f77e7a346f70f1",
+          "verses": 25
+        },
+        {
+          "path": "frontend/public/bible-text/rst/v1/judges.json",
+          "sha256": "293403df903b56a209ca7884428d0692b2278089b314ba5c562a0b57b9be6cf8",
+          "verses": 618
+        },
+        {
+          "path": "frontend/public/bible-text/rst/v1/lamentations.json",
+          "sha256": "12efde16060900331cd512d242b8eaab9b9539e988d49201b05fd93cd08e13d1",
+          "verses": 154
+        },
+        {
+          "path": "frontend/public/bible-text/rst/v1/leviticus.json",
+          "sha256": "52c953cbfffeed8da0d406ec2feffc3b5e003ff56f2ef8240a55b2df54c5851e",
+          "verses": 858
+        },
+        {
+          "path": "frontend/public/bible-text/rst/v1/luke.json",
+          "sha256": "5109d3aafb472ac123c6a714799d3d6790adfe12d11cdab3f547a44de9cb7b76",
+          "verses": 1151
+        },
+        {
+          "path": "frontend/public/bible-text/rst/v1/malachi.json",
+          "sha256": "e476d99d6700565273b04ff2380d002c2dc259352a4fe8bd9084e6759809da87",
+          "verses": 55
+        },
+        {
+          "path": "frontend/public/bible-text/rst/v1/mark.json",
+          "sha256": "84369f7d2fa4856478617bb740c47cdc9e702ffc43a401f35ffc0c1262587773",
+          "verses": 678
+        },
+        {
+          "path": "frontend/public/bible-text/rst/v1/matthew.json",
+          "sha256": "543f3699a05f630fdb317be368e0262fa45ff5c642aa500405158db418be6eb4",
+          "verses": 1071
+        },
+        {
+          "path": "frontend/public/bible-text/rst/v1/micah.json",
+          "sha256": "d85f3e78c35b1f35e6e72a45d7c73e9876747a836aaba2722ad116f1c8812447",
+          "verses": 105
+        },
+        {
+          "path": "frontend/public/bible-text/rst/v1/nahum.json",
+          "sha256": "a1f88ae38e971d5e946eb6fa46de15a5a6b2e20b93e38d22753d0e80a8c86d82",
+          "verses": 47
+        },
+        {
+          "path": "frontend/public/bible-text/rst/v1/nehemiah.json",
+          "sha256": "40a5977f0982954eb284b4a039164c5b059a20ae45811d19a671154bacfa53a2",
+          "verses": 406
+        },
+        {
+          "path": "frontend/public/bible-text/rst/v1/numbers.json",
+          "sha256": "f8e261b707edd7ab552607b15657d911b9630b95fe8f61595dc43d202c334515",
+          "verses": 1288
+        },
+        {
+          "path": "frontend/public/bible-text/rst/v1/obadiah.json",
+          "sha256": "fe58103d7a23d23cf192041d183e6821b76209ce75978fb063b1b874222b8920",
+          "verses": 21
+        },
+        {
+          "path": "frontend/public/bible-text/rst/v1/philemon.json",
+          "sha256": "11178d2d08bb968edc3d9272422e79ff3c54fce7bdd5eda19262334a91b70c53",
+          "verses": 24
+        },
+        {
+          "path": "frontend/public/bible-text/rst/v1/philippians.json",
+          "sha256": "26767773f3d3076d541d8e51814c90a800042f3e3d3b45d0c4b43a61703216c3",
+          "verses": 104
+        },
+        {
+          "path": "frontend/public/bible-text/rst/v1/proverbs.json",
+          "sha256": "531a2443346a0eb788cf7b72d1dc7956467bb3e33f3fcde39c41c04cd62a0628",
+          "verses": 915
+        },
+        {
+          "path": "frontend/public/bible-text/rst/v1/psalms.json",
+          "sha256": "f270a6e01cf20c6f60122eba62d2a5da7a861b0d286dd06f227c43498445923b",
+          "verses": 2526
+        },
+        {
+          "path": "frontend/public/bible-text/rst/v1/revelation.json",
+          "sha256": "57d628aaad61abc1014a4cbe4da3134d154d570783b9cb298b412dbee62fa7f9",
+          "verses": 404
+        },
+        {
+          "path": "frontend/public/bible-text/rst/v1/romans.json",
+          "sha256": "3966466cb2db4925ba0dbfdf20b1c9f1c86f06d58ba2f6570d07e2cd6b65c2f8",
+          "verses": 433
+        },
+        {
+          "path": "frontend/public/bible-text/rst/v1/ruth.json",
+          "sha256": "e25c028aa6168ade3967582ef5a44b9a4de05298e7d124413dfb45cf1af8b59b",
+          "verses": 85
+        },
+        {
+          "path": "frontend/public/bible-text/rst/v1/song-of-solomon.json",
+          "sha256": "92800df310e4c16ea1e4c66e84f8f4afd58c0bbfadd260f60cf540c58526482b",
+          "verses": 116
+        },
+        {
+          "path": "frontend/public/bible-text/rst/v1/titus.json",
+          "sha256": "1aee12d912e8d343e3fc90d39211be40d08de773e947788b9767bb259c103454",
+          "verses": 46
+        },
+        {
+          "path": "frontend/public/bible-text/rst/v1/zechariah.json",
+          "sha256": "3619d7300fa2f0aa04b70cc5fca916e511fc6fa8ae5054001be1b38c93e41928",
+          "verses": 211
+        },
+        {
+          "path": "frontend/public/bible-text/rst/v1/zephaniah.json",
+          "sha256": "2849ff4645f03398af048c07f0426141cf940d3e08afdb6bf3cafc9adcc0ca30",
+          "verses": 53
+        }
+      ],
+      "ubio": [
+        {
+          "path": "frontend/public/bible-text/ubio/v1/1-chronicles.json",
+          "sha256": "ca3bb9f487591c89c36d7b25a2dbf7e75caae530a9a4257c1e142b9dea3b1d9e",
+          "verses": 942
+        },
+        {
+          "path": "frontend/public/bible-text/ubio/v1/1-corinthians.json",
+          "sha256": "8665ef443743368e8d452c2f69ad377daa5a3682acb3c63092f227f6bdabf5d1",
+          "verses": 437
+        },
+        {
+          "path": "frontend/public/bible-text/ubio/v1/1-john.json",
+          "sha256": "283b1abe92a14cd950d44989665cbc4e1b01a803f2d50a9398f6cd4d365065e0",
+          "verses": 105
+        },
+        {
+          "path": "frontend/public/bible-text/ubio/v1/1-kings.json",
+          "sha256": "5c91fa4a2fc195bf8df6739e08bc0e023416eb65775b666f937896b96a8d95bb",
+          "verses": 817
+        },
+        {
+          "path": "frontend/public/bible-text/ubio/v1/1-peter.json",
+          "sha256": "5ce7952984ba35cd9853e52c695639a13ff3f43a72c40c261bb457b98bb62ce0",
+          "verses": 105
+        },
+        {
+          "path": "frontend/public/bible-text/ubio/v1/1-samuel.json",
+          "sha256": "dbff3d945ae864d0af65f007d27d965a9c66bc8e329147c9287fcd8288c90ad7",
+          "verses": 811
+        },
+        {
+          "path": "frontend/public/bible-text/ubio/v1/1-thessalonians.json",
+          "sha256": "667291e521839411ed7b291f3848b3a4323fa74ccda4f8ad02a2caee014e20f8",
+          "verses": 89
+        },
+        {
+          "path": "frontend/public/bible-text/ubio/v1/1-timothy.json",
+          "sha256": "f083bfed3e0ae218f708b5293d29fb1e39387f39f074792f888f87183f46b6a6",
+          "verses": 113
+        },
+        {
+          "path": "frontend/public/bible-text/ubio/v1/2-chronicles.json",
+          "sha256": "a0b598f469ca8c06cde9cef2073971a0bf4e9fc4c7c38216a7d6c5b7ed4184a9",
+          "verses": 822
+        },
+        {
+          "path": "frontend/public/bible-text/ubio/v1/2-corinthians.json",
+          "sha256": "c36a16310f2063b1c6203850156c615054f2480741ca62fe094297271da6971a",
+          "verses": 256
+        },
+        {
+          "path": "frontend/public/bible-text/ubio/v1/2-john.json",
+          "sha256": "4811187b463d68c6d0d13b48b7d9a3b64d6be8f53fb9afd2183956cfd11a3e6c",
+          "verses": 13
+        },
+        {
+          "path": "frontend/public/bible-text/ubio/v1/2-kings.json",
+          "sha256": "199ce0c693baca85b32611ba97c1e0d55836bb7289191244a0c0c7e7b4990456",
+          "verses": 719
+        },
+        {
+          "path": "frontend/public/bible-text/ubio/v1/2-peter.json",
+          "sha256": "3b7d5179d15b8a2332e319c34bd81011a547c7e9ebf301be24d38162b928b980",
+          "verses": 61
+        },
+        {
+          "path": "frontend/public/bible-text/ubio/v1/2-samuel.json",
+          "sha256": "ee3c69a37c4acc70cdb318b50a60e736c908714998a0fbff54c1efd663adb208",
+          "verses": 695
+        },
+        {
+          "path": "frontend/public/bible-text/ubio/v1/2-thessalonians.json",
+          "sha256": "c45e4869290e7e7f409995b3aa4fdb3c117a20fb9f8296e095b54f699b71bc84",
+          "verses": 47
+        },
+        {
+          "path": "frontend/public/bible-text/ubio/v1/2-timothy.json",
+          "sha256": "c72c183f391e8fa51068bd7e4af7967245013cf9e44dcb37efca9d49a836a396",
+          "verses": 83
+        },
+        {
+          "path": "frontend/public/bible-text/ubio/v1/3-john.json",
+          "sha256": "3f52874ecab164f6d8ec08de8fc6625416fe0689caed6f8280c35db07a93519a",
+          "verses": 15
+        },
+        {
+          "path": "frontend/public/bible-text/ubio/v1/acts.json",
+          "sha256": "613231c2b57a4909836d7d8ad515e6a00013c1c70b16e00ff78cfdc4e12a0d2c",
+          "verses": 1006
+        },
+        {
+          "path": "frontend/public/bible-text/ubio/v1/amos.json",
+          "sha256": "cdcf8415740e65dec0d10f72713324d7521d2664524694bd8a9adbcd7ca41434",
+          "verses": 146
+        },
+        {
+          "path": "frontend/public/bible-text/ubio/v1/colossians.json",
+          "sha256": "5efade46381f6dbad2380b50908638857bb08c590e0074be4168795a7bb0d45c",
+          "verses": 95
+        },
+        {
+          "path": "frontend/public/bible-text/ubio/v1/daniel.json",
+          "sha256": "1237ad0d9749c5166e1f57409ceb41b9cf41b891a945fd07ff3f21299e458b29",
+          "verses": 357
+        },
+        {
+          "path": "frontend/public/bible-text/ubio/v1/deuteronomy.json",
+          "sha256": "1ca4e3004b0c1ab20e09fc5427d198de01012c89dc8795461e4277d5a6bd0b9e",
+          "verses": 959
+        },
+        {
+          "path": "frontend/public/bible-text/ubio/v1/ecclesiastes.json",
+          "sha256": "2a09c2b29e20e514f7dd09e861afb6726083f0069650132fbb7303fab09e47b7",
+          "verses": 222
+        },
+        {
+          "path": "frontend/public/bible-text/ubio/v1/ephesians.json",
+          "sha256": "2bb9f295b35c2249ab605af279ffc409c9add71236240417cade7a1baedee5db",
+          "verses": 155
+        },
+        {
+          "path": "frontend/public/bible-text/ubio/v1/esther.json",
+          "sha256": "ca86e0a3201ac0d909b186e8d4400228f932ce64f5b27f540bd000ffc09601f4",
+          "verses": 167
+        },
+        {
+          "path": "frontend/public/bible-text/ubio/v1/exodus.json",
+          "sha256": "96bcbe0fc7160da1cb82dde9649d282968d816b68b0edbf78b310ffcbc76b652",
+          "verses": 1213
+        },
+        {
+          "path": "frontend/public/bible-text/ubio/v1/ezekiel.json",
+          "sha256": "32259cd33350e0c8519cad10b778ed66e3e8fa5dec2a7acdfee74a4a6cd21fa7",
+          "verses": 1273
+        },
+        {
+          "path": "frontend/public/bible-text/ubio/v1/ezra.json",
+          "sha256": "a88c0011467dbd976547ffc275516085e9a8a778cc2f3f822da3cf03c7163002",
+          "verses": 280
+        },
+        {
+          "path": "frontend/public/bible-text/ubio/v1/galatians.json",
+          "sha256": "fe7d0840cead21c2322268e5113784c5925e82dab9ccb8a90e00f6bcdffae60c",
+          "verses": 149
+        },
+        {
+          "path": "frontend/public/bible-text/ubio/v1/genesis.json",
+          "sha256": "8864a40821ab859d0a15902d92d2e77bc865929faff2edbade453f357c55bef3",
+          "verses": 1533
+        },
+        {
+          "path": "frontend/public/bible-text/ubio/v1/habakkuk.json",
+          "sha256": "24357a6728d45ae89b4d56da90ca1ba87095f0da8b223508b4692d4e7116dfa0",
+          "verses": 56
+        },
+        {
+          "path": "frontend/public/bible-text/ubio/v1/haggai.json",
+          "sha256": "6b76b703bd8e30f20c01102473159115e47dcc0e19dbe277d96536b5d785a614",
+          "verses": 38
+        },
+        {
+          "path": "frontend/public/bible-text/ubio/v1/hebrews.json",
+          "sha256": "e76c04d45483cbaeca9a4a3026d898c3e9d16306335972073c8c2638ec261397",
+          "verses": 303
+        },
+        {
+          "path": "frontend/public/bible-text/ubio/v1/hosea.json",
+          "sha256": "b8d1a3143d91fbdcbc5d18e0a1a7d777b60c4364e10793c6feb08bb3d40875a5",
+          "verses": 197
+        },
+        {
+          "path": "frontend/public/bible-text/ubio/v1/isaiah.json",
+          "sha256": "4f312edd67f0473c625c5b4f75c5626d745b09a08fa9563ae2e30452ec1ba5a4",
+          "verses": 1292
+        },
+        {
+          "path": "frontend/public/bible-text/ubio/v1/james.json",
+          "sha256": "65d4d357cf8af9db6548c847e310ffd79a1d55e63e3e65dc0adcb8da0699081b",
+          "verses": 108
+        },
+        {
+          "path": "frontend/public/bible-text/ubio/v1/jeremiah.json",
+          "sha256": "6260bc2cd2cdbe55f9d5451fdb0e96e1fcffad5b6488a44cd55c77696ffcd2d1",
+          "verses": 1363
+        },
+        {
+          "path": "frontend/public/bible-text/ubio/v1/job.json",
+          "sha256": "b6ffdcd1f22dd33a7c8d0f1ce4f05904ddf099553e365de7e48c323394d1d382",
+          "verses": 1070
+        },
+        {
+          "path": "frontend/public/bible-text/ubio/v1/joel.json",
+          "sha256": "14e88e741bcfd915b8ae68b5073335c49a8f51e52ca4eba1eac9570a1a9db240",
+          "verses": 73
+        },
+        {
+          "path": "frontend/public/bible-text/ubio/v1/john.json",
+          "sha256": "037b0466467cfdfd846d1440f0f2573aa9742d87abc97d0ab9b21f37fe50f462",
+          "verses": 879
+        },
+        {
+          "path": "frontend/public/bible-text/ubio/v1/jonah.json",
+          "sha256": "4d49a336a2b5484dc7520a32c19f040b07b9aa0258d2bde79b6cf98703dcfb68",
+          "verses": 48
+        },
+        {
+          "path": "frontend/public/bible-text/ubio/v1/joshua.json",
+          "sha256": "e910e6a73c23d3c4f107103b4462712d91a7bd02d337471143afc991429fc7ae",
+          "verses": 658
+        },
+        {
+          "path": "frontend/public/bible-text/ubio/v1/jude.json",
+          "sha256": "776b5769eacc0d3984aec07f59bb8c3707180b4a75f857ba260434b5a9b1b10d",
+          "verses": 25
+        },
+        {
+          "path": "frontend/public/bible-text/ubio/v1/judges.json",
+          "sha256": "a1891f4d8ad5b953a84c26794bd2c4ac6b521b7d0a057f96c897c57b68a8f2ad",
+          "verses": 618
+        },
+        {
+          "path": "frontend/public/bible-text/ubio/v1/lamentations.json",
+          "sha256": "6168c7c049de7d3c8dacf95731f9ad2b26840a63bb066c5ddb4bea630d6e449a",
+          "verses": 154
+        },
+        {
+          "path": "frontend/public/bible-text/ubio/v1/leviticus.json",
+          "sha256": "120923b2979e6ceb1b9af804e73e69d10bea8f05a2728419295a5e89e3d0e0aa",
+          "verses": 859
+        },
+        {
+          "path": "frontend/public/bible-text/ubio/v1/luke.json",
+          "sha256": "3ee2ea699cf329dbaddb07942406a9d6663cf140a8524996b99e5b819b39c15e",
+          "verses": 1151
+        },
+        {
+          "path": "frontend/public/bible-text/ubio/v1/malachi.json",
+          "sha256": "4abcf04425f54f4bc95b617f756b5fe83cac2c7db3ac4107faed7ee93c482188",
+          "verses": 55
+        },
+        {
+          "path": "frontend/public/bible-text/ubio/v1/mark.json",
+          "sha256": "fd97d539a75db9bdfce481f458f5a9dff247c6e421e86451cbdd07b67b895d62",
+          "verses": 678
+        },
+        {
+          "path": "frontend/public/bible-text/ubio/v1/matthew.json",
+          "sha256": "4bdc611b7230c04ac7519c90826ce1b622e97a441aa05076694f658b539c3056",
+          "verses": 1071
+        },
+        {
+          "path": "frontend/public/bible-text/ubio/v1/micah.json",
+          "sha256": "cc4f6afe49edc74595d41faa6e91aac290dd0ab9cdcad44de705c83f50c9e56d",
+          "verses": 105
+        },
+        {
+          "path": "frontend/public/bible-text/ubio/v1/nahum.json",
+          "sha256": "4173eb598f0dc671bf6cc9e321d63a2da26b06a7a8137f2e89468690756e74d6",
+          "verses": 47
+        },
+        {
+          "path": "frontend/public/bible-text/ubio/v1/nehemiah.json",
+          "sha256": "92866009eaef4167455acefefad3f89e0226df522b0da87dc55208d19f6a598c",
+          "verses": 406
+        },
+        {
+          "path": "frontend/public/bible-text/ubio/v1/numbers.json",
+          "sha256": "19abc8da2f1bcac0b78445803008c37833408c9637a66d090e33c0ab48e5e3db",
+          "verses": 1289
+        },
+        {
+          "path": "frontend/public/bible-text/ubio/v1/obadiah.json",
+          "sha256": "9a2deb2a25d31faf5dcd2933d9f826858a83b72328821dba2e251efab3665bbb",
+          "verses": 21
+        },
+        {
+          "path": "frontend/public/bible-text/ubio/v1/philemon.json",
+          "sha256": "38fb5e4d9b88cb2b072c53e51ee63d9cefc3dfc2be5242cf946b4c57ebf5f67e",
+          "verses": 25
+        },
+        {
+          "path": "frontend/public/bible-text/ubio/v1/philippians.json",
+          "sha256": "0a2566e2722ad330fb52ebbf15c0c67f604c4c0e2ef1e76e8f68b30480c6b55a",
+          "verses": 104
+        },
+        {
+          "path": "frontend/public/bible-text/ubio/v1/proverbs.json",
+          "sha256": "4d871e00d8acfc2d670505fe2900ffe70f8f81cdc28a026c21456bc8d1da7bdb",
+          "verses": 915
+        },
+        {
+          "path": "frontend/public/bible-text/ubio/v1/psalms.json",
+          "sha256": "9e6e5e0eaa1de040acfbd3f1e97c1d39bc919ac1a2412e258a1f4b26b5e3508a",
+          "verses": 2527
+        },
+        {
+          "path": "frontend/public/bible-text/ubio/v1/revelation.json",
+          "sha256": "9a87651a414a29d39f7403611b6f11e79ca2decdaf9c8f7b917cfd311f52ba4d",
+          "verses": 405
+        },
+        {
+          "path": "frontend/public/bible-text/ubio/v1/romans.json",
+          "sha256": "4e91995e37af5ac7385b36fcde07004b1da84adeb84db24ef18c53c15f9cde88",
+          "verses": 433
+        },
+        {
+          "path": "frontend/public/bible-text/ubio/v1/ruth.json",
+          "sha256": "37ac652aee8df2242d5d026a66944059fe966d2577942a28e4d46df3ec463f6b",
+          "verses": 85
+        },
+        {
+          "path": "frontend/public/bible-text/ubio/v1/song-of-solomon.json",
+          "sha256": "957c22d1a7f08b45941ab1014ed5782997543f40ec59a6465ce8e65cde19fe8d",
+          "verses": 117
+        },
+        {
+          "path": "frontend/public/bible-text/ubio/v1/titus.json",
+          "sha256": "08d506bcc17e8a54ec3d0eadab8907c1e66c7ec9d2553fdef790d1949dfd053a",
+          "verses": 46
+        },
+        {
+          "path": "frontend/public/bible-text/ubio/v1/zechariah.json",
+          "sha256": "a43576de7b1c6bbe7f2a49e20a92d959a51f6e233ec2b131e3ca194a613a739a",
+          "verses": 211
+        },
+        {
+          "path": "frontend/public/bible-text/ubio/v1/zephaniah.json",
+          "sha256": "7a763e4dcd1f8f93b9b4b24b1c8ec17044c56ba348b4d609a88ef3621d279eaa",
+          "verses": 53
+        }
+      ]
+    },
+    "counts": {
+      "ru": 42691,
+      "uk": 44148
+    },
+    "sourceHashes": {
+      "bibleTextTs": "8b49328943b9731a90e2b9c0517133ee78c47ae1721e1edc850392538bc08ce6",
+      "wordsTs": "a889120b282b1d88f493a8cf2ee63bc9d5e785bef3ee4d82d5cfe68faa9f0f41"
+    }
+  },
+  "ru": {
+    "bytes": 1494428,
+    "sha256": "33e59bbc86e1326d52b5035a103444e03be34d732719899d1c59965b8a30e5c9"
+  },
+  "russian": {
+    "dictionaryRevision": "417150",
+    "source": "PyMorphy3 known parses and OpenCorpora Russian dictionary",
+    "sourcePackages": {
+      "pymorphy3": {
+        "version": "2.0.6",
+        "wheelSha256": "0254317c02ce3ea17e080b7fc9d675e44662b3a5296bae68605b7a41d25b36c3"
+      },
+      "pymorphy3-dicts-ru": {
+        "version": "2.4.417150.4580142",
+        "wheelSha256": "718bac64c73c10c16073a199402657283d9b64c04188b694f6d3e9b0d85440f4"
+      }
+    },
+    "statistics": {
+      "bytes": 1494428,
+      "entries": 11641,
+      "formCount": 292163,
+      "knownVocabularyTokens": 36327,
+      "packageVersions": {
+        "DAWG2-Python": "0.9.0",
+        "pymorphy3": "2.0.6",
+        "pymorphy3-dicts-ru": "2.4.417150.4580142"
+      },
+      "paradigms": 2457,
+      "unknownVocabularyTokens": 6364
+    }
+  },
+  "schema": 1,
+  "tokenFilter": "complete single search tokens: raw form starts/ends with Unicode letter; internal Unicode letters or apostrophes only; no digits, hyphens, compounds, or truncated leading-apostrophe forms",
+  "uk": {
+    "bytes": 743754,
+    "sha256": "44ef131658d1be6fa2bd640a9cff564b5c425e8aee11f0adc54f4bc49b75576c"
+  },
+  "ukrainian": {
+    "license": "Apache-2.0",
+    "mavenSource": {
+      "jarSha256": "463d9054b8d4cfacb9cd69566395826a6fe32fb6e7da91dbf79d37ddf7d56ba0",
+      "jarUrl": "https://repo.maven.apache.org/maven2/ua/net/nlp/morfologik-ukrainian-search/4.9.1/morfologik-ukrainian-search-4.9.1.jar",
+      "pomSha256": "6a66d8efe6a5c774932401b04411a8feca7d6628631e4ef80819cfafa133dc38",
+      "pomUrl": "https://repo.maven.apache.org/maven2/ua/net/nlp/morfologik-ukrainian-search/4.9.1/morfologik-ukrainian-search-4.9.1.pom"
+    },
+    "source": "Morfologik Ukrainian search dictionary",
+    "statistics": {
+      "bytes": 743754,
+      "decodedRows": 3485758,
+      "decodedTableSha256": "e0de0f91de8d8f46a00a36497b08cbc537b0386808fb5f39a18313725692a9e0",
+      "entries": 14994,
+      "filter": "complete single search tokens: raw form starts/ends with Unicode letter; internal Unicode letters or apostrophes only; no digits, hyphens, compounds, or truncated leading-apostrophe forms",
+      "formCount": 198556,
+      "jarWasProvidedForVerification": true,
+      "knownVocabularyTokens": 36108,
+      "mavenJarSha256": "463d9054b8d4cfacb9cd69566395826a6fe32fb6e7da91dbf79d37ddf7d56ba0",
+      "paradigms": 1096,
+      "sourceFormsContainingҐ": 0,
+      "unknownVocabularyTokens": 8040
+    },
+    "version": "4.9.1"
+  }
+}

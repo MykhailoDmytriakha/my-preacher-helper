@@ -9,6 +9,7 @@
 ## 🧠 Principles (Context Engineering)
 
 ### 🗺️ Architecture Map
+*   **Bible Word Forms:** `utils/bibleSearch/wordForms.ts` owns candidate endings; `wordFormLexicon.ts` admits known RU/UK forms from checked-in verified paradigms, without expanding candidates. Unknown names retain regular same-base endings; explicit patterns and English keep their existing paths. `results.ts` owns the separate kin group. Generated data must track current corpus and normalizer hashes. Recipe: `.howto/search-the-bible.md`.
 *   **Structure:** `app/` (Next.js 15 App Router) | `api/` (Server Actions/Routes) | `utils/` (Pure Logic).
 *   **State Ownership:** DataEngine owns migrated user documents, durable drafts and delivery. React Query retains legacy and unrelated request state; URL params own navigation, Context owns dependency injection.
 *   **Resource Admission:** merged document validation lives in `data-engine/resourceSchemas.ts`; existing child-identity allowances live in `legacyChildIdentity.ts`. Boundary rules and regressions: `.howto/validate-input-with-zod.md`.

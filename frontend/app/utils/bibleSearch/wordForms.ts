@@ -1,10 +1,10 @@
+import { isLexicalWord, lexicalFormsOf } from './wordFormLexicon';
+
 /**
- * WORD FORMS: a word typed in one form finds its other forms — «вера» finds «веры», «верою»; «любовь»
- * finds «любви»; «love» finds «loveth». The rule is by endings: the word loses its ending (its base keeps
- * three letters at least), and a word of the text is a form of it when it is that base plus one of the
- * language's endings. It reads the Synodal, Ohienko and King James texts well, and it is not a
- * dictionary: «мир» also finds «миро». A word with a sign is taken as written — `*` any letters, `_` one
- * letter — and a word of two letters is taken as written too («то», «он»): its endings would be other words.
+ * Candidate inflections come from the existing endings and spelling rules. Known Russian/Ukrainian
+ * words also need a shared verified lexical reading; letters alone must not turn one word into another.
+ * Unknown names keep ordinary same-base endings, with no invented internal vowel. Explicit patterns,
+ * short words and English retain their existing contracts.
  */
 export type SearchLanguage = 'ru' | 'uk' | 'en';
 
@@ -73,8 +73,8 @@ export function fitsPattern(word: string, pattern: string): boolean {
 
 /**
  * The bases a word's forms are built on: the word without its ending, and — where a vowel comes and goes —
- * the base with it dropped or put back: «любовь», «любовью» and «любви» share «любов» and «любв»; «отца»
- * finds «отец». The same set whichever form was typed, so the forms found do not depend on it.
+ * the base with it dropped or put back. These are candidate spellings, not proof of word identity;
+ * the shared lexical admission below must confirm them. Unknown words do not use this expansion.
  */
 /** The word without its ending, as its forms are built on it: «светом» → «свет», «духо» → «дух». */
 export function withoutEnding(term: string, language: SearchLanguage): string {
@@ -105,14 +105,19 @@ export function matcherOf(term: string, language: SearchLanguage): WordMatcher {
     return { term, pattern: true, tooShort: pattern.replace(/[*_]/g, '').length < 2, key: `p:${pattern}`, test: (word) => fitsPattern(word, pattern) };
   }
   if (term.length < 3) return { term, pattern: false, tooShort: false, key: `w:${term}`, test: (word) => word === term };
-  const bases = basesOf(term, language);
+  const lexical = language === 'en' ? null : lexicalFormsOf(term, language);
+  const bases = language === 'en' || lexical ? basesOf(term, language) : [withoutEnding(term, language)];
   const endings = endingSets[language];
   return {
     term,
     pattern: false,
     tooShort: false,
-    // The predicate is the bases and the endings: two forms of one word are one search.
-    key: `b:${language}:${bases.join('|')}`,
-    test: (word) => bases.some((base) => word.startsWith(base) && endings.has(word.slice(base.length))),
+    key: lexical ? `${lexical.key}:b:${bases.join('|')}` : `b:${language}:${bases.join('|')}`,
+    test: (word) => {
+      if (!bases.some((base) => word.startsWith(base) && endings.has(word.slice(base.length)))) return false;
+      if (language === 'en') return true;
+      if (lexical) return lexical.words.has(word);
+      return word === term || !isLexicalWord(word, language);
+    },
   };
 }

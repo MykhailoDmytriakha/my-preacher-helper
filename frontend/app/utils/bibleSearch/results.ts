@@ -1,6 +1,7 @@
 import { getLocalizedAbbrev } from '@/utils/bibleBooks';
 
 import { matchersOf, partBooks, type BookGroups, type SearchQuery, type SearchScope } from './query';
+import { hasLexicalLemma } from './wordFormLexicon';
 import { matcherOf, withoutEnding, type SearchLanguage, type WordMatcher } from './wordForms';
 import { wordsOfText } from './words';
 
@@ -79,9 +80,15 @@ function matchersIn(index: BibleSearchIndex, query: SearchQuery): { matchers: Wo
   const matchers: WordMatcher[] = [];
   const widened: WordMatcher[] = [];
   for (const own of matchersOf(query)) {
-    const kin = withKin(own, query.language) ?? own;
     const beginning = own.pattern || index.knows(exactly(own.term)) ? null : matcherOf(`${own.term}*`, query.language);
-    const known = beginning !== null && index.knows(own);
+    let related = own;
+    if (beginning && !index.knows(own)) {
+      // An unfinished spelling is not an inflection. Its real endingless word can still be offered as kin.
+      const base = withoutEnding(own.term, query.language);
+      if (base !== own.term && index.knows(exactly(base))) related = matcherOf(base, query.language);
+    }
+    const kin = withKin(related, query.language) ?? related;
+    const known = beginning !== null && index.knows(related);
     if (beginning && (index.knows(beginning) || !known)) {
       begun.push(own.term);
       matchers.push(beginning);
@@ -127,9 +134,15 @@ function kinOf(stem: string, language: SearchLanguage): WordMatcher | null {
   if (stem.length >= KIN_STEM_LETTERS) return matcherOf(`${stem}*`, language);
   const suffixes = SHORT_STEM_SUFFIXES[language];
   if (!suffixes.length) return null;
+  const hasSuffix = (word: string) => word.startsWith(stem) && suffixes.some((suffix) => word.startsWith(suffix, stem.length));
   return {
     term: stem, pattern: false, tooShort: false, key: `s:${language}:${stem}`,
-    test: (word) => word.startsWith(stem) && suffixes.some((suffix) => word.startsWith(suffix, stem.length)),
+    test: (word) => {
+      if (!word.startsWith(stem)) return false;
+      if (hasSuffix(word)) return true;
+      // A related verb keeps its conjugated forms even when the derivational suffix is no longer visible.
+      return language !== 'en' && hasLexicalLemma(word, language, hasSuffix);
+    },
   };
 }
 

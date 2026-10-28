@@ -67,6 +67,13 @@ describe('search over the Synodal text', () => {
     expect(answer('Ин 6:25-59 хлеб').wider[0]).toEqual({ kind: 'chapter', chapter: 6, count: 17, line: 'Ин 6 хлеб' });
   });
 
+  it('keeps conjugated faith relatives, while a doorpost is not a form of faith', () => {
+    expect(places('вера')).toEqual(expect.arrayContaining(['Acts 9:26', 'Acts 26:26', 'Acts 27:25', '1 Corinthians 11:18', 'Job 29:24']));
+    expect(places('вера')).not.toContain('Ezekiel 43:8');
+    expect(answer('вера').forms).not.toEqual(expect.arrayContaining(['верю', 'веря', 'верей']));
+    expect(answer('вера').kin?.forms).toEqual(expect.arrayContaining(['верю', 'веря', 'верят']));
+  });
+
   it('nothing in the place it looked, and how much everywhere', () => {
     const none = answer('Рим хлеб');
     expect(none.hits).toHaveLength(0);
