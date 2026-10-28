@@ -23,7 +23,7 @@ import { BibleSettingsLink } from './BibleSettingsLink';
 import { bookSequence, booksOf } from './bookOrder';
 import { ARRIVAL_ATTRIBUTE, BookRibbon } from './BookRibbon';
 import { CrossReferenceSheet } from './CrossReferenceSheet';
-import { currentEntryId, placeInBook, readEntryArrival, readEntryPlace, saveEntryArrival, saveEntryPlace, saveLastPlace, type LastPlace } from './lastPlace';
+import { currentEntryId, placeInBook, readEntryArrival, readEntryPlace, saveEntryArrival, saveEntryPlace, saveLastPlace } from './lastPlace';
 import { MarkedElsewhereSheet } from './marks/MarkedElsewhereSheet';
 import { useReaderMarks } from './marks/useReaderMarks';
 import { MineSheet } from './MineSheet';
@@ -58,10 +58,10 @@ type BibleBookReaderProps = {
   /** The screen the link was tapped on (its `from`): the way back when no other book is. */
   cameFrom?: string | null;
   /**
-   * Another book, at a place of `bible`: a new history entry that remembers the place it was opened
-   * from. A passage's last verse (`toVerse`) is lit on arrival, as a link's is.
+   * Another book, at a place of `bible`: a new history entry; the way back is the trail of places, which
+   * the reader adds the place left to. A passage's last verse (`toVerse`) is lit on arrival, as a link's is.
    */
-  onOpenBook: (slug: string, place: Place & { toVerse?: number }, from: LastPlace) => void;
+  onOpenBook: (slug: string, place: Place & { toVerse?: number }) => void;
   /** Another Bible: the page reads the same place in it. */
   onChangeBible: (bible: BibleId) => void;
 };
@@ -238,13 +238,13 @@ function useCrossReferenceTravel({ bookId, jumpTo, light, openElsewhere, arrive,
   bookId: string;
   jumpTo: (place: Place, then?: () => void) => void;
   light: (reference: CrossReference) => void;
-  openElsewhere: (reference: CrossReference, origin: Place) => void;
+  openElsewhere: (reference: CrossReference) => void;
   arrive: (place: Place) => void;
   keepWayBack: (origin: Place) => void;
 }) {
   return useCallback((reference: CrossReference, origin: Place) => {
     if (reference.book !== bookId) {
-      openElsewhere(reference, origin);
+      openElsewhere(reference);
       return;
     }
     const target = { chapter: reference.chapter, verse: reference.fromVerse };
@@ -759,8 +759,8 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
     };
   }, []);
 
-  // The same book: a jump within the ribbon. Another: a new history entry that carries this place
-  // as its way back. The place is written first, and the scroll that follows is not taken for reading.
+  // The same book: a jump within the ribbon. Another: a new history entry, the place left put on the trail first
+  // (`leave`). The place is written first, and the scroll that follows is not taken for reading.
   // A place with a passage to light (a verse found by the search line): lit on arrival, as a link's is.
   const openPlace = useCallback((chosenBook: string, place: Place & { toVerse?: number }) => {
     if (chosenBook === bookId) {
@@ -770,9 +770,8 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
     }
     leave();
     leavingRef.current = true;
-    const here = placeRef.current ?? { chapter: currentChapter, verse: 1 };
-    onOpenBook(bookSlug(chosenBook), place, { slug: bookSlug(bookId), chapter: here.chapter, verse: here.verse, bible });
-  }, [arrive, bible, bookId, currentChapter, jumpTo, leave, lightArrival, onOpenBook]);
+    onOpenBook(bookSlug(chosenBook), place);
+  }, [arrive, bookId, jumpTo, leave, lightArrival, onOpenBook]);
 
   // A verse chosen on the minimap — pointed at and pressed, its place said under the pointer — is a move to a place
   // (the owner, 2026-10-27); a drag along the map is reading.
@@ -788,15 +787,11 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
   const lightReference = useCallback((reference: CrossReference) => {
     lightArrival(passageKeys(reference.chapter, reference.fromVerse, reference.toVerse), ARRIVAL_LIT_MS);
   }, [lightArrival]);
-  const openElsewhere = useCallback((reference: CrossReference, origin: Place) => {
+  const openElsewhere = useCallback((reference: CrossReference) => {
     leave();
     leavingRef.current = true;
-    onOpenBook(
-      bookSlug(reference.book),
-      { chapter: reference.chapter, verse: reference.fromVerse, toVerse: reference.toVerse },
-      { slug: bookSlug(bookId), chapter: origin.chapter, verse: origin.verse, bible }
-    );
-  }, [bible, bookId, leave, onOpenBook]);
+    onOpenBook(bookSlug(reference.book), { chapter: reference.chapter, verse: reference.fromVerse, toVerse: reference.toVerse });
+  }, [leave, onOpenBook]);
   const followReference = useCrossReferenceTravel({ bookId, jumpTo, light: lightReference, openElsewhere, arrive, keepWayBack: setReturnTo });
   const openReference = useFollowAfterClose(Boolean(crossRefs.openAt), closeCrossRefs, followReference);
 

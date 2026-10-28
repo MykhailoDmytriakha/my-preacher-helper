@@ -78,21 +78,11 @@ export function placeInBook(chapters: string[][], place: Place | null): Place | 
  */
 const ENTRY_KEY = 'bibleEntry';
 const ENTRY_PREFIX = 'bible:entry:';
-/** The place in another book this entry was opened from: the reader's way back ("← Rom 5"). */
-const FROM_KEY = 'bibleFrom';
 
 const newEntryId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
-/** The state for a new entry that opens a book; `from` when it was opened from another book. */
-export const newEntryState = (from?: LastPlace | null): Record<string, unknown> => ({
-  [ENTRY_KEY]: newEntryId(),
-  ...(from ? { [FROM_KEY]: from } : {}),
-});
-
-/** Where the current entry was opened from, when that was another book. Call after mount. */
-export function readEntryFrom(): LastPlace | null {
-  return asLastPlace(((window.history.state ?? {}) as Record<string, unknown>)[FROM_KEY]);
-}
+/** The state for a new entry that opens a book. The way back to the book it was opened from is the trail of places. */
+export const newEntryState = (): Record<string, unknown> => ({ [ENTRY_KEY]: newEntryId() });
 
 /** The id of the current entry, giving it one when it has none (a deep link, a reload). Call after mount. */
 export function currentEntryId(): string {

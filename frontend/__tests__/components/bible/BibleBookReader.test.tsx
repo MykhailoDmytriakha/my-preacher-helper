@@ -362,7 +362,7 @@ describe('BibleBookReader', () => {
     expect(await screen.findByText('Павел, Апостол')).toBeInTheDocument();
   });
 
-  it('keeps the place when the person opens another book from the middle of this one, and carries it as the way back', async () => {
+  it('keeps the place when the person opens another book from the middle of this one, and puts it on the trail as the way back', async () => {
     const order = ['1:1', '1:2', '2:1', '3:1', '4:1'];
     let topRow = '3:1';
     const realRect = Element.prototype.getBoundingClientRect;
@@ -386,7 +386,8 @@ describe('BibleBookReader', () => {
       // The book's button is in the line at the top: no scrolling up to reach it.
       await openBooks();
       await hold(screen.getByRole('button', { name: 'Jude' }));
-      expect(onOpenBook).toHaveBeenCalledWith('jude', { chapter: 1, verse: 1 }, { slug: 'ruth', chapter: 3, verse: 1, bible: 'rst' });
+      expect(onOpenBook).toHaveBeenCalledWith('jude', { chapter: 1, verse: 1 });
+      expect(readPlaceTrail().links.at(-1)).toEqual({ book: 'Ruth', chapter: 3, verse: 1, bible: 'rst' });
       await new Promise((resolve) => setTimeout(resolve, 500));
       expect(JSON.parse(window.sessionStorage.getItem('bible:entry:entry-2') ?? 'null')).toEqual({ chapter: 3, verse: 1, bible: 'rst' });
       expect(JSON.parse(window.localStorage.getItem('bible:last-place') ?? 'null')).toEqual({ slug: 'ruth', chapter: 3, verse: 1, bible: 'rst' });
@@ -405,7 +406,7 @@ describe('BibleBookReader', () => {
     await screen.findByText('Третья глава');
     expect(readPlaceTrail()).toEqual(expect.objectContaining({ at: 1 }));
     await userEvent.click(screen.getByRole('button', { name: 'bible.backToLabel' }));
-    expect(onOpenBook).toHaveBeenCalledWith('romans', { chapter: 5, verse: 9 }, expect.objectContaining({ slug: 'ruth' }));
+    expect(onOpenBook).toHaveBeenCalledWith('romans', { chapter: 5, verse: 9 });
     expect(readPlaceTrail().at).toBe(0);
     expect(readPlaceTrail().links).toHaveLength(2);
   });
@@ -447,9 +448,9 @@ describe('BibleBookReader', () => {
     await screen.findByText('Третья глава');
     expect(screen.getByText('bible.endOfBook')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'bible.nextBook' }));
-    expect(onOpenBook).toHaveBeenLastCalledWith('1-samuel', { chapter: 1, verse: 1 }, expect.objectContaining({ slug: 'ruth' }));
+    expect(onOpenBook).toHaveBeenLastCalledWith('1-samuel', { chapter: 1, verse: 1 });
     await userEvent.click(screen.getByRole('button', { name: 'bible.previousBook' }));
-    expect(onOpenBook).toHaveBeenLastCalledWith('judges', { chapter: 1, verse: 1 }, expect.objectContaining({ slug: 'ruth' }));
+    expect(onOpenBook).toHaveBeenLastCalledWith('judges', { chapter: 1, verse: 1 });
   });
 
   it('goes to a reference typed in the book window: another book by a new entry, its own by a jump', async () => {
@@ -464,7 +465,7 @@ describe('BibleBookReader', () => {
     expect(onOpenBook).not.toHaveBeenCalled();
     await userEvent.clear(line);
     await userEvent.type(line, 'Пс 22{Enter}');
-    expect(onOpenBook).toHaveBeenCalledWith('psalms', { chapter: 22, verse: 1 }, expect.objectContaining({ slug: 'ruth' }));
+    expect(onOpenBook).toHaveBeenCalledWith('psalms', { chapter: 22, verse: 1 });
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
 
     scrollIntoView.mockClear();
@@ -864,7 +865,7 @@ describe('BibleBookReader', () => {
       const psalms = screen.getByRole('dialog', { name: 'bible.chooseChapter' });
       expect(within(psalms).getAllByRole('button', { name: 'bible.psalm' })).toHaveLength(150);
       await hold(tile(psalms, '23'));
-      expect(onOpenBook).toHaveBeenLastCalledWith('psalms', { chapter: 23, verse: 1 }, { slug: 'ruth', chapter: 1, verse: 1, bible: 'rst' });
+      expect(onOpenBook).toHaveBeenLastCalledWith('psalms', { chapter: 23, verse: 1 });
 
       await openBooks();
       await userEvent.click(screen.getByRole('button', { name: 'Psalms' }));
@@ -872,7 +873,7 @@ describe('BibleBookReader', () => {
       const verses = screen.getByRole('dialog', { name: 'bible.chooseVerse' });
       expect(within(verses).getByRole('button', { name: 'bible.psalmsBack' })).toBeInTheDocument();
       await userEvent.click(tile(verses, '2'));
-      expect(onOpenBook).toHaveBeenLastCalledWith('psalms', { chapter: 22, verse: 2, toVerse: 2 }, { slug: 'ruth', chapter: 1, verse: 1, bible: 'rst' });
+      expect(onOpenBook).toHaveBeenLastCalledWith('psalms', { chapter: 22, verse: 2, toVerse: 2 });
     });
 
     it('shows a book of one chapter at its verses, goes back to the books from there, and opens it when held', async () => {
@@ -888,7 +889,7 @@ describe('BibleBookReader', () => {
       await userEvent.click(within(verses).getByRole('button', { name: 'bible.allBooks' }));
       expect(screen.getByRole('dialog', { name: 'bible.chooseBook' })).toBeInTheDocument();
       await hold(screen.getByRole('button', { name: 'Jude' }));
-      expect(onOpenBook).toHaveBeenCalledWith('jude', { chapter: 1, verse: 1 }, { slug: 'ruth', chapter: 1, verse: 1, bible: 'rst' });
+      expect(onOpenBook).toHaveBeenCalledWith('jude', { chapter: 1, verse: 1 });
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     });
 

@@ -300,7 +300,7 @@ describe('cross references in the Bible reader', () => {
     expect(screen.queryByText(/bible\.crossRefs\.sources/)).not.toBeInTheDocument();
   });
 
-  it('a link into another book: its text first, then "Open" asks for that book at the passage, with the verse it came from as the way back', async () => {
+  it('a link into another book: its text first, then "Open" asks for that book at the passage', async () => {
     const onOpenBook = renderRuth();
     const dialog = await openLinksOfSubject();
     await userEvent.click(within(dialog).getByText(label(subject.outside)));
@@ -309,8 +309,7 @@ describe('cross references in the Bible reader', () => {
     await waitFor(() => expect(onOpenBook).toHaveBeenCalled());
     expect(onOpenBook).toHaveBeenCalledWith(
       subject.outside.book.toLowerCase().replace(/\s+/g, '-'),
-      { chapter: subject.outside.chapter, verse: subject.outside.fromVerse, toVerse: subject.outside.toVerse },
-      { slug: 'ruth', chapter: subject.chapter, verse: subject.verse, bible: 'rst' }
+      { chapter: subject.outside.chapter, verse: subject.outside.fromVerse, toVerse: subject.outside.toVerse }
     );
   });
 
