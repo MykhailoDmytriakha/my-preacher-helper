@@ -2,11 +2,11 @@ when: are you sure · confirm dialog · confirmation before delete · destructiv
 
 # Ask "are you sure?"
 
-Use `useConfirm()` from `frontend/app/hooks/useConfirm.tsx`: `const { confirm, confirmDialog } = useConfirm();`, then `if (!(await confirm({ title: t('…') }))) return;`, and render `{confirmDialog}` in the same component. Never `window.confirm`.
+Use `useConfirm()` from `frontend/app/hooks/useConfirm.tsx`: `const { confirm, confirmDialog } = useConfirm();`, then `if (!(await confirm({ title: { key: '…' } }))) return;`, and render `{confirmDialog}` in the same component. Never `window.confirm`.
 
 ## How
 
-- `confirm({ title, description, confirmText, cancelText, destructive })` returns a promise of `true` / `false`. `destructive` defaults to `true` (red button, warning icon) because the question almost always comes before a deletion; pass `false` for a neutral question. Texts go through `t(…)`.
+- `confirm({ title, description, confirmText, cancelText, destructive })` returns a promise of `true` / `false`. The texts are translation keys, `{ key: 'comment.eraseTitle' }` (with `values` when needed), not strings from `t()` — the window translates them itself, so a question asked before a language switch still reads right (`hooks/useConfirm.tsx:42`). `destructive` defaults to `true` (red button, warning icon) because the question almost always comes before a deletion; pass `false` for a neutral question.
 - No provider: each component owns its question and renders its own window. A second `confirm` while one is open answers the first "no"; a component unmounting while it asks answers "no". Nothing is left waiting.
 - It draws `frontend/app/components/ui/ConfirmModal.tsx`: a portal to `document.body`, `useModalLayer`, `z-[300]` above every form, Escape closes only the question (not the form it was asked from), and focus starts on Cancel so a stray Enter answers "no".
 - A form's Cancel that throws away changes: pass `unsaved` to `FormActions` (or `SermonFormDialog`); it asks "Discard your changes?" through `useDiscardQuestion()` and closes at once when nothing changed. `unsaved` is what the person changed, not the engine's `dirty` when the form stages its own starting value on open (`EnginePreachDateModal.tsx` compares against that starting row).

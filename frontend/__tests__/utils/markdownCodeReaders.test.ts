@@ -4,7 +4,7 @@ import { splitMarkdownSections } from '@/utils/markdownSections';
 import { normalizePlanPointHeadings } from '@/utils/markdownUtils';
 import { splitNoteIntoSections } from '@/utils/noteSections';
 
-const words = { note: 'Note', question: 'Question', untitled: 'Untitled' };
+const words = { note: 'Note', question: 'Question', comment: 'Comment', untitled: 'Untitled' };
 const preview = (content: string) => buildSharedNotePreview(
   { title: 'A note', content, scriptureRefs: [], type: 'note' }, 'en', words,
 ).description;

@@ -8,8 +8,10 @@ import { toast } from 'sonner';
 import RecordingDraftBanner from '@/components/audio-recorder/RecordingDraftBanner';
 import { ScriptureLinks } from '@/components/bible/ScriptureLinks';
 import { ScripturePreviewSheet } from '@/components/bible/ScripturePreviewSheet';
+import { CommentDialog } from '@/components/CommentDialog';
 import FloatingTextScaleControls from '@/components/FloatingTextScaleControls';
 import { FocusRecorderButton } from '@/components/FocusRecorderButton';
+import { CommentIcon } from '@/components/Icons';
 import { RecordUnavailable } from '@/components/RecordUnavailable';
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
 import { NoteDetailSkeleton } from '@/components/skeletons/NoteDetailSkeleton';
@@ -33,7 +35,7 @@ import { useStudyNotes } from '@/hooks/useStudyNotes';
 import { useTags } from '@/hooks/useTags';
 import { useTextDictation } from '@/hooks/useTextDictation';
 import { useRoomyHeader, useWideViewport } from '@/hooks/useWideViewport';
-import { ScriptureReference, StudyNote } from '@/models/models';
+import { ScriptureReference, StudyNote, StudyNoteType } from '@/models/models';
 import { auth } from '@/services/firebaseAuth.service';
 import { NOTE_AGGREGATE } from '@/services/studies.service';
 import { isUsageCapReachedError } from '@/services/usageLimits';
@@ -49,11 +51,13 @@ import { studyNoteLanguage } from '@/utils/documentLanguage';
 import { findSectionById } from '@/utils/markdownSections';
 import { findNoteDraftCopies } from '@/utils/newNoteDrafts';
 import { awaitAcceptance } from '@/utils/recoverableWrite';
-import { studyNoteSearchText } from '@/utils/scriptureReference';
+import { formatScriptureReference, studyNoteSearchText } from '@/utils/scriptureReference';
 import { sameScriptureReference, withNoteReferenceBibles } from '@/utils/scriptureReferenceNumbering';
 import { isRecordingOnlyNoteDraft } from '@/utils/studyNoteAudioRecovery';
 import { noteRecordingMetadata } from '@/utils/studyNoteRecordings';
-import { formatStudyNoteForCopy } from '@/utils/studyNoteUtils';
+import { inStudyNoteTab, STUDY_NOTE_TABS, type StudyNoteTab } from '@/utils/studyNoteTabs';
+import { formatStudyNoteForCopy, studyNoteOwnName } from '@/utils/studyNoteUtils';
+import { isTypingIn } from '@/utils/typingTarget';
 import HighlightedText from '@components/HighlightedText';
 import { useTranslation } from '@locales/useTranslation';
 
@@ -88,18 +92,15 @@ function useFilteredNotes(notes: StudyNote[], searchParams: URLSearchParams, bib
     const searchQuery = searchParams.get('search')?.trim() || '';
     const tagFilter = searchParams.get('tag') || '';
     const bookFilter = searchParams.get('book') || '';
-    const activeTab = searchParams.get('tab') || 'all';
+    const tabParam = searchParams.get('tab');
+    const activeTab: StudyNoteTab = (STUDY_NOTE_TABS as readonly string[]).includes(tabParam ?? '') ? tabParam as StudyNoteTab : 'all';
 
     const searchTokens = useMemo(() => searchQuery.toLowerCase().split(/\s+/).filter(Boolean), [searchQuery]);
 
     // Replicate matching logic from studies/page.tsx
     const filteredNotes = useMemo(() => {
         return notes
-            .filter((note: StudyNote) => {
-                if (activeTab === 'notes') return note.type !== 'question';
-                if (activeTab === 'questions') return note.type === 'question';
-                return true;
-            })
+            .filter((note: StudyNote) => inStudyNoteTab(note, activeTab))
             .filter((note: StudyNote) => (tagFilter ? note.tags.includes(tagFilter) : true))
             .filter((note: StudyNote) => bookFilter ? note.scriptureRefs.some((ref: ScriptureReference) => ref.book.toLowerCase() === bookFilter.toLowerCase()) : true)
             .filter((note: StudyNote) => {
@@ -126,6 +127,8 @@ function useNoteKeyboardNavigation({
     useEffect(() => {
         if (isEditing) return;
         const handleKeyDown = (e: globalThis.KeyboardEvent) => {
+            // An arrow typed into a field or the editor moves the caret, not the page.
+            if (isTypingIn(e.target)) return;
             if (e.key === 'ArrowLeft' && prevNoteId) {
                 router.push(`/studies/${prevNoteId}?${searchParams.toString()}`);
             } else if (e.key === 'ArrowRight' && nextNoteId) {
@@ -388,7 +391,7 @@ type EditorHeaderProps = {
     handleBack: () => void; t: ReturnType<typeof useTranslation>['t']; isEditing: boolean;
     filteredNotes: StudyNote[]; prevNoteId: string | null; nextNoteId: string | null;
     router: ReturnType<typeof useRouter>; searchParams: ReturnType<typeof useSearchParams>;
-    currentIndex: number; type: 'note' | 'question'; setType: (t: 'note' | 'question') => void;
+    currentIndex: number; type: StudyNoteType; setType: (t: StudyNoteType) => void;
     isSaving: boolean; saveError: string | null; lastSaved: Date | null;
     /** The text on screen differs from what the server last confirmed. */
     hasUnsavedEdits: boolean;
@@ -564,25 +567,28 @@ function EditorHeaderTypeControl({
     t,
 }: {
     isEditing: boolean;
-    type: 'note' | 'question';
-    setType: (t: 'note' | 'question') => void;
+    type: StudyNoteType;
+    setType: (t: StudyNoteType) => void;
     t: ReturnType<typeof useTranslation>['t'];
 }) {
     if (isEditing) {
+        const IDLE_TYPE = 'text-gray-500 hover:text-gray-700 dark:text-gray-400';
         return (
             <div className="flex flex-col">
                 <div className="flex items-center gap-2">
+                    {/* One word, one colour everywhere: a note green as on the Bible's badges, a question amber, a comment
+                        the pencil's grey (2026-10-28). A comment is not chosen here: it is written and edited in its window. */}
                     <button
                         type="button"
                         onClick={() => setType('note')}
-                        className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${type === 'note' ? 'bg-gray-100 text-gray-900 dark:bg-gray-800 dark:text-gray-100' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}
+                        className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${type === 'note' ? 'bg-emerald-100 text-emerald-900 dark:bg-emerald-900/40 dark:text-emerald-100' : IDLE_TYPE}`}
                     >
                         {t('studiesWorkspace.type.note')}
                     </button>
                     <button
                         type="button"
                         onClick={() => setType('question')}
-                        className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${type === 'question' ? 'bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-100' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}
+                        className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${type === 'question' ? 'bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-100' : IDLE_TYPE}`}
                     >
                         {t('studiesWorkspace.type.question')}
                     </button>
@@ -598,8 +604,12 @@ function EditorHeaderTypeControl({
                     <Chip tone="amber" size="sm" icon={<QuestionMarkCircleIcon className="h-3.5 w-3.5" />}>
                         {t('studiesWorkspace.type.question')}
                     </Chip>
+                ) : type === 'comment' ? (
+                    <Chip tone="neutral" size="sm" icon={<CommentIcon className="h-3.5 w-3.5" />}>
+                        {t('studiesWorkspace.type.comment')}
+                    </Chip>
                 ) : (
-                    <Chip tone="neutral" size="sm">
+                    <Chip tone="emerald" size="sm">
                         {t('studiesWorkspace.type.note')}
                     </Chip>
                 )}
@@ -633,6 +643,37 @@ function noteScrollLayout(wide: boolean, navHeight: number, belowHeader: number,
         : { headerTop: navHeight, toolbarTop: belowHeader, sectionMargin: belowHeader + 8, activeOffset: belowHeader + 16, activeRoot: null };
 }
 
+/**
+ * WHAT A COMMENT'S PAGE SHOWS OTHERWISE than a note's (case 2026-10-12-block-diagram, 3.2): its place for a name — it has
+ * none of its own, and the dashboard and the calendar call it so (`studyNoteOwnName`) — no tags to fill, no outline for a
+ * few sentences, and its place grey, the pencil's colour, as in Studies.
+ */
+function commentPageView(type: StudyNoteType, title: string, scriptureRefs: ScriptureReference[], locale: AppLocale) {
+    const isComment = type === 'comment';
+    return {
+        title: isComment ? studyNoteOwnName({ title, scriptureRefs }, locale) ?? title : title,
+        outlineShown: !isComment,
+        refTone: isComment ? ('neutral' as const) : undefined,
+        tags: (block: React.ReactNode) => (isComment ? null : block),
+    };
+}
+
+/** The page's pencil: a comment opens in its window, any other note goes into editing on the page. */
+function useCommentWindow(note: StudyNote | undefined, setIsEditing: (next: boolean) => void) {
+    const [open, setOpen] = useState(false);
+    const isComment = note?.type === 'comment';
+    const editOrOpen = useCallback((next: boolean) => (next && isComment ? setOpen(true) : setIsEditing(next)), [isComment, setIsEditing]);
+    const close = useCallback(() => setOpen(false), []);
+    return { open, close, setIsEditing: editOrOpen };
+}
+
+/** A comment opened from its page, named by its place. */
+function NoteCommentWindow({ open, note, locale, onClose, onErased }: { open: boolean; note: StudyNote | undefined; locale: AppLocale; onClose: () => void; onErased: () => void }) {
+    if (!open || !note) return null;
+    const reference = note.scriptureRefs[0];
+    return <CommentDialog target={{ kind: 'edit', id: note.id }} place={reference ? formatScriptureReference(reference, { locale }) : ''} onClose={onClose} onErased={onErased} />;
+}
+
 export default function StudyNoteEditorPage() {
     const opening = useNewNoteOpening();
     return <>
@@ -663,7 +704,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
     const linkedRecordingSourceIds = useMemo(() => [...new Set([...recordingSourceIds, ...dictationSourceIds])], [recordingSourceIds, dictationSourceIds]);
     const [tags, setTags] = useState<string[]>([]);
     const [scriptureRefs, setScriptureRefs] = useState<ScriptureReference[]>([]);
-    const [type, setType] = useState<'note' | 'question'>('note');
+    const [type, setType] = useState<StudyNoteType>('note');
     const [isEditing, setIsEditing] = useState(isNew);
 
     // Input states
@@ -690,6 +731,8 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
     const unavailable = !isNew && (presence?.kind === 'absent' || presence?.kind === 'deleting' || (!existingNote && !createdNoteId));
     // A projected row or a local capture alone cannot confirm this note on the server.
     const noteIsAccepted = noteDelivery?.get(noteId)?.pending === false;
+    // A comment is edited only in its window (the owner, 2026-10-28), here too: the page's pencil opens it.
+    const commentWindow = useCommentWindow(existingNote, setIsEditing);
 
     const { locale: bibleLocale } = useAppLocale();
 
@@ -704,7 +747,8 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
     const searchParams = useSearchParams();
     const { filteredNotes, currentIndex, prevNoteId, nextNoteId, searchQuery } = useFilteredNotes(notes, searchParams, bibleLocale);
 
-    useNoteKeyboardNavigation({ isEditing: isEditing || Boolean(previewReference), prevNoteId, nextNoteId, router, searchParams });
+    // A window over the page — the verse's, the comment's — keeps the arrows: leaving would close it unasked (Codex review, 2026-10-28).
+    useNoteKeyboardNavigation({ isEditing: isEditing || Boolean(previewReference) || commentWindow.open, prevNoteId, nextNoteId, router, searchParams });
 
     // Handle Initial Load
     const [isInitialized, setIsInitialized] = useState(false);
@@ -1046,6 +1090,8 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         setTags((prev) => prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]);
     };
 
+    const commentView = commentPageView(type, title, scriptureRefs, bibleLocale);
+
     // The note's own properties. They are ONE instance, handed either to the side
     // panel or to the narrow-screen tray below the text — never both, because each
     // carries live inputs and pickers.
@@ -1088,6 +1134,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
                                         reference={ref}
                                         isEditing={isEditing ? editingRefIndex === idx : false}
                                         onClick={isEditing ? () => { setEditingRefIndex(idx); setShowRefPicker(false); } : () => setPreviewReference(ref)}
+                                        tone={commentView.refTone}
                                         onRemove={isEditing ? () => setScriptureRefs(prev => prev.filter((_, i) => i !== idx)) : undefined}
                                     />
                                 ))}
@@ -1150,7 +1197,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
     );
     const scriptureRefsBlock = renderScriptureRefs();
 
-    const tagsBlock = (
+    const tagsBlock = commentView.tags(
         <>
                     {/* Tags */}
                     <div className="flex flex-col h-full space-y-4 group/tags">
@@ -1222,7 +1269,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
                         it, so there is nothing to keep in step. Renders only when there is one. */}
                     <SermonsBuiltOnNote
                         noteId={isNew ? undefined : noteId}
-                        noteTitle={title}
+                        noteTitle={commentView.title}
                         scriptureRefs={scriptureRefs}
                         noteContent={content}
                         noteBusy={isSaving || editorIsDirty}
@@ -1278,12 +1325,12 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
                 handleBack={handleBack} t={t} isEditing={isEditing} filteredNotes={filteredNotes}
                 prevNoteId={prevNoteId} nextNoteId={nextNoteId} router={router} searchParams={searchParams}
                 currentIndex={currentIndex} type={type} setType={setType} isSaving={isSaving} saveError={saveError}
-                lastSaved={lastSaved} hasUnsavedEdits={editorIsDirty || !noteIsAccepted} setIsEditing={setIsEditing} handleDelete={handleDelete}
+                lastSaved={lastSaved} hasUnsavedEdits={editorIsDirty || !noteIsAccepted} setIsEditing={commentWindow.setIsEditing} handleDelete={handleDelete}
                 handleCopy={handleCopy} isCopied={isCopied}
                 headerRef={setHeaderRef} stickyTop={scrollLayout.headerTop}
                 roomy={roomyHeader} collapsed={headerCollapsed} sectionLabel={sectionLabel}
                 onOpenSheet={propertiesInSheet ? openSheet : undefined}
-                title={title} setTitle={setTitle} searchQuery={searchQuery} justSaved={justSaved}
+                title={commentView.title} setTitle={setTitle} searchQuery={searchQuery} justSaved={justSaved}
                 aiMenu={
                     <NoteAiMenu
                         // Every target picked inside this menu belongs to THIS button.
@@ -1327,6 +1374,8 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         <div data-note-workspace data-page-loading={!isInitialized && !unsavedRecovery ? '' : undefined} className="bg-white dark:bg-gray-900 flex flex-col -m-4 md:-m-6 lg:-m-8 relative">
             {/* HEADER TRAY */}
             {renderHeader()}
+            {/* Erased from its own page: the page goes too, as a deleted note's does — replace, so Back does not reopen it. */}
+            <NoteCommentWindow open={commentWindow.open} note={existingNote} locale={bibleLocale} onClose={commentWindow.close} onErased={() => router.replace('/studies')} />
 
             {/* EDITOR CONTENT */}
             <div ref={setScrollRoot} className="flex flex-1 min-h-0">
@@ -1336,6 +1385,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
                 {isWideViewport && (
                     <NoteSidePanel
                         outline={outlineControl}
+                        outlineShown={commentView.outlineShown}
                         foldable={!isEditing}
                         activeSectionId={activeSectionId}
                         collapsed={panelCollapsed}
@@ -1429,6 +1479,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
                     open={sheetOpen}
                     onClose={closeSheet}
                     outline={outlineControl}
+                    outlineShown={commentView.outlineShown}
                     foldable={!isEditing}
                     activeSectionId={activeSectionId}
                     meta={existingNote ? <NoteDates note={existingNote} t={t} /> : undefined}

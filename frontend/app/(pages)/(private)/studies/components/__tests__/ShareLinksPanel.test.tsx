@@ -141,6 +141,16 @@ describe('ShareLinksPanel', () => {
     expect(screen.getByText('studiesWorkspace.shareLinks.copyLink')).toBeInTheDocument();
   });
 
+  it('names a comment by its place and its first words: two on one verse are told apart, not «untitled»', () => {
+    const place = [{ id: 'r', bible: 'rst' as const, book: 'Isaiah', chapter: 40, fromVerse: 31 }];
+    const first = createTestNote({ id: 'c1', type: 'comment', title: '', content: 'Сила в ожидании.', scriptureRefs: place });
+    const second = createTestNote({ id: 'c2', type: 'comment', title: '', content: 'Орлы не устают.', scriptureRefs: place });
+    render(<ShareLinksPanel notes={[first, second]} shareLinks={[createShareLink({ noteId: 'c1' })]} onCreate={jest.fn()} onDelete={jest.fn()} />);
+    expect(screen.queryByText('studiesWorkspace.untitled')).not.toBeInTheDocument();
+    expect(screen.getAllByText(/40:31 — Сила в ожидании\./).length).toBeGreaterThan(0);
+    expect(screen.getByRole('option', { name: /40:31 — Орлы не устают\./ })).toBeInTheDocument();
+  });
+
   it('renders fallback title, copies link, and prevents double delete', async () => {
     const user = userEvent.setup();
     let resolveDelete!: () => void;

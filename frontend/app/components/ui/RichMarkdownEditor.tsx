@@ -15,6 +15,8 @@ interface RichMarkdownEditorProps {
     autoFocus?: boolean;
     /** Distance from the top of the window to keep the toolbar at while scrolling. */
     stickyToolbarTop?: number;
+    /** False holds the text still — a save being accepted must not take later keystrokes away with it. */
+    editable?: boolean;
 }
 
 export function RichMarkdownEditor({
@@ -24,6 +26,7 @@ export function RichMarkdownEditor({
     minHeight = '150px',
     autoFocus = false,
     stickyToolbarTop,
+    editable = true,
 }: RichMarkdownEditorProps) {
     const { draft, change } = useBufferedText(value, onChange);
     const { toolbarRef, scrollProps } = useStickyEditorViewport(stickyToolbarTop);
@@ -35,6 +38,7 @@ export function RichMarkdownEditor({
             }),
         ],
         content: value,
+        editable,
         immediatelyRender: false,
         autofocus: autoFocus ? 'end' : false,
         editorProps: {
@@ -61,13 +65,19 @@ export function RichMarkdownEditor({
         }
     }, [draft, editor]);
 
+    useEffect(() => {
+        // Without `false` Tiptap announces an update, and onUpdate would send the words still drawn back as a user
+        // edit — over a value just given (a draft restored as the editor is released was wiped live, 2026-10-28).
+        if (editor && editor.isEditable !== editable) editor.setEditable(editable, false);
+    }, [editor, editable]);
+
     if (!editor) {
         return null;
     }
 
     return (
         <div className="flex flex-col w-full flex-1 rounded-xl shadow-sm" style={{ minHeight }}>
-            <RichMarkdownToolbar editor={editor} stickyTop={stickyToolbarTop} elementRef={toolbarRef} />
+            <RichMarkdownToolbar editor={editor} stickyTop={stickyToolbarTop} elementRef={toolbarRef} disabled={!editable} />
             <div className="flex-1 cursor-text flex flex-col">
                 <EditorContent
                     editor={editor}

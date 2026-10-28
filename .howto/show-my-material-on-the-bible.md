@@ -1,4 +1,4 @@
-when: the person's notes, sermons, groups, service orders on the Bible text · badges after a verse · badge by a chapter heading · marks on the minimap's right edge · bookUsage · useBookUsage · MineSheet · «Моё на тексте» · моё на ленте · значки моих записей у стиха · точки у номеров глав · reader slow after a sync
+when: the person's notes, sermons, groups, service orders on the Bible text · badges after a verse · badge by a chapter heading · marks on the minimap's right edge · bookUsage · useBookUsage · MineSheet · «Моё на тексте» · моё на ленте · значки моих записей у стиха · точки у номеров глав · reader slow after a sync · comment on a verse · comment on a chapter · grey text under a verse · CommentsOnText · CommentDialog · комментарий к стиху · комментарий к главе · серый текст под стихом · карандаш на полях
 
 # Show the person's material on the Bible text
 
@@ -15,6 +15,14 @@ Reading a book, every note, sermon, group block and service-order step that name
 - **Look**: `components/bible/usageKinds.ts` — the menu's section colours and icons (sermons blue, notes green, groups amber, service orders rose); the minimap's canvas takes `dot` colours, light and dark.
 - **The switch** is a device choice in Settings → Bible (`minePrefs.ts`, `components/settings/MineSettings.tsx`), not the reader's "T", which is about the text (the owner, 2026-10-20).
 - Tests: `__tests__/utils/bookUsage.test.ts`, `__tests__/components/bible/mineInReader.test.tsx`. Live: `.cases/2026-10-12-block-diagram/demo-mine/` (emulator stand, `seed-mine.cjs`, `walk-mine.cjs`).
+
+## Comments (case 2026-10-12-block-diagram, 3.2)
+
+- A comment is a study note with `type: 'comment'` — a few sentences or a short list, like pencil in a margin (the owner, 2026-10-28). `usageDocuments` reads it as its own kind `'comment'` and keeps its words (`body`); it stands **only where it is written to** (its `scriptureRefs`): a verse its words name is a link, not a second place — a note gathers what it names, a comment does not.
+- In the reader it is grey words (`components/bible/CommentsOnText.tsx`, `MarkdownDisplay` with `pencil`) under the verse it starts at, inside the verse row (`md:basis-full`, the row is `md:flex-wrap`), so the row's light and choice cover it; a comment on whole chapters stands under **every** heading of them (`RibbonMine.comments.chapters`), never inside a chapter drawn as a box. Settings → Bible → «Комментарии» (`minePrefs.comments`, 'text' by default) turns them into grey badges like the rest; the switch «Значки ваших записей» hides them too.
+- Written and edited only in `components/CommentDialog.tsx` (`FormDialog` + `RichMarkdownEditor`, the notes' toolbar): from the verse menu («Комментарий»), from a chapter heading (a button in the heading, `RibbonChapterComment`), from the grey words, from the list behind a badge, from Studies' «Комментарии» tab. A door opens the comment written to that verse or chapter (`useBookUsage().commentOn`), else a new one numbered in the Bible being read.
+- The bar «Комментарий → Заметка» measures by `utils/commentLength.ts` (sentences by words, ≈12 a sentence, a list item at least one, more than five — a note); past it the main button «Сделать заметкой» saves the text whole with `type: 'note'`.
+- One draft rule for server and device: `utils/studyNoteDraft.ts` — a comment is never a draft (it has no tags). One tab rule for Studies and the note page: `utils/studyNoteTabs.ts`.
 
 ## Traps
 

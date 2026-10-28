@@ -1,6 +1,6 @@
 import { buildSharedNotePreview, cardSafeText } from '@/utils/sharedNotePreview';
 
-const words = { note: 'Note', question: 'Question', untitled: 'Untitled note' };
+const words = { note: 'Note', question: 'Question', comment: 'Comment', untitled: 'Untitled note' };
 const luke = { id: 'r1', book: 'Luke', chapter: 5, fromVerse: 17, toVerse: 26 };
 const john = { id: 'r2', book: 'John', chapter: 3, fromVerse: 16 };
 const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
@@ -58,6 +58,10 @@ describe('buildSharedNotePreview', () => {
     expect(preview.title).toBe('Untitled note');
     expect(preview.description).toBeUndefined();
     expect(preview.kind).toBe('Question');
+  });
+
+  it('names a comment a comment, not a note', () => {
+    expect(buildSharedNotePreview({ content: 'Сила — не моя.', scriptureRefs: [], type: 'comment' }, 'en', words).kind).toBe('Comment');
   });
 
   it('treats a note made only of Markdown syntax or code as empty', () => {

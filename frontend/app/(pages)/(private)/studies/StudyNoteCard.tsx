@@ -14,15 +14,14 @@ import {
 import { useRouter } from 'next/navigation';
 import { useMemo, useCallback, useEffect } from 'react';
 
-import { useScriptureLinks } from '@/components/bible/ScriptureLinks';
+import { useOpenStoredReference } from '@/components/bible/useOpenStoredReference';
 import { Chip } from '@/components/ui/Chip';
 import { FoldableMarkdown } from '@/components/ui/FoldableMarkdown';
 import { useClipboard } from '@/hooks/useClipboard';
 import { StudyNote } from '@/models/models';
-import { bibleHref } from '@/utils/bibleLink';
 import { formatDateForLocale } from '@/utils/dateFormatter';
+import { relativeDay } from '@/utils/relativeDay';
 import { formatScriptureReference, scriptureReferenceSearchText, type ScriptureRefShape } from '@/utils/scriptureReference';
-import { referenceBibleFor, withStoredBible } from '@/utils/scriptureReferenceNumbering';
 import { extractSearchSnippets } from '@/utils/searchUtils';
 import { formatStudyNoteForCopy } from '@/utils/studyNoteUtils';
 import { UI_COLORS } from '@/utils/themeColors';
@@ -137,19 +136,7 @@ export default function StudyNoteCard({
   const scriptureRefsLabel = t('studiesWorkspace.scriptureRefs');
   const tagsLabel = t('studiesWorkspace.tags');
 
-  // Format relative time
-  const formatRelativeTime = (dateStr: string) => {
-    const date = new Date(dateStr);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-
-    if (diffDays === 0) return t('common.today');
-    if (diffDays === 1) return t('common.yesterday');
-    if (diffDays < 7) return t('common.daysAgo', { count: diffDays });
-    if (diffDays < 30) return t('common.weeksAgo', { count: Math.floor(diffDays / 7) });
-    return formatDateForLocale(date, interfaceLanguage);
-  };
+  const formatRelativeTime = (dateStr: string) => relativeDay(dateStr, t, undefined, interfaceLanguage);
 
   // Check if note needs AI analysis (no title, no refs, no tags)
 
@@ -162,16 +149,10 @@ export default function StudyNoteCard({
 
   // A reference chip opens its verse the way the list opens every reference — over the page — else
   // the Bible at it; the card's own click opens or folds the card.
-  const links = useScriptureLinks();
+  const openStored = useOpenStoredReference(bibleLocale);
   const openReference = (event: React.SyntheticEvent, ref: ScriptureRefShape) => {
     event.stopPropagation();
-    if (links) {
-      const stored = withStoredBible(ref, bibleLocale);
-      links.onOpen({ ...stored, bible: stored.bible ?? referenceBibleFor(bibleLocale) });
-      return;
-    }
-    const href = bibleHref(ref, { locale: bibleLocale, from: `${window.location.pathname}${window.location.search}` });
-    if (href) router.push(href);
+    openStored(ref);
   };
 
   const searchTokens = useMemo(

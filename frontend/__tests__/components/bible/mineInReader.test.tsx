@@ -20,16 +20,31 @@ import type { BookUsageEntry } from '@/utils/scriptureUsage';
  */
 type Row = { resource: { id: string }; value: Record<string, unknown> | null; deleting?: boolean };
 let mockRows: Record<string, Row[]> = {};
+// Whether the engine has read each whole list; a list still being read, or offered as a copy, is not complete.
+let mockComplete = true;
 const mockWatched: Array<string | null> = [];
 jest.mock('@/data-engine/react.client', () => ({
   ...jest.requireActual('@/data-engine/react.client'),
   useDataDocument: () => ({ data: null, loading: true, commit: jest.fn(), status: null, recoveryIdentity: {} }),
   useDataCollection: (name: string | null) => (mockWatched.push(name), {
-    state: name ? { documents: mockRows[name] ?? [], complete: true, freshness: 'server' } : null,
+    state: name ? { documents: mockRows[name] ?? [], complete: mockComplete, freshness: 'server' } : null,
     loading: false, error: null, refresh: jest.fn(),
   }),
 }));
 jest.mock('@/hooks/useResolvedUid', () => ({ useResolvedUid: () => ({ uid: 'owner', isAuthLoading: false }) }));
+// The comment's window reads and writes through the notes' engine door; here it reads the rows above.
+jest.mock('@/hooks/useStudyNotesEngine', () => ({
+  useStudyNotesEngine: () => ({
+    uid: 'owner',
+    notes: (mockRows.studyNotes ?? []).map((stored) => ({ id: stored.resource.id, tags: [], scriptureRefs: [], createdAt: '', updatedAt: '', isDraft: false, ...stored.value })),
+    createNote: jest.fn(), updateNote: jest.fn(), deleteNote: jest.fn(),
+  }),
+}));
+jest.mock('@/components/ui/RichMarkdownEditor', () => ({
+  RichMarkdownEditor: ({ value, onChange }: { value: string; onChange: (value: string) => void }) => (
+    <textarea aria-label="comment-editor" value={value} onChange={(event) => onChange(event.target.value)} />
+  ),
+}));
 const mockPush = jest.fn();
 jest.mock('next/navigation', () => ({
   ...jest.requireActual('next/navigation'),
@@ -49,6 +64,7 @@ const order = (id: string, refs: string[]) => row(id, { title: id, steps: [{ id:
 
 beforeEach(() => {
   mockRows = {};
+  mockComplete = true;
   mockPush.mockClear();
   window.matchMedia = jest.fn((query: string) => ({
     matches: false, media: query, onchange: null,
@@ -219,7 +235,62 @@ describe('the person\'s own material on the Bible text', () => {
   });
 });
 
+describe('comments on the text (case 2026-10-12-block-diagram, 3.2)', () => {
+  const comment = (id: string, content: string, refs: unknown[]) => row(id, { type: 'comment', content, scriptureRefs: refs, tags: [] });
+  const rows = () => ({ studyNotes: [
+    comment('verse', 'Куда ты пойдёшь — туда и я.', [{ id: 'r', bible: 'rst', book: 'Ruth', chapter: 1, fromVerse: 16 }]),
+    comment('chapters', 'Главы о верности.', [{ id: 'r2', bible: 'rst', book: 'Ruth', chapter: 1, toChapter: 2 }]),
+  ] });
+
+  it('stands as grey words under its verse and under every chapter heading it is written to, a badge when chosen', async () => {
+    mockRows = rows();
+    renderRuth();
+    expect(await screen.findByTestId('comments-1:16')).toHaveTextContent('Куда ты пойдёшь — туда и я.');
+    expect(screen.getByTestId('comments-chapter-1')).toHaveTextContent('Главы о верности.');
+    expect(screen.getByTestId('comments-chapter-2')).toHaveTextContent('Главы о верности.');
+    expect(screen.queryByTestId('mine-1:16-comment')).not.toBeInTheDocument();
+    act(() => saveMinePrefs({ comments: 'badge' }));
+    expect(await screen.findByTestId('mine-1:16-comment')).toBeInTheDocument();
+    expect(screen.queryByTestId('comments-1:16')).not.toBeInTheDocument();
+    expect(screen.getByTestId('mine-chapter-2-comment')).toBeInTheDocument();
+  });
+
+  it('opens the comment in its window from its words, and from a chapter heading — the chapter\'s own, or a new one', async () => {
+    mockRows = rows();
+    renderRuth();
+    await userEvent.click(await screen.findByText('Куда ты пойдёшь — туда и я.'));
+    expect(await screen.findByLabelText('comment-editor')).toHaveValue('Куда ты пойдёшь — туда и я.');
+    await userEvent.click(screen.getByRole('button', { name: 'common.cancel' }));
+    await waitFor(() => expect(screen.queryByLabelText('comment-editor')).not.toBeInTheDocument());
+
+    await userEvent.click(screen.getByTestId('chapter-comment-2'));
+    expect(await screen.findByLabelText('comment-editor')).toHaveValue('Главы о верности.');
+    await userEvent.click(screen.getByRole('button', { name: 'common.cancel' }));
+    await waitFor(() => expect(screen.queryByLabelText('comment-editor')).not.toBeInTheDocument());
+
+    await userEvent.click(screen.getByTestId('chapter-comment-3'));
+    expect(await screen.findByLabelText('comment-editor')).toHaveValue('');
+  });
+
+  it('offers no door to a comment until the whole list is read — a missing one would be taken for none — while a written one opens from its words', async () => {
+    mockRows = rows();
+    mockComplete = false;
+    renderRuth();
+    await userEvent.click(await screen.findByText('Куда ты пойдёшь — туда и я.'));
+    expect(await screen.findByLabelText('comment-editor')).toHaveValue('Куда ты пойдёшь — туда и я.');
+    expect(screen.queryByTestId('chapter-comment-3')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('chapter-comment-2')).not.toBeInTheDocument();
+  });
+});
+
 describe('Settings → Bible: your material on the text', () => {
+  it('shows comments as text or as badges, as chosen on this device', async () => {
+    render(<MineSettings />);
+    await userEvent.click(screen.getByRole('button', { name: 'settings.bible.mine.commentsBadge' }));
+    expect(window.localStorage.getItem('bible:mine')).toContain('"comments":"badge"');
+  });
+
+
   it('switches the badges off and on for this device', async () => {
     render(<MineSettings />);
     const toggle = screen.getByTestId('mine-settings-switch');

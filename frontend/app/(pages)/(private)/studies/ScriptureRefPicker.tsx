@@ -1,7 +1,7 @@
 'use client';
 
 import { XMarkIcon } from '@heroicons/react/24/outline';
-import { useState, useRef, useEffect, KeyboardEvent, useMemo } from 'react';
+import { useState, useRef, useEffect, KeyboardEvent, useMemo, useId } from 'react';
 
 import Select from '@/components/ui/Select';
 import { useAppLocale } from '@/hooks/useAppLocale';
@@ -33,6 +33,11 @@ interface ScriptureRefPickerProps {
   onCancel: () => void;
   /** Mode: 'add' for new reference, 'edit' for editing existing */
   mode?: 'add' | 'edit';
+  /**
+   * Leaves out «Entire Book»: a comment stands under a verse or a chapter heading in the reader, and a whole book
+   * names no place there (case 2026-10-12-block-diagram, 3.2).
+   */
+  placesOnly?: boolean;
 }
 
 /**
@@ -57,6 +62,7 @@ export default function ScriptureRefPicker({
   onConfirm,
   onCancel,
   mode = 'add',
+  placesOnly = false,
 }: ScriptureRefPickerProps) {
   const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -72,10 +78,15 @@ export default function ScriptureRefPicker({
   // King James 19.
   const bible = referenceBibleFor(bibleLocale);
   // A reference being edited is shown in the person's Bible, whichever Bible it was written in.
+  // Each field named by its label for a screen reader: the label says «Книга», the select is the book.
+  const fieldId = useId();
   const [shown] = useState(() => (initialRef ? referenceIn(withStoredBible(initialRef, bibleLocale), bible) : undefined));
 
   // Reference scope state
-  const [scope, setScope] = useState<ReferenceScope>(() => detectScope(shown));
+  const [scope, setScope] = useState<ReferenceScope>(() => {
+    const detected = detectScope(shown);
+    return placesOnly && detected === REFERENCE_SCOPE_BOOK ? REFERENCE_SCOPE_CHAPTER : detected;
+  });
 
   const [book, setBook] = useState(shown?.book || 'Genesis');
   const [chapter, setChapter] = useState(shown?.chapter || 1);
@@ -262,7 +273,7 @@ export default function ScriptureRefPicker({
               {t('studiesWorkspace.referenceScope') || 'Reference Type'}
             </label>
             <div className="flex flex-wrap gap-1">
-              {([REFERENCE_SCOPE_BOOK, REFERENCE_SCOPE_CHAPTER, REFERENCE_SCOPE_CHAPTER_RANGE, REFERENCE_SCOPE_VERSES] as ReferenceScope[]).map((s) => (
+              {([REFERENCE_SCOPE_BOOK, REFERENCE_SCOPE_CHAPTER, REFERENCE_SCOPE_CHAPTER_RANGE, REFERENCE_SCOPE_VERSES] as ReferenceScope[]).filter((s) => !(placesOnly && s === REFERENCE_SCOPE_BOOK)).map((s) => (
                 <button
                   key={s}
                   type="button"
@@ -280,10 +291,11 @@ export default function ScriptureRefPicker({
 
           {/* Book selector */}
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+            <label htmlFor={`${fieldId}-book`} className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
               {t('studiesWorkspace.book')}
             </label>
             <Select
+                  id={`${fieldId}-book`}
               size="sm"
               accent="emerald"
               value={book}
@@ -302,13 +314,14 @@ export default function ScriptureRefPicker({
           {scope !== REFERENCE_SCOPE_BOOK && (
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                <label htmlFor={`${fieldId}-chapter`} className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
                   {scope === REFERENCE_SCOPE_CHAPTER_RANGE
                     ? (t('studiesWorkspace.fromChapter') || 'From Chapter')
                     : t('studiesWorkspace.chapter')
                   }
                 </label>
                 <Select
+                  id={`${fieldId}-chapter`}
               size="sm"
               accent="emerald"
                   value={chapter}
@@ -326,10 +339,11 @@ export default function ScriptureRefPicker({
               {/* The existing endpoint chapter control also completes an exact verse range. */}
               {(scope === REFERENCE_SCOPE_CHAPTER_RANGE || scope === REFERENCE_SCOPE_VERSES) && (
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                  <label htmlFor={`${fieldId}-to-chapter`} className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
                     {t('studiesWorkspace.toChapter') || 'To Chapter'}
                   </label>
                   <Select
+                  id={`${fieldId}-to-chapter`}
               size="sm"
               accent="emerald"
                     aria-label={t('studiesWorkspace.toChapter')}
@@ -352,10 +366,11 @@ export default function ScriptureRefPicker({
           {scope === REFERENCE_SCOPE_VERSES && (
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                <label htmlFor={`${fieldId}-from-verse`} className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
                   {t('studiesWorkspace.from')}
                 </label>
                 <Select
+                  id={`${fieldId}-from-verse`}
               size="sm"
               accent="emerald"
                   value={fromVerse}
@@ -370,10 +385,11 @@ export default function ScriptureRefPicker({
                 </Select>
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                <label htmlFor={`${fieldId}-to-verse`} className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
                   {t('studiesWorkspace.to')}
                 </label>
                 <Select
+                  id={`${fieldId}-to-verse`}
               size="sm"
               accent="emerald"
                   value={toVerse === '' ? '' : toVerse}

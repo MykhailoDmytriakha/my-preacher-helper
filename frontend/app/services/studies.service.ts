@@ -6,6 +6,7 @@ import { readOwnerList } from '@/services/ownerListRead.client';
 import { parseUsageCapError, type UsageCapReachedError } from '@/services/usageLimits';
 import { apiClient } from '@/utils/apiClient';
 import { getAuthenticatedRequestHeaders } from '@/utils/authenticatedRequest';
+import { isStudyNoteDraft } from '@/utils/studyNoteDraft';
 
 // Study notes are written only through the data engine (engineOwnedCollections.ts). What stays
 // here is the note list read the sermon side still uses and the AI cut routes.
@@ -24,9 +25,8 @@ type NoteFilters = Partial<{
 
 // --- helpers mirroring studies.repository.ts + the GET route's filterNotes ---
 
-function computeDraft(note: Pick<StudyNote, 'tags' | 'scriptureRefs'>): boolean {
-  return (note.tags?.length ?? 0) === 0 || (note.scriptureRefs?.length ?? 0) === 0;
-}
+// The one draft rule of the server and the device (`utils/studyNoteDraft.ts`): a comment is never a draft.
+const computeDraft = (note: Pick<StudyNote, 'tags' | 'scriptureRefs' | 'type'>): boolean => isStudyNoteDraft(note);
 
 function normalizeNote(data: StudyNote): StudyNote {
   return {

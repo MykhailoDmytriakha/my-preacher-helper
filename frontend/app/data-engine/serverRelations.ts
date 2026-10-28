@@ -1,6 +1,7 @@
 import { deriveSeriesItemsFromSermonIds, deriveSermonIdsFromItems, inferSeriesKind, normalizeSeriesItems } from '@/utils/seriesItems';
 import { isServiceOrderCatalogKey } from '@/utils/serviceOrderSeedIdentity';
 import { isStructureTag } from '@/utils/structureTags';
+import { isStudyNoteDraft } from '@/utils/studyNoteDraft';
 
 import { validCouncilCarry } from './councilCarryContent';
 import { childIdentityIssues } from './legacyChildIdentity';
@@ -424,7 +425,7 @@ class RelationPlanner {
     const value = this.live(accepted);
     if (this.primary.resource.collection === 'sermons') await this.checkSermonSources(command, value);
     if (this.primary.resource.collection === 'studyNotes') {
-      this.stage(accepted, { isDraft: ids(value.tags).length === 0 || !Array.isArray(value.scriptureRefs) || value.scriptureRefs.length === 0 });
+      this.stage(accepted, { isDraft: isStudyNoteDraft({ type: typeof value.type === 'string' ? value.type : undefined, tags: ids(value.tags), scriptureRefs: Array.isArray(value.scriptureRefs) ? value.scriptureRefs : null }) });
     }
     if (this.primary.resource.collection === 'studyMaterials') {
       materialSections(value, ids(value.noteIds));

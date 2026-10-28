@@ -21,7 +21,7 @@ import { useTranslation } from '@locales/useTranslation';
 
 import type { NoteDraftPayload } from './noteDraft';
 import type { StudyNoteSubmission } from '@/hooks/useStudyNotesEngine';
-import type { ScriptureReference, StudyNote } from '@/models/models';
+import type { ScriptureReference, StudyNote, StudyNoteType } from '@/models/models';
 
 const EMPTY_SOURCE_IDS: string[] = [];
 
@@ -45,7 +45,7 @@ export function useNoteAutoSave({
     /** The same mounted writer owns typing, immediate autosave and adopted backups. */
     draftWriterId?: string;
     noteId: string; isNew: boolean; isInitialized: boolean; existingNote?: StudyNote; title: string;
-    content: string; tags: string[]; scriptureRefs: ScriptureReference[]; type: 'note' | 'question';
+    content: string; tags: string[]; scriptureRefs: ScriptureReference[]; type: StudyNoteType;
     updateNote: (args: {
         id: string;
         updates: Partial<StudyNote>;

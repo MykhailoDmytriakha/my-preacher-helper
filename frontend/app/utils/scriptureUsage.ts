@@ -10,7 +10,7 @@ import type { Group, Sermon, ServiceOrder, StudyNote } from '@/models/models';
 import type { BibleId } from '@/utils/bibles';
 import type { ScriptureRefShape } from '@/utils/scriptureReference';
 
-export type ScriptureUsageKind = 'note' | 'sermon' | 'group' | 'order';
+export type ScriptureUsageKind = 'note' | 'comment' | 'sermon' | 'group' | 'order';
 export type ScriptureUsageMatch = 'same' | 'overlap' | 'text';
 export type ScriptureUsage = {
   id: string;
@@ -41,10 +41,14 @@ type UsageSources = {
 };
 
 /** Where each kind lives, for its screen's address and the key it is remembered by. */
-const COLLECTION_OF: Record<ScriptureUsageKind, string> = { note: 'studyNotes', sermon: 'sermons', group: 'groups', order: 'serviceOrders' };
+const COLLECTION_OF: Record<ScriptureUsageKind, string> = { note: 'studyNotes', comment: 'studyNotes', sermon: 'sermons', group: 'groups', order: 'serviceOrders' };
 
 /** A document of the person's and every reference it holds — where each kind keeps its verses, read once. */
-export type UsageDocument = { kind: ScriptureUsageKind; id: string; title: string; href: string; updatedAt: string; candidates: Candidate[] };
+export type UsageDocument = {
+  kind: ScriptureUsageKind; id: string; title: string; href: string; updatedAt: string; candidates: Candidate[];
+  /** A comment's own words, drawn under the verse or the chapter it is written to. */
+  body?: string;
+};
 
 /** Stronger links first: the same reference, then an overlapping passage, then a mention in the text. */
 const MATCH_ORDER: Record<ScriptureUsageMatch, number> = { same: 0, overlap: 1, text: 2 };
@@ -100,7 +104,7 @@ export function forgetReadDocumentsForTests(): void {
 export function usageDocuments(sources: UsageSources): UsageDocument[] {
   const { notes, sermons, groups, serviceOrders = [], currentNoteId, locale } = sources;
   const documents: UsageDocument[] = [];
-  const add = (kind: ScriptureUsageKind, source: { id: string; updatedAt?: string }, read: () => { title: string; candidates: Candidate[] }) => {
+  const add = (kind: ScriptureUsageKind, source: { id: string; updatedAt?: string }, read: () => { title: string; candidates: Candidate[]; body?: string }) => {
     const collection = COLLECTION_OF[kind];
     const document = readOnce(`${collection}/${source.id}`, source, locale, () => {
       const href = documentScreenHref({ collection, id: source.id });
@@ -110,13 +114,15 @@ export function usageDocuments(sources: UsageSources): UsageDocument[] {
   };
   notes.forEach(stored => {
     if (stored.id === currentNoteId) return;
-    add('note', stored, () => {
+    // A comment stands only where it is written to: a verse it names in its words is a link, not a second place —
+    // "Связать с Пс 26:14" under Isaiah 40:31 must not stand grey under Psalm 26:14 too.
+    const comment = stored.type === 'comment';
+    add(comment ? 'comment' : 'note', stored, () => {
       const note = withNoteReferenceBibles(stored, locale);
       const content = note.content ?? '';
-      return { title: note.title ?? '', candidates: [
-        ...(note.scriptureRefs ?? []).map(reference => ({ reference, text: content, at: 0, inText: false, listed: true })),
-        ...inText(content, locale, studyNoteLanguage(note)),
-      ] };
+      const listed = (note.scriptureRefs ?? []).map(reference => ({ reference, text: content, at: 0, inText: false, listed: true }));
+      if (comment) return { title: note.title ?? '', candidates: listed, body: content };
+      return { title: note.title ?? '', candidates: [...listed, ...inText(content, locale, studyNoteLanguage(note))] };
     });
   });
   sermons.forEach(sermon => add('sermon', sermon, () => {
@@ -205,10 +211,12 @@ export type BookUsageEntry = {
   updatedAt: string;
   passage: Passage;
   excerpt: string;
+  /** A comment's own words (`UsageDocument.body`). */
+  body?: string;
 };
 
-/** How kinds follow each other on one verse and on the minimap: the sermon first, then notes, groups and service orders. */
-export const SCRIPTURE_USAGE_KINDS: readonly ScriptureUsageKind[] = ['sermon', 'note', 'group', 'order'];
+/** How kinds follow each other on one verse and on the minimap: the sermon first, then notes and comments, groups and service orders. */
+export const SCRIPTURE_USAGE_KINDS: readonly ScriptureUsageKind[] = ['sermon', 'note', 'comment', 'group', 'order'];
 const kindRank = (kind: ScriptureUsageKind) => SCRIPTURE_USAGE_KINDS.indexOf(kind);
 
 const passageKey = (passage: Passage) => `${passage.chapter}:${passage.fromVerse ?? ''}-${passage.toChapter}:${passage.toVerse ?? ''}`;
@@ -260,7 +268,7 @@ function documentInBook(document: UsageDocument, bookId: string, bible: BibleId)
   return entries;
 }
 
-function layDocument({ kind, id, title, href, updatedAt, candidates }: UsageDocument, bookId: string, bible: BibleId): BookUsageEntry[] {
+function layDocument({ kind, id, title, href, updatedAt, candidates, body }: UsageDocument, bookId: string, bible: BibleId): BookUsageEntry[] {
   const mentions = candidates.filter(candidate => candidate.inText);
   const own = new Map<string, BookUsageEntry>();
   candidates.forEach(candidate => {
@@ -272,7 +280,7 @@ function layDocument({ kind, id, title, href, updatedAt, candidates }: UsageDocu
     const said = /\p{L}/u.test(typed?.raw ? words.replace(typed.raw, '') : words) ? words : '';
     passagesIn(candidate.reference, bible).forEach(passage => {
       const key = `${kind}:${id}:${passageKey(passage)}`;
-      if (!own.has(key)) own.set(key, { key, kind, id, title, href, updatedAt, passage, excerpt: said });
+      if (!own.has(key)) own.set(key, { key, kind, id, title, href, updatedAt, passage, excerpt: said, ...(body !== undefined ? { body } : {}) });
     });
   });
   // A document stands on a place once: a sermon on 4:9-11 whose thought names 4:10 is one badge, not two.

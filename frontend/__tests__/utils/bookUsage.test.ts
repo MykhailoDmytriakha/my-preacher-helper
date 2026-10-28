@@ -38,6 +38,22 @@ describe('a book gathers everything of the person\'s that points at its verses',
     expect(found[1].excerpt).toBe('');
   });
 
+  it('puts a comment as its own kind with its words, only where it is written to — a verse its words name is a link, not a second place', () => {
+    const comment = { ...note('margin', [{ bible: 'rst', book: 'Isaiah', chapter: 40, fromVerse: 31 }], 'Ждать — не бездействие. Связать с Ис 41:10.'), type: 'comment' as const };
+    const chapters = { ...note('turn', [{ bible: 'rst', book: 'Isaiah', chapter: 40, toChapter: 41 }], 'Две главы — один поворот.'), type: 'comment' as const };
+    const found = entries({ notes: [comment, chapters] }, 'Isaiah');
+    expect(places(found)).toEqual([
+      ['comment', 'turn', { chapter: 40, toChapter: 41 }],
+      ['comment', 'margin', { chapter: 40, toChapter: 40, fromVerse: 31, toVerse: 31 }],
+    ]);
+    expect(found.find(entry => entry.id === 'margin')?.body).toBe('Ждать — не бездействие. Связать с Ис 41:10.');
+    // The same words in a note stand at both places: a note gathers what it names, a comment does not.
+    expect(places(entries({ notes: [{ ...comment, type: 'note' }] }, 'Isaiah')).map(([, , passage]) => passage)).toEqual([
+      { chapter: 40, toChapter: 40, fromVerse: 31, toVerse: 31 },
+      { chapter: 41, toChapter: 41, fromVerse: 10, toVerse: 10 },
+    ]);
+  });
+
   it('stands on the verse of the Bible being read: Synodal Psalm 22 is King James Psalm 23', () => {
     const sources = { sermons: [sermon({ id: 'shepherd', verse: 'Пс 22:1' })] };
     expect(places(entries(sources, 'Psalms', 'rst'))).toEqual([['sermon', 'shepherd', { chapter: 22, toChapter: 22, fromVerse: 1, toVerse: 1 }]]);

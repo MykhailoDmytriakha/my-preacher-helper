@@ -2,15 +2,15 @@ import { adminDb } from '@/config/firebaseAdminConfig';
 import { StudyMaterial, StudyNote } from '@/models/models';
 import { isEngineTombstone } from '@/utils/engineTombstone';
 import { withNoteReferenceBibles } from '@/utils/scriptureReferenceNumbering';
+import { isStudyNoteDraft } from '@/utils/studyNoteDraft';
 
 import type { AppLocale } from '@/utils/appLocale';
 
 const NOTES_COLLECTION = 'studyNotes';
 const MATERIALS_COLLECTION = 'studyMaterials';
 
-function computeDraft(note: Pick<StudyNote, 'tags' | 'scriptureRefs'>): boolean {
-  return (note.tags?.length ?? 0) === 0 || (note.scriptureRefs?.length ?? 0) === 0;
-}
+// The one draft rule of the server and the device (`utils/studyNoteDraft.ts`): a comment is never a draft.
+const computeDraft = (note: Pick<StudyNote, 'tags' | 'scriptureRefs' | 'type'>): boolean => isStudyNoteDraft(note);
 
 /**
  * THE SERVER'S READS OF STUDY NOTES AND MATERIALS. Both are written only through the data engine;

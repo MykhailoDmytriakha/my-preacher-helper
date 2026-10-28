@@ -9,6 +9,7 @@ import { newClientId } from '@/utils/clientId';
 import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
 import { refusedWrite, skippedWrite, type WriteAcceptance, type WriteSubmission } from '@/utils/recoverableWrite';
 import { withNoteReferenceBibles } from '@/utils/scriptureReferenceNumbering';
+import { isStudyNoteDraft } from '@/utils/studyNoteDraft';
 import { useTranslation } from '@locales/useTranslation';
 
 import type { DocumentData, ResourceSnapshot } from '@/data-engine/types';
@@ -24,7 +25,7 @@ export type StudyNoteSubmission = WriteSubmission & {
   capture?: Promise<DocumentWriteReceipt>;
 };
 
-const isDraft = (note: Pick<StudyNote, 'tags' | 'scriptureRefs'>) => (note.tags?.length ?? 0) === 0 || (note.scriptureRefs?.length ?? 0) === 0;
+const isDraft = (note: Pick<StudyNote, 'tags' | 'scriptureRefs' | 'type'>) => isStudyNoteDraft(note);
 /** Local capture owns the submitted backup; server status and raw audio still require exact ACK. */
 const accepted = (key: string, request: Promise<DocumentWriteReceipt>): StudyNoteSubmission & { snapshot: Promise<ResourceSnapshot> } => {
   const snapshot = request.then(receipt => receipt.persistence);
@@ -163,16 +164,21 @@ export function useStudyNotesEngine(enabled: boolean) {
             const read = engineNote(current, id, locale) as unknown as Record<string, unknown>;
             const baselineRefs = expectedBaseline?.scriptureRefs;
             const readSource = baselineRefs !== null && typeof baselineRefs === 'object' ? readFrom.get(baselineRefs) : undefined;
+            // A note stored without a type is a note — compared and reported as one, as every screen reads it: else an
+            // editor that adopted the reported type would be refused again on the same revision (Codex review, 2026-10-28).
+            const storedField = (field: string) => (field === 'type' ? read.type ?? 'note' : read[field]);
             // "Already what I write" is judged on the stored list too, never on a reading of it.
             const storedAs = (field: string, value: unknown) => (field === 'scriptureRefs'
               ? same(current.scriptureRefs ?? [], value)
-              : same(read[field], value));
-            const changedElsewhere = expectedBaseline ? Object.keys(patch).filter(field => field !== 'dictationSourceIds' && field !== 'recordingSourceIds' && field in expectedBaseline
+              : same(storedField(field), value));
+            const compared = expectedBaseline ? Object.keys(patch).filter(field => field !== 'dictationSourceIds' && field !== 'recordingSourceIds' && field in expectedBaseline) : [];
+            const changedElsewhere = compared.filter(field => expectedBaseline
               && !storedAs(field, field === 'scriptureRefs' ? readSource ?? baselineRefs : expectedBaseline[field])
-              && !storedAs(field, patch[field])) : [];
+              && !storedAs(field, patch[field]));
             if (changedElsewhere.length) {
+              // A refusal reports every compared field so the editor can adopt the complete server version.
               throw new StaleWriteError(NOTE_AGGREGATE, expectedRevision ?? stored, stored,
-                Object.fromEntries(changedElsewhere.map(field => [field, current[field] ?? null])));
+                Object.fromEntries(compared.map(field => [field, field === 'type' ? storedField(field) : current[field] ?? null])));
             }
             const receipts: DocumentData = {};
             for (const field of ['dictationSourceIds', 'recordingSourceIds'] as const) {

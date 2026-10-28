@@ -12,6 +12,8 @@ import {
 } from 'lucide-react';
 import React from 'react';
 
+import { useTranslation } from '@locales/useTranslation';
+
 interface RichMarkdownToolbarProps {
     editor: Editor | null;
     /**
@@ -20,10 +22,17 @@ interface RichMarkdownToolbarProps {
      * The number is the distance from the top of the window to stick at.
      */
     stickyTop?: number;
+    /**
+     * The editor's own word that its text is held still (a save being accepted). Said, not read back from the
+     * editor: `useEditorState` hears transactions, and making an editor read-only is not one (Codex review, 2026-10-28).
+     */
     elementRef?: React.Ref<HTMLDivElement>;
+    disabled?: boolean;
 }
 
-export function RichMarkdownToolbar({ editor, stickyTop, elementRef }: RichMarkdownToolbarProps) {
+export function RichMarkdownToolbar({ editor, stickyTop, elementRef, disabled = false }: RichMarkdownToolbarProps) {
+    // A button's name is its tooltip and what a screen reader says: in the interface's language.
+    const { t } = useTranslation();
     const toolbarState = useEditorState({
         editor,
         selector: ({ editor: currentEditor }) => ({
@@ -43,8 +52,13 @@ export function RichMarkdownToolbar({ editor, stickyTop, elementRef }: RichMarkd
         return null;
     }
 
+    // Only the editor's word: a snapshot from useEditorState would stay "held" after the text is released, until the next
+    // transaction (Codex review, 2026-10-28).
+    const locked = disabled;
     const handleToggle = (command: () => boolean, e: React.MouseEvent) => {
         e.preventDefault();
+        // Checked at the press too: a button drawn a moment before the text was held still must not change it.
+        if (disabled || !editor.isEditable) return;
         command();
     };
 
@@ -55,22 +69,25 @@ export function RichMarkdownToolbar({ editor, stickyTop, elementRef }: RichMarkd
             style={stickyTop === undefined ? undefined : { top: stickyTop }}>
             <ToolbarButton
                 onClick={(e) => handleToggle(() => editor.chain().focus().toggleBold().run(), e)}
+                disabled={locked}
                 isActive={toolbarState.bold}
-                ariaLabel="Bold"
+                ariaLabel={t('richText.bold')}
             >
                 <Bold className="w-4 h-4" />
             </ToolbarButton>
             <ToolbarButton
                 onClick={(e) => handleToggle(() => editor.chain().focus().toggleItalic().run(), e)}
+                disabled={locked}
                 isActive={toolbarState.italic}
-                ariaLabel="Italic"
+                ariaLabel={t('richText.italic')}
             >
                 <Italic className="w-4 h-4" />
             </ToolbarButton>
             <ToolbarButton
                 onClick={(e) => handleToggle(() => editor.chain().focus().toggleStrike().run(), e)}
+                disabled={locked}
                 isActive={toolbarState.strike}
-                ariaLabel="Strikethrough"
+                ariaLabel={t('richText.strikethrough')}
             >
                 <Strikethrough className="w-4 h-4" />
             </ToolbarButton>
@@ -79,22 +96,25 @@ export function RichMarkdownToolbar({ editor, stickyTop, elementRef }: RichMarkd
 
             <ToolbarButton
                 onClick={(e) => handleToggle(() => editor.chain().focus().toggleHeading({ level: 1 }).run(), e)}
+                disabled={locked}
                 isActive={toolbarState.heading1}
-                ariaLabel="Heading 1"
+                ariaLabel={t('richText.heading1')}
             >
                 <Heading1 className="w-4 h-4" />
             </ToolbarButton>
             <ToolbarButton
                 onClick={(e) => handleToggle(() => editor.chain().focus().toggleHeading({ level: 2 }).run(), e)}
+                disabled={locked}
                 isActive={toolbarState.heading2}
-                ariaLabel="Heading 2"
+                ariaLabel={t('richText.heading2')}
             >
                 <Heading2 className="w-4 h-4" />
             </ToolbarButton>
             <ToolbarButton
                 onClick={(e) => handleToggle(() => editor.chain().focus().toggleHeading({ level: 3 }).run(), e)}
+                disabled={locked}
                 isActive={toolbarState.heading3}
-                ariaLabel="Heading 3"
+                ariaLabel={t('richText.heading3')}
             >
                 <Heading3 className="w-4 h-4" />
             </ToolbarButton>
@@ -103,22 +123,25 @@ export function RichMarkdownToolbar({ editor, stickyTop, elementRef }: RichMarkd
 
             <ToolbarButton
                 onClick={(e) => handleToggle(() => editor.chain().focus().toggleBulletList().run(), e)}
+                disabled={locked}
                 isActive={toolbarState.bulletList}
-                ariaLabel="Bullet List"
+                ariaLabel={t('richText.bulletList')}
             >
                 <List className="w-4 h-4" />
             </ToolbarButton>
             <ToolbarButton
                 onClick={(e) => handleToggle(() => editor.chain().focus().toggleOrderedList().run(), e)}
+                disabled={locked}
                 isActive={toolbarState.orderedList}
-                ariaLabel="Ordered List"
+                ariaLabel={t('richText.orderedList')}
             >
                 <ListOrdered className="w-4 h-4" />
             </ToolbarButton>
             <ToolbarButton
                 onClick={(e) => handleToggle(() => editor.chain().focus().toggleBlockquote().run(), e)}
+                disabled={locked}
                 isActive={toolbarState.blockquote}
-                ariaLabel="Quote"
+                ariaLabel={t('richText.quote')}
             >
                 <Quote className="w-4 h-4" />
             </ToolbarButton>
@@ -141,17 +164,21 @@ const DEFAULT_TOOLBAR_STATE = {
 interface ToolbarButtonProps {
     onClick: (e: React.MouseEvent) => void;
     isActive: boolean;
+    /** The editor holds still (a save is being accepted): the marks wait too. */
+    disabled?: boolean;
     children: React.ReactNode;
     ariaLabel: string;
 }
 
-function ToolbarButton({ onClick, isActive, children, ariaLabel }: ToolbarButtonProps) {
+function ToolbarButton({ onClick, isActive, disabled = false, children, ariaLabel }: ToolbarButtonProps) {
     return (
         <button
+            type="button"
             onClick={onClick}
+            disabled={disabled}
             aria-label={ariaLabel}
             title={ariaLabel}
-            className={`p-1.5 rounded-md transition-colors ${isActive
+            className={`p-1.5 rounded-md transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${isActive
                     ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-300'
                     : 'text-gray-600 hover:bg-gray-200 dark:text-gray-400 dark:hover:bg-gray-800'
                 }`}
