@@ -16,6 +16,7 @@ import { usePlanTemplates } from '@/hooks/usePlanTemplates';
 import { isOutlineCollisionError } from '@/services/sermons.client';
 import { newClientId } from '@/utils/clientId';
 import { awaitAcceptance } from '@/utils/recoverableWrite';
+import { isTypingIn } from '@/utils/typingTarget';
 import { writeFailureTranslationKey } from '@/utils/writeRecovery';
 
 import type { OutlinePoint, Sermon, SermonOutline, SubPoint } from '@/models/models';
@@ -337,8 +338,7 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
     if (!isOpen || isReadOnly) return;
     const onKey = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey)) return;
-      const target = e.target as HTMLElement | null;
-      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
+      if (isTypingIn(e.target)) return;
       const key = e.key.toLowerCase();
       if (key === 'z' && !e.shiftKey) {
         e.preventDefault();

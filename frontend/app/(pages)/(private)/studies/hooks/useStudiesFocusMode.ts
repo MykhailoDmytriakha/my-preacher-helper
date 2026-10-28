@@ -4,6 +4,7 @@ import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { useEffect, useCallback, useMemo } from 'react';
 
 import { StudyNote } from '@/models/models';
+import { isTypingIn } from '@/utils/typingTarget';
 
 interface UseStudiesFocusModeProps {
   visibleNotes: StudyNote[];
@@ -103,14 +104,7 @@ export const useStudiesFocusMode = ({
 
     const handleKeyDown = (e: KeyboardEvent) => {
       // Don't handle if user is typing in an input
-      const target = e.target as HTMLElement;
-      if (
-        target.tagName === 'INPUT' ||
-        target.tagName === 'TEXTAREA' ||
-        target.isContentEditable
-      ) {
-        return;
-      }
+      if (isTypingIn(e.target)) return;
 
       switch (e.key) {
         case 'Escape':

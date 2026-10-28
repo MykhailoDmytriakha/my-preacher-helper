@@ -11,6 +11,7 @@ import { getLocalizedAbbrev } from '@/utils/bibleBooks';
 import { BIBLES, bibleForLocale, type BibleId } from '@/utils/bibles';
 import { verseWords, type BookText } from '@/utils/bibleText';
 import { copyPlainText } from '@/utils/clipboard';
+import { isTypingIn } from '@/utils/typingTarget';
 import { copiedPlace, DEFAULT_COPY_FORMAT, verseCopyText, type CopyFormat, type CopyNames } from '@/utils/verseCopy';
 
 import { VERSE_CHOSEN_ATTRIBUTE, VERSE_HELD_ATTRIBUTE, type RibbonCrossRefs } from '../BookRibbon';
@@ -42,8 +43,6 @@ export function useCopyNames(bible: BibleId, bookId: string): CopyNames {
 }
 
 const subscribeNever = () => () => undefined;
-const isTypingIn = (element: Element | null) =>
-  element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement || (element instanceof HTMLElement && element.isContentEditable);
 const canShareNow = () => typeof navigator !== 'undefined' && typeof navigator.share === 'function';
 
 function setOnRows(root: HTMLElement | null, attribute: string, keys: ReadonlySet<string>) {
