@@ -68,14 +68,21 @@
 **Получилось.** Фокус выходит на страницу под окном; Enter там открывает второе окно или действует на скрытой странице.
 **Воспроизведение.** Открыть любое окно из списка ниже → нажимать Shift+Tab → фокус уходит за окно.
 **Как должно работать для пользователя.** Открытое окно — единственное, что отвечает клавиатуре; Escape закрывает его и возвращает фокус к кнопке, которая его открыла.
-**Класс (механизмом):** окно, нарисованное вручную на `useModalLayer` без `useFocusTrap`.
+**Класс (механизмом):** правило «окно держит Tab» жило отдельно от правила «что значит быть окном» (`useModalLayer`): окно, нарисованное на слое, забывало ловушку; четыре держали свою копию; окно, чья подложка появлялась не с первого рендера, не попадало в список открытых окон.
 | место | вердикт | почему |
 |---|---|---|
-| `studies/AnalysisConfirmationModal.tsx`, `studies/components/ShareNoteModal.tsx`, `studies/ScriptureRefPicker.tsx`, `studies/TagCatalogModal.tsx` | поражено | нет ни `useFocusTrap`, ни своей обработки Tab |
-| `components/audio/ChunkEditorModal.tsx`, `components/AudioExportModal.tsx`, `components/calendar/BibleBookSermonsModal.tsx`, `components/calendar/MonthlySermonsModal.tsx`, `components/ColorPickerModal.tsx` | поражено | то же |
-| `components/navigation/FeedbackModal.tsx`, `components/plan-editor/PlanEditorModal.tsx`, `components/plan/KeyFragmentsModal.tsx`, `components/SectionTimePicker.tsx`, `components/ui/ConfirmModal.tsx` | поражено | то же |
-| `components/bible/BiblePicker.tsx` (`PickerWindow`: книга, глава, место, перевод, поиск) | не поражено | починено 2026-10-23, тест `BibleBookReader.test.tsx` «keeps Tab inside the search window» |
-**Фикс (направление).** Подключить `useFocusTrap(panelRef, open)` к панели каждого окна из таблицы, по окну, с проверкой его собственных клавиш (Escape, стрелки).
+| 14 окон таблицы выше (studies, audio, calendar, ColorPicker, Feedback, PlanEditor, KeyFragments, SectionTimePicker, ConfirmModal) и `FormDialog` | поражено → починено | ловушку держит сам `useModalLayer` (`useFocusTrap(focusRing ?? ref, active)`) |
+| `BiblePicker`, `ReaderSheet`, `VerseSheet`, `verseCopy/VerseMenu` | было своё → на слое | свой вызов `useFocusTrap` заменён `focusRing: <панель>` |
+| `CreateSermonFromNoteModal`, `CustomTimePicker`, `SourceNotePickerModal` | своя копия → на слое | у `CustomTimePicker` копия не возвращала ушедший фокус и считала отключённые кнопки; у `CreateSermonFromNoteModal` не проверяла верхнее окно |
+| экран совета `care/council/[id]/conduct/page.tsx` `Shell` | своя копия → `useFocusTrap` | экран не окно: держит свой круг и уступает окну поверх (`hasModalLayers`) |
+| окно с подложкой не с первого рендера (`SourceNotePickerModal` ждёт `mounted`) | поражено → починено | `useModalLayer` отдаёт callback ref и регистрирует окно, когда подложка появилась |
+| невидимая кнопка в круге (дубль «только для телефона», `visibility: hidden`) | поражено → починено | круг берёт только показанное: `checkVisibility({ visibilityProperty: true })`, без него (Safari до 17.4, jsdom) — стиль кнопки и её предков |
+| дочерняя поверхность в портале над окном: календарь `ui/DatePickerField.tsx:278`, диалог Headless UI | поражено (регрессия первой версии, Codex 27.10) → починено | фокус в поверхности своего рода (`role=dialog/alertdialog/menu/listbox`, портал Headless UI, не наше окно) ловушка не трогает |
+| вопрос перед удалением пункта `plan-editor/OutlineBoard.tsx` | поражено → починено | стал окном на слое (`DeleteQuestion`): свой круг, Escape |
+| **открыто, 11 поверхностей без кольца (Codex 27.10, были и до правки):** три вопроса `plan-editor/PlanEditorModal.tsx:624,653,688`; `studies/[id]/NoteMobileSheet.tsx:94`; ящик `admin/page.tsx:678`; два варианта `FloatingTextScaleControls.tsx:139,158`; `groups/FlowEditor.tsx:47` ниже `xl`; экран проведения группы `groups/[id]/conduct/page.tsx:143-181`; `sermons/[id]/plan/PlanOverlayPortal.tsx:48`; окно раздела `plan/ViewPlanMenu.tsx:74` | поражено, не починено | у каждой своя разметка без `useModalLayer`/`useFocusTrap`; по одной: подключить `useFocusTrap(ref, open)` или перевести на слой |
+**Сторож класса.** `__tests__/hooks/useModalLayer.test.tsx` «no part of the app keeps Tab with a trap of its own» — ни один файл, кроме `useFocusTrap.ts`, не ловит Tab сам.
+**Фикс.** Ловушка — часть слоя окна; окна только называют панель, если круг не вся подложка. Регрессии: 6 тестов `useModalLayer.test.tsx` (красные до правки); живьём `.cases/2026-10-12-block-diagram/demo-tab-ring/live-tab-ring.cjs`: окно отзыва, новая проповедь, окно ссылок, меню стиха — выходов из окна 0, с выключенной ловушкой 10/13/6/8.
+**Стадия.** частично: 14 окон, 4 своих копии, 4 окна читалки, вопрос доски — починено локально 27.10; 11 поверхностей выше — открыты.
 
 ### BUG-20261019-reconnect-restart-drops-failure-backoff · Собственный таймаут клиента выключает «связь», а её возврат перезапрашивает все списки и документы, выбрасывая паузу между отказами
 **P2** — шторм запросов при любом медленном ответе сервера; после фикса BUG-20261019-quota-outage-burns-vercel-functions главный источник медленных ответов (молчащая база) закрыт на сервере, остался класс на клиенте.

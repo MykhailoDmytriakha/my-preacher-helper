@@ -17,6 +17,7 @@ import TextareaAutosize from 'react-textarea-autosize';
 
 import PointNote from '@/components/PointNote';
 import { useDndKitAccessibility } from '@/hooks/useDragAnnouncements';
+import { useModalLayer } from '@/hooks/useModalLayer';
 import {
   NOTE_POOL_ID,
   notePointContainerId,
@@ -1031,8 +1032,7 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
 
   const boardColumns = <div className={className}>{SECTIONS.map((s) => renderColumn(s.key, s.styleKey))}</div>;
   const pendingDeleteOverlay = pendingDelete ? (
-    <div className="fixed inset-0 z-[210] flex items-center justify-center bg-slate-900/40 p-4">
-      <div className="w-full max-w-sm bg-white dark:bg-gray-800 rounded-xl shadow-2xl p-5">
+    <DeleteQuestion onCancel={() => setPendingDelete(null)}>
         <h3 className="text-base font-semibold text-slate-800 dark:text-gray-100">
           {t('structure.deletePointConfirmTitle')}
         </h3>
@@ -1061,8 +1061,7 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
             {t(DELETE_KEY)}
           </button>
         </div>
-      </div>
-    </div>
+    </DeleteQuestion>
   ) : null;
 
   return (
@@ -1152,5 +1151,21 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
     </>
   );
 };
+
+/**
+ * The question before a point is deleted: a window of its own over the board and over the editor window the board
+ * may stand in — drawn into the page's body, it keeps its own ring and answers Escape (BUG-20261023-windows-let-tab-out).
+ */
+function DeleteQuestion({ onCancel, children }: { onCancel: () => void; children: React.ReactNode }) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  const layer = useModalLayer({ onClose: onCancel, focusRing: panelRef });
+  return (
+    <div {...layer} className="fixed inset-0 z-[210] flex items-center justify-center bg-slate-900/40 p-4">
+      <div ref={panelRef} role="alertdialog" aria-modal="true" className="w-full max-w-sm bg-white dark:bg-gray-800 rounded-xl shadow-2xl p-5">
+        {children}
+      </div>
+    </div>
+  );
+}
 
 export default OutlineBoard;

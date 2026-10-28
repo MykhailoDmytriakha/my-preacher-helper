@@ -614,3 +614,38 @@ describe('a scratch note moved with the keyboard', () => {
     }
   });
 });
+
+/*
+ * The question before a point is deleted is a window of its own over the board (BUG-20261023-windows-let-tab-out;
+ * Codex review 2026-10-27): drawn out of the editor window it stood in, it had no ring, and the editor's ring took
+ * its Tab back into the board.
+ */
+describe('the question before a point is deleted', () => {
+  function InWindow({ value }: { value: SermonOutline }) {
+    const layer = useModalLayer({ onClose: jest.fn() });
+    return <div {...layer}><OutlineBoard value={value} onChange={jest.fn()} /></div>;
+  }
+  const withPoint: SermonOutline = { introduction: [{ id: 'p1', text: 'To delete' }], main: [], conclusion: [] };
+
+  it('keeps Tab inside itself, over the editor window it was opened from', () => {
+    render(<InWindow value={withPoint} />);
+    fireEvent.click(within(screen.getByTestId('outline-board-column-introduction')).getByLabelText('common.delete'));
+    const question = screen.getByRole('alertdialog');
+    const [cancel, remove] = within(question).getAllByRole('button');
+    remove.focus();
+    fireEvent.keyDown(remove, { key: 'Tab' });
+    expect(cancel).toHaveFocus();
+    fireEvent.keyDown(cancel, { key: 'Tab', shiftKey: true });
+    expect(remove).toHaveFocus();
+  });
+
+  it('is cancelled by Escape, and the point stays', () => {
+    const onChange = jest.fn();
+    function Board() { return <OutlineBoard value={withPoint} onChange={onChange} />; }
+    render(<Board />);
+    fireEvent.click(within(screen.getByTestId('outline-board-column-introduction')).getByLabelText('common.delete'));
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    expect(onChange).not.toHaveBeenCalled();
+  });
+});

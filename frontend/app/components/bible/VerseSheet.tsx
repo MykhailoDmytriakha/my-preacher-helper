@@ -5,7 +5,6 @@ import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useSta
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 
-import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useModalLayer } from '@/hooks/useModalLayer';
 import { resolveAppLocale } from '@/utils/appLocale';
 import { BIBLES, type BibleId } from '@/utils/bibles';
@@ -124,8 +123,7 @@ function Sheet({ reference, onClose, keepVisible, related, openInBible }: { refe
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const closeRef = useRef<HTMLButtonElement | null>(null);
   // A window like every other: the page under it holds still, Escape closes the topmost window only.
-  const layer = useModalLayer({ onClose });
-  useFocusTrap(dialogRef);
+  const layer = useModalLayer({ onClose, focusRing: dialogRef });
   // Cross references here only when the person asked for them in passage windows too; "Open" leaves
   // by the screen's own way out (`openInBible`), and without one a link is read in place.
   const crossRefs = useBookCrossRefs(reference.book, reading, state.status === 'ready' ? state.text : null, 'window');

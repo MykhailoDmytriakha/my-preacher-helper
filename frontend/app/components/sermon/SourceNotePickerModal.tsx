@@ -103,52 +103,9 @@ export default function SourceNotePickerModal({
    * window in the app follows (`useModalLayer`). This dialog kept its own copy, which listened
    * on `window` and therefore also closed when a picker ON TOP of it was dismissed.
    */
-  const layer = useModalLayer({ onClose, closeDisabled: saving });
-
-  /**
-   * TAB STAYS INSIDE, even when the element that had focus disappeared.
-   *
-   * Rows come and go here — a removed "deleted note" row, a "Unlink all" button that vanishes
-   * at zero — and whatever had focus unmounts with them. Focus then falls to `body`, which is
-   * OUTSIDE the dialog, so a handler bound to the dialog would never see the next Tab. Bound
-   * to the document, it can pull focus back in.
-   */
-  useEffect(() => {
-    if (!mounted) return;
-    const onTab = (event: KeyboardEvent) => {
-      if (event.key !== 'Tab') return;
-      const dialog = dialogRef.current;
-      if (!dialog) return;
-      if (!dialog.contains(document.activeElement)) {
-        // Focus already escaped — usually because the element holding it unmounted.
-        event.preventDefault();
-        searchRef.current?.focus();
-        return;
-      }
-      // Still inside: wrap at the edges, or the browser's default action would step off the
-      // last control and out of the dialog before any of this could react.
-      // No visibility filtering: `offsetParent` is always null in jsdom, so a filter written
-      // that way would collapse the ring to a single element in tests and silently stop
-      // guarding anything.
-      const focusable = Array.from(
-        dialog.querySelectorAll<HTMLElement>(
-          'button:not([disabled]), input:not([disabled]), [href], [tabindex]:not([tabindex="-1"])'
-        )
-      );
-      if (focusable.length === 0) return;
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      } else if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      }
-    };
-    document.addEventListener('keydown', onTab);
-    return () => document.removeEventListener('keydown', onTab);
-  }, [mounted]);
+  // Tab stays inside, even when the element that had focus disappeared: rows come and go here (a removed
+  // "deleted note" row, "Unlink all" vanishing at zero), focus falls to the page, and the next Tab brings it back.
+  const layer = useModalLayer({ onClose, closeDisabled: saving, focusRing: dialogRef });
 
   const bibleLocale = useMemo(() => resolveAppLocale(i18n.language), [i18n.language]);
 

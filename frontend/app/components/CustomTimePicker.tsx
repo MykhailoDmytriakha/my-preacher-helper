@@ -215,44 +215,16 @@ const CustomTimePicker: React.FC<CustomTimePickerProps> = ({
       confirmButtonRef.current.focus();
     }
 
-    // Trap focus within modal
-    const handleTabKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Tab') return;
-
-      const focusableElements = dialogRef.current?.querySelectorAll(
-        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-      );
-
-      if (!focusableElements || focusableElements.length === 0) return;
-
-      const firstElement = focusableElements[0] as HTMLElement;
-      const lastElement = focusableElements[focusableElements.length - 1] as HTMLElement;
-
-      if (e.shiftKey) {
-        if (document.activeElement === firstElement) {
-          lastElement.focus();
-          e.preventDefault();
-        }
-      } else {
-        if (document.activeElement === lastElement) {
-          firstElement.focus();
-          e.preventDefault();
-        }
-      }
-    };
-
-    document.addEventListener('keydown', handleTabKey);
 
     return () => {
       clearTimeout(timer);
-      document.removeEventListener('keydown', handleTabKey);
       document.removeEventListener('mousedown', handleGlobalMouseDown, true);
       document.removeEventListener('mouseup', handleGlobalMouseUp, true);
     };
   }, []);
 
-  /* Escape and the page lock come from the one shared rule (`useModalLayer`). */
-  const layer = useModalLayer({ onClose: onCancel });
+  /* Escape, the page lock and Tab kept inside come from the one shared rule (`useModalLayer`). */
+  const layer = useModalLayer({ onClose: onCancel, focusRing: dialogRef });
 
   // Render modal
 

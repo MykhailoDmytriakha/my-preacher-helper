@@ -5,7 +5,6 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type Compone
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 
-import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useModalLayer } from '@/hooks/useModalLayer';
 
 import { VERSE_TEXT_STYLE } from '../BookRibbon';
@@ -66,14 +65,14 @@ function placeMenu(at: VerseMenuAt, menu: DOMRect, card: DOMRect | null): Spot {
 function OpenVerseMenu({ copy, at }: { copy: VerseCopy; at: VerseMenuAt }) {
   const { t } = useTranslation();
   const { closeMenu } = copy;
-  const layer = useModalLayer({ onClose: closeMenu });
   const menuRef = useRef<HTMLDivElement | null>(null);
+  // Tab turns round in the menu, not over the verse lifted beside it.
+  const layer = useModalLayer({ onClose: closeMenu, focusRing: menuRef });
   const cardRef = useRef<HTMLDivElement | null>(null);
   // A duration on the page's own clock: it never jumps with the wall clock.
   const opened = useRef(performance.now());
   const holdClick = useRef(at.held);
   const [spot, setSpot] = useState<Spot | null>(null);
-  useFocusTrap(menuRef, true);
 
   const place = useCallback(() => {
     if (!menuRef.current) return;

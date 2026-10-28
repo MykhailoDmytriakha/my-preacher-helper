@@ -2,7 +2,7 @@
 
 import { ArrowLeft, Check, ChevronLeft, ChevronRight, Landmark, List, ListChecks, Megaphone, PauseCircle, XCircle } from 'lucide-react';
 import { useParams, useRouter } from 'next/navigation';
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
@@ -11,6 +11,7 @@ import FloatingTextScaleControls from '@/components/FloatingTextScaleControls';
 import MarkdownDisplay from '@/components/MarkdownDisplay';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { useCouncilDataDocument } from '@/hooks/useCouncilDataDocument';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { actionFailureMessage } from '@/utils/actionFailureMessage';
 import {
   applyOutcome,
@@ -468,38 +469,13 @@ function StateMark({ topic, index }: { topic: CouncilTopic; index: number }) {
 /**
  * The meeting screen covers the application, and the keyboard has to agree with the eye: without
  * this, Tab walks off the last button into the navigation underneath — visible to a screen reader,
- * invisible to everyone else — and a pastor mid-council finds himself on another page.
+ * invisible to everyone else — and a pastor mid-council finds himself on another page. A window opened
+ * over the meeting has the keyboard (`useFocusTrap`).
  */
 function Shell({ children }: { children: React.ReactNode }) {
   const frame = useRef<HTMLDivElement | null>(null);
 
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Tab' || !frame.current) return;
-      const reachable = frame.current.querySelectorAll<HTMLElement>(
-        'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
-      );
-      const visible = [...reachable].filter((element) => element.offsetParent !== null);
-      if (visible.length === 0) return;
-      const first = visible[0];
-      const last = visible[visible.length - 1];
-      const active = document.activeElement;
-      if (!frame.current.contains(active)) {
-        event.preventDefault();
-        first.focus();
-        return;
-      }
-      if (!event.shiftKey && active === last) {
-        event.preventDefault();
-        first.focus();
-      } else if (event.shiftKey && active === first) {
-        event.preventDefault();
-        last.focus();
-      }
-    };
-    document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
-  }, []);
+  useFocusTrap(frame);
 
   return (
     <div

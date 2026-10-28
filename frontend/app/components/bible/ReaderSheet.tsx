@@ -5,7 +5,6 @@ import { useEffect, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 
-import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useModalLayer } from '@/hooks/useModalLayer';
 
 /*
@@ -39,9 +38,8 @@ export function ReaderSheet({ titleId, onClose, layerClassName = 'z-[120]', dept
       ? 'flex h-[78dvh] flex-col overflow-hidden xl:h-[calc(100dvh-13rem)]'
       : 'max-h-[72dvh] overflow-y-auto xl:max-h-[calc(100dvh-13rem)]'}`
     : 'max-h-[85dvh] overflow-y-auto md:max-w-3xl xl:mr-6 xl:mt-24 xl:max-h-[calc(100dvh-8rem)] xl:w-[31rem]';
-  const layer = useModalLayer({ onClose, active: true });
   const dialogRef = useRef<HTMLDivElement | null>(null);
-  useFocusTrap(dialogRef, true);
+  const layer = useModalLayer({ onClose, active: true, focusRing: dialogRef });
   useEffect(() => {
     const before = document.activeElement as HTMLElement | null;
     dialogRef.current?.querySelector<HTMLElement>('button')?.focus({ preventScroll: true });

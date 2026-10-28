@@ -5,7 +5,6 @@ import { useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, 
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 
-import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useLongPress, type LongPressState } from '@/hooks/useLongPress';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useModalLayer } from '@/hooks/useModalLayer';
@@ -83,9 +82,8 @@ function PickerWindow({ open, onClose, anchorRef, align, width, wide, tall = fal
   useLayoutEffect(() => {
     if (open && wide) setAnchor(anchorRef.current?.getBoundingClientRect() ?? null);
   }, [anchorRef, open, wide]);
-  const layer = useModalLayer({ onClose, active: open });
   const panelRef = useRef<HTMLDivElement | null>(null);
-  useFocusTrap(panelRef, open);
+  const layer = useModalLayer({ onClose, active: open, focusRing: panelRef });
 
   if (!open || typeof document === 'undefined') return null;
 
