@@ -22,6 +22,7 @@ import PrayerStatusBadge from '@/components/prayer/PrayerStatusBadge';
 import { RecordUnavailable } from '@/components/RecordUnavailable';
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
 import { Chip } from '@/components/ui/Chip';
+import UnreadableConflictDrafts from '@/components/UnreadableConflictDrafts';
 import { usePrayerDetail } from '@/hooks/usePrayerDetail';
 import { usePrayerRequests } from '@/hooks/usePrayerRequests';
 import { useRouteId } from '@/hooks/useRouteId';
@@ -53,6 +54,8 @@ export default function PrayerDetailPage() {
     addUpdate,
     setStatus,
     saveConflict,
+    saveConflictChoices,
+    statusConflictChoices,
     resolvingConflict,
     keepMineOnConflict,
     takeTheirsOnConflict,
@@ -238,10 +241,16 @@ export default function PrayerDetailPage() {
       {discardDialog}
       {/* A save was TURNED AWAY. The optimistic cache was rolled back to the server's
           truth, so this banner holds the only remaining copy of what was typed. */}
+      <UnreadableConflictDrafts owner={user?.uid}
+        sources={[...(saveConflictChoices?.unreadableSources ?? []), ...(statusConflictChoices?.unreadableSources ?? [])]}
+        failed={saveConflictChoices?.unreadableFailed || statusConflictChoices?.unreadableFailed} />
       {saveConflict && (
         <SaveConflictBanner
           entityKey="entityRecord"
           pendingText={saveConflict.payload.updates.title ?? saveConflict.payload.updates.description ?? undefined}
+          copyOptions={saveConflictChoices?.copies.map(copy => ({ key: copy.key, label: copy.value.payload.updates.title ?? copy.value.payload.updates.description ?? t('freshness.conflictPendingLabel') }))}
+          selectedCopyKey={saveConflictChoices?.selectedKey}
+          onChooseCopy={saveConflictChoices?.select}
           onKeepMine={keepMineOnConflict}
           onTakeTheirs={takeTheirsOnConflict}
           busy={resolvingConflict}
@@ -254,6 +263,9 @@ export default function PrayerDetailPage() {
         <SaveConflictBanner
           entityKey="entityRecord"
           pendingText={statusConflict.payload.answerText ?? undefined}
+          copyOptions={statusConflictChoices?.copies.map(copy => ({ key: copy.key, label: copy.value.payload.answerText ?? t(`prayer.status.${copy.value.payload.status}`) }))}
+          selectedCopyKey={statusConflictChoices?.selectedKey}
+          onChooseCopy={statusConflictChoices?.select}
           onKeepMine={keepMineOnStatusConflict}
           onTakeTheirs={takeTheirsOnStatusConflict}
           busy={resolvingConflict}

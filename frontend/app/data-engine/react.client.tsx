@@ -18,11 +18,12 @@ import { ACTION_SLOT, editorSlot } from './editorIdentity';
 import { needsConnection } from './engine';
 import { LegacyQueryCopies, LegacyQueryMigrationGate } from './LegacyQueryRecovery';
 import { ARCHIVED_COLLECTIONS, isEngineOwnedLegacyMutation, isEngineOwnedLegacyQuery, legacyCacheMayBeOverwritten } from './legacyQueryRecovery.client';
-import { discoverLegacyRecovery as discoverLegacyOriginals } from './legacyRecovery.client';
+import { discoverLegacyRecovery as discoverLegacyOriginals, exportLegacyRecovery as exportLegacyOriginal, type LegacyRecoverySource } from './legacyRecovery.client';
 import { recoveryHeldOpen as heldOpen, type OpenDocumentAnswer } from './openDocumentAnswers';
 import { mergeFields } from './protocol';
 import { collectionRecordPresence, documentRecordPresence, UNKNOWN_RECORD_PRESENCE, type RecordPresence } from './recordPresence';
 import { captureRecoveryChoice as captureChoice, recoveryChoiceFingerprint, type RecoveryChoiceScope } from './recoveryChoice';
+import { validateResourceDocument } from './resourceSchemas';
 import { deletedUnder } from './session';
 import { describeManualSync, describeSync, type SyncStatus } from './status';
 import { useRecoveryDiscovery as useDiscovery, type RecoveryDiscoveryOptions } from './useRecoveryDiscovery';
@@ -39,6 +40,7 @@ import type { DocumentData, EngineReadOptions, FailureAddress, FieldValue, Journ
 export { isCollectionOnEngine, isDataEngineEnabled } from './clientPolicy';
 
 export type { RecoveryChoiceScope } from './recoveryChoice';
+export type { LegacyRecoverySource } from './legacyRecovery.client';
 export type { DocumentWriteReceipt } from './commitReceipt';
 
 export type DocumentAction =
@@ -163,6 +165,19 @@ export function mergeValues(base: FieldValue, mine: FieldValue, theirs: FieldVal
 /** Read-only historical originals; feature callers retain ownership and exact-byte removal checks. */
 export function discoverLegacyRecovery(owner: string, options?: Parameters<typeof discoverLegacyOriginals>[1]) {
   return discoverLegacyOriginals(owner, options);
+}
+
+/** Export exactly the reviewed original, fenced to its owner. */
+export function exportLegacyRecovery(source: LegacyRecoverySource, owner: string): string {
+  return exportLegacyOriginal(source, owner);
+}
+
+/** Admit only the supplied recovery fields; a partial backup never proves a whole document. */
+export function isValidRecoveryPatch(collection: string, value: DocumentData): boolean {
+  try {
+    validateResourceDocument(collection, value, { kind: 'update', changedFields: Object.keys(value) });
+    return true;
+  } catch { return false; }
 }
 
 export function useRecoveryDiscovery<T>(options: RecoveryDiscoveryOptions<T>) {

@@ -5,9 +5,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { serializeContent } from '@/utils/contentFingerprint';
 import {
   clearDraftIfMatches,
-  clearCreationDraft,
   draftKey,
+  findDraftCopies,
   readDraft,
+  readDraftsStrict,
+  type DurableDraftCopy,
   saveDraft,
   subscribeDraftCapture,
 } from '@/utils/durableDraft';
@@ -22,6 +24,8 @@ export interface UseDurableDraftOptions<T> {
   docId: string | null | undefined;
   /** Which independently edited part of that document this draft belongs to. */
   aggregate: string;
+  /** Stable identity of this mounted writer; omitted only for legacy callers. */
+  writerId?: string;
   /** The editor's current value. Written to storage as-is. */
   value: T;
   /** False while the editor is still initialising, so we never persist a blank. */
@@ -31,8 +35,9 @@ export interface UseDurableDraftOptions<T> {
   confirmedValue?: T | null;
   /** Only precreate typing carries the future resource identity. */
   creationTargetId?: string;
-  /** Canonical confirmed snapshots, never optimistic rows or connectivity. */
-  confirmedCreationIds?: ReadonlySet<string>;
+  /** Optional feature mapping for precreate copies of the same actual resource. */
+  findCopies?: (uid: string, docId: string, aggregate: string) => DurableDraftCopy<T>[];
+  preferredRecoveryKey?: string | null;
   /** Logical editor identity across an optimistic document-id handoff. The draft
    * moves to docId, but recovery is inspected only once for this owner/identity. */
   recoveryIdentity?: string | null;
@@ -44,6 +49,9 @@ export interface UseDurableDraftResult<T> {
    * Read ONCE at mount: it must not change under the user while typing.
    */
   recovered: T | null;
+  recoveredKey: string | null;
+  recoveries: readonly DurableDraftCopy<T>[];
+  selectRecovered: (key: string) => void;
   /** The user took the recovered text — hide the offer, KEEP the stored copy. */
   acceptRecovered: () => void;
   /** The user chose to keep the server version — forget the draft. */
@@ -80,14 +88,16 @@ export function useDurableDraft<T>({
   uid,
   docId,
   aggregate,
+  writerId,
   value,
   enabled,
   confirmedValue,
   creationTargetId,
-  confirmedCreationIds,
+  findCopies = findDraftCopies,
+  preferredRecoveryKey,
   recoveryIdentity = docId,
 }: UseDurableDraftOptions<T>): UseDurableDraftResult<T> {
-  const key = uid && docId ? draftKey(uid, docId, aggregate) : null;
+  const key = uid && docId ? draftKey(uid, docId, aggregate, writerId) : null;
   const recoveryKey = uid && recoveryIdentity ? draftKey(uid, recoveryIdentity, aggregate) : null;
 
   // Always-current value for the listeners below, which must not re-subscribe
@@ -99,8 +109,47 @@ export function useDurableDraft<T>({
   const keyRef = useRef(key);
   keyRef.current = key;
 
-  const [recovered, setRecovered] = useState<T | null>(null);
+  const [recovery, setRecovery] = useState<{ identity: string | null; copies: DurableDraftCopy<T>[] }>({ identity: null, copies: [] });
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const recoveries = recovery.identity === recoveryKey ? recovery.copies : [];
+  const selected = recoveries.find(copy => copy.key === selectedKey)
+    ?? recoveries.find(copy => copy.key === preferredRecoveryKey) ?? recoveries[0] ?? null;
+  const recovered = selected?.value ?? null;
+  const recoveredKey = selected?.key ?? null;
+  const selectedRef = useRef(selected);
+  selectedRef.current = selected;
+  const recoveryRef = useRef(recovery);
+  recoveryRef.current = recovery;
+  const recoveryKeyRef = useRef(recoveryKey);
+  recoveryKeyRef.current = recoveryKey;
+  const adoptedRef = useRef(new Map<string, { identity: string | null; copy: DurableDraftCopy<T> }>());
   const inspectedKeyRef = useRef<string | null>(null);
+
+  const selectRecovered = useCallback((target: string) => {
+    if (recoveryRef.current.identity === recoveryKeyRef.current && recoveryRef.current.copies.some(copy => copy.key === target)) setSelectedKey(target);
+  }, []);
+
+  // Matching words alone do not adopt another physical copy. Only this writer's
+  // address and explicitly selected sources can transfer to canonical ownership.
+  const retireKnownCopies = useCallback((value: T, identity: string | null, ownedKeys: readonly string[] = []) => {
+    const serialised = serializeContent(value);
+    const owned = new Set(ownedKeys);
+    const known = recoveryRef.current.identity === identity ? recoveryRef.current.copies.filter(copy => owned.has(copy.key)) : [];
+    const adopted = [...adoptedRef.current.values()].filter(entry => entry.identity === identity).map(entry => entry.copy);
+    const retired = new Set<string>();
+    for (const copy of [...known, ...adopted]) {
+      if (serializeContent(copy.value) !== serialised) continue;
+      const { key: sourceKey, sourceRecord, ...expectedCopy } = copy;
+      clearDraftIfMatches(sourceKey, value, sourceRecord ?? expectedCopy);
+      const remaining = readDraftsStrict([sourceKey]);
+      if (!remaining || remaining.has(sourceKey)) continue;
+      retired.add(sourceKey);
+      adoptedRef.current.delete(sourceKey);
+    }
+    setRecovery(current => current.identity !== identity ? current : {
+      ...current, copies: current.copies.filter(copy => !retired.has(copy.key)),
+    });
+  }, []);
 
   /**
    * The last value known to be safely on the server: the text the editor opened
@@ -165,31 +214,18 @@ export function useDurableDraft<T>({
   const persistRef = useRef(persist);
   persistRef.current = persist;
 
-  const recoveredCreationRef = useRef<string | undefined>(undefined);
-
-  // Inspect once per logical editor; current storage and confirmed-creation cleanup
-  // still follow the adopted document key without resurfacing this session's words.
+  // Read every independently kept copy once per logical opening. savedAt only
+  // orders this list; it never proves which author action superseded another.
   useEffect(() => {
-    if (!key || !recoveryKey) return;
-    const stored = readDraft<T>(key);
-    const confirmedSource = creationTargetId && stored?.creationTargetId && confirmedCreationIds?.has(stored.creationTargetId);
-    if (confirmedSource) clearCreationDraft(key, stored.creationTargetId!);
-    if (inspectedKeyRef.current === recoveryKey) {
-      if (creationTargetId && recoveredCreationRef.current && confirmedCreationIds?.has(recoveredCreationRef.current)) setRecovered(null);
-      return;
-    }
+    if (!uid || !docId || !key || !recoveryKey) return;
+    if (inspectedKeyRef.current === recoveryKey) return;
+    const stored = findCopies(uid, docId, aggregate);
     inspectedKeyRef.current = recoveryKey;
-    recoveredCreationRef.current = stored?.creationTargetId;
-    setRecovered(stored && !confirmedSource ? stored.value : null);
-    // NOTE: deliberately NOT clearing the previous key here. The previous key may
-    // hold the only copy of text never confirmed, so clearing it would destroy the
-    // exact thing this module exists to keep. While this hook stays mounted the key
-    // changes when a new note adopts its real id — "new" is a caller-level concept,
-    // so the caller carries and retires that draft itself — and when the account
-    // changes under a mounted editor (open: BUG-20261003-account-change-under-open-note).
-    // Moving to another document is not one of these: it is an unmount (see the
-    // flush below).
-  }, [key, recoveryKey, creationTargetId, confirmedCreationIds]);
+    setSelectedKey(null);
+    setRecovery({ identity: recoveryKey, copies: stored });
+    // A previous opening's copies remain in storage. Switching owner or document
+    // is never permission to remove unconfirmed text.
+  }, [uid, docId, aggregate, key, recoveryKey, findCopies]);
 
   // Persist while typing, coalesced so long documents do not hit storage on
   // every keystroke.
@@ -233,7 +269,12 @@ export function useDurableDraft<T>({
    * gone. `markSaved` retires it once the server accepts it.
    */
   const acceptRecovered = useCallback(() => {
-    setRecovered(null);
+    const copy = selectedRef.current;
+    if (!copy) return;
+    const identity = recoveryKeyRef.current;
+    adoptedRef.current.set(copy.key, { identity, copy });
+    setRecovery(current => current.identity !== identity ? current : { ...current,
+      copies: current.copies.filter(candidate => candidate.key !== copy.key || serializeContent(candidate.value) !== serializeContent(copy.value)) });
   }, []);
 
   /**
@@ -245,17 +286,18 @@ export function useDurableDraft<T>({
    * they were writing (loss of unconfirmed text, dressed as a dismissal). Compare
    * first, delete only on an exact match.
    */
-  const recoveredRef = useRef<T | null>(null);
-  recoveredRef.current = recovered;
   const discardRecovered = useCallback(() => {
-    const rejected = recoveredRef.current;
-    setRecovered(null);
-    if (keyRef.current && rejected !== null) clearDraftIfMatches(keyRef.current, rejected);
+    const rejected = selectedRef.current;
+    if (!rejected) return;
+    clearDraftIfMatches(rejected.key, rejected.value);
+    const identity = recoveryKeyRef.current;
+    setRecovery(current => current.identity !== identity ? current : { ...current,
+      copies: current.copies.filter(copy => copy.key !== rejected.key || serializeContent(copy.value) !== serializeContent(rejected.value)) });
   }, []);
 
   const markCaptured = useCallback((captured: T, targetDocId: string) => {
     if (!uid || !targetDocId) return;
-    const targetKey = draftKey(uid, targetDocId, aggregate);
+    const targetKey = draftKey(uid, targetDocId, aggregate, writerId);
     // A precreate address and its reserved document are one opening. This is not
     // permission to claim an untagged legacy source or another creation's copy.
     const sourceKey = creationTargetId === targetDocId ? key : null;
@@ -266,26 +308,26 @@ export function useDurableDraft<T>({
     const ownsSource = sourceKey && readDraft(sourceKey)?.creationTargetId === targetDocId;
     if (ownsSource) clearDraftIfMatches(sourceKey, captured);
     if (keyRef.current === targetKey || (ownsSource && keyRef.current === sourceKey)) {
-      setRecovered(current => current !== null && serializeContent(current) === serialised ? null : current);
+      retireKnownCopies(captured, recoveryKey, ownsSource ? keys : [targetKey]);
       if (ourDraftRef.current === serialised) ourDraftRef.current = null;
     }
-  }, [uid, key, aggregate, creationTargetId]);
+  }, [uid, key, aggregate, writerId, creationTargetId, recoveryKey, retireKnownCopies]);
 
   useEffect(() => subscribeDraftCapture(event => {
     if (event.key !== keyRef.current) return;
     const serialised = serializeContent(event.value);
     capturedRef.current = { keys: [event.key], value: serialised };
-    setRecovered(current => current !== null && serializeContent(current) === serialised ? null : current);
+    retireKnownCopies(event.value as T, recoveryKeyRef.current, [event.key]);
     if (ourDraftRef.current === serialised) ourDraftRef.current = null;
-  }), []);
+  }), [retireKnownCopies]);
 
   const markSaved = useCallback((confirmed: T) => {
-    // Record it even without a key so a later flush cannot re-store saved text.
-    confirmedRef.current = serializeContent(confirmed);
-    setRecovered((current) => current !== null && serializeContent(current) === serializeContent(confirmed) ? null : current);
-    if (!keyRef.current) return;
-    clearDraftIfMatches(keyRef.current, confirmed);
-  }, []);
+    const currentOpening = recoveryKeyRef.current === recoveryKey;
+    if (currentOpening) confirmedRef.current = serializeContent(confirmed);
+    const ownKey = currentOpening ? keyRef.current : key;
+    retireKnownCopies(confirmed, recoveryKey, ownKey ? [ownKey] : []);
+    if (ownKey) clearDraftIfMatches(ownKey, confirmed);
+  }, [key, recoveryKey, retireKnownCopies]);
 
-  return { recovered, acceptRecovered, discardRecovered, markCaptured, markSaved };
+  return { recovered, recoveredKey, recoveries, selectRecovered, acceptRecovered, discardRecovered, markCaptured, markSaved };
 }

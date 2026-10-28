@@ -2,24 +2,26 @@ import { act, renderHook } from '@testing-library/react';
 import { useRef, useState } from 'react';
 import { useDurableDraft } from '@/hooks/useDurableDraft';
 import { draftKey, readDraft } from '@/utils/durableDraft';
+import { findNoteDraftCopies } from '@/utils/newNoteDrafts';
 import { persistedWrite, queuedMutation } from '@/utils/recoverableWrite';
 import { useNoteAutoSave } from '../useNoteAutoSave';
 import type { NoteDraftPayload } from '../noteDraft';
 const OWNER='placeholder-owner', TARGET='reserved-note-A';
-const SOURCE=draftKey(OWNER,'new','note'), DEST=draftKey(OWNER,TARGET,'note');
+const WRITER='placeholder-opening';
+const SOURCE=draftKey(OWNER,'new','note',WRITER), DEST=draftKey(OWNER,TARGET,'note',WRITER);
 const value=(content:string):NoteDraftPayload=>({title:'',content,tags:[],scriptureRefs:[],type:'note'});
 function useEditor(content:string,createNote:jest.Mock){
  const [id,setId]=useState('new');const baselineRef=useRef<NoteDraftPayload|null>(null),revisionRef=useRef<number|null>(null),deliberateOverwriteRef=useRef(false);
- const draftOptions={uid:OWNER,docId:id,aggregate:'note',value:value(content),enabled:true,confirmedValue:null,creationTargetId:id==='new'?TARGET:undefined};
+ const draftOptions={writerId:WRITER,uid:OWNER,docId:id,aggregate:'note',value:value(content),enabled:true,confirmedValue:null,creationTargetId:id==='new'?TARGET:undefined};
  const draft=useDurableDraft(draftOptions);
- const options={noteId:id,isNew:id==='new',creationId:TARGET,isInitialized:true,...value(content),updateNote:jest.fn(),createNote:createNote as never,uid:OWNER,setCreatedNoteId:setId,t:((s:string)=>s)as never,baselineRef,revisionRef,deliberateOverwriteRef,resaveNonce:0,saveBlocked:false,onConflict:jest.fn(),onSaved:draft.markSaved};
+ const options={draftWriterId:WRITER,noteId:id,isNew:id==='new',creationId:TARGET,isInitialized:true,...value(content),updateNote:jest.fn(),createNote:createNote as never,uid:OWNER,setCreatedNoteId:setId,t:((s:string)=>s)as never,baselineRef,revisionRef,deliberateOverwriteRef,resaveNonce:0,saveBlocked:false,onConflict:jest.fn(),onSaved:draft.markSaved};
  return {id,draft,save:useNoteAutoSave(options)};
 }
 function source(content:string,target:string|null=TARGET){localStorage.setItem(SOURCE,JSON.stringify({value:value(content),savedAt:1,...(target?{creationTargetId:target}:{})}));}
-function recovery(confirmed:ReadonlySet<string>){const options={uid:OWNER,docId:'new',aggregate:'note',value:value(''),enabled:false,confirmedValue:null,creationTargetId:'next-note',confirmedCreationIds:confirmed};return renderHook(()=>useDurableDraft(options));}
+function recovery(confirmed:ReadonlySet<string>){const options={uid:OWNER,docId:confirmed.has(TARGET)?TARGET:'new',aggregate:'note',value:value(''),enabled:false,confirmedValue:null,creationTargetId:'next-note',findCopies:findNoteDraftCopies};return renderHook(()=>useDurableDraft(options));}
 describe('new-note placeholder ownership',()=>{
  let quota:boolean;
- beforeEach(()=>{jest.useFakeTimers();localStorage.clear();quota=false;const set=Storage.prototype.setItem;jest.spyOn(Storage.prototype,'setItem').mockImplementation(function(this:Storage,key,data){if(quota&&key.startsWith('draft:v1:'))throw new DOMException('Full','QuotaExceededError');set.call(this,key,data);});jest.spyOn(console,'error').mockImplementation(()=>undefined);});
+ beforeEach(()=>{jest.useFakeTimers();localStorage.clear();quota=false;const set=Storage.prototype.setItem;jest.spyOn(Storage.prototype,'setItem').mockImplementation(function(this:Storage,key,data){if(quota&&key.startsWith('draft:v'))throw new DOMException('Full','QuotaExceededError');set.call(this,key,data);});jest.spyOn(console,'error').mockImplementation(()=>undefined);});
  afterEach(()=>{jest.restoreAllMocks();jest.useRealTimers();});
  it.each(['queued','persisted']as const)('retires the owned older source after failed carry and %s creation acceptance',async mode=>{
   let accept!:()=>void;const persistence=new Promise<void>(r=>{accept=r;});const create=jest.fn(()=>({...mode==='queued'?queuedMutation('create:'+TARGET,persistence):persistedWrite(persistence),note:{id:TARGET}}));
@@ -39,12 +41,12 @@ describe('new-note placeholder ownership',()=>{
   await act(async()=>{jest.advanceTimersByTime(300);});source('Unclaimed legacy words',null);await act(async()=>{jest.advanceTimersByTime(1300);});
   expect(create).toHaveBeenCalledTimes(1);expect(readDraft(SOURCE)?.value).toEqual(value('Unclaimed legacy words'));expect(readDraft(SOURCE)?.creationTargetId).toBeUndefined();expect(readDraft(DEST)?.value).not.toEqual(value('Unclaimed legacy words'));hook.unmount();
  });
- it('does not offer a precreate source after matching confirmed creation is found on later opening',()=>{source('A');const hook=recovery(new Set([TARGET]));expect(hook.result.current.recovered).toBeNull();expect(readDraft(SOURCE)).toBeNull();hook.unmount();});
+ it('keeps unknown precreate words readable at an existing destination without treating its identity as acceptance',()=>{source('A');const hook=recovery(new Set([TARGET]));expect(hook.result.current.recovered).toEqual(value('A'));expect(readDraft(SOURCE)?.value).toEqual(value('A'));hook.unmount();});
  it('keeps unconfirmed creation recoverable',()=>{source('A');const hook=recovery(new Set());expect(hook.result.current.recovered).toEqual(value('A'));expect(readDraft(SOURCE)?.value).toEqual(value('A'));hook.unmount();});
- it('keeps ambiguous legacy source despite another confirmed creation',()=>{source('A',null);const hook=recovery(new Set([TARGET]));expect(hook.result.current.recovered).toEqual(value('A'));expect(readDraft(SOURCE)?.value).toEqual(value('A'));hook.unmount();});
- it('keeps equal-text independent replacement and later real-id words after earlier creation ACK',async()=>{
+ it('keeps ambiguous source at its precreate address without attaching it to an unrelated existing note',()=>{source('A',null);const hook=recovery(new Set([TARGET]));expect(hook.result.current.recovered).toBeNull();expect(readDraft(SOURCE)?.value).toEqual(value('A'));expect(findNoteDraftCopies(OWNER,'new','note').map(copy=>copy.value)).toEqual([value('A')]);hook.unmount();});
+ it.each([['another creation','reserved-note-B'],['a newer copy for the same creation',TARGET]])('keeps equal-text replacement from %s and later real-id words after earlier creation ACK',async(_label,replacementTarget)=>{
   let accept!:()=>void;const persistence=new Promise<void>(r=>{accept=r;});const create=jest.fn(()=>({...queuedMutation('create:'+TARGET,persistence),note:{id:TARGET}}));const hook=renderHook(({content})=>useEditor(content,create),{initialProps:{content:'A'}});
-  await act(async()=>{jest.advanceTimersByTime(300);});quota=true;hook.rerender({content:'AB'});await act(async()=>{jest.advanceTimersByTime(1600);});quota=false;source('A','reserved-note-B');localStorage.setItem(DEST,JSON.stringify({value:value('Later C'),savedAt:3}));
+  await act(async()=>{jest.advanceTimersByTime(300);});quota=true;hook.rerender({content:'AB'});await act(async()=>{jest.advanceTimersByTime(1600);});quota=false;source('A',replacementTarget);localStorage.setItem(DEST,JSON.stringify({value:value('Later C'),savedAt:3}));
   await act(async()=>{accept();await persistence;});expect(readDraft(SOURCE)?.value).toEqual(value('A'));expect(readDraft(DEST)?.value).toEqual(value('Later C'));hook.unmount();
  });
 });

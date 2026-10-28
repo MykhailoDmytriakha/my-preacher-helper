@@ -5,6 +5,7 @@ import { useStudyNoteShareLinks } from '@/hooks/useStudyNoteShareLinks';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import StudyNoteEditorPage from '../page';
 import { StudyNote } from '@/models/models';
+import { findNoteDraftCopies } from '@/utils/newNoteDrafts';
 import { persistedWrite, queuedMutation } from '@/utils/recoverableWrite';
 
 // Mock next/navigation
@@ -135,10 +136,7 @@ describe('note editor sync integration', () => {
   });
   afterEach(() => jest.useRealTimers());
 
-  // The offline shell keeps this page mounted without a sign-in guard, so the account can
-  // change under it (open: BUG-20261003-account-change-under-open-note). A write still waiting
-  // then is dropped, not stored: storing it would replace the newer, only draft of another
-  // editor of this note.
+  // The departing owner cannot overwrite another opening's unfinished words.
   it('keeps the newer only draft of a closed editor when an older editor loses its owner with a write waiting', () => {
     let uid: string | undefined = 'user-1';
     (useStudyNotes as jest.Mock).mockImplementation(() => ({
@@ -161,8 +159,9 @@ describe('note editor sync integration', () => {
     older.unmount();
     act(() => jest.advanceTimersByTime(2000));
 
-    const draft = JSON.parse(window.localStorage.getItem('draft:v1:user-1:note-sync:note')!);
-    expect(draft.value.content).toBe('newer unsaved text, its only copy');
+    expect(findNoteDraftCopies('user-1', 'note-sync', 'note').map(copy => copy.value.content).sort()).toEqual([
+      'newer unsaved text, its only copy',
+    ]);
     expect(updateNote).not.toHaveBeenCalled();
   });
 
@@ -182,7 +181,7 @@ describe('note editor sync integration', () => {
     expect(screen.queryByText('freshness.title')).not.toBeInTheDocument();
     expect(screen.getByTestId('rich-markdown-editor')).toHaveValue('Later B');
     act(() => window.dispatchEvent(new Event('pagehide')));
-    expect(JSON.parse(window.localStorage.getItem('draft:v1:user-1:note-sync:note')!).value.content).toBe('Later B');
+    expect(findNoteDraftCopies('user-1', 'note-sync', 'note').map(copy => copy.value.content)).toEqual(['Later B']);
     expect(screen.queryByText('common.saved')).not.toBeInTheDocument();
   });
 
@@ -198,12 +197,12 @@ describe('note editor sync integration', () => {
     fireEvent.change(screen.getByTestId('rich-markdown-editor'), { target: { value: 'Later B' } });
     expect(screen.queryByText('unsavedDraft.title')).not.toBeInTheDocument();
     act(() => window.dispatchEvent(new Event('pagehide')));
-    expect(JSON.parse(window.localStorage.getItem('draft:v1:user-1:created-sync:note')!).value.content).toBe('Later B');
+    expect(findNoteDraftCopies('user-1', 'created-sync', 'note').map(copy => copy.value.content)).toEqual(['Later B']);
     await act(async () => { finish(); await persistence; });
     expect(screen.getByTestId('rich-markdown-editor')).toHaveValue('Later B');
     expect(screen.queryByText('common.saved')).not.toBeInTheDocument();
     expect(screen.queryByText('unsavedDraft.title')).not.toBeInTheDocument();
-    expect(JSON.parse(window.localStorage.getItem('draft:v1:user-1:created-sync:note')!).value.content).toBe('Later B');
+    expect(findNoteDraftCopies('user-1', 'created-sync', 'note').map(copy => copy.value.content)).toEqual(['Later B']);
   });
 
   it('does not acknowledge an older retained snapshot after a newer save', async () => {
@@ -219,7 +218,7 @@ describe('note editor sync integration', () => {
     await act(async () => { finish(); await pending; });
     fireEvent.change(screen.getByTestId('rich-markdown-editor'), { target: { value: 'Retained A' } });
     act(() => window.dispatchEvent(new Event('pagehide')));
-    expect(JSON.parse(window.localStorage.getItem('draft:v1:user-1:note-sync:note')!).value.content).toBe('Retained A');
+    expect(findNoteDraftCopies('user-1', 'note-sync', 'note').map(copy => copy.value.content)).toEqual(['Retained A']);
     expect(screen.queryByText('common.saved')).not.toBeInTheDocument();
   });
 
@@ -235,7 +234,7 @@ describe('note editor sync integration', () => {
     expect(createNote).toHaveBeenCalledTimes(1);
     expect(updateNote).not.toHaveBeenCalled();
     act(() => window.dispatchEvent(new Event('pagehide')));
-    expect(JSON.parse(window.localStorage.getItem('draft:v1:user-1:created-sync:note')!).value.content).toBe('Queued create A');
+    expect(findNoteDraftCopies('user-1', 'created-sync', 'note').map(copy => copy.value.content)).toEqual(['Queued create A']);
   });
 
 });

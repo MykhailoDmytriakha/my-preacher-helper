@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import { createEngineStructureWriter } from '@/(pages)/(private)/sermons/[id]/structure/useEngineStructureWriter';
 import PlanEditorModal from '@/components/plan-editor/PlanEditorModal';
 import { StructureWriterContext } from '@/components/sermon/structureWriter';
+import { draftKey, findDraftCopies, saveDraft } from '@/utils/durableDraft';
 import '@testing-library/jest-dom';
 
 import type { DocumentData } from '@/data-engine/types';
@@ -61,6 +62,58 @@ const flushSaveDebounce = async () => {
 };
 
 describe('the structure editor on an engine document', () => {
+  it('keeps malformed retained outline words readable without applying the payload', () => {
+    const server = { introduction: [], main: [{ id: 'p1', text: 'Server point' }], conclusion: [] };
+    const broken = { introduction: [], main: [{ id: 'p1', text: 'Kept malformed outline words' }, null], conclusion: [] };
+    const key = draftKey(OWNER, 's1', 'conflict:outlineConflict', 'invalid');
+    const raw = JSON.stringify({ savedAt: 1, value: { payload: { outline: broken, serverOutline: server, baseOutline: server }, actualRevision: 0 } });
+    localStorage.setItem(key, raw); documentCopy = sermonWith(server);
+    let view: ReturnType<typeof openEditor> | undefined;
+    try {
+      view = openEditor(documentCopy);
+      expect(screen.getByText('unsavedDraft.unreadableTitle')).toBeVisible();
+      expect(screen.getAllByText(/Kept malformed outline words/)[0]).toBeVisible();
+      expect(screen.getByTestId('board-text')).toHaveTextContent('Server point');
+      expect(localStorage.getItem(key)).toBe(raw);
+    } finally { view?.unmount(); }
+  });
+
+  it('keeps immediate edits to the current outline copy before selecting another copy', () => {
+    const server = { introduction: [], main: [{ id: 'p1', text: 'Server point' }], conclusion: [] };
+    const first = { introduction: [], main: [{ id: 'p1', text: 'First retained outline' }], conclusion: [] };
+    const second = { introduction: [], main: [{ id: 'p1', text: 'Second retained outline' }], conclusion: [] };
+    const key = draftKey(OWNER, 's1', 'conflict:outlineConflict', 'second');
+    saveDraft(draftKey(OWNER, 's1', 'conflict:outlineConflict'), { payload: { outline: first, serverOutline: server, baseOutline: server }, actualRevision: 0 });
+    saveDraft(key, { payload: { outline: second, serverOutline: server, baseOutline: server }, actualRevision: 0 });
+    documentCopy = sermonWith(server);
+    const view = openEditor(documentCopy);
+    try {
+      fireEvent.click(screen.getByText('edit-a-point'));
+      expect(screen.getByTestId('board-text')).toHaveTextContent('edit 1');
+      fireEvent.change(screen.getByRole('combobox', { name: 'unsavedDraft.chooseCopy' }), { target: { value: key } });
+      expect(screen.getByTestId('board-text')).toHaveTextContent('Second retained outline');
+      const copies = findDraftCopies<{ payload: { outline: SermonOutline } }>(OWNER, 's1', 'conflict:outlineConflict');
+      expect(copies.map(copy => copy.value.payload.outline.main[0].text)).toEqual(expect.arrayContaining(['edit 1', 'Second retained outline']));
+      expect(copies).toHaveLength(2);
+    } finally { view.unmount(); }
+  });
+
+  it('loads the explicitly selected physical outline copy into the actual board', () => {
+    const server = { introduction: [], main: [{ id: 'p1', text: 'Server point' }], conclusion: [] };
+    const first = { introduction: [], main: [{ id: 'p1', text: 'First retained outline' }], conclusion: [] };
+    const second = { introduction: [], main: [{ id: 'p1', text: 'Second retained outline' }], conclusion: [] };
+    const key = draftKey(OWNER, 's1', 'conflict:outlineConflict', 'second');
+    saveDraft(draftKey(OWNER, 's1', 'conflict:outlineConflict'), { payload: { outline: first, serverOutline: server, baseOutline: server }, actualRevision: 0 });
+    saveDraft(key, { payload: { outline: second, serverOutline: server, baseOutline: server }, actualRevision: 0 });
+    documentCopy = sermonWith(server);
+    const view = openEditor(documentCopy);
+    try {
+      expect(screen.getByTestId('board-text')).toHaveTextContent('First retained outline');
+      fireEvent.change(screen.getByRole('combobox', { name: 'unsavedDraft.chooseCopy' }), { target: { value: key } });
+      expect(screen.getByTestId('board-text')).toHaveTextContent('Second retained outline');
+    } finally { view.unmount(); }
+  });
+
   beforeEach(() => {
     jest.useFakeTimers();
     localStorage.clear();

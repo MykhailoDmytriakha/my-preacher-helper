@@ -8,14 +8,15 @@ import { toast } from 'sonner';
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
 import TemplateOutlineEditor, { type TemplateOutlineEditorHandle } from '@/components/settings/TemplateOutlineEditor';
 import ConfirmModal from '@/components/ui/ConfirmModal';
+import UnreadableConflictDrafts from '@/components/UnreadableConflictDrafts';
 import { useDiscardQuestion } from '@/hooks/useConfirm';
 import { usePersistedConflict } from '@/hooks/usePersistedConflict';
 import { usePlanTemplates } from '@/hooks/usePlanTemplates';
 import { isStaleWriteError } from '@/services/conflictSafeUpdate.client';
 import { PLAN_TEMPLATE_AGGREGATE } from '@/services/planTemplates.client';
 import { newClientId } from '@/utils/clientId';
-import { findDraftDocIds } from '@/utils/durableDraft';
 import { awaitWriteOperation } from '@/utils/recoverableWrite';
+import { validTemplateConflict } from '@/utils/refusedDraftPayloads';
 import { useTranslation } from '@locales/useTranslation';
 
 import type { PlanTemplate, SermonOutline } from '@/models/models';
@@ -46,9 +47,7 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user, reque
    * idea which template a stored refusal came from — a key nobody can find again
    * is the same as no key at all.
    */
-  const [conflictTemplateId, setConflictTemplateId] = useState<string | null>(() =>
-    user?.uid ? (findDraftDocIds(user.uid, `conflict:${PLAN_TEMPLATE_AGGREGATE}`)[0] ?? null) : null
-  );
+  const [conflictTemplateId, setConflictTemplateId] = useState<string | null>(null);
 
   /**
    * A refused template edit, held so it can be re-offered.
@@ -56,11 +55,13 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user, reque
    * A stale edit hands its exact name or structure to this persisted choice.
    * The choice remains discoverable after the original editor closes or reloads.
    */
-  const [conflict, setConflict] = usePersistedConflict<{
+  const [conflict, setConflict, , conflictChoices] = usePersistedConflict<{
     templateId: string;
     label: string;
     updates: { name?: string; structure?: SermonOutline };
-  }>(user?.uid, conflictTemplateId, PLAN_TEMPLATE_AGGREGATE);
+  }>(user?.uid, conflictTemplateId, PLAN_TEMPLATE_AGGREGATE, validTemplateConflict);
+  const findNextConflictDocument = conflictChoices.nextDocument;
+  useEffect(() => { setConflictTemplateId(user?.uid ? findNextConflictDocument() : null); }, [user?.uid, findNextConflictDocument]);
   const [resolvingConflict, setResolvingConflict] = useState(false);
 
   const [newName, setNewName] = useState('');
@@ -163,10 +164,12 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user, reque
     tpl: PlanTemplate,
     error: unknown,
     updates: { name?: string; structure?: SermonOutline },
-    label: string
+    label: string,
+    selectedAtStart: { id: string | null; record: typeof conflict }
   ): boolean => {
     if (!isStaleWriteError(error)) return false;
-    setConflictTemplateId(tpl.id);
+    const unchanged = conflictTemplateIdRef.current === selectedAtStart.id && conflictRef.current === selectedAtStart.record;
+    if (unchanged || !conflictTemplateIdRef.current) setConflictTemplateId(tpl.id);
     // Pass the id explicitly: the state above is not committed yet, so the key would
     // otherwise be built from the PREVIOUS value.
     setConflict(
@@ -180,13 +183,14 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user, reque
   const handleRename = async (tpl: PlanTemplate) => {
     const ownerId = user?.uid;
     if (!ownerId || renamingPendingRef.current) return;
+    const selectedAtStart = { id: conflictTemplateIdRef.current, record: conflictRef.current };
     const name = renameText.trim();
     if (!name || name === tpl.name) { setRenamingId(null); return; }
     renamingPendingRef.current = true;
     setRenamingPending(true);
     const reportFailure = (error: unknown) => {
       if (userIdRef.current !== ownerId) return;
-      if (offerConflictChoice(tpl, error, { name }, name)) {
+      if (offerConflictChoice(tpl, error, { name }, name, selectedAtStart)) {
         setRenamingId(current => current === tpl.id ? null : current);
         return;
       }
@@ -242,10 +246,7 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user, reque
    */
   const advanceToNextStoredConflict = () => {
     if (!user?.uid) return;
-    const next = findDraftDocIds(user.uid, `conflict:${PLAN_TEMPLATE_AGGREGATE}`).find(
-      (id) => id !== conflictTemplateId
-    );
-    setConflictTemplateId(next ?? null);
+    setConflictTemplateId(conflictChoices.nextDocument(conflictTemplateId));
   };
 
   const handleKeepMine = async () => {
@@ -255,9 +256,11 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user, reque
     const reportFailure = (error: unknown) => {
       if (userIdRef.current !== ownerId) return;
       if (isStaleWriteError(error)) {
+        setConflictTemplateId(current => current ?? conflict.payload.templateId);
         setConflict(
           { payload: conflict.payload, actualRevision: error.actualRevision },
-          conflict.payload.templateId
+          conflict.payload.templateId,
+          conflict
         );
         toast.error(t('freshness.staleSaveToast'));
         return;
@@ -274,7 +277,7 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user, reque
       if (userIdRef.current !== ownerId) return;
       // NAME the template this resolves: the slot is per template, and an unnamed
       // clear would empty whichever one the section is pointing at right now.
-      setConflict(null, conflict.payload.templateId);
+      setConflict(null, conflict.payload.templateId, conflict);
       advanceToNextStoredConflict();
     } catch (error) {
       reportFailure(error);
@@ -316,7 +319,7 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user, reque
         // The old answer may retire only the exact copy it asked about.
         if (!isCurrent()) return;
         // This retires only the legacy copy; canonical editor words keep their own lifetime.
-        setConflict(null, capturedTemplateId);
+        setConflict(null, capturedTemplateId, heldConflict);
         advanceToNextStoredConflict();
       }, isCurrent);
     } finally {
@@ -332,11 +335,15 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user, reque
       <p className="text-sm text-gray-500 dark:text-gray-400 mb-4 md:mb-6">{t('planTemplates.description')}</p>
       {discardDialog}
 
+      <UnreadableConflictDrafts owner={user?.uid} sources={conflictChoices.unreadableSources} failed={conflictChoices.unreadableFailed} />
       {/* Saved legacy choices remain discoverable independently of the canonical editor. */}
       {conflict && (
         <SaveConflictBanner
           entityKey="entityRecord"
           pendingText={conflict.payload.updates.name ?? conflict.payload.label}
+          copyOptions={conflictChoices.copies.map(copy => ({ key: copy.key, label: copy.value.payload.updates.name ?? copy.value.payload.label }))}
+          selectedCopyKey={conflictChoices.selectedKey}
+          onChooseCopy={conflictChoices.select}
           onKeepMine={handleKeepMine}
           onTakeTheirs={handleTakeTheirs}
           busy={resolvingConflict}

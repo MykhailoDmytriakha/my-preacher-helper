@@ -30,7 +30,7 @@ const payload: NoteDraftPayload = {
   type: 'note',
 };
 
-function useHarness(createNote: jest.Mock, onSaved: (saved: NoteDraftPayload) => void, captureRecordingHandoff?: () => { accepted: () => Promise<void>; carryTo: (id: string) => Promise<void> }, creation?: { id: string; draftId: string }) {
+function useHarness(createNote: jest.Mock, onSaved: (saved: NoteDraftPayload) => void, captureRecordingHandoff?: () => { accepted: () => Promise<void>; carryTo: (id: string) => Promise<void> }, creation?: { id: string; draftId: string; writerId?: string }) {
   const baselineRef = useRef<NoteDraftPayload | null>(null);
   const revisionRef = useRef<number | null>(null);
   const deliberateOverwriteRef = useRef(false);
@@ -38,6 +38,7 @@ function useHarness(createNote: jest.Mock, onSaved: (saved: NoteDraftPayload) =>
     noteId: 'new',
     creationId: creation?.id,
     draftDocId: creation?.draftId,
+    draftWriterId: creation?.writerId,
     isNew: true,
     isInitialized: true,
     title: payload.title,
@@ -100,10 +101,11 @@ describe('creating a note keeps the durable draft at all times', () => {
     view.unmount();
   });
 
-  it('does not carry an older backup when storage refuses the current create words', async () => {
-    const source = draftKey('u1', 'new~refused-backup', 'note');
-    const destination = draftKey('u1', 'refused-backup', 'note');
+  it.each([{ writerId: undefined, later: false }, { writerId: 'current-opening', later: false }, { writerId: 'current-opening', later: true }])('does not carry an older backup when storage refuses the current create words: writer=$writerId later=$later', async ({ writerId, later }) => {
+    const source = draftKey('u1', 'new~refused-backup', 'note', writerId);
+    const destination = draftKey('u1', 'refused-backup', 'note', writerId);
     const older = { ...payload, content: 'Earlier recoverable words' };
+    const newer = { ...payload, content: 'Words typed while the save waits' };
     saveDraft(source, older, 'refused-backup');
     const realSetItem = Storage.prototype.setItem;
     const writing = jest.spyOn(Storage.prototype, 'setItem').mockImplementation(function(this: Storage, key, value) {
@@ -113,7 +115,7 @@ describe('creating a note keeps the durable draft at all times', () => {
     let finish!: () => void;
     const persistence = new Promise<void>(resolve => { finish = resolve; });
     const createNote = jest.fn(() => ({ ...queuedMutation('refused-backup', persistence), note: { id: 'refused-backup' } as StudyNote }));
-    const view = renderHook(() => useHarness(createNote, jest.fn(), undefined, { id: 'refused-backup', draftId: 'new~refused-backup' }));
+    const view = renderHook(() => useHarness(createNote, jest.fn(), undefined, { id: 'refused-backup', draftId: 'new~refused-backup', writerId }));
     try {
       await act(async () => { jest.advanceTimersByTime(1600); });
       // The canonical request can still own the current text; the old copy is not that text.
@@ -122,8 +124,14 @@ describe('creating a note keeps the durable draft at all times', () => {
       expect(readDraft(destination)).toBeNull();
       expect(isDraftStorageRefusedFor('u1')).toBe(true);
       expect(view.result.current.lastSaved).toBeNull();
+      if (later) {
+        writing.mockRestore();
+        saveDraft(source, newer, 'refused-backup');
+      }
       await act(async () => { finish(); await persistence; });
-      expect(readDraft(source)).toBeNull();
+      if (later) expect(readDraft(source)?.value).toEqual(newer);
+      else if (writerId) expect(readDraft(source)).toBeNull();
+      else expect(readDraft(source)?.value).toEqual(older);
       expect(isDraftStorageRefusedFor('u1')).toBe(false);
       expect(view.result.current.lastSaved).toBeInstanceOf(Date);
     } finally {

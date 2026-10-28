@@ -1,5 +1,6 @@
 import { newClientId } from '@/utils/clientId';
 import { serializeContent } from '@/utils/contentFingerprint';
+import { draftAddressKey, draftBelongsToOwner, isDraftAddress, readDraftAddress } from '@/utils/draftAddress';
 
 /**
  * Durable drafts — the user's text must survive a closed tab, a crash, a reload
@@ -32,9 +33,6 @@ import { serializeContent } from '@/utils/contentFingerprint';
  * async and is not reliably flushed at that moment.
  */
 
-/** Bump when the stored shape changes; old entries are then ignored, not parsed. */
-const PREFIX = 'draft:v1:';
-
 let draftIdentitySequence = 0;
 
 /** A single stored draft. `savedAt` orders drafts newest first when a screen looks for them. */
@@ -55,8 +53,8 @@ export interface DurableDraft<T> {
  * - `aggregate` keeps independently edited parts of the same document apart, so
  *   restoring an outline draft cannot resurrect stale preparation text.
  */
-export function draftKey(uid: string, docId: string, aggregate: string): string {
-  return `${PREFIX}${uid}:${docId}:${aggregate}`;
+export function draftKey(uid: string, docId: string, aggregate: string, writerId?: string): string {
+  return draftAddressKey({ owner: uid, documentId: docId, aggregate, writerId });
 }
 
 function storage(): Storage | null {
@@ -103,8 +101,7 @@ export function isDraftStorageRefused(): boolean {
  */
 export function isDraftStorageRefusedFor(owner: string | null | undefined): boolean {
   if (!owner) return false;
-  const prefix = `${PREFIX}${owner}:`; // the colon keeps owner "a" from matching "ab"
-  for (const key of refusedDraftKeys.keys()) if (key.startsWith(prefix)) return true;
+  for (const key of refusedDraftKeys.keys()) if (draftBelongsToOwner(key, owner)) return true;
   return false;
 }
 
@@ -135,7 +132,8 @@ export function saveDraft<T>(key: string, value: T, creationTargetId?: string, c
   // metadata-only read/modify/write that could overwrite another tab's words.
   const sameLineage = previous?.creationTargetId === creationTargetId
     || (creationTargetId === undefined && Boolean(previous?.creationTargetId)
-      && key.endsWith(`:${previous?.creationTargetId}:note`));
+      && readDraftAddress(key)?.documentId === previous?.creationTargetId
+      && readDraftAddress(key)?.aggregate === 'note');
   const sameValue = previous && serializeContent(previous.value) === serializeContent(value);
   const previousToken = typeof previous?.captureToken === 'string' && previous.captureToken ? previous.captureToken : undefined;
   const captureToken = sameLineage && sameValue && previousToken ? previousToken
@@ -240,7 +238,9 @@ export function clearDraft(key: string): void {
  * B's unsaved text — the very loss this module exists to prevent. Comparing
  * first means A's success only ever retires A's own draft.
  */
-export function clearDraftIfMatches<T>(key: string, confirmed: T): void {
+export function clearDraftIfMatches<T>(key: string, confirmed: T, expectedCopy?: DurableDraft<unknown>): void {
+  // A superseded precreate value needs its exact stored envelope, including lineage.
+  if (expectedCopy && serializeContent(readDraft<T>(key)) !== serializeContent(expectedCopy)) return;
   // The text whose copy was refused is on the server now: that copy is no longer owed.
   if (refusedDraftKeys.get(key)?.value === serializeContent(confirmed)) recordDraftStorage(key, false);
   const stored = readDraft<T>(key);
@@ -333,16 +333,34 @@ function carryRefusal(fromKey: string, toKey: string): void {
  * Without discovery the choice was either one shared slot (two refusals overwrite
  * each other) or a key nobody can find again after a reload.
  */
+export interface DurableDraftCopy<T> extends DurableDraft<T> {
+  key: string;
+  /** Exact stored envelope, before feature readers add presentation fields. */
+  sourceRecord?: DurableDraft<unknown>;
+}
+
+/** All independently kept copies of this exact document part, including old unbound v1 records. */
+export function findDraftCopies<T>(uid: string, docId: string, aggregate: string): DurableDraftCopy<T>[] {
+  return listDraftKeys().flatMap(key => {
+    const address = readDraftAddress(key);
+    if (!address || address.owner !== uid || address.documentId !== docId || address.aggregate !== aggregate) return [];
+    const stored = readDraft<T>(key);
+    return stored ? [{ ...stored, key, sourceRecord: stored }] : [];
+  }).sort((left, right) => draftTime(right.savedAt) - draftTime(left.savedAt) || left.key.localeCompare(right.key));
+}
+
+function draftTime(value: number): number {
+  return Number.isFinite(value) ? value : 0;
+}
+
+/** Logical document discovery; the owning reader uses findDraftCopies for their actual addresses. */
 export function findDraftDocIds(uid: string, aggregate: string): string[] {
-  const store = storage();
-  if (!store) return [];
-  const prefix = `${PREFIX}${uid}:`;
-  const suffix = `:${aggregate}`;
-  return listDraftKeys(store)
-    .filter((key) => key.startsWith(prefix) && key.endsWith(suffix))
-    .map((key) => ({ docId: key.slice(prefix.length, key.length - suffix.length), key }))
-    .sort((a, b) => (readDraft(b.key)?.savedAt ?? 0) - (readDraft(a.key)?.savedAt ?? 0))
-    .map((entry) => entry.docId);
+  const records = listDraftKeys().flatMap(key => {
+    const address = readDraftAddress(key);
+    if (!address || address.owner !== uid || address.aggregate !== aggregate) return [];
+    return [{ documentId: address.documentId, savedAt: readDraft(key)?.savedAt ?? 0 }];
+  }).sort((left, right) => draftTime(right.savedAt) - draftTime(left.savedAt));
+  return [...new Set(records.map(record => record.documentId))];
 }
 
 /** All draft keys currently stored. Used for discovery and cleanup. */
@@ -352,7 +370,7 @@ export function listDraftKeys(store: Storage = storage() as Storage): string[] {
   try {
     for (let i = 0; i < store.length; i += 1) {
       const key = store.key(i);
-      if (key && key.startsWith(PREFIX)) keys.push(key);
+      if (key && isDraftAddress(key)) keys.push(key);
     }
   } catch {
     return [];
@@ -375,7 +393,7 @@ export function listDraftKeys(store: Storage = storage() as Storage): string[] {
 export function clearDraftsForOwner(uid: string): void {
   const store = storage();
   if (!store) return;
-  const owned = listDraftKeys(store).filter((key) => key.startsWith(`${PREFIX}${uid}:`));
+  const owned = listDraftKeys(store).filter((key) => draftBelongsToOwner(key, uid));
   owned.forEach((key) => {
     try {
       store.removeItem(key);

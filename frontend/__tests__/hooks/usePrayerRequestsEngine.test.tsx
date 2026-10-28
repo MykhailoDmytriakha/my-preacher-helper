@@ -1,8 +1,11 @@
 import { act, fireEvent, render as renderComponent, renderHook, screen, within } from '@testing-library/react';
 import React from 'react';
 
+import UnreadableConflictDrafts from '@/components/UnreadableConflictDrafts';
 import { useDataCollection, useDocumentActions } from '@/data-engine/react.client';
 import { usePrayerRequestsEngine } from '@/hooks/usePrayerRequestsEngine';
+import { PRAYER_CORE_AGGREGATE, PRAYER_STATUS_AGGREGATE } from '@/services/prayerRequests.client';
+import { draftKey } from '@/utils/durableDraft';
 import { isStaleWriteError } from '@/services/conflictSafeUpdate.client';
 
 jest.mock('@/data-engine/react.client', () => ({
@@ -26,6 +29,27 @@ function render() {
 }
 
 describe('prayers on the engine', () => {
+  it.each(['core', 'status'] as const)('keeps malformed %s words readable without applying them', kind => {
+    const words = kind === 'core' ? 'Retained prayer words' : 'Retained answer words';
+    const payload = kind === 'core' ? { id: 'p1', updates: { title: {}, description: words } }
+      : { id: 'p1', status: {}, answerText: words };
+    const aggregate = kind === 'core' ? PRAYER_CORE_AGGREGATE : PRAYER_STATUS_AGGREGATE;
+    const key = draftKey('u', 'p1', `conflict:${aggregate}`, 'invalid');
+    const raw = JSON.stringify({ savedAt: 1, value: { payload, actualRevision: 1 } });
+    localStorage.setItem(key, raw);
+    const hook = render();
+    const choices = kind === 'core' ? hook.result.current.saveConflictChoices : hook.result.current.statusConflictChoices;
+    const conflict = kind === 'core' ? hook.result.current.saveConflict : hook.result.current.statusConflict;
+    expect(conflict).toBeNull();
+    expect(choices.unreadableSources).toHaveLength(1);
+    const view = renderComponent(<UnreadableConflictDrafts owner="u" sources={choices.unreadableSources} />);
+    try {
+      expect(screen.getByText(words)).toBeVisible();
+      expect(actions.commit).not.toHaveBeenCalled();
+      expect(localStorage.getItem(key)).toBe(raw);
+    } finally { view.unmount(); hook.unmount(); }
+  });
+
   beforeEach(() => { jest.clearAllMocks(); current = stored; window.localStorage.clear(); });
 
   it('refuses an edit of a field rewritten elsewhere, keeps the document, and keeping mine overwrites on purpose', async () => {

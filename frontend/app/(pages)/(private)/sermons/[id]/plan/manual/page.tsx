@@ -336,6 +336,7 @@ function ManualConspectusContent({ source, readOnly: copyReadOnly = false }: { s
     pendingText: conspectus.pendingText,
     liveNodeIds: livePlanNodes,
     frozen: copyReadOnly,
+    durableState: source.document.state,
   });
   /** Unsaved text whose card is gone — typed here, or left by an earlier session — kept in sight. */
   const orphans = mergeOrphans(
@@ -499,7 +500,8 @@ function ManualConspectusContent({ source, readOnly: copyReadOnly = false }: { s
       {draft.recovered && !readOnly && (
         <PlanDraftRecoveryBar
           subject={JSON.stringify([sermon?.userId, sermonId])}
-          cells={recoveredCells(draft.recovered, sermon)}
+          cells={recoveredCells(draft.recovered, sermon, draft.copies, draft.selectedCopies)}
+          onChoose={draft.selectCopy}
           onRestore={() => {
             conspectus.restoreCells(draft.recovered ?? {});
             draft.accept();
@@ -512,9 +514,9 @@ function ManualConspectusContent({ source, readOnly: copyReadOnly = false }: { s
       subject={JSON.stringify([sermon?.userId, sermonId])}
         cells={orphans}
         readOnly={readOnly}
-        onDiscard={(nodeIds) => {
-          draft.forget(Object.fromEntries(orphans.filter((cell) => nodeIds.includes(cell.id)).map((cell) => [cell.id, cell.text])));
-          conspectus.discardCells(nodeIds);
+        onDiscard={(cells) => {
+          draft.forget(cells);
+          conspectus.discardCells(cells.filter(cell => !cell.copyKey).map(cell => cell.id));
         }}
       />
 

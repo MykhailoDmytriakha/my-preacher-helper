@@ -1,5 +1,5 @@
 import { draftKey, isDraftStorageRefusedFor, readDraft, saveDraft } from '@/utils/durableDraft';
-import { canResumeNewNoteDraft, findNewNoteDrafts, newNoteCreationId, newNoteDraftHref, newNoteDraftId, readNewNoteDraft, retireConfirmedNewNoteDrafts, validNewNoteDraftId } from '@/utils/newNoteDrafts';
+import { canResumeNewNoteDraft, findNewNoteDrafts, findNoteDraftCopies, newNoteCreationId, newNoteDraftHref, newNoteDraftId, readNewNoteDraft, validNewNoteDraftId } from '@/utils/newNoteDrafts';
 
 import type { NoteDraftPayload } from '@/models/studyNoteDraft';
 
@@ -15,6 +15,37 @@ it('discovers both separately started notes, including equal words, newest first
   expect(new Set(discover().map(draft => draft.docId))).toEqual(new Set(['new~A', 'new~B']));
 });
 
+it('finds every separately kept opening of one unfinished new note', () => {
+  put('A', 'Legacy source');
+  saveDraft(draftKey('owner', 'new~A', 'note', 'opening-a'), value('First scoped source'), 'A');
+  saveDraft(draftKey('owner', 'new~A', 'note', 'opening-b'), value('Second scoped source'), 'A');
+  expect(discover().map(copy => copy.value.content).sort()).toEqual(['First scoped source', 'Legacy source', 'Second scoped source']);
+});
+
+it('can resume an owned scoped source without requiring a shared legacy slot', () => {
+  saveDraft(draftKey('owner', 'new~A', 'note', 'opening-a'), value('Scoped unfinished words'), 'A');
+  expect(canResumeNewNoteDraft('owner', 'new~A', 'owner')).toBe(true);
+  expect(canResumeNewNoteDraft('other', 'new~A', 'owner')).toBe(false);
+});
+
+it('maps only owned matching precreate copies to an actual note without rewriting them', () => {
+  put('A', 'Legacy A');
+  saveDraft(draftKey('owner', 'new~A', 'note', 'opening-a'), value('Scoped A'), 'A');
+  saveDraft(draftKey('owner', 'A', 'note', 'active'), value('Actual A'));
+  put('B', 'Other note'); put('A', 'Other owner', 'other');
+  const before = new Map(Object.keys(localStorage).map(key => [key, localStorage.getItem(key)]));
+  expect(findNoteDraftCopies('owner', 'A', 'note').map(copy => copy.value.content).sort()).toEqual(['Actual A', 'Legacy A', 'Scoped A']);
+  expect(findNoteDraftCopies('owner', 'A', 'conflict:note')).toEqual([]);
+  expect(new Map(Object.keys(localStorage).map(key => [key, localStorage.getItem(key)]))).toEqual(before);
+});
+
+it('never selects a foreign physical copy for an owned resume link', () => {
+  put('A', 'Own source');
+  const foreign = draftKey('other', 'new~A', 'note', 'foreign');
+  saveDraft(foreign, value('Foreign source'), 'A');
+  expect(canResumeNewNoteDraft('owner', 'new~A', 'owner', foreign)).toBe(false);
+});
+
 it('keeps the precreate address distinct from the actual document address', () => {
   expect(newNoteDraftId('A')).not.toBe('A');
   expect(newNoteCreationId('new~A')).toBe('A');
@@ -28,7 +59,7 @@ it.each(['A', '../A', 'new~', 'new~A:other', 'new~A/other', 'new~<script>'])('re
 it('discovers the single ambiguous legacy new copy without inventing a target identity', () => {
   saveDraft(draftKey('owner', 'new', 'note'), value('Legacy words'));
   expect(discover()).toEqual([expect.objectContaining({ docId: 'new', value: value('Legacy words') })]);
-  retireConfirmedNewNoteDrafts('owner', new Set(['A']));
+  discover([], ['A']);
   expect(discover()).toHaveLength(1);
 });
 
@@ -41,17 +72,18 @@ it('omits empty visits, but keeps metadata-only work and the other owner isolate
 it('does not present captured pending rows twice and does not retire their backup', () => {
   put('A', 'Pending words');
   expect(discover(['A'])).toEqual([]);
-  retireConfirmedNewNoteDrafts('owner', new Set());
+  discover(['A']);
   expect(readDraft(draftKey('owner', 'new~A', 'note'))?.value).toEqual(value('Pending words'));
 });
 
-it('canonical acceptance retires only the matching precreate source, preserving independent equal words and later actual-id words', () => {
+it('creation identity alone keeps unknown precreate words and preserves independent later copies', () => {
   put('A', 'Same words'); put('B', 'Same words');
   saveDraft(draftKey('owner', 'A', 'note'), value('Later words'), 'A');
-  retireConfirmedNewNoteDrafts('owner', new Set(['A']));
-  expect(readDraft(draftKey('owner', 'new~A', 'note'))).toBeNull();
+  discover([], ['A']);
+  expect(readDraft(draftKey('owner', 'new~A', 'note'))?.value).toEqual(value('Same words'));
   expect(readDraft<NoteDraftPayload>(draftKey('owner', 'A', 'note'))?.value.content).toBe('Later words');
-  expect(discover([], ['A']).map(draft => draft.docId)).toEqual(['new~B']);
+  expect(discover(['A'], ['A']).map(draft => draft.docId)).toEqual(['new~B']);
+  expect(discover([], ['A']).find(draft => draft.docId === 'new~A')?.created).toBe(true);
 });
 
 it('does not treat an ordinary note update or malformed record as an uncreated note', () => {

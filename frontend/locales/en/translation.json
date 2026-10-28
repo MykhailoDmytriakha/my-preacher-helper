@@ -369,7 +369,13 @@
     "title": "Text from last time",
     "description": "This device kept text from an earlier session. It may differ from the current note.",
     "restore": "Restore",
-    "discard": "Discard"
+    "discard": "Discard",
+    "chooseCopy": "Choose saved copy",
+    "preview": "Read this copy",
+    "unreadableTitle": "Some fields in this saved copy could not be read",
+    "unreadableDescription": "You can copy the text. The original copy stays on this device; unreadable fields are not applied.",
+    "copyText": "Copy text",
+    "copyOriginal": "Copy original copy"
   },
   "bible": {
     "toolsAndText": "Tools and text",

@@ -8,6 +8,7 @@ import { useTranslation } from "@locales/useTranslation";
 
 import { planNodeNames } from "./planNodes";
 
+import type { PlanDraftCopy } from "./planDraftTypes";
 import type { Sermon } from "@/models/models";
 
 /** One card offered back: which card it is, what the draft holds, what the server holds now. */
@@ -16,17 +17,22 @@ export interface RecoveredCell {
   name: string;
   recovered: string;
   current: string;
+  choices?: PlanDraftCopy[];
+  selectedKey?: string;
 }
 
 /** The waiting cells in outline order, named, beside what the server holds for each now. */
-export function recoveredCells(recovered: Record<string, string>, sermon: Sermon | null | undefined): RecoveredCell[] {
+export function recoveredCells(recovered: Record<string, string>, sermon: Sermon | null | undefined, copies: PlanDraftCopy[] = [], selected: PlanDraftCopy[] = []): RecoveredCell[] {
   const names = planNodeNames(sermon?.outline);
   const order = Object.keys(names);
   // Both storage shapes, merged the canonical way: a cell only the old shape holds is not "empty".
   const stored = readPlanText(sermon);
   return Object.entries(recovered)
     .sort(([a], [b]) => order.indexOf(a) - order.indexOf(b))
-    .map(([id, text]) => ({ id, name: names[id] ?? id, recovered: text, current: stored[id] ?? "" }));
+    .map(([id, text]) => {
+      const choices = copies.filter(copy => copy.id === id);
+      return { id, name: names[id] ?? id, recovered: text, current: stored[id] ?? "", ...(choices.length > 1 ? { choices, selectedKey: selected.find(copy => copy.id === id)?.key ?? choices[0].key } : {}) };
+    });
 }
 
 /**
@@ -44,13 +50,16 @@ export function PlanDraftRecoveryBar({
   onRestore,
   onDiscard,
   subject,
+  onChoose,
 }: {
   cells: RecoveredCell[];
   onRestore: () => void;
   onDiscard: () => void;
   subject?: unknown;
+  onChoose?: (nodeId: string, key: string) => void;
 }) {
   const { t } = useTranslation();
+  const emptyText = t("plan.draftRecoveryEmpty");
   const { askBeforeDiscard, discardDialog } = useDiscardQuestion('text');
   const current = useRef({ cells, subject });
   current.current = { cells, subject };
@@ -97,12 +106,23 @@ export function PlanDraftRecoveryBar({
         {cells.map((cell) => (
           <li key={cell.id} className="space-y-1">
             <p className="font-medium text-gray-900 dark:text-gray-100">{cell.name}</p>
+            {cell.choices && onChoose && <label className="block">
+              <span>{t("unsavedDraft.chooseCopy")}</span>
+              <select
+                className="mt-1 block w-full rounded-lg border border-amber-300 bg-white px-2 py-1 dark:bg-gray-900"
+                value={cell.selectedKey ?? ""}
+                onChange={event => onChoose(cell.id, event.target.value)}
+              >
+                {cell.choices.map((copy, index) => <option key={copy.key} value={copy.key}>{index + 1}. {copy.text.slice(0, 100) || emptyText}</option>)}
+              </select>
+            </label>}
+
             <p className="text-xs text-amber-900/80 dark:text-amber-200/70">{t("plan.draftRecoveryFromDraft")}</p>
-            <p className={box}>{cell.recovered || t("plan.draftRecoveryEmpty")}</p>
+            <p className={box}>{cell.recovered || emptyText}</p>
             <p className="text-xs text-amber-900/80 dark:text-amber-200/70">
               {cell.current === cell.recovered ? t("plan.draftRecoverySameOnServer") : t("plan.draftRecoveryOnServer")}
             </p>
-            {cell.current !== cell.recovered && <p className={box}>{cell.current || t("plan.draftRecoveryEmpty")}</p>}
+            {cell.current !== cell.recovered && <p className={box}>{cell.current || emptyText}</p>}
           </li>
         ))}
       </ul>

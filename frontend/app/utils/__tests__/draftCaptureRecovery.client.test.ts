@@ -16,6 +16,23 @@ function setup() {
 beforeEach(() => { localStorage.clear(); jest.restoreAllMocks(); });
 
 describe('canonical note draft capture recovery', () => {
+  it.each([false, true])('retires only its scoped copy without depending on a legacy slot: malformedLegacy=%s', async malformed => {
+    const first = draftKey(owner, resource.id, 'note', 'opening-a');
+    const second = draftKey(owner, resource.id, 'note', 'opening-b');
+    saveDraft(first, words, undefined, true);
+    saveDraft(second, { ...words, content: 'Other unfinished words' });
+    const other = localStorage.getItem(second);
+    const legacy = malformed ? '{' : JSON.stringify({ value: { ...words, content: 'Older unbound words' }, savedAt: 1 });
+    localStorage.setItem(key, legacy);
+    const scope = prepareDraftCapture(first, words, resource)!;
+    const port: DraftCapturePort = { listWriteCaptures: async () => [{ owner, resource, scope, requestId: 'scoped', value: words }],
+      releaseWriteCapture: jest.fn(async () => undefined), subscribeSavedWork: () => () => undefined };
+    await reconcileCapturedDrafts(owner, port);
+    expect(readDraft(first)).toBeNull();
+    expect(localStorage.getItem(second)).toBe(other);
+    expect(localStorage.getItem(key)).toBe(legacy);
+    expect(port.releaseWriteCapture).toHaveBeenCalledWith(scope, 'scoped');
+  });
   it('retires a bound copy after its capturing page is gone, then releases only that request', async () => {
     const { scope, port } = setup(); const notified = jest.fn(); const stop = subscribeDraftCapture(notified);
     try {
@@ -101,13 +118,14 @@ describe('canonical note draft capture recovery', () => {
     active = false; release([captured]); await pending;
     expect(localStorage.getItem(key)).toBe(before); expect(port.releaseWriteCapture).not.toHaveBeenCalled();
   });
-  it.each([false, true])('follows a reserved creation before or after adoption (moved=%s)', async moved => {
-    const source = draftKey(owner, 'new~note', 'note'); saveDraft(source, words, resource.id, true);
+  it.each([[false, undefined], [true, undefined], [false, 'opening'], [true, 'opening']] as const)('follows a reserved creation before or after adoption (moved=%s,writer=%s)', async (moved, writerId) => {
+    const source = draftKey(owner, 'new~note', 'note', writerId); saveDraft(source, words, resource.id, true);
+    const destination = draftKey(owner, resource.id, 'note', writerId);
     const scope = prepareDraftCapture(source, words, resource)!;
-    if (moved) moveDraft(source, key, resource.id);
+    if (moved) moveDraft(source, destination, resource.id);
     const port: DraftCapturePort = { listWriteCaptures: async () => [{ owner, resource, scope, requestId: 'create', value: words }],
       releaseWriteCapture: jest.fn(async () => undefined), subscribeSavedWork: () => () => undefined };
-    await reconcileCapturedDrafts(owner, port); expect(readDraft(source)).toBeNull(); expect(readDraft(key)).toBeNull();
+    await reconcileCapturedDrafts(owner, port); expect(readDraft(source)).toBeNull(); expect(readDraft(destination)).toBeNull();
     expect(port.releaseWriteCapture).toHaveBeenCalledWith(scope, 'create');
   });
   it('retains capture ownership when a created note sheds its precreate tag at its actual address', async () => {

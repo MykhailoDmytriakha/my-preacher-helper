@@ -9,7 +9,9 @@ import { toast } from 'sonner';
 
 import OutlineBoard from '@/components/plan-editor/OutlineBoard';
 import { useOutlineConflict } from '@/components/plan-editor/useOutlineConflict';
+import SavedDraftCopyPicker from '@/components/SavedDraftCopyPicker';
 import { useStructureWriter } from '@/components/sermon/structureWriter';
+import UnreadableConflictDrafts from '@/components/UnreadableConflictDrafts';
 import { useModalLayer } from '@/hooks/useModalLayer';
 import { usePanelPosition } from '@/hooks/usePanelPosition';
 import { usePlanTemplates } from '@/hooks/usePlanTemplates';
@@ -168,7 +170,8 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
    * the question come back.
    */
   const {record:storedCollision,ready:conflictReady,get:getConflict,ask:askConflict,edit:editConflict,
-    select:selectConflict,clear:clearConflict,retire:retireConflict,requireWholeReview} = useOutlineConflict(sermon.userId,sermon.id);
+    select:selectConflict,clear:clearConflict,retire:retireConflict,requireWholeReview,
+    choices:conflictChoices,choose:chooseConflictCopy,activation:conflictActivation} = useOutlineConflict(sermon.userId,sermon.id);
   const collision = storedCollision && storedCollision.payload.resolution !== 'local'
     ? {serverOutline:storedCollision.payload.serverOutline} : null;
   const needsWholeChoice = Boolean(collision && storedCollision && (storedCollision.payload.reviewWhole
@@ -208,7 +211,7 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
     };
     // Opening is an identity boundary, not an invitation to replace later typing from props.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[isOpen,sermon.userId,sermon.id,conflictReady,saveQueue]);
+  },[isOpen,sermon.userId,sermon.id,conflictReady,saveQueue,conflictActivation]);
 
 
   useEffect(() => {
@@ -541,6 +544,8 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
           </button>
         </header>
 
+        <UnreadableConflictDrafts owner={sermon.userId} sources={conflictChoices.unreadableSources} failed={conflictChoices.unreadableFailed} />
+
         {/* A refusal preserves both copies. New records allow a scoped choice; older
             records without an ancestor require an explicit whole-structure review. */}
         {collision && (
@@ -555,6 +560,14 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
               {needsWholeChoice ? t('planEditor.wholeStructureDescription')
                 : t('freshness.conflictDescription', { entity: t('freshness.entitySermon') })}
             </p>
+            <SavedDraftCopyPicker
+              options={conflictChoices.copies.map(copy => ({ key: copy.key,
+                label: [...copy.value.payload.outline.introduction, ...copy.value.payload.outline.main, ...copy.value.payload.outline.conclusion]
+                  .map(point => point.text).join(' · ') || t('plan.draftRecoveryEmpty') }))}
+              selectedKey={conflictChoices.selectedKey}
+              onChange={chooseConflictCopy}
+              className="mt-3 block"
+            />
             <div className="mt-3 flex flex-wrap gap-2">
               <button
                 type="button"

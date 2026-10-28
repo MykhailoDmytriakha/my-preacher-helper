@@ -42,10 +42,12 @@ import { apiClient } from '@/utils/apiClient';
 import { textLanguage } from '@/utils/appLocale';
 import { interfaceLanguageHeaders } from '@/utils/authenticatedRequest';
 import { referenceFromTyped } from '@/utils/bibleLink';
+import { newClientId } from '@/utils/clientId';
 import { serializeContent } from '@/utils/contentFingerprint';
 import { formatDateForLocale } from '@/utils/dateFormatter';
 import { studyNoteLanguage } from '@/utils/documentLanguage';
 import { findSectionById } from '@/utils/markdownSections';
+import { findNoteDraftCopies } from '@/utils/newNoteDrafts';
 import { awaitAcceptance } from '@/utils/recoverableWrite';
 import { studyNoteSearchText } from '@/utils/scriptureReference';
 import { sameScriptureReference, withNoteReferenceBibles } from '@/utils/scriptureReferenceNumbering';
@@ -57,6 +59,7 @@ import { useTranslation } from '@locales/useTranslation';
 
 import AnalysisConfirmationModal, { AnalysisResultData } from '../AnalysisConfirmationModal';
 import SermonsBuiltOnNote from '../components/SermonsBuiltOnNote';
+import UnreadableNoteDrafts from '../components/UnreadableNoteDrafts';
 import { STUDIES_INPUT_SHARED_CLASSES } from '../constants';
 import ScriptureRefBadge from '../ScriptureRefBadge';
 import ScriptureRefPicker from '../ScriptureRefPicker';
@@ -64,6 +67,7 @@ import TagCatalogModal from '../TagCatalogModal';
 
 import { NoteAiMenu, type NoteAiSource, type NoteAiTarget } from './NoteAiMenu';
 import { type NoteDraftPayload } from './noteDraft';
+import { NoteDraftRecovery } from './NoteDraftRecovery';
 import { NoteMobileSheet } from './NoteMobileSheet';
 import { NoteSidePanel } from './NoteSidePanel';
 import { RetainedNoteDraft } from './RetainedNoteDraft';
@@ -631,17 +635,21 @@ function noteScrollLayout(wide: boolean, navHeight: number, belowHeader: number,
 
 export default function StudyNoteEditorPage() {
     const opening = useNewNoteOpening();
-    return <NoteEditor key={opening.key} openingDraftId={opening.draftDocId} />;
+    return <>
+        <UnreadableNoteDrafts owner={opening.owner} documentId={opening.documentId} />
+        <NoteEditor key={opening.key} openingDraftId={opening.draftDocId} openingRecoveryKey={opening.recoveryKey} />
+    </>;
 }
 
-function NoteEditor({ openingDraftId }: { openingDraftId: string }) {
+function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: string; openingRecoveryKey?: string | null }) {
     const { t } = useTranslation();
     const router = useRouter();
     const routeId = useRouteId();
     const [createdNoteId, setCreatedNoteId] = useState<string | null>(null);
+    const [draftWriterId] = useState(newClientId);
     const { uid, notes, noteDelivery, notePresence, refetch, confirmedDictationSources, confirmedCreationIds, createNote, updateNote, deleteNote, loading: notesLoading } = useStudyNotes();
     const { creationId, recordingContextId, creationTargetId, noteId, isNew, draftDocId } = useNewStudyNoteDraft({
-        uid, routeId, createdNoteId, openingDraftId, notes, confirmedCreationIds,
+        uid, routeId, createdNoteId, openingDraftId, openingRecoveryKey, notes, confirmedCreationIds,
     });
 
     const { tags: tagData } = useTags(uid);
@@ -761,11 +769,13 @@ function NoteEditor({ openingDraftId }: { openingDraftId: string }) {
         [title, content, tags, scriptureRefs, type, dictationSourceIds, recordingSourceIds]
     );
 
-    const { recovered, acceptRecovered, discardRecovered, markCaptured, markSaved } = useDurableDraft<NoteDraftPayload>({
+    const { recovered, recoveredKey, recoveries, selectRecovered, acceptRecovered, discardRecovered, markCaptured, markSaved } = useDurableDraft<NoteDraftPayload>({
         uid,
         docId: draftDocId,
+        writerId: draftWriterId,
         creationTargetId,
-        confirmedCreationIds,
+        findCopies: findNoteDraftCopies,
+        preferredRecoveryKey: openingRecoveryKey,
         recoveryIdentity: routeId === 'new' ? openingDraftId : noteId,
         aggregate: 'note',
         value: draftPayload,
@@ -779,6 +789,7 @@ function NoteEditor({ openingDraftId }: { openingDraftId: string }) {
         captureRecordingHandoff: () => voiceHandoffRef.current?.(),
         creationId,
         draftDocId,
+        draftWriterId,
         noteId, isNew, isInitialized, existingNote, title, content, tags, scriptureRefs, type, dictationSourceIds, recordingSourceIds,
         updateNote, createNote, uid, setCreatedNoteId, t, baselineRef,
         revisionRef: serverRevisionRef,
@@ -811,6 +822,13 @@ function NoteEditor({ openingDraftId }: { openingDraftId: string }) {
         () => (recoveredDraft && !isRecordingOnlyNoteDraft(recoveredDraft) && !sameNoteDraft(recoveredDraft, draftPayload) ? recoveredDraft : null),
         [recoveredDraft, draftPayload]
     );
+
+    // A matching first copy must not hide a different unfinished version.
+    useEffect(() => {
+        if (!recoveredDraft || !sameNoteDraft(recoveredDraft, draftPayload)) return;
+        const alternative = recoveries.find(copy => !sameNoteDraft(withNoteReferenceBibles(copy.value, bibleLocale), draftPayload));
+        if (alternative) selectRecovered(alternative.key);
+    }, [recoveredDraft, draftPayload, recoveries, bibleLocale, selectRecovered]);
 
     const editorIsDirty = useMemo(
         () => (confirmedDraft ? !sameNoteDraft(confirmedDraft, draftPayload) : false),
@@ -970,8 +988,8 @@ function NoteEditor({ openingDraftId }: { openingDraftId: string }) {
 
     const { confirm, confirmDialog } = useConfirm();
     const { askBeforeDiscard, discardDialog, withdraw } = useDiscardQuestion('text');
-    const recoveredChoice = useRef({ uid, noteId, recovered });
-    recoveredChoice.current = { uid, noteId, recovered };
+    const recoveredChoice = useRef({ uid, noteId, recovered, recoveredKey });
+    recoveredChoice.current = { uid, noteId, recovered, recoveredKey };
     const conflictChoice = JSON.stringify({ uid, noteId, local: draftPayload, remote: rowPayload, saveConflict, isEditing });
     const currentConflictChoice = useRef(conflictChoice);
     currentConflictChoice.current = conflictChoice;
@@ -979,9 +997,10 @@ function NoteEditor({ openingDraftId }: { openingDraftId: string }) {
     const forgetRecovered = async () => {
         if (!recovered) return;
         const shown = JSON.stringify(recovered);
+        const shownKey = recoveredKey;
         await askBeforeDiscard(true, discardRecovered, () => {
             const current = recoveredChoice.current;
-            return current.uid === uid && current.noteId === noteId && JSON.stringify(current.recovered) === shown;
+            return current.uid === uid && current.noteId === noteId && current.recoveredKey === shownKey && JSON.stringify(current.recovered) === shown;
         });
     };
     const acceptStoredNote = () => askBeforeDiscard(true, () => {
@@ -1248,34 +1267,9 @@ function NoteEditor({ openingDraftId }: { openingDraftId: string }) {
                 {/* Text that was typed but never confirmed saved — a closed tab, a
                     crash or a failed write. Offered, never applied silently: a stale
                     draft must not overwrite text edited later on another device. */}
-                {unsavedRecovery && (
-                    <div className="mb-2 flex flex-col gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm dark:border-amber-500/40 dark:bg-amber-500/10 sm:flex-row sm:items-center sm:justify-between">
-                        <div className="min-w-0">
-                            <p className="font-medium text-amber-900 dark:text-amber-200">
-                                {t('unsavedDraft.title')}
-                            </p>
-                            <p className="mt-0.5 text-amber-800/80 dark:text-amber-200/70">
-                                {t('unsavedDraft.description')}
-                            </p>
-                        </div>
-                        <div className="flex shrink-0 gap-2">
-                            <button
-                                type="button"
-                                onClick={applyRecovered}
-                                className="rounded-lg bg-amber-600 px-3 py-1.5 font-medium text-white transition-colors hover:bg-amber-700"
-                            >
-                                {t('unsavedDraft.restore')}
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => { void forgetRecovered(); }}
-                                className="rounded-lg border border-amber-300 px-3 py-1.5 font-medium text-amber-900 transition-colors hover:bg-amber-100 dark:border-amber-500/40 dark:text-amber-200 dark:hover:bg-amber-500/20"
-                            >
-                                {t('unsavedDraft.discard')}
-                            </button>
-                        </div>
-                    </div>
-                )}
+                {unsavedRecovery && <NoteDraftRecovery draft={unsavedRecovery} copies={recoveries}
+                    selectedKey={recoveredKey ?? ''} onSelect={selectRecovered} onRestore={applyRecovered}
+                    onDiscard={() => { void forgetRecovered(); }} />}
         </>
     );
 
@@ -1323,7 +1317,9 @@ function NoteEditor({ openingDraftId }: { openingDraftId: string }) {
     if (unavailable) {
         const kept = unsavedRecovery ?? (isInitialized ? draftPayload : null);
         return <RecordUnavailable presence={presence} checking={notesLoading} pageLoading={notesLoading && !kept} onBack={handleBack} onRetry={refetch}>
-            {kept && <RetainedNoteDraft draft={kept} />}
+            {unsavedRecovery ? <NoteDraftRecovery readOnly draft={unsavedRecovery} copies={recoveries}
+                selectedKey={recoveredKey ?? ''} onSelect={selectRecovered} onRestore={applyRecovered}
+                onDiscard={() => { void forgetRecovered(); }} /> : kept && <RetainedNoteDraft draft={kept} />}
         </RecordUnavailable>;
     }
 

@@ -2,7 +2,7 @@ import React from 'react';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 
 import PlanEditorModal from '@/components/plan-editor/PlanEditorModal';
-import { draftKey, saveDraft } from '@/utils/durableDraft';
+import { draftKey, findDraftCopies, saveDraft } from '@/utils/durableDraft';
 import { OutlineCollisionError } from '@/services/sermons.client';
 import { createEngineStructureWriter } from '@/(pages)/(private)/sermons/[id]/structure/useEngineStructureWriter';
 import { StructureWriterContext, type StructureWriter } from '@/components/sermon/structureWriter';
@@ -296,7 +296,7 @@ describe('keep mine after a question about one point', () => {
     expect(server.main[0].subPoints?.map(item => item.id)).toEqual(['s','new']);
   });
 
-  it('shows a new refusal to the reopened editor when its resumed choice was waiting for an older capture', async () => {
+  it('does not resurrect an older refusal after the reopened editor already captured the latest words', async () => {
     let rejectOld:((error:Error) => void) | undefined;
     mockWriter=createEngineStructureWriter({update:async apply => {
       const next=apply({...sermon,outline:server} as unknown as DocumentData) as unknown as Sermon;
@@ -315,10 +315,40 @@ describe('keep mine after a question about one point', () => {
     fireEvent.click(screen.getByText('edit'));
     await act(async () => {await jest.advanceTimersByTimeAsync(120);});
     await act(async () => {rejectOld!(new OutlineCollisionError(['p1'],server,4));await Promise.resolve();});
+    expect(screen.queryByText('freshness.conflictKeepMine')).not.toBeInTheDocument();
+    expect(screen.getByTestId('board')).toHaveTextContent('Continued after reopening|Mercy, on the phone');
+    expect(server.main[0].text).toBe('Continued after reopening');
+    expect(Object.keys(localStorage).filter(key => key.includes('outlineConflict'))).toEqual([]);
+  });
+
+  it('shows the latest capture refusal after reopening while an older capture still waits', async () => {
+    const failures:Array<(error:Error) => void>=[];
+    mockWriter=createEngineStructureWriter({update:async apply => {
+      const next=apply({...sermon,outline:server} as unknown as DocumentData) as unknown as Sermon;
+      // The canonical draft owns the merge immediately; disk completion still waits.
+      server=next.outline!;
+      await new Promise<void>((_resolve,reject) => {failures.push(reject);});
+    }},'u1');
+    const view=renderEditor(<PlanEditorModal isOpen sermon={sermon} onClose={() => undefined} />);
+    fireEvent.click(screen.getByText('edit'));
+    await act(async () => {await jest.advanceTimersByTimeAsync(120);});
+    fireEvent.click(screen.getByText('freshness.conflictKeepMine'));
+    await act(async () => {await jest.advanceTimersByTimeAsync(120);});
+    expect(failures).toHaveLength(1);
+    view.rerender(<PlanEditorModal isOpen={false} sermon={{...sermon,outline:server}} onClose={() => undefined} />);
+    view.rerender(<PlanEditorModal isOpen sermon={{...sermon,outline:server}} onClose={() => undefined} />);
+    mockNextEdit=rewrite('p1','Continued after reopening');
+    fireEvent.click(screen.getByText('edit'));
+    await act(async () => {await jest.advanceTimersByTimeAsync(120);});
+    expect(failures).toHaveLength(3);
+    await act(async () => {failures[0](new OutlineCollisionError(['p1'],server,4));await Promise.resolve();});
+    expect(screen.queryByText('freshness.conflictKeepMine')).not.toBeInTheDocument();
+    await act(async () => {failures[2](new OutlineCollisionError(['p1'],server,5));await Promise.resolve();});
     expect(screen.getByText('freshness.conflictKeepMine')).toBeInTheDocument();
     expect(screen.getByTestId('board')).toHaveTextContent('Continued after reopening|Mercy, on the phone');
-    const key=Object.keys(localStorage).find(key => key.includes('outlineConflict'))!;
-    expect(JSON.parse(localStorage.getItem(key)!).value.payload.resolution).toBeUndefined();
+    const copies=findDraftCopies<{payload:{outline:SermonOutline;resolution?:'local'}}>('u1','s1','conflict:outlineConflict');
+    expect(copies.some(copy => copy.value.payload.resolution===undefined
+      && copy.value.payload.outline.main[0].text==='Continued after reopening')).toBe(true);
   });
 
 });

@@ -7,21 +7,23 @@ import { useClipboard } from "@/hooks/useClipboard";
 import { useDiscardQuestion } from "@/hooks/useConfirm";
 import { useTranslation } from "@locales/useTranslation";
 
+import { planOrphanIdentity, type PlanOrphanCell } from "./planDraftTypes";
+
 /** Unsaved, non-empty cells whose node the outline no longer has. */
 export function orphanedCells(
   contentByNodeId: Record<string, string>,
   modifiedNodeIds: Record<string, boolean>,
   liveNodeIds: Set<string>
-): { id: string; text: string }[] {
+): PlanOrphanCell[] {
   return Object.keys(modifiedNodeIds)
     .filter((nodeId) => modifiedNodeIds[nodeId] && !liveNodeIds.has(nodeId) && (contentByNodeId[nodeId] ?? "").trim() !== "")
     .map((nodeId) => ({ id: nodeId, text: contentByNodeId[nodeId] }));
 }
 
 /** The screen's orphans first, then last-copy drafts a previous session left for gone nodes. */
-export function mergeOrphans(inSession: { id: string; text: string }[], stored: { id: string; text: string }[]): { id: string; text: string }[] {
-  const seen = new Set(inSession.map((cell) => cell.id));
-  return [...inSession, ...stored.filter((cell) => !seen.has(cell.id))];
+export function mergeOrphans(inSession: PlanOrphanCell[], stored: PlanOrphanCell[]): PlanOrphanCell[] {
+  // Equal words can still belong to separate unfinished copies.
+  return [...inSession, ...stored];
 }
 
 /**
@@ -37,8 +39,8 @@ export function OrphanedPlanText({
   readOnly = false,
   subject,
 }: {
-  cells: { id: string; text: string }[];
-  onDiscard: (nodeIds: string[]) => void;
+  cells: PlanOrphanCell[];
+  onDiscard: (cells: PlanOrphanCell[]) => void;
   /** A copy for reading: the words stay in sight and copyable, and letting them go waits. */
   readOnly?: boolean;
   subject?: unknown;
@@ -49,10 +51,10 @@ export function OrphanedPlanText({
   current.current = { cells, readOnly, subject };
   const shownCells = JSON.stringify(cells);
   useEffect(() => { withdraw(); }, [subject, readOnly, shownCells, withdraw]);
-  const discard = (cell: { id: string; text: string }) => {
-    void askBeforeDiscard(true, () => onDiscard([cell.id]), () =>
+  const discard = (cell: PlanOrphanCell) => {
+    void askBeforeDiscard(true, () => onDiscard([cell]), () =>
       current.current.subject === subject && !current.current.readOnly
-      && current.current.cells.some(candidate => candidate.id === cell.id && candidate.text === cell.text));
+      && current.current.cells.some(candidate => planOrphanIdentity(candidate) === planOrphanIdentity(cell) && candidate.text === cell.text));
   };
 
   const { copyToClipboard } = useClipboard({
@@ -71,7 +73,7 @@ export function OrphanedPlanText({
       <p className="mt-0.5 text-amber-800/80 dark:text-amber-200/70">{t("plan.orphanedBody")}</p>
       <ul className="mt-3 space-y-3">
         {cells.map((cell) => (
-          <li key={cell.id} className="space-y-2">
+          <li key={planOrphanIdentity(cell)} className="space-y-2">
             <p className="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-white/70 px-3 py-2 text-gray-900 dark:bg-black/20 dark:text-gray-100">{cell.text}</p>
             <div className="flex flex-wrap gap-2">
               <button

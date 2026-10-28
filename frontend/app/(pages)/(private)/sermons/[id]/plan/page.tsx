@@ -271,6 +271,7 @@ function PlanPageContent({ source, readOnly = false }: { source: SermonSource; r
     pendingText: pendingPlanCells.text,
     liveNodeIds: livePlanNodes,
     frozen: readOnly,
+    durableState: source.document.state,
   });
   /** Unsaved cells the person let go after seeing them (their node was removed elsewhere). */
   const discardPlanCells = useCallback((nodeIds: string[]) => {
@@ -951,9 +952,9 @@ function PlanPageContent({ source, readOnly = false }: { source: SermonSource; r
       subject={JSON.stringify([sermon?.userId, sermonId])}
       cells={planOrphans}
       readOnly={readOnly}
-      onDiscard={(nodeIds) => {
-        planDraft.forget(Object.fromEntries(planOrphans.filter((cell) => nodeIds.includes(cell.id)).map((cell) => [cell.id, cell.text])));
-        discardPlanCells(nodeIds);
+      onDiscard={(cells) => {
+        planDraft.forget(cells);
+        discardPlanCells(cells.filter(cell => !cell.copyKey).map(cell => cell.id));
       }}
     />
   );
@@ -1094,7 +1095,8 @@ function PlanPageContent({ source, readOnly = false }: { source: SermonSource; r
       {planDraft.recovered && !readOnly && (
         <PlanDraftRecoveryBar
           subject={JSON.stringify([sermon?.userId, sermonId])}
-          cells={recoveredCells(planDraft.recovered, sermon)}
+          cells={recoveredCells(planDraft.recovered, sermon, planDraft.copies, planDraft.selectedCopies)}
+          onChoose={planDraft.selectCopy}
           onRestore={() => {
             restorePlanCells(planDraft.recovered ?? {});
             planDraft.accept();

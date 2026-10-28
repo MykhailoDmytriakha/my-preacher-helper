@@ -4,6 +4,7 @@ import React from 'react';
 
 import '@testing-library/jest-dom';
 import ManualConspectusPage from '@/(pages)/(private)/sermons/[id]/plan/manual/page';
+import { findDraftCopies } from '@/utils/durableDraft';
 import AiPlanPage from '@/(pages)/(private)/sermons/[id]/plan/page';
 
 import type { Sermon } from '@/models/models';
@@ -23,6 +24,8 @@ import type { Sermon } from '@/models/models';
 const writes: string[] = [];
 let mockSermon: Record<string, unknown> | null = null;
 let mockReadOnly = true;
+let mockDurable = false;
+beforeEach(() => { mockDurable = false; });
 let mockSearchParams = new URLSearchParams();
 
 const refuse = (name: string) => jest.fn(() => {
@@ -36,7 +39,8 @@ jest.mock('@/data-engine/react.client', () => ({
   DataDocumentProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   useDataEngine: () => ({ owner: 'user-1' }),
   useDataDocument: () => ({
-    data: mockSermon, confirmed: mockReadOnly ? null : mockSermon, remote: null, state: null, status: null,
+    data: mockSermon, confirmed: mockReadOnly ? null : mockSermon, remote: null, status: null,
+    state: mockDurable ? { durable: true, checkpoint: { confirmed: { resource: { collection: 'sermons', id: 'sermon-1' } }, draft: mockSermon } } : null,
     loading: false, readOnly: mockReadOnly, copySource: mockReadOnly ? 'server' : null,
     readOnlyReason: null, error: null,
     edit: refuse('edit'), update: refuse('update'), commit: refuse('commit'), save: refuse('save'),
@@ -386,7 +390,11 @@ describe('what a copy for reading leaves untouched', () => {
  * then confirmed must be retired, not offered back as if it were lost.
  */
 describe('drafts across copy and editor', () => {
-  const draftOf = (nodeId: string) => JSON.parse(localStorage.getItem(`draft:v1:user-1:sermon-1:plan:${nodeId}`) || 'null')?.value;
+  const draftOf = (nodeId: string) => {
+    const copies = findDraftCopies<string>('user-1', 'sermon-1', `plan:${nodeId}`);
+    expect(copies.length).toBeLessThanOrEqual(1);
+    return copies[0]?.value;
+  };
   const switchTo = (view: ReturnType<typeof renderPage>, Page: React.ComponentType) => {
     act(() => { view.rerender(<QueryClientProvider client={new QueryClient()}><Page /></QueryClientProvider>); });
   };
@@ -427,7 +435,7 @@ describe('drafts across copy and editor', () => {
 
   // AI plan only: the hand-written plan offers a confirmed draft back after any remount, at HEAD too
   // (BUGS.md, «Подтверждённый черновик может остаться…»).
-  it.each([['AI plan', AiPlanPage]])('retires its own draft once the server confirms it, even across a copy (%s)', (_name, Page) => {
+  it.each([['AI plan', AiPlanPage]])('retires its own exact words after a durable engine handoff, even across a copy (%s)', (_name, Page) => {
     localStorage.setItem('outbox:v1:intent', JSON.stringify({ id: 'intent', uid: 'user-1', collection: 'sermons', docId: 'sermon-1',
       aggregate: 'plan', patch: { 'planText.p1': 'Queued words' }, baseRevision: 0, status: 'migration-required', savedAt: Date.now() }));
     mockSermon = sermonFixture({ planText: { p1: 'Queued words' } } as Partial<Sermon>);
@@ -443,7 +451,8 @@ describe('drafts across copy and editor', () => {
     // Still queued, so still owed: a copy on screen confirms nothing.
     expect(draftOf('p1')).toBe('Queued words');
     localStorage.removeItem('outbox:v1:intent');
-    // The editor's document is a new value, not the copy object.
+    // Supply the public durable checkpoint, not just disappearance from a legacy queue.
+    mockDurable = true;
     mockReadOnly = false;
     mockSermon = sermonFixture({ planText: { p1: 'Queued words' } } as Partial<Sermon>);
     switchTo(view, Page);
@@ -455,8 +464,8 @@ describe('drafts across copy and editor', () => {
     expect(draftOf('p1')).toBeUndefined();
   });
 
-  /** Codex round 3: the queue drains while a copy is shown in the preaching view, then the person leaves it. */
-  it('does not offer back a draft the server confirmed while the AI plan was preached from a copy', () => {
+  /** A drained legacy queue alone cannot prove acceptance of this opening's exact words. */
+  it('retains a draft without an exact durable checkpoint when the legacy queue drains behind a read-only copy', () => {
     localStorage.setItem('outbox:v1:intent', JSON.stringify({ id: 'intent', uid: 'user-1', collection: 'sermons', docId: 'sermon-1',
       aggregate: 'plan', patch: { 'planText.p1': 'Queued words' }, baseRevision: 0, status: 'migration-required', savedAt: Date.now() }));
     mockSearchParams = new URLSearchParams('planView=preaching');
@@ -481,8 +490,8 @@ describe('drafts across copy and editor', () => {
     switchTo(view, AiPlanPage);
     act(() => { jest.advanceTimersByTime(350); });
 
-    expect(screen.queryByText('plan.draftRecoveryRestore')).toBeNull();
-    expect(draftOf('p1')).toBeUndefined();
+    expect(screen.getByText('plan.draftRecoveryRestore')).toBeInTheDocument();
+    expect(draftOf('p1')).toBe('Queued words');
   });
 });
 
@@ -535,7 +544,7 @@ describe('a device draft of a queued cell', () => {
     const view = renderPage(<Page />);
     act(() => { jest.advanceTimersByTime(350); });
     view.unmount();
-    expect(JSON.parse(window.localStorage.getItem(key)!).value).toBe('Queued words only');
+    expect(findDraftCopies<string>('user-1', 'sermon-1', 'plan:p1').map(copy => copy.value)).toEqual(['Queued words only']);
   });
 });
 

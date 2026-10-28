@@ -1,3 +1,5 @@
+import { draftKey } from '@/utils/durableDraft';
+
 import { discoverLegacyRecovery, exportLegacyRecovery } from '../legacyRecovery.client';
 
 const entry = { id: 'old', uid: 'owner', collection: 'sermons', docId: 'sermon', aggregate: 'core', patch: { title: 'my title' }, expectedBaseline: { title: 'old' }, baseRevision: 1, status: 'migration-required', savedAt: 20 };
@@ -28,6 +30,25 @@ describe('legacy recovery discovery', () => {
     expect(discoverLegacyRecovery('owner', { resource: { collection: 'groups', id: 'sermon' } })).toEqual([]);
     expect(discoverLegacyRecovery('owner', { resource: { collection: 'sermons', id: 'other' } })).toEqual([]);
     expect(() => discoverLegacyRecovery('owner:ambiguous')).toThrow('Ambiguous');
+  });
+  it('discovers and exports scoped copies beside legacy drafts without crossing owner or resource', () => {
+    const resource = { collection: 'studyNotes', id: 'note' };
+    const first = draftKey('owner', 'note', 'note', 'first');
+    const second = draftKey('owner', 'note', 'note', 'second');
+    const legacy = draftKey('owner', 'note', 'note');
+    const raw = JSON.stringify({ value: { content: 'First unfinished words' }, savedAt: 1, unknown: 'Kept exact' }, null, 3);
+    localStorage.setItem(first, raw);
+    localStorage.setItem(second, JSON.stringify({ value: { content: 'Second unfinished words' }, savedAt: 2 }));
+    localStorage.setItem(legacy, JSON.stringify({ value: { content: 'Old unbound words' }, savedAt: 0 }));
+    for (const [owner, documentId, aggregate] of [['other', 'note', 'note'], ['owner', 'other-note', 'note'], ['owner', 'note', 'conflict:note']]) {
+      localStorage.setItem(draftKey(owner, documentId, aggregate, 'outside'), JSON.stringify({ value: 'Outside this choice' }));
+    }
+    const sources = discoverLegacyRecovery('owner', { resource, draftAggregates: ['note'] });
+    expect(sources.map(source => source.id).sort()).toEqual([legacy, first, second].sort());
+    const found = sources.find(source => source.id === first)!;
+    expect(found).toMatchObject({ owner: 'owner', documentId: 'note', aggregate: 'note', resource, importable: false });
+    expect(exportLegacyRecovery(found, 'owner')).toBe(raw);
+    expect(localStorage.getItem(first)).toBe(raw);
   });
   it('keeps drafts separate until the owning feature explicitly supplies their collection mapping', () => {
     localStorage.setItem('draft:v1:owner:sermon:preparation', JSON.stringify({ value: { text: 'unsent' }, savedAt: 10 }));

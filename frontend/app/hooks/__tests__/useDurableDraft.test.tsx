@@ -1,7 +1,7 @@
 import { act, renderHook } from '@testing-library/react';
 
 import { useDurableDraft, type UseDurableDraftOptions } from '@/hooks/useDurableDraft';
-import { draftKey, moveDraft, readDraft, saveDraft } from '@/utils/durableDraft';
+import { draftKey, moveDraft, readDraft, retireDraftCapture, saveDraft } from '@/utils/durableDraft';
 
 const KEY = draftKey('uid-1', 'note-1', 'note');
 
@@ -28,6 +28,64 @@ describe('useDurableDraft', () => {
 
   afterEach(() => {
     jest.useRealTimers();
+  });
+
+  it.each(['server acceptance', 'explicit capture', 'capture event'] as const)(
+    'keeps an unselected equal-value physical copy after %s of the adopted copy', mode => {
+      const adoptedKey = draftKey('uid-1', 'note-1', 'note', 'earlier-opening');
+      const otherKey = draftKey('uid-1', 'note-1', 'note', 'independent-opening');
+      const currentKey = draftKey('uid-1', 'note-1', 'note', 'current-opening');
+      saveDraft(adoptedKey, 'Same retained words');
+      saveDraft(otherKey, 'Same retained words');
+      const otherRaw = localStorage.getItem(otherKey);
+      const view = render('Original words', { writerId: 'current-opening' });
+      act(() => view.result.current.selectRecovered(adoptedKey));
+      act(() => view.result.current.acceptRecovered());
+      if (mode === 'server acceptance') act(() => view.result.current.markSaved('Same retained words'));
+      else if (mode === 'explicit capture') act(() => view.result.current.markCaptured('Same retained words', 'note-1'));
+      else {
+        saveDraft(currentKey, 'Same retained words', undefined, true);
+        const token = readDraft<string>(currentKey)!.captureToken!;
+        act(() => { expect(retireDraftCapture(currentKey, token, 'Same retained words')).toBe(true); });
+      }
+      expect(readDraft(adoptedKey)).toBeNull();
+      expect(localStorage.getItem(otherKey)).toBe(otherRaw);
+      expect(view.result.current.recoveries.map(copy => copy.key)).toEqual([otherKey]);
+      view.unmount();
+    }
+  );
+
+  it.each(['server acceptance', 'explicit capture', 'capture event'] as const)(
+    'keeps equal-value offers without source adoption after %s of the current writer', mode => {
+      const firstKey = draftKey('uid-1', 'note-1', 'note');
+      const secondKey = draftKey('uid-1', 'note-1', 'note', 'independent-opening');
+      const currentKey = draftKey('uid-1', 'note-1', 'note', 'current-opening');
+      saveDraft(firstKey, 'Same retained words'); saveDraft(secondKey, 'Same retained words');
+      const raws = [localStorage.getItem(firstKey), localStorage.getItem(secondKey)];
+      const view = render('Original words', { writerId: 'current-opening' });
+      if (mode === 'server acceptance') act(() => view.result.current.markSaved('Same retained words'));
+      else if (mode === 'explicit capture') act(() => view.result.current.markCaptured('Same retained words', 'note-1'));
+      else {
+        saveDraft(currentKey, 'Same retained words', undefined, true);
+        act(() => { expect(retireDraftCapture(currentKey, readDraft<string>(currentKey)!.captureToken!, 'Same retained words')).toBe(true); });
+      }
+      expect([localStorage.getItem(firstKey), localStorage.getItem(secondKey)]).toEqual(raws);
+      expect(view.result.current.recoveries).toHaveLength(2);
+      view.unmount();
+    }
+  );
+
+  it('keeps a replaced adopted record with equal words after the earlier record is accepted', () => {
+    const key = draftKey('uid-1', 'note-1', 'note', 'earlier-opening');
+    saveDraft(key, 'Same retained words');
+    const view = render('Original words', { writerId: 'current-opening' });
+    act(() => view.result.current.acceptRecovered());
+    act(() => jest.advanceTimersByTime(1));
+    saveDraft(key, 'Same retained words');
+    const replacement = localStorage.getItem(key);
+    act(() => view.result.current.markSaved('Same retained words'));
+    expect(localStorage.getItem(key)).toBe(replacement);
+    view.unmount();
   });
 
   it('does not let a late capture from the previous owner replace the current handoff proof', () => {

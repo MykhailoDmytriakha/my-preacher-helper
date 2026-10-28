@@ -1,6 +1,8 @@
 'use client';
 
 
+import { draftBelongsToOwner, readDraftAddress } from '@/utils/draftAddress';
+
 import type { ResourceRef } from './types';
 
 export interface LegacyRecoverySource {
@@ -22,7 +24,7 @@ export interface LegacyRecoverySource {
 
 interface DiscoveryOptions {
   resource?: ResourceRef;
-  /** Draft v1 omits collection; only its owning feature can supply that mapping. */
+  /** Draft addresses omit collection; only their owning feature can supply that mapping. */
   draftAggregates?: readonly string[];
   storage?: Pick<Storage, 'length' | 'key' | 'getItem'>;
 }
@@ -43,16 +45,15 @@ export function discoverLegacyRecovery(owner: string, options: DiscoveryOptions 
   if (!owner || owner.includes(':')) throw new Error('Ambiguous legacy owner identity');
   const storage = options.storage ?? window.localStorage;
   const sources: LegacyRecoverySource[] = [];
-  const draftPrefix = `draft:v1:${owner}:`;
   for (let index = 0; index < storage.length; index += 1) {
     const key = storage.key(index);
-    if (!key || (!key.startsWith('outbox:v1:') && !key.startsWith('membershipOutbox:v2:') && !key.startsWith(draftPrefix))) continue;
+    if (!key || (!key.startsWith('outbox:v1:') && !key.startsWith('membershipOutbox:v2:') && !draftBelongsToOwner(key, owner))) continue;
     const raw = storage.getItem(key);
     if (raw === null) continue;
     let payload: unknown;
     try { payload = JSON.parse(raw); } catch { continue; }
     if (!object(payload)) continue;
-    const source = identifySource(key, payload, owner, draftPrefix, options);
+    const source = identifySource(key, payload, owner, options);
     if (!source) continue;
     sources.push({ ...source, id: key, owner, raw, payload, savedAt: typeof payload.savedAt === 'number' && Number.isFinite(payload.savedAt) ? payload.savedAt : null,
       importable: false, reason: 'incomplete-original-document' });
@@ -68,10 +69,10 @@ export function exportLegacyRecovery(source: LegacyRecoverySource, owner: string
 
 type SourceIdentity = Pick<LegacyRecoverySource, 'kind' | 'resource' | 'documentId' | 'aggregate' | 'status'>;
 
-function identifySource(key: string, payload: Record<string, unknown>, owner: string, draftPrefix: string, options: DiscoveryOptions): SourceIdentity | null {
+function identifySource(key: string, payload: Record<string, unknown>, owner: string, options: DiscoveryOptions): SourceIdentity | null {
   if (key.startsWith('outbox:v1:')) return outboxSource(key, payload, owner, options.resource);
   if (key.startsWith('membershipOutbox:v2:')) return membershipSource(key, payload, owner, options.resource);
-  return draftSource(key.slice(draftPrefix.length), payload, options);
+  return draftSource(key, payload, owner, options);
 }
 
 function outboxSource(key: string, payload: Record<string, unknown>, owner: string, requested?: ResourceRef): SourceIdentity | null {
@@ -82,12 +83,11 @@ function outboxSource(key: string, payload: Record<string, unknown>, owner: stri
   return { kind: 'outbox', resource, documentId: resource.id, aggregate: payload.aggregate, status: typeof payload.status === 'string' ? payload.status : null };
 }
 
-function draftSource(remainder: string, payload: Record<string, unknown>, options: DiscoveryOptions): SourceIdentity | null {
+function draftSource(key: string, payload: Record<string, unknown>, owner: string, options: DiscoveryOptions): SourceIdentity | null {
   if (!Object.prototype.hasOwnProperty.call(payload, 'value')) return null;
-  const separator = remainder.indexOf(':');
-  if (separator <= 0 || separator === remainder.length - 1) return null;
-  const documentId = remainder.slice(0, separator);
-  const aggregate = remainder.slice(separator + 1);
+  const address = readDraftAddress(key);
+  if (!address || address.owner !== owner) return null;
+  const { documentId, aggregate } = address;
   if (options.resource && (options.resource.id !== documentId || !options.draftAggregates?.includes(aggregate))) return null;
   return { kind: 'draft', resource: options.resource ?? null, documentId, aggregate, status: null };
 }

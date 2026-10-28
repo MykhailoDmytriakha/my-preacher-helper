@@ -23,6 +23,7 @@ import PrayerRequestCard from '@/components/prayer/PrayerRequestCard';
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
 import { Chip } from '@/components/ui/Chip';
 import Select from '@/components/ui/Select';
+import UnreadableConflictDrafts from '@/components/UnreadableConflictDrafts';
 import { usePrayerRequests } from '@/hooks/usePrayerRequests';
 import { PrayerRequest, PrayerStatus } from '@/models/models';
 import { useAuth } from '@/providers/AuthProvider';
@@ -119,6 +120,8 @@ export default function PrayerPage() {
     addUpdate,
     setStatus,
     saveConflict,
+    saveConflictChoices,
+    statusConflictChoices,
     resolvingConflict,
     keepMineOnConflict,
     takeTheirsOnConflict,
@@ -377,6 +380,9 @@ export default function PrayerPage() {
       {/* A save this screen made was TURNED AWAY. The refused text is held durably,
           so it is still here after a reload — and the choice is visible instead of
           living in memory nobody can reach. */}
+      <UnreadableConflictDrafts owner={user?.uid}
+        sources={[...(saveConflictChoices?.unreadableSources ?? []), ...(statusConflictChoices?.unreadableSources ?? [])]}
+        failed={saveConflictChoices?.unreadableFailed || statusConflictChoices?.unreadableFailed} />
       {saveConflict && (
         <SaveConflictBanner
           entityKey="entityRecord"
@@ -385,6 +391,9 @@ export default function PrayerPage() {
             saveConflict.payload.updates.description ??
             undefined
           }
+          copyOptions={saveConflictChoices?.copies.map(copy => ({ key: copy.key, label: copy.value.payload.updates.title ?? copy.value.payload.updates.description ?? t('freshness.conflictPendingLabel') }))}
+          selectedCopyKey={saveConflictChoices?.selectedKey}
+          onChooseCopy={saveConflictChoices?.select}
           onKeepMine={keepMineOnConflict}
           onTakeTheirs={takeTheirsOnConflict}
           busy={resolvingConflict}
@@ -396,6 +405,9 @@ export default function PrayerPage() {
         <SaveConflictBanner
           entityKey="entityRecord"
           pendingText={statusConflict.payload.answerText ?? undefined}
+          copyOptions={statusConflictChoices?.copies.map(copy => ({ key: copy.key, label: copy.value.payload.answerText ?? t(`prayer.status.${copy.value.payload.status}`) }))}
+          selectedCopyKey={statusConflictChoices?.selectedKey}
+          onChooseCopy={statusConflictChoices?.select}
           onKeepMine={keepMineOnStatusConflict}
           onTakeTheirs={takeTheirsOnStatusConflict}
           busy={resolvingConflict}

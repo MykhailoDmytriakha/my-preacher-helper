@@ -5,6 +5,7 @@ import { useStudyNoteShareLinks } from '@/hooks/useStudyNoteShareLinks';
 import { useStudyNotes } from '@/hooks/useStudyNotes';
 import { useTags } from '@/hooks/useTags';
 import { StudyNote } from '@/models/models';
+import { draftKey } from '@/utils/durableDraft';
 import { __resetConnectivityForTests, getConnectivityStatus, reportServerReachable } from '@/utils/connectivity';
 
 import StudiesPage from '../page';
@@ -136,15 +137,15 @@ describe('StudiesPage', () => {
     put('mock-user', 'A'); put('mock-user', 'B'); put('other-owner', 'private');
     const view = render(<StudiesPage />);
     try {
-      expect(screen.getByRole('link', { name: /Title A/ })).toHaveAttribute('href', '/studies/new?draft=new~A&draftOwner=mock-user');
-      expect(screen.getByRole('link', { name: /Title B/ })).toHaveAttribute('href', '/studies/new?draft=new~B&draftOwner=mock-user');
+      expect(screen.getByRole('link', { name: /Title A/ })).toHaveAttribute('href', '/studies/new?draft=new~A&draftOwner=mock-user&draftCopy=draft%3Av1%3Amock-user%3Anew~A%3Anote');
+      expect(screen.getByRole('link', { name: /Title B/ })).toHaveAttribute('href', '/studies/new?draft=new~B&draftOwner=mock-user&draftCopy=draft%3Av1%3Amock-user%3Anew~B%3Anote');
       expect(screen.queryByText('Words private')).not.toBeInTheDocument();
       expect(screen.getByText('Words A')).toBeInTheDocument();
       expect(screen.getByText('Words B')).toBeInTheDocument();
     } finally { view.unmount(); localStorage.clear(); }
   });
 
-  it('hides the local draft when its captured note row is shown and keeps its backup until canonical acceptance', () => {
+  it('shows the actual note once and keeps differing backup words after its creation is confirmed', () => {
     localStorage.clear();
     const key = 'draft:v1:mock-user:new~A:note';
     localStorage.setItem(key, JSON.stringify({ savedAt: 1, creationTargetId: 'A', value: { title: 'Uncreated title', content: 'Kept words', tags: [], scriptureRefs: [], type: 'note' } }));
@@ -155,7 +156,23 @@ describe('StudiesPage', () => {
       expect(localStorage.getItem(key)).not.toBeNull();
       mockUseStudyNotes.mockReturnValue({ ...baseUseStudyNotesValue(), notes: [createMockNote({ id: 'A', title: 'Captured title' })], confirmedCreationIds: new Set(['A']) });
       view.rerender(<StudiesPage />);
-      expect(localStorage.getItem(key)).toBeNull();
+      expect(localStorage.getItem(key)).not.toBeNull();
+      expect(screen.queryByRole('link', { name: /Uncreated title/ })).not.toBeInTheDocument();
+    } finally { view.unmount(); localStorage.clear(); }
+  });
+
+  it('links a confirmed precreate copy to its created note while keeping the source copy', async () => {
+    localStorage.clear();
+    const key = draftKey('mock-user', 'new~A', 'note');
+    const kept = { title: 'Created but unfinished', content: 'Keep these words', tags: [], scriptureRefs: [], type: 'note' };
+    const raw = JSON.stringify({ value: kept, savedAt: 1, creationTargetId: 'A' });
+    localStorage.setItem(key, raw);
+    mockUseStudyNotes.mockReturnValue({ ...baseUseStudyNotesValue(), notes: [], confirmedCreationIds: new Set(['A']) });
+    const view = render(<StudiesPage />);
+    try {
+      const link = await screen.findByRole('link', { name: /Created but unfinished/ });
+      expect(link).toHaveAttribute('href', `/studies/A?draftCopy=${encodeURIComponent(key)}`);
+      expect(localStorage.getItem(key)).toBe(raw);
     } finally { view.unmount(); localStorage.clear(); }
   });
 

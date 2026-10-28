@@ -1,7 +1,7 @@
 import { update } from 'idb-keyval';
 
 import { clearDraft, draftKey, readDraft } from '@/utils/durableDraft';
-import { findNewNoteDrafts, retireConfirmedNewNoteDrafts } from '@/utils/newNoteDrafts';
+import { findNewNoteDrafts } from '@/utils/newNoteDrafts';
 import { deleteRecordingDraft, getRecordingDraft, listRecordingDrafts, saveRecordingDraft, saveRecordingDraftText } from '@/utils/recordingDraftStore';
 import { copyRecordingIntoNewNote, isRecordingOnlyNoteDraft, unassignedStudyRecordingFilter } from '@/utils/studyNoteAudioRecovery';
 
@@ -53,8 +53,9 @@ it('an old note acknowledgement cannot retire the copied draft or its new raw so
   const copy = findNewNoteDrafts('alice', new Set(), new Set()).find(draft => draft.creationTargetId !== 'old-note')!;
   expect(copy.creationTargetId).not.toBe('old-note');
   await deleteRecordingDraft('original', 'alice');
-  retireConfirmedNewNoteDrafts('alice', new Set(['old-note']));
-  expect(findNewNoteDrafts('alice', new Set(), new Set()).map(draft => draft.docId)).toEqual([copy.docId]);
+  const kept = findNewNoteDrafts('alice', new Set(), new Set(['old-note']));
+  expect(kept.find(draft => draft.docId === copy.docId)?.value).toEqual(copy.value);
+  expect(kept.find(draft => draft.creationTargetId === 'old-note')?.created).toBe(true);
   expect((await getRecordingDraft(copy.value.recordingSourceIds![0], 'alice'))?.blob).toBe(blob);
 });
 

@@ -1,123 +1,174 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { clearDraftIfMatches, draftKey, readDraft, saveDraft } from '@/utils/durableDraft';
+import { discoverLegacyRecovery, type LegacyRecoverySource } from '@/data-engine/react.client';
+import { newClientId } from '@/utils/clientId';
+import { serializeContent } from '@/utils/contentFingerprint';
+import { clearDraftIfMatches, draftKey, findDraftCopies, findDraftDocIds, saveDraft } from '@/utils/durableDraft';
+import { validConflictEnvelope } from '@/utils/refusedDraftPayloads';
 
-/**
- * A refused save, held somewhere that survives a reload.
- *
- * WHY THIS EXISTS. When the server turns a save away, the text that was refused
- * has nowhere to live: the sermon header has already closed its editor, the
- * series/prayer modal has already dismissed, the group cache has been rolled back
- * to the server's truth. For a while we kept it in component state — and
- * adversarial review was right that this is a trap: a reload, a crash, a stray
- * navigation or a tab eviction before the person chooses destroys the only copy.
- * That is the exact failure the whole mechanism exists to prevent, just moved one
- * step later.
- *
- * So the pending conflict is mirrored into the same durable store the note editor
- * uses, under its own aggregate namespace (`conflict:<aggregate>`), and read back
- * on mount. The person can close the laptop mid-conflict and still find their
- * words waiting.
- *
- * It is deliberately NOT keyed per browser tab: two tabs editing the same document
- * share one slot, so the later refusal wins. That is a known limit of the storage
- * layer (BUGS.md), not a new one introduced here.
- */
 export interface PersistedConflict<T> {
-  /** What was refused — enough to re-send it verbatim. */
   payload: T;
-  /** The server's revision AT REFUSAL: what a deliberate overwrite must state. */
   actualRevision: number;
 }
 
-export function usePersistedConflict<T>(
-  uid: string | null | undefined,
-  docId: string | null | undefined,
-  aggregate: string
-) {
-  const [conflict, setConflictState] = useState<PersistedConflict<T> | null>(null);
-  const [restoredKey, setRestoredKey] = useState<string | null>(null);
+export interface PersistedConflictCopy<T> {
+  key: string;
+  documentId: string;
+  value: PersistedConflict<T>;
+}
 
-  const key = uid && docId ? draftKey(uid, docId, `conflict:${aggregate}`) : null;
-  const keyRef = useRef(key);
-  keyRef.current = key;
+export interface PersistedConflictChoices<T> {
+  copies: PersistedConflictCopy<T>[];
+  selectedKey: string | null;
+  activation: number;
+  unreadableSources: LegacyRecoverySource[];
+  unreadableFailed: boolean;
+  select: (key: string) => void;
+  nextDocument: (preferred?: string | null) => string | null;
+  capture: () => PersistedConflictCopy<T> | null;
+}
 
-  // Restore on mount / when the document changes. A conflict belongs to ONE
-  // document, so switching documents must not carry it across.
-  const restoredForRef = useRef<string | null>(null);
+/** Each physical copy owns a JSON snapshot, even when callers reuse one object. */
+function snapshotConflict<T>(value: PersistedConflict<T>): PersistedConflict<T> {
+  return JSON.parse(JSON.stringify(value)) as PersistedConflict<T>;
+}
+
+/** New refusals are independent. Replacing/resolving a choice names its exact held record. */
+export function usePersistedConflict<T>(uid: string | null | undefined, docId: string | null | undefined, aggregate: string, validate: (value: unknown, documentId: string) => boolean = validConflictEnvelope) {
+  const session = useMemo(() => ({
+    owner: uid, aggregate, validate,
+    records: new Map<string, PersistedConflictCopy<T>>(),
+    bindings: new Map<PersistedConflict<T>, PersistedConflictCopy<T>>(),
+    selected: new Map<string, string>(),
+    activation: new Map<string, number>(),
+    transient: new Map<string, PersistedConflictCopy<T>>(),
+    unreadable: new Map<string, LegacyRecoverySource[]>(),
+  }), [uid, aggregate, validate]);
+  const current = useRef({ session, docId });
+  current.current = { session, docId };
+  type View = { session: typeof session; documentId: typeof docId; copies: PersistedConflictCopy<T>[]; selectedKey: string | null; activation: number; unreadableSources: LegacyRecoverySource[]; unreadableFailed: boolean; ephemeral?: PersistedConflict<T> | null };
+  const [view, setView] = useState<View | null>(null);
+
+  const readCopies = useCallback((documentId: string): PersistedConflictCopy<T>[] => {
+    if (!session.owner) return [];
+    const stored = findDraftCopies<PersistedConflict<T>>(session.owner, documentId, `conflict:${session.aggregate}`);
+    const copies = stored.filter(copy => session.validate(copy.value, documentId)).map(copy => {
+      const previous = session.records.get(copy.key);
+      if (previous && serializeContent(previous.value) === serializeContent(copy.value)) return previous;
+      const next = { key: copy.key, documentId, value: copy.value };
+      session.records.set(copy.key, next); session.bindings.set(next.value, next);
+      return next;
+    });
+    session.transient.forEach(copy => {
+      if (copy.documentId === documentId && session.validate(copy.value, documentId) && !copies.some(stored => stored.key === copy.key)) copies.unshift(copy);
+    });
+    return copies;
+  }, [session]);
+  const refresh = useCallback((documentId: string, preferred?: string | null, activate = false, preserveMissing = false) => {
+    const copies = readCopies(documentId);
+    let unreadableSources = session.unreadable.get(documentId) ?? [];
+    let unreadableFailed = false;
+    try {
+      unreadableSources = session.owner ? discoverLegacyRecovery(session.owner).filter(source => source.kind === 'draft'
+        && source.documentId === documentId && source.aggregate === `conflict:${session.aggregate}`
+        && !session.validate((source.payload as { value?: unknown }).value, documentId)) : [];
+      session.unreadable.set(documentId, unreadableSources);
+    } catch { unreadableFailed = true; }
+    const previous = preferred ?? session.selected.get(documentId);
+    const held = previous ? session.records.get(previous) : undefined;
+    // A passive wake may add choices, but cannot replace words currently being read/edited.
+    if (preserveMissing && held && session.owner && !copies.some(copy => copy.key === held.key)) {
+      const retained = { ...held, value: snapshotConflict(held.value), key: draftKey(session.owner, documentId, `conflict:${session.aggregate}`, newClientId()) };
+      session.records.set(retained.key, retained);
+      session.bindings.set(retained.value, retained);
+      session.transient.set(retained.key, retained);
+      copies.unshift(retained);
+    }
+    const selectedKey = copies.find(copy => copy.key === previous)?.key ?? copies[0]?.key ?? null;
+    if (activate && selectedKey && selectedKey !== session.selected.get(documentId)) {
+      session.activation.set(documentId, (session.activation.get(documentId) ?? 0) + 1);
+    }
+    if (selectedKey) session.selected.set(documentId, selectedKey);
+    else session.selected.delete(documentId);
+    if (current.current.session === session && current.current.docId === documentId) {
+      setView({ session, documentId, copies, selectedKey, activation: session.activation.get(documentId) ?? 0, unreadableSources, unreadableFailed });
+    }
+  }, [readCopies, session]);
+
   useEffect(() => {
-    if (!key) return;
-    if (restoredForRef.current === key) return;
-    restoredForRef.current = key;
-    const stored = readDraft<PersistedConflict<T>>(key);
-    if (stored) ownByKeyRef.current.set(key, stored.value);
-    setConflictState(stored ? stored.value : null);
-    setRestoredKey(key);
-  }, [key]);
+    if (!uid || !docId) return;
+    refresh(docId);
+    const wake = () => refresh(docId, undefined, false, true);
+    window.addEventListener('storage', wake); window.addEventListener('focus', wake);
+    return () => { window.removeEventListener('storage', wake); window.removeEventListener('focus', wake); };
+  }, [docId, refresh, uid]);
 
-  /**
-   * What THIS tab believes the pending conflict to be — PER DOCUMENT.
-   *
-   * It used to be a single value, and that was a hole with teeth: one hook instance
-   * serves many documents, because a navigation re-renders the page instead of
-   * remounting it. So a resolution for document A landing after the person moved to
-   * document B compared A's record against B's key, matched nothing — and cleared
-   * B's slot regardless, destroying the only durable copy of a refusal B had not even
-   * shown yet.
-   *
-   * Binding the key at write time was tried first and PROVED INSUFFICIENT by its own
-   * test, for the reason this map fixes: by the time A's answer lands, the restore
-   * effect has already replaced the single remembered value with B's. Remembering
-   * ownership per key removes the collision instead of racing it — every document
-   * keeps its own record, and a clear can only ever remove the record it stored.
-   */
-  const ownByKeyRef = useRef<Map<string, PersistedConflict<T>>>(new Map());
+  const showEphemeral = useCallback((next: PersistedConflict<T> | null) => {
+    if (current.current.session === session && current.current.docId === docId) {
+      setView({ session, documentId: docId, copies: [], selectedKey: null, activation: 0, unreadableSources: [], unreadableFailed: false, ephemeral: next });
+    }
+  }, [docId, session]);
 
-  /**
-   * @param docIdOverride the document this conflict belongs to, when the caller
-   *   learns it in the SAME render as the conflict itself. Without it the key
-   *   would be built from state React has not committed yet, and the record would
-   *   land under the previous document — or under none at all.
-   */
-  const setConflict = useCallback(
-    (next: PersistedConflict<T> | null, docIdOverride?: string) => {
-    const currentKey =
-      docIdOverride && uid ? draftKey(uid, docIdOverride, `conflict:${aggregate}`) : keyRef.current;
-
-    if (next) {
-      // A late refusal keeps its named backup without replacing the current document.
-      if (currentKey === keyRef.current) setConflictState(next);
-      if (!currentKey) return;
-      ownByKeyRef.current.set(currentKey, next);
-      saveDraft(currentKey, next);
+  /** `expected` distinguishes editing/resolving a shown choice from a new refused attempt. */
+  const setConflict = useCallback((next: PersistedConflict<T> | null, documentOverride?: string, expected?: PersistedConflict<T>) => {
+    const documentId = documentOverride ?? docId;
+    if (!session.owner || !documentId) {
+      showEphemeral(next);
       return;
     }
-
-    // A CLEAR MAY ONLY EMPTY THE DOCUMENT IT NAMES. When it names another one — a
-    // resolution finishing after the person navigated away — blanking the visible
-    // slot would erase the banner holding THIS document's refused text from the
-    // screen, even though the disk still had it.
-    if (currentKey && keyRef.current && currentKey !== keyRef.current) {
-      const mine = readDraft<PersistedConflict<T>>(keyRef.current);
-      setConflictState(mine ? mine.value : null);
-    } else {
-      setConflictState(null);
+    const previousKey = session.selected.get(documentId);
+    const selectedRecord = previousKey ? session.records.get(previousKey) : undefined;
+    const held = expected ? session.bindings.get(expected) : selectedRecord;
+    const matching = held?.documentId === documentId ? held : undefined;
+    if (expected && !matching) return;
+    if (next) {
+      const key = draftKey(session.owner, documentId, `conflict:${session.aggregate}`, newClientId());
+      const copy = { key, documentId, value: snapshotConflict(next) };
+      const landed = saveDraft(key, copy.value);
+      session.records.set(key, copy); session.bindings.set(copy.value, copy);
+      // Immediate feature callbacks may hold their fresh input until React renders.
+      // Never rebind an already shown object to a different physical copy.
+      if (!session.bindings.has(next)) session.bindings.set(next, copy);
+      if (!landed) session.transient.set(key, copy);
+      // Editing a shown choice is write-new-before-retire, never an overwrite of an unknown slot.
+      if (expected && matching && (landed || session.transient.has(matching.key))) {
+        clearDraftIfMatches(matching.key, expected);
+        session.transient.delete(matching.key);
+      }
+      const keepCurrent = expected && matching && previousKey !== matching.key;
+      refresh(documentId, keepCurrent ? previousKey : key);
+      return;
     }
-    if (!currentKey) return;
+    if (!matching) return;
+    clearDraftIfMatches(matching.key, matching.value);
+    session.transient.delete(matching.key);
+    refresh(documentId, previousKey === matching.key ? null : previousKey, true);
+  }, [docId, refresh, session, showEphemeral]);
 
-    // COMPARE BEFORE CLEARING. Two tabs on one document share this slot, so the
-    // later refusal owns it. An unconditional clear meant tab A, resolving its
-    // own conflict, deleted tab B's only copy of refused text — the loss this
-    // layer exists to prevent, introduced by the layer itself.
-    const own = ownByKeyRef.current.get(currentKey);
-    ownByKeyRef.current.delete(currentKey);
-    if (own) clearDraftIfMatches(currentKey, own);
-    },
-    [uid, aggregate]
-  );
-
-  // Consumers that restore an editor wait for this key before accepting input.
-  return [conflict, setConflict, key === null || restoredKey === key] as const;
+  const visible = view?.session === session && view.documentId === docId ? view : null;
+  const conflict = visible?.ephemeral ?? visible?.copies.find(copy => copy.key === visible.selectedKey)?.value ?? null;
+  const select = useCallback((key: string) => {
+    if (current.current.session !== session || current.current.docId !== docId || !docId) return;
+    const copies = readCopies(docId);
+    if (!copies.some(copy => copy.key === key)) return;
+    refresh(docId, key, true);
+  }, [docId, readCopies, refresh, session]);
+  const capture = useCallback((): PersistedConflictCopy<T> | null => {
+    if (current.current.session !== session || current.current.docId !== docId || !docId) return null;
+    const key = session.selected.get(docId);
+    return key ? session.records.get(key) ?? null : null;
+  }, [docId, session]);
+  /** The owning screen must not rebuild this index from disk and lose transient work. */
+  const nextDocument = useCallback((preferred: string | null = null): string | null => {
+    if (!session.owner) return null;
+    const ids = [...new Set([...findDraftDocIds(session.owner, `conflict:${session.aggregate}`),
+      ...[...session.transient.values()].map(copy => copy.documentId)])];
+    const readable = (id: string) => readCopies(id).length > 0;
+    if (preferred && ids.includes(preferred) && readable(preferred)) return preferred;
+    return ids.find(readable) ?? (preferred && ids.includes(preferred) ? preferred : ids[0]) ?? null;
+  }, [readCopies, session]);
+  const choices = useMemo<PersistedConflictChoices<T>>(() => ({ copies: visible?.copies ?? [], selectedKey: visible?.selectedKey ?? null, activation: visible?.activation ?? 0, unreadableSources: visible?.unreadableSources ?? [], unreadableFailed: visible?.unreadableFailed ?? false, select, nextDocument, capture }), [capture, nextDocument, select, visible]);
+  return [conflict, setConflict, !uid || !docId || Boolean(visible), choices] as const;
 }

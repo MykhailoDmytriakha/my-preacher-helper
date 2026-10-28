@@ -1,6 +1,6 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 
-import { OrphanedPlanText, orphanedCells } from '@/(pages)/(private)/sermons/[id]/plan/OrphanedPlanText';
+import { OrphanedPlanText, orphanedCells, mergeOrphans } from '@/(pages)/(private)/sermons/[id]/plan/OrphanedPlanText';
 
 jest.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 jest.mock('sonner', () => ({ toast: { success: jest.fn(), error: jest.fn() } }));
@@ -25,8 +25,8 @@ describe('text whose card was removed elsewhere', () => {
     expect(mockCopy).toHaveBeenCalledWith('Paragraph typed here');
     fireEvent.click(screen.getByText('plan.orphanedDiscard'));
     fireEvent.click(await screen.findByRole('button', { name: 'common.discardText.confirm' }));
-    await waitFor(() => expect(onDiscard).toHaveBeenCalledWith(['gone']));
-    expect(onDiscard).toHaveBeenCalledWith(['gone']);
+    await waitFor(() => expect(onDiscard).toHaveBeenCalledWith([{ id: 'gone', text: 'Paragraph typed here' }]));
+    expect(onDiscard).toHaveBeenCalledWith([{ id: 'gone', text: 'Paragraph typed here' }]);
   });
 
   it('says nothing when no text is orphaned', () => {
@@ -48,7 +48,7 @@ it('keeps the only orphaned words until their removal is confirmed', async () =>
 
   fireEvent.click(screen.getByText('plan.orphanedDiscard'));
   fireEvent.click(await screen.findByRole('button', { name: 'common.discardText.confirm' }));
-  await waitFor(() => expect(discard).toHaveBeenCalledWith(['gone']));
+  await waitFor(() => expect(discard).toHaveBeenCalledWith([{ id: 'gone', text: 'Only remaining authored paragraph' }]));
   expect(discard).toHaveBeenCalledTimes(1);
 });
 
@@ -74,4 +74,21 @@ it('withdraws a question when its orphan disappears instead of reviving it later
   view.rerender(<OrphanedPlanText subject="sermon" cells={cells} onDiscard={discard} />);
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   expect(discard).not.toHaveBeenCalled();
+});
+
+
+it('keeps different and equal stored copies beside the current text of one removed point', () => {
+  const current = [{ id: 'gone', text: 'Current words' }];
+  const stored = [{ id: 'gone', text: 'Other words', copyKey: 'first' }, { id: 'gone', text: 'Current words', copyKey: 'second' }];
+  expect(mergeOrphans(current, stored)).toEqual([...current, ...stored]);
+});
+
+it('discards the selected orphan copy without addressing another version of the same point', async () => {
+  const discard = jest.fn();
+  const cells = [{ id: 'gone', text: 'First version', copyKey: 'first' }, { id: 'gone', text: 'Second version', copyKey: 'second' }];
+  render(<OrphanedPlanText cells={cells} onDiscard={discard} />);
+  fireEvent.click(within(screen.getByText('Second version').closest('li')!).getByRole('button', { name: 'plan.orphanedDiscard' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'common.discardText.confirm' }));
+  await waitFor(() => expect(discard).toHaveBeenCalledWith([cells[1]]));
+  expect(screen.getByText('First version')).toBeVisible();
 });

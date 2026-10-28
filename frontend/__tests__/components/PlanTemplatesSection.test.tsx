@@ -4,7 +4,8 @@ import React from 'react';
 import '@testing-library/jest-dom';
 import { createBrowserDataEngine } from '@/data-engine/browser.client';
 import { DataEngineProvider } from '@/data-engine/react.client';
-import { draftKey, saveDraft } from '@/utils/durableDraft';
+import { clearDraft, draftKey, saveDraft } from '@/utils/durableDraft';
+import { PLAN_TEMPLATE_AGGREGATE } from '@/services/planTemplates.client';
 import { documentEngineHarness, settleEngine } from '@test-utils/documentEngineHarness';
 
 jest.mock('@/providers/AuthProvider', () => ({ useAuth: () => ({ user: { uid: 'u1' } }) }));
@@ -73,11 +74,112 @@ const tpl = (id: string, name: string, points = 0): PlanTemplate => ({
 
 beforeEach(() => {
   jest.clearAllMocks();
+  localStorage.clear();
   mockTemplates = [];
 });
 afterEach(cleanup);
 
 describe('PlanTemplatesSection', () => {
+  it('keeps the other quota-only choice visible after resolving one refusal', async () => {
+    mockTemplates = [tpl('t1', 'Alpha')];
+    mockUpdate.mockImplementation(() => persistedWrite(Promise.resolve(undefined)));
+    mockUpdate.mockReturnValueOnce(persistedWrite(Promise.reject(new StaleWriteError('template', 0, 1))))
+      .mockReturnValueOnce(persistedWrite(Promise.reject(new StaleWriteError('template', 0, 2))));
+    const attempted: string[] = [];
+    const original = Storage.prototype.setItem;
+    const storage = jest.spyOn(Storage.prototype, 'setItem').mockImplementation(function (this: Storage, key: string, value: string) {
+      if (key.startsWith('draft:')) { attempted.push(key); throw new DOMException('quota', 'QuotaExceededError'); }
+      original.call(this, key, value);
+    });
+    const view = render(<PlanTemplatesSection user={user} />);
+    const rename = async (text: string) => {
+      fireEvent.click(screen.getAllByLabelText('common.edit')[0]);
+      fireEvent.change(screen.getByDisplayValue('Alpha'), { target: { value: text } });
+      fireEvent.click(screen.getByLabelText('common.save'));
+      await waitFor(() => expect(screen.getByText(text, { selector: 'p' })).toBeVisible());
+    };
+    try {
+      await rename('First quota-only choice');
+      await rename('Second quota-only choice');
+      fireEvent.click(screen.getByText('freshness.conflictKeepMine'));
+      await waitFor(() => expect(screen.getByText('First quota-only choice', { selector: 'p' })).toBeVisible());
+      expect(mockUpdate).toHaveBeenCalledTimes(3);
+    } finally {
+      view.unmount(); storage.mockRestore();
+      for (const key of attempted) clearDraft(key);
+    }
+  });
+
+  it('continues to another readable template before returning to an unreadable retained copy', async () => {
+    mockTemplates = [tpl('t1', 'Alpha'), tpl('t2', 'Beta')];
+    mockUpdate.mockImplementation(() => persistedWrite(Promise.resolve(undefined)));
+    const good = (id: string, name: string) => ({ payload: { templateId: id, label: name, updates: { name } }, actualRevision: 1 });
+    saveDraft(draftKey('u1', 't1', `conflict:${PLAN_TEMPLATE_AGGREGATE}`), good('t1', 'First readable choice'));
+    saveDraft(draftKey('u1', 't2', `conflict:${PLAN_TEMPLATE_AGGREGATE}`), good('t2', 'Second readable choice'));
+    const badKey = draftKey('u1', 't1', `conflict:${PLAN_TEMPLATE_AGGREGATE}`, 'invalid');
+    const badRaw = JSON.stringify({ value: { payload: { templateId: 't1', label: 'Kept unreadable choice', updates: null }, actualRevision: 1 }, savedAt: 1 });
+    localStorage.setItem(badKey, badRaw);
+    const view = render(<PlanTemplatesSection user={user} />);
+    try {
+      expect(screen.getByText('First readable choice', { selector: 'p' })).toBeVisible();
+      fireEvent.click(screen.getByText('freshness.conflictKeepMine'));
+      await waitFor(() => expect(screen.getByText('Second readable choice', { selector: 'p' })).toBeVisible());
+      fireEvent.click(screen.getByText('freshness.conflictKeepMine'));
+      await waitFor(() => expect(screen.getByText('Kept unreadable choice')).toBeVisible());
+      expect(screen.queryByText('freshness.conflictKeepMine')).not.toBeInTheDocument();
+      expect(localStorage.getItem(badKey)).toBe(badRaw);
+    } finally { view.unmount(); }
+  });
+
+  it('keeps malformed retained template words readable without applying the payload', () => {
+    mockTemplates = [tpl('t1', 'Alpha')];
+    const key = draftKey('u1', 't1', `conflict:${PLAN_TEMPLATE_AGGREGATE}`, 'invalid');
+    const raw = JSON.stringify({ savedAt: 1, value: { payload: { templateId: 't1', label: 'Kept malformed template words', updates: null }, actualRevision: 1 } });
+    localStorage.setItem(key, raw);
+    let view: ReturnType<typeof render> | undefined;
+    try {
+      view = render(<PlanTemplatesSection user={user} />);
+      expect(screen.getByText('unsavedDraft.unreadableTitle')).toBeVisible();
+      expect(screen.getAllByText(/Kept malformed template words/)[0]).toBeVisible();
+      expect(screen.queryByText('freshness.conflictKeepMine')).not.toBeInTheDocument();
+      expect(localStorage.getItem(key)).toBe(raw);
+    } finally { view?.unmount(); }
+  });
+
+  it('does not replace a later selected template choice when an earlier queued rename is refused', async () => {
+    mockTemplates = [tpl('t1', 'Alpha'), tpl('t2', 'Beta')];
+    const copy = (name: string) => ({ payload: { templateId: 't2', label: 'Beta', updates: { name } }, actualRevision: 3 });
+    const secondKey = draftKey('u1', 't2', `conflict:${PLAN_TEMPLATE_AGGREGATE}`, 'second');
+    saveDraft(draftKey('u1', 't2', `conflict:${PLAN_TEMPLATE_AGGREGATE}`), copy('Beta first choice'));
+    saveDraft(secondKey, copy('Beta later chosen copy'));
+    let refuseLate!: (error: unknown) => void;
+    const persistence = new Promise<void>((_resolve, reject) => { refuseLate = reject; });
+    mockUpdate.mockReturnValueOnce(queuedWrite('outbox:earlier-rename-t1', persistence));
+    const view = render(<PlanTemplatesSection user={user} />);
+    try {
+      fireEvent.click(screen.getAllByLabelText('common.edit')[0]);
+      fireEvent.change(screen.getByDisplayValue('Alpha'), { target: { value: 'Earlier Alpha rename' } });
+      fireEvent.click(screen.getByLabelText('common.save'));
+      await waitFor(() => expect(mockUpdate).toHaveBeenCalledTimes(1));
+      fireEvent.change(screen.getByRole('combobox', { name: 'unsavedDraft.chooseCopy' }), { target: { value: secondKey } });
+      expect(screen.getByText('Beta later chosen copy', { selector: 'p' })).toBeVisible();
+      await act(async () => { refuseLate(new StaleWriteError('template', 0, 9)); await Promise.resolve(); });
+      expect(screen.getByText('Beta later chosen copy', { selector: 'p' })).toBeVisible();
+    } finally { view.unmount(); }
+  });
+
+  it('lets the person read and select either retained copy of the same template', () => {
+    mockTemplates = [tpl('t1', 'Alpha')];
+    const key = draftKey('u1', 't1', `conflict:${PLAN_TEMPLATE_AGGREGATE}`, 'second');
+    const first = { payload: { templateId: 't1', label: 'Alpha', updates: { name: 'First retained name' } }, actualRevision: 1 };
+    const second = { payload: { templateId: 't1', label: 'Alpha', updates: { name: 'Second retained name' } }, actualRevision: 2 };
+    saveDraft(draftKey('u1', 't1', `conflict:${PLAN_TEMPLATE_AGGREGATE}`), first); saveDraft(key, second);
+    render(<PlanTemplatesSection user={user} />);
+    expect(screen.getByText('First retained name', { selector: 'p' })).toBeVisible();
+    fireEvent.change(screen.getByRole('combobox', { name: 'unsavedDraft.chooseCopy' }), { target: { value: key } });
+    expect(screen.getByText('Second retained name', { selector: 'p' })).toBeVisible();
+  });
+
   it('creates a template with a client id, the user id and an empty structure', async () => {
     render(<PlanTemplatesSection user={user} />);
 

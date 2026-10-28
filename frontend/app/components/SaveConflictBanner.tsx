@@ -1,5 +1,6 @@
 'use client';
 
+import SavedDraftCopyPicker, { type SavedDraftCopyOption } from '@/components/SavedDraftCopyPicker';
 import { useTranslation } from '@locales/useTranslation';
 
 /**
@@ -40,6 +41,9 @@ export interface SaveConflictBannerProps {
   /** A choice is being carried out — keep both buttons from firing twice. */
   busy?: boolean;
   className?: string;
+  copyOptions?: readonly SavedDraftCopyOption[];
+  selectedCopyKey?: string | null;
+  onChooseCopy?: (key: string) => void;
 }
 
 export function SaveConflictBanner({
@@ -50,6 +54,7 @@ export function SaveConflictBanner({
   onTakeTheirs,
   busy = false,
   className = '',
+  copyOptions = [], selectedCopyKey = null, onChooseCopy,
 }: SaveConflictBannerProps) {
   const { t } = useTranslation();
   const entity = t(`freshness.${entityKey}`);
@@ -87,6 +92,7 @@ export function SaveConflictBanner({
           </button>
         </div>
       </div>
+      {onChooseCopy && <SavedDraftCopyPicker options={copyOptions} selectedKey={selectedCopyKey} onChange={onChooseCopy} disabled={busy} />}
       {pendingText !== undefined && pendingText !== '' && (
         <div className="min-w-0">
           <p className="text-xs font-medium text-rose-900/70 dark:text-rose-200/60">

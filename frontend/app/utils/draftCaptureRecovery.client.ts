@@ -1,6 +1,7 @@
 'use client';
 
 import { serializeContent } from '@/utils/contentFingerprint';
+import { draftBelongsToOwner, readDraftAddress } from '@/utils/draftAddress';
 import {
   draftKey, readDraft, retireDraftCapture, saveDraft, readDraftsStrict,
   type DurableDraft,
@@ -49,9 +50,9 @@ function readScope(scope: string): DraftCaptureScope | null {
 }
 
 /** Immediate autosave can beat the typing debounce; bind the exact submitted words. */
-export function prepareNoteDraftCapture(owner: string | null | undefined, noteId: string, value: unknown): string | undefined {
+export function prepareNoteDraftCapture(owner: string | null | undefined, noteId: string, value: unknown, writerId?: string): string | undefined {
   if (!owner) return undefined;
-  const key = draftKey(owner, noteId, 'note');
+  const key = draftKey(owner, noteId, 'note', writerId);
   if (!saveDraft(key, value, undefined, true)) return undefined;
   return prepareDraftCapture(key, value, { collection: 'studyNotes', id: noteId });
 }
@@ -63,10 +64,11 @@ function sameResource(left: DraftCaptureScope['resource'], right: DraftCaptureSc
 function ownsAddress(owner: string, key: string, draft: DurableDraft<unknown>, resource: DraftCaptureScope['resource']): boolean {
   // The one production adapter is the note aggregate. No arbitrary aggregate or
   // different creation may be retired by a matching-looking local scope.
-  if (resource.collection !== 'studyNotes') return false;
-  if (key === draftKey(owner, resource.id, 'note')) return true;
+  const address = readDraftAddress(key);
+  if (resource.collection !== 'studyNotes' || !address || address.owner !== owner || address.aggregate !== 'note') return false;
+  if (address.documentId === resource.id) return true;
   return draft.creationTargetId === resource.id
-    && (key === draftKey(owner, 'new', 'note') || key === draftKey(owner, `new~${resource.id}`, 'note'));
+    && (address.documentId === 'new' || address.documentId === `new~${resource.id}`);
 }
 
 /** One pass can be replayed after either side of the localStorage/IndexedDB boundary. */
@@ -80,7 +82,8 @@ export async function reconcileCapturedDrafts(owner: string, port: DraftCaptureP
       || !ownsAddress(owner, binding.sourceKey, { value: null, savedAt: 0, creationTargetId: captured.resource.id }, captured.resource)) continue;
     // A note capture can stay at its original address or move once to its
     // adopted note ID. Unrelated drafts cannot block retirement of this hold.
-    const keys = [binding.sourceKey, draftKey(owner, captured.resource.id, 'note')];
+    const writerId = readDraftAddress(binding.sourceKey)?.writerId;
+    const keys = [binding.sourceKey, draftKey(owner, captured.resource.id, 'note', writerId)];
     const drafts = readDraftsStrict(keys);
     if (!drafts) continue;
     const matching = [...drafts].filter(([, draft]) => draft.captureToken === binding.token);
@@ -120,7 +123,7 @@ export function connectDraftCaptureRecovery(owner: string, port: DraftCapturePor
   };
   const stop = port.subscribeSavedWork(reconcile);
   const storageChanged = (event: StorageEvent) => {
-    if (!event.key || event.key.startsWith(`draft:v1:${owner}:`)) reconcile();
+    if (!event.key || draftBelongsToOwner(event.key, owner)) reconcile();
   };
   const visible = () => { if (document.visibilityState === 'visible') reconcile(); };
   window.addEventListener('storage', storageChanged);

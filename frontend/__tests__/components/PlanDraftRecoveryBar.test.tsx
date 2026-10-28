@@ -64,3 +64,13 @@ it('does not let an old confirmation discard replacement recovered words', async
   expect(discard).not.toHaveBeenCalled();
   expect(screen.getByText('Replacement recovered copy')).toBeInTheDocument();
 });
+
+
+it('shows the selected physical copy when two alternatives have equal words', () => {
+  const copies = ['first', 'second'].map(key => ({ id: 'p1', key, text: 'Same words', sourceRecord: { value: 'Same words', savedAt: 1 } }));
+  const choose = jest.fn();
+  render(<PlanDraftRecoveryBar cells={recoveredCells({ p1: 'Same words' }, sermon, copies, [copies[1]])} onChoose={choose} onRestore={jest.fn()} onDiscard={jest.fn()} />);
+  expect(screen.getByRole('combobox', { name: 'unsavedDraft.chooseCopy' })).toHaveValue('second');
+  fireEvent.change(screen.getByRole('combobox'), { target: { value: 'first' } });
+  expect(choose).toHaveBeenCalledWith('p1', 'first');
+});

@@ -14,7 +14,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { isStaleWriteError } from '@/services/conflictSafeUpdate.client';
 import { changedFields } from '@/utils/changedFields';
 import { prepareDraftCapture, prepareNoteDraftCapture } from '@/utils/draftCaptureRecovery.client';
-import { draftKey, clearDraftIfMatches, clearCreationDraft, moveDraft, readDraft, saveDraft } from '@/utils/durableDraft';
+import { draftKey, clearDraftIfMatches, moveDraft, readDraft, saveDraft } from '@/utils/durableDraft';
 import { announceIfPersisted, awaitAcceptance } from '@/utils/recoverableWrite';
 import { noteRecordingMetadata } from '@/utils/studyNoteRecordings';
 import { useTranslation } from '@locales/useTranslation';
@@ -35,13 +35,15 @@ function afterCanonicalCapture(submission: StudyNoteSubmission, payload: NoteDra
 }
 
 export function useNoteAutoSave({
-    noteId, isNew, creationId, draftDocId = 'new', isInitialized, title, content, tags, scriptureRefs, type, updateNote, createNote, uid, setCreatedNoteId, baselineRef, revisionRef, deliberateOverwriteRef, resaveNonce, saveBlocked, onConflict, onSaved, onCaptured, saveAtOnceRef, captureRecordingHandoff, dictationSourceIds = EMPTY_SOURCE_IDS, recordingSourceIds = EMPTY_SOURCE_IDS
+    noteId, isNew, creationId, draftDocId = 'new', draftWriterId, isInitialized, title, content, tags, scriptureRefs, type, updateNote, createNote, uid, setCreatedNoteId, baselineRef, revisionRef, deliberateOverwriteRef, resaveNonce, saveBlocked, onConflict, onSaved, onCaptured, saveAtOnceRef, captureRecordingHandoff, dictationSourceIds = EMPTY_SOURCE_IDS, recordingSourceIds = EMPTY_SOURCE_IDS
 }: {
     dictationSourceIds?: string[];
     recordingSourceIds?: string[];
     creationId?: string;
     /** Durable precreate address; legacy callers still use the shared placeholder. */
     draftDocId?: string;
+    /** The same mounted writer owns typing, immediate autosave and adopted backups. */
+    draftWriterId?: string;
     noteId: string; isNew: boolean; isInitialized: boolean; existingNote?: StudyNote; title: string;
     content: string; tags: string[]; scriptureRefs: ScriptureReference[]; type: 'note' | 'question';
     updateNote: (args: {
@@ -114,7 +116,7 @@ export function useNoteAutoSave({
             };
             // Immediate dictation can beat the backup debounce. Carry the submitted words,
             // never an older copy; a refused backup keeps its source and existing warning.
-            const sourceKey = uid ? draftKey(uid, draftDocId, 'note') : null;
+            const sourceKey = uid ? draftKey(uid, draftDocId, 'note', draftWriterId) : null;
             const sourceDraft = sourceKey ? readDraft<NoteDraftPayload>(sourceKey) : null;
             // Do not claim another creation's copy or an untagged legacy source for this ID.
             const ownsSource = !sourceDraft || sourceDraft.creationTargetId === creationId;
@@ -136,7 +138,7 @@ export function useNoteAutoSave({
             // `markSaved` retires the draft under the key the hook still holds
             // ("new"), so the move found nothing left to carry and the safety net
             // was gone while the write was still in flight.
-            if (uid && backupReady) moveDraft(draftKey(uid, draftDocId, 'note'), draftKey(uid, newNote.id, 'note'), creationId);
+            if (uid && backupReady) moveDraft(draftKey(uid, draftDocId, 'note', draftWriterId), draftKey(uid, newNote.id, 'note', draftWriterId), creationId);
             window.history.replaceState(null, '', `/studies/${newNote.id}`);
             setCreatedNoteId(newNote.id);
 
@@ -151,8 +153,17 @@ export function useNoteAutoSave({
                 // The draft was moved to the real id before the route changed. Never
                 // retire it from the old hook's moving key; remove only this exact,
                 // server-confirmed payload at its stable destination.
-                if (uid) clearDraftIfMatches(draftKey(uid, newNote.id, 'note'), confirmedPayload);
-                if (uid && creationId === newNote.id) clearCreationDraft(draftKey(uid, draftDocId, 'note'), creationId);
+                if (uid) clearDraftIfMatches(draftKey(uid, newNote.id, 'note', draftWriterId), confirmedPayload);
+                if (uid && creationId === newNote.id) {
+                    const sourceAddress = draftKey(uid, draftDocId, 'note', draftWriterId);
+                    if (readDraft(sourceAddress)?.creationTargetId === creationId) {
+                        clearDraftIfMatches(sourceAddress, confirmedPayload);
+                        // A refused refresh can leave this writer's prior copy. The
+                        // accepted continuation supersedes only that exact envelope;
+                        // another creation or a replaced copy keeps its own evidence.
+                        if (draftWriterId && !backupReady && ownsSource && sourceDraft) clearDraftIfMatches(sourceAddress, sourceDraft.value, sourceDraft);
+                    }
+                }
             };
             if (acceptance.kind === 'persisted') {
                 retirePersistedCreateDraft();
@@ -183,7 +194,7 @@ export function useNoteAutoSave({
         } finally {
             setIsSaving(false);
         }
-    }, [title, content, tags, scriptureRefs, type, dictationSourceIds, recordingSourceIds, createNote, creationId, draftDocId, uid, setCreatedNoteId, baselineRef, onSaved, onCaptured, captureRecordingHandoff]);
+    }, [title, content, tags, scriptureRefs, type, dictationSourceIds, recordingSourceIds, createNote, creationId, draftDocId, draftWriterId, uid, setCreatedNoteId, baselineRef, onSaved, onCaptured, captureRecordingHandoff]);
 
     const saveChanges = useCallback(async () => {
         if (!noteId || !isInitialized) return;
@@ -233,7 +244,7 @@ export function useNoteAutoSave({
         const wasDeliberate = deliberateOverwriteRef.current;
         try {
             const recording = captureRecordingHandoff?.();
-            const captureScope = prepareNoteDraftCapture(uid, noteId, submittedPayload);
+            const captureScope = prepareNoteDraftCapture(uid, noteId, submittedPayload, draftWriterId);
             const submission = updateNote({
                 id: noteId,
                 captureScope,
@@ -322,7 +333,7 @@ export function useNoteAutoSave({
             inFlightRef.current = false;
             setIsSaving(false);
         }
-    }, [uid, noteId, isNew, isInitialized, isSaving, saveBlocked, saveNewNote, title, content, tags, scriptureRefs, type, dictationSourceIds, recordingSourceIds, updateNote, baselineRef, revisionRef, deliberateOverwriteRef, onConflict, onSaved, onCaptured, atOnceRef, captureRecordingHandoff]);
+    }, [uid, draftWriterId, noteId, isNew, isInitialized, isSaving, saveBlocked, saveNewNote, title, content, tags, scriptureRefs, type, dictationSourceIds, recordingSourceIds, updateNote, baselineRef, revisionRef, deliberateOverwriteRef, onConflict, onSaved, onCaptured, atOnceRef, captureRecordingHandoff]);
 
     useEffect(() => {
         if (!isInitialized) return;

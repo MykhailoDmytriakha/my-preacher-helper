@@ -7,6 +7,7 @@ import { usePersistedConflict } from '@/hooks/usePersistedConflict';
 import { StaleWriteError, isStaleWriteError } from '@/services/conflictSafeUpdate.client';
 import { PRAYER_CORE_AGGREGATE, PRAYER_STATUS_AGGREGATE } from '@/services/prayerRequests.client';
 import { newClientId } from '@/utils/clientId';
+import { validPrayerCoreConflict, validPrayerStatusConflict } from '@/utils/refusedDraftPayloads';
 import { useTranslation } from '@locales/useTranslation';
 
 import type { DocumentData } from '@/data-engine/types';
@@ -46,8 +47,8 @@ export function usePrayerRequestsEngine(userId: string | null | undefined, activ
   });
   const collection = useDataCollection(enabled && userId ? 'prayerRequests' : null);
   const actions = useDocumentActions();
-  const [saveConflict, setSaveConflict] = usePersistedConflict<SaveConflictPayload>(userId ?? null, activeDocId ?? null, PRAYER_CORE_AGGREGATE);
-  const [statusConflict, setStatusConflict] = usePersistedConflict<StatusConflictPayload>(userId ?? null, activeDocId ?? null, PRAYER_STATUS_AGGREGATE);
+  const [saveConflict, setSaveConflict, , saveConflictChoices] = usePersistedConflict<SaveConflictPayload>(userId ?? null, activeDocId ?? null, PRAYER_CORE_AGGREGATE, validPrayerCoreConflict);
+  const [statusConflict, setStatusConflict, , statusConflictChoices] = usePersistedConflict<StatusConflictPayload>(userId ?? null, activeDocId ?? null, PRAYER_STATUS_AGGREGATE, validPrayerStatusConflict);
   const [resolvingConflict, setResolvingConflict] = useState(false);
   const { askBeforeDiscard, discardDialog, withdraw } = useDiscardQuestion('text');
   const saveConflictRef = useRef(saveConflict);
@@ -97,10 +98,12 @@ export function usePrayerRequestsEngine(userId: string | null | undefined, activ
   const updatePrayer = (id: string, updates: Partial<PrayerRequest>, _expectedRevision?: number | null,
     expectedBaseline?: Record<string, unknown> | null): Promise<void> =>
     once(`prayer:update:${id}:${JSON.stringify(updates)}`, async () => {
+      const held = saveConflictRef.current;
+      const captured = held?.payload.id === id && same(held.payload.updates, updates) ? held : null;
       const refusal = await guardedEdit(id, PRAYER_CORE_AGGREGATE, updates as DocumentData, expectedBaseline);
       if (refusal) { setSaveConflict({ payload: { id, updates }, actualRevision: refusal.actualRevision }, id); throw refusal; }
       // The same local capture now owns these words; retire only this prayer's conflict.
-      setSaveConflict(null, id);
+      if (captured) setSaveConflict(null, id, captured);
     });
 
   const statusPatch = (status: PrayerStatus, answerText?: string): DocumentData => {
@@ -111,9 +114,11 @@ export function usePrayerRequestsEngine(userId: string | null | undefined, activ
   const setStatus = (id: string, status: PrayerStatus, answerText?: string, _expectedRevision?: number | null,
     expectedBaseline?: Record<string, unknown> | null): Promise<void> =>
     once(`prayer:status:${id}:${status}:${answerText ?? ''}`, async () => {
+      const held = statusConflictRef.current;
+      const captured = held?.payload.id === id && held.payload.status === status && held.payload.answerText === answerText ? held : null;
       const refusal = await guardedEdit(id, PRAYER_STATUS_AGGREGATE, statusPatch(status, answerText), expectedBaseline);
       if (refusal) { setStatusConflict({ payload: { id, status, answerText }, actualRevision: refusal.actualRevision }, id); throw refusal; }
-      setStatusConflict(null, id);
+      if (captured) setStatusConflict(null, id, captured);
     });
 
   const resolve = async (run: () => Promise<StaleWriteError | null>, clear: () => void) => {
@@ -138,10 +143,12 @@ export function usePrayerRequestsEngine(userId: string | null | undefined, activ
     updatePrayer,
     setStatus,
     saveConflict,
+    saveConflictChoices,
+    statusConflictChoices,
     resolvingConflict,
     // Keeping mine re-sends the same fields without the baseline: a deliberate overwrite.
     keepMineOnConflict: () => saveConflict ? resolve(() => guardedEdit(saveConflict.payload.id, PRAYER_CORE_AGGREGATE,
-      saveConflict.payload.updates as DocumentData, null), () => setSaveConflict(null, saveConflict.payload.id)) : Promise.resolve(),
+      saveConflict.payload.updates as DocumentData, null), () => setSaveConflict(null, saveConflict.payload.id, saveConflict)) : Promise.resolve(),
     // The engine rows are already the current copy: taking theirs only retires the held text.
     takeTheirsOnConflict: async () => {
       const held = saveConflictRef.current;
@@ -152,14 +159,14 @@ export function usePrayerRequestsEngine(userId: string | null | undefined, activ
         activeDocIdRef.current === capturedDocId && saveConflictRef.current === held;
       setResolvingConflict(true);
       try {
-        await askBeforeDiscard(true, () => setSaveConflict(null, held.payload.id), isCurrent);
+        await askBeforeDiscard(true, () => setSaveConflict(null, held.payload.id, held), isCurrent);
       } finally {
         setResolvingConflict(false);
       }
     },
     statusConflict,
     keepMineOnStatusConflict: () => statusConflict ? resolve(() => guardedEdit(statusConflict.payload.id, PRAYER_STATUS_AGGREGATE,
-      statusPatch(statusConflict.payload.status, statusConflict.payload.answerText), null), () => setStatusConflict(null, statusConflict.payload.id)) : Promise.resolve(),
+      statusPatch(statusConflict.payload.status, statusConflict.payload.answerText), null), () => setStatusConflict(null, statusConflict.payload.id, statusConflict)) : Promise.resolve(),
     takeTheirsOnStatusConflict: async () => {
       const held = statusConflictRef.current;
       if (!held || resolvingConflict) return;
@@ -169,7 +176,7 @@ export function usePrayerRequestsEngine(userId: string | null | undefined, activ
         activeDocIdRef.current === capturedDocId && statusConflictRef.current === held;
       setResolvingConflict(true);
       try {
-        await askBeforeDiscard(true, () => setStatusConflict(null, held.payload.id), isCurrent);
+        await askBeforeDiscard(true, () => setStatusConflict(null, held.payload.id, held), isCurrent);
       } finally {
         setResolvingConflict(false);
       }

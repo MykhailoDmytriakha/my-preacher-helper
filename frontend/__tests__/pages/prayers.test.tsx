@@ -180,6 +180,23 @@ jest.mock('react-i18next', () => ({
 }));
 
 describe('Prayer Page', () => {
+  it('wires separate physical copy choices for prayer text and its answer', () => {
+    const saveCopies = ['first-save', 'second-save'].map((key, index) => ({ key, documentId: 'p1', value: { payload: { id: 'p1', updates: { title: `Saved prayer ${index}` } }, actualRevision: index } }));
+    const statusCopies = ['first-status', 'second-status'].map((key, index) => ({ key, documentId: 'p1', value: { payload: { id: 'p1', status: 'answered', answerText: `Saved answer ${index}` }, actualRevision: index } }));
+    const chooseSave = jest.fn(); const chooseStatus = jest.fn();
+    mockUsePrayerRequests.mockReturnValue({ ...mockUsePrayerRequests(), saveConflict: saveCopies[0].value,
+      statusConflict: statusCopies[0].value, resolvingConflict: false,
+      saveConflictChoices: { copies: saveCopies, selectedKey: saveCopies[0].key, activation: 0, select: chooseSave },
+      statusConflictChoices: { copies: statusCopies, selectedKey: statusCopies[0].key, activation: 0, select: chooseStatus } });
+    render(<PrayerPage />);
+    const pickers = screen.getAllByRole('combobox', { name: 'unsavedDraft.chooseCopy' });
+    expect(pickers).toHaveLength(2);
+    fireEvent.change(pickers[0], { target: { value: 'second-save' } });
+    fireEvent.change(pickers[1], { target: { value: 'second-status' } });
+    expect(chooseSave).toHaveBeenCalledWith('second-save');
+    expect(chooseStatus).toHaveBeenCalledWith('second-status');
+  });
+
   const createPrayer = jest.fn();
   const updatePrayer = jest.fn();
   const deletePrayer = jest.fn();
