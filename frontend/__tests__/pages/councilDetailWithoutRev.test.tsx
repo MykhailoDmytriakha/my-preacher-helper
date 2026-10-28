@@ -1,3 +1,9 @@
+// The real react-markdown, not the global stub in jest.setup.js: a section's reference must become a link.
+jest.unmock('react-markdown');
+jest.unmock('remark-gfm');
+jest.unmock('rehype-raw');
+jest.unmock('rehype-sanitize');
+
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 
@@ -11,7 +17,7 @@ import type { ResourceSnapshot } from '@/data-engine/types';
 
 jest.mock('@/providers/AuthProvider', () => ({ useAuth: () => ({ user: { uid: 'owner' } }) }));
 jest.mock('@/hooks/useUserSettings', () => ({ useUserSettings: () => ({ settings: { firstDayOfWeek: 'monday' } }) }));
-jest.mock('next/navigation', () => ({ useRouter: () => ({ push: jest.fn() }), useParams: () => ({ id: 'council-1' }) }));
+jest.mock('next/navigation', () => ({ useRouter: () => ({ push: jest.fn() }), useParams: () => ({ id: 'council-1' }), usePathname: () => '/care/council/council-1', useSearchParams: () => new URLSearchParams() }));
 jest.mock('@/data-engine/browser.client', () => ({ createBrowserDataEngine: jest.fn() }));
 jest.mock('@/data-engine/react.client', () => ({ ...jest.requireActual('@/data-engine/react.client'), isCollectionOnEngine: () => true }));
 jest.mock('@/hooks/useCouncilsRead', () => ({ useCouncilsRead: () => ({ councils: [], loading: false, error: null, refresh: jest.fn() }) }));
@@ -47,5 +53,32 @@ it('delivers a new title for a council written before it had a version counter',
 
   await waitFor(() => expect(harness.server.value?.title).toBe('Renamed old council'));
   expect(harness.server.value?.rev).toBe(1);
+  view.unmount();
+});
+
+// Case 2026-10-12-block-diagram, L8: a reference in a council's section opens its verse, as in a note or a group.
+it('makes a reference in a section of the council a link to the verse', async () => {
+  const withVerse: ResourceSnapshot = { ...revless, value: { ...revless.value as object, topics: [{ ...topic, summary: 'Прочитать Рим 8:28 вместе' }] } };
+  const harness = documentEngineHarness(withVerse);
+  jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
+  const view = render(<DataEngineProvider><CouncilDetailPage /></DataEngineProvider>);
+  await screen.findByDisplayValue('Original council');
+  await settle();
+  await waitFor(() => expect(Array.from(view.container.querySelectorAll('[data-scripture-link]')).map((link) => link.textContent)).toContain('Рим 8:28'));
+  view.unmount();
+});
+
+// Codex review 2026-10-27: the questions and answers were drawn as strings, and one line alone did not say the
+// council's language.
+it('links a reference in a question and its answer, read in the language of the whole council', async () => {
+  const ukrainian: ResourceSnapshot = { ...revless, value: { ...revless.value as object, title: 'Братська рада: молитва і мудрість', topics: [{ ...topic, title: 'Мудрість', summary: 'Що каже Писання', questions: [{ id: 'q1', question: 'Як просити, як у 1Цар 3:9?', answer: 'Просити з вірою' }] }] } };
+  const harness = documentEngineHarness(ukrainian);
+  jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
+  const view = render(<DataEngineProvider><CouncilDetailPage /></DataEngineProvider>);
+  await screen.findByDisplayValue('Братська рада: молитва і мудрість');
+  await settle();
+  await waitFor(() => expect(Array.from(view.container.querySelectorAll('[data-scripture-link]')).map((link) => link.textContent)).toContain('1Цар 3:9'));
+  // Ohienko's 1 Kings under a Russian interface: the mark beside the link names its Bible.
+  expect(view.container.querySelector('[data-scripture-bible]')).not.toBeNull();
   view.unmount();
 });

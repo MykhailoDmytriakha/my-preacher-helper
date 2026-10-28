@@ -24,6 +24,9 @@ const state: { council: Council | null; councils: Council[] } = { council: null,
 jest.mock('next/navigation', () => ({
   useRouter: () => ({ push: mockPush }),
   useParams: () => ({ id: 'source' }),
+  // The verse window a section's reference opens reads where the reader came from.
+  usePathname: () => '/care/council/source',
+  useSearchParams: () => new URLSearchParams(),
 }));
 jest.mock('sonner', () => ({ toast: { error: jest.fn(), success: jest.fn(), warning: jest.fn() } }));
 jest.mock('@/data-engine/react.client', () => ({

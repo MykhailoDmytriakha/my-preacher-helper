@@ -26,6 +26,8 @@ jest.mock('next/navigation', () => ({
   useParams: () => ({ id: 'p1' }),
   useRouter: () => ({ push: mockPush, replace: mockReplace }),
   useSearchParams: () => mockSearchParams,
+  // The verse window a reference opens reads where the reader came from.
+  usePathname: () => '/prayers/p1',
 }));
 
 jest.mock('sonner', () => ({
@@ -184,6 +186,39 @@ describe('PrayerDetailPage', () => {
 
     expect(screen.getByText('Pray for family')).toBeInTheDocument();
     expect(screen.queryByText('prayer.notFound')).not.toBeInTheDocument();
+  });
+
+  // Case 2026-10-12-block-diagram, L8: a reference in a prayer opens its verse, as in a note or a group.
+  it('makes a reference in the prayer, its answer and its updates a link to the verse', () => {
+    const withVerses = {
+      ...activePrayer,
+      description: 'Просим мудрости по Иак 1:5',
+      status: 'answered',
+      answerText: 'Ответ пришёл, как в Флп 4:19',
+      updates: [{ id: 'u1', text: 'Держимся Рим 8:28', createdAt: '2026-03-02T00:00:00.000Z' }],
+    };
+    mockUsePrayerDetail.mockReturnValue({ prayer: withVerses, isLoading: false });
+    mockUsePrayerRequests.mockReturnValue({ ...mockUsePrayerRequests(), prayerRequests: [withVerses] });
+
+    const { container } = render(<PrayerDetailPage />);
+
+    const links = Array.from(container.querySelectorAll('[data-scripture-link]')).map((link) => link.textContent);
+    expect(links).toEqual(expect.arrayContaining(['Иак 1:5', 'Флп 4:19', 'Рим 8:28']));
+  });
+
+  // Codex review 2026-10-27: one line alone does not say the prayer's language — «1Цар» is 1 Samuel in Russian and
+  // 1 Kings in Ukrainian; and the title, read like the rest, links too.
+  it('reads a reference in the language of the whole prayer, and links one in its title', () => {
+    const ukrainian = { ...activePrayer, title: 'Молимося за мудрість, як Соломон: 1Цар 3:9', description: 'Почуй і дай', updates: [{ id: 'u1', text: '1Цар 3:5', createdAt: '2026-03-02T00:00:00.000Z' }] };
+    mockUsePrayerDetail.mockReturnValue({ prayer: ukrainian, isLoading: false });
+    mockUsePrayerRequests.mockReturnValue({ ...mockUsePrayerRequests(), prayerRequests: [ukrainian] });
+
+    const { container } = render(<PrayerDetailPage />);
+
+    const links = Array.from(container.querySelectorAll('[data-scripture-link]'));
+    expect(links.map((link) => link.textContent)).toEqual(expect.arrayContaining(['1Цар 3:9', '1Цар 3:5']));
+    // Read in Ohienko under a Russian interface: the mark beside each link names it.
+    expect(container.querySelectorAll('[data-scripture-bible]').length).toBeGreaterThanOrEqual(2);
   });
 
   it('renders loading skeletons while the page is fetching', () => {

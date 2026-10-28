@@ -6,6 +6,8 @@ import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
+import { ScriptureText, ScriptureWrittenIn } from '@/components/bible/ScriptureLinks';
+import { ScriptureLinksInWindow } from '@/components/bible/VerseWindow';
 import { CouncilOutcomePanel, useOutcomeLine } from '@/components/council/CouncilOutcomePanel';
 import FloatingTextScaleControls from '@/components/FloatingTextScaleControls';
 import MarkdownDisplay from '@/components/MarkdownDisplay';
@@ -16,6 +18,7 @@ import { actionFailureMessage } from '@/utils/actionFailureMessage';
 import {
   applyOutcome,
   councilProgress,
+  councilLanguage,
   firstOpenTopicIndex,
   holdCouncil,
   isInfoTopic,
@@ -50,7 +53,8 @@ const buttonQuiet =
 export default function CouncilConductPage() {
   const { id } = useParams();
   const councilId = typeof id === 'string' ? id : '';
-  return <EngineCouncilConductPage councilId={councilId} />;
+  // A reference in a section opens its verse over the meeting (the window stands above it), as in a group's.
+  return <ScriptureLinksInWindow><EngineCouncilConductPage councilId={councilId} /></ScriptureLinksInWindow>;
 }
 
 /** Conducting only ever edits this one council, so the document editor is the whole source. */
@@ -180,6 +184,7 @@ function CouncilConductContent({ councilId, source }: { councilId: string; sourc
   );
 
   return (
+    <ScriptureWrittenIn language={councilLanguage(council)}>
     <Shell>
       <header className="flex items-center gap-2 border-b border-gray-200 px-4 py-3 dark:border-gray-800">
         <button type="button" onClick={backToCouncil} className="inline-flex items-center gap-1.5 text-sm font-semibold text-indigo-700 dark:text-indigo-300">
@@ -253,7 +258,7 @@ function CouncilConductContent({ councilId, source }: { councilId: string; sourc
                   </span>
                 </p>
                 <h1 className="mt-[0.25em] text-[1.9em] font-extrabold tracking-tight text-gray-900 dark:text-gray-100">
-                  {topic.title}
+                  <ScriptureText text={topic.title} />
                 </h1>
                 {topic.forAssembly && (
                   /*
@@ -298,10 +303,10 @@ function CouncilConductContent({ councilId, source }: { councilId: string; sourc
                       <ul className="space-y-[1em] border-t border-gray-200 px-[1em] py-[0.8em] leading-relaxed dark:border-gray-800">
                         {topic.questions.map((question) => (
                           <li key={question.id} className="text-[0.92em]">
-                            <p className="font-semibold text-indigo-800 dark:text-indigo-200">{question.question}</p>
+                            <p className="font-semibold text-indigo-800 dark:text-indigo-200"><ScriptureText text={question.question} /></p>
                             {question.answer && (
                               <p className="ml-[0.75em] mt-[0.35em] border-l-2 border-indigo-200 pl-[0.75em] text-gray-700 dark:border-indigo-900 dark:text-gray-400">
-                                {question.answer}
+                                <ScriptureText text={question.answer} />
                               </p>
                             )}
                           </li>
@@ -365,6 +370,7 @@ function CouncilConductContent({ councilId, source }: { councilId: string; sourc
       */}
       <FloatingTextScaleControls className="!bottom-32 !right-6 z-[210]" />
     </Shell>
+    </ScriptureWrittenIn>
   );
 }
 

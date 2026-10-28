@@ -1,3 +1,9 @@
+// The real react-markdown, not the global stub in jest.setup.js: a cell's reference must become a link.
+jest.unmock('react-markdown');
+jest.unmock('remark-gfm');
+jest.unmock('rehype-raw');
+jest.unmock('rehype-sanitize');
+
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
@@ -192,6 +198,13 @@ describe('the hand-written plan screen on a copy for reading', () => {
     mockSearchParams = new URLSearchParams();
     mockSermon = sermonFixture();
     window.localStorage.clear();
+  });
+
+  // Case 2026-10-12-block-diagram, L8: the verse links stood around the header only; a cell's reference was a word.
+  it('makes a reference in a cell of the plan a link to the verse', () => {
+    mockSermon = sermonFixture({ planText: { p1: 'Warriors, marksmen, craftsmen', p2: 'He called on God: 1 Пар 4:10', sp1: 'Bless me indeed', p3: 'Ask' } });
+    const { container } = renderPage(<ManualConspectusPage />);
+    expect(Array.from(container.querySelectorAll('[data-scripture-link]')).map((link) => link.textContent)).toContain('1 Пар 4:10');
   });
 
   it.each([['by hand', ''], ['from a note', 'source=note']])('is its own page with nothing to change (%s)', (_mode, query) => {

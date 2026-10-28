@@ -1,8 +1,9 @@
 'use client';
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, type MouseEvent, type ReactNode } from 'react';
+import { createContext, Fragment, useCallback, useContext, useEffect, useMemo, useRef, type MouseEvent, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import HighlightedText from '@/components/HighlightedText';
 import { Chip } from '@/components/ui/Chip';
 import { resolveAppLocale, type AppLocale } from '@/utils/appLocale';
 import { referencesInText, type ReferenceInText } from '@/utils/bibleLink';
@@ -108,18 +109,21 @@ function ScriptureLink({ found, children }: { found: Pick<ReferenceInText, 'raw'
 }
 
 /** Plain text — a question, a leader's note — with its references as links. */
-export function ScriptureText({ text }: { text: string }) {
+export function ScriptureText({ text, searchQuery = '' }: { text: string; searchQuery?: string }) {
   const links = useScriptureLinks();
   const found = useMemo(() => (links ? referencesInText(text, links.locale, links.written) : []), [text, links]);
-  if (found.length === 0) return <>{text}</>;
+  // A search lights its matches in the words and inside a link alike: the link stays a link (case
+  // 2026-10-12-block-diagram, L8 — the notes' search drew a quote callout as lit words with no link).
+  const lit = (words: string) => (searchQuery.trim() ? <HighlightedText text={words} searchQuery={searchQuery} /> : words);
+  if (found.length === 0) return <>{lit(text)}</>;
   const parts: ReactNode[] = [];
   let at = 0;
   for (const each of found) {
-    if (each.start > at) parts.push(text.slice(at, each.start));
-    parts.push(<ScriptureLink key={each.start} found={each}>{each.raw}</ScriptureLink>);
+    if (each.start > at) parts.push(<Fragment key={`text-${at}`}>{lit(text.slice(at, each.start))}</Fragment>);
+    parts.push(<ScriptureLink key={each.start} found={each}>{lit(each.raw)}</ScriptureLink>);
     at = each.end;
   }
-  if (at < text.length) parts.push(text.slice(at));
+  if (at < text.length) parts.push(<Fragment key={`text-${at}`}>{lit(text.slice(at))}</Fragment>);
   return <>{parts}</>;
 }
 

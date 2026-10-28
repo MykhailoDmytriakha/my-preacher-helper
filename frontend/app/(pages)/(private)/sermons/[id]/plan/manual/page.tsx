@@ -488,7 +488,8 @@ function ManualConspectusContent({ source, readOnly = false }: { source: SermonS
       {/* The shared header — see `PlanPageHeader`. The link to the assembled plan that used
           to sit up here is gone: the mode switch inside the header leads to the same screen,
           and two doors to one place is what made the row ahead of it uneven. */}
-      {/* The sermon's verse opens over the page; the window's way to the Bible saves the cells first. */}
+      {/* The sermon's verse and a reference in a cell open over the page; the window's way to the Bible saves the
+          cells first. Editing a cell is typing: the editor shows no links. */}
       <ScriptureLinksInWindow writtenIn={sermonLanguage(sermon)} beforeSwitch={conspectus.saveModified}>
         <PlanPageHeader
           sermon={sermon}
@@ -503,7 +504,6 @@ function ManualConspectusContent({ source, readOnly = false }: { source: SermonS
           onStartPreachingMode={openPreaching}
           readOnly={readOnly}
         />
-      </ScriptureLinksInWindow>
 
       {/* Not on a copy for reading — see the paired screen: the draft waits in storage. */}
       {draft.recovered && !readOnly && (
@@ -571,6 +571,7 @@ function ManualConspectusContent({ source, readOnly = false }: { source: SermonS
         );
       })}
       </NotePlanWorkspace>
+      </ScriptureLinksInWindow>
       {/* The immersive and preaching views return above, so the strip stays out of them —
           nobody standing in front of a congregation needs a progress readout. */}
       <ProgressSidebar

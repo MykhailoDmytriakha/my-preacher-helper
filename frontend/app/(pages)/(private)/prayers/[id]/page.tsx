@@ -15,6 +15,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
+import { ScriptureText } from '@/components/bible/ScriptureLinks';
+import { ScriptureLinksInWindow } from '@/components/bible/VerseWindow';
 import HighlightedText from '@/components/HighlightedText';
 import AddUpdateModal from '@/components/prayer/AddUpdateModal';
 import CreatePrayerModal, { type PrayerFormPayload } from '@/components/prayer/CreatePrayerModal';
@@ -28,6 +30,7 @@ import { useWayInOnce } from '@/hooks/useWayInOnce';
 import { PrayerStatus } from '@/models/models';
 import { useAuth } from '@/providers/AuthProvider';
 import { PRAYER_CORE_AGGREGATE, PRAYER_STATUS_AGGREGATE } from '@/services/prayerRequests.client';
+import { textLanguage } from '@/utils/appLocale';
 import {
   announceIfPersisted,
   awaitAcceptance,
@@ -237,7 +240,11 @@ export default function PrayerDetailPage() {
 
   const isActive = prayer.status === 'active';
 
+  // A reference in the prayer opens its verse in a window, as in a note or a group (case 2026-10-12-block-diagram, L8);
+  // the words of the whole prayer say its language («1Цар» is 1 Kings in a Ukrainian prayer), not one line alone.
+  const prayerLanguage = textLanguage([prayer.title, prayer.description, prayer.answerText, ...(prayer.updates ?? []).map((update) => update.text)].filter(Boolean).join(' '));
   return (
+    <ScriptureLinksInWindow writtenIn={prayerLanguage}>
     <div className="max-w-2xl mx-auto px-4 py-6 space-y-6">
       {/* A save was TURNED AWAY. The optimistic cache was rolled back to the server's
           truth, so this banner holds the only remaining copy of what was typed. */}
@@ -277,14 +284,14 @@ export default function PrayerDetailPage() {
               id="prayer-focus-title"
               className="rounded-md text-base font-semibold text-gray-900 dark:text-gray-100 leading-snug transition-shadow"
             >
-              <HighlightedText text={prayer.title} searchQuery={highlightQuery} />
+              <ScriptureText text={prayer.title} searchQuery={highlightQuery} />
             </p>
             {prayer.description && (
               <p
                 id="prayer-focus-description"
                 className="rounded-md text-sm text-gray-600 dark:text-gray-400 transition-shadow"
               >
-                <HighlightedText text={prayer.description} searchQuery={highlightQuery} />
+                <ScriptureText text={prayer.description} searchQuery={highlightQuery} />
               </p>
             )}
             {prayer.tags && prayer.tags.length > 0 && (
@@ -408,7 +415,7 @@ export default function PrayerDetailPage() {
           </div>
           {prayer.answerText ? (
             <p className="text-sm text-green-900 dark:text-green-100 whitespace-pre-wrap leading-relaxed">
-              <HighlightedText text={prayer.answerText} searchQuery={highlightQuery} />
+              <ScriptureText text={prayer.answerText} searchQuery={highlightQuery} />
             </p>
           ) : (
             <p className="text-sm text-green-600/70 dark:text-green-400/60 italic">
@@ -442,7 +449,7 @@ export default function PrayerDetailPage() {
                 className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-lg px-4 py-3 transition-shadow"
               >
                 <p className="text-sm text-gray-800 dark:text-gray-200 whitespace-pre-wrap">
-                  <HighlightedText text={update.text} searchQuery={highlightQuery} />
+                  <ScriptureText text={update.text} searchQuery={highlightQuery} />
                 </p>
                 <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
                   {new Date(update.createdAt).toLocaleString()}
@@ -475,5 +482,6 @@ export default function PrayerDetailPage() {
         />
       )}
     </div>
+    </ScriptureLinksInWindow>
   );
 }

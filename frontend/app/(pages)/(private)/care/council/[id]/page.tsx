@@ -34,6 +34,8 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import { ReorderArrows } from '@/(pages)/(private)/care/orders/ReorderArrows';
+import { ScriptureText, ScriptureWrittenIn } from '@/components/bible/ScriptureLinks';
+import { ScriptureLinksInWindow } from '@/components/bible/VerseWindow';
 import { CouncilOutcomeForm } from '@/components/council/CouncilOutcomeForm';
 import { CouncilOutcomePanel, useOutcomeLine, useRecordedOutcomeLabel, useTopicStateLine } from '@/components/council/CouncilOutcomePanel';
 import MarkdownDisplay from '@/components/MarkdownDisplay';
@@ -48,7 +50,7 @@ import { useCouncilDataDocument } from '@/hooks/useCouncilDataDocument';
 import { useCouncilsRead } from '@/hooks/useCouncilsRead';
 import { useDndKitAccessibility } from '@/hooks/useDragAnnouncements';
 import { actionFailureMessage } from '@/utils/actionFailureMessage';
-import { applyOutcome, hasProgress, holdCouncil, isInfoTopic, newOption, newQuestion, newTopic, outcomeText, preparingCouncils, removeTopicOption, reopenCouncil, reorderTopics, setTopicKind, topicState } from '@/utils/council';
+import { applyOutcome, councilLanguage, hasProgress, holdCouncil, isInfoTopic, newOption, newQuestion, newTopic, outcomeText, preparingCouncils, removeTopicOption, reopenCouncil, reorderTopics, setTopicKind, topicState } from '@/utils/council';
 import { formatDate, formatDateOnly } from '@/utils/dateFormatter';
 import { CARE_CARD_TONES } from '@/utils/themeColors';
 
@@ -86,7 +88,8 @@ type TopicUpdater = (topic: CouncilTopic) => CouncilTopic;
 export default function CouncilDetailPage() {
   const { id } = useParams();
   const councilId = typeof id === 'string' ? id : '';
-  return <EngineCouncilDetailPage councilId={councilId} />;
+  // A reference in a section opens its verse in a window, as in a note or a group (case 2026-10-12-block-diagram, L8).
+  return <ScriptureLinksInWindow><EngineCouncilDetailPage councilId={councilId} /></ScriptureLinksInWindow>;
 }
 
 /**
@@ -287,6 +290,7 @@ function CouncilDetailContent({ source, engineCouncilId }: { source: CouncilDeta
   const activeTopic = council.topics.find((topic) => topic.id === activeId);
 
   return (
+    <ScriptureWrittenIn language={councilLanguage(council)}>
     <div className="mx-auto w-full max-w-4xl">
       <BackToList />
 
@@ -501,6 +505,7 @@ function CouncilDetailContent({ source, engineCouncilId }: { source: CouncilDeta
         isDestructive
       />
     </div>
+    </ScriptureWrittenIn>
   );
 }
 
@@ -597,7 +602,7 @@ function TopicCard({
           ) : (
             <>
               <div className="flex flex-wrap items-center gap-2">
-                <h3 className="text-base font-bold text-gray-900 dark:text-gray-100">{topic.title}</h3>
+                <h3 className="text-base font-bold text-gray-900 dark:text-gray-100"><ScriptureText text={topic.title} /></h3>
                 {info && (
                   <Chip size="sm" tone="neutral" icon={<Megaphone className="h-3 w-3" strokeWidth={2.25} aria-hidden="true" />}>
                     {t('council.topic.infoChip')}
@@ -633,11 +638,11 @@ function TopicCard({
                   <ul className="mt-1.5 space-y-1.5">
                     {topic.questions.map((question) => (
                       <li key={question.id} className="text-sm">
-                        <p className="font-semibold text-indigo-800 dark:text-indigo-200">{question.question}</p>
+                        <p className="font-semibold text-indigo-800 dark:text-indigo-200"><ScriptureText text={question.question} /></p>
                         {/* The answer steps in from the question: two tones of grey alone read as one block. */}
                         {question.answer && (
                           <p className="mt-0.5 ml-3 border-l-2 border-indigo-200 pl-3 text-gray-700 dark:border-indigo-900 dark:text-gray-400">
-                            {question.answer}
+                            <ScriptureText text={question.answer} />
                           </p>
                         )}
                       </li>
