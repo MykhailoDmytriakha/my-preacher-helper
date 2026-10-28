@@ -18,13 +18,13 @@ import { draftKey, clearDraftIfMatches, moveDraft } from '@/utils/durableDraft';
 import { announceIfPersisted, awaitAcceptance, type WriteSubmission } from '@/utils/recoverableWrite';
 
 import type { NoteDraftPayload } from './noteDraft';
-import type { ScriptureReference, StudyNote } from '@/models/models';
+import type { ScriptureReference, StudyNote, StudyNoteType } from '@/models/models';
 
 export function useNoteAutoSave({
     noteId, isNew, isInitialized, title, content, tags, scriptureRefs, type, updateNote, createNote, uid, setCreatedNoteId, baselineRef, revisionRef, deliberateOverwriteRef, resaveNonce, saveBlocked, onConflict, onSaved, saveAtOnceRef
 }: {
     noteId: string; isNew: boolean; isInitialized: boolean; existingNote?: StudyNote; title: string;
-    content: string; tags: string[]; scriptureRefs: ScriptureReference[]; type: 'note' | 'question';
+    content: string; tags: string[]; scriptureRefs: ScriptureReference[]; type: StudyNoteType;
     updateNote: (args: {
         id: string;
         updates: Partial<StudyNote>;

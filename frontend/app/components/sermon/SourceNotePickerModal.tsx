@@ -12,7 +12,7 @@ import { resolveAppLocale } from '@/utils/appLocale';
 import { formatDateOnly } from '@/utils/dateFormatter';
 import { formatScriptureReference } from '@/utils/scriptureReference';
 import { compareById, timeOrZero } from '@/utils/sortHelpers';
-import { matchesStudyNoteQuery } from '@/utils/studyNoteUtils';
+import { matchesStudyNoteQuery, studyNoteOwnName } from '@/utils/studyNoteUtils';
 import { SOURCE_NOTE_COLORS, UI_COLORS } from '@/utils/themeColors';
 
 import type { SourceNoteSaveResult } from '@/hooks/useSermonNoteLinks';
@@ -178,7 +178,8 @@ export default function SourceNotePickerModal({
     onClose();
   };
 
-  const noteTitle = (note: StudyNote) => note.title?.trim() || t('studiesWorkspace.untitled');
+  // The name a note goes by elsewhere: its title, else its place — a comment has only its place (`studyNoteOwnName`).
+  const noteTitle = (note: StudyNote) => studyNoteOwnName(note, bibleLocale) || t('studiesWorkspace.untitled');
 
   const content = (
     <div

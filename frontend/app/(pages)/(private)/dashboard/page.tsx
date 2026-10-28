@@ -960,7 +960,7 @@ function buildStudyItems(notes: StudyNote[], t: TFunction, locale: string): Stud
       id: note.id,
       passage: getStudyDisplayTitle(note, t, locale),
       references: getStudyReferences(note, locale).slice(0, 2),
-      tags: (note.tags || []).length > 0 ? note.tags.slice(0, 3) : [note.type === 'question' ? t('dashboardHome.sections.studies.questionTag') : t('dashboardHome.sections.studies.noteTag')],
+      tags: (note.tags || []).length > 0 ? note.tags.slice(0, 3) : [note.type === 'question' ? t('dashboardHome.sections.studies.questionTag') : note.type === 'comment' ? t('dashboardHome.sections.studies.commentTag') : t('dashboardHome.sections.studies.noteTag')],
       href: `/studies/${note.id}`,
     }));
 }

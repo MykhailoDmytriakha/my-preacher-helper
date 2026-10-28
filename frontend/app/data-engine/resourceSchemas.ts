@@ -95,7 +95,7 @@ const shapes: Record<string, z.ZodRawShape> = {
     audioMetadata: object({ ...optionalStrings(['provider', 'voice', 'model', 'lastGenerated', 'lastOptimized']), chunksCount: number.int().nonnegative().optional(), mode: z.enum(['ai', 'raw']).optional() }).optional(),
     createdAt: text.optional(), updatedAt: text.optional(),
   },
-  studyNotes: { ...owner, ...timestamps, content: text, title: text.optional(), scriptureRefs: children(scripture), tags: strings, isDraft: boolean, materialIds: z.array(id).optional(), type: z.enum(['note', 'question']).optional() },
+  studyNotes: { ...owner, ...timestamps, content: text, title: text.optional(), scriptureRefs: children(scripture), tags: strings, isDraft: boolean, materialIds: z.array(id).optional(), type: z.enum(['note', 'question', 'comment']).optional() },
   studyMaterials: { ...owner, ...timestamps, title: id, description: text.optional(), type: z.enum(['sermon', 'study', 'group', 'guide']), noteIds: z.array(id), sections: children(object({ id, title: text, noteIds: z.array(id), connector: text.optional() })).optional() },
   groups: { ...owner, ...timestamps, title: text, description: text.optional(), status, templates: children(block), flow: children(flowItem), meetingDates: children(meeting).optional(), seriesId: id.nullable().optional(), seriesPosition: number.nullable().optional() },
   series: { ...owner, ...timestamps, title: text.optional(), description: text.optional(), theme: text, bookOrTopic: text, sermonIds: z.array(id), items: children(seriesItem).optional(), seriesKind: z.enum(['sermon', 'group', 'mixed']).optional(), startDate: text.optional(), duration: number.optional(), color: text.optional(), status },

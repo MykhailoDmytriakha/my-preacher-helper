@@ -54,7 +54,7 @@ function toSharedNote(shareLink: StudyNoteShareLink, data: Record<string, unknow
     content,
     ...(title ? { title } : {}),
     scriptureRefs,
-    type: data.type === 'question' ? 'question' : 'note',
+    type: data.type === 'question' || data.type === 'comment' ? data.type : 'note',
   };
 }
 

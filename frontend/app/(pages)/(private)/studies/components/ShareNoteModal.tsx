@@ -16,8 +16,10 @@ import { useTranslation } from 'react-i18next';
 import { useClipboard } from '@/hooks/useClipboard';
 import { useModalLayer } from '@/hooks/useModalLayer';
 import { StudyNote, StudyNoteShareLink } from '@/models/models';
+import { resolveAppLocale } from '@/utils/appLocale';
 import { awaitAcceptance, type WriteSubmission } from '@/utils/recoverableWrite';
 import { getShareNotePath, getShareNoteUrl } from '@/utils/shareNoteUtils';
+import { studyNoteOwnName } from '@/utils/studyNoteUtils';
 
 interface ShareNoteModalProps {
   isOpen: boolean;
@@ -145,7 +147,8 @@ export default function ShareNoteModal({
               {t('studiesWorkspace.shareLinks.modalTitle')}
             </p>
             <h2 id="share-note-title" className="text-xl font-semibold leading-7 text-gray-900 dark:text-gray-100">
-              {note.title || t('studiesWorkspace.untitled')}
+              {/* The name its link preview gives it: its title, else its place (`studyNoteOwnName`). */}
+              {studyNoteOwnName(note, resolveAppLocale(i18n?.language)) || t('studiesWorkspace.untitled')}
             </h2>
             {shareLink ? (
               <p className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">

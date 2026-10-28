@@ -31,6 +31,7 @@ import { buildMinimapLayout } from './minimapLayout';
 import { PhoneReaderTools } from './PhoneReaderTools';
 import { useReaderTrail, type TrailBack } from './PlaceTrail';
 import { arriveOnTrail, changeTranslationOnTrail, leaveOnTrail, openedForTranslation, ownTrailPlace, stepOnTrail } from './placeTrailStore';
+import { ReaderCommentDialog, useCommentDoors, useReaderCommenting } from './ReaderCommentDialog';
 import { readingSurface } from './readingSurface';
 import { useBookCrossRefs } from './useBookCrossRefs';
 import { useBookUsage } from './useBookUsage';
@@ -40,6 +41,7 @@ import { useVerseCopy } from './verseCopy/useVerseCopy';
 import { VerseCopyBar } from './verseCopy/VerseCopyBar';
 import { VerseHoldSurface } from './verseCopy/VerseHoldSurface';
 import { VerseMenu } from './verseCopy/VerseMenu';
+import { ScriptureLinksInWindow } from './VerseWindow';
 
 import type { AppLocale } from '@/utils/appLocale';
 import type { CrossReference } from '@/utils/crossReferences';
@@ -354,8 +356,13 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
   // Cross references: the chips with the verses and the window of one verse's links.
   const crossRefs = useBookCrossRefs(bookId, bible, text, 'reader');
   const closeCrossRefs = crossRefs.close;
+  // A comment's window (case 2026-10-12-block-diagram, 3.2): one already written, or a new one on a verse or a chapter.
+  // A comment's window and its doors (case 2026-10-12-block-diagram, 3.2), kept beside the window itself.
+  const { commenting, setCommenting, edit: editComment, close: closeComment } = useReaderCommenting();
   // The person's own material on the verses it names: badges with the text, dots on the minimap, a list.
-  const mine = useBookUsage(bookId, bible, locale, Boolean(text));
+  const mine = useBookUsage(bookId, bible, locale, Boolean(text), editComment);
+  const { commentOn, commentPassage, commentsReady } = mine;
+  const commentDoors = useCommentDoors({ ready: commentsReady, commentOn, setCommenting, bookId, bible });
   const layout = useMemo(() => (text ? buildMinimapLayout(text.chapters) : null), [text]);
 
   // A BIG BOOK IS DRAWN AROUND THE PLACE READ (`useChapterWindow`): the chapters near it are in the
@@ -906,16 +913,20 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
             // (`marks.textClass`, set once); a tool in hand keeps the page's own swipe back off it
             // (`data-gesture-ignore`, navigation/gestures). A finger's hold opens a verse's menu, never the
             // system's selection: on a touch screen the words are not selected.
-            <VerseHoldSurface
-              copy={verseCopy}
-              articleRef={textRef}
-              gestureIgnore={marks.gestureIgnore}
-              penSurface={marks.penSurface}
-              className={`isolate min-w-0 bg-white dark:bg-gray-900 [-webkit-touch-callout:none] [@media(hover:none)]:select-none ${frame.card} ${marks.textClass}`}
-            >
-              <BookRibbon text={text} lang={BIBLES[bible].language} chapterWord={chapterWord} crossRefs={ribbonCrossRefs} signs={ribbonSigns} mine={ribbonMine} boxes={chapterWindow.boxes} />
-              <BookEnd bookId={bookId} bible={bible} locale={locale} wide={wide} onOpen={(chosen) => openPlace(chosen, { chapter: 1, verse: 1 })} />
-            </VerseHoldSurface>
+            // A place named in a comment opens over the text in the verse window, as everywhere else (`VerseWindow.tsx`); the
+            // window stands beside the surface, so its presses do not reach the verse's own hold and menu.
+            <ScriptureLinksInWindow>
+              <VerseHoldSurface
+                copy={verseCopy}
+                articleRef={textRef}
+                gestureIgnore={marks.gestureIgnore}
+                penSurface={marks.penSurface}
+                className={`isolate min-w-0 bg-white dark:bg-gray-900 [-webkit-touch-callout:none] [@media(hover:none)]:select-none ${frame.card} ${marks.textClass}`}
+              >
+                <BookRibbon text={text} lang={BIBLES[bible].language} chapterWord={chapterWord} crossRefs={ribbonCrossRefs} signs={ribbonSigns} mine={ribbonMine} chapterComment={commentDoors.chapter} boxes={chapterWindow.boxes} />
+                <BookEnd bookId={bookId} bible={bible} locale={locale} wide={wide} onOpen={(chosen) => openPlace(chosen, { chapter: 1, verse: 1 })} />
+              </VerseHoldSurface>
+            </ScriptureLinksInWindow>
           ) : null}
         </div>
         {wide && text && layout ? (
@@ -959,7 +970,9 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
         listed={mine.listed}
         onClose={mine.close}
         onOpenEntry={openMineEntry}
+        onEditComment={(id) => { mine.close(); editComment(id); }}
       />
+      <ReaderCommentDialog commenting={commenting} text={text} bookId={bookId} locale={locale} passageOf={commentPassage} onClose={closeComment} />
       <MarkedElsewhereSheet
         at={marks.elsewhere.at}
         bookId={bookId}
@@ -968,7 +981,7 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
         onClose={marks.elsewhere.close}
         onOpenBible={openInBible}
       />
-      <VerseMenu copy={verseCopy} />
+      <VerseMenu copy={verseCopy} comment={commentDoors.verse} />
       <VerseCopyBar copy={verseCopy} wide={wide} />
       {/* While verses are chosen their bar stands where the tools are: the tools wait. */}
       {verseCopy.picking ? null : wide ? (

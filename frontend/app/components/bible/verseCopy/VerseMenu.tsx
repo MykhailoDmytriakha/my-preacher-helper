@@ -5,11 +5,18 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type Compone
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 
+import { CommentIcon } from '@/components/Icons';
 import { useModalLayer } from '@/hooks/useModalLayer';
 
 import { VERSE_TEXT_STYLE } from '../BookRibbon';
 
 import type { VerseCopy, VerseMenuAt } from './useVerseCopy';
+
+/** The verse's comment door (case 2026-10-12-block-diagram, 3.2): «Комментарий», or «Изменить комментарий» where one stands. */
+export type VerseComment = {
+  labelOf: (verse: { chapter: number; verse: number }) => string;
+  open: (verse: { chapter: number; verse: number }) => void;
+};
 
 /** The click that ends a hold may land on what the hold just opened: for a moment that one click is not a choice. */
 const CLICK_AFTER_HOLD_MS = 450;
@@ -62,7 +69,7 @@ function placeMenu(at: VerseMenuAt, menu: DOMRect, card: DOMRect | null): Spot {
   return { menuTop, menuLeft, cardTop, cardLeft, cardWidth };
 }
 
-function OpenVerseMenu({ copy, at }: { copy: VerseCopy; at: VerseMenuAt }) {
+function OpenVerseMenu({ copy, at, comment }: { copy: VerseCopy; at: VerseMenuAt; comment?: VerseComment }) {
   const { t } = useTranslation();
   const { closeMenu } = copy;
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -164,6 +171,9 @@ function OpenVerseMenu({ copy, at }: { copy: VerseCopy; at: VerseMenuAt }) {
             onSelect={choose(() => copy.openLinks(verse))}
           />
         ) : null}
+        {comment ? (
+          <MenuItem icon={CommentIcon} label={comment.labelOf(verse)} touch={at.touch} onSelect={choose(() => { closeMenu(); comment.open(verse); })} />
+        ) : null}
       </div>
     </div>,
     document.body
@@ -174,10 +184,10 @@ function OpenVerseMenu({ copy, at }: { copy: VerseCopy; at: VerseMenuAt }) {
  * THE MENU OF ONE VERSE — opened by a hold, or by a computer's right button (`VerseHoldSurface`). Under a finger
  * the verse lifts over the dimmed page and the menu stands under it, as the phone's own menus do; under a mouse
  * the menu opens at the pointer with the verse named at its top. Copy · Send (where the device can) · Choose
- * several · the verse's links.
+ * several · the verse's links · its comment.
  */
-export function VerseMenu({ copy }: { copy: VerseCopy }) {
+export function VerseMenu({ copy, comment }: { copy: VerseCopy; comment?: VerseComment }) {
   if (!copy.menu || typeof document === 'undefined') return null;
   const at = copy.menu;
-  return <OpenVerseMenu key={`${at.chapter}:${at.verse}:${at.x}:${at.y}`} copy={copy} at={at} />;
+  return <OpenVerseMenu key={`${at.chapter}:${at.verse}:${at.x}:${at.y}`} copy={copy} at={at} comment={comment} />;
 }

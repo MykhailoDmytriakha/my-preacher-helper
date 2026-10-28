@@ -138,6 +138,16 @@ describe('registered transactional relation planning', () => {
     expect(plan.result).toMatchObject({ kind: 'acknowledged', snapshot: { value: { isDraft: false, rev: { note: 1 } }, metadata: { revision: 1 } } });
   });
 
+  it('keeps a comment out of drafts though it has no tags, and still marks an untagged note a draft', async () => {
+    const comment = put('studyNotes', 'c', { type: 'comment', content: '', tags: [], scriptureRefs: [{ id: 'ref', book: 'Isaiah', chapter: 40, fromVerse: 29 }], isDraft: true });
+    const commentCommand: DataCommand = { ...commandBase(comment), kind: 'update', changes: [{ path: ['content'], before: { exists: true, value: '' }, after: { exists: true, value: 'Сила — не моя.' } }] };
+    expect((await planDataCommand(commentCommand, comment, reader)).result).toMatchObject({ kind: 'acknowledged', snapshot: { value: { isDraft: false } } });
+
+    const note = put('studyNotes', 'n2', { type: 'note', content: '', tags: [], scriptureRefs: [{ id: 'ref', book: 'Isaiah', chapter: 40, fromVerse: 29 }], isDraft: false });
+    const noteCommand: DataCommand = { ...commandBase(note), kind: 'update', changes: [{ path: ['content'], before: { exists: true, value: '' }, after: { exists: true, value: 'Сила — не моя.' } }] };
+    expect((await planDataCommand(noteCommand, note, reader)).result).toMatchObject({ kind: 'acknowledged', snapshot: { value: { isDraft: true } } });
+  });
+
   it.each(['sermons', 'groups'])('deletes %s and removes only that reference from current owner series', async collection => {
     const primary = put(collection, 'target', { title: 'Delete me' });
     const target = item('target', { type: collection === 'sermons' ? 'sermon' : 'group' });

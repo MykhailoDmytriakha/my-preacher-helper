@@ -3,9 +3,11 @@
 import { ArrowsRightLeftIcon } from '@heroicons/react/20/solid';
 import { Fragment, memo } from 'react';
 
+import { CommentIcon } from '@/components/Icons';
 import { Chip } from '@/components/ui/Chip';
 import { parseVerse, type BookText, type VerseSegment } from '@/utils/bibleText';
 
+import { CommentsOnText, type TextComment } from './CommentsOnText';
 import { MineBadge as MineBadgeButton, MineMoreBadge } from './MineBadge';
 
 import type { ChapterBoxes } from './useChapterWindow';
@@ -100,7 +102,22 @@ export type RibbonMine = {
   onOpen: (chapter: number, verse: number | null) => void;
   /** What the badge standing for the rest says to a screen reader; on screen it is "+2". */
   moreLabel: (count: number) => string;
+  /**
+   * Comments shown as their own words (`minePrefs.comments`, 'text'): under the verse a comment starts at, and
+   * under every chapter heading of the chapters one is written to. Absent while comments show as badges.
+   */
+  comments?: {
+    at: ReadonlyMap<string, readonly TextComment[]>;
+    chapters: ReadonlyMap<number, readonly TextComment[]>;
+    onEdit: (id: string) => void;
+  };
 };
+
+/**
+ * A chapter heading's door to a comment on the whole chapter (case 2026-10-12-block-diagram, 3.2): pressed, the
+ * heading opens the chapter's comment window — a new one, or the one already written to it.
+ */
+export type RibbonChapterComment = { labelOf: (chapter: number) => string; open: (chapter: number) => void };
 
 /** Badges after one verse before the rest fold into "+N": a long row would push the text away. */
 export const MINE_BADGES_SHOWN = 3;
@@ -168,13 +185,14 @@ function VerseRow({ chapter, verse, raw, lang, crossRefs, signs, mine, detached 
   const count = crossRefs?.counts.get(`${chapter}:${verse}`);
   const shown = count ? (crossRefs?.mode === 'all' ? count.total : count.main) : 0;
   const badges = mine?.at.get(`${chapter}:${verse}`);
+  const comments = mine?.comments?.at.get(`${chapter}:${verse}`);
   return (
     // A verse jumped to stands where "the verse I am at" is measured from: the same `--reading-top`.
     <div
       data-verse={detached ? undefined : `${chapter}:${verse}`}
       {...(lit ? { [ARRIVAL_ATTRIBUTE]: 'on' } : {})}
       style={{ scrollMarginTop: READING_TOP }}
-      className={`mb-2.5 md:mb-0 md:flex md:gap-3 ${ARRIVAL_CLASSES} ${detached ? '' : CHOSEN_CLASSES} ${opensParagraph && verse > 1 ? 'md:mt-2' : ''}`}
+      className={`mb-2.5 md:mb-0 md:flex md:flex-wrap md:gap-x-3 ${ARRIVAL_CLASSES} ${detached ? '' : CHOSEN_CLASSES} ${opensParagraph && verse > 1 ? 'md:mt-2' : ''}`}
     >
       {signs && sign ? (
         <button
@@ -223,6 +241,10 @@ function VerseRow({ chapter, verse, raw, lang, crossRefs, signs, mine, detached 
         ) : null}
         {mine && badges ? <span className="md:contents max-md:inline-block max-md:origin-left max-md:scale-90 max-md:align-super"><MineBadges badges={badges} mine={mine} chapter={chapter} verse={verse} testId={`mine-${chapter}:${verse}`} /></span> : null}
       </p>
+      {/* Under the verse's words, the whole width of the text column: the row's light and choice cover it too. */}
+      {mine?.comments && comments ? (
+        <CommentsOnText comments={comments} onEdit={mine.comments.onEdit} testId={`comments-${chapter}:${verse}`} className="mt-1 md:mb-1 md:basis-full md:pl-10" />
+      ) : null}
     </div>
   );
 }
@@ -233,8 +255,9 @@ function VerseRow({ chapter, verse, raw, lang, crossRefs, signs, mine, detached 
  * drawn; every other one is a box of its height with its heading (`data-box`), so the scroll still spans
  * the whole book and a fast scroll shows the chapters it passes.
  */
-export const BookRibbon = memo(function BookRibbon({ text, lang, chapterWord, crossRefs, signs, mine, boxes }: {
-  text: BookText; lang: string; chapterWord: (chapter: number) => string; crossRefs?: RibbonCrossRefs; signs?: RibbonSigns; mine?: RibbonMine; boxes?: ChapterBoxes | null;
+export const BookRibbon = memo(function BookRibbon({ text, lang, chapterWord, crossRefs, signs, mine, chapterComment, boxes }: {
+  text: BookText; lang: string; chapterWord: (chapter: number) => string; crossRefs?: RibbonCrossRefs; signs?: RibbonSigns; mine?: RibbonMine;
+  chapterComment?: RibbonChapterComment; boxes?: ChapterBoxes | null;
 }) {
   return (
     <>
@@ -253,7 +276,22 @@ export const BookRibbon = memo(function BookRibbon({ text, lang, chapterWord, cr
             className={chapterIndex === 0 ? '' : 'mt-6'}
           >
             <div className="flex items-center gap-3 pb-2 md:pl-10">
-              <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400">{chapterWord(chapter)}</h2>
+              <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400">
+                {chapterComment ? (
+                  <button
+                    type="button"
+                    onClick={() => chapterComment.open(chapter)}
+                    aria-label={`${chapterWord(chapter)} — ${chapterComment.labelOf(chapter)}`}
+                    title={chapterComment.labelOf(chapter)}
+                    data-testid={`chapter-comment-${chapter}`}
+                    className="group inline-flex items-center gap-1.5 rounded-md transition-colors hover:text-gray-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 dark:hover:text-gray-200"
+                  >
+                    {chapterWord(chapter)}
+                    {/* Under a mouse it shows on hover; a finger has no hover, so on a touch screen it stays, faint. */}
+                    <CommentIcon className="h-3.5 w-3.5 opacity-40 transition-opacity group-focus-visible:opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:group-focus-visible:opacity-100" />
+                  </button>
+                ) : chapterWord(chapter)}
+              </h2>
               {mine && mine.chapters.get(chapter) ? (
                 <span className="-ml-2 inline-flex items-center">
                   <MineBadges badges={mine.chapters.get(chapter)!} mine={mine} chapter={chapter} verse={null} testId={`mine-chapter-${chapter}`} />
@@ -261,6 +299,10 @@ export const BookRibbon = memo(function BookRibbon({ text, lang, chapterWord, cr
               ) : null}
               <span className="h-px flex-1 bg-gray-200 dark:bg-gray-700" aria-hidden="true" />
             </div>
+            {/* A comment written to the whole chapter stands under its heading — under each heading, for several. */}
+            {!box && mine?.comments && mine.comments.chapters.get(chapter) ? (
+              <CommentsOnText comments={mine.comments.chapters.get(chapter)!} onEdit={mine.comments.onEdit} testId={`comments-chapter-${chapter}`} className="mb-2 md:pl-10" />
+            ) : null}
             {box ? null : verses.map((raw, verseIndex) => (
               <VerseRow key={verseIndex} chapter={chapter} verse={verseIndex + 1} raw={raw} lang={lang} crossRefs={crossRefs} signs={signs} mine={mine} />
             ))}

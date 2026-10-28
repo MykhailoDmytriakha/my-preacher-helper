@@ -60,6 +60,14 @@ describe('NoteMobileSheet', () => {
         expect(screen.getByRole('button', { name: 'Second' })).toBeInTheDocument();
     });
 
+    it('offers a comment no outline even with a heading in it: it opens on its properties, without tags', () => {
+        render(<NoteMobileSheet {...props} tags={null} outlineShown={false} outline={makeControl()} />);
+        expect(screen.queryByRole('button', { name: 'Outer' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Outline' })).not.toBeInTheDocument();
+        expect(screen.getByText('refs slot')).toBeInTheDocument();
+        expect(screen.queryByText('tags slot')).not.toBeInTheDocument();
+    });
+
     it('jumping to a heading reveals it and closes the sheet — the text is what you wanted to see', () => {
         const revealSection = jest.fn();
         const onClose = jest.fn();

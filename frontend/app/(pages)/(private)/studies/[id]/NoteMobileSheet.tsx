@@ -19,7 +19,10 @@ interface NoteMobileSheetProps {
     /** "Created 10 March 2026" — metadata, so it lives with the metadata. */
     meta?: React.ReactNode;
     scriptureRefs: React.ReactNode;
-    tags: React.ReactNode;
+    /** Null where the document carries none (a comment). */
+    tags: React.ReactNode | null;
+    /** False where a text this short has no outline to offer (a comment): the sheet opens on its properties. */
+    outlineShown?: boolean;
     sermons?: React.ReactNode;
 }
 
@@ -38,6 +41,7 @@ export function NoteMobileSheet({
     open,
     onClose,
     outline,
+    outlineShown = true,
     foldable,
     activeSectionId,
     meta,
@@ -46,15 +50,16 @@ export function NoteMobileSheet({
     sermons,
 }: NoteMobileSheetProps) {
     const { t } = useTranslation();
-    const [tab, setTab] = useState<SheetTab>('outline');
+    const hasOutline = outlineShown && outline.hasSections;
+    const [tab, setTab] = useState<SheetTab>(hasOutline ? 'outline' : 'properties');
     const panelRef = useRef<HTMLDivElement>(null);
     /** Where the focus came from, so closing puts it back instead of dropping it. */
     const openerRef = useRef<HTMLElement | null>(null);
 
     // A note with no headings has no table of contents to open on.
     useEffect(() => {
-        if (!outline.hasSections) setTab('properties');
-    }, [outline.hasSections]);
+        if (!hasOutline) setTab('properties');
+    }, [hasOutline]);
 
     useEffect(() => {
         if (!open) return;
@@ -103,7 +108,7 @@ export function NoteMobileSheet({
                 <div className="mx-auto mt-2.5 h-1 w-10 shrink-0 rounded-full bg-gray-300 dark:bg-gray-600" />
 
                 <div className="flex shrink-0 items-center gap-1 border-b border-gray-100 px-3 py-2 dark:border-gray-800">
-                    {outline.hasSections && (
+                    {hasOutline && (
                         <SheetTabButton active={tab === 'outline'} onClick={() => setTab('outline')}>
                             {t('notePanel.outline')}
                         </SheetTabButton>
@@ -157,7 +162,7 @@ export function NoteMobileSheet({
                                 </div>
                             )}
                             {scriptureRefs}
-                            <div className="border-t border-gray-100 pt-4 dark:border-gray-800">{tags}</div>
+                            <div className="border-t border-gray-100 pt-4 empty:hidden dark:border-gray-800">{tags}</div>
                             {/* `empty:hidden`: no sermon names this note — a divider around
                                 emptiness reads as a bug. */}
                             <div className="border-t border-gray-100 pt-4 empty:hidden dark:border-gray-800">

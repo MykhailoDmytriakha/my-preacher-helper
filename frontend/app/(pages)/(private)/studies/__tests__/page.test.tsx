@@ -55,6 +55,22 @@ jest.mock('@/hooks/useTags', () => ({
   useTags: jest.fn(),
 }));
 
+// The comment's window and the place picker have their own suites; here only what the page hands them matters.
+jest.mock('@/components/CommentDialog', () => ({
+  CommentDialog: ({ target, placePicker }: { target: { kind: string; reference?: { book: string; chapter?: number } | null }; placePicker?: (window: { requestClose: () => void }) => React.ReactNode }) => (
+    <div data-testid="comment-window">
+      <p data-testid="comment-place">{target.kind === 'new' && target.reference ? `${target.reference.book} ${target.reference.chapter}` : 'none'}</p>
+      {placePicker?.({ requestClose: () => undefined })}
+    </div>
+  ),
+}));
+jest.mock('../ScriptureRefPicker', () => ({
+  __esModule: true,
+  default: ({ onConfirm }: { onConfirm: (picked: { id: string; book: string; chapter: number }) => void }) => (
+    <button type="button" onClick={() => onConfirm({ id: 'p', book: 'Psalms', chapter: 23 })}>pick-psalm-23</button>
+  ),
+}));
+
 jest.mock('@/utils/bibleBooks', () => ({
   // The real module underneath, so nothing the page (or the shared reference formatter it now
   // uses) reaches for can silently vanish — the trap the old comment here warned about.
@@ -606,5 +622,27 @@ describe('StudiesPage', () => {
       const matchingNotesLabels = screen.getAllByText(/matchingNotes/i);
       expect(matchingNotesLabels[0]).toHaveTextContent('0');
     });
+  });
+
+  it('keeps a new comment\'s chosen place while another is picked, so a reload then still has it with the words', async () => {
+    mockQueryState.tab = 'comments';
+    render(<StudiesPage />);
+    await userEvent.click(screen.getByRole('button', { name: /studiesWorkspace.newComment/ }));
+    expect(screen.getByTestId('comment-place')).toHaveTextContent('none');
+    await userEvent.click(screen.getByRole('button', { name: 'pick-psalm-23' }));
+    expect(screen.getByTestId('comment-place')).toHaveTextContent('Psalms 23');
+    await userEvent.click(screen.getByRole('button', { name: 'comment.changePlace' }));
+    // The picker is open again, and the place stays the comment's until another is confirmed.
+    expect(screen.getByRole('button', { name: 'pick-psalm-23' })).toBeInTheDocument();
+    expect(screen.getByTestId('comment-place')).toHaveTextContent('Psalms 23');
+  });
+
+  it('counts the comments tab as comments and offers no «expand all» where nothing folds', () => {
+    mockQueryState.tab = 'comments';
+    mockUseStudyNotes.mockReturnValue({ ...baseUseStudyNotesValue(), notes: [createMockNote({ id: 'c1', type: 'comment', title: '', content: 'Мысль.' }), createMockNote({ id: 'n1' })] });
+    render(<StudiesPage />);
+    expect(screen.getByText(/studiesWorkspace.tabs.comments:/)).toBeInTheDocument();
+    expect(screen.queryByText('studiesWorkspace.allNotes', { exact: false })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /studiesWorkspace.expandAll/ })).not.toBeInTheDocument();
   });
 });

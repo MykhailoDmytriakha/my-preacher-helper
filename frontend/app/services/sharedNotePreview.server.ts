@@ -16,6 +16,7 @@ function previewWords(locale: AppLocale): SharedNotePreviewWords {
   return {
     note: studiesWorkspace.type.note,
     question: studiesWorkspace.type.question,
+    comment: studiesWorkspace.type.comment,
     untitled: studiesWorkspace.untitled,
   };
 }

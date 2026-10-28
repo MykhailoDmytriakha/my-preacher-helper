@@ -5,11 +5,14 @@ import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import Select from '@/components/ui/Select';
+import { useAppLocale } from '@/hooks/useAppLocale';
 import { useClipboard } from '@/hooks/useClipboard';
 import { StudyNote, StudyNoteShareLink } from '@/models/models';
 import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
+import { markdownPreviewText } from '@/utils/markdownUtils';
 import { awaitAcceptance, type WriteSubmission } from '@/utils/recoverableWrite';
 import { getShareNotePath, getShareNoteUrl } from '@/utils/shareNoteUtils';
+import { studyNoteOwnName } from '@/utils/studyNoteUtils';
 
 interface ShareLinksPanelProps {
   notes: StudyNote[];
@@ -27,6 +30,9 @@ const GRID_COLS_CLASS = 'md:grid-cols-[2fr_minmax(180px,1.2fr)_110px_90px_310px]
 const TABLE_HEADER_CLASS = `hidden md:grid gap-4 px-4 py-3 text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 ${GRID_COLS_CLASS} items-center border-b border-gray-100 dark:border-gray-700/50`;
 const ROW_CLASS = `grid grid-cols-1 gap-3 md:gap-4 px-4 py-4 text-sm text-gray-700 transition-colors border-b border-gray-50 dark:border-gray-700/50 dark:text-gray-200 ${GRID_COLS_CLASS} items-center hover:bg-gray-50/50 dark:hover:bg-gray-700/20`;
 
+/** How much of a comment's words names it beside its place. */
+const COMMENT_WORDS_SHOWN = 40;
+
 export default function ShareLinksPanel({
   notes,
   shareLinks,
@@ -35,7 +41,16 @@ export default function ShareLinksPanel({
   onDelete,
 }: ShareLinksPanelProps) {
   const { t } = useTranslation();
+  const { locale } = useAppLocale();
   const { isCopied, copyToClipboard } = useClipboard({ successDuration: 1500 });
+  // The name its link preview gives it: its title, else its place — a comment has only its place (`studyNoteOwnName`);
+  // two comments on one verse share it, so a comment adds the start of its words.
+  const nameOf = (note: StudyNote) => {
+    const name = studyNoteOwnName(note, locale) || t('studiesWorkspace.untitled');
+    const words = note.type === 'comment' ? markdownPreviewText(note.content) : '';
+    if (!words) return name;
+    return `${name} — ${words.length > COMMENT_WORDS_SHOWN ? `${words.slice(0, COMMENT_WORDS_SHOWN).trimEnd()}…` : words}`;
+  };
 
   const [selectedNoteId, setSelectedNoteId] = useState('');
   const [isCreating, setIsCreating] = useState(false);
@@ -125,7 +140,7 @@ export default function ShareLinksPanel({
             <option value="">{t('studiesWorkspace.shareLinks.selectPlaceholder')}</option>
             {availableNotes.map((note) => (
               <option key={note.id} value={note.id}>
-                {note.title || t('studiesWorkspace.untitled')}
+                {nameOf(note)}
               </option>
             ))}
           </Select>
@@ -176,7 +191,7 @@ export default function ShareLinksPanel({
                 <div key={link.id} className={ROW_CLASS}>
                   <div className="flex flex-col min-w-0">
                     <p className="font-semibold text-gray-900 dark:text-gray-100 truncate">
-                      {note?.title || t('studiesWorkspace.untitled')}
+                      {note ? nameOf(note) : t('studiesWorkspace.untitled')}
                     </p>
                     <p className="text-[11px] text-gray-400 dark:text-gray-500 font-mono truncate">
                       {sharePath}

@@ -296,6 +296,7 @@
     "reviewAction": "Review changes",
     "dismissAction": "Hide message",
     "entityNote": "note",
+    "entityComment": "comment",
     "entitySermon": "sermon",
     "entitySeries": "series",
     "entityRecord": "record",
@@ -493,6 +494,7 @@
       "kinds": {
         "sermon": "Sermon",
         "note": "Note",
+        "comment": "Comment",
         "group": "Group",
         "order": "Service"
       },
@@ -500,6 +502,7 @@
       "badgeLabelMany": "{{count}} items. {{kind}}, {{place}}: {{titles}}",
       "moreLabel": "{{count}} more — open the list",
       "wholeChapter": "The whole of {{chapter}}",
+      "editComment": "Edit the comment on {{place}}",
       "empty": "Nothing of yours here yet."
     },
     "search": {
@@ -1007,6 +1010,7 @@
         "untitled": "Untitled study note",
         "noteTag": "Note",
         "questionTag": "Question",
+        "commentTag": "Comment",
         "table": {
           "study": "Study",
           "tags": "Tags",
@@ -1476,9 +1480,13 @@
       "device": "These settings and the trail of places are kept on this device. Another phone or computer has its own.",
       "mine": {
         "title": "Your material on the text",
-        "intro": "Your notes, sermons, groups and services show in the Bible where their references point: a badge at the end of a verse; a badge by a chapter’s heading for what is about the whole chapter; coloured dots by chapter numbers on the minimap. Tap a badge to open the list and go to any of them.",
+        "intro": "Your notes, comments, sermons, groups and services show in the Bible where their references point: a badge at the end of a verse; a badge by a chapter’s heading for what is about the whole chapter; coloured dots by chapter numbers on the minimap. Tap a badge to open the list and go to any of them. Comments show as grey text under their verse or chapter heading.",
         "show": "Badges of your material beside verses",
-        "showHint": "Turn it off and there are no badges or dots — only the text."
+        "showHint": "Turn it off and there are no badges, dots or comments — only the text.",
+        "comments": "Comments",
+        "commentsHint": "How your comments on verses and chapters show while you read.",
+        "commentsText": "As text under the verse",
+        "commentsBadge": "As a badge after the verse"
       }
     },
     "showVersion": {
@@ -3523,13 +3531,19 @@
     "tabs": {
       "all": "All",
       "notes": "Notes",
+      "comments": "Comments",
       "questions": "Questions"
     },
     "type": {
       "note": "Note",
-      "question": "Question"
+      "question": "Question",
+      "comment": "Comment"
     },
     "newNote": "New note",
+    "newComment": "New comment",
+    "commentsEmptyTitle": "Your comments on verses will be here",
+    "commentsEmptyHint": "A short thought on a verse or a chapter — up to five sentences, like pencil in a Bible’s margin. In the Bible, hold a verse (on a computer, the right mouse button) → «Comment».",
+    "openBible": "Open the Bible",
     "editNote": "Edit note",
     "titleLabel": "Title",
     "titlePlaceholder": "Optional title for the note",
@@ -4428,5 +4442,42 @@
     "placeInPointAt": "“{{point}}”, position {{position}}",
     "placeNotes": "the notes of “{{point}}”",
     "placePool": "the scratch pool"
+  },
+  "comment": {
+    "title": "Comment · {{place}}",
+    "titleNew": "New comment",
+    "description": "A couple of sentences or a short list — like pencil in a margin.",
+    "placeholder": "A couple of sentences or a short list",
+    "wayLabel": "On the way to a note: {{count}} of {{total}} sentences",
+    "wayNote": "This is a note now",
+    "becomesNote": "This is a note now. Give it a title — «Make it a note» keeps the whole text in Studies, and a green badge stands at the verse.",
+    "toNote": "Make it a note",
+    "becameNote": "It is a note in Studies now — the text is whole",
+    "notSaved": "The comment was not saved — the text stays in the window.",
+    "erase": "Erase",
+    "eraseTitle": "Erase this comment?",
+    "verseMenu": "Comment",
+    "verseMenuEdit": "Edit the comment",
+    "chapterMenu": "Comment on the chapter",
+    "chapterMenuEdit": "Edit the chapter’s comment",
+    "wholeChapter": "{{place}} — the whole chapter",
+    "wholeChapters": "{{place}} — the whole chapters",
+    "pickPlace": "Which verse or chapter is it on?",
+    "changePlace": "Change the verse or chapter",
+    "open": "Open the comment",
+    "noteTitle": "Note title",
+    "noteTitlePlaceholder": "What is this note about?",
+    "noteElsewhere": "On another device this became a note — it is in Studies."
+  },
+  "richText": {
+    "bold": "Bold",
+    "italic": "Italic",
+    "strikethrough": "Strikethrough",
+    "heading1": "Heading 1",
+    "heading2": "Heading 2",
+    "heading3": "Heading 3",
+    "bulletList": "Bullet list",
+    "orderedList": "Numbered list",
+    "quote": "Quote"
   }
 }

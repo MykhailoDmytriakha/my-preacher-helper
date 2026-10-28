@@ -1,5 +1,7 @@
 import { BookOpenIcon, HeartIcon, RectangleStackIcon, UsersIcon } from '@heroicons/react/20/solid';
 
+import { CommentIcon } from '@/components/Icons';
+
 import type { ChipTone } from '@/components/ui/Chip';
 import type { ScriptureUsageKind } from '@/utils/scriptureUsage';
 import type { ComponentType, SVGProps } from 'react';
@@ -8,6 +10,7 @@ import type { ComponentType, SVGProps } from 'react';
  * HOW EACH KIND OF THE PERSON'S MATERIAL LOOKS ON THE BIBLE TEXT: the colour and the icon of its section in
  * the menu (`navigation/navConfig.ts`, `NAV_ITEM_THEMES`) — sermons blue with an open book, notes (Studies)
  * green with a stack, groups amber with people, service orders (Ministry) rose with a heart — so a badge
+ * (a comment is a study note's short kind: grey as the pencil under words, three lines and a pencil — the owner, 2026-10-28)
  * says whose it is before it is read. `dot` is the minimap's paint, which a canvas cannot take as a class.
  */
 export type UsageKindLook = {
@@ -32,6 +35,10 @@ export const USAGE_KIND_LOOK: Record<ScriptureUsageKind, UsageKindLook> = {
   note: {
     tone: 'emerald', Icon: RectangleStackIcon, wordKey: 'bible.mine.kinds.note', dot: { light: '#059669', dark: '#34d399' },
     badge: { capsule: 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-transparent dark:text-emerald-300', circle: 'bg-emerald-600', count: 'text-emerald-700 ring-emerald-500 dark:text-emerald-300 dark:ring-emerald-400' },
+  },
+  comment: {
+    tone: 'neutral', Icon: CommentIcon, wordKey: 'bible.mine.kinds.comment', dot: { light: '#8b8f98', dark: '#9ca3af' },
+    badge: { capsule: 'border-gray-200 bg-gray-50 text-gray-600 dark:border-gray-700 dark:bg-transparent dark:text-gray-300', circle: 'bg-gray-500', count: 'text-gray-600 ring-gray-500 dark:text-gray-300 dark:ring-gray-400' },
   },
   group: {
     tone: 'amber', Icon: UsersIcon, wordKey: 'bible.mine.kinds.group', dot: { light: '#d97706', dark: '#fbbf24' },

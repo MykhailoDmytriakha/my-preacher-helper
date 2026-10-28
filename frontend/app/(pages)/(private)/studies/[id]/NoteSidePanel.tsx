@@ -35,7 +35,10 @@ interface NoteSidePanelProps {
     /** "Created 10 March 2026" — metadata, so it lives with the metadata. */
     meta?: React.ReactNode;
     scriptureRefs: React.ReactNode;
-    tags: React.ReactNode;
+    /** Null where the document carries none (a comment): no section, no rail icon. */
+    tags: React.ReactNode | null;
+    /** False where a text this short has no headings to map (a comment): no outline section, no rail icon. */
+    outlineShown?: boolean;
     sermons?: React.ReactNode;
 }
 
@@ -55,6 +58,7 @@ const SECTION_LABEL =
  */
 export function NoteSidePanel({
     outline,
+    outlineShown = true,
     foldable,
     activeSectionId,
     collapsed,
@@ -85,15 +89,19 @@ export function NoteSidePanel({
                 <div className="my-2 h-px w-6 bg-gray-200 dark:bg-gray-700" />
                 {/* Says what is behind the rail, so a hidden panel still advertises what it
                     holds — and each icon is the way back in. */}
-                <button type="button" onClick={onToggleCollapsed} title={t(OUTLINE_LABEL_KEY)} aria-label={t(OUTLINE_LABEL_KEY)} className={RAIL_BUTTON}>
-                    <ListBulletIcon className="h-[17px] w-[17px]" />
-                </button>
+                {outlineShown ? (
+                    <button type="button" onClick={onToggleCollapsed} title={t(OUTLINE_LABEL_KEY)} aria-label={t(OUTLINE_LABEL_KEY)} className={RAIL_BUTTON}>
+                        <ListBulletIcon className="h-[17px] w-[17px]" />
+                    </button>
+                ) : null}
                 <button type="button" onClick={onToggleCollapsed} title={t('studiesWorkspace.scriptureRefs')} aria-label={t('studiesWorkspace.scriptureRefs')} className={RAIL_BUTTON}>
                     <BookmarkIcon className="h-[17px] w-[17px]" />
                 </button>
-                <button type="button" onClick={onToggleCollapsed} title={t('studiesWorkspace.tags')} aria-label={t('studiesWorkspace.tags')} className={RAIL_BUTTON}>
-                    <TagIcon className="h-[17px] w-[17px]" />
-                </button>
+                {tags ? (
+                    <button type="button" onClick={onToggleCollapsed} title={t('studiesWorkspace.tags')} aria-label={t('studiesWorkspace.tags')} className={RAIL_BUTTON}>
+                        <TagIcon className="h-[17px] w-[17px]" />
+                    </button>
+                ) : null}
                 <button type="button" onClick={onToggleCollapsed} title={t('notePanel.sermons')} aria-label={t('notePanel.sermons')} className={`relative ${RAIL_BUTTON}`}>
                     <DocumentTextIcon className="h-[17px] w-[17px]" />
                     {hasSermons && <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-blue-500" />}
@@ -121,40 +129,13 @@ export function NoteSidePanel({
                 </button>
             </div>
 
-            <div className="flex flex-col gap-2">
-                <div className="flex items-center justify-between gap-2">
-                    <span className={SECTION_LABEL}>{t(OUTLINE_LABEL_KEY)}</span>
-                    {foldable && outline.sectionIds.length > 1 && (
-                        <button
-                            type="button"
-                            onClick={outline.toggleAll}
-                            className="rounded px-1 text-[11px] text-emerald-600 transition-colors hover:text-emerald-700 dark:text-emerald-400"
-                        >
-                            {outline.everythingCollapsed
-                                ? t('textOutline.expandAll')
-                                : t('textOutline.collapseAll')}
-                        </button>
-                    )}
-                </div>
-
-                {outline.hasSections ? (
-                    <NoteOutlineTree
-                        outline={outline}
-                        foldable={foldable}
-                        activeSectionId={activeSectionId}
-                    />
-                ) : (
-                    <p className="px-2 text-xs leading-4 text-gray-400 dark:text-gray-500">
-                        {t('notePanel.outlineEmpty')}
-                    </p>
-                )}
-            </div>
+            {outlineShown ? <OutlineSection outline={outline} foldable={foldable} activeSectionId={activeSectionId} /> : null}
 
             <div className="flex flex-col gap-2 border-t border-gray-200 pt-3.5 dark:border-gray-800">
                 {scriptureRefs}
             </div>
 
-            <div className="flex flex-col gap-2 border-t border-gray-200 pt-3.5 dark:border-gray-800">
+            <div className="flex flex-col gap-2 border-t border-gray-200 pt-3.5 empty:hidden dark:border-gray-800">
                 {tags}
             </div>
 
@@ -166,6 +147,41 @@ export function NoteSidePanel({
                 {sermons}
             </div>
         </aside>
+    );
+}
+
+/** The note's table of contents in the panel: its headings to jump to and fold, or the line saying it has none yet. */
+function OutlineSection({ outline, foldable, activeSectionId }: Pick<NoteSidePanelProps, 'outline' | 'foldable' | 'activeSectionId'>) {
+    const { t } = useTranslation();
+    return (
+        <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between gap-2">
+                <span className={SECTION_LABEL}>{t(OUTLINE_LABEL_KEY)}</span>
+                {foldable && outline.sectionIds.length > 1 && (
+                    <button
+                        type="button"
+                        onClick={outline.toggleAll}
+                        className="rounded px-1 text-[11px] text-emerald-600 transition-colors hover:text-emerald-700 dark:text-emerald-400"
+                    >
+                        {outline.everythingCollapsed
+                            ? t('textOutline.expandAll')
+                            : t('textOutline.collapseAll')}
+                    </button>
+                )}
+            </div>
+
+            {outline.hasSections ? (
+                <NoteOutlineTree
+                    outline={outline}
+                    foldable={foldable}
+                    activeSectionId={activeSectionId}
+                />
+            ) : (
+                <p className="px-2 text-xs leading-4 text-gray-400 dark:text-gray-500">
+                    {t('notePanel.outlineEmpty')}
+                </p>
+            )}
+        </div>
     );
 }
 

@@ -8,13 +8,15 @@ import { join, relative } from 'path';
  * English literal, bypasses the locales: a screen reader on a Russian interface announced "Change
  * language", "Breadcrumb", "Close editor", "outdent" (2026-10-03, found verifying
  * BUG-20260902-ssr-renders-english-labels-then-swaps). Such text comes from `t()` / `i18n.t()`.
- * Quoted, `{"…"}` and template literals all count; a template's `${…}` parts are not text.
+ * Quoted, `{"…"}` and template literals all count; a template's `${…}` parts are not text. A component's own
+ * `ariaLabel` prop counts too: it lands in `aria-label` and `title` — the formatting toolbar said "Bold",
+ * "Bullet List" through it in every editor (BUG-20261028-markdown-toolbar-english-labels).
  */
 const APP = join(__dirname, '..', '..', 'app');
-const ATTRIBUTE = /\b(aria-label|title|placeholder|alt)=(?:"([^"]*)"|'([^']*)'|\{\s*"([^"]*)"\s*\}|\{\s*'([^']*)'\s*\}|\{\s*`([^`]*)`\s*\})/g;
+const ATTRIBUTE = /\b(aria-label|ariaLabel|title|placeholder|alt)=(?:"([^"]*)"|'([^']*)'|\{\s*"([^"]*)"\s*\}|\{\s*'([^']*)'\s*\}|\{\s*`([^`]*)`\s*\})/g;
 const TOAST = /\btoast(?:\.(?:error|success|info|warning|message|loading))?\(\s*(['"`])([^'"`]*[A-Za-z]{3,}[^'"`]*)\1/g;
 /** A label written as an expression: `aria-label={open ? "Collapse" : "Expand"}`. */
-const ATTRIBUTE_EXPRESSION = /\b(aria-label|title|placeholder|alt)=\{([^{}]*)\}/g;
+const ATTRIBUTE_EXPRESSION = /\b(aria-label|ariaLabel|title|placeholder|alt)=\{([^{}]*)\}/g;
 /** An error's own message put on screen: a sentence for developers (.howto/show-an-error-once.md). */
 const TOAST_OF_MESSAGE = /\btoast\.(?:error|success|info|warning|message)\([^;]*?\.message\b/g;
 const TRANSLATION_KEY = /^[\w-]+(\.[\w-]+)+$/;

@@ -11,6 +11,8 @@ jest.mock('@tiptap/react', () => {
         isActive: jest.fn().mockReturnValue(false),
         commands: { setContent: jest.fn() },
         storage: { markdown: { getMarkdown: jest.fn().mockReturnValue('') } },
+        isEditable: true,
+        setEditable: jest.fn(),
     };
     return {
         useEditor: jest.fn(() => mockEditor),
@@ -44,6 +46,18 @@ describe('RichMarkdownEditor', () => {
         const mockEditor = getMockEditor();
         mockEditor.storage.markdown.getMarkdown.mockReturnValue('');
         (TiptapReact.useEditor as jest.Mock).mockReturnValue(mockEditor);
+    });
+
+    it('holds the text still when not editable, and lets it go again — announcing no edit either way', () => {
+        const mockEditor = getMockEditor();
+        const { rerender } = render(<RichMarkdownEditor value="" onChange={jest.fn()} editable={false} />);
+        expect(TiptapReact.useEditor).toHaveBeenCalledWith(expect.objectContaining({ editable: false }));
+        // Tiptap's setEditable emits "update" unless told not to; onUpdate would then send the old words back as typed.
+        expect(mockEditor.setEditable).toHaveBeenCalledWith(false, false);
+        mockEditor.isEditable = false;
+        rerender(<RichMarkdownEditor value="" onChange={jest.fn()} editable />);
+        expect(mockEditor.setEditable).toHaveBeenLastCalledWith(true, false);
+        mockEditor.isEditable = true;
     });
 
     it('renders the toolbar and editor content when editor is ready', () => {

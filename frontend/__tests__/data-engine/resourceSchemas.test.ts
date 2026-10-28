@@ -33,7 +33,7 @@ describe('pure resource document validation', () => {
 
   it.each([
     ['sermons', 'title', {}], ['sermons', 'thoughts', {}], ['sermons', 'planText', { point: 3 }],
-    ['studyNotes', 'content', []], ['studyNotes', 'tags', 'text'], ['studyNotes', 'isDraft', 'yes'],
+    ['studyNotes', 'content', []], ['studyNotes', 'tags', 'text'], ['studyNotes', 'isDraft', 'yes'], ['studyNotes', 'type', 'margin'],
     ['studyMaterials', 'type', 'invalid'], ['groups', 'status', 'held'], ['groups', 'flow', [null]],
     ['series', 'items', [{ id: 'one', type: 'private', refId: 'r', position: 1 }]],
     ['prayerRequests', 'status', 'finished'], ['prayerCategories', 'color', 4],
@@ -44,6 +44,11 @@ describe('pure resource document validation', () => {
     ['users', 'firstDayOfWeek', 'friday'], ['users', 'enablePrepMode', {}],
   ])('rejects malformed %s.%s', (collection, field, wrong) => {
     expect(() => validateResourceDocument(collection as string, { ...fixtures[collection as string], [field as string]: wrong } as DocumentData, { kind: 'update', changedFields: [field as string] })).toThrow();
+  });
+
+  it.each(['note', 'question', 'comment'])('accepts a study note of kind %s', (type) => {
+    expect(() => validateResourceDocument('studyNotes', { ...fixtures.studyNotes, type }, { kind: 'create' })).not.toThrow();
+    expect(() => validateResourceDocument('studyNotes', { ...fixtures.studyNotes, type }, { kind: 'update', changedFields: ['type'] })).not.toThrow();
   });
 
   it('keeps unknown fields and untouched malformed legacy fields intact during an unrelated update', () => {

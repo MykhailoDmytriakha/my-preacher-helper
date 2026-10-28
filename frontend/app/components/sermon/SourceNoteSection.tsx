@@ -9,9 +9,11 @@ import { ScriptureWrittenIn } from '@/components/bible/ScriptureLinks';
 import FoldableMarkdown from '@/components/ui/FoldableMarkdown';
 import { findSectionByHeading, jumpToSection, useMarkdownOutline } from '@/hooks/useMarkdownOutline';
 import { useSourceNotes } from '@/hooks/useSermonNoteLinks';
+import { resolveAppLocale } from '@/utils/appLocale';
 import { studyNoteLanguage } from '@/utils/documentLanguage';
 import { splitMarkdownSections, type MarkdownSection } from '@/utils/markdownSections';
 import { countWords } from '@/utils/noteCutCorridor';
+import { studyNoteOwnName } from '@/utils/studyNoteUtils';
 
 import type { ScratchNote, Sermon, StudyNote } from '@/models/models';
 
@@ -198,7 +200,8 @@ const NoteCard: React.FC<{
     if (id) jumpToSection(control, id);
   }, [open, pendingHeading, control]);
 
-  const title = note.title?.trim() || t('studiesWorkspace.untitled');
+  // The name a note goes by elsewhere: its title, else its place — a comment has only its place (`studyNoteOwnName`).
+  const title = studyNoteOwnName(note, resolveAppLocale(i18n?.language)) || t('studiesWorkspace.untitled');
 
   const sectionBadge = useCallback(
     (section: MarkdownSection) => {

@@ -77,6 +77,37 @@ describe('study notes on the engine', () => {
     expect(store.get('n1')!.content).toBe('Laptop rewrite');
   });
 
+  it('reports every compared field on a refusal — one already equal to what was sent too — so «take theirs» takes the stored version', async () => {
+    const { result } = render();
+    // The other device wrote the same words and made it a note.
+    store.set('n1', note({ content: 'Same words', type: 'note', rev: { note: 6 } }));
+    let error: unknown;
+    await act(async () => {
+      error = await awaitAcceptance(result.current.updateNote({ id: 'n1', updates: { content: 'Same words', type: 'comment' }, expectedRevision: 4, expectedBaseline: { content: 'Laptop paragraph', type: 'comment' } }), () => undefined)
+        .then(() => null, caught => caught);
+    });
+    expect(isStaleWriteError(error)).toBe(true);
+    expect((error as { serverValues?: Row }).serverValues).toEqual({ content: 'Same words', type: 'note' });
+  });
+
+  it('takes a note stored without a type for a note, so a baseline adopting that type is not refused on the same revision', async () => {
+    const { result } = render();
+    const legacy = note({ content: 'Phone paragraph', rev: { note: 6 } });
+    delete legacy.type;
+    store.set('n1', legacy);
+    let error: unknown;
+    await act(async () => {
+      error = await awaitAcceptance(result.current.updateNote({ id: 'n1', updates: { content: 'Mine', type: 'comment' }, expectedRevision: 4, expectedBaseline: { content: 'Laptop paragraph', type: 'comment' } }), () => undefined)
+        .then(() => null, caught => caught);
+    });
+    expect((error as { serverValues?: Row }).serverValues).toEqual({ content: 'Phone paragraph', type: 'note' });
+    // «Keep mine» on top of what was reported: the same revision, the reported version as the baseline — it writes.
+    await act(async () => {
+      await awaitAcceptance(result.current.updateNote({ id: 'n1', updates: { content: 'Mine', type: 'comment' }, expectedRevision: 6, expectedBaseline: { content: 'Phone paragraph', type: 'note' } }), () => undefined);
+    });
+    expect(store.get('n1')).toEqual(expect.objectContaining({ content: 'Mine', type: 'comment' }));
+  });
+
   // BUG-20261012-psalm-verse-numbering-not-mapped: "Пс 50:12" typed in Russian was stored as
   // Psalms 51:12 — the chapter moved, the verse not. The note is read with its Bible named, so an
   // English screen and the AI get Ps 51:10, and editing it is not mistaken for a change elsewhere.

@@ -571,6 +571,12 @@ export interface ScriptureReference {
   text?: string;
 }
 
+/**
+ * What kind of study note it is: a note, a question to answer later, or a comment — a short thought
+ * (about five sentences) at a verse or a chapter, drawn grey under the text like pencil in a margin.
+ */
+export type StudyNoteType = 'note' | 'question' | 'comment';
+
 export interface StudyNote {
   id: string;
   userId: string;
@@ -591,8 +597,8 @@ export interface StudyNote {
    * documents written long ago may still carry the key.
    */
   relatedSermonIds?: string[];
-  /** Type of the note: standard note or a question to be answered later */
-  type?: 'note' | 'question';
+  /** Absent on documents written before the field existed — read as 'note'. */
+  type?: StudyNoteType;
   /**
    * Revision counter per editable aggregate, used to refuse a save built from an
    * older version. Absent on documents written before the guard existed — read as 0.

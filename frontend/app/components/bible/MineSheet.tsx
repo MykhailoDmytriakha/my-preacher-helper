@@ -5,6 +5,7 @@ import { useId } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { getLocalizedAbbrev } from '@/utils/bibleBooks';
+import { markdownPreviewText } from '@/utils/markdownUtils';
 
 import { ReaderSheet, SheetCloseButton } from './ReaderSheet';
 import { USAGE_KIND_LOOK } from './usageKinds';
@@ -26,16 +27,20 @@ type MineSheetProps = {
   onClose: () => void;
   /** Goes to the note, sermon, group or service order — the reader closes the window first. */
   onOpenEntry: (href: string) => void;
+  /** A comment opens in its own window, not on a page: it is edited only there (the owner, 2026-10-28). */
+  onEditComment?: (id: string) => void;
 };
 
-function EntryRow({ entry, abbrev, onOpen }: { entry: BookUsageEntry; abbrev: string; onOpen: (href: string) => void }) {
+function EntryRow({ entry, abbrev, onOpen, onEditComment }: { entry: BookUsageEntry; abbrev: string; onOpen: (href: string) => void; onEditComment?: (id: string) => void }) {
   const { t } = useTranslation();
   const { Icon, wordKey, badge } = USAGE_KIND_LOOK[entry.kind];
+  // A comment has no title: the row is its own words, and it opens in the comment's window.
+  const comment = entry.kind === 'comment' && onEditComment ? markdownPreviewText(entry.body ?? '') : null;
   return (
     <li>
       <button
         type="button"
-        onClick={() => onOpen(entry.href)}
+        onClick={() => (comment !== null && onEditComment ? onEditComment(entry.id) : onOpen(entry.href))}
         data-testid={`mine-entry-${entry.kind}-${entry.id}`}
         // Lit under the pointer and the finger, as the rows of the verse's window are (ScripturePreviewSheet):
         // with several rows it shows which one a tap opens (the owner, 2026-10-21).
@@ -47,8 +52,14 @@ function EntryRow({ entry, abbrev, onOpen }: { entry: BookUsageEntry; abbrev: st
         </span>
         <span className="min-w-0 flex-1">
           <span className="block text-xs font-semibold text-gray-600 dark:text-gray-300">{t(wordKey)} · {passageLabel(abbrev, entry.passage)}</span>
-          <span className="mt-0.5 block break-words text-base font-semibold text-gray-900 dark:text-gray-100">{entry.title || t('bible.preview.untitled')}</span>
-          {entry.excerpt ? <span className="mt-1 line-clamp-2 text-sm leading-relaxed text-gray-600 dark:text-gray-300">{entry.excerpt}</span> : null}
+          {comment !== null ? (
+            <span className="mt-0.5 line-clamp-5 block break-words text-[15px] leading-relaxed text-gray-800 dark:text-gray-200">{comment}</span>
+          ) : (
+            <>
+              <span className="mt-0.5 block break-words text-base font-semibold text-gray-900 dark:text-gray-100">{entry.title || t('bible.preview.untitled')}</span>
+              {entry.excerpt ? <span className="mt-1 line-clamp-2 text-sm leading-relaxed text-gray-600 dark:text-gray-300">{entry.excerpt}</span> : null}
+            </>
+          )}
         </span>
         <ChevronRightIcon className="mt-2 h-4 w-4 shrink-0 text-gray-400" aria-hidden="true" />
       </button>
@@ -60,7 +71,7 @@ function EntryRow({ entry, abbrev, onOpen }: { entry: BookUsageEntry; abbrev: st
  * THE PERSON'S OWN MATERIAL ON ONE VERSE OR ONE CHAPTER, opened from its badge in the reader: what holds
  * the verse, then what names its whole chapter. A row goes to that note, sermon, group or service order.
  */
-export function MineSheet({ at, bookId, locale, chapterWord, verseText, listed, onClose, onOpenEntry }: MineSheetProps) {
+export function MineSheet({ at, bookId, locale, chapterWord, verseText, listed, onClose, onOpenEntry, onEditComment }: MineSheetProps) {
   const { t } = useTranslation();
   const titleId = useId();
   if (!at || !listed) return null;
@@ -77,14 +88,14 @@ export function MineSheet({ at, bookId, locale, chapterWord, verseText, listed, 
       {verseText && at.verse !== null ? <p className="mb-2 font-serif text-[15px] leading-snug text-gray-600 dark:text-gray-400">{verseText}</p> : null}
       {onVerse.length ? (
         <ul className="divide-y divide-gray-100 dark:divide-gray-800">
-          {onVerse.map((entry) => <EntryRow key={entry.key} entry={entry} abbrev={abbrev} onOpen={onOpenEntry} />)}
+          {onVerse.map((entry) => <EntryRow key={entry.key} entry={entry} abbrev={abbrev} onOpen={onOpenEntry} onEditComment={onEditComment} />)}
         </ul>
       ) : null}
       {wholeChapter.length ? (
         <>
           {at.verse !== null ? <h4 className="mt-4 text-sm font-semibold text-gray-600 dark:text-gray-300">{t('bible.mine.wholeChapter', { chapter: chapterWord(at.chapter) })}</h4> : null}
           <ul className="divide-y divide-gray-100 dark:divide-gray-800">
-            {wholeChapter.map((entry) => <EntryRow key={entry.key} entry={entry} abbrev={abbrev} onOpen={onOpenEntry} />)}
+            {wholeChapter.map((entry) => <EntryRow key={entry.key} entry={entry} abbrev={abbrev} onOpen={onOpenEntry} onEditComment={onEditComment} />)}
           </ul>
         </>
       ) : null}

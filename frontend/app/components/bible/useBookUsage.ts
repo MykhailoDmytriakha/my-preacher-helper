@@ -13,6 +13,7 @@ import { useMinePrefs } from './minePrefs';
 import { USAGE_KIND_LOOK } from './usageKinds';
 
 import type { MineBadge, RibbonMine } from './BookRibbon';
+import type { TextComment } from './CommentsOnText';
 import type { MinimapMark } from './minimapLayout';
 import type { Group, Sermon, ServiceOrder, StudyNote } from '@/models/models';
 import type { AppLocale } from '@/utils/appLocale';
@@ -77,12 +78,13 @@ export function entriesAt(entries: readonly BookUsageEntry[], place: MinePlace):
  * Kept by value — the lists come anew with each step of a sync, and a new value each time would redraw
  * the whole book's ribbon. The library is first read only once the text shows (`ready`): reading 420
  * documents the first time takes about 0.4 s (measured 2026-10-21; each one is then kept until it
- * changes), and the text shows first instead of waiting for it.
+ * changes), and the text shows first instead of waiting for it. Comments (a study note's short kind) stand as
+ * their own grey words under the verse or the chapter heading, or as badges, as the person chose in Settings.
  */
-export function useBookUsage(bookId: string, bible: BibleId, locale: AppLocale, ready: boolean) {
+export function useBookUsage(bookId: string, bible: BibleId, locale: AppLocale, ready: boolean, onEditComment?: (id: string) => void) {
   const { t } = useTranslation();
   const { uid } = useResolvedUid();
-  const { show } = useMinePrefs();
+  const { show, comments: commentsShown } = useMinePrefs();
   // Switched off, the lists are not even watched: the setting saves the work, not only the badges.
   const watched = (collection: string) => (uid && show ? collection : null);
   const notes = useDataCollection(watched('studyNotes'));
@@ -124,8 +126,22 @@ export function useBookUsage(bookId: string, bible: BibleId, locale: AppLocale, 
     };
     const onVerses = new Map<string | number, Map<string, Gathered>>();
     const onChapters = new Map<string | number, Map<string, Gathered>>();
+    // Comments as words: under the verse a comment starts at, under every heading of the chapters it is written to.
+    const asText = commentsShown === 'text' && Boolean(onEditComment);
+    const textAt = new Map<string, Map<string, TextComment>>();
+    const textOnChapters = new Map<number, Map<string, TextComment>>();
+    const write = <K,>(into: Map<K, Map<string, TextComment>>, at: K, entry: BookUsageEntry, passage: Passage) => {
+      const comments = into.get(at) ?? new Map<string, TextComment>();
+      comments.set(entry.id, { id: entry.id, body: entry.body ?? '', editLabel: t('bible.mine.editComment', { place: passageLabel(abbrev, passage) }) });
+      into.set(at, comments);
+    };
     entries.forEach((entry) => {
       const { passage } = entry;
+      if (asText && entry.kind === 'comment') {
+        if (passage.fromVerse !== undefined) write(textAt, `${passage.chapter}:${passage.fromVerse}`, entry, passage);
+        else for (let chapter = passage.chapter; chapter <= passage.toChapter; chapter++) write(textOnChapters, chapter, entry, entry.passage);
+        return;
+      }
       if (passage.fromVerse !== undefined) gather(onVerses, `${passage.chapter}:${passage.fromVerse}`, entry, passage);
       // By a chapter's heading the badge speaks of that chapter: "2:1–23", whatever range the document names.
       else for (let chapter = passage.chapter; chapter <= passage.toChapter; chapter++) gather(onChapters, chapter, entry, { chapter, toChapter: chapter });
@@ -144,8 +160,13 @@ export function useBookUsage(bookId: string, bible: BibleId, locale: AppLocale, 
       chapters: new Map([...onChapters].map(([at, badges]) => [Number(at), toBadges(badges)])),
       onOpen,
       moreLabel: (count) => t('bible.mine.moreLabel', { count }),
+      ...(asText && onEditComment ? { comments: {
+        at: new Map([...textAt].map(([at, comments]) => [at, [...comments.values()]])),
+        chapters: new Map([...textOnChapters].map(([at, comments]) => [at, [...comments.values()]])),
+        onEdit: onEditComment,
+      } } : {}),
     };
-  }, [shown, entries, bookId, bible, locale, onOpen, t]);
+  }, [shown, entries, bookId, bible, locale, onOpen, t, commentsShown, onEditComment]);
 
   /** The marks on the minimap's right edge: one place each (a passage's first verse, a whole chapter's label), its kinds in the order of the badges. */
   const mapMarks = useMemo<readonly MinimapMark<ScriptureUsageKind>[] | undefined>(() => {
@@ -173,5 +194,16 @@ export function useBookUsage(bookId: string, bible: BibleId, locale: AppLocale, 
     if (openAt && (!shown || emptied)) setOpenAt(null);
   }, [openAt, shown, emptied]);
   const open = shown && !emptied ? openAt : null;
-  return { ribbon, mapMarks, openAt: open, listed: open ? listed : null, close };
+  // Where a comment stands, for its window's title; and which comment a door opens — the one written to this verse
+  // (starting there) or to this whole chapter. Nothing there: the door writes a new one.
+  const commentPassage = useCallback((id: string) => entries.find((entry) => entry.kind === 'comment' && entry.id === id)?.passage, [entries]);
+  const commentOn = useCallback((chapter: number, verse: number | null) => entries.find((entry) => entry.kind === 'comment' && (verse === null
+    ? wholeChapterOf(entry, chapter)
+    : entry.passage.chapter === chapter && entry.passage.fromVerse === verse))?.id, [entries]);
+  // A door may open only once ALL the comments are known — the whole list read, no failure, not a copy for reading: on a
+  // part of it, a comment missing there would be taken for none and a second written (Codex review, 2026-10-28; the same
+  // rule as a mark's creation, `marks/markStore.ts`). Meanwhile a written comment still opens from its own words.
+  // Switched off, the material and its doors are gone — «only the text remains».
+  const commentsReady = show && armed && notes.state?.complete === true && !notes.error && !notes.readOnly;
+  return { ribbon, mapMarks, openAt: open, listed: open ? listed : null, close, commentPassage, commentOn, commentsReady };
 }

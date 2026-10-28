@@ -8,11 +8,15 @@ import { useAppLocale } from '@/hooks/useAppLocale';
 import { ScriptureReference } from '@/models/models';
 import { formatScriptureReference } from '@/utils/scriptureReference';
 
+import type { ChipTone } from '@/utils/chipClasses';
+
 interface ScriptureRefBadgeProps {
   reference: ScriptureReference;
-  onClick?: () => void;
+  onClick?: (event: React.MouseEvent | React.KeyboardEvent) => void;
   onRemove?: () => void;
   isEditing?: boolean;
+  /** A note's references are green, its section's colour; a comment's are grey, the pencil's. */
+  tone?: ChipTone;
 }
 
 /**
@@ -28,6 +32,7 @@ const ScriptureRefBadge = memo(function ScriptureRefBadge({
   onClick,
   onRemove,
   isEditing = false,
+  tone = 'emerald',
 }: ScriptureRefBadgeProps) {
   const { t } = useTranslation();
 
@@ -45,7 +50,7 @@ const ScriptureRefBadge = memo(function ScriptureRefBadge({
 
   return (
     <Chip
-      tone="emerald"
+      tone={tone}
       selected={isEditing}
       onClick={onClick}
       onRemove={onRemove}

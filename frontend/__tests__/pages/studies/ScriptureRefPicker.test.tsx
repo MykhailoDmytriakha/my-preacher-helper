@@ -28,6 +28,12 @@ describe('ScriptureRefPicker, saving a reference nobody changed', () => {
     return onConfirm;
   };
 
+  it('names each field by its label for a screen reader', () => {
+    render(<ScriptureRefPicker mode="add" onConfirm={jest.fn()} onCancel={jest.fn()} />);
+    expect(screen.getByLabelText('studiesWorkspace.book').tagName).toBe('SELECT');
+    expect(screen.getByLabelText('studiesWorkspace.chapter').tagName).toBe('SELECT');
+  });
+
   it('gives back the reference as it was written, in its own Bible, when shown in another one', () => {
     const onConfirm = open({ id: 'r1', bible: 'rst', book: 'Psalms', chapter: 9, fromVerse: 20, toVerse: 25 });
     expect(onConfirm).toHaveBeenCalledWith({ bible: 'rst', book: 'Psalms', chapter: 9, fromVerse: 20, toVerse: 25 });

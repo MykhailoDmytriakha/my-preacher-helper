@@ -20,18 +20,24 @@ import '@locales/i18n';
 
 import { ScriptureWrittenIn } from '@/components/bible/ScriptureLinks';
 import { ScriptureLinksInWindow } from '@/components/bible/VerseWindow';
+import { CommentDialog, type CommentTarget } from '@/components/CommentDialog';
+import { CommentIcon } from '@/components/Icons';
 import Select from '@/components/ui/Select';
 import { useStudyNotes } from '@/hooks/useStudyNotes';
 import { useStudyNoteShareLinks } from '@/hooks/useStudyNoteShareLinks';
 import { useTags } from '@/hooks/useTags';
-import { StudyNote } from '@/models/models';
+import { ScriptureReference, StudyNote } from '@/models/models';
 import { resolveAppLocale } from '@/utils/appLocale';
 import { getBooksForDropdown } from '@/utils/bibleBooks';
+import { newClientId } from '@/utils/clientId';
 import { isKnownOffline } from '@/utils/connectivity';
 import { studyNoteLanguage } from '@/utils/documentLanguage';
-import { scriptureReferenceSearchText, studyNoteSearchText } from '@/utils/scriptureReference';
+import { formatScriptureReference, scriptureReferenceSearchText, studyNoteSearchText } from '@/utils/scriptureReference';
+import { inStudyNoteTab, STUDY_NOTE_TABS, type StudyNoteTab } from '@/utils/studyNoteTabs';
 
+import { CommentCard } from './CommentCard';
 import ShareNoteModal from './components/ShareNoteModal';
+import ScriptureRefPicker from './ScriptureRefPicker';
 import StudyNoteCard from './StudyNoteCard';
 
 import type { AppLocale } from '@/utils/appLocale';
@@ -93,14 +99,14 @@ export default function StudiesPage() {
   }, [searchQueryParam]);
 
   // Type tabs
-  type NoteTabType = 'all' | 'notes' | 'questions';
-  const [activeTab, setActiveTab] = useQueryState<NoteTabType>('tab', { defaultValue: 'all', parse: (val) => val as NoteTabType });
+  const [activeTab, setActiveTab] = useQueryState<StudyNoteTab>('tab', { defaultValue: 'all', parse: (val) => val as StudyNoteTab });
 
   // Note counts by type (computed from all notes, not filtered)
   const noteCounts = useMemo(() => ({
     all: notes.length,
-    notes: notes.filter(n => n.type !== 'question').length,
-    questions: notes.filter(n => n.type === 'question').length,
+    notes: notes.filter(n => inStudyNoteTab(n, 'notes')).length,
+    comments: notes.filter(n => inStudyNoteTab(n, 'comments')).length,
+    questions: notes.filter(n => inStudyNoteTab(n, 'questions')).length,
   }), [notes]);
 
   const shareLinksByNoteId = useMemo(
@@ -109,6 +115,8 @@ export default function StudiesPage() {
   );
 
   const [shareNote, setShareNote] = useState<StudyNote | null>(null);
+  // A comment opens in its window, edited only there; a new one chooses its verse or chapter first.
+  const [commentWindow, setCommentWindow] = useState<{ kind: 'edit'; id: string } | { kind: 'new'; reference: ScriptureReference | null; choosing?: boolean } | null>(null);
 
   // Expand state
   const [expandedNoteIds, setExpandedNoteIds] = useState<Set<string>>(new Set());
@@ -173,11 +181,7 @@ export default function StudiesPage() {
   const filteredNotes = useMemo(() => {
     return notes
       // Tab filter
-      .filter((note) => {
-        if (activeTab === 'notes') return note.type !== 'question';
-        if (activeTab === 'questions') return note.type === 'question';
-        return true; // 'all'
-      })
+      .filter((note) => inStudyNoteTab(note, activeTab))
       .filter((note) => (tagFilter ? note.tags.includes(tagFilter) : true))
       .filter((note) =>
         bookFilter
@@ -247,6 +251,11 @@ export default function StudiesPage() {
   }, []);
 
   const handleAddNote = () => {
+    // In the comments' tab the main button writes a comment, in its window, not a note on its page.
+    if (activeTab === 'comments') {
+      setCommentWindow({ kind: 'new', reference: null });
+      return;
+    }
     router.push('/studies/new');
   };
 
@@ -261,6 +270,9 @@ export default function StudiesPage() {
       visibleNotes.map((note) => (
         // A note's title says its language too, for a reference its body alone does not.
         <ScriptureWrittenIn key={note.id} language={studyNoteLanguage(note)}>
+        {note.type === 'comment' ? (
+          <CommentCard note={note} searchQuery={searchQuery} onOpen={(id) => setCommentWindow({ kind: 'edit', id })} />
+        ) : (
         <StudyNoteCard
           note={note}
           bibleLocale={bibleLocale}
@@ -271,6 +283,7 @@ export default function StudiesPage() {
           onShare={handleShareNote}
           hasShareLink={shareLinksByNoteId.has(note.id)}
         />
+        )}
         </ScriptureWrittenIn>
       )),
     [visibleNotes, bibleLocale, expandedNoteIds, handleToggleNoteExpanded, router, searchQuery, handleShareNote, shareLinksByNoteId]
@@ -318,7 +331,7 @@ export default function StudiesPage() {
               className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 sm:w-auto"
             >
               <PlusIcon className="h-4 w-4" />
-              {t('studiesWorkspace.newNote')}
+              {activeTab === 'comments' ? t('studiesWorkspace.newComment') : t('studiesWorkspace.newNote')}
             </button>
           </div>
         </div>
@@ -344,12 +357,13 @@ export default function StudiesPage() {
       </header>
 
       {/* Type Tabs */}
-      <div className="flex border-b border-gray-200 dark:border-gray-700">
-        {(['all', 'notes', 'questions'] as const).map((tab) => (
+      {/* Four tabs fit a computer; on a narrow phone the row slides under the finger rather than clip a word. */}
+      <div className="-mx-4 flex overflow-x-auto border-b border-gray-200 px-4 dark:border-gray-700 sm:mx-0 sm:px-0">
+        {STUDY_NOTE_TABS.map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
-            className={`relative px-4 py-2.5 text-sm font-medium transition-colors
+            className={`relative shrink-0 whitespace-nowrap px-3 py-2.5 text-sm font-medium transition-colors sm:px-4
               ${activeTab === tab
                 ? 'text-emerald-600 dark:text-emerald-400'
                 : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
@@ -471,12 +485,13 @@ export default function StudiesPage() {
             </span>
           ) : (
             <span>
-              {t('studiesWorkspace.allNotes')}: <strong>{visibleNotes.length}</strong>
+              {t(activeTab === 'all' ? 'studiesWorkspace.allNotes' : `studiesWorkspace.tabs.${activeTab}`)}: <strong>{visibleNotes.length}</strong>
             </span>
           )}
         </div>
 
-        {visibleNotes.length > 0 && (
+        {/* Only a note folds: a list of comments alone has nothing to unfold. */}
+        {visibleNotes.some((note) => note.type !== 'comment') && (
           <button
             onClick={handleExpandAll}
             disabled={resultsCatchingUp}
@@ -513,6 +528,17 @@ export default function StudiesPage() {
             />
           ))}
         </div>
+      ) : visibleNotes.length === 0 && activeTab === 'comments' && !hasActiveFilters ? (
+        // The comments' tab on its first opening: what will be here and where it starts — an invitation, not an error.
+        <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-gray-300 bg-white px-6 py-12 text-center dark:border-gray-700 dark:bg-gray-900">
+          <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-gray-500"><CommentIcon className="h-5 w-5 text-white" /></span>
+          <p className="mt-1 text-base font-semibold text-gray-900 dark:text-gray-100">{t('studiesWorkspace.commentsEmptyTitle')}</p>
+          <p className="max-w-md text-sm leading-relaxed text-gray-600 dark:text-gray-400">{t('studiesWorkspace.commentsEmptyHint')}</p>
+          <Link href="/bible" className="mt-2 inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">
+            <BookOpenIcon className="h-4 w-4" />
+            {t('studiesWorkspace.openBible')}
+          </Link>
+        </div>
       ) : visibleNotes.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-gray-300 bg-gray-50 py-12 dark:border-gray-700 dark:bg-gray-900">
           <ClipboardDocumentListIcon className="h-12 w-12 text-gray-400 dark:text-gray-600" />
@@ -535,6 +561,41 @@ export default function StudiesPage() {
         <div className="space-y-3">{noteCards}</div>
       )}
       </div>
+
+      {commentWindow ? (() => {
+        const note = commentWindow.kind === 'edit' ? notes.find((n) => n.id === commentWindow.id) : undefined;
+        const reference = commentWindow.kind === 'new' ? commentWindow.reference : note?.scriptureRefs[0] ?? null;
+        const place = reference ? formatScriptureReference(reference, { locale: bibleLocale }) : '';
+        const target: CommentTarget = commentWindow.kind === 'edit' ? { kind: 'edit', id: commentWindow.id } : { kind: 'new', reference: commentWindow.reference };
+        // A new comment chooses its verse or chapter here, away from the Bible; once chosen, the place can be changed. The
+        // place chosen stays the comment's while another is being picked — a reload then keeps it with the words — and is
+        // replaced only by a confirmed one. The picker's Cancel keeps it, or closes the window through its own question.
+        const placePicker = commentWindow.kind !== 'new' ? undefined : ({ requestClose }: { requestClose: () => void }) => (commentWindow.reference && !commentWindow.choosing ? (
+          <button type="button" onClick={() => setCommentWindow({ kind: 'new', reference: commentWindow.reference, choosing: true })} className="text-sm font-medium text-indigo-600 hover:text-indigo-700 dark:text-indigo-400">
+            {t('comment.changePlace')}
+          </button>
+        ) : (
+          <div className="rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-800">
+            <p className="mb-2 text-sm font-semibold text-gray-700 dark:text-gray-300">{t('comment.pickPlace')}</p>
+            <ScriptureRefPicker
+              placesOnly
+              initialRef={commentWindow.reference ?? undefined}
+              onConfirm={(picked) => setCommentWindow({ kind: 'new', reference: { ...picked, id: newClientId() } })}
+              onCancel={() => (commentWindow.reference ? setCommentWindow({ kind: 'new', reference: commentWindow.reference }) : requestClose())}
+            />
+          </div>
+        ));
+        return (
+          <CommentDialog
+            key={commentWindow.kind === 'edit' ? commentWindow.id : 'new'}
+            target={target}
+            place={place}
+            placePicker={placePicker}
+            restorePlace={(restored) => setCommentWindow({ kind: 'new', reference: restored })}
+            onClose={() => setCommentWindow(null)}
+          />
+        );
+      })() : null}
 
       <ShareNoteModal
         isOpen={shareNote !== null}

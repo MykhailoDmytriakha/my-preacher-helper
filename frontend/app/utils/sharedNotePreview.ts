@@ -1,6 +1,7 @@
 import { formatScriptureReferences } from '@/utils/scriptureReference';
 import { studyNoteOwnName } from '@/utils/studyNoteUtils';
 
+import type { StudyNoteType } from '@/models/models';
 import type { AppLocale } from '@/utils/appLocale';
 import type { ScriptureRefShape } from '@/utils/scriptureReference';
 
@@ -17,13 +18,14 @@ export interface SharedNotePreviewSource {
   title?: string;
   content: string;
   scriptureRefs: readonly ScriptureRefShape[];
-  type: 'note' | 'question';
+  type: StudyNoteType;
 }
 
 /** Words the caller passes in, because this module speaks no language. */
 export interface SharedNotePreviewWords {
   note: string;
   question: string;
+  comment: string;
   untitled: string;
 }
 
@@ -126,7 +128,7 @@ export function buildSharedNotePreview(
 ): SharedNotePreview {
   const face = { locale, style: 'long' as const };
   const paragraphs = plainParagraphs(note.content);
-  const kind = note.type === 'question' ? words.question : words.note;
+  const kind = note.type === 'question' ? words.question : note.type === 'comment' ? words.comment : words.note;
   const ownTitle = note.title?.trim();
   const ownName = studyNoteOwnName(note, locale);
 

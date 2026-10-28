@@ -94,6 +94,12 @@ jest.mock('@/components/ui/RichMarkdownEditor', () => ({
     ),
 }));
 
+// The comment's window has its own suite (CommentDialog.test.tsx); here only whether it is open matters.
+jest.mock('@/components/CommentDialog', () => ({
+    __esModule: true,
+    CommentDialog: () => <div data-testid="comment-window" />,
+}));
+
 jest.mock('@/components/FocusRecorderButton', () => ({
     __esModule: true,
     FocusRecorderButton: ({ onRecordingComplete }: any) => (
@@ -403,6 +409,39 @@ describe('StudyNoteEditorPage Pagination', () => {
         expect(mockRouter.push).not.toHaveBeenCalled();
     });
 
+    it('leaves an arrow typed into a field to the field, and keeps the arrows while the comment\'s window is open', () => {
+        const comment: StudyNote = { ...mockNotes[1], type: 'comment' };
+        (useStudyNotes as jest.Mock).mockReturnValue({
+            uid: 'user-1', notes: [mockNotes[0], comment, mockNotes[2]], loading: false, createNote: jest.fn(), updateNote: jest.fn(), deleteNote: jest.fn(),
+        });
+        render(<StudyNoteEditorPage />);
+
+        const field = document.createElement('input');
+        document.body.appendChild(field);
+        fireEvent.keyDown(field, { key: 'ArrowLeft' });
+        expect(mockRouter.push).not.toHaveBeenCalled();
+        field.remove();
+
+        // Leaving now would close the window with its words unasked.
+        fireEvent.click(screen.getByTitle('common.edit'));
+        expect(screen.getByTestId('comment-window')).toBeInTheDocument();
+        fireEvent.keyDown(document, { key: 'ArrowRight' });
+        expect(mockRouter.push).not.toHaveBeenCalled();
+    });
+
+    it('names a comment\'s page by its place, not «untitled», and shows it no tags or outline to fill', () => {
+        const comment: StudyNote = { ...mockNotes[1], type: 'comment', title: '', tags: [], scriptureRefs: [{ id: 'r', bible: 'rst', book: 'Isaiah', chapter: 40, fromVerse: 31 }] };
+        (useStudyNotes as jest.Mock).mockReturnValue({
+            uid: 'user-1', notes: [mockNotes[0], comment, mockNotes[2]], loading: false, createNote: jest.fn(), updateNote: jest.fn(), deleteNote: jest.fn(),
+        });
+        (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams());
+        render(<StudyNoteEditorPage />);
+        expect(screen.getAllByRole('heading', { level: 1 })[0]).toHaveTextContent(/40:31/);
+        expect(screen.queryByText('studiesWorkspace.untitled')).not.toBeInTheDocument();
+        expect(screen.queryByText('studiesWorkspace.tags')).not.toBeInTheDocument();
+        expect(screen.queryByText('notePanel.outlineEmpty')).not.toBeInTheDocument();
+    });
+
     it('renders disabled buttons when at the boundaries of a list', () => {
         // Search 'Note' matches all 3: note-0, note-1, note-2
         const searchNoteParams = new URLSearchParams('search=Note');
@@ -437,7 +476,7 @@ describe('StudyNoteEditorPage Pagination', () => {
     });
 
     describe('Note / Question Mode Toggle', () => {
-        it('toggles between Note and Question type in edit mode', () => {
+        it('toggles between Note and Question in edit mode, the note green, a comment not offered', () => {
             render(<StudyNoteEditorPage />);
             expect(screen.getByText('Current Note')).toBeInTheDocument();
 
@@ -450,8 +489,11 @@ describe('StudyNoteEditorPage Pagination', () => {
             fireEvent.click(qBtn);
             expect(qBtn).toHaveClass('bg-amber-100'); // the selected class for question
 
+            // A comment is not chosen on the page: it is written and edited only in its window.
+            expect(screen.queryByRole('button', { name: 'studiesWorkspace.type.comment' })).not.toBeInTheDocument();
+
             fireEvent.click(noteBtn);
-            expect(noteBtn).toHaveClass('bg-gray-100'); // the selected class for note
+            expect(noteBtn).toHaveClass('bg-emerald-100'); // the selected class for note
         });
 
         it('displays badges for Note and Question type in read-only mode', () => {
@@ -460,7 +502,7 @@ describe('StudyNoteEditorPage Pagination', () => {
             // By default, it's a note. In read-only mode, check if note badge is shown.
             // The badge is a chip, so the plate is on the chip, not on the label inside it.
             const noteChip = screen.getByText('studiesWorkspace.type.note').closest('span.rounded-full');
-            expect(noteChip?.className).toMatch(/bg-gray-\d+/);
+            expect(noteChip?.className).toMatch(/bg-emerald-\d+/);
 
             // Switch to edit mode, change to question, then switch back to read-only
             fireEvent.click(screen.getByTitle('common.edit'));

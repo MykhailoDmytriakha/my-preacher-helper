@@ -9,6 +9,8 @@ import { RichMarkdownToolbar } from '@/components/ui/RichMarkdownToolbar';
 import { useEditorState } from '@tiptap/react';
 
 const makeEditorMock = (activeMarks: string[] = []) => ({
+    // A real Tiptap editor always says whether its text can change.
+    isEditable: true,
     isActive: jest.fn((markOrNode: string) => activeMarks.includes(markOrNode)),
     chain: jest.fn().mockReturnThis(),
     focus: jest.fn().mockReturnThis(),
@@ -33,15 +35,15 @@ describe('RichMarkdownToolbar', () => {
         const editor = makeEditorMock() as any;
         render(<RichMarkdownToolbar editor={editor} />);
 
-        expect(screen.getByRole('button', { name: 'Bold' })).toBeInTheDocument();
-        expect(screen.getByRole('button', { name: 'Italic' })).toBeInTheDocument();
-        expect(screen.getByRole('button', { name: 'Strikethrough' })).toBeInTheDocument();
-        expect(screen.getByRole('button', { name: 'Heading 1' })).toBeInTheDocument();
-        expect(screen.getByRole('button', { name: 'Heading 2' })).toBeInTheDocument();
-        expect(screen.getByRole('button', { name: 'Heading 3' })).toBeInTheDocument();
-        expect(screen.getByRole('button', { name: 'Bullet List' })).toBeInTheDocument();
-        expect(screen.getByRole('button', { name: 'Ordered List' })).toBeInTheDocument();
-        expect(screen.getByRole('button', { name: 'Quote' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'richText.bold' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'richText.italic' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'richText.strikethrough' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'richText.heading1' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'richText.heading2' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'richText.heading3' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'richText.bulletList' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'richText.orderedList' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'richText.quote' })).toBeInTheDocument();
     });
 
     it('returns null when editor is null/undefined', () => {
@@ -52,14 +54,14 @@ describe('RichMarkdownToolbar', () => {
     it('applies active styles to Bold button when bold is active', () => {
         const editor = makeEditorMock(['bold']) as any;
         render(<RichMarkdownToolbar editor={editor} />);
-        const boldBtn = screen.getByRole('button', { name: 'Bold' });
+        const boldBtn = screen.getByRole('button', { name: 'richText.bold' });
         expect(boldBtn.className).toContain('bg-indigo-100');
     });
 
     it('applies inactive styles when mark is not active', () => {
         const editor = makeEditorMock([]) as any;
         render(<RichMarkdownToolbar editor={editor} />);
-        const boldBtn = screen.getByRole('button', { name: 'Bold' });
+        const boldBtn = screen.getByRole('button', { name: 'richText.bold' });
         expect(boldBtn.className).not.toContain('bg-indigo-100');
         expect(boldBtn.className).toContain('text-gray-600');
     });
@@ -80,7 +82,7 @@ describe('RichMarkdownToolbar', () => {
 
         render(<RichMarkdownToolbar editor={editor} />);
 
-        expect(screen.getByRole('button', { name: 'Bold' }).className).toContain('bg-indigo-100');
+        expect(screen.getByRole('button', { name: 'richText.bold' }).className).toContain('bg-indigo-100');
         expect(useEditorState).toHaveBeenCalledWith(
             expect.objectContaining({
                 editor,
@@ -97,12 +99,38 @@ describe('RichMarkdownToolbar', () => {
         const editor = { ...makeEditorMock(), chain: chainMock } as any;
 
         render(<RichMarkdownToolbar editor={editor} />);
-        fireEvent.click(screen.getByRole('button', { name: 'Bold' }));
+        fireEvent.click(screen.getByRole('button', { name: 'richText.bold' }));
 
         expect(chainMock).toHaveBeenCalled();
         expect(focusMock).toHaveBeenCalled();
         expect(toggleBoldMock).toHaveBeenCalled();
         expect(runMock).toHaveBeenCalled();
+    });
+
+    it('holds every button still while the editor says its text is held, so a save being accepted is not changed', () => {
+        const editor = makeEditorMock() as any;
+        render(<RichMarkdownToolbar editor={editor} disabled />);
+        for (const name of ['richText.bold', 'richText.heading1', 'richText.bulletList', 'richText.quote']) {
+            expect(screen.getByRole('button', { name })).toBeDisabled();
+        }
+    });
+
+    it('lets the buttons go as soon as the editor says the text is released, not at the next keystroke', () => {
+        const editor = makeEditorMock() as any;
+        const { rerender } = render(<RichMarkdownToolbar editor={editor} disabled />);
+        // Released without a transaction: what useEditorState last saw still says "read-only".
+        editor.isEditable = false;
+        rerender(<RichMarkdownToolbar editor={editor} disabled={false} />);
+        expect(screen.getByRole('button', { name: 'richText.bold' })).toBeEnabled();
+    });
+
+    it('refuses a press on a button drawn a moment before the text was held: making an editor read-only is no transaction', () => {
+        const editor = makeEditorMock() as any;
+        render(<RichMarkdownToolbar editor={editor} />);
+        // setEditable(false) after the buttons were drawn: useEditorState did not hear it, the button still looks enabled.
+        editor.isEditable = false;
+        fireEvent.click(screen.getByRole('button', { name: 'richText.bulletList' }));
+        expect(editor.chain).not.toHaveBeenCalled();
     });
 
     it('prevents default on button click (handleToggle)', () => {
@@ -114,7 +142,7 @@ describe('RichMarkdownToolbar', () => {
         editor.chain = chainMock;
 
         render(<RichMarkdownToolbar editor={editor} />);
-        const italicBtn = screen.getByRole('button', { name: 'Italic' });
+        const italicBtn = screen.getByRole('button', { name: 'richText.italic' });
         const clickEvent = new MouseEvent('click', { bubbles: true, cancelable: true });
         const preventDefaultSpy = jest.spyOn(clickEvent, 'preventDefault');
         italicBtn.dispatchEvent(clickEvent);

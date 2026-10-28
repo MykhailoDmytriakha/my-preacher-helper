@@ -4,9 +4,9 @@ import { useId } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { MineBadge } from '@/components/bible/MineBadge';
-import { saveMinePrefs, useMinePrefs } from '@/components/bible/minePrefs';
+import { saveMinePrefs, useMinePrefs, type CommentsShown } from '@/components/bible/minePrefs';
 import { USAGE_KIND_LOOK } from '@/components/bible/usageKinds';
-import { SettingRow } from '@/components/settings/SettingRow';
+import { ChoiceButtons, SettingRow } from '@/components/settings/SettingRow';
 import Switch from '@/components/ui/Switch';
 import { SCRIPTURE_USAGE_KINDS } from '@/utils/scriptureUsage';
 
@@ -19,6 +19,10 @@ export default function MineSettings() {
   const { t } = useTranslation();
   const prefs = useMinePrefs();
   const id = useId();
+  const commentLooks: { value: CommentsShown; label: string }[] = [
+    { value: 'text', label: t('settings.bible.mine.commentsText') },
+    { value: 'badge', label: t('settings.bible.mine.commentsBadge') },
+  ];
   return (
     <section aria-labelledby={`${id}-title`} className="rounded-lg bg-white shadow dark:bg-gray-800" data-testid="mine-settings">
       <div className="space-y-3 border-b border-gray-200 p-4 dark:border-gray-700 md:px-6">
@@ -34,6 +38,12 @@ export default function MineSettings() {
           <Switch checked={prefs.show} aria-labelledby={ids.name} aria-describedby={ids.hint} onClick={() => saveMinePrefs({ show: !prefs.show })} data-testid="mine-settings-switch" />
         )}
       </SettingRow>
+      {/* A comment as grey words under its verse or chapter heading, or a badge like the rest (the owner, 2026-10-28). */}
+      <div className={prefs.show ? '' : 'opacity-50'}>
+        <SettingRow below title={t('settings.bible.mine.comments')} hint={t('settings.bible.mine.commentsHint')}>
+          {(ids) => <ChoiceButtons ids={ids} choices={commentLooks} value={prefs.comments} disabled={!prefs.show} onPick={(comments) => saveMinePrefs({ comments })} />}
+        </SettingRow>
+      </div>
     </section>
   );
 }

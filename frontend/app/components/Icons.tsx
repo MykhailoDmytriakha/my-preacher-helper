@@ -317,3 +317,17 @@ export const SwitchViewIcon = ({ className, ...props }: IconProps) => (
     />
   </svg>
 );
+
+/**
+ * A comment's mark — three lines of handwriting and a pencil (the owner's choice 2026-10-28 on the canvas,
+ * «строки и карандаш»). No size of its own: the caller sizes it, as a heroicon, so a badge's 10 px circle and
+ * a menu's 18 px one draw the same thing.
+ */
+export const CommentIcon = ({ className, ...props }: IconProps) => (
+  <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" className={className} {...props}>
+    <rect x="1.5" y="3.5" width="9.5" height="2.6" rx="1.3" />
+    <rect x="1.5" y="8.7" width="7.5" height="2.6" rx="1.3" />
+    <rect x="1.5" y="13.9" width="5.5" height="2.6" rx="1.3" />
+    <path transform="translate(8 5) scale(0.64)" d="m2.695 14.762-1.262 3.155a.5.5 0 0 0 .65.65l3.155-1.262a4 4 0 0 0 1.343-.886L17.5 5.501a2.121 2.121 0 0 0-3-3L3.58 13.419a4 4 0 0 0-.885 1.343Z" />
+  </svg>
+);

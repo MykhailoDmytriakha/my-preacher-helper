@@ -19,7 +19,7 @@ import { useTranslation } from 'react-i18next';
  */
 export interface SaveConflictBannerProps {
   /** What this document IS, so the text names it instead of a generic "record". */
-  entityKey?: 'entityNote' | 'entitySermon' | 'entitySeries' | 'entityRecord';
+  entityKey?: 'entityNote' | 'entityComment' | 'entitySermon' | 'entitySeries' | 'entityRecord';
   /**
    * The refused text. Displayed verbatim: the person must SEE that their words
    * survived the refusal, not be told so. Omit when the text is still visible in

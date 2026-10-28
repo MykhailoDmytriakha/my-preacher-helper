@@ -25,6 +25,11 @@ interface MarkdownDisplayProps {
     content: string;
     className?: string;
     compact?: boolean;
+    /**
+     * A comment's small grey hand under a verse (case 2026-10-12-block-diagram, 3.2): one size, no book spacing —
+     * a heading is a bold line, lists and a quote sit tight. The caller gives the size and the grey.
+     */
+    pencil?: boolean;
     /** Optional search query to highlight within the content */
     searchQuery?: string;
 }
@@ -45,7 +50,7 @@ const formatStructuredBlocks = (text: string) => {
     });
 };
 
-const MarkdownDisplay = ({ content, className = '', compact = false, searchQuery = '' }: MarkdownDisplayProps) => {
+const MarkdownDisplay = ({ content, className = '', compact = false, pencil = false, searchQuery = '' }: MarkdownDisplayProps) => {
     const processedContent = useMemo(() => formatStructuredBlocks(content), [content]);
     // References become links where the screen gives them somewhere to open; elsewhere the text is as written.
     const scriptureLinks = useScriptureLinks();
@@ -66,7 +71,7 @@ const MarkdownDisplay = ({ content, className = '', compact = false, searchQuery
     );
 
     return (
-        <div className={`prose dark:prose-invert max-w-none break-words ${compact ? 'prose-sm' : ''} ${className}`}>
+        <div className={pencil ? `max-w-none break-words ${className}` : `prose dark:prose-invert max-w-none break-words ${compact ? 'prose-sm' : ''} ${className}`}>
             <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
                 // rehype-raw parses embedded raw HTML (e.g. <u>) into the tree;
@@ -88,12 +93,17 @@ const MarkdownDisplay = ({ content, className = '', compact = false, searchQuery
                         <div className="max-w-full overflow-x-auto"><table {...props} /></div>
                     ),
                     // Ensure lists are properly spaced
-                    ul: ({ ...props }) => <ul {...props} className="my-2 list-disc pl-4" />,
-                    ol: ({ ...props }) => <ol {...props} className="my-2 list-decimal pl-4" />,
+                    ul: ({ ...props }) => <ul {...props} className={`${pencil ? 'my-0.5' : 'my-2'} list-disc pl-4`} />,
+                    ol: ({ ...props }) => <ol {...props} className={`${pencil ? 'my-0.5' : 'my-2'} list-decimal pl-4`} />,
+                    ...(pencil ? {
+                        blockquote: ({ children, ...props }: React.ComponentProps<'blockquote'>) => (
+                            <blockquote {...props} className="my-0.5 border-l-2 border-gray-300 pl-2 italic dark:border-gray-600">{children}</blockquote>
+                        ),
+                    } : {}),
                     // Tweak headings (h1, h2, h3 are defined below with highlighting)
                     // Text node highlighting when search is active
                     p: ({ children, ...props }) => (
-                        <p {...props}>
+                        <p {...props} className={pencil ? 'my-0' : undefined}>
                             {React.Children.map(children, renderHighlighted)}
                         </p>
                     ),
@@ -113,23 +123,27 @@ const MarkdownDisplay = ({ content, className = '', compact = false, searchQuery
                         </em>
                     ),
                     // Add highlighting for headings
-                    h1: ({ children, ...props }) => (
-                        <h3 {...props} className="text-lg font-bold mt-4 mb-2">
+                    h1: ({ children, ...props }) => (pencil
+                        ? <p {...props} className="my-0 font-semibold">{React.Children.map(children, renderHighlighted)}</p>
+                        : <h3 {...props} className="text-lg font-bold mt-4 mb-2">
                             {React.Children.map(children, renderHighlighted)}
                         </h3>
                     ),
-                    h2: ({ children, ...props }) => (
-                        <h4 {...props} className="text-base font-bold mt-3 mb-2">
+                    h2: ({ children, ...props }) => (pencil
+                        ? <p {...props} className="my-0 font-semibold">{React.Children.map(children, renderHighlighted)}</p>
+                        : <h4 {...props} className="text-base font-bold mt-3 mb-2">
                             {React.Children.map(children, renderHighlighted)}
                         </h4>
                     ),
-                    h3: ({ children, ...props }) => (
-                        <h5 {...props} className="text-sm font-bold mt-2 mb-1">
+                    h3: ({ children, ...props }) => (pencil
+                        ? <p {...props} className="my-0 font-semibold">{React.Children.map(children, renderHighlighted)}</p>
+                        : <h5 {...props} className="text-sm font-bold mt-2 mb-1">
                             {React.Children.map(children, renderHighlighted)}
                         </h5>
                     ),
-                    h4: ({ children, ...props }) => (
-                        <h6 {...props} className="text-xs font-bold mt-2 mb-1">
+                    h4: ({ children, ...props }) => (pencil
+                        ? <p {...props} className="my-0 font-semibold">{React.Children.map(children, renderHighlighted)}</p>
+                        : <h6 {...props} className="text-xs font-bold mt-2 mb-1">
                             {React.Children.map(children, renderHighlighted)}
                         </h6>
                     ),

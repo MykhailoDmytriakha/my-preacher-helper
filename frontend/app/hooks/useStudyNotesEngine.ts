@@ -11,6 +11,7 @@ import { getConnectivityStatus } from '@/utils/connectivity';
 import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
 import { refusedWrite, skippedWrite, type WriteAcceptance, type WriteSubmission } from '@/utils/recoverableWrite';
 import { withNoteReferenceBibles } from '@/utils/scriptureReferenceNumbering';
+import { isStudyNoteDraft } from '@/utils/studyNoteDraft';
 
 import type { DocumentData } from '@/data-engine/types';
 import type { StudyNote } from '@/models/models';
@@ -20,7 +21,8 @@ const now = () => new Date().toISOString();
 const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 /** The note text a person edits; relations (`materialIds`) move only through their material. */
 const EDITABLE: (keyof StudyNote)[] = ['title', 'content', 'scriptureRefs', 'tags', 'type'];
-const isDraft = (note: Pick<StudyNote, 'tags' | 'scriptureRefs'>) => (note.tags?.length ?? 0) === 0 || (note.scriptureRefs?.length ?? 0) === 0;
+/** The one draft rule, the server's too (`utils/studyNoteDraft.ts`): a comment is never a draft. */
+const isDraft = (note: Pick<StudyNote, 'tags' | 'scriptureRefs' | 'type'>) => isStudyNoteDraft(note);
 /**
  * What the editor may say about a write the engine holds on this device. Acceptance waits for
  * the engine's local commit — quick, and it works offline — because that is where a stale
@@ -145,16 +147,23 @@ export function useStudyNotesEngine(enabled: boolean) {
             const read = engineNote(current, id, locale) as unknown as Record<string, unknown>;
             const baselineRefs = expectedBaseline?.scriptureRefs;
             const readSource = baselineRefs !== null && typeof baselineRefs === 'object' ? readFrom.get(baselineRefs) : undefined;
+            // A note stored without a type is a note — compared and reported as one, as every screen reads it: else an
+            // editor that adopted the reported type would be refused again on the same revision (Codex review, 2026-10-28).
+            const storedField = (field: string) => (field === 'type' ? read.type ?? 'note' : read[field]);
             // "Already what I write" is judged on the stored list too, never on a reading of it.
             const storedAs = (field: string, value: unknown) => (field === 'scriptureRefs'
               ? same(current.scriptureRefs ?? [], value)
-              : same(read[field], value));
-            const changedElsewhere = expectedBaseline ? Object.keys(patch).filter(field => field in expectedBaseline
+              : same(storedField(field), value));
+            const compared = expectedBaseline ? Object.keys(patch).filter(field => field in expectedBaseline) : [];
+            const changedElsewhere = compared.filter(field => expectedBaseline
               && !storedAs(field, field === 'scriptureRefs' ? readSource ?? baselineRefs : expectedBaseline[field])
-              && !storedAs(field, patch[field])) : [];
+              && !storedAs(field, patch[field]));
             if (changedElsewhere.length) {
+              // What the server held for EVERY compared field, as the error promises: a field left out could be one still
+              // as opened or one already equal to what was sent, and an editor taking the server's version cannot tell
+              // which (Codex review, 2026-10-28).
               stale = new StaleWriteError(NOTE_AGGREGATE, expectedRevision ?? stored, stored,
-                Object.fromEntries(changedElsewhere.map(field => [field, current[field] ?? null])));
+                Object.fromEntries(compared.map(field => [field, field === 'type' ? storedField(field) : current[field] ?? null])));
               return current;
             }
             const merged: DocumentData = { ...current, ...(deepCleanUndefined(patch) as DocumentData), updatedAt: now() };

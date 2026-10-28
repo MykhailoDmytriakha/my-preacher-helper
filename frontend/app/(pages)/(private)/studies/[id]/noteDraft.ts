@@ -1,4 +1,4 @@
-import type { ScriptureReference } from '@/models/models';
+import type { ScriptureReference, StudyNoteType } from '@/models/models';
 
 /**
  * Exactly the fields the note editor owns. The durable draft stores this shape, so a
@@ -13,5 +13,5 @@ export interface NoteDraftPayload {
     content: string;
     tags: string[];
     scriptureRefs: ScriptureReference[];
-    type: 'note' | 'question';
+    type: StudyNoteType;
 }
