@@ -4,6 +4,7 @@ import { resolveAppLocale, type AppLocale } from "@/utils/appLocale";
 import { BIBLE_BOOKS_DATA, BookInfo, getBookByName, getBookByWrittenName } from "@/utils/bibleBooks";
 import { toDateOnlyKey } from "@/utils/dateOnly";
 import { isPreachDatePreached } from "@/utils/preachDateStatus";
+import { exactBook } from "@/utils/scriptureReferenceParser";
 
 export type SermonsByDate = Record<string, Sermon[]>;
 export type BookPreachEntry = { sermon: Sermon; preachDate: PreachDate };
@@ -269,8 +270,12 @@ const shouldPreferSingleTokenMatch = (len: number, sliceTokens: string[], result
 
 const tryAlphaPrefixMatch = (len: number, variant: string, locale: string): string | null => {
     if (len !== 1) return null;
-    const alphaPart = variant.match(/^(\p{L}{2,})/u)?.[1];
+    // A name glued to its numbers ("Рим8", "1Кор13", "Обявлення3", the Ukrainian "1М3"), its own number kept:
+    // the shared reader of names first, as for a name standing alone.
+    const alphaPart = variant.match(/^(\d\p{L}+|\p{L}{2,})/u)?.[1];
     if (alphaPart) {
+        const exact = exactBook(alphaPart, resolveAppLocale(locale));
+        if (exact) return exact;
         const alphaMatch = getBookByName(alphaPart, locale as AppLocale);
         if (alphaMatch) return alphaMatch.id;
     }
@@ -288,8 +293,11 @@ const tryMatchVariantsForSlice = (
     for (const variant of getTokenVariants(slice)) {
         // As written, in the verse's language first ("uk-UA" read as "uk"): "1 Цар" is 1 Kings in Ukrainian,
         // and the fuzzy search below, across languages, would reach the Russian 1 Царств (1 Samuel) before it.
+        // The app's one reader of book names comes first: its aliases know «Ав.» (Habakkuk, not Obadiah) and
+        // «1 Мойс.» (Genesis), which the guess below did not.
+        const exact = exactBook(variant, resolveAppLocale(locale));
         const matched = getBookByWrittenName(variant, resolveAppLocale(locale)) ?? getBookByName(variant, locale as AppLocale);
-        const resultId: string | null = matched ? matched.id : resolveMatchedBook(variant, locale);
+        const resultId: string | null = exact ?? (matched ? matched.id : resolveMatchedBook(variant, locale));
 
         if (resultId) {
             if (isBridgePreventionTriggered(variant, startIndex, tokens)) continue;

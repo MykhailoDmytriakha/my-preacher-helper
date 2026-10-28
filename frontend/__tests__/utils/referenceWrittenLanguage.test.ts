@@ -89,3 +89,17 @@ describe('the language of a text — what is not its words', () => {
     expect(textLanguage('Вы — соль земли, [смотри здесь](https://www.biblegateway.com/passage/?search=Matthew+5&version=KJV)')).toBe('ru');
   });
 });
+
+/*
+ * A Ukrainian document under a Russian interface (case 2026-10-12-block-diagram, L4; Codex review 2026-10-27): a short
+ * form only Ukrainian writes («Пр.», «Ав.», «1 М.») is a reference there — the check of its name read the interface's
+ * language alone and dropped it before the document's language was asked.
+ */
+describe('a Ukrainian document read under a Russian interface', () => {
+  it('links the forms only Ukrainian writes', () => {
+    const books = (text: string) => referencesInText(text, 'ru', 'uk').map((found) => found.reference.book);
+    expect(books('Пр. 3:5 — Довіряй Господу всім своїм серцем')).toEqual(['Proverbs']);
+    expect(books('Ав. 2:4 — праведний житиме вірою')).toEqual(['Habakkuk']);
+    expect(leadingReference('1 М. 3:15 — перше Євангеліє', { locale: 'ru', written: 'uk' })?.reference.book).toBe('Genesis');
+  });
+});

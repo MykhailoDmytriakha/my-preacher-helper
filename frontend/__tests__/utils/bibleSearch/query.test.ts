@@ -221,3 +221,29 @@ describe('the books a line may begin with though it names none exactly', () => {
   });
 });
 
+
+/*
+ * Ukrainian book forms in the search line (case 2026-10-12-block-diagram, L4; Codex review 2026-10-27): a form Russian
+ * spells as a word or a word's beginning («числ», «повтор») is read as a book only in Ukrainian, and the apostrophe of
+ * a Ukrainian name, any shape or none, does not stop the name being read. («Тита», «Римлян» read as books in Russian
+ * through the declined names, as before: BUG-20261027-search-book-name-that-is-a-word.)
+ */
+describe('Ukrainian book forms in the search line', () => {
+  const uk = { bible: 'ubio' as const, books: PROTESTANT_BOOKS };
+
+  it('leaves a Russian word being typed a word, though Ukrainian writes a book with its letters', () => {
+    for (const line of ['числ', 'повтор']) expect(readLine(line, ru).kind).not.toBe('book');
+  });
+
+  it('reads those forms as books in a Ukrainian Bible', () => {
+    expect(readLine('Римлян 8:28', uk)).toMatchObject({ kind: 'place', bookId: 'Romans', chapter: 8, verse: 28 });
+    expect(readLine('Тита 2:11', uk)).toMatchObject({ kind: 'place', bookId: 'Titus', chapter: 2, verse: 11 });
+  });
+
+  it('reads a Ukrainian name whatever its apostrophe', () => {
+    for (const line of ['Філіп’ян 4:13', "Филип'ян 4:13", 'Филипян 4:13']) {
+      expect(readLine(line, uk)).toMatchObject({ kind: 'place', bookId: 'Philippians', chapter: 4, verse: 13 });
+    }
+    expect(readSearch('Об‘явлення віра', uk)).toMatchObject({ scope: { kind: 'book', bookId: 'Revelation' } });
+  });
+});

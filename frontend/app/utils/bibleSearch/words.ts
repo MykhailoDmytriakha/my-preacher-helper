@@ -1,10 +1,11 @@
+import { APOSTROPHES } from '@/utils/bibleBooks';
+
 /**
  * HOW A WORD IS COMPARED in Bible search: lower case, «ё» as «е», apostrophes dropped («сім'я» is
  * «сімя», «Lord's» is «lords»), stress marks dropped (Ohienko prints «Па́стир»: a person types «пастир»).
  * A query and a verse are both read this way, so the two meet on one spelling whatever the keyboard
  * or the text printed. Only the stress marks go — «й» and «ї» are letters of their own and stay.
  */
-const APOSTROPHES = /['’ʼ`]/g;
 const STRESS = /[\u0300\u0301]/g;
 const WORD = /[\p{L}\p{N}]+/gu;
 

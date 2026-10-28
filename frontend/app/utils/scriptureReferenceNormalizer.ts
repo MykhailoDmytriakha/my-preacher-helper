@@ -16,6 +16,8 @@ const VERSE_WORDS = '(?:стих(?:а|е|и|ов)?|verse(?:s)?|v\\.?)';
 const RANGE_SEPARATOR = '(?:-|–|—|по|to|through)';
 
 const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+/** A name's apostrophe matches any shape a keyboard gives it, or none («Об’явлення», «Обявлення»): `withoutApostrophe`. */
+const namePattern = (alias: string): string => escapeRegExp(alias).replace(/'/g, "['’ʼ‘`´]?");
 
 const localizedBookAliases = BIBLE_BOOKS_DATA.flatMap(({ names, abbrev }) => [
   names.en,
@@ -29,7 +31,7 @@ const localizedBookAliases = BIBLE_BOOKS_DATA.flatMap(({ names, abbrev }) => [
 const aliasesPattern = getReferenceBookAliases()
   .concat(localizedBookAliases)
   .sort((a, b) => b.length - a.length)
-  .map(escapeRegExp)
+  .map(namePattern)
   .join('|');
 
 const COLON_REFERENCE_PATTERN = new RegExp(
@@ -108,7 +110,7 @@ const parseReferenceForTts = (
   toVerse: string | undefined,
   locale: AppLocale
 ): ParsedScriptureReference | null => {
-  const parsed = parseReferenceText([bookAlias, chapter, verse, toVerse].filter(Boolean).join(' '));
+  const parsed = parseReferenceText([bookAlias, chapter, verse, toVerse].filter(Boolean).join(' '), { locale });
   if (parsed) {
     return parsed;
   }
@@ -159,7 +161,7 @@ export function normalizeSpokenScriptureReferences(text: string): string {
       }
 
       const parseableReference = [bookAlias, chapter, verse, toVerse].filter(Boolean).join(' ');
-      const parsed = parseReferenceText(parseableReference);
+      const parsed = parseReferenceText(parseableReference, { locale });
 
       if (!parsed) {
         return match;
@@ -174,7 +176,7 @@ export function normalizeSpokenScriptureReferences(text: string): string {
         return match;
       }
 
-      const parsed = parseReferenceText([bookAlias, chapter].join(' '));
+      const parsed = parseReferenceText([bookAlias, chapter].join(' '), { locale });
 
       if (!parsed) {
         return match;

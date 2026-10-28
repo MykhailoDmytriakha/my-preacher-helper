@@ -192,7 +192,7 @@ export function leadingReference(text: string, options: BibleLinkOptions): Leadi
     // The punctuation that ends the reference ("Агг 1:5-14:", "Еф 1:15,") is not part of it.
     const end = (word.index ?? 0) + word[0].replace(/[.,:;]+$/, '').length;
     const candidate = text.slice(0, end);
-    if (!isReferenceShaped(candidate, options.locale)) continue;
+    if (!isReferenceShaped(candidate, options.locale, written)) continue;
     // A chapter at least: a book named alone in prose is an ordinary word as often as a reference.
     const ref = typedReference(candidate, options.locale, written);
     const href = ref?.chapter ? bibleHref(ref, options) : null;
@@ -285,7 +285,7 @@ function referenceAt(text: string, start: number, nameEnd: number, locale: AppLo
   const end = nameEnd + numbers[0].length;
   // Read with a space where the numbers were glued on: the parser reads "Ин 3:16", not "Ин3:16".
   const spaced = `${name} ${numbers[1]}`;
-  if (!isReferenceShaped(spaced, locale)) return null;
+  if (!isReferenceShaped(spaced, locale, written)) return null;
   const reference = typedReference(spaced, locale, written);
   if (!reference || !namesAPlace(reference)) return null;
   const rest = text.slice(end);
@@ -301,12 +301,13 @@ const NUMBERS_AFTER_BOOK = /(\d+(?:[:.]\d+)?(?:\s*-\s*\d+(?:[:.]\d+)?)?(?:\s*,\s
  * Text that is a book's name and then only its numbers. The reference parser is generous on
  * purpose — a person typing into a reference field drops words and it reads past them — but in
  * prose that generosity makes "Иоанн пришёл 3-4 раза" John 3–4 and "Ин 3:16 2 ученика" a longer
- * reference. Here the name must read as a book all by itself, with nothing after it but numbers.
+ * reference. Here the name must read as a book all by itself, with nothing after it but numbers — in the
+ * interface's language or the document's own («Пр. 3:5» in a Ukrainian text read under a Russian interface).
  */
-function isReferenceShaped(candidate: string, locale: AppLocale): boolean {
+function isReferenceShaped(candidate: string, locale: AppLocale, written?: AppLocale | null): boolean {
   const normalized = candidate.replace(/[–—]/g, '-');
   const numbers = NUMBERS_AFTER_BOOK.exec(normalized);
   if (!numbers) return false;
   const name = normalized.slice(0, numbers.index).trim();
-  return /\p{L}/u.test(name) && exactBook(name, locale) !== null;
+  return /\p{L}/u.test(name) && (exactBook(name, locale) !== null || (!!written && exactBook(name, written) !== null));
 }
