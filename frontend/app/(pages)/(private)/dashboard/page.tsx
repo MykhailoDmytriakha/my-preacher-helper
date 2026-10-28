@@ -36,6 +36,7 @@ import { resolveAppLocale } from '@/utils/appLocale';
 import { councilEntries, groupEntries, sermonEntries, type CalendarKind } from '@/utils/calendarEntries';
 import { getContrastColor } from '@/utils/color';
 import { toDateOnlyKey } from '@/utils/dateOnly';
+import { markdownPreviewText } from '@/utils/markdownUtils';
 import { getEffectiveIsPreached } from '@/utils/preachDateStatus';
 import { awaitAcceptance, persistedWrite } from '@/utils/recoverableWrite';
 import { formatScriptureReference } from '@/utils/scriptureReference';
@@ -101,6 +102,8 @@ type StudyItem = {
   references: string[];
   tags: string[];
   href: string;
+  /** A comment's chips are grey, the pencil's colour, as in Studies. */
+  tone: 'emerald' | 'neutral';
 };
 
 type GroupItem = {
@@ -648,7 +651,7 @@ function RecentStudiesPanel({ studies }: { studies: StudyItem[] }) {
                   {study.references.map((reference, index) => (
                     <Chip
                       key={`reference-${reference}-${index}`}
-                      tone="emerald"
+                      tone={study.tone}
                       size="sm"
                       icon={<BookMarked className="h-3 w-3 shrink-0" />}
                     >
@@ -656,7 +659,7 @@ function RecentStudiesPanel({ studies }: { studies: StudyItem[] }) {
                     </Chip>
                   ))}
                   {study.tags.map((tag, index) => (
-                    <Chip key={`tag-${tag}-${index}`} tone="emerald" size="sm">
+                    <Chip key={`tag-${tag}-${index}`} tone={study.tone} size="sm">
                       {tag}
                     </Chip>
                   ))}
@@ -958,10 +961,12 @@ function buildStudyItems(notes: StudyNote[], t: TFunction, locale: string): Stud
     .slice(0, PANEL_ITEM_POOL)
     .map((note) => ({
       id: note.id,
-      passage: getStudyDisplayTitle(note, t, locale),
+      // A comment has no title and its place is its chip below: the row says its first words (the owner, 2026-10-28).
+      passage: (note.type === 'comment' && markdownPreviewText(note.content)) || getStudyDisplayTitle(note, t, locale),
       references: getStudyReferences(note, locale).slice(0, 2),
       tags: (note.tags || []).length > 0 ? note.tags.slice(0, 3) : [note.type === 'question' ? t('dashboardHome.sections.studies.questionTag') : note.type === 'comment' ? t('dashboardHome.sections.studies.commentTag') : t('dashboardHome.sections.studies.noteTag')],
       href: `/studies/${note.id}`,
+      tone: note.type === 'comment' ? 'neutral' as const : 'emerald' as const,
     }));
 }
 
