@@ -114,3 +114,9 @@ describe('HighlightedText', () => {
         expect(mark).toHaveTextContent('Біблія');
     });
 });
+
+
+it('keeps a label match together when its caller has not requested prose wrapping', () => {
+    render(<HighlightedText text="Open this passage" searchQuery="passage" />);
+    expect(screen.getByText('passage', { selector: 'mark' })).toHaveStyle({ whiteSpace: 'nowrap' });
+});

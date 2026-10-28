@@ -25,3 +25,13 @@ when: show note markdown · render markdown with headings · heading hierarchy �
 - 2026-03-11: headings inside long-fence code blocks were promoted into structure because the parser tracked the fence character only.
 
 See also: `.howto/extend-tiptap-editor.md`
+
+## Structured prose and code have different containers
+
+- `MarkdownDisplay` owns the five legacy structured types through `STRUCTURED_BLOCK_TYPES`. The same classifier decides whether the generated code body is a callout and whether its code-only `pre` wrapper is removed. Keep these decisions together; a callout inside `pre` inherits code whitespace and can widen the page.
+- Callouts preserve authored line breaks and wrap prose/long words. Real code keeps its `pre`/`code` container and its own horizontal scroll; do not globally reset code whitespace to repair prose.
+- A matched search token has its own whitespace policy. `HighlightedText.wrapMatches` and the forwarding `ScriptureText.wrapSearchMatches` default to false for existing labels; structured prose opts in. The shared highlight component owns the actual style. Avoid a parent `!important` rule that reaches into its marks.
+- Real-renderer Jest checks cover the semantic boundary and code bytes. Actual wrapping requires a browser measurement of page/callout widths, highlighted fragment rectangles, verse return/reload and preserved stored content at narrow and wide widths. A green jsdom style check is not layout evidence.
+- CSS reference: [CSS Text Level3, overflow wrapping](https://www.w3.org/TR/css-text-3/#overflow-wrap-property); overflow wrapping takes effect when whitespace permits wrapping.
+
+- A scrollable code box still needs a constrained flex parent. The Notes card navigation row keeps `min-w-0`; without it a real long code line in the collapsed preview can set the row's intrinsic width and stretch the whole page even though `pre` has its own scrollbar. Test collapsed search results as well as an expanded note.

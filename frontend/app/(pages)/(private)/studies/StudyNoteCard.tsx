@@ -281,7 +281,7 @@ export default function StudyNoteCard({
             e.preventDefault();
             router.push(`/studies/${note.id}${window.location.search}`);
           }}
-          className="flex flex-1 items-start gap-3 text-left cursor-pointer"
+          className="min-w-0 flex flex-1 items-start gap-3 text-left cursor-pointer"
         >
           {/* Content preview */}
           <div className="min-w-0 flex-1">

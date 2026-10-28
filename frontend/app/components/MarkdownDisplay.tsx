@@ -29,6 +29,15 @@ interface MarkdownDisplayProps {
     searchQuery?: string;
 }
 
+const STRUCTURED_BLOCK_TYPES = ['illustration', 'application', 'question', 'quote', 'definition'] as const;
+
+/** The same typed block owns both its prose body and the removal of the code-only wrapper. */
+const structuredBlockType = (className: unknown): string | null => {
+    const classes = Array.isArray(className) ? className.join(' ') : className;
+    const match = typeof classes === 'string' && /(?:^|\s)language-(\w+)(?:\s|$)/.exec(classes);
+    return match && STRUCTURED_BLOCK_TYPES.some((type) => type === match[1]) ? match[1] : null;
+};
+
 // Helper to transform [Type: Content] into code blocks for custom rendering
 const formatStructuredBlocks = (text: string) => {
     if (!text) return "";
@@ -36,7 +45,8 @@ const formatStructuredBlocks = (text: string) => {
     // Replace [Type: Content] with ```type\nContent\n```
     // We use a regex that captures the type and the content
     // Types: Illustration, Application, Question, Quote, Definition
-    const blockRegex = /\[(Illustration|Application|Question|Quote|Definition):\s*([\s\S]*?)\]/g;
+    const names = STRUCTURED_BLOCK_TYPES.map((type) => type[0].toUpperCase() + type.slice(1)).join('|');
+    const blockRegex = new RegExp(`\\[(${names}):\\s*([\\s\\S]*?)\\]`, 'g');
 
     return text.replace(blockRegex, (_match, type, content) => {
         const words = content.trim();
@@ -133,13 +143,19 @@ const MarkdownDisplay = ({ content, className = '', compact = false, searchQuery
                             {React.Children.map(children, renderHighlighted)}
                         </h6>
                     ),
+                    // Structured prose has no code ancestor: a pre would prevent wrapping and widen a card.
+                    pre: ({ children, node, ...props }) => {
+                        const code = node?.children.length === 1 ? node.children[0] : null;
+                        const type = code?.type === 'element' && code.tagName === 'code'
+                            ? structuredBlockType(code.properties.className)
+                            : null;
+                        return type ? <>{children}</> : <pre {...props}>{children}</pre>;
+                    },
                     // Custom renderer for code blocks to handle our structured types
                     code: ({ inline, className, children, ...props }: { inline?: boolean; className?: string; children?: React.ReactNode }) => {
-                        const match = /language-(\w+)/.exec(className || '');
-                        const type = match ? match[1] : '';
-                        const isStructuredBlock = ['illustration', 'application', 'question', 'quote', 'definition'].includes(type);
+                        const type = structuredBlockType(className);
 
-                        if (!inline && isStructuredBlock) {
+                        if (!inline && type) {
                             const title = type.charAt(0).toUpperCase() + type.slice(1);
                             let bgClass = 'bg-gray-100 dark:bg-gray-800';
                             let borderClass = 'border-gray-300 dark:border-gray-600';
@@ -174,14 +190,14 @@ const MarkdownDisplay = ({ content, className = '', compact = false, searchQuery
                             }
 
                             return (
-                                <div className={`markdown-callout my-3 p-3 rounded-md border-l-4 ${bgClass} ${borderClass} text-sm`}>
+                                <div className={`markdown-callout whitespace-pre-wrap [overflow-wrap:anywhere] my-3 p-3 rounded-md border-l-4 ${bgClass} ${borderClass} text-sm`}>
                                     <div className="font-bold mb-1 flex items-center gap-2 opacity-80">
                                         <span>{icon}</span>
                                         <span>{title}</span>
                                     </div>
                                     <div className="text-gray-800 dark:text-gray-200">
                                         {/* A quote often names its passage: it opens like any other reference, searched or not. */}
-                                        <ScriptureText text={String(children).replace(/\n$/, '')} searchQuery={searchQuery} />
+                                        <ScriptureText text={String(children).replace(/\n$/, '')} searchQuery={searchQuery} wrapSearchMatches />
                                     </div>
                                 </div>
                             );

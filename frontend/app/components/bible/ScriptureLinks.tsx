@@ -109,12 +109,12 @@ function ScriptureLink({ found, children }: { found: Pick<ReferenceInText, 'raw'
 }
 
 /** Plain text — a question, a leader's note — with its references as links. */
-export function ScriptureText({ text, searchQuery = '' }: { text: string; searchQuery?: string }) {
+export function ScriptureText({ text, searchQuery = '', wrapSearchMatches = false }: { text: string; searchQuery?: string; wrapSearchMatches?: boolean }) {
   const links = useScriptureLinks();
   const found = useMemo(() => (links ? referencesInText(text, links.locale, links.written) : []), [text, links]);
   // A search lights its matches in the words and inside a link alike: the link stays a link (case
   // 2026-10-12-block-diagram, L8 — the notes' search drew a quote callout as lit words with no link).
-  const lit = (words: string) => (searchQuery.trim() ? <HighlightedText text={words} searchQuery={searchQuery} /> : words);
+  const lit = (words: string) => (searchQuery.trim() ? <HighlightedText text={words} searchQuery={searchQuery} wrapMatches={wrapSearchMatches} /> : words);
   if (found.length === 0) return <>{lit(text)}</>;
   const parts: ReactNode[] = [];
   let at = 0;

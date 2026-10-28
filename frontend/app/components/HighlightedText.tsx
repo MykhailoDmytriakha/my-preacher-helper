@@ -9,6 +9,8 @@ interface HighlightedTextProps {
     text: string;
     /** The search query to highlight */
     searchQuery: string;
+    /** Let a matched token wrap in prose; labels keep matches together by default. */
+    wrapMatches?: boolean;
     /** Custom class for the highlight span (default: yellow background) */
     highlightClassName?: string;
 }
@@ -28,6 +30,7 @@ interface HighlightedTextProps {
 function HighlightedText({
     text,
     searchQuery,
+    wrapMatches = false,
     highlightClassName = `${HIGHLIGHT_COLORS.bg} ${HIGHLIGHT_COLORS.darkBg} ${HIGHLIGHT_COLORS.text} ${HIGHLIGHT_COLORS.ring} ${HIGHLIGHT_COLORS.weight} rounded px-0.5`,
 }: HighlightedTextProps) {
     const parts = useMemo(() => {
@@ -69,7 +72,7 @@ function HighlightedText({
                     <mark
                         key={index}
                         className={highlightClassName}
-                        style={{ whiteSpace: 'nowrap' }}
+                        style={{ whiteSpace: wrapMatches ? 'pre-wrap' : 'nowrap', overflowWrap: wrapMatches ? 'anywhere' : undefined }}
                     >
                         {part.text}
                     </mark>
