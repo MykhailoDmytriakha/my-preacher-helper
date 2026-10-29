@@ -8,7 +8,7 @@ import remarkGfm from 'remark-gfm';
 
 import { useMarkdownHtmlPlugins } from '@/hooks/useMarkdownHtmlPlugins';
 import { useModalLayer } from '@/hooks/useModalLayer';
-import { normalizePlanArrows, normalizePlanPointHeadings, sanitizeMarkdown } from '@/utils/markdownUtils';
+import { preparePlanMarkdown } from '@/utils/planHierarchy';
 import { SERMON_SECTION_COLORS } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
 
@@ -31,7 +31,7 @@ export default function PlanSectionDialog({ section, markdown, onClose }: PlanSe
   const layer = useModalLayer({ onClose });
 
   const colors = section === 'main' ? SERMON_SECTION_COLORS.mainPart : SERMON_SECTION_COLORS[section];
-  const content = normalizePlanArrows(normalizePlanPointHeadings(sanitizeMarkdown(markdown || t('plan.noContent'))));
+  const content = preparePlanMarkdown(markdown || t('plan.noContent'));
 
   if (typeof document === 'undefined') return null;
 

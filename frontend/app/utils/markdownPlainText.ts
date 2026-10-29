@@ -1,25 +1,12 @@
-import remarkGfm from 'remark-gfm';
-import remarkParse from 'remark-parse';
-import remarkRehype from 'remark-rehype';
-import { unified } from 'unified';
+import { readMarkdownHtml } from './markdownHtml';
 
-import { createMarkdownHtmlPlugins } from './markdownHtml';
-
-import type { Element, Root, RootContent } from 'hast';
+import type { Element, RootContent } from 'hast';
 
 export interface MarkdownPlainTextBlock {
   text: string;
   headingLevel?: number;
   blankBefore: boolean;
 }
-
-// Resolve the whole document before projection: definitions can follow another heading.
-const reader = unified()
-  .use(remarkParse)
-  .use(remarkGfm)
-  .use(remarkRehype, { allowDangerousHtml: true })
-  .use(createMarkdownHtmlPlugins('plain-text'))
-  .freeze();
 
 const FLOW_CONTAINERS = new Set(['blockquote', 'div', 'section', 'dd', 'dl', 'dt', 'details', 'td', 'th']);
 const isElement = (node: RootContent): node is Element => node.type === 'element';
@@ -111,7 +98,7 @@ export function markdownToPlainTextBlocks(
 ): MarkdownPlainTextBlock[] {
   if (!content) return [];
   const render = createRenderer(transformProse, literalRenderer);
-  const tree = reader.runSync(reader.parse(content)) as Root;
+  const tree = readMarkdownHtml(content);
   const nodes = meaningful(tree.children);
   return nodes.map((node, index) => {
     const level = isElement(node) ? /^h([1-6])$/.exec(node.tagName) : null;

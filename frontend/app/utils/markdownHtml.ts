@@ -1,5 +1,9 @@
 import rehypeRaw from 'rehype-raw';
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
+import remarkGfm from 'remark-gfm';
+import remarkParse from 'remark-parse';
+import remarkRehype from 'remark-rehype';
+import { unified } from 'unified';
 
 import type { Element, Root, RootContent } from 'hast';
 import type { PluggableList } from 'unified';
@@ -69,3 +73,15 @@ export const createMarkdownHtmlPlugins = (scope: string): PluggableList => [
   [rehypeSanitize, markdownSanitizeSchema],
   [rehypeSanitizedAnchors, scope],
 ];
+
+// Pure readers share the same whole-document parse and HTML policy as React readers.
+const reader = unified()
+  .use(remarkParse)
+  .use(remarkGfm)
+  .use(remarkRehype, { allowDangerousHtml: true })
+  .use(createMarkdownHtmlPlugins('pure-reader'))
+  .freeze();
+
+export function readMarkdownHtml(content: string): Root {
+  return reader.runSync(reader.parse(content)) as Root;
+}

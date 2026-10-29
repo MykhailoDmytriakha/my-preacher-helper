@@ -3,6 +3,7 @@ import { saveAs } from 'file-saver';
 
 import { PlanData } from '@/models/models';
 import { splitMarkdownSections, type MarkdownSection } from '@/utils/markdownSections';
+import { decodeBasicHtmlEntities } from '@/utils/markdownUtils';
 import { planBodyIndent, planHeadingIndent, preparePlanMarkdown } from '@/utils/planHierarchy';
 import { getSectionBaseColor } from '@lib/sections';
 import i18n from '@locales/i18n';
@@ -35,10 +36,11 @@ type TextRunFormat = Partial<
 
 // Helper function to create heading paragraphs
 const createHeadingParagraph = (text: string, level: number, sectionColor?: string): Paragraph => {
+  const displayText = decodeBasicHtmlEntities(text);
   const baseProps = {
     children: [
       new TextRun({
-        text: text,
+        text: displayText,
         bold: true,
         color: sectionColor || '374151',
         font: 'Arial',
@@ -53,7 +55,7 @@ const createHeadingParagraph = (text: string, level: number, sectionColor?: stri
         ...baseProps,
         children: [
           new TextRun({
-            text: text,
+            text: displayText,
             bold: true,
             color: sectionColor || '374151',
             font: 'Arial',
@@ -67,7 +69,7 @@ const createHeadingParagraph = (text: string, level: number, sectionColor?: stri
         ...baseProps,
         children: [
           new TextRun({
-            text: text,
+            text: displayText,
             bold: true,
             color: sectionColor || '374151',
             font: 'Arial',
@@ -83,7 +85,7 @@ const createHeadingParagraph = (text: string, level: number, sectionColor?: stri
         ...baseProps,
         children: [
           new TextRun({
-            text: text,
+            text: displayText,
             bold: true,
             color: sectionColor || '374151',
             font: 'Arial',
@@ -386,7 +388,8 @@ const parseInlineInherited = (text: string, inherited: TextRunFormat): TextRun[]
 
   const runs: TextRun[] = [];
   const pushPlain = (raw: string) => {
-    const clean = stripStrayTags(raw);
+    // Decode after stripping actual tags: escaped tags are authored text, not markup.
+    const clean = inherited.font === 'Courier New' ? stripStrayTags(raw) : decodeBasicHtmlEntities(stripStrayTags(raw));
     if (clean) runs.push(new TextRun({ text: clean, ...inherited }));
   };
 

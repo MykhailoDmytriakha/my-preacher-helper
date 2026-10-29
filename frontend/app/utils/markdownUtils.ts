@@ -1,4 +1,5 @@
 import { markdownCodeLines } from '@/utils/markdownCode';
+import { mapMarkdownProseSource } from '@/utils/markdownSource';
 
 /**
  * Utility functions for markdown content sanitization and processing
@@ -14,23 +15,19 @@ export const sanitizeMarkdown = (content: string): string => {
     return '';
   }
 
-  // Remove any null or undefined characters
-  let sanitized = content.replace(/\0/g, '');
-  
-  // Fix common markdown formatting issues
-  // Remove any malformed asterisk patterns that might cause parsing issues
-  sanitized = sanitized.replace(/\*\*\*\*\*/g, '**'); // Fix multiple asterisks
-  sanitized = sanitized.replace(/\*\*\*\*/g, '**'); // Fix triple asterisks
-  
-  // Ensure proper spacing around markdown elements
-  sanitized = sanitized.replace(/\*\*([^*]+)\*\*/g, '**$1**'); // Fix bold formatting
-  sanitized = sanitized.replace(/\*([^*]+)\*/g, '*$1*'); // Fix italic formatting
-  
-  // Remove control characters except line breaks and tabs
-  // Keep \n (0x0A), \r (0x0D) and \t (0x09) so Markdown structure remains intact
-  sanitized = sanitized.replace(/[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]/g, '');
-  
-  return sanitized.trim();
+  const sanitized = mapMarkdownProseSource(content, source => source
+    .replace(/\*\*\*\*\*/g, '**')
+    .replace(/\*\*\*\*/g, '**')
+    .replace(/[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]/g, ''));
+
+  // Trimming a code edge would erase indentation or literal trailing spaces.
+  const lines = sanitized.split('\n');
+  const first = lines.findIndex(line => line.trim() !== '');
+  if (first < 0) return '';
+  const last = lines.length - 1 - [...lines].reverse().findIndex(line => line.trim() !== '');
+  const codeLines = markdownCodeLines(sanitized);
+  const trimmedStart = codeLines.has(first) ? sanitized : sanitized.trimStart();
+  return codeLines.has(last) ? trimmedStart : trimmedStart.trimEnd();
 };
 
 /**
@@ -135,14 +132,6 @@ export const decodeBasicHtmlEntities = (content: string): string => {
     .replace(/&amp;/g, '&');
 };
 
-/**
- * Canonicalizes every route-arrow spelling to a single " → " (decoding HTML entities
- * first, so "-&gt;" -> "->" -> "→"). A bare "→" is left untouched, so this is idempotent
- * and safe on already-assembled plan markdown. Applied at the render layer (plan UI +
- * Word export) so existing stored plans — which may carry "->", "-&gt;", "=>", "—>" —
- * display consistently without regeneration. Lone ">" (e.g. a blockquote marker) is not
- * touched because the pattern requires a "-", "—" or "=" before the ">".
- */
 /** Normalize prose arrows after parsing has already decoded entities. Never apply to code or URLs. */
 export const normalizePlanArrowText = (content: string): string =>
   content.replace(/\s*(?:-{1,2}>|—>|=>)\s*/g, ' → ');
@@ -151,7 +140,12 @@ export const normalizePlanArrows = (content: string): string => {
   if (!content || typeof content !== 'string') {
     return '';
   }
-  return normalizePlanArrowText(decodeBasicHtmlEntities(content));
+  // Keep source entities encoded for the next parser; decoding here can activate HTML
+  // or decode a literal &amp;gt; twice. Whitespace normalization cannot eat a new line.
+  return mapMarkdownProseSource(content, source => source.replace(
+    /[ \t]*(?:-{1,2}|—|=)(?:>|&gt;|&#0*62;|&#x0*3e;)[ \t]*/gi,
+    ' → ',
+  ));
 };
 
 /**

@@ -103,3 +103,12 @@ Regression coverage: `__tests__/utils/planPlainText.test.ts`, `__tests__/utils/e
 
 
 The export modal calls `useMarkdownHtmlPlugins` before its closed-state return, so opening, closing and changing preview content keep Hooks order and per-card scope stable. Its plain mode still displays the prepared TXT string, while Markdown mode renders the prepared source; Copy/Download always use that source value, never the preview DOM. Tests: `ExportTxtModal.richPreview.test.tsx` plus existing modal/preview contracts. Keep the separate source-wide normalization-over-code tracker item distinct: adding HTML parsing does not make earlier string preprocessing code-safe.
+
+
+## Prepare prose without rewriting literal source
+
+`markdownHtml.readMarkdownHtml` is the pure whole-document reader shared by TXT projection and source-aware preparation; it uses the same GFM/raw-HTML/sanitizer policy as the React readers. `markdownSource.mapMarkdownProseSource` rebuilds from original positioned text slices and prunes entire code/pre/link subtrees. Generated text with no source position is untouched. Never derive source offsets from already-decoded node values, and never reserialize the whole authored document just to normalize an arrow.
+
+`sanitizeMarkdown` retains legacy malformed-star repair in prose while preserving code and code-edge whitespace. `normalizePlanArrows` recognizes raw or entity-encoded arrow spellings in prose, retains newlines, and leaves unrelated entities encoded. `PlanSectionDialog` uses the canonical `preparePlanMarkdown` path. Word decodes ordinary text after stripping actual tags; headings decode once, while code-styled inline runs retain literal entities. The independent legacy Word code-formatting parser gap remains tracked until its own fix.
+
+Regressions: `markdownSource.test.ts`, `wordExportPreparation.test.ts`, existing `markdownUtils.test.ts`, reader and TXT suites. Use real native TXT/MD/DOCX downloads to prove output bytes, plus a warm-offline format switch. A manual plan editor intentionally shows its authored arrow spelling; read/export prose normalization is a separate path.
