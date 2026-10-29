@@ -8,15 +8,53 @@ import type { Nodes } from 'mdast';
 // belong to the parser: a list/quote can end an otherwise unclosed code block.
 const parser = unified().use(remarkParse).use(remarkGfm).freeze();
 
-function visitCode(content: string, visit: (node: Nodes) => void): void {
-  const pending: Nodes[] = [parser.parse(content)];
+interface CodeContext { listDepth: number; quoteDepth: number }
+type CodeNode = Extract<Nodes, { type: 'code' | 'inlineCode' }>;
+
+function visitCode(content: string, visit: (node: CodeNode, context: CodeContext) => void): void {
+  const pending: { node: Nodes; context: CodeContext }[] = [
+    { node: parser.parse(content), context: { listDepth: 0, quoteDepth: 0 } },
+  ];
   while (pending.length) {
-    const node = pending.pop()!;
-    if (node.type === 'code' || node.type === 'inlineCode') visit(node);
+    const { node, context } = pending.pop()!;
+    if (node.type === 'code' || node.type === 'inlineCode') visit(node, context);
     if ('children' in node) {
-      for (let index = node.children.length - 1; index >= 0; index--) pending.push(node.children[index]);
+      const next = {
+        listDepth: context.listDepth + Number(node.type === 'listItem'),
+        quoteDepth: context.quoteDepth + Number(node.type === 'blockquote'),
+      };
+      for (let index = node.children.length - 1; index >= 0; index--) {
+        pending.push({ node: node.children[index], context: next });
+      }
     }
   }
+}
+
+export interface MarkdownCodeRange extends CodeContext {
+  kind: 'block' | 'inline';
+  start: number;
+  end: number;
+  blockStart: number;
+  value: string;
+}
+
+/** Literal values and original source ranges come from the existing Markdown grammar. */
+export function markdownCodeRanges(content: string): MarkdownCodeRange[] {
+  const lineStarts = [0];
+  for (const match of content.matchAll(/\r\n|\r|\n/g)) lineStarts.push(match.index! + match[0].length);
+  const ranges: MarkdownCodeRange[] = [];
+  visitCode(content, (node, context) => {
+    const start = node.position?.start.offset;
+    const end = node.position?.end.offset;
+    if (start === undefined || end === undefined) return;
+    ranges.push({
+      ...context, kind: node.type === 'code' ? 'block' : 'inline', start, end,
+      blockStart: lineStarts[node.position!.start.line - 1],
+      // Match remark-rehype's inline-code display; block line breaks remain literal.
+      value: node.type === 'inlineCode' ? node.value.replace(/\r?\n|\r/g, ' ') : node.value,
+    });
+  });
+  return ranges;
 }
 
 /** Zero-based LF-delimited source lines, matching the scanners without rewriting line endings. */

@@ -51,22 +51,28 @@ const stripInlineMarkdown = (text: string): string =>
 
 type Draft = Omit<MarkdownSection, 'body' | 'children'> & { bodyLines: string[]; children: Draft[] };
 
-const joinBody = (lines: string[]): string => lines.join('\n').replace(/^\n+|\s+$/g, '');
+const joinBody = (lines: string[], preserveWhitespace = false): string => {
+    const content = lines.join('\n');
+    return preserveWhitespace ? content : content.replace(/^\n+|\s+$/g, '');
+};
 
-const finalize = (draft: Draft): MarkdownSection => ({
+const finalize = (draft: Draft, preserveWhitespace: boolean): MarkdownSection => ({
     id: draft.id,
     level: draft.level,
     headingMarkdown: draft.headingMarkdown,
     headingText: draft.headingText,
-    body: joinBody(draft.bodyLines),
-    children: draft.children.map(finalize),
+    body: joinBody(draft.bodyLines, preserveWhitespace),
+    children: draft.children.map(child => finalize(child, preserveWhitespace)),
 });
 
 /**
  * Builds the outline. Heading levels may skip (`#` straight to `###`) — a section is
  * nested under the nearest preceding section of a lower level, whatever that level is.
  */
-export const splitMarkdownSections = (content: string): MarkdownOutline => {
+export const splitMarkdownSections = (
+    content: string,
+    options: { preserveBodyWhitespace?: boolean } = {}
+): MarkdownOutline => {
     if (!content || typeof content !== 'string') {
         return { intro: '', sections: [] };
     }
@@ -103,7 +109,10 @@ export const splitMarkdownSections = (content: string): MarkdownOutline => {
         stack.push(draft);
     }
 
-    return { intro: joinBody(introLines), sections: roots.map(finalize) };
+    return {
+        intro: joinBody(introLines, options.preserveBodyWhitespace),
+        sections: roots.map(root => finalize(root, options.preserveBodyWhitespace ?? false)),
+    };
 };
 
 /** True when the document has no headings at all — the caller can then render it flat. */

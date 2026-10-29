@@ -2,11 +2,15 @@ import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, Bord
 import { saveAs } from 'file-saver';
 
 import { PlanData } from '@/models/models';
+import { markdownCodeRanges, withoutMarkdownCode, type MarkdownCodeRange } from '@/utils/markdownCode';
+import { readMarkdownHtml } from '@/utils/markdownHtml';
 import { splitMarkdownSections, type MarkdownSection } from '@/utils/markdownSections';
 import { decodeBasicHtmlEntities } from '@/utils/markdownUtils';
 import { planBodyIndent, planHeadingIndent, preparePlanMarkdown } from '@/utils/planHierarchy';
 import { getSectionBaseColor } from '@lib/sections';
 import i18n from '@locales/i18n';
+
+import type { Root, RootContent } from 'hast';
 
 interface WordExportOptions {
   data: PlanData;
@@ -31,71 +35,31 @@ const t = (key: string, defaultValue: string, options?: Record<string, unknown>)
 // Pick straight from docx's run options so the formats we collect are guaranteed to be
 // assignable to TextRun (e.g. `highlight` is a fixed colour union, not an arbitrary string).
 type TextRunFormat = Partial<
-  Pick<IRunOptions, 'bold' | 'italics' | 'strike' | 'font' | 'superScript' | 'subScript' | 'size' | 'underline' | 'highlight'>
+  Pick<IRunOptions, 'color' | 'bold' | 'italics' | 'strike' | 'font' | 'superScript' | 'subScript' | 'size' | 'underline' | 'highlight'>
 >;
 
-// Helper function to create heading paragraphs
-const createHeadingParagraph = (text: string, level: number, sectionColor?: string): Paragraph => {
-  const displayText = decodeBasicHtmlEntities(text);
-  const baseProps = {
-    children: [
-      new TextRun({
-        text: displayText,
-        bold: true,
-        color: sectionColor || '374151',
-        font: 'Arial',
-      }),
-    ],
-    spacing: { before: 0, after: 0 },
-  };
+const WORD_CODE_FONT = 'Courier New';
 
-  switch (level) {
-    case 1:
-      return new Paragraph({
-        ...baseProps,
-        children: [
-          new TextRun({
-            text: displayText,
-            bold: true,
-            color: sectionColor || '374151',
-            font: 'Arial',
-            size: 24,
-          }),
-        ],
-        heading: HeadingLevel.HEADING_1,
-      });
-    case 2:
-      return new Paragraph({
-        ...baseProps,
-        children: [
-          new TextRun({
-            text: displayText,
-            bold: true,
-            color: sectionColor || '374151',
-            font: 'Arial',
-            size: 22,
-            underline: {},
-          }),
-        ],
-        heading: HeadingLevel.HEADING_2,
-      });
-    case 3:
-    default:
-      return new Paragraph({
-        ...baseProps,
-        children: [
-          new TextRun({
-            text: displayText,
-            bold: true,
-            color: sectionColor || '374151',
-            font: 'Arial',
-            size: 20,
-          }),
-        ],
-        heading: HeadingLevel.HEADING_3,
-        indent: { left: planHeadingIndent(level) * 360 },
-      });
-  }
+// Read the original heading, preserving code and link labels before Word styling.
+const createHeadingParagraph = (markdown: string, level: number, sectionColor?: string): Paragraph => {
+  const format: TextRunFormat = {
+    bold: true, color: sectionColor || '374151', font: 'Arial',
+    size: level === 1 ? 24 : level === 2 ? 22 : 20,
+    ...(level === 2 ? { underline: {} } : {}),
+  };
+  const render = (node: Root | RootContent, inCode = false): TextRun[] => {
+    if (node.type === 'text') return [new TextRun({
+      ...format, text: node.value, ...(inCode ? { font: WORD_CODE_FONT } : {}),
+    })];
+    const literal = inCode || (node.type === 'element' && node.tagName === 'code');
+    return 'children' in node ? node.children.flatMap(child => render(child, literal)) : [];
+  };
+  return new Paragraph({
+    children: render(readMarkdownHtml(markdown)),
+    spacing: { before: 0, after: 0 },
+    heading: level === 1 ? HeadingLevel.HEADING_1 : level === 2 ? HeadingLevel.HEADING_2 : HeadingLevel.HEADING_3,
+    ...(level >= 3 ? { indent: { left: planHeadingIndent(level) * 360 } } : {}),
+  });
 };
 
 // Helper function to parse bullet points
@@ -129,6 +93,10 @@ const parseNumberedList = (trimmedLine: string, indent: number): Paragraph => {
   });
 };
 
+const quoteBorder = {
+  left: { color: 'auto', space: 1, style: BorderStyle.SINGLE, size: 6 },
+} as const;
+
 // Helper function to parse blockquotes
 const parseBlockquote = (trimmedLine: string, indent: number): Paragraph => {
   const quoteContent = trimmedLine.replace('> ', '');
@@ -137,14 +105,7 @@ const parseBlockquote = (trimmedLine: string, indent: number): Paragraph => {
     children: quoteChildren,
     spacing: { after: 0 },
     indent: { left: indent },
-    border: {
-      left: {
-        color: 'auto',
-        space: 1,
-        style: BorderStyle.SINGLE,
-        size: 6,
-      },
-    },
+    border: quoteBorder,
   });
 };
 
@@ -197,7 +158,24 @@ const parseTableLines = (lines: string[], startIndex: number, indent: number): {
   return { table, newIndex: j };
 };
 
-const parseMarkdownBody = (content: string, bodyIndent?: number): (Paragraph | Table)[] => {
+/** Split prose lines without splitting a real multiline code span or its literal <br>. */
+const wordProseLines = (content: string): string[] => {
+  const code = markdownCodeRanges(content).filter(range => range.kind === 'inline');
+  const lines: string[] = [];
+  let cursor = 0;
+  let codeIndex = 0;
+  for (const match of content.matchAll(/<br\s*\/?>|\r\n|\r|\n/gi)) {
+    const at = match.index!;
+    while (codeIndex < code.length && code[codeIndex].end <= at) codeIndex++;
+    if (code[codeIndex] && code[codeIndex].start <= at && at < code[codeIndex].end) continue;
+    lines.push(content.slice(cursor, at));
+    cursor = at + match[0].length;
+  }
+  lines.push(content.slice(cursor));
+  return lines.filter(line => line.trim() !== '');
+};
+
+const parseMarkdownProse = (content: string, bodyIndent?: number): (Paragraph | Table)[] => {
   if (!content || content.trim() === '') {
     const placeholderText = t('export.planEmptyContent', 'Content will be added later...');
     return [
@@ -214,30 +192,13 @@ const parseMarkdownBody = (content: string, bodyIndent?: number): (Paragraph | T
     ];
   }
 
-  // Match the plan UI: decode HTML entities the model may have emitted ("&gt;"),
-  // canonicalize arrows to "→", and turn inline "<br>" into a real line break.
-  // Otherwise "-&gt;" renders as a literal "-&gt;" and "<br>" leaks as literal text.
-  const lines = content
-    .replace(/<br\s*\/?>/gi, '\n')
-    .split('\n')
-    .filter(line => line.trim() !== '');
+  const lines = wordProseLines(content);
   const elements: (Paragraph | Table)[] = [];
   let i = 0;
-  let inFence = false;
 
   while (i < lines.length) {
     const trimmedLine = lines[i].trim();
 
-    if (/^(```|~~~)/.test(trimmedLine)) {
-      inFence = !inFence;
-      i++;
-      continue;
-    }
-    if (inFence) {
-      elements.push(parseRegularParagraph(lines[i], bodyIndent));
-      i++;
-      continue;
-    }
     const listIndent = (bodyIndent ?? 360) + 360 + Math.floor((lines[i].length - lines[i].trimStart().length) / 2) * 360;
 
     // Check for table
@@ -274,11 +235,44 @@ const parseMarkdownBody = (content: string, bodyIndent?: number): (Paragraph | T
   return elements;
 };
 
+const literalCodeParagraphs = (code: MarkdownCodeRange, source: string, bodyIndent?: number): Paragraph[] => {
+  let left = bodyIndent ?? 0;
+  if (code.listDepth) left = (bodyIndent ?? 360) + code.listDepth * 360;
+  if (code.quoteDepth) left = Math.max(left, bodyIndent ?? 720) + (code.quoteDepth - 1) * 360;
+  // A block beginning on the marker line still owns that visible list marker.
+  const marker = code.listDepth ? source.slice(code.blockStart, code.start).match(/([-*+]|\d+[.)])[ \t]+$/)?.[1] : undefined;
+  const prefix = marker ? (/^\d/.test(marker) ? marker + ' ' : '• ') : '';
+  return code.value.split(/\r\n|\r|\n/).map((line, index) => new Paragraph({
+    children: [
+      ...(index === 0 && prefix ? [new TextRun({ text: prefix })] : []),
+      new TextRun({ text: line, font: WORD_CODE_FONT }),
+    ],
+    spacing: { after: 0 }, alignment: AlignmentType.LEFT, indent: { left },
+    ...(code.quoteDepth ? { border: quoteBorder } : {}),
+  }));
+};
+
+const parseMarkdownBody = (content: string, bodyIndent?: number): (Paragraph | Table)[] => {
+  const code = markdownCodeRanges(content).filter(range => range.kind === 'block');
+  if (!code.length) return parseMarkdownProse(content, bodyIndent);
+  const elements: (Paragraph | Table)[] = [];
+  let cursor = 0;
+  for (const block of code) {
+    const prose = content.slice(cursor, block.blockStart);
+    if (prose.trim()) elements.push(...parseMarkdownProse(prose, bodyIndent));
+    elements.push(...literalCodeParagraphs(block, content, bodyIndent));
+    cursor = block.end;
+  }
+  const tail = content.slice(cursor);
+  if (tail.trim()) elements.push(...parseMarkdownProse(tail, bodyIndent));
+  return elements;
+};
+
 export const parseMarkdownToParagraphs = (content: string, sectionColor?: string): (Paragraph | Table)[] => {
-  const outline = splitMarkdownSections(preparePlanMarkdown(content));
+  const outline = splitMarkdownSections(preparePlanMarkdown(content), { preserveBodyWhitespace: true });
   if (!outline.sections.length) return parseMarkdownBody(outline.intro);
   const renderSection = (section: MarkdownSection): (Paragraph | Table)[] => [
-    createHeadingParagraph(section.headingText, section.level, sectionColor),
+    createHeadingParagraph(section.headingMarkdown.replace(/^#{1,6}\s+/, ''), section.level, sectionColor),
     ...(section.body ? parseMarkdownBody(section.body, planBodyIndent(section.level) * 360) : []),
     ...section.children.flatMap(renderSection),
   ];
@@ -353,13 +347,12 @@ const INLINE_PATTERNS: Array<{ regex: RegExp; format: TextRunFormat }> = [
   { regex: /<sup>([\s\S]*?)<\/sup>/gi, format: { superScript: true, size: 16 } },
   { regex: /<sub>([\s\S]*?)<\/sub>/gi, format: { subScript: true, size: 16 } },
   { regex: /<mark>([\s\S]*?)<\/mark>/gi, format: { highlight: 'yellow' } },
-  { regex: /<code>([\s\S]*?)<\/code>/gi, format: { font: 'Courier New' } },
+  { regex: /<code>([\s\S]*?)<\/code>/gi, format: { font: WORD_CODE_FONT } },
   // Markdown emphasis, most specific first.
   { regex: /\*\*\*(.*?)\*\*\*/g, format: { bold: true, italics: true } },
   { regex: /\*\*(.*?)\*\*/g, format: { bold: true } },
   { regex: /__(.*?)__/g, format: { bold: true } },
   { regex: /~~(.*?)~~/g, format: { strike: true } },
-  { regex: /`(.*?)`/g, format: { font: 'Courier New' } },
   { regex: /\^(.*?)\^/g, format: { superScript: true, size: 16 } },
   { regex: /~(.*?)~/g, format: { subScript: true, size: 16 } },
   { regex: /\*(.*?)\*/g, format: { italics: true } },
@@ -374,12 +367,20 @@ const stripStrayTags = (s: string): string => s.replace(/<\/?[a-zA-Z][^>]*>/g, '
 // span inherits the outer format and re-parses its inner content; plain text gets the
 // inherited format with stray tags removed.
 const parseInlineInherited = (text: string, inherited: TextRunFormat): TextRun[] => {
-  const candidates: Array<{ start: number; end: number; content: string; format: TextRunFormat }> = [];
+  // Recompute inside every recursive call: outer prose marks may contain literal code.
+  const candidates: Array<{ start: number; end: number; content: string; format: TextRunFormat; literal?: boolean }> =
+    markdownCodeRanges(text).filter(range => range.kind === 'inline').map(range => ({
+      start: range.start, end: range.end, content: range.value,
+      format: { font: WORD_CODE_FONT }, literal: true,
+    }));
+  const masked = withoutMarkdownCode(text, true).replace(/[\r\n]/g, ' ');
   for (const { regex, format } of INLINE_PATTERNS) {
     regex.lastIndex = 0;
     let match;
-    while ((match = regex.exec(text)) !== null) {
-      candidates.push({ start: match.index, end: match.index + match[0].length, content: match[1], format });
+    while ((match = regex.exec(masked)) !== null) {
+      const prefix = match[0].startsWith('<') ? match[0].indexOf('>') + 1 : (match[0].length - match[1].length) / 2;
+      const captured = text.slice(match.index + prefix, match.index + prefix + match[1].length);
+      candidates.push({ start: match.index, end: match.index + match[0].length, content: captured, format });
       if (match.index === regex.lastIndex) regex.lastIndex++; // guard zero-length matches
     }
   }
@@ -389,7 +390,7 @@ const parseInlineInherited = (text: string, inherited: TextRunFormat): TextRun[]
   const runs: TextRun[] = [];
   const pushPlain = (raw: string) => {
     // Decode after stripping actual tags: escaped tags are authored text, not markup.
-    const clean = inherited.font === 'Courier New' ? stripStrayTags(raw) : decodeBasicHtmlEntities(stripStrayTags(raw));
+    const clean = inherited.font === WORD_CODE_FONT ? stripStrayTags(raw) : decodeBasicHtmlEntities(stripStrayTags(raw));
     if (clean) runs.push(new TextRun({ text: clean, ...inherited }));
   };
 
@@ -397,7 +398,8 @@ const parseInlineInherited = (text: string, inherited: TextRunFormat): TextRun[]
   for (const c of candidates) {
     if (c.start < cursor) continue; // overlaps an already-chosen span
     if (c.start > cursor) pushPlain(text.slice(cursor, c.start));
-    runs.push(...parseInlineInherited(c.content, { ...inherited, ...c.format }));
+    if (c.literal) runs.push(new TextRun({ text: c.content, ...inherited, ...c.format }));
+    else runs.push(...parseInlineInherited(c.content, { ...inherited, ...c.format }));
     cursor = c.end;
   }
   if (cursor < text.length) pushPlain(text.slice(cursor));
