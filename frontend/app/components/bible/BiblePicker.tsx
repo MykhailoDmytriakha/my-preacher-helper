@@ -60,6 +60,13 @@ type PickerWindowProps = {
   wide: boolean;
   /** A phone's sheet as tall as the screen allows: a line typed in at its top stays above the keyboard. */
   tall?: boolean;
+  /** Its height among the layers: over the reader by default, over a form window (`FormDialog`, z-110) when opened from one. */
+  layerClassName?: string;
+  /**
+   * In the middle of the screen on a computer, as tall as the screen allows, instead of under its button: opened from a
+   * button low in a form, a window under it ran off the bottom edge (the owner, 2026-10-28: «должно было быть по центру»).
+   */
+  centered?: boolean;
   label: string;
   children: ReactNode;
 };
@@ -70,7 +77,7 @@ type PickerWindowProps = {
  * reader's buttons behind it are out of the keyboard's reach (Codex review, 2026-10-23 — Shift+Tab
  * from the search window opened the translation's window over it).
  */
-function PickerWindow({ open, onClose, anchorRef, align, width, wide, tall = false, label, children }: PickerWindowProps) {
+function PickerWindow({ open, onClose, anchorRef, align, width, wide, tall = false, layerClassName = 'z-[100]', centered = false, label, children }: PickerWindowProps) {
   const { t } = useTranslation();
   const [anchor, setAnchor] = useState<DOMRect | null>(null);
 
@@ -88,7 +95,16 @@ function PickerWindow({ open, onClose, anchorRef, align, width, wide, tall = fal
   if (!open || typeof document === 'undefined') return null;
 
   let placed: CSSProperties | undefined;
-  if (wide && anchor) {
+  if (wide && centered) {
+    // Sized by the screen itself, not by numbers read when it opened: a browser window made smaller or an iPad
+    // turned while it is open keeps it inside the screen (Codex review, 2026-10-28).
+    placed = {
+      left: '50%', top: '50%', transform: 'translate(-50%, -50%)',
+      width: width ?? FIT_MIN_WIDTH,
+      maxWidth: `calc(100vw - ${GUTTER * 2}px)`,
+      maxHeight: `calc(100dvh - ${GUTTER * 2}px)`,
+    };
+  } else if (wide && anchor) {
     const room = window.innerWidth - GUTTER * 2;
     // Under its button while a window fits there; above it when the room is there instead — a book low on
     // the list of books: the page is held still, and a window running off the bottom could not be reached.
@@ -108,7 +124,7 @@ function PickerWindow({ open, onClose, anchorRef, align, width, wide, tall = fal
   }
 
   return createPortal(
-    <div {...layer} className="fixed inset-0 z-[100]">
+    <div {...layer} className={`fixed inset-0 ${layerClassName}`}>
       <button
         type="button"
         tabIndex={-1}
@@ -275,6 +291,11 @@ type PlaceStepsProps = {
   /** «All books» in front of the chapters (the book window); the chapter button's window has none. */
   onBooks?: () => void;
   onOpen: (place: Place) => void;
+  /**
+   * The window chooses a place rather than opens one (a comment moved, case 2026-10-12-block-diagram): no hold and no word
+   * of one; choosing a chapter, a chapter pressed is the choice, given as its first verse.
+   */
+  choosing?: 'verse' | 'chapter';
 };
 
 /**
@@ -288,12 +309,15 @@ function PlaceSteps(props: PlaceStepsProps) {
 }
 
 /** The chapters: a press shows the verses of one, a hold opens it at its first verse. */
-function ChapterStep({ bookId, bible, text, locale, wide, here, onChapter, onBooks, onOpen }: PlaceStepsProps) {
+function ChapterStep({ bookId, bible, text, locale, wide, here, onChapter, onBooks, onOpen, choosing }: PlaceStepsProps) {
   const { t, chapterLabel, countLabel } = usePickerWords();
   const [pointed, setPointed] = useState<number | null>(null);
   const label = chapterLabel(bookId);
   const words = pointed ? firstWordsOf(text, pointed) : null;
-  const hint = t(bookId === 'Psalms' ? 'bible.holdPsalmHint' : 'bible.holdChapterHint');
+  // What a hold does, said only where a hold opens.
+  const hint = choosing ? '' : t(bookId === 'Psalms' ? 'bible.holdPsalmHint' : 'bible.holdChapterHint');
+  const opens = (chapter: number) => onOpen({ chapter, verse: 1 });
+  const line = pointed && words ? t('bible.chapterStartsWith', { chapter: label(pointed), text: words }) : hint;
   return (
     <>
       <StepHead back={onBooks ? { label: t('bible.allBooks'), onClick: onBooks } : null} title={getLocalizedBookName(bookId, locale)} count={countLabel(bookId, bible)} />
@@ -302,11 +326,12 @@ function ChapterStep({ bookId, bible, text, locale, wide, here, onChapter, onBoo
         current={here?.chapter}
         label={label}
         wide={wide}
-        onPick={onChapter}
-        onHold={(held) => onOpen({ chapter: held, verse: 1 })}
+        onPick={choosing === 'chapter' ? opens : onChapter}
+        onHold={choosing ? undefined : opens}
         onPoint={wide ? setPointed : undefined}
       />
-      {wide ? <PointedLine text={pointed && words ? t('bible.chapterStartsWith', { chapter: label(pointed), text: words }) : hint} /> : <HoldHint text={hint} />}
+      {wide ? <PointedLine text={line} /> : null}
+      {!wide && hint ? <HoldHint text={hint} /> : null}
     </>
   );
 }
@@ -430,12 +455,12 @@ type BookChipProps = {
   autoFocus: boolean;
   wide: boolean;
   onPick: (bookId: string) => void;
-  onHold: (bookId: string) => void;
+  onHold?: (bookId: string) => void;
 };
 
 /** A book: a press shows its chapters, a hold opens it at its start. */
 function BookChip({ id, name, current, autoFocus, wide, onPick, onHold }: BookChipProps) {
-  const { state, handlers } = useLongPress({ onPress: () => onPick(id), onLongPress: () => onHold(id) });
+  const { state, handlers } = useLongPress({ onPress: () => onPick(id), onLongPress: onHold ? () => onHold(id) : undefined });
   return (
     <button
       type="button"
@@ -460,7 +485,8 @@ type BookChoicesProps = {
   /** The open book takes the focus; not where the line above it does. */
   focusCurrent: boolean;
   onPick: (bookId: string) => void;
-  onHold: (bookId: string) => void;
+  /** A hold opens the book at its start; a window that chooses a place has none, and says nothing of one. */
+  onHold?: (bookId: string) => void;
 };
 
 /** Every book, grouped as on the list of books; the open one is filled. */
@@ -500,12 +526,12 @@ function BookChoices({ bookId, bible, locale, wide, focusCurrent, onPick, onHold
           </section>
         ))}
       </div>
-      <HoldHint text={t('bible.holdBookHint')} />
+      {onHold ? <HoldHint text={t('bible.holdBookHint')} /> : null}
     </>
   );
 }
 
-type NavigatorProps = {
+export type NavigatorProps = {
   /** Where the window opens: every book, or the open book's chapters (the phone's bar at the bottom). */
   start: 'books' | 'chapters';
   bookId: string;
@@ -519,6 +545,16 @@ type NavigatorProps = {
   anchorRef: RefObject<HTMLElement | null>;
   onClose: () => void;
   onOpen: (bookId: string, place: Place) => void;
+  /** It chooses a place for something, not where to read (`PlaceStepsProps.choosing`). */
+  choosing?: 'verse' | 'chapter';
+  /** Its height among the layers (`PickerWindowProps.layerClassName`). */
+  layerClassName?: string;
+  /** Its name for a screen reader while at every book; by default, choosing a book. */
+  label?: string;
+  /** The word on a found place's button while choosing (`BibleSearchProps.actionLabel`). */
+  actionLabel?: string;
+  /** In the middle of the screen on a computer (`PickerWindowProps.centered`). */
+  centered?: boolean;
 };
 
 /**
@@ -526,7 +562,7 @@ type NavigatorProps = {
  * chapters of a book chosen there and the verses of a chapter (`PlaceSteps`). A book held opens at its
  * start. Mounted only while open, so each opening starts where its button says.
  */
-function BookNavigator({ start, bookId, bible, currentChapter, currentVerse, text, locale, wide, anchorRef, onClose, onOpen }: NavigatorProps) {
+export function BookNavigator({ start, bookId, bible, currentChapter, currentVerse, text, locale, wide, anchorRef, onClose, onOpen, choosing, layerClassName, label: booksLabel, actionLabel, centered }: NavigatorProps) {
   const { t } = useTranslation();
   const firstChapter = (book: string) => (chapterCount(bible, book) === 1 ? 1 : null);
   const [step, setStep] = useState<{ bookId: string; text: BookText | null; chapter: number | null } | null>(
@@ -534,6 +570,11 @@ function BookNavigator({ start, bookId, bible, currentChapter, currentVerse, tex
   );
 
   const pickBook = (chosen: string) => {
+    // Choosing a chapter, a book of one chapter is chosen whole by its press: Jude's only chapter needs no verse.
+    if (choosing === 'chapter' && chapterCount(bible, chosen) === 1) {
+      onOpen(chosen, { chapter: 1, verse: 1 });
+      return;
+    }
     setStep({ bookId: chosen, text: chosen === bookId ? text : null, chapter: firstChapter(chosen) });
     if (chosen === bookId && text) return;
     // How each chapter begins and what a verse says: the book is on the device once the reader has warmed it.
@@ -543,9 +584,9 @@ function BookNavigator({ start, bookId, bible, currentChapter, currentVerse, tex
     );
   };
 
-  const label = step ? stepLabel(step.chapter) : 'bible.chooseBook';
+  const label = step ? t(stepLabel(step.chapter)) : booksLabel ?? t('bible.chooseBook');
   return (
-    <PickerWindow open onClose={onClose} anchorRef={anchorRef} align="start" width={780} wide={wide} label={t(label)}>
+    <PickerWindow open onClose={onClose} anchorRef={anchorRef} align="start" width={780} wide={wide} layerClassName={layerClassName} centered={centered} label={label}>
       <BibleSearch
         bible={bible}
         locale={locale}
@@ -553,6 +594,7 @@ function BookNavigator({ start, bookId, bible, currentChapter, currentVerse, tex
         surface="window"
         hereBook={bookId}
         autoFocus={wide}
+        actionLabel={actionLabel}
         onOpen={({ bookId: chosen, chapter, verse, toVerse }) => onOpen(chosen, { chapter, verse, toVerse })}
       >
         <div className="mt-4">
@@ -569,6 +611,7 @@ function BookNavigator({ start, bookId, bible, currentChapter, currentVerse, tex
               onChapter={(chapter) => setStep((now) => (now ? { ...now, chapter } : now))}
               onBooks={() => setStep(null)}
               onOpen={(place) => onOpen(step.bookId, place)}
+              choosing={choosing}
             />
           ) : (
             <BookChoices
@@ -578,7 +621,7 @@ function BookNavigator({ start, bookId, bible, currentChapter, currentVerse, tex
               wide={wide}
               focusCurrent={!wide}
               onPick={pickBook}
-              onHold={(held) => onOpen(held, { chapter: 1, verse: 1 })}
+              onHold={choosing ? undefined : (held) => onOpen(held, { chapter: 1, verse: 1 })}
             />
           )}
         </div>

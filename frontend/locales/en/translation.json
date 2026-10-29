@@ -4467,7 +4467,19 @@
     "open": "Open the comment",
     "noteTitle": "Note title",
     "noteTitlePlaceholder": "What is this note about?",
-    "noteElsewhere": "On another device this became a note — it is in Studies."
+    "noteElsewhere": "On another device this became a note — it is in Studies.",
+    "move": "Move to another place",
+    "moveToVerse": "Move to a verse",
+    "moveToChapter": "Move to a chapter",
+    "moveHide": "Hide",
+    "moveElsewhere": "Another place… — book, chapter, verse",
+    "moveElsewhereChapter": "Another place… — book, chapter",
+    "moveElsewhereLabel": "Where to move the comment",
+    "placeHere": "here now",
+    "placeTaken": "has a comment",
+    "movedFrom": "Was at {{place}} — moves when you press Done.",
+    "moveBack": "Put back",
+    "moveHere": "Move here"
   },
   "richText": {
     "bold": "Bold",

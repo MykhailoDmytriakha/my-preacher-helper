@@ -271,6 +271,37 @@ describe('useDurableDraft', () => {
     expect(readDraft<string>(KEY)?.value).toBe('what the person is writing now');
   });
 
+  it('retires a restored copy once the editor comes back to the server value before writing its own', () => {
+    // Restored, then within the write delay the window took the other device's version — the server's value. The copy
+    // the person let go must not be offered again (Codex review, 2026-10-28).
+    saveDraft(KEY, 'restored text');
+    const { result, rerender } = render('server value');
+    act(() => {
+      result.current.acceptRecovered();
+    });
+    rerender({ value: 'restored text' });
+    rerender({ value: 'server value' });
+    act(() => {
+      jest.advanceTimersByTime(300);
+    });
+
+    expect(readDraft(KEY)).toBeNull();
+  });
+
+  it('keeps a restored copy while the editor still shows it', () => {
+    saveDraft(KEY, 'restored text');
+    const { result, rerender } = render('server value');
+    act(() => {
+      result.current.acceptRecovered();
+    });
+    rerender({ value: 'restored text' });
+    act(() => {
+      jest.advanceTimersByTime(1000);
+    });
+
+    expect(readDraft<string>(KEY)?.value).toBe('restored text');
+  });
+
   it('discarding removes the stored draft, not just the banner', () => {
     saveDraft(KEY, 'abandoned text');
     const { result } = render('loaded from server');

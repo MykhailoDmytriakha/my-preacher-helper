@@ -7,6 +7,7 @@ import { CommentDialog, type CommentTarget } from '@/components/CommentDialog';
 import { getLocalizedAbbrev } from '@/utils/bibleBooks';
 import { verseWords, type BookText } from '@/utils/bibleText';
 import { newClientId } from '@/utils/clientId';
+import { passagesIn } from '@/utils/scriptureReferenceNumbering';
 
 import { passageLabel } from './useBookUsage';
 
@@ -16,6 +17,16 @@ import type { ScriptureReference } from '@/models/models';
 import type { AppLocale } from '@/utils/appLocale';
 import type { BibleId } from '@/utils/bibles';
 import type { Passage } from '@/utils/scriptureReferenceNumbering';
+
+/**
+ * A comment's place as the reader names its places — «Ис 41:2», in the Bible being read; every piece of it where a gap parts
+ * it there: King James Romans 16 is Synodal 14:24–26 and 16 (Codex review r3–r4, 2026-10-28).
+ */
+export function readerPlaceName(reference: ScriptureReference, bible: BibleId, locale: AppLocale): string {
+  const name = getLocalizedAbbrev(reference.book, locale);
+  const [first, ...rest] = passagesIn(reference, bible);
+  return first ? [passageLabel(name, first), ...rest.map((piece) => passageLabel('', piece).trim())].join(', ') : name;
+}
 
 /** What the reader asked to open: a comment already written, or a new one on a verse or a chapter. */
 export type ReaderCommenting = { kind: 'edit'; id: string } | { kind: 'new'; reference: ScriptureReference };
@@ -28,6 +39,7 @@ export function ReaderCommentDialog(props: {
   commenting: ReaderCommenting | null;
   text: BookText | null;
   bookId: string;
+  bible: BibleId;
   locale: AppLocale;
   passageOf: (id: string) => Passage | undefined;
   onClose: () => void;
@@ -38,10 +50,12 @@ export function ReaderCommentDialog(props: {
   return <OpenReaderCommentDialog key={key} {...props} commenting={commenting} text={text} />;
 }
 
-function OpenReaderCommentDialog({ commenting, text, bookId, locale, passageOf, onClose }: {
+function OpenReaderCommentDialog({ commenting, text, bookId, bible, locale, passageOf, onClose }: {
   commenting: ReaderCommenting;
   text: BookText;
   bookId: string;
+  /** The Bible being read: a place the comment moves to is counted and named in it. */
+  bible: BibleId;
   locale: AppLocale;
   /** Where a written comment stands in the Bible being read (`useBookUsage().commentPassage`). */
   passageOf: (id: string) => Passage | undefined;
@@ -58,7 +72,8 @@ function OpenReaderCommentDialog({ commenting, text, bookId, locale, passageOf, 
     ? words(passage.chapter, passage.fromVerse)
     : t(passage && passage.toChapter > passage.chapter ? 'comment.wholeChapters' : 'comment.wholeChapter', { place });
   const target: CommentTarget = commenting.kind === 'edit' ? { kind: 'edit', id: commenting.id } : { kind: 'new', reference: commenting.reference };
-  return <CommentDialog target={target} place={place} context={context} onClose={onClose} />;
+  const placeOf = (reference: ScriptureReference) => readerPlaceName(reference, bible, locale);
+  return <CommentDialog target={target} place={place} context={context} bible={bible} placeOf={placeOf} onClose={onClose} />;
 }
 
 /** The window's state in the reader: which comment is open, and opening a written one by its id. */

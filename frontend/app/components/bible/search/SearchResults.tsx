@@ -38,6 +38,8 @@ type Props = {
   copiedKey: string | null;
   onHowTo: () => void;
   onToggleBooks: () => void;
+  /** What pressing a place does, where it is not opening it (a comment moved: «Сюда»); by default «Открыть». */
+  actionLabel?: string;
 };
 
 const PRIMARY = 'inline-flex items-center justify-center gap-2 rounded-[10px] bg-indigo-600 px-3.5 text-sm font-semibold text-white transition hover:bg-indigo-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-900';
@@ -77,7 +79,7 @@ const isOption = (row: ModelRow): row is OptionRow => row.type === 'place' || ro
 export type VerseRow = Extract<ModelRow, { type: 'verse' }>;
 type OptionProps = {
   selected: boolean; wide: boolean; touch: boolean; textLang: string; id: string; onRun: (intent: Intent) => void;
-  onChoose: (key: string) => void; onCopy: (row: VerseRow) => void; copiedKey: string | null;
+  onChoose: (key: string) => void; onCopy: (row: VerseRow) => void; copiedKey: string | null; actionLabel?: string;
 };
 
 /**
@@ -104,6 +106,7 @@ function Option({ row, selected, wide, touch, id, onRun, onChoose, className, ch
 function PlaceOption({ row, ...props }: OptionProps & { row: Extract<ModelRow, { type: 'place' }> }) {
   const { t } = useTranslation();
   const { wide, selected, textLang } = props;
+  const action = props.actionLabel ?? t('bible.search.open');
   return (
     <Option row={row} {...props} className="px-4 py-3.5">
       <div className="flex items-start gap-4">
@@ -116,13 +119,13 @@ function PlaceOption({ row, ...props }: OptionProps & { row: Extract<ModelRow, {
         {/* What Enter does, drawn as a button; the option itself is what is pressed. */}
         {wide && selected ? (
           <span aria-hidden="true" className={`${PRIMARY} h-9 shrink-0 pr-2`}>
-            {t('bible.search.open')}
+            {action}
             <EnterKey />
           </span>
         ) : null}
       </div>
       {!wide && row.primary ? (
-        <span aria-hidden="true" className={`${PRIMARY} mt-3 h-11 w-full rounded-xl text-base`}>{t('bible.search.open')}</span>
+        <span aria-hidden="true" className={`${PRIMARY} mt-3 h-11 w-full rounded-xl text-base`}>{action}</span>
       ) : null}
     </Option>
   );
@@ -144,7 +147,7 @@ function BookOption({ row, ...props }: OptionProps & { row: Extract<ModelRow, { 
  * two — Enter and ⌘C / Ctrl+C on the line — so the buttons are drawn, as «Открыть ↵» of a place is, not announced
  * inside the list's option (Codex review, 2026-10-27).
  */
-function VerseActions({ row, wide, touch, onRun, onCopy, copiedKey }: OptionProps & { row: VerseRow }) {
+function VerseActions({ row, wide, touch, onRun, onCopy, copiedKey, actionLabel }: OptionProps & { row: VerseRow }) {
   const { t } = useTranslation();
   const height = touch ? 'h-11' : 'h-8';
   const keep = (event: React.MouseEvent) => { if (wide || !touch) event.preventDefault(); };
@@ -157,7 +160,7 @@ function VerseActions({ row, wide, touch, onRun, onCopy, copiedKey }: OptionProp
         {t('bible.copy.copy')}
       </button>
       <button type="button" tabIndex={-1} onMouseDown={keep} onClick={(event) => { event.stopPropagation(); onRun(row.run); }} className={`${PRIMARY} ${height} ${wide ? 'pr-2' : ''}`}>
-        {t('bible.search.openInBible')}
+        {actionLabel ?? t('bible.search.openInBible')}
         {wide ? <EnterKey /> : null}
       </button>
     </span>
@@ -169,12 +172,12 @@ function VerseActions({ row, wide, touch, onRun, onCopy, copiedKey }: OptionProp
  * controls — out of sight until a key reaches them (Codex review, 2026-10-27: on a touch screen with VoiceOver the
  * drawn buttons were all there was).
  */
-function ChosenVerseActions({ row, onRun, onCopy }: { row: VerseRow; onRun: (intent: Intent) => void; onCopy: (row: VerseRow) => void }) {
+function ChosenVerseActions({ row, onRun, onCopy, actionLabel }: { row: VerseRow; onRun: (intent: Intent) => void; onCopy: (row: VerseRow) => void; actionLabel?: string }) {
   const { t } = useTranslation();
   return (
     <div role="group" aria-label={t('bible.copy.menu', { place: row.ref })} className="sr-only flex gap-2 border-b border-gray-100 px-4 py-2 focus-within:not-sr-only dark:border-gray-800">
       <button type="button" onClick={() => onCopy(row)} className={`${SECONDARY} h-9`}>{t('bible.copy.copy')}</button>
-      <button type="button" onClick={() => onRun(row.run)} className={`${PRIMARY} h-9`}>{t('bible.search.openInBible')}</button>
+      <button type="button" onClick={() => onRun(row.run)} className={`${PRIMARY} h-9`}>{actionLabel ?? t('bible.search.openInBible')}</button>
     </div>
   );
 }
@@ -317,7 +320,7 @@ function SearchHeadView({ head, chipHeight, onRun, onToggleBooks }: { head: NonN
 }
 
 /** Memoized: the line's letters do not draw the results again; a new model, choice or copy does. */
-export const SearchResults = memo(function SearchResults({ model, selectedKey, wide, touch, showHowTo, keysHint, listId, textLang, optionId, onRun, onChoose, onCopy, copiedKey, onHowTo, onToggleBooks }: Props) {
+export const SearchResults = memo(function SearchResults({ model, selectedKey, wide, touch, showHowTo, keysHint, listId, textLang, optionId, onRun, onChoose, onCopy, copiedKey, onHowTo, onToggleBooks, actionLabel }: Props) {
   const { t } = useTranslation();
   const { head } = model;
   const chipHeight = touch ? 'h-11' : 'h-7';
@@ -330,7 +333,7 @@ export const SearchResults = memo(function SearchResults({ model, selectedKey, w
   const after = first < 0 ? [] : model.rows.slice(last + 1);
   const other = (row: ModelRow) => (isOption(row) ? null : <OtherRow key={row.key} row={row} touch={touch} showHowTo={showHowTo} onRun={onRun} onHowTo={onHowTo} />);
   const chosenVerse = choices.find((row): row is VerseRow => row.type === 'verse' && row.key === selectedKey) ?? null;
-  const optionProps = (row: OptionRow): OptionProps => ({ selected: row.key === selectedKey, wide, touch, textLang, id: optionId(row.key), onRun, onChoose, onCopy, copiedKey });
+  const optionProps = (row: OptionRow): OptionProps => ({ selected: row.key === selectedKey, wide, touch, textLang, id: optionId(row.key), onRun, onChoose, onCopy, copiedKey, actionLabel });
   return (
     <div>
       {model.offline ? (
@@ -366,7 +369,7 @@ export const SearchResults = memo(function SearchResults({ model, selectedKey, w
           })}
         </ul>
       ) : null}
-      {chosenVerse ? <ChosenVerseActions row={chosenVerse} onRun={onRun} onCopy={onCopy} /> : null}
+      {chosenVerse ? <ChosenVerseActions row={chosenVerse} onRun={onRun} onCopy={onCopy} actionLabel={actionLabel} /> : null}
       {after.map(other)}
       {keysHint ? (
         <p className="flex flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-gray-100 px-4 py-2.5 text-xs text-gray-500 dark:border-gray-800 dark:text-gray-400">

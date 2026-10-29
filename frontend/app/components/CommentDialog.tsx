@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
+import { CommentPlaceShown, MovePlaceButton, useCommentPlace } from '@/components/CommentPlaceMove';
 import { CommentIcon } from '@/components/Icons';
 import MarkdownDisplay from '@/components/MarkdownDisplay';
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
@@ -17,11 +18,10 @@ import { useDurableDraft } from '@/hooks/useDurableDraft';
 import { useStudyNotesEngine } from '@/hooks/useStudyNotesEngine';
 import { isStaleWriteError } from '@/services/conflictSafeUpdate.client';
 import { NOTE_AGGREGATE } from '@/services/studies.service';
-import { resolveAppLocale } from '@/utils/appLocale';
 import { COMMENT_SENTENCES, measureComment } from '@/utils/commentLength';
-import { formatScriptureReference } from '@/utils/scriptureReference';
 
 import type { ScriptureReference, StudyNote, StudyNoteType } from '@/models/models';
+import type { BibleId } from '@/utils/bibles';
 
 /** What the window writes: a new comment on a place, or one already written. */
 export type CommentTarget = { kind: 'new'; reference: ScriptureReference | null } | { kind: 'edit'; id: string };
@@ -29,8 +29,81 @@ export type CommentTarget = { kind: 'new'; reference: ScriptureReference | null 
 /** The part of a document the window's words are kept under on the device until they are saved. */
 const COMMENT_DRAFT = 'comment';
 
-/** What waits on the device: the words, the place a new comment was being written to, the name it takes as a note. */
+/**
+ * What waits on the device: the words, the place a new comment was being written to — or a written one is moving to —
+ * and the name it takes as a note.
+ */
 type CommentDraft = { text: string; reference: ScriptureReference | null; title?: string };
+
+/** A study note stored without a type is a note — the engine's rule (`useStudyNotesEngine`, `storedField`), one for every screen. */
+const NO_TYPE: StudyNoteType = 'note';
+
+/** What another device stored, for every field this window compares. */
+type StoredVersion = { revision: number; content: string; type: StudyNoteType; title: string; scriptureRefs: ScriptureReference[] | null; reported: string[] };
+
+/**
+ * WHAT A SAVE OF A WRITTEN COMMENT WRITES: only the fields this window changed, each guarded by the value it opened with.
+ * An action changes what it changes (the owner's model): a comment moved here while its words were edited on another device
+ * keeps those words — sending the old words along would be refused, or written over them on «keep mine» (Codex review,
+ * 2026-10-28).
+ */
+function changesOf(
+  { mine, guard }: { mine: StudyNote; guard: StudyNote },
+  fields: { content: string; type: StudyNoteType; title?: string },
+  placing: { updates: Partial<StudyNote>; baseline: Record<string, unknown> },
+): { updates: Partial<StudyNote>; baseline: Record<string, unknown> } {
+  // What this window changed is measured from where its edits began (`mine`); each such field is guarded by the version it
+  // now works from (`guard`) — after «keep mine» the other device's. Measured from that one, the words left untouched here
+  // would count as changed and go out over the words written there (Codex review r3, 2026-10-28).
+  const read = (note: StudyNote) => ({ content: note.content ?? '', type: note.type ?? NO_TYPE, title: note.title ?? '' });
+  const was = read(mine);
+  const guarded = read(guard);
+  const updates: Partial<StudyNote> = { ...placing.updates };
+  const baseline: Record<string, unknown> = { ...placing.baseline };
+  for (const field of ['content', 'type', 'title'] as const) {
+    const value = fields[field];
+    // The words go out trimmed: words stored with a trailing space are not changed by being saved as they were.
+    if (value === undefined || value === (field === 'content' ? was.content.trim() : was[field])) continue;
+    updates[field] = value as never;
+    baseline[field] = guarded[field];
+  }
+  return { updates, baseline };
+}
+
+/**
+ * The other device's version from a refused save: every compared field comes back with what the server holds (a note
+ * stored without a type as a note). The guard reports only the fields this save compared, now only those it changed: the
+ * rest are read from the list as it stands — a comment made a note there must be seen as one when its version is taken
+ * (Codex review r2, 2026-10-28) — and from what the window opened with while the list does not have it.
+ */
+function storedVersion({ actualRevision, serverValues }: { actualRevision: number; serverValues: Record<string, unknown> }, opened: StudyNote | undefined, live: StudyNote | undefined): StoredVersion {
+  const { content, type, title, scriptureRefs } = serverValues;
+  const known = live ?? opened;
+  return {
+    revision: actualRevision,
+    content: typeof content === 'string' ? content : known?.content ?? '',
+    type: typeof type === 'string' ? type as StudyNoteType : known ? known.type ?? NO_TYPE : 'comment',
+    title: typeof title === 'string' ? title : known?.title ?? '',
+    scriptureRefs: Array.isArray(scriptureRefs) ? scriptureRefs as ScriptureReference[] : live?.scriptureRefs ?? null,
+    reported: Object.keys(serverValues),
+  };
+}
+
+/**
+ * The other device's version as it stands when the person answers: a field the refusal did not report is read again from
+ * the list then — it may have arrived after the refusal, a comment made a note there (Codex review r3, 2026-10-28).
+ */
+function asItStands(version: StoredVersion, live: StudyNote | undefined): StoredVersion {
+  if (!live) return version;
+  const now = (field: 'content' | 'title', value: string) => (version.reported.includes(field) ? value : live[field] ?? value);
+  return {
+    ...version,
+    content: now('content', version.content),
+    type: version.reported.includes('type') ? version.type : live.type ?? NO_TYPE,
+    title: now('title', version.title),
+    scriptureRefs: version.reported.includes('scriptureRefs') ? version.scriptureRefs : live.scriptureRefs ?? version.scriptureRefs,
+  };
+}
 
 /**
  * Where on the device the words wait until saved: a written comment under its own id; a new one opened on a place under
@@ -76,10 +149,14 @@ export function CommentWayBar({ text }: { text: string }) {
  * the words are kept on the device (`useDurableDraft`): a reload, the browser's Back or a phone closing the tab does
  * not lose them, and the window opened there again offers them back.
  */
-export function CommentDialog({ target, place, context, placePicker, restorePlace, onErased, onClose }: {
+export function CommentDialog({ target, place, context, bible, placeOf, placePicker, restorePlace, onErased, onClose }: {
   target: CommentTarget;
   /** "Ис 40:31", "Ис 40–41": the place the comment is written to; empty while a new one's place is not chosen. */
   place: string;
+  /** The Bible the screen under the window reads (the reader's); places it moves to are counted in it. By default, the interface's. */
+  bible?: BibleId;
+  /** How that screen names a place, so a place moved to reads as `place` does; by default as Studies name it. */
+  placeOf?: (reference: ScriptureReference) => string;
   /** The verse's words, or "Ис 40–41 — главы целиком" for a comment on whole chapters; empty where the text is not at hand. */
   context?: string;
   /**
@@ -93,25 +170,39 @@ export function CommentDialog({ target, place, context, placePicker, restorePlac
   onErased?: () => void;
   onClose: () => void;
 }) {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const { uid, notes, createNote, updateNote, deleteNote } = useStudyNotesEngine(true);
   const { confirm, confirmDialog } = useConfirm();
   const { askBeforeDiscard, discardDialog } = useDiscardQuestion();
   const found = target.kind === 'edit' ? notes.find((note) => note.id === target.id) : undefined;
+  // The comment as the list holds it now, for a refused save's answer, which arrives after the render that sent it.
+  const live = useRef(found);
+  live.current = found;
   // The comment as the window opened it: the revision guard compares a save with this, not with the list now.
   const opened = useRef<StudyNote | undefined>(found);
+  // Where this window's edits began: the version it opened with, or the other device's once that was taken.
+  const mine = useRef<StudyNote | undefined>(found);
   const [text, setText] = useState<string | null>(target.kind === 'edit' ? found?.content ?? null : '');
   // The name it takes past five sentences, as a note (the owner, 2026-10-28: «без имени толку нету»).
   const [title, setTitle] = useState(found?.title ?? '');
   useEffect(() => {
     if (text !== null || !found) return;
     opened.current = found;
+    mine.current = found;
     setText(found.content);
     setTitle(found.title ?? '');
   }, [found, text]);
   const [saving, setSaving] = useState(false);
   // Another device changed the comment since it opened: what it holds now, to keep mine on top of it or take it.
-  const [conflict, setConflict] = useState<{ revision: number; content: string; type: StudyNoteType; title: string } | null>(null);
+  const [conflict, setConflict] = useState<StoredVersion | null>(null);
+  // Where it stands and where it moves on «Готово»: a written comment's first reference, a new one's own.
+  const where = useCommentPlace({
+    ...(target.kind === 'edit'
+      ? { standing: (opened.current ?? found)?.scriptureRefs?.[0], newPlace: undefined, ownId: target.id }
+      : { standing: target.reference ?? undefined, newPlace: target.reference, ownId: undefined }),
+    choosesOwn: Boolean(placePicker), restoreOwn: restorePlace, bible, placeOf, context, notes,
+  });
+  const { keptPlace } = where;
   const written = text ?? '';
   const initial = opened.current?.content ?? '';
   const initialTitle = opened.current?.title ?? '';
@@ -120,7 +211,7 @@ export function CommentDialog({ target, place, context, placePicker, restorePlac
   // else a render after the save would make them «unsaved» again and the write on closing would keep them.
   const settled = useRef<{ text: string; title: string } | null>(null);
   const reference = target.kind === 'new' ? target.reference : null;
-  const kept = useMemo<CommentDraft>(() => ({ text: written, reference, title }), [written, reference, title]);
+  const kept = useMemo<CommentDraft>(() => ({ text: written, reference: keptPlace, title }), [written, keptPlace, title]);
   // The place alone is no unsaved work: the baseline carries the place now chosen.
   const draft = useDurableDraft<CommentDraft>({
     uid, docId: slot, aggregate: COMMENT_DRAFT, value: kept, enabled: text !== null,
@@ -132,7 +223,10 @@ export function CommentDialog({ target, place, context, placePicker, restorePlac
   };
   // Offered only once the comment is in the editor: restored before, its loading would no longer take the opening version.
   const recovered = draft.recovered;
-  const waiting = text !== null && typeof recovered?.text === 'string' && (recovered.text !== written || (recovered.title ?? '') !== title) ? recovered : null;
+  // A place it was moving to waits too.
+  const placeWaits = where.waits(recovered?.reference);
+  const waiting = text !== null && typeof recovered?.text === 'string'
+    && (recovered.text !== written || (recovered.title ?? '') !== title || placeWaits) ? recovered : null;
   // Until the person says what becomes of the words waiting, the editor holds still: typing would write over the only
   // copy of them on the device while the offer still shows them (Codex review, 2026-10-28).
   const deciding = waiting !== null;
@@ -140,7 +234,7 @@ export function CommentDialog({ target, place, context, placePicker, restorePlac
     if (!waiting) return;
     setText(waiting.text);
     setTitle(waiting.title ?? '');
-    if (placePicker && waiting.reference) restorePlace?.(waiting.reference);
+    if (waiting.reference) where.bringBack(waiting.reference);
     draft.acceptRecovered();
   };
   const { sentences, isNote } = measureComment(written);
@@ -148,7 +242,7 @@ export function CommentDialog({ target, place, context, placePicker, restorePlac
   const empty = sentences === 0;
   // A comment stands on a verse or a chapter: a whole book names no place in the reader, so it cannot be one's place.
   const placed = target.kind === 'edit' || Boolean(target.reference?.chapter);
-  const unsaved = written !== initial || title !== initialTitle;
+  const unsaved = written !== initial || title !== initialTitle || where.moved !== null;
   // A note without a name is no use (the owner, 2026-10-28): the main button waits for one.
   const named = !isNote || Boolean(title.trim());
   // Thrown away by the person's own choice: retired like saved words, so the write on closing does not keep them.
@@ -162,14 +256,7 @@ export function CommentDialog({ target, place, context, placePicker, restorePlac
   const failed = (error: unknown) => {
     setSaving(false);
     if (isStaleWriteError(error)) {
-      // Every compared field comes back with what the server holds (a note stored without a type as a note).
-      const { content, type, title: storedTitle } = error.serverValues;
-      setConflict({
-        revision: error.actualRevision,
-        content: typeof content === 'string' ? content : opened.current?.content ?? '',
-        type: typeof type === 'string' ? type as StudyNoteType : opened.current?.type ?? 'comment',
-        title: typeof storedTitle === 'string' ? storedTitle : opened.current?.title ?? '',
-      });
+      setConflict(storedVersion(error, opened.current, live.current));
       return;
     }
     toast.error(t('comment.notSaved'));
@@ -179,9 +266,13 @@ export function CommentDialog({ target, place, context, placePicker, restorePlac
    * Adopts what the other device stored as the version this window works from — every compared field with its revision:
    * a type left as it opened would be refused again on each «keep mine» (Codex review, 2026-10-28).
    */
-  const adopt = (found: { revision: number; content: string; type: StudyNoteType; title: string }) => {
+  const adopt = (found: StoredVersion) => {
     if (!opened.current) return;
-    opened.current = { ...opened.current, content: found.content, type: found.type, title: found.title, rev: { ...(opened.current.rev ?? {}), [NOTE_AGGREGATE]: found.revision } };
+    opened.current = {
+      ...opened.current, content: found.content, type: found.type, title: found.title,
+      ...(found.scriptureRefs ? { scriptureRefs: found.scriptureRefs } : {}),
+      rev: { ...(opened.current.rev ?? {}), [NOTE_AGGREGATE]: found.revision },
+    };
   };
 
   const save = (event?: React.FormEvent) => {
@@ -194,20 +285,24 @@ export function CommentDialog({ target, place, context, placePicker, restorePlac
     const type = isNote ? 'note' : 'comment';
     // A comment keeps no name of its own; as a note it is saved with the one given here.
     const naming = isNote ? { title: title.trim() } : {};
-    const submission = target.kind === 'new'
-      ? createNote({ userId: uid ?? '', content, title: naming.title ?? '', scriptureRefs: target.reference ? [target.reference] : [], tags: [], type })
-      : updateNote({
-        id: target.id,
-        updates: { content, type, ...naming },
-        expectedRevision: note?.rev?.[NOTE_AGGREGATE] ?? null,
-        expectedBaseline: { content: note?.content ?? '', type: note?.type ?? 'comment', ...(isNote ? { title: note?.title ?? '' } : {}) },
-      });
+    if (target.kind === 'new') {
+      setSaving(true);
+      createNote({ userId: uid ?? '', content, title: naming.title ?? '', scriptureRefs: keptPlace ? [keptPlace] : [], tags: [], type }).acceptance.then(saved, failed);
+      return;
+    }
+    const { updates, baseline } = changesOf({ mine: mine.current ?? note!, guard: note! }, { content, type, ...naming }, where.write(note?.scriptureRefs ?? []));
+    // Nothing changed — nothing to write: «Готово» closes, and no revision moves for it.
+    if (!Object.keys(updates).length) {
+      closeDiscarding();
+      return;
+    }
     setSaving(true);
-    submission.acceptance.then(() => {
-      settle();
-      if (isNote) toast.success(t('comment.becameNote'));
-      onClose();
-    }, failed);
+    updateNote({ id: target.id, updates, expectedRevision: note?.rev?.[NOTE_AGGREGATE] ?? null, expectedBaseline: baseline }).acceptance.then(saved, failed);
+  };
+  const saved = () => {
+    settle();
+    if (isNote) toast.success(t('comment.becameNote'));
+    onClose();
   };
 
   // «Стереть» — a rare action, quiet and drawn on the left of the foot, away from Save; asked before it erases.
@@ -223,27 +318,38 @@ export function CommentDialog({ target, place, context, placePicker, restorePlac
 
   const keepMine = () => {
     if (!conflict) return;
-    adopt(conflict);
+    adopt(asItStands(conflict, live.current));
     save();
   };
   const takeTheirs = () => {
     if (!conflict) return;
+    const theirs = asItStands(conflict, live.current);
     // Taken there for a note: there is nothing of this window's left to write, and «Готово» here would make it a comment
     // again (Codex review, 2026-10-28). The window closes and says where it is.
-    if (conflict.type !== 'comment') {
+    if (theirs.type !== 'comment') {
       toast.success(t('comment.noteElsewhere'));
       closeDiscarding();
       return;
     }
-    adopt(conflict);
-    setText(conflict.content);
-    setTitle(conflict.title);
+    adopt(theirs);
+    // Taken, their version is where this window's edits begin now.
+    mine.current = opened.current;
+    setText(theirs.content);
+    setTitle(theirs.title);
+    // Their version is taken whole: where they left it stands, and a place chosen here is let go.
+    if (theirs.scriptureRefs) where.tookTheirs();
     setConflict(null);
   };
+  const shownPlace = where.shown(place);
 
   return (
     <FormDialog
-      title={place ? t('comment.title', { place }) : t('comment.titleNew')}
+      title={shownPlace ? t('comment.title', { place: shownPlace }) : t('comment.titleNew')}
+      titleAction={where.movable ? (
+        <div ref={where.buttonRef}>
+          <MovePlaceButton open={where.open} disabled={saving || deciding} onToggle={where.toggle} />
+        </div>
+      ) : null}
       description={t('comment.description')}
       onClose={requestClose}
       closeDisabled={saving}
@@ -269,14 +375,15 @@ export function CommentDialog({ target, place, context, placePicker, restorePlac
     >
       <div className="space-y-4">
         {/* The words waiting are answered first: they may bring their own place back, so the choice of one waits. */}
-        {deciding ? null : placePicker?.({ requestClose })}
+        {/* Nor while a save is accepted: a place chosen then would show, and the one sent would be saved (Codex review r3). */}
+        {deciding || saving ? null : placePicker?.({ requestClose })}
         {conflict ? <SaveConflictBanner entityKey="entityComment" onKeepMine={keepMine} onTakeTheirs={takeTheirs} busy={saving} /> : null}
         {waiting ? (
           <UnsavedDraftOffer
             preview={(
               <>
-                {placePicker && waiting.reference ? (
-                  <p className="mb-1 text-xs font-semibold text-gray-600 dark:text-gray-300">{formatScriptureReference(waiting.reference, { locale: resolveAppLocale(i18n.language) })}</p>
+                {where.offered(waiting.reference) ? (
+                  <p className="mb-1 text-xs font-semibold text-gray-600 dark:text-gray-300">{where.offered(waiting.reference)}</p>
                 ) : null}
                 <MarkdownDisplay pencil content={waiting.text} className="text-sm text-gray-700 dark:text-gray-200" />
               </>
@@ -285,7 +392,7 @@ export function CommentDialog({ target, place, context, placePicker, restorePlac
             onDiscard={draft.discardRecovered}
           />
         ) : null}
-        {context ? <p className="font-serif text-[15px] leading-relaxed text-gray-600 dark:text-gray-400">{context}</p> : null}
+        <CommentPlaceShown where={where} place={place} busy={saving} deciding={deciding} />
         {/* Still while a save is accepted — words typed then would be closed away with the window — and while words from last time wait for an answer. */}
         {text === null ? null : <RichMarkdownEditor value={text} onChange={setText} placeholder={t('comment.placeholder')} minHeight="11rem" autoFocus editable={!saving && !deciding} />}
         <CommentWayBar text={written} />

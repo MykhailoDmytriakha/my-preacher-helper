@@ -203,6 +203,10 @@ export function useDurableDraft<T>({
     };
   }, []);
 
+  // The copy on offer now, for the callbacks below to read without being made again on each offer.
+  const recoveredRef = useRef<T | null>(null);
+  recoveredRef.current = recovered;
+
   /**
    * The user took the recovered text into the editor. Hide the offer, but KEEP the
    * stored copy: that text is still unconfirmed, and deleting it here leaves a
@@ -210,6 +214,10 @@ export function useDurableDraft<T>({
    * gone. `markSaved` retires it once the server accepts it.
    */
   const acceptRecovered = useCallback(() => {
+    // Taken into the editor, the stored copy is this editor's own from now on: it goes as one this editor wrote would —
+    // when the editor comes back to the server's value, or the very copy is saved. Left as someone else's, it outlived a
+    // window that took the other device's version and closed, and was offered again (Codex review, 2026-10-28).
+    if (recoveredRef.current !== null) ourDraftRef.current = serializeContent(recoveredRef.current);
     setRecovered(null);
   }, []);
 
@@ -222,8 +230,6 @@ export function useDurableDraft<T>({
    * they were writing (loss of unconfirmed text, dressed as a dismissal). Compare
    * first, delete only on an exact match.
    */
-  const recoveredRef = useRef<T | null>(null);
-  recoveredRef.current = recovered;
   const discardRecovered = useCallback(() => {
     const rejected = recoveredRef.current;
     setRecovered(null);

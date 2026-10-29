@@ -14,6 +14,11 @@ import Chip from './Chip';
 type FormTone = 'blue' | 'emerald' | 'rose';
 interface FormDialogProps {
   title: ReactNode;
+  /**
+   * A small control beside the title, outside it — the window keeps the title alone as its name for a screen reader
+   * (a comment's place and the button that moves it).
+   */
+  titleAction?: ReactNode;
   /** Omitted by sheet-shaped dialogs, whose head is the title and nothing else. */
   eyebrow?: string;
   description?: string;
@@ -51,7 +56,7 @@ const WIDTH_BY_SIZE: Record<NonNullable<FormDialogProps['size']>, string> = {
 };
 
 /** Presentation only: submission, draft retention and dismissal belong to the caller. */
-export default function FormDialog({ title, eyebrow, description, tone = 'blue', size, dismissOnBackdrop = false, closeDisabled = false, onClose, footer, onSubmit, noValidate, children, showCloseButton = false }: FormDialogProps) {
+export default function FormDialog({ title, titleAction, eyebrow, description, tone = 'blue', size, dismissOnBackdrop = false, closeDisabled = false, onClose, footer, onSubmit, noValidate, children, showCloseButton = false }: FormDialogProps) {
   const { t } = useTranslation();
   const titleId = useId();
   const descriptionId = useId();
@@ -68,7 +73,14 @@ export default function FormDialog({ title, eyebrow, description, tone = 'blue',
     <div className="flex items-start justify-between gap-4">
       <div className="min-w-0">
         {eyebrow && <Chip tone={tone} size="sm">{eyebrow}</Chip>}
-        <h2 id={titleId} className={`break-words font-bold text-gray-900 dark:text-gray-100 ${banded ? 'text-lg' : 'mt-2 text-2xl'}`}>{title}</h2>
+        {titleAction ? (
+          <div className="flex items-center gap-1">
+            <h2 id={titleId} className={`min-w-0 break-words font-bold text-gray-900 dark:text-gray-100 ${banded ? 'text-lg' : 'mt-2 text-2xl'}`}>{title}</h2>
+            {titleAction}
+          </div>
+        ) : (
+          <h2 id={titleId} className={`break-words font-bold text-gray-900 dark:text-gray-100 ${banded ? 'text-lg' : 'mt-2 text-2xl'}`}>{title}</h2>
+        )}
         {description && <p id={descriptionId} className="mt-1 text-sm text-gray-500 dark:text-gray-400">{description}</p>}
       </div>
       {(!banded || showCloseButton) && (
