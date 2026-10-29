@@ -1,6 +1,6 @@
 import { act, renderHook } from '@testing-library/react';
 
-import { useDurableDraft, type UseDurableDraftOptions } from '@/hooks/useDurableDraft';
+import { useDraftQuestion, useDurableDraft, useSettleShownDraft, type UseDurableDraftOptions } from '@/hooks/useDurableDraft';
 import { draftKey, moveDraft, readDraft, retireDraftCapture, saveDraft } from '@/utils/durableDraft';
 
 const KEY = draftKey('uid-1', 'note-1', 'note');
@@ -494,6 +494,55 @@ describe('a recovered draft must survive until the user decides', () => {
 
     expect(readDraft<string>(KEY)?.value).toBe('unconfirmed text from the other tab');
   });
+
+  /*
+   * Words typed are stored however the slot was left: retired by a save, or filled by another tab. These hold for the
+   * open BUG-20261029-older-tab-close-overwrites-newer-draft, whose fix must not skip a write of new words.
+   */
+  // A save retires the stored copy; the same words typed back later are new and need a copy again (Codex review, 2026-10-29).
+  it('stores words typed back after a save retired their copy, when the tab closes before they settle', () => {
+    const editor = render('server text');
+    editor.rerender({ value: 'words A' });
+    act(() => { jest.advanceTimersByTime(300); });
+    act(() => { editor.result.current.markSaved('words A'); });
+    expect(readDraft(KEY)).toBeNull();
+    // The editor follows the server's next words, then the person types A back.
+    editor.rerender({ value: 'words B' });
+    act(() => { editor.result.current.markSaved('words B'); });
+    editor.rerender({ value: 'words A' });
+
+    act(() => { editor.unmount(); });
+
+    expect(readDraft<string>(KEY)?.value).toBe('words A');
+  });
+
+  it('stores words typed back after a save, though another tab\'s words fill the slot meanwhile', () => {
+    const editor = render('server text');
+    editor.rerender({ value: 'words A' });
+    act(() => { jest.advanceTimersByTime(300); });
+    act(() => { editor.result.current.markSaved('words A'); });
+    editor.rerender({ value: 'words B' });
+    act(() => { editor.result.current.markSaved('words B'); });
+    saveDraft(KEY, 'words C from another tab');
+    // Typing A back is this person's newest action.
+    editor.rerender({ value: 'words A' });
+
+    act(() => { editor.unmount(); });
+
+    expect(readDraft<string>(KEY)?.value).toBe('words A');
+  });
+
+  it('still stores keystrokes this tab typed after the other tab, when it closes before they settle', () => {
+    const older = render('server text');
+    const newer = render('server text');
+    newer.rerender({ value: 'typed in the newer tab' });
+    act(() => { jest.advanceTimersByTime(300); });
+    older.rerender({ value: 'typed after it in the older tab' });
+
+    act(() => { older.unmount(); });
+
+    expect(readDraft<string>(KEY)?.value).toBe('typed after it in the older tab');
+  });
 });
 
 // The offline shell keeps the note editor mounted without a sign-in guard, so the account
@@ -552,5 +601,63 @@ describe('when the account changes under a mounted editor', () => {
     act(() => jest.advanceTimersByTime(300));
 
     expect(readDraft<string>(KEY)?.value).toBe('typed after the owner came back');
+  });
+});
+
+
+describe('useDraftQuestion', () => {
+  it('settles consecutive equal physical sources but still asks about the following different source', () => {
+    localStorage.clear();
+    const different = draftKey('uid-1', 'note-1', 'note', 'different');
+    const equalA = draftKey('uid-1', 'note-1', 'note', 'equal-A');
+    const equalB = draftKey('uid-1', 'note-1', 'note', 'equal-B');
+    for (const [key, value, savedAt] of [[different, 'Other authored words', 10], [equalA, 'Shown words', 20], [equalB, 'Shown words', 30]] as const) {
+      localStorage.setItem(key, JSON.stringify({ value, savedAt }));
+    }
+    const original = localStorage.getItem(different);
+    const view = renderHook(() => {
+      const draft = useDurableDraft({ uid: 'uid-1', docId: 'note-1', aggregate: 'note', writerId: 'current', enabled: true, value: 'Shown words' });
+      const shown = draft.recovered === 'Shown words';
+      useSettleShownDraft(shown, draft.settleRecovered, draft.recoveredKey);
+      const question = useDraftQuestion('uid-1:note-1:opening', draft.recovered !== null && !shown);
+      return { recovered: draft.recovered, held: question.held };
+    });
+    expect(view.result.current.recovered).toBe('Other authored words');
+    expect(view.result.current.held).toBe(true);
+    expect(localStorage.getItem(different)).toBe(original);
+    view.unmount();
+    localStorage.clear();
+  });
+
+  it('allows work after one explicit choice while other sources stay available', () => {
+    const { result, rerender } = renderHook(({ waiting }) => useDraftQuestion('owner:note:opening', waiting), { initialProps: { waiting: true } });
+    expect(result.current.held).toBe(true);
+    act(() => result.current.answer());
+    expect(result.current.held).toBe(false);
+    rerender({ waiting: false });
+    rerender({ waiting: true });
+    expect(result.current.held).toBe(false);
+  });
+
+  it('still asks about different words after automatically matching the shown source', () => {
+    const { result, rerender } = renderHook(({ waiting }) => useDraftQuestion('owner:note:opening', waiting), { initialProps: { waiting: false } });
+    expect(result.current.held).toBe(false);
+    rerender({ waiting: true });
+    expect(result.current.held).toBe(true);
+  });
+
+  it('cannot answer a different opening through a stale callback, including returning to the same identity', () => {
+    const { result, rerender } = renderHook(({ identity }) => useDraftQuestion(identity, true), { initialProps: { identity: 'owner:A' } });
+    const answerFirstA = result.current.answer;
+    act(() => answerFirstA());
+    expect(result.current.held).toBe(false);
+    rerender({ identity: 'owner:B' });
+    act(() => answerFirstA());
+    expect(result.current.held).toBe(true);
+    act(() => result.current.answer());
+    expect(result.current.held).toBe(false);
+    rerender({ identity: 'owner:A' });
+    act(() => answerFirstA());
+    expect(result.current.held).toBe(true);
   });
 });

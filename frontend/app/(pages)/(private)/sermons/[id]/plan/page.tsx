@@ -11,6 +11,7 @@ import PlanMarkdown from "@/components/plan/PlanMarkdown";
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { DataDocumentProvider, useDataEngine } from '@/data-engine/react.client';
 import { useAiUsage } from "@/hooks/useAiUsage";
+import { useDraftQuestion } from "@/hooks/useDurableDraft";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useRouteId } from "@/hooks/useRouteId";
 import { useScrollLock } from '@/hooks/useScrollLock';
@@ -277,6 +278,7 @@ function PlanPageContent({ source, readOnly = false, wayIn }: { source: SermonSo
     frozen: readOnly,
     durableState: source.document.state,
   });
+  const { held: draftHeld, answer: answerDraftQuestion } = useDraftQuestion(JSON.stringify([sermon?.userId, sermonId]), Boolean(planDraft.recovered));
   /** Unsaved cells the person let go after seeing them (their node was removed elsewhere). */
   const discardPlanCells = useCallback((nodeIds: string[]) => {
     const dropped = new Set(nodeIds);
@@ -1125,8 +1127,9 @@ function PlanPageContent({ source, readOnly = false, wayIn }: { source: SermonSo
           onRestore={() => {
             restorePlanCells(planDraft.recovered ?? {});
             planDraft.accept();
+            answerDraftQuestion();
           }}
-          onDiscard={planDraft.discard}
+          onDiscard={() => { planDraft.discard(); answerDraftQuestion(); }}
         />
       )}
 
@@ -1220,6 +1223,7 @@ function PlanPageContent({ source, readOnly = false, wayIn }: { source: SermonSo
         setModifiedContent={setModifiedContent}
         onSwitchToStructure={handleSwitchToStructure}
         readOnly={readOnly}
+        held={draftHeld && !readOnly}
       />
     </div>
     </ScriptureLinksInWindow>

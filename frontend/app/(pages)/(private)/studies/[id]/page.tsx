@@ -25,7 +25,7 @@ import { useAppLocale } from '@/hooks/useAppLocale';
 import { useClipboard } from '@/hooks/useClipboard';
 import { useCollapseOnScroll } from '@/hooks/useCollapseOnScroll';
 import { useConfirm, useDiscardQuestion } from '@/hooks/useConfirm';
-import { useDurableDraft } from '@/hooks/useDurableDraft';
+import { useDraftQuestion, useDurableDraft, useSettleShownDraft } from '@/hooks/useDurableDraft';
 import { useMarkdownOutline } from '@/hooks/useMarkdownOutline';
 import { useNewNoteOpening, useNewStudyNoteDraft } from '@/hooks/useNewStudyNoteDraft';
 import { useRouteId } from '@/hooks/useRouteId';
@@ -140,9 +140,26 @@ function useNoteKeyboardNavigation({
     }, [isEditing, prevNoteId, nextNoteId, router, searchParams]);
 }
 
-/** Value equality for draft-vs-editor comparison; field order is fixed by construction. */
+/*
+ * Unsaved text from last time is offered back as a question, answered before anything is written over it: until then
+ * the page reads and nothing on it writes. Typing past the offer stored the new words where the offered ones lay,
+ * 250 ms later — the offer still showed the old words, and a reload had nothing left to bring back
+ * (BUG-20261028-typing-over-draft-offer).
+ */
+function writesNow(asked: boolean, waiting: NoteDraftPayload | null): boolean {
+    return asked && waiting === null;
+}
+
+/** Value equality for the complete draft payload. */
 function sameNoteDraft(a: NoteDraftPayload, b: NoteDraftPayload): boolean {
     return serializeContent(a) === serializeContent(b);
+}
+
+/** The unsaved words from last time still to be answered, or null: words equal to the page's are settled as taken. */
+function useNoteDraftOffer(recovered: NoteDraftPayload | null, shown: NoteDraftPayload, ready: boolean, settle: () => void, sourceKey: string | null): NoteDraftPayload | null {
+    const same = recovered !== null && sameNoteDraft(recovered, shown);
+    useSettleShownDraft(ready && same, settle, sourceKey);
+    return recovered && !same ? recovered : null;
 }
 
 function useNoteInitialization({
@@ -414,13 +431,15 @@ type EditorHeaderProps = {
     sectionLabel?: string | null;
     /** Opens the bottom sheet holding the outline and the note's properties. */
     onOpenSheet?: () => void;
+    /** Unsaved text from last time waits for an answer: the way into editing stays shut until it is given. */
+    editHeld?: boolean;
 };
 
 function EditorHeader({
     handleBack, t, isEditing, filteredNotes, prevNoteId, nextNoteId, router, searchParams,
     currentIndex, type, setType, isSaving, saveError, lastSaved, hasUnsavedEdits, setIsEditing, handleDelete, handleCopy, isCopied,
     title, setTitle, searchQuery, justSaved, aiMenu, headerRef, stickyTop,
-    roomy, collapsed, sectionLabel, onOpenSheet
+    roomy, collapsed, sectionLabel, onOpenSheet, editHeld = false
 }: EditorHeaderProps) {
 
     const backButton = (
@@ -466,7 +485,7 @@ function EditorHeader({
        outline and says which section is being read — see NoteMobileSheet. */
     const titleField = <EditorTitleField isEditing={isEditing} title={title} setTitle={setTitle} t={t} searchQuery={searchQuery} />;
 
-    const actions = <EditorHeaderActions t={t} isEditing={isEditing} justSaved={justSaved} isSaving={isSaving} saveError={saveError} lastSaved={lastSaved} hasUnsavedEdits={hasUnsavedEdits} handleCopy={handleCopy} isCopied={isCopied} setIsEditing={setIsEditing} handleDelete={handleDelete} aiMenu={aiMenu} />;
+    const actions = <EditorHeaderActions t={t} isEditing={isEditing} justSaved={justSaved} isSaving={isSaving} saveError={saveError} lastSaved={lastSaved} hasUnsavedEdits={hasUnsavedEdits} handleCopy={handleCopy} isCopied={isCopied} setIsEditing={setIsEditing} editHeld={editHeld} handleDelete={handleDelete} aiMenu={aiMenu} />;
 
     const shell = 'sticky z-30 border-b border-gray-200 bg-white/90 backdrop-blur-md dark:border-gray-800 dark:bg-gray-900/90';
 
@@ -705,7 +724,8 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
     const [tags, setTags] = useState<string[]>([]);
     const [scriptureRefs, setScriptureRefs] = useState<ScriptureReference[]>([]);
     const [type, setType] = useState<StudyNoteType>('note');
-    const [isEditing, setIsEditing] = useState(isNew);
+    // What the person asked for; the page writes only once nothing waits for an answer (`isEditing` below).
+    const [editingWanted, setIsEditing] = useState(isNew);
 
     // Input states
     const [tagInput, setTagInput] = useState('');
@@ -723,7 +743,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         id: `text:${reference.bible}:${reference.book}:${reference.chapter ?? ''}:${reference.fromVerse ?? ''}-${reference.toChapter ?? ''}:${reference.toVerse ?? ''}:${reference.endChapter ?? ''}`,
     }), []);
     // The note's own words decide a reference Russian and Ukrainian write alike; read only while it is shown as text.
-    const readingLanguage = useMemo(() => (isEditing ? null : studyNoteLanguage({ title, content })), [isEditing, title, content]);
+    const readingLanguage = useMemo(() => (editingWanted ? null : studyNoteLanguage({ title, content })), [editingWanted, title, content]);
 
     // Load existing note data or create a new empty template
     const existingNote = useMemo(() => notes.find(n => n.id === noteId), [notes, noteId]);
@@ -748,7 +768,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
     const { filteredNotes, currentIndex, prevNoteId, nextNoteId, searchQuery } = useFilteredNotes(notes, searchParams, bibleLocale);
 
     // A window over the page — the verse's, the comment's — keeps the arrows: leaving would close it unasked (Codex review, 2026-10-28).
-    useNoteKeyboardNavigation({ isEditing: isEditing || Boolean(previewReference) || commentWindow.open, prevNoteId, nextNoteId, router, searchParams });
+    useNoteKeyboardNavigation({ isEditing: editingWanted || Boolean(previewReference) || commentWindow.open, prevNoteId, nextNoteId, router, searchParams });
 
     // Handle Initial Load
     const [isInitialized, setIsInitialized] = useState(false);
@@ -813,7 +833,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         [title, content, tags, scriptureRefs, type, dictationSourceIds, recordingSourceIds]
     );
 
-    const { recovered, recoveredKey, recoveries, selectRecovered, acceptRecovered, discardRecovered, markCaptured, markSaved } = useDurableDraft<NoteDraftPayload>({
+    const { recovered, recoveredKey, recoveries, selectRecovered, settleRecovered, acceptRecovered, discardRecovered, markCaptured, markSaved } = useDurableDraft<NoteDraftPayload>({
         uid,
         docId: draftDocId,
         writerId: draftWriterId,
@@ -828,6 +848,20 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         confirmedValue: isNew ? undefined : confirmedDraft,
     });
 
+    // Recovery compares the complete shown payload; delivery remains owned by the shared draft mechanism.
+    const recoveredDraft = useMemo(() => (recovered ? withNoteReferenceBibles(recovered, bibleLocale) : recovered), [recovered, bibleLocale]);
+    // Audio-only metadata contains no authored fields to restore. Its own card already
+    // offers explicit recognition; adopt only the source links and avoid a second prompt.
+    useEffect(() => {
+        if (!recoveredDraft || !isRecordingOnlyNoteDraft(recoveredDraft)) return;
+        setRecordingSourceIds(previous => [...new Set([...previous, ...recoveredDraft.recordingSourceIds!])]);
+        acceptRecovered();
+    }, [recoveredDraft, acceptRecovered]);
+    const offeredWords = recoveredDraft && !isRecordingOnlyNoteDraft(recoveredDraft) ? recoveredDraft : null;
+    const unsavedRecovery = useNoteDraftOffer(offeredWords, draftPayload, isInitialized, settleRecovered, recoveredKey);
+    const { held: draftHeld, answer: answerDraftQuestion } = useDraftQuestion(JSON.stringify([uid, draftWriterId]), unsavedRecovery !== null);
+    const isEditing = writesNow(editingWanted, draftHeld ? unsavedRecovery : null);
+
     const voiceHandoffRef = useRef<(() => { accepted: () => Promise<void>; carryTo: (id: string) => Promise<void>; canChangeDestination: () => boolean }) | null>(null);
     const { isSaving, lastSaved, saveError, setLastSaved } = useNoteAutoSave({
         captureRecordingHandoff: () => voiceHandoffRef.current?.(),
@@ -840,7 +874,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         deliberateOverwriteRef,
         resaveNonce,
         saveAtOnceRef,
-        saveBlocked: saveConflict || unavailable,
+        saveBlocked: saveConflict || unavailable || draftHeld,
         onConflict: () => setSaveConflict(true),
         onCaptured: markCaptured,
         onSaved: (saved) => {
@@ -849,23 +883,6 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
             setConfirmedDraft(saved);
         }
     });
-
-    // A draft is only worth surfacing when it actually differs from what the
-    // editor is showing. Identical text means the last save did land and the
-    // draft is simply the same thing said twice.
-    // A draft kept before references named their Bible is read the way the note itself is.
-    const recoveredDraft = useMemo(() => (recovered ? withNoteReferenceBibles(recovered, bibleLocale) : recovered), [recovered, bibleLocale]);
-    // Audio-only metadata contains no authored fields to restore. Its own card already
-    // offers explicit recognition; adopt only the source links and avoid a second prompt.
-    useEffect(() => {
-        if (!recoveredDraft || !isRecordingOnlyNoteDraft(recoveredDraft)) return;
-        setRecordingSourceIds(previous => [...new Set([...previous, ...recoveredDraft.recordingSourceIds!])]);
-        acceptRecovered();
-    }, [recoveredDraft, acceptRecovered]);
-    const unsavedRecovery = useMemo(
-        () => (recoveredDraft && !isRecordingOnlyNoteDraft(recoveredDraft) && !sameNoteDraft(recoveredDraft, draftPayload) ? recoveredDraft : null),
-        [recoveredDraft, draftPayload]
-    );
 
     // A matching first copy must not hide a different unfinished version.
     useEffect(() => {
@@ -925,7 +942,8 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         // until a save lands. Deleting it here would leave a window with no durable
         // copy at all.
         acceptRecovered();
-    }, [unsavedRecovery, acceptRecovered]);
+        answerDraftQuestion();
+    }, [unsavedRecovery, acceptRecovered, answerDraftQuestion]);
 
     const isWideViewport = useWideViewport();
     // Remembered per device: hiding the panel is a deliberate choice about how you read,
@@ -1042,7 +1060,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         if (!recovered) return;
         const shown = JSON.stringify(recovered);
         const shownKey = recoveredKey;
-        await askBeforeDiscard(true, discardRecovered, () => {
+        await askBeforeDiscard(true, () => { discardRecovered(); answerDraftQuestion(); }, () => {
             const current = recoveredChoice.current;
             return current.uid === uid && current.noteId === noteId && current.recoveredKey === shownKey && JSON.stringify(current.recovered) === shown;
         });
@@ -1330,6 +1348,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
                 headerRef={setHeaderRef} stickyTop={scrollLayout.headerTop}
                 roomy={roomyHeader} collapsed={headerCollapsed} sectionLabel={sectionLabel}
                 onOpenSheet={propertiesInSheet ? openSheet : undefined}
+                editHeld={draftHeld}
                 title={commentView.title} setTitle={setTitle} searchQuery={searchQuery} justSaved={justSaved}
                 aiMenu={
                     <NoteAiMenu
@@ -1521,7 +1540,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
     );
 }
 
-function EditorHeaderActions({ t, isEditing, justSaved, isSaving, saveError, lastSaved, hasUnsavedEdits, handleCopy, isCopied, setIsEditing, handleDelete, aiMenu }: Pick<EditorHeaderProps, 't' | 'isEditing' | 'justSaved' | 'isSaving' | 'saveError' | 'lastSaved' | 'hasUnsavedEdits' | 'handleCopy' | 'isCopied' | 'setIsEditing' | 'handleDelete' | 'aiMenu'>) {
+function EditorHeaderActions({ t, isEditing, justSaved, isSaving, saveError, lastSaved, hasUnsavedEdits, handleCopy, isCopied, setIsEditing, editHeld = false, handleDelete, aiMenu }: Pick<EditorHeaderProps, 't' | 'isEditing' | 'justSaved' | 'isSaving' | 'saveError' | 'lastSaved' | 'hasUnsavedEdits' | 'handleCopy' | 'isCopied' | 'setIsEditing' | 'editHeld' | 'handleDelete' | 'aiMenu'>) {
     const [showMenu, setShowMenu] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
     const copyLabel = isCopied ? t('common.copied') : t('common.copy');
@@ -1571,7 +1590,8 @@ function EditorHeaderActions({ t, isEditing, justSaved, isSaving, saveError, las
 
             <button
                 onClick={() => setIsEditing(!isEditing)}
-                className={`p-2 rounded-lg transition-colors ${isEditing
+                disabled={editHeld}
+                className={`p-2 rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${isEditing
                     ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300'
                     : 'bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-900 dark:bg-gray-800 dark:text-gray-400 dark:hover:text-gray-100'
                     }`}

@@ -128,6 +128,66 @@ describe('CommentDialog', () => {
     expect(Object.fromEntries(Object.keys(localStorage).map(key => [key, localStorage.getItem(key)]))).toEqual(before);
   });
 
+  it('does not let a second equal retained copy become a recovery question after typing', async () => {
+    const first = draftKey('owner', 'c1', 'comment', 'first-opening');
+    const second = draftKey('owner', 'c1', 'comment', 'second-opening');
+    const sameAsShown = { text: stored.content, reference: null, title: '' };
+    saveDraft(first, sameAsShown);
+    saveDraft(second, sameAsShown);
+
+    render(<CommentDialog target={{ kind: 'edit', id: 'c1' }} place="Ис 40:31" onClose={jest.fn()} />);
+    await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument());
+    const editor = screen.getByLabelText('editor');
+    expect(editor).toHaveValue(stored.content);
+    await userEvent.type(editor, ' X');
+
+    expect(editor).not.toHaveAttribute('readonly');
+    expect(editor).toHaveValue(`${stored.content} X`);
+    await waitFor(() => {
+      const currentKey = Object.keys(window.localStorage).find(key => key.startsWith('draft:') && key !== first && key !== second
+        && (JSON.parse(window.localStorage.getItem(key) ?? '{}') as { value?: { text?: string } }).value?.text === `${stored.content} X`);
+      expect(currentKey).toBeDefined();
+    });
+  });
+
+  it('keeps an unselected equal physical source after saving the explicitly restored comment', async () => {
+    const other = draftKey('owner', 'c1', 'comment', 'equal-other');
+    const selected = draftKey('owner', 'c1', 'comment', 'equal-selected');
+    const value = { text: 'Restored equal words.', reference: null, title: '' };
+    localStorage.setItem(other, JSON.stringify({ value, savedAt: 10 }));
+    localStorage.setItem(selected, JSON.stringify({ value, savedAt: 20 }));
+    const otherRaw = localStorage.getItem(other);
+    const close = jest.fn();
+    render(<CommentDialog target={{ kind: 'edit', id: 'c1' }} place="Isa 40:31" onClose={close} />);
+    const offer = await screen.findByRole('status');
+    await userEvent.click(within(offer).getByRole('button', { name: 'unsavedDraft.restore' }));
+    expect(screen.getByLabelText('editor')).toHaveValue(value.text);
+    await userEvent.click(screen.getByRole('button', { name: 'common.done' }));
+    await waitFor(() => expect(close).toHaveBeenCalled());
+    expect(mockEngine.updateNote).toHaveBeenCalled();
+    expect(localStorage.getItem(selected)).toBeNull();
+    expect(localStorage.getItem(other)).toBe(otherRaw);
+  });
+
+  it('allows editing the chosen comment while another retained copy remains intact', async () => {
+    const other = draftKey('owner', 'c1', 'comment', 'other-opening');
+    const selected = draftKey('owner', 'c1', 'comment', 'selected-opening');
+    saveDraft(other, { text: 'Other retained words.', reference: null, title: '' });
+    saveDraft(selected, { text: 'Chosen retained words.', reference: null, title: '' });
+    localStorage.setItem(other, JSON.stringify({ ...JSON.parse(localStorage.getItem(other)!), savedAt: 10 }));
+    localStorage.setItem(selected, JSON.stringify({ ...JSON.parse(localStorage.getItem(selected)!), savedAt: 20 }));
+    const otherRaw = localStorage.getItem(other);
+    render(<CommentDialog target={{ kind: 'edit', id: 'c1' }} place="Isa 40:31" onClose={jest.fn()} />);
+    const offer = await screen.findByRole('status');
+    await userEvent.click(within(offer).getByRole('button', { name: 'unsavedDraft.restore' }));
+    const editor = screen.getByLabelText('editor');
+    expect(editor).toHaveValue('Chosen retained words.');
+    expect(editor).not.toHaveAttribute('readonly');
+    await userEvent.type(editor, ' X');
+    expect(editor).toHaveValue('Chosen retained words. X');
+    expect(localStorage.getItem(other)).toBe(otherRaw);
+  });
+
   it('writes a new comment on its verse, with no tags, as a comment', async () => {
     const onClose = jest.fn();
     render(<CommentDialog target={{ kind: 'new', reference }} place="Ис 40:31" context="а надеющиеся на Господа…" onClose={onClose} />);
@@ -278,6 +338,35 @@ describe('CommentDialog', () => {
     expect(screen.getByLabelText('editor')).toHaveValue('Ждать — не бездействие.');
     expect(screen.getByLabelText('editor')).not.toHaveAttribute('readonly');
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+
+  // Words on the device equal to the comment's are no question. Compared with the words being typed, they turned into an
+  // offer on the first keystroke and held the window (Codex review, 2026-10-29).
+  it('takes words on the device equal to the comment as settled: typing opens no offer and keeps the editor', async () => {
+    const first = render(<CommentDialog target={{ kind: 'edit', id: 'c1' }} place="Ис 40:31" onClose={jest.fn()} />);
+    await userEvent.type(screen.getByLabelText('editor'), ' Моё.');
+    first.unmount();
+    // The save landed; the device's copy was not yet retired.
+    mockEngine.notes = [{ ...stored, content: 'Сила приходит в ожидании. Моё.' }];
+    render(<CommentDialog target={{ kind: 'edit', id: 'c1' }} place="Ис 40:31" onClose={jest.fn()} />);
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText('editor'), ' Ещё.');
+
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('editor')).not.toHaveAttribute('readonly');
+    expect(screen.getByLabelText('editor')).toHaveValue('Сила приходит в ожидании. Моё. Ещё.');
+  });
+
+  it('leaves no copy behind when words on the device equal to the comment are closed untouched', async () => {
+    const first = render(<CommentDialog target={{ kind: 'edit', id: 'c1' }} place="Ис 40:31" onClose={jest.fn()} />);
+    await userEvent.type(screen.getByLabelText('editor'), ' Моё.');
+    first.unmount();
+    mockEngine.notes = [{ ...stored, content: 'Сила приходит в ожидании. Моё.' }];
+    const again = render(<CommentDialog target={{ kind: 'edit', id: 'c1' }} place="Ис 40:31" onClose={jest.fn()} />);
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    // Left behind, the copy would come back as an offer of old words once the comment changed elsewhere.
+    again.unmount();
+    expect(keptDrafts()).toEqual([]);
   });
 
   it('brings words written away from the Bible back with the place they were written to', async () => {

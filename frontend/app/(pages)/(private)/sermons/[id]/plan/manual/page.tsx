@@ -10,6 +10,7 @@ import { ProgressSidebar } from "@/components/plan/ProgressSidebar";
 import { RecordUnavailable } from "@/components/RecordUnavailable";
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { DataDocumentProvider, useDataEngine } from '@/data-engine/react.client';
+import { useDraftQuestion } from "@/hooks/useDurableDraft";
 import { useRouteId } from "@/hooks/useRouteId";
 import { sermonLanguage } from "@/utils/documentLanguage";
 import { legacySectionText, liveNodeIds, readPlanText, renderPlanWithFallback } from "@/utils/planText";
@@ -338,6 +339,12 @@ function ManualConspectusContent({ source, readOnly: copyReadOnly = false }: { s
     frozen: copyReadOnly,
     durableState: source.document.state,
   });
+  /**
+   * Resolve the initial recovery question before writing. Remaining independent copies
+   * stay available after that choice. A copy for reading never becomes writable.
+   */
+  const { held: draftHeld, answer: answerDraftQuestion } = useDraftQuestion(JSON.stringify([owner, sermonId]), Boolean(draft.recovered));
+  const locked = readOnly || draftHeld;
   /** Unsaved text whose card is gone — typed here, or left by an earlier session — kept in sight. */
   const orphans = mergeOrphans(
     orphanedCells(conspectus.contentByNodeId, conspectus.modifiedNodeIds, livePlanNodes),
@@ -505,8 +512,9 @@ function ManualConspectusContent({ source, readOnly: copyReadOnly = false }: { s
           onRestore={() => {
             conspectus.restoreCells(draft.recovered ?? {});
             draft.accept();
+            answerDraftQuestion();
           }}
-          onDiscard={draft.discard}
+          onDiscard={() => { draft.discard(); answerDraftQuestion(); }}
         />
       )}
 
@@ -521,7 +529,7 @@ function ManualConspectusContent({ source, readOnly: copyReadOnly = false }: { s
       />
 
       {/* Generating from the note writes the plan, so a copy for reading keeps only the note's reminders. */}
-      <NotePlanWorkspace key={`${sermon.id}:${noteMode}`} enabled={noteMode && !readOnly} sermon={sermon} conspectus={conspectus}>
+      <NotePlanWorkspace key={`${sermon.id}:${noteMode}`} enabled={noteMode && !locked} sermon={sermon} conspectus={conspectus}>
       {SECTIONS.map((section) => {
         const points = sermon.outline?.[section] ?? [];
         const tone = SECTION_TONE_CLASSES[section];
@@ -548,12 +556,12 @@ function ManualConspectusContent({ source, readOnly: copyReadOnly = false }: { s
                   conspectus={conspectus}
                   text={shownText}
                   noteMode={noteMode}
-                  readOnly={readOnly}
+                  readOnly={locked}
                 />
               ))}
             </div>
 
-            {!readOnly && <AddNodeButton
+            {!locked && <AddNodeButton
               className="mt-3"
               label={t("plan.addPoint")}
               placeholder={t("plan.addPointPlaceholder")}

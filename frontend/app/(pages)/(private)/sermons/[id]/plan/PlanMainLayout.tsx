@@ -195,8 +195,13 @@ interface PlanMainLayoutContextValue {
   setGeneratedContent: React.Dispatch<React.SetStateAction<Record<string, string>>>;
   setModifiedContent: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
   onSwitchToStructure: () => void;
-  /** A copy for reading: every card shows its text and offers no editor, save or generation. */
+  /**
+   * Nothing on the plan can be changed now — a copy for reading, or unsent text from last time waiting for an
+   * answer: every card shows its text and offers no editor, save or generation.
+   */
   readOnly: boolean;
+  /** A copy for reading: an old sermon's section text is shown where the person reads. */
+  onCopy: boolean;
 }
 
 const PlanMainLayoutContext = createContext<PlanMainLayoutContextValue | null>(null);
@@ -571,12 +576,13 @@ const PlanSectionBlock = ({
     generatingIds,
     onSwitchToStructure,
     readOnly,
+    onCopy,
     sermon,
   } = usePlanMainLayoutContext();
   const hasGeneratingPoints = Object.values(generatingIds).some(Boolean);
   // An old sermon keeps a section's text whole, outside the cards; on a copy it is shown here,
   // where the person reads (the assembled plan shows it by the same rule).
-  const legacyText = readOnly ? legacySectionText(sermon, sectionKey, readPlanText(sermon)) : "";
+  const legacyText = onCopy ? legacySectionText(sermon, sectionKey, readPlanText(sermon)) : "";
 
   return (
     <>
@@ -649,6 +655,12 @@ export interface PlanMainLayoutProps {
   onSwitchToStructure: () => void;
   /** A copy for reading (device storage silent): the plan is shown, nothing on it can be changed. */
   readOnly?: boolean;
+  /**
+   * Unsent text from last time is offered back and not yet answered: the plan is shown, and nothing on it writes
+   * until the person answers — typing into an offered card stored over the words on offer
+   * (BUG-20261028-typing-over-draft-offer).
+   */
+  held?: boolean;
 }
 
 export default function PlanMainLayout({
@@ -683,7 +695,9 @@ export default function PlanMainLayout({
   setModifiedContent,
   onSwitchToStructure,
   readOnly = false,
+  held = false,
 }: PlanMainLayoutProps) {
+  const locked = readOnly || held;
   const introOutline = sermon.outline?.introduction;
   const mainOutline = sermon.outline?.main;
   const conclusionOutline = sermon.outline?.conclusion;
@@ -713,7 +727,8 @@ export default function PlanMainLayout({
     setGeneratedContent,
     setModifiedContent,
     onSwitchToStructure,
-    readOnly,
+    readOnly: locked,
+    onCopy: readOnly,
   };
 
   return (
@@ -755,7 +770,7 @@ export default function PlanMainLayout({
             />
           </div>
 
-          {modalSermonPointId && !readOnly && (() => {
+          {modalSermonPointId && !locked && (() => {
             const outlinePoint = findSermonPointById(modalSermonPointId);
             if (!outlinePoint) return null;
             return (

@@ -13,7 +13,7 @@ import FormField, { FORM_INPUT_CLASS } from '@/components/ui/FormField';
 import { RichMarkdownEditor } from '@/components/ui/RichMarkdownEditor';
 import { UnsavedDraftOffer } from '@/components/UnsavedDraftOffer';
 import { useConfirm, useDiscardQuestion } from '@/hooks/useConfirm';
-import { useDurableDraft } from '@/hooks/useDurableDraft';
+import { useDraftQuestion, useDurableDraft, useSettleShownDraft } from '@/hooks/useDurableDraft';
 import { useStudyNotesEngine } from '@/hooks/useStudyNotesEngine';
 import { isStaleWriteError } from '@/services/conflictSafeUpdate.client';
 import { NOTE_AGGREGATE } from '@/services/studies.service';
@@ -130,6 +130,19 @@ export function CommentWayBar({ text }: { text: string }) {
  * the words are kept on the device (`useDurableDraft`): a reload, the browser's Back or a phone closing the tab does
  * not lose them, and the window opened there again offers them back.
  */
+/** The words on the device still to be answered, or null; words equal to the window's are settled as taken. */
+function useWaitingDraft(
+  recovered: CommentDraft | null,
+  shown: { text: string | null; written: string; title: string; placeWaits: boolean },
+  accept: () => void,
+  sourceKey: string | null,
+): CommentDraft | null {
+  const offered = shown.text !== null && typeof recovered?.text === 'string' ? recovered : null;
+  const differs = offered !== null && (offered.text !== shown.written || (offered.title ?? '') !== shown.title || shown.placeWaits);
+  useSettleShownDraft(offered !== null && !differs, accept, sourceKey);
+  return differs ? offered : null;
+}
+
 export function CommentDialog({ target, place, context, bible, placeOf, placePicker, restorePlace, onErased, onClose }: {
   target: CommentTarget;
   /** "Ис 40:31", "Ис 40–41": the place the comment is written to; empty while a new one's place is not chosen. */
@@ -209,11 +222,10 @@ export function CommentDialog({ target, place, context, bible, placeOf, placePic
   const recovered = draft.recovered;
   // A place it was moving to waits too.
   const placeWaits = where.waits(recovered?.reference);
-  const waiting = text !== null && typeof recovered?.text === 'string'
-    && (recovered.text !== written || (recovered.title ?? '') !== title || placeWaits) ? recovered : null;
-  // Until the person says what becomes of the words waiting, the editor holds still: typing would write over the only
-  // copy of them on the device while the offer still shows them (Codex review, 2026-10-28).
-  const deciding = waiting !== null;
+  const waiting = useWaitingDraft(recovered, { text, written, title, placeWaits }, draft.settleRecovered, draft.recoveredKey);
+  // Resolve the initial recovery question before writing; other independent copies
+  // remain available after this opening's explicit choice without locking it again.
+  const { held: deciding, answer: answerDraftQuestion } = useDraftQuestion(JSON.stringify([uid, writerId]), waiting !== null);
   const restore = () => {
     if (!waiting) return;
     setText(waiting.text);
@@ -224,6 +236,7 @@ export function CommentDialog({ target, place, context, bible, placeOf, placePic
     }
     if (waiting.reference) where.bringBack(waiting.reference);
     draft.acceptRecovered();
+    answerDraftQuestion();
   };
   const { sentences, isNote } = measureComment(written);
   // Nothing to read: no words at all — an emptied list item or quote leaves only its mark («-», «>»).
@@ -377,7 +390,7 @@ export function CommentDialog({ target, place, context, bible, placeOf, placePic
               </>
             )}
             onRestore={restore}
-            onDiscard={draft.discardRecovered}
+            onDiscard={() => { draft.discardRecovered(); answerDraftQuestion(); }}
           />
         ) : null}
         <CommentPlaceShown where={where} place={place} busy={saving} deciding={deciding} />

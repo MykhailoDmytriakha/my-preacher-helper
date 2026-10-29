@@ -52,6 +52,8 @@ export interface UseDurableDraftResult<T> {
   recoveredKey: string | null;
   recoveries: readonly DurableDraftCopy<T>[];
   selectRecovered: (key: string) => void;
+  /** Hide equal shown words; only an equal complete baseline proves them settled. */
+  settleRecovered: () => void;
   /** The user took the recovered text — hide the offer, KEEP the stored copy. */
   acceptRecovered: () => void;
   /** The user chose to keep the server version — forget the draft. */
@@ -60,6 +62,30 @@ export interface UseDurableDraftResult<T> {
   markCaptured: (captured: T, targetDocId: string) => void;
   /** Call after the server accepted `confirmed`; retires that draft only. */
   markSaved: (confirmed: T) => void;
+}
+
+/**
+ * Equal shown words need no question. Hiding that question does not adopt an
+ * unconfirmed independent source; the hook checks its complete baseline separately.
+ * Follow each physical key so another equal copy cannot relock the first keystroke.
+ */
+export function useSettleShownDraft(shown: boolean, settleRecovered: () => void, sourceKey?: string | null): void {
+  useEffect(() => {
+    if (shown) settleRecovered();
+  }, [shown, settleRecovered, sourceKey]);
+}
+
+/** The initial recovery choice belongs to this opening, not every remaining source.
+ * Answering never removes a copy or proves that its words reached the server.
+ */
+export function useDraftQuestion(identity: string, waiting: boolean): { held: boolean; answer: () => void } {
+  const [question, setQuestion] = useState(() => ({ identity, answered: false, opening: {} }));
+  if (question.identity !== identity) setQuestion({ identity, answered: false, opening: {} });
+  const opening = question.opening;
+  const answer = useCallback(() => {
+    setQuestion(current => current.opening === opening && !current.answered ? { ...current, answered: true } : current);
+  }, [opening]);
+  return { held: waiting && (question.identity !== identity || !question.answered), answer };
 }
 
 /**
@@ -268,20 +294,25 @@ export function useDurableDraft<T>({
     };
   }, []);
 
-  /**
-   * The user took the recovered text into the editor. Hide the offer, but KEEP the
-   * stored copy: that text is still unconfirmed, and deleting it here leaves a
-   * window — between the click and the next write — where the only durable copy is
-   * gone. `markSaved` retires it once the server accepts it.
-   */
-  const acceptRecovered = useCallback(() => {
+  /** Hide a shown offer; only a complete baseline match permits settled-copy cleanup. */
+  const settleRecovered = useCallback(() => {
     const copy = selectedRef.current;
     if (!copy) return;
     const identity = recoveryKeyRef.current;
-    adoptedRef.current.set(copy.key, { identity, copy });
+    // Preserve the existing completed-copy cleanup only with the entire baseline,
+    // never merely another restored/typed value that happens to have equal words.
+    if (serializeContent(copy.value) === confirmedRef.current) adoptedRef.current.set(copy.key, { identity, copy });
     setRecovery(current => current.identity !== identity ? current : { ...current,
       copies: current.copies.filter(candidate => candidate.key !== copy.key || serializeContent(candidate.value) !== serializeContent(copy.value)) });
   }, []);
+
+  /** Explicitly adopt this physical source, retaining it until exact retirement. */
+  const acceptRecovered = useCallback(() => {
+    const copy = selectedRef.current;
+    if (!copy) return;
+    adoptedRef.current.set(copy.key, { identity: recoveryKeyRef.current, copy });
+    settleRecovered();
+  }, [settleRecovered]);
 
   /**
    * The user rejected the recovered text — this is the one path that deletes it.
@@ -335,5 +366,5 @@ export function useDurableDraft<T>({
     if (ownKey) clearDraftIfMatches(ownKey, confirmed);
   }, [key, recoveryKey, retireKnownCopies]);
 
-  return { recovered, recoveredKey, recoveries, selectRecovered, acceptRecovered, discardRecovered, markCaptured, markSaved };
+  return { recovered, recoveredKey, recoveries, selectRecovered, settleRecovered, acceptRecovered, discardRecovered, markCaptured, markSaved };
 }

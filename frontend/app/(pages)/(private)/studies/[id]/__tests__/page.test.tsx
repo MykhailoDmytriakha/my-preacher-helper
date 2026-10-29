@@ -32,6 +32,20 @@ beforeEach(() => {
   Object.defineProperty(globalThis, 'indexedDB', { configurable: true, value: {} });
 });
 
+function enterNoteEditing(expectedValue: string) {
+    const current = screen.queryByTestId('rich-markdown-editor') as HTMLTextAreaElement | null;
+    if (current) {
+        expect(current).toHaveValue(expectedValue);
+        return current;
+    }
+    const editButton = screen.getByTitle('common.edit');
+    expect(editButton).toBeEnabled();
+    fireEvent.click(editButton);
+    const editor = screen.getByTestId('rich-markdown-editor') as HTMLTextAreaElement;
+    expect(editor).toHaveValue(expectedValue);
+    return editor;
+}
+
 // Mock next/navigation
 jest.mock('next/navigation', () => ({
     useRouter: jest.fn(),
@@ -172,6 +186,9 @@ const acceptedNoteDelivery = () => new Map(mockNotes.map(note => [note.id, { pen
 describe('StudyNoteEditorPage Pagination', () => {
     beforeEach(() => {
         jest.clearAllMocks();
+        // Each test opens on a clean device: words typed in an earlier test were left in its storage, and the page
+        // offers them back as unsaved text — an offer that, unanswered, holds the page from writing.
+        window.localStorage.clear();
         (useRouter as jest.Mock).mockReturnValue(mockRouter);
         (useParams as jest.Mock).mockReturnValue(mockParams);
         (useSearchParams as jest.Mock).mockReturnValue(mockSearchParams);
@@ -230,17 +247,20 @@ describe('StudyNoteEditorPage Pagination', () => {
         localStorage.setItem(secondKey, JSON.stringify({ value: second, savedAt: 2 }));
         const view = render(<StudyNoteEditorPage />);
         try {
-            fireEvent.click(screen.getByTitle('common.edit'));
+            // Recovery is a question while editing is held. Read the offer before choosing a physical copy.
+            expect(screen.getByRole('status')).toHaveTextContent(/Draft [AB] words/);
             const choices = screen.getByRole('combobox', { name: 'unsavedDraft.chooseCopy' });
             expect(within(choices).getByRole('option', { name: /Copy A/ })).toBeInTheDocument();
             expect(within(choices).getByRole('option', { name: /Copy B/ })).toBeInTheDocument();
             fireEvent.change(choices, { target: { value: secondKey } });
             fireEvent.click(screen.getByRole('button', { name: 'unsavedDraft.restore' }));
-            expect(screen.getByTestId('rich-markdown-editor')).toHaveValue('Draft B words');
+            // A still exists byte-for-byte as a distinct physical copy. If this selected restore
+            // cannot enter B while A remains offered, that is the product regression under test.
+            enterNoteEditing('Draft B words');
             expect(readDraft(firstKey)?.value).toEqual(first);
             act(() => { jest.advanceTimersByTime(300); });
             fireEvent.click(screen.getByRole('button', { name: 'unsavedDraft.restore' }));
-            expect(screen.getByTestId('rich-markdown-editor')).toHaveValue('Draft A words');
+            enterNoteEditing('Draft A words');
             expect(readDraft(secondKey)?.value).toEqual(second);
             expect(findDraftCopies('user-2', 'note-1', 'note')).toEqual([]);
         } finally { view.unmount(); localStorage.clear(); jest.clearAllTimers(); jest.useRealTimers(); }
@@ -262,11 +282,12 @@ describe('StudyNoteEditorPage Pagination', () => {
         (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', notes: [], loading: false, confirmedCreationIds: new Set(), createNote, updateNote: jest.fn(), deleteNote: jest.fn() });
         const view = render(<StudyNoteEditorPage />);
         try {
-            expect(screen.getByTestId('rich-markdown-editor')).toHaveValue('');
+            expect(screen.getByRole('status')).toHaveTextContent(scoped.content);
+            expect(screen.queryByTestId('rich-markdown-editor')).not.toBeInTheDocument();
             const choices = screen.getByRole('combobox', { name: 'unsavedDraft.chooseCopy' });
             expect(choices).toHaveValue(scopedKey);
             fireEvent.click(screen.getByRole('button', { name: 'unsavedDraft.restore' }));
-            expect(screen.getByTestId('rich-markdown-editor')).toHaveValue(scoped.content);
+            enterNoteEditing(scoped.content);
             expect(screen.getByPlaceholderText('studiesWorkspace.titlePlaceholder')).toHaveValue(scoped.title);
             expect(readDraft(legacyKey)?.value).toEqual(legacy);
             await act(async () => { jest.advanceTimersByTime(1800); });
@@ -310,9 +331,9 @@ describe('StudyNoteEditorPage Pagination', () => {
         const view = render(<StudyNoteEditorPage />);
         try {
             expect(readDraft(source)?.value).toEqual(copy);
-            fireEvent.click(screen.getByTitle('common.edit'));
+            expect(screen.getByRole('status')).toHaveTextContent(copy.content);
             fireEvent.click(screen.getByRole('button', { name: 'unsavedDraft.restore' }));
-            expect(screen.getByTestId('rich-markdown-editor')).toHaveValue(copy.content);
+            enterNoteEditing(copy.content);
             expect(readDraft(source)?.value).toEqual(copy);
         } finally { view.unmount(); localStorage.clear(); jest.clearAllTimers(); jest.useRealTimers(); }
     });
@@ -526,9 +547,10 @@ describe('StudyNoteEditorPage Pagination', () => {
         try {
             act(() => { jest.advanceTimersByTime(400); });
             expect(readDraft(key)?.value).toEqual(kept);
-            expect(screen.getByTestId('rich-markdown-editor')).toHaveValue('');
+            expect(screen.getByRole('status')).toHaveTextContent('Chosen words');
+            expect(screen.queryByTestId('rich-markdown-editor')).not.toBeInTheDocument();
             fireEvent.click(screen.getByRole('button', { name: 'unsavedDraft.restore' }));
-            expect(screen.getByTestId('rich-markdown-editor')).toHaveValue('Chosen words');
+            enterNoteEditing('Chosen words');
             expect(screen.getByPlaceholderText('studiesWorkspace.titlePlaceholder')).toHaveValue('Chosen title');
             await act(async () => { jest.advanceTimersByTime(1600); });
             expect(createNote).toHaveBeenCalledTimes(1);
@@ -547,17 +569,20 @@ describe('StudyNoteEditorPage Pagination', () => {
         (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', notes: [], loading: false, createNote, updateNote: jest.fn(), deleteNote: jest.fn() });
         const view = render(<StudyNoteEditorPage />);
         try {
+            expect(screen.getByRole('status')).toHaveTextContent('Only A');
             fireEvent.click(screen.getByRole('button', { name: 'unsavedDraft.restore' }));
-            fireEvent.change(screen.getByTestId('rich-markdown-editor'), { target: { value: 'Later A' } });
+            const editor = enterNoteEditing('Only A');
+            fireEvent.change(editor, { target: { value: 'Later A' } });
             (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams('draft=new~B'));
             view.rerender(<StudyNoteEditorPage />);
-            expect(screen.getByTestId('rich-markdown-editor')).toHaveValue('');
+            expect(screen.queryByTestId('rich-markdown-editor')).not.toBeInTheDocument();
+            expect(screen.getByRole('status')).toHaveTextContent('Only B');
             act(() => { jest.advanceTimersByTime(400); });
             expect(findDraftCopies('user-1', 'new~A', 'note').map(copy => copy.value)).toEqual(expect.arrayContaining([value('Only A'), value('Later A')]));
             expect(readDraft(draftKey('user-1', 'new~A', 'note'))?.value).toEqual(value('Only A'));
             expect(readDraft(draftKey('user-1', 'new~B', 'note'))?.value).toEqual(value('Only B'));
             fireEvent.click(screen.getByRole('button', { name: 'unsavedDraft.restore' }));
-            expect(screen.getByTestId('rich-markdown-editor')).toHaveValue('Only B');
+            enterNoteEditing('Only B');
             expect(createNote).not.toHaveBeenCalled();
         } finally { view.unmount(); localStorage.clear(); jest.clearAllTimers(); jest.useRealTimers(); }
     });
@@ -1258,6 +1283,30 @@ describe('StudyNoteEditorPage Pagination', () => {
         } finally { second.unmount(); localStorage.clear(); }
     });
 
+    it('keeps an authored variant held after automatically adopting another audio-only copy', async () => {
+        localStorage.clear();
+        const docId = 'new~audio-with-other-words';
+        const authoredKey = draftKey('user-1', docId, 'note', 'authored-opening');
+        const audioKey = draftKey('user-1', docId, 'note', 'audio-opening');
+        const common = { title: '', tags: [], scriptureRefs: [], type: 'note' };
+        localStorage.setItem(authoredKey, JSON.stringify({ savedAt: 10, creationTargetId: 'audio-with-other-words', value: { ...common, content: 'Other authored words' } }));
+        localStorage.setItem(audioKey, JSON.stringify({ savedAt: 20, creationTargetId: 'audio-with-other-words', value: { ...common, content: '', recordingSourceIds: ['audio-only-source'] } }));
+        const original = localStorage.getItem(authoredKey);
+        (useParams as jest.Mock).mockReturnValue({ id: 'new' });
+        window.history.replaceState(null, '', `/studies/new?draft=${docId}&draftOwner=user-1`);
+        (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams(window.location.search));
+        const createNote = jest.fn();
+        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', notes: [], loading: false, createNote, updateNote: jest.fn(), deleteNote: jest.fn() });
+        const view = render(<StudyNoteEditorPage />);
+        try {
+            expect(await screen.findByRole('button', { name: 'unsavedDraft.restore' })).toBeVisible();
+            expect(screen.getAllByText('Other authored words').length).toBeGreaterThan(0);
+            expect(screen.queryByTestId('rich-markdown-editor')).not.toBeInTheDocument();
+            expect(localStorage.getItem(authoredKey)).toBe(original);
+            expect(createNote).not.toHaveBeenCalled();
+        } finally { view.unmount(); localStorage.clear(); }
+    });
+
     it('keeps a raw-only question draft explicit so restoring preserves its chosen type', async () => {
         localStorage.clear();
         localStorage.setItem(draftKey('user-1', 'new~audio-question', 'note'), JSON.stringify({ savedAt: 1, creationTargetId: 'audio-question',
@@ -1474,9 +1523,9 @@ describe('StudyNoteEditorPage Pagination', () => {
             createNote: jest.fn(), updateNote, deleteNote: jest.fn() }));
         const view = render(<StudyNoteEditorPage />);
         try {
-            fireEvent.click(screen.getByTitle('common.edit'));
+            expect(screen.getByRole('status')).toHaveTextContent('Recovered older words');
             fireEvent.click(screen.getByRole('button', { name: 'unsavedDraft.restore' }));
-            expect(screen.getByTestId('rich-markdown-editor')).toHaveValue('Recovered older words');
+            enterNoteEditing('Recovered older words');
             await act(async () => { await jest.advanceTimersByTimeAsync(2500); });
             expect(updateNote).toHaveBeenCalledTimes(1);
             expect(stored.content).toBe('Recovered older words');
@@ -1507,8 +1556,9 @@ describe('StudyNoteEditorPage Pagination', () => {
         expect(updateNote.mock.calls[0][0].updates.dictationSourceIds).toEqual([expect.any(String)]);
         first.unmount();
         const restored = render(<StudyNoteEditorPage />);
-        fireEvent.click(screen.getByTitle('common.edit'));
+        expect(await screen.findByRole('status')).toHaveTextContent('One durable voice fragment');
         fireEvent.click(await screen.findByRole('button', { name: 'unsavedDraft.restore' }));
+        enterNoteEditing(expected);
         await waitFor(() => expect(screen.getByPlaceholderText('studiesWorkspace.contentPlaceholder')).toHaveValue(expected));
         fireEvent.click(await screen.findByRole('button', { name: 'audio.draft.resend' }));
         await waitFor(() => expect(screen.queryByRole('button', { name: 'audio.draft.resend' })).not.toBeInTheDocument());
@@ -1821,6 +1871,9 @@ describe('StudyNoteEditorPage Pagination', () => {
 describe('StudyNoteEditorPage — where the outline and properties are reachable from', () => {
     beforeEach(() => {
         jest.clearAllMocks();
+        // Each test opens on a clean device: words typed in an earlier test were left in its storage, and the page
+        // offers them back as unsaved text — an offer that, unanswered, holds the page from writing.
+        window.localStorage.clear();
         (useRouter as jest.Mock).mockReturnValue(mockRouter);
         (useParams as jest.Mock).mockReturnValue(mockParams);
         (useSearchParams as jest.Mock).mockReturnValue(mockSearchParams);

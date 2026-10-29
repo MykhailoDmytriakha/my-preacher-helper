@@ -21,7 +21,7 @@ export function NoteDraftRecovery({ draft, copies, selectedKey, onSelect, onRest
 }) {
   const { t } = useTranslation();
   const selectId = useId();
-  return <section className="mb-2 space-y-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm dark:border-amber-500/40 dark:bg-amber-500/10">
+  return <section role="status" className="mb-2 space-y-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm dark:border-amber-500/40 dark:bg-amber-500/10">
     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <div className="min-w-0">
         <p className="font-medium text-amber-900 dark:text-amber-200">{t('unsavedDraft.title')}</p>
@@ -44,8 +44,8 @@ export function NoteDraftRecovery({ draft, copies, selectedKey, onSelect, onRest
 
 function DraftPreview({ draft }: { draft: NoteDraftPayload }) {
   const { t } = useTranslation();
-  const [open, setOpen] = useState(false);
-  return <details onToggle={event => setOpen(event.currentTarget.open)}>
+  const [open, setOpen] = useState(true);
+  return <details open={open} onToggle={event => setOpen(event.currentTarget.open)}>
     <summary className="cursor-pointer font-medium text-amber-900 dark:text-amber-200">{t('unsavedDraft.preview')}</summary>
     {open && <div className="mt-3"><RetainedNoteDraft draft={draft} /></div>}
   </details>;
