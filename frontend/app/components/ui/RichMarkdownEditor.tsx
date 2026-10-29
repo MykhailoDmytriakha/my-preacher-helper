@@ -41,8 +41,10 @@ export function RichMarkdownEditor({
         autofocus: autoFocus ? 'end' : false,
         editorProps: {
             attributes: {
+                // A table scrolls inside its own box, as it does when the note is read (`MarkdownDisplay`): its longest
+                // word would otherwise widen the page on a phone. A cell holds one paragraph, without the prose margins.
                 class:
-                    'prose prose-sm desktop:prose-base dark:prose-invert max-w-none focus:outline-none flex-1 min-h-0 w-full p-3 rounded-b-xl border border-t-0 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500',
+                    'prose prose-sm desktop:prose-base dark:prose-invert max-w-none focus:outline-none flex-1 min-h-0 w-full p-3 rounded-b-xl border border-t-0 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500 [&_table]:block [&_table]:max-w-full [&_table]:overflow-x-auto [&_td>p]:my-0 [&_th>p]:my-0',
             },
         },
         onUpdate: ({ editor }) => {

@@ -143,6 +143,9 @@ const mockNotes: StudyNote[] = [
 describe('StudyNoteEditorPage Pagination', () => {
     beforeEach(() => {
         jest.clearAllMocks();
+        // Each test opens on a clean device: words typed in an earlier test were left in its storage, and the page
+        // offers them back as unsaved text — an offer that, unanswered, holds the page from writing.
+        window.localStorage.clear();
         (useRouter as jest.Mock).mockReturnValue(mockRouter);
         (useParams as jest.Mock).mockReturnValue(mockParams);
         (useSearchParams as jest.Mock).mockReturnValue(mockSearchParams);
@@ -870,6 +873,9 @@ describe('StudyNoteEditorPage Pagination', () => {
 describe('StudyNoteEditorPage — where the outline and properties are reachable from', () => {
     beforeEach(() => {
         jest.clearAllMocks();
+        // Each test opens on a clean device: words typed in an earlier test were left in its storage, and the page
+        // offers them back as unsaved text — an offer that, unanswered, holds the page from writing.
+        window.localStorage.clear();
         (useRouter as jest.Mock).mockReturnValue(mockRouter);
         (useParams as jest.Mock).mockReturnValue(mockParams);
         (useSearchParams as jest.Mock).mockReturnValue(mockSearchParams);

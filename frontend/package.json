@@ -40,6 +40,7 @@
     "@tanstack/react-query-persist-client": "^5.90.19",
     "@tiptap/extension-code-block": "^3.20.0",
     "@tiptap/extension-placeholder": "^3.20.0",
+    "@tiptap/extension-table": "^3.20.0",
     "@tiptap/pm": "^3.20.0",
     "@tiptap/react": "^3.20.0",
     "@tiptap/starter-kit": "^3.20.0",

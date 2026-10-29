@@ -1216,6 +1216,7 @@ function PlanPageContent({ source, readOnly = false, wayIn }: { source: SermonSo
         setModifiedContent={setModifiedContent}
         onSwitchToStructure={handleSwitchToStructure}
         readOnly={readOnly}
+        held={Boolean(planDraft.recovered) && !readOnly}
       />
     </div>
     </ScriptureLinksInWindow>

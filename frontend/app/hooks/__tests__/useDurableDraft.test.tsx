@@ -354,6 +354,55 @@ describe('a recovered draft must survive until the user decides', () => {
 
     expect(readDraft<string>(KEY)?.value).toBe('unconfirmed text from the other tab');
   });
+
+  /*
+   * Words typed are stored however the slot was left: retired by a save, or filled by another tab. These hold for the
+   * open BUG-20261029-older-tab-close-overwrites-newer-draft, whose fix must not skip a write of new words.
+   */
+  // A save retires the stored copy; the same words typed back later are new and need a copy again (Codex review, 2026-10-29).
+  it('stores words typed back after a save retired their copy, when the tab closes before they settle', () => {
+    const editor = render('server text');
+    editor.rerender({ value: 'words A' });
+    act(() => { jest.advanceTimersByTime(300); });
+    act(() => { editor.result.current.markSaved('words A'); });
+    expect(readDraft(KEY)).toBeNull();
+    // The editor follows the server's next words, then the person types A back.
+    editor.rerender({ value: 'words B' });
+    act(() => { editor.result.current.markSaved('words B'); });
+    editor.rerender({ value: 'words A' });
+
+    act(() => { editor.unmount(); });
+
+    expect(readDraft<string>(KEY)?.value).toBe('words A');
+  });
+
+  it('stores words typed back after a save, though another tab\'s words fill the slot meanwhile', () => {
+    const editor = render('server text');
+    editor.rerender({ value: 'words A' });
+    act(() => { jest.advanceTimersByTime(300); });
+    act(() => { editor.result.current.markSaved('words A'); });
+    editor.rerender({ value: 'words B' });
+    act(() => { editor.result.current.markSaved('words B'); });
+    saveDraft(KEY, 'words C from another tab');
+    // Typing A back is this person's newest action.
+    editor.rerender({ value: 'words A' });
+
+    act(() => { editor.unmount(); });
+
+    expect(readDraft<string>(KEY)?.value).toBe('words A');
+  });
+
+  it('still stores keystrokes this tab typed after the other tab, when it closes before they settle', () => {
+    const older = render('server text');
+    const newer = render('server text');
+    newer.rerender({ value: 'typed in the newer tab' });
+    act(() => { jest.advanceTimersByTime(300); });
+    older.rerender({ value: 'typed after it in the older tab' });
+
+    act(() => { older.unmount(); });
+
+    expect(readDraft<string>(KEY)?.value).toBe('typed after it in the older tab');
+  });
 });
 
 // The offline shell keeps the note editor mounted without a sign-in guard, so the account

@@ -209,6 +209,35 @@ describe('CommentDialog', () => {
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
   });
 
+  // Words on the device equal to the comment's are no question. Compared with the words being typed, they turned into an
+  // offer on the first keystroke and held the window (Codex review, 2026-10-29).
+  it('takes words on the device equal to the comment as settled: typing opens no offer and keeps the editor', async () => {
+    const first = render(<CommentDialog target={{ kind: 'edit', id: 'c1' }} place="Ис 40:31" onClose={jest.fn()} />);
+    await userEvent.type(screen.getByLabelText('editor'), ' Моё.');
+    first.unmount();
+    // The save landed; the device's copy was not yet retired.
+    mockEngine.notes = [{ ...stored, content: 'Сила приходит в ожидании. Моё.' }];
+    render(<CommentDialog target={{ kind: 'edit', id: 'c1' }} place="Ис 40:31" onClose={jest.fn()} />);
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText('editor'), ' Ещё.');
+
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('editor')).not.toHaveAttribute('readonly');
+    expect(screen.getByLabelText('editor')).toHaveValue('Сила приходит в ожидании. Моё. Ещё.');
+  });
+
+  it('leaves no copy behind when words on the device equal to the comment are closed untouched', async () => {
+    const first = render(<CommentDialog target={{ kind: 'edit', id: 'c1' }} place="Ис 40:31" onClose={jest.fn()} />);
+    await userEvent.type(screen.getByLabelText('editor'), ' Моё.');
+    first.unmount();
+    mockEngine.notes = [{ ...stored, content: 'Сила приходит в ожидании. Моё.' }];
+    const again = render(<CommentDialog target={{ kind: 'edit', id: 'c1' }} place="Ис 40:31" onClose={jest.fn()} />);
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    // Left behind, the copy would come back as an offer of old words once the comment changed elsewhere.
+    again.unmount();
+    expect(keptDrafts()).toEqual([]);
+  });
+
   it('brings words written away from the Bible back with the place they were written to', async () => {
     const picker = () => <p>picker</p>;
     const first = render(<CommentDialog target={{ kind: 'new', reference }} place="Ис 40:31" placePicker={picker} onClose={jest.fn()} />);

@@ -608,3 +608,45 @@ describe('a device draft while a plan is preached from a copy', () => {
     expect(JSON.parse(window.localStorage.getItem(key)!).value).toBe('Unsent local words');
   });
 });
+
+/**
+ * BUG-20261028-typing-over-draft-offer: plan text left unsent last time is offered back, and the offer is a question
+ * answered before anything is written over it. Typing into an offered card used to store the new words under that
+ * card's draft 250 ms later — the offer still showed the old words, and a reload had nothing left to bring back.
+ */
+describe('a plan screen while unsent text from last time waits for an answer', () => {
+  const key = 'draft:v1:user-1:sermon-1:plan:p1';
+  const stored = () => JSON.parse(localStorage.getItem(key)!).value;
+  beforeEach(() => {
+    writes.length = 0;
+    mockReadOnly = false;
+    mockSearchParams = new URLSearchParams();
+    mockSermon = sermonFixture();
+    window.localStorage.clear();
+    localStorage.setItem(key, JSON.stringify({ value: 'Unsent words from before', savedAt: Date.now() }));
+  });
+
+  it.each([['AI plan', AiPlanPage], ['hand-written plan', ManualConspectusPage]])('keeps the words on offer when the person starts writing without answering (%s)', async (_name, Page) => {
+    renderPage(<Page />);
+    expect(screen.getByText('plan.draftRecoveryTitle')).toBeInTheDocument();
+    // Whatever way in is still open is used, as a person would.
+    const edit = screen.queryAllByTitle('plan.editMode')[0];
+    if (edit) fireEvent.click(edit);
+    const editor = screen.queryAllByTestId('rich-editor')[0];
+    if (editor) fireEvent.change(editor, { target: { value: 'Typed over the offer' } });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 350)); });
+
+    expect(stored()).toBe('Unsent words from before');
+    expect(buttonNames().filter((name) => WRITING_BUTTONS.test(name))).toEqual([]);
+    expect(editableFields()).toHaveLength(0);
+  });
+
+  it.each([['AI plan', AiPlanPage], ['hand-written plan', ManualConspectusPage]])('opens for writing once the words are brought back, with them in their card (%s)', (_name, Page) => {
+    renderPage(<Page />);
+    fireEvent.click(screen.getByText('plan.draftRecoveryRestore'));
+    expect(screen.queryByText('plan.draftRecoveryTitle')).toBeNull();
+    // The words brought back stand in their card, the offer gone.
+    expect(screen.getAllByText('Unsent words from before').length).toBeGreaterThan(0);
+    expect(buttonNames().filter((name) => WRITING_BUTTONS.test(name))).toEqual(expect.arrayContaining(['plan.save', 'plan.editMode']));
+  });
+});

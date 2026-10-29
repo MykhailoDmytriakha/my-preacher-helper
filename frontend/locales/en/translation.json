@@ -313,7 +313,7 @@
   },
   "unsavedDraft": {
     "title": "Unsaved text found",
-    "description": "Edits from an earlier session were never saved.",
+    "description": "Edits from an earlier session were never saved. Bring them back or discard them, then carry on writing.",
     "restore": "Restore",
     "discard": "Discard"
   },
@@ -2435,7 +2435,7 @@
     "saveRefusedByOtherDevice": "This point was edited somewhere else. Nothing was overwritten — your text is still here.",
     "saveRefusedKeepMine": "Keep mine",
     "draftRecoveryTitle": "Unsaved plan text from last time",
-    "draftRecoveryDescription": "Cards whose text never reached the server: {{count}}. Below is what would come back and what the plan holds now.",
+    "draftRecoveryDescription": "Cards whose text never reached the server: {{count}}. Below is what would come back and what the plan holds now. Bring it back or discard it, then the plan can be edited.",
     "draftRecoveryRestore": "Bring it back",
     "draftRecoveryDiscard": "Discard it",
     "sectionSaved": "{{section}} section saved",

@@ -276,6 +276,84 @@ describe('note editor on the engine', () => {
     expect(screen.getByTestId('rich-markdown-editor')).toHaveValue('Typed on the laptop');
   });
 
+  /*
+   * BUG-20261028-typing-over-draft-offer: text left unsaved last time is offered back, and the offer is a question
+   * answered before anything is written over it. Typing past it used to store the new words in the offered text's
+   * slot 250 ms later: the offer still showed the old words, and a reload had nothing left to bring back.
+   */
+  describe('while unsaved text from last time waits for an answer', () => {
+    const key = 'draft:v1:user-1:note-sync:note';
+    const offered = { title: 'Original title', content: 'Unsaved from before', tags: [], scriptureRefs: [], type: 'note' };
+    const stored = () => JSON.parse(window.localStorage.getItem(key)!).value;
+    beforeEach(() => window.localStorage.setItem(key, JSON.stringify({ value: offered, savedAt: Date.now() })));
+
+    it('keeps the words on offer when the person starts writing without answering', () => {
+      render(<StudyNoteEditorPage />);
+      expect(screen.getByText('unsavedDraft.title')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'common.edit' }));
+      // Whatever way in is still open is used, as a person would.
+      const editor = screen.queryByTestId('rich-markdown-editor');
+      if (editor) fireEvent.change(editor, { target: { value: 'Typed over the offer' } });
+      act(() => { jest.advanceTimersByTime(300); window.dispatchEvent(new Event('pagehide')); });
+
+      expect(stored().content).toBe('Unsaved from before');
+      expect(screen.getByText('unsavedDraft.title')).toBeInTheDocument();
+      expect(screen.queryByTestId('rich-markdown-editor')).toBeNull();
+      expect(screen.getByRole('button', { name: 'common.edit' })).toBeDisabled();
+      // Its answers write the title, places, tags and text; it lives in editing, which stays shut.
+      expect(screen.queryByRole('button', { name: 'studiesWorkspace.aiAnalyze.button' })).toBeNull();
+    });
+
+    it('shows the words on offer, so the answer is not given blind', () => {
+      render(<StudyNoteEditorPage />);
+      expect(within(screen.getByRole('status')).getByText('Unsaved from before')).toBeInTheDocument();
+    });
+
+    it('opens for writing once the words are brought back, with those words in it', () => {
+      render(<StudyNoteEditorPage />);
+      fireEvent.click(screen.getByText('unsavedDraft.restore'));
+      fireEvent.click(screen.getByRole('button', { name: 'common.edit' }));
+      expect(screen.getByTestId('rich-markdown-editor')).toHaveValue('Unsaved from before');
+    });
+
+    // Words equal to the note's are no question. Compared with the words being typed, they used to turn into an offer on
+    // the first keystroke and shut the editor under the person (Codex review, 2026-10-29).
+    it('takes a draft equal to the note as settled: typing opens no offer and keeps the editor', () => {
+      window.localStorage.setItem(key, JSON.stringify({ value: { ...offered, content: 'Original body' }, savedAt: Date.now() }));
+      render(<StudyNoteEditorPage />);
+      expect(screen.queryByText('unsavedDraft.title')).toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: 'common.edit' }));
+      fireEvent.change(screen.getByTestId('rich-markdown-editor'), { target: { value: 'Original body, and more' } });
+      act(() => { jest.advanceTimersByTime(300); });
+
+      expect(screen.queryByText('unsavedDraft.title')).toBeNull();
+      expect(screen.getByTestId('rich-markdown-editor')).toHaveValue('Original body, and more');
+      expect(stored().content).toBe('Original body, and more');
+    });
+
+    it('holds a new note, which opens straight into writing, until the words left in it last time are answered', () => {
+      (useParams as jest.Mock).mockReturnValue({ id: 'new' });
+      const newKey = 'draft:v1:user-1:new:note';
+      window.localStorage.setItem(newKey, JSON.stringify({ value: { ...offered, title: '', content: 'Half a new note' }, savedAt: Date.now() }));
+      render(<StudyNoteEditorPage />);
+      expect(screen.getByText('unsavedDraft.title')).toBeInTheDocument();
+      expect(screen.queryByTestId('rich-markdown-editor')).toBeNull();
+      act(() => { jest.advanceTimersByTime(300); window.dispatchEvent(new Event('pagehide')); });
+      expect(JSON.parse(window.localStorage.getItem(newKey)!).value.content).toBe('Half a new note');
+
+      fireEvent.click(screen.getByText('unsavedDraft.restore'));
+      expect(screen.getByTestId('rich-markdown-editor')).toHaveValue('Half a new note');
+    });
+
+    it('opens for writing once the words are let go, with the saved note in it', () => {
+      render(<StudyNoteEditorPage />);
+      fireEvent.click(screen.getByText('unsavedDraft.discard'));
+      fireEvent.click(screen.getByRole('button', { name: 'common.edit' }));
+      expect(screen.getByTestId('rich-markdown-editor')).toHaveValue('Original body');
+      expect(window.localStorage.getItem(key)).toBeNull();
+    });
+  });
+
   it('offers the row when a save is refused, and "take theirs" shows it', async () => {
     const refusal = Object.assign(new Error('stale'), { isStaleWrite: true, aggregate: 'note', expectedRevision: 1, actualRevision: 2 });
     const refused = Promise.reject(refusal);

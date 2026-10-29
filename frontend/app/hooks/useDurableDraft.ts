@@ -47,6 +47,17 @@ export interface UseDurableDraftResult<T> {
 }
 
 /**
+ * Words on offer that the screen already shows are no question — the save landed, or the engine carries this device's
+ * submitted edit — and are settled as taken. Left on offer, the first keystroke made them differ and turned them into a
+ * question that held the screen from writing (Codex review, 2026-10-29).
+ */
+export function useSettleShownDraft(shown: boolean, acceptRecovered: () => void): void {
+  useEffect(() => {
+    if (shown) acceptRecovered();
+  }, [shown, acceptRecovered]);
+}
+
+/**
  * Keeps the editor's text in storage that survives a closed tab, crash or reload.
  *
  * The contract with the rest of the app is the invariant from `durableDraft.ts`:

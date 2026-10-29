@@ -334,6 +334,11 @@ function ManualConspectusContent({ source, readOnly = false }: { source: SermonS
     liveNodeIds: livePlanNodes,
     frozen: readOnly,
   });
+  /**
+   * Nothing on the plan writes while unsent text from last time waits for an answer: typing into an offered card
+   * stored over the words on offer (BUG-20261028-typing-over-draft-offer). A copy for reading writes nothing either.
+   */
+  const locked = readOnly || Boolean(draft.recovered);
   /** Unsaved text whose card is gone — typed here, or left by an earlier session — kept in sight. */
   const orphans = mergeOrphans(
     orphanedCells(conspectus.contentByNodeId, conspectus.modifiedNodeIds, livePlanNodes),
@@ -527,7 +532,7 @@ function ManualConspectusContent({ source, readOnly = false }: { source: SermonS
       />
 
       {/* Generating from the note writes the plan, so a copy for reading keeps only the note's reminders. */}
-      <NotePlanWorkspace key={`${sermon.id}:${noteMode}`} enabled={noteMode && !readOnly} sermon={sermon} conspectus={conspectus}>
+      <NotePlanWorkspace key={`${sermon.id}:${noteMode}`} enabled={noteMode && !locked} sermon={sermon} conspectus={conspectus}>
       {SECTIONS.map((section) => {
         const points = sermon.outline?.[section] ?? [];
         const tone = SECTION_TONE_CLASSES[section];
@@ -554,12 +559,12 @@ function ManualConspectusContent({ source, readOnly = false }: { source: SermonS
                   conspectus={conspectus}
                   text={shownText}
                   noteMode={noteMode}
-                  readOnly={readOnly}
+                  readOnly={locked}
                 />
               ))}
             </div>
 
-            {!readOnly && <AddNodeButton
+            {!locked && <AddNodeButton
               className="mt-3"
               label={t("plan.addPoint")}
               placeholder={t("plan.addPointPlaceholder")}
