@@ -143,11 +143,15 @@ export const decodeBasicHtmlEntities = (content: string): string => {
  * display consistently without regeneration. Lone ">" (e.g. a blockquote marker) is not
  * touched because the pattern requires a "-", "—" or "=" before the ">".
  */
+/** Normalize prose arrows after parsing has already decoded entities. Never apply to code or URLs. */
+export const normalizePlanArrowText = (content: string): string =>
+  content.replace(/\s*(?:-{1,2}>|—>|=>)\s*/g, ' → ');
+
 export const normalizePlanArrows = (content: string): string => {
   if (!content || typeof content !== 'string') {
     return '';
   }
-  return decodeBasicHtmlEntities(content).replace(/\s*(?:-{1,2}>|—>|=>)\s*/g, ' → ');
+  return normalizePlanArrowText(decodeBasicHtmlEntities(content));
 };
 
 /**

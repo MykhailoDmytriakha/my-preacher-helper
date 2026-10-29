@@ -47,3 +47,12 @@ it('exports a plan kept in the CURRENT shape, where the assembled document is no
   expect(text).toContain('Intro');
   expect(text).toContain('Conclusion');
 });
+
+
+it('projects rich plan text in TXT while retaining the authored Markdown export', () => {
+  const body = 'Read <u>underlined</u> and `**literal**`.';
+  const sermon = exportSermon({ plan: { introduction: { outline: body }, main: { outline: '' }, conclusion: { outline: '' } } });
+  const options = { includeTags: false, includeMetadata: false };
+  expect(renderPlanExport(sermon, { ...options, format: 'plain' }, labels)).toContain('Read underlined and **literal**.');
+  expect(renderPlanExport(sermon, { ...options, format: 'markdown' }, labels)).toContain(body);
+});
