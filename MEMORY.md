@@ -9,6 +9,7 @@
 ## 🧠 Principles (Context Engineering)
 
 ### 🗺️ Architecture Map
+*   **Rich Markdown Tables:** `ui/richMarkdownExtensions.ts` owns one shared schema; TableKit supplies row/cell/header nodes and native commands, while `ui/markdownTable.ts` owns GFM versus canonical HTML persistence. Pipes in text, code or mark attributes must retain their cell. Reader and save/draft delivery keep their existing owners. Recipe: `.howto/extend-tiptap-editor.md`.
 *   **Comment Draft Recovery:** `utils/commentDrafts.ts` owns the logical door, valid legacy source, retained reference and optional-title shape. `useDurableDraft`/`draftAddress` retain physical writer identity and exact retirement. Never weaken the generic parser to read a colon-containing historical comment slot. Recipe: `.howto/keep-a-write-across-offline.md`.
 *   **Calendar Book Analytics:** `calendarAnalytics.extractBookIdsFromVerse` owns both counts and drill-down entries. Canonical `referencesInText` spans win; calendar-only spellings apply only to remaining gaps, with whole-field book-only behavior retained. Recipe: `.howto/work-with-the-calendar.md`.
 *   **References in Reading Text:** `ScriptureText` owns plain-string reference rendering; `ScriptureLinks` owns its press/double-click boundary and written language, while the screen owns the one verse window. Current and retained views share that owner. Editors, drag clones, whole-card controls and exported documents keep their own semantics. Recipe: `.howto/format-scripture-reference.md`.

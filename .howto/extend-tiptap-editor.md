@@ -22,7 +22,7 @@ All rich text goes through one editor: `RichMarkdownEditor` (`frontend/app/compo
 
 ## Custom content — techniques
 
-Main has no custom node, NodeView or decoration yet. Worked examples sit on unmerged branches: `feature/studies-wikilinks-v0` (frontend/app/components/studies/node/wikilinkExtension.ts and WikilinkChip.tsx) and `main-2` (RichMarkdownEditor with a pending insertion request and outline decorations). Read them with `git show <branch>:<path>`.
+The shared factory owns the custom code, list and table nodes. Further NodeView and decoration examples sit on unmerged branches: `feature/studies-wikilinks-v0` (frontend/app/components/studies/node/wikilinkExtension.ts and WikilinkChip.tsx) and `main-2` (RichMarkdownEditor with a pending insertion request and outline decorations). Read them with `git show <branch>:<path>`.
 
 - Inline atom stored as markdown (`[[id]]`): `tiptap-markdown` renders markdown to HTML with markdown-it, then TipTap parses that HTML through the schema. Register a markdown-it inline rule in the node's `storage.markdown.parse.setup` that emits temporary HTML your `parseHTML` rule recognises; give the node and that rule a high `priority` and empty content; write it back in `storage.markdown.serialize`. Otherwise StarterKit's link mark takes the anchor before the node exists and the round-trip breaks.
 - A chip whose label comes from an async cache: call the resolver hook inside the React NodeView (`ReactNodeViewRenderer`), not in the parent editor. Only chips subscribe; a subscription in the parent breaks unrelated editor tests and forces providers where no chip exists.
@@ -61,3 +61,25 @@ native ListItem parser and retain indent/outdent/split controls.
 Already flattened stored Markdown cannot safely be reattached by a regex: an
 intended outside block is indistinguishable. Keep the native editable paragraph;
 hiding it would remove a place where the person can type an introduction.
+
+## Tables in existing content and paste
+
+`richMarkdownExtensions` registers `TableKit` with its table disabled and adds
+`MarkdownTable` once. The kit owns rows, cells, headers and native table commands;
+`markdownTable.ts` owns the persistence representation. Keep this in the shared
+factory so notes, comments, thoughts, plans, groups, series and councils agree.
+
+Write ordinary single-paragraph header/body tables as GFM. Use the canonical
+schema HTML serializer for cell spans, multiple/block paragraphs, hard breaks,
+column widths or a literal pipe anywhere in content/mark attributes. A pipe inside
+inline code or a link target can still split a GFM table; escaping only text nodes
+misses it. The reader already supports sanitized HTML tables. Do not recover
+historically flattened data by guessing where its cells used to be.
+
+For normal text-only paste, dispatch a DOM paste event or call the clipboard
+parser with plainText=false. ProseMirror `view.pasteText` requests the deliberate
+paste-as-plain-text escape hatch; its literal result is a separate positive
+control. Test rich HTML, plain Markdown and Markdown-source-with-HTML clipboards,
+edit/save/reopen, repeated saves and table ancestry inside quotes/lists. Retain
+ordinary prose, list, code and read-only editor controls. Browser geometry,
+keyboard editing, real save ACKs and visual acceptance remain separate evidence.
