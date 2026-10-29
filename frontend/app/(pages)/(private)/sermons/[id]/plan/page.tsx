@@ -1122,7 +1122,7 @@ function PlanPageContent({ source, readOnly = false, wayIn }: { source: SermonSo
       {planDraft.recovered && !readOnly && (
         <PlanDraftRecoveryBar
           subject={JSON.stringify([sermon?.userId, sermonId])}
-          cells={recoveredCells(planDraft.recovered, sermon, planDraft.copies, planDraft.selectedCopies)}
+          cells={recoveredCells(planDraft.recovered, sermon, planDraft.copies, planDraft.selectedCopies, generatedContent)}
           onChoose={planDraft.selectCopy}
           onRestore={() => {
             restorePlanCells(planDraft.recovered ?? {});

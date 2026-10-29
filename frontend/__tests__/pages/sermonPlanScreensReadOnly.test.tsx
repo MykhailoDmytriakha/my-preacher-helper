@@ -658,10 +658,13 @@ describe('a plan screen while unsent text from last time waits for an answer', (
     localStorage.setItem(first, firstRaw);
     localStorage.setItem(second, JSON.stringify({ value: 'Selected independent words', savedAt: 20 }));
     renderPage(<Page />);
+    fireEvent.change(screen.getByRole('combobox', { name: 'unsavedDraft.chooseCopy' }), { target: { value: second } });
     fireEvent.click(screen.getByText('plan.draftRecoveryRestore'));
     expect(screen.getAllByText('Selected independent words').length).toBeGreaterThan(0);
     expect(localStorage.getItem(first)).toBe(firstRaw);
     expect(buttonNames().filter((name) => WRITING_BUTTONS.test(name))).toEqual(expect.arrayContaining(['plan.save', 'plan.editMode']));
+    const comparedCurrent = screen.getByText('plan.draftRecoveryOnServer').nextElementSibling;
+    expect(comparedCurrent).toHaveTextContent('Selected independent words');
   });
 
   it.each([['AI plan', AiPlanPage], ['hand-written plan', ManualConspectusPage]])('opens for writing once the words are brought back, with them in their card (%s)', (_name, Page) => {

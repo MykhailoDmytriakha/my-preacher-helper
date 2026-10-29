@@ -11,7 +11,7 @@ import { planNodeNames } from "./planNodes";
 import type { PlanDraftCopy } from "./planDraftTypes";
 import type { Sermon } from "@/models/models";
 
-/** One card offered back: which card it is, what the draft holds, what the server holds now. */
+/** One offered card beside the working text that restoring it would replace. */
 export interface RecoveredCell {
   id: string;
   name: string;
@@ -21,8 +21,8 @@ export interface RecoveredCell {
   selectedKey?: string;
 }
 
-/** The waiting cells in outline order, named, beside what the server holds for each now. */
-export function recoveredCells(recovered: Record<string, string>, sermon: Sermon | null | undefined, copies: PlanDraftCopy[] = [], selected: PlanDraftCopy[] = []): RecoveredCell[] {
+/** Waiting cells beside the shown working plan, with canonical fallback for absent working fields. */
+export function recoveredCells(recovered: Record<string, string>, sermon: Sermon | null | undefined, copies: PlanDraftCopy[] = [], selected: PlanDraftCopy[] = [], working: Readonly<Record<string, string>> = {}): RecoveredCell[] {
   const names = planNodeNames(sermon?.outline);
   const order = Object.keys(names);
   // Both storage shapes, merged the canonical way: a cell only the old shape holds is not "empty".
@@ -31,7 +31,7 @@ export function recoveredCells(recovered: Record<string, string>, sermon: Sermon
     .sort(([a], [b]) => order.indexOf(a) - order.indexOf(b))
     .map(([id, text]) => {
       const choices = copies.filter(copy => copy.id === id);
-      return { id, name: names[id] ?? id, recovered: text, current: stored[id] ?? "", ...(choices.length > 1 ? { choices, selectedKey: selected.find(copy => copy.id === id)?.key ?? choices[0].key } : {}) };
+      return { id, name: names[id] ?? id, recovered: text, current: working[id] ?? stored[id] ?? "", ...(choices.length > 1 ? { choices, selectedKey: selected.find(copy => copy.id === id)?.key ?? choices[0].key } : {}) };
     });
 }
 
@@ -41,7 +41,7 @@ export function recoveredCells(recovered: Record<string, string>, sermon: Sermon
  * DELIBERATELY AN OFFER, NOT A RESTORE. Applying a stored draft by itself is how the old
  * preparation backup destroyed work: a draft left behind by a failed save kept winning over
  * text genuinely edited later on another device. Here the person SEES each card's waiting
- * text beside what the server holds now (BUG-20260815-draft-recovery-offers-a-number-not-the-text:
+ * text beside the current working plan (BUG-20260815-draft-recovery-offers-a-number-not-the-text:
  * a bare count let yesterday's text go back over a newer one unseen) and decides; either choice
  * keeps the text somewhere until they say otherwise.
  */

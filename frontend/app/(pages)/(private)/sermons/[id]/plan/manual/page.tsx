@@ -507,7 +507,7 @@ function ManualConspectusContent({ source, readOnly: copyReadOnly = false }: { s
       {draft.recovered && !readOnly && (
         <PlanDraftRecoveryBar
           subject={JSON.stringify([sermon?.userId, sermonId])}
-          cells={recoveredCells(draft.recovered, sermon, draft.copies, draft.selectedCopies)}
+          cells={recoveredCells(draft.recovered, sermon, draft.copies, draft.selectedCopies, conspectus.contentByNodeId)}
           onChoose={draft.selectCopy}
           onRestore={() => {
             conspectus.restoreCells(draft.recovered ?? {});

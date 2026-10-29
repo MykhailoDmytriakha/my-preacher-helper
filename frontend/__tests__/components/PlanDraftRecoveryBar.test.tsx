@@ -74,3 +74,20 @@ it('shows the selected physical copy when two alternatives have equal words', ()
   fireEvent.change(screen.getByRole('combobox'), { target: { value: 'first' } });
   expect(choose).toHaveBeenCalledWith('p1', 'first');
 });
+
+
+it('compares visible working words, including a deliberate empty cell, without changing either input', () => {
+  const working = Object.freeze({ p1: '', sp1: 'Visible child words' });
+  const original = JSON.stringify(sermon);
+  const cells = recoveredCells({ p1: 'Other main words', sp1: 'Other child words' }, sermon, [], [], working);
+  expect(cells.map(cell => cell.current)).toEqual(['', 'Visible child words']);
+  expect(working).toEqual({ p1: '', sp1: 'Visible child words' });
+  expect(JSON.stringify(sermon)).toBe(original);
+});
+
+it('uses canonical legacy text only when a working field is absent', () => {
+  const older = { ...sermon, planText: undefined, plan: { introduction: { outline: '', outlinePoints: {} }, main: { outline: '', outlinePoints: { p1: 'Stored the old way', sp1: 'Stored child words' } }, conclusion: { outline: '', outlinePoints: {} } } } as unknown as Sermon;
+  const cells = recoveredCells({ p1: 'Other main words', sp1: 'Other child words' }, older, [], [], { sp1: '' });
+  expect(cells.map(cell => cell.current)).toEqual(['Stored the old way', '']);
+  expect(cells.map(cell => cell.name)).toEqual(['1 · Grace', '1.1 · Given freely']);
+});
