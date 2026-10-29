@@ -8,6 +8,7 @@ import remarkGfm from "remark-gfm";
 import { FormButton } from "@/components/ui/FormDialog";
 import Switch from "@/components/ui/Switch";
 import { useClipboard } from "@/hooks/useClipboard";
+import { useMarkdownHtmlPlugins } from "@/hooks/useMarkdownHtmlPlugins";
 import { downloadBlobToDevice } from "@/utils/download";
 import { sanitizeMarkdown } from "@/utils/markdownUtils";
 import { useTranslation } from "@locales/useTranslation";
@@ -27,6 +28,7 @@ export function ExportTxtModal({
   hasPlan = false,
 }: ExportTxtModalProps) {
   const { t } = useTranslation();
+  const markdownHtmlPlugins = useMarkdownHtmlPlugins();
   const [activeFormat, setActiveFormat] = useState<"plain" | "markdown">(format);
   const [exportType, setExportType] = useState<"thoughts" | "plan">("thoughts");
   const [showTags, setShowTags] = useState(false);
@@ -142,7 +144,7 @@ export function ExportTxtModal({
               <pre className="whitespace-pre-wrap font-mono text-xs sm:text-sm">{exportContent}</pre>
             ) : (
               <div className="prose prose-sm dark:prose-invert max-w-none">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{sanitizeMarkdown(exportContent)}</ReactMarkdown>
+                <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={markdownHtmlPlugins}>{sanitizeMarkdown(exportContent)}</ReactMarkdown>
               </div>)}
     </ExportDialog>
   );
