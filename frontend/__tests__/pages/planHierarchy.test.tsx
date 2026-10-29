@@ -1,3 +1,5 @@
+jest.unmock('rehype-raw');
+jest.unmock('rehype-sanitize');
 jest.unmock('react-markdown');
 jest.unmock('remark-gfm');
 
@@ -53,8 +55,9 @@ describe('plan heading ownership across reading and exports', () => {
     expect(screen.getByRole('link', { name: 'Parent' })).toHaveAttribute('href', 'https://example.com/john');
     expect(screen.getByRole('link', { name: 'verse' })).toHaveAttribute('href', 'https://example.com/john');
     const footnoteLink = screen.getByRole('link', { name: '1' });
-    expect(footnoteLink).toHaveAttribute('href', '#user-content-fn-first');
-    expect(document.getElementById('user-content-fn-first')).toHaveTextContent('Shared footnote');
+    const targetId = footnoteLink.getAttribute('href')!.slice(1);
+    expect(targetId).toMatch(/^user-content-/);
+    expect(document.getElementById(targetId)).toHaveTextContent('Shared footnote');
   });
 
   it('keeps tables, nested lists and fenced heading text within the PDF renderer body', () => {

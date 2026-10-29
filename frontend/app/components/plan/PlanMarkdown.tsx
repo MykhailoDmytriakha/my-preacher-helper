@@ -3,6 +3,7 @@ import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
 import { MarkdownScriptureLink, rehypeScriptureLinks, SCRIPTURE_LINK_TAG, useScriptureLinks } from '@/components/bible/ScriptureLinks';
+import { useMarkdownHtmlPlugins } from '@/hooks/useMarkdownHtmlPlugins';
 import { textLanguage } from '@/utils/appLocale';
 import { planBodyIndent, planHeadingIndent, preparePlanMarkdown } from '@/utils/planHierarchy';
 
@@ -49,12 +50,13 @@ const LINK_COMPONENTS = { [SCRIPTURE_LINK_TAG]: MarkdownScriptureLink } as Compo
 export default function PlanMarkdown({ markdown, className = '' }: { markdown: string; className?: string }) {
   // A reference opens over the plan, in preaching and on the plan page alike; a PDF has no links.
   const links = useScriptureLinks();
+  const htmlPlugins = useMarkdownHtmlPlugins();
   const linkLocale = links?.locale;
   // The language its references were written in: the sermon's, else this section's.
   const written = useMemo(() => (links ? links.written ?? textLanguage(markdown) : null), [markdown, links]);
   const rehypePlugins = useMemo(
-    () => [groupPlanSections, ...(linkLocale ? [[rehypeScriptureLinks, linkLocale, written]] : [])] as NonNullable<React.ComponentProps<typeof ReactMarkdown>['rehypePlugins']>,
-    [linkLocale, written]
+    () => [...htmlPlugins, groupPlanSections, ...(linkLocale ? [[rehypeScriptureLinks, linkLocale, written]] : [])] as NonNullable<React.ComponentProps<typeof ReactMarkdown>['rehypePlugins']>,
+    [htmlPlugins, linkLocale, written]
   );
   return (
     <div className={`markdown-content ${styles.content} ${className}`}>

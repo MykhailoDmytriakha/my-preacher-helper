@@ -2,24 +2,16 @@
 
 import React, { memo, useCallback, useMemo } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
-import rehypeRaw from 'rehype-raw';
-import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import remarkGfm from 'remark-gfm';
 
 import { MarkdownScriptureLink, rehypeScriptureLinks, SCRIPTURE_LINK_TAG, ScriptureText, useScriptureLinks } from '@/components/bible/ScriptureLinks';
+import { useMarkdownHtmlPlugins } from '@/hooks/useMarkdownHtmlPlugins';
 import { textLanguage } from '@/utils/appLocale';
 import { codeFenceFor } from '@/utils/markdownFence';
 import HighlightedText from '@components/HighlightedText';
 
-// Allow safe inline formatting tags that authors may embed as raw HTML in thought
-// text (e.g. <u>underline</u>). We start from rehype-sanitize's defaultSchema —
-// which already permits b/i/em/strong/sub/sup/br/links — and extend it with the
-// few inline tags it omits (<u>, <mark>). Everything else (script/iframe/event
-// handlers/javascript: URLs) stays blocked by the default schema.
-export const markdownSanitizeSchema = {
-    ...defaultSchema,
-    tagNames: [...(defaultSchema.tagNames ?? []), 'u', 'mark'],
-};
+// Preserve the existing schema export for consumers while the common reader owns it.
+export { markdownSanitizeSchema } from '@/utils/markdownHtml';
 
 interface MarkdownDisplayProps {
     content: string;
@@ -62,14 +54,15 @@ const formatStructuredBlocks = (text: string) => {
 
 const MarkdownDisplay = ({ content, className = '', compact = false, pencil = false, searchQuery = '' }: MarkdownDisplayProps) => {
     const processedContent = useMemo(() => formatStructuredBlocks(content), [content]);
+    const htmlPlugins = useMarkdownHtmlPlugins();
     // References become links where the screen gives them somewhere to open; elsewhere the text is as written.
     const scriptureLinks = useScriptureLinks();
     const linkLocale = scriptureLinks?.locale;
     // The language its references were written in: the document's, else this text's.
     const written = useMemo(() => (scriptureLinks ? scriptureLinks.written ?? textLanguage(content) : null), [content, scriptureLinks]);
     const rehypePlugins = useMemo(
-        () => [rehypeRaw, [rehypeSanitize, markdownSanitizeSchema], ...(linkLocale ? [[rehypeScriptureLinks, linkLocale, written]] : [])] as NonNullable<React.ComponentProps<typeof ReactMarkdown>['rehypePlugins']>,
-        [linkLocale, written]
+        () => [...htmlPlugins, ...(linkLocale ? [[rehypeScriptureLinks, linkLocale, written]] : [])] as NonNullable<React.ComponentProps<typeof ReactMarkdown>['rehypePlugins']>,
+        [htmlPlugins, linkLocale, written]
     );
 
     const renderHighlighted = useCallback(
@@ -84,18 +77,16 @@ const MarkdownDisplay = ({ content, className = '', compact = false, pencil = fa
         <div className={pencil ? `max-w-none break-words ${className}` : `prose dark:prose-invert max-w-none break-words ${compact ? 'prose-sm' : ''} ${className}`}>
             <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
-                // rehype-raw parses embedded raw HTML (e.g. <u>) into the tree;
-                // rehype-sanitize then strips anything outside the safe schema.
-                // Order matters: raw must run before sanitize.
+                // The shared HTML pass preserves authored formatting and safe fragment targets.
                 rehypePlugins={rehypePlugins}
                 components={{
                     // A reference stays lit by the search too: opened from "24:26", the match is the link itself.
                     [SCRIPTURE_LINK_TAG]: ({ children, ...props }: React.ComponentProps<typeof MarkdownScriptureLink>) => (
                         <MarkdownScriptureLink {...props}>{React.Children.map(children, renderHighlighted)}</MarkdownScriptureLink>
                     ),
-                    // Override link behavior to open in new tab
+                    // Outside links open separately; a footnote stays beside its text.
                     a: ({ ...props }) => (
-                        <a {...props} target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 hover:underline" />
+                        <a {...props} target={props.href?.startsWith('#') ? undefined : '_blank'} rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 hover:underline" />
                     ),
                     // A table sizes its columns by their longest word, so a pasted link in a cell would widen the
                     // whole page; the table scrolls inside its own box instead.

@@ -6,6 +6,7 @@ import { createPortal } from 'react-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
+import { useMarkdownHtmlPlugins } from '@/hooks/useMarkdownHtmlPlugins';
 import { useModalLayer } from '@/hooks/useModalLayer';
 import { normalizePlanArrows, normalizePlanPointHeadings, sanitizeMarkdown } from '@/utils/markdownUtils';
 import { SERMON_SECTION_COLORS } from '@/utils/themeColors';
@@ -24,6 +25,7 @@ interface PlanSectionDialogProps {
 /** A read-only section stays in its owner's React tree and shares the app's modal rules. */
 export default function PlanSectionDialog({ section, markdown, onClose }: PlanSectionDialogProps) {
   const { t } = useTranslation();
+  const htmlPlugins = useMarkdownHtmlPlugins();
   const titleId = useId();
   const closeLabel = t('actions.close') || t('common.close');
   const layer = useModalLayer({ onClose });
@@ -51,7 +53,7 @@ export default function PlanSectionDialog({ section, markdown, onClose }: PlanSe
         <div className={`pl-2 border-l-4 ${colors.border.split(' ')[0]} dark:${colors.darkBorder} prose-${section}`}>
           <div className="prose dark:prose-invert max-w-none mb-4">
             <div className={`prose prose-sm md:prose-base dark:prose-invert max-w-none markdown-content prose-${section} ${section}-section`}>
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+              <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={htmlPlugins}>{content}</ReactMarkdown>
             </div>
           </div>
         </div>
