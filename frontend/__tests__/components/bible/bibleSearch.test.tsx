@@ -101,6 +101,23 @@ describe('the one line', () => {
     expect(onOpen).toHaveBeenCalledWith({ bookId: 'John', chapter: 6, verse: 48, toVerse: 48 });
   });
 
+  // A comment moved (case 2026-10-12-block-diagram): the window chooses a place, and its buttons say so, not «Открыть».
+  it('says what a press does where the line chooses a place: a place and a chosen verse, «Сюда»', async () => {
+    const { onOpen, line } = renderLine({ actionLabel: 'Сюда' });
+    await userEvent.type(line, 'Ин 3:16');
+    await screen.findByText(/так возлюбил Бог мир/);
+    expect(screen.getByText('Сюда')).toBeInTheDocument();
+    expect(screen.queryByText('bible.search.open')).not.toBeInTheDocument();
+    await userEvent.clear(line);
+    await userEvent.type(line, '"хлеб жизни"');
+    await screen.findByText('bible.search.verses{"count":2}');
+    const [, second] = screen.getAllByRole('option');
+    await userEvent.click(second);
+    expect(screen.queryByRole('button', { name: /bible\.search\.openInBible/, hidden: true })).not.toBeInTheDocument();
+    await userEvent.click(within(second).getByRole('button', { name: 'Сюда', hidden: true }));
+    expect(onOpen).toHaveBeenCalledWith({ bookId: 'John', chapter: 6, verse: 48, toVerse: 48 });
+  });
+
   // Codex review, 2026-10-27: the buttons are for a mouse and a finger; the keyboard copies the chosen verse with
   // ⌘C / Ctrl+C while nothing is selected in the line, and a press keeps the line its keys in a narrow window too.
   it('copies the chosen verse from the keyboard, and a press in a narrow window keeps the line its keys', async () => {

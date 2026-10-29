@@ -88,6 +88,43 @@ describe('useDurableDraft', () => {
     view.unmount();
   });
 
+  it('retires only the adopted scoped source when restored text returns to baseline', () => {
+    const adoptedKey = draftKey('uid-1', 'note-1', 'note', 'earlier-opening');
+    const siblingKey = draftKey('uid-1', 'note-1', 'note', 'independent-opening');
+    saveDraft(adoptedKey, 'Same retained words');
+    saveDraft(siblingKey, 'Same retained words');
+    const siblingRaw = localStorage.getItem(siblingKey);
+    const view = render('Server baseline', { writerId: 'current-opening' });
+
+    act(() => view.result.current.selectRecovered(adoptedKey));
+    act(() => view.result.current.acceptRecovered());
+    view.rerender({ value: 'Same retained words' });
+    view.rerender({ value: 'Server baseline' });
+    act(() => jest.advanceTimersByTime(300));
+
+    expect(readDraft(adoptedKey)).toBeNull();
+    expect(localStorage.getItem(siblingKey)).toBe(siblingRaw);
+    expect(view.result.current.recoveries.map(copy => copy.key)).toEqual([siblingKey]);
+    view.unmount();
+  });
+
+  it('keeps an adopted scoped source record replaced before baseline return', () => {
+    const sourceKey = draftKey('uid-1', 'note-1', 'note', 'earlier-opening');
+    saveDraft(sourceKey, 'Same retained words');
+    const view = render('Server baseline', { writerId: 'current-opening' });
+
+    act(() => view.result.current.acceptRecovered());
+    act(() => jest.advanceTimersByTime(1));
+    saveDraft(sourceKey, 'Same retained words');
+    const replacement = localStorage.getItem(sourceKey);
+    view.rerender({ value: 'Same retained words' });
+    view.rerender({ value: 'Server baseline' });
+    act(() => jest.advanceTimersByTime(300));
+
+    expect(localStorage.getItem(sourceKey)).toBe(replacement);
+    view.unmount();
+  });
+
   it('does not let a late capture from the previous owner replace the current handoff proof', () => {
     const view = renderHook(({ uid, value }) => useDurableDraft({ uid, docId: 'note-1', aggregate: 'note',
       value, enabled: true, confirmedValue: 'Confirmed original' }),
@@ -372,6 +409,37 @@ describe('useDurableDraft', () => {
 
     expect(result.current.recovered).toBeNull();
     expect(readDraft<string>(KEY)?.value).toBe('what the person is writing now');
+  });
+
+  it('retires a restored copy once the editor comes back to the server value before writing its own', () => {
+    // Restored, then within the write delay the window took the other device's version — the server's value. The copy
+    // the person let go must not be offered again (Codex review, 2026-10-28).
+    saveDraft(KEY, 'restored text');
+    const { result, rerender } = render('server value');
+    act(() => {
+      result.current.acceptRecovered();
+    });
+    rerender({ value: 'restored text' });
+    rerender({ value: 'server value' });
+    act(() => {
+      jest.advanceTimersByTime(300);
+    });
+
+    expect(readDraft(KEY)).toBeNull();
+  });
+
+  it('keeps a restored copy while the editor still shows it', () => {
+    saveDraft(KEY, 'restored text');
+    const { result, rerender } = render('server value');
+    act(() => {
+      result.current.acceptRecovered();
+    });
+    rerender({ value: 'restored text' });
+    act(() => {
+      jest.advanceTimersByTime(1000);
+    });
+
+    expect(readDraft<string>(KEY)?.value).toBe('restored text');
   });
 
   it('discarding removes the stored draft, not just the banner', () => {

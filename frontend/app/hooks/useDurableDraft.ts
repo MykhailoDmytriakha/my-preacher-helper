@@ -146,7 +146,7 @@ export function useDurableDraft<T>({
       retired.add(sourceKey);
       adoptedRef.current.delete(sourceKey);
     }
-    setRecovery(current => current.identity !== identity ? current : {
+    if (retired.size > 0) setRecovery(current => current.identity !== identity ? current : {
       ...current, copies: current.copies.filter(copy => !retired.has(copy.key)),
     });
   }, []);
@@ -204,11 +204,17 @@ export function useDurableDraft<T>({
         clearDraftIfMatches(targetKey, JSON.parse(ourDraftRef.current) as T);
         ourDraftRef.current = null;
       }
+      // An explicitly adopted source is ours to release too, even when the
+      // person returned to the baseline before this writer's first debounce.
+      const identity = recoveryKeyRef.current;
+      for (const entry of [...adoptedRef.current.values()]) {
+        if (entry.identity === identity) retireKnownCopies(entry.copy.value, identity);
+      }
       return;
     }
     saveDraft(targetKey, next, creationTargetId);
     ourDraftRef.current = serialised;
-  }, [creationTargetId]);
+  }, [creationTargetId, retireKnownCopies]);
   /** The last unconfirmed value THIS hook instance stored, so it can retire it. */
   const ourDraftRef = useRef<string | null>(null);
   const persistRef = useRef(persist);

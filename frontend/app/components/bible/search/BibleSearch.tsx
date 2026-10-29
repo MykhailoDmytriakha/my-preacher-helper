@@ -60,6 +60,8 @@ export type BibleSearchProps = {
   onOpen: (target: OpenTarget) => void;
   /** What stands under an empty line: the books, the trail, the chapters. */
   children?: ReactNode;
+  /** The word on a found place's button where pressing it does not open it (a comment moved: «Сюда»). */
+  actionLabel?: string;
 };
 
 const ICON_BUTTON = 'inline-flex shrink-0 items-center justify-center rounded-[10px] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500';
@@ -82,7 +84,7 @@ const blurAfterPress = (input: HTMLInputElement | null, setFocused: (focused: bo
 const isCopyVerseKey = (event: React.KeyboardEvent<HTMLInputElement>) =>
   (event.metaKey || event.ctrlKey) && event.code === 'KeyC' && event.currentTarget.selectionStart === event.currentTarget.selectionEnd;
 
-export function BibleSearch({ bible, locale, wide, surface, hereBook = null, autoFocus = false, openWithRecent = false, onOpen, children }: BibleSearchProps) {
+export function BibleSearch({ bible, locale, wide, surface, hereBook = null, autoFocus = false, openWithRecent = false, onOpen, children, actionLabel }: BibleSearchProps) {
   const { t, i18n } = useTranslation();
   const touch = useMediaQuery('(pointer: coarse)', false);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -547,6 +549,7 @@ export function BibleSearch({ bible, locale, wide, surface, hereBook = null, aut
             copiedKey={isCopied ? copiedKey : null}
             onHowTo={onResultHowTo}
             onToggleBooks={onResultToggleBooks}
+            actionLabel={actionLabel}
           />
         </div>
       ) : null}

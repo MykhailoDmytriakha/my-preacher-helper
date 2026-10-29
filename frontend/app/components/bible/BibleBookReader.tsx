@@ -1057,7 +1057,7 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, dec
         onOpenEntry={openMineEntry}
         onEditComment={(id) => { mine.close(); editComment(id); }}
       />
-      <ReaderCommentDialog commenting={commenting} text={text} bookId={bookId} locale={locale} passageOf={commentPassage} onClose={closeComment} />
+      <ReaderCommentDialog commenting={commenting} text={text} bookId={bookId} bible={bible} locale={locale} passageOf={commentPassage} onClose={closeComment} />
       <MarkedElsewhereSheet
         at={marks.elsewhere.at}
         bookId={bookId}
