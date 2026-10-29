@@ -103,6 +103,13 @@ export function withoutMarkdownCode(content: string, includeInline = false): str
       ranges.push({ start: position.start.offset!, end: position.end.offset! });
     }
   });
+  return maskMarkdownCodeRanges(content, ranges);
+}
+
+/** Mask already parser-confirmed ranges without changing original source offsets. */
+export function maskMarkdownCodeRanges(
+  content: string, ranges: ReadonlyArray<{ start: number; end: number }>,
+): string {
   let cursor = 0;
   const parts: string[] = [];
   for (const { start, end } of ranges) {

@@ -2,9 +2,10 @@ import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, Bord
 import { saveAs } from 'file-saver';
 
 import { PlanData } from '@/models/models';
-import { markdownCodeRanges, withoutMarkdownCode, type MarkdownCodeRange } from '@/utils/markdownCode';
+import { markdownCodeRanges, maskMarkdownCodeRanges, withoutMarkdownCode, type MarkdownCodeRange } from '@/utils/markdownCode';
 import { readMarkdownHtml } from '@/utils/markdownHtml';
 import { splitMarkdownSections, type MarkdownSection } from '@/utils/markdownSections';
+import { markdownTableRanges, type MarkdownTableRange, type MarkdownTableCell } from '@/utils/markdownTables';
 import { decodeBasicHtmlEntities } from '@/utils/markdownUtils';
 import { planBodyIndent, planHeadingIndent, preparePlanMarkdown } from '@/utils/planHierarchy';
 import { getSectionBaseColor } from '@lib/sections';
@@ -143,21 +144,6 @@ const parseRegularParagraph = (trimmedLine: string, indent?: number): Paragraph 
   });
 };
 
-// Helper function to collect and parse table lines
-const parseTableLines = (lines: string[], startIndex: number, indent: number): { table: Table | null; newIndex: number } => {
-  const tableLines = [];
-  let j = startIndex;
-
-  // Collect all table lines
-  while (j < lines.length && lines[j].trim().includes('|')) {
-    tableLines.push(lines[j]);
-    j++;
-  }
-
-  const table = tableLines.length > 0 ? parseTable(tableLines, indent) : null;
-  return { table, newIndex: j };
-};
-
 /** Split prose lines without splitting a real multiline code span or its literal <br>. */
 const wordProseLines = (content: string): string[] => {
   const code = markdownCodeRanges(content).filter(range => range.kind === 'inline');
@@ -175,7 +161,7 @@ const wordProseLines = (content: string): string[] => {
   return lines.filter(line => line.trim() !== '');
 };
 
-const parseMarkdownProse = (content: string, bodyIndent?: number): (Paragraph | Table)[] => {
+const parseMarkdownText = (content: string, bodyIndent?: number): (Paragraph | Table)[] => {
   if (!content || content.trim() === '') {
     const placeholderText = t('export.planEmptyContent', 'Content will be added later...');
     return [
@@ -201,16 +187,6 @@ const parseMarkdownProse = (content: string, bodyIndent?: number): (Paragraph | 
 
     const listIndent = (bodyIndent ?? 360) + 360 + Math.floor((lines[i].length - lines[i].trimStart().length) / 2) * 360;
 
-    // Check for table
-    if (trimmedLine.includes('|')) {
-      const { table, newIndex } = parseTableLines(lines, i, bodyIndent ?? 0);
-      if (table) {
-        elements.push(table);
-        i = newIndex;
-        continue;
-      }
-    }
-
     // Handle different markdown elements using helper functions
     try {
       if (trimmedLine.startsWith('- ') || trimmedLine.startsWith('* ')) {
@@ -235,13 +211,39 @@ const parseMarkdownProse = (content: string, bodyIndent?: number): (Paragraph | 
   return elements;
 };
 
+const blockListPrefix = (
+  source: string, block: Pick<MarkdownCodeRange, 'listDepth' | 'blockStart' | 'start'>,
+): string => {
+  const marker = block.listDepth
+    ? source.slice(block.blockStart, block.start).match(/([-*+]|\d+[.)])[ \t]+$/)?.[1] : undefined;
+  return marker ? (/^\d/.test(marker) ? marker + ' ' : '• ') : '';
+};
+
+const parseMarkdownProse = (content: string, bodyIndent?: number): (Paragraph | Table)[] => {
+  const tables = markdownTableRanges(content);
+  if (!tables.length) return parseMarkdownText(content, bodyIndent);
+  const elements: (Paragraph | Table)[] = [];
+  let cursor = 0;
+  for (const table of tables) {
+    const prose = content.slice(cursor, table.blockStart);
+    if (prose.trim()) elements.push(...parseMarkdownText(prose, bodyIndent));
+    const prefix = blockListPrefix(content, table);
+    if (prefix) elements.push(new Paragraph({ children: [new TextRun({ text: prefix.trimEnd() })] }));
+    const indent = (bodyIndent ?? 0) + table.listDepth * 360 + table.quoteDepth * 720;
+    elements.push(parsedWordTable(table, indent));
+    cursor = table.end;
+  }
+  const tail = content.slice(cursor);
+  if (tail.trim()) elements.push(...parseMarkdownText(tail, bodyIndent));
+  return elements;
+};
+
 const literalCodeParagraphs = (code: MarkdownCodeRange, source: string, bodyIndent?: number): Paragraph[] => {
   let left = bodyIndent ?? 0;
   if (code.listDepth) left = (bodyIndent ?? 360) + code.listDepth * 360;
   if (code.quoteDepth) left = Math.max(left, bodyIndent ?? 720) + (code.quoteDepth - 1) * 360;
   // A block beginning on the marker line still owns that visible list marker.
-  const marker = code.listDepth ? source.slice(code.blockStart, code.start).match(/([-*+]|\d+[.)])[ \t]+$/)?.[1] : undefined;
-  const prefix = marker ? (/^\d/.test(marker) ? marker + ' ' : '• ') : '';
+  const prefix = blockListPrefix(source, code);
   return code.value.split(/\r\n|\r|\n/).map((line, index) => new Paragraph({
     children: [
       ...(index === 0 && prefix ? [new TextRun({ text: prefix })] : []),
@@ -285,6 +287,10 @@ export const parseMarkdownToParagraphs = (content: string, sectionColor?: string
 export const parseTable = (tableLines: string[], indent = 0): Table | null => {
   if (tableLines.length < 2) return null;
 
+  const canonical = markdownTableRanges(tableLines.join('\n'))[0];
+  if (canonical) return parsedWordTable(canonical, indent);
+
+  // Explicit non-GFM callers retain the existing malformed-input best-effort contract.
   // Parse table rows
   const rows = tableLines
     .filter(line => !line.trim().match(/^[\|\s\-:]*$/)) // Skip separator lines
@@ -297,12 +303,21 @@ export const parseTable = (tableLines: string[], indent = 0): Table | null => {
 
   if (rows.length === 0) return null;
 
+  return createWordTable(rows.map(row => row.map(parseInlineMarkdown)), indent);
+};
+
+const parsedWordTable = (table: MarkdownTableRange, indent: number): Table => createWordTable(
+  table.rows.map(row => row.map(cell => parseInlineInherited(cell.source, {}, { code: cell.code, offset: 0 }))),
+  indent,
+);
+
+const createWordTable = (rows: ReadonlyArray<ReadonlyArray<TextRun[]>>, indent: number): Table => {
   const tableRows = rows.map((row, rowIndex) => {
-    const cells = row.map(cellText => {
+    const cells = row.map(runs => {
       return new TableCell({
         children: [
           new Paragraph({
-            children: parseInlineMarkdown(cellText),
+            children: runs,
             spacing: { after: 0 },
           }),
         ],
@@ -366,21 +381,32 @@ const stripStrayTags = (s: string): string => s.replace(/<\/?[a-zA-Z][^>]*>/g, '
 // Recursive so nested formatting works: "**<u>X</u>**" -> bold + underline. Each matched
 // span inherits the outer format and re-parses its inner content; plain text gets the
 // inherited format with stray tags removed.
-const parseInlineInherited = (text: string, inherited: TextRunFormat): TextRun[] => {
+interface InlineSourceContext {
+  code: MarkdownTableCell['code'];
+  offset: number;
+}
+
+const inlineCodeInSource = (text: string, source?: InlineSourceContext): MarkdownTableCell['code'] => source
+  ? source.code.filter(range => range.start >= source.offset && range.end <= source.offset + text.length)
+    .map(range => ({ ...range, start: range.start - source.offset, end: range.end - source.offset }))
+  : markdownCodeRanges(text).filter(range => range.kind === 'inline');
+
+const parseInlineInherited = (text: string, inherited: TextRunFormat, source?: InlineSourceContext): TextRun[] => {
   // Recompute inside every recursive call: outer prose marks may contain literal code.
-  const candidates: Array<{ start: number; end: number; content: string; format: TextRunFormat; literal?: boolean }> =
-    markdownCodeRanges(text).filter(range => range.kind === 'inline').map(range => ({
+  const code = inlineCodeInSource(text, source);
+  const candidates: Array<{ start: number; end: number; content: string; format: TextRunFormat; literal?: boolean; captureStart?: number }> =
+    code.map(range => ({
       start: range.start, end: range.end, content: range.value,
       format: { font: WORD_CODE_FONT }, literal: true,
     }));
-  const masked = withoutMarkdownCode(text, true).replace(/[\r\n]/g, ' ');
+  const masked = (source ? maskMarkdownCodeRanges(text, code) : withoutMarkdownCode(text, true)).replace(/[\r\n]/g, ' ');
   for (const { regex, format } of INLINE_PATTERNS) {
     regex.lastIndex = 0;
     let match;
     while ((match = regex.exec(masked)) !== null) {
       const prefix = match[0].startsWith('<') ? match[0].indexOf('>') + 1 : (match[0].length - match[1].length) / 2;
       const captured = text.slice(match.index + prefix, match.index + prefix + match[1].length);
-      candidates.push({ start: match.index, end: match.index + match[0].length, content: captured, format });
+      candidates.push({ start: match.index, end: match.index + match[0].length, content: captured, format, captureStart: match.index + prefix });
       if (match.index === regex.lastIndex) regex.lastIndex++; // guard zero-length matches
     }
   }
@@ -390,7 +416,9 @@ const parseInlineInherited = (text: string, inherited: TextRunFormat): TextRun[]
   const runs: TextRun[] = [];
   const pushPlain = (raw: string) => {
     // Decode after stripping actual tags: escaped tags are authored text, not markup.
-    const clean = inherited.font === WORD_CODE_FONT ? stripStrayTags(raw) : decodeBasicHtmlEntities(stripStrayTags(raw));
+    // Table escapes change only emitted text; all captures above use original offsets.
+    const original = source ? raw.replace(/\\\|/g, '|') : raw;
+    const clean = inherited.font === WORD_CODE_FONT ? stripStrayTags(original) : decodeBasicHtmlEntities(stripStrayTags(original));
     if (clean) runs.push(new TextRun({ text: clean, ...inherited }));
   };
 
@@ -399,7 +427,8 @@ const parseInlineInherited = (text: string, inherited: TextRunFormat): TextRun[]
     if (c.start < cursor) continue; // overlaps an already-chosen span
     if (c.start > cursor) pushPlain(text.slice(cursor, c.start));
     if (c.literal) runs.push(new TextRun({ text: c.content, ...inherited, ...c.format }));
-    else runs.push(...parseInlineInherited(c.content, { ...inherited, ...c.format }));
+    else runs.push(...parseInlineInherited(c.content, { ...inherited, ...c.format },
+      source ? { ...source, offset: source.offset + c.captureStart! } : undefined));
     cursor = c.end;
   }
   if (cursor < text.length) pushPlain(text.slice(cursor));
