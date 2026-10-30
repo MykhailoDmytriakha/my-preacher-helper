@@ -41,18 +41,29 @@ export function panelVerticalSpace(panel: HTMLElement, viewportHeight: number): 
 
 export type PanelSide = 'above' | 'below';
 
+/** The reachable room on either side, even when a saved anchor is outside the current viewport. */
+export function panelVerticalRooms(
+  anchor: { top: number; bottom: number }, space: { top: number; bottom: number }
+) {
+  const top = space.top + PANEL_EDGE_PADDING;
+  const bottom = Math.max(top, space.bottom - PANEL_EDGE_PADDING);
+  const aboveEnd = Math.max(top, Math.min(bottom, anchor.top - 8));
+  const belowStart = Math.min(bottom, Math.max(top, anchor.bottom + 8));
+  return {
+    above: { end: aboveEnd, size: aboveEnd - top },
+    below: { start: belowStart, size: bottom - belowStart },
+  };
+}
+
 /** Prefer the existing side; otherwise flip, or scroll within the roomier side. */
 export function panelVerticalPlacement(
   anchor: { top: number; bottom: number }, height: number,
   space: { top: number; bottom: number }, preferred: PanelSide
 ): { top: number; maxHeight: number } {
-  const top = space.top + PANEL_EDGE_PADDING;
-  const bottom = Math.max(top, space.bottom - PANEL_EDGE_PADDING);
-  const aboveEnd = Math.max(top, Math.min(bottom, anchor.top - 8));
-  const belowStart = Math.min(bottom, Math.max(top, anchor.bottom + 8));
-  const rooms = { above: aboveEnd - top, below: bottom - belowStart };
+  const { above, below } = panelVerticalRooms(anchor, space);
+  const rooms = { above: above.size, below: below.size };
   const other = preferred === 'above' ? 'below' : 'above';
   const side = height > rooms[preferred] && (height <= rooms[other] || rooms[other] > rooms[preferred]) ? other : preferred;
   const maxHeight = rooms[side];
-  return { top: side === 'above' ? aboveEnd - Math.min(height, maxHeight) : belowStart, maxHeight };
+  return { top: side === 'above' ? above.end - Math.min(height, maxHeight) : below.start, maxHeight };
 }

@@ -10,6 +10,7 @@ import { useModalLayer } from '@/hooks/useModalLayer';
 import { getLocalizedAbbrev, getLocalizedBookName } from '@/utils/bibleBooks';
 import { BIBLE_IDS, BIBLES, type BibleId } from '@/utils/bibles';
 import { fetchBookText, verseWords, type BookText } from '@/utils/bibleText';
+import { panelVerticalRooms } from '@/utils/panelPlacement';
 import { chapterCount, verseCount } from '@/utils/versification';
 import { useTranslation } from '@locales/useTranslation';
 
@@ -80,15 +81,27 @@ type PickerWindowProps = {
 function PickerWindow({ open, onClose, anchorRef, align, width, wide, tall = false, layerClassName = 'z-[100]', centered = false, label, children }: PickerWindowProps) {
   const { t } = useTranslation();
   const [anchor, setAnchor] = useState<DOMRect | null>(null);
+  const [viewport, setViewport] = useState<{ width: number; height: number } | null>(null);
 
   // Measured once, BEFORE the page is held still — this effect is declared above the modal layer,
   // and React runs a component's layout effects in order. Holding the page makes the body a scroll
   // box of its own, and a button in a sticky line (the reader's) drops back to its place at the top
   // of the book: measured after the hold, the window went off the screen with it. For the same
-  // reason a resize does not measure again.
+  // reason a resize changes the viewport dimensions without measuring the anchor again.
   useLayoutEffect(() => {
     if (open && wide) setAnchor(anchorRef.current?.getBoundingClientRect() ?? null);
   }, [anchorRef, open, wide]);
+  useLayoutEffect(() => {
+    if (!open || !wide || centered) return;
+    const resized = () => {
+      const width = window.innerWidth;
+      const height = window.innerHeight;
+      setViewport(current => current?.width === width && current.height === height ? current : { width, height });
+    };
+    resized();
+    window.addEventListener('resize', resized);
+    return () => window.removeEventListener('resize', resized);
+  }, [open, wide, centered]);
   const layer = useModalLayer({ onClose, active: open });
 
   if (!open || typeof document === 'undefined') return null;
@@ -103,22 +116,20 @@ function PickerWindow({ open, onClose, anchorRef, align, width, wide, tall = fal
       maxWidth: `calc(100vw - ${GUTTER * 2}px)`,
       maxHeight: `calc(100dvh - ${GUTTER * 2}px)`,
     };
-  } else if (wide && anchor) {
-    const room = window.innerWidth - GUTTER * 2;
-    // Under its button while a window fits there; above it when the room is there instead — a book low on
-    // the list of books: the page is held still, and a window running off the bottom could not be reached.
-    const below = window.innerHeight - anchor.bottom - 8 - GUTTER;
-    const above = anchor.top - 8 - GUTTER;
-    const vertical: CSSProperties = below >= ROOM_UNDER || below >= above
-      ? { top: anchor.bottom + 8, maxHeight: below }
-      : { bottom: window.innerHeight - anchor.top + 8, maxHeight: above };
+  } else if (wide && anchor && viewport) {
+    const room = Math.max(0, viewport.width - GUTTER * 2);
+    // Keep the original side preference, with only reachable room around the frozen pre-lock anchor.
+    const { above, below } = panelVerticalRooms(anchor, { top: 0, bottom: viewport.height });
+    const vertical: CSSProperties = below.size >= ROOM_UNDER || below.size >= above.size
+      ? { top: below.start, maxHeight: below.size }
+      : { bottom: viewport.height - above.end, maxHeight: above.size };
     placed = {
       ...vertical,
       maxWidth: room,
       ...(width ? { width: Math.min(width, room) } : { width: 'max-content', minWidth: Math.min(FIT_MIN_WIDTH, room) }),
       ...(align === 'end'
-        ? { right: Math.max(GUTTER, window.innerWidth - anchor.right) }
-        : { left: Math.min(Math.max(GUTTER, anchor.left), window.innerWidth - GUTTER - Math.min(width ?? FIT_MIN_WIDTH, room)) }),
+        ? { right: Math.max(GUTTER, viewport.width - anchor.right) }
+        : { left: Math.min(Math.max(GUTTER, anchor.left), viewport.width - GUTTER - Math.min(width ?? FIT_MIN_WIDTH, room)) }),
     };
   }
 

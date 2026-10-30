@@ -20,6 +20,13 @@ A new form window is `FormDialog` (`frontend/app/components/ui/FormDialog.tsx`):
 - Several older overlays still render in the tree without a portal (`ColorPickerModal`, `KeyFragmentsModal`, `AudioExportModal`, …) — do not copy them.
 - A textarea that grows inside a modal: `.howto/make-a-text-field-grow.md`.
 
+## Bible picker viewport geometry
+
+- `components/bible/BiblePicker.tsx` keeps its anchor measured before `useModalLayer` takes the page scroll lock. Do not remeasure that trigger on resize: a pinned page can move it relative to the viewport. While a wide, noncentered picker is open, its bounded resize subscription updates only viewport dimensions; it is removed on close/unmount.
+- `utils/panelPlacement.ts:panelVerticalRooms` owns clamped above/below space. Both generic `panelVerticalPlacement` and the Bible picker reuse it. The picker retains its existing 320 px below-space preference; React remains the only inline-style owner. Do not attach a second imperative position writer. Centered windows and phone sheets keep their CSS viewport sizing.
+- Reproduce on the Bible book list as well as the reader: open Psalms chapters or translation, reduce width without crossing the wide breakpoint, then reduce height twice. Parent reader rerenders can hide the missing resize subscription. Check an anchor outside the new viewport, actual internal wheel scrolling, keyboard focus, and phone 80/85dvh sheets. See Unit226 in `docs/verification/local-bug-fixes.md` and `__tests__/components/bible/pickerViewportResize.test.tsx`.
+- Geometry acceptance does not establish nested Escape correctness. Unit226 found `BUG-20261030-nested-picker-escape-closes-comment`: Bible reader comment -> edit -> Move -> Another place; Escape closed both the chooser and parent comment. It remains separately open; the accepted centered geometry run cancels by backdrop and explicitly retains that limitation.
+
 ## Keyboard focus
 
 - `useModalLayer` owns initial focus, Tab/Shift+Tab containment, and return focus. Do not add another Tab listener or generic focus-restoration effect to a modal.
