@@ -1,5 +1,6 @@
 import { ScriptureReference } from '@/models/models';
-import { getBookByName, getBookByWrittenName, getBookIds, withoutApostrophe } from '@/utils/bibleBooks';
+import { APOSTROPHES, BIBLE_BOOKS_DATA, getBookByName, getBookByWrittenName, getBookIds, withoutApostrophe } from '@/utils/bibleBooks';
+import { normalizeWord } from '@/utils/bibleSearch/words';
 
 import type { AppLocale } from '@/utils/appLocale';
 
@@ -209,8 +210,70 @@ const OWN_LANGUAGE_ALIASES = Object.fromEntries(
   ])
 ) as Partial<Record<AppLocale, Map<string, string>>>;
 
+/** A full name and the word that calls it, without a leading preposition. */
+export const bareBookName = (name: string): string => normalizeWord(name).replace(/^(от|к|до|від)\s+/, '');
+
+/** Cyrillic first: a name Russian and Ukrainian share, read with nothing else to go by, is read as Russian. */
+const WRITING_LANGUAGES: readonly AppLocale[] = ['ru', 'uk', 'en'];
+
+type BookCallingName = {
+  bookId: string; language: AppLocale; number: string | null; word: string; inCase: boolean; writtenWords: string[];
+};
+
+/** Search may suggest a call word; exact readers retain every word of the full title. */
+export const BOOK_CALLING_NAMES: readonly BookCallingName[] = BIBLE_BOOKS_DATA.flatMap(book => WRITING_LANGUAGES.map(language => {
+  const bare = bareBookName(book.names[language]);
+  const [first, second] = bare.split(' ');
+  const number = second !== undefined && /^[1-4]$/.test(first) ? first : null;
+  return { bookId: book.id, language, number, word: number ? second : first,
+    inCase: bare !== normalizeWord(book.names[language]),
+    writtenWords: book.names[language].toLowerCase().replace(APOSTROPHES, "'").split(' ') };
+}));
+
+const NAME_CASE_ENDINGS = new Set(['а', 'я', 'и', 'у', 'ю', 'е', 'і', 'ї']);
+type CaseName = Pick<BookCallingName, 'word' | 'language' | 'inCase'>;
+const nameCaseStem = (name: CaseName): string | null => {
+  if (name.language === 'en' || name.inCase) return null;
+  const stem = /[аеиоуыэюяьйієї]$/.test(name.word) ? name.word.slice(0, -1) : name.word;
+  return stem.length >= 3 ? stem : null;
+};
+
+/** Only one final letter changes; English and an already-inflected title never decline again. */
+export function isNameSaidInCase(said: string, name: CaseName): boolean {
+  const stem = nameCaseStem(name);
+  return stem !== null && said.length === stem.length + 1 && said.startsWith(stem) && NAME_CASE_ENDINGS.has(said.slice(-1));
+}
+
+const CASE_NAME_FORMS = BOOK_CALLING_NAMES.flatMap(name => {
+  const at = name.number ? 1 : 0;
+  const stem = nameCaseStem({ ...name, word: name.writtenWords[at] });
+  if (stem === null) return [];
+  return [...NAME_CASE_ENDINGS].flatMap(ending => {
+    const word = stem + ending;
+    if (!isNameSaidInCase(normalizeWord(word), name)) return [];
+    const words = [...name.writtenWords]; words[at] = word;
+    const aliases = [words.join(' ')];
+    if (name.number) aliases.push(words[0] + words.slice(1).join(' '));
+    return aliases.map(alias => ({ alias, language: name.language, book: name.bookId }));
+  });
+});
+const caseNameKey = (name: string) => normalizeWord(nameWords(name)).replace(/\s/g, '');
+const CASE_NAMES = new Map<string, Map<AppLocale, Set<string>>>();
+for (const { alias, language, book } of CASE_NAME_FORMS) {
+  const key = caseNameKey(alias), languages = CASE_NAMES.get(key) ?? new Map<AppLocale, Set<string>>();
+  const books = languages.get(language) ?? new Set<string>(); books.add(book); languages.set(language, books); CASE_NAMES.set(key, languages);
+}
+const bookInNameCase = (name: string, locale?: AppLocale): string | null => {
+  const languages = CASE_NAMES.get(caseNameKey(name));
+  if (!languages) return null;
+  const own = locale ? languages.get(locale) : undefined;
+  const books = own ?? new Set([...languages.values()].flatMap(ids => [...ids]));
+  return books.size === 1 ? [...books][0] : null;
+};
+
 export const getReferenceBookAliases = (): string[] => Array.from(new Set([
   ...BOOK_ALIAS_ENTRIES.map(([alias]) => alias),
+  ...CASE_NAME_FORMS.map(({ alias }) => alias),
   ...Object.values(OWN_LANGUAGE_ALIASES).flatMap((aliases) => Array.from(aliases.keys())),
 ]));
 
@@ -270,7 +333,7 @@ const resolveParsingTokens = ({
   return { tokens: allTokensNaive, isChapterRangeFormat: false, rangeMatch };
 };
 
-const exactBookOf = (input: string, locale?: AppLocale): string | null => {
+const writtenBookOf = (input: string, locale?: AppLocale): string | null => {
   // The language it is written in first: "1Цар" is 1 Samuel in Russian and 1 Kings in Ukrainian.
   const own = locale ? getBookByWrittenName(input, locale) : undefined;
   if (own) return own.id;
@@ -296,6 +359,8 @@ const exactBookOf = (input: string, locale?: AppLocale): string | null => {
   return null;
 };
 
+const exactBookOf = (input: string, locale?: AppLocale): string | null => writtenBookOf(input, locale) ?? bookInNameCase(input, locale);
+
 /**
  * The book a name is written for — a book's name, its abbreviation or a known alias, as people write
  * it ("Рим.", "1 Пар", "Песнь-Песней") — and never a guess from its first letters: in prose "A" and
@@ -306,8 +371,14 @@ export function exactBook(name: string, locale?: AppLocale): string | null {
   return words ? exactBookOf(words, locale) : null;
 }
 
+/** Literal names and aliases only, for search scopes that must not guess a declined word. */
+export function writtenBook(name: string, locale?: AppLocale): string | null {
+  const words = nameWords(name);
+  return words ? writtenBookOf(words, locale) : null;
+}
+
 /** A book's name as its words, the way names are kept: dashes and dots are spaces ("Песнь-Песней", "Рим."). */
-const nameWords = (name: string): string => withoutApostrophe(name).replace(/[–—−‒‑﹘﹣]/g, '-').replace(/[:,.;]/g, ' ').split(/[\s-]+/).filter(Boolean).join(' ');
+function nameWords(name: string): string { return withoutApostrophe(name).replace(/[–—−‒‑﹘﹣]/g, '-').replace(/[:,.;]/g, ' ').split(/[\s-]+/).filter(Boolean).join(' '); }
 
 /**
  * The languages whose own names and abbreviations write a book so: "Ps" English alone, "Иоил" Russian,
@@ -315,11 +386,13 @@ const nameWords = (name: string): string => withoutApostrophe(name).replace(/[�
  */
 export function bookNameLanguages(name: string): AppLocale[] {
   const words = nameWords(name);
-  return words ? WRITING_LANGUAGES.filter((locale) => getBookByWrittenName(words, locale) !== undefined) : [];
+  if (!words) return [];
+  const written = WRITING_LANGUAGES.filter(locale => getBookByWrittenName(words, locale) !== undefined);
+  if (written.length) return written;
+  const cases = CASE_NAMES.get(caseNameKey(words));
+  return WRITING_LANGUAGES.filter(locale => cases?.get(locale)?.size === 1);
 }
 
-/** Cyrillic first: a name Russian and Ukrainian share, read with nothing else to go by, is read as Russian. */
-const WRITING_LANGUAGES: readonly AppLocale[] = ['ru', 'uk', 'en'];
 
 const resolveBook = (input: string, locale?: AppLocale): BookMatch | null => {
   const exact = exactBookOf(input, locale);

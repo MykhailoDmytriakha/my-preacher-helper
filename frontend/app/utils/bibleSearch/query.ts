@@ -2,7 +2,7 @@ import { BIBLE_BOOKS_DATA, getLocalizedAbbrev } from '@/utils/bibleBooks';
 import { referenceFromText } from '@/utils/bibleLink';
 import { BIBLES, type BibleId } from '@/utils/bibles';
 import { normalizeSpokenScriptureReferences } from '@/utils/scriptureReferenceNormalizer';
-import { exactBook } from '@/utils/scriptureReferenceParser';
+import { exactBook, writtenBook, bareBookName as bareName, BOOK_CALLING_NAMES as CALLING_WORDS, isNameSaidInCase } from '@/utils/scriptureReferenceParser';
 import { chapterCount, verseCount } from '@/utils/versification';
 
 import { digitsForNumberWords, isNumberWord, ordinalOf } from './numberWords';
@@ -143,48 +143,16 @@ const PLACE_WORD = /^([\d:.\-–]+|(глав|стих|розділ|вірш|chap
 const languageOf = (bible: BibleId): SearchLanguage => BIBLES[bible].language;
 const isDigits = (word: string | undefined): boolean => word !== undefined && /^\d+$/.test(word);
 
-/** A book's name as said without its little word: «Иоанна» for «От Иоанна», «Івана» for «Від Івана», «Римлянам» for «К Римлянам». */
-const bareName = (name: string): string => normalizeWord(name).replace(/^(от|к|до|від)\s+/, '');
-
 /** Book names as said, in every language, so a Ukrainian name works with any Bible open. */
 const BARE_NAMES = new Map<string, string>(
   BIBLE_BOOKS_DATA.flatMap((book) => (['ru', 'uk', 'en'] as const).map((language) => [bareName(book.names[language]), book.id] as const))
 );
 
-/**
- * The word each name calls its book by, with the book's number apart: «4 Царств» is 4 and «царств»,
- * «Плач Иеремии» is «плач» — the word «Иеремии» there is Jeremiah's name, not the book's.
- */
-const CALLING_WORDS = BIBLE_BOOKS_DATA.flatMap((book) => (['ru', 'uk', 'en'] as const).map((language) => {
-  const bare = bareName(book.names[language]);
-  const [first, second] = bare.split(' ');
-  const number = second !== undefined && /^[1-4]$/.test(first) ? first : null;
-  // «От Марка», «К Римлянам» already stand in a case after their little word, and dictation writes them so.
-  const inCase = bare !== normalizeWord(book.names[language]);
-  return { bookId: book.id, language, number, word: number ? second : first, inCase };
-}));
-
-/** What a name's last letter becomes when it is said after «книга», «от», «из», «к»: «Исаия» → «Исаии», «Исаию». */
-const NAME_CASE_ENDINGS = new Set(['а', 'я', 'и', 'у', 'ю', 'е', 'і', 'ї']);
-
-/**
- * Whether a word is a book's name said in another case, as dictation writes it: «Исаии», «Иеремии», «Даниила»,
- * «Иезекииля», «Єремії». Only the name's ending changes. The rule of word forms (`wordForms.ts`) is wider than
- * a name: it read «суда 5» as Judges («Судей»), «луком 5» as Luke and «marking 5» as Mark (Codex, 2026-10-26).
- * A name after its little word is in a case already («От Марка»: «марки» is not Mark), and English names are
- * not declined: for them only the first letters count.
- */
-function isNameSaidInCase(said: string, name: { word: string; language: SearchLanguage; inCase: boolean }): boolean {
-  if (name.language === 'en' || name.inCase) return false;
-  const stem = /[аеиоуыэюяьйієї]$/.test(name.word) ? name.word.slice(0, -1) : name.word;
-  return stem.length >= 3 && said.length === stem.length + 1 && said.startsWith(stem) && NAME_CASE_ENDINGS.has(said.slice(-1));
-}
-
 /** The book a run of words names exactly — a name, an abbreviation, a known alias; never a guess from first letters. */
 function bookNamed(words: readonly string[], language: SearchLanguage): string | null {
   const name = words.join(' ');
   if (words.length === 1 && (STOP.has(name) || name.length < 2)) return null;
-  return exactBook(name, language) ?? BARE_NAMES.get(name) ?? null;
+  return writtenBook(name, language) ?? BARE_NAMES.get(name) ?? null;
 }
 
 /** A chapter named after a book: «4», «четыре», «двадцать третья», with «глава» before or after; then maybe «:25-59». */
@@ -263,6 +231,8 @@ function bookAtStart(words: readonly string[], language: SearchLanguage, spoken:
   return null;
 }
 
+const isPlaceTail = (words: readonly string[]): boolean => words.some(word => /\d/.test(word)) && words.every(word => PLACE_WORD.test(word));
+
 /**
  * A book named loosely before a place: by the first letters of its name («иса 34:16» — Исаия), as
  * typed in a hurry, or by its name in another case («Исаии 34 16», «Иеремии 29 11»), as dictation
@@ -273,13 +243,19 @@ function bookAtStart(words: readonly string[], language: SearchLanguage, spoken:
 function bookBeforePlace(words: readonly string[]): { bookId: string; start: number; end: number } | null {
   let start = 0;
   while (start < words.length - 1 && INTRO.has(words[start])) start += 1;
+  // Complete grammatical names are places here only when nothing but their numbers follows.
+  for (let end = Math.min(start + 4, words.length - 1); end > start; end -= 1) {
+    if (!isPlaceTail(words.slice(end))) continue;
+    const bookId = exactBook(words.slice(start, end).join(' '));
+    if (bookId) return { bookId, start, end };
+  }
   // «4 Царств» is the one book numbered past three.
   const number = /^4$/.test(words[start] ?? '') ? '4' : bookNumber(words[start], false);
   const at = number ? start + 1 : start;
   const said = words[at];
   const place = words.slice(at + 1);
   if (!said || said.length < 3 || !/^\p{L}+$/u.test(said)) return null;
-  if (!place.some((word) => /\d/.test(word)) || !place.every((word) => PLACE_WORD.test(word))) return null;
+  if (!isPlaceTail(place)) return null;
   const books = new Set(CALLING_WORDS
     .filter((name) => name.number === number && (name.word.startsWith(said) || isNameSaidInCase(said, name)))
     .map((name) => name.bookId));
