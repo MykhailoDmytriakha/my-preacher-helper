@@ -6,7 +6,7 @@ import { useLongPress } from '@/hooks/useLongPress';
 
 import { verseOfRow, verseRowAt, type VerseAt } from './selectedVerses';
 
-import type { VerseCopy, VerseMenuAt } from './useVerseCopy';
+import type { VerseCopy } from './useVerseCopy';
 
 type Press = VerseAt & { x: number; y: number; touch: boolean; row: HTMLElement };
 
@@ -14,13 +14,6 @@ type Press = VerseAt & { x: number; y: number; touch: boolean; row: HTMLElement 
 const CONTROL = 'button, a, [role="button"]';
 const onControl = (target: EventTarget | null) => target instanceof Element && Boolean(target.closest(CONTROL));
 
-const menuAt = (press: Press, touch: boolean, held: boolean): VerseMenuAt => {
-  const box = press.row.getBoundingClientRect();
-  return {
-    chapter: press.chapter, verse: press.verse, x: press.x, y: press.y, touch, held,
-    row: { top: box.top, left: box.left, width: box.width, height: box.height },
-  };
-};
 
 /**
  * THE READER'S TEXT, ANSWERING A HOLD — the hold of `useLongPress`, the app's one rule of pressing and holding,
@@ -55,7 +48,7 @@ export function VerseHoldSurface({ copy, articleRef, className, gestureIgnore, p
       const press = pressRef.current;
       if (!press || !copy.enabled) return;
       if (copy.picking) copy.rangeTo(press);
-      else copy.openMenu(menuAt(press, press.touch, true));
+      else copy.openMenu(press, press.row, { x: press.x, y: press.y, touch: press.touch, held: true });
     },
   });
   // The verse lights when the hold has run its time: a touch that only starts a scroll lights nothing.
@@ -89,7 +82,7 @@ export function VerseHoldSurface({ copy, articleRef, className, gestureIgnore, p
     const selection = window.getSelection();
     if (copy.picking || (selection && !selection.isCollapsed)) return;
     event.preventDefault();
-    copy.openMenu(menuAt(press, false, false));
+    copy.openMenu(press, press.row, { x: press.x, y: press.y, touch: false, held: false });
   };
   // Choosing several, a press on a verse is judged before its number, chip or badge can act on it.
   const onClickCapture = (event: MouseEvent<HTMLElement>) => {

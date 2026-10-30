@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowsRightLeftIcon } from '@heroicons/react/20/solid';
+import { ArrowsRightLeftIcon, EllipsisHorizontalIcon } from '@heroicons/react/20/solid';
 import { Fragment, memo } from 'react';
 
 import { CommentIcon } from '@/components/Icons';
@@ -121,6 +121,8 @@ export type RibbonMine = {
  * A chapter heading's door to a comment on the whole chapter (case 2026-10-12-block-diagram, 3.2): pressed, the
  * heading opens the chapter's comment window — a new one, or the one already written to it.
  */
+export type RibbonVerseMenu = { enabled: boolean; label: (chapter: number, verse: number) => string; open: (chapter: number, verse: number, row: HTMLElement) => void };
+
 export type RibbonChapterComment = { labelOf: (chapter: number) => string; open: (chapter: number) => void };
 
 /** Badges after one verse before the rest fold into "+N": a long row would push the text away. */
@@ -177,12 +179,13 @@ export function CrossRefsChip({ count, label, onOpen, testId, phone = false }: {
   );
 }
 
-function VerseRow({ chapter, verse, raw, lang, crossRefs, signs, mine, detached = false, lit }: {
+function VerseRow({ chapter, verse, raw, lang, crossRefs, signs, mine, detached = false, lit, verseMenu }: {
   chapter: number; verse: number; raw: string; lang: string; crossRefs?: RibbonCrossRefs; signs?: RibbonSigns; mine?: RibbonMine;
   /** A row of a chapter shown apart from the reader's book (`ChapterVerses`): not `data-verse`, so it is never taken for the place read or a verse to mark. */
   detached?: boolean;
   /** Lit from the start; rows of the ribbon are lit by the screen setting `data-arrival` itself. */
   lit?: boolean;
+  verseMenu?: RibbonVerseMenu;
 }) {
   const { opensParagraph, segments } = parseVerse(raw);
   const sign = signs?.at.get(`${chapter}:${verse}`);
@@ -196,7 +199,7 @@ function VerseRow({ chapter, verse, raw, lang, crossRefs, signs, mine, detached 
       data-verse={detached ? undefined : `${chapter}:${verse}`}
       {...(lit ? { [ARRIVAL_ATTRIBUTE]: 'on' } : {})}
       style={{ scrollMarginTop: READING_TOP }}
-      className={`mb-2.5 md:mb-0 md:flex md:flex-wrap md:gap-x-3 ${ARRIVAL_CLASSES} ${detached ? '' : CHOSEN_CLASSES} ${opensParagraph && verse > 1 ? 'md:mt-2' : ''}`}
+      className={`mb-2.5 md:mb-0 md:flex md:flex-wrap md:gap-x-3 ${ARRIVAL_CLASSES} ${detached ? '' : CHOSEN_CLASSES} ${verseMenu ? 'pr-9' : ''} ${opensParagraph && verse > 1 ? 'md:mt-2' : ''}`}
     >
       {signs && sign ? (
         <button
@@ -245,6 +248,22 @@ function VerseRow({ chapter, verse, raw, lang, crossRefs, signs, mine, detached 
         ) : null}
         {mine && badges ? <span className="md:contents max-md:inline-block max-md:origin-left max-md:scale-90 max-md:align-super"><MineBadges badges={badges} mine={mine} chapter={chapter} verse={verse} testId={`mine-${chapter}:${verse}`} /></span> : null}
       </p>
+      {verseMenu?.enabled ? (
+        <button
+          type="button"
+          data-verse-menu=""
+          aria-label={verseMenu.label(chapter, verse)}
+          aria-haspopup="menu"
+          aria-expanded={false}
+          onClick={(event) => {
+            const row = event.currentTarget.closest<HTMLElement>('[data-verse]');
+            if (row) verseMenu.open(chapter, verse, row);
+          }}
+          className="pointer-events-none absolute right-0 top-0 rounded-md bg-white p-1.5 text-gray-600 opacity-0 shadow-sm focus-visible:pointer-events-auto focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 dark:bg-gray-800 dark:text-gray-200"
+        >
+          <EllipsisHorizontalIcon className="h-4 w-4" aria-hidden="true" />
+        </button>
+      ) : null}
       {/* Under the verse's words, the whole width of the text column: the row's light and choice cover it too. */}
       {mine?.comments && comments ? (
         <CommentsOnText comments={comments} onEdit={mine.comments.onEdit} testId={`comments-${chapter}:${verse}`} className="mt-1 md:mb-1 md:basis-full md:pl-10" />
@@ -259,9 +278,9 @@ function VerseRow({ chapter, verse, raw, lang, crossRefs, signs, mine, detached 
  * drawn; every other one is a box of its height with its heading (`data-box`), so the scroll still spans
  * the whole book and a fast scroll shows the chapters it passes.
  */
-export const BookRibbon = memo(function BookRibbon({ text, lang, chapterWord, crossRefs, signs, mine, chapterComment, boxes }: {
+export const BookRibbon = memo(function BookRibbon({ text, lang, chapterWord, crossRefs, signs, mine, chapterComment, boxes, verseMenu }: {
   text: BookText; lang: string; chapterWord: (chapter: number) => string; crossRefs?: RibbonCrossRefs; signs?: RibbonSigns; mine?: RibbonMine;
-  chapterComment?: RibbonChapterComment; boxes?: ChapterBoxes | null;
+  chapterComment?: RibbonChapterComment; boxes?: ChapterBoxes | null; verseMenu?: RibbonVerseMenu;
 }) {
   return (
     <>
@@ -308,7 +327,7 @@ export const BookRibbon = memo(function BookRibbon({ text, lang, chapterWord, cr
               <CommentsOnText comments={mine.comments.chapters.get(chapter)!} onEdit={mine.comments.onEdit} testId={`comments-chapter-${chapter}`} className="mb-2 md:pl-10" />
             ) : null}
             {box ? null : verses.map((raw, verseIndex) => (
-              <VerseRow key={verseIndex} chapter={chapter} verse={verseIndex + 1} raw={raw} lang={lang} crossRefs={crossRefs} signs={signs} mine={mine} />
+              <VerseRow key={verseIndex} chapter={chapter} verse={verseIndex + 1} raw={raw} lang={lang} crossRefs={crossRefs} signs={signs} mine={mine} verseMenu={verseMenu} />
             ))}
           </section>
         );

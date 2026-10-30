@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 
 
 import { CommentDialog, type CommentTarget } from '@/components/CommentDialog';
@@ -30,7 +30,7 @@ export function readerPlaceName(reference: ScriptureReference, bible: BibleId, l
 }
 
 /** What the reader asked to open: a comment already written, or a new one on a verse or a chapter. */
-export type ReaderCommenting = { kind: 'edit'; id: string } | { kind: 'new'; reference: ScriptureReference };
+export type ReaderCommenting = ({ kind: 'edit'; id: string } | { kind: 'new'; reference: ScriptureReference }) & { opener?: HTMLElement | null };
 
 /**
  * THE COMMENT'S WINDOW OPENED FROM THE READER (case 2026-10-12-block-diagram, 3.2): names it by its place as the reader
@@ -63,6 +63,7 @@ function OpenReaderCommentDialog({ commenting, text, bookId, bible, locale, pass
   onClose: () => void;
 }) {
   const { t } = useTranslation();
+  const returnFocusTo = useRef<HTMLElement | null>(commenting.opener ?? null);
   const abbrev = getLocalizedAbbrev(bookId, locale);
   const words = (chapter: number, verse: number) => verseWords(text.chapters[chapter - 1]?.[verse - 1] ?? '');
   const passage: Passage | undefined = commenting.kind === 'edit'
@@ -74,7 +75,7 @@ function OpenReaderCommentDialog({ commenting, text, bookId, bible, locale, pass
     : t(passage && passage.toChapter > passage.chapter ? 'comment.wholeChapters' : 'comment.wholeChapter', { place });
   const target: CommentTarget = commenting.kind === 'edit' ? { kind: 'edit', id: commenting.id } : { kind: 'new', reference: commenting.reference };
   const placeOf = (reference: ScriptureReference) => readerPlaceName(reference, bible, locale);
-  return <CommentDialog target={target} place={place} context={context} bible={bible} placeOf={placeOf} onClose={onClose} />;
+  return <CommentDialog target={target} place={place} context={context} bible={bible} placeOf={placeOf} onClose={onClose} returnFocusTo={returnFocusTo} />;
 }
 
 /** The window's state in the reader: which comment is open, and opening a written one by its id. */
@@ -98,15 +99,15 @@ export function useCommentDoors({ ready, commentOn, setCommenting, bookId, bible
   bible: BibleId;
 }): { verse?: VerseComment; chapter?: RibbonChapterComment } {
   const { t } = useTranslation();
-  const open = useCallback((chapter: number, verse: number | null) => {
+  const open = useCallback((chapter: number, verse: number | null, opener?: HTMLElement | null) => {
     const id = commentOn(chapter, verse);
     const reference: ScriptureReference = { id: newClientId(), bible, book: bookId, chapter, ...(verse !== null ? { fromVerse: verse } : {}) };
-    setCommenting(id ? { kind: 'edit', id } : { kind: 'new', reference });
+    setCommenting(id ? { kind: 'edit', id, ...(opener ? { opener } : {}) } : { kind: 'new', reference, ...(opener ? { opener } : {}) });
   }, [commentOn, setCommenting, bible, bookId]);
   return useMemo(() => (!ready ? {} : {
     verse: {
       labelOf: ({ chapter, verse }) => t(commentOn(chapter, verse) ? 'comment.verseMenuEdit' : 'comment.verseMenu'),
-      open: ({ chapter, verse }) => open(chapter, verse),
+      open: ({ chapter, verse }, opener) => open(chapter, verse, opener),
     },
     chapter: {
       labelOf: (chapter) => t(commentOn(chapter, null) ? 'comment.chapterMenuEdit' : 'comment.chapterMenu'),

@@ -16,7 +16,7 @@ import type { VerseCopy, VerseMenuAt } from './useVerseCopy';
 /** The verse's comment door (case 2026-10-12-block-diagram, 3.2): «Комментарий», or «Изменить комментарий» where one stands. */
 export type VerseComment = {
   labelOf: (verse: { chapter: number; verse: number }) => string;
-  open: (verse: { chapter: number; verse: number }) => void;
+  open: (verse: { chapter: number; verse: number }, opener?: HTMLElement | null) => void;
 };
 
 /** The click that ends a hold may land on what the hold just opened: for a moment that one click is not a choice. */
@@ -74,13 +74,13 @@ function OpenVerseMenu({ copy, at, comment }: { copy: VerseCopy; at: VerseMenuAt
   const { t } = useTranslation();
   const { closeMenu } = copy;
   const menuRef = useRef<HTMLDivElement | null>(null);
-  // Tab turns round in the menu, not over the verse lifted beside it.
-  const layer = useModalLayer({ onClose: closeMenu, focusRing: menuRef });
+  const [spot, setSpot] = useState<Spot | null>(null);
+  // The shared layer owns focus only after its positioned menu is visible.
+  const layer = useModalLayer({ onClose: closeMenu, focusRing: menuRef, active: spot !== null });
   const cardRef = useRef<HTMLDivElement | null>(null);
   // A duration on the page's own clock: it never jumps with the wall clock.
   const opened = useRef(performance.now());
   const holdClick = useRef(at.held);
-  const [spot, setSpot] = useState<Spot | null>(null);
 
   const place = useCallback(() => {
     if (!menuRef.current) return;
@@ -95,13 +95,6 @@ function OpenVerseMenu({ copy, at, comment }: { copy: VerseCopy; at: VerseMenuAt
     window.addEventListener('resize', place);
     return () => window.removeEventListener('resize', place);
   }, [place]);
-  useEffect(() => {
-    const before = document.activeElement as HTMLElement | null;
-    menuRef.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus({ preventScroll: true });
-    return () => {
-      if (before?.isConnected) before.focus({ preventScroll: true });
-    };
-  }, []);
 
   // Only the one click a hold ends with is not a choice — never a key, never a click after a right button, never a
   // click whose press began in the menu (the lift's click may have gone to the verse, its press's target).
@@ -173,7 +166,7 @@ function OpenVerseMenu({ copy, at, comment }: { copy: VerseCopy; at: VerseMenuAt
           />
         ) : null}
         {comment ? (
-          <MenuItem icon={CommentIcon} label={comment.labelOf(verse)} touch={at.touch} onSelect={choose(() => { closeMenu(); comment.open(verse); })} />
+          <MenuItem icon={CommentIcon} label={comment.labelOf(verse)} touch={at.touch} onSelect={choose(() => { closeMenu(); if (at.opener) comment.open(verse, at.opener); else comment.open(verse); })} />
         ) : null}
       </div>
     </div>,

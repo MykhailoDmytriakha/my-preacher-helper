@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { BibleBookReader } from '@/components/bible/BibleBookReader';
-import { resetCrossReferencePrefsForTests } from '@/components/bible/crossReferencePrefs';
+import { resetCrossReferencePrefsForTests, saveCrossReferencePrefs } from '@/components/bible/crossReferencePrefs';
 import { readPlaceTrail, resetPlaceTrailForTests } from '@/components/bible/placeTrailStore';
 import { LONG_PRESS_MS } from '@/hooks/useLongPress';
 import { verseWords, type BookText } from '@/utils/bibleText';
@@ -59,9 +59,11 @@ beforeEach(() => {
   Object.defineProperty(navigator, 'share', { value: undefined, configurable: true });
 });
 
-const renderRuth = async () => {
+const renderRuth = async (showReferences = true) => {
+  if (!showReferences) saveCrossReferencePrefs({ show: false });
   render(<BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={{ chapter: 1, verse: 16 }} onOpenBook={jest.fn()} />);
-  await screen.findByTestId('cross-refs-1:16');
+  if (showReferences) await screen.findByTestId('cross-refs-1:16');
+  else await waitFor(() => expect(row('1:16')).toBeInTheDocument());
 };
 const verseText = (key: string) => document.querySelector(`[data-verse="${key}"] [data-verse-text]`) as HTMLElement;
 const row = (key: string) => document.querySelector(`[data-verse="${key}"]`) as HTMLElement;
@@ -81,6 +83,29 @@ async function hold(target: Element) {
 }
 
 describe('taking verses out of the reader', () => {
+  it.each([
+    { references: true, key: '{Enter}', keyName: 'Enter' },
+    { references: true, key: ' ', keyName: 'Space' },
+    { references: false, key: '{Enter}', keyName: 'Enter' },
+    { references: false, key: ' ', keyName: 'Space' },
+  ])('the verse menu button opens by $keyName when cross-reference badges are $references', async ({ references, key }) => {
+    const user = userEvent.setup();
+    await renderRuth(references);
+    const verseRow = within(row('1:16'));
+    const menuButton = verseRow.getByRole('button', { name: 'bible.copy.menu' });
+    expect(menuButton).toHaveAttribute('aria-haspopup', 'menu');
+    for (let i = 0; i < 180 && !menuButton.matches(':focus'); i++) await user.tab();
+    expect(menuButton).toHaveFocus();
+    await user.keyboard(key);
+    const menu = await screen.findByRole('menu', { name: 'bible.copy.menu' });
+    expect(menuButton).toHaveAttribute('aria-expanded', 'true');
+    expect(within(menu).getByRole('menuitem', { name: 'bible.copy.copy' })).toHaveFocus();
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('menu', { name: 'bible.copy.menu' })).toBeNull();
+    expect(menuButton).toHaveAttribute('aria-expanded', 'false');
+    expect(menuButton).toHaveFocus();
+  }, 15000);
+
   it('a verse held opens its menu; Copy puts the verse, its place and its Bible in the clipboard', async () => {
     await renderRuth();
     await hold(verseText('1:16'));

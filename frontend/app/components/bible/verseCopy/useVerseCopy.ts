@@ -14,7 +14,7 @@ import { isTypingIn } from '@/utils/typingTarget';
 import { copiedPlace, DEFAULT_COPY_FORMAT, verseCopyText, type CopyFormat, type CopyNames } from '@/utils/verseCopy';
 import { useTranslation } from '@locales/useTranslation';
 
-import { VERSE_CHOSEN_ATTRIBUTE, VERSE_HELD_ATTRIBUTE, type RibbonCrossRefs } from '../BookRibbon';
+import { VERSE_CHOSEN_ATTRIBUTE, VERSE_HELD_ATTRIBUTE, type RibbonCrossRefs, type RibbonVerseMenu } from '../BookRibbon';
 
 import { selectedVerses, verseKey, type VerseAt } from './selectedVerses';
 
@@ -24,7 +24,7 @@ import type { TFunction } from 'i18next';
  * Where the verse's menu was asked for: the press, the row as it stood, whether a finger asked, and whether a hold
  * opened it — the click that ends a hold may land on the menu.
  */
-export type VerseMenuAt = VerseAt & { x: number; y: number; touch: boolean; held: boolean; row: { top: number; left: number; width: number; height: number } };
+export type VerseMenuAt = VerseAt & { x: number; y: number; touch: boolean; held: boolean; opener?: HTMLElement | null; row: { top: number; left: number; width: number; height: number } };
 
 /**
  * The book named in the Bible's own language, whatever the interface speaks: the words copied are that Bible's. The Bible
@@ -89,10 +89,15 @@ export function useVerseCopy({ textRef, text, bible, bookId, drawn, crossRefs, e
   const actedRef = useRef(onActed);
   actedRef.current = onActed;
   const acted = useCallback((verses: VerseAt[]) => actedRef.current?.(verses), []);
-  const openMenu = useCallback((at: VerseMenuAt) => {
-    setMenu(at);
+  // Pointer and keyboard doors share the same row snapshot and menu state.
+  const openMenu = useCallback((at: VerseAt, row: HTMLElement, pointer?: Pick<VerseMenuAt, 'x' | 'y' | 'touch' | 'held'>) => {
+    if (!enabled) return;
+    const box = row.getBoundingClientRect();
+    const position = pointer ?? { x: box.left + Math.min(24, box.width / 2), y: box.top + Math.min(24, box.height / 2), touch: false, held: false };
+    const opener = row.querySelector<HTMLElement>('[data-verse-menu]') ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
+    setMenu({ chapter: at.chapter, verse: at.verse, ...position, opener, row: { top: box.top, left: box.left, width: box.width, height: box.height } });
     acted([{ chapter: at.chapter, verse: at.verse }]);
-  }, [acted]);
+  }, [acted, enabled]);
   const done = useCallback(() => {
     setMenu(null);
     clear();
@@ -113,6 +118,13 @@ export function useVerseCopy({ textRef, text, bible, bookId, drawn, crossRefs, e
   const placeOf = useCallback((verses: VerseAt[]) => copiedPlace(names.book, verses), [names.book]);
   /** The verse as the interface names it, for its menu. */
   const labelOf = useCallback((at: VerseAt) => `${getLocalizedAbbrev(bookId, locale)} ${at.chapter}:${at.verse}`, [bookId, locale]);
+
+  // Keep the door's room stable while a mark tool temporarily disables the action.
+  const ribbonMenu = useMemo<RibbonVerseMenu>(() => ({
+    enabled,
+    label: (chapter, verse) => t('bible.copy.menu', { place: labelOf({ chapter, verse }) }),
+    open: (chapter, verse, row) => openMenu({ chapter, verse }, row),
+  }), [enabled, labelOf, openMenu, t]);
 
   // The choice as it is now: a copy or a send that answers late lets go only the choice it was made from.
   const pickedRef = useRef(picked);
@@ -199,6 +211,14 @@ export function useVerseCopy({ textRef, text, bible, bookId, drawn, crossRefs, e
     setOnRows(textRef.current, VERSE_HELD_ATTRIBUTE, new Set(heldAt ? [verseKey(heldAt)] : []));
   }, [heldAt, drawn, text, textRef]);
 
+  // Match menu accessibility state without redrawing the book for each menu action.
+  useEffect(() => {
+    for (const button of textRef.current?.querySelectorAll('[data-verse-menu]') ?? []) {
+      const row = button.closest('[data-verse]');
+      button.setAttribute('aria-expanded', String(Boolean(menu && row?.getAttribute('data-verse') === verseKey(menu))));
+    }
+  }, [menu, drawn, text, textRef]);
+
   // Escape lets the choice go, unless a window above it takes the key.
   const choosing = picked !== null;
   useEffect(() => {
@@ -237,6 +257,7 @@ export function useVerseCopy({ textRef, text, bible, bookId, drawn, crossRefs, e
 
   return {
     enabled,
+    ribbonMenu,
     menu, openMenu, closeMenu: useCallback(() => setMenu(null), []),
     hold: setHeld,
     picked, picking: choosing, startPicking, toggle, rangeTo, clear,

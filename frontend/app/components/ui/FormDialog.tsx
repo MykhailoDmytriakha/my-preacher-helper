@@ -1,7 +1,7 @@
 'use client';
 
 import { XMarkIcon } from '@heroicons/react/24/outline';
-import React, { useId, type ReactNode, type ButtonHTMLAttributes } from 'react';
+import React, { useId, type ReactNode, type ButtonHTMLAttributes, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 
 import { useDiscardQuestion } from '@/hooks/useConfirm';
@@ -27,6 +27,8 @@ interface FormDialogProps {
   dismissOnBackdrop?: boolean;
   closeDisabled?: boolean;
   onClose: () => void;
+  /** A surviving control when this dialog replaces a temporary opener such as a menu item. */
+  returnFocusTo?: RefObject<HTMLElement | null>;
   /**
    * THE FOOTER IS THE SHAPE SWITCH, and deliberately so.
    *
@@ -56,7 +58,7 @@ const WIDTH_BY_SIZE: Record<NonNullable<FormDialogProps['size']>, string> = {
 };
 
 /** Presentation only: submission, draft retention and dismissal belong to the caller. */
-export default function FormDialog({ title, titleAction, eyebrow, description, tone = 'blue', size, dismissOnBackdrop = false, closeDisabled = false, onClose, footer, onSubmit, noValidate, children, showCloseButton = false }: FormDialogProps) {
+export default function FormDialog({ title, titleAction, eyebrow, description, tone = 'blue', size, dismissOnBackdrop = false, closeDisabled = false, onClose, returnFocusTo, footer, onSubmit, noValidate, children, showCloseButton = false }: FormDialogProps) {
   const { t } = useTranslation();
   const titleId = useId();
   const descriptionId = useId();
@@ -65,7 +67,7 @@ export default function FormDialog({ title, titleAction, eyebrow, description, t
    * whether it is the topmost — is one rule for every window in the app (`useModalLayer`).
    * This dialog is simply one of its callers.
    */
-  const layer = useModalLayer({ onClose, closeDisabled });
+  const layer = useModalLayer({ onClose, closeDisabled, returnFocusTo });
   const banded = footer !== undefined;
   const width = WIDTH_BY_SIZE[size ?? (banded ? 'form' : 'standard')];
 

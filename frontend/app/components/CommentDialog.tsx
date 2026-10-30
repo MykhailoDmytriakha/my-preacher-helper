@@ -1,7 +1,7 @@
 'use client';
 
 import { RectangleStackIcon } from '@heroicons/react/20/solid';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { toast } from 'sonner';
 
 import { CommentPlaceShown, MovePlaceButton, useCommentPlace } from '@/components/CommentPlaceMove';
@@ -143,7 +143,7 @@ function useWaitingDraft(
   return differs ? offered : null;
 }
 
-export function CommentDialog({ target, place, context, bible, placeOf, placePicker, restorePlace, onErased, onClose }: {
+export function CommentDialog({ target, place, context, bible, placeOf, placePicker, restorePlace, onErased, onClose, returnFocusTo }: {
   target: CommentTarget;
   /** "Ис 40:31", "Ис 40–41": the place the comment is written to; empty while a new one's place is not chosen. */
   place: string;
@@ -163,6 +163,7 @@ export function CommentDialog({ target, place, context, bible, placeOf, placePic
   /** After the comment is erased, where the screen under the window shows it still (its own page): leave it. */
   onErased?: () => void;
   onClose: () => void;
+  returnFocusTo?: RefObject<HTMLElement | null>;
 }) {
   const { t } = useTranslation();
   const { uid, notes, createNote, updateNote, deleteNote } = useStudyNotesEngine(true);
@@ -353,6 +354,7 @@ export function CommentDialog({ target, place, context, bible, placeOf, placePic
       ) : null}
       description={t('comment.description')}
       onClose={requestClose}
+      returnFocusTo={returnFocusTo}
       closeDisabled={saving}
       onSubmit={save}
       footer={(
