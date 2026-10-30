@@ -24,14 +24,11 @@ import { useTranslation } from '@locales/useTranslation';
 // render their REAL content from the Firestore offline cache (deep per-route
 // render — Phase 4 Increment 2) instead of a generic notice.
 //
-// Bundle discipline: the dashboard (the home, always relevant offline) is a STATIC
-// import so it is part of the precached shell and guaranteed available offline. The
-// other overview/list routes are LAZY (separate chunks, not in the precache) — their
-// chunk is cached by the runtime defaultCache when the route is visited online, so a
-// previously-visited route renders offline; a never-visited one fails to load its
-// chunk and the error boundary shows the generic card. This keeps the precached
-// shell small (static-importing all of them ballooned /~offline to ~939kB First Load
-// vs ~427kB for the dashboard alone) without losing graceful coverage.
+// Keep the dashboard in the shell bootstrap and other routes lazy so the shell stays small.
+// Serwist independently precaches emitted application JS/CSS, including lazy route chunks;
+// the build policy rejects missing code. A first view can happen before worker control,
+// so runtime interception alone cannot guarantee that its code is retained for offline use.
+// A never-viewed route can still lack its data even when its application code is available.
 //
 // This file renders on a failed document or after a weak-network deadline. Auth and the React Query client live in the ROOT layout; the
 // data engine, the settings and the chrome come from the same PrivateWorkspace the

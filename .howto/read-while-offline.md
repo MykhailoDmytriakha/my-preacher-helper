@@ -41,7 +41,7 @@ See also: `.howto/use-server-first-query.md` · `.howto/keep-a-write-across-offl
 Check the route registry in frontend/app/~offline/page.tsx before changing data reads. Each supported
 screen needs a lazy route entry; detail screens use useRouteId so the shell can read identity from
 the actual URL when Next params are empty. The default segment index is1; nested care paths pass2.
-Keep imports lazy so a seen screen works from cached chunks without precaching every page.
+Keep imports lazy so the shell bootstrap stays small. The build-time policy independently precaches emitted application JS/CSS, while data availability remains device-owned; see `.howto/set-up-the-service-worker.md`.
 Care covers overview, council/order lists, both detail screens and council conduct.
 A generic fallback card is a grid item: retain min-w-0 so a long requested URL can truncate on a phone.
 Behavior tests: offlineShell.engine.test.tsx and useRouteId.test.tsx; geometry needs a real browser.

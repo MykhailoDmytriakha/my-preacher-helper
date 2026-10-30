@@ -3,6 +3,8 @@ import { readFileSync } from "node:fs";
 
 import withSerwistInit from "@serwist/next";
 
+import { APP_CODE_PRECACHE_BYTES, requireAppCodePrecache } from "./scripts/pwa-precache.mjs";
+
 // PWA / offline service worker is built by Serwist (successor to next-pwa).
 // Enabled in production always; in dev only when NEXT_PUBLIC_ENABLE_SERVICE_WORKER
 // is set (`dev` and `dev:pwa` opt in; `dev:no-pwa` keeps it off). Verify the
@@ -52,6 +54,8 @@ const withSerwist = withSerwistInit({
   // 'online' event and blow away unsaved form/autosave state.
   reloadOnOnline: false,
   additionalPrecacheEntries: appShellPrecacheEntries,
+  maximumFileSizeToCacheInBytes: APP_CODE_PRECACHE_BYTES,
+  manifestTransforms: [requireAppCodePrecache],
   disable: swDisabled,
 });
 
