@@ -33,7 +33,7 @@ import { newClientId } from '@/utils/clientId';
 import { isKnownOffline } from '@/utils/connectivity';
 import { studyNoteLanguage } from '@/utils/documentLanguage';
 import { formatScriptureReference, scriptureReferenceSearchText, studyNoteSearchText } from '@/utils/scriptureReference';
-import { inStudyNoteTab, STUDY_NOTE_TABS, type StudyNoteTab } from '@/utils/studyNoteTabs';
+import { inStudies, inStudyNoteTab, STUDY_NOTE_TABS, type StudyNoteTab } from '@/utils/studyNoteTabs';
 
 import { CommentCard } from './CommentCard';
 import ShareNoteModal from './components/ShareNoteModal';
@@ -47,10 +47,12 @@ export default function StudiesPage() {
   const router = useRouter();
   const {
     uid,
-    notes,
+    notes: allNotes,
     loading: notesLoading,
     error: notesError,
   } = useStudyNotes();
+  // What stands in Studies: every list, count, tag and book below is read from these.
+  const notes = useMemo(() => allNotes.filter(inStudies), [allNotes]);
   const {
     shareLinks,
     loading: shareLinksLoading,

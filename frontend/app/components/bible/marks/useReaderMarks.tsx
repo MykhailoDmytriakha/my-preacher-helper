@@ -17,6 +17,7 @@ import { MARK_SWATCH, PENCIL_SWATCH } from './MarkToolIcons';
 import { marksSupported, useMarkHighlights } from './useMarkHighlights';
 import { useMarkStrokes } from './useMarkStrokes';
 
+import type { AnalysisMarks } from '../analysis/useAnalysisMarks';
 import type { RibbonSigns } from '../BookRibbon';
 import type { BibleId } from '@/utils/bibles';
 import type { BookText } from '@/utils/bibleText';
@@ -56,6 +57,11 @@ type ReaderMarks = {
   syncStatus: ReactNode;
   /** The window of the verse whose sign was tapped (`MarkedElsewhereSheet`). */
   elsewhere: { at: { chapter: number; verse: number } | null; entries: { bible: BibleId; verses: MarkedElsewhere[] }[]; close: () => void };
+  /**
+   * The book's marks lent to a passage's analysis over the reader (`analysis/useAnalysisMarks.tsx`): kept by this same
+   * form, so the analysis never opens a second one for the book. Nothing while the person or the marks are not read.
+   */
+  analysisMarks: AnalysisMarks | null;
 };
 
 const subscribeNever = () => () => undefined;
@@ -122,6 +128,17 @@ export function useReaderMarks({ textRef, text, ready, bible, bookId, drawn, onM
     sayWhy();
     return false;
   }, [order, painter, save, sayWhy]);
+  // A stroke made in an analysis: kept by this form as a stroke in the text is, put on the trail the same way.
+  const markFromAnalysis = useCallback((change: MarksChange, lost: () => void) => {
+    if (!writableRef.current) { sayWhy(); return false; }
+    const first = order ? firstChangedVerse(marksNow.current, change(marksNow.current), order) : null;
+    save(change, lost);
+    const [chapter, verse] = first ? first.split(':').map(Number) : [];
+    if (chapter && verse) markedRef.current?.(chapter, verse);
+    return true;
+  }, [order, save, sayWhy]);
+  const analysisMarks = useMemo<AnalysisMarks | null>(() => (owner && storeReady && order ? { marks: stored, order, mark: markFromAnalysis } : null),
+    [markFromAnalysis, order, owner, storeReady, stored]);
   useMarkStrokes({
     rootRef: textRef,
     ready,
@@ -168,5 +185,6 @@ export function useReaderMarks({ textRef, text, ready, bible, bookId, drawn, onM
         onAcceptRemote={() => { setDeciding(true); return sync.acceptRemote().finally(() => setDeciding(false)); }} />
     ) : null,
     elsewhere: { at: entries.length ? openAt : null, entries, close: closeElsewhere },
+    analysisMarks,
   };
 }

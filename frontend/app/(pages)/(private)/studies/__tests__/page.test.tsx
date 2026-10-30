@@ -101,6 +101,7 @@ const baseUseStudyNotesValue = (): ReturnType<typeof useStudyNotes> => ({
   uid: 'mock-user',
   notes: [],
   loading: false,
+  checking: false,
   error: null,
   refetch: jest.fn(),
   createNote: jest.fn(),
@@ -268,6 +269,18 @@ describe('StudiesPage', () => {
       // But we can check specifically for the badge if we could identify it. 
       // Simplified check: button should contain "1"
       expect(questionsTab).toHaveTextContent('1');
+    });
+
+    it('counts in «Все» only what it shows: a passage analysis stands in no tab and in no count', () => {
+      // Codex, 30.10: «Все» said (3) over the one note beside two analyses.
+      mockUseStudyNotes.mockReturnValue({
+        ...baseUseStudyNotesValue(),
+        notes: [createMockNote({ id: '1', type: 'note' }), createMockNote({ id: 'a1', type: 'analysis' }), createMockNote({ id: 'a2', type: 'analysis' })],
+      });
+      render(<StudiesPage />);
+      const allTab = screen.getByRole('button', { name: /studiesWorkspace\.tabs\.all/i });
+      expect(allTab).toHaveTextContent('(1)');
+      expect(screen.queryByText('(3)')).not.toBeInTheDocument();
     });
 
     it('filters to show only notes when Notes tab is clicked', () => {

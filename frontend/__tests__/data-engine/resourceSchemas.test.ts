@@ -46,9 +46,20 @@ describe('pure resource document validation', () => {
     expect(() => validateResourceDocument(collection as string, { ...fixtures[collection as string], [field as string]: wrong } as DocumentData, { kind: 'update', changedFields: [field as string] })).toThrow();
   });
 
-  it.each(['note', 'question', 'comment'])('accepts a study note of kind %s', (type) => {
+  it.each(['note', 'question', 'comment', 'analysis'])('accepts a study note of kind %s', (type) => {
     expect(() => validateResourceDocument('studyNotes', { ...fixtures.studyNotes, type }, { kind: 'create' })).not.toThrow();
     expect(() => validateResourceDocument('studyNotes', { ...fixtures.studyNotes, type }, { kind: 'update', changedFields: ['type'] })).not.toThrow();
+  });
+
+  it('accepts a passage analysis on an analysis note and refuses a malformed one', () => {
+    const analysis = { bible: 'rst', words: 171, cuts: [8, 15], links: { 15: 8 } };
+    const note = { ...fixtures.studyNotes, type: 'analysis', analysis };
+    expect(() => validateResourceDocument('studyNotes', note, { kind: 'create' })).not.toThrow();
+    expect(() => validateResourceDocument('studyNotes', note, { kind: 'update', changedFields: ['analysis'] })).not.toThrow();
+    // The first part starts at word 0 and is never a cut; a word is never negative.
+    expect(() => validateResourceDocument('studyNotes', { ...note, analysis: { ...analysis, cuts: [0, 8] } }, { kind: 'update', changedFields: ['analysis'] })).toThrow();
+    expect(() => validateResourceDocument('studyNotes', { ...note, analysis: { ...analysis, links: { 15: -1 } } }, { kind: 'update', changedFields: ['analysis'] })).toThrow();
+    expect(() => validateResourceDocument('studyNotes', { ...note, analysis: { ...analysis, bible: '' } }, { kind: 'update', changedFields: ['analysis'] })).toThrow();
   });
 
   it('keeps unknown fields and untouched malformed legacy fields intact during an unrelated update', () => {

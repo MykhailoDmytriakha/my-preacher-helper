@@ -319,6 +319,17 @@ export const SwitchViewIcon = ({ className, ...props }: IconProps) => (
 );
 
 /**
+ * A passage's analysis — three lines, each a step further right and hung on the one above, as the parts of a block
+ * diagram hang on one another: the very mark the owner liked in the verse menu on the canvas «Разбор структуры»
+ * (2026-10-29). A line icon at the heroicons' weight; no size of its own, the caller sizes it.
+ */
+export const AnalysisIcon = ({ className, ...props }: IconProps) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} aria-hidden="true" className={className} {...props}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 5.25h16.5M7.5 10.5h12.75M11.25 15.75h9M7.5 10.5v-3m3.75 8.25v-3" />
+  </svg>
+);
+
+/**
  * A comment's mark — three lines of handwriting and a pencil (the owner's choice 2026-10-28 on the canvas,
  * «строки и карандаш»). No size of its own: the caller sizes it, as a heroicon, so a badge's 10 px circle and
  * a menu's 18 px one draw the same thing.

@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, type CSSProperties } from 'react';
+import { useEffect, useRef, type CSSProperties } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { keyboardReaches } from '@/hooks/modalLayers';
 import { MARK_COLORS, PENCIL_COLORS, type PencilColor } from '@/utils/bibleMarks';
 import { pointerHover } from '@/utils/pointerHover';
 
@@ -86,10 +87,16 @@ export function MarkToolbar({ tool, vertical = false, className = '' }: { tool: 
   const ring = (name: 'marker' | 'pencil' | 'eraser') => (inHand === name ? TAKEN : penTool === name ? PEN_TOOL : '');
 
   const holding = inHand !== null;
+  const rootRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!holding) return undefined;
+    // Escape puts the tool away and is spent: the window these tools stand in (a passage's analysis) must not close on
+    // the same press — it re-listened at once with the tool already away and took it (2026-10-30). Tools under a window
+    // leave the key to it.
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') putAway();
+      if (event.key !== 'Escape' || !keyboardReaches(rootRef.current)) return;
+      event.stopPropagation();
+      putAway();
     };
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
@@ -103,7 +110,7 @@ export function MarkToolbar({ tool, vertical = false, className = '' }: { tool: 
   const pencilLabel = t('bible.marks.pencil', { meaning: pencilMeaning(pencilColor) });
 
   return (
-    <div data-mark-toolbar="" role="toolbar" aria-label={t('bible.marks.toolbar')} aria-orientation={vertical ? 'vertical' : 'horizontal'} className={`relative flex items-center gap-2.5 ${vertical ? 'flex-col' : ''} ${className}`}>
+    <div ref={rootRef} data-mark-toolbar="" role="toolbar" aria-label={t('bible.marks.toolbar')} aria-orientation={vertical ? 'vertical' : 'horizontal'} className={`relative flex items-center gap-2.5 ${vertical ? 'flex-col' : ''} ${className}`}>
       <span className={`flex items-center gap-2.5 ${vertical ? 'flex-col' : ''}`}>
         <Palette swatches={markerSwatches} label={t('bible.marks.colors')} vertical={vertical} open={palette === 'marker'} />
         <button

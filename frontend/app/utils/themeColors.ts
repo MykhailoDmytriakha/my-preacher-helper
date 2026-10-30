@@ -535,3 +535,16 @@ export const FORM_COLORS = {
 } as const;
 
 export const SERIES_COLOR_PRESETS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#6B7280', '#000000'] as const;
+
+/**
+ * A link of meaning in a passage's analysis (case 2026-10-12-block-diagram, 3.41): its arrow, its flag at the end of a
+ * line, the ring round its two words and its swatch in the link's menu — one colour each, darker on white, lighter on dark.
+ */
+export const ANALYSIS_RELATION_TONES = {
+  amber: { stroke: 'stroke-amber-600 dark:stroke-amber-400', text: 'text-amber-700 dark:text-amber-300', edge: 'border-l-amber-500', tint: 'bg-amber-100 dark:bg-amber-500/20', ring: 'ring-amber-500', swatch: 'bg-amber-500' },
+  teal: { stroke: 'stroke-teal-600 dark:stroke-teal-400', text: 'text-teal-700 dark:text-teal-300', edge: 'border-l-teal-500', tint: 'bg-teal-100 dark:bg-teal-500/20', ring: 'ring-teal-500', swatch: 'bg-teal-500' },
+  pink: { stroke: 'stroke-pink-600 dark:stroke-pink-400', text: 'text-pink-700 dark:text-pink-300', edge: 'border-l-pink-500', tint: 'bg-pink-100 dark:bg-pink-500/20', ring: 'ring-pink-500', swatch: 'bg-pink-500' },
+  sky: { stroke: 'stroke-sky-600 dark:stroke-sky-400', text: 'text-sky-700 dark:text-sky-300', edge: 'border-l-sky-500', tint: 'bg-sky-100 dark:bg-sky-500/20', ring: 'ring-sky-500', swatch: 'bg-sky-500' },
+  lime: { stroke: 'stroke-lime-600 dark:stroke-lime-400', text: 'text-lime-700 dark:text-lime-300', edge: 'border-l-lime-500', tint: 'bg-lime-100 dark:bg-lime-500/20', ring: 'ring-lime-500', swatch: 'bg-lime-500' },
+  violet: { stroke: 'stroke-violet-600 dark:stroke-purple-400', text: 'text-violet-700 dark:text-purple-300', edge: 'border-l-violet-500', tint: 'bg-violet-100 dark:bg-violet-500/20', ring: 'ring-violet-500', swatch: 'bg-violet-500' },
+} as const;

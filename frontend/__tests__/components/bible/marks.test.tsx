@@ -1,5 +1,5 @@
 import { act, fireEvent, render, renderHook, screen, within } from '@testing-library/react';
-import { useRef } from 'react';
+import { useRef, type ReactNode } from 'react';
 import { toast } from 'sonner';
 
 import { useBookMarks } from '@/components/bible/marks/markStore';
@@ -9,6 +9,7 @@ import { MARK_SWATCH } from '@/components/bible/marks/MarkToolIcons';
 import { MarkToolbar } from '@/components/bible/marks/MarkToolbar';
 import { mapVerseText, wordIndexAt, wordsRange } from '@/components/bible/marks/verseWordDom';
 import { useDataCollection, useDataDocument } from '@/data-engine/react.client';
+import { useModalLayer } from '@/hooks/useModalLayer';
 import { recordDiagnostic } from '@/utils/appDiagnostics';
 import { countVerseWords, verseOrder, type BookMarks } from '@/utils/bibleMarks';
 
@@ -258,6 +259,32 @@ describe('the three tools', () => {
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(screen.getByTestId('in-hand')).toHaveTextContent('none');
     expect(screen.queryByRole('group', { name: 'bible.marks.colors' })).not.toBeInTheDocument();
+  });
+
+  // 2026-10-30: in a passage's analysis Escape put the marker away and the same press closed the analysis.
+  function Window({ onClose, children }: { onClose: () => void; children: ReactNode }) {
+    const layer = useModalLayer({ onClose });
+    return <div {...layer} role="dialog" aria-label="window">{children}</div>;
+  }
+
+  it('Escape that puts the tool away is spent: the window the tools stand in stays, the next Escape closes it', () => {
+    const onClose = jest.fn();
+    render(<Window onClose={onClose}><Toolbar /></Window>);
+    fireEvent.click(screen.getByRole('button', { name: /bible\.marks\.marker/ }));
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.getByTestId('in-hand')).toHaveTextContent('none');
+    expect(onClose).not.toHaveBeenCalled();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('tools under a window leave Escape to it: the window closes, the tool stays in hand', () => {
+    const onClose = jest.fn();
+    render(<><Toolbar /><Window onClose={onClose}><p>over the reader</p></Window></>);
+    fireEvent.click(screen.getByRole('button', { name: /bible\.marks\.marker/ }));
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('in-hand')).toHaveTextContent('marker');
   });
 
   it('with two sets of tools on the page, a colour picked in one is the colour taken', () => {

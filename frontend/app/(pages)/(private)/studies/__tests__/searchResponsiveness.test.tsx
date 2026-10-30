@@ -89,6 +89,7 @@ const baseUseStudyNotesValue = (): ReturnType<typeof useStudyNotes> => ({
   uid: 'mock-user',
   notes: [],
   loading: false,
+  checking: false,
   error: null,
   refetch: jest.fn(),
   createNote: jest.fn(),

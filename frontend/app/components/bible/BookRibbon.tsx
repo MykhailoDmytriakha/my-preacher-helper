@@ -10,6 +10,7 @@ import { parseVerse, type BookText, type VerseSegment } from '@/utils/bibleText'
 import { CommentsOnText, type TextComment } from './CommentsOnText';
 import { MineBadge as MineBadgeButton, MineMoreBadge } from './MineBadge';
 
+import type { MineStretch } from './useBookUsage';
 import type { ChapterBoxes } from './useChapterWindow';
 import type { CrossReferenceCount } from '@/utils/crossReferences';
 import type { ScriptureUsageKind } from '@/utils/scriptureUsage';
@@ -92,16 +93,21 @@ export type RibbonSigns = {
  * holds, "3:16–18" — and after a chapter's heading one for what names the whole chapter, "3:1–36". Pressed, a badge
  * opens the list of what is there. A badge is outside the verse's words, like the links' chip.
  */
-export type MineBadge = { kind: ScriptureUsageKind; label: string; count: number; ariaLabel: string };
+/** `opens` — an analysis's badge opens a list of its own, named by its passage (`MinePlace.stretch`). */
+export type MineBadge = { kind: ScriptureUsageKind; label: string; count: number; ariaLabel: string; opens?: MineStretch };
+/** A verse of an analysed passage: whether the bar beside the passage starts (`top`) or ends (`bottom`) at it. */
+export type AnalysedVerse = { top: boolean; bottom: boolean };
 export type RibbonMine = {
   /** The badges of the stretches starting at each verse ("chapter:verse"). */
   at: ReadonlyMap<string, readonly MineBadge[]>;
   /** The badges of what names a whole chapter. */
   chapters: ReadonlyMap<number, readonly MineBadge[]>;
-  /** A verse's list, or a whole chapter's (`verse` null). */
-  onOpen: (chapter: number, verse: number | null) => void;
+  /** A verse's list, or a whole chapter's (`verse` null), or — from an analysis's badge — that badge's (`stretch`). */
+  onOpen: (chapter: number, verse: number | null, stretch?: MineStretch) => void;
   /** What the badge standing for the rest says to a screen reader; on screen it is "+2". */
   moreLabel: (count: number) => string;
+  /** The verses of the person's passage analyses ("chapter:verse"): a bar beside them shows where each one runs. */
+  analysed?: ReadonlyMap<string, AnalysedVerse>;
   /**
    * Comments shown as their own words (`minePrefs.comments`, 'text'): under the verse a comment starts at, and
    * under every chapter heading of the chapters one is written to. Absent while comments show as badges.
@@ -131,7 +137,7 @@ function MineBadges({ badges, mine, chapter, verse, testId }: { badges: readonly
       {shown.map((badge) => (
         <Fragment key={`${badge.kind}:${badge.label}`}>
           {' '}
-          <MineBadgeButton kind={badge.kind} label={badge.label} count={badge.count} ariaLabel={badge.ariaLabel} onClick={open} testId={`${testId}-${badge.kind}`} />
+          <MineBadgeButton kind={badge.kind} label={badge.label} count={badge.count} ariaLabel={badge.ariaLabel} onClick={badge.opens ? () => mine.onOpen(chapter, verse, badge.opens) : open} testId={`${testId}-${badge.kind}`} />
         </Fragment>
       ))}
       {rest > 0 ? (
@@ -173,6 +179,21 @@ export function CrossRefsChip({ count, label, onOpen, testId, phone = false }: {
   );
 }
 
+/**
+ * An analysed passage has a bar in the margin from its first verse to its last (the owner, 2026-10-29: «откуда до куда идёт
+ * разбор»). A verse inside it reaches up past the room above (10 px on a phone, 8 px before a paragraph) and only the bar's
+ * ends are round: pieces meeting edge to edge, each rounded, left a notch at every verse. A chapter's heading breaks it.
+ */
+function AnalysedBar({ at, chapter, verse }: { at: AnalysedVerse; chapter: number; verse: number }) {
+  return (
+    <span
+      aria-hidden="true"
+      data-testid={`analysed-${chapter}:${verse}`}
+      className={`pointer-events-none absolute -left-1 w-[3px] bg-violet-500 dark:bg-violet-400 ${at.top || verse === 1 ? 'top-1.5 rounded-t-full' : '-top-3'} ${at.bottom ? 'bottom-1 rounded-b-full' : 'bottom-0'}`}
+    />
+  );
+}
+
 function VerseRow({ chapter, verse, raw, lang, crossRefs, signs, mine, detached = false, lit }: {
   chapter: number; verse: number; raw: string; lang: string; crossRefs?: RibbonCrossRefs; signs?: RibbonSigns; mine?: RibbonMine;
   /** A row of a chapter shown apart from the reader's book (`ChapterVerses`): not `data-verse`, so it is never taken for the place read or a verse to mark. */
@@ -186,6 +207,7 @@ function VerseRow({ chapter, verse, raw, lang, crossRefs, signs, mine, detached 
   const shown = count ? (crossRefs?.mode === 'all' ? count.total : count.main) : 0;
   const badges = mine?.at.get(`${chapter}:${verse}`);
   const comments = mine?.comments?.at.get(`${chapter}:${verse}`);
+  const analysed = mine?.analysed?.get(`${chapter}:${verse}`);
   return (
     // A verse jumped to stands where "the verse I am at" is measured from: the same `--reading-top`.
     <div
@@ -194,6 +216,8 @@ function VerseRow({ chapter, verse, raw, lang, crossRefs, signs, mine, detached 
       style={{ scrollMarginTop: READING_TOP }}
       className={`mb-2.5 md:mb-0 md:flex md:flex-wrap md:gap-x-3 ${ARRIVAL_CLASSES} ${detached ? '' : CHOSEN_CLASSES} ${opensParagraph && verse > 1 ? 'md:mt-2' : ''}`}
     >
+      {/* Painted first, so a mark's sign stands over it. */}
+      {analysed ? <AnalysedBar at={analysed} chapter={chapter} verse={verse} /> : null}
       {signs && sign ? (
         <button
           type="button"

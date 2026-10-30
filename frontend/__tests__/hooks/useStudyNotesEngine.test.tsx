@@ -32,11 +32,11 @@ const actions = {
   }),
 };
 
-function render() {
+function render(checking = false) {
   jest.mocked(useDocumentActions).mockReturnValue(actions as never);
   jest.mocked(useDataCollection).mockImplementation(() => ({
     state: { snapshots: [], documents: [...store].map(([id, value]) => ({ resource: { collection: 'studyNotes', id }, value })),
-      complete: true, freshness: 'server', checking: false, version: 1, error: null },
+      complete: true, freshness: 'server', checking, version: 1, error: null },
     loading: false, error: null, refresh: jest.fn(),
   }) as never);
   return renderHook(() => useStudyNotesEngine(true));
@@ -46,6 +46,12 @@ const opened = { title: 'Grace', content: 'Laptop paragraph', tags: [], scriptur
 
 describe('study notes on the engine', () => {
   beforeEach(() => { jest.clearAllMocks(); store = new Map([['n1', note()]]); });
+
+  it('says the list is being checked with the server even when it was once read whole — its newer changes are on the way', () => {
+    // Codex, 30.10: «complete» speaks of the list on the device, not of what the server has added since.
+    expect(render(true).result.current.checking).toBe(true);
+    expect(render(false).result.current.checking).toBe(false);
+  });
 
   it('keeps a tag added on the phone when the laptop saves a paragraph', async () => {
     const { result } = render();

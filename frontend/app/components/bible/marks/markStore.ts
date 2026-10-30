@@ -2,7 +2,7 @@ import { useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
-import { useDataCollection, useDataDocument } from '@/data-engine/react.client';
+import { PHASES_TAKING_CHANGES, useDataCollection, useDataDocument } from '@/data-engine/react.client';
 import { refusalMessage } from '@/utils/actionFailureMessage';
 import { diagnosticErrorCode, recordDiagnostic } from '@/utils/appDiagnostics';
 import { decodeBookMarks, encodeBookMarks, marksKey, type BookMarks, type OtherBookMarks } from '@/utils/bibleMarks';
@@ -41,11 +41,6 @@ export const marksDocumentId = (owner: string, bible: BibleId, bookId: string) =
 type StoredDocument = { verses?: unknown } & Record<string, unknown>;
 export type MarksChange = (marks: BookMarks) => BookMarks;
 
-/**
- * The form's states a stroke may be laid on. Any other — a choice waiting for the person, a failed save, a
- * deleted document — could sweep a new stroke away with the draft it replaces, or never keep it.
- */
-const STROKE_READY = new Set(['saved', 'draft', 'savingLocally', 'queued', 'sending', 'unknown', 'remoteChanged']);
 /** A stroke's form closed under it (the reader was left): the stroke itself goes on to the server. */
 const formLeft = (error: unknown) => error instanceof Error
   && (error.name === 'InactiveEditorError' || error.message === 'Editor is no longer active' || error.message === 'The active editor changed');
@@ -129,7 +124,7 @@ export function useBookMarks(owner: string | null, bible: BibleId, bookId: strin
     marks: formMarks,
     save,
     ready: open || (listRead && form.readOnly),
-    writable: open && !form.readOnly && STROKE_READY.has(form.status?.phase ?? ''),
+    writable: open && !form.readOnly && PHASES_TAKING_CHANGES.has(form.status?.phase ?? ''),
     others,
     sync: resource ? form : null,
   };

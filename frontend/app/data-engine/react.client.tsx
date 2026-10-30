@@ -505,6 +505,13 @@ export function DataDocumentProvider({ resource, options, children }: {
   return <DocumentContext.Provider value={{ resource, create: options?.create ?? false, value: document }}>{children}</DocumentContext.Provider>;
 }
 
+/**
+ * The phases of a document's form a change may be laid on (`commit`). Any other — a choice waiting for the person, a failed
+ * save, a deleted document — could sweep a new change away with the draft it replaces, or never keep it (Bible marks,
+ * 2026-10-16). One set for every screen that commits changes in quick succession.
+ */
+export const PHASES_TAKING_CHANGES: ReadonlySet<string> = new Set(['saved', 'draft', 'savingLocally', 'queued', 'sending', 'unknown', 'remoteChanged']);
+
 /** Reuse a workspace editor when present; unrelated resources remain independent. */
 export function useDataDocument(resource: ResourceRef | null, options: DocumentOptions = {}) {
   const shared = useContext(DocumentContext);

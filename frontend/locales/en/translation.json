@@ -210,7 +210,7 @@
     "deleteConflictBody": "Another device changed it before the deletion arrived. This is what it holds now.",
     "deleteAnyway": "Delete anyway",
     "keepRecord": "Keep it",
-    "severalDrafts": "Several changes to this record were not accepted. All of them are below: copy what you need, then use the version on the server.",
+    "severalDrafts": "The server has another version of this record, and several of your changes wait here — the app cannot send them by itself yet. “Copy my text” puts your changes on the clipboard; “Use server version” keeps the server’s version and erases yours here. If you need them, copy first, then paste them back.",
     "readOnly": {
       "storage": "View only right now: this device's storage is not responding. Editing comes back by itself once it does.",
       "opening": "This record is still opening — try again in a few seconds."
@@ -496,13 +496,15 @@
         "note": "Note",
         "comment": "Comment",
         "group": "Group",
-        "order": "Service"
+        "order": "Service",
+        "analysis": "Analysis"
       },
       "badgeLabel": "{{kind}}, {{place}}: {{titles}}",
       "badgeLabelMany": "{{count}} items. {{kind}}, {{place}}: {{titles}}",
       "moreLabel": "{{count}} more — open the list",
       "wholeChapter": "The whole of {{chapter}}",
       "editComment": "Edit the comment on {{place}}",
+      "openAnalysis": "Open the analysis of {{place}}",
       "empty": "Nothing of yours here yet."
     },
     "search": {
@@ -4491,5 +4493,102 @@
     "bulletList": "Bullet list",
     "orderedList": "Numbered list",
     "quote": "Quote"
+  },
+  "analysis": {
+    "verseMenu": "Analyse the passage",
+    "title": "Analysis · {{place}}",
+    "back": "Back to text",
+    "done": "Done",
+    "undo": "Undo",
+    "modes": "Analysis mode",
+    "modeEdit": "Edit",
+    "modeView": "View",
+    "partCount_one": "{{count}} part",
+    "partCount_other": "{{count}} parts",
+    "level": {
+      "same": "Same level",
+      "under": "Level below",
+      "sameAria": "New line, same level",
+      "underAria": "New line, one level below",
+      "up": "One level up",
+      "down": "One level down"
+    },
+    "markGlue": "Join with the line above",
+    "changedText": "The passage’s text in this Bible has changed since it was analysed: part of the analysis may have shifted.",
+    "notKept": "This analysis was not saved on this device — what you see is only on the screen.",
+    "saveAgain": "Save again",
+    "pick": {
+      "hint": "Choose the verses to analyse: tap a verse below or above to stretch the passage to it, an end verse to drop it.",
+      "inside": "An analysis runs over continuous text: a verse in the middle can’t go — drop the end verses instead.",
+      "open": "Analyse",
+      "cancel": "Cancel choosing verses",
+      "apply": "Apply"
+    },
+    "edit": {
+      "title": "Divide into parts",
+      "hintMark": "Hover over a word to see two marks. The word and everything after it move to a new line:",
+      "markSame": "on the same level — the same as clicking the word itself;",
+      "markUnder": "one level below — under this line, shifted right.",
+      "hintGlue": "The “join” mark on a line’s first word glues it back.",
+      "hintSteps": "Hover over a line to see two arrows on its left. With nowhere to go, an arrow is pale:",
+      "stepUp": "one level up — beside the line it hung on;",
+      "stepDown": "one level down — under the line above on the same level.",
+      "hintTie": "To tie a line: point at it — a dot appears left of its first word. Drag the dot onto the word the line belongs to. An arrow appears only when that is not the line above. A line has one tie: to move it, first remove it with its ×.",
+      "hintUntie": "To remove a tie: hover over its arrow — a × appears in the middle.",
+      "hintRelation": "A link of meaning: hold any word, a line's first one too, and let go on another word. A flag in the link's colour appears at the end of the line: point at it to draw the arrow, press it for direction, colour or removal.",
+      "handle": "Drag the dot onto a word to tie the line"
+    },
+    "view": {
+      "hint": "Click a part to light up the way to the main thought and everything that hangs on it.",
+      "hangs": "Belongs to the word “{{word}}” in “{{part}}”.",
+      "top": "Belongs to nothing — this is the main thought.",
+      "kids_one": "{{count}} part hangs on it.",
+      "kids_other": "{{count}} parts hang on it.",
+      "steps_one": "{{count}} step to the main thought.",
+      "steps_other": "{{count}} steps to the main thought.",
+      "allLinks": "All links"
+    },
+    "tie": {
+      "done": "“{{part}}” belongs to the word “{{word}}”.",
+      "miss": "Release the arrow on a word of another line — the one the piece belongs to.",
+      "dropped": "Tie removed: “{{part}}” now hangs on the line above it — “{{holder}}”.",
+      "droppedTop": "Tie removed: “{{part}}” hangs on nothing — it is the main thought.",
+      "has": "This line already has a tie. To move it, first remove it — the × in the middle of its arrow.",
+      "turned": "“{{part}}” belongs to the word “{{word}}”, and “{{lifted}}” took its place."
+    },
+    "untie": "Remove the tie",
+    "editVerses": "Change the analysis’s verses",
+    "reshape": {
+      "done": "The analysis now covers {{place}}.",
+      "own": "Your work in {{place}} is kept as an analysis of its own.",
+      "joined": "Your work in {{place}} was added to the analysis of {{other}}.",
+      "apart": "The new verses do not reach the analysis — choose a passage with at least one of its verses."
+    },
+    "relation": {
+      "made": "«{{a}}» and «{{b}}» are linked by meaning. Press the flag at the end of the line for direction, colour or removal.",
+      "miss": "Let go on another word to make a link.",
+      "dropped": "The link «{{a}}» — «{{b}}» is removed.",
+      "flag": "Link to the word «{{word}}»",
+      "menu": "Link of «{{a}}» and «{{b}}»",
+      "dir": "Direction of the link",
+      "color": "Colour of the link",
+      "drop": "Remove link",
+      "dirs": {
+        "fwd": "left to right",
+        "back": "right to left",
+        "both": "both ways",
+        "none": "no arrows"
+      },
+      "colors": {
+        "amber": "Amber",
+        "teal": "Teal",
+        "pink": "Pink",
+        "sky": "Sky blue",
+        "lime": "Lime",
+        "violet": "Violet"
+      }
+    },
+    "loading": "Loading your analyses — you can edit in a moment.",
+    "undoKeys": "Undo the last change — {{keys}}"
   }
 }

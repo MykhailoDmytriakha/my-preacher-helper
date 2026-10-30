@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { BibleBookReader } from '@/components/bible/BibleBookReader';
 import { resetMinePrefsForTests, saveMinePrefs } from '@/components/bible/minePrefs';
 import { resetPlaceTrailForTests } from '@/components/bible/placeTrailStore';
-import { badgeLabel, entriesAt, useBookUsage } from '@/components/bible/useBookUsage';
+import { analysedVerses, badgeLabel, entriesAt, useBookUsage } from '@/components/bible/useBookUsage';
 import MineSettings from '@/components/settings/MineSettings';
 
 import type { BookText } from '@/utils/bibleText';
@@ -298,6 +298,136 @@ describe('Settings → Bible: your material on the text', () => {
     await userEvent.click(toggle);
     expect(toggle).not.toBeChecked();
     expect(window.localStorage.getItem('bible:mine')).toContain('false');
+  });
+});
+
+describe('the bar beside an analysed passage (case 2026-10-12-block-diagram, 3.18)', () => {
+  const analysis = (id: string, chapter: number, fromVerse: number | undefined, toChapter: number, toVerse?: number, kind: BookUsageEntry['kind'] = 'analysis') =>
+    ({ kind, id, title: id, passage: { chapter, toChapter, fromVerse, toVerse } }) as BookUsageEntry;
+
+  it('runs from an analysis\'s first verse to its last, across a chapter, and only for analyses of verses', () => {
+    const verses = analysedVerses([
+      analysis('a', 1, 16, 1, 18), analysis('across', 1, 21, 2, 2), analysis('note', 3, 1, 3, 4, 'note'), analysis('whole', 4, undefined, 4),
+    ], 'rst', 'Ruth');
+    expect([...verses.keys()]).toEqual(['1:16', '1:17', '1:18', '1:21', '1:22', '2:1', '2:2']);
+    expect(verses.get('1:16')).toEqual({ top: true, bottom: false });
+    expect(verses.get('1:17')).toEqual({ top: false, bottom: false });
+    expect(verses.get('1:18')).toEqual({ top: false, bottom: true });
+    expect(verses.get('2:1')).toEqual({ top: false, bottom: false });
+    expect(verses.get('2:2')).toEqual({ top: false, bottom: true });
+  });
+
+  it('keeps a break between two analyses that only touch, and makes one bar of two that overlap', () => {
+    const touching = analysedVerses([analysis('first', 1, 16, 1, 18), analysis('next', 1, 19, 1, 20)], 'rst', 'Ruth');
+    expect(touching.get('1:18')).toEqual({ top: false, bottom: true });
+    expect(touching.get('1:19')).toEqual({ top: true, bottom: false });
+    const overlapping = analysedVerses([analysis('first', 1, 16, 1, 18), analysis('over', 1, 17, 1, 20)], 'rst', 'Ruth');
+    expect(overlapping.get('1:17')).toEqual({ top: false, bottom: false });
+    expect(overlapping.get('1:18')).toEqual({ top: false, bottom: false });
+    expect(overlapping.get('1:20')).toEqual({ top: false, bottom: true });
+  });
+
+  it('stands beside the verses of an analysis in the reader, and goes with the badges when they are switched off', async () => {
+    mockRows = { studyNotes: [row('ruth-16', { title: 'Разбор', content: '', tags: [], type: 'analysis', scriptureRefs: [{ bible: 'rst', book: 'Ruth', chapter: 1, fromVerse: 16, toVerse: 18 }] })] };
+    renderRuth();
+    expect(await screen.findByTestId('analysed-1:16')).toBeInTheDocument();
+    expect(screen.getByTestId('analysed-1:17')).toBeInTheDocument();
+    expect(screen.getByTestId('analysed-1:18')).toBeInTheDocument();
+    expect(screen.queryByTestId('analysed-1:15')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('analysed-1:19')).not.toBeInTheDocument();
+    act(() => saveMinePrefs({ show: false }));
+    await waitFor(() => expect(screen.queryByTestId('analysed-1:16')).not.toBeInTheDocument());
+  });
+});
+
+describe('an analysis in the list of a verse (case 2026-10-12-block-diagram, 3.25)', () => {
+  // Opened from its badge, the window is named by the analysis's passage (the owner, 30.10).
+  const ANALYSIS_WINDOW = /^\S+ 1:16–18$/;
+  const outline = (lines: number) => Array.from({ length: lines }, (_, n) => `${'  '.repeat(n % 3)}- часть ${n + 1}`).join('\n');
+  const analysisRow = (content: string, more: Record<string, unknown> = {}) => row('ruth-16', { title: 'Разбор · Руфь 1:16–18', content, tags: [], type: 'analysis', scriptureRefs: [{ bible: 'rst', book: 'Ruth', chapter: 1, fromVerse: 16, toVerse: 18 }], ...more });
+
+  it('shows its structure — a part a line, each step deeper — instead of a title repeating the place', async () => {
+    mockRows = { studyNotes: [analysisRow('- куда ты пойдешь,\n  - туда и я пойду,\n    - и где ты жить будешь,\n- народ твой будет моим народом')] };
+    renderRuth();
+    await userEvent.click(await screen.findByTestId('mine-1:16-analysis'));
+    const dialog = screen.getByRole('dialog', { name: ANALYSIS_WINDOW });
+    const drawn = within(dialog).getByTestId('analysis-outline');
+    const steps = Array.from(drawn.querySelectorAll('[data-analysis-line]')) as HTMLElement[];
+    expect(steps.map((step) => [step.textContent, step.style.paddingLeft])).toEqual([
+      ['куда ты пойдешь,', '0px'], ['туда и я пойду,', '14px'], ['и где ты жить будешь,', '28px'], ['народ твой будет моим народом', '0px'],
+    ]);
+    expect(within(dialog).queryByText('Разбор · Руфь 1:16–18')).not.toBeInTheDocument();
+    // The window's title says the place once, by the badge's circle: no row under it repeating «Разбор · Руфь 1:16–18»
+    // (the owner, 30.10).
+    expect(within(dialog).getAllByText(/1:16–18/)).toHaveLength(1);
+    expect(within(dialog).queryByTestId('mine-entry-analysis-ruth-16')).not.toBeInTheDocument();
+  });
+
+  it('opens from its badge a window named by its passage, without the verse\'s words above its structure', async () => {
+    // The owner, 30.10: «тут нужно ссылку поправить, текст сплошной не нужно дублировать».
+    mockRows = { studyNotes: [analysisRow('- куда ты пойдешь,\n- туда и я пойду,'), note('n1', 'Заметка', 'Заметка на стих', [{ bible: 'rst', book: 'Ruth', chapter: 1, fromVerse: 16 }])] };
+    renderRuth();
+    await userEvent.click(await screen.findByTestId('mine-1:16-analysis'));
+    const dialog = screen.getByRole('dialog', { name: ANALYSIS_WINDOW });
+    expect(dialog.querySelector('p.font-serif')).toBeNull();
+    // What stands behind that badge, not every document on the verse: the note has its own badge.
+    expect(within(dialog).queryByText('Заметка на стих')).not.toBeInTheDocument();
+    expect(within(dialog).getByTestId('analysis-outline')).toBeInTheDocument();
+  });
+
+  // The owner, 30.10: «сюда добавь стрелки уровней, а ссылки просто подкрась слова».
+  const tiedRow = (cuts: number[]) => analysisRow('- куда ты пойдешь,\n  - туда и я пойду,\n- народ твой будет моим народом',
+    { analysis: { bible: 'rst', words: 12, cuts, links: { 3: 8 }, relations: { '1-10': { dir: 'fwd', color: 'teal' } } } });
+
+  it('draws a tie\'s arrow where the indent does not say it, and the two words of a link in its colour', async () => {
+    // «туда и я пойду,» hangs on «твой» in the line below it: an arrow; «ты» and «моим» are linked by meaning.
+    mockRows = { studyNotes: [tiedRow([3, 7])] };
+    renderRuth();
+    await userEvent.click(await screen.findByTestId('mine-1:16-analysis'));
+    const drawn = within(screen.getByRole('dialog', { name: ANALYSIS_WINDOW })).getByTestId('analysis-outline');
+    expect(drawn.querySelectorAll('svg')).toHaveLength(1);
+    const coloured = Array.from(drawn.querySelectorAll('[data-word].text-teal-700')).map((word) => word.textContent);
+    expect(coloured).toEqual(['ты', 'моим']);
+  });
+
+  it('draws the parts alone when its text and its ties no longer agree, never a tie on the wrong word', async () => {
+    mockRows = { studyNotes: [tiedRow([5])] };
+    renderRuth();
+    await userEvent.click(await screen.findByTestId('mine-1:16-analysis'));
+    const drawn = within(screen.getByRole('dialog', { name: ANALYSIS_WINDOW })).getByTestId('analysis-outline');
+    expect(drawn.querySelectorAll('[data-analysis-line]')).toHaveLength(3);
+    expect(drawn.querySelectorAll('svg')).toHaveLength(0);
+    expect(drawn.querySelectorAll('[data-word].text-teal-700')).toHaveLength(0);
+  });
+
+  it('shows every step of a long one, scrolling in its own box; a press on it opens the analysis, the end of a selection does not', async () => {
+    // The owner, 30.10: «вся эта секция, которая со скроллом была, она будет кликабельная. Нажал и перешёл».
+    mockRows = { studyNotes: [analysisRow(outline(30))] };
+    renderRuth();
+    await userEvent.click(await screen.findByTestId('mine-1:16-analysis'));
+    const dialog = screen.getByRole('dialog', { name: ANALYSIS_WINDOW });
+    const drawn = within(dialog).getByTestId('analysis-outline');
+    const steps = drawn.querySelectorAll('[data-analysis-line]');
+    expect(steps).toHaveLength(30);
+    expect(drawn).toHaveTextContent('часть 30');
+    expect(drawn).toHaveClass('overflow-y-auto', 'max-h-[min(22rem,45vh)]');
+    const selected = jest.spyOn(window, 'getSelection').mockReturnValue({ toString: () => 'часть 6' } as Selection);
+    await userEvent.click(steps[5] as HTMLElement);
+    expect(screen.getByRole('dialog', { name: ANALYSIS_WINDOW })).toBeInTheDocument();
+    selected.mockRestore();
+    await userEvent.click(steps[5] as HTMLElement);
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: ANALYSIS_WINDOW })).not.toBeInTheDocument());
+    expect(await screen.findByRole('button', { name: 'analysis.done' })).toBeInTheDocument();
+  });
+
+  it('opens from the keyboard too: the structure is one stop, named for what it opens', async () => {
+    mockRows = { studyNotes: [analysisRow('- куда ты пойдешь,\n- туда и я пойду,')] };
+    renderRuth();
+    await userEvent.click(await screen.findByTestId('mine-1:16-analysis'));
+    const card = within(screen.getByRole('dialog', { name: ANALYSIS_WINDOW })).getByRole('button', { name: 'bible.mine.openAnalysis' });
+    card.focus();
+    await userEvent.keyboard('{Enter}');
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: ANALYSIS_WINDOW })).not.toBeInTheDocument());
   });
 });
 

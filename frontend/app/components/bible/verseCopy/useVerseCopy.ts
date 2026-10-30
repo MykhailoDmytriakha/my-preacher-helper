@@ -16,6 +16,7 @@ import { copiedPlace, DEFAULT_COPY_FORMAT, verseCopyText, type CopyFormat, type 
 
 import { VERSE_CHOSEN_ATTRIBUTE, VERSE_HELD_ATTRIBUTE, type RibbonCrossRefs } from '../BookRibbon';
 
+import { bookIndex, pickedPassage, stretchPassage, versesBetween } from './passagePick';
 import { selectedVerses, verseKey, type VerseAt } from './selectedVerses';
 
 import type { TFunction } from 'i18next';
@@ -43,6 +44,7 @@ export function useCopyNames(bible: BibleId, bookId: string): CopyNames {
 }
 
 const subscribeNever = () => () => undefined;
+const PASSAGE_HINT = 'analysis-passage-hint';
 const canShareNow = () => typeof navigator !== 'undefined' && typeof navigator.share === 'function';
 
 function setOnRows(root: HTMLElement | null, attribute: string, keys: ReadonlySet<string>) {
@@ -79,12 +81,20 @@ export function useVerseCopy({ textRef, text, bible, bookId, drawn, crossRefs, e
   const canShare = useSyncExternalStore(subscribeNever, canShareNow, () => false);
   const [menu, setMenu] = useState<VerseMenuAt | null>(null);
   const [picked, setPicked] = useState<VerseAt[] | null>(null);
+  // What the verses are chosen for: a copy, or a passage to analyse — one running piece of text (case
+  // 2026-10-12-block-diagram, 3.4). One choosing for both, so the rows' lights and the presses are the same.
+  const [purpose, setPurpose] = useState<'copy' | 'analysis'>('copy');
   const [format, setFormat] = useState<CopyFormat | null>(null);
   const [held, setHeld] = useState<VerseAt | null>(null);
 
+  const purposeRef = useRef(purpose);
+  purposeRef.current = purpose;
   const clear = useCallback(() => {
+    // The hint for choosing a passage goes with that choice: it must not stand over the analysis screen.
+    if (purposeRef.current === 'analysis') toast.dismiss(PASSAGE_HINT);
     setPicked(null);
     setFormat(null);
+    setPurpose('copy');
   }, []);
   const actedRef = useRef(onActed);
   actedRef.current = onActed;
@@ -155,30 +165,45 @@ export function useVerseCopy({ textRef, text, bible, bookId, drawn, crossRefs, e
     setMenu(null);
     setPicked([at]);
     setFormat(null);
+    setPurpose('copy');
     toast(t(touch ? 'bible.copy.severalHint' : 'bible.copy.severalHintMouse'));
   }, [t]);
-  const toggle = useCallback((at: VerseAt) => setPicked((now) => {
-    const rest = (now ?? []).filter((verse) => verseKey(verse) !== verseKey(at));
-    const next = rest.length === (now ?? []).length ? [...rest, at] : rest;
-    return next.length ? next : null;
-  }), []);
+  /** Verses for an analysis, starting with this one (the verse menu's «Разобрать отрывок»), or all of an analysis's own to change its ends. */
+  const startPassage = useCallback((at: VerseAt, to?: VerseAt) => {
+    setMenu(null);
+    setPicked(to && text ? versesBetween(text, at, to) : [at]);
+    setFormat(null);
+    setPurpose('analysis');
+    toast(t('analysis.pick.hint'), { id: PASSAGE_HINT });
+  }, [t, text]);
+  // A passage for an analysis stays one piece: a press below or above stretches it, an end verse comes off.
+  const stretch = useCallback((at: VerseAt) => {
+    if (!text) return;
+    const { verses, inside } = stretchPassage(text, pickedRef.current ?? [], at);
+    if (inside) toast(t('analysis.pick.inside'));
+    setPicked(verses);
+  }, [t, text]);
+  const toggle = useCallback((at: VerseAt) => {
+    if (purpose === 'analysis') { stretch(at); return; }
+    setPicked((now) => {
+      const rest = (now ?? []).filter((verse) => verseKey(verse) !== verseKey(at));
+      const next = rest.length === (now ?? []).length ? [...rest, at] : rest;
+      return next.length ? next : null;
+    });
+  }, [purpose, stretch]);
   /** From the chosen verse nearest to this one, to this one: a passage. */
-  const rangeTo = useCallback((at: VerseAt) => setPicked((now) => {
-    const chosen = now ?? [];
-    if (!chosen.length || !text) return [at];
-    const index = (verse: VerseAt) => text.chapters.slice(0, verse.chapter - 1).reduce((sum, chapter) => sum + chapter.length, 0) + verse.verse - 1;
-    const target = index(at);
-    const near = chosen.reduce((best, verse) => (Math.abs(index(verse) - target) < Math.abs(index(best) - target) ? verse : best), chosen[0]);
-    const [from, to] = index(near) < target ? [near, at] : [at, near];
-    const added: VerseAt[] = [];
-    for (let chapter = from.chapter; chapter <= to.chapter; chapter += 1) {
-      const first = chapter === from.chapter ? from.verse : 1;
-      const last = chapter === to.chapter ? to.verse : text.chapters[chapter - 1].length;
-      for (let verse = first; verse <= last; verse += 1) added.push({ chapter, verse });
-    }
-    const keys = new Set(chosen.map(verseKey));
-    return [...chosen, ...added.filter((verse) => !keys.has(verseKey(verse)))];
-  }), [text]);
+  const rangeTo = useCallback((at: VerseAt) => {
+    if (purpose === 'analysis') { stretch(at); return; }
+    setPicked((now) => {
+      const chosen = now ?? [];
+      if (!chosen.length || !text) return [at];
+      const target = bookIndex(text, at);
+      const near = chosen.reduce((best, verse) => (Math.abs(bookIndex(text, verse) - target) < Math.abs(bookIndex(text, best) - target) ? verse : best), chosen[0]);
+      const added = bookIndex(text, near) < target ? versesBetween(text, near, at) : versesBetween(text, at, near);
+      const keys = new Set(chosen.map(verseKey));
+      return [...chosen, ...added.filter((verse) => !keys.has(verseKey(verse)))];
+    });
+  }, [purpose, stretch, text]);
   /** How many links the verse's menu offers: null — the verse has none. */
   const linksOf = useCallback((at: VerseAt) => {
     const count = crossRefs?.counts.get(verseKey(at));
@@ -240,6 +265,7 @@ export function useVerseCopy({ textRef, text, bible, bookId, drawn, crossRefs, e
     menu, openMenu, closeMenu: useCallback(() => setMenu(null), []),
     hold: setHeld,
     picked, picking: choosing, startPicking, toggle, rangeTo, clear,
+    purpose, startPassage, passage: purpose === 'analysis' && picked && text ? pickedPassage(text, picked) : null,
     format: format ?? DEFAULT_COPY_FORMAT, setFormat,
     copy, share, canShare,
     wordsOf, labelOf, placeOf, linksOf, openLinks,

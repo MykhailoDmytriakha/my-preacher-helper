@@ -572,10 +572,27 @@ export interface ScriptureReference {
 }
 
 /**
- * What kind of study note it is: a note, a question to answer later, or a comment — a short thought
- * (about five sentences) at a verse or a chapter, drawn grey under the text like pencil in a margin.
+ * What kind of study note it is: a note, a question to answer later, a comment — a short thought
+ * (about five sentences) at a verse or a chapter, drawn grey under the text like pencil in a margin —
+ * or an analysis: a passage cut into parts that hang on one another (case 2026-10-12-block-diagram, 3.4).
  */
-export type StudyNoteType = 'note' | 'question' | 'comment';
+export type StudyNoteType = 'note' | 'question' | 'comment' | 'analysis';
+
+/**
+ * A passage's analysis — the block diagram of the passage the note names (`scriptureRefs[0]`), counted in words of
+ * that passage in the Bible it was made in. `cuts` are the words a part starts at (the first part starts at 0 and is
+ * not listed); `links` say, for a part by its first word, the word it hangs on. `words` is how many words the
+ * passage had, so a changed text is noticed instead of misplacing the parts. `relations` are the links of meaning
+ * between two words, keyed "a-b" by their words (a before b): a map, so links made on two devices merge one by one —
+ * while the passage keeps its start (BUG-20261030-analysis-merge-across-reshape).
+ */
+export interface StudyAnalysis {
+  bible: string;
+  words: number;
+  cuts: number[];
+  links: Record<string, number>;
+  relations?: Record<string, { dir: 'fwd' | 'back' | 'both' | 'none'; color: string }>;
+}
 
 export interface StudyNote {
   id: string;
@@ -599,6 +616,8 @@ export interface StudyNote {
   relatedSermonIds?: string[];
   /** Absent on documents written before the field existed — read as 'note'. */
   type?: StudyNoteType;
+  /** Only on an analysis: its parts and what they hang on. */
+  analysis?: StudyAnalysis;
   /**
    * Revision counter per editable aggregate, used to refuse a save built from an
    * older version. Absent on documents written before the guard existed — read as 0.

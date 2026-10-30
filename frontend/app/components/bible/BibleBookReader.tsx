@@ -17,6 +17,8 @@ import { bookSlug, fetchBookText, verseWords, type BookText } from '@/utils/bibl
 import { actedVerses, linkOnScreen, type SeenVerses } from '@/utils/placeTrail';
 import { placeIn, placesIn } from '@/utils/versification';
 
+import { type AnalysisOpening } from './analysis/AnalysisEditor';
+import { ReaderAnalysis } from './analysis/ReaderAnalysis';
 import { BibleMinimap, visibleVerseRange } from './BibleMinimap';
 import { BookPicker, ChapterPicker, ReadingPill, SearchPicker, TranslationPicker } from './BiblePicker';
 import { BibleSettingsLink } from './BibleSettingsLink';
@@ -38,7 +40,6 @@ import { useBookUsage } from './useBookUsage';
 import { chapterAtLine, useChapterWindow } from './useChapterWindow';
 import { useFollowAfterClose } from './useFollowAfterClose';
 import { useVerseCopy } from './verseCopy/useVerseCopy';
-import { VerseCopyBar } from './verseCopy/VerseCopyBar';
 import { VerseHoldSurface } from './verseCopy/VerseHoldSurface';
 import { VerseMenu } from './verseCopy/VerseMenu';
 import { ScriptureLinksInWindow } from './VerseWindow';
@@ -286,11 +287,12 @@ function useActedOpen<T extends { onOpen: (chapter: number, verse: never) => voi
 ): T | undefined {
   return useMemo(() => {
     if (!ribbon) return undefined;
-    const open = ribbon.onOpen as (chapter: number, verse: number | null) => void;
-    // A whole chapter's window (the badges of what names a chapter, `verse` null) is no verse's.
-    const onOpen = (chapter: number, verse: number | null) => {
+    const open = ribbon.onOpen as (chapter: number, verse: number | null, ...rest: unknown[]) => void;
+    // A whole chapter's window (the badges of what names a chapter, `verse` null) is no verse's. What else the opening
+    // carries — an analysis badge's passage — goes on with it.
+    const onOpen = (chapter: number, verse: number | null, ...rest: unknown[]) => {
       if (verse !== null) acted(chapter, verse);
-      open(chapter, verse);
+      open(chapter, verse, ...rest);
     };
     return { ...ribbon, onOpen } as T;
   }, [acted, ribbon]);
@@ -359,6 +361,8 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
   // A comment's window (case 2026-10-12-block-diagram, 3.2): one already written, or a new one on a verse or a chapter.
   // A comment's window and its doors (case 2026-10-12-block-diagram, 3.2), kept beside the window itself.
   const { commenting, setCommenting, edit: editComment, close: closeComment } = useReaderCommenting();
+  // A passage's analysis over the reader (case 2026-10-12-block-diagram, 3.4): one just chosen, or one already made.
+  const [analysing, setAnalysing] = useState<AnalysisOpening | null>(null);
   // The person's own material on the verses it names: badges with the text, dots on the minimap, a list.
   const mine = useBookUsage(bookId, bible, locale, Boolean(text), editComment);
   const { commentOn, commentPassage, commentsReady } = mine;
@@ -971,6 +975,7 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
         onClose={mine.close}
         onOpenEntry={openMineEntry}
         onEditComment={(id) => { mine.close(); editComment(id); }}
+        onOpenAnalysis={(id) => { mine.close(); setAnalysing({ kind: 'open', id }); }}
       />
       <ReaderCommentDialog commenting={commenting} text={text} bookId={bookId} bible={bible} locale={locale} passageOf={commentPassage} onClose={closeComment} />
       <MarkedElsewhereSheet
@@ -981,8 +986,8 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
         onClose={marks.elsewhere.close}
         onOpenBible={openInBible}
       />
-      <VerseMenu copy={verseCopy} comment={commentDoors.verse} />
-      <VerseCopyBar copy={verseCopy} wide={wide} />
+      <VerseMenu copy={verseCopy} comment={commentDoors.verse} analysis />
+      <ReaderAnalysis copy={verseCopy} text={text} wide={wide} bookId={bookId} bible={bible} locale={locale} opening={analysing} onOpening={setAnalysing} marks={marks.analysisMarks} />
       {/* While verses are chosen their bar stands where the tools are: the tools wait. */}
       {verseCopy.picking ? null : wide ? (
         <FloatingTextScaleControls>

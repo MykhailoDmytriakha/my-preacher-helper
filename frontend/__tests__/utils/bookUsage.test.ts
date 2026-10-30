@@ -54,6 +54,11 @@ describe('a book gathers everything of the person\'s that points at its verses',
     ]);
   });
 
+  it('puts a passage analysis as its own kind on its passage only — the passage words it holds name no other place', () => {
+    const analysis = { ...note('eph', [{ bible: 'rst', book: 'Ephesians', chapter: 1, fromVerse: 3, toVerse: 14 }], '- Благословен Бог\n  - благословивший нас (Еф 2:8)'), type: 'analysis' as const };
+    expect(places(entries({ notes: [analysis] }, 'Ephesians'))).toEqual([['analysis', 'eph', { chapter: 1, toChapter: 1, fromVerse: 3, toVerse: 14 }]]);
+  });
+
   it('stands on the verse of the Bible being read: Synodal Psalm 22 is King James Psalm 23', () => {
     const sources = { sermons: [sermon({ id: 'shepherd', verse: 'Пс 22:1' })] };
     expect(places(entries(sources, 'Psalms', 'rst'))).toEqual([['sermon', 'shepherd', { chapter: 22, toChapter: 22, fromVerse: 1, toVerse: 1 }]]);

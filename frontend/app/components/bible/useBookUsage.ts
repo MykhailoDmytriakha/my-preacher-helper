@@ -12,7 +12,7 @@ import { verseCount } from '@/utils/versification';
 import { useMinePrefs } from './minePrefs';
 import { USAGE_KIND_LOOK } from './usageKinds';
 
-import type { MineBadge, RibbonMine } from './BookRibbon';
+import type { AnalysedVerse, MineBadge, RibbonMine } from './BookRibbon';
 import type { TextComment } from './CommentsOnText';
 import type { MinimapMark } from './minimapLayout';
 import type { Group, Sermon, ServiceOrder, StudyNote } from '@/models/models';
@@ -20,8 +20,15 @@ import type { AppLocale } from '@/utils/appLocale';
 import type { BibleId } from '@/utils/bibles';
 import type { Passage } from '@/utils/scriptureReferenceNumbering';
 
-/** A verse whose list is open, or a whole chapter's (`verse` null). */
-export type MinePlace = { chapter: number; verse: number | null };
+/**
+ * A verse whose list is open, or a whole chapter's (`verse` null). `stretch` — opened from an analysis's badge: the list is
+ * that badge's, named by its passage (the owner, 30.10: «тут нужно ссылку поправить, текст сплошной не нужно дублировать»).
+ */
+export type MinePlace = { chapter: number; verse: number | null; stretch?: MineStretch };
+/** A badge's kind and passage: what an analysis's badge opens. */
+export type MineStretch = { kind: ScriptureUsageKind; passage: Passage };
+
+const samePassage = (a: Passage, b: Passage) => a.chapter === b.chapter && a.fromVerse === b.fromVerse && a.toChapter === b.toChapter && a.toVerse === b.toVerse;
 
 type CollectionState = ReturnType<typeof useDataCollection>['state'];
 
@@ -64,11 +71,38 @@ const onceEach = (entries: BookUsageEntry[]) => entries.filter((entry, index) =>
 
 /** The entries a verse's list shows (`verse` set) and those that name its whole chapter. */
 export function entriesAt(entries: readonly BookUsageEntry[], place: MinePlace): { onVerse: BookUsageEntry[]; wholeChapter: BookUsageEntry[] } {
-  const { chapter, verse } = place;
+  const { chapter, verse, stretch } = place;
+  // An analysis's badge opened: what stands behind that badge, the documents of its kind on its passage.
+  if (stretch) return { onVerse: onceEach(entries.filter((entry) => entry.kind === stretch.kind && samePassage(entry.passage, stretch.passage))), wholeChapter: [] };
   const onVerse = verse === null ? [] : onceEach(entries.filter((entry) => entry.passage.fromVerse !== undefined && passageCovers(entry.passage, chapter, verse)));
   // A document already listed on the verse is not listed again under its chapter (Codex review, round 2).
   const listed = (entry: BookUsageEntry) => onVerse.some((other) => other.kind === entry.kind && other.id === entry.id);
   return { onVerse, wholeChapter: onceEach(entries.filter((entry) => wholeChapterOf(entry, chapter) && !listed(entry))) };
+}
+
+/**
+ * The verses of the person's passage analyses in this Bible, for the bar beside them in the reader (the owner, 2026-10-29:
+ * «откуда до куда идёт разбор»). Analyses that overlap make one bar; two that only touch keep a break between them.
+ */
+export function analysedVerses(entries: readonly BookUsageEntry[], bible: BibleId, bookId: string): Map<string, AnalysedVerse> {
+  const verses = new Map<string, AnalysedVerse>();
+  entries.forEach(({ kind, passage }) => {
+    if (kind !== 'analysis' || passage.fromVerse === undefined) return;
+    const last = passage.toVerse ?? passage.fromVerse;
+    for (let chapter = passage.chapter; chapter <= passage.toChapter; chapter++) {
+      const from = chapter === passage.chapter ? passage.fromVerse : 1;
+      const to = chapter === passage.toChapter ? last : verseCount(bible, bookId, chapter);
+      for (let verse = from; verse <= to; verse++) {
+        const key = `${chapter}:${verse}`;
+        const top = chapter === passage.chapter && verse === passage.fromVerse;
+        const bottom = chapter === passage.toChapter && verse === last;
+        const known = verses.get(key);
+        // Inside one analysis the bar runs on, even where another one starts or ends.
+        verses.set(key, known ? { top: known.top && top, bottom: known.bottom && bottom } : { top, bottom });
+      }
+    }
+  });
+  return verses;
 }
 
 /**
@@ -108,7 +142,7 @@ export function useBookUsage(bookId: string, bible: BibleId, locale: AppLocale, 
 
   const [openAt, setOpenAt] = useState<MinePlace | null>(null);
   const close = useCallback(() => setOpenAt(null), []);
-  const onOpen = useCallback((chapter: number, verse: number | null) => setOpenAt({ chapter, verse }), []);
+  const onOpen = useCallback((chapter: number, verse: number | null, stretch?: MineStretch) => setOpenAt({ chapter, verse, ...(stretch ? { stretch } : {}) }), []);
 
   const ribbon = useMemo<RibbonMine | undefined>(() => {
     if (!shown) return undefined;
@@ -148,6 +182,7 @@ export function useBookUsage(bookId: string, bible: BibleId, locale: AppLocale, 
     });
     const toBadges = (badges: Map<string, Gathered>): MineBadge[] => [...badges.values()].map((badge) => ({
       kind: badge.kind,
+      ...(badge.kind === 'analysis' ? { opens: { kind: badge.kind, passage: badge.passage } } : {}),
       label: badgeLabel(badge.passage, bible, bookId),
       count: badge.titles.size,
       // The number on the corner is only seen: a screen reader hears it here (Codex review, round 3).
@@ -155,11 +190,13 @@ export function useBookUsage(bookId: string, bible: BibleId, locale: AppLocale, 
         kind: t(USAGE_KIND_LOOK[badge.kind].wordKey), place: passageLabel(abbrev, badge.passage), titles: [...badge.titles.values()].join(' · '), count: badge.titles.size,
       }),
     }));
+    const analysed = analysedVerses(entries, bible, bookId);
     return {
       at: new Map([...onVerses].map(([at, badges]) => [String(at), toBadges(badges)])),
       chapters: new Map([...onChapters].map(([at, badges]) => [Number(at), toBadges(badges)])),
       onOpen,
       moreLabel: (count) => t('bible.mine.moreLabel', { count }),
+      ...(analysed.size ? { analysed } : {}),
       ...(asText && onEditComment ? { comments: {
         at: new Map([...textAt].map(([at, comments]) => [at, [...comments.values()]])),
         chapters: new Map([...textOnChapters].map(([at, comments]) => [at, [...comments.values()]])),

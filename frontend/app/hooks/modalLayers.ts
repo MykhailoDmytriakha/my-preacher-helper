@@ -24,3 +24,12 @@ export function isTopmostLayer(element: HTMLElement): boolean {
 export function hasModalLayers(): boolean {
   return layers.length > 0;
 }
+
+/**
+ * Whether the keyboard reaches `element`: no window stands on screen, or the topmost one holds it. A control under a
+ * window — the reader's tools under a passage's analysis — leaves the keys to that window.
+ */
+export function keyboardReaches(element: HTMLElement | null): boolean {
+  if (!layers.length) return true;
+  return Boolean(element && layers[layers.length - 1].contains(element));
+}

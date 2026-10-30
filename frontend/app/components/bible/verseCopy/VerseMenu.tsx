@@ -5,7 +5,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type Compone
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 
-import { CommentIcon } from '@/components/Icons';
+import { AnalysisIcon, CommentIcon } from '@/components/Icons';
 import { useModalLayer } from '@/hooks/useModalLayer';
 
 import { VERSE_TEXT_STYLE } from '../BookRibbon';
@@ -17,6 +17,9 @@ export type VerseComment = {
   labelOf: (verse: { chapter: number; verse: number }) => string;
   open: (verse: { chapter: number; verse: number }) => void;
 };
+
+/** «Разобрать отрывок» carries its mark in the app's blue, as on the canvas «Разбор структуры» (the owner, 2026-10-29). */
+const AnalysisMenuIcon = ({ className, ...props }: SVGProps<SVGSVGElement>) => <AnalysisIcon {...props} className={`${className ?? ''} text-indigo-600 dark:text-indigo-400`} />;
 
 /** The click that ends a hold may land on what the hold just opened: for a moment that one click is not a choice. */
 const CLICK_AFTER_HOLD_MS = 450;
@@ -69,7 +72,7 @@ function placeMenu(at: VerseMenuAt, menu: DOMRect, card: DOMRect | null): Spot {
   return { menuTop, menuLeft, cardTop, cardLeft, cardWidth };
 }
 
-function OpenVerseMenu({ copy, at, comment }: { copy: VerseCopy; at: VerseMenuAt; comment?: VerseComment }) {
+function OpenVerseMenu({ copy, at, comment, analysis }: { copy: VerseCopy; at: VerseMenuAt; comment?: VerseComment; analysis: boolean }) {
   const { t } = useTranslation();
   const { closeMenu } = copy;
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -174,6 +177,9 @@ function OpenVerseMenu({ copy, at, comment }: { copy: VerseCopy; at: VerseMenuAt
         {comment ? (
           <MenuItem icon={CommentIcon} label={comment.labelOf(verse)} touch={at.touch} onSelect={choose(() => { closeMenu(); comment.open(verse); })} />
         ) : null}
+        {analysis ? (
+          <MenuItem icon={AnalysisMenuIcon} label={t('analysis.verseMenu')} touch={at.touch} onSelect={choose(() => copy.startPassage(verse))} />
+        ) : null}
       </div>
     </div>,
     document.body
@@ -186,8 +192,8 @@ function OpenVerseMenu({ copy, at, comment }: { copy: VerseCopy; at: VerseMenuAt
  * the menu opens at the pointer with the verse named at its top. Copy · Send (where the device can) · Choose
  * several · the verse's links · its comment.
  */
-export function VerseMenu({ copy, comment }: { copy: VerseCopy; comment?: VerseComment }) {
+export function VerseMenu({ copy, comment, analysis = false }: { copy: VerseCopy; comment?: VerseComment; analysis?: boolean }) {
   if (!copy.menu || typeof document === 'undefined') return null;
   const at = copy.menu;
-  return <OpenVerseMenu key={`${at.chapter}:${at.verse}:${at.x}:${at.y}`} copy={copy} at={at} comment={comment} />;
+  return <OpenVerseMenu key={`${at.chapter}:${at.verse}:${at.x}:${at.y}`} copy={copy} at={at} comment={comment} analysis={analysis} />;
 }

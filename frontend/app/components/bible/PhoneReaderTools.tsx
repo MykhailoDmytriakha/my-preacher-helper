@@ -6,6 +6,7 @@ import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'rea
 import { useTranslation } from 'react-i18next';
 
 import { TextScaleControls } from '@/components/TextScaleControls';
+import { hasModalLayers } from '@/hooks/modalLayers';
 
 import { MarkToolbar } from './marks/MarkToolbar';
 import { EraserIcon, MarkerIcon, PencilIcon } from './marks/MarkToolIcons';
@@ -20,8 +21,9 @@ import type { MarkToolState } from './marks/markTool';
 function EscapePutsAway({ active, putAway }: { active: boolean; putAway: (() => void) | undefined }) {
   useEffect(() => {
     if (!active || !putAway) return undefined;
+    // A window over the reader (a passage's analysis) has the keys: its Escape is not the reader's tool's.
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') putAway();
+      if (event.key === 'Escape' && !hasModalLayers()) putAway();
     };
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
