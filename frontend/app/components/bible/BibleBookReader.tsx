@@ -800,9 +800,9 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
   }, [arrive, jumpTo]);
   // The book's line and the phone's header: a verse of a search opened alone there puts away a search kept beside the text.
   const openFromLine = useCallback((chosenBook: string, place: Place & { toVerse?: number }, fromSearch?: { line: string; asWords: boolean }) => {
-    openedAlone(fromSearch);
+    openedAlone(bible, fromSearch);
     openPlace(chosenBook, place);
-  }, [openPlace]);
+  }, [bible, openPlace]);
   const trail = useReaderTrail({ bible, locale, wide, here: { book: bookId, chapter: currentChapter, verse: currentVerse, bible }, seen, openPlace });
   // A search's verses beside the text, in the trail's place, while the person keeps them (`search/useFoundInReader.tsx`).
   const found = useFoundInReader({ bible, bookId, locale, wide, textRef, drawn: drawnSpan, ready: Boolean(text && layout), currentChapter, currentVerse, arrival, openPlace });

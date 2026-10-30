@@ -370,6 +370,27 @@ describe('the trail as a column on a wide screen', () => {
     expect(framed()).toHaveLength(0);
   }, 30000);
 
+  // BUG-20261030-open-in-bible-shows-found-column: the blue «Открыть в Библии» opened the column too.
+  it('opens a verse of the search window alone; only «Все N — в Библии» puts the found verses beside the text', async () => {
+    screenWidth = 1680;
+    render(<BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={{ chapter: 1, verse: 1 }} onOpenBook={jest.fn()} />);
+    const search = async () => {
+      await userEvent.click(await screen.findByRole('button', { name: 'bible.search.openSearch' }));
+      await userEvent.type(screen.getByRole('combobox'), 'моавитянка');
+      await waitFor(() => expect(screen.getAllByRole('option').length).toBeGreaterThan(1), { timeout: 15000 });
+    };
+    await search();
+    const [, second] = screen.getAllByRole('option');
+    await userEvent.click(second);
+    await userEvent.click(within(second).getByRole('button', { name: /bible\.search\.openInBible/, hidden: true }));
+    await waitFor(() => expect(screen.queryByRole('combobox')).not.toBeInTheDocument());
+    expect(screen.queryByRole('navigation', { name: '«моавитянка»' })).not.toBeInTheDocument();
+
+    await search();
+    await userEvent.click(screen.getByRole('button', { name: 'bible.search.allInBible' }));
+    expect(await screen.findByRole('navigation', { name: '«моавитянка»' })).toBeInTheDocument();
+  }, 30000);
+
   // Codex review r3, 30.10: a verse of another search opened from the book window left the old search's column beside it.
   it('puts the found verses away when a verse of another search opens alone from the book window', async () => {
     screenWidth = 1680;

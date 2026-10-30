@@ -67,7 +67,7 @@ export function BibleBookList({ bible, lastPlace, onOpen, onChangeBible }: Bible
         autoFocus={wide}
         onOpen={({ bookId, chapter, verse, toVerse }, fromSearch) => {
           // A verse of a search opens alone from here: a search kept beside the text in the reader is put away.
-          openedAlone(fromSearch);
+          openedAlone(bible, fromSearch);
           onOpen(bookSlug(bookId), { chapter, verse, ...(toVerse ? { toVerse } : {}) });
         }}
       >

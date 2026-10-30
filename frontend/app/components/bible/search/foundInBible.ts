@@ -2,6 +2,8 @@
 
 import { useSyncExternalStore } from 'react';
 
+import { lineKey } from '@/utils/bibleSearch/words';
+
 import type { BibleId } from '@/utils/bibles';
 import type { VerseHit } from '@/utils/bibleSearch/searchIndex';
 
@@ -36,13 +38,15 @@ export function closeFound(): void {
 }
 
 /**
- * A verse opened from a line (`fromSearch` — the search it was found by): one found by a search and opened alone — a
- * line that keeps no verses beside the text, or a screen without room for them — puts away the search kept before,
- * so its verses never stand beside a later search's verse (Codex review, 30.10). A place typed keeps them. The lines
- * that choose a place for something (a comment moved) do not call this: choosing is not reading.
+ * A verse opened alone from a line (`fromSearch` — the search it was found by): a verse of ANOTHER search puts away
+ * the search kept beside the text, so its verses never stand beside a later search's verse (Codex review, 30.10); a
+ * verse of the same search — in the same Bible, back through «К поиску» or from the history — keeps them. A place typed keeps them. The
+ * lines that choose a place for something (a comment moved) do not call this: choosing is not reading.
  */
-export function openedAlone(fromSearch: { line: string; asWords: boolean } | undefined): void {
-  if (fromSearch) closeFound();
+export function openedAlone(bible: BibleId, fromSearch: { line: string; asWords: boolean } | undefined): void {
+  if (!fromSearch || !shown) return;
+  if (shown.bible === bible && lineKey(shown.line) === lineKey(fromSearch.line) && shown.asWords === fromSearch.asWords) return;
+  closeFound();
 }
 
 export function useFoundSearch(): FoundSearch | null {

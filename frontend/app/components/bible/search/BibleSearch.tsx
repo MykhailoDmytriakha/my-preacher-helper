@@ -60,8 +60,8 @@ export type BibleSearchProps = {
   /** `fromSearch` — the search the verse was found by; absent for a place typed or said. */
   onOpen: (target: OpenTarget, fromSearch?: { line: string; asWords: boolean }) => void;
   /**
-   * A verse the search found, opened: the reader shows the search's verses beside its text (`foundInBible.ts`), and the
-   * window offers «Все N — в Библии». Absent — the verse opens alone.
+   * «Все N — в Библии», offered only where this is given: the reader shows the search's verses beside its text
+   * (`foundInBible.ts`). A verse of a search pressed or opened with Enter opens alone through `onOpen` (the owner, 30.10).
    */
   onOpenFound?: (search: { line: string; asWords: boolean }, target: OpenTarget) => void;
   /** «К поиску» from the found verses: the window opens on that search, on the verse last stood at, as a search of the history does. */
@@ -236,7 +236,7 @@ export function BibleSearch({ bible, locale, wide, surface, hereBook = null, aut
         if (intent.fromSearch) {
           keepLine(from, asWords);
           rememberOpened(bible, from, asWords, `${intent.target.bookId} ${intent.target.chapter}:${intent.target.verse}`, limitFor(typed));
-          if (onOpenFound) { onOpenFound({ line: from, asWords }, intent.target); break; }
+          if (intent.withFound && onOpenFound) { onOpenFound({ line: from, asWords }, intent.target); break; }
           onOpen(intent.target, { line: from, asWords });
           break;
         }
@@ -424,7 +424,7 @@ export function BibleSearch({ bible, locale, wide, surface, hereBook = null, aut
   const openAllFound = useStableHandler(() => {
     const first = foundInOrder(hits, order)[0];
     if (!first || !onOpenFound) return;
-    run({ kind: 'open', target: { bookId: first.bookId, chapter: first.chapter, verse: first.verse }, fromSearch: true });
+    run({ kind: 'open', target: { bookId: first.bookId, chapter: first.chapter, verse: first.verse }, fromSearch: true, withFound: true });
   });
   const allInBible = useMemo(() => (onOpenFound && hits.length && model.head ? { label: t('bible.search.allInBible', { count: hits.length }), onPress: openAllFound } : null),
     [onOpenFound, hits.length, model.head, t, openAllFound]);

@@ -1,7 +1,7 @@
-import { render, screen, within } from '@testing-library/react';
+import { act, renderHook, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import { drawnAround, foundAt, foundInOrder, shownFor } from '@/components/bible/search/foundInBible';
+import { closeFound, drawnAround, foundAt, foundInOrder, openedAlone, showFound, shownFor, useFoundSearch } from '@/components/bible/search/foundInBible';
 import { FoundPanel } from '@/components/bible/search/FoundPanel';
 
 import type { FoundVerses } from '@/components/bible/search/useFoundVerses';
@@ -50,6 +50,31 @@ describe('the found verses in the Bible\'s order', () => {
     expect(drawnAround(range, 10, 100, 10000)).toEqual({ from: 0, to: 100 });
     // A list grown shorter than the range drawn starts again rather than draw nothing.
     expect(drawnAround(range, -1, 100, 50)).toEqual({ from: 0, to: 100 });
+  });
+});
+
+// BUG-20261030-open-in-bible-shows-found-column: a verse opened alone is no request for the column, and of the same
+// search it does not take the column away either.
+describe('a verse of a search opened alone', () => {
+  beforeEach(() => closeFound());
+
+  it('keeps the found verses of the same search — whatever its case and spaces, in the same Bible — and puts away another search\'s', () => {
+    showFound({ bible: 'rst', line: 'пс 118 ожив', asWords: false });
+    const kept = renderHook(() => useFoundSearch());
+    act(() => {
+      openedAlone('rst', undefined);
+      openedAlone('rst', { line: '  Пс  118 ОЖИВ ', asWords: false });
+    });
+    expect(kept.result.current).toEqual({ bible: 'rst', line: 'пс 118 ожив', asWords: false });
+    act(() => openedAlone('rst', { line: 'пс 118 ожив', asWords: true }));
+    expect(kept.result.current).toBeNull();
+    act(() => showFound({ bible: 'rst', line: 'пс 118 ожив', asWords: false }));
+    act(() => openedAlone('rst', { line: '"хлеб жизни"', asWords: false }));
+    expect(kept.result.current).toBeNull();
+    // The same words in another Bible are another search (Codex review of the fix).
+    act(() => showFound({ bible: 'rst', line: 'Авраам', asWords: false }));
+    act(() => openedAlone('ubio', { line: 'Авраам', asWords: false }));
+    expect(kept.result.current).toBeNull();
   });
 });
 

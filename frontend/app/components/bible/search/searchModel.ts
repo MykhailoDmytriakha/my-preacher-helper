@@ -23,7 +23,8 @@ export type ModelAction = { label: string; primary: boolean; run: Intent };
 
 /** What a choice asks the line to do; the component carries it out. */
 export type Intent =
-  | { kind: 'open'; target: OpenTarget; fromSearch: boolean }
+  /** `withFound` — «Все N — в Библии»: the search's verses beside the text; any other verse of a search opens alone. */
+  | { kind: 'open'; target: OpenTarget; fromSearch: boolean; withFound?: boolean }
   | { kind: 'write'; line: string; asWords?: boolean }
   | { kind: 'asWords'; on: boolean }
   | { kind: 'showChapters' }
