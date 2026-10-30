@@ -93,7 +93,8 @@ export function useModalLayer<T extends HTMLElement = HTMLDivElement>({
       // disappearing because the picker in front of it was dismissed.
       const element = ref.current;
       if (!element || !isTopmostLayer(element) || !isAvailableFocusTarget(element) || hasExternalDialogFocus(element)) return;
-      event.stopPropagation();
+      // Closing can unregister this layer before another window listener runs for the same key.
+      event.stopImmediatePropagation();
       onClose();
     };
     // Bound to the WINDOW, not the document: a key event dispatched at either one reaches it
