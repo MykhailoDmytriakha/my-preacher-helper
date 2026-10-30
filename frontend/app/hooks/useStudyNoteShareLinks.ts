@@ -1,6 +1,8 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMemo } from 'react';
 import { toast } from 'sonner';
 
+import { useDataCollection } from '@/data-engine/react.client';
 import { useResolvedUid } from '@/hooks/useResolvedUid';
 import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
 import { StudyNoteShareLink } from '@/models/models';
@@ -30,11 +32,18 @@ export function useStudyNoteShareLinks() {
   const { t } = useTranslation();
   const { uid, isAuthLoading } = useResolvedUid();
   const queryClient = useQueryClient();
+  const { presence: notePresence } = useDataCollection(uid ? 'studyNotes' : null);
   const shareLinksQuery = useServerFirstQuery({
     queryKey: shareLinksKey(uid),
     queryFn: () => (uid ? getStudyNoteShareLinks(uid) : Promise.resolve([])),
     enabled: !!uid,
   });
+
+  // The server retires links atomically with their note. A still-fresh or restored links cache
+  // must follow that exact tombstone too; a missing/unloaded note or a queued delete proves less.
+  const shareLinks = useMemo(() => shareLinksQuery.data?.filter(
+    link => notePresence(link.noteId).snapshot?.metadata?.deleted !== true,
+  ) ?? NO_SHARE_LINKS, [shareLinksQuery.data, notePresence]);
 
   // mutationKey + self-contained variables (userId in the payload) tie each write
   // to its resumable default in mutationDefaults.ts so it survives a reload and
@@ -97,7 +106,7 @@ export function useStudyNoteShareLinks() {
 
   return {
     uid,
-    shareLinks: shareLinksQuery.data ?? NO_SHARE_LINKS,
+    shareLinks,
     loading: isAuthLoading || shareLinksQuery.isLoading,
     error: shareLinksQuery.error as Error | null,
     refetch: shareLinksQuery.refetch,

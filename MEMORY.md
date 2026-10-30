@@ -47,6 +47,8 @@
 *   **Text Backup Handoff:** A backup retires only by exact confirmation, explicit choice, or its payload identity transferring to an actual retained canonical request. Mint the identity in the ordinary value write; prepare the handoff read-only. Unknown historical copies remain neutral recovery; Saved/raw-audio confirmation still needs the whole-request ACK. Canonical bridge and boundaries: `.howto/keep-a-write-across-offline.md` and `utils/draftCaptureRecovery.client.ts`.
 *   **AI Stack:** structured calls through `callWithStructuredOutput` with Zod schemas; providers and models come from the tier catalog, not from this line — `.howto/call-ai-with-structured-output.md`, `.howto/gate-and-meter-an-ai-call.md`.
 
+*   **Share-Link Retirement:** `useStudyNoteShareLinks` projects capability lists through canonical note presence. Exact confirmed tombstones suppress stale links across all readers, including cached offline reads; absence, read failure and queued removal prove less. Server cascade and explicit revoke/recovery retain their existing owners. Recipe: `.howto/update-react-query-cache.md`.
+
 ### 🧭 Canonical Mechanisms — LOOK HERE BEFORE WRITING YOUR OWN
 > Every row of the former table is now the core of a recipe in `.howto/`: find the operation there (the Elephant block of `CLAUDE.md` says how) and read the code it names before you write your own rule. The data engine is in `main`: its public contract is `frontend/app/data-engine/README.md`, per-collection state is in `docs/architecture/data-engine-migration-log.md` — check the collection before choosing the engine or a legacy path.
 

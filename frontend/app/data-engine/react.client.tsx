@@ -985,8 +985,9 @@ export function useDataCollection(collection: string | null) {
     throw error;
   }
   };
-  const presence = (id: string, answer: CollectionState | null = copy ? copy.state : state) =>
-    collection ? collectionRecordPresence({ collection, id }, answer) : UNKNOWN_RECORD_PRESENCE;
+  const presence = useCallback((id: string, answer: CollectionState | null = copy ? copy.state : state) =>
+    collection ? collectionRecordPresence({ collection, id }, answer) : UNKNOWN_RECORD_PRESENCE,
+  [collection, copy, state]);
   return {
     state: copy ? copy.state : state,
     presence,

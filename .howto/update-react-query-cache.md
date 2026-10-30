@@ -16,6 +16,12 @@ Publish a write with `cancelQueries` → `setQueryData` → `invalidateQueries({
 - Resumable mutations invalidate their list on success (`registerOfflineMutationDefaults` in `frontend/app/utils/mutationDefaults.ts`).
 - Legacy query rows of an engine-owned collection stay in memory only (`shouldPersistLegacyQuery`).
 
+## Read a cached capability after its parent is retired
+
+Share links are server-owned capabilities; deleting a study note already retires its links in the canonical server transaction. `useStudyNoteShareLinks` projects every reader through public `useDataCollection('studyNotes').presence(noteId)` and excludes only an exact snapshot with `metadata.deleted === true`. This also handles a still-fresh persisted query, an older in-flight answer, an ACK before the feed and a confirmed cached tombstone after offline reload. The public presence callback stays stable until its collection evidence changes.
+
+Do not infer retirement from an empty/incomplete list, a failed note read or a locally queued delete: those do not prove the public capability ended. A cached tombstone can have presence kind `unknown` while retaining its explicit deleted metadata. Keep direct revoke acknowledgement/recovery in `studyNoteShareLinkWrites`; this read projection neither adds a second revoke writer nor retires an unresolved mutation. Cover both a hidden retired link and a retained unrelated/live or unacknowledged link. Regression: `__tests__/hooks/useStudyNoteShareLinks.retiredNotes.test.tsx`.
+
 ## Why
 
 - 2026-01-18: a global `refetchOnMount: 'always'` refetched on every mount and made focus mode jump; the global default is now `true`.
