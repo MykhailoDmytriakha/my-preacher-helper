@@ -1,5 +1,6 @@
 import { getLocalizedAbbrev } from '@/utils/bibleBooks';
 
+import { matchingPhraseForms, type SearchPhrase } from './phrases';
 import { matchersOf, partBooks, type BookGroups, type SearchQuery, type SearchScope } from './query';
 import { hasLexicalLemma } from './wordFormLexicon';
 import { matcherOf, withoutEnding, type SearchLanguage, type WordMatcher } from './wordForms';
@@ -155,12 +156,12 @@ function withKin(own: WordMatcher, language: SearchLanguage): WordMatcher | null
 
 /** The forms found, the commonest first — read from the first verses: enough to name them, and «Господь»
  * (thousands of verses) stays as quick to type as any other word. */
-function formsIn(hits: readonly VerseHit[], matchers: readonly WordMatcher[], phrases: readonly (readonly string[])[]): string[] {
+function formsIn(hits: readonly VerseHit[], matchers: readonly WordMatcher[], phrases: readonly SearchPhrase[]): string[] {
   const formCounts = new Map<string, number>();
   for (const hit of hits.slice(0, FORMS_SAMPLE)) {
     const words = wordsOfText(hit.text);
     for (const word of words) if (matchers.some((matcher) => matcher.test(word))) formCounts.set(word, (formCounts.get(word) ?? 0) + 1);
-    for (const phrase of phrases) formCounts.set(phrase.join(' '), (formCounts.get(phrase.join(' ')) ?? 0) + 1);
+    for (const phrase of phrases) for (const form of matchingPhraseForms(words, phrase)) formCounts.set(form, (formCounts.get(form) ?? 0) + 1);
   }
   return Array.from(formCounts.entries()).sort((a, b) => b[1] - a[1]).map(([form]) => form);
 }

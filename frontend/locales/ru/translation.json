@@ -651,6 +651,8 @@
       "quote": "«{{text}}»",
       "byPattern": "По шаблону:",
       "phrase": "Точная фраза:",
+      "phraseBeginning": "Начало фразы:",
+      "wordsAndPhraseBeginning": "Слова и начало фразы:",
       "asWords": "Ищем слова:",
       "wider": "Шире:",
       "widerSaved": "Шире, среди сохранённых книг:",

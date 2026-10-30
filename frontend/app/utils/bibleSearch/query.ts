@@ -6,8 +6,9 @@ import { exactBook, writtenBook, bareBookName as bareName, BOOK_CALLING_NAMES as
 import { chapterCount, verseCount } from '@/utils/versification';
 
 import { digitsForNumberWords, isNumberWord, ordinalOf } from './numberWords';
+import { phraseText, type SearchPhrase } from './phrases';
 import { matcherOf, type SearchLanguage, type WordMatcher } from './wordForms';
-import { normalizeWord } from './words';
+import { normalizeWord, wordsOfText } from './words';
 
 /**
  * WHAT ONE LINE OF THE BIBLE MEANS — a place to open or words to find, and where to find them (the
@@ -52,8 +53,8 @@ export type SearchQuery = {
   scope: SearchScope | null;
   /** The words to find, as compared (`normalizeWord`), with their signs. */
   terms: string[];
-  /** Words in quotes: found together, in this order, as written. */
-  phrases: string[][];
+  /** Words in quotes: ordered literal words and whether their closing quote has been typed. */
+  phrases: SearchPhrase[];
   /** The words without the scope, as a line again: what a wider search is written with. */
   text: string;
   /** Every word of the line, the scope's too: the line searched as words. */
@@ -385,7 +386,7 @@ function scopeAt(words: readonly string[], language: SearchLanguage, books: Book
 
 const withoutUsed = ({ used, ...scope }: SearchScope & { used: number }): SearchScope => (void used, scope as SearchScope);
 
-const QUOTED = /["«»„“”]([^"«»„“”]*)["«»„“”]?/g;
+const QUOTED = /["«»„“”]([^"«»„“”]*)(["«»„“”])?/g;
 
 /** The words of a search line: a passage's «:» and «-» kept between digits, other signs as spaces. */
 function searchWordsOf(text: string): string[] {
@@ -404,10 +405,10 @@ function searchWordsOf(text: string): string[] {
 /** The line as a search: where (when its first words say it) and what. */
 export function readSearch(raw: string, { bible, books, asWords = false }: Pick<LineContext, 'bible' | 'books' | 'asWords'>): SearchQuery {
   const language = languageOf(bible);
-  const phrases: string[][] = [];
-  const outside = raw.replace(QUOTED, (_, inside: string) => {
-    const words = normalizeWord(inside).match(/[\p{L}\p{N}]+/gu) ?? [];
-    if (words.length) phrases.push(words);
+  const phrases: SearchPhrase[] = [];
+  const outside = raw.replace(QUOTED, (_match: string, inside: string, closing: string | undefined) => {
+    const words = wordsOfText(inside);
+    if (words.length) phrases.push({ words, complete: Boolean(closing) });
     return ' ';
   });
   const words = searchWordsOf(outside);
@@ -416,7 +417,7 @@ export function readSearch(raw: string, { bible, books, asWords = false }: Pick<
   const found = asWords ? null : scopeAt(words, language, books, phraseAt);
   const rest = words.slice(found ? found.used : 0);
   const terms = rest.filter((word) => !STOP.has(word) && !isDigits(word) && word !== ':' && word !== '-' && (word.length > 1 || /[*_]/.test(word)));
-  const asLine = (list: string[]) => [list.filter((word) => word !== ':' && word !== '-').join(' '), ...phrases.map((phrase) => `"${phrase.join(' ')}"`)].filter(Boolean).join(' ');
+  const asLine = (list: string[]) => [list.filter((word) => word !== ':' && word !== '-').join(' '), ...phrases.map(phraseText)].filter(Boolean).join(' ');
   return { scope: found ? withoutUsed(found) : null, terms, phrases, text: asLine(rest), all: asLine(words), language };
 }
 

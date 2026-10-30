@@ -631,6 +631,8 @@
       "quote": "“{{text}}”",
       "byPattern": "By the pattern:",
       "phrase": "Exact phrase:",
+      "phraseBeginning": "Phrase beginning:",
+      "wordsAndPhraseBeginning": "Words and phrase beginning:",
       "asWords": "Searching the words:",
       "wider": "Wider:",
       "widerSaved": "Wider, among the saved books:",

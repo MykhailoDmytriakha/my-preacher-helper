@@ -651,6 +651,8 @@
       "quote": "«{{text}}»",
       "byPattern": "За шаблоном:",
       "phrase": "Точна фраза:",
+      "phraseBeginning": "Початок фрази:",
+      "wordsAndPhraseBeginning": "Слова й початок фрази:",
       "asWords": "Шукаємо слова:",
       "wider": "Ширше:",
       "widerSaved": "Ширше, серед збережених книг:",

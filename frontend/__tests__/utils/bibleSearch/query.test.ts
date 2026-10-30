@@ -149,8 +149,8 @@ describe('readLine — a search', () => {
   });
 
   it('words in quotes are a phrase; signs stay in a word', () => {
-    expect(search('"хлеб жизни"')).toMatchObject({ scope: null, terms: [], phrases: [['хлеб', 'жизни']] });
-    expect(search('«хлеб жизни»')).toMatchObject({ phrases: [['хлеб', 'жизни']] });
+    expect(search('"хлеб жизни"')).toMatchObject({ scope: null, terms: [], phrases: [{ words: ['хлеб', 'жизни'], complete: true }] });
+    expect(search('«хлеб жизни»')).toMatchObject({ phrases: [{ words: ['хлеб', 'жизни'], complete: true }] });
     expect(search('благодат*').terms).toEqual(['благодат*']);
     expect(search('Ил_я').terms).toEqual(['ил_я']);
   });

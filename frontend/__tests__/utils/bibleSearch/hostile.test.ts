@@ -88,6 +88,6 @@ describe('a place checked as written, and quotes as search', () => {
 
   it('«"плач"» is the word, not the book', () => {
     const reading = readLine('"плач"', ru);
-    expect(reading.kind === 'search' && reading.query).toMatchObject({ scope: null, phrases: [['плач']] });
+    expect(reading.kind === 'search' && reading.query).toMatchObject({ scope: null, phrases: [{ words: ['плач'], complete: true }] });
   });
 });

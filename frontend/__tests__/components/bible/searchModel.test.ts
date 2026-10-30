@@ -159,3 +159,13 @@ describe('what Enter opens', () => {
     expect(rowForEnter([rows[3]], null)).toBeNull();
   });
 });
+
+
+// An open quoted phrase keeps its presentation explicit when ordinary words share the query.
+describe('ordinary words together with an unfinished quoted phrase', () => {
+  it('names both the words and the unfinished phrase after finding the actual verse', () => {
+    const result = model('Ин есмь "хлеб жи', {}, false);
+    expect(result.rows.some(row => row.type === 'verse' && row.run.kind === 'open' && row.run.target.bookId === 'John' && row.run.target.chapter === 6 && row.run.target.verse === 35)).toBe(true);
+    expect(result.head?.formsLabel).toBe('bible.search.wordsAndPhraseBeginning');
+  });
+});

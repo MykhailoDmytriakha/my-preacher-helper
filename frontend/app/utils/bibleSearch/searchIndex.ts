@@ -1,5 +1,6 @@
 import { verseWords, type BookText } from '@/utils/bibleText';
 
+import { findPhraseRun, phraseWordMatchers, type SearchPhrase } from './phrases';
 import { wordsOfText } from './words';
 
 import type { WordMatcher } from './wordForms';
@@ -90,14 +91,24 @@ export class BibleSearchIndex {
    * Every verse with all the words (each in any of its forms) and every phrase (its words in a row), in
    * the Bible's order; `inBooks` narrows to those books.
    */
-  search(matchers: readonly WordMatcher[], phrases: readonly (readonly string[])[], inBooks?: ReadonlySet<string> | null): VerseHit[] {
+  search(matchers: readonly WordMatcher[], phrases: readonly SearchPhrase[], inBooks?: ReadonlySet<string> | null): VerseHit[] {
     if (!matchers.length && !phrases.length) return [];
     const flags = matchers.map((matcher) => this.flagsFor(matcher));
-    const phraseIds: number[][] = [];
+    const phraseTests: Array<Array<(word: number) => boolean>> = [];
     for (const phrase of phrases) {
-      const ids = phrase.map((word) => this.ids.get(word));
-      if (ids.some((id) => id === undefined)) return [];
-      phraseIds.push(ids as number[]);
+      const tests: Array<(word: number) => boolean> = [];
+      for (const matcher of phraseWordMatchers(phrase)) {
+        if (matcher.literal !== null) {
+          const id = this.ids.get(matcher.literal);
+          if (id === undefined) return [];
+          tests.push(word => word === id);
+        } else {
+          const accepted = this.flagsFor(matcher);
+          if (!accepted.includes(1)) return [];
+          tests.push(word => accepted[word] === 1);
+        }
+      }
+      phraseTests.push(tests);
     }
     const hits: VerseHit[] = [];
     for (const bookId of this.order) {
@@ -107,19 +118,10 @@ export class BibleSearchIndex {
       for (const verse of verses) {
         const { words } = verse;
         if (!flags.every((each) => words.some((id) => each[id] === 1))) continue;
-        if (!phraseIds.every((ids) => containsRun(words, ids))) continue;
+        if (!phraseTests.every((tests) => findPhraseRun(words, tests) >= 0)) continue;
         hits.push({ book: verse.book, chapter: verse.chapter, verse: verse.verse, text: verse.text });
       }
     }
     return hits;
   }
-}
-
-function containsRun(words: Uint32Array, run: readonly number[]): boolean {
-  for (let start = 0; start + run.length <= words.length; start += 1) {
-    let k = 0;
-    while (k < run.length && words[start + k] === run[k]) k += 1;
-    if (k === run.length) return true;
-  }
-  return false;
 }

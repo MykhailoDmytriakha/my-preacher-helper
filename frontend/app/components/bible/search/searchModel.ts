@@ -1,4 +1,5 @@
 import { getLocalizedAbbrev, getLocalizedBookName } from '@/utils/bibleBooks';
+import { phraseWordMatchers } from '@/utils/bibleSearch/phrases';
 import { readSearch, type BookGroups, type LineReading, type SearchQuery, type SearchScope } from '@/utils/bibleSearch/query';
 import { scopeBookIds, type SearchAnswer, type WiderStep } from '@/utils/bibleSearch/results';
 import { piecesOfText } from '@/utils/bibleSearch/words';
@@ -151,11 +152,10 @@ function notFoundTitle(scope: SearchScope, locale: AppLocale, t: TFunction): str
 }
 
 /** The verse cut into pieces, the words the search found marked. */
-function litPieces(text: string, query: SearchQuery, matchers: readonly WordMatcher[]): Array<{ text: string; lit: boolean }> {
-  const phraseWords = new Set(query.phrases.flat());
+function litPieces(text: string, matchers: readonly WordMatcher[]): Array<{ text: string; lit: boolean }> {
   return piecesOfText(text).map((piece) => ({
     text: piece.text,
-    lit: piece.word !== null && (matchers.some((matcher) => matcher.test(piece.word as string)) || phraseWords.has(piece.word)),
+    lit: piece.word !== null && matchers.some((matcher) => matcher.test(piece.word as string)),
   }));
 }
 
@@ -332,6 +332,7 @@ function formsLabelOf(input: ModelInput, query: SearchQuery, answer: SearchAnswe
   const { t, asWords } = input;
   if (asWords) return t('bible.search.asWords');
   if (query.terms.some((term) => /[*_]/.test(term))) return t('bible.search.byPattern');
+  if (query.phrases.some(phrase => !phrase.complete)) return t(query.terms.length ? 'bible.search.wordsAndPhraseBeginning' : 'bible.search.phraseBeginning');
   // «Слова на «жизн»» names what the forms begin — so only when each of them does: «хлеб жизн» found forms of both.
   if (answer.begun.length && answer.forms.every((form) => answer.begun.some((word) => form.startsWith(word)))) {
     return t('bible.search.begun', { words: answer.begun.map((word) => t('bible.search.quote', { text: word })).join(', ') });
@@ -470,6 +471,7 @@ function searchModel(input: ModelInput, reading: Extract<LineReading, { kind: 's
     else rows.push(fix(t('bible.search.unavailableTitle'), t('bible.search.unavailableText')));
     return { ...empty, rows };
   }
+  const highlightMatchers = [...answer.matchers, ...query.phrases.flatMap(phraseWordMatchers)];
   answer.hits.slice(0, limit).forEach((hit, position) => {
     // After the word's own verses, its kin: named, so the person sees why «светильник» is there.
     if (answer.kin && position === answer.kin.own) {
@@ -477,7 +479,7 @@ function searchModel(input: ModelInput, reading: Extract<LineReading, { kind: 's
     }
     const key = placeKey(hit.book, hit.chapter, hit.verse);
     rows.push({
-      type: 'verse', key, ref: verseRef(hit.book, hit.chapter, hit.verse, locale), pieces: litPieces(hit.text, query, answer.matchers), seen: opened.has(key),
+      type: 'verse', key, ref: verseRef(hit.book, hit.chapter, hit.verse, locale), pieces: litPieces(hit.text, highlightMatchers), seen: opened.has(key),
       run: { kind: 'open', target: { bookId: hit.book, chapter: hit.chapter, verse: hit.verse, toVerse: hit.verse }, fromSearch: true },
     });
   });
