@@ -4,6 +4,7 @@ import { providerIds } from '@/api/clients/ai/providerId';
 import { getUtf8ByteLength } from '@/utils/feedbackPayload';
 import { groupMeetingDay } from '@/utils/groupMeeting';
 import { SERVICE_ORDER_CATALOG } from '@/utils/serviceOrderCatalog';
+import { preservesStudyAnalysisSource } from '@/utils/studyAnalysisSource';
 
 import { childIdentityIssue, childIdentityIssues, keepsExistingChildIdentities } from './legacyChildIdentity';
 
@@ -168,6 +169,7 @@ export function validateResourceDocument(collection: string, value: DocumentData
       invalid(`Invalid ${collection}.${key}: ${result.error.issues.map(issue => issue.message).join('; ')}`);
     }
   }
+  if (collection === 'studyNotes' && !preservesStudyAnalysisSource(options.previous, value)) invalid('An analysis must keep its original word source');
   validateGroupMeetingDays(collection, value, options, fields);
   if (options.kind === 'create' && collection === 'sermons') {
     if (Array.isArray(value.sourceNoteIds) && value.sourceNoteIds.length > 20) invalid('Too many source notes at birth');

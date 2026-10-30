@@ -1,5 +1,6 @@
 import { deriveSeriesItemsFromSermonIds } from '@/utils/seriesItems';
 import { isServiceOrderCatalogKey, serviceOrderSeedCycle } from '@/utils/serviceOrderSeedIdentity';
+import { preservesStudyAnalysisSource } from '@/utils/studyAnalysisSource';
 
 import { firstBookMarksIntent } from './bibleMarksCreation';
 import { carriedCopy, validCouncilCarry } from './councilCarryContent';
@@ -116,6 +117,7 @@ function materialTargets(owner: string, required: ResourceRef[], targets: readon
 function prepareUpdate(base: CommandBase, confirmed: ResourceSnapshot & { value: DocumentData }, draft: DocumentData, targets: readonly ResourceSnapshot[]): DomainPreparation {
   const changes = diffFields(confirmed.value, draft);
   const collection = confirmed.resource.collection;
+  if (collection === 'studyNotes' && !preservesStudyAnalysisSource(confirmed.value, draft)) return failure('An analysis must keep its original word source', 'invalid-document');
   const carried = newCarryDestinations(confirmed, draft);
   if (carried.length) return prepareCarry(base, confirmed, draft, carried, targets);
   const forbidden = collection === 'studyNotes' ? ['materialIds'] : ['sermons', 'groups'].includes(collection) ? ['seriesId', 'seriesPosition'] : [];

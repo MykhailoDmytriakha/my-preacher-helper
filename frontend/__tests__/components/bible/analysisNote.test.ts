@@ -1,6 +1,8 @@
 import { act, renderHook } from '@testing-library/react';
 
-import { useAnalysisNote, type AnalysisOpening } from '@/components/bible/analysis/useAnalysisNote';
+import kjvEphesians from '../../../public/bible-text/kjv/v1/ephesians.json';
+
+import { passageOfReference, useAnalysisNote, type AnalysisOpening } from '@/components/bible/analysis/useAnalysisNote';
 import { useDataDocument } from '@/data-engine/react.client';
 import { useStudyNotesEngine } from '@/hooks/useStudyNotesEngine';
 import { changeRelation, cutAt, passageWords, relateWords, type AnalysisState } from '@/utils/passageAnalysis';
@@ -230,5 +232,68 @@ describe('an analysis note — what the screen may write', () => {
     const { result } = render();
     act(() => { jest.advanceTimersByTime(8000); });
     expect(result.current.ready).toBe(true);
+  });
+  it.each([
+    { context: 'another Bible', bible: 'kjv' as const, bookId: 'Ephesians', text: kjvEphesians as BookText },
+    { context: 'another book with the same words', bible: 'rst' as const, bookId: 'Galatians', text: { ...EPHESIANS, id: 'Galatians' } },
+    { context: 'a text file from another book', bible: 'rst' as const, bookId: 'Ephesians', text: { ...EPHESIANS, id: 'Galatians' } },
+  ])('does not write saved word positions against $context', async ({ bible, bookId, text }) => {
+    engine.loading = false;
+    engine.notes = [madeElsewhere];
+    opening = { kind: 'open', id: madeElsewhere.id, editing: true };
+    const { result, unmount } = renderHook(() => useAnalysisNote({ opening, text, bookId, bible, locale: 'ru' }));
+    await act(async () => {
+      const next = cutAt(result.current.state, 5, result.current.total);
+      if (next) result.current.change(next);
+      result.current.flush();
+    });
+    unmount();
+    const stored = commit.mock.calls.reduce<Record<string, unknown>>((value, args) => {
+      const update = (args as unknown as [(data: Record<string, unknown>) => Record<string, unknown> | null])[0];
+      return update(value) ?? value;
+    }, JSON.parse(JSON.stringify(madeElsewhere)) as Record<string, unknown>);
+    expect(stored).toEqual(madeElsewhere);
+    expect(engine.updateNote).not.toHaveBeenCalled();
+    expect(engine.createNote).not.toHaveBeenCalled();
+  });
+
+  it('keeps an existing source-Bible analysis editable on its own text', async () => {
+    engine.loading = false;
+    engine.notes = [madeElsewhere];
+    opening = { kind: 'open', id: madeElsewhere.id, editing: true };
+    const { result } = render();
+    await act(async () => { result.current.change(cutAt(result.current.state, 5, result.current.total)!); });
+    expect(commit).toHaveBeenCalledTimes(1);
+    const lay = (commit.mock.calls[0] as unknown as [(value: Record<string, unknown>) => Record<string, unknown>])[0];
+    expect(lay({ ...madeElsewhere })).toMatchObject({ analysis: { bible: 'rst', cuts: [3, 5] } });
+  });
+
+  it('still creates a new analysis in the Bible the person is reading', async () => {
+    engine.loading = false;
+    const text = kjvEphesians as BookText;
+    const { result } = renderHook(() => useAnalysisNote({ opening, text, bookId: 'Ephesians', bible: 'kjv', locale: 'en' }));
+    await act(async () => { result.current.change(cutAt(result.current.state, 5, result.current.total)!); });
+    expect(engine.createNote).toHaveBeenCalledTimes(1);
+    expect(engine.createNote.mock.calls[0][0]).toMatchObject({ analysis: { bible: 'kjv', cuts: [5] }, scriptureRefs: [{ bible: 'kjv', book: 'Ephesians' }] });
+  });
+
+});
+
+
+describe('analysis passage in the Bible that owns its words', () => {
+  it('projects reference numbering into the word Bible', () => {
+    expect(passageOfReference({ id: 'psalm', bible: 'rst', book: 'Psalms', chapter: 22, fromVerse: 1, toVerse: 2 }, 'kjv'))
+      .toEqual({ chapter: 23, fromVerse: 1, toChapter: 23, toVerse: 2 });
+  });
+  it('retains an exact canonical cross-chapter ending', () => {
+    expect(passageOfReference({ id: 'seam', bible: 'kjv', book: 'Isaiah', chapter: 52, fromVerse: 13, endChapter: 53, toVerse: 12 }, 'kjv'))
+      .toEqual({ chapter: 52, fromVerse: 13, toChapter: 53, toVerse: 12 });
+  });
+  it("continues reading the analysis feature's earlier exact toChapter spans", () => {
+    expect(passageOfReference({ id: 'legacy-seam', bible: 'kjv', book: 'Isaiah', chapter: 52, fromVerse: 13, toChapter: 53, toVerse: 12 }, 'kjv'))
+      .toEqual({ chapter: 52, fromVerse: 13, toChapter: 53, toVerse: 12 });
+  });
+  it('never silently reads only one piece of a discontinuous projection', () => {
+    expect(passageOfReference({ id: 'split', bible: 'kjv', book: 'Romans', chapter: 16, fromVerse: 24, toVerse: 27 }, 'rst')).toBeNull();
   });
 });

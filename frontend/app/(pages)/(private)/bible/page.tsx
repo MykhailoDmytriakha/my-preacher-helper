@@ -11,6 +11,7 @@ import { parsePassageEndpoint, wayBackPath } from '@/utils/bibleLink';
 import { isBibleId } from '@/utils/bibles';
 import { bookIdFromSlug, warmBibleTextOnce } from '@/utils/bibleText';
 import { isBrowserOffline } from '@/utils/connectivity';
+import { replaceHistoryAddress } from '@/utils/historyEntry';
 import { useTranslation } from '@locales/useTranslation';
 
 import '@locales/i18n';
@@ -87,13 +88,13 @@ export default function BiblePage() {
 
   const chooseBible = useCallback((next: Parameters<typeof changeBible>[0]) => {
     // The arrival has been followed; an explicit later picker choice owns this visit.
-    if (searchParams?.has('read')) {
-      const query = new URLSearchParams(searchParams.toString());
+    const query = new URLSearchParams(window.location.search);
+    if (query.has('read')) {
       query.delete('read');
-      window.history.replaceState(window.history.state, '', `/bible?${query.toString()}`);
+      replaceHistoryAddress(`/bible?${query.toString()}`);
     }
     changeBible(next);
-  }, [changeBible, searchParams]);
+  }, [changeBible]);
 
   const showBooks = useCallback(() => {
     window.history.pushState(null, '', '/bible');

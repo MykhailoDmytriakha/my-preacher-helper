@@ -1,4 +1,11 @@
+import { bibleHref } from '@/utils/bibleLink';
+import { replaceHistoryAddress } from '@/utils/historyEntry';
+import { analysisReferenceForReading } from '@/utils/studyAnalysisSource';
+
 import type { AnalysisMode } from './AnalysisParts';
+import type { AppLocale } from '@/utils/appLocale';
+import type { BibleId } from '@/utils/bibles';
+import type { ScriptureRefShape } from '@/utils/scriptureReference';
 
 /*
  * THE OPEN ANALYSIS IN THE PAGE'S ADDRESS (the owner, 30.10: «при обновлении не выкидывало в текст Библии»): the reader's
@@ -32,5 +39,18 @@ export function writeAnalysisAddress(value: AnalysisAddress | null): void {
     url.searchParams.delete(MODE);
   }
   const next = `${url.pathname}${url.search}${url.hash}`;
-  if (next !== `${window.location.pathname}${window.location.search}${window.location.hash}`) window.history.replaceState(window.history.state, '', next);
+  if (next !== `${window.location.pathname}${window.location.search}${window.location.hash}`) replaceHistoryAddress(next);
+}
+
+/** Follow the analysis's own words through the reader's canonical arrival, without a server navigation. */
+export function writeAnalysisSourceAddress(value: AnalysisAddress, reference: ScriptureRefShape, bible: BibleId, locale: AppLocale): void {
+  if (typeof window === 'undefined') return;
+  const from = new URLSearchParams(window.location.search).get('from') ?? undefined;
+  const href = bibleHref(analysisReferenceForReading(reference), { locale, from, readingBible: bible });
+  if (!href) return;
+  const url = new URL(href, window.location.origin);
+  url.searchParams.set(ID, value.id);
+  url.searchParams.set(MODE, value.mode);
+  const next = `${url.pathname}${url.search}`;
+  if (next !== `${window.location.pathname}${window.location.search}`) replaceHistoryAddress(next);
 }

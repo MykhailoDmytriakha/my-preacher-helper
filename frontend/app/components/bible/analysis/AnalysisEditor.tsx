@@ -12,7 +12,7 @@ import {
   partText, stepDown, stepUp, tieTo, tieTurns, type AnalysisState, type AnalysisWord, type CutLevel,
 } from '@/utils/passageAnalysis';
 
-import { writeAnalysisAddress } from './analysisAddress';
+import { writeAnalysisAddress, writeAnalysisSourceAddress } from './analysisAddress';
 import { arrowNear, dragArrow, fromLine, tieArrows, useGeometry, type Arrow } from './analysisGeometry';
 import {
   ARROW, AnalysisHeader, AnalysisLine, PanelGlyph, UntieMark, type AnalysisMode, type LineDrag, type LineRole, type LineSteps, type LineWord, type WordDrag,
@@ -88,7 +88,13 @@ export function AnalysisEditor({ opening, text, bookId, bible, locale, marks: le
   const relations = useAnalysisRelations({ state, total, geometry, at, bare, editing: mode === 'edit', showAll: mode === 'view' && allLinks, change, say: setMessage });
   const marks = useAnalysisMarks({ source: lentMarks ?? null, words });
 
-  const close = useCallback(() => { note.flush(); onClose(); }, [note, onClose]);
+  const close = useCallback(() => { note.flush(); writeAnalysisAddress(null); onClose(); }, [note, onClose]);
+  const sourceBible = note.source?.bible;
+  const sourceMode = opening.kind === 'open' && opening.editing !== undefined ? firstMode(opening) : note.hasSavedParts ? 'view' : mode;
+  useEffect(() => {
+    if (note.sourceMatches || !note.id || !sourceBible || !note.sourceReference) return;
+    writeAnalysisSourceAddress({ id: note.id, mode: sourceMode }, note.sourceReference, sourceBible, locale);
+  }, [locale, note.id, note.sourceMatches, note.sourceReference, sourceBible, sourceMode]);
   // Escape lets go of one thing at a time: a link's menu, a drag, the lit part — then the screen. The tool in hand is
   // put away by its own bar (`MarkToolbar`), which spends that press.
   const { letGo } = relations;
@@ -101,7 +107,7 @@ export function AnalysisEditor({ opening, text, bookId, bible, locale, marks: le
   const layer = useModalLayer({ onClose: escape });
   const undo = () => { note.undo(); setMessage(null); };
   useUndoShortcut(mode === 'edit', undo, contentRef);
-  useAnalysisAddress(note.id, mode, note.missing, onClose);
+  useAnalysisAddress(note.sourceMatches ? note.id : null, mode, note.missing, close);
 
   // A mark over a word: ↵ — a new line on the same step as the line it is cut from, ↳ — one step under it.
   const cutWord = (word: number, level: CutLevel) => { const next = cutAt(state, word, total, level); if (next) change(next); };
@@ -238,7 +244,7 @@ export function AnalysisEditor({ opening, text, bookId, bible, locale, marks: le
         onMode={(value) => { setMode(value); setSelected(null); setMessage(null); }}
         canUndo={note.canUndo} onUndo={undo} onClose={close} tools={marks.toolbar}
         allLinks={mode === 'view' && state.relations.length ? { on: allLinks, onToggle: () => setAllLinks(!allLinks) } : null}
-        onEditVerses={onEditVerses && note.passage ? () => { note.flush(); onEditVerses(note.noteId(), note.passage!); } : undefined} />
+        onEditVerses={onEditVerses && note.passage ? () => { note.flush(); writeAnalysisAddress(null); onEditVerses(note.noteId(), note.passage!); } : undefined} />
       <div className="flex min-h-0 flex-1">
         {/* The top padding leaves room for a mark's name over the first line, the left one for a top line's two arrows and
             its dot — past a two-digit verse number hung in the margin. */}
@@ -286,7 +292,8 @@ export function AnalysisEditor({ opening, text, bookId, bible, locale, marks: le
  */
 function useAnalysisAddress(id: string | null, mode: AnalysisMode, gone: boolean, onClose: () => void) {
   useEffect(() => { if (id) writeAnalysisAddress({ id, mode }); }, [id, mode]);
-  useEffect(() => () => writeAnalysisAddress(null), []);
+  // A keyed reader remount follows a source arrival; its target must keep the analysis address.
+  // Explicit close and verse picking remove it instead.
   useEffect(() => { if (gone) onClose(); }, [gone, onClose]);
 }
 

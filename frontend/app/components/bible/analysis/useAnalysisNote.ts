@@ -8,6 +8,7 @@ import { useStudyNotesEngine } from '@/hooks/useStudyNotesEngine';
 import { getLocalizedAbbrev } from '@/utils/bibleBooks';
 import { newClientId } from '@/utils/clientId';
 import { analysisMarkdown, EMPTY_ANALYSIS, passageWords, settled, type AnalysisState, type Relation } from '@/utils/passageAnalysis';
+import { analysisPassage, analysisSourceMatches, studyAnalysisSource } from '@/utils/studyAnalysisSource';
 
 import type { PickedPassage } from '../verseCopy/passagePick';
 import type { DocumentData } from '@/data-engine/types';
@@ -23,10 +24,7 @@ export type AnalysisOpening = { kind: 'new'; passage: PickedPassage } | { kind: 
 /** The note's own form: its drafts are this screen's, not another editor's of the same note. */
 const ANALYSIS_SLOT = 'analysis';
 
-export const passageOfReference = (reference: ScriptureReference | undefined): PickedPassage | null => {
-  if (!reference || reference.chapter === undefined || reference.fromVerse === undefined) return null;
-  return { chapter: reference.chapter, fromVerse: reference.fromVerse, toChapter: reference.toChapter ?? reference.chapter, toVerse: reference.toVerse ?? reference.fromVerse };
-};
+export const passageOfReference = (reference: ScriptureReference | undefined, bible?: BibleId): PickedPassage | null => analysisPassage(reference, bible);
 const samePassage = (a: PickedPassage | null, b: PickedPassage) => Boolean(a) && a!.chapter === b.chapter && a!.fromVerse === b.fromVerse && a!.toChapter === b.toChapter && a!.toVerse === b.toVerse;
 /** «1:3–14», «1:7», «1:15–2:10». */
 export const passageSpan = (p: PickedPassage) => (p.chapter === p.toChapter ? `${p.chapter}:${p.fromVerse}${p.toVerse !== p.fromVerse ? `–${p.toVerse}` : ''}` : `${p.chapter}:${p.fromVerse}–${p.toChapter}:${p.toVerse}`);
@@ -75,7 +73,7 @@ export function useAnalysisNote({ opening, text, bookId, bible, locale }: { open
     if (ownId) return engine.notes.find((note) => note.id === ownId);
     if (opening.kind === 'open') return undefined;
     return engine.notes.find((note) => note.type === 'analysis' && note.analysis?.bible === bible && note.scriptureRefs[0]?.book === bookId
-      && samePassage(passageOfReference(note.scriptureRefs[0]), opening.passage));
+      && samePassage(passageOfReference(note.scriptureRefs[0], bible), opening.passage));
   }, [engine.notes, opening, ownId, bible, bookId]);
   // A note made here opens its form only once its creation is kept on this device: opened before, it could find neither
   // the document nor its creation and wait for a connection (Codex, 30.10). It is this screen's note from the start.
@@ -87,15 +85,19 @@ export function useAnalysisNote({ opening, text, bookId, bible, locale }: { open
   // of the passage found after the person began here is not this screen's and is never read into it (Codex, 30.10).
   const touched = useRef(false);
   const shown = ownId || !touched.current ? found : undefined;
-  const copy = (form.data as { scriptureRefs?: ScriptureReference[]; analysis?: StudyAnalysis } | null) ?? shown ?? null;
-  const passage = opening.kind === 'new' ? opening.passage : passageOfReference(copy?.scriptureRefs?.[0]);
+  const copy = (form.data as Partial<StudyNote> | null) ?? shown ?? null;
+  const confirmed = form.confirmed?.value as Partial<StudyNote> | null | undefined;
+  const sourceNote = confirmed ?? copy;
+  const source = studyAnalysisSource(sourceNote);
+  const sourceMatches = !copy ? text.id === bookId : analysisSourceMatches(sourceNote, bookId, bible, text) && analysisSourceMatches(copy, bookId, bible, text);
+  const passage = opening.kind === 'new' ? opening.passage : passageOfReference(copy?.scriptureRefs?.[0], source?.bible ?? bible);
   const span = passage ? passageSpan(passage) : '';
-  const words = useMemo(() => (passage ? passageWords(text, passage) : []), [text, span]); // eslint-disable-line react-hooks/exhaustive-deps
+  const words = useMemo(() => (passage && sourceMatches ? passageWords(text, passage) : []), [text, span, sourceMatches]); // eslint-disable-line react-hooks/exhaustive-deps
   const total = words.length;
   const abbrev = getLocalizedAbbrev(bookId, locale);
   const place = `${abbrev}${span ? ` ${span}` : ''}`;
 
-  const writable = Boolean(form.state) && !form.readOnly && PHASES_TAKING_CHANGES.has(form.status?.phase ?? '');
+  const writable = sourceMatches && Boolean(passage && total) && Boolean(form.state) && !form.readOnly && PHASES_TAKING_CHANGES.has(form.status?.phase ?? '');
   const stored = copy?.analysis;
   const storedKey = stored ? JSON.stringify([stored.cuts, stored.links, stored.relations ?? null]) : '';
   // Nothing is changed before the person's analyses are read, nor on a note whose form cannot take it: a change made
@@ -114,7 +116,7 @@ export function useAnalysisNote({ opening, text, bookId, bible, locale }: { open
     const timer = setTimeout(() => setWaitedOut(true), 8000);
     return () => clearTimeout(timer);
   }, [listPending]);
-  const ready = ownId ? writable : !refused && (!listPending || waitedOut) && !found;
+  const ready = sourceMatches && Boolean(passage && total) && (ownId ? writable : !refused && (!listPending || waitedOut) && !found);
 
   const [state, setState] = useState<AnalysisState>(EMPTY_ANALYSIS);
   const [history, setHistory] = useState<AnalysisState[]>([]);
@@ -155,13 +157,14 @@ export function useAnalysisNote({ opening, text, bookId, bible, locale }: { open
   // A change made while the note just made here has no open form yet waits for it; it goes when the form opens.
   const waiting = useRef<AnalysisState | null>(null);
   const lay = useCallback((next: AnalysisState) => {
+    if (!sourceMatches) return;
     if (!writable) { waiting.current = next; return; }
     onTheWay.current += 1;
     const fields = valueOf(next) as unknown as DocumentData;
-    void form.commit((value): DocumentData | null => (value ? { ...value, ...fields, updatedAt: new Date().toISOString() } : value))
+    void form.commit((value): DocumentData | null => (value && analysisSourceMatches(value, bookId, bible, text) ? { ...value, ...fields, updatedAt: new Date().toISOString() } : value))
       .catch(() => undefined) // the form says it: `sync`
       .finally(() => { onTheWay.current -= 1; takeIn(); });
-  }, [form, takeIn, valueOf, writable]);
+  }, [bible, bookId, form, sourceMatches, takeIn, text, valueOf, writable]);
   useEffect(() => {
     if (!writable || !waiting.current) return;
     const next = waiting.current;
@@ -173,7 +176,7 @@ export function useAnalysisNote({ opening, text, bookId, bible, locale }: { open
   // is taken, never made a second time.
   const refusedId = useRef<string | null>(null);
   const create = useCallback((next: AnalysisState) => {
-    if (!passage) return;
+    if (!passage || !sourceMatches) return;
     // Taken as it is: it holds the work made before the refusal, after which nothing more was taken, and maybe more
     // made elsewhere since — nothing of the screen is laid over it (Codex, 30.10).
     const queuedNote = refusedId.current ? engine.notes.find((note) => note.id === refusedId.current) : undefined;
@@ -188,7 +191,7 @@ export function useAnalysisNote({ opening, text, bookId, bible, locale }: { open
     }
     const reference: ScriptureReference = {
       id: newClientId(), bible, book: bookId, chapter: passage.chapter, fromVerse: passage.fromVerse,
-      ...(passage.toChapter !== passage.chapter ? { toChapter: passage.toChapter } : {}), toVerse: passage.toVerse,
+      ...(passage.toChapter !== passage.chapter ? { endChapter: passage.toChapter } : {}), toVerse: passage.toVerse,
     };
     setRefused(false);
     const created = engine.createNote({ userId: engine.uid ?? '', title: t('analysis.title', { place }), scriptureRefs: [reference], tags: [], type: 'analysis', ...valueOf(next) });
@@ -207,7 +210,7 @@ export function useAnalysisNote({ opening, text, bookId, bible, locale }: { open
       setKept(true);
       setRefused(true);
     });
-  }, [bible, bookId, engine, passage, place, t, valueOf]);
+  }, [bible, bookId, engine, passage, place, sourceMatches, t, valueOf]);
   // Kept after all: the screen takes it and says nothing more.
   const queued = refused && refusedId.current ? engine.notes.some((note) => note.id === refusedId.current) : false;
   useEffect(() => { if (queued) create(stateRef.current); }, [queued, create]);
@@ -218,10 +221,10 @@ export function useAnalysisNote({ opening, text, bookId, bible, locale }: { open
   // The screen going while a change still waits for the new note's form: it goes as one action.
   const flush = useCallback(() => {
     const next = waiting.current;
-    if (!next || !noteId.current) return;
+    if (!next || !noteId.current || !sourceMatches) return;
     waiting.current = null;
     void engine.updateNote({ id: noteId.current, updates: valueOf(next) }).result.catch(() => undefined);
-  }, [engine, valueOf]);
+  }, [engine, sourceMatches, valueOf]);
   const flushRef = useRef(flush);
   flushRef.current = flush;
   useEffect(() => () => flushRef.current(), []);
@@ -244,7 +247,8 @@ export function useAnalysisNote({ opening, text, bookId, bible, locale }: { open
   }, [history, lay, ready]);
 
   return {
-    passage, words, total, abbrev, place, state, change, undo, canUndo: ready && history.length > 0, flush, opensForViewing,
+    hasSavedParts: Boolean(stored?.cuts?.length),
+    source, sourceReference: sourceNote?.scriptureRefs?.[0], sourceMatches, passage, words, total, abbrev, place, state, change, undo, canUndo: ready && history.length > 0, flush, opensForViewing,
     /** The person's analyses are read and the note's form can take a change. */
     ready,
     /** The note the analysis is kept in, once there is one. */

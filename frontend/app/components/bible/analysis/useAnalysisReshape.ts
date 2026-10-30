@@ -7,6 +7,7 @@ import { useStudyNotesEngine } from '@/hooks/useStudyNotesEngine';
 import { getLocalizedAbbrev } from '@/utils/bibleBooks';
 import { newClientId } from '@/utils/clientId';
 import { analysisMarkdown, joinAnalyses, passageWords, reshapeAnalysis, type AnalysisState } from '@/utils/passageAnalysis';
+import { analysisSourceMatches } from '@/utils/studyAnalysisSource';
 
 import { bookIndex, verseAfter, verseBefore, type PickedPassage } from '../verseCopy/passagePick';
 
@@ -34,8 +35,8 @@ export function useAnalysisReshape({ text, bookId, bible, locale }: { text: Book
   const engine = useStudyNotesEngine(true);
   return useCallback((id: string, next: PickedPassage): string | null => {
     const note = engine.notes.find((entry) => entry.id === id);
-    const old = passageOfReference(note?.scriptureRefs[0]);
-    if (!text || !note || !old) return null;
+    const old = passageOfReference(note?.scriptureRefs[0], bible);
+    if (!text || !note || !old || !analysisSourceMatches(note, bookId, bible, text)) return null;
     const at = (verse: VerseAt) => bookIndex(text, verse);
     if (at(endOf(next)) < at(startOf(old)) || at(startOf(next)) > at(endOf(old))) return null;
     const words = (from: VerseAt | null, to: VerseAt | null) => (from && to ? passageWords(text, between(from, to)).length : 0);
@@ -50,8 +51,8 @@ export function useAnalysisReshape({ text, bookId, bible, locale }: { text: Book
     const abbrev = getLocalizedAbbrev(bookId, locale);
     const placeOf = (p: PickedPassage) => `${abbrev} ${passageSpan(p)}`;
     const reference = (p: PickedPassage, base?: ScriptureReference): ScriptureReference => ({
-      ...(base ?? { bible, book: bookId }), id: base?.id ?? newClientId(), chapter: p.chapter, fromVerse: p.fromVerse,
-      toChapter: p.toChapter !== p.chapter ? p.toChapter : undefined, toVerse: p.toVerse,
+      ...(base ?? { book: bookId }), bible, id: base?.id ?? newClientId(), chapter: p.chapter, fromVerse: p.fromVerse,
+      toChapter: undefined, endChapter: p.toChapter !== p.chapter ? p.toChapter : undefined, toVerse: p.toVerse,
     });
     const save = (target: StudyNote | null, p: PickedPassage, state: AnalysisState) => {
       const passageWordsOf = passageWords(text, p);
@@ -67,14 +68,14 @@ export function useAnalysisReshape({ text, bookId, bible, locale }: { text: Book
     const said = [t('analysis.reshape.done', { place: placeOf(next) })];
     // Work in the verses taken off: into the analysis that touches them on the far side, else an analysis of its own.
     const neighbour = (touches: (p: PickedPassage) => boolean) => engine.notes.find((entry) => entry.id !== id && entry.type === 'analysis'
-      && entry.analysis?.bible === bible && entry.scriptureRefs[0]?.book === bookId && (() => { const p = passageOfReference(entry.scriptureRefs[0]); return Boolean(p && touches(p)); })());
+      && entry.analysis?.bible === bible && entry.scriptureRefs[0]?.book === bookId && (() => { const p = passageOfReference(entry.scriptureRefs[0], bible); return Boolean(p && touches(p)); })());
     const keep = (piece: AnalysisState, taken: PickedPassage, side: 'front' | 'back') => {
       const after = verseAfter(text, endOf(taken)); const before = verseBefore(text, startOf(taken));
       const other = side === 'back'
         ? neighbour((p) => Boolean(after) && at(startOf(p)) === at(after!))
         : neighbour((p) => Boolean(before) && at(endOf(p)) === at(before!));
       const pieceTotal = passageWords(text, taken).length;
-      const otherPassage = other ? passageOfReference(other.scriptureRefs[0]) : null;
+      const otherPassage = other ? passageOfReference(other.scriptureRefs[0], bible) : null;
       if (other && otherPassage) {
         const otherTotal = passageWords(text, otherPassage).length;
         const joined = side === 'back'

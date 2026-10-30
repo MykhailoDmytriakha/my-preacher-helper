@@ -12,3 +12,13 @@ export function currentHistoryEntryId(): string {
   window.history.replaceState({ ...state, [HISTORY_ENTRY_KEY]: id }, '');
   return id;
 }
+
+/** Replace an application address and let Next publish it, retaining this visit and other owners' state. */
+export function replaceHistoryAddress(address: string): void {
+  // Replaying Next's dispatch markers bypasses its URL integration. Its patched History API
+  // copies its own private state for an application navigation instead.
+  const state = { ...window.history.state };
+  delete state.__NA;
+  delete state._N;
+  window.history.replaceState(state, '', address);
+}
