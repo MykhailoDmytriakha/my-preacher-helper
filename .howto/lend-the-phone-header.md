@@ -1,4 +1,4 @@
-When: a page's controls in the app header on a phone · one header instead of two · page header in the shell · header folds while reading · header collapses on scroll · slim header · шапка складывается · одна шапка · шапка читалки в шапке приложения · Отзыв в меню · the header folded on arrival · the header opened by itself · useShellHeader · shellHeader · PhoneHeader
+when: a page's controls in the app header on a phone · one header instead of two · page header in the shell · header folds while reading · header collapses on scroll · slim header · шапка складывается · одна шапка · шапка читалки в шапке приложения · Отзыв в меню · the header folded on arrival · the header opened by itself · useShellHeader · shellHeader · PhoneHeader
 
 # Lend a page's controls to the phone's app header
 
