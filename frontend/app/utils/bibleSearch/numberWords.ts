@@ -33,13 +33,13 @@ const ORDINAL_STEMS: ReadonlyArray<readonly [string, number]> = [
   ['сороков', 40], ['пятидесят', 50], ['шестидесят', 60], ['семидесят', 70], ['восьмидесят', 80], ['девяност', 90], ['сот', 100],
   ['перш', 1], ['друг', 2], ['шост', 6], ['сьом', 7], ['одинадцят', 11], ['дванадцят', 12], ['тринадцят', 13],
   ['чотирнадцят', 14], ['пятнадцят', 15], ['шістнадцят', 16], ['сімнадцят', 17], ['вісімнадцят', 18], ['девятнадцят', 19],
-  ['двадцят', 20], ['тридцят', 30],
+  ['двадцят', 20], ['тридцят', 30], ['пятдесят', 50], ['шістдесят', 60], ['сімдесят', 70], ['вісімдесят', 80],
 ];
 const ORDINAL_ENDING = /^(ая|ой|ую|ый|ое|ья|ье|ий|ей|ом|ого|ему|ому|а|е|я|є|ій|им|ім|ої)$/;
 const ENGLISH_ORDINALS: Readonly<Record<string, number>> = {
   first: 1, second: 2, third: 3, fourth: 4, fifth: 5, sixth: 6, seventh: 7, eighth: 8, ninth: 9, tenth: 10, eleventh: 11,
   twelfth: 12, thirteenth: 13, fourteenth: 14, fifteenth: 15, sixteenth: 16, seventeenth: 17, eighteenth: 18, nineteenth: 19,
-  twentieth: 20, thirtieth: 30, fortieth: 40, fiftieth: 50,
+  twentieth: 20, thirtieth: 30, fortieth: 40, fiftieth: 50, sixtieth: 60, seventieth: 70, eightieth: 80, ninetieth: 90, hundredth: 100,
 };
 
 /** The number an ordinal word says, or null: «третья» 3, «шістнадцятий» 16, «sixteenth» 16; «второзаконие» is none. */
@@ -98,7 +98,10 @@ export function digitsForNumberWords(words: readonly string[]): string[] {
     const ordinal = ordinalOf(word);
     if (ordinal !== null) {
       // An ordinal ends its number: «двадцать третий» is 23, and the next word starts anew.
-      if (sum !== null && ((last === 'ten' && ordinal < 10) || (last === 'hundred' && ordinal < 100))) {
+      if (word === 'hundredth' && sum !== null && last === 'unit' && sum < 10) {
+        sum *= 100;
+        flush();
+      } else if (sum !== null && ((last === 'ten' && ordinal < 10) || (last === 'hundred' && ordinal < 100))) {
         out.push(String(sum + ordinal));
         sum = null;
         last = null;
