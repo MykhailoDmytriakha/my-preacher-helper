@@ -7,7 +7,7 @@ import remarkGfm from 'remark-gfm';
 import { MarkdownScriptureLink, rehypeScriptureLinks, SCRIPTURE_LINK_TAG, ScriptureText, useScriptureLinks } from '@/components/bible/ScriptureLinks';
 import { useMarkdownHtmlPlugins } from '@/hooks/useMarkdownHtmlPlugins';
 import { textLanguage } from '@/utils/appLocale';
-import { codeFenceFor } from '@/utils/markdownFence';
+import { prepareStructuredBlocks, STRUCTURED_BLOCK_TYPES } from '@/utils/markdownStructuredBlocks';
 import HighlightedText from '@components/HighlightedText';
 
 // Preserve the existing schema export for consumers while the common reader owns it.
@@ -26,8 +26,6 @@ interface MarkdownDisplayProps {
     searchQuery?: string;
 }
 
-const STRUCTURED_BLOCK_TYPES = ['illustration', 'application', 'question', 'quote', 'definition'] as const;
-
 /** The same typed block owns both its prose body and the removal of the code-only wrapper. */
 const structuredBlockType = (className: unknown): string | null => {
     const classes = Array.isArray(className) ? className.join(' ') : className;
@@ -35,25 +33,8 @@ const structuredBlockType = (className: unknown): string | null => {
     return match && STRUCTURED_BLOCK_TYPES.some((type) => type === match[1]) ? match[1] : null;
 };
 
-// Helper to transform [Type: Content] into code blocks for custom rendering
-const formatStructuredBlocks = (text: string) => {
-    if (!text) return "";
-
-    // Replace [Type: Content] with ```type\nContent\n```
-    // We use a regex that captures the type and the content
-    // Types: Illustration, Application, Question, Quote, Definition
-    const names = STRUCTURED_BLOCK_TYPES.map((type) => type[0].toUpperCase() + type.slice(1)).join('|');
-    const blockRegex = new RegExp(`\\[(${names}):\\s*([\\s\\S]*?)\\]`, 'g');
-
-    return text.replace(blockRegex, (_match, type, content) => {
-        const words = content.trim();
-        const fence = codeFenceFor(words);
-        return `\n${fence}${type.toLowerCase()}\n${words}\n${fence}\n`;
-    });
-};
-
 const MarkdownDisplay = ({ content, className = '', compact = false, pencil = false, searchQuery = '' }: MarkdownDisplayProps) => {
-    const processedContent = useMemo(() => formatStructuredBlocks(content), [content]);
+    const processedContent = useMemo(() => prepareStructuredBlocks(content).markdown, [content]);
     const htmlPlugins = useMarkdownHtmlPlugins();
     // References become links where the screen gives them somewhere to open; elsewhere the text is as written.
     const scriptureLinks = useScriptureLinks();

@@ -2,8 +2,8 @@ import { readMarkdownHtml } from './markdownHtml';
 
 import type { Root, RootContent } from 'hast';
 
-/** Transform positioned prose in the original source, never reserialize authored Markdown. */
-export function mapMarkdownProseSource(content: string, transform: (source: string) => string): string {
+/** Original prose positions, excluding literal code, links and generated reader labels. */
+export function markdownProseSourceRanges(content: string): { start: number; end: number }[] {
   const ranges: { start: number; end: number }[] = [];
   const visit = (node: Root | RootContent): void => {
     // Prune the subtree: a link's displayed label is literal too.
@@ -18,6 +18,12 @@ export function mapMarkdownProseSource(content: string, transform: (source: stri
   };
   visit(readMarkdownHtml(content));
   ranges.sort((a, b) => a.start - b.start);
+  return ranges;
+}
+
+/** Transform positioned prose in the original source, never reserialize authored Markdown. */
+export function mapMarkdownProseSource(content: string, transform: (source: string) => string): string {
+  const ranges = markdownProseSourceRanges(content);
   const parts: string[] = [];
   let cursor = 0;
   for (const { start, end } of ranges) {

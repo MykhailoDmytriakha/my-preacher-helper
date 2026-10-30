@@ -94,6 +94,8 @@ export function collectNoteHeadings(content: string): Map<string, string> {
   const lookup = uniqueHeadingLookup(headings.map(heading => ({
     id: String(heading.start),
     labels: [heading.text, heading.authored,
+      ...(heading.historical ? [heading.historical.text, heading.historical.authored,
+        ...(heading.historical.source.trim().match(/^#{1,6}\s+(.+)$/)?.slice(1) ?? [])] : []),
       // Exact former ATX authored spelling is lookup-only; this never detects a boundary.
       ...(heading.source.trim().match(/^#{1,6}\s+(.+)$/)?.slice(1) ?? [])],
   })), normalizeHeading);

@@ -405,3 +405,20 @@ describe('original heading boundaries at the owned-note route boundary', () => {
   });
 
 });
+
+
+describe('structured callout heading grounding', () => {
+  it('grounds only real headings and canonicalizes historical inline callout headings', () => {
+    const headings = collectNoteHeadings('# H [Quote: text]\n\n[Definition: first\n## Inside\nlast]\n\n# Next\nBody.');
+    expect(headings.get('h')).toBe('H');
+    expect(headings.get('h [quote: text]')).toBe('H');
+    expect(headings.has('inside')).toBe(false);
+    expect(headings.get('next')).toBe('Next');
+  });
+
+  it('rejects a historical inline callout heading shared by a distinct real heading', () => {
+    const headings = collectNoteHeadings('# H [Quote: text]\n\n# H \`[Quote: text]\`\nBody.');
+    expect(headings.has('h [quote: text]')).toBe(false);
+    expect(headings.get('h')).toBe('H');
+  });
+});

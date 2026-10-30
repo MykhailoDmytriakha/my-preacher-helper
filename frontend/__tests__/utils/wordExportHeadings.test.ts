@@ -39,3 +39,13 @@ describe('Word canonical root headings', () => {
     expect(paragraphs.find(row => row.text === 'Real heading')?.style).toBe('Heading2');
   });
 });
+
+
+describe('Word structured callout boundaries', () => {
+  it('does not style a multiline callout body as a heading', async () => {
+    const paragraphs = await rows('# Real\n\n[Quote: first line\n## Inside the quote\nlast line]\n\n# Last\nBody.');
+    expect(paragraphs.filter(row => row.style?.startsWith('Heading')).map(row => row.text)).toEqual(['Real', 'Last']);
+    expect(paragraphs.map(row => row.text).join('\n')).toContain('## Inside the quote');
+    expect(paragraphs.find(row => row.text === 'Last')?.style).toBe('Heading1');
+  });
+});

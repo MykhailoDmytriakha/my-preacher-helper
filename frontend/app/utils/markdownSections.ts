@@ -24,6 +24,8 @@ export interface MarkdownSection {
     headingText: string;
     /** Markdown between this heading and its first child (or the end of the section). */
     body: string;
+    /** Read-only historical labels, never displayed or written as new source headings. */
+    headingAliases?: string[];
     children: MarkdownSection[];
 }
 
@@ -44,6 +46,16 @@ const legacyOutlineHeading = (text: string): string =>
         .replace(/(\*|_)(.*?)\1/g, '$2')
         .replace(/~~(.*?)~~/g, '$1')
         .trim();
+
+const historicalHeadingLabels = (source: string): string[] => {
+    const labels: string[] = [];
+    const outline = source.match(HEADING);
+    const cutter = source.trim().match(/^#{1,6}\s+(.+?)\s*#*\s*$/);
+    if (outline) labels.push(legacyOutlineHeading(outline[2]));
+    // The former cutter removed all these characters even inside literal code.
+    if (cutter) labels.push(cutter[1].replace(/[*_`]/g, '').trim());
+    return labels;
+};
 
 type Draft = Omit<MarkdownSection, 'children'> & { children: Draft[] };
 
@@ -88,6 +100,7 @@ export const splitMarkdownSections = (
             headingMarkdown: heading.source,
             headingText: heading.text,
             body: '', children: [],
+            ...(heading.historical ? { headingAliases: [heading.historical.text, ...historicalHeadingLabels(heading.historical.source)] } : {}),
         };
         siblings.push(draft);
         stack.push(draft);
@@ -146,6 +159,7 @@ interface SectionHeading {
     id: string;
     headingText: string;
     headingMarkdown?: string;
+    headingAliases?: readonly string[];
     children: readonly SectionHeading[];
 }
 
@@ -154,13 +168,8 @@ export const sectionHeadingLookup = (sections: readonly SectionHeading[]): Map<s
     const entries: { id: string; labels: string[] }[] = [];
     const walk = (nodes: readonly SectionHeading[]): void => {
         for (const section of nodes) {
-            const labels = [section.headingText];
-            const raw = section.headingMarkdown;
-            const outline = raw?.match(HEADING);
-            const cutter = raw?.trim().match(/^#{1,6}\s+(.+?)\s*#*\s*$/);
-            if (outline) labels.push(legacyOutlineHeading(outline[2]));
-            // The former cutter removed all these characters even inside literal code.
-            if (cutter) labels.push(cutter[1].replace(/[*_`]/g, '').trim());
+            const labels = [section.headingText, ...(section.headingAliases ?? [])];
+            if (section.headingMarkdown) labels.push(...historicalHeadingLabels(section.headingMarkdown));
             entries.push({ id: section.id, labels });
             walk(section.children);
         }

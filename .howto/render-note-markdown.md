@@ -29,7 +29,7 @@ See also: `.howto/extend-tiptap-editor.md`
 
 ## Structured prose and code have different containers
 
-- `MarkdownDisplay` owns the five legacy structured types through `STRUCTURED_BLOCK_TYPES`. The same classifier decides whether the generated code body is a callout and whether its code-only `pre` wrapper is removed. Keep these decisions together; a callout inside `pre` inherits code whitespace and can widen the page.
+- `markdownStructuredBlocks` owns the five legacy structured types through `STRUCTURED_BLOCK_TYPES`; `MarkdownDisplay` consumes that list and its `prepareStructuredBlocks` output. The same classifier decides whether the generated code body is a callout and whether its code-only `pre` wrapper is removed. Keep these decisions together; a callout inside `pre` inherits code whitespace and can widen the page.
 - Callouts preserve authored line breaks and wrap prose/long words. Real code keeps its `pre`/`code` container and its own horizontal scroll; do not globally reset code whitespace to repair prose.
 - A matched search token has its own whitespace policy. `HighlightedText.wrapMatches` and the forwarding `ScriptureText.wrapSearchMatches` default to false for existing labels; structured prose opts in. The shared highlight component owns the actual style. Avoid a parent `!important` rule that reaches into its marks.
 - Real-renderer Jest checks cover the semantic boundary and code bytes. Actual wrapping requires a browser measurement of page/callout widths, highlighted fragment rectangles, verse return/reload and preserved stored content at narrow and wide widths. A green jsdom style check is not layout evidence.
@@ -49,3 +49,10 @@ See also: `.howto/extend-tiptap-editor.md`
 - Preserve source byte offsets and meaningful indentation/line endings. `preserveBodyWhitespace` keeps body bytes while one line delimiter is owned by the next heading; a heading source block excludes its following newline. Never normalize or decode source text to infer offsets.
 - An empty real heading still creates a section. `sectionDisplayLabel` supplies a translated navigation/active-title/fold-control caption only; the authored reading heading and stored content remain empty.
 - At a route boundary, test emptiness with `content.trim()` but pass the original `content` to the parser/model. Global trim before parsing promotes leading indented code into headings.
+
+## Legacy callout preparation and original boundaries
+
+- `prepareStructuredBlocks` converts `[Quote: ...]` and its four supported peers only when the opener is in the existing `markdownSource.markdownProseSourceRanges` and has no odd backslash escape. Code, link labels/destinations and raw HTML attributes remain literal. Do not add a second code/link classifier or apply a whole-string replacement in a component.
+- `markdownHeadingRanges` parses the same prepared document, then maps unchanged positions back to original UTF-16 source offsets. Generated replacement interiors have no source heading position. Never accumulate an absolute offset difference a second time.
+- A multiline callout owns its internal hash lines; the outline, cutter, server grounding and Word inherit this ownership through the common heading projection. Word retains its existing raw callout-body contract.
+- A callout written within an ATX heading becomes body content after the visible heading prefix. Its original raw spelling remains a lookup-only historical alias for that original heading start; ambiguous aliases resolve nowhere. Stored source and source-note provenance are never rewritten.
