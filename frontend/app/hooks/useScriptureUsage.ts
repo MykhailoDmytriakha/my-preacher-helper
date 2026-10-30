@@ -2,7 +2,7 @@
 
 import { useMemo } from 'react';
 
-import { useDataCollection } from '@/data-engine/react.client';
+import { isLiveCollectionDocument, useDataCollection } from '@/data-engine/react.client';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useResolvedUid } from '@/hooks/useResolvedUid';
 import { findScriptureUsage } from '@/utils/scriptureUsage';
@@ -12,7 +12,8 @@ import type { AppLocale } from '@/utils/appLocale';
 import type { ScriptureRefShape } from '@/utils/scriptureReference';
 
 const ownedRows = (state: ReturnType<typeof useDataCollection>['state'], uid: string | null | undefined) => (state?.documents ?? [])
-  .flatMap(row => row.value && row.value.userId === uid ? [{ ...row.value, id: row.resource.id }] : []);
+  .filter(isLiveCollectionDocument)
+  .flatMap(row => row.value.userId === uid ? [{ ...row.value, id: row.resource.id }] : []);
 
 /** Personal notes for the first reader panel; the broader material overview is a separate step. */
 export function useScriptureUsage(reference: ScriptureRefShape, currentNoteId: string, locale: AppLocale) {

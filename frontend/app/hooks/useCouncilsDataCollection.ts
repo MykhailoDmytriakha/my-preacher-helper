@@ -2,7 +2,7 @@
 
 import { useMemo } from 'react';
 
-import { useDataCollection } from '@/data-engine/react.client';
+import { isLiveCollectionDocument, useDataCollection } from '@/data-engine/react.client';
 import { hydrateCouncil } from '@/services/councils.client';
 
 import type { Council } from '@/models/models';
@@ -25,7 +25,7 @@ export function useCouncilsDataCollection() {
       (state?.documents ?? state?.snapshots ?? [])
         // Tombstones and confirmed absences stay in the collection state on purpose: the list
         // must not show them, while the engine still knows the deletion was confirmed.
-        .filter(snapshot => snapshot.value !== null)
+        .filter(isLiveCollectionDocument)
         .map(snapshot => hydrateCouncil(snapshot.value as Record<string, unknown>, snapshot.resource.id))
         .sort((left, right) => left.id.localeCompare(right.id)),
     [state]

@@ -2,7 +2,7 @@
 
 import { useMemo } from 'react';
 
-import { useDataCollection } from '@/data-engine/react.client';
+import { isLiveCollectionDocument, useDataCollection } from '@/data-engine/react.client';
 import { hydrateGroup } from '@/utils/groupDocument';
 
 import type { Group } from '@/models/models';
@@ -11,7 +11,7 @@ import type { Group } from '@/models/models';
 export function useGroupsDataCollection(enabled = true) {
   const collection = useDataCollection(enabled ? 'groups' : null);
   const groups = useMemo(() => (collection.state?.documents ?? collection.state?.snapshots ?? [])
-    .filter(snapshot => snapshot.value !== null)
+    .filter(isLiveCollectionDocument)
     .map(snapshot => hydrateGroup({ ...snapshot.value, id: snapshot.resource.id } as unknown as Group))
     .sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || '')), [collection.state]);
   return { groups, loading: collection.loading, error: collection.error, refreshGroups: collection.refresh,

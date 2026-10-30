@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useRef } from 'react';
 import { toast } from 'sonner';
 
-import { useDataCollection, useDataDocument } from '@/data-engine/react.client';
+import { isLiveCollectionDocument, useDataCollection, useDataDocument } from '@/data-engine/react.client';
 import { refusalMessage } from '@/utils/actionFailureMessage';
 import { diagnosticErrorCode, recordDiagnostic } from '@/utils/appDiagnostics';
 import { decodeBookMarks, encodeBookMarks, marksKey, type BookMarks, type OtherBookMarks } from '@/utils/bibleMarks';
@@ -97,7 +97,7 @@ export function useBookMarks(owner: string | null, bible: BibleId, bookId: strin
 
   // Keyed by value, not by the list's array: the list comes anew with every stroke here, and what reads
   // these (the ribbon's signs) is redrawn only when the other Bibles' marks change.
-  const othersKey = useMemo(() => JSON.stringify((documents ?? []).flatMap((document) => {
+  const othersKey = useMemo(() => JSON.stringify((documents ?? []).filter(isLiveCollectionDocument).flatMap((document) => {
     const value = document.value as StoredDocument | null;
     if (!value || value.book !== bookId || value.bible === bible || !isBibleId(value.bible)) return [];
     return [{ bible: value.bible, marks: decodeBookMarks(value.verses) }];

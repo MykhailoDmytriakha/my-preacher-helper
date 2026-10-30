@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from 'react';
 
-import { useDataCollection, useDocumentActions } from '@/data-engine/react.client';
+import { isLiveCollectionDocument, useDataCollection, useDocumentActions } from '@/data-engine/react.client';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { newClientId } from '@/utils/clientId';
 import { debugLog } from '@/utils/debugMode';
@@ -33,7 +33,7 @@ export function useTags(userId: string | null | undefined) {
   const engineTags = useDataCollection(userId ? 'tags' : null);
   const documentActions = useDocumentActions();
 
-  const customTags = useMemo<Tag[]>(() => (engineTags.state?.documents ?? []).flatMap(row => {
+  const customTags = useMemo<Tag[]>(() => (engineTags.state?.documents ?? []).filter(isLiveCollectionDocument).flatMap(row => {
     const value = row.value as Partial<Tag> | null;
     if (!value || value.required !== false || typeof value.name !== 'string' || isStructureTag(value.name)
       || isStructureTag(row.resource.id)) return [];

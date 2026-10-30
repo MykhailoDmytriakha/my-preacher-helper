@@ -1,4 +1,4 @@
-import { useDataCollection } from '@/data-engine/react.client';
+import { isLiveCollectionDocument, useDataCollection } from '@/data-engine/react.client';
 import { PrayerRequest } from '@/models/models';
 import { auth } from '@services/firebaseAuth.service';
 
@@ -11,7 +11,7 @@ export function usePrayerDetail(prayerId: string, userId?: string | null) {
   const uid = userId ?? resolveUid();
   const engineRows = useDataCollection(uid && prayerId ? 'prayerRequests' : null);
   const engineRow = engineRows.state?.documents?.find(row => row.resource.id === prayerId);
-  const prayer = engineRow?.value ? { ...(engineRow.value as unknown as PrayerRequest), id: prayerId } : null;
+  const prayer = engineRow && isLiveCollectionDocument(engineRow) ? { ...(engineRow.value as unknown as PrayerRequest), id: prayerId } : null;
   return { prayer, isLoading: Boolean(prayerId) && !prayer && engineRows.loading,
     presence: engineRows.presence(prayerId), refresh: engineRows.refresh };
 }

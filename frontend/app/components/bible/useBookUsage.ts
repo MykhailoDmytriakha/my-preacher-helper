@@ -3,7 +3,7 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react';
 
 
-import { useDataCollection } from '@/data-engine/react.client';
+import { isLiveCollectionDocument, useDataCollection } from '@/data-engine/react.client';
 import { useResolvedUid } from '@/hooks/useResolvedUid';
 import { getLocalizedAbbrev } from '@/utils/bibleBooks';
 import { SCRIPTURE_USAGE_KINDS, bookUsage, passageCovers, usageDocuments, type BookUsageEntry, type ScriptureUsageKind } from '@/utils/scriptureUsage';
@@ -28,7 +28,8 @@ type CollectionState = ReturnType<typeof useDataCollection>['state'];
 
 /** The person's own documents of a list: the ones being deleted on this device are already gone for them. */
 function owned<T>(state: CollectionState, uid: string | undefined): T[] {
-  return (state?.documents ?? []).flatMap((row) => (row.value && !row.deleting && row.value.userId === uid ? [{ ...row.value, id: row.resource.id } as T] : []));
+  return (state?.documents ?? []).filter(isLiveCollectionDocument)
+    .flatMap((row) => (row.value.userId === uid ? [{ ...row.value, id: row.resource.id } as T] : []));
 }
 
 /** The verses a badge after a verse names: "12", "9–11", "19–10:4"; a whole chapter's badge names none. */

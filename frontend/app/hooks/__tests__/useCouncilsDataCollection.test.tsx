@@ -6,7 +6,8 @@ import { useCouncilsDataCollection } from '@/hooks/useCouncilsDataCollection';
 import type { CollectionState } from '@/data-engine/collections';
 import type { DocumentData, ResourceSnapshot } from '@/data-engine/types';
 
-jest.mock('@/data-engine/react.client', () => ({ useDataCollection: jest.fn() }));
+jest.mock('@/data-engine/react.client', () => ({
+  isLiveCollectionDocument: jest.requireActual('@/data-engine/react.client').isLiveCollectionDocument, useDataCollection: jest.fn() }));
 
 const snapshot = (id: string, value: DocumentData | null, deleted = false): ResourceSnapshot => ({
   resource: { collection: 'councils', id },

@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 
-import { useDataCollection, useDocumentActions } from '@/data-engine/react.client';
+import { isLiveCollectionDocument, useDataCollection, useDocumentActions } from '@/data-engine/react.client';
 import { StaleWriteError } from '@/services/conflictSafeUpdate.client';
 import {
   PLAN_TEMPLATE_AGGREGATE,
@@ -19,7 +19,8 @@ export function usePlanTemplates(userId: string | null | undefined) {
   const engineTemplates = useDataCollection(userId ? 'planTemplates' : null);
   const documentActions = useDocumentActions();
   const templates = useMemo<PlanTemplate[]>(() => (engineTemplates.state?.documents ?? [])
-    .flatMap(row => row.value ? [{ ...(row.value as unknown as PlanTemplate), id: row.resource.id }] : [])
+    .filter(isLiveCollectionDocument)
+    .map(row => ({ ...(row.value as unknown as PlanTemplate), id: row.resource.id }))
     .sort((a, b) => (a.name || '').localeCompare(b.name || '')), [engineTemplates.state?.documents]);
   const now = () => new Date().toISOString();
 

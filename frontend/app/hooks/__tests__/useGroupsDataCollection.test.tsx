@@ -5,7 +5,8 @@ import { UNKNOWN_RECORD_PRESENCE } from '@/data-engine/recordPresence';
 import { useGroupsDataCollection } from '@/hooks/useGroupsDataCollection';
 import { useCalendarGroups } from '@/hooks/useCalendarGroups';
 
-jest.mock('@/data-engine/react.client', () => ({ useDataCollection: jest.fn() }));
+jest.mock('@/data-engine/react.client', () => ({
+  isLiveCollectionDocument: jest.requireActual('@/data-engine/react.client').isLiveCollectionDocument, useDataCollection: jest.fn() }));
 jest.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ user: { uid: 'owner' } }) }));
 beforeEach(() => {
   jest.clearAllMocks();

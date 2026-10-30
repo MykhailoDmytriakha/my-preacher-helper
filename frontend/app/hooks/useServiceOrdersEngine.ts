@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 
-import { useDataCollection, useDocumentActions } from '@/data-engine/react.client';
+import { isLiveCollectionDocument, useDataCollection, useDocumentActions } from '@/data-engine/react.client';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { StaleWriteError } from '@/services/conflictSafeUpdate.client';
 import { SERVICE_ORDER_META_AGGREGATE, hydrateServiceOrder } from '@/services/serviceOrders.client';
@@ -52,7 +52,7 @@ export function useServiceOrdersEngine(userId: string | null | undefined, enable
   const baselines = useRef(new Map<string, { title: string; revision: number }>());
   const queues = useRef(new Map<string, Promise<unknown>>());
 
-  const orders = useMemo(() => rowsOf(collection.state?.documents), [collection.state?.documents]);
+  const orders = useMemo(() => rowsOf(collection.state?.documents?.filter(isLiveCollectionDocument)), [collection.state?.documents]);
 
   /** One rite's writes run in the order they were made, exactly as in the legacy hook. */
   const queued = useCallback(<T,>(id: string, run: () => Promise<T>): Promise<T> => {

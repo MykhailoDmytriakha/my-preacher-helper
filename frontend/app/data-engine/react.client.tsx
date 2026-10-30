@@ -12,6 +12,7 @@ import { useTranslation } from '@locales/useTranslation';
 
 import { createBrowserDataEngine, type BrowserDataEngine } from './browser.client';
 import { isCollectionOnEngine, isDataEngineEnabled } from './clientPolicy';
+import { isLiveCollectionDocument as liveCollectionDocument, type CollectionPresentationRow } from './collectionPresentation';
 import { isInactiveEditorError as inactiveEditor } from './controller';
 import { isDirectLegacyDocumentIntent, savedDocumentAnswer, type DocumentAnswer } from './documentDelivery';
 import { ACTION_SLOT, editorSlot } from './editorIdentity';
@@ -38,6 +39,12 @@ import type { MembershipScope } from './membershipScope';
 import type { DocumentData, EngineReadOptions, FailureAddress, FieldValue, JournalEntry, ResourceRef, ResourceSnapshot } from './types';
 
 export { isCollectionOnEngine, isDataEngineEnabled } from './clientPolicy';
+
+/** Ordinary presentation only; raw collection state remains addressable for delivery and recovery. */
+export function isLiveCollectionDocument<T extends CollectionPresentationRow>(row: T): row is T & { value: DocumentData } {
+  return liveCollectionDocument(row);
+}
+
 
 export type { RecoveryChoiceScope } from './recoveryChoice';
 export type { LegacyRecoverySource } from './legacyRecovery.client';

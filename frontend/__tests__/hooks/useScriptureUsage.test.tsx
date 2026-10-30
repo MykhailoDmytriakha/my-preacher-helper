@@ -12,7 +12,8 @@ let mockState = state();
 let mockOnline = true;
 let mockError: string | null = null;
 const mockRefresh = jest.fn();
-jest.mock('@/data-engine/react.client', () => ({ useDataCollection: () => ({ state: mockState, loading: false, error: mockError, refresh: mockRefresh }) }));
+jest.mock('@/data-engine/react.client', () => ({
+  isLiveCollectionDocument: jest.requireActual('@/data-engine/react.client').isLiveCollectionDocument, useDataCollection: () => ({ state: mockState, loading: false, error: mockError, refresh: mockRefresh }) }));
 jest.mock('@/hooks/useResolvedUid', () => ({ useResolvedUid: () => ({ uid: 'owner', isAuthLoading: false }) }));
 jest.mock('@/hooks/useOnlineStatus', () => ({ useOnlineStatus: () => mockOnline }));
 

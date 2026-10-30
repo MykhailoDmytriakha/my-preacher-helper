@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 
-import { useDataCollection, useDocumentActions, type DocumentWriteReceipt } from '@/data-engine/react.client';
+import { isLiveCollectionDocument, useDataCollection, useDocumentActions, type DocumentWriteReceipt } from '@/data-engine/react.client';
 import { useResolvedUid } from '@/hooks/useResolvedUid';
 import { StaleWriteError } from '@/services/conflictSafeUpdate.client';
 import { NOTE_AGGREGATE } from '@/services/studies.service';
@@ -86,7 +86,8 @@ export function useStudyNotesEngine(enabled: boolean) {
   const inFlight = useRef(new Set<string>());
 
   const notes = useMemo(() => (collection.state?.documents ?? [])
-    .flatMap(row => row.value ? [engineNote(row.value, row.resource.id, locale)] : [])
+    .filter(isLiveCollectionDocument)
+    .map(row => engineNote(row.value, row.resource.id, locale))
     .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()), [collection.state?.documents, locale]);
 
   // A displayed row can include queued words. Keep its canonical delivery evidence beside the domain value.

@@ -1,7 +1,10 @@
 import { serviceOrderSeedId } from '@/utils/serviceOrderSeedIdentity';
 import { act, renderHook } from '@testing-library/react';
 
+import { collectionDocumentViews } from '@/data-engine/collectionView';
 import { useDataCollection, useDocumentActions } from '@/data-engine/react.client';
+import type { CommitRequest } from '@/data-engine/commits';
+import type { ResourceSnapshot } from '@/data-engine/types';
 import { collectionRecordPresence } from '@/data-engine/recordPresence';
 import type { CollectionState } from '@/data-engine/collections';
 import { useServiceOrdersEngine } from '@/hooks/useServiceOrdersEngine';
@@ -103,6 +106,32 @@ describe('orders of service on the engine', () => {
     const offline = render();
     await act(async () => {
       await expect(offline.result.current.seedStandardSet()).rejects.toThrow('OFFLINE_SEED');
+    });
+  });
+
+  it('keeps a pending deletion in fresh seed evidence so it cannot create the same standard rite again', async () => {
+    const snapshots: ResourceSnapshot[] = SERVICE_ORDER_CATALOG.map((key, index) => ({
+      resource: { collection: 'serviceOrders', id: serviceOrderSeedId('u', key) },
+      value: { userId: 'u', title: key, catalogKey: key, steps: [], rank: (index + 1) * 1000,
+        createdAt: '2026-01-01', updatedAt: '2026-01-01' },
+      metadata: { protocol: 1, generation: `generation-${key}`, revision: 1, deleted: false },
+    }));
+    const baseline = snapshots[0];
+    const deletion: CommitRequest = { id: 'delete-standard', owner: 'u', editorId: 'delete-standard', editGeneration: 1,
+      baseline, value: null, predecessor: null, revision: 1, initialized: false, working: baseline,
+      intended: null, command: null, submitted: null, sequence: 0, state: 'queued', result: null, unfinalized: [] };
+    const state: CollectionState = { snapshots, documents: collectionDocumentViews('u', 'serviceOrders', snapshots, [deletion]),
+      complete: true, freshness: 'server', checking: false, version: 1, error: null };
+    jest.mocked(useDocumentActions).mockReturnValue(actions as never);
+    jest.mocked(useDataCollection).mockReturnValue({ state, loading: false, error: null,
+      refresh: jest.fn(async () => state) } as never);
+    const { result } = renderHook(() => useServiceOrdersEngine('u', true));
+    let seeded: unknown;
+    await act(async () => { seeded = await result.current.seedStandardSet(); });
+    expect(seeded).toHaveLength(SERVICE_ORDER_CATALOG.length);
+    expect(actions.create).not.toHaveBeenCalled();
+    expect(state.documents?.find(row => row.resource.id === baseline.resource.id)).toMatchObject({
+      value: baseline.value, pending: true, deleting: true,
     });
   });
 

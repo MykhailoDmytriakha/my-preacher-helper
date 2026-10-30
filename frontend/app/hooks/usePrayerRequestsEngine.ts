@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
-import { useDataCollection, useDocumentActions } from '@/data-engine/react.client';
+import { isLiveCollectionDocument, useDataCollection, useDocumentActions } from '@/data-engine/react.client';
 import { useDiscardQuestion } from '@/hooks/useConfirm';
 import { usePersistedConflict } from '@/hooks/usePersistedConflict';
 import { StaleWriteError, isStaleWriteError } from '@/services/conflictSafeUpdate.client';
@@ -64,7 +64,8 @@ export function usePrayerRequestsEngine(userId: string | null | undefined, activ
   useEffect(() => { withdraw(); }, [userId, activeDocId, withdraw]);
 
   const prayerRequests = useMemo<PrayerRequest[]>(() => (collection.state?.documents ?? [])
-    .flatMap(row => row.value ? [{ ...(row.value as unknown as PrayerRequest), id: row.resource.id }] : [])
+    .filter(isLiveCollectionDocument)
+    .map(row => ({ ...(row.value as unknown as PrayerRequest), id: row.resource.id }))
     .sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? '')), [collection.state?.documents]);
 
   /** One edit that honours an optional per-field baseline; resolves to the refusal, if any. */

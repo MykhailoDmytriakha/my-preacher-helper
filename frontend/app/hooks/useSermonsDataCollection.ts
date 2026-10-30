@@ -2,7 +2,7 @@
 
 import { useMemo } from 'react';
 
-import { useDataCollection } from '@/data-engine/react.client';
+import { isLiveCollectionDocument, useDataCollection } from '@/data-engine/react.client';
 import { hydrateSermon, sortSermons } from '@/utils/sermonDocument';
 
 import type { Sermon } from '@/models/models';
@@ -11,7 +11,7 @@ import type { Sermon } from '@/models/models';
 export function useSermonsDataCollection(enabled = true) {
   const collection = useDataCollection(enabled ? 'sermons' : null);
   const sermons = useMemo(() => sortSermons((collection.state?.documents ?? collection.state?.snapshots ?? [])
-    .filter(snapshot => snapshot.value !== null)
+    .filter(isLiveCollectionDocument)
     .map(snapshot => hydrateSermon({ ...snapshot.value, id: snapshot.resource.id } as unknown as Sermon))), [collection.state]);
   return { sermons, loading: collection.loading, error: collection.error, refresh: collection.refresh,
     state: collection.state, complete: collection.state?.complete ?? false };

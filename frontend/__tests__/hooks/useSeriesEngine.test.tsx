@@ -6,7 +6,10 @@ import { useSeries } from '@/hooks/useSeries';
 import { useSeriesDataCollection } from '@/hooks/useSeriesDataCollection';
 import { getAllSeries } from '@/services/series.service';
 
-jest.mock('@/data-engine/react.client', () => ({ useDataCollection: jest.fn() }));
+jest.mock('@/data-engine/react.client', () => ({
+  useDataCollection: jest.fn(),
+  isLiveCollectionDocument: jest.requireActual('@/data-engine/react.client').isLiveCollectionDocument,
+}));
 jest.mock('@/hooks/useResolvedUid', () => ({ useResolvedUid: () => ({ uid: 'owner', isAuthLoading: false }) }));
 jest.mock('@/hooks/useOnlineStatus', () => ({ useOnlineStatus: () => false }));
 jest.mock('@/services/series.service', () => ({ getAllSeries: jest.fn() }));
