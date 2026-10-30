@@ -9,11 +9,11 @@ import type { AppLocale } from '@/utils/appLocale';
 
 
 const REFERENCE_PREFIX = '(^|[\\s([{"\'«„“])';
-const ORDINAL_SUFFIX = '(?:[-–—]?(?:я|й|ая|ый|ой|ое|го|му|м|ю|е|х))?';
+const ORDINAL_SUFFIX = '(?:[-–—]?(?:ша|га|тя|та|ї|я|й|ая|ый|ой|ое|го|му|м|ю|е|х))?';
 const NUMBER = `(\\d+)${ORDINAL_SUFFIX}`;
-const CHAPTER_WORDS = '(?:глава|главу|главе|главы|глав|chapter|chapters|chap\\.?)';
-const VERSE_WORDS = '(?:стих(?:а|е|и|ов)?|verse(?:s)?|v\\.?)';
-const RANGE_SEPARATOR = '(?:-|–|—|по|to|through)';
+const CHAPTER_WORDS = '(?:глава|главу|главе|главы|глави|главі|глав|розділ(?:ами|ах|ів|ом|у|і|и)?|chapter|chapters|chap\\.?)(?![\\p{L}\\p{N}\\p{M}_])';
+const VERSE_WORDS = '(?:стих(?:а|е|и|ов)?|вірш(?:ами|ах|ів|ем|а|у|і)?|verse(?:s)?|v\\.?)(?![\\p{L}\\p{N}\\p{M}_])';
+const RANGE_SEPARATOR = '(?:-|–|—|по|до|to|through)';
 
 const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 /** A name's apostrophe matches any shape a keyboard gives it, or none («Об’явлення», «Обявлення»): `withoutApostrophe`. */
@@ -40,7 +40,7 @@ const COLON_REFERENCE_PATTERN = new RegExp(
 );
 
 const SPOKEN_VERSE_REFERENCE_PATTERN = new RegExp(
-  `${REFERENCE_PREFIX}(${aliasesPattern})\\s+${NUMBER}(?:\\s+${CHAPTER_WORDS})?\\s+(?:с\\s+)?${NUMBER}(?:\\s*${RANGE_SEPARATOR}\\s*${NUMBER})?(?:\\s+${VERSE_WORDS})?`,
+  `${REFERENCE_PREFIX}(${aliasesPattern})\\s+${NUMBER}(?:\\s+${CHAPTER_WORDS})?\\s+(?:(?:с|з|із|зі|від)\\s+)?${NUMBER}(?:\\s*${RANGE_SEPARATOR}\\s*${NUMBER})?(?:\\s+${VERSE_WORDS})?`,
   'giu'
 );
 
@@ -56,8 +56,9 @@ const TTS_COLON_REFERENCE_PATTERN = new RegExp(
 
 type ParsedScriptureReference = NonNullable<ReturnType<typeof parseReferenceText>>;
 
+const EXPLICIT_REFERENCE_SIGNAL = new RegExp(`[:]|(?:^|\\s)(?:${CHAPTER_WORDS}|${VERSE_WORDS})(?:\\s|$)`, 'iu');
 const hasExplicitReferenceSignal = (value: string, verse?: string): boolean =>
-  Boolean(verse) || /[:]|(?:^|\s)(?:глава|главу|главе|главы|глав|стих|стиха|стихе|стихи|стихов|chapter|chapters|chap\.?|verse|verses|v\.?)(?:\s|$)/iu.test(value);
+  Boolean(verse) || EXPLICIT_REFERENCE_SIGNAL.test(value);
 
 const detectLocale = (value: string): AppLocale => detectTextLocale(value);
 

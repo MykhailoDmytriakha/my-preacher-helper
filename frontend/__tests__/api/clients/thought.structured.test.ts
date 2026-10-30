@@ -365,6 +365,29 @@ describe('generateThoughtStructured', () => {
     expect(result.formattedText).toBe('Прочитаем Прит. 3:5 и посмотрим на доверие Богу.');
   });
 
+  it('normalizes Ukrainian thought wording while keeping the original', async () => {
+    const original = 'Сьогодні прочитай Івана 3 розділ 16 вірш';
+    (structuredOutput.callWithStructuredOutput as jest.Mock).mockResolvedValue({
+      success: true, data: { originalText: original, formattedText: original+'.', tags: [], meaningPreserved: true }, refusal: null, error: null,
+    });
+    const result = await generateThoughtStructured(original, mockSermon, availableTags);
+    expect(result.meaningSuccessfullyPreserved).toBe(true);
+    expect(result.originalText).toBe(original);
+    expect(result.formattedText).toBe('Сьогодні прочитай Ів. 3:16.');
+  });
+
+  it('accepts an explicitly dictated Ukrainian main reference without retrying it as an invention', async () => {
+    const original = 'Сьогодні прочитай Івана 3 розділ 16 вірш';
+    (structuredOutput.callWithStructuredOutput as jest.Mock).mockResolvedValue({
+      success: true, data: { originalText: original, formattedText: 'Сьогодні прочитай Ів. 3:16.', tags: [], meaningPreserved: true }, refusal: null, error: null,
+    });
+    const result = await generateThoughtStructured(original, mockSermon, availableTags);
+    expect(result.meaningSuccessfullyPreserved).toBe(true);
+    expect(result.originalText).toBe(original);
+    expect(result.formattedText).toBe('Сьогодні прочитай Ів. 3:16.');
+    expect(structuredOutput.callWithStructuredOutput).toHaveBeenCalledTimes(1);
+  });
+
   it('should normalize dictated Scripture references in formatted thought text', async () => {
     const mockResponse = {
       originalText: 'Нужно прочитать Второзаконие 10 глава 11 стих',

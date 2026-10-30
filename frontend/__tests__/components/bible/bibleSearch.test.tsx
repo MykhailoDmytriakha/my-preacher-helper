@@ -49,6 +49,12 @@ function renderLine(props: Partial<React.ComponentProps<typeof BibleSearch>> = {
 }
 
 describe('the one line', () => {
+  it.each(['Івана 3 розділ 16 вірш', 'Івана 3 глава 16 вірш', 'Івана 3-тя глава 16-й вірш'])('opens the complete Ukrainian citation %s on Enter', async raw => {
+    const { onOpen, line } = renderLine({bible:'ubio',locale:'uk'});
+    await userEvent.type(line, raw+'{Enter}');
+    expect(onOpen).toHaveBeenCalledWith({bookId:'John',chapter:3,verse:16,toVerse:16});
+  });
+
   it('opens a place typed or said, with Enter', async () => {
     const { onOpen, line } = renderLine();
     await userEvent.type(line, 'Иоанна три шестнадцать{Enter}');

@@ -80,6 +80,17 @@ describe('polishTranscription', () => {
         expect(result.error).toBeNull();
     });
 
+    it('normalizes Ukrainian verse wording while retaining the original transcription', async () => {
+        const original = 'Сьогодні прочитай Івана 3 розділ 16 вірш';
+        (structuredOutput.callWithStructuredOutput as jest.Mock).mockResolvedValue({
+            success: true, data: { polishedText: original+'.', meaningPreserved: true }, refusal: null, error: null,
+        });
+        const result = await polishTranscription(original);
+        expect(result.success).toBe(true);
+        expect(result.originalText).toBe(original);
+        expect(result.polishedText).toBe('Сьогодні прочитай Ів. 3:16.');
+    });
+
     it('should normalize dictated Scripture references in polished output', async () => {
         const mockResponse = {
             polishedText: 'Нужно прочитать Второзаконие 10 глава 11 стих.',
