@@ -143,7 +143,7 @@ function useWaitingDraft(
   return differs ? offered : null;
 }
 
-export function CommentDialog({ target, place, context, bible, placeOf, placePicker, restorePlace, onErased, onClose, returnFocusTo }: {
+export function CommentDialog({ target, place, context, bible, placeOf, placePicker, restorePlace, onErased, onClose, returnFocusTo, openingPlace }: {
   target: CommentTarget;
   /** "Ис 40:31", "Ис 40–41": the place the comment is written to; empty while a new one's place is not chosen. */
   place: string;
@@ -164,6 +164,8 @@ export function CommentDialog({ target, place, context, bible, placeOf, placePic
   onErased?: () => void;
   onClose: () => void;
   returnFocusTo?: RefObject<HTMLElement | null>;
+  /** An explicitly clicked displayed occurrence; it never changes the authored reference. */
+  openingPlace?: string;
 }) {
   const { t } = useTranslation();
   const { uid, notes, createNote, updateNote, deleteNote } = useStudyNotesEngine(true);
@@ -198,7 +200,7 @@ export function CommentDialog({ target, place, context, bible, placeOf, placePic
     ...(target.kind === 'edit'
       ? { standing: (opened.current ?? found)?.scriptureRefs?.[0], newPlace: undefined, ownId: target.id }
       : { standing: reference ?? undefined, newPlace: reference, ownId: undefined }),
-    choosesOwn: Boolean(placePicker), restoreOwn: restorePlace, bible, placeOf, context, notes,
+    choosesOwn: Boolean(placePicker), restoreOwn: restorePlace, bible, placeOf, context, openingPlace, notes,
   });
   const { keptPlace } = where;
   const written = text ?? '';

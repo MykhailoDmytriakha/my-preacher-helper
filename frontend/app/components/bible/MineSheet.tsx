@@ -13,6 +13,7 @@ import { USAGE_KIND_LOOK } from './usageKinds';
 import { passageLabel, type MinePlace } from './useBookUsage';
 
 import type { AppLocale } from '@/utils/appLocale';
+import type { Passage } from '@/utils/scriptureReferenceNumbering';
 import type { BookUsageEntry } from '@/utils/scriptureUsage';
 
 type MineSheetProps = {
@@ -29,10 +30,10 @@ type MineSheetProps = {
   /** Goes to the note, sermon, group or service order — the reader closes the window first. */
   onOpenEntry: (href: string) => void;
   /** A comment opens in its own window, not on a page: it is edited only there (the owner, 2026-10-28). */
-  onEditComment?: (id: string) => void;
+  onEditComment?: (id: string, passage: Passage) => void;
 };
 
-function EntryRow({ entry, abbrev, onOpen, onEditComment }: { entry: BookUsageEntry; abbrev: string; onOpen: (href: string) => void; onEditComment?: (id: string) => void }) {
+function EntryRow({ entry, abbrev, onOpen, onEditComment }: { entry: BookUsageEntry; abbrev: string; onOpen: (href: string) => void; onEditComment?: (id: string, passage: Passage) => void }) {
   const { t } = useTranslation();
   const { Icon, wordKey, badge } = USAGE_KIND_LOOK[entry.kind];
   // A comment has no title: the row is its own words, and it opens in the comment's window.
@@ -41,7 +42,7 @@ function EntryRow({ entry, abbrev, onOpen, onEditComment }: { entry: BookUsageEn
     <li>
       <button
         type="button"
-        onClick={() => (comment !== null && onEditComment ? onEditComment(entry.id) : onOpen(entry.href))}
+        onClick={() => (comment !== null && onEditComment ? onEditComment(entry.id, entry.passage) : onOpen(entry.href))}
         data-testid={`mine-entry-${entry.kind}-${entry.id}`}
         // Lit under the pointer and the finger, as the rows of the verse's window are (ScripturePreviewSheet):
         // with several rows it shows which one a tap opens (the owner, 2026-10-21).

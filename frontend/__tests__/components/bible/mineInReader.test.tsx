@@ -9,8 +9,26 @@ import { resetPlaceTrailForTests } from '@/components/bible/placeTrailStore';
 import { badgeLabel, entriesAt, useBookUsage } from '@/components/bible/useBookUsage';
 import MineSettings from '@/components/settings/MineSettings';
 
-import type { BookText } from '@/utils/bibleText';
+import { verseWords, type BookText } from '@/utils/bibleText';
 import type { BookUsageEntry } from '@/utils/scriptureUsage';
+
+// Render only the real comment heading interpolation; keep the shared test translation behavior for every other key.
+jest.mock('@locales/useTranslation', () => {
+  const actual = jest.requireActual('@locales/useTranslation');
+  const english = require('../../../locales/en/translation.json');
+  return {
+    ...actual,
+    useTranslation: () => {
+      const result = actual.useTranslation();
+      return {
+        ...result,
+        t: (key: string, options?: { place?: string }) => (key === 'comment.title'
+          ? english.comment.title.replace('{{place}}', options?.place ?? '')
+          : result.t(key, options)),
+      };
+    },
+  };
+});
 
 /*
  * The person's own material in the Bible reader (case 2026-10-12-block-diagram, 2.2): their notes,
@@ -54,6 +72,7 @@ jest.mock('next/navigation', () => ({
 }));
 
 const ruthText: BookText = JSON.parse(readFileSync(join(__dirname, '../../../public/bible-text/rst/v1/ruth.json'), 'utf8'));
+const romansText: BookText = JSON.parse(readFileSync(join(__dirname, '../../../public/bible-text/rst/v1/romans.json'), 'utf8'));
 const answer = (body: unknown) => ({ ok: true, status: 200, json: async () => body, clone() { return this; }, headers: new Headers({ 'content-type': 'application/json' }) });
 
 const row = (id: string, value: Record<string, unknown>, extra: Partial<Row> = {}): Row => ({ resource: { id }, value: { userId: 'owner', updatedAt: '', ...value }, ...extra });
@@ -84,6 +103,11 @@ beforeEach(() => {
 const MINE_WINDOW = /^\S+ \d+(:\d+)?$/;
 
 const renderRuth = () => render(<BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={{ chapter: 1, verse: 1 }} onOpenBook={jest.fn()} />);
+
+const renderRomans = () => {
+  global.fetch = jest.fn(async (url: string) => (url.startsWith('/bible-text/') ? answer(romansText) : answer({ id: 'Romans', chapters: [] }))) as unknown as typeof fetch;
+  return render(<BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Romans" initialPlace={{ chapter: 14, verse: 24 }} onOpenBook={jest.fn()} />);
+};
 
 describe('the person\'s own material on the Bible text', () => {
   it('puts a badge of each kind after the verse its stretch starts at, saying the verses, and one by a chapter\'s heading', async () => {
@@ -280,6 +304,52 @@ describe('comments on the text (case 2026-10-12-block-diagram, 3.2)', () => {
     expect(await screen.findByLabelText('comment-editor')).toHaveValue('Куда ты пойдёшь — туда и я.');
     expect(screen.queryByTestId('chapter-comment-3')).not.toBeInTheDocument();
     expect(screen.queryByTestId('chapter-comment-2')).not.toBeInTheDocument();
+  });
+});
+
+describe('a reader comment opened at a translated run', () => {
+  const commentRow = () => row('romans-comment', {
+    type: 'comment', content: 'QA223 retained comment words.', tags: [],
+    scriptureRefs: [{ id: 'qa223-ref', bible: 'kjv', book: 'Romans', chapter: 16, fromVerse: 24, toVerse: 27 }],
+  });
+  const openAndCheck = async (chapter: number, verse: number) => {
+    mockRows = { studyNotes: [commentRow()] };
+    renderRomans();
+    const testId = `comments-${chapter}:${verse}`;
+    const edit = await screen.findByTestId(`${testId}-edit-romans-comment`);
+    const rowElement = document.querySelector(`[data-verse="${chapter}:${verse}"] [data-verse-text]`);
+    expect(rowElement).not.toBeNull();
+    const expectedContext = verseWords(romansText.chapters[chapter - 1][verse - 1]);
+    expect(rowElement).toHaveTextContent(expectedContext);
+    await userEvent.click(edit);
+    const expectedTitle = chapter === 14 ? 'Comment · Rom 14:24–26' : 'Comment · Rom 16:24';
+    const dialog = await screen.findByRole('dialog', { name: /^Comment · Rom / });
+    expect(within(dialog).getByLabelText('comment-editor')).toHaveValue('QA223 retained comment words.');
+    expect(within(dialog).getByText(expectedContext)).toBeInTheDocument();
+    expect(within(dialog).getByRole('heading', { name: chapter === 14 ? /^Comment · Rom 14:24–26/ : expectedTitle })).toBeInTheDocument();
+  };
+
+  it('opens the comment from the later RST run at Romans 16:24', async () => {
+    // Before the fix, the real title and context resolve from the first projected occurrence (14:24–26).
+    await openAndCheck(16, 24);
+  });
+
+  it('keeps the first RST run at Romans 14:24 as a positive control', async () => {
+    await openAndCheck(14, 24);
+  });
+
+  it('opens the badge-list row for the later RST run at Romans 16:24', async () => {
+    mockRows = { studyNotes: [commentRow()] };
+    act(() => saveMinePrefs({ comments: 'badge' }));
+    renderRomans();
+    await userEvent.click(await screen.findByTestId('mine-16:24-comment'));
+    const rowElement = await screen.findByTestId('mine-entry-comment-romans-comment');
+    expect(rowElement).toHaveTextContent('16:24');
+    await userEvent.click(rowElement);
+    const dialog = await screen.findByRole('dialog', { name: /^Comment · Rom / });
+    expect(within(dialog).getByLabelText('comment-editor')).toHaveValue('QA223 retained comment words.');
+    expect(within(dialog).getByText(verseWords(romansText.chapters[15][23]))).toBeInTheDocument();
+    expect(within(dialog).getByRole('heading', { name: 'Comment · Rom 16:24' })).toBeInTheDocument();
   });
 });
 

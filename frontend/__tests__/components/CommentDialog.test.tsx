@@ -21,6 +21,25 @@ jest.mock('@/components/ui/RichMarkdownEditor', () => ({
   ),
 }));
 
+// Only the new opening-place controls need the visible interpolated heading.
+let mockInterpolateCommentTitle = false;
+jest.mock('@locales/useTranslation', () => {
+  const actual = jest.requireActual('@locales/useTranslation');
+  const english = require('../../locales/en/translation.json');
+  return {
+    ...actual,
+    useTranslation: () => {
+      const result = actual.useTranslation();
+      return {
+        ...result,
+        t: (key: string, options?: { place?: string }) => (mockInterpolateCommentTitle && key === 'comment.title'
+          ? english.comment.title.replace('{{place}}', options?.place ?? '')
+          : result.t(key, options)),
+      };
+    },
+  };
+});
+
 const accepted = () => ({ acceptance: Promise.resolve({ kind: 'local' }), persistence: Promise.resolve() });
 const mockEngine = {
   uid: 'owner',
@@ -46,6 +65,7 @@ const stored: StudyNote = {
 };
 
 beforeEach(() => {
+  mockInterpolateCommentTitle = false;
   mockEngine.notes = [stored];
   jest.clearAllMocks();
   // A test that fails midway leaves its one-time answers queued; the next test must not get them.
@@ -455,6 +475,78 @@ describe('CommentDialog', () => {
   describe('moving it to another place', () => {
     const row = (label: string) => within(screen.getByTestId('comment-place-list')).getByText(label).closest('button') as HTMLElement;
     const openPlaces = () => userEvent.click(screen.getByRole('button', { name: 'comment.move' }));
+
+    describe('an occurrence opened in another Bible', () => {
+      const authored = { id: 'r', bible: 'kjv' as const, book: 'Romans', chapter: 16, fromVerse: 24, toVerse: 27 };
+      const clicked = 'Rom 16:24';
+      const clickedContext = 'Clicked Romans 16:24 in the reader.';
+      const placeOf = (ref: { book: string; chapter?: number; fromVerse?: number }) => (
+        ref.chapter === 16 && ref.fromVerse === 24 ? 'Rom 14:24–26, 16:24' : `${ref.book} ${ref.chapter}:${ref.fromVerse}`
+      );
+      const openComment = () => {
+        mockInterpolateCommentTitle = true;
+        mockEngine.notes = [{ ...stored, scriptureRefs: [authored] }];
+        const close = jest.fn();
+        render(<CommentDialog target={{ kind: 'edit', id: 'c1' }} place="Rom 14:24–26" openingPlace={clicked} context={clickedContext} bible="rst" placeOf={placeOf} onClose={close} />);
+        return close;
+      };
+      const heading = (place: string) => screen.getByRole('heading', { name: `Comment · ${place}` });
+
+      it('names the clicked occurrence without writing its displayed place on Done', async () => {
+        const close = openComment();
+        expect(heading(clicked)).toBeInTheDocument();
+        expect(screen.getByText(clickedContext)).toBeInTheDocument();
+        expect(screen.getByLabelText('editor')).toHaveValue(stored.content);
+        await userEvent.click(screen.getByRole('button', { name: 'common.done' }));
+        expect(close).toHaveBeenCalled();
+        expect(mockEngine.updateNote).not.toHaveBeenCalled();
+        expect(mockEngine.notes[0].scriptureRefs).toEqual([authored]);
+      });
+
+      it('names and writes an explicit move in the authored Bible, keeping the original range length', async () => {
+        const close = openComment();
+        await openPlaces();
+        await userEvent.click(row('16:23'));
+        expect(heading('Romans 16:23')).toBeInTheDocument();
+        expect(screen.getByTestId('comment-moved')).toBeInTheDocument();
+        await userEvent.click(screen.getByRole('button', { name: 'common.done' }));
+        expect(mockEngine.updateNote).toHaveBeenCalledWith({
+          id: 'c1',
+          updates: { scriptureRefs: [{ ...authored, fromVerse: 23, toVerse: 26 }] },
+          expectedRevision: 4,
+          expectedBaseline: { scriptureRefs: [authored] },
+        });
+        await waitFor(() => expect(close).toHaveBeenCalled());
+      });
+
+      it('returns to the clicked occurrence after Put Back without writing a move', async () => {
+        const close = openComment();
+        await openPlaces();
+        await userEvent.click(row('16:23'));
+        await userEvent.click(screen.getByRole('button', { name: 'comment.moveBack' }));
+        expect(heading(clicked)).toBeInTheDocument();
+        expect(screen.getByText(clickedContext)).toBeInTheDocument();
+        expect(screen.queryByTestId('comment-moved')).not.toBeInTheDocument();
+        await userEvent.click(screen.getByRole('button', { name: 'common.done' }));
+        expect(mockEngine.updateNote).not.toHaveBeenCalled();
+        expect(mockEngine.notes[0].scriptureRefs).toEqual([authored]);
+        expect(close).toHaveBeenCalled();
+      });
+
+      it('names the stored version explicitly taken after a refusal instead of the opening occurrence', async () => {
+        const theirs = [{ id: 'theirs', bible: 'rst' as const, book: 'Romans', chapter: 8, fromVerse: 28 }];
+        mockEngine.updateNote.mockImplementationOnce(() => ({ acceptance: Promise.reject(new StaleWriteError('note', 4, 6, { scriptureRefs: theirs })), persistence: Promise.resolve(), result: Promise.resolve({}) }) as never);
+        openComment();
+        await openPlaces();
+        await userEvent.click(row('16:23'));
+        await userEvent.click(screen.getByRole('button', { name: 'common.done' }));
+        await userEvent.click(await screen.findByRole('button', { name: 'freshness.conflictTakeTheirs' }));
+        expect(heading('Romans 8:28')).toBeInTheDocument();
+        expect(screen.getByText('Romans 8:28')).toBeInTheDocument();
+        expect(screen.queryByText(clickedContext)).not.toBeInTheDocument();
+        expect(screen.queryByTestId('comment-moved')).not.toBeInTheDocument();
+      });
+    });
 
     it('moves a written comment to a verse across the chapter edge, saving the new place against the list it opened with', async () => {
       const onClose = jest.fn();

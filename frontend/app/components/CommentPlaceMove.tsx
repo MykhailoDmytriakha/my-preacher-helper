@@ -30,7 +30,7 @@ const spotOf = (ref: ScriptureReference): CommentSpot => ({ book: ref.book, chap
  * of the screen under the window, the place chosen to move it to until «Готово», the list of places around it, and the
  * words under the title, which follow the place. The window asks it and writes `moved` on save; nothing here is stored.
  */
-export function useCommentPlace({ standing, newPlace, choosesOwn, restoreOwn, bible, placeOf, context, notes, ownId }: {
+export function useCommentPlace({ standing, newPlace, choosesOwn, restoreOwn, bible, placeOf, context, openingPlace, notes, ownId }: {
   /** The reference the comment stands on: a written one's first, a new one's own. */
   standing: ScriptureReference | undefined;
   /** A new comment's own place (null while not chosen); undefined for a written one. */
@@ -45,6 +45,8 @@ export function useCommentPlace({ standing, newPlace, choosesOwn, restoreOwn, bi
   placeOf?: (reference: ScriptureReference) => string;
   /** The words of the place it stands on, as that screen gave them. */
   context?: string;
+  /** The exact occurrence opened on the screen, before any explicit move or stored-version choice. */
+  openingPlace?: string;
   /** Every study note: where other comments stand. */
   notes: readonly StudyNote[];
   /** The comment itself, not counted as another one at its place. */
@@ -124,7 +126,11 @@ export function useCommentPlace({ standing, newPlace, choosesOwn, restoreOwn, bi
     /** Where it stood when the window opened, or the other device's place taken since: «Было у …». */
     homeLabel,
     /** The place the title names: the one moved to, else where it stands. */
-    shown: (place: string) => (moved ? labelOf(moved) : homeLabel(place)),
+    shown: (place: string) => {
+      if (moved) return labelOf(moved);
+      if (!ownName && openingPlace !== undefined) return openingPlace;
+      return homeLabel(place);
+    },
     /** A place kept on the device that differs from the one held now: it waits to be brought back with the words. */
     waits,
     /** The place an offer of words from last time brings back, named; null where it brings none. */

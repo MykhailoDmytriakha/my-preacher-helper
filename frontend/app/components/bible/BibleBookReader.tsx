@@ -402,11 +402,11 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, dec
   const closeCrossRefs = crossRefs.close;
   // A comment's window (case 2026-10-12-block-diagram, 3.2): one already written, or a new one on a verse or a chapter.
   // A comment's window and its doors (case 2026-10-12-block-diagram, 3.2), kept beside the window itself.
-  const { commenting, setCommenting, edit: editComment, close: closeComment } = useReaderCommenting();
+  const { commenting, setCommenting, edit: editComment, close: closeComment } = useReaderCommenting(bookId, bible);
   // The person's own material on the verses it names: badges with the text, dots on the minimap, a list.
   const mine = useBookUsage(bookId, bible, locale, Boolean(text), editComment);
   const { commentOn, commentPassage, commentsReady } = mine;
-  const commentDoors = useCommentDoors({ ready: commentsReady, commentOn, setCommenting, bookId, bible });
+  const commentDoors = useCommentDoors({ ready: commentsReady, commentOn, commentPassage, setCommenting, bookId, bible });
   const layout = useMemo(() => (text ? buildMinimapLayout(text.chapters) : null), [text]);
 
   // A BIG BOOK IS DRAWN AROUND THE PLACE READ (`useChapterWindow`): the chapters near it are in the
@@ -1055,7 +1055,7 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, dec
         listed={mine.listed}
         onClose={mine.close}
         onOpenEntry={openMineEntry}
-        onEditComment={(id) => { mine.close(); editComment(id); }}
+        onEditComment={(id, passage) => { mine.close(); editComment(id, passage); }}
       />
       <ReaderCommentDialog commenting={commenting} text={text} bookId={bookId} bible={bible} locale={locale} passageOf={commentPassage} onClose={closeComment} />
       <MarkedElsewhereSheet

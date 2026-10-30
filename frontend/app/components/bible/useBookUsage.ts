@@ -82,7 +82,7 @@ export function entriesAt(entries: readonly BookUsageEntry[], place: MinePlace):
  * changes), and the text shows first instead of waiting for it. Comments (a study note's short kind) stand as
  * their own grey words under the verse or the chapter heading, or as badges, as the person chose in Settings.
  */
-export function useBookUsage(bookId: string, bible: BibleId, locale: AppLocale, ready: boolean, onEditComment?: (id: string) => void) {
+export function useBookUsage(bookId: string, bible: BibleId, locale: AppLocale, ready: boolean, onEditComment?: (id: string, passage: Passage) => void) {
   const { t } = useTranslation();
   const { uid } = useResolvedUid();
   const { show, comments: commentsShown } = useMinePrefs();
@@ -133,7 +133,7 @@ export function useBookUsage(bookId: string, bible: BibleId, locale: AppLocale, 
     const textOnChapters = new Map<number, Map<string, TextComment>>();
     const write = <K,>(into: Map<K, Map<string, TextComment>>, at: K, entry: BookUsageEntry, passage: Passage) => {
       const comments = into.get(at) ?? new Map<string, TextComment>();
-      comments.set(entry.id, { id: entry.id, body: entry.body ?? '', editLabel: t('bible.mine.editComment', { place: passageLabel(abbrev, passage) }) });
+      comments.set(entry.id, { id: entry.id, body: entry.body ?? '', passage, editLabel: t('bible.mine.editComment', { place: passageLabel(abbrev, passage) }) });
       into.set(at, comments);
     };
     entries.forEach((entry) => {
@@ -197,7 +197,8 @@ export function useBookUsage(bookId: string, bible: BibleId, locale: AppLocale, 
   const open = shown && !emptied ? openAt : null;
   // Where a comment stands, for its window's title; and which comment a door opens — the one written to this verse
   // (starting there) or to this whole chapter. Nothing there: the door writes a new one.
-  const commentPassage = useCallback((id: string) => entries.find((entry) => entry.kind === 'comment' && entry.id === id)?.passage, [entries]);
+  const commentPassage = useCallback((id: string, at?: MinePlace) => entries.find((entry) => entry.kind === 'comment' && entry.id === id
+    && (!at || (at.verse === null ? wholeChapterOf(entry, at.chapter) : passageCovers(entry.passage, at.chapter, at.verse))))?.passage, [entries]);
   const commentOn = useCallback((chapter: number, verse: number | null) => entries.find((entry) => entry.kind === 'comment' && (verse === null
     ? wholeChapterOf(entry, chapter)
     : entry.passage.chapter === chapter && entry.passage.fromVerse === verse))?.id, [entries]);

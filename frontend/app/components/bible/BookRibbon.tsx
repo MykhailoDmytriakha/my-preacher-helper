@@ -13,6 +13,7 @@ import { MineBadge as MineBadgeButton, MineMoreBadge } from './MineBadge';
 
 import type { ChapterBoxes } from './useChapterWindow';
 import type { CrossReferenceCount } from '@/utils/crossReferences';
+import type { Passage } from '@/utils/scriptureReferenceNumbering';
 import type { ScriptureUsageKind } from '@/utils/scriptureUsage';
 
 /*
@@ -113,7 +114,7 @@ export type RibbonMine = {
   comments?: {
     at: ReadonlyMap<string, readonly TextComment[]>;
     chapters: ReadonlyMap<number, readonly TextComment[]>;
-    onEdit: (id: string) => void;
+    onEdit: (id: string, passage: Passage) => void;
   };
 };
 
