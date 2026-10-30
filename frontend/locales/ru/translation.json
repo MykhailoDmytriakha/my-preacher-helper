@@ -759,7 +759,8 @@
       "booksChapterText": "В нескольких книгах ищу по книгам целиком: {{books}}. Уберите главу или оставьте одну книгу.",
       "booksPlaceTitle": "Какая книга?",
       "booksPlaceText": "Это место есть в каждой из них: {{books}}.",
-      "booksWhole": "Искать по книгам целиком"
+      "booksWhole": "Искать по книгам целиком",
+      "allInBible": "Все {{count}} — в Библии"
     },
     "copy": {
       "menu": "Стих {{place}}",
@@ -780,6 +781,15 @@
       "clear": "Снять выбор",
       "copyVerse": "Копировать стих {{place}}",
       "copiedVerse": "Скопировано: {{place}}"
+    },
+    "found": {
+      "position": "{{at}} из {{count}}",
+      "back": "К поиску",
+      "close": "Закрыть найденное",
+      "showEarlier_one": "Показать {{count}} стих выше",
+      "showEarlier_few": "Показать {{count}} стиха выше",
+      "showEarlier_many": "Показать {{count}} стихов выше",
+      "showEarlier_other": "Показать {{count}} стиха выше"
     }
   },
   "navigation": {

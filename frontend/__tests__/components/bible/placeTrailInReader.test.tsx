@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { BibleBookReader } from '@/components/bible/BibleBookReader';
 import { resetCrossReferencePrefsForTests } from '@/components/bible/crossReferencePrefs';
 import { arriveOnTrail, readPlaceTrail, resetPlaceTrailForTests, stepOnTrail } from '@/components/bible/placeTrailStore';
+import { closeFound, showFound } from '@/components/bible/search/foundInBible';
 import { bibleCrossRefsBase } from '@/utils/bibleCrossRefsCache';
 import { crossReferenceLabel, crossReferencesAt, forgetLoadedCrossRefs, isMainReference, type CrossRefsBook } from '@/utils/crossReferences';
 
@@ -69,6 +70,7 @@ beforeEach(() => {
   window.localStorage.clear();
   resetCrossReferencePrefsForTests();
   resetPlaceTrailForTests();
+  closeFound();
   forgetLoadedCrossRefs();
   global.fetch = jest.fn(async (url: string) => answer(publicFile(url.slice(1)))) as unknown as typeof fetch;
   Element.prototype.scrollIntoView = jest.fn();
@@ -347,6 +349,44 @@ describe('the trail as a column on a wide screen', () => {
     expect(readPlaceTrail().at).toBe(0);
     expect(within(trail).getAllByRole('button')[2]).toHaveAttribute('data-trail-at');
   });
+
+  // Codex review, 30.10: with the found verses in the column's place, the trail's button showed and hid a column not there.
+  it('gives its place and its button to the found verses while they show; both come back when they close', async () => {
+    screenWidth = 1680;
+    await renderThreePlaces();
+    act(() => showFound({ bible: 'rst', line: 'моавитянка', asWords: false }));
+    expect(await screen.findByRole('navigation', { name: '«моавитянка»' })).toBeInTheDocument();
+    expect(screen.queryByRole('navigation', { name: 'bible.trail.title' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'bible.trail.toggle' })).not.toBeInTheDocument();
+    // Each found verse of Ruth drawn is framed in the text; the one the reading stands at (4:2 → the last above it) thicker.
+    const framed = () => Array.from(document.querySelectorAll<HTMLElement>('[data-found]'));
+    await waitFor(() => expect(framed().length).toBeGreaterThan(1), { timeout: 15000 });
+    framed().forEach((row) => expect(row.textContent).toMatch(/оавитян/));
+    expect(framed().filter((row) => row.dataset.found === 'at').map((row) => row.dataset.verse)).toEqual(['2:21']);
+
+    act(() => closeFound());
+    expect(screen.getByRole('navigation', { name: 'bible.trail.title' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'bible.trail.toggle' })).toBeInTheDocument();
+    expect(framed()).toHaveLength(0);
+  }, 30000);
+
+  // Codex review r3, 30.10: a verse of another search opened from the book window left the old search's column beside it.
+  it('puts the found verses away when a verse of another search opens alone from the book window', async () => {
+    screenWidth = 1680;
+    const onOpenBook = jest.fn();
+    render(<BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={{ chapter: 1, verse: 1 }} onOpenBook={onOpenBook} />);
+    act(() => showFound({ bible: 'rst', line: 'моавитянка', asWords: false }));
+    expect(await screen.findByRole('navigation', { name: '«моавитянка»' })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'bible.changeBook' }));
+    await userEvent.type(screen.getByRole('combobox'), '"хлеб жизни"');
+    await waitFor(() => expect(screen.getAllByRole('option')).toHaveLength(2), { timeout: 15000 });
+    const [, second] = screen.getAllByRole('option');
+    await userEvent.click(second);
+    await userEvent.click(within(second).getByRole('button', { name: /bible\.search\.openInBible/, hidden: true }));
+    expect(onOpenBook).toHaveBeenCalledWith('john', expect.objectContaining({ chapter: 6, verse: 48 }));
+    await waitFor(() => expect(screen.queryByRole('navigation', { name: '«моавитянка»' })).not.toBeInTheDocument());
+  }, 30000);
 
   it('its switch puts the first words of each verse under the places, widens the column and is kept on the device', async () => {
     screenWidth = 1680;

@@ -759,7 +759,8 @@
       "booksChapterText": "У кількох книгах шукаю по книгах цілком: {{books}}. Приберіть розділ або залиште одну книгу.",
       "booksPlaceTitle": "Яка книга?",
       "booksPlaceText": "Це місце є в кожній з них: {{books}}.",
-      "booksWhole": "Шукати по книгах цілком"
+      "booksWhole": "Шукати по книгах цілком",
+      "allInBible": "Усі {{count}} — у Біблії"
     },
     "copy": {
       "menu": "Вірш {{place}}",
@@ -780,6 +781,15 @@
       "clear": "Зняти вибір",
       "copyVerse": "Копіювати вірш {{place}}",
       "copiedVerse": "Скопійовано: {{place}}"
+    },
+    "found": {
+      "position": "{{at}} з {{count}}",
+      "back": "До пошуку",
+      "close": "Закрити знайдене",
+      "showEarlier_one": "Показати {{count}} вірш вище",
+      "showEarlier_few": "Показати {{count}} вірші вище",
+      "showEarlier_many": "Показати {{count}} віршів вище",
+      "showEarlier_other": "Показати {{count}} вірша вище"
     }
   },
   "navigation": {

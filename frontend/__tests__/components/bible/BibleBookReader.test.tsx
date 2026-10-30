@@ -924,7 +924,8 @@ describe('BibleBookReader', () => {
       // A phone: no keyboard over the chapters until the line is tapped.
       expect(within(sheet).getByRole('combobox')).not.toHaveFocus();
       await hold(tile(sheet, '2'));
-      expect(onOpen).toHaveBeenCalledWith('Ruth', { chapter: 2, verse: 1 });
+      // A chapter held is no verse of a search: nothing to say which search it came from.
+      expect(onOpen).toHaveBeenCalledWith('Ruth', { chapter: 2, verse: 1 }, undefined);
       await userEvent.click(screen.getByRole('button', { name: 'bible.navigate' }));
       await userEvent.click(tile(screen.getByRole('dialog'), '4'));
       expect(screen.getByRole('dialog', { name: 'bible.chooseVerse' })).toBeInTheDocument();

@@ -739,7 +739,8 @@
       "booksChapterText": "In several books I search each whole: {{books}}. Drop the chapter or keep one book.",
       "booksPlaceTitle": "Which book?",
       "booksPlaceText": "The place is in each of them: {{books}}.",
-      "booksWhole": "Search the books whole"
+      "booksWhole": "Search the books whole",
+      "allInBible": "All {{count}} in the Bible"
     },
     "copy": {
       "menu": "Verse {{place}}",
@@ -760,6 +761,13 @@
       "clear": "Clear selection",
       "copyVerse": "Copy verse {{place}}",
       "copiedVerse": "Copied: {{place}}"
+    },
+    "found": {
+      "position": "{{at}} of {{count}}",
+      "back": "Back to search",
+      "close": "Close the found verses",
+      "showEarlier_one": "Show {{count}} earlier verse",
+      "showEarlier_other": "Show {{count}} earlier verses"
     }
   },
   "navigation": {

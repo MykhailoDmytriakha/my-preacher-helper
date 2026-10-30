@@ -1,7 +1,7 @@
 'use client';
 
 import { CheckIcon, ChevronDownIcon, ChevronLeftIcon, ChevronUpIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';
-import { useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 
@@ -544,7 +544,8 @@ export type NavigatorProps = {
   wide: boolean;
   anchorRef: RefObject<HTMLElement | null>;
   onClose: () => void;
-  onOpen: (bookId: string, place: Place) => void;
+  /** `fromSearch` — the search a verse opened was found by (`BibleSearch`). */
+  onOpen: (bookId: string, place: Place, fromSearch?: { line: string; asWords: boolean }) => void;
   /** It chooses a place for something, not where to read (`PlaceStepsProps.choosing`). */
   choosing?: 'verse' | 'chapter';
   /** Its height among the layers (`PickerWindowProps.layerClassName`). */
@@ -595,7 +596,7 @@ export function BookNavigator({ start, bookId, bible, currentChapter, currentVer
         hereBook={bookId}
         autoFocus={wide}
         actionLabel={actionLabel}
-        onOpen={({ bookId: chosen, chapter, verse, toVerse }) => onOpen(chosen, { chapter, verse, toVerse })}
+        onOpen={({ bookId: chosen, chapter, verse, toVerse }, fromSearch) => onOpen(chosen, { chapter, verse, toVerse }, fromSearch)}
       >
         <div className="mt-4">
           {step ? (
@@ -704,7 +705,7 @@ type BookPickerProps = {
   text: BookText | null;
   locale: AppLocale;
   wide: boolean;
-  onOpen: (bookId: string, place: Place) => void;
+  onOpen: (bookId: string, place: Place, fromSearch?: { line: string; asWords: boolean }) => void;
 };
 
 /** The book's name is the button: it opens the window of every book. */
@@ -751,7 +752,7 @@ export function BookPicker({ bookId, bible, currentChapter, currentVerse, text, 
           wide={wide}
           anchorRef={triggerRef}
           onClose={close}
-          onOpen={(chosen, place) => { close(); onOpen(chosen, place); }}
+          onOpen={(chosen, place, fromSearch) => { close(); onOpen(chosen, place, fromSearch); }}
         />
       ) : null}
     </>
@@ -765,7 +766,12 @@ type SearchPickerProps = {
   wide: boolean;
   /** Compact in the phone's shell header; labelled in the wide reader's own line. */
   look: 'line' | 'header';
-  onOpen: (bookId: string, place: Place) => void;
+  onOpen: (bookId: string, place: Place, fromSearch?: { line: string; asWords: boolean }) => void;
+  /** A found verse opened with its search, for the found verses beside the text (`search/foundInBible.ts`). */
+  onOpenFound?: (search: { line: string; asWords: boolean }, bookId: string, place: Place) => void;
+  /** «К поиску»: the window opens on this search, then says it has (`onRequestTaken`) — a window made anew opens nothing. */
+  request?: { line: string; asWords: boolean } | null;
+  onRequestTaken?: () => void;
 };
 
 /**
@@ -774,14 +780,22 @@ type SearchPickerProps = {
  * and in the phone's bar under the thumb once that line has gone. It opens the one line, empty, with the
  * searches kept under it; «8:28» there opens in this book.
  */
-export function SearchPicker({ bookId, bible, locale, wide, look, onOpen }: SearchPickerProps) {
+export function SearchPicker({ bookId, bible, locale, wide, look, onOpen, onOpenFound, request = null, onRequestTaken }: SearchPickerProps) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
+  const [start, setStart] = useState<{ line: string; asWords: boolean } | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const label = t('bible.search.openSearch');
+  useEffect(() => {
+    if (!request) return;
+    setStart(request);
+    setOpen(true);
+    onRequestTaken?.();
+  }, [request, onRequestTaken]);
 
   const close = () => {
     setOpen(false);
+    setStart(null);
     triggerRef.current?.focus();
   };
 
@@ -813,7 +827,9 @@ export function SearchPicker({ bookId, bible, locale, wide, look, onOpen }: Sear
           hereBook={bookId}
           autoFocus
           openWithRecent
-          onOpen={({ bookId: chosen, chapter, verse, toVerse }) => { close(); onOpen(chosen, { chapter, verse, toVerse }); }}
+          onOpen={({ bookId: chosen, chapter, verse, toVerse }, fromSearch) => { close(); onOpen(chosen, { chapter, verse, toVerse }, fromSearch); }}
+          onOpenFound={onOpenFound ? (search, { bookId: chosen, chapter, verse }) => { close(); onOpenFound(search, chosen, { chapter, verse }); } : undefined}
+          startSearch={start}
         />
       </PickerWindow>
     </>
@@ -866,7 +882,7 @@ export function ReadingPill({ bookId, bible, currentChapter, currentVerse, text,
           wide={false}
           anchorRef={triggerRef}
           onClose={close}
-          onOpen={(chosen, place) => { close(); onOpen(chosen, place); }}
+          onOpen={(chosen, place, fromSearch) => { close(); onOpen(chosen, place, fromSearch); }}
         />
       ) : null}
     </>

@@ -1,8 +1,10 @@
 import { BIBLES } from '@/utils/bibles';
 
 import { fromEnglishLayout } from './keyboardLayout';
-import { readBooksBegun, readLine, type BooksBegunLine, type LineContext, type LineReading } from './query';
-import { scopeBookIds, type SearchAnswer } from './results';
+import { readBooksBegun, readLine, type BookGroups, type BooksBegunLine, type LineContext, type LineReading } from './query';
+import { answerSearch, isBibleWord, scopeBookIds, type SearchAnswer } from './results';
+
+import type { BibleSearchIndex } from './searchIndex';
 
 /** The books a line's first letters may stand for, how many verses that reading finds, and whether it is the one shown. */
 export type BooksBegun = BooksBegunLine & { found: number; chosen: boolean };
@@ -17,6 +19,14 @@ export type LineChoice = {
 
 /** How a line is answered, and whether the Bible has a word as written (`isBibleWord`). */
 export type Answering = { answerFor: (reading: LineReading) => SearchAnswer | null; isWord: (word: string) => boolean };
+
+/** How a line is answered over the books indexed so far — one way for the search window and for the found verses in the reader. */
+export function answeringOf(index: BibleSearchIndex, indexed: number, books: BookGroups): Answering {
+  return {
+    answerFor: (each) => (each.kind === 'search' && indexed > 0 ? answerSearch(index, each.query, books) : null),
+    isWord: (word) => isBibleWord(index, word),
+  };
+}
 
 const hitsOf = (answer: SearchAnswer | null): number => answer?.hits.length ?? 0;
 

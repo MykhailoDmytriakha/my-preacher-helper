@@ -14,6 +14,7 @@ import { booksOf } from './bookOrder';
 import { useTrailOnList } from './PlaceTrail';
 import { usePlaceTrail } from './placeTrailStore';
 import { BibleSearch } from './search/BibleSearch';
+import { openedAlone } from './search/foundInBible';
 
 import type { LastPlace } from './lastPlace';
 import type { BibleId } from '@/utils/bibles';
@@ -64,7 +65,11 @@ export function BibleBookList({ bible, lastPlace, onOpen, onChangeBible }: Bible
         wide={wide}
         surface="page"
         autoFocus={wide}
-        onOpen={({ bookId, chapter, verse, toVerse }) => onOpen(bookSlug(bookId), { chapter, verse, ...(toVerse ? { toVerse } : {}) })}
+        onOpen={({ bookId, chapter, verse, toVerse }, fromSearch) => {
+          // A verse of a search opens alone from here: a search kept beside the text in the reader is put away.
+          openedAlone(fromSearch);
+          onOpen(bookSlug(bookId), { chapter, verse, ...(toVerse ? { toVerse } : {}) });
+        }}
       >
         <div className="mt-6 flex flex-col gap-6">
           {/* Where the person has been, the place they stopped lit; "Continue" only for a device with no trail yet. */}

@@ -35,6 +35,8 @@ import { useReaderTrail, type TrailBack } from './PlaceTrail';
 import { arriveOnTrail, changeTranslationOnTrail, leaveOnTrail, openedForTranslation, ownTrailPlace, stepOnTrail } from './placeTrailStore';
 import { ReaderCommentDialog, useCommentDoors, useReaderCommenting } from './ReaderCommentDialog';
 import { readingSurface } from './readingSurface';
+import { openedAlone } from './search/foundInBible';
+import { useFoundInReader } from './search/useFoundInReader';
 import { useBookCrossRefs } from './useBookCrossRefs';
 import { useBookUsage } from './useBookUsage';
 import { chapterAtLine, useChapterWindow } from './useChapterWindow';
@@ -180,7 +182,7 @@ function shortWayBack(returnTo: Place | null, back: TrailBack | null, bookId: st
  */
 function PhoneHeader({ wayBack, onWayBack, trailButton, bookId, bible, currentChapter, currentVerse, text, locale, onOpen }: {
   wayBack: string | null; onWayBack: () => void; trailButton: ReactNode;
-  bookId: string; bible: BibleId; currentChapter: number; currentVerse: number; text: BookText | null; locale: AppLocale; onOpen: (bookId: string, place: Place) => void;
+  bookId: string; bible: BibleId; currentChapter: number; currentVerse: number; text: BookText | null; locale: AppLocale; onOpen: (bookId: string, place: Place, fromSearch?: { line: string; asWords: boolean }) => void;
 }) {
   return (
     <div className="flex min-w-0 items-center gap-1 whitespace-nowrap">
@@ -200,10 +202,12 @@ function PhoneHeader({ wayBack, onWayBack, trailButton, bookId, bible, currentCh
  * colours open in it (`MarkToolbar`), and a second row would move the whole text down — so short of room the
  * translation's name is cut, never the book's. A phone lends its controls to the app's header (`PhoneHeader`).
  */
-function BookLine({ lineRef, wayBack, onWayBack, trailButton, tools, translationClass, bookId, bible, currentChapter, currentVerse, text, locale, onOpen, onChangeBible }: {
+function BookLine({ lineRef, wayBack, onWayBack, trailButton, tools, translationClass, bookId, bible, currentChapter, currentVerse, text, locale, onOpen, onChangeBible, search }: {
   lineRef: (element: HTMLElement | null) => void; wayBack: string | null; onWayBack: () => void; trailButton: ReactNode; tools: ReactNode; translationClass: string;
   bookId: string; bible: BibleId; currentChapter: number; currentVerse: number; text: BookText | null; locale: AppLocale;
-  onOpen: (bookId: string, place: Place) => void; onChangeBible: (bible: BibleId) => void;
+  onOpen: (bookId: string, place: Place, fromSearch?: { line: string; asWords: boolean }) => void; onChangeBible: (bible: BibleId) => void;
+  /** The search window's ties to the found verses beside the text (`search/useFoundInReader.tsx`). */
+  search: Pick<ReturnType<typeof useFoundInReader>, 'onOpenFound' | 'searchRequest' | 'takeSearchRequest'>;
 }) {
   return (
     <header ref={lineRef} className="relative z-30 mb-3 flex shrink-0 flex-wrap items-center gap-x-1 gap-y-0.5 bg-white/90 py-1.5 backdrop-blur-md md:flex-nowrap dark:bg-gray-900/90">
@@ -211,7 +215,7 @@ function BookLine({ lineRef, wayBack, onWayBack, trailButton, tools, translation
       {trailButton}
       <BookPicker bookId={bookId} bible={bible} currentChapter={currentChapter} currentVerse={currentVerse} text={text} locale={locale} wide onOpen={onOpen} />
       {text ? <ChapterControl bookId={bookId} bible={bible} locale={locale} current={currentChapter} verse={currentVerse} text={text} wide onOpen={(place) => onOpen(bookId, place)} /> : null}
-      <SearchPicker bookId={bookId} bible={bible} locale={locale} wide look="line" onOpen={onOpen} />
+      <SearchPicker bookId={bookId} bible={bible} locale={locale} wide look="line" onOpen={onOpen} onOpenFound={search.onOpenFound} request={search.searchRequest} onRequestTaken={search.takeSearchRequest} />
       {tools}
       <span className={`flex min-w-0 ${translationClass}`}>
         <TranslationPicker bible={bible} wide onPick={onChangeBible} />
@@ -307,6 +311,8 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
   const [attempt, setAttempt] = useState(0);
   const [currentChapter, setCurrentChapter] = useState(1);
   const [currentVerse, setCurrentVerse] = useState(1);
+  /** The place last arrived at — the book opened at it, or a move to it — never a place reached by reading. */
+  const [arrival, setArrival] = useState<Place | null>(null);
   const textRef = useRef<HTMLElement | null>(null);
   const entryRef = useRef<string | null>(null);
   const placeRef = useRef<Place | null>(null);
@@ -581,6 +587,7 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
     }
     setCurrentChapter(target?.chapter ?? 1);
     setCurrentVerse(target?.verse ?? 1);
+    setArrival(target ?? { chapter: 1, verse: 1 });
     // The book opened at its place comes to the trail of places: a link from another book, a book chosen,
     // Back or Forward, a reload — the last ones land on a recent link and only light it.
     // Opened from a screen of the app (a note's reference): the link keeps it, and the way back from it goes there.
@@ -748,6 +755,7 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
     leave();
     // Any move to a place forgets the way back to a verse of the same chapter.
     setReturnTo(null);
+    setArrival({ chapter: place.chapter, verse: place.verse });
     arriveOnTrail({ book: bookId, chapter: place.chapter, verse: place.verse, bible });
   }, [bible, bookId, leave]);
   // Leaving the reader for another screen, the app closing or put away (an iPhone's installed app is only hidden,
@@ -790,7 +798,14 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
     arrive(place);
     jumpTo(place, then);
   }, [arrive, jumpTo]);
+  // The book's line and the phone's header: a verse of a search opened alone there puts away a search kept beside the text.
+  const openFromLine = useCallback((chosenBook: string, place: Place & { toVerse?: number }, fromSearch?: { line: string; asWords: boolean }) => {
+    openedAlone(fromSearch);
+    openPlace(chosenBook, place);
+  }, [openPlace]);
   const trail = useReaderTrail({ bible, locale, wide, here: { book: bookId, chapter: currentChapter, verse: currentVerse, bible }, seen, openPlace });
+  // A search's verses beside the text, in the trail's place, while the person keeps them (`search/useFoundInReader.tsx`).
+  const found = useFoundInReader({ bible, bookId, locale, wide, textRef, drawn: drawnSpan, ready: Boolean(text && layout), currentChapter, currentVerse, arrival, openPlace });
 
   // A cross reference opened. In this book: a jump that leaves the way back to the verse it was opened
   // from ("← Ис 19:1"). In another: a new history entry, as any other book, whose way back is that
@@ -873,7 +888,7 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
       currentVerse={currentVerse}
       text={text}
       locale={locale}
-      onOpen={openPlace}
+      onOpen={openFromLine}
     />
   ) : null, `${abbrev} ${currentChapter}:${currentVerse}`);
 
@@ -882,7 +897,7 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
     <div
       ref={readerRef}
       data-reader-panes={wide ? '' : undefined}
-      className={`mx-auto w-full ${trail.readerWidth} ${frame.root}`}
+      className={`mx-auto w-full ${found.readerWidth ?? trail.readerWidth} ${frame.root}`}
       style={{ '--reading-top': `${readingInset}px` } as CSSProperties}
     >
       {wide ? (
@@ -890,7 +905,8 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
           lineRef={setHeaderRef}
           wayBack={wayBackLabel}
           onWayBack={goBack}
-          trailButton={trail.inLine}
+          // The found verses stand in the trail's place: its button would show and hide a column not there.
+          trailButton={found.panel ? null : trail.inLine}
           tools={marks.tools}
           translationClass={marks.translationClass}
           bookId={bookId}
@@ -899,8 +915,9 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
           currentVerse={currentVerse}
           text={text}
           locale={locale}
-          onOpen={openPlace}
+          onOpen={openFromLine}
           onChangeBible={changeBible}
+          search={found}
         />
       ) : null}
       {trail.underLine}
@@ -910,7 +927,7 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
 
       <div className={`flex items-start gap-5 ${frame.row}`}>
         {/* The trail as a column, on a screen with room for it: the reader has widened left by it. */}
-        {trail.beside}
+        {found.panel ?? trail.beside}
         <div ref={setPane} tabIndex={frame.paneTabIndex} className={frame.pane}>
           {text && layout ? (
             // Where marks can be made the text answers a pull along the line and still scrolls up and down
@@ -946,6 +963,7 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
               readingInset={readingInset}
               drawn={drawnSpan}
               marks={mine.mapMarks}
+              found={found.mapFound}
               onJump={jumpFromMap}
             />
           </aside>

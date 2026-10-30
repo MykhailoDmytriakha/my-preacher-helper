@@ -28,6 +28,12 @@ export const ARRIVAL_ATTRIBUTE = 'data-arrival';
 /** A verse held under a finger or a mouse, and the verses chosen to copy: set on the row by the reader (`verseCopy/`), like the arrival. */
 export const VERSE_HELD_ATTRIBUTE = 'data-verse-held';
 export const VERSE_CHOSEN_ATTRIBUTE = 'data-verse-chosen';
+/**
+ * A verse the search shown in the Bible found (`search/foundInBible.ts`): "on" framed, "at" — the one the reading stands
+ * at — framed thicker. A frame alone, no fill: the person's marker and pencil on these verses show as they are (the
+ * owner, 30.10). Set on the row by the reader, like the arrival.
+ */
+export const FOUND_ATTRIBUTE = 'data-found';
 
 function Segment({ segment }: { segment: Extract<VerseSegment, { kind: 'text' }> }) {
   const className = [
@@ -57,6 +63,8 @@ const ARRIVAL_CLASSES = [
  * A held or chosen verse lies on a light of its own under the arrival's, solid so that verses chosen one after
  * another read as one passage — rows overlap their lights — and quick both ways, unlike the arrival's slow fade.
  */
+const FOUND_CLASSES = 'data-[found]:rounded-lg data-[found]:outline data-[found]:outline-[1.5px] data-[found]:outline-offset-[6px] data-[found]:outline-amber-500 data-[found=at]:outline-[2.5px] data-[found=at]:outline-amber-600 dark:data-[found]:outline-amber-400';
+
 const CHOSEN_CLASSES = [
   'after:pointer-events-none after:absolute after:-inset-1.5 after:-z-10 after:rounded-lg after:transition-[background-color] after:duration-150',
   '[[data-verse-chosen]+&]:after:rounded-t-none [&:has(+[data-verse-chosen])]:after:rounded-b-none',
@@ -214,7 +222,7 @@ function VerseRow({ chapter, verse, raw, lang, crossRefs, signs, mine, detached 
       data-verse={detached ? undefined : `${chapter}:${verse}`}
       {...(lit ? { [ARRIVAL_ATTRIBUTE]: 'on' } : {})}
       style={{ scrollMarginTop: READING_TOP }}
-      className={`mb-2.5 md:mb-0 md:flex md:flex-wrap md:gap-x-3 ${ARRIVAL_CLASSES} ${detached ? '' : CHOSEN_CLASSES} ${opensParagraph && verse > 1 ? 'md:mt-2' : ''}`}
+      className={`mb-2.5 md:mb-0 md:flex md:flex-wrap md:gap-x-3 ${ARRIVAL_CLASSES} ${detached ? '' : `${CHOSEN_CLASSES} ${FOUND_CLASSES}`} ${opensParagraph && verse > 1 ? 'md:mt-2' : ''}`}
     >
       {/* Painted first, so a mark's sign stands over it. */}
       {analysed ? <AnalysedBar at={analysed} chapter={chapter} verse={verse} /> : null}

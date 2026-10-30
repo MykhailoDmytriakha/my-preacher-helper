@@ -151,7 +151,7 @@ function notFoundTitle(scope: SearchScope, locale: AppLocale, t: TFunction): str
 }
 
 /** The verse cut into pieces, the words the search found marked. */
-function litPieces(text: string, query: SearchQuery, matchers: readonly WordMatcher[]): Array<{ text: string; lit: boolean }> {
+export function litPieces(text: string, query: SearchQuery, matchers: readonly WordMatcher[]): Array<{ text: string; lit: boolean }> {
   const phraseWords = new Set(query.phrases.flat());
   return piecesOfText(text).map((piece) => ({
     text: piece.text,

@@ -1,11 +1,15 @@
 import fs from 'fs';
 import path from 'path';
 
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, renderHook, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { useCallback, useState } from 'react';
 
+import { BibleBookList } from '@/components/bible/BibleBookList';
+import { BookNavigator, SearchPicker } from '@/components/bible/BiblePicker';
 import { BibleSearch } from '@/components/bible/search/BibleSearch';
-import { resetLastSearchForTests } from '@/components/bible/search/lastSearch';
+import { closeFound, showFound, useFoundSearch } from '@/components/bible/search/foundInBible';
+import { rememberOpened, resetLastSearchForTests } from '@/components/bible/search/lastSearch';
 import { rememberSearch, resetSearchHistoryForTests } from '@/components/bible/searchHistoryStore';
 import { resetSearchIndexesForTests } from '@/utils/bibleSearch/searchIndexStore';
 import { bookSlug } from '@/utils/bibleText';
@@ -35,6 +39,7 @@ beforeEach(() => {
   resetSearchIndexesForTests();
   resetSearchHistoryForTests();
   resetLastSearchForTests();
+  closeFound();
 });
 
 // Many rows: the options are read from the page itself — a role query names each of a hundred rows and alone
@@ -98,7 +103,120 @@ describe('the one line', () => {
     expect(second.querySelector('[data-copied]')).not.toBeNull();
     expect(onOpen).not.toHaveBeenCalled();
     await userEvent.click(within(second).getByRole('button', { name: /bible\.search\.openInBible/, hidden: true }));
-    expect(onOpen).toHaveBeenCalledWith({ bookId: 'John', chapter: 6, verse: 48, toVerse: 48 });
+    expect(onOpen).toHaveBeenCalledWith({ bookId: 'John', chapter: 6, verse: 48, toVerse: 48 }, { line: '"хлеб жизни"', asWords: false });
+  });
+
+  // «Поиск → Библия» (the owner's choice on the canvas «Путь в Библию», 30.10).
+  it('offers «Все N — в Библии» only where the reader can keep the found verses, and opens the search on the first in the Bible\'s order', async () => {
+    const plain = renderLine();
+    await userEvent.type(plain.line, 'пс 118 ожив');
+    await screen.findByText('bible.search.verses{"count":9}');
+    expect(screen.queryByRole('button', { name: 'bible.search.allInBible{"count":9}' })).not.toBeInTheDocument();
+    document.body.innerHTML = '';
+    const onOpenFound = jest.fn();
+    const { line, onOpen } = renderLine({ onOpenFound });
+    await userEvent.type(line, 'пс 118 ожив');
+    await screen.findByText('bible.search.verses{"count":9}');
+    await userEvent.click(screen.getByRole('button', { name: 'bible.search.allInBible{"count":9}' }));
+    // The window lists «оживи» first, its kin after; the Bible's order starts at 118:25.
+    expect(onOpenFound).toHaveBeenCalledWith({ line: 'пс 118 ожив', asWords: false }, { bookId: 'Psalms', chapter: 118, verse: 25 });
+    expect(onOpen).not.toHaveBeenCalled();
+  });
+
+  it('opens a found verse with its whole search where the reader keeps them', async () => {
+    const onOpenFound = jest.fn();
+    const { line, onOpen } = renderLine({ onOpenFound });
+    await userEvent.type(line, '"хлеб жизни"');
+    await screen.findByText('bible.search.verses{"count":2}');
+    const [, second] = screen.getAllByRole('option');
+    await userEvent.click(second);
+    await userEvent.click(within(second).getByRole('button', { name: /bible\.search\.openInBible/, hidden: true }));
+    expect(onOpenFound).toHaveBeenCalledWith({ line: '"хлеб жизни"', asWords: false }, { bookId: 'John', chapter: 6, verse: 48, toVerse: 48 });
+    expect(onOpen).not.toHaveBeenCalled();
+  });
+
+  it('opens on the search «К поиску» asks for, its arrows on the verse last stood at', async () => {
+    rememberOpened('rst', 'пс 118 ожив', false, 'Psalms 118:107', 100);
+    const { line } = renderLine({ startSearch: { line: 'пс 118 ожив', asWords: false } });
+    expect(line).toHaveValue('пс 118 ожив');
+    await screen.findByText('bible.search.verses{"count":9}');
+    await waitFor(() => expect(options().find((option) => option.getAttribute('aria-selected') === 'true')?.textContent).toMatch(/118:107/));
+  });
+
+  // Codex review, 30.10: a search kept beside the text came back beside a verse of a later search opened from the Bible's page.
+  it('the Bible\'s page puts away the found verses kept beside the text when a verse of another search opens from it, and keeps them for a place typed', async () => {
+    showFound({ bible: 'rst', line: 'пс 118 ожив', asWords: false });
+    const kept = renderHook(() => useFoundSearch());
+    const onOpen = jest.fn();
+    render(<BibleBookList bible="rst" lastPlace={null} onOpen={onOpen} onChangeBible={jest.fn()} />);
+    const line = screen.getByRole('combobox');
+    await userEvent.type(line, 'Ин 3:16{Enter}');
+    expect(onOpen).toHaveBeenCalledWith('john', { chapter: 3, verse: 16, toVerse: 16 });
+    expect(kept.result.current).toEqual({ bible: 'rst', line: 'пс 118 ожив', asWords: false });
+
+    await userEvent.clear(line);
+    await userEvent.type(line, '"хлеб жизни"');
+    await screen.findByText('bible.search.verses{"count":2}');
+    const [, second] = screen.getAllByRole('option');
+    await userEvent.click(second);
+    await userEvent.click(within(second).getByRole('button', { name: /bible\.search\.openInBible/, hidden: true }));
+    expect(onOpen).toHaveBeenLastCalledWith('john', { chapter: 6, verse: 48, toVerse: 48 });
+    expect(kept.result.current).toBeNull();
+  });
+
+  // Codex review, 30.10: the line also chooses a comment's new place; choosing one is not leaving the found verses.
+  it('says which search a verse opened alone was found by, and puts nothing away itself', async () => {
+    showFound({ bible: 'rst', line: 'пс 118 ожив', asWords: false });
+    const kept = renderHook(() => useFoundSearch());
+    const { line, onOpen } = renderLine({ actionLabel: 'Сюда' });
+    await userEvent.type(line, '"хлеб жизни"');
+    await screen.findByText('bible.search.verses{"count":2}');
+    const [, second] = screen.getAllByRole('option');
+    await userEvent.click(second);
+    await userEvent.click(within(second).getByRole('button', { name: 'Сюда', hidden: true }));
+    expect(onOpen).toHaveBeenCalledWith({ bookId: 'John', chapter: 6, verse: 48, toVerse: 48 }, { line: '"хлеб жизни"', asWords: false });
+    expect(kept.result.current).toEqual({ bible: 'rst', line: 'пс 118 ожив', asWords: false });
+  });
+
+  // Codex review r3, 30.10: the book window's line and the phone's search window lost which search a verse came from,
+  // so the reader could not put away a search kept beside the text.
+  it.each([
+    ['the window of every book', (onOpen: jest.Mock) => <BookNavigator start="books" bookId="Ruth" bible="rst" currentChapter={1} currentVerse={1} text={null} locale="ru" wide anchorRef={{ current: null }} onClose={jest.fn()} onOpen={onOpen} />],
+    ['the search window without room for the found verses', (onOpen: jest.Mock) => <SearchPicker bookId="Ruth" bible="rst" locale="ru" wide={false} look="header" onOpen={onOpen} />],
+  ])('%s says which search a verse opened was found by', async (_, ui) => {
+    const onOpen = jest.fn();
+    render(ui(onOpen));
+    if (!screen.queryByRole('combobox')) await userEvent.click(screen.getByRole('button', { name: 'bible.search.openSearch' }));
+    await userEvent.type(screen.getByRole('combobox'), '"хлеб жизни"');
+    await screen.findByText('bible.search.verses{"count":2}');
+    const [, second] = screen.getAllByRole('option');
+    await userEvent.click(second);
+    await userEvent.click(within(second).getByRole('button', { name: /bible\.search\.openInBible/, hidden: true }));
+    expect(onOpen).toHaveBeenCalledWith('John', { chapter: 6, verse: 48, toVerse: 48 }, { line: '"хлеб жизни"', asWords: false });
+  });
+
+  // Codex review, 30.10: the reader's search window opened again on an old «К поиску» each time it was made anew.
+  it('opens the reader\'s search window once for one «К поиску»: a window made anew opens nothing', async () => {
+    function Reader() {
+      const [request, setRequest] = useState<{ line: string; asWords: boolean } | null>(null);
+      const [lineShown, setLineShown] = useState(true);
+      const take = useCallback(() => setRequest(null), []);
+      return (
+        <>
+          <button type="button" onClick={() => setRequest({ line: 'пс 118 ожив', asWords: false })}>back to the search</button>
+          <button type="button" onClick={() => setLineShown((shown) => !shown)}>the line made anew</button>
+          {lineShown ? <SearchPicker bookId="Psalms" bible="rst" locale="ru" wide look="line" onOpen={jest.fn()} request={request} onRequestTaken={take} /> : null}
+        </>
+      );
+    }
+    render(<Reader />);
+    fireEvent.click(screen.getByRole('button', { name: 'back to the search' }));
+    expect(await screen.findByRole('combobox')).toHaveValue('пс 118 ожив');
+    fireEvent.click(screen.getByRole('button', { name: 'the line made anew', hidden: true }));
+    await waitFor(() => expect(screen.queryByRole('combobox')).not.toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: 'the line made anew', hidden: true }));
+    await act(async () => {});
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
   });
 
   // A comment moved (case 2026-10-12-block-diagram): the window chooses a place, and its buttons say so, not «Открыть».
@@ -115,7 +233,7 @@ describe('the one line', () => {
     await userEvent.click(second);
     expect(screen.queryByRole('button', { name: /bible\.search\.openInBible/, hidden: true })).not.toBeInTheDocument();
     await userEvent.click(within(second).getByRole('button', { name: 'Сюда', hidden: true }));
-    expect(onOpen).toHaveBeenCalledWith({ bookId: 'John', chapter: 6, verse: 48, toVerse: 48 });
+    expect(onOpen).toHaveBeenCalledWith({ bookId: 'John', chapter: 6, verse: 48, toVerse: 48 }, { line: '"хлеб жизни"', asWords: false });
   });
 
   // Codex review, 2026-10-27: the buttons are for a mouse and a finger; the keyboard copies the chosen verse with
@@ -164,7 +282,7 @@ describe('the one line', () => {
       await userEvent.click(within(actions).getByRole('button', { name: 'bible.copy.copy' }));
       expect(writeText).toHaveBeenCalledWith(expect.stringMatching(/^Ин 6:48: "/));
       await userEvent.click(within(actions).getByRole('button', { name: 'bible.search.openInBible' }));
-      expect(onOpen).toHaveBeenCalledWith({ bookId: 'John', chapter: 6, verse: 48, toVerse: 48 });
+      expect(onOpen).toHaveBeenCalledWith({ bookId: 'John', chapter: 6, verse: 48, toVerse: 48 }, { line: '"хлеб жизни"', asWords: false });
     } finally {
       window.matchMedia = matchMedia;
     }
@@ -180,7 +298,7 @@ describe('the one line', () => {
     expect(second).toHaveAttribute('aria-selected', 'true');
     expect(line).toHaveAttribute('aria-activedescendant', second.id);
     await userEvent.keyboard('{Enter}');
-    expect(onOpen).toHaveBeenCalledWith({ bookId: 'John', chapter: 6, verse: 48, toVerse: 48 });
+    expect(onOpen).toHaveBeenCalledWith({ bookId: 'John', chapter: 6, verse: 48, toVerse: 48 }, { line: '"хлеб жизни"', asWords: false });
   });
 
   it('says where nothing was found, how much there is everywhere, and widens in one tap', async () => {
@@ -225,7 +343,7 @@ describe('the one line', () => {
     await userEvent.type(line, 'Иоанна хлеб');
     await screen.findByText('bible.search.verses{"count":21}');
     await userEvent.keyboard('{Enter}');
-    expect(onOpen).toHaveBeenCalledWith({ bookId: 'John', chapter: 6, verse: 5, toVerse: 5 });
+    expect(onOpen).toHaveBeenCalledWith({ bookId: 'John', chapter: 6, verse: 5, toVerse: 5 }, { line: 'Иоанна хлеб', asWords: false });
     await userEvent.clear(line);
     await userEvent.click(screen.getByRole('button', { name: 'bible.search.history' }));
     const history = screen.getByRole('region', { name: 'bible.search.history' });
