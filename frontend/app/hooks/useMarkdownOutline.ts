@@ -52,22 +52,7 @@ export function jumpToSection(outline: MarkdownOutlineControl, id: string) {
     });
 }
 
-/** Depth-first search for the section whose heading text matches, trimmed. */
-export function findSectionByHeading(
-    sections: { id: string; headingText: string; children: unknown[] }[],
-    heading: string
-): string | null {
-    const needle = heading.trim();
-    for (const section of sections) {
-        if (section.headingText.trim() === needle) return section.id;
-        const inner = findSectionByHeading(
-            section.children as { id: string; headingText: string; children: unknown[] }[],
-            needle
-        );
-        if (inner) return inner;
-    }
-    return null;
-}
+export { findSectionByHeading } from '@/utils/markdownSections';
 
 export function useMarkdownOutline(content: string, searchQuery = ''): MarkdownOutlineControl {
     const [collapsedIds, setCollapsedIds] = useState<Set<string>>(() => new Set());

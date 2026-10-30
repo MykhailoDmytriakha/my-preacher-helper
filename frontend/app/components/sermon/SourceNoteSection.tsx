@@ -10,7 +10,7 @@ import { findSectionByHeading, jumpToSection, useMarkdownOutline } from '@/hooks
 import { useSourceNotes } from '@/hooks/useSermonNoteLinks';
 import { resolveAppLocale } from '@/utils/appLocale';
 import { studyNoteLanguage } from '@/utils/documentLanguage';
-import { splitMarkdownSections, type MarkdownSection } from '@/utils/markdownSections';
+import { sectionHeadingLookup, type MarkdownSection } from '@/utils/markdownSections';
 import { countWords } from '@/utils/noteCutCorridor';
 import { studyNoteOwnName } from '@/utils/studyNoteUtils';
 import { useTranslation } from '@locales/useTranslation';
@@ -132,31 +132,25 @@ const NoteCard: React.FC<{
    * text above the first heading has always had an empty heading; one whose heading was renamed
    * away lands here too, and stays visible instead of vanishing.
    */
-  const { atomsByHeading, looseAtoms } = useMemo(() => {
-    const headings = new Set<string>();
-    const walk = (sections: MarkdownSection[]) => {
-      for (const section of sections) {
-        headings.add(section.headingText.trim());
-        walk(section.children);
-      }
-    };
-    walk(splitMarkdownSections(content).sections);
+  const { atomsBySection, looseAtoms } = useMemo(() => {
+    const headings = sectionHeadingLookup(control.outline.sections);
 
     const grouped = new Map<string, ScratchNote[]>();
     const loose: ScratchNote[] = [];
     for (const atom of scratchNotes) {
       if (atom.source?.noteId !== note.id) continue;
       const heading = atom.source.heading?.trim();
-      if (heading && headings.has(heading)) {
-        const bucket = grouped.get(heading);
+      const sectionId = heading ? headings.get(heading) : undefined;
+      if (sectionId !== undefined) {
+        const bucket = grouped.get(sectionId);
         if (bucket) bucket.push(atom);
-        else grouped.set(heading, [atom]);
+        else grouped.set(sectionId, [atom]);
       } else {
         loose.push(atom);
       }
     }
-    return { atomsByHeading: grouped, looseAtoms: loose };
-  }, [scratchNotes, note.id, content]);
+    return { atomsBySection: grouped, looseAtoms: loose };
+  }, [scratchNotes, note.id, control.outline.sections]);
 
   /**
    * Every atom cut from THIS note, not only those whose heading matched a section. An atom
@@ -205,7 +199,7 @@ const NoteCard: React.FC<{
 
   const sectionBadge = useCallback(
     (section: MarkdownSection) => {
-      const count = atomsByHeading.get(section.headingText.trim())?.length;
+      const count = atomsBySection.get(section.id)?.length;
       if (!count) return null;
       return (
         <span className="shrink-0 self-center rounded-full border border-violet-200 bg-violet-50 px-2 py-px text-[11px] text-violet-700 dark:border-violet-900 dark:bg-violet-950/50 dark:text-violet-300">
@@ -213,17 +207,17 @@ const NoteCard: React.FC<{
         </span>
       );
     },
-    [atomsByHeading, t]
+    [atomsBySection, t]
   );
 
   /** The work done on this part of the note, standing right under the part itself. */
   const sectionExtra = useCallback(
     (section: MarkdownSection) => {
-      const atoms = atomsByHeading.get(section.headingText.trim());
+      const atoms = atomsBySection.get(section.id);
       if (!atoms?.length) return null;
       return <AtomStack atoms={atoms} testId="section-atoms" className="mb-3 mt-2" />;
     },
-    [atomsByHeading]
+    [atomsBySection]
   );
 
   return (

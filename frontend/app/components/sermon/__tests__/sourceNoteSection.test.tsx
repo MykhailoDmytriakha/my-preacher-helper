@@ -180,3 +180,28 @@ describe('atomsOwnedByNotes — the link decides, not the heading', () => {
     expect(owned.has('a3')).toBe(false);
   });
 });
+
+
+describe('historical heading identities', () => {
+  it('keeps a unique legacy cutter heading attached after projecting literal code correctly', () => {
+    linkNotes([aNote({ content: '## `**stars**`\nBody.' })]);
+    const { container } = render(<SourceNoteSection sermon={sermon} scratchNotes={[anAtom('legacy', 'Legacy claim remains attached', 'stars')]} />);
+    const toggle = container.querySelector('[data-section-id="0"] button[aria-expanded]');
+    expect(toggle).not.toBeNull();
+    fireEvent.click(toggle!);
+    expect(screen.getByTestId('section-atoms')).toHaveTextContent('Legacy claim remains attached');
+    expect(screen.queryByTestId('loose-atoms')).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ['## Same\nOne.\n## Same\nTwo.', 'Same'],
+    ['## `**stars**`\nOne.\n## stars\nTwo.', 'stars'],
+  ])('shows an ambiguously located atom once at the note opening: %s', (content, heading) => {
+    linkNotes([aNote({ content })]);
+    const { container } = render(<SourceNoteSection sermon={sermon} scratchNotes={[anAtom('ambiguous', 'One ambiguous source claim', heading)]} />);
+    expect(screen.getByTestId('loose-atoms')).toHaveTextContent('One ambiguous source claim');
+    for (const toggle of container.querySelectorAll('[data-section-id] > div button[aria-expanded]')) fireEvent.click(toggle);
+    expect(screen.getAllByText('One ambiguous source claim')).toHaveLength(1);
+    expect(screen.queryByTestId('section-atoms')).not.toBeInTheDocument();
+  });
+});

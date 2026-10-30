@@ -1,4 +1,6 @@
+import { uniqueHeadingLookup } from '@/utils/headingLookup';
 import { markdownCodeLines } from '@/utils/markdownCode';
+import { markdownHeadingText } from '@/utils/markdownPlainText';
 
 /**
  * Splits a markdown document into the section tree its headings already describe.
@@ -34,12 +36,8 @@ export interface MarkdownOutline {
 }
 
 const HEADING = /^(#{1,6})\s+(.*)$/;
-/**
- * Inline markdown a heading may carry. `headingText` is used where only plain text can
- * render — the side panel's outline rows, aria labels — and a heading written as
- * `## **Bold**` must not show its asterisks there. `headingMarkdown` keeps the raw line.
- */
-const stripInlineMarkdown = (text: string): string =>
+/** Exact former outline spelling, retained only to locate already-saved source headings. */
+const legacyOutlineHeading = (text: string): string =>
     text
         .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
         .replace(/`([^`]*)`/g, '$1')
@@ -101,7 +99,7 @@ export const splitMarkdownSections = (
             id: parent ? `${parent.id}.${siblings.length}` : String(siblings.length),
             level,
             headingMarkdown: line.trim(),
-            headingText: stripInlineMarkdown(match[2]),
+            headingText: markdownHeadingText(line.trim()),
             bodyLines: [],
             children: [],
         };
@@ -155,3 +153,34 @@ export const findSectionById = (
     }
     return null;
 };
+
+interface SectionHeading {
+    id: string;
+    headingText: string;
+    headingMarkdown?: string;
+    children: readonly SectionHeading[];
+}
+
+/** Historical aliases are lookup-only: they never replace the reader label or stored Markdown. */
+export const sectionHeadingLookup = (sections: readonly SectionHeading[]): Map<string, string> => {
+    const entries: { id: string; labels: string[] }[] = [];
+    const walk = (nodes: readonly SectionHeading[]): void => {
+        for (const section of nodes) {
+            const labels = [section.headingText];
+            const raw = section.headingMarkdown;
+            const outline = raw?.match(HEADING);
+            const cutter = raw?.match(/^#{1,6}\s+(.+?)\s*#*\s*$/);
+            if (outline) labels.push(legacyOutlineHeading(outline[2]));
+            // The former cutter removed all these characters even inside literal code.
+            if (cutter) labels.push(cutter[1].replace(/[*_`]/g, '').trim());
+            entries.push({ id: section.id, labels });
+            walk(section.children);
+        }
+    };
+    walk(sections);
+    return uniqueHeadingLookup(entries);
+};
+
+/** Resolve only one real section, including an unambiguous historical source spelling. */
+export const findSectionByHeading = (sections: readonly SectionHeading[], heading: string): string | null =>
+    sectionHeadingLookup(sections).get(heading.trim()) ?? null;

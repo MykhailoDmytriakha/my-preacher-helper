@@ -10,7 +10,7 @@ when: show note markdown · render markdown with headings · heading hierarchy �
 - `FoldableMarkdown` draws a chevron per heading and a guide line per level, and renders text with `MarkdownDisplay`. A note with no headings falls back to plain `MarkdownDisplay`, unchanged.
 - Search: pass `searchQuery`; a section holding a hit is force-opened with its ancestors (`findSectionIdsMatching`), so a folded section never hides a match.
 - The note page draws the tree twice (side panel and text). Both share one fold state: `useMarkdownOutline` (`frontend/app/hooks/useMarkdownOutline.ts`) passed as `control`. Jump with `jumpToSection` — it opens the ancestors first, then scrolls.
-- Plain-text uses (aria labels, outline rows) take `headingText`, inline markdown stripped; rendering takes `headingMarkdown`, the raw line.
+- Plain-text uses (aria labels, outline rows) take `headingText` from `markdownPlainText.markdownHeadingText`: the safe reader removes prose formatting but preserves literal code. Links contribute their label without an appended URL. Rendering takes `headingMarkdown`, the raw line.
 - A `#` inside fenced code is code, not a heading. A fence closes only on the same marker (backticks or tildes) with a length at least the opener's. Tracking the marker character alone promotes headings out of a long fence that quotes a shorter one.
 
 ## Traps
@@ -35,3 +35,13 @@ See also: `.howto/extend-tiptap-editor.md`
 - CSS reference: [CSS Text Level3, overflow wrapping](https://www.w3.org/TR/css-text-3/#overflow-wrap-property); overflow wrapping takes effect when whitespace permits wrapping.
 
 - A scrollable code box still needs a constrained flex parent. The Notes card navigation row keeps `min-w-0`; without it a real long code line in the collapsed preview can set the row's intrinsic width and stretch the whole page even though `pre` has its own scrollbar. Test collapsed search results as well as an expanded note.
+
+
+## Preserve historical source-heading links
+
+- `sectionHeadingLookup` in `markdownSections` is the shared placement/navigation owner. It reads current labels plus the exact former outline/cutter spellings derived from the original heading line. These historical aliases are lookup-only; never render or write them as new canonical labels.
+- `headingLookup.uniqueHeadingLookup` admits several aliases for one parse-local section id, but removes a key shared by distinct ids, including a current label colliding with another section's historical alias. Never prefer the first match or a current label over ambiguous history.
+- `SourceNoteSection` groups an atom by the resolved section id. Missing or ambiguous sources stay once in the existing note-opening stack, with their text and stored provenance intact. Badges and jump use the same lookup.
+- The cutter uses `splitNoteIntoSections` and indexes current labels plus original authored fragments with its existing case/whitespace normalization. New source headings contain only the current reader label. Unknown or ambiguous model headings leave the location empty; claims remain available.
+- Section ids are stable within a parse only. This lookup is not a stored-identity migration and cannot reconstruct a location that historical data never distinguished.
+- Reference definitions across section boundaries and ATX-heading detection are separate structural concerns; a correct label projection alone does not resolve them.

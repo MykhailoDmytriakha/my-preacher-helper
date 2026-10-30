@@ -170,6 +170,29 @@ describe('POST /api/studies/notes/:id/cut', () => {
     );
   });
 
+  it.each(['**stars**', '`**stars**`'])('preserves a literal heading in a grounded source: %s', async heading => {
+    mockGetNote.mockResolvedValue({ ...ownNote, content: '## `**stars**`\nA claim.' });
+    const cut = goodCut();
+    cut.data.sections = [{ heading, claims: [{ text: 'A preserved claim', scripture: '' }] }];
+    mockCut.mockResolvedValue(cut);
+    const response = await POST(request(), params('note-1'));
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body.notes[0].source).toEqual({ noteId: 'note-1', heading: '**stars**' });
+    expect(body.notes[0].text).toBe('A preserved claim');
+  });
+
+  it('retains a claim without guessing an ambiguous duplicate heading', async () => {
+    mockGetNote.mockResolvedValue({ ...ownNote, content: '## Same\nOne.\n## Same\nTwo.' });
+    const cut = goodCut();
+    cut.data.sections = [{ heading: 'Same', claims: [{ text: 'A retained ambiguous claim', scripture: '' }] }];
+    mockCut.mockResolvedValue(cut);
+    const response = await POST(request(), params('note-1'));
+    const body = await response.json();
+    expect(body.notes[0].source).toEqual({ noteId: 'note-1', heading: '' });
+    expect(body.notes[0].text).toBe('A retained ambiguous claim');
+  });
+
   it('does not store a heading or a key passage the note never wrote', async () => {
     const cut = goodCut();
     cut.data.keyPassage = 'Ин 3:16';
@@ -203,7 +226,23 @@ describe('grounding helpers', () => {
 
   it('collects headings as written, ignoring emphasis and fenced code', () => {
     const headings = collectNoteHeadings('# **Первая** тема\ntext\n```\n# not a heading\n```\n## Вторая ##\n');
-    expect(Array.from(headings.values())).toEqual(['Первая тема', 'Вторая']);
+    // Alias keys refer to the same authored sections, not additional sections.
+    expect([...new Set(headings.values())]).toEqual(['Первая тема', 'Вторая']);
+    expect(headings.get('**первая** тема')).toBe('Первая тема');
+    expect(headings.get('первая тема')).toBe('Первая тема');
+  });
+
+  it('grounds current and authored code spellings without writing a historical lossy alias', () => {
+    const headings = collectNoteHeadings('## `**stars**`\nBody.');
+    expect(headings.get('**stars**')).toBe('**stars**');
+    expect(headings.get('`**stars**`')).toBe('**stars**');
+    expect(headings.has('stars')).toBe(false);
+  });
+
+  it('rejects a canonical key that collides with another authored spelling', () => {
+    const headings = collectNoteHeadings('## `**stars**`\nOne.\n## **stars**\nTwo.');
+    expect(headings.has('**stars**')).toBe(false);
+    expect(headings.get('`**stars**`')).toBe('**stars**');
   });
 
   it('keeps a key passage only when the note contains it', () => {

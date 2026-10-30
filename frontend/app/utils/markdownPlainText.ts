@@ -47,16 +47,17 @@ function renderList(node: Element, render: NodeRenderer): string {
     }).join('\n');
 }
 
-function renderLink(node: Element, render: NodeRenderer): string {
+function renderLink(node: Element, render: NodeRenderer, includeTarget: boolean): string {
   if ('dataFootnoteBackref' in node.properties) return '';
   const label = node.children.map(render).join('');
   if ('dataFootnoteRef' in node.properties) return `[${label}]`;
+  if (!includeTarget) return label;
   const href = node.properties.href;
   if (typeof href !== 'string' || href.startsWith('#') || href === label) return label;
   return label ? `${label} (${href})` : href;
 }
 
-function renderElement(node: Element, render: NodeRenderer, renderLinkLabel: NodeRenderer): string {
+function renderElement(node: Element, render: NodeRenderer, renderLinkLabel: NodeRenderer, includeLinkTargets: boolean): string {
   // Screen-reader labels are navigation controls, not authored document words.
   const classes = node.properties.className;
   if (Array.isArray(classes) && classes.includes('sr-only')) return '';
@@ -66,7 +67,7 @@ function renderElement(node: Element, render: NodeRenderer, renderLinkLabel: Nod
   if (node.tagName === 'hr') return '---';
   if (node.tagName === 'img') return String(node.properties.alt ?? '');
   if (node.tagName === 'input') return node.properties.checked ? '[x]' : '[ ]';
-  if (node.tagName === 'a') return renderLink(node, renderLinkLabel);
+  if (node.tagName === 'a') return renderLink(node, renderLinkLabel, includeLinkTargets);
   if (node.tagName === 'ol' || node.tagName === 'ul') return renderList(node, render);
   if (node.tagName === 'tr') {
     return node.children.filter(isElement)
@@ -81,10 +82,10 @@ function renderElement(node: Element, render: NodeRenderer, renderLinkLabel: Nod
     : node.children.map(render).join('');
 }
 
-function createRenderer(transformText: (text: string) => string, renderLinkLabel?: NodeRenderer): NodeRenderer {
+function createRenderer(transformText: (text: string) => string, renderLinkLabel?: NodeRenderer, includeLinkTargets = true): NodeRenderer {
   const render: NodeRenderer = node => {
     if (node.type === 'text') return transformText(node.value);
-    return isElement(node) ? renderElement(node, render, renderLinkLabel ?? render) : '';
+    return isElement(node) ? renderElement(node, render, renderLinkLabel ?? render, includeLinkTargets) : '';
   };
   return render;
 }
@@ -107,4 +108,11 @@ export function markdownToPlainTextBlocks(
       || node.position.start.line > previous.position.end.line + 1;
     return { text: render(node), blankBefore, ...(level ? { headingLevel: Number(level[1]) } : {}) };
   }).filter(block => block.text.length > 0);
+}
+
+/** Accessible heading label from the same safe reader, with link labels rather than URLs. */
+export function markdownHeadingText(headingMarkdown: string): string {
+  const heading = readMarkdownHtml(headingMarkdown).children.find(node =>
+    isElement(node) && /^h[1-6]$/.test(node.tagName));
+  return heading ? createRenderer(text => text, undefined, false)(heading).trim() : '';
 }

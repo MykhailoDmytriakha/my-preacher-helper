@@ -1,4 +1,5 @@
 import { markdownCodeLines } from '@/utils/markdownCode';
+import { markdownHeadingText } from '@/utils/markdownPlainText';
 
 /**
  * A STUDY NOTE, BROKEN INTO THE SECTIONS ITS AUTHOR WROTE.
@@ -18,7 +19,7 @@ import { countWords } from './noteCutCorridor';
 export interface NoteSection {
   /** Position in the note, from 0, in reading order. */
   index: number;
-  /** The heading as written, without # marks. Empty for the text before the first one. */
+  /** The reader-visible heading label, without Markdown formatting. Empty for the text before the first one. */
   heading: string;
   /** The section's raw markdown, heading line included. */
   text: string;
@@ -50,7 +51,7 @@ export function splitNoteIntoSections(content: string): NoteSection[] {
     const match = codeLines.has(index) ? null : HEADING.exec(line);
     if (match) {
       flush();
-      heading = match[1].replace(/[*_`]/g, '').trim();
+      heading = markdownHeadingText(line);
       lines = [raw];
       continue;
     }

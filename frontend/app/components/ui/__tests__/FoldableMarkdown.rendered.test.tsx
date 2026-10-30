@@ -89,3 +89,12 @@ describe('FoldableMarkdown — rendered output', () => {
         expect(screen.queryByRole('button')).not.toBeInTheDocument();
     });
 });
+
+
+describe('literal heading accessibility', () => {
+    it('uses the visible literal heading text in the section control', () => {
+        render(<FoldableMarkdown content={'## `**stars** <u>tag</u>`\nBody.'} />);
+        expect(screen.getByRole('heading', { name: '**stars** <u>tag</u>' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Toggle **stars** <u>tag</u>' })).toBeInTheDocument();
+    });
+});

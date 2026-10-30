@@ -9,7 +9,7 @@ import { usageCapResponse } from '@/api/errors/usageCapResponse';
 import { StoreUnavailableError, storeUnavailableResponse, withStore } from '@/services/storeAvailability.server';
 import { isUsageCapReachedError } from '@/services/usageLimits';
 import { requestLanguage } from '@/utils/appLocale';
-import { markdownCodeLines } from '@/utils/markdownCode';
+import { uniqueHeadingLookup } from '@/utils/headingLookup';
 import { expectedScratchCountCorridor } from '@/utils/noteCutCorridor';
 import { planNoteCutSlices, sectionsText, sliceSections, splitNoteIntoSections } from '@/utils/noteSections';
 import { formatScriptureReference } from '@/utils/scriptureReference';
@@ -84,26 +84,17 @@ function atomText(text: string, scripture: string): string {
   return text.includes(scripture) ? text : `${text} (${scripture})`;
 }
 
-const normalizeHeading = (value: string) =>
-  value
-    .replace(/[*_`]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .toLowerCase();
+const normalizeHeading = (value: string) => value.replace(/\s+/g, ' ').trim().toLowerCase();
 
-/** Headings as the note actually writes them, so a model-invented one can be told apart. */
+/** Current reader labels and their authored spellings; invented or ambiguous keys do not resolve. */
 export function collectNoteHeadings(content: string): Map<string, string> {
-  const headings = new Map<string, string>();
-  const codeLines = markdownCodeLines(content);
-  for (const [index, raw] of content.split('\n').entries()) {
-    if (codeLines.has(index)) continue;
-    const line = raw.trim();
-    const match = /^#{1,6}\s+(.+?)\s*#*\s*$/.exec(line);
-    if (!match) continue;
-    const text = match[1].replace(/[*_`]/g, '').trim();
-    headings.set(normalizeHeading(text), text);
-  }
-  return headings;
+  const sections = splitNoteIntoSections(content).filter(section => section.heading);
+  const byId = new Map(sections.map(section => [String(section.index), section.heading]));
+  const lookup = uniqueHeadingLookup(sections.map(section => ({
+    id: String(section.index),
+    labels: [section.heading, section.text.split('\n')[0].trim().replace(/^#{1,6}\s+/, '')],
+  })), normalizeHeading);
+  return new Map([...lookup].map(([key, id]) => [key, byId.get(id)!]));
 }
 
 /** A passage the model names counts only if the note itself writes it. */
