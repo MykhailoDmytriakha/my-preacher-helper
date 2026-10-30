@@ -151,8 +151,13 @@ function notFoundTitle(scope: SearchScope, locale: AppLocale, t: TFunction): str
   return t('bible.search.notInPlace', { place: scopeLabel(scope, locale, t) });
 }
 
+/** The same word and phrase matches light the search window and its verses beside the reader. */
+export function highlightMatchersOf(query: SearchQuery, matchers: readonly WordMatcher[]): WordMatcher[] {
+  return [...matchers, ...query.phrases.flatMap(phraseWordMatchers)];
+}
+
 /** The verse cut into pieces, the words the search found marked. */
-function litPieces(text: string, matchers: readonly WordMatcher[]): Array<{ text: string; lit: boolean }> {
+export function litPieces(text: string, matchers: readonly WordMatcher[]): Array<{ text: string; lit: boolean }> {
   return piecesOfText(text).map((piece) => ({
     text: piece.text,
     lit: piece.word !== null && matchers.some((matcher) => matcher.test(piece.word as string)),
@@ -471,7 +476,7 @@ function searchModel(input: ModelInput, reading: Extract<LineReading, { kind: 's
     else rows.push(fix(t('bible.search.unavailableTitle'), t('bible.search.unavailableText')));
     return { ...empty, rows };
   }
-  const highlightMatchers = [...answer.matchers, ...query.phrases.flatMap(phraseWordMatchers)];
+  const highlightMatchers = highlightMatchersOf(query, answer.matchers);
   answer.hits.slice(0, limit).forEach((hit, position) => {
     // After the word's own verses, its kin: named, so the person sees why «светильник» is there.
     if (answer.kin && position === answer.kin.own) {

@@ -42,6 +42,8 @@ type BibleMinimapProps = {
   drawn?: unknown;
   /** The person's material: a mark of each kind's colour on the map's right edge, at its verse (`useBookUsage`). */
   marks?: readonly MinimapMark<ScriptureUsageKind>[];
+  /** The verses the search shown in the Bible found (`search/foundInBible.ts`): a thin amber band across the map at each, all alike. */
+  found?: readonly MinimapFound[];
 };
 
 /** The verse rows in the text: a big book draws some chapters only, and they change as the place moves. */
@@ -108,6 +110,7 @@ function paintMap(
   boxHeight: number,
   frame: MinimapFrame | null,
   marks?: readonly MinimapMark<ScriptureUsageKind>[],
+  found?: readonly MinimapFound[],
 ) {
   const dark = isDark();
   context.fillStyle = dark ? '#475569' : '#cbd5e1';
@@ -136,7 +139,24 @@ function paintMap(
     context.fillRect(0, top, MAP_WIDTH, frame.height);
     context.strokeRect(0.5, top + 0.5, MAP_WIDTH - 1, frame.height - 1);
   }
+  if (found?.length) paintFound(context, layout, found, offset, boxHeight, dark);
   if (marks?.length) paintMarks(context, layout, marks, offset, boxHeight, dark);
+}
+
+/** A found verse on the map: where it stands in the book, at a glance. */
+export type MinimapFound = { chapter: number; verse: number };
+
+/** The found verses: a thin band across the map at each verse's first line, under the person's marks — all of one thickness and colour; the one stood at is shown in the text and the column, not here (the owner, 30.10). */
+function paintFound(context: CanvasRenderingContext2D, layout: MinimapLayout, found: readonly MinimapFound[], offset: number, boxHeight: number, dark: boolean) {
+  for (const one of found) {
+    const top = layout.verseTop[one.chapter - 1]?.[one.verse - 1];
+    if (top === undefined) continue;
+    const height = 3;
+    const y = top - offset - (height - 2) / 2;
+    if (y + height < 0 || y > boxHeight) continue;
+    context.fillStyle = dark ? 'rgba(251, 191, 36, 0.7)' : 'rgba(245, 158, 11, 0.75)';
+    context.fillRect(MINIMAP_INSET, y, MAP_WIDTH - MINIMAP_INSET * 2, height);
+  }
 }
 
 /** The person's marks over everything. */
@@ -174,7 +194,7 @@ function edgePassed(frame: MinimapFrame, offset: number, boxHeight: number): Edg
  * the map follows it; one leafed away comes back as soon as the text moves, and a frame gone past the
  * edge leaves a mark at that edge that brings the map back.
  */
-function BibleMinimapStrip({ layout, textRef, chapterLabel, placeLabel, readingLabel, title, onJump, surface, readingInset, drawn, marks }: BibleMinimapProps) {
+function BibleMinimapStrip({ layout, textRef, chapterLabel, placeLabel, readingLabel, title, onJump, surface, readingInset, drawn, marks, found }: BibleMinimapProps) {
   const mapRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const rowsRef = useRef<HTMLElement[]>([]);
@@ -278,7 +298,7 @@ function BibleMinimapStrip({ layout, textRef, chapterLabel, placeLabel, readingL
 
     const offset = map.scrollTop;
     const now = reading();
-    paintMap(context, layout, chapterLabel, offset, boxHeight, now ? now.frame : null, marks);
+    paintMap(context, layout, chapterLabel, offset, boxHeight, now ? now.frame : null, marks, found);
 
     // The frame gone past an edge of a map leafed away: a mark at that edge brings the map back.
     const direction = freeRef.current && glideRef.current === null && now ? edgePassed(now.frame, offset, boxHeight) : null;
@@ -359,7 +379,7 @@ function BibleMinimapStrip({ layout, textRef, chapterLabel, placeLabel, readingL
   // The person's material changed (a note written on another device, the setting switched): paint the marks anew.
   useEffect(() => {
     handlersRef.current?.draw();
-  }, [marks]);
+  }, [marks, found]);
 
   // A new book, surface or reading top: its rows, a map that follows the text, the box measured again.
   useEffect(() => {

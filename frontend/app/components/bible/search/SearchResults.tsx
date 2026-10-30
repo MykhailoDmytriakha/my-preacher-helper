@@ -38,6 +38,8 @@ type Props = {
   copiedKey: string | null;
   onHowTo: () => void;
   onToggleBooks: () => void;
+  /** «Все 9 — в Библии»: the found verses beside the reader's text (`foundInBible.ts`); none — the window cannot show them. */
+  allInBible?: { label: string; onPress: () => void } | null;
   /** What pressing a place does, where it is not opening it (a comment moved: «Сюда»); by default «Открыть». */
   actionLabel?: string;
 };
@@ -260,7 +262,7 @@ function OtherRow({ row, touch, showHowTo, onRun, onHowTo }: { row: Exclude<Mode
 }
 
 /** Where it looked, how many, the forms and the wider places; then, when many, the books to narrow to. */
-function SearchHeadView({ head, chipHeight, onRun, onToggleBooks }: { head: NonNullable<SearchModel['head']>; chipHeight: string; onRun: (intent: Intent) => void; onToggleBooks: () => void }) {
+function SearchHeadView({ head, chipHeight, onRun, onToggleBooks, allInBible }: { head: NonNullable<SearchModel['head']>; chipHeight: string; onRun: (intent: Intent) => void; onToggleBooks: () => void; allInBible?: Props['allInBible'] }) {
   const { t } = useTranslation();
   return (
     <>
@@ -276,6 +278,11 @@ function SearchHeadView({ head, chipHeight, onRun, onToggleBooks }: { head: NonN
           {head.asWordsLink ? (
             <button type="button" onClick={() => onRun(head.asWordsLink!.run)} className={`ml-auto rounded-lg px-2 text-[13px] font-medium text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800 ${chipHeight}`}>
               {head.asWordsLink.label}
+            </button>
+          ) : null}
+          {allInBible ? (
+            <button type="button" onClick={allInBible.onPress} className={`${head.asWordsLink ? '' : 'ml-auto'} inline-flex items-center rounded-[10px] bg-amber-500 px-3 text-[13px] font-semibold text-white transition hover:bg-amber-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${chipHeight}`}>
+              {allInBible.label}
             </button>
           ) : null}
         </div>
@@ -320,7 +327,7 @@ function SearchHeadView({ head, chipHeight, onRun, onToggleBooks }: { head: NonN
 }
 
 /** Memoized: the line's letters do not draw the results again; a new model, choice or copy does. */
-export const SearchResults = memo(function SearchResults({ model, selectedKey, wide, touch, showHowTo, keysHint, listId, textLang, optionId, onRun, onChoose, onCopy, copiedKey, onHowTo, onToggleBooks, actionLabel }: Props) {
+export const SearchResults = memo(function SearchResults({ model, selectedKey, wide, touch, showHowTo, keysHint, listId, textLang, optionId, onRun, onChoose, onCopy, copiedKey, onHowTo, onToggleBooks, actionLabel, allInBible }: Props) {
   const { t } = useTranslation();
   const { head } = model;
   const chipHeight = touch ? 'h-11' : 'h-7';
@@ -347,7 +354,7 @@ export const SearchResults = memo(function SearchResults({ model, selectedKey, w
           {t('bible.search.layoutFixed')} <span className="font-semibold text-gray-900 dark:text-white">«{model.layout}»</span>
         </p>
       ) : null}
-      {head ? <SearchHeadView head={head} chipHeight={chipHeight} onRun={onRun} onToggleBooks={onToggleBooks} /> : null}
+      {head ? <SearchHeadView head={head} chipHeight={chipHeight} onRun={onRun} onToggleBooks={onToggleBooks} allInBible={allInBible} /> : null}
       {before.map(other)}
       {choices.length ? (
         <ul id={listId} role="listbox" aria-label={t('bible.search.results')}>

@@ -9,9 +9,8 @@ import { useClipboard } from '@/hooks/useClipboard';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useStableHandler } from '@/hooks/useStableHandler';
 import { BIBLES, type BibleId } from '@/utils/bibles';
-import { chooseReading } from '@/utils/bibleSearch/lineChoice';
-import { readSearch, type LineReading } from '@/utils/bibleSearch/query';
-import { answerSearch, isBibleWord } from '@/utils/bibleSearch/results';
+import { answeringOf, chooseReading } from '@/utils/bibleSearch/lineChoice';
+import { readSearch } from '@/utils/bibleSearch/query';
 import { useSearchIndex } from '@/utils/bibleSearch/searchIndexStore';
 import { lineKey } from '@/utils/bibleSearch/words';
 import { isBrowserOffline } from '@/utils/connectivity';
@@ -22,6 +21,7 @@ import { booksOf, bookSequence } from '../bookOrder';
 import { clearSearchHistory, rememberSearch, restoreSearchHistory, useSearchHistory, type SearchHistoryEntry } from '../searchHistoryStore';
 import { copyNamesOf } from '../verseCopy/useVerseCopy';
 
+import { foundInOrder } from './foundInBible';
 import { lastSearchOf, openedFrom, rememberOpened } from './lastSearch';
 import { SearchHelp } from './SearchHelp';
 import { SearchHistory, type HistoryRow } from './SearchHistory';
@@ -57,7 +57,15 @@ export type BibleSearchProps = {
   autoFocus?: boolean;
   /** The reader's search window: the searches kept are under the empty line, or «Как искать» when there are none. */
   openWithRecent?: boolean;
-  onOpen: (target: OpenTarget) => void;
+  /** `fromSearch` — the search the verse was found by; absent for a place typed or said. */
+  onOpen: (target: OpenTarget, fromSearch?: { line: string; asWords: boolean }) => void;
+  /**
+   * A verse the search found, opened: the reader shows the search's verses beside its text (`foundInBible.ts`), and the
+   * window offers «Все N — в Библии». Absent — the verse opens alone.
+   */
+  onOpenFound?: (search: { line: string; asWords: boolean }, target: OpenTarget) => void;
+  /** «К поиску» from the found verses: the window opens on that search, on the verse last stood at, as a search of the history does. */
+  startSearch?: { line: string; asWords: boolean } | null;
   /** What stands under an empty line: the books, the trail, the chapters. */
   children?: ReactNode;
   /** The word on a found place's button where pressing it does not open it (a comment moved: «Сюда»). */
@@ -84,7 +92,7 @@ const blurAfterPress = (input: HTMLInputElement | null, setFocused: (focused: bo
 const isCopyVerseKey = (event: React.KeyboardEvent<HTMLInputElement>) =>
   (event.metaKey || event.ctrlKey) && event.code === 'KeyC' && event.currentTarget.selectionStart === event.currentTarget.selectionEnd;
 
-export function BibleSearch({ bible, locale, wide, surface, hereBook = null, autoFocus = false, openWithRecent = false, onOpen, children, actionLabel }: BibleSearchProps) {
+export function BibleSearch({ bible, locale, wide, surface, hereBook = null, autoFocus = false, openWithRecent = false, onOpen, onOpenFound, startSearch = null, children, actionLabel }: BibleSearchProps) {
   const { t, i18n } = useTranslation();
   const touch = useMediaQuery('(pointer: coarse)', false);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -118,10 +126,7 @@ export function BibleSearch({ bible, locale, wide, surface, hereBook = null, aut
   const offline = isBrowserOffline();
   // How many verses a line shows: forty, or as many as «Показать ещё» opened on this very line.
   const limitFor = useCallback((text: string) => (more && more.line === lineKey(text) && more.asWords === asWords ? more.limit : SHOWN_VERSES), [more, asWords]);
-  const answering = useMemo(() => ({
-    answerFor: (each: LineReading) => (each.kind === 'search' && index.indexed > 0 ? answerSearch(index.index, each.query, books) : null),
-    isWord: (word: string) => isBibleWord(index.index, word),
-  }), [index, books]);
+  const answering = useMemo(() => answeringOf(index.index, index.indexed, books), [index, books]);
   const understand = useCallback((text: string) => {
     const { reading, answer, layoutFixed, booksBegun } = chooseReading(text, { bible, books, hereBook, asWords }, answering);
     const searched = layoutFixed ?? text;
@@ -131,11 +136,11 @@ export function BibleSearch({ bible, locale, wide, surface, hereBook = null, aut
       opened: openedFrom(bible, searched, asWords), offline, layoutFixed, limit: limitFor(text),
       booksBegun,
     }, (bookId, chapter, verse) => index.index.verseText(bookId, chapter, verse));
-    return { model, searched, keep: searchToKeep(reading, answer, searched, asWords, model.rows.some((row) => row.type === 'verse')) };
+    return { model, searched, hits: reading.kind === 'search' ? answer?.hits ?? [] : [], keep: searchToKeep(reading, answer, searched, asWords, model.rows.some((row) => row.type === 'verse')) };
     // `index` changes whenever a book joins it: a new book answers again.
   }, [bible, books, hereBook, asWords, index, answering, locale, t, wide, allBooks, fixChapters, offline, limitFor]);
 
-  const { model, searched: searchedLine, keep } = useMemo(() => understand(deferred), [understand, deferred]);
+  const { model, searched: searchedLine, hits, keep } = useMemo(() => understand(deferred), [understand, deferred]);
 
   // The history keeps a search worked with (`searchKeeping.ts`).
   // An IME's word being composed is not yet the line: no clock, no keys (Codex review, 2026-10-27).
@@ -191,18 +196,25 @@ export function BibleSearch({ bible, locale, wide, surface, hereBook = null, aut
    * A search of the history, again: back on the verse last opened from it in this visit, when it was one —
    * with as many verses shown as then, so a verse found after «Показать ещё» is there to stand on.
    */
-  const writeAgain = (entry: SearchHistoryEntry) => {
-    const wordsOn = Boolean(entry.asWords);
-    // Run again, it is used again: to the top at once.
-    rememberSearch(entry.line, bible, wordsOn);
-    write(entry.line, wordsOn);
-    const last = lastSearchOf(bible, entry.line, wordsOn);
+  const writeKept = (kept: string, wordsOn: boolean) => {
+    write(kept, wordsOn);
+    const last = lastSearchOf(bible, kept, wordsOn);
     if (last) {
-      if (last.limit > SHOWN_VERSES) setMore({ line: lineKey(entry.line), asWords: wordsOn, limit: last.limit });
+      if (last.limit > SHOWN_VERSES) setMore({ line: lineKey(kept), asWords: wordsOn, limit: last.limit });
       setSelectedKey(last.lastKey);
       awaitedInSight.current = last.lastKey;
     }
   };
+  const writeAgain = (entry: SearchHistoryEntry) => {
+    const wordsOn = Boolean(entry.asWords);
+    // Run again, it is used again: to the top at once.
+    rememberSearch(entry.line, bible, wordsOn);
+    writeKept(entry.line, wordsOn);
+  };
+  // Asked for by «К поиску», not unasked: the window opens on that search (the empty line stays the rule otherwise).
+  useEffect(() => {
+    if (startSearch) writeKept(startSearch.line, startSearch.asWords);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- once, as the window opens
 
   // A verse copied from the results, as the reader copies it: «Ис 47:4: "…"», the Bible named when not the interface's.
   // One way for the button and for ⌘C / Ctrl+C, so the tick stands on the verse copied either way.
@@ -224,6 +236,9 @@ export function BibleSearch({ bible, locale, wide, surface, hereBook = null, aut
         if (intent.fromSearch) {
           keepLine(from, asWords);
           rememberOpened(bible, from, asWords, `${intent.target.bookId} ${intent.target.chapter}:${intent.target.verse}`, limitFor(typed));
+          if (onOpenFound) { onOpenFound({ line: from, asWords }, intent.target); break; }
+          onOpen(intent.target, { line: from, asWords });
+          break;
         }
         onOpen(intent.target);
         break;
@@ -405,6 +420,14 @@ export function BibleSearch({ bible, locale, wide, surface, hereBook = null, aut
   const onResultCopy = useStableHandler(copyVerse);
   const onResultHowTo = useStableHandler(() => setPanel('help'));
   const onResultToggleBooks = useStableHandler(() => setAllBooks((now) => !now));
+  // «Все 9 — в Библии»: the found verses beside the text, the first of them in the Bible's order the one opened.
+  const openAllFound = useStableHandler(() => {
+    const first = foundInOrder(hits, order)[0];
+    if (!first || !onOpenFound) return;
+    run({ kind: 'open', target: { bookId: first.bookId, chapter: first.chapter, verse: first.verse }, fromSearch: true });
+  });
+  const allInBible = useMemo(() => (onOpenFound && hits.length && model.head ? { label: t('bible.search.allInBible', { count: hits.length }), onPress: openAllFound } : null),
+    [onOpenFound, hits.length, model.head, t, openAllFound]);
   const showKeys = !touch && pickable.length > 1;
   const keysCopy = activeRow?.type === 'verse' ? withModifier('C') : null;
   const keysHint = useMemo(() => (showKeys ? { esc: t('bible.search.keysClear'), copy: keysCopy } : null), [showKeys, keysCopy, t]);
@@ -550,6 +573,7 @@ export function BibleSearch({ bible, locale, wide, surface, hereBook = null, aut
             onHowTo={onResultHowTo}
             onToggleBooks={onResultToggleBooks}
             actionLabel={actionLabel}
+            allInBible={allInBible}
           />
         </div>
       ) : null}
