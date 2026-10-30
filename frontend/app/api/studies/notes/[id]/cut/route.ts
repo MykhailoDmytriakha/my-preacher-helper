@@ -10,6 +10,7 @@ import { StoreUnavailableError, storeUnavailableResponse, withStore } from '@/se
 import { isUsageCapReachedError } from '@/services/usageLimits';
 import { requestLanguage } from '@/utils/appLocale';
 import { uniqueHeadingLookup } from '@/utils/headingLookup';
+import { markdownHeadingRanges } from '@/utils/markdownHeadings';
 import { expectedScratchCountCorridor } from '@/utils/noteCutCorridor';
 import { planNoteCutSlices, sectionsText, sliceSections, splitNoteIntoSections } from '@/utils/noteSections';
 import { formatScriptureReference } from '@/utils/scriptureReference';
@@ -88,11 +89,13 @@ const normalizeHeading = (value: string) => value.replace(/\s+/g, ' ').trim().to
 
 /** Current reader labels and their authored spellings; invented or ambiguous keys do not resolve. */
 export function collectNoteHeadings(content: string): Map<string, string> {
-  const sections = splitNoteIntoSections(content).filter(section => section.heading);
-  const byId = new Map(sections.map(section => [String(section.index), section.heading]));
-  const lookup = uniqueHeadingLookup(sections.map(section => ({
-    id: String(section.index),
-    labels: [section.heading, section.text.split('\n')[0].trim().replace(/^#{1,6}\s+/, '')],
+  const headings = markdownHeadingRanges(content).filter(heading => heading.text);
+  const byId = new Map(headings.map(heading => [String(heading.start), heading.text]));
+  const lookup = uniqueHeadingLookup(headings.map(heading => ({
+    id: String(heading.start),
+    labels: [heading.text, heading.authored,
+      // Exact former ATX authored spelling is lookup-only; this never detects a boundary.
+      ...(heading.source.trim().match(/^#{1,6}\s+(.+)$/)?.slice(1) ?? [])],
   })), normalizeHeading);
   return new Map([...lookup].map(([key, id]) => [key, byId.get(id)!]));
 }
@@ -141,8 +144,8 @@ async function loadOwnedNote(
     };
   }
 
-  const content = (note.content ?? '').trim();
-  if (!content) {
+  const content = note.content ?? '';
+  if (!content.trim()) {
     return { refusal: NextResponse.json({ success: false, error: 'The note has no text to cut' }, { status: 400 }) };
   }
   if (content.length > MAX_CUT_CHARS) {

@@ -22,6 +22,7 @@ jest.mock('react-i18next', () => ({
             if (key === 'textOutline.toggleSection') return `Toggle ${options?.title ?? ''}`;
             if (key === 'textOutline.collapseAll') return 'Collapse all';
             if (key === 'textOutline.expandAll') return 'Expand all';
+            if (key === 'textOutline.untitledSection') return 'Untitled section';
             return key;
         },
     }),
@@ -96,5 +97,19 @@ describe('literal heading accessibility', () => {
         render(<FoldableMarkdown content={'## `**stars** <u>tag</u>`\nBody.'} />);
         expect(screen.getByRole('heading', { name: '**stars** <u>tag</u>' })).toBeInTheDocument();
         expect(screen.getByRole('button', { name: 'Toggle **stars** <u>tag</u>' })).toBeInTheDocument();
+    });
+});
+
+
+describe('empty heading section accessibility', () => {
+    it('names an empty section control without changing its source heading or body', () => {
+        const { container } = render(<FoldableMarkdown content={'# Outer\nLead.\n## \nRetained body.'} />);
+        const button = screen.getByRole('button', { name: 'Toggle Untitled section' });
+        expect(container.querySelector('[data-section-id="0.0"] h4')).toBeEmptyDOMElement();
+        expect(screen.getByText('Retained body.')).toBeInTheDocument();
+        fireEvent.click(button);
+        expect(screen.queryByText('Retained body.')).not.toBeInTheDocument();
+        fireEvent.click(button);
+        expect(screen.getByText('Retained body.')).toBeInTheDocument();
     });
 });

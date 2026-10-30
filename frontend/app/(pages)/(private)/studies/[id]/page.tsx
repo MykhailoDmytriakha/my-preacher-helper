@@ -48,7 +48,7 @@ import { newClientId } from '@/utils/clientId';
 import { serializeContent } from '@/utils/contentFingerprint';
 import { formatDateForLocale } from '@/utils/dateFormatter';
 import { studyNoteLanguage } from '@/utils/documentLanguage';
-import { findSectionById } from '@/utils/markdownSections';
+import { sectionDisplayLabel, findSectionById } from '@/utils/markdownSections';
 import { findNoteDraftCopies } from '@/utils/newNoteDrafts';
 import { awaitAcceptance } from '@/utils/recoverableWrite';
 import { formatScriptureReference, studyNoteSearchText } from '@/utils/scriptureReference';
@@ -1002,7 +1002,8 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
     // Once reading has started the sticky line says which section you are in — the note's
     // title is the one thing the reader already knows.
     const activeSection = findSectionById(outlineControl.outline.sections, activeSectionId);
-    const sectionLabel = headerCollapsed ? activeSection?.headingText ?? null : null;
+    const sectionLabel = headerCollapsed && activeSection
+        ? sectionDisplayLabel(activeSection, t('textOutline.untitledSection')) : null;
     const { sermons: sermonsOnNote } = useSermonsBuiltOnNote(isNew ? undefined : noteId);
 
     // Reading mode has nothing to save, so the save status is hidden there — except for

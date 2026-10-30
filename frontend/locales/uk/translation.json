@@ -2323,6 +2323,7 @@
     "conclusion": "Висновок"
   },
   "textOutline": {
+    "untitledSection": "Розділ без назви",
     "collapseAll": "Згорнути все",
     "expandAll": "Розгорнути все",
     "toggleSection": "Згорнути або розгорнути розділ: {{title}}"

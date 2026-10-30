@@ -10,13 +10,14 @@ when: show note markdown · render markdown with headings · heading hierarchy �
 - `FoldableMarkdown` draws a chevron per heading and a guide line per level, and renders text with `MarkdownDisplay`. A note with no headings falls back to plain `MarkdownDisplay`, unchanged.
 - Search: pass `searchQuery`; a section holding a hit is force-opened with its ancestors (`findSectionIdsMatching`), so a folded section never hides a match.
 - The note page draws the tree twice (side panel and text). Both share one fold state: `useMarkdownOutline` (`frontend/app/hooks/useMarkdownOutline.ts`) passed as `control`. Jump with `jumpToSection` — it opens the ancestors first, then scrolls.
-- Plain-text uses (aria labels, outline rows) take `headingText` from `markdownPlainText.markdownHeadingText`: the safe reader removes prose formatting but preserves literal code. Links contribute their label without an appended URL. Rendering takes `headingMarkdown`, the raw line.
+- Plain-text uses (aria labels, outline rows) take `headingText` from `markdownPlainText.markdownHeadingText`: the safe reader removes prose formatting but preserves literal code. Links contribute their label without an appended URL. Rendering takes `headingMarkdown`, the complete raw heading block (including Setext underlines or safe HTML).
+- `markdownHeadings.markdownHeadingRanges` projects root heading nodes from `markdownHtml.readMarkdownHtml`, the existing safe whole-document reader. Outline, cutter, server grounding and Word share these original source ranges. ATX indentation, Setext, safe HTML and LF/CRLF/bare CR use one grammar; headings nested inside lists or quotes stay inside their containers.
 - A `#` inside fenced code is code, not a heading. A fence closes only on the same marker (backticks or tildes) with a length at least the opener's. Tracking the marker character alone promotes headings out of a long fence that quotes a shorter one.
 
 ## Traps
 
 - Read code boundaries with `markdownCodeLines(content)` / `withoutMarkdownCode(content, includeInline)` from `frontend/app/utils/markdownCode.ts`. They use the renderer's existing `unified` + `remark-parse` + `remark-gfm` parser, so long fences, quotes, list termination and indented code agree with the rendered note. Never add a separate container/fence regex.
-- `withoutMarkdownCode` masks the original source ranges and keeps line endings/offsets. Previews keep inline-code text; measurements opt into excluding it. Heading scanners use the line set and leave the code bytes untouched.
+- `withoutMarkdownCode` masks the original source ranges and keeps line endings/offsets. Previews keep inline-code text; measurements opt into excluding it. Heading consumers use `markdownHeadingRanges`, rather than a code line set plus a second heading regex.
 - Keep `codeFenceFor` in the lightweight writer module `markdownFence.ts`; a serializer does not need to load the reader/parser.
 - Parser packages are direct dependencies pinned to the installed renderer-compatible versions. Tests must use the real GFM plugin: an empty `remark-gfm` mock cannot be registered with `unified`.
 
@@ -39,9 +40,12 @@ See also: `.howto/extend-tiptap-editor.md`
 
 ## Preserve historical source-heading links
 
-- `sectionHeadingLookup` in `markdownSections` is the shared placement/navigation owner. It reads current labels plus the exact former outline/cutter spellings derived from the original heading line. These historical aliases are lookup-only; never render or write them as new canonical labels.
+- `sectionHeadingLookup` in `markdownSections` is the shared placement/navigation owner. It reads current labels plus the exact former outline/cutter spellings derived from the original ATX heading block. These historical aliases are lookup-only; never render or write them as new canonical labels.
 - `headingLookup.uniqueHeadingLookup` admits several aliases for one parse-local section id, but removes a key shared by distinct ids, including a current label colliding with another section's historical alias. Never prefer the first match or a current label over ambiguous history.
 - `SourceNoteSection` groups an atom by the resolved section id. Missing or ambiguous sources stay once in the existing note-opening stack, with their text and stored provenance intact. Badges and jump use the same lookup.
 - The cutter uses `splitNoteIntoSections` and indexes current labels plus original authored fragments with its existing case/whitespace normalization. New source headings contain only the current reader label. Unknown or ambiguous model headings leave the location empty; claims remain available.
 - Section ids are stable within a parse only. This lookup is not a stored-identity migration and cannot reconstruct a location that historical data never distinguished.
-- Reference definitions across section boundaries and ATX-heading detection are separate structural concerns; a correct label projection alone does not resolve them.
+- Root heading boundaries are owned by `markdownHeadingRanges`; historical regexes in lookup code derive old aliases only and never detect a boundary. Reference definitions across folded section boundaries remain a separate concern.
+- Preserve source byte offsets and meaningful indentation/line endings. `preserveBodyWhitespace` keeps body bytes while one line delimiter is owned by the next heading; a heading source block excludes its following newline. Never normalize or decode source text to infer offsets.
+- An empty real heading still creates a section. `sectionDisplayLabel` supplies a translated navigation/active-title/fold-control caption only; the authored reading heading and stored content remain empty.
+- At a route boundary, test emptiness with `content.trim()` but pass the original `content` to the parser/model. Global trim before parsing promotes leading indented code into headings.

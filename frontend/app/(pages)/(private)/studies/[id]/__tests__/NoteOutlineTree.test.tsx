@@ -10,7 +10,8 @@ import type { MarkdownOutlineControl } from '@/hooks/useMarkdownOutline';
 jest.mock('react-i18next', () => ({
     useTranslation: () => ({
         t: (key: string, options?: { title?: string }) =>
-            key === 'textOutline.toggleSection' ? `Toggle ${options?.title ?? ''}` : key,
+            key === 'textOutline.toggleSection' ? `Toggle ${options?.title ?? ''}`
+                : key === 'textOutline.untitledSection' ? 'Untitled section' : key,
     }),
 }));
 
@@ -61,4 +62,14 @@ describe('NoteOutlineTree', () => {
             expect(screen.getAllByTestId('outline-leaf-marker')).toHaveLength(2);
         });
     });
+});
+
+
+it('keeps an empty heading reachable with a display-only caption', () => {
+    const outline = splitMarkdownSections('# Outer\nLead.\n## \nRetained body.');
+    const control = makeControl({ outline });
+    render(<NoteOutlineTree outline={control} foldable />);
+    expect(screen.getByRole('button', { name: 'Untitled section' })).toHaveAttribute('title', 'Untitled section');
+    expect(outline.sections[0].children[0].headingText).toBe('');
+    expect(outline.sections[0].children[0].body).toBe('Retained body.');
 });

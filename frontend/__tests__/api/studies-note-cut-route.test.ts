@@ -360,3 +360,48 @@ describe('POST — cutting one slice of the note', () => {
     expect(mockCut).not.toHaveBeenCalled();
   });
 });
+
+
+describe('canonical root heading grounding', () => {
+  it('uses complete multiline Setext and HTML headings rather than their first source line', () => {
+    const headings = collectNoteHeadings('First **line**\nSecond `**literal**`\n---\nBody.\n\n<h2>HTML <em>label</em></h2>\nTail.');
+    expect(headings.get('first line second **literal**')).toBe('First line\nSecond **literal**');
+    expect(headings.get('first **line** second `**literal**`')).toBe('First line\nSecond **literal**');
+    expect(headings.get('html label')).toBe('HTML label');
+    expect(headings.get('html <em>label</em>')).toBe('HTML label');
+  });
+
+  it('does not ground a heading inside a list as an independent section', () => {
+    const headings = collectNoteHeadings('# Root\nBody.\n\n- Item\n\n  ## Nested\n  List body.\n\n# Final\nTail.');
+    expect([...new Set(headings.values())]).toEqual(['Root', 'Final']);
+    expect(headings.has('nested')).toBe(false);
+  });
+});
+
+
+describe('original heading boundaries at the owned-note route boundary', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    __resetStoreAvailabilityForTests();
+    mockGetUid.mockResolvedValue('owner-1');
+  });
+
+  it('keeps leading code indentation before exposing the cut outline', async () => {
+    mockGetNote.mockResolvedValue({ ...ownNote, content: '    ## Literal code\n    code body\n\n# Real\nRetained body.' });
+    const response = await GET(request(), params('note-1'));
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body.sections.map((section: { heading: string }) => section.heading)).toEqual(['', 'Real']);
+    expect(mockCut).not.toHaveBeenCalled();
+  });
+
+  it('sends leading code to the cutter with its authored indentation intact', async () => {
+    const content = '    ## Literal code\n    code body\n\n# Real\nRetained body.';
+    mockGetNote.mockResolvedValue({ ...ownNote, content });
+    mockCut.mockResolvedValue(goodCut());
+    const response = await POST(request(), params('note-1'));
+    expect(response.status).toBe(200);
+    expect(mockCut.mock.calls[0][0].content).toBe(content);
+  });
+
+});

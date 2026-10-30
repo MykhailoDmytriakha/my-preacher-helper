@@ -2323,6 +2323,7 @@
     "conclusion": "Заключение"
   },
   "textOutline": {
+    "untitledSection": "Раздел без названия",
     "collapseAll": "Свернуть всё",
     "expandAll": "Развернуть всё",
     "toggleSection": "Свернуть или развернуть раздел: {{title}}"

@@ -4,7 +4,7 @@ import { ChevronRightIcon } from '@heroicons/react/24/outline';
 import React from 'react';
 
 import { useMarkdownOutline, type MarkdownOutlineControl } from '@/hooks/useMarkdownOutline';
-import { type MarkdownSection } from '@/utils/markdownSections';
+import { sectionDisplayLabel, type MarkdownSection } from '@/utils/markdownSections';
 import MarkdownDisplay from '@components/MarkdownDisplay';
 import { useTranslation } from '@locales/useTranslation';
 
@@ -83,6 +83,7 @@ export function FoldableMarkdown({
 
     const renderSection = (section: MarkdownSection): React.ReactElement => {
         const collapsed = isCollapsed(section.id);
+        const label = sectionDisplayLabel(section, t('textOutline.untitledSection'));
         const hasContent = Boolean(section.body) || section.children.length > 0;
 
         return (
@@ -103,7 +104,7 @@ export function FoldableMarkdown({
                             type="button"
                             onClick={() => toggleSection(section.id)}
                             aria-expanded={!collapsed}
-                            aria-label={t('textOutline.toggleSection', { title: section.headingText })}
+                            aria-label={t('textOutline.toggleSection', { title: label })}
                             className={`${foldArrowOffset(section.level)} shrink-0 rounded p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 sm:p-0.5 dark:text-gray-500 dark:hover:bg-gray-700 dark:hover:text-gray-200 ${FOLD_ARROW_TONE}`}
                         >
                             <ChevronRightIcon

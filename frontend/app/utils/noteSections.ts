@@ -1,5 +1,4 @@
-import { markdownCodeLines } from '@/utils/markdownCode';
-import { markdownHeadingText } from '@/utils/markdownPlainText';
+import { markdownHeadingRanges } from '@/utils/markdownHeadings';
 
 /**
  * A STUDY NOTE, BROKEN INTO THE SECTIONS ITS AUTHOR WROTE.
@@ -26,8 +25,6 @@ export interface NoteSection {
   words: number;
 }
 
-const HEADING = /^#{1,6}\s+(.+?)\s*#*\s*$/;
-
 /**
  * Sections in document order. Text before the first heading becomes a section with an
  * empty heading — a note may have no headings at all, and it still has to be cuttable.
@@ -35,29 +32,16 @@ const HEADING = /^#{1,6}\s+(.+?)\s*#*\s*$/;
 export function splitNoteIntoSections(content: string): NoteSection[] {
   if (!content.trim()) return [];
   const sections: NoteSection[] = [];
-  let heading = '';
-  let lines: string[] = [];
-  const codeLines = markdownCodeLines(content);
-
-  const flush = () => {
+  const headings = markdownHeadingRanges(content);
+  const append = (heading: string, source: string): void => {
     // Trim blank lines only: leading indentation can make the first line code.
-    const text = lines.join('\n').replace(/^(?:[ \t]*\r?\n)+|(?:\r?\n[ \t]*)+$/g, '');
-    if (!text.trim()) return;
-    sections.push({ index: sections.length, heading, text, words: countWords(text) });
+    const text = source.replace(/^(?:[ \t]*(?:\r\n|\r|\n))+|(?:(?:\r\n|\r|\n)[ \t]*)+$/g, '');
+    if (text.trim()) sections.push({ index: sections.length, heading, text, words: countWords(text) });
   };
-
-  for (const [index, raw] of content.split('\n').entries()) {
-    const line = raw.trim();
-    const match = codeLines.has(index) ? null : HEADING.exec(line);
-    if (match) {
-      flush();
-      heading = markdownHeadingText(line);
-      lines = [raw];
-      continue;
-    }
-    lines.push(raw);
-  }
-  flush();
+  append('', content.slice(0, headings[0]?.start ?? content.length));
+  headings.forEach((heading, index) => {
+    append(heading.text, content.slice(heading.start, headings[index + 1]?.start ?? content.length));
+  });
   return sections;
 }
 

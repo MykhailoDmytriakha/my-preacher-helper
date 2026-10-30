@@ -117,11 +117,12 @@ describe('splitMarkdownSections', () => {
     ]);
   });
 
-  it('ignores a lone hash with no text, which is not a heading', () => {
+  it('keeps a valid empty heading and leaves a hashtag in its body', () => {
     const outline = splitMarkdownSections('#\n#hashtag\ntext');
 
-    expect(outline.sections).toHaveLength(0);
-    expect(outline.intro).toContain('#hashtag');
+    expect(outline.sections).toHaveLength(1);
+    expect(outline.sections[0].headingText).toBe('');
+    expect(outline.sections[0].body).toBe('#hashtag\ntext');
   });
 
   it('gives every section an id unique within the document', () => {

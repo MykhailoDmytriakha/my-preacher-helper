@@ -111,8 +111,9 @@ export function markdownToPlainTextBlocks(
 }
 
 /** Accessible heading label from the same safe reader, with link labels rather than URLs. */
-export function markdownHeadingText(headingMarkdown: string): string {
-  const heading = readMarkdownHtml(headingMarkdown).children.find(node =>
-    isElement(node) && /^h[1-6]$/.test(node.tagName));
+export function markdownHeadingText(headingMarkdown: string | Element): string {
+  const heading = typeof headingMarkdown === 'string'
+    ? readMarkdownHtml(headingMarkdown).children.find(node => isElement(node) && /^h[1-6]$/.test(node.tagName))
+    : headingMarkdown;
   return heading ? createRenderer(text => text, undefined, false)(heading).trim() : '';
 }

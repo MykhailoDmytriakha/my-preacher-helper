@@ -274,7 +274,7 @@ export const parseMarkdownToParagraphs = (content: string, sectionColor?: string
   const outline = splitMarkdownSections(preparePlanMarkdown(content), { preserveBodyWhitespace: true });
   if (!outline.sections.length) return parseMarkdownBody(outline.intro);
   const renderSection = (section: MarkdownSection): (Paragraph | Table)[] => [
-    createHeadingParagraph(section.headingMarkdown.replace(/^#{1,6}\s+/, ''), section.level, sectionColor),
+    createHeadingParagraph(section.headingMarkdown, section.level, sectionColor),
     ...(section.body ? parseMarkdownBody(section.body, planBodyIndent(section.level) * 360) : []),
     ...section.children.flatMap(renderSection),
   ];

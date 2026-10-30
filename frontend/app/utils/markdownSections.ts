@@ -1,6 +1,5 @@
 import { uniqueHeadingLookup } from '@/utils/headingLookup';
-import { markdownCodeLines } from '@/utils/markdownCode';
-import { markdownHeadingText } from '@/utils/markdownPlainText';
+import { markdownBeforeHeading, markdownHeadingRanges } from '@/utils/markdownHeadings';
 
 /**
  * Splits a markdown document into the section tree its headings already describe.
@@ -10,9 +9,8 @@ import { markdownHeadingText } from '@/utils/markdownPlainText';
  * is invisible on screen. Nothing is added to the stored text; this only recovers the
  * hierarchy that is already in it, so the reader can indent and fold it.
  *
- * Heading detection follows the same fence-aware line walk as
- * `normalizePlanPointHeadings` in `markdownUtils.ts` — a `#` inside a fenced code
- * block is code, not a heading.
+ * Heading boundaries come from the same whole-document safe parser as the reader.
+ * Nested list/quote headings and literal code stay inside their original container.
  */
 
 export interface MarkdownSection {
@@ -20,7 +18,7 @@ export interface MarkdownSection {
     id: string;
     /** Heading level, 1-6, exactly as written. */
     level: number;
-    /** The full heading line, e.g. "## Context" — kept raw so it can be rendered as markdown. */
+    /** The full heading block, e.g. "## Context" — kept raw so it can be rendered as markdown. */
     headingMarkdown: string;
     /** Heading text without the leading hashes. Used for plain-text needs (aria labels). */
     headingText: string;
@@ -47,19 +45,14 @@ const legacyOutlineHeading = (text: string): string =>
         .replace(/~~(.*?)~~/g, '$1')
         .trim();
 
-type Draft = Omit<MarkdownSection, 'body' | 'children'> & { bodyLines: string[]; children: Draft[] };
+type Draft = Omit<MarkdownSection, 'children'> & { children: Draft[] };
 
-const joinBody = (lines: string[], preserveWhitespace = false): string => {
-    const content = lines.join('\n');
-    return preserveWhitespace ? content : content.replace(/^\n+|\s+$/g, '');
-};
+const finishBody = (content: string, preserveWhitespace: boolean): string =>
+    preserveWhitespace ? content : content.replace(/^(?:\r\n|\r|\n)+|\s+$/g, '');
 
 const finalize = (draft: Draft, preserveWhitespace: boolean): MarkdownSection => ({
-    id: draft.id,
-    level: draft.level,
-    headingMarkdown: draft.headingMarkdown,
-    headingText: draft.headingText,
-    body: joinBody(draft.bodyLines, preserveWhitespace),
+    ...draft,
+    body: finishBody(draft.body, preserveWhitespace),
     children: draft.children.map(child => finalize(child, preserveWhitespace)),
 });
 
@@ -75,41 +68,36 @@ export const splitMarkdownSections = (
         return { intro: '', sections: [] };
     }
 
-    const introLines: string[] = [];
+    let intro = '';
+    let cursor = 0;
     const roots: Draft[] = [];
-    /** Open ancestors, outermost first. The last entry owns the lines being read. */
     const stack: Draft[] = [];
-    const codeLines = markdownCodeLines(content);
+    const append = (body: string): void => {
+        if (stack.length) stack[stack.length - 1].body += body;
+        else intro += body;
+    };
 
-    for (const [index, line] of content.split('\n').entries()) {
-        const match = codeLines.has(index) ? null : line.match(HEADING);
-        if (!match) {
-            (stack.length ? stack[stack.length - 1].bodyLines : introLines).push(line);
-            continue;
-        }
-
-        const level = match[1].length;
-        while (stack.length && stack[stack.length - 1].level >= level) {
-            stack.pop();
-        }
-
+    for (const heading of markdownHeadingRanges(content)) {
+        append(markdownBeforeHeading(content, cursor, heading.start));
+        while (stack.length && stack[stack.length - 1].level >= heading.level) stack.pop();
         const parent = stack[stack.length - 1];
         const siblings = parent ? parent.children : roots;
         const draft: Draft = {
             id: parent ? `${parent.id}.${siblings.length}` : String(siblings.length),
-            level,
-            headingMarkdown: line.trim(),
-            headingText: markdownHeadingText(line.trim()),
-            bodyLines: [],
-            children: [],
+            level: heading.level,
+            headingMarkdown: heading.source,
+            headingText: heading.text,
+            body: '', children: [],
         };
         siblings.push(draft);
         stack.push(draft);
+        cursor = heading.bodyStart;
     }
-
+    append(content.slice(cursor));
+    const preserveWhitespace = options.preserveBodyWhitespace ?? false;
     return {
-        intro: joinBody(introLines, options.preserveBodyWhitespace),
-        sections: roots.map(root => finalize(root, options.preserveBodyWhitespace ?? false)),
+        intro: finishBody(intro, preserveWhitespace),
+        sections: roots.map(root => finalize(root, preserveWhitespace)),
     };
 };
 
@@ -169,7 +157,7 @@ export const sectionHeadingLookup = (sections: readonly SectionHeading[]): Map<s
             const labels = [section.headingText];
             const raw = section.headingMarkdown;
             const outline = raw?.match(HEADING);
-            const cutter = raw?.match(/^#{1,6}\s+(.+?)\s*#*\s*$/);
+            const cutter = raw?.trim().match(/^#{1,6}\s+(.+?)\s*#*\s*$/);
             if (outline) labels.push(legacyOutlineHeading(outline[2]));
             // The former cutter removed all these characters even inside literal code.
             if (cutter) labels.push(cutter[1].replace(/[*_`]/g, '').trim());
@@ -184,3 +172,7 @@ export const sectionHeadingLookup = (sections: readonly SectionHeading[]): Map<s
 /** Resolve only one real section, including an unambiguous historical source spelling. */
 export const findSectionByHeading = (sections: readonly SectionHeading[], heading: string): string | null =>
     sectionHeadingLookup(sections).get(heading.trim()) ?? null;
+
+/** Display-only caption: an unnamed authored section still exists and keeps its body. */
+export const sectionDisplayLabel = (section: Pick<MarkdownSection, 'headingText'>, fallback: string): string =>
+    section.headingText.trim() ? section.headingText : fallback;

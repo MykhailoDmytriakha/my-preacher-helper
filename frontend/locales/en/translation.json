@@ -2291,6 +2291,7 @@
     "conclusion": "Conclusion"
   },
   "textOutline": {
+    "untitledSection": "Untitled section",
     "collapseAll": "Collapse all",
     "expandAll": "Expand all",
     "toggleSection": "Collapse or expand section: {{title}}"

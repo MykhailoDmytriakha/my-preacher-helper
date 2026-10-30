@@ -4,7 +4,7 @@ import { ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
 import React from 'react';
 
 import { jumpToSection, type MarkdownOutlineControl } from '@/hooks/useMarkdownOutline';
-import { type MarkdownSection } from '@/utils/markdownSections';
+import { sectionDisplayLabel, type MarkdownSection } from '@/utils/markdownSections';
 import { useTranslation } from '@locales/useTranslation';
 
 /**
@@ -128,6 +128,7 @@ function OutlineRow({
 }) {
     const { t } = useTranslation();
     const collapsed = foldable && outline.isCollapsed(section.id);
+    const label = sectionDisplayLabel(section, t('textOutline.untitledSection'));
     // A tree of headings can only hide headings. Body text under a leaf is folded from
     // the document itself, where that text is visible — offering it here drew an arrow
     // that changed nothing on the surface it was drawn on.
@@ -146,7 +147,7 @@ function OutlineRow({
                     hasChildren={hasChildren}
                     collapsed={collapsed}
                     touch={touch}
-                    label={t('textOutline.toggleSection', { title: section.headingText })}
+                    label={t('textOutline.toggleSection', { title: label })}
                     onToggle={() => outline.toggleSection(section.id)}
                 />
                 {/* The whole label is the jump target — a heading in a narrow column has to
@@ -157,10 +158,10 @@ function OutlineRow({
                         jumpToSection(outline, section.id);
                         onNavigate?.();
                     }}
-                    title={section.headingText}
+                    title={label}
                     className={`min-w-0 flex-1 break-words text-left transition-colors hover:text-emerald-700 dark:hover:text-emerald-300 ${touch ? 'py-0.5 text-[15px] leading-[22px]' : 'text-[13px] leading-5'} ${isActive ? 'text-emerald-800 dark:text-emerald-200' : depth === 0 ? 'text-gray-900 dark:text-gray-100' : 'text-gray-700 dark:text-gray-300'} ${depth === 0 ? 'font-bold' : ''}`}
                 >
-                    {section.headingText}
+                    {label}
                 </button>
                 {collapsed && section.children.length > 0 && (
                     <span className="mt-0.5 shrink-0 text-[11px] text-gray-400 dark:text-gray-600">
