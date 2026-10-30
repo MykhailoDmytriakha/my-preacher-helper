@@ -19,12 +19,13 @@ const resource = (id: string) => ({ collection: 'studyNotes', id });
 const now = () => new Date().toISOString();
 const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 /** The note text a person edits; relations (`materialIds`) move only through their material. */
-const EDITABLE: (keyof StudyNote)[] = ['title', 'content', 'scriptureRefs', 'tags', 'type', 'dictationSourceIds', 'recordingSourceIds'];
+const EDITABLE: (keyof StudyNote)[] = ['title', 'content', 'scriptureRefs', 'tags', 'type', 'dictationSourceIds', 'recordingSourceIds', 'analysis'];
 export type StudyNoteSubmission = WriteSubmission & {
   /** Exact canonical capture; absent on refused/skipped compatibility results. */
   capture?: Promise<DocumentWriteReceipt>;
 };
 
+/** Comments and analyses are never drafts; the shared domain rule also owns the server. */
 const isDraft = (note: Pick<StudyNote, 'tags' | 'scriptureRefs' | 'type'>) => isStudyNoteDraft(note);
 /** Local capture owns the submitted backup; server status and raw audio still require exact ACK. */
 const accepted = (key: string, request: Promise<DocumentWriteReceipt>): StudyNoteSubmission & { snapshot: Promise<ResourceSnapshot> } => {
@@ -124,6 +125,9 @@ export function useStudyNotesEngine(enabled: boolean) {
     confirmedDictationSources,
     confirmedCreationIds,
     loading: isAuthLoading || (Boolean(uid) && collection.loading),
+    /** The list is being asked of the server: a note made on another device may still be on its way into it — even into a
+     *  list once read whole, whose newer changes are what is being asked (Codex, 30.10). */
+    checking: Boolean(collection.state?.checking),
     error: collection.error ? new Error(collection.error) : null,
     refetch: async () => { await collection.refresh(); },
     createNote: (note: Omit<StudyNote, 'id' | 'createdAt' | 'updatedAt' | 'isDraft'>, options?: { id: string; captureScope?: string }): StudyNoteSubmission & { note: StudyNote } => {
@@ -132,7 +136,7 @@ export function useStudyNotesEngine(enabled: boolean) {
       const optimistic: StudyNote = { ...note, id, createdAt: at, updatedAt: at, isDraft: isDraft(note), materialIds: [], relatedSermonIds: note.relatedSermonIds || [] };
       const value = deepCleanUndefined({
         userId: note.userId, content: note.content ?? '', title: note.title || '', scriptureRefs: note.scriptureRefs || [],
-        tags: note.tags || [], type: note.type || 'note', isDraft: isDraft(note), createdAt: at, updatedAt: at,
+        tags: note.tags || [], type: note.type || 'note', analysis: note.analysis, isDraft: isDraft(note), createdAt: at, updatedAt: at,
         ...(note.dictationSourceIds?.length ? { dictationSourceIds: [...new Set(note.dictationSourceIds)] } : {}),
         ...(note.recordingSourceIds?.length ? { recordingSourceIds: [...new Set(note.recordingSourceIds)] } : {}),
       }) as unknown as DocumentData;

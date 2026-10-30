@@ -10,6 +10,10 @@ describe('isStudyNoteDraft — the one draft rule of the server and the device',
     expect(isStudyNoteDraft({ type: 'question', tags: undefined, scriptureRefs: [reference] })).toBe(true);
   });
 
+  it('never calls a passage analysis a draft — it is its own work and carries no tags', () => {
+    expect(isStudyNoteDraft({ type: 'analysis', tags: [], scriptureRefs: [reference] })).toBe(false);
+  });
+
   it('never calls a comment a draft — it carries no tags', () => {
     expect(isStudyNoteDraft({ type: 'comment', tags: [], scriptureRefs: [reference] })).toBe(false);
     expect(isStudyNoteDraft({ type: 'comment', tags: [], scriptureRefs: [] })).toBe(false);

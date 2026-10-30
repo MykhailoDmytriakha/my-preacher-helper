@@ -43,11 +43,11 @@ const actions = {
   }),
 };
 
-function render() {
+function render(checking = false) {
   jest.mocked(useDocumentActions).mockReturnValue(actions as never);
   jest.mocked(useDataCollection).mockImplementation(() => ({
     state: { snapshots: [], documents: [...store].map(([id, value]) => ({ resource: { collection: 'studyNotes', id }, value, deleting: false, ...(deliveryState.get(id) ?? { pending: false, needsAttention: false }) })),
-      complete: true, freshness: 'server', checking: false, version: 1, error: null },
+      complete: true, freshness: 'server', checking, version: 1, error: null },
     loading: false, error: null, refresh: jest.fn(),
   }) as never);
   return renderHook(() => useStudyNotesEngine(true));
@@ -76,6 +76,11 @@ describe('study notes on the engine', () => {
     expect(result.current.noteDelivery.get('n1')?.pending).toBe(false);
     expect(result.current.notes.map(note => note.id)).toEqual(['n1', 'n2']);
     expect(actions.commit).not.toHaveBeenCalled();
+  });
+
+  it('reports when the complete local list is still being checked with the server', () => {
+    expect(render(true).result.current.checking).toBe(true);
+    expect(render(false).result.current.checking).toBe(false);
   });
 
   it('keeps a tag added on the phone when the laptop saves a paragraph', async () => {
@@ -350,6 +355,19 @@ describe('study notes on the engine', () => {
     await act(async () => { await awaitAcceptance(result.current.deleteNote('n1'), () => undefined); });
     expect(actions.remove).toHaveBeenCalledWith({ collection: 'studyNotes', id: 'n1' });
   });
+  it('captures a passage-analysis note with its analysis and type through the canonical create action', async () => {
+    const { result } = render();
+    const analysis = { bible: 'rst' as const, words: 171, cuts: [8, 15], links: { 15: 8 } };
+    let id = '';
+    await act(async () => {
+      const submission = result.current.createNote({ userId: 'u', title: 'Passage analysis', content: 'Exact authored text', tags: [], scriptureRefs: [], type: 'analysis', analysis });
+      id = submission.note.id;
+      expect(await awaitAcceptance(submission, () => undefined)).toEqual({ kind: 'queued', receipt: `request:${id}` });
+      await submission.persistence;
+    });
+    expect(store.get(id)).toEqual(expect.objectContaining({ userId: 'u', title: 'Passage analysis', content: 'Exact authored text', type: 'analysis', analysis }));
+  });
+
   it('keeps source receipts from earlier accepted dictation when another device adds a take', async () => {
     store.set('n1', note({ dictationSourceIds: ['earlier-source'], recordingSourceIds: ['earlier-raw'] }));
     const { result } = render();

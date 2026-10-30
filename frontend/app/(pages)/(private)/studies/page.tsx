@@ -34,7 +34,7 @@ import { newClientId } from '@/utils/clientId';
 import { isKnownOffline } from '@/utils/connectivity';
 import { studyNoteLanguage } from '@/utils/documentLanguage';
 import { formatScriptureReference, scriptureReferenceSearchText, studyNoteSearchText } from '@/utils/scriptureReference';
-import { inStudyNoteTab, STUDY_NOTE_TABS, type StudyNoteTab } from '@/utils/studyNoteTabs';
+import { inStudies, inStudyNoteTab, STUDY_NOTE_TABS, type StudyNoteTab } from '@/utils/studyNoteTabs';
 import { useTranslation } from '@locales/useTranslation';
 
 import { CommentCard } from './CommentCard';
@@ -50,12 +50,14 @@ export default function StudiesPage() {
   const router = useRouter();
   const {
     uid,
-    notes,
+    notes: allNotes,
     confirmedCreationIds,
     loading: notesLoading,
     error: notesError,
   } = useStudyNotes();
   const canDescribeNotes = !notesLoading && !notesError;
+  // Every Studies list and count shares the same analysis exclusion.
+  const notes = useMemo(() => allNotes.filter(inStudies), [allNotes]);
   const {
     shareLinks,
     loading: shareLinksLoading,

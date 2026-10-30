@@ -13,6 +13,13 @@ export function hasModalLayers(): boolean {
   return layers.length > 0;
 }
 
+/** An inner tool may handle keys only in the registered foreground window; external surfaces retain their keys. */
+export function keyboardReaches(element: HTMLElement | null): boolean {
+  const top = layers.at(-1);
+  if (!top) return !hasOpenLayer();
+  return Boolean(element && top.element.contains(element) && !hasExternalDialogFocus(top.element, top.surfacesBeneath));
+}
+
 /** Shared by dialogs, full-screen keyboards and page gestures. */
 export function hasOpenLayer(): boolean {
   const root = document.documentElement.style;

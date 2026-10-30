@@ -44,6 +44,7 @@ import { markdownPreviewText } from '@/utils/markdownUtils';
 import { getEffectiveIsPreached } from '@/utils/preachDateStatus';
 import { awaitWriteOperation } from '@/utils/recoverableWrite';
 import { formatScriptureReference } from '@/utils/scriptureReference';
+import { inStudies } from '@/utils/studyNoteTabs';
 import { studyNoteOwnName } from '@/utils/studyNoteUtils';
 import { useTranslation } from '@locales/useTranslation';
 
@@ -820,7 +821,7 @@ function buildDashboardData({
   return {
     activeSermonsCount: activeSermons.length,
     activeSeriesCount: activeSeries.length,
-    studyNotesCount: notes.length,
+    studyNotesCount: notes.filter(inStudies).length,
     upcomingDatesCount: upcomingEvents.length,
     activePrayersCount: activePrayers.length,
     activeGroupsCount: activeGroups.length,
@@ -989,7 +990,8 @@ function buildSeriesItems(series: Series[], sermons: Sermon[], t: TFunction): Se
 }
 
 function buildStudyItems(notes: StudyNote[], t: TFunction, locale: string): StudyItem[] {
-  return [...notes]
+  // A passage's analysis opens in the Bible, not in the note editor this row leads to (case 2026-10-12-block-diagram, 3.4).
+  return notes.filter(inStudies)
     .sort((a, b) => getTime(b.updatedAt) - getTime(a.updatedAt))
     .slice(0, PANEL_ITEM_POOL)
     .map((note) => ({

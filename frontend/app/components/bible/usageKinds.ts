@@ -1,6 +1,6 @@
 import { BookOpenIcon, HeartIcon, RectangleStackIcon, UsersIcon } from '@heroicons/react/20/solid';
 
-import { CommentIcon } from '@/components/Icons';
+import { AnalysisIcon, CommentIcon } from '@/components/Icons';
 
 import type { ChipTone } from '@/components/ui/Chip';
 import type { ScriptureUsageKind } from '@/utils/scriptureUsage';
@@ -35,6 +35,10 @@ export const USAGE_KIND_LOOK: Record<ScriptureUsageKind, UsageKindLook> = {
   note: {
     tone: 'emerald', Icon: RectangleStackIcon, wordKey: 'bible.mine.kinds.note', dot: { light: '#059669', dark: '#34d399' },
     badge: { capsule: 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-transparent dark:text-emerald-300', circle: 'bg-emerald-600', count: 'text-emerald-700 ring-emerald-500 dark:text-emerald-300 dark:ring-emerald-400' },
+  },
+  analysis: {
+    tone: 'violet', Icon: AnalysisIcon, wordKey: 'bible.mine.kinds.analysis', dot: { light: '#7c3aed', dark: '#a78bfa' },
+    badge: { capsule: 'border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-800 dark:bg-transparent dark:text-violet-300', circle: 'bg-violet-600', count: 'text-violet-700 ring-violet-500 dark:text-violet-300 dark:ring-violet-400' },
   },
   comment: {
     tone: 'neutral', Icon: CommentIcon, wordKey: 'bible.mine.kinds.comment', dot: { light: '#8b8f98', dark: '#9ca3af' },

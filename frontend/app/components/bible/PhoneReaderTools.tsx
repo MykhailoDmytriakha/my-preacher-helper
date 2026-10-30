@@ -21,6 +21,7 @@ import type { MarkToolState } from './marks/markTool';
 function EscapePutsAway({ active, putAway }: { active: boolean; putAway: (() => void) | undefined }) {
   useEffect(() => {
     if (!active || !putAway) return undefined;
+    // A window over the reader (a passage's analysis) has the keys: its Escape is not the reader's tool's.
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape' && !hasOpenLayer()) putAway();
     };
