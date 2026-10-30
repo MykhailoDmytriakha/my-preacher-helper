@@ -1,14 +1,14 @@
 'use client';
 
-import { ChevronRightIcon } from '@heroicons/react/24/outline';
-import React from 'react';
+import React, { useMemo, useRef } from 'react';
 
 import { useMarkdownOutline, type MarkdownOutlineControl } from '@/hooks/useMarkdownOutline';
-import { sectionDisplayLabel, type MarkdownSection } from '@/utils/markdownSections';
+import { markdownFoldingPlugin } from '@/utils/markdownFolding';
+import { type MarkdownSection } from '@/utils/markdownSections';
 import MarkdownDisplay from '@components/MarkdownDisplay';
 import { useTranslation } from '@locales/useTranslation';
 
-import { FOLD_ARROW_TONE, foldArrowOffset, headingTone, sectionAir } from './foldableHeadingStyle';
+import { FoldingPresentation, FOLDING_COMPONENTS } from './FoldingPresentation';
 
 interface FoldableMarkdownProps {
     content: string;
@@ -47,9 +47,6 @@ interface FoldableMarkdownProps {
     sectionExtra?: (section: MarkdownSection) => React.ReactNode;
 }
 
-/** Kills the heading's own prose margins so it sits on the toggle row. */
-const HEADING_RESET = '[&>*]:!my-0';
-
 /**
  * Renders note markdown as the folding outline its headings already describe: each
  * heading owns the text under it, nested headings sit one step further in behind a
@@ -73,98 +70,47 @@ export function FoldableMarkdown({
     // Parsing is skipped when a control is supplied — the owner already did it.
     const ownControl = useMarkdownOutline(control ? '' : content, searchQuery);
     const outlineControl = control ?? ownControl;
-    const { outline, sectionIds, isCollapsed, toggleSection, toggleAll, everythingCollapsed } =
+    const { outline, sectionIds, toggleAll, everythingCollapsed } =
         outlineControl;
 
-    // No headings at all: nothing to fold, render exactly as before.
+    const root = useRef<HTMLDivElement>(null);
+    const plugins = useMemo(() => [markdownFoldingPlugin(outline.sections)], [outline.sections]);
+    const presentation = useMemo(() => ({ plugins, components: FOLDING_COMPONENTS }), [plugins]);
+
+    const revealFragment = (event: React.MouseEvent<HTMLDivElement>): void => {
+        if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+        const anchor = event.target instanceof Element ? event.target.closest<HTMLAnchorElement>('a[data-note-reveal-section]') : null;
+        if (!anchor || !root.current?.contains(anchor)) return;
+        const sectionId = anchor.getAttribute('data-note-reveal-section');
+        const href = anchor.getAttribute('href');
+        if (!sectionId || !href?.startsWith('#')) return;
+        let targetId: string;
+        try { targetId = decodeURIComponent(href.slice(1)); } catch { return; }
+        const host = event.currentTarget;
+        const existing = host.ownerDocument.getElementById(targetId);
+        if (existing && host.contains(existing)) return;
+        event.preventDefault();
+        outlineControl.revealSection(sectionId);
+        requestAnimationFrame(() => {
+            if (!host.isConnected) return;
+            const target = host.ownerDocument.getElementById(targetId);
+            if (!(target instanceof HTMLElement) || !host.contains(target)) return;
+            host.ownerDocument.defaultView!.location.hash = href;
+            target.scrollIntoView?.({ block: 'nearest' });
+            const temporaryTabIndex = target.tabIndex < 0 && !target.hasAttribute('tabindex');
+            if (temporaryTabIndex) target.tabIndex = -1;
+            target.focus({ preventScroll: true });
+            if (temporaryTabIndex) target.addEventListener('blur', () => target.removeAttribute('tabindex'), { once: true });
+        });
+    };
+
+    // A heading-free note already has a single whole-document reader.
     if (outline.sections.length === 0) {
         return <MarkdownDisplay content={content} className={className} compact={compact} searchQuery={searchQuery} />;
     }
 
-    const renderSection = (section: MarkdownSection): React.ReactElement => {
-        const collapsed = isCollapsed(section.id);
-        const label = sectionDisplayLabel(section, t('textOutline.untitledSection'));
-        const hasContent = Boolean(section.body) || section.children.length > 0;
-
-        return (
-            <section
-                key={section.id}
-                data-section-id={section.id}
-                // The air belongs to the section, not the heading: the heading's own margins
-                // are reset so it can sit on the toggle row. `first:mt-0` keeps the very
-                // first block flush with whatever container it opens.
-                className={`${sectionAir(section.level)} first:mt-0`}
-                style={{ scrollMarginTop }}
-            >
-                <div className="flex items-start gap-1">
-                    {/* An empty heading — no text of its own, no headings under it — has
-                        nothing to fold, so it keeps the indent and loses the control. */}
-                    {hasContent ? (
-                        <button
-                            type="button"
-                            onClick={() => toggleSection(section.id)}
-                            aria-expanded={!collapsed}
-                            aria-label={t('textOutline.toggleSection', { title: label })}
-                            className={`${foldArrowOffset(section.level)} shrink-0 rounded p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 sm:p-0.5 dark:text-gray-500 dark:hover:bg-gray-700 dark:hover:text-gray-200 ${FOLD_ARROW_TONE}`}
-                        >
-                            <ChevronRightIcon
-                                className={`h-4 w-4 transition-transform ${collapsed ? '' : 'rotate-90'}`}
-                            />
-                        </button>
-                    ) : (
-                        <span className="shrink-0 w-7 sm:w-5" />
-                    )}
-                    <div
-                        onClick={hasContent ? () => toggleSection(section.id) : undefined}
-                        className={`flex min-w-0 flex-1 items-start gap-2 ${hasContent ? 'cursor-pointer' : ''}`}
-                    >
-                        <div className={`min-w-0 ${HEADING_RESET} ${headingTone(section.level)}`}>
-                            <MarkdownDisplay
-                                content={section.headingMarkdown}
-                                searchQuery={searchQuery}
-                                compact={compact}
-                            />
-                        </div>
-                        {/* Sits right next to the heading, not at the far edge: it tells the
-                            reader that text is folded away here, so it has to read as part
-                            of this heading. */}
-                        {collapsed && hasContent && (
-                            <span
-                                className="shrink-0 select-none self-center text-sm text-gray-400 dark:text-gray-500"
-                                aria-hidden="true"
-                            >
-                                &hellip;
-                            </span>
-                        )}
-                        {sectionBadge?.(section)}
-                    </div>
-                </div>
-
-                {/* A phone has ~390px of width, and every level used to spend 24 of them:
-                    three levels deep and a quarter of the line was gutter. The guide line
-                    still says "this belongs to the heading above" at a third of the cost. */}
-                {!collapsed && hasContent && (
-                    <div className="ml-0 border-l border-gray-200 pl-2.5 sm:ml-2 sm:pl-4 dark:border-gray-700">
-                        {sectionExtra?.(section)}
-                        {section.body && (
-                            <MarkdownDisplay
-                                content={section.body}
-                                searchQuery={searchQuery}
-                                compact={compact}
-                            />
-                        )}
-                        {section.children.map(renderSection)}
-                    </div>
-                )}
-            </section>
-        );
-    };
-
     return (
-        <div className={className}>
-            {outline.intro && (
-                <MarkdownDisplay content={outline.intro} searchQuery={searchQuery} compact={compact} />
-            )}
+        <div className={className} ref={root} onClickCapture={revealFragment}>
 
             {showToggleAll && sectionIds.length > 1 && (
                 <div className="mb-1 flex justify-end">
@@ -178,7 +124,9 @@ export function FoldableMarkdown({
                 </div>
             )}
 
-            {outline.sections.map(renderSection)}
+            <FoldingPresentation control={outlineControl} compact={compact} scrollMarginTop={scrollMarginTop} sectionBadge={sectionBadge} sectionExtra={sectionExtra}>
+                <MarkdownDisplay content={content} searchQuery={searchQuery} compact={compact} presentation={presentation} />
+            </FoldingPresentation>
         </div>
     );
 }

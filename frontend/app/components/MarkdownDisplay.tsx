@@ -10,6 +10,8 @@ import { textLanguage } from '@/utils/appLocale';
 import { prepareStructuredBlocks, STRUCTURED_BLOCK_TYPES } from '@/utils/markdownStructuredBlocks';
 import HighlightedText from '@components/HighlightedText';
 
+import type { PluggableList } from 'unified';
+
 // Preserve the existing schema export for consumers while the common reader owns it.
 export { markdownSanitizeSchema } from '@/utils/markdownHtml';
 
@@ -24,7 +26,13 @@ interface MarkdownDisplayProps {
     pencil?: boolean;
     /** Optional search query to highlight within the content */
     searchQuery?: string;
+    /** Trusted presentation runs after the shared safe reader, never on raw authored HTML. */
+    presentation?: { plugins: PluggableList; components: Components };
 }
+
+/** One owner for prose framing, including content drawn inside a document presentation. */
+export const markdownProseClasses = (className = '', compact = false, pencil = false): string =>
+    pencil ? `max-w-none break-words ${className}` : `prose dark:prose-invert max-w-none break-words ${compact ? 'prose-sm' : ''} ${className}`;
 
 /** The same typed block owns both its prose body and the removal of the code-only wrapper. */
 const structuredBlockType = (className: unknown): string | null => {
@@ -33,7 +41,7 @@ const structuredBlockType = (className: unknown): string | null => {
     return match && STRUCTURED_BLOCK_TYPES.some((type) => type === match[1]) ? match[1] : null;
 };
 
-const MarkdownDisplay = ({ content, className = '', compact = false, pencil = false, searchQuery = '' }: MarkdownDisplayProps) => {
+const MarkdownDisplay = ({ content, className = '', compact = false, pencil = false, searchQuery = '', presentation }: MarkdownDisplayProps) => {
     const processedContent = useMemo(() => prepareStructuredBlocks(content).markdown, [content]);
     const htmlPlugins = useMarkdownHtmlPlugins();
     // References become links where the screen gives them somewhere to open; elsewhere the text is as written.
@@ -42,8 +50,8 @@ const MarkdownDisplay = ({ content, className = '', compact = false, pencil = fa
     // The language its references were written in: the document's, else this text's.
     const written = useMemo(() => (scriptureLinks ? scriptureLinks.written ?? textLanguage(content) : null), [content, scriptureLinks]);
     const rehypePlugins = useMemo(
-        () => [...htmlPlugins, ...(linkLocale ? [[rehypeScriptureLinks, linkLocale, written]] : [])] as NonNullable<React.ComponentProps<typeof ReactMarkdown>['rehypePlugins']>,
-        [htmlPlugins, linkLocale, written]
+        () => [...htmlPlugins, ...(presentation?.plugins ?? []), ...(linkLocale ? [[rehypeScriptureLinks, linkLocale, written]] : [])] as NonNullable<React.ComponentProps<typeof ReactMarkdown>['rehypePlugins']>,
+        [htmlPlugins, linkLocale, written, presentation?.plugins]
     );
 
     const renderHighlighted = useCallback(
@@ -55,7 +63,7 @@ const MarkdownDisplay = ({ content, className = '', compact = false, pencil = fa
     );
 
     return (
-        <div className={pencil ? `max-w-none break-words ${className}` : `prose dark:prose-invert max-w-none break-words ${compact ? 'prose-sm' : ''} ${className}`}>
+        <div className={presentation ? className : markdownProseClasses(className, compact, pencil)}>
             <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
                 // The shared HTML pass preserves authored formatting and safe fragment targets.
@@ -190,7 +198,8 @@ const MarkdownDisplay = ({ content, className = '', compact = false, pencil = fa
                         }
 
                         return <code className={className} {...props}>{children}</code>;
-                    }
+                    },
+                    ...presentation?.components,
                 } as Components}
             >
                 {processedContent}

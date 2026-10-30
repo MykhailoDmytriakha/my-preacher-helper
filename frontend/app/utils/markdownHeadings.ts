@@ -2,7 +2,7 @@ import { readMarkdownHtml } from './markdownHtml';
 import { markdownHeadingText } from './markdownPlainText';
 import { prepareStructuredBlocks } from './markdownStructuredBlocks';
 
-import type { Element, Root } from 'hast';
+import type { Element, Root, RootContent } from 'hast';
 
 interface HeadingSpelling {
   source: string;
@@ -21,8 +21,10 @@ export interface MarkdownHeadingRange extends HeadingSpelling {
   historical?: HeadingSpelling;
 }
 
-const rootHeadings = (tree: Root): Element[] => tree.children.filter((node): node is Element =>
-  node.type === 'element' && /^h[1-6]$/.test(node.tagName));
+export const isMarkdownHeading = (node: RootContent): node is Element & { tagName: 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6' } =>
+  node.type === 'element' && /^h[1-6]$/.test(node.tagName);
+
+const rootHeadings = (tree: Root): Element[] => tree.children.filter(isMarkdownHeading);
 
 const authoredSpelling = (node: Element, content: string, originalOffset: (offset: number) => number | null): string => {
   const spans = node.children.flatMap(child => {

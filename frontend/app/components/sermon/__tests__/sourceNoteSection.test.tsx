@@ -1,3 +1,8 @@
+jest.unmock('react-markdown');
+jest.unmock('remark-gfm');
+jest.unmock('rehype-raw');
+jest.unmock('rehype-sanitize');
+
 import { fireEvent, render, screen } from '@testing-library/react';
 import React from 'react';
 
@@ -93,8 +98,7 @@ describe('the atoms stand inside the note', () => {
     // which is the point: the note greets the reader as a table of contents.
     expect(screen.queryByText('Иавис отличился молитвой')).not.toBeInTheDocument();
 
-    // The heading arrives as raw markdown here — `MarkdownDisplay` does not transform in jsdom —
-    // so it is matched by substring rather than by an exact string.
+    // Use the production Markdown presentation so section-owned atoms follow real fold controls.
     fireEvent.click(screen.getByText(/Единственная молитва среди переписи/));
 
     const atoms = screen.getByTestId('section-atoms');

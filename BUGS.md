@@ -137,30 +137,6 @@
 
 ## 🔵 P3 — открыто
 
-### BUG-20261029-folded-note-reference-definitions · Сноска или ссылка по определению между разделами заметки не распознаётся
-
-**Severity.** P3 — в режиме чтения ссылка остаётся буквами, а текст определения сноски может скрыться; исходная заметка сохранена.
-**Найден.** Codex29.10 при прочёсе читателей; исходный probe `underline-206-folded-reference-probe-v1.json`. Unit214 QA на `e2b05757`: два временных наблюдательных прогона, real ReactMarkdown/GFM и настоящий FoldableMarkdown/MarkdownDisplay plugin stack подтверждают отказ. Это characterization, не regression red/green. Живая проверка готовится на принятой сборке ORCeFWzH7X4KAn5Jss4wi, Auth9199/Firestore8189.
-**Якоря.** `frontend/app/components/ui/FoldableMarkdown.tsx:149`, `:165`; `frontend/app/utils/markdownSections.ts:69`.
-**Ожидалось.** Номер сноски или `[the place][place]` в одном разделе заметки использует определение из другого раздела того же документа.
-**Получилось.** Whole-document reader показывает обе ссылки и текст сноски; после фактического разбиения FoldableMarkdown не показывает ни ссылок, ни текста определения.
-**Воспроизведение.** Заметки → текст `A forward note[^first] and [the place][place].` → ниже заголовок `## Later` → ниже `[place]: https://example.com` и `[^first]: The defined note.` → открыть чтение со сворачиваемыми разделами.
-**Как должно работать.** Разделы сворачиваются независимо, но значения ссылок и сносок принадлежат целой заметке; разделение интерфейса не меняет её смысл. Literal code не становится ссылкой, а разные документы остаются независимыми.
-**Класс (механизмом).** Целый Markdown-документ дробится до разрешения общих определений; каждый фрагмент получает собственный reader и scope ссылок.
-| место | вердикт | почему |
-|---|---|---|
-| `components/ui/FoldableMarkdown.tsx:122,149,165` | поражено | Heading/body/intro отдельно парсятся, определения в соседних частях недоступны; подтверждено actual component probe |
-| `studies/[id]/page.tsx:1440`, `share/notes/[token]/page.tsx`, `RetainedNoteDraft.tsx`, `sermon/SourceNoteSection.tsx` | поражено через общий компонент | Один и тот же FoldableMarkdown над целой переданной заметкой; авторизованная/публичная/сохранённая копия не меняет этот механизм |
-| `components/MarkdownDisplay.tsx:78`, `utils/markdownHtml.ts` | не поражено само по себе | Полный текст разрешает ссылки/сноски одним reader; sanitizer/namespace не может восстановить уже отсутствующее определение |
-| `components/plan/PlanMarkdown.tsx:14,61` | не поражено | Группирует HAST после разрешения целого документа; действующий образец в проекте |
-| `components/plan/PlanSectionDialog.tsx`, `export-buttons/ExportTxtModal.tsx` rich preview | не поражено в переданном документе | Один reader получает весь переданный content; независимые поля плана не доказаны одним Markdown-документом |
-| `utils/wordExport.ts` | не поражено этим отказом чтения | Реальный Packer сохраняет use+definition исходным текстом и для inline, и для reference links/footnotes. Часть текста не исчезает; clickable hyperlink не является установленным контрактом данного пути |
-| `api/studies/notes/[id]/cut/route.ts` / noteSections | не rendering consumer | Формирует raw slices для модели, не экран Markdown. Heading grounding уже читает whole document; потеря UI-ссылок здесь не воспроизведена, AI-контракт отдельно |
-| Warm offline note/source reader | поражено косвенно | Тот же pure UI parse над сохранённым содержимым; выполнить после фикса на прогретой странице |
-**Доказательство QA.** `definitions-214-qa-inventory-v1.md`, `definitions-214-parser-probe-v1.json`, `definitions-214-actual-consumers-v1.json`. Whole reader распознаёт forward/backward/repeated/heading references; actual folded reader теряет anchor и текст сноски. Обычный inline link и буквальный inline code — положительные контроли. Два независимых документа с одинаковым label остаются независимыми. Browser acceptance пока не выполнен.
-**Граница.** Отдельный корень от BUG-20261029-markdown-footnote-targets: этот отказ есть и без HTML-filter и не снят исправлением namespace/target. Исправление и причинный regression-тест ещё не выполнялись.
-
-
 ### BUG-20261028-erased-comment-keeps-share-link · Стёртый в окне комментарий оставляет свою публичную ссылку в «Управлении ссылками»
 **P3** — ссылка-сирота ведёт в никуда; только для комментариев, которыми делились. Найдено агентом 28.10. **Якорь.** Удаление со страницы снимает и ссылку (`frontend/app/(pages)/(private)/studies/[id]/page.tsx:173` `useNoteDeletion`), «Стереть» в окне — только документ (`frontend/app/components/CommentDialog.tsx`, `erase`).
 **Как должно работать.** Один путь удаления заметки любого вида: документ и его ссылка уходят вместе. **Класс:** два пути удаления одного документа — свести в общий модуль.

@@ -1,11 +1,12 @@
+jest.unmock('react-markdown');
+jest.unmock('remark-gfm');
+jest.unmock('rehype-raw');
+jest.unmock('rehype-sanitize');
+
 import { render, screen, fireEvent } from '@testing-library/react';
 import React from 'react';
 
 import { FoldableMarkdown } from '../FoldableMarkdown';
-
-// `react-markdown` is mocked globally (jest.setup.js) and prints markdown verbatim,
-// so headings appear here with their hashes. These tests therefore prove the folding
-// structure — which text is mounted and which is gone — not the rendered typography.
 
 jest.mock('react-i18next', () => ({
     useTranslation: () => ({
@@ -58,7 +59,7 @@ describe('FoldableMarkdown', () => {
         render(<FoldableMarkdown content={NOTE} />);
 
         expect(screen.getByText('Opening thought.')).toBeInTheDocument();
-        expect(screen.getByText('# Main heading')).toBeInTheDocument();
+        expect(screen.getByText('Main heading')).toBeInTheDocument();
         expect(screen.getByText('Text under the sub heading.')).toBeInTheDocument();
         expect(screen.getByText('The deepest text.')).toBeInTheDocument();
     });
@@ -74,7 +75,7 @@ describe('FoldableMarkdown', () => {
         expect(screen.queryByText('Text under the sub heading.')).not.toBeInTheDocument();
         expect(screen.queryByText('The deepest text.')).not.toBeInTheDocument();
         // The heading itself stays, otherwise the section could not be reopened.
-        expect(screen.getByText('## Sub heading')).toBeInTheDocument();
+        expect(screen.getByText('Sub heading')).toBeInTheDocument();
         // Text outside the folded section is untouched.
         expect(screen.getByText('Text under the main heading.')).toBeInTheDocument();
 
@@ -87,7 +88,7 @@ describe('FoldableMarkdown', () => {
 
         fireEvent.click(screen.getByRole('button', { name: 'Collapse all' }));
         expect(screen.queryByText('Text under the main heading.')).not.toBeInTheDocument();
-        expect(screen.getByText('# Main heading')).toBeInTheDocument();
+        expect(screen.getByText('Main heading')).toBeInTheDocument();
 
         fireEvent.click(screen.getByRole('button', { name: 'Expand all' }));
         expect(screen.getByText('Text under the main heading.')).toBeInTheDocument();
