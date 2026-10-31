@@ -1,5 +1,5 @@
 import { prepareDomainCommand } from '../domainPolicy';
-import { applyCommand, diffFields } from '../protocol';
+import { ANALYSIS_RESHAPE_FRAME, applyCommand, diffFields, readField } from '../protocol';
 
 import type { DataCommand, DocumentData, ResourceSnapshot } from '../types';
 
@@ -16,7 +16,11 @@ const snapshot = (value: DocumentData | null, generation: string | null = 'gener
 });
 const serverUpdate = (before: DocumentData, after: DocumentData): DataCommand => ({
   protocol: 1, operationId: 'source-change', owner: 'owner', resource, generation: 'generation-1', dependsOn: [],
-  kind: 'update', changes: diffFields(before, after),
+  kind: 'update', changes: before.type === 'analysis' && diffFields(before, after).some(change => ANALYSIS_RESHAPE_FRAME.some(field => change.path[0] === field))
+    // An external command still exercises server admission independently of client preparation.
+    ? [...diffFields(before, after).filter(change => !ANALYSIS_RESHAPE_FRAME.some(field => change.path[0] === field)),
+      ...ANALYSIS_RESHAPE_FRAME.map(field => ({ path: [field], before: readField(before, [field]), after: readField(after, [field]) }))]
+    : diffFields(before, after),
 });
 
 describe('Analysis word-source identity at the shared command boundary', () => {

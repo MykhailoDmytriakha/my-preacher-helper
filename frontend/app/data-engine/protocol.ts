@@ -1,7 +1,7 @@
 import { getUtf8ByteLength } from '@/utils/feedbackPayload';
 import { isServiceOrderCatalogKey, isServiceOrderSeedTarget, serviceOrderSeedCycle } from '@/utils/serviceOrderSeedIdentity';
 
-import { ANALYSIS_RESHAPE_FIELDS, ANALYSIS_RESHAPE_FRAME } from './analysisReshapeFields';
+import { ANALYSIS_RESHAPE_FIELDS, ANALYSIS_RESHAPE_FRAME, keepAnalysisPositionFrame, lacksAnalysisFrameProof } from './analysisReshapeFields';
 import { equalValues, object, own, readField } from './fieldValues';
 import { validateResourceDocument } from './resourceSchemas';
 import { preservesSermonLinks, scratchConsumptionConflicts } from './sermonIntegrity';
@@ -437,6 +437,7 @@ export function mergeDocumentFields(base: DocumentData | null, mine: DocumentDat
   const field = (value: DocumentData | null): FieldValue => value === null ? { exists: false }
     : { exists: true, value: Object.fromEntries(Object.entries(value).filter(([key]) => key !== 'rev' && key !== 'updatedAt')) };
   const merged = mergeFields(field(base), field(mine), field(theirs));
+  keepAnalysisPositionFrame(base, mine, theirs, merged);
   if (merged.value.exists) {
     const value = merged.value.value as DocumentData;
     if (theirs && Object.prototype.hasOwnProperty.call(theirs, 'rev')) value.rev = clone(theirs.rev);
@@ -528,7 +529,17 @@ function applyExistingFields(command: Extract<DataCommand, { kind: 'update' | 'd
     ];
   }
   const conflicts: ConflictDetail[] = command.resource.collection === 'sermons' ? scratchConsumptionConflicts(command.changes, value) : [];
+  const frameChanges = command.resource.collection === 'studyNotes' && value.type === 'analysis'
+    ? command.changes.filter(change => ANALYSIS_RESHAPE_FRAME.some(field => change.path[0] === field)) : [];
+  if (frameChanges.length) {
+    const before = clone(value), mine = clone(value);
+    for (const change of frameChanges) { putField(before, change.path, change.before); putField(mine, change.path, change.after); }
+    const merged = mergeDocumentFields(before, mine, value);
+    for (const field of ANALYSIS_RESHAPE_FRAME) putField(value, [field], readField(merged.value.value as DocumentData, [field]));
+    conflicts.push(...merged.conflicts);
+  }
   for (const change of command.changes) {
+    if (frameChanges.includes(change)) continue;
     // Keep the wire candidate valid for legacy documents missing metadata. The accepted
     // write replaces this provisional value; a client clock never arbitrates content.
     const merged = change.path[0] === 'updatedAt' ? { value: change.after, conflicts: [] }
@@ -558,6 +569,12 @@ export function applyCommand(command: DataCommand, current: ResourceSnapshot): C
   } else {
     if (!current.value) return { kind: 'deleted', operationId: command.operationId, snapshot: current };
     value = clone(current.value);
+    if (command.kind === 'update' && command.resource.collection === 'studyNotes'
+      && lacksAnalysisFrameProof(value, command.changes)) {
+      // Older persisted commands lack the original passage. Keep their raw intent for
+      // an explicit decision; never infer an ancestor from delivery time or word count.
+      return refused('decision-required');
+    }
     const conflicts = applyExistingFields(command, value);
     if (conflicts.length) return { kind: 'conflict', operationId: command.operationId, snapshot: current, conflicts };
   }

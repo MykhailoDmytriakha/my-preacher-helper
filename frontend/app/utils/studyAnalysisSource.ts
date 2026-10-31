@@ -42,3 +42,15 @@ export function analysisPassage(reference: ScriptureRefShape | undefined, bible?
   if (passages.length !== 1 || passages[0].fromVerse === undefined || passages[0].toVerse === undefined) return null;
   return { ...passages[0], fromVerse: passages[0].fromVerse, toVerse: passages[0].toVerse };
 }
+
+/** Positions belong to the complete contiguous passage in its immutable Bible corpus. */
+export function studyAnalysisPositionBasis(value: AnalysisDocument | null | undefined): (StudyAnalysisSource & {
+  chapter: number; fromVerse: number; toChapter: number; toVerse: number; words: number;
+}) | null {
+  const source = studyAnalysisSource(value);
+  const words = record(value?.analysis)?.words;
+  const reference = Array.isArray(value?.scriptureRefs) ? value.scriptureRefs[0] as ScriptureRefShape : undefined;
+  const passage = source && analysisPassage(reference, source.bible);
+  return source && passage && typeof words === 'number' && Number.isSafeInteger(words) && words > 0
+    ? { ...source, ...passage, words } : null;
+}

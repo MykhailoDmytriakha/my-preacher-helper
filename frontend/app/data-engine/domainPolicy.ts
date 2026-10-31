@@ -138,7 +138,13 @@ function prepareUpdate(base: CommandBase, confirmed: ResourceSnapshot & { value:
   if (collection === 'series' && changes.some(change => ['sermonIds', 'seriesKind'].includes(change.path[0]))) return failure('Series mirrors are derived from items', 'derived-field');
   const writable = collection === 'studyNotes' ? changes.filter(change => change.path[0] !== 'isDraft') : changes;
   if (!writable.length) return failure('Only a server-derived field changed', 'derived-field');
-  return { command: { ...base, kind: 'update', changes: writable }, submittedValue: copy(draft) };
+  // Unchanged roots prove which passage the positions were authored against. A delayed
+  // command must not borrow those roots from a newer server snapshot.
+  const positional = collection === 'studyNotes' && (confirmed.value.type === 'analysis' || draft.type === 'analysis')
+    && writable.some(change => ANALYSIS_RESHAPE_FRAME.some(field => change.path[0] === field));
+  const guarded = positional ? [...writable.filter(change => !ANALYSIS_RESHAPE_FRAME.some(field => change.path[0] === field)),
+    ...ANALYSIS_RESHAPE_FRAME.map(field => ({ path: [field], before: readField(confirmed.value, [field]), after: readField(draft, [field]) }))] : writable;
+  return { command: { ...base, kind: 'update', changes: guarded }, submittedValue: copy(draft) };
 }
 
 /** One command per ACK boundary. Authored baselines stay pinned; first marks use a logical empty book. */

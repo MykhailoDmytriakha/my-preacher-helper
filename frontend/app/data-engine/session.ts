@@ -1,4 +1,4 @@
-import { keepAnalysisReshapeFrame } from './analysisReshapeFields';
+import { hasDifferentAnalysisPositionBasis, keepAnalysisReshapeFrame } from './analysisReshapeFields';
 import { firstBookMarksIntent } from './bibleMarksCreation';
 import { prepareDomainCommand } from './domainPolicy';
 import { ACTION_SLOT, editorSlot } from './editorIdentity';
@@ -261,7 +261,9 @@ export class DataSession {
     const merged = mergeDocumentFields(atChoice, this.state.draft, this.state.confirmed.value);
     this.state.draft = merged.value.exists ? copy(merged.value.value as DocumentData) : null;
     this.state.dirty = !equalValues(this.state.draft, this.state.confirmed.value);
-    this.state.conflicts = [];
+    // A choice about an earlier request cannot silently decide later positional work.
+    this.state.conflicts = hasDifferentAnalysisPositionBasis(atChoice, this.state.draft, this.state.confirmed.value) ? copy(merged.conflicts) : [];
+    if (this.state.conflicts.length) this.state.remoteCandidate = copy(this.state.confirmed);
     this.state.editGeneration += 1;
   }
 
