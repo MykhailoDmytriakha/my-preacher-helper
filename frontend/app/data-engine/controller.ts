@@ -49,6 +49,8 @@ export interface RecoveryCheckpoint {
   record: EditorRecord;
   /** Derived by engine discovery; never stored in the checkpoint. */
   answer?: DocumentAnswer;
+  /** The held requests can only be resolved through their complete atomic action. */
+  actionResolutionRequired?: boolean;
 }
 
 export interface CheckpointRecoveryStore extends CheckpointStore {

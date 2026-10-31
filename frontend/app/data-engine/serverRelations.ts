@@ -3,9 +3,10 @@ import { isServiceOrderCatalogKey } from '@/utils/serviceOrderSeedIdentity';
 import { isStructureTag } from '@/utils/structureTags';
 import { isStudyNoteDraft } from '@/utils/studyNoteDraft';
 
+import { ANALYSIS_RESHAPE_FRAME, sameAnalysisFrame } from './analysisReshapeFields';
 import { validCouncilCarry } from './councilCarryContent';
 import { childIdentityIssues } from './legacyChildIdentity';
-import { advanceResourceSnapshot, applyCommand, equalValues, mergeFields, MAX_RELATION_RESOURCES } from './protocol';
+import { advanceResourceSnapshot, applyCommand, equalValues, mergeFields, readField, MAX_RELATION_RESOURCES } from './protocol';
 import { validateResourceDocument } from './resourceSchemas';
 
 import type { CommandResult, ConflictDetail, DataCommand, DocumentData, Json, ResourceRef, ResourceSnapshot } from './types';
@@ -278,6 +279,55 @@ class RelationPlanner {
     }
   }
 
+  /** Apply a bounded source-first analysis reshape only when every authored frame still matches. */
+  private async analysisReshape(command: Extract<DataCommand, { relation: 'analysis-reshape' }>): Promise<CommandResult | undefined> {
+    const candidates: ResourceSnapshot[] = [];
+    for (const edit of command.edits) {
+      const current = await this.get(edit.resource);
+      this.assertOwned(current);
+      if (edit.create !== undefined) {
+        if (current.metadata?.deleted) return { kind: 'deleted', operationId: command.operationId, snapshot: current };
+        if (current.value || current.metadata) fail('destination-already-exists');
+        const created = applyCommand({ ...command, resource: edit.resource, generation: null, kind: 'create', value: edit.create }, current);
+        if (created.kind !== 'acknowledged') return created;
+        candidates.push(created.snapshot);
+        continue;
+      }
+
+      const value = this.live(current, edit.generation);
+      const expectedFrame = Object.fromEntries(ANALYSIS_RESHAPE_FRAME.map(field => [field, edit.changes.find(change => change.path[0] === field)!.before.value as Json]));
+      if (!sameAnalysisFrame(value, expectedFrame)) {
+        const conflicts = edit.changes.flatMap(change => {
+          if (!ANALYSIS_RESHAPE_FRAME.includes(change.path[0] as (typeof ANALYSIS_RESHAPE_FRAME)[number])) return [];
+          const theirs = readField(value, change.path);
+          return equalValues(change.before, theirs) ? [] : [{
+            path: [edit.resource.id, ...change.path], base: change.before, mine: change.after, theirs,
+          }];
+        });
+        return this.conflict(conflicts);
+      }
+      if (value.type !== 'analysis' || !value.analysis || typeof value.content !== 'string' || !Array.isArray(value.scriptureRefs)) fail(INVALID_DOCUMENT);
+      const updated = applyCommand({ ...command, resource: edit.resource, generation: edit.generation, kind: 'update', changes: edit.changes }, current);
+      if (updated.kind === 'conflict') return this.conflict(updated.conflicts.map(conflict => ({ ...conflict, path: [edit.resource.id, ...conflict.path] })));
+      if (updated.kind !== 'acknowledged') return updated;
+      candidates.push(updated.snapshot);
+    }
+
+    // Candidate validation and all participant reads above complete before any write is exposed.
+    candidates.forEach(candidate => this.writes.set(key(candidate.resource), candidate));
+  }
+
+  private async planRelation(command: Extract<DataCommand, { kind: 'relation' }>): Promise<CommandResult | undefined> {
+    switch (command.relation) {
+      case 'service-order-seed': return this.seedServiceOrder(command);
+      case 'series-member-create': return this.createSeriesMember(command);
+      case 'material-notes': return this.materialRelation(command);
+      case 'council-carry': return this.councilCarry(command);
+      case 'analysis-reshape': return this.analysisReshape(command);
+      default: return this.seriesRelation(command);
+    }
+  }
+
   /** Guard old generic creates too: different client IDs cannot name the same live standard rite. */
   private async uniqueServiceOrder(value: DocumentData): Promise<void> {
     if (!isServiceOrderCatalogKey(value.catalogKey)) return;
@@ -460,9 +510,7 @@ class RelationPlanner {
       result = await this.createSeriesMember(this.command);
     } else if (this.command.kind === 'relation') {
       this.live(this.primary, this.command.generation);
-      result = this.command.relation === 'material-notes' ? await this.materialRelation(this.command)
-        : this.command.relation === 'council-carry' ? await this.councilCarry(this.command)
-        : await this.seriesRelation(this.command);
+      result = await this.planRelation(this.command);
       // Every new accepted operation needs its own primary proof, even when a
       // concurrent writer already satisfied the relation. Receipt replays bypass
       // this planner and therefore never increment the revision twice.

@@ -1,3 +1,4 @@
+import { sameAnalysisFrame } from './analysisReshapeFields';
 import { pendingCommitRetirement, retireCommitJournal } from './commitJournal';
 import { prepareAtomicDomainCommand } from './domainPolicy';
 import { equalValues, mergeDocumentFields, MAX_RELATION_RESOURCES } from './protocol';
@@ -7,7 +8,7 @@ import type { CommitRequest, CommitStore } from './commits';
 import type { DataEngineRuntime } from './runtime';
 import type { CommandResult, DocumentData, EngineMetadata, JournalEntry, ResourceRef, ResourceSnapshot } from './types';
 
-export interface AtomicCommitIdentity { id: string; participants: string[]; kind?: 'create-member' | 'council-carry' }
+export interface AtomicCommitIdentity { id: string; participants: string[]; kind?: 'create-member' | 'council-carry' | 'analysis-reshape' }
 const sameResource = (a: ResourceRef, b: ResourceRef) => a.collection === b.collection && a.id === b.id;
 
 /** The same predecessor rebase is used for ordinary and atomic saved intent. */
@@ -16,6 +17,9 @@ export function initializeCommit(record: CommitRequest, records: readonly Commit
   if (record.predecessor && (!predecessor || predecessor.state !== 'acknowledged')) return null;
   if (predecessor && predecessor.result?.kind === 'acknowledged') {
     const snapshot = predecessor.result.snapshot;
+    if (record.atomic?.kind === 'analysis-reshape' && !sameAnalysisFrame(predecessor.value, snapshot.value)) {
+      return { ...record, initialized: true, state: 'refused', result: { kind: 'refused', operationId: record.id, code: 'resolve-version-first' } };
+    }
     const rebased = mergeDocumentFields(predecessor.value, record.value, snapshot.value);
     if (rebased.conflicts.length) return { ...record, initialized: true, state: 'conflict', result: { kind: 'conflict', operationId: record.id, snapshot, conflicts: rebased.conflicts } };
     return { ...record, initialized: true, working: snapshot, intended: rebased.value.exists ? rebased.value.value as DocumentData : null };
@@ -78,7 +82,7 @@ export async function advanceAtomicCommit(participants: CommitRequest[], records
     const initialized = participants.map(record => record.initialized ? record : initializeCommit(record, records));
     if (initialized.some(record => !record)) return false;
     const ready = initialized as CommitRequest[];
-    const failed = ready.find(record => record.state === 'conflict');
+    const failed = ready.find(record => ['conflict', 'refused'].includes(record.state));
     return commit(failed ? ready.map(record => record === failed ? record : { ...record, state: 'refused',
       result: { kind: 'refused', operationId: record.id, code: 'atomic-predecessor-conflict' } }) : ready);
   }
@@ -114,7 +118,7 @@ export async function advanceAtomicCommit(participants: CommitRequest[], records
     if (!coversCommittedEffect(snapshot, resource, proof) || (snapshot.value && snapshot.value.userId !== primary.owner)) {
       throw new Error('Atomic acknowledgement does not prove participant content');
     }
-    // Membership-only captures have no unsent sibling fields. Server merge output,
+    // Atomic captures own only their action fields. Server merge output,
     // including fields changed by another device, is the confirmed participant.
     return { ...record, working: snapshot, intended: snapshot.value, command: null, submitted: null,
       sequence: record.sequence + 1, state: 'acknowledged' as const,

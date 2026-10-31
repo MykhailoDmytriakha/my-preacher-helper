@@ -2,11 +2,12 @@ import { deriveSeriesItemsFromSermonIds } from '@/utils/seriesItems';
 import { isServiceOrderCatalogKey, serviceOrderSeedCycle } from '@/utils/serviceOrderSeedIdentity';
 import { preservesStudyAnalysisSource } from '@/utils/studyAnalysisSource';
 
+import { ANALYSIS_RESHAPE_FRAME, sameAnalysisFrame } from './analysisReshapeFields';
 import { firstBookMarksIntent } from './bibleMarksCreation';
 import { carriedCopy, validCouncilCarry } from './councilCarryContent';
-import { diffFields, equalValues, validateCommand, MAX_RELATION_RESOURCES } from './protocol';
+import { diffFields, equalValues, readField, validateCommand, MAX_RELATION_RESOURCES } from './protocol';
 
-import type { CommandBase, DataCommand, DocumentData, ResourceRef, ResourceSnapshot } from './types';
+import type { CommandBase, DataCommand, DocumentData, FieldChange, ResourceRef, ResourceSnapshot } from './types';
 
 export interface DomainPreparation {
   command: DataCommand;
@@ -187,6 +188,38 @@ export function prepareAtomicSeriesCommand(owner: string, operationId: string, p
 /** A click-only council carry uses the same durable participants as a series move. */
 export function prepareAtomicDomainCommand(owner: string, operationId: string,
   participants: readonly { confirmed: ResourceSnapshot; draft: DocumentData | null }[]): DataCommand {
+  if (participants[0]?.confirmed.resource.collection === 'studyNotes') {
+    if (participants.length < 2 || participants.length > 3) return failure('An analysis reshape requires two or three participants');
+    const [source] = participants;
+    if (source.confirmed.resource.collection !== 'studyNotes' || !source.confirmed.value || source.confirmed.metadata?.deleted
+      || !source.draft || source.confirmed.value.userId !== owner || source.draft.userId !== owner
+      || source.confirmed.value.type !== 'analysis' || source.draft.type !== 'analysis'
+      || !source.confirmed.value.analysis || !source.draft.analysis || sameAnalysisFrame(source.confirmed.value, source.draft)) {
+      return failure('A live owned source analysis with a changed authored frame is required');
+    }
+    const seen = new Set<string>();
+    const edits = participants.map(({ confirmed, draft }, index) => {
+      if (confirmed.resource.collection !== 'studyNotes' || seen.has(confirmed.resource.id)) return failure('Analysis reshape participants must be distinct study notes');
+      seen.add(confirmed.resource.id);
+      if (!draft || draft.userId !== owner || draft.type !== 'analysis' || !draft.analysis) return failure('Analysis reshape notes must be owned analyses');
+      if (confirmed.value === null) {
+        if (index === 0 || confirmed.metadata) return failure('Only an absent recipient can be created', 'use-new-copy');
+        if (!Array.isArray(draft.scriptureRefs) || typeof draft.content !== 'string') return failure('A complete analysis recipient is required');
+        return { resource: copy(confirmed.resource), generation: null, changes: [], create: copy(draft) };
+      }
+      if (confirmed.metadata?.deleted) return failure('Deleted notes require a new copy', 'use-new-copy');
+      if (confirmed.value.userId !== owner || confirmed.value.type !== 'analysis' || !confirmed.value.analysis
+        || typeof confirmed.value.content !== 'string' || !Array.isArray(confirmed.value.scriptureRefs)
+        || !preservesStudyAnalysisSource(confirmed.value, draft)) return failure('Analysis reshape requires a live owned analysis frame', 'invalid-document');
+      const changes: FieldChange[] = ANALYSIS_RESHAPE_FRAME.map(field => ({ path: [field], before: readField(confirmed.value!, [field]), after: readField(draft, [field]) }));
+      const title = diffFields(confirmed.value, draft).find(change => change.path[0] === 'title');
+      if (title) changes.push(title);
+      return { resource: copy(confirmed.resource), generation: confirmed.metadata?.generation ?? null, changes };
+    });
+    if (!edits[0] || 'create' in edits[0]) return failure('The source analysis cannot be a new recipient');
+    return validateCommand({ protocol: 1, owner, operationId, resource: copy(source.confirmed.resource),
+      generation: source.confirmed.metadata?.generation ?? null, dependsOn: [], kind: 'relation', relation: 'analysis-reshape', edits });
+  }
   if (participants[0]?.confirmed.resource.collection !== 'councils') return prepareAtomicSeriesCommand(owner, operationId, participants);
   if (participants.length !== 2) return failure('A council carry requires two participants');
   const [source, target] = participants;

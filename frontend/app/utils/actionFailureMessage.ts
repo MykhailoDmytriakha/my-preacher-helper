@@ -41,6 +41,7 @@ const KNOWN = new Map<string, string>([
   ['preach-date-gone', 'dataSync.failure.preachDateGone'],
   ['fresh-read-required', 'dataSync.failure.freshReadRequired'],
   ['resolve-version-first', 'dataSync.failure.resolveVersionFirst'],
+  ['decision-required', 'dataSync.failure.decisionRequired'],
   ['unsent-form-first', 'dataSync.failure.unsentFormFirst'],
   ['not-on-device-yet', 'dataSync.failure.notOnDeviceYet'],
   ['pending-delivery-first', 'dataSync.failure.pendingDeliveryFirst'],

@@ -97,6 +97,7 @@ const baseUseStudyNotesValue = (): ReturnType<typeof useStudyNotes> => ({
   error: null,
   refetch: jest.fn(),
   createNote: jest.fn(),
+  reshapeNotes: jest.fn(),
   updating: false,
   updateNote: jest.fn(),
   deleteNote: jest.fn(),

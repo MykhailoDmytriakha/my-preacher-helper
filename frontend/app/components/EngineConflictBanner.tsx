@@ -41,7 +41,7 @@ type Kind = 'conflict' | 'refused' | 'refusedCreate' | 'deletedThere' | 'deleted
  * well. Otherwise (several chains of requests, between which the engine never picks) no screen can,
  * and the stored version is the one choice, offered here.
  */
-interface Waiting extends RecoveryChoiceScope { resource: ResourceRef; kind: Kind; mine: string[]; theirs: string; screen: boolean; screenValue?: DocumentData | null; decidable?: boolean; formWork?: boolean }
+interface Waiting extends RecoveryChoiceScope { resource: ResourceRef; kind: Kind; mine: string[]; theirs: string; screen: boolean; screenValue?: DocumentData | null; decidable?: boolean; formWork?: boolean; actionResolutionRequired?: boolean }
 
 /** The look both notices share: one for a change decided here, one for a screen's draft decided there. */
 const REFUSED_TITLE = 'dataSync.phase.refused';
@@ -191,21 +191,23 @@ function waitingDocuments(records: readonly RecoveryCheckpoint[], journal: reado
   // A conflict in an unsent screen draft has no submitted request to settle here.
   const decided = records.filter(({ record, answer }) => isCollectionOnEngine(record.checkpoint.confirmed.resource.collection)
     && waitsForDecision(record, journal, answer) && (isOneShotRecord(record) || Boolean(answer)
-      || Object.keys(record.checkpoint.pending).some(id => answered.has(id)))).map(entry => entry.record);
+      || Object.keys(record.checkpoint.pending).some(id => answered.has(id))));
   const documents: Waiting[] = [];
   for (const screen of [false, true]) {
-    for (const record of decided.filter(entry => isOneShotRecord(entry) !== screen)) {
+    for (const entry of decided.filter(({ record }) => isOneShotRecord(record) !== screen)) {
+      const record = entry.record;
       const resource = record.checkpoint.confirmed.resource;
       if (documents.some(entry => entry.screen === screen && sameResource(entry.resource, resource))) continue;
-      const drafts = decided.filter(entry => isOneShotRecord(entry) !== screen && sameResource(entry.checkpoint.confirmed.resource, resource));
-      const { checkpoint } = drafts[0];
-      const scope = captureRecoveryChoice(drafts);
+      const drafts = decided.filter(candidate => isOneShotRecord(candidate.record) !== screen && sameResource(candidate.record.checkpoint.confirmed.resource, resource));
+      const { checkpoint } = drafts[0].record;
+      const scope = captureRecoveryChoice(drafts.map(draft => draft.record));
       // Every opening of a screen keeps its own copy of a draft it took over: the same words are said once.
-      const screenValues = drafts.map(draft => draft.checkpoint.draft ?? draft.checkpoint.confirmed.value ?? draft.checkpoint.remoteCandidate?.value);
+      const screenValues = drafts.map(({ record: draft }) => draft.checkpoint.draft ?? draft.checkpoint.confirmed.value ?? draft.checkpoint.remoteCandidate?.value);
       const screenValue = screenValues[0];
       const sameScreen = screenValues.every(value => documentScreenHref(resource, value) === documentScreenHref(resource, screenValue));
-      documents.push({ resource, kind: kindOf(drafts, refused), screen, screenValue: sameScreen ? screenValue : null,
-        mine: [...new Set(drafts.map(draft => changedText(draft.checkpoint.draft, draft.checkpoint.confirmed.value, name, resource.collection, display)).filter(Boolean))],
+      documents.push({ resource, kind: kindOf(drafts.map(draft => draft.record), refused), screen, screenValue: sameScreen ? screenValue : null,
+        actionResolutionRequired: drafts.some(draft => draft.actionResolutionRequired),
+        mine: [...new Set(drafts.map(({ record: draft }) => changedText(draft.checkpoint.draft, draft.checkpoint.confirmed.value, name, resource.collection, display)).filter(Boolean))],
         theirs: changedText(checkpoint.remoteCandidate?.value ?? checkpoint.confirmed.value, null, name, resource.collection, display),
         ...scope });
     }
@@ -393,6 +395,9 @@ function EngineConflicts({ pollMs, search }: { pollMs: number; search?: string }
   };
 
   const mine = entry.mine.join('\n\n———\n\n');
+  if (entry.actionResolutionRequired) {
+    return <ScreenDraftNotice entry={entry} mine={mine} busy={busy} onCopy={() => { void copyToClipboard(mine); }} />;
+  }
   if (entry.screen) {
     return <>
       {entry.decidable
@@ -467,7 +472,7 @@ function EngineConflicts({ pollMs, search }: { pollMs: number; search?: string }
  * copy of the draft, the screen open in another tab included.
  */
 function ScreenDraftNotice({ entry, mine, busy, onCopy, onTakeStored }: {
-  entry: Waiting; mine: string; busy: boolean; onCopy: () => void; onTakeStored: () => void;
+  entry: Waiting; mine: string; busy: boolean; onCopy: () => void; onTakeStored?: () => void;
 }) {
   const { t } = useTranslation();
   const href = documentScreenHref(entry.resource, entry.screenValue);
@@ -476,7 +481,7 @@ function ScreenDraftNotice({ entry, mine, busy, onCopy, onTakeStored }: {
   return (
     <div role="alert" className={NOTICE_BOX}>
       <p className={NOTICE_TITLE}>{title}</p>
-      <p className={NOTICE_BODY}>{t('dataSync.screenDraftBody')}</p>
+      <p className={NOTICE_BODY}>{t(entry.actionResolutionRequired ? 'dataSync.wholeActionDraftBody' : 'dataSync.screenDraftBody')}</p>
       {mine && (
         <pre className={NOTICE_TEXT}>{mine}</pre>
       )}
@@ -486,7 +491,7 @@ function ScreenDraftNotice({ entry, mine, busy, onCopy, onTakeStored }: {
         {href && (entry.resource.collection === 'bibleMarks'
           ? <a href={href} className={PRIMARY_BUTTON}>{t('dataSync.openToDecide')}</a>
           : <Link href={href} className={PRIMARY_BUTTON}>{t('dataSync.openToDecide')}</Link>)}
-        <button type="button" disabled={busy} onClick={onTakeStored} className={SECONDARY_BUTTON}>{t(ACCEPT_REMOTE)}</button>
+        {onTakeStored && <button type="button" disabled={busy} onClick={onTakeStored} className={SECONDARY_BUTTON}>{t(ACCEPT_REMOTE)}</button>}
         {mine && <button type="button" disabled={busy} onClick={onCopy} className={SECONDARY_BUTTON}>{t(COPY_ACTION)}</button>}
       </div>
     </div>

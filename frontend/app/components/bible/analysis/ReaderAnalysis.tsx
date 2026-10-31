@@ -1,8 +1,11 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
+
+import { useResolvedUid } from '@/hooks/useResolvedUid';
+import { refusalMessage } from '@/utils/actionFailureMessage';
 
 import { VerseCopyBar } from '../verseCopy/VerseCopyBar';
 
@@ -36,9 +39,17 @@ export function ReaderAnalysis({ copy, text, wide, bookId, bible, locale, openin
   marks?: AnalysisMarks | null;
 }) {
   const { t } = useTranslation();
+  const { uid } = useResolvedUid();
+  const scope = JSON.stringify([uid, bookId, bible]);
+  const currentScope = useRef<string | null>(scope);
+  useLayoutEffect(() => { currentScope.current = scope; return () => { currentScope.current = null; }; }, [scope]);
+  const capturing = useRef(new Set<string>());
+  const [busyScopes, setBusyScopes] = useState<ReadonlySet<string>>(() => new Set());
+  const busy = busyScopes.has(scope);
   const choosing = copy.purpose === 'analysis' && text;
   // The analysis whose verses are being chosen again, if any; a choice let go of lets it go.
   const [reshaping, setReshaping] = useState<string | null>(null);
+  useEffect(() => { setReshaping(null); }, [scope]);
   useEffect(() => { if (!copy.picking) setReshaping(null); }, [copy.picking]);
   const reshape = useAnalysisReshape({ text, bookId, bible, locale });
   // An analysis the address names — a reload while it was open — opens again, in the mode it was in.
@@ -54,17 +65,29 @@ export function ReaderAnalysis({ copy, text, wide, bookId, bible, locale, openin
     copy.startPassage({ chapter: passage.chapter, verse: passage.fromVerse }, { chapter: passage.toChapter, verse: passage.toVerse });
     setReshaping(id);
   };
-  const open = (passage: PickedPassage) => {
-    copy.clear();
-    if (!reshaping) { onOpening({ kind: 'new', passage }); return; }
-    const said = reshape(reshaping, passage);
-    if (said) toast.success(said); else toast(t('analysis.reshape.apart'));
-    onOpening({ kind: 'open', id: reshaping, editing: true });
+  const open = async (passage: PickedPassage) => {
+    if (capturing.current.has(scope)) return;
+    const source = reshaping;
+    if (!source) { copy.clear(); onOpening({ kind: 'new', passage }); return; }
+    capturing.current.add(scope); setBusyScopes(new Set(capturing.current));
+    try {
+      const said = await reshape(source, passage);
+      if (currentScope.current !== scope) return;
+      if (!said) { toast(t('analysis.reshape.apart')); return; }
+      copy.clear();
+      toast(t('analysis.reshape.prepared'));
+      onOpening({ kind: 'open', id: source, editing: true });
+    } catch (error) {
+      if (currentScope.current === scope) toast.error(refusalMessage(error, t, 'common.saveError'));
+    } finally {
+      capturing.current.delete(scope);
+      if (currentScope.current !== null) setBusyScopes(new Set(capturing.current));
+    }
   };
   return (
     <>
       {choosing
-        ? <AnalysisPickBar copy={copy} wide={wide} onOpen={open} action={reshaping ? t('analysis.pick.apply') : undefined} />
+        ? <AnalysisPickBar copy={copy} wide={wide} onOpen={open} busy={busy} action={reshaping ? t('analysis.pick.apply') : undefined} />
         : <VerseCopyBar copy={copy} wide={wide} />}
       {opening && text ? <AnalysisEditor opening={opening} text={text} bookId={bookId} bible={bible} locale={locale} marks={marks} onClose={() => onOpening(null)} onEditVerses={editVerses} /> : null}
     </>

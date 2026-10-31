@@ -263,10 +263,14 @@ export class CommitQueue {
     const councilCarry = frozen.length === 2 && frozen.every(item => item.captured.confirmed.resource.collection === 'councils')
       && frozen[0].captured.confirmed.value !== null && frozen.every(item => item.captured.draft !== null)
       && (frozen[1].captured.confirmed.value !== null || frozen[1].captured.confirmed.metadata === null);
+    const analysisReshape = frozen.length >= 2 && frozen.length <= 3
+      && frozen.every(item => item.captured.confirmed.resource.collection === 'studyNotes' && item.captured.draft !== null
+        && !item.captured.confirmed.metadata?.deleted && (item.captured.confirmed.value !== null || item.captured.confirmed.metadata === null))
+      && frozen[0].captured.confirmed.value !== null;
     if (frozen.length < 2 || frozen.length > MAX_RELATION_RESOURCES
       || new Set(frozen.map(item => JSON.stringify(item.captured.confirmed.resource))).size !== frozen.length
       || frozen.some((item, index) => item.captured.conflicts.length || (!(creation && index === 0)
-        && !councilCarry && item.captured.confirmed.resource.collection !== 'series'))) throw new Error('Invalid atomic relation capture');
+        && !councilCarry && !analysisReshape && item.captured.confirmed.resource.collection !== 'series'))) throw new Error('Invalid atomic relation capture');
     if (frozen.some(item => (item.captured.confirmed.value && item.captured.confirmed.value.userId !== owner)
       || (item.captured.draft && item.captured.draft.userId !== owner))) throw new Error('Atomic capture belongs to another owner');
     const records = await this.options.store.list(owner); this.assertCurrent(owner, generation);
@@ -283,7 +287,7 @@ export class CommitQueue {
     const existing = repeated(records); if (existing) return existing;
     const id = this.options.operationId();
     const atomic: AtomicCommitIdentity = { id, participants: frozen.map((_, index) => index === 0 ? id : `${id}-participant-${index}`),
-      ...(creation ? { kind: 'create-member' as const } : councilCarry ? { kind: 'council-carry' as const } : {}) };
+      ...(creation ? { kind: 'create-member' as const } : councilCarry ? { kind: 'council-carry' as const } : analysisReshape ? { kind: 'analysis-reshape' as const } : {}) };
     const requests = frozen.map((item, index): CommitRequest => {
       const predecessors = records.filter(record => record.editorId === item.editorId && record.state !== 'cancelled');
       const predecessor = item.predecessorId === null ? undefined : item.predecessorId ? records.find(record => record.id === item.predecessorId)

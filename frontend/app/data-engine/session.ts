@@ -1,3 +1,4 @@
+import { keepAnalysisReshapeFrame } from './analysisReshapeFields';
 import { firstBookMarksIntent } from './bibleMarksCreation';
 import { prepareDomainCommand } from './domainPolicy';
 import { ACTION_SLOT, editorSlot } from './editorIdentity';
@@ -118,7 +119,7 @@ export class DataSession {
       return true;
     }
     this.registerCommit(request.id, request.editGeneration, request.value, request.atomic?.id ?? request.command?.operationId);
-    if (request.result && ['acknowledged', 'conflict', 'refused'].includes(request.state)) this.accept(request.result);
+    if (request.result && ['acknowledged', 'conflict', 'refused'].includes(request.state)) this.accept(request.result, request.atomic?.kind === 'analysis-reshape');
     return request.state === 'acknowledged';
   }
 
@@ -127,6 +128,7 @@ export class DataSession {
     const predecessor = request.predecessor ? this.state.pending[request.predecessor] : undefined;
     const rollbackValue = accepted.value ?? (!accepted.metadata && !request.baseline.value ? predecessor?.value ?? null : null);
     const rebased = mergeDocumentFields(request.value, this.state.draft, rollbackValue);
+    if (request.atomic?.kind === 'analysis-reshape') keepAnalysisReshapeFrame(request.value, this.state.draft, rollbackValue, rebased);
     // Discard owns membership only. Later saved metadata in a dependent request
     // is still the person's work, just like later unsent typing. Rebase those
     // fields against the actual confirmed ancestor, not the cancelled request.
@@ -179,7 +181,7 @@ export class DataSession {
    * Queued, sending and unknown operations must retain their identity until acknowledged. */
   release(operationId: string): void { delete this.state.pending[operationId]; }
 
-  accept(result: CommandResult): void {
+  accept(result: CommandResult, wholeAnalysisFrame = false): void {
     const submitted = this.state.pending[result.operationId];
     if (!submitted) return;
     if (result.kind !== 'acknowledged') {
@@ -205,7 +207,9 @@ export class DataSession {
     // typing from B without claiming that B's own receipt has been received.
     const newerSubmitted = acceptedOperation && Object.entries(this.state.pending).find(([id, pending]) =>
       pending.generation > submitted.generation && (id === acceptedOperation || pending.operations?.includes(acceptedOperation)))?.[1];
-    const rebased = mergeDocumentFields(newerSubmitted ? newerSubmitted.value : submitted.value, this.state.draft, accepted.value);
+    const ancestor = newerSubmitted ? newerSubmitted.value : submitted.value;
+    const rebased = mergeDocumentFields(ancestor, this.state.draft, accepted.value);
+    if (wholeAnalysisFrame) keepAnalysisReshapeFrame(ancestor, this.state.draft, accepted.value, rebased);
     this.state.confirmed = copy(accepted);
     this.state.draft = rebased.value.exists ? copy(rebased.value.value as DocumentData) : null;
     this.state.conflicts = copy(rebased.conflicts);

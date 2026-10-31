@@ -29,6 +29,7 @@ import { deletedUnder } from './session';
 import { describeManualSync, describeSync, type SyncStatus } from './status';
 import { useRecoveryDiscovery as useDiscovery, type RecoveryDiscoveryOptions } from './useRecoveryDiscovery';
 
+import type { StudyAnalysisWrite } from './analysisReshape';
 import type { CollectionState } from './collections';
 import type { EditorRecord, EditorState } from './controller';
 import type { ManagedEditor, ManagedManualForm, ManualRecoveryPolicy } from './engine';
@@ -323,6 +324,7 @@ export function useDocumentActions() {
   // Menus that offer these actions render in both deployments; without an engine they are not ready.
   const { browser, owner } = useContext(EngineContext) ?? idleEngine;
   const readOnlyReason = useReadOnlyReason();
+  const actionOwner = useRef(owner); actionOwner.current = owner;
   /*
    * Opening an editor for one action changes nothing yet, so it may be abandoned; once the action
    * has run, its outcome must stay knowable and it is never raced. When the engine's storage goes
@@ -360,6 +362,13 @@ export function useDocumentActions() {
   }, [browser, owner, waitingFor, openFor]);
   return useMemo(() => ({
     ready: Boolean(browser && owner),
+    /** One user action, durably captured for every note or refused before changing any. */
+    reshapeStudyAnalysis: async (edits: readonly StudyAnalysisWrite[]): Promise<void> => {
+      if (!browser || !owner) throw new Error(ENGINE_NOT_READY);
+      for (const edit of edits) if (edit.expected && (await waitingFor(edit.resource)).length) throw decisionRequired();
+      if (actionOwner.current !== owner) throw new Error(EDITOR_CHANGED);
+      return browser.engine.reshapeStudyAnalysis(edits);
+    },
     /** A new document under a stable client ID; a retry with the same ID never creates a second one. */
     create: (resource: ResourceRef, value: DocumentData) => withEditor(resource, editor => editor.commit(() => value), true),
     commit: (resource: ResourceRef, updater: (current: DocumentData | null) => DocumentData | null) =>
@@ -414,6 +423,46 @@ export function useDocumentActions() {
       return taken + waiting.length;
     },
   }), [browser, owner, withEditor, waitingFor, openFor]);
+}
+
+/** Owner-scoped recovery for whole passage actions, driven by the shared journal/request signal. */
+export function useAnalysisReshapeActions() {
+  const { browser, owner } = useContext(EngineContext) ?? idleEngine;
+  const { t } = useTranslation();
+  const identity = useMemo(() => ({ browser, owner }), [browser, owner]);
+  const current = useRef(identity); current.current = identity;
+  const [revision, setRevision] = useState(0);
+  type Item = Awaited<ReturnType<BrowserDataEngine['engine']['listAnalysisReshapes']>>[number];
+  const [state, setState] = useState<{ identity: typeof identity; items: Item[]; error: unknown } | null>(null);
+  useEffect(() => {
+    if (!browser || !owner) return;
+    let active = true, sequence = 0;
+    const refresh = () => {
+      const request = ++sequence;
+      void browser.engine.listAnalysisReshapes().then(items => {
+        if (active && current.current === identity && request === sequence) setState({ identity, items, error: null });
+      }, error => {
+        if (active && current.current === identity && request === sequence) setState(previous => ({ identity,
+          items: previous?.identity === identity ? previous.items : [], error }));
+      });
+    };
+    const stop = browser.engine.subscribeSavedWork(refresh); refresh();
+    return () => { active = false; stop(); };
+  }, [browser, owner, identity, revision]);
+  const run = async (operation: () => Promise<void>) => {
+    if (!browser || !owner || current.current !== identity) throw new Error(EDITOR_CHANGED);
+    try { await operation(); }
+    catch (error) {
+      if (current.current === identity) setState(previous => ({ identity, items: previous?.identity === identity ? previous.items : [], error }));
+      throw error;
+    }
+  };
+  const shown = state?.identity === identity ? state : null;
+  const error = shown?.error ? sayFailure(refusalWords(shown.error, 'common.saveError'), t) : null;
+  const retry = () => run(() => browser!.engine.retry()).finally(() => { if (current.current === identity) setRevision(value => value + 1); });
+  return { error, retry, actions: (shown?.items ?? []).map(item => ({ ...item, durable: true, error, phase: 'submitted' as const,
+    retry, discard: () => run(() => browser!.engine.discardAnalysisReshape(item.id)),
+  })) };
 }
 
 /**

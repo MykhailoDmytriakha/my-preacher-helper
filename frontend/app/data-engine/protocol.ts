@@ -20,6 +20,8 @@ export const TOMBSTONE_OWNER_FIELD = '_dataEngineOwner';
 export const MAX_RELATION_RESOURCES = 100;
 
 const BAD_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
+export const ANALYSIS_RESHAPE_FRAME = ['analysis', 'content', 'scriptureRefs'] as const;
+export const ANALYSIS_RESHAPE_FIELDS = [...ANALYSIS_RESHAPE_FRAME, 'title'] as const;
 const own = (value: object, key: string) => Object.prototype.hasOwnProperty.call(value, key);
 const object = (value: unknown): value is DocumentData => value !== null
   && typeof value === 'object' && !Array.isArray(value);
@@ -187,10 +189,48 @@ function validateServiceOrderSeed(command: Extract<DataCommand, { relation: 'ser
   validateCreate({ ...command, kind: 'create' }, getResourcePolicy('serviceOrders'));
 }
 
+function validateAnalysisReshape(command: Extract<DataCommand, { relation: 'analysis-reshape' }>): void {
+  const invalidFrame = 'Invalid analysis reshape frame';
+  if (command.resource.collection !== 'studyNotes' || !Array.isArray(command.edits) || command.edits.length < 2 || command.edits.length > 3) {
+    fail('Invalid analysis reshape');
+  }
+  const named = new Set<string>();
+  for (const [index, edit] of command.edits.entries()) {
+    if (!object(edit) || !object(edit.resource) || edit.resource.collection !== 'studyNotes'
+      || !isValidIdentifier(edit.resource.id) || edit.generation !== null && !isValidIdentifier(edit.generation)
+      || named.has(edit.resource.id) || !Array.isArray(edit.changes)) fail('Invalid analysis reshape');
+    named.add(edit.resource.id);
+    if (edit.create !== undefined) {
+      if (index === 0 || edit.generation !== null || edit.changes.length !== 0 || !object(edit.create)
+        || edit.create.userId !== command.owner || edit.create.type !== 'analysis' || !object(edit.create.analysis)
+        || typeof edit.create.content !== 'string' || !Array.isArray(edit.create.scriptureRefs)
+        || edit.create.materialIds !== undefined && (!Array.isArray(edit.create.materialIds) || edit.create.materialIds.length > 0)) fail('Invalid analysis reshape creation');
+      validateCreate({ ...command, resource: edit.resource, generation: null, kind: 'create', value: edit.create } as Extract<DataCommand, { kind: 'create' }>, getResourcePolicy('studyNotes'));
+      continue;
+    }
+    if (edit.changes.length < 3 || edit.changes.length > 4) fail(invalidFrame);
+    const seen = new Set<string>();
+    for (const change of edit.changes) {
+      if (!object(change) || !Array.isArray(change.path) || change.path.length !== 1
+        || !ANALYSIS_RESHAPE_FIELDS.includes(change.path[0] as (typeof ANALYSIS_RESHAPE_FIELDS)[number])
+        || !validField(change.before) || !validField(change.after) || seen.has(change.path[0])) fail(invalidFrame);
+      seen.add(change.path[0]);
+      if (change.path[0] !== 'title' && (!change.before.exists || !change.after.exists)) fail(invalidFrame);
+    }
+    if (!ANALYSIS_RESHAPE_FRAME.every(field => seen.has(field))) fail(invalidFrame);
+    if (index === 0 && !edit.changes.some(change => change.path[0] !== 'title' && !equalValues(change.before, change.after))) {
+      fail('Analysis reshape source frame must change');
+    }
+  }
+  if (command.edits[0].create !== undefined || command.edits[0].resource.id !== command.resource.id
+    || command.edits[0].generation !== command.generation) fail('Analysis reshape source identity mismatch');
+}
+
 function validateRelation(command: Extract<DataCommand, { kind: 'relation' }>): void {
   switch (command.relation) {
     case 'service-order-seed': return validateServiceOrderSeed(command);
     case 'series-member-create': return validateSeriesMemberCreation(command);
+    case 'analysis-reshape': return validateAnalysisReshape(command);
   }
   const ids = (value: unknown) => Array.isArray(value) && value.length <= 100
     && value.every(isValidIdentifier) && new Set(value).size === value.length;

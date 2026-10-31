@@ -25,6 +25,7 @@ const note = (extra: Row = {}): Row => ({
 });
 const actions = {
   ready: true,
+  reshapeStudyAnalysis: jest.fn(async () => undefined),
   submit: jest.fn(async (resource: { collection: string; id: string }, action: DocumentAction) => {
     if (action.kind === 'create') await actions.create(resource, action.value);
     else if (action.kind === 'delete') await actions.remove(resource);
@@ -381,4 +382,27 @@ describe('study notes on the engine', () => {
     expect(store.get('n1')?.content).toBe('Both voice fragments');
   });
 
+});
+
+
+it('submits the original stored reference ancestry while a reshape writes canonical new references', async () => {
+  jest.clearAllMocks();
+  const originalRefs = [{ id: 'old-ref', book: 'Psalms', chapter: 23, fromVerse: 1, toVerse: 2 }];
+  store = new Map([['analysis', note({ type: 'analysis', scriptureRefs: originalRefs,
+    analysis: { bible: 'rst', words: 8, cuts: [5], links: {}, relations: {} } })]]);
+  deliveryState = new Map();
+  const { result } = render(), expected = result.current.notes[0];
+  expect(expected.scriptureRefs[0].bible).toBeDefined();
+  const fields = { title: 'Psalm 22:1', content: 'remaining words',
+    scriptureRefs: [{ id: 'old-ref', bible: 'rst' as const, book: 'Psalms', chapter: 22, fromVerse: 1, toVerse: 1 }],
+    analysis: { bible: 'rst' as const, words: 4, cuts: [], links: {}, relations: {} } };
+  await act(async () => { await result.current.reshapeNotes([
+    { id: 'analysis', expected, fields }, { id: 'new-analysis', expected: null, fields: { ...fields, title: 'Removed words' } },
+  ]); });
+  const call = jest.mocked(actions.reshapeStudyAnalysis).mock.calls[0] as unknown as [Array<{ expected: Row | null; value: Row }>];
+  expect(call[0][0].expected?.scriptureRefs).toEqual(originalRefs);
+  expect(call[0][0].value.scriptureRefs).toEqual(fields.scriptureRefs);
+  expect(call[0][1].expected).toBeNull();
+  expect(call[0][1].value).toMatchObject({ userId: 'u', type: 'analysis', isDraft: false, tags: [], title: 'Removed words' });
+  expect(originalRefs[0]).not.toHaveProperty('bible');
 });

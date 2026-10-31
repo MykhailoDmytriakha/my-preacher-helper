@@ -19,6 +19,14 @@ export function canReplaceDocumentIntent(owner: string, editorId: string, pendin
   return !scope.some(request => request.atomic) && canCancelSavedIntent(scope, journal.filter(entry => entry.command.owner === owner));
 }
 
+/** A checkpoint may not offer a document choice when its proved cancellation scope is a whole action. */
+export function requiresWholeActionResolution(owner: string, editorId: string, pendingIds: readonly string[],
+  requests: readonly CommitRequest[]): boolean {
+  const owned = requests.filter(request => request.owner === owner);
+  try { return cancellationScope(owned, editorId, pendingIds).some(request => Boolean(request.atomic)); }
+  catch { return true; }
+}
+
 export type DocumentAnswer = 'conflict' | 'refused';
 
 /** A request may be answered even when its last relation command was acknowledged. */

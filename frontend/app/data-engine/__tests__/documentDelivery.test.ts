@@ -1,4 +1,4 @@
-import { canReplaceDocumentIntent, isDirectLegacyDocumentIntent, savedDocumentAnswer } from '../documentDelivery';
+import { canReplaceDocumentIntent, isDirectLegacyDocumentIntent, requiresWholeActionResolution, savedDocumentAnswer } from '../documentDelivery';
 
 import type { CommitRequest } from '../commits';
 import type { JournalEntry } from '../types';
@@ -45,6 +45,19 @@ it('leaves complete and incomplete atomic scopes to their action owner', () => {
   expect(canReplace([request(), dependent])).toBe(false);
   const unrelated = { ...request('unrelated'), editorId: 'unrelated', atomic: { id: 'unrelated', participants: ['unrelated', 'other'] } };
   expect(canReplace([request(), unrelated, { ...unrelated, id: 'other', editorId: 'other' }])).toBe(true);
+});
+
+it('marks only a pending atomic action scope as requiring whole-action resolution', () => {
+  const atomic = { id: 'request', participants: ['request', 'atomic-b'], kind: 'council-carry' as const };
+  const source = { ...request(), editorId: 'action-source', atomic, state: 'refused' as const };
+  const destination = { ...request('atomic-b'), editorId: 'action-target', atomic, state: 'refused' as const };
+  expect(requiresWholeActionResolution('owner', 'editor', ['request'], [source, destination])).toBe(true);
+  expect(requiresWholeActionResolution('owner', 'editor', ['request'], [source])).toBe(true);
+
+  const acknowledgedSource = { ...source, state: 'acknowledged' as const };
+  const acknowledgedDestination = { ...destination, state: 'acknowledged' as const };
+  const later = { ...request('later'), predecessor: source.id, editGeneration: 2, state: 'conflict' as const };
+  expect(requiresWholeActionResolution('owner', 'editor', ['later'], [acknowledgedSource, acknowledgedDestination, later])).toBe(false);
 });
 
 

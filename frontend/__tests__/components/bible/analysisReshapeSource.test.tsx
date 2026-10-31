@@ -26,14 +26,14 @@ describe('Analysis reshape keeps its original word source', () => {
   let engine: {
     notes: StudyNote[];
     uid: string;
-    updateNote: jest.Mock< { result: Promise<void> }, [ { id: string; updates: Partial<StudyNote> } ]>;
+    updateNote: jest.Mock< { result: Promise<void>; capture: Promise<void> }, [ { id: string; updates: Partial<StudyNote> } ]>;
     createNote: jest.Mock< { acceptance: Promise<void> }, [Partial<StudyNote>]>;
   };
 
   beforeEach(() => {
     engine = {
       notes: [note()], uid: 'owner',
-      updateNote: jest.fn<{ result: Promise<void> }, [{ id: string; updates: Partial<StudyNote> }]>(() => ({ result: Promise.resolve() })),
+      updateNote: jest.fn<{ result: Promise<void>; capture: Promise<void> }, [{ id: string; updates: Partial<StudyNote> }]>(() => ({ result: Promise.resolve(), capture: Promise.resolve() })),
       createNote: jest.fn<{ acceptance: Promise<void> }, [Partial<StudyNote>]>(() => ({ acceptance: Promise.resolve() })),
     };
     (useStudyNotesEngine as jest.Mock).mockReturnValue(engine);
@@ -43,19 +43,19 @@ describe('Analysis reshape keeps its original word source', () => {
     ['word Bible', 'Ephesians', 'kjv', text],
     ['canonical reference book', 'Galatians', 'rst', { ...text, id: 'Galatians' }],
     ['loaded text identity', 'Ephesians', 'rst', { ...text, id: 'Galatians' }],
-  ] as [string, string, BibleId, BookText][])('does not reshape from a different %s', (_label, bookId, bible, loadedText) => {
+  ] as [string, string, BibleId, BookText][])('does not reshape from a different %s', async (_label, bookId, bible, loadedText) => {
     const { result } = renderHook(() => useAnalysisReshape({ text: loadedText, bookId, bible, locale }));
     let response: string | null = 'not-called';
-    act(() => { response = result.current('analysis-1', next); });
+    await act(async () => { response = await result.current('analysis-1', next); });
 
     expect(response).toBeNull();
     expect(engine.updateNote).not.toHaveBeenCalled();
     expect(engine.createNote).not.toHaveBeenCalled();
   });
 
-  it('still saves a same-source passage reshape when retained analysis work remains', () => {
+  it('still saves a same-source passage reshape when retained analysis work remains', async () => {
     const { result } = renderHook(() => useAnalysisReshape({ text, bookId: 'Ephesians', bible: 'rst', locale }));
-    act(() => { result.current('analysis-1', next); });
+    await act(async () => { await result.current('analysis-1', next); });
 
     expect(engine.updateNote).toHaveBeenCalledTimes(1);
     expect(engine.updateNote).toHaveBeenCalledWith(expect.objectContaining({
@@ -67,13 +67,13 @@ describe('Analysis reshape keeps its original word source', () => {
     expect(engine.createNote).not.toHaveBeenCalled();
   });
 
-  it('writes newly chosen source-Bible verses with their numbering when the old reference uses another Bible', () => {
+  it('writes newly chosen source-Bible verses with their numbering when the old reference uses another Bible', async () => {
     const chapters = Array.from({ length: 22 }, () => [] as string[]);
     chapters[21] = ['Alpha beta gamma delta', 'epsilon zeta eta theta'];
     const psalm: BookText = { id: 'Psalms', chapters };
     engine.notes = [note({ scriptureRefs: [{ id: 'psalm', bible: 'kjv', book: 'Psalms', chapter: 23, fromVerse: 1, toVerse: 2 }] })];
     const { result } = renderHook(() => useAnalysisReshape({ text: psalm, bookId: 'Psalms', bible: 'rst', locale }));
-    act(() => { result.current('analysis-1', { chapter: 22, fromVerse: 1, toChapter: 22, toVerse: 1 }); });
+    await act(async () => { await result.current('analysis-1', { chapter: 22, fromVerse: 1, toChapter: 22, toVerse: 1 }); });
     expect(engine.updateNote).toHaveBeenCalledTimes(1);
     expect(engine.updateNote).toHaveBeenCalledWith(expect.objectContaining({
       id: 'analysis-1', updates: expect.objectContaining({

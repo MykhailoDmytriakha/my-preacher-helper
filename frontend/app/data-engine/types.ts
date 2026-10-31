@@ -55,6 +55,10 @@ export type DataCommand = CommandBase & (
       /** Only the absent destination can be created by this same action. */
       create?: DocumentData;
     }> }
+  /** A source analysis changes extent with its removed authored words landed in adjacent analyses. */
+  | { kind: 'relation'; relation: 'analysis-reshape'; edits: Array<{
+      resource: ResourceRef; generation: string | null; changes: FieldChange[]; create?: DocumentData;
+    }> }
 );
 
 export interface EngineMetadata {

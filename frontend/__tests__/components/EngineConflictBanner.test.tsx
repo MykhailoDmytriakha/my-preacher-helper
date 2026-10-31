@@ -10,6 +10,7 @@ import { editorIdentity } from '@/data-engine/editorIdentity';
 import { documentEngineHarness, settleEngine } from '@test-utils/documentEngineHarness';
 
 import type { DocumentData } from '@/data-engine/types';
+import type { CommitRequest } from '@/data-engine/commits';
 import type { ManagedEditor } from '@/data-engine/engine';
 
 jest.mock('@/providers/AuthProvider', () => ({ useAuth: () => ({ user: { uid: 'owner' } }) }));
@@ -633,6 +634,60 @@ describe('a screen request conflict after an acknowledged relation', () => {
       await waitFor(() => expect(screen.queryByText('dataSync.screenDraftBody')).not.toBeInTheDocument());
     }
     expect(h.server.get(JSON.stringify(h.primary.resource))?.value).toMatchObject({ title: 'Remote title', sermonIds: ['member'] });
+  });
+});
+
+describe('a failed participant in a council carry', () => {
+  const council = { collection: 'councils', id: 'council-1' };
+  const otherCouncil = { collection: 'councils', id: 'council-2' };
+  const councilValue = { userId: 'owner', title: 'Council', theme: 'Romans', bookOrTopic: 'Romans', status: 'active', topics: [],
+    createdAt: '2026-09-01T00:00:00.000Z', updatedAt: '2026-09-01T00:00:00.000Z' };
+  beforeEach(() => { process.env[ON_ENGINE] = 'councils'; actions = null; mockPathname = '/settings/user'; });
+  afterEach(() => { delete process.env[ON_ENGINE]; });
+
+  it.each(['source', 'destination'] as const)('does not offer a participant-level choice for the closed %s checkpoint', async participant => {
+    const initial = { resource: council, value: councilValue, metadata: { protocol: 1 as const, generation: 'g1', revision: 1, deleted: false } };
+    const h = documentEngineHarness(initial);
+    jest.mocked(createBrowserDataEngine).mockImplementation(h.createBrowser);
+    render(<DataEngineProvider><Actions /><EngineConflictBanner pollMs={50} /></DataEngineProvider>);
+    await waitFor(() => expect(actions?.ready).toBe(true));
+
+    const changed = { ...councilValue, topics: [{ id: 'topic-1', title: 'Carried words', content: 'The captured topic', carriedToCouncilId: otherCouncil.id }] };
+    const target = { resource: otherCouncil, value: { ...councilValue, title: 'Destination' }, metadata: { protocol: 1 as const, generation: 'g2', revision: 1, deleted: false } };
+    const atomic = { id: 'carry-primary', participants: ['carry-primary', 'carry-secondary'], kind: 'council-carry' as const };
+    const command = { protocol: 1 as const, operationId: atomic.id, owner: 'owner', resource: council, generation: 'g1', dependsOn: [],
+      kind: 'relation' as const, relation: 'council-carry' as const, edits: [] };
+    const request = (id: string, editorId: string, baseline: typeof initial | typeof target, value: typeof changed | typeof target.value): CommitRequest => ({
+      id, atomic, owner: 'owner', editorId, editGeneration: 1, baseline, value, predecessor: null, revision: 1, initialized: true,
+      working: baseline, intended: value, command, submitted: value, sequence: 0, state: 'refused',
+      result: { kind: 'refused', operationId: id, code: 'atomic-operation-conflict' }, unfinalized: [],
+    });
+    const requests = [request(atomic.participants[0], JSON.stringify(['tab-council', 'carry', 'topic-1', 'copy-1']), initial, changed),
+      request(atomic.participants[1], JSON.stringify(['tab-council', 'carry-destination', 'copy-1']), target, target.value)];
+    await h.commits.createBatch!(requests);
+    const checkpointResource = participant === 'source' ? council : otherCouncil;
+    const checkpointBaseline = participant === 'source' ? initial : target;
+    const checkpointDraft = participant === 'source' ? changed : target.value;
+    const participantRequest = requests[participant === 'source' ? 0 : 1];
+    const editorId = editorIdentity('test-tab', checkpointResource, 'default', 'left-reader');
+    await h.checkpoints.create({ owner: 'owner', editorId, prepared: null, unfinalized: [], checkpoint: {
+      confirmed: checkpointBaseline, draft: checkpointDraft, dirty: true, editGeneration: 1, remoteCandidate: null, conflicts: [],
+      pending: { [participantRequest.id]: { generation: 1, value: checkpointDraft } },
+    } });
+
+    expect(await h.engine.listRecoverable()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ actionResolutionRequired: true }),
+    ]));
+    if (participant === 'destination') {
+      await waitFor(async () => expect(await h.engine.formWorkPending(otherCouncil)).toBe(true));
+      expect(screen.queryByText('dataSync.screenDraftBody')).not.toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: 'dataSync.openToDecide' })).not.toBeInTheDocument();
+      return;
+    }
+    await screen.findByText('dataSync.wholeActionDraftBody');
+    expect(screen.getByRole('link', { name: 'dataSync.openToDecide' })).toHaveAttribute('href', '/care/council/council-1');
+    expect(screen.getByRole('button', { name: 'freshness.copyTextAction' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'dataSync.acceptRemote' })).not.toBeInTheDocument();
   });
 });
 

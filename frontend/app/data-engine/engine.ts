@@ -1,10 +1,12 @@
 import { isConnectionFailure } from '@/utils/connectionFailure';
 
+import { captureAnalysisReshape, type StudyAnalysisWrite } from './analysisReshape';
+import { ANALYSIS_RESHAPE_FIELDS, sameAnalysisFrame } from './analysisReshapeFields';
 import { collectionDocumentViews } from './collectionView';
 import { CommitQueue, type CommitRequest, type CommitStore } from './commits';
 import { EditorController, InactiveEditorError, type CheckpointRecoveryStore, type CheckpointStore, type EditorRecord, type EditorState, type RecoveryCheckpoint } from './controller';
 import { captureCouncilCarry, pinCouncilDestination } from './councilCarry';
-import { canReplaceDocumentIntent, isDirectLegacyDocumentIntent, savedDocumentAnswer } from './documentDelivery';
+import { canReplaceDocumentIntent, isDirectLegacyDocumentIntent, requiresWholeActionResolution, savedDocumentAnswer } from './documentDelivery';
 import { ACTION_SLOT, editorSlot } from './editorIdentity';
 import { AddressedFailures, eachFailure, PausedReadFailure } from './failures';
 import { collectionHeadRef } from './feed';
@@ -141,6 +143,7 @@ export const needsConnection = (error: unknown): boolean => error instanceof Pau
   || (error as { code?: unknown } | null)?.code === NEEDS_CONNECTION;
 const cacheKey = (owner: string, resource: ResourceRef) => JSON.stringify([owner, resource.collection, resource.id]);
 const COUNCIL_CARRY = 'council-carry';
+const ANALYSIS_RESHAPE = 'analysis-reshape';
 const ENGINE_DISPOSED = 'DataEngine has been disposed';
 const initialObservation = (): Observation => ({ snapshot: null, source: null, readiness: 'unknown', checking: false, error: false });
 
@@ -179,6 +182,7 @@ export class DataEngine {
   private membershipReleases = new Map<string, MembershipScope>();
   private membershipListeners = new Set<() => void>();
   private councilCarries = new Map<string, Promise<ResourceSnapshot>>();
+  private analysisReshapes = new Set<string>();
 
   constructor(private readonly options: DataEngineOptions) {
     this.localWriteback = options.localWriteback ?? new LocalWriteback();
@@ -587,6 +591,77 @@ export class DataEngine {
     };
   }
 
+  /** The entire reshape is captured before returning; navigation never owns its delivery. */
+  async reshapeStudyAnalysis(edits: readonly StudyAnalysisWrite[]): Promise<void> {
+    const owner = this.requireOwner(), generation = this.generation;
+    const frozen = copy(edits), source = frozen[0]?.resource;
+    if (!source) throw new Error('Analysis reshape requires a source');
+    frozen.forEach(edit => this.validateResource(edit.resource, owner));
+    const lock = JSON.stringify([owner, source]);
+    if (this.analysisReshapes.has(lock)) throw Object.assign(new Error('Analysis action is already being captured'), { code: 'action-in-progress' });
+    this.analysisReshapes.add(lock);
+    const actionId = this.options.operationId();
+    try {
+      const snapshots = await Promise.all(frozen.map(async edit => edit.expected
+        ? await this.peekCached(edit.resource) ?? await this.read(edit.resource)
+        : { resource: edit.resource, value: null, metadata: null }));
+      this.assertCurrent(owner, generation);
+      const requests = await this.commits.list(); this.assertCurrent(owner, generation);
+      // A mounted editor may contain newer words that have not reached a request yet.
+      // The action must never silently remove or move a different frame than was shown.
+      for (const entry of this.editors.values()) if (!entry.closed && entry.controller) {
+        const checkpoint = entry.controller.getState().checkpoint;
+        const edit = frozen.find(item => sameResource(item.resource, checkpoint.confirmed.resource));
+        if (edit && (checkpoint.conflicts.length || !sameAnalysisFrame(edit.expected, checkpoint.draft))) {
+          throw Object.assign(new Error('Resolve the current analysis first'), { code: 'resolve-version-first' });
+        }
+      }
+      const captures = captureAnalysisReshape(owner, actionId, frozen, snapshots, requests);
+      const saved = await this.commits.saveAtomic(captures); this.assertCurrent(owner, generation);
+      for (const entry of this.editors.values()) if (!entry.closed && entry.controller) {
+        const checkpoint = entry.controller.getState().checkpoint;
+        const index = frozen.findIndex(item => sameResource(item.resource, checkpoint.confirmed.resource));
+        if (index < 0 || checkpoint.conflicts.length || !sameAnalysisFrame(frozen[index].expected, checkpoint.draft)) continue;
+        try { await entry.controller.adoptManualCommit(saved[index], ANALYSIS_RESHAPE_FIELDS.map(field => [field])); }
+        catch (error) { this.reportFailure(error, frozen[index].resource); }
+      }
+      this.assertCurrent(owner, generation);
+      this.prepareCommitsInBackground(); this.backgroundDrain();
+    } finally { this.analysisReshapes.delete(lock); }
+  }
+
+  /** An action remains discoverable after every participating editor has closed. */
+  async listAnalysisReshapes(): Promise<Array<{ id: string; resource: ResourceRef; title: string; delivery: MembershipDelivery }>> {
+    const owner = this.requireOwner(), generation = this.generation;
+    const requests = await this.commits.list(); this.assertCurrent(owner, generation);
+    return requests.filter(request => request.atomic?.kind === ANALYSIS_RESHAPE && request.id === request.atomic.id
+      && !['acknowledged', 'cancelled'].includes(request.state)).map(request => ({ id: request.id,
+      resource: copy(request.baseline.resource), title: typeof request.value?.title === 'string' ? request.value.title : '',
+      delivery: describeActionDelivery(owner, request.atomic!.participants, requests, this.pending) }));
+  }
+
+  /** Explicitly discard every participant and dependent through the shared cancellation proof. */
+  async discardAnalysisReshape(id: string): Promise<void> {
+    const owner = this.requireOwner(), generation = this.generation;
+    const requests = await this.commits.list(); this.assertCurrent(owner, generation);
+    const action = requests.find(request => request.id === id && request.owner === owner
+      && request.atomic?.kind === ANALYSIS_RESHAPE && request.atomic.id === id);
+    if (!action) throw Object.assign(new Error('Analysis action evidence changed'), { code: 'decision-changed' });
+    const entries = [...this.editors.values()].filter(entry => !entry.closed && entry.controller
+      && requests.some(request => action.atomic!.participants.includes(request.id)
+        && sameResource(request.baseline.resource, entry.controller!.getState().checkpoint.confirmed.resource)));
+    await Promise.all(entries.map(async entry => {
+      await entry.controller!.settled();
+      if (entry.controller!.needsPersistenceRetry()) await entry.controller!.retryPersistence();
+    }));
+    this.assertCurrent(owner, generation);
+    await this.commits.cancelAction(action.atomic!.participants); this.assertCurrent(owner, generation);
+    await Promise.all(entries.filter(entry => !entry.closed).map(entry => entry.controller!.settled()));
+    this.assertCurrent(owner, generation);
+    await this.commits.finishCancellation('', action.atomic!.participants); this.assertCurrent(owner, generation);
+    await this.completeAcceptedProjections(owner, generation);
+  }
+
   /** Discovery never takes ownership of, rewrites or removes a saved editor. */
   async listRecoverable(resource?: ResourceRef): Promise<RecoveryCheckpoint[]> {
     const owner = this.requireOwner();
@@ -601,9 +676,11 @@ export class DataEngine {
     return records.filter(({ record }) => !this.editors.has(record.editorId))
       .map(({ id, record }) => {
         const reconciled = reconcileRecoveryRecord(record, requests);
+        const pendingIds = Object.keys(reconciled.checkpoint.pending);
         const answer = savedDocumentAnswer(owner, reconciled.checkpoint.confirmed.resource,
-          Object.keys(reconciled.checkpoint.pending), requests, this.pending);
-        return { id, record: reconciled, ...(answer ? { answer } : {}) };
+          pendingIds, requests, this.pending);
+        const actionResolutionRequired = requiresWholeActionResolution(owner, record.editorId, pendingIds, requests);
+        return { id, record: reconciled, ...(answer ? { answer } : {}), ...(actionResolutionRequired ? { actionResolutionRequired: true } : {}) };
       })
       .filter(({ record }) => isRecoverableCheckpoint(record));
   }
@@ -813,7 +890,7 @@ export class DataEngine {
     const completed = new Set<string>();
     for (const request of requests) {
       const group = request.atomic?.id ?? request.id;
-      if (completed.has(group) || (request.state !== 'acknowledged' && request.atomic?.kind !== COUNCIL_CARRY)) continue;
+      if (completed.has(group) || (request.state !== 'acknowledged' && ![COUNCIL_CARRY, ANALYSIS_RESHAPE].includes(request.atomic?.kind ?? ''))) continue;
       completed.add(group);
       await this.completeAcceptedProjection(owner, generation, request, requests);
     }

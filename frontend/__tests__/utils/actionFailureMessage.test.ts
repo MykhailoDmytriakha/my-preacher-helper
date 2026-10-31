@@ -56,3 +56,11 @@ describe('technical exceptions from refused actions', () => {
     expect(sayFailure(refusalWords(refusal, 'dataSync.actionFailed'), t)).toBe(refusal.message);
   });
 });
+
+
+it.each([['en', en], ['ru', ru], ['uk', uk]])('uses %s words when an earlier action needs a version decision', (_name, locale) => {
+  const error = Object.assign(new Error('An earlier change to this document waits for a decision'), { code: 'decision-required' });
+  const translate = (key: string) => key.split('.').reduce<unknown>((value, part) =>
+    (value as Record<string, unknown> | undefined)?.[part], locale) as string ?? key;
+  expect(sayFailure(refusalWords(error, 'common.saveError'), translate)).toBe(locale.dataSync.failure.decisionRequired);
+});

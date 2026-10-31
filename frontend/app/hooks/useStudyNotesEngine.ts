@@ -14,6 +14,7 @@ import { useTranslation } from '@locales/useTranslation';
 
 import type { DocumentData, ResourceSnapshot } from '@/data-engine/types';
 import type { StudyNote } from '@/models/models';
+import type { AnalysisReshapeEdit } from '@/utils/studyAnalysisReshape';
 
 const resource = (id: string) => ({ collection: 'studyNotes', id });
 const now = () => new Date().toISOString();
@@ -57,6 +58,17 @@ export function engineNote(value: DocumentData, id: string, locale: AppLocale): 
  * were given their Bible on reading — the editor keeps that very list in its baseline.
  */
 const readFrom = new WeakMap<object, unknown>();
+
+/** Recover the exact stored list behind a reading, including legacy references without a Bible. */
+const storedReferences = (references: unknown) => references !== null && typeof references === 'object'
+  ? readFrom.get(references) ?? references : references;
+
+const creationValue = (note: Omit<StudyNote, 'id' | 'createdAt' | 'updatedAt' | 'isDraft'>, at: string): DocumentData => deepCleanUndefined({
+  userId: note.userId, content: note.content ?? '', title: note.title || '', scriptureRefs: note.scriptureRefs || [],
+  tags: note.tags || [], type: note.type || 'note', analysis: note.analysis, isDraft: isDraft(note), createdAt: at, updatedAt: at,
+  ...(note.dictationSourceIds?.length ? { dictationSourceIds: [...new Set(note.dictationSourceIds)] } : {}),
+  ...(note.recordingSourceIds?.length ? { recordingSourceIds: [...new Set(note.recordingSourceIds)] } : {}),
+}) as unknown as DocumentData;
 
 type SavedNote = StudyNote & { revision?: number };
 type NoteUpdate = {
@@ -134,15 +146,21 @@ export function useStudyNotesEngine(enabled: boolean) {
       const id = options?.id ?? newClientId();
       const at = now();
       const optimistic: StudyNote = { ...note, id, createdAt: at, updatedAt: at, isDraft: isDraft(note), materialIds: [], relatedSermonIds: note.relatedSermonIds || [] };
-      const value = deepCleanUndefined({
-        userId: note.userId, content: note.content ?? '', title: note.title || '', scriptureRefs: note.scriptureRefs || [],
-        tags: note.tags || [], type: note.type || 'note', analysis: note.analysis, isDraft: isDraft(note), createdAt: at, updatedAt: at,
-        ...(note.dictationSourceIds?.length ? { dictationSourceIds: [...new Set(note.dictationSourceIds)] } : {}),
-        ...(note.recordingSourceIds?.length ? { recordingSourceIds: [...new Set(note.recordingSourceIds)] } : {}),
-      }) as unknown as DocumentData;
+      const value = creationValue(note, at);
       const request = actions.submit(resource(id), { kind: 'create', value }, options?.captureScope ? { captureScope: options.captureScope } : undefined);
       void request.catch(() => undefined);
       return { ...accepted(`study-note:create:${id}`, request), note: optimistic };
+    },
+    /** The shared engine captures the source and every recipient together. */
+    reshapeNotes: async (edits: readonly AnalysisReshapeEdit[]): Promise<void> => {
+      if (!uid) throw Object.assign(new Error('No signed-in user for this write'), { code: 'unauthenticated' });
+      const at = now();
+      await actions.reshapeStudyAnalysis(edits.map(edit => ({ resource: resource(edit.id),
+        expected: edit.expected ? deepCleanUndefined({ ...edit.expected,
+          scriptureRefs: storedReferences(edit.expected.scriptureRefs) }) as unknown as DocumentData : null,
+        value: edit.expected ? deepCleanUndefined({ ...edit.expected, ...edit.fields }) as unknown as DocumentData
+          : creationValue({ userId: uid, ...edit.fields, type: 'analysis', tags: [] }, at),
+      })));
     },
     updating: updating > 0,
     updateNote: ({ id, updates, expectedRevision, expectedBaseline, captureScope }: NoteUpdate): StudyNoteSubmission & { result: Promise<SavedNote> } => {
@@ -168,7 +186,7 @@ export function useStudyNotesEngine(enabled: boolean) {
             // an older app on another device may still write without the Bible.
             const read = engineNote(current, id, locale) as unknown as Record<string, unknown>;
             const baselineRefs = expectedBaseline?.scriptureRefs;
-            const readSource = baselineRefs !== null && typeof baselineRefs === 'object' ? readFrom.get(baselineRefs) : undefined;
+            const readSource = storedReferences(baselineRefs);
             // A note stored without a type is a note — compared and reported as one, as every screen reads it: else an
             // editor that adopted the reported type would be refused again on the same revision (Codex review, 2026-10-28).
             const storedField = (field: string) => (field === 'type' ? read.type ?? 'note' : read[field]);

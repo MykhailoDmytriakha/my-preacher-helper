@@ -24,6 +24,16 @@ getActions/discardAction expose whole-action delivery with the existing DataMemb
 
 Council requests use council-carry-request, hiding unsupported participants from older bundles. After all participants are terminal and BOTH actual ACK snapshots are durable, the engine releases projection references through CommitStore.releaseProjection; checkpoint references keep proofs needed for unsent typing. Unknown delivery retains ownership. Tests: app/data-engine/__tests__/councilCarryAtomic.test.ts.
 
+## Analysis passage reshapes
+
+`utils/studyAnalysisReshape.ts` plans a passage change without writing. A source-only edit uses ordinary `updateNote.capture`; moved authored work uses `useStudyNotesEngine.reshapeNotes` through `useDocumentActions().reshapeStudyAnalysis`. The note adapter reuses ordinary creation defaults and the exact stored reference ancestry behind locale-normalized readings. Feature code does not construct protocol commands or manage request rows.
+
+`data-engine/analysisReshape.ts` pins every existing note through shared `savedDocumentPin.ts`, freezes only the planned frame, and captures source plus up to two recipients through the existing atomic queue. A stale, deleted, foreign, ambiguous or decision-waiting participant refuses the action before source mutation. The `analysis-reshape` relation checks all participant frames before exposing server writes. `analysis`, `content` and `scriptureRefs` stay together; only a touched title joins them, and unrelated metadata retains its owner.
+
+Requests use their own `analysis-reshape-request` range and the existing participant retention, journal, ACK and whole-action cancellation. Predecessor acknowledgement must not reinterpret positional work in a different frame. ACK/cancel preserves a later authored frame whole and exposes a conflict where needed. This guard belongs to compound reshapes; ordinary analysis editing and other frame-merge defects require their own proof.
+
+The reader waits for complete durable local capture, blocks duplicate Apply within its owner/book/Bible scope, and gives neutral prepared feedback. `AnalysisReshapeRecovery`, mounted once in the private workspace, uses `subscribeSavedWork` and the existing action delivery presentation after navigation; it adds no database polling. A single document cannot resolve one participant. `requiresWholeActionResolution` derives that boundary through the canonical cancellation scope for generic recovery, retaining Open/Copy while removing an impossible participant-level choice. A later ordinary request after a completed atomic action remains independently decidable. The `decision-required` refusal uses a translated instruction to decide the earlier change; it does not promise a two-version choice for a whole action.
+
 ## Legacy paths (unconverted collections only)
 
 The old `useSeriesMembership` / `seriesMembership.client.ts` writer is compatibility code, not a template for a new multi-document action. Do not chain its calls or independent document saves to imitate atomic Save.

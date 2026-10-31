@@ -229,7 +229,7 @@
     "actionCancelled": "This action was cancelled.",
     "actionChecking": "Checking the saved action…",
     "discardAction": "Discard this action",
-    "discardActionHint": "This also discards dependent membership changes. Later text edits remain in drafts.",
+    "discardActionHint": "This discards the complete action and changes that depend on it. Later text edits remain in drafts.",
     "collectionAttention": "Some submitted changes need attention. Open the item or its saved drafts to review them.",
     "collectionIncomplete": "The local list may be incomplete. Connect to check the server.",
     "phase": {
@@ -274,6 +274,7 @@
     "deleteRefusedBody": "Here is what the record holds now. You can keep it or try deleting again.",
     "retryDelete": "Try deleting again",
     "screenDraftBody": "The server did not take a change made on a screen you have since left. To keep yours, open that screen; to drop it, take the server version here. Your text is kept until you choose.",
+    "wholeActionDraftBody": "Open the original screen to decide what to do with the whole transfer. Your text is kept until you choose.",
     "openToDecide": "Open and decide",
     "screenDraftsUndecidable": "Changes made on several screens wait for a decision, and no screen can choose between them. Copy what you need, then use the server version.",
     "documentFailed": "Something went wrong with this record. Please try again.",
@@ -284,6 +285,7 @@
       "seriesChangesPending": "Changes to some series are still waiting to be saved or decided. Finish them, then try again.",
       "preachDateGone": "This preaching date is no longer available.",
       "freshReadRequired": "The current version has to be loaded first. Try again in a moment.",
+      "decisionRequired": "Decide what to do with the earlier change, then try again.",
       "resolveVersionFirst": "First choose which version to keep: yours or the other one.",
       "unsentFormFirst": "Save or cancel the changes in this form first.",
       "notOnDeviceYet": "Your changes are not saved on this device yet. Try again.",
@@ -4701,6 +4703,8 @@
     "untie": "Remove the tie",
     "editVerses": "Change the analysis’s verses",
     "reshape": {
+      "prepared": "The passage change is kept on this device. Synchronization will report if anything needs attention.",
+      "recovery": "An analysis passage change needs attention",
       "done": "The analysis now covers {{place}}.",
       "own": "Your work in {{place}} is kept as an analysis of its own.",
       "joined": "Your work in {{place}} was added to the analysis of {{other}}.",

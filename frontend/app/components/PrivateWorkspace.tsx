@@ -2,6 +2,7 @@
 
 import { ReactNode, useRef } from 'react';
 
+import { AnalysisReshapeRecovery } from '@/components/bible/analysis/AnalysisReshapeRecovery';
 import { DeviceStorageNotice } from '@/components/DeviceStorageNotice';
 import { TechnicalDetailsDialog } from '@/components/diagnostics/TechnicalDetailsButton';
 import { DraftStorageNotice } from '@/components/DraftStorageNotice';
@@ -80,7 +81,7 @@ export function PrivateChrome({ pathname, search, children }: { pathname: string
           </div>
         </>
       )}
-      <div className="mx-auto w-full px-4 sm:px-6 lg:px-8"><SeriesMembershipRecovery /><UserSettingsSyncStatus /></div>
+      <div className="mx-auto w-full px-4 sm:px-6 lg:px-8"><SeriesMembershipRecovery /><AnalysisReshapeRecovery /><UserSettingsSyncStatus /></div>
       <main
         ref={contentRef}
         id="main-content"
