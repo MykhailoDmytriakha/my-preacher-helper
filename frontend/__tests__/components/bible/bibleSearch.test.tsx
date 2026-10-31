@@ -129,7 +129,8 @@ describe('the one line', () => {
     expect(onOpen).not.toHaveBeenCalled();
   });
 
-  it('opens a found verse with its whole search where the reader keeps them', async () => {
+  // BUG-20261030-open-in-bible-shows-found-column: Open in the Bible also opened the column of all found verses.
+  it('opens one found verse alone — Open in the Bible and Enter — even where the reader could keep them all', async () => {
     const onOpenFound = jest.fn();
     const { line, onOpen } = renderLine({ onOpenFound });
     await userEvent.type(line, '"хлеб жизни"');
@@ -137,8 +138,10 @@ describe('the one line', () => {
     const [, second] = screen.getAllByRole('option');
     await userEvent.click(second);
     await userEvent.click(within(second).getByRole('button', { name: /bible\.search\.openInBible/, hidden: true }));
-    expect(onOpenFound).toHaveBeenCalledWith({ line: '"хлеб жизни"', asWords: false }, { bookId: 'John', chapter: 6, verse: 48, toVerse: 48 });
-    expect(onOpen).not.toHaveBeenCalled();
+    expect(onOpen).toHaveBeenCalledWith({ bookId: 'John', chapter: 6, verse: 48, toVerse: 48 }, { line: '"хлеб жизни"', asWords: false });
+    await userEvent.type(line, '{Enter}');
+    expect(onOpen).toHaveBeenCalledTimes(2);
+    expect(onOpenFound).not.toHaveBeenCalled();
   });
 
   it('opens on the search «К поиску» asks for, its arrows on the verse last stood at', async () => {
