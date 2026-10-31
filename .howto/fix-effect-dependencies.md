@@ -18,6 +18,12 @@ An effect re-runs whenever a dependency changes identity, so a dependency that i
 - "Maximum update depth exceeded" on the first paint → an effect keyed on an array rebuilt each render resets state, re-renders, runs again. Key it on the values (`navSignature`).
 - A page works online and turns into a dead loop after a permission error or offline → a `?? []` fallback feeds an effect that sets state. Give the fallback a stable constant.
 
+## Hidden export work during rapid typing
+
+A closed component may still run effects. `ExportButtons` derives `isPdfAvailable` once for both the button and its PDF controller; an unavailable format creates no controller. `ExportPdfModal` ignores changing content builders while closed, while an active opening retains its builder-change cleanup and session invalidation. The shared `useExportPreview` already uses this open-only pattern. Keep availability (whether an owner exists) separate from opening (whether its session works); do not drop callback dependencies from an active preview.
+
+For BUG-20261028-plan-native-typing-update-loop, the compiled app crashed after real rapid input while an unminified dev run passed. A separately labelled production scheduler observation showed nested work accumulating through editor echoes, plan projections and closed-PDF flag resets; suppressing only the latter passed both real saves/reloads. This diagnostic perturbation is causal evidence, not an accepted production runtime. `frontend/test-utils/planTypingNativeAcceptance.mjs` owns the unchanged real native-input/Save/readback/reload contract; replay it against the compiled correction, inspect actual accepted values, and view settled frames. The forwarding owner regression in `ExportButtons.test.tsx` separately verifies enabled → disabled → enabled availability. Do not describe these results as proof that every historical RichMarkdownEditor loop has the same cause.
+
 ## Why
 
 - 2026-01-11: `exhaustive-deps` wanted the state the effect read; the functional update removed the dependency instead of adding it.

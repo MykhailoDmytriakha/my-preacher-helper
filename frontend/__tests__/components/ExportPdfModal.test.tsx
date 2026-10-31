@@ -60,6 +60,23 @@ describe("ExportPdfModal", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
+  it("uses the latest source when opened after content builders changed while closed", async () => {
+    const earlier = jest.fn().mockResolvedValue(<div>Earlier preview</div>);
+    const intermediate = jest.fn().mockResolvedValue(<div>Intermediate preview</div>);
+    const latest = jest.fn().mockResolvedValue(<div>Latest preview</div>);
+    const props = { onClose: jest.fn(), title: "Current plan" };
+    const { rerender } = render(<ExportPdfModal {...props} isOpen={false} getContent={earlier} />);
+    rerender(<ExportPdfModal {...props} isOpen={false} getContent={intermediate} />);
+    rerender(<ExportPdfModal {...props} isOpen={false} getContent={latest} />);
+    expect(earlier).not.toHaveBeenCalled();
+    expect(intermediate).not.toHaveBeenCalled();
+    expect(latest).not.toHaveBeenCalled();
+    rerender(<ExportPdfModal {...props} isOpen getContent={latest} />);
+    expect(await screen.findByText("Latest preview")).toBeVisible();
+    expect(earlier).not.toHaveBeenCalled();
+    expect(intermediate).not.toHaveBeenCalled();
+  });
+
   it("loads content on open and exports PDF with fallback filename", async () => {
     const getContent = jest.fn().mockResolvedValue(<div>PDF Preview</div>);
 

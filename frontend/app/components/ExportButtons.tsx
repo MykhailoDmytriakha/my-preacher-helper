@@ -149,7 +149,7 @@ export default function ExportButtons({
         hasPlan={hasPlan}
       />
 
-      {getPdfContent && (
+      {isPdfAvailable && getPdfContent && (
         <ExportPdfModal
           isOpen={showPdfModal}
           onClose={handleClosePdfModal}

@@ -28,6 +28,9 @@ export function ExportPdfModal({
   const contentRef = useRef<HTMLDivElement>(null);
   const exportSession = useRef(0);
   useEffect(() => {
+    // A closed dialog owns no export session. A changing builder while typing must
+    // not enqueue hidden state resets alongside every editor update.
+    if (!isOpen) return;
     setIsExporting(false);
     setExportError(false);
     return () => { exportSession.current += 1; };

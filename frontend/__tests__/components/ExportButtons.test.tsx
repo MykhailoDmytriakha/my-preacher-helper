@@ -2,6 +2,8 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 
+import { ExportPdfModal } from '@/components/export-buttons/ExportPdfModal';
+
 import ExportButtons, { ExportTxtModal } from '../../app/components/ExportButtons';
 import '@testing-library/jest-dom';
 
@@ -56,6 +58,11 @@ jest.mock('../../utils/wordExport', () => ({
   PlanData: {}
 }));
 
+jest.mock('@/components/export-buttons/ExportPdfModal', () => {
+  const actual = jest.requireActual('@/components/export-buttons/ExportPdfModal');
+  return { ...actual, ExportPdfModal: jest.fn(actual.ExportPdfModal) };
+});
+
 describe('ExportButtons Component', () => {
   const mockGetExportContent = jest.fn(() => Promise.resolve('Test content'));
   const mockSermonId = 'test-sermon-id';
@@ -70,6 +77,18 @@ describe('ExportButtons Component', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+  });
+
+  it('retires the PDF owner when its format is disabled and recreates it when enabled', () => {
+    const owner = jest.mocked(ExportPdfModal);
+    const props = { sermonId: mockSermonId, getExportContent: mockGetExportContent, getPdfContent: mockGetPdfContent };
+    const { rerender } = render(<ExportButtons {...props} />);
+    expect(owner).toHaveBeenCalled();
+    owner.mockClear();
+    rerender(<ExportButtons {...props} disabledFormats={['pdf']} />);
+    expect(owner).not.toHaveBeenCalled();
+    rerender(<ExportButtons {...props} />);
+    expect(owner).toHaveBeenCalled();
   });
 
   it('renders without crashing', () => {
