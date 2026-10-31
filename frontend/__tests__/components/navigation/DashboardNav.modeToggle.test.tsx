@@ -25,7 +25,6 @@ const replaceMock = jest.fn();
 const pushMock = jest.fn();
 let pathnameMock = '/sermons/abc';
 let paramsMap: Record<string, string | undefined> = {};
-let mockPrepModeAccessState = { hasAccess: true, loading: false };
 // The nav asks whether there IS a sermon before drawing its mode switcher. Left to the real
 // hook these cases would depend on how fast a network read settles, which is not what they
 // are about — and on a missing sermon the switcher is meant to disappear.
@@ -43,7 +42,6 @@ const resetScenario = () => {
   pushMock.mockReset();
   pathnameMock = '/sermons/abc';
   paramsMap = {};
-  mockPrepModeAccessState = { hasAccess: true, loading: false };
   mockSermonState = {
     sermon: { id: 'abc', title: 'A sermon that exists' },
     loading: false,
@@ -104,10 +102,6 @@ jest.mock('@/services/userSettings.service', () => ({
 }));
 const mockHasGroupsAccess = hasGroupsAccess as jest.MockedFunction<typeof hasGroupsAccess>;
 
-// Mock usePrepModeAccess hook
-jest.mock('@/hooks/usePrepModeAccess', () => ({
-  usePrepModeAccess: () => ({ ...mockPrepModeAccessState })
-}));
 
 // Mock segmented toggle to a minimal testable version with stable testids
 jest.mock('@/components/navigation/ModeToggle', () => ({
@@ -350,19 +344,16 @@ describe('DashboardNav mode toggle', () => {
           }
         },
         {
-          name: 'keeps classic and raw reachable when prep access is denied',
+          name: 'reaches preparation like any mode: nothing to switch on first',
           run: () => {
-            mockPrepModeAccessState = { hasAccess: false, loading: false };
             render(
               <TestProviders>
                 <DashboardNav />
               </TestProviders>
             );
-            expect(screen.getByTestId('toggle-classic')).toBeInTheDocument();
-            expect(screen.getByTestId('toggle-raw')).toBeInTheDocument();
-            expect(screen.getByTestId('toggle-prep')).toBeDisabled();
-            fireEvent.click(screen.getByTestId('toggle-raw'));
-            expect(pushMock).toHaveBeenCalledWith('/sermons/abc?mode=raw', { scroll: false });
+            expect(screen.getByTestId('toggle-prep')).toBeEnabled();
+            fireEvent.click(screen.getByTestId('toggle-prep'));
+            expect(pushMock).toHaveBeenCalledWith('/sermons/abc?mode=prep', { scroll: false });
           }
         },
         {

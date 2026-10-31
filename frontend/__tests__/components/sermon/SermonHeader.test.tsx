@@ -208,7 +208,6 @@ jest.mock('@/components/ExportButtons', () => ({
 jest.mock('@/hooks/useUserSettings', () => ({
   useUserSettings: jest.fn(() => ({
     settings: {
-      enablePrepMode: true,
       enableAudioGeneration: true
     },
     loading: false,

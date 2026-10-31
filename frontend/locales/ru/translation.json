@@ -79,7 +79,7 @@
       "email": "Электронная почта",
       "displayName": "Отображаемое имя",
       "firstDayOfWeek": "Первый день недели",
-      "enablePrepMode": "Режим подготовки (Beta)",
+      "enablePrepMode": "Режим подготовки",
       "enableAudioGeneration": "Генерация аудио проповеди (Beta)",
       "enableStructurePreview": "Предварительный просмотр структуры (Beta)",
       "enableGroups": "Группы",
@@ -1468,10 +1468,6 @@
       "sunday": "Воскресенье",
       "monday": "Понедельник",
       "error": "Не удалось сохранить первый день недели. Попробуйте ещё раз."
-    },
-    "prepMode": {
-      "title": "Режим подготовки (Beta)",
-      "description": "Включить доступ к новому рабочему процессу режима подготовки"
     },
     "audioGeneration": {
       "title": "Генерация аудио проповеди (Beta)",
@@ -2885,7 +2881,7 @@
     "modePrep": "Подготовка",
     "modeClassic": "Классический",
     "modeRaw": "Наброски",
-    "switchToPrepBeta": "Режим подготовки (Beta)",
+    "switchToPrep": "Режим подготовки",
     "switchToClassic": "Классический режим",
     "switchToRaw": "Наброски",
     "previewCTA": {

@@ -22,7 +22,6 @@ const resetScenario = () => {
   replaceMock.mockReset();
   pushMock.mockReset();
   pathnameMock = '/sermons/abc';
-  prepModeAccessState = { hasAccess: true, loading: false };
   mockHasGroupsAccess.mockResolvedValue(true);
   // Enable debug mode for tests to verify logging
   setDebugModeEnabled(true);
@@ -55,12 +54,8 @@ jest.mock('@/services/userSettings.service', () => ({
   hasGroupsAccess: jest.fn(),
 }));
 
-let prepModeAccessState = { hasAccess: true, loading: false };
 const mockHasGroupsAccess = hasGroupsAccess as jest.MockedFunction<typeof hasGroupsAccess>;
 
-jest.mock('@/hooks/usePrepModeAccess', () => ({
-  usePrepModeAccess: () => ({ ...prepModeAccessState })
-}));
 
 // Mock ModeToggle
 jest.mock('@/components/navigation/ModeToggle', () => ({
@@ -81,19 +76,18 @@ jest.mock('react-i18next', () => ({
   })
 }));
 
-describe('DashboardNav - Prep Mode Access Integration', () => {
+describe('DashboardNav - the sermon modes, preparation among them', () => {
   beforeEach(resetScenario);
   afterAll(() => { process.env = OLD_ENV; });
 
-  describe('Mode Toggle Visibility Based on Prep Mode Access', () => {
-    it('shows mode toggle when user has prep mode access', async () => {
+  describe('where the mode switch shows', () => {
+    it('shows the mode switch on a sermon', async () => {
 
       await runScenarios(
         [
           {
-            name: 'displays mode toggle for sermon root page when access granted',
+            name: 'displays the mode switch on the sermon page',
             run: () => {
-              prepModeAccessState = { hasAccess: true, loading: false };
               pathnameMock = '/sermons/test-sermon-id';
               render(
               <TestProviders>
@@ -111,14 +105,13 @@ describe('DashboardNav - Prep Mode Access Integration', () => {
       );
     });
 
-    it('keeps mode toggle visible when user lacks prep mode access', async () => {
+    it('shows it only on the sermon itself', async () => {
 
       await runScenarios(
         [
           {
-            name: 'shows mode toggle when prep access is denied',
+            name: 'shows the mode switch on the sermon page',
             run: () => {
-              prepModeAccessState = { hasAccess: false, loading: false };
               pathnameMock = '/sermons/test-sermon-id';
               render(
               <TestProviders>
@@ -131,9 +124,8 @@ describe('DashboardNav - Prep Mode Access Integration', () => {
             }
           },
           {
-            name: 'shows only on sermon root when access denied',
+            name: 'shows only on the sermon page itself',
             run: () => {
-              prepModeAccessState = { hasAccess: false, loading: false };
               pathnameMock = '/sermons/test-id';
               render(
                 <TestProviders>
@@ -166,29 +158,6 @@ describe('DashboardNav - Prep Mode Access Integration', () => {
       );
     });
 
-    it('handles loading state for prep mode access', async () => {
-
-      await runScenarios(
-        [
-          {
-            name: 'keeps mode toggle visible while access is loading',
-            run: () => {
-              prepModeAccessState = { hasAccess: false, loading: true };
-              pathnameMock = '/sermons/test-sermon-id';
-              render(
-              <TestProviders>
-                <DashboardNav />
-              </TestProviders>
-            );
-
-              expect(screen.getByTestId('mode-toggle')).toBeInTheDocument();
-            }
-          }
-        ],
-        { beforeEachScenario: resetScenario, afterEachScenario: cleanup }
-      );
-    });
-
     it('never shows mode toggle on non-sermon pages', async () => {
 
       await runScenarios(
@@ -196,7 +165,6 @@ describe('DashboardNav - Prep Mode Access Integration', () => {
           {
             name: 'hides toggle on dashboard page even with access',
             run: () => {
-              prepModeAccessState = { hasAccess: true, loading: false };
               pathnameMock = '/dashboard';
               render(
               <TestProviders>
@@ -210,7 +178,6 @@ describe('DashboardNav - Prep Mode Access Integration', () => {
           {
             name: 'hides toggle on series page even with access',
             run: () => {
-              prepModeAccessState = { hasAccess: true, loading: false };
               pathnameMock = '/series';
               render(
               <TestProviders>
@@ -224,7 +191,6 @@ describe('DashboardNav - Prep Mode Access Integration', () => {
           {
             name: 'hides toggle on settings page even with access',
             run: () => {
-              prepModeAccessState = { hasAccess: true, loading: false };
               pathnameMock = '/settings';
               render(
               <TestProviders>
@@ -238,34 +204,6 @@ describe('DashboardNav - Prep Mode Access Integration', () => {
         ],
         { beforeEachScenario: resetScenario, afterEachScenario: cleanup }
       );
-    });
-  });
-
-  describe('Console Logging for Prep Mode Access', () => {
-    it('logs access check results', async () => {
-      const consoleSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
-
-      await runScenarios(
-        [
-          {
-            name: 'logs prep mode access status and loading state',
-            run: () => {
-              prepModeAccessState = { hasAccess: true, loading: false };
-              pathnameMock = '/sermons/test-sermon-id';
-              render(
-              <TestProviders>
-                <DashboardNav />
-              </TestProviders>
-            );
-
-              expect(consoleSpy).toHaveBeenCalledWith('[debug]', '🔧 DashboardNav: showWizardButton:', true, 'prepModeLoading:', false);
-            }
-          }
-        ],
-        { beforeEachScenario: resetScenario, afterEachScenario: cleanup }
-      );
-
-      consoleSpy.mockRestore();
     });
   });
 });

@@ -17,7 +17,7 @@ const fixtures: Record<string, DocumentData> = {
   councils: { ...owner, ...times, title: '', status: 'preparing', topics: [] },
   planTemplates: { ...owner, ...times, name: 'Template', structure: outline },
   tags: { ...owner, name: 'Tag', color: '#123456', required: false },
-  users: { enablePrepMode: true },
+  users: { enableAudioGeneration: true },
 };
 
 describe('pure resource document validation', () => {
@@ -41,7 +41,7 @@ describe('pure resource document validation', () => {
     ['councils', 'topics', [{ id: 'topic', title: 'Topic', questions: {}, options: [] }]],
     ['planTemplates', 'structure', { introduction: [], main: [] }], ['tags', 'required', 1],
     ['users', 'preferredText', { providerId: 'untrusted', modelId: 'expensive' }],
-    ['users', 'firstDayOfWeek', 'friday'], ['users', 'enablePrepMode', {}],
+    ['users', 'firstDayOfWeek', 'friday'], ['users', 'enableAudioGeneration', {}],
   ])('rejects malformed %s.%s', (collection, field, wrong) => {
     expect(() => validateResourceDocument(collection as string, { ...fixtures[collection as string], [field as string]: wrong } as DocumentData, { kind: 'update', changedFields: [field as string] })).toThrow();
   });
@@ -134,5 +134,10 @@ describe('pure resource document validation', () => {
       expect(error).toMatchObject({ code: 'invalid-argument' });
     }
     expect(() => validateResourceDocument('users', null as unknown as DocumentData, { kind: 'create' })).toThrow('document object');
+  });
+
+  it('still takes the retired «Подготовка» beta switch from a command an older version queued', () => {
+    // Codex, 2026-10-31: refused, it would hold every settings command queued after it on that device.
+    expect(() => validateResourceDocument('users', { language: 'ru', enablePrepMode: true }, { kind: 'update', changedFields: ['enablePrepMode'] })).not.toThrow();
   });
 });

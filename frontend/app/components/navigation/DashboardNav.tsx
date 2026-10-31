@@ -19,7 +19,6 @@ import {
 } from '@/components/usage/UsageGraceIndicator';
 import { useAuth } from "@/hooks/useAuth";
 import { useFeedback } from "@/hooks/useFeedback";
-import { usePrepModeAccess } from "@/hooks/usePrepModeAccess";
 import { sermonIsMissing, useSermonRead } from '@/hooks/useSermonRead';
 import { useShellPathname } from "@/hooks/useShellPathname";
 import { debugLog } from "@/utils/debugMode";
@@ -81,8 +80,6 @@ export default function DashboardNav() {
     closeFeedbackModal,
     handleSubmitFeedback
   } = useFeedback();
-  const { hasAccess: showWizardButton, loading: prepModeLoading } = usePrepModeAccess();
-  debugLog('🔧 DashboardNav: showWizardButton:', showWizardButton, 'prepModeLoading:', prepModeLoading);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const header = usePublishedShellHeader();
   const hasHeader = header !== null;
@@ -334,8 +331,6 @@ export default function DashboardNav() {
 
   const setMode = (mode: SermonMode) => {
     try {
-      if (mode === 'prep' && !showWizardButton) return;
-
       // Check if we're trying to switch to the same mode
       if (mode === currentMode) {
         debugLog('Already in mode', mode);
@@ -388,9 +383,8 @@ export default function DashboardNav() {
       compactBreakpoint={1024}
       currentMode={currentMode}
       onSetMode={setMode}
-      canUsePrep={!prepModeLoading && showWizardButton}
       tSwitchToClassic={t('wizard.switchToClassic') as string}
-      tSwitchToPrep={t('wizard.switchToPrepBeta') as string}
+      tSwitchToPrep={t('wizard.switchToPrep') as string}
       tSwitchToRaw={t('wizard.switchToRaw') as string}
       tPrepLabel={t('wizard.modePrep') as string}
       tClassicLabel={t('wizard.modeClassic') as string}

@@ -5,7 +5,6 @@ import {
   updateFirstDayOfWeek,
   updateFunctionModelPreference,
   updateModelPreference,
-  updatePrepModeAccess,
   updateShowAppVersion,
   updateStructurePreviewAccess,
 } from '@/services/userSettings.service';
@@ -170,10 +169,9 @@ export function registerOfflineMutationDefaults(queryClient: QueryClient) {
   }
 
   // ---- user settings ----
-  queryClient.setMutationDefaults(SETTINGS_MUTATION_KEYS.prepMode, {
-    mutationFn: ({ userId, value }: SettingVars) => updatePrepModeAccess(userId, value),
-    onSuccess: invalidate([USER_SETTINGS_KEY]),
-  });
+  // «Подготовка» is no longer a beta to switch on (2026-10-31): a write of the old switch kept on a device is refused,
+  // and the legacy archive keeps its words (`legacyQueryRecovery.client.ts`).
+  queryClient.setMutationDefaults(SETTINGS_MUTATION_KEYS.prepMode, { mutationFn: refuseLegacyReplay('users') });
   queryClient.setMutationDefaults(SETTINGS_MUTATION_KEYS.audioGeneration, {
     mutationFn: ({ userId, value }: SettingVars) => updateAudioGenerationAccess(userId, value),
     onSuccess: invalidate([USER_SETTINGS_KEY]),

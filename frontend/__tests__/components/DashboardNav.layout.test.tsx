@@ -33,9 +33,6 @@ jest.mock('@/components/navigation/UserProfileDropdown', () => () => <div />);
 jest.mock('@/components/navigation/MobileMenu', () => () => <div />);
 jest.mock('@/components/navigation/FeedbackModal', () => () => <div />);
 
-jest.mock('@/hooks/usePrepModeAccess', () => ({
-  usePrepModeAccess: () => ({ hasAccess: true, loading: false })
-}));
 
 describe('DashboardNav layout', () => {
   it('uses fluid container without max-w-7xl', () => {
@@ -61,7 +58,6 @@ describe('DashboardNav layout', () => {
     const { usePathname } = require('next/navigation');
     usePathname.mockReturnValue('/sermons/123');
 
-    // We already mocked usePrepModeAccess at the top level
     render(
       <TestProviders>
         <DashboardNav />

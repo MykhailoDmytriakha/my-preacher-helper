@@ -234,14 +234,14 @@ describe('settings bootstrap through the shared server protocol', () => {
     });
 
   it('refuses old mutations on served users before any write', async () => {
-    await expect(writeOwnSettings('owner-1', 'legacy', { enablePrepMode: true })).rejects.toMatchObject({ code: 'data-engine-required', status: 426 });
+    await expect(writeOwnSettings('owner-1', 'legacy', { enableAudioGeneration: true })).rejects.toMatchObject({ code: 'data-engine-required', status: 426 });
     expect(documents.size).toBe(0);
   });
 
   it.each([{ operation: ['legacy'] }, { operation: ['bootstrap'] }, { operation: 'unknown' }, { operation: null }])('rejects an invalid runtime operation before changing settings (%j)', async ({ operation }) => {
-    documents.set(userPath, { language: 'en', enablePrepMode: false, _dataEngine: marker });
+    documents.set(userPath, { language: 'en', enableAudioGeneration: false, _dataEngine: marker });
     await expect(writeOwnSettings('owner-1', operation as never, { language: 'ru' })).rejects.toMatchObject({ status: 400 });
-    expect(documents.get(userPath)).toEqual({ language: 'en', enablePrepMode: false, _dataEngine: marker });
+    expect(documents.get(userPath)).toEqual({ language: 'en', enableAudioGeneration: false, _dataEngine: marker });
     expect(documents.size).toBe(1);
   });
 

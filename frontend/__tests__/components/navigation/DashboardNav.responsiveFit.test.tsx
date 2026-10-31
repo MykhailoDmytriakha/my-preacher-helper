@@ -50,9 +50,6 @@ jest.mock('@/hooks/useFeedback', () => ({
 }));
 
 jest.mock('@/hooks/useOnlineStatus', () => ({ useOnlineStatus: () => true }));
-jest.mock('@/hooks/usePrepModeAccess', () => ({
-  usePrepModeAccess: () => ({ hasAccess: false, loading: false }),
-}));
 
 jest.mock('@/components/navigation/LanguageSwitcher', () => ({
   __esModule: true,

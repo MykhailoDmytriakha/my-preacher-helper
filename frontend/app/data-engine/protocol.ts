@@ -43,6 +43,8 @@ const fields: Record<string, readonly string[]> = {
   // Marks in the Bible text: one document per person, Bible and book (`utils/bibleMarks.ts`).
   bibleMarks: ['bible', 'book', 'verses'],
   tags: ['name', 'color', 'required'],
+  // 'enablePrepMode' — the retired «Подготовка» beta switch (2026-10-31): nothing writes it now, but a command an older
+  // version queued on a device is still delivered, or the settings commands queued after it would stay stuck behind it.
   users: ['lastSeenAt', 'language', 'email', 'displayName', 'firstDayOfWeek', 'enablePrepMode', 'enableAudioGeneration',
     'enableStructurePreview', 'enableGroups', 'showAppVersion', 'preferredProviderId', 'preferredModelId',
     'preferredTranscription', 'preferredText', 'preferredTts'],

@@ -25,9 +25,9 @@ function resize(width: number) {
   });
 }
 
-function ControlledToggle({ canUsePrep = true }) {
+function ControlledToggle() {
   const [mode, setMode] = React.useState<SermonMode>('raw');
-  return <ModeToggle {...props} currentMode={mode} onSetMode={setMode} canUsePrep={canUsePrep} />;
+  return <ModeToggle {...props} currentMode={mode} onSetMode={setMode} />;
 }
 
 describe('ModeToggle compact menu', () => {
@@ -52,11 +52,13 @@ describe('ModeToggle compact menu', () => {
     expect(screen.getByRole('button', { name: 'Classic' })).toHaveAttribute('aria-expanded', 'false');
   });
 
-  it('dismisses with Escape and keeps unavailable preparation disabled', async () => {
+  it('dismisses with Escape, and offers preparation as an ordinary mode — no beta, no lock (the owner, 2026-10-31)', async () => {
     const user = userEvent.setup();
-    render(<ControlledToggle canUsePrep={false} />);
+    render(<ControlledToggle />);
     await user.click(screen.getByRole('button', { name: 'Scratch notes' }));
-    expect(screen.getByRole('option', { name: 'Preparation beta' })).toHaveAttribute('aria-disabled', 'true');
+    const prep = screen.getByRole('option', { name: 'Preparation' });
+    expect(prep).not.toHaveAttribute('aria-disabled', 'true');
+    expect(screen.queryByText('beta')).not.toBeInTheDocument();
     await user.keyboard('{Escape}');
     await waitFor(() => expect(screen.queryByRole('listbox')).not.toBeInTheDocument());
     expect(screen.getByRole('button', { name: 'Scratch notes' })).toHaveFocus();

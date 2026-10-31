@@ -468,7 +468,8 @@ export interface UserSettings {
   userId: string;
   language: string;
   firstDayOfWeek?: 'sunday' | 'monday';
-  enablePrepMode?: boolean;  // Per-user prep mode access
+  /** @deprecated «Подготовка» is for everyone since 2026-10-31 — never written now; documents written before may carry it. */
+  enablePrepMode?: boolean;
   enableAudioGeneration?: boolean; // Beta: audio generation feature
   enableStructurePreview?: boolean; // Beta: Structure Preview feature
   enableGroups?: boolean; // Legacy preference; released groups are available to all signed-in users

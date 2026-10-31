@@ -13,7 +13,6 @@ import type { WriteSubmission } from '@/utils/recoverableWrite';
 jest.mock('@/hooks/useServerFirstQuery', () => ({ useServerFirstQuery: jest.fn() }));
 jest.mock('@/services/userSettings.service', () => ({
   getUserSettings: jest.fn(),
-  updatePrepModeAccess: jest.fn(),
   updateAudioGenerationAccess: jest.fn(),
   updateStructurePreviewAccess: jest.fn(),
   updateShowAppVersion: jest.fn(),
@@ -24,12 +23,11 @@ jest.mock('@/services/userSettings.service', () => ({
 
 const original: UserSettings = {
   id: 'user1', userId: 'user1', language: 'ru',
-  enablePrepMode: false, enableAudioGeneration: false, enableStructurePreview: false,
+  enableAudioGeneration: false, enableStructurePreview: false,
   showAppVersion: false, firstDayOfWeek: 'sunday',
 };
 const queryKey = ['user-settings', 'user1'];
-type Settings = Omit<ReturnType<typeof useUserSettings>, 'updatePrepModeAccess' | 'updateAudioGenerationAccess' | 'updateStructurePreviewAccess' | 'updateFirstDayOfWeek' | 'updateShowAppVersion' | 'updateModelPreference' | 'updateFunctionModelPreference'> & {
-  updatePrepModeAccess(value: boolean): WriteSubmission;
+type Settings = Omit<ReturnType<typeof useUserSettings>, 'updateAudioGenerationAccess' | 'updateStructurePreviewAccess' | 'updateFirstDayOfWeek' | 'updateShowAppVersion' | 'updateModelPreference' | 'updateFunctionModelPreference'> & {
   updateAudioGenerationAccess(value: boolean): WriteSubmission;
   updateStructurePreviewAccess(value: boolean): WriteSubmission;
   updateFirstDayOfWeek(value: 'sunday' | 'monday'): WriteSubmission;
@@ -46,8 +44,6 @@ const operations: {
   patch: Partial<UserSettings>;
   submit: (settings: Settings) => WriteSubmission;
 }[] = [
-  { name: 'prepMode', write: jest.mocked(service.updatePrepModeAccess), value: true,
-    patch: { enablePrepMode: true }, submit: s => s.updatePrepModeAccess(true) },
   { name: 'audioGeneration', write: jest.mocked(service.updateAudioGenerationAccess), value: true,
     patch: { enableAudioGeneration: true }, submit: s => s.updateAudioGenerationAccess(true) },
   { name: 'structurePreview', write: jest.mocked(service.updateStructurePreviewAccess), value: false,
@@ -165,23 +161,23 @@ describe('useUserSettings public behavior', () => {
   it('creates a minimal cache entry when settings have not loaded', async () => {
     queryClient.removeQueries({ queryKey });
     const { result } = mount('user1');
-    await act(async () => { await result.current.updatePrepModeAccess(true).persistence; });
-    expect(queryClient.getQueryData(queryKey)).toEqual({ id: 'user1', userId: 'user1', language: 'en', enablePrepMode: true });
+    await act(async () => { await result.current.updateAudioGenerationAccess(true).persistence; });
+    expect(queryClient.getQueryData(queryKey)).toEqual({ id: 'user1', userId: 'user1', language: 'en', enableAudioGeneration: true });
   });
 
   it('restores an absent cache to null after a failed write', async () => {
     queryClient.removeQueries({ queryKey });
-    jest.mocked(service.updatePrepModeAccess).mockRejectedValueOnce(new Error('write refused'));
+    jest.mocked(service.updateAudioGenerationAccess).mockRejectedValueOnce(new Error('write refused'));
     const { result } = mount('user1');
-    await act(async () => { await expect(result.current.updatePrepModeAccess(true).persistence).rejects.toThrow('write refused'); });
+    await act(async () => { await expect(result.current.updateAudioGenerationAccess(true).persistence).rejects.toThrow('write refused'); });
     expect(queryClient.getQueryData(queryKey)).toBeNull();
   });
 
   it('refuses acceptance too when the write fails before the queue accepts it', async () => {
-    jest.mocked(service.updatePrepModeAccess).mockRejectedValueOnce(new Error('early refusal'));
+    jest.mocked(service.updateAudioGenerationAccess).mockRejectedValueOnce(new Error('early refusal'));
     const { result } = mount('user1');
     await act(async () => {
-      const submission = result.current.updatePrepModeAccess(true);
+      const submission = result.current.updateAudioGenerationAccess(true);
       await expect(submission.acceptance).rejects.toThrow('early refusal');
       await expect(submission.persistence).rejects.toThrow('early refusal');
     });

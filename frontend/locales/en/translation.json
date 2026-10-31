@@ -79,7 +79,7 @@
       "email": "Email",
       "displayName": "Display Name",
       "firstDayOfWeek": "First day of week",
-      "enablePrepMode": "Preparation Mode (Beta)",
+      "enablePrepMode": "Preparation Mode",
       "enableAudioGeneration": "Sermon Audio Generation (Beta)",
       "enableStructurePreview": "Structure Preview (Beta)",
       "enableGroups": "Groups",
@@ -1440,10 +1440,6 @@
       "sunday": "Sunday",
       "monday": "Monday",
       "error": "Could not save the first day of week. Please try again."
-    },
-    "prepMode": {
-      "title": "Preparation Mode (Beta)",
-      "description": "Enable access to the new preparation mode workflow"
     },
     "audioGeneration": {
       "title": "Sermon Audio Generation (Beta)",
@@ -2842,7 +2838,7 @@
     "modePrep": "Preparation",
     "modeClassic": "Classic",
     "modeRaw": "Scratch",
-    "switchToPrepBeta": "Preparation Mode (Beta)",
+    "switchToPrep": "Preparation Mode",
     "switchToClassic": "Classic Mode",
     "switchToRaw": "Scratch Notes",
     "previewCTA": {

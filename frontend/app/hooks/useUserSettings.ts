@@ -6,7 +6,6 @@ import { useSettingsEngine } from '@/hooks/userSettingsEngineContext';
 import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
 import {
   getUserSettings,
-  updatePrepModeAccess,
   updateAudioGenerationAccess,
   updateStructurePreviewAccess,
   updateShowAppVersion,
@@ -68,13 +67,6 @@ function useLegacyUserSettings(userId: string | null | undefined) {
       revert(context?.previous),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: SETTINGS_PREFIX }),
   };
-
-  const updatePrepModeMutation = useMutation({
-    ...mutationCallbacks,
-    mutationKey: SETTINGS_MUTATION_KEYS.prepMode,
-    mutationFn: ({ userId: uid, value }: { userId: string; value: boolean }) => updatePrepModeAccess(uid, value),
-    onMutate: ({ value }) => updateCachedSettings({ enablePrepMode: value }),
-  });
 
   const updateAudioGenerationMutation = useMutation({
     ...mutationCallbacks,
@@ -150,11 +142,6 @@ function useLegacyUserSettings(userId: string | null | undefined) {
     });
 
   useSettingRecovery<{ userId: string; value: boolean }>(
-    SETTINGS_MUTATION_KEYS.prepMode,
-    'prep-mode',
-    (payload) => updatePrepModeMutation.mutate(payload)
-  );
-  useSettingRecovery<{ userId: string; value: boolean }>(
     SETTINGS_MUTATION_KEYS.audioGeneration,
     'audio-generation',
     (payload) => updateAudioGenerationMutation.mutate(payload)
@@ -202,9 +189,6 @@ function useLegacyUserSettings(userId: string | null | undefined) {
     loading: settingsQuery.isLoading,
     error: settingsQuery.error as Error | null,
     refresh: settingsQuery.refetch,
-    updatePrepModeAccess: (enabled: boolean) =>
-      guarded('settings:prep-mode', (uid) => updatePrepModeMutation.mutateAsync({ userId: uid, value: enabled })),
-    updatingPrepMode: updatePrepModeMutation.isPending,
     updateAudioGenerationAccess: (enabled: boolean) =>
       guarded('settings:audio-generation', (uid) => updateAudioGenerationMutation.mutateAsync({ userId: uid, value: enabled })),
     updatingAudioGeneration: updateAudioGenerationMutation.isPending,
@@ -264,7 +248,6 @@ export function useUserSettings(userId: string | null | undefined) {
     error: document?.error ? new Error(document.error) : null,
     readOnly,
     refresh: async () => { await document?.retry(); },
-    updatePrepModeAccess: (value: boolean) => patch({ enablePrepMode: value }), updatingPrepMode: busy,
     updateAudioGenerationAccess: (value: boolean) => patch({ enableAudioGeneration: value }), updatingAudioGeneration: busy,
     updateStructurePreviewAccess: (value: boolean) => patch({ enableStructurePreview: value }), updatingStructurePreview: busy,
     updateFirstDayOfWeek: (value: FirstDayOfWeek) => patch({ firstDayOfWeek: value }), updatingFirstDayOfWeek: busy,

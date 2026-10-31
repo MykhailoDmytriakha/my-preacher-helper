@@ -2,7 +2,6 @@ import { assertLegacyClientWriteAllowed } from '@/data-engine/clientPolicy';
 import { UserSettings } from '@/models/models';
 import { requestUserSettings } from '@/services/userSettingsTransport.client';
 import { isKnownOffline } from '@/utils/connectivity';
-import { debugLog } from '@/utils/debugMode';
 import { DEFAULT_LANGUAGE, COOKIE_LANG_KEY, COOKIE_MAX_AGE } from '@locales/constants';
 
 import type { FirstDayOfWeek } from '@/utils/weekStart';
@@ -238,52 +237,6 @@ export async function getUserSettings(userId: string): Promise<UserSettings | nu
   } catch (error) {
     console.error('Error getting user settings:', error);
     throw error;
-  }
-}
-
-/**
- * Update user's prep mode feature flag
- * @param userId The user ID
- * @param enabled Whether prep mode should be enabled
- */
-export async function updatePrepModeAccess(userId: string, enabled: boolean): Promise<void> {
-  try {
-    if (!userId) return;
-    await updateUserSettingsViaClient(userId, { enablePrepMode: enabled });
-  } catch (error) {
-    console.error('Error updating prep mode access:', error);
-    throw error;
-  }
-}
-
-/**
- * Check if user has access to prep mode
- * @param userId The user ID
- * @returns Boolean indicating if user has prep mode access
- */
-export async function hasPrepModeAccess(userId: string): Promise<boolean> {
-  try {
-    debugLog('🔍 hasPrepModeAccess: called with userId:', userId);
-    // For guest users (no userId): Always return true
-    if (!userId) {
-      debugLog('👤 hasPrepModeAccess: guest user, returning true');
-      return true;
-    }
-
-    debugLog('👤 hasPrepModeAccess: authenticated user, fetching settings...');
-    if (isKnownOffline()) {
-      return false;
-    }
-    // For authenticated users: check settings.enablePrepMode, default to false
-    const settings = await getUserSettings(userId);
-    debugLog('📊 hasPrepModeAccess: fetched settings:', settings);
-    const access = settings?.enablePrepMode || false;
-    debugLog('✅ hasPrepModeAccess: access result:', access);
-    return access;
-  } catch (error) {
-    console.error('❌ hasPrepModeAccess: Error checking prep mode access:', error);
-    // On error, default to false for authenticated users
-    return false;
   }
 }
 
