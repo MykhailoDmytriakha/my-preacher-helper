@@ -12,7 +12,23 @@ jest.mock('@/data-engine/activation', () => ({ ...jest.requireActual('@/data-eng
 
 jest.mock('@/config/firebaseAdminConfig', () => ({ adminDb: { collection: jest.fn(), runTransaction: jest.fn() } }));
 
+jest.mock('firebase-admin/firestore', () => ({
+  ...jest.requireActual('firebase-admin/firestore'),
+  Filter: {
+    where: (field: string, operator: string, value: unknown) => ({ kind: 'field', field, operator, value }),
+    or: (...filters: unknown[]) => ({ kind: 'or', filters }),
+  },
+}));
+
 type Raw = Record<string, unknown>;
+type QueryFilter = { kind: 'field'; field: string; operator: string; value: unknown }
+  | { kind: 'or'; filters: QueryFilter[] };
+function matchesFilter(data: Raw, filter: QueryFilter): boolean {
+  if (filter.kind === 'or') return filter.filters.some(part => matchesFilter(data, part));
+  return filter.operator === 'array-contains'
+    ? Array.isArray(data[filter.field]) && (data[filter.field] as unknown[]).includes(filter.value)
+    : data[filter.field] === filter.value;
+}
 const documents = new Map<string, Raw>();
 let transactionTail: Promise<unknown>;
 let failCommit = false;
@@ -20,14 +36,14 @@ const snapshot = (path: string) => ({ exists: documents.has(path), data: () => d
 function queryFor(collection: string) {
   let maximum = 50;
   let cursor = '';
-  const conditions: Array<{ field: string; operator: string; value: string }> = [];
+  const conditions: QueryFilter[] = [];
   const query = {
     doc: (id: string) => ref(`${collection}/${id}`),
-    where: jest.fn().mockImplementation((field: string, operator: string, value: string) => { conditions.push({ field, operator, value }); return query; }),
+    where: jest.fn().mockImplementation((field: string | QueryFilter, operator: string, value: unknown) => { conditions.push(typeof field === 'string' ? { kind: 'field', field, operator, value } : field); return query; }),
     orderBy: jest.fn().mockImplementation(() => query),
     limit: jest.fn().mockImplementation((value: number) => { maximum = value; return query; }),
     startAfter: jest.fn().mockImplementation((value: string) => { cursor = value; return query; }),
-    get: async () => ({ docs: [...documents.entries()].filter(([key, data]) => key.startsWith(`${collection}/`) && !key.slice(collection.length + 1).includes('/') && conditions.every(condition => condition.operator === 'array-contains' ? Array.isArray(data[condition.field]) && (data[condition.field] as string[]).includes(condition.value) : data[condition.field] === condition.value) && key.slice(collection.length + 1) > cursor).sort(([a], [b]) => a.localeCompare(b)).slice(0, maximum).map(([key]) => snapshot(key)) }),
+    get: async () => ({ docs: [...documents.entries()].filter(([key, data]) => key.startsWith(`${collection}/`) && !key.slice(collection.length + 1).includes('/') && conditions.every(condition => matchesFilter(data, condition)) && key.slice(collection.length + 1) > cursor).sort(([a], [b]) => a.localeCompare(b)).slice(0, maximum).map(([key]) => snapshot(key)) }),
   };
   return query;
 }
@@ -307,13 +323,51 @@ describe('document operation budgets', () => {
     expect(measured()).toEqual({ reads: 2, writes: 1 });
   });
 
+  describe('cold owner-list read budgets', () => {
+    it('checks an empty owner list without a second empty query', async () => {
+      const page = await listDocuments('owner-1', 'sermons', { limit: 2 });
+      expect(page.snapshots).toEqual([]);
+      expect(page.nextCursor).toBeNull();
+      expect(measured()).toEqual({ reads: 2, writes: 0 });
+    });
+
+    it.each(['live', 'mixed'] as const)('does not repeatedly fetch unreturned %s page tails', async mode => {
+      const expected = Array.from({ length: 9 }, (_, index) => `row-${index}`);
+      expected.forEach((id, index) => {
+        const deleted = mode === 'mixed' && index % 2 === 1;
+        documents.set(`sermons/${id}`, deleted
+          ? { _dataEngineOwner: 'owner-1', _dataEngine: { protocol: 1, generation: id, revision: 1, deleted: true },
+            ...(index === 3 ? { userId: 'owner-1' } : {}) }
+          : { userId: 'owner-1', title: id });
+        documents.set(`sermons/foreign-${index}`, { userId: 'attacker', title: 'Never this owner' });
+      });
+      const seen: ResourceSnapshot[] = [];
+      let cursor: string | undefined;
+      let pages = 0;
+      for (let attempt = 0; attempt < 10; attempt += 1) {
+        const page = await listDocuments('owner-1', 'sermons', { limit: 2, ...(cursor ? { cursor } : {}) });
+        seen.push(...page.snapshots);
+        pages += 1;
+        if (page.nextCursor === null) break;
+        cursor = page.nextCursor;
+      }
+      expect(seen.map(item => item.resource.id)).toEqual(expected);
+      expect(seen.map(item => item.value === null)).toEqual(expected.map((_, index) => mode === 'mixed' && index % 2 === 1));
+      expect(pages).toBe(5);
+      // These small rows fit the byte budget: each page needs its head and at most one lookahead row.
+      // This is the existing SDK document-operation model, not a cloud billing assertion.
+      expect(measured().reads).toBeLessThanOrEqual(expected.length + pages + (pages - 1));
+      expect(measured().writes).toBe(0);
+    });
+  });
+
   it('counts empty queries, live and tombstone lists, and deduplicated feed document reads', async () => {
     await listDocuments('owner-1', 'sermons');
-    expect(measured()).toEqual({ reads: 3, writes: 0 }); // Head plus two empty owner queries.
+    expect(measured()).toEqual({ reads: 2, writes: 0 }); // Head plus one empty ownership-union query.
     await processCommand('owner-1', create());
     await processCommand('owner-1', update());
     reset(); await listDocuments('owner-1', 'sermons');
-    expect(measured()).toEqual({ reads: 3, writes: 0 }); // One live row plus empty tombstone query and head.
+    expect(measured()).toEqual({ reads: 2, writes: 0 }); // One live row and head; no extra empty tombstone query.
     reset(); await readCollectionChanges('owner-1', 'sermons', 0);
     expect(measured()).toEqual({ reads: 4, writes: 0 }); // Two pointers, one distinct document, one head.
     reset(); await readCollectionChanges('owner-1', 'sermons', 2);

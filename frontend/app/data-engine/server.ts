@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 
-import { FieldPath } from 'firebase-admin/firestore';
+import { FieldPath, Filter } from 'firebase-admin/firestore';
 
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { storeRetryHeaders } from '@/services/storeAvailability.server';
@@ -410,16 +410,6 @@ export type ResourcePage = CollectionPage;
 /** Said only while true, so an answer about a closed or unserved collection is byte-identical to before. */
 const legacyOpenness = (collection: string): { legacyOpen?: true } => isLegacyOpen(collection) ? { legacyOpen: true } : {};
 
-/** Firestore orders document IDs by UTF-8 bytes, i.e. by Unicode scalar value — not UTF-16 units. */
-function compareDocumentIds(left: string, right: string): number {
-  const a = Array.from(left), b = Array.from(right);
-  for (let index = 0; index < Math.min(a.length, b.length); index += 1) {
-    const difference = a[index].codePointAt(0)! - b[index].codePointAt(0)!;
-    if (difference) return difference;
-  }
-  return a.length - b.length;
-}
-
 function headReference(owner: string, collection: string) {
   try { return adminDb.collection(HEADS_COLLECTION).doc(collectionHeadId(owner, collection)); }
   catch { throw new DataEngineServerError(INVALID_ARGUMENT, 400); }
@@ -442,18 +432,18 @@ export async function listDocuments(owner: string, collection: string, options: 
       const snapshot = snapshotFromRaw({ collection, id: owner }, document.exists ? document.data() : undefined);
       return { snapshots: snapshot.value !== null || snapshot.metadata !== null ? [snapshot] : [], nextCursor: null, version, ...legacyOpenness(collection) };
     }
-    // Two owner queries, one list: live documents answer the legacy owner field, tombstones
-    // answer TOMBSTONE_OWNER_FIELD. Both run from the same cursor and merge in document order.
-    const owned = (field: string) => {
-      const query = adminDb.collection(collection).where(field, '==', owner).orderBy(FieldPath.documentId()).limit(limit + 1);
-      return transaction.get(options.cursor === undefined ? query : query.startAfter(options.cursor));
-    };
-    const [live, buried] = await Promise.all([owned(policy.ownerField), owned(TOMBSTONE_OWNER_FIELD)]);
-    const merged = [...new Map([...live.docs, ...buried.docs].map(document => [document.id, document])).values()]
-      .sort((left, right) => compareDocumentIds(left.id, right.id));
+    // Limit the live/tombstone union in Firestore instead of fetching two unused tails.
+    // The same document order and one-row lookahead apply; the byte budget below may
+    // still shorten a page.
+    const query = adminDb.collection(collection).where(Filter.or(
+      Filter.where(policy.ownerField, '==', owner),
+      Filter.where(TOMBSTONE_OWNER_FIELD, '==', owner),
+    )).orderBy(FieldPath.documentId()).limit(limit + 1);
+    const page = await transaction.get(options.cursor === undefined ? query : query.startAfter(options.cursor));
+    const rows = page.docs;
     const snapshots: ResourceSnapshot[] = [];
     let bytes = 0;
-    for (const document of merged.slice(0, limit)) {
+    for (const document of rows.slice(0, limit)) {
       const resource = { collection, id: document.id };
       const raw = document.data();
       if (!owns(owner, resource, raw)) throw new DataEngineServerError(PERMISSION_DENIED, 403);
@@ -462,7 +452,7 @@ export async function listDocuments(owner: string, collection: string, options: 
       if (bytes > MAX_LIST_BYTES && snapshots.length > 0) break;
       snapshots.push(snapshot);
     }
-    return { snapshots, nextCursor: merged.length > snapshots.length ? snapshots.at(-1)!.resource.id : null, version, ...legacyOpenness(collection) };
+    return { snapshots, nextCursor: rows.length > snapshots.length ? snapshots.at(-1)!.resource.id : null, version, ...legacyOpenness(collection) };
   });
 }
 
