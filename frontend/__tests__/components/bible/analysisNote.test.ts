@@ -38,9 +38,10 @@ const commit = jest.fn(() => Promise.resolve());
 let formNote: StudyNote | undefined;
 let formPhase = 'saved';
 let formRefusal: string | null = null;
+let formStateAvailable = true;
 const form = (resource: { id: string } | null) => {
   const note = resource ? formNote ?? engine.notes.find((entry) => entry.id === resource.id) : undefined;
-  return { data: note ?? null, state: note ? { result: formRefusal ? { kind: 'refused', code: formRefusal } : null } : null, status: note ? { phase: formPhase } : null, readOnly: false, loading: false, error: null, commit, recoveryIdentity: {} };
+  return { data: note ?? null, state: note && formStateAvailable ? { result: formRefusal ? { kind: 'refused', code: formRefusal } : null } : null, status: note ? { phase: formPhase } : null, readOnly: false, loading: false, error: null, commit, recoveryIdentity: {} };
 };
 let opening: AnalysisOpening = { kind: 'new', passage: PASSAGE };
 const render = () => renderHook(() => useAnalysisNote({ opening, text: EPHESIANS, bookId: 'Ephesians', bible: 'rst', locale: 'ru' }));
@@ -57,6 +58,7 @@ describe('an analysis note — what the screen may write', () => {
     engine.recoverAnalysisCreation.mockReset().mockResolvedValue(null);
     engine.combineAnalysisCreation.mockReset().mockResolvedValue('elsewhere');
     formRefusal = null;
+    formStateAvailable = true;
     engine.updateNote.mockReset().mockImplementation(() => ({ result: Promise.resolve() }));
     (useStudyNotesEngine as jest.Mock).mockImplementation(() => engine);
     commit.mockClear();
@@ -66,6 +68,42 @@ describe('an analysis note — what the screen may write', () => {
     (useDataDocument as jest.Mock).mockImplementation(form);
   });
   afterEach(() => jest.useRealTimers());
+
+  it('retires only the temporary capture hold after a passage opening acquires its answering form', async () => {
+    engine.loading = false; engine.notes = [madeElsewhere];
+    formStateAvailable = false;
+    const holds = new Set([madeElsewhere.id]);
+    engine.releaseAnalysisCreation.mockImplementation(async (sourceId: string, adoptedId: string) => {
+      if (sourceId === madeElsewhere.id && adoptedId === madeElsewhere.id) holds.delete(sourceId);
+    });
+    const { result, rerender } = render();
+    expect(result.current.state.cuts).toEqual([3]);
+    expect(holds.has(madeElsewhere.id)).toBe(true);
+    expect(engine.releaseAnalysisCreation).not.toHaveBeenCalled();
+    await act(async () => { formStateAvailable = true; rerender(); });
+    expect(holds.size).toBe(0);
+    expect(result.current.id).toBe(madeElsewhere.id);
+    expect(result.current.state.cuts).toEqual([3]);
+    expect(engine.createNote).not.toHaveBeenCalled();
+    expect(engine.updateNote).not.toHaveBeenCalled();
+    expect(commit).not.toHaveBeenCalled();
+  });
+
+  it('retires a late-listed passage capture without creating or rewriting its analysis', async () => {
+    const holds = new Set([madeElsewhere.id]);
+    engine.releaseAnalysisCreation.mockImplementation(async (sourceId: string, adoptedId: string) => {
+      if (sourceId === madeElsewhere.id && adoptedId === madeElsewhere.id) holds.delete(sourceId);
+    });
+    const { result, rerender } = render();
+    expect(holds.has(madeElsewhere.id)).toBe(true);
+    await act(async () => { engine.loading = false; engine.notes = [madeElsewhere]; rerender(); });
+    expect(holds.size).toBe(0);
+    expect(result.current.id).toBe(madeElsewhere.id);
+    expect(result.current.state.cuts).toEqual([3]);
+    expect(engine.createNote).not.toHaveBeenCalled();
+    expect(engine.updateNote).not.toHaveBeenCalled();
+    expect(commit).not.toHaveBeenCalled();
+  });
 
   it('changes nothing before the person\'s analyses are read, then shows the one already made', () => {
     const { result, rerender } = render();

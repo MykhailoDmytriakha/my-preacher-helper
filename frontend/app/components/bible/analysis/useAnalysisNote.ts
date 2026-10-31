@@ -101,8 +101,8 @@ export function useAnalysisNote({ opening, text, bookId, bible, locale }: { open
   // the analysis made elsewhere (Codex, 30.10). Without the server, or after 8 s of an answer that does not come (a
   // frozen device store), it uses this device's copy. Server admission and the shared transfer rule preserve
   // independently captured marks when an existing exact-passage analysis is discovered on reconnection.
-  // This device refused to keep the note just made: the work is only on the screen, and nothing more is taken until it is
-  // kept — a second change would make a second note, refused or not (Codex, 30.10).
+  // The first capture was not confirmed. Keep the visible work; an authored dirty checkpoint may remain, but does not
+  // prove ordinary passage reopening can recover it. Nothing more is taken until capture or an explicit same-ID retry.
   const [refused, setRefused] = useState(false);
   const [combining, setCombining] = useState(false);
   const combiningNow = useRef(false);
@@ -128,6 +128,8 @@ export function useAnalysisNote({ opening, text, bookId, bible, locale }: { open
   // A new opening on a passage already analysed takes that note — unless the person began here first.
   useEffect(() => {
     if (ownId || !found || touched.current) return;
+    // The answering form will release only a capture the shared engine proves it owns.
+    adoptionSource.current = found.id;
     noteId.current = found.id;
     setOwnId(found.id);
   }, [found, ownId]);
@@ -370,7 +372,7 @@ export function useAnalysisNote({ opening, text, bookId, bible, locale }: { open
     missing: opening.kind === 'open' && !recoveringAddress && !engine.loading && !found && !form.data && !form.loading,
     /** The passage's words in this Bible are not the ones the analysis was made on. */
     changedText: Boolean(stored && stored.words !== total),
-    /** This device refused to keep the new analysis: what is on the screen is not saved; `saveAgain` tries once more. */
+    /** The first capture was not confirmed; `saveAgain` retries the same creation identity. */
     refused,
     combining, creationReview, duplicateRefusal, existingAnalysis, retryCombination, openExistingAnalysis,
     canOpenExistingAnalysis: !waiting.current && !onTheWay.current,
