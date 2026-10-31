@@ -5,6 +5,12 @@ import type { ScriptureRefShape } from '@/utils/scriptureReference';
 
 /** Word positions belong to one Bible and canonical book, independently of verse numbering. */
 export type StudyAnalysisSource = { bible: BibleId; book: string };
+export type StudyAnalysisPassageIdentity = StudyAnalysisSource & {
+  chapter: number;
+  fromVerse: number;
+  toChapter: number;
+  toVerse: number;
+};
 type AnalysisDocument = { type?: unknown; analysis?: unknown; scriptureRefs?: unknown };
 const record = (value: unknown): Record<string, unknown> | null => value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
 
@@ -41,6 +47,22 @@ export function analysisPassage(reference: ScriptureRefShape | undefined, bible?
   const passages = passagesIn(analysisReferenceForReading(reference), bible);
   if (passages.length !== 1 || passages[0].fromVerse === undefined || passages[0].toVerse === undefined) return null;
   return { ...passages[0], fromVerse: passages[0].fromVerse, toVerse: passages[0].toVerse };
+}
+
+/** Complete normalized passage identity; unlike positional basis, word count is not needed. */
+export function studyAnalysisPassageIdentity(value: AnalysisDocument | null | undefined): StudyAnalysisPassageIdentity | null {
+  const source = studyAnalysisSource(value);
+  const reference = Array.isArray(value?.scriptureRefs) ? value.scriptureRefs[0] as ScriptureRefShape : undefined;
+  const passage = source && analysisPassage(reference, source.bible);
+  return source && passage ? { ...source, ...passage } : null;
+}
+
+/** Unknown or incomplete sources never compare equal for admission. */
+export function sameStudyAnalysisPassage(a: AnalysisDocument | null | undefined, b: AnalysisDocument | null | undefined): boolean {
+  const left = studyAnalysisPassageIdentity(a), right = studyAnalysisPassageIdentity(b);
+  return Boolean(left && right && left.bible === right.bible && left.book === right.book
+    && left.chapter === right.chapter && left.fromVerse === right.fromVerse
+    && left.toChapter === right.toChapter && left.toVerse === right.toVerse);
 }
 
 /** Positions belong to the complete contiguous passage in its immutable Bible corpus. */

@@ -1,6 +1,13 @@
 /** @jest-environment node */
 import { carriedCopy } from '@/data-engine/councilCarryContent';
 import { planDataCommand } from '@/data-engine/serverRelations';
+import { validateCommand } from '@/data-engine/protocol';
+import { analysisMarkdown, cutAt, EMPTY_ANALYSIS, passageWords, storedAnalysis } from '@/utils/passageAnalysis';
+
+import rstEphesians from '../../public/bible-text/rst/v1/ephesians.json';
+import kjvEphesians from '../../public/bible-text/kjv/v1/ephesians.json';
+
+import type { BookText } from '@/utils/bibleText';
 
 import type { RelationReader } from '@/data-engine/serverRelations';
 import type { DataCommand, DocumentData, ResourceSnapshot } from '@/data-engine/types';
@@ -570,5 +577,51 @@ describe('council carry addresses topics but preserves legacy question words', (
     const plan = await planDataCommand(command, source, reader);
     expect(plan.result).toMatchObject({ kind: 'refused', code: 'invalid-document' });
     expect(plan.writes).toHaveLength(0);
+  });
+});
+
+
+describe('analysis creation passage identity', () => {
+  const valueFor = (cut: number, bible: 'rst' | 'kjv' = 'rst', verse = 2): DocumentData => {
+    const words = passageWords((bible === 'rst' ? rstEphesians : kjvEphesians) as BookText,
+      { chapter: 1, fromVerse: verse, toChapter: 1, toVerse: verse });
+    const state = cutAt(EMPTY_ANALYSIS, cut, words.length, 'same');
+    if (!state) throw new Error('Expected a valid cut in the real immutable passage');
+    return { type: 'analysis', title: 'Analysis', content: analysisMarkdown(words, state), tags: [], isDraft: false,
+      createdAt: '2026-10-31T00:00:00.000Z', updatedAt: '2026-10-31T00:00:00.000Z',
+      scriptureRefs: [{ id: `reference-${cut}`, bible, book: 'Ephesians', chapter: 1, fromVerse: verse, toVerse: verse }],
+      analysis: storedAnalysis(state, bible, words.length) as unknown as DocumentData };
+  };
+  const createUnseen = async (value: DocumentData) => {
+    const resource = { collection: 'studyNotes', id: 'unseen-device-note' };
+    const absent: ResourceSnapshot = { resource, value: null, metadata: null };
+    const command = validateCommand({ ...commandBase(absent), operationId: 'unseen-create', kind: 'create', value: { userId: owner, ...value } });
+    const plan = await planDataCommand(command, absent, reader);
+    plan.writes.forEach(snapshot => records.set(key(snapshot.resource.collection, snapshot.resource.id), snapshot));
+    return plan;
+  };
+  const ownedLiveNotes = () => [...records.values()].filter(snapshot => snapshot.resource.collection === 'studyNotes' && snapshot.value?.userId === owner);
+
+  it.each(['legacy', 'engine-owned'] as const)('does not commit a second canonical analysis when the device missed an existing %s passage', async mode => {
+    const existing = put('studyNotes', 'other-device-note', { ...valueFor(3), title: 'Keep the authored title', tags: ['keep-authored-tag'] });
+    if (mode === 'engine-owned') existing.metadata = { protocol: 1, generation: 'existing-generation', revision: 1, deleted: false };
+    await createUnseen(valueFor(5));
+    const saved = ownedLiveNotes();
+    expect(saved.some(snapshot => snapshot.value?.title === 'Keep the authored title'
+      && (snapshot.value.analysis as DocumentData).cuts instanceof Array
+      && ((snapshot.value.analysis as DocumentData).cuts as number[]).includes(3)
+      && (snapshot.value.tags as string[]).includes('keep-authored-tag'))).toBe(true);
+    expect(saved).toHaveLength(1);
+  });
+
+  it.each(['another passage', 'another Bible', 'ordinary note', 'another owner'] as const)('still permits a distinct creation beside %s', async context => {
+    const existing = valueFor(3, context === 'another Bible' ? 'kjv' : 'rst', context === 'another passage' ? 1 : 2);
+    if (context === 'ordinary note') { existing.type = 'note'; delete existing.analysis; }
+    if (context === 'another owner') existing.userId = 'other-owner';
+    put('studyNotes', 'separate-note', existing);
+    const planned = await createUnseen(valueFor(5));
+    expect(planned.result.kind).toBe('acknowledged');
+    expect(records.get('studyNotes/unseen-device-note')?.value?.analysis).toMatchObject({ bible: 'rst', cuts: [5] });
+    expect(records.get('studyNotes/separate-note')?.value).toEqual({ userId: owner, ...existing });
   });
 });

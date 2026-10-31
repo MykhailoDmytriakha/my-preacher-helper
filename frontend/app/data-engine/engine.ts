@@ -1,5 +1,7 @@
 import { isConnectionFailure } from '@/utils/connectionFailure';
 
+import { analysisCreationScope } from './analysisCreation';
+import { ANALYSIS_CREATION_TRANSFER_PREFIX, analysisCreationReview, captureAnalysisCreation } from './analysisCreationCapture';
 import { captureAnalysisReshape, type StudyAnalysisWrite } from './analysisReshape';
 import { ANALYSIS_RESHAPE_FIELDS, sameAnalysisFrame } from './analysisReshapeFields';
 import { collectionDocumentViews } from './collectionView';
@@ -19,6 +21,7 @@ import { CREATION_SCOPE_PREFIX, MembershipScope, type MembershipScopeRecord } fr
 import { getResourcePolicy, equalValues, isValidIdentifier } from './protocol';
 import { documentRecordPresence, type RecordPresence } from './recordPresence';
 import { forkCheckpoint, isRecoverableCheckpoint, reconcileRecoveryRecord } from './recovery.client';
+import { DataSession } from './session';
 import { canReplaceSnapshot, coversCommittedEffect, storesNewCopy } from './snapshotFreshness';
 import { snapshotBelongsToOwner } from './snapshotIdentity';
 import { submittedWorkCheckpoint } from './submittedWork';
@@ -33,6 +36,7 @@ import type { OpenDocumentAnswer } from './openDocumentAnswers';
 import type { DataEngineRuntime, RuntimeEvent } from './runtime';
 import type { SessionCheckpoint, ShownCopy } from './session';
 import type { DocumentData, EngineMetadata, EngineReadOptions, EngineTransport, FailureAddress, JournalEntry, ResourceRef, ResourceSnapshot } from './types';
+import type { BookText } from '@/utils/bibleText';
 
 export { canReplaceSnapshot } from './snapshotFreshness';
 
@@ -146,6 +150,9 @@ const COUNCIL_CARRY = 'council-carry';
 const ANALYSIS_RESHAPE = 'analysis-reshape';
 const ENGINE_DISPOSED = 'DataEngine has been disposed';
 const initialObservation = (): Observation => ({ snapshot: null, source: null, readiness: 'unknown', checking: false, error: false });
+const analysisCopyNeedsReview = (checkpoint: SessionCheckpoint, expected: readonly DocumentData[], allowEmpty: boolean): boolean =>
+  checkpoint.conflicts.length > 0 || (!(allowEmpty && checkpoint.draft === null)
+    && !expected.some(value => equalValues(value, checkpoint.draft)));
 
 /** Public lifecycle boundary: callers never manage replay, baselines, or transport choice. */
 export class DataEngine {
@@ -183,6 +190,7 @@ export class DataEngine {
   private membershipListeners = new Set<() => void>();
   private councilCarries = new Map<string, Promise<ResourceSnapshot>>();
   private analysisReshapes = new Set<string>();
+  private analysisCreationTransfers = new Map<string, Promise<ResourceRef>>();
 
   constructor(private readonly options: DataEngineOptions) {
     this.localWriteback = options.localWriteback ?? new LocalWriteback();
@@ -591,6 +599,111 @@ export class DataEngine {
     };
   }
 
+  private assertMountedAnalysisCopies(resource: ResourceRef, expected: readonly DocumentData[], allowEmpty = false): void {
+    for (const entry of this.editors.values()) if (!entry.closed && entry.controller) {
+      const state = entry.controller.getState();
+      if (sameResource(state.checkpoint.confirmed.resource, resource)
+        && (state.preparing || state.captureFailed || analysisCopyNeedsReview(state.checkpoint, expected, allowEmpty))) return analysisCreationReview();
+    }
+  }
+
+  private async assertClosedAnalysisCopies(resource: ResourceRef, expected: readonly DocumentData[], allowEmpty = false): Promise<void> {
+    const copies = await this.listRecoverable(resource);
+    if (copies.some(({ record }) => analysisCopyNeedsReview(record.checkpoint, expected, allowEmpty))) return analysisCreationReview();
+  }
+
+  /** A failed local continuation may already have captured its stable creation address. */
+  async findStudyAnalysisCreation(id: string): Promise<{ resource: ResourceRef; value: DocumentData } | null> {
+    const owner = this.requireOwner(), generation = this.generation;
+    const resource = { collection: 'studyNotes', id }; this.validateResource(resource, owner);
+    const requests = await this.commits.list(); this.assertCurrent(owner, generation);
+    const transferred = requests.filter(request => request.owner === owner && request.transferredFrom
+      && sameResource(request.transferredFrom.source, resource));
+    if (transferred.length > 1) return analysisCreationReview();
+    if (transferred.length === 1 && transferred[0].value) {
+      if (requests.some(request => sameResource(request.baseline.resource, resource)
+        && !['acknowledged', 'cancelled'].includes(request.state))) return analysisCreationReview();
+      await this.assertClosedAnalysisCopies(resource, [transferred[0].transferredFrom!.value], true); this.assertCurrent(owner, generation);
+      this.assertMountedAnalysisCopies(resource, [transferred[0].transferredFrom!.value], true);
+      return { resource: copy(transferred[0].baseline.resource), value: copy(transferred[0].value!) };
+    }
+    const captured = requests.filter(request => request.owner === owner && request.retentionScope === analysisCreationScope(id)
+      && sameResource(request.baseline.resource, resource));
+    if (!captured.length) return null;
+    if (captured.length !== 1 || captured[0].state === 'cancelled' || !captured[0].value) return analysisCreationReview();
+    return { resource, value: copy(captured[0].value) };
+  }
+
+  /** Once an answering editor owns the request, its ordinary checkpoint replaces the temporary capture hold. */
+  async releaseStudyAnalysisCreation(sourceId: string, adoptedId: string): Promise<void> {
+    const owner = this.requireOwner(), generation = this.generation;
+    const source = { collection: 'studyNotes', id: sourceId }, adopted = { collection: 'studyNotes', id: adoptedId };
+    this.validateResource(source, owner); this.validateResource(adopted, owner);
+    if (!this.options.commits.releaseCapture) return;
+    const requests = await this.commits.list(); this.assertCurrent(owner, generation);
+    const roots = requests.filter(request => request.owner === owner && request.retentionScope === analysisCreationScope(sourceId)
+      && sameResource(request.baseline.resource, source));
+    const replacements = requests.filter(request => request.owner === owner && request.transferredFrom
+      && sameResource(request.transferredFrom.source, source) && sameResource(request.baseline.resource, adopted));
+    const held = replacements.length ? replacements : sourceId === adoptedId ? roots : [];
+    if (!held.length) return;
+    const owns = (request: CommitRequest): boolean => [...this.editors.values()].some(entry => {
+      if (entry.closed || !entry.controller) return false;
+      const checkpoint = entry.controller.getState().checkpoint;
+      return sameResource(checkpoint.confirmed.resource, adopted) && (Boolean(checkpoint.pending[request.id])
+        || (request.result?.kind === 'acknowledged' && request.result.snapshot.metadata !== null
+          && coversCommittedEffect(checkpoint.confirmed, adopted, request.result.snapshot.metadata)));
+    });
+    if (held.some(request => !owns(request))) return analysisCreationReview();
+    for (const request of [...roots, ...replacements]) if (request.retentionScope) {
+      await this.options.commits.releaseCapture(owner, request.retentionScope, request.id); this.assertCurrent(owner, generation);
+    }
+  }
+
+  /** Combine one refused generated creation through the queue, preserving the existing note address. */
+  transferStudyAnalysisCreation(sourceId: string, targetId: string, text: BookText): Promise<ResourceRef> {
+    const owner = this.requireOwner(), generation = this.generation;
+    const source = { collection: 'studyNotes', id: sourceId }, target = { collection: 'studyNotes', id: targetId };
+    this.validateResource(source, owner); this.validateResource(target, owner);
+    const key = JSON.stringify([owner, source]);
+    const running = this.analysisCreationTransfers.get(key); if (running) return running;
+    const run = async (): Promise<ResourceRef> => {
+      const requests = await this.commits.list(); this.assertCurrent(owner, generation);
+      const previous = requests.filter(request => request.owner === owner
+        && request.retentionScope?.startsWith(ANALYSIS_CREATION_TRANSFER_PREFIX)
+        && request.transferredFrom && sameResource(request.transferredFrom.source, source));
+      if (previous.length) {
+        const saved = previous[0];
+        if (previous.length !== 1 || !sameResource(saved.baseline.resource, target)
+          || requests.some(request => sameResource(request.baseline.resource, source)
+            && !['cancelled', 'acknowledged'].includes(request.state))) return analysisCreationReview();
+        return copy(saved.baseline.resource);
+      }
+      const snapshot = await this.read(target); this.assertCurrent(owner, generation);
+      const captured = captureAnalysisCreation(owner, source, snapshot, requests, text);
+      // Older submitted source checkpoints are known ancestry; private later words are not.
+      await this.assertClosedAnalysisCopies(source, captured.sources.map(request => request.value!)); this.assertCurrent(owner, generation);
+      await this.assertClosedAnalysisCopies(target, [captured.targetValue]); this.assertCurrent(owner, generation);
+      this.assertMountedAnalysisCopies(source, [captured.proof.value]);
+      this.assertMountedAnalysisCopies(target, [captured.targetValue]);
+      const saved = await this.commits.save(captured.editorId, captured.captured, {
+        predecessorId: captured.predecessorId, retentionScope: captured.retentionScope,
+        transfer: { proof: captured.proof, sources: captured.sources },
+        checkpoint: request => {
+          const session = DataSession.restore(captured.captured); session.applyCommit(request);
+          return { owner, editorId: captured.editorId, checkpoint: session.checkpoint(), prepared: null, unfinalized: [] };
+        },
+      });
+      this.assertCurrent(owner, generation);
+      if (!saved) throw new Error('Analysis transfer did not capture its replacement');
+      this.prepareCommitsInBackground(); this.backgroundDrain();
+      return copy(saved.baseline.resource);
+    };
+    const pending = run(); this.analysisCreationTransfers.set(key, pending);
+    void pending.finally(() => { if (this.analysisCreationTransfers.get(key) === pending) this.analysisCreationTransfers.delete(key); }).catch(() => undefined);
+    return pending;
+  }
+
   /** The entire reshape is captured before returning; navigation never owns its delivery. */
   async reshapeStudyAnalysis(edits: readonly StudyAnalysisWrite[]): Promise<void> {
     const owner = this.requireOwner(), generation = this.generation;
@@ -890,7 +1003,9 @@ export class DataEngine {
     const completed = new Set<string>();
     for (const request of requests) {
       const group = request.atomic?.id ?? request.id;
-      if (completed.has(group) || (request.state !== 'acknowledged' && ![COUNCIL_CARRY, ANALYSIS_RESHAPE].includes(request.atomic?.kind ?? ''))) continue;
+      const transferredSource = request.state === 'cancelled' && Boolean(request.transferredTo);
+      if (completed.has(group) || (request.state !== 'acknowledged' && !transferredSource
+        && ![COUNCIL_CARRY, ANALYSIS_RESHAPE].includes(request.atomic?.kind ?? ''))) continue;
       completed.add(group);
       await this.completeAcceptedProjection(owner, generation, request, requests);
     }

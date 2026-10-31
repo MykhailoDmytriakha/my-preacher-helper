@@ -4661,6 +4661,15 @@
     "changedText": "The passage’s text in this Bible has changed since it was analysed: part of the analysis may have shifted.",
     "notKept": "This analysis was not saved on this device — what you see is only on the screen.",
     "saveAgain": "Save again",
+    "creation": {
+      "combining": "This passage already has an analysis. Combining the saved marks…",
+      "review": "The marks could not be combined automatically. Your copy remains on this device; opening the existing analysis keeps it available in recovery.",
+      "compare": "Compare the two copies",
+      "local": "Your copy on this device",
+      "existing": "Existing analysis",
+      "retry": "Try combining again",
+      "openExisting": "Open existing analysis"
+    },
     "pick": {
       "hint": "Choose the verses to analyse: tap a verse below or above to stretch the passage to it, an end verse to drop it.",
       "inside": "An analysis runs over continuous text: a verse in the middle can’t go — drop the end verses instead.",

@@ -1,6 +1,7 @@
 import { deriveSeriesItemsFromSermonIds, deriveSermonIdsFromItems, inferSeriesKind, normalizeSeriesItems } from '@/utils/seriesItems';
 import { isServiceOrderCatalogKey } from '@/utils/serviceOrderSeedIdentity';
 import { isStructureTag } from '@/utils/structureTags';
+import { sameStudyAnalysisPassage, studyAnalysisPassageIdentity } from '@/utils/studyAnalysisSource';
 import { isStudyNoteDraft } from '@/utils/studyNoteDraft';
 
 import { ANALYSIS_RESHAPE_FRAME, sameAnalysisFrame } from './analysisReshapeFields';
@@ -13,7 +14,7 @@ import type { CommandResult, ConflictDetail, DataCommand, DocumentData, Json, Re
 import type { SeriesItem } from '@/models/models';
 
 export { MAX_RELATION_RESOURCES } from './protocol';
-export interface RelationFilter { field: 'materialIds' | 'seriesId' | 'noteId' | 'catalogKey'; operator: '==' | 'array-contains'; value: string }
+export interface RelationFilter { field: 'materialIds' | 'seriesId' | 'noteId' | 'catalogKey' | 'type'; operator: '==' | 'array-contains'; value: string }
 export interface RelationReader {
   get(resource: ResourceRef): Promise<ResourceSnapshot>;
   /** Implementations always add authenticated owner scope; callers cannot choose it. */
@@ -335,6 +336,18 @@ class RelationPlanner {
     if (matching.some(snapshot => snapshot.resource.id !== this.primary.resource.id && snapshot.value !== null)) fail('catalog-entry-exists');
   }
 
+  /** An absent ordinary create cannot introduce a second live analysis at one known passage. */
+  private async uniqueAnalysisCreate(command: Extract<DataCommand, { kind: 'create' }>): Promise<void> {
+    if (command.resource.collection !== 'studyNotes' || command.value.type !== 'analysis'
+      || this.primary.value !== null || this.primary.metadata !== null
+      || !studyAnalysisPassageIdentity(command.value)) return;
+    const matches = await this.reader.list('studyNotes', 1, { field: 'type', operator: '==', value: 'analysis' }, snapshot =>
+      snapshot.resource.id !== command.resource.id && snapshot.value !== null && !snapshot.metadata?.deleted
+      && snapshot.value.userId === this.command.owner && snapshot.value.type === 'analysis'
+      && sameStudyAnalysisPassage(snapshot.value, command.value));
+    if (matches.length) fail('analysis-exists');
+  }
+
   private async seedServiceOrder(command: Extract<DataCommand, { relation: 'service-order-seed' }>): Promise<CommandResult | undefined> {
     validateResourceDocument('serviceOrders', command.value, { kind: 'create' });
     if (this.primary.metadata?.deleted) return { kind: 'deleted', operationId: command.operationId, snapshot: this.primary };
@@ -490,6 +503,7 @@ class RelationPlanner {
 
   private async ordinary(command: Exclude<DataCommand, { kind: 'relation' }>): Promise<CommandResult | undefined> {
     this.guardOrdinary(command);
+    if (command.kind === 'create') await this.uniqueAnalysisCreate(command);
     if (command.kind === 'create' && command.resource.collection === 'serviceOrders') await this.uniqueServiceOrder(command.value);
     const effective = command.kind === 'create' && command.resource.collection === 'series'
       ? { ...command, value: { ...command.value, ...seriesFields(currentItems(command.value)) } } : command;

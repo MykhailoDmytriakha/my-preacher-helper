@@ -1,4 +1,4 @@
-when: No tests found · No tests found, exiting with code 0 · run one test · run a single test file · app/(pages) path in jest · route group parentheses in jest path · [id] in jest path · --runTestsByPath · --listTests · npm run test vs npx jest · coverage threshold not met on one file · acceptance regex missed a suite · test:fast · test:build · JEST_SHOW_LOGS · console.log not shown in tests · new test file not picked up · -t test name filter · запустить тесты · запустить один тест · тесты не найдены · прогон тестов · путь со скобками · новый тест не подхватывается · логи в тестах
+when: workerIdleMemoryLimit · Jest high memory · full suite timeout under load · Jest workers consume gigabytes · No tests found · No tests found, exiting with code 0 · run one test · run a single test file · app/(pages) path in jest · route group parentheses in jest path · [id] in jest path · --runTestsByPath · --listTests · npm run test vs npx jest · coverage threshold not met on one file · acceptance regex missed a suite · test:fast · test:build · JEST_SHOW_LOGS · console.log not shown in tests · new test file not picked up · -t test name filter · запустить тесты · запустить один тест · тесты не найдены · прогон тестов · путь со скобками · новый тест не подхватывается · логи в тестах
 
 # Run Jest tests
 
@@ -15,6 +15,12 @@ Run from `frontend/`. For one or a few files: `npx jest --runTestsByPath <path> 
 - `frontend/jest.setup.js` silences `console.*`. Run `JEST_SHOW_LOGS=true npx jest …` to see it.
 - The Vercel build runs `npm run test:build` (the `build` script), which is the same run as `test:fast` with a failure-only reporter.
 - Independent runs in one worktree need distinct output paths for every artifact: Jest `--outputFile`, the final gates JSON, and each log. Check all literal paths before launch; changing only a log prefix leaves hardcoded reports shared. Refuse existing destinations. If one run overwrote another, preserve it as misattributed history and rerun into new disjoint names; never reconstruct a lost report from its counts or mix one run's log with another run's JSON.
+
+## Bound a large local run without weakening its tests
+
+A one-off full-suite timeout is not automatically a product regression or proof of a test bug. Preserve its full log and actual exit, repeat the exact test unchanged, and record uncertainty if the isolated result differs. Observe only owned processes with macOS `top -l 1 -pid <pid> -stats pid,mem`; do not use RSS as the monitor's memory value. Before stopping a failed run, verify the exact wrapper and descendant PIDs; a finished wrapper means no kill. Preserve the natural result.
+
+Jest supports `npm run test:build -- --workerIdleMemoryLimit=512MB`: it recycles workers between test files instead of allowing accumulated heap to grow throughout the suite. This is not a hard peak limit inside one file and does not change assertions or test timeouts. Record this actual command, counts and exit. After its successful full result, invoke the same `node scripts/build-production.js` used by `npm run build`, retaining its separate actual exit and log; do not report this as a successful `npm run build` invocation. Reuse earlier lint/type/translation gates only when every captured source pin remains identical; otherwise repeat the affected gate. A continued failure still needs diagnosis and must never be replaced by only the isolated pass. Unit246 records a 15s full-run timeout with an isolated301ms pass, and measured worker memory before/after recycling; the memory observation does not establish the timeout's cause.
 
 ## Why
 

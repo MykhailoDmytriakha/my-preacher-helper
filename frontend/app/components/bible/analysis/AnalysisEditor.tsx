@@ -13,6 +13,7 @@ import {
 } from '@/utils/passageAnalysis';
 
 import { writeAnalysisAddress, writeAnalysisSourceAddress } from './analysisAddress';
+import { AnalysisCreationNotice } from './AnalysisCreationNotice';
 import { analysisLineSpacing, arrowNear, dragArrow, fromLine, tieArrows, useGeometry, type Arrow } from './analysisGeometry';
 import {
   ARROW, AnalysisHeader, AnalysisLine, PanelGlyph, UntieMark, type AnalysisMode, type LineDrag, type LineRole, type LineSteps, type LineWord, type WordDrag,
@@ -251,7 +252,7 @@ export function AnalysisEditor({ opening, text, bookId, bible, locale, marks: le
             its dot and a verse number hung in the margin, at every screen width. */}
         <div className={`min-w-0 flex-1 overflow-auto pl-20 pr-4 pb-24 pt-10 sm:pr-12 ${marks.paneClass}`}
           onClick={pressBackground} onMouseMove={pointArrows} onMouseLeave={overArrowOff} {...marks.strokeEvents}>
-          <AnalysisNotices ready={note.ready} changedText={note.changedText} sync={note.sync} refused={note.refused} onSaveAgain={note.saveAgain} />
+          <AnalysisNotices creation={note} ready={note.ready} changedText={note.changedText} sync={note.sync} refused={note.refused} onSaveAgain={note.saveAgain} />
           <div ref={contentRef} className="relative flow-root">
             {arrows.map((arrow) => (
               <svg key={arrow.key} data-arrow={arrow.key} aria-hidden="true" width={geometry.width || 1} height={geometry.height || 1} className="pointer-events-none absolute left-0 top-0 overflow-visible">
@@ -303,13 +304,15 @@ function useAnalysisAddress(id: string | null, mode: AnalysisMode, gone: boolean
  * form needs from the person — a refusal or a version from elsewhere, with the engine's own choices (keep mine, take the
  * server's, try again). The app-wide notice stands behind this screen, so it is said here.
  */
-function AnalysisNotices({ ready, changedText, sync, refused, onSaveAgain }: {
+function AnalysisNotices({ ready, changedText, sync, refused, onSaveAgain, creation }: {
+  creation: ReturnType<typeof useAnalysisNote>;
   ready: boolean; changedText: boolean; sync: ReturnType<typeof useAnalysisNote>['sync']; refused: boolean; onSaveAgain: () => void;
 }) {
   const { t } = useTranslation();
   const decision = sync && !PHASES_TAKING_CHANGES.has(sync.status?.phase ?? 'saved');
   return (
     <>
+      <AnalysisCreationNotice note={creation} />
       {refused ? (
         <div role="alert" className="mb-4 flex flex-wrap items-center gap-3 rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-800 dark:bg-rose-950/40 dark:text-rose-200">
           <span className="min-w-0 flex-1">{t('analysis.notKept')}</span>
@@ -318,7 +321,7 @@ function AnalysisNotices({ ready, changedText, sync, refused, onSaveAgain }: {
       ) : null}
       {ready || decision || refused ? null : <p role="status" className="mb-4 rounded-xl bg-gray-50 px-3 py-2 text-sm text-gray-600 dark:bg-gray-900 dark:text-gray-300">{t('analysis.loading')}</p>}
       {changedText ? <p className="mb-4 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-950/40 dark:text-amber-200">{t('analysis.changedText')}</p> : null}
-      {sync ? (
+      {sync && !creation.duplicateRefusal ? (
         <DataSyncStatus subject={sync.recoveryIdentity} status={sync.status} error={sync.state ? null : sync.error} className="mb-4"
           onRetry={() => sync.retry()} onKeepLocal={() => sync.keepLocal()} onAcceptRemote={() => sync.acceptRemote()} />
       ) : null}

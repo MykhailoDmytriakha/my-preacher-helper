@@ -1,7 +1,9 @@
 'use client';
 
-import { writeCheckpointRecord } from './checkpointStorage.client';
-import { assertCommitBatch, assertCommitCapture, assertCommitIdentities, type CommitRequest, type CommitStore } from './commits';
+import { isCapturedTransferReplay, planCaptureTransfer } from './captureTransfer';
+import { checkpointKey, writeCheckpointRecord } from './checkpointStorage.client';
+import { assertCommitBatch, assertCommitCapture, assertCommitIdentities, orderCommitRequests, type CommitRequest, type CommitStore } from './commits';
+import { reconcileRecoveryRecord, validateRecoveryRecord } from './recovery.client';
 import { COMMIT_ROW_KINDS, collectCommitRows, commitCaptureKey, commitDependencyKey, commitGenerationKey, commitProjectionKey, commitRowKey, commitSnapshotKey, readCommitRows } from './retention.client';
 import { createEngineStorageTransaction, validateCommitReferences, type StorageRead } from './storage.client';
 
@@ -26,7 +28,8 @@ function checkOwnershipFormat(store: IDBObjectStore, read: StorageRead, request:
   });
 }
 
-function createRecord(store: IDBObjectStore, read: StorageRead, frozen: CommitRequest, done: (record: CommitRequest) => void): void {
+function createRecord(store: IDBObjectStore, read: StorageRead, frozen: CommitRequest, done: (record: CommitRequest) => void, transferring = false): void {
+  if (frozen.transferredFrom && !transferring) throw new Error('A replacement proof requires atomic source transfer');
   read(store.get(commitRowKey(frozen)), (existing: CommitRequest | undefined) => {
     if (existing) { assertCommitCapture(existing, frozen); done(existing); return; }
     checkOwnershipFormat(store, read, frozen, () => {
@@ -98,6 +101,27 @@ export function createIndexedDbCommitStore(): CommitStore {
         });
       });
     },
+    createWithTransfer: (request, project, sources) => {
+      const frozen = clone(request), expected = clone(sources);
+      return transaction('readwrite', (store, read, done) => {
+        readCommitRows(store, read, frozen.owner, records => {
+          const existing = records.find(record => record.editorId === frozen.editorId && record.editGeneration === frozen.editGeneration);
+          if (existing?.transferredFrom) {
+            assertCommitCapture(existing, frozen);
+            if (!isCapturedTransferReplay(existing, frozen)) throw changed();
+            // The first transaction already stored the target checkpoint and sources.
+            // Replaying it must not replace a newer private target checkpoint.
+            done({ request: clone(existing), retired: [] });
+            return;
+          }
+          createRecord(store, read, frozen, saved => {
+            const retired = planCaptureTransfer(saved, expected, records);
+            for (const source of retired) { store.put(source, commitRowKey(source)); retainPredecessor(store, source); }
+            writeCheckpointRecord(store, read, project(clone(saved)), false, () => done({ request: saved, retired }));
+          }, true);
+        });
+      });
+    },
     compareAndSet: (previous, next) => compareAndSetBatch([{ previous, next }]).then(records => records[0]),
     createBatch,
     compareAndSetBatch,
@@ -124,6 +148,7 @@ export function createIndexedDbCommitStore(): CommitStore {
     }),
     releaseProjection: (owner, ids) => transaction('readwrite', (store, read, done) => {
       readCommitRows(store, read, owner, requests => {
+        const transferred: CommitRequest[] = [];
         for (const id of ids) {
           const request = requests.find(candidate => candidate.id === id);
           if (!request) continue;
@@ -131,8 +156,21 @@ export function createIndexedDbCommitStore(): CommitStore {
           if (participants.some(participant => !participant || !['acknowledged', 'cancelled'].includes(participant.state) || participant.unfinalized.length)) continue;
           store.delete(commitProjectionKey(owner, id));
           store.delete(commitSnapshotKey(owner, id));
+          if (request.transferredFrom || request.transferredTo) transferred.push(request);
         }
-        collectCommitRows(store, read, owner, () => done(undefined));
+        const ordered = orderCommitRequests(requests);
+        const projectNext = (index: number): void => {
+          const request = transferred[index];
+          if (!request) { collectCommitRows(store, read, owner, () => done(undefined)); return; }
+          // A transfer participant may outlive its original controller. Project its terminal
+          // result through the ordinary recovery rule in the same native transaction.
+          // Reading the current record here preserves any later private words.
+          read(store.get(checkpointKey(owner, request.editorId)), record => {
+            if (!record) { projectNext(index + 1); return; }
+            writeCheckpointRecord(store, read, reconcileRecoveryRecord(validateRecoveryRecord(record, owner, request.editorId, request.baseline.resource), ordered), false, () => projectNext(index + 1));
+          });
+        };
+        projectNext(0);
       });
     }),
   };

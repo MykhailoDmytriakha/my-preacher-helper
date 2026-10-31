@@ -31,15 +31,16 @@ const madeElsewhere: StudyNote = {
   analysis: { bible: 'rst', words: total, cuts: [3], links: {}, relations: { '1-4': { dir: 'fwd', color: 'amber' } } },
 };
 
-type Engine = { uid: string; notes: StudyNote[]; loading: boolean; checking: boolean; createNote: jest.Mock; updateNote: jest.Mock };
-const engine: Engine = { uid: 'u', notes: [], loading: true, checking: false, createNote: jest.fn(), updateNote: jest.fn() };
+type Engine = { uid: string; notes: StudyNote[]; loading: boolean; checking: boolean; createNote: jest.Mock; updateNote: jest.Mock; recoverAnalysisCreation: jest.Mock; releaseAnalysisCreation: jest.Mock; combineAnalysisCreation: jest.Mock; refetch: jest.Mock };
+const engine: Engine = { uid: 'u', notes: [], loading: true, checking: false, createNote: jest.fn(), updateNote: jest.fn(), recoverAnalysisCreation: jest.fn(), releaseAnalysisCreation: jest.fn(), combineAnalysisCreation: jest.fn(), refetch: jest.fn() };
 /** The note's form: open on a note the list holds, its draft that note; `commit` the change laid on it. */
 const commit = jest.fn(() => Promise.resolve());
 let formNote: StudyNote | undefined;
 let formPhase = 'saved';
+let formRefusal: string | null = null;
 const form = (resource: { id: string } | null) => {
   const note = resource ? formNote ?? engine.notes.find((entry) => entry.id === resource.id) : undefined;
-  return { data: note ?? null, state: note ? {} : null, status: note ? { phase: formPhase } : null, readOnly: false, loading: false, error: null, commit, recoveryIdentity: {} };
+  return { data: note ?? null, state: note ? { result: formRefusal ? { kind: 'refused', code: formRefusal } : null } : null, status: note ? { phase: formPhase } : null, readOnly: false, loading: false, error: null, commit, recoveryIdentity: {} };
 };
 let opening: AnalysisOpening = { kind: 'new', passage: PASSAGE };
 const render = () => renderHook(() => useAnalysisNote({ opening, text: EPHESIANS, bookId: 'Ephesians', bible: 'rst', locale: 'ru' }));
@@ -51,6 +52,11 @@ describe('an analysis note — what the screen may write', () => {
     engine.loading = true;
     engine.checking = false;
     engine.createNote.mockReset().mockImplementation(() => ({ note: { id: 'made-here' }, acceptance: Promise.resolve() }));
+    engine.refetch.mockReset().mockResolvedValue(undefined);
+    engine.releaseAnalysisCreation.mockReset().mockResolvedValue(undefined);
+    engine.recoverAnalysisCreation.mockReset().mockResolvedValue(null);
+    engine.combineAnalysisCreation.mockReset().mockResolvedValue('elsewhere');
+    formRefusal = null;
     engine.updateNote.mockReset().mockImplementation(() => ({ result: Promise.resolve() }));
     (useStudyNotesEngine as jest.Mock).mockImplementation(() => engine);
     commit.mockClear();
@@ -174,6 +180,138 @@ describe('an analysis note — what the screen may write', () => {
     expect(engine.createNote).toHaveBeenCalledTimes(2);
     expect(engine.createNote.mock.calls[1][0].analysis.cuts).toEqual([5]);
     expect(result.current.refused).toBe(false);
+  });
+
+  it('retries a failed local creation under the same reserved note and capture scope', async () => {
+    engine.loading = false;
+    engine.createNote.mockImplementationOnce(() => ({ note: { id: 'refused' }, acceptance: Promise.reject(new Error('quota')) }));
+    const { result } = render();
+    await act(async () => { result.current.change(cutAt(result.current.state, 5, total)!); });
+    await act(async () => { result.current.saveAgain(); });
+    const first = engine.createNote.mock.calls[0][1], retry = engine.createNote.mock.calls[1][1];
+    expect(first).toMatchObject({ id: expect.any(String), captureScope: expect.any(String) });
+    expect(retry).toEqual(first);
+    expect(engine.recoverAnalysisCreation).toHaveBeenCalledWith(first.id);
+  });
+
+  it('finds an already captured creation before retrying after its late local rejection', async () => {
+    engine.loading = false;
+    engine.createNote.mockImplementationOnce(() => ({ note: { id: 'queued' }, acceptance: Promise.reject(new Error('late projection')) }));
+    const { result } = render();
+    await act(async () => { result.current.change(cutAt(result.current.state, 5, total)!); });
+    engine.recoverAnalysisCreation.mockResolvedValue({ ...madeElsewhere, id: 'queued' });
+    await act(async () => { result.current.saveAgain(); });
+    expect(engine.createNote).toHaveBeenCalledTimes(1);
+    expect(result.current.id).toBe('queued');
+    expect(result.current.refused).toBe(false);
+  });
+
+  it('adopts the existing passage only after the engine captures both sets of marks', async () => {
+    engine.loading = false;
+    const { result, rerender } = render();
+    await act(async () => { result.current.change(cutAt(result.current.state, 5, total)!); });
+    engine.notes = [{ ...madeElsewhere, id: 'made-here', analysis: { ...madeElsewhere.analysis!, cuts: [5], relations: {} } }, madeElsewhere];
+    formPhase = 'refused'; formRefusal = 'analysis-exists';
+    let finish!: (id: string) => void;
+    engine.combineAnalysisCreation.mockImplementation(() => new Promise<string>(resolve => { finish = resolve; }));
+    await act(async () => { rerender(); });
+    expect(engine.combineAnalysisCreation).toHaveBeenCalledWith('made-here', 'elsewhere', EPHESIANS);
+    expect(result.current.id).toBe('made-here');
+    expect(result.current.state.cuts).toEqual([5]);
+    expect(result.current.ready).toBe(false);
+    engine.notes = [{ ...madeElsewhere, analysis: { ...madeElsewhere.analysis!, cuts: [3, 5] } }];
+    formPhase = 'queued'; formRefusal = null;
+    await act(async () => { finish('elsewhere'); });
+    expect(result.current.id).toBe('elsewhere');
+    expect(result.current.state.cuts).toEqual([3, 5]);
+    expect(engine.createNote).toHaveBeenCalledTimes(1);
+  });
+
+  it('captures marks authored before the first form opened before combining with the existing analysis', async () => {
+    engine.loading = false;
+    let captured!: () => void;
+    engine.createNote.mockImplementationOnce(() => ({ note: { id: 'made-here' }, acceptance: new Promise<void>(resolve => { captured = resolve; }) }));
+    const { result, rerender } = render();
+    const first = cutAt(result.current.state, 5, total)!;
+    const later = cutAt(first, 9, total)!;
+    act(() => { result.current.change(first); result.current.change(later); });
+    expect(engine.createNote).toHaveBeenCalledTimes(1);
+    engine.notes = [{ ...madeElsewhere, id: 'made-here', analysis: { ...madeElsewhere.analysis!, cuts: [5], relations: {} } }, madeElsewhere];
+    formPhase = 'refused'; formRefusal = 'analysis-exists';
+    (commit as jest.Mock).mockImplementationOnce(async update => { engine.notes[0] = update(engine.notes[0]); });
+    engine.combineAnalysisCreation.mockImplementationOnce(async () => {
+      engine.notes[1] = { ...madeElsewhere, analysis: { ...madeElsewhere.analysis!, cuts: [3, 5, 9] } };
+      return 'elsewhere';
+    });
+    await act(async () => { captured(); rerender(); });
+    expect(commit).toHaveBeenCalledTimes(1);
+    expect(engine.notes[0].analysis?.cuts).toEqual([5, 9]);
+    expect(commit.mock.invocationCallOrder[0]).toBeLessThan(engine.combineAnalysisCreation.mock.invocationCallOrder[0]);
+    expect(result.current.state.cuts).toEqual([3, 5, 9]);
+  });
+
+  it('keeps an incompatible saved creation for review without repeatedly retrying or discarding it', async () => {
+    engine.loading = false;
+    const { result, rerender } = render();
+    await act(async () => { result.current.change(cutAt(result.current.state, 5, total)!); });
+    engine.notes = [{ ...madeElsewhere, id: 'made-here', analysis: { ...madeElsewhere.analysis!, cuts: [5], relations: {} } }, madeElsewhere];
+    formPhase = 'refused'; formRefusal = 'analysis-exists';
+    engine.combineAnalysisCreation.mockRejectedValue(new Error('Needs review'));
+    await act(async () => { rerender(); });
+    expect(result.current.creationReview).toBe(true);
+    expect(result.current.id).toBe('made-here');
+    expect(result.current.state.cuts).toEqual([5]);
+    await act(async () => { rerender(); jest.advanceTimersByTime(30000); });
+    expect(engine.combineAnalysisCreation).toHaveBeenCalledTimes(1);
+    await act(async () => { result.current.openExistingAnalysis(); });
+    expect(result.current.id).toBe('elsewhere');
+    expect(engine.notes.map(note => note.id)).toEqual(['made-here', 'elsewhere']);
+    expect(engine.updateNote).not.toHaveBeenCalled();
+    expect(commit).not.toHaveBeenCalled();
+  });
+
+  it('does not automatically choose between several existing same-passage copies', async () => {
+    engine.loading = false;
+    const { result, rerender } = render();
+    await act(async () => { result.current.change(cutAt(result.current.state, 5, total)!); });
+    engine.notes = [{ ...madeElsewhere, id: 'made-here', analysis: { ...madeElsewhere.analysis!, cuts: [5], relations: {} } },
+      madeElsewhere, { ...madeElsewhere, id: 'another-existing-copy' }];
+    formPhase = 'refused'; formRefusal = 'analysis-exists';
+    await act(async () => { rerender(); });
+    expect(engine.combineAnalysisCreation).not.toHaveBeenCalled();
+    expect(result.current.id).toBe('made-here');
+    expect(result.current.state.cuts).toEqual([5]);
+    expect(result.current.creationReview).toBe(true);
+  });
+
+  it('reopens the retained transfer destination after a restart still naming its retired source', async () => {
+    engine.loading = false;
+    opening = { kind: 'open', id: 'retired-local-source' };
+    engine.notes = [madeElsewhere];
+    engine.recoverAnalysisCreation.mockResolvedValue(madeElsewhere);
+    let mounted!: ReturnType<typeof render>;
+    await act(async () => { mounted = render(); });
+    expect(engine.recoverAnalysisCreation).toHaveBeenCalledWith('retired-local-source');
+    expect(mounted.result.current.id).toBe('elsewhere');
+    expect(mounted.result.current.state.cuts).toEqual([3]);
+    expect(mounted.result.current.missing).toBe(false);
+    expect(engine.createNote).not.toHaveBeenCalled();
+    expect(commit).not.toHaveBeenCalled();
+  });
+
+  it('releases a proven same-address capture after lookup without replacing marks typed meanwhile', async () => {
+    engine.loading = false; engine.notes = [madeElsewhere];
+    opening = { kind: 'open', id: madeElsewhere.id };
+    let finish!: (note: StudyNote) => void;
+    engine.recoverAnalysisCreation.mockImplementationOnce(() => new Promise<StudyNote>(resolve => { finish = resolve; }));
+    (commit as jest.Mock).mockImplementationOnce(async update => { engine.notes[0] = update(engine.notes[0]); });
+    const { result } = render();
+    await act(async () => { result.current.change(cutAt(result.current.state, 5, total)!); });
+    await act(async () => { finish(madeElsewhere); });
+    expect(engine.releaseAnalysisCreation).toHaveBeenCalledWith(madeElsewhere.id, madeElsewhere.id);
+    expect(result.current.id).toBe(madeElsewhere.id);
+    expect(commit).toHaveBeenCalledTimes(1);
+    expect(result.current.state.cuts).toEqual([3, 5]);
   });
 
   it('does not wait for ever on a check that never answers: after 8 s it goes by what this device has', () => {

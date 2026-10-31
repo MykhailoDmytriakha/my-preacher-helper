@@ -10,6 +10,7 @@ import { LIST_STORAGE, OPENING_STORAGE, getDeviceStorageHealth, isStorageSilent,
 import { connectDraftCaptureRecovery } from '@/utils/draftCaptureRecovery.client';
 import { useTranslation } from '@locales/useTranslation';
 
+import { analysisCreationScope as initialAnalysisScope } from './analysisCreation';
 import { createBrowserDataEngine, type BrowserDataEngine } from './browser.client';
 import { isCollectionOnEngine, isDataEngineEnabled } from './clientPolicy';
 import { isLiveCollectionDocument as liveCollectionDocument, type CollectionPresentationRow } from './collectionPresentation';
@@ -38,8 +39,11 @@ import type { MembershipDelivery } from './membershipDelivery';
 import type { MembershipAction } from './membershipIntent';
 import type { MembershipScope } from './membershipScope';
 import type { DocumentData, EngineReadOptions, FailureAddress, FieldValue, JournalEntry, ResourceRef, ResourceSnapshot } from './types';
+import type { BookText } from '@/utils/bibleText';
 
 export { isCollectionOnEngine, isDataEngineEnabled } from './clientPolicy';
+/** Stable capture ownership for the public initial-analysis creation flow. */
+export function analysisCreationScope(id: string): string { return initialAnalysisScope(id); }
 
 /** Ordinary presentation only; raw collection state remains addressable for delivery and recovery. */
 export function isLiveCollectionDocument<T extends CollectionPresentationRow>(row: T): row is T & { value: DocumentData } {
@@ -368,6 +372,19 @@ export function useDocumentActions() {
       for (const edit of edits) if (edit.expected && (await waitingFor(edit.resource)).length) throw decisionRequired();
       if (actionOwner.current !== owner) throw new Error(EDITOR_CHANGED);
       return browser.engine.reshapeStudyAnalysis(edits);
+    },
+    findStudyAnalysisCreation: async (id: string) => {
+      if (!browser || !owner || actionOwner.current !== owner) throw new Error(ENGINE_NOT_READY);
+      return browser.engine.findStudyAnalysisCreation(id);
+    },
+    releaseStudyAnalysisCreation: async (sourceId: string, adoptedId: string) => {
+      if (!browser || !owner || actionOwner.current !== owner) throw new Error(ENGINE_NOT_READY);
+      return browser.engine.releaseStudyAnalysisCreation(sourceId, adoptedId);
+    },
+    transferStudyAnalysisCreation: async (sourceId: string, targetId: string, text: BookText) => {
+      if (!browser || !owner || actionOwner.current !== owner) throw new Error(ENGINE_NOT_READY);
+      if ((await waitingFor({ collection: 'studyNotes', id: targetId })).length) throw decisionRequired();
+      return browser.engine.transferStudyAnalysisCreation(sourceId, targetId, text);
     },
     /** A new document under a stable client ID; a retry with the same ID never creates a second one. */
     create: (resource: ResourceRef, value: DocumentData) => withEditor(resource, editor => editor.commit(() => value), true),

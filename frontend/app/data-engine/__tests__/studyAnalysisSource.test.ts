@@ -1,5 +1,6 @@
 import { prepareDomainCommand } from '../domainPolicy';
 import { ANALYSIS_RESHAPE_FRAME, applyCommand, diffFields, readField } from '../protocol';
+import { sameStudyAnalysisPassage, studyAnalysisPassageIdentity } from '@/utils/studyAnalysisSource';
 
 import type { DataCommand, DocumentData, ResourceSnapshot } from '../types';
 
@@ -25,6 +26,27 @@ const serverUpdate = (before: DocumentData, after: DocumentData): DataCommand =>
 
 describe('Analysis word-source identity at the shared command boundary', () => {
   const canonical = note();
+
+  it('normalizes the legacy toChapter field into the complete passage identity', () => {
+    const legacy = note({ scriptureRefs: [{ ...reference, toChapter: 2, toVerse: 3 }] });
+    const current = note({ scriptureRefs: [{ ...reference, chapter: 1, fromVerse: 1, endChapter: 2, toVerse: 3 }] });
+    expect(studyAnalysisPassageIdentity(legacy)).toEqual({ bible: 'rst', book: 'Ephesians', chapter: 1, fromVerse: 1, toChapter: 2, toVerse: 3 });
+    expect(sameStudyAnalysisPassage(legacy, current)).toBe(true);
+  });
+
+  it('keeps cross-chapter passage bounds distinct', () => {
+    const first = note({ scriptureRefs: [{ ...reference, chapter: 1, fromVerse: 22, endChapter: 2, toVerse: 2 }] });
+    const second = note({ scriptureRefs: [{ ...reference, chapter: 1, fromVerse: 22, endChapter: 3, toVerse: 2 }] });
+    expect(sameStudyAnalysisPassage(first, second)).toBe(false);
+  });
+
+  it('does not equate different or unknown source passages', () => {
+    const otherBible = note({ analysis: { ...analysis, bible: 'kjv' }, scriptureRefs: [{ ...reference, bible: 'kjv' }] });
+    const unknown = note({ scriptureRefs: [] });
+    expect(sameStudyAnalysisPassage(canonical, otherBible)).toBe(false);
+    expect(studyAnalysisPassageIdentity(unknown)).toBeNull();
+    expect(sameStudyAnalysisPassage(unknown, unknown)).toBe(false);
+  });
 
   it.each([
     ['word Bible', { ...canonical, analysis: { ...analysis, bible: 'kjv' } }],

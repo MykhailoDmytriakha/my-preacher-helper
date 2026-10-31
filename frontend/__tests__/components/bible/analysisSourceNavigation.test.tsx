@@ -48,6 +48,8 @@ const canonicalRstUrl = '/bible?book=ephesians&read=rst&return=mine';
 type Engine = {
   uid: string; notes: StudyNote[]; loading: boolean; checking: boolean;
   createNote: jest.Mock; updateNote: jest.Mock;
+  recoverAnalysisCreation: jest.Mock; releaseAnalysisCreation: jest.Mock;
+  combineAnalysisCreation: jest.Mock; refetch: jest.Mock;
 };
 let engine: Engine;
 let formNote: StudyNote | undefined;
@@ -72,6 +74,10 @@ function reader(text: BookText, bible: BibleId, initialOpening: AnalysisOpening 
 beforeEach(() => {
   cleanup();
   engine = { uid: 'owner', notes: [sourceAnalysis], loading: false, checking: false,
+    recoverAnalysisCreation: jest.fn().mockResolvedValue(null),
+    releaseAnalysisCreation: jest.fn().mockResolvedValue(undefined),
+    combineAnalysisCreation: jest.fn().mockResolvedValue('existing-analysis'),
+    refetch: jest.fn().mockResolvedValue(undefined),
     createNote: jest.fn().mockImplementation((value: Partial<StudyNote>) => {
       const made: StudyNote = { ...sourceAnalysis, ...value, id: 'created-analysis', type: 'analysis' };
       engine.notes = [...engine.notes, made];

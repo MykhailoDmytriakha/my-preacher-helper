@@ -6,6 +6,7 @@ import { prepareDomainCommand, requiredDomainTargets } from './domainPolicy';
 import { AddressedFailures, type AddressedFailure } from './failures';
 import { equalValues, mergeDocumentFields, MAX_RELATION_RESOURCES } from './protocol';
 
+import type { CaptureTransferProof, CaptureTransferResult } from './captureTransfer';
 import type { DocumentWriteReceipt } from './commitReceipt';
 import type { EditorRecord } from './controller';
 import type { DataEngineRuntime } from './runtime';
@@ -17,6 +18,10 @@ export interface CommitRequest {
   atomic?: AtomicCommitIdentity;
   /** A durable stage owns capture before it can persist the resulting request IDs. */
   retentionScope?: string;
+  /** Present only when the native store captured a replacement and retired its sources atomically. */
+  transferredFrom?: CaptureTransferProof;
+  /** Technical ownership transfer, distinct from the person choosing a stored version. */
+  transferredTo?: { requestId: string; resource: ResourceRef };
   /** Whole-action discard removes membership intent while retaining later metadata edits. */
   cancelledByAction?: boolean;
   /**
@@ -50,6 +55,9 @@ export interface CommitStore {
   create(request: CommitRequest): Promise<CommitRequest>;
   /** Native adapters capture the exact checkpoint and canonical request in one transaction. */
   createWithCheckpoint?(request: CommitRequest, project: (saved: CommitRequest) => EditorRecord): Promise<CommitRequest>;
+  /** Exact replacement capture and refused-source retirement share one native transaction. */
+  createWithTransfer?(request: CommitRequest, project: (saved: CommitRequest) => EditorRecord,
+    sources: readonly CommitRequest[]): Promise<CaptureTransferResult>;
   /** Atomically compares revision, then increments it. A loser must reload. */
   compareAndSet(previous: CommitRequest, next: CommitRequest): Promise<CommitRequest>;
   /** Atomic participant capture; custom document-only ports may omit this capability. */
@@ -89,7 +97,8 @@ export function assertCommitCapture(current: CommitRequest, incoming: CommitRequ
   if (current.owner !== incoming.owner || current.editorId !== incoming.editorId || current.editGeneration !== incoming.editGeneration
     || current.predecessor !== incoming.predecessor || !equalValues(current.baseline, incoming.baseline)
     || !equalValues(current.value, incoming.value) || !equalValues(current.atomic ?? null, incoming.atomic ?? null)
-    || current.retentionScope !== incoming.retentionScope) throw new Error('Saved generation cannot change its captured intent');
+    || current.retentionScope !== incoming.retentionScope
+    || !equalValues(current.transferredFrom ?? null, incoming.transferredFrom ?? null)) throw new Error('Saved generation cannot change its captured intent');
 }
 const AUTHENTICATION_REQUIRED = 'Authentication required';
 const COMMIT_CHANGED = 'commit-changed';
@@ -97,7 +106,7 @@ const INVALID_PREDECESSOR_REQUEST = 'Invalid predecessor request';
 const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 const terminal = (request: CommitRequest) => ['acknowledged', 'conflict', 'refused', 'cancelled'].includes(request.state);
 const resourceMatches = (a: ResourceRef, b: ResourceRef) => a.collection === b.collection && a.id === b.id;
-const orderRequests = (records: CommitRequest[]): CommitRequest[] => {
+export const orderCommitRequests = (records: CommitRequest[]): CommitRequest[] => {
   const byId = new Map(records.map(record => [record.id, record]));
   const dependents = new Map<string, CommitRequest[]>();
   const ordered: CommitRequest[] = [];
@@ -111,7 +120,8 @@ const orderRequests = (records: CommitRequest[]): CommitRequest[] => {
 };
 
 type CommitSaveOptions = { predecessorId?: string | null; predecessorIds?: readonly string[]; retentionScope?: string;
-  checkpoint?: (saved: CommitRequest) => EditorRecord };
+  checkpoint?: (saved: CommitRequest) => EditorRecord;
+  transfer?: { proof: CaptureTransferProof; sources: readonly CommitRequest[] } };
 
 /** Equal parent generations still have an exact order in the durable dependency chain. */
 function selectCandidatePredecessor(records: readonly CommitRequest[], ids: readonly string[], owner: string, resource: ResourceRef): CommitRequest {
@@ -119,7 +129,7 @@ function selectCandidatePredecessor(records: readonly CommitRequest[], ids: read
   const candidates = records.filter(record => remaining.has(record.id));
   if (!remaining.size || candidates.length !== remaining.size || candidates.some(record => record.owner !== owner
     || record.state === 'cancelled' || !resourceMatches(record.baseline.resource, resource))) throw new Error(INVALID_PREDECESSOR_REQUEST);
-  const latest = orderRequests([...records]).filter(record => remaining.has(record.id)).at(-1)!;
+  const latest = orderCommitRequests([...records]).filter(record => remaining.has(record.id)).at(-1)!;
   const byId = new Map(records.map(record => [record.id, record]));
   let cursor: CommitRequest | undefined = latest;
   while (cursor) {
@@ -182,7 +192,7 @@ export class CommitQueue {
     const records = await this.options.store.list(owner);
     if (!this.current(owner, generation)) return [];
     records.forEach(request => this.receipts.observe(request));
-    return orderRequests(records);
+    return orderCommitRequests(records);
   }
 
   /** Opt-in acceptance proof; ordinary save keeps its local-capture contract. */
@@ -217,32 +227,43 @@ export class CommitQueue {
   private async captureSaved(owner: string, editorId: string, captured: SessionCheckpoint, options: CommitSaveOptions | undefined,
     check: () => void, publish: (request: CommitRequest) => void): Promise<CommitRequest | null> {
     const intent = clone(captured);
-    const frozenOptions = options && { ...options, predecessorIds: options.predecessorIds && [...options.predecessorIds] };
+    const frozenOptions = options && { ...options, predecessorIds: options.predecessorIds && [...options.predecessorIds],
+      transfer: options.transfer && clone(options.transfer) };
+    if (frozenOptions?.transfer && (!this.options.store.createWithTransfer || !frozenOptions.checkpoint)) {
+      throw new Error('Atomic capture transfer storage is required');
+    }
+    const capture = async (record: CommitRequest): Promise<CaptureTransferResult> => frozenOptions?.transfer
+      ? this.options.store.createWithTransfer!(record, frozenOptions.checkpoint!, frozenOptions.transfer.sources)
+      : { request: await this.captureRequest(record, frozenOptions?.checkpoint), retired: [] };
     const records = await this.options.store.list(owner);
     check();
     const existing = records.find(record => record.editorId === editorId && record.editGeneration === intent.editGeneration);
     const predecessor = selectSavePredecessor(records, owner, editorId, intent.confirmed.resource, frozenOptions);
     if (existing) {
-      if (existing.retentionScope !== frozenOptions?.retentionScope) throw new Error('Saved capture retention cannot change');
+      if (existing.retentionScope !== frozenOptions?.retentionScope
+        || !equalValues(existing.transferredFrom ?? null, frozenOptions?.transfer?.proof ?? null)) throw new Error('Saved capture retention cannot change');
       if (intent.dirty && !equalValues(existing.value, intent.draft)) throw new Error('Saved generation cannot change its captured intent');
-      const saved = frozenOptions?.checkpoint ? await this.captureRequest(existing, frozenOptions.checkpoint) : existing;
+      const result = frozenOptions?.checkpoint ? await capture(existing) : { request: existing, retired: [] };
       check();
-      return clone(saved);
+      result.retired.forEach(publish);
+      return clone(result.request);
     }
-    if (!intent.dirty && (!predecessor || equalValues(predecessor.value, intent.draft))) return null;
+    if (!frozenOptions?.transfer && !intent.dirty && (!predecessor || equalValues(predecessor.value, intent.draft))) return null;
     if (intent.conflicts.length) throw Object.assign(new Error('Resolve the conflict before saving'), { code: 'resolve-version-first' });
     const baseline = clone(intent.confirmed);
     const record: CommitRequest = {
       id: this.options.operationId(), owner, editorId, editGeneration: intent.editGeneration,
       ...(frozenOptions?.retentionScope ? { retentionScope: frozenOptions.retentionScope } : {}),
+      ...(frozenOptions?.transfer ? { transferredFrom: clone(frozenOptions.transfer.proof) } : {}),
       baseline, value: clone(intent.draft), predecessor: predecessor?.id ?? null,
       revision: 0, initialized: false, working: baseline, intended: clone(intent.draft),
       command: null, submitted: null, sequence: 0, state: 'queued', result: null, unfinalized: [],
     };
-    const saved = await this.captureRequest(record, frozenOptions?.checkpoint);
+    const result = await capture(record);
     check();
-    publish(saved);
-    return clone(saved);
+    result.retired.forEach(publish);
+    publish(result.request);
+    return clone(result.request);
   }
 
   private async captureRequest(record: CommitRequest, checkpoint?: (saved: CommitRequest) => EditorRecord): Promise<CommitRequest> {
@@ -372,7 +393,7 @@ export class CommitQueue {
     for (;;) {
       const all = await this.options.store.list(owner);
       this.assertCurrent(owner, generation);
-      const records = orderRequests(cancellationScope(all, editorId, additionalRequestIds, true).filter(record => record.state === 'cancelled'));
+      const records = orderCommitRequests(cancellationScope(all, editorId, additionalRequestIds, true).filter(record => record.state === 'cancelled'));
       const processed = new Set<string>();
       try {
         for (const record of records) {
@@ -404,7 +425,7 @@ export class CommitQueue {
     const journal = await this.options.runtime.list();
     if (!canCancelSavedIntent(records, journal)) throw Object.assign(new Error('Resolve pending commands before replacing saved intent'), { code: 'pending-delivery-first' });
     this.requested = true;
-    if (wholeAction) return cancelActionCommits(orderRequests(records), this.atomicContext(owner, generation));
+    if (wholeAction) return cancelActionCommits(orderCommitRequests(records), this.atomicContext(owner, generation));
     for (const record of records) {
       this.assertCurrent(owner, generation);
       const cancelled = await this.options.store.compareAndSet(record, { ...record, state: 'cancelled', unfinalized: pendingCommitRetirement(record), ...(chosen.has(record.id) ? { cancelledByChoice: true } : {}) });

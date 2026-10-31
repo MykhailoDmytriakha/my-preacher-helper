@@ -56,6 +56,10 @@ jest.mock('@/hooks/useStudyNotesEngine', () => ({
     uid: 'owner',
     notes: (mockRows.studyNotes ?? []).map((stored) => ({ id: stored.resource.id, tags: [], scriptureRefs: [], createdAt: '', updatedAt: '', isDraft: false, ...stored.value })),
     createNote: jest.fn(), updateNote: jest.fn(), deleteNote: jest.fn(),
+    recoverAnalysisCreation: jest.fn().mockResolvedValue(null),
+    releaseAnalysisCreation: jest.fn().mockResolvedValue(undefined),
+    combineAnalysisCreation: jest.fn().mockResolvedValue('existing-analysis'),
+    refetch: jest.fn().mockResolvedValue(undefined),
   }),
 }));
 jest.mock('@/components/ui/RichMarkdownEditor', () => ({

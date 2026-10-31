@@ -14,6 +14,7 @@ import { useTranslation } from '@locales/useTranslation';
 
 import type { DocumentData, ResourceSnapshot } from '@/data-engine/types';
 import type { StudyNote } from '@/models/models';
+import type { BookText } from '@/utils/bibleText';
 import type { AnalysisReshapeEdit } from '@/utils/studyAnalysisReshape';
 
 const resource = (id: string) => ({ collection: 'studyNotes', id });
@@ -142,6 +143,13 @@ export function useStudyNotesEngine(enabled: boolean) {
     checking: Boolean(collection.state?.checking),
     error: collection.error ? new Error(collection.error) : null,
     refetch: async () => { await collection.refresh(); },
+    recoverAnalysisCreation: async (id: string): Promise<StudyNote | null> => {
+      const captured = await actions.findStudyAnalysisCreation(id);
+      return captured ? engineNote(captured.value, captured.resource.id, locale) : null;
+    },
+    releaseAnalysisCreation: (sourceId: string, adoptedId: string): Promise<void> => actions.releaseStudyAnalysisCreation(sourceId, adoptedId),
+    combineAnalysisCreation: async (sourceId: string, targetId: string, text: BookText): Promise<string> =>
+      (await actions.transferStudyAnalysisCreation(sourceId, targetId, text)).id,
     createNote: (note: Omit<StudyNote, 'id' | 'createdAt' | 'updatedAt' | 'isDraft'>, options?: { id: string; captureScope?: string }): StudyNoteSubmission & { note: StudyNote } => {
       const id = options?.id ?? newClientId();
       const at = now();
