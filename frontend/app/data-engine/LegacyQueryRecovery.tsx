@@ -47,10 +47,10 @@ function storedLanguageShown(): string {
 const STARTUP_SOURCE = 'legacy-migration';
 
 /** Observe the existing task, without changing its result, timeout or owner. No storage contents enter the log. */
-function preserveForStartup(enabled: (collection: string) => boolean) {
+function preserveForStartup(enabled: (collection: string) => boolean, owner: string | undefined) {
   const startedAt = Date.now();
   recordDiagnostic('startup', { source: STARTUP_SOURCE, result: 'started' });
-  const task = preserveLegacyQueryCache(enabled);
+  const task = owner ? preserveLegacyQueryCache(enabled, owner) : preserveLegacyQueryCache(enabled);
   void Promise.resolve(task).then(
     () => recordDiagnostic('startup', { source: STARTUP_SOURCE, result: 'answered', elapsedMs: Date.now() - startedAt }),
     () => recordDiagnostic('startup', { source: STARTUP_SOURCE, result: 'failed', elapsedMs: Date.now() - startedAt }),
@@ -59,7 +59,7 @@ function preserveForStartup(enabled: (collection: string) => boolean) {
 }
 
 /** Mount before React Query: even expired caches must be archived before its restore can remove them. */
-export function LegacyQueryMigrationGate({ enabled, children }: { enabled: (collection: string) => boolean; children: ReactNode }) {
+export function LegacyQueryMigrationGate({ enabled, children, owner }: { enabled: (collection: string) => boolean; children: ReactNode; owner?: string }) {
   const { t } = useTranslation();
   const [attempt, setAttempt] = useState(0);
   const [state, setState] = useState<'pending' | 'ready' | 'failed'>('pending');
@@ -76,7 +76,7 @@ export function LegacyQueryMigrationGate({ enabled, children }: { enabled: (coll
     // on while the archive keeps running: its read of the old cache was issued first, and the
     // query persister writes nothing over the old cache until the archive is done. An archive that
     // fails after that is said above the app, with Retry, instead of silently keeping writes off.
-    const { task: preserving, startedAt } = preserveForStartup(enabled);
+    const { task: preserving, startedAt } = preserveForStartup(enabled, owner);
     void answerWithin(preserving).then(result => {
       if (!active) return;
       setState('ready');
@@ -86,7 +86,7 @@ export function LegacyQueryMigrationGate({ enabled, children }: { enabled: (coll
       }
     }, () => { if (active) setState('failed'); });
     return () => { active = false; };
-  }, [enabled, attempt]);
+  }, [enabled, attempt, owner]);
   useEffect(() => {
     if (state !== 'pending') return;
     const timer = setTimeout(() => setSlowStart(true), SLOW_START_MS);
@@ -94,7 +94,7 @@ export function LegacyQueryMigrationGate({ enabled, children }: { enabled: (coll
   }, [state]);
   const retryLate = () => {
     setLateFailure(false);
-    preserveForStartup(enabled).task.catch(() => { if (mounted.current) setLateFailure(true); });
+    preserveForStartup(enabled, owner).task.catch(() => { if (mounted.current) setLateFailure(true); });
   };
   if (state === 'ready') return <>
     {lateFailure && <div role="alert" className="m-4 rounded-xl border p-4">

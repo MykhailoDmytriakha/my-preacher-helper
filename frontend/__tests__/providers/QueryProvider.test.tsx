@@ -10,7 +10,12 @@ import { createIDBPersister } from '@/utils/queryPersister';
 import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
 import { __resetConnectivityForTests, beginConnectivityRequest, reportServerReachable, reportServerUnreachable } from '@/utils/connectivity';
 
+jest.mock('@/providers/AuthProvider', () => ({
+  useAuth: () => ({ user: jest.requireMock('@/services/firebaseAuth.service').auth.currentUser, loading: false }),
+}));
+
 jest.mock('@/utils/queryPersister', () => ({
+  ...jest.requireActual('@/utils/queryPersister'),
   createIDBPersister: jest.fn(),
 }));
 jest.mock('@/data-engine/legacyQueryRecovery.client', () => ({

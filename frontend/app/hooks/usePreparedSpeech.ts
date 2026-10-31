@@ -38,7 +38,7 @@ async function requestPreparation(
   options: Options, mode: AudioSourceMode, sections: SermonSection[], opening: PreparedAudioSet | undefined,
   isCurrent: () => boolean,
 ) {
-  const headers = await getAuthenticatedRequestHeaders();
+  const headers = await getAuthenticatedRequestHeaders(options.owner);
   if (!isCurrent()) return undefined;
   const response = await options.requestPreparation({
     sections, provider: options.provider, saveToDb: true, useRawText: mode === 'raw',
@@ -138,7 +138,7 @@ export function usePreparedSpeech(options: Options) {
       || (decision && captured.conflict !== decision)) throw saidError(CHANGED);
     const opening = decision ? decision.source : captured.source;
     if (!opening || !Number.isSafeInteger(index) || index < 0 || index >= opening.chunks.length) throw saidError(CHANGED);
-    const headers = await getAuthenticatedRequestHeaders();
+    const headers = await getAuthenticatedRequestHeaders(owner);
     if (!current(key) || latest.current.editor?.session !== captured.session
       || (decision && latest.current.editor.conflict !== decision)) throw saidError(CHANGED);
     const response = await latest.current.options.requestCorrection(index, {
@@ -170,7 +170,7 @@ export function usePreparedSpeech(options: Options) {
       });
     }
     setEditor(previous => previous?.identity === key && previous.session === captured.session ? null : previous);
-  }, [identity, current, reconcile]);
+  }, [identity, owner, current, reconcile]);
 
   const saveChunk = useCallback((index: number, text: string) => saveCorrection(index, text), [saveCorrection]);
   const resolveChunk = useCallback((decision: SpeechCorrectionConflict, index: number, text: string) =>

@@ -1,9 +1,10 @@
 'use client';
 
-import { get } from 'idb-keyval';
+import { get, update } from 'idb-keyval';
 
 import { extractIsoString } from '@/utils/dateFormatter';
-import { queryCacheStore } from '@/utils/queryPersister';
+import { resolveOwnerUid } from '@/utils/queryKeys';
+import { accountQueryCacheKey, LEGACY_QUERY_CACHE_KEY, queryCacheStore } from '@/utils/queryPersister';
 import { deriveSermonIdsFromItems, inferSeriesKind, normalizeSeriesItems } from '@/utils/seriesItems';
 import { hydrateSermon } from '@/utils/sermonDocument';
 
@@ -70,7 +71,7 @@ function querySource(query: unknown, enabled: (collection: string) => boolean, s
   const rows = kind === 'series-detail' ? [object(query.state.data) ? query.state.data.series : null]
     : detail ? [query.state.data] : query.state.data;
   if (!Array.isArray(rows)) return null;
-  return { collection, detail, identity: kind === OWNER_DETAIL ? key[2] : key[1], rows, owner: kind === OWNER_DETAIL ? key[1] : null,
+  return { collection, kind, detail, identity: kind === OWNER_DETAIL ? key[2] : key[1], rows, owner: kind === OWNER_DETAIL ? key[1] : null,
     savedAt: typeof query.state.dataUpdatedAt === 'number' && Number.isFinite(query.state.dataUpdatedAt) ? query.state.dataUpdatedAt : null };
 }
 
@@ -176,7 +177,9 @@ function sameArchivedInput(stored: string, incoming: string): boolean {
   return before !== null && after !== null && equalValues(before, after);
 }
 
-let archive: 'idle' | 'pending' | 'done' | 'failed' = 'idle';
+type ArchiveAttempt = { state: 'pending' | 'done' | 'failed' };
+// Each call owns its state object: an older completion cannot release a newer attempt.
+const archives = new Map<string | undefined, ArchiveAttempt>();
 
 /**
  * Whether the old query cache may be written over. The migration gate no longer holds the whole
@@ -184,30 +187,33 @@ let archive: 'idle' | 'pending' | 'done' | 'failed' = 'idle';
  * the gate's promise — "nothing overwrites the old cache before its copies are archived" — is kept
  * by the query persister instead: it skips writes while an archive is pending or has failed.
  */
-export function legacyCacheMayBeOverwritten(): boolean {
-  return archive === 'idle' || archive === 'done';
+export function legacyCacheMayBeOverwritten(owner: string | undefined = resolveOwnerUid()): boolean {
+  const attempt = archives.get(owner);
+  return !attempt || attempt.state === 'done';
 }
 
 /** Cache state has no provable opening ancestor or delivery status. Archive, never import. */
-export async function preserveLegacyQueryCache(enabled: (collection: string) => boolean): Promise<void> {
-  archive = 'pending';
+export async function preserveLegacyQueryCache(enabled: (collection: string) => boolean, owner: string | undefined = resolveOwnerUid()): Promise<void> {
+  const attempt: ArchiveAttempt = { state: 'pending' };
+  archives.set(owner, attempt);
   try {
-    await archiveLegacyQueryCache(enabled);
-    archive = 'done';
+    await archiveLegacyQueryCache(enabled, owner);
+    attempt.state = 'done';
   } catch (error) {
-    archive = 'failed';
+    attempt.state = 'failed';
     throw error;
   }
 }
 
-async function archiveLegacyQueryCache(enabled: (collection: string) => boolean): Promise<void> {
+async function archiveLegacyQueryCache(enabled: (collection: string) => boolean, owner: string | undefined): Promise<void> {
   if (!ARCHIVED_COLLECTIONS.some(enabled)) return;
-  const persisted: unknown = await get('react-query-cache', queryCacheStore);
-  if (!object(persisted) || !object(persisted.clientState)) return;
-  const persistedQueries: unknown[] = Array.isArray(persisted.clientState.queries) ? persisted.clientState.queries : [];
+  const inputKeys: IDBValidKey[] = [LEGACY_QUERY_CACHE_KEY, ...(owner ? [accountQueryCacheKey(owner)] : [])];
+  const inputs: unknown[] = await Promise.all(inputKeys.map(key => get(key, queryCacheStore)));
+  const states = inputs.flatMap(input => object(input) && object(input.clientState) ? [input.clientState] : []);
+  const persistedQueries: unknown[] = states.flatMap(state => Array.isArray(state.queries) ? state.queries : []);
   const queries = persistedQueries.flatMap(query => queryCopies(query, enabled));
   const ownerHints = persistedQueries.flatMap(query => queryCopies(query, enabled, OWNER_HINT_SOURCES));
-  const mutations = mutationCopies(Array.isArray(persisted.clientState.mutations) ? persisted.clientState.mutations : [], [...queries, ...ownerHints], enabled);
+  const mutations = mutationCopies(states.flatMap(state => Array.isArray(state.mutations) ? state.mutations : []), [...queries, ...ownerHints], enabled);
   const copies = new Map<string, Omit<LegacyQueryCopy, 'id'>[]>();
   for (const candidate of [...queries, ...mutations]) {
       const identity = JSON.stringify([ARCHIVE_KIND, candidate.owner, candidate.collection, candidate.documentId]);
@@ -232,6 +238,47 @@ async function archiveLegacyQueryCache(enabled: (collection: string) => boolean)
       });
     }
   });
+  // The archive is durable before the old source is trimmed. Otherwise accepting a copy would
+  // recreate it from that source on the next start. Unknown and unassigned input stays exact.
+  const archivedRows = new Set(queries.map(copy => JSON.stringify([copy.collection, copy.raw])));
+  const archivedMutations = new Set(mutations.filter(copy => copy.owner).map(copy => copy.raw));
+  for (let index = 0; index < inputs.length; index += 1) {
+    const original = inputs[index];
+    const retained = withoutArchivedInput(original, archivedRows, archivedMutations, enabled);
+    if (JSON.stringify(retained) === JSON.stringify(original)) continue;
+    let changed = false;
+    await update(inputKeys[index], current => {
+      if (JSON.stringify(current) !== JSON.stringify(original)) { changed = true; return current; }
+      return retained;
+    }, queryCacheStore);
+    // A newer input must itself be archived before a query writer may replace it.
+    if (changed) throw new Error('Saved input changed during migration; retry before replacing it');
+  }
+}
+
+/** Remove only document values already copied in full; preserve the surrounding unknown fields. */
+function withoutArchivedQuery(query: unknown, archivedRows: ReadonlySet<string>, enabled: (collection: string) => boolean): unknown {
+  if (!object(query) || !object(query.state)) return query;
+  const source = querySource(query, enabled, QUERY_SOURCES);
+  if (!source) return query;
+  const remaining = source.rows.filter(row => !archivedRows.has(JSON.stringify([source.collection, JSON.stringify(row, null, 2)])));
+  if (remaining.length === source.rows.length) return query;
+  let data: unknown = source.detail ? undefined : remaining;
+  if (source.kind === 'series-detail' && object(query.state.data)) {
+    const rest = { ...query.state.data };
+    delete rest.series;
+    data = rest;
+  }
+  return { ...query, state: { ...query.state, data } };
+}
+
+function withoutArchivedInput(input: unknown, rows: ReadonlySet<string>, mutations: ReadonlySet<string>, enabled: (collection: string) => boolean): unknown {
+  if (!object(input) || !object(input.clientState)) return input;
+  const state = input.clientState;
+  return { ...input, clientState: { ...state,
+    ...(Array.isArray(state.queries) ? { queries: state.queries.map(query => withoutArchivedQuery(query, rows, enabled)) } : {}),
+    ...(Array.isArray(state.mutations) ? { mutations: state.mutations.filter(mutation => !mutations.has(JSON.stringify(mutation, null, 2))) } : {}),
+  } };
 }
 
 /** Retired echoes leave gaps in the numbering, so the position alone could repeat a kept copy's id. */

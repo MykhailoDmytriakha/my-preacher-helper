@@ -3,7 +3,7 @@ import { apiClient } from '@/utils/apiClient';
 import { __resetConnectivityForTests, getConnectivityStatus, reportServerReachable } from '@/utils/connectivity';
 
 jest.mock('@/utils/apiClient', () => ({ apiClient: jest.fn() }));
-jest.mock('@/utils/authenticatedRequest', () => ({
+jest.mock('@/utils/authenticatedRequest', () => ({ ...jest.requireActual('@/utils/authenticatedRequest'),
   getAuthenticatedRequestHeaders: jest.fn().mockResolvedValue({ Authorization: 'Bearer token' }),
 }));
 jest.mock('@/services/sermons.client', () => ({

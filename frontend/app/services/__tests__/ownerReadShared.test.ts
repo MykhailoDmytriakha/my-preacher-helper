@@ -6,7 +6,7 @@ import {
 import { isSilentReadError } from '@/services/ownerListRead.client';
 
 jest.mock('@/utils/apiClient', () => ({ apiClient: jest.fn() }));
-jest.mock('@/utils/authenticatedRequest', () => ({ getAuthenticatedRequestHeaders: jest.fn() }));
+jest.mock('@/utils/authenticatedRequest', () => ({ ...jest.requireActual('@/utils/authenticatedRequest'), getAuthenticatedRequestHeaders: jest.fn() }));
 jest.mock('@/utils/queryKeys', () => ({ resolveOwnerUid: () => 'owner-1' }));
 jest.mock('@/utils/appDiagnostics', () => ({ recordDiagnostic: jest.fn(), diagnosticErrorCode: () => undefined }));
 

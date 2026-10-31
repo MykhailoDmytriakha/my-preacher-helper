@@ -13,9 +13,10 @@ import { auth } from '@services/firebaseAuth.service';
  * The lists were already owner-scoped (`['sermons', uid]`); the detail was not.
  * This keeps one definition so the two cannot drift apart again.
  *
- * NOTE this is one layer, not the whole fix: the IndexedDB persister still uses a
- * single store for all accounts. Splitting that store is the other half and is
- * tracked separately.
+ * The other layer is accountQueryCache: each resolved account restores its own
+ * persisted client, and QueryProvider remounts that lifetime on an identity change.
+ * Older device copies are preserved or moved through canonical migration, never
+ * globally cleared on sign-out.
  */
 export const sermonDetailKey = (uid: string | undefined, sermonId: string) =>
   ['sermon', uid ?? 'unresolved-owner', sermonId] as const;

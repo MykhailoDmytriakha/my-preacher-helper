@@ -2,7 +2,7 @@ import { requestOwnerJson } from '@/services/ownerHttpTransport.client';
 
 const mockRequest = jest.fn();
 jest.mock('@/utils/apiClient', () => ({ apiClient: (...args: unknown[]) => mockRequest(...args) }));
-jest.mock('@/utils/authenticatedRequest', () => ({ getAuthenticatedRequestHeaders: async () => ({ Authorization: 'Bearer owner' }) }));
+jest.mock('@/utils/authenticatedRequest', () => ({ ...jest.requireActual('@/utils/authenticatedRequest'), getAuthenticatedRequestHeaders: async () => ({ Authorization: 'Bearer owner' }) }));
 jest.mock('@/utils/queryKeys', () => ({ resolveOwnerUid: () => 'owner' }));
 const document = { id: 'c', title: 'Document', rev: 1 };
 const response = (value: unknown, status: number) => ({ ok: status < 400, status, json: async () => value });

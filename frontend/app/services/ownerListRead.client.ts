@@ -151,7 +151,7 @@ export async function readOwnerListFromServer<T>(
   try {
     return await readWithDeadline(
       (async () => {
-        const headers = await getAuthenticatedRequestHeaders();
+        const headers = await getAuthenticatedRequestHeaders(owner ?? null);
         if (!headers.Authorization) {
           throw Object.assign(new Error('Authentication required'), { code: 'unauthenticated' });
         }

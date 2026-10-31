@@ -39,7 +39,7 @@ jest.mock('@/services/rateLimit.server', () => ({
   FEEDBACK_RATE_LIMIT_WINDOW_MS: 60 * 60 * 1000,
 }));
 
-jest.mock('@/utils/authenticatedRequest', () => ({
+jest.mock('@/utils/authenticatedRequest', () => ({ ...jest.requireActual('@/utils/authenticatedRequest'),
   getAuthenticatedRequestHeaders: jest.fn(async () => ({ Authorization: 'Bearer test-token' })),
 }));
 

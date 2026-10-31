@@ -5,7 +5,7 @@ import { BrainstormSuggestion } from '@/models/models';
 // Mock the fetch API
 fetchMock.enableMocks();
 
-jest.mock('@/utils/authenticatedRequest', () => ({
+jest.mock('@/utils/authenticatedRequest', () => ({ ...jest.requireActual('@/utils/authenticatedRequest'),
   getAuthenticatedRequestHeaders: jest.fn().mockResolvedValue({ Authorization: 'Bearer test-token' }),
 }));
 

@@ -1,42 +1,31 @@
-import { StudyNoteShareLink } from '@/models/models';
-import { apiClient } from '@/utils/apiClient';
-import { getAuthenticatedRequestHeaders } from '@/utils/authenticatedRequest';
+import { requestOwnerJson } from '@/services/ownerHttpTransport.client';
+
+import type { StudyNoteShareLink } from '@/models/models';
+
+const transportMessages = {
+  timedOut: 'Share-link request timed out',
+  unavailable: 'Share-link service unavailable',
+};
 
 export async function getStudyNoteShareLinks(userId: string): Promise<StudyNoteShareLink[]> {
-  const authHeaders = await getAuthenticatedRequestHeaders();
-  const res = await apiClient(`/api/studies/share-links?userId=${userId}`, { category: 'metadata',
-    cache: 'no-store',
-    headers: authHeaders,
+  const { value } = await requestOwnerJson<StudyNoteShareLink[]>(`/api/studies/share-links?userId=${userId}`, {
+    method: 'GET', expectedOwner: userId, category: 'metadata', answerStatuses: [],
+    messages: { ...transportMessages, failed: 'Failed to fetch share links' },
   });
-  if (!res.ok) {
-    console.error('getStudyNoteShareLinks: failed', res.status);
-    throw new Error('Failed to fetch share links');
-  }
-  return res.json();
+  return value;
 }
 
 export async function createStudyNoteShareLink(userId: string, noteId: string): Promise<StudyNoteShareLink> {
-  const authHeaders = await getAuthenticatedRequestHeaders();
-  const res = await apiClient('/api/studies/share-links', { category: 'crud',
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...authHeaders },
-    body: JSON.stringify({ userId, noteId }),
+  const { value } = await requestOwnerJson<StudyNoteShareLink>('/api/studies/share-links', {
+    method: 'POST', expectedOwner: userId, payload: { userId, noteId }, answerStatuses: [],
+    messages: { ...transportMessages, failed: 'Failed to create share link' },
   });
-  if (!res.ok) {
-    console.error('createStudyNoteShareLink: failed', res.status);
-    throw new Error('Failed to create share link');
-  }
-  return res.json();
+  return value;
 }
 
 export async function deleteStudyNoteShareLink(userId: string, linkId: string): Promise<void> {
-  const authHeaders = await getAuthenticatedRequestHeaders();
-  const res = await apiClient(`/api/studies/share-links/${linkId}?userId=${userId}`, { category: 'crud',
-    method: 'DELETE',
-    headers: authHeaders,
+  await requestOwnerJson(`/api/studies/share-links/${linkId}?userId=${userId}`, {
+    method: 'DELETE', expectedOwner: userId, answerStatuses: [],
+    messages: { ...transportMessages, failed: 'Failed to delete share link' },
   });
-  if (!res.ok) {
-    console.error('deleteStudyNoteShareLink: failed', res.status);
-    throw new Error('Failed to delete share link');
-  }
 }

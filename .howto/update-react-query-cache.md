@@ -22,6 +22,8 @@ Share links are server-owned capabilities; deleting a study note already retires
 
 Do not infer retirement from an empty/incomplete list, a failed note read or a locally queued delete: those do not prove the public capability ended. A cached tombstone can have presence kind `unknown` while retaining its explicit deleted metadata. Keep direct revoke acknowledgement/recovery in `studyNoteShareLinkWrites`; this read projection neither adds a second revoke writer nor retires an unresolved mutation. Cover both a hidden retired link and a retained unrelated/live or unacknowledged link. Regression: `__tests__/hooks/useStudyNoteShareLinks.retiredNotes.test.tsx`.
 
+- Persisted clients belong to resolved accounts: `QueryProvider` owns a per-UID lifetime, `accountQueryCache.ts` owns legacy adoption/admission, and `queryPersister.accountQueryCacheKey` constructs the physical key. Do not clear global storage or invent a feature-specific replay queue. A failed read remains unread before TanStack can call `removeClient`; no replacement is permitted until the source is safely read. Engine-owned originals move through canonical archival before selective retirement. See `.howto/keep-accounts-apart.md`.
+
 ## Why
 
 - 2026-01-18: a global `refetchOnMount: 'always'` refetched on every mount and made focus mode jump; the global default is now `true`.

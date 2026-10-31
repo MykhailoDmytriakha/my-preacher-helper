@@ -8,7 +8,7 @@ import type { Sermon } from '@/models/models';
 import type { PreparedAudioSet } from '@/types/audioGeneration.types';
 
 jest.mock('@/utils/apiClient', () => ({ apiClient: jest.fn() }));
-jest.mock('@/utils/authenticatedRequest', () => ({ getAuthenticatedRequestHeaders: jest.fn().mockResolvedValue({}) }));
+jest.mock('@/utils/authenticatedRequest', () => ({ ...jest.requireActual('@/utils/authenticatedRequest'), getAuthenticatedRequestHeaders: jest.fn().mockResolvedValue({}) }));
 
 const makeSource = (id: string, text: string, revision = 1): PreparedAudioSet => ({
   id, revision, sections: ['introduction'], chunks: [{ index: 0, sectionId: 'introduction', text, createdAt: '2026-10-01' }],

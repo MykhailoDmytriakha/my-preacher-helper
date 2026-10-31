@@ -14,7 +14,7 @@ jest.mock('sonner', () => ({
   },
 }));
 
-jest.mock('@/utils/authenticatedRequest', () => ({
+jest.mock('@/utils/authenticatedRequest', () => ({ ...jest.requireActual('@/utils/authenticatedRequest'),
   getAuthenticatedRequestHeaders: jest.fn().mockResolvedValue({ Authorization: 'Bearer test-token' }),
 }));
 

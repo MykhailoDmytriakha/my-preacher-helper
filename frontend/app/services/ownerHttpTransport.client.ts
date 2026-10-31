@@ -1,7 +1,7 @@
 'use client';
 
-import { apiClient } from '@/utils/apiClient';
-import { getAuthenticatedRequestHeaders } from '@/utils/authenticatedRequest';
+import { apiClient, type RequestCategory } from '@/utils/apiClient';
+import { accountChangedError, getAuthenticatedRequestHeaders } from '@/utils/authenticatedRequest';
 import { resolveOwnerUid } from '@/utils/queryKeys';
 
 /**
@@ -34,22 +34,7 @@ const HTTP_ERROR_CODES: Record<number, string> = {
  */
 export const codeForHttpStatus = (status: number): string => HTTP_ERROR_CODES[status] ?? 'unavailable';
 
-const ACCOUNT_CHANGED = 'Account changed';
-
-/**
- * THE ANSWER TO A REQUEST THAT OUTLIVED ITS ACCOUNT.
- *
- * A sign-in that lands while a token is fetched or an answer is in the air must not hand one
- * account's documents to another. Seven places built this refusal by hand; it is one value now,
- * so a caller can also recognise it (`isAccountChangedError`) instead of matching the message.
- */
-export function accountChangedError(): Error {
-  return Object.assign(new Error(ACCOUNT_CHANGED), { code: 'unauthenticated' });
-}
-
-export function isAccountChangedError(error: unknown): boolean {
-  return error instanceof Error && error.message === ACCOUNT_CHANGED;
-}
+export { accountChangedError, isAccountChangedError } from '@/utils/authenticatedRequest';
 
 export interface OwnerHttpMessages {
   /** When the response is not ok and carries no message of its own. */
@@ -61,7 +46,11 @@ export interface OwnerHttpMessages {
 }
 
 export interface OwnerHttpOptions {
+  /** The owner of a queued action or a caller's captured data. */
+  expectedOwner?: string;
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+  /** Preserve the request class of metadata readers using this shared owner boundary. */
+  category?: RequestCategory;
   payload?: unknown;
   /** Overall bound, abort included; the per-request `apiClient` timeout stays shorter. */
   deadlineMs?: number;
@@ -74,15 +63,16 @@ export interface OwnerHttpOptions {
 
 export async function requestOwnerJson<T>(
   url: string,
-  { method, payload, deadlineMs = 10000, answerStatuses = [409], messages, keepalive }: OwnerHttpOptions
+  { method, payload, expectedOwner, deadlineMs = 10000, answerStatuses = [409], messages, keepalive, category = 'crud' }: OwnerHttpOptions
 ): Promise<{ status: number; value: T }> {
   const resolvedMethod = method ?? (payload === undefined ? 'GET' : 'PATCH');
   const owner = resolveOwnerUid();
+  if (expectedOwner !== undefined && expectedOwner !== owner) throw accountChangedError();
   let timer: ReturnType<typeof setTimeout> | undefined;
   const controller = new AbortController();
 
   const operation = async () => {
-    const headers = await getAuthenticatedRequestHeaders();
+    const headers = await getAuthenticatedRequestHeaders(owner ?? null);
     if (controller.signal.aborted) throw Object.assign(new Error('Request expired'), { code: 'deadline-exceeded' });
     if (!headers.Authorization || resolveOwnerUid() !== owner) {
       throw Object.assign(new Error('Authentication required'), { code: 'unauthenticated' });
@@ -100,7 +90,7 @@ export async function requestOwnerJson<T>(
       headers: { ...headers, 'Content-Type': 'application/json' },
       ...(body === undefined ? {} : { body }),
       cache: 'no-store',
-      category: 'crud',
+      category,
       timeout: 8000,
       // Every owner document route reads or writes the store: its success says the data is back.
       answersFromStore: true,

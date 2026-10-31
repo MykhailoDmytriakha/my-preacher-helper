@@ -399,7 +399,7 @@ export default function StepByStepWizard({
         run: AudioGenerationRun,
         onChunkProgress: (current: number, total: number) => void,
     ): Promise<{ bytes: Uint8Array; filename?: string; mimeType?: string; totalChunks?: number }> => {
-        const authHeaders = await getAuthenticatedRequestHeaders();
+        const authHeaders = await getAuthenticatedRequestHeaders(user?.uid ?? null);
         run.checkpoint();
         const response = await apiClient(`/api/sermons/${sermonId}/audio/generate`, {
             method: 'POST',
@@ -463,7 +463,7 @@ export default function StepByStepWizard({
             mimeType: acc.mimeType,
             totalChunks: acc.totalChunks,
         };
-    }, [sermonId]);
+    }, [sermonId, user?.uid]);
 
     // ------------------------------------------------------------------
     // Generate audio (TTS)
@@ -579,7 +579,7 @@ export default function StepByStepWizard({
 
             // Cleanup is independent of the accepted download. Never revoke a file because this request failed.
             void (async () => {
-                const headers = await getAuthenticatedRequestHeaders();
+                const headers = await getAuthenticatedRequestHeaders(user?.uid ?? null);
                 const response = await apiClient(`/api/sermons/${sermonId}/audio/generate/ack`, {
                     method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
                     body: JSON.stringify({ exportId: run.progress.exportId }), category: 'crud',
@@ -597,7 +597,7 @@ export default function StepByStepWizard({
         } finally {
             finish(run);
         }
-    }, [sermonId, canGenerateAudio, generationBody, ttsProvider, sections, chunks, generateAudioBatches, refreshAiUsage, showStoredSet, begin, complete, fail, finish, isCurrent]);
+    }, [sermonId, user?.uid, canGenerateAudio, generationBody, ttsProvider, sections, chunks, generateAudioBatches, refreshAiUsage, showStoredSet, begin, complete, fail, finish, isCurrent]);
 
     const handleCancelGeneration = useCallback(() => {
         if (cancel()) setError({ key: 'audioExport.generationCancelled' });

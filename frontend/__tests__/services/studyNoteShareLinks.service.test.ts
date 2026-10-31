@@ -3,6 +3,9 @@ import { StudyNoteShareLink } from '@/models/models';
 const mockFetch = jest.fn();
 global.fetch = mockFetch;
 
+// All successful fixtures are authenticated as their payload owner.
+jest.mock('@/utils/queryKeys', () => ({ resolveOwnerUid: () => 'user-1' }));
+
 let getStudyNoteShareLinks: typeof import('@/services/studyNoteShareLinks.service').getStudyNoteShareLinks;
 let createStudyNoteShareLink: typeof import('@/services/studyNoteShareLinks.service').createStudyNoteShareLink;
 let deleteStudyNoteShareLink: typeof import('@/services/studyNoteShareLinks.service').deleteStudyNoteShareLink;
@@ -30,6 +33,7 @@ describe('studyNoteShareLinks.service', () => {
     ];
     const mockResponse = {
       ok: true,
+      status: 200,
       json: jest.fn().mockResolvedValue(links),
     };
     mockFetch.mockResolvedValue(mockResponse);
@@ -38,19 +42,17 @@ describe('studyNoteShareLinks.service', () => {
 
     expect(mockFetch).toHaveBeenCalledWith('/api/studies/share-links?userId=user-1', expect.objectContaining({
       cache: 'no-store',
-      headers: { Authorization: 'Bearer test-token' },
+      headers: expect.objectContaining({ Authorization: 'Bearer test-token' }),
     }));
     expect(result).toEqual(links);
   });
 
   it('throws when fetching share links fails', async () => {
-    const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
-    mockFetch.mockResolvedValue({ ok: false, status: 500 });
+    mockFetch.mockResolvedValue({ ok: false, status: 500, json: async () => ({}) });
 
-    await expect(getStudyNoteShareLinks('user-1')).rejects.toThrow('Failed to fetch share links');
+    await expect(getStudyNoteShareLinks('user-1')).rejects.toMatchObject({ message: 'Failed to fetch share links', code: 'unavailable' });
 
-    expect(consoleSpy).toHaveBeenCalledWith('getStudyNoteShareLinks: failed', 500);
-    consoleSpy.mockRestore();
+    expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 
   it('creates a share link', async () => {
@@ -64,6 +66,7 @@ describe('studyNoteShareLinks.service', () => {
     };
     const mockResponse = {
       ok: true,
+      status: 200,
       json: jest.fn().mockResolvedValue(link),
     };
     mockFetch.mockResolvedValue(mockResponse);
@@ -79,36 +82,32 @@ describe('studyNoteShareLinks.service', () => {
   });
 
   it('throws when creating a share link fails', async () => {
-    const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
-    mockFetch.mockResolvedValue({ ok: false, status: 400 });
+    mockFetch.mockResolvedValue({ ok: false, status: 400, json: async () => ({}) });
 
-    await expect(createStudyNoteShareLink('user-1', 'note-1')).rejects.toThrow('Failed to create share link');
+    await expect(createStudyNoteShareLink('user-1', 'note-1')).rejects.toMatchObject({ message: 'Failed to create share link', code: 'invalid-argument' });
 
-    expect(consoleSpy).toHaveBeenCalledWith('createStudyNoteShareLink: failed', 400);
-    consoleSpy.mockRestore();
+    expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 
   it('deletes a share link', async () => {
-    mockFetch.mockResolvedValue({ ok: true });
+    mockFetch.mockResolvedValue({ ok: true, status: 200, json: async () => ({ success: true }) });
 
     await deleteStudyNoteShareLink('user-1', 'link-1');
 
     expect(mockFetch).toHaveBeenCalledWith('/api/studies/share-links/link-1?userId=user-1', expect.objectContaining({
       method: 'DELETE',
-      headers: { Authorization: 'Bearer test-token' },
+      headers: expect.objectContaining({ Authorization: 'Bearer test-token' }),
     }));
   });
 
   it('throws when deleting a share link fails', async () => {
-    const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
-    mockFetch.mockResolvedValue({ ok: false, status: 403 });
+    mockFetch.mockResolvedValue({ ok: false, status: 403, json: async () => ({}) });
 
-    await expect(deleteStudyNoteShareLink('user-1', 'link-1')).rejects.toThrow('Failed to delete share link');
+    await expect(deleteStudyNoteShareLink('user-1', 'link-1')).rejects.toMatchObject({ message: 'Failed to delete share link', code: 'permission-denied' });
 
-    expect(consoleSpy).toHaveBeenCalledWith('deleteStudyNoteShareLink: failed', 403);
-    consoleSpy.mockRestore();
+    expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 });
-jest.mock('@/utils/authenticatedRequest', () => ({
+jest.mock('@/utils/authenticatedRequest', () => ({ ...jest.requireActual('@/utils/authenticatedRequest'),
   getAuthenticatedRequestHeaders: jest.fn().mockResolvedValue({ Authorization: 'Bearer test-token' }),
 }));

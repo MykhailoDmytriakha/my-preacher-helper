@@ -2,7 +2,7 @@ import { generateNotePlanContent, generatePlanPointContent } from "@/(pages)/(pr
 import { apiClient } from '@/utils/apiClient';
 
 jest.mock('@/utils/apiClient', () => ({ apiClient: jest.fn() }));
-jest.mock('@/utils/authenticatedRequest', () => ({
+jest.mock('@/utils/authenticatedRequest', () => ({ ...jest.requireActual('@/utils/authenticatedRequest'),
   getAuthenticatedRequestHeaders: jest.fn().mockResolvedValue({ Authorization: 'Bearer test-token' }),
 }));
 

@@ -57,7 +57,7 @@ jest.mock('@/hooks/useUserEntitlement', () => ({ useUserEntitlement: jest.fn() }
 jest.mock('@/hooks/useAiUsage', () => ({
     useAiUsage: () => ({ aiBlocked: mockGenerationBlocked, blocked: () => mockGenerationBlocked, blockedLabelKey: () => mockGenerationBlocked ? 'settings.usage.audioUsageExhausted' : '', refresh: mockRefreshAiUsage }),
 }));
-jest.mock('@/utils/authenticatedRequest', () => ({
+jest.mock('@/utils/authenticatedRequest', () => ({ ...jest.requireActual('@/utils/authenticatedRequest'),
     getAuthenticatedRequestHeaders: jest.fn().mockResolvedValue({ Authorization: 'Bearer test-token' }),
 }));
 jest.mock('@/utils/audioConcat', () => ({

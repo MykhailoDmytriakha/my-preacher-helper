@@ -192,8 +192,8 @@ export function useRecoveryDiscovery<T>(options: RecoveryDiscoveryOptions<T>) {
 }
 
 /** Whether the query persister may write over the old cache yet: never before its copies are archived. */
-export function queryCacheMayBeOverwritten(): boolean {
-  return legacyCacheMayBeOverwritten();
+export function queryCacheMayBeOverwritten(owner?: string): boolean {
+  return legacyCacheMayBeOverwritten(owner);
 }
 
 /** Whether the persisted query cache may keep this query; engine-owned collections are session-only. */
@@ -207,7 +207,9 @@ export function shouldPersistLegacyMutation(mutationKey: readonly unknown[] | un
 
 /** Preserve old cache copies before the query provider may hydrate, expire or replace them. */
 export function DataEngineMigrationGate({ children }: { children: ReactNode }) {
-  return ARCHIVED_COLLECTIONS.some(isCollectionOnEngine) ? <LegacyQueryMigrationGate enabled={isCollectionOnEngine}>{children}</LegacyQueryMigrationGate> : <>{children}</>;
+  const { user, loading } = useAuth();
+  const owner = loading ? undefined : user?.uid;
+  return ARCHIVED_COLLECTIONS.some(isCollectionOnEngine) ? <LegacyQueryMigrationGate key={JSON.stringify([owner ?? null])} enabled={isCollectionOnEngine} owner={owner}>{children}</LegacyQueryMigrationGate> : <>{children}</>;
 }
 
 /** Archived cache copies are evidence for the person, never confirmed engine snapshots. */

@@ -30,6 +30,7 @@ jest.mock('@/data-engine/legacyQueryRecovery.client', () => ({
   listLegacyQueryCopies: jest.fn().mockResolvedValue([]),
 }));
 jest.mock('@/utils/queryPersister', () => ({
+  ...jest.requireActual('@/utils/queryPersister'),
   createIDBPersister: () => ({
     persistClient: async () => undefined,
     restoreClient: async () => undefined,

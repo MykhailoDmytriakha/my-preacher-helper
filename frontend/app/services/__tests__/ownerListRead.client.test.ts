@@ -15,7 +15,7 @@ import { __resetConnectivityForTests, reportServerReachable, reportServerUnreach
  */
 
 jest.mock('@/utils/apiClient', () => ({ apiClient: jest.fn() }));
-jest.mock('@/utils/authenticatedRequest', () => ({
+jest.mock('@/utils/authenticatedRequest', () => ({ ...jest.requireActual('@/utils/authenticatedRequest'),
   getAuthenticatedRequestHeaders: jest.fn().mockResolvedValue({ Authorization: 'Bearer token' }),
 }));
 jest.mock('@/utils/queryKeys', () => ({ resolveOwnerUid: () => 'owner-1' }));

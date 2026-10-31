@@ -37,7 +37,7 @@ jest.mock('@/services/ownerListRead.client', () => ({
 jest.mock('@services/firebaseAuth.service', () => ({
   auth: { currentUser: { uid: 'u1' } },
 }));
-jest.mock('@/utils/authenticatedRequest', () => ({
+jest.mock('@/utils/authenticatedRequest', () => ({ ...jest.requireActual('@/utils/authenticatedRequest'),
   getAuthenticatedRequestHeaders: jest.fn().mockResolvedValue({ Authorization: 'Bearer t' }),
 }));
 

@@ -1,4 +1,5 @@
-import { createStore, get } from 'idb-keyval';
+import { createStore, get, update } from 'idb-keyval';
+import { resolveOwnerUid } from '@/utils/queryKeys';
 
 import { ARCHIVED_COLLECTIONS, compareLegacyCopy, legacyCacheMayBeOverwritten, listLegacyQueryCopies, preserveLegacyQueryCache, removeLegacyCopies, retireLegacyEchoes } from '../legacyQueryRecovery.client';
 
@@ -6,7 +7,11 @@ import { deriveSermonIdsFromItems, inferSeriesKind, normalizeSeriesItems } from 
 
 import { installStorageHarness } from './storageHarness';
 
-jest.mock('idb-keyval', () => ({ createStore: jest.fn(), get: jest.fn() }));
+jest.mock('idb-keyval', () => ({ createStore: jest.fn(), get: jest.fn(), update: jest.fn() }));
+jest.mock('@/utils/queryKeys', () => ({
+  ...jest.requireActual('@/utils/queryKeys'),
+  resolveOwnerUid: jest.fn(),
+}));
 const council = (owner = 'owner', title = 'Unsent decision') => ({ id: 'council', userId: owner, title, topics: [{ id: 'topic', decision: title }], unknownField: { keep: true } });
 const cached = (data = [council()], owner = 'owner', savedAt = 10) => ({
   timestamp: 1, buster: 'expired-version',
@@ -16,7 +21,129 @@ const enabled = (collection: string) => collection === 'councils';
 
 describe('legacy query input preservation', () => {
   let disk: ReturnType<typeof installStorageHarness>;
-  beforeEach(() => { disk = installStorageHarness(); jest.mocked(get).mockResolvedValue(cached()); });
+  beforeEach(() => { disk = installStorageHarness(); jest.mocked(get).mockResolvedValue(cached()); jest.mocked(update).mockReset().mockResolvedValue(undefined); jest.mocked(resolveOwnerUid).mockReturnValue('owner'); });
+
+  it('archives owner-partitioned settings mutations before the owner partition is retired', async () => {
+    const intent = { mutationKey: ['user-settings', 'audioGeneration'], state: {
+      variables: { userId: 'A', value: true }, status: 'pending', isPaused: true, submittedAt: 30,
+    } };
+    jest.mocked(resolveOwnerUid).mockReturnValue('A');
+    jest.mocked(get).mockImplementation(async (key: IDBValidKey) =>
+      JSON.stringify(key) === JSON.stringify(['react-query-cache', 'A'])
+        ? { clientState: { mutations: [intent] } } as never
+        : undefined as never);
+
+    await preserveLegacyQueryCache(collection => collection === 'users');
+
+    expect((await listLegacyQueryCopies('A')).map(copy => JSON.parse(copy.raw))).toEqual([intent]);
+  });
+
+  it('does not let another owner’s completed archive release this owner’s pending legacy read', async () => {
+    let finishA!: (value: unknown) => void;
+    jest.mocked(resolveOwnerUid).mockReturnValue('A');
+    jest.mocked(get).mockImplementationOnce(() => new Promise(resolve => { finishA = resolve; }) as never)
+      .mockResolvedValue(undefined as never);
+    const archiveA = preserveLegacyQueryCache(collection => collection === 'users');
+
+    jest.mocked(resolveOwnerUid).mockReturnValue('B');
+    await preserveLegacyQueryCache(collection => collection === 'users');
+    jest.mocked(resolveOwnerUid).mockReturnValue('A');
+
+    expect(legacyCacheMayBeOverwritten()).toBe(false);
+    finishA(undefined);
+    await archiveA;
+    expect(legacyCacheMayBeOverwritten()).toBe(true);
+  });
+
+  it('does not let an older completion release a newer archive of the same owner', async () => {
+    let finishFirst!: (value: unknown) => void;
+    let finishSecond!: (value: unknown) => void;
+    const firstRead = new Promise(resolve => { finishFirst = resolve; });
+    const secondRead = new Promise(resolve => { finishSecond = resolve; });
+    let reads = 0;
+    jest.mocked(resolveOwnerUid).mockReturnValue('A');
+    jest.mocked(get).mockImplementation(async key => key === 'react-query-cache'
+      ? await (reads++ === 0 ? firstRead : secondRead) as never : undefined as never);
+    const first = preserveLegacyQueryCache(collection => collection === 'users');
+    const second = preserveLegacyQueryCache(collection => collection === 'users');
+    finishFirst(undefined);
+    await first;
+    expect(legacyCacheMayBeOverwritten()).toBe(false);
+    finishSecond(undefined);
+    await second;
+    expect(legacyCacheMayBeOverwritten()).toBe(true);
+  });
+
+  it('does not recreate a removed council copy from the global source and preserves unknown input', async () => {
+    const known = council('owner', 'Words never sent');
+    const unknownRow = council('other', 'Another owner row');
+    const unknownQuery = { queryKey: ['unrecognized-source', 'owner'], state: { data: { marker: 'keep-query' } } };
+    const unknownMutation = { mutationKey: ['unrecognized-writer', 'save'], state: { variables: { marker: 'keep-mutation' }, isPaused: true } };
+    const input = {
+      timestamp: 1, buster: 'old',
+      clientState: { queries: [
+        { queryKey: ['councils', 'owner'], state: { data: [known, unknownRow], dataUpdatedAt: 12 } },
+        unknownQuery,
+      ], mutations: [unknownMutation] },
+    };
+    let globalInput: unknown = input;
+    jest.mocked(get).mockImplementation(async (key: IDBValidKey) =>
+      key === 'react-query-cache' ? JSON.parse(JSON.stringify(globalInput)) as never : undefined as never);
+    jest.mocked(update).mockImplementation((async (key: IDBValidKey, updater: (value: unknown) => unknown) => {
+      if (key === 'react-query-cache') globalInput = await updater(JSON.parse(JSON.stringify(globalInput)));
+      return globalInput as never;
+    }) as never);
+
+    await preserveLegacyQueryCache(enabled, 'owner');
+    const [archived] = await listLegacyQueryCopies('owner');
+    expect(JSON.parse(archived.raw)).toEqual(known);
+    expect(await removeLegacyCopies('owner', [{ id: archived.id, raw: archived.raw }])).toBe(1);
+
+    await preserveLegacyQueryCache(enabled, 'owner');
+
+    expect(await listLegacyQueryCopies('owner')).toEqual([]);
+    expect(globalInput).toEqual({
+      ...input,
+      clientState: { queries: [
+        { queryKey: ['councils', 'owner'], state: { data: [unknownRow], dataUpdatedAt: 12 } },
+        unknownQuery,
+      ], mutations: [unknownMutation] },
+    });
+  });
+
+  it('keeps newer source words and refuses overwrite until that changed input is archived too', async () => {
+    const before = cached([council('owner', 'Earlier words')]);
+    const newer = cached([council('owner', 'Later words')]);
+    let input: unknown = before;
+    let changed = false;
+    jest.mocked(get).mockImplementation(async key => key === 'react-query-cache' ? JSON.parse(JSON.stringify(input)) as never : undefined as never);
+    jest.mocked(update).mockImplementation(async (key, updater) => {
+      if (key !== 'react-query-cache') return;
+      if (!changed) { input = newer; changed = true; }
+      input = updater(JSON.parse(JSON.stringify(input)));
+    });
+    await expect(preserveLegacyQueryCache(enabled, 'owner')).rejects.toThrow('Saved input changed');
+    expect(input).toEqual(newer);
+    expect(legacyCacheMayBeOverwritten('owner')).toBe(false);
+    expect((await listLegacyQueryCopies('owner')).map(copy => JSON.parse(copy.raw).title)).toEqual(['Earlier words']);
+    await preserveLegacyQueryCache(enabled, 'owner');
+    expect(legacyCacheMayBeOverwritten('owner')).toBe(true);
+    expect((await listLegacyQueryCopies('owner')).map(copy => JSON.parse(copy.raw).title)).toEqual(['Earlier words', 'Later words']);
+  });
+
+  it('keeps an Engine-owned operation with no provable owner in its original source', async () => {
+    const operation = { mutationKey: ['groups', 'update'], state: {
+      variables: { id: 'unassigned-group', updates: { title: 'Unassigned original words' } },
+      status: 'pending', isPaused: true, submittedAt: 31,
+    } };
+    const original = { clientState: { queries: [], mutations: [operation] } };
+    let input: unknown = original;
+    jest.mocked(get).mockImplementation(async key => key === 'react-query-cache' ? JSON.parse(JSON.stringify(input)) as never : undefined as never);
+    jest.mocked(update).mockImplementation(async (key, updater) => { if (key === 'react-query-cache') input = updater(input); });
+    await preserveLegacyQueryCache(collection => collection === 'groups', 'owner');
+    expect(input).toEqual(original);
+    expect(await listLegacyQueryCopies('owner')).toEqual([]);
+  });
 
   it('lets the old cache be overwritten only after its copies are archived', async () => {
     let release!: (value: unknown) => void;

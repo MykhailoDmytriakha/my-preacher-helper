@@ -4,7 +4,7 @@ import { getAuthenticatedRequestHeaders } from '@/utils/authenticatedRequest';
 import { resolveOwnerUid } from '@/utils/queryKeys';
 
 jest.mock('@/utils/apiClient', () => ({ apiClient: jest.fn() }));
-jest.mock('@/utils/authenticatedRequest', () => ({ getAuthenticatedRequestHeaders: jest.fn() }));
+jest.mock('@/utils/authenticatedRequest', () => ({ ...jest.requireActual('@/utils/authenticatedRequest'), getAuthenticatedRequestHeaders: jest.fn() }));
 jest.mock('@/utils/queryKeys', () => ({ resolveOwnerUid: jest.fn() }));
 jest.mock('@/utils/appDiagnostics', () => ({ recordDiagnostic: jest.fn(), diagnosticErrorCode: () => undefined }));
 

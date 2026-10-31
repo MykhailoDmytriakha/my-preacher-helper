@@ -20,7 +20,7 @@ export async function readSermonFromServer(id: string): Promise<Sermon | undefin
   recordDiagnostic(SERMON_READ_EVENT, { source: 'http', result: 'started' });
   try {
     return await readWithDeadline((async () => {
-      const headers = await getAuthenticatedRequestHeaders();
+      const headers = await getAuthenticatedRequestHeaders(owner ?? null);
       if (controller.signal.aborted) throw new Error('Read cancelled');
       if (!headers.Authorization) throw Object.assign(new Error('Authentication required'), { code: 'unauthenticated' });
       const response = await apiClient(`/api/sermons/${encodeURIComponent(id)}?read=${newClientId()}`, {

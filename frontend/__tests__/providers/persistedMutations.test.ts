@@ -1,4 +1,4 @@
-import { get } from 'idb-keyval';
+import { get, update } from 'idb-keyval';
 
 import { installStorageHarness } from '@/data-engine/__tests__/storageHarness';
 import { listLegacyQueryCopies, preserveLegacyQueryCache, removeLegacyCopies } from '@/data-engine/legacyQueryRecovery.client';
@@ -13,7 +13,7 @@ import { shouldDehydrateMutation } from '@/providers/QueryProvider';
  * the running session, so after "Accept everything from the server" the next start archived it
  * anew and the notice came back.
  */
-jest.mock('idb-keyval', () => ({ createStore: jest.fn(), get: jest.fn() }));
+jest.mock('idb-keyval', () => ({ createStore: jest.fn(), get: jest.fn(), update: jest.fn() }));
 
 const ON_ENGINE = 'NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS';
 const failedToggle = {
@@ -35,13 +35,18 @@ afterEach(() => { delete process.env[ON_ENGINE]; });
 it('does not bring back a copy the person removed once the session has written its cache', async () => {
   process.env[ON_ENGINE] = 'users';
   installStorageHarness();
-  jest.mocked(get).mockResolvedValue(savedCache([failedToggle]));
+  let stored: unknown = savedCache([failedToggle]);
+  jest.mocked(get).mockImplementation(async key => key === 'react-query-cache' ? stored : undefined);
+  jest.mocked(update).mockImplementation(async (key, updater) => {
+    expect(key).toBe('react-query-cache');
+    stored = updater(stored);
+  });
   await preserveLegacyQueryCache(isCollectionOnEngine);
   const copies = await listLegacyQueryCopies('owner');
   expect(copies).toHaveLength(1);
 
   await removeLegacyCopies('owner', copies);
-  jest.mocked(get).mockResolvedValue(savedCache(writtenBack([failedToggle, pausedNoteEdit])));
+  stored = savedCache(writtenBack([failedToggle, pausedNoteEdit]));
   await preserveLegacyQueryCache(isCollectionOnEngine);
 
   expect(await listLegacyQueryCopies('owner')).toEqual([]);

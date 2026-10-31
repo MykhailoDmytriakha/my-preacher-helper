@@ -34,9 +34,7 @@ type SerializedWriteError = {
   message: string;
 } & Partial<Record<ErrorField, unknown>>;
 
-function serializeWriteError(error: unknown): unknown {
-  if (!(error instanceof Error)) return error;
-
+function serializeWriteError(error: Error): SerializedWriteError {
   const fields = error as Error & Partial<Record<ErrorField, unknown>>;
   const serialized: SerializedWriteError = {
     [PERSISTED_ERROR_MARKER]: true,
@@ -82,25 +80,34 @@ function asSavedCopy(state: PersistedQueryState): PersistedQueryState {
   return { ...state, status: 'success', error: null, fetchFailureCount: 0, fetchFailureReason: null };
 }
 
+type SavedMutation = PersistedClient['clientState']['mutations'][number];
+const hasUnconfirmedDelivery = (mutation: SavedMutation) => mutation.state.status === 'pending' && !mutation.state.isPaused;
+
+/** Only the saved copy is held for review; the live request can still receive its acknowledgement. */
+export function serializeSavedMutation(mutation: SavedMutation): SavedMutation {
+  const held = hasUnconfirmedDelivery(mutation);
+  const error = held
+    ? Object.assign(new Error('The saved action was sent, but its result is not confirmed'), { code: 'delivery-unconfirmed' })
+    : mutation.state.error;
+  if (!(error instanceof Error)) return mutation;
+  return {
+    ...mutation,
+    state: { ...mutation.state, ...(held ? { status: 'error' as const, isPaused: false } : {}), error: serializeWriteError(error) },
+  };
+}
+
 function serializePersistedClient(client: PersistedClient): PersistedClient {
   const queries = client.clientState?.queries;
   const mutations = client.clientState?.mutations;
   const failedWithData = queries?.some((query) => query.state?.status === 'error' && query.state.data !== undefined);
-  if (!failedWithData && !mutations?.some((mutation) => mutation.state.error instanceof Error)) return client;
+  if (!failedWithData && !mutations?.some((mutation) => mutation.state.error instanceof Error || hasUnconfirmedDelivery(mutation))) return client;
 
   return {
     ...client,
     clientState: {
       ...client.clientState,
       queries: failedWithData ? queries.map((query) => ({ ...query, state: asSavedCopy(query.state) })) : queries,
-      mutations: mutations?.map((mutation) =>
-        mutation.state.error instanceof Error
-          ? {
-              ...mutation,
-              state: { ...mutation.state, error: serializeWriteError(mutation.state.error) },
-            }
-          : mutation
-      ),
+      mutations: mutations?.map(serializeSavedMutation),
     },
   } as PersistedClient;
 }
@@ -130,9 +137,14 @@ function restorePersistedClient(client: PersistedClient | undefined): PersistedC
 /** idb-keyval's default database — where the query cache has always lived — watched like every other store. */
 export const queryCacheStore = watchedStore('keyval-store', 'keyval', 'query-cache');
 
-export function createIDBPersister(key: IDBValidKey = 'react-query-cache', { mayOverwrite = () => true, onLateRestore }: {
+export const LEGACY_QUERY_CACHE_KEY = 'react-query-cache';
+export function accountQueryCacheKey(owner: string): [string, string] { return [LEGACY_QUERY_CACHE_KEY, owner]; }
+
+export function createIDBPersister(key: IDBValidKey = LEGACY_QUERY_CACHE_KEY, { mayOverwrite = () => true, onLateRestore, readClient }: {
   /** False while something still has to read the old cache first; the write is skipped, the next one retries. */
   mayOverwrite?: () => boolean;
+  /** Optional account-aware reader; serialization and silence protection stay here. */
+  readClient?: () => Promise<PersistedClient | undefined>;
   /** A restore that answered after the app stopped waiting: hydrate it; writing resumes right after. */
   onLateRestore?: (client: PersistedClient) => void;
 } = {}): Persister {
@@ -155,7 +167,9 @@ export function createIDBPersister(key: IDBValidKey = 'react-query-cache', { may
       });
     },
     restoreClient: async () => {
-      const reading = get<PersistedClient>(key, queryCacheStore);
+      // A failed read is unread too: TanStack calls removeClient on restore rejection.
+      unread = true;
+      const reading = readClient ? readClient() : get<PersistedClient>(key, queryCacheStore);
       const read = await answerWithin(reading);
       if (!read.answered) {
         unread = true;
@@ -168,6 +182,7 @@ export function createIDBPersister(key: IDBValidKey = 'react-query-cache', { may
         }, () => undefined);
         return undefined;
       }
+      unread = false;
       const restored = restorePersistedClient(read.value);
       debugLog('ReactQuery cache restored', {
         key,

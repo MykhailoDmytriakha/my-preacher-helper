@@ -1,19 +1,21 @@
 'use client';
 
-import { QueryClient, MutationCache, hydrate, onlineManager, type Query } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, IsRestoringProvider, hydrate, onlineManager, useIsRestoring, type Query } from '@tanstack/react-query';
 import { PersistQueryClientProvider, type PersistedClient } from '@tanstack/react-query-persist-client';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
 
 import UsageCapGlobalHandler from '@/components/usage/UsageCapGlobalHandler';
 import { DataEngineMigrationGate, queryCacheMayBeOverwritten, shouldPersistLegacyMutation, shouldPersistLegacyQuery } from '@/data-engine/react.client';
+import { useAuth } from '@/providers/AuthProvider';
 import { isOfflineQueuedError, isStaleWriteError, isWriteRefusedError } from '@/services/conflictSafeUpdate.client';
 import { notifyUsageCapReached } from '@/services/usageCapClient';
+import { createAccountQueryPersister, OwnerMutationCache } from '@/utils/accountQueryCache';
 import { isConnectionFailure } from '@/utils/apiClient';
 import { getConnectivityStatus, subscribeToConnectivity } from '@/utils/connectivity';
 import { registerOfflineMutationDefaults } from '@/utils/mutationDefaults';
-import { createIDBPersister } from '@/utils/queryPersister';
+import { resolveOwnerUid } from '@/utils/queryKeys';
 import { createQueryReconnectRecovery } from '@/utils/queryReconnectRecovery';
 import { i18n } from '@locales/i18n';
 
@@ -95,15 +97,33 @@ export const shouldPersistQuery = (query: Pick<Query, 'state' | 'queryKey'>): bo
   && shouldPersistLegacyQuery(query.queryKey);
 
 export const QueryProvider = ({ children }: { children: React.ReactNode }) => {
-  return <DataEngineMigrationGate><QueryRuntimeProvider>{children}</QueryRuntimeProvider></DataEngineMigrationGate>;
+  const { user, loading } = useAuth();
+  const owner = loading ? undefined : user?.uid;
+  const workspace = <QueryRuntimeProvider key={JSON.stringify([loading, owner ?? null])} owner={owner} authLoading={loading}>{children}</QueryRuntimeProvider>;
+  return loading ? workspace : <DataEngineMigrationGate>{workspace}</DataEngineMigrationGate>;
 };
 
-const QueryRuntimeProvider = ({ children }: { children: React.ReactNode }) => {
-  const [{ queryClient, reconnectRecovery }] = useState(() => {
+/** Resume after the persistence provider's effect subscribes, including an immediate cached answer. */
+function ResumeOwnedMutations({ client, mayRun }: { client: QueryClient; mayRun: () => boolean }) {
+  const restoring = useIsRestoring();
+  useEffect(() => {
+    let active = true;
+    if (!restoring) void Promise.resolve().then(() => { if (active && mayRun()) return client.resumePausedMutations(); });
+    return () => { active = false; };
+  }, [client, restoring, mayRun]);
+  return null;
+}
+
+const QueryRuntimeProvider = ({ children, owner, authLoading }: { children: React.ReactNode; owner: string | undefined; authLoading: boolean }) => {
+  const active = useRef(true);
+  useEffect(() => { active.current = true; return () => { active.current = false; }; }, []);
+  const isCurrentOwner = useCallback(() => Boolean(active.current && owner && resolveOwnerUid() === owner), [owner]);
+  const [{ queryClient, reconnectRecovery, mutationCache }] = useState(() => {
     const reconnectRecovery = createQueryReconnectRecovery();
     const client = new QueryClient({
-        mutationCache: new MutationCache({
+        mutationCache: new OwnerMutationCache(isCurrentOwner, {
           onError: (error: unknown) => {
+            if (!isCurrentOwner()) return;
             if (notifyUsageCapReached(error)) return;
 
             // GLOBAL 401 GUARD (C2 Fix)
@@ -172,15 +192,19 @@ const QueryRuntimeProvider = ({ children }: { children: React.ReactNode }) => {
 
     registerOfflineMutationDefaults(client);
     if (typeof window !== 'undefined') followConnectivityInQueries();
-    return { queryClient: client, reconnectRecovery };
+    return { queryClient: client, reconnectRecovery, mutationCache: client.getMutationCache() as OwnerMutationCache };
   });
 
   useEffect(() => reconnectRecovery.connect(queryClient), [queryClient, reconnectRecovery]);
 
-  const [persister] = useState(() => createIDBPersister(undefined, {
-    mayOverwrite: queryCacheMayBeOverwritten,
-    onLateRestore: (restored) => takeInLateRestore(queryClient, restored),
+  const [persister] = useState(() => authLoading ? undefined : createAccountQueryPersister(owner, {
+    mayOverwrite: () => active.current && queryCacheMayBeOverwritten(owner),
+    onLateRestore: (restored) => { if (isCurrentOwner()) takeInLateRestore(queryClient, restored); },
   }));
+
+  // Public server-rendered content stays visible while Firebase restores. Queries cannot restore,
+  // fetch or resume private work in this temporary memory-only client.
+  if (!persister) return <QueryClientProvider client={queryClient}><IsRestoringProvider value>{children}</IsRestoringProvider></QueryClientProvider>;
 
   return (
     <PersistQueryClientProvider
@@ -191,14 +215,14 @@ const QueryRuntimeProvider = ({ children }: { children: React.ReactNode }) => {
         dehydrateOptions: {
           // MUTATION PERSISTENCE (C1 Fix): Crucial for zero-data-loss
           shouldDehydrateQuery: shouldPersistQuery,
-          shouldDehydrateMutation,
+          // A previously saved intent stays recoverable while its delivery is indeterminate.
+          // The persister saves that in-flight copy as an error for manual review, never auto-replay.
+          shouldDehydrateMutation: mutation => shouldDehydrateMutation(mutation)
+            || (mutation.state.status === 'pending' && mutationCache.wasDurable(mutation) && shouldPersistLegacyMutation(mutation.options.mutationKey)),
         },
       }}
-      onSuccess={() => {
-        // Resume any persisted mutations on load
-        queryClient.resumePausedMutations();
-      }}
     >
+      <ResumeOwnedMutations client={queryClient} mayRun={isCurrentOwner} />
       <UsageCapGlobalHandler />
       {children}
     </PersistQueryClientProvider>
