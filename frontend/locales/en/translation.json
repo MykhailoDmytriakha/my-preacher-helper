@@ -4659,7 +4659,15 @@
     },
     "markGlue": "Join with the line above",
     "changedText": "The passage’s text in this Bible has changed since it was analysed: part of the analysis may have shifted.",
-    "notKept": "This analysis was not saved on this device — what you see is only on the screen.",
+    "notKept": "Saving this analysis on this device was not confirmed. Stay here and try saving again.",
+    "firstCaptureSaving": "Saving this analysis on this device…",
+    "firstCaptureWaiting": "Your marks remain in this window. Wait for this device’s storage to respond before continuing.",
+    "leaveUnkept": {
+      "title": "Leave before this analysis is saved?",
+      "description": "Saving on this device has not been confirmed. If you leave now, your marks may not be available when you return.",
+      "leave": "Leave anyway",
+      "stay": "Stay in this analysis"
+    },
     "saveAgain": "Save again",
     "creation": {
       "combining": "This passage already has an analysis. Combining the saved marks…",

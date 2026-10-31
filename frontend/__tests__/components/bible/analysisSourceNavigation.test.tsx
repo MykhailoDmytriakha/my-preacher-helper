@@ -8,6 +8,7 @@ import { ReaderAnalysis } from '@/components/bible/analysis/ReaderAnalysis';
 import { useDataDocument } from '@/data-engine/react.client';
 import { useStudyNotesEngine } from '@/hooks/useStudyNotesEngine';
 import { passageWords } from '@/utils/passageAnalysis';
+import { resetDeviceStorageForTests, STORAGE_ANSWER_SETTLE_MS, STORAGE_SILENCE_MS, STORAGE_WAKE_GRACE_MS, trackStorage } from '@/utils/deviceStorage';
 
 import type { StudyNote } from '@/models/models';
 import type { AppLocale } from '@/utils/appLocale';
@@ -177,4 +178,208 @@ describe('an analysis opened outside its original Bible context', () => {
     expect(screen.getByRole('button', { name: 'analysis.modeEdit' })).toHaveAttribute('aria-pressed', 'true');
     expect(new URL(window.location.href).searchParams.get('mode')).toBe('edit');
   });
+});
+
+
+describe('ordinary departure before the first analysis capture', () => {
+  type Exit = 'done' | 'back' | 'escape' | 'verses';
+  const leave = (exit: Exit) => {
+    if (exit === 'escape') fireEvent.keyDown(window, { key: 'Escape' });
+    else fireEvent.click(screen.getByRole('button', {
+      name: exit === 'done' ? 'analysis.done' : exit === 'back' ? 'analysis.back' : 'analysis.editVerses',
+    }));
+  };
+  const firstCapture = async () => {
+    engine.notes = [];
+    formNote = undefined;
+    putAddress(canonicalRstUrl);
+    let resolve!: () => void;
+    let reject!: (error: Error) => void;
+    const acceptance = new Promise<void>((yes, no) => { resolve = yes; reject = no; });
+    let created!: StudyNote;
+    engine.createNote.mockImplementation((value: Partial<StudyNote>) => {
+      created = { ...sourceAnalysis, ...value, id: 'first-analysis-capture', type: 'analysis' };
+      return { note: created, acceptance };
+    });
+    const onClose = jest.fn(), onEditVerses = jest.fn();
+    const opening: AnalysisOpening = { kind: 'new', passage };
+    const element = (nextOpening: AnalysisOpening = opening) => <AnalysisEditor opening={nextOpening} text={rstText}
+      bookId="Ephesians" bible="rst" locale={locale} onClose={onClose} onEditVerses={onEditVerses} />;
+    const view = render(element());
+    const word = document.querySelector('[data-word="5"]');
+    expect(word).not.toBeNull();
+    await act(async () => { fireEvent.click(word!); });
+    expect(engine.createNote).toHaveBeenCalledTimes(1);
+    expect(document.querySelector('[data-line="5"]')).not.toBeNull();
+    return { view, element, onClose, onEditVerses, resolve, reject, created: () => created };
+  };
+
+  describe.each(['pending', 'refused'] as const)('while the first local capture is %s', (state) => {
+    it.each(['done', 'back', 'escape', 'verses'] as const)('keeps the authored mark before an ordinary %s departure', async (exit) => {
+      const capture = await firstCapture();
+      try {
+        if (state === 'refused') {
+          await act(async () => { capture.reject(new Error('Device capture refused')); });
+          expect(screen.getByText('analysis.notKept')).toBeInTheDocument();
+        }
+        leave(exit);
+        // An explicit discard choice is different from an ordinary attempt to leave.
+        // A disabled exit or a confirmation may protect the only currently usable copy.
+        expect(capture.onClose).not.toHaveBeenCalled();
+        expect(capture.onEditVerses).not.toHaveBeenCalled();
+        expect(document.querySelector('[data-line="5"]')).not.toBeNull();
+        expect(new URL(window.location.href).searchParams.get('analysis')).toBe('first-analysis-capture');
+      } finally {
+        capture.view.unmount();
+        await act(async () => { capture.resolve(); });
+      }
+    });
+  });
+
+  it('leaves an unchanged passage without making an analysis', () => {
+    engine.notes = [];
+    formNote = undefined;
+    putAddress(canonicalRstUrl);
+    const view = editor({ kind: 'new', passage }, rstText, 'rst');
+    leave('done');
+    expect(view.onClose).toHaveBeenCalledTimes(1);
+    expect(engine.createNote).not.toHaveBeenCalled();
+  });
+
+  it('leaves normally once the first capture has accepted ownership', async () => {
+    const capture = await firstCapture();
+    try {
+      engine.notes = [capture.created()];
+      formNote = capture.created();
+      await act(async () => { capture.resolve(); });
+      leave('done');
+      expect(capture.onClose).toHaveBeenCalledTimes(1);
+      expect(capture.onEditVerses).not.toHaveBeenCalled();
+      expect(new URL(window.location.href).searchParams.has('analysis')).toBe(false);
+    } finally { capture.view.unmount(); }
+  });
+
+
+  it('keeps the mark when Stay is chosen after a capture refusal', async () => {
+    const capture = await firstCapture();
+    try {
+      await act(async () => { capture.reject(new Error('Device capture refused')); });
+      leave('done');
+      await screen.findByRole('dialog', { name: 'analysis.leaveUnkept.title' });
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'analysis.leaveUnkept.stay' })); });
+      expect(screen.queryByRole('dialog', { name: 'analysis.leaveUnkept.title' })).not.toBeInTheDocument();
+      expect(capture.onClose).not.toHaveBeenCalled();
+      expect(document.querySelector('[data-line="5"]')).not.toBeNull();
+      expect(new URL(window.location.href).searchParams.get('analysis')).toBe('first-analysis-capture');
+    } finally { capture.view.unmount(); await act(async () => { capture.resolve(); }); }
+  });
+
+  it.each(['done', 'back', 'escape', 'verses'] as const)('performs the %s departure only after explicit Leave', async (exit) => {
+    const capture = await firstCapture();
+    try {
+      await act(async () => { capture.reject(new Error('Device capture refused')); });
+      leave(exit);
+      await screen.findByRole('dialog', { name: 'analysis.leaveUnkept.title' });
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'analysis.leaveUnkept.leave' })); });
+      expect(capture.onClose).toHaveBeenCalledTimes(exit === 'verses' ? 0 : 1);
+      expect(capture.onEditVerses).toHaveBeenCalledTimes(exit === 'verses' ? 1 : 0);
+      expect(new URL(window.location.href).searchParams.has('analysis')).toBe(false);
+      expect(engine.createNote).toHaveBeenCalledTimes(1);
+      expect(engine.updateNote).not.toHaveBeenCalled();
+    } finally { capture.view.unmount(); await act(async () => { capture.resolve(); }); }
+  });
+
+  it('lets Escape dismiss the departure question without dismissing the unkept analysis', async () => {
+    const capture = await firstCapture();
+    try {
+      leave('done');
+      await screen.findByRole('dialog', { name: 'analysis.leaveUnkept.title' });
+      await act(async () => { fireEvent.keyDown(window, { key: 'Escape' }); });
+      expect(screen.queryByRole('dialog', { name: 'analysis.leaveUnkept.title' })).not.toBeInTheDocument();
+      expect(capture.onClose).not.toHaveBeenCalled();
+      expect(document.querySelector('[data-line="5"]')).not.toBeNull();
+      leave('escape');
+      expect(await screen.findByRole('dialog', { name: 'analysis.leaveUnkept.title' })).toBeInTheDocument();
+      expect(capture.onClose).not.toHaveBeenCalled();
+    } finally { capture.view.unmount(); await act(async () => { capture.resolve(); }); }
+  });
+
+  it('withdraws an obsolete question when the original first capture is accepted', async () => {
+    const capture = await firstCapture();
+    try {
+      leave('done');
+      await screen.findByRole('dialog', { name: 'analysis.leaveUnkept.title' });
+      engine.notes = [capture.created()]; formNote = capture.created();
+      await act(async () => { capture.resolve(); });
+      expect(screen.queryByRole('dialog', { name: 'analysis.leaveUnkept.title' })).not.toBeInTheDocument();
+      expect(capture.onClose).not.toHaveBeenCalled();
+      leave('done');
+      expect(capture.onClose).toHaveBeenCalledTimes(1);
+    } finally { capture.view.unmount(); }
+  });
+
+  it.each(['account', 'opening'] as const)('withdraws a question belonging to the previous %s', async (changed) => {
+    const capture = await firstCapture();
+    try {
+      leave('done');
+      await screen.findByRole('dialog', { name: 'analysis.leaveUnkept.title' });
+      if (changed === 'account') engine.uid = 'next-owner';
+      capture.view.rerender(capture.element(changed === 'opening'
+        ? { kind: 'new', passage: { chapter: 1, fromVerse: 2, toChapter: 1, toVerse: 2 } } : undefined));
+      expect(screen.queryByRole('dialog', { name: 'analysis.leaveUnkept.title' })).not.toBeInTheDocument();
+      expect(capture.onClose).not.toHaveBeenCalled();
+      expect(capture.onEditVerses).not.toHaveBeenCalled();
+      expect(engine.createNote).toHaveBeenCalledTimes(1);
+    } finally { capture.view.unmount(); await act(async () => { capture.resolve(); }); }
+  });
+
+  it('retries a refusal under the original creation target, then leaves without another question', async () => {
+    const capture = await firstCapture();
+    try {
+      await act(async () => { capture.reject(new Error('Device capture refused')); });
+      engine.createNote.mockImplementationOnce((value: Partial<StudyNote>) => {
+        const made = { ...capture.created(), ...value };
+        engine.notes = [made]; formNote = made;
+        return { note: made, acceptance: Promise.resolve() };
+      });
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'analysis.saveAgain' })); });
+      expect(engine.createNote).toHaveBeenCalledTimes(2);
+      expect(engine.createNote.mock.calls[1][1]).toEqual(engine.createNote.mock.calls[0][1]);
+      expect(engine.createNote.mock.calls[1][0].analysis.cuts).toEqual([5]);
+      leave('done');
+      expect(capture.onClose).toHaveBeenCalledTimes(1);
+      expect(screen.queryByRole('dialog', { name: 'analysis.leaveUnkept.title' })).not.toBeInTheDocument();
+    } finally { capture.view.unmount(); }
+  });
+
+  it('shows shared storage silence without failing or duplicating an unanswered first write', async () => {
+    const capture = await firstCapture();
+    let answerStorage!: () => void;
+    jest.useFakeTimers();
+    const pendingStorage = trackStorage('engine-state', new Promise<void>(resolve => { answerStorage = resolve; }));
+    try {
+      expect(screen.getByText('analysis.firstCaptureSaving')).toBeInTheDocument();
+      expect(screen.queryByText('analysis.loading')).not.toBeInTheDocument();
+      await act(async () => { await jest.advanceTimersByTimeAsync(STORAGE_SILENCE_MS + STORAGE_WAKE_GRACE_MS + 1); });
+      expect(screen.getByText('deviceStorage.title')).toBeInTheDocument();
+      expect(screen.getByText('analysis.firstCaptureWaiting')).toBeInTheDocument();
+      expect(screen.queryByText('analysis.notKept')).not.toBeInTheDocument();
+      expect(engine.createNote).toHaveBeenCalledTimes(1);
+      await act(async () => {
+        answerStorage(); await pendingStorage;
+        await jest.advanceTimersByTimeAsync(STORAGE_ANSWER_SETTLE_MS + STORAGE_WAKE_GRACE_MS + 1);
+      });
+      expect(screen.getByText('analysis.firstCaptureSaving')).toBeInTheDocument();
+      engine.notes = [capture.created()]; formNote = capture.created();
+      await act(async () => { capture.resolve(); });
+      expect(screen.queryByText('analysis.firstCaptureSaving')).not.toBeInTheDocument();
+      expect(screen.queryByText('analysis.firstCaptureWaiting')).not.toBeInTheDocument();
+      expect(engine.createNote).toHaveBeenCalledTimes(1);
+    } finally {
+      capture.view.unmount(); answerStorage(); await pendingStorage;
+      await act(async () => { capture.resolve(); });
+      resetDeviceStorageForTests(); jest.useRealTimers();
+    }
+  });
+
 });

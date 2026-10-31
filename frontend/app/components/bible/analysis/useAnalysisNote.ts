@@ -352,6 +352,10 @@ export function useAnalysisNote({ opening, text, bookId, bible, locale }: { open
   }, [history, lay, ready]);
 
   return {
+    /** Account owning this opening, including a first capture that has no form yet. */
+    owner: engine.uid,
+    /** The first create is still waiting for its local ownership receipt. */
+    capturing: !kept,
     hasSavedParts: Boolean(stored?.cuts?.length),
     source, sourceReference: sourceNote?.scriptureRefs?.[0], sourceMatches, passage, words, total, abbrev, place, state, change, undo, canUndo: ready && history.length > 0, flush, opensForViewing,
     /** The person's analyses are read and the note's form can take a change. */

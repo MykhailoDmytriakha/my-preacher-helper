@@ -1,12 +1,13 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent, type PointerEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type MouseEvent, type PointerEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { PHASES_TAKING_CHANGES } from '@/data-engine/react.client';
 import { useModalLayer } from '@/hooks/useModalLayer';
+import { EDITOR_STORAGE, getDeviceStorageHealth, subscribeDeviceStorage } from '@/utils/deviceStorage';
 import {
   cutAt, depthOf, dropTie, glueAt, holderOf, holdersOf, needsArrow, partEnd, partOf, partsOn, partStarts,
   partText, stepDown, stepUp, tieTo, tieTurns, type AnalysisState, type AnalysisWord, type CutLevel,
@@ -19,6 +20,7 @@ import {
   ARROW, AnalysisHeader, AnalysisLine, PanelGlyph, UntieMark, type AnalysisMode, type LineDrag, type LineRole, type LineSteps, type LineWord, type WordDrag,
 } from './AnalysisParts';
 import { RelationGlyph } from './RelationParts';
+import { useAnalysisDeparture } from './useAnalysisDeparture';
 import { useAnalysisMarks, type AnalysisMarks } from './useAnalysisMarks';
 import { useAnalysisNote, type AnalysisOpening } from './useAnalysisNote';
 import { useAnalysisRelations } from './useAnalysisRelations';
@@ -90,7 +92,12 @@ export function AnalysisEditor({ opening, text, bookId, bible, locale, marks: le
   const relations = useAnalysisRelations({ state, total, geometry, at, bare, editing: mode === 'edit', showAll: mode === 'view' && allLinks, change, say: setMessage });
   const marks = useAnalysisMarks({ source: lentMarks ?? null, words });
 
-  const close = useCallback(() => { note.flush(); writeAnalysisAddress(null); onClose(); }, [note, onClose]);
+  const departureSubject = useMemo(() => ({ owner: note.owner, opening, text, bookId, bible }), [note.owner, opening, text, bookId, bible]);
+  const { requestDeparture, departureDialog } = useAnalysisDeparture({ unkept: note.capturing || note.refused, subject: departureSubject });
+  const leave = useCallback((finish: () => void) => {
+    void requestDeparture(() => { note.flush(); writeAnalysisAddress(null); finish(); });
+  }, [note, requestDeparture]);
+  const close = useCallback(() => leave(onClose), [leave, onClose]);
   const sourceBible = note.source?.bible;
   const sourceMode = opening.kind === 'open' && opening.editing !== undefined ? firstMode(opening) : note.hasSavedParts ? 'view' : mode;
   useEffect(() => {
@@ -246,7 +253,10 @@ export function AnalysisEditor({ opening, text, bookId, bible, locale, marks: le
         onMode={(value) => { setMode(value); setSelected(null); setMessage(null); }}
         canUndo={note.canUndo} onUndo={undo} onClose={close} tools={marks.toolbar}
         allLinks={mode === 'view' && state.relations.length ? { on: allLinks, onToggle: () => setAllLinks(!allLinks) } : null}
-        onEditVerses={onEditVerses && note.passage ? () => { note.flush(); writeAnalysisAddress(null); onEditVerses(note.noteId(), note.passage!); } : undefined} />
+        onEditVerses={onEditVerses && note.passage ? () => {
+          const passage = note.passage;
+          if (passage) leave(() => onEditVerses(note.noteId(), passage));
+        } : undefined} />
       <div className="flex min-h-0 flex-1">
         {/* The top padding leaves room for a mark's name over the first line, the left one for a top line's two arrows and
             its dot and a verse number hung in the margin, at every screen width. */}
@@ -282,6 +292,7 @@ export function AnalysisEditor({ opening, text, bookId, bible, locale, marks: le
           {message ? <div className={`rounded-xl px-3 py-2 leading-relaxed ${message.warn ? 'bg-rose-50 text-rose-800 dark:bg-rose-950/50 dark:text-rose-200' : 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-200'}`}>{message.text}</div> : null}
         </aside>
       </div>
+      {departureDialog}
     </div>,
     document.body,
   );
@@ -309,17 +320,24 @@ function AnalysisNotices({ ready, changedText, sync, refused, onSaveAgain, creat
   ready: boolean; changedText: boolean; sync: ReturnType<typeof useAnalysisNote>['sync']; refused: boolean; onSaveAgain: () => void;
 }) {
   const { t } = useTranslation();
+  const health = useSyncExternalStore(subscribeDeviceStorage, getDeviceStorageHealth, getDeviceStorageHealth);
+  const waitingForStorage = creation.capturing && health.silent.some(entry => EDITOR_STORAGE.some(database => database === entry.database));
   const decision = sync && !PHASES_TAKING_CHANGES.has(sync.status?.phase ?? 'saved');
   return (
     <>
       <AnalysisCreationNotice note={creation} />
+      {creation.capturing ? (
+        <p role="status" className={`mb-4 rounded-xl px-3 py-2 text-sm ${waitingForStorage ? 'bg-amber-50 text-amber-900 dark:bg-amber-950/40 dark:text-amber-200' : 'bg-gray-50 text-gray-600 dark:bg-gray-900 dark:text-gray-300'}`}>
+          {waitingForStorage ? <><strong className="mb-1 block font-medium">{t('deviceStorage.title')}</strong>{t('analysis.firstCaptureWaiting')}</> : t('analysis.firstCaptureSaving')}
+        </p>
+      ) : null}
       {refused ? (
         <div role="alert" className="mb-4 flex flex-wrap items-center gap-3 rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-800 dark:bg-rose-950/40 dark:text-rose-200">
           <span className="min-w-0 flex-1">{t('analysis.notKept')}</span>
           <button type="button" onClick={onSaveAgain} className="h-8 rounded-lg bg-white px-3 font-semibold text-rose-700 ring-1 ring-rose-200 hover:bg-rose-100 dark:bg-rose-950 dark:text-rose-200 dark:ring-rose-800">{t('analysis.saveAgain')}</button>
         </div>
       ) : null}
-      {ready || decision || refused ? null : <p role="status" className="mb-4 rounded-xl bg-gray-50 px-3 py-2 text-sm text-gray-600 dark:bg-gray-900 dark:text-gray-300">{t('analysis.loading')}</p>}
+      {ready || decision || refused || creation.capturing ? null : <p role="status" className="mb-4 rounded-xl bg-gray-50 px-3 py-2 text-sm text-gray-600 dark:bg-gray-900 dark:text-gray-300">{t('analysis.loading')}</p>}
       {changedText ? <p className="mb-4 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-950/40 dark:text-amber-200">{t('analysis.changedText')}</p> : null}
       {sync && !creation.duplicateRefusal ? (
         <DataSyncStatus subject={sync.recoveryIdentity} status={sync.status} error={sync.state ? null : sync.error} className="mb-4"
