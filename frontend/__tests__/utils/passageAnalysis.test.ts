@@ -123,6 +123,27 @@ describe('passageAnalysis — the rules of a block diagram', () => {
     expect(holderOf(dropTie(tieTo(cutAt(EMPTY_ANALYSIS, at('Апостол'), total)!, 0, at('Апостол'), total) as AnalysisState, 0, total), 0)).toBeNull();
   });
 
+  it('shows a tie the person drew by its arrow — to the line just above too — and a step made by ↳ or ‹ › without one', () => {
+    // The owner, 31.10: «если мы строку… сделали её сабстрокой, то связь по умолчанию не происходит. Но если мы взяли
+    // точку, потянули и поставили, тогда связь появляется».
+    const state = ownersExample();
+    // «Иисуса Христа,» stands under «Апостол» by ↳: no arrow.
+    expect(needsArrow(state, at('Иисуса'))).toBe(false);
+    // Its dot drawn onto «Апостол», the line just above: the same place, and now an arrow into that word.
+    const drawn = tieTo(state, at('Иисуса'), at('Апостол'), total) as AnalysisState;
+    expect([holderOf(drawn, at('Иисуса')), depthOf(drawn, at('Иисуса')), needsArrow(drawn, at('Иисуса'))]).toEqual([at('Апостол'), 2, true]);
+    // Down as well: «Апостол» drawn onto «благодать», a line below it.
+    const down = tieTo(state, at('Апостол'), at('благодать'), total) as AnalysisState;
+    expect([holderOf(down, at('Апостол')), needsArrow(down, at('Апостол'))]).toEqual([at('благодать'), true]);
+    // Its × takes the tie and its arrow away; a step by ‹ › makes it the indent's again.
+    expect(needsArrow(dropTie(drawn, at('Иисуса'), total), at('Иисуса'))).toBe(false);
+    const stepped = stepDown(stepUp(drawn, at('Иисуса'), total)!, at('Иисуса'), total)!;
+    expect([holderOf(stepped, at('Иисуса')), needsArrow(stepped, at('Иисуса'))]).toEqual([at('Апостол'), false]);
+    // A line cut ↵ from a drawn one hangs beside it, by its indent, with no arrow of its own.
+    const cut = cutAt(drawn, at('Христа,'), total, 'same')!;
+    expect(needsArrow(cut, at('Христа,'))).toBe(false);
+  });
+
   it('refuses a tie to the part\'s own words', () => {
     expect(tieTo(ownersExample(), at('Апостол'), at('Апостол'), total)).toBe('own');
     expect(tieTurns(ownersExample(), at('Апостол'), at('Апостол'))).toBe(false);
@@ -154,8 +175,9 @@ describe('passageAnalysis — the rules of a block diagram', () => {
   });
 
   it('settles a stored state: stale cuts, ties from words that start no part, ties into their own part and loops go', () => {
-    const messy = { cuts: [0, 5, 5, 99, 3], links: { 3: 1, 4: 0, 5: 6, 9: 2 }, relations: [] };
-    expect(settled(messy, total)).toEqual({ cuts: [3, 5], links: { 3: 1 }, relations: [] });
+    // A drawn tie goes with its tie: 5's tie into its own part goes, and so does its mark.
+    const messy = { cuts: [0, 5, 5, 99, 3], links: { 3: 1, 4: 0, 5: 6, 9: 2 }, relations: [], drawn: [5, 3, 3] };
+    expect(settled(messy, total)).toEqual({ cuts: [3, 5], links: { 3: 1 }, relations: [], drawn: [3] });
     const loop = { cuts: [3, 5], links: { 3: 5, 5: 3 }, relations: [] };
     expect(Object.keys(settled(loop, total).links)).toHaveLength(1);
   });
@@ -191,7 +213,7 @@ describe('passageAnalysis — the rules of a block diagram', () => {
     let state = cutAt(ownersExample(), at('мир'), total)!; // a cut inside verse 2: work there
     state = tieTo(state, at('Апостол'), at('Бога'), total) as AnalysisState; // «Апостол…» tied into verse 2
     const shrunk = reshapeAnalysis(state, total, 0, total - v2)!;
-    expect(shrunk.back).toEqual({ cuts: [at('мир') - v2], links: {}, relations: [] });
+    expect(shrunk.back).toEqual({ cuts: [at('мир') - v2], links: {}, relations: [], drawn: [] });
     expect(Object.values(shrunk.state.links).every((word) => word < v2)).toBe(true);
     expect(holderOf(shrunk.state, at('Апостол'))).toBe(0);
   });
@@ -205,7 +227,7 @@ describe('passageAnalysis — the rules of a block diagram', () => {
     expect(partStarts(earlier.state).slice(0, 3)).toEqual([0, 3, at('волею') + 3]);
     expect(holderOf(earlier.state, at('Иисуса') + 3)).toBe(at('Апостол') + 3);
     // Two analyses of touching passages become one, the second's first word starting a part.
-    expect(joinAnalyses(state, total, { cuts: [2], links: { 2: 0 }, relations: [] }, 5)).toEqual({ cuts: [...state.cuts].sort((x, y) => x - y).concat([total, total + 2]), links: { ...state.links, [total + 2]: total }, relations: [] });
+    expect(joinAnalyses(state, total, { cuts: [2], links: { 2: 0 }, relations: [], drawn: [2] }, 5)).toEqual({ cuts: [...state.cuts].sort((x, y) => x - y).concat([total, total + 2]), links: { ...state.links, [total + 2]: total }, relations: [], drawn: [total + 2] });
   });
 
   it('links two words by meaning: dragged onto a word it points there, in the first colour no other link wears', () => {

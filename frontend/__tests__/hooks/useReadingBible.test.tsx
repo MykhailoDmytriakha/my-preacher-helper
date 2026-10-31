@@ -183,3 +183,28 @@ it('can follow the same recovery translation again after the earlier arrival was
   view.rerender();
   expect(view.result.current.bible).toBe('rst');
 });
+
+
+describe("a visit to an analysis's own Bible", () => {
+  it('keeps the device choice while visiting, then persists a deliberate picker choice', () => {
+    window.localStorage.setItem('bible:translation', 'kjv');
+    const view = renderHook(() => useReadingBible(false, 'rst', { persistRequested: false }));
+    expect(view.result.current.bible).toBe('rst');
+    expect(window.localStorage.getItem('bible:translation')).toBe('kjv');
+    act(() => view.result.current.changeBible('ubio'));
+    view.rerender();
+    expect(view.result.current.bible).toBe('ubio');
+    expect(window.localStorage.getItem('bible:translation')).toBe('ubio');
+  });
+
+  it('honors an explicit persistent arrival even when the previous visit requested the same Bible', () => {
+    window.localStorage.setItem('bible:translation', 'kjv');
+    let persistRequested = false;
+    const view = renderHook(() => useReadingBible(false, 'rst', { persistRequested }));
+    expect(window.localStorage.getItem('bible:translation')).toBe('kjv');
+    persistRequested = true;
+    view.rerender();
+    expect(view.result.current.bible).toBe('rst');
+    expect(window.localStorage.getItem('bible:translation')).toBe('rst');
+  });
+});

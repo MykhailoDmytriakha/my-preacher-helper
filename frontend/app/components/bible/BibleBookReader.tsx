@@ -19,6 +19,7 @@ import { bookSlug, fetchBookText, verseWords, type BookText } from '@/utils/bibl
 import { actedVerses, linkOnScreen, type SeenVerses } from '@/utils/placeTrail';
 import { revealBelow } from '@/utils/revealBelow';
 import { BIBLE_READER_COLORS } from '@/utils/themeColors';
+import { passageCopyText } from '@/utils/verseCopy';
 import { placeIn } from '@/utils/versification';
 import { useTranslation } from '@locales/useTranslation';
 
@@ -46,7 +47,7 @@ import { useBookCrossRefs } from './useBookCrossRefs';
 import { useBookUsage } from './useBookUsage';
 import { chapterAtLine, useChapterWindow } from './useChapterWindow';
 import { useFollowAfterClose } from './useFollowAfterClose';
-import { useVerseCopy } from './verseCopy/useVerseCopy';
+import { useCopyNames, useVerseCopy } from './verseCopy/useVerseCopy';
 import { VerseHoldSurface } from './verseCopy/VerseHoldSurface';
 import { VerseMenu } from './verseCopy/VerseMenu';
 import { passageKeys as scripturePassageKeys } from './verseSheetGeometry';
@@ -54,6 +55,7 @@ import { ScriptureLinksInWindow } from './VerseWindow';
 
 import type { AppLocale } from '@/utils/appLocale';
 import type { CrossReference } from '@/utils/crossReferences';
+import type { Passage } from '@/utils/scriptureReferenceNumbering';
 
 type Place = { chapter: number; verse: number };
 
@@ -931,6 +933,9 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, dec
     return () => window.clearTimeout(timer);
   }, [leaving]);
   const openMineEntry = useFollowAfterClose(Boolean(mine.openAt), mine.close, goToScreen);
+  // A passage as «Копировать» gives it: the verse of a new sermon made from an analysis's window.
+  const copyNames = useCopyNames(bible, bookId);
+  const passageCopy = useCallback((passage: Passage) => (text ? passageCopyText(text.chapters, passage, copyNames) : ''), [text, copyNames]);
 
   // THE WAY BACK goes left along the trail of places, one link at a time (the owner, 2026-10-20: a swap
   // between the last two places never reached the third). The light steps onto that link first, so its
@@ -1077,6 +1082,7 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, dec
         listed={mine.listed}
         onClose={mine.close}
         onOpenEntry={openMineEntry}
+        passageCopy={passageCopy}
         onEditComment={(id, passage) => { mine.close(); editComment(id, passage); }}
         onOpenAnalysis={(id) => { mine.close(); setAnalysing({ kind: 'open', id }); }}
       />
@@ -1090,7 +1096,7 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, dec
         onOpenBible={openInBible}
       />
       <VerseMenu copy={verseCopy} comment={commentDoors.verse} analysis />
-      <ReaderAnalysis copy={verseCopy} text={text} wide={wide} bookId={bookId} bible={bible} locale={locale} opening={analysing} onOpening={setAnalysing} marks={marks.analysisMarks} />
+      <ReaderAnalysis copy={verseCopy} text={text} wide={wide} bookId={bookId} bible={bible} locale={locale} opening={analysing} onOpening={setAnalysing} marks={marks.analysisMarks} onOpenScreen={goToScreen} />
       {/* While verses are chosen their bar stands where the tools are: the tools wait. */}
       {verseCopy.picking ? null : wide ? (
         <FloatingTextScaleControls>

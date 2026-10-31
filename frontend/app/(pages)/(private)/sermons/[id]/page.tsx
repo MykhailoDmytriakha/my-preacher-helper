@@ -566,6 +566,8 @@ function SermonPageContent({ id }: { id: string }) {
           onEdit={(edit) => core.editPreparation(prep => ({ ...prep, exegeticalPlan: edit(prep.exegeticalPlan ?? []) }))}
           saving={savingPrep}
           authorIntentField={core.authorIntentField}
+          sermonId={sermon?.id}
+          sourceNoteIds={sermon?.sourceNoteIds}
         />
       ),
       mainIdea: (

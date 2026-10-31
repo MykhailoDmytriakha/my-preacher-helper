@@ -42,7 +42,8 @@ export const passageSpan = (p: PickedPassage) => (p.chapter === p.toChapter ? `$
 /** The same parts, ties and links of meaning, whatever order they were made in. */
 const sameAnalysis = (a: AnalysisState, b: AnalysisState) => JSON.stringify([...a.cuts].sort((x, y) => x - y)) === JSON.stringify([...b.cuts].sort((x, y) => x - y))
   && JSON.stringify(Object.entries(a.links).sort()) === JSON.stringify(Object.entries(b.links).sort())
-  && JSON.stringify(a.relations) === JSON.stringify(b.relations);
+  && JSON.stringify(a.relations) === JSON.stringify(b.relations)
+  && JSON.stringify(a.drawn ?? []) === JSON.stringify(b.drawn ?? []);
 /**
  * A PASSAGE'S ANALYSIS AS A STUDY NOTE (case 2026-10-12-block-diagram, 3.4): finds the note asked for, or one already made
  * on exactly this passage in this Bible, and reads its parts once they arrive. The first change makes the note («что-то
@@ -94,7 +95,8 @@ export function useAnalysisNote({ opening, text, bookId, bible, locale }: { open
 
   const writable = sourceMatches && Boolean(passage && total) && Boolean(form.state) && !form.readOnly && PHASES_TAKING_CHANGES.has(form.status?.phase ?? '');
   const stored = copy?.analysis;
-  const storedKey = stored ? JSON.stringify([stored.cuts, stored.links, stored.relations ?? null]) : '';
+  // Every stored part of the analysis: a change of the drawn ties alone is a change too (Codex, 31.10).
+  const storedKey = stored ? JSON.stringify([stored.cuts, stored.links, stored.relations ?? null, stored.drawn ?? null]) : '';
   // Nothing is changed before the person's analyses are read, nor on a note whose form cannot take it: a change made
   // first would make a second analysis of a passage already analysed, or write over work the screen never showed
   // (Codex's hunt, 2026-10-30). Read means asked of the server too, while it answers: the list on this device may lack

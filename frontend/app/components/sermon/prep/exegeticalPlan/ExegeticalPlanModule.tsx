@@ -37,7 +37,9 @@ const ExegeticalPlanModule: React.FC<ExegeticalPlanModuleProps> = ({
   onEdit,
   onSave,
   saving,
-  authorIntentField
+  authorIntentField,
+  sermonId,
+  sourceNoteIds
 }) => {
   const { confirm, confirmDialog, withdraw } = useConfirm();
   const currentSubject = useRef(subject);
@@ -213,7 +215,7 @@ const ExegeticalPlanModule: React.FC<ExegeticalPlanModuleProps> = ({
   return (
     <div className="space-y-4">
       {confirmDialog}
-      <BlockDiagramSection />
+      <BlockDiagramSection sermonId={sermonId} sourceNoteIds={sourceNoteIds} />
 
       <InstructionSection
         isVisible={showInstruction}

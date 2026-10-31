@@ -16,6 +16,9 @@ export interface ExegeticalPlanModuleProps {
   onSave?: (nodes: ExegeticalPlanNode[]) => Promise<void> | void;
   saving?: boolean;
   authorIntentField?: PreparationTextBinding;
+  /** The sermon whose prep this is, and the notes it was made from: its analysis stands as the block diagram. */
+  sermonId?: string;
+  sourceNoteIds?: string[];
 }
 
 export interface TreeNodeProps {

@@ -56,7 +56,8 @@ export function SeriesMembershipDialog({ seriesId, mode, member, recoveryId, onC
   };
   const cancel = async () => { await action.cancel(); onClose(); };
   const title = t(dialogTitle(mode, kind));
-  return <FormDialog title={title} eyebrow={series?.title} onClose={onClose} showCloseButton
+  // A press beside the window, the ✕ and Escape cancel as «Отмена» does: a closed window keeps no draft behind (the owner, 2026-10-31).
+  return <FormDialog title={title} eyebrow={series?.title} onClose={() => { void cancel().catch(onClose); }} showCloseButton
     onSubmit={event => { event.preventDefault(); void save(); }}
     footer={editing ? (
       <FormActions onCancel={() => { void cancel().catch(() => undefined); }} cancelLabel={t('common.cancel')}

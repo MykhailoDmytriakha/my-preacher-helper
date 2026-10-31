@@ -194,7 +194,8 @@ describe('the trail of places in the reader', () => {
     }
     expect(readPlaceTrail().links).toHaveLength(2);
     expect(Element.prototype.scrollIntoView).toHaveBeenCalled();
-  });
+    // Four trips through the whole reader: in the full suite's load it ran past 15 s (2026-10-31), as its neighbours here do.
+  }, 30000);
   // An independent review, 2026-10-20: a note → Ruth → Romans → "← Ruth" lost the way back to the note,
   // which lived only in the first entry's address.
   it('the way back from a link opened from a note goes to the note, also after another book and a step back', async () => {

@@ -1,3 +1,5 @@
+import { verseWords } from '@/utils/bibleText';
+
 /*
  * A VERSE TAKEN OUT OF THE BIBLE — the text a copy or a send carries, made from the verses themselves and never
  * from what the page shows around them (numbers, link chips, badges). The owner, 2026-10-27: a verse is copied
@@ -115,4 +117,23 @@ export function verseCopyText(verses: readonly VerseForCopy[], format: CopyForma
     }
   });
   return lines.join('\n');
+}
+
+/** A passage of a book: from a verse of one chapter to a verse of the same or a later one; a whole chapter has no verses. */
+export type CopiedPassage = { chapter: number; toChapter: number; fromVerse?: number; toVerse?: number };
+
+/**
+ * A passage as the reader's «Копировать» gives it — the place, then all its words, a chapter's end crossed —
+ * made from the book's text (`chapters`: each chapter's verses as the Bible file has them). One rule for a link's
+ * whole passage and for a new sermon's verse taken from an analysis (2026-10-31): «как будто я скопировал и вставил».
+ */
+export function passageCopyText(chapters: readonly (readonly string[])[], passage: CopiedPassage, names: CopyNames): string {
+  const verses: VerseForCopy[] = [];
+  for (let chapter = passage.chapter; chapter <= passage.toChapter; chapter += 1) {
+    const all = chapters[chapter - 1] ?? [];
+    const from = chapter === passage.chapter ? passage.fromVerse ?? 1 : 1;
+    const to = chapter === passage.toChapter ? passage.toVerse ?? all.length : all.length;
+    for (let verse = from; verse <= to && verse <= all.length; verse += 1) verses.push({ chapter, verse, words: verseWords(all[verse - 1]) });
+  }
+  return verseCopyText(verses, DEFAULT_COPY_FORMAT, names, (chapter) => chapters[chapter - 1]?.length);
 }

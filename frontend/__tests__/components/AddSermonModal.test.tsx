@@ -135,10 +135,12 @@ describe('AddSermonModal on the data engine', () => {
     view.unmount();
   });
 
-  test('keeps the selected series choice behind an explicit load button (catalog is optional)', async () => {
+  // The owner, 2026-10-31: «должна показываться серия, а не так, что кнопка «Выбрать серию», а потом серия».
+  test('shows the series row at once, never behind a button', async () => {
     const { view } = setup(<AddSermonModal isOpen showTriggerButton={false} />);
     await screen.findByRole('dialog');
-    expect(screen.getByRole('button', { name: 'workspaces.series.actions.selectSeries' })).toBeInTheDocument();
+    expect(await screen.findByLabelText('addSermon.seriesLabel')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'workspaces.series.actions.selectSeries' })).not.toBeInTheDocument();
     view.unmount();
   });
 });

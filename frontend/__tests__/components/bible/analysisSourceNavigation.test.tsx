@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { act, fireEvent, render, screen, waitFor, cleanup } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, cleanup, within } from '@testing-library/react';
 
 import kjvEphesians from '../../../public/bible-text/kjv/v1/ephesians.json';
 
@@ -24,7 +24,7 @@ jest.mock('@/data-engine/react.client', () => ({
   ...jest.requireActual('@/data-engine/react.client'),
   useDataDocument: jest.fn(),
 }));
-jest.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
+jest.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key, i18n: { language: 'en' } }) }));
 jest.mock('@/components/bible/verseCopy/VerseCopyBar', () => ({ VerseCopyBar: () => null }));
 
 const rstText: BookText = {
@@ -161,7 +161,7 @@ describe('an analysis opened outside its original Bible context', () => {
     const view = editor({ kind: 'new', passage }, rstText, 'rst');
     const word = document.querySelector('[data-word="1"]');
     expect(word).not.toBeNull();
-    await act(async () => { fireEvent.click(word!); });
+    await act(async () => { fireEvent.click(within(word! as HTMLElement).getByRole('button', { name: 'analysis.level.sameAria' })); });
     expect(engine.createNote).toHaveBeenCalledTimes(1);
     await waitFor(() => expect(new URL(window.location.href).searchParams.get('analysis')).toBe('created-analysis'));
 
@@ -208,7 +208,7 @@ describe('ordinary departure before the first analysis capture', () => {
     const view = render(element());
     const word = document.querySelector('[data-word="5"]');
     expect(word).not.toBeNull();
-    await act(async () => { fireEvent.click(word!); });
+    await act(async () => { fireEvent.click(within(word! as HTMLElement).getByRole('button', { name: 'analysis.level.sameAria' })); });
     expect(engine.createNote).toHaveBeenCalledTimes(1);
     expect(document.querySelector('[data-line="5"]')).not.toBeNull();
     return { view, element, onClose, onEditVerses, resolve, reject, created: () => created };

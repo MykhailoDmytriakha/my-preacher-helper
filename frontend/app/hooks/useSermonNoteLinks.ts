@@ -138,6 +138,11 @@ export function useSourceNotes(
   }, [ids, notes, loading, ready]);
 }
 
+/** The link itself, read from its one stored fact: does this sermon name that note? */
+export function sermonNamesNote(sermon: Pick<Sermon, 'sourceNoteIds'>, noteId: string): boolean {
+  return (sermon.sourceNoteIds ?? []).includes(noteId);
+}
+
 /** Reverse links read the same submitted and persisted collection as the sermon screens. */
 export function useSermonsBuiltOnNote(noteId: string | undefined): {
   sermons: Sermon[];
@@ -147,10 +152,17 @@ export function useSermonsBuiltOnNote(noteId: string | undefined): {
   const collection = useSermonsDataCollection(Boolean(uid && noteId));
   const sermons = useMemo(() => {
     if (!noteId) return [];
-    return collection.sermons.filter((sermon) => (sermon.sourceNoteIds ?? []).includes(noteId));
+    return collection.sermons.filter((sermon) => sermonNamesNote(sermon, noteId));
   }, [collection.sermons, noteId]);
 
   return { sermons, loading: isAuthLoading || collection.loading };
+}
+
+/** The analysis uses the same projected, sorted sermon list as the other note screens. */
+export function useEngineSermonsBuiltOnNote(noteId: string | null | undefined): Sermon[] {
+  const { uid } = useResolvedUid();
+  const { sermons } = useSermonsBuiltOnNote(noteId ?? undefined);
+  return useMemo(() => sermons.filter(sermon => sermon.userId === uid), [sermons, uid]);
 }
 
 /**

@@ -70,6 +70,25 @@ describe('sermon → note', () => {
     expect(chip).toHaveTextContent('Wine and wineskins');
   });
 
+  it('an analysis is no note: its chip bears the analysis\'s sign and opens its structure in the Bible, the way back here', () => {
+    // The owner, 31.10: «это не заметка… значок должен быть разбора, и когда на него нажимаешь, он должен вести на
+    // страницу разбора структуры… а не заметки».
+    mockUseSourceNotes.mockReturnValue({
+      notes: [{ ...aNote('a1', 'Разбор · 1Ин 4:1–3'), type: 'analysis', scriptureRefs: [{ id: 'r1', bible: 'rst', book: '1 John', chapter: 4, fromVerse: 1, toVerse: 3 }] }],
+      missingIds: [],
+      loading: false,
+    });
+
+    render(<SourceNoteChips sermon={sermonWithLinks} />);
+
+    const chip = screen.getByTestId('source-note-chip');
+    expect(chip).toHaveAttribute('data-kind', 'analysis');
+    expect(chip).toHaveAttribute('aria-label', 'sermon.sourceNotes.openAnalysis:Разбор · 1Ин 4:1–3');
+    const href = new URL(chip.getAttribute('href') ?? '', 'https://app.invalid');
+    expect(href.pathname).toBe('/bible');
+    expect(Object.fromEntries(href.searchParams)).toMatchObject({ at: '4:1', to: '3', tr: 'rst', analysis: 'a1', mode: 'view', from: '/' });
+  });
+
   it('falls back to the untitled label rather than an empty chip', () => {
     mockUseSourceNotes.mockReturnValue({ notes: [aNote('n1')], missingIds: [], loading: false });
 

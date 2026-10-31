@@ -14,22 +14,42 @@ jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
 jest.mock('@/hooks/useGroupsRead', () => ({ useGroupsRead: () => ({ groups: [{ id: 'g', title: 'Meeting' }], loading: false, error: null }) }));
 jest.mock('@/hooks/useDashboardSermons', () => ({ useDashboardSermons: () => ({ sermons: [], loading: false, error: null }) }));
 
-it('offers an unsent action after its originating page closes and recovers it without sending', async () => {
+function seriesWorkspace() {
   process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = 'series';
   const harness = membershipEngineHarness([{ resource: { collection: 'series', id: 's' }, metadata: null,
     value: { userId: 'owner', title: 'Series', items: [], sermonIds: [], seriesKind: 'sermon' } }]);
   jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
+  const page: { leave?: () => void } = {};
   function Workspace() {
     const [pageOpen, setPageOpen] = useState(true);
+    page.leave = () => setPageOpen(false);
     return <DataEngineProvider><SeriesMembershipRecovery />{pageOpen
       ? <SeriesMembershipDialog seriesId="s" mode="group" onClose={() => setPageOpen(false)} /> : <h1>Another page</h1>}
     </DataEngineProvider>;
   }
-  const view = render(<Workspace />);
+  return { harness, page, view: render(<Workspace />) };
+}
+
+// The owner, 2026-10-31: a window closed by its ✕ or a press beside it is cancelled, never kept as a draft for a banner.
+it('cancels an unsent action closed by its ✕: nothing is offered back, nothing is sent', async () => {
+  const { harness, view } = seriesWorkspace();
+  try {
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'Meeting' })); await act(async () => { await settleEngine(); });
+    fireEvent.click(screen.getByRole('button', { name: 'common.close' }));
+    await screen.findByRole('heading', { name: 'Another page' });
+    await act(async () => { await settleEngine(); });
+    expect(screen.queryByRole('heading', { name: 'workspaces.series.membershipRecovery' })).not.toBeInTheDocument();
+    expect(await harness.engine.listMembershipRecovery()).toEqual([]);
+    expect(harness.transport.send).not.toHaveBeenCalled();
+  } finally { view.unmount(); delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS; }
+});
+
+it('offers an unsent action whose page went away mid-change, and recovers it without sending', async () => {
+  const { harness, page, view } = seriesWorkspace();
   try {
     fireEvent.click(await screen.findByRole('checkbox', { name: 'Meeting' })); await act(async () => { await settleEngine(); });
     expect(screen.queryByRole('heading', { name: 'workspaces.series.membershipRecovery' })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'common.close' }));
+    act(() => page.leave?.());
     await screen.findByRole('heading', { name: 'Another page' });
     const heading = await screen.findByRole('heading', { name: 'workspaces.series.membershipRecovery' });
     const panel = within(heading.parentElement!);

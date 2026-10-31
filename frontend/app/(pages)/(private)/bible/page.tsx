@@ -21,7 +21,8 @@ import '@locales/i18n';
  * History API instead of a router navigation: no server round trip, so a book never opened online
  * still opens offline once /bible has been seen (the offline shell keeps one page per address).
  * `/bible` lists the books, `/bible?book=1-timothy&at=1:18&tr=rst` opens a book at a verse of a Bible
- * (`tr`: the Bible the place is numbered in; the book opens in the Bible this device reads). A
+ * (`tr`: the Bible the place is numbered in; the book opens in the Bible this device reads — except an analysis named
+ * in the address, `&analysis=<id>`, which opens the book in its own Bible, `tr`, for this visit). A
  * reference tapped elsewhere adds `to` (the passage to light) and `from` (the way back) — the
  * address is built and read by `utils/bibleLink.ts`.
  */
@@ -37,9 +38,10 @@ export default function BiblePage() {
   const bookId = slug ? bookIdFromSlug(slug) : undefined;
   const [lastPlace, setLastPlace] = useState<LastPlace | null>(null);
   const [storageFailed, setStorageFailed] = useState(false);
-  // An unnumbered arrival must not become a reading entry in a temporary default Bible.
+  const analysisBible = searchParams?.get('analysis') && isBibleId(placeBible) ? placeBible : undefined;
+  // An unnumbered arrival waits for known numbering; an analysis visits its own Bible without replacing the device choice.
   const { bible, changeBible } = useReadingBible(Boolean(bookId && place && !isBibleId(placeBible)),
-    bookId && isBibleId(requestedBible) ? requestedBible : undefined);
+    bookId ? (isBibleId(requestedBible) ? requestedBible : analysisBible) : undefined, { persistRequested: !analysisBible });
 
   useEffect(() => {
     if (!slug) setLastPlace(readLastPlace());

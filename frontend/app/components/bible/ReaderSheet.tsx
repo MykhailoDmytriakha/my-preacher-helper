@@ -20,7 +20,7 @@ import type { ReactNode } from 'react';
  * stays there — over a passage window too, whose own trap yields to the window above it — and goes
  * back to what opened it.
  */
-export function ReaderSheet({ titleId, onClose, layerClassName = 'z-[120]', depth = 1, fill = false, children }: {
+export function ReaderSheet({ titleId, onClose, layerClassName = 'z-[120]', depth = 1, fill = false, grow = false, children }: {
   titleId: string;
   onClose: () => void;
   /** The window's layer: over the reader, or over the passage window, which stands at z-[250]. */
@@ -32,6 +32,12 @@ export function ReaderSheet({ titleId, onClose, layerClassName = 'z-[120]', dept
    * pane scrolls between a head and a foot that stay — a link's chapter (only with `depth` 2).
    */
   fill?: boolean;
+  /**
+   * The window grows with its content until the gap under it equals the gap over it, and only then does its own pane
+   * scroll, between its head that stays (the owner, 2026-10-31: «сверху зазор, снизу зазор, и оно расширяется адаптивно»):
+   * a column whose scrolling child is `min-h-0 flex-1 overflow-y-auto` (only with `depth` 1).
+   */
+  grow?: boolean;
   children: ReactNode;
 }) {
   const stacked = depth === 2;
@@ -39,7 +45,10 @@ export function ReaderSheet({ titleId, onClose, layerClassName = 'z-[120]', dept
     ? `ring-1 ring-gray-900/10 md:max-w-2xl xl:mr-12 xl:mt-44 xl:w-[28.5rem] dark:ring-white/10 ${fill
       ? 'flex h-[78dvh] flex-col overflow-hidden xl:h-[calc(100dvh-13rem)]'
       : 'max-h-[72dvh] overflow-y-auto xl:max-h-[calc(100dvh-13rem)]'}`
-    : 'max-h-[85dvh] overflow-y-auto md:max-w-3xl xl:mr-6 xl:mt-24 xl:max-h-[calc(100dvh-8rem)] xl:w-[31rem]';
+    : grow
+      // 6rem over it (xl:mt-24), 6rem under it at the most.
+      ? 'flex max-h-[85dvh] flex-col overflow-hidden md:max-w-3xl xl:mr-6 xl:mt-24 xl:max-h-[calc(100dvh-12rem)] xl:w-[31rem]'
+      : 'max-h-[85dvh] overflow-y-auto md:max-w-3xl xl:mr-6 xl:mt-24 xl:max-h-[calc(100dvh-8rem)] xl:w-[31rem]';
   const layer = useModalLayer({ onClose, active: true });
 
   if (typeof document === 'undefined') return null;
