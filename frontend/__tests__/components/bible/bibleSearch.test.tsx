@@ -314,8 +314,10 @@ describe('the one line', () => {
     const { line } = renderLine();
     await userEvent.type(line, 'Рим хлеб');
     expect(await screen.findByText('bible.search.notInBook{"book":"К Римлянам"}')).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'bible.search.searchBible' }));
+    // The name also has a word meaning, so the existing secondary action now names only the widened term.
+    await userEvent.click(screen.getByRole('button', { name: 'bible.search.searchOnly{"words":"«хлеб»"}' }));
     expect(line).toHaveValue('хлеб');
+    expect(await screen.findByText('bible.search.verses{"count":567}')).toBeInTheDocument();
   });
 
   it('reads a book whose name is a word as the book, and searches the words on request', async () => {
@@ -692,4 +694,33 @@ describe('the search history fills with the searches worked with', () => {
     await screen.findByText('bible.search.verses{"count":51}');
     expect(kept()).toEqual(['Рим вера']);
   });
+});
+
+// BUG-20261027-search-book-name-that-is-a-word: exact names retain the book and expose the existing word choice.
+it.each([
+  { raw: 'Рим Павел', word: 'рим', before: 1, after: 5, sample: 'Деян 28:16' },
+  { raw: 'Иоанн крест', word: 'иоанн', before: 14, after: 33, sample: 'Мф 3:1' },
+])('can search $raw as words and return to its original book without rewriting the line', async ({ raw, word, before, after, sample }) => {
+  const { line } = renderLine();
+  fireEvent.change(line, { target: { value: raw } });
+  await screen.findByText(`bible.search.verses{"count":${before}}`);
+  await userEvent.click(screen.getByRole('button', { name: `bible.search.asWordLink{"word":"${word}"}` }));
+  await screen.findByText(`bible.search.verses{"count":${after}}`);
+  expect(line).toHaveValue(raw);
+  expect(options().some(row => row.textContent?.includes(sample))).toBe(true);
+  await userEvent.click(screen.getByRole('button', { name: /bible\.search\.searchInBook/ }));
+  await screen.findByText(`bible.search.verses{"count":${before}}`);
+  expect(line).toHaveValue(raw);
+});
+
+it('offers the word choice when an exact name has no results in its book', async () => {
+  const { line } = renderLine();
+  fireEvent.change(line, { target: { value: 'Иуда предал' } });
+  await userEvent.click(await screen.findByRole('button', { name: 'bible.search.searchAsWords{"words":"иуда предал"}' }));
+  await screen.findByText('bible.search.verses{"count":7}');
+  expect(line).toHaveValue('Иуда предал');
+  expect(options().some(row => row.textContent?.includes('Мф 10:4'))).toBe(true);
+  await userEvent.click(screen.getByRole('button', { name: /bible\.search\.searchInBook/ }));
+  expect(await screen.findByRole('button', { name: 'bible.search.searchAsWords{"words":"иуда предал"}' })).toBeInTheDocument();
+  expect(line).toHaveValue('Иуда предал');
 });

@@ -37,6 +37,16 @@ function booksOf(reading: LineReading): readonly string[] {
   return 'bookId' in reading ? [reading.bookId] : [];
 }
 
+/** Expose the existing word action only when the available text attests the exact single-book name. */
+function withWordMeaning(reading: LineReading, isWord: Answering['isWord']): LineReading {
+  if (reading.kind !== 'search') return reading;
+  const { scope } = reading.query;
+  if (scope?.kind !== 'book' || scope.wordLike || scope.chapter !== null
+    || scope.fromVerse !== null || scope.toVerse !== null
+    || !/^\p{L}+$/u.test(scope.said) || !isWord(scope.said)) return reading;
+  return { ...reading, query: { ...reading.query, scope: { ...scope, wordLike: true } } };
+}
+
 /**
  * Which reading of a line is shown: the line as written, unless another reading of it is what the person meant.
  * - With the books its first letters begin, when the letters are no word of the Bible and the books hold something
@@ -72,8 +82,8 @@ export function chooseReading(text: string, context: LineContext, { answerFor, i
     const second = readLine(turned, context);
     const secondAnswer = answerFor(second);
     if (second.kind !== 'search' || second.prefixBooks.length || hitsOf(secondAnswer) > 0) {
-      return { reading: second, answer: secondAnswer, layoutFixed: turned, booksBegun: null };
+      return { reading: withWordMeaning(second, isWord), answer: secondAnswer, layoutFixed: turned, booksBegun: null };
     }
   }
-  return { reading, answer, layoutFixed: null, booksBegun };
+  return { reading: withWordMeaning(reading, isWord), answer, layoutFixed: null, booksBegun };
 }

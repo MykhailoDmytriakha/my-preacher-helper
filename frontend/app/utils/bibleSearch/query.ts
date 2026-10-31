@@ -38,7 +38,7 @@ export type SearchScope =
     toVerse: number | null;
     /** The words that named the book, as typed: the way to search them as a word. */
     said: string;
-    /** The book's name is also an everyday word («Плач», «Лев», «Числа»). */
+    /** The name has a word meaning: static common-word collisions, or exact names attested by the final chooser. */
     wordLike: boolean;
   }
   | { kind: 'part'; part: PartKey; bookIds: readonly string[]; said: string }
