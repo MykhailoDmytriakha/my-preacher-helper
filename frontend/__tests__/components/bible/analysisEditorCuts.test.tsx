@@ -131,6 +131,20 @@ describe('cutting and gluing the lines of an analysis', () => {
       expect(screen.getByRole('dialog', { name: 'analysis.relation.menu' }).querySelectorAll('[data-relation-item]')).toHaveLength(1);
     });
 
+    it('keeps the bar as it is when the mode changes: «Все связи» holds its room, shown only in «Просмотр»', () => {
+      // BUG-20261031-analysis-mode-switch-jumps (the owner, 31.10: «при переключении прыгает, а не должно»).
+      renderEditor(true);
+      const bar = () => document.querySelector('[data-modal-layer] header')!;
+      const shape = () => [...bar().children].map((child) => child.tagName);
+      const inEdit = shape();
+      const slot = screen.getByTestId('analysis-all-links');
+      expect(slot).toHaveClass('invisible');
+      fireEvent.click(screen.getByRole('button', { name: 'analysis.modeView' }));
+      expect(shape()).toEqual(inEdit);
+      expect(screen.getByTestId('analysis-all-links')).not.toHaveClass('invisible');
+      expect(within(screen.getByTestId('analysis-all-links')).getByRole('switch')).toBeInTheDocument();
+    });
+
     it('opens no menu at a press on a ringed word in «Просмотр»: the press lights the part', () => {
       renderEditor(false);
       fireEvent.click(word(4));
