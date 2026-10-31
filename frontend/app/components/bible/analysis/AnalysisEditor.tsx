@@ -247,8 +247,8 @@ export function AnalysisEditor({ opening, text, bookId, bible, locale, marks: le
         onEditVerses={onEditVerses && note.passage ? () => { note.flush(); writeAnalysisAddress(null); onEditVerses(note.noteId(), note.passage!); } : undefined} />
       <div className="flex min-h-0 flex-1">
         {/* The top padding leaves room for a mark's name over the first line, the left one for a top line's two arrows and
-            its dot — past a two-digit verse number hung in the margin. */}
-        <div className={`min-w-0 flex-1 overflow-auto px-4 pb-24 pt-10 sm:pl-20 sm:pr-12 ${marks.paneClass}`}
+            its dot and a verse number hung in the margin, at every screen width. */}
+        <div className={`min-w-0 flex-1 overflow-auto pl-20 pr-4 pb-24 pt-10 sm:pr-12 ${marks.paneClass}`}
           onClick={pressBackground} onMouseMove={pointArrows} onMouseLeave={overArrowOff} {...marks.strokeEvents}>
           <AnalysisNotices ready={note.ready} changedText={note.changedText} sync={note.sync} refused={note.refused} onSaveAgain={note.saveAgain} />
           <div ref={contentRef} className="relative">
