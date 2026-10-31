@@ -592,6 +592,8 @@ export interface StudyAnalysis {
   cuts: number[];
   links: Record<string, number>;
   relations?: Record<string, { dir: 'fwd' | 'back' | 'both' | 'none'; color: string }>;
+  /** The parts (by their first word) whose tie the person drew from the line's dot: shown by an arrow always (31.10). */
+  drawn?: number[];
 }
 
 export interface StudyNote {

@@ -185,6 +185,10 @@ describe('everything the calendar shows, in one shape', () => {
   });
 
   describe('a study note', () => {
+    it('gives a passage\'s analysis no card: it lives in the Bible, not among the studies a card opens', () => {
+      expect(noteEntries([note({ id: 'a1', type: 'analysis' })], WORDS)).toEqual([]);
+    });
+
     it('stands on the day it was written, named by its title, with its Scripture underneath', () => {
       const [entry] = noteEntries([note()], WORDS);
       expect(entry).toMatchObject({

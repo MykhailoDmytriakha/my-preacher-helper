@@ -21,7 +21,8 @@ import '@locales/i18n';
  * History API instead of a router navigation: no server round trip, so a book never opened online
  * still opens offline once /bible has been seen (the offline shell keeps one page per address).
  * `/bible` lists the books, `/bible?book=1-timothy&at=1:18&tr=rst` opens a book at a verse of a Bible
- * (`tr`: the Bible the place is numbered in; the book opens in the Bible this device reads). A
+ * (`tr`: the Bible the place is numbered in; the book opens in the Bible this device reads — except an analysis named
+ * in the address, `&analysis=<id>`, which opens the book in its own Bible, `tr`, for this visit). A
  * reference tapped elsewhere adds `to` (the passage to light) and `from` (the way back) — the
  * address is built and read by `utils/bibleLink.ts`.
  */
@@ -44,9 +45,13 @@ export default function BiblePage() {
   // interface's language changes; before any choice, the language decides.
   const chosenRef = useRef<BibleId | null>(null);
 
+  // An analysis opened from elsewhere — a sermon's prep, its header — is read in the Bible it was made in: its parts stand
+  // on that Bible's words (BUG-20261030-analysis-other-bible-overwrite). Chosen for this visit, the device's Bible kept.
+  const analysisBible = searchParams?.get('analysis') && isBibleId(placeBible) ? placeBible : null;
   useEffect(() => {
+    if (analysisBible && !chosenRef.current) chosenRef.current = analysisBible;
     setBible(chosenRef.current ?? readTranslation(locale));
-  }, [locale]);
+  }, [locale, analysisBible]);
 
   const changeBible = useCallback((next: BibleId) => {
     chosenRef.current = next;

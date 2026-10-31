@@ -1,29 +1,16 @@
 'use client';
 
-import { BookOpenIcon, PlusIcon } from '@heroicons/react/24/outline';
-import Link from 'next/link';
+import { PlusIcon } from '@heroicons/react/24/outline';
 import React, { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { BuiltSermonsList } from '@/components/sermon/BuiltSermonsList';
 import { useSermonsBuiltOnNote } from '@/hooks/useSermonNoteLinks';
-import { formatDateOnly } from '@/utils/dateFormatter';
-import { NOTE_TO_SERMON_COLORS, SOURCE_NOTE_COLORS } from '@/utils/themeColors';
+import { NOTE_TO_SERMON_COLORS } from '@/utils/themeColors';
 
 import CreateSermonFromNoteModal from './CreateSermonFromNoteModal';
 
-import type { ScriptureReference, Sermon } from '@/models/models';
-
-/**
- * WHAT TELLS TWO SERMONS FROM THE SAME NOTE APART.
- *
- * A note is usually preached under one theme, so the titles of the sermons grown out of it
- * open with the same words and, cut to the width of a 232px column, read as duplicates of
- * one another. The passage is what actually differs — it is chosen per sermon at the moment
- * the sermon is born — so it leads the line and the date follows. A sermon with no verse yet
- * simply shows the date: the separator never appears on its own.
- */
-const sermonMetaLine = (sermon: Sermon): string =>
-  [sermon.verse?.replace(/\s+/g, ' ').trim(), formatDateOnly(sermon.date)].filter(Boolean).join(' \u00b7 ');
+import type { ScriptureReference } from '@/models/models';
 
 /**
  * THE OTHER DIRECTION, ON THE NOTE'S OWN PAGE: what was preached out of this — and the
@@ -71,53 +58,13 @@ const SermonsBuiltOnNote: React.FC<SermonsBuiltOnNoteProps> = ({
   if (!noteId) return null;
 
   return (
-    <div className="flex flex-col gap-3" data-testid="sermons-built-on-note">
-      <div className={`flex items-center gap-2 ${SOURCE_NOTE_COLORS.reverseHeading}`}>
-        <BookOpenIcon className="h-5 w-5 shrink-0" aria-hidden="true" />
-        <span className="text-sm font-medium">{t('studiesWorkspace.builtSermons.title')}</span>
-        {sermons.length > 0 && (
-          <span
-            data-testid="built-sermons-count"
-            aria-hidden="true"
-            className={`shrink-0 rounded-full px-1.5 text-[11px] font-semibold leading-4 ${NOTE_TO_SERMON_COLORS.builtCount}`}
-          >
-            {sermons.length}
-          </span>
-        )}
-      </div>
-
-      {sermons.length > 0 ? (
-        <ul className="flex flex-col gap-1.5">
-          {sermons.map((sermon) => (
-            <li key={sermon.id} className="min-w-0">
-              <Link
-                href={`/sermons/${sermon.id}`}
-                data-testid="built-sermon-link"
-                aria-label={t('studiesWorkspace.builtSermons.openSermon', { title: sermon.title })}
-                className={`flex w-full min-w-0 flex-col gap-0.5 rounded-lg border px-2.5 py-2 transition-colors ${NOTE_TO_SERMON_COLORS.builtRow}`}
-              >
-                <span
-                  data-testid="built-sermon-title"
-                  className={`line-clamp-2 text-sm font-medium leading-[18px] ${NOTE_TO_SERMON_COLORS.builtRowTitle}`}
-                >
-                  {sermon.title}
-                </span>
-                <span
-                  data-testid="built-sermon-meta"
-                  className={`truncate text-[11px] leading-4 ${NOTE_TO_SERMON_COLORS.builtRowMeta}`}
-                >
-                  {sermonMetaLine(sermon)}
-                </span>
-              </Link>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="px-0.5 text-xs leading-4 text-gray-400 dark:text-gray-500" data-testid="built-sermons-empty">
-          {t('studiesWorkspace.builtSermons.empty')}
-        </p>
-      )}
-
+    <BuiltSermonsList
+      testId="sermons-built-on-note"
+      title={t('studiesWorkspace.builtSermons.title')}
+      sermons={sermons}
+      empty={t('studiesWorkspace.builtSermons.empty')}
+      openLabel={(title) => t('studiesWorkspace.builtSermons.openSermon', { title })}
+    >
       <button
         ref={openerRef}
         type="button"
@@ -141,7 +88,7 @@ const SermonsBuiltOnNote: React.FC<SermonsBuiltOnNoteProps> = ({
           returnFocusTo={openerRef}
         />
       )}
-    </div>
+    </BuiltSermonsList>
   );
 };
 

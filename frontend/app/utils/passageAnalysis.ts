@@ -26,14 +26,18 @@ export type Relation = { a: number; b: number; dir: RelationDir; color: Relation
 
 /**
  * The parts and what they hang on: `cuts` — the words parts start at (sorted, never 0); `links` — part → word;
- * `relations` — the links of meaning, by their words, in the passage's order.
+ * `relations` — the links of meaning, by their words, in the passage's order; `drawn` — the parts whose tie the person
+ * drew from the line's dot to a word (sorted): such a tie is shown by its arrow always, also to the line just above,
+ * while a line put a step under by ↳ or the arrows ‹ › hangs where its indent says, with no arrow (the owner, 31.10:
+ * «если мы строку… сделали её сабстрокой, то связь по умолчанию не происходит. Но если мы взяли точку, потянули и
+ * поставили, тогда связь появляется»). Absent on analyses kept before it — read as none.
  */
-export type AnalysisState = { cuts: number[]; links: Record<number, number>; relations: Relation[] };
+export type AnalysisState = { cuts: number[]; links: Record<number, number>; relations: Relation[]; drawn?: number[] };
 
 /** A passage of one book: from `chapter:fromVerse` to `toChapter:toVerse`. */
 export type AnalysisPassage = { chapter: number; fromVerse: number; toChapter: number; toVerse: number };
 
-export const EMPTY_ANALYSIS: AnalysisState = { cuts: [], links: {}, relations: [] };
+export const EMPTY_ANALYSIS: AnalysisState = { cuts: [], links: {}, relations: [], drawn: [] };
 
 /** The words of a passage in the Bible being read, in order. */
 export function passageWords(text: BookText, passage: AnalysisPassage): AnalysisWord[] {
@@ -124,6 +128,8 @@ export function settled(state: AnalysisState, total: number): AnalysisState {
       holder = holderOf(base, holder);
     }
   });
+  // A drawn tie is a tie: a part that hangs on nothing now has none.
+  base.drawn = [...new Set(state.drawn ?? [])].filter((start) => base.links[start] !== undefined).sort((a, b) => a - b);
   return base;
 }
 
@@ -154,20 +160,24 @@ export function glueAt(state: AnalysisState, start: number, total: number): Anal
 export type TieRefusal = 'own';
 
 /**
- * Part `start` tied to `word`: it now hangs on that word's part. A word of its own part is refused. A word of a part that
- * hangs on it turns the tie round (the owner, 2026-10-29: «а всякий дух» dropped on «который не исповедует», which stood
- * under it — «он должен был выровняться»): that part takes `start`'s place, hanging where `start` hung, and `start`
- * hangs on its word; what hung on either stays with it.
+ * Part `start` tied to `word` — drawn by the person from the line's dot, above or below: it now hangs on that word's part,
+ * and the tie is `drawn` — shown by its arrow, also to the line just above. A word of its own part is refused. A word of a
+ * part that hangs on it turns the tie round (the owner, 2026-10-29: «а всякий дух» dropped on «который не исповедует»,
+ * which stood under it — «он должен был выровняться»): that part takes `start`'s place, hanging where `start` hung, its
+ * tie drawn as `start`'s was, and `start` hangs on its word; what hung on either stays with it.
  */
 export function tieTo(state: AnalysisState, start: number, word: number, total: number): AnalysisState | TieRefusal {
   const target = partOf(state, word);
   if (target === start) return 'own';
   const links = { ...state.links, [start]: word };
+  const was = state.drawn ?? [];
+  let drawn = [...was.filter((part) => part !== start), start];
   if (hangsOn(state, target, start)) {
     if (state.links[start] === undefined) delete links[target];
     else links[target] = state.links[start];
+    drawn = drawn.filter((part) => part !== target).concat(was.includes(start) ? [target] : []);
   }
-  return settled({ ...state, links }, total);
+  return settled({ ...state, links, drawn }, total);
 }
 
 /** Whether tying part `start` to `word` turns the tie round: that word's part hangs on `start` now. */
@@ -188,8 +198,12 @@ export function stepUp(state: AnalysisState, start: number, total: number): Anal
   const links = { ...state.links };
   if (state.links[holder] === undefined) delete links[start];
   else links[start] = state.links[holder];
-  return settled({ ...state, links }, total);
+  // A step is the indent's: the part hangs where it stands, no longer by a drawn tie.
+  return settled({ ...state, links, drawn: notDrawn(state, start) }, total);
 }
+
+/** The drawn ties, without part `start`'s. */
+const notDrawn = (state: AnalysisState, start: number) => (state.drawn ?? []).filter((part) => part !== start);
 
 /** Part `start` one step down: it hangs on the nearest part above it that stands as deep — 2 becomes 1.1. Null — none. */
 export function stepDown(state: AnalysisState, start: number, total: number): AnalysisState | null {
@@ -197,7 +211,7 @@ export function stepDown(state: AnalysisState, start: number, total: number): An
   const above = partStarts(state).filter((part) => part < start);
   for (let n = above.length - 1; n >= 0; n -= 1) {
     const there = depthOf(state, above[n]);
-    if (there === depth) return settled({ ...state, links: { ...state.links, [start]: above[n] } }, total);
+    if (there === depth) return settled({ ...state, links: { ...state.links, [start]: above[n] }, drawn: notDrawn(state, start) }, total);
     if (there < depth) return null;
   }
   return null;
@@ -224,7 +238,7 @@ export function dropTie(state: AnalysisState, start: number, total: number): Ana
   for (let n = above.length - 1; n >= 0; n -= 1) {
     if (depthOf(state, above[n]) < depth && !hangsOn(state, above[n], start)) { links[start] = above[n]; break; }
   }
-  return settled({ ...state, links }, total);
+  return settled({ ...state, links, drawn: notDrawn(state, start) }, total);
 }
 
 /**
@@ -239,7 +253,8 @@ export function sliceAnalysis(state: AnalysisState, a: number, b: number): Analy
     if (part >= a && part < b && word >= a && word < b) links[part - a] = word - a;
   });
   const relations = state.relations.filter((relation) => relation.a >= a && relation.b < b).map((relation) => ({ ...relation, a: relation.a - a, b: relation.b - a }));
-  return settled({ cuts, links, relations }, b - a);
+  const drawn = (state.drawn ?? []).filter((part) => part >= a && part < b).map((part) => part - a);
+  return settled({ cuts, links, relations, drawn }, b - a);
 }
 
 /** Whether an analysis holds the person's work: a cut, a tie or a link of meaning. */
@@ -252,7 +267,8 @@ export function joinAnalyses(first: AnalysisState, firstTotal: number, second: A
   const links: Record<number, number> = { ...first.links };
   Object.entries(second.links).forEach(([key, word]) => { links[Number(key) + firstTotal] = word + firstTotal; });
   const relations = [...first.relations, ...second.relations.map((relation) => ({ ...relation, a: relation.a + firstTotal, b: relation.b + firstTotal }))];
-  return settled({ cuts: [...first.cuts, firstTotal, ...second.cuts.map((cut) => cut + firstTotal)], links, relations }, firstTotal + secondTotal);
+  const drawn = [...(first.drawn ?? []), ...(second.drawn ?? []).map((part) => part + firstTotal)];
+  return settled({ cuts: [...first.cuts, firstTotal, ...second.cuts.map((cut) => cut + firstTotal)], links, relations, drawn }, firstTotal + secondTotal);
 }
 
 /** The links of meaning that still mean something: inside the passage, on two words, one per pair, in order. */
@@ -349,9 +365,10 @@ export function reshapeAnalysis(state: AnalysisState, total: number, front: numb
   return { state: next, front: taken(0, a), back: taken(b, total) };
 }
 
-/** Whether the indent does not already say what the part hangs on — only then is an arrow drawn. */
+/** Whether the part's tie is shown by an arrow: the person drew it, or the indent does not already say what it hangs on. */
 export function needsArrow(state: AnalysisState, start: number): boolean {
-  return state.links[start] !== undefined && impliedHolder(state, start) !== holderOf(state, start);
+  if (state.links[start] === undefined) return false;
+  return (state.drawn ?? []).includes(start) || impliedHolder(state, start) !== holderOf(state, start);
 }
 
 /** Each part's number by its steps: 1, 2, 2.1, 2.1.1 … — parts that hang on nothing first, then the parts on each. */

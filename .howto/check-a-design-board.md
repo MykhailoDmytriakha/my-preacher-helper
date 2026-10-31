@@ -1,4 +1,4 @@
-when: check a Design canvas board · board fine locally, broken on the canvas · numbers do not fit the tiles · dc-runtime.js · support.js · .dc.html · Play does nothing · setState stale · state comes back · проверить доску холста · на доске цифры вылезли · на холсте не работает · доска Design · выбор не снимается
+when: check a Design canvas board · board fine locally, broken on the canvas · numbers do not fit the tiles · dc-runtime.js · support.js · .dc.html · Play does nothing · setState stale · state comes back · проверить доску холста · на доске цифры вылезли · на холсте не работает · доска Design · выбор не снимается · board does not look like the app · canvas не похож на приложение · real screenshots · снимки живого приложения · inject into the live page
 
 # Check a Design canvas board
 
@@ -15,6 +15,17 @@ A board on the owner's Design canvas (claude.ai, files `project/*.dc.html`) is c
    - `realrt-shoot.cjs <folder> <port>` takes a screenshot of every board and lists the buttons whose text is wider than the button;
    - `choice-play.cjs` walks a board by hand and lists errors.
 5. Stop the server by its own task, not by pattern.
+
+## A board of an existing screen
+
+A change to a screen the app already has is shown on that screen, not redrawn: a hand-drawn copy invents what the app does not have, and the owner rejects the whole canvas (v69, 30.10).
+
+1. Shoot the real app on localhost with the test user at 1440×900 (`.cases/2026-10-12-block-diagram/demo-sermon/shoot-real.cjs`, `shoot-real2.cjs`).
+2. Put only the new element into the live page for the shot (`insertAdjacentHTML`), in inline styles with the app's own tokens — a Tailwind class the bundle never compiled draws nothing. Measure its box with `getBoundingClientRect` into a JSON file.
+3. Change a shown text through text nodes (`TreeWalker`), never by replacing an element's HTML: «the last div» was the page's root and wiped the whole page. Change only what the app itself would show otherwise — the title, the passage, the date — and read the component first: the reading of the preparation's step 1 looked like the sermon's text, but it is a fixed passage for the preacher (`wizard.steps.spiritual.passage`); set to the sermon's verses, the board showed an app that does not exist.
+4. The board: each state a shot (JPEG data URI), and transparent buttons over the measured boxes, the next step pulsing (`build_case1.py`).
+5. Save nothing: a dialog with typed fields answers «Отмена» with «Отбросить изменения?» — press «Отбросить», count the list before and after. Shoot a page in a fresh browser: a draft left in the same browser shows as a recovery banner on the next page.
+6. Log in waiting for the address only: `waitForURL(/dashboard/, { waitUntil: 'commit' })` — the dashboard's «load» did not come within two minutes.
 
 ## Traps
 

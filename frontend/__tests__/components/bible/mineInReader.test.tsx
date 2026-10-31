@@ -363,6 +363,25 @@ describe('an analysis in the list of a verse (case 2026-10-12-block-diagram, 3.2
     expect(within(dialog).queryByTestId('mine-entry-analysis-ruth-16')).not.toBeInTheDocument();
   });
 
+  // Phase 7, case 1 (the owner's choice 30.10): from the Bible only a new sermon is made, by the analysis's name.
+  it('carries the sermons made from it by its name: «Проповедь +» while none, each one\'s title then — a press opens it', async () => {
+    mockRows = { studyNotes: [analysisRow('- куда ты пойдешь,')] };
+    const first = renderRuth();
+    await userEvent.click(await screen.findByTestId('mine-1:16-analysis'));
+    expect(within(screen.getByRole('dialog', { name: ANALYSIS_WINDOW })).getByRole('button', { name: 'analysis.sermon.newAria' })).toBeInTheDocument();
+    first.unmount();
+
+    mockRows = { studyNotes: [analysisRow('- куда ты пойдешь,')], sermons: [row('built', { title: 'Куда ты пойдёшь', verse: 'Руфь 1:16–18', thoughts: [], date: '2026-10-30', sourceNoteIds: ['ruth-16'] })] };
+    renderRuth();
+    await userEvent.click(await screen.findByTestId('mine-1:16-analysis'));
+    const dialog = screen.getByRole('dialog', { name: ANALYSIS_WINDOW });
+    expect(within(dialog).queryByRole('button', { name: 'analysis.sermon.newAria' })).not.toBeInTheDocument();
+    expect(within(dialog).getByText('Куда ты пойдёшь')).toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole('button', { name: 'analysis.sermon.open' }));
+    expect(screen.queryByRole('dialog', { name: ANALYSIS_WINDOW })).not.toBeInTheDocument();
+    await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/sermons/built'));
+  });
+
   it('opens from its badge a window named by its passage, without the verse\'s words above its structure', async () => {
     // The owner, 30.10: «тут нужно ссылку поправить, текст сплошной не нужно дублировать».
     mockRows = { studyNotes: [analysisRow('- куда ты пойдешь,\n- туда и я пойду,'), note('n1', 'Заметка', 'Заметка на стих', [{ bible: 'rst', book: 'Ruth', chapter: 1, fromVerse: 16 }])] };
@@ -400,7 +419,7 @@ describe('an analysis in the list of a verse (case 2026-10-12-block-diagram, 3.2
     expect(drawn.querySelectorAll('[data-word].text-teal-700')).toHaveLength(0);
   });
 
-  it('shows every step of a long one, scrolling in its own box; a press on it opens the analysis, the end of a selection does not', async () => {
+  it('shows every step of a long one, the window growing to the screen\'s gaps and scrolling under its title; a press opens the analysis, the end of a selection does not', async () => {
     // The owner, 30.10: «вся эта секция, которая со скроллом была, она будет кликабельная. Нажал и перешёл».
     mockRows = { studyNotes: [analysisRow(outline(30))] };
     renderRuth();
@@ -410,7 +429,11 @@ describe('an analysis in the list of a verse (case 2026-10-12-block-diagram, 3.2
     const steps = drawn.querySelectorAll('[data-analysis-line]');
     expect(steps).toHaveLength(30);
     expect(drawn).toHaveTextContent('часть 30');
-    expect(drawn).toHaveClass('overflow-y-auto', 'max-h-[min(22rem,45vh)]');
+    // The owner, 31.10: «сверху зазор, снизу зазор, и оно расширяется адаптивно» — the box keeps no height of its own,
+    // the window grows to its limit and its list scrolls under the title that stays.
+    expect(drawn).not.toHaveClass('max-h-[min(22rem,45vh)]');
+    expect(drawn.closest('ul')).toHaveClass('min-h-0', 'flex-1', 'overflow-y-auto');
+    expect(dialog).toHaveClass('flex', 'flex-col', 'overflow-hidden', 'xl:max-h-[calc(100dvh-12rem)]', 'xl:mt-24');
     const selected = jest.spyOn(window, 'getSelection').mockReturnValue({ toString: () => 'часть 6' } as Selection);
     await userEvent.click(steps[5] as HTMLElement);
     expect(screen.getByRole('dialog', { name: ANALYSIS_WINDOW })).toBeInTheDocument();

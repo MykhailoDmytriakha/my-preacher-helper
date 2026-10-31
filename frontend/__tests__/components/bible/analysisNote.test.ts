@@ -1,9 +1,9 @@
 import { act, renderHook } from '@testing-library/react';
 
-import { useAnalysisNote, type AnalysisOpening } from '@/components/bible/analysis/useAnalysisNote';
+import { analysisState, storedAnalysis, useAnalysisNote, type AnalysisOpening } from '@/components/bible/analysis/useAnalysisNote';
 import { useDataDocument } from '@/data-engine/react.client';
 import { useStudyNotesEngine } from '@/hooks/useStudyNotesEngine';
-import { changeRelation, cutAt, passageWords, relateWords, type AnalysisState } from '@/utils/passageAnalysis';
+import { changeRelation, cutAt, needsArrow, passageWords, relateWords, tieTo, type AnalysisState } from '@/utils/passageAnalysis';
 
 import type { StudyNote } from '@/models/models';
 import type { BookText } from '@/utils/bibleText';
@@ -100,6 +100,21 @@ describe('an analysis note — what the screen may write', () => {
     await act(async () => { land(); });
     expect(result.current.state.cuts).toEqual([3, 8]);
     expect(result.current.state.relations[0].color).toBe('pink');
+  });
+
+  it('takes in a draft whose only change is a tie drawn elsewhere, and keeps it under the next change here', () => {
+    // Codex, 31.10: a change of `drawn` alone did not move the screen's key — ignored, then erased by the next change.
+    const tied = { ...madeElsewhere, analysis: { ...madeElsewhere.analysis!, links: { 3: 1 } } };
+    engine.loading = false;
+    engine.notes = [tied];
+    const { result, rerender } = render();
+    expect(result.current.state.drawn).toEqual([]);
+    engine.notes = [{ ...tied, analysis: { ...tied.analysis, drawn: [3] } }];
+    rerender();
+    expect(result.current.state.drawn).toEqual([3]);
+    act(() => result.current.change(changeRelation(result.current.state, 1, 4, { color: 'pink' }, total)));
+    const laid = (commit.mock.calls.at(-1) as unknown as [(value: Record<string, unknown>) => { analysis: { drawn?: number[] } }])[0]({ ...tied });
+    expect(laid.analysis.drawn).toEqual([3]);
   });
 
   it('takes no change and no undo while the note\'s form waits for a decision', () => {
@@ -230,5 +245,19 @@ describe('an analysis note — what the screen may write', () => {
     const { result } = render();
     act(() => { jest.advanceTimersByTime(8000); });
     expect(result.current.ready).toBe(true);
+  });
+});
+
+describe('a drawn tie kept in the note', () => {
+  // The owner, 31.10: a tie drawn from the line's dot shows its arrow — also after a reload, on another device.
+  it('keeps which ties the person drew, and an analysis with none keeps the shape it had', () => {
+    const cut = cutAt(cutAt({ cuts: [], links: {}, relations: [] }, 3, total, 'under')!, 6, total, 'under')!;
+    expect(storedAnalysis(cut, 'rst', total)).not.toHaveProperty('drawn');
+    const drawn = tieTo(cut, 6, 3, total) as AnalysisState;
+    const kept = storedAnalysis(drawn, 'rst', total);
+    expect(kept.drawn).toEqual([6]);
+    const read = analysisState(kept, total);
+    expect(read.drawn).toEqual([6]);
+    expect(needsArrow(read, 6)).toBe(true);
   });
 });

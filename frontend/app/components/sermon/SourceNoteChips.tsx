@@ -2,10 +2,14 @@
 
 import { RectangleStackIcon } from '@heroicons/react/24/outline';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { noteScreenHref } from '@/components/bible/analysis/analysisAddress';
+import { USAGE_KIND_LOOK } from '@/components/bible/usageKinds';
 import { useSourceNotes } from '@/hooks/useSermonNoteLinks';
+import { resolveAppLocale } from '@/utils/appLocale';
 import { buildChipClasses } from '@/utils/chipClasses';
 import { getNavItemTheme } from '@/utils/themeColors';
 
@@ -20,6 +24,10 @@ import type { Sermon } from '@/models/models';
  * FILLED with the series' own colour (membership — a strong fact), while this one is a tinted
  * outline in the STUDIES accent (provenance — a quieter one), and it carries the studies icon
  * so the destination is recognisable before the text is read.
+ *
+ * An analysis is not a note to the person (the owner, 31.10: «это не заметка… значок должен быть разбора»): its chip
+ * carries the analysis's own violet and sign, as on the Bible's text, and leads to its structure in the Bible
+ * (`noteScreenHref`), the way back returning here.
  *
  * Nothing is rendered when there is no link: an empty placeholder would occupy the calmest
  * part of a screen people open to preach from. The way to ADD a link lives in the sermon's
@@ -36,29 +44,40 @@ interface SourceNoteChipsProps {
 }
 
 const SourceNoteChips: React.FC<SourceNoteChipsProps> = ({ sermon, openInNewTab = false }) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const pathname = usePathname();
+  const locale = resolveAppLocale(i18n?.language);
   const { notes } = useSourceNotes(sermon);
 
   if (notes.length === 0) return null;
 
   const theme = getNavItemTheme('studies');
+  const analysisLook = USAGE_KIND_LOOK.analysis;
 
   return (
     <>
       {notes.map((note, index) => {
         const title = note.title?.trim() || t('studiesWorkspace.untitled');
+        const analysis = note.type === 'analysis';
         return (
           <Link
             key={note.id}
-            href={`/studies/${note.id}`}
+            href={noteScreenHref(note, { locale, from: pathname || `/sermons/${sermon.id}` })}
             target={openInNewTab ? '_blank' : undefined}
             rel={openInNewTab ? 'noopener noreferrer' : undefined}
             data-testid="source-note-chip"
-            title={t('sermon.sourceNotes.chipTitle', { title })}
-            aria-label={t('sermon.sourceNotes.openNote', { title })}
-            className={`${buildChipClasses({ tone: 'custom', size: 'sm' })} max-w-[15rem] gap-1.5 whitespace-nowrap border transition-colors ${theme.pill}`}
+            data-kind={analysis ? 'analysis' : 'note'}
+            title={t(analysis ? 'sermon.sourceNotes.analysisChipTitle' : 'sermon.sourceNotes.chipTitle', { title })}
+            aria-label={t(analysis ? 'sermon.sourceNotes.openAnalysis' : 'sermon.sourceNotes.openNote', { title })}
+            className={`${buildChipClasses({ tone: 'custom', size: 'sm' })} max-w-[15rem] gap-1.5 whitespace-nowrap border transition-colors ${analysis ? `${analysisLook.badge.capsule} hover:brightness-95` : theme.pill}`}
           >
-            <RectangleStackIcon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            {analysis ? (
+              <span className={`inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full ${analysisLook.badge.circle}`}>
+                <analysisLook.Icon className="h-2.5 w-2.5 text-white" aria-hidden="true" />
+              </span>
+            ) : (
+              <RectangleStackIcon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            )}
             {/* The prefix is said ONCE, on the first chip. Seen live with two notes linked, "На
                 основе" repeated on every chip and the row started reading as a stutter; the
                 studies icon already says what the rest of them are. It also must never wrap —

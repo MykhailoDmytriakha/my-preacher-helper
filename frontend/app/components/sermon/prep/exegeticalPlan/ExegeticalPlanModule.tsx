@@ -36,7 +36,9 @@ const ExegeticalPlanModule: React.FC<ExegeticalPlanModuleProps> = ({
   onSave,
   saving,
   authorIntent = '',
-  onSaveAuthorIntent
+  onSaveAuthorIntent,
+  sermonId,
+  sourceNoteIds
 }) => {
   const [showInstruction, setShowInstruction] = useState(false);
   // An empty plan shows one line to type into; it joins the plan once it is edited.
@@ -214,7 +216,7 @@ const ExegeticalPlanModule: React.FC<ExegeticalPlanModuleProps> = ({
 
   return (
     <div className="space-y-4">
-      <BlockDiagramSection />
+      <BlockDiagramSection sermonId={sermonId} sourceNoteIds={sourceNoteIds} />
 
       <InstructionSection
         isVisible={showInstruction}

@@ -1724,7 +1724,9 @@
         "save": "Save",
         "cancel": "Cancel",
         "clear": "Unlink all"
-      }
+      },
+      "analysisChipTitle": "Built on the analysis: {{title}}",
+      "openAnalysis": "Open the analysis: {{title}}"
     },
     "notFound": "Sermon not found or unavailable",
     "unavailableOffline": "No connection and no local copy of this sermon",
@@ -1756,7 +1758,9 @@
       "cutBadge": "{{count}} cut",
       "open": "Open",
       "readOnly": "The note is read-only here — edit it in the note itself.",
-      "sections": "sections: {{count}}"
+      "sections": "sections: {{count}}",
+      "analysisTitle": "Analysis",
+      "analysisKicker": "This sermon is built on this analysis"
     },
     "materialEmpty": {
       "plain": "Thoughts will appear here",
@@ -4535,15 +4539,15 @@
     "edit": {
       "title": "Divide into parts",
       "hintMark": "Hover over a word to see two marks. The word and everything after it move to a new line:",
-      "markSame": "on the same level — the same as clicking the word itself;",
+      "markSame": "on the same level;",
       "markUnder": "one level below — under this line, shifted right.",
       "hintGlue": "The “join” mark on a line’s first word glues it back.",
       "hintSteps": "Hover over a line to see two arrows on its left. With nowhere to go, an arrow is pale:",
       "stepUp": "one level up — beside the line it hung on;",
       "stepDown": "one level down — under the line above on the same level.",
-      "hintTie": "To tie a line: point at it — a dot appears left of its first word. Drag the dot onto the word the line belongs to. An arrow appears only when that is not the line above. A line has one tie: to move it, first remove it with its ×.",
+      "hintTie": "To tie a line: point at it — a dot appears left of its first word. Drag the dot onto the word the line belongs to. Drag it up or down — the arrow always appears, to the line just above too. A line moved by ↳ or the arrows stands a step in, with no arrow. A line has one tie: to move it, first remove it with its ×.",
       "hintUntie": "To remove a tie: hover over its arrow — a × appears in the middle.",
-      "hintRelation": "A link of meaning: hold any word, a line's first one too, and let go on another word. A flag in the link's colour appears at the end of the line: point at it to draw the arrow, press it for direction, colour or removal.",
+      "hintRelation": "A link of meaning: hold any word, a line's first one too, and let go on another word. Both words get a ring in the link's colour, and a flag appears at the end of the line: point at it to draw the arrow; press the flag or a ringed word for direction, colour or removal.",
       "handle": "Drag the dot onto a word to tie the line"
     },
     "view": {
@@ -4578,6 +4582,7 @@
       "dropped": "The link «{{a}}» — «{{b}}» is removed.",
       "flag": "Link to the word «{{word}}»",
       "menu": "Link of «{{a}}» and «{{b}}»",
+      "menuWord": "Links of «{{word}}»",
       "dir": "Direction of the link",
       "color": "Colour of the link",
       "drop": "Remove link",
@@ -4597,6 +4602,30 @@
       }
     },
     "loading": "Loading your analyses — you can edit in a moment.",
-    "undoKeys": "Undo the last change — {{keys}}"
+    "undoKeys": "Undo the last change — {{keys}}",
+    "sermon": {
+      "new": "Sermon",
+      "newAria": "New sermon from the analysis of {{place}}",
+      "another": "Another sermon from the analysis of {{place}}",
+      "open": "Open the sermon “{{title}}”",
+      "untitled": "Untitled sermon",
+      "linked": "will be linked to the sermon",
+      "title": "Sermons from this analysis",
+      "empty": "No sermon has been made from this analysis yet.",
+      "create": "New sermon from the analysis"
+    },
+    "help": {
+      "collapse": "Fold",
+      "expand": "More",
+      "same": "new line on the same level",
+      "under": "new line one level in",
+      "glue": "join with the line above",
+      "up": "line one level out",
+      "down": "line one level in",
+      "tie": "a line's dot onto a word: tie it",
+      "untie": "× on an arrow: untie the line",
+      "relation": "word onto word: a link of meaning; press a ringed word to change it",
+      "view": "Press a part to light its way to the main thought."
+    }
   }
 }

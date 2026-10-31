@@ -33,12 +33,15 @@ export const passageSpan = (p: PickedPassage) => (p.chapter === p.toChapter ? `$
 /** The same parts, ties and links of meaning, whatever order they were made in. */
 const sameAnalysis = (a: AnalysisState, b: AnalysisState) => JSON.stringify([...a.cuts].sort((x, y) => x - y)) === JSON.stringify([...b.cuts].sort((x, y) => x - y))
   && JSON.stringify(Object.entries(a.links).sort()) === JSON.stringify(Object.entries(b.links).sort())
-  && JSON.stringify(a.relations) === JSON.stringify(b.relations);
+  && JSON.stringify(a.relations) === JSON.stringify(b.relations)
+  && JSON.stringify(a.drawn ?? []) === JSON.stringify(b.drawn ?? []);
 /** An analysis as the note keeps it — read back by `storedState`; the only writer of that shape. */
 export const storedAnalysis = (state: AnalysisState, bible: BibleId, words: number): StudyAnalysis => ({
   bible, words, cuts: state.cuts,
   links: Object.fromEntries(Object.entries(state.links).map(([key, word]) => [String(key), word])),
   relations: Object.fromEntries(state.relations.map(({ a, b, dir, color }) => [`${a}-${b}`, { dir, color }])),
+  // Kept only when there is one: an analysis with no drawn tie keeps the shape it had before the field.
+  ...(state.drawn?.length ? { drawn: state.drawn } : {}),
 });
 export const storedState = (note: StudyNote | undefined, total: number): AnalysisState => analysisState(note?.analysis, total);
 /** An analysis as the note keeps it, read back into its parts, ties and links of meaning for a passage of `total` words. */
@@ -48,7 +51,7 @@ export function analysisState(stored: StudyAnalysis | undefined, total: number):
     const [a, b] = key.split('-').map(Number);
     return [{ a, b, dir, color: color as Relation['color'] }];
   });
-  return settled({ cuts: stored.cuts ?? [], links: Object.fromEntries(Object.entries(stored.links ?? {}).map(([key, word]) => [Number(key), word])), relations }, total);
+  return settled({ cuts: stored.cuts ?? [], links: Object.fromEntries(Object.entries(stored.links ?? {}).map(([key, word]) => [Number(key), word])), relations, drawn: stored.drawn ?? [] }, total);
 }
 
 /**
@@ -97,7 +100,8 @@ export function useAnalysisNote({ opening, text, bookId, bible, locale }: { open
 
   const writable = Boolean(form.state) && !form.readOnly && PHASES_TAKING_CHANGES.has(form.status?.phase ?? '');
   const stored = copy?.analysis;
-  const storedKey = stored ? JSON.stringify([stored.cuts, stored.links, stored.relations ?? null]) : '';
+  // Every stored part of the analysis: a change of the drawn ties alone is a change too (Codex, 31.10).
+  const storedKey = stored ? JSON.stringify([stored.cuts, stored.links, stored.relations ?? null, stored.drawn ?? null]) : '';
   // Nothing is changed before the person's analyses are read, nor on a note whose form cannot take it: a change made
   // first would make a second analysis of a passage already analysed, or write over work the screen never showed
   // (Codex's hunt, 2026-10-30). Read means asked of the server too, while it answers: the list on this device may lack

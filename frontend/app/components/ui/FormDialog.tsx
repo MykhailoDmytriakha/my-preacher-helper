@@ -46,6 +46,11 @@ interface FormDialogProps {
   children: ReactNode;
   /** A separate dismiss action when the footer's Cancel explicitly discards a draft. */
   showCloseButton?: boolean;
+  /**
+   * The window's layer, when it opens over another window of the app rather than over a page — over the reader's
+   * windows and the analysis page (z-[120]) a new sermon stands at z-[130]; as `ReaderSheet` and `BookNavigator` take it.
+   */
+  layerClassName?: string;
 }
 
 const WIDTH_BY_SIZE: Record<NonNullable<FormDialogProps['size']>, string> = {
@@ -56,7 +61,7 @@ const WIDTH_BY_SIZE: Record<NonNullable<FormDialogProps['size']>, string> = {
 };
 
 /** Presentation only: submission, draft retention and dismissal belong to the caller. */
-export default function FormDialog({ title, titleAction, eyebrow, description, tone = 'blue', size, dismissOnBackdrop = false, closeDisabled = false, onClose, footer, onSubmit, noValidate, children, showCloseButton = false }: FormDialogProps) {
+export default function FormDialog({ title, titleAction, eyebrow, description, tone = 'blue', size, dismissOnBackdrop = false, closeDisabled = false, onClose, footer, onSubmit, noValidate, children, showCloseButton = false, layerClassName }: FormDialogProps) {
   const { t } = useTranslation();
   const titleId = useId();
   const descriptionId = useId();
@@ -101,7 +106,7 @@ export default function FormDialog({ title, titleAction, eyebrow, description, t
       </div>
     );
     return createPortal(
-      <div {...layer} className="fixed inset-0 z-[110] flex items-end justify-center overscroll-contain bg-black/50 p-0 sm:items-center sm:p-4"
+      <div {...layer} className={`fixed inset-0 ${layerClassName ?? 'z-[110]'} flex items-end justify-center overscroll-contain bg-black/50 p-0 sm:items-center sm:p-4`}
         onClick={event => { if (!closeDisabled && event.target === event.currentTarget) onClose(); }}>
         <div role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={description ? descriptionId : undefined}
           onClick={event => event.stopPropagation()}
@@ -113,7 +118,7 @@ export default function FormDialog({ title, titleAction, eyebrow, description, t
   }
 
   return createPortal(
-    <div {...layer} className="fixed inset-0 z-[100] flex items-center justify-center overscroll-contain bg-black/50 backdrop-blur-sm sm:px-4"
+    <div {...layer} className={`fixed inset-0 ${layerClassName ?? 'z-[100]'} flex items-center justify-center overscroll-contain bg-black/50 backdrop-blur-sm sm:px-4`}
       onClick={event => { if (dismissOnBackdrop && !closeDisabled && event.target === event.currentTarget) onClose(); }}>
       <div role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={description ? descriptionId : undefined}
         className={`flex h-[100dvh] w-full flex-col overflow-hidden border border-gray-200/70 bg-white shadow-2xl dark:border-gray-800 dark:bg-gray-900 sm:h-auto sm:max-h-[85vh] sm:rounded-2xl ${width}`}>

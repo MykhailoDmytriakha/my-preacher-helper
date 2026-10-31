@@ -1,5 +1,6 @@
 'use client';
 
+import { ChevronDownIcon } from '@heroicons/react/20/solid';
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent, type PointerEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
@@ -11,12 +12,17 @@ import {
   cutAt, depthOf, dropTie, glueAt, holderOf, holdersOf, needsArrow, partEnd, partOf, partsOn, partStarts,
   partText, stepDown, stepUp, tieTo, tieTurns, type AnalysisState, type AnalysisWord, type CutLevel,
 } from '@/utils/passageAnalysis';
+import { passageCopyText } from '@/utils/verseCopy';
+
+import { useCopyNames } from '../verseCopy/useVerseCopy';
 
 import { writeAnalysisAddress } from './analysisAddress';
 import { arrowNear, dragArrow, fromLine, tieArrows, useGeometry, type Arrow } from './analysisGeometry';
+import { saveAnalysisHelpPrefs, useAnalysisHelpPrefs } from './analysisHelpPrefs';
 import {
   ARROW, AnalysisHeader, AnalysisLine, PanelGlyph, UntieMark, type AnalysisMode, type LineDrag, type LineRole, type LineSteps, type LineWord, type WordDrag,
 } from './AnalysisParts';
+import { AnalysisSermons, AnalysisSermonsPanel } from './AnalysisSermons';
 import { RelationGlyph } from './RelationParts';
 import { useAnalysisMarks, type AnalysisMarks } from './useAnalysisMarks';
 import { useAnalysisNote, type AnalysisOpening } from './useAnalysisNote';
@@ -51,15 +57,17 @@ function roleOf(state: AnalysisState, mode: AnalysisMode, selected: number | nul
 /**
  * A PASSAGE'S ANALYSIS, OVER THE READER (case 2026-10-12-block-diagram, 3.4; accepted on the canvas «Разбор структуры»,
  * 2026-10-29). Two modes: «Правка» — at rest it looks as «Просмотр» (the owner, 2026-10-29); the marks over a word start a
- * new line on the same step (↵, as a tap on the word) or one step under (↳), the mark over a line's first word glues it
+ * new line on the same step (↵) or one step under (↳) — a press on the word itself cuts nothing (the owner, 31.10), the mark over a line's first word glues it
  * back, the arrows left of the line under the pointer move it a step up or down, a word held and dragged onto another
  * word ties its line to that word, any other word dragged onto a word links the two by meaning (`useAnalysisRelations`),
  * and the × at a tie's arrow takes the tie away; and «Просмотр» — a part pressed lights its way up to the main thought.
  * In both the reader's marker, pencil and eraser paint the words (`useAnalysisMarks`). An analysis that exists opens for
  * viewing, a new one for editing. The rules are `utils/passageAnalysis.ts`; the note behind it is `useAnalysisNote`.
  */
-export function AnalysisEditor({ opening, text, bookId, bible, locale, marks: lentMarks, onClose, onEditVerses }: {
+export function AnalysisEditor({ opening, text, bookId, bible, locale, marks: lentMarks, onClose, onEditVerses, onOpenScreen }: {
   opening: AnalysisOpening; text: BookText; bookId: string; bible: BibleId; locale: AppLocale; onClose: () => void;
+  /** Another screen of the app opened from here (a sermon made from this analysis), the reader's way. */
+  onOpenScreen?: (href: string) => void;
   /** The reader's marks of this book, or nothing (signed out, or not read yet). */
   marks?: AnalysisMarks | null;
   /** Its verses chosen again in the reader: the note it is kept in (none yet for an untouched new one) and its passage. */
@@ -67,6 +75,7 @@ export function AnalysisEditor({ opening, text, bookId, bible, locale, marks: le
 }) {
   const { t } = useTranslation();
   const note = useAnalysisNote({ opening, text, bookId, bible, locale });
+  const copyNames = useCopyNames(bible, bookId);
   const { words, total, state, place } = note;
   const [mode, setMode] = useState<AnalysisMode>(() => firstMode(opening));
   const [selected, setSelected] = useState<number | null>(null);
@@ -105,22 +114,23 @@ export function AnalysisEditor({ opening, text, bookId, bible, locale, marks: le
 
   // A mark over a word: ↵ — a new line on the same step as the line it is cut from, ↳ — one step under it.
   const cutWord = (word: number, level: CutLevel) => { const next = cutAt(state, word, total, level); if (next) change(next); };
-  // A word pressed: in «Правка» a new line on the same step (↵), or a line glued back; in «Просмотр» its part lights up.
-  // A press that ended a drag is not a press.
+  // A word pressed: in «Просмотр» its part lights up. In «Правка» a press cuts and glues nothing — a line is cut only by ↵ ↳
+  // over a word and glued only by the mark over its first word (the owner, 31.10: a press on a word picked out by a link or a
+  // mark cut the line unasked — «только по кнопкам»). A press that ended a drag is not a press.
   const pressWord = (word: number) => {
     if (justDragged.current) { justDragged.current = false; return; }
     if (marks.painting) return;
+    // In «Правка» a linked word — the one ringed — opens its links' menu (the owner, 31.10).
+    if (mode !== 'view') { relations.pressWord(word); return; }
     const start = partOf(state, word);
-    if (mode === 'view') { setSelected(selected === start ? null : start); return; }
-    if (word === 0) return;
-    if (word !== start) { cutWord(word, 'same'); return; }
-    change(glueAt(state, start, total));
+    setSelected(selected === start ? null : start);
   };
+  const glueLine = (start: number) => change(glueAt(state, start, total));
 
   // A line held by its dot and dragged ties the line to the word it is dropped on (the owner's choice on the canvas,
   // 30.10: two lines' first words could not be linked by meaning while the first word carried the tie). A line has one
   // such tie: while its arrow stands, the line is not dragged — its × takes the tie away first. Any word held and dragged,
-  // a line's first too, links itself by meaning to the word it is dropped on; a short press stays a cut or a glue.
+  // a line's first too, links itself by meaning to the word it is dropped on; a short press changes nothing.
   const wordAt = (x: number, y: number) => {
     const hit = document.elementFromPoint(x, y)?.closest('[data-word]');
     return hit ? Number(hit.getAttribute('data-word')) : null;
@@ -231,6 +241,12 @@ export function AnalysisEditor({ opening, text, bookId, bible, locale, marks: le
   if (typeof document === 'undefined') return null;
 
   const title = t('analysis.title', { place });
+  // Only a kept analysis can be named by a sermon; an untouched new one has no note yet.
+  const analysisId = note.noteId();
+  const sermons = onOpenScreen && analysisId ? {
+    noteId: analysisId, place, verse: note.passage ? passageCopyText(text.chapters, note.passage, copyNames) : '',
+    onOpen: (href: string) => { note.flush(); onOpenScreen(href); },
+  } : null;
 
   return createPortal(
     <div {...layer} role="dialog" aria-modal="true" aria-label={title} className="fixed inset-0 z-[120] flex flex-col bg-white text-gray-900 dark:bg-gray-950 dark:text-gray-100">
@@ -238,7 +254,9 @@ export function AnalysisEditor({ opening, text, bookId, bible, locale, marks: le
         onMode={(value) => { setMode(value); setSelected(null); setMessage(null); }}
         canUndo={note.canUndo} onUndo={undo} onClose={close} tools={marks.toolbar}
         allLinks={mode === 'view' && state.relations.length ? { on: allLinks, onToggle: () => setAllLinks(!allLinks) } : null}
-        onEditVerses={onEditVerses && note.passage ? () => { note.flush(); onEditVerses(note.noteId(), note.passage!); } : undefined} />
+        onEditVerses={onEditVerses && note.passage ? () => { note.flush(); onEditVerses(note.noteId(), note.passage!); } : undefined}
+        // On a screen without the side panel the sermons stand by the name; with it, in the panel (the owner, 31.10).
+        sermons={sermons ? <span className="lg:hidden"><AnalysisSermons {...sermons} /></span> : null} />
       <div className="flex min-h-0 flex-1">
         {/* The top padding leaves room for a mark's name over the first line, the left one for a top line's two arrows and
             its dot — past a two-digit verse number hung in the margin. */}
@@ -253,9 +271,9 @@ export function AnalysisEditor({ opening, text, bookId, bible, locale, marks: le
               </svg>
             ))}
             {relations.arrows.map((arrow) => (
-              <svg key={arrow.key} data-relation-arrow={arrow.key} aria-hidden="true" width={geometry.width || 1} height={geometry.height || 1} className={`pointer-events-none absolute left-0 top-0 overflow-visible ${arrow.stroke}`}>
-                <path d={arrow.d} fill="none" strokeWidth={2.2} strokeLinecap="round" />
-                {arrow.heads.map((head) => <path key={head} d={head} fill="none" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" />)}
+              <svg key={arrow.key} data-relation-arrow={arrow.key} data-strong={arrow.strong || undefined} aria-hidden="true" width={geometry.width || 1} height={geometry.height || 1} className={`pointer-events-none absolute left-0 top-0 overflow-visible ${arrow.stroke}`}>
+                <path d={arrow.d} fill="none" strokeWidth={arrow.strong ? 3.4 : 2.2} strokeLinecap="round" />
+                {arrow.heads.map((head) => <path key={head} d={head} fill="none" strokeWidth={arrow.strong ? 3.4 : 2.2} strokeLinecap="round" strokeLinejoin="round" />)}
               </svg>
             ))}
             {relations.dragLine(drag?.moved && drag.kind === 'relate' ? drag : null)}
@@ -263,7 +281,7 @@ export function AnalysisEditor({ opening, text, bookId, bible, locale, marks: le
               <AnalysisLine key={start} start={start} depth={depthOf(state, start)} role={roleOf(state, mode, selected, start)}
                 words={wordsOf(start)} steps={stepsOf(start)} drag={mode === 'edit' ? wordDrag : null} handle={mode === 'edit' && !marks.painting ? lineDrag : null}
                 flags={relations.flagsOf(start)} painting={marks.painting}
-                onWord={pressWord} onCut={cutWord} onHoverWord={relations.pointWord} />
+                onWord={pressWord} onCut={cutWord} onGlue={glueLine} onHoverWord={relations.pointWord} />
             ))}
             {untieAt?.mid ? <UntieMark x={untieAt.mid.x} y={untieAt.mid.y} onPress={() => untie(untieAt.start!)} onEnter={() => overArrowOn(untieAt.start!)} onLeave={overArrowOff} /> : null}
             {relations.menuNode}
@@ -271,6 +289,7 @@ export function AnalysisEditor({ opening, text, bookId, bible, locale, marks: le
         </div>
         <aside className="hidden w-80 shrink-0 flex-col gap-3 overflow-auto border-l border-gray-200 p-5 text-sm dark:border-gray-800 lg:flex">
           <AnalysisPanel mode={mode} state={state} selected={selected} short={short} bare={bare} />
+          {sermons ? <div className="mt-3 border-t border-gray-200 pt-4 dark:border-gray-800"><AnalysisSermonsPanel {...sermons} /></div> : null}
           {message ? <div className={`rounded-xl px-3 py-2 leading-relaxed ${message.warn ? 'bg-rose-50 text-rose-800 dark:bg-rose-950/50 dark:text-rose-200' : 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-200'}`}>{message.text}</div> : null}
         </aside>
       </div>
@@ -318,17 +337,51 @@ function AnalysisNotices({ ready, changedText, sync, refused, onSaveAgain }: {
   );
 }
 
-/** The side panel: what to do now — divide the passage and tie its parts, or read the chosen one. */
+/**
+ * The side panel: what to do now — divide the passage and tie its parts, or read the chosen one. Its help folds (the owner,
+ * 31.10: «поначалу она нужна, а потом ты уже выучиваешь»): in full at first, each tool one line — its sign and a short
+ * name — once folded, the choice kept on the device (`analysisHelpPrefs.ts`). What the chosen part holds is not help: it
+ * stays.
+ */
 function AnalysisPanel({ mode, state, selected, short, bare }: {
   mode: AnalysisMode; state: AnalysisState; selected: number | null;
   short: (start: number) => string; bare: (word: number) => string;
 }) {
   const { t } = useTranslation();
+  const help = useAnalysisHelpPrefs();
   const hint = 'leading-relaxed text-gray-600 dark:text-gray-300';
+  const line = 'flex items-start gap-1 leading-snug text-gray-600 dark:text-gray-300';
+  const head = (title: string) => (
+    <div className="flex items-center justify-between gap-2">
+      <div className="text-[15px] font-bold">{title}</div>
+      <button type="button" aria-expanded={!help.short} data-testid="analysis-help-toggle" onClick={() => saveAnalysisHelpPrefs({ short: !help.short })}
+        className="inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-indigo-600 transition-colors hover:bg-indigo-50 dark:text-indigo-300 dark:hover:bg-indigo-950/50">
+        {t(help.short ? 'analysis.help.expand' : 'analysis.help.collapse')}
+        <ChevronDownIcon className={`h-3.5 w-3.5 transition-transform ${help.short ? '' : 'rotate-180'}`} aria-hidden="true" />
+      </button>
+    </div>
+  );
   if (mode === 'edit') {
+    if (help.short) {
+      return (
+        <>
+          {head(t('analysis.edit.title'))}
+          <div data-testid="analysis-help-short" className="flex flex-col gap-2">
+            <p className={line}><PanelGlyph kind="same" />{t('analysis.help.same')}</p>
+            <p className={line}><PanelGlyph kind="under" />{t('analysis.help.under')}</p>
+            <p className={line}><PanelGlyph kind="glue" />{t('analysis.help.glue')}</p>
+            <p className={line}><PanelGlyph kind="up" />{t('analysis.help.up')}</p>
+            <p className={line}><PanelGlyph kind="down" />{t('analysis.help.down')}</p>
+            <p className={line}><PanelGlyph kind="tie" />{t('analysis.help.tie')}</p>
+            <p className={line}><PanelGlyph kind="untie" />{t('analysis.help.untie')}</p>
+            <p className={line}><RelationGlyph />{t('analysis.help.relation')}</p>
+          </div>
+        </>
+      );
+    }
     return (
       <>
-        <div className="text-[15px] font-bold">{t('analysis.edit.title')}</div>
+        {head(t('analysis.edit.title'))}
         <p className={hint}>{t('analysis.edit.hintMark')}</p>
         <p className={hint}><PanelGlyph kind="same" />{t('analysis.edit.markSame')}</p>
         <p className={hint}><PanelGlyph kind="under" />{t('analysis.edit.markUnder')}</p>
@@ -345,8 +398,8 @@ function AnalysisPanel({ mode, state, selected, short, bare }: {
   const word = selected !== null ? state.links[selected] : undefined;
   return (
     <>
-      <div className="text-[15px] font-bold">{t('analysis.modeView')}</div>
-      <p className={hint}>{t('analysis.view.hint')}</p>
+      {head(t('analysis.modeView'))}
+      <p className={hint}>{t(help.short ? 'analysis.help.view' : 'analysis.view.hint')}</p>
       {selected !== null ? (
         <div className="flex flex-col gap-1.5 rounded-xl bg-gray-50 p-3 dark:bg-gray-900">
           <div className="font-serif text-[15px]">{short(selected)}</div>

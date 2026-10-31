@@ -468,9 +468,16 @@ open document draft with another scope's payload. `DataMembershipStatus` exposes
 whole-action retry/discard. `recoveryIdentity` and `recoveryVersion` feed the shared
 `useRecoveryDiscovery` hook, including when no action dialog is mounted.
 
-Mount `SeriesMembershipRecovery` once in the private workspace so closed stages
-remain discoverable after navigation. `listRecoverable({ closedOnly: true })`
-omits stages held, opening, or finishing release in this engine. The React hook
+A window that edits a stage closes one way: «Отмена», its ✕, a press beside it and
+Escape all cancel the stage (asking first only when the person typed something) —
+a closed window keeps no draft behind (the owner, 2026-10-31: a draft banner over
+every page is a bad answer). A stage is left only when its page goes away mid-edit
+(a reload, a closed tab). A sermon creation is never kept half-made (the owner,
+2026-10-31): one left so before its Save is thrown away when the next «Новая
+проповедь» opens (`EngineCreateSermonModal`); one whose Save was pressed is a sermon
+on its way and is never touched. A membership action left so is offered by
+`SeriesMembershipRecovery`, mounted once in the private workspace. `listRecoverable({ closedOnly: true })` omits stages held, opening, or
+finishing release in this engine. The React hook
 claims a recovered stage exclusively within its engine; a second dialog cannot
 take over the same scope. This is not a cross-tab lock: durable storage still
 arbitrates concurrent runtime changes. Account changes fence discovery and claims.

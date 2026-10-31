@@ -2,6 +2,7 @@ import { councilProgress, topicPreview } from '@/utils/council';
 import { toDateOnlyKey, toLocalDateOnlyKey } from '@/utils/dateOnly';
 import { getEffectivePreachDateStatus } from '@/utils/preachDateStatus';
 import { formatScriptureReferences } from '@/utils/scriptureReference';
+import { inStudies } from '@/utils/studyNoteTabs';
 import { studyNoteOwnName } from '@/utils/studyNoteUtils';
 
 import type { Council, Group, PrayerRequest, Sermon, StudyNote } from '@/models/models';
@@ -171,7 +172,8 @@ export interface NoteEntryWords {
  * of them would otherwise put a wall of chapter numbers on a day card.
  */
 export function noteEntries(notes: StudyNote[], words: NoteEntryWords): CalendarEntry[] {
-  return notes.flatMap((note) => {
+  // A passage's analysis lives in the Bible, not among the studies this card opens — as on the dashboard and in Studies.
+  return notes.filter(inStudies).flatMap((note) => {
     const written = toLocalDateOnlyKey(note.createdAt);
     if (!written) return [];
     const ownTitle = note.title?.trim();

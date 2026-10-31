@@ -12,7 +12,7 @@ import { getBookIds, getLocalizedAbbrev, getLocalizedBookName } from '@/utils/bi
 import { BIBLES } from '@/utils/bibles';
 import { verseWords, type BookText } from '@/utils/bibleText';
 import { coversChapter, crossReferenceLabel, crossReferencesAt, isMainReference, type CrossReference, type CrossRefsBook } from '@/utils/crossReferences';
-import { verseCopyText, type CopyNames } from '@/utils/verseCopy';
+import { passageCopyText, verseCopyText, type CopyNames } from '@/utils/verseCopy';
 
 import { ARRIVAL_ATTRIBUTE, ChapterVerses } from './BookRibbon';
 import { saveCrossReferencePrefs, useCrossReferencePrefs } from './crossReferencePrefs';
@@ -49,9 +49,8 @@ type CrossReferenceSheetProps = {
 
 /** A link's whole passage as copied: the place, then its words — all its verses, not only those shown. */
 function passageCopy(text: BookText | undefined, reference: CrossReference, names: CopyNames): string | null {
-  const verses = text?.chapters[reference.chapter - 1]?.slice(reference.fromVerse - 1, reference.toVerse);
-  if (!verses?.length) return null;
-  return verseCopyText(verses.map((verse, k) => ({ chapter: reference.chapter, verse: reference.fromVerse + k, words: verseWords(verse) })), 'quote', names);
+  if (!text?.chapters[reference.chapter - 1]?.[reference.fromVerse - 1]) return null;
+  return passageCopyText(text.chapters, { chapter: reference.chapter, toChapter: reference.chapter, fromVerse: reference.fromVerse, toVerse: reference.toVerse }, names);
 }
 
 function passageText(text: BookText | undefined, reference: CrossReference): string | null {

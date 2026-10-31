@@ -180,3 +180,34 @@ describe('atomsOwnedByNotes — the link decides, not the heading', () => {
     expect(owned.has('a3')).toBe(false);
   });
 });
+
+describe('an analysis beside the sermon', () => {
+  // The owner, 31.10: «это не заметка, но это на основе разбор… значок должен быть разбора, и… вести на страницу разбора
+  // структуры, а не заметки».
+  const anAnalysis = () => aNote({
+    id: 'a1', type: 'analysis', title: 'Разбор · 1Ин 4:1–3',
+    content: '- Возлюбленные!\n- не\n  - всякому духу\n  - верьте,',
+    scriptureRefs: [{ id: 'r1', bible: 'rst', book: '1 John', chapter: 4, fromVerse: 1, toVerse: 3 }],
+  });
+
+  it('stands as an analysis — its own heading and words, its structure drawn, and «Открыть» going to it in the Bible', () => {
+    linkNotes([anAnalysis()]);
+    render(<SourceNoteSection sermon={{ id: 's1', sourceNoteIds: ['a1'] } as Sermon} />);
+    expect(screen.getByRole('heading', { name: 'sermon.sourceNoteSection.analysisTitle' })).toBeInTheDocument();
+    const card = screen.getByTestId('source-analysis-card');
+    expect(card).toHaveTextContent('sermon.sourceNoteSection.analysisKicker');
+    expect(card).not.toHaveTextContent('sermon.sourceNoteSection.kicker');
+    const lines = [...card.querySelectorAll<HTMLElement>('[data-analysis-line]')];
+    expect(lines.map((line) => [line.textContent, line.style.paddingLeft])).toEqual([
+      ['Возлюбленные!', '0px'], ['не', '0px'], ['всякому духу', '14px'], ['верьте,', '14px'],
+    ]);
+    const href = new URL(screen.getByTestId('source-note-open').getAttribute('href') ?? '', 'https://app.invalid');
+    expect(href.pathname).toBe('/bible');
+    expect(Object.fromEntries(href.searchParams)).toMatchObject({ analysis: 'a1', mode: 'view' });
+  });
+
+  it('claims no atoms: an atom naming the analysis stays with the sermon\'s own', () => {
+    const atom = anAtom('x1', 'Мысль', '', 'a1');
+    expect(atomsOwnedByNotes([anAnalysis()], [atom]).has('x1')).toBe(false);
+  });
+});

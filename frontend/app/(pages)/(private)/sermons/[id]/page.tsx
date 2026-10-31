@@ -615,6 +615,8 @@ function SermonPageContent({ id }: { id: string }) {
           saving={savingPrep}
           authorIntent={prepDraft?.authorIntent || ''}
           onSaveAuthorIntent={(text) => savePrepField('authorIntent', text)}
+          sermonId={sermon?.id}
+          sourceNoteIds={sermon?.sourceNoteIds}
         />
       ),
       mainIdea: (

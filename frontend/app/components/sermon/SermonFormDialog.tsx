@@ -47,8 +47,11 @@ interface SermonFormDialogProps {
   values: SermonFormValues;
   onChange: (patch: Partial<SermonFormValues>) => void;
   onSubmit: (event: React.FormEvent) => void;
+  /**
+   * The one way out short of saving: «Отмена», the ✕, a press beside the window and Escape all come here — a press
+   * beside is a cancel too (the owner, 2026-10-31); a window closed any way keeps no draft behind.
+   */
   onCancel: () => void;
-  onDismiss?: () => void;
   /** Cancel would throw away changes made here: it asks first (`useDiscardQuestion`). */
   unsaved?: boolean;
   submitLabel: string;
@@ -75,6 +78,10 @@ interface SermonFormDialogProps {
   detailsHint?: string;
   titleMaxRows?: number;
   verseMaxRows?: number;
+  /** Under the verse, in the caller's words: what the new sermon brings with it (an analysis it is made from). */
+  verseNote?: React.ReactNode;
+  /** The window's layer over another window (`FormDialog`). */
+  layerClassName?: string;
 }
 
 export default function SermonFormDialog({
@@ -83,7 +90,6 @@ export default function SermonFormDialog({
   onChange,
   onSubmit,
   onCancel,
-  onDismiss,
   unsaved = false,
   submitLabel,
   saving,
@@ -98,6 +104,8 @@ export default function SermonFormDialog({
   detailsHint,
   titleMaxRows = 4,
   verseMaxRows = 10,
+  verseNote,
+  layerClassName,
 }: SermonFormDialogProps) {
   const { t } = useTranslation();
   const { askBeforeDiscard, discardDialog } = useDiscardQuestion();
@@ -184,7 +192,7 @@ export default function SermonFormDialog({
   );
 
   return (
-    <FormDialog title={heading} onClose={onDismiss ?? onCancel} showCloseButton={Boolean(onDismiss)} onSubmit={handleSubmit} footer={footer} closeDisabled={saving}>
+    <FormDialog title={heading} onClose={() => { void askBeforeDiscard(unsaved, onCancel); }} showCloseButton onSubmit={handleSubmit} footer={footer} closeDisabled={saving} layerClassName={layerClassName}>
       {notice && (
         <div
           role="alert"
@@ -230,6 +238,7 @@ export default function SermonFormDialog({
               aria-required="true"
               aria-invalid={missingFieldRef.current === 'verse' || undefined}
             />
+            {verseNote}
           </div>
         </div>
       </section>

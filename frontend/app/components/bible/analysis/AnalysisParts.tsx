@@ -26,7 +26,7 @@ const RING: Record<LineRole, string> = {
 };
 
 /** The bar over the analysis: back to the text, the place and how many parts, «Правка»/«Просмотр», the marks' tools, undo, done. */
-export function AnalysisHeader({ title, parts, mode, onMode, canUndo, onUndo, onClose, onEditVerses, tools, allLinks }: {
+export function AnalysisHeader({ title, parts, mode, onMode, canUndo, onUndo, onClose, onEditVerses, tools, allLinks, sermons }: {
   title: string; parts: string; mode: AnalysisMode; onMode: (mode: AnalysisMode) => void; canUndo: boolean; onUndo: () => void; onClose: () => void;
   /** In «Просмотр», with links of meaning to show: the switch that draws all their arrows at once (the owner, 30.10). */
   allLinks?: { on: boolean; onToggle: () => void } | null;
@@ -34,6 +34,8 @@ export function AnalysisHeader({ title, parts, mode, onMode, canUndo, onUndo, on
   tools?: ReactNode;
   /** The place pressed: the analysis's verses are chosen again in the reader. */
   onEditVerses?: () => void;
+  /** By its name, the sermons made from it and a new one (`AnalysisSermons`). */
+  sermons?: ReactNode;
 }) {
   const { t } = useTranslation();
   return (
@@ -53,6 +55,7 @@ export function AnalysisHeader({ title, parts, mode, onMode, canUndo, onUndo, on
           <div className="text-xs text-gray-500 dark:text-gray-400">{parts}</div>
         </div>
       )}
+      {sermons}
       <div className="mx-auto flex gap-1 rounded-xl bg-gray-100 p-1 dark:bg-gray-900" role="group" aria-label={t('analysis.modes')}>
         {(['edit', 'view'] as const).map((value) => (
           <button key={value} type="button" aria-pressed={mode === value} onClick={() => onMode(value)}
@@ -249,10 +252,10 @@ function LineHandle({ start, left, drag }: { start: number; left: number; drag: 
 
 /**
  * A part on its line: its words, and in «Правка» the arrows and the dot left of it. At rest a line in «Правка» looks as in
- * «Просмотр» (the owner, 2026-10-29): no number — a press on a word cuts, a word held and dragged links it by meaning, the
+ * «Просмотр» (the owner, 2026-10-29): no number — ↵ ↳ over a word cut (a press on the word itself does not), a word held and dragged links it by meaning, the
  * dot held and dragged ties the line.
  */
-export function AnalysisLine({ start, depth, role, words, steps, drag, handle, flags, painting, onWord, onCut, onHoverWord }: {
+export function AnalysisLine({ start, depth, role, words, steps, drag, handle, flags, painting, onWord, onCut, onGlue, onHoverWord }: {
   start: number; depth: number; role: LineRole; words: LineWord[]; steps: LineSteps | null; drag: WordDrag | null;
   /** The dot that ties the line, in «Правка» with no tool in hand. */
   handle?: LineDrag | null;
@@ -261,6 +264,8 @@ export function AnalysisLine({ start, depth, role, words, steps, drag, handle, f
   /** A marker, a pencil or the eraser in hand: a press paints, nothing is cut or dragged. */
   painting?: boolean;
   onWord: (index: number) => void; onCut: (index: number, level: CutLevel) => void;
+  /** The mark over a line's first word: the line glued back to the one above. */
+  onGlue: (index: number) => void;
   onHoverWord?: (index: number | null) => void;
 }) {
   const pad = 8 + depth * 26;
@@ -274,7 +279,7 @@ export function AnalysisLine({ start, depth, role, words, steps, drag, handle, f
       {steps ? <StepPair steps={steps} left={edge - 66} /> : null}
       {handle ? <LineHandle start={start} left={edge - 17} drag={handle} /> : null}
       <span className={`rounded-lg px-1.5 py-0.5 font-serif text-[19px] leading-[1.75] [box-decoration-break:clone] ${drag || painting ? 'select-none' : ''} ${RING[role]}`}>
-        {words.map((item) => <WordOfLine key={item.index} item={item} drag={drag} painting={painting} onWord={onWord} onCut={onCut} onHoverWord={onHoverWord} />)}
+        {words.map((item) => <WordOfLine key={item.index} item={item} drag={drag} painting={painting} onWord={onWord} onCut={onCut} onGlue={onGlue} onHoverWord={onHoverWord} />)}
         {flags}
       </span>
     </div>
@@ -282,8 +287,8 @@ export function AnalysisLine({ start, depth, role, words, steps, drag, handle, f
 }
 
 /** What stands over a word while the pointer is on it: ↵ and ↳ over a word inside a line, «склеить» over its first word. */
-function WordMarks({ item, onWord, onCut }: { item: LineWord; onWord: (index: number) => void; onCut: (index: number, level: CutLevel) => void }) {
-  if (item.mark === 'glue') return <GlueMark onPress={() => onWord(item.index)} />;
+function WordMarks({ item, onCut, onGlue }: { item: LineWord; onCut: (index: number, level: CutLevel) => void; onGlue: (index: number) => void }) {
+  if (item.mark === 'glue') return <GlueMark onPress={() => onGlue(item.index)} />;
   if (item.mark !== 'break') return null;
   return (
     <span className="absolute -left-2.5 -top-[15px] z-10 hidden gap-[3px] group-hover:inline-flex">
@@ -307,8 +312,9 @@ function VerseNumber({ item }: { item: LineWord }) {
 
 const TARGET_LOOK = { yes: 'bg-indigo-100 ring-2 ring-indigo-500 dark:bg-indigo-900', no: 'bg-rose-100 dark:bg-rose-950' };
 
-function WordOfLine({ item, drag, painting, onWord, onCut, onHoverWord }: {
+function WordOfLine({ item, drag, painting, onWord, onCut, onGlue, onHoverWord }: {
   item: LineWord; drag: WordDrag | null; painting?: boolean; onWord: (index: number) => void; onCut: (index: number, level: CutLevel) => void;
+  onGlue: (index: number) => void;
   onHoverWord?: (index: number | null) => void;
 }) {
   const look = [
@@ -329,7 +335,7 @@ function WordOfLine({ item, drag, painting, onWord, onCut, onHoverWord }: {
       <span data-word={item.index} onClick={() => onWord(item.index)} {...hover}
         onPointerDown={held ? (event) => held.down(item.index, event) : undefined} onPointerMove={held?.move} onPointerUp={held?.up} onPointerCancel={held?.cancel}
         className={`group relative rounded ${look}`}>
-        <WordMarks item={item} onWord={onWord} onCut={onCut} />
+        <WordMarks item={item} onCut={onCut} onGlue={onGlue} />
         {/* The middle of the small letters (vertical-align: middle): where a tie's arrow leaves the line. */}
         {item.leads ? <span data-mid={item.index} aria-hidden="true" className="inline-block h-0 w-0 align-middle" /> : null}
         {item.word.text}

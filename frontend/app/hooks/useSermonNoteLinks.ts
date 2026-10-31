@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
-import { useDocumentActions } from '@/data-engine/react.client';
+import { useDataCollection, useDocumentActions } from '@/data-engine/react.client';
 import { useResolvedUid } from '@/hooks/useResolvedUid';
 import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
 import { SERMON_CORE_AGGREGATE } from '@/services/sermons.client';
@@ -138,6 +138,11 @@ export function useSourceNotes(
   }, [ids, notes, loading, ready]);
 }
 
+/** The link itself, read from its one stored fact: does this sermon name that note? */
+export function sermonNamesNote(sermon: Pick<Sermon, 'sourceNoteIds'>, noteId: string): boolean {
+  return (sermon.sourceNoteIds ?? []).includes(noteId);
+}
+
 /** The other direction: sermons whose stored `sourceNoteIds` name this note. */
 export function useSermonsBuiltOnNote(noteId: string | undefined): {
   sermons: Sermon[];
@@ -151,10 +156,27 @@ export function useSermonsBuiltOnNote(noteId: string | undefined): {
   });
   const sermons = useMemo(() => {
     if (!noteId) return [];
-    return (query.data ?? []).filter((sermon) => (sermon.sourceNoteIds ?? []).includes(noteId));
+    return (query.data ?? []).filter((sermon) => sermonNamesNote(sermon, noteId));
   }, [query.data, noteId]);
 
   return { sermons, loading: isAuthLoading || query.isLoading };
+}
+
+/**
+ * The same direction read from the data engine's list of sermons — the list the Bible reads its sermon badges from:
+ * a sermon made here a moment ago is in it at once, before any server answers (an analysis's sermons in the reader,
+ * 2026-10-30). Newest first. The studies screens still read `useSermonsBuiltOnNote` from the legacy cache.
+ */
+export function useEngineSermonsBuiltOnNote(noteId: string | null | undefined): Sermon[] {
+  const { uid } = useResolvedUid();
+  const { state } = useDataCollection(uid && noteId ? 'sermons' : null);
+  return useMemo(() => {
+    if (!noteId) return [];
+    return (state?.documents ?? [])
+      .flatMap((row) => (row.value && !row.deleting && row.value.userId === uid ? [{ ...row.value, id: row.resource.id } as unknown as Sermon] : []))
+      .filter((sermon) => sermonNamesNote(sermon, noteId))
+      .sort((a, b) => String(b.date ?? '').localeCompare(String(a.date ?? '')));
+  }, [state, noteId, uid]);
 }
 
 /**

@@ -53,23 +53,39 @@ export function RelationGlyph() {
   );
 }
 
+/** One link in the menu: its two words, and what changes it. */
+export type RelationMenuItem = {
+  relation: Relation; a: string; b: string;
+  onDir: (dir: RelationDir) => void; onColor: (color: RelationColor) => void; onDrop: () => void;
+  /** The pointer, or the keyboard's focus, came onto this link's part of the menu, or left it: its line is drawn bolder. */
+  onEnter?: () => void; onLeave?: () => void;
+};
+
 /**
  * A link's menu (the owner, 2026-10-30: «два слова и посередине стрелочка… всего четыре варианта… дропдаун, раз выбрал
  * и всё»): «a» [→ ▾] «b», the colours, «Убрать связь». The two words stand whole — the menu grows with them («текст
- * должен помещаться», 30.10).
+ * должен помещаться», 30.10). A word pressed that has several links shows them all, one under another (the owner,
+ * 31.10: «нажимаешь на это слово, и… открывается вот эта панелька, которая редактирует связи»).
  */
-export function RelationMenu({ relation, a, b, x, y, onDir, onColor, onDrop }: {
-  relation: Relation; a: string; b: string; x: number; y: number;
-  onDir: (dir: RelationDir) => void; onColor: (color: RelationColor) => void; onDrop: () => void;
-}) {
-  const { t } = useTranslation();
-  const [open, setOpen] = useState(false);
-  const tone = ANALYSIS_RELATION_TONES[relation.color];
+export function RelationMenu({ items, label, x, y }: { items: RelationMenuItem[]; label: string; x: number; y: number }) {
   return (
-    <div data-relation-menu="" role="dialog" aria-label={t('analysis.relation.menu', { a, b })}
+    <div data-relation-menu="" role="dialog" aria-label={label}
       onClick={(event) => event.stopPropagation()}
       className="absolute z-40 flex w-max min-w-[272px] max-w-[480px] flex-col gap-1 rounded-xl border border-gray-200 bg-white p-2.5 font-sans shadow-xl dark:border-gray-700 dark:bg-gray-900"
       style={{ left: x, top: y }}>
+      {items.map((item, k) => <RelationControls key={`${item.relation.a}-${item.relation.b}`} item={item} divided={k > 0} />)}
+    </div>
+  );
+}
+
+function RelationControls({ item, divided }: { item: RelationMenuItem; divided: boolean }) {
+  const { t } = useTranslation();
+  const { relation, a, b, onDir, onColor, onDrop, onEnter, onLeave } = item;
+  const [open, setOpen] = useState(false);
+  const tone = ANALYSIS_RELATION_TONES[relation.color];
+  return (
+    <div data-relation-item={`${relation.a}-${relation.b}`} onMouseEnter={onEnter} onMouseLeave={onLeave} onFocus={onEnter}
+      onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) onLeave?.(); }} className={`flex flex-col gap-1 ${divided ? 'mt-1 border-t border-gray-200 pt-2.5 dark:border-gray-700' : ''}`}>
       <div className="flex items-center gap-1.5 px-0.5 pb-2 text-sm font-semibold">
         <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${tone.swatch}`} aria-hidden="true" />
         <span className="whitespace-nowrap">«{a}»</span>

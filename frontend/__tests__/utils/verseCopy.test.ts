@@ -1,4 +1,4 @@
-import { copiedPlace, DEFAULT_COPY_FORMAT, verseCopyText } from '@/utils/verseCopy';
+import { copiedPlace, DEFAULT_COPY_FORMAT, verseCopyText, passageCopyText } from '@/utils/verseCopy';
 
 // The names of a reader whose interface speaks the Bible's language: the Bible is not named.
 const ru = { book: 'Рим' };
@@ -91,5 +91,19 @@ describe('verseCopy — a verse taken out of the Bible', () => {
     // The owner, 2026-10-27: several verses go as a quote too, unless the numbers are asked for in the bar.
     expect(DEFAULT_COPY_FORMAT).toBe('quote');
     expect(verseCopyText([], 'quote', ru)).toBe('');
+  });
+});
+
+// A passage as «Копировать» gives it, from a book's text — a link's whole passage, a new sermon's verse (2026-10-31).
+describe('a passage copied from the book', () => {
+  const chapters = [['Первый.', 'Второй, ¶<i>с курсивом</i>,'], ['Третий;', 'четвёртый.', 'Пятый.']];
+
+  it('takes all its verses, a chapter\'s end crossed, as the reader\'s copy of them', () => {
+    expect(passageCopyText(chapters, { chapter: 1, fromVerse: 2, toChapter: 2, toVerse: 2 }, { book: 'Ин' }))
+      .toBe('Ин 1:2; 2:1–2: "Второй, с курсивом, Третий; четвёртый."');
+  });
+
+  it('takes a whole chapter where no verses are named, and names the Bible when it must', () => {
+    expect(passageCopyText(chapters, { chapter: 2, toChapter: 2 }, { book: 'John', mark: 'KJV' })).toBe('John 2:1–3 (KJV): "Третий; четвёртый. Пятый."');
   });
 });

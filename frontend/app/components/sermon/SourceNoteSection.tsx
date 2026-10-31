@@ -2,10 +2,14 @@
 
 import { ArrowTopRightOnSquareIcon, ChevronRightIcon, RectangleStackIcon } from '@heroicons/react/24/outline';
 import Link from 'next/link';
+import { usePathname, useRouter } from 'next/navigation';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { noteScreenHref } from '@/components/bible/analysis/analysisAddress';
+import { AnalysisOutline } from '@/components/bible/analysis/AnalysisOutline';
 import { ScriptureWrittenIn } from '@/components/bible/ScriptureLinks';
+import { USAGE_KIND_LOOK } from '@/components/bible/usageKinds';
 import FoldableMarkdown from '@/components/ui/FoldableMarkdown';
 import { findSectionByHeading, jumpToSection, useMarkdownOutline } from '@/hooks/useMarkdownOutline';
 import { useSourceNotes } from '@/hooks/useSermonNoteLinks';
@@ -13,6 +17,7 @@ import { resolveAppLocale } from '@/utils/appLocale';
 import { studyNoteLanguage } from '@/utils/documentLanguage';
 import { splitMarkdownSections, type MarkdownSection } from '@/utils/markdownSections';
 import { countWords } from '@/utils/noteCutCorridor';
+import { analysisOutline } from '@/utils/passageAnalysis';
 import { studyNoteOwnName } from '@/utils/studyNoteUtils';
 
 import type { ScratchNote, Sermon, StudyNote } from '@/models/models';
@@ -69,7 +74,8 @@ interface SourceNoteSectionProps {
  * into the scratch room, with no note behind it, is not owned here and stays where it was.
  */
 export const atomsOwnedByNotes = (notes: StudyNote[], scratchNotes: ScratchNote[]): Set<string> => {
-  const linked = new Set(notes.map((note) => note.id));
+  // An analysis's card draws its structure, not atoms: an atom naming one stays with the sermon's own.
+  const linked = new Set(notes.filter((note) => note.type !== 'analysis').map((note) => note.id));
   const owned = new Set<string>();
   for (const atom of scratchNotes) {
     if (atom.source && linked.has(atom.source.noteId)) owned.add(atom.id);
@@ -91,9 +97,11 @@ const SourceNoteSection: React.FC<SourceNoteSectionProps> = ({
   return (
     <section data-testid="source-note-section" className="mb-8 space-y-3">
       <div className="flex flex-wrap items-center gap-2">
-        <h2 className="text-xl font-semibold">{t('sermon.sourceNoteSection.title')}</h2>
+        <h2 className="text-xl font-semibold">{t(notes.every((note) => note.type === 'analysis') ? 'sermon.sourceNoteSection.analysisTitle' : 'sermon.sourceNoteSection.title')}</h2>
       </div>
-      {notes.map((note) => (
+      {notes.map((note) => note.type === 'analysis' ? (
+        <AnalysisCard key={note.id} note={note} defaultOpen={defaultOpen} />
+      ) : (
         <NoteCard
           key={note.id}
           note={note}
@@ -315,6 +323,66 @@ const NoteCard: React.FC<{
           </p>
         </>
       )}
+    </div>
+  );
+};
+
+/**
+ * A SERMON'S ANALYSIS BESIDE IT — not a note (the owner, 31.10: «это не заметка, но это на основе разбор… значок должен
+ * быть разбора, и… вести на страницу разбора структуры»): the card bears the analysis's violet and sign, says the
+ * sermon is built on this analysis, and draws its structure whole, as the prep's step 3 does (`AnalysisOutline`). A press
+ * on the structure, or «Открыть», goes to it in the Bible, where it is changed; the way back returns here.
+ */
+const AnalysisCard: React.FC<{ note: StudyNote; defaultOpen: boolean }> = ({ note, defaultOpen }) => {
+  const { t, i18n } = useTranslation();
+  const router = useRouter();
+  const pathname = usePathname();
+  const [open, setOpen] = useState(defaultOpen);
+  const locale = resolveAppLocale(i18n?.language);
+  const href = noteScreenHref(note, { locale, from: pathname || undefined });
+  const title = studyNoteOwnName(note, locale) || t('studiesWorkspace.untitled');
+  const parts = useMemo(() => analysisOutline(note.content ?? '').length, [note.content]);
+  const { Icon, badge } = USAGE_KIND_LOOK.analysis;
+
+  return (
+    <div data-testid="source-analysis-card" className="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
+      <div className="flex items-start gap-2 bg-violet-50 px-4 py-3 dark:bg-violet-950/40">
+        <button
+          type="button"
+          onClick={() => setOpen((value) => !value)}
+          aria-expanded={open}
+          data-testid="source-note-toggle"
+          className="flex min-w-0 flex-1 items-start gap-3 text-left"
+        >
+          <ChevronRightIcon
+            className={`mt-0.5 h-5 w-5 shrink-0 text-violet-600 transition-transform dark:text-violet-400 ${open ? 'rotate-90' : ''}`}
+            aria-hidden="true"
+          />
+          <span className={`mt-0.5 hidden h-5 w-5 shrink-0 items-center justify-center rounded-full sm:inline-flex ${badge.circle}`}>
+            <Icon className="h-3 w-3 text-white" aria-hidden="true" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-[11px] font-medium uppercase tracking-wider text-violet-700 dark:text-violet-300">
+              {t('sermon.sourceNoteSection.analysisKicker')}
+            </span>
+            <span className="mt-0.5 block text-base font-semibold leading-snug text-gray-900 dark:text-gray-100">{title}</span>
+            {parts > 0 && <span className="mt-1 block text-xs text-gray-600 dark:text-gray-400">{t('analysis.partCount', { count: parts })}</span>}
+          </span>
+        </button>
+        <Link
+          href={href}
+          data-testid="source-note-open"
+          className="flex shrink-0 items-center gap-1 rounded-lg border border-violet-300 px-2.5 py-1 text-xs text-violet-700 transition-colors hover:bg-violet-100 dark:border-violet-800 dark:text-violet-300 dark:hover:bg-violet-900/40"
+        >
+          {t('sermon.sourceNoteSection.open')}
+          <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" aria-hidden="true" />
+        </Link>
+      </div>
+      {open && note.content ? (
+        <div className="border-t border-gray-200 px-4 py-3 dark:border-gray-700">
+          <AnalysisOutline text={note.content} analysis={note.analysis} label={t('sermon.sourceNotes.openAnalysis', { title })} grow onOpen={() => router.push(href)} />
+        </div>
+      ) : null}
     </div>
   );
 };

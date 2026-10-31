@@ -23,7 +23,7 @@ import type { BookText } from '@/utils/bibleText';
  * when the verses are chosen for an analysis — the analysis bar; and the analysis screen over the text once it is open.
  * The analysis's verses are changed by choosing them again, its own chosen to start with (the owner, 2026-10-29).
  */
-export function ReaderAnalysis({ copy, text, wide, bookId, bible, locale, opening, onOpening, marks }: {
+export function ReaderAnalysis({ copy, text, wide, bookId, bible, locale, opening, onOpening, marks, onOpenScreen }: {
   copy: VerseCopy;
   text: BookText | null;
   wide: boolean;
@@ -34,6 +34,8 @@ export function ReaderAnalysis({ copy, text, wide, bookId, bible, locale, openin
   onOpening: (opening: AnalysisOpening | null) => void;
   /** The reader's marks of the book, painted and made in the analysis too. */
   marks?: AnalysisMarks | null;
+  /** Another screen of the app opened from an analysis (a sermon made from it), the reader's way. */
+  onOpenScreen?: (href: string) => void;
 }) {
   const { t } = useTranslation();
   const choosing = copy.purpose === 'analysis' && text;
@@ -66,7 +68,7 @@ export function ReaderAnalysis({ copy, text, wide, bookId, bible, locale, openin
       {choosing
         ? <AnalysisPickBar copy={copy} wide={wide} onOpen={open} action={reshaping ? t('analysis.pick.apply') : undefined} />
         : <VerseCopyBar copy={copy} wide={wide} />}
-      {opening && text ? <AnalysisEditor opening={opening} text={text} bookId={bookId} bible={bible} locale={locale} marks={marks} onClose={() => onOpening(null)} onEditVerses={editVerses} /> : null}
+      {opening && text ? <AnalysisEditor opening={opening} text={text} bookId={bookId} bible={bible} locale={locale} marks={marks} onClose={() => onOpening(null)} onEditVerses={editVerses} onOpenScreen={onOpenScreen} /> : null}
     </>
   );
 }
