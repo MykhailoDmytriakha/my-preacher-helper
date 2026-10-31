@@ -4624,8 +4624,7 @@
       "down": "line one level in",
       "tie": "a line's dot onto a word: tie it",
       "untie": "× on an arrow: untie the line",
-      "relation": "word onto word: a link of meaning; press a ringed word to change it",
-      "view": "Press a part to light its way to the main thought."
+      "relation": "word onto word: a link of meaning; press a ringed word to change it"
     }
   }
 }

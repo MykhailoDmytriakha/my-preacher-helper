@@ -167,10 +167,11 @@ describe('cutting and gluing the lines of an analysis', () => {
       expect(JSON.parse(localStorage.getItem('analysis:help') ?? '{}')).toMatchObject({ short: true });
       // Opened again — another analysis, another day — it is still folded.
       unmount();
-      renderEditor(false);
+      renderEditor(true);
       expect(screen.getByTestId('analysis-help-toggle')).toHaveAttribute('aria-expanded', 'false');
-      expect(screen.getByText('analysis.help.view')).toBeInTheDocument();
-      fireEvent.click(screen.getByTestId('analysis-help-toggle'));
+      // «Просмотр» says one sentence: nothing to fold, the sentence whole even with the help folded (the owner, 31.10).
+      fireEvent.click(screen.getByRole('button', { name: 'analysis.modeView' }));
+      expect(screen.queryByTestId('analysis-help-toggle')).not.toBeInTheDocument();
       expect(screen.getByText('analysis.view.hint')).toBeInTheDocument();
     });
   });
