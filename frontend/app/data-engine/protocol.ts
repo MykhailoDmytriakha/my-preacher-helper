@@ -1,8 +1,13 @@
 import { getUtf8ByteLength } from '@/utils/feedbackPayload';
 import { isServiceOrderCatalogKey, isServiceOrderSeedTarget, serviceOrderSeedCycle } from '@/utils/serviceOrderSeedIdentity';
 
+import { ANALYSIS_RESHAPE_FIELDS, ANALYSIS_RESHAPE_FRAME } from './analysisReshapeFields';
+import { equalValues, object, own, readField } from './fieldValues';
 import { validateResourceDocument } from './resourceSchemas';
 import { preservesSermonLinks, scratchConsumptionConflicts } from './sermonIntegrity';
+
+export { commandFingerprint, equalValues, readField } from './fieldValues';
+export { ANALYSIS_RESHAPE_FIELDS, ANALYSIS_RESHAPE_FRAME } from './analysisReshapeFields';
 
 import type {
   CommandResult, ConflictDetail, DataCommand, DocumentData, FieldChange,
@@ -20,11 +25,6 @@ export const TOMBSTONE_OWNER_FIELD = '_dataEngineOwner';
 export const MAX_RELATION_RESOURCES = 100;
 
 const BAD_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
-export const ANALYSIS_RESHAPE_FRAME = ['analysis', 'content', 'scriptureRefs'] as const;
-export const ANALYSIS_RESHAPE_FIELDS = [...ANALYSIS_RESHAPE_FRAME, 'title'] as const;
-const own = (value: object, key: string) => Object.prototype.hasOwnProperty.call(value, key);
-const object = (value: unknown): value is DocumentData => value !== null
-  && typeof value === 'object' && !Array.isArray(value);
 const fail = (message: string): never => { throw Object.assign(new Error(message), { code: 'invalid-argument' }); };
 
 const fields: Record<string, readonly string[]> = {
@@ -278,25 +278,6 @@ function prefix(a: string[], b: string[]): boolean {
 function validField(value: unknown): value is FieldValue {
   return object(value) && typeof value.exists === 'boolean'
     && (value.exists ? own(value, 'value') : !own(value, 'value'));
-}
-
-export function commandFingerprint(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(commandFingerprint).join(',')}]`;
-  if (object(value)) return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${commandFingerprint(value[key])}`).join(',')}}`;
-  return JSON.stringify(value) ?? 'undefined';
-}
-
-export function equalValues(a: unknown, b: unknown): boolean {
-  return commandFingerprint(a) === commandFingerprint(b);
-}
-
-export function readField(data: DocumentData, path: string[]): FieldValue {
-  let current: Json = data;
-  for (const key of path) {
-    if (!object(current) || !own(current, key)) return { exists: false };
-    current = current[key];
-  }
-  return { exists: true, value: current };
 }
 
 function putField(data: DocumentData, path: string[], field: FieldValue): void {

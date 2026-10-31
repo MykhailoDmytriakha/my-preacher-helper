@@ -1,6 +1,7 @@
-import { ANALYSIS_RESHAPE_FRAME, equalValues, readField } from './protocol';
+import { equalValues, readField } from './fieldValues';
 
-export { ANALYSIS_RESHAPE_FIELDS, ANALYSIS_RESHAPE_FRAME } from './protocol';
+export const ANALYSIS_RESHAPE_FRAME = ['analysis', 'content', 'scriptureRefs'] as const;
+export const ANALYSIS_RESHAPE_FIELDS = [...ANALYSIS_RESHAPE_FRAME, 'title'] as const;
 
 import type { ConflictDetail, DocumentData, FieldValue } from './types';
 
