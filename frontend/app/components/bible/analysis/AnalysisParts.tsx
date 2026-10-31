@@ -6,6 +6,8 @@ import { useTranslation } from 'react-i18next';
 import Switch from '@/components/ui/Switch';
 import { withModifier } from '@/utils/keyboardModifier';
 
+import { ANALYSIS_LINE_HEIGHT, ANALYSIS_LINE_PADDING, type AnalysisLineSpacing } from './analysisGeometry';
+
 import type { AnalysisWord, CutLevel } from '@/utils/passageAnalysis';
 import type { PointerEvent, ReactNode } from 'react';
 
@@ -160,9 +162,9 @@ function StepButton({ side, onPress }: { side: 'up' | 'down'; onPress: (() => vo
  * то оно будет выглядеть как при просмотре»): both stand, the one with nowhere to go pale. Hidden they are `invisible`,
  * not only see-through, so their names stay out of the line's text when the lines are copied.
  */
-function StepPair({ steps, left }: { steps: LineSteps; left: number }) {
+function StepPair({ steps, left, top }: { steps: LineSteps; left: number; top: number }) {
   return (
-    <span className="invisible absolute top-2.5 z-10 flex opacity-0 transition-opacity group-hover/line:visible group-hover/line:opacity-100" style={{ left }}>
+    <span className="invisible absolute z-10 flex opacity-0 transition-opacity group-hover/line:visible group-hover/line:opacity-100" style={{ left, top }}>
       <StepButton side="up" onPress={steps.up} />
       <StepButton side="down" onPress={steps.down} />
     </span>
@@ -231,15 +233,15 @@ export type LineDrag = Omit<WordDrag, 'down'> & { down: (start: number, event: P
  * word, it ties the line to that word; the words themselves are dragged for links of meaning — a line's first word too,
  * so two lines' first words can be linked («испытывайте» and «узнавайте», 30.10).
  */
-function LineHandle({ start, left, drag }: { start: number; left: number; drag: LineDrag }) {
+function LineHandle({ start, left, top, drag }: { start: number; left: number; top: number; drag: LineDrag }) {
   const { t } = useTranslation();
   // At rest the dot alone; under the pointer, and while held, a ring comes round it (the owner, 30.10: «без внешнего
   // круга, при hover появляется внешний круг»). The press is taken by a 16 px circle, wider than the dot.
   return (
     <span data-handle={start} role="button" aria-label={t('analysis.edit.handle')}
       onPointerDown={(event) => drag.down(start, event)} onPointerMove={drag.move} onPointerUp={drag.up} onPointerCancel={drag.cancel}
-      className="group/tip invisible absolute top-[15px] z-10 flex h-4 w-4 cursor-grab touch-none items-center justify-center rounded-full opacity-0 transition-opacity active:cursor-grabbing group-hover/line:visible group-hover/line:opacity-100"
-      style={{ left }}>
+      className="group/tip invisible absolute z-10 flex h-4 w-4 cursor-grab touch-none items-center justify-center rounded-full opacity-0 transition-opacity active:cursor-grabbing group-hover/line:visible group-hover/line:opacity-100"
+      style={{ left, top }}>
       <span aria-hidden="true" className="absolute inset-[1px] scale-50 rounded-full bg-indigo-500/10 opacity-0 shadow-[inset_0_0_0_1.5px_#818cf8] transition-[opacity,transform] duration-150 ease-out group-hover/tip:scale-100 group-hover/tip:opacity-100 group-active/tip:scale-100 group-active/tip:opacity-100 dark:bg-indigo-400/15" />
       <span aria-hidden="true" className="relative h-1.5 w-1.5 rounded-full bg-indigo-500 transition-colors group-hover/tip:bg-indigo-600 dark:bg-indigo-400 dark:group-hover/tip:bg-indigo-300" />
       <HoverLabel text={t('analysis.edit.handle')} from="left" />
@@ -252,8 +254,8 @@ function LineHandle({ start, left, drag }: { start: number; left: number; drag: 
  * «Просмотр» (the owner, 2026-10-29): no number — a press on a word cuts, a word held and dragged links it by meaning, the
  * dot held and dragged ties the line.
  */
-export function AnalysisLine({ start, depth, role, words, steps, drag, handle, flags, painting, onWord, onCut, onHoverWord }: {
-  start: number; depth: number; role: LineRole; words: LineWord[]; steps: LineSteps | null; drag: WordDrag | null;
+export function AnalysisLine({ start, depth, spacing, role, words, steps, drag, handle, flags, painting, onWord, onCut, onHoverWord }: {
+  start: number; depth: number; spacing?: AnalysisLineSpacing; role: LineRole; words: LineWord[]; steps: LineSteps | null; drag: WordDrag | null;
   /** The dot that ties the line, in «Правка» with no tool in hand. */
   handle?: LineDrag | null;
   /** The flags of the links of meaning with a word of this line, after its last word. */
@@ -270,10 +272,10 @@ export function AnalysisLine({ start, depth, role, words, steps, drag, handle, f
   const lead = first?.startsVerse ? 6 + String(first.verse).length * 7 : 0;
   const edge = pad + 6 - lead;
   return (
-    <div data-line={start} className={`group/line relative py-1 transition-opacity ${role === 'dim' ? 'opacity-30' : ''}`} style={{ paddingLeft: pad }}>
-      {steps ? <StepPair steps={steps} left={edge - 66} /> : null}
-      {handle ? <LineHandle start={start} left={edge - 17} drag={handle} /> : null}
-      <span className={`rounded-lg px-1.5 py-0.5 font-serif text-[19px] leading-[1.75] [box-decoration-break:clone] ${drag || painting ? 'select-none' : ''} ${RING[role]}`}>
+    <div data-line={start} className={`group/line relative transition-opacity ${role === 'dim' ? 'opacity-30' : ''}`} style={{ paddingLeft: pad, paddingBlock: ANALYSIS_LINE_PADDING, marginTop: spacing?.before ?? 0 }}>
+      {steps ? <StepPair steps={steps} left={edge - 66} top={10 + (spacing?.within ?? 0) / 2} /> : null}
+      {handle ? <LineHandle start={start} left={edge - 17} top={15 + (spacing?.within ?? 0) / 2} drag={handle} /> : null}
+      <span className={`rounded-lg px-1.5 py-0.5 font-serif text-[19px] [box-decoration-break:clone] ${drag || painting ? 'select-none' : ''} ${RING[role]}`} style={{ lineHeight: `${ANALYSIS_LINE_HEIGHT + (spacing?.within ?? 0)}px` }}>
         {words.map((item) => <WordOfLine key={item.index} item={item} drag={drag} painting={painting} onWord={onWord} onCut={onCut} onHoverWord={onHoverWord} />)}
         {flags}
       </span>

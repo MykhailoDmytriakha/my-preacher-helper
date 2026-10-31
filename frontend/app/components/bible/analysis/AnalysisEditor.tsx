@@ -13,7 +13,7 @@ import {
 } from '@/utils/passageAnalysis';
 
 import { writeAnalysisAddress, writeAnalysisSourceAddress } from './analysisAddress';
-import { arrowNear, dragArrow, fromLine, tieArrows, useGeometry, type Arrow } from './analysisGeometry';
+import { analysisLineSpacing, arrowNear, dragArrow, fromLine, tieArrows, useGeometry, type Arrow } from './analysisGeometry';
 import {
   ARROW, AnalysisHeader, AnalysisLine, PanelGlyph, UntieMark, type AnalysisMode, type LineDrag, type LineRole, type LineSteps, type LineWord, type WordDrag,
 } from './AnalysisParts';
@@ -76,6 +76,7 @@ export function AnalysisEditor({ opening, text, bookId, bible, locale, marks: le
   const [message, setMessage] = useState<Message>(null);
   const justDragged = useRef(false);
   const { contentRef, geometry, at } = useGeometry();
+  const spacing = useMemo(() => analysisLineSpacing(state, geometry, total), [state, geometry, total]);
   const keepsEditing = opening.kind === 'open' && opening.editing === true;
   useEffect(() => { if (note.opensForViewing && !keepsEditing) setMode('view'); }, [note.opensForViewing, keepsEditing]);
   useEffect(() => () => clearTimeout(leaveArrow.current), []);
@@ -251,7 +252,7 @@ export function AnalysisEditor({ opening, text, bookId, bible, locale, marks: le
         <div className={`min-w-0 flex-1 overflow-auto pl-20 pr-4 pb-24 pt-10 sm:pr-12 ${marks.paneClass}`}
           onClick={pressBackground} onMouseMove={pointArrows} onMouseLeave={overArrowOff} {...marks.strokeEvents}>
           <AnalysisNotices ready={note.ready} changedText={note.changedText} sync={note.sync} refused={note.refused} onSaveAgain={note.saveAgain} />
-          <div ref={contentRef} className="relative">
+          <div ref={contentRef} className="relative flow-root">
             {arrows.map((arrow) => (
               <svg key={arrow.key} data-arrow={arrow.key} aria-hidden="true" width={geometry.width || 1} height={geometry.height || 1} className="pointer-events-none absolute left-0 top-0 overflow-visible">
                 <path d={arrow.d} fill="none" stroke={arrow.lit ? ARROW.lit : ARROW.plain} strokeWidth={arrow.lit ? 2 : 1.7} strokeLinecap="round" />
@@ -266,7 +267,7 @@ export function AnalysisEditor({ opening, text, bookId, bible, locale, marks: le
             ))}
             {relations.dragLine(drag?.moved && drag.kind === 'relate' ? drag : null)}
             {starts.map((start) => (
-              <AnalysisLine key={start} start={start} depth={depthOf(state, start)} role={roleOf(state, mode, selected, start)}
+              <AnalysisLine key={start} start={start} spacing={spacing[start]} depth={depthOf(state, start)} role={roleOf(state, mode, selected, start)}
                 words={wordsOf(start)} steps={stepsOf(start)} drag={mode === 'edit' ? wordDrag : null} handle={mode === 'edit' && !marks.painting ? lineDrag : null}
                 flags={relations.flagsOf(start)} painting={marks.painting}
                 onWord={pressWord} onCut={cutWord} onHoverWord={relations.pointWord} />

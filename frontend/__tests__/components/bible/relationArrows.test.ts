@@ -1,5 +1,5 @@
-import { relationArrows, tieArrows, type Box, type Geometry, type Point } from '@/components/bible/analysis/analysisGeometry';
-import { needsArrow, type AnalysisState, type Relation } from '@/utils/passageAnalysis';
+import { analysisLineSpacing, relationArrows, tieArrows, type Box, type Geometry, type Point } from '@/components/bible/analysis/analysisGeometry';
+import { partOf, needsArrow, type AnalysisState, type Relation } from '@/utils/passageAnalysis';
 
 /*
  * The owner's 1 John 3:22–24 as on his screenshot of 30.10, with «Все связи» on: ten lines, two level arrows (into
@@ -32,10 +32,10 @@ const owners: AnalysisState = {
 
 type Segment = { owner: string; x1: number; y1: number; x2: number; y2: number };
 /** Every straight piece of every link's arrow and of every level arrow, named by its arrow. */
-function segments(state: AnalysisState, on: Geometry = geometry): Segment[] {
+function segments(state: AnalysisState, on: Geometry = geometry, total = TOTAL): Segment[] {
   const pieces = (owner: string, points: Point[]) => points.slice(1).map((end, n) => ({ owner, x1: points[n][0], y1: points[n][1], x2: end[0], y2: end[1] }));
   return [
-    ...relationArrows(state, on, state.relations, TOTAL).flatMap((arrow) => pieces(`${arrow.relation.a}-${arrow.relation.b}`, arrow.points)),
+    ...relationArrows(state, on, state.relations, total).flatMap((arrow) => pieces(`${arrow.relation.a}-${arrow.relation.b}`, arrow.points)),
     ...tieArrows(state, on).flatMap((arrow) => pieces(arrow.key, arrow.points!)),
   ];
 }
@@ -161,4 +161,92 @@ describe('the arrows of links of meaning drawn at once (the owner\'s choice on t
     expect(onText(all, narrow)).toEqual([]);
     expect(lying(all)).toEqual([]);
   });
+});
+
+
+
+/** Apply reserved line-box space as the DOM does: part margins and half-leading around wrapped rows. */
+function withLineSpacing(state: AnalysisState, on: Geometry, total = TOTAL): Geometry {
+  const spacing = analysisLineSpacing(state, on, total);
+  const rows: { top: number; part: number; words: string[] }[] = [];
+  Object.entries(on.words).sort((a, b) => a[1].y - b[1].y).forEach(([word, box]) => {
+    const last = rows[rows.length - 1];
+    if (last && box.y - last.top < 4) last.words.push(word);
+    else rows.push({ top: box.y, part: partOf(state, Number(word)), words: [word] });
+  });
+  const shifted: Record<string, Box> = {};
+  let offset = 0; let line = 0;
+  rows.forEach((row, k) => {
+    const held = spacing[row.part] ?? { before: 0, within: 0 };
+    if (!k || rows[k - 1].part !== row.part) { offset += held.before; line = 0; }
+    row.words.forEach((word) => { shifted[word] = { ...on.words[word], y: on.words[word].y + offset + held.within * (line + 0.5) }; });
+    line += 1;
+    if (rows[k + 1]?.part !== row.part) offset += held.within * line;
+  });
+  return { ...on, words: shifted };
+}
+
+describe('minimum clearance in crowded analysis arrows', () => {
+  it('keeps the mixed incoming, outgoing, bracket and level routes four pixels apart', () => {
+    const relations: Relation[] = [[14, 21], [24, 35], [25, 28]].map(([a, b]) => ({ a, b, dir: 'fwd', color: 'teal' }));
+    const crowded: AnalysisState = { ...owners, relations };
+    const laidOut = withLineSpacing(crowded, geometry);
+    expect(lying(segments(crowded, laidOut))).toEqual([]);
+    expect(onText(segments(crowded, laidOut), laidOut)).toEqual([]);
+  });
+  it('keeps three stems four pixels apart even on an eight-pixel word', () => {
+    const relations: Relation[] = [22, 23, 24].map((b) => ({ a: 21, b, dir: 'fwd', color: 'teal' }));
+    const narrow: Geometry = { ...geometry, words: { ...words, 21: { ...words['21'], w: 8 } } };
+    const crowded: AnalysisState = { ...owners, relations };
+    const laidOut = withLineSpacing(crowded, narrow);
+    expect(lying(segments(crowded, laidOut))).toEqual([]);
+    expect(onText(segments(crowded, laidOut), laidOut)).toEqual([]);
+  });
+});
+
+
+describe('analysis lane reservations', () => {
+  it('leaves passages without relations and the uncrowded owner analysis at their original density', () => {
+    expect(analysisLineSpacing({ ...owners, relations: [] }, geometry, TOTAL)).toEqual({});
+    expect(analysisLineSpacing(owners, geometry, TOTAL)).toEqual({});
+  });
+
+  it('requests the same spacing after its own layout is measured again', () => {
+    const relations: Relation[] = [[14, 21], [24, 35], [25, 28]].map(([a, b]) => ({ a, b, dir: 'fwd', color: 'teal' }));
+    const state = { ...owners, relations };
+    const spacing = analysisLineSpacing(state, geometry, TOTAL);
+    expect(Object.values(spacing).some((space) => space.before > 0)).toBe(true);
+    expect(analysisLineSpacing(state, withLineSpacing(state, geometry), TOTAL)).toEqual(spacing);
+  });
+
+  it('reserves internal leading when one crowded part wraps and remains stable after layout', () => {
+    const wrapped: Record<string, Box> = {};
+    Object.entries(words).forEach(([key, box]) => {
+      const word = Number(key);
+      wrapped[key] = word >= 26 && word < 30 ? { ...box, x: box.x - 5 * 90, y: box.y + 33.25 } : word >= 30 ? { ...box, y: box.y + 33.25 } : box;
+    });
+    const narrow: Geometry = { ...geometry, words: wrapped, height: 480 };
+    const relations: Relation[] = [[21, 27], [22, 28], [23, 29], [24, 26], [26, 27], [26, 28], [26, 29]].map(([a, b]) => ({ a, b, dir: 'fwd', color: 'teal' }));
+    const state = { ...owners, relations };
+    const spacing = analysisLineSpacing(state, narrow, TOTAL);
+    const laidOut = withLineSpacing(state, narrow);
+    expect(Object.values(spacing).some((space) => space.within > 0)).toBe(true);
+    expect(analysisLineSpacing(state, laidOut, TOTAL)).toEqual(spacing);
+    expect(lying(segments(state, laidOut))).toEqual([]);
+    expect(onText(segments(state, laidOut), laidOut)).toEqual([]);
+  });
+});
+
+
+it('keeps the actual later tie lane free when its target part wraps across two rows', () => {
+  const boxes: Record<string, Box> = {};
+  for (let word = 0; word < 8; word += 1) boxes[word] = { x: 20 + (word % 2) * 60, y: Math.floor(word / 2) * 40, w: 40, h: 20 };
+  boxes[8] = { x: 20, y: 160, w: 40, h: 20 };
+  [20, 80, 140].forEach((x, k) => { boxes[9 + k] = { x, y: 200, w: 40, h: 20 }; });
+  const on: Geometry = { words: boxes, leads: {}, mids: {}, flags: {}, width: 400, height: 260 };
+  const state: AnalysisState = { cuts: [2, 4, 6, 8], links: { 2: 8, 4: 9, 6: 10 }, relations: [{ a: 1, b: 9, dir: 'fwd', color: 'teal' }] };
+  const laidOut = withLineSpacing(state, on, 12);
+  expect(lying(segments(state, laidOut, 12))).toEqual([]);
+  expect(onText(segments(state, laidOut, 12), laidOut)).toEqual([]);
+  expect(analysisLineSpacing(state, laidOut, 12)).toEqual(analysisLineSpacing(state, on, 12));
 });

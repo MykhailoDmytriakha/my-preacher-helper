@@ -20,6 +20,21 @@ export type Arrow = { key: string; d: string; head: string; lit: boolean; start?
 
 const EMPTY_GEOMETRY: Geometry = { words: {}, leads: {}, mids: {}, flags: {}, width: 0, height: 0 };
 
+const ARROW_CLEARANCE = 4;
+type VisualRow = { top: number; bottom: number; right: number; words: { word: number; box: Box }[] };
+
+/** One row definition for routing and for stable spacing, including words in wrapped parts. */
+function visualRows(geometry: Geometry): VisualRow[] {
+  const rows: VisualRow[] = [];
+  Object.entries(geometry.words).map(([word, box]) => ({ word: Number(word), box })).sort((p, q) => p.box.y - q.box.y).forEach((entry) => {
+    const { box } = entry; const row = rows[rows.length - 1];
+    if (row && box.y - row.top < 4) {
+      row.bottom = Math.max(row.bottom, box.y + box.h); row.right = Math.max(row.right, box.x + box.w); row.words.push(entry);
+    } else rows.push({ top: box.y, bottom: box.y + box.h, right: box.x + box.w, words: [entry] });
+  });
+  return rows;
+}
+
 /** Where the words and verse numbers stand inside the text, read after each layout and on every resize, for the arrows. */
 export function useGeometry() {
   const contentRef = useRef<HTMLDivElement>(null);
@@ -153,15 +168,12 @@ function rounded(points: Point[], ends: { first: boolean; last: boolean }): { d:
  * them, brackets of one row stacked, the shorter nearer. Two links still cross where their words stand in the other
  * order than their uprights.
  */
-export function relationArrows(state: AnalysisState, geometry: Geometry, relations: Relation[], total: number): { relation: Relation; d: string; heads: string[]; points: Point[] }[] {
-  // The rows: words a few pixels apart in height stand on one.
-  const rows: { top: number; bottom: number; right: number }[] = [];
-  const boxes = Object.entries(geometry.words).map(([word, box]) => ({ word: Number(word), box })).sort((p, q) => p.box.y - q.box.y);
-  boxes.forEach(({ box }) => {
-    const row = rows[rows.length - 1];
-    if (row && box.y - row.top < 4) { row.bottom = Math.max(row.bottom, box.y + box.h); row.right = Math.max(row.right, box.x + box.w); }
-    else rows.push({ top: box.y, bottom: box.y + box.h, right: box.x + box.w });
-  });
+type RelationRoute = { relation: Relation; d: string; heads: string[]; points: Point[] };
+type GapRoom = { beforeWord: number; afterWord: number | null; extra: number };
+
+/** One allocation owns both rendered routes and the extra room their lanes require. */
+function routeRelations(state: AnalysisState, geometry: Geometry, relations: Relation[], total: number): { arrows: RelationRoute[]; gaps: GapRoom[] } {
+  const rows = visualRows(geometry);
   const rowOf = (box: Box) => { let k = 0; rows.forEach((row, n) => { if (row.top <= box.y + 3) k = n; }); return k; };
   // A part's flags stand after its last word, on that word's row.
   partStarts(state).forEach((start) => {
@@ -193,17 +205,22 @@ export function relationArrows(state: AnalysisState, geometry: Geometry, relatio
     { run, role: 'b', word: run.wb, box: run.b, line: run.lb, home: 'top', side: 'top', x: 0, dist: 0 },
   ]);
   const endOf = (run: Run, role: End['role']) => ends.find((end) => end.run === run && end.role === role)!;
-  // Where the ties' arrows come into words, and how many run along each side of each row.
+  // The actual shared tie routes own lane allocation. A wrapped target's later row may use lane 2 even when only one
+  // tie ends on that row; counting ends there would reserve too little space for its relation routes.
   const tieIn = new Set<string>(); const tiesAlong = new Map<string, number>();
-  partStarts(state).filter((start) => needsArrow(state, start)).forEach((start) => {
-    const word = state.links[start]; const from = geometry.words[String(start)]; const to = geometry.words[String(word)];
-    if (!from || !to) return;
+  tieArrows(state, geometry).forEach((arrow) => {
+    const word = state.links[arrow.start!]; const from = geometry.words[String(arrow.start)]; const to = geometry.words[String(word)];
+    if (!from || !to || !arrow.points) return;
     const side = to.y < from.y ? 'bottom' : 'top';
     tieIn.add(`${word}:${side}`);
-    tiesAlong.set(`${rowOf(to)}:${side}`, (tiesAlong.get(`${rowOf(to)}:${side}`) ?? 0) + 1);
+    const key = `${rowOf(to)}:${side}`;
+    const edge = side === 'bottom' ? to.y + to.h : to.y;
+    const depth = Math.abs(arrow.points[3][1] - edge);
+    tiesAlong.set(key, Math.max(tiesAlong.get(key) ?? 0, depth));
   });
-  const tiesBy = (k: number, side: Side) => tiesAlong.get(`${k}:${side}`) ?? 0;
-  const below = (k: number, side: Side) => 6 + 4 * tiesBy(k, side) + 5 * bracketsOn(k, side);
+  const tieDepth = (k: number, side: Side) => tiesAlong.get(`${k}:${side}`) ?? 0;
+  const afterTies = (k: number, side: Side) => Math.max(6, tieDepth(k, side) + ARROW_CLEARANCE);
+  const below = (k: number, side: Side) => afterTies(k, side) + 5 * bracketsOn(k, side);
 
   // Room: a gap is a half row, `k + 0.5` between rows k and k + 1; the runs along each of its two sides need their
   // heights. What does not fit goes round its word where there is room — the longest run first, then the one furthest
@@ -216,12 +233,12 @@ export function relationArrows(state: AnalysisState, geometry: Geometry, relatio
   };
   const along = (k: number, side: Side, n: number) => {
     if (n) return below(k, side) + 5 * (n - 1);
-    const ties = tiesBy(k, side); const held = bracketsOn(k, side);
-    return ties || held ? 2 + 4 * ties + 5 * held : 0;
+    const held = bracketsOn(k, side);
+    return held ? below(k, side) : tieDepth(k, side);
   };
   const slack = (gap: number) => {
     const count = (side: Side) => ends.filter((end) => gapOf(end) === gap && end.side === side).length;
-    return room(gap) - along(gap - 0.5, 'bottom', count('bottom')) - along(gap + 0.5, 'top', count('top')) - 4;
+    return room(gap) - along(gap - 0.5, 'bottom', count('bottom')) - along(gap + 0.5, 'top', count('top')) - ARROW_CLEARANCE;
   };
   const flip = (end: End) => { end.side = end.side === 'top' ? 'bottom' : 'top'; };
   brackets.forEach((run) => {
@@ -287,8 +304,9 @@ export function relationArrows(state: AnalysisState, geometry: Geometry, relatio
       ...held.filter((end) => end.toRight).sort((p, q) => q.span - p.span),
     ];
     order.forEach((end, j) => {
-      const share = (j + 1) / (order.length + 1);
-      end.x = Math.round(end.box.x + end.box.w * (tieIn.has(key) ? 0.5 + share / 2 : share));
+      const tied = tieIn.has(key);
+      const step = Math.max(ARROW_CLEARANCE, end.box.w / ((tied ? 2 : 1) * (order.length + 1)));
+      end.x = Math.round(end.box.x + end.box.w / 2 + step * (tied ? j + 1 : j - (order.length - 1) / 2));
     });
   });
   grouped((end) => `${end.line}:${end.side}`).forEach((list) => {
@@ -296,7 +314,7 @@ export function relationArrows(state: AnalysisState, geometry: Geometry, relatio
     order.forEach((end, j) => { end.dist = below(end.line, end.side) + 5 * j; });
   });
 
-  return runs.map((run) => {
+  const arrows = runs.map((run) => {
     const heads = relationHeads(run.relation);
     const forward = run.wa === run.relation.a;
     const tips = forward ? { first: heads.atA, last: heads.atB } : { first: heads.atB, last: heads.atA };
@@ -305,7 +323,7 @@ export function relationArrows(state: AnalysisState, geometry: Geometry, relatio
       const { side, at } = stacked.get(run)!;
       const ax = bracketEnds.find((end) => end.run === run && end.word === run.wa)!.x;
       const bx = bracketEnds.find((end) => end.run === run && end.word === run.wb)!.x;
-      const step = 6 + 4 * tiesBy(run.la, side) + 5 * at;
+      const step = afterTies(run.la, side) + 5 * at;
       const points: Point[] = side === 'top'
         ? [[ax, a.y - 1], [ax, rows[run.la].top - step], [bx, rows[run.la].top - step], [bx, b.y - 1]]
         : [[ax, a.y + a.h + 1], [ax, rows[run.la].bottom + step], [bx, rows[run.la].bottom + step], [bx, b.y + b.h + 1]];
@@ -317,6 +335,49 @@ export function relationArrows(state: AnalysisState, geometry: Geometry, relatio
     const points: Point[] = [[from.x, edge(from)], [from.x, height(from)], [run.x, height(from)], [run.x, height(to)], [to.x, height(to)], [to.x, edge(to)]];
     return { relation: run.relation, points, ...rounded(points, tips) };
   });
+  const neededGaps = rows.flatMap((row, k): GapRoom[] => {
+    const extra = Math.max(0, Math.ceil(-slack(k - 0.5)));
+    if (!extra) return [];
+    return [{ beforeWord: row.words[0].word, afterWord: k ? rows[k - 1].words[0].word : null, extra }];
+  });
+  return { arrows, gaps: neededGaps };
+}
+
+/** The visible relations, using the shared lane allocation. */
+export function relationArrows(state: AnalysisState, geometry: Geometry, relations: Relation[], total: number): RelationRoute[] {
+  return routeRelations(state, geometry, relations, total).arrows;
+}
+
+/** The analysis text's unchanged base metrics; extra lane room is added only where needed. */
+export const ANALYSIS_LINE_HEIGHT = 33.25;
+export const ANALYSIS_LINE_PADDING = 4;
+export type AnalysisLineSpacing = { before: number; within: number };
+
+/**
+ * Reserve room for every saved link, so hovering or toggling links cannot move the words. Measured boxes identify the
+ * visual rows (a part may wrap); their vertical positions are normalized to the base typography before allocation.
+ * Added margins/line height therefore never feed back into the next spacing request.
+ */
+export function analysisLineSpacing(state: AnalysisState, geometry: Geometry, total: number): Record<number, AnalysisLineSpacing> {
+  if (!state.relations.length) return {};
+  const rows = visualRows(geometry);
+  const part = (row: VisualRow) => partOf(state, row.words[0].word);
+  const naturalWords: Record<string, Box> = {};
+  let top = 0;
+  rows.forEach((row, k) => {
+    row.words.forEach(({ word, box }) => { naturalWords[String(word)] = { ...box, y: top + box.y - row.top }; });
+    top += ANALYSIS_LINE_HEIGHT + (rows[k + 1] && part(rows[k + 1]) === part(row) ? 0 : 2 * ANALYSIS_LINE_PADDING);
+  });
+  const natural = { ...geometry, words: naturalWords };
+  const spacing: Record<number, AnalysisLineSpacing> = {};
+  routeRelations(state, natural, state.relations, total).gaps.forEach(({ beforeWord, afterWord, extra }) => {
+    const part = partOf(state, beforeWord);
+    const held = spacing[part] ?? { before: 0, within: 0 };
+    if (afterWord !== null && partOf(state, afterWord) === part) held.within = Math.max(held.within, extra);
+    else held.before = Math.max(held.before, extra);
+    spacing[part] = held;
+  });
+  return spacing;
 }
 
 /**
