@@ -7,12 +7,12 @@ import { PHASES_TAKING_CHANGES, useDataDocument } from '@/data-engine/react.clie
 import { useStudyNotesEngine } from '@/hooks/useStudyNotesEngine';
 import { getLocalizedAbbrev } from '@/utils/bibleBooks';
 import { newClientId } from '@/utils/clientId';
-import { analysisMarkdown, EMPTY_ANALYSIS, passageWords, settled, type AnalysisState, type Relation } from '@/utils/passageAnalysis';
+import { analysisMarkdown, analysisState, EMPTY_ANALYSIS, passageWords, storedAnalysis, storedState, type AnalysisState } from '@/utils/passageAnalysis';
 import { analysisPassage, analysisSourceMatches, studyAnalysisSource } from '@/utils/studyAnalysisSource';
 
 import type { PickedPassage } from '../verseCopy/passagePick';
 import type { DocumentData } from '@/data-engine/types';
-import type { ScriptureReference, StudyAnalysis, StudyNote } from '@/models/models';
+import type { ScriptureReference, StudyNote } from '@/models/models';
 import type { AppLocale } from '@/utils/appLocale';
 import type { BibleId } from '@/utils/bibles';
 import type { BookText } from '@/utils/bibleText';
@@ -25,6 +25,7 @@ export type AnalysisOpening = { kind: 'new'; passage: PickedPassage } | { kind: 
 const ANALYSIS_SLOT = 'analysis';
 
 export const passageOfReference = (reference: ScriptureReference | undefined, bible?: BibleId): PickedPassage | null => analysisPassage(reference, bible);
+export { analysisState, storedAnalysis, storedState };
 const samePassage = (a: PickedPassage | null, b: PickedPassage) => Boolean(a) && a!.chapter === b.chapter && a!.fromVerse === b.fromVerse && a!.toChapter === b.toChapter && a!.toVerse === b.toVerse;
 /** «1:3–14», «1:7», «1:15–2:10». */
 export const passageSpan = (p: PickedPassage) => (p.chapter === p.toChapter ? `${p.chapter}:${p.fromVerse}${p.toVerse !== p.fromVerse ? `–${p.toVerse}` : ''}` : `${p.chapter}:${p.fromVerse}–${p.toChapter}:${p.toVerse}`);
@@ -32,23 +33,6 @@ export const passageSpan = (p: PickedPassage) => (p.chapter === p.toChapter ? `$
 const sameAnalysis = (a: AnalysisState, b: AnalysisState) => JSON.stringify([...a.cuts].sort((x, y) => x - y)) === JSON.stringify([...b.cuts].sort((x, y) => x - y))
   && JSON.stringify(Object.entries(a.links).sort()) === JSON.stringify(Object.entries(b.links).sort())
   && JSON.stringify(a.relations) === JSON.stringify(b.relations);
-/** An analysis as the note keeps it — read back by `storedState`; the only writer of that shape. */
-export const storedAnalysis = (state: AnalysisState, bible: BibleId, words: number): StudyAnalysis => ({
-  bible, words, cuts: state.cuts,
-  links: Object.fromEntries(Object.entries(state.links).map(([key, word]) => [String(key), word])),
-  relations: Object.fromEntries(state.relations.map(({ a, b, dir, color }) => [`${a}-${b}`, { dir, color }])),
-});
-export const storedState = (note: StudyNote | undefined, total: number): AnalysisState => analysisState(note?.analysis, total);
-/** An analysis as the note keeps it, read back into its parts, ties and links of meaning for a passage of `total` words. */
-export function analysisState(stored: StudyAnalysis | undefined, total: number): AnalysisState {
-  if (!stored) return EMPTY_ANALYSIS;
-  const relations = Object.entries(stored.relations ?? {}).flatMap(([key, { dir, color }]) => {
-    const [a, b] = key.split('-').map(Number);
-    return [{ a, b, dir, color: color as Relation['color'] }];
-  });
-  return settled({ cuts: stored.cuts ?? [], links: Object.fromEntries(Object.entries(stored.links ?? {}).map(([key, word]) => [Number(key), word])), relations }, total);
-}
-
 /**
  * A PASSAGE'S ANALYSIS AS A STUDY NOTE (case 2026-10-12-block-diagram, 3.4): finds the note asked for, or one already made
  * on exactly this passage in this Bible, and reads its parts once they arrive. The first change makes the note («что-то

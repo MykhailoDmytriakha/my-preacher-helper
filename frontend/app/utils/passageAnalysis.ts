@@ -1,5 +1,8 @@
 import { verseWords, type BookText } from '@/utils/bibleText';
 
+import type { StudyAnalysis, StudyNote } from '@/models/models';
+import type { BibleId } from '@/utils/bibles';
+
 /**
  * A PASSAGE'S ANALYSIS — a block diagram (case 2026-10-12-block-diagram, 3.4; the owner's choice on the canvas «Разбор
  * структуры», 2026-10-29). The passage's words are cut into parts, one part a line; a part hangs on one word of another
@@ -29,6 +32,26 @@ export type Relation = { a: number; b: number; dir: RelationDir; color: Relation
  * `relations` — the links of meaning, by their words, in the passage's order.
  */
 export type AnalysisState = { cuts: number[]; links: Record<number, number>; relations: Relation[] };
+
+/** An analysis as stored on a note; word positions are interpreted in the passage's Bible. */
+export const storedAnalysis = (state: AnalysisState, bible: BibleId, words: number): StudyAnalysis => ({
+  bible, words, cuts: state.cuts,
+  links: Object.fromEntries(Object.entries(state.links).map(([key, word]) => [String(key), word])),
+  relations: Object.fromEntries(state.relations.map(({ a, b, dir, color }) => [`${a}-${b}`, { dir, color }])),
+});
+
+/** The same parts and links, read back into word positions for a passage of `total` words. */
+export function analysisState(stored: StudyAnalysis | undefined, total: number): AnalysisState {
+  if (!stored) return EMPTY_ANALYSIS;
+  const relations = Object.entries(stored.relations ?? {}).flatMap(([key, { dir, color }]) => {
+    const [a, b] = key.split('-').map(Number);
+    return [{ a, b, dir, color: color as Relation['color'] }];
+  });
+  return settled({ cuts: stored.cuts ?? [], links: Object.fromEntries(Object.entries(stored.links ?? {}).map(([key, word]) => [Number(key), word])), relations }, total);
+}
+
+/** Read one note's analysis as a state for its passage. */
+export const storedState = (note: StudyNote | undefined, total: number): AnalysisState => analysisState(note?.analysis, total);
 
 /** A passage of one book: from `chapter:fromVerse` to `toChapter:toVerse`. */
 export type AnalysisPassage = { chapter: number; fromVerse: number; toChapter: number; toVerse: number };

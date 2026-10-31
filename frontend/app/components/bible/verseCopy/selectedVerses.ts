@@ -1,6 +1,7 @@
+import type { VerseAt } from '@/utils/passagePick';
 import type { VerseForCopy } from '@/utils/verseCopy';
 
-export type VerseAt = { chapter: number; verse: number };
+export type { VerseAt } from '@/utils/passagePick';
 
 export const verseKey = (at: VerseAt): string => `${at.chapter}:${at.verse}`;
 
