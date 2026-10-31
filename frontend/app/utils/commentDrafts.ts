@@ -1,6 +1,6 @@
 import { isValidRecoveryPatch } from '@/data-engine/react.client';
 import { readDraftAddress } from '@/utils/draftAddress';
-import { draftKey, findDraftCopies, readDraft, type DurableDraftCopy } from '@/utils/durableDraft';
+import { compareDraftCopies, draftKey, findDraftCopies, readDraft, type DurableDraftCopy } from '@/utils/durableDraft';
 
 import type { ScriptureReference } from '@/models/models';
 
@@ -55,7 +55,6 @@ export function findCommentDraftCopies(uid: string, documentId: string, aggregat
       copies.push({ ...legacy, value: legacy.value, key, sourceRecord: legacy });
     }
   }
-  const time = (value: number) => Number.isFinite(value) ? value : 0;
   return [...new Map(copies.map(copy => [copy.key, copy])).values()]
-    .sort((left, right) => time(right.savedAt) - time(left.savedAt) || left.key.localeCompare(right.key));
+    .sort(compareDraftCopies);
 }

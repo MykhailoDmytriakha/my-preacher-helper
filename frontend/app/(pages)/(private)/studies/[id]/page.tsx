@@ -833,7 +833,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         [title, content, tags, scriptureRefs, type, dictationSourceIds, recordingSourceIds]
     );
 
-    const { recovered, recoveredKey, recoveries, selectRecovered, settleRecovered, acceptRecovered, discardRecovered, markCaptured, markSaved } = useDurableDraft<NoteDraftPayload>({
+    const { recovered, recoveredKey, recoveries, selectRecovered, settleRecovered, acceptRecovered, discardRecovered, markCaptured, markSaved, editedAt: draftEditedAt } = useDurableDraft<NoteDraftPayload>({
         uid,
         docId: draftDocId,
         writerId: draftWriterId,
@@ -868,6 +868,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         creationId,
         draftDocId,
         draftWriterId,
+        draftEditedAt,
         noteId, isNew, isInitialized, existingNote, title, content, tags, scriptureRefs, type, dictationSourceIds, recordingSourceIds,
         updateNote, createNote, uid, setCreatedNoteId, t, baselineRef,
         revisionRef: serverRevisionRef,

@@ -360,3 +360,38 @@ describe('a device that refuses to keep drafts', () => {
   });
 });
 
+
+describe('authored edit time versus storage time', () => {
+  beforeEach(() => { window.localStorage.clear(); });
+  afterEach(() => { jest.restoreAllMocks(); });
+
+  it('keeps the whole newer record when an older delayed write arrives last', () => {
+    const key = draftKey('uid-1', 'note-1', 'note');
+    expect(saveDraft(key, { content: 'A', title: 'older' }, undefined, false, 10)).toBe(true);
+    expect(saveDraft(key, { content: 'B', title: 'newer' }, undefined, false, 20)).toBe(true);
+    const newerRaw = window.localStorage.getItem(key);
+    const newerRecord = readDraft(key);
+
+    expect(saveDraft(key, { content: 'A', title: 'older' }, undefined, false, 10)).toBe(false);
+    expect(window.localStorage.getItem(key)).toBe(newerRaw);
+    expect(readDraft(key)).toEqual(newerRecord);
+  });
+
+  it('preserves edit time on same-value canonical refresh but drops its capture token for new words', () => {
+    const key = draftKey('uid-1', 'new~A', 'note', 'opening-A');
+    saveDraft(key, { content: 'A' }, 'A', true, 10);
+    const originalToken = readDraft<{ content: string }>(key)?.captureToken;
+    expect(originalToken).toBeTruthy();
+
+    const clock = jest.spyOn(Date, 'now').mockReturnValue(5000);
+    expect(saveDraft(key, { content: 'A' }, 'A', true)).toBe(true);
+    expect(readDraft<{ content: string }>(key)).toMatchObject({ value: { content: 'A' }, savedAt: 5000, editedAt: 10, captureToken: originalToken });
+
+    expect(saveDraft(key, { content: 'B' }, 'A', true, 20)).toBe(true);
+    const updated = readDraft<{ content: string }>(key);
+    expect(updated).toMatchObject({ value: { content: 'B' }, savedAt: 5000, editedAt: 20 });
+    expect(updated?.captureToken).toBeTruthy();
+    expect(updated?.captureToken).not.toBe(originalToken);
+    clock.mockRestore();
+  });
+});

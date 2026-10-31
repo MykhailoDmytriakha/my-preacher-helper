@@ -35,10 +35,12 @@ import { draftAddressKey, draftBelongsToOwner, isDraftAddress, readDraftAddress 
 
 let draftIdentitySequence = 0;
 
-/** A single stored draft. `savedAt` orders drafts newest first when a screen looks for them. */
+/** One local copy. Storage time and the observed content-change time have different meanings. */
 export interface DurableDraft<T> {
   value: T;
   savedAt: number;
+  /** Local editor change, unchanged by debounce, departure, or canonical handoff. */
+  editedAt?: number;
   /** Unique future note resource; present only while typing before its create. */
   creationTargetId?: string;
   /** Exact payload ownership; a different value always drops this binding. */
@@ -120,7 +122,7 @@ export function subscribeDraftStorage(listener: () => void): () => void {
  * it traded an original for a backup, silently. So a refused copy is reported instead: the
  * app-wide DraftStorageNotice tells the person before any text can be lost.
  */
-export function saveDraft<T>(key: string, value: T, creationTargetId?: string, captureIdentity = false): boolean {
+export function saveDraft<T>(key: string, value: T, creationTargetId?: string, captureIdentity = false, editedAt?: number): boolean {
   const store = storage();
   if (!store) {
     recordDraftStorage(key, true, value, creationTargetId);
@@ -128,6 +130,10 @@ export function saveDraft<T>(key: string, value: T, creationTargetId?: string, c
   }
 
   const previous = readDraft<T>(key);
+  // A delayed backup/capture does not replace a strictly later known local edit.
+  // Without explicit edit evidence the legacy write retains its existing behavior.
+  if (Number.isFinite(editedAt) && Number.isFinite(previous?.editedAt) && previous!.editedAt! > editedAt!) return false;
+
   // An identity is minted as part of the ordinary value write, never by a later
   // metadata-only read/modify/write that could overwrite another tab's words.
   const sameLineage = previous?.creationTargetId === creationTargetId
@@ -136,9 +142,13 @@ export function saveDraft<T>(key: string, value: T, creationTargetId?: string, c
       && readDraftAddress(key)?.aggregate === 'note');
   const sameValue = previous && serializeContent(previous.value) === serializeContent(value);
   const previousToken = typeof previous?.captureToken === 'string' && previous.captureToken ? previous.captureToken : undefined;
-  const captureToken = sameLineage && sameValue && previousToken ? previousToken
+  const sameEdit = !Number.isFinite(editedAt) || previous?.editedAt === editedAt;
+  const captureToken = sameLineage && sameValue && sameEdit && previousToken ? previousToken
     : captureIdentity ? `${newClientId()}:${++draftIdentitySequence}` : undefined;
-  const payload = JSON.stringify({ value, savedAt: Date.now(), ...(creationTargetId ? { creationTargetId } : {}),
+  // A capture refresh of the same payload is storage work, not another edit.
+  const actionTime = Number.isFinite(editedAt) ? editedAt
+    : sameLineage && sameValue && Number.isFinite(previous?.editedAt) ? previous?.editedAt : undefined;
+  const payload = JSON.stringify({ value, savedAt: Date.now(), ...(actionTime !== undefined ? { editedAt: actionTime } : {}), ...(creationTargetId ? { creationTargetId } : {}),
     ...(captureToken ? { captureToken } : {}) } satisfies DurableDraft<T>);
 
   try {
@@ -168,7 +178,7 @@ export function readDraft<T>(key: string): DurableDraft<T> | null {
   }
 }
 
-export interface DraftCaptureEvent { key: string; value: unknown }
+export interface DraftCaptureEvent { key: string; value: unknown; editedAt?: number }
 const captureListeners = new Set<(event: DraftCaptureEvent) => void>();
 
 export function subscribeDraftCapture(listener: (event: DraftCaptureEvent) => void): () => void {
@@ -206,7 +216,7 @@ export function retireDraftCapture(key: string, captureToken: string, value: unk
     store.removeItem(key);
     if (store.getItem(key) !== null) return false;
     if (refusedDraftKeys.get(key)?.value === serializeContent(value)) recordDraftStorage(key, false);
-    for (const listener of captureListeners) { try { listener({ key, value }); } catch { /* Typing stays independent. */ } }
+    for (const listener of captureListeners) { try { listener({ key, value, ...(Number.isFinite(current.editedAt) ? { editedAt: current.editedAt } : {}) }); } catch { /* Typing stays independent. */ } }
     return true;
   } catch { return false; }
 }
@@ -346,11 +356,23 @@ export function findDraftCopies<T>(uid: string, docId: string, aggregate: string
     if (!address || address.owner !== uid || address.documentId !== docId || address.aggregate !== aggregate) return [];
     const stored = readDraft<T>(key);
     return stored ? [{ ...stored, key, sourceRecord: stored }] : [];
-  }).sort((left, right) => draftTime(right.savedAt) - draftTime(left.savedAt) || left.key.localeCompare(right.key));
+  }).sort(compareDraftCopies);
 }
 
-function draftTime(value: number): number {
-  return Number.isFinite(value) ? value : 0;
+/** Same-device presentation order; a legacy storage timestamp never proves author intent. */
+export function draftEditTime(record: Pick<DurableDraft<unknown>, 'savedAt' | 'editedAt'>): number {
+  return Number.isFinite(record.editedAt) ? record.editedAt! : Number.isFinite(record.savedAt) ? record.savedAt : 0;
+}
+
+/** Equal/unknown edit times have a stable order that no later flush can change. */
+export function compareDraftCopies(left: DurableDraftCopy<unknown>, right: DurableDraftCopy<unknown>): number {
+  return draftEditTime(right) - draftEditTime(left) || left.key.localeCompare(right.key);
+}
+
+/** Epoch-based monotonic browser time; Date.now is only the compatibility fallback. */
+export function nextDraftEditTime(previous = 0): number {
+  const precise = typeof performance !== 'undefined' ? performance.timeOrigin + performance.now() : NaN;
+  return Math.max(Number.isFinite(precise) ? precise : Date.now(), previous + 0.001);
 }
 
 /** Logical document discovery; the owning reader uses findDraftCopies for their actual addresses. */
@@ -358,8 +380,9 @@ export function findDraftDocIds(uid: string, aggregate: string): string[] {
   const records = listDraftKeys().flatMap(key => {
     const address = readDraftAddress(key);
     if (!address || address.owner !== uid || address.aggregate !== aggregate) return [];
-    return [{ documentId: address.documentId, savedAt: readDraft(key)?.savedAt ?? 0 }];
-  }).sort((left, right) => draftTime(right.savedAt) - draftTime(left.savedAt));
+    const stored = readDraft(key);
+    return [{ documentId: address.documentId, editedAt: stored ? draftEditTime(stored) : 0 }];
+  }).sort((left, right) => right.editedAt - left.editedAt);
   return [...new Set(records.map(record => record.documentId))];
 }
 

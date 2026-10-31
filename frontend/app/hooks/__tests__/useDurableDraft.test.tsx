@@ -661,3 +661,224 @@ describe('useDraftQuestion', () => {
     expect(result.current.held).toBe(true);
   });
 });
+
+
+describe('typing order survives an older opening closing last', () => {
+  beforeEach(() => { window.localStorage.clear(); jest.useFakeTimers(); });
+  afterEach(() => { jest.useRealTimers(); });
+
+  it('offers the latest typed words first while keeping both independent current-UI copies', () => {
+    const olderKey = draftKey('uid-1', 'note-1', 'note', 'older-opening');
+    const newerKey = draftKey('uid-1', 'note-1', 'note', 'newer-opening');
+    const older = render('server text', { writerId: 'older-opening' });
+    const newer = render('server text', { writerId: 'newer-opening' });
+    older.rerender({ value: 'older words A' });
+    act(() => jest.advanceTimersByTime(300));
+    newer.rerender({ value: 'latest words B' });
+    act(() => jest.advanceTimersByTime(300));
+    act(() => newer.unmount());
+    act(() => jest.advanceTimersByTime(1));
+    act(() => older.unmount());
+    expect(readDraft<string>(olderKey)?.value).toBe('older words A');
+    expect(readDraft<string>(newerKey)?.value).toBe('latest words B');
+    const reopened = render('server text', { writerId: 'reopened' });
+    try {
+      expect(reopened.result.current.recoveries).toHaveLength(2);
+      expect(reopened.result.current.recovered).toBe('latest words B');
+    } finally { reopened.unmount(); }
+  });
+
+  it('keeps the later typing on the legacy shared address when its older editor departs last', () => {
+    const older = render('server text');
+    const newer = render('server text');
+    older.rerender({ value: 'older words A' });
+    act(() => jest.advanceTimersByTime(300));
+    newer.rerender({ value: 'latest words B' });
+    act(() => jest.advanceTimersByTime(300));
+    act(() => newer.unmount());
+    act(() => jest.advanceTimersByTime(1));
+    act(() => older.unmount());
+    expect(readDraft<string>(KEY)?.value).toBe('latest words B');
+  });
+});
+
+
+describe('draft chronology follows content changes rather than persistence', () => {
+  beforeEach(() => { localStorage.clear(); jest.useFakeTimers(); });
+  afterEach(() => { jest.useRealTimers(); });
+
+  it('does not promote earlier typing when its first backup lands after the later typing', () => {
+    const older = render('server', { writerId: 'older' });
+    const newer = render('server', { writerId: 'newer' });
+    older.rerender({ value: 'earlier A' });
+    act(() => jest.advanceTimersByTime(25));
+    newer.rerender({ value: 'later B' });
+    newer.unmount();
+    act(() => jest.advanceTimersByTime(25));
+    older.unmount();
+    const reopened = render('server', { writerId: 'reopened' });
+    try { expect(reopened.result.current.recovered).toBe('later B'); }
+    finally { reopened.unmount(); }
+  });
+
+  it('does not turn an equal immutable payload into newer typing', () => {
+    const open = (writerId: string) => renderHook(({ value }) => useDurableDraft({
+      uid: 'uid-1', docId: 'note-1', aggregate: 'note', writerId,
+      value, confirmedValue: { text: 'server', tags: [] }, enabled: true,
+    }), { initialProps: { value: { text: 'server', tags: [] as string[] } } });
+    const older = open('older'), newer = open('newer');
+    older.rerender({ value: { text: 'earlier A', tags: [] } });
+    act(() => jest.advanceTimersByTime(300));
+    newer.rerender({ value: { text: 'later B', tags: [] } });
+    act(() => jest.advanceTimersByTime(300));
+    newer.unmount();
+    older.rerender({ value: { tags: [], text: 'earlier A' } });
+    act(() => jest.advanceTimersByTime(300));
+    older.unmount();
+    const reopened = open('reopened');
+    try { expect(reopened.result.current.recovered?.text).toBe('later B'); }
+    finally { reopened.unmount(); }
+  });
+
+  it('does not make unchanged words newer when the same account briefly disappears', () => {
+    const older = renderHook(({ uid, value }: { uid: string | undefined; value: string }) => useDurableDraft({
+      uid, docId: 'note-1', aggregate: 'note', writerId: 'older', value, confirmedValue: 'server', enabled: true,
+    }), { initialProps: { uid: 'uid-1' as string | undefined, value: 'server' } });
+    const newer = render('server', { writerId: 'newer' });
+    older.rerender({ uid: 'uid-1', value: 'earlier A' });
+    act(() => jest.advanceTimersByTime(300));
+    newer.rerender({ value: 'later B' });
+    act(() => jest.advanceTimersByTime(300));
+    newer.unmount();
+    act(() => jest.advanceTimersByTime(1));
+    older.rerender({ uid: undefined, value: 'earlier A' });
+    older.rerender({ uid: 'uid-1', value: 'earlier A' });
+    older.unmount();
+    const reopened = render('server', { writerId: 'reopened' });
+    try { expect(reopened.result.current.recovered).toBe('later B'); }
+    finally { reopened.unmount(); }
+  });
+});
+
+
+describe('a canonical capture belongs to its exact edit', () => {
+  it('keeps A typed again after the earlier A was captured and the editor saved B', () => {
+    localStorage.clear(); jest.useFakeTimers();
+    const editor = render('server');
+    try {
+      editor.rerender({ value: 'A' });
+      act(() => jest.advanceTimersByTime(300));
+      act(() => editor.result.current.markCaptured('A', 'note-1'));
+      editor.rerender({ value: 'B' });
+      act(() => editor.result.current.markSaved('B'));
+      editor.rerender({ value: 'A' });
+      editor.unmount();
+      expect(readDraft<string>(KEY)?.value).toBe('A');
+    } finally { editor.unmount(); jest.useRealTimers(); }
+  });
+});
+
+
+describe('late capture of equal words does not capture a new action', () => {
+  beforeEach(() => { localStorage.clear(); jest.useFakeTimers(); });
+  afterEach(() => jest.useRealTimers());
+
+  it('keeps a retyped A when the earlier A capture callback arrives before its debounce', () => {
+    const editor = render('server');
+    editor.rerender({ value: 'A' });
+    act(() => jest.advanceTimersByTime(300));
+    const earlierEdit = editor.result.current.editedAt;
+    editor.rerender({ value: 'B' });
+    act(() => editor.result.current.markSaved('B'));
+    editor.rerender({ value: 'A' });
+    act(() => editor.result.current.markCaptured('A', 'note-1', earlierEdit));
+    editor.unmount();
+    expect(readDraft<string>(KEY)?.value).toBe('A');
+  });
+
+  it('keeps retyping before debounce when the bridge retires an earlier A', () => {
+    const editor = render('server');
+    editor.rerender({ value: 'A' });
+    act(() => jest.advanceTimersByTime(300));
+    saveDraft(KEY, 'A', undefined, true);
+    const token = readDraft(KEY)!.captureToken!;
+    editor.rerender({ value: 'B' });
+    act(() => editor.result.current.markSaved('B'));
+    editor.rerender({ value: 'A' });
+    act(() => { expect(retireDraftCapture(KEY, token, 'A')).toBe(true); });
+    editor.unmount();
+    expect(readDraft<string>(KEY)?.value).toBe('A');
+  });
+
+  it('does not let the earlier capture retire a new same-word edit already backed up', () => {
+    const editor = render('server');
+    editor.rerender({ value: 'A' });
+    act(() => jest.advanceTimersByTime(300));
+    saveDraft(KEY, 'A', undefined, true);
+    const token = readDraft(KEY)!.captureToken!;
+    editor.rerender({ value: 'B' });
+    act(() => editor.result.current.markSaved('B'));
+    editor.rerender({ value: 'A' });
+    act(() => jest.advanceTimersByTime(300));
+    const current = localStorage.getItem(KEY);
+    act(() => { expect(retireDraftCapture(KEY, token, 'A')).toBe(false); });
+    expect(localStorage.getItem(KEY)).toBe(current);
+    editor.unmount();
+  });
+});
+
+
+describe('settled old openings cannot retire another edit of equal words', () => {
+  it('keeps the newer A when a clean old opening adopts a delivered baseline and closes', () => {
+    localStorage.clear(); jest.useFakeTimers();
+    const older = render('server');
+    older.rerender({ value: 'A' });
+    act(() => jest.advanceTimersByTime(300));
+    act(() => older.result.current.markSaved('A'));
+    const newer = render('server');
+    act(() => jest.advanceTimersByTime(1));
+    newer.rerender({ value: 'A' });
+    act(() => jest.advanceTimersByTime(300));
+    const current = localStorage.getItem(KEY);
+    older.rerender({ value: 'delivered B' });
+    act(() => older.result.current.markSaved('delivered B'));
+    older.unmount();
+    try { expect(localStorage.getItem(KEY)).toBe(current); }
+    finally { newer.unmount(); jest.useRealTimers(); }
+  });
+});
+
+
+describe('confirmed-copy cleanup retries preserve exact ownership', () => {
+  beforeEach(() => { localStorage.clear(); jest.useFakeTimers(); });
+  afterEach(() => { jest.restoreAllMocks(); jest.useRealTimers(); });
+
+  it('retries its own confirmed copy at departure if the first removal was refused', () => {
+    const editor = render('server');
+    editor.rerender({ value: 'A' });
+    act(() => jest.advanceTimersByTime(300));
+    jest.spyOn(Storage.prototype, 'removeItem').mockImplementationOnce(() => { throw new DOMException('Denied', 'SecurityError'); });
+    act(() => editor.result.current.markSaved('A'));
+    expect(readDraft<string>(KEY)?.value).toBe('A');
+    editor.unmount();
+    expect(readDraft(KEY)).toBeNull();
+  });
+
+  it('does not retry removal against a newer equal copy after the original removal was refused', () => {
+    const older = render('server');
+    older.rerender({ value: 'A' });
+    act(() => jest.advanceTimersByTime(300));
+    jest.spyOn(Storage.prototype, 'removeItem').mockImplementationOnce(() => { throw new DOMException('Denied', 'SecurityError'); });
+    act(() => older.result.current.markSaved('A'));
+    const newer = render('server');
+    act(() => jest.advanceTimersByTime(1));
+    newer.rerender({ value: 'A' });
+    act(() => jest.advanceTimersByTime(300));
+    const current = localStorage.getItem(KEY);
+    older.rerender({ value: 'delivered B' });
+    act(() => older.result.current.markSaved('delivered B'));
+    older.unmount();
+    try { expect(localStorage.getItem(KEY)).toBe(current); }
+    finally { newer.unmount(); }
+  });
+});

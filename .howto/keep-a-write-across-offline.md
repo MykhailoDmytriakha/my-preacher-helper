@@ -52,6 +52,14 @@ The note editor (and the plan's cells, `usePlanTextDraft`) keeps unsaved typing 
 - Legacy unbound copies, failed identity writes, and metadata stripped by an immutable older bundle remain unknown, with neutral comparison/recovery text. Never infer their outcome from equal text, clocks, connectivity or a cached server response. Exact server ACK still owns Saved/audio confirmation. The original two-store limit was reproduced by native reload while autosave was in flight; callback-only cleanup was rejected by holding the actual IndexedDB oncomplete handler after commit. Pending/refused canonical words remain in the existing queue/recovery rather than a second ledger.
 
 
+### Local draft edit chronology
+
+`utils/durableDraft.ts` owns the optional `editedAt` metadata, `savedAt` storage time, timestamp comparison and capture identity. `useDurableDraft` remembers a new clock only when canonical serialized editor content changes. Equal immutable values, owner availability, a document-ID handoff, debounce and page departure do not create another edit. A timer carries its own value/time pair; an immediate departure reads the current pair. Known older writes cannot replace a strictly later known edit at the same physical address.
+
+The browser clock is `performance.timeOrigin + performance.now()`, with `Date.now()` as a compatibility fallback and monotonic advancement beyond this opening's observed same-address edit. This is local ordering support, never proof of cross-device or server chronology. Old records remain readable with `savedAt` as a presentation fallback. Equal edit times use a stable physical-key order rather than later flush time; retain independent choices. Comment legacy-door and note current/precreate unions use the same comparator after merging.
+
+Immediate note-create backups and `prepareNoteDraftCapture` carry the opening's original edit time. A same-payload canonical refresh keeps that time; a new equal-word edit drops the earlier capture token. The submitted callback and retired-copy event carry their edit identity, so an old A capture cannot claim A typed again after B. Accepted text ends the old unconfirmed ownership; it cannot later remove another opening's equal words when adopting a delivered baseline. The canonical queue and server ACK keep their existing owners. A module-level backup failure is not by itself proof of user-visible loss: inspect the immediate backup and retained canonical request too.
+
 ### The initial recovery question
 
 `useDraftQuestion` in `hooks/useDurableDraft.ts` owns the first decision for one owner/resource/opening. A real Restore or confirmed Discard answers it; remaining independent variants stay readable without relocking that opening. Changing identity resets the question, and a stale callback cannot answer the next opening, even A -> B -> A. Read-only data remains read-only.

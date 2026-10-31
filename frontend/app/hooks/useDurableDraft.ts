@@ -1,14 +1,16 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { serializeContent } from '@/utils/contentFingerprint';
 import {
   clearDraftIfMatches,
   draftKey,
   findDraftCopies,
+  nextDraftEditTime,
   readDraft,
   readDraftsStrict,
+  type DurableDraft,
   type DurableDraftCopy,
   saveDraft,
   subscribeDraftCapture,
@@ -44,6 +46,8 @@ export interface UseDurableDraftOptions<T> {
 }
 
 export interface UseDurableDraftResult<T> {
+  /** Time of this opening's current content change, also used by immediate create backup. */
+  editedAt: number;
   /**
    * Unconfirmed text found in storage when this editor opened, or null.
    * Read ONCE at mount: it must not change under the user while typing.
@@ -59,7 +63,7 @@ export interface UseDurableDraftResult<T> {
   /** The user chose to keep the server version — forget the draft. */
   discardRecovered: () => void;
   /** Transfer this exact payload to a durably captured canonical request. */
-  markCaptured: (captured: T, targetDocId: string) => void;
+  markCaptured: (captured: T, targetDocId: string, editedAt?: number) => void;
   /** Call after the server accepted `confirmed`; retires that draft only. */
   markSaved: (confirmed: T) => void;
 }
@@ -193,6 +197,18 @@ export function useDurableDraft<T>({
   const capturedRef = useRef<{ keys: readonly string[]; value: string } | null>(null);
   const confirmedRef = useRef<string | null>(null);
   const confirmedKeyRef = useRef<string | null>(null);
+  const serialisedValue = useMemo(() => serializeContent(value), [value]);
+  const editRef = useRef({ value: serialisedValue, editedAt: nextDraftEditTime() });
+  if (editRef.current.value !== serialisedValue) {
+    // A new value is a new edit even when these words were typed and saved before.
+    // Equal immutable objects and identity/availability changes are not edits.
+    const storedTime = key ? readDraft<T>(key)?.editedAt : undefined;
+    editRef.current = { value: serialisedValue, editedAt: nextDraftEditTime(Math.max(
+      editRef.current.editedAt, Number.isFinite(storedTime) ? storedTime! : 0,
+    )) };
+    capturedRef.current = null;
+  }
+
 
   // Callers with an explicit baseline retain its provenance across id adoption.
   // Legacy callers establish their opening value once per key.
@@ -218,7 +234,7 @@ export function useDurableDraft<T>({
    * Retiring a draft is the job of whoever knows it was confirmed — `markSaved`,
    * which compares before removing. Both failures are locked by tests.
    */
-  const persist = useCallback((targetKey: string, next: T) => {
+  const persist = useCallback((targetKey: string, next: T, editedAt: number) => {
     const serialised = serializeContent(next);
     // The canonical queue already owns these words, including after this page leaves.
     if (capturedRef.current?.keys.includes(targetKey) && capturedRef.current.value === serialised) return;
@@ -226,8 +242,9 @@ export function useDurableDraft<T>({
       // Back to the server's value by hand. Retire OUR draft so it stops being
       // offered — but only if the stored one is still the one we wrote. If another
       // tab has since put its own unconfirmed text there, leave it alone.
-      if (ourDraftRef.current !== null) {
-        clearDraftIfMatches(targetKey, JSON.parse(ourDraftRef.current) as T);
+      const ours = ourDraftRef.current;
+      if (ours !== null) {
+        if (ours.key === targetKey) clearDraftIfMatches(targetKey, JSON.parse(ours.value) as T, ours.record);
         ourDraftRef.current = null;
       }
       // An explicitly adopted source is ours to release too, even when the
@@ -238,16 +255,20 @@ export function useDurableDraft<T>({
       }
       return;
     }
-    saveDraft(targetKey, next, creationTargetId);
-    ourDraftRef.current = serialised;
+    if (saveDraft(targetKey, next, creationTargetId, false, editedAt)) {
+      const record = readDraft<T>(targetKey);
+      if (record?.editedAt === editedAt && serializeContent(record.value) === serialised) {
+        ourDraftRef.current = { key: targetKey, value: serialised, record };
+      }
+    }
   }, [creationTargetId, retireKnownCopies]);
-  /** The last unconfirmed value THIS hook instance stored, so it can retire it. */
-  const ourDraftRef = useRef<string | null>(null);
+  /** Keep the exact physical write for cleanup/retry, never an equal replacement. */
+  const ourDraftRef = useRef<{ key: string; value: string; record: DurableDraft<T> } | null>(null);
   const persistRef = useRef(persist);
   persistRef.current = persist;
 
-  // Read every independently kept copy once per logical opening. savedAt only
-  // orders this list; it never proves which author action superseded another.
+  // Read every independently kept copy once per logical opening. Local edit time
+  // orders known edits; legacy storage time is only a presentation fallback.
   useEffect(() => {
     if (!uid || !docId || !key || !recoveryKey) return;
     if (inspectedKeyRef.current === recoveryKey) return;
@@ -263,7 +284,8 @@ export function useDurableDraft<T>({
   // every keystroke.
   useEffect(() => {
     if (!enabled || !key) return;
-    const timeoutId = setTimeout(() => persist(key, value), WRITE_DELAY_MS);
+    const editedAt = editRef.current.editedAt;
+    const timeoutId = setTimeout(() => persist(key, value, editedAt), WRITE_DELAY_MS);
     return () => clearTimeout(timeoutId);
   }, [enabled, key, value, persist]);
 
@@ -272,7 +294,7 @@ export function useDurableDraft<T>({
     const flush = () => {
       const currentKey = keyRef.current;
       if (!enabledRef.current || !currentKey) return;
-      persistRef.current(currentKey, valueRef.current);
+      persistRef.current(currentKey, valueRef.current, editRef.current.editedAt);
     };
     const onVisibilityChange = () => {
       if (document.visibilityState === 'hidden') flush();
@@ -332,8 +354,10 @@ export function useDurableDraft<T>({
       copies: current.copies.filter(copy => copy.key !== rejected.key || serializeContent(copy.value) !== serializeContent(rejected.value)) });
   }, []);
 
-  const markCaptured = useCallback((captured: T, targetDocId: string) => {
+  const markCaptured = useCallback((captured: T, targetDocId: string, capturedEditedAt?: number) => {
     if (!uid || !targetDocId) return;
+    // A late callback for an earlier A cannot capture A typed again after B.
+    if (capturedEditedAt !== undefined && capturedEditedAt !== editRef.current.editedAt) return;
     const targetKey = draftKey(uid, targetDocId, aggregate, writerId);
     // A precreate address and its reserved document are one opening. This is not
     // permission to claim an untagged legacy source or another creation's copy.
@@ -346,16 +370,17 @@ export function useDurableDraft<T>({
     if (ownsSource) clearDraftIfMatches(sourceKey, captured);
     if (keyRef.current === targetKey || (ownsSource && keyRef.current === sourceKey)) {
       retireKnownCopies(captured, recoveryKey, ownsSource ? keys : [targetKey]);
-      if (ourDraftRef.current === serialised) ourDraftRef.current = null;
+      if (ourDraftRef.current?.value === serialised) ourDraftRef.current = null;
     }
   }, [uid, key, aggregate, writerId, creationTargetId, recoveryKey, retireKnownCopies]);
 
   useEffect(() => subscribeDraftCapture(event => {
     if (event.key !== keyRef.current) return;
     const serialised = serializeContent(event.value);
-    capturedRef.current = { keys: [event.key], value: serialised };
+    const sameEdit = event.editedAt === editRef.current.editedAt;
+    if (sameEdit) capturedRef.current = { keys: [event.key], value: serialised };
     retireKnownCopies(event.value as T, recoveryKeyRef.current, [event.key]);
-    if (ourDraftRef.current === serialised) ourDraftRef.current = null;
+    if (sameEdit && ourDraftRef.current?.value === serialised) ourDraftRef.current = null;
   }), [retireKnownCopies]);
 
   const markSaved = useCallback((confirmed: T) => {
@@ -363,8 +388,17 @@ export function useDurableDraft<T>({
     if (currentOpening) confirmedRef.current = serializeContent(confirmed);
     const ownKey = currentOpening ? keyRef.current : key;
     retireKnownCopies(confirmed, recoveryKey, ownKey ? [ownKey] : []);
-    if (ownKey) clearDraftIfMatches(ownKey, confirmed);
+    const ours = ourDraftRef.current;
+    if (ownKey && ours?.key === ownKey) {
+      const record = readDraft<T>(ownKey);
+      // Canonical preparation can refresh this same edit's capture metadata.
+      if (record && record.editedAt === ours.record.editedAt && serializeContent(record.value) === ours.value) ours.record = record;
+    }
+    if (ownKey) clearDraftIfMatches(ownKey, confirmed,
+      ours?.key === ownKey && ours.value === serializeContent(confirmed) ? ours.record : undefined);
+    // Keep the exact snapshot for a departure retry if removal was refused.
+    // A replacement at that address can never satisfy this old snapshot.
   }, [key, recoveryKey, retireKnownCopies]);
 
-  return { recovered, recoveredKey, recoveries, selectRecovered, settleRecovered, acceptRecovered, discardRecovered, markCaptured, markSaved };
+  return { editedAt: editRef.current.editedAt, recovered, recoveredKey, recoveries, selectRecovered, settleRecovered, acceptRecovered, discardRecovered, markCaptured, markSaved };
 }

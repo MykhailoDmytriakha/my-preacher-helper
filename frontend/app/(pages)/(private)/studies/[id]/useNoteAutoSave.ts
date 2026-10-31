@@ -27,15 +27,18 @@ const EMPTY_SOURCE_IDS: string[] = [];
 
 /** A returned canonical request owns the full payload; server/audio proof stays separate. */
 function afterCanonicalCapture(submission: StudyNoteSubmission, payload: NoteDraftPayload, targetId: string,
-    onCaptured?: (captured: NoteDraftPayload, targetId: string) => void) {
+    onCaptured?: (captured: NoteDraftPayload, targetId: string, editedAt?: number) => void, editedAt?: number) {
     if (!submission.capture || !onCaptured) return;
     void submission.capture.then(receipt => {
-        if (receipt.kind === 'submitted' && receipt.requestId) onCaptured(payload, targetId);
+        if (receipt.kind === 'submitted' && receipt.requestId) {
+            if (editedAt === undefined) onCaptured(payload, targetId);
+            else onCaptured(payload, targetId, editedAt);
+        }
     }).catch(() => undefined);
 }
 
 export function useNoteAutoSave({
-    noteId, isNew, creationId, draftDocId = 'new', draftWriterId, isInitialized, title, content, tags, scriptureRefs, type, updateNote, createNote, uid, setCreatedNoteId, baselineRef, revisionRef, deliberateOverwriteRef, resaveNonce, saveBlocked, onConflict, onSaved, onCaptured, saveAtOnceRef, captureRecordingHandoff, dictationSourceIds = EMPTY_SOURCE_IDS, recordingSourceIds = EMPTY_SOURCE_IDS
+    noteId, isNew, creationId, draftDocId = 'new', draftWriterId, draftEditedAt, isInitialized, title, content, tags, scriptureRefs, type, updateNote, createNote, uid, setCreatedNoteId, baselineRef, revisionRef, deliberateOverwriteRef, resaveNonce, saveBlocked, onConflict, onSaved, onCaptured, saveAtOnceRef, captureRecordingHandoff, dictationSourceIds = EMPTY_SOURCE_IDS, recordingSourceIds = EMPTY_SOURCE_IDS
 }: {
     dictationSourceIds?: string[];
     recordingSourceIds?: string[];
@@ -44,6 +47,8 @@ export function useNoteAutoSave({
     draftDocId?: string;
     /** The same mounted writer owns typing, immediate autosave and adopted backups. */
     draftWriterId?: string;
+    /** Original content-change time; an immediate backup must not invent another edit. */
+    draftEditedAt?: number;
     noteId: string; isNew: boolean; isInitialized: boolean; existingNote?: StudyNote; title: string;
     content: string; tags: string[]; scriptureRefs: ScriptureReference[]; type: StudyNoteType;
     updateNote: (args: {
@@ -80,7 +85,7 @@ export function useNoteAutoSave({
      */
     onSaved?: (saved: NoteDraftPayload) => void;
     /** Called only after an exact canonical request durably owns these words. */
-    onCaptured?: (captured: NoteDraftPayload, targetId: string) => void;
+    onCaptured?: (captured: NoteDraftPayload, targetId: string, editedAt?: number) => void;
     /** Capture source IDs at submission time; later dictation belongs to a later save. */
     captureRecordingHandoff?: () => { accepted: () => Promise<void>; carryTo: (id: string) => Promise<void>; canChangeDestination?: () => boolean } | undefined;
     /**
@@ -120,7 +125,7 @@ export function useNoteAutoSave({
             const sourceDraft = sourceKey ? readDraft<NoteDraftPayload>(sourceKey) : null;
             // Do not claim another creation's copy or an untagged legacy source for this ID.
             const ownsSource = !sourceDraft || sourceDraft.creationTargetId === creationId;
-            const backupReady = sourceKey && ownsSource ? saveDraft(sourceKey, confirmedPayload, creationId, true) : false;
+            const backupReady = sourceKey && ownsSource ? saveDraft(sourceKey, confirmedPayload, creationId, true, draftEditedAt) : false;
             const input = { ...confirmedPayload, userId: uid ?? '', materialIds: [], relatedSermonIds: [] };
             const captureScope = sourceKey && backupReady && creationId
                 ? prepareDraftCapture(sourceKey, confirmedPayload, { collection: 'studyNotes', id: creationId }) : undefined;
@@ -146,7 +151,7 @@ export function useNoteAutoSave({
             // awaiting `persisted` acceptance. On a refusal the editor remains on
             // screen with this same text and with its draft carried to this id.
             // useStudyNotes' create recovery descriptor reports a late refusal while this screen is mounted.
-            afterCanonicalCapture(submission, confirmedPayload, newNote.id, onCaptured);
+            afterCanonicalCapture(submission, confirmedPayload, newNote.id, onCaptured, draftEditedAt);
             const acceptance = await awaitAcceptance(submission, () => undefined);
 
             const retirePersistedCreateDraft = () => {
@@ -194,7 +199,7 @@ export function useNoteAutoSave({
         } finally {
             setIsSaving(false);
         }
-    }, [title, content, tags, scriptureRefs, type, dictationSourceIds, recordingSourceIds, createNote, creationId, draftDocId, draftWriterId, uid, setCreatedNoteId, baselineRef, onSaved, onCaptured, captureRecordingHandoff]);
+    }, [title, content, tags, scriptureRefs, type, dictationSourceIds, recordingSourceIds, createNote, creationId, draftDocId, draftWriterId, draftEditedAt, uid, setCreatedNoteId, baselineRef, onSaved, onCaptured, captureRecordingHandoff]);
 
     const saveChanges = useCallback(async () => {
         if (!noteId || !isInitialized) return;
@@ -244,7 +249,7 @@ export function useNoteAutoSave({
         const wasDeliberate = deliberateOverwriteRef.current;
         try {
             const recording = captureRecordingHandoff?.();
-            const captureScope = prepareNoteDraftCapture(uid, noteId, submittedPayload, draftWriterId);
+            const captureScope = prepareNoteDraftCapture(uid, noteId, submittedPayload, draftWriterId, draftEditedAt);
             const submission = updateNote({
                 id: noteId,
                 captureScope,
@@ -264,7 +269,7 @@ export function useNoteAutoSave({
                     ? null
                     : (baselineRef.current as unknown as Record<string, unknown>),
             });
-            afterCanonicalCapture(submission, submittedPayload, noteId, onCaptured);
+            afterCanonicalCapture(submission, submittedPayload, noteId, onCaptured, draftEditedAt);
             void submission.persistence.then(() => recording?.accepted()).catch(() => undefined);
             // useStudyNotes' update recovery descriptor reports a late refusal while this screen is mounted.
             const acceptance = await awaitAcceptance(submission, () => undefined);
@@ -333,7 +338,7 @@ export function useNoteAutoSave({
             inFlightRef.current = false;
             setIsSaving(false);
         }
-    }, [uid, draftWriterId, noteId, isNew, isInitialized, isSaving, saveBlocked, saveNewNote, title, content, tags, scriptureRefs, type, dictationSourceIds, recordingSourceIds, updateNote, baselineRef, revisionRef, deliberateOverwriteRef, onConflict, onSaved, onCaptured, atOnceRef, captureRecordingHandoff]);
+    }, [uid, draftWriterId, draftEditedAt, noteId, isNew, isInitialized, isSaving, saveBlocked, saveNewNote, title, content, tags, scriptureRefs, type, dictationSourceIds, recordingSourceIds, updateNote, baselineRef, revisionRef, deliberateOverwriteRef, onConflict, onSaved, onCaptured, atOnceRef, captureRecordingHandoff]);
 
     useEffect(() => {
         if (!isInitialized) return;

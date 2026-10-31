@@ -30,7 +30,7 @@ const payload: NoteDraftPayload = {
   type: 'note',
 };
 
-function useHarness(createNote: jest.Mock, onSaved: (saved: NoteDraftPayload) => void, captureRecordingHandoff?: () => { accepted: () => Promise<void>; carryTo: (id: string) => Promise<void> }, creation?: { id: string; draftId: string; writerId?: string }) {
+function useHarness(createNote: jest.Mock, onSaved: (saved: NoteDraftPayload) => void, captureRecordingHandoff?: () => { accepted: () => Promise<void>; carryTo: (id: string) => Promise<void> }, creation?: { id: string; draftId: string; writerId?: string; draftEditedAt?: number }) {
   const baselineRef = useRef<NoteDraftPayload | null>(null);
   const revisionRef = useRef<number | null>(null);
   const deliberateOverwriteRef = useRef(false);
@@ -39,6 +39,7 @@ function useHarness(createNote: jest.Mock, onSaved: (saved: NoteDraftPayload) =>
     creationId: creation?.id,
     draftDocId: creation?.draftId,
     draftWriterId: creation?.writerId,
+    draftEditedAt: creation?.draftEditedAt,
     isNew: true,
     isInitialized: true,
     title: payload.title,
@@ -527,4 +528,54 @@ it('binds raw-source release to the exact note write and carries new-note record
   await act(async () => { persist(); await persistence; });
   expect(accepted).toHaveBeenCalledTimes(1);
   view.unmount(); jest.useRealTimers();
+});
+
+it('carries the opening edit time through the immediate create backup without touching another opening', async () => {
+  jest.useFakeTimers();
+  const creationId = 'edited-at-create';
+  const draftId = 'new~edited-at-create';
+  const writerId = 'opening-A';
+  const source = draftKey('u1', draftId, 'note', writerId);
+  const destination = draftKey('u1', creationId, 'note', writerId);
+  const independent = draftKey('u1', draftId, 'note', 'opening-B');
+  const older = { ...payload, content: 'Earlier source text' };
+  const sibling = { ...payload, content: 'Independent opening text' };
+  saveDraft(source, older, creationId, false, 80);
+  saveDraft(independent, sibling, creationId, false, 70);
+  const siblingRaw = window.localStorage.getItem(independent);
+  let finish!: () => void;
+  const persistence = new Promise<void>(resolve => { finish = resolve; });
+  const backupsAtSubmission: Array<{ record: ReturnType<typeof readDraft<NoteDraftPayload>>; writeTime: number }> = [];
+  const createNote = jest.fn(() => {
+    backupsAtSubmission.push({ record: readDraft<NoteDraftPayload>(source), writeTime: Date.now() });
+    return { ...queuedMutation(creationId, persistence), note: { id: creationId } as StudyNote };
+  });
+  const view = renderHook(() => useHarness(createNote, jest.fn(), undefined, {
+    id: creationId, draftId, writerId, draftEditedAt: 123,
+  }));
+  try {
+    await act(async () => { jest.advanceTimersByTime(1600); });
+
+    expect(backupsAtSubmission).toHaveLength(1);
+    const backupAtSubmission = backupsAtSubmission[0].record;
+    const backupWriteTime = backupsAtSubmission[0].writeTime;
+    expect(backupAtSubmission?.value).toEqual(payload);
+    expect(backupAtSubmission?.editedAt).toBe(123);
+    expect(backupAtSubmission?.savedAt).toBe(backupWriteTime);
+    expect(readDraft<NoteDraftPayload>(destination)).toMatchObject({
+      value: payload, editedAt: 123, savedAt: backupWriteTime,
+    });
+    expect(window.localStorage.getItem(independent)).toBe(siblingRaw);
+    expect(readDraft<NoteDraftPayload>(independent)?.value).toEqual(sibling);
+
+    await act(async () => { finish(); await persistence; });
+    expect(readDraft(destination)).toBeNull();
+    expect(window.localStorage.getItem(independent)).toBe(siblingRaw);
+  } finally {
+    view.unmount();
+    clearDraft(source);
+    clearDraft(destination);
+    clearDraft(independent);
+    jest.useRealTimers();
+  }
 });

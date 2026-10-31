@@ -50,10 +50,10 @@ function readScope(scope: string): DraftCaptureScope | null {
 }
 
 /** Immediate autosave can beat the typing debounce; bind the exact submitted words. */
-export function prepareNoteDraftCapture(owner: string | null | undefined, noteId: string, value: unknown, writerId?: string): string | undefined {
+export function prepareNoteDraftCapture(owner: string | null | undefined, noteId: string, value: unknown, writerId?: string, editedAt?: number): string | undefined {
   if (!owner) return undefined;
   const key = draftKey(owner, noteId, 'note', writerId);
-  if (!saveDraft(key, value, undefined, true)) return undefined;
+  if (!saveDraft(key, value, undefined, true, editedAt)) return undefined;
   return prepareDraftCapture(key, value, { collection: 'studyNotes', id: noteId });
 }
 

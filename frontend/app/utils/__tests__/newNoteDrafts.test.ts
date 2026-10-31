@@ -122,3 +122,19 @@ it('resume URLs require an owned local source, including owner-marked links', ()
   expect(canResumeNewNoteDraft('owner', 'new', 'owner')).toBe(false);
   expect(canResumeNewNoteDraft(undefined, 'new~A', 'owner')).toBe(false);
 });
+
+it('sorts a current note and its carried precreate source by edit time, not stored-write time', () => {
+  const currentKey = draftKey('owner', 'A', 'note', 'current-opening');
+  const sourceKey = draftKey('owner', newNoteDraftId('A'), 'note', 'precreate-opening');
+  const clock = jest.spyOn(Date, 'now')
+    .mockReturnValueOnce(200)
+    .mockReturnValueOnce(100);
+  saveDraft(currentKey, value('Earlier current-address edit'), undefined, false, 10);
+  saveDraft(sourceKey, value('Later precreate edit'), 'A', false, 20);
+
+  expect(readDraft(currentKey)?.savedAt).toBe(200);
+  expect(readDraft(sourceKey)?.savedAt).toBe(100);
+  expect(findNoteDraftCopies('owner', 'A', 'note').map(copy => copy.value.content))
+    .toEqual(['Later precreate edit', 'Earlier current-address edit']);
+  clock.mockRestore();
+});

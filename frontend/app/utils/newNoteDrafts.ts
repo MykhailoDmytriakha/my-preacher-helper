@@ -1,6 +1,6 @@
 import { discoverLegacyRecovery, isValidRecoveryPatch, type LegacyRecoverySource } from '@/data-engine/react.client';
 import { newClientId } from '@/utils/clientId';
-import { findDraftCopies, findDraftDocIds, type DurableDraftCopy } from '@/utils/durableDraft';
+import { compareDraftCopies, findDraftCopies, findDraftDocIds, type DurableDraftCopy } from '@/utils/durableDraft';
 
 import type { DocumentData } from '@/data-engine/types';
 import type { StudyNote } from '@/models/models';
@@ -88,7 +88,7 @@ export function findNoteDraftCopies(uid: string, docId: string, aggregate: strin
   const current = findDraftCopies<NoteDraftPayload>(uid, docId, aggregate).filter(copy => isNotePayload(copy.value));
   const sources = [newNoteDraftId(docId), 'new'].flatMap(source => readNewNoteDraftCopies(uid, source))
     .filter(copy => copy.creationTargetId === docId);
-  return [...new Map([...current, ...sources].map(copy => [copy.key, copy])).values()];
+  return [...new Map([...current, ...sources].map(copy => [copy.key, copy])).values()].sort(compareDraftCopies);
 }
 
 /** Exact original bytes stay available even when a payload cannot enter an editor. */
