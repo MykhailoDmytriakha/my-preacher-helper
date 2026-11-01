@@ -71,6 +71,6 @@ export function withAnalysisAddress(href: string, value: AnalysisAddress): strin
  */
 export function noteScreenHref(note: Pick<StudyNote, 'id' | 'type' | 'scriptureRefs'>, { locale, from }: { locale: AppLocale; from?: string }): string {
   const reference = note.type === 'analysis' ? note.scriptureRefs?.[0] : undefined;
-  const reader = reference ? bibleHref(reference, { locale, from }) : null;
+  const reader = reference ? bibleHref(analysisReferenceForReading(reference), { locale, from }) : null;
   return reader ? withAnalysisAddress(reader, { id: note.id, mode: 'view' }) : `/studies/${note.id}`;
 }
