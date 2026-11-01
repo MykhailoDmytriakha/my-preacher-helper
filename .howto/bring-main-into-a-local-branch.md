@@ -7,6 +7,7 @@ Use the feature worktree. A main-to-feature intake does not publish the feature 
 ## Before merging
 
 - Finish the current bug's accepted local commit and require a clean feature tree. Preserve the owner's other checkout and uncommitted work. Record feature HEAD, fetched main, merge base and branch name.
+- Resolve fetched main to one SHA once, then derive every inventory and merge argument from that SHA. `origin/main` is shared across worktrees and may move during another agent's fetch; a second read can describe a different intake. Keep that later snapshot separate.
 - Fetch main, then pin the exact target. Compare committed paths from the merge base on both sides as well as current working changes. A small dirty-file overlap does not establish that two committed histories merge safely.
 - For diverged histories, `git merge --no-commit <pinned-main>` exposes conflicts without making the merge commit. Record MERGE_HEAD and the conflict list. Do not rebase the long accepted local history simply to avoid inspecting conflicts.
 

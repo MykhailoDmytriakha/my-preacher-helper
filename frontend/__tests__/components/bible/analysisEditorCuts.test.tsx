@@ -136,6 +136,20 @@ describe('cutting and gluing the lines of an analysis', () => {
       expect(screen.getByRole('dialog', { name: 'analysis.relation.menu' }).querySelectorAll('[data-relation-item]')).toHaveLength(1);
     });
 
+    it('keeps the all-links control in a stable header slot when switching modes', () => {
+      // BUG-20261031-analysis-mode-switch-jumps: the centered mode group used to shift when this control appeared.
+      renderEditor(true);
+      const header = () => document.querySelector('[data-modal-layer] header')!;
+      const childTags = () => [...header().children].map((child) => child.tagName);
+      const editHeaderShape = childTags();
+      const allLinksSlot = screen.getByTestId('analysis-all-links');
+      expect(allLinksSlot).toHaveClass('invisible');
+      fireEvent.click(screen.getByRole('button', { name: 'analysis.modeView' }));
+      expect(childTags()).toEqual(editHeaderShape);
+      expect(screen.getByTestId('analysis-all-links')).not.toHaveClass('invisible');
+      expect(within(screen.getByTestId('analysis-all-links')).getByRole('switch')).toBeInTheDocument();
+    });
+
     it('opens no menu at a press on a ringed word in «Просмотр»: the press lights the part', () => {
       renderEditor(false);
       fireEvent.click(word(4));
@@ -156,12 +170,13 @@ describe('cutting and gluing the lines of an analysis', () => {
       expect(screen.queryByText('analysis.edit.hintMark')).not.toBeInTheDocument();
       expect(within(screen.getByTestId('analysis-help-short')).getAllByText(/^analysis\.help\./)).toHaveLength(8);
       expect(JSON.parse(localStorage.getItem('analysis:help') ?? '{}')).toMatchObject({ short: true });
-      // Opened again — another analysis, another day — it is still folded.
+      // Reopening in edit keeps the saved preference; entering view shows its complete, non-foldable hint.
       unmount();
-      renderEditor(false);
+      renderEditor(true);
       expect(screen.getByTestId('analysis-help-toggle')).toHaveAttribute('aria-expanded', 'false');
-      expect(screen.getByText('analysis.help.view')).toBeInTheDocument();
-      fireEvent.click(screen.getByTestId('analysis-help-toggle'));
+      expect(screen.queryByText('analysis.edit.hintMark')).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'analysis.modeView' }));
+      expect(screen.queryByTestId('analysis-help-toggle')).not.toBeInTheDocument();
       expect(screen.getByText('analysis.view.hint')).toBeInTheDocument();
     });
   });

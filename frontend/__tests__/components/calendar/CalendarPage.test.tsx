@@ -8,6 +8,7 @@ import { useCalendarGroups } from '@/hooks/useCalendarGroups';
 import { useCalendarNotes } from '@/hooks/useCalendarNotes';
 import { useCalendarPrayers } from '@/hooks/useCalendarPrayers';
 import { useSeries } from '@/hooks/useSeries';
+import { getTodayDateOnlyKey } from '@/utils/dateOnly';
 import '@testing-library/jest-dom';
 
 // Mock all the hooks and services
@@ -731,7 +732,7 @@ describe('CalendarPage', () => {
   it('does not summarize failed sermons as zero while another calendar source has an entry', () => {
     mockUseCalendarSermons.mockReturnValue({ sermons: [], pendingSermons: [], sermonsByDate: {}, isLoading: false, error: new Error('Store unavailable'), refetch: jest.fn() } as any);
     mockUseSeries.mockReturnValue({ series: [], loading: false, error: null } as any);
-    mockUseCalendarNotes.mockReturnValue({ entries: [{ ...mockNoteEntry, date: new Date().toISOString().slice(0, 10) }], isLoading: false, error: null });
+    mockUseCalendarNotes.mockReturnValue({ entries: [{ ...mockNoteEntry, date: getTodayDateOnlyKey() }], isLoading: false, error: null });
     render(<CalendarPage />);
     expect(screen.getByTestId('date-event-list')).toHaveAttribute('data-kinds', 'note');
     expect(screen.queryByText('Total Preachings')).not.toBeInTheDocument();

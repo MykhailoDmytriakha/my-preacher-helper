@@ -34,3 +34,5 @@ A meeting identity is not a calendar day or proof that the meeting was conducted
 - 2026-10-03: council dates moved off the native `input type="date"` (it ignored a Monday week start); the move showed that the text field handed over every keystroke. Making that the field's default broke forms and drafts, and turning it on for the group page deleted meetings mid-typing, so it became the opt-in `finishedDatesOnly` with one caller.
 
 See also: `.howto/resolve-locale-and-month-name.md` · `.howto/format-scripture-reference.md`
+
+Tests that place an entry on the current local calendar day use `getTodayDateOnlyKey()` from `utils/dateOnly.ts`, matching the screen's local selected day. `new Date().toISOString().slice(0, 10)` names the UTC day: after17:00PDT it is already tomorrow and can make an unrelated calendar-read test fail. Keep timestamp formatting and a chosen date's stored prefix under their existing separate rules.

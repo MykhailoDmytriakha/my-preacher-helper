@@ -30,7 +30,8 @@ const RING: Record<LineRole, string> = {
 /** The bar over the analysis: back to the text, the place and how many parts, «Правка»/«Просмотр», the marks' tools, undo, done. */
 export function AnalysisHeader({ title, parts, mode, onMode, canUndo, onUndo, onClose, onEditVerses, tools, allLinks, sermons }: {
   title: string; parts: string; mode: AnalysisMode; onMode: (mode: AnalysisMode) => void; canUndo: boolean; onUndo: () => void; onClose: () => void;
-  /** In «Просмотр», with links of meaning to show: the switch that draws all their arrows at once (the owner, 30.10). */
+  /** In «Просмотр», with links of meaning to show: the switch that draws all their arrows at once (the owner, 30.10). Null —
+   *  it does not act now, and its room is kept empty. */
   allLinks?: { on: boolean; onToggle: () => void } | null;
   /** The reader's marker, pencil and eraser, before «Отменить». */
   tools?: ReactNode;
@@ -66,7 +67,12 @@ export function AnalysisHeader({ title, parts, mode, onMode, canUndo, onUndo, on
           </button>
         ))}
       </div>
-      {allLinks ? <Switch checked={allLinks.on} onClick={allLinks.onToggle} label={t('analysis.view.allLinks')} /> : null}
+      {/* Reserve the all-links control's space in both modes to keep the centered mode switch still.
+          Visibility hides its pointer and keyboard targets where the action is unavailable.
+          BUG-20261031-analysis-mode-switch-jumps. */}
+      <span data-testid="analysis-all-links" className={allLinks ? 'inline-flex' : 'invisible inline-flex'}>
+        <Switch checked={allLinks?.on ?? false} onClick={allLinks?.onToggle} label={t('analysis.view.allLinks')} />
+      </span>
       {tools}
       <button type="button" disabled={!canUndo} onClick={onUndo} aria-keyshortcuts="Meta+Z Control+Z"
         className={`group/tip relative inline-flex h-10 items-center gap-1.5 rounded-xl px-3 text-sm font-semibold disabled:opacity-40 ${OUTLINE}`}>

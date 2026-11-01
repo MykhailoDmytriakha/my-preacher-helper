@@ -370,8 +370,8 @@ function AnalysisNotices({ ready, changedText, sync, refused, onSaveAgain, creat
 /**
  * The side panel: what to do now — divide the passage and tie its parts, or read the chosen one. Its help folds (the owner,
  * 31.10: «поначалу она нужна, а потом ты уже выучиваешь»): in full at first, each tool one line — its sign and a short
- * name — once folded, the choice kept on the device (`analysisHelpPrefs.ts`). What the chosen part holds is not help: it
- * stays.
+ * name — once folded, the choice kept on the device (`analysisHelpPrefs.ts`). «Просмотр» has one sentence and no fold;
+ * what the chosen part holds is not help: it stays.
  */
 function AnalysisPanel({ mode, state, selected, short, bare }: {
   mode: AnalysisMode; state: AnalysisState; selected: number | null;
@@ -381,14 +381,15 @@ function AnalysisPanel({ mode, state, selected, short, bare }: {
   const help = useAnalysisHelpPrefs();
   const hint = 'leading-relaxed text-gray-600 dark:text-gray-300';
   const line = 'flex items-start gap-1 leading-snug text-gray-600 dark:text-gray-300';
-  const head = (title: string) => (
+  // Editing has foldable help; viewing keeps its complete single sentence without a fold control.
+  const head = (title: string, foldable = true) => (
     <div className="flex items-center justify-between gap-2">
       <div className="text-[15px] font-bold">{title}</div>
-      <button type="button" aria-expanded={!help.short} data-testid="analysis-help-toggle" onClick={() => saveAnalysisHelpPrefs({ short: !help.short })}
+      {foldable ? <button type="button" aria-expanded={!help.short} data-testid="analysis-help-toggle" onClick={() => saveAnalysisHelpPrefs({ short: !help.short })}
         className="inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-indigo-600 transition-colors hover:bg-indigo-50 dark:text-indigo-300 dark:hover:bg-indigo-950/50">
         {t(help.short ? 'analysis.help.expand' : 'analysis.help.collapse')}
         <ChevronDownIcon className={`h-3.5 w-3.5 transition-transform ${help.short ? '' : 'rotate-180'}`} aria-hidden="true" />
-      </button>
+      </button> : null}
     </div>
   );
   if (mode === 'edit') {
@@ -428,8 +429,8 @@ function AnalysisPanel({ mode, state, selected, short, bare }: {
   const word = selected !== null ? state.links[selected] : undefined;
   return (
     <>
-      {head(t('analysis.modeView'))}
-      <p className={hint}>{t(help.short ? 'analysis.help.view' : 'analysis.view.hint')}</p>
+      {head(t('analysis.modeView'), false)}
+      <p className={hint}>{t('analysis.view.hint')}</p>
       {selected !== null ? (
         <div className="flex flex-col gap-1.5 rounded-xl bg-gray-50 p-3 dark:bg-gray-900">
           <div className="font-serif text-[15px]">{short(selected)}</div>
