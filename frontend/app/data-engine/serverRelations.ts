@@ -9,6 +9,7 @@ import { validCouncilCarry } from './councilCarryContent';
 import { materialNoteIds, seriesMemberResources, sermonSourceReferences } from './documentReferences';
 import { childIdentityIssues } from './legacyChildIdentity';
 import { advanceResourceSnapshot, applyCommand, equalValues, mergeFields, readField, MAX_RELATION_RESOURCES } from './protocol';
+import { relationMirrorFields } from './relationMirrors';
 import { validateResourceDocument } from './resourceSchemas';
 
 import type { CommandResult, ConflictDetail, DataCommand, DocumentData, Json, ResourceRef, ResourceSnapshot } from './types';
@@ -366,9 +367,9 @@ class RelationPlanner {
       if (['sermons', 'groups'].includes(collection) && (command.value.seriesId != null || command.value.seriesPosition != null)) fail(RELATION_REQUIRED);
     }
     if (command.kind === 'update') {
-      const forbidden: Record<string, string[]> = {
-        studyNotes: ['materialIds', 'isDraft'], studyMaterials: ['noteIds'], series: ['items', 'sermonIds', 'seriesKind'],
-        sermons: ['seriesId', 'seriesPosition'], groups: ['seriesId', 'seriesPosition'],
+      const forbidden: Record<string, readonly string[]> = {
+        studyNotes: [...relationMirrorFields('studyNotes'), 'isDraft'], studyMaterials: ['noteIds'], series: ['items', 'sermonIds', 'seriesKind'],
+        sermons: relationMirrorFields('sermons'), groups: relationMirrorFields('groups'),
       };
       // Editing a section is ordinary work and stays an ordinary update. Only the carry mark is
       // a claim about ANOTHER council, and a claim that the other document never received is how

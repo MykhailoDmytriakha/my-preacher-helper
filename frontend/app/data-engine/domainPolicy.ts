@@ -7,6 +7,7 @@ import { firstBookMarksIntent } from './bibleMarksCreation';
 import { carriedCopy, validCouncilCarry } from './councilCarryContent';
 import { materialNoteIds } from './documentReferences';
 import { diffFields, equalValues, readField, validateCommand, MAX_RELATION_RESOURCES } from './protocol';
+import { relationMirrorFields } from './relationMirrors';
 
 import type { CommandBase, DataCommand, DocumentData, FieldChange, ResourceRef, ResourceSnapshot } from './types';
 
@@ -122,7 +123,7 @@ function prepareUpdate(base: CommandBase, confirmed: ResourceSnapshot & { value:
   if (collection === 'studyNotes' && !preservesStudyAnalysisSource(confirmed.value, draft)) return failure('An analysis must keep its original word source', 'invalid-document');
   const carried = newCarryDestinations(confirmed, draft);
   if (carried.length) return prepareCarry(base, confirmed, draft, carried, targets);
-  const forbidden = collection === 'studyNotes' ? ['materialIds'] : ['sermons', 'groups'].includes(collection) ? ['seriesId', 'seriesPosition'] : [];
+  const forbidden = relationMirrorFields(collection);
   if (changes.some(change => forbidden.includes(change.path[0]))) return failure('Edit membership through its material or series', 'relation-owner-required');
   if (collection === 'studyMaterials' && changes.some(change => change.path[0] === 'noteIds')) {
     return {

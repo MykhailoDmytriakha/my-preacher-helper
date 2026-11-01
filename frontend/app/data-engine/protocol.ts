@@ -3,6 +3,7 @@ import { isServiceOrderCatalogKey, isServiceOrderSeedTarget, serviceOrderSeedCyc
 
 import { ANALYSIS_RESHAPE_FIELDS, ANALYSIS_RESHAPE_FRAME, keepAnalysisPositionFrame, lacksAnalysisFrameProof } from './analysisReshapeFields';
 import { equalValues, object, own, readField } from './fieldValues';
+import { relationMirrorFields } from './relationMirrors';
 import { validateResourceDocument } from './resourceSchemas';
 import { preservesSermonLinks, scratchConsumptionConflicts } from './sermonIntegrity';
 
@@ -525,7 +526,10 @@ export function advanceResourceSnapshot(current: ResourceSnapshot, value: Docume
 /** Mutates only the cloned candidate; a conflict prevents the entire candidate from committing. */
 function applyExistingFields(command: Extract<DataCommand, { kind: 'update' | 'delete' }>, value: DocumentData): ConflictDetail[] {
   if (command.kind === 'delete') {
-    const content = (data: DocumentData) => Object.fromEntries(Object.entries(data).filter(([key]) => !['rev', 'updatedAt', 'id', '_dataEngine'].includes(key)));
+    // A relation may have updated a reverse index after this person's saved DELETE.
+    // Compare authored content; the cascade still resolves the actual owning relationships.
+    const ignored = new Set(['rev', 'updatedAt', 'id', '_dataEngine', ...relationMirrorFields(command.resource.collection)]);
+    const content = (data: DocumentData) => Object.fromEntries(Object.entries(data).filter(([key]) => !ignored.has(key)));
     return equalValues(content(command.baseline), content(value)) ? [] : [
       { path: [], base: { exists: true, value: command.baseline }, mine: { exists: false }, theirs: { exists: true, value } },
     ];

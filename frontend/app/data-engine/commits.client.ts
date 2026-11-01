@@ -3,6 +3,7 @@
 import { isCapturedTransferReplay, planCaptureTransfer } from './captureTransfer';
 import { checkpointKey, writeCheckpointRecord } from './checkpointStorage.client';
 import { assertCommitBatch, assertCommitCapture, assertCommitIdentities, orderCommitRequests, type CommitRequest, type CommitStore } from './commits';
+import { captureDeleteOrder, replayDeleteOrder } from './deletionOrdering';
 import { reconcileRecoveryRecord, validateRecoveryRecord } from './recovery.client';
 import { COMMIT_ROW_KINDS, collectCommitRows, commitCaptureKey, commitDependencyKey, commitGenerationKey, commitProjectionKey, commitRowKey, commitSnapshotKey, readCommitRows } from './retention.client';
 import { createEngineStorageTransaction, validateCommitReferences, type StorageRead } from './storage.client';
@@ -13,9 +14,13 @@ const changed = () => Object.assign(new Error('Commit changed'), { code: 'commit
 /** Older collectors honor reference rows even when they cannot read a new request format. */
 function retainPredecessor(store: IDBObjectStore, request: CommitRequest): void {
   const key = commitDependencyKey(request.owner, request.id);
-  if (request.predecessor && !request.initialized && !['cancelled', 'acknowledged'].includes(request.state)) {
-    store.put({ commitReferences: [request.predecessor] }, key);
-  } else store.delete(key);
+  const references = new Set<string>();
+  if (!['cancelled', 'acknowledged'].includes(request.state)) {
+    if (request.predecessor && !request.initialized) references.add(request.predecessor);
+    for (const id of request.deleteAfter ?? []) references.add(id);
+  }
+  if (references.size) store.put({ commitReferences: [...references] }, key);
+  else store.delete(key);
 }
 
 function checkOwnershipFormat(store: IDBObjectStore, read: StorageRead, request: CommitRequest, done: () => void): void {
@@ -28,7 +33,7 @@ function checkOwnershipFormat(store: IDBObjectStore, read: StorageRead, request:
   });
 }
 
-function createRecord(store: IDBObjectStore, read: StorageRead, frozen: CommitRequest, done: (record: CommitRequest) => void, transferring = false): void {
+function writeRecord(store: IDBObjectStore, read: StorageRead, frozen: CommitRequest, done: (record: CommitRequest) => void, transferring = false): void {
   if (frozen.transferredFrom && !transferring) throw new Error('A replacement proof requires atomic source transfer');
   read(store.get(commitRowKey(frozen)), (existing: CommitRequest | undefined) => {
     if (existing) { assertCommitCapture(existing, frozen); done(existing); return; }
@@ -38,7 +43,7 @@ function createRecord(store: IDBObjectStore, read: StorageRead, frozen: CommitRe
         const identity = ['identity', frozen.owner, frozen.id];
         read(store.get(identity), used => {
           if (used) throw new Error('Commit identity is already used');
-          validateCommitReferences(store, read, frozen.owner, frozen.predecessor && !frozen.initialized ? [frozen.predecessor] : [], () => {
+          validateCommitReferences(store, read, frozen.owner, [...(frozen.predecessor && !frozen.initialized ? [frozen.predecessor] : []), ...(frozen.deleteAfter ?? [])], () => {
             store.put(commitRowKey(frozen), identity);
             store.put({ commitReferences: [frozen.id] }, commitProjectionKey(frozen.owner, frozen.id));
             if (frozen.retentionScope) store.put({ commitReferences: [frozen.id] }, commitCaptureKey(frozen.owner, frozen.retentionScope, frozen.id));
@@ -49,6 +54,16 @@ function createRecord(store: IDBObjectStore, read: StorageRead, frozen: CommitRe
         });
       });
     });
+  });
+}
+
+/** Derive the frontier only once, from rows read in this same native write transaction. */
+function createRecord(store: IDBObjectStore, read: StorageRead, frozen: CommitRequest, done: (record: CommitRequest) => void, transferring = false): void {
+  if (frozen.value !== null) { writeRecord(store, read, frozen, done, transferring); return; }
+  readCommitRows(store, read, frozen.owner, records => {
+    const existing = records.find(record => record.editorId === frozen.editorId && record.editGeneration === frozen.editGeneration);
+    const captured = existing ? replayDeleteOrder(frozen, existing) : captureDeleteOrder(frozen, records);
+    writeRecord(store, read, captured, done, transferring);
   });
 }
 

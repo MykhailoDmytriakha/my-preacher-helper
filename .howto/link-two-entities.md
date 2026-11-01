@@ -24,6 +24,16 @@ A saved offline source and the next saved document that references it are ordere
 
 Regressions: `app/data-engine/__tests__/linkedCreateDependencies.test.ts` and `linkedCreateRecovery.test.ts`; the existing pending-destination carry control is in `councilCarryAtomic.test.ts`.
 
+## A later deletion must follow already saved uses
+
+`data-engine/deletionOrdering.ts` owns the inverse order. When a DELETE is first captured, the native request store scans existing owner requests inside that same read/write transaction and freezes `deleteAfter`: active earlier requests using the exact resource, through the canonical document/command reference rules. There is no clock comparison, extra transport queue or wire dependency. The new `ordered-delete-request` capability range keeps older bundles from preparing semantics they do not understand; generic dependency-reference rows retain prerequisite payloads even for older collectors. A repeated capture reuses its original frontier. A legacy row with no frontier stays legacy; later records cannot reconstruct its original order.
+
+`CommitQueue` waits before preparation while any captured prerequisite is not terminal. An unknown delivery remains pending and reuses its original operation. ACK, conflict, refusal and explicit cancellation settle the earlier request; its retained words and normal recovery remain. Unrelated resources continue independently. Do not add `deleteAfter` to the wire, rewrite an existing command fingerprint or treat a missing prerequisite payload as proof of completion. The local frontier does not establish chronology between unobserved actions on different devices.
+
+`relationMirrors.ts` declares only reverse indexes and retired back-references: note `materialIds`, sermon/group `seriesId` and `seriesPosition`. Client preparation and server ordinary-update admission use the same ownership list. DELETE compares authored content while excluding those collection-scoped mirrors and its existing bookkeeping fields. A material save may have added a reverse link while deletion waited; that alone must not block deletion. The cascade still updates the actual owning material/series, while changed words/title and generation/ownership checks retain their protection. Do not expand the exemption to canonical membership arrays or arbitrary derived fields.
+
+Regressions: `sourceDeleteOrdering.test.ts`, `sourceDeleteRelationOrdering.test.ts`, `deletionOrderingStorage.test.ts` and the DELETE controls in `protocol.test.ts`. These cover actual engine/planner ordering and transactional storage-adapter semantics; native responsive acceptance and rollout proof belong to the verification ledger.
+
 ## Search the complete atomic relation scope
 
 - `serverRelations.ts` owns semantic selection. The server reader in `server.ts` applies it before the selected-participant quota, reading owner-scoped pages ordered by document ID inside the same Firestore transaction. Continue past pages with no matches; stop only at exhaustion or the requested matching limit (including the planner sentinel).

@@ -166,6 +166,33 @@ describe('DataEngine command protocol', () => {
     expect(applyCommand(update({ title: 'base' }, { title: 'next' }), snapshot(null))).toMatchObject({ kind: 'deleted' });
   });
 
+  it('allows a same-generation delete after only the server-derived materialIds index changed', () => {
+    const resource = { collection: 'studyNotes', id: 'note' };
+    const baseline = { userId: 'owner', title: 'base', content: 'words', materialIds: [] };
+    const current: ResourceSnapshot = { resource, value: { ...baseline, materialIds: ['material'] },
+      metadata: { protocol: 1, generation: 'note-generation', revision: 2, deleted: false } };
+    const command: DataCommand = { ...update({}, {}), resource, generation: 'note-generation', kind: 'delete', baseline };
+    expect(applyCommand(command, current)).toMatchObject({ kind: 'acknowledged', snapshot: { value: null, metadata: { deleted: true } } });
+  });
+
+  it('still conflicts when a delete baseline has authored content changes alongside a derived index change', () => {
+    const resource = { collection: 'studyNotes', id: 'note' };
+    const baseline = { userId: 'owner', title: 'base', content: 'words', materialIds: [] };
+    const current: ResourceSnapshot = { resource, value: { ...baseline, title: 'edited', materialIds: ['material'] },
+      metadata: { protocol: 1, generation: 'note-generation', revision: 2, deleted: false } };
+    const command: DataCommand = { ...update({}, {}), resource, generation: 'note-generation', kind: 'delete', baseline };
+    expect(applyCommand(command, current)).toMatchObject({ kind: 'conflict' });
+  });
+
+  it('refuses a delete when the resource generation changed even if authored content is unchanged', () => {
+    const resource = { collection: 'studyNotes', id: 'note' };
+    const baseline = { userId: 'owner', title: 'base', content: 'words', materialIds: [] };
+    const current: ResourceSnapshot = { resource, value: baseline,
+      metadata: { protocol: 1, generation: 'replacement-generation', revision: 1, deleted: false } };
+    const command: DataCommand = { ...update({}, {}), resource, generation: 'note-generation', kind: 'delete', baseline };
+    expect(applyCommand(command, current)).toMatchObject({ kind: 'refused', code: 'generation-mismatch' });
+  });
+
   it('rejects ownership, resource and privileged-field bypasses', () => {
     const command = update({ title: 'base' }, { title: 'next' });
     expect(applyCommand(command, snapshot({ userId: 'other', title: 'base' }))).toMatchObject({ code: 'permission-denied' });

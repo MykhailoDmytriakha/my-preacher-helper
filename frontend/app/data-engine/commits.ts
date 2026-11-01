@@ -2,6 +2,7 @@ import { advanceAtomicCommit, atomicParticipants, cancellationScope, cancelActio
 import { isFirstBookMarksDraft } from './bibleMarksCreation';
 import { pendingCommitRetirement, retireCommitJournal } from './commitJournal';
 import { CommitReceipts } from './commitReceipt';
+import { captureDeleteOrder, deleteOrderReady, replayDeleteOrder } from './deletionOrdering';
 import { commandReferenceResources, documentReferenceResources, referenceReadiness } from './documentReferences';
 import { prepareDomainCommand, requiredDomainTargets } from './domainPolicy';
 import { AddressedFailures, type AddressedFailure } from './failures';
@@ -37,6 +38,8 @@ export interface CommitRequest {
   baseline: ResourceSnapshot;
   value: DocumentData | null;
   predecessor: string | null;
+  /** Earlier locally captured uses of this resource; owned atomically by DELETE capture storage. */
+  deleteAfter?: string[];
   revision: number;
   initialized: boolean;
   working: ResourceSnapshot;
@@ -98,6 +101,7 @@ export function assertCommitCapture(current: CommitRequest, incoming: CommitRequ
   if (current.owner !== incoming.owner || current.editorId !== incoming.editorId || current.editGeneration !== incoming.editGeneration
     || current.predecessor !== incoming.predecessor || !equalValues(current.baseline, incoming.baseline)
     || !equalValues(current.value, incoming.value) || !equalValues(current.atomic ?? null, incoming.atomic ?? null)
+    || !equalValues(current.deleteAfter ?? null, incoming.deleteAfter ?? null)
     || current.retentionScope !== incoming.retentionScope
     || !equalValues(current.transferredFrom ?? null, incoming.transferredFrom ?? null)) throw new Error('Saved generation cannot change its captured intent');
 }
@@ -466,6 +470,7 @@ export class CommitQueue {
   private advanceRequest(record: CommitRequest, records: CommitRequest[], owner: string, generation: number,
     ready = referenceReadiness(owner, records)): Promise<boolean> {
     const participants = atomicParticipants(record, records);
+    if (participants.some(participant => !deleteOrderReady(participant, records))) return Promise.resolve(false);
     if (!participants[0].command && participants.every(participant => participant.initialized && !terminal(participant) && !participant.unfinalized.length)) {
       const references = participants.flatMap(participant => [
         ...documentReferenceResources(participant.working.resource, participant.working.value, participant.intended),
@@ -570,10 +575,11 @@ export function createMemoryCommitStore(): CommitStore {
     releaseCapture: async (owner, scope, id) => { captures.delete(captureKey(owner, scope, id)); },
     create: async request => {
       const existing = [...records.values()].find(record => record.owner === request.owner && record.editorId === request.editorId && record.editGeneration === request.editGeneration);
-      if (existing) { assertCommitCapture(existing, request); return clone(existing); }
-      records.set(request.id, clone(request));
-      if (request.retentionScope) captures.add(captureKey(request.owner, request.retentionScope, request.id));
-      return clone(request);
+      if (existing) { assertCommitCapture(existing, replayDeleteOrder(request, existing)); return clone(existing); }
+      const saved = captureDeleteOrder(request, [...records.values()]);
+      records.set(saved.id, clone(saved));
+      if (saved.retentionScope) captures.add(captureKey(saved.owner, saved.retentionScope, saved.id));
+      return clone(saved);
     },
     compareAndSet: async (previous, next) => {
       const current = records.get(previous.id);
