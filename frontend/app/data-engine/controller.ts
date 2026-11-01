@@ -6,8 +6,9 @@ import { assertCommitCapture } from './commits';
 import { isDirectLegacyDocumentIntent, type DocumentAnswer } from './documentDelivery';
 import { requiredDomainTargets } from './domainPolicy';
 import { editorSlot } from './editorIdentity';
+import { chooseLocalPlacement } from './localPlacementChoice';
 import { projectManualSelection, type ManualPath } from './manualScope';
-import { equalValues, mergeDocumentFields } from './protocol';
+import { equalValues, mergeDocumentFields, mergeFields } from './protocol';
 import { isRecoverableCheckpoint } from './recovery.client';
 import { recoveryChoiceFingerprint } from './recoveryChoice';
 import { DataSession, type SessionCheckpoint, type ShownCopy } from './session';
@@ -376,8 +377,11 @@ export class EditorController {
       this.session.keepLocal();
       if (correction) {
         // The explicit choice includes staged corrections, while untouched remote siblings survive.
-        const merged = mergeDocumentFields(correction.base, correction.value, this.session.checkpoint().draft);
-        this.session.edit(merged.value.exists ? merged.value.value as DocumentData : null);
+        const current = this.session.checkpoint();
+        const merged = mergeDocumentFields(correction.base, correction.value, current.draft);
+        this.session.edit(chooseLocalPlacement(current.confirmed.resource.collection,
+          correction.base, correction.value, current.draft,
+          merged.value.exists ? merged.value.value as DocumentData : null, mergeFields));
       }
       this.result = null;
       await this.persist();

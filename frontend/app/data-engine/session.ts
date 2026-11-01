@@ -2,8 +2,9 @@ import { hasDifferentAnalysisPositionBasis, keepAnalysisReshapeFrame } from './a
 import { firstBookMarksIntent } from './bibleMarksCreation';
 import { prepareDomainCommand } from './domainPolicy';
 import { ACTION_SLOT, editorSlot } from './editorIdentity';
+import { chooseLocalPlacement } from './localPlacementChoice';
 import { projectManualSelection } from './manualScope';
-import { equalValues, mergeDocumentFields } from './protocol';
+import { equalValues, mergeDocumentFields, mergeFields } from './protocol';
 
 import type { CommitRequest } from './commits';
 import type { CommandResult, ConflictDetail, DataCommand, DocumentData, ResourceSnapshot } from './types';
@@ -289,9 +290,12 @@ export class DataSession {
     if (candidate) {
       const marks = firstBookMarksIntent(this.state.confirmed, this.state.draft, candidate);
       const merged = mergeDocumentFields(marks?.baseline ?? this.state.confirmed.value, marks?.value ?? this.state.draft, candidate.value);
+      const chosen = chooseLocalPlacement(this.state.confirmed.resource.collection,
+        this.state.confirmed.value, this.state.draft, candidate.value,
+        merged.value.exists ? merged.value.value as DocumentData : null, mergeFields);
       this.state.confirmed = copy(candidate);
-      // mergeFields preserves mine at conflicting paths; this explicit action accepts that choice.
-      this.state.draft = merged.value.exists ? copy(merged.value.value as DocumentData) : null;
+      // The explicit choice retains one coherent placement and independently merged words.
+      this.state.draft = copy(chosen);
     }
     this.state.remoteCandidate = null;
     this.state.conflicts = [];

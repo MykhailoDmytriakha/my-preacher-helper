@@ -60,6 +60,27 @@ function movedInList(id: string, base: Side, mine: Side, home: Home): boolean {
     && Math.sign(at-before) !== Math.sign(m.indexOf(other)-after));
 }
 
+interface ChoiceDependencies { requiredIds?: readonly string[]; retainLocalPaths?: boolean }
+type Chosen = Map<string, { home: Home; fields: Fields }>;
+
+/** Retain only the local ancestry needed by a kept point or an externally assigned thought. */
+function retainDependencies(chosen: Chosen, mine: Side, options: ChoiceDependencies): void {
+  const restore = (id: string): void => {
+    const local = mine.entries.get(id);
+    if (!local) throw new OutlineChoiceReviewRequiredError();
+    const existing = chosen.get(id);
+    chosen.set(id, { home: local.home, fields: existing?.fields ?? local.fields });
+    if (local.home[0] === 'point') restore(local.home[1]);
+  };
+  for (const id of options.requiredIds ?? []) if (!chosen.has(id)) restore(id);
+  if (!options.retainLocalPaths) return;
+  for (const [id, entry] of chosen) {
+    if (entry.home[0] !== 'point') continue;
+    const parent = chosen.get(entry.home[1]);
+    if ((!parent || parent.home[0] !== 'section') && mine.entries.has(id)) restore(id);
+  }
+}
+
 /**
  * A deliberate choice of this side's changes, not its whole old snapshot. Each id owns its fields
  * and one home independently; untouched remote words survive a local move, deletion or rewrite.
@@ -67,7 +88,7 @@ function movedInList(id: string, base: Side, mine: Side, home: Home): boolean {
  * unknown conflict is a new question. This function never grants permission over a later copy.
  */
 export function chooseOutlineChanges(base: SermonOutline | null | undefined, mine: SermonOutline,
-  theirs: SermonOutline | null | undefined, merge: OutlineFieldMerger): SermonOutline {
+  theirs: SermonOutline | null | undefined, merge: OutlineFieldMerger, options: ChoiceDependencies = {}): SermonOutline {
   const b=index(base), m=index(mine), t=index(theirs), chosen=new Map<string,{home:Home;fields:Fields}>();
   for (const id of new Set([...m.entries.keys(),...t.entries.keys()])) {
     const start=b.entries.get(id), here=m.entries.get(id), there=t.entries.get(id);
@@ -87,6 +108,8 @@ export function chooseOutlineChanges(base: SermonOutline | null | undefined, min
     const home = start && equal(here.home,start.home) ? there.home : here.home;
     chosen.set(id,{home,fields});
   }
+
+  retainDependencies(chosen, m, options);
 
   // Deleting a parent deliberately removes its still-nested children. A mixed conversion that
   // would make a sub-point itself a parent cannot be guessed into this two-level structure.
