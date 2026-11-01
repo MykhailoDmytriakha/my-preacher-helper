@@ -19,6 +19,11 @@ export type DeviceChoiceSaved = 'kept' | 'memory-only' | 'not-read-back';
 export interface DeviceChoice<T extends object> {
   /** The choice on this device; the same object until it changes, so React draws again only on a change. */
   read(): T;
+  /**
+   * The choice as the newest record holds it — for a change built on it (read, work out, save), never to draw: storage's
+   * record replaces the page's copy only when it is newer.
+   */
+  readFresh(): T;
   save(change: Partial<T>): DeviceChoiceSaved;
   /** The choice for a component: drawn again when it changes here or in another tab. */
   useChoice(): T;
@@ -39,7 +44,10 @@ function savedAt(raw: string | null): number {
   }
 }
 
-export function deviceChoice<T extends object>({ key, parse, fallback, onOtherTab }: {
+/** What the page's first read found in storage — for the technical details a feedback report sends. */
+export type DeviceChoiceFound = 'none' | 'stored' | 'unreadable';
+
+export function deviceChoice<T extends object>({ key, parse, fallback, onOtherTab, onFirstRead }: {
   key: string;
   /** Storage's text as a choice; nothing or a broken record gives the defaults. */
   parse: (raw: string | null) => T;
@@ -47,11 +55,23 @@ export function deviceChoice<T extends object>({ key, parse, fallback, onOtherTa
   fallback: T;
   /** Another tab of the app changed it — for the technical details a feedback report sends. */
   onOtherTab?: () => void;
+  /** What the page's first read found: a record, none, or storage it could not read — for the same report. */
+  onFirstRead?: (found: DeviceChoiceFound) => void;
 }): DeviceChoice<T> {
   let current: T | null = null;
   /** The moment of the action behind `current`; 0 — a record from before the moment was kept. */
   let currentAt = 0;
   let watching = false;
+  let firstReadSaid = false;
+  // Changes made while storage could not be read: held over the defaults for the visit, never written over a record the
+  // page has not seen, and laid on that record once storage answers (Codex review, 01.11: a toggle saved the defaults'
+  // numbers over the stored ones).
+  let unread: Partial<T> | null = null;
+  const sayFirstRead = (found: DeviceChoiceFound) => {
+    if (firstReadSaid) return;
+    firstReadSaid = true;
+    onFirstRead?.(found);
+  };
   const listeners = new Set<() => void>();
   const notify = () => listeners.forEach((listener) => listener());
 
@@ -88,15 +108,62 @@ export function deviceChoice<T extends object>({ key, parse, fallback, onOtherTa
     try {
       raw = window.localStorage.getItem(key);
     } catch {
+      sayFirstRead('unreadable');
       return fallback;
     }
+    sayFirstRead(raw === null ? 'none' : 'stored');
     current = parse(raw);
     currentAt = savedAt(raw);
     return current;
   };
 
+  /*
+   * A CHANGE IS BUILT ON THE NEWEST RECORD (BUG-20261101-device-choice-stale-page-overwrites): a page that missed another
+   * tab's later choice — a tab Safari froze, one in the background — would write its own older fields back over it with
+   * the next change it saves (the owner, 01.11: the trail's two numbers went back to the defaults). Before a change,
+   * storage's record replaces the page's copy when it is newer; an older, undated or unreadable one changes nothing, and
+   * a screen still never draws from storage.
+   */
+  const readFresh = (): T => {
+    const now = read();
+    if (typeof window === 'undefined' || !current) return now;
+    if (unread) {
+      let held: string | null;
+      try {
+        held = window.localStorage.getItem(key);
+      } catch {
+        return now;
+      }
+      current = { ...parse(held), ...unread };
+      currentAt = savedAt(held);
+      unread = null;
+      notify();
+      return current;
+    }
+    let raw: string | null;
+    try {
+      raw = window.localStorage.getItem(key);
+    } catch {
+      return now;
+    }
+    const at = savedAt(raw);
+    if (at <= currentAt) return now;
+    current = parse(raw);
+    currentAt = at;
+    notify();
+    return current;
+  };
+
   const save = (change: Partial<T>): DeviceChoiceSaved => {
-    const next = { ...read(), ...change };
+    const base = readFresh();
+    if (typeof window !== 'undefined' && (unread || !current)) {
+      // Storage could not be read: the change stays in memory, and nothing is written over the record it holds.
+      unread = { ...(unread ?? {}), ...change };
+      current = { ...base, ...change };
+      notify();
+      return 'memory-only';
+    }
+    const next = { ...base, ...change };
     const at = Math.max(Date.now(), currentAt + 1);
     current = next;
     currentAt = at;
@@ -123,11 +190,13 @@ export function deviceChoice<T extends object>({ key, parse, fallback, onOtherTa
 
   return {
     read,
+    readFresh,
     save,
     useChoice: () => useSyncExternalStore(subscribe, read, serverSnapshot),
     resetForTests: () => {
       current = null;
       currentAt = 0;
+      unread = null;
     },
   };
 }

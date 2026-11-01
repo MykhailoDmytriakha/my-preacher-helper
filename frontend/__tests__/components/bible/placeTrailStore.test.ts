@@ -7,7 +7,9 @@ import {
   readPlaceTrail,
   resetPlaceTrailForTests,
   saveTrailPrefs,
+  stepOnTrail,
 } from '@/components/bible/placeTrailStore';
+import { rememberSearch, resetSearchHistoryForTests } from '@/components/bible/searchHistoryStore';
 import { diagnosticEvents } from '@/utils/appDiagnostics';
 
 import type { TrailPlace } from '@/utils/placeTrail';
@@ -17,6 +19,7 @@ const at = (book: string, chapter: number, verse = 1): TrailPlace => ({ book, ch
 beforeEach(() => {
   window.localStorage.clear();
   resetPlaceTrailForTests();
+  resetSearchHistoryForTests();
   jest.restoreAllMocks();
 });
 
@@ -98,4 +101,65 @@ describe('the trail of places on this device', () => {
     expect(JSON.parse(window.localStorage.getItem('bible:place-trail-prefs') ?? '{}')).toEqual(expect.objectContaining({ verseStart: true }));
     expect(diagnosticEvents().at(-1)?.data).toEqual(expect.objectContaining({ source: 'reader', code: 'placeTrail-verseStart', result: 'on' }));
   });
+
+  // The owner, 01.11: «Сколько мест хранить» and «Не повторять последние места» went back to the defaults. A page that
+  // missed another tab's choice (frozen by Safari, in the background) wrote its older numbers back with its next toggle.
+  it('keeps another tab\'s newer numbers when a page that missed them toggles the trail', () => {
+    expect(readPlaceTrail().links).toEqual([]);
+    saveTrailPrefs({ shown: false }, 'reader');
+    // Another tab chose 100 and 10; this page never heard of it.
+    window.localStorage.setItem('bible:place-trail-prefs', JSON.stringify({ shown: false, verseStart: false, history: 100, recent: 10, __savedAt: Date.now() + 60_000 }));
+    saveTrailPrefs({ shown: true }, 'reader');
+    expect(JSON.parse(window.localStorage.getItem('bible:place-trail-prefs') ?? '{}')).toEqual(expect.objectContaining({ shown: true, history: 100, recent: 10 }));
+  });
+
+  it('keeps another tab\'s newer places when a page that missed them adds one', () => {
+    arriveOnTrail(at('Isaiah', 19));
+    window.localStorage.setItem('bible:place-trail', JSON.stringify({ links: [at('Isaiah', 19), at('Ruth', 1)], at: 1, __savedAt: Date.now() + 60_000 }));
+    arriveOnTrail(at('Exodus', 12));
+    expect(readPlaceTrail().links.map((link) => link.book)).toEqual(['Isaiah', 'Ruth', 'Exodus']);
+  });
+
+  it('says in the technical report whether storage held the trail\'s settings when the page opened', () => {
+    readPlaceTrail();
+    saveTrailPrefs({ shown: true }, 'reader');
+    expect(diagnosticEvents().map((event) => event.data)).toEqual(expect.arrayContaining([expect.objectContaining({ source: 'read', code: 'placeTrail', result: 'none' })]));
+  });
+
+  /** Another tab's trail, newer than this page's, written while this page heard nothing. */
+  const otherTabTrail = (books: string[], lit: number) =>
+    window.localStorage.setItem('bible:place-trail', JSON.stringify({ links: books.map((book) => at(book, 1)), at: lit, __savedAt: Date.now() + 60_000 }));
+
+  it('keeps another tab\'s newer places when a page that missed them leaves a verse', () => {
+    arriveOnTrail(at('Isaiah', 1));
+    otherTabTrail(['Isaiah', 'Ruth'], 1);
+    leaveOnTrail(at('Exodus', 1));
+    expect(readPlaceTrail().links.map((link) => link.book)).toEqual(['Isaiah', 'Ruth', 'Exodus']);
+  });
+
+  it('trims the newest trail when the number of places to keep is lowered', () => {
+    arriveOnTrail(at('Isaiah', 1));
+    otherTabTrail(['Genesis', 'Exodus', 'Leviticus', 'Numbers', 'Deuteronomy', 'Joshua', 'Judges', 'Ruth', '1 Samuel', '2 Samuel', '1 Kings', '2 Kings'], 11);
+    saveTrailPrefs({ history: 10 }, 'settings');
+    expect(readPlaceTrail().links.map((link) => link.book)).toEqual(['Leviticus', 'Numbers', 'Deuteronomy', 'Joshua', 'Judges', 'Ruth', '1 Samuel', '2 Samuel', '1 Kings', '2 Kings']);
+  });
+
+  // Codex review, 01.11: built on the newest trail, the way back's old number lit another place.
+  it('steps back onto the place the page showed, found in the newest trail by its place', () => {
+    arriveOnTrail(at('Genesis', 1));
+    arriveOnTrail(at('Exodus', 1));
+    arriveOnTrail(at('Leviticus', 1));
+    otherTabTrail(['Ruth', 'Genesis', 'Exodus', 'Leviticus'], 3);
+    stepOnTrail(1);
+    const trail = readPlaceTrail();
+    expect(trail.links[trail.at].book).toBe('Exodus');
+  });
+
+  it('keeps another tab\'s newer searches when a page that missed them remembers one', () => {
+    rememberSearch('мир', 'rst');
+    window.localStorage.setItem('bible:search-history', JSON.stringify({ entries: [{ line: 'любовь', bible: 'rst', at: 2 }, { line: 'мир', bible: 'rst', at: 1 }], __savedAt: Date.now() + 60_000 }));
+    rememberSearch('вера', 'rst');
+    expect((JSON.parse(window.localStorage.getItem('bible:search-history') ?? '{}').entries as { line: string }[]).map((entry) => entry.line)).toEqual(['вера', 'любовь', 'мир']);
+  });
 });
+

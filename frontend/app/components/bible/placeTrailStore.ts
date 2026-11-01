@@ -8,6 +8,7 @@ import {
   EMPTY_TRAIL,
   keepWithin,
   leaveAt,
+  sameVerse,
   TRAIL_HISTORY_CHOICES,
   TRAIL_RECENT_CHOICES,
   type Trail,
@@ -78,6 +79,9 @@ const prefsChoice = deviceChoice<TrailPrefs>({
   parse: parsePrefs,
   fallback: DEFAULT_TRAIL_PREFS,
   onOtherTab: () => recordDiagnostic('setting', { source: 'other-tab', code: 'placeTrail' }),
+  // Whether storage held the trail's settings when the page opened: if they come back as the defaults again, the report
+  // says whether the record was gone or written over (the owner, 01.11).
+  onFirstRead: (found) => recordDiagnostic('setting', { source: 'read', code: 'placeTrail', result: found }),
 });
 
 const write = (next: Trail) => {
@@ -94,7 +98,7 @@ let own: TrailPlace | null = null;
 export function arriveOnTrail(place: TrailPlace): void {
   switching = null;
   own = place;
-  write(arriveAt(trailChoice.read(), place, prefsChoice.read()));
+  write(arriveAt(trailChoice.readFresh(), place, prefsChoice.readFresh()));
 }
 
 /** The place this page's reader last put on the trail — where the way back goes from. */
@@ -102,10 +106,20 @@ export function ownTrailPlace(): TrailPlace | null {
   return own;
 }
 
-/** The way back: the light steps onto the link at `index`; the reader then opens its place, which arrives there. */
+/**
+ * The way back: the light steps onto the link at `index` of the trail the page shows; the reader then opens its place,
+ * which arrives there. In the newest trail that link is found by its place, nearest to where it stood — another tab may
+ * have added or trimmed links meanwhile, and the old number would light another place (Codex review, 01.11).
+ */
 export function stepOnTrail(index: number): void {
-  const trail = trailChoice.read();
-  if (index >= 0 && index < trail.links.length && index !== trail.at) trailChoice.save({ links: trail.links, at: index });
+  const target = trailChoice.read().links[index];
+  if (!target) return;
+  const trail = trailChoice.readFresh();
+  let at = -1;
+  trail.links.forEach((link, each) => {
+    if (sameVerse(link, target) && (at === -1 || Math.abs(each - index) < Math.abs(at - index))) at = each;
+  });
+  if (at !== -1 && at !== trail.at) trailChoice.save({ links: trail.links, at });
 }
 
 /**
@@ -131,7 +145,7 @@ export function openedForTranslation(book: string): boolean {
 /** The person leaves the verse they stopped at (`leaveAt`): it joins the trail, the light stays. */
 export function leaveOnTrail(place: TrailPlace): void {
   switching = null;
-  write(leaveAt(trailChoice.read(), place, prefsChoice.read()));
+  write(leaveAt(trailChoice.readFresh(), place, prefsChoice.readFresh()));
 }
 
 /** Where a change came from, for the technical details a feedback report sends. */
@@ -143,7 +157,7 @@ const said = (value: unknown) => (typeof value === 'boolean' ? (value ? 'on' : '
 
 export function saveTrailPrefs(change: Partial<TrailPrefs>, from: TrailPrefsSource): void {
   const saved = prefsChoice.save(change);
-  if (change.history !== undefined) write(keepWithin(trailChoice.read(), prefsChoice.read().history));
+  if (change.history !== undefined) write(keepWithin(trailChoice.readFresh(), prefsChoice.read().history));
   Object.entries(change).forEach(([name, value]) => recordDiagnostic('setting', {
     source: from, code: `placeTrail-${name}`, result: saved === 'kept' ? said(value) : `${said(value)}-${saved}`,
   }));
