@@ -14,6 +14,8 @@ A demo, or a live check that needs particular data, runs against the local Fires
 
 ## Traps
 
+- A control in an intentionally inactive `inert` pane is not a readiness target for a keyboard check of another mode. Await the selected pane and geometric settling; only a Scratch editor open/close scenario should wait for its editor button. Retain the excluded old readiness failure and an exact callback diff instead of weakening the focus/layout oracle. Capture a viewport frame after the complete trusted Tab cycle as well as before it: a pre-cycle screenshot cannot visually prove post-cycle alignment. Unit267 records this readiness-only correction and a separate final-frame repeat.
+
 - A CDP connection to ordinary Chrome already has a default-context page. `context.on('page', handler)` only covers pages created later: explicitly bind every current `context.pages()` with that same handler, deduplicate with a `WeakSet`, and retain primary-page/listener coverage before closing. Require actual navigation events as another observation. An empty error array without a bound primary page is not proof of an error-free page. Unit264 records this instrumentation gap without rewriting earlier frozen evidence.
 
 - `node --check` catches syntax, not missing runtime bindings. Before freezing an ESM QA runner and its callback, also run the installed ESLint with `no-undef` and the actual browser/Node globals, then inspect the runtime argument wiring. Preserve failed helper attempts separately; a runner error before callback entry is not an application reproduction. Unit264 retains the excluded undefined-build attempt and the corrected runner.

@@ -234,6 +234,36 @@ describe('SermonPage mode transitions', () => {
     expect(screen.getByTestId('engine-scratch-workspace')).toBeInTheDocument();
   });
 
+  test.each(['prep', 'classic', 'raw'] as const)(
+    'exposes only the selected %s mode while retaining every mounted editor',
+    async (mode) => {
+      const spiritual = jest.mocked(SpiritualStepContent);
+      const outline = jest.mocked(SermonOutline);
+      const scratch = jest.mocked(EngineScratchWorkspace);
+      const originalSpiritual = spiritual.getMockImplementation()!;
+      const originalOutline = outline.getMockImplementation()!;
+      const originalScratch = scratch.getMockImplementation()!;
+      spiritual.mockImplementation(() => <button type="button">Preparation mode action</button>);
+      outline.mockImplementation(() => <button type="button">Classic mode action</button>);
+      scratch.mockImplementation(() => <div data-testid="engine-scratch-workspace"><button type="button">Scratch mode action</button></div>);
+      const labels = { prep: 'Preparation mode action', classic: 'Classic mode action', raw: 'Scratch mode action' };
+      searchParamsMock.set('mode', mode);
+      const view = render(<TestProviders><SermonPage /></TestProviders>);
+      try {
+        expect(await screen.findByRole('button', { name: labels[mode] })).toBeInTheDocument();
+        for (const [candidate, label] of Object.entries(labels)) {
+          expect(screen.getByText(label)).toBeInTheDocument();
+          if (candidate !== mode) expect(screen.queryByRole('button', { name: label })).not.toBeInTheDocument();
+        }
+      } finally {
+        view.unmount();
+        spiritual.mockImplementation(originalSpiritual);
+        outline.mockImplementation(originalOutline);
+        scratch.mockImplementation(originalScratch);
+      }
+    },
+  );
+
   test('renders the canonical draft with the route identity and ignores confirmation-only metadata changes', () => {
 
     mockCore.data = { ...mockCore.data!, id: 'stored-id-is-not-the-route', title: 'Unsaved canonical title' };

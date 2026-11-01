@@ -709,7 +709,8 @@ function SermonPageContent({ id }: { id: string }) {
       )}
 
       <div className="relative -mx-2 px-2 py-1 sm:-mx-3 sm:px-3">
-        <div className="overflow-hidden">
+        {/* Keep editors mounted, but never scroll the mode strip to an offscreen control. */}
+        <div className="overflow-clip">
           <motion.div
             className="flex"
             initial={false}
@@ -718,7 +719,7 @@ function SermonPageContent({ id }: { id: string }) {
             style={{ width: '300%', willChange: 'transform' }}
           >
           {/* Clip each pane horizontally so offscreen card shadows cannot bleed into its neighbor. */}
-          <div className="basis-1/3 shrink-0 overflow-x-clip">
+          <div className="basis-1/3 shrink-0 overflow-x-clip" aria-hidden={uiMode !== 'prep' || undefined} inert={uiMode !== 'prep'}>
             <div className={`grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-8`}>
               <div className="order-2 lg:order-1 lg:col-span-2">
                 {renderPrepContent()}
@@ -729,7 +730,7 @@ function SermonPageContent({ id }: { id: string }) {
             </div>
           </div>
 
-          <div className="basis-1/3 shrink-0 overflow-x-clip">
+          <div className="basis-1/3 shrink-0 overflow-x-clip" aria-hidden={uiMode !== 'classic' || undefined} inert={uiMode !== 'classic'}>
             <div className={`grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-8`}>
               <div className="order-2 lg:order-1 lg:col-span-2">
                 {renderClassicContent({ portalRef: setClassicPortal })}
@@ -756,7 +757,7 @@ function SermonPageContent({ id }: { id: string }) {
             </div>
           </div>
 
-          <div className="basis-1/3 shrink-0 overflow-x-clip">
+          <div className="basis-1/3 shrink-0 overflow-x-clip" aria-hidden={uiMode !== 'raw' || undefined} inert={uiMode !== 'raw'}>
             {renderRawContent()}
           </div>
           </motion.div>
