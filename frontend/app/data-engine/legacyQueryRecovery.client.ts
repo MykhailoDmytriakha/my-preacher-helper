@@ -107,7 +107,7 @@ const MUTATION_OPERATIONS: Record<string, readonly string[]> = {
   dashboardSermons: ['create', 'update', 'delete', 'markPreached', 'unmarkPreached', 'savePreachDate'],
   // The calendar's own queue (usePreachDates before fd842c4d): a date's church, audience and notes.
   preachDates: ['add', 'update', 'delete'],
-  // 'prepMode' — the retired beta switch: an old write of it is archived, never replayed.
+  // 'prepMode', 'structurePreview' — retired beta switches: an old write of either is archived, never replayed.
   'user-settings': ['prepMode', 'audioGeneration', 'structurePreview', 'firstDayOfWeek', 'showAppVersion', 'modelPreference', 'functionModelPreference'],
 };
 const MUTATION_COLLECTIONS: Record<string, string> = { dashboardSermons: 'sermons', preachDates: 'sermons', 'user-settings': 'users', 'study-notes': 'studyNotes' };

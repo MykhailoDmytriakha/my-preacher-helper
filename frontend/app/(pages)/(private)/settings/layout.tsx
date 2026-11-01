@@ -73,7 +73,6 @@ export default function SettingsSectionLayout({ children }: { children: ReactNod
         email: data.email ?? null,
         firstDayOfWeek: data.firstDayOfWeek ?? null,
         enableAudioGeneration: data.enableAudioGeneration ?? null,
-        enableStructurePreview: data.enableStructurePreview ?? null,
         showAppVersion: data.showAppVersion ?? null,
         preferredProviderId: data.preferredProviderId ?? null,
         preferredModelId: data.preferredModelId ?? null,

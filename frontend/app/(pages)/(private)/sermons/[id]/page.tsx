@@ -29,7 +29,6 @@ import TextContextStepContent from '@/components/sermon/prep/TextContextStepCont
 import ThesisStepContent from '@/components/sermon/prep/ThesisStepContent';
 import SermonHeader from "@/components/sermon/SermonHeader";
 import SermonOutline from "@/components/sermon/SermonOutline";
-import StructurePreview from "@/components/sermon/StructurePreview";
 import StructureStats from "@/components/sermon/StructureStats";
 import { SermonDetailSkeleton } from "@/components/skeletons/SermonDetailSkeleton";
 import { EngineThoughtModal } from '@/components/thought/EngineThoughtModal';
@@ -40,7 +39,6 @@ import { useRouteId } from "@/hooks/useRouteId";
 import { useSeries } from "@/hooks/useSeries";
 import { sermonIsMissing } from "@/hooks/useSermonRead";
 import { useTags } from "@/hooks/useTags";
-import { useUserSettings } from "@/hooks/useUserSettings";
 import { useWayInOnce } from "@/hooks/useWayInOnce";
 import { useAuth } from "@/providers/AuthProvider";
 import { logFailureOnce, type FailureWords } from '@/utils/actionFailureMessage';
@@ -216,7 +214,6 @@ function SermonPageContent({ id }: { id: string }) {
   const awaitingFirstAnswer = core.loading;
   const { user } = useAuth();
   const { series } = useSeries(user?.uid || null);
-  const { settings: userSettings } = useUserSettings(user?.uid);
   /**
    * THE ONE RECORDER THAT ASKED NOTHING AT ALL.
    *
@@ -828,7 +825,6 @@ function SermonPageContent({ id }: { id: string }) {
                 />
                 {/* On an engine document the insights route stores the result itself; the page reads it back. */}
                 {sermon && !isReadOnly && <KnowledgeSection sermon={sermon} updateSermon={() => { void core.retry().catch(() => undefined); }} />}
-                {sermon?.structure && userSettings?.enableStructurePreview && <StructurePreview sermon={sermon} />}
               </div>
             </div>
           </div>

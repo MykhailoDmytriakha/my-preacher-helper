@@ -4,7 +4,6 @@ import AudioGenerationToggle from '@/components/settings/AudioGenerationToggle';
 import DebugModeToggle from '@/components/settings/DebugModeToggle';
 import ReferralCard from '@/components/settings/ReferralCard';
 import ShowVersionToggle from '@/components/settings/ShowVersionToggle';
-import StructurePreviewToggle from '@/components/settings/StructurePreviewToggle';
 import UserSettingsSection from '@/components/settings/UserSettingsSection';
 import { useAuth } from '@/providers/AuthProvider';
 
@@ -17,7 +16,6 @@ export default function UserSettingsPage() {
       <UserSettingsSection user={user} />
       <div className="rounded-lg bg-white shadow dark:bg-gray-800">
         <AudioGenerationToggle />
-        <StructurePreviewToggle />
         <DebugModeToggle />
         <ShowVersionToggle />
       </div>

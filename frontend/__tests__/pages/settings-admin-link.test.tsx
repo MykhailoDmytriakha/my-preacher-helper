@@ -21,7 +21,6 @@ jest.mock('@/components/settings/ModelSelector', () => () => <div />);
 jest.mock('@/components/settings/PlanTemplatesSection', () => () => <div />);
 jest.mock('@/components/settings/SettingsLayout', () => ({ children }: { children: React.ReactNode }) => <div>{children}</div>);
 jest.mock('@/components/settings/ShowVersionToggle', () => () => <div />);
-jest.mock('@/components/settings/StructurePreviewToggle', () => () => <div />);
 jest.mock('@/components/settings/TagsSection', () => () => <div />);
 jest.mock('@/components/settings/UserSettingsSection', () => () => <div />);
 jest.mock('@/components/settings/UsageWidget', () => () => <div />);

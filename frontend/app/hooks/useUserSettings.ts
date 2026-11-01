@@ -7,7 +7,6 @@ import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
 import {
   getUserSettings,
   updateAudioGenerationAccess,
-  updateStructurePreviewAccess,
   updateShowAppVersion,
   updateFirstDayOfWeek,
   updateFunctionModelPreference as persistFunctionModelPreference,
@@ -76,14 +75,6 @@ function useLegacyUserSettings(userId: string | null | undefined) {
     onMutate: ({ value }) => updateCachedSettings({ enableAudioGeneration: value }),
   });
 
-  const updateStructurePreviewMutation = useMutation({
-    ...mutationCallbacks,
-    mutationKey: SETTINGS_MUTATION_KEYS.structurePreview,
-    mutationFn: ({ userId: uid, value }: { userId: string; value: boolean }) =>
-      updateStructurePreviewAccess(uid, value),
-    onMutate: ({ value }) => updateCachedSettings({ enableStructurePreview: value }),
-  });
-
   const updateFirstDayOfWeekMutation = useMutation({
     ...mutationCallbacks,
     mutationKey: SETTINGS_MUTATION_KEYS.firstDayOfWeek,
@@ -146,11 +137,6 @@ function useLegacyUserSettings(userId: string | null | undefined) {
     'audio-generation',
     (payload) => updateAudioGenerationMutation.mutate(payload)
   );
-  useSettingRecovery<{ userId: string; value: boolean }>(
-    SETTINGS_MUTATION_KEYS.structurePreview,
-    'structure-preview',
-    (payload) => updateStructurePreviewMutation.mutate(payload)
-  );
   useSettingRecovery<{ userId: string; value: FirstDayOfWeek }>(
     SETTINGS_MUTATION_KEYS.firstDayOfWeek,
     'first-day-of-week',
@@ -192,9 +178,6 @@ function useLegacyUserSettings(userId: string | null | undefined) {
     updateAudioGenerationAccess: (enabled: boolean) =>
       guarded('settings:audio-generation', (uid) => updateAudioGenerationMutation.mutateAsync({ userId: uid, value: enabled })),
     updatingAudioGeneration: updateAudioGenerationMutation.isPending,
-    updateStructurePreviewAccess: (enabled: boolean) =>
-      guarded('settings:structure-preview', (uid) => updateStructurePreviewMutation.mutateAsync({ userId: uid, value: enabled })),
-    updatingStructurePreview: updateStructurePreviewMutation.isPending,
     updateFirstDayOfWeek: (firstDayOfWeek: FirstDayOfWeek) =>
       guarded('settings:first-day-of-week', (uid) => updateFirstDayOfWeekMutation.mutateAsync({ userId: uid, value: firstDayOfWeek })),
     updatingFirstDayOfWeek: updateFirstDayOfWeekMutation.isPending,
@@ -249,7 +232,6 @@ export function useUserSettings(userId: string | null | undefined) {
     readOnly,
     refresh: async () => { await document?.retry(); },
     updateAudioGenerationAccess: (value: boolean) => patch({ enableAudioGeneration: value }), updatingAudioGeneration: busy,
-    updateStructurePreviewAccess: (value: boolean) => patch({ enableStructurePreview: value }), updatingStructurePreview: busy,
     updateFirstDayOfWeek: (value: FirstDayOfWeek) => patch({ firstDayOfWeek: value }), updatingFirstDayOfWeek: busy,
     updateShowAppVersion: (value: boolean) => patch({ showAppVersion: value }), updatingShowAppVersion: busy,
     updateModelPreference: (value: ModelPreference) => patch(value), updatingModelPreference: busy,

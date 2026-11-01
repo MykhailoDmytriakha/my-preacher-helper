@@ -136,8 +136,8 @@ describe('pure resource document validation', () => {
     expect(() => validateResourceDocument('users', null as unknown as DocumentData, { kind: 'create' })).toThrow('document object');
   });
 
-  it('still takes the retired «Подготовка» beta switch from a command an older version queued', () => {
+  it.each(['enablePrepMode', 'enableStructurePreview'])('still takes the retired beta switch %s from a command an older version queued', (field) => {
     // Codex, 2026-10-31: refused, it would hold every settings command queued after it on that device.
-    expect(() => validateResourceDocument('users', { language: 'ru', enablePrepMode: true }, { kind: 'update', changedFields: ['enablePrepMode'] })).not.toThrow();
+    expect(() => validateResourceDocument('users', { language: 'ru', [field]: true }, { kind: 'update', changedFields: [field] })).not.toThrow();
   });
 });

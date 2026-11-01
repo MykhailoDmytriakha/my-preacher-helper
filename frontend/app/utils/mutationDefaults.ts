@@ -6,7 +6,6 @@ import {
   updateFunctionModelPreference,
   updateModelPreference,
   updateShowAppVersion,
-  updateStructurePreviewAccess,
 } from '@/services/userSettings.service';
 
 import type { ModelPreference } from '@/services/userSettings.service';
@@ -176,10 +175,8 @@ export function registerOfflineMutationDefaults(queryClient: QueryClient) {
     mutationFn: ({ userId, value }: SettingVars) => updateAudioGenerationAccess(userId, value),
     onSuccess: invalidate([USER_SETTINGS_KEY]),
   });
-  queryClient.setMutationDefaults(SETTINGS_MUTATION_KEYS.structurePreview, {
-    mutationFn: ({ userId, value }: SettingVars) => updateStructurePreviewAccess(userId, value),
-    onSuccess: invalidate([USER_SETTINGS_KEY]),
-  });
+  // The structure preview beta was cut out (2026-10-31): an old write of its switch is refused and archived, as above.
+  queryClient.setMutationDefaults(SETTINGS_MUTATION_KEYS.structurePreview, { mutationFn: refuseLegacyReplay('users') });
   queryClient.setMutationDefaults(SETTINGS_MUTATION_KEYS.firstDayOfWeek, {
     mutationFn: ({ userId, value }: FirstDayVars) => updateFirstDayOfWeek(userId, value),
     onSuccess: invalidate([USER_SETTINGS_KEY]),
