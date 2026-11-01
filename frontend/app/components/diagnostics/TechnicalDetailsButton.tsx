@@ -1,9 +1,11 @@
 'use client';
 
+
 import { Dialog, DialogBackdrop, DialogPanel, DialogTitle } from '@headlessui/react';
 import { useEffect, useState } from 'react';
 
 import { useClipboard } from '@/hooks/useClipboard';
+import { useExternalModalHistory } from '@/hooks/useExternalModalHistory';
 import { buildDiagnosticReport, DIAGNOSTIC_RETENTION, diagnosticServerVersion } from '@/utils/appDiagnostics';
 import { useTranslation } from '@locales/useTranslation';
 
@@ -26,6 +28,7 @@ export function TechnicalDetailsDialog() {
   const [open, setOpen] = useState(false);
   const [report, setReport] = useState('');
   const [collecting, setCollecting] = useState(false);
+  const historyRef = useExternalModalHistory({ active: open, onClose: () => setOpen(false) });
   useEffect(() => {
     const show = () => setOpen(true);
     window.addEventListener(OPEN_EVENT, show);
@@ -49,7 +52,7 @@ export function TechnicalDetailsDialog() {
   }, [open, reset]);
   return (
     <>
-      <Dialog open={open} onClose={() => setOpen(false)} className="relative z-[200]">
+      <Dialog ref={historyRef} open={open} onClose={() => setOpen(false)} className="relative z-[200]">
         <DialogBackdrop className="fixed inset-0 bg-slate-950/60" />
         <div className="fixed inset-0 flex items-center justify-center p-3 sm:p-6">
           <DialogPanel className="flex max-h-[90dvh] w-full max-w-3xl flex-col rounded-2xl bg-white p-4 shadow-xl dark:bg-gray-900 sm:p-6">

@@ -1,6 +1,9 @@
 import { focusInside, isAvailableFocusTarget } from './focusableElements';
+import { syncModalHistory } from './modalHistory.client';
 
-type Layer = { element: HTMLElement; focusRoot: HTMLElement; surfacesBeneath: ReadonlySet<Element>; returnTargets: HTMLElement[]; zIndex: number };
+export type ModalCloseRequest = () => void;
+
+type Layer = { requestClose?: ModalCloseRequest; external: boolean; element: HTMLElement; focusRoot: HTMLElement; surfacesBeneath: ReadonlySet<Element>; returnTargets: HTMLElement[]; zIndex: number };
 const layers: Layer[] = [];
 
 /** The top layer alone owns Escape and keyboard focus. */
@@ -41,23 +44,25 @@ export function hasExternalDialogFocus(container: HTMLElement, beneath?: Readonl
     !surface.closest('[data-modal-layer]') && (!beneath || !beneath.has(surface) || surface.getAttribute('aria-modal') === 'true'));
 }
 
-export function registerModalLayer(element: HTMLElement, opener: HTMLElement | null, fallback: HTMLElement | null, focusRoot: HTMLElement = element): () => void {
-  const entry = { element, focusRoot, surfacesBeneath: new Set(document.querySelectorAll(EXTERNAL_FOCUS_SURFACES)), zIndex: Number(getComputedStyle(element).zIndex) || 0, returnTargets: [...new Set([opener, fallback].filter((node): node is HTMLElement => node !== null))] };
+export function registerModalLayer(element: HTMLElement, opener: HTMLElement | null, fallback: HTMLElement | null, focusRoot: HTMLElement = element, requestClose?: ModalCloseRequest, external = false): () => void {
+  const entry = { element, focusRoot, requestClose, external, surfacesBeneath: new Set(document.querySelectorAll(EXTERNAL_FOCUS_SURFACES)), zIndex: Number(getComputedStyle(element).zIndex) || 0, returnTargets: [...new Set([opener, fallback].filter((node): node is HTMLElement => node !== null))] };
   layers.push(entry);
   // Child layout effects run first for portals mounted together. Keyboard ownership follows
   // visual layers; equal layers keep opening order. Lower registration cannot take focus back.
   layers.sort((left, right) => left.zIndex - right.zIndex);
-  focusTopLayer();
+  if (!external) focusTopLayer();
+  syncHistory();
   return () => {
     const wasTop = isTopmostLayer(element);
     const index = layers.indexOf(entry);
     if (index < 0) return;
     layers.splice(index, 1);
+    syncHistory();
     // Removing a lower layer must not strand the remaining layer's eventual return target.
     for (const layer of layers) {
       layer.returnTargets = [...new Set(layer.returnTargets.flatMap(target => element.contains(target) ? entry.returnTargets : [target]))];
     }
-    if (!wasTop) return;
+    if (!wasTop || external) return;
     const parent = layers.at(-1)?.focusRoot;
     const target = entry.returnTargets.find(node => node.isConnected && isAvailableFocusTarget(node) && (!parent || parent.contains(node)));
     if (target) {
@@ -71,7 +76,7 @@ export function registerModalLayer(element: HTMLElement, opener: HTMLElement | n
 /** Keyboard focus follows the named ring while the outer element retains layer identity and z-order. */
 function focusTopLayer(): void {
   const top = layers.at(-1);
-  if (!top || !isAvailableFocusTarget(top.focusRoot)) return;
+  if (!top || top.external || !isAvailableFocusTarget(top.focusRoot)) return;
   if (!top.focusRoot.contains(document.activeElement) ||
     (document.activeElement instanceof HTMLElement && !isAvailableFocusTarget(document.activeElement))) focusInside(top.focusRoot);
 }
@@ -82,4 +87,12 @@ export function updateModalLayerFocusRing(element: HTMLElement, focusRoot: HTMLE
   if (!layer || layer.focusRoot === focusRoot) return;
   layer.focusRoot = focusRoot;
   if (isTopmostLayer(element) && !hasExternalDialogFocus(element, layer.surfacesBeneath)) focusTopLayer();
+}
+
+/** Both built-in and library dialogs share visual ordering; library focus stays with its owner. */
+function syncHistory(): void {
+  syncModalHistory(layers.some(layer => layer.requestClose) ? () => {
+    const top = layers.at(-1);
+    if (top && isAvailableFocusTarget(top.element)) top.requestClose?.();
+  } : null);
 }

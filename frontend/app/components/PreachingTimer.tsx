@@ -1,11 +1,13 @@
 "use client";
 
+
 import { X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 
 import { usePreachingTimer } from '@/hooks/usePreachingTimer';
 import { TimerPhase, TimerPhaseDurations } from '@/types/TimerState';
+import { canGoBackToPage } from '@/utils/modalHistory.client';
 import { SERMON_SECTION_COLORS } from '@/utils/themeColors';
 import { useKeyboardShortcut } from '@hooks/useKeyboardShortcut';
 import { useTranslation } from '@locales/useTranslation';
@@ -194,7 +196,7 @@ const PreachingTimer: React.FC<PreachingTimerProps> = ({
   const router = useRouter();
 
   const handleExitPreaching = useCallback(() => {
-    if (typeof window !== 'undefined' && window.history.length > 1) {
+    if (typeof window !== 'undefined' && canGoBackToPage()) {
       router.back();
     } else {
       router.push(exitFallbackPath ?? '/sermons');

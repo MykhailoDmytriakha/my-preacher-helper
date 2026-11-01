@@ -1,10 +1,12 @@
 'use client';
 
+
 import { Dialog, DialogBackdrop, DialogPanel, DialogTitle, Transition, TransitionChild } from '@headlessui/react';
 import { SparklesIcon } from '@heroicons/react/24/outline';
 import Link from 'next/link';
 import { Fragment } from 'react';
 
+import { useExternalModalHistory } from '@/hooks/useExternalModalHistory';
 import { formatUsageResetDate } from '@/utils/usageGrace';
 import { useTranslation } from '@locales/useTranslation';
 
@@ -40,10 +42,11 @@ const metricLabelKey: Record<UsageResource, string> = {
 export default function UsageCapDialog({ open, resource, resetsAt, verse, onClose }: UsageCapDialogProps) {
   const { t, language: interfaceLanguage, resolvedLanguage: resolvedInterfaceLanguage } = useTranslation();
   const locale = resolvedInterfaceLanguage ?? interfaceLanguage ?? 'en';
+  const historyRef = useExternalModalHistory({ active: open, onClose });
 
   return (
     <Transition show={open} as={Fragment}>
-      <Dialog className="relative z-[120]" onClose={onClose}>
+      <Dialog ref={historyRef} className="relative z-[120]" onClose={onClose}>
         <TransitionChild
           as={Fragment}
           enter="ease-out duration-300"

@@ -1,4 +1,5 @@
 import { currentHistoryEntryId, HISTORY_ENTRY_KEY, newHistoryEntryId } from './historyEntry';
+import { consumeModalHistoryPop, installModalHistory, isModalHistoryMutation } from './modalHistory.client';
 import { resolveOfflineShellRoute } from './offlineShellRoutes';
 
 type Position = { x: number; y: number };
@@ -36,6 +37,7 @@ function readSavedPositions(): Map<string, SavedPosition> {
  * New routes keep the router's ordinary landing. Bible/pane readers retain their own owners.
  */
 export function installWindowHistoryPosition(): () => void {
+  installModalHistory();
   const history = window.history;
   const originalPush = history.pushState;
   const originalReplace = history.replaceState;
@@ -107,7 +109,7 @@ export function installWindowHistoryPosition(): () => void {
   }
 
   const push: History['pushState'] = function (data: unknown, unused: string, url?: string | URL | null) {
-    if (!active) return originalPush.call(history, data, unused, url);
+    if (!active || isModalHistoryMutation()) return originalPush.call(history, data, unused, url);
     capture(); save(); cancel();
     const supplied = entryId(data);
     const id = supplied && supplied !== current.id ? supplied : newHistoryEntryId();
@@ -115,7 +117,7 @@ export function installWindowHistoryPosition(): () => void {
     current = { id, href: window.location.href, position: measure() };
   };
   const replace: History['replaceState'] = function (data: unknown, unused: string, url?: string | URL | null) {
-    if (!active) return originalReplace.call(history, data, unused, url);
+    if (!active || isModalHistoryMutation()) return originalReplace.call(history, data, unused, url);
     const nextHref = new URL(url ?? window.location.href, window.location.href).href;
     if (nextHref !== current.href) { capture(); save(); cancel(); }
     // A native fragment entry without app state must stay native, including null state.
@@ -137,7 +139,7 @@ export function installWindowHistoryPosition(): () => void {
     begin();
   }
   // Capture the event's state before the router starts replacing the current entry.
-  const onPopState = (event: PopStateEvent) => traverse(event.state);
+  const onPopState = (event: PopStateEvent) => { if (!consumeModalHistoryPop(event)) traverse(event.state); };
   const onHashChange = () => { if (current.href !== window.location.href) traverse(history.state); };
   const onPageHide = () => { capture(); save(); };
   const onVisibility = () => { if (document.visibilityState === 'hidden') onPageHide(); };

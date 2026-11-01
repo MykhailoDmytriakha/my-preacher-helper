@@ -1,11 +1,13 @@
 'use client';
 
+
 import { Dialog, DialogBackdrop, DialogPanel, DialogTitle } from '@headlessui/react';
 import { XMarkIcon } from '@heroicons/react/24/outline';
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import Switch from '@/components/ui/Switch';
+import { useExternalModalHistory } from '@/hooks/useExternalModalHistory';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { getLocalizedAbbrev } from '@/utils/bibleBooks';
 import { verseWords } from '@/utils/bibleText';
@@ -411,9 +413,10 @@ export function useReaderTrail({ bible, locale, wide, here, seen, openPlace }: {
 }
 
 function TrailDrawer({ open, onClose, children }: { open: boolean; onClose: () => void; children: ReactNode }) {
+  const historyRef = useExternalModalHistory({ active: open, onClose });
   const { t } = useTranslation();
   return (
-    <Dialog open={open} onClose={onClose} className="relative z-[90]">
+    <Dialog ref={historyRef} open={open} onClose={onClose} className="relative z-[90]">
       <DialogBackdrop data-testid="trail-drawer-backdrop" className="fixed inset-0 bg-gray-950/40 backdrop-blur-sm" />
       <DialogPanel className="fixed inset-y-0 left-0 flex h-dvh w-[min(300px,80vw)] flex-col border-r border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900" style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}>
         <div className="flex shrink-0 items-center justify-between border-b border-gray-200 px-3 dark:border-gray-700">

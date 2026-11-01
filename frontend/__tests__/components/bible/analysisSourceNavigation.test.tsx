@@ -112,7 +112,8 @@ describe('an analysis opened outside its original Bible context', () => {
       expect(address.searchParams.get('analysis')).toBe(sourceAnalysis.id);
       expect(address.searchParams.get('mode')).toBe(editing === true ? 'edit' : 'view');
     });
-    expect(window.history.state).toEqual({ nextRouter: 'preserved' });
+    // The window-history owner may append metadata; the caller's router state stays intact.
+    expect(window.history.state).toMatchObject({ nextRouter: 'preserved' });
     unmount();
   });
 

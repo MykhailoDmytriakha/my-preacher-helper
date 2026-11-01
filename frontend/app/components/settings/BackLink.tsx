@@ -1,8 +1,10 @@
 'use client';
 
+
 import { useRouter } from 'next/navigation';
 import React from 'react';
 
+import { canGoBackToPage } from '@/utils/modalHistory.client';
 import { BackArrowIcon } from '@components/Icons';
 import { useTranslation } from '@locales/useTranslation';
 
@@ -19,7 +21,7 @@ const BackLink: React.FC<BackLinkProps> = ({ to = '/', label }) => {
   const handleBack = () => {
     // If there's a previous page in history — go back there
     // Otherwise fall back to the provided `to` URL (defaults to dashboard)
-    if (window.history.length > 1) {
+    if (canGoBackToPage()) {
       router.back();
     } else {
       router.push(to);

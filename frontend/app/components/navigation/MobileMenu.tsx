@@ -1,5 +1,6 @@
 'use client';
 
+
 import { Dialog, DialogBackdrop, DialogPanel, DialogTitle } from '@headlessui/react';
 import { ArrowRightOnRectangleIcon, ChatBubbleLeftEllipsisIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { User } from "firebase/auth";
@@ -10,6 +11,7 @@ import LanguageSwitcher from "@/components/navigation/LanguageSwitcher";
 import { primaryNavItems, isNavItemActive } from '@/components/navigation/navConfig';
 import ThemeModeToggle from "@/components/navigation/ThemeModeToggle";
 import UserAvatar from "@/components/navigation/UserAvatar";
+import { useExternalModalHistory } from '@/hooks/useExternalModalHistory';
 import { getNavItemTheme } from '@/utils/themeColors';
 import { useTranslation } from "@locales/useTranslation";
 import "@locales/i18n";
@@ -29,6 +31,7 @@ export default function MobileMenu({ isOpen, onLogout, pathname, onNavigate, onC
   const { t } = useTranslation();
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const close = () => (onClose ?? onNavigate)?.();
+  const historyRef = useExternalModalHistory({ active: isOpen, onClose: close });
   const closeRef = useRef(close);
   closeRef.current = close;
   const [viewport, setViewport] = useState<{ height: number; top: number } | null>(null);
@@ -70,7 +73,7 @@ export default function MobileMenu({ isOpen, onLogout, pathname, onNavigate, onC
     }));
 
   return (
-    <Dialog open={isOpen} onClose={close} initialFocus={closeButtonRef} className="fixed inset-0 z-[90]">
+    <Dialog ref={historyRef} open={isOpen} onClose={close} initialFocus={closeButtonRef} className="fixed inset-0 z-[90]">
       <DialogBackdrop className="fixed inset-0 bg-gray-950/40 backdrop-blur-sm" />
       <div className="fixed inset-x-0 top-0 flex justify-end p-3" style={{ top: viewport?.top ?? 0 }}>
         <DialogPanel

@@ -1044,8 +1044,9 @@ describe('Sermon Plan Page UI Smoke Test', () => {
         fireEvent.change((await screen.findAllByPlaceholderText('No content'))[0], { target: { value: 'Saved here' } });
         fireEvent.click((await screen.findAllByTitle('Save'))[0]);
         expect(window.location.pathname + window.location.search).toBe('/sermons/test-sermon-id/plan?planView=edit');
-        // No state of our own: Next keeps its router's and reads the new address (Codex review, 2026-10-27).
-        expect(window.history.state).toBeNull();
+        // Application metadata may remain, but dispatch markers must not bypass Next's URL integration.
+        expect(window.history.state ?? {}).not.toHaveProperty('__NA');
+        expect(window.history.state ?? {}).not.toHaveProperty('_N');
         expect(mockPush).not.toHaveBeenCalled();
         expect(mockReplace).not.toHaveBeenCalled();
         await waitFor(() => expect(storedPlanText()['intro-p1']).toBe('Saved here'));

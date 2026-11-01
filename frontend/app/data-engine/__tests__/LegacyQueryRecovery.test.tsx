@@ -60,6 +60,7 @@ const reviewItems = async (collection: string, field: string, device: Record<str
 describe('legacy cache preservation UI', () => {
   beforeEach(() => {
     jest.resetAllMocks();
+    jest.mocked(Date.now).mockReturnValue(new Date('2023-01-01').getTime());
     mockServerCopies.clear();
     mockSnapshotListeners.clear();
     jest.mocked(retireLegacyEchoes).mockResolvedValue({ retired: 0, undecided: 0 });

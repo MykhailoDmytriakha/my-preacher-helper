@@ -1,9 +1,11 @@
 'use client';
 
+
 import { useEffect, useRef, useState } from 'react';
 
 import { hasOpenLayer } from '@/hooks/useModalLayer';
 import { recordDiagnostic } from '@/utils/appDiagnostics';
+import { canGoBackToPage } from '@/utils/modalHistory.client';
 import { isPageZoomed } from '@/utils/pageZoom';
 import { isIPadStandalonePwa } from '@/utils/pwaEnv';
 
@@ -163,7 +165,7 @@ export function usePageGestures({ routeKey, enabled, onBack, readOffset }: {
       // An Apple Pencil on a text it writes on (the Bible's marks, `data-pen-surface`) draws, never goes back.
       const stylus = (touch as Touch & { touchType?: string }).touchType === 'stylus';
       if (stylus && event.target instanceof Element && event.target.closest('[data-pen-surface]')) return;
-      if (window.history.length <= 1 || deadEnd === window.history.length) return;
+      if (!canGoBackToPage() || deadEnd === window.history.length) return;
       const blocked = gestureBlockReason(event.target)
         ?? (isPageZoomed() ? 'zoomed' : null);
       // A pane that scrolls only up and down owns that axis alone: a swipe across it is still the way back.

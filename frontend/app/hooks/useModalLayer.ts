@@ -26,7 +26,7 @@ export { hasOpenLayer, isTopmostLayer } from '@/utils/modalLayerRegistry';
  * by window — a form with typing in it must not vanish that way — so the caller keeps it.
  */
 export interface ModalLayerOptions {
-  /** How this window closes. Escape calls it. */
+  /** How this window closes. Escape and browser history call the same policy. */
   onClose: () => void;
   /**
    * Nothing may close the window right now — a save is in flight, say. Escape stays silent,
@@ -59,6 +59,8 @@ export function useModalLayer<T extends HTMLElement = HTMLDivElement>({
   const ref = useRef<T>(null);
   useScrollLock(active);
 
+  const close = useRef({ onClose, closeDisabled });
+  useLayoutEffect(() => { close.current = { onClose, closeDisabled }; });
   const opener = useRef<HTMLElement | null>(null);
   const registration = useRef<{ element: HTMLElement; release: () => void } | null>(null);
   // Capture before React's layout-time autoFocus; reading in a passive effect loses the opener.
@@ -76,7 +78,9 @@ export function useModalLayer<T extends HTMLElement = HTMLDivElement>({
     }
     registration.current?.release();
     registration.current = element
-      ? { element, release: registerModalLayer(element, returnFocusTo?.current ?? null, opener.current, focusRing?.current ?? element) }
+      ? { element, release: registerModalLayer(element, returnFocusTo?.current ?? null, opener.current, focusRing?.current ?? element, () => {
+        if (!close.current.closeDisabled) close.current.onClose();
+      }) }
       : null;
   });
   useLayoutEffect(() => () => {
