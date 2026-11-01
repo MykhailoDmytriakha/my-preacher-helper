@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import fetchMock from 'jest-fetch-mock';
 import React from 'react';
@@ -432,6 +432,123 @@ describe('Admin Page', () => {
     render(<AdminPage />);
     await screen.findByText('admin.users.loadFailed');
     expect(isServerUnavailable()).toBe(true);
+  });
+
+
+  const openAlphaDrawer = async () => {
+    mockAuthorizedList();
+    render(<AdminPage />);
+    fireEvent.click(await screen.findByText('alpha@example.com'));
+    return screen.findByRole('dialog', { name: 'admin.users.drawerLabel' });
+  };
+
+  const closeDrawerBy = {
+    x: (drawer: HTMLElement) => fireEvent.click(within(drawer).getByRole('button', { name: 'admin.users.closeDrawer' })),
+    cancel: (drawer: HTMLElement) => fireEvent.click(within(drawer).getByRole('button', { name: 'admin.users.cancel' })),
+    escape: (_drawer: HTMLElement) => fireEvent.keyDown(window, { key: 'Escape' }),
+    backdrop: (_drawer: HTMLElement) => fireEvent.click(screen.getAllByRole('button', { name: 'admin.users.closeDrawer' })[0]),
+  };
+
+  it.each(Object.entries(closeDrawerBy))('asks before %s closes a dirty usage edit and Keep retains it', async (_exit, close) => {
+    const drawer = await openAlphaDrawer();
+    fireEvent.change(within(drawer).getByLabelText('admin.aiUsage'), { target: { value: '8' } });
+
+    close(drawer);
+
+    const question = await screen.findByRole('dialog', { name: 'common.discardChanges.title' });
+    expect(within(question).getByText('common.discardChanges.description')).toBeInTheDocument();
+    fireEvent.click(within(question).getByRole('button', { name: 'common.discardChanges.keep' }));
+    const keptDrawer = screen.getByRole('dialog', { name: 'admin.users.drawerLabel' });
+    expect(within(keptDrawer).getByLabelText('admin.aiUsage')).toHaveValue(8);
+    expect(screen.queryByRole('dialog', { name: 'common.discardChanges.title' })).not.toBeInTheDocument();
+  });
+
+  it('closes a dirty drawer only after explicit Discard', async () => {
+    const drawer = await openAlphaDrawer();
+    fireEvent.change(within(drawer).getByLabelText('admin.aiUsage'), { target: { value: '8' } });
+    fireEvent.click(within(drawer).getByRole('button', { name: 'admin.users.cancel' }));
+
+    const question = await screen.findByRole('dialog', { name: 'common.discardChanges.title' });
+    fireEvent.click(within(question).getByRole('button', { name: 'common.discardChanges.confirm' }));
+
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'admin.users.drawerLabel' })).not.toBeInTheDocument());
+    expect(screen.queryByRole('dialog', { name: 'common.discardChanges.title' })).not.toBeInTheDocument();
+  });
+
+  it('closes a clean drawer without asking', async () => {
+    const drawer = await openAlphaDrawer();
+    fireEvent.click(within(drawer).getByRole('button', { name: 'admin.users.closeDrawer' }));
+
+    expect(screen.queryByRole('dialog', { name: 'admin.users.drawerLabel' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: 'common.discardChanges.title' })).not.toBeInTheDocument();
+  });
+
+  it('locks drawer exits and fields during Save, then permits a clean close', async () => {
+    mockAuthorizedList();
+    let finishSave!: (response: Response) => void;
+    fetchMock.mockImplementationOnce(() => new Promise<Response>((resolve) => { finishSave = resolve; }));
+    render(<AdminPage />);
+    fireEvent.click(await screen.findByText('alpha@example.com'));
+    const drawer = await screen.findByRole('dialog', { name: 'admin.users.drawerLabel' });
+    fireEvent.change(within(drawer).getByLabelText('admin.aiUsage'), { target: { value: '8' } });
+    fireEvent.click(within(drawer).getByRole('button', { name: 'admin.users.save' }));
+
+    const saving = await within(drawer).findByRole('button', { name: 'admin.submitting' });
+    await waitFor(() => expect(saving).toBeDisabled());
+    expect(within(drawer).getByLabelText('admin.aiUsage')).toBeDisabled();
+    expect(within(drawer).getByRole('button', { name: 'admin.users.cancel' })).toBeDisabled();
+    expect(screen.getAllByRole('button', { name: 'admin.users.closeDrawer' })).toHaveLength(2);
+    screen.getAllByRole('button', { name: 'admin.users.closeDrawer' }).forEach((button) => expect(button).toBeDisabled());
+    fireEvent.click(screen.getAllByRole('button', { name: 'admin.users.closeDrawer' })[0]);
+    fireEvent.click(screen.getAllByRole('button', { name: 'admin.users.closeDrawer' })[1]);
+    fireEvent.click(saving); // Disabled submit control must not start a second request.
+    fireEvent.click(within(drawer).getByRole('button', { name: 'admin.users.cancel' }));
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.getByRole('dialog', { name: 'admin.users.drawerLabel' })).toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: 'common.discardChanges.title' })).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(4); // auth, users, model defaults, one entitlement POST
+
+    await act(async () => finishSave(new Response(JSON.stringify({
+      paidTier: 'tier1', promotion: users[0].promotion,
+      usage: { ...users[0].usage, aiUsed: 8 },
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } })));
+    await waitFor(() => expect(within(drawer).getByRole('button', { name: 'admin.users.save' })).toBeEnabled());
+    expect(within(drawer).getByLabelText('admin.aiUsage')).toHaveValue(8);
+    fireEvent.click(within(drawer).getByRole('button', { name: 'admin.users.closeDrawer' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'admin.users.drawerLabel' })).not.toBeInTheDocument());
+    expect(screen.queryByRole('dialog', { name: 'common.discardChanges.title' })).not.toBeInTheDocument();
+  });
+
+  it('keeps entered usage visible after a failed Save without asking to discard', async () => {
+    mockAuthorizedList();
+    fetchMock.mockResponseOnce(JSON.stringify({ error: 'refused' }), { status: 500 });
+    render(<AdminPage />);
+    fireEvent.click(await screen.findByText('alpha@example.com'));
+    const drawer = await screen.findByRole('dialog', { name: 'admin.users.drawerLabel' });
+    fireEvent.change(within(drawer).getByLabelText('admin.aiUsage'), { target: { value: '8' } });
+    fireEvent.click(within(drawer).getByRole('button', { name: 'admin.users.save' }));
+
+    expect(await within(drawer).findByRole('alert')).toBeInTheDocument();
+    expect(within(drawer).getByLabelText('admin.aiUsage')).toHaveValue(8);
+    expect(screen.queryByRole('dialog', { name: 'common.discardChanges.title' })).not.toBeInTheDocument();
+  });
+
+  it('keeps the saved editor open and then closes without asking to discard', async () => {
+    mockAuthorizedList();
+    fetchMock.mockResponseOnce(JSON.stringify({ paidTier: 'tier1', promotion: users[0].promotion,
+      usage: { ...users[0].usage, aiUsed: 8 },
+    }));
+    render(<AdminPage />);
+    fireEvent.click(await screen.findByText('alpha@example.com'));
+    const drawer = await screen.findByRole('dialog', { name: 'admin.users.drawerLabel' });
+    fireEvent.change(within(drawer).getByLabelText('admin.aiUsage'), { target: { value: '8' } });
+    fireEvent.click(within(drawer).getByRole('button', { name: 'admin.users.save' }));
+
+    expect(await screen.findByText('admin.users.toastSaved')).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'admin.users.drawerLabel' })).toBeInTheDocument();
+    fireEvent.click(within(drawer).getByRole('button', { name: 'admin.users.closeDrawer' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'admin.users.drawerLabel' })).not.toBeInTheDocument());
+    expect(screen.queryByRole('dialog', { name: 'common.discardChanges.title' })).not.toBeInTheDocument();
   });
 
 });

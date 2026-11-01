@@ -148,6 +148,7 @@ Preparation is an ordinary sermon mode for every account; no settings beta switc
 **Problem:** An admin could select a privileged user, replace only the target UID, and submit the first user's prefilled tier, role, promotion, and usage to the second user; prefilled promotion timestamps could also be rewritten at lower `datetime-local` precision without an intentional promotion edit.
 **Solution:** When a manual identity diverges from the selected identity, clear every prefilled entitlement field; track promotion edits with an explicit dirty flag so unchanged prefilled values never enter the patch.
 **Principle:** In privilege-mutating forms, identity and prefilled state are one atomic context, and prefilled values are not dirty values.
+**Close policy:** `admin/useAdminUserEditorClose.tsx` owns one opening baseline and the accepted submitted signature, with the shared discard question; every exit delegates through it. Native disabled form controls and `useModalLayer.closeDisabled` protect an in-flight write. Save remains open; only a successful same-session response advances its baseline. Recipe: `.howto/open-a-modal.md`.
 
 ### 2026-07-12 Referral Rewards Need One Transactional Idempotency Anchor
 **Problem:** Referral attribution is user-supplied, but its reward mutates a promotion and concurrent/replayed claims can otherwise pay more than once.

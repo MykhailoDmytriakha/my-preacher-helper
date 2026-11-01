@@ -75,3 +75,14 @@ See also: `.howto/ask-are-you-sure.md` · `.howto/make-a-text-field-grow.md`
 - `location.hash` can create a native history entry outside pushState. FoldableMarkdown's hidden-target reveal is an actual case. The shared owner synchronizes that fragment without treating the reveal as close, retaining the page's opaque router context. Native navigation indices are read when available; older browsers retain the guarded one-step path. Never use go(0) for compensation: it reloads the page.
 - Local proof: Unit259 in `docs/verification/local-bug-fixes.md`; original Chrome dirty-comment failure, wide/narrow discard/Cancel/Back/Forward/reload, and actual nested ReaderSheet fragment reveal. Component tests cover disabled, inactive, callback refresh and real Headless UI integration separately. Physical gestures and a phone keyboard require their own acceptance.
 - Mobile Studies detail: the title opens NoteMobileSheet; its reference Chip is not interactable while that panel is closed. A header title and the Chip can share an accessible name. Open the actual properties sheet before clicking the Chip; do not force-click retained offscreen controls.
+
+
+## Editable admin drawer
+
+`admin/useAdminUserEditorClose.tsx` owns the field signature, per-opening baseline, shared discard question and accepted submission checkpoint. The drawer sends X, backdrop and Cancel to that same callback; `useModalLayer` already brings Escape and browser Back to it. Keep one close policy rather than one question per button.
+
+Capture the submitted signature before awaiting the real API response. Advance the baseline only for the same still-open session after success; a rejected save preserves the typed values and old baseline. Save intentionally leaves this drawer open with its existing toast. A later clean close is quiet. Promotion-only hidden fields count only in explicit Set mode; manual UID changes retain the existing privilege-reset rule.
+
+During submission, the shared layer receives `closeDisabled`; X/backdrop and the native form fieldset are disabled. `fieldset.contents` preserves the existing flex geometry while disabling nested form controls and Cancel. Keep the immediate submit guard too. Do not add a browser-history listener, queue or second dialog stack here.
+
+Local proof: Unit261 in `docs/verification/local-bug-fixes.md`; real dirty-close baseline, six behavioral REDs, and ordinary Chrome wide/narrow dirty/Keep/Discard/history plus a held original request, actual API200, canonical readback, accepted-save quiet close and effective-counter restore. Missing raw entitlement fields are normalized by the real admin API; do not require defaults to exist in the raw profile. Heartbeat and usage-period metadata are recorded, never rewound to restore a fixture.
