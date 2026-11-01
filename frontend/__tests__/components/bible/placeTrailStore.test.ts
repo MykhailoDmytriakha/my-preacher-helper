@@ -162,4 +162,3 @@ describe('the trail of places on this device', () => {
     expect((JSON.parse(window.localStorage.getItem('bible:search-history') ?? '{}').entries as { line: string }[]).map((entry) => entry.line)).toEqual(['вера', 'любовь', 'мир']);
   });
 });
-

@@ -219,4 +219,3 @@ describe('a choice kept on this device', () => {
     expect(page.read()).toEqual({ on: true, size: 4 });
   });
 });
-
