@@ -130,16 +130,19 @@ describe('copies of a moved point that differ below it (Codex refute-twins r2)',
     walk(planOf(doc));
     return found;
   };
-  const cases: [string, DocumentData, DocumentData, DocumentData][] = [
+  const cases: [string, DocumentData, DocumentData, DocumentData, string[]][] = [
     ['a point and its parent moved into each other', sermon([node('D', [node('B')]), node('C')]),
       sermon([node('C', [node('D', [node('B')])])]),
-      sermon([node('B', [node('D'), { id: 'R', title: 'precious remote words' }]), node('C')])],
+      sermon([node('B', [node('D'), { id: 'R', title: 'precious remote words' }]), node('C')]),
+      ['B under top', 'R under B', 'C under top', 'D under C']],
     ['a point and its sub-point moved to different places', sermon([node('P', [node('X', [node('C')])]), node('A'), node('B'), node('D')]),
       sermon([node('P'), node('A', [node('X', [node('C')])]), node('B'), node('D')]),
-      sermon([node('P'), node('A'), node('B', [node('X')]), node('D', [{ id: 'C', title: 'remote C' }]), node('R')])],
+      sermon([node('P'), node('A'), node('B', [node('X')]), node('D', [{ id: 'C', title: 'remote C' }]), node('R')]),
+      ['P under top', 'A under top', 'X under A', 'B under top', 'D under top', 'C under D', 'R under top']],
     ['a sub-point lifted here and given words there', sermon([node('P', [node('X', [node('C')])]), node('A'), node('B')]),
       sermon([node('P'), node('A', [node('X')]), node('B'), node('C')]),
-      sermon([node('P'), node('A'), node('B', [node('X', [{ id: 'C', title: 'remote C' }, node('R')])])])],
+      sermon([node('P'), node('A'), node('B', [node('X', [{ id: 'C', title: 'remote C' }, node('R')])])]),
+      ['P under top', 'A under top', 'X under A', 'R under X', 'B under top', 'C under top']],
   ];
 
   // Every point with every parent it sits under anywhere in the plan.
@@ -154,10 +157,14 @@ describe('copies of a moved point that differ below it (Codex refute-twins r2)',
     return found;
   };
 
-  it.each(cases)('loses no point, no words and none of this device\'s places: %s', (_name, start, mine, theirs) => {
-    const merged = mergeDocumentFields(start, mine, theirs).value.value as DocumentData;
-    expect(homes(merged)).toEqual(expect.arrayContaining(homes(mine)));
+  it.each(cases)('keeps every point once, remote words and independently changed homes: %s', (_name, start, mine, theirs, expectedHomes) => {
+    const result = mergeDocumentFields(start, mine, theirs);
+    const merged = result.value.value as DocumentData;
+    // An unchanged local home does not cancel a remote move; a truly competing home keeps the local candidate.
+    expect(homes(merged).sort()).toEqual([...expectedHomes].sort());
+    expect(result.conflicts.map(conflict => conflict.path)).toContainEqual(['preparation', 'exegeticalPlan']);
     const kept = titles(merged);
+    for (const copies of Object.values(kept)) expect(copies).toHaveLength(1);
     for (const side of [mine, theirs]) {
       for (const id of Object.keys(titles(side))) expect(kept).toHaveProperty(id);
     }

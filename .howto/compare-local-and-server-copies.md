@@ -15,6 +15,30 @@ For a migrated collection, `useDataDocument` and `useDataCollection` own freshne
 - Current evidence is partial: `types.ts` carries operation identity and dependencies, `commits.ts` carries the baseline and predecessor, and `runtime.ts` assigns `JournalEntry.createdAt` when a prepared command enters the journal. That timestamp is not the original UI action time. `server.ts` stores committed version evidence in the receipt; an explicit action-time/database-commit-time pair is not implemented yet. Inspect these canonical modules before proposing a new history store or claiming chronological delete resolution already works.
 - Engine `updatedAt` now records one server acceptance time for each changed live transaction effect (`acceptedResource.server.ts` via `server.ts`); ACK and stored snapshots agree. Bookkeeping-only edits, no-ops and receipt replays do not advance it. This is not an action-time/database-commit-time pair, nor a content priority rule. Resource-document rebase excludes root timestamp metadata and update application leaves it for the accepted-write rule (`protocol.ts`). Generic value merge, including nested authored fields, remains ordinary content.
 
+## Identity across nested plan lists
+
+`protocol.ts:mergeFields` delegates the configured `preparation.exegeticalPlan` tree to
+`identityTreeMerge.ts` before merging individual sibling lists. One point ID owns one
+place across the whole tree. Own fields, parent and sibling order merge separately:
+a move and independent word edit compose; competing homes/order, branch deletion
+against a changed branch, or a combined parent cycle retain a whole-tree conflict.
+Its local candidate keeps independently merged words and remote-only points. When a
+chosen destination was deleted, a locally kept point retains its required local
+ancestry instead of being dropped as an orphan; only remote-only additions under
+a locally deleted branch may be omitted from that local candidate. The
+ordinary `DataSession.keepLocal` and server command path use that same merge, so a
+choice must be tested through its actual retried ACK, not only the candidate value.
+
+Missing and empty `children` compare as the same authored branch. Only the configured
+child key is traversed; attachment IDs are not plan IDs. Inputs with ambiguous or
+preexisting duplicate IDs retain the prior merge fallback: do not silently choose an
+old copy to remove. Other trees and coupled thought/scratch placements are separate
+contracts; do not register them here without their own integrity and choice matrix.
+The module reuses `mergeFields` and the pure `outlineMergeParts.mergeOutlineOrder`;
+it adds no action clock, writer, persistence format, or transport. Regression paths:
+`planTreeIdentityMerge.test.ts`, `planTreeTwins.test.ts`, `protocol.test.ts`, and
+`session.test.ts` under `frontend/app/data-engine/__tests__/`.
+
 ## An explicit outline choice
 
 `PlanEditorModal` keeps the real opened outline through a refusal, using `useOutlineConflict` over the shared `usePersistedConflict` store. `utils/outlineChoice.ts:chooseOutlineLocalChanges` chooses only local changes against that ancestor and the shown saved snapshot: fields, location and sibling order are separate; untouched saved words remain, and each point/subpoint identity has one location. This is an explicit decision helper, not the ordinary background merge policy. `mergeOutline` retains that separate role; both use `outlineMergeParts` for identical optional-field normalization and sequence ordering.

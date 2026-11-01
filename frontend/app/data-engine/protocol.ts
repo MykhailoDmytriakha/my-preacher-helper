@@ -3,6 +3,7 @@ import { isServiceOrderCatalogKey, isServiceOrderSeedTarget, serviceOrderSeedCyc
 
 import { ANALYSIS_RESHAPE_FIELDS, ANALYSIS_RESHAPE_FRAME, keepAnalysisPositionFrame, lacksAnalysisFrameProof } from './analysisReshapeFields';
 import { equalValues, object, own, readField } from './fieldValues';
+import { mergeIdentityTree } from './identityTreeMerge';
 import { relationMirrorFields } from './relationMirrors';
 import { validateResourceDocument } from './resourceSchemas';
 import { preservesSermonLinks, scratchConsumptionConflicts } from './sermonIntegrity';
@@ -356,13 +357,20 @@ export function mergeFields(base: FieldValue, mine: FieldValue, theirs: FieldVal
   }
   if (base.exists && mine.exists && theirs.exists) {
     if (Array.isArray(base.value) && Array.isArray(mine.value) && Array.isArray(theirs.value)) {
-      const merged = mergeArrays(base.value, mine.value, theirs.value, path);
-      const children = identityTreeChildren(path);
-      if (merged && children) return settleTreeTwins(base, mine, theirs, merged, path, children);
+      const merged = mergeArrayFields(base, mine, theirs, path);
       if (merged) return merged;
     }
   }
   return { value: mine, conflicts: [{ path, base, mine, theirs }] };
+}
+
+/** Tree identity spans sibling lists; ambiguous historical inputs retain their established fallback. */
+function mergeArrayFields(base: FieldValue, mine: FieldValue, theirs: FieldValue, path: string[]): ReturnType<typeof mergeFields> | null {
+  const children = identityTreeChildren(path);
+  const tree = children && mergeIdentityTree(base.value as Json[], mine.value as Json[], theirs.value as Json[], path, children, mergeFields);
+  if (tree) return tree;
+  const merged = mergeArrays(base.value as Json[], mine.value as Json[], theirs.value as Json[], path);
+  return merged && children ? settleTreeTwins(base, mine, theirs, merged, path, children) : merged;
 }
 
 /** Trees whose points move between lists, by where they live and the key of a point's own list. */
