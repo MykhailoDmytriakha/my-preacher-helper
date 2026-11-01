@@ -86,12 +86,31 @@ beforeEach(() => {
   mockUseAuth.mockReturnValue({ user: { uid: 'u1' }, loading: false } as never);
 });
 
+/** Existing forward-reader assertions now use the same public engine as the feature. */
+function sourceReader(notes: StudyNote[], online = true) {
+  const engine = membershipEngineHarness(notes.map(({ id, ...value }) => ({
+    resource: { collection: 'studyNotes', id },
+    metadata: { protocol: 1, generation: 'g', revision: 1, deleted: false },
+    value: value as unknown as ResourceSnapshot['value'],
+  })));
+  jest.mocked(createBrowserDataEngine).mockImplementation(() => {
+    const browser = engine.createBrowser();
+    browser.engine.setOnline(online);
+    return browser;
+  });
+  const query = harness();
+  const QueryWrapper = query.wrapper;
+  const Wrapper = ({ children }: { children: React.ReactNode }) =>
+    <QueryWrapper><DataEngineProvider>{children}</DataEngineProvider></QueryWrapper>;
+  return { client: query.client, wrapper: Wrapper, engine };
+}
+
 describe('useSourceNotes — what the sermon screen shows', () => {
   it('resolves the notes in the order the sermon stores them', async () => {
-    mockGetStudyNotes.mockResolvedValue([note('n1', 'First'), note('n2', 'Second')]);
+    const { wrapper: Wrapper } = sourceReader([note('n1', 'First'), note('n2', 'Second')]);
 
     const { result } = renderHook(() => useSourceNotes(sermon('s1', ['n2', 'n1'])), {
-      wrapper: wrapper(),
+      wrapper: Wrapper,
     });
 
     await waitFor(() => expect(result.current.notes).toHaveLength(2));
@@ -100,21 +119,21 @@ describe('useSourceNotes — what the sermon screen shows', () => {
   });
 
   it('reports a note deleted after linking instead of rendering a dead chip', async () => {
-    mockGetStudyNotes.mockResolvedValue([note('n1', 'First')]);
+    const { wrapper: Wrapper } = sourceReader([note('n1', 'First')]);
 
     const { result } = renderHook(() => useSourceNotes(sermon('s1', ['n1', 'gone'])), {
-      wrapper: wrapper(),
+      wrapper: Wrapper,
     });
 
     await waitFor(() => expect(result.current.notes).toHaveLength(1));
-    expect(result.current.missingIds).toEqual(['gone']);
+    await waitFor(() => expect(result.current.missingIds).toEqual(['gone']));
   });
 
   it('does not trust a cache that was never refetched in this session', async () => {
     // Cache-first keeps data "fresh" for 30 seconds and a persisted cache can be older still, so
     // an array that predates this screen is no evidence that a note was deleted — another device
     // may have created it a moment ago. Nothing is refetched here, so nothing may be judged.
-    const { client, wrapper: Wrapper } = harness();
+    const { client, wrapper: Wrapper } = sourceReader([note('n1', 'Known note')], false);
     client.setQueryData(['study-notes', 'u1'], [note('n1', 'Known note')], {
       updatedAt: Date.now() - 5_000,
     });
@@ -129,7 +148,8 @@ describe('useSourceNotes — what the sermon screen shows', () => {
   });
 
   it('does not read the note collection at all for a sermon with no links', async () => {
-    const { result } = renderHook(() => useSourceNotes(sermon('s1')), { wrapper: wrapper() });
+    const { wrapper: Wrapper } = sourceReader([]);
+    const { result } = renderHook(() => useSourceNotes(sermon('s1')), { wrapper: Wrapper });
 
     expect(result.current.notes).toEqual([]);
     expect(result.current.loading).toBe(false);

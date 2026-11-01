@@ -46,7 +46,7 @@ beforeEach(() => {
   mockDirectory.mockReturnValue({
     notes: [aNote('n1', 'Wine and wineskins', ['typology']), aNote('n2', 'Job and the mediator')],
     loading: false,
-    ready: true,
+    isMissing: () => true,
   });
 });
 
@@ -168,7 +168,7 @@ it('closes on Escape, the exit every other dialog here offers', () => {
 });
 
 it('says there are no notes yet instead of showing an empty box', () => {
-  mockDirectory.mockReturnValue({ notes: [], loading: false, ready: true });
+  mockDirectory.mockReturnValue({ notes: [], loading: false, isMissing: () => true });
 
   render(<SourceNotePickerModal selectedNoteIds={[]} onSave={jest.fn()} onClose={jest.fn()} />);
 
@@ -176,7 +176,7 @@ it('says there are no notes yet instead of showing an empty box', () => {
 });
 
 it('waits with placeholders rather than claiming the person has no notes', () => {
-  mockDirectory.mockReturnValue({ notes: [], loading: true, ready: false });
+  mockDirectory.mockReturnValue({ notes: [], loading: true, isMissing: () => false });
 
   render(<SourceNotePickerModal selectedNoteIds={[]} onSave={jest.fn()} onClose={jest.fn()} />);
 
@@ -202,7 +202,7 @@ it('shows the reference on the row, so a note is recognisable without opening it
       } as StudyNote,
     ],
     loading: false,
-    ready: true,
+    isMissing: () => true,
   });
 
   render(<SourceNotePickerModal selectedNoteIds={[]} onSave={jest.fn()} onClose={jest.fn()} />);
@@ -227,7 +227,7 @@ it('is full-screen on a phone and a centred card from sm up — the repo rule ab
 it('does NOT call a linked note deleted when the note list could not be read', () => {
   // A failed read returns an empty list. Treating that as "your notes are gone" would invite
   // unlinking notes that exist perfectly well — so the row only appears on a known-good list.
-  mockDirectory.mockReturnValue({ notes: [], loading: false, ready: false });
+  mockDirectory.mockReturnValue({ notes: [], loading: false, isMissing: () => false });
 
   render(<SourceNotePickerModal selectedNoteIds={['n1']} onSave={jest.fn()} onClose={jest.fn()} />);
 

@@ -71,7 +71,7 @@ jest.mock('@/hooks/useSermonNoteLinks', () => {
       ],
       loading: false,
       // A known-good list: only then may an unresolved link be shown as "deleted".
-      ready: true,
+      isMissing: () => true,
     }),
   };
 });

@@ -7,14 +7,11 @@ import { toast } from 'sonner';
 import { useDocumentActions } from '@/data-engine/react.client';
 import { useResolvedUid } from '@/hooks/useResolvedUid';
 import { useSermonsDataCollection } from '@/hooks/useSermonsDataCollection';
-import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
+import { useStudyNotesEngine } from '@/hooks/useStudyNotesEngine';
 import { SERMON_CORE_AGGREGATE } from '@/services/sermons.client';
-import { resolveAppLocale } from '@/utils/appLocale';
-import { sermonListKey, studyNoteListKey } from '@/utils/queryKeys';
+import { sermonListKey } from '@/utils/queryKeys';
 import { serverCopyIsNewer, type VersionedCopy } from '@/utils/readFreshness';
-import { withNoteReferenceBibles } from '@/utils/scriptureReferenceNumbering';
 import { useTranslation } from '@locales/useTranslation';
-import { getStudyNotes } from '@services/studies.service';
 
 import type { Sermon, StudyNote } from '@/models/models';
 
@@ -22,7 +19,7 @@ import type { Sermon, StudyNote } from '@/models/models';
  * BOTH DIRECTIONS OF "THIS SERMON WAS BUILT ON THAT NOTE", FROM ONE STORED FACT.
  *
  * `Sermon.sourceNoteIds` is the only copy. Everything else here is derived from the two
- * owner-scoped lists the app already caches, so the two screens can never disagree about
+ * owner-scoped collections the engine already projects, so the two screens can never disagree about
  * a link and neither of them needs a query the app was not making anyway:
  *
  *   sermon screen → the notes it names          (`useSourceNotes`)
@@ -33,69 +30,19 @@ import type { Sermon, StudyNote } from '@/models/models';
  * single truth.
  */
 
-/** The person's notes, read from the shared cache entry — never a private copy. */
+/** The person's submitted and saved notes, projected by the shared engine. */
 export interface StudyNoteDirectory {
   notes: StudyNote[];
   loading: boolean;
-  /**
-   * TRUE only when this list is the person's ACTUAL notes.
-   *
-   * Without it "the read failed" is indistinguishable from "you have no notes", and callers
-   * draw conclusions from an empty array: the picker would label every linked note as deleted
-   * and offer to unlink notes that exist perfectly well. A read that errored, is still in
-   * flight, or was never enabled answers `false`.
-   */
-  ready: boolean;
+  /** Only canonical absence may label a linked note missing; an unknown local list cannot. */
+  isMissing: (id: string) => boolean;
 }
 
 export function useStudyNoteDirectory(options: { enabled?: boolean } = {}): StudyNoteDirectory {
   const { enabled = true } = options;
-  const { uid, isAuthLoading } = useResolvedUid();
-  const { language: interfaceLanguage } = useTranslation();
-  const locale = resolveAppLocale(interfaceLanguage);
-  /**
-   * WHEN THIS CONSUMER STARTED LOOKING.
-   *
-   * A cached list counts as "success" even when nothing was fetched: cache-first keeps data
-   * fresh for 30 seconds and a persisted cache can be older still, so a note created on another
-   * device a moment ago may simply be absent. Requiring an answer that arrived AFTER this mount
-   * is what separates "the server says this note is gone" from "my copy has not heard of it".
-   */
-  const mountedAt = useRef(Date.now());
-  const query = useServerFirstQuery({
-    queryKey: studyNoteListKey(uid),
-    queryFn: () => (uid ? getStudyNotes(uid) : Promise.resolve([])),
-    // A note document carries its whole text, so reading the collection is not free. The
-    // sermon header asks for it ONLY when the sermon actually names a note; the picker,
-    // whose entire job is to show the list, always does.
-    enabled: !!uid && enabled,
-  });
-  const loading = (isAuthLoading || query.isLoading) && enabled;
-  // Read as every screen reads a note: an old reference named by the Bible of the note's words.
-  const notes = useMemo(() => (query.data ?? []).map((note) => withNoteReferenceBibles(note, locale)), [query.data, locale]);
-  return {
-    notes,
-    loading,
-    /**
-     * KNOWN-GOOD means a fetch actually SUCCEEDED and nothing is in flight.
-     *
-     * A cached array alone is not enough, and this is the difference between a safe screen and
-     * one that offers to unlink a note that exists: while a background refetch runs, or offline,
-     * or after an error, the list can simply be missing a note that another device added, and
-     * every consumer here reads "not in the list" as "deleted".
-     */
-    ready:
-      enabled &&
-      !loading &&
-      !query.error &&
-      query.isSuccess &&
-      !query.isFetching &&
-      query.isOnline &&
-      query.data !== undefined &&
-      // `>=` because a fetch that resolves in the same millisecond as the mount is still an
-      // answer from this session; a cache restored BEFORE mount carries a strictly older stamp.
-      query.dataUpdatedAt >= mountedAt.current,
-  };
+  const { notes, loading, notePresence } = useStudyNotesEngine(enabled);
+  const isMissing = useCallback((id: string) => enabled && notePresence(id).kind === 'absent', [enabled, notePresence]);
+  return { notes, loading: enabled && loading, isMissing };
 }
 
 export interface SourceNotesResult {
@@ -116,26 +63,21 @@ export function useSourceNotes(
   sermon: Pick<Sermon, 'sourceNoteIds'> | null | undefined
 ): SourceNotesResult {
   const ids = useMemo(() => sermon?.sourceNoteIds ?? [], [sermon?.sourceNoteIds]);
-  const { notes, loading, ready } = useStudyNoteDirectory({ enabled: ids.length > 0 });
+  const { notes, loading, isMissing } = useStudyNoteDirectory({ enabled: ids.length > 0 });
 
   return useMemo(() => {
     if (ids.length === 0) return { notes: [], missingIds: [], loading: false };
-    // An id only counts as MISSING once the directory is known-good; a failed read must not
-    // promote every link to "deleted".
-    if (!ready) {
-      const known = new Map(notes.map((n) => [n.id, n]));
-      return { notes: ids.map((id) => known.get(id)).filter(Boolean) as StudyNote[], missingIds: [], loading };
-    }
+    // Resolve submitted local work immediately; absence comes from the same canonical owner.
     const byId = new Map(notes.map((note) => [note.id, note]));
     const resolved: StudyNote[] = [];
     const missingIds: string[] = [];
     for (const id of ids) {
       const note = byId.get(id);
       if (note) resolved.push(note);
-      else missingIds.push(id);
+      else if (isMissing(id)) missingIds.push(id);
     }
     return { notes: resolved, missingIds, loading };
-  }, [ids, notes, loading, ready]);
+  }, [ids, notes, loading, isMissing]);
 }
 
 /** The link itself, read from its one stored fact: does this sermon name that note? */

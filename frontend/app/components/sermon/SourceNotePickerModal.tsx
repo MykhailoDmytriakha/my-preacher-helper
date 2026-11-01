@@ -60,7 +60,7 @@ export default function SourceNotePickerModal({
   returnFocusTo,
 }: SourceNotePickerModalProps) {
   const { t, language: interfaceLanguage } = useTranslation();
-  const { notes, loading, ready } = useStudyNoteDirectory();
+  const { notes, loading, isMissing } = useStudyNoteDirectory();
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState<Set<string>>(() => new Set(selectedNoteIds));
   /** Did the person actually touch the ticks? Decides whether Save has anything to say. */
@@ -103,16 +103,14 @@ export default function SourceNotePickerModal({
    *
    * They get their own row, because without one the footer counts two while the list shows
    * one, and the only way to clear the dead id is "unlink all", which also throws away the
-   * good links. Computed only once the directory has actually loaded: mid-load every id looks
-   * missing.
+   * good links. Only a canonical absence produces this row; incomplete or pending local data
+   * cannot invite unlinking an unknown source.
    */
   const missingIds = useMemo(() => {
-    // `ready` is the whole point: a failed or in-flight read returns an empty list, and calling
-    // every linked note "deleted" on that basis would invite unlinking notes that exist.
-    if (!ready) return [];
+    // A cached or pending local list cannot prove a selected note deleted.
     const known = new Set(notes.map((note) => note.id));
-    return [...selected].filter((id) => !known.has(id));
-  }, [selected, notes, ready]);
+    return [...selected].filter((id) => !known.has(id) && isMissing(id));
+  }, [selected, notes, isMissing]);
 
   const toggle = (noteId: string) => {
     // While a save is in flight the writer already holds the list it was given; a later tick
