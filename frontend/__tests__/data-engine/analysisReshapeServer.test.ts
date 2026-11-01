@@ -1,3 +1,5 @@
+import { inMemoryRelationReader } from '@test-utils/inMemoryRelationReader';
+
 /** @jest-environment node */
 import { planDataCommand } from '@/data-engine/serverRelations';
 
@@ -19,13 +21,10 @@ const put = (id: string, verse: number, extra: DocumentData = {}): ResourceSnaps
   records.set(key(resource.collection, id), snapshot);
   return snapshot;
 };
-const reader: RelationReader = {
-  get: async resource => {
-    reads.push(key(resource.collection, resource.id));
-    return records.get(key(resource.collection, resource.id)) ?? { resource, value: null, metadata: null };
-  },
-  list: async () => [],
-};
+const reader: RelationReader = inMemoryRelationReader(owner, resource => {
+  reads.push(key(resource.collection, resource.id));
+  return records.get(key(resource.collection, resource.id)) ?? { resource, value: null, metadata: null };
+}, () => records.values());
 const change = (field: string, before: unknown, after: unknown): FieldChange => ({
   path: [field], before: { exists: true, value: before as never }, after: { exists: true, value: after as never },
 });
@@ -56,7 +55,7 @@ describe('analysis reshape server planning', () => {
     const source = put('source', 1);
     const target = put('target', 3);
     const targetNext = edit(target, 2, [change('title', 'Title target', 'Chosen title')]);
-    const sourceEdit = edit(source, 2);
+    const sourceEdit = edit(source, 1);
     const expected = command(source, [sourceEdit, targetNext]);
     source.value!.title = 'Remote source title';
     source.value!.tags = ['remote source tag'];

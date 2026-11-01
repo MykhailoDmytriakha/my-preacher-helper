@@ -346,6 +346,7 @@ function AnalysisNotices({ ready, changedText, sync, refused, onSaveAgain, creat
   return (
     <>
       <AnalysisCreationNotice note={creation} />
+      {creation.passageCollision ? <p role="status" className="mb-4 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">{t('analysis.reshape.passageCollision')}</p> : null}
       {creation.capturing ? (
         <p role="status" className={`mb-4 rounded-xl px-3 py-2 text-sm ${waitingForStorage ? 'bg-amber-50 text-amber-900 dark:bg-amber-950/40 dark:text-amber-200' : 'bg-gray-50 text-gray-600 dark:bg-gray-900 dark:text-gray-300'}`}>
           {waitingForStorage ? <><strong className="mb-1 block font-medium">{t('deviceStorage.title')}</strong>{t('analysis.firstCaptureWaiting')}</> : t('analysis.firstCaptureSaving')}

@@ -1,3 +1,5 @@
+import { inMemoryRelationReader } from '@test-utils/inMemoryRelationReader';
+
 import { CommitQueue } from '../commits';
 import { createIndexedDbCommitStore } from '../commits.client';
 import { DataEngineRuntime } from '../runtime';
@@ -25,7 +27,7 @@ function setup(targets: Array<'existing' | 'new'> = ['existing']) {
     read: jest.fn(async (_owner, resource) => read(resource)),
     send: jest.fn(async command => {
       const previous = receipts.get(command.operationId); if (previous) return clone(previous);
-      const plan = await planDataCommand(command, await read(command.resource), { get: read, list: async () => { throw new Error('A reshape must not scan unrelated notes'); } });
+      const plan = await planDataCommand(command, await read(command.resource), inMemoryRelationReader(command.owner, read, () => rows.values()));
       for (const row of plan.writes) rows.set(key(row.resource), clone(row));
       receipts.set(command.operationId, clone(plan.result)); return plan.result;
     }),

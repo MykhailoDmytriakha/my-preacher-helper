@@ -1,3 +1,5 @@
+import { inMemoryRelationReader } from '@test-utils/inMemoryRelationReader';
+
 import { DataEngine } from '../engine';
 import { createIndexedDbCheckpoints } from '../checkpoint.client';
 import { ResourceObserver } from '../observer';
@@ -24,7 +26,7 @@ const reshaped = (snapshot: ResourceSnapshot, content: string, verse: number): D
 
 function setup(options: { target?: 'existing' | 'new'; holdReads?: boolean } = {}) {
   const storage = installStorageHarness(), commits = createIndexedDbCommitStore();
-  const source = note('source', 2), target = options.target === 'new'
+  const source = note('source', 1), target = options.target === 'new'
     ? { resource: { collection: 'studyNotes', id: 'target' }, metadata: null, value: null }
     : note('target', 3);
   const rows = new Map<string, ResourceSnapshot>([[key(source.resource), clone(source)], ...(target.value ? [[key(target.resource), clone(target)] as const] : [])]);
@@ -43,9 +45,7 @@ function setup(options: { target?: 'existing' | 'new'; holdReads?: boolean } = {
       if (transportMode === 'unknown') throw new Error('reply unavailable');
       if (transportMode === 'refuse') return { kind: 'refused' as const, operationId: command.operationId, code: 'invalid-document' };
       const saved = receipts.get(command.operationId); if (saved) return clone(saved);
-      const planned = await planDataCommand(command, await read(command.resource), {
-        get: read, list: async () => { throw new Error('Analysis reshape must not scan unrelated notes'); },
-      });
+      const planned = await planDataCommand(command, await read(command.resource), inMemoryRelationReader(command.owner, read, () => rows.values()));
       for (const snapshot of planned.writes) rows.set(key(snapshot.resource), clone(snapshot));
       receipts.set(command.operationId, clone(planned.result));
       if (loseReplyAfterApply) { loseReplyAfterApply = false; throw new Error('ACK lost after server commit'); }
@@ -70,7 +70,7 @@ function setup(options: { target?: 'existing' | 'new'; holdReads?: boolean } = {
     engine.setOnline(false); engine.setOwner('owner'); return engine;
   };
   const edits = (value = source.value!, targetValue = target.value) => [
-    { resource: source.resource, expected: value, value: reshaped({ ...source, value }, 'remaining source words', 2) },
+    { resource: source.resource, expected: value, value: reshaped({ ...source, value }, 'remaining source words', 1) },
     { resource: target.resource, expected: targetValue, value: targetValue
       ? reshaped({ ...target, value: targetValue }, 'joined removed words', 2)
       : { userId: 'owner', title: 'target', content: 'joined removed words', type: 'analysis', tags: [], isDraft: false,

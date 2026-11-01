@@ -4713,6 +4713,7 @@
     "untie": "Remove the tie",
     "editVerses": "Change the analysis’s verses",
     "reshape": {
+      "passageCollision": "This passage already has an analysis. Your passage change is kept on this device.",
       "prepared": "The passage change is kept on this device. Synchronization will report if anything needs attention.",
       "recovery": "An analysis passage change needs attention",
       "done": "The analysis now covers {{place}}.",

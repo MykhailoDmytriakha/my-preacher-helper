@@ -629,6 +629,22 @@ describe('analysis creation passage identity', () => {
     expect(saved).toHaveLength(1);
   });
 
+  it('keeps marks and their text editable on a historical duplicate without merging the other note', async () => {
+    const existing = put('studyNotes', 'historical-first', valueFor(3));
+    const other = put('studyNotes', 'historical-second', valueFor(5));
+    const untouched = JSON.parse(JSON.stringify(other));
+    const desired: DocumentData = { ...existing.value!, ...valueFor(7), scriptureRefs: existing.value!.scriptureRefs };
+    const command = validateCommand({ ...commandBase(existing), operationId: 'historical-marks-edit', kind: 'update',
+      changes: ['analysis', 'content', 'scriptureRefs'].map(field => ({ path: [field],
+        before: { exists: true, value: existing.value![field] }, after: { exists: true, value: desired[field as keyof typeof desired] } })),
+    });
+    const plan = await planDataCommand(command, existing, reader);
+    expect(plan.result.kind).toBe('acknowledged');
+    expect(plan.writes).toHaveLength(1);
+    expect(plan.writes[0]).toMatchObject({ resource: existing.resource, value: { analysis: desired.analysis, content: desired.content } });
+    expect(other).toEqual(untouched);
+  });
+
   it.each(['another passage', 'another Bible', 'ordinary note', 'another owner'] as const)('still permits a distinct creation beside %s', async context => {
     const existing = valueFor(3, context === 'another Bible' ? 'kjv' : 'rst', context === 'another passage' ? 1 : 2);
     if (context === 'ordinary note') { existing.type = 'note'; delete existing.analysis; }

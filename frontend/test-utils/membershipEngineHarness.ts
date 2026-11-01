@@ -1,3 +1,4 @@
+import { inMemoryRelationReader } from './inMemoryRelationReader';
 import { editorIdentity } from '@/data-engine/editorIdentity';
 import { createIndexedDbCheckpoints } from '@/data-engine/checkpoint.client';
 import { createIndexedDbCommitStore } from '@/data-engine/commits.client';
@@ -30,10 +31,7 @@ export function membershipEngineHarness(initial: ResourceSnapshot[]) {
     read: jest.fn(async (_owner, resource) => read(resource)),
     send: jest.fn(async command => {
       if (receipts.has(command.operationId)) return copy(receipts.get(command.operationId)!);
-      const plan = await planDataCommand(command, read(command.resource), {
-        get: async resource => read(resource),
-        list: async collection => copy([...server.values()].filter(snapshot => snapshot.resource.collection === collection)),
-      });
+      const plan = await planDataCommand(command, read(command.resource), inMemoryRelationReader(command.owner, read, () => server.values()));
       for (const snapshot of plan.writes) { server.set(key(snapshot.resource), copy(snapshot)); owners.set(key(snapshot.resource), command.owner); }
       if (plan.writes.length) version += 1;
       const result = plan.result.kind === 'acknowledged' ? { ...plan.result,

@@ -258,7 +258,10 @@ export function useAnalysisNote({ opening, text, bookId, bible, locale }: { open
   /** The note this device refused made again from what the screen shows. */
   const saveAgain = useCallback(() => { if (!noteId.current) create(stateRef.current); }, [create]);
 
-  const duplicateRefusal = form.state?.result?.kind === 'refused' && form.state.result.code === 'analysis-exists';
+  const analysisCollision = form.state?.result?.kind === 'refused' && form.state.result.code === 'analysis-exists';
+  const duplicateRefusal = Boolean(analysisCollision && form.confirmed?.value === null && form.confirmed.metadata === null
+    && !form.state?.actionResolutionRequired);
+  const passageCollision = Boolean(analysisCollision && !duplicateRefusal);
   const existingAnalysis = uniqueOtherAnalysis(engine.notes, ownId, passage, bookId, bible);
   const [waitingCapture, setWaitingCapture] = useState(0);
   const attemptedWaitingCapture = useRef<string | null>(null);
@@ -376,7 +379,7 @@ export function useAnalysisNote({ opening, text, bookId, bible, locale }: { open
     changedText: Boolean(stored && stored.words !== total),
     /** The first capture was not confirmed; `saveAgain` retries the same creation identity. */
     refused,
-    combining, creationReview, duplicateRefusal, existingAnalysis, retryCombination, openExistingAnalysis,
+    combining, creationReview, duplicateRefusal, passageCollision, existingAnalysis, retryCombination, openExistingAnalysis,
     canOpenExistingAnalysis: !waiting.current && !onTheWay.current,
     saveAgain,
   };

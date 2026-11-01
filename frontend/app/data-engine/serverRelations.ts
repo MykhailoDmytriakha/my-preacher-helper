@@ -327,16 +327,21 @@ class RelationPlanner {
     if (matching.some(snapshot => snapshot.resource.id !== this.primary.resource.id && snapshot.value !== null)) fail('catalog-entry-exists');
   }
 
-  /** An absent ordinary create cannot introduce a second live analysis at one known passage. */
-  private async uniqueAnalysisCreate(command: Extract<DataCommand, { kind: 'create' }>): Promise<void> {
-    if (command.resource.collection !== 'studyNotes' || command.value.type !== 'analysis'
-      || this.primary.value !== null || this.primary.metadata !== null
-      || !studyAnalysisPassageIdentity(command.value)) return;
-    const matches = await this.reader.list('studyNotes', 1, { field: 'type', operator: '==', value: 'analysis' }, snapshot =>
-      snapshot.resource.id !== command.resource.id && snapshot.value !== null && !snapshot.metadata?.deleted
-      && snapshot.value.userId === this.command.owner && snapshot.value.type === 'analysis'
-      && sameStudyAnalysisPassage(snapshot.value, command.value));
-    if (matches.length) fail('analysis-exists');
+  /** Admission belongs to final writes, including updates and every atomic reshape participant. */
+  private async uniqueAnalysisWrites(): Promise<void> {
+    const candidates = [...this.writes.values()].filter(snapshot => snapshot.resource.collection === 'studyNotes'
+      && studyAnalysisPassageIdentity(snapshot.value));
+    for (const candidate of candidates) {
+      // Existing duplicates remain editable; this operation may not introduce another identity.
+      if (sameStudyAnalysisPassage(this.cached.get(key(candidate.resource))?.value, candidate.value)) continue;
+      const collides = (other: ResourceSnapshot) => other.resource.collection === 'studyNotes'
+        && other.resource.id !== candidate.resource.id && other.value !== null && !other.metadata?.deleted
+        && other.value.userId === this.command.owner && sameStudyAnalysisPassage(other.value, candidate.value);
+      if ([...this.writes.values()].some(collides)) fail('analysis-exists');
+      const matches = await this.reader.list('studyNotes', 1, { field: 'type', operator: '==', value: 'analysis' }, snapshot =>
+        collides(this.writes.get(key(snapshot.resource)) ?? snapshot));
+      if (matches.length) fail('analysis-exists');
+    }
   }
 
   private async seedServiceOrder(command: Extract<DataCommand, { relation: 'service-order-seed' }>): Promise<CommandResult | undefined> {
@@ -484,7 +489,6 @@ class RelationPlanner {
 
   private async ordinary(command: Exclude<DataCommand, { kind: 'relation' }>): Promise<CommandResult | undefined> {
     this.guardOrdinary(command);
-    if (command.kind === 'create') await this.uniqueAnalysisCreate(command);
     if (command.kind === 'create' && command.resource.collection === 'serviceOrders') await this.uniqueServiceOrder(command.value);
     const effective = command.kind === 'create' && command.resource.collection === 'series'
       ? { ...command, value: { ...command.value, ...seriesFields(currentItems(command.value)) } } : command;
@@ -514,6 +518,7 @@ class RelationPlanner {
       }
     } else result = await this.ordinary(this.command);
     if (result) return { result, writes: [] };
+    await this.uniqueAnalysisWrites();
     const snapshot = this.writes.get(key(this.primary.resource)) ?? this.primary;
     const affected = [...this.writes.values()].filter(value => key(value.resource) !== key(this.primary.resource)).map(value => ({ resource: value.resource, metadata: value.metadata! }));
     return { result: { kind: 'acknowledged', operationId: this.command.operationId, snapshot, ...(affected.length ? { affected } : {}) }, writes: [...this.writes.values()] };

@@ -7,6 +7,7 @@ import { useDataDocument } from '@/data-engine/react.client';
 import { useStudyNotesEngine } from '@/hooks/useStudyNotesEngine';
 import { changeRelation, cutAt, needsArrow, passageWords, relateWords, tieTo, type AnalysisState } from '@/utils/passageAnalysis';
 
+import type { DocumentData, ResourceSnapshot } from '@/data-engine/types';
 import type { StudyNote } from '@/models/models';
 import type { BookText } from '@/utils/bibleText';
 
@@ -39,9 +40,11 @@ let formNote: StudyNote | undefined;
 let formPhase = 'saved';
 let formRefusal: string | null = null;
 let formStateAvailable = true;
+let formConfirmed: ResourceSnapshot | null = null;
+let formActionResolutionRequired = false;
 const form = (resource: { id: string } | null) => {
   const note = resource ? formNote ?? engine.notes.find((entry) => entry.id === resource.id) : undefined;
-  return { data: note ?? null, state: note && formStateAvailable ? { result: formRefusal ? { kind: 'refused', code: formRefusal } : null } : null, status: note ? { phase: formPhase } : null, readOnly: false, loading: false, error: null, commit, recoveryIdentity: {} };
+  return { data: note ?? null, confirmed: formConfirmed, state: note && formStateAvailable ? { result: formRefusal ? { kind: 'refused', code: formRefusal } : null, actionResolutionRequired: formActionResolutionRequired } : null, status: note ? { phase: formPhase } : null, readOnly: false, loading: false, error: null, commit, recoveryIdentity: {} };
 };
 let opening: AnalysisOpening = { kind: 'new', passage: PASSAGE };
 const render = () => renderHook(() => useAnalysisNote({ opening, text: EPHESIANS, bookId: 'Ephesians', bible: 'rst', locale: 'ru' }));
@@ -59,6 +62,8 @@ describe('an analysis note — what the screen may write', () => {
     engine.combineAnalysisCreation.mockReset().mockResolvedValue('elsewhere');
     formRefusal = null;
     formStateAvailable = true;
+    formConfirmed = null;
+    formActionResolutionRequired = false;
     engine.updateNote.mockReset().mockImplementation(() => ({ result: Promise.resolve() }));
     (useStudyNotesEngine as jest.Mock).mockImplementation(() => engine);
     commit.mockClear();
@@ -259,15 +264,55 @@ describe('an analysis note — what the screen may write', () => {
     expect(result.current.refused).toBe(false);
   });
 
+  it('keeps an existing confirmed source when its ordinary update is refused as analysis-exists', async () => {
+    engine.loading = false;
+    const source = { ...madeElsewhere, id: 'source', analysis: { ...madeElsewhere.analysis!, cuts: [5], relations: {} } };
+    const other = { ...madeElsewhere, id: 'other' };
+    engine.notes = [source, other];
+    opening = { kind: 'open', id: source.id, editing: true };
+    formConfirmed = { resource: { collection: 'studyNotes', id: source.id }, value: source as unknown as DocumentData, metadata: { protocol: 1, generation: 'source-generation', revision: 7, deleted: false } };
+    formPhase = 'refused'; formRefusal = 'analysis-exists';
+    const { result, rerender } = render();
+    await act(async () => { rerender(); });
+    expect(result.current.sync?.confirmed).toEqual(formConfirmed);
+    expect(engine.combineAnalysisCreation).not.toHaveBeenCalled();
+    expect(result.current.duplicateRefusal).toBe(false);
+    expect(result.current.id).toBe(source.id);
+    expect(result.current.state.cuts).toEqual([5]);
+    expect(result.current.sync?.status?.phase).toBe('refused');
+    expect(engine.combineAnalysisCreation).not.toHaveBeenCalled();
+  });
+
+  it('does not transfer an unconfirmed atomic reshape participant that requires whole-action resolution', async () => {
+    engine.loading = false;
+    const source = { ...madeElsewhere, id: 'made-here', analysis: { ...madeElsewhere.analysis!, cuts: [5], relations: {} } };
+    engine.notes = [source, madeElsewhere];
+    opening = { kind: 'open', id: source.id, editing: true };
+    formConfirmed = { resource: { collection: 'studyNotes', id: source.id }, value: null, metadata: null };
+    formActionResolutionRequired = true;
+    formPhase = 'refused'; formRefusal = 'analysis-exists';
+    const { result, rerender } = render();
+    await act(async () => { rerender(); });
+    expect(result.current.sync?.confirmed).toMatchObject({ value: null, metadata: null });
+    expect(result.current.sync?.state?.actionResolutionRequired).toBe(true);
+    expect(result.current.duplicateRefusal).toBe(false);
+    expect(result.current.id).toBe(source.id);
+    expect(result.current.state.cuts).toEqual([5]);
+    expect(result.current.sync?.status?.phase).toBe('refused');
+    expect(engine.combineAnalysisCreation).not.toHaveBeenCalled();
+  });
+
   it('adopts the existing passage only after the engine captures both sets of marks', async () => {
     engine.loading = false;
     const { result, rerender } = render();
     await act(async () => { result.current.change(cutAt(result.current.state, 5, total)!); });
     engine.notes = [{ ...madeElsewhere, id: 'made-here', analysis: { ...madeElsewhere.analysis!, cuts: [5], relations: {} } }, madeElsewhere];
+    formConfirmed = { resource: { collection: 'studyNotes', id: 'made-here' }, value: null, metadata: null };
     formPhase = 'refused'; formRefusal = 'analysis-exists';
     let finish!: (id: string) => void;
     engine.combineAnalysisCreation.mockImplementation(() => new Promise<string>(resolve => { finish = resolve; }));
     await act(async () => { rerender(); });
+    expect(engine.combineAnalysisCreation).toHaveBeenCalledTimes(1);
     expect(engine.combineAnalysisCreation).toHaveBeenCalledWith('made-here', 'elsewhere', EPHESIANS);
     expect(result.current.id).toBe('made-here');
     expect(result.current.state.cuts).toEqual([5]);
@@ -290,6 +335,7 @@ describe('an analysis note — what the screen may write', () => {
     act(() => { result.current.change(first); result.current.change(later); });
     expect(engine.createNote).toHaveBeenCalledTimes(1);
     engine.notes = [{ ...madeElsewhere, id: 'made-here', analysis: { ...madeElsewhere.analysis!, cuts: [5], relations: {} } }, madeElsewhere];
+    formConfirmed = { resource: { collection: 'studyNotes', id: 'made-here' }, value: null, metadata: null };
     formPhase = 'refused'; formRefusal = 'analysis-exists';
     (commit as jest.Mock).mockImplementationOnce(async update => { engine.notes[0] = update(engine.notes[0]); });
     engine.combineAnalysisCreation.mockImplementationOnce(async () => {
@@ -308,9 +354,11 @@ describe('an analysis note — what the screen may write', () => {
     const { result, rerender } = render();
     await act(async () => { result.current.change(cutAt(result.current.state, 5, total)!); });
     engine.notes = [{ ...madeElsewhere, id: 'made-here', analysis: { ...madeElsewhere.analysis!, cuts: [5], relations: {} } }, madeElsewhere];
+    formConfirmed = { resource: { collection: 'studyNotes', id: 'made-here' }, value: null, metadata: null };
     formPhase = 'refused'; formRefusal = 'analysis-exists';
     engine.combineAnalysisCreation.mockRejectedValue(new Error('Needs review'));
     await act(async () => { rerender(); });
+    expect(engine.combineAnalysisCreation).toHaveBeenCalledTimes(1);
     expect(result.current.creationReview).toBe(true);
     expect(result.current.id).toBe('made-here');
     expect(result.current.state.cuts).toEqual([5]);
@@ -329,6 +377,7 @@ describe('an analysis note — what the screen may write', () => {
     await act(async () => { result.current.change(cutAt(result.current.state, 5, total)!); });
     engine.notes = [{ ...madeElsewhere, id: 'made-here', analysis: { ...madeElsewhere.analysis!, cuts: [5], relations: {} } },
       madeElsewhere, { ...madeElsewhere, id: 'another-existing-copy' }];
+    formConfirmed = { resource: { collection: 'studyNotes', id: 'made-here' }, value: null, metadata: null };
     formPhase = 'refused'; formRefusal = 'analysis-exists';
     await act(async () => { rerender(); });
     expect(engine.combineAnalysisCreation).not.toHaveBeenCalled();
