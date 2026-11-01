@@ -1,3 +1,4 @@
+import { versesHeldIn } from '@/utils/scriptureReferenceNumbering';
 import { chaptersAround, movedReference, versesAround, verseStep } from '@/utils/scriptureNeighbours';
 
 const spots = (list: { chapter: number; verse: number }[]) => list.map(({ chapter, verse }) => `${chapter}:${verse}`);
@@ -44,12 +45,59 @@ describe('scriptureNeighbours', () => {
       expect(movedReference(three, 'rst', 'Isaiah', { chapter: 41, verse: 29 })).toEqual({ id: 'r1', bible: 'rst', book: 'Isaiah', chapter: 41, fromVerse: 29 });
     });
 
+    it('keeps the count of verses of a run past its chapter\'s end — over a seam again, cut at the book end (phase 9)', () => {
+      const across = { id: 'r4', bible: 'rst' as const, book: 'Ephesians', chapter: 4, fromVerse: 31, toVerseChapter: 5, toVerse: 2 };
+      expect(movedReference(across, 'rst', 'Ephesians', { chapter: 4, verse: 30 })).toEqual({ id: 'r4', bible: 'rst', book: 'Ephesians', chapter: 4, fromVerse: 30, toVerseChapter: 5, toVerse: 1 });
+      expect(movedReference(across, 'rst', 'Ephesians', { chapter: 5, verse: 3 })).toEqual({ id: 'r4', bible: 'rst', book: 'Ephesians', chapter: 5, fromVerse: 3, toVerse: 6 });
+      expect(movedReference(across, 'rst', 'Ephesians', { chapter: 6, verse: 23 })).toEqual({ id: 'r4', bible: 'rst', book: 'Ephesians', chapter: 6, fromVerse: 23, toVerse: 24 });
+    });
+
+    // Codex review r3: counted in the place's Bible, Synodal Psalm 9:38–10:2 (four verses) was two in the King James.
+    it('counts a run past its chapter\'s end in the Bible it is written in', () => {
+      const psalm = { id: 'r5', bible: 'rst' as const, book: 'Psalms', chapter: 9, fromVerse: 38, toVerseChapter: 10, toVerse: 2 };
+      expect(movedReference(psalm, 'kjv', 'Psalms', { chapter: 11, verse: 1 })).toEqual({ id: 'r5', bible: 'kjv', book: 'Psalms', chapter: 11, fromVerse: 1, toVerse: 4 });
+    });
+
     it('moves whole chapters as chapters, cut at the book end, and a verse to another book', () => {
       const chapters = { id: 'r2', bible: 'rst' as const, book: 'Isaiah', chapter: 40, toChapter: 41 };
       expect(movedReference(chapters, 'rst', 'Isaiah', { chapter: 43 })).toEqual({ id: 'r2', bible: 'rst', book: 'Isaiah', chapter: 43, toChapter: 44 });
       expect(movedReference(chapters, 'rst', 'Isaiah', { chapter: 66 })).toEqual({ id: 'r2', bible: 'rst', book: 'Isaiah', chapter: 66 });
       expect(movedReference({ id: 'r3', bible: 'rst', book: 'Isaiah', chapter: 40, fromVerse: 31 }, 'rst', 'Romans', { chapter: 8, verse: 28 }))
         .toEqual({ id: 'r3', bible: 'rst', book: 'Romans', chapter: 8, fromVerse: 28 });
+    });
+  });
+});
+
+
+describe('stored exact endpoint compatibility when moving a reference', () => {
+  it.each(['endChapter', 'toVerseChapter'] as const)('keeps all four verses for %s across a new seam', field => {
+    const ref = { id: 'move', bible: 'rst' as const, book: 'Ephesians', chapter: 4, fromVerse: 31, [field]: 5, toVerse: 2 };
+    const moved = movedReference(ref, 'rst', 'Ephesians', { chapter: 4, verse: 30 });
+    expect(versesHeldIn(moved, 'rst')).toEqual([
+      { book: 'Ephesians', chapter: 4, verse: 30 }, { book: 'Ephesians', chapter: 4, verse: 31 },
+      { book: 'Ephesians', chapter: 4, verse: 32 }, { book: 'Ephesians', chapter: 5, verse: 1 },
+    ]);
+    expect(ref).toEqual({ id: 'move', bible: 'rst', book: 'Ephesians', chapter: 4, fromVerse: 31, [field]: 5, toVerse: 2 });
+  });
+
+  it.each(['endChapter', 'toVerseChapter'] as const)('clears the old %s after moving within one chapter', field => {
+    const ref = { id: 'move', bible: 'rst' as const, book: 'Ephesians', chapter: 4, fromVerse: 31, [field]: 5, toVerse: 2 };
+    expect(movedReference(ref, 'rst', 'Ephesians', { chapter: 5, verse: 3 })).toEqual({
+      id: 'move', bible: 'rst', book: 'Ephesians', chapter: 5, fromVerse: 3, toVerse: 6,
+    });
+  });
+
+  it.each(['endChapter', 'toVerseChapter'] as const)('clears %s when explicitly moving to a whole chapter', field => {
+    const ref = { id: 'move', bible: 'rst' as const, book: 'Ephesians', chapter: 4, fromVerse: 31, [field]: 5, toVerse: 2 };
+    expect(movedReference(ref, 'rst', 'Ephesians', { chapter: 6 })).toEqual({
+      id: 'move', bible: 'rst', book: 'Ephesians', chapter: 6,
+    });
+  });
+
+  it.each(['endChapter', 'toVerseChapter'] as const)('counts %s in the original Bible before moving to another', field => {
+    const ref = { id: 'move', bible: 'rst' as const, book: 'Psalms', chapter: 9, fromVerse: 38, [field]: 10, toVerse: 2 };
+    expect(movedReference(ref, 'kjv', 'Psalms', { chapter: 11, verse: 1 })).toEqual({
+      id: 'move', bible: 'kjv', book: 'Psalms', chapter: 11, fromVerse: 1, toVerse: 4,
     });
   });
 });

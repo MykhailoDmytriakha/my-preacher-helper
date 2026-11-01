@@ -2,7 +2,7 @@ import { textLanguage, type AppLocale } from '@/utils/appLocale';
 import { getBookById } from '@/utils/bibleBooks';
 import { BIBLES } from '@/utils/bibles';
 import { bookSlug } from '@/utils/bibleText';
-import { referenceBibleFor, sameScriptureReference, withStoredBible } from '@/utils/scriptureReferenceNumbering';
+import { verseEndChapter, referenceBibleFor, sameScriptureReference, withStoredBible } from '@/utils/scriptureReferenceNumbering';
 import { bookNameLanguages, exactBook, parseReferenceText } from '@/utils/scriptureReferenceParser';
 import { chapterCount, verseCount } from '@/utils/versification';
 
@@ -110,9 +110,10 @@ export function bibleHref(ref: ScriptureRefShape, { locale, from, readingBible }
     query.set('at', `${stored.chapter}:${stored.fromVerse ?? 1}`);
     // A verse wins over a leftover chapter range, as when the reference is printed.
     if (stored.fromVerse) {
-      const crossChapter = stored.endChapter !== undefined && stored.endChapter > stored.chapter;
+      const ending = verseEndChapter(stored);
+      const crossChapter = ending !== undefined && ending > stored.chapter;
       const last = stored.toVerse !== undefined && (crossChapter || stored.toVerse >= stored.fromVerse) ? stored.toVerse : stored.fromVerse;
-      query.set('to', crossChapter ? `${stored.endChapter}:${last}` : String(last));
+      query.set('to', crossChapter ? `${ending}:${last}` : String(last));
     }
     query.set('tr', stored.bible ?? referenceBibleFor(locale));
   }
@@ -233,10 +234,11 @@ export function namesAPlace(ref: ScriptureRefShape & { bible: BibleId }): boolea
   // A verse wins over a chapter range left beside it; a range of whole chapters ends in the book.
   if (ref.fromVerse) {
     if (ref.fromVerse > verseCount(ref.bible, ref.book, ref.chapter)) return false;
-    if (ref.endChapter !== undefined) {
-      return ref.endChapter >= ref.chapter && ref.endChapter <= chapters && ref.toVerse !== undefined
-        && ref.toVerse > 0 && ref.toVerse <= verseCount(ref.bible, ref.book, ref.endChapter)
-        && (ref.endChapter > ref.chapter || ref.toVerse >= ref.fromVerse);
+    if (ref.endChapter !== undefined || ref.toVerseChapter !== undefined) {
+      const ending = verseEndChapter(ref)!;
+      return ending >= ref.chapter && ending <= chapters && ref.toVerse !== undefined
+        && ref.toVerse > 0 && ref.toVerse <= verseCount(ref.bible, ref.book, ending)
+        && (ending > ref.chapter || ref.toVerse >= ref.fromVerse);
     }
     return ref.toVerse === undefined || (ref.toVerse >= ref.fromVerse && ref.toVerse <= verseCount(ref.bible, ref.book, ref.chapter));
   }

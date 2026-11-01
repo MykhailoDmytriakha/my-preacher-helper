@@ -54,6 +54,7 @@ A new form window is `FormDialog` (`frontend/app/components/ui/FormDialog.tsx`):
 Inline nonmodal controls belong to the window's shared ring; a child handler can claim a key with `preventDefault`. The external-surface exception applies to separate/portalled surfaces outside the ring, rather than every inline menu role.
 
 A full-screen workspace using `useFocusTrap` yields to `hasModalLayers()` in the canonical registry, not the broad DOM/scroll-lock query `hasOpenLayer()`: its own `aria-modal` identifies the screen, not another window over it. Keep the broad query for background page gestures.
+- **A window that steps aside while the page under it is used for its own sake** (a comment's verses chosen in the reader, case 2026-10-12-block-diagram phase 9): `FormDialog` `away` — `useModalLayer({ active: false })` (no held page, no Escape, no Tab ring) and the layer `hidden` plus the class `hidden` (Tailwind 3: the attribute alone loses to `flex`); the window stays mounted with what was typed. `hasOpenLayer` skips everything inside a `[hidden]` ancestor — without that, the window's own `aria-modal` dialog (whose display is its own) still counted as open and Escape did not reach the page (`mineInReader.test.tsx` «changes a written comment's verses»).
 
 ## Why
 

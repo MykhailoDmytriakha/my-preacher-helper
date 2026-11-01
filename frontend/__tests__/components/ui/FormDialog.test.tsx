@@ -90,7 +90,6 @@ it('asks before Cancel throws away changes, and only then', async () => {
   await waitFor(() => expect(cancel).toHaveBeenCalledTimes(2));
 });
 
-
 it('honors backdrop opt-in for footer dialogs as well as plain dialogs', () => {
   const close = jest.fn();
   const props = { title: 'Protected form', onClose: close, footer: <button type="button">Save</button> };
@@ -108,4 +107,14 @@ it('honors backdrop opt-in for footer dialogs as well as plain dialogs', () => {
   fireEvent.click(screen.getByRole('dialog', { name: 'Protected form' }).parentElement!);
   fireEvent.keyDown(window, { key: 'Escape' });
   expect(close).not.toHaveBeenCalled();
+});
+
+// Codex review r3: only the window with a footer stepped aside; the other stayed on screen with the page let go under it.
+it('steps aside out of sight while it is away, with a footer or without', () => {
+  const { rerender } = render(<FormDialog title="Away" away onClose={jest.fn()}><p>Body</p></FormDialog>);
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  rerender(<FormDialog title="Away" away onClose={jest.fn()} footer={<button type="button">Save</button>}><p>Body</p></FormDialog>);
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  rerender(<FormDialog title="Back" onClose={jest.fn()}><p>Body</p></FormDialog>);
+  expect(screen.getByRole('dialog')).toBeInTheDocument();
 });

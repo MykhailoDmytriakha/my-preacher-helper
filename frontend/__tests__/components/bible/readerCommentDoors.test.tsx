@@ -2,7 +2,9 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+
+import { useVerseCopy } from '@/components/bible/verseCopy/useVerseCopy';
 import type React from 'react';
 
 import { ReaderCommentDialog, useCommentDoors, useReaderCommenting } from '@/components/bible/ReaderCommentDialog';
@@ -65,7 +67,7 @@ function ReaderDoorsHarness({ wholeChapter = false, canSwitchBible = false }: { 
   const bookId = 'Romans';
   const reference = wholeChapter ? wholeChapterReference : laterKjvReference;
   const projected = passagesIn(reference, bible);
-  const { commenting, setCommenting } = useReaderCommenting(bookId, bible);
+  const { commenting, setCommenting, close } = useReaderCommenting(bookId, bible);
   const commentOn = (chapter: number, verse: number | null) => projected.some((passage) => (verse === null
     ? passage.fromVerse === undefined && passage.chapter <= chapter && chapter <= passage.toChapter
     : passage.chapter === chapter && passage.fromVerse === verse)) ? 'qa223-comment' : undefined;
@@ -76,6 +78,8 @@ function ReaderDoorsHarness({ wholeChapter = false, canSwitchBible = false }: { 
     : undefined);
   const doors = useCommentDoors({ ready: true, commentOn, commentPassage, setCommenting, bookId, bible });
   const text = bible === 'rst' ? rstRomans : kjvRomans;
+  const textRef = useRef<HTMLElement>(null);
+  const copy = useVerseCopy({ textRef, text, bible, bookId, enabled: true });
   const passageOf = (id: string) => id === 'qa223-comment' ? projected[0] : undefined;
 
   return (
@@ -84,7 +88,7 @@ function ReaderDoorsHarness({ wholeChapter = false, canSwitchBible = false }: { 
         ? <button type="button" onClick={() => doors.chapter?.open(14)}>Open chapter comment</button>
         : <button type="button" onClick={() => doors.verse?.open({ chapter: 16, verse: 24 })}>Open verse comment</button>}
       {canSwitchBible ? <button type="button" onClick={() => setBible('kjv')}>Switch reader Bible</button> : null}
-      <ReaderCommentDialog commenting={commenting} text={text} bookId={bookId} bible={bible} locale="en" passageOf={passageOf} onClose={() => setCommenting(null)} />
+      <ReaderCommentDialog commenting={commenting} text={text} bookId={bookId} bible={bible} locale="en" passageOf={passageOf} onClose={close} setCommenting={setCommenting} copy={copy} wide laid={[]} bodyOf={() => originalBody} />
     </>
   );
 }

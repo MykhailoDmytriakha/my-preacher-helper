@@ -67,6 +67,15 @@ export const verseWords = (raw: string): string =>
  * and none of them is empty: a page that came back "200" from a hotel Wi-Fi, another book or a
  * truncated file must never be kept, because a kept copy is read first, forever.
  */
+/**
+ * A place's words over a window on it: one verse's whole; a run's first and last verses with «…» between — the window
+ * of a comment on a paragraph (case 2026-10-12-block-diagram, phase 9) says where it begins and where it ends.
+ */
+export function passageWords(text: BookText, from: { chapter: number; verse: number }, to: { chapter: number; verse: number } = from): string {
+  const words = (at: { chapter: number; verse: number }) => verseWords(text.chapters[at.chapter - 1]?.[at.verse - 1] ?? '');
+  return from.chapter === to.chapter && from.verse === to.verse ? words(from) : `${words(from)} … ${words(to)}`;
+}
+
 export const isBookText = (value: unknown, bookId: string, bible: BibleId): value is BookText =>
   // The chapters of THIS Bible: Joel has four in Ohienko and three in the Synodal.
   isBookShaped(value) && value.id === bookId && value.chapters.length === chapterCount(bible, bookId);

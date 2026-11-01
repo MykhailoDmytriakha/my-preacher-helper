@@ -10,10 +10,10 @@ import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { resolveAppLocale, type AppLocale } from '@/utils/appLocale';
 import { getLocalizedBookName } from '@/utils/bibleBooks';
 import { isBibleId, type BibleId } from '@/utils/bibles';
-import { verseWords, type BookText } from '@/utils/bibleText';
+import { passageWords, verseWords, type BookText } from '@/utils/bibleText';
 import { chaptersAround, movedReference, versesAround } from '@/utils/scriptureNeighbours';
 import { formatScriptureReference } from '@/utils/scriptureReference';
-import { referenceBibleFor, sameScriptureReference, scriptureReferencesOverlap, withStoredBible } from '@/utils/scriptureReferenceNumbering';
+import { passagesIn, referenceBibleFor, sameScriptureReference, scriptureReferencesOverlap, withStoredBible } from '@/utils/scriptureReferenceNumbering';
 
 import type { ScriptureReference, StudyNote } from '@/models/models';
 
@@ -24,6 +24,16 @@ const sameSpot = (a: CommentSpot, b: CommentSpot) => a.book === b.book && a.chap
 
 /** The place a reference stands on in its first chapter: a verse, or the chapter when it has none. */
 const spotOf = (ref: ScriptureReference): CommentSpot => ({ book: ref.book, chapter: ref.chapter ?? 1, ...(ref.fromVerse !== undefined ? { verse: ref.fromVerse } : {}) });
+/**
+ * Where a place stands in another Bible's numbers — where it begins there: the list marks «here» in the numbers it counts
+ * in (Codex review r3: verses chosen again in the reader's Bible, it marked the row of the old ones — King James 10:1 for
+ * Synodal 9:22).
+ */
+const firstPieceIn = (ref: ScriptureReference, bible: BibleId): ScriptureReference => {
+  if (ref.bible === bible) return ref;
+  const [first] = passagesIn(ref, bible);
+  return first ? { ...ref, bible, chapter: first.chapter, fromVerse: first.fromVerse } : ref;
+};
 
 /**
  * WHERE A COMMENT STANDS AND WHERE IT MOVES (case 2026-10-12-block-diagram; the owner, 2026-10-28): its place in the Bible
@@ -64,7 +74,6 @@ export function useCommentPlace({ standing, newPlace, choosesOwn, restoreOwn, bi
    * since — and a reading in the screen's Bible only names it (`placeOf`).
    */
   const home = standing?.chapter !== undefined ? withStoredBible(standing, locale) : null;
-  const placeBible: BibleId = home && isBibleId(home.bible) ? home.bible : screenBible;
   const onChapter = home !== null && home.fromVerse === undefined;
   const spotIn = (ref: ScriptureReference): CommentSpot => (onChapter ? { book: ref.book, chapter: ref.chapter ?? 1 } : spotOf(ref));
   // Where it moves on «Готово», exactly as chosen or brought back — what is saved; null — it stays.
@@ -74,13 +83,20 @@ export function useCommentPlace({ standing, newPlace, choosesOwn, restoreOwn, bi
   const [open, setOpen] = useState(false);
   const buttonRef = useRef<HTMLDivElement | null>(null);
   const here = moved ?? home;
+  // Counted in the Bible of the place it stands at now: verses chosen again in the reader are the reader's (Codex review r3:
+  // Synodal Psalm 9:38–10:2 chosen, then moved by the list in the King James numbering, went to one verse).
+  const placeBible: BibleId = here && isBibleId(here.bible) ? here.bible : screenBible;
   const texts = useBookTexts(here && (open || moved || ownName) ? [here.book] : [], placeBible);
   const text = here ? texts.get(here.book) ?? null : null;
 
-  /** Moves it to a place, covering what it covers; the place it stands on is no move. */
+  const moveTo = (ref: ScriptureReference) => setMoved(home && sameScriptureReference(ref, home) ? null : ref);
+  /**
+   * Moves it to a place, covering what it covers now — the verses chosen again in this window too (Codex review r2: the
+   * list moved the comment as it was written, and a 1:16–18 just chosen went to 1:19 alone); its own place is no move.
+   */
   const placeAt = (spot: CommentSpot) => {
-    if (!home) return;
-    setMoved(sameSpot(spot, spotIn(home)) ? null : movedReference(home, placeBible, spot.book, { chapter: spot.chapter, verse: onChapter ? undefined : spot.verse }));
+    if (!here) return;
+    moveTo(movedReference(here, placeBible, spot.book, { chapter: spot.chapter, verse: onChapter ? undefined : spot.verse }));
   };
   /** A place chosen in the list or the reader's window: moved there, the list closed, the focus back on its button. */
   const pick = (spot: CommentSpot) => {
@@ -100,8 +116,10 @@ export function useCommentPlace({ standing, newPlace, choosesOwn, restoreOwn, bi
       const chapters = ref.toChapter !== undefined && ref.toChapter > (ref.chapter ?? 0);
       return t(chapters ? 'comment.wholeChapters' : 'comment.wholeChapter', { place: labelOf(ref) });
     }
-    const raw = text?.chapters[(ref.chapter ?? 1) - 1]?.[ref.fromVerse - 1];
-    return raw ? verseWords(raw) : '';
+    // A place chosen in the reader is numbered in the Bible read there: its words are read where it falls in this one.
+    const [first] = passagesIn(ref, placeBible);
+    if (!text || first?.fromVerse === undefined) return '';
+    return passageWords(text, { chapter: first.chapter, verse: first.fromVerse }, { chapter: first.toChapter, verse: first.toVerse ?? first.fromVerse });
   };
   const named = moved ?? (ownName ? home : null);
   // A screen that says how it names places has the window name its own — every piece of it, where its Bible parts it
@@ -112,7 +130,7 @@ export function useCommentPlace({ standing, newPlace, choosesOwn, restoreOwn, bi
   const keptPlace = newPlace !== undefined ? moved ?? newPlace : moved;
   const waits = (kept: ScriptureReference | null | undefined) => !choosesOwn && Boolean(kept) && !(keptPlace && sameScriptureReference(kept!, keptPlace));
   const list = here && home ? {
-    bible: placeBible, locale, at: spotIn(here), home: spotIn(home), text, taken, onPick: pick, onHide: () => setOpen(false),
+    bible: placeBible, locale, at: spotIn(here), home: spotIn(firstPieceIn(home, placeBible)), text, taken, onPick: pick, onHide: () => setOpen(false),
     // Its numbers are the comment's own Bible's: said where the screen reads another.
     writtenIn: placeBible !== screenBible ? placeBible : undefined,
   } : null;
@@ -152,7 +170,11 @@ export function useCommentPlace({ standing, newPlace, choosesOwn, restoreOwn, bi
       setOwnName(true);
     },
     /** A place a draft kept, brought back with the words as it was chosen; the window choosing its own place takes it its own way. */
-    bringBack: (ref: ScriptureReference) => (choosesOwn ? restoreOwn?.(ref) : setMoved(home && sameScriptureReference(ref, home) ? null : ref)),
+    bringBack: (ref: ScriptureReference) => (choosesOwn ? restoreOwn?.(ref) : moveTo(ref)),
+    /** Where it stands now: the place moved to, else its own. */
+    here,
+    /** Moves it to a place chosen whole — its verses chosen again in the reader (phase 9); its own place is no move. */
+    moveTo,
     /** The words under the title: of the place moved to or taken from another device, else as the screen gave them. */
     context: named ? wordsOf(named) : context,
     /** What the list of places is drawn with; null where the comment stands on no verse or chapter. */
@@ -164,15 +186,29 @@ export function useCommentPlace({ standing, newPlace, choosesOwn, restoreOwn, bi
  * The place under the window's title: «Было у Ис 40:31 — перенесётся по «Готово»» with «Вернуть» once it is moved, the
  * list of places while open, and the words of the place it stands on now.
  */
-export function CommentPlaceShown({ where, place, busy, deciding }: {
+export function CommentPlaceShown({ where, place, busy, deciding, onChooseVerses, versesChoosable }: {
   where: ReturnType<typeof useCommentPlace>;
   /** Where it stood when the window opened, as the screen under it names it. */
   place: string;
   busy: boolean;
   /** Words from last time wait for an answer: they may bring their own place back, so no place is chosen meanwhile. */
   deciding: boolean;
+  /**
+   * The reader's «Изменить стихи» (phase 9): the window steps aside and the verses are chosen again in the text — a
+   * comment on one verse becomes a paragraph, and back. Given where it stands now and how to move it; absent where the
+   * screen has no text to choose them in.
+   */
+  onChooseVerses?: (here: ScriptureReference, moveTo: (reference: ScriptureReference) => void) => void;
+  /** Whether its verses can be chosen there now — moved to another book, they cannot be chosen in this one's text. */
+  versesChoosable?: (here: ScriptureReference) => boolean;
 }) {
   const { t } = useTranslation();
+  const { here } = where;
+  const choose = onChooseVerses && here && !deciding && (versesChoosable?.(here) ?? true) ? (
+    <button type="button" onClick={() => onChooseVerses(here, where.moveTo)} disabled={busy} data-testid="comment-choose-verses" className="min-h-8 rounded-lg bg-indigo-50 px-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-100 disabled:opacity-50 dark:bg-indigo-950/50 dark:text-indigo-300 dark:hover:bg-indigo-950">
+      {t('comment.changeVerses')}
+    </button>
+  ) : null;
   return (
     <>
       {where.moved ? (
@@ -181,8 +217,9 @@ export function CommentPlaceShown({ where, place, busy, deciding }: {
           <button type="button" onClick={where.putBack} disabled={busy} className="min-h-8 rounded-lg bg-indigo-50 px-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-100 disabled:opacity-50 dark:bg-indigo-950/50 dark:text-indigo-300 dark:hover:bg-indigo-950">
             {t('comment.moveBack')}
           </button>
+          {choose}
         </div>
-      ) : null}
+      ) : choose ? <div className="flex">{choose}</div> : null}
       {/* Shut while a save is accepted: a place chosen then would show, and the place sent would be saved (Codex review r2). */}
       {where.movable && where.open && where.list && !deciding && !busy ? <CommentPlaceList {...where.list} /> : null}
       {where.context ? <p className="font-serif text-[15px] leading-relaxed text-gray-600 dark:text-gray-400">{where.context}</p> : null}

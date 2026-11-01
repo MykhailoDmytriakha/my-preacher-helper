@@ -71,7 +71,7 @@ const show = (value: unknown): string => {
 type Item = Record<string, unknown> & { id: string };
 type DisplayValue = (scope: string, field: string, value: unknown, document?: DocumentData) => unknown;
 const isItem = (value: unknown): value is Item => Boolean(value) && typeof value === 'object' && typeof (value as { id?: unknown }).id === 'string';
-const REFERENCE_COORDINATES = ['chapter', 'toChapter', 'fromVerse', 'endChapter', 'toVerse'];
+const REFERENCE_COORDINATES = ['chapter', 'toChapter', 'fromVerse', 'endChapter', 'toVerseChapter', 'toVerse'];
 const REFERENCE_FIELDS = new Set(['id', 'bible', 'book', 'text', ...REFERENCE_COORDINATES]);
 
 /** The canonical reader owns the numbers; unsupported evidence stays complete rather than disappearing. */

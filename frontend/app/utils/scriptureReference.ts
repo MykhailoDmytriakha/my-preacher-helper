@@ -1,5 +1,5 @@
 import { getLocalizedAbbrev, getLocalizedBookName } from '@/utils/bibleBooks';
-import { CANONICAL_BIBLE, passagesIn, referenceBibleFor, withStoredBible, type Passage } from '@/utils/scriptureReferenceNumbering';
+import { verseEndChapter, CANONICAL_BIBLE, passagesIn, referenceBibleFor, withStoredBible, type Passage } from '@/utils/scriptureReferenceNumbering';
 
 import type { AppLocale } from '@/utils/appLocale';
 import type { BibleId } from '@/utils/bibles';
@@ -36,6 +36,8 @@ export interface ScriptureRefShape {
   /** Exact verse-range endpoint; distinct from the legacy whole-chapter range toChapter. */
   endChapter?: number;
   toVerse?: number;
+  /** The chapter `toVerse` stands in, for a run of verses past its chapter's end (`ScriptureReference.toVerseChapter`). */
+  toVerseChapter?: number;
 }
 
 export interface ScriptureRefFormat {
@@ -130,5 +132,6 @@ export function studyNoteSearchText(
  * reference was written in, and may differ from the ones shown; the number a person knows must still find it.
  */
 function storedNumberingSearchText(ref: ScriptureRefShape, locale: AppLocale): string {
-  return `${getLocalizedBookName(ref.book, locale)} ${ref.chapter}:${ref.fromVerse}${ref.endChapter ? `-${ref.endChapter}:${ref.toVerse}` : ref.toVerse ? '-' + ref.toVerse : ''}`;
+  const ending = verseEndChapter(ref);
+  return `${getLocalizedBookName(ref.book, locale)} ${ref.chapter}:${ref.fromVerse}${ending !== undefined && ending !== ref.chapter ? `-${ending}:${ref.toVerse}` : ref.toVerse ? '-' + ref.toVerse : ''}`;
 }

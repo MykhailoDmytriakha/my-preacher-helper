@@ -8,7 +8,7 @@ import { useAppLocale } from '@/hooks/useAppLocale';
 import { useModalLayer } from '@/hooks/useModalLayer';
 import { ScriptureReference } from '@/models/models';
 import { getBooksForDropdown } from '@/utils/bibleBooks';
-import { referenceBibleFor, referenceIn, withStoredBible } from '@/utils/scriptureReferenceNumbering';
+import { verseEndChapter, referenceBibleFor, referenceIn, withStoredBible } from '@/utils/scriptureReferenceNumbering';
 import { chapterCount, verseCount } from '@/utils/versification';
 import { useTranslation } from '@locales/useTranslation';
 
@@ -91,7 +91,7 @@ export default function ScriptureRefPicker({
   const [book, setBook] = useState(shown?.book || 'Genesis');
   const [chapter, setChapter] = useState(shown?.chapter || 1);
   const [toChapter, setToChapter] = useState(shown?.toChapter || 1);
-  const [endChapter, setEndChapter] = useState(shown?.endChapter ?? shown?.chapter ?? 1);
+  const [endChapter, setEndChapter] = useState(shown ? verseEndChapter(shown) ?? 1 : 1);
   const [fromVerse, setFromVerse] = useState(shown?.fromVerse || 1);
   const [toVerse, setToVerse] = useState<number | ''>(shown?.toVerse || '');
   // Whether the person changed anything. Only their own choices count: the effects below also set

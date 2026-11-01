@@ -16,7 +16,7 @@ import { useTranslation } from '@locales/useTranslation';
 
 import { VERSE_CHOSEN_ATTRIBUTE, VERSE_HELD_ATTRIBUTE, type RibbonCrossRefs, type RibbonVerseMenu } from '../BookRibbon';
 
-import { bookIndex, pickedPassage, stretchPassage, versesBetween } from './passagePick';
+import { bookIndex, pickedPassage, pulledEnd, stretchPassage, versesBetween } from './passagePick';
 import { selectedVerses, verseKey, type VerseAt } from './selectedVerses';
 
 import type { TFunction } from 'i18next';
@@ -45,6 +45,17 @@ export function useCopyNames(bible: BibleId, bookId: string): CopyNames {
 
 const subscribeNever = () => () => undefined;
 const PASSAGE_HINT = 'analysis-passage-hint';
+/** One toast for the passage's rule, however many presses or pulls run into it. */
+const PASSAGE_LIMIT = 'passage-limit';
+
+/** What a passage is chosen for: an analysis, or a comment — a paragraph when it runs over more than one verse. */
+export type PassagePurpose = 'analysis' | 'comment';
+const PASSAGE_HINTS: Record<PassagePurpose, string> = { analysis: 'analysis.pick.hint', comment: 'comment.pick.hint' };
+/**
+ * A rule a passage keeps beside running on (`commentParagraphs.ts` for a comment): given the verses a press made and the
+ * end it moved, the verses allowed and, when they differ, what to say.
+ */
+export type PassageLimit = (verses: VerseAt[], end: 'first' | 'last' | null, before: VerseAt[]) => { verses: VerseAt[]; said?: string };
 const canShareNow = () => typeof navigator !== 'undefined' && typeof navigator.share === 'function';
 
 function setOnRows(root: HTMLElement | null, attribute: string, keys: ReadonlySet<string>) {
@@ -62,7 +73,7 @@ function setOnRows(root: HTMLElement | null, attribute: string, keys: ReadonlySe
  * is `utils/verseCopy.ts`. The rows' lights are set on the rows themselves, like the arrival: the ribbon is not
  * drawn again for a choice.
  */
-export function useVerseCopy({ textRef, text, bible, bookId, drawn, crossRefs, enabled, onActed }: {
+export function useVerseCopy({ textRef, text, bible, bookId, drawn, crossRefs, enabled, onActed, limitComment }: {
   textRef: RefObject<HTMLElement | null>;
   text: BookText | null;
   bible: BibleId;
@@ -74,6 +85,8 @@ export function useVerseCopy({ textRef, text, bible, bookId, drawn, crossRefs, e
   enabled: boolean;
   /** Verses acted on — a menu opened, copied, sent — in the order chosen (the reader puts them on the trail). */
   onActed?: (verses: VerseAt[]) => void;
+  /** The paragraphs' rule while verses are chosen for a comment. */
+  limitComment?: PassageLimit;
 }) {
   const { t, i18n } = useTranslation();
   const locale = resolveAppLocale(i18n.language);
@@ -83,7 +96,7 @@ export function useVerseCopy({ textRef, text, bible, bookId, drawn, crossRefs, e
   const [picked, setPicked] = useState<VerseAt[] | null>(null);
   // What the verses are chosen for: a copy, or a passage to analyse — one running piece of text (case
   // 2026-10-12-block-diagram, 3.4). One choosing for both, so the rows' lights and the presses are the same.
-  const [purpose, setPurpose] = useState<'copy' | 'analysis'>('copy');
+  const [purpose, setPurpose] = useState<'copy' | PassagePurpose>('copy');
   const [format, setFormat] = useState<CopyFormat | null>(null);
   const [held, setHeld] = useState<VerseAt | null>(null);
 
@@ -91,7 +104,7 @@ export function useVerseCopy({ textRef, text, bible, bookId, drawn, crossRefs, e
   purposeRef.current = purpose;
   const clear = useCallback(() => {
     // The hint for choosing a passage goes with that choice: it must not stand over the analysis screen.
-    if (purposeRef.current === 'analysis') toast.dismiss(PASSAGE_HINT);
+    if (purposeRef.current !== 'copy') toast.dismiss(PASSAGE_HINT);
     setPicked(null);
     setFormat(null);
     setPurpose('copy');
@@ -180,23 +193,42 @@ export function useVerseCopy({ textRef, text, bible, bookId, drawn, crossRefs, e
     setPurpose('copy');
     toast(t(touch ? 'bible.copy.severalHint' : 'bible.copy.severalHintMouse'));
   }, [t]);
-  /** Verses for an analysis, starting with this one (the verse menu's «Разобрать отрывок»), or all of an analysis's own to change its ends. */
-  const startPassage = useCallback((at: VerseAt, to?: VerseAt) => {
+  /**
+   * Verses for an analysis or a comment, starting with this one (the verse menu's «Разобрать отрывок», «Комментарий»), or
+   * all of an analysis's or a comment's own to change its ends.
+   */
+  const startPassage = useCallback((at: VerseAt, to?: VerseAt, forWhat: PassagePurpose = 'analysis') => {
     setMenu(null);
     setPicked(to && text ? versesBetween(text, at, to) : [at]);
     setFormat(null);
-    setPurpose('analysis');
-    toast(t('analysis.pick.hint'), { id: PASSAGE_HINT });
+    setPurpose(forWhat);
+    toast(t(PASSAGE_HINTS[forWhat]), { id: PASSAGE_HINT });
   }, [t, text]);
-  // A passage for an analysis stays one piece: a press below or above stretches it, an end verse comes off.
+  const limitRef = useRef(limitComment);
+  limitRef.current = limitComment;
+  // A passage stays one piece: a press below or above stretches it, an end verse comes off, one in the middle brings the
+  // nearer end to it; a comment's keeps the paragraphs' rule too.
   const stretch = useCallback((at: VerseAt) => {
     if (!text) return;
-    const { verses, inside } = stretchPassage(text, pickedRef.current ?? [], at);
-    if (inside) toast(t('analysis.pick.inside'));
-    setPicked(verses);
-  }, [t, text]);
+    const before = pickedRef.current ?? [];
+    const { verses, end } = stretchPassage(text, before, at);
+    const limit = purposeRef.current === 'comment' ? limitRef.current : undefined;
+    const kept = limit ? limit(verses, end, before) : { verses };
+    if (kept.said) toast(kept.said, { id: PASSAGE_LIMIT });
+    setPicked(kept.verses);
+  }, [text]);
+  /** A grip on the chosen run pulled to a verse: that end moves, the passage's rule kept as a press keeps it. */
+  const moveEnd = useCallback((end: 'first' | 'last', at: VerseAt) => {
+    const before = pickedRef.current ?? [];
+    if (!text || !before.length) return;
+    const verses = pulledEnd(text, before, end, at);
+    const limit = purposeRef.current === 'comment' ? limitRef.current : undefined;
+    const kept = limit ? limit(verses, end, before) : { verses };
+    if (kept.said) toast(kept.said, { id: PASSAGE_LIMIT });
+    setPicked(kept.verses);
+  }, [text]);
   const toggle = useCallback((at: VerseAt) => {
-    if (purpose === 'analysis') { stretch(at); return; }
+    if (purpose !== 'copy') { stretch(at); return; }
     setPicked((now) => {
       const rest = (now ?? []).filter((verse) => verseKey(verse) !== verseKey(at));
       const next = rest.length === (now ?? []).length ? [...rest, at] : rest;
@@ -205,7 +237,7 @@ export function useVerseCopy({ textRef, text, bible, bookId, drawn, crossRefs, e
   }, [purpose, stretch]);
   /** From the chosen verse nearest to this one, to this one: a passage. */
   const rangeTo = useCallback((at: VerseAt) => {
-    if (purpose === 'analysis') { stretch(at); return; }
+    if (purpose !== 'copy') { stretch(at); return; }
     setPicked((now) => {
       const chosen = now ?? [];
       if (!chosen.length || !text) return [at];
@@ -286,7 +318,7 @@ export function useVerseCopy({ textRef, text, bible, bookId, drawn, crossRefs, e
     menu, openMenu, closeMenu: useCallback(() => setMenu(null), []),
     hold: setHeld,
     picked, picking: choosing, startPicking, toggle, rangeTo, clear,
-    purpose, startPassage, passage: purpose === 'analysis' && picked && text ? pickedPassage(text, picked) : null,
+    purpose, startPassage, moveEnd, passage: purpose !== 'copy' && picked && text ? pickedPassage(text, picked) : null,
     format: format ?? DEFAULT_COPY_FORMAT, setFormat,
     copy, share, canShare,
     wordsOf, labelOf, placeOf, linksOf, openLinks,

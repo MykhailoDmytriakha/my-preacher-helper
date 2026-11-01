@@ -575,6 +575,12 @@ export interface ScriptureReference {
   /** Exact verse-range endpoint; distinct from the legacy whole-chapter range toChapter. */
   endChapter?: number;
   toVerse?: number;
+  /**
+   * The chapter `toVerse` stands in, where a run of verses goes on past its chapter's end — Еф 4:31–5:2, a comment's
+   * paragraph or an analysis over a chapter's seam (case 2026-10-12-block-diagram, phase 9). Not `toChapter`: older
+   * references carry a chapter range left beside a verse, and there the verse wins (`utils/scriptureReferenceNumbering.ts`).
+   */
+  toVerseChapter?: number;
   /** Optional user-supplied text snippet (RST or other translation). */
   text?: string;
 }

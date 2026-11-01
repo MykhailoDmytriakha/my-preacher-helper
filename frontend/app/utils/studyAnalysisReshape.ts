@@ -63,7 +63,7 @@ export function buildAnalysisReshapePlan({ sourceId, next, text, bookId, bible, 
   };
   const referenceFor = (passage: PickedPassage, base?: ScriptureReference): ScriptureReference => ({
     ...(base ?? { book: bookId }), bible, id: base?.id ?? newId(), chapter: passage.chapter, fromVerse: passage.fromVerse,
-    toChapter: undefined, endChapter: passage.toChapter !== passage.chapter ? passage.toChapter : undefined, toVerse: passage.toVerse,
+    toChapter: undefined, toVerseChapter: undefined, endChapter: passage.toChapter !== passage.chapter ? passage.toChapter : undefined, toVerse: passage.toVerse,
   });
   const save = (target: StudyNote | null, passage: PickedPassage, state: AnalysisState) => {
     const fields = fieldsFor(passage, state);

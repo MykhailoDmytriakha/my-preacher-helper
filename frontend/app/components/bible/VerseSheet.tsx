@@ -9,6 +9,7 @@ import { resolveAppLocale } from '@/utils/appLocale';
 import { BIBLES, type BibleId } from '@/utils/bibles';
 import { fetchBookText, type BookText } from '@/utils/bibleText';
 import { formatScriptureReference } from '@/utils/scriptureReference';
+import { verseEndChapter } from '@/utils/scriptureReferenceNumbering';
 import { BIBLE_READER_COLORS } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
 
@@ -66,7 +67,7 @@ export function VerseSheet({ reference, onClose, keepVisible, related, openInBib
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   if (!reference || !mounted) return null;
-  const key = `${reference.bible}|${reference.book}|${reference.chapter ?? ''}:${reference.fromVerse ?? ''}-${reference.toChapter ?? ''}:${reference.toVerse ?? ''}:${reference.endChapter ?? ''}`;
+  const key = `${reference.bible}|${reference.book}|${reference.chapter ?? ''}:${reference.fromVerse ?? ''}-${reference.toChapter ?? ''}:${reference.toVerse ?? ''}:${verseEndChapter(reference) ?? ''}`;
   // Over everything the page draws, a meeting's own full-screen layer included.
   return createPortal(<Sheet key={key} reference={reference} onClose={onClose} keepVisible={keepVisible} related={related} openInBible={openInBible} />, document.body);
 }

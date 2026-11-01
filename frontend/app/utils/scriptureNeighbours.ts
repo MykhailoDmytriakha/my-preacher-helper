@@ -1,6 +1,7 @@
+import { isBibleId, type BibleId } from '@/utils/bibles';
+import { verseEndChapter, versesHeldIn } from '@/utils/scriptureReferenceNumbering';
 import { chapterCount, verseCount } from '@/utils/versification';
 
-import type { BibleId } from '@/utils/bibles';
 import type { ScriptureRefShape } from '@/utils/scriptureReference';
 
 /** A verse of one book: chapter and verse in the Bible it is counted in. */
@@ -46,13 +47,34 @@ export function chaptersAround(bible: BibleId, book: string, chapter: number, re
   return Array.from({ length: Math.max(0, last - first + 1) }, (_, index) => first + index);
 }
 
+type RunPastChapter = ScriptureRefShape & { chapter: number; fromVerse: number; toVerse: number };
+
+/**
+ * Where a run past its chapter's end (a comment's paragraph over «Глава 5») ends once moved: it keeps its count of verses,
+ * over a seam again if need be — cut only at the book's end.
+ */
+function movedRun(ref: RunPastChapter, bible: BibleId, book: string, to: { chapter: number; verse: number }): { toVerse?: number; endChapter?: number; toVerseChapter?: number } {
+  // Its count of verses as the run is read everywhere (`scriptureReferenceNumbering`), in the Bible it is written in (Codex
+  // review r3: counted in the place's Bible, Synodal Psalm 9:38–10:2 was two verses in the King James).
+  const source = isBibleId(ref.bible) ? ref.bible : bible;
+  const count = versesHeldIn({ ...ref, bible: source }, source).length;
+  let end = { chapter: to.chapter, verse: to.verse + count - 1 };
+  while (end.verse > verseCount(bible, book, end.chapter) && end.chapter < chapterCount(bible, book)) end = { chapter: end.chapter + 1, verse: end.verse - verseCount(bible, book, end.chapter) };
+  const last = Math.min(end.verse, verseCount(bible, book, end.chapter));
+  if (end.chapter > to.chapter) return { toVerse: last, ...(ref.endChapter !== undefined ? { endChapter: end.chapter } : { toVerseChapter: end.chapter }) };
+  return last > to.verse ? { toVerse: last } : {};
+}
+
 /**
  * A reference moved to another place keeps what it covers, and only its place changes: Isaiah 40:29–31 moved to 41:2 is
  * 41:2–4, chapters 40–41 moved to 43 are 43–44 — cut at the chapter's or the book's end. Its book is the place's, its Bible
  * the one the place is counted in; its id stays, so the same reference has moved.
  */
 export function movedReference<T extends ScriptureRefShape>(ref: T, bible: BibleId, book: string, to: { chapter: number; verse?: number }): T {
-  const { toChapter: _toChapter, fromVerse: _fromVerse, toVerse: _toVerse, ...rest } = ref;
+  const { toChapter: _toChapter, fromVerse: _fromVerse, toVerse: _toVerse, toVerseChapter: _toVerseChapter, endChapter: _endChapter, ...rest } = ref;
+  if (to.verse !== undefined && ref.chapter !== undefined && ref.fromVerse !== undefined && ref.toVerse !== undefined && (verseEndChapter(ref) ?? ref.chapter) > ref.chapter) {
+    return { ...rest, bible, book, chapter: to.chapter, fromVerse: to.verse, ...movedRun(ref as RunPastChapter, bible, book, { chapter: to.chapter, verse: to.verse }) } as T;
+  }
   if (to.verse !== undefined) {
     const span = ref.fromVerse !== undefined && ref.toVerse !== undefined ? Math.max(0, ref.toVerse - ref.fromVerse) : 0;
     const end = Math.min(verseCount(bible, book, to.chapter), to.verse + span);

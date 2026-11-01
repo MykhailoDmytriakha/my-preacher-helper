@@ -18,11 +18,13 @@ const COMMENT_TEXT_STYLE = { fontSize: 'calc(0.875rem * var(--text-scale, 1))' }
  * button a keyboard and a screen reader reach, a press on the words is the same for a mouse and a finger, and a
  * link in the words (a verse the comment names) keeps its own job.
  */
-export function CommentsOnText({ comments, onEdit, testId, className = '' }: {
+export function CommentsOnText({ comments, onEdit, testId, className = '', align = 'start' }: {
   comments: readonly TextComment[];
   onEdit: (id: string, passage: Passage) => void;
   testId: string;
   className?: string;
+  /** `end` — against the column's right edge, the words right-aligned: a comment on one verse in the reader. */
+  align?: 'start' | 'end';
 }) {
   return (
     <div className={`space-y-1 font-sans ${className}`} style={COMMENT_TEXT_STYLE} data-testid={testId}>
@@ -33,7 +35,7 @@ export function CommentsOnText({ comments, onEdit, testId, className = '' }: {
             if ((event.target as HTMLElement).closest('a, button')) return;
             onEdit(comment.id, comment.passage);
           }}
-          className="-mx-1 flex cursor-pointer items-start gap-2 rounded-md px-1 py-0.5 leading-[1.55] text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-600 dark:text-gray-400 dark:hover:bg-gray-800/60 dark:hover:text-gray-300"
+          className={`-mx-1 flex cursor-pointer items-start gap-2 rounded-md px-1 py-0.5 leading-[1.55] text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-600 dark:text-gray-400 dark:hover:bg-gray-800/60 dark:hover:text-gray-300 ${align === 'end' ? 'justify-end' : ''}`}
         >
           <button
             type="button"
@@ -44,7 +46,7 @@ export function CommentsOnText({ comments, onEdit, testId, className = '' }: {
           >
             <CommentIcon className="h-2.5 w-2.5 text-white" />
           </button>
-          <MarkdownDisplay pencil content={comment.body} className="min-w-0 flex-1" />
+          <MarkdownDisplay pencil content={comment.body} className={align === 'end' ? 'min-w-0 text-right' : 'min-w-0 flex-1'} />
         </div>
       ))}
     </div>

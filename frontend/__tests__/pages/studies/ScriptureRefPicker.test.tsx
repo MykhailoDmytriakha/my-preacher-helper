@@ -74,3 +74,24 @@ describe('ScriptureRefPicker, saving a reference nobody changed', () => {
     expect(onConfirm).toHaveBeenCalledWith({ bible: 'rst', book: 'Psalms', chapter: 50, fromVerse: 12 });
   });
 });
+
+describe('ScriptureRefPicker reads incoming cross-chapter comments', () => {
+  afterEach(() => { mockLocale = 'en'; });
+  const reference = { id: 'incoming-ending', bible: 'rst' as const, book: 'Ephesians', chapter: 4, fromVerse: 31, toVerseChapter: 5, toVerse: 2 };
+
+  it('shows both endpoints before any edit', () => {
+    mockLocale = 'ru';
+    render(<ScriptureRefPicker initialRef={reference} mode="edit" onConfirm={jest.fn()} onCancel={jest.fn()} />);
+    expect(screen.getByLabelText('studiesWorkspace.toChapter')).toHaveValue('5');
+    expect(screen.getByLabelText('studiesWorkspace.to')).toHaveValue('2');
+  });
+
+  it('keeps the far endpoint when the person changes only the first verse', () => {
+    mockLocale = 'ru';
+    const onConfirm = jest.fn();
+    render(<ScriptureRefPicker initialRef={reference} mode="edit" onConfirm={onConfirm} onCancel={jest.fn()} />);
+    fireEvent.change(screen.getByLabelText('studiesWorkspace.from'), { target: { value: '30' } });
+    fireEvent.click(screen.getByRole('button', { name: 'common.save' }));
+    expect(onConfirm).toHaveBeenCalledWith({ bible: 'rst', book: 'Ephesians', chapter: 4, fromVerse: 30, endChapter: 5, toVerse: 2 });
+  });
+});

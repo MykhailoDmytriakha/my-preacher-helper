@@ -37,7 +37,7 @@ export function analysisSourceMatches(value: AnalysisDocument | null | undefined
 
 /** Only this feature formerly wrote exact verse endings as toChapter; retain those analyses on read. */
 export function analysisReferenceForReading(reference: ScriptureRefShape): ScriptureRefShape {
-  return reference.fromVerse !== undefined && reference.endChapter === undefined && reference.toChapter !== undefined
+  return reference.fromVerse !== undefined && reference.endChapter === undefined && reference.toVerseChapter === undefined && reference.toChapter !== undefined
     ? { ...reference, endChapter: reference.toChapter } : reference;
 }
 

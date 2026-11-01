@@ -6,6 +6,7 @@ import { readOwnerList } from '@/services/ownerListRead.client';
 import { parseUsageCapError, type UsageCapReachedError } from '@/services/usageLimits';
 import { apiClient } from '@/utils/apiClient';
 import { getAuthenticatedRequestHeaders } from '@/utils/authenticatedRequest';
+import { verseEndChapter } from '@/utils/scriptureReferenceNumbering';
 import { isStudyNoteDraft } from '@/utils/studyNoteDraft';
 
 // Study notes are written only through the data engine (engineOwnedCollections.ts). What stays
@@ -68,7 +69,10 @@ function filterNotesClient(notes: StudyNote[], filters: NoteFilters): StudyNote[
   if (search) {
     result = result.filter((note) => {
       const text = `${note.title || ''} ${note.content} ${note.tags.join(' ')} ${note.scriptureRefs
-        ?.map((ref) => `${ref.book} ${ref.chapter}:${ref.fromVerse}${ref.endChapter ? `-${ref.endChapter}:${ref.toVerse}` : ref.toVerse ? '-' + ref.toVerse : ''}`)
+        ?.map((ref) => {
+          const ending = verseEndChapter(ref);
+          return `${ref.book} ${ref.chapter}:${ref.fromVerse}${ending !== undefined && ending !== ref.chapter ? `-${ending}:${ref.toVerse}` : ref.toVerse ? '-' + ref.toVerse : ''}`;
+        })
         .join(' ')}`.toLowerCase();
       return text.includes(search);
     });

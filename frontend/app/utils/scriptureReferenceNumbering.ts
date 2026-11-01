@@ -44,10 +44,11 @@ export function withStoredBible<T extends ScriptureRefShape>(ref: T, typedIn: Ap
     ...(ref.chapter !== undefined ? { chapter: typedPsalmChapter(ref.chapter) } : {}),
     ...(ref.toChapter !== undefined ? { toChapter: typedPsalmChapter(ref.toChapter) } : {}),
     ...(ref.endChapter !== undefined ? { endChapter: typedPsalmChapter(ref.endChapter) } : {}),
+    ...(ref.toVerseChapter !== undefined ? { toVerseChapter: typedPsalmChapter(ref.toVerseChapter) } : {}),
   };
 }
 
-type NoteText = { title?: string; content?: string; scriptureRefs?: readonly ScriptureRefShape[] };
+type NoteText = { title?: string; content?: string; type?: string; scriptureRefs?: readonly ScriptureRefShape[] };
 
 /**
  * The language a note's old references were typed in: the language its author's interface speaks
@@ -67,15 +68,28 @@ export function noteLanguage(note: Pick<NoteText, 'title' | 'content'>, author?:
 }
 
 /**
- * A note as it is read: every reference names its Bible. Done once where a note comes out of
- * storage — the screens, the server routes and the public link all read through it — so no
- * screen meets a reference without one. The note is returned unchanged when nothing is old.
+ * An analysis written before `toVerseChapter` kept a run past its chapter's end in `toChapter` (`useAnalysisNote`). An
+ * analysis is always one run of verses written by its own screen — never a chapter range left beside a verse — so there
+ * `toChapter` is the chapter its last verse stands in (BUG-20261031-verse-run-across-chapter-cut).
+ */
+function olderAnalysisRun<T extends ScriptureRefShape>(ref: T): T {
+  const { chapter, toChapter, fromVerse, toVerse, toVerseChapter } = ref;
+  const past = chapter !== undefined && toChapter !== undefined && toChapter > chapter && fromVerse !== undefined && toVerse !== undefined;
+  return past && ref.endChapter === undefined && toVerseChapter === undefined ? { ...ref, toVerseChapter: toChapter } : ref;
+}
+
+/**
+ * A note as it is read: every reference names its Bible, and an older analysis's run past its chapter says so
+ * (`olderAnalysisRun`). Done once where a note comes out of storage — the screens, the server routes and the public link
+ * all read through it — so no screen meets a reference without one. The note is returned unchanged when nothing is old.
  */
 export function withNoteReferenceBibles<T extends NoteText>(note: T, author?: AppLocale): T {
   const refs = note.scriptureRefs;
-  if (!refs?.length || refs.every((ref) => isBibleId(ref.bible))) return note;
-  const typedIn = noteLanguage(note, author);
-  return { ...note, scriptureRefs: refs.map((ref) => withStoredBible(ref, typedIn)) };
+  if (!refs?.length) return note;
+  const runs = note.type === 'analysis' ? refs.map(olderAnalysisRun) : refs;
+  if (runs.every((ref, index) => ref === refs[index] && isBibleId(ref.bible))) return note;
+  let typedIn: AppLocale | undefined;
+  return { ...note, scriptureRefs: runs.map((ref) => (isBibleId(ref.bible) ? ref : withStoredBible(ref, (typedIn ??= noteLanguage(note, author))))) };
 }
 
 const withoutPlace = <T extends ScriptureRefShape>(ref: T): T => {
@@ -85,19 +99,30 @@ const withoutPlace = <T extends ScriptureRefShape>(ref: T): T => {
   delete rest.endChapter;
   delete rest.fromVerse;
   delete rest.toVerse;
+  delete rest.toVerseChapter;
   return rest;
 };
+
+/**
+ * The chapter a run of verses ends in: explicit `endChapter`, the compatible stored `toVerseChapter`, then its own — a comment's paragraph or an
+ * analysis over a chapter's seam (Еф 4:31–5:2, case 2026-10-12-block-diagram, phase 9; BUG-20261031-verse-run-across-
+ * chapter-cut). Never `toChapter`: older references carry a chapter range left beside their verses ("Ин 3:16–18" kept
+ * with a `toChapter` 4), and there, as everywhere, the verse wins.
+ */
+export function verseEndChapter(ref: ScriptureRefShape): number | undefined {
+  return ref.endChapter ?? ref.toVerseChapter ?? ref.chapter;
+}
 
 /** Every verse the reference covers in its own Bible, in order. */
 function versesOf(bible: BibleId, ref: ScriptureRefShape & { chapter: number }): VersePlace[] {
   const { book, chapter } = ref;
   if (ref.fromVerse !== undefined) {
-    const endChapter = ref.endChapter ?? chapter;
+    const endChapter = verseEndChapter(ref) ?? ref.chapter;
     if (!Number.isSafeInteger(chapter) || !Number.isSafeInteger(endChapter) || chapter < 1
       || endChapter < chapter || endChapter > chapterCount(bible, book)
       || !Number.isSafeInteger(ref.fromVerse) || ref.fromVerse < 1
       || ref.fromVerse > verseCount(bible, book, chapter)) return [];
-    if (ref.endChapter !== undefined && (ref.toVerse === undefined || !Number.isSafeInteger(ref.toVerse)
+    if ((ref.endChapter !== undefined || ref.toVerseChapter !== undefined) && (ref.toVerse === undefined || !Number.isSafeInteger(ref.toVerse)
       || ref.toVerse < 1 || ref.toVerse > verseCount(bible, book, endChapter)
       || (endChapter === chapter && ref.toVerse < ref.fromVerse))) return [];
     const held: VersePlace[] = [];
@@ -150,9 +175,9 @@ export function scriptureReferencesOverlap(a: ScriptureRefShape, b: ScriptureRef
  */
 export type Passage = { chapter: number; toChapter: number; fromVerse?: number; toVerse?: number };
 
-/** The passage a reference names as it is written: a verse wins over a chapter range left beside it. */
+/** The passage a reference names as it is written: verses, on into a later chapter where `toVerseChapter` says so (`verseEndChapter`). */
 function passageAsWritten(ref: ScriptureRefShape & { chapter: number }): Passage {
-  if (ref.fromVerse !== undefined) return { chapter: ref.chapter, toChapter: ref.endChapter ?? ref.chapter, fromVerse: ref.fromVerse, toVerse: ref.toVerse ?? ref.fromVerse };
+  if (ref.fromVerse !== undefined) return { chapter: ref.chapter, toChapter: verseEndChapter(ref) ?? ref.chapter, fromVerse: ref.fromVerse, toVerse: ref.toVerse ?? ref.fromVerse };
   return { chapter: ref.chapter, toChapter: ref.toChapter ?? ref.chapter };
 }
 

@@ -26,7 +26,7 @@ export function hasOpenLayer(): boolean {
   const body = document.body.style;
   if (root.overflow === 'hidden' || body.overflow === 'hidden' || body.position === 'fixed') return true;
   return Array.from(document.querySelectorAll<HTMLElement>('[data-modal-layer], [aria-modal="true"], dialog[open], [role="menu"]'))
-    .some(element => !element.hidden && getComputedStyle(element).display !== 'none' && getComputedStyle(element).visibility !== 'hidden');
+    .some(element => !element.closest('[hidden]') && getComputedStyle(element).display !== 'none' && getComputedStyle(element).visibility !== 'hidden');
 }
 
 /** Other libraries may open their own keyboard surface above a retained window. */

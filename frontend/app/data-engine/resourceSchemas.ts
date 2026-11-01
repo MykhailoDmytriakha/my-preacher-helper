@@ -68,7 +68,7 @@ const preparation = object({
   preachingGoal: object({ type: z.enum(['informative', 'proclamation', 'didactic', 'exhortative']).optional(), statement: text.optional() }).optional(),
   homileticPlan: object({ modernTranslation: text.optional(), updatedPlan: children(object({ id, title: text })).optional(), sermonPlan: children(object({ id, title: text })).optional() }).optional(),
 });
-const scripture = object({ id, book: id, chapter: number.int().positive().optional(), toChapter: number.int().positive().optional(), endChapter: number.int().positive().optional(), fromVerse: number.int().positive().optional(), toVerse: number.int().positive().optional(), text: text.optional() });
+const scripture = object({ id, book: id, chapter: number.int().positive().optional(), toChapter: number.int().positive().optional(), endChapter: number.int().positive().optional(), toVerseChapter: number.int().positive().optional(), fromVerse: number.int().positive().optional(), toVerse: number.int().positive().optional(), text: text.optional() });
 const seriesItem = object({ id, type: z.enum(['sermon', 'group']), refId: id, position: number, plannedDate: text.optional(), completedAt: text.optional() });
 const block = object({ id, type: z.enum(['announcement', 'topic', 'scripture', 'questions', 'explanation', 'notes', 'prayer', 'custom']), title: text, summary: text.optional(), content: text, scriptureRefs: strings.optional(), questions: strings.optional(), status: z.enum(['empty', 'draft', 'filled']), createdAt: text, updatedAt: text });
 const flowItem = object({ id, templateId: id, order: number, durationMin: number.nonnegative().nullable().optional(), instanceTitle: text.optional(), instanceNotes: text.optional() });

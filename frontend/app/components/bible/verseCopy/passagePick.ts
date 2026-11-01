@@ -1,6 +1,8 @@
 export {
   bookIndex,
   pickedPassage,
+  pulledEnd,
+  pulledRow,
   stretchPassage,
   verseAfter,
   verseBefore,
