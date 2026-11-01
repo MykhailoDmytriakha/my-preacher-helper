@@ -560,6 +560,18 @@ describe('paragraphs of comments (case 2026-10-12-block-diagram, phase 9)', () =
       expect(pulledName()).toBe(pulled);
     });
 
+    // The owner's report, 01.11: the click came 39 ms after the Pencil's lift, naming another pointer, counting no click.
+    it('takes the browser\'s click after the lift whatever pointer it names', async () => {
+      const last = await chooseOne();
+      fireEvent.pointerDown(last, { pointerId: 7, clientY: 10 });
+      fireEvent.pointerMove(last, { pointerId: 7, clientY: 50 });
+      await nextFrame();
+      fireEvent.pointerUp(last, { pointerId: 7, clientY: 50 });
+      const pulled = pulledName();
+      fireEvent(verseText('1:16'), new TestPointerEvent('click', { bubbles: true, cancelable: true, pointerId: 1, detail: 0 }));
+      expect(pulledName()).toBe(pulled);
+    });
+
     it('leaves a key\'s click and a new press their own: right after a pull they still act', async () => {
       const last = await chooseOne();
       fireEvent.pointerDown(last, { pointerId: 2, clientY: 10 });
@@ -567,7 +579,8 @@ describe('paragraphs of comments (case 2026-10-12-block-diagram, phase 9)', () =
       await nextFrame();
       fireEvent.pointerUp(last, { pointerId: 2, clientY: 50 });
       const pulled = pulledName();
-      // A key's click on the verse (Enter on its button): no pointer behind it (detail 0) — a press.
+      // Any key on the text ends the wait (here an arrow), and the click after it is a press.
+      fireEvent.keyDown(verseText('1:16'), { key: 'ArrowDown' });
       fireEvent.click(verseText('1:16'), { detail: 0 });
       expect(pulledName()).not.toBe(pulled);
       const shorter = pulledName();
@@ -576,6 +589,19 @@ describe('paragraphs of comments (case 2026-10-12-block-diagram, phase 9)', () =
       fireEvent.pointerUp(verseText('1:17'), { pointerId: 2, clientX: 40, clientY: 5 });
       fireEvent.click(verseText('1:17'), { detail: 1 });
       expect(pulledName()).not.toBe(shorter);
+    });
+
+    it('leaves its own click to a second finger that pressed the text while the grip was held', async () => {
+      const last = await chooseOne();
+      fireEvent.pointerDown(last, { pointerId: 7, clientY: 10 });
+      fireEvent.pointerMove(last, { pointerId: 7, clientY: 50 });
+      await nextFrame();
+      fireEvent.pointerDown(verseText('1:17'), { pointerId: 8, clientX: 40, clientY: 5 });
+      fireEvent.pointerUp(last, { pointerId: 7, clientY: 50 });
+      const pulled = pulledName();
+      fireEvent.pointerUp(verseText('1:17'), { pointerId: 8, clientX: 40, clientY: 5 });
+      fireEvent.click(verseText('1:17'), { detail: 1 });
+      expect(pulledName()).not.toBe(pulled);
     });
 
     it('does not finish a hold another finger keeps on the first verse when the grip is let go', async () => {

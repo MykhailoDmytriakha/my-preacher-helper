@@ -75,10 +75,11 @@ function setOnRows(root: HTMLElement | null, attribute: string, keys: ReadonlySe
  * drawn again for a choice.
  */
 /**
- * How long after a grip is let go a click is still that pull's: any new press on the text ends the wait at once
- * (`forgetPullClick`), so whatever click comes before one is the browser's after the lift.
+ * How long after a grip is let go a click is still that pull's. Safari on the owner's iPad sent it 39 ms after the
+ * Pencil's lift (technical report, 01.11); a click a person makes half a second later, with no press before it (an
+ * assistive device's), is that person's (Codex review, 01.11). Any new press or key on the text ends the wait at once.
  */
-const PULL_CLICK_MS = 3000;
+const PULL_CLICK_MS = 500;
 
 /**
  * The technical report's line for a change of the chosen passage (`appDiagnostics`, «verse-pick»): what changed it and
@@ -125,7 +126,11 @@ export function useVerseCopy({ textRef, text, bible, bookId, drawn, crossRefs, e
   // A grip's pull under way — the run as it found it and as it is now — and the click its pointer may send after the lift
   // (the owner, 01.11, iPad: the finger lifted from the last grip, and Safari's click took the first verse off).
   const pulling = useRef<{ end: 'first' | 'last'; from: VerseAt[]; now: VerseAt[] } | null>(null);
-  const pullClick = useRef<{ at: number; pointerId: number } | null>(null);
+  const pullClick = useRef<{ at: number } | null>(null);
+  // When the grip was taken, and when the text was last pressed or keyed: a press made while the grip was held (a second
+  // finger) clicks after the lift itself, so that pull waits for no click of its own (Codex review, 01.11).
+  const pullStartedAt = useRef(Number.NEGATIVE_INFINITY);
+  const textPressedAt = useRef(Number.NEGATIVE_INFINITY);
   const forgetPull = useCallback(() => { pulling.current = null; pullClick.current = null; }, []);
   const clear = useCallback(() => {
     // The hint for choosing a passage goes with that choice: it must not stand over the analysis screen.
@@ -222,29 +227,34 @@ export function useVerseCopy({ textRef, text, bible, bookId, drawn, crossRefs, e
   const limitRef = useRef(limitComment);
   limitRef.current = limitComment;
   /**
-   * A grip let go: the pull goes into the report as one line, and the click its pointer may send after the lift is its
-   * own; a pull the browser broke off (null) sends none.
+   * A grip let go: the pull goes into the report as one line, and the click the browser may send after the lift is its
+   * own; a pull the browser broke off sends none.
    */
-  const pullEnded = useCallback((pointerId: number | null) => {
+  const pullEnded = useCallback((clickMayFollow: boolean) => {
     const pull = pulling.current;
     pulling.current = null;
     if (pull && text) recordPick(text, `pull-${pull.end}`, pull.from, pull.now, Number.POSITIVE_INFINITY);
-    pullClick.current = pointerId === null ? null : { at: performance.now(), pointerId };
+    pullClick.current = clickMayFollow && textPressedAt.current < pullStartedAt.current ? { at: performance.now() } : null;
   }, [text]);
-  /** A new press on the text: no click after it is a pull's. */
-  const forgetPullClick = useCallback(() => { pullClick.current = null; }, []);
+  /** A grip taken: the pull starts. */
+  const pullStarted = useCallback(() => { pullStartedAt.current = performance.now(); }, []);
+  /** A new press or a key on the text: no click after it is a pull's. */
+  const forgetPullClick = useCallback(() => {
+    pullClick.current = null;
+    textPressedAt.current = performance.now();
+  }, []);
   /**
-   * Whether this pointer's click is the one a grip's pull sends after the lift — taken once, by the pull's pointer (a click
-   * that names another pointer is a press of its own), before any new press on the text; it then presses nothing. A key's
-   * click is not asked (`VerseHoldSurface`).
+   * Whether this click is the one a grip's pull sends after the lift: the first click on the text since the pull was let
+   * go, before any new press or key there (each ends the wait — `forgetPullClick`); it then presses nothing. Nothing about
+   * the click itself is asked: Safari on the owner's iPad sent it 39 ms after the Pencil's lift naming another pointer
+   * (technical report, 01.11), and a click a browser makes up need not count its clicks either.
    */
-  const takesPullClick = useCallback((event: { pointerId?: number }, onVerse: boolean) => {
+  const takesPullClick = useCallback((onVerse: boolean) => {
     const pending = pullClick.current;
     if (!pending) return false;
     const since = performance.now() - pending.at;
-    if (since > PULL_CLICK_MS) { pullClick.current = null; return false; }
-    if (typeof event.pointerId === 'number' && event.pointerId >= 0 && event.pointerId !== pending.pointerId) return false;
     pullClick.current = null;
+    if (since > PULL_CLICK_MS) return false;
     if (onVerse) recordDiagnostic('verse-pick', { source: 'click', result: 'taken-by-pull', elapsedMs: since });
     return true;
   }, []);
@@ -355,7 +365,7 @@ export function useVerseCopy({ textRef, text, bible, bookId, drawn, crossRefs, e
     menu, openMenu, closeMenu: useCallback(() => setMenu(null), []),
     hold: setHeld,
     picked, picking: choosing, startPicking, toggle, rangeTo, clear,
-    purpose, startPassage, moveEnd, pullEnded, takesPullClick, forgetPullClick, passage: purpose !== 'copy' && picked && text ? pickedPassage(text, picked) : null,
+    purpose, startPassage, moveEnd, pullStarted, pullEnded, takesPullClick, forgetPullClick, passage: purpose !== 'copy' && picked && text ? pickedPassage(text, picked) : null,
     format: format ?? DEFAULT_COPY_FORMAT, setFormat,
     copy, share, canShare,
     wordsOf, labelOf, placeOf, linksOf, openLinks,

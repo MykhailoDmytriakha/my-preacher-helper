@@ -34,7 +34,7 @@ function drawRows(verses: number[], shift = () => 0) {
   });
 }
 const passageOf = (fromVerse: number, toVerse: number) => ({ chapter: 1, fromVerse, toChapter: 1, toVerse });
-const copyOf = (passage: ReturnType<typeof passageOf> | null, moveEnd = jest.fn(), pullEnded = jest.fn()) => ({ passage, purpose: 'comment', moveEnd, pullEnded }) as unknown as VerseCopy;
+const copyOf = (passage: ReturnType<typeof passageOf> | null, moveEnd = jest.fn(), pullEnded = jest.fn()) => ({ passage, purpose: 'comment', moveEnd, pullEnded, pullStarted: jest.fn() }) as unknown as VerseCopy;
 const grips = (copy: VerseCopy) => <PassageGrips root={{ current: card }} copy={copy} text={text} />;
 const grip = (end: 'first' | 'last') => document.querySelector<HTMLElement>(`[data-passage-grip="${end}"]`)!;
 const runFrames = () => act(() => { const due = [...frames.values()]; frames.clear(); due.forEach((frame) => frame(0)); });
@@ -87,11 +87,12 @@ describe('the grips of a chosen passage', () => {
     expect(frames.size).toBe(0);
     // The click the browser may send after the lift is the pull's: the picker hears that the pull ended (owner, 01.11, iPad).
     expect(copy.pullEnded).toHaveBeenCalledTimes(2);
-    expect(copy.pullEnded).toHaveBeenLastCalledWith(1);
+    expect(copy.pullEnded).toHaveBeenLastCalledWith(true);
+    expect(copy.pullStarted).toHaveBeenCalledTimes(2);
     // A pull the browser broke off sends no click after it.
     fireEvent.pointerDown(grip('last'), { pointerId: 4, clientY: 46 });
     fireEvent.pointerCancel(grip('last'), { pointerId: 4, clientY: 46 });
-    expect(copy.pullEnded).toHaveBeenLastCalledWith(null);
+    expect(copy.pullEnded).toHaveBeenLastCalledWith(false);
   });
 
   it('ends a pull when the choice is let go: the next choice moves only under a new press', () => {
