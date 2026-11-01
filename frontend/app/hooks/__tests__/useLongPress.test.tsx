@@ -9,9 +9,9 @@ function Tile({ onPress, onLongPress }: { onPress: () => void; onLongPress?: () 
 
 // jsdom has no PointerEvent, and fireEvent.pointerDown would drop clientX and pointerType: a mouse event
 // under the pointer's name keeps the place, and says which pointer it is (as `marks.test.tsx` does).
-function pointer(target: Element, type: 'pointerdown' | 'pointermove' | 'pointerup', init: { clientX?: number; clientY?: number; button?: number; pointerType?: string } = {}) {
+function pointer(target: Element, type: 'pointerdown' | 'pointermove' | 'pointerup', init: { clientX?: number; clientY?: number; button?: number; pointerType?: string; pointerId?: number } = {}) {
   const event = new MouseEvent(type, { bubbles: true, cancelable: true, clientX: init.clientX ?? 10, clientY: init.clientY ?? 10, button: init.button ?? 0 });
-  Object.defineProperties(event, { pointerType: { value: init.pointerType ?? 'touch' }, pointerId: { value: 1 } });
+  Object.defineProperties(event, { pointerType: { value: init.pointerType ?? 'touch' }, pointerId: { value: init.pointerId ?? 1 } });
   fireEvent(target, event);
 }
 
@@ -181,4 +181,23 @@ describe('useLongPress', () => {
     expect(tile).toHaveAttribute('data-state', 'idle');
     expect(fireEvent.contextMenu(tile)).toBe(true);
   });
+
+  // Codex review, 01.11: a grip let go over the text bubbled its lift to the text's hold, which a second finger had armed on
+  // another verse, and the hold was done — the first verse of a passage came off.
+  it('is ended only by its own pointer: another finger lifted or moved meanwhile does not finish or give up the hold', () => {
+    const onPress = jest.fn();
+    const onLongPress = jest.fn();
+    render(<Tile onPress={onPress} onLongPress={onLongPress} />);
+    const tile = screen.getByRole('button');
+
+    pointer(tile, 'pointerdown', { pointerId: 3 });
+    act(() => { jest.advanceTimersByTime(LONG_PRESS_MS + 50); });
+    pointer(tile, 'pointermove', { pointerId: 2, clientY: 200 });
+    pointer(tile, 'pointerup', { pointerId: 2 });
+    expect(onLongPress).not.toHaveBeenCalled();
+    expect(tile).toHaveAttribute('data-state', 'armed');
+    pointer(tile, 'pointerup', { pointerId: 3 });
+    expect(onLongPress).toHaveBeenCalledTimes(1);
+  });
 });
+

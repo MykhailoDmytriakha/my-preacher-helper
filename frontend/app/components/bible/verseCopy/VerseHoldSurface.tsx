@@ -73,6 +73,8 @@ export function VerseHoldSurface({ copy, articleRef, className, gestureIgnore, p
   };
 
   const onPointerDown = (event: PointerEvent<HTMLElement>) => {
+    // A new press on the text: the click after it is its own, not a grip's pull's (a grip's press never comes here).
+    copy.forgetPullClick();
     lastTouch.current = event.pointerType === 'touch';
     const othersPress = event.pointerType === 'pen' || (!copy.picking && onControl(event.target));
     pressRef.current = othersPress ? null : pressAt(event);
@@ -96,6 +98,13 @@ export function VerseHoldSurface({ copy, articleRef, className, gestureIgnore, p
     if (!copy.picking) return;
     const row = verseRowAt(event.target, articleRef.current);
     const at = row ? verseOfRow(row) : null;
+    // The click a grip's pull sends after the lift is the pull's — on the grip, or on a verse (Safari on iPad, 01.11, took
+    // the first verse off with it): it presses nothing (`useVerseCopy().takesPullClick`). A key's click (`detail` 0) is a press.
+    if (event.detail > 0 && copy.takesPullClick(event.nativeEvent as globalThis.MouseEvent & { pointerId?: number }, Boolean(at))) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
     if (!at) return;
     event.preventDefault();
     event.stopPropagation();

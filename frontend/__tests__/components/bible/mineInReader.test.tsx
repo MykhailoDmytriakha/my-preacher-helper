@@ -527,6 +527,70 @@ describe('paragraphs of comments (case 2026-10-12-block-diagram, phase 9)', () =
     });
   });
 
+  describe('letting a grip go is no press on the text (the owner, 01.11, iPad: the first verse came off at the lift)', () => {
+    /** jsdom has no PointerEvent: a mouse event that keeps the pointer's id. */
+    class TestPointerEvent extends MouseEvent {
+      pointerId: number;
+      constructor(type: string, init: PointerEventInit = {}) { super(type, init); this.pointerId = init.pointerId ?? 0; }
+    }
+    const realPointerEvent = window.PointerEvent;
+    beforeEach(() => { window.PointerEvent = TestPointerEvent as unknown as typeof PointerEvent; });
+    afterEach(() => { window.PointerEvent = realPointerEvent; });
+    const nextFrame = () => act(async () => { await new Promise((resolve) => requestAnimationFrame(() => resolve(null))); });
+    const chooseOne = async () => {
+      mockRows = { studyNotes: [] };
+      renderRuth();
+      await waitFor(() => expect(verseText('1:16')).toBeTruthy());
+      fireEvent.contextMenu(verseText('1:16'), { clientX: 200, clientY: 300 });
+      await userEvent.click(await screen.findByRole('menuitem', { name: 'comment.verseMenu' }));
+      await screen.findByRole('region', { name: 'Руф 1:16' });
+      return screen.getByTestId('passage-grips').querySelector<HTMLElement>('[data-passage-grip="last"]')!;
+    };
+    const pulledName = () => screen.getByRole('region', { name: /^Руф 1:/ }).getAttribute('aria-label') ?? '';
+
+    it('takes the click after the lift for the pull\'s: the first verse stays', async () => {
+      const last = await chooseOne();
+      fireEvent.pointerDown(last, { pointerId: 2, clientY: 10 });
+      fireEvent.pointerMove(last, { pointerId: 2, clientY: 50 });
+      await nextFrame();
+      fireEvent.pointerUp(last, { pointerId: 2, clientY: 50 });
+      const pulled = pulledName();
+      expect(pulled).not.toBe('Руф 1:16');
+      fireEvent.click(verseText('1:16'), { detail: 1 });
+      expect(pulledName()).toBe(pulled);
+    });
+
+    it('leaves a key\'s click and a new press their own: right after a pull they still act', async () => {
+      const last = await chooseOne();
+      fireEvent.pointerDown(last, { pointerId: 2, clientY: 10 });
+      fireEvent.pointerMove(last, { pointerId: 2, clientY: 50 });
+      await nextFrame();
+      fireEvent.pointerUp(last, { pointerId: 2, clientY: 50 });
+      const pulled = pulledName();
+      // A key's click on the verse (Enter on its button): no pointer behind it (detail 0) — a press.
+      fireEvent.click(verseText('1:16'), { detail: 0 });
+      expect(pulledName()).not.toBe(pulled);
+      const shorter = pulledName();
+      // A new press on the text, then its click: a press too.
+      fireEvent.pointerDown(verseText('1:17'), { pointerId: 2, clientX: 40, clientY: 5 });
+      fireEvent.pointerUp(verseText('1:17'), { pointerId: 2, clientX: 40, clientY: 5 });
+      fireEvent.click(verseText('1:17'), { detail: 1 });
+      expect(pulledName()).not.toBe(shorter);
+    });
+
+    it('does not finish a hold another finger keeps on the first verse when the grip is let go', async () => {
+      const last = await chooseOne();
+      fireEvent.pointerDown(last, { pointerId: 2, clientY: 10 });
+      fireEvent.pointerMove(last, { pointerId: 2, clientY: 50 });
+      await nextFrame();
+      const pulled = pulledName();
+      fireEvent.pointerDown(verseText('1:16'), { pointerId: 3, clientX: 40, clientY: 5 });
+      await act(async () => { await new Promise((resolve) => setTimeout(resolve, 650)); });
+      fireEvent.pointerUp(last, { pointerId: 2, clientY: 50 });
+      expect(pulledName()).toBe(pulled);
+    });
+  });
+
   // Codex review r3: Synodal Psalm 114 reads as King James 116:1–9, and «Изменить стихи» was offered on a chapter comment.
   it('offers a comment\'s verses to be chosen again only when it is on verses, one run in this book', () => {
     expect(choosableRun({ id: 'r', bible: 'rst', book: 'Psalms', chapter: 114 }, 'Psalms', 'kjv')).toBeNull();
