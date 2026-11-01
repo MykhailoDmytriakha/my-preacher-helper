@@ -37,31 +37,26 @@ it('uses cookie immediately for guests and offline language reads', async () => 
 /*
  * Whether the server answers decides, not the phone's flag (BUG-20261011-raw-phone-flag-in-read-paths):
  * an iPad back from the background keeps "offline" while requests already get through, and the
- * person lost the preparation mode and their language until the flag changed.
+ * person lost their language until the flag changed.
  */
-it('reads access and language from the server when the phone says offline but the server answers', async () => {
+it('reads the language from the server when the phone says offline but the server answers', async () => {
   online(false);
   reportServerReachable();
-  request.mockResolvedValue({ id: 'owner', userId: 'owner', language: 'ru', enablePrepMode: true, enableStructurePreview: true });
+  request.mockResolvedValue({ id: 'owner', userId: 'owner', language: 'ru' });
 
-  await expect(service.hasPrepModeAccess('owner')).resolves.toBe(true);
-  await expect(service.hasStructurePreviewAccess('owner')).resolves.toBe(true);
   await expect(service.getUserLanguage('owner')).resolves.toBe('ru');
 });
 
 // A request that did not reach, while the phone says "network", is not "no access" (review of the fix).
-it('still reads access and language after a request that did not reach, while the phone says online', async () => {
+it('still reads the language after a request that did not reach, while the phone says online', async () => {
   reportServerUnreachable();
-  request.mockResolvedValue({ id: 'owner', userId: 'owner', language: 'ru', enablePrepMode: true, enableStructurePreview: true });
-  await expect(service.hasPrepModeAccess('owner')).resolves.toBe(true);
-  await expect(service.hasStructurePreviewAccess('owner')).resolves.toBe(true);
+  request.mockResolvedValue({ id: 'owner', userId: 'owner', language: 'ru' });
   await expect(service.getUserLanguage('owner')).resolves.toBe('ru');
 });
 
 it('does not ask while the phone says offline and nothing has reached the server', async () => {
   online(false);
-  await expect(service.hasPrepModeAccess('owner')).resolves.toBe(false);
-  await expect(service.hasStructurePreviewAccess('owner')).resolves.toBe(false);
+  await service.getUserLanguage('owner');
   expect(request).not.toHaveBeenCalled();
 });
 
@@ -107,9 +102,7 @@ it('sends language and profile when the phone says offline but the server answer
 it('fails closed for every old persisted settings mutation after activation', async () => {
   process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = 'users';
   const actions = [
-    () => service.updatePrepModeAccess('owner', true),
     () => service.updateAudioGenerationAccess('owner', true),
-    () => service.updateStructurePreviewAccess('owner', true),
     () => service.updateShowAppVersion('owner', true),
     () => service.updateGroupsAccess('owner', true),
     () => service.updateFirstDayOfWeek('owner', 'monday'),

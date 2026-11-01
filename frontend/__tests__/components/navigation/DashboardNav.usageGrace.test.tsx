@@ -40,9 +40,6 @@ jest.mock('@/hooks/useFeedback', () => ({
   }),
 }));
 jest.mock('@/hooks/useOnlineStatus', () => ({ useOnlineStatus: () => true }));
-jest.mock('@/hooks/usePrepModeAccess', () => ({
-  usePrepModeAccess: () => ({ hasAccess: true, loading: false }),
-}));
 jest.mock('@/services/userSettings.service', () => ({
   hasGroupsAccess: jest.fn().mockResolvedValue(true),
 }));

@@ -1,9 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 import AudioGenerationToggle from '@/components/settings/AudioGenerationToggle';
-import PrepModeToggle from '@/components/settings/PrepModeToggle';
 import ShowVersionToggle from '@/components/settings/ShowVersionToggle';
-import StructurePreviewToggle from '@/components/settings/StructurePreviewToggle';
 import { persistedWrite, queuedWrite } from '@/utils/recoverableWrite';
 
 let mockUser: { uid: string } | null;
@@ -15,9 +13,7 @@ jest.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ user: mockUser }) }));
 jest.mock('@/hooks/useUserSettings', () => ({
   useUserSettings: () => ({
     settings: mockSettings, loading: mockLoading,
-    updatePrepModeAccess: mockWrite,
     updateAudioGenerationAccess: mockWrite,
-    updateStructurePreviewAccess: mockWrite,
     updateShowAppVersion: mockWrite,
     updatingShowAppVersion: mockUpdating,
   }),
@@ -35,12 +31,8 @@ beforeEach(() => {
 });
 
 describe.each([
-  { name: 'preparation', Component: PrepModeToggle, field: 'enablePrepMode', id: 'prep-mode', key: 'prepMode',
-    errorLabel: '❌ PrepModeToggle: Error updating prep mode:' },
   { name: 'audio', Component: AudioGenerationToggle, field: 'enableAudioGeneration', id: 'audio-generation', key: 'audioGeneration',
     errorLabel: 'AudioGenerationToggle: Error updating setting:' },
-  { name: 'structure', Component: StructurePreviewToggle, field: 'enableStructurePreview', id: 'structure-preview', key: 'structurePreview',
-    errorLabel: '❌ StructurePreviewToggle: Error updating setting:' },
   { name: 'version', Component: ShowVersionToggle, field: 'showAppVersion', id: 'show-version', key: 'showVersion',
     errorLabel: 'ShowVersionToggle: Error updating setting:' },
 ])('$name settings contract', ({ Component, field, id, key, errorLabel }) => {

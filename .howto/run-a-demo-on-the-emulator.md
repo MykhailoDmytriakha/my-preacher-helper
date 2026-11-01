@@ -1,4 +1,4 @@
-when: demo data for the test user · show a feature with seeded data · Firestore emulator with real sign-in · production quota exceeded · RESOURCE_EXHAUSTED during a live check · second dev server talks to :3000 · Working offline banner on a second server · data engine reads nothing in a hidden tab · демо-данные тестовому пользователю · показать фичу на данных · эмулятор базы · квота прода кончилась · вкладка скрыта
+when: demo data for the test user · show a feature with seeded data · Firestore emulator with real sign-in · admin/me 403 console · non-admin settings probe · production quota exceeded · RESOURCE_EXHAUSTED during a live check · second dev server talks to :3000 · Working offline banner on a second server · data engine reads nothing in a hidden tab · демо-данные тестовому пользователю · показать фичу на данных · эмулятор базы · квота прода кончилась · вкладка скрыта
 
 # Run a demo on the Firestore emulator
 
@@ -13,6 +13,8 @@ A demo, or a live check that needs particular data, runs against the local Fires
 - Worked example with every script (start, seed, walk scenarios, stop): case `2026-10-19-mesto-pisaniya-tekst-i-gde-esche-ispolzuetsya`, folder `demo/`.
 
 ## Traps
+
+- A non-admin Settings visit intentionally checks `/api/admin/me`; its real403`Forbidden` response keeps the admin link absent (`settings/layout.tsx`, `api/admin/adminAuth.ts`). Chrome also records that denied resource in the console. Do not grant admin access, stub a200, or call every console entry harmless. Retain a first strict-envelope failure; a calibrated callback may classify only the exact local GET403resource message after observing its actual Forbidden body and absent admin link. All other console errors still fail. Keep the failed attempt and its successful owned-fixture cleanup separate from qualified native acceptance. Unit251 preserves the original failed envelope and the new explicit negative access control.
 
 - In installed Playwright1.62.1, an async `waitForFunction` predicate is a truthy Promise before its Boolean value settles (`playwright-core/lib/coreBundle.js`, `waitForFunctionExpression`). An IndexedDB predicate can therefore resolve immediately with false. Poll asynchronous device reads from the host instead: await the real read, test its result, pause100ms, and enforce a finite deadline. Retain the readback before asserting. Unit240 council native-v2 preserves this excluded QA failure; the later callback uses host-side polling without changing application timers.
 - `locator.isVisible()` is an immediate observation, not route readiness. After navigating back to a council, the discard button was already present by the saved screenshot but the earlier immediate observation was false. Await that exact control with `waitFor({ state: 'visible' })` before measuring and activating it. Keep the earlier attempt and images; do not count a setup race as an application failure.

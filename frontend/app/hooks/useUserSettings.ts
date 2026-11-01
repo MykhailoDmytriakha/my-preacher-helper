@@ -5,9 +5,7 @@ import { useSettingsEngine } from '@/hooks/userSettingsEngineContext';
 import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
 import {
   getUserSettings,
-  updatePrepModeAccess,
   updateAudioGenerationAccess,
-  updateStructurePreviewAccess,
   updateShowAppVersion,
   updateFirstDayOfWeek,
   updateFunctionModelPreference as persistFunctionModelPreference,
@@ -69,27 +67,12 @@ function useLegacyUserSettings(userId: string | null | undefined) {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: SETTINGS_PREFIX }),
   };
 
-  const updatePrepModeMutation = useMutation({
-    ...mutationCallbacks,
-    mutationKey: SETTINGS_MUTATION_KEYS.prepMode,
-    mutationFn: ({ userId: uid, value }: { userId: string; value: boolean }) => updatePrepModeAccess(uid, value),
-    onMutate: ({ value }) => updateCachedSettings({ enablePrepMode: value }),
-  });
-
   const updateAudioGenerationMutation = useMutation({
     ...mutationCallbacks,
     mutationKey: SETTINGS_MUTATION_KEYS.audioGeneration,
     mutationFn: ({ userId: uid, value }: { userId: string; value: boolean }) =>
       updateAudioGenerationAccess(uid, value),
     onMutate: ({ value }) => updateCachedSettings({ enableAudioGeneration: value }),
-  });
-
-  const updateStructurePreviewMutation = useMutation({
-    ...mutationCallbacks,
-    mutationKey: SETTINGS_MUTATION_KEYS.structurePreview,
-    mutationFn: ({ userId: uid, value }: { userId: string; value: boolean }) =>
-      updateStructurePreviewAccess(uid, value),
-    onMutate: ({ value }) => updateCachedSettings({ enableStructurePreview: value }),
   });
 
   const updateFirstDayOfWeekMutation = useMutation({
@@ -150,19 +133,9 @@ function useLegacyUserSettings(userId: string | null | undefined) {
     });
 
   useSettingRecovery<{ userId: string; value: boolean }>(
-    SETTINGS_MUTATION_KEYS.prepMode,
-    'prep-mode',
-    (payload) => updatePrepModeMutation.mutate(payload)
-  );
-  useSettingRecovery<{ userId: string; value: boolean }>(
     SETTINGS_MUTATION_KEYS.audioGeneration,
     'audio-generation',
     (payload) => updateAudioGenerationMutation.mutate(payload)
-  );
-  useSettingRecovery<{ userId: string; value: boolean }>(
-    SETTINGS_MUTATION_KEYS.structurePreview,
-    'structure-preview',
-    (payload) => updateStructurePreviewMutation.mutate(payload)
   );
   useSettingRecovery<{ userId: string; value: FirstDayOfWeek }>(
     SETTINGS_MUTATION_KEYS.firstDayOfWeek,
@@ -202,15 +175,9 @@ function useLegacyUserSettings(userId: string | null | undefined) {
     loading: settingsQuery.isLoading,
     error: settingsQuery.error as Error | null,
     refresh: settingsQuery.refetch,
-    updatePrepModeAccess: (enabled: boolean) =>
-      guarded('settings:prep-mode', (uid) => updatePrepModeMutation.mutateAsync({ userId: uid, value: enabled })),
-    updatingPrepMode: updatePrepModeMutation.isPending,
     updateAudioGenerationAccess: (enabled: boolean) =>
       guarded('settings:audio-generation', (uid) => updateAudioGenerationMutation.mutateAsync({ userId: uid, value: enabled })),
     updatingAudioGeneration: updateAudioGenerationMutation.isPending,
-    updateStructurePreviewAccess: (enabled: boolean) =>
-      guarded('settings:structure-preview', (uid) => updateStructurePreviewMutation.mutateAsync({ userId: uid, value: enabled })),
-    updatingStructurePreview: updateStructurePreviewMutation.isPending,
     updateFirstDayOfWeek: (firstDayOfWeek: FirstDayOfWeek) =>
       guarded('settings:first-day-of-week', (uid) => updateFirstDayOfWeekMutation.mutateAsync({ userId: uid, value: firstDayOfWeek })),
     updatingFirstDayOfWeek: updateFirstDayOfWeekMutation.isPending,
@@ -264,9 +231,7 @@ export function useUserSettings(userId: string | null | undefined) {
     error: document?.error ? new Error(document.error) : null,
     readOnly,
     refresh: async () => { await document?.retry(); },
-    updatePrepModeAccess: (value: boolean) => patch({ enablePrepMode: value }), updatingPrepMode: busy,
     updateAudioGenerationAccess: (value: boolean) => patch({ enableAudioGeneration: value }), updatingAudioGeneration: busy,
-    updateStructurePreviewAccess: (value: boolean) => patch({ enableStructurePreview: value }), updatingStructurePreview: busy,
     updateFirstDayOfWeek: (value: FirstDayOfWeek) => patch({ firstDayOfWeek: value }), updatingFirstDayOfWeek: busy,
     updateShowAppVersion: (value: boolean) => patch({ showAppVersion: value }), updatingShowAppVersion: busy,
     updateModelPreference: (value: ModelPreference) => patch(value), updatingModelPreference: busy,

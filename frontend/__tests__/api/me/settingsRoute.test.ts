@@ -41,7 +41,7 @@ it('passes only the verified owner to the guarded bootstrap adapter', async () =
 it.each([
   { operation: 'bootstrap', patch: {}, userId: 'other' },
   { operation: 'unknown', patch: {} },
-  { operation: ['legacy'], patch: { enablePrepMode: true } },
+  { operation: ['legacy'], patch: { enableAudioGeneration: true } },
   { operation: ['bootstrap'], patch: { language: 'ru' } },
   { operation: 'bootstrap', patch: [] },
   { operation: 'bootstrap', patch: { displayName: 'x'.repeat(17000) } },

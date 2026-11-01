@@ -9,7 +9,6 @@ import { ShellHeaderProvider, useRevealShellHeader, useShellHeaderPageMoved } fr
 jest.mock('@locales/i18n', () => ({}));
 jest.mock('@/hooks/useShellPathname', () => ({ useShellPathname: () => '/bible/ruth' }));
 jest.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ user: null, handleLogout: jest.fn() }) }));
-jest.mock('@/hooks/usePrepModeAccess', () => ({ usePrepModeAccess: () => ({ hasAccess: false, loading: false }) }));
 const mockFeedback = jest.fn();
 jest.mock('@/hooks/useFeedback', () => ({ useFeedback: () => ({ showFeedbackModal: false, handleFeedbackClick: mockFeedback, closeFeedbackModal: jest.fn(), handleSubmitFeedback: jest.fn() }) }));
 jest.mock('@/components/usage/UsageGraceIndicator', () => ({

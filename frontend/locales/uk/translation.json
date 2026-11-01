@@ -93,9 +93,9 @@
       "email": "Електронна пошта",
       "displayName": "Ім'я користувача",
       "firstDayOfWeek": "Перший день тижня",
-      "enablePrepMode": "Режим підготовки (Beta)",
+      "enablePrepMode": "Режим підготовки",
       "enableAudioGeneration": "Генерація аудіо проповіді (Beta)",
-      "enableStructurePreview": "Попередній перегляд структури (Beta)",
+      "enableStructurePreview": "Попередній перегляд структури",
       "enableGroups": "Групи",
       "showAppVersion": "Показувати версію",
       "preferredProviderId": "Провайдер ШІ",
@@ -1552,17 +1552,9 @@
       "monday": "Понеділок",
       "error": "Не вдалося зберегти перший день тижня. Спробуйте ще раз."
     },
-    "prepMode": {
-      "title": "Режим підготовки (Beta)",
-      "description": "Увімкнути доступ до нового робочого процесу режиму підготовки"
-    },
     "audioGeneration": {
       "title": "Генерація аудіо проповіді (Beta)",
       "description": "Увімкнути експериментальну генерацію аудіо для проповідей"
-    },
-    "structurePreview": {
-      "title": "Попередній перегляд структури (Beta)",
-      "description": "Показувати панель попереднього перегляду структури на сторінці проповіді"
     },
     "debugMode": {
       "title": "Режим налагодження",
@@ -2094,7 +2086,6 @@
       "call": "зробити заклик до покаяння і дії (не лише слухати, але й виконувати)",
       "hammer": "«Забити цвях»: фінальні чіткі фрази; можна завершити «Так говорить Господь»; 1Пет 4:11"
     },
-    "preview": "Попередній перегляд структури",
     "focusMode": "Режим фокусу",
     "normalMode": "Звичайний режим",
     "showSections": "Показати секції",
@@ -2218,9 +2209,7 @@
     "newOutlinePointName": "Назва нового пункту...",
     "saveError": "Не вдалося зберегти пункт структури",
     "hideSectionNamed": "Сховати розділ «{{title}}»",
-    "showSectionNamed": "Показати розділ «{{title}}»",
-    "previewExpand": "Розгорнути",
-    "previewCollapse": "Згорнути"
+    "showSectionNamed": "Показати розділ «{{title}}»"
   },
   "knowledge": {
     "title": "Роздуми над проповіддю",
@@ -2994,7 +2983,7 @@
     "modePrep": "Підготовка",
     "modeClassic": "Класичний",
     "modeRaw": "Начерки",
-    "switchToPrepBeta": "Режим підготовки (Beta)",
+    "switchToPrep": "Режим підготовки",
     "switchToClassic": "Класичний режим",
     "switchToRaw": "Начерки",
     "previewCTA": {

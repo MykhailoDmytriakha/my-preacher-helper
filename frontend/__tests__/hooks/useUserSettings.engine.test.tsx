@@ -17,15 +17,15 @@ jest.mock('@/data-engine/browser.client', () => ({ createBrowserDataEngine: jest
 jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
 jest.mock('@/services/userSettings.service', () => ({
   getUserSettings: jest.fn(), setLanguageCookie: jest.fn(),
-  updatePrepModeAccess: jest.fn(), updateAudioGenerationAccess: jest.fn(),
-  updateStructurePreviewAccess: jest.fn(), updateShowAppVersion: jest.fn(),
+  updateAudioGenerationAccess: jest.fn(),
+  updateShowAppVersion: jest.fn(),
   updateFirstDayOfWeek: jest.fn(), updateModelPreference: jest.fn(),
   updateFunctionModelPreference: jest.fn(),
 }));
 
 const resource = { collection: 'users', id: 'owner' };
-const initial = { userId: 'owner', language: 'en', firstDayOfWeek: 'sunday', enablePrepMode: false,
-  enableAudioGeneration: false, enableStructurePreview: false, showAppVersion: false };
+const initial = { userId: 'owner', language: 'en', firstDayOfWeek: 'sunday',
+  enableAudioGeneration: false, showAppVersion: false };
 const originalEnabled = process.env.NEXT_PUBLIC_DATA_ENGINE_ENABLED;
 const originalCollections = process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS;
 const clients: QueryClient[] = [];
@@ -101,12 +101,12 @@ describe('settings through the shared real DataEngine', () => {
     </context.wrapper>;
     const hook = renderHook(() => ({ editor: useUserSettings('owner'), feature: useUserSettingsQuery('owner'), second: useUserSettings('owner') }), { wrapper });
     await waitFor(() => expect(hook.result.current.editor.readOnly).toBe(false));
-    await act(async () => { await awaitSettingsWrite(hook.result.current.editor.updatePrepModeAccess(true), jest.fn()); });
-    expect(hook.result.current.feature.data?.enablePrepMode).toBe(true);
-    expect(hook.result.current.second.settings?.enablePrepMode).toBe(true);
-    await waitFor(() => expect(context.harness.server.value?.enablePrepMode).toBe(true));
+    await act(async () => { await awaitSettingsWrite(hook.result.current.editor.updateShowAppVersion(true), jest.fn()); });
+    expect(hook.result.current.feature.data?.showAppVersion).toBe(true);
+    expect(hook.result.current.second.settings?.showAppVersion).toBe(true);
+    await waitFor(() => expect(context.harness.server.value?.showAppVersion).toBe(true));
     expect(context.openings.flatMap(open => open.mock.calls).filter(([ref]) => ref.collection === 'users')).toHaveLength(1);
-    expect(service.updatePrepModeAccess).not.toHaveBeenCalled();
+    expect(service.updateShowAppVersion).not.toHaveBeenCalled();
   });
 
   it('keeps an accepted offline change after closing and reopening the entire workspace', async () => {
@@ -152,10 +152,10 @@ describe('settings through the shared real DataEngine', () => {
     const context = setup();
     const hook = renderHook(({ uid }) => useUserSettings(uid), { wrapper: context.wrapper, initialProps: { uid: 'owner' } });
     await waitFor(() => expect(hook.result.current.readOnly).toBe(false));
-    const oldAction = hook.result.current.updatePrepModeAccess;
+    const oldAction = hook.result.current.updateShowAppVersion;
     hook.rerender({ uid: 'someone-else' });
     expect(hook.result.current.settings).toBeNull();
-    await expect(awaitSettingsWrite(hook.result.current.updatePrepModeAccess(true), jest.fn())).rejects.toThrow('not ready');
+    await expect(awaitSettingsWrite(hook.result.current.updateShowAppVersion(true), jest.fn())).rejects.toThrow('not ready');
     owner(null);
     hook.rerender({ uid: 'owner' });
     await expect(awaitSettingsWrite(oldAction(true), jest.fn())).rejects.toThrow();
@@ -169,12 +169,12 @@ describe('settings through the shared real DataEngine', () => {
     context.harness.storage.writeFailure = true;
     let error: unknown;
     await act(async () => {
-      try { await awaitSettingsWrite(hook.result.current.settings.updatePrepModeAccess(true), jest.fn()); }
+      try { await awaitSettingsWrite(hook.result.current.settings.updateShowAppVersion(true), jest.fn()); }
       catch (failure) { error = failure; }
       await settleEngine();
     });
     expect(error).toEqual(expect.objectContaining({ message: 'disk full' }));
-    expect(context.harness.server.value?.enablePrepMode).toBe(false);
+    expect(context.harness.server.value?.showAppVersion).toBe(false);
     expect(context.harness.transport.send).not.toHaveBeenCalled();
     expect(hook.result.current.source?.document.error).toBeTruthy();
   });
@@ -189,15 +189,15 @@ describe('settings through the shared real DataEngine', () => {
     };
     let accepted = false, submission!: Promise<void>;
     await act(async () => {
-      submission = awaitSettingsWrite(hook.result.current.settings.updatePrepModeAccess(true), jest.fn()).then(() => { accepted = true; });
+      submission = awaitSettingsWrite(hook.result.current.settings.updateShowAppVersion(true), jest.fn()).then(() => { accepted = true; });
       await settleEngine();
     });
-    expect(hook.result.current.settings.settings?.enablePrepMode).toBe(true);
+    expect(hook.result.current.settings.settings?.showAppVersion).toBe(true);
     expect(accepted).toBe(false);
     expect(context.harness.transport.send).not.toHaveBeenCalled();
     await act(async () => { release(); await submission; await settleEngine(); });
     expect(accepted).toBe(true);
-    await waitFor(() => expect(context.harness.server.value?.enablePrepMode).toBe(true));
+    await waitFor(() => expect(context.harness.server.value?.showAppVersion).toBe(true));
   });
 
   it('creates a missing owner document using only the requested preference', async () => {

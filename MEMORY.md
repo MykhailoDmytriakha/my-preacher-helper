@@ -98,6 +98,10 @@ Moved to `.howto/` — each rule now lives in the recipe of its operation: `grep
 
 ## 🆕 Lessons (Inbox) — Extracted Principles
 
+### 2026-10-31 Released Preparation And Retired Structure Preview
+
+Preparation is an ordinary sermon mode for every account; no settings beta switch gates it. The old StructurePreview beta surface is removed; preparation step3 still owns BlockDiagramSection. Deprecated enablePrepMode/enableStructurePreview fields remain in the protocol, resource schema and readable recovery labels so older queued commands do not strand later settings. No current UI or hook writes those fields; legacy mutations are refused and archived through the existing mechanism. Copy AudioGenerationToggle for an active settings-toggle example. Incoming main7e4fade2 and local Unit251 preserve this distinction.
+
 > One-line principles. History in git blame. Newest first.
 
 ### 2026-08-17 The Rule You Are About To Invent Is Probably Already In `utils/` — Grep Before You Reason

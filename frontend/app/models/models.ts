@@ -472,9 +472,11 @@ export interface UserSettings {
   userId: string;
   language: string;
   firstDayOfWeek?: 'sunday' | 'monday';
-  enablePrepMode?: boolean;  // Per-user prep mode access
+  /** @deprecated Preparation is for everyone since 2026-10-31 — never written now; documents written before may carry it. */
+  enablePrepMode?: boolean;
   enableAudioGeneration?: boolean; // Beta: audio generation feature
-  enableStructurePreview?: boolean; // Beta: Structure Preview feature
+  /** @deprecated The structure preview beta was cut out 2026-10-31 — never written now; documents written before may carry it. */
+  enableStructurePreview?: boolean;
   enableGroups?: boolean; // Legacy preference; released groups are available to all signed-in users
   showAppVersion?: boolean; // Show deployed build version in Settings
   email?: string;

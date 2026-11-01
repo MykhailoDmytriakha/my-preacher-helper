@@ -121,11 +121,6 @@ jest.mock('@/hooks/useFeedback', () => ({
   useFeedback: () => mockFeedbackState
 }));
 
-const mockPrepAccess = { hasAccess: true, loading: false };
-// Mock usePrepModeAccess hook
-jest.mock('@/hooks/usePrepModeAccess', () => ({
-  usePrepModeAccess: () => mockPrepAccess
-}));
 
 // Mock hasGroupsAccess service
 jest.mock('@/services/userSettings.service', () => ({
@@ -532,21 +527,15 @@ describe('DashboardNav Component', () => {
     expect(screen.getByRole('link', { name: 'Settings' })).toBeInTheDocument();
   });
 
-  test('keeps classic and scratch modes available while access settings are pending', () => {
-    mockPrepAccess.hasAccess = false;
-    mockPrepAccess.loading = true;
+  test('offers every mode, preparation too, with nothing to switch on first (the owner, 2026-10-31)', () => {
     mockUsePathname.mockReturnValue('/sermons/123');
-    try {
-      render(<TestProviders><DashboardNav /></TestProviders>);
-      expect(screen.getByTestId('toggle-classic')).toBeEnabled();
-      expect(screen.getByTestId('toggle-raw')).toBeEnabled();
-      expect(screen.getByTestId('toggle-prep')).toBeDisabled();
-      fireEvent.click(screen.getByTestId('toggle-raw'));
-      expect(require('next/navigation').useRouter().push).toHaveBeenCalled();
-    } finally {
-      mockPrepAccess.hasAccess = true;
-      mockPrepAccess.loading = false;
-    }
+    render(<TestProviders><DashboardNav /></TestProviders>);
+    expect(screen.getByTestId('toggle-classic')).toBeEnabled();
+    expect(screen.getByTestId('toggle-raw')).toBeEnabled();
+    expect(screen.getByTestId('toggle-prep')).toBeEnabled();
+    expect(screen.queryByText('beta')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('toggle-prep'));
+    expect(require('next/navigation').useRouter().push).toHaveBeenCalled();
   });
 
   test('switches between modes in DashboardNav', async () => {
@@ -560,7 +549,6 @@ describe('DashboardNav Component', () => {
       </TestProviders>
     );
 
-    // Should show mode toggle (since showWizardButton mock is true)
     // ModeToggle renders buttons for Classic, Prep, and Scratch
     const prepButton = screen.getByText('wizard.modePrep'); // default label or key
     fireEvent.click(prepButton);

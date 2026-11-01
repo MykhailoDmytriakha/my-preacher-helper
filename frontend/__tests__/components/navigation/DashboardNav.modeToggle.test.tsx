@@ -25,7 +25,6 @@ const replaceMock = jest.fn();
 const pushMock = jest.fn();
 let pathnameMock = '/sermons/abc';
 let paramsMap: Record<string, string | undefined> = {};
-let mockPrepModeAccessState = { hasAccess: true, loading: false };
 // The nav asks whether there IS a sermon before drawing its mode switcher. Left to the real
 // hook these cases would depend on how fast a network read settles, which is not what they
 // are about — and on a missing sermon the switcher is meant to disappear.
@@ -43,7 +42,6 @@ const resetScenario = () => {
   pushMock.mockReset();
   pathnameMock = '/sermons/abc';
   paramsMap = {};
-  mockPrepModeAccessState = { hasAccess: true, loading: false };
   mockSermonState = {
     sermon: { id: 'abc', title: 'A sermon that exists' },
     loading: false,
@@ -104,20 +102,15 @@ jest.mock('@/services/userSettings.service', () => ({
 }));
 const mockHasGroupsAccess = hasGroupsAccess as jest.MockedFunction<typeof hasGroupsAccess>;
 
-// Mock usePrepModeAccess hook
-jest.mock('@/hooks/usePrepModeAccess', () => ({
-  usePrepModeAccess: () => ({ ...mockPrepModeAccessState })
-}));
 
 // Mock segmented toggle to a minimal testable version with stable testids
 jest.mock('@/components/navigation/ModeToggle', () => ({
   __esModule: true,
-  default: ({ currentMode, onSetMode, tSwitchToClassic, tPrepLabel, tRawLabel, canUsePrep = true }: any) => (
+  default: ({ currentMode, onSetMode, tSwitchToClassic, tPrepLabel, tRawLabel }: any) => (
     <div>
       <button data-testid="toggle-classic" aria-pressed={currentMode === 'classic'} onClick={() => onSetMode('classic')}>{tSwitchToClassic}</button>
-      <button data-testid="toggle-prep" aria-pressed={currentMode === 'prep'} disabled={!canUsePrep} onClick={() => onSetMode('prep')}>{tPrepLabel}</button>
+      <button data-testid="toggle-prep" aria-pressed={currentMode === 'prep'} onClick={() => onSetMode('prep')}>{tPrepLabel}</button>
       <button data-testid="toggle-raw" aria-pressed={currentMode === 'raw'} onClick={() => onSetMode('raw')}>{tRawLabel}</button>
-      <span>beta</span>
     </div>
   )
 }));
@@ -128,7 +121,7 @@ jest.mock('react-i18next', () => ({
       'navigation.primary': 'Основная навигация',
       'navigation.dashboard': 'Dashboard',
       'wizard.switchToClassic': 'Classic Mode',
-      'wizard.switchToPrepBeta': 'Preparation Mode (Beta)',
+      'wizard.switchToPrep': 'Preparation Mode',
       'wizard.previewButton': 'Preparation Mode',
       'wizard.modePrep': 'Preparation',
       'wizard.modeClassic': 'Classic',
@@ -190,21 +183,24 @@ describe('DashboardNav mode toggle', () => {
           }
         },
         {
-          name: 'ModeToggle renders with beta badge',
+          name: 'real ModeToggle offers released preparation and scratch modes',
           run: () => {
+            const ReleasedModeToggle = jest.requireActual('@/components/navigation/ModeToggle').default;
             render(
-              <ModeToggle
+              <ReleasedModeToggle
+                compactBreakpoint={0}
                 currentMode="classic"
                 onSetMode={jest.fn()}
                 tSwitchToClassic="Classic Mode"
-                tSwitchToPrep="Preparation Mode (Beta)"
+                tSwitchToPrep="Preparation Mode"
                 tPrepLabel="Preparation Mode"
                 tRawLabel="Scratch"
               />
             );
             expect(screen.getByTestId('toggle-prep')).toBeInTheDocument();
             expect(screen.getByTestId('toggle-raw')).toBeInTheDocument();
-            expect(screen.getByText(/beta/i)).toBeInTheDocument();
+            expect(screen.getByTestId('toggle-prep')).toBeEnabled();
+            expect(screen.queryByText(/beta/i)).not.toBeInTheDocument();
           }
         },
         {
@@ -216,7 +212,7 @@ describe('DashboardNav mode toggle', () => {
                 currentMode="classic"
                 onSetMode={onSetMode}
                 tSwitchToClassic="Classic Mode"
-                tSwitchToPrep="Preparation Mode (Beta)"
+                tSwitchToPrep="Preparation Mode"
                 tPrepLabel="Preparation Mode"
                 tRawLabel="Scratch"
               />
@@ -234,7 +230,7 @@ describe('DashboardNav mode toggle', () => {
                 currentMode="prep"
                 onSetMode={onSetMode}
                 tSwitchToClassic="Classic Mode"
-                tSwitchToPrep="Preparation Mode (Beta)"
+                tSwitchToPrep="Preparation Mode"
                 tPrepLabel="Preparation Mode"
                 tRawLabel="Scratch"
               />
@@ -350,19 +346,16 @@ describe('DashboardNav mode toggle', () => {
           }
         },
         {
-          name: 'keeps classic and raw reachable when prep access is denied',
+          name: 'reaches preparation like any mode: nothing to switch on first',
           run: () => {
-            mockPrepModeAccessState = { hasAccess: false, loading: false };
             render(
               <TestProviders>
                 <DashboardNav />
               </TestProviders>
             );
-            expect(screen.getByTestId('toggle-classic')).toBeInTheDocument();
-            expect(screen.getByTestId('toggle-raw')).toBeInTheDocument();
-            expect(screen.getByTestId('toggle-prep')).toBeDisabled();
-            fireEvent.click(screen.getByTestId('toggle-raw'));
-            expect(pushMock).toHaveBeenCalledWith('/sermons/abc?mode=raw', { scroll: false });
+            expect(screen.getByTestId('toggle-prep')).toBeEnabled();
+            fireEvent.click(screen.getByTestId('toggle-prep'));
+            expect(pushMock).toHaveBeenCalledWith('/sermons/abc?mode=prep', { scroll: false });
           }
         },
         {

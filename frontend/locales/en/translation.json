@@ -93,9 +93,9 @@
       "email": "Email",
       "displayName": "Display Name",
       "firstDayOfWeek": "First day of week",
-      "enablePrepMode": "Preparation Mode (Beta)",
+      "enablePrepMode": "Preparation Mode",
       "enableAudioGeneration": "Sermon Audio Generation (Beta)",
-      "enableStructurePreview": "Structure Preview (Beta)",
+      "enableStructurePreview": "Structure preview",
       "enableGroups": "Groups",
       "showAppVersion": "Show app version",
       "preferredProviderId": "AI provider",
@@ -1524,17 +1524,9 @@
       "monday": "Monday",
       "error": "Could not save the first day of week. Please try again."
     },
-    "prepMode": {
-      "title": "Preparation Mode (Beta)",
-      "description": "Enable access to the new preparation mode workflow"
-    },
     "audioGeneration": {
       "title": "Sermon Audio Generation (Beta)",
       "description": "Enable experimental audio generation for sermons"
-    },
-    "structurePreview": {
-      "title": "Structure Preview (Beta)",
-      "description": "Show the structure preview panel on the sermon details page"
     },
     "debugMode": {
       "title": "Debug Mode",
@@ -2062,7 +2054,6 @@
       "call": "Call to repentance and action (not only hearers but doers)",
       "hammer": "“Drive the nail” with the final clear phrases; you may end with “Thus says the Lord”; 1 Pet 4:11"
     },
-    "preview": "Structure preview",
     "focusMode": "Focus Mode",
     "normalMode": "Normal Mode",
     "showSections": "Show sections",
@@ -2184,9 +2175,7 @@
     "newOutlinePointName": "New point name...",
     "saveError": "Failed to save structure point",
     "hideSectionNamed": "Hide {{title}} section",
-    "showSectionNamed": "Show {{title}} section",
-    "previewExpand": "Expand",
-    "previewCollapse": "Collapse"
+    "showSectionNamed": "Show {{title}} section"
   },
   "knowledge": {
     "title": "Sermon Insights",
@@ -2951,7 +2940,7 @@
     "modePrep": "Preparation",
     "modeClassic": "Classic",
     "modeRaw": "Scratch",
-    "switchToPrepBeta": "Preparation Mode (Beta)",
+    "switchToPrep": "Preparation Mode",
     "switchToClassic": "Classic Mode",
     "switchToRaw": "Scratch Notes",
     "previewCTA": {

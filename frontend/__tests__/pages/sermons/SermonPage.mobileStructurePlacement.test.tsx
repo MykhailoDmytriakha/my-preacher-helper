@@ -49,9 +49,6 @@ jest.mock('@/components/sermon/SermonOutline', () => () => (
   <div data-testid="sermon-outline">SermonOutline</div>
 ));
 
-jest.mock('@/components/sermon/StructurePreview', () => () => (
-  <div data-testid="structure-preview">StructurePreview</div>
-));
 
 // Important: Keep two distinct instances detectable
 jest.mock('@/components/sermon/StructureStats', () => () => (

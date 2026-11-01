@@ -5,9 +5,7 @@ import {
   updateFirstDayOfWeek,
   updateFunctionModelPreference,
   updateModelPreference,
-  updatePrepModeAccess,
   updateShowAppVersion,
-  updateStructurePreviewAccess,
 } from '@/services/userSettings.service';
 import { revokeShareLinkMutationOptions, SHARE_LINK_MUTATION_KEYS, STUDY_NOTE_SHARE_LINKS_KEY } from '@/utils/studyNoteShareLinkWrites';
 
@@ -168,18 +166,15 @@ export function registerOfflineMutationDefaults(queryClient: QueryClient) {
   }
 
   // ---- user settings ----
-  queryClient.setMutationDefaults(SETTINGS_MUTATION_KEYS.prepMode, {
-    mutationFn: ({ userId, value }: SettingVars) => updatePrepModeAccess(userId, value),
-    onSuccess: invalidate([USER_SETTINGS_KEY]),
-  });
+  // Preparation is no longer a beta to switch on (2026-10-31): a write of the old switch kept on a device is refused,
+  // and the legacy archive keeps its words (`legacyQueryRecovery.client.ts`).
+  queryClient.setMutationDefaults(SETTINGS_MUTATION_KEYS.prepMode, { mutationFn: refuseLegacyReplay('users') });
   queryClient.setMutationDefaults(SETTINGS_MUTATION_KEYS.audioGeneration, {
     mutationFn: ({ userId, value }: SettingVars) => updateAudioGenerationAccess(userId, value),
     onSuccess: invalidate([USER_SETTINGS_KEY]),
   });
-  queryClient.setMutationDefaults(SETTINGS_MUTATION_KEYS.structurePreview, {
-    mutationFn: ({ userId, value }: SettingVars) => updateStructurePreviewAccess(userId, value),
-    onSuccess: invalidate([USER_SETTINGS_KEY]),
-  });
+  // The structure preview beta was cut out (2026-10-31): an old write of its switch is refused and archived, as above.
+  queryClient.setMutationDefaults(SETTINGS_MUTATION_KEYS.structurePreview, { mutationFn: refuseLegacyReplay('users') });
   queryClient.setMutationDefaults(SETTINGS_MUTATION_KEYS.firstDayOfWeek, {
     mutationFn: ({ userId, value }: FirstDayVars) => updateFirstDayOfWeek(userId, value),
     onSuccess: invalidate([USER_SETTINGS_KEY]),

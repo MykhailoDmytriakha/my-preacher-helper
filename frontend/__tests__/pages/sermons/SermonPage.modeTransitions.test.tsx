@@ -131,7 +131,6 @@ jest.mock('@/components/sermon/prep/PrepStepCard', () => ({ __esModule: true, de
 jest.mock('@/components/sermon/BrainstormModule', () => ({ __esModule: true, default: ({}) => <div data-testid="brainstorm" /> }));
 jest.mock('@/components/sermon/ThoughtList', () => ({ __esModule: true, default: jest.fn(() => <div data-testid="thought-list" />) }));
 jest.mock('@/components/sermon/ThoughtFilterControls', () => ({ __esModule: true, default: ({}) => null }));
-jest.mock('@/components/sermon/StructurePreview', () => ({ __esModule: true, default: ({}) => null }));
 // Renders whether the engine writer reaches it, so a test can tell the engine door from the refusing default.
 jest.mock('@/components/sermon/SermonOutline', () => ({ __esModule: true, default: jest.fn(() => {
   const { useStructureWriter } = jest.requireActual('@/components/sermon/structureWriter');

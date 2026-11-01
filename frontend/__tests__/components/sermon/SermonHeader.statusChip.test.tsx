@@ -18,7 +18,7 @@ jest.mock('@/components/dashboard/OptionMenu', () => () => <div data-testid="opt
 jest.mock('@/components/sermon/SourceNoteChips', () => () => null);
 jest.mock('@/components/ExportButtons', () => ({ __esModule: true, default: () => <div /> }));
 jest.mock('@/hooks/useUserSettings', () => ({
-  useUserSettings: jest.fn(() => ({ settings: { enablePrepMode: true }, loading: false })),
+  useUserSettings: jest.fn(() => ({ settings: { language: 'en' }, loading: false })),
 }));
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({
