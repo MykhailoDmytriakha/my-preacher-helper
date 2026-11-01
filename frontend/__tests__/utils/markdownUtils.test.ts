@@ -1,3 +1,4 @@
+import { markdownPreviewExcerpt } from '../../app/utils/markdownPlainText';
 import { sanitizeMarkdown, isValidMarkdownContent, normalizePlanPointHeadings, decodeBasicHtmlEntities, normalizePlanArrows, markdownPreviewText } from '../../app/utils/markdownUtils';
 
 describe('markdownUtils', () => {
@@ -215,6 +216,34 @@ describe('markdownUtils', () => {
     it('reads Markdown as one line of words, keeping where thoughts end', () => {
       expect(markdownPreviewText('## Plan\n\nFour **asks**:\n1. *Bless* me.\n2. Widen `my` [borders](https://x.y)\n> Quote'))
         .toBe('Plan · Four asks: 1. Bless me. 2. Widen my borders · Quote');
+    });
+
+    it('reads safe HTML as words and decodes entities once', () => {
+      expect(markdownPreviewText('<p id="target">A <strong>gentle</strong> answer &amp; patience.</p>\n<p>Read <a href="https://example.com/hidden">the passage</a>.</p>'))
+        .toBe('A gentle answer & patience. Read the passage.');
+      expect(markdownPreviewText('&lt;p&gt;literal&lt;/p&gt; &amp;lt;span&amp;gt;'))
+        .toBe('<p>literal</p> &lt;span&gt;');
+    });
+
+    it('keeps authored HTML and Markdown examples literal inside code', () => {
+      expect(markdownPreviewText('Use `<p id="target">**literal**</p>` here.'))
+        .toBe('Use <p id="target">**literal**</p> here.');
+      expect(markdownPreviewText('```html\n<p>**literal**</p>\n```'))
+        .toBe('<p>**literal**</p>');
+    });
+
+    it('does not expose removed HTML or link targets as preview words', () => {
+      expect(markdownPreviewText('<script>hidden script words</script>\n\nVisible [label](https://example.com/private).'))
+        .toBe('Visible label.');
+    });
+
+    it('keeps independent source anchors and changed words when previewing a document again', () => {
+      const body = `Read John 1:1 here. ${'Middle words. '.repeat(50)}Read Ruth 1:2 there.`;
+      expect(markdownPreviewExcerpt(body, body.indexOf('John 1:1'), 'John 1:1')).toContain('Read John 1:1 here.');
+      expect(markdownPreviewExcerpt(body, body.indexOf('Ruth 1:2'), 'Ruth 1:2')).toContain('Read Ruth 1:2 there.');
+      expect(markdownPreviewExcerpt(body, body.indexOf('Ruth 1:2'), 'Ruth 1:2')).not.toContain('John 1:1');
+      expect(markdownPreviewText('<p>Changed words.</p>')).toBe('Changed words.');
+      expect(markdownPreviewText(body)).toContain('Read John 1:1 here.');
     });
 
     it('drops a mark cut in half at the edge of an excerpt', () => {

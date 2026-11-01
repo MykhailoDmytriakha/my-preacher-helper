@@ -2,7 +2,7 @@ import { textLanguage, type AppLocale } from '@/utils/appLocale';
 import { namesAPlace, referencesInText } from '@/utils/bibleLink';
 import { groupLanguage, sermonLanguage, serviceOrderLanguage, studyNoteLanguage } from '@/utils/documentLanguage';
 import { documentScreenHref } from '@/utils/documentScreenHref';
-import { markdownPreviewText } from '@/utils/markdownUtils';
+import { markdownPreviewExcerpt } from '@/utils/markdownPlainText';
 import { readPlanText, renderPlanWithFallback } from '@/utils/planText';
 import { passagesIn, sameScriptureReference, scriptureReferencesOverlap, withNoteReferenceBibles, withStoredBible, type Passage } from '@/utils/scriptureReferenceNumbering';
 
@@ -54,19 +54,6 @@ export type UsageDocument = {
 
 /** Stronger links first: the same reference, then an overlapping passage, then a mention in the text. */
 const MATCH_ORDER: Record<ScriptureUsageMatch, number> = { same: 0, overlap: 1, text: 2 };
-
-/**
- * A bounded excerpt around the actual mention, rather than an unrelated first paragraph, read as
- * plain words: Markdown marks and line breaks would fill a short row without saying anything.
- */
-function excerpt(text: string, at = 0): string {
-  const near = Math.max(0, at - 60);
-  // Start on a word, not inside one; and at the top when only marks would be skipped.
-  const onWord = near && /\S/.test(text[near - 1] ?? '') ? Math.min(at, text.indexOf(' ', near) + 1 || near) : near;
-  const start = markdownPreviewText(text.slice(0, onWord)) ? onWord : 0;
-  const end = Math.min(text.length, Math.max(at + 200, start + 260));
-  return `${start ? '…' : ''}${markdownPreviewText(text.slice(start, end))}${end < text.length ? '…' : ''}`;
-}
 
 /** The references a text names, each in the Bible it was written in — the text's language, then its document's (`written`). */
 function inText(text: string, locale: AppLocale, written: AppLocale | null): Candidate[] {
@@ -195,7 +182,7 @@ export function findScriptureUsage(target: ScriptureRefShape, sources: UsageSour
       .sort((a, b) => MATCH_ORDER[matchOf(a)] - MATCH_ORDER[matchOf(b)])[0];
     if (!found) return;
     results.push({ updatedAt, usage: { id, kind, title, href, reference: found.reference, match: matchOf(found),
-      excerpt: excerpt(found.text, found.at), content: found.text, ...(found.raw ? { mention: found.raw } : {}) } });
+      excerpt: markdownPreviewExcerpt(found.text, found.at, found.raw), content: found.text, ...(found.raw ? { mention: found.raw } : {}) } });
   });
   return results
     .sort((a, b) => MATCH_ORDER[a.usage.match] - MATCH_ORDER[b.usage.match] || b.updatedAt.localeCompare(a.updatedAt))
@@ -282,7 +269,7 @@ function layDocument({ kind, id, title, href, updatedAt, candidates, body, analy
     const { reference } = candidate;
     if (reference.book !== bookId || !reference.bible || !namesAPlace({ ...reference, bible: reference.bible })) return;
     const typed = candidate.listed ? mentionOf(mentions, candidate.reference) : candidate;
-    const words = excerpt(candidate.text, typed?.at ?? 0);
+    const words = markdownPreviewExcerpt(candidate.text, typed?.at ?? 0, typed?.raw);
     // A sermon's verse line is its reference alone: words that say nothing past the place are not shown.
     const said = /\p{L}/u.test(typed?.raw ? words.replace(typed.raw, '') : words) ? words : '';
     passagesIn(candidate.reference, bible).forEach(passage => {

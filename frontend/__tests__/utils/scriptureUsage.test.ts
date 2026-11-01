@@ -30,6 +30,31 @@ describe('explicit Scripture uses across personal materials', () => {
     expect(search([note('structured', [target], body)])[0].excerpt).toContain('1 Chr 1:10');
   });
 
+  it('reads the full HTML before centering an excerpt on a visible reference', () => {
+    const body = `<p id="${'hidden-attribute-'.repeat(40)}">Read <strong>1 Chr 1:10</strong> together.</p>`;
+    const [result] = search([note('html-mention', [target], body)]);
+    expect(result.excerpt).toBe('Read 1 Chr 1:10 together.');
+    expect(result.content).toBe(body);
+  });
+
+  it('keeps literal code context when an excerpt begins inside a long fenced block', () => {
+    const body = `\`\`\`html\n${'opening '.repeat(80)}<p>**literal**</p>\n\`\`\`\nRead 1 Chr 1:10 together.`;
+    const [result] = search([note('code-mention', [], body)]);
+    expect(result.excerpt).toContain('<p>**literal**</p>');
+    expect(result.excerpt).toContain('1 Chr 1:10 together.');
+    expect(result.excerpt).not.toContain('html');
+    expect(result.excerpt.length).toBeLessThan(330);
+    expect(result.content).toBe(body);
+  });
+
+  it('centers on the actual prose mention after an earlier literal inline-code example', () => {
+    const body = `Example \`1 Chr 1:10\` is literal. ${'Earlier words. '.repeat(50)}Read 1 Chr 1:10 together.`;
+    const [result] = search([note('repeated-inline', [], body)]);
+    expect(result.excerpt).toContain('Read 1 Chr 1:10 together.');
+    expect(result.excerpt).not.toContain('Example');
+    expect(result.excerpt.indexOf('1 Chr 1:10')).toBeLessThan(80);
+  });
+
   it('matches the same Psalm across Bibles and rejects the neighboring verse', () => {
     const synodal: ScriptureRefShape = { bible: 'rst', book: 'Psalms', chapter: 50, fromVerse: 12 };
     const kjv: ScriptureRefShape = { bible: 'kjv', book: 'Psalms', chapter: 51, fromVerse: 10 };
