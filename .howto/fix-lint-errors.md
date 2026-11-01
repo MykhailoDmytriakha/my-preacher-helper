@@ -14,6 +14,8 @@ when: npm run lint · lint:full · lint:unused · lint fails after moving files 
 
 ## Traps
 
+- Run ESLint after the production builder finishes. Serwist replaces `public/swe-worker-*.js`; a concurrent `eslint .` can enumerate the old file and then fail with ENOENT when the builder removes it. Preserve that failed attempt and rerun lint on the finished tree; do not edit the generated worker.
+
 - Lint is not a deploy gate. `next.config.mjs` sets `eslint.ignoreDuringBuilds: true` and `npm run build` never calls eslint, so a lint error reaches `main` unless `npm run lint:full` ran before the push.
 - `eslint .` has no `--max-warnings`: complexity and duplicate-string warnings never turn the command red. They stay rules to fix, not noise to ignore.
 

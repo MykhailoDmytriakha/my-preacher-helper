@@ -12,7 +12,7 @@ Almost always an interactive element nested inside another one — a button or l
 - Keys too: a key pressed on an inner control belongs to it. The outer key handler returns when `event.target !== event.currentTarget` (as in `Chip`); otherwise it calls `preventDefault()` on Enter, and Enter on the inner button runs the outer action instead.
 - Inner controls include links the container does not draw itself: a study card's collapsed preview renders the note's Markdown, so its links sit inside the card. The card's click handler ignores `closest('button, a')`, and its key handler checks the target, not `closest('button')` (`frontend/app/(pages)/(private)/studies/StudyNoteCard.tsx`).
 - A panel that lives inside its trigger's element (tooltip, popover) receives bubbled clicks as clicks on the trigger: check `panelRef.current.contains(event.target)` first (`frontend/app/components/ui/Tooltip.tsx`).
-- A click on a decorative icon laid over a control "does nothing": the icon must be `pointer-events-none` so the click falls through (the chevron in `Select`, the thumb in `Switch`).
+- A click on a decorative icon laid over a control "does nothing": the icon must be `pointer-events-none` so the click falls through (the chevron in `Select`, the thumb in `Switch`). A noninteractive floating status announcement follows the same rule: keep its text/live region and natural lifetime, but let pointer input reach the controls beneath it (`admin/page.tsx` saved notice; `LeavingBar`). Do not apply this globally to interactive notifications such as Sonner, which owns close/action buttons. Verify the actual hit target and trusted click while the notice is still visible; waiting for dismissal does not prove this correction.
 
 ## Why
 
