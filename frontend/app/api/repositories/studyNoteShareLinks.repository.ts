@@ -30,6 +30,8 @@ function publicReference(value: unknown): ScriptureReference | null {
   const toChapter = finiteNumber(raw.toChapter);
   const fromVerse = finiteNumber(raw.fromVerse);
   const toVerse = finiteNumber(raw.toVerse);
+  // The chapter the last verse stands in, for a run past its chapter's end (`ScriptureReference.toVerseChapter`).
+  const toVerseChapter = finiteNumber(raw.toVerseChapter);
   return {
     id: typeof raw.id === 'string' ? raw.id : '',
     ...(isBibleId(raw.bible) ? { bible: raw.bible } : {}),
@@ -38,6 +40,7 @@ function publicReference(value: unknown): ScriptureReference | null {
     ...(toChapter !== undefined ? { toChapter } : {}),
     ...(fromVerse !== undefined ? { fromVerse } : {}),
     ...(toVerse !== undefined ? { toVerse } : {}),
+    ...(toVerseChapter !== undefined ? { toVerseChapter } : {}),
   };
 }
 
@@ -48,7 +51,8 @@ function toSharedNote(shareLink: StudyNoteShareLink, data: Record<string, unknow
     : [];
   // An old reference is read in the language the author's interface spoke when the link was made; a
   // link made before that was kept reads it in the language of the note's words.
-  const { scriptureRefs } = withNoteReferenceBibles({ title, content, scriptureRefs: stored }, shareLink.authorLanguage);
+  // Its type too: an older analysis's run past its chapter is read as the screens read it (`olderAnalysisRun`).
+  const { scriptureRefs } = withNoteReferenceBibles({ title, content, type: typeof data.type === 'string' ? data.type : undefined, scriptureRefs: stored }, shareLink.authorLanguage);
   return {
     shareLink,
     content,

@@ -59,8 +59,10 @@ export function hasOpenLayer(): boolean {
   const root = document.documentElement.style;
   const body = document.body.style;
   if (root.overflow === 'hidden' || body.overflow === 'hidden' || body.position === 'fixed') return true;
+  // A window stepped aside (`FormDialog` `away`) hides its layer: what stands inside it — its `aria-modal` dialog, whose own
+  // display is its own — is not over the page either.
   return Array.from(document.querySelectorAll<HTMLElement>('[data-modal-layer], [aria-modal="true"], dialog[open], [role="menu"]'))
-    .some(element => !element.hidden && getComputedStyle(element).display !== 'none' && getComputedStyle(element).visibility !== 'hidden');
+    .some(element => !element.closest('[hidden]') && getComputedStyle(element).display !== 'none' && getComputedStyle(element).visibility !== 'hidden');
 }
 
 export function useModalLayer({

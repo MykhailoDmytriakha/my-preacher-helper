@@ -28,6 +28,8 @@ A new form window is `FormDialog` (`frontend/app/components/ui/FormDialog.tsx`):
 - Study page, wheel scrolling: `useNoteScrollIsolation` scrolls panes with `scrollBy`, and a programmatic scroll ignores `overflow: hidden` — so it checks the lock before scrolling. `useNoteScrollPosition` decides who owns the scroll from the CSS flag `--note-pane-scroll`, never from `overflow`, because a modal changes overflow without changing the owner. Regression to keep: rotating the device repeatedly while a dialog is open must keep the reading anchor.
 - Tests: `screen` queries see a portal in `document.body`. Tests that need it inline mock `react-dom` with `...jest.requireActual('react-dom')` plus `createPortal: (node) => node` (`frontend/__tests__/components/navigation/FeedbackModal.test.tsx`).
 
+- **A window that steps aside while the page under it is used for its own sake** (a comment's verses chosen in the reader, case 2026-10-12-block-diagram phase 9): `FormDialog` `away` — `useModalLayer({ active: false })` (no held page, no Escape, no Tab ring) and the layer `hidden` plus the class `hidden` (Tailwind 3: the attribute alone loses to `flex`); the window stays mounted with what was typed. `hasOpenLayer` skips everything inside a `[hidden]` ancestor — without that, the window's own `aria-modal` dialog (whose display is its own) still counted as open and Escape did not reach the page (`mineInReader.test.tsx` «changes a written comment's verses»).
+
 ## Why
 
 - 2026-02-26: long modals with an inner `max-h` scroll box trapped touch on phones; the fix was one scroll container for the whole window.

@@ -4,11 +4,13 @@ import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
+import { AnalysisIcon } from '@/components/Icons';
+
+import { PassagePickBar } from '../verseCopy/PassagePickBar';
 import { VerseCopyBar } from '../verseCopy/VerseCopyBar';
 
 import { readAnalysisAddress } from './analysisAddress';
 import { AnalysisEditor, type AnalysisOpening } from './AnalysisEditor';
-import { AnalysisPickBar } from './AnalysisPickBar';
 import { useAnalysisReshape } from './useAnalysisReshape';
 
 import type { AnalysisMarks } from './useAnalysisMarks';
@@ -65,9 +67,10 @@ export function ReaderAnalysis({ copy, text, wide, bookId, bible, locale, openin
   };
   return (
     <>
-      {choosing
-        ? <AnalysisPickBar copy={copy} wide={wide} onOpen={open} action={reshaping ? t('analysis.pick.apply') : undefined} />
-        : <VerseCopyBar copy={copy} wide={wide} />}
+      {/* Verses chosen for a comment have the comment's own bar (`ReaderCommentDialog.tsx`). */}
+      {choosing ? (
+        <PassagePickBar copy={copy} wide={wide} onOpen={open} action={t(reshaping ? 'analysis.pick.apply' : 'analysis.pick.open')} icon={<AnalysisIcon className="h-5 w-5" />} cancelLabel={t('analysis.pick.cancel')} />
+      ) : copy.purpose === 'comment' ? null : <VerseCopyBar copy={copy} wide={wide} />}
       {opening && text ? <AnalysisEditor opening={opening} text={text} bookId={bookId} bible={bible} locale={locale} marks={marks} onClose={() => onOpening(null)} onEditVerses={editVerses} onOpenScreen={onOpenScreen} /> : null}
     </>
   );

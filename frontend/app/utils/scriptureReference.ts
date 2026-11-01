@@ -34,6 +34,8 @@ export interface ScriptureRefShape {
   toChapter?: number;
   fromVerse?: number;
   toVerse?: number;
+  /** The chapter `toVerse` stands in, for a run of verses past its chapter's end (`ScriptureReference.toVerseChapter`). */
+  toVerseChapter?: number;
 }
 
 export interface ScriptureRefFormat {

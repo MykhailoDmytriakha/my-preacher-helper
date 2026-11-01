@@ -3,31 +3,41 @@
 import { XMarkIcon } from '@heroicons/react/24/outline';
 import { useTranslation } from 'react-i18next';
 
-import { AnalysisIcon } from '@/components/Icons';
-
-import type { PickedPassage } from '../verseCopy/passagePick';
-import type { VerseCopy } from '../verseCopy/useVerseCopy';
+import type { PickedPassage } from './passagePick';
+import type { VerseCopy } from './useVerseCopy';
+import type { ReactNode } from 'react';
 
 /**
- * THE BAR WHILE VERSES ARE CHOSEN FOR AN ANALYSIS (case 2026-10-12-block-diagram, 3.4; canvas «Разбор структуры»): the
- * copy bar's shape — the passage, how many verses, «Разобрать». No «whole paragraph»: the texts carry no paragraphs yet,
- * and the button offered one verse (the owner, 2026-10-29).
+ * THE BAR WHILE VERSES ARE CHOSEN FOR A PASSAGE (case 2026-10-12-block-diagram, 3.4 and phase 9; canvas «Разбор структуры»):
+ * the copy bar's shape — the passage, how many verses, and what the passage is for: «Разобрать» an analysis, «Написать
+ * комментарий» a comment, «Применить» or «Готово» for verses chosen again. No «whole paragraph»: the texts carry no
+ * paragraphs yet, and the button offered one verse (the owner, 2026-10-29).
  */
-export function AnalysisPickBar({ copy, wide, onOpen, action }: { copy: VerseCopy; wide: boolean; onOpen: (passage: PickedPassage) => void; action?: string }) {
+export function PassagePickBar({ copy, wide, onOpen, action, icon, cancelLabel }: {
+  copy: VerseCopy;
+  wide: boolean;
+  onOpen: (passage: PickedPassage) => void;
+  /** The button's words. */
+  action: string;
+  /** The button's sign, `h-5 w-5`. */
+  icon: ReactNode;
+  /** What ✕ says to a screen reader. */
+  cancelLabel: string;
+}) {
   const { t } = useTranslation();
   const passage = copy.passage;
   if (!copy.picked || !passage) return null;
   const place = copy.placeOf(copy.picked);
   const count = t('bible.verseCount', { count: copy.picked.length });
   const clear = (
-    <button type="button" onClick={copy.clear} aria-label={t('analysis.pick.cancel')} className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-200">
+    <button type="button" onClick={copy.clear} aria-label={cancelLabel} className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-200">
       <XMarkIcon className="h-5 w-5" aria-hidden="true" />
     </button>
   );
   const openButton = (
     <button type="button" onClick={() => onOpen(passage)} className={`inline-flex h-11 shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-indigo-600 px-4 font-semibold text-white hover:bg-indigo-700 ${wide ? '' : 'flex-1'}`}>
-      <AnalysisIcon className="h-5 w-5" />
-      {action ?? t('analysis.pick.open')}
+      {icon}
+      {action}
     </button>
   );
   const shell = 'fixed z-[110] rounded-2xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900';

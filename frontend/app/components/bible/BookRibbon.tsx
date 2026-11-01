@@ -10,6 +10,7 @@ import { parseVerse, type BookText, type VerseSegment } from '@/utils/bibleText'
 import { CommentsOnText, type TextComment } from './CommentsOnText';
 import { MineBadge as MineBadgeButton, MineMoreBadge } from './MineBadge';
 
+import type { LaidParagraph } from './commentParagraphs';
 import type { MineStretch } from './useBookUsage';
 import type { ChapterBoxes } from './useChapterWindow';
 import type { CrossReferenceCount } from '@/utils/crossReferences';
@@ -123,8 +124,22 @@ export type RibbonMine = {
   comments?: {
     at: ReadonlyMap<string, readonly TextComment[]>;
     chapters: ReadonlyMap<number, readonly TextComment[]>;
+    /** Comments on runs of verses, drawn as paragraphs (`commentParagraphs.ts`); absent where there are none. */
+    paragraphs?: RibbonParagraphs;
     onEdit: (id: string) => void;
   };
+};
+
+/** A paragraph's heading: its comment's words, the piece it heads (`key`) and how deep the paragraph lies (0 — outer). */
+export type ParagraphHead = TextComment & { key: string; level: number };
+/**
+ * The paragraphs on the text (case 2026-10-12-block-diagram, phase 9): the headings above each paragraph's first verse,
+ * outer ones first; the room after each one's last verse, px; and the paragraphs themselves, for the line beside them.
+ */
+export type RibbonParagraphs = {
+  heads: ReadonlyMap<string, readonly ParagraphHead[]>;
+  room: ReadonlyMap<string, number>;
+  laid: readonly LaidParagraph[];
 };
 
 /**
@@ -189,7 +204,7 @@ export function CrossRefsChip({ count, label, onOpen, testId, phone = false }: {
 
 /**
  * An analysed passage has a bar in the margin from its first verse to its last (the owner, 2026-10-29: «откуда до куда идёт
- * разбор»). A verse inside it reaches up past the room above (10 px on a phone, 8 px before a paragraph) and only the bar's
+ * разбор»). A verse inside it reaches up past the room above (10 px on a phone) and only the bar's
  * ends are round: pieces meeting edge to edge, each rounded, left a notch at every verse. A chapter's heading breaks it.
  */
 function AnalysedBar({ at, chapter, verse }: { at: AnalysedVerse; chapter: number; verse: number }) {
@@ -202,14 +217,46 @@ function AnalysedBar({ at, chapter, verse }: { at: AnalysedVerse; chapter: numbe
   );
 }
 
-function VerseRow({ chapter, verse, raw, lang, crossRefs, signs, mine, detached = false, lit }: {
+/**
+ * The headings of the paragraphs starting at a verse (the owner's boards, 31.10): each a comment's own words — the same grey
+ * type as a comment under a verse — above the verse, with room above it; a paragraph inside another has its heading set in
+ * a step (the heading only — the verses stay in their column). `data-paragraph-head` is what the line beside them measures.
+ */
+function ParagraphHeads({ heads, onEdit, chapter, verse }: { heads: readonly ParagraphHead[]; onEdit: (id: string) => void; chapter: number; verse: number }) {
+  return (
+    <>
+      {heads.map((head) => (
+        <div key={head.key} data-paragraph-head={head.key} data-comment={head.id} className={head.level ? 'mb-1 mt-2 pl-6 md:pl-16' : 'mb-1 mt-[18px] md:pl-10'}>
+          <CommentsOnText comments={[head]} onEdit={onEdit} testId={`paragraph-${chapter}:${verse}-${head.id}`} />
+        </div>
+      ))}
+    </>
+  );
+}
+
+/** A verse of the reader's ribbon with what a paragraph sets around it: the headings above, the room after. */
+function RibbonVerse(props: { chapter: number; verse: number; raw: string; lang: string; crossRefs?: RibbonCrossRefs; signs?: RibbonSigns; mine?: RibbonMine }) {
+  const { chapter, verse, mine } = props;
+  const paragraphs = mine?.comments?.paragraphs;
+  const heads = paragraphs?.heads.get(`${chapter}:${verse}`);
+  return (
+    <>
+      {heads && mine?.comments ? <ParagraphHeads heads={heads} onEdit={mine.comments.onEdit} chapter={chapter} verse={verse} /> : null}
+      <VerseRow {...props} room={paragraphs?.room.get(`${chapter}:${verse}`)} />
+    </>
+  );
+}
+
+function VerseRow({ chapter, verse, raw, lang, crossRefs, signs, mine, detached = false, lit, room }: {
   chapter: number; verse: number; raw: string; lang: string; crossRefs?: RibbonCrossRefs; signs?: RibbonSigns; mine?: RibbonMine;
+  /** The room after a paragraph's last verse, px. */
+  room?: number;
   /** A row of a chapter shown apart from the reader's book (`ChapterVerses`): not `data-verse`, so it is never taken for the place read or a verse to mark. */
   detached?: boolean;
   /** Lit from the start; rows of the ribbon are lit by the screen setting `data-arrival` itself. */
   lit?: boolean;
 }) {
-  const { opensParagraph, segments } = parseVerse(raw);
+  const { segments } = parseVerse(raw);
   const sign = signs?.at.get(`${chapter}:${verse}`);
   const count = crossRefs?.counts.get(`${chapter}:${verse}`);
   const shown = count ? (crossRefs?.mode === 'all' ? count.total : count.main) : 0;
@@ -221,8 +268,10 @@ function VerseRow({ chapter, verse, raw, lang, crossRefs, signs, mine, detached 
     <div
       data-verse={detached ? undefined : `${chapter}:${verse}`}
       {...(lit ? { [ARRIVAL_ATTRIBUTE]: 'on' } : {})}
-      style={{ scrollMarginTop: READING_TOP }}
-      className={`mb-2.5 md:mb-0 md:flex md:flex-wrap md:gap-x-3 ${ARRIVAL_CLASSES} ${detached ? '' : `${CHOSEN_CLASSES} ${FOUND_CLASSES}`} ${opensParagraph && verse > 1 ? 'md:mt-2' : ''}`}
+      style={{ scrollMarginTop: READING_TOP, marginBottom: room }}
+      // Every verse at the same spacing: the paragraphs are the person's own (comments on a run of verses), so the
+      // translation's paragraph marks add no room of their own (the owner, 01.11: «вроде не должно»).
+      className={`mb-2.5 md:mb-0 md:flex md:flex-wrap md:gap-x-3 ${ARRIVAL_CLASSES} ${detached ? '' : `${CHOSEN_CLASSES} ${FOUND_CLASSES}`}`}
     >
       {/* Painted first, so a mark's sign stands over it. */}
       {analysed ? <AnalysedBar at={analysed} chapter={chapter} verse={verse} /> : null}
@@ -274,8 +323,10 @@ function VerseRow({ chapter, verse, raw, lang, crossRefs, signs, mine, detached 
         {mine && badges ? <span className="md:contents max-md:inline-block max-md:origin-left max-md:scale-90 max-md:align-super"><MineBadges badges={badges} mine={mine} chapter={chapter} verse={verse} testId={`mine-${chapter}:${verse}`} /></span> : null}
       </p>
       {/* Under the verse's words, the whole width of the text column: the row's light and choice cover it too. */}
+      {/* A comment on this one verse stands against the column's right edge (the owner, 31.10: «под правый край, типа как
+          MSWord»): a paragraph's heading is on the left, so the two in the same grey type are not taken for each other. */}
       {mine?.comments && comments ? (
-        <CommentsOnText comments={comments} onEdit={mine.comments.onEdit} testId={`comments-${chapter}:${verse}`} className="mt-1 md:mb-1 md:basis-full md:pl-10" />
+        <CommentsOnText comments={comments} onEdit={mine.comments.onEdit} testId={`comments-${chapter}:${verse}`} align="end" className="mt-1 md:mb-1 md:basis-full md:pl-10" />
       ) : null}
     </div>
   );
@@ -336,7 +387,7 @@ export const BookRibbon = memo(function BookRibbon({ text, lang, chapterWord, cr
               <CommentsOnText comments={mine.comments.chapters.get(chapter)!} onEdit={mine.comments.onEdit} testId={`comments-chapter-${chapter}`} className="mb-2 md:pl-10" />
             ) : null}
             {box ? null : verses.map((raw, verseIndex) => (
-              <VerseRow key={verseIndex} chapter={chapter} verse={verseIndex + 1} raw={raw} lang={lang} crossRefs={crossRefs} signs={signs} mine={mine} />
+              <RibbonVerse key={verseIndex} chapter={chapter} verse={verseIndex + 1} raw={raw} lang={lang} crossRefs={crossRefs} signs={signs} mine={mine} />
             ))}
           </section>
         );

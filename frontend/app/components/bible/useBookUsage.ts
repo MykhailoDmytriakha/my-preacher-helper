@@ -9,10 +9,11 @@ import { getLocalizedAbbrev } from '@/utils/bibleBooks';
 import { SCRIPTURE_USAGE_KINDS, bookUsage, passageCovers, usageDocuments, type BookUsageEntry, type ScriptureUsageKind } from '@/utils/scriptureUsage';
 import { verseCount } from '@/utils/versification';
 
+import { isParagraph, layParagraphs } from './commentParagraphs';
 import { useMinePrefs } from './minePrefs';
 import { USAGE_KIND_LOOK } from './usageKinds';
 
-import type { AnalysedVerse, MineBadge, RibbonMine } from './BookRibbon';
+import type { AnalysedVerse, MineBadge, ParagraphHead, RibbonMine } from './BookRibbon';
 import type { TextComment } from './CommentsOnText';
 import type { MinimapMark } from './minimapLayout';
 import type { Group, Sermon, ServiceOrder, StudyNote } from '@/models/models';
@@ -62,6 +63,9 @@ export function passageLabel(abbrev: string, passage: Passage): string {
   if (passage.fromVerse !== undefined) return `${abbrev} ${passage.chapter}:${stretchLabel(passage)}`;
   return passage.toChapter !== passage.chapter ? `${abbrev} ${passage.chapter}–${passage.toChapter}` : `${abbrev} ${passage.chapter}`;
 }
+
+/** The room after a paragraph's last verse, px: an outer paragraph's, and one inside another's. */
+export const PARAGRAPH_ROOM = { outer: 18, inner: 10 } as const;
 
 const wholeChapterOf = (entry: BookUsageEntry, chapter: number) =>
   entry.passage.fromVerse === undefined && entry.passage.chapter <= chapter && chapter <= entry.passage.toChapter;
@@ -139,6 +143,10 @@ export function useBookUsage(bookId: string, bible: BibleId, locale: AppLocale, 
   const entriesKey = useMemo(() => JSON.stringify(bookUsage(documents, bookId, bible)), [documents, bookId, bible]);
   const entries = useMemo(() => JSON.parse(entriesKey) as BookUsageEntry[], [entriesKey]);
   const shown = show && entries.length > 0;
+  // The paragraphs the comments make, whatever way comments show: the choice of verses for a comment keeps to them too.
+  const commentLaid = useMemo(() => layParagraphs(entries
+    .filter((entry) => entry.kind === 'comment' && isParagraph(entry.passage))
+    .map((entry) => ({ id: entry.key, owner: entry.id, passage: entry.passage }))).laid, [entries]);
 
   const [openAt, setOpenAt] = useState<MinePlace | null>(null);
   const close = useCallback(() => setOpenAt(null), []);
@@ -169,9 +177,25 @@ export function useBookUsage(bookId: string, bible: BibleId, locale: AppLocale, 
       comments.set(entry.id, { id: entry.id, body: entry.body ?? '', editLabel: t('bible.mine.editComment', { place: passageLabel(abbrev, passage) }) });
       into.set(at, comments);
     };
+    // A comment on a run of verses is a paragraph (`commentParagraphs.ts`): its words a heading above its first verse, room
+    // after its last. One that breaks the paragraphs' rules stays a comment under its first verse.
+    const laid = asText ? commentLaid : [];
+    const heads = new Map<string, ParagraphHead[]>();
+    const room = new Map<string, number>();
+    laid.forEach((paragraph) => {
+      const entry = entries.find((one) => one.kind === 'comment' && one.key === paragraph.id)!;
+      heads.set(paragraph.first, [...(heads.get(paragraph.first) ?? []), {
+        id: entry.id, key: entry.key, body: entry.body ?? '', level: paragraph.level,
+        editLabel: t('bible.mine.editComment', { place: passageLabel(abbrev, entry.passage) }),
+      }]);
+      room.set(paragraph.last, Math.max(room.get(paragraph.last) ?? 0, paragraph.level ? PARAGRAPH_ROOM.inner : PARAGRAPH_ROOM.outer));
+    });
+    // By piece, not by comment: a comment falling into two pieces in this Bible may be a paragraph in one and a comment in the other.
+    const drawnAsParagraph = new Set(laid.map((paragraph) => paragraph.id));
     entries.forEach((entry) => {
       const { passage } = entry;
       if (asText && entry.kind === 'comment') {
+        if (drawnAsParagraph.has(entry.key)) return;
         if (passage.fromVerse !== undefined) write(textAt, `${passage.chapter}:${passage.fromVerse}`, entry, passage);
         else for (let chapter = passage.chapter; chapter <= passage.toChapter; chapter++) write(textOnChapters, chapter, entry, entry.passage);
         return;
@@ -200,10 +224,11 @@ export function useBookUsage(bookId: string, bible: BibleId, locale: AppLocale, 
       ...(asText && onEditComment ? { comments: {
         at: new Map([...textAt].map(([at, comments]) => [at, [...comments.values()]])),
         chapters: new Map([...textOnChapters].map(([at, comments]) => [at, [...comments.values()]])),
+        ...(laid.length ? { paragraphs: { heads, room, laid } } : {}),
         onEdit: onEditComment,
       } } : {}),
     };
-  }, [shown, entries, bookId, bible, locale, onOpen, t, commentsShown, onEditComment]);
+  }, [shown, entries, bookId, bible, locale, onOpen, t, commentsShown, onEditComment, commentLaid]);
 
   /** The marks on the minimap's right edge: one place each (a passage's first verse, a whole chapter's label), its kinds in the order of the badges. */
   const mapMarks = useMemo<readonly MinimapMark<ScriptureUsageKind>[] | undefined>(() => {
@@ -242,5 +267,7 @@ export function useBookUsage(bookId: string, bible: BibleId, locale: AppLocale, 
   // rule as a mark's creation, `marks/markStore.ts`). Meanwhile a written comment still opens from its own words.
   // Switched off, the material and its doors are gone — «only the text remains».
   const commentsReady = show && armed && notes.state?.complete === true && !notes.error && !notes.readOnly;
-  return { ribbon, mapMarks, openAt: open, listed: open ? listed : null, close, commentPassage, commentOn, commentsReady };
+  /** A comment's own words, by the comment or by a piece of it: a paragraph is named by them where the choice of verses stops at it. */
+  const commentBody = useCallback((id: string) => entries.find((entry) => entry.kind === 'comment' && (entry.key === id || entry.id === id))?.body ?? '', [entries]);
+  return { ribbon, mapMarks, openAt: open, listed: open ? listed : null, close, commentPassage, commentOn, commentsReady, commentLaid, commentBody };
 }

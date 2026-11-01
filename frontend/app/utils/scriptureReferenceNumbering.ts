@@ -46,7 +46,7 @@ export function withStoredBible<T extends ScriptureRefShape>(ref: T, typedIn: Ap
   };
 }
 
-type NoteText = { title?: string; content?: string; scriptureRefs?: readonly ScriptureRefShape[] };
+type NoteText = { title?: string; content?: string; type?: string; scriptureRefs?: readonly ScriptureRefShape[] };
 
 /**
  * The language a note's old references were typed in: the language its author's interface speaks
@@ -66,15 +66,28 @@ export function noteLanguage(note: Pick<NoteText, 'title' | 'content'>, author?:
 }
 
 /**
- * A note as it is read: every reference names its Bible. Done once where a note comes out of
- * storage — the screens, the server routes and the public link all read through it — so no
- * screen meets a reference without one. The note is returned unchanged when nothing is old.
+ * An analysis written before `toVerseChapter` kept a run past its chapter's end in `toChapter` (`useAnalysisNote`). An
+ * analysis is always one run of verses written by its own screen — never a chapter range left beside a verse — so there
+ * `toChapter` is the chapter its last verse stands in (BUG-20261031-verse-run-across-chapter-cut).
+ */
+function olderAnalysisRun<T extends ScriptureRefShape>(ref: T): T {
+  const { chapter, toChapter, fromVerse, toVerse, toVerseChapter } = ref;
+  const past = chapter !== undefined && toChapter !== undefined && toChapter > chapter && fromVerse !== undefined && toVerse !== undefined;
+  return past && toVerseChapter === undefined ? { ...ref, toVerseChapter: toChapter } : ref;
+}
+
+/**
+ * A note as it is read: every reference names its Bible, and an older analysis's run past its chapter says so
+ * (`olderAnalysisRun`). Done once where a note comes out of storage — the screens, the server routes and the public link
+ * all read through it — so no screen meets a reference without one. The note is returned unchanged when nothing is old.
  */
 export function withNoteReferenceBibles<T extends NoteText>(note: T, author?: AppLocale): T {
   const refs = note.scriptureRefs;
-  if (!refs?.length || refs.every((ref) => isBibleId(ref.bible))) return note;
-  const typedIn = noteLanguage(note, author);
-  return { ...note, scriptureRefs: refs.map((ref) => withStoredBible(ref, typedIn)) };
+  if (!refs?.length) return note;
+  const runs = note.type === 'analysis' ? refs.map(olderAnalysisRun) : refs;
+  if (runs.every((ref, index) => ref === refs[index] && isBibleId(ref.bible))) return note;
+  let typedIn: AppLocale | undefined;
+  return { ...note, scriptureRefs: runs.map((ref) => (isBibleId(ref.bible) ? ref : withStoredBible(ref, (typedIn ??= noteLanguage(note, author))))) };
 }
 
 const withoutPlace = <T extends ScriptureRefShape>(ref: T): T => {
@@ -83,15 +96,30 @@ const withoutPlace = <T extends ScriptureRefShape>(ref: T): T => {
   delete rest.toChapter;
   delete rest.fromVerse;
   delete rest.toVerse;
+  delete rest.toVerseChapter;
   return rest;
 };
+
+/**
+ * The chapter a run of verses ends in: its own, unless `toVerseChapter` names a later one — a comment's paragraph or an
+ * analysis over a chapter's seam (Еф 4:31–5:2, case 2026-10-12-block-diagram, phase 9; BUG-20261031-verse-run-across-
+ * chapter-cut). Never `toChapter`: older references carry a chapter range left beside their verses ("Ин 3:16–18" kept
+ * with a `toChapter` 4), and there, as everywhere, the verse wins.
+ */
+function lastChapterOfVerses(ref: ScriptureRefShape & { chapter: number }): number {
+  return ref.toVerse !== undefined && ref.toVerseChapter !== undefined && ref.toVerseChapter > ref.chapter ? ref.toVerseChapter : ref.chapter;
+}
 
 /** Every verse the reference covers in its own Bible, in order. */
 function versesOf(bible: BibleId, ref: ScriptureRefShape & { chapter: number }): VersePlace[] {
   const { book, chapter } = ref;
   if (ref.fromVerse !== undefined) {
-    const last = Math.min(ref.toVerse ?? ref.fromVerse, verseCount(bible, book, chapter));
-    return Array.from({ length: Math.max(0, last - ref.fromVerse + 1) }, (_, i) => ({ book, chapter, verse: ref.fromVerse! + i }));
+    const lastChapter = Math.min(lastChapterOfVerses(ref), chapterCount(bible, book));
+    return Array.from({ length: Math.max(1, lastChapter - chapter + 1) }, (_, i) => chapter + i).flatMap((c) => {
+      const first = c === chapter ? ref.fromVerse! : 1;
+      const last = Math.min(c === lastChapter ? ref.toVerse ?? ref.fromVerse! : verseCount(bible, book, c), verseCount(bible, book, c));
+      return Array.from({ length: Math.max(0, last - first + 1) }, (_, i) => ({ book, chapter: c, verse: first + i }));
+    });
   }
   // A range is read up to the book's last chapter: "Откр 22-999999999999" is not a billion chapters to walk.
   const last = Math.min(ref.toChapter ?? chapter, chapterCount(bible, book));
@@ -129,15 +157,16 @@ export function scriptureReferencesOverlap(a: ScriptureRefShape, b: ScriptureRef
 
 /**
  * A PASSAGE — a stretch of one Bible, from `chapter`:`fromVerse` to `toChapter`:`toVerse`, or whole
- * chapters `chapter`–`toChapter` when it has no verses. Unlike the stored shape it may run from a verse
- * of one chapter into the next: Synodal "Пс 9:20-25" is Ps 9:19-10:4 of the King James (the owner,
- * 2026-10-17: "9:19–10:4 is fine"). It is what a reference is printed and compared by, never stored.
+ * chapters `chapter`–`toChapter` when it has no verses. It may run from a verse of one chapter into the next:
+ * Synodal "Пс 9:20-25" is Ps 9:19-10:4 of the King James (the owner, 2026-10-17: "9:19–10:4 is fine"); the stored
+ * shape says so with `toVerseChapter` (`lastChapterOfVerses`). It is what a reference is printed and compared by, never
+ * stored.
  */
 export type Passage = { chapter: number; toChapter: number; fromVerse?: number; toVerse?: number };
 
-/** The passage a reference names as it is written: a verse wins over a chapter range left beside it. */
+/** The passage a reference names as it is written: verses, on into a later chapter where `toVerseChapter` says so (`lastChapterOfVerses`). */
 function passageAsWritten(ref: ScriptureRefShape & { chapter: number }): Passage {
-  if (ref.fromVerse !== undefined) return { chapter: ref.chapter, toChapter: ref.chapter, fromVerse: ref.fromVerse, toVerse: ref.toVerse ?? ref.fromVerse };
+  if (ref.fromVerse !== undefined) return { chapter: ref.chapter, toChapter: lastChapterOfVerses(ref), fromVerse: ref.fromVerse, toVerse: ref.toVerse ?? ref.fromVerse };
   return { chapter: ref.chapter, toChapter: ref.toChapter ?? ref.chapter };
 }
 

@@ -1,6 +1,6 @@
 import { act, renderHook } from '@testing-library/react';
 
-import { analysisState, storedAnalysis, useAnalysisNote, type AnalysisOpening } from '@/components/bible/analysis/useAnalysisNote';
+import { analysisState, passageOfReference, storedAnalysis, useAnalysisNote, type AnalysisOpening } from '@/components/bible/analysis/useAnalysisNote';
 import { useDataDocument } from '@/data-engine/react.client';
 import { useStudyNotesEngine } from '@/hooks/useStudyNotesEngine';
 import { changeRelation, cutAt, needsArrow, passageWords, relateWords, tieTo, type AnalysisState } from '@/utils/passageAnalysis';
@@ -259,5 +259,14 @@ describe('a drawn tie kept in the note', () => {
     const read = analysisState(kept, total);
     expect(read.drawn).toEqual([6]);
     expect(needsArrow(read, 6)).toBe(true);
+  });
+});
+
+// Codex review r3: the analysis screen read a run past its chapter by `toChapter` alone, not as the numbering module does.
+describe('the passage of an analysis\'s reference', () => {
+  it('ends in the chapter its last verse stands in — the new field first, an older analysis\'s `toChapter` after it', () => {
+    expect(passageOfReference({ id: 'r', bible: 'rst', book: 'Ruth', chapter: 1, fromVerse: 21, toVerseChapter: 2, toVerse: 2 })).toEqual({ chapter: 1, fromVerse: 21, toChapter: 2, toVerse: 2 });
+    expect(passageOfReference({ id: 'r', bible: 'rst', book: 'Ruth', chapter: 1, fromVerse: 21, toChapter: 2, toVerse: 2 })).toEqual({ chapter: 1, fromVerse: 21, toChapter: 2, toVerse: 2 });
+    expect(passageOfReference({ id: 'r', bible: 'rst', book: 'Ruth', chapter: 1, fromVerse: 3, toVerse: 5 })).toEqual({ chapter: 1, fromVerse: 3, toChapter: 1, toVerse: 5 });
   });
 });

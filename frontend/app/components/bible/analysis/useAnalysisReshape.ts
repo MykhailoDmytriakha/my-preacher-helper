@@ -51,7 +51,7 @@ export function useAnalysisReshape({ text, bookId, bible, locale }: { text: Book
     const placeOf = (p: PickedPassage) => `${abbrev} ${passageSpan(p)}`;
     const reference = (p: PickedPassage, base?: ScriptureReference): ScriptureReference => ({
       ...(base ?? { bible, book: bookId }), id: base?.id ?? newClientId(), chapter: p.chapter, fromVerse: p.fromVerse,
-      toChapter: p.toChapter !== p.chapter ? p.toChapter : undefined, toVerse: p.toVerse,
+      toChapter: p.toChapter !== p.chapter ? p.toChapter : undefined, toVerseChapter: p.toChapter !== p.chapter ? p.toChapter : undefined, toVerse: p.toVerse,
     });
     const save = (target: StudyNote | null, p: PickedPassage, state: AnalysisState) => {
       const passageWordsOf = passageWords(text, p);

@@ -31,10 +31,11 @@ import { MarkedElsewhereSheet } from './marks/MarkedElsewhereSheet';
 import { useReaderMarks } from './marks/useReaderMarks';
 import { MineSheet } from './MineSheet';
 import { buildMinimapLayout } from './minimapLayout';
+import { ParagraphLines } from './ParagraphLines';
 import { PhoneReaderTools } from './PhoneReaderTools';
 import { useReaderTrail, type TrailBack } from './PlaceTrail';
 import { arriveOnTrail, changeTranslationOnTrail, leaveOnTrail, openedForTranslation, ownTrailPlace, stepOnTrail } from './placeTrailStore';
-import { ReaderCommentDialog, useCommentDoors, useReaderCommenting } from './ReaderCommentDialog';
+import { ReaderCommentDialog, useCommentDoors, useCommentHoldsReader, useCommentLimit, useReaderCommenting } from './ReaderCommentDialog';
 import { readingSurface } from './readingSurface';
 import { openedAlone } from './search/foundInBible';
 import { useFoundInReader } from './search/useFoundInReader';
@@ -42,6 +43,7 @@ import { useBookCrossRefs } from './useBookCrossRefs';
 import { useBookUsage } from './useBookUsage';
 import { chapterAtLine, useChapterWindow } from './useChapterWindow';
 import { useFollowAfterClose } from './useFollowAfterClose';
+import { PassageGrips } from './verseCopy/PassageGrips';
 import { useCopyNames, useVerseCopy } from './verseCopy/useVerseCopy';
 import { VerseHoldSurface } from './verseCopy/VerseHoldSurface';
 import { VerseMenu } from './verseCopy/VerseMenu';
@@ -171,6 +173,9 @@ function LoadNotice({ status, onRetry }: { status: LoadState['status']; onRetry:
  * The way back as a phone's header says it: «← 8:7» within this book, the place's own label elsewhere —
  * the book's name is already beside it (BUG-20261023-phone-bar-crowded: «← Рим 8:7» did not fit at 360 px).
  */
+/** The way back leaves this reader: to a screen of the app, or to a link in another book. */
+const leavesReader = (back: TrailBack | null, bookId: string) => back?.kind === 'screen' || (back?.kind === 'link' && back.book !== bookId);
+
 function shortWayBack(returnTo: Place | null, back: TrailBack | null, bookId: string, label: string | null): string | null {
   if (returnTo) return `${returnTo.chapter}:${returnTo.verse}`;
   if (back?.kind === 'link' && back.book === bookId) return `${back.place.chapter}:${back.place.verse}`;
@@ -374,7 +379,8 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
   // The person's own material on the verses it names: badges with the text, dots on the minimap, a list.
   const mine = useBookUsage(bookId, bible, locale, Boolean(text), editComment);
   const { commentOn, commentPassage, commentsReady } = mine;
-  const commentDoors = useCommentDoors({ ready: commentsReady, commentOn, setCommenting, bookId, bible });
+  // The paragraphs' rule while a comment's verses are chosen (phase 9): kept by the verse choice below.
+  const limitComment = useCommentLimit({ text, laid: mine.commentLaid, bodyOf: mine.commentBody, commenting });
   const layout = useMemo(() => (text ? buildMinimapLayout(text.chapters) : null), [text]);
 
   // A BIG BOOK IS DRAWN AROUND THE PLACE READ (`useChapterWindow`): the chapters near it are in the
@@ -418,7 +424,13 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
   const marks = useReaderMarks({ textRef, text, ready: Boolean(text && layout), bible, bookId, drawn: drawnSpan, onMarked: actOnVerse });
   const ribbonSigns = useActedOpen(marks.signs, actOnVerse);
   // TAKING VERSES OUT: a verse held opens its menu, several are chosen for the bar (`verseCopy/`).
-  const verseCopy = useVerseCopy({ textRef, text, bible, bookId, drawn: drawnSpan, crossRefs: ribbonCrossRefs, enabled: !marks.toolInHand, onActed: actOn });
+  const verseCopy = useVerseCopy({ textRef, text, bible, bookId, drawn: drawnSpan, crossRefs: ribbonCrossRefs, enabled: !marks.toolInHand, onActed: actOn, limitComment });
+  // Another book or Bible is a new reader: an open comment's window comes back first and asks (`useCommentHoldsReader`).
+  const commentHolds = useCommentHoldsReader(commenting, verseCopy.clear);
+  // A verse's «Комментарий» with none written there chooses the comment's verses first (phase 9).
+  const startCommentPassage = verseCopy.startPassage;
+  const choosePassage = useCallback((chapter: number, verse: number) => startCommentPassage({ chapter, verse }, undefined, 'comment'), [startCommentPassage]);
+  const commentDoors = useCommentDoors({ ready: commentsReady, commentOn, setCommenting, bookId, bible, choosePassage, passageOf: commentPassage });
   // The links' chips and the signs of marks shape a chapter's height: those measured before are doubted.
   const doubtHeights = chapterWindow.doubt;
   useEffect(() => {
@@ -783,16 +795,22 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
   // The same book: a jump within the ribbon. Another: a new history entry, the place left put on the trail first
   // (`leave`). The place is written first, and the scroll that follows is not taken for reading.
   // A place with a passage to light (a verse found by the search line): lit on arrival, as a link's is.
+  // Another book is a new reader: the place left goes on the trail first, and an open comment's window holds the reader
+  // (`useCommentHoldsReader`) — every way into another book comes through here.
+  const leaveForBook = useCallback((book: string, place: Place & { toVerse?: number }) => {
+    if (commentHolds()) return;
+    leave();
+    leavingRef.current = true;
+    onOpenBook(bookSlug(book), place);
+  }, [commentHolds, leave, onOpenBook]);
   const openPlace = useCallback((chosenBook: string, place: Place & { toVerse?: number }) => {
     if (chosenBook === bookId) {
       arrive(place);
       jumpTo(place, place.toVerse ? () => lightArrival(passageKeys(place.chapter, place.verse, place.toVerse as number), ARRIVAL_LIT_MS) : undefined);
       return;
     }
-    leave();
-    leavingRef.current = true;
-    onOpenBook(bookSlug(chosenBook), place);
-  }, [arrive, bookId, jumpTo, leave, lightArrival, onOpenBook]);
+    leaveForBook(chosenBook, place);
+  }, [arrive, bookId, jumpTo, leaveForBook, lightArrival]);
 
   // A verse chosen on the minimap — pointed at and pressed, its place said under the pointer — is a move to a place
   // (the owner, 2026-10-27); a drag along the map is reading.
@@ -816,21 +834,20 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
     lightArrival(passageKeys(reference.chapter, reference.fromVerse, reference.toVerse), ARRIVAL_LIT_MS);
   }, [lightArrival]);
   const openElsewhere = useCallback((reference: CrossReference) => {
-    leave();
-    leavingRef.current = true;
-    onOpenBook(bookSlug(reference.book), { chapter: reference.chapter, verse: reference.fromVerse, toVerse: reference.toVerse });
-  }, [leave, onOpenBook]);
+    leaveForBook(reference.book, { chapter: reference.chapter, verse: reference.fromVerse, toVerse: reference.toVerse });
+  }, [leaveForBook]);
   const followReference = useCrossReferenceTravel({ bookId, jumpTo, light: lightReference, openElsewhere, arrive, keepWayBack: setReturnTo });
   const openReference = useFollowAfterClose(Boolean(crossRefs.openAt), closeCrossRefs, followReference);
 
   // The same place in another Bible: this one is written down first, and the page opens the book
   // in the other Bible, which finds it there.
   const changeBible = useCallback((next: BibleId) => {
+    if (commentHolds()) return;
     flushPlaceRef.current();
     leavingRef.current = true;
     changeTranslationOnTrail(bookId);
     onChangeBible(next);
-  }, [bookId, onChangeBible]);
+  }, [bookId, commentHolds, onChangeBible]);
 
   const openInBible = useFollowAfterClose(Boolean(marks.elsewhere.at), marks.elsewhere.close, changeBible);
   // A row of the person's list leaves the Bible for that note or sermon: the window closes first, so the
@@ -839,9 +856,10 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
   // left within ten seconds (the way was cancelled) it goes by itself.
   const [leaving, setLeaving] = useState(false);
   const goToScreen = useCallback((href: string) => {
+    if (commentHolds()) return;
     setLeaving(true);
     router.push(href);
-  }, [router]);
+  }, [commentHolds, router]);
   useEffect(() => {
     if (!leaving) return undefined;
     const timer = window.setTimeout(() => setLeaving(false), LEAVING_GIVES_UP_MS);
@@ -871,6 +889,8 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
       jumpTo(returnTo);
       return;
     }
+    // Out of this reader — to a screen or another book — an open comment's window comes back first, the light unmoved.
+    if (leavesReader(trailBack, bookId) && commentHolds()) return;
     // The light steps back first; leaving then adds where the person stopped without moving it.
     if (trailBack?.kind === 'link') stepOnTrail(trailBack.index);
     leave();
@@ -947,9 +967,11 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
                 articleRef={textRef}
                 gestureIgnore={marks.gestureIgnore}
                 penSurface={marks.penSurface}
-                className={`isolate min-w-0 bg-white dark:bg-gray-900 [-webkit-touch-callout:none] [@media(hover:none)]:select-none ${frame.card} ${marks.textClass}`}
+                className={`relative isolate min-w-0 bg-white dark:bg-gray-900 [-webkit-touch-callout:none] [@media(hover:none)]:select-none ${frame.card} ${marks.textClass}`}
               >
                 <BookRibbon text={text} lang={BIBLES[bible].language} chapterWord={chapterWord} crossRefs={ribbonCrossRefs} signs={ribbonSigns} mine={ribbonMine} chapterComment={commentDoors.chapter} boxes={chapterWindow.boxes} />
+                <ParagraphLines root={textRef} laid={ribbonMine?.comments?.paragraphs?.laid} drawn={drawnSpan} />
+                <PassageGrips root={textRef} copy={verseCopy} text={text} drawn={drawnSpan} />
                 <BookEnd bookId={bookId} bible={bible} locale={locale} wide={wide} onOpen={(chosen) => openPlace(chosen, { chapter: 1, verse: 1 })} />
               </VerseHoldSurface>
             </ScriptureLinksInWindow>
@@ -1001,7 +1023,7 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
         onEditComment={(id) => { mine.close(); editComment(id); }}
         onOpenAnalysis={(id) => { mine.close(); setAnalysing({ kind: 'open', id }); }}
       />
-      <ReaderCommentDialog commenting={commenting} text={text} bookId={bookId} bible={bible} locale={locale} passageOf={commentPassage} onClose={closeComment} />
+      <ReaderCommentDialog commenting={commenting} setCommenting={setCommenting} text={text} bookId={bookId} bible={bible} locale={locale} passageOf={commentPassage} onClose={closeComment} copy={verseCopy} wide={wide} laid={mine.commentLaid} bodyOf={mine.commentBody} />
       <MarkedElsewhereSheet
         at={marks.elsewhere.at}
         bookId={bookId}

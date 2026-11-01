@@ -768,7 +768,9 @@
       "close": "Close the found verses",
       "showEarlier_one": "Show {{count}} earlier verse",
       "showEarlier_other": "Show {{count}} earlier verses"
-    }
+    },
+    "passageGripFirst": "First verse of the passage — pull it up or down",
+    "passageGripLast": "Last verse of the passage — pull it up or down"
   },
   "navigation": {
     "appName": "My Preacher Helper",
@@ -4459,14 +4461,16 @@
     "notSaved": "The comment was not saved — the text stays in the window.",
     "erase": "Erase",
     "eraseTitle": "Erase this comment?",
-    "verseMenu": "Comment",
+    "verseMenu": "Comment or paragraph",
     "verseMenuEdit": "Edit the comment",
+    "verseMenuEditParagraph": "Edit paragraph",
     "chapterMenu": "Comment on the chapter",
     "chapterMenuEdit": "Edit the chapter’s comment",
     "wholeChapter": "{{place}} — the whole chapter",
     "wholeChapters": "{{place}} — the whole chapters",
     "pickPlace": "Which verse or chapter is it on?",
     "changePlace": "Change the verse or chapter",
+    "changeVerses": "Change verses",
     "open": "Open the comment",
     "noteTitle": "Note title",
     "noteTitlePlaceholder": "What is this note about?",
@@ -4482,7 +4486,16 @@
     "placeTaken": "has a comment",
     "movedFrom": "Was at {{place}} — moves when you press Done.",
     "moveBack": "Put back",
-    "moveHere": "Move here"
+    "moveHere": "Move here",
+    "pick": {
+      "write": "Write a comment",
+      "cancel": "Cancel choosing verses",
+      "hint": "Press the passage's last verse — the nearer end moves to the verse pressed. One verse is a comment, several a paragraph.",
+      "took": "Paragraphs never cross: the paragraph «{{title}}» is taken whole",
+      "cross": "Paragraphs never cross: the passage stopped at the paragraph «{{title}}»",
+      "same": "This is already the paragraph «{{title}}» — open its heading",
+      "deep": "A paragraph within a paragraph — two levels at most"
+    }
   },
   "richText": {
     "bold": "Bold",
@@ -4520,7 +4533,6 @@
     "saveAgain": "Save again",
     "pick": {
       "hint": "Choose the verses to analyse: tap a verse below or above to stretch the passage to it, an end verse to drop it.",
-      "inside": "An analysis runs over continuous text: a verse in the middle can’t go — drop the end verses instead.",
       "open": "Analyse",
       "cancel": "Cancel choosing verses",
       "apply": "Apply"

@@ -89,3 +89,13 @@ it('asks before Cancel throws away changes, and only then', async () => {
   fireEvent.click(await screen.findByRole('button', { name: 'common.discardChanges.confirm' }));
   await waitFor(() => expect(cancel).toHaveBeenCalledTimes(2));
 });
+
+// Codex review r3: only the window with a footer stepped aside; the other stayed on screen with the page let go under it.
+it('steps aside out of sight while it is away, with a footer or without', () => {
+  const { rerender } = render(<FormDialog title="Away" away onClose={jest.fn()}><p>Body</p></FormDialog>);
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  rerender(<FormDialog title="Away" away onClose={jest.fn()} footer={<button type="button">Save</button>}><p>Body</p></FormDialog>);
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  rerender(<FormDialog title="Back" onClose={jest.fn()}><p>Body</p></FormDialog>);
+  expect(screen.getByRole('dialog')).toBeInTheDocument();
+});

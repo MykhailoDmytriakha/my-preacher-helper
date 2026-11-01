@@ -25,7 +25,10 @@ const ANALYSIS_SLOT = 'analysis';
 
 export const passageOfReference = (reference: ScriptureReference | undefined): PickedPassage | null => {
   if (!reference || reference.chapter === undefined || reference.fromVerse === undefined) return null;
-  return { chapter: reference.chapter, fromVerse: reference.fromVerse, toChapter: reference.toChapter ?? reference.chapter, toVerse: reference.toVerse ?? reference.fromVerse };
+  // Past its chapter, the chapter its last verse stands in (`toVerseChapter`, as `scriptureReferenceNumbering` reads it); an
+  // analysis kept before that field says it by `toChapter`, an analysis being one run (Codex review r3).
+  const toChapter = reference.toVerseChapter ?? reference.toChapter ?? reference.chapter;
+  return { chapter: reference.chapter, fromVerse: reference.fromVerse, toChapter, toVerse: reference.toVerse ?? reference.fromVerse };
 };
 const samePassage = (a: PickedPassage | null, b: PickedPassage) => Boolean(a) && a!.chapter === b.chapter && a!.fromVerse === b.fromVerse && a!.toChapter === b.toChapter && a!.toVerse === b.toVerse;
 /** «1:3–14», «1:7», «1:15–2:10». */
@@ -192,7 +195,8 @@ export function useAnalysisNote({ opening, text, bookId, bible, locale }: { open
     }
     const reference: ScriptureReference = {
       id: newClientId(), bible, book: bookId, chapter: passage.chapter, fromVerse: passage.fromVerse,
-      ...(passage.toChapter !== passage.chapter ? { toChapter: passage.toChapter } : {}), toVerse: passage.toVerse,
+      // Past its chapter, the chapter its last verse stands in (`toVerseChapter`); `toChapter` too, which this screen reads.
+      ...(passage.toChapter !== passage.chapter ? { toChapter: passage.toChapter, toVerseChapter: passage.toChapter } : {}), toVerse: passage.toVerse,
     };
     setRefused(false);
     const created = engine.createNote({ userId: engine.uid ?? '', title: t('analysis.title', { place }), scriptureRefs: [reference], tags: [], type: 'analysis', ...valueOf(next) });

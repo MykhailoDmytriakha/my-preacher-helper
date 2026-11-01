@@ -5,6 +5,7 @@ import { engineNote } from '@/hooks/useStudyNotesEngine';
 import { formatScriptureReference } from '@/utils/scriptureReference';
 import {
   noteLanguage,
+  passagesIn,
   referenceIn,
   sameScriptureReference,
   versesHeldIn,
@@ -252,5 +253,21 @@ describe('a reference whose verses fall in two chapters of another Bible', () =>
     expect(sameScriptureReference(ps('rst', 9), ps('rst', 9, 1, 39))).toBe(true);
     expect(sameScriptureReference(ps('rst', 113), ps('rst', 113, 1, 26))).toBe(true);
     expect(sameScriptureReference(ps('rst', 9), ps('rst', 9, 1, 38))).toBe(false);
+  });
+});
+
+describe('a run of verses over a chapter seam (BUG-20261031-verse-run-across-chapter-cut)', () => {
+  const eph = (extra: Partial<ScriptureRefShape>): ScriptureRefShape => ({ book: 'Ephesians', bible: 'rst', chapter: 4, fromVerse: 31, ...extra });
+
+  it('reads a run whose last verse stands in a later chapter on into it — a paragraph or an analysis over «Глава 5»', () => {
+    expect(passagesIn(eph({ toVerseChapter: 5, toVerse: 2 }), 'rst')).toEqual([{ chapter: 4, toChapter: 5, fromVerse: 31, toVerse: 2 }]);
+    expect(versesHeldIn(eph({ toVerseChapter: 5, toVerse: 2 }), 'rst').map(({ chapter, verse }) => `${chapter}:${verse}`)).toEqual(['4:31', '4:32', '5:1', '5:2']);
+    expect(formatScriptureReference(eph({ toVerseChapter: 5, toVerse: 2 }), { locale: 'ru' })).toContain('4:31-5:2');
+  });
+
+  it('keeps older references as they were read: a chapter range left beside verses does not stretch them', () => {
+    expect(passagesIn(eph({ toChapter: 6 }), 'rst')).toEqual([{ chapter: 4, toChapter: 4, fromVerse: 31, toVerse: 31 }]);
+    expect(passagesIn({ book: 'John', bible: 'rst', chapter: 3, fromVerse: 16, toChapter: 4, toVerse: 18 }, 'rst')).toEqual([{ chapter: 3, toChapter: 3, fromVerse: 16, toVerse: 18 }]);
+    expect(versesHeldIn(eph({ toChapter: 6 }), 'rst')).toHaveLength(1);
   });
 });

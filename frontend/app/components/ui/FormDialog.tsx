@@ -51,6 +51,12 @@ interface FormDialogProps {
    * windows and the analysis page (z-[120]) a new sermon stands at z-[130]; as `ReaderSheet` and `BookNavigator` take it.
    */
   layerClassName?: string;
+  /**
+   * Stepped aside while the page under it is used for the window's own sake — a comment's verses chosen in the reader
+   * (case 2026-10-12-block-diagram, phase 9): out of sight and no longer a window over the page (no held page, no Escape,
+   * no ring for Tab), yet kept, with everything typed in it, until it comes back.
+   */
+  away?: boolean;
 }
 
 const WIDTH_BY_SIZE: Record<NonNullable<FormDialogProps['size']>, string> = {
@@ -61,7 +67,7 @@ const WIDTH_BY_SIZE: Record<NonNullable<FormDialogProps['size']>, string> = {
 };
 
 /** Presentation only: submission, draft retention and dismissal belong to the caller. */
-export default function FormDialog({ title, titleAction, eyebrow, description, tone = 'blue', size, dismissOnBackdrop = false, closeDisabled = false, onClose, footer, onSubmit, noValidate, children, showCloseButton = false, layerClassName }: FormDialogProps) {
+export default function FormDialog({ title, titleAction, eyebrow, description, tone = 'blue', size, dismissOnBackdrop = false, closeDisabled = false, onClose, footer, onSubmit, noValidate, children, showCloseButton = false, layerClassName, away = false }: FormDialogProps) {
   const { t } = useTranslation();
   const titleId = useId();
   const descriptionId = useId();
@@ -70,7 +76,7 @@ export default function FormDialog({ title, titleAction, eyebrow, description, t
    * whether it is the topmost — is one rule for every window in the app (`useModalLayer`).
    * This dialog is simply one of its callers.
    */
-  const layer = useModalLayer({ onClose, closeDisabled });
+  const layer = useModalLayer({ onClose, closeDisabled, active: !away });
   const banded = footer !== undefined;
   const width = WIDTH_BY_SIZE[size ?? (banded ? 'form' : 'standard')];
 
@@ -106,7 +112,7 @@ export default function FormDialog({ title, titleAction, eyebrow, description, t
       </div>
     );
     return createPortal(
-      <div {...layer} className={`fixed inset-0 ${layerClassName ?? 'z-[110]'} flex items-end justify-center overscroll-contain bg-black/50 p-0 sm:items-center sm:p-4`}
+      <div {...layer} hidden={away} className={`fixed inset-0 ${layerClassName ?? 'z-[110]'} flex items-end justify-center overscroll-contain bg-black/50 p-0 sm:items-center sm:p-4 ${away ? 'hidden' : ''}`}
         onClick={event => { if (!closeDisabled && event.target === event.currentTarget) onClose(); }}>
         <div role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={description ? descriptionId : undefined}
           onClick={event => event.stopPropagation()}
@@ -118,7 +124,7 @@ export default function FormDialog({ title, titleAction, eyebrow, description, t
   }
 
   return createPortal(
-    <div {...layer} className={`fixed inset-0 ${layerClassName ?? 'z-[100]'} flex items-center justify-center overscroll-contain bg-black/50 backdrop-blur-sm sm:px-4`}
+    <div {...layer} hidden={away} className={`fixed inset-0 ${layerClassName ?? 'z-[100]'} flex items-center justify-center overscroll-contain bg-black/50 backdrop-blur-sm sm:px-4 ${away ? 'hidden' : ''}`}
       onClick={event => { if (dismissOnBackdrop && !closeDisabled && event.target === event.currentTarget) onClose(); }}>
       <div role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={description ? descriptionId : undefined}
         className={`flex h-[100dvh] w-full flex-col overflow-hidden border border-gray-200/70 bg-white shadow-2xl dark:border-gray-800 dark:bg-gray-900 sm:h-auto sm:max-h-[85vh] sm:rounded-2xl ${width}`}>

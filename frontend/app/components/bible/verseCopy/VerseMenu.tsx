@@ -37,7 +37,9 @@ function MenuItem({ icon: Icon, label, strong = false, touch, onSelect }: {
       <Icon className="h-5 w-5 shrink-0" aria-hidden="true" />
     </button>
   ) : (
-    <button type="button" role="menuitem" onClick={onSelect} className={`flex h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-sm text-gray-700 hover:bg-gray-100 focus-visible:bg-gray-100 dark:text-gray-200 dark:hover:bg-white/10 dark:focus-visible:bg-white/10 ${strong ? 'font-semibold text-gray-900 dark:text-white' : ''}`}>
+    // Under a mouse the row under it lights — in the dark theme a step lighter than the menu, not a hint of white (the
+    // owner, 01.11: «ховер не работает»).
+    <button type="button" role="menuitem" onClick={onSelect} className={`flex h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-sm text-gray-700 transition-colors hover:bg-gray-100 focus-visible:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700 dark:focus-visible:bg-gray-700 ${strong ? 'font-semibold text-gray-900 dark:text-white' : ''}`}>
       <Icon className="h-[18px] w-[18px] shrink-0" aria-hidden="true" />
       {label}
     </button>
