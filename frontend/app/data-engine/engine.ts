@@ -1455,8 +1455,10 @@ export class DataEngine {
     const provenance = selection.flatMap(path => {
       const match = pending.find(([id]) => {
         const request = this.commitRecords.get(id);
-        return request?.value && request.state !== 'cancelled'
-          && !sameManualSelection(request.baseline.value, request.value, path)
+        return request?.value && request.owner === owner && request.state !== 'cancelled'
+          && sameResource(request.baseline.resource, checkpoint.confirmed.resource)
+          // A saved create owns document existence, including selected fields still absent.
+          && ((!request.baseline.value && request.baseline.metadata === null) || !sameManualSelection(request.baseline.value, request.value, path))
           && sameManualSelection(checkpoint.draft, request.value, path);
       });
       return match ? [{ path, requestId: match[0] }] : [];
@@ -1542,6 +1544,10 @@ export class DataEngine {
     const active = () => { this.assertCurrent(owner, generation); if (parent.closed || this.manualForms.get(registryKey) !== state) throw new Error('Manual parent editor changed'); };
     const intent = (request: CommitRequest): ManualSavedIntent => ({ id: request.id, owner: request.owner, resource: request.baseline.resource, value: copy(request.value!), predecessorId: request.predecessor });
     const capture = (): ManualCapture => { active(); return this.captureManual(parent, owner, selection); };
+    const hasFailedDelivery = () => {
+      const checkpoint = parent.controller!.getState().checkpoint;
+      return Boolean(savedDocumentAnswer(owner, resource, Object.keys(checkpoint.pending), [...this.commitRecords.values()], this.pending));
+    };
     const execute = (action: () => Promise<unknown>): Promise<void> => {
       active();
       const result = action(); emit();
@@ -1681,7 +1687,7 @@ export class DataEngine {
         const proposed = await producer(source); active(); return proposed;
       }, signal)),
       save: updater => execute(async () => {
-        if (this.editorDelivery(parent, this.pending).some(entry => ['conflict', 'refused'].includes(entry.state))) {
+        if (hasFailedDelivery()) {
           throw Object.assign(new Error('Resolve the failed delivery with Keep local or Accept remote before saving'), { code: 'resolve-version-first' });
         }
         const scope = requireScope();
@@ -1704,7 +1710,7 @@ export class DataEngine {
         // Normalization is synchronous; later input is checked against this exact chosen stage.
         if (updating && expected) expectedIdentity = state.form.getState()?.comparison?.identity;
         const staged = scope?.getState();
-        const failed = this.editorDelivery(parent, this.pending).some(entry => ['conflict', 'refused'].includes(entry.state));
+        const failed = hasFailedDelivery();
         const discardStage = choice === 'remote' && options?.discardStage && Boolean(state.form.getState()?.comparison);
         assertManualChoiceInput(staged, choice, failed, Boolean(discardStage));
         // The parent already made its decision. Taking those words now discards only this

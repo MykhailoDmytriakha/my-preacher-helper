@@ -45,7 +45,7 @@ export function useSermonCoreDataDocument(sermonId: string | null) {
   // the recorder first — a dictated thought must never meet a refusal after the fact
   // (BUG-20260927-engine-open-hangs-on-silent-device-storage).
   const isReadOnly = document.readOnly || !owner || !document.data || document.data.userId !== owner
-    || Boolean(document.confirmed?.metadata?.deleted || (document.confirmed && document.confirmed.value === null)
+    || Boolean(document.confirmed?.metadata?.deleted || (document.confirmed && document.confirmed.value === null && document.presence?.kind !== 'creating')
       || (document.remote && document.remote.value === null) || document.remote?.metadata?.deleted);
   const owned = (update: (current: DocumentData) => DocumentData) => (current: DocumentData | null) => {
     if (!current || current.userId !== owner) throw new Error(NOT_EDITABLE);

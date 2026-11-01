@@ -51,7 +51,7 @@ export function EngineScratchWorkspace({ sermonId, isReadOnly = false, onConfirm
     emitted.current = { identity, fingerprint };
     onConfirmed(confirmed);
   }, [identity, isCurrent, confirmed, fingerprint, onConfirmed, sermonId]);
-  const deleted = Boolean(confirmed?.metadata?.deleted || (confirmed && confirmed.value === null)
+  const deleted = Boolean(confirmed?.metadata?.deleted || (confirmed && confirmed.value === null && scratch.presence?.kind !== 'creating')
     || (scratch.remote && scratch.remote.value === null) || scratch.remote?.metadata?.deleted);
 
   return <section className="space-y-4" data-testid="engine-scratch-workspace">

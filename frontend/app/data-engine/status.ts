@@ -4,7 +4,8 @@ import { shownDeliveryState } from './unanswered';
 import type { EditorState } from './controller';
 import type { ManualScope } from './manualScope';
 import type { Observation } from './observer';
-import type { JournalEntry } from './types';
+import type { RecordPresence } from './recordPresence';
+import type { JournalEntry, ResourceSnapshot } from './types';
 
 export type SyncPhase = 'savingLocally' | 'localFailure' | 'draft' | 'queued' | 'sending' | 'unknown'
   | 'blocked' | 'refused' | 'conflict' | 'remoteChanged' | 'deleted' | 'saved';
@@ -40,7 +41,7 @@ export interface SyncStatus {
 }
 
 /** A Save-button stage owns its opening ancestor, even while the parent observes newer data. */
-export function describeManualSync(form: ReturnType<ManualScope['getState']> | null, editor: EditorState | null, parent: SyncStatus | null, error: string | null): SyncStatus | null {
+export function describeManualSync(form: ReturnType<ManualScope['getState']> | null, editor: EditorState | null, parent: SyncStatus | null, error: string | null, presence?: RecordPresence): SyncStatus | null {
   // A form resolves only its own fields, so dropping a refused change of the whole document is not its
   // choice to offer (a screen's editor offers it; EditorController.acceptRemote). A real newer version
   // from elsewhere is still offered, as it always was.
@@ -48,7 +49,7 @@ export function describeManualSync(form: ReturnType<ManualScope['getState']> | n
   // A selected-field form never owns a whole-document deletion, including while it opens.
   if (parent?.deleting) parent = { ...parent, deleting: false };
   if (!form || (!form.record.active && !form.choiceRequired) || !editor || !parent) return parent;
-  if (form.choiceRequired) return describeManualChoice(form, editor, parent, error);
+  if (form.choiceRequired) return describeManualChoice(form, editor, parent, error, presence);
   // Explicit Keep local may include durable corrections to a known failed command.
   // Accept remote still cannot discard an unsent stage, and unknown outcomes stay immutable.
   if (form.dirty && form.durable && ['conflict', 'refused'].includes(parent.phase)) {
@@ -58,9 +59,8 @@ export function describeManualSync(form: ReturnType<ManualScope['getState']> | n
   if (!form.captureFailed && !form.dirty && form.durable && !['saved', 'draft', 'remoteChanged'].includes(parent.phase)) {
     return { ...parent, canSave: false, canRemove: false };
   }
-  const observed = editor.checkpoint.remoteCandidate ?? editor.checkpoint.confirmed;
+  const { snapshot: observed, deleted } = manualObservation(form, editor, presence);
   const { baseline, predecessor, selection } = form.record;
-  const deleted = observed.value === null || Boolean(observed.metadata?.deleted);
   const replaced = Boolean(baseline.metadata && observed.metadata && baseline.metadata.generation !== observed.metadata.generation);
   const changed = deleted || replaced || selection.some(path => !sameManualSelection(observed.value, baseline.value, path)
     && !(predecessor && sameManualSelection(observed.value, predecessor.value, path)));
@@ -73,14 +73,29 @@ export function describeManualSync(form: ReturnType<ManualScope['getState']> | n
     canAcceptRemote: false, canKeepLocal: false };
 }
 
-function describeManualChoice(form: ReturnType<ManualScope['getState']>, editor: EditorState, parent: SyncStatus, error: string | null): SyncStatus {
+function describeManualChoice(form: ReturnType<ManualScope['getState']>, editor: EditorState, parent: SyncStatus, error: string | null, presence?: RecordPresence): SyncStatus {
     const pending = Object.keys(editor.checkpoint.pending).length > 0;
-    const observed = editor.checkpoint.remoteCandidate ?? editor.checkpoint.confirmed;
-    const deleted = observed.value === null || Boolean(observed.metadata?.deleted);
+    const { deleted } = manualObservation(form, editor, presence);
     const ready = form.durable && !form.captureFailed;
     return { ...parent, phase: ready ? 'conflict' : error ? 'localFailure' : 'savingLocally',
       canSave: false, canRemove: false, canAcceptRemote: ready,
       canKeepLocal: ready && !deleted && (!pending || parent.canKeepLocal) };
+}
+
+/** Public presence supplies creation evidence without changing the form's pinned baseline. */
+function manualObservation(form: ReturnType<ManualScope['getState']>, editor: EditorState,
+  presence?: RecordPresence): { snapshot: ResourceSnapshot; deleted: boolean } {
+  let snapshot = editor.checkpoint.remoteCandidate ?? editor.checkpoint.confirmed;
+  const { baseline, predecessor, resource, owner } = form.record;
+  const matches = (candidate: ResourceSnapshot['resource']) => candidate.collection === resource.collection && candidate.id === resource.id;
+  const savedCreation = baseline.value === null && baseline.metadata === null && predecessor
+    && predecessor.owner === owner && matches(predecessor.resource) && matches(baseline.resource)
+    && presence?.snapshot && matches(presence.snapshot.resource) && presence.snapshot.value?.userId === owner;
+  const openingAbsence = !editor.checkpoint.remoteCandidate && matches(snapshot.resource) && snapshot.value === null && snapshot.metadata === null;
+  // The accepted public copy may arrive before the editor finishes adopting its ACK.
+  if (savedCreation && openingAbsence && presence?.kind === 'present' && presence.source === 'server') snapshot = presence.snapshot;
+  const awaitingCreation = savedCreation && openingAbsence && presence?.kind === 'creating';
+  return { snapshot, deleted: Boolean(snapshot.metadata?.deleted) || (snapshot.value === null && !awaitingCreation) };
 }
 
 /** Status describes proven state; an SDK echo of our command is not a foreign edit. */

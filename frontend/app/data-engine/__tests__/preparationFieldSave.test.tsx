@@ -5,6 +5,7 @@ import { useSermonCoreDataDocument } from '@/(pages)/(private)/sermons/[id]/hook
 import TextContextStepContent from '@/components/sermon/prep/TextContextStepContent';
 import HomileticPlanStepContent from '@/components/sermon/prep/HomileticPlanStepContent';
 import ExegeticalPlanModule from '@/components/sermon/prep/exegeticalPlan/ExegeticalPlanModule';
+import { AuthorIntentField } from '@/components/sermon/prep/exegeticalPlan/AuthorIntentField';
 import ThesisStepContent from '@/components/sermon/prep/ThesisStepContent';
 import GoalsStepContent from '@/components/sermon/prep/GoalsStepContent';
 import type { PreparationTextBinding } from '@/components/common/manualTextBinding';
@@ -598,5 +599,31 @@ it('does not open preparation stages while their controls have never been shown'
     const stages = await manualStores.createIndexedDbManualScopes().list('owner', resource);
     expect(stages).toEqual([]);
     expect(h.transport.send).not.toHaveBeenCalled();
+  } finally { await finish(view); }
+});
+
+function PendingPreparationPage() {
+  const core = useSermonCoreDataDocument(resource.id);
+  // Match the actual page's outer gate as well as the field's own manual-form readiness.
+  return <fieldset disabled={core.isReadOnly}><AuthorIntentField binding={core.authorIntentField} /></fieldset>;
+}
+
+it('unlocks the rendered preparation fieldset for a pending-created sermon and saves after its create', async () => {
+  jest.mocked(useAuth).mockReturnValue({ user: { uid: 'owner' } } as never);
+  const h = documentEngineHarness({ resource, value: null, metadata: null });
+  const browser = h.createBrowser(); browser.engine.setOnline(false); browser.engine.setOwner('owner');
+  const creator = await browser.engine.createEditor(resource, 'pending-preparation-creation');
+  await creator.commit(() => initial); await creator.close({ flush: false });
+  jest.mocked(createBrowserDataEngine).mockReturnValue(browser);
+  const view = render(<DataEngineProvider><DataDocumentProvider resource={resource} options={{ slot: 'sermon', readOnlyCopy: true }}><PendingPreparationPage /></DataDocumentProvider></DataEngineProvider>);
+  try {
+    const input = await screen.findByPlaceholderText('wizard.steps.exegeticalPlan.authorIntent.placeholder');
+    await waitFor(() => expect(input).toBeEnabled());
+    expect(h.server.value).toBeNull(); expect(h.transport.send).not.toHaveBeenCalled();
+    fireEvent.change(input, { target: { value: 'Actual page preparation while creation waits' } });
+    fireEvent.click(screen.getByTitle('actions.save'));
+    await waitFor(async () => expect((await h.commits.list('owner')).some(request => (request.value?.preparation as DocumentData)?.authorIntent === 'Actual page preparation while creation waits')).toBe(true));
+    await act(async () => { browser.engine.setOnline(true); await browser.engine.retry(); await settleEngine(); });
+    expect(h.server.value?.preparation).toMatchObject({ authorIntent: 'Actual page preparation while creation waits' });
   } finally { await finish(view); }
 });

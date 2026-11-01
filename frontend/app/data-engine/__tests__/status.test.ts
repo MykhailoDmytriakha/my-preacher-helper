@@ -6,6 +6,8 @@ import type { EditorState } from '../controller';
 import type { Observation } from '../observer';
 import type { JournalEntry, ResourceSnapshot } from '../types';
 
+jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
+
 const snapshot: ResourceSnapshot = { resource: { collection: 'studyNotes', id: 'note' }, value: { userId: 'owner', content: 'base' }, metadata: { protocol: 1, generation: 'g', revision: 1, deleted: false } };
 const observation: Observation = { snapshot, source: 'cache', readiness: 'cache', checking: false, error: false };
 const state = (): EditorState => ({ checkpoint: new DataSession(snapshot).checkpoint(), durable: true, error: null, result: null });
@@ -203,4 +205,142 @@ it('offers an explicit choice for a retained stage after its saved ancestor was 
     phase: 'conflict', canKeepLocal: false, canAcceptRemote: true,
   });
   form.dispose();
+});
+
+
+async function pendingCreationStatus(savedPredecessor = false) {
+  const { documentEngineHarness, settleEngine } = await import('@test-utils/documentEngineHarness');
+  const resource = { collection: 'sermons', id: 'pending-manual-status' };
+  const h = documentEngineHarness({ resource, value: null, metadata: null });
+  const browser = h.createBrowser();
+  browser.engine.setOnline(false); browser.engine.setOwner('owner');
+  const creator = await browser.engine.createEditor(resource, 'status-create');
+  await creator.commit(() => ({ userId: 'owner', title: 'Created offline', verse: 'John 3:16', date: 'now', thoughts: [] }));
+  await creator.close({ flush: false });
+  const detail = await browser.engine.openEditor(resource, 'status-detail');
+  const form = detail.form('title', [['title']]);
+  await form.begin();
+  if (savedPredecessor) {
+    await form.update(value => ({ ...value, title: 'Earlier saved title' }));
+    await form.save(); await form.begin();
+  }
+  await form.update(value => ({ ...value, title: 'Later unsent title' }));
+  const editor = detail.getState(), manual = form.getState()!;
+  const presence = detail.getPresence();
+  const parent = describeSync(editor, { snapshot: editor.checkpoint.confirmed, source: 'cache', readiness: 'cache', checking: false, error: false }, []);
+  expect(presence.kind).toBe('creating');
+  expect(manual).toMatchObject({ dirty: true, durable: true, record: { baseline: { value: null, metadata: null } } });
+  expect(h.transport.send).not.toHaveBeenCalled();
+  return { resource, editor, manual, presence, parent, browser, detail, h, async dispose() { browser.dispose(); await settleEngine(); } };
+}
+
+it.each([false, true])('keeps a durable pending-creation stage editable with saved successor %s', async saved => {
+  const s = await pendingCreationStatus(saved);
+  try {
+    const result = Reflect.apply(describeManualSync, null, [s.manual, s.editor, s.parent, null, s.presence]);
+    expect(result).toMatchObject({ phase: 'draft', canSave: true, hasForeignChange: false });
+    expect(s.manual.value.title).toBe('Later unsent title');
+  } finally { await s.dispose(); }
+});
+
+it.each([false, true])('still reports a real missing remote candidate with tombstone %s as deletion', async tombstone => {
+  const s = await pendingCreationStatus();
+  try {
+    const remote: ResourceSnapshot = { resource: s.resource, value: null,
+      metadata: tombstone ? { protocol: 1, generation: 'deleted', revision: 2, deleted: true } : null };
+    const editor = { ...s.editor, checkpoint: { ...s.editor.checkpoint, remoteCandidate: remote } };
+    expect(Reflect.apply(describeManualSync, null, [s.manual, editor, s.parent, null, s.presence]))
+      .toMatchObject({ phase: 'deleted', canSave: false, hasForeignChange: true });
+  } finally { await s.dispose(); }
+});
+
+it('requires matching public creation evidence before treating absence as pending', async () => {
+  const s = await pendingCreationStatus();
+  try {
+    expect(describeManualSync(s.manual, s.editor, s.parent, null)).toMatchObject({ phase: 'deleted', canSave: false });
+    const another = { ...s.presence, snapshot: { resource: { ...s.resource, id: 'another' }, value: s.manual.value, metadata: null } };
+    expect(Reflect.apply(describeManualSync, null, [s.manual, s.editor, s.parent, null, another]))
+      .toMatchObject({ phase: 'deleted', canSave: false });
+  } finally { await s.dispose(); }
+});
+
+it('lets an explicit recoverable choice keep its pending creation stage without claiming a deletion', async () => {
+  const s = await pendingCreationStatus();
+  try {
+    const stage = { ...s.manual, choiceRequired: true as const };
+    const parent = { ...s.parent, phase: 'conflict' as const, canKeepLocal: true, canAcceptRemote: true };
+    expect(Reflect.apply(describeManualSync, null, [stage, s.editor, parent, null, s.presence]))
+      .toMatchObject({ phase: 'conflict', canSave: false, canKeepLocal: true });
+    const deletedEditor = { ...s.editor, checkpoint: { ...s.editor.checkpoint, remoteCandidate: {
+      resource: s.resource, value: null, metadata: { protocol: 1 as const, generation: 'deleted', revision: 2, deleted: true },
+    } } };
+    expect(Reflect.apply(describeManualSync, null, [stage, deletedEditor, parent, null, s.presence]))
+      .toMatchObject({ phase: 'conflict', canKeepLocal: false });
+  } finally { await s.dispose(); }
+});
+
+
+it.each(['unknown', 'absent', 'deleting', 'present'] as const)('does not revive a retired creation stage from %s presence alone', async kind => {
+  const s = await pendingCreationStatus();
+  try {
+    const presence = { kind, source: kind === 'deleting' ? 'local' : 'cache', snapshot: s.editor.checkpoint.confirmed };
+    expect(Reflect.apply(describeManualSync, null, [s.manual, s.editor, s.parent, null, presence]))
+      .toMatchObject({ phase: 'deleted', canSave: false });
+  } finally { await s.dispose(); }
+});
+
+it('uses the authoritative creation copy while its editor checkpoint still awaits the ACK projection', async () => {
+  const s = await pendingCreationStatus();
+  try {
+    const predecessor = s.manual.record.predecessor!;
+    const accepted: ResourceSnapshot = { resource: s.resource, value: predecessor.value,
+      metadata: { protocol: 1, generation: predecessor.id, revision: 1, deleted: false, operationId: predecessor.id } };
+    const presence = { kind: 'present', source: 'server', snapshot: accepted };
+    expect(Reflect.apply(describeManualSync, null, [s.manual, s.editor, s.parent, null, presence]))
+      .toMatchObject({ phase: 'draft', canSave: true, hasForeignChange: false });
+  } finally { await s.dispose(); }
+});
+
+it('preserves the unsent stage across a real creation ACK and public presence transition', async () => {
+  const s = await pendingCreationStatus();
+  try {
+    const { settleEngine } = await import('@test-utils/documentEngineHarness');
+    s.browser.engine.setOnline(true); await s.browser.engine.retry(); await settleEngine();
+    const editor = s.detail.getState(), presence = s.detail.getPresence();
+    expect(presence.kind).toBe('present');
+    expect(editor.checkpoint.confirmed.value?.title).toBe('Created offline');
+    const parent = describeSync(editor, s.detail.getObservation(), []);
+    expect(Reflect.apply(describeManualSync, null, [s.detail.form('title', [['title']]).getState(), editor, parent, null, presence]))
+      .toMatchObject({ phase: 'draft', canSave: true, hasForeignChange: false });
+    expect(s.detail.form('title', [['title']]).getState()?.value.title).toBe('Later unsent title');
+  } finally { await s.dispose(); }
+});
+
+
+it('does not treat a matching cached copy as proof of the creation ACK', async () => {
+  const s = await pendingCreationStatus();
+  try {
+    const predecessor = s.manual.record.predecessor!;
+    const cached: ResourceSnapshot = { resource: s.resource, value: predecessor.value,
+      metadata: { protocol: 1, generation: 'cached-copy', revision: 1, deleted: false } };
+    const presence = { kind: 'present', source: 'cache', snapshot: cached };
+    expect(Reflect.apply(describeManualSync, null, [s.manual, s.editor, s.parent, null, presence]))
+      .toMatchObject({ phase: 'deleted', canSave: false });
+  } finally { await s.dispose(); }
+});
+
+it('retires creation evidence after the refused saved create is explicitly discarded', async () => {
+  const s = await pendingCreationStatus();
+  try {
+    const { settleEngine } = await import('@test-utils/documentEngineHarness');
+    jest.mocked(s.h.transport.send).mockImplementationOnce(async command => ({ kind: 'refused', operationId: command.operationId, code: 'permission-denied' }));
+    s.browser.engine.setOnline(true); await s.browser.engine.retry(); await settleEngine();
+    await s.detail.acceptRemote(); await settleEngine();
+    expect((await s.h.commits.list('owner')).every(request => request.state === 'cancelled')).toBe(true);
+    const presence = s.detail.getPresence(), editor = s.detail.getState();
+    expect(presence.kind).not.toBe('creating');
+    const parent = describeSync(editor, s.detail.getObservation(), []);
+    expect(Reflect.apply(describeManualSync, null, [s.manual, editor, parent, null, presence]))
+      .toMatchObject({ canSave: false, canKeepLocal: false });
+  } finally { await s.dispose(); }
 });

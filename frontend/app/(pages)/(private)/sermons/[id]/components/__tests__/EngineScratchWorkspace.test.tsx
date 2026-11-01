@@ -226,3 +226,18 @@ it('opens a pinned proposal form instead of using late outline callbacks', () =>
   act(() => { jest.mocked(EngineOutlineModal).mock.calls.at(-1)![0].onClose(); });
   expect(screen.queryByTestId('proposal')).not.toBeInTheDocument(); view.unmount();
 });
+
+it('keeps pending-created sermon scratch editable while retaining actual deletion and reading locks', () => {
+  const scratch = setup();
+  scratch.confirmed = { resource: snapshot().resource, value: null, metadata: null };
+  scratch.presence = { kind: 'creating', source: 'local', snapshot: { ...scratch.confirmed, value: scratch.data } };
+  const view = render(<EngineScratchWorkspace sermonId="sermon" />);
+  expect(panelProps().isReadOnly).toBe(false);
+  scratch.presence = { kind: 'unknown', source: 'cache', snapshot: scratch.confirmed };
+  view.rerender(<EngineScratchWorkspace sermonId="sermon" />); expect(panelProps().isReadOnly).toBe(true);
+  scratch.presence = { kind: 'creating', source: 'local', snapshot: { ...scratch.confirmed, value: scratch.data } };
+  scratch.remote = { ...snapshot(2), value: null, metadata: { ...snapshot(2).metadata!, deleted: true } };
+  view.rerender(<EngineScratchWorkspace sermonId="sermon" />); expect(panelProps().isReadOnly).toBe(true);
+  scratch.remote = null;
+  view.rerender(<EngineScratchWorkspace sermonId="sermon" isReadOnly />); expect(panelProps().isReadOnly).toBe(true);
+});

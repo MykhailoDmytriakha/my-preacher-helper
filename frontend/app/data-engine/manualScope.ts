@@ -30,7 +30,7 @@ export interface ManualScopeRecord {
   resource: ResourceRef;
   scopeId: string;
   selection: ManualPath[];
-  /** The original complete confirmed snapshot, pinned even before the first edit. */
+  /** The original confirmed snapshot, or explicit absence under a saved creation. */
   baseline: ResourceSnapshot;
   predecessor: ManualSavedIntent | null;
   stage: FieldValue[];
@@ -111,13 +111,11 @@ export class ManualScope {
       if (existing && !equalValues(existing, record.predecessor)) throw new Error('Manual predecessor evidence changed');
       validateAncestry(record.predecessor, evidence, options);
     }
-    if (!record.baseline.value || record.baseline.metadata?.deleted) throw new Error('Manual form requires a live confirmed document');
-    validateDocument(record.baseline.value, options);
+    const ancestor = validateAncestor(record.baseline, record.predecessor, options);
     for (const field of [...record.stage, ...record.savedSelection, ...(record.openingSelection ?? [])]) {
       if (!field || (field.exists !== true && field.exists !== false)) throw new Error('Invalid manual field value');
       if (field.exists) validateResourceDocument(options.resource.collection, { value: presentValue(field) }, { kind: 'update', changedFields: [] });
     }
-    const ancestor = record.predecessor?.value ?? record.baseline.value;
     if (record.savedSelection.some((field, index) => !equalValues(field, readSelection(ancestor, record.selection[index])))) throw new Error('Manual saved selection does not match its ancestor');
     const scope = new ManualScope(options, record);
     scope.value(); // Validate selection structure before exposing recovered disk data.
@@ -130,7 +128,7 @@ export class ManualScope {
     const opening = this.record.openingSelection ?? (this.record.savedGeneration === null ? this.record.savedSelection : null);
     const choiceRequired = !equalValues(this.record.stage, this.record.savedSelection)
       && Boolean(this.record.predecessor && this.options.port.isCancelled?.(this.record.predecessor.id));
-    return { capturing: this.captures.capturing, ...(choiceRequired ? { choiceRequired: true as const } : {}), ...(this.captures.failed ? { captureFailed: true } : {}), record: copy(this.record), openingValue: opening ? project(this.record.baseline.value!, this.record.selection, opening) : null, value: this.value(), dirty: !equalValues(this.record.stage, this.record.savedSelection), durable: this.durable };
+    return { capturing: this.captures.capturing, ...(choiceRequired ? { choiceRequired: true as const } : {}), ...(this.captures.failed ? { captureFailed: true } : {}), record: copy(this.record), openingValue: opening ? project(this.record.baseline.value ?? this.record.predecessor!.value, this.record.selection, opening) : null, value: this.value(), dirty: !equalValues(this.record.stage, this.record.savedSelection), durable: this.durable };
   }
 
   update(updater: (current: DocumentData) => DocumentData): Promise<void> {
@@ -275,11 +273,11 @@ export class ManualScope {
       const before = copy(this.record);
       const baseline = capture.checkpoint.confirmed;
       if (!sameResource(baseline.resource, this.options.resource)) throw new Error('Manual form resource changed');
-      if (!baseline.value || baseline.metadata?.deleted) return;
-      validateDocument(baseline.value, this.options);
+      if (baseline.metadata?.deleted) return;
       const options = { ...this.options, port: { ...this.options.port, capture: () => capture } };
       const predecessor = selectPredecessor(options, capture);
-      const ancestor = predecessor?.value ?? baseline.value;
+      if (!baseline.value && (!predecessor || baseline.metadata !== null)) return;
+      const ancestor = validateAncestor(baseline, predecessor, this.options);
       const selected = before.selection.map(path => readSelection(ancestor, path));
       const dirty = !equalValues(before.stage, before.savedSelection);
       const draftMatches = before.selection.every((path, index) => equalValues(readSelection(capture.checkpoint.draft, path), selected[index]));
@@ -426,6 +424,16 @@ function validateDocument(value: DocumentData, options: Pick<ScopeOptions, 'owne
   validateResourceDocument(options.resource.collection, value, { kind: 'update', changedFields: [] });
 }
 
+/** Saved creation is an ancestor, never a fabricated confirmed snapshot. */
+function validateAncestor(baseline: ResourceSnapshot, predecessor: ManualSavedIntent | null,
+  options: Pick<ScopeOptions, 'owner' | 'resource'>): DocumentData {
+  if (!sameResource(baseline.resource, options.resource) || baseline.metadata?.deleted
+    || (!baseline.value && (!predecessor || baseline.metadata !== null))) throw new Error('Manual form requires a live confirmed document');
+  if (baseline.value) validateDocument(baseline.value, options);
+  if (predecessor) validateIntent(predecessor, options);
+  return predecessor?.value ?? baseline.value!;
+}
+
 function validateAncestry(request: ManualSavedIntent, records: Map<string, ManualSavedIntent>, options: Pick<ScopeOptions, 'owner' | 'resource'>): Set<string> {
   const found = new Set<string>();
   let current: ManualSavedIntent | undefined = request;
@@ -441,10 +449,8 @@ function validateAncestry(request: ManualSavedIntent, records: Map<string, Manua
 function captureRecord(options: ScopeOptions, generation: number): ManualScopeRecord {
     const captured = copy(options.port.capture());
     const baseline = captured.checkpoint.confirmed;
-    if (!sameResource(baseline.resource, options.resource) || !baseline.value || baseline.metadata?.deleted) throw new Error('Manual form requires a live confirmed document');
-    validateDocument(baseline.value, options);
     const predecessor = selectPredecessor(options, captured);
-    const ancestor = predecessor?.value ?? baseline.value;
+    const ancestor = validateAncestor(baseline, predecessor, options);
     const stage = options.selection.map(path => readSelection(captured.checkpoint.draft, path));
     if (stage.some((value, index) => !equalValues(value, readSelection(ancestor, options.selection[index])))) {
       throw new Error('An unsaved editor already owns a selected field');

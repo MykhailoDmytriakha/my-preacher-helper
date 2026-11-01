@@ -31,7 +31,7 @@ export default function ConductPage() {
 }
 function EngineConductPage({ groupId }: { groupId: string }) {
   const document = useGroupDataDocument(groupId);
-  const { form, flow, updateDuration, recovery } = useGroupConductForm(groupId, Boolean(document.document.confirmed?.value)
+  const { form, flow, updateDuration, recovery } = useGroupConductForm(groupId, (Boolean(document.document.confirmed?.value) || document.document.presence.kind === 'creating')
     && document.document.presence.kind !== 'absent' && document.document.presence.kind !== 'deleting');
   /*
    * A COPY FOR READING STILL RUNS THE MEETING. Only the setup writes — the durations, saved on

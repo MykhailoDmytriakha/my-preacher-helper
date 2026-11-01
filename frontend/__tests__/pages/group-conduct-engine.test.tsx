@@ -182,3 +182,43 @@ it('leaves a way back while a conduct group read has no answer', async () => {
   expect(screen.queryByText('recordAvailability.notFound')).not.toBeInTheDocument();
   view.unmount();
 });
+
+it('enables conduct setup for a locally queued group creation before server confirmation', async () => {
+  const resource = { collection: 'groups', id: 'group-1' };
+  const harness = documentEngineHarness({ resource, value: null, metadata: null });
+  const browser = harness.createBrowser();
+  browser.engine.setOnline(false);
+  browser.engine.setOwner('owner');
+  const creator = await browser.engine.createEditor(resource, 'create-group-modal');
+  await creator.commit(() => ({
+    userId: 'owner', title: 'Pending meeting', status: 'draft', createdAt: 'created', updatedAt: 'old',
+    flow: flow(), templates: [
+      { id: 'template', type: 'notes', title: 'Reading', content: 'Read this', status: 'draft',
+        createdAt: 'created', updatedAt: 'old' },
+    ],
+  }));
+  expect(creator.getState().checkpoint.confirmed).toMatchObject({ value: null, metadata: null });
+  expect(creator.getPresence()).toMatchObject({ kind: 'creating', source: 'local' });
+  await creator.close({ flush: false });
+
+  jest.mocked(createBrowserDataEngine).mockImplementationOnce(() => browser);
+  const view = render(<DataEngineProvider><ConductPage /></DataEngineProvider>);
+  try {
+    const duration = await screen.findByDisplayValue('5');
+    await waitFor(() => expect(duration).toBeEnabled());
+    expect(screen.getByRole('button', { name: /conduct.preflight.startButton/ })).toBeEnabled();
+    // This is a local draft/manual-stage interaction. The engine is offline, so no server ACK is awaited.
+    fireEvent.change(duration, { target: { value: '7' } });
+    await act(async () => { await settleEngine(); });
+    expect(duration).toHaveValue(7);
+    expect(duration).toBeEnabled();
+    expect(screen.queryByText('dataSync.deleted')).not.toBeInTheDocument();
+    fireEvent.change(duration, { target: { value: '9' } });
+    await act(async () => { await settleEngine(); });
+    expect(duration).toHaveValue(9);
+    expect(duration).toBeEnabled();
+    expect(harness.transport.send).not.toHaveBeenCalled();
+  } finally {
+    view.unmount();
+  }
+});

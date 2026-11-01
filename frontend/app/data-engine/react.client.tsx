@@ -1162,7 +1162,7 @@ export function useDataForm(resource: ResourceRef | null, slot: string, selectio
       && document.status?.phase === 'conflict' && document.status.canAcceptRemote),
     ...(target?.state?.choiceRequired ? { choiceRequired: true as const } : {}),
     dirty: target?.state?.dirty ?? false,
-    status: describeManualSync(target?.state ?? null, document.state, document.status, error),
+    status: describeManualSync(target?.state ?? null, document.state, document.status, error, document.presence),
     ...(failure?.identity === identity ? { localError: say(failure.words) } : {}),
     error,
     ...(errorWords ? { errorWords } : {}),

@@ -21,7 +21,7 @@ export function useGroupPageEditor(groupId: string): GroupPageEditor {
   const field = <K extends 'title' | 'status' | 'templates' | 'flow'>(key: K): Dispatch<SetStateAction<Group[K]>> =>
     next => change(current => ({ ...current, [key]: nextValue(next, current[key]) }));
   const meeting = useGroupMeetingEditor(groupId, group?.meetingDates ?? [], Boolean(data.document.state?.manualWork),
-    Boolean(data.document.confirmed?.value) && data.document.presence.kind !== 'absent' && data.document.presence.kind !== 'deleting');
+    (Boolean(data.document.confirmed?.value) || data.document.presence.kind === 'creating') && data.document.presence.kind !== 'absent' && data.document.presence.kind !== 'deleting');
   const first = meeting.first;
   const recovery = data.recovery;
   const manual = meeting.form.dirty || data.document.state?.manualWork;
