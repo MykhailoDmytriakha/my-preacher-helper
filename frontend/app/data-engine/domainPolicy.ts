@@ -5,6 +5,7 @@ import { preservesStudyAnalysisSource } from '@/utils/studyAnalysisSource';
 import { ANALYSIS_RESHAPE_FRAME, sameAnalysisFrame } from './analysisReshapeFields';
 import { firstBookMarksIntent } from './bibleMarksCreation';
 import { carriedCopy, validCouncilCarry } from './councilCarryContent';
+import { materialNoteIds } from './documentReferences';
 import { diffFields, equalValues, readField, validateCommand, MAX_RELATION_RESOURCES } from './protocol';
 
 import type { CommandBase, DataCommand, DocumentData, FieldChange, ResourceRef, ResourceSnapshot } from './types';
@@ -72,7 +73,7 @@ export function requiredDomainTargets(confirmed: ResourceSnapshot, draft: Docume
   if (carried.length) return carried.map(id => ({ collection: 'councils', id }));
   if (!confirmed.value || !draft || confirmed.resource.collection !== 'studyMaterials'
     || equalValues(confirmed.value.noteIds, draft.noteIds)) return [];
-  return [...new Set([...ids(confirmed.value.noteIds), ...ids(draft.noteIds)])].map(id => ({ collection: 'studyNotes', id }));
+  return materialNoteIds(ids(confirmed.value.noteIds), ids(draft.noteIds)).map(id => ({ collection: 'studyNotes', id }));
 }
 
 /**

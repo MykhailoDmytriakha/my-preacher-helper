@@ -292,6 +292,21 @@ describe('registered transactional relation planning', () => {
     expect(reads).toEqual([]);
   });
 
+  it('keeps an untouched malformed legacy source list while editing copied text without a new reference', async () => {
+    const scratch = [{ id: 'copy', text: 'Before', createdAt: 'now', source: { noteId: 'historical', heading: 'Historical title' } }];
+    const primary = put('sermons', 's', { sourceNoteIds: 'legacy source list', scratch });
+    const command: DataCommand = { ...commandBase(primary), kind: 'update', changes: [{ path: ['scratch'], before: { exists: true, value: scratch }, after: { exists: true, value: [{ ...scratch[0], text: 'After' }] } }] };
+    expect(await planDataCommand(command, primary, reader)).toMatchObject({ result: { kind: 'acknowledged', snapshot: { value: { sourceNoteIds: 'legacy source list' } } } });
+    expect(reads).toEqual([]);
+  });
+
+  it('still validates a malformed legacy source list when assigning new scratch provenance', async () => {
+    const primary = put('sermons', 's', { sourceNoteIds: 'legacy source list', scratch: [] });
+    const command: DataCommand = { ...commandBase(primary), kind: 'update', changes: [{ path: ['scratch'], before: { exists: true, value: [] }, after: { exists: true, value: [{ id: 'copy', text: 'Text', createdAt: 'now', source: { noteId: 'n', heading: 'New source' } }] } }] };
+    expect(await planDataCommand(command, primary, reader)).toMatchObject({ result: { kind: 'refused', code: 'invalid-document' }, writes: [] });
+    expect(reads).toEqual([]);
+  });
+
   it('rejects new scratch provenance outside verified sermon sources', async () => {
     const primary = put('sermons', 's', { sourceNoteIds: [], scratch: [] });
     const command: DataCommand = { ...commandBase(primary), kind: 'update', changes: [{ path: ['scratch'], before: { exists: true, value: [] }, after: { exists: true, value: [{ id: 'copy', text: 'Text', createdAt: 'now', source: { noteId: 'n', heading: 'Title' } }] } }] };

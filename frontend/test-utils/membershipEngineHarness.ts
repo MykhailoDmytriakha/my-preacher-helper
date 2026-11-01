@@ -24,7 +24,7 @@ export function membershipEngineHarness(initial: ResourceSnapshot[]) {
   const cached = new Map(initial.map(snapshot => [key(snapshot.resource), copy(snapshot)]));
   const journal = new Map<string, JournalEntry>(), receipts = new Map<string, CommandResult>();
   const cursors = new Map<string, CollectionCursor>();
-  let sequence = 0, version = 1, engine!: DataEngine;
+  let sequence = 0, version = 1, engine!: DataEngine, activeRuntime!: DataEngineRuntime;
   const read = (resource: ResourceRef) => copy(server.get(key(resource)) ?? { resource, value: null, metadata: null });
   const transport: EngineTransport = {
     read: jest.fn(async (_owner, resource) => read(resource)),
@@ -52,6 +52,7 @@ export function membershipEngineHarness(initial: ResourceSnapshot[]) {
       put: async entry => { journal.set(entry.command.operationId, copy(entry)); },
       remove: async (_owner, id) => { journal.delete(id); },
     } });
+    activeRuntime = runtime;
     const snapshots = {
       read: async (_owner: string, resource: ResourceRef) => copy(cached.get(key(resource))),
       put: async (_owner: string, snapshot: ResourceSnapshot) => { cached.set(key(snapshot.resource), copy(snapshot)); },
@@ -69,6 +70,6 @@ export function membershipEngineHarness(initial: ResourceSnapshot[]) {
     const instance = engine;
     return { engine: instance, dispose: () => instance.dispose(), editorId: (resource, slot = 'default') => editorIdentity('test-tab', resource, slot, String(++sequence)) };
   };
-  return { createBrowser, transport, collectionTransport, commits, scopes, disk, read, get engine() { return engine; },
+  return { createBrowser, transport, collectionTransport, commits, scopes, disk, read, get engine() { return engine; }, get runtime() { return activeRuntime; },
     replace: (snapshot: ResourceSnapshot) => { server.set(key(snapshot.resource), copy(snapshot)); if (snapshot.value) owners.set(key(snapshot.resource), snapshot.value.userId); version += 1; } };
 }

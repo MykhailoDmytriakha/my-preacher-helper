@@ -90,7 +90,7 @@ export class DataEngineRuntime {
     await this.publishJournal(owner, generation);
   }
 
-  async drain(attempted = new Set<string>(), canDeliver = () => true): Promise<void> {
+  async drain(attempted = new Set<string>(), canDeliver = () => true, isReady: (command: DataCommand) => boolean = () => true): Promise<void> {
     const owner = this.owner;
     const generation = this.generation;
     if (!owner) return;
@@ -99,7 +99,7 @@ export class DataEngineRuntime {
     const operation = Promise.resolve().then(async () => {
       do {
         this.drainRequested.delete(owner);
-        await this.drainOwner(owner, generation, attempted, canDeliver);
+        await this.drainOwner(owner, generation, attempted, canDeliver, isReady);
       } while (this.current(owner, generation) && this.drainRequested.has(owner));
     });
     this.drains.set(owner, operation);
@@ -121,7 +121,7 @@ export class DataEngineRuntime {
     this.emit({ kind: 'journal', owner, entries }, generation);
   }
 
-  private async drainOwner(owner: string, generation: number, attempted: Set<string>, canDeliver: () => boolean): Promise<void> {
+  private async drainOwner(owner: string, generation: number, attempted: Set<string>, canDeliver: () => boolean, isReady: (command: DataCommand) => boolean): Promise<void> {
     const entries = await this.options.journal.list(owner);
     const resources = new Map<string, JournalEntry[]>();
     entries.forEach((entry) => {
@@ -132,6 +132,9 @@ export class DataEngineRuntime {
       for (const entry of queue) {
         if (!this.current(owner, generation) || !canDeliver()) return;
         if (attempted.has(entry.command.operationId)) continue;
+        // Readiness is local scheduling, not a new delivery result or an attempt. A source
+        // ACK in the queue's next pass can release this same immutable journal command.
+        if (!['acknowledged', 'conflict', 'refused'].includes(entry.state) && !isReady(entry.command)) return;
         attempted.add(entry.command.operationId);
         if (entry.state === 'acknowledged' || entry.state === 'conflict' || entry.state === 'refused') {
           if (entry.result) this.emit({ kind: 'result', owner, result: entry.result }, generation);

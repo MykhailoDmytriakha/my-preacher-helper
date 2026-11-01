@@ -6,6 +6,7 @@ import { isStudyNoteDraft } from '@/utils/studyNoteDraft';
 
 import { ANALYSIS_RESHAPE_FRAME, sameAnalysisFrame } from './analysisReshapeFields';
 import { validCouncilCarry } from './councilCarryContent';
+import { materialNoteIds, seriesMemberResources, sermonSourceReferences } from './documentReferences';
 import { childIdentityIssues } from './legacyChildIdentity';
 import { advanceResourceSnapshot, applyCommand, equalValues, mergeFields, readField, MAX_RELATION_RESOURCES } from './protocol';
 import { validateResourceDocument } from './resourceSchemas';
@@ -91,15 +92,6 @@ function materialHasNote(value: DocumentData, noteId: string): boolean {
     && value.sections.some(section => ownObject(section) && ids(section.noteIds).includes(noteId)));
 }
 
-function scratchSources(value: DocumentData | null): Map<string, string> {
-  const sources = new Map<string, string>();
-  if (!Array.isArray(value?.scratch)) return sources;
-  for (const item of value.scratch) {
-    if (ownObject(item) && typeof item.id === 'string' && ownObject(item.source) && typeof item.source.noteId === 'string') sources.set(item.id, item.source.noteId);
-  }
-  return sources;
-}
-
 /** Owns a single read-only planning pass; persistence starts only after it finishes. */
 class RelationPlanner {
   private readonly cached = new Map<string, ResourceSnapshot>();
@@ -158,9 +150,8 @@ class RelationPlanner {
   }
 
   private async checkSeriesTargets(items: DocumentData[]): Promise<void> {
-    for (const item of items) {
+    for (const resource of seriesMemberResources(items)) {
       // A delete must contend on the target even though only the series is written.
-      const resource = { collection: item.type === 'sermon' ? 'sermons' : 'groups', id: String(item.refId) };
       this.live(this.writes.get(key(resource)) ?? await this.get(resource));
     }
   }
@@ -176,7 +167,7 @@ class RelationPlanner {
 
   private async linkMaterial(material: ResourceSnapshot, before: string[], after: string[], generations?: Map<string, string | null>): Promise<void> {
     materialSections(this.live(material), after);
-    for (const noteId of new Set([...before, ...after])) {
+    for (const noteId of materialNoteIds(before, after)) {
       if (generations && !generations.has(noteId)) fail('missing-target-generation');
       const note = await this.get({ collection: 'studyNotes', id: noteId });
       const value = this.live(note, generations?.get(noteId));
@@ -465,22 +456,12 @@ class RelationPlanner {
   private async checkSermonSources(command: Exclude<DataCommand, { kind: 'relation' | 'delete' }>, accepted: DocumentData): Promise<void> {
     const changed = command.kind === 'create' ? ['sourceNoteIds', 'scratch']
       : command.changes.map(change => change.path[0]);
-    const added = new Set<string>();
-    if (changed.includes('sourceNoteIds')) {
-      const original = Array.isArray(this.primary.value?.sourceNoteIds) ? this.primary.value.sourceNoteIds : [];
-      for (const id of ids(accepted.sourceNoteIds)) if (!original.includes(id)) added.add(id);
-    }
-    if (changed.includes('scratch')) {
-      const original = scratchSources(this.primary.value);
-      for (const [id, noteId] of scratchSources(accepted)) {
-        if (original.get(id) === noteId) continue;
-        if (!ids(accepted.sourceNoteIds).includes(noteId)) fail('invalid-scratch-provenance');
-        added.add(noteId);
-      }
-    }
+    const references = sermonSourceReferences(this.primary.value, accepted, changed);
+    if (changed.includes('sourceNoteIds') || changed.includes('scratch') && references.noteIds.length) ids(accepted.sourceNoteIds);
+    if (references.invalidProvenance) fail('invalid-scratch-provenance');
     // Retain historical provenance after a source disappears, but every newly
     // assigned reference must name a live owned note in this same transaction.
-    for (const id of added) this.live(await this.get({ collection: 'studyNotes', id }));
+    for (const id of references.noteIds) this.live(await this.get({ collection: 'studyNotes', id }));
   }
 
   private async deriveAccepted(command: Exclude<DataCommand, { kind: 'relation' | 'delete' }>): Promise<void> {

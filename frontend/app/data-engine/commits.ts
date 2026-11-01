@@ -2,6 +2,7 @@ import { advanceAtomicCommit, atomicParticipants, cancellationScope, cancelActio
 import { isFirstBookMarksDraft } from './bibleMarksCreation';
 import { pendingCommitRetirement, retireCommitJournal } from './commitJournal';
 import { CommitReceipts } from './commitReceipt';
+import { commandReferenceResources, documentReferenceResources, referenceReadiness } from './documentReferences';
 import { prepareDomainCommand, requiredDomainTargets } from './domainPolicy';
 import { AddressedFailures, type AddressedFailure } from './failures';
 import { equalValues, mergeDocumentFields, MAX_RELATION_RESOURCES } from './protocol';
@@ -359,7 +360,9 @@ export class CommitQueue {
         races = batch.races;
         let changed = batch.changed;
         if (this.deliveryRequested) {
-          await this.options.runtime.drain(attempted, this.options.canDeliver ?? (() => true));
+          const ready = referenceReadiness(owner, records);
+          await this.options.runtime.drain(attempted, this.options.canDeliver ?? (() => true),
+            command => ready(commandReferenceResources(command), command.operationId));
           this.assertCurrent(owner, generation);
           const journal = await this.options.runtime.list();
           if (journal.some(entry => records.some(record => !failures.has(record.id) && !terminal(record) && record.command?.operationId === entry.command.operationId)
@@ -437,6 +440,7 @@ export class CommitQueue {
   private async advanceBatch(records: CommitRequest[], owner: string, generation: number, failures: Map<string, AddressedFailure>, races: number) {
     let changed = false;
     const advancedOperations = new Set<string>();
+    const ready = referenceReadiness(owner, records);
     for (const record of records) {
       this.assertCurrent(owner, generation);
       const groupId = record.atomic?.id;
@@ -444,7 +448,7 @@ export class CommitQueue {
       if (terminal(record) && !record.unfinalized.length) { this.emit(record); continue; }
       advancedOperations.add(groupId ?? record.id);
       try {
-        changed = await this.advanceRequest(record, records, owner, generation) || changed;
+        changed = await this.advanceRequest(record, records, owner, generation, ready) || changed;
       }
       catch (error) {
         if ((error as { code?: string }).code === COMMIT_CHANGED && ++races < 100) { changed = true; continue; }
@@ -459,8 +463,19 @@ export class CommitQueue {
     return { ...this.options, assertCurrent: () => this.assertCurrent(owner, generation), emit: (request: CommitRequest) => this.emit(request) };
   }
 
-  private advanceRequest(record: CommitRequest, records: CommitRequest[], owner: string, generation: number): Promise<boolean> {
-    return record.atomic ? advanceAtomicCommit(atomicParticipants(record, records), records, this.atomicContext(owner, generation))
+  private advanceRequest(record: CommitRequest, records: CommitRequest[], owner: string, generation: number,
+    ready = referenceReadiness(owner, records)): Promise<boolean> {
+    const participants = atomicParticipants(record, records);
+    if (!participants[0].command && participants.every(participant => participant.initialized && !terminal(participant) && !participant.unfinalized.length)) {
+      const references = participants.flatMap(participant => [
+        ...documentReferenceResources(participant.working.resource, participant.working.value, participant.intended),
+        ...requiredDomainTargets(participant.working, participant.intended),
+      ]);
+      // A saved source create owns existence until its answer. Do not prepare a permanent
+      // refusal from today's absence, or invent a confirmed source from local planned words.
+      if (!ready(references, record.atomic?.id ?? record.id)) return Promise.resolve(false);
+    }
+    return record.atomic ? advanceAtomicCommit(participants, records, this.atomicContext(owner, generation))
       : this.advance(record, records, owner, generation);
   }
 
