@@ -167,4 +167,56 @@ describe('a choice kept on this device', () => {
       windowSpy.mockRestore();
     }
   });
+
+  // BUG-20261101-device-choice-stale-page-overwrites: a page that missed another tab's later choice wrote its own older
+  // fields back over it with the next change it saved.
+  it('builds a change on another tab\'s newer record the page never heard of, keeping that record\'s other fields', () => {
+    const page = choiceOf('test:stale');
+    expect(page.read()).toEqual(DEFAULTS);
+    choiceOf('test:stale').save({ size: 5 });
+    page.save({ on: true });
+    expect(parse(window.localStorage.getItem('test:stale'))).toEqual({ on: true, size: 5 });
+    expect(page.read()).toEqual({ on: true, size: 5 });
+  });
+
+  it('keeps its newer choice when storage holds an older or undated record at the next change', () => {
+    const page = choiceOf('test:older');
+    page.save({ size: 3 });
+    window.localStorage.setItem('test:older', JSON.stringify({ on: false, size: 9 }));
+    page.save({ on: true });
+    expect(parse(window.localStorage.getItem('test:older'))).toEqual({ on: true, size: 3 });
+  });
+
+  it('says once what its first read found: a record, none, or storage it could not read', () => {
+    const found: string[] = [];
+    const say = (what: string) => found.push(what);
+    deviceChoice({ key: 'test:none', parse, fallback: DEFAULTS, onFirstRead: say }).read();
+    window.localStorage.setItem('test:stored', JSON.stringify({ on: true }));
+    const stored = deviceChoice({ key: 'test:stored', parse, fallback: DEFAULTS, onFirstRead: say });
+    stored.read();
+    stored.resetForTests();
+    stored.read();
+    jest.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('denied'); });
+    deviceChoice({ key: 'test:denied', parse, fallback: DEFAULTS, onFirstRead: say }).read();
+    jest.restoreAllMocks();
+    expect(found).toEqual(['none', 'stored', 'unreadable']);
+  });
+
+  // Codex review, 01.11: storage unreadable at the first read, a toggle wrote the defaults' other fields over the record.
+  it('writes nothing over a record it could not read, and lays the change on it once storage answers', () => {
+    window.localStorage.setItem('test:unread', JSON.stringify({ on: true, size: 7, __savedAt: 5 }));
+    const page = choiceOf('test:unread');
+    const getItem = jest.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('denied'); });
+    expect(page.read()).toEqual(DEFAULTS);
+    expect(page.save({ size: 3 })).toBe('memory-only');
+    expect(page.read()).toEqual({ on: false, size: 3 });
+    getItem.mockRestore();
+    // Nothing written over the record while it could not be read.
+    expect(parse(window.localStorage.getItem('test:unread'))).toEqual({ on: true, size: 7 });
+    // Storage answers: the next change is laid on the record — its «on» kept, not the defaults' «off».
+    page.save({ size: 4 });
+    expect(parse(window.localStorage.getItem('test:unread'))).toEqual({ on: true, size: 4 });
+    expect(page.read()).toEqual({ on: true, size: 4 });
+  });
 });
+

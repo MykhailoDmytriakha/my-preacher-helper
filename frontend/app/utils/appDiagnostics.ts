@@ -19,6 +19,7 @@ const MAX_AGE_MS = DIAGNOSTIC_RETENTION.hours * 60 * 60 * 1000;
 const PER_KIND: Partial<Record<EventName, number>> = {
   gesture: 12, focus: 12, visibility: 20, pageshow: 10, pagehide: 10, 'route-check': 10,
   'snapshot-cache': 10, 'snapshot-pending': 10, 'snapshot-server': 20, 'freshness-check': 10, edit: 30, mark: 20,
+  'verse-pick': 20,
 };
 const SESSION = Date.now();
 const EVENTS = [
@@ -34,6 +35,9 @@ const EVENTS = [
   // A reading setting of this device changed: which, from where, to what, and whether the device kept it
   // (`components/bible/crossReferencePrefs.ts`).
   'setting',
+  // The verses chosen for a passage changed: by what (a pull, a press, a hold, an arrow) and how its ends went, never
+  // which verses (`components/bible/verseCopy/useVerseCopy.ts`).
+  'verse-pick',
 ] as const;
 type EventName = typeof EVENTS[number];
 interface EventData extends RuntimeErrorMetadata {

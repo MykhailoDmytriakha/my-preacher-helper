@@ -43,25 +43,25 @@ const sameSearch = (a: SearchHistoryEntry, line: string, bible: BibleId, asWords
 export function rememberSearch(line: string, bible: BibleId, asWords = false, at = Date.now()): void {
   const trimmed = keptLine(line);
   if (!trimmed) return;
-  const rest = historyChoice.read().entries.filter((entry) => !sameSearch(entry, trimmed, bible, asWords));
+  const rest = historyChoice.readFresh().entries.filter((entry) => !sameSearch(entry, trimmed, bible, asWords));
   historyChoice.save({ entries: [{ line: trimmed, bible, at, ...(asWords ? { asWords } : {}) }, ...rest].slice(0, KEPT) });
 }
 
 export function forgetSearch(entry: SearchHistoryEntry): void {
   const isIt = (each: SearchHistoryEntry) => each === entry || (each.at === entry.at && sameSearch(each, entry.line, entry.bible, Boolean(entry.asWords)));
-  historyChoice.save({ entries: historyChoice.read().entries.filter((each) => !isIt(each)) });
+  historyChoice.save({ entries: historyChoice.readFresh().entries.filter((each) => !isIt(each)) });
 }
 
 /** Clears the history and gives back what it held, for «Вернуть». */
 export function clearSearchHistory(): SearchHistoryEntry[] {
-  const before = historyChoice.read().entries;
+  const before = historyChoice.readFresh().entries;
   historyChoice.save({ entries: [] });
   return before;
 }
 
 /** «Вернуть»: what was cleared comes back under what was kept since — a later search is not lost (Codex, 2026-10-27). */
 export function restoreSearchHistory(entries: SearchHistoryEntry[]): void {
-  const since = historyChoice.read().entries;
+  const since = historyChoice.readFresh().entries;
   const back = entries.filter((entry) => !since.some((each) => sameSearch(each, entry.line, entry.bible, Boolean(entry.asWords))));
   historyChoice.save({ entries: [...since, ...back].slice(0, KEPT) });
 }

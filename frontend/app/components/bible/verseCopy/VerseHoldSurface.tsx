@@ -66,6 +66,8 @@ export function VerseHoldSurface({ copy, articleRef, className, gestureIgnore, p
   };
 
   const onPointerDown = (event: PointerEvent<HTMLElement>) => {
+    // A new press on the text: the click after it is its own, not a grip's pull's (a grip's press never comes here).
+    copy.forgetPullClick();
     lastTouch.current = event.pointerType === 'touch';
     const othersPress = event.pointerType === 'pen' || (!copy.picking && onControl(event.target));
     pressRef.current = othersPress ? null : pressAt(event);
@@ -89,6 +91,13 @@ export function VerseHoldSurface({ copy, articleRef, className, gestureIgnore, p
     if (!copy.picking) return;
     const row = verseRowAt(event.target, articleRef.current);
     const at = row ? verseOfRow(row) : null;
+    // The click a grip's pull sends after the lift is the pull's — on the grip, or on a verse (Safari on iPad, 01.11, took
+    // the first verse off with it): it presses nothing (`useVerseCopy().takesPullClick`).
+    if (copy.takesPullClick(Boolean(at))) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
     if (!at) return;
     event.preventDefault();
     event.stopPropagation();
@@ -99,6 +108,8 @@ export function VerseHoldSurface({ copy, articleRef, className, gestureIgnore, p
   // Choosing several, a key on a verse's chip (a `span` with the role of a button, which acts on the key itself)
   // chooses the verse; a real button's key becomes a click, judged above.
   const onKeyDownCapture = (event: KeyboardEvent<HTMLElement>) => {
+    // A key on the text: the click it makes is its own, not a grip's pull's.
+    copy.forgetPullClick();
     if (!copy.picking || (event.key !== 'Enter' && event.key !== ' ')) return;
     const target = event.target instanceof Element ? event.target.closest('[role="button"]') : null;
     const row = target && !(target instanceof HTMLButtonElement) ? verseRowAt(target, articleRef.current) : null;

@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 
 
 import { hasOpenLayer } from '@/hooks/useModalLayer';
+import { recordDiagnostic } from '@/utils/appDiagnostics';
 import { resolveAppLocale } from '@/utils/appLocale';
 import { getLocalizedAbbrev } from '@/utils/bibleBooks';
 import { BIBLES, bibleForLocale, type BibleId } from '@/utils/bibles';
@@ -73,6 +74,26 @@ function setOnRows(root: HTMLElement | null, attribute: string, keys: ReadonlySe
  * is `utils/verseCopy.ts`. The rows' lights are set on the rows themselves, like the arrival: the ribbon is not
  * drawn again for a choice.
  */
+/**
+ * How long after a grip is let go a click is still that pull's. Safari on the owner's iPad sent it 39 ms after the
+ * Pencil's lift (technical report, 01.11); a click a person makes half a second later, with no press before it (an
+ * assistive device's), is that person's (Codex review, 01.11). Any new press or key on the text ends the wait at once.
+ */
+const PULL_CLICK_MS = 500;
+
+/**
+ * The technical report's line for a change of the chosen passage (`appDiagnostics`, «verse-pick»): what changed it and
+ * how each end went — «first-later-last-same» — and how long after a grip was let go; never which verses.
+ */
+function recordPick(text: BookText, source: string, before: readonly VerseAt[], after: readonly VerseAt[], sincePull: number) {
+  const ends = (verses: readonly VerseAt[]) => (verses.length ? [Math.min(...verses.map((at) => bookIndex(text, at))), Math.max(...verses.map((at) => bookIndex(text, at)))] : null);
+  const was = ends(before);
+  const now = ends(after);
+  if (!was || !now || (was[0] === now[0] && was[1] === now[1])) return;
+  const way = (from: number, to: number) => (to === from ? 'same' : to > from ? 'later' : 'earlier');
+  recordDiagnostic('verse-pick', { source, result: `first-${way(was[0], now[0])}-last-${way(was[1], now[1])}`, ...(sincePull < 10_000 ? { elapsedMs: sincePull } : {}) });
+}
+
 export function useVerseCopy({ textRef, text, bible, bookId, drawn, crossRefs, enabled, onActed, limitComment }: {
   textRef: RefObject<HTMLElement | null>;
   text: BookText | null;
@@ -102,13 +123,23 @@ export function useVerseCopy({ textRef, text, bible, bookId, drawn, crossRefs, e
 
   const purposeRef = useRef(purpose);
   purposeRef.current = purpose;
+  // A grip's pull under way — the run as it found it and as it is now — and the click its pointer may send after the lift
+  // (the owner, 01.11, iPad: the finger lifted from the last grip, and Safari's click took the first verse off).
+  const pulling = useRef<{ end: 'first' | 'last'; from: VerseAt[]; now: VerseAt[] } | null>(null);
+  const pullClick = useRef<{ at: number } | null>(null);
+  // When the grip was taken, and when the text was last pressed or keyed: a press made while the grip was held (a second
+  // finger) clicks after the lift itself, so that pull waits for no click of its own (Codex review, 01.11).
+  const pullStartedAt = useRef(Number.NEGATIVE_INFINITY);
+  const textPressedAt = useRef(Number.NEGATIVE_INFINITY);
+  const forgetPull = useCallback(() => { pulling.current = null; pullClick.current = null; }, []);
   const clear = useCallback(() => {
     // The hint for choosing a passage goes with that choice: it must not stand over the analysis screen.
     if (purposeRef.current !== 'copy') toast.dismiss(PASSAGE_HINT);
+    forgetPull();
     setPicked(null);
     setFormat(null);
     setPurpose('copy');
-  }, []);
+  }, [forgetPull]);
   const actedRef = useRef(onActed);
   actedRef.current = onActed;
   const acted = useCallback((verses: VerseAt[]) => actedRef.current?.(verses), []);
@@ -198,37 +229,74 @@ export function useVerseCopy({ textRef, text, bible, bookId, drawn, crossRefs, e
    * all of an analysis's or a comment's own to change its ends.
    */
   const startPassage = useCallback((at: VerseAt, to?: VerseAt, forWhat: PassagePurpose = 'analysis') => {
+    forgetPull();
     setMenu(null);
     setPicked(to && text ? versesBetween(text, at, to) : [at]);
     setFormat(null);
     setPurpose(forWhat);
     toast(t(PASSAGE_HINTS[forWhat]), { id: PASSAGE_HINT });
-  }, [t, text]);
+  }, [forgetPull, t, text]);
   const limitRef = useRef(limitComment);
   limitRef.current = limitComment;
+  /**
+   * A grip let go: the pull goes into the report as one line, and the click the browser may send after the lift is its
+   * own; a pull the browser broke off sends none.
+   */
+  const pullEnded = useCallback((clickMayFollow: boolean) => {
+    const pull = pulling.current;
+    pulling.current = null;
+    if (pull && text) recordPick(text, `pull-${pull.end}`, pull.from, pull.now, Number.POSITIVE_INFINITY);
+    pullClick.current = clickMayFollow && textPressedAt.current < pullStartedAt.current ? { at: performance.now() } : null;
+  }, [text]);
+  /** A grip taken: the pull starts. */
+  const pullStarted = useCallback(() => { pullStartedAt.current = performance.now(); }, []);
+  /** A new press or a key on the text: no click after it is a pull's. */
+  const forgetPullClick = useCallback(() => {
+    pullClick.current = null;
+    textPressedAt.current = performance.now();
+  }, []);
+  /**
+   * Whether this click is the one a grip's pull sends after the lift: the first click on the text since the pull was let
+   * go, before any new press or key there (each ends the wait — `forgetPullClick`); it then presses nothing. Nothing about
+   * the click itself is asked: Safari on the owner's iPad sent it 39 ms after the Pencil's lift naming another pointer
+   * (technical report, 01.11), and a click a browser makes up need not count its clicks either.
+   */
+  const takesPullClick = useCallback((onVerse: boolean) => {
+    const pending = pullClick.current;
+    if (!pending) return false;
+    const since = performance.now() - pending.at;
+    pullClick.current = null;
+    if (since > PULL_CLICK_MS) return false;
+    if (onVerse) recordDiagnostic('verse-pick', { source: 'click', result: 'taken-by-pull', elapsedMs: since });
+    return true;
+  }, []);
   // A passage stays one piece: a press below or above stretches it, an end verse comes off, one in the middle brings the
   // nearer end to it; a comment's keeps the paragraphs' rule too.
-  const stretch = useCallback((at: VerseAt) => {
+  const stretch = useCallback((at: VerseAt, by: 'press' | 'hold') => {
     if (!text) return;
     const before = pickedRef.current ?? [];
     const { verses, end } = stretchPassage(text, before, at);
     const limit = purposeRef.current === 'comment' ? limitRef.current : undefined;
     const kept = limit ? limit(verses, end, before) : { verses };
     if (kept.said) toast(kept.said, { id: PASSAGE_LIMIT });
+    recordPick(text, by, before, kept.verses, pullClick.current ? performance.now() - pullClick.current.at : Number.POSITIVE_INFINITY);
     setPicked(kept.verses);
   }, [text]);
-  /** A grip on the chosen run pulled to a verse: that end moves, the passage's rule kept as a press keeps it. */
-  const moveEnd = useCallback((end: 'first' | 'last', at: VerseAt) => {
+  /** A grip on the chosen run pulled to a verse, or moved by an arrow: that end moves, the passage's rule kept. */
+  const moveEnd = useCallback((end: 'first' | 'last', at: VerseAt, by: 'pull' | 'arrow' = 'pull') => {
     const before = pickedRef.current ?? [];
     if (!text || !before.length) return;
     const verses = pulledEnd(text, before, end, at);
     const limit = purposeRef.current === 'comment' ? limitRef.current : undefined;
     const kept = limit ? limit(verses, end, before) : { verses };
     if (kept.said) toast(kept.said, { id: PASSAGE_LIMIT });
+    // A pull goes into the report once, when it is let go; an arrow at once.
+    if (by === 'pull') pulling.current = { end, from: pulling.current?.from ?? before, now: kept.verses };
+    else recordPick(text, `${by}-${end}`, before, kept.verses, Number.POSITIVE_INFINITY);
     setPicked(kept.verses);
   }, [text]);
   const toggle = useCallback((at: VerseAt) => {
-    if (purpose !== 'copy') { stretch(at); return; }
+    if (purpose !== 'copy') { stretch(at, 'press'); return; }
     setPicked((now) => {
       const rest = (now ?? []).filter((verse) => verseKey(verse) !== verseKey(at));
       const next = rest.length === (now ?? []).length ? [...rest, at] : rest;
@@ -237,7 +305,7 @@ export function useVerseCopy({ textRef, text, bible, bookId, drawn, crossRefs, e
   }, [purpose, stretch]);
   /** From the chosen verse nearest to this one, to this one: a passage. */
   const rangeTo = useCallback((at: VerseAt) => {
-    if (purpose !== 'copy') { stretch(at); return; }
+    if (purpose !== 'copy') { stretch(at, 'hold'); return; }
     setPicked((now) => {
       const chosen = now ?? [];
       if (!chosen.length || !text) return [at];
@@ -318,7 +386,7 @@ export function useVerseCopy({ textRef, text, bible, bookId, drawn, crossRefs, e
     menu, openMenu, closeMenu: useCallback(() => setMenu(null), []),
     hold: setHeld,
     picked, picking: choosing, startPicking, toggle, rangeTo, clear,
-    purpose, startPassage, moveEnd, passage: purpose !== 'copy' && picked && text ? pickedPassage(text, picked) : null,
+    purpose, startPassage, moveEnd, pullStarted, pullEnded, takesPullClick, forgetPullClick, passage: purpose !== 'copy' && picked && text ? pickedPassage(text, picked) : null,
     format: format ?? DEFAULT_COPY_FORMAT, setFormat,
     copy, share, canShare,
     wordsOf, labelOf, placeOf, linksOf, openLinks,

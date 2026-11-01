@@ -34,7 +34,7 @@ function drawRows(verses: number[], shift = () => 0) {
   });
 }
 const passageOf = (fromVerse: number, toVerse: number) => ({ chapter: 1, fromVerse, toChapter: 1, toVerse });
-const copyOf = (passage: ReturnType<typeof passageOf> | null, moveEnd = jest.fn()) => ({ passage, purpose: 'comment', moveEnd }) as unknown as VerseCopy;
+const copyOf = (passage: ReturnType<typeof passageOf> | null, moveEnd = jest.fn(), pullEnded = jest.fn()) => ({ passage, purpose: 'comment', moveEnd, pullEnded, pullStarted: jest.fn() }) as unknown as VerseCopy;
 const grips = (copy: VerseCopy) => <PassageGrips root={{ current: card }} copy={copy} text={text} />;
 const grip = (end: 'first' | 'last') => document.querySelector<HTMLElement>(`[data-passage-grip="${end}"]`)!;
 const runFrames = () => act(() => { const due = [...frames.values()]; frames.clear(); due.forEach((frame) => frame(0)); });
@@ -85,6 +85,14 @@ describe('the grips of a chosen passage', () => {
     fireEvent.pointerUp(grip('last'), { pointerId: 1, clientY: 75 });
     expect(copy.moveEnd).toHaveBeenLastCalledWith('last', { chapter: 1, verse: 2 });
     expect(frames.size).toBe(0);
+    // The click the browser may send after the lift is the pull's: the picker hears that the pull ended (owner, 01.11, iPad).
+    expect(copy.pullEnded).toHaveBeenCalledTimes(2);
+    expect(copy.pullEnded).toHaveBeenLastCalledWith(true);
+    expect(copy.pullStarted).toHaveBeenCalledTimes(2);
+    // A pull the browser broke off sends no click after it.
+    fireEvent.pointerDown(grip('last'), { pointerId: 4, clientY: 46 });
+    fireEvent.pointerCancel(grip('last'), { pointerId: 4, clientY: 46 });
+    expect(copy.pullEnded).toHaveBeenLastCalledWith(false);
   });
 
   it('ends a pull when the choice is let go: the next choice moves only under a new press', () => {
@@ -214,7 +222,7 @@ describe('the grips of a chosen passage', () => {
     fireEvent.pointerUp(grip('last'), { pointerId: 1, clientY: 106 });
     expect(document.activeElement).toBe(grip('last'));
     fireEvent.keyDown(grip('last'), { key: 'ArrowDown' });
-    expect(copy.moveEnd).toHaveBeenLastCalledWith('last', { chapter: 1, verse: 3 });
+    expect(copy.moveEnd).toHaveBeenLastCalledWith('last', { chapter: 1, verse: 3 }, 'arrow');
     const atThree = copyOf(passageOf(1, 3));
     render(grips(atThree), { container: document.body.appendChild(document.createElement('div')) });
     const last = document.querySelectorAll<HTMLElement>('[data-passage-grip="last"]')[1];

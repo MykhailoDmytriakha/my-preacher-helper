@@ -16,9 +16,9 @@ type LongPressHandlers = {
   onClick: (event: MouseEvent<HTMLElement>) => void;
   onPointerDown?: (event: PointerEvent<HTMLElement>) => void;
   onPointerMove?: (event: PointerEvent<HTMLElement>) => void;
-  onPointerUp?: () => void;
-  onPointerLeave?: () => void;
-  onPointerCancel?: () => void;
+  onPointerUp?: (event?: PointerEvent<HTMLElement>) => void;
+  onPointerLeave?: (event?: PointerEvent<HTMLElement>) => void;
+  onPointerCancel?: (event?: PointerEvent<HTMLElement>) => void;
   onContextMenu?: (event: MouseEvent<HTMLElement>) => void;
 };
 
@@ -40,6 +40,10 @@ export function useLongPress({ onPress, onLongPress }: { onPress: () => void; on
   /** The press was given up — moved away or left the button: the click that may follow it does nothing. */
   const abandoned = useRef(false);
   const heldUntil = useRef(0);
+  // The pointer the press is held by: another finger lifted or moved meanwhile is not this press's end (Codex review, 01.11:
+  // a grip let go over the text completed a hold a second finger had armed on another verse).
+  const pointer = useRef<number | null>(null);
+  const stranger = (event?: { pointerId?: number }) => event?.pointerId !== undefined && pointer.current !== null && event.pointerId !== pointer.current;
 
   const stopTimer = () => {
     if (timer.current !== null) window.clearTimeout(timer.current);
@@ -49,6 +53,7 @@ export function useLongPress({ onPress, onLongPress }: { onPress: () => void; on
     stopTimer();
     origin.current = null;
     armed.current = false;
+    pointer.current = null;
     setState('idle');
   };
   useEffect(() => stopTimer, []);
@@ -78,6 +83,7 @@ export function useLongPress({ onPress, onLongPress }: { onPress: () => void; on
         armed.current = false;
         abandoned.current = false;
         origin.current = { x: event.clientX, y: event.clientY };
+        pointer.current = event.pointerId;
         setState('holding');
         timer.current = window.setTimeout(() => {
           timer.current = null;
@@ -86,12 +92,14 @@ export function useLongPress({ onPress, onLongPress }: { onPress: () => void; on
         }, LONG_PRESS_MS);
       },
       onPointerMove: (event) => {
+        if (stranger(event)) return;
         const from = origin.current;
         if (!from || Math.hypot(event.clientX - from.x, event.clientY - from.y) <= MOVE_TOLERANCE_PX) return;
         abandoned.current = true;
         reset();
       },
-      onPointerUp: () => {
+      onPointerUp: (event) => {
+        if (stranger(event)) return;
         const held = armed.current;
         reset();
         if (!held) return;
@@ -100,11 +108,15 @@ export function useLongPress({ onPress, onLongPress }: { onPress: () => void; on
         onLongPress();
       },
       // A touch leaves its button right after the lift, before the click: only a press still held is given up.
-      onPointerLeave: () => {
+      onPointerLeave: (event) => {
+        if (stranger(event)) return;
         if (origin.current) abandoned.current = true;
         reset();
       },
-      onPointerCancel: reset,
+      onPointerCancel: (event) => {
+        if (stranger(event)) return;
+        reset();
+      },
       onContextMenu: (event) => event.preventDefault(),
     },
   };

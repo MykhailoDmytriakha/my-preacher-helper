@@ -137,6 +137,7 @@ export function PassageGrips({ root, copy, text, drawn }: {
     event.currentTarget.focus({ preventScroll: true });
     event.currentTarget.setPointerCapture?.(event.pointerId);
     pull.current = { end, pointerId: event.pointerId, clientY: event.clientY };
+    copy.pullStarted();
     // The pull is followed on the window, not on the grip: a grip whose verse scrolls out of the chapters drawn goes, and
     // its release still ends the pull (Codex review r3). Everything read in them is read through refs.
     const move = (moved: globalThis.PointerEvent) => {
@@ -151,6 +152,9 @@ export function PassageGrips({ root, copy, text, drawn }: {
       if (!now || now.pointerId !== released.pointerId) return;
       // Let go before the frame came: the end still goes where the pointer was let go. A press with no move moves nothing.
       if (frame.current !== null) { now.clientY = released.clientY; follow(now); }
+      // The click the browser may send after the lift is this pull's, not a press on a verse (`useVerseCopy().pullEnded`);
+      // a pull the browser broke off sends none.
+      live.current.copy.pullEnded(released.type === 'pointerup');
       stop();
     };
     window.addEventListener('pointermove', move);
@@ -167,7 +171,7 @@ export function PassageGrips({ root, copy, text, drawn }: {
     event.preventDefault();
     const next = event.key === 'ArrowUp' ? verseBefore(text, endOf(passage, end)) : verseAfter(text, endOf(passage, end));
     // To a verse on screen only: one of a chapter not drawn (a big book) would take the grip, and the focus, off the page.
-    if (next && root.current?.querySelector(`[data-verse="${next.chapter}:${next.verse}"]`)) copy.moveEnd(end, next);
+    if (next && root.current?.querySelector(`[data-verse="${next.chapter}:${next.verse}"]`)) copy.moveEnd(end, next, 'arrow');
   };
   const grip = (end: End, edge: Spot | null) => {
     const spot = edge && drag?.end === end ? { x: edge.x, y: drag.y } : edge;
