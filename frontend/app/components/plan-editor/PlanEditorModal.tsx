@@ -8,7 +8,7 @@ import { createPortal } from 'react-dom';
 import { toast } from 'sonner';
 
 import OutlineBoard from '@/components/plan-editor/OutlineBoard';
-import { useOutlineConflict } from '@/components/plan-editor/useOutlineConflict';
+import { useOutlineConflictForEditor } from '@/components/plan-editor/OutlineConflictScope';
 import SavedDraftCopyPicker from '@/components/SavedDraftCopyPicker';
 import { useStructureWriter } from '@/components/sermon/structureWriter';
 import UnreadableConflictDrafts from '@/components/UnreadableConflictDrafts';
@@ -170,11 +170,15 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
    * server and the laptop's work was simply gone. Now closing is safe: the text and
    * the question come back.
    */
+  const ownConflictController = useOutlineConflictForEditor(sermon.userId, sermon.id, isOpen);
   const {record:storedCollision,ready:conflictReady,get:getConflict,ask:askConflict,edit:editConflict,
     select:selectConflict,clear:clearConflict,retire:retireConflict,requireWholeReview,
-    choices:conflictChoices,choose:chooseConflictCopy,activation:conflictActivation} = useOutlineConflict(sermon.userId,sermon.id);
+    choices:conflictChoices,choose:chooseConflictCopy,activation:conflictActivation} = ownConflictController;
   const collision = storedCollision && storedCollision.payload.resolution !== 'local'
     ? {serverOutline:storedCollision.payload.serverOutline} : null;
+  const unreviewedRefusal = !collision
+    ? conflictChoices.copies.find(copy => copy.value.payload.resolution !== 'local') ?? null
+    : null;
   const needsWholeChoice = Boolean(collision && storedCollision && (storedCollision.payload.reviewWhole
     || !Object.prototype.hasOwnProperty.call(storedCollision.payload, 'baseOutline')));
   const setCollision = useCallback((next:{serverOutline:SermonOutline | null} | null, refused?:SermonOutline,
@@ -269,7 +273,8 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
               // have captured its continuation; this old answer cannot restore the question.
               if (!currentSession && waiting?.payload.resolution === 'local') return;
               if (isOutlineCollisionError(err)) {
-                setCollision({ serverOutline: err.serverOutline }, refused, baseAtRequest);
+                const baseline = err.baseline;
+                setCollision({ serverOutline: err.serverOutline }, refused, baseline ? baseline.outline : baseAtRequest);
                 return;
               }
               if (!currentSession) return;
@@ -617,6 +622,18 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
                 {t('freshness.conflictTakeTheirs')}
               </button>
             </div>
+          </div>
+        )}
+        {!collision && unreviewedRefusal && (
+          <div role="alert" className="mx-3 mt-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm dark:border-amber-500/40 dark:bg-amber-500/10 sm:mx-4">
+            <p className="font-medium text-amber-900 dark:text-amber-200">{t('freshness.conflictTitle')}</p>
+            <p className="mt-0.5 text-amber-800/80 dark:text-amber-200/70">
+              {t('freshness.conflictDescription', { entity: t('freshness.entitySermon') })}
+            </p>
+            <button type="button" onClick={() => chooseConflictCopy(unreviewedRefusal.key)}
+              className="mt-3 rounded-lg bg-amber-600 px-3 py-1.5 font-medium text-white hover:bg-amber-700">
+              {t('freshness.reviewAction')}
+            </button>
           </div>
         )}
 

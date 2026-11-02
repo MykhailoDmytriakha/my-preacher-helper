@@ -69,7 +69,8 @@ export class OutlineCollisionError extends Error {
   constructor(
     readonly collisions: string[],
     readonly serverOutline: SermonOutline | null,
-    readonly actualRevision: number
+    readonly actualRevision: number,
+    readonly baseline?: { outline: SermonOutline | null },
   ) {
     super(`The plan changed on another device in the same point(s): ${collisions.join(', ')}`);
     this.name = 'OutlineCollisionError';

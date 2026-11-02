@@ -1,5 +1,6 @@
 "use client";
 
+
 import { useIsRestoring } from "@tanstack/react-query";
 import { useRouter, useSearchParams } from "next/navigation";
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -8,6 +9,7 @@ import { toast } from "sonner";
 import { WithoutScriptureLinks } from "@/components/bible/ScriptureLinks";
 import { ScriptureLinksInWindow } from "@/components/bible/VerseWindow";
 import PlanMarkdown from "@/components/plan/PlanMarkdown";
+import { OutlineWriteRecovery } from '@/components/sermon/OutlineWriteRecovery';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { DataDocumentProvider, useDataEngine } from '@/data-engine/react.client';
 import { useAiUsage } from "@/hooks/useAiUsage";
@@ -150,7 +152,7 @@ function EnginePlanPage({ sermonId }: { sermonId: string }) {
   const preaching = useSearchParams()?.get('planView') === 'preaching';
   const { owner } = useDataEngine();
   const source = useEngineSermonSource(sermonId);
-  const writer = useEnginePlanWriter(sermonId, owner);
+  const { writer, outlineRecovery } = useEnginePlanWriter(sermonId, owner);
   const { document } = source;
   // The read-only screen stands exactly where the separate reader stood — on a copy, except while
   // preaching — and as its own tree, so it never shares state with the editor: every switch mounts
@@ -159,11 +161,11 @@ function EnginePlanPage({ sermonId }: { sermonId: string }) {
   const onCopy = document.readOnly && !preaching;
   // The address's way in is held here, above the copy and the editor: the copy giving way is not a new arrival.
   const wayIn = useWayInOnce();
-  return <PlanWriterContext.Provider value={writer}>
+  return <OutlineWriteRecovery key={`${owner}:${sermonId}`} owner={owner} sermonId={sermonId} {...outlineRecovery}><PlanWriterContext.Provider value={writer}>
     {!document.readOnly && <div className="px-4 pt-4 empty:hidden"><DataSyncStatus subject={document.recoveryIdentity} status={document.status} error={document.error} errorWords={document.errorWords} onRetry={document.retry}
       onKeepLocal={document.keepLocal} onAcceptRemote={document.acceptRemote} /></div>}
     <PlanPageContent key={onCopy ? 'copy' : 'editor'} source={source} readOnly={onCopy} wayIn={wayIn} />
-  </PlanWriterContext.Provider>;
+  </PlanWriterContext.Provider></OutlineWriteRecovery>;
 }
 
 type SermonSource = ReturnType<typeof useEngineSermonSource>;

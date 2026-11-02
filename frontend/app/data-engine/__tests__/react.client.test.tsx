@@ -2,6 +2,8 @@ import { act, fireEvent, render, renderHook, screen, waitFor } from '@testing-li
 import React from 'react';
 
 import { useAuth } from '@/providers/AuthProvider';
+import { createEngineStructureWriter, useEngineStructureWriter } from '@/(pages)/(private)/sermons/[id]/structure/useEngineStructureWriter';
+import { useEnginePlanWriter } from '@/(pages)/(private)/sermons/[id]/plan/useEnginePlanWriter';
 
 import { createBrowserDataEngine, type BrowserDataEngine } from '../browser.client';
 import { DataSyncStatus } from '../DataSyncStatus';
@@ -119,9 +121,104 @@ function makeManualForm() {
   return { form, emit, listeners };
 }
 
+function usePlanOutlineWriter(id: string, uid: string) {
+  const { writer, outlineRecovery } = useEnginePlanWriter(id, uid);
+  return { writer, document: outlineRecovery.document, recovery: outlineRecovery.recovery };
+}
+
 describe('React DataEngine contract', () => {
   beforeEach(() => { jest.useFakeTimers(); jest.clearAllMocks(); owner('owner'); });
   afterEach(() => { jest.clearAllTimers(); jest.useRealTimers(); });
+
+  it.each([['structure', useEngineStructureWriter], ['plan', usePlanOutlineWriter]] as const)(
+    'keeps a handled outline refusal inside the actual %s screen writer and recovery hook', async (screenName, useWriter) => {
+      localStorage.clear();
+      const id = `hook-${screenName}`, target = { collection: 'sermons', id };
+      const base = { introduction: [{ id: 'p', text: 'Opening' }], main: [], conclusion: [] };
+      const mine = { ...base, introduction: [{ id: 'p', text: 'Local words' }] };
+      const saved = { ...base, introduction: [{ id: 'p', text: 'Saved words' }] };
+      const value = { userId: 'owner', title: 'Title', thoughts: [], outline: saved };
+      const editor = makeEditor(), browser = makeBrowser(editor.editor);
+      const confirmed = { ...snapshot(), resource: target, value };
+      editor.setState({ ...editor.state, checkpoint: { ...editor.state.checkpoint, confirmed, draft: value } });
+      editor.setObservation({ snapshot: confirmed, source: 'server', readiness: 'server', checking: false, error: false });
+      jest.mocked(createBrowserDataEngine).mockReturnValue(browser.browser);
+      const hook = renderHook(() => useWriter(id, 'owner'), { wrapper: Wrapper });
+      try {
+        await waitFor(() => expect(hook.result.current.document.state).not.toBeNull());
+        await act(async () => { await expect(hook.result.current.writer.updateSermonOutline(id, mine, base, 'preferMine')).rejects.toMatchObject({ name: 'OutlineCollisionError' }); });
+        expect(hook.result.current.document.error).toBeNull();
+        expect(hook.result.current.recovery.record?.payload.outline).toEqual(mine);
+        expect(hook.result.current.document.data?.outline).toEqual(saved);
+        expect(editor.editor.edit).not.toHaveBeenCalled();
+      } finally { hook.unmount();localStorage.clear(); }
+    }
+  );
+
+  /** Feature comparison must not become a document failure or cancel unrelated saved intent. */
+  it.each([false, true])('keeps a handled outline question out of document errors and preserves earlier autosave=%s', async dirty => {
+    const outline = (text: string) => ({ introduction: [{ id: 'p', text }], main: [], conclusion: [] });
+    const base = outline('Opening'), mine = outline('Local words'), saved = outline('Saved words');
+    const value = { userId: 'owner', title: 'Opening title', thoughts: [], outline: saved };
+    const editor = makeEditor(), browser = makeBrowser(editor.editor), retained = jest.fn();
+    editor.setState({ ...editor.state, checkpoint: { ...editor.state.checkpoint,
+      confirmed: { ...snapshot(), value }, draft: value } });
+    jest.mocked(createBrowserDataEngine).mockReturnValue(browser.browser);
+    const hook = renderHook(() => useDataDocument(resource), { wrapper: Wrapper });
+    await waitFor(() => expect(hook.result.current.state).not.toBeNull());
+    if (dirty) await act(async () => { await hook.result.current.update(current => ({ ...current, title: 'Earlier typed title' })); });
+    const captures = jest.mocked(editor.editor.edit).mock.calls.length;
+    const writer = createEngineStructureWriter(hook.result.current, 'owner', retained);
+    await act(async () => { await expect(writer.updateSermonOutline('sermon', mine, base, 'preferMine')).rejects.toMatchObject({ name: 'OutlineCollisionError' }); });
+    expect(hook.result.current.error).toBeNull();
+    expect(editor.editor.edit).toHaveBeenCalledTimes(captures);
+    expect(hook.result.current.data?.outline).toEqual(saved);
+    expect(retained).toHaveBeenCalledWith(mine, base, saved);
+    await act(async () => { await jest.advanceTimersByTimeAsync(800); });
+    expect(editor.editor.save).toHaveBeenCalledTimes(dirty ? 1 : 0);
+    if (dirty) expect(hook.result.current.data?.title).toBe('Earlier typed title');
+    hook.unmount();
+  });
+
+  it('retains an already refused outline in its original owner after departure during the result microtask', async () => {
+    const base = { introduction: [{ id: 'p', text: 'Opening' }], main: [], conclusion: [] };
+    const mine = { ...base, introduction: [{ id: 'p', text: 'Local words' }] };
+    const saved = { ...base, introduction: [{ id: 'p', text: 'Saved words' }] };
+    const value = { userId: 'owner', title: 'Title', thoughts: [], outline: saved };
+    const editor = makeEditor(), browser = makeBrowser(editor.editor), retained = jest.fn();
+    editor.setState({ ...editor.state, checkpoint: { ...editor.state.checkpoint,
+      confirmed: { ...snapshot(), value }, draft: value } });
+    jest.mocked(createBrowserDataEngine).mockReturnValue(browser.browser);
+    const hook = renderHook(() => useDataDocument(resource), { wrapper: Wrapper });
+    await waitFor(() => expect(hook.result.current.state).not.toBeNull());
+    const writer = createEngineStructureWriter(hook.result.current, 'owner', retained);
+    let writing!: Promise<unknown>;
+    act(() => { writing = writer.updateSermonOutline('sermon', mine, base, 'preferMine'); });
+    const caught = writing.catch(error => error);
+    owner(null);hook.rerender();
+    await act(async () => { expect(await caught).toMatchObject({ name: 'OutlineCollisionError' }); });
+    expect(retained).toHaveBeenCalledWith(mine, base, saved);
+    expect(hook.result.current.error).toBeNull();
+    expect(editor.editor.edit).not.toHaveBeenCalled();
+    hook.unmount();
+  });
+
+  it('still reports a real storage failure when an ordinary outline edit cannot be captured', async () => {
+    const value = { userId: 'owner', title: 'Title', thoughts: [], outline: { introduction: [], main: [], conclusion: [] } };
+    const editor = makeEditor(), browser = makeBrowser(editor.editor), retained = jest.fn();
+    editor.setState({ ...editor.state, checkpoint: { ...editor.state.checkpoint,
+      confirmed: { ...snapshot(), value }, draft: value } });
+    jest.mocked(createBrowserDataEngine).mockReturnValue(browser.browser);
+    jest.mocked(editor.editor.edit).mockRejectedValueOnce(new Error('Storage unavailable'));
+    const hook = renderHook(() => useDataDocument(resource), { wrapper: Wrapper });
+    await waitFor(() => expect(hook.result.current.state).not.toBeNull());
+    const writer = createEngineStructureWriter(hook.result.current, 'owner', retained);
+    const mine = { ...value.outline, introduction: [{ id: 'new', text: 'New point' }] };
+    await act(async () => { await expect(writer.updateSermonOutline('sermon', mine, value.outline, 'preferMine')).rejects.toThrow('Storage unavailable'); });
+    expect(hook.result.current.error).toBe('Storage unavailable');
+    expect(retained).not.toHaveBeenCalled();
+    hook.unmount();
+  });
 
   /** BUG-20261003-engine-refusals-speak-english: a refusal kept in the editor state is said in words when coded. */
   it('says a coded refusal kept in the editor state in words, and an unknown one as the engine wrote it', async () => {

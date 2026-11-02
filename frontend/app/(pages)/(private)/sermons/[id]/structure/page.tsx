@@ -1,6 +1,7 @@
 "use client";
 
 
+
 import { DndContext, DragOverlay, type DragEndEvent, type Over } from "@dnd-kit/core";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
@@ -12,7 +13,8 @@ import { ScriptureLinksInWindow } from '@/components/bible/VerseWindow';
 import Column from "@/components/Column";
 import { TechnicalDetailsButton } from '@/components/diagnostics/TechnicalDetailsButton';
 import EditThoughtModal from "@/components/EditThoughtModal";
-import { StructureWriterContext, useStructureWriter } from "@/components/sermon/structureWriter";
+import { OutlineWriteRecovery } from '@/components/sermon/OutlineWriteRecovery';
+import { useStructureWriter } from "@/components/sermon/structureWriter";
 import { StructurePageSkeleton } from "@/components/skeletons/StructurePageSkeleton";
 import { SortableItemPreview } from "@/components/SortableItem";
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
@@ -104,7 +106,8 @@ function StructurePageContent() {
  */
 function EngineStructureBoard({ sermonId }: { sermonId: string }) {
   const { owner } = useDataEngine();
-  const { writer, document } = useEngineStructureWriter(sermonId, owner);
+  const outline = useEngineStructureWriter(sermonId, owner);
+  const { document } = outline;
   const holdingRef = useRef(false);
   const sermon = useMemo(() => document.data
     ? ({ ...document.data, id: sermonId, thoughts: document.data.thoughts ?? [] } as unknown as Sermon)
@@ -116,12 +119,12 @@ function EngineStructureBoard({ sermonId }: { sermonId: string }) {
   // A copy for reading keeps this page and its toolbar; only the board is drawn without controls.
   // It is its own tree, standing exactly where the separate reader stood, so every switch mounts
   // the other one fresh, as the swap did.
-  return <StructureWriterContext.Provider value={writer}>
+  return <OutlineWriteRecovery key={`${owner}:${sermonId}`} owner={owner} sermonId={sermonId} {...outline}>
     <StructureBoard key={document.readOnly ? 'copy' : 'editor'} sermonId={sermonId} engine={engine} holdingRef={holdingRef} readOnly={document.readOnly}
       syncStatus={document.readOnly ? null : <DataSyncStatus
         subject={document.recoveryIdentity} status={document.status} error={document.error} errorWords={document.errorWords} onRetry={document.retry}
         onKeepLocal={document.keepLocal} onAcceptRemote={document.acceptRemote} />} />
-  </StructureWriterContext.Provider>;
+  </OutlineWriteRecovery>;
 }
 
 function StructureBoard({ sermonId, engine, holdingRef, syncStatus, readOnly = false }: {
@@ -803,7 +806,7 @@ function StructureBoard({ sermonId, engine, holdingRef, syncStatus, readOnly = f
 
       // 5. Save to backend
 
-      // `preferMine` — no surface here to ask the person to choose; see the writer.
+      // The legacy flag routes a refused automatic edit to the shared recovery surface.
       const savedOutline = await structureWriter.updateSermonOutline(sermon.id, updatedOutline, baseOutline, 'preferMine');
       // Only a newer SUCCESS may advance the base. A newer request that failed does
       // not block this late answer, while an older delayed answer cannot roll back a

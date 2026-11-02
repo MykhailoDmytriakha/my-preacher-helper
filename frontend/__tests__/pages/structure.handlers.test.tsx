@@ -26,7 +26,9 @@ jest.mock('@/data-engine/react.client', () => ({
 }));
 jest.mock('@/data-engine/DataSyncStatus', () => ({ DataSyncStatus: () => <div data-testid="engine-sync-status" /> }));
 jest.mock('@/(pages)/(private)/sermons/[id]/structure/useEngineStructureWriter', () => ({
-  useEngineStructureWriter: () => ({ writer: mockEngineWriter, document: {
+  useEngineStructureWriter: (id: string, owner: string) => ({
+    recovery: jest.requireActual('@/components/plan-editor/useOutlineConflict').useOutlineConflict(owner, id),
+    writer: mockEngineWriter, document: {
     data: mockEngineDocumentData, loading: false, error: null, status: null,
     retry: jest.fn(), keepLocal: jest.fn(), acceptRemote: jest.fn(),
   } }),

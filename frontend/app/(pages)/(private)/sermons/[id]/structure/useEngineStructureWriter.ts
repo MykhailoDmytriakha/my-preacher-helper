@@ -1,8 +1,9 @@
-import { useMemo, useRef } from 'react';
+import { useMemo } from 'react';
 
 import { usePublishShellTitle } from '@/components/navigation/shellTitles';
-import { useDataDocument } from '@/data-engine/react.client';
-import { OutlineCollisionError } from '@/services/sermons.client';
+import { useOutlineConflict } from '@/components/plan-editor/useOutlineConflict';
+import { useDataDocument, type DocumentUpdateOptions } from '@/data-engine/react.client';
+import { isOutlineCollisionError, OutlineCollisionError } from '@/services/sermons.client';
 import { changedFields } from '@/utils/changedFields';
 import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
 import { mergeOutline } from '@/utils/mergeOutline';
@@ -51,17 +52,18 @@ export function placeExisting(structure: ThoughtsBySection, thoughts: readonly {
  */
 /** One edit of the owner's sermon draft; `apply` sees the current copy and may throw to refuse. */
 export function editEngineSermon<T>(document: Pick<SermonDocument, 'update'>, owner: string | null,
-  apply: (current: Sermon) => { next: Sermon; result: T }): Promise<T> {
+  apply: (current: Sermon) => { next: Sermon; result: T }, options?: DocumentUpdateOptions): Promise<T> {
   let result: T | undefined;
   return document.update(current => {
     if (!current || !owner || current.userId !== owner) throw unavailable();
     const outcome = apply(asSermon(current));
     result = outcome.result;
     return asDocument(outcome.next);
-  }).then(() => result as T);
+  }, options).then(() => result as T);
 }
 
-export function createEngineStructureWriter(document: Pick<SermonDocument, 'update'>, owner: string | null): StructureWriter {
+export function createEngineStructureWriter(document: Pick<SermonDocument, 'update'>, owner: string | null,
+  onOutlineConflict?: (outline: SermonOutline, base: SermonOutline | null, stored: SermonOutline | null) => void): StructureWriter {
   const edit = <T,>(apply: (current: Sermon) => { next: Sermon; result: T }) => editEngineSermon(document, owner, apply);
   return {
     updateStructure: (_sermonId, structure, baseStructure, options) => edit(current => {
@@ -80,27 +82,39 @@ export function createEngineStructureWriter(document: Pick<SermonDocument, 'upda
     }),
     deleteThought: (_sermonId, thought) => edit(current => ({ next: deleteSermonThought(current, thought.id), result: undefined })),
     createManualThought: (_sermonId, thought, section) => edit(current => ({ next: addSermonThought(current, thought, section), result: thought })),
-    updateSermonOutline: (_sermonId, outline, baseOutline, onCollision, inputSequence) => edit(current => {
-      const apply = (base: SermonOutline | null) => {
-        const merged = mergeOutline(base, outline, current.outline ?? null, onCollision === 'preferMine');
-        // The same error the legacy writer raises, so an editor's "keep mine / take theirs" works on the engine too.
-        if (merged.collisions.length && onCollision !== 'preferMine') throw new OutlineCollisionError(merged.collisions, current.outline ?? null, 0);
-        const next = replaceSermonOutline(current, merged.outline as SermonOutline);
-        return { next, result: next.outline ?? null };
-      };
-      return inputSequence ? inputSequence.apply(baseOutline ?? null, outline, apply) : apply(baseOutline ?? null);
-    }),
+    updateSermonOutline: async (_sermonId, outline, baseOutline, onCollision, inputSequence) => {
+      try {
+        return await editEngineSermon(document, owner, current => {
+          const apply = (base: SermonOutline | null) => {
+            const merged = mergeOutline(base, outline, current.outline ?? null, onCollision === 'preferMine');
+            if (merged.collisions.length) throw new OutlineCollisionError(merged.collisions, current.outline ?? null, 0, { outline: base });
+            const next = replaceSermonOutline(current, merged.outline as SermonOutline);
+            return { next, result: next.outline ?? null };
+          };
+          return inputSequence ? inputSequence.apply(baseOutline ?? null, outline, apply) : apply(baseOutline ?? null);
+        }, { handlesRefusal: isOutlineCollisionError });
+      } catch (error) {
+        // Modal editors already own their durable comparison. Older automatic callers used
+        // preferMine to suppress it; retain every refused input before their UI callbacks settle.
+        if (onCollision === 'preferMine' && isOutlineCollisionError(error)) {
+          onOutlineConflict?.(outline, error.baseline ? error.baseline.outline : baseOutline ?? null, error.serverOutline);
+        }
+        throw error;
+      }
+    },
   };
 }
 
 /** The engine writer for one open sermon; must render inside that sermon's DataDocumentProvider. */
-export function useEngineStructureWriter(sermonId: string, owner: string | null): { writer: StructureWriter; document: SermonDocument } {
+export function useEngineStructureWriter(sermonId: string, owner: string | null) {
   const document = useDataDocument({ collection: 'sermons', id: sermonId });
+  const recovery = useOutlineConflict(owner ?? '', sermonId);
   usePublishShellTitle('sermons', sermonId, document.data);
-  // The update function changes identity with the editor; the writer reads the latest one.
-  const latest = useRef(document);
-  latest.current = document;
-  const writer = useMemo(() => createEngineStructureWriter({ update: fn => latest.current.update(fn) }, owner), [owner]);
-  return { writer, document };
+  // A writer follows this resource's latest editor, never the next route's editor. Refusals
+  // retain the same owner/resource-bound recovery callback even if the screen has departed.
+  const lifetime = useMemo(() => ({ owner, sermonId, document: null as SermonDocument | null }), [owner, sermonId]);
+  lifetime.document = document;
+  const writer = useMemo(() => createEngineStructureWriter({ update: (fn, options) => lifetime.document!.update(fn, options) }, owner, recovery.retain),
+    [lifetime, owner, recovery.retain]);
+  return { writer, document, recovery };
 }
-

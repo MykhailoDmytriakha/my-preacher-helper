@@ -19,6 +19,10 @@ export interface PersistedConflictCopy<T> {
   value: PersistedConflict<T>;
 }
 
+export interface PersistedConflictWriteOptions {
+  preserveSelection?: boolean;
+}
+
 export interface PersistedConflictChoices<T> {
   copies: PersistedConflictCopy<T>[];
   selectedKey: string | null;
@@ -28,6 +32,7 @@ export interface PersistedConflictChoices<T> {
   select: (key: string) => void;
   nextDocument: (preferred?: string | null) => string | null;
   capture: () => PersistedConflictCopy<T> | null;
+  reload: () => void;
 }
 
 /** Each physical copy owns a JSON snapshot, even when callers reuse one object. */
@@ -35,8 +40,15 @@ function snapshotConflict<T>(value: PersistedConflict<T>): PersistedConflict<T> 
   return JSON.parse(JSON.stringify(value)) as PersistedConflict<T>;
 }
 
+/** A replacement follows its held copy; an independent arrival may leave the editor unselected. */
+function nextConflictSelection(current: string | undefined, replaced: string | undefined, next: string, preserve: boolean): string | null {
+  if (replaced && current === replaced) return next;
+  if (replaced || preserve) return current ?? null;
+  return next;
+}
+
 /** New refusals are independent. Replacing/resolving a choice names its exact held record. */
-export function usePersistedConflict<T>(uid: string | null | undefined, docId: string | null | undefined, aggregate: string, validate: (value: unknown, documentId: string) => boolean = validConflictEnvelope) {
+export function usePersistedConflict<T>(uid: string | null | undefined, docId: string | null | undefined, aggregate: string, validate: (value: unknown, documentId: string) => boolean = validConflictEnvelope, preserveSelectionOnWake?: () => boolean) {
   const session = useMemo(() => ({
     owner: uid, aggregate, validate,
     records: new Map<string, PersistedConflictCopy<T>>(),
@@ -66,7 +78,7 @@ export function usePersistedConflict<T>(uid: string | null | undefined, docId: s
     });
     return copies;
   }, [session]);
-  const refresh = useCallback((documentId: string, preferred?: string | null, activate = false, preserveMissing = false) => {
+  const refresh = useCallback((documentId: string, preferred?: string | null, activate = false, preserveMissing = false, keepSelection = false) => {
     const copies = readCopies(documentId);
     let unreadableSources = session.unreadable.get(documentId) ?? [];
     let unreadableFailed = false;
@@ -76,7 +88,7 @@ export function usePersistedConflict<T>(uid: string | null | undefined, docId: s
         && !session.validate((source.payload as { value?: unknown }).value, documentId)) : [];
       session.unreadable.set(documentId, unreadableSources);
     } catch { unreadableFailed = true; }
-    const previous = preferred ?? session.selected.get(documentId);
+    let previous = keepSelection && preferred === null ? null : preferred ?? session.selected.get(documentId);
     const held = previous ? session.records.get(previous) : undefined;
     // A passive wake may add choices, but cannot replace words currently being read/edited.
     if (preserveMissing && held && session.owner && !copies.some(copy => copy.key === held.key)) {
@@ -85,8 +97,11 @@ export function usePersistedConflict<T>(uid: string | null | undefined, docId: s
       session.bindings.set(retained.value, retained);
       session.transient.set(retained.key, retained);
       copies.unshift(retained);
+      previous = retained.key;
     }
-    const selectedKey = copies.find(copy => copy.key === previous)?.key ?? copies[0]?.key ?? null;
+    const selectedKey = keepSelection
+      ? copies.find(copy => copy.key === previous)?.key ?? null
+      : copies.find(copy => copy.key === previous)?.key ?? copies[0]?.key ?? null;
     if (activate && selectedKey && selectedKey !== session.selected.get(documentId)) {
       session.activation.set(documentId, (session.activation.get(documentId) ?? 0) + 1);
     }
@@ -100,10 +115,10 @@ export function usePersistedConflict<T>(uid: string | null | undefined, docId: s
   useEffect(() => {
     if (!uid || !docId) return;
     refresh(docId);
-    const wake = () => refresh(docId, undefined, false, true);
+    const wake = () => refresh(docId, undefined, false, true, preserveSelectionOnWake?.() ?? false);
     window.addEventListener('storage', wake); window.addEventListener('focus', wake);
     return () => { window.removeEventListener('storage', wake); window.removeEventListener('focus', wake); };
-  }, [docId, refresh, uid]);
+  }, [docId, preserveSelectionOnWake, refresh, uid]);
 
   const showEphemeral = useCallback((next: PersistedConflict<T> | null) => {
     if (current.current.session === session && current.current.docId === docId) {
@@ -112,7 +127,7 @@ export function usePersistedConflict<T>(uid: string | null | undefined, docId: s
   }, [docId, session]);
 
   /** `expected` distinguishes editing/resolving a shown choice from a new refused attempt. */
-  const setConflict = useCallback((next: PersistedConflict<T> | null, documentOverride?: string, expected?: PersistedConflict<T>) => {
+  const setConflict = useCallback((next: PersistedConflict<T> | null, documentOverride?: string, expected?: PersistedConflict<T>, options?: PersistedConflictWriteOptions) => {
     const documentId = documentOverride ?? docId;
     if (!session.owner || !documentId) {
       showEphemeral(next);
@@ -137,14 +152,17 @@ export function usePersistedConflict<T>(uid: string | null | undefined, docId: s
         clearDraftIfMatches(matching.key, expected);
         session.transient.delete(matching.key);
       }
-      const keepCurrent = expected && matching && previousKey !== matching.key;
-      refresh(documentId, keepCurrent ? previousKey : key);
+      const preferred = nextConflictSelection(previousKey, expected ? matching?.key : undefined,
+        key, options?.preserveSelection === true);
+      refresh(documentId, preferred, false, false, options?.preserveSelection === true);
       return;
     }
     if (!matching) return;
     clearDraftIfMatches(matching.key, matching.value);
     session.transient.delete(matching.key);
-    refresh(documentId, previousKey === matching.key ? null : previousKey, true);
+    const retiredSelection = previousKey === matching.key;
+    const preserveSelection = options?.preserveSelection === true;
+    refresh(documentId, retiredSelection ? null : previousKey, true, false, preserveSelection);
   }, [docId, refresh, session, showEphemeral]);
 
   const visible = view?.session === session && view.documentId === docId ? view : null;
@@ -160,6 +178,12 @@ export function usePersistedConflict<T>(uid: string | null | undefined, docId: s
     const key = session.selected.get(docId);
     return key ? session.records.get(key) ?? null : null;
   }, [docId, session]);
+  const reload = useCallback(() => {
+    if (current.current.session !== session || current.current.docId !== docId || !docId) return;
+    // A still-selected pending answer keeps its identity; only an absent selection
+    // falls back to the first readable copy after the editor releases its hold.
+    refresh(docId, undefined, true);
+  }, [docId, refresh, session]);
   /** The owning screen must not rebuild this index from disk and lose transient work. */
   const nextDocument = useCallback((preferred: string | null = null): string | null => {
     if (!session.owner) return null;
@@ -169,6 +193,6 @@ export function usePersistedConflict<T>(uid: string | null | undefined, docId: s
     if (preferred && ids.includes(preferred) && readable(preferred)) return preferred;
     return ids.find(readable) ?? (preferred && ids.includes(preferred) ? preferred : ids[0]) ?? null;
   }, [readCopies, session]);
-  const choices = useMemo<PersistedConflictChoices<T>>(() => ({ copies: visible?.copies ?? [], selectedKey: visible?.selectedKey ?? null, activation: visible?.activation ?? 0, unreadableSources: visible?.unreadableSources ?? [], unreadableFailed: visible?.unreadableFailed ?? false, select, nextDocument, capture }), [capture, nextDocument, select, visible]);
+  const choices = useMemo<PersistedConflictChoices<T>>(() => ({ copies: visible?.copies ?? [], selectedKey: visible?.selectedKey ?? null, activation: visible?.activation ?? 0, unreadableSources: visible?.unreadableSources ?? [], unreadableFailed: visible?.unreadableFailed ?? false, select, nextDocument, capture, reload }), [capture, nextDocument, reload, select, visible]);
   return [conflict, setConflict, !uid || !docId || Boolean(visible), choices] as const;
 }

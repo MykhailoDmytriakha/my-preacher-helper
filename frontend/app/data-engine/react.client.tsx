@@ -627,6 +627,11 @@ export function useDataMembership() {
   };
 }
 
+/** A feature may present its own expected question; storage and lifecycle failures still surface. */
+export interface DocumentUpdateOptions {
+  handlesRefusal?: (failure: unknown) => boolean;
+}
+
 interface DocumentOptions {
   slot?: string;
   create?: boolean;
@@ -925,12 +930,24 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
       cancelScheduledSave();
       return run(editor => editor.edit(value, current?.state.checkpoint));
     },
-    update: (updater: (current: DocumentData | null) => DocumentData | null) => {
-      cancelScheduledSave();
+    update: (updater: (current: DocumentData | null) => DocumentData | null, options?: DocumentUpdateOptions) => {
+      let refused: { error: unknown } | null = null;
       return run(editor => {
         const live = editor.getState().checkpoint, shown = current?.state.checkpoint;
         const base = shown && deletedUnder(live, shown) ? shown.draft : live.draft;
-        return editor.edit(updater(base), shown);
+        let next: DocumentData | null;
+        try { next = updater(base); }
+        catch (error) {
+          if (!options?.handlesRefusal?.(error)) throw error;
+          refused = { error };
+          return Promise.resolve();
+        }
+        // An expected question changed no draft and must not cancel an earlier save.
+        cancelScheduledSave();
+        return editor.edit(next, shown);
+      }).then(() => { if (refused) throw refused.error; }, error => {
+        // A question already established for the departed owner must still reach its backup.
+        throw refused ? refused.error : error;
       });
     },
     /** Freeze the intended save before any asynchronous draft persistence. */

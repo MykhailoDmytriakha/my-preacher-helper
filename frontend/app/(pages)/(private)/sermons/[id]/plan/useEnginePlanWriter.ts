@@ -1,12 +1,14 @@
-import { useMemo, useRef } from 'react';
+import { useMemo } from 'react';
 
 import { useDataDocument } from '@/data-engine/react.client';
 import { StaleWriteError } from '@/services/conflictSafeUpdate.client';
 import { SERMON_PLAN_AGGREGATE } from '@/services/sermons.client';
 
-import { createEngineStructureWriter, editEngineSermon } from '../structure/useEngineStructureWriter';
+import { createEngineStructureWriter, editEngineSermon, useEngineStructureWriter } from '../structure/useEngineStructureWriter';
 
 import type { PlanWriter } from './planWriter';
+import type { StructureWriter } from '@/components/sermon/structureWriter';
+
 
 type SermonDocument = ReturnType<typeof useDataDocument>;
 
@@ -16,8 +18,8 @@ type SermonDocument = ReturnType<typeof useDataDocument>;
  * another device is reported with its current text, never overwritten. The refusal leaves the
  * draft untouched and surfaces as the StaleWriteError the plan screens already handle.
  */
-export function createEnginePlanWriter(document: Pick<SermonDocument, 'update'>, owner: string | null): PlanWriter {
-  const structure = createEngineStructureWriter(document, owner);
+export function createEnginePlanWriter(document: Pick<SermonDocument, 'update'>, owner: string | null, outlineWriter?: StructureWriter): PlanWriter {
+  const structure = outlineWriter ?? createEngineStructureWriter(document, owner);
   return {
     updateThought: structure.updateThought,
     updateSermonOutline: structure.updateSermonOutline,
@@ -41,9 +43,12 @@ export function createEnginePlanWriter(document: Pick<SermonDocument, 'update'>,
 }
 
 /** The engine plan writer for one open sermon; render inside that sermon's DataDocumentProvider. */
-export function useEnginePlanWriter(sermonId: string, owner: string | null): PlanWriter {
-  const document = useDataDocument({ collection: 'sermons', id: sermonId });
-  const latest = useRef(document);
-  latest.current = document;
-  return useMemo(() => createEnginePlanWriter({ update: fn => latest.current.update(fn) }, owner), [owner]);
+export function useEnginePlanWriter(sermonId: string, owner: string | null) {
+  const outlineRecovery = useEngineStructureWriter(sermonId, owner);
+  const { document, writer: structure } = outlineRecovery;
+  const lifetime = useMemo(() => ({ owner, sermonId, document: null as SermonDocument | null }), [owner, sermonId]);
+  lifetime.document = document;
+  const writer = useMemo(() => createEnginePlanWriter({ update: (fn, options) => lifetime.document!.update(fn, options) }, owner, structure),
+    [lifetime, owner, structure]);
+  return { writer, outlineRecovery };
 }

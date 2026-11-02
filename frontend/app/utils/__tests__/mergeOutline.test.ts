@@ -449,13 +449,15 @@ describe('mergeOutline — two devices, hours apart', () => {
     expect(merged.main[0].subPoints?.[0].text).toBe('X laptop');
   });
 
-  it('still asks when both devices changed the skeleton of a point (first sub-points added on each)', () => {
-    // Words merge; the skeleton — which sub-points, in what order — stays a question, as before.
+  it('keeps the independent first subpoints added on each device', () => {
+    // Distinct identities are independent additions, even when the list was previously absent.
     const base = outline([point('p1', 'Grace')]);
     const mine = outline([point('p1', 'Grace', { subPoints: [{ id: 'a', text: 'From the laptop', position: 1 }] })]);
     const theirs = outline([point('p1', 'Grace', { subPoints: [{ id: 'b', text: 'From the phone', position: 2 }] })]);
 
-    expect(mergeOutline(base, mine, theirs).collisions).toEqual(['p1']);
+    const result = mergeOutline(base, mine, theirs);
+    expect(result.collisions).toEqual([]);
+    expect(new Set(result.outline.main[0].subPoints?.map(sub => sub.id))).toEqual(new Set(['a', 'b']));
   });
 
   it('asks instead of handing over a plan that holds one sub-point in two places', () => {
@@ -476,9 +478,9 @@ describe('mergeOutline — two devices, hours apart', () => {
 
     const { outline: merged, collisions } = mergeOutline(base, mine, theirs);
 
-    // The skeleton changed on both sides: a question, and this side's order stays as it was.
-    expect(collisions).toEqual(['p1']);
-    expect(merged.main[0].subPoints?.map(sub => sub.id)).toEqual(['a', 'b', 'c']);
+    // A new identity and an independent reorder compose in the order the reader displays.
+    expect(collisions).toEqual([]);
+    expect([...(merged.main[0].subPoints ?? [])].sort((a, b) => a.position - b.position).map(sub => sub.id)).toEqual(['b', 'a', 'c']);
   });
 
   it('asks, and under "keep mine" keeps one place, when the devices moved a sub-point under different points', () => {
@@ -499,7 +501,10 @@ describe('mergeOutline — two devices, hours apart', () => {
     const mine = outline([point('p1', 'One', { note: 'laptop note', subPoints: [] }), point('p2', 'Two', { subPoints: [] }), point('a', 'Promoted or moved')]);
     const theirs = outline([point('p1', 'One rewritten', { subPoints: [] }), point('p2', 'Two', { subPoints: [sub] })]);
 
-    expect(mergeOutline(base, mine, theirs).collisions).toContain('p1');
+    const result = mergeOutline(base, mine, theirs);
+    expect(result.collisions).toEqual(expect.arrayContaining(['p2', 'a']));
+    expect(result.outline.main.find(point => point.id === 'p1')).toMatchObject({ text: 'One rewritten', note: 'laptop note' });
+    expect(result.outline.main.flatMap(point => [point.id, ...(point.subPoints ?? []).map(sub => sub.id)]).filter(id => id === 'a')).toHaveLength(1);
   });
 
   it('does not count an empty note against a note written on the other device', () => {

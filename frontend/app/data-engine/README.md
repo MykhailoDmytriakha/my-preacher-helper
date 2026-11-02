@@ -98,6 +98,13 @@ function NoteContent({ id }: { id: string }) {
 - **Update:** `update(current => next)` uses the latest editor value. It persists
   locally immediately; default autosave delays delivery by 750 ms. Apply the user's
   patch to `current`; do not replace it with a render-time stale object.
+  A feature with its own comparison may pass `update(updater, { handlesRefusal })`.
+  The predicate classifies only an exception from computing the next value, before
+  any editor change. A handled refusal rejects to the caller without becoming a
+  document error, performing a no-op write, or cancelling an earlier autosave.
+  The captured refusal keeps its identity across owner/resource departure so its
+  original feature can retain it. Storage, readiness and lifecycle failures are
+  otherwise unchanged. The feature still owns preserving its refused input.
 - **Explicit Save:** `commit(current => next)` captures the intended value before
   awaiting local persistence. Do not compose `await update(...); await save()`:
   later typing may happen during that await. A saved request must survive editor

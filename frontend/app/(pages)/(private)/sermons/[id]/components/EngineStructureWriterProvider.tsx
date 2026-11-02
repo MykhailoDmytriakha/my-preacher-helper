@@ -1,6 +1,6 @@
 'use client';
 
-import { StructureWriterContext } from '@/components/sermon/structureWriter';
+import { OutlineWriteRecovery } from '@/components/sermon/OutlineWriteRecovery';
 import { useDataEngine } from '@/data-engine/react.client';
 
 import { useEngineStructureWriter } from '../structure/useEngineStructureWriter';
@@ -15,6 +15,6 @@ import type { ReactNode } from 'react';
  */
 export function EngineStructureWriterProvider({ sermonId, children }: { sermonId: string; children: ReactNode }) {
   const { owner } = useDataEngine();
-  const { writer } = useEngineStructureWriter(sermonId, owner);
-  return <StructureWriterContext.Provider value={writer}>{children}</StructureWriterContext.Provider>;
+  const outline = useEngineStructureWriter(sermonId, owner);
+  return <OutlineWriteRecovery key={`${owner}:${sermonId}`} owner={owner} sermonId={sermonId} {...outline}>{children}</OutlineWriteRecovery>;
 }

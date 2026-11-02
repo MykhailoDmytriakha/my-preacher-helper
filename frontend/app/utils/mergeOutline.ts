@@ -1,5 +1,7 @@
 import { mergeValues } from '@/data-engine/react.client';
-import { mergeOutlineOrder, normalizeOutlineFields } from '@/utils/outlineMergeParts';
+import { chooseOutlineChanges, OutlineChoiceReviewRequiredError } from '@/utils/outlineChoiceCore';
+import { mergeOutlineOrder } from '@/utils/outlineMergeParts';
+import { mergeOutlinePointParts } from '@/utils/outlinePointMerge';
 
 import type { OutlinePoint, SermonOutline, SubPoint } from '@/models/models';
 
@@ -109,14 +111,10 @@ export function mergeOutline(
   mine: SermonOutline,
   theirs: SermonOutline | null | undefined,
   /**
-   * Let the LOCAL decision win where nobody can be asked.
-   *
-   * The default keeps their version on a collision and reports it, which is right
-   * for the plan editor: it stores the refusal and offers a choice. Views without
-   * that surface pass `true` — otherwise a deletion made here comes back on the next
-   * save, which is worse than the whole-field overwrite they used to do.
-   *
-   * The collision is still REPORTED either way; this only changes who wins.
+   * Preserve the historical local-deletion candidate for automatic callers.
+   * Collisions remain reported either way. The shared engine writer refuses every
+   * collision and retains the actual input for explicit review; this candidate
+   * preference never authorizes capturing a conflicting outline.
    */
   preferMineOnCollision = false
 ): OutlineMergeResult {
@@ -218,10 +216,23 @@ export function mergeOutline(
     own(point.id, JSON.stringify(['plan']), point.id);
     (point.subPoints ?? []).forEach((sub) => own(sub.id, JSON.stringify(['point', point.id]), point.id));
   }));
+  let competingHomes = false;
   owners.forEach((places) => {
     if (places.size < 2) return;
+    competingHomes = true;
     places.forEach((pointId) => { if (!collisions.includes(pointId)) collisions.push(pointId); });
   });
+  if (competingHomes) {
+    try {
+      // A question still needs one readable local alternative. Reuse the canonical identity
+      // choice to keep each id once and independent words; collisions stay reported, and the
+      // ordinary writer refuses to capture this candidate until the person actually chooses.
+      return { outline: chooseOutlineChanges(base, mine, theirs, mergeValues), collisions };
+    } catch (error) {
+      if (!(error instanceof OutlineChoiceReviewRequiredError)) throw error;
+      // Ambiguous historical identities retain complete-copy review instead of a guessed repair.
+    }
+  }
 
   return { outline: merged, collisions };
 }
@@ -256,16 +267,11 @@ function reconcileExistingPoint(
   const changedHere = !start || !samePoint(start, here);
   const changedThere = !start || !samePoint(start, there);
   if (changedHere && changedThere && !samePoint(here, there)) {
-    // Both sides changed this point. When neither touched its skeleton — the same sub-points in the
-    // same order and places — only words changed, and they merge field by field with the engine's
-    // rule (BUG-20261011-outline-point-merge-loses-subpoint-edit): the phone's sub-point and this
-    // device's sub-point both stay. The same words written differently, or any change to the skeleton
-    // (a sub-point added, removed, moved, reordered), stays a question as before.
-    const parts = start && sameSkeleton(start, here) && sameSkeleton(start, there)
-      ? mergeValues(asField(start), asField(here), asField(there))
-      : null;
-    if (parts && parts.conflicts.length === 0 && parts.value.exists) {
-      content.set(id, parts.value.value as unknown as OutlinePoint);
+    // Merge words and visible subpoint order separately. A numeric-position sort must agree
+    // with the resulting sibling sequence; incompatible ownership remains a question below.
+    const parts = start ? mergeOutlinePointParts(start, here, there, mergeValues) : null;
+    if (parts) {
+      content.set(id, parts);
       return;
     }
     if (!collisions.includes(id)) collisions.push(id);
@@ -273,31 +279,4 @@ function reconcileExistingPoint(
   } else {
     content.set(id, changedThere ? there : here);
   }
-}
-
-/**
- * A point as the engine merges it: plain data, without `undefined` fields, and with a list of
- * sub-points even where none was written yet — so first sub-points added on both devices merge
- * by id instead of colliding over a missing field.
- */
-function asField(point: OutlinePoint) {
-  // Absent and empty mean the same here as in `samePoint`: an empty note or a false "reviewed"
-  // is not something either side wrote.
-
-  const value = { ...normalizeOutlineFields(point), subPoints: (point.subPoints ?? []).map(normalizeOutlineFields) };
-  return { exists: true as const, value: JSON.parse(JSON.stringify(value)) };
-}
-
-/**
- * The same sub-points, in the same order, at the same places: only their words may differ. Sub-points
- * without an id, or with one id twice, are not a skeleton the merge can trust.
- */
-function sameSkeleton(a: OutlinePoint, b: OutlinePoint): boolean {
-  const left = a.subPoints ?? [];
-  const right = b.subPoints ?? [];
-  const ids = left.map((sub) => sub.id);
-  return ids.every((subId) => typeof subId === 'string' && subId.length > 0)
-    && new Set(ids).size === ids.length
-    && left.length === right.length
-    && left.every((sub, index) => sub.id === right[index].id && sub.position === right[index].position);
 }

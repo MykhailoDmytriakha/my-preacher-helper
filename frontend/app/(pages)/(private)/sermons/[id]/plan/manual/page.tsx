@@ -1,5 +1,6 @@
 "use client";
 
+
 import { FileText, Pencil, Save } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import React, { useMemo, useRef, useState } from "react";
@@ -8,6 +9,7 @@ import { ScriptureLinksInWindow } from "@/components/bible/VerseWindow";
 import MarkdownDisplay from "@/components/MarkdownDisplay";
 import { ProgressSidebar } from "@/components/plan/ProgressSidebar";
 import { RecordUnavailable } from "@/components/RecordUnavailable";
+import { OutlineWriteRecovery } from '@/components/sermon/OutlineWriteRecovery';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { DataDocumentProvider, useDataEngine } from '@/data-engine/react.client';
 import { useDraftQuestion } from "@/hooks/useDurableDraft";
@@ -270,16 +272,16 @@ export default function ManualConspectusPage() {
 function EngineManualConspectusPage({ sermonId }: { sermonId: string }) {
   const { owner } = useDataEngine();
   const source = useEngineSermonSource(sermonId);
-  const writer = useEnginePlanWriter(sermonId, owner);
+  const { writer, outlineRecovery } = useEnginePlanWriter(sermonId, owner);
   const { document } = source;
   // The read-only screen stands exactly where the separate reader stood — on every copy, preaching
   // included — and as its own tree, so every switch mounts the other one fresh, as the swap did.
   // A copy for reading is still this page, preaching included; DeviceStorageNotice says why it is read-only.
-  return <PlanWriterContext.Provider value={writer}>
+  return <OutlineWriteRecovery key={`${owner}:${sermonId}`} owner={owner} sermonId={sermonId} {...outlineRecovery}><PlanWriterContext.Provider value={writer}>
     {!document.readOnly && <div className="px-4 pt-4 empty:hidden"><DataSyncStatus subject={document.recoveryIdentity} status={document.status} error={document.error} errorWords={document.errorWords} onRetry={document.retry}
       onKeepLocal={document.keepLocal} onAcceptRemote={document.acceptRemote} /></div>}
     <ManualConspectusContent key={document.readOnly ? 'copy' : 'editor'} source={source} readOnly={document.readOnly} />
-  </PlanWriterContext.Provider>;
+  </PlanWriterContext.Provider></OutlineWriteRecovery>;
 }
 
 type SermonSource = ReturnType<typeof useEngineSermonSource>;

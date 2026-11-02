@@ -39,6 +39,34 @@ it adds no action clock, writer, persistence format, or transport. Regression pa
 `planTreeIdentityMerge.test.ts`, `planTreeTwins.test.ts`, `protocol.test.ts`, and
 `session.test.ts` under `frontend/app/data-engine/__tests__/`.
 
+## Ordinary outline edits
+
+`utils/mergeOutline.ts` merges independent changes within a point through
+`outlinePointMerge.ts:mergeOutlinePointParts`. The helper reuses the public field
+merger and canonical subpoint sorting; it treats visible sibling order separately
+from numeric position values. Compatible additions, removal of an untouched sibling,
+and independent word edits compose. Incompatible words, order or global ownership
+remain reported collisions. A readable local candidate is not permission to save it.
+
+The shared engine structure writer refuses every reported outline collision,
+including automatic callers that historically pass `preferMine`. Expected outline
+questions use the public `update` option `handlesRefusal`: they make no editor change,
+leave earlier autosave scheduled, and reject back to the feature without publishing
+a document failure. Real storage errors remain visible. The writer retains the
+original input and the effective per-input ancestor through the existing
+`useOutlineConflict` store before a late UI outcome can be ignored. Ordinary,
+structure-board and plan routes share `OutlineWriteRecovery` and the existing
+`PlanEditorModal`; `OutlineConflictScope` binds the dialog to that same controller,
+including its in-memory fallback when durable storage is full. Do not create another
+backup reader or a separate transport for this notice.
+
+While a comparison editor is open, an independent arriving refusal becomes a choice
+without silently replacing the displayed words. Passive focus/storage wakes respect
+that hold; explicit Review activates the selected copy. Clearing or retiring a shown
+copy does not jump to another question until the editor releases its hold. The
+optional wake predicate belongs to this consumer: other persisted-conflict consumers
+retain their current selection policy.
+
 ## An explicit outline choice
 
 `PlanEditorModal` keeps the real opened outline through a refusal, using `useOutlineConflict` over the shared `usePersistedConflict` store. `utils/outlineChoice.ts:chooseOutlineLocalChanges` chooses only local changes against that ancestor and the shown saved snapshot: fields, location and sibling order are separate; untouched saved words remain, and each point/subpoint identity has one location. This is an explicit decision helper, not the ordinary background merge policy. Its algorithm lives in pure `utils/outlineChoiceCore.ts:chooseOutlineChanges` with an injected field-merge port; `outlineChoice.ts` retains the existing public UI adapter and error export. Engine code can reuse the core without importing the React facade. This extraction changes no choice policy. `mergeOutline` retains that separate role; both use `outlineMergeParts` for identical optional-field normalization and sequence ordering.
