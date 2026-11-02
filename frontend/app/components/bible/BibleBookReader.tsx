@@ -206,8 +206,8 @@ function PhoneHeader({ wayBack, onWayBack, trailButton, bookId, bible, currentCh
 /**
  * THE BOOK'S LINE, from 768 px: the book, the chapter and the search at the text's left edge, the translation at
  * its right one, above the text's pane, so both are at hand anywhere in the book. It stays one row — a tool's
- * colours open in it (`MarkToolbar`), and a second row would move the whole text down — so short of room the
- * translation's name is cut, never the book's. A phone lends its controls to the app's header (`PhoneHeader`).
+ * colours open in it (`MarkToolbar`), and a second row would move the whole text down — so the translation is
+ * named short, and short of room still, it is cut, never the book's name. A phone lends its controls to the app's header (`PhoneHeader`).
  */
 function BookLine({ lineRef, wayBack, onWayBack, trailButton, tools, translationClass, bookId, bible, currentChapter, currentVerse, text, locale, onOpen, onChangeBible, search }: {
   lineRef: (element: HTMLElement | null) => void; wayBack: string | null; onWayBack: () => void; trailButton: ReactNode; tools: ReactNode; translationClass: string;
