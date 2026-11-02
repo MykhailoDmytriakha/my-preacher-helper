@@ -163,7 +163,7 @@ export function createIndexedDbCommitStore(): CommitStore {
     }),
     releaseProjection: (owner, ids) => transaction('readwrite', (store, read, done) => {
       readCommitRows(store, read, owner, requests => {
-        const transferred: CommitRequest[] = [];
+        const projections: CommitRequest[] = [];
         for (const id of ids) {
           const request = requests.find(candidate => candidate.id === id);
           if (!request) continue;
@@ -171,17 +171,17 @@ export function createIndexedDbCommitStore(): CommitStore {
           if (participants.some(participant => !participant || !['acknowledged', 'cancelled'].includes(participant.state) || participant.unfinalized.length)) continue;
           store.delete(commitProjectionKey(owner, id));
           store.delete(commitSnapshotKey(owner, id));
-          if (request.transferredFrom || request.transferredTo) transferred.push(request);
+          projections.push(request);
         }
         const ordered = orderCommitRequests(requests);
         const projectNext = (index: number): void => {
-          const request = transferred[index];
+          const request = projections[index];
           if (!request) { collectCommitRows(store, read, owner, () => done(undefined)); return; }
-          // A transfer participant may outlive its original controller. Project its terminal
-          // result through the ordinary recovery rule in the same native transaction.
-          // Reading the current record here preserves any later private words.
+          // Recovery and transfer targets can close before their terminal result arrives.
+          // Reconcile the current checkpoint through its existing whole-record settlement;
+          // later private words and exact source versions keep their ordinary protection.
           read(store.get(checkpointKey(owner, request.editorId)), record => {
-            if (!record) { projectNext(index + 1); return; }
+            if (!record || (!request.transferredFrom && !request.transferredTo && !record.recoveryOrigins?.length)) { projectNext(index + 1); return; }
             writeCheckpointRecord(store, read, reconcileRecoveryRecord(validateRecoveryRecord(record, owner, request.editorId, request.baseline.resource), ordered), false, () => projectNext(index + 1));
           });
         };
