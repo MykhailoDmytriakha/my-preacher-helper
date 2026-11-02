@@ -109,30 +109,6 @@
 
 ## 🔵 P3 — открыто
 
-### BUG-20261101-scratch-mode-caption · Scratch content opens while the header still selects Classic
-
-**Severity.** P3 — the selected mode contradicts the visible editor; returning through the apparent current mode needs a native check.
-**Found.** 2026-11-01 · native emulator QA during Unit270, current source6905cbca and frozen build yomAVWzm0AB9wgOsSs57a.
-**Anchors.** `frontend/app/(pages)/(private)/sermons/[id]/page.tsx:466` changes only local `uiMode`; `frontend/app/components/navigation/DashboardNav.tsx:319` derives its mode from URL/storage.
-**Expected.** The selected header mode and the visible editor describe the same screen.
-**Observed.** Open a sermon in Classic, press "Sort the scratch notes": Scratch is active and fully settled, while the header still selects Classic. The mismatch remains after2500ms; this is separate from the transient clipping frame.
-**Reproduction.** Sermons → open a synthetic sermon with `?mode=classic` → "Sort the scratch notes" → wait for the strip to settle → compare the header selection with the visible Scratch workspace. Check the actual Classic button next; do not claim that return fails until measured.
-**Evidence.** `scratch-clipping-270-native-recovery-timeline-v1.json`, active pane index2, and root-viewed `...-post-final-800ms.png` / `...-post-final-2500ms.png` in the local bug-fixes case. Source and compiled file hashes match the frozen build. Only synthetic Auth9199/Firestore8189 data was used.
-**Effect.** The preacher cannot trust the mode selected in the header to tell which editor is open.
-**User contract.** Opening the Scratch workspace selects Scratch in the existing mode switch. Choosing another mode returns to its editor. Scroll, typing and background save do not independently change the mode. Preserve mounted drafts and the established navigation/back behavior.
-**Class (mechanism).** One screen mode has separate local and URL/navigation owners.
-| place | verdict | reason |
-|---|---|---|
-| sermon `onOpenScratch`, page.tsx:466 | affected | changes local pane without the header's URL state |
-| DashboardNav.tsx:319–356 | investigate | shows URL/storage state; same-mode early return may prevent returning to Classic |
-| server/offline data writers | not affected | selected UI mode is local navigation, not authored document data |
-
-**Root.** Local mode and navigation ownership are separate; prove the native return path before choosing the shared owner.
-**Fix direction / regression proof.** Not implemented; next sequential bug after Unit270.
-
-
-
-
 ### BUG-20261021-bible-marks-check-failed-line · В Библии появляется «Не удалось проверить обновления. Версия на сервере ещё не проверена»
 **Severity.** P3 — строка о сбое проверки пометок, без потери текста; есть «Повторить». Шум там, где человек читает.
 **Найден.** 2026-10-21 · отзыв владельца из приложения (письмо «New Feedback (bug)», 04:02 UTC, версия `78a5122`, `/bible`, Mac, Chrome 154): «почему-то недавно показывалась версия на сервере, не проверена… в районе Второзакония, 7:7». Воспроизведение — со слов владельца, агентом не проверялось.
@@ -252,6 +228,17 @@
 ---
 
 ## 🔍 Требует перепроверки
+
+### BUG-20261102-phone-mode-menu-invisible · Reopened phone mode options can remain transparent
+
+**Severity (provisional).** P3 — the phone mode menu can advertise an open state without visible options; cross-run reproducibility is still being isolated.
+**Anchor.** `frontend/app/components/navigation/ModeToggle.tsx:108` uses the Headless UI Listbox options transition.
+**Expected / observed.** Reopening the phone mode selector shows readable, clickable choices. In native Chrome at390×844 on the frozen Unit269 build, after choosing the already selected Classic option and opening Scratch through Sort, the next menu has `aria-expanded=true` but opacity0 and scale0.95 for3000ms (38 read-only samples). An earlier run reached later steps but briefly occluded a choice while opening. This may be transition timing or the QA environment; the precise cause is not established.
+**Reproduction to isolate.** Sermons → synthetic sermon in Classic → phone mode menu → choose its already selected Classic option → Sort the scratch notes → wait2500ms → reopen mode menu. Also check repeated openings without Sort and after the mode/header fix.
+**Evidence.** `scratch-mode-271-native-before-phone-v4.json` and root-viewed v3 failure screenshot in the local bug-fixes case. V4 stopped on its bounded opacity/readiness oracle; exact fixture/browser cleanup passed. No source fix or physical-phone acceptance is claimed.
+**Later control.** Unit271 AFTER phone-v5 completes all13 mode/draft/reload/history checks with visible-option readiness. This single clean control does not establish the earlier transparency cause or disprove an intermittent issue; keep this record for focused recheck.
+**Effect / user contract.** An opened menu must show its options, and selecting one must close it and show the corresponding editor. Background animation must not leave an invisible interactive popup. Opening and closing the selector alone must not change a sermon or discard a draft.
+
 
 ### BUG-20261101-jest-worker-teardown · Общий прогон тестов проходит, но один worker не завершается сам
 **Severity.** Предварительно P3, требует перепроверки: тесты зелёные, однако Jest вынужденно завершает worker; причина и связь с приложением пока не установлены. Это наблюдение тестового окружения, не подтверждённая потеря данных в приложении.

@@ -129,7 +129,7 @@ jest.mock('@/components/sermon/prep/ThesisStepContent', () => ({ __esModule: tru
 jest.mock('@/components/sermon/prep/ExegeticalPlanStepContent', () => ({ __esModule: true, default: jest.fn(() => <div data-testid="exegetical" />) }));
 jest.mock('@/components/sermon/prep/PrepStepCard', () => ({ __esModule: true, default: ({ children, stepRef }: { children: React.ReactNode; stepRef?: (el: HTMLDivElement | null) => void }) => <div ref={stepRef}>{children}</div> }));
 jest.mock('@/components/sermon/BrainstormModule', () => ({ __esModule: true, default: ({}) => <div data-testid="brainstorm" /> }));
-jest.mock('@/components/sermon/ThoughtList', () => ({ __esModule: true, default: jest.fn(() => <div data-testid="thought-list" />) }));
+jest.mock('@/components/sermon/ThoughtList', () => ({ __esModule: true, default: jest.fn(({ emptyState, totalThoughtsCount }: React.ComponentProps<typeof ThoughtList>) => <div data-testid="thought-list">{totalThoughtsCount === 0 ? emptyState : null}</div>) }));
 jest.mock('@/components/sermon/ThoughtFilterControls', () => ({ __esModule: true, default: ({}) => null }));
 // Renders whether the engine writer reaches it, so a test can tell the engine door from the refusing default.
 jest.mock('@/components/sermon/SermonOutline', () => ({ __esModule: true, default: jest.fn(() => {
@@ -348,6 +348,37 @@ mockCore.data = null; mockCore.loading = false;
     expect(screen.queryByTestId('sermon-header')).not.toBeInTheDocument();
     expect(screen.queryByTestId('engine-scratch-workspace')).not.toBeInTheDocument();
     expect(mockCore.patchCore).not.toHaveBeenCalled();
+  });
+
+  test.each([false, true])('Sort publishes the shared mode and can return with existing thoughts=%s', async (hasThoughts) => {
+    mockCore.data = { ...mockCore.data!,
+      scratch: [{ id: 'scratch-note', text: 'Keep the scratch source', createdAt: '2026-11-02' }],
+      thoughts: hasThoughts ? [{ id: 'existing-thought', text: 'Keep the thought', tags: [], date: '2026-11-02' }] : [],
+    };
+    searchParamsMock = new URLSearchParams('mode=classic&qa=keep-query');
+    const { rerender } = render(<TestProviders><SermonPage /></TestProviders>);
+    const rawPane = () => screen.getByTestId('engine-scratch-workspace').parentElement;
+    expect(rawPane()).toHaveAttribute('aria-hidden', 'true');
+
+    fireEvent.click(await screen.findByRole('button', { name: 'sermon.materialEmpty.sortAtoms' }));
+
+    // The address is the contract shared with the real header, reload and browser history.
+    await waitFor(() => expect(routerMock.push).toHaveBeenCalledWith(
+      '/sermons/abc?mode=raw&qa=keep-query', { scroll: false },
+    ));
+    expect(routerMock.push).toHaveBeenCalledTimes(1);
+    const [destination] = routerMock.push.mock.calls[0];
+    searchParamsMock = new URL(destination, 'http://localhost').searchParams;
+    rerender(<TestProviders><SermonPage /></TestProviders>);
+    await waitFor(() => expect(rawPane()).not.toHaveAttribute('aria-hidden'));
+    expect(mockLocalStorage.setItem).toHaveBeenCalledWith('sermon-abc-mode', 'raw');
+
+    // Deliver the original address as the router does when the person goes back.
+    searchParamsMock = new URLSearchParams('mode=classic&qa=keep-query');
+    rerender(<TestProviders><SermonPage /></TestProviders>);
+    await waitFor(() => expect(rawPane()).toHaveAttribute('aria-hidden', 'true'));
+    expect(mockCore.patchCore).not.toHaveBeenCalled();
+    expect(mockCore.patchPreparation).not.toHaveBeenCalled();
   });
 
   test('initializes mode from URL param when present', async () => {

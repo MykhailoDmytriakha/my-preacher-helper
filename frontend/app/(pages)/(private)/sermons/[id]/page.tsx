@@ -4,7 +4,7 @@ import { motion } from "framer-motion";
 import { BookOpen, Sparkles } from "lucide-react";
 import dynamicImport from "next/dynamic";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from 'sonner';
 import "@locales/i18n";
@@ -38,6 +38,7 @@ import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useRouteId } from "@/hooks/useRouteId";
 import { useSeries } from "@/hooks/useSeries";
 import { sermonIsMissing } from "@/hooks/useSermonRead";
+import { useShellPathname } from '@/hooks/useShellPathname';
 import { useTags } from "@/hooks/useTags";
 import { useWayInOnce } from "@/hooks/useWayInOnce";
 import { useAuth } from "@/providers/AuthProvider";
@@ -47,6 +48,7 @@ import { newClientId } from "@/utils/clientId";
 import { sermonLanguage } from "@/utils/documentLanguage";
 import { deleteRecordingDraft, saveRecordingDraft } from '@/utils/recordingDraftStore';
 import { transcriptionFailureWords } from '@/utils/transcriptionRetryClient';
+import { getSermonModeUrl } from '@/utils/urlUtils';
 import { useThoughtFiltering } from '@hooks/useThoughtFiltering';
 import { STRUCTURE_TAGS } from '@lib/constants';
 import { useTranslation } from "@locales/useTranslation";
@@ -228,6 +230,8 @@ function SermonPageContent({ id }: { id: string }) {
   const dictationBlockedKey = usageBlockedLabelKey('dictation');
   const isReadOnly = core.isReadOnly;
 
+  const router = useRouter();
+  const pathname = useShellPathname();
   const searchParams = useSearchParams();
   const modeParam = searchParams?.get('mode');
   const [uiMode, setUiMode] = useState<SermonUiMode>(() => getInitialUiMode(modeParam, id as string));
@@ -463,7 +467,7 @@ function SermonPageContent({ id }: { id: string }) {
       isReadOnly={isReadOnly}
       sermon={sermon}
       scratchNotes={sermon?.scratch}
-      onOpenScratch={() => setUiMode('raw')}
+      onOpenScratch={() => router.push(getSermonModeUrl(pathname, 'raw', searchParams?.toString()), { scroll: false })}
     />
   );
 
