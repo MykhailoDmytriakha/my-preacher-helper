@@ -17,6 +17,7 @@ const NAMED_FIELDS = new Set([
   'type', 'structure', 'thoughtsBySection', 'plan', 'draft', 'outline', 'topics', 'status', 'meetingDates', 'preachDates', 'tags', 'isPreached',
   'language', 'email', 'displayName', 'firstDayOfWeek', 'enablePrepMode', 'enableAudioGeneration', 'enableStructurePreview',
   'enableGroups', 'showAppVersion', 'preferredProviderId', 'preferredModelId', 'preferredTranscription', 'preferredText', 'preferredTts',
+  'reading',
   // Every other field the person writes in councils, groups, series, sermons, prayers and study notes (models.ts).
   'scratch', 'insights', 'planText', 'planMode', 'preparation', 'seriesId', 'seriesPosition', 'sourceNoteIds', 'church',
   'audioChunks', 'audioMetadata', 'audioSources', 'theme', 'bookOrTopic', 'startDate', 'duration', 'color', 'templates', 'flow', 'heldAt',

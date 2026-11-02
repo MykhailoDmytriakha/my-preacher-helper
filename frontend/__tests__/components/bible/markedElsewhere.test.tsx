@@ -45,9 +45,13 @@ describe('a verse marked in another Bible', () => {
     const words = [...verse.closest('p')!.querySelectorAll('[data-word]')];
     expect(words.map((word) => word.textContent).join(' ')).toBe('Уповайте на Господа вовеки, ибо Господь Бог есть твердыня вечная:');
     const painted = (word: string) => words.find((element) => element.textContent === word)!.className;
-    expect(painted('Уповайте')).toContain('bg-[#ffdcc2]');
-    expect(painted('ибо')).toBe('');
-    expect(painted('Господь')).toContain('bg-[#fdd8d8]');
+    // The marker's colour is the band of the run around the word (one band per run, rounded as in the reader).
+    const band = (word: string) => words.find((element) => element.textContent === word)!.closest('[data-run]')?.className ?? '';
+    expect(band('Уповайте')).toContain('bg-[var(--mark-fill-orange)]');
+    expect(band('Уповайте')).toBe(band('Господа'));
+    expect(band('ибо')).toBe('');
+    expect(band('Господь')).toContain('bg-[var(--mark-fill-red)]');
+    expect(band('Господь')).toContain('rounded');
     expect(painted('Господь')).toContain('decoration-[#8b8f98]');
     expect(fetchBookText).toHaveBeenCalledWith('Isaiah', 'rst');
     fireEvent.click(within(there).getByRole('button', { name: 'bible.marks.openThere' }));

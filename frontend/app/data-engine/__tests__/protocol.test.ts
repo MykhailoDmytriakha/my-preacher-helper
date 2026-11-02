@@ -203,6 +203,18 @@ describe('DataEngine command protocol', () => {
     expect(() => validateCommand({ ...command, dependsOn: [command.operationId] })).toThrow();
   });
 
+  it('lets the person keep reading settings in their own settings document', () => {
+    // The account's reading settings (`utils/accountChoice.ts`) travel as one `reading` field; a field missing from the
+    // users list was refused on the device before it was ever sent (2026-11-02).
+    const users = { collection: 'users', id: 'owner' };
+    const before = { language: 'ru', reading: { mine: { show: true } } };
+    const after = { language: 'ru', reading: { mine: { show: true }, trail: { history: 50, recent: 7 } } };
+    const command = validateCommand({ ...update(before, after), resource: users });
+    expect(command).toMatchObject({ kind: 'update', changes: [{ path: ['reading'] }] });
+    expect(applyCommand(command, { resource: users, value: before, metadata: null }))
+      .toMatchObject({ kind: 'acknowledged', snapshot: { value: after } });
+  });
+
   it.each([
     null, {}, { protocol: 2 }, { value: Infinity }, { value: undefined },
     JSON.parse('{"__proto__":{"paidTier":"premium"}}'),

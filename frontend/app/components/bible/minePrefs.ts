@@ -1,11 +1,11 @@
+import { accountChoice } from '@/utils/accountChoice';
 import { recordDiagnostic } from '@/utils/appDiagnostics';
-import { deviceChoice } from '@/utils/deviceChoice';
 
 /*
  * WHETHER THE PERSON'S OWN MATERIAL SHOWS ON THE TEXT (the owner, 2026-10-21, case 2026-10-12-block-diagram,
  * 2.2): a badge after a verse a note, sermon, group or service order of theirs points at, one after a
  * chapter's heading for what points at the whole chapter, and dots by a chapter's number on the minimap.
- * One record per device, like the cross references (`crossReferencePrefs.ts`): it is a choice of what
+ * Kept in the account (the owner, 2026-11-02; `utils/accountChoice.ts`), like the cross references: it is a choice of what
  * shows while reading, so it lives in Settings → Bible, not in the reader's "T", which is about the text
  * (the owner, 2026-10-20). The page holds it in memory (`utils/deviceChoice.ts`).
  */
@@ -36,7 +36,8 @@ function parse(raw: string | null): MinePrefs {
   }
 }
 
-const choice = deviceChoice({
+const choice = accountChoice({
+  part: 'mine',
   key: 'bible:mine',
   parse,
   fallback: DEFAULT_MINE_PREFS,
@@ -54,6 +55,11 @@ export function saveMinePrefs(change: Partial<MinePrefs>): void {
 
 export function useMinePrefs(): MinePrefs {
   return choice.useChoice();
+}
+
+/** Whether the choice can be changed now: kept in the account, it waits while the account cannot be written. */
+export function useMinePrefsWritable(): boolean {
+  return choice.useWritable();
 }
 
 /** Forgets the copy kept in memory — for tests. */

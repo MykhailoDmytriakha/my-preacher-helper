@@ -1,7 +1,7 @@
 'use client';
 
 import { PlaceTrailSample } from '@/components/bible/PlaceTrail';
-import { saveTrailPrefs, useTrailPrefs, type TrailPrefs } from '@/components/bible/placeTrailStore';
+import { saveTrailPrefs, useTrailPrefs, useTrailPrefsWritable, type TrailPrefs } from '@/components/bible/placeTrailStore';
 import { ChoiceButtons, SettingRow } from '@/components/settings/SettingRow';
 import { resolveAppLocale } from '@/utils/appLocale';
 import { getLocalizedAbbrev } from '@/utils/bibleBooks';
@@ -25,6 +25,8 @@ const asChoices = (numbers: readonly number[]) => numbers.map((number) => ({ val
 export default function PlaceTrailSettings() {
   const { t, language } = useTranslation();
   const prefs = useTrailPrefs();
+  // Kept in the account: unavailable while the settings cannot be written (`utils/accountChoice.ts`).
+  const writable = useTrailPrefsWritable();
   const save = (change: Partial<TrailPrefs>) => saveTrailPrefs(change, 'settings');
   const locale = resolveAppLocale(language);
   return (
@@ -39,10 +41,10 @@ export default function PlaceTrailSettings() {
         <p className="text-sm text-gray-600 dark:text-gray-400">{t('settings.bible.trail.button')}</p>
       </div>
       <SettingRow below title={t('settings.bible.trail.history')} hint={t('settings.bible.trail.historyHint')}>
-        {(ids) => <ChoiceButtons ids={ids} choices={asChoices(TRAIL_HISTORY_CHOICES)} value={prefs.history} onPick={(history) => save({ history })} />}
+        {(ids) => <ChoiceButtons ids={ids} choices={asChoices(TRAIL_HISTORY_CHOICES)} value={prefs.history} disabled={!writable} onPick={(history) => save({ history })} />}
       </SettingRow>
       <SettingRow below title={t('settings.bible.trail.recent')} hint={t('settings.bible.trail.recentHint', { count: prefs.recent })}>
-        {(ids) => <ChoiceButtons ids={ids} choices={asChoices(TRAIL_RECENT_CHOICES)} value={prefs.recent} onPick={(recent) => save({ recent })} />}
+        {(ids) => <ChoiceButtons ids={ids} choices={asChoices(TRAIL_RECENT_CHOICES)} value={prefs.recent} disabled={!writable} onPick={(recent) => save({ recent })} />}
       </SettingRow>
     </section>
   );

@@ -1,17 +1,21 @@
 import type { MarkColor, PencilColor } from '@/utils/bibleMarks';
 
 /*
- * THE MARKS' COLOURS ON AN ELEMENT — for words drawn as elements of their own (the window of a verse
- * marked in another Bible) and for the legend. Over the reader's text the browser paints the same
- * colours itself (`globals.css`, `::highlight(bible-mark-…)`): a colour changed here changes there too.
+ * THE MARKS' COLOURS ON AN ELEMENT — for words drawn as elements of their own (the window of a verse marked in another
+ * Bible, the analysis) and for the legend. The marker's fills are the page's variables (`globals.css`,
+ * `--mark-fill-<colour>`, light and dark), the same the reader's bands are drawn in (`markBands.ts`): one place to change
+ * a colour. The pencil's lines repeat the colours of `::highlight(bible-mark-pencil-…)` there — kept in step by hand.
  */
 export const MARK_FILL_CLASS: Record<MarkColor, string> = {
-  red: 'bg-[#fdd8d8] dark:bg-[rgba(255,107,107,0.30)]',
-  green: 'bg-[#d3f2df] dark:bg-[rgba(61,214,140,0.26)]',
-  yellow: 'bg-[#fff0a0] dark:bg-[rgba(255,214,10,0.30)]',
-  orange: 'bg-[#ffdcc2] dark:bg-[rgba(255,139,62,0.30)]',
-  blue: 'bg-[#d9e2fc] dark:bg-[rgba(123,155,255,0.32)]',
+  red: 'bg-[var(--mark-fill-red)]',
+  green: 'bg-[var(--mark-fill-green)]',
+  yellow: 'bg-[var(--mark-fill-yellow)]',
+  orange: 'bg-[var(--mark-fill-orange)]',
+  blue: 'bg-[var(--mark-fill-blue)]',
 };
+
+/** A run of marked words as one band, each line of it rounded on its own (the reader's bands look). */
+export const MARK_RUN_CLASS = 'rounded-[0.3em] px-[2px] -mx-[2px] [box-decoration-break:clone] [-webkit-box-decoration-break:clone]';
 
 const PENCIL_LINE = 'underline decoration-[1.5px] underline-offset-[0.14em]';
 

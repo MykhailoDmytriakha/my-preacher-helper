@@ -408,15 +408,26 @@ body:has([aria-modal="true"]:not([data-note-sheet])) [data-note-sheet-scroll] {
   }
 }
 
-/* MARKS IN THE BIBLE (components/bible/marks): the browser paints them over the words, no element of
-   their own. The marker fills the words with the colour of their meaning, light enough to read through;
-   the pencil is a line under them — grey, or one of the five colours — and lies over a colour too. The dark theme takes the same hues
-   as a thin wash. The legend in the "T" menu (MarkLegend.tsx) shows the same fills. */
-::highlight(bible-mark-red) { background-color: #fdd8d8; }
-::highlight(bible-mark-green) { background-color: #d3f2df; }
-::highlight(bible-mark-yellow) { background-color: #fff0a0; }
-::highlight(bible-mark-orange) { background-color: #ffdcc2; }
-::highlight(bible-mark-blue) { background-color: #d9e2fc; }
+/* MARKS IN THE BIBLE (components/bible/marks), no element of their own over the words. The marker fills them with the
+   colour of their meaning — rounded bands of one height drawn behind each verse's row (marks/markBands.ts) in these
+   colours; the words keep the text's colour on them. The dark theme's fills are opaque, chosen by the owner on 2026-11-02:
+   a thin wash of a warm colour over the dark page went brown. Every element that shows a fill takes the same variables
+   (marks/markPaint.ts: the legend in the "T" menu, the window of a verse marked in another Bible, the analysis). The pencil
+   is the browser's own highlight: a line under the words — grey, or one of the five colours — that lies over a fill too. */
+:root {
+  --mark-fill-red: #fdd8d8;
+  --mark-fill-green: #d3f2df;
+  --mark-fill-yellow: #fff0a0;
+  --mark-fill-orange: #ffdcc2;
+  --mark-fill-blue: #d9e2fc;
+}
+:root.dark {
+  --mark-fill-red: #803435;
+  --mark-fill-green: #036035;
+  --mark-fill-yellow: #866c02;
+  --mark-fill-orange: #9f5102;
+  --mark-fill-blue: #374b89;
+}
 ::highlight(bible-mark-pencil-gray),
 ::highlight(bible-mark-pencil-red),
 ::highlight(bible-mark-pencil-green),
@@ -436,11 +447,6 @@ body:has([aria-modal="true"]:not([data-note-sheet])) [data-note-sheet-scroll] {
 /* The place a previewed note names the opened passage (ScripturePreviewSheet). */
 ::highlight(scripture-mention) { background-color: #fde68a; }
 :root.dark ::highlight(scripture-mention) { background-color: rgba(251, 191, 36, 0.35); }
-:root.dark ::highlight(bible-mark-red) { background-color: rgba(255, 107, 107, 0.3); }
-:root.dark ::highlight(bible-mark-green) { background-color: rgba(61, 214, 140, 0.26); }
-:root.dark ::highlight(bible-mark-yellow) { background-color: rgba(255, 214, 10, 0.3); }
-:root.dark ::highlight(bible-mark-orange) { background-color: rgba(255, 139, 62, 0.3); }
-:root.dark ::highlight(bible-mark-blue) { background-color: rgba(123, 155, 255, 0.32); }
 :root.dark ::highlight(bible-mark-pencil-gray) { text-decoration-color: #9ca3af; }
 :root.dark ::highlight(bible-mark-pencil-red) { text-decoration-color: #ff6b6b; }
 :root.dark ::highlight(bible-mark-pencil-green) { text-decoration-color: #3dd68c; }

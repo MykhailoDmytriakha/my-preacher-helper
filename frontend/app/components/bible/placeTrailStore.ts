@@ -1,3 +1,4 @@
+import { accountChoice } from '@/utils/accountChoice';
 import { recordDiagnostic } from '@/utils/appDiagnostics';
 import { wayBackPath } from '@/utils/bibleLink';
 import { isBibleId } from '@/utils/bibles';
@@ -17,12 +18,11 @@ import {
 } from '@/utils/placeTrail';
 
 /*
- * THE TRAIL OF PLACES ON THIS DEVICE (`utils/placeTrail.ts` is its rule): the links themselves, whether
- * the reader shows them, and the two numbers the settings set — how many places to keep and how many of
- * the last ones are recent. Both records live on the device, as the trail itself does: nothing is written
- * to the account on a move through the Bible (the owner, 2026-10-20). They are device choices
- * (`utils/deviceChoice.ts`): held in the page's memory and written through, so a device that refuses to
- * store keeps the trail for the visit.
+ * THE TRAIL OF PLACES ON THIS DEVICE (`utils/placeTrail.ts` is its rule): the links themselves live on the device —
+ * nothing is written to the account on a move through the Bible (the owner, 2026-10-20) — a device choice
+ * (`utils/deviceChoice.ts`), held in the page's memory and written through, so a device that refuses to store keeps the
+ * trail for the visit. Its settings — whether the reader shows it, how many places to keep and how many of the last are
+ * recent — are kept in the account, the same on every device (`utils/accountChoice.ts`, the owner, 2026-11-02).
  */
 export type TrailPrefs = TrailLimits & {
   /** The trail under the reader's line (or above the phone's bar); hidden, its button still counts the links. */
@@ -74,7 +74,9 @@ function parsePrefs(raw: string | null): TrailPrefs {
 }
 
 const trailChoice = deviceChoice<Trail>({ key: 'bible:place-trail', parse: parseTrail, fallback: EMPTY_TRAIL });
-const prefsChoice = deviceChoice<TrailPrefs>({
+// The settings live in the account, the same on every device (the owner, 2026-11-02); the trail itself stays here.
+const prefsChoice = accountChoice<TrailPrefs>({
+  part: 'trail',
   key: 'bible:place-trail-prefs',
   parse: parsePrefs,
   fallback: DEFAULT_TRAIL_PREFS,
@@ -169,6 +171,11 @@ export function usePlaceTrail(): Trail {
 
 export function useTrailPrefs(): TrailPrefs {
   return prefsChoice.useChoice();
+}
+
+/** Whether the trail's settings can be changed now: kept in the account, they wait while it cannot be written. */
+export function useTrailPrefsWritable(): boolean {
+  return prefsChoice.useWritable();
 }
 
 export function readPlaceTrail(): Trail {

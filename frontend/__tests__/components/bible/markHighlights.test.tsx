@@ -1,13 +1,15 @@
 import { act, render } from '@testing-library/react';
 import { startTransition, Suspense, useRef, useState } from 'react';
 
+import * as bands from '@/components/bible/marks/markBands';
 import { useMarkHighlights, type MarkPainter } from '@/components/bible/marks/useMarkHighlights';
 
 import type { BookMarks } from '@/utils/bibleMarks';
 
 /*
- * The marks drawn over the text (CSS Custom Highlight API; jsdom has none, so a registry stands in and
- * counts what is drawn). A save hands the reader a new copy at each of its steps, and the same marks
+ * The marks drawn over the text — the pencil by the CSS Custom Highlight API (jsdom has none, so a registry stands in and
+ * counts what is drawn), the marker as bands behind each verse's row (`markBands.ts`; jsdom draws no picture, so the fills
+ * a row holds are read). A save hands the reader a new copy at each of its steps, and the same marks
  * drawn again at each one left an iPad's Psalms stiff after every stroke (2026-10-16). A stroke let go
  * stays drawn until its save arrives, so it never blinks out and back.
  */
@@ -25,8 +27,16 @@ class FakeHighlight extends Set<Range> {
 
 const drawn = new Map<string, FakeHighlight>();
 const set = jest.fn((name: string, highlight: FakeHighlight) => drawn.set(name, highlight));
-/** The words drawn in a layer, as text. */
-const words = (layer: string) => [...(drawn.get(`bible-mark-${layer}`) ?? [])].map((range) => range.toString()).sort();
+/** The words drawn in a layer, as text: a pencil's from its highlight, a marker colour's from the rows' bands. */
+const words = (layer: string) => (layer.startsWith('pencil-')
+  ? [...(drawn.get(`bible-mark-${layer}`) ?? [])].map((range) => range.toString())
+  : [...document.querySelectorAll<HTMLElement>('[data-verse]')].flatMap((row) => bands.fillsPaintedOn(row)
+    .filter(([color]) => color === layer).map(([, range]) => range.toString()))).sort();
+/** Every drawing act: a pencil range put in or taken out, a row's bands drawn or cleared. */
+let setStyle: jest.SpyInstance;
+let removeStyle: jest.SpyInstance;
+const picture = (calls: unknown[][]) => calls.filter(([property]) => property === 'background-image').length;
+const touched = () => changes + picture(setStyle.mock.calls) + picture(removeStyle.mock.calls);
 
 beforeAll(() => {
   Object.defineProperty(globalThis, 'CSS', { configurable: true, value: { highlights: { set, delete: (name: string) => drawn.delete(name) } } });
@@ -40,6 +50,15 @@ beforeEach(() => {
   set.mockClear();
   drawn.clear();
   changes = 0;
+  // jsdom lays nothing out: a row 300 × 40, each mark's words one box on its first line.
+  jest.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, right: 300, bottom: 40, width: 300, height: 40, x: 0, y: 0, toJSON: () => ({}) });
+  Object.defineProperty(Range.prototype, 'getClientRects', { configurable: true, value: () => [{ left: 10, right: 60, top: 4, bottom: 26, width: 50, height: 22 }] });
+  setStyle = jest.spyOn(CSSStyleDeclaration.prototype, 'setProperty');
+  removeStyle = jest.spyOn(CSSStyleDeclaration.prototype, 'removeProperty');
+});
+afterEach(() => {
+  jest.restoreAllMocks();
+  Reflect.deleteProperty(Range.prototype, 'getClientRects');
 });
 
 const red = (verse: string): BookMarks => ({ [verse]: { m: [[0, 0, 'red']] } });
@@ -70,9 +89,9 @@ describe('marks drawn over the text', () => {
   it('draws the marks once, and not again for a new copy of the same marks', () => {
     const reader = setUp(red('1:1'));
     expect(words('red')).toEqual(['alpha']);
-    const drawnOnce = changes;
+    const drawnOnce = touched();
     reader.show({ '1:1': { m: [[0, 0, 'red']] } });
-    expect(changes).toBe(drawnOnce);
+    expect(touched()).toBe(drawnOnce);
     reader.show({ ...red('1:1'), ...red('1:2') });
     expect(words('red')).toEqual(['alpha', 'gamma']);
   });
@@ -81,9 +100,9 @@ describe('marks drawn over the text', () => {
     // WebKit repaints every range of a highlight replaced whole: ninety marks redrawn on each word of a stroke.
     const reader = setUp({ ...red('1:1'), '1:2': { p: [[1, 1, 'gray']] } });
     const registered = set.mock.calls.length;
-    const before = changes;
+    const before = touched();
     reader.show({ ...red('1:1'), '1:2': { p: [[1, 1, 'gray']] }, ...red('1:3') });
-    expect(changes - before).toBe(1);
+    expect(touched() - before).toBe(1);
     expect(set.mock.calls.length).toBe(registered);
     expect(words('red')).toEqual(['alpha', 'epsilon']);
     expect(words('pencil-gray')).toEqual(['delta']);
@@ -102,10 +121,10 @@ describe('marks drawn over the text', () => {
     // The first stroke's save arrives, without the second yet: the second stays drawn.
     reader.show(first({}));
     expect(words('red')).toEqual(['alpha', 'gamma']);
-    const drawnBefore = changes;
+    const drawnBefore = touched();
     // The second's save arrives: the marks hold both, and nothing is drawn again.
     reader.show(second(first({})));
-    expect(changes).toBe(drawnBefore);
+    expect(touched()).toBe(drawnBefore);
     expect(reader.painter().shown()).toEqual(second(first({})));
   });
 

@@ -82,6 +82,13 @@ const councilTopic = object({
 });
 const orderStep = object({ id, title: text, body: text.optional(), scriptureRefs: strings.optional(), flagged: boolean.optional() });
 const preference = object({ providerId: z.enum(providerIds), modelId: id });
+// The reader's settings in the account (`ReadingSettings`): each part whole, every field optional.
+const reading = object({
+  trail: object({ history: number.int().positive(), recent: number.int().positive(), shown: boolean, verseStart: boolean }).partial().optional(),
+  crossReferences: object({ show: boolean, inWindow: boolean, mode: z.enum(['main', 'all']), othersAsVerses: boolean }).partial().optional(),
+  mine: object({ show: boolean, comments: z.enum(['text', 'badge']) }).partial().optional(),
+  analysisHelp: object({ short: boolean }).partial().optional(),
+});
 const owner = { userId: id };
 const timestamps = { createdAt: text, updatedAt: text };
 
@@ -115,7 +122,7 @@ const shapes: Record<string, z.ZodRawShape> = {
   // A run is one string "first-last-colour": Firestore keeps no array inside an array (`encodeBookMarks`).
   bibleMarks: { ...owner, ...timestamps, bible: id, book: id, verses: z.record(text, object({ m: markRuns.optional(), p: markRuns.optional() })) },
   tags: { ...owner, name: id, color: text, required: boolean, createdAt: text.optional(), updatedAt: text.optional() },
-  users: { lastSeenAt: text.optional(), language: text.optional(), email: text.optional(), displayName: text.optional(), firstDayOfWeek: z.enum(['sunday', 'monday']).optional(), enablePrepMode: boolean.optional(), enableAudioGeneration: boolean.optional(), enableStructurePreview: boolean.optional(), enableGroups: boolean.optional(), showAppVersion: boolean.optional(), preferredProviderId: z.enum(providerIds).optional(), preferredModelId: id.optional(), preferredTranscription: preference.optional(), preferredText: preference.optional(), preferredTts: preference.optional(), createdAt: text.optional(), updatedAt: text.optional() },
+  users: { lastSeenAt: text.optional(), language: text.optional(), email: text.optional(), displayName: text.optional(), firstDayOfWeek: z.enum(['sunday', 'monday']).optional(), enablePrepMode: boolean.optional(), enableAudioGeneration: boolean.optional(), enableStructurePreview: boolean.optional(), enableGroups: boolean.optional(), showAppVersion: boolean.optional(), reading: reading.optional(), preferredProviderId: z.enum(providerIds).optional(), preferredModelId: id.optional(), preferredTranscription: preference.optional(), preferredText: preference.optional(), preferredTts: preference.optional(), createdAt: text.optional(), updatedAt: text.optional() },
 };
 
 function invalid(message: string): never {

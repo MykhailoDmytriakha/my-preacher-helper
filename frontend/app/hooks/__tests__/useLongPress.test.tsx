@@ -2,8 +2,8 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 
 import { LONG_PRESS_MS, useLongPress } from '@/hooks/useLongPress';
 
-function Tile({ onPress, onLongPress }: { onPress: () => void; onLongPress?: () => void }) {
-  const { state, handlers } = useLongPress({ onPress, onLongPress });
+function Tile({ onPress, onLongPress, onArm }: { onPress: () => void; onLongPress?: () => void; onArm?: () => boolean | void }) {
+  const { state, handlers } = useLongPress({ onPress, onLongPress, onArm });
   return <button type="button" data-state={state} {...handlers}>tile</button>;
 }
 
@@ -216,6 +216,31 @@ describe('useLongPress', () => {
     expect(onLongPress).not.toHaveBeenCalled();
     expect(tile).toHaveAttribute('data-state', 'armed');
     pointer(tile, 'pointerup', { pointerId: 3 });
+    expect(onLongPress).toHaveBeenCalledTimes(1);
+  });
+
+  // A Pencil's hold (the owner, 2026-11-02): the stroke it began decides at the hold's time whether it was a hold after all.
+  it('asks at the hold\'s time, before drawing it, and a "no" gives the hold up — the lift does nothing then', () => {
+    const onLongPress = jest.fn();
+    const onArm = jest.fn(() => false);
+    render(<Tile onPress={jest.fn()} onLongPress={onLongPress} onArm={onArm} />);
+    const tile = screen.getByRole('button');
+    press(tile);
+    act(() => { jest.advanceTimersByTime(LONG_PRESS_MS); });
+    expect(onArm).toHaveBeenCalledTimes(1);
+    expect(tile).toHaveAttribute('data-state', 'idle');
+    fireEvent.pointerUp(tile);
+    expect(onLongPress).not.toHaveBeenCalled();
+  });
+
+  it('arms as before when the question says yes', () => {
+    const onLongPress = jest.fn();
+    render(<Tile onPress={jest.fn()} onLongPress={onLongPress} onArm={() => true} />);
+    const tile = screen.getByRole('button');
+    press(tile);
+    act(() => { jest.advanceTimersByTime(LONG_PRESS_MS); });
+    expect(tile).toHaveAttribute('data-state', 'armed');
+    fireEvent.pointerUp(tile);
     expect(onLongPress).toHaveBeenCalledTimes(1);
   });
 });

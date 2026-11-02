@@ -17,7 +17,7 @@ import { verseCopyText, type CopyNames } from '@/utils/verseCopy';
 import { useTranslation } from '@locales/useTranslation';
 
 import { ARRIVAL_ATTRIBUTE, ChapterVerses } from './BookRibbon';
-import { saveCrossReferencePrefs, useCrossReferencePrefs } from './crossReferencePrefs';
+import { saveCrossReferencePrefs, useCrossReferencePrefs, useCrossReferencePrefsWritable } from './crossReferencePrefs';
 import { ReaderSheet, SheetCloseButton } from './ReaderSheet';
 import { useBookTexts } from './useBookTexts';
 import { usePassageRest } from './usePassageRest';
@@ -317,6 +317,7 @@ function ReferenceList({ references, loading, place, verseText, copyText, titleI
 }) {
   const { t, i18n } = useTranslation();
   const { othersAsVerses } = useCrossReferencePrefs();
+  const writable = useCrossReferencePrefsWritable();
   const main = references.filter(isMainReference);
   const others = references.filter((reference) => !isMainReference(reference));
   const label = (reference: CrossReference) => crossReferenceLabel(reference, bible, locale);
@@ -361,6 +362,7 @@ function ReferenceList({ references, loading, place, verseText, copyText, titleI
             {othersOpen ? (
               <Switch
                 checked={othersAsVerses}
+                disabled={!writable}
                 label={t('bible.crossRefs.othersAsVerses')}
                 onClick={() => saveCrossReferencePrefs({ othersAsVerses: !othersAsVerses }, 'window')}
               />

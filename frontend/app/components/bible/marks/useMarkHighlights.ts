@@ -3,16 +3,17 @@ import { useLayoutEffect, useMemo, useRef, type RefObject } from 'react';
 import { MARK_COLORS, marksKey, PENCIL_COLORS, type BookMarks, type MarkColor, type PencilColor } from '@/utils/bibleMarks';
 import { cssHighlightRegistry, type HighlightSet } from '@/utils/cssHighlights';
 
+import { clearRowBands, paintRowBands, repaintRowBands } from './markBands';
 import { mapVerseText, VERSE_TEXT_ATTRIBUTE, wordsRange } from './verseWordDom';
 
 import type { MarksChange } from './markStore';
 
 /*
- * MARKS DRAWN OVER THE TEXT — by the browser itself (the CSS Custom Highlight API): the words stay as
- * they are, a mark is a range the page paints, so a whole book of marks costs no element of its own
- * (a ribbon of the Psalms is tens of thousands of words). The colours live in `globals.css` under
- * `::highlight(bible-mark-…)`, light and dark. A browser without the API (Safari before 17.2) shows no
- * marks and offers no tools (`marksSupported`).
+ * MARKS DRAWN OVER THE TEXT, with no element of their own (a ribbon of the Psalms is tens of thousands of words): the
+ * pencil's line by the browser itself (the CSS Custom Highlight API, `::highlight(bible-mark-pencil-…)` in `globals.css`),
+ * the marker as rounded bands of one height behind each verse's row (`markBands.ts`; the owner, 2026-11-02 — the browser's
+ * highlight cannot round, and his iPad drew it at different heights). A browser without the highlight API (Safari before
+ * 17.2) shows no marks and offers no tools (`marksSupported`).
  *
  * Drawn only when what is shown changes (`marksKey`): the book's form hands the reader a new copy at
  * every step of a save — kept on the device, queued, sent, answered — and the same marks drawn again
@@ -23,12 +24,13 @@ import type { MarksChange } from './markStore';
  * of a highlight replaced whole, and a stroke over the Psalms with ninety marks redrew them all on each
  * word (67 ms a frame against 34 for one range put in, measured in WebKit).
  */
-type Layer = MarkColor | `pencil-${PencilColor}`;
+type Layer = `pencil-${PencilColor}`;
 export const highlightName = (layer: Layer) => `bible-mark-${layer}`;
 
 export const marksSupported = (): boolean => cssHighlightRegistry() !== null;
 
-const LAYERS: Layer[] = [...MARK_COLORS, ...PENCIL_COLORS.map((color) => `pencil-${color}` as const)];
+const LAYERS: Layer[] = PENCIL_COLORS.map((color) => `pencil-${color}` as const);
+const isMarkColor = (layer: string): layer is MarkColor => (MARK_COLORS as readonly string[]).includes(layer);
 /** How long a kept stroke is shown over marks that do not hold it yet. */
 const HOLD_MS = 3_000;
 
@@ -47,24 +49,27 @@ function verseIndex(root: HTMLElement): Map<string, Element> {
  * words they were drawn over — a big book draws its chapters around the place read, and a verse that
  * left the page or came back is drawn again over its new words.
  */
-type Canvas = { layers: Map<Layer, HighlightSet> | null; verses: Map<string, { key: string; words: Element | undefined; ranges: [Layer, Range][] }> };
+type Drawn = { key: string; words: Element | undefined; row: HTMLElement | null; ranges: [Layer, Range][] };
+type Canvas = { layers: Map<Layer, HighlightSet> | null; verses: Map<string, Drawn> };
 
-function rangesOf(container: Element, verseMarks: BookMarks[string]): [Layer, Range][] {
+/** A verse's marks over its words: the marker's runs as the row's bands, the pencil's as ranges for the highlights. */
+function rangesOf(container: Element, verseMarks: BookMarks[string]): { fills: [MarkColor, Range][]; lines: [Layer, Range][] } {
   const map = mapVerseText(container);
-  const ranges: [Layer, Range][] = [];
+  const fills: [MarkColor, Range][] = [];
+  const lines: [Layer, Range][] = [];
   verseMarks.m?.forEach(([first, last, color]) => {
     const range = wordsRange(map, first, last);
-    if (range) ranges.push([color, range]);
+    if (range && isMarkColor(color)) fills.push([color, range]);
   });
   verseMarks.p?.forEach(([first, last, color]) => {
     const range = wordsRange(map, first, last);
-    if (range) ranges.push([`pencil-${color}`, range]);
+    if (range) lines.push([`pencil-${color}`, range]);
   });
-  return ranges;
+  return { fills, lines };
 }
 
-/** Brings the page's highlights to `marks`, touching only the verses whose marks changed. */
-function paintMarks(canvas: Canvas, root: HTMLElement, index: Map<string, Element>, marks: BookMarks): void {
+/** Brings the page's highlights and bands to `marks`, touching only the verses whose marks changed. */
+function paintMarks(canvas: Canvas, root: HTMLElement, index: Map<string, Element>, marks: BookMarks, rows: ResizeObserver | null): void {
   const api = cssHighlightRegistry();
   if (!api) return;
   if (!canvas.layers) {
@@ -77,26 +82,42 @@ function paintMarks(canvas: Canvas, root: HTMLElement, index: Map<string, Elemen
     canvas.layers = layers;
   }
   const layers = canvas.layers;
-  const takeOut = (ranges: [Layer, Range][]) => ranges.forEach(([layer, range]) => layers.get(layer)?.delete(range));
+  const takeOut = (drawn: Drawn) => {
+    drawn.ranges.forEach(([layer, range]) => layers.get(layer)?.delete(range));
+    if (drawn.row) {
+      clearRowBands(drawn.row);
+      rows?.unobserve(drawn.row);
+    }
+  };
   for (const [verse, verseMarks] of Object.entries(marks)) {
     const key = JSON.stringify(verseMarks);
     const drawn = canvas.verses.get(verse);
     const found = index.get(verse);
     const words = found && root.contains(found) ? found : undefined;
     if (drawn?.key === key && drawn.words === words) continue;
-    if (drawn) takeOut(drawn.ranges);
-    const ranges = words ? rangesOf(words, verseMarks) : [];
-    ranges.forEach(([layer, range]) => layers.get(layer)?.add(range));
-    canvas.verses.set(verse, { key, words, ranges });
+    if (drawn) takeOut(drawn);
+    const { fills, lines } = words ? rangesOf(words, verseMarks) : { fills: [], lines: [] };
+    lines.forEach(([layer, range]) => layers.get(layer)?.add(range));
+    const row = fills.length && words ? words.closest<HTMLElement>('[data-verse]') : null;
+    if (row) {
+      paintRowBands(row, fills);
+      rows?.observe(row);
+    }
+    canvas.verses.set(verse, { key, words, row, ranges: lines });
   }
   for (const [verse, drawn] of canvas.verses) {
     if (marks[verse]) continue;
-    takeOut(drawn.ranges);
+    takeOut(drawn);
     canvas.verses.delete(verse);
   }
 }
 
-function clearMarks(state: { painted: string | null; canvas: Canvas }): void {
+function clearMarks(state: { painted: string | null; canvas: Canvas; rows: ResizeObserver | null }): void {
+  state.canvas.verses.forEach((drawn) => {
+    if (!drawn.row) return;
+    clearRowBands(drawn.row);
+    state.rows?.unobserve(drawn.row);
+  });
   state.painted = null;
   state.canvas = { layers: null, verses: new Map() };
   LAYERS.forEach((layer) => cssHighlightRegistry()?.highlights.delete(highlightName(layer)));
@@ -135,6 +156,8 @@ export function useMarkHighlights(rootRef: RefObject<HTMLElement | null>, ready:
     index: null as Map<string, Element> | null,
     canvas: { layers: null, verses: new Map() } as Canvas,
     timers: new Set<number>(),
+    /** Each row with bands, watched: a row that changes size (width, text size, a font arriving) is measured again. */
+    rows: null as ResizeObserver | null,
   });
 
   const painter = useMemo(() => {
@@ -145,7 +168,7 @@ export function useMarkHighlights(rootRef: RefObject<HTMLElement | null>, ready:
       const key = marksKey(target);
       if (key === current.painted) return;
       current.index ??= verseIndex(root);
-      paintMarks(current.canvas, root, current.index, target);
+      paintMarks(current.canvas, root, current.index, target, current.rows);
       current.painted = key;
     };
     const heldOver = (marks: BookMarks) => state.current.held.reduce((shownMarks, { change }) => change(shownMarks), marks);
@@ -198,6 +221,27 @@ export function useMarkHighlights(rootRef: RefObject<HTMLElement | null>, ready:
     state.current.marks = marks;
     state.current.ready = ready;
   });
+
+  // The bands follow their rows' size and the theme's colours — set before anything is painted, so the first rows are watched.
+  useLayoutEffect(() => {
+    const current = state.current;
+    const repaintAll = () => current.canvas.verses.forEach((drawn) => { if (drawn.row) repaintRowBands(drawn.row); });
+    if (typeof ResizeObserver !== 'undefined') {
+      // No entries said (a stand-in observer): every painted row is measured again.
+      current.rows = new ResizeObserver((seen?: ResizeObserverEntry[]) => {
+        if (seen?.length) seen.forEach(({ target }) => repaintRowBands(target as HTMLElement));
+        else repaintAll();
+      });
+    }
+    const theme = typeof MutationObserver !== 'undefined' ? new MutationObserver(repaintAll) : null;
+    theme?.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    void document.fonts?.ready.then(repaintAll);
+    return () => {
+      current.rows?.disconnect();
+      current.rows = null;
+      theme?.disconnect();
+    };
+  }, []);
 
   // A new text — another book or Bible: its verses are other elements, nothing of it is painted yet,
   // and a stroke drawn or held over the last one has nothing to do with it.

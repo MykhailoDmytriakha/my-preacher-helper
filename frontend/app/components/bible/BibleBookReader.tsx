@@ -1049,6 +1049,7 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, dec
                 articleRef={textRef}
                 gestureIgnore={marks.gestureIgnore}
                 penSurface={marks.penSurface}
+                onPenHold={marks.penHold}
                 className={`relative isolate min-w-0 ${BIBLE_READER_COLORS.surface} [-webkit-touch-callout:none] [@media(hover:none)]:select-none ${frame.card} ${marks.textClass}`}
               >
                 <BookRibbon text={text} lang={BIBLES[bible].language} chapterWord={chapterWord} crossRefs={ribbonCrossRefs} signs={ribbonSigns} mine={ribbonMine} chapterComment={commentDoors.chapter} boxes={chapterWindow.boxes} verseMenu={verseCopy.ribbonMenu} />

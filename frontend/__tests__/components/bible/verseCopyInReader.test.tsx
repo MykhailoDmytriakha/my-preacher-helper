@@ -68,9 +68,9 @@ const renderRuth = async (showReferences = true) => {
 const verseText = (key: string) => document.querySelector(`[data-verse="${key}"] [data-verse-text]`) as HTMLElement;
 const row = (key: string) => document.querySelector(`[data-verse="${key}"]`) as HTMLElement;
 
-function pointer(target: Element, type: 'pointerdown' | 'pointermove' | 'pointerup', pointerType: 'touch' | 'mouse' = 'touch', clientY = 40) {
+function pointer(target: Element, type: 'pointerdown' | 'pointermove' | 'pointerup', pointerType: 'touch' | 'mouse' | 'pen' = 'touch', clientY = 40, pointerId = 1) {
   const event = new MouseEvent(type, { bubbles: true, cancelable: true, clientX: 40, clientY, button: 0 });
-  Object.defineProperties(event, { pointerType: { value: pointerType }, pointerId: { value: 1 } });
+  Object.defineProperties(event, { pointerType: { value: pointerType }, pointerId: { value: pointerId } });
   fireEvent(target, event);
 }
 const wait = (ms: number) => act(async () => { await new Promise((resolve) => setTimeout(resolve, ms)); });
@@ -81,6 +81,56 @@ async function hold(target: Element) {
   pointer(target, 'pointerup');
   await wait(460);
 }
+
+describe('a Pencil\'s hold and the system\'s selection (the owner\'s iPad, 31.10)', () => {
+  it('a Pencil held still on a verse opens its menu as a finger does, the verse lifted over the page', async () => {
+    await renderRuth();
+    pointer(verseText('1:16'), 'pointerdown', 'pen');
+    await wait(LONG_PRESS_MS + 30);
+    pointer(verseText('1:16'), 'pointerup', 'pen');
+    await wait(460);
+    expect(screen.getByRole('menu', { name: 'bible.copy.menu' })).toBeInTheDocument();
+    expect(row('1:16')).toHaveAttribute('data-verse-held');
+  });
+
+  // Codex, 02.11: a second finger on a chip took the Pencil's hold over.
+  it('another finger touching while the Pencil is held does not take the hold over', async () => {
+    await renderRuth();
+    pointer(verseText('1:16'), 'pointerdown', 'pen');
+    const chip = screen.getByTestId('cross-refs-1:16');
+    pointer(chip, 'pointerdown', 'touch', 40, 2);
+    pointer(chip, 'pointerup', 'touch', 40, 2);
+    await wait(LONG_PRESS_MS + 30);
+    pointer(verseText('1:16'), 'pointerup', 'pen');
+    await wait(460);
+    expect(screen.getByRole('menu', { name: 'bible.copy.menu' })).toBeInTheDocument();
+  });
+
+  it('a Pencil that moves along the line is a stroke: no menu', async () => {
+    await renderRuth();
+    pointer(verseText('1:16'), 'pointerdown', 'pen', 40);
+    pointer(verseText('1:16'), 'pointermove', 'pen', 80);
+    await wait(LONG_PRESS_MS + 30);
+    pointer(verseText('1:16'), 'pointerup', 'pen', 80);
+    await wait(460);
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
+
+  it('after a finger\'s press the system never starts a selection on the text; after a mouse\'s it does', async () => {
+    await renderRuth();
+    const selectStart = () => {
+      const event = new Event('selectstart', { bubbles: true, cancelable: true });
+      verseText('1:16').dispatchEvent(event);
+      return event.defaultPrevented;
+    };
+    pointer(verseText('1:16'), 'pointerdown', 'touch');
+    expect(selectStart()).toBe(true);
+    pointer(verseText('1:16'), 'pointerup', 'touch');
+    pointer(verseText('1:16'), 'pointerdown', 'mouse');
+    expect(selectStart()).toBe(false);
+    pointer(verseText('1:16'), 'pointerup', 'mouse');
+  });
+});
 
 describe('taking verses out of the reader', () => {
   it.each([
