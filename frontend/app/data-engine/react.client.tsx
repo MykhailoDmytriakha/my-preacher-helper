@@ -624,6 +624,7 @@ export function useDataMembership() {
     retry: () => run(() => active().retryMembership(required().getState().record.scopeId)),
     discard: () => run(async () => { await active().discardMembership(required().getState().record.scopeId); dismiss(); }),
     listRecoverable: (options?: { closedOnly?: boolean }) => run(() => active().listMembershipRecovery(options)),
+    listRecoveryChoices: () => run(() => active().listMembershipRecoveryChoices()),
   };
 }
 
@@ -978,7 +979,7 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
     listRecoverable: async () => {
       if (!isCurrent() || !browser || !owner || !collection || !id) throw new Error(EDITOR_CHANGED);
       // Listing drafts reads the editor's storage; when it is silent the search says so instead of spinning.
-      const records = await untilStorageSilent(browser.engine.listRecoverable({ collection, id }), () => undefined, readOnlyReason(true));
+      const records = await untilStorageSilent(browser.engine.listRecoveryChoices({ collection, id }), () => undefined, readOnlyReason(true));
       if (!isCurrent()) throw new Error(EDITOR_CHANGED);
       return records;
     },

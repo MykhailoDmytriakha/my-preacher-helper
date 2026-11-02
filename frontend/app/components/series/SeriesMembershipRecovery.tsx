@@ -17,7 +17,7 @@ export function SeriesMembershipRecovery() {
   const recovery = useRecoveryDiscovery({ identity: actions.recoveryIdentity, enabled: actions.ready,
     version: `${actions.recoveryVersion}:${id ?? ''}`,
     // A sermon a gone page left is settled when «Новая проповедь» opens next (EngineCreateSermonModal), not offered here.
-    list: async () => (await actions.listRecoverable({ closedOnly: true }))
+    list: async () => (await actions.listRecoveryChoices())
       .filter(record => !record.creation).map(record => {
       const action = record.action;
       const targetId = action?.kind === 'assign' ? action.targetId : action?.kind === 'reorder' ? action.seriesId : null;
@@ -27,7 +27,7 @@ export function SeriesMembershipRecovery() {
           : action?.kind === 'remove' ? 'workspaces.series.actions.removeFromSeries' : 'workspaces.series.membershipAssignment') };
     }),
     recover: async id => {
-      const record = (await actions.listRecoverable({ closedOnly: true })).find(record => record.scopeId === id);
+      const record = (await actions.listRecoveryChoices()).find(record => record.scopeId === id);
       if (!record) throw Object.assign(new Error('This draft is no longer available'), { code: 'draft-gone' });
       setSelected({ identity: actions.recoveryIdentity, id });
     } });

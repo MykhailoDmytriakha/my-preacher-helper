@@ -6,6 +6,7 @@ import { auth } from '@/services/firebaseAuth.service';
 import { newClientId } from '@/utils/clientId';
 import { getConnectivityStatus, subscribeToConnectivity } from '@/utils/connectivity';
 import { knockNow } from '@/utils/connectivityKnock';
+import { heldInSomeTab, holdWhileOpen } from '@/utils/openInTab';
 
 import { createIndexedDbCheckpoints } from './checkpoint.client';
 import { createIndexedDbCollectionCursors } from './collectionCursors.client';
@@ -19,6 +20,7 @@ import { LocalWriteback } from './localWriteback';
 import { createIndexedDbManualScopes } from './manualScopes.client';
 import { createIndexedDbMembershipScopes } from './membershipScopes.client';
 import { ResourceObserver } from './observer';
+import { recoveryPresenceKey } from './recoveryPresence';
 import { DataEngineRuntime } from './runtime';
 import { createIndexedDbSnapshots } from './snapshots.client';
 import { createFirestoreObservationSource } from './source.client';
@@ -53,6 +55,10 @@ export function createBrowserDataEngine({ onError }: { onError?: (error: unknown
   const engine = new DataEngine({
     runtime, observer, transport, checkpoints: createIndexedDbCheckpoints(), collections,
     snapshots, operationId: newClientId, onError: report, localWriteback: retiredWrites,
+    recoveryPresence: {
+      hold: (owner, kind, id) => holdWhileOpen(recoveryPresenceKey(owner, kind, id)),
+      held: (owner, kind, id) => heldInSomeTab(recoveryPresenceKey(owner, kind, id)),
+    },
     commits: createIndexedDbCommitStore(), manualScopes: createIndexedDbManualScopes(), membershipScopes: createIndexedDbMembershipScopes(),
   });
   let active = true;

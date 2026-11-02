@@ -289,6 +289,7 @@ describe('failureWords', () => {
     ['other-changes-first', 'dataSync.failure.otherChangesFirst'],
     ['draft-gone', 'dataSync.failure.draftGone'],
     ['draft-done', 'dataSync.failure.draftDone'],
+    ['draft-open', 'dataSync.failure.draftOpen'],
     ['part-gone', 'dataSync.failure.partGone'],
   ] as const;
   it.each(instructions)('says the refusal %s by its code, in every language', (code, key) => {

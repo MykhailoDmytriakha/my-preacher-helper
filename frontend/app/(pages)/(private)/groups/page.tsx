@@ -40,13 +40,13 @@ function EngineGroupsPage() {
   const [deleting, setDeleting] = useState<string | null>(null);
   const recovery = useRecoveryDiscovery({ identity: browser ?? {}, enabled: Boolean(browser && owner),
     version: String(Boolean(creation)),
-    list: async () => (await browser!.engine.listRecoverable()).filter(entry =>
+    list: async () => (await browser!.engine.listRecoveryChoices()).filter(entry =>
       entry.record.checkpoint.confirmed.resource.collection === 'groups' && entry.record.checkpoint.confirmed.value === null && entry.record.checkpoint.draft !== null)
       .map(entry => ({ id: entry.id, documentId: entry.record.checkpoint.confirmed.resource.id,
         title: String(entry.record.checkpoint.draft?.title || entry.record.checkpoint.confirmed.resource.id),
         preview: String(entry.record.checkpoint.draft?.description ?? '') })),
     recover: async id => {
-      const records = await browser!.engine.listRecoverable();
+      const records = await browser!.engine.listRecoveryChoices();
       const selected = records.find(entry => entry.id === id && entry.record.checkpoint.confirmed.resource.collection === 'groups');
       if (!selected) throw Object.assign(new Error('Group draft no longer exists'), { code: 'draft-gone' });
       setCreation({ id: selected.record.checkpoint.confirmed.resource.id, recoveryId: id });

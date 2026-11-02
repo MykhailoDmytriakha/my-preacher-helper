@@ -16,6 +16,7 @@ import { submittedWorkCheckpoint } from './submittedWork';
 
 import type { DocumentWriteReceipt } from './commitReceipt';
 import type { CommitQueue, CommitRequest } from './commits';
+import type { RecoverySource } from './recoveryPresence';
 import type { DataEngineRuntime, RuntimeEvent } from './runtime';
 import type { CommandResult, DataCommand, DocumentData, ResourceRef, ResourceSnapshot } from './types';
 
@@ -37,6 +38,7 @@ export interface EditorRecord {
   prepared: DataCommand | null;
   unfinalized: string[];
   completedCommits?: string[];
+  recoverySources?: RecoverySource[];
 }
 
 export interface CheckpointStore {
@@ -73,6 +75,8 @@ interface ControllerOptions {
   commits?: CommitQueue;
   /** Proven submitted intent for a fresh opening; an existing checkpoint takes precedence. */
   submittedCheckpoint?: SessionCheckpoint;
+  /** Presentation ancestry becomes known before replay or pending ACK projection awaits. */
+  onRecoverySources?(sources: readonly RecoverySource[]): void;
 }
 
 export interface EditorState {
@@ -122,6 +126,7 @@ export class EditorController {
   private unsubscribe: () => void = () => undefined;
   private stopCommits: () => void = () => undefined;
   private completedCommits: string[] = [];
+  private recoverySources: RecoverySource[] = [];
   /** Whether the device holds a checkpoint for this editor, which a write must keep or clear. */
   private held = false;
   /** How many completed commits the device has already had cleared. */
@@ -146,6 +151,8 @@ export class EditorController {
       controller.prepared = saved.prepared;
       controller.unfinalized = saved.unfinalized ?? [];
       controller.completedCommits = saved.completedCommits ?? [];
+      controller.recoverySources = saved.recoverySources ?? [];
+      options.onRecoverySources?.(controller.recoverySources);
       controller.held = true;
       controller.clearedCommits = controller.completedCommits.length;
     }
@@ -440,7 +447,8 @@ export class EditorController {
 
   private record(): EditorRecord {
     return { owner: this.options.owner, editorId: this.options.editorId, checkpoint: this.session.checkpoint(), prepared: this.prepared,
-      unfinalized: [...this.unfinalized], completedCommits: [...this.completedCommits] };
+      unfinalized: [...this.unfinalized], completedCommits: [...this.completedCommits],
+      ...(this.recoverySources.length ? { recoverySources: this.recoverySources.map(source => ({ ...source })) } : {}) };
   }
 
   private async persist(): Promise<void> {

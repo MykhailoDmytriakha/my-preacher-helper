@@ -293,6 +293,7 @@
       "otherChangesFirst": "Save or decide the other changes to this record first.",
       "draftGone": "This draft is no longer available.",
       "draftDone": "This draft has nothing left to recover.",
+      "draftOpen": "This draft is still open in another tab. Close it there, then try again.",
       "partGone": "This part is no longer available."
     }
   },

@@ -5,6 +5,7 @@ import { validateResourceDocument } from './resourceSchemas';
 import { canReplaceSnapshot } from './snapshotFreshness';
 
 import type { CommitRequest } from './commits';
+import type { RecoverySource } from './recoveryPresence';
 import type { SessionCheckpoint } from './session';
 import type { DocumentData, FieldValue, Json, ResourceRef, ResourceSnapshot } from './types';
 
@@ -42,6 +43,7 @@ export interface ManualScopeRecord {
   generation: number;
   savedGeneration: number | null;
   active: boolean;
+  recoverySources?: RecoverySource[];
 }
 export type ManualSave = (scopeId: string, captured: SessionCheckpoint, options: { predecessorId?: string | null }) => Promise<ManualSavedIntent>;
 export interface ManualScopePort {
@@ -101,6 +103,7 @@ export class ManualScope {
       || !Array.isArray(record.savedSelection) || record.savedSelection.length !== options.selection.length
       || !Number.isSafeInteger(record.generation) || record.generation < 0 || typeof record.active !== 'boolean'
       || (record.savedGeneration !== null && (!Number.isSafeInteger(record.savedGeneration) || record.savedGeneration < 0 || record.savedGeneration > record.generation || !record.predecessor))) throw new Error('Manual recovery identity mismatch');
+    if (record.recoverySources !== undefined && (!Array.isArray(record.recoverySources) || record.recoverySources.some(source => !source || typeof source.id !== 'string' || !source.id))) throw new Error('Invalid manual recovery sources');
     if (record.openingSelection !== undefined && (!Array.isArray(record.openingSelection) || record.openingSelection.length !== options.selection.length)) throw new Error('Invalid manual opening selection');
     if (record.openingGeneration !== undefined && (!Number.isSafeInteger(record.openingGeneration) || record.openingGeneration < 0 || record.openingGeneration > record.generation)) throw new Error('Invalid manual opening generation');
     if (!options.port.isCurrent()) throw new Error(OWNER_CHANGED);
@@ -238,7 +241,7 @@ export class ManualScope {
     return this.enqueue(async () => {
       if (!this.record.active || this.captures.pending || !equalValues(this.record.stage, this.record.savedSelection)) return;
       const options = { ...this.options, port: { ...this.options.port, capture: () => capture } };
-      this.record = captureRecord(options, this.record.generation + 1);
+      this.record = { ...captureRecord(options, this.record.generation + 1), ...(this.record.recoverySources ? { recoverySources: this.record.recoverySources } : {}) };
       this.saves.clear(); this.tail = null; this.proposalVersion += 1;
       await this.write();
     });
@@ -249,7 +252,7 @@ export class ManualScope {
     this.assertCurrent();
     if (!equalValues(this.record.stage, this.record.savedSelection)) throw Object.assign(new Error('Resolve the unsaved manual stage before reopening'), { code: 'unsent-form-first' });
     if (this.record.predecessor && !this.options.port.isSettled?.(this.record.predecessor.id)) throw new Error('The previous manual Save is not settled');
-    this.record = captureRecord(this.options, this.record.generation + 1);
+    this.record = { ...captureRecord(this.options, this.record.generation + 1), ...(this.record.recoverySources ? { recoverySources: this.record.recoverySources } : {}) };
     this.tail = null;
     this.saves.clear();
     return this.persist();
@@ -285,7 +288,7 @@ export class ManualScope {
       const renewed = Boolean(predecessor) || (canReplaceSnapshot(before.baseline, baseline) && !canReplaceSnapshot(baseline, before.baseline));
       if (draftMatches && (!dirty || (renewed && selected.every((value, index) => equalValues(value, before.savedSelection[index]) || equalValues(value, before.stage[index]))))) {
         this.record = { ...captureRecord(options, before.generation + 1), active: before.active,
-          ...(before.openingSelection ? { openingSelection: before.openingSelection } : {}), ...(dirty ? { stage: before.stage } : {}) };
+          ...(before.openingSelection ? { openingSelection: before.openingSelection } : {}), ...(before.recoverySources ? { recoverySources: before.recoverySources } : {}), ...(dirty ? { stage: before.stage } : {}) };
       } else {
         // Keep the real saved ancestor for the remaining stage. In particular, returning to the
         // original sentence is still an edit against that ancestor. Its retired request remains

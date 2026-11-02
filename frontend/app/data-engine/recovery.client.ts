@@ -3,6 +3,7 @@
 import { z } from 'zod';
 
 import { getResourcePolicy, isValidIdentifier, validateCommand } from './protocol';
+import { recoverySources } from './recoveryPresence';
 import { DataSession } from './session';
 import { snapshotSchema } from './transport.client';
 
@@ -15,6 +16,7 @@ const fieldSchema = z.discriminatedUnion('exists', [z.object({ exists: z.literal
 const recordSchema = z.object({
   owner: id, editorId: z.string().min(1), prepared: z.unknown().nullable(), unfinalized: z.array(id).default([]),
   completedCommits: z.array(id).optional(),
+  recoverySources: z.array(z.object({ id: z.string().min(1) })).optional(),
   checkpoint: z.object({
     confirmed: snapshotSchema, draft: z.unknown(), dirty: z.boolean(), editGeneration: z.number().int().safe().nonnegative(),
     remoteCandidate: snapshotSchema.nullable(),
@@ -104,7 +106,7 @@ export async function forkCheckpoint(store: Pick<CheckpointRecoveryStore, 'read'
     if (!value) throw Object.assign(new Error('Recovery checkpoint no longer exists'), { code: 'draft-gone' });
     const original = validateRecoveryRecord(value, owner, identity[1], resource);
     if (!isRecoverableCheckpoint(original)) throw Object.assign(new Error('The checkpoint has no pending local work'), { code: 'draft-done' });
-    const forked = clone({ ...original, editorId: newEditorId });
+    const forked = clone({ ...original, editorId: newEditorId, recoverySources: recoverySources(original.recoverySources, sourceId) });
     try { await store.create(forked); return clone(forked); }
     catch (error) {
       if ((error as { code?: string }).code !== 'commit-reference-changed' || attempt === 2) throw error;

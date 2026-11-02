@@ -57,7 +57,7 @@ describe('Explicit checkpoint recovery', () => {
     const s = storeWith(source);
     const original = clone(s.records.get('["owner","source"]'));
     const forked = await forkCheckpoint(s.store, 'owner', '["owner","source"]', 'fresh-tab', resource);
-    expect(forked).toEqual({ ...source, editorId: 'fresh-tab' });
+    expect(forked).toEqual({ ...source, editorId: 'fresh-tab', recoverySources: [{ id: '["owner","source"]' }] });
     expect(s.records.get('["owner","source"]')).toEqual(original);
     forked.checkpoint.draft!.content = 'caller mutation';
     expect(s.records.get('["owner","fresh-tab"]')?.checkpoint.draft?.content).toBe('mine');

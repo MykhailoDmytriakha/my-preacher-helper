@@ -92,6 +92,7 @@ function makeBrowser(editor = makeEditor().editor) {
     createEditor: jest.fn<Promise<ManagedEditor>, [ResourceRef, string, { signal?: AbortSignal }?]>(async () => editor), retry: jest.fn(async () => undefined),
     recoverEditor: jest.fn<Promise<ManagedEditor>, [ResourceRef, string, string, { signal?: AbortSignal }?]>(async () => editor),
     listRecoverable: jest.fn<Promise<RecoveryCheckpoint[]>, [ResourceRef?]>(async () => []),
+    listRecoveryChoices: jest.fn<Promise<RecoveryCheckpoint[]>, [ResourceRef?]>(async () => []),
     watchCollection: jest.fn((collection: string, next: (state: CollectionState) => void) => { const stop = jest.fn(); collectionWatches.push({ collection, next, stop }); return stop; }),
     refreshCollection: jest.fn<Promise<CollectionState>, [string]>(),
   };
@@ -493,7 +494,7 @@ describe('React DataEngine contract', () => {
   describe('a draft search', () => {
     it('leaves its failure to the search: the document does not say it', async () => {
       const s = makeEditor(); const b = makeBrowser(s.editor);
-      b.engine.listRecoverable.mockRejectedValue(new Error('drafts unreadable'));
+      b.engine.listRecoveryChoices.mockRejectedValue(new Error('drafts unreadable'));
       jest.mocked(createBrowserDataEngine).mockReturnValue(b.browser);
       const { result } = renderHook(() => useDataDocument(resource, { autoSave: false }), { wrapper: Wrapper });
       await waitFor(() => expect(result.current.data).toEqual({ content: 'base' }));
@@ -516,7 +517,7 @@ describe('React DataEngine contract', () => {
 
     it('is said once under the block when it fails', async () => {
       const s = makeEditor(); const b = makeBrowser(s.editor);
-      b.engine.listRecoverable.mockRejectedValue(new Error('drafts unreadable'));
+      b.engine.listRecoveryChoices.mockRejectedValue(new Error('drafts unreadable'));
       jest.mocked(createBrowserDataEngine).mockReturnValue(b.browser);
       function Screen() {
         const document = useDataDocument(resource, { autoSave: false });
@@ -891,13 +892,15 @@ describe('React collection and explicit recovery APIs', () => {
     restored.setState({ ...restored.state, checkpoint: { ...restored.state.checkpoint, draft: { content: 'recovered' }, dirty: true, editGeneration: 3 } });
     const b = makeBrowser(old.editor); b.engine.recoverEditor.mockResolvedValue(restored.editor);
     const recoveryRecord: RecoveryCheckpoint = { id: '["owner","previous-tab"]', record: { owner: 'owner', editorId: 'previous-tab', checkpoint: restored.state.checkpoint, prepared: null, unfinalized: [] } };
-    b.engine.listRecoverable.mockResolvedValue([recoveryRecord]); jest.mocked(createBrowserDataEngine).mockReturnValue(b.browser);
+    b.engine.listRecoveryChoices.mockResolvedValue([recoveryRecord]); jest.mocked(createBrowserDataEngine).mockReturnValue(b.browser);
     const { result } = renderHook(() => useDataDocument(resource, { autoSave }), { wrapper: Wrapper });
     await waitFor(() => expect(result.current.data).toEqual({ content: 'base' }));
-    expect(b.engine.listRecoverable).not.toHaveBeenCalled(); expect(b.engine.recoverEditor).not.toHaveBeenCalled();
+    expect(b.engine.listRecoveryChoices).not.toHaveBeenCalled(); expect(b.engine.recoverEditor).not.toHaveBeenCalled();
     let listed!: RecoveryCheckpoint[];
     await act(async () => { listed = await result.current.listRecoverable(); });
     expect(listed).toEqual([recoveryRecord]); expect(result.current.data).toEqual({ content: 'base' });
+    expect(b.engine.listRecoveryChoices).toHaveBeenCalledWith(resource);
+    expect(b.engine.listRecoverable).not.toHaveBeenCalled();
     let recovering!: Promise<void>;
     await act(async () => { recovering = result.current.recover(listed[0].id); });
     await act(async () => recovering);
@@ -974,7 +977,7 @@ describe('React collection and explicit recovery APIs', () => {
     let retry!: Promise<void>; await act(async () => { retry = result.current.retry(); }); await act(async () => retry);
     expect(result.current.error).toBeNull();
     expect(first.engine.recoverEditor.mock.calls[0][1]).not.toBe(first.engine.recoverEditor.mock.calls[1][1]);
-    const listing = deferred<RecoveryCheckpoint[]>(); first.engine.listRecoverable.mockReturnValueOnce(listing.promise);
+    const listing = deferred<RecoveryCheckpoint[]>(); first.engine.listRecoveryChoices.mockReturnValueOnce(listing.promise);
     let oldList!: Promise<RecoveryCheckpoint[]>; await act(async () => { oldList = result.current.listRecoverable(); void oldList.catch(() => undefined); });
     owner('other'); rerender(); await waitFor(() => expect(second.engine.openEditor).toHaveBeenCalledTimes(1));
     await act(async () => { listing.resolve([]); await oldList.catch(() => undefined); });

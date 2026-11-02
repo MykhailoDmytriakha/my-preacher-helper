@@ -20,7 +20,8 @@ import { describeActionDelivery, describeMembershipDelivery, type MembershipDeli
 import { CREATION_SCOPE_PREFIX, MembershipScope, type MembershipScopeRecord } from './membershipScope';
 import { getResourcePolicy, equalValues, isValidIdentifier } from './protocol';
 import { documentRecordPresence, type RecordPresence } from './recordPresence';
-import { forkCheckpoint, isRecoverableCheckpoint, reconcileRecoveryRecord } from './recovery.client';
+import { forkCheckpoint, isRecoverableCheckpoint, reconcileRecoveryRecord, recoveryCheckpointId } from './recovery.client';
+import { RecoveryPresence, recoverySources, type RecoveryPresenceLease, type RecoveryPresencePort } from './recoveryPresence';
 import { DataSession } from './session';
 import { canReplaceSnapshot, coversCommittedEffect, storesNewCopy } from './snapshotFreshness';
 import { snapshotBelongsToOwner } from './snapshotIdentity';
@@ -61,6 +62,8 @@ export interface DataEngineOptions {
   membershipScopes?: MembershipScopeStore;
   /** Retired device writes survive replacement of the browser provider. */
   localWriteback?: LocalWriteback;
+  /** Optional device-local knowledge used only by recovery choice lists. */
+  recoveryPresence?: RecoveryPresencePort;
   /** A failure of background work, with the document or collection it concerns when there is one. */
   onError?: (error: unknown, about?: FailureAddress) => void;
 }
@@ -122,12 +125,25 @@ export interface EditorOpenOptions {
 }
 
 interface EditorEntry {
+  presence: RecoveryPresenceLease;
+  initializing: Promise<ManagedEditor> | null;
   controller: EditorController | null;
   stopObservation: (() => void) | null;
   stopController: (() => void) | null;
   closed: boolean;
   listeners: Set<() => void>;
   observation: Observation;
+}
+
+interface ManualFormEntry {
+  opening: Promise<void> | null;
+  parent: EditorEntry;
+  selection: readonly ManualPath[];
+  form: ManagedManualForm;
+  scope: ManualScope | null;
+  scopeId: string;
+  emit(): void;
+  presence: RecoveryPresenceLease | null;
 }
 
 const copy = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
@@ -157,6 +173,8 @@ const analysisCopyNeedsReview = (checkpoint: SessionCheckpoint, expected: readon
 /** Public lifecycle boundary: callers never manage replay, baselines, or transport choice. */
 export class DataEngine {
   private readonly localWriteback: LocalWriteback;
+  private readonly recoveryPresence: RecoveryPresence;
+  private readonly membershipPresence = new WeakMap<MembershipScope, RecoveryPresenceLease>();
   private owner: string | null = null;
   private generation = 0;
   private online = true;
@@ -183,7 +201,7 @@ export class DataEngine {
   private readonly commits: CommitQueue;
   private readonly stopCommits: () => void;
   private commitRecords = new Map<string, CommitRequest>();
-  private manualForms = new Map<string, { parent: EditorEntry; selection: readonly ManualPath[]; form: ManagedManualForm; scope: ManualScope | null; scopeId: string; emit: () => void }>();
+  private manualForms = new Map<string, ManualFormEntry>();
   private membershipForms = new Map<string, MembershipScope>();
   private membershipOpenings = new Map<string, Promise<MembershipScope>>();
   private membershipReleases = new Map<string, MembershipScope>();
@@ -194,6 +212,7 @@ export class DataEngine {
 
   constructor(private readonly options: DataEngineOptions) {
     this.localWriteback = options.localWriteback ?? new LocalWriteback();
+    this.recoveryPresence = new RecoveryPresence(options.recoveryPresence);
     this.commits = new CommitQueue({ store: options.commits, runtime: options.runtime,
       operationId: options.operationId, readConfirmed: resource => this.read(resource),
       readWriteTarget: resource => this.readWriteTarget(resource),
@@ -225,17 +244,23 @@ export class DataEngine {
     const previous = this.owner, previousGeneration = this.generation;
     const unwritten = [...this.editors.values()].flatMap(entry => {
       const record = entry.controller && !entry.closed ? this.unwrittenRecord(entry.controller) : null;
-      return record ? [{ record, pending: entry.controller!.settled() }] : [];
+      return record ? [{ entry, record, pending: entry.controller!.settled() }] : [];
     });
     const retiringEditors = [...this.editors.values()];
     this.editors.clear();
     this.owner = owner;
     this.generation += 1;
-    for (const entry of retiringEditors) this.close(entry);
-    if (previous) for (const { record, pending } of unwritten) this.keepUnwritten(record, previous, previousGeneration, pending);
-    for (const manual of this.manualForms.values()) if (manual.scope) this.retainLocal(manual.scope.retire(), previousGeneration);
+    for (const entry of retiringEditors) {
+      const captured = unwritten.find(item => item.entry === entry);
+      const keeping = previous && captured ? this.keepUnwritten(captured.record, previous, previousGeneration, captured.pending) : undefined;
+      this.close(entry, keeping);
+    }
+    for (const manual of this.manualForms.values()) this.retireManual(manual, previousGeneration);
     this.manualForms.clear();
-    for (const scope of [...this.membershipForms.values(), ...this.membershipReleases.values()]) this.retainLocal(scope.retire(), previousGeneration);
+    for (const scope of new Set([...this.membershipForms.values(), ...this.membershipReleases.values()])) {
+      const pending = this.retainLocal(scope.retire(), previousGeneration);
+      this.membershipPresence.get(scope)?.releaseAfter(pending);
+    }
     this.membershipForms.clear();
     this.membershipOpenings.clear();
     this.membershipReleases.clear();
@@ -442,9 +467,10 @@ export class DataEngine {
     const requests = await this.commits.list(); this.assertCurrent(owner, generation);
     const scopeId = this.options.operationId();
     const scope = MembershipScope.begin(owner, scopeId, captureMembershipPins(owner, state, requests), this.membershipPort(owner, generation));
+    this.membershipPresence.set(scope, this.recoveryPresence.hold(owner, 'membership', [scopeId]));
     this.membershipForms.set(scopeId, scope);
     try { await scope.settled(); this.assertCurrent(owner, generation); return scope; }
-    catch (error) { this.membershipForms.delete(scopeId); scope.dispose(); throw error; }
+    catch (error) { if (this.membershipForms.get(scopeId) === scope) this.membershipForms.delete(scopeId); this.membershipPresence.get(scope)?.release(); scope.dispose(); throw error; }
   }
 
   /** A creation draft exists durably before any optional catalog request. */
@@ -454,9 +480,10 @@ export class DataEngine {
     const scopeId = `${CREATION_SCOPE_PREFIX}${this.options.operationId()}`;
     const resource = { collection, id: this.options.operationId() };
     const scope = MembershipScope.beginCreation(owner, scopeId, resource, { ...value, userId: owner }, this.membershipPort(owner, generation), requestedSeriesId);
+    this.membershipPresence.set(scope, this.recoveryPresence.hold(owner, 'membership', [scopeId]));
     this.membershipForms.set(scopeId, scope);
     try { await scope.settled(); this.assertCurrent(owner, generation); return scope; }
-    catch (error) { this.membershipForms.delete(scopeId); scope.dispose(); throw error; }
+    catch (error) { if (this.membershipForms.get(scopeId) === scope) this.membershipForms.delete(scopeId); this.membershipPresence.get(scope)?.release(); scope.dispose(); throw error; }
   }
 
   /** Open the optional selector separately; creating an unlinked draft needs no catalog read. */
@@ -479,17 +506,24 @@ export class DataEngine {
     if (this.membershipReleases.has(scopeId) || (exclusive && (existing || opening))) throw new Error('Membership action is already open');
     if (existing) return existing;
     if (opening) return opening;
+    let presence: RecoveryPresenceLease | undefined;
     const restoring = (async () => {
+      const checking = this.recoveryAvailability(owner, 'membership', scopeId);
+      if (checking) await checking;
+      this.assertCurrent(owner, generation);
+      presence = this.recoveryPresence.hold(owner, 'membership', [scopeId]);
       const repairing = this.localWriteback.retry(owner, address => address.kind === 'membership' && address.id === scopeId);
       if (repairing) await repairing;
       this.assertCurrent(owner, generation);
       const record = await this.options.membershipScopes!.read(owner, scopeId); this.assertCurrent(owner, generation);
       if (!record) throw Object.assign(new Error('Membership recovery no longer exists'), { code: 'draft-gone' });
       const scope = MembershipScope.restore(record, this.membershipPort(owner, generation));
+      this.membershipPresence.set(scope, presence);
       this.membershipForms.set(scopeId, scope); this.emitMembership(); return scope;
     })();
     this.membershipOpenings.set(scopeId, restoring);
     try { return await restoring; }
+    catch (error) { presence?.release(); throw error; }
     finally { if (this.membershipOpenings.get(scopeId) === restoring) this.membershipOpenings.delete(scopeId); }
   }
 
@@ -508,7 +542,8 @@ export class DataEngine {
       if (record.phase === 'editing' && record.action === null && !record.creation) await scope.cancel();
       await this.options.membershipScopes!.compact(owner, scopeId);
     }).finally(() => {
-      this.retainLocal(scope.retire(), generation);
+      const pending = this.retainLocal(scope.retire(), generation);
+      this.membershipPresence.get(scope)?.releaseAfter(pending);
       if (this.membershipReleases.get(scopeId) === scope) this.membershipReleases.delete(scopeId);
       if (this.current(owner, generation)) this.emitMembership();
     }), owner, generation, about);
@@ -525,6 +560,13 @@ export class DataEngine {
     const remaining = await store.list(owner); this.assertCurrent(owner, generation);
     return remaining.filter(record => record.phase !== 'cancelled' && (record.action || record.creation || record.phase === 'saving')
       && (!closedOnly || (!this.membershipForms.has(record.scopeId) && !this.membershipOpenings.has(record.scopeId) && !this.membershipReleases.has(record.scopeId))));
+  }
+
+  /** Choice-list boundary; delivery and cleanup consumers retain the raw query. */
+  async listMembershipRecoveryChoices(): Promise<MembershipScopeRecord[]> {
+    const owner = this.requireOwner(), generation = this.generation;
+    const records = await this.listMembershipRecovery({ closedOnly: true });
+    return this.recoveryChoices(owner, generation, 'membership', records, record => record.scopeId);
   }
 
   /** An explicit discard is allowed only for a proven failed complete action. */
@@ -798,6 +840,29 @@ export class DataEngine {
       .filter(({ record }) => isRecoverableCheckpoint(record));
   }
 
+  /** Choice-list boundary; unresolved-decision consumers retain listRecoverable. */
+  async listRecoveryChoices(resource?: ResourceRef): Promise<RecoveryCheckpoint[]> {
+    const owner = this.requireOwner(), generation = this.generation;
+    const records = await this.listRecoverable(resource);
+    return this.recoveryChoices(owner, generation, 'checkpoint', records, record => record.id);
+  }
+
+  /** No browser adapter preserves the original admission path, including synchronous cancellation. */
+  private recoveryAvailability(owner: string, kind: import('./recoveryPresence').RecoveryPresenceKind, id: string, cancelled?: Promise<never> | null): Promise<void> | undefined {
+    if (!this.options.recoveryPresence) return;
+    const checking = this.recoveryPresence.held(owner, kind, id);
+    return (cancelled ? Promise.race([checking, cancelled]) : checking).then(held => {
+      if (held === true) throw Object.assign(new Error('This draft is still open in another tab'), { code: 'draft-open' });
+    });
+  }
+
+  private async recoveryChoices<T>(owner: string, generation: number, kind: import('./recoveryPresence').RecoveryPresenceKind, records: T[], identity: (record: T) => string): Promise<T[]> {
+    this.assertCurrent(owner, generation);
+    const held = await Promise.all(records.map(record => this.recoveryPresence.held(owner, kind, identity(record))));
+    this.assertCurrent(owner, generation);
+    return records.filter((_record, index) => held[index] !== true);
+  }
+
   /**
    * Whether a screen opened on this document now would take over its queued work: exactly one chain
    * of unfinished requests (`submittedWorkCheckpoint`). When there are several, the engine does not
@@ -938,26 +1003,37 @@ export class DataEngine {
     if (this.editors.has(editorId) || this.recovering.has(editorId)) throw new Error('This editor identity is already open');
     const reservation = {};
     this.recovering.set(editorId, reservation);
+    let presence: RecoveryPresenceLease | undefined;
+    let forking: Promise<EditorRecord> | undefined;
     let onAbort: (() => void) | undefined;
     const cancelled = options?.signal && new Promise<never>((_resolve, reject) => {
       onAbort = () => reject(this.abortError());
       options.signal!.addEventListener('abort', onAbort, { once: true });
     });
     try {
-      const forking = forkCheckpoint({
+      const checking = this.recoveryAvailability(owner, 'checkpoint', sourceId, cancelled);
+      if (checking) await checking;
+      active();
+      presence = this.recoveryPresence.hold(owner, 'checkpoint', [sourceId]);
+      forking = forkCheckpoint({
         read: async (uid, id) => {
           const record = await store.read(uid, id); active();
           const requests = await this.commits.list(); active();
           return record && reconcileRecoveryRecord(record, requests);
         },
-        create: async record => { active(); await store.create(record); active(); },
+        create: async record => {
+          active(); presence?.add((record.recoverySources ?? []).map(source => source.id));
+          await store.create(record); active();
+        },
       }, owner, sourceId, editorId, frozen);
       const forked = await (cancelled ? Promise.race([forking, cancelled]) : forking);
       active();
       this.recovering.delete(editorId);
       const creating = forked.checkpoint.confirmed.value === null && forked.checkpoint.confirmed.metadata === null;
-      return this.open(frozen, editorId, creating, options);
+      presence.add((forked.recoverySources ?? []).map(source => source.id));
+      return await this.open(frozen, editorId, creating, options, 0, (forked.recoverySources ?? []).map(source => source.id));
     } finally {
+      presence?.releaseAfter(forking ?? Promise.resolve());
       if (onAbort) options?.signal?.removeEventListener('abort', onAbort);
       if (this.recovering.get(editorId) === reservation) this.recovering.delete(editorId);
     }
@@ -1136,7 +1212,7 @@ export class DataEngine {
     return this.persistSnapshot(owner, generation, server);
   }
 
-  private async open(resource: ResourceRef, editorId: string, creating: boolean, options?: EditorOpenOptions, attempt = 0): Promise<ManagedEditor> {
+  private async open(resource: ResourceRef, editorId: string, creating: boolean, options?: EditorOpenOptions, attempt = 0, recoverySourceIds: readonly string[] = []): Promise<ManagedEditor> {
     const owner = this.requireOwner();
     this.validateResource(resource, owner);
     if (!editorId) throw new Error('An editor identity is required');
@@ -1145,6 +1221,8 @@ export class DataEngine {
     const generation = this.generation;
     const frozen = copy(resource);
     const entry: EditorEntry = {
+      presence: this.recoveryPresence.hold(owner, 'checkpoint', [recoveryCheckpointId(owner, editorId), ...recoverySourceIds]),
+      initializing: null,
       controller: null, stopObservation: null, stopController: null, closed: false,
       listeners: new Set(), observation: initialObservation(),
     };
@@ -1159,6 +1237,7 @@ export class DataEngine {
       options.signal!.addEventListener('abort', onAbort, { once: true });
     });
     const opening = this.initializeEditor(owner, generation, frozen, editorId, creating, entry);
+    entry.initializing = opening;
     try {
       const managed = await (cancelled ? Promise.race([opening, cancelled]) : opening);
       if (entry.closed) throw this.abortError();
@@ -1167,7 +1246,7 @@ export class DataEngine {
       // Initialization already retired its failed entry; reread before exposing a new editor.
       if ((error as { code?: string } | null)?.code === 'commit-reference-changed' && attempt < 2
         && this.current(owner, generation) && !options?.signal?.aborted) {
-        return this.open(frozen, editorId, creating, options, attempt + 1);
+        return this.open(frozen, editorId, creating, options, attempt + 1, recoverySourceIds);
       }
       throw error;
     } finally {
@@ -1200,6 +1279,7 @@ export class DataEngine {
         readWriteTarget: resource => this.readWriteTarget(resource),
         commits: this.commits,
         submittedCheckpoint: submittedCheckpoint ?? undefined,
+        onRecoverySources: sources => entry.presence.add(sources.map(source => source.id)),
         isCurrentOwner: uid => !entry.closed && this.current(uid, generation),
       });
       entry.controller = controller;
@@ -1394,14 +1474,14 @@ export class DataEngine {
           const pending = unwritten ? controller.settled() : Promise.resolve();
           // The entry closes now, synchronously: the same editor identity may reopen at once
           // (navigation back to this document), and an open entry would refuse it.
-          this.close(entry);
+          const keeping = unwritten ? this.keepUnwritten(unwritten, owner, generation, pending, frozen) : undefined;
+          // Capture is deferred until after synchronous closure, but presence already owns its completion.
+          const saving = leaving ? Promise.resolve().then(() => this.commits.save(editorId, leaving.checkpoint,
+            leaving.predecessorId ? { predecessorId: leaving.predecessorId } : undefined)).then(() => { this.backgroundDrain(); }) : undefined;
+          this.close(entry, keeping ?? saving);
           if (this.editors.get(editorId) === entry) this.editors.delete(editorId);
-          if (unwritten) this.keepUnwritten(unwritten, owner, generation, pending, frozen);
-          if (!leaving) return;
-          // The request belongs to the engine's queue, not to the controller that just closed:
-          // it is delivered by any editor or tab of this owner, now or after a reload.
-          this.background(this.commits.save(editorId, leaving.checkpoint, leaving.predecessorId ? { predecessorId: leaving.predecessorId } : undefined)
-            .then(() => { this.backgroundDrain(); }), owner, generation, frozen);
+          // The request belongs to the engine queue and outlives the controller that just closed.
+          if (saving) this.background(saving, owner, generation, frozen);
         },
       };
       this.backgroundDrain();
@@ -1435,15 +1515,24 @@ export class DataEngine {
   }
 
   /** The old queue finishes before its immutable last checkpoint can repair the same identity. */
-  private keepUnwritten(record: EditorRecord, owner: string, generation: number, pending: Promise<unknown>, about?: FailureAddress): void {
-    this.retainLocal({ address: { owner, kind: 'checkpoint', id: record.editorId, resource: record.checkpoint.confirmed.resource },
+  private keepUnwritten(record: EditorRecord, owner: string, generation: number, pending: Promise<unknown>, about?: FailureAddress): Promise<void> {
+    return this.retainLocal({ address: { owner, kind: 'checkpoint', id: record.editorId, resource: record.checkpoint.confirmed.resource },
       persist: async () => { await pending.catch(() => undefined); await this.options.checkpoints.put(record); } }, generation, about);
   }
 
-  private retainLocal(handoff: LocalWriteHandoff, generation: number, failureAddress?: FailureAddress): void {
+  private retainLocal(handoff: LocalWriteHandoff, generation: number, failureAddress?: FailureAddress): Promise<void> {
     const resource = failureAddress ?? handoff.address.resource ?? (handoff.address.kind === 'membership' ? { collection: 'series' } : undefined);
-    this.background(this.localWriteback.write(handoff.address, () => resource ? about(resource, handoff.persist()) : handoff.persist()),
-      handoff.address.owner, generation, resource);
+    const pending = this.localWriteback.write(handoff.address, () => resource ? about(resource, handoff.persist()) : handoff.persist());
+    this.background(pending, handoff.address.owner, generation, resource);
+    return pending;
+  }
+
+  private retireManual(manual: ManualFormEntry, generation: number, finishPending = false): void {
+    const presence = manual.presence; manual.presence = null;
+    if (manual.scope) {
+      const pending = this.retainLocal(manual.scope.retire({ finishPending }), generation);
+      presence?.releaseAfter(pending);
+    } else presence?.releaseAfter(manual.opening ?? Promise.resolve());
   }
 
   private abortError(): Error {
@@ -1538,7 +1627,7 @@ export class DataEngine {
     const store = this.options.manualScopes;
     const listeners = new Set<() => void>();
     const emit = () => { if (parent.closed || !this.current(owner, generation)) return; for (const listener of listeners) { try { listener(); } catch { /* Rendering cannot change staged intent. */ } } };
-    const state = { parent, selection: copy(selection), scopeId: JSON.stringify([parentEditorId, 'manual', slot]), scope: null as ManualScope | null, form: null as unknown as ManagedManualForm, emit };
+    const state = { parent, selection: copy(selection), scopeId: JSON.stringify([parentEditorId, 'manual', slot]), scope: null as ManualScope | null, form: null as unknown as ManagedManualForm, emit, presence: null as RecoveryPresenceLease | null, opening: null as Promise<void> | null };
     this.manualForms.set(registryKey, state);
     let opening: Promise<void> | null = null;
     const active = () => { this.assertCurrent(owner, generation); if (parent.closed || this.manualForms.get(registryKey) !== state) throw new Error('Manual parent editor changed'); };
@@ -1570,7 +1659,12 @@ export class DataEngine {
         return { existing, targetId, source };
       };
       const run = async (attempt = 0): Promise<void> => {
-        if (state.scope) { this.retainLocal(state.scope.retire(), generation); state.scope = null; }
+        this.retireManual(state, generation); state.scope = null;
+        const checking = sourceScopeId && this.recoveryAvailability(owner, 'manual', sourceScopeId);
+        if (checking) await checking;
+        active();
+        const presence = this.recoveryPresence.hold(owner, 'manual', [sourceScopeId ?? state.scopeId]);
+        state.presence = presence;
         const repairing = this.localWriteback.retry(owner, address => address.kind === 'manual' && (address.id === state.scopeId || address.id === sourceScopeId));
         if (repairing) await repairing; active();
         const records = await this.commits.list(); active();
@@ -1584,6 +1678,7 @@ export class DataEngine {
         const openingCheckpoint = reconcileRecoveryRecord({ owner, editorId: parentEditorId, checkpoint: pinned, prepared: null, unfinalized: [] }, accepted).checkpoint;
         const frozenCapture = this.captureManual(parent, owner, selection, openingCheckpoint);
         state.scopeId = targetId;
+        presence.add([targetId, ...recoverySources(existing?.record?.recoverySources).map(source => source.id)]);
         let initializing = true;
         const port = {
           capture: () => frozenCapture,
@@ -1594,7 +1689,10 @@ export class DataEngine {
           persist: async (record: ReturnType<ManualScope['getState']>['record']) => {
             const envelope: StoredManualScope = { owner, scopeId: targetId, parentEditorId, slot, record, commitReferences: record.predecessor ? [record.predecessor.id] : [] };
             if (creating) { await store.create(envelope); creating = false; } else await store.put(envelope);
-            if (!record.active) await store.compact(owner, targetId);
+            if (!record.active) {
+              await store.compact(owner, targetId);
+              presence.releaseAfter(scope.settled());
+            }
           },
           admitSave: (scopeId: string, checkpoint: SessionCheckpoint) => {
             active();
@@ -1624,7 +1722,8 @@ export class DataEngine {
           },
         };
         const options = { owner, resource, scopeId: targetId, selection, port };
-        const scope = existing?.record ? ManualScope.restore(options, { ...copy(existing.record), scopeId: targetId, active: true }) : ManualScope.begin(options, existing ? existing.watermark.generation + 1 : 0);
+        const scope = existing?.record ? ManualScope.restore(options, { ...copy(existing.record), scopeId: targetId, active: true,
+          ...(source ? { recoverySources: recoverySources(existing.record.recoverySources, sourceScopeId) } : {}) }) : ManualScope.begin(options, existing ? existing.watermark.generation + 1 : 0);
         try {
           if (existing?.record) {
             const restarting = !source && !existing.record.active && equalValues(existing.record.stage, existing.record.savedSelection)
@@ -1644,7 +1743,8 @@ export class DataEngine {
         initializing = false;
         state.scope = scope; emit();
       };
-      opening = run().finally(() => { opening = null; });
+      opening = run().catch(error => { state.presence?.release(); state.presence = null; throw error; }).finally(() => { opening = null; state.opening = null; });
+      state.opening = opening;
       return opening;
     };
     const requireScope = () => { active(); if (!state.scope) throw new Error('Open the manual form before editing'); return state.scope; };
@@ -1731,8 +1831,10 @@ export class DataEngine {
         const values = await store.list(owner, resource);
         const requests = await this.commits.list(); active();
         const settled = new Set(requests.filter(request => ['acknowledged', 'cancelled'].includes(request.state)).map(request => request.id));
-        return values.filter(value => value.scopeId !== state.scopeId && (recovery === 'same-selection' || value.slot === slot) && equalValues(value.record.selection, selection)
+        const candidates = values.filter(value => value.scopeId !== state.scopeId && (recovery === 'same-selection' || value.slot === slot) && equalValues(value.record.selection, selection)
           && (!equalValues(value.record.stage, value.record.savedSelection) || Boolean(value.record.predecessor && !settled.has(value.record.predecessor.id))));
+        const choices = await this.recoveryChoices(owner, generation, 'manual', candidates, value => value.scopeId);
+        active(); return choices;
       },
       recover: sourceScopeId => start(sourceScopeId),
     };
@@ -1848,10 +1950,11 @@ export class DataEngine {
     return operation;
   }
 
-  private close(entry: EditorEntry): void {
+  private close(entry: EditorEntry, writeback?: Promise<unknown>): void {
     entry.closed = true;
+    entry.presence.releaseAfter(Promise.allSettled([entry.initializing, entry.controller?.settled(), writeback]));
     for (const [key, manual] of this.manualForms) if (manual.parent === entry) {
-      if (manual.scope) this.retainLocal(manual.scope.retire({ finishPending: this.owner !== null }), this.generation);
+      this.retireManual(manual, this.generation, this.owner !== null);
       this.manualForms.delete(key);
     }
     entry.stopObservation?.();

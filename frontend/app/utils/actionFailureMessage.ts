@@ -48,6 +48,7 @@ const KNOWN = new Map<string, string>([
   ['other-changes-first', 'dataSync.failure.otherChangesFirst'],
   ['draft-gone', 'dataSync.failure.draftGone'],
   ['draft-done', 'dataSync.failure.draftDone'],
+  ['draft-open', 'dataSync.failure.draftOpen'],
   ['part-gone', 'dataSync.failure.partGone'],
 ]);
 // One failure reaches several catches (a draft search and its document, the engine's background

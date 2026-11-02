@@ -60,6 +60,7 @@ function makeBrowser() {
     recoverEditor: jest.fn(() => never()),
     retry: jest.fn(async () => undefined),
     listRecoverable: jest.fn(() => never()),
+    listRecoveryChoices: jest.fn(() => never()),
     listPending: jest.fn(() => never()),
     peekCached: jest.fn<Promise<ResourceSnapshot | undefined>, [ResourceRef]>(() => never()),
     peekRemote: jest.fn<Promise<ResourceSnapshot>, [ResourceRef]>(() => never()),
