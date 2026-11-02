@@ -1,13 +1,16 @@
 'use client';
 
+import { retireManualRecoverySources } from './manualRecovery.client';
 import { ManualScope, type ManualScopeRecord } from './manualScope';
 import { equalValues } from './protocol';
+import { pinRecoveryVersion, versionRecoveryRecord } from './recoverySource.client';
 import { collectCommitRows } from './retention.client';
 import { createEngineStorageTransaction, engineOwnerRange, validateCommitReferences } from './storage.client';
 
+import type { VersionedRecovery } from './recoverySource';
 import type { ResourceRef } from './types';
 
-export interface StoredManualScope {
+export interface StoredManualScope extends VersionedRecovery {
   owner: string;
   scopeId: string;
   parentEditorId: string;
@@ -26,10 +29,12 @@ export interface ManualScopeStore {
   create(value: StoredManualScope): Promise<void>;
   put(value: StoredManualScope): Promise<void>;
   compact(owner: string, scopeId: string): Promise<void>;
+  pinRecovery?(value: StoredManualScope): Promise<string | null>;
 }
 const copy = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 const key = (owner: string, scopeId: string): IDBValidKey => ['manual', owner, scopeId];
 function validate(value: ManualStorageRecord, owner = value.owner, scopeId = value.scopeId): ManualStorageRecord {
+  if (value.recoveryVersion !== undefined && (typeof value.recoveryVersion !== 'string' || !value.recoveryVersion)) throw new Error('Invalid manual storage version');
   if (!value.record) {
     if (value.owner !== owner || value.scopeId !== scopeId || !value.parentEditorId || !value.slot || value.commitReferences.length
       || !Number.isSafeInteger(value.watermark?.generation) || value.watermark.generation < 0
@@ -58,7 +63,16 @@ export function createIndexedDbManualScopes(): ManualScopeStore {
         if (create ? Boolean(existing) : !existing) throw new Error(create ? 'Manual scope already exists' : 'Manual scope no longer exists');
         if (existing && (existing.parentEditorId !== frozen.parentEditorId || existing.slot !== frozen.slot
           || JSON.stringify(existing.record ? existing.record.selection : existing.watermark.selection) !== JSON.stringify(frozen.record.selection))) throw new Error('Manual storage identity changed');
-        validateCommitReferences(store, read, frozen.owner, frozen.commitReferences, () => { store.put(frozen, key(frozen.owner, frozen.scopeId)); collectCommitRows(store, read, frozen.owner, done); });
+        validateCommitReferences(store, read, frozen.owner, frozen.commitReferences, () => {
+          const writeTarget = () => {
+            store.put(versionRecoveryRecord(frozen), key(frozen.owner, frozen.scopeId));
+            retireManualRecoverySources(store, read, frozen, validate, () => collectCommitRows(store, read, frozen.owner, done));
+          };
+          // A follow/restart may drop an acknowledged predecessor. Settle its existing proof
+          // before replacing that row and releasing the reference that proves the ACK.
+          if (existing?.record) retireManualRecoverySources(store, read, validate(existing) as StoredManualScope, validate, writeTarget);
+          else writeTarget();
+        });
       });
     });
   };
@@ -71,21 +85,27 @@ export function createIndexedDbManualScopes(): ManualScopeStore {
       });
     }),
     create: value => write(value, true),
+    pinRecovery: value => pinRecoveryVersion(transaction, key(value.owner, value.scopeId), value,
+      candidate => validate(candidate as ManualStorageRecord, value.owner, value.scopeId) as StoredManualScope),
     put: value => write(value, false),
     compact: (owner, scopeId) => transaction('readwrite', (store, read, done) => {
       read(store.get(key(owner, scopeId)), (value: ManualStorageRecord | undefined) => {
         if (!value) { done(undefined); return; }
         const existing = validate(value, owner, scopeId), record = existing.record;
-        if (!record || record.active || !equalValues(record.stage, record.savedSelection)) { done(undefined); return; }
-        const finish = () => {
-          const compact: ManualScopeWatermark = { owner, scopeId, parentEditorId: existing.parentEditorId, slot: existing.slot,
-            record: null, watermark: { generation: record.generation, selection: record.selection, resource: record.resource }, commitReferences: [] };
-          store.put(compact, key(owner, scopeId)); collectCommitRows(store, read, owner, done);
-        };
-        if (!record.predecessor) { finish(); return; }
-        read(store.get(['identity', owner, record.predecessor.id]), (requestKey: IDBValidKey | undefined) => {
-          if (!requestKey) { done(undefined); return; }
-          read(store.get(requestKey), (request: { state: string } | undefined) => { if (request && ['acknowledged', 'cancelled'].includes(request.state)) finish(); else done(undefined); });
+        if (!record) { done(undefined); return; }
+        const collect = () => collectCommitRows(store, read, owner, done);
+        retireManualRecoverySources(store, read, existing as StoredManualScope, validate, () => {
+          if (record.active || !equalValues(record.stage, record.savedSelection)) { collect(); return; }
+          const finish = () => {
+            const compact: ManualScopeWatermark = { owner, scopeId, parentEditorId: existing.parentEditorId, slot: existing.slot,
+              record: null, watermark: { generation: record.generation, selection: record.selection, resource: record.resource }, commitReferences: [] };
+            store.put(versionRecoveryRecord(compact), key(owner, scopeId)); collect();
+          };
+          if (!record.predecessor) { finish(); return; }
+          read(store.get(['identity', owner, record.predecessor.id]), (requestKey: IDBValidKey | undefined) => {
+            if (!requestKey) { collect(); return; }
+            read(store.get(requestKey), (request: { state: string } | undefined) => { if (request && ['acknowledged', 'cancelled'].includes(request.state)) finish(); else collect(); });
+          });
         });
       });
     }),

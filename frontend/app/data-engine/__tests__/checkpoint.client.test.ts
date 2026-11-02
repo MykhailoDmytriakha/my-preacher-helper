@@ -28,7 +28,7 @@ it('isolates owners, freezes the payload and awaits the transaction commit', asy
 
 it('discovers owner-scoped recovery and creates a fork without overwriting an editor', async () => {
   const store = createIndexedDbCheckpoints(), value = record(); await store.put(value);
-  expect(await store.listRecoverable('owner', snapshot.resource)).toEqual([{ id: '["owner","editor"]', record: value }]);
+  expect(await store.listRecoverable('owner', snapshot.resource)).toEqual([{ id: '["owner","editor"]', record: { ...value, recoveryVersion: expect.any(String) } }]);
   expect(await store.listRecoverable('another')).toEqual([]);
   const target = { ...value, editorId: 'fork' }; await store.create(target);
   await expect(store.create(target)).rejects.toThrow('already exists');

@@ -17,6 +17,7 @@ import { submittedWorkCheckpoint } from './submittedWork';
 import type { DocumentWriteReceipt } from './commitReceipt';
 import type { CommitQueue, CommitRequest } from './commits';
 import type { RecoverySource } from './recoveryPresence';
+import type { RecoveryOrigin, VersionedRecovery } from './recoverySource';
 import type { DataEngineRuntime, RuntimeEvent } from './runtime';
 import type { CommandResult, DataCommand, DocumentData, ResourceRef, ResourceSnapshot } from './types';
 
@@ -30,7 +31,7 @@ export function isInactiveEditorError(error: unknown): error is InactiveEditorEr
   return error instanceof InactiveEditorError;
 }
 
-export interface EditorRecord {
+export interface EditorRecord extends VersionedRecovery {
   owner: string;
   editorId: string;
   checkpoint: SessionCheckpoint;
@@ -60,6 +61,8 @@ export interface CheckpointRecoveryStore extends CheckpointStore {
   listRecoverable(owner: string, resource?: ResourceRef): Promise<RecoveryCheckpoint[]>;
   /** Atomic create-if-absent; recovery never overwrites an active editor checkpoint. */
   create(record: EditorRecord): Promise<void>;
+  /** Exact optional native source pin; unsupported stores retain original copies. */
+  pinRecovery?(record: EditorRecord): Promise<string | null>;
 }
 
 interface ControllerOptions {
@@ -127,6 +130,7 @@ export class EditorController {
   private stopCommits: () => void = () => undefined;
   private completedCommits: string[] = [];
   private recoverySources: RecoverySource[] = [];
+  private recoveryOrigins: RecoveryOrigin[] = [];
   /** Whether the device holds a checkpoint for this editor, which a write must keep or clear. */
   private held = false;
   /** How many completed commits the device has already had cleared. */
@@ -152,6 +156,7 @@ export class EditorController {
       controller.unfinalized = saved.unfinalized ?? [];
       controller.completedCommits = saved.completedCommits ?? [];
       controller.recoverySources = saved.recoverySources ?? [];
+      controller.recoveryOrigins = saved.recoveryOrigins ?? [];
       options.onRecoverySources?.(controller.recoverySources);
       controller.held = true;
       controller.clearedCommits = controller.completedCommits.length;
@@ -448,7 +453,8 @@ export class EditorController {
   private record(): EditorRecord {
     return { owner: this.options.owner, editorId: this.options.editorId, checkpoint: this.session.checkpoint(), prepared: this.prepared,
       unfinalized: [...this.unfinalized], completedCommits: [...this.completedCommits],
-      ...(this.recoverySources.length ? { recoverySources: this.recoverySources.map(source => ({ ...source })) } : {}) };
+      ...(this.recoverySources.length ? { recoverySources: this.recoverySources.map(source => ({ ...source })) } : {}),
+      ...(this.recoveryOrigins.length ? { recoveryOrigins: this.recoveryOrigins.map(source => ({ ...source })) } : {}) };
   }
 
   private async persist(): Promise<void> {

@@ -2,6 +2,7 @@
 
 import { writeCheckpointRecord, checkpointKey } from './checkpointStorage.client';
 import { recoveryCheckpointId, selectRecoverableCheckpoints, validateRecoveryRecord } from './recovery.client';
+import { pinRecoveryVersion } from './recoverySource.client';
 import { createEngineStorageTransaction, engineOwnerRange } from './storage.client';
 
 import type { CheckpointRecoveryStore, EditorRecord } from './controller';
@@ -25,6 +26,8 @@ export function createIndexedDbCheckpoints(): CheckpointRecoveryStore {
       });
     }),
     create: record => write(record, true),
+    pinRecovery: record => pinRecoveryVersion(transaction, checkpointKey(record.owner, record.editorId), record,
+      value => validateRecoveryRecord(value, record.owner, record.editorId, record.checkpoint.confirmed.resource)),
     read: (owner, editorId) => transaction('readonly', (store, read, done) => {
       read(store.get(checkpointKey(owner, editorId)), (record: EditorRecord | undefined) => done(record === undefined ? undefined : clone(record)));
     }),

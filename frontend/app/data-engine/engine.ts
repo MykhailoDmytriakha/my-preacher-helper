@@ -14,7 +14,7 @@ import { AddressedFailures, eachFailure, PausedReadFailure } from './failures';
 import { collectionHeadRef } from './feed';
 import { LocalWriteback, type LocalWriteHandoff } from './localWriteback';
 import { assertDurableManualChoice, assertManualChoiceInput, assertManualComparison, manualComparison, type ManualComparison } from './manualComparison';
-import { ManualScope, reconcileManualCaptures, sameManualSelection, type ManualCapture, type ManualPath, type ManualSavedIntent } from './manualScope';
+import { ManualScope, recoverManualScopeRecord, reconcileManualCaptures, sameManualSelection, type ManualCapture, type ManualPath, type ManualSavedIntent } from './manualScope';
 import { captureMembershipPins } from './membershipCapture';
 import { describeActionDelivery, describeMembershipDelivery, type MembershipDelivery } from './membershipDelivery';
 import { CREATION_SCOPE_PREFIX, MembershipScope, type MembershipScopeRecord } from './membershipScope';
@@ -226,8 +226,8 @@ export class DataEngine {
         catch (error) { this.reportFailure(error, request.baseline.resource); }
         manual.emit();
       }
-      if (manual && ['acknowledged', 'cancelled'].includes(request.state) && this.options.manualScopes) {
-        this.background(this.options.manualScopes.compact(request.owner, manual.scopeId), request.owner, this.generation, request.baseline.resource);
+      if (['acknowledged', 'cancelled'].includes(request.state) && this.options.manualScopes) {
+        this.background(this.options.manualScopes.compact(request.owner, request.editorId), request.owner, this.generation, request.baseline.resource);
       }
       if (request.result?.kind === 'acknowledged') this.background(this.completeAcceptedProjection(request.owner, this.generation, request), request.owner, this.generation, request.result.snapshot.resource);
       for (const [editorId, entry] of this.editors) if (!entry.closed && (editorId === request.editorId || (request.atomic?.kind === COUNCIL_CARRY && entry.controller
@@ -1015,9 +1015,15 @@ export class DataEngine {
       if (checking) await checking;
       active();
       presence = this.recoveryPresence.hold(owner, 'checkpoint', [sourceId]);
+      let storedSource: EditorRecord | undefined;
       forking = forkCheckpoint({
+        ...(store.pinRecovery ? { pinRecovery: async () => {
+          active();
+          const version = storedSource ? await store.pinRecovery!(storedSource) : null; active();
+          return version;
+        } } : {}),
         read: async (uid, id) => {
-          const record = await store.read(uid, id); active();
+          const record = await store.read(uid, id); active(); storedSource = record;
           const requests = await this.commits.list(); active();
           return record && reconcileRecoveryRecord(record, requests);
         },
@@ -1656,7 +1662,9 @@ export class DataEngine {
         let existing = source ?? await store.read(owner, targetId); active();
         if (existing?.record) existing = { ...existing, record: reconcileManualCaptures(existing.record, records) };
         if (existing && !source && existing.parentEditorId !== parentEditorId) throw new Error('Manual form storage identity mismatch');
-        return { existing, targetId, source };
+        const sourceVersion = source?.record && store.pinRecovery ? await store.pinRecovery(source) : null; active();
+        if (source && store.pinRecovery && !sourceVersion) throw Object.assign(new Error('Manual recovery source changed before capture'), { code: 'decision-changed' });
+        return { existing, targetId, source, sourceVersion };
       };
       const run = async (attempt = 0): Promise<void> => {
         this.retireManual(state, generation); state.scope = null;
@@ -1669,7 +1677,7 @@ export class DataEngine {
         if (repairing) await repairing; active();
         const records = await this.commits.list(); active();
         records.forEach(request => this.rememberCommit(request));
-        const { existing, targetId, source } = await readRecord(records); active();
+        const { existing, targetId, source, sourceVersion } = await readRecord(records); active();
         if (existing?.record?.predecessor) { await this.observeManualChoice(parent, owner, generation, existing.record.predecessor.id); active(); }
         let creating = !existing || Boolean(source);
         const accepted = Object.entries(pinned.pending).sort((a, b) => a[1].generation - b[1].generation)
@@ -1722,8 +1730,8 @@ export class DataEngine {
           },
         };
         const options = { owner, resource, scopeId: targetId, selection, port };
-        const scope = existing?.record ? ManualScope.restore(options, { ...copy(existing.record), scopeId: targetId, active: true,
-          ...(source ? { recoverySources: recoverySources(existing.record.recoverySources, sourceScopeId) } : {}) }) : ManualScope.begin(options, existing ? existing.watermark.generation + 1 : 0);
+        const scope = existing?.record ? ManualScope.restore(options, recoverManualScopeRecord(existing.record, targetId,
+          source ? { id: sourceScopeId!, version: sourceVersion } : undefined)) : ManualScope.begin(options, existing ? existing.watermark.generation + 1 : 0);
         try {
           if (existing?.record) {
             const restarting = !source && !existing.record.active && equalValues(existing.record.stage, existing.record.savedSelection)

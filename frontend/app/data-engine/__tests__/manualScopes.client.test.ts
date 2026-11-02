@@ -55,7 +55,7 @@ describe('durable manual stages', () => {
     await commits.compareAndSet(queued, { ...queued, state: terminal, result: terminal === 'acknowledged' ? { kind: 'acknowledged', operationId: queued.id, snapshot: { ...baseline, value: queued.value } } : null });
     await stages.compact('owner', 'scope');
     expect(await stages.list('owner')).toEqual([]);
-    expect(await stages.read('owner', 'scope')).toEqual({ owner: 'owner', scopeId: 'scope', parentEditorId: 'tab', slot: 'title', record: null,
+    expect(await stages.read('owner', 'scope')).toEqual({ owner: 'owner', scopeId: 'scope', parentEditorId: 'tab', slot: 'title', record: null, recoveryVersion: expect.any(String),
       watermark: { generation: 1, selection: [['title']], resource }, commitReferences: [] });
     await stages.compact('owner', 'scope'); await stages.compact('owner', 'missing');
     await stages.put({ ...envelope(), record: { ...envelope().record, generation: 2 } });
@@ -66,7 +66,7 @@ describe('durable manual stages', () => {
     const stages = createIndexedDbManualScopes(); const value = envelope(); value.record.active = false;
     await stages.create(value); await stages.compact('owner', 'scope'); expect(await stages.list('owner')).toHaveLength(1);
     storage.writeFailure = true; await expect(stages.put(value)).rejects.toThrow('disk full'); storage.writeFailure = false;
-    expect((await stages.list('owner'))[0]).toEqual(value);
+    expect((await stages.list('owner'))[0]).toEqual({ ...value, recoveryVersion: expect.any(String) });
     value.record.stage = value.record.savedSelection; await stages.put(value); await stages.compact('owner', 'scope');
     expect((await stages.read('owner', 'scope'))?.record).toBeNull();
     storage.rows.set(JSON.stringify(['manual', 'owner', 'scope']), { owner: 'owner', scopeId: 'scope', record: null, watermark: { generation: -1 }, commitReferences: [] });

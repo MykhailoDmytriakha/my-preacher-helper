@@ -4,6 +4,7 @@ import { z } from 'zod';
 
 import { getResourcePolicy, isValidIdentifier, validateCommand } from './protocol';
 import { recoverySources } from './recoveryPresence';
+import { recoveryOrigins } from './recoverySource';
 import { DataSession } from './session';
 import { snapshotSchema } from './transport.client';
 
@@ -16,6 +17,8 @@ const fieldSchema = z.discriminatedUnion('exists', [z.object({ exists: z.literal
 const recordSchema = z.object({
   owner: id, editorId: z.string().min(1), prepared: z.unknown().nullable(), unfinalized: z.array(id).default([]),
   completedCommits: z.array(id).optional(),
+  recoveryVersion: z.string().min(1).optional(),
+  recoveryOrigins: z.array(z.object({ id: z.string().min(1), version: z.string().min(1) })).optional(),
   recoverySources: z.array(z.object({ id: z.string().min(1) })).optional(),
   checkpoint: z.object({
     confirmed: snapshotSchema, draft: z.unknown(), dirty: z.boolean(), editGeneration: z.number().int().safe().nonnegative(),
@@ -27,6 +30,15 @@ const recordSchema = z.object({
 const sameResource = (a: ResourceRef, b: ResourceRef) => a.collection === b.collection && a.id === b.id;
 const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 export const recoveryCheckpointId = (owner: string, editorId: string): string => JSON.stringify([owner, editorId]);
+
+/** Decode the same owner-scoped physical identity for discovery, forking and retirement. */
+export function recoveryCheckpointEditorId(owner: string, sourceId: unknown): string | null {
+  if (typeof sourceId !== 'string') return null;
+  let identity: unknown;
+  try { identity = JSON.parse(sourceId); } catch { return null; }
+  return Array.isArray(identity) && identity.length === 2 && identity[0] === owner && typeof identity[1] === 'string'
+    && sourceId === recoveryCheckpointId(owner, identity[1]) ? identity[1] : null;
+}
 
 /** Validate recovered disk data before it can enter a controller or another account. */
 export function validateRecoveryRecord(value: unknown, owner: string, editorId: string, resource?: ResourceRef): EditorRecord {
@@ -82,12 +94,9 @@ export function reconcileRecoveryRecord(record: EditorRecord, requests: readonly
 export function selectRecoverableCheckpoints(records: readonly (readonly [unknown, unknown])[], owner: string, resource?: ResourceRef): RecoveryCheckpoint[] {
   const selected: RecoveryCheckpoint[] = [];
   for (const [key, value] of records) {
-    if (typeof key !== 'string') continue;
-    let identity: unknown;
-    try { identity = JSON.parse(key); } catch { continue; }
-    if (!Array.isArray(identity) || identity.length !== 2 || identity[0] !== owner || typeof identity[1] !== 'string'
-      || key !== recoveryCheckpointId(owner, identity[1])) continue;
-    const record = validateRecoveryRecord(value, owner, identity[1]);
+    const editorId = recoveryCheckpointEditorId(owner, key);
+    if (editorId === null || typeof key !== 'string') continue;
+    const record = validateRecoveryRecord(value, owner, editorId);
     if ((!resource || sameResource(resource, record.checkpoint.confirmed.resource)) && isRecoverableCheckpoint(record)) {
       selected.push({ id: key, record });
     }
@@ -95,18 +104,27 @@ export function selectRecoverableCheckpoints(records: readonly (readonly [unknow
   return selected;
 }
 
+function checkpointForkRecord(original: EditorRecord, sourceId: string, editorId: string, version: string | null): EditorRecord {
+  return clone({ ...original, editorId, recoveryVersion: undefined,
+    recoverySources: recoverySources(original.recoverySources, sourceId),
+    recoveryOrigins: version ? recoveryOrigins(original.recoveryOrigins, { id: sourceId, version }) : undefined });
+}
+
 /** Explicit fork preserves pending operation identity and never takes over the source editor. */
-export async function forkCheckpoint(store: Pick<CheckpointRecoveryStore, 'read' | 'create'>, owner: string, sourceId: string, newEditorId: string, resource: ResourceRef): Promise<EditorRecord> {
-  let identity: unknown;
-  try { identity = JSON.parse(sourceId); } catch { throw new Error('Invalid checkpoint recovery identity'); }
-  if (!Array.isArray(identity) || identity.length !== 2 || identity[0] !== owner || typeof identity[1] !== 'string'
-    || sourceId !== recoveryCheckpointId(owner, identity[1]) || !newEditorId || newEditorId === identity[1]) throw new Error('Invalid checkpoint recovery identity');
+export async function forkCheckpoint(store: Pick<CheckpointRecoveryStore, 'read' | 'create' | 'pinRecovery'>, owner: string, sourceId: string, newEditorId: string, resource: ResourceRef): Promise<EditorRecord> {
+  const sourceEditorId = recoveryCheckpointEditorId(owner, sourceId);
+  if (sourceEditorId === null || !newEditorId || newEditorId === sourceEditorId) throw new Error('Invalid checkpoint recovery identity');
   for (let attempt = 0; ; attempt += 1) {
-    const value = await store.read(owner, identity[1]);
+    const value = await store.read(owner, sourceEditorId);
     if (!value) throw Object.assign(new Error('Recovery checkpoint no longer exists'), { code: 'draft-gone' });
-    const original = validateRecoveryRecord(value, owner, identity[1], resource);
+    const original = validateRecoveryRecord(value, owner, sourceEditorId, resource);
     if (!isRecoverableCheckpoint(original)) throw Object.assign(new Error('The checkpoint has no pending local work'), { code: 'draft-done' });
-    const forked = clone({ ...original, editorId: newEditorId, recoverySources: recoverySources(original.recoverySources, sourceId) });
+    const version = store.pinRecovery ? await store.pinRecovery(original) : null;
+    if (store.pinRecovery && !version) {
+      if (attempt < 2) continue;
+      throw Object.assign(new Error('Recovery source changed before capture'), { code: 'decision-changed' });
+    }
+    const forked = checkpointForkRecord(original, sourceId, newEditorId, version);
     try { await store.create(forked); return clone(forked); }
     catch (error) {
       if ((error as { code?: string }).code !== 'commit-reference-changed' || attempt === 2) throw error;

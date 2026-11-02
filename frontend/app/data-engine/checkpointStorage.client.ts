@@ -1,6 +1,8 @@
 'use client';
 
-import { isRecoverableCheckpoint, validateRecoveryRecord } from './recovery.client';
+import { isRecoverableCheckpoint, recoveryCheckpointEditorId, validateRecoveryRecord } from './recovery.client';
+import { recoveryOrigins } from './recoverySource';
+import { retireRecoveryVersions, versionRecoveryRecord } from './recoverySource.client';
 import { checkpointCommitReferences, collectCommitRows, commitProjectionKey } from './retention.client';
 import { validateCommitReferences, type StorageRead } from './storage.client';
 
@@ -15,10 +17,16 @@ export function writeCheckpointRecord(store: IDBObjectStore, read: StorageRead, 
   read(store.get(checkpointKey(record.owner, record.editorId)), current => {
     if (creating && current !== undefined) throw new Error('Recovery target already exists');
     validateCommitReferences(store, read, record.owner, checkpointCommitReferences(frozen), () => {
-      if (isRecoverableCheckpoint(frozen)) store.put(frozen, checkpointKey(record.owner, record.editorId));
+      const keeps = isRecoverableCheckpoint(frozen);
+      if (keeps) store.put(versionRecoveryRecord(frozen), checkpointKey(record.owner, record.editorId));
       else store.delete(checkpointKey(record.owner, record.editorId));
       for (const id of frozen.completedCommits ?? []) store.delete(commitProjectionKey(record.owner, id));
-      collectCommitRows(store, read, record.owner, done);
+      retireRecoveryVersions(store, read, keeps ? [] : recoveryOrigins(frozen.recoveryOrigins), id => {
+        const editorId = recoveryCheckpointEditorId(frozen.owner, id);
+        if (editorId === null || editorId === frozen.editorId) return null;
+        return { key: checkpointKey(frozen.owner, editorId), owns: value => Boolean(validateRecoveryRecord(value,
+          frozen.owner, editorId, frozen.checkpoint.confirmed.resource)) };
+      }, () => collectCommitRows(store, read, record.owner, done));
     });
   });
 }

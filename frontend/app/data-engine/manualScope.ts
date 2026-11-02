@@ -1,11 +1,12 @@
 import { CaptureContinuations } from './captureContinuations';
 import { retireLocalWrite, type LocalWriteHandoff } from './localWriteback';
 import { equalValues, getResourcePolicy, isValidIdentifier } from './protocol';
+import { recoverySources, type RecoverySource } from './recoveryPresence';
+import { recoveryOrigins, validateRecoveryOrigins, type RecoveryOrigin } from './recoverySource';
 import { validateResourceDocument } from './resourceSchemas';
 import { canReplaceSnapshot } from './snapshotFreshness';
 
 import type { CommitRequest } from './commits';
-import type { RecoverySource } from './recoveryPresence';
 import type { SessionCheckpoint } from './session';
 import type { DocumentData, FieldValue, Json, ResourceRef, ResourceSnapshot } from './types';
 
@@ -44,6 +45,9 @@ export interface ManualScopeRecord {
   savedGeneration: number | null;
   active: boolean;
   recoverySources?: RecoverySource[];
+  recoveryOrigins?: RecoveryOrigin[];
+  /** Only a Save captured by this recovered scope may settle its sources after ACK. */
+  recoverySavedRequestId?: string;
 }
 export type ManualSave = (scopeId: string, captured: SessionCheckpoint, options: { predecessorId?: string | null }) => Promise<ManualSavedIntent>;
 export interface ManualScopePort {
@@ -71,6 +75,15 @@ const sameResource = (a: ResourceRef | null | undefined, b: ResourceRef) => Bool
 const samePath = (a: ManualPath, b: ManualPath) => equalValues(a, b);
 const object = (value: unknown): value is DocumentData => value !== null && typeof value === 'object' && !Array.isArray(value);
 const field = (value: unknown, exists: boolean): FieldValue => exists ? { exists: true, value: value as Json } : { exists: false };
+
+/** Reopen an owned stage or fork an explicitly selected source without inheriting its Save authority. */
+export function recoverManualScopeRecord(record: ManualScopeRecord, scopeId: string,
+  source?: { id: string; version: string | null }): ManualScopeRecord {
+  return copy({ ...record, scopeId, active: true, ...(source ? {
+    recoverySources: recoverySources(record.recoverySources, source.id), recoverySavedRequestId: undefined,
+    recoveryOrigins: source.version ? recoveryOrigins(record.recoveryOrigins, { id: source.id, version: source.version }) : undefined,
+  } : {}) });
+}
 
 /** A stage-only selection over a pinned ancestor. Delivery and merge stay in CommitQueue. */
 export class ManualScope {
@@ -104,6 +117,7 @@ export class ManualScope {
       || !Number.isSafeInteger(record.generation) || record.generation < 0 || typeof record.active !== 'boolean'
       || (record.savedGeneration !== null && (!Number.isSafeInteger(record.savedGeneration) || record.savedGeneration < 0 || record.savedGeneration > record.generation || !record.predecessor))) throw new Error('Manual recovery identity mismatch');
     if (record.recoverySources !== undefined && (!Array.isArray(record.recoverySources) || record.recoverySources.some(source => !source || typeof source.id !== 'string' || !source.id))) throw new Error('Invalid manual recovery sources');
+    validateManualRecoveryEvidence(record);
     if (record.openingSelection !== undefined && (!Array.isArray(record.openingSelection) || record.openingSelection.length !== options.selection.length)) throw new Error('Invalid manual opening selection');
     if (record.openingGeneration !== undefined && (!Number.isSafeInteger(record.openingGeneration) || record.openingGeneration < 0 || record.openingGeneration > record.generation)) throw new Error('Invalid manual opening generation');
     if (!options.port.isCurrent()) throw new Error(OWNER_CHANGED);
@@ -196,6 +210,7 @@ export class ManualScope {
       if (!equalValues(request.value, value) || request.predecessorId !== (predecessor?.id ?? null)) throw new Error('Manual save identity mismatch');
       this.record.baseline = copy(baseline);
       this.record.predecessor = copy(request);
+      if (captured.recoveryOrigins?.length) this.record.recoverySavedRequestId = request.id;
       this.record.savedSelection = copy(captured.stage);
       this.record.savedGeneration = captured.generation;
       captureComplete();
@@ -241,7 +256,11 @@ export class ManualScope {
     return this.enqueue(async () => {
       if (!this.record.active || this.captures.pending || !equalValues(this.record.stage, this.record.savedSelection)) return;
       const options = { ...this.options, port: { ...this.options.port, capture: () => capture } };
-      this.record = { ...captureRecord(options, this.record.generation + 1), ...(this.record.recoverySources ? { recoverySources: this.record.recoverySources } : {}) };
+      const following = captureRecord(options, this.record.generation + 1);
+      const saved = this.record.recoverySavedRequestId;
+      this.record = { ...following, ...(this.record.recoverySources ? { recoverySources: this.record.recoverySources } : {}),
+        ...(this.record.recoveryOrigins ? { recoveryOrigins: this.record.recoveryOrigins } : {}),
+        ...(saved && following.predecessor?.id === saved ? { recoverySavedRequestId: saved } : {}) };
       this.saves.clear(); this.tail = null; this.proposalVersion += 1;
       await this.write();
     });
@@ -252,7 +271,7 @@ export class ManualScope {
     this.assertCurrent();
     if (!equalValues(this.record.stage, this.record.savedSelection)) throw Object.assign(new Error('Resolve the unsaved manual stage before reopening'), { code: 'unsent-form-first' });
     if (this.record.predecessor && !this.options.port.isSettled?.(this.record.predecessor.id)) throw new Error('The previous manual Save is not settled');
-    this.record = { ...captureRecord(this.options, this.record.generation + 1), ...(this.record.recoverySources ? { recoverySources: this.record.recoverySources } : {}) };
+    this.record = { ...captureRecord(this.options, this.record.generation + 1), ...(this.record.recoverySources ? { recoverySources: this.record.recoverySources } : {}), ...(this.record.recoveryOrigins ? { recoveryOrigins: this.record.recoveryOrigins } : {}) };
     this.tail = null;
     this.saves.clear();
     return this.persist();
@@ -288,7 +307,7 @@ export class ManualScope {
       const renewed = Boolean(predecessor) || (canReplaceSnapshot(before.baseline, baseline) && !canReplaceSnapshot(baseline, before.baseline));
       if (draftMatches && (!dirty || (renewed && selected.every((value, index) => equalValues(value, before.savedSelection[index]) || equalValues(value, before.stage[index]))))) {
         this.record = { ...captureRecord(options, before.generation + 1), active: before.active,
-          ...(before.openingSelection ? { openingSelection: before.openingSelection } : {}), ...(before.recoverySources ? { recoverySources: before.recoverySources } : {}), ...(dirty ? { stage: before.stage } : {}) };
+          ...(before.openingSelection ? { openingSelection: before.openingSelection } : {}), ...(before.recoverySources ? { recoverySources: before.recoverySources } : {}), ...(before.recoveryOrigins ? { recoveryOrigins: before.recoveryOrigins } : {}), ...(dirty ? { stage: before.stage } : {}) };
       } else {
         // Keep the real saved ancestor for the remaining stage. In particular, returning to the
         // original sentence is still an edit against that ancestor. Its retired request remains
@@ -334,6 +353,11 @@ export class ManualScope {
   }
   private assertCurrent(): void { if (this.closed || !this.options.port.isCurrent()) throw new Error(OWNER_CHANGED); }
   private assertActive(): void { this.assertCurrent(); if (!this.record.active) throw new Error('Manual form is closed'); }
+}
+
+function validateManualRecoveryEvidence(record: ManualScopeRecord): void {
+  validateRecoveryOrigins(record.recoveryOrigins);
+  if (record.recoverySavedRequestId !== undefined && !isValidIdentifier(record.recoverySavedRequestId)) throw new Error('Invalid recovered Save identity');
 }
 
 function validateOptions(options: ScopeOptions): void {
@@ -485,7 +509,7 @@ export function reconcileManualCaptures(record: ManualScopeRecord, requests: rea
   // A queued Cancel discarded only unsent words. The durable Save still owns its captured value.
   const cancelledStage = !record.active && equalValues(record.stage, record.savedSelection);
   return { ...copy(record), baseline: copy(captured.baseline), predecessor: saved, savedSelection: selected,
-    savedGeneration: captured.editGeneration, stage: cancelledStage ? copy(selected) : copy(record.stage) };
+    savedGeneration: captured.editGeneration, ...(record.recoveryOrigins?.length ? { recoverySavedRequestId: captured.id } : {}), stage: cancelledStage ? copy(selected) : copy(record.stage) };
 }
 
 /** Selection projection is shared with the parent editor; it never merges or sends. */
