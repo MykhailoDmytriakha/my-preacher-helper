@@ -9,6 +9,17 @@ const getDefaultStructurePath = (sermonId: string): string => {
   return '/structure';
 };
 
+/** The shared sermon mode address, retaining every unrelated query parameter. */
+export function getSermonModeUrl(
+  pathname: string,
+  mode: 'prep' | 'classic' | 'raw',
+  currentQuery = '',
+): string {
+  const params = new URLSearchParams(currentQuery);
+  params.set('mode', mode);
+  return `${pathname}?${params.toString()}`;
+}
+
 /**
  * Generates a Focus mode URL for the structure page
  * @param section - The section to focus on ('introduction', 'main', 'conclusion')

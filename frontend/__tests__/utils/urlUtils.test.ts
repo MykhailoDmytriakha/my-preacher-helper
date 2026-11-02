@@ -1,8 +1,17 @@
 import { runScenarios } from '@test-utils/scenarioRunner';
 
-import { addressWithout, getFocusModeUrl, getStructureUrl, parseFocusModeFromUrl } from '../../app/utils/urlUtils';
+import { addressWithout, getFocusModeUrl, getSermonModeUrl, getStructureUrl, parseFocusModeFromUrl } from '../../app/utils/urlUtils';
 
 describe('urlUtils', () => {
+  test.each([
+    ['', 'raw', '/sermons/a%20b?mode=raw'],
+    ['mode=classic&qa=keep-query', 'raw', '/sermons/a%20b?mode=raw&qa=keep-query'],
+    ['qa=first&qa=second&mode=raw', 'classic', '/sermons/a%20b?qa=first&qa=second&mode=classic'],
+    ['mode=raw&mode=classic&prepStep=text', 'prep', '/sermons/a%20b?mode=prep&prepStep=text'],
+  ] as const)('builds the selected sermon mode address from %s', (query, mode, expected) => {
+    expect(getSermonModeUrl('/sermons/a%20b', mode, query)).toBe(expected);
+  });
+
   describe('getFocusModeUrl', () => {
     it('aggregates all focus URL scenarios', async () => {
       await runScenarios([

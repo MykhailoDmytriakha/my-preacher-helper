@@ -23,6 +23,7 @@ import { sermonIsMissing, useSermonRead } from '@/hooks/useSermonRead';
 import { useShellPathname } from "@/hooks/useShellPathname";
 import { debugLog } from "@/utils/debugMode";
 import { getNavItemTheme } from "@/utils/themeColors";
+import { getSermonModeUrl } from "@/utils/urlUtils";
 import { isConductRoute } from '@/utils/usageGrace';
 import { useTranslation } from "@locales/useTranslation";
 
@@ -340,16 +341,13 @@ export default function DashboardNav() {
 
       debugLog('Switching sermon mode', { from: currentMode, to: mode });
 
-      const params = new URLSearchParams(searchParams?.toString() || '');
-      params.set('mode', mode);
       if (sermonIdForMode && typeof window !== 'undefined') {
         localStorage.setItem(`sermon-${sermonIdForMode}-mode`, mode);
       }
       setSavedMode(mode);
-      const query = params.toString();
 
       // Use push for better navigation
-      const newUrl = `${pathname}${query ? `?${query}` : ''}`;
+      const newUrl = getSermonModeUrl(pathname, mode, searchParams?.toString());
       debugLog('Navigating to sermon mode URL', newUrl);
 
       router.push(newUrl, { scroll: false });
