@@ -463,6 +463,18 @@ export interface ThoughtInStructure {
   isLocked?: boolean;
 }
 
+/**
+ * THE READER'S SETTINGS IN THE ACCOUNT (the owner, 2026-11-02: «берём аккаунт»): kept on the device too, for an instant
+ * answer and offline, but the account is the truth — the same choice on the iPad and the Mac, after any reload or deploy.
+ * Each part is written whole by its own store; the trail of places itself and the marking tool stay on the device.
+ */
+export type ReadingSettings = {
+  trail?: { history?: number; recent?: number; shown?: boolean; verseStart?: boolean };
+  crossReferences?: { show?: boolean; inWindow?: boolean; mode?: 'main' | 'all'; othersAsVerses?: boolean };
+  mine?: { show?: boolean; comments?: 'text' | 'badge' };
+  analysisHelp?: { short?: boolean };
+};
+
 export interface UserSettings {
   id: string;
   userId: string;
@@ -475,6 +487,8 @@ export interface UserSettings {
   enableStructurePreview?: boolean;
   enableGroups?: boolean; // Legacy preference; released groups are available to all signed-in users
   showAppVersion?: boolean; // Show deployed build version in Settings
+  /** The reader's settings, the same on every device (the owner, 2026-11-02): each part as `utils/accountChoice.ts` keeps it. */
+  reading?: ReadingSettings;
   email?: string;
   displayName?: string;
   /** Preference only; the server validates it against the effective tier allowlist. Not a privilege grant. */

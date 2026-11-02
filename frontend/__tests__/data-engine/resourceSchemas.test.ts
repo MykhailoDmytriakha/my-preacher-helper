@@ -42,8 +42,17 @@ describe('pure resource document validation', () => {
     ['planTemplates', 'structure', { introduction: [], main: [] }], ['tags', 'required', 1],
     ['users', 'preferredText', { providerId: 'untrusted', modelId: 'expensive' }],
     ['users', 'firstDayOfWeek', 'friday'], ['users', 'enableAudioGeneration', {}],
+    ['users', 'reading', { trail: { history: '100' } }], ['users', 'reading', { crossReferences: { mode: 'some' } }],
+    ['users', 'reading', { mine: { comments: 'margin' } }], ['users', 'reading', { trail: { recent: 0 } }],
   ])('rejects malformed %s.%s', (collection, field, wrong) => {
     expect(() => validateResourceDocument(collection as string, { ...fixtures[collection as string], [field as string]: wrong } as DocumentData, { kind: 'update', changedFields: [field as string] })).toThrow();
+  });
+
+  // The reader's settings in the account (the owner, 2026-11-02): each part whole, every field optional.
+  it('accepts the reader\'s settings in the account, a part or all of them', () => {
+    const reading = { trail: { history: 100, recent: 10, shown: true, verseStart: false }, crossReferences: { show: true, inWindow: false, mode: 'all', othersAsVerses: true }, mine: { show: true, comments: 'badge' }, analysisHelp: { short: true } };
+    expect(() => validateResourceDocument('users', { ...fixtures.users, reading }, { kind: 'update', changedFields: ['reading'] })).not.toThrow();
+    expect(() => validateResourceDocument('users', { ...fixtures.users, reading: { trail: { history: 50 } } }, { kind: 'update', changedFields: ['reading'] })).not.toThrow();
   });
 
   it.each(['note', 'question', 'comment', 'analysis'])('accepts a study note of kind %s', (type) => {

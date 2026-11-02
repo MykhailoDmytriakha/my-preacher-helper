@@ -12,7 +12,7 @@ import { verseWords } from '@/utils/bibleText';
 import { linkBefore, linkOnScreen, litLinkKey, ownLink, type SeenVerses, type Trail, type TrailPlace } from '@/utils/placeTrail';
 import { placeIn } from '@/utils/versification';
 
-import { ownTrailPlace, saveTrailPrefs, usePlaceTrail, useTrailPrefs } from './placeTrailStore';
+import { ownTrailPlace, saveTrailPrefs, usePlaceTrail, useTrailPrefs, useTrailPrefsWritable } from './placeTrailStore';
 import { useBookTexts } from './useBookTexts';
 import { useFollowAfterClose } from './useFollowAfterClose';
 
@@ -72,18 +72,19 @@ function linkClasses(here: boolean): string {
 }
 
 /** In the line it shows and hides the trail; in a phone's header it opens the trail's drawer. */
-export function PlaceTrailButton({ count, shown, look = 'line', onToggle }: { count: number; shown: boolean; look?: ButtonLook; onToggle: () => void }) {
+export function PlaceTrailButton({ count, shown, look = 'line', disabled = false, onToggle }: { count: number; shown: boolean; look?: ButtonLook; disabled?: boolean; onToggle: () => void }) {
   const { t } = useTranslation();
   const opensDrawer = look === 'header';
   return (
     <button
       type="button"
       onClick={onToggle}
+      disabled={disabled}
       aria-pressed={opensDrawer ? undefined : shown}
       aria-haspopup={opensDrawer ? 'dialog' : undefined}
       aria-expanded={opensDrawer ? shown : undefined}
       aria-label={t('bible.trail.toggle', { count })}
-      className={buttonClasses(shown, look)}
+      className={`${buttonClasses(shown, look)} disabled:cursor-default disabled:opacity-50`}
     >
       {ROUTE_ICON}
       {count}
@@ -215,6 +216,7 @@ export function PlaceTrailColumn({ trail, bible, locale, verseStart, onToggleVer
   look?: 'reader' | 'page' | 'drawer';
 }) {
   const { t } = useTranslation();
+  const writable = useTrailPrefsWritable();
   const titleId = useId();
   const listRef = useRef<HTMLDivElement | null>(null);
   const books = verseStart ? trail.links.map((link) => link.book) : [];
@@ -273,7 +275,7 @@ export function PlaceTrailColumn({ trail, bible, locale, verseStart, onToggleVer
         </ol>
       </div>
       <div className="shrink-0 border-t border-gray-100 px-2 dark:border-gray-800">
-        <Switch checked={verseStart} onClick={onToggleVerseStart} label={t('bible.trail.verseStart')} className="w-full justify-between" />
+        <Switch checked={verseStart} disabled={!writable} onClick={onToggleVerseStart} label={t('bible.trail.verseStart')} className="w-full justify-between" />
       </div>
     </nav>
   );
@@ -380,6 +382,8 @@ export function useReaderTrail({ bible, locale, wide, here, seen, openPlace }: {
   useEffect(() => { if (wide) closeDrawer(); }, [wide, closeDrawer]);
   // An iPad standing (820 px) keeps the row: a column there would leave the text some 430 px.
   const roomForColumn = useMediaQuery('(min-width: 1024px)', false);
+  // The trail's settings are kept in the account: unavailable while it cannot be written (`utils/accountChoice.ts`).
+  const writable = useTrailPrefsWritable();
   const toggle = useCallback(() => saveTrailPrefs({ shown: !prefs.shown }, 'reader'), [prefs.shown]);
   const toggleVerseStart = useCallback(() => saveTrailPrefs({ verseStart: !prefs.verseStart }, 'reader'), [prefs.verseStart]);
   const go = useCallback((link: TrailPlace) => {
@@ -401,7 +405,7 @@ export function useReaderTrail({ bible, locale, wide, here, seen, openPlace }: {
   // Lit only while its verse is on the screen (the owner, 2026-10-27: «выделяется, когда ты прямо на этом стихе»).
   const lit = linkOnScreen(trail.links[trail.at], here.book, seen, bible);
   if (trail.links.length < 2) return { inLine: null, underLine: null, beside: null, readerWidth: READER_WIDTH.alone, phoneButton: null, drawer: null, back };
-  const button = <PlaceTrailButton count={trail.links.length} shown={prefs.shown} onToggle={toggle} />;
+  const button = <PlaceTrailButton count={trail.links.length} shown={prefs.shown} disabled={!writable} onToggle={toggle} />;
   if (wide && roomForColumn) {
     const column = prefs.shown
       ? <PlaceTrailColumn trail={trail} bible={bible} locale={locale} verseStart={prefs.verseStart} onToggleVerseStart={toggleVerseStart} onGo={go} lit={lit} />

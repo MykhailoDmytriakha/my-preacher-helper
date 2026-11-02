@@ -1,11 +1,12 @@
+import { accountChoice } from '@/utils/accountChoice';
 import { recordDiagnostic } from '@/utils/appDiagnostics';
-import { deviceChoice } from '@/utils/deviceChoice';
 
 /*
  * HOW CROSS REFERENCES SHOW ON THIS DEVICE (the owner, 2026-10-15): shown while reading the Bible,
  * as a count beside a verse; in a passage window opened from a sermon, a note or a group only when
  * asked for; the main links or all of them; the rest of a verse's links in its window as verses with
- * their text, or only as references (the owner, 2026-10-16). One record per device, like the Bible chosen
+ * their text, or only as references (the owner, 2026-10-16). Kept in the account, the same on every device (the owner,
+ * 2026-11-02; `utils/accountChoice.ts`), with a copy on the device, like the Bible chosen
  * (`translation.ts`): the reader, the window's switch and Settings → Bible read and write the same one, and a
  * change shows at once in all. The page holds it in memory and storage is only written through
  * (`utils/deviceChoice.ts`): on the owner's iPad a re-read of storage took "on" back off.
@@ -39,7 +40,8 @@ function parse(raw: string | null): CrossReferencePrefs {
   }
 }
 
-const choice = deviceChoice({
+const choice = accountChoice({
+  part: 'crossReferences',
   key: 'bible:cross-references',
   parse,
   fallback: DEFAULT_CROSS_REFERENCE_PREFS,
@@ -69,6 +71,11 @@ export function saveCrossReferencePrefs(change: Partial<CrossReferencePrefs>, fr
 
 export function useCrossReferencePrefs(): CrossReferencePrefs {
   return choice.useChoice();
+}
+
+/** Whether the choice can be changed now: kept in the account, it waits while the account cannot be written. */
+export function useCrossReferencePrefsWritable(): boolean {
+  return choice.useWritable();
 }
 
 /** Forgets the copy kept in memory — for tests. */

@@ -4,7 +4,7 @@ import { useId } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { MineBadge } from '@/components/bible/MineBadge';
-import { saveMinePrefs, useMinePrefs, type CommentsShown } from '@/components/bible/minePrefs';
+import { saveMinePrefs, useMinePrefs, useMinePrefsWritable, type CommentsShown } from '@/components/bible/minePrefs';
 import { USAGE_KIND_LOOK } from '@/components/bible/usageKinds';
 import { ChoiceButtons, SettingRow } from '@/components/settings/SettingRow';
 import Switch from '@/components/ui/Switch';
@@ -18,6 +18,7 @@ import { SCRIPTURE_USAGE_KINDS } from '@/utils/scriptureUsage';
 export default function MineSettings() {
   const { t } = useTranslation();
   const prefs = useMinePrefs();
+  const writable = useMinePrefsWritable();
   const id = useId();
   const commentLooks: { value: CommentsShown; label: string }[] = [
     { value: 'text', label: t('settings.bible.mine.commentsText') },
@@ -35,13 +36,13 @@ export default function MineSettings() {
       </div>
       <SettingRow title={t('settings.bible.mine.show')} hint={t('settings.bible.mine.showHint')}>
         {(ids) => (
-          <Switch checked={prefs.show} aria-labelledby={ids.name} aria-describedby={ids.hint} onClick={() => saveMinePrefs({ show: !prefs.show })} data-testid="mine-settings-switch" />
+          <Switch checked={prefs.show} disabled={!writable} aria-labelledby={ids.name} aria-describedby={ids.hint} onClick={() => saveMinePrefs({ show: !prefs.show })} data-testid="mine-settings-switch" />
         )}
       </SettingRow>
       {/* A comment as grey words under its verse or chapter heading, or a badge like the rest (the owner, 2026-10-28). */}
       <div className={prefs.show ? '' : 'opacity-50'}>
         <SettingRow below title={t('settings.bible.mine.comments')} hint={t('settings.bible.mine.commentsHint')}>
-          {(ids) => <ChoiceButtons ids={ids} choices={commentLooks} value={prefs.comments} disabled={!prefs.show} onPick={(comments) => saveMinePrefs({ comments })} />}
+          {(ids) => <ChoiceButtons ids={ids} choices={commentLooks} value={prefs.comments} disabled={!prefs.show || !writable} onPick={(comments) => saveMinePrefs({ comments })} />}
         </SettingRow>
       </div>
     </section>

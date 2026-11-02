@@ -1,10 +1,10 @@
+import { accountChoice } from '@/utils/accountChoice';
 import { recordDiagnostic } from '@/utils/appDiagnostics';
-import { deviceChoice } from '@/utils/deviceChoice';
 
 /*
  * HOW MUCH OF THE ANALYSIS'S HELP THE SIDE PANEL SHOWS (the owner, 2026-10-31: «поначалу она нужна, а потом ты уже
  * выучиваешь, и она тебе не нужна»): every explanation in full, as at first, or each tool one line — its sign and a
- * short name — once the person has folded it. One record per device, held in memory (`utils/deviceChoice.ts`).
+ * short name — once the person has folded it. Kept in the account, the same on every device (`utils/accountChoice.ts`).
  */
 export type AnalysisHelpPrefs = { short: boolean };
 
@@ -20,7 +20,8 @@ function parse(raw: string | null): AnalysisHelpPrefs {
   }
 }
 
-const choice = deviceChoice({
+const choice = accountChoice({
+  part: 'analysisHelp',
   key: 'analysis:help',
   parse,
   fallback: DEFAULT_HELP,
@@ -36,6 +37,11 @@ export function saveAnalysisHelpPrefs(change: Partial<AnalysisHelpPrefs>): void 
 
 export function useAnalysisHelpPrefs(): AnalysisHelpPrefs {
   return choice.useChoice();
+}
+
+/** Whether the choice can be changed now: kept in the account, it waits while the account cannot be written. */
+export function useAnalysisHelpWritable(): boolean {
+  return choice.useWritable();
 }
 
 /** Forgets the copy kept in memory — for tests. */

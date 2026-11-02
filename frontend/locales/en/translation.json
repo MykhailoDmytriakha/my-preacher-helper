@@ -84,6 +84,7 @@
       "enableStructurePreview": "Structure preview",
       "enableGroups": "Groups",
       "showAppVersion": "Show app version",
+      "reading": "Reading settings",
       "preferredProviderId": "AI provider",
       "preferredModelId": "AI model",
       "preferredTranscription": "Speech transcription model",
@@ -1481,7 +1482,7 @@
         "recent": "Don’t repeat recent places",
         "recentHint": "If the same verse is already among the trail’s last {{count}} places, it is not added again: the trail moves to that place. If the verse appears earlier on the trail, it is added to the end again."
       },
-      "device": "These settings and the trail of places are kept on this device. Another phone or computer has its own.",
+      "device": "These settings are kept in your account — the same on your phone and computer. The trail of places stays on this device.",
       "mine": {
         "title": "Your material on the text",
         "intro": "Your notes, comments, sermons, groups and services show in the Bible where their references point: a badge at the end of a verse; a badge by a chapter’s heading for what is about the whole chapter; coloured dots by chapter numbers on the minimap. Tap a badge to open the list and go to any of them. Comments show as grey text under their verse or chapter heading.",

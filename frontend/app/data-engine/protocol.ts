@@ -47,7 +47,9 @@ const fields: Record<string, readonly string[]> = {
   // an older version queued on a device is still delivered, or the settings commands queued after it would stay stuck behind it.
   users: ['lastSeenAt', 'language', 'email', 'displayName', 'firstDayOfWeek', 'enablePrepMode', 'enableAudioGeneration',
     'enableStructurePreview', 'enableGroups', 'showAppVersion', 'preferredProviderId', 'preferredModelId',
-    'preferredTranscription', 'preferredText', 'preferredTts'],
+    'preferredTranscription', 'preferredText', 'preferredTts',
+    // The reader's settings kept in the account (`utils/accountChoice.ts`): the trail, cross references, the person's own marks.
+    'reading'],
 };
 
 /** One registration determines which user data a command may mutate. */

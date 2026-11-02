@@ -4,7 +4,7 @@ import { useId } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { CrossRefsChip } from '@/components/bible/BookRibbon';
-import { saveCrossReferencePrefs, useCrossReferencePrefs, type CrossReferenceMode } from '@/components/bible/crossReferencePrefs';
+import { saveCrossReferencePrefs, useCrossReferencePrefs, useCrossReferencePrefsWritable, type CrossReferenceMode } from '@/components/bible/crossReferencePrefs';
 import { ChoiceButtons, SettingRow } from '@/components/settings/SettingRow';
 import Switch from '@/components/ui/Switch';
 import { resolveAppLocale } from '@/utils/appLocale';
@@ -17,7 +17,7 @@ import { getLocalizedAbbrev } from '@/utils/bibleBooks';
  * the choices here; then the chips beside verses, also in a passage window or not, what the chip counts,
  * and how the list a chip opens shows the places beyond the main ones — the same choice as the switch in
  * that list. Every row says what the person sees and where; a choice between two things is two words.
- * While the chips are off the rest is dimmed, and a line says why. Kept on this device (`crossReferencePrefs.ts`).
+ * While the chips are off the rest is dimmed, and a line says why. Kept in the account (`crossReferencePrefs.ts`).
  */
 
 /**
@@ -32,6 +32,7 @@ type OthersLook = 'addresses' | 'verses';
 export default function CrossReferenceSettings() {
   const { t, i18n } = useTranslation();
   const prefs = useCrossReferencePrefs();
+  const writable = useCrossReferencePrefsWritable();
   const id = useId();
   const save = (change: Parameters<typeof saveCrossReferencePrefs>[0]) => saveCrossReferencePrefs(change, 'settings');
   const { book, chapter, verse, main, total } = CROSS_REFERENCE_SAMPLE;
@@ -63,7 +64,7 @@ export default function CrossReferenceSettings() {
 
       <SettingRow title={t('settings.bible.crossRefs.marks')} hint={t('settings.bible.crossRefs.marksHint')}>
         {(ids) => (
-          <Switch checked={prefs.show} aria-labelledby={ids.name} aria-describedby={ids.hint} onClick={() => save({ show: !prefs.show })} />
+          <Switch checked={prefs.show} disabled={!writable} aria-labelledby={ids.name} aria-describedby={ids.hint} onClick={() => save({ show: !prefs.show })} />
         )}
       </SettingRow>
       {prefs.show ? null : (
@@ -77,7 +78,7 @@ export default function CrossReferenceSettings() {
           {(ids) => (
             <Switch
               checked={prefs.show && prefs.inWindow}
-              disabled={!prefs.show}
+              disabled={!prefs.show || !writable}
               aria-labelledby={ids.name}
               aria-describedby={ids.hint}
               onClick={() => save({ inWindow: !prefs.inWindow })}
@@ -85,7 +86,7 @@ export default function CrossReferenceSettings() {
           )}
         </SettingRow>
         <SettingRow below title={t('settings.bible.crossRefs.count')} hint={t('settings.bible.crossRefs.countHint', { place, main, total })}>
-          {(ids) => <ChoiceButtons ids={ids} choices={modes} value={prefs.mode} disabled={!prefs.show} onPick={(mode) => save({ mode })} />}
+          {(ids) => <ChoiceButtons ids={ids} choices={modes} value={prefs.mode} disabled={!prefs.show || !writable} onPick={(mode) => save({ mode })} />}
         </SettingRow>
         <SettingRow below title={t('settings.bible.crossRefs.others')} hint={t('settings.bible.crossRefs.othersHint', { switch: t('bible.crossRefs.othersAsVerses') })}>
           {(ids) => (
@@ -93,7 +94,7 @@ export default function CrossReferenceSettings() {
               ids={ids}
               choices={looks}
               value={prefs.othersAsVerses ? 'verses' : 'addresses'}
-              disabled={!prefs.show}
+              disabled={!prefs.show || !writable}
               onPick={(look) => save({ othersAsVerses: look === 'verses' })}
             />
           )}

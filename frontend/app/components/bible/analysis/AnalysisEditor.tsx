@@ -18,7 +18,7 @@ import { useCopyNames } from '../verseCopy/useVerseCopy';
 
 import { writeAnalysisAddress } from './analysisAddress';
 import { arrowNear, dragArrow, fromLine, tieArrows, useGeometry, type Arrow } from './analysisGeometry';
-import { saveAnalysisHelpPrefs, useAnalysisHelpPrefs } from './analysisHelpPrefs';
+import { saveAnalysisHelpPrefs, useAnalysisHelpPrefs, useAnalysisHelpWritable } from './analysisHelpPrefs';
 import {
   ARROW, AnalysisHeader, AnalysisLine, PanelGlyph, UntieMark, type AnalysisMode, type LineDrag, type LineRole, type LineSteps, type LineWord, type WordDrag,
 } from './AnalysisParts';
@@ -349,14 +349,16 @@ function AnalysisPanel({ mode, state, selected, short, bare }: {
 }) {
   const { t } = useTranslation();
   const help = useAnalysisHelpPrefs();
+  // Kept in the account: unavailable while it cannot be written (`utils/accountChoice.ts`).
+  const helpWritable = useAnalysisHelpWritable();
   const hint = 'leading-relaxed text-gray-600 dark:text-gray-300';
   const line = 'flex items-start gap-1 leading-snug text-gray-600 dark:text-gray-300';
   // Only «Правка» has help to fold: «Просмотр» says one sentence (the owner, 31.10: «в режиме просмотра тут нечего сворачивать»).
   const head = (title: string, foldable = true) => (
     <div className="flex items-center justify-between gap-2">
       <div className="text-[15px] font-bold">{title}</div>
-      {foldable ? <button type="button" aria-expanded={!help.short} data-testid="analysis-help-toggle" onClick={() => saveAnalysisHelpPrefs({ short: !help.short })}
-        className="inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-indigo-600 transition-colors hover:bg-indigo-50 dark:text-indigo-300 dark:hover:bg-indigo-950/50">
+      {foldable ? <button type="button" aria-expanded={!help.short} data-testid="analysis-help-toggle" disabled={!helpWritable} onClick={() => saveAnalysisHelpPrefs({ short: !help.short })}
+        className="inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-indigo-600 transition-colors hover:bg-indigo-50 disabled:cursor-default disabled:opacity-50 dark:text-indigo-300 dark:hover:bg-indigo-950/50">
         {t(help.short ? 'analysis.help.expand' : 'analysis.help.collapse')}
         <ChevronDownIcon className={`h-3.5 w-3.5 transition-transform ${help.short ? '' : 'rotate-180'}`} aria-hidden="true" />
       </button> : null}

@@ -1,4 +1,4 @@
-when: beta toggle · feature toggle in settings · add a setting · user setting flag · per-user feature flag · UserSettings · enableStructurePreview · SETTINGS_WRITABLE_FIELDS · useUserSettings · SettingsToggleRow · SETTINGS_MUTATION_KEYS · toggle does not save · toggle snaps back · setting lost after reload · settings/user page · бета-переключатель · переключатель в настройках · добавить настройку · флаг пользователя · настройка не сохраняется · переключатель отскакивает назад · настройка пропала после перезагрузки
+when: beta toggle · feature toggle in settings · add a setting · user setting flag · per-user feature flag · UserSettings · enableStructurePreview · SETTINGS_WRITABLE_FIELDS · useUserSettings · SettingsToggleRow · SETTINGS_MUTATION_KEYS · toggle does not save · toggle snaps back · setting lost after reload · settings/user page · бета-переключатель · переключатель в настройках · добавить настройку · флаг пользователя · настройка не сохраняется · переключатель отскакивает назад · настройка пропала после перезагрузки · commit resolves but nothing is sent · no POST /api/data-engine/commands · status phase refused · Invalid field change · Field is not writable · fields.users · запись настроек не уходит на сервер · new field on the users document
 
 # Add a beta toggle to settings
 
@@ -15,9 +15,12 @@ A per-user feature flag is a boolean field on the `users/{uid}` settings documen
 7. Add a row to `FeatureToggle.contract.test.tsx` and cover the new field in the engine hook test where behavior differs.
 8. Read `settings?.enableX` through `useUserSettings`. The private workspace provider shares settings across routes and nested document providers.
 
+A reader's setting that should follow the person to every device (the trail's numbers, cross references, marks on the text) is not a toggle field of its own: it is a part of `reading`, kept through `utils/accountChoice.ts` (`.howto/keep-a-device-choice.md`).
+
 ## Traps
 
 - A rejected field points to the shared `users` writable policy/schema or the operation-specific allowlist in `serverEdit.server.ts`. Check both before changing the UI.
+- A field missing from `fields.users` (`data-engine/protocol.ts`) is refused ON THE DEVICE, before anything is sent: `prepareDomainCommand` → `validateCommand` throws a coded `invalid-argument` («Invalid field change»), the request turns terminal `refused` (`commits.ts`). The local `commit` still resolves and the draft shows the value, so a test on a fake document stays green while the server never hears of it. Live sign: `document.status.phase` goes `queued → refused` and no `POST /api/data-engine/commands` leaves the page (2026-11-02: the account's `reading` field, schema added, list forgotten). Cover a new field with a `validateCommand` test in `data-engine/__tests__/protocol.test.ts`.
 - Never put identity or server-managed fields (`paidTier`, `promotion`, `usage`, `role`, `referredBy`) in the writable policy; the engine and authenticated adapter enforce that boundary.
 - A field missing from the engine schema is rejected. A fulfilled local commit can still be waiting for server delivery: never show it as server-confirmed or restart a legacy mutation to replay it.
 
