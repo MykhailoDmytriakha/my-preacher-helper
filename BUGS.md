@@ -109,6 +109,28 @@
 
 ## 🔵 P3 — открыто
 
+### BUG-20261101-scratch-mode-caption · Scratch content opens while the header still selects Classic
+
+**Severity.** P3 — the selected mode contradicts the visible editor; returning through the apparent current mode needs a native check.
+**Found.** 2026-11-01 · native emulator QA during Unit270, current source6905cbca and frozen build yomAVWzm0AB9wgOsSs57a.
+**Anchors.** `frontend/app/(pages)/(private)/sermons/[id]/page.tsx:466` changes only local `uiMode`; `frontend/app/components/navigation/DashboardNav.tsx:319` derives its mode from URL/storage.
+**Expected.** The selected header mode and the visible editor describe the same screen.
+**Observed.** Open a sermon in Classic, press "Sort the scratch notes": Scratch is active and fully settled, while the header still selects Classic. The mismatch remains after2500ms; this is separate from the transient clipping frame.
+**Reproduction.** Sermons → open a synthetic sermon with `?mode=classic` → "Sort the scratch notes" → wait for the strip to settle → compare the header selection with the visible Scratch workspace. Check the actual Classic button next; do not claim that return fails until measured.
+**Evidence.** `scratch-clipping-270-native-recovery-timeline-v1.json`, active pane index2, and root-viewed `...-post-final-800ms.png` / `...-post-final-2500ms.png` in the local bug-fixes case. Source and compiled file hashes match the frozen build. Only synthetic Auth9199/Firestore8189 data was used.
+**Effect.** The preacher cannot trust the mode selected in the header to tell which editor is open.
+**User contract.** Opening the Scratch workspace selects Scratch in the existing mode switch. Choosing another mode returns to its editor. Scroll, typing and background save do not independently change the mode. Preserve mounted drafts and the established navigation/back behavior.
+**Class (mechanism).** One screen mode has separate local and URL/navigation owners.
+| place | verdict | reason |
+|---|---|---|
+| sermon `onOpenScratch`, page.tsx:466 | affected | changes local pane without the header's URL state |
+| DashboardNav.tsx:319–356 | investigate | shows URL/storage state; same-mode early return may prevent returning to Classic |
+| server/offline data writers | not affected | selected UI mode is local navigation, not authored document data |
+
+**Root.** Local mode and navigation ownership are separate; prove the native return path before choosing the shared owner.
+**Fix direction / regression proof.** Not implemented; next sequential bug after Unit270.
+
+
 
 
 ### BUG-20261021-bible-marks-check-failed-line · В Библии появляется «Не удалось проверить обновления. Версия на сервере ещё не проверена»
@@ -230,17 +252,6 @@
 ---
 
 ## 🔍 Требует перепроверки
-
-### BUG-20261101-scratch-panel-left-clipping · При быстром переходе в «Наброски» левая часть блока оказалась обрезана
-**P3, требует перепроверки.** В локальной QA Chrome1280×1000 после переключения режима и автоматического прокручивания к кнопке у заголовков и карточек слева не видны первые буквы. Исходный ранний переход Scratch ещё не локализован. В Unit267 подтверждён родственный нативный путь: на узкой Подготовке Tab попадает в скрытый Classic, рамка прокручивается на277px и обрезает активную панель; см. BUG-20261101-sermon-hidden-mode-focus. В Unit267 скрытый фокус исправлен и проверен на трёх режимах × двух ширинах; это не закрывает исходный ранний переход Scratch. Обычный Scratch open/close мышью и отдельный scroll-контроль на двух ширинах прошли без обрезания. `frontend/app/(pages)/(private)/sermons/[id]/page.tsx:759` — третий блок движущейся полосы.
-**Ожидалось:** выбранный режим занимает экран, подписи и текст видны целиком. **Получилось:** край обрезан в полноэкранных кадрах, хотя шапка и открытый редактор видны нормально. **Повторить:** проповедь → «Наброски» → сразу открыть редактор → применить/закрыть; сравнить положение блока и горизонтальную прокрутку после окончания перехода. Raw: `linked-placement-265-after-scratch-wide-v7-{before-open,before-keep-local,after-keep-local}.png` в деле локальных исправлений. Функциональное сохранение и повторное открытие проверены отдельно; эти кадры не являются приёмкой всей раскладки страницы.
-| место | вердикт | почему |
-|---|---|---|
-| полоса режимов в `sermons/[id]/page.tsx` | неизвестно | переход и край блока совпадают с наблюдением, причина не доказана |
-| QA `nativeClick` → `scrollIntoView` во время перехода | неизвестно | мог сдвинуть видимую область до завершения анимации; нужно сравнить с обычным вводом |
-
-**Additional native evidence, 2026-11-01 (Unit269).** The final reload after ordinary scratch recovery clips the mode strip on the old EED build at390×844 and on the new build at1280×950 after a phone-to-desktop resize. Notes and recovery persistence pass separately. Root viewed both: `recovery-class-269-ordinary-native-v5-final-after-real-ack-reload.png` and `recovery-closed-269-after-native-ordinary-v1-final-after-real-ack-reload.png`. Keep this card open; investigate ancestor horizontal scroll and mode transforms before a layout fix.
-
 
 ### BUG-20261101-jest-worker-teardown · Общий прогон тестов проходит, но один worker не завершается сам
 **Severity.** Предварительно P3, требует перепроверки: тесты зелёные, однако Jest вынужденно завершает worker; причина и связь с приложением пока не установлены. Это наблюдение тестового окружения, не подтверждённая потеря данных в приложении.
