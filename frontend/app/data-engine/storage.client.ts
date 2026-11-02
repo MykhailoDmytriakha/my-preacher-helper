@@ -1,31 +1,16 @@
 'use client';
 
 import { watchedStore } from '@/utils/deviceStorage';
-import { TechnicalFailure } from '@/utils/failureCode';
+import { createStorageTransaction, type StorageRead, type StorageTransaction } from '@/utils/storageTransaction';
 
-export type StorageRead = <V>(request: IDBRequest<V>, success: (value: V) => void) => void;
-export type StorageTransaction = <T>(mode: IDBTransactionMode, action: (store: IDBObjectStore, read: StorageRead, done: (value: T) => void) => void) => Promise<T>;
+export type { StorageRead, StorageTransaction } from '@/utils/storageTransaction';
 
 export const engineOwnerRange = (kind: string, owner: string): IDBKeyRange => IDBKeyRange.bound([kind, owner], [kind, owner, []]);
 
 /** Shared transactions make checkpoint/recovery references atomic with request retention. */
 export function createEngineStorageTransaction(): StorageTransaction {
   let database: ReturnType<typeof watchedStore> | undefined;
-  return <T,>(mode: IDBTransactionMode, action: (store: IDBObjectStore, read: StorageRead, done: (value: T) => void) => void): Promise<T> => {
-    database ??= watchedStore('preacher-data-engine-state-v1', 'records', 'engine-state');
-    return database(mode, store => new Promise<T>((resolve, reject) => {
-      let result: T;
-      const fail = (error: unknown) => { reject(error); try { store.transaction.abort(); } catch { /* Already aborted. */ } };
-      store.transaction.oncomplete = () => resolve(result);
-      store.transaction.onabort = () => reject(store.transaction.error ?? new TechnicalFailure('Data storage aborted'));
-      store.transaction.onerror = () => reject(store.transaction.error ?? new TechnicalFailure('Data storage failed'));
-      const read: StorageRead = (request, success) => {
-        request.onsuccess = () => { try { success(request.result); } catch (error) { fail(error); } };
-        request.onerror = () => fail(request.error ?? new TechnicalFailure('Data storage read failed'));
-      };
-      try { action(store, read, value => { result = value; }); } catch (error) { fail(error); }
-    }));
-  };
+  return createStorageTransaction(() => database ??= watchedStore('preacher-data-engine-state-v1', 'records', 'engine-state'));
 }
 
 /** A stale recovery read must retry before it can create a dangling durable reference. */
