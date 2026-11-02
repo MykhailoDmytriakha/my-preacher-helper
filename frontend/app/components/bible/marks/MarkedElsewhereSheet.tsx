@@ -1,16 +1,16 @@
 'use client';
 
-import { useEffect, useId, useState } from 'react';
+import { Fragment, useEffect, useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { getLocalizedAbbrev } from '@/utils/bibleBooks';
-import { marksOnWord, type MarkedElsewhere, type VerseMarks } from '@/utils/bibleMarks';
+import { marksOnWord, type MarkColor, type MarkedElsewhere, type VerseMarks } from '@/utils/bibleMarks';
 import { BIBLES, type BibleId } from '@/utils/bibles';
 import { fetchBookText, verseWords, type BookText } from '@/utils/bibleText';
 
 import { ReaderSheet, SheetCloseButton } from '../ReaderSheet';
 
-import { wordPaintClass } from './markPaint';
+import { MARK_FILL_CLASS, MARK_RUN_CLASS, wordPaintClass } from './markPaint';
 
 import type { AppLocale } from '@/utils/appLocale';
 
@@ -44,17 +44,36 @@ function shared(a: ReturnType<typeof marksOnWord>, b: ReturnType<typeof marksOnW
   return { color: a.color && a.color === b.color ? a.color : null, pencil: a.pencil && a.pencil === b.pencil ? a.pencil : null };
 }
 
+/**
+ * Neighbouring words under one marker colour are one band, each line of it rounded, as the reader draws them (the owner,
+ * 2026-11-02); the pencil's line stays on its words and on the space it spans.
+ */
 function PaintedVerse({ raw, marks }: { raw: string; marks: VerseMarks }) {
   const words = verseWords(raw).split(/\s+/).filter(Boolean);
   const on = words.map((_, index) => marksOnWord(marks, index));
+  const runs: { color: MarkColor | null; from: number; to: number }[] = [];
+  on.forEach(({ color }, index) => {
+    const last = runs[runs.length - 1];
+    if (last && color !== null && last.color === color) last.to = index;
+    else runs.push({ color, from: index, to: index });
+  });
+  const line = (index: number) => wordPaintClass({ color: null, pencil: shared(on[index], on[index + 1]).pencil });
   return (
     <>
-      {words.map((word, index) => (
-        <span key={index}>
-          <span data-word="" className={wordPaintClass(on[index])}>{word}</span>
-          {index < words.length - 1 ? <span className={wordPaintClass(shared(on[index], on[index + 1]))}> </span> : null}
-        </span>
-      ))}
+      {runs.map(({ color, from, to }) => {
+        const inside = words.slice(from, to + 1).map((word, offset) => (
+          <span key={from + offset}>
+            <span data-word="" className={wordPaintClass({ color: null, pencil: on[from + offset].pencil })}>{word}</span>
+            {from + offset < to ? <span className={line(from + offset)}> </span> : null}
+          </span>
+        ));
+        return (
+          <Fragment key={from}>
+            {color ? <span data-run="" className={`${MARK_FILL_CLASS[color]} ${MARK_RUN_CLASS}`}>{inside}</span> : inside}
+            {to < words.length - 1 ? <span className={line(to)}> </span> : null}
+          </Fragment>
+        );
+      })}
     </>
   );
 }

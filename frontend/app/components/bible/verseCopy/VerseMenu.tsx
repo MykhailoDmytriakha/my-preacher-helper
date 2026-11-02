@@ -127,7 +127,9 @@ function OpenVerseMenu({ copy, at, comment, analysis }: { copy: VerseCopy; at: V
   const label = copy.labelOf(verse);
   const shown = spot ? 'visible' : 'hidden';
   return createPortal(
-    <div {...layer} className="fixed inset-0 z-[125]" onPointerDownCapture={() => { holdClick.current = false; }}>
+    // No system selection or callout over the menu: the lifted verse stands outside the text's card, and the owner's iPad put its
+    // selection handle on it (31.10).
+    <div {...layer} className="fixed inset-0 z-[125] select-none [-webkit-touch-callout:none]" onPointerDownCapture={() => { holdClick.current = false; }}>
       <button
         type="button"
         aria-hidden="true"

@@ -32,8 +32,18 @@ type LongPressHandlers = {
  * button's classes also turn off text selection and the callout (`select-none [-webkit-touch-callout:none]`).
  * Without `onLongPress` the button is an ordinary one.
  */
-export function useLongPress({ onPress, onLongPress }: { onPress: () => void; onLongPress?: () => void }): { state: LongPressState; handlers: LongPressHandlers } {
+export function useLongPress({ onPress, onLongPress, onArm }: {
+  onPress: () => void;
+  onLongPress?: () => void;
+  /**
+   * Called the moment the hold's time has run, before anything draws it: `false` gives the hold up (the press was something
+   * else by then — a Pencil's stroke that reached another word). Synchronous, so a lift right after it finds the hold decided.
+   */
+  onArm?: () => boolean | void;
+}): { state: LongPressState; handlers: LongPressHandlers } {
   const [state, setState] = useState<LongPressState>('idle');
+  const armCheck = useRef(onArm);
+  armCheck.current = onArm;
   const timer = useRef<number | null>(null);
   const origin = useRef<{ x: number; y: number } | null>(null);
   const armed = useRef(false);
@@ -85,6 +95,11 @@ export function useLongPress({ onPress, onLongPress }: { onPress: () => void; on
         setState('holding');
         timer.current = window.setTimeout(() => {
           timer.current = null;
+          if (armCheck.current?.() === false) {
+            abandoned.current = true;
+            reset();
+            return;
+          }
           armed.current = true;
           setState('armed');
         }, LONG_PRESS_MS);

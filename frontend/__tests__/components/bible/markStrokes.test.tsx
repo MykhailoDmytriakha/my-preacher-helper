@@ -1,7 +1,7 @@
 import { act, render, screen } from '@testing-library/react';
 import { useRef } from 'react';
 
-import { useMarkStrokes } from '@/components/bible/marks/useMarkStrokes';
+import { useMarkStrokes, type TakeForHold } from '@/components/bible/marks/useMarkStrokes';
 import { wordAtPoint } from '@/components/bible/marks/verseWordDom';
 import { countVerseWords, verseOrder } from '@/utils/bibleMarks';
 
@@ -25,9 +25,10 @@ const pointer = (type: string, x: number, target: Element, pointerType = 'mouse'
   act(() => { target.dispatchEvent(event); });
 };
 
+let take: TakeForHold = () => true;
 function Harness({ save, paint, armed = true }: { save: (change: MarksChange) => boolean; paint: ReturnType<typeof painter>; armed?: boolean }) {
   const rootRef = useRef<HTMLElement | null>(null);
-  useMarkStrokes({ rootRef, ready: true, order, save, armed, begin: () => (armed ? { tool: 'marker', color: 'red' } : null), painter: paint, enabled: true });
+  take = useMarkStrokes({ rootRef, ready: true, order, save, armed, begin: (pen: boolean) => (armed || pen ? { tool: 'marker', color: 'red' } : null), painter: paint, enabled: true });
   return (
     <article ref={rootRef}>
       <div data-verse="1:1" data-testid="row"><span data-testid="words">one two three</span></div>
@@ -97,5 +98,72 @@ describe('the crosshair of a mouse with a tool in hand', () => {
     render(<Harness save={() => true} paint={painter()} />);
     pointer('pointermove', 0, screen.getByTestId('words'), 'touch');
     expect(screen.getByTestId('row').style.cursor).toBe('');
+  });
+});
+
+// The owner, 2026-11-02: a Pencil held still on a verse is the verse's hold — the stroke its press began gives way to it.
+describe('a Pencil\'s stroke and the verse\'s hold', () => {
+  beforeEach(() => {
+    jest.spyOn(window, 'requestAnimationFrame').mockReturnValue(1);
+    jest.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => undefined);
+    jest.mocked(wordAtPoint).mockImplementation((_root, x) => (x === 100 ? null : { verse: '1:1', index: x === 20 ? 2 : 0 }));
+  });
+  afterEach(() => jest.restoreAllMocks());
+
+  it('gives a stroke still on its first word to the hold: shown as the marks hold it again, nothing saved', () => {
+    const save = jest.fn((_change: MarksChange) => true);
+    const paint = painter();
+    render(<Harness save={save} paint={paint} armed={false} />);
+    const words = screen.getByTestId('words');
+    pointer('pointerdown', 0, words, 'pen');
+    expect(paint.draw).toHaveBeenCalled();
+    let taken = false;
+    act(() => { taken = take(1); });
+    expect(taken).toBe(true);
+    expect(paint.release).toHaveBeenCalledWith(null);
+    pointer('pointerup', 0, words, 'pen');
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it('keeps a stroke that reached another word — a move still waiting for its frame counts', () => {
+    const save = jest.fn((_change: MarksChange) => true);
+    render(<Harness save={save} paint={painter()} armed={false} />);
+    const words = screen.getByTestId('words');
+    pointer('pointerdown', 0, words, 'pen');
+    pointer('pointermove', 20, words, 'pen');
+    let taken = true;
+    act(() => { taken = take(1); });
+    expect(taken).toBe(false);
+    pointer('pointerup', 20, words, 'pen');
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(save.mock.calls[0][0]({})).toEqual({ '1:1': { m: [[0, 2, 'red']] } });
+  });
+
+  it('has nothing to give up for a pointer that drew nothing', () => {
+    render(<Harness save={() => true} paint={painter()} armed={false} />);
+    expect(take(7)).toBe(true);
+  });
+
+  // Codex, 02.11: a Pencil that left its word and came back within the hold's time is a stroke still.
+  it('keeps a stroke that reached another word and came back', () => {
+    const save = jest.fn((_change: MarksChange) => true);
+    render(<Harness save={save} paint={painter()} armed={false} />);
+    const words = screen.getByTestId('words');
+    pointer('pointerdown', 0, words, 'pen');
+    pointer('pointermove', 20, words, 'pen');
+    act(() => { take(1); });
+    pointer('pointermove', 0, words, 'pen');
+    let taken = true;
+    act(() => { taken = take(1); });
+    expect(taken).toBe(false);
+  });
+
+  // Codex, 02.11: a finger still painting while the Pencil rests — the hold does not open over it.
+  it('refuses a hold while another pointer\'s stroke goes on', () => {
+    render(<Harness save={() => true} paint={painter()} />);
+    pointer('pointerdown', 0, screen.getByTestId('words'), 'touch');
+    let taken = true;
+    act(() => { taken = take(7); });
+    expect(taken).toBe(false);
   });
 });

@@ -42,6 +42,11 @@ type ReaderMarks = {
   gestureIgnore: '' | undefined;
   /** A tool is in hand: a press on the text paints, and is nothing else's (a verse's menu waits). */
   toolInHand: boolean;
+  /**
+   * A Pencil held still on a verse becomes the verse's hold (the owner, 2026-11-02): its stroke is dropped, nothing saved, and a
+   * tool in hand is put away — the person turned from painting to the verse. `false`: the stroke reached another word, it stays one.
+   */
+  penHold: (pointerId: number) => boolean;
   /** A text the Apple Pencil writes on: a Pencil there never starts the page's swipe back. */
   penSurface: '' | undefined;
   /**
@@ -139,7 +144,7 @@ export function useReaderMarks({ textRef, text, ready, bible, bookId, drawn, onM
   }, [order, save, sayWhy]);
   const analysisMarks = useMemo<AnalysisMarks | null>(() => (owner && storeReady && order ? { marks: stored, order, mark: markFromAnalysis } : null),
     [markFromAnalysis, order, owner, storeReady, stored]);
-  useMarkStrokes({
+  const takeForHold = useMarkStrokes({
     rootRef: textRef,
     ready,
     order,
@@ -164,6 +169,12 @@ export function useReaderMarks({ textRef, text, ready, bible, bookId, drawn, onM
   }, [elsewhere, t]);
   const entries = useMemo(() => (openAt ? versesElsewhere(elsewhere, `${openAt.chapter}:${openAt.verse}`) : []), [elsewhere, openAt]);
 
+  const { inHand, putAway } = tool;
+  const penHold = useCallback((pointerId: number) => {
+    const taken = takeForHold(pointerId);
+    if (taken && inHand) putAway();
+    return taken;
+  }, [inHand, putAway, takeForHold]);
   const showTools = marking && Boolean(text);
   const armed = marking && tool.inHand !== null;
   return {
@@ -174,6 +185,7 @@ export function useReaderMarks({ textRef, text, ready, bible, bookId, drawn, onM
     translationClass: showTools ? 'ml-auto md:ml-3' : 'ml-auto',
     gestureIgnore: armed ? '' : undefined,
     toolInHand: armed,
+    penHold,
     penSurface: marking ? '' : undefined,
     textClass: canMark && owner ? `${armed || !zoomed ? '[touch-action:pan-y_pinch-zoom] ' : ''}[-webkit-touch-callout:none]` : '',
     signs,
