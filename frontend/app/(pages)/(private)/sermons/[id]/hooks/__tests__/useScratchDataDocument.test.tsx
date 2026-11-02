@@ -44,7 +44,7 @@ function setup(initial: DocumentData | null = { userId: 'owner', title: 'Keep ti
     await save();
   });
   jest.mocked(useDocumentActions).mockReturnValue({ commit: (_resource, updater) => commit(updater) } as ReturnType<typeof useDocumentActions>);
-  const actions = { acceptRemote: jest.fn(), keepLocal: jest.fn(), getManualForm: jest.fn(), listRecoverable: jest.fn(), recover: jest.fn(), retry: jest.fn(), remove: jest.fn() };
+  const actions = { acceptRemote: jest.fn(), keepLocal: jest.fn(), getManualForm: jest.fn(), listRecoverable: jest.fn(), discardRecovery: jest.fn(), recover: jest.fn(), retry: jest.fn(), remove: jest.fn() };
   jest.mocked(useDataDocument).mockImplementation(() => ({
     actions: [], carryCouncilTopicToNew: jest.fn(), carryCouncilTopicToExisting: jest.fn(), discardAction: jest.fn(),
     recoveryIdentity: {}, presence: UNKNOWN_RECORD_PRESENCE, readOnly: false, copySource: null, readOnlyReason: null,
@@ -79,6 +79,7 @@ describe('useScratchDataDocument', () => {
     expect(result.current.keepLocal).toBe(s.actions.keepLocal);
     expect(result.current.acceptRemote).toBe(s.actions.acceptRemote);
     expect(result.current.listRecoverable).toBe(s.actions.listRecoverable);
+    expect(result.current.discardRecovery).toBe(s.actions.discardRecovery);
     expect(result.current.recover).toBe(s.actions.recover);
     expect(result.current.retry).toBe(s.actions.retry);
     rerender({ id: null });

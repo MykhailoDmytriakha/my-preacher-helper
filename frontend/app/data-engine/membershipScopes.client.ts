@@ -2,6 +2,7 @@
 
 import { CREATION_SCOPE_PREFIX, validateMembershipScope, type MembershipScopeRecord } from './membershipScope';
 import { equalValues } from './protocol';
+import { discardRecoveryRecord } from './recoveryDiscard.client';
 import { collectCommitRows, commitCaptureKey } from './retention.client';
 import { createEngineStorageTransaction, engineOwnerRange, validateCommitReferences } from './storage.client';
 
@@ -12,6 +13,7 @@ export interface MembershipScopeStore {
   list(owner: string): Promise<MembershipScopeRecord[]>;
   persist(record: MembershipScopeRecord, expectedRevision: number | null): Promise<MembershipScopeRecord>;
   compact(owner: string, scopeId: string): Promise<void>;
+  discardRecovery?(record: MembershipScopeRecord, isCurrent: () => boolean): Promise<void>;
   completion(owner: string, scopeId: string): Promise<'acknowledged' | 'cancelled' | null>;
 }
 interface ScopeWatermark { owner: string; scopeId: string; revision: number; closed: true; outcome?: 'acknowledged' | 'cancelled' }
@@ -30,6 +32,16 @@ export function createIndexedDbMembershipScopes(): MembershipScopeStore {
     return clone(record);
   };
   return {
+    discardRecovery: (record, isCurrent) => discardRecoveryRecord<MembershipScopeRecord>(transaction, {
+      owner: record.owner, key: key(record.owner, record.scopeId), expected: record,
+      validate: candidate => validated(candidate as MembershipScopeRecord, record.owner, record.scopeId),
+      references, scopeId: record.scopeId, canRemove: current => current.phase === 'editing' && current.requestIds.length === 0,
+      isCurrent, remove: (store, current) => {
+        store.put({ owner: current.owner, scopeId: current.scopeId, revision: current.revision + 1, closed: true,
+          outcome: 'cancelled' } satisfies ScopeWatermark, key(current.owner, current.scopeId));
+        store.delete(referenceKey(current.owner, current.scopeId));
+      },
+    }),
     completion: (owner, scopeId) => transaction('readonly', (store, read, done) => read(store.get(key(owner, scopeId)), (value: MembershipScopeRecord | ScopeWatermark | undefined) => {
       done(value && !live(value) && value.owner === owner && value.scopeId === scopeId ? value.outcome ?? null : null);
     })),

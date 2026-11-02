@@ -100,11 +100,13 @@ export function useCouncilDataDocument(councilId: string) {
    */
   const listRecoverable = useCallback(async () => {
     const records = await document.listRecoverable();
-    return records.map(({ id, record }) => {
+    return records.map(source => {
+      const { id, record } = source;
       const draft = record.checkpoint.draft as unknown as Council | null;
       const title = draft?.title ?? (record.checkpoint.confirmed.value as unknown as Council | null)?.title;
       const preview = (draft?.topics ?? []).map(item => item?.title).filter(Boolean).join('\n').slice(0, 500);
-      return { id, title: typeof title === 'string' && title.trim() ? title : councilId, ...(preview ? { preview } : {}) };
+      return { id, title: typeof title === 'string' && title.trim() ? title : councilId, ...(preview ? { preview } : {}),
+        discard: () => document.discardRecovery(source) };
     });
   }, [document, councilId]);
 

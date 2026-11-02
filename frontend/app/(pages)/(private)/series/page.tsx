@@ -43,8 +43,9 @@ function EngineSeriesPage() {
   const recovery = useRecoveryDiscovery({ identity: browser ?? {}, enabled: Boolean(browser && owner), version: String(Boolean(creation)),
     list: async () => (await browser!.engine.listRecoveryChoices()).filter(entry =>
       entry.record.checkpoint.confirmed.resource.collection === 'series' && entry.record.checkpoint.confirmed.value === null && entry.record.checkpoint.draft !== null)
-      .map(entry => ({ id: entry.id, title: String(entry.record.checkpoint.draft?.title || entry.record.checkpoint.confirmed.resource.id),
-        preview: String(entry.record.checkpoint.draft?.description ?? '') })),
+      .map(source => ({ id: source.id, title: String(source.record.checkpoint.draft?.title || source.record.checkpoint.confirmed.resource.id),
+        preview: String(source.record.checkpoint.draft?.description ?? ''),
+        discard: () => browser!.engine.discardRecovery(source) })),
     recover: async id => {
       const records = await browser!.engine.listRecoveryChoices();
       const selected = records.find(entry => entry.id === id && entry.record.checkpoint.confirmed.resource.collection === 'series');
@@ -54,7 +55,8 @@ function EngineSeriesPage() {
   return <>
     <SeriesView source={source} onCreate={() => setCreation({ id: newClientId() })}
       feedback={<><DataCollectionStatus state={source.state} /><DataSyncStatus subject={owner} status={null} recoveryChoices={recovery.choices}
-        onRecover={recovery.recover} recoveryLoading={recovery.loading} recoveryError={recovery.error} /></>} />
+        onRecover={recovery.recover} recoveryLoading={recovery.loading} recoveryError={recovery.error}
+        onDiscardRecovery={recovery.discard} /></>} />
     {creation && <EngineCreateSeriesModal key={`${owner}:${creation.id}`} seriesId={creation.id} recoveryId={creation.recoveryId}
       onClose={() => setCreation(null)} onQueued={id => { setCreation(null); router.push(`/series/${id}`); }} />}
   </>;

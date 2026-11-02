@@ -23,7 +23,7 @@ function MainIdeaFixture(props: FixtureProps) {
     const [busy, setBusy] = React.useState(false);
     return { subject: 'presentation-field', value: draft, ready: true, active: true, busy, dirty: draft !== value, error: null,
       begin: async () => undefined, update: async next => { update(next); }, cancel: async () => { update(value); }, retry: async () => undefined,
-      recovery: { choices: [], loading: false, error: null, recover: async () => undefined, refresh: async () => undefined },
+      recovery: { choices: [], loading: false, error: null, recover: async () => undefined, refresh: async () => undefined, discard: async (action: () => Promise<void>) => action() },
       save: async next => { setBusy(true); try { await onSave?.(next); } finally { setBusy(false); } } };
   };
   const context = usePresentationField(props.initialContextIdea, props.onSaveContextIdea);

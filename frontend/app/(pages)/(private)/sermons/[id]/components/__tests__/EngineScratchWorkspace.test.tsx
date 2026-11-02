@@ -36,7 +36,7 @@ function setup(overrides: Partial<ReturnType<typeof useScratchDataDocument>> = {
     addScratchNote: jest.fn(), restoreScratchNote: jest.fn(), updateScratchNote: jest.fn(), deleteScratchNote: jest.fn(), moveScratchNote: jest.fn(),
     applyOutlineAndConsume: jest.fn(async () => ({ delivery: 'queued' as const })), onOutlineChange: jest.fn(async () => ({ delivery: 'queued' as const })),
     keepLocal: jest.fn(async () => undefined), acceptRemote: jest.fn(async () => undefined), retry: jest.fn(async () => undefined),
-    listRecoverable: jest.fn(async (): Promise<RecoveryCheckpoint[]> => []), recover: jest.fn(async () => undefined),
+    listRecoverable: jest.fn(async (): Promise<RecoveryCheckpoint[]> => []), discardRecovery: jest.fn(async () => undefined), recover: jest.fn(async () => undefined),
     ...overrides,
   } as ReturnType<typeof useScratchDataDocument>;
   jest.mocked(useDataEngine).mockReturnValue({ owner: 'owner', browser: null, failures: {} });
@@ -116,18 +116,22 @@ describe('EngineScratchWorkspace', () => {
 
   it('lists human recovery titles and previews automatically and recovers only the explicit selection', async () => {
     const scratch = setup();
-    jest.mocked(scratch.listRecoverable).mockResolvedValue([
+    const sources = [
       recovered('source', 'My draft', [{ text: 'First' }, null, ['skip'], { text: 4 }, { text: 'Second' }]),
       recovered('fallback', ' ', null), recovered('confirmed', null, [{ text: 'x'.repeat(600) }]),
-    ]);
+    ];
+    jest.mocked(scratch.listRecoverable).mockResolvedValue(sources);
     render(<EngineScratchWorkspace sermonId="sermon" />);
     await act(async () => {});
     expect(statusProps().recoveryChoices).toEqual([
-      { id: 'source', title: 'My draft', preview: 'First\nSecond' },
-      { id: 'fallback', title: 'freshness.entitySermon' },
-      { id: 'confirmed', title: 'Confirmed', preview: 'x'.repeat(500) },
+      { id: 'source', title: 'My draft', preview: 'First\nSecond', discard: expect.any(Function) },
+      { id: 'fallback', title: 'freshness.entitySermon', discard: expect.any(Function) },
+      { id: 'confirmed', title: 'Confirmed', preview: 'x'.repeat(500), discard: expect.any(Function) },
     ]);
     expect(scratch.recover).not.toHaveBeenCalled();
+    const selected = statusProps().recoveryChoices![0];
+    await act(async () => { await statusProps().onDiscardRecovery?.(selected.discard!); });
+    expect(scratch.discardRecovery).toHaveBeenCalledWith(sources[0]);
     jest.mocked(scratch.listRecoverable).mockResolvedValue([]);
     await act(async () => { await statusProps().onRecover?.('source'); });
     expect(scratch.recover).toHaveBeenCalledWith('source');

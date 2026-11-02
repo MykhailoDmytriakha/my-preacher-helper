@@ -47,6 +47,10 @@ export function useGroupPageEditor(groupId: string): GroupPageEditor {
     feedback: <DataSyncStatus subject={manual ? meeting.form.recoveryIdentity : data.document.recoveryIdentity} status={status} error={error} errorWords={meeting.form.error ? meeting.form.errorWords : data.document.errorWords}
       onKeepLocal={manual ? meeting.form.keepLocal : data.keepLocal} onAcceptRemote={manual ? meeting.form.acceptRemote : data.acceptRemote} onRetry={manual ? meeting.form.retry : data.refresh}
       recoveryChoices={choices} onRecover={id => id.startsWith('meeting:') ? meeting.recovery.recover(id.slice(8)) : recovery.recover(id.slice(9))}
-      recoveryLoading={recovery.loading || meeting.recovery.loading} recoveryError={recovery.error || meeting.recovery.error} />,
+      recoveryLoading={recovery.loading || meeting.recovery.loading} recoveryError={recovery.error || meeting.recovery.error}
+      onDiscardRecovery={action => {
+        const selected = choices.find(choice => choice.discard === action);
+        return selected?.id.startsWith('meeting:') ? meeting.recovery.discard(action) : recovery.discard(action);
+      }} />,
   };
 }

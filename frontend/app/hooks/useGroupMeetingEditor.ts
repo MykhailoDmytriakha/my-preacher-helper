@@ -51,10 +51,12 @@ export function useGroupMeetingEditor(groupId: string, stored: GroupMeetingDate[
   const first = meetings(form.data)[0];
   const recovery = useRecoveryDiscovery({ identity: form.recoveryIdentity, enabled: !form.loading,
     version: JSON.stringify([form.active, form.status?.phase]),
-    list: async () => (await form.listRecoverable()).map(({ scopeId, record }) => {
+    list: async () => (await form.listRecoverable()).map(source => {
+      const { scopeId, record } = source;
       const first = (record.stage[0].value as unknown as GroupMeetingDate[] | undefined)?.[0];
       return { id: scopeId, title: String(record.baseline.value?.title ?? groupId),
-        preview: [first?.date, first?.location, first?.audience].filter(Boolean).join(' / ') };
+        preview: [first?.date, first?.location, first?.audience].filter(Boolean).join(' / '),
+        discard: () => form.discardRecovery(source) };
     }), recover: form.recover });
   const field = (key: 'date' | 'location' | 'audience'): Dispatch<SetStateAction<string>> => next => {
     const identity = { id: newClientId(), createdAt: new Date().toISOString() };

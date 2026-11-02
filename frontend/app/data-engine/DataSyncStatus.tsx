@@ -26,6 +26,8 @@ export interface RecoveryChoice {
   id: string;
   title: string;
   preview?: string;
+  /** Closes over the exact listed copy; only its engine owns removal authority. */
+  discard?: () => Promise<void>;
 }
 export interface TextComparison { identity?: string; mine: string; stored: string; title?: string }
 export interface DataSyncStatusProps {
@@ -47,6 +49,7 @@ export interface DataSyncStatusProps {
   /** Drafts found by `useRecoveryDiscovery`, which looks by itself; nothing to ask for. */
   recoveryChoices?: readonly RecoveryChoice[];
   onRecover?: (id: string) => void | Promise<void>;
+  onDiscardRecovery?: (action: () => Promise<void>) => Promise<void>;
   recoveryLoading?: boolean;
   recoveryError?: string | null;
   /** Names what this status is about when it stands apart from its screen (e.g. the settings). */
@@ -72,7 +75,7 @@ function FieldComparison({ comparison }: { comparison: TextComparison }) {
 const GONE = Symbol('gone');
 
 /** Present the engine's decisions; conflict detection and merge policy stay in the engine. */
-export function DataSyncStatus({ subject, status, error, errorWords, onKeepLocal, onAcceptRemote, onRetry, recoveryChoices = [], onRecover, recoveryLoading = false, recoveryError, title, comparison, className = '' }: DataSyncStatusProps) {
+export function DataSyncStatus({ subject, status, error, errorWords, onKeepLocal, onAcceptRemote, onRetry, recoveryChoices = [], onRecover, onDiscardRecovery, recoveryLoading = false, recoveryError, title, comparison, className = '' }: DataSyncStatusProps) {
   const { t } = useTranslation();
   const outlet = useSyncOutlet(subject);
   const sayNotice = useFailureNotice();
@@ -116,6 +119,11 @@ export function DataSyncStatus({ subject, status, error, errorWords, onKeepLocal
   const unconfirmedCopy = useLasting(Boolean(status && status.freshness !== 'server')) && !serverNoticeShown;
   const readTrouble = useLasting(Boolean(status?.readFailed)) && !serverNoticeShown;
   const selected = recoveryChoices.find(choice => choice.id === selectedId);
+  const selectedCopy = useRef(selected);
+  useLayoutEffect(() => {
+    selectedCopy.current = selected;
+    return withdraw;
+  }, [selected, withdraw]);
   const busy = busyFor.has(subject);
   // `error` arrives already in words: the engine hooks translate where they catch
   // (BUG-20261003-engine-error-sentence-on-screen); a failed choice here is said the same way.
@@ -193,7 +201,12 @@ export function DataSyncStatus({ subject, status, error, errorWords, onKeepLocal
       </label>
       {selected?.preview && <p className="max-h-24 overflow-auto whitespace-pre-wrap break-words text-gray-600 dark:text-gray-300">{selected.preview}</p>}
       <p className="text-xs text-gray-500 dark:text-gray-400">{t('dataSync.recoveryHint')}</p>
-      {onRecover && <button type="button" className={buttonClass} disabled={!selected || busy || recoveryLoading} onClick={() => { if (selected) run(() => onRecover(selected.id)); }}>{t('dataSync.recover')}</button>}
+      <div className="flex flex-wrap gap-2">
+        {onRecover && <button type="button" className={buttonClass} disabled={!selected || busy || recoveryLoading} onClick={() => { if (selected) run(() => onRecover(selected.id)); }}>{t('dataSync.recover')}</button>}
+        {selected?.discard && onDiscardRecovery && <button type="button" className={buttonClass} disabled={busy || recoveryLoading}
+          onClick={() => run(() => askBeforeDiscard(true, () => onDiscardRecovery(selected.discard!),
+            () => currentSubject.current === subject && selectedCopy.current === selected))}>{t('dataSync.discardRecovery')}</button>}
+      </div>
     </div>}
   </div>
   {discardDialog}{deleteDialog}

@@ -55,9 +55,10 @@ export function usePreparationField<T>(resource: ResourceRef | null, path: reado
   }, [loading, active, busy, error, readOnly, data, follow, stalePristine]);
   const recovery = useRecoveryDiscovery({ identity: form.recoveryIdentity, enabled: !form.loading && form.active,
     version: String(form.active),
-    list: async () => (await form.listRecoverable()).map(({ scopeId, record }) => ({ id: scopeId,
-      title: String(record.baseline.value?.title ?? resource?.id ?? ''),
-      preview: record.stage[0]?.exists ? codec.describe(codec.read(record.stage[0].value)) : '' })),
+    list: async () => (await form.listRecoverable()).map(source => ({ id: source.scopeId,
+      title: String(source.record.baseline.value?.title ?? resource?.id ?? ''),
+      preview: source.record.stage[0]?.exists ? codec.describe(codec.read(source.record.stage[0].value)) : '',
+      discard: () => form.discardRecovery(source) })),
     recover: form.recover });
   const comparison = form.comparison ? { identity: form.comparison.identity, mine: codec.describe(codec.read(valueAt(form.comparison.mine, path))),
     stored: codec.describe(codec.read(valueAt(form.comparison.stored.value, path))), title: captionKey ? t(captionKey) : undefined } : undefined;

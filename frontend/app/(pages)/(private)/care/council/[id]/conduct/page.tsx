@@ -67,7 +67,7 @@ function EngineCouncilConductPage({ councilId }: { councilId: string }) {
     <DataSyncStatus subject={document.recoveryIdentity} status={document.status} error={document.error} errorWords={document.errorWords} className="mb-4"
       onRetry={() => document.refresh()} onKeepLocal={() => document.keepLocal()} onAcceptRemote={() => document.acceptRemote()}
       recoveryChoices={recovery.choices} onRecover={recovery.recover}
-      recoveryLoading={recovery.loading} recoveryError={recovery.error} />
+      recoveryLoading={recovery.loading} recoveryError={recovery.error} onDiscardRecovery={recovery.discard} />
     <CouncilConductContent councilId={councilId} source={{
       council: document.council, loading: document.loading,
       updateCouncil: (id: string, updater: (current: Council) => Council) => { void document.updateCouncil(id, updater).catch(report); },

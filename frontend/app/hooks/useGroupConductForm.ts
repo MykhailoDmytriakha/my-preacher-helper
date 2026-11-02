@@ -17,13 +17,15 @@ export function useGroupConductForm(groupId: string, available = true) {
   const { loading, begin } = form;
   useEffect(() => { if (available && !loading) void begin().catch(() => undefined); }, [available, loading, begin]);
   const recovery = useRecoveryDiscovery({ identity: form.recoveryIdentity, enabled: !loading, version: String(form.active),
-    list: async () => (await form.listRecoverable()).map(({ scopeId, record }) => ({
-      id: scopeId, title: String(record.baseline.value?.title ?? groupId),
+    list: async () => (await form.listRecoverable()).map(source => {
+      const { scopeId, record } = source;
+      return { id: scopeId, title: String(record.baseline.value?.title ?? groupId),
       preview: ((record.stage[0]?.value ?? []) as unknown as GroupFlowItem[]).map(item => {
         const template = ((record.baseline.value?.templates ?? []) as unknown as GroupBlockTemplate[]).find(entry => entry.id === item.templateId);
         return `${item.instanceTitle || template?.title || groupId}: ${item.durationMin ?? '—'} ${t('groupFlow.minutesShort')}`;
       }).join('\n').slice(0, 500),
-    })), recover: form.recover });
+      discard: () => form.discardRecovery(source),
+    }; }), recover: form.recover });
   const updateDuration = (id: string, durationMin: number | null) => form.update(current => {
     if (!flow(current).some(item => item.id === id)) throw Object.assign(new Error('The meeting block no longer exists'), { code: 'part-gone' });
     return { ...current, flow: flow(current).map(item => item.id === id ? { ...item, durationMin } : item) } as unknown as DocumentData;

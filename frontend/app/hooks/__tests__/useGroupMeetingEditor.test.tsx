@@ -14,9 +14,9 @@ it('flushes the engine-owned stage even before React publishes its dirty state',
     active: true, loading: false, dirty: false, data: { meetingDates: [{ ...meeting }] },
     begin: jest.fn(), cancel: jest.fn(), save,
     update: jest.fn(async updater => { stage = updater(stage) as typeof stage; }),
-    listRecoverable: jest.fn(async () => []), recover: jest.fn(), recoveryIdentity: {}, status: null,
+    listRecoverable: jest.fn(async () => []), recover: jest.fn(), discardRecovery: jest.fn(async () => undefined), recoveryIdentity: {}, status: null,
   } as unknown as ReturnType<typeof useDataForm>);
-  jest.mocked(useRecoveryDiscovery).mockReturnValue({ choices: [], loading: false, error: null, refresh: jest.fn(), recover: jest.fn() });
+  jest.mocked(useRecoveryDiscovery).mockReturnValue({ choices: [], loading: false, error: null, refresh: jest.fn(), recover: jest.fn(), discard: jest.fn(async (action: () => Promise<void>) => action()) });
   const hook = renderHook(() => useGroupMeetingEditor('group', [meeting], false));
   act(() => {
     hook.result.current.field('location')('Hall from the last browser event');

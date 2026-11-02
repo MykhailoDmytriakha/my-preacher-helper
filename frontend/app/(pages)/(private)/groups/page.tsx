@@ -42,9 +42,10 @@ function EngineGroupsPage() {
     version: String(Boolean(creation)),
     list: async () => (await browser!.engine.listRecoveryChoices()).filter(entry =>
       entry.record.checkpoint.confirmed.resource.collection === 'groups' && entry.record.checkpoint.confirmed.value === null && entry.record.checkpoint.draft !== null)
-      .map(entry => ({ id: entry.id, documentId: entry.record.checkpoint.confirmed.resource.id,
-        title: String(entry.record.checkpoint.draft?.title || entry.record.checkpoint.confirmed.resource.id),
-        preview: String(entry.record.checkpoint.draft?.description ?? '') })),
+      .map(source => ({ id: source.id, documentId: source.record.checkpoint.confirmed.resource.id,
+        title: String(source.record.checkpoint.draft?.title || source.record.checkpoint.confirmed.resource.id),
+        preview: String(source.record.checkpoint.draft?.description ?? ''),
+        discard: () => browser!.engine.discardRecovery(source) })),
     recover: async id => {
       const records = await browser!.engine.listRecoveryChoices();
       const selected = records.find(entry => entry.id === id && entry.record.checkpoint.confirmed.resource.collection === 'groups');
@@ -54,7 +55,8 @@ function EngineGroupsPage() {
   return <>
     <GroupsView source={source} onCreate={() => setCreation({ id: newClientId() })} onDelete={group => setDeleting(group.id)}
       feedback={<><DataCollectionStatus state={source.state} /><DataSyncStatus subject={owner} status={null} recoveryChoices={recovery.choices}
-        onRecover={recovery.recover} recoveryLoading={recovery.loading} recoveryError={recovery.error} /></>} />
+        onRecover={recovery.recover} recoveryLoading={recovery.loading} recoveryError={recovery.error}
+        onDiscardRecovery={recovery.discard} /></>} />
     {creation && <EngineCreateGroupModal key={`${owner}:${creation.id}`} groupId={creation.id} recoveryId={creation.recoveryId}
       onClose={() => setCreation(null)} onQueued={id => { setCreation(null); router.push(`/groups/${id}`); }} />}
     {deleting && <EngineDeleteGroupModal key={`${owner}:${deleting}`} groupId={deleting} onClose={() => setDeleting(null)} />}

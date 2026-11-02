@@ -51,7 +51,7 @@ function EngineConductPage({ groupId }: { groupId: string }) {
     {form.active && <DataSyncStatus subject={form.recoveryIdentity} status={form.status} error={form.error} errorWords={form.errorWords} onRetry={form.retry}
       onKeepLocal={form.keepLocal} onAcceptRemote={form.acceptRemote}
       recoveryChoices={recovery.choices} onRecover={recovery.recover}
-      recoveryLoading={recovery.loading} recoveryError={recovery.error} />}
+      recoveryLoading={recovery.loading} recoveryError={recovery.error} onDiscardRecovery={recovery.discard} />}
   </div>;
   return <ConductView groupId={groupId} group={document.group ? { ...document.group, flow } : null}
     presence={document.document.presence} onRetry={document.refresh}

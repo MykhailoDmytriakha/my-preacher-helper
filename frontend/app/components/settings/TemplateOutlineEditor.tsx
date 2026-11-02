@@ -40,14 +40,16 @@ const TemplateOutlineEditor = forwardRef<TemplateOutlineEditorHandle, { template
     const recovery = useRecoveryDiscovery({ identity: document.recoveryIdentity,
       enabled: !document.loading && document.status !== null,
       version: JSON.stringify([document.status?.phase, document.confirmed?.metadata?.revision]),
-      list: async () => (await document.listRecoverable()).map(({ id, record }) => ({ id,
-        title: String(record.checkpoint.draft?.name ?? record.checkpoint.confirmed.value?.name ?? t('settings.planTemplates')) })),
+      list: async () => (await document.listRecoverable()).map(source => ({ id: source.id,
+        title: String(source.record.checkpoint.draft?.name ?? source.record.checkpoint.confirmed.value?.name ?? t('settings.planTemplates')),
+        discard: () => document.discardRecovery(source) })),
       recover: document.recover });
     return <fieldset disabled={disabled} className="min-w-0 space-y-3">
       <DataSyncStatus subject={document.recoveryIdentity} status={document.status} error={document.error} errorWords={document.errorWords}
         onRetry={document.retry} onKeepLocal={async () => { await document.keepLocal(); await document.save(); }}
         onAcceptRemote={document.acceptRemote} recoveryChoices={recovery.choices}
-        recoveryLoading={recovery.loading} recoveryError={recovery.error} onRecover={recovery.recover} />
+        recoveryLoading={recovery.loading} recoveryError={recovery.error} onRecover={recovery.recover}
+        onDiscardRecovery={recovery.discard} />
       {document.loading && !document.data ? <p className="text-sm text-gray-400">{t('settings.loading')}</p>
         : document.data && <OutlineBoard value={document.data.structure as unknown as SermonOutline}
           isReadOnly={disabled || document.readOnly} className={`${outlinePointGridClass} gap-3`}

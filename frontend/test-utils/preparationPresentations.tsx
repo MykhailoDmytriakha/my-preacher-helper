@@ -81,7 +81,7 @@ export function PreparationBindingFixture({
     retry: async () => undefined,
     recovery: {
       choices: [], loading: false, error: null,
-      recover: async () => undefined, refresh: async () => undefined,
+      recover: async () => undefined, refresh: async () => undefined, discard: async (action: () => Promise<void>) => action(),
     },
   };
 

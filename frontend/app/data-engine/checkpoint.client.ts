@@ -2,7 +2,9 @@
 
 import { writeCheckpointRecord, checkpointKey } from './checkpointStorage.client';
 import { recoveryCheckpointId, selectRecoverableCheckpoints, validateRecoveryRecord } from './recovery.client';
+import { discardRecoveryRecord } from './recoveryDiscard.client';
 import { pinRecoveryVersion } from './recoverySource.client';
+import { checkpointCommitReferences, commitProjectionKey } from './retention.client';
 import { createEngineStorageTransaction, engineOwnerRange } from './storage.client';
 
 import type { CheckpointRecoveryStore, EditorRecord } from './controller';
@@ -24,6 +26,16 @@ export function createIndexedDbCheckpoints(): CheckpointRecoveryStore {
         const records = (values as EditorRecord[]).map(record => [recoveryCheckpointId(owner, record.editorId), record] as const);
         done(selectRecoverableCheckpoints(records, owner, resource));
       });
+    }),
+    discardRecovery: (record, isCurrent) => discardRecoveryRecord(transaction, {
+      owner: record.owner, key: checkpointKey(record.owner, record.editorId), expected: record,
+      validate: value => validateRecoveryRecord(value, record.owner, record.editorId, record.checkpoint.confirmed.resource),
+      version: value => value.recoveryVersion, references: checkpointCommitReferences, scopeId: record.editorId,
+      canRemove: value => value.prepared === null && value.unfinalized.length === 0, isCurrent,
+      remove: (store, current) => {
+        store.delete(checkpointKey(current.owner, current.editorId));
+        for (const id of current.completedCommits ?? []) store.delete(commitProjectionKey(current.owner, id));
+      },
     }),
     create: record => write(record, true),
     pinRecovery: record => pinRecoveryVersion(transaction, checkpointKey(record.owner, record.editorId), record,

@@ -55,24 +55,26 @@ function SeriesWorkspace({ seriesId }: { seriesId: string }) {
   const metadata = useDataForm({ collection: 'series', id: seriesId }, 'series-metadata', SERIES_METADATA_SELECTION);
   const metadataRecovery = useRecoveryDiscovery({ identity: metadata.recoveryIdentity, enabled: !metadata.loading,
     version: JSON.stringify([editing, metadata.active, metadata.dirty]),
-    list: async () => (await metadata.listRecoverable()).map(({ scopeId, record }) => ({ id: scopeId,
-      title: String(record.baseline.value?.title ?? t(SERIES_LABEL)),
-      preview: record.stage.filter(field => field.exists && typeof field.value === 'string').map(field => String(field.value)).join('\n').slice(0, 500) })),
+    list: async () => (await metadata.listRecoverable()).map(source => ({ id: source.scopeId,
+      title: String(source.record.baseline.value?.title ?? t(SERIES_LABEL)),
+      preview: source.record.stage.filter(field => field.exists && typeof field.value === 'string').map(field => String(field.value)).join('\n').slice(0, 500),
+      discard: () => metadata.discardRecovery(source) })),
     recover: async id => { await metadata.recover(id); setEditing(true); } });
   const recovery = useRecoveryDiscovery({ identity: document.recoveryIdentity,
     enabled: !document.loading && document.status !== null,
     version: JSON.stringify([document.status?.phase, document.confirmed?.metadata?.revision, editing]),
-    list: async () => (await document.listRecoverable()).map(({ id, record }) => ({ id,
-      title: String(record.checkpoint.draft?.title ?? record.checkpoint.confirmed.value?.title ?? t(SERIES_LABEL)) })),
+    list: async () => (await document.listRecoverable()).map(source => ({ id: source.id,
+      title: String(source.record.checkpoint.draft?.title ?? source.record.checkpoint.confirmed.value?.title ?? t(SERIES_LABEL)),
+      discard: () => document.discardRecovery(source) })),
     recover: document.recover });
   const sync = <DataSyncStatus subject={document.recoveryIdentity} status={document.status} error={document.error} errorWords={document.errorWords} onRetry={document.retry}
     onKeepLocal={() => saveKeptSeries(document)} onAcceptRemote={document.acceptRemote}
     recoveryChoices={recovery.choices} recoveryLoading={recovery.loading} recoveryError={recovery.error}
-    onRecover={recovery.recover} />;
+    onRecover={recovery.recover} onDiscardRecovery={recovery.discard} />;
   const retainedMetadata = unavailable && (metadata.active || metadata.dirty || metadataRecovery.choices.length > 0 || metadataRecovery.error) && <>
     <DataSyncStatus subject={metadata.recoveryIdentity} status={metadata.status} error={metadata.error} errorWords={metadata.errorWords}
       recoveryChoices={metadataRecovery.choices} recoveryLoading={metadataRecovery.loading} recoveryError={metadataRecovery.error}
-      onRecover={metadataRecovery.recover} onRetry={metadata.retry} />
+      onRecover={metadataRecovery.recover} onRetry={metadata.retry} onDiscardRecovery={metadataRecovery.discard} />
     <RetainedSeriesMetadata value={metadata.data} />
   </>;
   if (!document.data) return <RecordUnavailable presence={document.presence} checking={document.loading} pageLoading={document.loading && !retainedMetadata}
@@ -95,7 +97,7 @@ function SeriesWorkspace({ seriesId }: { seriesId: string }) {
         <h2 className="font-semibold">{t('workspaces.series.metadataRecovery')}</h2>
         <DataSyncStatus subject={metadata.recoveryIdentity} status={metadata.dirty ? metadata.status : null} error={metadata.error} errorWords={metadata.errorWords}
           recoveryChoices={metadataRecovery.choices} recoveryLoading={metadataRecovery.loading} recoveryError={metadataRecovery.error}
-          onRecover={metadataRecovery.recover} />
+          onRecover={metadataRecovery.recover} onDiscardRecovery={metadataRecovery.discard} />
         {metadata.dirty && <button type="button" className="underline" onClick={() => setEditing(true)}>{t('workspaces.series.editSeries')}</button>}
       </section>}
       <DataCollectionStatus state={collection.state} />

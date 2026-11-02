@@ -66,3 +66,37 @@ it('waits for the document and rescans after an explicit recovery', async () => 
   hook.unmount();
   await expect(hook.result.current.recover('draft')).rejects.toThrow('changed');
 });
+
+it('refreshes after an explicit exact-copy discard without restoring it', async () => {
+  const identity = {}, list = jest.fn().mockResolvedValue(['saved copy']), action = jest.fn().mockResolvedValue(undefined);
+  const recover = jest.fn();
+  const hook = renderHook(() => useRecoveryDiscovery({ identity, enabled: true, version: '1', list, recover }));
+  await waitFor(() => expect(hook.result.current.choices).toEqual(['saved copy']));
+  list.mockResolvedValue([]);
+  await act(async () => { await hook.result.current.discard(action); });
+  expect(action).toHaveBeenCalledTimes(1);
+  expect(recover).not.toHaveBeenCalled();
+  expect(hook.result.current.choices).toEqual([]);
+});
+
+it('refuses a stale discard wrapper after the recovery subject changes', async () => {
+  const first = {}, second = {}, action = jest.fn(), list = jest.fn().mockResolvedValue(['copy']);
+  const hook = renderHook(({ identity }) => useRecoveryDiscovery({ identity, enabled: true, version: '1', list, recover: jest.fn() }),
+    { initialProps: { identity: first } });
+  await waitFor(() => expect(hook.result.current.choices).toEqual(['copy']));
+  const stale = hook.result.current.discard;
+  hook.rerender({ identity: second });
+  await expect(stale(action)).rejects.toThrow('changed');
+  expect(action).not.toHaveBeenCalled();
+});
+
+it('keeps the recovery copy when its exact removal fails', async () => {
+  const identity = {}, list = jest.fn().mockResolvedValue(['copy']);
+  const hook = renderHook(() => useRecoveryDiscovery({ identity, enabled: true, version: '1', list, recover: jest.fn() }));
+  await waitFor(() => expect(hook.result.current.choices).toEqual(['copy']));
+  await act(async () => {
+    await expect(hook.result.current.discard(async () => { throw new Error('Selected copy changed'); })).rejects.toThrow('changed');
+  });
+  expect(list).toHaveBeenCalledTimes(1);
+  expect(hook.result.current.choices).toEqual(['copy']);
+});

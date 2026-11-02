@@ -25,9 +25,10 @@ export function EngineEditSermonModal({ sermonId, onClose }: { sermonId: string;
   const { loading, begin } = form;
   useEffect(() => { if (!loading) void begin().catch(() => undefined); }, [loading, begin]);
   const recovery = useRecoveryDiscovery({ identity: form.recoveryIdentity, enabled: !loading, version: String(form.active),
-    list: async () => (await form.listRecoverable()).map(({ scopeId, record }) => ({ id: scopeId,
-      title: String(record.baseline.value?.title ?? sermonId),
-      preview: record.stage.filter(field => field.exists && typeof field.value === 'string').map(field => String(field.value)).join('\n').slice(0, 500) })),
+    list: async () => (await form.listRecoverable()).map(source => ({ id: source.scopeId,
+      title: String(source.record.baseline.value?.title ?? sermonId),
+      preview: source.record.stage.filter(field => field.exists && typeof field.value === 'string').map(field => String(field.value)).join('\n').slice(0, 500),
+      discard: () => form.discardRecovery(source) })),
     recover: form.recover });
   const initial = form.initialData as unknown as Sermon | null, value = form.data as unknown as Sermon | null;
   const plannedId = sermonMetadataDateId(initial, value, newDate.id, new Date(newDate.createdAt));
@@ -62,7 +63,7 @@ export function EngineEditSermonModal({ sermonId, onClose }: { sermonId: string;
       <DataSyncStatus subject={form.recoveryIdentity} status={form.status} error={form.error} errorWords={form.errorWords} onRetry={form.retry}
         onKeepLocal={form.keepLocal} onAcceptRemote={form.acceptRemote}
         recoveryChoices={recovery.choices} recoveryLoading={recovery.loading} recoveryError={recovery.error}
-        onRecover={recovery.recover} />
+        onRecover={recovery.recover} onDiscardRecovery={recovery.discard} />
       <DataMembershipStatus action={{ ...series.action, retry: series.retry }} />
     </div>} />;
 }

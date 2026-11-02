@@ -20,8 +20,8 @@ import { describeActionDelivery, describeMembershipDelivery, type MembershipDeli
 import { CREATION_SCOPE_PREFIX, MembershipScope, type MembershipScopeRecord } from './membershipScope';
 import { getResourcePolicy, equalValues, isValidIdentifier } from './protocol';
 import { documentRecordPresence, type RecordPresence } from './recordPresence';
-import { forkCheckpoint, isRecoverableCheckpoint, reconcileRecoveryRecord, recoveryCheckpointId } from './recovery.client';
-import { RecoveryPresence, recoverySources, type RecoveryPresenceLease, type RecoveryPresencePort } from './recoveryPresence';
+import { forkCheckpoint, isRecoverableCheckpoint, reconcileRecoveryRecord, recoveryCheckpointId, validateRecoveryRecord } from './recovery.client';
+import { RecoveryPresence, recoverySources, type RecoveryPresenceKind, type RecoveryPresenceLease, type RecoveryPresencePort } from './recoveryPresence';
 import { DataSession } from './session';
 import { canReplaceSnapshot, coversCommittedEffect, storesNewCopy } from './snapshotFreshness';
 import { snapshotBelongsToOwner } from './snapshotIdentity';
@@ -81,6 +81,7 @@ export interface ManagedManualForm {
   resolve(choice: 'local' | 'remote', options?: { discardStage?: boolean; expectedComparison?: ManualComparison; updater?: (current: DocumentData) => DocumentData }): Promise<void>;
   listRecoverable(): Promise<StoredManualScope[]>;
   recover(sourceScopeId: string): Promise<void>;
+  discardRecovery(source: StoredManualScope): Promise<void>;
 }
 
 export interface ManagedEditor {
@@ -165,6 +166,8 @@ const cacheKey = (owner: string, resource: ResourceRef) => JSON.stringify([owner
 const COUNCIL_CARRY = 'council-carry';
 const ANALYSIS_RESHAPE = 'analysis-reshape';
 const ENGINE_DISPOSED = 'DataEngine has been disposed';
+const RECOVERY_REMOVAL_UNAVAILABLE = 'Recovery removal is unavailable';
+const DRAFT_OPEN = 'draft-open';
 const initialObservation = (): Observation => ({ snapshot: null, source: null, readiness: 'unknown', checking: false, error: false });
 const analysisCopyNeedsReview = (checkpoint: SessionCheckpoint, expected: readonly DocumentData[], allowEmpty: boolean): boolean =>
   checkpoint.conflicts.length > 0 || (!(allowEmpty && checkpoint.draft === null)
@@ -569,6 +572,16 @@ export class DataEngine {
     return this.recoveryChoices(owner, generation, 'membership', records, record => record.scopeId);
   }
 
+  /** Unsent membership drafts use the same exact-copy boundary as other recovery lists. */
+  async discardMembershipRecovery(source: MembershipScopeRecord): Promise<void> {
+    const owner = this.requireOwner(), generation = this.generation;
+    if (source.owner !== owner) throw new Error('Membership recovery owner changed');
+    await this.requireClosedRecovery(owner, generation, 'membership', source.scopeId);
+    if (!this.options.membershipScopes?.discardRecovery) throw new Error(RECOVERY_REMOVAL_UNAVAILABLE);
+    await this.options.membershipScopes.discardRecovery(copy(source), () => this.current(owner, generation));
+    this.assertCurrent(owner, generation);
+  }
+
   /** An explicit discard is allowed only for a proven failed complete action. */
   async discardMembership(scopeId: string): Promise<void> {
     const owner = this.requireOwner(), generation = this.generation;
@@ -835,7 +848,7 @@ export class DataEngine {
         const answer = savedDocumentAnswer(owner, reconciled.checkpoint.confirmed.resource,
           pendingIds, requests, this.pending);
         const actionResolutionRequired = requiresWholeActionResolution(owner, record.editorId, pendingIds, requests);
-        return { id, record: reconciled, ...(answer ? { answer } : {}), ...(actionResolutionRequired ? { actionResolutionRequired: true } : {}) };
+        return { id, record: reconciled, ...(!record.recoveryVersion && !equalValues(record, reconciled) ? { discardRecord: copy(record) } : {}), ...(answer ? { answer } : {}), ...(actionResolutionRequired ? { actionResolutionRequired: true } : {}) };
       })
       .filter(({ record }) => isRecoverableCheckpoint(record));
   }
@@ -847,16 +860,37 @@ export class DataEngine {
     return this.recoveryChoices(owner, generation, 'checkpoint', records, record => record.id);
   }
 
+  /** Explicit removal owns only the shown persisted version, with no queue cancellation. */
+  async discardRecovery(source: RecoveryCheckpoint): Promise<void> {
+    const owner = this.requireOwner(), generation = this.generation;
+    const record = validateRecoveryRecord(source.discardRecord ?? source.record, owner, source.record.editorId, source.record.checkpoint.confirmed.resource);
+    if (source.id !== recoveryCheckpointId(owner, record.editorId)) throw new Error('Recovery removal identity mismatch');
+    this.validateResource(record.checkpoint.confirmed.resource, owner);
+    await this.requireClosedRecovery(owner, generation, 'checkpoint', source.id);
+    const store = this.recoveryStore();
+    if (!store.discardRecovery) throw new Error(RECOVERY_REMOVAL_UNAVAILABLE);
+    await store.discardRecovery(record, () => this.current(owner, generation));
+    this.assertCurrent(owner, generation);
+  }
+
+  private async requireClosedRecovery(owner: string, generation: number,
+    kind: RecoveryPresenceKind, id: string): Promise<void> {
+    const held = await this.recoveryPresence.held(owner, kind, id);
+    this.assertCurrent(owner, generation);
+    if (held !== false) throw Object.assign(new Error(held ? 'This draft is still open' : 'Could not verify that this draft is closed'),
+      { code: held ? DRAFT_OPEN : 'draft-presence-unknown' });
+  }
+
   /** No browser adapter preserves the original admission path, including synchronous cancellation. */
-  private recoveryAvailability(owner: string, kind: import('./recoveryPresence').RecoveryPresenceKind, id: string, cancelled?: Promise<never> | null): Promise<void> | undefined {
+  private recoveryAvailability(owner: string, kind: RecoveryPresenceKind, id: string, cancelled?: Promise<never> | null): Promise<void> | undefined {
     if (!this.options.recoveryPresence) return;
     const checking = this.recoveryPresence.held(owner, kind, id);
     return (cancelled ? Promise.race([checking, cancelled]) : checking).then(held => {
-      if (held === true) throw Object.assign(new Error('This draft is still open in another tab'), { code: 'draft-open' });
+      if (held === true) throw Object.assign(new Error('This draft is still open in another tab'), { code: DRAFT_OPEN });
     });
   }
 
-  private async recoveryChoices<T>(owner: string, generation: number, kind: import('./recoveryPresence').RecoveryPresenceKind, records: T[], identity: (record: T) => string): Promise<T[]> {
+  private async recoveryChoices<T>(owner: string, generation: number, kind: RecoveryPresenceKind, records: T[], identity: (record: T) => string): Promise<T[]> {
     this.assertCurrent(owner, generation);
     const held = await Promise.all(records.map(record => this.recoveryPresence.held(owner, kind, identity(record))));
     this.assertCurrent(owner, generation);
@@ -1658,8 +1692,12 @@ export class DataEngine {
         const source = sourceScopeId ? await store.read(owner, sourceScopeId) : undefined; active();
         if (sourceScopeId && !source?.record) throw Object.assign(new Error('Manual recovery record no longer exists'), { code: 'draft-gone' });
         if (source?.record && ((recovery === 'same-slot' && source.slot !== slot) || !sameResource(source.record.resource, resource) || !equalValues(source.record.selection, selection))) throw new Error('Manual recovery selection mismatch');
-        const targetId = source ? JSON.stringify([parentEditorId, 'manual', slot, this.options.operationId()]) : state.scopeId;
+        let targetId = source ? JSON.stringify([parentEditorId, 'manual', slot, this.options.operationId()]) : state.scopeId;
         let existing = source ?? await store.read(owner, targetId); active();
+        if (!source && existing && !existing.record && existing.discarded) {
+          targetId = JSON.stringify([parentEditorId, 'manual', slot, this.options.operationId()]);
+          existing = undefined;
+        }
         if (existing?.record) existing = { ...existing, record: reconcileManualCaptures(existing.record, records) };
         if (existing && !source && existing.parentEditorId !== parentEditorId) throw new Error('Manual form storage identity mismatch');
         const sourceVersion = source?.record && store.pinRecovery ? await store.pinRecovery(source) : null; active();
@@ -1843,6 +1881,16 @@ export class DataEngine {
           && (!equalValues(value.record.stage, value.record.savedSelection) || Boolean(value.record.predecessor && !settled.has(value.record.predecessor.id))));
         const choices = await this.recoveryChoices(owner, generation, 'manual', candidates, value => value.scopeId);
         active(); return choices;
+      },
+      discardRecovery: async source => {
+        active();
+        if (source.owner !== owner || !sameResource(source.record.resource, resource)
+          || !equalValues(source.record.selection, selection) || (recovery === 'same-slot' && source.slot !== slot)) throw new Error('Manual recovery selection changed');
+        await this.requireClosedRecovery(owner, generation, 'manual', source.scopeId); active();
+        if (!store.discardRecovery) throw new Error(RECOVERY_REMOVAL_UNAVAILABLE);
+        await store.discardRecovery(copy(source), () => this.current(owner, generation)
+          && !parent.closed && this.manualForms.get(registryKey) === state);
+        active();
       },
       recover: sourceScopeId => start(sourceScopeId),
     };

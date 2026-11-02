@@ -87,11 +87,13 @@ describe('useCouncilDataDocument', () => {
         confirmed: { value: { title: 'Council', topics: [] } },
       } } },
     ]);
-    const recover = jest.fn().mockResolvedValue(undefined);
-    const { result } = setup(stored(), { listRecoverable, recover });
+    const recover = jest.fn().mockResolvedValue(undefined), discardRecovery = jest.fn().mockResolvedValue(undefined);
+    const { result } = setup(stored(), { listRecoverable, recover, discardRecovery });
 
     const choices = await result.current.listRecoverable();
-    expect(choices).toEqual([{ id: 'left-behind', title: 'Council', preview: 'Section nobody saved' }]);
+    expect(choices).toEqual([{ id: 'left-behind', title: 'Council', preview: 'Section nobody saved', discard: expect.any(Function) }]);
+    await act(async () => { await choices[0].discard(); });
+    expect(discardRecovery).toHaveBeenCalledWith((await listRecoverable())[0]);
 
     await act(async () => { await result.current.recover('left-behind'); });
     expect(recover).toHaveBeenCalledWith('left-behind');

@@ -37,7 +37,7 @@ export function PreparationFieldStatus<T>({ binding }: { binding: PreparationFie
     <SyncOutlet subject={binding.decision?.subject} active={Boolean(binding.decision)} />
     <DataSyncStatus subject={binding.subject} status={null} error={binding.error} onRetry={binding.retry}
       recoveryChoices={binding.recovery.choices} recoveryLoading={binding.recovery.loading}
-      recoveryError={binding.recovery.error} onRecover={binding.recovery.recover} />
+      recoveryError={binding.recovery.error} onRecover={binding.recovery.recover} onDiscardRecovery={binding.recovery.discard} />
   </>;
 }
 

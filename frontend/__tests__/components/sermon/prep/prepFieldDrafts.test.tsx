@@ -46,7 +46,7 @@ function PlanPresentationFixture({ items, children }: { items: Item[]; children(
   const binding: PreparationPlanBinding = {
     subject: 'plan-fixture', value, ready: true, active: true, busy: false, dirty: JSON.stringify(value) !== JSON.stringify(confirmed), error: null,
     begin: async () => undefined, update: async next => setValue(next), save: async () => setConfirmed(value), cancel: async () => setValue(confirmed),
-    retry: async () => undefined, recovery: { choices: [], loading: false, error: null, recover: async () => undefined, refresh: async () => undefined },
+    retry: async () => undefined, recovery: { choices: [], loading: false, error: null, recover: async () => undefined, refresh: async () => undefined, discard: async (action: () => Promise<void>) => action() },
     edit: async updater => setValue(current => updater(current)),
   };
   return <>{children(binding)}</>;

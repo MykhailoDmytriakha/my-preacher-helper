@@ -50,9 +50,10 @@ export function EnginePreachDateModal({ sermonId, action, onClose }: {
   const valid = removal || Boolean(row && toDateOnlyKey(row.date) && row.church.name.trim());
   const readOnly = loading || !form.active || form.busy || form.status?.phase === 'deleted';
   const recovery = useRecoveryDiscovery({ identity: form.recoveryIdentity, enabled: !loading, version: String(form.active),
-    list: async () => (await form.listRecoverable()).map(({ scopeId, record }) => ({ id: scopeId,
-      title: String(record.baseline.value?.title ?? sermonId), preview: ((record.stage[0]?.value ?? []) as unknown as PreachDate[])
-        .map(date => [date.date, date.church.name, date.audience, date.notes].filter(Boolean).join(' · ')).join('\n').slice(0, 500) })), recover: form.recover });
+    list: async () => (await form.listRecoverable()).map(source => ({ id: source.scopeId,
+      title: String(source.record.baseline.value?.title ?? sermonId), preview: ((source.record.stage[0]?.value ?? []) as unknown as PreachDate[])
+        .map(date => [date.date, date.church.name, date.audience, date.notes].filter(Boolean).join(' · ')).join('\n').slice(0, 500),
+      discard: () => form.discardRecovery(source) })), recover: form.recover });
   const save = async () => {
     if (readOnly || !valid || !form.dirty || !form.durable || !form.status?.canSave) return;
     try { await form.save(); onClose(); } catch { /* The shared form retains the draft and reports delivery. */ }
@@ -66,7 +67,7 @@ export function EnginePreachDateModal({ sermonId, action, onClose }: {
     <DataSyncStatus subject={form.recoveryIdentity} status={form.status} error={form.error} errorWords={form.errorWords} onRetry={form.retry}
       onKeepLocal={valid ? form.keepLocal : undefined} onAcceptRemote={form.acceptRemote}
       recoveryChoices={recovery.choices} recoveryLoading={recovery.loading} recoveryError={recovery.error}
-      onRecover={recovery.recover} />
+      onRecover={recovery.recover} onDiscardRecovery={recovery.discard} />
     {removal ? <p>{action.kind === 'delete' ? initial?.preachDates?.find(date => date.id === target)?.date : value?.title}</p>
       : row && <PreachDateFields value={{ date: row.date ?? '', church: row.church, audience: row.audience ?? '', notes: row.notes ?? '' }}
         disabled={readOnly} onChange={patch => { void form.update(current => patchPreachDate(current, target, patch)).catch(() => undefined); }} />}

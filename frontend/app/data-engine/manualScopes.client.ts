@@ -3,6 +3,7 @@
 import { retireManualRecoverySources } from './manualRecovery.client';
 import { ManualScope, type ManualScopeRecord } from './manualScope';
 import { equalValues } from './protocol';
+import { changedRecoveryChoice, discardRecoveryRecord } from './recoveryDiscard.client';
 import { pinRecoveryVersion, versionRecoveryRecord } from './recoverySource.client';
 import { collectCommitRows } from './retention.client';
 import { createEngineStorageTransaction, engineOwnerRange, validateCommitReferences } from './storage.client';
@@ -20,6 +21,8 @@ export interface StoredManualScope extends VersionedRecovery {
 }
 export interface ManualScopeWatermark extends Omit<StoredManualScope, 'record'> {
   record: null;
+  /** An explicit removal cannot be reopened by a delayed writer of this identity. */
+  discarded?: true;
   watermark: Pick<ManualScopeRecord, 'generation' | 'selection' | 'resource'>;
 }
 export type ManualStorageRecord = StoredManualScope | ManualScopeWatermark;
@@ -29,6 +32,7 @@ export interface ManualScopeStore {
   create(value: StoredManualScope): Promise<void>;
   put(value: StoredManualScope): Promise<void>;
   compact(owner: string, scopeId: string): Promise<void>;
+  discardRecovery?(value: StoredManualScope, isCurrent: () => boolean): Promise<void>;
   pinRecovery?(value: StoredManualScope): Promise<string | null>;
 }
 const copy = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
@@ -39,6 +43,7 @@ function validate(value: ManualStorageRecord, owner = value.owner, scopeId = val
     if (value.owner !== owner || value.scopeId !== scopeId || !value.parentEditorId || !value.slot || value.commitReferences.length
       || !Number.isSafeInteger(value.watermark?.generation) || value.watermark.generation < 0
       || !value.watermark.resource?.collection || !value.watermark.resource.id || !Array.isArray(value.watermark.selection)) throw new Error('Invalid manual scope watermark');
+    if (value.discarded !== undefined && value.discarded !== true) throw new Error('Invalid discarded manual watermark');
     return copy(value);
   }
   if (value.owner !== owner || value.scopeId !== scopeId || value.record.owner !== owner || value.record.scopeId !== scopeId
@@ -61,6 +66,7 @@ export function createIndexedDbManualScopes(): ManualScopeStore {
     return transaction<void>('readwrite', (store, read, done) => {
       read(store.get(key(frozen.owner, frozen.scopeId)), (existing: ManualStorageRecord | undefined) => {
         if (create ? Boolean(existing) : !existing) throw new Error(create ? 'Manual scope already exists' : 'Manual scope no longer exists');
+        if (existing && !existing.record && existing.discarded) throw changedRecoveryChoice();
         if (existing && (existing.parentEditorId !== frozen.parentEditorId || existing.slot !== frozen.slot
           || JSON.stringify(existing.record ? existing.record.selection : existing.watermark.selection) !== JSON.stringify(frozen.record.selection))) throw new Error('Manual storage identity changed');
         validateCommitReferences(store, read, frozen.owner, frozen.commitReferences, () => {
@@ -83,6 +89,23 @@ export function createIndexedDbManualScopes(): ManualScopeStore {
         const valid = values.map(value => validate(value, owner)).filter((value): value is StoredManualScope => Boolean(value.record));
         done(valid.filter(value => !resource || value.record.resource.collection === resource.collection && value.record.resource.id === resource.id));
       });
+    }),
+    discardRecovery: (value, isCurrent) => discardRecoveryRecord<StoredManualScope>(transaction, {
+      owner: value.owner, key: key(value.owner, value.scopeId), expected: value,
+      validate: candidate => {
+        const current = validate(candidate as ManualStorageRecord, value.owner, value.scopeId);
+        if (!current.record || current.parentEditorId !== value.parentEditorId || current.slot !== value.slot
+          || !equalValues(current.record.resource, value.record.resource)
+          || !equalValues(current.record.selection, value.record.selection)) throw changedRecoveryChoice();
+        return current as StoredManualScope;
+      }, version: current => current.recoveryVersion, references: current => current.commitReferences,
+      scopeId: value.scopeId, canRemove: () => true, isCurrent,
+      remove: (store, current) => {
+        const watermark: ManualScopeWatermark = { owner: current.owner, scopeId: current.scopeId,
+          parentEditorId: current.parentEditorId, slot: current.slot, record: null, discarded: true, commitReferences: [],
+          watermark: { generation: current.record.generation, selection: current.record.selection, resource: current.record.resource } };
+        store.put(versionRecoveryRecord(watermark), key(current.owner, current.scopeId));
+      },
     }),
     create: value => write(value, true),
     pinRecovery: value => pinRecoveryVersion(transaction, key(value.owner, value.scopeId), value,

@@ -56,8 +56,9 @@ function EngineSettingsStatus() {
   const recovery = useRecoveryDiscovery({
     identity: document.recoveryIdentity, enabled: !document.loading && document.status !== null,
     version: JSON.stringify([document.status?.phase, document.confirmed?.metadata?.revision]),
-    list: async () => (await document.listRecoverable()).map(({ id, record }) => ({
-      id, title, preview: JSON.stringify(record.checkpoint.draft, null, 2),
+    list: async () => (await document.listRecoverable()).map(source => ({
+      id: source.id, title, preview: JSON.stringify(source.record.checkpoint.draft, null, 2),
+      discard: () => document.discardRecovery(source),
     })),
     recover: document.recover,
   });
@@ -67,5 +68,5 @@ function EngineSettingsStatus() {
   return <DataSyncStatus subject={document.recoveryIdentity} title={title} className="my-3" status={document.status} error={document.error} errorWords={document.errorWords}
     onRetry={document.retry} onKeepLocal={document.keepLocal} onAcceptRemote={document.acceptRemote}
     recoveryChoices={recovery.choices} recoveryLoading={recovery.loading} recoveryError={recovery.error}
-    onRecover={recovery.recover} />;
+    onRecover={recovery.recover} onDiscardRecovery={recovery.discard} />;
 }

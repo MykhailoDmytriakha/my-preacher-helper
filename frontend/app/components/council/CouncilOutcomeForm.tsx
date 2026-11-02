@@ -27,10 +27,13 @@ export function CouncilOutcomeForm({ councilId, topicId, onClose }: {
   const initial = topics(form.initialData).find(item => item.id === topicId);
   const recovery = useRecoveryDiscovery({
     identity: form.recoveryIdentity, enabled: !loading, version: String(form.active),
-    list: async () => (await form.listRecoverable()).map(({ scopeId, record }) => {
+    list: async () => (await form.listRecoverable()).map(source => {
+      const { scopeId, record } = source;
       const selected = record.stage[0];
       const saved = topics(record.baseline.value).find(item => item.id === topicId);
-      return { id: scopeId, title: saved?.title ?? t('council.topic.decision'), preview: selected.exists && typeof selected.value === 'string' ? selected.value : '' };
+      return { id: scopeId, title: saved?.title ?? t('council.topic.decision'),
+        preview: selected.exists && typeof selected.value === 'string' ? selected.value : '',
+        discard: () => form.discardRecovery(source) };
     }),
     recover: form.recover,
   });
@@ -52,7 +55,7 @@ export function CouncilOutcomeForm({ councilId, topicId, onClose }: {
     <DataSyncStatus subject={form.recoveryIdentity} status={form.status} error={form.error} errorWords={form.errorWords} onRetry={form.retry}
       onKeepLocal={form.keepLocal} onAcceptRemote={form.acceptRemote}
       recoveryChoices={recovery.choices} recoveryLoading={recovery.loading} recoveryError={recovery.error}
-      onRecover={recovery.recover} />
+      onRecover={recovery.recover} onDiscardRecovery={recovery.discard} />
     {topic && form.active && <CouncilOutcomePanel topic={topic} onWrite={write} />}
     <div className="flex gap-2">
       <button type="button" className="rounded-full bg-indigo-700 px-4 py-2 text-sm font-bold text-white disabled:opacity-50"

@@ -154,7 +154,7 @@ function EngineCouncilDetailWorkspace({ councilId }: { councilId: string }) {
     <DataSyncStatus subject={document.recoveryIdentity} status={document.status} error={document.error} errorWords={document.errorWords} className="mb-4"
       onRetry={() => document.refresh()} onKeepLocal={() => document.keepLocal()} onAcceptRemote={() => document.acceptRemote()}
       recoveryChoices={recovery.choices} onRecover={recovery.recover}
-      recoveryLoading={recovery.loading} recoveryError={recovery.error} />
+      recoveryLoading={recovery.loading} recoveryError={recovery.error} onDiscardRecovery={recovery.discard} />
     {document.actions?.map(action => <DataMembershipStatus key={action.id} action={{ durable: true, phase: 'submitted',
       error: null, delivery: action.delivery, retry: document.refresh, discard: () => document.discardAction(action.id) }} />)}
     <CouncilDetailContent source={source} engineCouncilId={councilId} />

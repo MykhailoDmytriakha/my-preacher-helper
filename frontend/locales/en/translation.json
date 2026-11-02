@@ -259,6 +259,7 @@
     "unfinishedWork": "This version is saved. Unfinished drafts from earlier editing sessions are available below.",
     "chooseRecovery": "Choose a draft",
     "recover": "Recover selected draft",
+    "discardRecovery": "Delete selected draft",
     "recoveryHint": "Recovery opens a separate copy. The original saved draft stays on this device.",
     "actionFailed": "Could not complete this action.",
     "deleteConflictTitle": "This record changed after you deleted it",
@@ -294,6 +295,7 @@
       "draftGone": "This draft is no longer available.",
       "draftDone": "This draft has nothing left to recover.",
       "draftOpen": "This draft is still open in another tab. Close it there, then try again.",
+      "draftPresenceUnknown": "Could not check whether this draft is closed. Try again before removing it.",
       "partGone": "This part is no longer available."
     }
   },

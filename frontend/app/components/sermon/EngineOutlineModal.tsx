@@ -37,12 +37,12 @@ export function EngineOutlineModal({ sermonId, onClose, withScratch = false }: {
       .catch(() => undefined);
   };
   const recovery = useRecoveryDiscovery({ identity: form.recoveryIdentity, enabled: !loading, version: String(form.active),
-    list: async () => (await form.listRecoverable()).map(({ scopeId, record }) => ({ id: scopeId,
-      title: String(record.baseline.value?.title ?? sermonId),
+    list: async () => (await form.listRecoverable()).map(source => ({ id: source.scopeId,
+      title: String(source.record.baseline.value?.title ?? sermonId),
       preview: sections.flatMap(section => {
-        const recovered = record.stage[0]?.value as unknown as SermonOutline | undefined;
+        const recovered = source.record.stage[0]?.value as unknown as SermonOutline | undefined;
         return (recovered?.[section] ?? []).map(point => point.text);
-      }).join('\n').slice(0, 500) })), recover: form.recover });
+      }).join('\n').slice(0, 500), discard: () => form.discardRecovery(source) })), recover: form.recover });
   const save = async () => {
     if (readOnly || !valid || !form.dirty || !form.durable || !form.status?.canSave) return;
     try { await form.save(); onClose(); } catch { /* The shared form retains and reports the failure. */ }
@@ -56,7 +56,7 @@ export function EngineOutlineModal({ sermonId, onClose, withScratch = false }: {
       <DataSyncStatus subject={form.recoveryIdentity} status={form.status} error={form.error} errorWords={form.errorWords} onRetry={form.retry}
         onKeepLocal={valid ? form.keepLocal : undefined} onAcceptRemote={form.acceptRemote}
         recoveryChoices={recovery.choices} recoveryLoading={recovery.loading} recoveryError={recovery.error}
-        onRecover={recovery.recover} />
+        onRecover={recovery.recover} onDiscardRecovery={recovery.discard} />
       {withScratch && sermon ? <ScratchProposalBoard sermonId={sermonId} sermon={sermon} form={form} readOnly={readOnly}
         valid={valid} onChange={change} /> : <OutlineBoard value={outline} onChange={change} directText showNotes isReadOnly={readOnly}
         getPointThoughtCount={id => sermon?.thoughts.filter(thought => thought.outlinePointId === id).length ?? 0}

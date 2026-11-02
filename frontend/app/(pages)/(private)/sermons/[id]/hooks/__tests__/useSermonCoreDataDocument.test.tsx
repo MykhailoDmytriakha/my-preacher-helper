@@ -9,7 +9,7 @@ import { useSermonCoreDataDocument } from '../useSermonCoreDataDocument';
 import type { SermonCorePatch } from '../useSermonCoreDataDocument';
 import type { DocumentData } from '@/data-engine/types';
 
-jest.mock('@/data-engine/react.client', () => ({ useDataDocument: jest.fn(), useDataEngine: jest.fn(), useDataForm: jest.fn(), useRecoveryDiscovery: jest.fn(() => ({ choices: [], loading: false, error: null, recover: jest.fn(), refresh: jest.fn() })) }));
+jest.mock('@/data-engine/react.client', () => ({ useDataDocument: jest.fn(), useDataEngine: jest.fn(), useDataForm: jest.fn(), useRecoveryDiscovery: jest.fn(() => ({ choices: [], loading: false, error: null, recover: jest.fn(), refresh: jest.fn(), discard: jest.fn(async (action: () => Promise<void>) => action()) })) }));
 function setup(value: DocumentData | null = { userId: 'owner', title: 'Original', verse: 'John 1', thoughts: [], preparation: {
   authorIntent: 'Keep', textContext: { passage: 'Keep passage', contextNotes: 'Old notes' },
 } }) {
@@ -27,7 +27,7 @@ function setup(value: DocumentData | null = { userId: 'owner', title: 'Original'
       await durable;
     }),
     save: jest.fn(async () => undefined),
-    propose: jest.fn(), keepLocal: jest.fn(), acceptRemote: jest.fn(), recover: jest.fn(), retry: jest.fn(), getManualForm: jest.fn(), listRecoverable: jest.fn(), edit: jest.fn(), remove: jest.fn(),
+    propose: jest.fn(), keepLocal: jest.fn(), acceptRemote: jest.fn(), recover: jest.fn(), discardRecovery: jest.fn(), retry: jest.fn(), getManualForm: jest.fn(), listRecoverable: jest.fn(), edit: jest.fn(), remove: jest.fn(),
   } as ReturnType<typeof useDataDocument>;
   api.commit = jest.fn(async updater => {
     const staged = api.update(updater);
@@ -38,7 +38,7 @@ function setup(value: DocumentData | null = { userId: 'owner', title: 'Original'
   jest.mocked(useDataEngine).mockReturnValue({ owner: 'owner', browser: null, failures: {} });
   jest.mocked(useDataForm).mockImplementation(() => ({
     data: api.data, initialData: api.data, openingData: api.data, recoveryIdentity: {}, readOnly: false, active: false, busy: false, loading: false, durable: true, capturing: false, comparison: null, canDiscardStage: false, discardStageAndAcceptRemote: jest.fn(), dirty: false, status: null, error: null,
-    propose: jest.fn(), keepLocal: jest.fn(), acceptRemote: jest.fn(), begin: jest.fn(async () => undefined), follow: jest.fn(async () => undefined), update: jest.fn(), save: jest.fn(), cancel: jest.fn(), retry: jest.fn(), listRecoverable: jest.fn(), recover: jest.fn(),
+    propose: jest.fn(), keepLocal: jest.fn(), acceptRemote: jest.fn(), begin: jest.fn(async () => undefined), follow: jest.fn(async () => undefined), update: jest.fn(), save: jest.fn(), cancel: jest.fn(), retry: jest.fn(), listRecoverable: jest.fn(), recover: jest.fn(), discardRecovery: jest.fn(),
   }));
   return { api, session, defer: (promise: Promise<void>) => { durable = promise; } };
 }

@@ -34,12 +34,14 @@ export function EngineScratchWorkspace({ sermonId, isReadOnly = false, onConfirm
   const recovery = useRecoveryDiscovery({ identity: scratch.recoveryIdentity,
     enabled: Boolean(owner) && !scratch.loading && scratch.status !== null,
     version: JSON.stringify([scratch.status?.phase, scratch.confirmed?.metadata?.revision]),
-    list: async () => (await latest.current.listRecoverable()).map(({ id, record }) => {
+    list: async () => (await latest.current.listRecoverable()).map(source => {
+      const { id, record } = source;
       const draft = record.checkpoint.draft;
       const title = draft?.title ?? record.checkpoint.confirmed.value?.title;
       const notes = Array.isArray(draft?.scratch) ? draft.scratch : [];
       const preview = notes.flatMap(note => note && typeof note === 'object' && !Array.isArray(note) && typeof note.text === 'string' ? [note.text] : []).join('\n').slice(0, 500);
-      return { id, title: typeof title === 'string' && title.trim() ? title : fallbackTitle, ...(preview ? { preview } : {}) };
+      return { id, title: typeof title === 'string' && title.trim() ? title : fallbackTitle, ...(preview ? { preview } : {}),
+        discard: () => latest.current.discardRecovery(source) };
     }),
     recover: id => latest.current.recover(id) });
   const emitted = useRef<{ identity: object; fingerprint: string } | null>(null);
@@ -62,7 +64,7 @@ export function EngineScratchWorkspace({ sermonId, isReadOnly = false, onConfirm
         of notes left unfinished. */}
     <DataSyncStatus subject={scratch.recoveryIdentity} status={null} error={null}
       recoveryChoices={recovery.choices} onRecover={recovery.recover}
-      recoveryLoading={recovery.loading} recoveryError={recovery.error} />
+      recoveryLoading={recovery.loading} recoveryError={recovery.error} onDiscardRecovery={recovery.discard} />
     {scratch.loading ? <p role="status">{t('common.loading')}</p> : !scratch.data ? <p>{t('common.noData')}</p> : <ScratchPanel
       sermonId={sermonId} notes={scratch.notes} outline={scratch.outline}
       addRecordedScratchNote={scratch.addRecordedScratchNote}

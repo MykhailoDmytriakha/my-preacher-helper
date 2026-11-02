@@ -46,6 +46,11 @@ export function useRecoveryDiscovery<T>({ identity, enabled, version, list, reco
     await latest.current.recover(id);
     if (current()) await refresh();
   }, [current, refresh]);
+  const discard = useCallback(async (action: () => Promise<void>) => {
+    if (!current()) throw new Error('The active recovery document changed');
+    await action();
+    if (current()) await refresh();
+  }, [current, refresh]);
   const shown = state?.identity === identity ? state : null;
-  return { choices: shown?.choices ?? [], loading: enabled && (shown?.loading ?? true), error: say(shown?.error), refresh, recover: restore };
+  return { choices: shown?.choices ?? [], loading: enabled && (shown?.loading ?? true), error: say(shown?.error), refresh, recover: restore, discard };
 }

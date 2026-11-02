@@ -4,6 +4,8 @@ when: data-engine · use the engine in a screen · useDataDocument · useDataFor
 
 A screen on an engine collection reads and edits only through `frontend/app/data-engine/react.client.tsx`: `useDataDocument` for an autosaving document, `useDataForm` for a Save-button form, `useDataCollection` for a list. Transport, revisions, outbox, conflicts and recovery belong to the engine; the full contract is `frontend/app/data-engine/README.md`.
 
+- Explicitly removing a Saved draft is separate from Recover, Cancel and document deletion. Map each exact listed source to `discard: () => facade.discardRecovery(source)` and pass discovery `discard` to `DataSyncStatus.onDiscardRecovery`. The common dialog owns confirmation and subject/selected-copy withdrawal; the engine owns affirmative closed-presence and resource/selection admission. Native `recoveryDiscard.client.ts` checks the stored version or complete legacy row plus settled request/ACK evidence, then removes only that row and invokes the existing collector in the same transaction. Keep original request operation IDs and unknown delivery. Never reread by ID to expand a confirmed choice, delete by matching words, cancel the queue here or cascade through origin ancestry. Manual explicit removal uses its existing watermark with `discarded: true`; late puts refuse, and an intentional new form opening uses a fresh scope ID. Ordinary compaction/reopening semantics remain separate.
+
 ## How
 
 - One editor per document per page: wrap the page in `DataDocumentProvider`; matching `useDataDocument` / `useDataForm` calls inside share it. Each opening gets a fresh editor identity; old work comes back only by explicit recovery (`useRecoveryDiscovery`, then `recover(id)`).

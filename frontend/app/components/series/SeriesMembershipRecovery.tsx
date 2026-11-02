@@ -18,13 +18,15 @@ export function SeriesMembershipRecovery() {
     version: `${actions.recoveryVersion}:${id ?? ''}`,
     // A sermon a gone page left is settled when «Новая проповедь» opens next (EngineCreateSermonModal), not offered here.
     list: async () => (await actions.listRecoveryChoices())
-      .filter(record => !record.creation).map(record => {
+      .filter(record => !record.creation).map(source => {
+      const record = source;
       const action = record.action;
       const targetId = action?.kind === 'assign' ? action.targetId : action?.kind === 'reorder' ? action.seriesId : null;
       const target = targetId ? record.pins.find(pin => pin.baseline.resource.id === targetId) : null;
       return { id: record.scopeId, title: String(target?.predecessor?.value?.title ?? target?.baseline.value?.title ?? t('navigation.series')),
         preview: t(action?.kind === 'reorder' ? 'workspaces.series.actions.reorder'
-          : action?.kind === 'remove' ? 'workspaces.series.actions.removeFromSeries' : 'workspaces.series.membershipAssignment') };
+          : action?.kind === 'remove' ? 'workspaces.series.actions.removeFromSeries' : 'workspaces.series.membershipAssignment'),
+        discard: () => actions.discardRecovery(source) };
     }),
     recover: async id => {
       const record = (await actions.listRecoveryChoices()).find(record => record.scopeId === id);
@@ -35,7 +37,7 @@ export function SeriesMembershipRecovery() {
     {!id && (recovery.choices.length > 0 || recovery.error) && <section className="mb-4 space-y-2 rounded-lg border border-amber-200 p-3 dark:border-amber-700">
       <h2 className="font-semibold">{t('workspaces.series.membershipRecovery')}</h2>
       <DataSyncStatus subject={actions.recoveryIdentity} status={null} recoveryChoices={recovery.choices} recoveryLoading={recovery.loading}
-        recoveryError={recovery.error} onRecover={recovery.recover} />
+        recoveryError={recovery.error} onRecover={recovery.recover} onDiscardRecovery={recovery.discard} />
     </section>}
     {id && <SeriesMembershipDialog key={id} mode="recover" recoveryId={id} seriesId="" onClose={() => setSelected(null)} />}
   </>;

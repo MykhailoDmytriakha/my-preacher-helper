@@ -32,12 +32,13 @@ import { useRecoveryDiscovery as useDiscovery, type RecoveryDiscoveryOptions } f
 
 import type { StudyAnalysisWrite } from './analysisReshape';
 import type { CollectionState } from './collections';
-import type { EditorRecord, EditorState } from './controller';
+import type { EditorRecord, EditorState, RecoveryCheckpoint } from './controller';
 import type { ManagedEditor, ManagedManualForm, ManualRecoveryPolicy } from './engine';
 import type { ManualPath } from './manualScope';
+import type { StoredManualScope } from './manualScopes.client';
 import type { MembershipDelivery } from './membershipDelivery';
 import type { MembershipAction } from './membershipIntent';
-import type { MembershipScope } from './membershipScope';
+import type { MembershipScope, MembershipScopeRecord } from './membershipScope';
 import type { DocumentData, EngineReadOptions, FailureAddress, FieldValue, JournalEntry, ResourceRef, ResourceSnapshot } from './types';
 import type { BookText } from '@/utils/bibleText';
 
@@ -625,6 +626,7 @@ export function useDataMembership() {
     discard: () => run(async () => { await active().discardMembership(required().getState().record.scopeId); dismiss(); }),
     listRecoverable: (options?: { closedOnly?: boolean }) => run(() => active().listMembershipRecovery(options)),
     listRecoveryChoices: () => run(() => active().listMembershipRecoveryChoices()),
+    discardRecovery: (source: MembershipScopeRecord) => run(() => active().discardMembershipRecovery(source)),
   };
 }
 
@@ -983,6 +985,12 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
       if (!isCurrent()) throw new Error(EDITOR_CHANGED);
       return records;
     },
+    discardRecovery: async (source: RecoveryCheckpoint) => {
+      if (!isCurrent() || !browser || !owner || !collection || !id
+        || source.record.checkpoint.confirmed.resource.collection !== collection || source.record.checkpoint.confirmed.resource.id !== id) throw new Error(EDITOR_CHANGED);
+      await browser.engine.discardRecovery(source);
+      if (!isCurrent()) throw new Error(EDITOR_CHANGED);
+    },
     recover,
     retry: async () => {
       if (!isCurrent()) throw new Error(EDITOR_CHANGED);
@@ -1204,5 +1212,6 @@ export function useDataForm(resource: ResourceRef | null, slot: string, selectio
       const records = await target.form.listRecoverable(); if (!current()) throw new Error(EDITOR_CHANGED); return records;
     },
     recover: (scopeId: string) => run(form => form.recover(scopeId)),
+    discardRecovery: (source: StoredManualScope) => run(form => form.discardRecovery(source)),
   };
 }

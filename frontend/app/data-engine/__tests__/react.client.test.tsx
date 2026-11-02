@@ -117,6 +117,7 @@ function makeManualForm() {
     update: jest.fn(async updater => { state = { ...state!, value: updater(state!.value), dirty: true }; emit(); }),
     save: jest.fn(async updater => { if (updater) state!.value = updater(state!.value); state!.record.active = false; state!.dirty = false; emit(); }),
     cancel: jest.fn(async () => { state!.record.active = false; emit(); }),
+    discardRecovery: jest.fn(async () => undefined),
     retry: jest.fn(async () => undefined), listRecoverable: jest.fn(async () => []), recover: jest.fn(async () => { await form.begin(); }),
   };
   return { form, emit, listeners };

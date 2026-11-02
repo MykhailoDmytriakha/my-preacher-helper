@@ -96,8 +96,10 @@ export function EngineThoughtModal({ sermonId, thoughtId, allowedTags, onClose }
     void askBeforeDiscard(Boolean(dictation.error), onClose);
   };
   const recovery = useRecoveryDiscovery({ identity: form.recoveryIdentity, enabled: !loading, version: String(form.active),
-    list: async () => (await form.listRecoverable()).map(({ scopeId, record }) => ({ id: scopeId,
-      title: String(record.baseline.value?.title ?? sermonId), preview: recoveryPreview(record.stage[0].value, record.openingSelection?.[0]?.value ?? record.baseline.value?.thoughts) })),
+    list: async () => (await form.listRecoverable()).map(source => ({ id: source.scopeId,
+      title: String(source.record.baseline.value?.title ?? sermonId),
+      preview: recoveryPreview(source.record.stage[0].value, source.record.openingSelection?.[0]?.value ?? source.record.baseline.value?.thoughts),
+      discard: () => form.discardRecovery(source) })),
     recover: form.recover });
   const save = async () => {
     if (isBusy || dictation.error || readOnly || !form.durable || !form.dirty || !form.status?.canSave || !shown.text.trim()) return;
@@ -127,7 +129,7 @@ export function EngineThoughtModal({ sermonId, thoughtId, allowedTags, onClose }
       <DataSyncStatus subject={form.recoveryIdentity} status={form.status} error={form.error ?? (missingOpening ? t('dataSync.missingOpeningVersion') : null)} errorWords={form.error ? form.errorWords : undefined} onRetry={form.retry}
         onKeepLocal={() => resolve('local')} onAcceptRemote={() => resolve('remote')}
         recoveryChoices={recovery.choices} recoveryLoading={recovery.loading} recoveryError={recovery.error}
-        onRecover={recovery.recover} />
+        onRecover={recovery.recover} onDiscardRecovery={recovery.discard} />
       <ThoughtOutlineField sermonOutline={sermon?.outline} outlinePointId={shown.outlinePointId} subPointId={shown.subPointId}
         disabled={readOnly} onSelect={(outlinePointId, subPointId) => change({ outlinePointId, subPointId })} />
       <ThoughtTagsField tags={shown.tags} allowedTags={allowedTags} availableTags={availableTags} disabled={readOnly}

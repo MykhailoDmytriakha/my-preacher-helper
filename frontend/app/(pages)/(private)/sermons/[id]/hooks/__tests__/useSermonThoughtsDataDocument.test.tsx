@@ -27,7 +27,7 @@ function setup(value: ResourceSnapshot = snapshot()) {
     update: jest.fn(async (mutate: (current: DocumentData | null) => DocumentData | null) => {
       session.edit(mutate(session.checkpoint().draft));
     }), save: jest.fn(async () => undefined), edit: jest.fn(), remove: jest.fn(), retry: jest.fn(),
-    keepLocal: jest.fn(), acceptRemote: jest.fn(), getManualForm: jest.fn(), listRecoverable: jest.fn(), recover: jest.fn(),
+    keepLocal: jest.fn(), acceptRemote: jest.fn(), getManualForm: jest.fn(), listRecoverable: jest.fn(), recover: jest.fn(), discardRecovery: jest.fn(),
   } as ReturnType<typeof useDataDocument>;
   api.commit = jest.fn(async updater => {
     const staged = api.update(updater);

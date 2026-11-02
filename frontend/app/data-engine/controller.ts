@@ -51,6 +51,8 @@ export interface RecoveryCheckpoint {
   /** Stable persisted identity, independent of the current browser factory. */
   id: string;
   record: EditorRecord;
+  /** Exact legacy disk value when the displayed record has a read-only delivery projection. */
+  discardRecord?: EditorRecord;
   /** Derived by engine discovery; never stored in the checkpoint. */
   answer?: DocumentAnswer;
   /** The held requests can only be resolved through their complete atomic action. */
@@ -61,6 +63,8 @@ export interface CheckpointRecoveryStore extends CheckpointStore {
   listRecoverable(owner: string, resource?: ResourceRef): Promise<RecoveryCheckpoint[]>;
   /** Atomic create-if-absent; recovery never overwrites an active editor checkpoint. */
   create(record: EditorRecord): Promise<void>;
+  /** Removes only the exact explicitly selected closed copy, never an unresolved Save. */
+  discardRecovery?(record: EditorRecord, isCurrent: () => boolean): Promise<void>;
   /** Exact optional native source pin; unsupported stores retain original copies. */
   pinRecovery?(record: EditorRecord): Promise<string | null>;
 }

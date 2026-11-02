@@ -46,10 +46,12 @@ export function useGroupDataDocument(groupId: string) {
   }), [update]);
   const removeMeetingDate = useCallback((id: string) => update(current => ({ ...current,
     meetingDates: (current.meetingDates ?? []).filter(item => item.id !== id) })), [update]);
-  const listRecoverable = useCallback(async () => (await document.listRecoverable()).map(({ id, record }) => {
+  const listRecoverable = useCallback(async () => (await document.listRecoverable()).map(source => {
+    const { id, record } = source;
     const draft = (record.checkpoint.draft ?? record.checkpoint.confirmed.value) as unknown as Group | null;
     return { id, title: draft?.title || groupId,
-      preview: [draft?.description, ...(draft?.templates ?? []).map(item => item.content)].filter(Boolean).join('\n').slice(0, 500) };
+      preview: [draft?.description, ...(draft?.templates ?? []).map(item => item.content)].filter(Boolean).join('\n').slice(0, 500),
+      discard: () => document.discardRecovery(source) };
   }), [document, groupId]);
   const recovery = useRecoveryDiscovery({ identity: document.recoveryIdentity,
     enabled: !document.loading && document.status !== null,
