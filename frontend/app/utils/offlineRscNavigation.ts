@@ -37,6 +37,10 @@ import {
 } from 'next/dist/client/components/app-router-headers';
 import { computeCacheBustingSearchParam } from 'next/dist/shared/lib/router/utils/cache-busting-search-param';
 
+import { nextOfflineWarmRetry } from '@/utils/offlineWarmRetry';
+
+import type { OfflinePagePayload, OfflinePageStorage, OfflinePageTicket } from '@/utils/offlinePageStorage';
+
 export const OFFLINE_RSC_CACHE = 'pages-rsc-offline';
 /** Where a new version keeps the addresses the old one had, until it has warmed them again. */
 export const OFFLINE_RSC_INDEX_CACHE = 'pages-rsc-offline-index';
@@ -73,20 +77,6 @@ async function readIndex(index: CacheLike): Promise<string[]> {
   } catch {
     return [];
   }
-}
-
-/** The list as stored. A copy that cannot be read throws: a broken list is not an empty one. */
-async function readIndexStrict(index: CacheLike): Promise<string[]> {
-  const stored = await index.match(OFFLINE_RSC_INDEX_URL);
-  if (!stored) return [];
-  const addresses: unknown = await stored.json();
-  if (!Array.isArray(addresses)) throw new Error('The offline page list is unreadable');
-  return addresses.filter((address): address is string => typeof address === 'string');
-}
-
-async function writeIndex(index: CacheLike, addresses: string[]): Promise<void> {
-  if (!addresses.length) { await index.delete(OFFLINE_RSC_INDEX_URL); return; }
-  await index.put(OFFLINE_RSC_INDEX_URL, new Response(JSON.stringify(addresses), { headers: { 'content-type': 'application/json' } }));
 }
 
 function withoutCacheBusting(url: URL): URL {
@@ -150,13 +140,6 @@ function isFlightPayload(response: Response): boolean {
   return response.ok && (response.headers.get('content-type') ?? '').startsWith(RSC_CONTENT_TYPE_HEADER);
 }
 
-async function keepNewest(cache: CacheLike): Promise<void> {
-  const keys = await cache.keys();
-  for (const stale of keys.slice(0, Math.max(0, keys.length - OFFLINE_RSC_MAX_ENTRIES))) {
-    await cache.delete(stale);
-  }
-}
-
 /** `read`, or a failure once it has not answered within `ms` — storage that falls silent cannot hold a caller. */
 function withinMs<T>(read: Promise<T>, ms: number): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -216,158 +199,199 @@ export async function answerWithinDeadline(network: Promise<Response>, kept: () 
   return copy;
 }
 
-export function createOfflineRscNavigation({ fetchFn, caches, warmTimeoutMs = WARM_TIMEOUT_MS, storageTimeoutMs = STORAGE_TIMEOUT_MS, navigationDeadlineMs = NAVIGATION_DEADLINE_MS }: {
+/** Whole cache work is cancellable; document writes use their separate, non-cancellable contract. */
+function cacheWorkWithin<T>(work: (signal: AbortSignal) => Promise<T>, ms: number, fallback: T, parent?: AbortSignal): Promise<T> {
+  const controller = new AbortController();
+  let abandon!: () => void;
+  const expired = new Promise<T>(resolve => { abandon = () => { controller.abort(); resolve(fallback); }; });
+  const timer = setTimeout(abandon, Math.max(0, ms));
+  if (parent?.aborted) abandon(); else parent?.addEventListener('abort', abandon, { once: true });
+  return Promise.race([Promise.resolve().then(() => work(controller.signal)), expired]).finally(() => {
+    clearTimeout(timer);
+    parent?.removeEventListener('abort', abandon);
+  });
+}
+
+async function pagePayload(response: Response, signal: AbortSignal): Promise<OfflinePagePayload> {
+  const reader = typeof response.body?.getReader === 'function' ? response.body.getReader() : undefined;
+  const chunks: Uint8Array[] = [];
+  let length = 0;
+  const cancel = () => { void reader?.cancel().catch(() => undefined); };
+  signal.addEventListener('abort', cancel, { once: true });
+  try {
+    if (signal.aborted) throw signal.reason;
+    if (reader) {
+      while (true) {
+        const next = await reader.read();
+        if (signal.aborted) throw signal.reason;
+        if (next.done) break;
+        chunks.push(next.value);
+        length += next.value.byteLength;
+      }
+    }
+    if (!reader) {
+      const body = await response.arrayBuffer();
+      if (signal.aborted) throw signal.reason;
+      const headers = new Headers(response.headers);
+      for (const header of ['content-encoding', 'content-length', 'transfer-encoding']) headers.delete(header);
+      return { body, headers: [...headers], status: response.status, statusText: response.statusText };
+    }
+    const body = new ArrayBuffer(length);
+    const bytes = new Uint8Array(body);
+    let offset = 0;
+    for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+    const headers = new Headers(response.headers);
+    // Fetch has decoded the body; its old transfer/representation lengths no longer describe these bytes.
+    for (const header of ['content-encoding', 'content-length', 'transfer-encoding']) headers.delete(header);
+    return { body, headers: [...headers], status: response.status, statusText: response.statusText };
+  } finally {
+    signal.removeEventListener('abort', cancel);
+    reader?.releaseLock();
+  }
+}
+
+export function createOfflineRscNavigation({ fetchFn, caches, storage, warmTimeoutMs = WARM_TIMEOUT_MS,
+  storageTimeoutMs = STORAGE_TIMEOUT_MS, navigationDeadlineMs = NAVIGATION_DEADLINE_MS, now = Date.now }: {
   fetchFn: (request: Request) => Promise<Response>;
-  caches: CacheStorageLike;
+  caches?: CacheStorageLike;
+  storage: OfflinePageStorage | (() => Promise<OfflinePageStorage>);
   warmTimeoutMs?: number;
   storageTimeoutMs?: number;
   navigationDeadlineMs?: number;
+  now?: () => number;
 }) {
-  const inFlight = new Map<string, Promise<WarmOutcome>>();
-
-  /**
-   * A READ of the waiting list that storage does not answer is given up on, so it cannot hold the
-   * re-warm for ever (BUG-20261011-sw-offline-cache-edges). Only reads: a write given up on would still
-   * land later, over whatever was written after it.
-   */
-  function withinStorage<T>(read: Promise<T>): Promise<T> {
-    return withinMs(read, storageTimeoutMs);
-  }
-
-  async function store(url: URL, key: string, signal?: AbortSignal): Promise<WarmOutcome> {
-    let cache: CacheLike;
-    try {
-      cache = await caches.open(OFFLINE_RSC_CACHE);
-      const stored = await cache.match(key);
-      if (stored) {
-        // Seen again: move it to the newest end, so eviction drops what was seen longest ago.
-        await cache.put(key, stored);
-        return 'kept';
-      }
-    } catch {
-      return 'unstored';
-    }
-    let response: Response;
-    try {
-      response = await fetchFn(rootLevelRequest(url, signal));
-    } catch {
-      // No network: the address is simply not available offline yet.
-      return 'failed';
-    }
-    // An answer that arrived through a redirect is another page's: kept under this address it would open
-    // that page here offline (BUG-20261011-sw-offline-cache-edges).
-    if (response.redirected || !isFlightPayload(response)) return response.status === 404 || response.status === 410 ? 'gone' : 'failed';
-    try {
-      await cache.put(key, response);
-      await keepNewest(cache);
-      return 'stored';
-    } catch {
-      return 'unstored';
-    }
-  }
-
-  /**
-   * The person has seen this page: keep its root-level payload (once per build) and mark it recent.
-   *
-   * A warm-up that never finishes — failing Wi-Fi, an answer whose body stalls — must not hold
-   * the address, because every later visit waits on the one in flight. The whole of it, request,
-   * body and storing, is given up on time, and the request aborted where the platform can.
-   */
-  function remember(url: URL): Promise<WarmOutcome> {
-    const key = offlineRscKey(url);
-    const running = inFlight.get(key);
-    if (running) return running;
-    const controller = typeof AbortController === 'undefined' ? null : new AbortController();
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const deadline = new Promise<WarmOutcome>((resolve) => {
-      timer = setTimeout(() => { controller?.abort(); resolve('failed'); }, warmTimeoutMs);
-    });
-    // After a version's retirement, so a page seen during activation is not stored and then dropped.
-    const work = Promise.race([retiring.then(() => store(url, key, controller?.signal)), deadline]).finally(() => {
-      clearTimeout(timer);
-      inFlight.delete(key);
-    });
-    inFlight.set(key, work);
-    return work;
-  }
-
-  /** A client-side navigation: the payload kept for this address answers a weak signal (`answerWithinDeadline`). */
-  function respond(request: Request): Promise<Response> {
-    return answerWithinDeadline(fetchFn(request),
-      async () => (await caches.open(OFFLINE_RSC_CACHE)).match(offlineRscKey(new URL(request.url))),
-      // Next applies only a Flight payload; any other answer it opens as a document, and that is its call.
-      { deadlineMs: navigationDeadlineMs, storageTimeoutMs, replaceable: isFlightPayload });
-  }
-
-  /**
-   * A NEW VERSION ACTIVATES (BUG-20260927-engine-open-hangs-on-silent-device-storage, its trigger).
-   * The old build's payloads are dropped — Next would refuse them — but their addresses are carried
-   * over, together with any still waiting from an earlier version, so the new version can warm them
-   * again instead of leaving offline navigation empty until each page is visited online once more.
-   * Without that, the first offline tap after a deploy was a full page load, and a full load is what
-   * freezes the previous page in Safari's back-forward cache.
-   */
+  let loaded: Promise<OfflinePageStorage> | undefined;
+  const pages = () => loaded ??= typeof storage === 'function' ? storage() : Promise.resolve(storage);
   let retiring: Promise<void> = Promise.resolve();
+  let activating: Promise<void> | undefined;
+  let activationRequested = false, activationReady = false;
+
+  async function legacyAddresses(signal: AbortSignal): Promise<string[]> {
+    if (!caches) return [];
+    // Legacy copies stay untouched. Reconciliation can discover a late old writer on a later event;
+    // the atomic catalog remembers which addresses were imported, so a gone page is not re-added forever.
+    const [waiting, kept] = await Promise.all([
+      withinMs(caches.open(OFFLINE_RSC_INDEX_CACHE).then(readIndex), Math.min(storageTimeoutMs, STORAGE_GRACE_MS)).catch(() => [] as string[]),
+      withinMs(caches.open(OFFLINE_RSC_CACHE).then(cache => cache.keys()), Math.min(storageTimeoutMs, STORAGE_GRACE_MS))
+        .then(keys => keys.map(request => request.url)).catch(() => [] as string[]),
+    ]);
+    if (signal.aborted) return [];
+    const normalized: string[] = [];
+    for (const address of [...waiting, ...kept]) {
+      try { normalized.push(offlineRscKey(new URL(address))); } catch { /* A corrupt legacy key is not a fetch target. */ }
+    }
+    return [...new Set(normalized)];
+  }
+
   function retire(): Promise<void> {
-    retiring = (async () => {
-      try {
-        const index = await caches.open(OFFLINE_RSC_INDEX_CACHE);
-        const waiting = await readIndex(index);
-        const kept = (await (await caches.open(OFFLINE_RSC_CACHE)).keys()).map(request => request.url);
-        await writeIndex(index, [...waiting.filter(address => !kept.includes(address)), ...kept].slice(-OFFLINE_RSC_MAX_ENTRIES));
-      } catch { /* Nothing to carry over: pages warm up again as they are seen. */ }
-      await caches.delete?.(OFFLINE_RSC_CACHE);
-    })();
-    return retiring;
+    activationRequested = true;
+    if (activating) return activating;
+    activating = cacheWorkWithin(async signal => {
+      const saved = await pages();
+      await saved.activate([], signal);
+      activationReady = true;
+      await saved.importLegacy(await legacyAddresses(signal), signal);
+    }, storageTimeoutMs, undefined).catch(() => undefined).finally(() => { activating = undefined; });
+    retiring = activating;
+    return activating;
+  }
+  async function ready(): Promise<void> {
+    // Constructors also run for waiting workers: activate lazily only once a functional event
+    // arrives, or when the browser explicitly dispatches activate. A restarted active worker can
+    // thus finish an activation handler that was interrupted, without clearing same-build bodies.
+    if (!activationRequested) { await retire(); return; }
+    await retiring;
+    // A browser can finish activation after an interrupted handler. Retry on a later event without
+    // holding the page; same-build activation is idempotent and never clears this build's bodies.
+    if (activationRequested && !activationReady) await retire();
   }
 
-  /**
-   * Warm the carried-over addresses again, the most recently seen first, a batch per page the person
-   * sees. Each address is judged by what its own warm-up found: kept or stored — warm, it leaves the
-   * list once its payload is still there when the list is written (an eviction during the batch must
-   * not lose it); gone — dropped, it warms again whenever it is visited; failed or unstored — the batch
-   * stops there, and that address moves to the old end of the list, so the others are not starved
-   * behind it. Without a network that is one attempt per page seen, not a batch; the next page seen
-   * tries again, and the list loses nothing. Nothing about the network is concluded from what already
-   * lies in the cache, and the phone's flag is not asked: a flag stuck at false over a working network
-   * (an iPad back from the background) kept every page cold (BUG-20261011-sw-rewarm-skipped-or-forgets).
-   */
-  let rewarming: Promise<void> | null = null;
-  function rewarm(): Promise<void> {
-    return rewarming ??= (async () => {
-      try {
-        await retiring;
-        const index = await withinStorage(caches.open(OFFLINE_RSC_INDEX_CACHE));
-        const waiting = await withinStorage(readIndex(index));
-        if (!waiting.length) return;
-        const untried = waiting.slice(-OFFLINE_RSC_REWARM_MAX);
-        const warm: string[] = [];
-        const gone: string[] = [];
-        const stuck: string[] = [];
-        while (untried.length) {
-          const address = untried.pop() as string;
-          const outcome = await remember(new URL(address));
-          if (outcome === 'failed' || outcome === 'unstored') { stuck.push(address); break; }
-          (outcome === 'gone' ? gone : warm).push(address);
-        }
-        // The list as it is now, not the copy read above: a version activating meanwhile may have carried
-        // addresses over, and they stay. A list that cannot be read now, or does not answer, is rebuilt
-        // from that copy, as it always was (BUG-20261011-sw-offline-cache-edges).
-        const current = await withinStorage(readIndexStrict(index)).catch(() => waiting);
-        const payloads = await caches.open(OFFLINE_RSC_CACHE);
-        const cold: string[] = [];
-        const leaving = new Set(gone);
-        for (const address of warm) {
-          if (await payloads.match(address)) leaving.add(address);
-          else cold.push(address);
-        }
-        const oldEnd = [...stuck, ...cold].filter(address => current.includes(address));
-        await writeIndex(index, [...oldEnd, ...current.filter(address => !leaving.has(address) && !oldEnd.includes(address))]);
-      } catch { /* The list stays as it was; the next page seen tries again. */ } finally {
-        rewarming = null;
+  type Attempt = WarmOutcome | 'skipped';
+  function warm(url: URL, { seen, generation, timeoutMs = warmTimeoutMs, parent }: {
+    seen: boolean; generation?: number; timeoutMs?: number; parent?: AbortSignal;
+  }): Promise<Attempt> {
+    const deadline = now() + timeoutMs;
+    let claim: { saved: OfflinePageStorage; ticket: OfflinePageTicket } | undefined;
+    let settled = false;
+    return cacheWorkWithin<Attempt>(async signal => {
+      await ready();
+      if (signal.aborted || now() >= deadline) return 'failed';
+      const saved = await pages();
+      const reservation = await saved.reserve(offlineRscKey(url), { seen, generation, leaseMs: timeoutMs, deadline, signal });
+      if (reservation.outcome === 'kept') return 'kept';
+      if (reservation.outcome !== 'fetch') return 'skipped';
+      const ticket = reservation.ticket;
+      claim = { saved, ticket };
+      if (signal.aborted || now() >= deadline) return 'failed';
+      let response: Response;
+      try { response = await fetchFn(rootLevelRequest(url, signal)); }
+      catch { await saved.finish(ticket, {}, signal).then(() => { settled = true; }).catch(() => undefined); return 'failed'; }
+      if (response.redirected || !isFlightPayload(response)) {
+        if (typeof response.body?.cancel === 'function') void response.body.cancel().catch(() => undefined);
+        const gone = !response.redirected && (response.status === 404 || response.status === 410);
+        const retry = gone ? {} : nextOfflineWarmRetry(response, ticket.previousRefusals, now());
+        await saved.finish(ticket, { ...retry, gone }, signal);
+        settled = true;
+        return gone ? 'gone' : 'failed';
       }
-    })();
+      try {
+        const payload = await pagePayload(response, signal);
+        const stored = await saved.publish(ticket, payload, signal);
+        settled = stored;
+        return stored ? 'stored' : 'failed';
+      } catch {
+        await saved.finish(ticket, {}, signal).then(() => { settled = true; }).catch(() => undefined);
+        return signal.aborted ? 'failed' : 'unstored';
+      }
+    }, timeoutMs, 'failed', parent).catch(() => 'unstored' as const).then(outcome => {
+      if (claim && !settled) {
+        const { saved, ticket } = claim;
+        // Queue conditional cleanup before a later reservation. A timer can fire one clock tick
+        // early; the next visit must still retry at once. A killed worker leaves only a bounded lease.
+        void cacheWorkWithin(signal => saved.finish(ticket, {}, signal), Math.min(storageTimeoutMs, warmTimeoutMs), false)
+          .catch(() => undefined);
+      }
+      return outcome;
+    });
   }
 
+  /** One durable per-address claim suppresses duplicate background fetches across worker instances. */
+  async function remember(url: URL): Promise<WarmOutcome> {
+    const outcome = await warm(url, { seen: true });
+    return outcome === 'skipped' ? 'failed' : outcome;
+  }
+
+  function respond(request: Request): Promise<Response> {
+    return answerWithinDeadline(fetchFn(request), () => cacheWorkWithin(async signal => {
+      await ready();
+      const payload = await (await pages()).read(offlineRscKey(new URL(request.url)), signal);
+      if (!payload) return undefined;
+      const response = new Response([204, 205].includes(payload.status) ? null : payload.body, {
+        headers: payload.headers, status: payload.status, statusText: payload.statusText,
+      });
+      return isFlightPayload(response) ? response : undefined;
+    }, storageTimeoutMs, undefined), { deadlineMs: navigationDeadlineMs, storageTimeoutMs, replaceable: isFlightPayload });
+  }
+
+  let rewarming: Promise<void> | undefined;
+  function rewarm(): Promise<void> {
+    return rewarming ??= cacheWorkWithin(async signal => {
+      const started = now();
+      await ready();
+      const saved = await pages();
+      await saved.importLegacy(await legacyAddresses(signal), signal);
+      await saved.releaseExpiredClaims(signal);
+      const entries = await withinMs(saved.entries(signal), storageTimeoutMs);
+      const eligible = entries.filter(page => !page.warm && page.retryAt <= now()
+        && (!page.claim || page.claim.until <= now()));
+      const waiting = eligible.slice(-OFFLINE_RSC_REWARM_MAX).reverse();
+      for (const page of waiting) {
+        const remaining = warmTimeoutMs - (now() - started);
+        if (signal.aborted || remaining <= 0) break;
+        const outcome = await warm(new URL(page.address), { seen: false, generation: page.generation, timeoutMs: remaining, parent: signal });
+        if (outcome === 'failed' || outcome === 'unstored') break;
+      }
+    }, warmTimeoutMs, undefined).catch(() => undefined).finally(() => { rewarming = undefined; });
+  }
   return { respond, remember, retire, rewarm };
 }

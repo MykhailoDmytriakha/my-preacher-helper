@@ -190,22 +190,6 @@
 | «⚪ Осознанно НЕ чиним»: старые писатели «последний побеждает» (порядки служения, секции плана, настройки) | не проверено | там побеждает пришедшее последним — обратная ошибка; живы ли эти писатели после перехода на движок, не сверено |
 
 
-### BUG-20261011-sw-offline-cache-edges · Прогрев страниц в service worker: вытеснение по устаревшему снимку, цена постоянного отказа и края между версиями воркера
-**P3** — страница, виденная до обновления, в редком случае не открывается офлайн, пока её не посетят снова; лишний запрос на каждое сообщение «страница увидена», пока сервер отказывает · `frontend/app/utils/offlineRscNavigation.ts` `keepNewest`, `store`, `rewarm`, `respond`.
-**Найден.** 2026-10-11 · ревью Codex (refute-rewarm r3) фикса BUG-20261011-sw-rewarm-skipped-or-forgets. **Сужено 2026-10-11** (коммит «narrow BUG-20261011-sw-offline-cache-edges»): конец прогрева пишет разницу к свежепрочитанному списку (перенесённое другой версией не теряется), чтения списка со сроком (молчащее хранилище не держит прогрев), ответ через перенаправление не хранится под чужим адресом.
-**Как должно работать для человека:** страницы, которые он уже видел, после обновления открываются без сети; приложение не долбит сервер, который отказывает или просит подождать.
-| край | что видно | почему не закрыт |
-|---|---|---|
-| `keepNewest` по снимку `keys()` против обновления «увидена снова» | только что увиденная страница вытеснена | нужна взаимная исключённость; очередь записей пробовалась: со сроком задача пишет после отпуска очереди (поздние записи), без срока одна молчащая операция стопорит все записи воркера до перезапуска (`__tests__/serviceWorker.test.ts`) |
-| постоянный 401/403/429/редирект, `Retry-After` | запрос на каждой увиденной странице | пробовались счётчик отказов и паузы под отдельным ключом рядом со списком (Codex r3–r4): частичные записи двух ключей, откат версии и молчащее хранилище дают новые P2 — пометки должны лежать в одном значении со списком, читаемом всеми версиями воркера |
-| два воркера разных версий на одном CacheStorage | запись другого воркера между чтением и записью списка теряется | порядок внутри одного воркера этого не видит |
-| поколения адреса | старый 404 убирает новую, уже перенесённую копию адреса | разница считается по адресу, не по поколению |
-| `respond` офлайн | навигация ждёт без конца, если сеть или хранилище молчат | срока нет ни на запросе, ни на чтении кэша |
-| поздний ответ после срока прогрева | старое тело перезаписывает более новое | срок отпускает адрес, но не отменяет запись |
-**Направление.** Одно значение-запись «список + пометки» с версией, которое меняется сравнением-и-заменой (оно же решает края между воркерами и поколения); вытеснение — по тому же значению, не по `keys()`; срок на `respond`.
-
-**Дополнительное наблюдение 2026-10-30, Unit229.** На изолированном localhost3047, сборка `MrFAK5uqTJLwoy2UouzYX`, онлайн-разбор сохранялся и восстанавливался после трёх перезагрузок. При этом журнал контекста за43мс зарегистрировал9worker-owned GET `net::ERR_FAILED` к `/studies`, `/bible`, `/dashboard`, `/sermons`, `/series`, `/groups`, `/care`, `/calendar`, `/settings`. События произошли до завершения сценария; причиной выключение браузера не объявляется. Ошибок страницы, запрещённых запросов и неудачных ожиданий0; офлайн-приёмки не было. Оба файла механизма воркера совпадают с предыдущим локальным HEAD; связь с конкретным краем таблицы пока не установлена. Raw: `main-intake-229-after-native-analysis-v3.json`; граница: `main-intake-229-worker-network-boundary-v1.json` в артефактах дела локальных исправлений. При разборе этого бага записать полный URL/инициатор/срок и фазу reload для этих фоновых запросов. Запись остаётся открыта.
-
 ### BUG-20261006-ai-call-outlives-the-wall · AI-вызов ещё может пережить 60 с платформы: списание лимита после ответа и открытие телеметрии не входят в дедлайн
 **P3** — нужен медленный провайдер или база; эффект — отказ платформы без JSON вместо честного «не успели» (текст человека не теряется) · `frontend/app/api/clients/structuredOutput.ts` (`consumeAiUsage` после ответа, `openStructuredTelemetryEvent`).
 Сделано 2026-10-06 (`80529781`): тело ответа читается под сигналом дедлайна, маршруты compose и cut ставят стену при входе и передают вниз остаток, чтения до модели ограничены (`withinDeadline`), свой тайм-аут — 504 `deadline-exceeded`, диалог нарезки говорит «не успели» (механизм — `.howto/raise-route-time-limit.md`). Остались два места: (1) ответ получен к 44 с, а транзакция учёта тянется дальше — функция умирает с готовым ответом; просто бросить списание нельзя (учёт). (2) Открытие телеметрии считается в дедлайне, но не обрывается им: гонкой ограничить нельзя — поздняя запись осталась бы «started» рядом с записью ошибки; нужен общий id открытия и закрытия.
@@ -236,6 +220,15 @@
 ---
 
 ## 🔍 Требует перепроверки
+
+### BUG-20261030-worker-background-get-failures · Nine background page GETs fail during an online reload scenario
+**Severity (provisional).** P3 — a noisy/possibly redundant background path; the original analysis workflow and its three reloads passed, with no JavaScript error or authored-data loss established.
+**Anchor / observation limit.** `frontend/app/utils/offlineRscNavigation.ts` warming and the former Serwist `cacheOnNavigation` helper are possible producers, not proven causes. The original `main-intake-229-after-native-analysis-v3.json` records only pathname, method, resource type, worker ownership, error and timestamps; full URL/query, headers, initiator and reload lifecycle are absent. Nine worker-owned GET `net::ERR_FAILED` events span43ms. Current native272v4/fresh-v2 do not reproduce that online error set; their explicitly classified cancellations do not disprove an intermittent failure.
+**User contract.** A person can reload a prepared analysis without losing its words or making background cache failures disrupt the page. A redundant request should stop cleanly; deliberate offline refusals and requests cancelled by navigation remain separately observable.
+**Recheck.** Repeat the original online analysis save/reload sequence on the emulator. Record full URL, RSC/prefetch headers, initiator, request identity, and page/worker stop/reload timestamps before attributing the events or changing code. Keep original result and cleanup facts below. Do not close this card on one ordinary clean replay.
+
+**Дополнительное наблюдение 2026-10-30, Unit229.** На изолированном localhost3047, сборка `MrFAK5uqTJLwoy2UouzYX`, онлайн-разбор сохранялся и восстанавливался после трёх перезагрузок. При этом журнал контекста за43мс зарегистрировал9worker-owned GET `net::ERR_FAILED` к `/studies`, `/bible`, `/dashboard`, `/sermons`, `/series`, `/groups`, `/care`, `/calendar`, `/settings`. События произошли до завершения сценария; причиной выключение браузера не объявляется. Ошибок страницы, запрещённых запросов и неудачных ожиданий0; офлайн-приёмки не было. Оба файла механизма воркера совпадают с предыдущим локальным HEAD; связь с конкретным краем таблицы пока не установлена. Raw: `main-intake-229-after-native-analysis-v3.json`; граница: `main-intake-229-worker-network-boundary-v1.json` в артефактах дела локальных исправлений. При разборе этого бага записать полный URL/инициатор/срок и фазу reload для этих фоновых запросов. Запись остаётся открыта.
+
 
 ### BUG-20261102-phone-mode-menu-invisible · Reopened phone mode options can remain transparent
 

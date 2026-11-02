@@ -3,7 +3,8 @@ import { CacheFirst, NetworkOnly, Serwist } from "serwist";
 
 import { BIBLE_CROSSREFS_CACHE, isBibleCrossRefsPath, isCrossRefsShaped } from "./utils/bibleCrossRefsCache";
 import { BIBLE_TEXT_CACHE, isBibleTextAnswer, isBibleTextPath, isBookShaped } from "./utils/bibleTextCache";
-import { NAVIGATION_DEADLINE_MS, OFFLINE_PAGE_SEEN, answerWithinDeadline, createOfflineRscNavigation, isRememberedPage, isRscNavigation } from "./utils/offlineRscNavigation";
+import { createOfflinePageStorage } from "./utils/offlinePageStorage";
+import { NAVIGATION_DEADLINE_MS, OFFLINE_PAGE_SEEN, OFFLINE_RSC_MAX_ENTRIES, answerWithinDeadline, createOfflineRscNavigation, isRememberedPage, isRscNavigation } from "./utils/offlineRscNavigation";
 import { resolveOfflineShellRoute } from "./utils/offlineShellRoutes";
 
 import type { PrecacheEntry, RuntimeCaching, SerwistGlobalConfig } from "serwist";
@@ -20,12 +21,30 @@ declare global {
 
 declare const self: ServiceWorkerGlobalScope;
 
+// Keep a single manifest injection point. The same immutable manifest identifies this build after
+// a worker restart; an older worker can never adopt the latest catalog merely by reading it.
+const offlineManifest = self.__SW_MANIFEST;
+async function offlinePageStorage() {
+  const encoded = new TextEncoder().encode(JSON.stringify(offlineManifest ?? []));
+  const digest = await crypto.subtle.digest('SHA-256', encoded);
+  const build = 'rsc-v1:' + [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, '0')).join('');
+  return createOfflinePageStorage({
+    build,
+    maxEntries: OFFLINE_RSC_MAX_ENTRIES,
+    acceptAddress: address => {
+      try { return isRememberedPage(new URL(address), self.origin); } catch { return false; }
+    },
+  });
+}
+
+
 // Offline, a client-side navigation is answered with the root-level payload stored for that address
 // when the person saw it online, so moving between pages without network stays inside the running
 // app instead of reloading it (BUG-20260927-offline-navigation-reloads-whole-app; the why is in the module).
 const offlineNavigation = createOfflineRscNavigation({
   fetchFn: (request) => fetch(request),
   caches: self.caches,
+  storage: offlinePageStorage,
 });
 
 /**
@@ -108,7 +127,7 @@ const runtimeCaching: RuntimeCaching[] = [
 ];
 
 const serwist = new Serwist({
-  precacheEntries: self.__SW_MANIFEST,
+  precacheEntries: offlineManifest,
   skipWaiting: true,
   clientsClaim: true,
   navigationPreload: true,

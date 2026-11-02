@@ -1,5 +1,8 @@
 /** @jest-environment node */
+import { webcrypto } from 'node:crypto';
 import { Response as PlatformResponse } from 'undici';
+
+import type { createOfflinePageStorageHarness } from '../test-utils/offlinePageStorageHarness';
 
 type WorkerCallback = (event: unknown) => void;
 const mockListeners = new Map<string, WorkerCallback>();
@@ -8,7 +11,9 @@ const mockHandleInstall = jest.fn();
 const mockHandleActivate = jest.fn();
 const mockHandleCache = jest.fn();
 const mockMatchPrecache = jest.fn(async (url: string) => new Response(`precached ${url}`, { headers: { 'content-type': 'text/html; charset=utf-8' } }));
-const mockCaches = { delete: jest.fn(async () => true), open: jest.fn(() => new Promise(() => undefined)) };
+const mockManifest = [{ url: '/~offline', revision: 'worker-test' }];
+let mockOfflineHarness: ReturnType<typeof createOfflinePageStorageHarness>;
+let mockWorkerBuild: string | undefined;
 let mockOptions: {
   skipWaiting: boolean;
   clientsClaim: boolean;
@@ -43,12 +48,41 @@ jest.mock('serwist', () => ({
 
 describe('service worker transport boundary', () => {
   beforeAll(async () => {
+    const { createOfflinePageStorageHarness } = jest.requireActual('../test-utils/offlinePageStorageHarness') as typeof import('../test-utils/offlinePageStorageHarness');
+    mockOfflineHarness = createOfflinePageStorageHarness({
+      acceptAddress: address => {
+        try {
+          const url = new URL(address);
+          return url.origin === 'https://my-preacher-helper.com' && /^\/sermons\/[a-zA-Z0-9-]+$/.test(url.pathname)
+            && !url.search && !url.hash;
+        } catch { return false; }
+      },
+    });
+    const previousBuild = mockOfflineHarness.storage('previous-build');
+    await previousBuild.activate();
+    const oldAddress = 'https://my-preacher-helper.com/sermons/example';
+    const oldReservation = await previousBuild.reserve(oldAddress, { leaseMs: 10_000 });
+    if (oldReservation.outcome !== 'fetch') throw new Error('Could not seed the previous build payload');
+    await previousBuild.publish(oldReservation.ticket, {
+      body: Uint8Array.from(new TextEncoder().encode('previous-build-payload')).buffer,
+      headers: [['content-type', 'text/x-component']],
+      status: 200,
+      statusText: 'OK',
+    });
+
+    jest.doMock('../app/utils/offlinePageStorage', () => ({
+      createOfflinePageStorage: ({ build, maxEntries }: { build: string; maxEntries: number }) => {
+        mockWorkerBuild = build;
+        return mockOfflineHarness.storage(build, maxEntries);
+      },
+    }));
+    Object.defineProperty(globalThis, 'crypto', { configurable: true, value: webcrypto });
     Object.defineProperty(globalThis, 'self', {
       configurable: true,
       value: {
         origin: 'https://my-preacher-helper.com',
-        __SW_MANIFEST: [],
-        caches: mockCaches,
+        __SW_MANIFEST: mockManifest,
+        caches: mockOfflineHarness.legacyCaches,
         addEventListener: (name: string, callback: WorkerCallback) => mockListeners.set(name, callback),
       },
     });
@@ -81,6 +115,23 @@ describe('service worker transport boundary', () => {
     expect(mockHandleFetch).toHaveBeenCalledWith(event);
   });
 
+  it('drops the previous build\'s offline navigation payloads when a new version activates, keeping their addresses', async () => {
+    const legacyAddress = 'https://my-preacher-helper.com/sermons/example';
+    mockOfflineHarness.seedLegacyWaiting([legacyAddress]);
+    mockOfflineHarness.seedLegacyPayload(legacyAddress, new Response('legacy payload', {
+      headers: { 'content-type': 'text/x-component' },
+    }));
+    const event = { waitUntil: jest.fn() };
+    mockListeners.get('activate')!(event);
+    await event.waitUntil.mock.calls.at(-1)?.[0];
+    expect(mockWorkerBuild).toMatch(/^rsc-v1:[a-f0-9]{64}$/);
+    expect(mockOfflineHarness.entries().map(entry => entry.address)).toEqual(expect.arrayContaining([
+      'https://my-preacher-helper.com/sermons/example', legacyAddress,
+    ]));
+    expect(mockOfflineHarness.payload('https://my-preacher-helper.com/sermons/example')).toBeUndefined();
+    expect(mockOfflineHarness.payload(legacyAddress)).toBeUndefined();
+  });
+
   it('retains install, activation and message handling', () => {
     const event = { waitUntil: jest.fn(), data: { type: 'CACHE_URLS' } };
     mockListeners.get('install')!(event);
@@ -91,33 +142,26 @@ describe('service worker transport boundary', () => {
     expect(mockHandleCache).toHaveBeenCalledWith(event);
   });
 
-  it('drops the previous build\'s offline navigation payloads when a new version activates, keeping their addresses', async () => {
-    const put = jest.fn(async () => undefined);
-    const cache = { keys: jest.fn(async () => [new Request('https://my-preacher-helper.com/sermons/example')]), put, match: jest.fn(), delete: jest.fn() };
-    mockCaches.open.mockImplementation((() => Promise.resolve(cache)) as never);
-    const event = { waitUntil: jest.fn() };
-    mockListeners.get('activate')!(event);
-    await event.waitUntil.mock.calls.at(-1)?.[0];
-    expect(mockCaches.delete).toHaveBeenCalledWith('pages-rsc-offline');
-    // The addresses go to the index, so the new version can warm them again (offlineRscNavigation).
-    expect(mockCaches.open).toHaveBeenCalledWith('pages-rsc-offline-index');
-    expect(put).toHaveBeenCalledTimes(1);
-    mockCaches.open.mockImplementation(() => new Promise(() => undefined));
-  });
-
   it('keeps a page the person has seen, and leaves other pages\' messages to Serwist', async () => {
     mockHandleCache.mockClear();
+    const fetchSpy = jest.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('new-build-payload', {
+      headers: { 'content-type': 'text/x-component' },
+    }));
     const seen = { waitUntil: jest.fn(), data: { type: 'offline-page-seen', url: 'https://my-preacher-helper.com/sermons/example' } };
     mockListeners.get('message')!(seen);
     expect(seen.waitUntil).toHaveBeenCalledTimes(1);
-    // Storing waits for a version's retirement to finish first (a microtask when there is none).
-    await new Promise(resolve => setTimeout(resolve, 0));
-    expect(mockCaches.open).toHaveBeenCalledWith('pages-rsc-offline');
+    await seen.waitUntil.mock.calls[0][0];
+    const entry = mockOfflineHarness.entries().find(page => page.address === seen.data.url);
+    expect(entry?.warm).toBe(true);
+    expect(mockOfflineHarness.payload(seen.data.url)).toMatchObject({ build: mockWorkerBuild, status: 200 });
+    expect(await new Response(mockOfflineHarness.payload(seen.data.url)?.body).text()).toBe('new-build-payload');
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
     expect(mockHandleCache).not.toHaveBeenCalled();
 
     const shared = { waitUntil: jest.fn(), data: { type: 'offline-page-seen', url: 'https://my-preacher-helper.com/share/notes/token' } };
     mockListeners.get('message')!(shared);
     expect(shared.waitUntil).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
   });
 
   it('keeps the Bible text in its own cache, answered first, before the default rules', async () => {

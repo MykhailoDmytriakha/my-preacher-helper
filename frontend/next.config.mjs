@@ -49,7 +49,9 @@ const typegenDistDir = process.env.NEXT_TYPEGEN_DIST_DIR;
 const withSerwist = withSerwistInit({
   swSrc: "app/sw.ts",
   swDest: "public/sw.js",
-  cacheOnNavigation: true,
+  // Seen-page Flight payloads and the precached shell own offline navigation.
+  // The optional HTML helper duplicates those writes and throws on late offline fetches.
+  cacheOnNavigation: false,
   // Do NOT reload on reconnect: it would call location.reload() on the window
   // 'online' event and blow away unsaved form/autosave state.
   reloadOnOnline: false,

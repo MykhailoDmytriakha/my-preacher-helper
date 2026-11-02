@@ -1,19 +1,17 @@
-/**
- * @jest-environment node
- */
+/** @jest-environment node */
 import { computeCacheBustingSearchParam } from 'next/dist/shared/lib/router/utils/cache-busting-search-param';
 import { Response as PlatformResponse } from 'undici';
 
 import {
-  OFFLINE_RSC_CACHE,
-  OFFLINE_RSC_INDEX_CACHE,
   OFFLINE_RSC_MAX_ENTRIES,
-  createOfflineRscNavigation,
+  createOfflineRscNavigation as createOfflineRscNavigationActual,
   isRememberedPage,
   isRscNavigation,
   offlineRscKey,
 } from '../offlineRscNavigation';
+import { createOfflinePageStorageHarness } from '../../../test-utils/offlinePageStorageHarness';
 
+type Harness = ReturnType<typeof createOfflinePageStorageHarness>;
 const ORIGIN = 'https://app.test';
 const SHELL_TREE = encodeURIComponent(JSON.stringify(['', { children: ['~offline', { children: ['__PAGE__', {}] }] }, null, null, true]));
 
@@ -27,22 +25,20 @@ function navigationRequest(path: string, rsc: string, extra: Record<string, stri
   });
 }
 
-function fakeCaches() {
-  const stores = new Map<string, Map<string, Response>>();
-  const keyOf = (key: RequestInfo | URL) => (typeof key === 'string' ? key : key instanceof URL ? key.href : key.url);
+function fakeCaches(): Harness { return createOfflinePageStorageHarness(); }
+
+function createOfflineRscNavigation({ caches, ...options }: Omit<Parameters<typeof createOfflineRscNavigationActual>[0], 'storage' | 'caches'> & { caches: Harness }) {
+  const configuredOptions = { ...options, now: options.now ?? caches.now };
+  let worker = createOfflineRscNavigationActual({ ...configuredOptions, storage: caches.storage(), caches: caches.legacyCaches });
   return {
-    stores,
-    async open(name: string) {
-      const store = stores.get(name) ?? new Map<string, Response>();
-      stores.set(name, store);
-      return {
-        async match(key: RequestInfo | URL) { return store.get(keyOf(key))?.clone(); },
-        async put(key: RequestInfo | URL, response: Response) { store.delete(keyOf(key)); store.set(keyOf(key), response); },
-        async keys() { return [...store.keys()].map(url => new Request(url)); },
-        async delete(key: RequestInfo | URL) { return store.delete(keyOf(key)); },
-      } as unknown as Cache;
+    remember: (...args: Parameters<typeof worker.remember>) => worker.remember(...args),
+    respond: (...args: Parameters<typeof worker.respond>) => worker.respond(...args),
+    rewarm: (...args: Parameters<typeof worker.rewarm>) => worker.rewarm(...args),
+    retire: async () => {
+      const build = caches.advanceBuild();
+      worker = createOfflineRscNavigationActual({ ...configuredOptions, storage: caches.storage(build), caches: caches.legacyCaches });
+      await worker.retire();
     },
-    async delete(name: string) { return stores.delete(name); },
   };
 }
 
@@ -50,23 +46,18 @@ function offline(): (request: Request) => Promise<Response> {
   return async () => { throw new TypeError('Failed to fetch'); };
 }
 
-const stored = (caches: ReturnType<typeof fakeCaches>) => [...(caches.stores.get(OFFLINE_RSC_CACHE)?.keys() ?? [])];
+const stored = (harness: Harness) => harness.stored();
 
-/** Sixty pages seen under the old build, then a new version retires their payloads. */
-async function retiredSixty(caches: ReturnType<typeof fakeCaches>) {
-  const seen = createOfflineRscNavigation({ fetchFn: async () => flight('old build'), caches });
+/** Start with the prior build's durable catalog, then activate the next build. */
+async function retiredSixty(harness: Harness) {
+  const seen = createOfflineRscNavigation({ fetchFn: async () => flight('old build'), caches: harness });
   for (let i = 0; i < 60; i++) await seen.remember(new URL(`${ORIGIN}/sermons/${i}`));
-  await createOfflineRscNavigation({ fetchFn: async () => flight('new build'), caches }).retire();
+  await createOfflineRscNavigation({ fetchFn: async () => flight('new build'), caches: harness }).retire();
 }
 const sermonId = (request: Request) => Number(new URL(request.url).pathname.split('/').pop());
 
-/** The addresses waiting to be warmed again, oldest first, whatever the entries carry besides. */
-async function waiting(caches: ReturnType<typeof fakeCaches>): Promise<string[]> {
-  const list = caches.stores.get(OFFLINE_RSC_INDEX_CACHE)?.values().next().value as Response | undefined;
-  if (!list) return [];
-  const entries = await list.clone().json() as Array<string | { address: string }>;
-  return entries.map(entry => (typeof entry === 'string' ? entry : entry.address));
-}
+/** Addresses still awaiting a usable payload, oldest first. */
+async function waiting(harness: Harness): Promise<string[]> { return harness.waiting(); }
 const pause = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 describe('offline RSC navigation', () => {
@@ -203,21 +194,13 @@ describe('offline RSC navigation', () => {
     it('keeps an address whose payload could not be stored', async () => {
       const caches = fakeCaches();
       await retiredSixty(caches);
-      const real = caches.open.bind(caches);
-      let full = true;
-      caches.open = async (name: string) => {
-        const cache = await real(name);
-        if (name !== OFFLINE_RSC_CACHE) return cache;
-        return { ...cache, put: async (key: RequestInfo | URL, response: Response) => {
-          if (full && String(typeof key === 'string' ? key : (key as Request).url).endsWith('/sermons/40')) {
-            throw new DOMException('Quota exceeded', 'QuotaExceededError');
-          }
-          return cache.put(key, response);
-        } } as unknown as Cache;
-      };
+      const target = `${ORIGIN}/sermons/40`;
+      caches.failPayloadWrite(target);
       const nav = createOfflineRscNavigation({ fetchFn: async () => flight('new build'), caches });
       await nav.rewarm();
-      full = false;
+      expect(await waiting(caches)).toContain(target);
+      caches.allowPayloadWrite(target);
+      caches.advanceTime(60_001);
       for (let i = 0; i < 3; i++) await nav.rewarm();
       expect(stored(caches)).toContain(`${ORIGIN}/sermons/40`);
     });
@@ -244,7 +227,12 @@ describe('offline RSC navigation', () => {
         caches,
       });
       await nav.rewarm();
+      expect(await waiting(caches)).toContain(`${ORIGIN}/sermons/59`);
+      if ([401, 403, 429, 200, 302].includes(status)) {
+        expect(caches.entries().some(entry => entry.retryAt > caches.now())).toBe(true);
+      }
       refusing = false;
+      caches.advanceTime(60_001);
       for (let i = 0; i < 3; i++) await nav.rewarm();
       expect(stored(caches)).toHaveLength(60);
     });
@@ -293,19 +281,10 @@ describe('offline RSC navigation', () => {
       await retiredSixty(caches);
       const online = createOfflineRscNavigation({ fetchFn: async () => flight('new build'), caches });
       await online.remember(new URL(`${ORIGIN}/sermons/59`));
-      // Another page's eviction, decided on an older order, lands right after 59 is refreshed.
-      const real = caches.open.bind(caches);
-      let evict = true;
-      caches.open = async (name: string) => {
-        const cache = await real(name);
-        if (name !== OFFLINE_RSC_CACHE) return cache;
-        return { ...cache, put: async (key: RequestInfo | URL, response: Response) => {
-          await cache.put(key, response);
-          const url = typeof key === 'string' ? key : (key as Request).url;
-          if (evict && url.endsWith('/sermons/59')) { evict = false; await cache.delete(url); }
-        } } as unknown as Cache;
-      };
+      // Simulate concurrent body eviction immediately before the next reservation validates metadata.
+      caches.evictPayloadOnNextRead(`${ORIGIN}/sermons/59`);
       const nav = createOfflineRscNavigation({ fetchFn: async () => flight('new build'), caches });
+      await nav.remember(new URL(`${ORIGIN}/sermons/59`));
       for (let i = 0; i < 3; i++) await nav.rewarm();
       expect(stored(caches)).toContain(`${ORIGIN}/sermons/59`);
     });
@@ -468,22 +447,15 @@ describe('offline RSC navigation', () => {
 
   it('lets go of a warm-up whose answer stalls after its headers', async () => {
     let calls = 0;
-    // Headers arrived; the body never finishes.
-    const stalledBody = () => ({ ok: true, status: 200, headers: new Headers({ 'content-type': 'text/x-component' }),
-      text: () => new Promise<string>(() => undefined), arrayBuffer: () => new Promise<ArrayBuffer>(() => undefined) }) as unknown as Response;
+    // Headers arrived; the payload body never finishes reading.
+    const stalledBody = () => new PlatformResponse(new ReadableStream<Uint8Array>({
+      start(controller) { controller.enqueue(new TextEncoder().encode('partial')); },
+    }), { status: 200, headers: { 'content-type': 'text/x-component' } }) as unknown as Response;
     const caches = fakeCaches();
-    const reading = {
-      // A real cache reads the whole body before it stores it.
-      open: async (name: string) => {
-        const cache = await caches.open(name);
-        return { ...cache, match: cache.match, keys: cache.keys, delete: cache.delete,
-          put: async (key: RequestInfo | URL, response: Response) => { await response.text(); await cache.put(key, new Response('p')); } };
-      },
-    };
     const nav = createOfflineRscNavigation({
       warmTimeoutMs: 20,
       fetchFn: () => { calls += 1; return Promise.resolve(calls === 1 ? stalledBody() : flight('p')); },
-      caches: reading as never,
+      caches,
     });
     const settles = (work: Promise<unknown>) =>
       Promise.race([work.then(() => 'settled'), new Promise(resolve => setTimeout(() => resolve('stuck'), 500))]);
@@ -532,16 +504,17 @@ describe('offline RSC navigation', () => {
     it('lets a later re-warm run when the list\'s storage did not answer', async () => {
       const caches = fakeCaches();
       await retiredSixty(caches);
-      const real = caches.open.bind(caches);
-      let silent = true;
-      caches.open = async (name: string) => (silent && name === OFFLINE_RSC_INDEX_CACHE ? new Promise<Cache>(() => undefined) : real(name));
+      const gate = caches.holdNextRead();
       let fetched = 0;
       const nav = createOfflineRscNavigation({ storageTimeoutMs: 5, fetchFn: async () => { fetched += 1; return flight('new build'); }, caches });
-      void nav.rewarm();
-      await pause(30);
-      silent = false;
-      await Promise.race([nav.rewarm(), pause(300)]);
-      expect(fetched).toBeGreaterThan(0);
+      try {
+        void nav.rewarm();
+        await gate.started;
+        await pause(30); // The storage deadline expires while the catalog read is held.
+        gate.release();
+        await Promise.race([nav.rewarm(), pause(300)]);
+        expect(fetched).toBeGreaterThan(0);
+      } finally { gate.release(); }
     });
 
     it('does not keep an answer that came through a redirect: it is another page\'s', async () => {
@@ -556,14 +529,18 @@ describe('offline RSC navigation', () => {
     it('rebuilds a list that broke while the batch ran from the copy read at its start', async () => {
       const caches = fakeCaches();
       await retiredSixty(caches);
-      const index = caches.stores.get(OFFLINE_RSC_INDEX_CACHE)!;
-      let broken = false;
+      const catalogBeforeBatch = caches.catalogSnapshot();
+      let corrupted = false;
       const nav = createOfflineRscNavigation({ fetchFn: async () => {
-        if (!broken) { broken = true; index.set('https://offline-index.invalid/addresses', new Response('{broken')); }
+        if (!corrupted) { corrupted = true; caches.corruptCatalog({ schema: 99, brokenDuringBatch: true }); }
         return flight('new build');
       }, caches });
       await nav.rewarm();
-      // The fifty newest warmed and left; the ten older ones are still waiting, in a list that reads again.
+      expect(corrupted).toBe(true);
+      // Unreadable metadata is never replaced with an empty list; once the fixture restores the
+      // transactionally saved copy, remaining addresses can still be processed in the next batch.
+      caches.restoreCatalog(catalogBeforeBatch);
+      await nav.rewarm();
       expect(await waiting(caches)).toHaveLength(10);
     });
 
@@ -639,20 +616,26 @@ describe('a navigation on a weak network', () => {
 
   it('takes the network answer that lands while the kept copy is still being looked for', async () => {
     const caches = fakeCaches(); await seen(caches);
-    const open = caches.open.bind(caches);
-    caches.open = async (name: string) => {
-      const cache = await open(name);
-      return { ...cache, match: async (key: RequestInfo | URL) => { await new Promise(resolve => setTimeout(resolve, DEADLINE * 4)); return cache.match(key); } } as unknown as Cache;
-    };
+    const gate = caches.holdNextRead();
     const nav = createOfflineRscNavigation({ fetchFn: later(DEADLINE * 2, 'fresh'), caches, navigationDeadlineMs: DEADLINE });
-    expect(await settled(nav.respond(navigationRequest('/sermons/abc', 'x')).then(answer => answer.text()))).toBe('fresh');
+    try {
+      const answer = nav.respond(navigationRequest('/sermons/abc', 'x')).then(response => response.text());
+      await gate.started;
+      await pause(DEADLINE * 3); // The whole network answer arrives while storage is still pending.
+      gate.release();
+      expect(await settled(answer)).toBe('fresh');
+    } finally { gate.release(); }
   });
 
   it('is not held by storage that does not answer once the network does', async () => {
     const caches = fakeCaches(); await seen(caches);
-    caches.open = () => new Promise<Cache>(() => undefined);
+    const gate = caches.holdNextRead();
     const nav = createOfflineRscNavigation({ fetchFn: later(DEADLINE * 2, 'fresh'), caches, navigationDeadlineMs: DEADLINE });
-    expect(await settled(nav.respond(navigationRequest('/sermons/abc', 'x')).then(answer => answer.text()))).toBe('fresh');
+    try {
+      const answer = nav.respond(navigationRequest('/sermons/abc', 'x')).then(response => response.text());
+      await gate.started;
+      expect(await settled(answer)).toBe('fresh');
+    } finally { gate.release(); }
   });
 
   it('hands a streaming answer over at once when nothing is kept to answer instead', async () => {
@@ -682,15 +665,19 @@ describe('a navigation on a weak network', () => {
   // Codex refute-weak r2: each of these went behind HEAD.
   it('hands a streaming answer over soon when storage does not answer', async () => {
     const caches = fakeCaches(); await seen(caches);
-    caches.open = () => new Promise<Cache>(() => undefined);
+    const gate = caches.holdNextRead();
     let more!: ReadableStreamDefaultController<Uint8Array>;
     const streaming = async () => new PlatformResponse(new ReadableStream<Uint8Array>({
       start(controller) { more = controller; controller.enqueue(new TextEncoder().encode('fresh ')); },
     }), { status: 200, headers: { 'content-type': 'text/x-component' } }) as unknown as Response;
     const nav = createOfflineRscNavigation({ fetchFn: streaming, caches, navigationDeadlineMs: 3000 });
-    const answer = await settled(nav.respond(navigationRequest('/sermons/abc', 'x')), 1000);
-    more.enqueue(new TextEncoder().encode('root')); more.close();
-    expect(await answer.text()).toBe('fresh root');
+    try {
+      const answerPromise = nav.respond(navigationRequest('/sermons/abc', 'x'));
+      await gate.started;
+      const answer = await settled(answerPromise, 1000);
+      more.enqueue(new TextEncoder().encode('root')); more.close();
+      expect(await answer.text()).toBe('fresh root');
+    } finally { gate.release(); }
   });
 
   it('hands over a refusal from the server at once, even when its body stalls', async () => {
@@ -719,21 +706,18 @@ describe('a navigation on a weak network', () => {
   // Codex refute-weak r3.
   it('counts the deadline from the navigation, so a copy found after it answers at once', async () => {
     const caches = fakeCaches(); await seen(caches);
-    jest.useFakeTimers();
+    const gate = caches.holdNextRead();
+    const nav = createOfflineRscNavigation({ fetchFn: never, caches, navigationDeadlineMs: 100 });
+    let answered = false;
+    const answer = nav.respond(navigationRequest('/sermons/abc', 'x')).then(() => { answered = true; });
     try {
-      const open = caches.open.bind(caches);
-      caches.open = async (name: string) => {
-        const cache = await open(name);
-        return { ...cache, match: async (key: RequestInfo | URL) => { await new Promise(resolve => setTimeout(resolve, 300)); return cache.match(key); } } as unknown as Cache;
-      };
-      const nav = createOfflineRscNavigation({ fetchFn: never, caches, navigationDeadlineMs: 100 });
-      let answered = false;
-      void nav.respond(navigationRequest('/sermons/abc', 'x')).then(() => { answered = true; });
-      await jest.advanceTimersByTimeAsync(310);
+      await gate.started;
+      await pause(150); // The deadline passes while the read remains outstanding.
+      expect(answered).toBe(false);
+      gate.release();
+      await answer;
       expect(answered).toBe(true);
-    } finally {
-      jest.useRealTimers();
-    }
+    } finally { gate.release(); }
   });
 
   it('stops an answer whose headers arrive only after the kept copy has answered', async () => {

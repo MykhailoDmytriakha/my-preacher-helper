@@ -26,7 +26,8 @@ const linkedIcons = [
 // in a disposable config project; next.config's webpack callback cleans public.
 const inspectConfig = String.raw`
   import { createRequire } from 'node:module';
-  import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+  import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+  import { runInNewContext } from 'node:vm';
   import { tmpdir } from 'node:os';
   import path from 'node:path';
   import { pathToFileURL } from 'node:url';
@@ -48,6 +49,28 @@ const inspectConfig = String.raw`
     if (!plugin) throw new Error('Production service worker plugin is missing');
     const { transformManifest } = await import('@serwist/build');
     const identityEntries = plugin.config.additionalPrecacheEntries;
+    // Execute the installed client entry with the actual production DefinePlugin values.
+    // Its optional helper must not add another HTML writer beside our RSC/shell owners.
+    const defined = Object.assign({}, ...resolved.plugins.filter(item => item.definitions).map(item => item.definitions));
+    const flags = {};
+    for (const [key, expression] of Object.entries(defined)) {
+      if (key.startsWith('self.__SERWIST_SW_ENTRY.')) flags[key.split('.').pop()] = expression === undefined ? undefined : new Function('return (' + expression + ')')();
+    }
+    const workers = [], messages = [], registrations = [], events = {};
+    const push = () => {}, replace = () => {};
+    const history = { pushState: push, replaceState: replace };
+    const navigator = { serviceWorker: {}, onLine: true };
+    const window = { __SERWIST_SW_ENTRY: flags, navigator, location: { origin: 'https://app.test', pathname: '/groups' }, addEventListener: (name, callback) => { events[name] = callback; } };
+    const entryPath = path.join(path.dirname(require.resolve('@serwist/next')), 'sw-entry.mjs');
+    const entry = readFileSync(entryPath, 'utf8').replace(/^import .*;\r?\n/gm, '').replace('export {};', '');
+    class EntryWorker { constructor(url) { workers.push(url); } postMessage(message) { messages.push(message); } }
+    class EntrySerwist { constructor(url, options) { this.url = url; this.scope = options.scope; } register() { registrations.push({ url: this.url, scope: this.scope }); } }
+    runInNewContext(entry, { self: window, window, navigator, history, caches: {}, Worker: EntryWorker, Serwist: EntrySerwist, isCurrentPageOutOfScope: () => false });
+    history.pushState({}, '', '/groups');
+    history.replaceState({}, '', '/sermons');
+    if (events.online) events.online();
+    const entryBehavior = { workers, messages, registrations, historyPreserved: history.pushState === push && history.replaceState === replace };
+
     const describe = (name, bytes, { metadata = true } = {}) => {
       const content = Buffer.alloc(0);
       const source = { size: () => bytes, source: () => content };
@@ -106,12 +129,13 @@ const inspectConfig = String.raw`
       describe('swe-worker-example.js', 64 * KiB),
       describe('static/media/illustration.png', 64 * KiB),
     ]));
-    process.stdout.write('\nPWA_PRECACHE_PROBES:' + JSON.stringify({ identityEntries, probes }) + '\n');
+    process.stdout.write('\nPWA_PRECACHE_PROBES:' + JSON.stringify({ identityEntries, probes, entryBehavior }) + '\n');
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 `;
 
+let entryBehavior: { workers: string[]; messages: unknown[]; registrations: { url: string; scope: string }[]; historyPreserved: boolean };
 let entries: PrecacheEntry[];
 let probes: ProbeResult[];
 
@@ -123,9 +147,10 @@ beforeAll(() => {
   });
   const line = output.split('\n').find(value => value.startsWith('PWA_PRECACHE_PROBES:'));
   if (!line) throw new Error('Service worker probes were not returned');
-  const payload = JSON.parse(line.slice('PWA_PRECACHE_PROBES:'.length)) as { identityEntries: PrecacheEntry[]; probes: ProbeResult[] };
+  const payload = JSON.parse(line.slice('PWA_PRECACHE_PROBES:'.length)) as { identityEntries: PrecacheEntry[]; probes: ProbeResult[]; entryBehavior: typeof entryBehavior };
   entries = payload.identityEntries;
   probes = payload.probes;
+  entryBehavior = payload.entryBehavior;
 }, 30_000);
 
 const probe = (name: string) => {
@@ -198,5 +223,21 @@ describe('offline application code precache policy', () => {
   it('does not require source maps, hot updates, service workers, or other non-code assets', () => {
     const result = probe('excluded-non-app-code-assets');
     expect(result.error).toBeUndefined();
+  });
+});
+
+
+describe('one owner for offline navigation caching', () => {
+  it('does not launch the optional auxiliary HTML worker or dispatch duplicate cache messages', () => {
+    expect(entryBehavior.workers).toEqual([]);
+    expect(entryBehavior.messages).toEqual([]);
+  });
+
+  it('leaves native history with the router instead of wrapping it for another cache', () => {
+    expect(entryBehavior.historyPreserved).toBe(true);
+  });
+
+  it('still registers the actual application service worker', () => {
+    expect(entryBehavior.registrations).toEqual([{ url: 'https://app.test/sw.js', scope: '/' }]);
   });
 });
