@@ -5434,3 +5434,50 @@ owner-device reload, bounded test-account checks and exact preference restoratio
 after separate release authorization. No push, deployment, owner/physical-device acceptance
 or production reads are claimed. Unit274's read-cache overwrite remains open; the structure
 tag catalogue is still a recheck, and same-field chronology remains a separate existing bug.
+
+
+## Unit278 — canonical tags on the open structure board (2026-11-02, local only)
+
+Locally closed `BUG-20261102-structure-tag-cache-bypasses-engine`. Structure now
+uses the existing public `useTags` catalogue instead of its private React Query/service
+copy. One normalized projection owns chip names/colours and palette options. A tag-only
+change repaints current items, preserving local sermon text, card content, positions,
+order and outline. Drag/AI review delays projection until release; a genuinely new sermon
+snapshot still rebuilds through the existing path. The obsolete exact two-part owner tags
+query is retired as a read-only catalogue; clean fetched rows do not become unsent copies.
+Historical tag mutations and unknown/unassigned raw inputs retain their existing archive.
+
+Before any application change, four of six unchanged public-hook-boundary probe cases
+failed; two controls passed. The same byte-identical six-case file now passes. The actual
+old hook suite has18tests: its former handwritten20summary accidentally included the two
+probe controls. Raw receipts remain unchanged and `structure-tags-278-count-erratum-v1.json`
+records the correction. Focused89tests pass (18old/6probe/65archive), independently repeated
+by a fresh Codex hand. The final full run passes1104suites/12760tests/17pending; types,
+lint(0errors/60warnings) and production build exit0 with the same2707source pins. Build
+`oBrml1vGCCz9W4bwB4R27` records actual source a0e318d plus its overlay, not a later commit.
+Manifest SHA `6f84d7fb28fc1e0ba270072fed1f654570c48bac0b32d0d1d949c596430faced`.
+
+Actual ordinary Chrome on isolated local Auth/Firestore reproduced the before failure:
+Settings acknowledged red, but the explicitly foreground Structure stayed green after20s.
+After the fix, the same save/return flow shows red and retains both thought texts/order;
+all8behaviour checks pass. The first AFTER attempt sampled initial fallback before the
+asynchronous catalogue arrived; its later initial frame is already green. That attempt
+is retained and excluded; v2 waits for actual initial green before measuring. Raw native
+v2exit1/passfalse is retained: only two exact initial same-origin GET navigation aborts
+are qualified, with HTTP200 responses also observed for both routes. Page/console/HTTP/
+forbidden errors are zero. Three injected defects and the excluded v1 fail the qualifier.
+Root inspected six actual wide1280/phone390 frames; image sizes/viewport/overflow match.
+
+Fixtures, browser/profile and all three service wrappers stopped; actual wrapper exits0,
+nine owned ports free, two explicit hub exports acknowledged/eight hashes verified. The
+913compiled/worker members are archived and hash-verified; archive SHA
+`9bf866b513c381f337c90dea08a4d361f89265b37b6b95bf94452654aa85258e`. Fresh acceptance reran
+`python3 artifacts/structure-tags-278-verify-v2.py` from the local case:11PASS/actual0,
+then independently repeated the89focused tests. Extra focused evidence is recorded
+separately from the brief's one required run. Review/visual/fresh reports live under
+`structure-tags-278-*` in the local case artifacts.
+
+No push, deployment, production reads, owner or physical-device acceptance is claimed.
+`structure-tags-278-production-recipe-v1.md` retains the later authorized release/version,
+disposable fixture, foreground return/reload and exact-cleanup checks. Unit274's remaining
+read-only entitlement/referral cache overwrite and the separate chronology cards stay open.

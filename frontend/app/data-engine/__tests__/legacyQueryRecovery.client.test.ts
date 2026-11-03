@@ -571,6 +571,82 @@ describe('which legacy queries the persisted cache may keep', () => {
     expect(isEngineOwnedLegacyQuery(['user-settings', 'owner'], onEngine)).toBe(false);
     expect(isEngineOwnedLegacyQuery(['userSettings', 'owner'], collection => collection === 'users')).toBe(false);
   });
+
+  it('filters only the exact owner-scoped tags catalogue key', () => {
+    const enabledTags = (collection: string) => collection === 'tags';
+    expect(isEngineOwnedLegacyQuery(['tags', 'owner-a'], enabledTags)).toBe(true);
+    expect(isEngineOwnedLegacyQuery(['tags'], enabledTags)).toBe(false);
+    expect(isEngineOwnedLegacyQuery(['tags', 'owner-a', 'extra'], enabledTags)).toBe(false);
+    expect(isEngineOwnedLegacyQuery(['tags', 7], enabledTags)).toBe(false);
+    expect(isEngineOwnedLegacyQuery(['tags', ''], enabledTags)).toBe(false);
+    expect(isEngineOwnedLegacyQuery(['unknown-tags', 'owner-a'], enabledTags)).toBe(false);
+    expect(isEngineOwnedLegacyQuery(['tags', 'owner-a'], () => false)).toBe(false);
+  });
+});
+
+describe('legacy tags migration input', () => {
+  const enabledTags = (collection: string) => collection === 'tags';
+  const tag = (owner: string, id: string, name = 'Grace') => ({
+    id, userId: owner, name, color: '#16a34a', required: false,
+  });
+  afterEach(() => {
+    jest.mocked(get).mockReset();
+    jest.mocked(update).mockReset().mockResolvedValue(undefined);
+  });
+
+  it('does not turn a clean fetched tags catalogue into an unsent archived row', async () => {
+    installStorageHarness();
+    const catalogue = { queryKey: ['tags', 'owner-a'], state: {
+      data: { requiredTags: [], customTags: [tag('owner-a', 'grace-id')] }, dataUpdatedAt: 45,
+    } };
+    jest.mocked(get).mockResolvedValue({ clientState: { queries: [catalogue], mutations: [] } });
+
+    await preserveLegacyQueryCache(enabledTags, 'owner-a');
+
+    expect(await listLegacyQueryCopies('owner-a')).toEqual([]);
+  });
+
+  it('keeps the three previous tag mutation payloads exact and quarantines an ownerless one', async () => {
+    const disk = installStorageHarness();
+    const catalogue = { queryKey: ['tags', 'owner-a'], state: {
+      data: { requiredTags: [], customTags: [tag('owner-a', 'grace-id')] }, dataUpdatedAt: 45,
+    } };
+    const add = { mutationKey: ['tags', 'add'], state: {
+      variables: tag('owner-a', 'grace-id'), status: 'pending', isPaused: true, submittedAt: 51,
+    } };
+    const remove = { mutationKey: ['tags', 'remove'], state: {
+      variables: { userId: 'owner-a', tagName: 'Grace' }, status: 'error', isPaused: false, submittedAt: 52,
+    } };
+    const updateTag = { mutationKey: ['tags', 'update'], state: {
+      variables: { ...tag('owner-a', 'grace-id'), color: '#dc2626' }, status: 'error', isPaused: false, submittedAt: 53,
+    } };
+    const ownerless = { mutationKey: ['tags', 'update'], state: {
+      variables: { id: 'grace-id', name: 'Grace', color: '#2563eb', required: false }, status: 'pending', isPaused: true, submittedAt: 54,
+    } };
+    let source: unknown = { clientState: { queries: [catalogue], mutations: [add, remove, updateTag, ownerless] } };
+    jest.mocked(get).mockImplementation(async key => key === 'react-query-cache'
+      ? JSON.parse(JSON.stringify(source)) as never
+      : undefined as never);
+    jest.mocked(update).mockImplementation(async (key, updater) => {
+      if (key === 'react-query-cache') source = updater(JSON.parse(JSON.stringify(source)));
+    });
+
+    await preserveLegacyQueryCache(enabledTags, 'owner-a');
+
+    const ownedCopies = await listLegacyQueryCopies('owner-a');
+    expect(ownedCopies).toHaveLength(3);
+    expect(ownedCopies.map(copy => copy.raw)).toEqual(expect.arrayContaining([
+      JSON.stringify(add, null, 2), JSON.stringify(remove, null, 2), JSON.stringify(updateTag, null, 2),
+    ]));
+    expect(ownedCopies.every(copy => copy.collection === 'tags')).toBe(true);
+    expect((source as { clientState: { mutations: unknown[] } }).clientState.mutations).toEqual([ownerless]);
+
+    const allArchived = [...disk.rows.values()].flat() as Array<{ owner: string; collection: string; raw: string }>;
+    expect(allArchived).toContainEqual(expect.objectContaining({
+      owner: '', collection: 'tags', raw: JSON.stringify(ownerless, null, 2),
+    }));
+    expect(await listLegacyQueryCopies('')).toEqual([]);
+  });
 });
 
 describe('retiring copies proven to be echoes of the server', () => {

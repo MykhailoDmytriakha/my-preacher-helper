@@ -59,6 +59,11 @@ const OWNER_HINT_SOURCES: QuerySources = {
  * unsaved copy from the previous version, and the count of "local copies" would grow on every visit.
  */
 export function isEngineOwnedLegacyQuery(queryKey: readonly unknown[], enabled: (collection: string) => boolean): boolean {
+  // Structure's old catalogue was a fetched read, never an editor. Retire only that exact
+  // key shape; archiving its clean rows would invent unsent work on every visit. Old tag
+  // mutation payloads still use the independent archive below, including unknown owners.
+  if (queryKey.length === 2 && queryKey[0] === 'tags'
+    && typeof queryKey[1] === 'string' && queryKey[1].trim()) return enabled('tags');
   const source = QUERY_SOURCES[String(queryKey[0])];
   return Boolean(source && enabled(source.collection));
 }

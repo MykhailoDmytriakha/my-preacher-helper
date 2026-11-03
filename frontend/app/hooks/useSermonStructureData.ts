@@ -1,68 +1,53 @@
-import { useQueryClient } from '@tanstack/react-query';
 import { TFunction } from 'i18next'; // Import TFunction from i18next
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { toast } from 'sonner';
 
+import { useTags } from '@/hooks/useTags';
 import { Item, Sermon, SermonPoint, Tag, Thought, ThoughtsBySection } from '@/models/models';
-import { getTags } from '@/services/tag.service';
-import { getConnectivityStatus } from '@/utils/connectivity';
-// ONE definition of "has the server proved its copy is newer" for the whole app: this
-// hook used to carry a byte-identical private copy, and two copies of a rule that
-// decides whether someone's unsaved words may be discarded is one copy too many.
-import { readWithDeadline } from '@/utils/readWithDeadline';
 import { normalizeStructureTag } from '@/utils/tagUtils';
 import { canonicalizeStructure } from '@/utils/thoughtOrdering';
 import { getSectionBaseColor } from '@lib/sections';
 
 
-// Helper: Fetch and process tags
-async function fetchTagsData(
-  fetchedSermon: Sermon,
-  queryClient: ReturnType<typeof useQueryClient>,
-  t: TFunction
-): Promise<{
-  requiredTags: Tag[];
-  customTags: Tag[];
-  allTags: Record<string, { name: string; color?: string }>;
-}> {
-  let tagsData: { requiredTags: Tag[]; customTags: Tag[] };
-  const tagsQueryKey = ['tags', fetchedSermon.userId];
+type TagCatalogue = Record<string, { name: string; color?: string }>;
 
-  try {
-    const cachedTags = queryClient.getQueryData<{ requiredTags: Tag[]; customTags: Tag[] }>(tagsQueryKey);
-    if (cachedTags) {
-      tagsData = cachedTags;
-    } else if (getConnectivityStatus()) {
-      tagsData = await readWithDeadline(getTags(fetchedSermon.userId), 3000);
-      queryClient.setQueryData(tagsQueryKey, tagsData);
-    } else {
-      tagsData = { requiredTags: [], customTags: [] };
-    }
-  } catch (tagError) {
-    console.error("Error fetching tags:", tagError);
-    tagsData = { requiredTags: [], customTags: [] };
-    toast.error(t('errors.fetchTagsError'));
+/** Presentation of the canonical catalogue; this hook owns no tag IO or persisted copy. */
+function buildTagCatalogue(tags: readonly Tag[]): TagCatalogue {
+  const catalogue: TagCatalogue = Object.create(null);
+  for (const tag of tags) {
+    const key = tag.name.trim().toLowerCase();
+    if (!catalogue[key]) catalogue[key] = { name: tag.name, color: tag.color };
   }
+  return catalogue;
+}
 
-  const allTags: Record<string, { name: string; color?: string }> = {};
-  (tagsData.requiredTags || []).forEach((tag: Tag) => {
-    const normalizedName = tag.name.trim().toLowerCase();
-    allTags[normalizedName] = { name: tag.name, color: tag.color };
-  });
-  (tagsData.customTags || []).forEach((tag: Tag) => {
-    const normalizedName = tag.name.trim().toLowerCase();
-    if (!allTags[normalizedName]) {
-      allTags[normalizedName] = { name: tag.name, color: tag.color };
-    }
-  });
+function projectCustomTag(name: string, catalogue: TagCatalogue) {
+  const tag = catalogue[name.trim().toLowerCase()];
+  return { name: tag?.name || name, color: tag?.color || '#4c51bf' };
+}
 
-  return { ...tagsData, allTags };
+function customTagOptions(catalogue: TagCatalogue) {
+  return Object.values(catalogue).filter(tag => normalizeStructureTag(tag.name) === null)
+    .map(tag => ({ name: tag.name, color: tag.color || '#808080' }));
+}
+
+/** A catalogue change repaints the current board, preserving local text, order and positions. */
+function repaintTagPresentation(containers: Record<string, Item[]>, catalogue: TagCatalogue): Record<string, Item[]> {
+  let changed = false;
+  const next = Object.fromEntries(Object.entries(containers).map(([section, items]) => [section, items.map(item => {
+    if (!item.customTagNames?.length) return item;
+    const tags = item.customTagNames.map(tag => ({ ...tag, ...projectCustomTag(tag.name, catalogue) }));
+    if (tags.every((tag, index) => tag.name === item.customTagNames![index].name && tag.color === item.customTagNames![index].color)) return item;
+    changed = true;
+    return { ...item, customTagNames: tags };
+  })]));
+  return changed ? next : containers;
 }
 
 // Helper: Process thoughts into items
 function processThoughtsIntoItems(
   fetchedSermon: Sermon,
-  allTags: Record<string, { name: string; color?: string }>
+  allTags: TagCatalogue
 ): Record<string, Item> {
   const allThoughtItems: Record<string, Item> = {};
 
@@ -72,15 +57,7 @@ function processThoughtsIntoItems(
 
     const customTagNames = rawTags.filter((tag: string) => normalizeStructureTag(tag) === null);
 
-    const enrichedCustomTags = customTagNames.map((tagName: string) => {
-      const normalizedName = tagName.trim().toLowerCase();
-      const tagInfo = allTags[normalizedName];
-      const color = tagInfo?.color || "#4c51bf";
-      return {
-        name: tagInfo?.name || tagName,
-        color: color,
-      };
-    });
+    const enrichedCustomTags = customTagNames.map(name => projectCustomTag(name, allTags));
 
     const uniqueRequiredTags: string[] = [];
 
@@ -177,7 +154,7 @@ export interface StructureEngineSource {
   retry: () => void;
 }
 
-function buildBoard(sermon: Sermon, allTags: Record<string, { name: string; color?: string }>) {
+function buildBoard(sermon: Sermon, allTags: TagCatalogue) {
   const allThoughtItems = processThoughtsIntoItems(sermon, allTags);
   const canonicalStructure = canonicalizeStructure({
     thoughts: sermon.thoughts ?? [],
@@ -188,14 +165,20 @@ function buildBoard(sermon: Sermon, allTags: Record<string, { name: string; colo
   return {
     containers: { introduction: seedPositions(intro), main: seedPositions(main), conclusion: seedPositions(concl), ambiguous: seedPositions(ambiguous) },
     outlinePoints: { introduction: sermon.outline?.introduction || [], main: sermon.outline?.main || [], conclusion: sermon.outline?.conclusion || [] },
-    allowedTags: Object.values(allTags).filter(tag => normalizeStructureTag(tag.name) === null)
-      .map(tag => ({ name: tag.name, color: tag.color || "#808080" })),
+    allowedTags: customTagOptions(allTags),
     hasAmbiguous: ambiguous.length > 0,
   };
 }
 
 export function useSermonStructureData(t: TFunction, engine: StructureEngineSource) {
-  const queryClient = useQueryClient();
+  const canonicalTags = useTags(engine.sermon?.userId);
+  const allTags = useMemo(() => buildTagCatalogue(canonicalTags.allTags), [canonicalTags.allTags]);
+  const catalogueRef = useRef(allTags);
+  catalogueRef.current = allTags;
+  const tagError = canonicalTags.error?.message;
+  useEffect(() => {
+    if (tagError) toast.error(t('errors.fetchTagsError'));
+  }, [tagError, t]);
   const [sermon, setSermonState] = useState<Sermon | null>(null);
   const [containers, setContainers] = useState<Record<string, Item[]>>({
     introduction: [],
@@ -229,10 +212,10 @@ export function useSermonStructureData(t: TFunction, engine: StructureEngineSour
   const engineSermon = engine.sermon;
   const engineRef = useRef(engine);
   engineRef.current = engine;
-  const engineTagsRef = useRef<{ owner: string; tags: Record<string, { name: string; color?: string }> } | null>(null);
+  const appliedEngineSermonRef = useRef<Sermon | null>(null);
   const engineBoardPendingRef = useRef(false);
   const engineBuiltRef = useRef(false);
-  const applyEngineSermon = useCallback((next: Sermon, allTags: Record<string, { name: string; color?: string }>) => {
+  const applyEngineSermon = useCallback((next: Sermon, allTags: TagCatalogue) => {
     const board = buildBoard(next, allTags);
     setSermonState(next);
     setSermonPoints(board.outlinePoints);
@@ -245,6 +228,14 @@ export function useSermonStructureData(t: TFunction, engine: StructureEngineSour
     });
     if (!engineBuiltRef.current) setIsAmbiguousVisible(board.hasAmbiguous);
     engineBuiltRef.current = true;
+    appliedEngineSermonRef.current = next;
+    engineBoardPendingRef.current = false;
+    setLoading(false);
+  }, []);
+
+  const applyCatalogue = useCallback((catalogue: TagCatalogue) => {
+    setAllowedTags(customTagOptions(catalogue));
+    setContainers(current => repaintTagPresentation(current, catalogue));
     engineBoardPendingRef.current = false;
     setLoading(false);
   }, []);
@@ -254,28 +245,18 @@ export function useSermonStructureData(t: TFunction, engine: StructureEngineSour
       setLoading(Boolean(engineRef.current.loading));
       return;
     }
-    let active = true;
-    const cached = engineTagsRef.current?.owner === engineSermon.userId ? engineTagsRef.current.tags : null;
-    const build = (tags: Record<string, { name: string; color?: string }>) => {
-      if (!active) return;
-      if (engineRef.current.isHolding()) { engineBoardPendingRef.current = true; return; }
-      applyEngineSermon(engineSermon, tags);
-    };
-    if (cached) build(cached);
-    else void fetchTagsData(engineSermon, queryClient, t).then(({ allTags }) => {
-      engineTagsRef.current = { owner: engineSermon.userId, tags: allTags };
-      build(allTags);
-    });
-    return () => { active = false; };
-  }, [engineSermon, applyEngineSermon, queryClient, t]);
+    if (engineRef.current.isHolding()) { engineBoardPendingRef.current = true; return; }
+    if (appliedEngineSermonRef.current !== engineSermon) applyEngineSermon(engineSermon, allTags);
+    else applyCatalogue(allTags);
+  }, [engineSermon, allTags, applyEngineSermon, applyCatalogue]);
 
-  /** Runs a rebuild that waited for a drag or an AI review to end. */
+  /** Apply the latest source after a drag/review, retaining local edits for tag-only changes. */
   const syncFromEngine = useCallback(() => {
     const current = engineRef.current.sermon;
-    const tags = engineTagsRef.current;
-    if (!engineBoardPendingRef.current || !current || !tags || engineRef.current.isHolding()) return;
-    applyEngineSermon(current, tags.tags);
-  }, [applyEngineSermon]);
+    if (!engineBoardPendingRef.current || !current || engineRef.current.isHolding()) return;
+    if (appliedEngineSermonRef.current !== current) applyEngineSermon(current, catalogueRef.current);
+    else applyCatalogue(catalogueRef.current);
+  }, [applyEngineSermon, applyCatalogue]);
 
   // Sync outlinePoints state with sermon.outline when it changes
   useEffect(() => {

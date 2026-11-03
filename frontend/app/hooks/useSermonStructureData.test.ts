@@ -4,8 +4,7 @@ import React from 'react';
 import { TFunction } from 'i18next';
 import { toast } from 'sonner';
 
-import { Sermon, Thought, ThoughtsBySection, SermonOutline } from '@/models/models';
-import { getTags } from '@/services/tag.service';
+import { Sermon, Thought, Tag, ThoughtsBySection, SermonOutline } from '@/models/models';
 
 import { useSermonStructureData, type StructureEngineSource } from './useSermonStructureData';
 
@@ -13,7 +12,7 @@ import { useSermonStructureData, type StructureEngineSource } from './useSermonS
 
 
 // Mocks
-jest.mock('@/services/tag.service');
+jest.mock('@/hooks/useTags', () => ({ useTags: (...args: unknown[]) => mockUseTags(...args) }));
 jest.mock('sonner');
 
 // Simple mock TFunction for translations
@@ -84,6 +83,17 @@ const mockTagsData = {
   ],
 };
 
+const publicTagsState = (customTags: Tag[], error: Error | null = null) => ({
+  tags: { requiredTags: [], customTags },
+  requiredTags: [],
+  customTags,
+  allTags: customTags,
+  loading: false,
+  error,
+  refreshTags: jest.fn(),
+});
+const mockUseTags = jest.fn();
+
 const mockOutlineData = {
   introduction: [{ id: 'op1', text: 'Opening point' }],
   main: [{ id: 'op2', text: 'Main point A' }],
@@ -101,7 +111,7 @@ const engineOf = (sermon: Sermon | null, extra: Partial<StructureEngineSource> =
 });
 
 // Type cast mocks
-const mockedGetTags = getTags as jest.Mock;
+const mockedUseTags = mockUseTags;
 const mockedToastError = toast.error as jest.Mock;
 
 const createWrapper = () => {
@@ -123,11 +133,11 @@ const renderData = (sermon: Sermon | null, extra: Partial<StructureEngineSource>
 describe('useSermonStructureData Hook', () => {
   beforeEach(() => {
     // Reset mocks before each test
-    mockedGetTags.mockClear();
+    mockedUseTags.mockReset();
     mockedToastError.mockClear();
 
-    // Default successful mock implementations
-    mockedGetTags.mockResolvedValue(mockTagsData);
+    // Stable public-hook value: a fresh array on each render would imitate a new catalogue forever.
+    mockedUseTags.mockReturnValue(publicTagsState(mockTagsData.customTags as unknown as Tag[]));
   });
 
   it('shows empty outline sections when the engine document has no outline', async () => {
@@ -161,8 +171,8 @@ describe('useSermonStructureData Hook', () => {
     // Wait for the loading to finish
     await waitFor(() => expect(result.current.loading).toBe(false));
 
-    // Verify service calls
-    expect(mockedGetTags).toHaveBeenCalledWith(mockSermon.userId);
+    // The structure board reads the same canonical catalogue exposed to the rest of the app.
+    expect(mockedUseTags).toHaveBeenCalledWith(mockSermon.userId);
 
     // Verify final state
     expect(result.current.sermon).toEqual(mockSermon);
@@ -219,7 +229,7 @@ describe('useSermonStructureData Hook', () => {
     expect(result.current.sermon).toBeNull();
     expect(result.current.error).toBeNull();
     expect(result.current.containers).toEqual({ introduction: [], main: [], conclusion: [], ambiguous: [] });
-    expect(mockedGetTags).not.toHaveBeenCalled();
+    expect(mockedUseTags).toHaveBeenCalledWith(undefined);
   });
 
   it('reports the engine error while there is no document, and hands out the engine retry', async () => {
@@ -230,7 +240,7 @@ describe('useSermonStructureData Hook', () => {
     expect(result.current.sermon).toBeNull();
     expect(result.current.error).toBe('Failed to fetch sermon structure');
     expect(result.current.retry).toBe(retry);
-    expect(mockedGetTags).not.toHaveBeenCalled();
+    expect(mockedUseTags).toHaveBeenCalledWith(undefined);
   });
 
   it('drops the error once the engine has a document', async () => {
@@ -239,9 +249,9 @@ describe('useSermonStructureData Hook', () => {
     expect(result.current.error).toBeNull();
   });
 
-  it('should handle error during getTags but continue processing', async () => {
+  it('handles a canonical tags read error with fallback tag presentation', async () => {
     const tagsError = new Error('Tags fetch failed');
-    mockedGetTags.mockRejectedValue(tagsError);
+    mockedUseTags.mockReturnValue(publicTagsState([], tagsError));
 
     const { result } = renderData(mockSermon);
 
@@ -252,7 +262,7 @@ describe('useSermonStructureData Hook', () => {
     expect(result.current.error).toBeNull(); // Error handled, not set at hook level
     expect(mockedToastError).toHaveBeenCalledWith(mockTranslations['errors.fetchTagsError']);
 
-    // Allowed tags should be empty as fetch failed
+    // Allowed tags should be empty when the canonical catalogue reports a read failure
     expect(result.current.allowedTags).toEqual([]);
 
     // Outline stays on the engine document's copy
@@ -261,8 +271,7 @@ describe('useSermonStructureData Hook', () => {
     // Items should be processed without tag enrichment from fetched tags,
     // but might get default enrichment based on the thought's own tag strings.
     const t2Item = result.current.containers.main.find(item => item.id === 't2');
-    // Check for default enrichment: 'grace' tag exists on thought, but not in fetched tags,
-    // so it gets the default color.
+    // Grace is on the thought but absent from the failed catalogue, so it keeps the default color.
     expect(t2Item?.customTagNames).toEqual([{ name: 'grace', color: '#4c51bf' }]);
   });
 
@@ -314,7 +323,7 @@ describe('useSermonStructureData Hook', () => {
       outline: outlineWithReviews,
     };
 
-    mockedGetTags.mockResolvedValueOnce({ requiredTags: [], customTags: [] });
+    mockedUseTags.mockReturnValue(publicTagsState([]));
 
     const { result } = renderData(sermonWithReviewedOutline);
 
@@ -359,7 +368,7 @@ describe('useSermonStructureData Hook', () => {
       outline: emptyOutlineWithReviews,
     };
 
-    mockedGetTags.mockResolvedValueOnce({ requiredTags: [], customTags: [] });
+    mockedUseTags.mockReturnValue(publicTagsState([]));
 
     const { result } = renderData(sermonWithEmptySections);
 
@@ -461,7 +470,7 @@ describe('useSermonStructureData Hook', () => {
       structure: undefined,
       outline: undefined,
     };
-    mockedGetTags.mockResolvedValue({ requiredTags: [], customTags: [] }); // No tags
+    mockedUseTags.mockReturnValue(publicTagsState([])); // No tags
 
     const { result } = renderData(emptySermon);
     await waitFor(() => expect(result.current.loading).toBe(false));
@@ -484,7 +493,7 @@ describe('useSermonStructureData on the engine', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    (getTags as jest.Mock).mockResolvedValue({ requiredTags: [], customTags: [] });
+    mockedUseTags.mockReturnValue(publicTagsState([]));
   });
 
   it('builds the board from the engine document', async () => {
