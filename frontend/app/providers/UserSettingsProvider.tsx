@@ -3,7 +3,6 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useLayoutEffect, useRef, useSyncExternalStore, type ReactNode } from 'react';
 
-import { isCollectionOnEngine } from '@/data-engine/clientPolicy';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { useDataDocument, useRecoveryDiscovery } from '@/data-engine/react.client';
 import { UserSettingsEngineContext, useSettingsEngine } from '@/hooks/userSettingsEngineContext';
@@ -16,7 +15,7 @@ import { useTranslation } from '@locales/useTranslation';
 /** One settings editor per signed-in workspace, shared by navigation and every feature. */
 export function UserSettingsProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
-  return isCollectionOnEngine('users') && user
+  return user
     ? <EngineSettingsProvider key={user.uid} owner={user.uid}>{children}</EngineSettingsProvider>
     : <>{children}</>;
 }

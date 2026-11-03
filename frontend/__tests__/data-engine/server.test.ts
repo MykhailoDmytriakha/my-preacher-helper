@@ -920,18 +920,20 @@ describe('transactional DataEngine server', () => {
   describe('legacy writers beside the engine', () => {
     const saved = { ...process.env };
     afterEach(() => { process.env = { ...saved }; });
-    it('tells a reader whether legacy writers may still change the collection unseen', async () => {
-      // `users` is still switched by the environment (the owned collections are always closed).
-      documents.set('users/owner-1', { displayName: 'Mine' });
+    it('tells a reader whether legacy writers may still change an optional collection unseen', async () => {
+      // `prayerCategories` is registered but opt-in; users is engine-owned.
+      documents.set('prayerCategories/category-1', { userId: 'owner-1', name: 'Mine' });
       // Served by the engine, legacy still open: a legacy write raises no feed event, so the
       // reader must be told the feed alone is not the whole truth.
-      process.env.DATA_ENGINE_COLLECTIONS = 'users';
-      expect(await listDocuments('owner-1', 'users')).toMatchObject({ legacyOpen: true });
-      expect(await readCollectionChanges('owner-1', 'users', 0)).toMatchObject({ legacyOpen: true });
+      delete process.env.DATA_ENGINE_ENABLED;
+      delete process.env.DATA_ENGINE_CLOSED_COLLECTIONS;
+      process.env.DATA_ENGINE_COLLECTIONS = 'prayerCategories';
+      expect(await listDocuments('owner-1', 'prayerCategories')).toMatchObject({ legacyOpen: true });
+      expect(await readCollectionChanges('owner-1', 'prayerCategories', 0)).toMatchObject({ legacyOpen: true });
       // Closed — the LAST switch of a rollout: from here on the feed is the whole truth.
-      process.env.DATA_ENGINE_CLOSED_COLLECTIONS = 'users';
-      expect(await listDocuments('owner-1', 'users')).not.toHaveProperty('legacyOpen');
-      expect(await readCollectionChanges('owner-1', 'users', 0)).not.toHaveProperty('legacyOpen');
+      process.env.DATA_ENGINE_CLOSED_COLLECTIONS = 'prayerCategories';
+      expect(await listDocuments('owner-1', 'prayerCategories')).not.toHaveProperty('legacyOpen');
+      expect(await readCollectionChanges('owner-1', 'prayerCategories', 0)).not.toHaveProperty('legacyOpen');
     });
   });
 

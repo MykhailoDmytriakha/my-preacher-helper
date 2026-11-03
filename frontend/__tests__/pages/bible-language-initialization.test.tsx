@@ -1,4 +1,5 @@
 import { act, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 
 import BiblePage from '@/(pages)/(private)/bible/page';
 
@@ -31,6 +32,12 @@ jest.mock('@/data-engine/react.client', () => ({
 
 const settle = () => act(async () => { await new Promise(resolve => setTimeout(resolve, 100)); });
 const place = () => screen.getByRole('button', { name: 'bible.changeChapter' });
+const expectSelectedBibleLanguage = async (language: string) => {
+  await userEvent.click(screen.getByRole('button', { name: 'bible.changeTranslation' }));
+  await waitFor(() => {
+    expect(document.querySelector('[aria-current="true"] span[lang]')).toHaveAttribute('lang', language);
+  });
+};
 
 beforeEach(() => {
   mockLanguage = 'en';
@@ -74,7 +81,7 @@ describe('Bible address before the reader language is known', () => {
     mockLanguage = 'ru';
     view.rerender(<BiblePage />);
     await waitFor(() => expect(place()).toHaveTextContent('22:1'));
-    expect(screen.getByRole('button', { name: 'bible.changeTranslation' }).querySelector('span[lang]')).toHaveAttribute('lang', 'ru');
+    await expectSelectedBibleLanguage('ru');
   });
 
   it.each([false, true])('opens the requested Synodal psalm after profile arrival: profile publishes first=%s', async profileFirst => {
@@ -89,7 +96,7 @@ describe('Bible address before the reader language is known', () => {
     mockLanguage = 'ru';
     view.rerender(<BiblePage />);
     await waitFor(() => expect(place()).toHaveTextContent('22:1'));
-    expect(screen.getByRole('button', { name: 'bible.changeTranslation' }).querySelector('span[lang]')).toHaveAttribute('lang', 'ru');
+    await expectSelectedBibleLanguage('ru');
   });
 
   it.each(['explicit numbering', 'saved Bible', 'known language'])('preserves %s while the profile arrives', async mode => {
@@ -103,6 +110,6 @@ describe('Bible address before the reader language is known', () => {
     mockLanguage = 'ru';
     view.rerender(<BiblePage />);
     await waitFor(() => expect(place()).toHaveTextContent('22:1'));
-    expect(screen.getByRole('button', { name: 'bible.changeTranslation' }).querySelector('span[lang]')).toHaveAttribute('lang', mode === 'saved Bible' ? 'en' : 'ru');
+    await expectSelectedBibleLanguage(mode === 'saved Bible' ? 'en' : 'ru');
   });
 });

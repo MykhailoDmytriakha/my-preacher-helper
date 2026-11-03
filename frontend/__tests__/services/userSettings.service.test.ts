@@ -99,8 +99,9 @@ it('sends language and profile when the phone says offline but the server answer
   expect(request).toHaveBeenCalledWith('owner', { operation: 'bootstrap', patch: { language: 'uk' } });
 });
 
-it('fails closed for every old persisted settings mutation after activation', async () => {
-  process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = 'users';
+it.each([undefined, 'false'])('refuses every old settings writer with activation %s', async enabled => {
+  if (enabled === undefined) delete process.env.NEXT_PUBLIC_DATA_ENGINE_ENABLED;
+  else process.env.NEXT_PUBLIC_DATA_ENGINE_ENABLED = enabled;
   const actions = [
     () => service.updateAudioGenerationAccess('owner', true),
     () => service.updateShowAppVersion('owner', true),
@@ -109,11 +110,6 @@ it('fails closed for every old persisted settings mutation after activation', as
     () => service.updateModelPreference('owner', { preferredProviderId: 'openai', preferredModelId: 'model' }),
     () => service.updateFunctionModelPreference('owner', { preferredText: { providerId: 'openai', modelId: 'model' } }),
   ];
-  for (const action of actions) await expect(action()).rejects.toMatchObject({ code: 'data-engine-required' });
+  for (const action of actions) await expect(action()).rejects.toMatchObject({ code: 'data-engine-required', status: 426 });
   expect(request).not.toHaveBeenCalled();
-});
-
-it('routes unconverted settings writes through the guarded server operation', async () => {
-  await service.updateFirstDayOfWeek('owner', 'monday');
-  expect(request).toHaveBeenCalledWith('owner', { operation: 'legacy', patch: { firstDayOfWeek: 'monday' } });
 });

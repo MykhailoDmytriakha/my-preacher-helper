@@ -1,16 +1,6 @@
 import { assertLegacyClientWriteAllowed } from '@/data-engine/clientPolicy';
-import {
-  updateAudioGenerationAccess,
-  updateFirstDayOfWeek,
-  updateFunctionModelPreference,
-  updateModelPreference,
-  updateShowAppVersion,
-} from '@/services/userSettings.service';
 import { SHARE_LINK_MUTATION_KEYS } from '@/utils/studyNoteShareLinkWrites';
 
-import type { ModelPreference } from '@/services/userSettings.service';
-import type { FunctionModelPreference } from '@/services/userSettings.service';
-import type { FirstDayOfWeek } from '@/utils/weekStart';
 import type { QueryClient } from '@tanstack/react-query';
 
 export { SHARE_LINK_MUTATION_KEYS } from '@/utils/studyNoteShareLinkWrites';
@@ -19,11 +9,9 @@ const USER_SETTINGS_KEY = 'user-settings';
 const STUDY_NOTES_KEY = 'study-notes';
 
 /**
- * Stable mutation keys shared between the hooks (where the in-session mutation
- * is defined) and {@link registerOfflineMutationDefaults} (where the resumable
- * default lives). They MUST be identical between the two places — React Query
- * matches a persisted/paused mutation back to its registered `mutationFn` by
- * this key after a reload.
+ * Historical mutation keys retained for archive recognition and terminal replay refusal.
+ * A previous client serialized these keys with its paused input; changing a key would
+ * leave that input unrecognizable after reload. Current private writes use DataEngine.
  */
 export const GROUP_MUTATION_KEYS = {
   create: ['groups', 'create'] as const,
@@ -102,12 +90,6 @@ export const DASHBOARD_SERMON_MUTATION_KEYS = {
   savePreachDate: ['dashboardSermons', 'savePreachDate'] as const,
 };
 
-// Variable shapes carried by each mutation. They MUST be self-contained (no
-// closure state) so a mutation rehydrated from IndexedDB after a reload can be
-// replayed by the registered mutationFn alone.
-type SettingVars = { userId: string; value: boolean };
-type FirstDayVars = { userId: string; value: FirstDayOfWeek };
-
 /**
  * Why this exists (offline write buffer):
  *
@@ -118,18 +100,14 @@ type FirstDayVars = { userId: string; value: FirstDayOfWeek };
  * `mutationFn` registered against that key, `resume` is a silent no-op and the
  * offline write is lost.
  *
- * `setMutationDefaults(key, { mutationFn })` registers the function to call for
- * any mutation with that key — including ones rehydrated from IndexedDB after a
- * reload. `onSuccess` re-fetches the authoritative server list so any optimistic
- * placeholder is reconciled with the real record.
+ * `setMutationDefaults(key, { mutationFn })` supplies a terminal refusal for each old
+ * key. The migration gate archives exact old input before hydration; it must never be
+ * turned into a new user action or sent through another writer.
  *
  * Call this once, against the same QueryClient that PersistQueryClientProvider
  * uses, before mutations can be resumed.
  */
 export function registerOfflineMutationDefaults(queryClient: QueryClient) {
-  const invalidate = (queryKey: readonly unknown[]) => () =>
-    queryClient.invalidateQueries({ queryKey });
-
   // ---- groups ----
   // The engine owns groups; a paused edit of the previous version gets the same refusal, and its
   // text survives in the previous-version archive (legacyQueryRecovery.client.ts).
@@ -165,33 +143,11 @@ export function registerOfflineMutationDefaults(queryClient: QueryClient) {
   }
 
   // ---- user settings ----
-  // Preparation is no longer a beta to switch on (2026-10-31): a write of the old switch kept on a device is refused,
-  // and the legacy archive keeps its words (`legacyQueryRecovery.client.ts`).
-  queryClient.setMutationDefaults(SETTINGS_MUTATION_KEYS.prepMode, { mutationFn: refuseLegacyReplay('users') });
-  queryClient.setMutationDefaults(SETTINGS_MUTATION_KEYS.audioGeneration, {
-    mutationFn: ({ userId, value }: SettingVars) => updateAudioGenerationAccess(userId, value),
-    onSuccess: invalidate([USER_SETTINGS_KEY]),
-  });
-  // The structure preview beta was cut out (2026-10-31): an old write of its switch is refused and archived, as above.
-  queryClient.setMutationDefaults(SETTINGS_MUTATION_KEYS.structurePreview, { mutationFn: refuseLegacyReplay('users') });
-  queryClient.setMutationDefaults(SETTINGS_MUTATION_KEYS.firstDayOfWeek, {
-    mutationFn: ({ userId, value }: FirstDayVars) => updateFirstDayOfWeek(userId, value),
-    onSuccess: invalidate([USER_SETTINGS_KEY]),
-  });
-  queryClient.setMutationDefaults(SETTINGS_MUTATION_KEYS.showAppVersion, {
-    mutationFn: ({ userId, value }: SettingVars) => updateShowAppVersion(userId, value),
-    onSuccess: invalidate([USER_SETTINGS_KEY]),
-  });
-  queryClient.setMutationDefaults(SETTINGS_MUTATION_KEYS.modelPreference, {
-    mutationFn: ({ userId, preference }: { userId: string; preference: ModelPreference }) =>
-      updateModelPreference(userId, preference),
-    onSuccess: invalidate([USER_SETTINGS_KEY]),
-  });
-  queryClient.setMutationDefaults(SETTINGS_MUTATION_KEYS.functionModelPreference, {
-    mutationFn: ({ userId, preference }: { userId: string; preference: FunctionModelPreference }) =>
-      updateFunctionModelPreference(userId, preference),
-    onSuccess: invalidate([USER_SETTINGS_KEY]),
-  });
+  // Private settings use the shared editor. Keep every historical key recognizable so its
+  // exact input is archived before hydration, and never replay it through a second writer.
+  for (const key of Object.values(SETTINGS_MUTATION_KEYS)) {
+    queryClient.setMutationDefaults(key, { mutationFn: refuseLegacyReplay('users') });
+  }
 
   // ---- study notes ----
   // The engine owns study notes; a paused edit of the previous version gets the same refusal, and

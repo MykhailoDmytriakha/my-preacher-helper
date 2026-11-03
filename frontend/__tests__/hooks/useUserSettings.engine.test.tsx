@@ -66,27 +66,19 @@ afterEach(() => {
 });
 
 describe('settings through the shared real DataEngine', () => {
-  it('loads by engine transport while legacy SDK read stays silent (negative control included)', async () => {
-    process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = '';
-    const legacy = setup();
-    const old = legacy.mount();
-    await act(settleEngine);
-    expect(service.getUserSettings).toHaveBeenCalledWith('owner');
-    expect(old.result.current.settings.loading).toBe(true);
-    expect(old.result.current.settings.settings).toBeNull();
-    old.unmount();
-    process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = 'users';
-    jest.mocked(service.getUserSettings).mockClear();
-    const migrated = setup();
-    migrated.harness.silentRemote({ firstDayOfWeek: 'monday' });
-    const current = migrated.mount();
+  it('loads through the always-owned settings editor when activation switches are unset', async () => {
+    delete process.env.NEXT_PUBLIC_DATA_ENGINE_ENABLED;
+    delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS;
+    const context = setup();
+    context.harness.silentRemote({ firstDayOfWeek: 'monday' });
+    const current = context.mount();
     await waitFor(() => expect(current.result.current.settings.loading).toBe(false));
     await waitFor(() => expect(current.result.current.settings.settings?.firstDayOfWeek).toBe('monday'));
     expect(current.result.current.feature.data?.firstDayOfWeek).toBe('monday');
     expect(current.result.current.source?.document.confirmed?.metadata?.revision).toBe(2);
     expect(service.getUserSettings).not.toHaveBeenCalled();
-    await waitFor(() => expect(migrated.harness.transport.read).toHaveBeenCalled());
-    expect(migrated.openings.flatMap(open => open.mock.calls).filter(([ref]) => ref.collection === 'users')).toHaveLength(1);
+    await waitFor(() => expect(context.harness.transport.read).toHaveBeenCalled());
+    expect(context.openings.flatMap(open => open.mock.calls).filter(([ref]) => ref.collection === 'users')).toHaveLength(1);
   });
 
   it('shares one settings editor with readers inside an unrelated document provider', async () => {

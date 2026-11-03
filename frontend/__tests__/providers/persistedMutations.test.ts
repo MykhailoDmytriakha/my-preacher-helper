@@ -20,11 +20,19 @@ const failedToggle = {
   mutationKey: ['user-settings', 'showAppVersion'],
   state: { variables: { userId: 'owner', value: true }, status: 'error', isPaused: false, submittedAt: 15, error: { code: 'data-engine-required' } },
 };
+const failedOptionalCategoryWrite = {
+  mutationKey: ['prayerCategories', 'update'],
+  state: { variables: { userId: 'owner', id: 'category-1', updates: { name: 'Offline category' } }, status: 'error', isPaused: false, submittedAt: 17, error: { code: 'unavailable' } },
+};
+const pausedOptionalCategoryWrite = {
+  mutationKey: ['prayerCategories', 'update'],
+  state: { variables: { userId: 'owner', id: 'category-2', updates: { color: 'blue' } }, status: 'pending', isPaused: true, submittedAt: 18 },
+};
 const pausedNoteEdit = {
   mutationKey: ['study-notes', 'update'],
   state: { variables: { id: 'note-1', userId: 'owner', updates: { content: 'Typed offline' } }, status: 'pending', isPaused: true, submittedAt: 16 },
 };
-type Saved = typeof failedToggle | typeof pausedNoteEdit;
+type Saved = typeof failedToggle | typeof failedOptionalCategoryWrite | typeof pausedOptionalCategoryWrite | typeof pausedNoteEdit;
 /** What the running session writes back: the restored writes, through the app's own filter. */
 const writtenBack = (mutations: Saved[]) => mutations.filter(mutation =>
   shouldDehydrateMutation({ state: mutation.state, options: { mutationKey: mutation.mutationKey } } as never));
@@ -52,9 +60,12 @@ it('does not bring back a copy the person removed once the session has written i
   expect(await listLegacyQueryCopies('owner')).toEqual([]);
 });
 
-it('keeps a failed or paused write in the saved cache while its collection is still on the old road', () => {
-  // Users off the engine: the settings toggle is replayed by the old writer, so it must survive a restart.
-  expect(writtenBack([failedToggle])).toHaveLength(1);
+it('keeps failed and paused writes on an optional legacy collection in the saved cache', () => {
+  expect(writtenBack([failedOptionalCategoryWrite, pausedOptionalCategoryWrite])).toHaveLength(2);
+  // Settings keys are archived/refused regardless of activation switches, not resumed from this cache.
+  expect(writtenBack([failedToggle])).toHaveLength(0);
+  expect(shouldDehydrateMutation({ state: failedToggle.state, options: { mutationKey: failedToggle.mutationKey } } as never)).toBe(false);
   expect(shouldDehydrateMutation({ state: { isPaused: false, status: 'pending' }, options: { mutationKey: ['user-settings', 'showAppVersion'] } } as never)).toBe(false);
+  expect(shouldDehydrateMutation({ state: pausedOptionalCategoryWrite.state, options: { mutationKey: pausedOptionalCategoryWrite.mutationKey } } as never)).toBe(true);
   expect(shouldDehydrateMutation({ state: { isPaused: true, status: 'pending' }, options: {} } as never)).toBe(true);
 });

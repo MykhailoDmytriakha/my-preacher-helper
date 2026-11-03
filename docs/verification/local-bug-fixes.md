@@ -5391,3 +5391,46 @@ Same-source focused tests pass96cases across the reader, capability server and t
 Ordinary Chrome on synthetic local Auth/Firestore passes ten actual controls: current short KJV/full accessible label, all three translations' full/language/short menu names, viewport fit at1280x950,820x1000,390x844, and unchanged Ruth1:1 location. Root directly views all three original frames. Native v1 was not executed; v2 includes complete console/network guards. V2 actual exit0 has no console/page/unhandled/HTTP/failed/forbidden errors. No application data command or synthetic response is used; the exact empty settings heartbeat is the only permitted app POST. Own Chrome/profile and Node auth client close. Both emulator exports are acknowledged/nonempty; all three wrappers complete with actual exit0 and nine QA ports are free. Owner localhost3000 and production remain untouched.
 
 Recheck from the local case: `python3 artifacts/main-intake-276-verify-v1.py` — nine PASS lines, actual exit0, no services started. It supports the in-progress merge or its exact two-parent local commit while requiring unchanged source/compiled bytes. Unit275's914compiled/worker members were archived and hash-verified before this build replaced `.next`. Physical iPad/Pencil and production acceptance are not claimed by this viewport smoke. After separately authorized deployment, confirm the merged app retains place across text-size changes and its short translation picker fits the real device with tools open; the Pencil jitter card needs its own measurement and fix. Resume the held Unit274 same-owner cache work next.
+
+
+## Unit277 — one durable private settings writer (2026-11-02, local only)
+
+Locally closed `BUG-20261102-legacy-settings-cache-overwrite`. `users` is now always
+engine-owned, aligned with browser-write closure. Private settings use the existing shared
+owner editor; the conditional React Query query/five mutations are retired. All seven
+historical mutation keys remain recognizable for exact-input archival, then refuse replay.
+Public bootstrap, language and heartbeat retain their authenticated adapter; operational
+fields survive private changes. No new queue or storage protocol was introduced.
+
+The unchanged two-case hook regression (switches unset/false) failed twice before and passes
+twice after, with zero legacy calls for all five actions. Existing raw archive/owner/storage
+controls remain. Generic legacy-mechanism fixtures now use optional `prayerCategories`;
+settings-specific migration controls stay on users. Incoming main's Bible language tests
+were updated to inspect the selected picker option after its trigger markup changed.
+Final same-source full run:1103suites/12751pass/17pending, TypeScript, lint(0errors/60warnings)
+and production build pass. Build `7X4MpT5Ku09k5Q7ty5ocr` pins2706source/912compiled/one
+worker; manifest SHA `f246008aebc2705c87c4c361cb56c1d818789fceebb9cc56460ad227b87b8510`.
+Its actual build parent is8784a91c plus the recorded overlay, not the later fix commit.
+
+Ordinary Chrome on local emulators, with users absent from activation lists and both global
+switches false, passes24behavior checks: public adapter, genuine offline edit/reload,
+recovery in a previously opened second tab, reconnect, independent second preference,
+reload, operational-field preservation, stable retry identity and fixture restoration.
+The raw browser exit1 is retained:67console/81failed requests were separately classified
+by exact offline-phase/route/error distributions; three injected negative controls reject.
+Page errors, unhandled rejections, HTTP errors and forbidden requests are zero. This is
+qualified behavior proof, not a raw-clean browser claim. Root inspected six final frames;
+phone week controls and wide version controls are accepted. The phone version context frame
+is excluded as a complete close-up. Actual rules:57current-closure controls plus260separate
+open-policy controls; these different policies are not conflated.
+
+All browser profiles and three service wrappers stopped, nine owned ports free; both
+emulator exports acknowledged and eight files pinned. All913compiled/worker members are
+archived and verified, archive SHA `47df9f6b7bf01327c8d6558d3e8c2ff3aff0ac3f8fcf5abf1b6c073a79cb99ca`.
+Fresh Codex acceptance reran `python3 artifacts/users-settings-always-277-verify-v1.py`
+from the local case: ten PASS lines, actual exit0. Production recipe is retained as
+`users-settings-always-277-production-recipe-v1.md`: matching rules/server, old-writer drain,
+owner-device reload, bounded test-account checks and exact preference restoration, only
+after separate release authorization. No push, deployment, owner/physical-device acceptance
+or production reads are claimed. Unit274's read-cache overwrite remains open; the structure
+tag catalogue is still a recheck, and same-field chronology remains a separate existing bug.

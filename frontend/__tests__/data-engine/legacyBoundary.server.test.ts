@@ -26,10 +26,9 @@ jest.mock('@/data-engine/server', () => ({
   },
 }));
 jest.mock('next/server', () => ({ NextResponse: { json: (body: unknown, options: { status: number }) => ({ body, status: options.status }) } }));
-// The mechanism tests below run on a collection that is still legacy-writable ('users' is not in
-// ENGINE_OWNED_COLLECTIONS); sermons are engine-owned, so their legacy writes are refused (see the
-// dedicated test on the refusal).
-const ref = (id: string) => ({ path: `users/${id}` }) as DocumentReference;
+// Generic legacy-writer mechanism tests use a registered opt-in collection. Users is now
+// engine-owned; its old writes are covered by the explicit refusal control below.
+const ref = (id: string) => ({ path: `prayerCategories/${id}` }) as DocumentReference;
 const records = new Map<string, Record<string, unknown>>();
 const mockRecords = () => records;
 const marker = { protocol: 1, generation: 'g', revision: 1, deleted: false };
@@ -83,15 +82,15 @@ beforeEach(() => {
 });
 
 // The collections the engine owns in code are closed on every deployment; the switches below still
-// govern the ones that are not (users, studyNoteShareLinks), so the mechanism is exercised on them.
+// govern a registered nonowned collection, so generic mixed-mode behavior remains covered.
 describe('a collection closed to legacy writers', () => {
   const saved = { ...process.env };
   afterEach(() => { process.env = { ...saved }; });
   const profile = (id: string) => ({ path: `users/${id}` }) as DocumentReference;
 
   it('refuses update, delete and create of an UNMARKED document once the collection is closed', async () => {
-    process.env.DATA_ENGINE_COLLECTIONS = 'users';
-    process.env.DATA_ENGINE_CLOSED_COLLECTIONS = 'users';
+    delete process.env.DATA_ENGINE_COLLECTIONS;
+    delete process.env.DATA_ENGINE_CLOSED_COLLECTIONS;
     records.set('users/legacy', { userId: 'owner', title: 'Never touched by the engine' });
     await expect(updateLegacyDocument(profile('legacy'), { title: 'Old bundle' })).rejects.toMatchObject({ code: 'data-engine-required', status: 426 });
     await expect(deleteLegacyDocument(profile('legacy'))).rejects.toMatchObject({ code: 'data-engine-required' });
@@ -100,28 +99,34 @@ describe('a collection closed to legacy writers', () => {
     expect(records.has('users/fresh')).toBe(false);
   });
 
-  it('leaves an open collection and every other collection writable, as before', async () => {
-    process.env.DATA_ENGINE_COLLECTIONS = 'users,prayerCategories';
-    records.set('users/legacy', { userId: 'owner', title: 'Original' });
-    await updateLegacyDocument(profile('legacy'), { title: 'Old bundle, still welcome' });
-    expect(records.get('users/legacy')?.title).toBe('Old bundle, still welcome');
-    process.env.DATA_ENGINE_CLOSED_COLLECTIONS = 'users';
-    const openReference = { path: 'prayerCategories/a' } as DocumentReference;
-    records.set('prayerCategories/a', { userId: 'owner', title: 'Original' });
-    await updateLegacyDocument(openReference, { title: 'Another domain' });
-    expect(records.get('prayerCategories/a')?.title).toBe('Another domain');
+  it('keeps a registered nonowned collection open until its own switches close it', async () => {
+    process.env.DATA_ENGINE_COLLECTIONS = 'prayerCategories';
+    delete process.env.DATA_ENGINE_ENABLED;
+    delete process.env.DATA_ENGINE_CLOSED_COLLECTIONS;
+    const optionalCategory = { path: 'prayerCategories/legacy' } as DocumentReference;
+    records.set('prayerCategories/legacy', { userId: 'owner', title: 'Original' });
+    await updateLegacyDocument(optionalCategory, { title: 'Old bundle, still welcome' });
+    expect(records.get('prayerCategories/legacy')?.title).toBe('Old bundle, still welcome');
+    process.env.DATA_ENGINE_CLOSED_COLLECTIONS = 'prayerCategories';
+    await expect(updateLegacyDocument(optionalCategory, { title: 'Closed' }))
+      .rejects.toMatchObject({ code: 'data-engine-required', status: 426 });
   });
 
   it('ignores a closure that names a collection the engine does not serve', async () => {
     // Closing without serving would leave nobody able to write: a misconfiguration must not
     // become an outage.
-    process.env.DATA_ENGINE_CLOSED_COLLECTIONS = 'users';
-    records.set('users/legacy', { userId: 'owner', title: 'Original' });
-    await updateLegacyDocument(profile('legacy'), { title: 'Still writable' });
-    expect(records.get('users/legacy')?.title).toBe('Still writable');
+    process.env.DATA_ENGINE_CLOSED_COLLECTIONS = 'prayerCategories';
+    const optionalCategory = { path: 'prayerCategories/legacy' } as DocumentReference;
+    records.set('prayerCategories/legacy', { userId: 'owner', title: 'Original' });
+    await updateLegacyDocument(optionalCategory, { title: 'Still writable' });
+    expect(records.get('prayerCategories/legacy')?.title).toBe('Still writable');
   });
 
   it('refuses an engine-owned collection with no switch set', async () => {
+    records.set('users/legacy', { displayName: 'Original' });
+    await expect(updateLegacyDocument(profile('legacy'), { displayName: 'Old bundle' }))
+      .rejects.toMatchObject({ code: 'data-engine-required', status: 426 });
+    expect(records.get('users/legacy')?.displayName).toBe('Original');
     records.set('councils/legacy', { userId: 'owner', title: 'Original' });
     await expect(updateLegacyDocument({ path: 'councils/legacy' } as DocumentReference, { title: 'Old bundle' })).rejects.toMatchObject({ code: 'data-engine-required', status: 426 });
     expect(records.get('councils/legacy')?.title).toBe('Original');
@@ -130,33 +135,33 @@ describe('a collection closed to legacy writers', () => {
 
 describe('atomic legacy boundary', () => {
   it.each([null, {}, marker, { ...marker, deleted: true }])('refuses any existing marker shape: %j', async metadata => {
-    records.set('users/a', { userId: 'owner', title: 'Original', _dataEngine: metadata });
+    records.set('prayerCategories/a', { userId: 'owner', title: 'Original', _dataEngine: metadata });
     await expect(updateLegacyDocument(ref('a'), { title: 'Legacy' })).rejects.toMatchObject({ code: 'data-engine-required', status: 426 });
     await expect(deleteLegacyDocument(ref('a'))).rejects.toMatchObject({ code: 'data-engine-required' });
-    expect(records.get('users/a')?.title).toBe('Original');
+    expect(records.get('prayerCategories/a')?.title).toBe('Original');
   });
   it('preserves unmarked create/replay/update/delete and refuses a foreign create collision', async () => {
     const data = { userId: 'owner', title: 'Original' };
     expect(await createLegacyDocument(ref('a'), data, 'owner')).toEqual({ created: true, data });
     expect(await createLegacyDocument(ref('a'), { ...data, title: 'Replay' }, 'owner')).toEqual({ created: false, data });
     await expect(createLegacyDocument(ref('a'), data, 'other')).rejects.toMatchObject({ code: 'permission-denied' });
-    await updateLegacyDocument(ref('a'), { title: 'Edited' }); expect(records.get('users/a')?.title).toBe('Edited');
+    await updateLegacyDocument(ref('a'), { title: 'Edited' }); expect(records.get('prayerCategories/a')?.title).toBe('Edited');
     await deleteLegacyDocument(ref('a')); expect(records.size).toBe(0);
   });
   it.each([false, true])('forces engine transition between legacy read and commit (create: %s)', async create => {
-    if (!create) records.set('users/a', { userId: 'owner', title: 'Original' });
-    beforeCommit = () => records.set('users/a', { userId: 'owner', title: 'Engine version', _dataEngine: marker });
+    if (!create) records.set('prayerCategories/a', { userId: 'owner', title: 'Original' });
+    beforeCommit = () => records.set('prayerCategories/a', { userId: 'owner', title: 'Engine version', _dataEngine: marker });
     const operation = create ? createLegacyDocument(ref('a'), { userId: 'owner', title: 'Old' }, 'owner') : updateLegacyDocument(ref('a'), { title: 'Old' });
     await expect(operation).rejects.toMatchObject({ code: 'data-engine-required' });
-    expect(attempts).toBe(2); expect(records.get('users/a')?.title).toBe('Engine version');
+    expect(attempts).toBe(2); expect(records.get('prayerCategories/a')?.title).toBe('Engine version');
   });
   it('rolls back earlier cascade writes when a later participant is protected', async () => {
-    records.set('users/a', { title: 'First' }); records.set('users/b', { title: 'Second', _dataEngine: marker });
+    records.set('prayerCategories/a', { title: 'First' }); records.set('prayerCategories/b', { title: 'Second', _dataEngine: marker });
     await expect(runLegacyTransaction(async transaction => {
       await transaction.getAll(ref('a'), ref('b'));
       transaction.update(ref('a'), { title: 'Changed' }); transaction.delete(ref('b'));
     })).rejects.toMatchObject({ code: 'data-engine-required' });
-    expect(records.get('users/a')?.title).toBe('First'); expect(records.size).toBe(2);
+    expect(records.get('prayerCategories/a')?.title).toBe('First'); expect(records.size).toBe(2);
   });
   it('registers query targets and refuses more than 100 effects atomically', async () => {
     const refs = Array.from({ length: 101 }, (_, index) => ref(String(index)));

@@ -47,13 +47,13 @@ service cloud.firestore {
     // Until a collection is listed, a bundle that has not updated may still write the documents
     // the engine has not touched; once listed, nothing reaches it from a browser at all — the
     // engine writes through the Admin SDK, which rules do not govern.
-    // Closed 2026-09-28: the ten collections production serves through the engine; bibleMarks
-    // (2026-10-16) was born on the engine and never had a browser writer. Every one of
-    // them calls this in create, update and delete; rules-test-closed.cjs proves this exact list.
+    // The baseline ten closed in 2026-09-28; bibleMarks was born on the engine. Current
+    // local source also closes share links and users (their browser deletion was already
+    // denied). rules-test-closed.cjs proves this exact candidate list; deployment is separate.
     // Deploy order: these rules FIRST, then the server's DATA_ENGINE_CLOSED_COLLECTIONS. Roll back
     // in reverse: reopen the server (mixed mode, sweeps) first, then empty this list.
     function closedToBrowserWrites(name) {
-      return name in ['councils', 'groups', 'series', 'sermons', 'tags', 'prayerRequests', 'serviceOrders', 'studyNotes', 'studyMaterials', 'planTemplates', 'bibleMarks', 'studyNoteShareLinks'];
+      return name in ['councils', 'groups', 'series', 'sermons', 'tags', 'prayerRequests', 'serviceOrders', 'studyNotes', 'studyMaterials', 'planTemplates', 'bibleMarks', 'studyNoteShareLinks', 'users'];
     }
 
     // ---- Revision protocol (PREPARED, NOT ARMED — see the checklist) ----
@@ -87,10 +87,10 @@ service cloud.firestore {
     //   · nothing calls it. There is no `advancesRevision(...)` in any `allow`
     //     below, so uncommenting alone changes nothing at all — it is dead code,
     //     not an armed guard;
-    //   · `users` documents must stay OUT of it entirely. Settings are written with
-    //     `setDoc(merge)` and deliberately move no counter (`userSettings.service.ts`):
-    //     there is no typed text to protect there, only toggles. Under this rule
-    //     saving any setting would simply stop working.
+    //   · `users` now uses the DataEngine protocol, not this older aggregate-counter
+    //     draft. Its private settings go through the shared editor; public bootstrap,
+    //     language and heartbeat use the authenticated server adapter. Browser writes
+    //     are closed, while owner reads remain available.
     //
     // WHAT WOULD ACTUALLY WORK, in order:
     //   1. Rewrite the condition as "if the fields of aggregate X changed, then
@@ -216,9 +216,9 @@ service cloud.firestore {
     // ---- User settings: owned by DOC ID == uid ----
     match /users/{uid} {
       allow read: if request.auth != null && request.auth.uid == uid;
-      allow create: if request.auth != null && request.auth.uid == uid && legacyIncoming()
+      allow create: if request.auth != null && request.auth.uid == uid && legacyIncoming() && !closedToBrowserWrites('users')
         && !request.resource.data.keys().hasAny(['paidTier', 'promotion', 'usage', 'role', 'referredBy', 'referralWarning', 'referralLedger']);
-      allow update: if request.auth != null && request.auth.uid == uid && legacyExisting() && legacyIncoming()
+      allow update: if request.auth != null && request.auth.uid == uid && legacyExisting() && legacyIncoming() && !closedToBrowserWrites('users')
         && !request.resource.data.diff(resource.data).affectedKeys()
           .hasAny(['paidTier', 'promotion', 'usage', 'role', 'referredBy', 'referralWarning', 'referralLedger']);
     }

@@ -19,7 +19,7 @@ async function check(name, promise) {
 (async () => {
   // Collections served and closed through the engine (activation.ts, Vercel
   // DATA_ENGINE_CLOSED_COLLECTIONS). The shipped rules are tested as they ship: the list must be exactly these.
-  const closed = ['councils', 'groups', 'series', 'sermons', 'tags', 'prayerRequests', 'serviceOrders', 'studyNotes', 'studyMaterials', 'planTemplates', 'bibleMarks', 'studyNoteShareLinks'];
+  const closed = ['councils', 'groups', 'series', 'sermons', 'tags', 'prayerRequests', 'serviceOrders', 'studyNotes', 'studyMaterials', 'planTemplates', 'bibleMarks', 'studyNoteShareLinks', 'users'];
   const closedRules = fs.readFileSync('firestore.rules', 'utf8');
   const lists = [...closedRules.matchAll(/return name in \[([^\]]*)\];/g)];
   if (lists.length !== 1) throw new Error('closedToBrowserWrites list not found exactly once in firestore.rules');
@@ -31,7 +31,7 @@ async function check(name, promise) {
   await testEnv.clearFirestore();
   await testEnv.withSecurityRulesDisabled(async ctx => {
     const db = ctx.firestore(); // once: a second call would try to configure a started instance
-    for (const name of closed) await setDoc(doc(db, name, 'legacy'), name === 'studyNoteShareLinks'
+    for (const name of closed) await setDoc(doc(db, name, name === 'users' ? 'userA' : 'legacy'), name === 'studyNoteShareLinks'
       ? { ownerId: 'userA', noteId: 'note', token: 'raw-token', createdAt: '2026-11-02T00:00:00.000Z', viewCount: 0 }
       : { userId: 'userA', title: 'never touched by the engine' });
     await setDoc(doc(db, 'prayerCategories', 'other'), { userId: 'userA', name: 'x' });
@@ -39,13 +39,21 @@ async function check(name, promise) {
   const a = testEnv.authenticatedContext('userA').firestore();
   for (const name of closed) {
     console.log(`\n=== ${name} closed to browser writes ===`);
-    await check(`owner still reads ${name}`, assertSucceeds(getDoc(doc(a, name, 'legacy'))));
-    await check(`update of an unmarked ${name} document denied`, assertFails(updateDoc(doc(a, name, 'legacy'), { title: 'old bundle' })));
-    await check(`delete of an unmarked ${name} document denied`, assertFails(deleteDoc(doc(a, name, 'legacy'))));
-    await check(`creating ${name} from a browser denied`, assertFails(setDoc(doc(a, name, 'fresh'), { [name === 'studyNoteShareLinks' ? 'ownerId' : 'userId']: 'userA', title: 'invisible to the feed' })));
+    const existingId = name === 'users' ? 'userA' : 'legacy';
+    await check(`owner still reads ${name}`, assertSucceeds(getDoc(doc(a, name, existingId))));
+    await check(`update of an unmarked ${name} document denied`, assertFails(updateDoc(doc(a, name, existingId), { title: 'old bundle' })));
+    await check(`delete of an unmarked ${name} document denied`, assertFails(deleteDoc(doc(a, name, existingId))));
+    if (name === 'users') {
+      // Match auth UID and document ID: a mismatch would pass this negative test even with closure removed.
+      const freshOwner = testEnv.authenticatedContext('fresh-settings-owner').firestore();
+      await check('creating own unmarked settings from a browser denied', assertFails(setDoc(doc(freshOwner, name, 'fresh-settings-owner'), { language: 'en' })));
+      await check('another user cannot read settings', assertFails(getDoc(doc(testEnv.authenticatedContext('other-settings-owner').firestore(), name, existingId))));
+    } else {
+      await check(`creating ${name} from a browser denied`, assertFails(setDoc(doc(a, name, 'fresh'), { [name === 'studyNoteShareLinks' ? 'ownerId' : 'userId']: 'userA', title: 'invisible to the feed' })));
+    }
     if (name === 'studyNoteShareLinks') {
-      await check('raw capability token replacement denied', assertFails(updateDoc(doc(a, name, 'legacy'), { token: 'replacement' })));
-      await check('raw capability note retargeting denied', assertFails(updateDoc(doc(a, name, 'legacy'), { noteId: 'another-note' })));
+      await check('raw capability token replacement denied', assertFails(updateDoc(doc(a, name, existingId), { token: 'replacement' })));
+      await check('raw capability note retargeting denied', assertFails(updateDoc(doc(a, name, existingId), { noteId: 'another-note' })));
     }
   }
   console.log('\n=== a collection outside the list ===');

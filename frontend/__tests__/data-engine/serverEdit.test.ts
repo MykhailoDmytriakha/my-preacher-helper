@@ -1,6 +1,7 @@
 /** @jest-environment node */
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { isClosedToLegacyWriters, isCollectionServed } from '@/data-engine/activation';
+import { ENGINE_OWNED_COLLECTIONS } from '@/data-engine/engineOwnedCollections';
 import { updateLegacyDocument } from '@/data-engine/legacyBoundary.server';
 import { assertServerWritable, editOwnedDocument, readOwnSettings, writeOwnedDocument, writeOwnSettings } from '@/data-engine/serverEdit.server';
 
@@ -215,6 +216,23 @@ describe('settings bootstrap through the shared server protocol', () => {
     expect(documents.get(userPath)).toMatchObject({ language: 'en', paidTier: 'tier2', usage: { ai: 7 }, role: 'admin', email: 'name@example.com', _dataEngine: { revision: 1 } });
   });
 
+  it('updates one private setting while preserving operational fields on the user document', async () => {
+    const operational = {
+      paidTier: 'tier2', promotion: { tier: 'tier3', expiresAt: '2026-12-01T00:00:00.000Z' },
+      usage: { aiUsed: 7, transcriptionSecondsUsed: 11, audioSecondsUsed: 13, periodStart: '2026-11-01T00:00:00.000Z' },
+      role: 'admin', referredBy: 'inviter-1', referralWarning: { at: '2026-10-01T00:00:00.000Z', referralCount: 3 },
+      referralLedger: { count: 3, invitees: [{ uid: 'invitee-1', at: '2026-10-01T00:00:00.000Z' }] },
+      lastSeenAt: '2026-11-01T00:00:00.000Z',
+    };
+    documents.set('users/owner-1', { ...operational, firstDayOfWeek: 'sunday', _dataEngine: marker });
+
+    await editOwnedDocument('owner-1', { collection: 'users', id: 'owner-1' }, current => ({
+      ...current, firstDayOfWeek: 'monday',
+    }));
+
+    expect(documents.get('users/owner-1')).toMatchObject({ ...operational, firstDayOfWeek: 'monday' });
+  });
+
   it('handles a simultaneous first sign-in without replacing the winning profile', async () => {
     interleave = () => documents.set(userPath, { language: 'en', paidTier: 'tier2', _dataEngine: marker });
     await writeOwnSettings('owner-1', 'bootstrap', { language: 'ru', displayName: 'Name' });
@@ -245,13 +263,25 @@ describe('settings bootstrap through the shared server protocol', () => {
     expect(documents.size).toBe(1);
   });
 
-  it('keeps unserved bootstrap compatible and refuses a marked document on an unserved deployment', async () => {
-    jest.mocked(isCollectionServed).mockReturnValue(false);
-    await writeOwnSettings('owner-1', 'bootstrap', { language: 'en' });
-    expect(documents.get(userPath)).toEqual({ language: 'en' });
-    documents.set(userPath, { language: 'en', _dataEngine: marker });
-    await expect(writeOwnSettings('owner-1', 'language', { language: 'ru' })).rejects.toMatchObject({ code: 'data-engine-required' });
-    expect(documents.get(userPath)?.language).toBe('en');
+  it('keeps users served and closed without collection switches', () => {
+    const previous = {
+      enabled: process.env.DATA_ENGINE_ENABLED,
+      collections: process.env.DATA_ENGINE_COLLECTIONS,
+      closed: process.env.DATA_ENGINE_CLOSED_COLLECTIONS,
+    };
+    try {
+      delete process.env.DATA_ENGINE_ENABLED;
+      delete process.env.DATA_ENGINE_COLLECTIONS;
+      delete process.env.DATA_ENGINE_CLOSED_COLLECTIONS;
+      const activation = jest.requireActual<typeof import('@/data-engine/activation')>('@/data-engine/activation');
+      expect(ENGINE_OWNED_COLLECTIONS).toContain('users');
+      expect(activation.isCollectionServed('users')).toBe(true);
+      expect(activation.isClosedToLegacyWriters('users')).toBe(true);
+    } finally {
+      if (previous.enabled === undefined) delete process.env.DATA_ENGINE_ENABLED; else process.env.DATA_ENGINE_ENABLED = previous.enabled;
+      if (previous.collections === undefined) delete process.env.DATA_ENGINE_COLLECTIONS; else process.env.DATA_ENGINE_COLLECTIONS = previous.collections;
+      if (previous.closed === undefined) delete process.env.DATA_ENGINE_CLOSED_COLLECTIONS; else process.env.DATA_ENGINE_CLOSED_COLLECTIONS = previous.closed;
+    }
   });
 });
 

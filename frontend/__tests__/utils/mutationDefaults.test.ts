@@ -8,10 +8,17 @@ import {
   PREACH_DATE_MUTATION_KEYS,
   registerOfflineMutationDefaults,
   SHARE_LINK_MUTATION_KEYS,
+  SETTINGS_MUTATION_KEYS,
   TAG_MUTATION_KEYS,
 } from '@/utils/mutationDefaults';
 import * as shareLinksService from '@/services/studyNoteShareLinks.service';
+import * as settingsService from '@/services/userSettings.service';
 
+jest.mock('@/services/userSettings.service', () => ({
+  updateAudioGenerationAccess: jest.fn(), updateFirstDayOfWeek: jest.fn(),
+  updateShowAppVersion: jest.fn(), updateModelPreference: jest.fn(),
+  updateFunctionModelPreference: jest.fn(),
+}));
 jest.mock('@/services/studyNoteShareLinks.service', () => ({
   getStudyNoteShareLinks: jest.fn(),
   createStudyNoteShareLink: jest.fn(),
@@ -34,6 +41,46 @@ describe('registerOfflineMutationDefaults', () => {
     registerOfflineMutationDefaults(queryClient);
     const mutationFn = queryClient.getMutationDefaults(key)?.mutationFn as (variables: unknown) => Promise<unknown>;
     await expect(mutationFn({ id: 'x', title: 'Unsent words' })).rejects.toMatchObject({ code: 'data-engine-required' });
+  });
+
+  it.each(['unset', 'false'] as const)('refuses all seven settings replays with the typed migration error when activation is %s', async activation => {
+    const enabled = process.env.NEXT_PUBLIC_DATA_ENGINE_ENABLED;
+    const collections = process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS;
+    try {
+      if (activation === 'unset') delete process.env.NEXT_PUBLIC_DATA_ENGINE_ENABLED;
+      else process.env.NEXT_PUBLIC_DATA_ENGINE_ENABLED = 'false';
+      delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS;
+      const queryClient = new QueryClient();
+      registerOfflineMutationDefaults(queryClient);
+      const preference = { preferredProviderId: 'openai', preferredModelId: 'gpt-4o-mini' };
+      const functionPreference = { preferredTts: { providerId: 'openai', modelId: 'gpt-4o-mini-tts' } };
+      const variables: Record<keyof typeof SETTINGS_MUTATION_KEYS, unknown> = {
+        prepMode: { userId: 'owner', value: true },
+        audioGeneration: { userId: 'owner', value: true },
+        structurePreview: { userId: 'owner', value: true },
+        firstDayOfWeek: { userId: 'owner', value: 'monday' },
+        showAppVersion: { userId: 'owner', value: true },
+        modelPreference: { userId: 'owner', preference },
+        functionModelPreference: { userId: 'owner', preference: functionPreference },
+      };
+      for (const [name, key] of Object.entries(SETTINGS_MUTATION_KEYS) as [keyof typeof SETTINGS_MUTATION_KEYS, readonly unknown[]][]) {
+        const mutation = queryClient.getMutationCache().build(queryClient, { mutationKey: key });
+        const payload = variables[name];
+        await expect(mutation.execute(payload)).rejects.toMatchObject({ code: 'data-engine-required', status: 426 });
+        expect(mutation.state.variables).toEqual(payload);
+      }
+      expect(settingsService.updateAudioGenerationAccess).not.toHaveBeenCalled();
+      expect(settingsService.updateFirstDayOfWeek).not.toHaveBeenCalled();
+      expect(settingsService.updateShowAppVersion).not.toHaveBeenCalled();
+      expect(settingsService.updateModelPreference).not.toHaveBeenCalled();
+      expect(settingsService.updateFunctionModelPreference).not.toHaveBeenCalled();
+      queryClient.clear();
+    } finally {
+      if (enabled === undefined) delete process.env.NEXT_PUBLIC_DATA_ENGINE_ENABLED;
+      else process.env.NEXT_PUBLIC_DATA_ENGINE_ENABLED = enabled;
+      if (collections === undefined) delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS;
+      else process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = collections;
+    }
   });
 
   it.each([

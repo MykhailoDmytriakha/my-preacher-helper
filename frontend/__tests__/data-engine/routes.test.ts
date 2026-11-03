@@ -67,11 +67,10 @@ describe('DataEngine HTTP routes', () => {
     const collections = process.env.DATA_ENGINE_COLLECTIONS;
     try {
       delete process.env.DATA_ENGINE_ENABLED;
-      // 'users' is not engine-owned in code, so the env switch alone serves it;
-      // 'studyNoteShareLinks' is engine-owned and served regardless of that switch.
-      expect(ENGINE_OWNED_COLLECTIONS).not.toContain('users');
+      // `users` is engine-owned in code; an unrelated registered collection remains opt-in.
+      expect(ENGINE_OWNED_COLLECTIONS).toContain('users');
       expect(ENGINE_OWNED_COLLECTIONS).toContain('studyNoteShareLinks');
-      process.env.DATA_ENGINE_COLLECTIONS = 'users';
+      delete process.env.DATA_ENGINE_COLLECTIONS;
       const unservedCollection = 'prayerCategories';
       const unservedContext = { params: Promise.resolve({ collection: unservedCollection }) };
       const unservedDocument = { params: Promise.resolve({ collection: unservedCollection, id: 'category-1' }) };

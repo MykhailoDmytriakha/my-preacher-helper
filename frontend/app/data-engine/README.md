@@ -244,8 +244,9 @@ User settings use one owner-scoped `UserSettingsProvider` inside the private wor
 `useUserSettings` shares its public `useDataDocument` editor across navigation and all
 feature consumers; nested document providers cannot replace the settings context.
 `commit` acceptance means durable local ownership, while `UserSettingsSyncStatus` shows
-pending delivery, conflicts, storage failure and recovery. The old query, mutations and
-freshness banner are disabled when `users` is on the engine. Settings remain readable
+pending delivery, conflicts, storage failure and recovery. `users` is engine-owned on every deployment; the old private query/mutation hook branch
+has been retired. Every historical settings mutation key refuses replay after its exact
+input is archived. Settings remain readable
 through the engine's bounded read-only fallback when local storage cannot open.
 
 Public bootstrap, language and heartbeat use authenticated `/api/me/settings` through
@@ -255,10 +256,11 @@ fields and preserves server-managed fields. `lastSeenAt` follows the same revisi
 path; it does not need a Firestore rules bypass. The root language initializer leaves
 an enabled settings editor's draft alone. Public pages retain the cookie fallback.
 
-List collections explicitly in `NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS` and
-`DATA_ENGINE_COLLECTIONS`. Add `users` only with this migrated client/server bundle;
-production activation and old-device reload proof remain separate from local tests.
-Collection-wide legacy closure still happens last. Do not use the all-or-nothing switches
+`users` is listed in `ENGINE_OWNED_COLLECTIONS`, aligned with browser-write closure in
+`firestore.rules`. Environment switches cannot restore its legacy private writer. This
+ownership completion is local work until deployed; rules/server deployment, old-device
+reload and production acceptance remain separate gates. Switches may still add other
+collections outside the always-owned list. Do not use the all-or-nothing switches
 for rollout. See `docs/architecture/data-engine-migration-log.md`, Domains.
 
 A domain hook that keeps its screens unchanged exposes the legacy hook's exact interface
@@ -424,7 +426,7 @@ next edit. Operations without provable ownership stay in quarantine, never assig
 next signed-in account. Settings queries (`user-settings`) require the key owner to match
 the document ID; the optional legacy `userId` must agree too. All seven persisted settings
 mutation kinds retain their original payloads, keyed by their explicit `userId`, never replayed
-through the legacy writer while users is on the engine. A failed archive keeps the original cache untouched and holds
+through the legacy writer on any deployment. A failed archive keeps the original cache untouched and holds
 workspace startup behind an explicit Retry. A short wait shows nothing and a long one the shared start spinner, never a notice of its own: one
 stood in place of every page on every load, in English, since the language setup sits below the gate
 (BUG-20261004-reload-preserving-copies-flash).

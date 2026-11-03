@@ -72,8 +72,9 @@ describe('LanguageInitializer Component', () => {
     expect(mockChangeLanguage).toHaveBeenCalledTimes(1);
   });
 
-  test('does not start a competing database language read outside the settings provider after migration', async () => {
-    process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = 'users';
+  test('does not start a competing database language read when users are engine-owned by default', async () => {
+    delete process.env.NEXT_PUBLIC_DATA_ENGINE_ENABLED;
+    delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS;
     mockAuthState.user = { uid: 'owner-a' } as any;
     mockAuthState.isAuthenticated = true;
     // The root layout mounts this initializer outside UserSettingsProvider.
@@ -108,18 +109,15 @@ describe('LanguageInitializer Component', () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  test('initializes language from DB when user is authenticated', async () => {
-    // Mock authenticated user
+  test('does not initialize authenticated language through the legacy database path', async () => {
     mockAuthState.user = { uid: 'test-user-id' } as any;
     mockAuthState.isAuthenticated = true;
     mockAuthState.loading = false;
     
     render(<LanguageInitializer />);
     
-    await waitFor(() => {
-      expect(mockInitializeLanguageFromDB).toHaveBeenCalled();
-    });
-    // The only cookie read is the switch after hydration, and the cookie already matches.
+    await waitFor(() => expect(mockGetCookieLanguage).toHaveBeenCalled());
+    expect(mockInitializeLanguageFromDB).not.toHaveBeenCalled();
     expect(mockChangeLanguage).not.toHaveBeenCalled();
   });
 
@@ -182,28 +180,19 @@ describe('LanguageInitializer Component', () => {
     expect(mockChangeLanguage).not.toHaveBeenCalled();
   });
 
-  test('handles errors when initializing from DB', async () => {
+  test('does not report a legacy database initialization failure for engine-owned settings', async () => {
     const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
-    
-    // Mock authenticated user
     mockAuthState.user = { uid: 'test-user-id' } as any;
     mockAuthState.isAuthenticated = true;
     mockAuthState.loading = false;
-    
-    // Mock DB initialization error
     mockInitializeLanguageFromDB.mockRejectedValueOnce(new Error('DB init failed'));
-    
+
     render(<LanguageInitializer />);
-    
-    // Wait for the async operation to complete
-    await waitFor(() => {
-      expect(mockInitializeLanguageFromDB).toHaveBeenCalled();
-      expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Failed to initialize language from DB:'),
-        expect.any(Error)
-      );
-    });
-    
+
+    await waitFor(() => expect(mockGetCookieLanguage).toHaveBeenCalled());
+    expect(mockInitializeLanguageFromDB).not.toHaveBeenCalled();
+    expect(consoleSpy).not.toHaveBeenCalled();
+
     consoleSpy.mockRestore();
   });
 });

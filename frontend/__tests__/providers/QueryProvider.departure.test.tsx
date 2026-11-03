@@ -49,9 +49,9 @@ jest.mock('@/utils/mutationDefaults', () => {
     registerOfflineMutationDefaults: (client: QueryClient) => {
       client.setMutationDefaults(actual.SHARE_LINK_MUTATION_KEYS.delete,
         { mutationFn: (variables: unknown) => mockDeliveries({ actor: mockAuth.user?.uid, variables }) });
-      // This test covers account departure for a still-legacy-writable mutation. Share-link
-      // mutations are archived now that their collection is engine-owned.
-      client.setMutationDefaults(['user-settings', 'firstDayOfWeek'],
+      // This generic account-departure test uses a synthetic mutation on the optional,
+      // still-legacy prayerCategories collection. Settings/share-link intents are archived.
+      client.setMutationDefaults(['prayerCategories', 'update'],
         { mutationFn: (variables: unknown) => mockDeliveries({ actor: mockAuth.user?.uid, variables }) });
     },
   };
@@ -66,9 +66,9 @@ function Probe() {
 const workspace = () => <QueryProvider><Probe /></QueryProvider>;
 const ready = (owner: string) => screen.findByText(`Ready:${owner}`);
 
-function pausedDeleteFixture() {
+function pausedLegacyCategoryFixture() {
   const client = new QueryClient();
-  client.getMutationCache().build(client, { mutationKey: ['user-settings', 'firstDayOfWeek'] }, {
+  client.getMutationCache().build(client, { mutationKey: ['prayerCategories', 'update'] }, {
     context: undefined,
     data: undefined,
     error: null,
@@ -76,7 +76,7 @@ function pausedDeleteFixture() {
     failureReason: null,
     isPaused: true,
     status: 'pending',
-    variables: { userId: 'A', linkId: 'link-A' },
+    variables: { userId: 'A', id: 'category-A' },
     submittedAt: Date.now(),
   });
   const saved = { timestamp: Date.now(), buster: '', clientState: dehydrate(client) };
@@ -101,9 +101,9 @@ beforeEach(() => {
 afterEach(() => { cleanup(); currentClient?.clear(); });
 
 test('retains A delivery as a manual-retry error when its request fails after switching to B', async () => {
-  const variables = { userId: 'A', linkId: 'link-A' };
+  const variables = { userId: 'A', id: 'category-A' };
   const aKey: IDBValidKey = ['react-query-cache', 'A'];
-  mockRows.set(keyOf(aKey), pausedDeleteFixture());
+  mockRows.set(keyOf(aKey), pausedLegacyCategoryFixture());
 
   let rejectDelivery!: (error: Error) => void;
   mockDeliveries.mockImplementationOnce(request => {
@@ -134,7 +134,7 @@ test('retains A delivery as a manual-retry error when its request fails after sw
   await ready('A');
   const restoredA = currentClient!.getMutationCache().getAll();
   expect(restoredA).toHaveLength(1);
-  expect(restoredA[0].options.mutationKey).toEqual(['user-settings', 'firstDayOfWeek']);
+  expect(restoredA[0].options.mutationKey).toEqual(['prayerCategories', 'update']);
   expect(restoredA[0].state.variables).toEqual(variables);
   expect(restoredA[0].state.status).toBe('error');
   // A detached session may only know that delivery was unconfirmed, not its eventual cause.

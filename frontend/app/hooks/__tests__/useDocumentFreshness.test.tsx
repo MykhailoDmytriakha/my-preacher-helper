@@ -54,12 +54,13 @@ const server = (
 function render(
   known: { title: string } | null,
   enabled = true,
-  adoptFirstServerAnswerAsKnown = false
+  adoptFirstServerAnswerAsKnown = false,
+  collection = 'prayerCategories'
 ) {
   return renderHook(
     (props: { known: { title: string } | null }) =>
       useDocumentFreshness<{ title: string }>({
-        collection: 'users',
+        collection,
         docId: 'note-1',
         uid: 'uid-1',
         enabled,
@@ -229,7 +230,7 @@ describe('useDocumentFreshness', () => {
   it('never attaches a listener without a signed-in owner', () => {
     renderHook(() =>
       useDocumentFreshness<{ title: string }>({
-        collection: 'users',
+        collection: 'prayerCategories',
         docId: 'note-1',
         uid: null,
         enabled: true,
@@ -396,7 +397,7 @@ describe('a new document starts from knowing nothing', () => {
     const { result, rerender } = renderHook(
       ({ docId }: { docId: string }) =>
         useDocumentFreshness<{ title: string }>({
-          collection: 'users',
+          collection: 'prayerCategories',
           docId,
           uid: 'u1',
           enabled: true,
@@ -773,7 +774,7 @@ describe('semantic snapshot comparison', () => {
     const local = { scriptureRefs: [{ book: 'Psalms', chapter: 5, fromVerse: 5, toVerse: 5, id: 'r' }] };
     const remote = { scriptureRefs: [{ id: 'r', toVerse: 5, fromVerse: 5, chapter: 5, book: 'Psalms' }] };
     const { result, rerender } = renderHook(({ known }) => useDocumentFreshness({
-      collection: 'users', docId: 'n', uid: 'u', enabled: true, known,
+      collection: 'prayerCategories', docId: 'n', uid: 'u', enabled: true, known,
       select: (data) => ({ scriptureRefs: data.scriptureRefs }),
     }), { initialProps: { known: local } });
     act(() => emit!(server(remote)));
@@ -786,14 +787,21 @@ describe('semantic snapshot comparison', () => {
 });
 
 describe('useDocumentFreshness for a collection the engine owns', () => {
-  afterEach(() => { delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS; });
+  const previousEnabled = process.env.NEXT_PUBLIC_DATA_ENGINE_ENABLED;
+  const previousCollections = process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS;
+  afterEach(() => {
+    if (previousEnabled === undefined) delete process.env.NEXT_PUBLIC_DATA_ENGINE_ENABLED;
+    else process.env.NEXT_PUBLIC_DATA_ENGINE_ENABLED = previousEnabled;
+    if (previousCollections === undefined) delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS;
+    else process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = previousCollections;
+  });
 
   it('stays silent and never subscribes, because the engine owns that freshness', async () => {
-    // The examples above use users, which stays on the legacy road; the switch puts it on the
-    // engine for this test (study notes are engine-owned in code, so always silent).
-    process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = 'users';
-    emit = null as unknown as typeof emit;
-    const { result } = render({ title: 'Mine' });
+    // Users are statically engine-owned even when every rollout switch is unset.
+    delete process.env.NEXT_PUBLIC_DATA_ENGINE_ENABLED;
+    delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS;
+    emit = null;
+    const { result } = render({ title: 'Mine' }, true, false, 'users');
     await act(async () => { jest.advanceTimersByTime?.(60_000); });
     expect(result.current.state).toBe('fresh');
     expect(result.current.canCheck).toBe(false);

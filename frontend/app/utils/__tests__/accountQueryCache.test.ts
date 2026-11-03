@@ -66,11 +66,13 @@ it('does not trust a query key when the cached document explicitly names another
   expect(rows.get(keyOf('react-query-cache'))).toEqual(original);
 });
 
-it('retains a proven legacy settings profile without requiring a redundant userId field', async () => {
+it('does not restore an old settings profile into the active cache, and leaves the source intact', async () => {
   const profile = { id: 'A', language: 'en', firstDayOfWeek: 'monday' };
-  put('react-query-cache', fixture([[['user-settings', 'A'], profile]]));
+  const original = fixture([[['user-settings', 'A'], profile]]);
+  put('react-query-cache', original);
   const saved = await createAccountQueryPersister('A').restoreClient();
-  expect(saved?.clientState.queries[0].state.data).toEqual(profile);
+  expect(saved?.clientState.queries ?? []).toEqual([]);
+  expect(rows.get(keyOf('react-query-cache'))).toEqual(original);
 });
 
 it('treats an existing empty owner partition as a completed import', async () => {

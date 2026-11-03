@@ -22,7 +22,7 @@ import type { JournalEntry, ResourceRef, ResourceSnapshot } from '../types';
 jest.mock('@/providers/AuthProvider', () => ({ useAuth: jest.fn() }));
 jest.mock('../browser.client', () => ({ createBrowserDataEngine: jest.fn() }));
 
-it('keeps legacy settings session-only exactly while users is on the engine', () => {
+it('keeps legacy settings session-only regardless of activation switches', () => {
   const enabled = process.env.NEXT_PUBLIC_DATA_ENGINE_ENABLED;
   const collections = process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS;
   try {
@@ -31,7 +31,8 @@ it('keeps legacy settings session-only exactly while users is on the engine', ()
     expect(shouldPersistLegacyQuery(['user-settings', 'owner'])).toBe(false);
     expect(shouldPersistLegacyQuery(['me', 'entitlement'])).toBe(true);
     process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = 'councils';
-    expect(shouldPersistLegacyQuery(['user-settings', 'owner'])).toBe(true);
+    expect(shouldPersistLegacyQuery(['user-settings', 'owner'])).toBe(false);
+    expect(shouldPersistLegacyQuery(['referral-stats', 'owner'])).toBe(true);
   } finally {
     if (enabled === undefined) delete process.env.NEXT_PUBLIC_DATA_ENGINE_ENABLED;
     else process.env.NEXT_PUBLIC_DATA_ENGINE_ENABLED = enabled;
@@ -485,10 +486,11 @@ describe('React DataEngine contract', () => {
       delete process.env.NEXT_PUBLIC_DATA_ENGINE_ENABLED;
       delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS;
       for (const owned of ENGINE_OWNED_COLLECTIONS) expect(isCollectionOnEngine(owned)).toBe(true);
-      expect(isCollectionOnEngine('users')).toBe(false);
-
-      process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = ' users ';
       expect(isCollectionOnEngine('users')).toBe(true);
+      expect(isCollectionOnEngine('prayerCategories')).toBe(false);
+
+      process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = ' prayerCategories ';
+      expect(isCollectionOnEngine('prayerCategories')).toBe(true);
       expect(isCollectionOnEngine('studyNoteShareLinks')).toBe(true);
 
       delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS;

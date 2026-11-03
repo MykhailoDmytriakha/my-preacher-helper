@@ -30,8 +30,8 @@ jest.mock('firebase/firestore', () => ({
 const setOnline = (value: boolean) =>
   Object.defineProperty(window.navigator, 'onLine', { value, configurable: true });
 
-// Any collection still on the legacy road shows the queue mechanism; sermons are engine-owned and held.
-const route = { uid: 'u1', collection: 'users', docId: 's1', savedAt: 1 };
+// Any collection still on the legacy road shows the queue mechanism; users are engine-owned and held.
+const route = { uid: 'u1', collection: 'prayerCategories', docId: 'category-1', savedAt: 1 };
 
 describe('an offline save is queued, then replayed through the guard', () => {
   beforeEach(() => {

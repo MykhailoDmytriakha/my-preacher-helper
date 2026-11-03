@@ -1,182 +1,72 @@
-import { act, renderHook, waitFor } from '@testing-library/react';
-import { onlineManager, QueryClient, QueryClientProvider, QueryObserver } from '@tanstack/react-query';
+import { act, renderHook } from '@testing-library/react';
 import React from 'react';
 
-import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
 import { useUserSettings } from '@/hooks/useUserSettings';
-import * as service from '@/services/userSettings.service';
-import { SETTINGS_MUTATION_KEYS } from '@/utils/mutationDefaults';
+import { UserSettingsEngineContext } from '@/hooks/userSettingsEngineContext';
+import { useDataDocument } from '@/data-engine/react.client';
 
 import type { UserSettings } from '@/models/models';
-import type { WriteSubmission } from '@/utils/recoverableWrite';
 
-jest.mock('@/hooks/useServerFirstQuery', () => ({ useServerFirstQuery: jest.fn() }));
-jest.mock('@/services/userSettings.service', () => ({
-  getUserSettings: jest.fn(),
-  updateAudioGenerationAccess: jest.fn(),
-  updateShowAppVersion: jest.fn(),
-  updateFirstDayOfWeek: jest.fn(),
-  updateModelPreference: jest.fn(),
-  updateFunctionModelPreference: jest.fn(),
-}));
+type SettingsDocument = ReturnType<typeof useDataDocument>;
+type SettingsSource = NonNullable<React.ContextType<typeof UserSettingsEngineContext>>;
 
-const original: UserSettings = {
-  id: 'user1', userId: 'user1', language: 'ru',
-  enableAudioGeneration: false,
+const owner = 'owner';
+const initial: UserSettings = {
+  id: owner, userId: owner, language: 'ru', enableAudioGeneration: false,
   showAppVersion: false, firstDayOfWeek: 'sunday',
-};
-const queryKey = ['user-settings', 'user1'];
-type Settings = Omit<ReturnType<typeof useUserSettings>, 'updateAudioGenerationAccess' | 'updateFirstDayOfWeek' | 'updateShowAppVersion' | 'updateModelPreference' | 'updateFunctionModelPreference'> & {
-  updateAudioGenerationAccess(value: boolean): WriteSubmission;
-  updateFirstDayOfWeek(value: 'sunday' | 'monday'): WriteSubmission;
-  updateShowAppVersion(value: boolean): WriteSubmission;
-  updateModelPreference(value: typeof model): WriteSubmission;
-  updateFunctionModelPreference(value: typeof functionModel): WriteSubmission;
 };
 const model = { preferredProviderId: 'gemini' as const, preferredModelId: 'gemini-2.5-flash-lite' };
 const functionModel = { preferredTts: { providerId: 'openai' as const, modelId: 'gpt-4o-mini-tts' } };
-const operations: {
-  name: keyof typeof SETTINGS_MUTATION_KEYS;
-  write: jest.Mock;
-  value: unknown;
-  patch: Partial<UserSettings>;
-  submit: (settings: Settings) => WriteSubmission;
-}[] = [
-  { name: 'audioGeneration', write: jest.mocked(service.updateAudioGenerationAccess), value: true,
-    patch: { enableAudioGeneration: true }, submit: s => s.updateAudioGenerationAccess(true) },
-  { name: 'firstDayOfWeek', write: jest.mocked(service.updateFirstDayOfWeek), value: 'monday',
-    patch: { firstDayOfWeek: 'monday' }, submit: s => s.updateFirstDayOfWeek('monday') },
-  { name: 'showAppVersion', write: jest.mocked(service.updateShowAppVersion), value: true,
-    patch: { showAppVersion: true }, submit: s => s.updateShowAppVersion(true) },
-  { name: 'modelPreference', write: jest.mocked(service.updateModelPreference), value: model,
-    patch: model, submit: s => s.updateModelPreference(model) },
-  { name: 'functionModelPreference', write: jest.mocked(service.updateFunctionModelPreference), value: functionModel,
-    patch: functionModel, submit: s => s.updateFunctionModelPreference(functionModel) },
+const operations = (settings: ReturnType<typeof useUserSettings>) => [
+  settings.updateAudioGenerationAccess(true),
+  settings.updateFirstDayOfWeek('monday'),
+  settings.updateShowAppVersion(true),
+  settings.updateModelPreference(model),
+  settings.updateFunctionModelPreference(functionModel),
 ];
 
-let queryClient: QueryClient;
-const refetch = jest.fn();
-function mount(uid: string | undefined) {
-  const wrapper = ({ children }: { children: React.ReactNode }) =>
-    React.createElement(QueryClientProvider, { client: queryClient }, children);
-  return renderHook(() => useUserSettings(uid) as Settings, { wrapper });
+function sourceFor(sourceOwner = owner, data: UserSettings | null = initial) {
+  const document = {
+    data,
+    loading: false,
+    error: null,
+    readOnly: false,
+    state: { durable: true, preparing: false },
+    commit: jest.fn(async () => undefined),
+    retry: jest.fn(async () => undefined),
+  } as unknown as SettingsDocument;
+  return { source: { owner: sourceOwner, document } as SettingsSource, document };
 }
 
-beforeEach(() => {
-  jest.clearAllMocks();
-  onlineManager.setOnline(true);
-  queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
-  queryClient.setQueryData(queryKey, original);
-  operations.forEach(({ write }) => write.mockReset().mockResolvedValue(undefined));
-  jest.mocked(useServerFirstQuery).mockReturnValue({
-    ...new QueryObserver<UserSettings>(queryClient, { queryKey }).getCurrentResult(),
-    isOnline: true,
-    refetch,
+const wrapper = (source?: SettingsSource) => ({ children }: { children: React.ReactNode }) =>
+  React.createElement(UserSettingsEngineContext.Provider, { value: source ?? null }, children);
+
+describe('useUserSettings shared editor boundary', () => {
+  it.each([
+    ['missing context', undefined, 'another-owner'],
+    ['different owner context', owner, 'another-owner'],
+  ])('is read-only and refuses all private changes with %s', async (_name, contextOwner, userId) => {
+    const held = contextOwner ? sourceFor(contextOwner) : null;
+    const { result } = renderHook(() => useUserSettings(userId), { wrapper: wrapper(held?.source) });
+
+    expect(result.current.readOnly).toBe(true);
+    expect(result.current.settings).toBeNull();
+    await act(async () => {
+      for (const operation of operations(result.current)) {
+        await expect(operation).rejects.toThrow('The settings editor is not ready');
+      }
+    });
+    if (held) expect(held.document.commit).not.toHaveBeenCalled();
   });
-});
 
-afterEach(() => {
-  onlineManager.setOnline(true);
-  queryClient.clear();
-});
+  it('projects the matching owner document and refreshes through its editor', async () => {
+    const held = sourceFor();
+    const { result } = renderHook(() => useUserSettings(owner), { wrapper: wrapper(held.source) });
 
-describe('useUserSettings public behavior', () => {
-  it('exposes the shared settings query and its refresh action', () => {
-    const { result } = mount('user1');
-    expect(result.current.settings).toBe(original);
+    expect(result.current.readOnly).toBe(false);
     expect(result.current.loading).toBe(false);
-    expect(result.current.error).toBeNull();
-    result.current.refresh();
-    expect(refetch).toHaveBeenCalledTimes(1);
-    expect(useServerFirstQuery).toHaveBeenCalledWith(expect.objectContaining({ queryKey, enabled: true }));
-  });
-
-  it.each(operations)('$name patches the cache, persists the original payload and keeps its queue key', async operation => {
-    let finish!: () => void;
-    operation.write.mockReturnValueOnce(new Promise<void>(resolve => { finish = resolve; }));
-    const invalidate = jest.spyOn(queryClient, 'invalidateQueries');
-    const { result } = mount('user1');
-    let submission!: WriteSubmission;
-    await act(async () => {
-      submission = operation.submit(result.current);
-      await expect(submission.acceptance).resolves.toEqual(expect.objectContaining({ kind: 'queued' }));
-    });
-    await waitFor(() => expect(operation.write).toHaveBeenCalledWith('user1', operation.value));
-    expect(queryClient.getQueryData(queryKey)).toEqual({ ...original, ...operation.patch });
-    expect(queryClient.getMutationCache().getAll()[0].options.mutationKey).toEqual(SETTINGS_MUTATION_KEYS[operation.name]);
-    expect(invalidate).not.toHaveBeenCalled();
-    await act(async () => { finish(); await submission.persistence; });
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['user-settings'] });
-    if (operation.name === 'functionModelPreference') {
-      expect(invalidate).toHaveBeenCalledWith({ queryKey: ['me', 'entitlement'] });
-    } else {
-      expect(invalidate).not.toHaveBeenCalledWith({ queryKey: ['me', 'entitlement'] });
-    }
-  });
-
-  it.each(operations)('$name restores the previous cache when persistence is refused', async operation => {
-    let refuse!: (error: Error) => void;
-    operation.write.mockReturnValueOnce(new Promise<void>((_resolve, reject) => { refuse = reject; }));
-    const { result } = mount('user1');
-    await act(async () => {
-      const submission = operation.submit(result.current);
-      await expect(submission.acceptance).resolves.toEqual(expect.objectContaining({ kind: 'queued' }));
-      refuse(new Error('write refused'));
-      await expect(submission.persistence).rejects.toThrow('write refused');
-    });
-    expect(queryClient.getQueryData(queryKey)).toEqual(original);
-  });
-
-  it.each(operations)('$name refuses unauthenticated writes without starting a mutation', async operation => {
-    const { result } = mount(undefined);
-    await act(async () => {
-      const submission = operation.submit(result.current);
-      await expect(submission.acceptance).rejects.toThrow('No signed-in user');
-      await expect(submission.persistence).rejects.toThrow('No signed-in user');
-    });
-    expect(operation.write).not.toHaveBeenCalled();
-    expect(queryClient.getMutationCache().getAll()).toHaveLength(0);
-  });
-
-  it('keeps an offline change queued until React Query resumes it online', async () => {
-    onlineManager.setOnline(false);
-    const { result } = mount('user1');
-    let submission!: WriteSubmission;
-    await act(async () => {
-      submission = result.current.updateShowAppVersion(true);
-      await expect(submission.acceptance).resolves.toEqual(expect.objectContaining({ kind: 'queued' }));
-    });
-    await waitFor(() => expect(queryClient.getQueryData(queryKey)).toEqual({ ...original, showAppVersion: true }));
-    expect(service.updateShowAppVersion).not.toHaveBeenCalled();
-    expect(queryClient.getMutationCache().getAll()[0].state.isPaused).toBe(true);
-    await act(async () => { onlineManager.setOnline(true); await submission.persistence; });
-    expect(service.updateShowAppVersion).toHaveBeenCalledTimes(1);
-    expect(service.updateShowAppVersion).toHaveBeenCalledWith('user1', true);
-  });
-
-  it('creates a minimal cache entry when settings have not loaded', async () => {
-    queryClient.removeQueries({ queryKey });
-    const { result } = mount('user1');
-    await act(async () => { await result.current.updateAudioGenerationAccess(true).persistence; });
-    expect(queryClient.getQueryData(queryKey)).toEqual({ id: 'user1', userId: 'user1', language: 'en', enableAudioGeneration: true });
-  });
-
-  it('restores an absent cache to null after a failed write', async () => {
-    queryClient.removeQueries({ queryKey });
-    jest.mocked(service.updateAudioGenerationAccess).mockRejectedValueOnce(new Error('write refused'));
-    const { result } = mount('user1');
-    await act(async () => { await expect(result.current.updateAudioGenerationAccess(true).persistence).rejects.toThrow('write refused'); });
-    expect(queryClient.getQueryData(queryKey)).toBeNull();
-  });
-
-  it('refuses acceptance too when the write fails before the queue accepts it', async () => {
-    jest.mocked(service.updateAudioGenerationAccess).mockRejectedValueOnce(new Error('early refusal'));
-    const { result } = mount('user1');
-    await act(async () => {
-      const submission = result.current.updateAudioGenerationAccess(true);
-      await expect(submission.acceptance).rejects.toThrow('early refusal');
-      await expect(submission.persistence).rejects.toThrow('early refusal');
-    });
-    expect(queryClient.getQueryData(queryKey)).toEqual(original);
+    expect(result.current.settings).toEqual(initial);
+    await act(async () => { await result.current.refresh(); });
+    expect(held.document.retry).toHaveBeenCalledTimes(1);
   });
 });

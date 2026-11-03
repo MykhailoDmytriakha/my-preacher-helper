@@ -5,8 +5,8 @@ const mockWrite = jest.fn();
 jest.mock('@/config/firebaseClientDb', () => ({ getClientDb: () => ({}) }));
 jest.mock('firebase/firestore', () => ({ doc: jest.fn() }));
 jest.mock('@/services/conflictSafeUpdate.client', () => ({ conflictSafeUpdate: (...args: unknown[]) => mockWrite(...args), isStaleWriteError: () => false }));
-// The terminal-recovery rules are the queue's own; users stay on the legacy road and show them.
-const original = { id: 'one', uid: 'owner', collection: 'users', docId: 'sermon', aggregate: 'core', patch: { title: 'unsent' }, baseRevision: 2, expectedBaseline: { title: 'original' }, status: 'pending' as const, savedAt: 1 };
+// Terminal-recovery classification is generic: use the optional legacy prayerCategories path.
+const original = { id: 'one', uid: 'owner', collection: 'prayerCategories', docId: 'category-1', aggregate: 'core', patch: { title: 'unsent' }, baseRevision: 2, expectedBaseline: { title: 'original' }, status: 'pending' as const, savedAt: 1 };
 
 describe('legacy replay terminal recovery', () => {
   beforeEach(() => { localStorage.clear(); mockWrite.mockReset(); enqueueWrite(original); });

@@ -210,50 +210,41 @@ describe('Settings sections', () => {
  * text, so loading the newer values cannot destroy anything.
  */
 describe('Settings freshness', () => {
-  it('says nothing while the screen agrees with the server', async () => {
+  it('keeps the legacy freshness observer disabled for engine-owned settings', async () => {
     renderShell('/settings/user', <UserPage />);
 
     await waitFor(() => expect(screen.getByTestId('settings-layout')).toBeInTheDocument());
+    expect(freshnessCalls[freshnessCalls.length - 1]).toEqual(expect.objectContaining({ collection: 'users', enabled: false }));
     expect(screen.queryByText('freshness.title')).not.toBeInTheDocument();
   });
 
-  it('asks the freshness layer to treat the first server answer as the baseline', async () => {
-    // Without this the screen passes `known: null` forever, the hook can never call
-    // anything stale, and the pill is dead while every unit test stays green.
-    renderShell('/settings/user', <UserPage />);
-
-    await waitFor(() => expect(freshnessCalls.length).toBeGreaterThan(0));
-    const call = freshnessCalls[freshnessCalls.length - 1];
-    expect(call.adoptFirstServerAnswerAsKnown).toBe(true);
-    expect(call.collection).toBe('users');
-  });
-
-  it('shows the data pill — named for settings — when they changed elsewhere', async () => {
-    mockFreshness.state = 'stale';
+  it.each(['stale', 'unknown'] as const)('does not show a legacy freshness pill for engine-owned settings in %s state', async state => {
+    mockFreshness.state = state;
     mockFreshness.remote = { fields: 'newer' };
 
     renderShell('/settings/user', <UserPage />);
 
-    await waitFor(() => expect(screen.getByText('freshness.title')).toBeInTheDocument());
-    // The wording names the entity, so it cannot be confused with the app-update toast.
-    expect(screen.getByRole('status')).toHaveTextContent('freshness.entitySettings');
+    await waitFor(() => expect(freshnessCalls.length).toBeGreaterThan(0));
+    expect(freshnessCalls[freshnessCalls.length - 1]).toEqual(expect.objectContaining({ collection: 'users', enabled: false }));
+    expect(screen.queryByText('freshness.title')).not.toBeInTheDocument();
   });
 
-  it('keeps the pill across a change of section, because the shell is not rebuilt', async () => {
+  it('keeps legacy freshness silent across a section change because engine status owns settings sync', async () => {
     mockFreshness.state = 'stale';
     mockFreshness.remote = { fields: 'newer' };
     mockedUsePathname.mockReturnValue('/settings/user');
     const { rerender } = render(<TestProviders><SettingsShell><UserPage /></SettingsShell></TestProviders>);
 
-    await waitFor(() => expect(screen.getByText('freshness.title')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getAllByTestId('settings-nav')).toHaveLength(2));
     const callsBefore = freshnessCalls.length;
 
     mockedUsePathname.mockReturnValue('/settings/limits');
     rerender(<TestProviders><SettingsShell><LimitsPage /></SettingsShell></TestProviders>);
 
-    expect(screen.getByText('freshness.title')).toBeInTheDocument();
+    expect(screen.queryByText('freshness.title')).not.toBeInTheDocument();
     expect(screen.getByTestId('usage-widget')).toBeInTheDocument();
-    // Re-rendered, not re-mounted: the listener was not torn down and set up again.
+    expect(freshnessCalls[freshnessCalls.length - 1]).toEqual(expect.objectContaining({ collection: 'users', enabled: false }));
+    // The hook may re-render with the shell, but it remains disabled for this collection.
     expect(freshnessCalls.length).toBeGreaterThan(callsBefore);
   });
 });

@@ -205,6 +205,15 @@
 
 ## 🔍 Требует перепроверки
 
+### BUG-20261102-structure-tag-cache-bypasses-engine · Structure can reuse an old tag catalogue after canonical tag changes
+**Severity.** P3 candidate; stale palette/name/colour is source-supported, user-visible effect still needs reproduction.
+**Found.** 2026-11-02; Unit274 remaining-consumer inventory.
+**Anchors.** `frontend/app/hooks/useSermonStructureData.ts:18-45,242-269` reads the React Query tag cache before any fetch and retains a private tag map; `frontend/app/hooks/useTags.ts:30-73` reads/writes canonical tags; `frontend/app/data-engine/legacyQueryRecovery.client.ts:33-64` omits the tags cache from engine-owned query filtering.
+**Expected / suspected actual.** Sermon → Structure uses the same current tag names/colours as Settings → Tags. A previously cached catalogue can be reused without observing a later canonical tag change. No live stale-tag screen has been claimed yet.
+**User contract.** One preacher changes a tag, then returns to Structure and sees that change. An offline kept canonical copy stays usable, and a drag/AI review must retain its current holding protection.
+**Recheck.** Warm Structure's catalogue, change a tag through the shared tag editor, reopen or refresh Structure, and compare the palette/name/colour with the canonical collection. Also verify a real pending drag/review before applying a new catalogue.
+**Direction.** Reuse the existing useTags/public engine facade and the current board projection; filter obsolete read-only query copies without presenting clean catalogues as unsent user edits. No new tag reader or queue. Inventory: `cache-tabs-274-current-consumers-v2.md`.
+
 ### BUG-20261102-share-link-late-first-delivery · An earlier unsent creation may publish after a later revocation
 **Severity (provisional).** P2: first delivery of a stale creation could issue public access after the owner revoked another capability for the same note.
 **Found.** 2026-11-02; Unit275 source inspection. This is an unproven adjacent chronology case, not the already reproduced repeated-command case.

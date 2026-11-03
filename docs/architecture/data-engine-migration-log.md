@@ -2446,3 +2446,24 @@ is made here. Before deployment, drain legacy in-flight requests, refresh every 
 verify closure and replay against an isolated owned fixture. An old compiled function already
 running is not fenced by the new engine feed transaction. Never switch the collection back to the
 legacy writer after its first engine write.
+
+
+## 2026-11-02 — unconditional private settings ownership (local, not deployed)
+
+Unit277 completes the settings migration described above. `users` joins
+`ENGINE_OWNED_COLLECTIONS` and the current rules closure list. The private
+`useUserSettings` path no longer creates a React Query settings reader or any of its
+five mutations, even when activation switches are absent or false. Every historical
+settings mutation key remains recognizable for exact-input archival, then refuses replay.
+
+Public profile bootstrap, language and heartbeat keep the authenticated settings adapter.
+Private edits still use the existing shared editor, durable journal, recovery and owner
+fences; server-managed fields are preserved. No second queue or storage protocol is added.
+Historical statements above requiring `users` in environment lists, or describing its
+private React Query branch as active, are superseded for this local source. They do not
+prove what is deployed or what an already-open device is running.
+
+Production acceptance remains separate: deploy the matching rules/server, account for old
+in-flight writes, reload every owner device, check bootstrap/language/heartbeat and a
+private preference through offline/reconnect/reload. This local change does not alter
+production switches or establish physical-device acceptance.
