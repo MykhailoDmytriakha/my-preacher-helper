@@ -139,12 +139,20 @@ export const queryCacheStore = watchedStore('keyval-store', 'keyval', 'query-cac
 
 export const LEGACY_QUERY_CACHE_KEY = 'react-query-cache';
 export function accountQueryCacheKey(owner: string): [string, string] { return [LEGACY_QUERY_CACHE_KEY, owner]; }
+export function accountReadCacheKey(owner: string): [string, string, string] { return [...accountQueryCacheKey(owner), 'readonly-records-v1']; }
 
-export function createIDBPersister(key: IDBValidKey = LEGACY_QUERY_CACHE_KEY, { mayOverwrite = () => true, onLateRestore, readClient }: {
+/** The serializer and unread barrier apply equally to default and account-specific storage. */
+export interface QueryClientStorage {
+  readClient: () => Promise<PersistedClient | undefined>;
+  writeClient: (client: PersistedClient) => Promise<void>;
+  removeClient: () => Promise<void>;
+}
+
+export function createIDBPersister(key: IDBValidKey = LEGACY_QUERY_CACHE_KEY, { mayOverwrite = () => true, onLateRestore, clientStorage }: {
   /** False while something still has to read the old cache first; the write is skipped, the next one retries. */
   mayOverwrite?: () => boolean;
-  /** Optional account-aware reader; serialization and silence protection stay here. */
-  readClient?: () => Promise<PersistedClient | undefined>;
+  /** Optional storage adapter; serialization, silence and archive protection stay here. */
+  clientStorage?: QueryClientStorage;
   /** A restore that answered after the app stopped waiting: hydrate it; writing resumes right after. */
   onLateRestore?: (client: PersistedClient) => void;
 } = {}): Persister {
@@ -160,7 +168,9 @@ export function createIDBPersister(key: IDBValidKey = LEGACY_QUERY_CACHE_KEY, { 
   return {
     persistClient: async (client: PersistedClient) => {
       if (unread || !mayOverwrite()) return;
-      await set(key, serializePersistedClient(client), queryCacheStore);
+      const saved = serializePersistedClient(client);
+      if (clientStorage) await clientStorage.writeClient(saved);
+      else await set(key, saved, queryCacheStore);
       debugLog('ReactQuery cache persisted', {
         key,
         queries: client?.clientState?.queries?.length ?? 0,
@@ -169,7 +179,7 @@ export function createIDBPersister(key: IDBValidKey = LEGACY_QUERY_CACHE_KEY, { 
     restoreClient: async () => {
       // A failed read is unread too: TanStack calls removeClient on restore rejection.
       unread = true;
-      const reading = readClient ? readClient() : get<PersistedClient>(key, queryCacheStore);
+      const reading = clientStorage ? clientStorage.readClient() : get<PersistedClient>(key, queryCacheStore);
       const read = await answerWithin(reading);
       if (!read.answered) {
         unread = true;
@@ -192,7 +202,8 @@ export function createIDBPersister(key: IDBValidKey = LEGACY_QUERY_CACHE_KEY, { 
     },
     removeClient: async () => {
       if (unread || !mayOverwrite()) return;
-      await del(key, queryCacheStore);
+      if (clientStorage) await clientStorage.removeClient();
+      else await del(key, queryCacheStore);
       debugLog('ReactQuery cache removed', { key });
     },
   };

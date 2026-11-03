@@ -13,6 +13,18 @@ const keyOf = (key: IDBValidKey) => JSON.stringify(key);
 const copy = <T,>(value: T): T => value === undefined ? value : JSON.parse(JSON.stringify(value));
 
 jest.mock('@/providers/AuthProvider', () => ({ useAuth: () => mockAuth }));
+jest.mock('@/utils/accountQueryCache', () => {
+  const actual = jest.requireActual<typeof import('@/utils/accountQueryCache')>('@/utils/accountQueryCache');
+  const persister = jest.requireActual<typeof import('@/utils/queryPersister')>('@/utils/queryPersister');
+  return {
+    ...actual,
+    // Test-only: this synthetic prayerCategories intent exercises the generic serializer and owner fence.
+    // Production's read-only account adapter intentionally does not accept this mutation snapshot.
+    createAccountQueryPersister: (owner: string | undefined, options?: Parameters<typeof actual.createAccountQueryPersister>[1]) => owner
+      ? persister.createIDBPersister(actual.accountQueryCacheKey(owner), options)
+      : actual.createAccountQueryPersister(owner, options),
+  };
+});
 jest.mock('@/data-engine/storage.client', () => ({
   ...jest.requireActual('@/data-engine/storage.client'),
   createEngineStorageTransaction: () => async (_mode: IDBTransactionMode, action: (store: IDBObjectStore, read: (request: IDBRequest, success: (value: unknown) => void) => void, done: (value: unknown) => void) => void) => {

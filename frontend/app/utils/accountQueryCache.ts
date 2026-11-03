@@ -2,8 +2,9 @@ import { MutationCache } from '@tanstack/react-query';
 import { get, update } from 'idb-keyval';
 
 import { shouldPersistLegacyMutation, shouldPersistLegacyQuery } from '@/data-engine/react.client';
+import { createAccountReadStorage } from '@/utils/accountReadCache';
 import { SETTINGS_MUTATION_KEYS, SHARE_LINK_MUTATION_KEYS } from '@/utils/mutationDefaults';
-import { accountQueryCacheKey, createIDBPersister, LEGACY_QUERY_CACHE_KEY, queryCacheStore, serializeSavedMutation } from '@/utils/queryPersister';
+import { accountQueryCacheKey, accountReadCacheKey, createIDBPersister, LEGACY_QUERY_CACHE_KEY, queryCacheStore, serializeSavedMutation } from '@/utils/queryPersister';
 
 import type { PersistedClient, Persister } from '@tanstack/react-query-persist-client';
 
@@ -46,26 +47,28 @@ function withoutMigratedRows(client: PersistedClient): PersistedClient {
   } };
 }
 
-/** One saved client per account. Anonymous signed-out pages never open device storage. */
+/** Per-owner read records; historical clients remain unchanged archival input. */
 export function createAccountQueryPersister(owner: string | undefined, options: PersisterOptions = {}): Persister {
   if (!owner) return { persistClient: async () => undefined, restoreClient: async () => undefined, removeClient: async () => undefined };
-  const key = accountQueryCacheKey(owner);
-  return createIDBPersister(key, {
-    ...options,
-    readClient: async () => {
-      const saved = await get<PersistedClient>(key, queryCacheStore);
+  const legacyKey = accountQueryCacheKey(owner);
+  const key = accountReadCacheKey(owner);
+  const clientStorage = createAccountReadStorage(owner, key, {
+    mayWrite: options.mayOverwrite ?? (() => true),
+    readLegacy: async () => {
+      const saved = await get<PersistedClient>(legacyKey, queryCacheStore);
       if (saved !== undefined) return withoutMigratedRows(saved);
       const legacy = await get<PersistedClient>(LEGACY_QUERY_CACHE_KEY, queryCacheStore);
       let adopted: PersistedClient | undefined;
       // Another opening may have created this partition while the old copy was being read.
       // The atomic update keeps its newer work and also marks an empty import as completed.
-      await update<PersistedClient>(key, current => {
+      await update<PersistedClient>(legacyKey, current => {
         adopted = current === undefined ? importOwnedCopy(legacy, owner) : current;
         return adopted;
       }, queryCacheStore);
       return adopted ? withoutMigratedRows(adopted) : undefined;
     },
   });
+  return createIDBPersister(key, { ...options, clientStorage });
 }
 
 /** Retryer uses this seam before starts and after delays; an inactive account stays paused. */

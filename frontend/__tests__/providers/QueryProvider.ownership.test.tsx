@@ -4,6 +4,7 @@ import { get, set, update } from 'idb-keyval';
 import React from 'react';
 
 import { QueryProvider } from '@/providers/QueryProvider';
+import { createAccountQueryPersister } from '@/utils/accountQueryCache';
 
 const mockAuth = { user: { uid: 'B' } as { uid: string } | null, loading: false };
 const mockRows = new Map<string, unknown>();
@@ -21,7 +22,8 @@ jest.mock('@/data-engine/react.client', () => ({
   DataEngineMigrationGate: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   queryCacheMayBeOverwritten: () => true,
   shouldPersistLegacyQuery: () => true,
-  shouldPersistLegacyMutation: () => true,
+  // Migrated share-link writers stay in the historical source; this mock gate does not archive them.
+  shouldPersistLegacyMutation: () => false,
 }));
 jest.mock('@/utils/mutationDefaults', () => ({
   ...jest.requireActual('@/utils/mutationDefaults'),
@@ -55,6 +57,7 @@ function Probe() {
 }
 const workspace = () => <QueryProvider><Probe /></QueryProvider>;
 const ready = () => screen.findByText('Workspace ready');
+const persistedQueryData = async (owner: string, key: readonly unknown[]) => (await createAccountQueryPersister(owner).restoreClient())?.clientState.queries.find(query => JSON.stringify(query.queryKey) === JSON.stringify(key))?.state.data;
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -86,35 +89,40 @@ describe('QueryProvider account ownership', () => {
     expect(mockReplay).not.toHaveBeenCalled();
   });
 
-  it('keeps the old A queue and unknown originals untouched while B restores, then resumes A only as A', async () => {
-    const original = legacyFixture();
-    mockRows.set(keyOf('react-query-cache'), copy(original));
+  it('keeps the migrated share writer raw and inactive across B restore and A reopen', async () => {
+    const originalGlobal = legacyFixture();
+    const originalOwner = legacyFixture();
+    mockRows.set(keyOf('react-query-cache'), copy(originalGlobal));
+    mockRows.set(keyOf(['react-query-cache', 'A']), copy(originalOwner));
     const view = render(workspace());
     await ready();
     expect(mockReplay).not.toHaveBeenCalled();
     expect(current?.getQueryData(['referral-stats', 'A'])).toBeUndefined();
     expect(current?.getQueryData(['unknown-old-query'])).toBeUndefined();
     expect(current?.getMutationCache().getAll()).toHaveLength(0);
-    expect(mockRows.get(keyOf('react-query-cache'))).toEqual(original);
+    expect(mockRows.get(keyOf('react-query-cache'))).toEqual(originalGlobal);
+    expect(mockRows.get(keyOf(['react-query-cache', 'A']))).toEqual(originalOwner);
     view.unmount();
+
     mockAuth.user = { uid: 'A' };
     render(workspace());
     await ready();
-    await waitFor(() => expect(mockReplay).toHaveBeenCalledWith({ actor: 'A', variables: { userId: 'A', noteId: 'note-A' } }));
-    expect(mockReplay).toHaveBeenCalledTimes(1);
     expect(current?.getQueryData(['referral-stats', 'A'])).toBe(37);
     expect(current?.getQueryData(['unknown-old-query'])).toBeUndefined();
-    expect(mockRows.get(keyOf('react-query-cache'))).toEqual(original);
+    expect(current?.getMutationCache().getAll()).toHaveLength(0);
+    expect(mockReplay).not.toHaveBeenCalled();
+    expect(mockRows.get(keyOf('react-query-cache'))).toEqual(originalGlobal);
+    expect(mockRows.get(keyOf(['react-query-cache', 'A']))).toEqual(originalOwner);
   });
 
-  it('switches the whole in-memory client and restores the owner newer saved value on returning', async () => {
+  it('switches the whole in-memory client and restores the newer owner DTO through the public persister', async () => {
     mockRows.set(keyOf('react-query-cache'), legacyFixture(false));
     mockAuth.user = { uid: 'A' };
     const view = render(workspace());
     await ready();
     const a = current!;
     act(() => { a.setQueryData(['referral-stats', 'A'], 99); });
-    await waitFor(() => expect(set).toHaveBeenCalled());
+    await waitFor(async () => expect(await persistedQueryData('A', ['referral-stats', 'A'])).toBe(99));
     mockAuth.user = { uid: 'B' };
     view.rerender(workspace());
     await ready();
@@ -160,24 +168,27 @@ it('does not open persisted storage after Firebase confirms the visitor is signe
   expect(mockReplay).not.toHaveBeenCalled();
 });
 
-it('does not re-import the old paused action after its owner has resumed and acknowledged it', async () => {
-  const original = legacyFixture();
-  mockRows.set(keyOf('react-query-cache'), copy(original));
+it('keeps the migrated share writer inactive on repeated owner-partition reopen', async () => {
+  const originalGlobal = legacyFixture();
+  const originalOwner = legacyFixture();
+  mockRows.set(keyOf('react-query-cache'), copy(originalGlobal));
+  mockRows.set(keyOf(['react-query-cache', 'A']), copy(originalOwner));
   mockAuth.user = { uid: 'A' };
   const first = render(workspace());
   await ready();
-  await waitFor(() => expect(mockReplay).toHaveBeenCalledTimes(1));
-  await waitFor(() => {
-    const saved = mockRows.get(keyOf(['react-query-cache', 'A'])) as { clientState: { mutations: unknown[] } };
-    expect(saved.clientState.mutations).toHaveLength(0);
-  });
+  expect(current?.getQueryData(['referral-stats', 'A'])).toBe(37);
+  expect(current?.getMutationCache().getAll()).toHaveLength(0);
+  expect(mockReplay).not.toHaveBeenCalled();
   first.unmount();
+
   render(workspace());
   await ready();
   await act(async () => { await Promise.resolve(); });
-  expect(mockReplay).toHaveBeenCalledTimes(1);
   expect(current?.getQueryData(['referral-stats', 'A'])).toBe(37);
-  expect(mockRows.get(keyOf('react-query-cache'))).toEqual(original);
+  expect(current?.getMutationCache().getAll()).toHaveLength(0);
+  expect(mockReplay).not.toHaveBeenCalled();
+  expect(mockRows.get(keyOf('react-query-cache'))).toEqual(originalGlobal);
+  expect(mockRows.get(keyOf(['react-query-cache', 'A']))).toEqual(originalOwner);
 });
 
 it('keeps public content rendered without exposing a restored query while identity is unknown', async () => {

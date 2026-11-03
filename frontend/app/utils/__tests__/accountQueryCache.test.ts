@@ -2,6 +2,7 @@ import { QueryClient, dehydrate } from '@tanstack/react-query';
 import { get, set, update } from 'idb-keyval';
 
 import { accountQueryCacheKey, createAccountQueryPersister } from '@/utils/accountQueryCache';
+import { accountReadCacheKey, queryCacheStore } from '@/utils/queryPersister';
 
 import type { PersistedClient } from '@tanstack/react-query-persist-client';
 
@@ -16,6 +17,10 @@ function fixture(queries: [readonly unknown[], unknown][]): PersistedClient {
   const saved = { timestamp: Date.now(), buster: '', clientState: dehydrate(client) };
   client.clear();
   return saved;
+}
+function readCache(saved: PersistedClient) {
+  const records = Object.fromEntries(saved.clientState.queries.map((query, index) => [query.queryHash, { revision: index + 1, query }]));
+  return { schema: 1 as const, epoch: 'test-read-cache', buster: saved.buster, timestamp: saved.timestamp, sequence: saved.clientState.queries.length, records };
 }
 const put = (key: IDBValidKey, value: unknown) => rows.set(keyOf(key), clone(value));
 beforeEach(() => {
@@ -42,17 +47,28 @@ it('does not publish A or unassigned originals while initializing B', async () =
   expect(rows.get(keyOf('react-query-cache'))).toEqual(original);
 });
 
-it('keeps a newer owner partition created while its historical global fallback was being read', async () => {
+it('keeps a newer read-cache partition created while the historical global fallback is being read', async () => {
   const legacy = fixture([[['referral-stats', 'A'], 37]]);
-  const newer = fixture([[['referral-stats', 'A'], 99]]);
+  const newer = readCache(fixture([[['referral-stats', 'A'], 99]]));
   let finish!: (value: PersistedClient) => void;
-  jest.mocked(get).mockResolvedValueOnce(undefined).mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  let markStarted!: () => void;
+  const legacyReadStarted = new Promise<void>(resolve => { markStarted = resolve; });
+  jest.mocked(get).mockImplementation(async key => {
+    if (keyOf(key) === keyOf(accountReadCacheKey('A'))) return undefined;
+    if (keyOf(key) === keyOf(accountQueryCacheKey('A'))) return undefined;
+    if (keyOf(key) === keyOf('react-query-cache')) {
+      markStarted();
+      return new Promise(resolve => { finish = resolve; });
+    }
+    return clone(rows.get(keyOf(key)));
+  });
   const restoring = createAccountQueryPersister('A').restoreClient();
-  await Promise.resolve();
-  put(accountQueryCacheKey('A'), newer);
+  await legacyReadStarted;
+  put(accountReadCacheKey('A'), newer);
   finish(legacy);
-  expect(await restoring).toEqual(newer);
-  expect(rows.get(keyOf(accountQueryCacheKey('A')))).toEqual(newer);
+  const restored = await restoring;
+  expect(restored?.clientState.queries.map(query => query.state.data)).toEqual([99]);
+  expect(rows.get(keyOf(accountReadCacheKey('A')))).toEqual(newer);
 });
 
 it('does not trust a query key when the cached document explicitly names another owner', async () => {
@@ -80,8 +96,10 @@ it('treats an existing empty owner partition as a completed import', async () =>
   put('react-query-cache', fixture([[['referral-stats', 'A'], 37]]));
   const saved = await createAccountQueryPersister('A').restoreClient();
   expect(saved?.clientState.queries).toEqual([]);
-  expect(get).toHaveBeenCalledTimes(1);
-  expect(update).not.toHaveBeenCalled();
+  expect(get).toHaveBeenCalledWith(accountReadCacheKey('A'), queryCacheStore);
+  expect(get).toHaveBeenCalledWith(accountQueryCacheKey('A'), queryCacheStore);
+  expect(get).not.toHaveBeenCalledWith('react-query-cache', queryCacheStore);
+  expect(update).toHaveBeenCalledWith(accountReadCacheKey('A'), expect.any(Function), expect.any(Function));
 });
 
 
@@ -109,4 +127,19 @@ it.each(['global-only', 'owner-partition'] as const)('does not restore Engine-ow
     if (previous === undefined) delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS;
     else process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = previous;
   }
+});
+
+it('keeps an unknown paused legacy payload in its source without exposing it as a read-cache command', async () => {
+  const client = new QueryClient();
+  client.getMutationCache().build(client, { mutationKey: ['unrecognized-legacy', 'save'] }, {
+    context: undefined, data: undefined, error: null, failureCount: 0, failureReason: null,
+    isPaused: true, status: 'pending', variables: { ownerId: 'A', body: 'Unsent local command' }, submittedAt: Date.now(),
+  });
+  const original = { timestamp: Date.now(), buster: '', clientState: dehydrate(client) };
+  client.clear();
+  put(accountQueryCacheKey('A'), original);
+  const restored = await createAccountQueryPersister('A').restoreClient();
+  expect(restored?.clientState.queries).toEqual([]);
+  expect(restored?.clientState.mutations).toEqual([]);
+  expect(rows.get(keyOf(accountQueryCacheKey('A')))).toEqual(original);
 });

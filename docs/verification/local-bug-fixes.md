@@ -5481,3 +5481,62 @@ No push, deployment, production reads, owner or physical-device acceptance is cl
 `structure-tags-278-production-recipe-v1.md` retains the later authorized release/version,
 disposable fixture, foreground return/reload and exact-cleanup checks. Unit274's remaining
 read-only entitlement/referral cache overwrite and the separate chronology cards stay open.
+
+## Unit274 — independent account read-cache records (2026-11-02)
+
+The remaining whole-client overwrite is repaired after separate retirement of share,
+settings and tag writers in Units275/277/278. Current React Query persistence holds only
+entitlement/usage and numeric referral DTOs. Authored documents keep their Data Engine
+owner; original global/per-owner legacy and unknown inputs remain available for recovery.
+
+`accountReadCache.ts` owns one versioned per-owner record map, sharing `storageUpdate` for
+atomic acknowledgement. Sessions skip unchanged copies, retire only their observed record
+revision, and retain a clear epoch fence. Write/remove calls run FIFO; failed commits do
+not advance observations. `queryPersister` keeps its serializer, silent/unread barrier and
+late hydration through one storage port. Changed DTOs use commit order; local timestamps
+and counters do not prove server freshness or user-action chronology. That adjacent risk
+is separately recorded as BUG-20261102-read-cache-answer-order-unproven.
+
+A direct frozen-factory baseline has four causal failures, three behavior controls and a
+passing runtime-factory identity control. The same seven calibrated behavior bodies are
+green in the final focused run; only an unused fixture declaration was removed. Earlier
+wrong hydration, aliased baseline and Date.now spy attempts remain retained/excluded.
+A timestamp-zero stored envelope separately went red→green with an unchanged test; eight
+protocol cases cover failed/retried commits, FIFO, owner/epoch/buster fences, malformed
+input and actual late hydration preserving newer memory. Provider tests preserve generic
+synthetic prayer replay through an explicitly test-only seam; production ownership checks
+keep retired raw share commands unchanged/inactive. No supported executable writer was
+found hidden by that adaptation.
+
+Focused16:223PASS. Full1107suites:12777PASS/17pending/runtimeErrors0. Types and build exit0;
+lint0errors/60baselinewarnings. All2711frontend input pins were stable during those gates.
+The only later input change removes one extra trailing LF from accountQueryCache.test.ts;
+byte comparison and TypeScript printed AST prove identical test content. All application
+source bytes match the verified build. `cache-tabs-274-test-format-overlay-v1.json` records
+that exact boundary; no runtime/build acceptance is inferred for an unrelated source edit.
+
+Ordinary Chrome + real native IndexedDB account factory: BEFORE v3 loses the independent
+record; AFTER v1 retains both records, original session and different-owner isolation.
+Both native probes have actual exit0 and declared A-only admission/import fixtures; these
+are storage-protocol evidence, separate from the compiled application's real API/UI path.
+
+Build `l9m__opAZ2cfmTnFBr5Ik` is fd034505 plus the recorded candidate overlay. The real
+Auth/Firestore emulator app has seven passing checks: B entitlement-only opening, A real
+referral read, B same-document Settings-link return/refetch, exact referral retention,
+actual offline reload of both views, and both records after reconnect. Root inspected six
+actual1280/390frames: referral and usage content visible, no horizontal overflow. UIv1/v2
+selector failures are excluded. UIv3 raw exit1/passfalse is retained:70console/86failed
+requests/6blocked connectivity probes are narrowly qualified by exact phase/endpoint/error;
+no page JS, unhandled or HTTP>=400 errors occurred. Seven injected negative controls reject unrelated failures. Fresh Codex acceptance of274.4
+reran the12-group verifier and independently repeated223green/frozen4red+4controls,
+then inspected all six frames. `cache-tabs-274-subagent-final-acceptance-v1.json` records
+the local acceptance. Keep it with the primary artifacts; the seven behavior booleans
+do not replace the raw diagnostic boundary.
+
+The browser/profile and all3service wrappers are stopped, actual exits0; nine owned ports
+are free. Two hub exports acknowledged/eight file hashes verified, original imports
+untouched. The913compiled/worker members are archived with SHA
+`994575e4fafbd6f9e44d80f0dc674cc21b0e6861e3b65e91021ae4599c4464d0`.
+The local case retains primary scripts/results under `cache-tabs-274-*`; future production
+recipe is `cache-tabs-274-production-recipe-v1.md` and has not been executed. No push,
+deployment, production reads, physical-device or owner acceptance is claimed.
