@@ -4,34 +4,22 @@ const mockCollection = jest.fn();
 const mockWhere = jest.fn();
 const mockLimit = jest.fn();
 const mockGet = jest.fn();
-const mockAdd = jest.fn();
 const mockDoc = jest.fn();
-const mockSet = jest.fn();
-const mockDelete = jest.fn();
 const mockTransactionGet = jest.fn();
-const mockTransactionSet = jest.fn();
 
 jest.mock('@/config/firebaseAdminConfig', () => ({
   adminDb: {
     collection: jest.fn(),
     runTransaction: jest.fn(),
   },
-  FieldValue: {
-    increment: jest.fn(),
-  },
 }));
 
-const { adminDb, FieldValue } = jest.requireMock('@/config/firebaseAdminConfig') as {
+const { adminDb } = jest.requireMock('@/config/firebaseAdminConfig') as {
   adminDb: {
     collection: jest.Mock<unknown, unknown[]>;
     runTransaction: jest.Mock;
   };
-  FieldValue: {
-    increment: jest.Mock;
-  };
 };
-
-const mockIncrement = FieldValue.increment as jest.Mock;
 
 const setupFirestoreMocks = () => {
   const queryChain = {
@@ -43,14 +31,11 @@ const setupFirestoreMocks = () => {
   mockCollection.mockReturnValue({
     where: queryChain.where,
     doc: mockDoc,
-    add: mockAdd,
   });
 
   mockDoc.mockReturnValue({
     id: 'new-link-id',
     get: mockGet,
-    set: mockSet.mockResolvedValue(undefined),
-    delete: mockDelete.mockResolvedValue(undefined),
   });
 };
 
@@ -59,9 +44,8 @@ describe('StudyNoteShareLinksRepository', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    mockIncrement.mockReturnValue('increment-1');
     (adminDb.collection as jest.Mock).mockImplementation(mockCollection);
-    adminDb.runTransaction.mockImplementation(callback => callback({ get: mockTransactionGet, set: mockTransactionSet }));
+    adminDb.runTransaction.mockImplementation(callback => callback({ get: mockTransactionGet }));
     mockTransactionGet.mockReset();
     setupFirestoreMocks();
     repository = new StudyNoteShareLinksRepository();
@@ -198,52 +182,6 @@ describe('StudyNoteShareLinksRepository', () => {
     expect(result).toBeNull();
   });
 
-  it('creates a share link with timestamps', async () => {
-    const mockDate = new Date('2024-02-02T12:00:00Z');
-    const dateSpy = jest.spyOn(global, 'Date').mockImplementation(() => mockDate as any);
-    mockDate.toISOString = jest.fn().mockReturnValue('2024-02-02T12:00:00.000Z');
-
-    mockTransactionGet.mockResolvedValue({ data: () => ({ userId: 'user-1', content: 'Owned' }) });
-
-    const result = await repository.createLink({
-      ownerId: 'user-1',
-      noteId: 'note-1',
-      token: 'token-1',
-    });
-
-    expect(mockTransactionSet).toHaveBeenCalledWith(expect.objectContaining({ id: 'new-link-id' }), {
-      ownerId: 'user-1',
-      noteId: 'note-1',
-      token: 'token-1',
-      createdAt: '2024-02-02T12:00:00.000Z',
-      viewCount: 0,
-    });
-    expect(result).toEqual({
-      id: 'new-link-id',
-      ownerId: 'user-1',
-      noteId: 'note-1',
-      token: 'token-1',
-      createdAt: '2024-02-02T12:00:00.000Z',
-      viewCount: 0,
-    });
-
-    dateSpy.mockRestore();
-  });
-
-  it('increments view count with merge', async () => {
-    mockTransactionGet.mockResolvedValue({ data: () => ({ ownerId: 'owner', noteId: 'note', token: 'token' }) });
-    await repository.incrementViewCount('link-1');
-
-    expect(mockIncrement).toHaveBeenCalledWith(1);
-    expect(mockTransactionSet).toHaveBeenCalledWith(expect.anything(), { viewCount: 'increment-1' }, { merge: true });
-  });
-
-  it('deletes a share link', async () => {
-    await repository.deleteLink('link-1');
-
-    expect(mockDelete).toHaveBeenCalled();
-  });
-
   it.each([{ _dataEngine: { deleted: true } }, { revoked: true }, { token: '' }])('filters retired or invalid links through every read seam: %j', patch => {
     const data = { ownerId: 'owner', noteId: 'note', token: 'token', ...patch };
     const doc = { id: 'link', data: () => data };
@@ -254,20 +192,6 @@ describe('StudyNoteShareLinksRepository', () => {
       expect(repository.findByToken('token')).resolves.toBeNull(),
       expect(repository.findByOwnerAndNoteId('owner', 'note')).resolves.toBeNull(),
     ]);
-  });
-
-  it.each([undefined, { userId: 'foreign' }, { userId: 'owner', _dataEngine: { deleted: true } }])('refuses creation when its transaction reads an unavailable note: %j', data => {
-    mockTransactionGet.mockResolvedValue({ data: () => data });
-    return expect(repository.createLink({ ownerId: 'owner', noteId: 'note', token: 'token' })).rejects.toMatchObject({ code: 'permission-denied' }).then(() => {
-      expect(mockTransactionSet).not.toHaveBeenCalled();
-    });
-  });
-
-  it.each([undefined, { ownerId: 'owner', noteId: 'note', token: 'token', _dataEngine: { deleted: true } }])('does not revive a missing or tombstoned link during a late increment: %j', async data => {
-    mockTransactionGet.mockResolvedValue({ data: () => data });
-    await repository.incrementViewCount('link');
-    expect(mockTransactionSet).not.toHaveBeenCalled();
-    expect(mockIncrement).not.toHaveBeenCalled();
   });
 
   it('reads token authorization and note content inside the same transaction', async () => {
@@ -334,13 +258,6 @@ describe('StudyNoteShareLinksRepository', () => {
     const shared = await repository.readSharedNote('token');
     expect(shared?.shareLink.authorLanguage).toBe('uk');
     expect(shared?.scriptureRefs).toEqual([{ id: 'old', bible: 'ubio', book: 'Joel', chapter: 3, fromVerse: 1 }]);
-  });
-
-  it('keeps the author’s language on a link it makes', async () => {
-    mockTransactionGet.mockResolvedValue({ data: () => ({ userId: 'user-1', content: 'Owned' }) });
-    const result = await repository.createLink({ ownerId: 'user-1', noteId: 'note-1', token: 'token-2', authorLanguage: 'uk' });
-    expect(mockTransactionSet).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ authorLanguage: 'uk' }));
-    expect(result.authorLanguage).toBe('uk');
   });
 
   it.each([undefined, { userId: 'foreign', content: 'Private' }, { userId: 'owner', content: 'Deleted', _dataEngine: { deleted: true } }, { userId: 'owner' }])('does not publicly expose an unavailable or foreign note: %j', async data => {

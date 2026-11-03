@@ -94,6 +94,10 @@ const timestamps = { createdAt: text, updatedAt: text };
 
 /** Shapes mirror models.ts; defaults belong to the existing domain factories, not validation. */
 const shapes: Record<string, z.ZodRawShape> = {
+  studyNoteShareLinks: {
+    ownerId: id, noteId: id, token: id, createdAt: text, viewCount: number.int().nonnegative(),
+    authorLanguage: z.enum(['en', 'ru', 'uk']).optional(),
+  },
   sermons: {
     ...owner, title: id, verse: id, date: id, thoughts: children(thought), scratch: children(scratch).optional(),
     outline: outline.optional(), thoughtsBySection: bySection.optional(), structure: bySection.optional(),

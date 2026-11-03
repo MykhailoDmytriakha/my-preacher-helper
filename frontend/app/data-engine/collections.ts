@@ -233,6 +233,17 @@ export class CollectionReader {
     return copy(snapshots);
   }
 
+  /** Publish already persisted acknowledgements without spending a network read. */
+  async reloadCached(collection: string): Promise<void> {
+    this.requireOwner();
+    const entry = this.entries.get(collection);
+    if (entry) {
+      const generation = this.generation;
+      await this.load(entry, generation); this.assertCurrent(entry, generation);
+      await this.reloadRows(entry, generation);
+    }
+  }
+
   async peekRemote(collection: string): Promise<{ snapshots: ResourceSnapshot[]; version: number }> {
     const owner = this.requireOwner();
     if (!this.online || !this.visible) throw failure('The server cannot be asked right now', 'unavailable');

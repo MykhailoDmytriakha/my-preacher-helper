@@ -88,7 +88,6 @@ describe('a collection closed to legacy writers', () => {
   const saved = { ...process.env };
   afterEach(() => { process.env = { ...saved }; });
   const profile = (id: string) => ({ path: `users/${id}` }) as DocumentReference;
-  const shareLink = (id: string) => ({ path: `studyNoteShareLinks/${id}` }) as DocumentReference;
 
   it('refuses update, delete and create of an UNMARKED document once the collection is closed', async () => {
     process.env.DATA_ENGINE_COLLECTIONS = 'users';
@@ -102,14 +101,15 @@ describe('a collection closed to legacy writers', () => {
   });
 
   it('leaves an open collection and every other collection writable, as before', async () => {
-    process.env.DATA_ENGINE_COLLECTIONS = 'users';
+    process.env.DATA_ENGINE_COLLECTIONS = 'users,prayerCategories';
     records.set('users/legacy', { userId: 'owner', title: 'Original' });
     await updateLegacyDocument(profile('legacy'), { title: 'Old bundle, still welcome' });
     expect(records.get('users/legacy')?.title).toBe('Old bundle, still welcome');
     process.env.DATA_ENGINE_CLOSED_COLLECTIONS = 'users';
-    records.set('studyNoteShareLinks/a', { userId: 'owner', title: 'Original' });
-    await updateLegacyDocument(shareLink('a'), { title: 'Another domain' });
-    expect(records.get('studyNoteShareLinks/a')?.title).toBe('Another domain');
+    const openReference = { path: 'prayerCategories/a' } as DocumentReference;
+    records.set('prayerCategories/a', { userId: 'owner', title: 'Original' });
+    await updateLegacyDocument(openReference, { title: 'Another domain' });
+    expect(records.get('prayerCategories/a')?.title).toBe('Another domain');
   });
 
   it('ignores a closure that names a collection the engine does not serve', async () => {

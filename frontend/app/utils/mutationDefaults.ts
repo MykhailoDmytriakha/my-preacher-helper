@@ -1,5 +1,4 @@
 import { assertLegacyClientWriteAllowed } from '@/data-engine/clientPolicy';
-import { createStudyNoteShareLink } from '@/services/studyNoteShareLinks.service';
 import {
   updateAudioGenerationAccess,
   updateFirstDayOfWeek,
@@ -7,7 +6,7 @@ import {
   updateModelPreference,
   updateShowAppVersion,
 } from '@/services/userSettings.service';
-import { revokeShareLinkMutationOptions, SHARE_LINK_MUTATION_KEYS, STUDY_NOTE_SHARE_LINKS_KEY } from '@/utils/studyNoteShareLinkWrites';
+import { SHARE_LINK_MUTATION_KEYS } from '@/utils/studyNoteShareLinkWrites';
 
 import type { ModelPreference } from '@/services/userSettings.service';
 import type { FunctionModelPreference } from '@/services/userSettings.service';
@@ -202,12 +201,9 @@ export function registerOfflineMutationDefaults(queryClient: QueryClient) {
   }
 
   // ---- study-note share links ----
-  queryClient.setMutationDefaults(SHARE_LINK_MUTATION_KEYS.create, {
-    mutationFn: ({ userId, noteId }: { userId: string; noteId: string }) =>
-      createStudyNoteShareLink(userId, noteId),
-    onSuccess: invalidate([STUDY_NOTE_SHARE_LINKS_KEY]),
-  });
-  queryClient.setMutationDefaults(SHARE_LINK_MUTATION_KEYS.delete, revokeShareLinkMutationOptions(queryClient));
+  for (const key of Object.values(SHARE_LINK_MUTATION_KEYS)) {
+    queryClient.setMutationDefaults(key, { mutationFn: refuseLegacyReplay('studyNoteShareLinks') });
+  }
 
   // ---- sermons ----
   // The engine owns sermons; a paused edit of the previous version gets the same refusal, and its

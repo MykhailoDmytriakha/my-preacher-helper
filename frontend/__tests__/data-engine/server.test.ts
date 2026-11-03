@@ -3,14 +3,17 @@ import { createHash } from 'node:crypto';
 
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { isCollectionServed } from '@/data-engine/activation';
-import { DataEngineServerError, listDocuments, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, serverErrorResponse } from '@/data-engine/server';
+import { DataEngineServerError, listDocuments, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
 import { collectionHeadId, HEADS_COLLECTION, sequenceId } from '@/data-engine/serverFeed';
 import { DataSession } from '@/data-engine/session';
 import type { DataCommand, ResourceSnapshot } from '@/data-engine/types';
 
 jest.mock('@/data-engine/activation', () => ({ ...jest.requireActual('@/data-engine/activation'), isCollectionServed: jest.fn(() => true) }));
 
-jest.mock('@/config/firebaseAdminConfig', () => ({ adminDb: { collection: jest.fn(), runTransaction: jest.fn() } }));
+jest.mock('@/config/firebaseAdminConfig', () => ({
+  adminDb: { collection: jest.fn(), runTransaction: jest.fn() },
+  FieldValue: { increment: (amount: number) => ({ __testIncrement: amount }) },
+}));
 
 jest.mock('firebase-admin/firestore', () => ({
   ...jest.requireActual('firebase-admin/firestore'),
@@ -80,7 +83,17 @@ beforeEach(() => {
           documentReadUnits += Math.max(1, result.docs.length);
           return result;
         },
-        set: (reference: { path: string }, value: Raw) => { transactionWrites.push(reference.path); writes.set(reference.path, value); },
+        set: (reference: { path: string }, value: Raw, options?: { merge?: boolean }) => {
+          transactionWrites.push(reference.path);
+          if (!options?.merge) { writes.set(reference.path, value); return; }
+          const merged = { ...(writes.get(reference.path) ?? documents.get(reference.path) ?? {}) };
+          for (const [field, incoming] of Object.entries(value)) {
+            const amount = incoming && typeof incoming === 'object' && '__testIncrement' in incoming
+              ? Number((incoming as { __testIncrement: unknown }).__testIncrement) : null;
+            merged[field] = amount === null ? incoming : Number(merged[field] ?? 0) + amount;
+          }
+          writes.set(reference.path, merged);
+        },
       });
       if (failCommit) throw new Error('Commit failed');
       for (const [key, value] of writes) documents.set(key, value);
@@ -1122,4 +1135,132 @@ describe('complete write-set activation boundary', () => {
       ] })).toMatchObject({ kind: 'acknowledged' });
     expect(documents.get('groups/g')).not.toHaveProperty('_dataEngine');
   });
+});
+
+describe('share capability receipt replay', () => {
+  const owner = 'owner-1';
+  const notePath = 'studyNotes/share-note';
+  const createLink = (id: string): DataCommand => ({ protocol: 1, owner, operationId: `share-create-${id}`,
+    resource: { collection: 'studyNoteShareLinks', id }, generation: null, dependsOn: [], kind: 'relation',
+    relation: 'share-link-create', note: { id: 'share-note', generation: null }, authorLanguage: 'en',
+  } as unknown as DataCommand);
+  const revokeLink = (id: string, generation: string, operationId = `share-revoke-${id}`): DataCommand => ({ protocol: 1, owner, operationId,
+    resource: { collection: 'studyNoteShareLinks', id }, generation, dependsOn: [], kind: 'relation', relation: 'share-link-revoke',
+  } as unknown as DataCommand);
+  const active = () => [...documents.entries()].filter(([path, value]) => path.startsWith('studyNoteShareLinks/') && value.ownerId === owner && !(value._dataEngine as { deleted?: boolean } | undefined)?.deleted);
+  beforeEach(() => { documents.set(notePath, { userId: owner, content: 'Keep the authored note' }); });
+
+  it('replays the original creation after revocation without issuing any new capability', async () => {
+    const first = createLink('first');
+    const before = structuredClone(documents.get(notePath));
+    const created = await processCommand(owner, first);
+    expect(created.kind).toBe('acknowledged');
+    expect(active()).toHaveLength(1);
+    expect(await processCommand(owner, revokeLink('first', first.operationId))).toMatchObject({ kind: 'acknowledged', snapshot: { value: null } });
+    const replayed = await processCommand(owner, first);
+    expect(replayed).toMatchObject({ kind: 'acknowledged', snapshot: { value: null, metadata: { deleted: true } }, committed: { operationId: first.operationId, deleted: false } });
+    expect(active()).toEqual([]);
+    expect(documents.get(notePath)).toEqual(before);
+    expect(receipts()).toHaveLength(2);
+  });
+
+  it('keeps an alias receipt revoked while allowing a new explicit create', async () => {
+    const first = createLink('first');
+    await processCommand(owner, first);
+    const oldToken = active()[0][1].token;
+    const alias = createLink('second');
+    expect(await processCommand(owner, alias)).toMatchObject({ kind: 'acknowledged', snapshot: { value: null },
+      affected: [{ resource: first.resource, metadata: { operationId: alias.operationId } }] });
+    expect(active()).toHaveLength(1);
+    await processCommand(owner, revokeLink('first', first.operationId));
+    expect(await processCommand(owner, alias)).toMatchObject({ kind: 'acknowledged', snapshot: { value: null },
+      relatedSnapshots: [{ resource: first.resource, value: null, metadata: { deleted: true } }] });
+    expect(active()).toEqual([]);
+    expect((await processCommand(owner, createLink('third'))).kind).toBe('acknowledged');
+    expect(active()).toHaveLength(1);
+    expect(active()[0][1].token).not.toBe(oldToken);
+    await processCommand(owner, revokeLink('first', first.operationId, 'later-old-link-revoke'));
+    expect(active()[0][0]).toBe('studyNoteShareLinks/third');
+  });
+
+  it('serializes two different create actions to one active capability and keeps both receipts', async () => {
+    const results = await Promise.all([processCommand(owner, createLink('one')), processCommand(owner, createLink('two'))]);
+    expect(results.map(result => result.kind)).toEqual(['acknowledged', 'acknowledged']);
+    expect(active()).toHaveLength(1);
+    expect(receipts()).toHaveLength(2);
+  });
+
+  it('keeps the same operation identity immutable across create and revoke', async () => {
+    const create = createLink('first');
+    await processCommand(owner, create);
+    await expect(processCommand(owner, { ...revokeLink('first', create.operationId), operationId: create.operationId }))
+      .resolves.toMatchObject({ kind: 'refused', code: 'operation-id-reused' });
+    expect(active()).toHaveLength(1);
+  });
+});
+
+describe('public share-link view counter projection', () => {
+  it('advances the owned snapshot revision and change feed when a public view increments the counter', async () => {
+    const owner = 'owner-1';
+    const id = 'view-counter-link';
+    const collection = 'studyNoteShareLinks';
+    const resource = { collection, id };
+    const headPath = `${HEADS_COLLECTION}/${collectionHeadId(owner, collection)}`;
+    documents.set(`${collection}/${id}`, {
+      ownerId: owner, noteId: 'note-1', token: 'public-view-token', createdAt: '2026-10-01T00:00:00.000Z', viewCount: 0,
+      _dataEngine: { protocol: 1, generation: 'create-view-counter-link', revision: 1, deleted: false, operationId: 'create-view-counter-link' },
+    });
+    documents.set(headPath, {
+      userId: owner, collection, version: 1,
+      _dataEngine: { protocol: 1, generation: collectionHeadId(owner, collection), revision: 2, deleted: false, operationId: 'create-view-counter-link' },
+    });
+    documents.set(`${headPath}/changes/${sequenceId(1)}`, { resource, version: 1 });
+
+    const before = await readDocument(owner, resource);
+    const beforeFeed = await readCollectionChanges(owner, collection, 0);
+    expect(before).toMatchObject({ value: { viewCount: 0 }, metadata: { revision: 1 } });
+    expect(beforeFeed).toMatchObject({ version: 1, cursor: 1, snapshots: [{ value: { viewCount: 0 }, metadata: { revision: 1 } }] });
+
+    await recordSharedNoteView(id, 'public-view-token');
+
+    expect(await readDocument(owner, resource)).toMatchObject({ value: { viewCount: 1 }, metadata: { revision: 2 } });
+    expect(await readCollectionChanges(owner, collection, beforeFeed.cursor)).toMatchObject({
+      version: 2, cursor: 2, snapshots: [{ resource, value: { viewCount: 1 }, metadata: { revision: 2 } }],
+    });
+  });
+  it.each(['missing', 'deleted', 'revoked', 'wrong-token'] as const)('does not count or publish a %s capability', async variant => {
+    const raw = { ownerId: 'owner-1', noteId: 'note', token: 'token', createdAt: 'created', viewCount: 3,
+      ...(variant === 'revoked' ? { revoked: true } : {}),
+      _dataEngine: { protocol: 1, generation: 'creation', revision: 1, deleted: variant === 'deleted' } };
+    if (variant !== 'missing') documents.set('studyNoteShareLinks/control', raw);
+    const before = structuredClone([...documents.entries()]);
+    await recordSharedNoteView('control', variant === 'wrong-token' ? 'another-token' : 'token');
+    expect([...documents.entries()]).toEqual(before);
+  });
+
+  it('commits count and feed together, preserving the permanent token, note and generation', async () => {
+    const owner = 'owner-1', collection = 'studyNoteShareLinks';
+    documents.set(`${collection}/counter`, { ownerId: owner, noteId: 'note', token: 'token', createdAt: 'created', viewCount: 0,
+      _dataEngine: { protocol: 1, generation: 'creation', revision: 1, deleted: false } });
+    await Promise.all([recordSharedNoteView('counter', 'token'), recordSharedNoteView('counter', 'token')]);
+    expect(await readDocument(owner, { collection, id: 'counter' })).toMatchObject({
+      value: { viewCount: 2, token: 'token', noteId: 'note', createdAt: 'created' }, metadata: { generation: 'creation', revision: 3 } });
+    expect(await readCollectionChanges(owner, collection, 0)).toMatchObject({ version: 2, snapshots: [{ value: { viewCount: 2 } }] });
+    expect(receipts()).toHaveLength(0);
+    const before = structuredClone([...documents.entries()]); failCommit = true;
+    await expect(recordSharedNoteView('counter', 'token')).rejects.toThrow('Commit failed');
+    expect([...documents.entries()]).toEqual(before);
+  });
+
+  it('keeps an exact legacy revocation valid after counting adds the first protocol marker', async () => {
+    const owner = 'owner-1', resource = { collection: 'studyNoteShareLinks', id: 'legacy-counter' };
+    documents.set('studyNoteShareLinks/legacy-counter', { ownerId: owner, noteId: 'note', token: 'token', createdAt: 'created', viewCount: 0 });
+    await recordSharedNoteView(resource.id, 'token');
+    expect(await processCommand(owner, { protocol: 1, owner, operationId: 'revoke-legacy-counter', resource, generation: null,
+      dependsOn: [], kind: 'relation', relation: 'share-link-revoke' })).toMatchObject({ kind: 'acknowledged', snapshot: { value: null } });
+    const before = structuredClone([...documents.entries()]);
+    await recordSharedNoteView(resource.id, 'token');
+    expect([...documents.entries()]).toEqual(before);
+  });
+
 });

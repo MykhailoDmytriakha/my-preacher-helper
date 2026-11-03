@@ -12,7 +12,7 @@ import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { formatDateForLocale } from '@/utils/dateFormatter';
 import { listReadState } from '@/utils/listReadState';
 import { markdownPreviewText } from '@/utils/markdownUtils';
-import { awaitAcceptance, type WriteSubmission } from '@/utils/recoverableWrite';
+import { awaitWriteOperation, type WriteOperation } from '@/utils/recoverableWrite';
 import { getShareNotePath, getShareNoteUrl } from '@/utils/shareNoteUtils';
 import { studyNoteOwnName } from '@/utils/studyNoteUtils';
 import { useTranslation } from '@locales/useTranslation';
@@ -24,8 +24,8 @@ interface ShareLinksPanelProps {
   error?: unknown;
   notesLoading?: boolean;
   notesError?: unknown;
-  onCreate: (noteId: string) => WriteSubmission;
-  onDelete: (linkId: string) => WriteSubmission;
+  onCreate: (noteId: string) => WriteOperation;
+  onDelete: (linkId: string) => WriteOperation;
 }
 
 const UNTITLED_NOTE = 'studiesWorkspace.untitled';
@@ -88,12 +88,12 @@ export default function ShareLinksPanel({
     try {
       setIsCreating(true);
       setWriteError(null);
-      // useStudyNoteShareLinks' create recovery descriptor reports a late refusal while this screen is mounted.
-      await awaitAcceptance(onCreate(selectedNoteId), () => undefined);
+      // The engine-backed capability hook reports a late refusal while this screen is mounted.
+      await awaitWriteOperation(onCreate(selectedNoteId), () => undefined);
       setSelectedNoteId('');
     } catch (error) {
       /**
-       * NO message here. `useStudyNoteShareLinks` declares the recovery descriptor for
+       * NO message here. `useStudyNoteShareLinks` owns recovery for
        * this write and reports the same refusal. Two reporters presented one refused
        * action as two failures — see docs/recoverable-writes.md.
        */
@@ -108,11 +108,11 @@ export default function ShareLinksPanel({
     try {
       setDeletingId(linkId);
       setWriteError(null);
-      // useStudyNoteShareLinks' delete recovery descriptor reports a late refusal while this screen is mounted.
-      await awaitAcceptance(onDelete(linkId), () => undefined);
+      // The engine-backed capability hook reports a late refusal while this screen is mounted.
+      await awaitWriteOperation(onDelete(linkId), () => undefined);
     } catch (error) {
       /**
-       * NO message here — the entity's recovery descriptor reports this refusal and
+       * NO message here — the capability hook reports this refusal and
        * carries the text. One refusal, one reporter (docs/recoverable-writes.md).
        */
       console.error('Share link write refused:', error);

@@ -2423,3 +2423,26 @@ structure column stays in that column (BUG-20261013-structure-column-thought-lan
 Still on the React Query road: `users` (settings) and `studyNoteShareLinks`; `useDocumentFreshness`
 stays for the settings screen until `users` is engine-owned in code.
 
+
+## 2026-11-02 — local note-share capability migration (not deployed)
+
+Unit275 in `codex/bugs-local-fixes` moves note-share creation/revocation to typed, server-owned
+relations using the existing durable runtime journal, transaction receipts and owner feed.
+`useStudyNoteShareLinks` reads the engine collection through the public facade; ordinary editable
+create/update/delete of capability fields remain forbidden. Old POST/DELETE endpoints and paused
+mutation defaults return the authenticated upgrade refusal. Unsent old payloads keep their exact
+owner-scoped archive and unknown chronology rather than becoming new commands. Raw repository
+create/delete and direct counter methods were removed. Public token reads remain read-only;
+the server-only counter validates the exact live token and publishes its snapshot revision
+and owner-feed change in one canonical transaction.
+
+The local implementation prevents an already applied creation from issuing a new capability when
+its old request is replayed after revocation. A new explicit create remains allowed. An earlier
+creation delivered for the first time against a later capability lifecycle is a separate recheck
+in `BUGS.md`; operation identity alone is not proof of that ordering.
+
+Local unit/browser/gate status belongs to the case and verification registry; no production claim
+is made here. Before deployment, drain legacy in-flight requests, refresh every owner device, then
+verify closure and replay against an isolated owned fixture. An old compiled function already
+running is not fenced by the new engine feed transaction. Never switch the collection back to the
+legacy writer after its first engine write.

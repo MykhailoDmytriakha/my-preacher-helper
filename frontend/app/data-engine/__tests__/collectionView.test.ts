@@ -51,3 +51,23 @@ it('ignores cancelled work, other owners and other collections', () => {
     { ...request('elsewhere'), baseline: { ...snapshot(), resource: { collection: 'councils', id: 'g' } } }])[0])
     .toMatchObject({ value: { title: 'Confirmed' }, pending: false });
 });
+
+it('presents journal-owned capability ACKs and secondary aliases without altering the listed cache', () => {
+  const link: ResourceSnapshot = { resource: { collection: 'studyNoteShareLinks', id: 'link' },
+    value: { ownerId: 'owner', noteId: 'note', token: 'token' }, metadata: { protocol: 1, generation: 'link-create', revision: 1, deleted: false } };
+  const alias: ResourceSnapshot = { resource: { collection: 'studyNoteShareLinks', id: 'alias' }, value: null,
+    metadata: { protocol: 1, generation: 'alias-create', revision: 1, deleted: true } };
+  const journal: import('../types').JournalEntry[] = [{ command: { protocol: 1, owner: 'owner', operationId: 'alias-create', resource: alias.resource,
+    generation: null, dependsOn: [], kind: 'relation', relation: 'share-link-create', note: { id: 'note', generation: null }, authorLanguage: 'en' },
+    state: 'acknowledged', createdAt: 1, attempts: 1, result: { kind: 'acknowledged', operationId: 'alias-create', snapshot: alias,
+      relatedSnapshots: [link], affected: [{ resource: link.resource, metadata: link.metadata! }] } }];
+  const listed: ResourceSnapshot[] = [];
+  const presented = collectionDocumentViews('owner', 'studyNoteShareLinks', listed, [], journal);
+  expect(presented.find(row => row.resource.id === 'link')).toMatchObject({ value: { token: 'token' }, pending: false });
+  expect(presented.find(row => row.resource.id === 'alias')).toMatchObject({ value: null });
+  expect(listed).toEqual([]);
+  expect(collectionDocumentViews('another-owner', 'studyNoteShareLinks', [], [], journal)).toEqual([]);
+  const tombstone = { ...link, value: null, metadata: { ...link.metadata!, revision: 3, deleted: true } };
+  expect(collectionDocumentViews('owner', 'studyNoteShareLinks', [tombstone], [], journal).find(row => row.resource.id === 'link')?.value).toBeNull();
+  expect(collectionDocumentViews('owner', 'studyNoteShareLinks', [], [], [{ ...journal[0], state: 'unknown', result: undefined }])).toEqual([]);
+});

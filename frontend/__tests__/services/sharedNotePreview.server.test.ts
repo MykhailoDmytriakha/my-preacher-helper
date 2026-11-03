@@ -1,4 +1,5 @@
 /** @jest-environment node */
+import { recordSharedNoteView } from '@/data-engine/serverOperations.server';
 import { __resetStoreAvailabilityForTests } from '@/services/storeAvailability.server';
 import { readSharedNotePreview } from '@/services/sharedNotePreview.server';
 import ru from '@locales/ru/translation.json';
@@ -6,8 +7,10 @@ import uk from '@locales/uk/translation.json';
 import { studyNoteShareLinksRepository } from '@repositories/studyNoteShareLinks.repository';
 
 jest.mock('@repositories/studyNoteShareLinks.repository', () => ({
-  studyNoteShareLinksRepository: { readSharedNote: jest.fn(), incrementViewCount: jest.fn() },
+  studyNoteShareLinksRepository: { readSharedNote: jest.fn() },
 }));
+
+jest.mock('@/data-engine/serverOperations.server', () => ({ recordSharedNoteView: jest.fn() }));
 
 const repository = studyNoteShareLinksRepository as jest.Mocked<typeof studyNoteShareLinksRepository>;
 const shareLink = { id: 'link', noteId: 'note', ownerId: 'owner', token: 'token', createdAt: '2026-09-26T00:00:00.000Z', viewCount: 0 };
@@ -40,7 +43,7 @@ describe('readSharedNotePreview', () => {
   it('never counts a preview fetch as a view', async () => {
     repository.readSharedNote.mockResolvedValue({ shareLink, content: 'Text', scriptureRefs: [], type: 'note' });
     await readSharedNotePreview('token');
-    expect(repository.incrementViewCount).not.toHaveBeenCalled();
+    expect(recordSharedNoteView).not.toHaveBeenCalled();
   });
 
   it('gives a failed read one more try before giving up', async () => {

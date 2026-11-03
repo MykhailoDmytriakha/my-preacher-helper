@@ -19,7 +19,7 @@ import { StudyNote, StudyNoteShareLink } from '@/models/models';
 import { resolveAppLocale } from '@/utils/appLocale';
 import { formatDateForLocale } from '@/utils/dateFormatter';
 import { listReadState, type ListReadState } from '@/utils/listReadState';
-import { awaitAcceptance, type WriteSubmission } from '@/utils/recoverableWrite';
+import { awaitWriteOperation, type WriteOperation } from '@/utils/recoverableWrite';
 import { getShareNotePath, getShareNoteUrl } from '@/utils/shareNoteUtils';
 import { studyNoteOwnName } from '@/utils/studyNoteUtils';
 import { useTranslation } from '@locales/useTranslation';
@@ -31,8 +31,8 @@ interface ShareNoteModalProps {
   loading?: boolean;
   error?: unknown;
   onClose: () => void;
-  onCreate: (noteId: string) => WriteSubmission;
-  onDelete: (linkId: string) => WriteSubmission;
+  onCreate: (noteId: string) => WriteOperation;
+  onDelete: (linkId: string) => WriteOperation;
 }
 
 const OVERLAY_CLASS = 'fixed inset-0 z-50 flex items-center justify-center overscroll-contain px-4 py-8';
@@ -84,11 +84,11 @@ export default function ShareNoteModal({
     if (!note || isWorking || readState !== 'ready') return;
     try {
       setIsWorking(true);
-      // useStudyNoteShareLinks' create recovery descriptor reports a late refusal while this screen is mounted.
-      await awaitAcceptance(onCreate(note.id), () => undefined);
+      // The engine-backed capability hook reports a late refusal while this screen is mounted.
+      await awaitWriteOperation(onCreate(note.id), () => undefined);
     } catch (error) {
       /**
-       * NO message here. `useStudyNoteShareLinks` declares the recovery descriptor for
+       * NO message here. `useStudyNoteShareLinks` owns recovery for
        * this write and reports the same refusal. Two reporters presented one refused
        * action as two failures — see docs/recoverable-writes.md.
        */
@@ -102,11 +102,11 @@ export default function ShareNoteModal({
     if (!shareLink || isWorking) return;
     try {
       setIsWorking(true);
-      // useStudyNoteShareLinks' delete recovery descriptor reports a late refusal while this screen is mounted.
-      await awaitAcceptance(onDelete(shareLink.id), () => undefined);
+      // The engine-backed capability hook reports a late refusal while this screen is mounted.
+      await awaitWriteOperation(onDelete(shareLink.id), () => undefined);
     } catch (error) {
       /**
-       * NO message here — the entity's recovery descriptor reports this refusal and
+       * NO message here — the capability hook reports this refusal and
        * carries the text. One refusal, one reporter (docs/recoverable-writes.md).
        */
       console.error('Share link write refused:', error);

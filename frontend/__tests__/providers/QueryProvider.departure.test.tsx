@@ -7,24 +7,53 @@ import { QueryProvider } from '@/providers/QueryProvider';
 
 const mockAuth = { user: { uid: 'A' } as { uid: string } | null, loading: false };
 const mockRows = new Map<string, unknown>();
+const mockArchiveRows = new Map<string, unknown>();
 const mockDeliveries = jest.fn((_request: unknown) => Promise.resolve());
 const keyOf = (key: IDBValidKey) => JSON.stringify(key);
 const copy = <T,>(value: T): T => value === undefined ? value : JSON.parse(JSON.stringify(value));
 
 jest.mock('@/providers/AuthProvider', () => ({ useAuth: () => mockAuth }));
+jest.mock('@/data-engine/storage.client', () => ({
+  ...jest.requireActual('@/data-engine/storage.client'),
+  createEngineStorageTransaction: () => async (_mode: IDBTransactionMode, action: (store: IDBObjectStore, read: (request: IDBRequest, success: (value: unknown) => void) => void, done: (value: unknown) => void) => void) => {
+    const store = {
+      get: (key: IDBValidKey) => ({ result: mockArchiveRows.get(JSON.stringify(key)) }),
+      put: (value: unknown, key: IDBValidKey) => mockArchiveRows.set(JSON.stringify(key), value === undefined ? value : JSON.parse(JSON.stringify(value))),
+      delete: (key: IDBValidKey) => mockArchiveRows.delete(JSON.stringify(key)),
+      getAll: () => ({ result: [...mockArchiveRows.values()] }),
+    };
+    return new Promise(resolve => {
+      const read = (request: { result?: unknown }, success: (value: unknown) => void) => {
+        queueMicrotask(() => success(request.result));
+      };
+      action(store as unknown as IDBObjectStore, read as never, resolve);
+    });
+  },
+}));
+jest.mock('@locales/i18n', () => ({
+  i18n: {
+    language: 'en',
+    hasResourceBundle: () => true,
+    t: (key: string) => key,
+  },
+}));
 jest.mock('@/utils/queryKeys', () => ({
   ...jest.requireActual('@/utils/queryKeys'),
   resolveOwnerUid: () => mockAuth.user?.uid,
 }));
-jest.mock('idb-keyval', () => ({ get: jest.fn(), set: jest.fn(), update: jest.fn(), del: jest.fn() }));
+jest.mock('idb-keyval', () => ({ ...jest.requireActual('idb-keyval'), get: jest.fn(), set: jest.fn(), update: jest.fn(), del: jest.fn() }));
 jest.mock('@/utils/mutationDefaults', () => {
   const actual = jest.requireActual('@/utils/mutationDefaults');
   return {
     ...actual,
-    registerOfflineMutationDefaults: (client: QueryClient) => client.setMutationDefaults(
-      actual.SHARE_LINK_MUTATION_KEYS.delete,
-      { mutationFn: (variables: unknown) => mockDeliveries({ actor: mockAuth.user?.uid, variables }) },
-    ),
+    registerOfflineMutationDefaults: (client: QueryClient) => {
+      client.setMutationDefaults(actual.SHARE_LINK_MUTATION_KEYS.delete,
+        { mutationFn: (variables: unknown) => mockDeliveries({ actor: mockAuth.user?.uid, variables }) });
+      // This test covers account departure for a still-legacy-writable mutation. Share-link
+      // mutations are archived now that their collection is engine-owned.
+      client.setMutationDefaults(['user-settings', 'firstDayOfWeek'],
+        { mutationFn: (variables: unknown) => mockDeliveries({ actor: mockAuth.user?.uid, variables }) });
+    },
   };
 });
 
@@ -39,8 +68,7 @@ const ready = (owner: string) => screen.findByText(`Ready:${owner}`);
 
 function pausedDeleteFixture() {
   const client = new QueryClient();
-  const { SHARE_LINK_MUTATION_KEYS } = jest.requireActual('@/utils/mutationDefaults');
-  client.getMutationCache().build(client, { mutationKey: SHARE_LINK_MUTATION_KEYS.delete }, {
+  client.getMutationCache().build(client, { mutationKey: ['user-settings', 'firstDayOfWeek'] }, {
     context: undefined,
     data: undefined,
     error: null,
@@ -59,6 +87,7 @@ function pausedDeleteFixture() {
 beforeEach(() => {
   jest.clearAllMocks();
   mockRows.clear();
+  mockArchiveRows.clear();
   currentClient = undefined;
   mockAuth.user = { uid: 'A' };
   mockAuth.loading = false;
@@ -105,7 +134,7 @@ test('retains A delivery as a manual-retry error when its request fails after sw
   await ready('A');
   const restoredA = currentClient!.getMutationCache().getAll();
   expect(restoredA).toHaveLength(1);
-  expect(restoredA[0].options.mutationKey).toEqual(['study-note-share-links', 'delete']);
+  expect(restoredA[0].options.mutationKey).toEqual(['user-settings', 'firstDayOfWeek']);
   expect(restoredA[0].state.variables).toEqual(variables);
   expect(restoredA[0].state.status).toBe('error');
   // A detached session may only know that delivery was unconfirmed, not its eventual cause.

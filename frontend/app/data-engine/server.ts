@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
 import { FieldPath, Filter } from 'firebase-admin/firestore';
 
@@ -7,7 +7,8 @@ import { storeRetryHeaders } from '@/services/storeAvailability.server';
 
 import { stampAcceptedResource } from './acceptedResource.server';
 import { isCollectionServed, isLegacyOpen, mayBeRetiredByCascade } from './activation';
-import { commandFingerprint, getResourcePolicy, TOMBSTONE_OWNER_FIELD, validateCommand } from './protocol';
+import { advanceResourceSnapshot, commandFingerprint, getResourcePolicy, isValidIdentifier, TOMBSTONE_OWNER_FIELD, validateCommand } from './protocol';
+import { validateResourceDocument } from './resourceSchemas';
 import { assembleChangePage, collectionHeadId, HEADS_COLLECTION, parseChangePointer, planFeedWrites, readHeadVersion, sequenceId } from './serverFeed';
 import { planDataCommand } from './serverRelations';
 import { coversCommittedEffect } from './snapshotFreshness';
@@ -259,6 +260,29 @@ function persistFeedWrites(transaction: Transaction, writes: FeedWrite[]): void 
     const head = adminDb.collection(write.path[0]).doc(write.path[1]);
     transaction.set(write.path.length === 2 ? head : head.collection(write.path[2]).doc(write.path[3]), write.value);
   }
+}
+
+/** A public view is a server-observed counter event, never an editable capability command. */
+export async function recordSharedNoteView(linkId: string, token: string): Promise<void> {
+  if (!isValidIdentifier(linkId) || typeof token !== 'string' || !token) return;
+  const resource = { collection: 'studyNoteShareLinks', id: linkId };
+  const operationId = `share-view:${randomUUID()}`;
+  await adminDb.runTransaction(async transaction => {
+    const reference = adminDb.collection(resource.collection).doc(resource.id);
+    const document = await transaction.get(reference);
+    const raw = document.exists ? document.data() : undefined;
+    if (!raw || raw.revoked === true || raw.token !== token || !isValidIdentifier(raw.ownerId)
+      || !isValidIdentifier(raw.noteId)) return;
+    const current = snapshotFromRaw(resource, raw);
+    if (!current.value) return;
+    const count = typeof current.value.viewCount === 'number' && Number.isFinite(current.value.viewCount) ? current.value.viewCount : 0;
+    const value = { ...current.value, viewCount: count + 1 };
+    validateResourceDocument(resource.collection, value, { kind: 'update', changedFields: ['viewCount'], previous: current.value });
+    const next = advanceResourceSnapshot(current, value, operationId, []);
+    const feedWrites = await prepareFeedWrites(transaction, raw.ownerId, operationId, [next]);
+    transaction.set(reference, { ...preserveStoredTypes(raw, next.value!) as Record<string, unknown>, _dataEngine: next.metadata });
+    persistFeedWrites(transaction, feedWrites);
+  });
 }
 
 /** Trusted server callers pass their authenticated owner explicitly; no auth comes from the payload. */

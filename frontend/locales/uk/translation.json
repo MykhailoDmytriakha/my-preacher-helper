@@ -61,7 +61,8 @@
       "planTemplates": "Шаблон структури",
       "tags": "Тег",
       "prayerRequests": "Молитва",
-      "studyNotes": "Нотатка"
+      "studyNotes": "Нотатка",
+      "studyNoteShareLinks": "Посилання для доступу до нотатки"
     },
     "field": {
       "bible": "Переклад",

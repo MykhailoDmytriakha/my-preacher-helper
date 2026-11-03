@@ -53,7 +53,7 @@ service cloud.firestore {
     // Deploy order: these rules FIRST, then the server's DATA_ENGINE_CLOSED_COLLECTIONS. Roll back
     // in reverse: reopen the server (mixed mode, sweeps) first, then empty this list.
     function closedToBrowserWrites(name) {
-      return name in ['councils', 'groups', 'series', 'sermons', 'tags', 'prayerRequests', 'serviceOrders', 'studyNotes', 'studyMaterials', 'planTemplates', 'bibleMarks'];
+      return name in ['councils', 'groups', 'series', 'sermons', 'tags', 'prayerRequests', 'serviceOrders', 'studyNotes', 'studyMaterials', 'planTemplates', 'bibleMarks', 'studyNoteShareLinks'];
     }
 
     // ---- Revision protocol (PREPARED, NOT ARMED — see the checklist) ----
@@ -208,9 +208,9 @@ service cloud.firestore {
     // ---- Share links: owned via `ownerId` (public READ is server-only via Admin, not here) ----
     match /studyNoteShareLinks/{id} {
       allow read: if ownsExisting('ownerId');
-      allow delete: if ownsExisting('ownerId') && legacyExisting();
-      allow create:       if ownsIncoming('ownerId') && legacyIncoming();
-      allow update:       if ownsExisting('ownerId') && ownsIncoming('ownerId') && legacyExisting() && legacyIncoming();
+      allow delete: if ownsExisting('ownerId') && legacyExisting() && !closedToBrowserWrites('studyNoteShareLinks');
+      allow create:       if ownsIncoming('ownerId') && legacyIncoming() && !closedToBrowserWrites('studyNoteShareLinks');
+      allow update:       if ownsExisting('ownerId') && ownsIncoming('ownerId') && legacyExisting() && legacyIncoming() && !closedToBrowserWrites('studyNoteShareLinks');
     }
 
     // ---- User settings: owned by DOC ID == uid ----

@@ -105,13 +105,15 @@ const MUTATION_OPERATIONS: Record<string, readonly string[]> = {
   tags: ['add', 'remove', 'update'],
   prayerRequests: ['create', 'update', 'delete', 'addUpdate', 'status'],
   'study-notes': ['create', 'update', 'delete'],
+  // Previous-version capability intents are retained as their original operations, never row copies.
+  'study-note-share-links': ['create', 'delete'],
   dashboardSermons: ['create', 'update', 'delete', 'markPreached', 'unmarkPreached', 'savePreachDate'],
   // The calendar's own queue (usePreachDates before fd842c4d): a date's church, audience and notes.
   preachDates: ['add', 'update', 'delete'],
   // 'prepMode', 'structurePreview' — retired beta switches: an old write of either is archived, never replayed.
   'user-settings': ['prepMode', 'audioGeneration', 'structurePreview', 'firstDayOfWeek', 'showAppVersion', 'modelPreference', 'functionModelPreference'],
 };
-const MUTATION_COLLECTIONS: Record<string, string> = { dashboardSermons: 'sermons', preachDates: 'sermons', 'user-settings': 'users', 'study-notes': 'studyNotes' };
+const MUTATION_COLLECTIONS: Record<string, string> = { dashboardSermons: 'sermons', preachDates: 'sermons', 'user-settings': 'users', 'study-notes': 'studyNotes', 'study-note-share-links': 'studyNoteShareLinks' };
 const mutationCollection = (prefix: string): string => MUTATION_COLLECTIONS[prefix] ?? prefix;
 /**
  * A legacy write whose collection the engine now owns: the old writer refuses it, and the archive
@@ -132,6 +134,12 @@ export const ARCHIVED_COLLECTIONS: readonly string[] = [...new Set([
 const textField = (value: unknown): string | null => typeof value === 'string' && value ? value : null;
 function mutationIdentity(collection: string, operation: string, variables: unknown) {
   const fields = object(variables) ? variables : {};
+  if (collection === 'studyNoteShareLinks') {
+    const explicitOwner = textField(fields.userId);
+    const address = operation === 'create' ? textField(fields.noteId) : operation === 'delete' ? textField(fields.linkId) : null;
+    const documentId = address ?? `unassigned-${operation}`;
+    return { documentId, explicitOwner, title: `${operation}: ${documentId}` };
+  }
   if (collection === 'users') {
     const explicitOwner = textField(fields.userId);
     return { documentId: explicitOwner ?? 'unassigned-settings', explicitOwner, title: `${operation}: ${explicitOwner ?? 'unassigned-settings'}` };
@@ -153,7 +161,8 @@ function mutationCopies(mutations: unknown[], queries: Candidate[], enabled: (co
     const { documentId, explicitOwner, title } = mutationIdentity(collection, String(operation), mutation.state.variables);
     const cachedOwners = new Set(queries.filter(copy => copy.collection === collection && copy.documentId === documentId).map(copy => copy.owner));
     // Old deletes have only an ID. An ambiguous owner remains quarantined (owner='').
-    const owner = explicitOwner ?? (collection !== 'users' && cachedOwners.size === 1 ? [...cachedOwners][0] : '');
+    const owner = collection === 'studyNoteShareLinks' ? explicitOwner ?? ''
+      : explicitOwner ?? (collection !== 'users' && cachedOwners.size === 1 ? [...cachedOwners][0] : '');
     return [{ owner, collection, documentId, title, raw: JSON.stringify(mutation, null, 2),
       savedAt: typeof mutation.state.submittedAt === 'number' ? mutation.state.submittedAt : null }];
   });

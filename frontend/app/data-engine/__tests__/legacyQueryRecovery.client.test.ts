@@ -38,6 +38,68 @@ describe('legacy query input preservation', () => {
     expect((await listLegacyQueryCopies('A')).map(copy => JSON.parse(copy.raw))).toEqual([intent]);
   });
 
+  it('archives previous-version share-link operations under their owner before trimming them', async () => {
+    disk = installStorageHarness();
+    const create = { mutationKey: ['study-note-share-links', 'create'], state: {
+      variables: { userId: 'A', noteId: 'note-A' }, status: 'error', isPaused: false, submittedAt: 41,
+    } };
+    const remove = { mutationKey: ['study-note-share-links', 'delete'], state: {
+      variables: { userId: 'A', linkId: 'link-A' }, status: 'error', isPaused: false, submittedAt: 42,
+    } };
+    const unknown = { mutationKey: ['unknown-writer', 'save'], state: { variables: { marker: 'keep' }, isPaused: true } };
+    let source: unknown = { timestamp: 1, buster: '', clientState: { queries: [], mutations: [create, remove, unknown] } };
+    jest.mocked(get).mockImplementation(async key => key === 'react-query-cache' ? JSON.parse(JSON.stringify(source)) as never : undefined as never);
+    jest.mocked(update).mockImplementation(async (key, updater) => {
+      if (key !== 'react-query-cache') return;
+      const createCopies = disk.rows.get(JSON.stringify(['legacy-query', 'A', 'studyNoteShareLinks', 'note-A'])) as unknown[] | undefined;
+      const removeCopies = disk.rows.get(JSON.stringify(['legacy-query', 'A', 'studyNoteShareLinks', 'link-A'])) as unknown[] | undefined;
+      expect(createCopies).toHaveLength(1);
+      expect(removeCopies).toHaveLength(1);
+      source = updater(JSON.parse(JSON.stringify(source)));
+    });
+
+    await preserveLegacyQueryCache(collection => collection === 'studyNoteShareLinks', 'A');
+
+    expect(ARCHIVED_COLLECTIONS).toContain('studyNoteShareLinks');
+    const copies = await listLegacyQueryCopies('A');
+    expect(copies.map(copy => [copy.collection, copy.documentId, copy.savedAt])).toEqual([
+      ['studyNoteShareLinks', 'note-A', 41], ['studyNoteShareLinks', 'link-A', 42],
+    ]);
+    expect(copies.map(copy => copy.raw)).toEqual([JSON.stringify(create, null, 2), JSON.stringify(remove, null, 2)]);
+    expect(JSON.parse(copies[0].raw).state.variables).toEqual({ userId: 'A', noteId: 'note-A' });
+    expect(JSON.parse(copies[1].raw).state.variables).toEqual({ userId: 'A', linkId: 'link-A' });
+    expect(source).toEqual({ timestamp: 1, buster: '', clientState: { queries: [], mutations: [unknown] } });
+
+    const readServer = jest.fn(async () => null);
+    await expect(retireLegacyEchoes('A', readServer)).resolves.toEqual({ retired: 0, undecided: 0 });
+    expect(readServer).not.toHaveBeenCalled();
+    expect(await listLegacyQueryCopies('A')).toHaveLength(2);
+  });
+
+  it.each([undefined, null, ''])('quarantines share-link operations without a valid owner instead of borrowing a cached owner (%s)', async userId => {
+    disk = installStorageHarness();
+    const mutation = { mutationKey: ['study-note-share-links', 'create'], state: {
+      variables: { ...(userId === undefined ? {} : { userId }), noteId: 'note-A' }, status: 'pending', isPaused: true, submittedAt: 51,
+    } };
+    const sameIdCachedQuery = { queryKey: ['study-note-share-links', 'A'], state: {
+      data: [{ id: 'note-A', ownerId: 'A', noteId: 'note-A', token: 'must-not-assign-owner' }], dataUpdatedAt: 50,
+    } };
+    let source: unknown = { timestamp: 1, buster: '', clientState: { queries: [sameIdCachedQuery], mutations: [mutation] } };
+    jest.mocked(get).mockImplementation(async key => key === 'react-query-cache' ? JSON.parse(JSON.stringify(source)) as never : undefined as never);
+    jest.mocked(update).mockImplementation(async (key, updater) => {
+      if (key === 'react-query-cache') source = updater(JSON.parse(JSON.stringify(source)));
+    });
+
+    await preserveLegacyQueryCache(collection => collection === 'studyNoteShareLinks', 'A');
+
+    const quarantined = disk.rows.get(JSON.stringify(['legacy-query', '', 'studyNoteShareLinks', 'note-A'])) as Array<{ owner: string; raw: string }> | undefined;
+    expect(quarantined).toHaveLength(1);
+    expect(quarantined?.[0].owner).toBe('');
+    expect(quarantined?.[0].raw).toBe(JSON.stringify(mutation, null, 2));
+    expect(await listLegacyQueryCopies('A')).toEqual([]);
+    expect((source as { clientState: { queries: unknown[]; mutations: unknown[] } }).clientState.mutations).toEqual([mutation]);
+  });
+
   it('does not let another owner’s completed archive release this owner’s pending legacy read', async () => {
     let finishA!: (value: unknown) => void;
     jest.mocked(resolveOwnerUid).mockReturnValue('A');

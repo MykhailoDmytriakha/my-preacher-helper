@@ -218,15 +218,15 @@
 
 ## 🔍 Требует перепроверки
 
-### BUG-20261102-share-link-create-replay-after-revoke · Повтор старого создания ссылки может создать новую после её отключения
-**Severity.** Предварительно P2 — может вернуться действующая общедоступная ссылка после более позднего решения отключить доступ. Старый отключённый адрес не оживает: риск относится к созданию нового токена.
-**Найден.** 2026-11-02 · разбор класса Unit274; вывод из кода, живой/API-пробой ещё не подтверждён.
-**Якоря.** `frontend/app/api/studies/share-links/route.ts:43–68` не принимает идентификатор исходной команды и создаёт ссылку, если активной нет; `frontend/app/api/repositories/studyNoteShareLinks.repository.ts:108–121,150–170` исключает отключённые ссылки и создаёт новый документ; `frontend/app/hooks/useStudyNoteShareLinks.ts:49–55` и `utils/mutationDefaults.ts` сохраняют повторяемое создание без сквозного ID действия.
-**Ожидалось.** Повтор доставки прежнего создания не отменяет последующее отключение. Новое явное «создать ссылку» после отключения разрешает новую ссылку.
-**Возможный сценарий для проверки.** На первом устройстве создание дошло до сервера, ответ потерялся; на втором тот же человек увидел ссылку и отключил её; первое устройство позже повторило старую сохранённую команду. Сейчас сервер не различает её с новым явным созданием: отключённый документ не считается активным и может появиться новый токен.
-**Как эта фича должна работать для пользователя.** Ссылку создаёт явная команда; повтор отправки продолжает ту же команду. Более позднее отключение остаётся окончательным до нового явного создания. Повторный запуск приложения сам доступ не включает.
-**Класс / границы.** Клиентский повтор создания и серверная выдача токена требуют одной идентичности действия; `OwnerMutationCache` ограничивает аккаунт, но не хранит серверную квитанцию. Обычный движок документов уже имеет ID операций и квитанции; ссылочный legacy-маршрут их не использует. Сведения о доступе и рефералы здесь только чтение.
-**Перед фиксом.** Воспроизвести потерянный ответ → отключение → повтор старой команды на эмуляторе с локальным API; проверить, что старый адрес остаётся недоступен, и отдельным контролем разрешить новое явное создание. Снять красную регрессию; выбрать исполнение через существующий общий механизм квитанций, не по часам или времени доставки. Связано с защитой повторов при `BUG-20261011-persisted-cache-two-tabs-overwrite`, но этот исход ещё не доказан.
+### BUG-20261102-share-link-late-first-delivery · An earlier unsent creation may publish after a later revocation
+**Severity (provisional).** P2: first delivery of a stale creation could issue public access after the owner revoked another capability for the same note.
+**Found.** 2026-11-02; Unit275 source inspection. This is an unproven adjacent chronology case, not the already reproduced repeated-command case.
+**Anchors.** `frontend/app/data-engine/types.ts` share-link-create carries only the note generation; `frontend/app/data-engine/shareCapabilities.server.ts` admits a fresh primary when no active link remains.
+**Expected / possible actual.** An old creation captured on device A before device B creates/revokes a link should not later publish access merely because its first delivery is late. A new explicit creation should still work. Current command identity protects replays of an already applied operation, but does not prove this first delivery's place relative to a different capability lifecycle.
+**Recheck.** Capture A without delivery; create and revoke B against the same unchanged note; deliver A for the first time. Run server regression and isolated emulator/API controls; do not infer ordering from device clocks. No reproduction or user-visible effect claimed yet.
+**User contract.** Reconnection alone must not reverse the person's later access decision. Keep the old intent visible if its relationship to that decision cannot be proved.
+**Class / boundary.** A missing observed capability lifecycle baseline, rather than reused operation identity. Unit275 fixes server-applied request replay; this separate case remains open for verification before any broader chronology claim.
+
 
 
 ### BUG-20261030-worker-background-get-failures · Nine background page GETs fail during an online reload scenario

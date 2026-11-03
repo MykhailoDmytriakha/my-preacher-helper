@@ -942,3 +942,20 @@ describe('a collection closed to legacy writers', () => {
     s.reader.dispose();
   });
 });
+
+describe('local accepted collection rows', () => {
+  it('reloads already persisted rows offline without changing completeness, cursor or spending a read', async () => {
+    const s = setup({ online: false });
+    s.seed(row('first'), true);
+    const states: CollectionState[] = [];
+    const stop = s.reader.watch(collection, state => states.push(state));
+    await settle();
+    const before = states.at(-1)!;
+    s.cache.set(key('owner', row('first').resource), deleted('first'));
+    await s.reader.reloadCached(collection);
+    expect(states.at(-1)).toMatchObject({ complete: before.complete, version: before.version,
+      snapshots: [{ value: null, metadata: { deleted: true } }] });
+    expect(s.transport.list).not.toHaveBeenCalled(); expect(s.transport.changes).not.toHaveBeenCalled();
+    stop(); s.reader.dispose();
+  });
+});

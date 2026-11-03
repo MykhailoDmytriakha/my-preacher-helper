@@ -1,13 +1,14 @@
 import { QueryClient } from '@tanstack/react-query';
 
 import { deleteStudyNoteShareLink } from '@/services/studyNoteShareLinks.service';
-import { registerOfflineMutationDefaults, SHARE_LINK_MUTATION_KEYS } from '@/utils/mutationDefaults';
+import { revokeShareLinkMutationOptions, SHARE_LINK_MUTATION_KEYS } from '@/utils/studyNoteShareLinkWrites';
 
 jest.mock('@/services/studyNoteShareLinks.service', () => ({ createStudyNoteShareLink: jest.fn(), deleteStudyNoteShareLink: jest.fn() }));
 
 const createClient = () => {
   const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
-  registerOfflineMutationDefaults(client);
+  // Inactive legacy-helper contract only; current defaults refuse replay through this path.
+  client.setMutationDefaults(SHARE_LINK_MUTATION_KEYS.delete, revokeShareLinkMutationOptions(client));
   jest.mocked(deleteStudyNoteShareLink).mockResolvedValue(undefined);
   return client;
 };
@@ -17,7 +18,7 @@ async function acknowledge(client: QueryClient, linkId: string) {
     .execute({ userId: 'owner', linkId });
 }
 
-describe('acknowledged share link cache boundaries', () => {
+describe('inactive legacy share link acknowledgement helper', () => {
   it('does not invent an empty loaded list when a replay finishes before the list opens', async () => {
     const client = createClient();
     try {

@@ -1,343 +1,210 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { renderHook, waitFor, act } from '@testing-library/react';
-import React from 'react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { toast } from 'sonner';
 
-import { useOnlineStatus } from '@/hooks/useOnlineStatus';
-import { useAuth } from '@/providers/AuthProvider';
-import { auth } from '@/services/firebaseAuth.service';
-import { SHARE_LINK_MUTATION_KEYS } from '@/utils/mutationDefaults';
-import { awaitAcceptance } from '@/utils/recoverableWrite';
-import { forgetReportedFailures } from '@/utils/writeRecovery';
-import {
-  createStudyNoteShareLink,
-  deleteStudyNoteShareLink,
-  getStudyNoteShareLinks,
-} from '@services/studyNoteShareLinks.service';
+import { useDataCollection, useShareCapabilityActions } from '@/data-engine/react.client';
+import { useAppLocale } from '@/hooks/useAppLocale';
+import { useResolvedUid } from '@/hooks/useResolvedUid';
+import { useServerUnavailableNotice } from '@/hooks/useServerUnavailableNotice';
+import { createStudyNoteShareLink, deleteStudyNoteShareLink, getStudyNoteShareLinks } from '@services/studyNoteShareLinks.service';
 
 import { useStudyNoteShareLinks } from '../useStudyNoteShareLinks';
 
+import type { AppLocale } from '@/utils/appLocale';
 import type { StudyNoteShareLink } from '@/models/models';
 
-jest.mock('@/providers/AuthProvider', () => ({
-  useAuth: jest.fn(),
+jest.mock('@/data-engine/react.client', () => ({
+  ...jest.requireActual('@/data-engine/react.client'),
+  useDataCollection: jest.fn(),
+  useShareCapabilityActions: jest.fn(),
 }));
-
-jest.mock('@/hooks/useOnlineStatus', () => ({
-  useOnlineStatus: jest.fn(),
-}));
-
+jest.mock('@/hooks/useResolvedUid', () => ({ useResolvedUid: jest.fn() }));
+jest.mock('@/hooks/useAppLocale', () => ({ useAppLocale: jest.fn() }));
+jest.mock('@/hooks/useServerUnavailableNotice', () => ({ useServerUnavailableNotice: jest.fn() }));
+jest.mock('@locales/useTranslation', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 jest.mock('@services/studyNoteShareLinks.service', () => ({
-  getStudyNoteShareLinks: jest.fn(),
-  createStudyNoteShareLink: jest.fn(),
-  deleteStudyNoteShareLink: jest.fn(),
+  getStudyNoteShareLinks: jest.fn(), createStudyNoteShareLink: jest.fn(), deleteStudyNoteShareLink: jest.fn(),
 }));
 
-const mockUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;
-const mockUseOnlineStatus = useOnlineStatus as jest.MockedFunction<typeof useOnlineStatus>;
-const mockGetShareLinks = getStudyNoteShareLinks as jest.MockedFunction<typeof getStudyNoteShareLinks>;
-const mockCreateShareLink = createStudyNoteShareLink as jest.MockedFunction<typeof createStudyNoteShareLink>;
-const mockDeleteShareLink = deleteStudyNoteShareLink as jest.MockedFunction<typeof deleteStudyNoteShareLink>;
-const defaultAuthUser = auth.currentUser;
-const mutableAuth = auth as { currentUser: unknown };
+const mockUseDataCollection = useDataCollection as jest.Mock;
+const mockUseCapability = useShareCapabilityActions as jest.Mock;
+const mockUseUid = useResolvedUid as jest.Mock;
+const mockUseLocale = useAppLocale as jest.Mock;
+const mockUseServerNotice = useServerUnavailableNotice as jest.Mock;
+const mockGetLinks = getStudyNoteShareLinks as jest.Mock;
+const mockCreateLegacy = createStudyNoteShareLink as jest.Mock;
+const mockDeleteLegacy = deleteStudyNoteShareLink as jest.Mock;
 
-const createWrapper = () => {
-  const queryClient = new QueryClient({
-    defaultOptions: {
-      queries: { retry: false },
-      mutations: { retry: false },
-    },
-  });
+type Action = { id: string; kind: 'create' | 'revoke'; targetId: string; state: 'pending' | 'refused' | 'conflict' | 'unknown' };
+type Capability = {
+  ready: boolean;
+  actions: Action[];
+  create: jest.Mock<Promise<void>, [string, AppLocale]>;
+  revoke: jest.Mock<Promise<void>, [string]>;
+  retry: jest.Mock<Promise<void>, [string]>;
+};
+const makeCapability = (overrides: Partial<Capability> = {}): Capability => ({
+  ready: true, actions: [],
+  create: jest.fn<Promise<void>, [string, AppLocale]>().mockResolvedValue(undefined),
+  revoke: jest.fn<Promise<void>, [string]>().mockResolvedValue(undefined),
+  retry: jest.fn<Promise<void>, [string]>().mockResolvedValue(undefined), ...overrides,
+});
+let capability: Capability;
+let uid: string | undefined;
+let authLoading: boolean;
+let linkRows: Array<{ resource: { collection: string; id: string }; value: Partial<StudyNoteShareLink> }>;
+let retiredNotes = new Set<string>();
+const refresh = jest.fn(async () => undefined);
 
-  return ({ children }: { children: React.ReactNode }) => (
-    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-  );
+const makeLink = (id: string, noteId: string, ownerId = 'owner'): StudyNoteShareLink => ({
+  id, ownerId, noteId, token: `token-${id}`, createdAt: '2026-10-29T00:00:00.000Z', viewCount: 0,
+});
+const deferred = <T,>() => {
+  let resolve!: (value: T) => void;
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; });
+  return { promise, resolve, reject };
 };
 
-const makeShareLink = (overrides: Partial<StudyNoteShareLink> = {}): StudyNoteShareLink => ({
-  id: 'link-1',
-  ownerId: 'user-1',
-  noteId: 'note-1',
-  token: 'token-1',
-  createdAt: '2024-01-01T00:00:00.000Z',
-  viewCount: 0,
-  ...overrides,
+beforeEach(() => {
+  jest.clearAllMocks();
+  uid = 'owner'; authLoading = false; retiredNotes = new Set(); linkRows = [];
+  capability = makeCapability();
+  mockUseUid.mockImplementation(() => ({ uid, isAuthLoading: authLoading }));
+  mockUseLocale.mockReturnValue({ locale: 'ru' });
+  mockUseServerNotice.mockReturnValue(false);
+  mockUseCapability.mockImplementation(() => capability);
+  mockUseDataCollection.mockImplementation((collection: string | null) => {
+    if (collection === 'studyNoteShareLinks') return {
+      state: { documents: linkRows, snapshots: [] }, loading: false, error: null, refresh,
+    };
+    if (collection === 'studyNotes') return {
+      presence: (id: string) => retiredNotes.has(id) ? { snapshot: { metadata: { deleted: true } } } : { snapshot: null },
+    };
+    return { state: null, loading: false, error: null, refresh, presence: () => ({ snapshot: null }) };
+  });
 });
 
+afterEach(() => { window.localStorage.clear(); });
+
 describe('useStudyNoteShareLinks', () => {
-  afterEach(() => {
-    jest.clearAllMocks();
-    window.localStorage.clear();
-    mutableAuth.currentUser = defaultAuthUser;
-  });
-
-  it('keeps loading true while auth is loading and skips fetching', () => {
-    mutableAuth.currentUser = null;
-    mockUseOnlineStatus.mockReturnValue(true);
-    mockUseAuth.mockReturnValue({
-      user: null,
-      loading: true,
-      isAuthenticated: false,
-    });
-
-    const { result } = renderHook(() => useStudyNoteShareLinks(), { wrapper: createWrapper() });
-
+  it('keeps loading while identity is loading and does not subscribe to owner collections', () => {
+    uid = undefined; authLoading = true;
+    const { result } = renderHook(() => useStudyNoteShareLinks());
     expect(result.current.uid).toBeUndefined();
     expect(result.current.loading).toBe(true);
-    expect(mockGetShareLinks).not.toHaveBeenCalled();
+    expect(mockUseDataCollection).toHaveBeenCalledWith(null);
   });
 
-  it('fetches share links when authenticated user exists', async () => {
-    const links = [makeShareLink()];
-    mockUseOnlineStatus.mockReturnValue(true);
-    mockUseAuth.mockReturnValue({
-      user: { uid: 'auth-1' } as any,
-      loading: false,
-      isAuthenticated: true,
-    });
-    mockGetShareLinks.mockResolvedValue(links);
-
-    const { result } = renderHook(() => useStudyNoteShareLinks(), { wrapper: createWrapper() });
-
-    await waitFor(() => expect(result.current.loading).toBe(false));
-
-    expect(mockGetShareLinks).toHaveBeenCalledWith('auth-1');
-    expect(result.current.shareLinks).toEqual(links);
+  it('returns only the current owner’s valid links and converts collection rows to DTOs', () => {
+    linkRows = [
+      { resource: { collection: 'studyNoteShareLinks', id: 'row-link-1' }, value: { ...makeLink('wrong-value-id', 'note-1'), id: 'ignored' } },
+      { resource: { collection: 'studyNoteShareLinks', id: 'other-owner-link' }, value: makeLink('other', 'note-2', 'someone-else') },
+      { resource: { collection: 'studyNoteShareLinks', id: 'retired-link' }, value: makeLink('retired', 'note-3') },
+      { resource: { collection: 'studyNoteShareLinks', id: 'malformed-link' }, value: { ownerId: 'owner', noteId: 'note-4' } },
+    ];
+    retiredNotes.add('note-3');
+    const { result } = renderHook(() => useStudyNoteShareLinks());
+    expect(result.current.shareLinks).toEqual([{ ...makeLink('wrong-value-id', 'note-1'), id: 'row-link-1' }]);
   });
 
-  it('uses the restored anonymous Firebase owner', async () => {
-    const links = [makeShareLink({ ownerId: 'guest-1' })];
-    mockUseOnlineStatus.mockReturnValue(true);
-    mockUseAuth.mockReturnValue({
-      user: { uid: 'guest-1', isAnonymous: true } as any,
-      loading: false,
-      isAuthenticated: true,
-    });
-    mockGetShareLinks.mockResolvedValue(links);
-
-    const { result } = renderHook(() => useStudyNoteShareLinks(), { wrapper: createWrapper() });
-
-    await waitFor(() => expect(result.current.loading).toBe(false));
-
-    expect(mockGetShareLinks).toHaveBeenCalledWith('guest-1');
-    expect(result.current.uid).toBe('guest-1');
-    expect(result.current.shareLinks).toEqual(links);
+  it('captures create and revoke through the public facade with the selected locale and target IDs', async () => {
+    const { result } = renderHook(() => useStudyNoteShareLinks());
+    await act(async () => { await result.current.createShareLink('note-1'); });
+    await act(async () => { await result.current.deleteShareLink('link-9'); });
+    expect(capability.create).toHaveBeenCalledTimes(1);
+    expect(capability.create).toHaveBeenCalledWith('note-1', 'ru');
+    expect(capability.revoke).toHaveBeenCalledTimes(1);
+    expect(capability.revoke).toHaveBeenCalledWith('link-9');
+    expect(mockCreateLegacy).not.toHaveBeenCalled();
+    expect(mockDeleteLegacy).not.toHaveBeenCalled();
+    expect(mockGetLinks).not.toHaveBeenCalled();
   });
 
-  it('handles invalid guest data gracefully', async () => {
-    const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
-    window.localStorage.setItem('guestUser', '{invalid-json');
-    mockUseOnlineStatus.mockReturnValue(true);
-    mockUseAuth.mockReturnValue({
-      user: null,
-      loading: false,
-      isAuthenticated: false,
-    });
+  it('does not capture duplicate in-flight or already queued local actions', async () => {
+    const pending = deferred<void>();
+    capability.create.mockReturnValue(pending.promise);
+    const { result, rerender } = renderHook(() => useStudyNoteShareLinks());
+    let first!: Promise<void>;
+    act(() => { first = result.current.createShareLink('note-1'); });
+    await act(async () => { await result.current.createShareLink('note-1'); });
+    expect(capability.create).toHaveBeenCalledTimes(1);
+    pending.resolve(); await act(async () => { await first; });
 
-    const { result } = renderHook(() => useStudyNoteShareLinks(), { wrapper: createWrapper() });
-
-    await waitFor(() => expect(result.current.loading).toBe(false));
-
-    expect(mockGetShareLinks).not.toHaveBeenCalled();
-    expect(result.current.uid).toBeUndefined();
-    expect(consoleSpy).not.toHaveBeenCalled();
-    consoleSpy.mockRestore();
-  });
-
-  it('updates cache after creating a share link', async () => {
-    const existing = makeShareLink({ id: 'link-1', noteId: 'note-1' });
-    const created = makeShareLink({ id: 'link-2', noteId: 'note-1' });
-
-    mockUseOnlineStatus.mockReturnValue(true);
-    mockUseAuth.mockReturnValue({
-      user: { uid: 'auth-1' } as any,
-      loading: false,
-      isAuthenticated: true,
-    });
-    mockGetShareLinks.mockResolvedValue([existing]);
-    mockCreateShareLink.mockResolvedValue(created);
-
-    const { result } = renderHook(() => useStudyNoteShareLinks(), { wrapper: createWrapper() });
-
-    await waitFor(() => expect(result.current.loading).toBe(false));
-
-    await act(async () => {
-      const acceptance = await awaitAcceptance(result.current.createShareLink('note-1'), () => undefined);
-      expect(acceptance).toEqual({ kind: 'persisted' });
-    });
-
-    expect(mockCreateShareLink).toHaveBeenCalledWith('auth-1', 'note-1');
-    await waitFor(() => expect(result.current.shareLinks).toEqual([created]));
-  });
-
-  it('updates cache after deleting a share link', async () => {
-    const linkA = makeShareLink({ id: 'link-1', noteId: 'note-1' });
-    const linkB = makeShareLink({ id: 'link-2', noteId: 'note-2' });
-
-    mockUseOnlineStatus.mockReturnValue(true);
-    mockUseAuth.mockReturnValue({
-      user: { uid: 'auth-1' } as any,
-      loading: false,
-      isAuthenticated: true,
-    });
-    mockGetShareLinks.mockResolvedValue([linkA, linkB]);
-    mockDeleteShareLink.mockResolvedValue(undefined);
-
-    const { result } = renderHook(() => useStudyNoteShareLinks(), { wrapper: createWrapper() });
-
-    await waitFor(() => expect(result.current.loading).toBe(false));
-    await waitFor(() => expect(result.current.shareLinks).toEqual([linkA, linkB]));
-
-    await act(async () => {
-      const acceptance = await awaitAcceptance(result.current.deleteShareLink('link-1'), () => undefined);
-      expect(acceptance).toEqual({ kind: 'persisted' });
-    });
-
-    expect(mockDeleteShareLink).toHaveBeenCalledWith('auth-1', 'link-1');
-    await waitFor(() => expect(result.current.shareLinks).toEqual([linkB]));
-  });
-
-  describe('failures the person must hear about, and only those', () => {
-    const EARLIER_SESSION = Date.now() - 60 * 60 * 1000;
-
-    const signedIn = (links: StudyNoteShareLink[]) => {
-      mockUseOnlineStatus.mockReturnValue(true);
-      mockUseAuth.mockReturnValue({ user: { uid: 'auth-1' } as any, loading: false, isAuthenticated: true });
-      mockGetShareLinks.mockResolvedValue(links);
-    };
-
-    const restoreFailure = async (
-      queryClient: QueryClient,
-      mutationKey: readonly unknown[],
-      variables: Record<string, string>
-    ) => {
-      const mutation = queryClient.getMutationCache().build(queryClient, {
-        mutationKey,
-        mutationFn: () => Promise.reject(new Error('The connection dropped')),
-      });
-      await mutation.execute(variables).catch(() => undefined);
-      (mutation.state as { submittedAt: number }).submittedAt = EARLIER_SESSION;
-      return mutation;
-    };
-
-    const renderWith = (queryClient: QueryClient) =>
-      renderHook(() => useStudyNoteShareLinks(), {
-        wrapper: ({ children }: { children: React.ReactNode }) => (
-          <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-        ),
-      });
-
-    const toastIds = (spy: jest.SpyInstance) =>
-      spy.mock.calls.map(([, options]) => (options as { id?: string } | undefined)?.id);
-
-    beforeEach(() => {
-      forgetReportedFailures();
-    });
-
-    it('restores an unresolved revoke warning even when the cached list is empty', async () => {
-      const toastError = jest.spyOn(toast, 'error');
-      signedIn([]);
-      const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
-      const failed = await restoreFailure(queryClient, SHARE_LINK_MUTATION_KEYS.delete, { userId: 'auth-1', linkId: 'link-1' });
-      const { result } = renderWith(queryClient);
-      await waitFor(() => expect(result.current.loading).toBe(false));
-      await waitFor(() => expect(toastIds(toastError)).toContain('write-recovery:study-note-share-link:delete:link-1'));
-      expect(queryClient.getMutationCache().getAll()).toContain(failed);
-      toastError.mockRestore();
-    });
-
-    it('settles only the acknowledged owner and link failure and never restores its warning again', async () => {
-      const toastError = jest.spyOn(toast, 'error');
-      signedIn([makeShareLink({ ownerId: 'auth-1' })]);
-      mockDeleteShareLink.mockResolvedValue(undefined);
-      const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
-      const mine = await restoreFailure(queryClient, SHARE_LINK_MUTATION_KEYS.delete, { userId: 'auth-1', linkId: 'link-1' });
-      const sibling = await restoreFailure(queryClient, SHARE_LINK_MUTATION_KEYS.delete, { userId: 'auth-1', linkId: 'link-2' });
-      const otherOwner = await restoreFailure(queryClient, SHARE_LINK_MUTATION_KEYS.delete, { userId: 'auth-2', linkId: 'link-1' });
-      for (const mutation of [mine, sibling, otherOwner]) mutation.state.submittedAt = Date.now();
-      const first = renderWith(queryClient);
-      await waitFor(() => expect(first.result.current.loading).toBe(false));
-      await act(async () => { await awaitAcceptance(first.result.current.deleteShareLink('link-1'), () => undefined); });
-      expect(queryClient.getMutationCache().getAll()).not.toContain(mine);
-      expect(queryClient.getMutationCache().getAll()).toEqual(expect.arrayContaining([sibling, otherOwner]));
-      first.unmount();
-      forgetReportedFailures();
-      toastError.mockClear();
-      const second = renderWith(queryClient);
-      await waitFor(() => expect(second.result.current.loading).toBe(false));
-      expect(toastIds(toastError)).not.toContain('write-recovery:study-note-share-link:delete:link-1');
-      toastError.mockRestore();
-    });
-
-    it('does not bring back a link creation that failed in an earlier session', async () => {
-      // Its "Retry" could make a link the person has since disabled; a missing link shows in the list anyway.
-      const toastError = jest.spyOn(toast, 'error');
-      signedIn([makeShareLink({ id: 'link-1', noteId: 'note-1' })]);
-      const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
-      await restoreFailure(queryClient, SHARE_LINK_MUTATION_KEYS.create, { userId: 'auth-1', noteId: 'note-9' });
-
-      const { result } = renderWith(queryClient);
-      await waitFor(() => expect(result.current.loading).toBe(false));
-
-      await waitFor(() => expect(queryClient.getMutationCache().getAll()).toHaveLength(0));
-      expect(toastIds(toastError)).not.toContain('write-recovery:study-note-share-link:create:note-9');
-      toastError.mockRestore();
-    });
-
-    it('takes back the failure message once the same link is created after all', async () => {
-      // Its "Retry" would otherwise stay on screen and could make a link the person disabled since.
-      const toastError = jest.spyOn(toast, 'error');
-      const toastDismiss = jest.spyOn(toast, 'dismiss');
-      signedIn([]);
-      mockCreateShareLink
-        .mockRejectedValueOnce(new Error('The connection dropped'))
-        .mockResolvedValueOnce(makeShareLink({ id: 'link-5', noteId: 'note-5' }));
-      const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
-      const { result } = renderWith(queryClient);
-      await waitFor(() => expect(result.current.loading).toBe(false));
-
-      await act(async () => {
-        await awaitAcceptance(result.current.createShareLink('note-5'), () => undefined).catch(() => undefined);
-      });
-      await waitFor(() => expect(toastIds(toastError)).toContain('write-recovery:study-note-share-link:create:note-5'));
-      expect(toastDismiss).not.toHaveBeenCalledWith('write-recovery:study-note-share-link:create:note-5');
-
-      await act(async () => {
-        await awaitAcceptance(result.current.createShareLink('note-5'), () => undefined);
-      });
-
-      expect(toastDismiss).toHaveBeenCalledWith('write-recovery:study-note-share-link:create:note-5');
-      toastError.mockRestore();
-      toastDismiss.mockRestore();
-    });
-  });
-
-  it('keeps one empty list while the links are not loaded, so screens memoized on it stay still', () => {
-    // BUG-20260809-studies-search-lag: a fresh [] on every render rebuilt the whole studies list per keystroke.
-    mockUseOnlineStatus.mockReturnValue(true);
-    mockUseAuth.mockReturnValue({ user: null, loading: true, isAuthenticated: false });
-    const { result, rerender } = renderHook(() => useStudyNoteShareLinks(), { wrapper: createWrapper() });
-    const first = result.current.shareLinks;
-
+    capability = makeCapability({ actions: [{ id: 'op-queued', kind: 'create', targetId: 'note-2', state: 'pending' }] });
     rerender();
-
-    expect(result.current.shareLinks).toBe(first);
+    await act(async () => { await result.current.createShareLink('note-2'); });
+    expect(capability.create).not.toHaveBeenCalled();
   });
 
-  it('throws when creating a share link without a uid', async () => {
-    mockUseOnlineStatus.mockReturnValue(true);
-    mockUseAuth.mockReturnValue({
-      user: null,
-      loading: false,
-      isAuthenticated: false,
+  it('does not show an unresolved warning while the shared engine notice owns unknown delivery', async () => {
+    const toastError = jest.spyOn(toast, 'error').mockImplementation(() => '');
+    mockUseServerNotice.mockReturnValue(true);
+    capability = makeCapability({ actions: [{ id: 'operation-unknown', kind: 'create', targetId: 'note-1', state: 'unknown' }] });
+    renderHook(() => useStudyNoteShareLinks());
+    await act(async () => { await Promise.resolve(); });
+    expect(toastError).not.toHaveBeenCalled();
+    toastError.mockRestore();
+  });
+
+  it('reports one local capture rejection and propagates the error', async () => {
+    const error = new Error('capture unavailable');
+    capability.create.mockRejectedValue(error);
+    const toastError = jest.spyOn(toast, 'error').mockImplementation(() => '');
+    const { result } = renderHook(() => useStudyNoteShareLinks());
+    await act(async () => { await expect(result.current.createShareLink('note-7')).rejects.toBe(error); });
+    expect(toastError).toHaveBeenCalledTimes(1);
+    expect(toastError).toHaveBeenCalledWith('studiesWorkspace.shareLinks.createUnconfirmed', { id: 'share-capability-capture:["owner","create","note-7"]' });
+    toastError.mockRestore();
+  });
+
+  it.each(['refused', 'unknown'] as const)('restores owner-scoped %s recovery and retries the exact durable action ID', async state => {
+    const toastError = jest.spyOn(toast, 'error').mockImplementation(() => '');
+    capability = makeCapability({ actions: [{ id: 'operation-42', kind: 'revoke', targetId: 'link-1', state }] });
+    const { unmount } = renderHook(() => useStudyNoteShareLinks());
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith(
+      'studiesWorkspace.shareLinks.revokeUnconfirmed', expect.objectContaining({ id: 'share-capability:owner:operation-42' }),
+    ));
+    unmount();
+    capability = makeCapability({ actions: [{ id: 'operation-42', kind: 'revoke', targetId: 'link-1', state }] });
+    const second = renderHook(() => useStudyNoteShareLinks());
+    await act(async () => {
+      const options = toastError.mock.calls.at(-1)?.[1] as { action?: { onClick?: () => void } } | undefined;
+      options?.action?.onClick?.();
     });
-
-    const { result } = renderHook(() => useStudyNoteShareLinks(), { wrapper: createWrapper() });
-
-    // A LOCAL refusal now: it rejects AND announces itself, because no mutation exists
-    // for a recovery descriptor to report — see `refusedWrite`.
-    await expect(result.current.createShareLink('note-1').acceptance).rejects.toThrow(
-      'No signed-in user'
-    );
+    await waitFor(() => expect(capability.retry).toHaveBeenCalledWith('operation-42'));
+    expect(toastError.mock.calls.some(([, options]) => (options as { id?: string } | undefined)?.id === 'share-capability:other-owner:operation-42')).toBe(false);
+    second.unmount(); toastError.mockRestore();
   });
+
+  it('dismisses durable recovery on acknowledgement and owner change', async () => {
+    const toastError = jest.spyOn(toast, 'error').mockImplementation(() => '');
+    const toastDismiss = jest.spyOn(toast, 'dismiss').mockImplementation(() => '');
+    capability = makeCapability({ actions: [{ id: 'operation-43', kind: 'create', targetId: 'note-1', state: 'refused' }] });
+    const { rerender } = renderHook(() => useStudyNoteShareLinks());
+    await waitFor(() => expect(toastError).toHaveBeenCalled());
+    capability = makeCapability();
+    rerender();
+    await waitFor(() => expect(toastDismiss).toHaveBeenCalledWith('share-capability:owner:operation-43'));
+
+    capability = makeCapability({ actions: [{ id: 'operation-44', kind: 'revoke', targetId: 'link-1', state: 'refused' }] });
+    rerender();
+    await waitFor(() => expect(toastError.mock.calls.some(([, options]) => (options as { id?: string } | undefined)?.id === 'share-capability:owner:operation-44')).toBe(true));
+    uid = 'next-owner'; capability = makeCapability(); rerender();
+    await waitFor(() => expect(toastDismiss).toHaveBeenCalledWith('share-capability:owner:operation-44'));
+    expect(toastError.mock.calls.some(([, options]) => (options as { id?: string } | undefined)?.id === 'share-capability:next-owner:operation-44')).toBe(false);
+    toastError.mockRestore(); toastDismiss.mockRestore();
+  });
+  it.each(['create', 'revoke'] as const)('recovers the exact refused %s action when its ordinary button is pressed again', async kind => {
+    const toastError = jest.spyOn(toast, 'error').mockImplementation(() => '');
+    capability = makeCapability({ actions: [{ id: 'held-refusal', kind, targetId: 'same-target', state: 'refused' }] });
+    const { result } = renderHook(() => useStudyNoteShareLinks());
+    await act(async () => {
+      await (kind === 'create' ? result.current.createShareLink('same-target') : result.current.deleteShareLink('same-target'));
+    });
+    expect(capability.retry).toHaveBeenCalledWith('held-refusal');
+    expect(capability.create).not.toHaveBeenCalled();
+    expect(capability.revoke).not.toHaveBeenCalled();
+    toastError.mockRestore();
+  });
+
 });

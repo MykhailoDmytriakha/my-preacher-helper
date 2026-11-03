@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import { recordSharedNoteView } from '@/data-engine/serverOperations.server';
 import { StoreUnavailableError, storeUnavailableResponse, withStore } from '@/services/storeAvailability.server';
 import { studyNoteShareLinksRepository } from '@repositories/studyNoteShareLinks.repository';
 
@@ -28,7 +29,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const shouldIncrement = shouldCountView(viewedAtRaw);
 
     if (shouldIncrement) {
-      await studyNoteShareLinksRepository.incrementViewCount(shareLink.id);
+      await recordSharedNoteView(shareLink.id, token);
     }
 
     const response = NextResponse.json(

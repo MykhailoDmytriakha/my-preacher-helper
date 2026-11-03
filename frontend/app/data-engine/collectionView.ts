@@ -3,7 +3,7 @@ import { canReplaceSnapshot } from './snapshotFreshness';
 import { submittedWorkCheckpoint } from './submittedWork';
 
 import type { CommitRequest } from './commits';
-import type { DocumentData, ResourceRef, ResourceSnapshot } from './types';
+import type { DocumentData, JournalEntry, ResourceRef, ResourceSnapshot } from './types';
 
 /** Read-only presentation; its value must never be used as an editor's confirmed baseline. */
 export interface CollectionDocumentView {
@@ -18,16 +18,21 @@ export interface CollectionDocumentView {
   acknowledged?: ResourceSnapshot;
 }
 
-export function collectionDocumentViews(owner: string, collection: string, snapshots: readonly ResourceSnapshot[], requests: readonly CommitRequest[]): CollectionDocumentView[] {
+export function collectionDocumentViews(owner: string, collection: string, snapshots: readonly ResourceSnapshot[], requests: readonly CommitRequest[], journal: readonly JournalEntry[] = []): CollectionDocumentView[] {
   const listed = new Map(snapshots.map(snapshot => [snapshot.resource.id, snapshot]));
   const confirmed = new Map(listed);
   const acknowledged = new Map<string, ResourceSnapshot>();
   const related = requests.filter(request => request.owner === owner && request.baseline.resource.collection === collection);
   // ACK may arrive before the feed read. Keep its proven content visible throughout
   // that interval, without upgrading collection completeness or server freshness.
-  for (const request of related) {
-    if (request.result?.kind !== 'acknowledged') continue;
-    const snapshot = request.result.snapshot;
+  const accepted = related.flatMap(request => request.result?.kind === 'acknowledged' ? [request.result.snapshot] : []);
+  // Server-owned actions have no editable-document draft. Their existing journal is the accepted
+  // copy until cache projection finishes; include secondary capability proofs from the same ACK.
+  for (const entry of journal) if (collection === 'studyNoteShareLinks' && entry.command.owner === owner
+    && entry.command.resource.collection === collection && entry.result?.kind === 'acknowledged') {
+    accepted.push(entry.result.snapshot, ...(entry.result.relatedSnapshots ?? []).filter(snapshot => snapshot.resource.collection === collection));
+  }
+  for (const snapshot of accepted) {
     if (canReplaceSnapshot(confirmed.get(snapshot.resource.id), snapshot)) {
       confirmed.set(snapshot.resource.id, snapshot);
       const previous = listed.get(snapshot.resource.id);

@@ -49,6 +49,11 @@ export type DataCommand = CommandBase & (
   | { kind: 'relation'; relation: 'series-member-create'; value: DocumentData; edit: {
       resource: ResourceRef; generation: string | null; beforeItems: DocumentData[]; afterItems: DocumentData[];
     } }
+  /** Server-owned share-link capability creation, tied to the note version the person saw. */
+  | { kind: 'relation'; relation: 'share-link-create'; note: { id: string; generation: string | null };
+      authorLanguage: 'en' | 'ru' | 'uk' }
+  /** Revoke exactly the capability addressed by the unversioned resource ID. */
+  | { kind: 'relation'; relation: 'share-link-revoke' }
   /** Carrying a section between two councils: the source is marked carried only because it landed. */
   | { kind: 'relation'; relation: 'council-carry'; edits: Array<{
       resource: ResourceRef; generation: string | null; beforeTopics: DocumentData[]; afterTopics: DocumentData[];

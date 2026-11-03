@@ -67,18 +67,19 @@ describe('DataEngine HTTP routes', () => {
     const collections = process.env.DATA_ENGINE_COLLECTIONS;
     try {
       delete process.env.DATA_ENGINE_ENABLED;
-      // 'users' is not engine-owned in code (ENGINE_OWNED_COLLECTIONS), so the env switch alone serves it;
-      // 'studyNoteShareLinks' is neither owned nor listed, so it must stay unserved.
+      // 'users' is not engine-owned in code, so the env switch alone serves it;
+      // 'studyNoteShareLinks' is engine-owned and served regardless of that switch.
       expect(ENGINE_OWNED_COLLECTIONS).not.toContain('users');
-      expect(ENGINE_OWNED_COLLECTIONS).not.toContain('studyNoteShareLinks');
+      expect(ENGINE_OWNED_COLLECTIONS).toContain('studyNoteShareLinks');
       process.env.DATA_ENGINE_COLLECTIONS = 'users';
-      const unservedContext = { params: Promise.resolve({ collection: 'studyNoteShareLinks' }) };
-      const unservedDocument = { params: Promise.resolve({ collection: 'studyNoteShareLinks', id: 'link-1' }) };
+      const unservedCollection = 'prayerCategories';
+      const unservedContext = { params: Promise.resolve({ collection: unservedCollection }) };
+      const unservedDocument = { params: Promise.resolve({ collection: unservedCollection, id: 'category-1' }) };
       const servedContext = { params: Promise.resolve({ collection: 'users' }) };
       const servedDocument = { params: Promise.resolve({ collection: 'users', id: 'user-1' }) };
 
       for (const response of [await read(request(), unservedDocument), await list(request(), unservedContext),
-        await changes(request('http://localhost/api/data-engine/changes/studyNoteShareLinks?after=0'), unservedContext)]) {
+        await changes(request(`http://localhost/api/data-engine/changes/${unservedCollection}?after=0`), unservedContext)]) {
         expect(response.status).toBe(503);
         expect(await response.json()).toEqual({ code: 'data-engine-disabled' });
       }
@@ -90,7 +91,7 @@ describe('DataEngine HTTP routes', () => {
       expect((await list(request(), servedContext)).status).toBe(200);
       expect((await changes(request('http://localhost/api/data-engine/changes/users?after=0'), servedContext)).status).toBe(200);
 
-      (readCommandBody as jest.Mock).mockResolvedValue({ resource: { collection: 'studyNoteShareLinks', id: 'link-1' } });
+      (readCommandBody as jest.Mock).mockResolvedValue({ resource: { collection: unservedCollection, id: 'category-1' } });
       expect((await POST(request())).status).toBe(503);
       expect(processCommand).not.toHaveBeenCalled();
 

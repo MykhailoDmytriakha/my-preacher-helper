@@ -1,135 +1,86 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { toast } from 'sonner';
 
-import { useDataCollection } from '@/data-engine/react.client';
+import { useDataCollection, useShareCapabilityActions } from '@/data-engine/react.client';
+import { useAppLocale } from '@/hooks/useAppLocale';
 import { useResolvedUid } from '@/hooks/useResolvedUid';
-import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
-import { StudyNoteShareLink } from '@/models/models';
-import {
-  mutationOutcomeWrite,
-  refusedWrite,
-  skippedWrite,
-  useWriteRecovery,
-  type WriteSubmission,
-} from '@/utils/recoverableWrite';
-import {
-  createFailureToastId, revokeFailureToastId, revokeShareLinkMutationOptions,
-  SHARE_LINK_MUTATION_KEYS, shareLinksKey, type RevokeShareLinkVariables,
-} from '@/utils/studyNoteShareLinkWrites';
+import { useServerUnavailableNotice } from '@/hooks/useServerUnavailableNotice';
 import { useTranslation } from '@locales/useTranslation';
-import {
-  createStudyNoteShareLink,
-  getStudyNoteShareLinks,
-} from '@services/studyNoteShareLinks.service';
 
-/** One empty list for as long as the links are not loaded: a fresh [] per render breaks every memo built on it. */
+import type { StudyNoteShareLink } from '@/models/models';
+
 const NO_SHARE_LINKS: StudyNoteShareLink[] = [];
 
-type CreateShareLinkVars = { userId: string; noteId: string };
-
+/** Link lists and capability actions share the canonical engine; tokens are never editable drafts. */
 export function useStudyNoteShareLinks() {
   const { t } = useTranslation();
+  const { locale } = useAppLocale();
   const { uid, isAuthLoading } = useResolvedUid();
-  const queryClient = useQueryClient();
+  const currentOwner = useRef(uid); currentOwner.current = uid;
+  const links = useDataCollection(uid ? 'studyNoteShareLinks' : null);
   const { presence: notePresence } = useDataCollection(uid ? 'studyNotes' : null);
-  const shareLinksQuery = useServerFirstQuery({
-    queryKey: shareLinksKey(uid),
-    queryFn: () => (uid ? getStudyNoteShareLinks(uid) : Promise.resolve([])),
-    enabled: !!uid,
-  });
+  const capability = useShareCapabilityActions();
+  const serverNoticeShown = useServerUnavailableNotice();
+  const running = useRef(new Set<string>());
+  const said = useRef(new Set<string>());
 
-  // The server retires links atomically with their note. A still-fresh or restored links cache
-  // must follow that exact tombstone too; a missing/unloaded note or a queued delete proves less.
-  const shareLinks = useMemo(() => shareLinksQuery.data?.filter(
-    link => notePresence(link.noteId).snapshot?.metadata?.deleted !== true,
-  ) ?? NO_SHARE_LINKS, [shareLinksQuery.data, notePresence]);
+  const shareLinks = useMemo(() => {
+    if (!uid || !links.state) return NO_SHARE_LINKS;
+    const rows = links.state.documents ?? links.state.snapshots.map(snapshot => ({ resource: snapshot.resource, value: snapshot.value }));
+    return rows.flatMap(row => {
+      const value = row.value;
+      if (!value || value.ownerId !== uid || typeof value.noteId !== 'string' || typeof value.token !== 'string'
+        || notePresence(value.noteId).snapshot?.metadata?.deleted) return [];
+      return [{ ...value, id: row.resource.id } as unknown as StudyNoteShareLink];
+    });
+  }, [uid, links.state, notePresence]);
 
-  // mutationKey + self-contained variables (userId in the payload) tie each write
-  // to its resumable default in mutationDefaults.ts so it survives a reload and
-  // replays on reconnect.
-  const createLinkMutation = useMutation({
-    mutationKey: SHARE_LINK_MUTATION_KEYS.create,
-    mutationFn: ({ userId, noteId }: CreateShareLinkVars) =>
-      createStudyNoteShareLink(userId, noteId),
-    onSuccess: (created) => {
-      // A failure message for this note is old news now, and its "Retry" would make a second request.
-      toast.dismiss(createFailureToastId(created.noteId));
-      queryClient.setQueryData<StudyNoteShareLink[]>(shareLinksKey(uid), (old = []) => {
-        const filtered = (old ?? []).filter((link) => link.noteId !== created.noteId);
-        return [created, ...filtered];
-      });
-    },
-  });
+  // Recovery belongs to the durable action, across screen changes and reload. Ordinary delivery
+  // stays silent; the shared engine policy decides when an unanswered send needs to be said.
+  useEffect(() => {
+    const next = new Set<string>();
+    for (const action of capability.actions) {
+      const trouble = action.state === 'refused' || action.state === 'conflict' || (action.state === 'unknown' && !serverNoticeShown);
+      if (!trouble) continue;
+      const id = `share-capability:${uid}:${action.id}`;
+      next.add(id);
+      const key = action.kind === 'create' ? 'studiesWorkspace.shareLinks.createUnconfirmed' : 'studiesWorkspace.shareLinks.revokeUnconfirmed';
+      toast.error(t(key), { id, duration: Infinity, action: { label: t('dataSync.retry'), onClick: () => {
+        void capability.retry(action.id).catch(() => { if (currentOwner.current === uid) toast.error(t(key), { id }); });
+      } } });
+    }
+    for (const id of said.current) if (!next.has(id)) toast.dismiss(id);
+    said.current = next;
+  }, [capability, serverNoticeShown, uid, t]);
+  useEffect(() => () => { for (const id of said.current) toast.dismiss(id); said.current.clear(); }, [uid]);
 
-  const deleteLinkMutation = useMutation(revokeShareLinkMutationOptions(queryClient));
-
-  const hasPendingMutation = <TVars,>(
-    mutationKey: readonly unknown[],
-    matches: (variables: TVars) => boolean
-  ) =>
-    queryClient.getMutationCache().getAll().some(
-      (mutation) =>
-        JSON.stringify(mutation.options.mutationKey) === JSON.stringify(mutationKey) &&
-        mutation.state.status === 'pending' &&
-        matches(mutation.state.variables as TVars)
-    );
-
-  /**
-   * A link that did not come into being, or did not go away, is said wherever the person next looks
-   * at notes or their links, in its own words (BUG-20260928-share-link-failure-seen-only-on-studies).
-   * The words say only what is known: the service turns every failure into a plain error, so a
-   * refusal cannot be told from a dropped connection, and "could not confirm" is the true sentence.
-   *
-   * An unresolved revoke remains important after restart even without typed text. Its durable
-   * mutation is retired only by the shared, exact owner/link acknowledgement handler; a cached
-   * list, a remount or an unsuccessful retry never proves that access has ended.
-   */
-  useWriteRecovery<CreateShareLinkVars>(queryClient, {
-    mutationKey: SHARE_LINK_MUTATION_KEYS.create,
-    fallbackTitleKey: 'studiesWorkspace.shareLinks.createUnconfirmed',
-    recoveryText: () => undefined,
-    toastId: (vars) => createFailureToastId(vars.noteId),
-    owns: (vars) => Boolean(uid) && vars.userId === uid,
-    retry: (vars) => createLinkMutation.mutate(vars),
-  });
-
-  useWriteRecovery<RevokeShareLinkVariables>(queryClient, {
-    mutationKey: SHARE_LINK_MUTATION_KEYS.delete,
-    fallbackTitleKey: 'studiesWorkspace.shareLinks.revokeUnconfirmed',
-    retainWithoutTextAcrossSessions: true,
-    recoveryText: () => undefined,
-    toastId: (vars) => revokeFailureToastId(vars.linkId),
-    owns: (vars) => Boolean(uid) && vars.userId === uid,
-    retry: (vars) => deleteLinkMutation.mutate(vars),
-  });
+  const submit = async (kind: 'create' | 'revoke', targetId: string): Promise<void> => {
+    const key = kind === 'create' ? 'studiesWorkspace.shareLinks.createUnconfirmed' : 'studiesWorkspace.shareLinks.revokeUnconfirmed';
+    const address = JSON.stringify([uid, kind, targetId]);
+    if (running.current.has(address) || capability.actions.some(action => action.kind === kind && action.targetId === targetId
+      && !['refused', 'conflict'].includes(action.state))) return;
+    if (!uid || !capability.ready) {
+      const error = new Error('The capability engine is not ready');
+      toast.error(t(key)); throw error;
+    }
+    running.current.add(address);
+    try {
+      const held = capability.actions.find(action => action.kind === kind && action.targetId === targetId
+        && ['refused', 'conflict'].includes(action.state));
+      if (held) await capability.retry(held.id);
+      else if (kind === 'create') await capability.create(targetId, locale);
+      else await capability.revoke(targetId);
+    } catch (error) {
+      if (currentOwner.current === uid) toast.error(t(key), { id: `share-capability-capture:${address}` });
+      throw error;
+    } finally { running.current.delete(address); }
+  };
 
   return {
-    uid,
-    shareLinks,
-    loading: isAuthLoading || shareLinksQuery.isLoading,
-    error: shareLinksQuery.error as Error | null,
-    refetch: shareLinksQuery.refetch,
-    createShareLink: (noteId: string): WriteSubmission => {
-      if (!uid) return refusedWrite('unauthenticated', 'No signed-in user for this write', t('writeRecovery.refused'));
-      const vars: CreateShareLinkVars = { userId: uid, noteId };
-      if (hasPendingMutation<CreateShareLinkVars>(
-        SHARE_LINK_MUTATION_KEYS.create,
-        (pending) => pending.noteId === noteId && pending.userId === uid
-      )) return skippedWrite();
-      // Saved or queued is decided by what happened to the mutation, not by the icon (owner's rule 3).
-      return mutationOutcomeWrite(queryClient.getMutationCache(), `outbox:study-note-share-link:create:${noteId}`,
-        () => createLinkMutation.mutateAsync(vars));
-    },
-    deleteShareLink: (linkId: string): WriteSubmission => {
-      if (!uid) return refusedWrite('unauthenticated', 'No signed-in user for this write', t('writeRecovery.refused'));
-      const vars: RevokeShareLinkVariables = { userId: uid, linkId };
-      if (hasPendingMutation<RevokeShareLinkVariables>(
-        SHARE_LINK_MUTATION_KEYS.delete,
-        (pending) => pending.linkId === linkId && pending.userId === uid
-      )) return skippedWrite();
-      return mutationOutcomeWrite(queryClient.getMutationCache(), `outbox:study-note-share-link:delete:${linkId}`,
-        () => deleteLinkMutation.mutateAsync(vars));
-    },
+    uid, shareLinks, loading: isAuthLoading || links.loading,
+    error: links.error ? new Error(links.error) : null,
+    refetch: links.refresh,
+    createShareLink: (noteId: string) => submit('create', noteId),
+    deleteShareLink: (linkId: string) => submit('revoke', linkId),
   };
 }

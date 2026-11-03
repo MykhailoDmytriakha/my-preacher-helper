@@ -28,6 +28,7 @@ import { captureRecoveryChoice as captureChoice, recoveryChoiceFingerprint, type
 import { validateResourceDocument } from './resourceSchemas';
 import { deletedUnder } from './session';
 import { describeManualSync, describeSync, type SyncStatus } from './status';
+import { shownDeliveryState } from './unanswered';
 import { useRecoveryDiscovery as useDiscovery, type RecoveryDiscoveryOptions } from './useRecoveryDiscovery';
 
 import type { StudyAnalysisWrite } from './analysisReshape';
@@ -40,6 +41,7 @@ import type { MembershipDelivery } from './membershipDelivery';
 import type { MembershipAction } from './membershipIntent';
 import type { MembershipScope, MembershipScopeRecord } from './membershipScope';
 import type { DocumentData, EngineReadOptions, FailureAddress, FieldValue, JournalEntry, ResourceRef, ResourceSnapshot } from './types';
+import type { AppLocale } from '@/utils/appLocale';
 import type { BookText } from '@/utils/bibleText';
 
 export { isCollectionOnEngine, isDataEngineEnabled } from './clientPolicy';
@@ -441,6 +443,45 @@ export function useDocumentActions() {
       return taken + waiting.length;
     },
   }), [browser, owner, withEditor, waitingFor, openFor]);
+}
+
+/** Capability actions capture through the engine; callers never construct tokens or wire commands. */
+export function useShareCapabilityActions() {
+  const { browser, owner } = useContext(EngineContext) ?? idleEngine;
+  const identity = useMemo(() => ({ browser, owner }), [browser, owner]);
+  const current = useRef(identity); current.current = identity;
+  const [observed, setObserved] = useState<{ identity: typeof identity; entries: JournalEntry[] } | null>(null);
+  useEffect(() => {
+    if (!browser || !owner) return;
+    let active = true, version = 0;
+    const receive = () => {
+      version += 1;
+      if (active && current.current === identity) setObserved({ identity, entries: browser.engine.getPending() });
+    };
+    const stop = browser.engine.subscribePending(receive); receive();
+    const initial = version;
+    void browser.engine.listPending().then(entries => {
+      if (active && current.current === identity && version === initial) setObserved({ identity, entries });
+    }, error => { if (active && current.current === identity) browser.engine.reportFailure(error, { collection: 'studyNoteShareLinks' }); });
+    return () => { active = false; stop(); };
+  }, [browser, owner, identity]);
+  const actions = useMemo(() => (observed?.identity === identity ? observed.entries : []).flatMap(entry => {
+    if (entry.command.owner !== owner || entry.command.resource.collection !== 'studyNoteShareLinks' || entry.command.kind !== 'relation') return [];
+    const command = entry.command;
+    if (command.relation !== 'share-link-create' && command.relation !== 'share-link-revoke') return [];
+    return [{ id: command.operationId, kind: command.relation === 'share-link-create' ? 'create' as const : 'revoke' as const,
+      targetId: command.relation === 'share-link-create' ? command.note.id : command.resource.id, state: shownDeliveryState(entry) }];
+  }), [observed, identity, owner]);
+  const run = useCallback(async (action: (engine: BrowserDataEngine['engine']) => Promise<void>) => {
+    if (!browser || !owner || current.current !== identity) throw new Error(ENGINE_NOT_READY);
+    await action(browser.engine);
+    if (current.current !== identity) throw new Error(EDITOR_CHANGED);
+  }, [browser, owner, identity]);
+  return useMemo(() => ({ ready: Boolean(browser && owner), actions,
+    create: (noteId: string, locale: AppLocale) => run(engine => engine.createShareLink(noteId, locale)),
+    revoke: (linkId: string) => run(engine => engine.revokeShareLink(linkId)),
+    retry: (operationId: string) => run(engine => engine.retryShareCapability(operationId)),
+  }), [browser, owner, actions, run]);
 }
 
 /** Owner-scoped recovery for whole passage actions, driven by the shared journal/request signal. */

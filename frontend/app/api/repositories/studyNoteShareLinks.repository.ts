@@ -1,4 +1,4 @@
-import { adminDb, FieldValue } from '@/config/firebaseAdminConfig';
+import { adminDb } from '@/config/firebaseAdminConfig';
 import { ScriptureReference, StudyNote, StudyNoteShareLink } from '@/models/models';
 import { APP_LOCALES, type AppLocale } from '@/utils/appLocale';
 import { isBibleId } from '@/utils/bibles';
@@ -146,43 +146,8 @@ export class StudyNoteShareLinksRepository {
     });
   }
 
-  async createLink(params: { ownerId: string; noteId: string; token: string; authorLanguage?: AppLocale }): Promise<StudyNoteShareLink> {
-    const now = new Date().toISOString();
-    const payload: Omit<StudyNoteShareLink, 'id'> = {
-      ownerId: params.ownerId,
-      noteId: params.noteId,
-      token: params.token,
-      createdAt: now,
-      viewCount: 0,
-      ...(params.authorLanguage ? { authorLanguage: params.authorLanguage } : {}),
-    };
 
-    const docRef = adminDb.collection(SHARE_LINKS_COLLECTION).doc();
-    // Transitional legacy writer: this is not a DataCommand/receipt migration.
-    // Contending on the note prevents a link from being added after its deletion.
-    return adminDb.runTransaction(async transaction => {
-      const note = await transaction.get(adminDb.collection('studyNotes').doc(params.noteId));
-      const data = note.data();
-      if (!data || isRetired(data) || data.userId !== params.ownerId) throw Object.assign(new Error('Study note unavailable'), { code: 'permission-denied' });
-      transaction.set(docRef, payload);
-      return { ...payload, id: docRef.id };
-    });
-  }
 
-  async incrementViewCount(id: string): Promise<void> {
-    const reference = adminDb.collection(SHARE_LINKS_COLLECTION).doc(id);
-    // A late public request must not recreate a physically deleted or retired link.
-    await adminDb.runTransaction(async transaction => {
-      const document = await transaction.get(reference);
-      const data = document.data();
-      if (!data || !activeLink(id, data)) return;
-      transaction.set(reference, { viewCount: FieldValue.increment(1) }, { merge: true });
-    });
-  }
-
-  async deleteLink(id: string): Promise<void> {
-    await adminDb.collection(SHARE_LINKS_COLLECTION).doc(id).delete();
-  }
 }
 
 export const studyNoteShareLinksRepository = new StudyNoteShareLinksRepository();

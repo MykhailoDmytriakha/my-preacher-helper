@@ -11,7 +11,7 @@ import { ENGINE_OWNED_COLLECTIONS } from '../engineOwnedCollections';
 import { PausedReadFailure } from '../failures';
 import { useRecoveryDiscovery } from '../useRecoveryDiscovery';
 import { UNKNOWN_RECORD_PRESENCE } from '../recordPresence';
-import { DataDocumentProvider, DataEngineProvider, DataEngineWorkspace, isCollectionOnEngine, isDataEngineEnabled, shouldPersistLegacyQuery, useDataCollection, useDataDocument, useDataEngine, useDataForm } from '../react.client';
+import { DataDocumentProvider, DataEngineProvider, DataEngineWorkspace, isCollectionOnEngine, isDataEngineEnabled, shouldPersistLegacyQuery, useDataCollection, useDataDocument, useDataEngine, useDataForm, useShareCapabilityActions } from '../react.client';
 
 import type { CollectionState } from '../collections';
 import type { EditorState, RecoveryCheckpoint } from '../controller';
@@ -85,11 +85,16 @@ function makeEditor() {
 }
 function makeBrowser(editor = makeEditor().editor) {
   const collectionWatches: { collection: string; next: (state: CollectionState) => void; stop: jest.Mock }[] = [];
+  let pending: JournalEntry[] = [];
+  const pendingListeners = new Set<() => void>();
   const engine = {
     listWriteCaptures: jest.fn(async () => []), releaseWriteCapture: jest.fn(async () => undefined),
     subscribeSavedWork: jest.fn(() => () => undefined),
     setOwner: jest.fn(), openEditor: jest.fn<Promise<ManagedEditor>, [ResourceRef, string, { signal?: AbortSignal }?]>(async () => editor),
     createEditor: jest.fn<Promise<ManagedEditor>, [ResourceRef, string, { signal?: AbortSignal }?]>(async () => editor), retry: jest.fn(async () => undefined),
+    createShareLink: jest.fn(async () => undefined), revokeShareLink: jest.fn(async () => undefined), retryShareCapability: jest.fn(async () => undefined),
+    getPending: jest.fn(() => clone(pending)), subscribePending: jest.fn((listener: () => void) => { pendingListeners.add(listener); return () => { pendingListeners.delete(listener); }; }),
+    listPending: jest.fn(async () => clone(pending)), reportFailure: jest.fn(),
     recoverEditor: jest.fn<Promise<ManagedEditor>, [ResourceRef, string, string, { signal?: AbortSignal }?]>(async () => editor),
     listRecoverable: jest.fn<Promise<RecoveryCheckpoint[]>, [ResourceRef?]>(async () => []),
     listRecoveryChoices: jest.fn<Promise<RecoveryCheckpoint[]>, [ResourceRef?]>(async () => []),
@@ -97,7 +102,21 @@ function makeBrowser(editor = makeEditor().editor) {
     refreshCollection: jest.fn<Promise<CollectionState>, [string]>(),
   };
   const browser: BrowserDataEngine = { engine: engine as unknown as BrowserDataEngine['engine'], dispose: jest.fn(), editorId: jest.fn((ref, slot) => JSON.stringify([ref.collection, ref.id, slot])) };
-  return { browser, engine, collectionWatches };
+  return { browser, engine, collectionWatches,
+    publishPending: (entries: JournalEntry[]) => { pending = clone(entries); pendingListeners.forEach(listener => listener()); },
+    get pendingListeners() { return [...pendingListeners]; },
+  };
+}
+
+function shareCapabilityEntry(options: { operationId: string; relation?: 'share-link-create' | 'share-link-revoke'; state?: JournalEntry['state']; attempts?: number; owner?: string; collection?: string }): JournalEntry {
+  const relation = options.relation ?? 'share-link-create';
+  const resource = { collection: options.collection ?? 'studyNoteShareLinks', id: `link-${options.operationId}` };
+  const base = { protocol: 1 as const, operationId: options.operationId, owner: options.owner ?? 'owner', resource,
+    generation: null, dependsOn: [], kind: 'relation' as const };
+  const command: JournalEntry['command'] = relation === 'share-link-create'
+    ? { ...base, relation, note: { id: `note-${options.operationId}`, generation: 'note-generation' }, authorLanguage: 'en' }
+    : { ...base, relation };
+  return { command, state: options.state ?? 'queued', createdAt: 1, attempts: options.attempts ?? 0 };
 }
 
 function makeManualForm() {
@@ -127,6 +146,82 @@ function usePlanOutlineWriter(id: string, uid: string) {
   const { writer, outlineRecovery } = useEnginePlanWriter(id, uid);
   return { writer, document: outlineRecovery.document, recovery: outlineRecovery.recovery };
 }
+
+describe('share capability React facade', () => {
+  beforeEach(() => { jest.clearAllMocks(); owner('owner'); });
+
+  it('captures create, exact-link revoke, and exact-operation retry through the public facade', async () => {
+    const browser = makeBrowser(); jest.mocked(createBrowserDataEngine).mockReturnValue(browser.browser);
+    const { result } = renderHook(() => useShareCapabilityActions(), { wrapper: Wrapper });
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    expect(result.current.actions).toEqual([]);
+
+    await act(async () => { await result.current.create('note-42', 'uk'); });
+    await act(async () => { await result.current.revoke('link-exact-9'); });
+    await act(async () => { await result.current.retry('operation-exact-7'); });
+
+    expect(browser.engine.createShareLink).toHaveBeenCalledTimes(1);
+    expect(browser.engine.createShareLink).toHaveBeenCalledWith('note-42', 'uk');
+    expect(browser.engine.revokeShareLink).toHaveBeenCalledTimes(1);
+    expect(browser.engine.revokeShareLink).toHaveBeenCalledWith('link-exact-9');
+    expect(browser.engine.retryShareCapability).toHaveBeenCalledTimes(1);
+    expect(browser.engine.retryShareCapability).toHaveBeenCalledWith('operation-exact-7');
+  });
+
+  it('projects only this owner’s relation entries and applies the unanswered-attempt threshold', async () => {
+    const browser = makeBrowser();
+    browser.publishPending([
+      shareCapabilityEntry({ operationId: 'early-unknown', state: 'unknown', attempts: 1 }),
+      shareCapabilityEntry({ operationId: 'spent-unknown', relation: 'share-link-revoke', state: 'unknown', attempts: 4 }),
+      shareCapabilityEntry({ operationId: 'other-owner', owner: 'another-owner' }),
+      shareCapabilityEntry({ operationId: 'other-collection', collection: 'studyNotes' }),
+    ]);
+    jest.mocked(createBrowserDataEngine).mockReturnValue(browser.browser);
+    const { result } = renderHook(() => useShareCapabilityActions(), { wrapper: Wrapper });
+
+    await waitFor(() => expect(result.current.actions).toHaveLength(2));
+    expect(result.current.actions).toEqual([
+      { id: 'early-unknown', kind: 'create', targetId: 'note-early-unknown', state: 'sending' },
+      { id: 'spent-unknown', kind: 'revoke', targetId: 'link-spent-unknown', state: 'unknown' },
+    ]);
+  });
+
+  it('does not let a late initial list overwrite a newer pending publication', async () => {
+    const browser = makeBrowser(); const listing = deferred<JournalEntry[]>();
+    browser.engine.listPending.mockReturnValueOnce(listing.promise);
+    jest.mocked(createBrowserDataEngine).mockReturnValue(browser.browser);
+    const { result } = renderHook(() => useShareCapabilityActions(), { wrapper: Wrapper });
+    await waitFor(() => expect(browser.engine.subscribePending).toHaveBeenCalledTimes(1));
+    expect(result.current.actions).toEqual([]);
+
+    const newer = shareCapabilityEntry({ operationId: 'newer-publication' });
+    await act(async () => { browser.publishPending([newer]); });
+    await waitFor(() => expect(result.current.actions.map(action => action.id)).toEqual(['newer-publication']));
+    await act(async () => { listing.resolve([shareCapabilityEntry({ operationId: 'stale-list' })]); await listing.promise; });
+
+    expect(result.current.actions.map(action => action.id)).toEqual(['newer-publication']);
+  });
+
+  it('clears old-owner rows and rejects retained action and subscription callbacks after account change', async () => {
+    const first = makeBrowser(), second = makeBrowser();
+    jest.mocked(createBrowserDataEngine).mockReturnValueOnce(first.browser).mockReturnValueOnce(second.browser);
+    const { result, rerender } = renderHook(() => useShareCapabilityActions(), { wrapper: Wrapper });
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    await act(async () => { first.publishPending([shareCapabilityEntry({ operationId: 'old-owner-row' })]); });
+    await waitFor(() => expect(result.current.actions.map(action => action.id)).toEqual(['old-owner-row']));
+    const retainedCreate = result.current.create;
+    const retainedSubscription = first.pendingListeners[0];
+
+    owner('new-owner'); rerender();
+    await waitFor(() => expect(second.engine.setOwner).toHaveBeenCalledWith('new-owner'));
+    expect(result.current.actions).toEqual([]);
+    await act(async () => { retainedSubscription(); });
+    expect(result.current.actions).toEqual([]);
+    await expect(retainedCreate('old-note', 'ru')).rejects.toThrow('The data engine is not ready');
+    expect(first.engine.createShareLink).not.toHaveBeenCalled();
+    expect(second.engine.createShareLink).not.toHaveBeenCalled();
+  });
+});
 
 describe('React DataEngine contract', () => {
   beforeEach(() => { jest.useFakeTimers(); jest.clearAllMocks(); owner('owner'); });
@@ -394,7 +489,7 @@ describe('React DataEngine contract', () => {
 
       process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = ' users ';
       expect(isCollectionOnEngine('users')).toBe(true);
-      expect(isCollectionOnEngine('studyNoteShareLinks')).toBe(false);
+      expect(isCollectionOnEngine('studyNoteShareLinks')).toBe(true);
 
       delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS;
       process.env.NEXT_PUBLIC_DATA_ENGINE_ENABLED = 'true';

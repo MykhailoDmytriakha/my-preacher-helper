@@ -1,6 +1,7 @@
 import * as shareNotesRoute from 'app/api/share/notes/[token]/route';
 
 import { studyNoteShareLinksRepository } from '@repositories/studyNoteShareLinks.repository';
+import { recordSharedNoteView } from '@/data-engine/serverOperations.server';
 
 jest.mock('next/server', () => ({
   NextResponse: {
@@ -17,11 +18,12 @@ jest.mock('next/server', () => ({
 jest.mock('@repositories/studyNoteShareLinks.repository', () => ({
   studyNoteShareLinksRepository: {
     readSharedNote: jest.fn(),
-    incrementViewCount: jest.fn(),
   },
 }));
+jest.mock('@/data-engine/serverOperations.server', () => ({ recordSharedNoteView: jest.fn() }));
 
 const mockShareLinksRepo = studyNoteShareLinksRepository as jest.Mocked<typeof studyNoteShareLinksRepository>;
+const mockRecordSharedNoteView = recordSharedNoteView as jest.MockedFunction<typeof recordSharedNoteView>;
 
 describe('share notes route', () => {
   beforeEach(() => {
@@ -42,6 +44,7 @@ describe('share notes route', () => {
 
     expect(response.status).toBe(404);
     expect(data.error).toBe('Not found');
+    expect(mockRecordSharedNoteView).not.toHaveBeenCalled();
   });
 
   it('returns 404 when note not found', async () => {
@@ -52,29 +55,44 @@ describe('share notes route', () => {
 
     expect(response.status).toBe(404);
     expect(data.error).toBe('Not found');
+    expect(mockRecordSharedNoteView).not.toHaveBeenCalled();
   });
 
-  it('increments view count when no cookie', async () => {
+  it('records a view when no cookie and sets the 24-hour token cookie', async () => {
     const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(1_000_000);
     mockShareLinksRepo.readSharedNote.mockResolvedValue({ shareLink: { id: 'link-1', noteId: 'note-1', ownerId: 'owner' }, content: 'Hello' } as any);
 
     const response = await shareNotesRoute.GET(makeRequest(), { params: Promise.resolve({ token: 'token-1' }) });
     const data = await response.json();
 
-    expect(mockShareLinksRepo.incrementViewCount).toHaveBeenCalledWith('link-1');
-    expect(response.cookies.set).toHaveBeenCalled();
+    expect(mockRecordSharedNoteView).toHaveBeenCalledWith('link-1', 'token-1');
+    expect(response.cookies.set).toHaveBeenCalledWith(expect.objectContaining({
+      name: 'share_note_viewed_token-1', value: '1000000', maxAge: 86_400, httpOnly: true, sameSite: 'lax', path: '/',
+    }));
     expect(data.content).toBe('Hello');
     nowSpy.mockRestore();
   });
 
-  it('skips increment when cookie is recent', async () => {
+  it('records a view when the prior cookie reaches the 24-hour expiry', async () => {
+    const now = 1_000_000_000;
+    const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(now);
+    mockShareLinksRepo.readSharedNote.mockResolvedValue({ shareLink: { id: 'link-1', noteId: 'note-1', ownerId: 'owner' }, content: 'Hello' } as any);
+
+    const response = await shareNotesRoute.GET(makeRequest(String(now - 86_400_000)), { params: Promise.resolve({ token: 'token-1' }) });
+
+    expect(mockRecordSharedNoteView).toHaveBeenCalledWith('link-1', 'token-1');
+    expect(response.cookies.set).toHaveBeenCalledWith(expect.objectContaining({ value: String(now), maxAge: 86_400 }));
+    nowSpy.mockRestore();
+  });
+
+  it('skips recording a view when the token cookie is recent', async () => {
     const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(1_000_000);
     mockShareLinksRepo.readSharedNote.mockResolvedValue({ shareLink: { id: 'link-1', noteId: 'note-1', ownerId: 'owner' }, content: 'Hello' } as any);
 
     const response = await shareNotesRoute.GET(makeRequest(String(1_000_000)), { params: Promise.resolve({ token: 'token-1' }) });
     const data = await response.json();
 
-    expect(mockShareLinksRepo.incrementViewCount).not.toHaveBeenCalled();
+    expect(mockRecordSharedNoteView).not.toHaveBeenCalled();
     expect(response.cookies.set).not.toHaveBeenCalled();
     expect(data.content).toBe('Hello');
     nowSpy.mockRestore();

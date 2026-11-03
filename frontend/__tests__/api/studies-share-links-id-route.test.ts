@@ -15,7 +15,6 @@ jest.mock('next/server', () => ({
 jest.mock('@repositories/studyNoteShareLinks.repository', () => ({
   studyNoteShareLinksRepository: {
     getById: jest.fn(),
-    deleteLink: jest.fn(),
   },
 }));
 
@@ -38,52 +37,21 @@ describe('studies share-links [id] route', () => {
       : 'https://example.com/api/studies/share-links/link-1',
   }) as Request;
 
-  it('returns 401 when userId missing', async () => {
-    const response = await shareLinkRoute.DELETE(makeRequest(), { params: Promise.resolve({ id: 'link-1' }) });
+  it('returns 401 when userId is missing', async () => {
+    const response = await shareLinkRoute.DELETE(makeRequest());
     const data = await response.json();
 
     expect(response.status).toBe(401);
     expect(data.error).toBe('User not authenticated');
+    expect(mockRepo.getById).not.toHaveBeenCalled();
   });
 
-  it('returns success when link does not exist', async () => {
-    mockRepo.getById.mockResolvedValue(null as any);
-
-    const response = await shareLinkRoute.DELETE(makeRequest('user-1'), { params: Promise.resolve({ id: 'link-1' }) });
+  it('returns the authenticated data-engine-required refusal without calling a legacy writer', async () => {
+    const response = await shareLinkRoute.DELETE(makeRequest('user-1'));
     const data = await response.json();
 
-    expect(response.status).toBe(200);
-    expect(data.success).toBe(true);
-  });
-
-  it('returns 403 when owner mismatch', async () => {
-    mockRepo.getById.mockResolvedValue({ ownerId: 'user-2' } as any);
-
-    const response = await shareLinkRoute.DELETE(makeRequest('user-1'), { params: Promise.resolve({ id: 'link-1' }) });
-    const data = await response.json();
-
-    expect(response.status).toBe(403);
-    expect(data.error).toBe('Forbidden');
-  });
-
-  it('deletes link when owner matches', async () => {
-    mockRepo.getById.mockResolvedValue({ ownerId: 'user-1' } as any);
-
-    const response = await shareLinkRoute.DELETE(makeRequest('user-1'), { params: Promise.resolve({ id: 'link-1' }) });
-    const data = await response.json();
-
-    expect(mockRepo.deleteLink).toHaveBeenCalledWith('link-1');
-    expect(response.status).toBe(200);
-    expect(data.success).toBe(true);
-  });
-
-  it('returns 500 on unexpected error', async () => {
-    mockRepo.getById.mockRejectedValue(new Error('boom'));
-
-    const response = await shareLinkRoute.DELETE(makeRequest('user-1'), { params: Promise.resolve({ id: 'link-1' }) });
-    const data = await response.json();
-
-    expect(response.status).toBe(500);
-    expect(data.error).toBe('Failed to delete share link');
+    expect(response.status).toBe(426);
+    expect(data).toEqual({ code: 'data-engine-required', error: 'data-engine-required' });
+    expect(mockRepo.getById).not.toHaveBeenCalled();
   });
 });

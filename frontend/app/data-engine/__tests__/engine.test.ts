@@ -1129,3 +1129,85 @@ it('refuses a managed proposal after its parent editor has closed', async () => 
   expect(recovery.every(row => row.record.stage[0]?.value !== 'Late result')).toBe(true);
   expect(s.transport.send).not.toHaveBeenCalled(); s.engine.dispose();
 });
+
+describe('durable share capability actions', () => {
+  it('captures offline before delivery and restores the exact operation after provider replacement', async () => {
+    const s = setup({ online: false });
+    await s.engine.createShareLink('note', 'en');
+    const [entry] = await s.runtime.list();
+    expect(entry.command).toMatchObject({ relation: 'share-link-create', note: { id: 'note', generation: 'generation' }, authorLanguage: 'en' });
+    expect(s.transport.send).not.toHaveBeenCalled();
+    const operationId = entry.command.operationId;
+    s.engine.dispose();
+    const runtime = new DataEngineRuntime({ journal: s.journal, transport: s.transport });
+    runtime.setOwner('owner');
+    expect((await runtime.list())[0].command.operationId).toBe(operationId);
+  });
+
+  it('does not wait for an unanswered network request before returning local capture', async () => {
+    const s = setup();
+    const held = deferred<Awaited<ReturnType<typeof s.transport.send>>>();
+    jest.mocked(s.transport.send).mockReturnValue(held.promise);
+    await s.engine.createShareLink('note', 'ru');
+    expect((await s.runtime.list())[0].command).toMatchObject({ relation: 'share-link-create' });
+    await drainMicrotasks();
+    expect(s.transport.send).toHaveBeenCalledTimes(1);
+    const operationId = (await s.runtime.list())[0].command.operationId;
+    s.engine.dispose();
+    held.resolve({ kind: 'refused', operationId, code: 'simulated-refusal' });
+    await drainMicrotasks();
+  });
+
+  it('retains an accepted command when its local snapshot projection fails, and repairs it before finalizing', async () => {
+    const s = setup({ online: false });
+    const ref = { collection: 'studyNoteShareLinks', id: 'existing-link' };
+    const existing: ResourceSnapshot = { resource: ref, value: { ownerId: 'owner', noteId: 'note', token: 'old-token', createdAt: 'created', viewCount: 0 },
+      metadata: { protocol: 1, generation: 'link-generation', revision: 1, deleted: false } };
+    s.cache.set(keyOf('owner', ref), existing); s.server.set(keyOf('owner', ref), existing);
+    let failProjection = true;
+    jest.mocked(s.snapshots.put).mockImplementation(async (owner, snapshot) => {
+      if (snapshot.resource.collection === 'studyNoteShareLinks' && snapshot.metadata?.deleted && failProjection) throw new Error('Local projection unavailable');
+      s.cache.set(keyOf(owner, snapshot.resource), copy(snapshot));
+    });
+    jest.mocked(s.transport.send).mockImplementation(async command => {
+      const before = s.server.get(keyOf(command.owner, command.resource)) ?? absent(command.resource);
+      const plan = await planDataCommand(command, before, { get: async resource => s.server.get(keyOf('owner', resource)) ?? absent(resource), list: async () => [] });
+      for (const snapshot of plan.writes) s.server.set(keyOf('owner', snapshot.resource), copy(snapshot));
+      return plan.result;
+    });
+    await s.engine.revokeShareLink('existing-link');
+    s.engine.setOnline(true);
+    await s.engine.retry(); await drainMicrotasks();
+    expect((await s.runtime.list())[0]).toMatchObject({ state: 'acknowledged', result: { snapshot: { value: null } } });
+    await expect(s.engine.retry()).rejects.toThrow('Local projection unavailable');
+    failProjection = false;
+    await s.engine.retry(); await drainMicrotasks();
+    expect(await s.runtime.list()).toEqual([]);
+    expect(s.cache.get(keyOf('owner', ref))).toMatchObject({ value: null, metadata: { deleted: true } });
+    expect(s.transport.send).toHaveBeenCalledTimes(1);
+    s.engine.dispose();
+  });
+});
+
+it.each([false, true])('keeps a refused capability until its explicit replacement capture succeeds (capture failure: %s)', async failCapture => {
+  const s = setup({ online: false });
+  try {
+    await s.engine.createShareLink('note', 'en');
+    const old = (await s.runtime.list())[0];
+    await s.journal.put({ ...old, state: 'refused', result: { kind: 'refused', operationId: old.command.operationId, code: 'temporary-refusal' } });
+    const unknown = { ...old, command: { ...old.command, operationId: 'still-unanswered' }, state: 'unknown' as const };
+    await s.journal.put(unknown);
+    if (failCapture) {
+      jest.mocked(s.journal.put).mockRejectedValueOnce(new Error('Local capture failed'));
+      await expect(s.engine.retryShareCapability(old.command.operationId)).rejects.toThrow('Local capture failed');
+      expect((await s.runtime.list()).find(entry => entry.command.operationId === old.command.operationId)?.state).toBe('refused');
+    } else {
+      await s.engine.retryShareCapability(old.command.operationId);
+      const entries = await s.runtime.list();
+      expect(entries.find(entry => entry.command.operationId === old.command.operationId)).toBeUndefined();
+      expect(entries.some(entry => entry.command.operationId !== 'still-unanswered' && entry.state === 'queued')).toBe(true);
+    }
+    expect((await s.runtime.list()).find(entry => entry.command.operationId === 'still-unanswered')?.state).toBe('unknown');
+    expect(s.transport.send).not.toHaveBeenCalled();
+  } finally { s.engine.dispose(); }
+});

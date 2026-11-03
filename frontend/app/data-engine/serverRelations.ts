@@ -11,6 +11,7 @@ import { childIdentityIssues } from './legacyChildIdentity';
 import { advanceResourceSnapshot, applyCommand, equalValues, mergeFields, readField, MAX_RELATION_RESOURCES } from './protocol';
 import { relationMirrorFields } from './relationMirrors';
 import { validateResourceDocument } from './resourceSchemas';
+import { planShareCapability, type ShareCapabilityCommand } from './shareCapabilities.server';
 
 import type { CommandResult, ConflictDetail, DataCommand, DocumentData, Json, ResourceRef, ResourceSnapshot } from './types';
 import type { SeriesItem } from '@/models/models';
@@ -310,8 +311,19 @@ class RelationPlanner {
     candidates.forEach(candidate => this.writes.set(key(candidate.resource), candidate));
   }
 
+  private async shareCapability(command: ShareCapabilityCommand): Promise<void> {
+    const writes = await planShareCapability(command, this.primary, {
+      readLiveNote: async note => { this.live(await this.get({ collection: 'studyNotes', id: note.id }), note.generation); },
+      listLinks: noteId => this.list('studyNoteShareLinks', { field: 'noteId', operator: '==', value: noteId }),
+      refuse: fail,
+    });
+    writes.forEach(snapshot => this.writes.set(key(snapshot.resource), snapshot));
+  }
+
   private async planRelation(command: Extract<DataCommand, { kind: 'relation' }>): Promise<CommandResult | undefined> {
     switch (command.relation) {
+      case 'share-link-create':
+      case 'share-link-revoke': await this.shareCapability(command); return;
       case 'service-order-seed': return this.seedServiceOrder(command);
       case 'series-member-create': return this.createSeriesMember(command);
       case 'material-notes': return this.materialRelation(command);
@@ -504,7 +516,9 @@ class RelationPlanner {
     if (key(this.command.resource) !== key(this.primary.resource)) fail('resource-mismatch');
     this.assertOwned(this.primary);
     let result: CommandResult | undefined;
-    if (this.command.kind === 'relation' && this.command.relation === 'service-order-seed') {
+    if (this.command.kind === 'relation' && ['share-link-create', 'share-link-revoke'].includes(this.command.relation)) {
+      await this.shareCapability(this.command as ShareCapabilityCommand);
+    } else if (this.command.kind === 'relation' && this.command.relation === 'service-order-seed') {
       result = await this.seedServiceOrder(this.command);
     } else if (this.command.kind === 'relation' && this.command.relation === 'series-member-create') {
       result = await this.createSeriesMember(this.command);

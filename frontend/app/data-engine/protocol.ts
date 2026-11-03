@@ -114,7 +114,9 @@ export function validateCommand(input: unknown): DataCommand {
     return fail('Invalid DataEngine command envelope');
   }
   const policy = getResourcePolicy(input.resource.collection);
-  if (!policy.allowWrite) fail('The resource is read-only');
+  const shareLinkRelation = input.resource.collection === 'studyNoteShareLinks' && input.kind === 'relation'
+    && (input.relation === 'share-link-create' || input.relation === 'share-link-revoke');
+  if (!policy.allowWrite && !shareLinkRelation) fail('The resource is read-only');
   const command = input as unknown as DataCommand;
   if (policy.ownerField === 'id' && command.resource.id !== command.owner) fail('Owner identity mismatch');
   validatePayload(command, policy);
@@ -195,6 +197,29 @@ function validateServiceOrderSeed(command: Extract<DataCommand, { relation: 'ser
   validateCreate({ ...command, kind: 'create' }, getResourcePolicy('serviceOrders'));
 }
 
+const exactKeys = (value: Record<string, unknown>, keys: readonly string[]): boolean =>
+  Object.keys(value).length === keys.length && keys.every(key => Object.prototype.hasOwnProperty.call(value, key));
+const COMMAND_BASE_KEYS = ['protocol', 'operationId', 'owner', 'resource', 'generation', 'dependsOn'] as const;
+
+function validateShareLinkCreate(command: Extract<DataCommand, { relation: 'share-link-create' }>): void {
+  const commandKeys = [...COMMAND_BASE_KEYS, 'kind', 'relation', 'note', 'authorLanguage'];
+  if (!exactKeys(command as unknown as Record<string, unknown>, commandKeys)) fail('Unexpected share-link command field');
+  if (command.resource.collection !== 'studyNoteShareLinks' || command.generation !== null
+    || !exactKeys(command.resource as unknown as Record<string, unknown>, ['collection', 'id'])
+    || !object(command.note)
+    || !exactKeys(command.note as unknown as Record<string, unknown>, ['id', 'generation'])
+    || !isValidIdentifier(command.note.id)
+    || !(command.note.generation === null || isValidIdentifier(command.note.generation))
+    || !['en', 'ru', 'uk'].includes(command.authorLanguage)) fail('Invalid share-link creation');
+}
+
+function validateShareLinkRevoke(command: Extract<DataCommand, { relation: 'share-link-revoke' }>): void {
+  const commandKeys = [...COMMAND_BASE_KEYS, 'kind', 'relation'];
+  if (!exactKeys(command as unknown as Record<string, unknown>, commandKeys)) fail('Unexpected share-link command field');
+  if (command.resource.collection !== 'studyNoteShareLinks'
+    || !exactKeys(command.resource as unknown as Record<string, unknown>, ['collection', 'id'])) fail('Invalid share-link revocation');
+}
+
 function validateAnalysisReshape(command: Extract<DataCommand, { relation: 'analysis-reshape' }>): void {
   const invalidFrame = 'Invalid analysis reshape frame';
   if (command.resource.collection !== 'studyNotes' || !Array.isArray(command.edits) || command.edits.length < 2 || command.edits.length > 3) {
@@ -237,6 +262,8 @@ function validateRelation(command: Extract<DataCommand, { kind: 'relation' }>): 
     case 'service-order-seed': return validateServiceOrderSeed(command);
     case 'series-member-create': return validateSeriesMemberCreation(command);
     case 'analysis-reshape': return validateAnalysisReshape(command);
+    case 'share-link-create': return validateShareLinkCreate(command);
+    case 'share-link-revoke': return validateShareLinkRevoke(command);
   }
   const ids = (value: unknown) => Array.isArray(value) && value.length <= 100
     && value.every(isValidIdentifier) && new Set(value).size === value.length;
@@ -500,7 +527,7 @@ const sermonAggregate: Record<string, string> = {
 };
 
 function bumpLegacy(value: DocumentData, collection: string, changed: readonly string[]): void {
-  if (collection === 'users' || collection === 'tags') return;
+  if (collection === 'users' || collection === 'tags' || collection === 'studyNoteShareLinks') return;
   if (collection === 'councils') { value.rev = typeof value.rev === 'number' ? value.rev + 1 : 1; return; }
   const aggregate = (key: string): string => {
     if (collection === 'sermons') return sermonAggregate[key] ?? 'core';

@@ -61,7 +61,8 @@
       "planTemplates": "Structure template",
       "tags": "Tag",
       "prayerRequests": "Prayer",
-      "studyNotes": "Study note"
+      "studyNotes": "Study note",
+      "studyNoteShareLinks": "Shared note link"
     },
     "field": {
       "bible": "Translation",

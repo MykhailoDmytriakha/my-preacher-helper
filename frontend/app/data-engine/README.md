@@ -4,16 +4,15 @@ User-data features read and edit through `react.client.tsx`. They do not choose
 Firestore vs HTTP, construct commands, manage outboxes, compare revisions, or merge
 remote copies. Those decisions belong here and have direct behavioral tests.
 
-**Ten collections are the engine's in code.** `engineOwnedCollections.ts` lists them (sermons,
+**`engineOwnedCollections.ts` declares collections owned in code.** They include sermons,
 series, groups, prayer requests, study notes and materials, tags, councils, orders of service,
-plan templates): they are served and closed to legacy writers on every deployment, whatever the
+plan templates, Bible marks and server-owned note share capabilities: they are served and closed to legacy writers on every deployment, whatever the
 environment says, and their legacy client writers, screens and server write routes are gone
 (2026-10-12/13). A shipped bundle that still calls an old route gets `refuseLegacyWriteRoute`
 (401 without a token, 426 `data-engine-required`), so its text stays in the previous-version
 archive instead of being dropped.
 
-The environment switches only ADD a collection that is not in that list — today `users` and
-`studyNoteShareLinks`: `NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS` (compiled into the bundle) and the
+The environment switches only ADD a collection that is not in that list — currently `users`: `NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS` (compiled into the bundle) and the
 server's `DATA_ENGINE_COLLECTIONS`; the older `*_ENABLED=true` pair still means every collection.
 `DATA_ENGINE_CLOSED_COLLECTIONS` refuses every legacy write to such a collection and is thrown
 LAST, once every device runs the new bundle — `activation.ts` explains why the two cannot be
@@ -31,7 +30,15 @@ The engine was merged into `main` on 2026-09-25. The migration log records activ
 of ten production collections that day; verify live configuration before changing it.
 `users` has a completed consumer migration (2026-09-28), awaiting production activation.
 Study-material server routes still use the guarded legacy bridge. Share links are server-owned capability tokens, not editable
-user documents. A registered schema alone does not prove a consumer has migrated.
+user documents. The local 2026-11-02 migration uses `useShareCapabilityActions` and `useDataCollection`;
+create/revoke are typed relations in the existing runtime journal and receipt transaction. Generic
+document create/update/delete remain forbidden for tokens. The action promise proves local capture,
+not server persistence (`WriteOperation`); screens use `awaitWriteOperation`. An accepted direct
+capability remains in the journal until its primary and secondary snapshots are durably projected.
+Old create/delete mutations are archived exactly and never converted automatically. Repeated creation
+after revocation cannot issue a new token; a fresh explicit action can. Late first delivery against
+a different capability lifecycle is separately tracked in `BUGS.md`. This worktree has not been deployed.
+A registered schema alone does not prove a consumer or production has migrated.
 
 Document conflict choices use the complete durable request scope (`documentDelivery.ts`),
 reusing the queue's cancellation proof. A relation ACK does not finish ordinary fields:
