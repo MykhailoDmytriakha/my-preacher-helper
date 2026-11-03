@@ -899,14 +899,17 @@ export function ReadingPill({ bookId, bible, currentChapter, currentVerse, text,
 }
 
 /**
- * The Bible being read, at the right edge of the book's line: every Bible the app has, named in its
- * own language. Choosing one reads the same place in it.
+ * The Bible being read, at the right edge of the book's line: the button names it short — the name the
+ * app also puts after a copied verse (`bible.translations.<id>.short`) — and the list names every Bible
+ * in full, in its own language, with its short name beside its language. Choosing one reads the same
+ * place in it.
  */
 export function TranslationPicker({ bible, wide, onPick, returnFocusRef }: { bible: BibleId; wide: boolean; onPick: (bible: BibleId) => void; returnFocusRef?: RefObject<HTMLButtonElement | null> }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const name = (id: BibleId) => t(`bible.translations.${id}.name`);
+  const short = (id: BibleId) => t(`bible.translations.${id}.short`);
 
   const close = () => {
     setOpen(false);
@@ -922,13 +925,15 @@ export function TranslationPicker({ bible, wide, onPick, returnFocusRef }: { bib
         type="button"
         aria-haspopup="dialog"
         aria-expanded={open}
-        aria-label={t('bible.changeTranslation', { translation: name(bible) })}
+        // The shown short name leads the button's name, so a voice command saying what is seen finds it;
+        // the full name follows it (WCAG «label in name», Codex review 02.11).
+        aria-label={t('bible.changeTranslation', { translation: `${short(bible)} · ${name(bible)}` })}
         onClick={() => setOpen((value) => !value)}
         className={`inline-flex min-h-11 min-w-0 max-w-full items-center gap-1.5 rounded-xl border px-2.5 text-sm text-gray-600 transition hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-white ${triggerBorder(open)}`}
       >
-        {/* The name can surrender room while the surrounding reader/list layout keeps the action
+        {/* The short name can surrender room while the surrounding reader/list layout keeps the action
             reachable. The tablet reader reserves its tools row before a palette opens (`BookLine`). */}
-        <span lang={BIBLES[bible].language} className="truncate">{name(bible)}</span>
+        <span className="truncate">{short(bible)}</span>
         <ChevronDownIcon className="h-4 w-4 shrink-0" aria-hidden="true" />
       </button>
       <PickerWindow open={open} onClose={close} anchorRef={triggerRef} align="end" width={320} wide={wide} label={t('bible.chooseTranslation')}>
@@ -946,9 +951,12 @@ export function TranslationPicker({ bible, wide, onPick, returnFocusRef }: { bib
                     ? 'border-indigo-300 bg-indigo-50 dark:border-indigo-500/60 dark:bg-indigo-950/50'
                     : 'border-transparent hover:bg-gray-100 dark:hover:bg-gray-800'}`}
                 >
-                  <span lang={BIBLES[id].language} className="flex flex-col">
-                    <span className="text-[15px] font-semibold text-gray-900 dark:text-white">{name(id)}</span>
-                    <span className="text-[13px] text-gray-500 dark:text-gray-400">{t(`bible.translations.${id}.language`)}</span>
+                  <span className="flex flex-col">
+                    <span lang={BIBLES[id].language} className="text-[15px] font-semibold text-gray-900 dark:text-white">{name(id)}</span>
+                    {/* The language in its own words, the short name in the reader's: the button's name is learnt here. */}
+                    <span className="text-[13px] text-gray-500 dark:text-gray-400">
+                      <span lang={BIBLES[id].language}>{t(`bible.translations.${id}.language`)}</span> · {short(id)}
+                    </span>
                   </span>
                   {isCurrent ? <CheckIcon className="h-5 w-5 shrink-0 text-indigo-600 dark:text-indigo-300" aria-hidden="true" /> : null}
                 </button>

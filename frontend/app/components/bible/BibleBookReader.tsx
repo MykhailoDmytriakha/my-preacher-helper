@@ -251,7 +251,7 @@ function useKeepPlaceOnPresentation(placeRef: { current: Place | null }, jumpTo:
  * THE BOOK'S LINE, from 768 px: navigation and the tools remain at hand above the text's pane.
  * On a tablet the tools and translation have their own row even while no tool is taken: opening the
  * colours must never add a row and move the text. From 1280 px everything fits on one line. The book's
- * name stays whole; the translation may shorten but keeps a usable button. A phone lends its controls
+ * name stays whole; the translation uses its short name and keeps a usable button. A phone lends its controls
  * to the app's header (`PhoneHeader`) and uses its separate tool column.
  */
 function BookLine({ lineRef, wayBack, onWayBack, trailButton, tools, translationClass, bookId, bible, currentChapter, currentVerse, text, locale, onOpen, onChangeBible, search }: {

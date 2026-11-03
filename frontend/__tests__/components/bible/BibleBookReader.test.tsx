@@ -912,6 +912,21 @@ describe('BibleBookReader', () => {
       expect(onChangeBible).toHaveBeenCalledWith('kjv');
     });
 
+    it('names the Bible short on its button and in full in the list, the short name beside the language', async () => {
+      // The owner, 02.11: the full name took 192 px of the reader's line and was cut on a small iPad
+      // with the marker's colours open; the short name is the one a copied verse carries.
+      screenWidth = 768;
+      render(<BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={null} onOpenBook={jest.fn()} />);
+      await screen.findByText('Третья глава');
+      const trigger = screen.getByRole('button', { name: 'bible.changeTranslation' });
+      expect(trigger).toHaveTextContent('bible.translations.rst.short');
+      expect(trigger).not.toHaveTextContent('bible.translations.rst.name');
+      await userEvent.click(trigger);
+      const choices = screen.getByRole('dialog', { name: 'bible.chooseTranslation' });
+      const kjv = within(choices).getByText('bible.translations.kjv.name').closest('button') as HTMLElement;
+      expect(kjv).toHaveTextContent('bible.translations.kjv.language · bible.translations.kjv.short');
+    });
+
     it('opens the place this entry was read in the Synodal at the same psalm of the King James', async () => {
       servePsalms();
       window.history.replaceState({ bibleEntry: 'entry-ps' }, '');
