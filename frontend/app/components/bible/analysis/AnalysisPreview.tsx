@@ -2,6 +2,7 @@
 
 import { Fragment, useMemo } from 'react';
 
+import HighlightedText from '@/components/HighlightedText';
 import { analysisOutline, depthOf, partStarts, type AnalysisState, type RelationColor } from '@/utils/passageAnalysis';
 import { ANALYSIS_RELATION_TONES } from '@/utils/themeColors';
 
@@ -28,8 +29,9 @@ function linesOf(text: string) {
  * it, routed as on the analysis screen (`tieArrows`); the two words of a link of meaning in that link's colour, without
  * flags or arrows. The words are the note's text (the analysis written as Markdown), the ties and links its analysis; when
  * the two no longer agree — a text written before a change — the parts are drawn alone, never a tie on the wrong word.
+ * A search running over a list lights the words it found (Studies' card).
  */
-export function AnalysisPreview({ text, analysis }: { text: string; analysis?: StudyAnalysis }) {
+export function AnalysisPreview({ text, analysis, searchQuery }: { text: string; analysis?: StudyAnalysis; searchQuery?: string }) {
   const lines = useMemo(() => linesOf(text), [text]);
   const total = lines.reduce((count, line) => count + line.words.length, 0);
   const state = useMemo((): AnalysisState | null => {
@@ -66,7 +68,7 @@ export function AnalysisPreview({ text, analysis }: { text: string; analysis?: S
                 <span data-word={index} className={colour ? `font-semibold ${ANALYSIS_RELATION_TONES[colour].text}` : undefined}>
                   {/* The middle of the small letters: where a tie's arrow leaves the line. */}
                   {k === 0 ? <span data-mid={index} aria-hidden="true" className="inline-block h-0 w-0 align-middle" /> : null}
-                  {word}
+                  {searchQuery ? <HighlightedText text={word} searchQuery={searchQuery} /> : word}
                 </span>
                 {k < line.words.length - 1 ? ' ' : ''}
               </Fragment>

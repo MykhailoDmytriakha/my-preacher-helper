@@ -2,9 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode, type RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
-import { toast } from 'sonner';
 
-import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { useAuth } from '@/providers/AuthProvider';
 import { countVerseWords, firstChangedVerse, markedElsewhere, signsHere, verseOrder, versesElsewhere, type MarkedElsewhere } from '@/utils/bibleMarks';
 import { usePageZoomed } from '@/utils/pageZoom';
@@ -16,6 +14,7 @@ import { MarkToolbar } from './MarkToolbar';
 import { MARK_SWATCH, PENCIL_SWATCH } from './MarkToolIcons';
 import { marksSupported, useMarkHighlights } from './useMarkHighlights';
 import { useMarkStrokes } from './useMarkStrokes';
+import { useMarksWriteGate } from './useMarksWriteGate';
 
 import type { AnalysisMarks } from '../analysis/useAnalysisMarks';
 import type { RibbonSigns } from '../BookRibbon';
@@ -91,28 +90,14 @@ export function useReaderMarks({ textRef, text, ready, bible, bookId, drawn, onM
   const tool = useMarkTool();
   const zoomed = usePageZoomed();
   const { marks: stored, save, ready: storeReady, writable, others, sync } = useBookMarks(owner, bible, bookId);
-  // A stroke starts only when it can be kept: while the book's form cannot write (the device's storage
-  // silent for seconds after an iPad wakes) the reader says to wait instead of showing a stroke it would lose.
-  // A choice the person made in the form's status runs for a moment: no stroke until it has, or the
-  // choice would sweep the stroke away with the draft it replaces.
-  const [deciding, setDeciding] = useState(false);
-  const writableRef = useRef(writable && !deciding);
-  writableRef.current = writable && !deciding;
-  // Why a stroke cannot start: a choice that waits for the person, or the device's storage.
-  const decisionRef = useRef(false);
-  decisionRef.current = deciding || ['conflict', 'refused', 'deleted', 'localFailure', 'blocked'].includes(sync?.status?.phase ?? '');
-  const waitSaid = useRef(0);
+  // A stroke starts only when it can be kept, and the form's status is where a waiting choice is made (`useMarksWriteGate`).
+  const { writableRef, sayWhy, status: syncStatus } = useMarksWriteGate({ writable, sync }, 'mb-3');
   const beginStroke = tool.beginStroke;
-  const sayWhy = useCallback(() => {
-    if (Date.now() - waitSaid.current <= 4_000) return;
-    waitSaid.current = Date.now();
-    toast(t(decisionRef.current ? 'bible.marks.decideFirst' : 'bible.marks.wait'));
-  }, [t]);
   const begin = useCallback((pen: boolean) => {
     if (writableRef.current) return beginStroke(pen);
     sayWhy();
     return null;
-  }, [beginStroke, sayWhy]);
+  }, [beginStroke, sayWhy, writableRef]);
   const marking = canMark && Boolean(owner) && storeReady;
   const order = useMemo(() => (text ? verseOrder(text.chapters, countVerseWords) : null), [text]);
   const painter = useMarkHighlights(textRef, ready && marking, stored, text, drawn);
@@ -132,7 +117,7 @@ export function useReaderMarks({ textRef, text, ready, bible, bookId, drawn, onM
     }
     sayWhy();
     return false;
-  }, [order, painter, save, sayWhy]);
+  }, [order, painter, save, sayWhy, writableRef]);
   // A stroke made in an analysis: kept by this form as a stroke in the text is, put on the trail the same way.
   const markFromAnalysis = useCallback((change: MarksChange, lost: () => void) => {
     if (!writableRef.current) { sayWhy(); return false; }
@@ -141,7 +126,7 @@ export function useReaderMarks({ textRef, text, ready, bible, bookId, drawn, onM
     const [chapter, verse] = first ? first.split(':').map(Number) : [];
     if (chapter && verse) markedRef.current?.(chapter, verse);
     return true;
-  }, [order, save, sayWhy]);
+  }, [order, save, sayWhy, writableRef]);
   const analysisMarks = useMemo<AnalysisMarks | null>(() => (owner && storeReady && order ? { marks: stored, order, mark: markFromAnalysis } : null),
     [markFromAnalysis, order, owner, storeReady, stored]);
   const takeForHold = useMarkStrokes({
@@ -189,13 +174,7 @@ export function useReaderMarks({ textRef, text, ready, bible, bookId, drawn, onM
     penSurface: marking ? '' : undefined,
     textClass: canMark && owner ? `${armed || !zoomed ? '[touch-action:pan-y_pinch-zoom] ' : ''}[-webkit-touch-callout:none]` : '',
     signs,
-    // Refused strokes say so themselves (a toast); the status shows only what waits for a choice.
-    syncStatus: sync ? (
-      <DataSyncStatus subject={sync.recoveryIdentity} status={sync.status} error={sync.state ? null : sync.error} className="mb-3"
-        onRetry={() => sync.retry()}
-        onKeepLocal={() => { setDeciding(true); return sync.keepLocal().finally(() => setDeciding(false)); }}
-        onAcceptRemote={() => { setDeciding(true); return sync.acceptRemote().finally(() => setDeciding(false)); }} />
-    ) : null,
+    syncStatus,
     elsewhere: { at: entries.length ? openAt : null, entries, close: closeElsewhere },
     analysisMarks,
   };

@@ -548,3 +548,13 @@ export const ANALYSIS_RELATION_TONES = {
   lime: { stroke: 'stroke-lime-600 dark:stroke-lime-400', text: 'text-lime-700 dark:text-lime-300', edge: 'border-l-lime-500', tint: 'bg-lime-100 dark:bg-lime-500/20', ring: 'ring-lime-500', swatch: 'bg-lime-500' },
   violet: { stroke: 'stroke-violet-600 dark:stroke-purple-400', text: 'text-violet-700 dark:text-purple-300', edge: 'border-l-violet-500', tint: 'bg-violet-100 dark:bg-violet-500/20', ring: 'ring-violet-500', swatch: 'bg-violet-500' },
 } as const;
+
+/**
+ * A door to another place wears that place's colour on a pale plate: the Bible's indigo as in the menu, analyses' violet as
+ * their tab (the owner chose «бледная заливка», 04.11). The Bible's door was first spelled in the verse sheet's «Открыть в
+ * Библии»; every door to the Bible takes it from here, with the Bible's own sign (`BibleIcon`).
+ */
+export const PLACE_DOOR_TONES = {
+  bible: 'border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 dark:border-indigo-500/40 dark:bg-indigo-950/40 dark:text-indigo-300 dark:hover:bg-indigo-900/50',
+  analyses: 'border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100 dark:border-violet-500/40 dark:bg-violet-950/40 dark:text-violet-300 dark:hover:bg-violet-900/50',
+} as const;

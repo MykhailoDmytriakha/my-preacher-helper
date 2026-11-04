@@ -2,10 +2,12 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import React from 'react';
 
 import '@testing-library/jest-dom';
+import { BibleIcon } from '@/components/bible/BibleIcon';
 import { VerseSheet } from '@/components/bible/VerseSheet';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import { useKeyboardShortcut } from '@hooks/useKeyboardShortcut';
 import { fetchBookText } from '@/utils/bibleText';
+import { PLACE_DOOR_TONES } from '@/utils/themeColors';
 import { verseCount } from '@/utils/versification';
 
 jest.mock('@/utils/bibleText', () => ({ ...jest.requireActual('@/utils/bibleText'), fetchBookText: jest.fn() }));
@@ -32,6 +34,19 @@ describe('VerseSheet — the passage over the screen', () => {
     await waitFor(() => expect(lit(dialog)).toEqual(['1:2', '1:3']));
     expect(within(dialog).getByText('bible.translations.rst.name')).toBeInTheDocument();
     expect(fetchBookText).toHaveBeenCalledWith('Ruth', 'rst');
+  });
+
+  it('opens the passage in the Bible by a door in the Bible\'s colour and sign — one door look for every way into the Bible', async () => {
+    const { container: sign } = render(<BibleIcon />);
+    const bibleSign = sign.querySelector('path')?.getAttribute('d');
+    const openInBible = jest.fn();
+    render(<VerseSheet reference={{ bible: 'rst', book: 'Ruth', chapter: 1, fromVerse: 2, toVerse: 3, label: 'Руфь 1:2–3' }} onClose={jest.fn()} openInBible={openInBible} />);
+    const dialog = await screen.findByRole('dialog', { name: 'Руфь 1:2–3' });
+    const door = within(dialog).getByRole('button', { name: 'bible.sheet.openInBible' });
+    expect(door).toHaveClass(...PLACE_DOOR_TONES.bible.split(' '));
+    expect(door.querySelector('path')?.getAttribute('d')).toBe(bibleSign);
+    fireEvent.click(door);
+    expect(openInBible).toHaveBeenCalledWith(expect.objectContaining({ book: 'Ruth', chapter: 1, fromVerse: 2 }));
   });
 
   it('lights every verse of a chapter named whole', async () => {

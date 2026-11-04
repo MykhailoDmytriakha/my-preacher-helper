@@ -40,7 +40,6 @@ import { markdownPreviewText } from '@/utils/markdownUtils';
 import { getEffectiveIsPreached } from '@/utils/preachDateStatus';
 import { awaitAcceptance, persistedWrite } from '@/utils/recoverableWrite';
 import { formatScriptureReference } from '@/utils/scriptureReference';
-import { inStudies } from '@/utils/studyNoteTabs';
 import { studyNoteOwnName } from '@/utils/studyNoteUtils';
 
 import type { TFunction } from 'i18next';
@@ -789,7 +788,7 @@ function buildDashboardData({
   return {
     activeSermonsCount: activeSermons.length,
     activeSeriesCount: activeSeries.length,
-    studyNotesCount: notes.filter(inStudies).length,
+    studyNotesCount: notes.length,
     upcomingDatesCount: upcomingEvents.length,
     activePrayersCount: activePrayers.length,
     activeGroupsCount: activeGroups.length,
@@ -956,9 +955,12 @@ function buildSeriesItems(series: Series[], sermons: Sermon[], t: TFunction): Se
     });
 }
 
+/** The word a study row carries when the note has no tags of its own: its kind. */
+const STUDY_KIND_TAG: Partial<Record<NonNullable<StudyNote['type']>, string>> = { question: 'questionTag', comment: 'commentTag', analysis: 'analysisTag' };
+
 function buildStudyItems(notes: StudyNote[], t: TFunction, locale: string): StudyItem[] {
-  // A passage's analysis opens in the Bible, not in the note editor this row leads to (case 2026-10-12-block-diagram, 3.4).
-  return notes.filter(inStudies)
+  // A passage's analysis is a row too: its page in Studies opens it in its own screen (`studies/[id]/page.tsx`).
+  return [...notes]
     .sort((a, b) => getTime(b.updatedAt) - getTime(a.updatedAt))
     .slice(0, PANEL_ITEM_POOL)
     .map((note) => ({
@@ -966,7 +968,7 @@ function buildStudyItems(notes: StudyNote[], t: TFunction, locale: string): Stud
       // A comment has no title and its place is its chip below: the row says its first words (the owner, 2026-10-28).
       passage: (note.type === 'comment' && markdownPreviewText(note.content)) || getStudyDisplayTitle(note, t, locale),
       references: getStudyReferences(note, locale).slice(0, 2),
-      tags: (note.tags || []).length > 0 ? note.tags.slice(0, 3) : [note.type === 'question' ? t('dashboardHome.sections.studies.questionTag') : note.type === 'comment' ? t('dashboardHome.sections.studies.commentTag') : t('dashboardHome.sections.studies.noteTag')],
+      tags: (note.tags || []).length > 0 ? note.tags.slice(0, 3) : [t(`dashboardHome.sections.studies.${STUDY_KIND_TAG[note.type ?? 'note'] ?? 'noteTag'}`)],
       href: `/studies/${note.id}`,
       tone: note.type === 'comment' ? 'neutral' as const : 'emerald' as const,
     }));

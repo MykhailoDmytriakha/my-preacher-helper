@@ -408,6 +408,7 @@
     "wayBack": {
       "note": "Note",
       "notes": "Notes",
+      "analysis": "Analysis",
       "plan": "Plan",
       "sermon": "Sermon",
       "group": "Group",
@@ -1029,7 +1030,8 @@
           "tags": "Tags",
           "notes": "Notes",
           "questions": "Questions"
-        }
+        },
+        "analysisTag": "Analysis"
       },
       "groups": {
         "title": "Latest groups",
@@ -3538,7 +3540,8 @@
       "all": "All",
       "notes": "Notes",
       "comments": "Comments",
-      "questions": "Questions"
+      "questions": "Questions",
+      "analyses": "Analyses"
     },
     "type": {
       "note": "Note",
@@ -3794,7 +3797,12 @@
     "removeReference": "Remove reference {{reference}}",
     "removeTag": "Remove tag {{tag}}",
     "loadError": "Could not load the notes.",
-    "loadOffline": "No connection to the server. If the notes were never loaded on this device, they will appear when the connection returns."
+    "loadOffline": "No connection to the server. If the notes were never loaded on this device, they will appear when the connection returns.",
+    "newAnalysis": "New analysis",
+    "newAnalysisHint": "Tap a verse, choose «Analyse the passage» and mark the verses.",
+    "analysesEmptyTitle": "Your analyses will be here",
+    "analysesEmptyHint": "An analysis starts in the Bible: tap a verse, choose «Analyse the passage» and mark the verses. Once made, it shows here and opens right from here.",
+    "analysisNotHere": "This analysis is not in the list on this device — it may not have loaded yet, or it was deleted. Once it appears in the list, open it from there."
   },
   "groupFlow": {
     "title": "Group Flow",
@@ -4513,6 +4521,11 @@
     "verseMenu": "Analyse the passage",
     "title": "Analysis · {{place}}",
     "back": "Back to text",
+    "backToList": "To the list",
+    "door": {
+      "bible": "In the Bible",
+      "analyses": "All analyses"
+    },
     "done": "Done",
     "undo": "Undo",
     "modes": "Analysis mode",

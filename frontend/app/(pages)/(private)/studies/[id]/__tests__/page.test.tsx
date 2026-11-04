@@ -926,3 +926,33 @@ describe('StudyNoteEditorPage — where the outline and properties are reachable
         expect(screen.queryByRole('dialog', { hidden: true })).not.toBeInTheDocument();
     });
 });
+
+describe('an analysis named by its page in Studies', () => {
+    const updateNote = jest.fn();
+    beforeEach(() => {
+        jest.clearAllMocks();
+        window.localStorage.clear();
+        (useRouter as jest.Mock).mockReturnValue(mockRouter);
+        (useParams as jest.Mock).mockReturnValue({ id: 'a1' });
+        (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams());
+        (useStudyNotes as jest.Mock).mockReturnValue({
+            uid: 'user-1',
+            notes: [...mockNotes, { ...createMockNote('a1', 'Разбор · Еф 1:3–14'), type: 'analysis', content: '- Благословен Бог' }],
+            loading: false,
+            createNote: jest.fn(),
+            updateNote,
+            deleteNote: jest.fn(),
+        });
+        (useTags as jest.Mock).mockReturnValue({ tags: { requiredTags: [], customTags: [] } });
+        (useStudyNoteShareLinks as jest.Mock).mockReturnValue({ shareLinks: [], loading: false, deleteShareLink: jest.fn() });
+    });
+
+    it('opens it over the list of analyses, never in the note editor', async () => {
+        // A home row, the calendar, the arrows beside a note lead here; the editor would take its structure for words.
+        render(<StudyNoteEditorPage />);
+        await waitFor(() => expect(mockRouter.replace).toHaveBeenCalledWith('/studies?tab=analyses&analysis=a1&mode=view'));
+        expect(screen.queryByDisplayValue('Разбор · Еф 1:3–14')).not.toBeInTheDocument();
+        expect(screen.queryByText('Разбор · Еф 1:3–14')).not.toBeInTheDocument();
+        expect(updateNote).not.toHaveBeenCalled();
+    });
+});

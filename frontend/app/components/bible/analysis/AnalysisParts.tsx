@@ -3,8 +3,11 @@
 import { ArrowLeftIcon, ArrowUturnLeftIcon, ChevronLeftIcon, ChevronRightIcon, PencilSquareIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { useTranslation } from 'react-i18next';
 
+import { BibleIcon } from '@/components/bible/BibleIcon';
+import { AnalysisIcon } from '@/components/Icons';
 import Switch from '@/components/ui/Switch';
 import { withModifier } from '@/utils/keyboardModifier';
+import { PLACE_DOOR_TONES } from '@/utils/themeColors';
 
 import type { AnalysisWord, CutLevel } from '@/utils/passageAnalysis';
 import type { PointerEvent, ReactNode } from 'react';
@@ -25,9 +28,21 @@ const RING: Record<LineRole, string> = {
   plain: '',
 };
 
+/**
+ * THE DOOR TO AN ANALYSIS'S OTHER HOME (the owner, 03.11: «перекрёстки»), beside its way back: opened in Studies, its
+ * passage in the Bible (`bible`); opened in the Bible, the list of all analyses (`analyses`). `href` — the address there for
+ * the note the screen holds at the press (none yet for an untouched new one), or null when there is nowhere to go.
+ */
+export type AnalysisDoor = { home: 'bible' | 'analyses'; href: (id: string | null) => string | null };
+
 /** The bar over the analysis: back to the text, the place and how many parts, «Правка»/«Просмотр», the marks' tools, undo, done. */
-export function AnalysisHeader({ title, parts, mode, onMode, canUndo, onUndo, onClose, onEditVerses, tools, allLinks, sermons }: {
+export function AnalysisHeader({ title, parts, mode, onMode, canUndo, onUndo, onClose, backLabel, door, onEditVerses, tools, allLinks, sermons }: {
   title: string; parts: string; mode: AnalysisMode; onMode: (mode: AnalysisMode) => void; canUndo: boolean; onUndo: () => void; onClose: () => void;
+  /** Where the way back leads, in words: the reader's text by default; Studies' list when opened there. */
+  backLabel?: string;
+  /** Right after the way back, the door to the analysis's other home. On a phone's narrow bar it is its icon alone: its name
+   *  there pushed the analysis's title onto a row of its own, +48–52 px over the text (measured 03.11, five analyses). */
+  door?: { home: AnalysisDoor['home']; onPress: () => void } | null;
   /** In «Просмотр», with links of meaning to show: the switch that draws all their arrows at once (the owner, 30.10). Null —
    *  it does not act now, and its room is kept empty. */
   allLinks?: { on: boolean; onToggle: () => void } | null;
@@ -42,8 +57,14 @@ export function AnalysisHeader({ title, parts, mode, onMode, canUndo, onUndo, on
   return (
     <header className="flex shrink-0 flex-wrap items-center gap-3 border-b border-gray-200 px-4 py-2.5 dark:border-gray-800 sm:px-5">
       <button type="button" onClick={onClose} className={`inline-flex h-10 items-center gap-1.5 rounded-xl px-3 text-sm font-semibold ${OUTLINE}`}>
-        <ArrowLeftIcon className="h-4 w-4" aria-hidden="true" />{t('analysis.back')}
+        <ArrowLeftIcon className="h-4 w-4" aria-hidden="true" />{backLabel ?? t('analysis.back')}
       </button>
+      {door ? (
+        <button type="button" onClick={door.onPress} aria-label={t(`analysis.door.${door.home}`)} className={`inline-flex h-10 items-center gap-1.5 rounded-xl border px-3 text-sm font-semibold transition ${PLACE_DOOR_TONES[door.home]}`}>
+          {door.home === 'bible' ? <BibleIcon className="h-4 w-4" aria-hidden="true" /> : <AnalysisIcon className="h-4 w-4" aria-hidden="true" />}
+          <span className="hidden sm:inline">{t(`analysis.door.${door.home}`)}</span>
+        </button>
+      ) : null}
       {onEditVerses ? (
         <button type="button" onClick={onEditVerses} aria-label={t('analysis.editVerses')} className="group/tip relative min-w-0 rounded-lg px-1 text-left hover:bg-gray-100 dark:hover:bg-gray-900">
           <span className="flex items-center gap-1.5 truncate text-base font-bold">{title}<PencilSquareIcon className="h-4 w-4 shrink-0 text-gray-400" aria-hidden="true" /></span>

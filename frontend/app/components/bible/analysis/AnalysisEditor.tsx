@@ -1,7 +1,7 @@
 'use client';
 
 import { ChevronDownIcon } from '@heroicons/react/20/solid';
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent, type PointerEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent, type PointerEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 
@@ -16,14 +16,14 @@ import { passageCopyText } from '@/utils/verseCopy';
 
 import { useCopyNames } from '../verseCopy/useVerseCopy';
 
-import { writeAnalysisAddress } from './analysisAddress';
 import { arrowNear, dragArrow, fromLine, tieArrows, useGeometry, type Arrow } from './analysisGeometry';
 import { saveAnalysisHelpPrefs, useAnalysisHelpPrefs, useAnalysisHelpWritable } from './analysisHelpPrefs';
 import {
-  ARROW, AnalysisHeader, AnalysisLine, PanelGlyph, UntieMark, type AnalysisMode, type LineDrag, type LineRole, type LineSteps, type LineWord, type WordDrag,
+  ARROW, AnalysisHeader, AnalysisLine, PanelGlyph, UntieMark, type AnalysisDoor, type AnalysisMode, type LineDrag, type LineRole, type LineSteps, type LineWord, type WordDrag,
 } from './AnalysisParts';
 import { AnalysisSermons, AnalysisSermonsPanel } from './AnalysisSermons';
 import { RelationGlyph } from './RelationParts';
+import { useAnalysisAddress } from './useAnalysisAddress';
 import { useAnalysisMarks, type AnalysisMarks } from './useAnalysisMarks';
 import { useAnalysisNote, type AnalysisOpening } from './useAnalysisNote';
 import { useAnalysisRelations } from './useAnalysisRelations';
@@ -46,6 +46,18 @@ type Message = { text: string; warn: boolean } | null;
 /** The mode it opens in: «Просмотр» when reopened there from the address, cuts or not (Codex, 30.10); else «Правка». */
 const firstMode = (opening: AnalysisOpening): AnalysisMode => (opening.kind === 'open' && opening.editing === false ? 'view' : 'edit');
 
+/** The door in the bar: the other home's address asked at the press, for the note held then, its work kept first. */
+function barDoor(door: AnalysisDoor | undefined, onOpenScreen: ((href: string) => void) | undefined, note: { noteId: () => string | null; flush: () => void }) {
+  if (!door || !onOpenScreen) return null;
+  const onPress = () => {
+    const href = door.href(note.noteId());
+    if (!href) return;
+    note.flush();
+    onOpenScreen(href);
+  };
+  return { home: door.home, onPress };
+}
+
 /** How each part stands in «Просмотр»: the chosen one, the way up from it, what hangs on it; in «Правка» all as they are. */
 function roleOf(state: AnalysisState, mode: AnalysisMode, selected: number | null, start: number): LineRole {
   if (mode === 'edit' || selected === null) return 'plain';
@@ -64,12 +76,18 @@ function roleOf(state: AnalysisState, mode: AnalysisMode, selected: number | nul
  * In both the reader's marker, pencil and eraser paint the words (`useAnalysisMarks`). An analysis that exists opens for
  * viewing, a new one for editing. The rules are `utils/passageAnalysis.ts`; the note behind it is `useAnalysisNote`.
  */
-export function AnalysisEditor({ opening, text, bookId, bible, locale, marks: lentMarks, onClose, onEditVerses, onOpenScreen }: {
+export function AnalysisEditor({ opening, text, bookId, bible, locale, marks: lentMarks, marksStatus, onClose, backLabel, door, onEditVerses, onOpenScreen }: {
   opening: AnalysisOpening; text: BookText; bookId: string; bible: BibleId; locale: AppLocale; onClose: () => void;
+  /** The way back's words when it leads elsewhere than the reader's text (Studies' list). */
+  backLabel?: string;
+  /** The door to the analysis's other home, taken by `onOpenScreen`, its work kept first. */
+  door?: AnalysisDoor;
   /** Another screen of the app opened from here (a sermon made from this analysis), the reader's way. */
   onOpenScreen?: (href: string) => void;
   /** The reader's marks of this book, or nothing (signed out, or not read yet). */
   marks?: AnalysisMarks | null;
+  /** The book's marks' notice when no reader stands beside the analysis to show it (Studies) — also while marks cannot open. */
+  marksStatus?: ReactNode;
   /** Its verses chosen again in the reader: the note it is kept in (none yet for an untouched new one) and its passage. */
   onEditVerses?: (id: string | null, passage: PickedPassage) => void;
 }) {
@@ -110,7 +128,7 @@ export function AnalysisEditor({ opening, text, bookId, bible, locale, marks: le
   const layer = useModalLayer({ onClose: escape });
   const undo = () => { note.undo(); setMessage(null); };
   useUndoShortcut(mode === 'edit', undo, contentRef);
-  useAnalysisAddress(note.id, mode, note.missing, onClose);
+  useAnalysisAddress({ opening, id: note.id, mode, gone: note.missing, onGone: onClose, onBack: close });
 
   // A mark over a word: ↵ — a new line on the same step as the line it is cut from, ↳ — one step under it.
   const cutWord = (word: number, level: CutLevel) => { const next = cutAt(state, word, total, level); if (next) change(next); };
@@ -247,12 +265,13 @@ export function AnalysisEditor({ opening, text, bookId, bible, locale, marks: le
     noteId: analysisId, place, verse: note.passage ? passageCopyText(text.chapters, note.passage, copyNames) : '',
     onOpen: (href: string) => { note.flush(); onOpenScreen(href); },
   } : null;
+  const doorOut = barDoor(door, onOpenScreen, note);
 
   return createPortal(
     <div {...layer} role="dialog" aria-modal="true" aria-label={title} className="fixed inset-0 z-[120] flex flex-col bg-white text-gray-900 dark:bg-gray-950 dark:text-gray-100">
       <AnalysisHeader title={title} parts={t('analysis.partCount', { count: starts.length })} mode={mode}
         onMode={(value) => { setMode(value); setSelected(null); setMessage(null); }}
-        canUndo={note.canUndo} onUndo={undo} onClose={close} tools={marks.toolbar}
+        canUndo={note.canUndo} onUndo={undo} onClose={close} backLabel={backLabel} door={doorOut} tools={marks.toolbar}
         allLinks={mode === 'view' && state.relations.length ? { on: allLinks, onToggle: () => setAllLinks(!allLinks) } : null}
         onEditVerses={onEditVerses && note.passage ? () => { note.flush(); onEditVerses(note.noteId(), note.passage!); } : undefined}
         // On a screen without the side panel the sermons stand by the name; with it, in the panel (the owner, 31.10).
@@ -263,6 +282,7 @@ export function AnalysisEditor({ opening, text, bookId, bible, locale, marks: le
         <div className={`min-w-0 flex-1 overflow-auto px-4 pb-24 pt-10 sm:pl-20 sm:pr-12 ${marks.paneClass}`}
           onClick={pressBackground} onMouseMove={pointArrows} onMouseLeave={overArrowOff} {...marks.strokeEvents}>
           <AnalysisNotices ready={note.ready} changedText={note.changedText} sync={note.sync} refused={note.refused} onSaveAgain={note.saveAgain} />
+          {marksStatus}
           <div ref={contentRef} className="relative">
             {arrows.map((arrow) => (
               <svg key={arrow.key} data-arrow={arrow.key} aria-hidden="true" width={geometry.width || 1} height={geometry.height || 1} className="pointer-events-none absolute left-0 top-0 overflow-visible">
@@ -296,17 +316,6 @@ export function AnalysisEditor({ opening, text, bookId, bible, locale, marks: le
     </div>,
     document.body,
   );
-}
-
-/**
- * The open analysis in the page's address while its note exists, in its mode, gone from it when the screen closes
- * (`analysisAddress.ts`). An analysis on no copy this device can reach (`gone`) closes the screen; one deleted elsewhere
- * with work still here stays, and the note's status asks what to keep.
- */
-function useAnalysisAddress(id: string | null, mode: AnalysisMode, gone: boolean, onClose: () => void) {
-  useEffect(() => { if (id) writeAnalysisAddress({ id, mode }); }, [id, mode]);
-  useEffect(() => () => writeAnalysisAddress(null), []);
-  useEffect(() => { if (gone) onClose(); }, [gone, onClose]);
 }
 
 /**

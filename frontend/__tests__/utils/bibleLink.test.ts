@@ -237,6 +237,10 @@ describe('the way back', () => {
     expect(wayBackKind('/studies/n1')).toBe('note');
     expect(wayBackKind('/studies?tag=hope')).toBe('notes');
     expect(wayBackKind('/studies')).toBe('notes');
+    // An analysis open over Studies' list, left for its passage by «В Библии» (the owner, 03.11): the way back is to it.
+    expect(wayBackKind('/studies?tab=analyses&analysis=a1&mode=view')).toBe('analysis');
+    expect(wayBackKind('/studies?analysis=a1')).toBe('analysis');
+    expect(wayBackKind('/studies?tab=analyses')).toBe('notes');
     expect(wayBackKind('/sermons/s1')).toBe('sermon');
     expect(wayBackKind('/sermons/s1/plan')).toBe('plan');
     expect(wayBackKind('/sermons/s1/plan/manual')).toBe('plan');

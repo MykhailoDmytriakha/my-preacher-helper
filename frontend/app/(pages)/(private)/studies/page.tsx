@@ -1,7 +1,6 @@
 'use client';
 
 import {
-  BookOpenIcon,
   ChevronDownIcon,
   ChevronUpIcon,
   ClipboardDocumentListIcon,
@@ -16,13 +15,16 @@ import { useRouter } from 'next/navigation';
 import { useQueryState } from 'nuqs';
 import { useDeferredValue, useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
+import { toast } from 'sonner';
 import '@locales/i18n';
 
+import { BibleIcon } from '@/components/bible/BibleIcon';
 import { ScriptureWrittenIn } from '@/components/bible/ScriptureLinks';
 import { ScriptureLinksInWindow } from '@/components/bible/VerseWindow';
 import { CommentDialog, type CommentTarget } from '@/components/CommentDialog';
 import { CommentIcon } from '@/components/Icons';
 import Select from '@/components/ui/Select';
+import { useSlidingRow } from '@/hooks/useSlidingRow';
 import { useStudyNotes } from '@/hooks/useStudyNotes';
 import { useStudyNoteShareLinks } from '@/hooks/useStudyNoteShareLinks';
 import { useTags } from '@/hooks/useTags';
@@ -33,26 +35,28 @@ import { newClientId } from '@/utils/clientId';
 import { isKnownOffline } from '@/utils/connectivity';
 import { studyNoteLanguage } from '@/utils/documentLanguage';
 import { formatScriptureReference, scriptureReferenceSearchText, studyNoteSearchText } from '@/utils/scriptureReference';
-import { inStudies, inStudyNoteTab, STUDY_NOTE_TABS, type StudyNoteTab } from '@/utils/studyNoteTabs';
+import { inStudyNoteTab, STUDY_NOTE_TABS, type StudyNoteTab } from '@/utils/studyNoteTabs';
 
 import { CommentCard } from './CommentCard';
 import ShareNoteModal from './components/ShareNoteModal';
 import ScriptureRefPicker from './ScriptureRefPicker';
+import { AnalysesInvitation, StudyAnalysisWindow, useListArrival, useStudyAnalysisOpening } from './StudyAnalysisWindow';
 import StudyNoteCard from './StudyNoteCard';
 
 import type { AppLocale } from '@/utils/appLocale';
+
+/** The main button's word in a tab that makes something else than a note. */
+const ADD_BUTTON_WORD: Partial<Record<StudyNoteTab, string>> = { comments: 'newComment', analyses: 'newAnalysis' };
 
 export default function StudiesPage() {
   const { t, i18n } = useTranslation();
   const router = useRouter();
   const {
     uid,
-    notes: allNotes,
+    notes,
     loading: notesLoading,
     error: notesError,
   } = useStudyNotes();
-  // What stands in Studies: every list, count, tag and book below is read from these.
-  const notes = useMemo(() => allNotes.filter(inStudies), [allNotes]);
   const {
     shareLinks,
     loading: shareLinksLoading,
@@ -109,6 +113,7 @@ export default function StudiesPage() {
     notes: notes.filter(n => inStudyNoteTab(n, 'notes')).length,
     comments: notes.filter(n => inStudyNoteTab(n, 'comments')).length,
     questions: notes.filter(n => inStudyNoteTab(n, 'questions')).length,
+    analyses: notes.filter(n => inStudyNoteTab(n, 'analyses')).length,
   }), [notes]);
 
   const shareLinksByNoteId = useMemo(
@@ -119,6 +124,19 @@ export default function StudiesPage() {
   const [shareNote, setShareNote] = useState<StudyNote | null>(null);
   // A comment opens in its window, edited only there; a new one chooses its verse or chapter first.
   const [commentWindow, setCommentWindow] = useState<{ kind: 'edit'; id: string } | { kind: 'new'; reference: ScriptureReference | null; choosing?: boolean } | null>(null);
+
+  // A passage's analysis opens over the list in the Bible's own analysis screen (`StudyAnalysisWindow`); any other note
+  // on its page.
+  const analysis = useStudyAnalysisOpening(notes, notesLoading);
+  // Opened at an analysis from the Bible («Все разборы»): its card in sight, lit for a moment.
+  const arrivedAt = useListArrival(notes);
+  // The tab the list is on stands in view: on a phone the row is wider than the screen, and opened on «Разборы» it
+  // showed the first three tabs and none lit. The counts arrive after the tabs and widen them, so they move it too.
+  const tabRow = useSlidingRow<HTMLDivElement>('[aria-current="true"]', `${activeTab}:${Object.values(noteCounts).join(',')}`);
+  const openAnalysis = analysis.open;
+  const openNote = useCallback((note: StudyNote, editing: boolean) => (
+    note.type === 'analysis' ? openAnalysis(note, editing) : router.push(`/studies/${note.id}${window.location.search}`)
+  ), [openAnalysis, router]);
 
   // Expand state
   const [expandedNoteIds, setExpandedNoteIds] = useState<Set<string>>(new Set());
@@ -258,6 +276,12 @@ export default function StudiesPage() {
       setCommentWindow({ kind: 'new', reference: null });
       return;
     }
+    // An analysis starts on the Bible's text, its verses chosen there — said on the way, for the Bible says nothing of it.
+    if (activeTab === 'analyses') {
+      toast(t('studiesWorkspace.newAnalysisHint'));
+      router.push('/bible');
+      return;
+    }
     router.push('/studies/new');
   };
 
@@ -279,8 +303,10 @@ export default function StudiesPage() {
           note={note}
           bibleLocale={bibleLocale}
           isExpanded={expandedNoteIds.has(note.id)}
+          isLit={arrivedAt === note.id}
           onToggleExpand={handleToggleNoteExpanded}
-          onEdit={(n) => router.push(`/studies/${n.id}${window.location.search}`)}
+          onEdit={(n) => openNote(n, true)}
+          onOpen={(n) => openNote(n, false)}
           searchQuery={searchQuery}
           onShare={handleShareNote}
           hasShareLink={shareLinksByNoteId.has(note.id)}
@@ -288,7 +314,7 @@ export default function StudiesPage() {
         )}
         </ScriptureWrittenIn>
       )),
-    [visibleNotes, bibleLocale, expandedNoteIds, handleToggleNoteExpanded, router, searchQuery, handleShareNote, shareLinksByNoteId]
+    [visibleNotes, bibleLocale, expandedNoteIds, arrivedAt, handleToggleNoteExpanded, openNote, searchQuery, handleShareNote, shareLinksByNoteId]
   );
 
   const clearFilters = () => {
@@ -333,7 +359,7 @@ export default function StudiesPage() {
               className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 sm:w-auto"
             >
               <PlusIcon className="h-4 w-4" />
-              {activeTab === 'comments' ? t('studiesWorkspace.newComment') : t('studiesWorkspace.newNote')}
+              {t(`studiesWorkspace.${ADD_BUTTON_WORD[activeTab] ?? 'newNote'}`)}
             </button>
           </div>
         </div>
@@ -350,7 +376,7 @@ export default function StudiesPage() {
             <>
               <span className="text-gray-300 dark:text-gray-600">•</span>
               <div className="flex items-center gap-2">
-                <BookOpenIcon className="h-4 w-4" />
+                <BibleIcon className="h-4 w-4" aria-hidden="true" />
                 <span>{Object.keys(stats.booksCount).length} {t('studiesWorkspace.stats.booksLabel', { count: Object.keys(stats.booksCount).length })}</span>
               </div>
             </>
@@ -359,39 +385,43 @@ export default function StudiesPage() {
       </header>
 
       {/* Type Tabs */}
-      {/* Four tabs fit a computer; on a narrow phone the row slides under the finger rather than clip a word. */}
-      <div className="-mx-4 flex overflow-x-auto border-b border-gray-200 px-4 dark:border-gray-700 sm:mx-0 sm:px-0">
-        {STUDY_NOTE_TABS.map((tab) => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={`relative shrink-0 whitespace-nowrap px-3 py-2.5 text-sm font-medium transition-colors sm:px-4
-              ${activeTab === tab
-                ? 'text-emerald-600 dark:text-emerald-400'
-                : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
-              }`}
-          >
-            {t(`studiesWorkspace.tabs.${tab}`)}
-            {/* Show count in parentheses for non-question tabs */}
-            {tab !== 'questions' && (
-              <span className={`ml-1.5 ${activeTab === tab ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-400 dark:text-gray-500'}`}>
-                ({noteCounts[tab]})
-              </span>
-            )}
+      {/* Five tabs fit a computer; on a narrow phone the row slides under the finger rather than clip a word. */}
+      {/* The row scrolls inside its frame, so the frame's line under the tabs never fades with the row's ends. */}
+      <div className="-mx-4 border-b border-gray-200 dark:border-gray-700 sm:mx-0">
+        <div ref={tabRow.rowRef} className={`relative flex overflow-x-auto px-4 sm:px-0 ${tabRow.fade}`}>
+          {STUDY_NOTE_TABS.map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              aria-current={activeTab === tab ? 'true' : undefined}
+              className={`relative shrink-0 whitespace-nowrap px-3 py-2.5 text-sm font-medium transition-colors sm:px-4
+                ${activeTab === tab
+                  ? 'text-emerald-600 dark:text-emerald-400'
+                  : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
+                }`}
+            >
+              {t(`studiesWorkspace.tabs.${tab}`)}
+              {/* Show count in parentheses for non-question tabs */}
+              {tab !== 'questions' && (
+                <span className={`ml-1.5 ${activeTab === tab ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-400 dark:text-gray-500'}`}>
+                  ({noteCounts[tab]})
+                </span>
+              )}
 
-            {/* Active tab indicator */}
-            {activeTab === tab && (
-              <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-emerald-500" />
-            )}
+              {/* Active tab indicator */}
+              {activeTab === tab && (
+                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-emerald-500" />
+              )}
 
-            {/* Amber badge for questions (always show if > 0, replaces parentheses count) */}
-            {tab === 'questions' && noteCounts.questions > 0 && (
-              <span className="ml-1.5 inline-flex items-center justify-center rounded-full bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
-                {noteCounts.questions}
-              </span>
-            )}
-          </button>
-        ))}
+              {/* Amber badge for questions (always show if > 0, replaces parentheses count) */}
+              {tab === 'questions' && noteCounts.questions > 0 && (
+                <span className="ml-1.5 inline-flex items-center justify-center rounded-full bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
+                  {noteCounts.questions}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Search and Filters */}
@@ -537,10 +567,12 @@ export default function StudiesPage() {
           <p className="mt-1 text-base font-semibold text-gray-900 dark:text-gray-100">{t('studiesWorkspace.commentsEmptyTitle')}</p>
           <p className="max-w-md text-sm leading-relaxed text-gray-600 dark:text-gray-400">{t('studiesWorkspace.commentsEmptyHint')}</p>
           <Link href="/bible" className="mt-2 inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">
-            <BookOpenIcon className="h-4 w-4" />
+            <BibleIcon className="h-4 w-4" aria-hidden="true" />
             {t('studiesWorkspace.openBible')}
           </Link>
         </div>
+      ) : visibleNotes.length === 0 && activeTab === 'analyses' && !hasActiveFilters ? (
+        <AnalysesInvitation />
       ) : visibleNotes.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-gray-300 bg-gray-50 py-12 dark:border-gray-700 dark:bg-gray-900">
           <ClipboardDocumentListIcon className="h-12 w-12 text-gray-400 dark:text-gray-600" />
@@ -598,6 +630,10 @@ export default function StudiesPage() {
           />
         );
       })() : null}
+
+      {analysis.opened ? (
+        <StudyAnalysisWindow key={analysis.opened.note.id} note={analysis.opened.note} editing={analysis.opened.editing} onClose={analysis.close} />
+      ) : null}
 
       <ShareNoteModal
         isOpen={shareNote !== null}

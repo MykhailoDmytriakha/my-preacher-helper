@@ -1,12 +1,14 @@
 'use client';
 
-import { ArrowLeftIcon, ArrowPathIcon, CheckCircleIcon, SparklesIcon, TagIcon, BookmarkIcon, PlusIcon, BookOpenIcon, ChevronDownIcon, ListBulletIcon, ChevronLeftIcon, ChevronRightIcon, MagnifyingGlassIcon, QuestionMarkCircleIcon, PencilIcon, TrashIcon, CheckIcon, EllipsisVerticalIcon, DocumentDuplicateIcon } from '@heroicons/react/24/outline';
+import { ArrowLeftIcon, ArrowPathIcon, CheckCircleIcon, SparklesIcon, TagIcon, BookmarkIcon, PlusIcon, ChevronDownIcon, ListBulletIcon, ChevronLeftIcon, ChevronRightIcon, MagnifyingGlassIcon, QuestionMarkCircleIcon, PencilIcon, TrashIcon, CheckIcon, EllipsisVerticalIcon, DocumentDuplicateIcon } from '@heroicons/react/24/outline';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useState, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import RecordingDraftBanner from '@/components/audio-recorder/RecordingDraftBanner';
+import { withAnalysisAddress } from '@/components/bible/analysis/analysisAddress';
+import { BibleIcon } from '@/components/bible/BibleIcon';
 import { ScriptureLinks } from '@/components/bible/ScriptureLinks';
 import { ScripturePreviewSheet } from '@/components/bible/ScripturePreviewSheet';
 import { CommentDialog } from '@/components/CommentDialog';
@@ -778,7 +780,24 @@ function NoteCommentWindow({ open, note, locale, onClose, onErased }: { open: bo
     return <CommentDialog target={{ kind: 'edit', id: note.id }} place={reference ? formatScriptureReference(reference, { locale }) : ''} onClose={onClose} onErased={onErased} />;
 }
 
-export default function StudyNoteEditorPage() {
+/**
+ * A STUDY NOTE'S PAGE — or, for a passage's analysis, the way to its screen in Studies: every door that names an
+ * analysis's page (a row of the home page, the calendar, the list and arrows beside a note, an old link) opens it over the
+ * list of analyses (`StudyAnalysisWindow`, via the address), never in the note editor, which would take the analysis's
+ * structure for a note's words and could write them back as such.
+ */
+export default function StudyNotePage() {
+    const router = useRouter();
+    const routeId = useRouteId();
+    const { notes } = useStudyNotes();
+    const analysisId = notes.some((note) => note.id === routeId && note.type === 'analysis') ? routeId : null;
+    useEffect(() => {
+        if (analysisId) router.replace(withAnalysisAddress('/studies?tab=analyses', { id: analysisId, mode: 'view' }));
+    }, [analysisId, router]);
+    return analysisId ? null : <StudyNoteEditorPage />;
+}
+
+function StudyNoteEditorPage() {
     const { t } = useTranslation();
     const router = useRouter();
     const routeId = useRouteId();
@@ -1198,7 +1217,7 @@ export default function StudyNoteEditorPage() {
                                     className="p-1.5 text-gray-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-md transition-colors dark:text-gray-400 dark:hover:bg-gray-800"
                                     title={t('studiesWorkspace.browseBooks')}
                                 >
-                                    <BookOpenIcon className="h-5 w-5" />
+                                    <BibleIcon className="h-5 w-5" aria-hidden="true" />
                                 </button>
                             </div>
                         )}

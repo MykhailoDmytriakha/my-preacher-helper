@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react';
 import React from 'react';
 
 import '@testing-library/jest-dom';
+import { BibleIcon } from '@/components/bible/BibleIcon';
 import SettingsNav from '@components/settings/SettingsNav';
 
 jest.mock('react-i18next', () => ({
@@ -30,6 +31,13 @@ describe('SettingsNav', () => {
     expect(screen.getByRole('link', { name: 'settings.manageTags' })).toHaveAttribute('href', '/settings/tags');
     expect(screen.getByRole('link', { name: 'settings.planTemplates' })).toHaveAttribute('href', '/settings/templates');
     expect(screen.getByRole('link', { name: 'settings.nav.bible' })).toHaveAttribute('href', '/settings/bible');
+  });
+
+  it('marks the Bible section with the Bible\'s own sign — the open book is a sermon\'s (the owner, 04.11)', () => {
+    const { container: sign } = render(<BibleIcon />);
+    const bibleSign = sign.querySelector('path')?.getAttribute('d');
+    render(<SettingsNav activeSection="user" />);
+    expect(screen.getByRole('link', { name: 'settings.nav.bible' }).querySelector('path')?.getAttribute('d')).toBe(bibleSign);
   });
 
   it.each([

@@ -1,11 +1,12 @@
 "use client";
 
-import { XMarkIcon, CalendarIcon, MapPinIcon, BookOpenIcon } from "@heroicons/react/24/outline";
+import { XMarkIcon, CalendarIcon, MapPinIcon } from "@heroicons/react/24/outline";
 import { isValid, parseISO } from "date-fns";
 import Link from "next/link";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 
+import { BibleIcon } from '@/components/bible/BibleIcon';
 import { MonthlyPreachEntry } from "@/components/calendar/calendarAnalytics";
 import { useAppLocale } from '@/hooks/useAppLocale';
 import { useModalLayer } from '@/hooks/useModalLayer';
@@ -105,7 +106,7 @@ export default function MonthlySermonsModal({
 
                                         {sermon.verse && (
                                             <div className="mt-2 flex items-start gap-2 text-sm text-gray-600 dark:text-gray-300">
-                                                <BookOpenIcon className="w-4 h-4 mt-0.5 text-purple-500" />
+                                                <BibleIcon className="w-4 h-4 mt-0.5 shrink-0 text-purple-500" aria-hidden="true" />
                                                 <span className="break-words whitespace-pre-line flex-1">
                                                     {sermon.verse}
                                                 </span>

@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { useStudyNoteShareLinks } from '@/hooks/useStudyNoteShareLinks';
@@ -9,10 +9,16 @@ import { __resetConnectivityForTests, getConnectivityStatus, reportServerReachab
 
 import StudiesPage from '../page';
 import { formatScriptureReference } from '@/utils/scriptureReference';
+import { toast } from 'sonner';
 
+const mockPush = jest.fn();
+jest.mock('sonner', () => ({
+  ...jest.requireActual('sonner'),
+  toast: Object.assign(jest.fn(), { error: jest.fn(), success: jest.fn(), info: jest.fn(), warning: jest.fn(), message: jest.fn() }),
+}));
 jest.mock('next/navigation', () => ({
   useRouter: () => ({
-    push: jest.fn(),
+    push: mockPush,
     refresh: jest.fn(),
     back: jest.fn(),
     replace: jest.fn(),
@@ -61,6 +67,15 @@ jest.mock('@/components/CommentDialog', () => ({
     <div data-testid="comment-window">
       <p data-testid="comment-place">{target.kind === 'new' && target.reference ? `${target.reference.book} ${target.reference.chapter}` : 'none'}</p>
       {placePicker?.({ requestClose: () => undefined })}
+    </div>
+  ),
+}));
+// The analysis's own screen has its suite (the analysis editor's); here only what the list hands it matters.
+jest.mock('../StudyAnalysisWindow', () => ({
+  ...jest.requireActual('../StudyAnalysisWindow'),
+  StudyAnalysisWindow: ({ note, editing, onClose }: { note: { id: string }; editing: boolean; onClose: () => void }) => (
+    <div data-testid="analysis-window" data-id={note.id} data-editing={String(editing)}>
+      <button type="button" onClick={onClose}>close-analysis</button>
     </div>
   ),
 }));
@@ -122,6 +137,8 @@ const baseUseStudyNoteShareLinksValue = (): ReturnType<typeof useStudyNoteShareL
 
 describe('StudiesPage', () => {
   beforeEach(() => {
+    mockPush.mockClear();
+    (toast as unknown as jest.Mock).mockClear();
     for (const key of Object.keys(mockQueryState)) delete mockQueryState[key];
     mockUseStudyNotes.mockReturnValue(baseUseStudyNotesValue());
     mockUseStudyNoteShareLinks.mockReturnValue(baseUseStudyNoteShareLinksValue());
@@ -271,16 +288,243 @@ describe('StudiesPage', () => {
       expect(questionsTab).toHaveTextContent('1');
     });
 
-    it('counts in «Все» only what it shows: a passage analysis stands in no tab and in no count', () => {
-      // Codex, 30.10: «Все» said (3) over the one note beside two analyses.
+    it('counts analyses in their own tab «Разборы» and in «Все», never in «Заметки»', () => {
+      // The owner, 02.11: «Изучение, вкладка „Разборы“»; Codex, 30.10: «Все» counts what it shows.
       mockUseStudyNotes.mockReturnValue({
         ...baseUseStudyNotesValue(),
         notes: [createMockNote({ id: '1', type: 'note' }), createMockNote({ id: 'a1', type: 'analysis' }), createMockNote({ id: 'a2', type: 'analysis' })],
       });
       render(<StudiesPage />);
-      const allTab = screen.getByRole('button', { name: /studiesWorkspace\.tabs\.all/i });
-      expect(allTab).toHaveTextContent('(1)');
-      expect(screen.queryByText('(3)')).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /studiesWorkspace\.tabs\.all/i })).toHaveTextContent('(3)');
+      expect(screen.getByRole('button', { name: /studiesWorkspace\.tabs\.analyses/i })).toHaveTextContent('(2)');
+      expect(screen.getByRole('button', { name: /studiesWorkspace\.tabs\.notes/i })).toHaveTextContent('(1)');
+    });
+
+    it('opens an analysis over the list in its own screen, for reading; closed, the list stands as it was', async () => {
+      mockUseStudyNotes.mockReturnValue({
+        ...baseUseStudyNotesValue(),
+        notes: [createMockNote({ id: '1', title: 'Обычная заметка', type: 'note' }), createMockNote({ id: 'a1', title: 'Разбор · Еф 1:3–14', type: 'analysis' })],
+      });
+      render(<StudiesPage />);
+      await userEvent.click(screen.getByRole('button', { name: /studiesWorkspace\.tabs\.analyses/i }));
+      expect(screen.queryByText('Обычная заметка')).not.toBeInTheDocument();
+      await userEvent.click(screen.getByText('Разбор · Еф 1:3–14'));
+      const window = screen.getByTestId('analysis-window');
+      expect(window).toHaveAttribute('data-id', 'a1');
+      expect(window).toHaveAttribute('data-editing', 'false');
+      expect(mockPush).not.toHaveBeenCalled();
+      await userEvent.click(screen.getByText('close-analysis'));
+      expect(screen.queryByTestId('analysis-window')).not.toBeInTheDocument();
+      expect(screen.getByText('Разбор · Еф 1:3–14')).toBeInTheDocument();
+    });
+
+    it('offers no share link for an analysis: a share page shows a note\'s words', () => {
+      mockUseStudyNotes.mockReturnValue({
+        ...baseUseStudyNotesValue(),
+        notes: [createMockNote({ id: 'a1', title: 'Разбор · Еф 1:3–14', type: 'analysis' }), createMockNote({ id: '1', title: 'Обычная заметка', type: 'note' })],
+      });
+      render(<StudiesPage />);
+      const card = (title: string) => screen.getByText(title).closest('article') as HTMLElement;
+      expect(within(card('Обычная заметка')).getByRole('button', { name: 'studiesWorkspace.shareLinks.shareButton' })).toBeInTheDocument();
+      expect(within(card('Разбор · Еф 1:3–14')).queryByRole('button', { name: 'studiesWorkspace.shareLinks.shareButton' })).not.toBeInTheDocument();
+    });
+
+    it('opens the analysis the address names again after a reload, in the mode it was in', () => {
+      window.history.replaceState(null, '', '/studies?tab=analyses&analysis=a1&mode=edit');
+      try {
+        mockUseStudyNotes.mockReturnValue({
+          ...baseUseStudyNotesValue(),
+          notes: [createMockNote({ id: 'a1', title: 'Разбор · Еф 1:3–14', type: 'analysis' })],
+        });
+        render(<StudiesPage />);
+        expect(screen.getByTestId('analysis-window')).toHaveAttribute('data-editing', 'true');
+      } finally {
+        window.history.replaceState(null, '', '/');
+      }
+    });
+
+    it('says an analysis the address names that this device does not hold, forgets it, and never opens it later', () => {
+      // Codex, 02.11, two rounds: waiting for it opened it late over whatever the person had turned to, and a deleted
+      // one stayed in the address for good. The person opens it from the list once it is there.
+      window.history.replaceState(null, '', '/studies?tab=analyses&analysis=a1&mode=view');
+      try {
+        mockUseStudyNotes.mockReturnValue({ ...baseUseStudyNotesValue(), notes: [createMockNote({ id: '1', type: 'note' })] });
+        const { rerender } = render(<StudiesPage />);
+        expect(toast).toHaveBeenCalledWith('studiesWorkspace.analysisNotHere');
+        expect(window.location.search).not.toContain('analysis=');
+        mockUseStudyNotes.mockReturnValue({
+          ...baseUseStudyNotesValue(),
+          notes: [createMockNote({ id: '1', type: 'note' }), createMockNote({ id: 'a1', title: 'Разбор · Еф 1:3–14', type: 'analysis' })],
+        });
+        rerender(<StudiesPage />);
+        expect(screen.queryByTestId('analysis-window')).not.toBeInTheDocument();
+        expect(screen.getByText('Разбор · Еф 1:3–14')).toBeInTheDocument();
+      } finally {
+        window.history.replaceState(null, '', '/');
+      }
+    });
+
+    it('opened at an analysis from the Bible («Все разборы»), brings its card into sight and lights it for a moment, once', () => {
+      // The owner, 03.11: «был в Библии… нашел какой-то разбор… могу выйти туда к изучению». The address lets the way in
+      // go once it is taken: a reload or the list coming again does not scroll back to it.
+      jest.useFakeTimers();
+      const scroll = jest.fn();
+      const original = Element.prototype.scrollIntoView;
+      Element.prototype.scrollIntoView = scroll;
+      window.history.replaceState(null, '', '/studies?tab=analyses&at=a2');
+      mockQueryState.tab = 'analyses';
+      try {
+        const notes = [createMockNote({ id: 'a1', title: 'Разбор · Рим 8', type: 'analysis' }), createMockNote({ id: 'a2', title: 'Разбор · Еф 1:3–14', type: 'analysis' })];
+        mockUseStudyNotes.mockReturnValue({ ...baseUseStudyNotesValue(), notes });
+        const { rerender } = render(<StudiesPage />);
+        act(() => { jest.advanceTimersByTime(100); });
+        const card = (title: string) => screen.getByText(title).closest('article') as HTMLElement;
+        expect(scroll).toHaveBeenCalledTimes(1);
+        expect(scroll.mock.contexts[0]).toBe(card('Разбор · Еф 1:3–14'));
+        expect(card('Разбор · Еф 1:3–14')).toHaveAttribute('data-lit', 'true');
+        expect(card('Разбор · Рим 8')).not.toHaveAttribute('data-lit');
+        expect(window.location.search).toBe('?tab=analyses');
+        // The keyboard and a screen reader arrive with the eye: the card's row holds the focus.
+        expect(document.activeElement).toBe(card('Разбор · Еф 1:3–14').querySelector('[role="button"][tabindex="0"]'));
+        expect(scroll).toHaveBeenCalledWith({ block: 'center', behavior: 'smooth' });
+        mockUseStudyNotes.mockReturnValue({ ...baseUseStudyNotesValue(), notes: [...notes] });
+        rerender(<StudiesPage />);
+        act(() => { jest.advanceTimersByTime(3000); });
+        expect(scroll).toHaveBeenCalledTimes(1);
+        expect(card('Разбор · Еф 1:3–14')).not.toHaveAttribute('data-lit');
+      } finally {
+        Element.prototype.scrollIntoView = original;
+        jest.useRealTimers();
+        window.history.replaceState(null, '', '/');
+      }
+    });
+
+    it('opened at an analysis the list on this device has not got yet, waits a few seconds for it and brings it then', () => {
+      // Codex, 04.11, twice: the address let the way in go before the server's answer, whose analysis was then never brought
+      // into sight — the list's cache comes first with no check under way. A device that asks for less motion is brought
+      // there without the glide.
+      jest.useFakeTimers();
+      const scroll = jest.fn();
+      const original = Element.prototype.scrollIntoView;
+      const originalMedia = window.matchMedia;
+      Element.prototype.scrollIntoView = scroll;
+      window.matchMedia = jest.fn((query: string) => ({ matches: query.includes('reduce'), media: query, addEventListener: jest.fn(), removeEventListener: jest.fn() })) as never;
+      window.history.replaceState(null, '', '/studies?tab=analyses&at=a2');
+      mockQueryState.tab = 'analyses';
+      try {
+        const first = [createMockNote({ id: 'a1', title: 'Разбор · Рим 8', type: 'analysis' })];
+        mockUseStudyNotes.mockReturnValue({ ...baseUseStudyNotesValue(), notes: first, checking: false } as never);
+        const { rerender } = render(<StudiesPage />);
+        act(() => { jest.advanceTimersByTime(3000); });
+        expect(scroll).not.toHaveBeenCalled();
+        expect(window.location.search).toBe('?tab=analyses&at=a2');
+        const notes = [...first, createMockNote({ id: 'a2', title: 'Разбор · Еф 1:3–14', type: 'analysis' })];
+        mockUseStudyNotes.mockReturnValue({ ...baseUseStudyNotesValue(), notes, checking: false } as never);
+        rerender(<StudiesPage />);
+        act(() => { jest.advanceTimersByTime(100); });
+        expect(scroll).toHaveBeenCalledTimes(1);
+        expect(scroll).toHaveBeenCalledWith({ block: 'center', behavior: 'auto' });
+        expect(screen.getByText('Разбор · Еф 1:3–14').closest('article')).toHaveAttribute('data-lit', 'true');
+        expect(window.location.search).toBe('?tab=analyses');
+      } finally {
+        Element.prototype.scrollIntoView = original;
+        window.matchMedia = originalMedia;
+        jest.useRealTimers();
+        window.history.replaceState(null, '', '/');
+      }
+    });
+
+    it('opened at an analysis that does not come, lets it go after the wait and never jumps to it later', () => {
+      jest.useFakeTimers();
+      const scroll = jest.fn();
+      const original = Element.prototype.scrollIntoView;
+      Element.prototype.scrollIntoView = scroll;
+      window.history.replaceState(null, '', '/studies?tab=analyses&at=a2');
+      mockQueryState.tab = 'analyses';
+      try {
+        const first = [createMockNote({ id: 'a1', title: 'Разбор · Рим 8', type: 'analysis' })];
+        mockUseStudyNotes.mockReturnValue({ ...baseUseStudyNotesValue(), notes: first });
+        const { rerender } = render(<StudiesPage />);
+        act(() => { jest.advanceTimersByTime(10_500); });
+        expect(window.location.search).toBe('?tab=analyses');
+        mockUseStudyNotes.mockReturnValue({ ...baseUseStudyNotesValue(), notes: [...first, createMockNote({ id: 'a2', title: 'Разбор · Еф 1:3–14', type: 'analysis' })] });
+        rerender(<StudiesPage />);
+        act(() => { jest.advanceTimersByTime(3000); });
+        expect(scroll).not.toHaveBeenCalled();
+        expect(screen.getByText('Разбор · Еф 1:3–14').closest('article')).not.toHaveAttribute('data-lit');
+      } finally {
+        Element.prototype.scrollIntoView = original;
+        jest.useRealTimers();
+        window.history.replaceState(null, '', '/');
+      }
+    });
+
+    it('closed, the analysis leaves the address too, so a reload does not open it again', async () => {
+      // Codex, 02.11: a book that could not be read closed the window and left `analysis=` behind.
+      window.history.replaceState(null, '', '/studies?tab=analyses&analysis=a1&mode=view');
+      try {
+        mockUseStudyNotes.mockReturnValue({ ...baseUseStudyNotesValue(), notes: [createMockNote({ id: 'a1', title: 'Разбор · Еф 1:3–14', type: 'analysis' })] });
+        render(<StudiesPage />);
+        await userEvent.click(screen.getByText('close-analysis'));
+        expect(window.location.search).not.toContain('analysis=');
+        expect(window.location.search).not.toContain('mode=');
+      } finally {
+        window.history.replaceState(null, '', '/');
+      }
+    });
+
+    it('in «Разборы» starts a new analysis in the Bible, and says where analyses begin while there are none', async () => {
+      mockQueryState.tab = 'analyses';
+      mockUseStudyNotes.mockReturnValue({ ...baseUseStudyNotesValue(), notes: [createMockNote({ id: '1', type: 'note' })] });
+      render(<StudiesPage />);
+      expect(screen.getByText('studiesWorkspace.analysesEmptyTitle')).toBeInTheDocument();
+      await userEvent.click(screen.getByRole('button', { name: /studiesWorkspace\.newAnalysis/ }));
+      expect(mockPush).toHaveBeenCalledWith('/bible');
+      // Codex UX, 04.11: the Bible opened with no word of what to do there once the list had analyses and no invitation.
+      expect(toast).toHaveBeenCalledWith('studiesWorkspace.newAnalysisHint');
+    });
+
+    it('keeps the tab the list is on in view where the row is wider than the screen', () => {
+      // A phone: five tabs of 110px in a 300px row. Opened on «Разборы», the row showed the first three tabs and none lit.
+      const widths = jest.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockImplementation(function (this: HTMLElement) { return this.tagName === 'BUTTON' ? 110 : 0; });
+      const lefts = jest.spyOn(HTMLElement.prototype, 'offsetLeft', 'get').mockImplementation(function (this: HTMLElement) {
+        return this.tagName === 'BUTTON' && this.parentElement ? Array.from(this.parentElement.children).indexOf(this) * 110 : 0;
+      });
+      const room = jest.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockImplementation(() => 300);
+      try {
+        mockQueryState.tab = 'analyses';
+        render(<StudiesPage />);
+        const tab = screen.getByRole('button', { name: /studiesWorkspace\.tabs\.analyses/ });
+        expect(screen.getAllByRole('button').filter((button) => button.getAttribute('aria-current') === 'true')).toEqual([tab]);
+        expect(tab.parentElement!.scrollLeft).toBe(4 * 110 - (300 - 110) / 2);
+      } finally {
+        widths.mockRestore();
+        lefts.mockRestore();
+        room.mockRestore();
+      }
+    });
+
+    it('keeps the open tab in view when the counts arrive after it and widen the tabs', () => {
+      let width = 60;
+      const widths = jest.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockImplementation(function (this: HTMLElement) { return this.tagName === 'BUTTON' ? width : 0; });
+      const lefts = jest.spyOn(HTMLElement.prototype, 'offsetLeft', 'get').mockImplementation(function (this: HTMLElement) {
+        return this.tagName === 'BUTTON' && this.parentElement ? Array.from(this.parentElement.children).indexOf(this) * width : 0;
+      });
+      const room = jest.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockImplementation(() => 300);
+      try {
+        mockQueryState.tab = 'analyses';
+        mockUseStudyNotes.mockReturnValue({ ...baseUseStudyNotesValue(), notes: [], loading: true });
+        const { rerender } = render(<StudiesPage />);
+        width = 110;
+        mockUseStudyNotes.mockReturnValue({ ...baseUseStudyNotesValue(), notes: [createMockNote({ id: 'a1', type: 'analysis' })] });
+        rerender(<StudiesPage />);
+        const tab = screen.getByRole('button', { name: /studiesWorkspace\.tabs\.analyses/ });
+        expect(tab.parentElement!.scrollLeft).toBe(4 * 110 - (300 - 110) / 2);
+      } finally {
+        widths.mockRestore();
+        lefts.mockRestore();
+        room.mockRestore();
+      }
     });
 
     it('filters to show only notes when Notes tab is clicked', () => {

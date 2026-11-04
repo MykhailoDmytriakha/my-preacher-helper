@@ -398,10 +398,18 @@ export function analysisMarkdown(words: readonly AnalysisWord[], state: Analysis
 /** A step of an analysis read from its text: the part's words and how deep it stands. */
 export type OutlineLine = { depth: number; text: string };
 
+/** A part's line in `analysisMarkdown`: two spaces a step, then «- » and its words. */
+const PART_LINE = /^( *)- (.*)$/;
+
 /** `analysisMarkdown` read back, for places that draw an analysis small without its passage at hand: a part a line. */
 export function analysisOutline(text: string): OutlineLine[] {
   return text.split('\n').flatMap((line) => {
-    const found = /^( *)- (.*)$/.exec(line);
+    const found = PART_LINE.exec(line);
     return found ? [{ depth: Math.floor(found[1].length / 2), text: found[2] }] : [];
   });
+}
+
+/** An analysis's text — or a piece of it cut anywhere, a search's snippet — line by line in its words, without its list form. */
+export function analysisPlainText(text: string): string {
+  return text.split('\n').map((line) => PART_LINE.exec(line)?.[2] ?? line.trim()).filter(Boolean).join('\n');
 }

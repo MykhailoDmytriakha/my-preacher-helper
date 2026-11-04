@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowDownIcon, ArrowUpIcon, BookOpenIcon, XMarkIcon } from '@heroicons/react/20/solid';
+import { ArrowDownIcon, ArrowUpIcon, XMarkIcon } from '@heroicons/react/20/solid';
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
@@ -10,7 +10,9 @@ import { resolveAppLocale } from '@/utils/appLocale';
 import { BIBLES, type BibleId } from '@/utils/bibles';
 import { fetchBookText, type BookText } from '@/utils/bibleText';
 import { formatScriptureReference } from '@/utils/scriptureReference';
+import { PLACE_DOOR_TONES } from '@/utils/themeColors';
 
+import { BibleIcon } from './BibleIcon';
 import { visibleVerseRange } from './BibleMinimap';
 import { ARRIVAL_ATTRIBUTE, BookRibbon } from './BookRibbon';
 import { inSpan } from './chapterWindow';
@@ -86,9 +88,9 @@ function OpenInBibleButton({ reference, openInBible }: { reference: SheetReferen
       type="button"
       onClick={() => openInBible(reference)}
       aria-label={t('bible.sheet.openInBible')}
-      className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50 px-3 text-sm font-semibold text-indigo-700 transition hover:bg-indigo-100 dark:border-indigo-500/40 dark:bg-indigo-950/40 dark:text-indigo-300 dark:hover:bg-indigo-900/50"
+      className={`inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-xl border px-3 text-sm font-semibold transition ${PLACE_DOOR_TONES.bible}`}
     >
-      <BookOpenIcon className="h-5 w-5" aria-hidden="true" />
+      <BibleIcon className="h-5 w-5" aria-hidden="true" />
       <span className="sm:hidden">{t('bible.sheet.toBible')}</span>
       <span className="hidden sm:inline">{t('bible.sheet.openInBible')}</span>
     </button>

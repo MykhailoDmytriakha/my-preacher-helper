@@ -42,10 +42,12 @@ export function wayBackPath(value: string | null | undefined): string | null {
 }
 
 /** What the way back leads to, by the screen's address — the reader names it. */
-export type WayBackKind = 'note' | 'notes' | 'plan' | 'sermon' | 'group' | 'order' | 'page';
+export type WayBackKind = 'note' | 'notes' | 'analysis' | 'plan' | 'sermon' | 'group' | 'order' | 'page';
 
 export function wayBackKind(path: string): WayBackKind {
   if (/^\/studies\/[^/?#]+/.test(path)) return 'note';
+  // An analysis open over Studies' list (`analysis=`), left by its door to the passage: the way back is to it.
+  if (/^\/studies\?(?:[^#]*&)?analysis=[^&#]/.test(path)) return 'analysis';
   if (/^\/studies(?:[/?#]|$)/.test(path)) return 'notes';
   if (/^\/sermons\/[^/?#]+\/plan(?:[/?#]|$)/.test(path)) return 'plan';
   if (/^\/sermons\//.test(path)) return 'sermon';
