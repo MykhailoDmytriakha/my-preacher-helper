@@ -1,7 +1,7 @@
 "use client";
 
 import { XMarkIcon, CalendarIcon, MapPinIcon, BookOpenIcon } from "@heroicons/react/24/outline";
-import { format, isValid, parseISO } from "date-fns";
+import { isValid, parseISO } from "date-fns";
 import Link from "next/link";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
@@ -9,7 +9,7 @@ import { useTranslation } from "react-i18next";
 import { MonthlyPreachEntry } from "@/components/calendar/calendarAnalytics";
 import { useAppLocale } from '@/hooks/useAppLocale';
 import { useModalLayer } from '@/hooks/useModalLayer';
-import { formatMonthName } from '@/utils/appLocale';
+import { formatDay, formatMonthName } from '@/utils/appLocale';
 
 interface MonthlySermonsModalProps {
     isOpen: boolean;
@@ -83,7 +83,7 @@ export default function MonthlySermonsModal({
                             {entries.map(({ sermon, preachDate }) => {
                                 const parsedDate = parseISO(preachDate.date);
                                 const formattedDate = isValid(parsedDate)
-                                    ? format(parsedDate, 'd MMM yyyy', { locale: dateLocale })
+                                    ? formatDay(parsedDate, dateLocale)
                                     : preachDate.date;
                                 return (
                                     <div

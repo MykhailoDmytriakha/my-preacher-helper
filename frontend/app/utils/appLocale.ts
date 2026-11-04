@@ -3,6 +3,8 @@ import { enUS, ru, uk } from 'date-fns/locale';
 
 import { COOKIE_LANG_KEY, DEFAULT_LANGUAGE } from '@locales/constants';
 
+import { isDateOnlyKey, parseDateOnlyAsLocalDate } from './dateOnly';
+
 import type { Locale } from 'date-fns';
 
 /**
@@ -113,4 +115,30 @@ export function formatMonthTitle(date: Date, dateLocale: Locale): string {
  */
 export function formatMonthName(date: Date, dateLocale: Locale): string {
   return format(date, 'LLLL yyyy', { locale: dateLocale });
+}
+
+/** A stored date as a moment to name: a bare `YYYY-MM-DD` is that day where the person is, anything else an instant. */
+function dayToName(value: Date | string): Date | null {
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+  // Read as an instant, a bare day is UTC midnight — the day before, west of Greenwich.
+  if (isDateOnlyKey(value.trim())) return parseDateOnlyAsLocalDate(value);
+  const instant = new Date(value);
+  return Number.isNaN(instant.getTime()) ? null : instant;
+}
+
+/**
+ * A DAY AS A PERSON READS IT, in the interface's language: «26 июл. 2026», «26 лип. 2026», "26 Jul 2026" — the form
+ * the calendar's lists already used. The browser's own `toLocaleDateString()` speaks the browser's language, not the
+ * interface's: a Russian interface on an English browser showed «7/26/2026» on Studies' cards
+ * (BUG-20261102-dates-in-browser-language). Nothing for a value that names no date.
+ */
+export function formatDay(value: Date | string, dateLocale: Locale): string {
+  const day = dayToName(value);
+  return day ? format(day, 'd MMM yyyy', { locale: dateLocale }) : '';
+}
+
+/** The same day with its time, on the language's own clock: «26 июл. 2026, 15:04», "26 Jul 2026, 3:04 PM". */
+export function formatDayTime(value: Date | string, dateLocale: Locale): string {
+  const day = dayToName(value);
+  return day ? format(day, 'd MMM yyyy, p', { locale: dateLocale }) : '';
 }

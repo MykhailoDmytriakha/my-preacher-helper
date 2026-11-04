@@ -4,8 +4,10 @@ import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import SettingsToggleRow from '@/components/settings/SettingsToggleRow';
+import { useAppLocale } from '@/hooks/useAppLocale';
 import { useAuth } from '@/hooks/useAuth';
 import { useUserSettings } from '@/hooks/useUserSettings';
+import { formatDayTime } from '@/utils/appLocale';
 import { awaitSettingsWrite } from '@/utils/settingsWrite';
 
 const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || 'dev';
@@ -17,6 +19,7 @@ const BUILD_TIME = process.env.NEXT_PUBLIC_BUILD_TIME || '';
  */
 export default function ShowVersionToggle() {
   const { t } = useTranslation();
+  const { dateLocale } = useAppLocale();
   const { user } = useAuth();
   const [enabled, setEnabled] = useState(false);
   const [hasLoaded, setHasLoaded] = useState(false);
@@ -53,7 +56,7 @@ export default function ShowVersionToggle() {
     }
   };
 
-  const buildTimeLabel = BUILD_TIME ? new Date(BUILD_TIME).toLocaleString() : '';
+  const buildTimeLabel = BUILD_TIME ? formatDayTime(BUILD_TIME, dateLocale) : '';
 
   return (
     <SettingsToggleRow

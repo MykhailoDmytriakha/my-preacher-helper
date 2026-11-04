@@ -15,7 +15,9 @@ import { useTranslation } from 'react-i18next';
 
 import HighlightedText from '@/components/HighlightedText';
 import { Chip } from '@/components/ui/Chip';
+import { useAppLocale } from '@/hooks/useAppLocale';
 import { PrayerRequest, PrayerStatus } from '@/models/models';
+import { formatDay } from '@/utils/appLocale';
 import { getPrayerSearchTarget, getPrayerUpdateSearchSnippet } from '@/utils/prayerFilters';
 import { type WriteSubmission } from '@/utils/recoverableWrite';
 
@@ -57,6 +59,7 @@ export default function PrayerRequestCard({
   searchQuery = '',
 }: Props) {
   const { t } = useTranslation();
+  const { dateLocale } = useAppLocale();
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirming, setConfirming] = useState(false);
 
@@ -132,7 +135,7 @@ export default function PrayerRequestCard({
           <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-400 dark:text-gray-500">
             <span className="flex items-center gap-1">
               <ClockIcon className="h-3 w-3" />
-              {new Date(prayer.updatedAt).toLocaleDateString()}
+              {formatDay(prayer.updatedAt, dateLocale)}
             </span>
             {prayer.updates.length > 0 && (
               <span>{t('prayer.updates_count', { count: prayer.updates.length })}</span>
@@ -140,7 +143,7 @@ export default function PrayerRequestCard({
             {prayer.answeredAt && (
               <span className="flex items-center gap-1 text-green-600 dark:text-green-400">
                 <CheckCircleIcon className="h-3 w-3" />
-                {new Date(prayer.answeredAt).toLocaleDateString()}
+                {formatDay(prayer.answeredAt, dateLocale)}
               </span>
             )}
           </div>

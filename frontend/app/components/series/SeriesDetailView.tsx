@@ -7,6 +7,8 @@ import { useTranslation } from 'react-i18next';
 
 import MarkdownDisplay from '@/components/MarkdownDisplay';
 import { Chip } from '@/components/ui/Chip';
+import { useAppLocale } from '@/hooks/useAppLocale';
+import { formatDay } from '@/utils/appLocale';
 import { getEffectiveIsPreached } from '@/utils/preachDateStatus';
 
 import type { Group, Series, SeriesItem, Sermon } from '@/models/models';
@@ -23,6 +25,7 @@ export function SeriesDetailView({ series, items, onBack, onAddSermons, onAddGro
   feedback?: ReactNode; itemsContent: ReactNode; reorderHint?: ReactNode; children?: ReactNode;
 }) {
   const { t } = useTranslation();
+  const { dateLocale } = useAppLocale();
   const stats = useMemo(() => ({ total: items.length,
     sermonsCount: items.filter(entry => entry.item.type === 'sermon').length,
     groupsCount: items.filter(entry => entry.item.type === 'group').length,
@@ -125,7 +128,7 @@ export function SeriesDetailView({ series, items, onBack, onAddSermons, onAddGro
               {series.startDate && (
                 <span className="inline-flex items-center gap-2 rounded-full bg-white/40 px-3 py-1 ring-1 ring-gray-100/50 dark:bg-gray-900/40 dark:ring-gray-800/50">
                   <ClockIcon className="h-4 w-4 text-emerald-500" />
-                  {new Date(series.startDate).toLocaleDateString()}
+                  {formatDay(series.startDate, dateLocale)}
                 </span>
               )}
             </div>

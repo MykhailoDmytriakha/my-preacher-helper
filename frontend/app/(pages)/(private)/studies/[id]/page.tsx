@@ -44,7 +44,7 @@ import { isUsageCapReachedError } from '@/services/usageLimits';
 import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { apiClient } from '@/utils/apiClient';
 import { diagnosticErrorCode, recordDiagnostic } from '@/utils/appDiagnostics';
-import { textLanguage } from '@/utils/appLocale';
+import { formatDay, textLanguage } from '@/utils/appLocale';
 import { interfaceLanguageHeaders } from '@/utils/authenticatedRequest';
 import { referenceFromTyped } from '@/utils/bibleLink';
 import { serializeContent } from '@/utils/contentFingerprint';
@@ -716,14 +716,14 @@ const NOTE_PANEL_STORAGE_KEY = 'studyNote.sidePanelCollapsed';
 
 /** Creation and last-edit dates. Metadata, so it sits with the rest of the metadata. */
 function NoteDates({ note, t }: { note: StudyNote; t: ReturnType<typeof useTranslation>['t'] }) {
-    const created = new Date(note.createdAt);
-    const updated = new Date(note.updatedAt);
-    const format = (d: Date) => (Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString());
+    const { dateLocale } = useAppLocale();
+    const created = formatDay(note.createdAt, dateLocale);
+    const updated = formatDay(note.updatedAt, dateLocale);
     return (
         <>
-            <div>{t('notePanel.created', { date: format(created) })}</div>
-            {format(updated) !== format(created) && (
-                <div>{t('notePanel.updated', { date: format(updated) })}</div>
+            <div>{t('notePanel.created', { date: created })}</div>
+            {updated !== created && (
+                <div>{t('notePanel.updated', { date: updated })}</div>
             )}
         </>
     );

@@ -1,4 +1,4 @@
-when: interface language · which language is the interface in · app locale · i18n.language is ru-RU · resolveAppLocale · useAppLocale · dateFnsLocaleFor · date-fns locale · month name · month heading declined · month name in genitive · month as a heading · MMMM vs LLLL · formatMonthTitle · formatMonthName · detectTextLocale · language of a piece of text · язык интерфейса · локаль · название месяца · месяц в родительном падеже · склонение месяца · формат даты · язык текста
+when: interface language · which language is the interface in · app locale · i18n.language is ru-RU · resolveAppLocale · useAppLocale · dateFnsLocaleFor · date-fns locale · month name · month heading declined · month name in genitive · month as a heading · MMMM vs LLLL · formatMonthTitle · formatMonthName · detectTextLocale · language of a piece of text · язык интерфейса · локаль · название месяца · месяц в родительном падеже · склонение месяца · формат даты · язык текста · date in the browser's language · toLocaleDateString · 7/26/2026 · formatDay · formatDayTime · дата по-американски · дата на языке браузера
 
 # Resolve the interface language and name a month
 
@@ -9,11 +9,13 @@ The interface language and the date language come from `frontend/app/utils/appLo
 - `resolveAppLocale(language)` is the only place that turns `ru-RU`, `uk-UA`, an empty string or anything else into `'en' | 'ru' | 'uk'`; unknown reads as English, the language every string has. Bible book names (`resolveBibleLocale` delegates to it), Scripture references and month names all hang off this one decision — never write another "starts with ru" check.
 - `dateFnsLocaleFor(language)` gives the date-fns locale for month and weekday names.
 - A month standing alone — heading, bar label, window title: `formatMonthTitle(date, dateLocale)`, the standalone `LLLL yyyy` form, capitalized. In Russian and Ukrainian `MMMM` is the form a month takes inside a date (genitive, "the 20th of September"); as a heading it prints the declined form.
+- A day the person reads — a card's date, «created on», a list row: `formatDay(value, dateLocale)` → «26 июл. 2026», «26 лип. 2026», "26 Jul 2026"; with its time `formatDayTime` (the language's own clock). A bare `YYYY-MM-DD` is read as that day where the person is, not as UTC midnight. Never `toLocaleDateString()` / `toLocaleString()` without the language: they speak the browser's, and a Russian interface on an English browser showed «7/26/2026» (BUG-20261102-dates-in-browser-language).
 - A month inside a sentence: `formatMonthName(date, dateLocale)` — the same standalone form in lower case. Russian and Ukrainian templates put it after the preposition meaning "for", never after the one meaning "in": that needs the prepositional case, which date-fns does not have.
 - Text that reaches a reader without the interface around it (a link preview card, a reference inside dictated prose): `detectTextLocale(text)` reads the letters — Ukrainian-only letters mean uk, any other Cyrillic ru, everything else en.
 
 ## Traps
 
+- `utils/dateFormatter.ts` (`formatDate`, `formatDateOnly`) prints `dd.MM.yyyy` with a fixed Russian locale in every language — the older form, still on sermons, groups and the council. Digits only, so no wrong words show; a screen that names the day in words takes `formatDay`.
 - `StepByStepWizard.tsx` still derives the language by hand (`i18n.language.split('-')`) to pick voice sample files. It agrees today; route it through `resolveAppLocale` when you touch it.
 
 ## Why

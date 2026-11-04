@@ -9,6 +9,7 @@ import { useAppLocale } from '@/hooks/useAppLocale';
 import { useClipboard } from '@/hooks/useClipboard';
 import { StudyNote, StudyNoteShareLink } from '@/models/models';
 import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
+import { formatDay } from '@/utils/appLocale';
 import { markdownPreviewText } from '@/utils/markdownUtils';
 import { awaitAcceptance, type WriteSubmission } from '@/utils/recoverableWrite';
 import { getShareNotePath, getShareNoteUrl } from '@/utils/shareNoteUtils';
@@ -41,7 +42,7 @@ export default function ShareLinksPanel({
   onDelete,
 }: ShareLinksPanelProps) {
   const { t } = useTranslation();
-  const { locale } = useAppLocale();
+  const { locale, dateLocale } = useAppLocale();
   const { isCopied, copyToClipboard } = useClipboard({ successDuration: 1500 });
   // The name its link preview gives it: its title, else its place — a comment has only its place (`studyNoteOwnName`);
   // two comments on one verse share it, so a comment adds the start of its words.
@@ -203,7 +204,7 @@ export default function ShareLinksPanel({
                   </div>
                   <div className="text-xs text-gray-500 dark:text-gray-400 md:text-center">
                     <span className="md:hidden font-semibold mr-2">{t('studiesWorkspace.shareLinks.createdLabel')}:</span>
-                    {new Date(link.createdAt).toLocaleDateString()}
+                    {formatDay(link.createdAt, dateLocale)}
                   </div>
                   <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 md:text-center tabular-nums">
                     <span className="md:hidden font-semibold mr-2">{t('studiesWorkspace.shareLinks.viewsLabel')}:</span>

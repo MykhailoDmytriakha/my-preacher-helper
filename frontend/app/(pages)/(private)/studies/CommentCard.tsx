@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 
 import { useOpenStoredReference } from '@/components/bible/useOpenStoredReference';
 import { CommentIcon } from '@/components/Icons';
+import { useAppLocale } from '@/hooks/useAppLocale';
 import { relativeDay } from '@/utils/relativeDay';
 import MarkdownDisplay from '@components/MarkdownDisplay';
 
@@ -19,6 +20,7 @@ import type { StudyNote } from '@/models/models';
  */
 export function CommentCard({ note, searchQuery, onOpen }: { note: StudyNote; searchQuery?: string; onOpen: (id: string) => void }) {
   const { t } = useTranslation();
+  const { dateLocale } = useAppLocale();
   const openReference = useOpenStoredReference();
   return (
     <article
@@ -52,7 +54,7 @@ export function CommentCard({ note, searchQuery, onOpen }: { note: StudyNote; se
               }}
             />
           ))}
-          <span>{relativeDay(note.updatedAt, t)}</span>
+          <span>{relativeDay(note.updatedAt, t, dateLocale)}</span>
         </div>
       </div>
     </article>

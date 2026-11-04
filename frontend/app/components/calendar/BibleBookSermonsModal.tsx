@@ -1,13 +1,14 @@
 "use client";
 
 import { XMarkIcon, CalendarIcon, MapPinIcon, BookOpenIcon } from "@heroicons/react/24/outline";
-import { format, isValid, parseISO } from "date-fns";
+import { isValid, parseISO } from "date-fns";
 import Link from "next/link";
 import { useTranslation } from "react-i18next";
 
 import { useAppLocale } from '@/hooks/useAppLocale';
 import { useModalLayer } from '@/hooks/useModalLayer';
 import { PreachDate, Sermon } from "@/models/models";
+import { formatDay } from '@/utils/appLocale';
 import { BookInfo } from "@/utils/bibleBooks";
 
 interface BibleBookSermonsModalProps {
@@ -77,7 +78,7 @@ export default function BibleBookSermonsModal({
                             {entries.map(({ sermon, preachDate }) => {
                                 const parsedDate = parseISO(preachDate.date);
                                 const formattedDate = isValid(parsedDate)
-                                    ? format(parsedDate, 'd MMM yyyy', { locale: dateLocale })
+                                    ? formatDay(parsedDate, dateLocale)
                                     : preachDate.date;
                                 return (
                                     <div

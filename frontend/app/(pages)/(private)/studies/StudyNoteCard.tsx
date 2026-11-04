@@ -18,8 +18,10 @@ import { useTranslation } from 'react-i18next';
 import { useOpenStoredReference } from '@/components/bible/useOpenStoredReference';
 import { Chip } from '@/components/ui/Chip';
 import { FoldableMarkdown } from '@/components/ui/FoldableMarkdown';
+import { useAppLocale } from '@/hooks/useAppLocale';
 import { useClipboard } from '@/hooks/useClipboard';
 import { StudyNote } from '@/models/models';
+import { formatDay } from '@/utils/appLocale';
 import { relativeDay } from '@/utils/relativeDay';
 import { formatScriptureReference, scriptureReferenceSearchText, type ScriptureRefShape } from '@/utils/scriptureReference';
 import { extractSearchSnippets } from '@/utils/searchUtils';
@@ -112,6 +114,7 @@ export default function StudyNoteCard({
   hasShareLink = false,
 }: StudyNoteCardProps) {
   const { t } = useTranslation();
+  const { dateLocale } = useAppLocale();
   const router = useRouter();
 
   const { isCopied, copyToClipboard, reset: resetCopy } = useClipboard({ successDuration: 1500 });
@@ -135,7 +138,7 @@ export default function StudyNoteCard({
   const scriptureRefsLabel = t('studiesWorkspace.scriptureRefs');
   const tagsLabel = t('studiesWorkspace.tags');
 
-  const formatRelativeTime = (dateStr: string) => relativeDay(dateStr, t);
+  const formatRelativeTime = (dateStr: string) => relativeDay(dateStr, t, dateLocale);
 
   // Check if note needs AI analysis (no title, no refs, no tags)
 
@@ -542,7 +545,7 @@ export default function StudyNoteCard({
                 <PencilIcon className="h-3.5 w-3.5" />
                 {t('common.edit')}
               </button>
-              <span className="text-xs text-gray-400 dark:text-gray-500">{new Date(note.createdAt).toLocaleDateString()}</span>
+              <span className="text-xs text-gray-400 dark:text-gray-500">{formatDay(note.createdAt, dateLocale)}</span>
             </div>
           </div>
         </div>

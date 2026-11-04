@@ -7,7 +7,7 @@ Run from `frontend/`. For one or a few files: `npx jest --runTestsByPath <path> 
 ## How
 
 - `npm run test` runs `jest --verbose --coverage` with the global `coverageThreshold` from `frontend/jest.config.ts`. On a single file it fails with "coverage threshold … not met" even when every test passes (checked 2026-09-27). For targeted runs use `npx jest`: Jest sets `NODE_ENV=test` itself, which the test-only `transpilePackages` in `frontend/next.config.mjs` needs.
-- Positional arguments are regexes matched against the absolute path. Route folders break them: `(pages)` is a regex group and `[id]` a character class, so `app/(pages)/(private)/…` or `sermons/[id]/…` matches nothing and Jest prints "No tests found". Pass the literal path with `--runTestsByPath`, or escape it: `'app/\(pages\)/\(private\)/sermons/\[id\]/…'`.
+- Positional arguments are regexes matched against the absolute path. Route folders break them: `(pages)` is a regex group and `[id]` a character class, so `app/(pages)/(private)/…` or `sermons/[id]/…` matches nothing and Jest prints "No tests found". Pass the literal path with `--runTestsByPath`, or escape it: `'app/\(pages\)/\(private\)/sermons/\[id\]/…'`. Listed beside paths that do match, such a path drops out silently: no "No tests found", only one suite fewer on the "Test Suites:" line.
 - `test:fast`, `test:quick` and `test:build` pass `--passWithNoTests`. A pattern that matches nothing prints "No tests found, exiting with code 0": a green exit with zero tests run. Read the "Test Suites:" line, not the exit code.
 - Before trusting a regex run: `npx jest --listTests '<regex>'` prints the files it selects. Tests live in two trees — `frontend/__tests__/` and co-located `app/**/__tests__/`, plus a few `*.test.ts` files beside their source — so a regex written for one tree misses the other. Compare the suites that ran with every changed test file, and run any missing one by path.
 - A new test file is picked up by Jest's default `testMatch`, since `frontend/jest.config.ts` sets none: any file in a `__tests__/` folder or named `*.test.ts(x)`. If a new file isn't collected, check the pattern and `testPathIgnorePatterns`; don't merge it into another file. The same rule collects a helper `.ts` placed under `__tests__/` as a suite, so keep helpers in `frontend/test-utils/` or list them in `testPathIgnorePatterns`, as is done for `storageHarness.ts`.
@@ -19,5 +19,6 @@ Run from `frontend/`. For one or a few files: `npx jest --runTestsByPath <path> 
 
 - 2026-05-20 and 2026-09-05: raw `(pages)` paths returned "No tests found" — `--runTestsByPath` is the fix.
 - 2026-07-12: a broad acceptance regex skipped a changed boundary test in the other `__tests__` tree.
+- 2026-11-02: a red check listed two `__tests__/utils` files and one `app/(pages)/…` file; the third never ran, and two disabled fixes came back green until the suite count was read.
 
 See also: `.howto/test-async-ui.md` · `.howto/mock-in-jest.md`
