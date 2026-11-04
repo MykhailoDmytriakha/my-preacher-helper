@@ -15,6 +15,8 @@ A full screen opened over a page (the analysis screen over Studies' list or the 
 
 ## Traps
 
+- **Tests that mount a screen settle after it.** Its step is taken a moment after unmount (`setTimeout`); left to the shared cleanup, that lands in the next test and moves its history (the build machine, 2026-11-04). End every such test file with `cleanup()` and two waits — one for the screen's own timer, one for the browser's move it starts (`frontend/__tests__/components/bible/analysisHistoryStep.test.tsx`). And a late cleanup never rewrites an entry carrying another screen's step (`leaveAnalysisAddress`).
+
 - **React's strict check runs effects twice in `next dev`** (`reactStrictMode: true`): a step pushed in an effect and taken in its cleanup is pushed, taken, and the screen closes itself on the late `popstate`. Decide the step once (a ref) and take it a moment after the real unmount (`setTimeout` cleared by the remount). Jest does not run effects twice here (probe 03.11) — check it live in `next dev`.
 - **The late close must check whose entry it is.** Caught by the test «gone a moment ago, leaves alone the entry the person has moved on to»: the delayed close forgot `analysis=` on the next screen's address.
 - `history.back()` is asynchronous: two closes (the host's and the screen's unmount) must not go back twice — `takeHistoryStep` remembers the step it is taking until the next `popstate`.

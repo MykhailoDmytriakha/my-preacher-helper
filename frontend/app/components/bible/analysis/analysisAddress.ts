@@ -67,6 +67,10 @@ export function openAnalysisStep(value: AnalysisAddress | null): string {
 export function leaveAnalysisAddress(id: string | null, step: string | null = id && readAnalysisAddress()?.id === id ? historyStepHere() : null): void {
   if (typeof window === 'undefined' || browserMoved()) return;
   if (takeHistoryStep(step)) return;
+  // An entry another screen stands on — a step not this one's — is that screen's, even naming the same analysis (a late
+  // cleanup rewrote it to the list's address, seen on the build machine, 04.11).
+  const standing = historyStepHere();
+  if (standing && standing !== step) return;
   if (id && readAnalysisAddress()?.id === id) writeAnalysisAddress(null);
 }
 

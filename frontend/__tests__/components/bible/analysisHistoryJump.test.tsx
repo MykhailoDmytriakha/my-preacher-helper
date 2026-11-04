@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import { useState } from 'react';
 
 import { ReaderAnalysis } from '@/components/bible/analysis/ReaderAnalysis';
@@ -127,7 +127,13 @@ describe('a jump in history from one analysis\'s step to another\'s', () => {
     expect(here()).toBe(LIST);
   });
 
-  afterEach(() => window.history.replaceState(null, '', '/'));
+  // Screens left mounted are unmounted here and take their steps a moment later: let that end inside this test.
+  afterEach(async () => {
+    cleanup();
+    await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+    window.history.replaceState(null, '', '/');
+  });
 
   it('over Studies\' list, opens the analysis the entry names', async () => {
     const A = '/studies?tab=analyses&analysis=a&mode=view';

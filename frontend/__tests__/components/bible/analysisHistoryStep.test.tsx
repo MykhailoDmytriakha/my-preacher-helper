@@ -1,4 +1,4 @@
-import { act, renderHook, waitFor } from '@testing-library/react';
+import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 
 import { leaveAnalysisAddress } from '@/components/bible/analysis/analysisAddress';
 import { useAnalysisAddress } from '@/components/bible/analysis/useAnalysisAddress';
@@ -31,6 +31,27 @@ const unmountAndSettle = async (unmount: () => void) => {
 
 describe('the analysis screen — one step in the browser\'s history', () => {
   beforeEach(() => window.history.pushState(null, '', LIST));
+  // A screen a test leaves mounted is unmounted by the cleanup and takes its step a moment later: that, and the browser's
+  // move it starts, end here — not inside the next test (the build machine, 04.11).
+  afterEach(async () => {
+    cleanup();
+    await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+  });
+
+  it('a screen\'s late cleanup leaves alone the entry another screen of the same analysis stands on', async () => {
+    // The build machine, 04.11: one screen's cleanup came late, while a new screen of the same analysis stood on its own
+    // step; seeing the address name the analysis it took the entry for its own and rewrote it to the list's address.
+    const first = screenAt({ opening: opened, id: 'a1', mode: 'edit', onBack: jest.fn() });
+    first.unmount();
+    window.history.pushState(null, '', '/bible');
+    window.history.pushState(null, '', LIST);
+    screenAt({ opening: opened, id: 'a1', mode: 'view', onBack: jest.fn() });
+    const second = historyStepHere();
+    await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
+    expect(window.location.search).toBe('?tab=analyses&analysis=a1&mode=view');
+    expect(historyStepHere()).toBe(second);
+  });
 
   it('opened over the list, adds one entry naming the analysis; Back closes it and lands on the list', async () => {
     const length = window.history.length;
