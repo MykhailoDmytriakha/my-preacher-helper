@@ -35,6 +35,10 @@ const ClientProbe = ({ onReady }: { onReady: (client: ReturnType<typeof useQuery
 describe('QueryProvider', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    // clearAllMocks keeps implementations: a test holding the archive open (a promise that never settles) left every
+    // later test waiting out the storage-silence threshold, 3 s against a 4 s wait — flaky under the full suite's load
+    // (BUG-20261031-queryprovider-401-flaky). Each test starts with an archive that answers at once.
+    jest.mocked(preserveLegacyQueryCache).mockResolvedValue(undefined);
   });
 
   it.each(['councils', 'users'])('does not mount the cache persister until %s migration input is durably preserved', async collection => {
