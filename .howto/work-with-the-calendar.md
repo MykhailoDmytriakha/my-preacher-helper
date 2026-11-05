@@ -16,6 +16,8 @@ Every source is translated once into a `CalendarEntry` in `frontend/app/utils/ca
 - A caller that saves on every `onChange` and for whom an empty date removes nothing else (the council page patches the council) passes `finishedDatesOnly`: only a finished day (`isDateOnlyKey` in `dateOnly.ts`, counted, not parsed) or `""` is handed over, half-typed text stays in the field, a day arriving from elsewhere does not overwrite it, and leaving the field shows what is saved.
 - react-day-picker v9: the selected state sits on the cell (`.rdp-selected`), the visible circle is its child button. Style `.rdp-selected .rdp-day_button`; the legacy `.rdp-day_selected` alone does not reach it. Check computed colours in dark mode (`PreachCalendar.tsx` and `DatePickerField.tsx` both carry the rule).
 
+Book distribution and its sermon lists share `extractBookIdsFromVerse` in `calendarAnalytics.ts`. It reads actual places through `referencesInText` first and preserves calendar-only word forms only outside those spans; duplicate references in one sermon still count that sermon once per book and preach date. Check both counts and drill-down lists, including a mixed canonical/legacy field, instead of changing either consumer independently.
+
 ## Traps
 
 - A text date field that passes keystrokes to a caller that saves each change stores every prefix. Do not turn `finishedDatesOnly` on for a form: the field then rolls a half-typed date back on blur and the form submits the old day instead of refusing. Do not turn it on for the group meeting date either: there an empty date deletes the meeting, so the immediate `""` and the legacy debounced save delete it midway through retyping (BUG-20261003-group-meeting-date-saved-while-typing, reviews of 2026-10-03).

@@ -2,6 +2,7 @@
 import { PreachDate, Sermon } from "@/models/models";
 import { resolveAppLocale, type AppLocale } from "@/utils/appLocale";
 import { BIBLE_BOOKS_DATA, BookInfo, getBookByName, getBookByWrittenName } from "@/utils/bibleBooks";
+import { referencesInText } from "@/utils/bibleLink";
 import { toDateOnlyKey } from "@/utils/dateOnly";
 import { isPreachDatePreached } from "@/utils/preachDateStatus";
 import { exactBook } from "@/utils/scriptureReferenceParser";
@@ -264,8 +265,9 @@ const isBridgePreventionTriggered = (variant: string, startIndex: number, tokens
 
 const shouldPreferSingleTokenMatch = (len: number, sliceTokens: string[], resultId: string, locale: string): boolean => {
     if (len <= 1) return false;
-    const firstTokenMatch = getBookByName(sliceTokens[0], locale as AppLocale);
-    return !!(firstTokenMatch && firstTokenMatch.id === resultId && isNumericToken(sliceTokens[1]));
+    const firstTokenBook = exactBook(sliceTokens[0], resolveAppLocale(locale))
+        ?? getBookByName(sliceTokens[0], locale as AppLocale)?.id;
+    return firstTokenBook === resultId && isReferenceTrigger(sliceTokens[1]);
 };
 
 const tryAlphaPrefixMatch = (len: number, variant: string, locale: string): string | null => {
@@ -336,7 +338,7 @@ const isReferenceTrigger = (token: string): boolean => {
     return isNumericToken(token) || keywords.some(k => lower.startsWith(k));
 };
 
-export const extractBookIdsFromVerse = (rawVerse: string, locale: string): string[] => {
+const calendarOnlyBookIds = (rawVerse: string, locale: string, wholeField = true): string[] => {
     const normalized = normalizeVerseText(rawVerse);
     if (!normalized) return [];
 
@@ -355,7 +357,7 @@ export const extractBookIdsFromVerse = (rawVerse: string, locale: string): strin
         if (match) {
             const nextToken = tokens[i + match.consumed];
             const hasTrigger = nextToken ? isReferenceTrigger(nextToken) : false;
-            const isOnlyBook = i === 0 && match.consumed === tokens.length;
+            const isOnlyBook = wholeField && i === 0 && match.consumed === tokens.length;
 
             if (!hasTrigger && !isOnlyBook) continue;
             if (!seen.has(match.bookId)) {
@@ -366,12 +368,30 @@ export const extractBookIdsFromVerse = (rawVerse: string, locale: string): strin
         }
     }
 
-    if (found.length === 0) {
+    if (found.length === 0 && wholeField) {
         const fallback = resolveBookIdFromVerse(rawVerse, locale);
         if (fallback) return [fallback];
     }
 
     return found;
+};
+
+
+/** Read actual places once; keep the calendar's established word-only and spoken forms outside those spans. */
+export const extractBookIdsFromVerse = (rawVerse: string, locale: string): string[] => {
+    const references = referencesInText(rawVerse, resolveAppLocale(locale));
+    if (references.length === 0) return calendarOnlyBookIds(rawVerse, locale);
+
+    const found: string[] = [];
+    let after = 0;
+    for (const reference of references) {
+        // A remaining fragment is not the whole field: an isolated book name there is still prose.
+        found.push(...calendarOnlyBookIds(rawVerse.slice(after, reference.start), locale, false));
+        found.push(reference.reference.book);
+        after = reference.end;
+    }
+    found.push(...calendarOnlyBookIds(rawVerse.slice(after), locale, false));
+    return [...new Set(found)];
 };
 
 const resolveTopicFromVerse = (rawVerse: string, locale: string): string => {

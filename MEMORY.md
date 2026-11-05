@@ -9,6 +9,7 @@
 ## 🧠 Principles (Context Engineering)
 
 ### 🗺️ Architecture Map
+*   **Calendar Book Analytics:** `calendarAnalytics.extractBookIdsFromVerse` owns both counts and drill-down entries. Canonical `referencesInText` spans win; calendar-only spellings apply only to remaining gaps, with whole-field book-only behavior retained. Recipe: `.howto/work-with-the-calendar.md`.
 *   **Structure:** `app/` (Next.js 15 App Router) | `api/` (Server Actions/Routes) | `utils/` (Pure Logic).
 *   **State Ownership:** DataEngine owns migrated user documents, durable drafts and delivery. React Query retains legacy and unrelated request state; URL params own navigation, Context owns dependency injection.
 *   **Data Flow:** UI → DataEngine public facade → durable local intent → authenticated command processor → Firestore/feed → the same facade. Read-only fallback can show server/memory content while device storage is unavailable.

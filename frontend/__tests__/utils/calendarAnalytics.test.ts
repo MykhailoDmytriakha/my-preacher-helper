@@ -218,3 +218,43 @@ describe('calendarAnalytics reads a book the way the rest of the app does', () =
     expect(extractBookIdsFromVerse(verse, locale)).toEqual([book]);
   });
 });
+
+
+// BUG-20261027-calendar-glued-chapter-refs: the number belongs to its name even without a later numeric token.
+describe('calendar books from canonical places and existing calendar-only forms', () => {
+  it.each([
+    ['Рим8;1Кор13', 'ru', ['Romans', '1 Corinthians']],
+    ['Рим8-9;1Кор13-14', 'ru', ['Romans', '1 Corinthians']],
+    ['Romans8;1Cor13', 'en', ['Romans', '1 Corinthians']],
+    ['Рим8;Рим9;1Кор13;Рим8', 'ru', ['Romans', '1 Corinthians']],
+    ['Ав2;1М3', 'uk', ['Habakkuk', 'Genesis']],
+    ['Второзаконии 12:1;Рим8', 'ru', ['Deuteronomy', 'Romans']],
+    ['John3:16;Матфея стих 5', 'ru', ['John', 'Matthew']],
+    ['3ст;word3:20', 'ru', []],
+    ['John3:16;word3:20', 'en', ['John']],
+    ['John3:16;Job', 'en', ['John']],
+  ])('reads %p with %s without changing existing valid forms', (verse, locale, books) => {
+    expect(extractBookIdsFromVerse(verse, locale)).toEqual(books);
+  });
+
+  it('uses the same unique books for analytics counts and their sermon lists', () => {
+    const { computeAnalyticsStats, buildBookPreachEntries } = require('@/components/calendar/calendarAnalytics');
+    const verses = ['Рим8;1Кор13', 'Рим8-9;1Кор13-14', 'Рим8;Рим9;1Кор13', '3ст;word3:20'];
+    const sermonsByDate = Object.fromEntries(verses.map((verse, index) => {
+      const date = `2026-01-${10 + index}`;
+      return [date, [{ id: `glued-${index}`, title: `Reading ${index}`, verse, date, isPreached: true,
+        preachDates: [{ id: `day-${index}`, date, status: 'preached', church: { id: 'test-church', name: 'Test Church' }, createdAt: date }] }]];
+    }));
+    const before = JSON.stringify(sermonsByDate);
+    const input = { sermonsByDate, selectedYear: 2026, locale: 'ru' };
+    const stats = computeAnalyticsStats(input);
+    const entries = buildBookPreachEntries(input);
+    expect(stats.totalPreachings).toBe(4);
+    expect(Object.fromEntries(Object.entries(stats.bibleBookCounts).filter(([, count]) => count !== 0))).toEqual({ Romans: 3, '1 Corinthians': 3 });
+    for (const book of ['Romans', '1 Corinthians']) {
+      expect(entries[book].map(({ sermon }: { sermon: { id: string } }) => sermon.id)).toEqual(['glued-2', 'glued-1', 'glued-0']);
+    }
+    expect(Object.keys(entries).sort()).toEqual(['1 Corinthians', 'Romans']);
+    expect(JSON.stringify(sermonsByDate)).toBe(before);
+  });
+});
