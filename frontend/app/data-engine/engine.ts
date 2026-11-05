@@ -205,6 +205,7 @@ export class DataEngine {
   private readonly commits: CommitQueue;
   private readonly stopCommits: () => void;
   private commitRecords = new Map<string, CommitRequest>();
+  private localRefresh: { generation: number; requested: boolean; operation: Promise<void> } | null = null;
   private manualForms = new Map<string, ManualFormEntry>();
   private membershipForms = new Map<string, MembershipScope>();
   private membershipOpenings = new Map<string, Promise<MembershipScope>>();
@@ -290,12 +291,58 @@ export class DataEngine {
   }
 
   setVisible(visible: boolean): void {
-    if (this.disposed || this.visible === visible) return;
+    if (this.disposed) return;
+    const changed = this.visible !== visible;
     this.visible = visible;
+    if (visible) this.refreshLocalOnReturn();
+    if (!changed) return;
     this.options.collections?.setVisible(visible);
     this.options.observer.setVisible(visible);
     if (visible) this.backgroundDrain();
     this.notifyReachable();
+  }
+
+  /** Focus is a hint to reread durable local work, never proof of delivery or action order. */
+  private refreshLocalOnReturn(): void {
+    const owner = this.owner, generation = this.generation;
+    if (!owner) return;
+    if (this.localRefresh?.generation === generation) { this.localRefresh.requested = true; return; }
+    const refresh = { generation, requested: false, operation: Promise.resolve() };
+    refresh.operation = Promise.resolve().then(async () => {
+      do {
+        refresh.requested = false;
+        if (!this.current(owner, generation) || !this.visible) return;
+        await this.refreshLocalCopies(owner, generation);
+      } while (refresh.requested);
+    }).finally(() => { if (this.localRefresh === refresh) this.localRefresh = null; });
+    this.localRefresh = refresh;
+    this.background(refresh.operation, owner, generation);
+  }
+
+  private async refreshLocalCopies(owner: string, generation: number): Promise<void> {
+    const before = new Map(this.commitRecords);
+    const requests = await this.commits.refreshStored(); this.assertCurrent(owner, generation);
+    const present = new Set(requests.map(request => request.id));
+    // A complete read may retire an old projection, never a newer event or a held delivery.
+    for (const [id, request] of before) {
+      if (!present.has(id) && this.commitRecords.get(id) === request) this.commitRecords.delete(id);
+    }
+    const editors = [...this.editors.values()].filter(entry => !entry.closed && entry.controller);
+    await Promise.all(editors.map(entry => entry.controller!.settled())); this.assertCurrent(owner, generation);
+    const observeAccepted = async (entry: EditorEntry) => {
+      const controller = entry.controller;
+      if (entry.closed || !controller) return;
+      const resource = controller.getState().checkpoint.confirmed.resource;
+      const snapshot = await this.knownSnapshot(owner, generation, resource); this.assertCurrent(owner, generation);
+      if (!entry.closed && entry.controller === controller && snapshot) await controller.observe(snapshot, 'cache');
+    };
+    // A collected ACK may be the exact baseline of the next submitted root.
+    await Promise.all(editors.map(observeAccepted)); this.assertCurrent(owner, generation);
+    await Promise.all(editors.map(entry => !entry.closed && entry.controller?.followSubmittedWork()));
+    this.assertCurrent(owner, generation);
+    // A source may have completed while its stale hint was being checked/pinned.
+    await Promise.all(editors.map(observeAccepted)); this.assertCurrent(owner, generation);
+    await this.options.collections?.reloadWatchedCaches();
   }
 
   setOnline(online: boolean): void {
@@ -1400,6 +1447,12 @@ export class DataEngine {
         readWriteTarget: resource => this.readWriteTarget(resource),
         commits: this.commits,
         submittedCheckpoint: submittedCheckpoint ?? undefined,
+        canFollowSubmittedWork: () => ![...this.manualForms.values()].some(form => {
+          if (form.parent !== entry) return false;
+          const stage = form.scope?.getState();
+          // Merely opening a date/control is not private authoring work.
+          return Boolean(form.opening || (stage && (stage.dirty || stage.capturing || stage.captureFailed || !stage.durable)));
+        }),
         onRecoverySources: sources => entry.presence.add(sources.map(source => source.id)),
         isCurrentOwner: uid => !entry.closed && this.current(uid, generation),
       });

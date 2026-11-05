@@ -244,6 +244,20 @@ export class CollectionReader {
     }
   }
 
+  /** Returning to a tab rereads only lists that are still on screen; this does no network work. */
+  async reloadWatchedCaches(): Promise<void> {
+    this.requireOwner();
+    const generation = this.generation;
+    await Promise.all([...this.entries.values()].filter(entry => entry.listeners.size > 0).map(async entry => {
+      try { await this.reloadCached(entry.collection); }
+      catch (error) {
+        // A visibility/account transition supersedes this local read just like a background read.
+        if (error instanceof Error && error.name === 'AbortError' && !this.current(entry, generation)) return;
+        throw error;
+      }
+    }));
+  }
+
   async peekRemote(collection: string): Promise<{ snapshots: ResourceSnapshot[]; version: number }> {
     const owner = this.requireOwner();
     if (!this.online || !this.visible) throw failure('The server cannot be asked right now', 'unavailable');

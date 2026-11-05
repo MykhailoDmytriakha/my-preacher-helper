@@ -112,6 +112,28 @@ describe('Browser DataEngine lifecycle composition', () => {
   });
   afterEach(() => { jest.clearAllTimers(); jest.useRealTimers(); });
 
+  it('rereads accepted local data on focus and pageshow while already visible, and removes both listeners', async () => {
+    setOnline(false);
+    const s = setup(), browser = createBrowserDataEngine();
+    s.authCallbacks[0].next(user('owner'));
+    const editor = await browser.engine.openEditor(resource, browser.editorId(resource));
+    const key = JSON.stringify(['owner', resource.collection, resource.id]);
+    s.snapshotRows.set(key, { ...snapshot, value: { ...snapshot.value, content: 'Accepted elsewhere' }, metadata: { ...snapshot.metadata!, revision: 2 } });
+    const visible = jest.spyOn(browser.engine, 'setVisible');
+    try {
+      window.dispatchEvent(new Event('focus')); await settle(); await settle();
+      expect(editor.getState().checkpoint.draft?.content).toBe('Accepted elsewhere');
+      s.snapshotRows.set(key, { ...snapshot, value: { ...snapshot.value, content: 'After page return' }, metadata: { ...snapshot.metadata!, revision: 3 } });
+      window.dispatchEvent(new Event('pageshow')); await settle(); await settle();
+      expect(editor.getState().checkpoint.draft?.content).toBe('After page return');
+      expect(s.transport.read).not.toHaveBeenCalled();
+      browser.dispose(); visible.mockClear();
+      window.dispatchEvent(new Event('focus')); window.dispatchEvent(new Event('pageshow'));
+      expect(visible).not.toHaveBeenCalled();
+    } finally { visible.mockRestore(); browser.dispose(); }
+  });
+
+
   it('allocates a fresh editor lifetime even when revisiting the same resource and slot', () => {
     const s = setup(); const first = createBrowserDataEngine(); const second = createBrowserDataEngine();
     expect(first.editorId(resource)).not.toBe(first.editorId({ ...resource }));

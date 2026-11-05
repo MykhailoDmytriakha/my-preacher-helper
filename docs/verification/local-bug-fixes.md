@@ -5540,3 +5540,97 @@ untouched. The913compiled/worker members are archived with SHA
 The local case retains primary scripts/results under `cache-tabs-274-*`; future production
 recipe is `cache-tabs-274-production-recipe-v1.md` and has not been executed. No push,
 deployment, production reads, physical-device or owner acceptance is claimed.
+
+
+## Offline Auth transport scope correction — Unit279 (2026-11-02)
+
+A bounded audit of explicit native response traces found successful SDK Auth lookups during
+browser-offline intervals in accepted272app-native-acceptance-v2 (one),277native-v4(two)
+and274ui-native-v3(two). Their exact lookup forwarder used `route.fetch` to the owned
+Auth emulator, independently of the browser offline switch. Frozen originals and raw
+outcomes remain unchanged. These runs establish their specific private-data cache/capture
+and UI observations; they do not establish fully disconnected Auth startup. This is a
+verification boundary, not evidence that their application fixes failed.
+
+`local-intent-279-offline-auth-scope-audit-v1.json` preserves the source report hashes and
+exact endpoint/phase/status rows, including earlier excluded attempts. The corrected279
+BEFORE runner aborts the SDK lookup while offline. Its fresh C restores cached SDK identity
+and reads A's local Group note without a successful Auth lookup or private Group read from
+the server; that positive control is separate from the stale-B bug and from general
+all-route offline acceptance. The Node control read confirms the server still holds the
+baseline; it is not browser traffic. Keep raw offline diagnostics and qualified behavior
+separate. The common emulator recipe now requires this boundary for future checks.
+
+
+## Unit279 — saved ordinary text on return to another tab (2026-11-05)
+
+**Local readiness only; broad BUG-20260815-offline-queued-text-invisible-in-other-tabs remains open.**
+A preacher returning to an already-open Group Leader Notes editor now sees one unambiguous
+saved local chain and may continue it. The engine rereads its canonical local queue, observes
+actual accepted ancestors, durably pins the continuation before publishing it, and rechecks
+private editing and the request frontier after that await. The editor generation watermark
+continues forward. Focus is a reread hint; delivery time is not a user-action clock or ACK.
+Untouched auto-begun date forms no longer block the group; unsent/capturing/failed or uncertain
+local stages remain protected. Existing manual, atomic and command-decision authority is retained.
+
+**Red/green and scope.** Frozen original engine baseline:1 causal red and 1 private-word control;
+native BEFORE shows stale B while fresh offline C sees A. Three additional ACK/collector
+cases were red before repair. A real foreground HL run exposed the untouched date-form block;
+v25 has 1 causal red and 266 controls, v26 has 267 green. The final 268 tests include private form words
+typed during candidate persistence. Obsolete collection cancellations have2 causal reds and
+a separate current-generation abort control. Main source tests live in
+`frontend/app/data-engine/__tests__/{localReturn,localReturnAckChain,localReturnAdmission,commitReplay,collections,browser.client}.test.ts`.
+
+**Final gates.** v27: 268 tests across 19 suites and 12,806 full tests across 1,111 suites pass; 17 pre-existing
+skipped tests remain. TypeScript, lint (0 errors and 60 existing warnings) and the official production
+build pass with unchanged source inventories. Build:`0esFEvry9u5PQrelXrbje`; 2,716 source files,
+912 compiled files and 1 service worker. Independent source reviews are retained, including the
+manual-stage guard review by a fresh Codex subagent. Separate-context Codex review is not a
+different-provider review; the owner expressly accepted this review route.
+
+**Actual browser/visual proof.** HL5 uses installed headless Google Chrome, activated real service
+worker, synthetic Auth/Firestore emulators and at most 2 tabs. All 13 behavior checks pass:
+A types offline; visible B shows A without reload, appends its own words and captures an immutable
+successor; fresh C at 820×1180 reads it offline without a successful Auth lookup; the server is
+still baseline before reconnect; exact A/B operation IDs are acknowledged at revisions 2 and 3;
+5 canonical reads retain B. Root personally inspected B-before-continuation, B-after-continuation,
+C and server-accepted screenshots. This is rendered browser acceptance, not native-macOS focus,
+physical-tablet acceptance, or production verification.
+
+**Honest runtime envelope.** The raw HL5 process and supervisor remain exit 1: their strict
+zero-error/limited-request classifier also flags expected offline diagnostics. The separate
+`local-intent-279-final-verify-v2.py` returns 0 after pairing all 27 failed requests and 26 console rows
+with exact phase/endpoint failures, checking all source/gate/screenshot/export hashes, and
+rejecting 8 negative controls. Two online health diagnostics require the exact same request ID's
+HTTP 204 plus an observed browser `fetch-resolved` 204 with its signal not aborted; phase/address
+alone do not qualify them. The observation returns the original fetch promise/response unchanged.
+This proves the app received a successful answer; Chromium's internal diagnostic cause is not
+asserted. It does not suppress application/unknown errors. Page errors,
+unhandled rejections, forbidden traffic and HTTP errors are 0. Fixture cleanup leaves its exact
+revision 4 tombstone; all 3 service children exit 0, all 9 ports are free, and Chrome's profile is removed.
+
+Retain the excluded runs: native foreground failures; HL untouched-form defect; HL2 row-count
+predicate failure despite correct B text; HL3 complete behavior with a later cleanup 503. Its
+source cause is not established; it does not invalidate the separately completed HL5 cleanup.
+HL4 exposed an insufficient phase-only classification of online HEAD cancellations; it stays unaccepted.
+The earlier synchronous stand-stop error is retained alongside its actual cleanup audit.
+The emulator recipe now requires an independent timeout and asynchronous wrapper reaping.
+
+**Evidence.** Case:`2026-10-15-lokalnoe-ispravlenie-vseh-bagov/artifacts`;
+`local-intent-279-hl5-native-after-v1.json` SHA256:
+`59c84c2f1d4613229178d6d970eef834dcd16415948db5389fc4e68079521b22`;
+`local-intent-279-hl5-after-stopped-v1.json` SHA256:
+`5c5b258a52fc46d928aa4dcb0ffc2638ddf1b800e64678d191ea676a35d86b17`.
+The accepted source/compiled archive and personal visual report are retained under the Unit279 prefix.
+Case artifacts are local and ignored by Git; this registry, source tests and the commit's bug ID
+provide the durable repository trail.
+
+**Remaining / production plan.** Retained/manual source roots and atomic carry/reshape paths
+need their own reproduction and complete continuation proof; refused/create/delete authority
+is not covered by this ordinary path. Keep the broad tracker record. After a separately authorized
+merge/push/deploy, confirm the deployed commit and refreshed service worker. Using one disposable
+fixture and at most 2 tabs, repeat Groups → existing group → block → Leader Notes: offline A edit,
+return to B without reload, append, fresh offline read, reconnect and confirm the exact final text
+through the accepted server copy; reload once more and verify it remains. Check an independent
+private form draft stays held. Remove only that fixture, close the QA tabs, and distinguish the
+owner's physical-device acceptance from browser resizing. Never run background production polling.

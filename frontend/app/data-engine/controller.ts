@@ -6,6 +6,7 @@ import { assertCommitCapture } from './commits';
 import { isDirectLegacyDocumentIntent, type DocumentAnswer } from './documentDelivery';
 import { requiredDomainTargets } from './domainPolicy';
 import { editorSlot } from './editorIdentity';
+import { liveSubmittedWork } from './liveSubmittedWork';
 import { chooseLocalPlacement } from './localPlacementChoice';
 import { projectManualSelection, type ManualPath } from './manualScope';
 import { equalValues, mergeDocumentFields, mergeFields } from './protocol';
@@ -82,6 +83,8 @@ interface ControllerOptions {
   commits?: CommitQueue;
   /** Proven submitted intent for a fresh opening; an existing checkpoint takes precedence. */
   submittedCheckpoint?: SessionCheckpoint;
+  /** An active private form keeps ordinary root continuation outside its parent editor. */
+  canFollowSubmittedWork?: () => boolean;
   /** Presentation ancestry becomes known before replay or pending ACK projection awaits. */
   onRecoverySources?(sources: readonly RecoverySource[]): void;
 }
@@ -479,6 +482,63 @@ export class EditorController {
     this.error = null;
     this.errorCode = null;
     this.emit();
+  }
+
+  private canFollowSubmittedWork(): boolean {
+    return this.durable && !this.prepared && !this.preparations && !this.pendingCaptures.pending
+      && !this.unfinalized.length && !this.atomicPending.size
+      && (!this.result || this.result.kind === 'acknowledged')
+      && (this.options.canFollowSubmittedWork?.() ?? true);
+  }
+
+  private async pinSubmittedWork(candidate: EditorRecord): Promise<boolean> {
+    try { await this.options.store.put(candidate); return true; }
+    catch (error) {
+      // The source collector won before this editor obtained ownership. No RAM draft changed.
+      if (failureCode(error) === 'commit-reference-changed') return false;
+      throw error;
+    }
+  }
+
+  /** Continue a clean cross-tab editor only after its canonical pending references are durable. */
+  followSubmittedWork(): Promise<void> {
+    return this.enqueue(async () => {
+      if (!this.options.commits) return;
+      const related = (requests: readonly CommitRequest[]) => requests.filter(request => request.owner === this.options.owner
+        && equalValues(request.baseline.resource, this.options.snapshot.resource));
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        if (!this.canFollowSubmittedWork()) return;
+        const before = this.session.checkpoint();
+        const requests = await this.options.commits.list(); this.assertCurrent();
+        if (!this.canFollowSubmittedWork() || !equalValues(before, this.session.checkpoint())) return;
+        const continuation = liveSubmittedWork(this.options.owner, this.options.editorId, before, requests);
+        if (!continuation) return;
+        const completedCommits = [...new Set([...this.completedCommits, ...continuation.acknowledged.map(request => request.id)])];
+        const candidate = { ...this.record(), checkpoint: continuation.checkpoint, completedCommits };
+        if (!await this.pinSubmittedWork(candidate)) return;
+        const unchanged = () => !this.disposed && this.options.isCurrentOwner(this.options.owner)
+          && this.canFollowSubmittedWork() && equalValues(before, this.session.checkpoint());
+        if (!unchanged()) {
+          // Typing mutates RAM immediately; this queue precedes its later capture/retirement write.
+          await this.options.store.put(this.record()); return;
+        }
+        let current: CommitRequest[];
+        try { current = await this.options.commits.list(); }
+        catch (error) { await this.options.store.put(this.record()); throw error; }
+        if (!unchanged()) { await this.options.store.put(this.record()); return; }
+        if (!equalValues(related(requests), related(current))) {
+          // References prove existence, not the request revision or the unique frontier.
+          await this.options.store.put(this.record()); continue;
+        }
+        this.session = DataSession.restore(continuation.checkpoint);
+        this.completedCommits = completedCommits;
+        this.result = continuation.acknowledged.at(-1)?.result ?? this.result;
+        this.held = isRecoverableCheckpoint(candidate);
+        this.clearedCommits = completedCommits.length;
+        this.durable = true; this.error = null; this.errorCode = null;
+        this.emit(); return;
+      }
+    });
   }
 
   private onCommit(request: CommitRequest): void {

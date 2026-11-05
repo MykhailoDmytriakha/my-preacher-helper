@@ -21,3 +21,17 @@ export function editorSlot(editorId: string): string | null {
     return null;
   }
 }
+
+/** A cross-tab continuation needs two ordinary, fully resource-bound editor identities. */
+export function areDifferentTabEditors(sourceId: string, recipientId: string, resource: ResourceRef): boolean {
+  const matches = (id: string): boolean => {
+    try {
+      const parts: unknown = JSON.parse(id);
+      return Array.isArray(parts) && parts.length === 5
+        && parts.every(part => typeof part === 'string' && part.length > 0)
+        && parts[1] === resource.collection && parts[2] === resource.id && parts[3] !== ACTION_SLOT;
+    } catch { return false; }
+  };
+  return sourceId !== recipientId && matches(sourceId) && matches(recipientId)
+    && (JSON.parse(sourceId) as string[])[0] !== (JSON.parse(recipientId) as string[])[0];
+}

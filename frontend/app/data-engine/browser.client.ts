@@ -102,6 +102,8 @@ export function createBrowserDataEngine({ onError }: { onError?: (error: unknown
   visibilityChanged();
   const stopConnectivity = subscribeToConnectivity(connectivityChanged);
   document.addEventListener('visibilitychange', visibilityChanged);
+  window.addEventListener('focus', visibilityChanged);
+  window.addEventListener('pageshow', visibilityChanged);
   if (pausesWhenUntouched) for (const type of ATTENTION_EVENTS) window.addEventListener(type, attentionSeen, { capture: true, passive: true });
   const timer = window.setInterval(() => {
     if (active && pausesWhenUntouched && attended && Date.now() - lastAttention >= ATTENTION_MS) { attended = false; collections.setAttended(false); }
@@ -127,6 +129,8 @@ export function createBrowserDataEngine({ onError }: { onError?: (error: unknown
     window.clearInterval(timer);
     stopConnectivity();
     document.removeEventListener('visibilitychange', visibilityChanged);
+    window.removeEventListener('focus', visibilityChanged);
+    window.removeEventListener('pageshow', visibilityChanged);
     for (const type of ATTENTION_EVENTS) window.removeEventListener(type, attentionSeen, { capture: true });
     stopAuth?.();
     stopEditDiagnostics();

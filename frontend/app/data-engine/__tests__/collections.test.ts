@@ -86,6 +86,31 @@ describe('CollectionReader durable read lifecycle', () => {
   beforeEach(() => { jest.useFakeTimers(); });
   afterEach(() => { jest.clearAllTimers(); jest.useRealTimers(); });
 
+  it.each(['hide', 'replace-owner'] as const)('settles a local cache return cancelled by %s without a background failure', async action => {
+    const s = setup({ online: false }); s.seed(row('a'), true);
+    const stop = s.reader.watch(collection, jest.fn()); await settle();
+    const held = pending<ResourceSnapshot[]>();
+    jest.mocked(s.snapshots.list).mockImplementationOnce(() => held.promise);
+    const reloading = s.reader.reloadWatchedCaches();
+    // Attach immediately so the expected pre-fix rejection cannot become an unhandled rejection.
+    const outcome = reloading.then(() => ({ kind: 'complete' }), error => ({ kind: 'failed', error }));
+    try {
+      await settle();
+      if (action === 'hide') s.reader.setVisible(false); else s.reader.setOwner('other');
+      held.resolve([row('a')]);
+      expect(await outcome).toEqual({ kind: 'complete' });
+      expect(s.onError).not.toHaveBeenCalled();
+    } finally { held.resolve([row('a')]); stop(); s.reader.dispose(); }
+  });
+
+  it('keeps a current native read AbortError visible to the local return caller', async () => {
+    const s = setup({ online: false }); s.seed(row('a'), true);
+    const stop = s.reader.watch(collection, jest.fn()); await settle();
+    jest.mocked(s.snapshots.list).mockRejectedValueOnce(Object.assign(new Error('Current native read aborted'), { name: 'AbortError' }));
+    try { await expect(s.reader.reloadWatchedCaches()).rejects.toThrow('Current native read aborted'); }
+    finally { stop(); s.reader.dispose(); }
+  });
+
   it.each(['setOnline', 'setVisible'] as const)('keeps an automatic failure deadline through a quick %s restart', async method => {
     const s = setup(); jest.mocked(s.transport.list).mockRejectedValue(new Error('Read timed out'));
     const stop = s.reader.watch(collection, jest.fn()); await settle();

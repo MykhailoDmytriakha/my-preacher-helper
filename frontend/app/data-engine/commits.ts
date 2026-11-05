@@ -166,6 +166,7 @@ export class CommitQueue {
   private owner: string | null = null;
   private generation = 0;
   private listeners = new Set<(event: CommitEvent) => void>();
+  private emittedRevisions = new Map<string, number>();
   private readonly receipts = new CommitReceipts(assertCommitCapture);
   private running: Promise<void> | null = null;
   private runningGeneration = 0;
@@ -184,7 +185,7 @@ export class CommitQueue {
   }) {}
 
   setOwner(owner: string | null): void {
-    if (owner !== this.owner) { this.receipts.reset(); this.owner = owner; this.generation += 1; }
+    if (owner !== this.owner) { this.receipts.reset(); this.emittedRevisions.clear(); this.owner = owner; this.generation += 1; }
   }
 
   subscribe(listener: (event: CommitEvent) => void): () => void {
@@ -198,6 +199,20 @@ export class CommitQueue {
     if (!this.current(owner, generation)) return [];
     records.forEach(request => this.receipts.observe(request));
     return orderCommitRequests(records);
+  }
+
+  /** Reread device captures on return, without preparing commands or asking the server. */
+  async refreshStored(): Promise<CommitRequest[]> {
+    const owner = this.owner, generation = this.generation;
+    const requests = await this.list();
+    if (!owner || !this.current(owner, generation)) return [];
+    for (const request of requests) {
+      if (!this.current(owner, generation)) return [];
+      // A previous read may have found private typing or an active form. Retry admission
+      // on return even at the same version; emit still refuses an older delivery state.
+      this.emit(request);
+    }
+    return requests;
   }
 
   /** Opt-in acceptance proof; ordinary save keeps its local-capture contract. */
@@ -556,6 +571,8 @@ export class CommitQueue {
   }
 
   private emit(request: CommitRequest): void {
+    if ((this.emittedRevisions.get(request.id) ?? 0) > request.revision) return;
+    this.emittedRevisions.set(request.id, request.revision);
     this.receipts.observe(request);
     for (const listener of this.listeners) { try { listener({ request: clone(request) }); } catch { /* Rendering cannot change delivery. */ } }
   }
