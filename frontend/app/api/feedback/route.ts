@@ -25,6 +25,7 @@ import {
   MAX_FEEDBACK_PAYLOAD_BYTES,
   MAX_FEEDBACK_TEXT_BYTES,
 } from '@/utils/feedbackPayload';
+import { isIPadDevice } from '@/utils/pwaEnv';
 import { afterResponse } from '@/utils/server/afterResponse.server';
 
 // Define types for better code safety
@@ -126,11 +127,13 @@ const DIAGNOSTICS_FILENAME = 'technical-details.json';
  */
 const plainValue = (value: unknown) => (typeof value === 'string' && /^[\w./:-]{1,80}$/.test(value) ? value : null);
 
-const DEVICES: [RegExp, string][] = [[/iPad/, 'iPad'], [/iPhone/, 'iPhone'], [/Android/, 'Android'], [/Macintosh/, 'Mac'], [/Windows/, 'Windows']];
+const DEVICES: [RegExp, string][] = [[/iPhone/, 'iPhone'], [/Android/, 'Android'], [/Macintosh/, 'Mac'], [/Windows/, 'Windows']];
 
 function deviceOf(environment: Record<string, unknown>): string | null {
   const agent = typeof environment.userAgent === 'string' ? environment.userAgent : '';
-  const device = DEVICES.find(([pattern]) => pattern.test(agent))?.[1];
+  const touchPoints = typeof environment.maxTouchPoints === 'number' && Number.isFinite(environment.maxTouchPoints)
+    ? environment.maxTouchPoints : 0;
+  const device = isIPadDevice(agent, touchPoints) ? 'iPad' : DEVICES.find(([pattern]) => pattern.test(agent))?.[1];
   if (!device) return null;
   return environment.standalone === true ? `${device} (installed app)` : device;
 }

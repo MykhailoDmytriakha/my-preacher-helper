@@ -530,6 +530,41 @@ describe('api/feedback/route', () => {
         method: 'POST', body: JSON.stringify(body),
     }));
 
+    // BUG-20261020-feedback-ipad-said-mac: the caption uses the report's device signals.
+    const macAgent = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Version/26.6.1 Safari/605.1.15';
+    const deviceCases: Array<{ label: string; environment: Record<string, unknown>; device: string | null }> = [
+        { label: 'desktop-class iPad installed app', environment: { userAgent: macAgent, maxTouchPoints: 5, standalone: true }, device: 'iPad (installed app)' },
+        { label: 'desktop-class iPad browser tab', environment: { userAgent: macAgent, maxTouchPoints: 2, standalone: false }, device: 'iPad' },
+        { label: 'Mac with one touch point', environment: { userAgent: macAgent, maxTouchPoints: 1, standalone: true }, device: 'Mac (installed app)' },
+        { label: 'ordinary Mac browser tab', environment: { userAgent: macAgent, maxTouchPoints: 0, standalone: false }, device: 'Mac' },
+        { label: 'older Mac report without touch metadata', environment: { userAgent: macAgent, standalone: true }, device: 'Mac (installed app)' },
+        { label: 'untrusted numeric-string touch metadata', environment: { userAgent: macAgent, maxTouchPoints: '5', standalone: true }, device: 'Mac (installed app)' },
+        { label: 'negative touch metadata', environment: { userAgent: macAgent, maxTouchPoints: -5, standalone: false }, device: 'Mac' },
+        { label: 'non-numeric touch metadata', environment: { userAgent: macAgent, maxTouchPoints: {}, standalone: true }, device: 'Mac (installed app)' },
+        { label: 'classic iPad without touch metadata', environment: { userAgent: 'Mozilla/5.0 (iPad; CPU OS 12_2 like Mac OS X)', standalone: true }, device: 'iPad (installed app)' },
+        { label: 'iPhone with touch support', environment: { userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)', maxTouchPoints: 5, standalone: true }, device: 'iPhone (installed app)' },
+        { label: 'Android with touch support', environment: { userAgent: 'Mozilla/5.0 (Linux; Android 14)', maxTouchPoints: 5, standalone: true }, device: 'Android (installed app)' },
+        { label: 'Windows with touch support', environment: { userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', maxTouchPoints: 5, standalone: true }, device: 'Windows (installed app)' },
+        { label: 'unknown agent with touch support', environment: { userAgent: 'Unrecognized browser', maxTouchPoints: 5, standalone: true }, device: null },
+        { label: 'iPad with an untrusted standalone string', environment: { userAgent: macAgent, maxTouchPoints: 5, standalone: 'true' }, device: 'iPad' },
+    ];
+    test.each(deviceCases)('POST names $label without changing the report or feedback words', async ({ environment, device }) => {
+        const diagnostics = { ...report, environment };
+        const feedbackText = 'Keep my feedback words exactly as typed.';
+        const response = await post({ feedbackText, feedbackType: 'bug', diagnostics });
+        expect(response.status).toBe(200);
+        const stored = mockAdd.mock.calls[0][0];
+        expect(stored.text).toBe(feedbackText);
+        expect(JSON.parse(stored.diagnostics)).toEqual(diagnostics);
+        const email = mockSendMail.mock.calls[0][0];
+        const summary = ['page /studies/:id', ...(device ? [device] : []), 'edits waiting to be sent: 1'].join(' · ');
+        expect(email.text).toContain(summary);
+        expect(email.html).toContain(summary);
+        expect(email.text).toContain(feedbackText);
+        const attached = email.attachments.find((item: { filename: string }) => item.filename === 'technical-details.json');
+        expect(JSON.parse(String(attached.content))).toEqual(diagnostics);
+    });
+
     test('POST stores the report as its own field and attaches it to the letter as a file', async () => {
         const response = await post({ feedbackText: 'the note did not arrive', feedbackType: 'bug', images: [], diagnostics: report });
         expect(response.status).toBe(200);
