@@ -82,6 +82,14 @@ export function useFocusTrap(containerRef: RefObject<HTMLElement | null>, active
       if (!container.contains(current)) {
         event.preventDefault();
         (event.shiftKey ? last : first).focus();
+      } else if (!reachable.includes(current as HTMLElement)) {
+        // On no stop of the ring — the window itself, focused as it came: Tab walks on from where it stands and turns at
+        // the ends (Codex, 05.11: Shift+Tab from it reached the page behind).
+        const ahead = (element: HTMLElement) => Boolean(current!.compareDocumentPosition(element) & Node.DOCUMENT_POSITION_FOLLOWING);
+        if (event.shiftKey ? !reachable.some((element) => !ahead(element)) : !reachable.some(ahead)) {
+          event.preventDefault();
+          (event.shiftKey ? last : first).focus();
+        }
       } else if (event.shiftKey && current === first) {
         event.preventDefault();
         last.focus();

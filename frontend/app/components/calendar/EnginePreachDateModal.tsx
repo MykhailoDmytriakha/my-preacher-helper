@@ -59,7 +59,7 @@ export function EnginePreachDateModal({ sermonId, action, onClose }: {
   };
   const title = action.kind === 'unmark' ? 'optionMenu.markAsNotPreached' : action.kind === 'mark' ? 'optionMenu.markAsPreached'
     : action.kind === 'delete' ? 'calendar.deleteConfirm' : action.kind === 'edit' ? 'calendar.editPreachDate' : 'calendar.addPreachDate';
-  return <FormDialog title={t(title)} onClose={onClose} showCloseButton onSubmit={event => { event.preventDefault(); void save(); }}
+  return <FormDialog title={t(title)} onClose={() => { void form.cancel().then(onClose).catch(() => undefined); }} unsaved={unsaved} showCloseButton onSubmit={event => { event.preventDefault(); void save(); }}
     footer={<FormActions onCancel={() => { void form.cancel().then(onClose).catch(() => undefined); }} cancelLabel={t('buttons.cancel')}
       submitLabel={t(action.kind === 'delete' ? 'common.delete' : 'buttons.save')} savingLabel={t('buttons.saving')}
       saving={form.busy} cancelDisabled={form.busy} unsaved={unsaved} submitDisabled={readOnly || !valid || !form.dirty || !form.durable || !form.status?.canSave} />}>

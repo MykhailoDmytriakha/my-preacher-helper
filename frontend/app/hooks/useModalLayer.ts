@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 
 import { addLayer, hasModalLayers, isTopmostLayer } from '@/hooks/modalLayers';
+import { useBackAsksFirst } from '@/hooks/useBackAsksFirst';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useScrollLock } from '@/hooks/useScrollLock';
 
@@ -42,6 +43,8 @@ export interface ModalLayerOptions {
    * layer and forgot it let Tab walk onto the page under them (BUG-20261023-windows-let-tab-out).
    */
   focusRing?: RefObject<HTMLElement | null>;
+  /** The window holds work not yet saved: Back leaves its step and runs `onClose`, which asks (`useBackAsksFirst`). */
+  holdsWork?: boolean;
 }
 
 export interface ModalLayerProps {
@@ -71,10 +74,13 @@ export function useModalLayer({
   active = true,
   closeOnEscape = true,
   focusRing,
+  holdsWork = false,
 }: ModalLayerOptions): ModalLayerProps {
   const ref = useRef<HTMLDivElement>(null);
   useScrollLock(active);
   useFocusTrap(focusRing ?? ref, active);
+  // While nothing may close it (a save on its way) Back leaves it standing too, on a new step, as ✕ and Escape do (Codex, 05.11).
+  useBackAsksFirst({ active: active && holdsWork, onBack: () => { if (!closeDisabled) onClose(); } });
 
   // The overlay can come after the window's first render — a portal waits for the page to mount — and the window
   // is on screen from then: registered only at its first render, such a window was never the topmost, and its
@@ -90,6 +96,36 @@ export function useModalLayer({
   useEffect(() => {
     if (!active || !element) return;
     return addLayer(element);
+  }, [active, element]);
+
+  // The keyboard and a screen reader arrive with the eye (BUG-20261104-modal-focus-not-moved): a window takes the focus
+  // when it comes — the window itself, as a field taking it would raise a phone's keyboard — unless something in it took
+  // it already, and gives it back to what opened it when it goes, if that is still on the page.
+  const ringRef = focusRing ?? ref;
+  // What opened it — what had the focus as the window came, read while it renders: by its effects a field inside that takes
+  // the focus itself (autoFocus, in the commit) has it already (Codex, 05.11: closing then left the focus nowhere).
+  const openerRef = useRef<HTMLElement | null>(null);
+  const shownRef = useRef(false);
+  if (active !== shownRef.current) {
+    shownRef.current = active;
+    const focused = active && typeof document !== 'undefined' ? document.activeElement : null;
+    openerRef.current = focused instanceof HTMLElement && focused !== document.body ? focused : null;
+  }
+  useEffect(() => {
+    if (!active || !element) return undefined;
+    const opener = openerRef.current;
+    const ring = ringRef.current ?? element;
+    if (!ring.contains(document.activeElement)) {
+      const target = ring.querySelector<HTMLElement>('[role="dialog"]') ?? ring;
+      if (!target.hasAttribute('tabindex')) target.setAttribute('tabindex', '-1');
+      target.focus({ preventScroll: true });
+    }
+    return () => {
+      const lost = !document.activeElement || document.activeElement === document.body || element.contains(document.activeElement);
+      if (opener?.isConnected && lost) opener.focus({ preventScroll: true });
+    };
+    // Once per showing: a window rendering again keeps the focus where the person put it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active, element]);
 
   useEffect(() => {

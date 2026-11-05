@@ -103,7 +103,7 @@ export function EngineThoughtModal({ sermonId, thoughtId, allowedTags, onClose }
   const availableTags = allowedTags.filter(allowed => !shown.tags.some(tag => tag === allowed.name
     || (normalizeStructureTag(tag) !== null && normalizeStructureTag(tag) === normalizeStructureTag(allowed.name))));
   return <FormDialog size="standard" title={t(thoughtId ? 'editThought.editTitle' : 'createThought.title')}
-    eyebrow={t('thought.editorLabel')} onClose={onClose} dismissOnBackdrop showCloseButton
+    eyebrow={t('thought.editorLabel')} onClose={() => { void form.cancel().then(onClose).catch(() => undefined); }} unsaved={form.dirty} dismissOnBackdrop showCloseButton
     onSubmit={event => { event.preventDefault(); void save(); }}
     footer={<FormActions onCancel={() => { void cancel().catch(() => undefined); }} cancelLabel={t('buttons.cancel')}
         submitLabel={t('buttons.save')} savingLabel={t('buttons.saving')} saving={form.busy} cancelDisabled={form.busy} unsaved={form.dirty}

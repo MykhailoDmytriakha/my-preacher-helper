@@ -68,13 +68,16 @@ it('captures deletion through the engine and navigates only after local persiste
   expect(harness.transport.send).not.toHaveBeenCalled(); expect(await harness.commits.list('owner')).toHaveLength(1);
   expect(harness.read(series('b').resource).value).not.toBeNull(); view.unmount();
 });
-it('keeps a closed unsent metadata form visible and offers it after restart without sending', async () => {
+// ✕ over typing asks first (BUG-20261101-browser-back-closes-window-unasked: closing a window with data is the person's
+// decision); the page left with the window open keeps the unsent form and offers it after restart, sending nothing.
+it('asks before ✕ takes unsent metadata, and offers a form left open after restart without sending', async () => {
   const { harness, view, Workspace } = setup(); await screen.findByRole('heading', { name: 'b', level: 1 });
   fireEvent.click(screen.getByRole('button', { name: 'workspaces.series.editSeries' }));
   const title = await screen.findByDisplayValue('b'); await waitFor(() => expect(title).toBeEnabled());
   fireEvent.change(title, { target: { value: 'Unsent metadata' } }); await act(async () => { await settleEngine(); });
   fireEvent.click(screen.getByRole('button', { name: 'common.close' }));
-  await screen.findByRole('heading', { name: 'workspaces.series.metadataRecovery' });
+  fireEvent.click(await screen.findByRole('button', { name: 'common.discardChanges.keep' }));
+  expect(screen.getByDisplayValue('Unsent metadata')).toBeInTheDocument();
   expect(harness.transport.send).not.toHaveBeenCalled();
   view.unmount(); const restored = render(<Workspace />);
   const heading = await screen.findByRole('heading', { name: 'workspaces.series.metadataRecovery' });
