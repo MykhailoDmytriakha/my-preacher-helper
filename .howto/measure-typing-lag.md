@@ -6,6 +6,13 @@ Found while fixing BUG-20260809-studies-search-lag (2026-09-30). The symptom onl
 
 ## Get the volume without writing to the database
 
+2026-10-15: the studies collection now reads through `useStudyNotesEngine` /
+`useDataCollection`. The React Query seeding steps below describe the historical
+pre-engine harness, not the current studies read path. Do not seed engine
+checkpoints/outbox rows to imitate volume. Current local reacceptance used23real
+test-account notes, the existing scheduling regression and the owner's accepted
+typing observation; it did not repeat the old400-note benchmark.
+
 Dev and production share one Firestore project, so creating hundreds of test notes pollutes the real database. Seed the page's own React Query cache instead:
 
 1. Find the QueryClient through React's fiber tree — walk up from any DOM node to a fiber whose `memoizedProps.client` has `setQueryData`.
