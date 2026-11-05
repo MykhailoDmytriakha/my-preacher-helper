@@ -36,6 +36,7 @@ import { isKnownOffline } from '@/utils/connectivity';
 import { studyNoteLanguage } from '@/utils/documentLanguage';
 import { formatScriptureReference, scriptureReferenceSearchText, studyNoteSearchText } from '@/utils/scriptureReference';
 import { inStudyNoteTab, STUDY_NOTE_TABS, type StudyNoteTab } from '@/utils/studyNoteTabs';
+import { STUDIES_ACTION } from '@/utils/themeColors';
 
 import { CommentCard } from './CommentCard';
 import ShareNoteModal from './components/ShareNoteModal';
@@ -356,7 +357,7 @@ export default function StudiesPage() {
             </Link>
             <button
               onClick={handleAddNote}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 sm:w-auto"
+              className={`inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition sm:w-auto ${STUDIES_ACTION}`}
             >
               <PlusIcon className="h-4 w-4" />
               {t(`studiesWorkspace.${ADD_BUTTON_WORD[activeTab] ?? 'newNote'}`)}
@@ -403,7 +404,7 @@ export default function StudiesPage() {
               {t(`studiesWorkspace.tabs.${tab}`)}
               {/* Show count in parentheses for non-question tabs */}
               {tab !== 'questions' && (
-                <span className={`ml-1.5 ${activeTab === tab ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-400 dark:text-gray-500'}`}>
+                <span className={`ml-1.5 ${activeTab === tab ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-500 dark:text-gray-400'}`}>
                   ({noteCounts[tab]})
                 </span>
               )}
@@ -584,7 +585,7 @@ export default function StudiesPage() {
           {!hasActiveFilters && (
             <button
               onClick={handleAddNote}
-              className="mt-4 inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-700"
+              className={`mt-4 inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition ${STUDIES_ACTION}`}
             >
               <PlusIcon className="h-4 w-4" />
               {t('studiesWorkspace.createFirstNote') || 'Create your first note'}

@@ -7,13 +7,13 @@ import { toast } from 'sonner';
 
 import { useDataCollection, useDocumentActions } from '@/data-engine/react.client';
 import { useResolvedUid } from '@/hooks/useResolvedUid';
+import { useSermonsDataCollection } from '@/hooks/useSermonsDataCollection';
 import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
 import { SERMON_CORE_AGGREGATE } from '@/services/sermons.client';
 import { resolveAppLocale } from '@/utils/appLocale';
 import { sermonListKey, studyNoteListKey } from '@/utils/queryKeys';
 import { serverCopyIsNewer, type VersionedCopy } from '@/utils/readFreshness';
 import { withNoteReferenceBibles } from '@/utils/scriptureReferenceNumbering';
-import { getSermons } from '@services/sermon.service';
 import { getStudyNotes } from '@services/studies.service';
 
 import type { Sermon, StudyNote } from '@/models/models';
@@ -149,23 +149,20 @@ export function useSermonsBuiltOnNote(noteId: string | undefined): {
   loading: boolean;
 } {
   const { uid, isAuthLoading } = useResolvedUid();
-  const query = useServerFirstQuery({
-    queryKey: sermonListKey(uid),
-    queryFn: () => (uid ? getSermons(uid) : Promise.resolve([])),
-    enabled: !!uid && !!noteId,
-  });
+  // The shared reader owns the same hydration and ordering as the former getSermons path.
+  const collection = useSermonsDataCollection(!!uid && !!noteId);
   const sermons = useMemo(() => {
     if (!noteId) return [];
-    return (query.data ?? []).filter((sermon) => sermonNamesNote(sermon, noteId));
-  }, [query.data, noteId]);
+    return collection.sermons.filter((sermon) => sermonNamesNote(sermon, noteId));
+  }, [collection.sermons, noteId]);
 
-  return { sermons, loading: isAuthLoading || query.isLoading };
+  return { sermons, loading: isAuthLoading || collection.loading };
 }
 
 /**
  * The same direction read from the data engine's list of sermons — the list the Bible reads its sermon badges from:
  * a sermon made here a moment ago is in it at once, before any server answers (an analysis's sermons in the reader,
- * 2026-10-30). Newest first. The studies screens still read `useSermonsBuiltOnNote` from the legacy cache.
+ * 2026-10-30). Newest first.
  */
 export function useEngineSermonsBuiltOnNote(noteId: string | null | undefined): Sermon[] {
   const { uid } = useResolvedUid();

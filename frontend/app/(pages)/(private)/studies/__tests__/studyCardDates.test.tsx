@@ -28,6 +28,8 @@ describe('the dates on Studies\' cards', () => {
   it('say the open card\'s creation day in the interface language', () => {
     render(<StudyNoteCard note={question} bibleLocale="ru" isExpanded onToggleExpand={jest.fn()} onEdit={jest.fn()} />);
     expect(screen.getByText('20 июл. 2026')).toBeInTheDocument();
+    // Readable small words: gray-500 on white is 4.8:1, gray-400 was 2.5:1 (Codex UX, 04.11).
+    expect(screen.getByText('20 июл. 2026')).toHaveClass('text-gray-500', 'dark:text-gray-400');
   });
 
   it('say an old comment\'s last change in the interface language', () => {

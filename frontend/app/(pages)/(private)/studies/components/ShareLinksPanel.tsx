@@ -14,6 +14,7 @@ import { markdownPreviewText } from '@/utils/markdownUtils';
 import { awaitAcceptance, type WriteSubmission } from '@/utils/recoverableWrite';
 import { getShareNotePath, getShareNoteUrl } from '@/utils/shareNoteUtils';
 import { studyNoteOwnName } from '@/utils/studyNoteUtils';
+import { STUDIES_ACTION } from '@/utils/themeColors';
 
 interface ShareLinksPanelProps {
   notes: StudyNote[];
@@ -26,9 +27,9 @@ interface ShareLinksPanelProps {
 const PANEL_CLASS = 'rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800';
 const HEADER_CLASS = 'flex flex-col gap-4 md:flex-row md:items-center md:justify-between border-b border-gray-100 dark:border-gray-700 pb-5 mb-5';
 const ACTIONS_CLASS = 'flex flex-col gap-2 sm:flex-row sm:items-stretch sm:h-10';
-const ACTION_BUTTON_CLASS = 'inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50 whitespace-nowrap';
+const ACTION_BUTTON_CLASS = `inline-flex h-10 items-center justify-center gap-2 rounded-lg px-4 text-sm font-semibold shadow-sm transition disabled:cursor-not-allowed disabled:opacity-50 whitespace-nowrap ${STUDIES_ACTION}`;
 const GRID_COLS_CLASS = 'md:grid-cols-[2fr_minmax(180px,1.2fr)_110px_90px_310px]';
-const TABLE_HEADER_CLASS = `hidden md:grid gap-4 px-4 py-3 text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 ${GRID_COLS_CLASS} items-center border-b border-gray-100 dark:border-gray-700/50`;
+const TABLE_HEADER_CLASS = `hidden md:grid gap-4 px-4 py-3 text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 ${GRID_COLS_CLASS} items-center border-b border-gray-100 dark:border-gray-700/50`;
 const ROW_CLASS = `grid grid-cols-1 gap-3 md:gap-4 px-4 py-4 text-sm text-gray-700 transition-colors border-b border-gray-50 dark:border-gray-700/50 dark:text-gray-200 ${GRID_COLS_CLASS} items-center hover:bg-gray-50/50 dark:hover:bg-gray-700/20`;
 
 /** How much of a comment's words names it beside its place. */

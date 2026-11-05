@@ -8,13 +8,11 @@ import { DataEngineProvider } from '@/data-engine/react.client';
 import { useAuth } from '@/providers/AuthProvider';
 import { settleEngine } from '../../../test-utils/documentEngineHarness';
 import { membershipEngineHarness } from '../../../test-utils/membershipEngineHarness';
-import { getSermons } from '@services/sermon.service';
 import { getStudyNotes } from '@services/studies.service';
 
 import {
   applySourceNoteLinkPatch,
   openingContextOf,
-  useSermonsBuiltOnNote,
   useSourceNoteLink,
   useSourceNotes,
 } from '../useSermonNoteLinks';
@@ -43,7 +41,6 @@ jest.mock('react-i18next', () => ({
 
 const mockUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;
 const mockGetStudyNotes = getStudyNotes as jest.MockedFunction<typeof getStudyNotes>;
-const mockGetSermons = getSermons as jest.MockedFunction<typeof getSermons>;
 
 /** Wrapper plus the client itself: the reverse side reads this cache, so tests can inspect it. */
 const harness = () => {
@@ -139,27 +136,7 @@ describe('useSourceNotes — what the sermon screen shows', () => {
   });
 });
 
-describe('useSermonsBuiltOnNote — what the note screen shows', () => {
-  it('finds every sermon that names this note and no others', async () => {
-    mockGetSermons.mockResolvedValue([
-      sermon('s1', ['n1']),
-      sermon('s2', ['n2', 'n1']),
-      sermon('s3', ['n2']),
-      sermon('s4'),
-    ]);
-
-    const { result } = renderHook(() => useSermonsBuiltOnNote('n1'), { wrapper: wrapper() });
-
-    await waitFor(() => expect(result.current.sermons).toHaveLength(2));
-    expect(result.current.sermons.map((s) => s.id)).toEqual(['s1', 's2']);
-  });
-
-  it('does not query at all for a note that does not exist yet', () => {
-    renderHook(() => useSermonsBuiltOnNote(undefined), { wrapper: wrapper() });
-
-    expect(mockGetSermons).not.toHaveBeenCalled();
-  });
-});
+// useSermonsBuiltOnNote reads the data engine's sermons: `useSermonsBuiltOnNote.engine.test.tsx` and `.offline.test.tsx`.
 
 describe('openingContextOf — what an editor may vouch for', () => {
   it('keeps "never linked" apart from "linked to nothing"', () => {

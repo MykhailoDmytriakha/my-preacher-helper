@@ -30,6 +30,7 @@ import { formatScriptureReference, scriptureReferenceSearchText, type ScriptureR
 import { extractSearchSnippets } from '@/utils/searchUtils';
 import { formatStudyNoteForCopy } from '@/utils/studyNoteUtils';
 import { UI_COLORS } from '@/utils/themeColors';
+import { TOUCH_AREA } from '@/utils/touchTarget';
 import HighlightedText from '@components/HighlightedText';
 import MarkdownDisplay from '@components/MarkdownDisplay';
 
@@ -275,7 +276,7 @@ export default function StudyNoteCard({
           aria-expanded={isExpanded}
           aria-label={isExpanded ? t('common.collapse') : t('common.expand')}
           title={isExpanded ? t('common.collapse') : t('common.expand')}
-          className="mt-0.5 flex-shrink-0 rounded text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-gray-500 dark:hover:bg-gray-700 dark:hover:text-gray-200"
+          className={`mt-0.5 flex-shrink-0 rounded text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-200 ${TOUCH_AREA.small}`}
         >
           {isExpanded ? (
             <ChevronDownIcon className="h-5 w-5" />
@@ -469,7 +470,7 @@ export default function StudyNoteCard({
                 a near miss lands on the strip, not on the row underneath.
               */}
               <div
-                className="-m-1.5 ml-auto flex shrink-0 items-center gap-1 p-1.5"
+                className="-m-1.5 ml-auto flex shrink-0 items-center gap-3 p-1.5"
                 onClick={(e) => e.stopPropagation()}
               >
                 {/* A share page shows a note's words; an analysis is a structure on the Bible's text, not shared yet. */}
@@ -480,7 +481,7 @@ export default function StudyNoteCard({
                       e.stopPropagation();
                       handleShareNote();
                     }}
-                    className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition disabled:opacity-50 ${hasShareLink
+                    className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition disabled:opacity-50 ${TOUCH_AREA.compact} ${hasShareLink
                       ? 'text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 dark:text-emerald-400 dark:hover:bg-emerald-900/30 dark:hover:text-emerald-300'
                       : 'text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-200'
                       }`}
@@ -496,7 +497,7 @@ export default function StudyNoteCard({
                     e.stopPropagation();
                     handleCopyNote();
                   }}
-                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-200"
+                  className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-200 ${TOUCH_AREA.compact}`}
                   title={isCopied ? t('common.copied', 'Copied!') : t('common.copy', 'Copy')}
                   aria-label={isCopied ? t('common.copied', 'Copied!') : t('common.copy', 'Copy')}
                 >
@@ -574,12 +575,12 @@ export default function StudyNoteCard({
             <div className="flex items-center justify-between">
               <button
                 onClick={() => onEdit(note)}
-                className="inline-flex items-center gap-1.5 rounded-md bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 transition hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
+                className={`inline-flex items-center gap-1.5 rounded-md bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 transition hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600 ${TOUCH_AREA.short}`}
               >
                 <PencilIcon className="h-3.5 w-3.5" />
                 {t('common.edit')}
               </button>
-              <span className="text-xs text-gray-400 dark:text-gray-500">{formatDay(note.createdAt, dateLocale)}</span>
+              <span className="text-xs text-gray-500 dark:text-gray-400">{formatDay(note.createdAt, dateLocale)}</span>
             </div>
           </div>
         </div>

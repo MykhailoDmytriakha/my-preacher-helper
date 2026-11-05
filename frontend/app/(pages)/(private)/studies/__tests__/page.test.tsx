@@ -10,6 +10,7 @@ import { __resetConnectivityForTests, getConnectivityStatus, reportServerReachab
 import StudiesPage from '../page';
 import { formatScriptureReference } from '@/utils/scriptureReference';
 import { toast } from 'sonner';
+import { STUDIES_ACTION } from '@/utils/themeColors';
 
 const mockPush = jest.fn();
 jest.mock('sonner', () => ({
@@ -478,6 +479,8 @@ describe('StudiesPage', () => {
       mockUseStudyNotes.mockReturnValue({ ...baseUseStudyNotesValue(), notes: [createMockNote({ id: '1', type: 'note' })] });
       render(<StudiesPage />);
       expect(screen.getByText('studiesWorkspace.analysesEmptyTitle')).toBeInTheDocument();
+      // Studies' own emerald, dark enough for its white words (Codex UX, 04.11).
+      expect(screen.getByRole('button', { name: /studiesWorkspace\.newAnalysis/ })).toHaveClass(...STUDIES_ACTION.split(' '));
       await userEvent.click(screen.getByRole('button', { name: /studiesWorkspace\.newAnalysis/ }));
       expect(mockPush).toHaveBeenCalledWith('/bible');
       // Codex UX, 04.11: the Bible opened with no word of what to do there once the list had analyses and no invitation.

@@ -526,6 +526,12 @@ export const CHIP_TONES = {
 
 export type ChipTone = keyof typeof CHIP_TONES;
 
+/**
+ * Studies' main action — its emerald, dark enough for white words: 5.5:1, where emerald-600 gave 3.77:1 under the 4.5:1 of
+ * WCAG AA (Codex UX review, 04.11). Every Studies button that adds or confirms takes it from here.
+ */
+export const STUDIES_ACTION = 'bg-emerald-700 text-white hover:bg-emerald-800';
+
 /** Shared presentation for entity forms; callers retain their own write contracts. */
 export const FORM_COLORS = {
   field: 'border-gray-200 bg-white focus:border-blue-400 focus:ring-blue-100 dark:border-gray-700 dark:bg-gray-800 dark:text-white dark:focus:border-blue-500 dark:focus:ring-blue-900/40',

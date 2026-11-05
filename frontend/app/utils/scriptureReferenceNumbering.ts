@@ -164,6 +164,11 @@ export function scriptureReferencesOverlap(a: ScriptureRefShape, b: ScriptureRef
  */
 export type Passage = { chapter: number; toChapter: number; fromVerse?: number; toVerse?: number };
 
+/** Two passages of one book the same: the same first and last verse, or the same chapters. */
+export function samePassage(a: Passage, b: Passage): boolean {
+  return a.chapter === b.chapter && a.fromVerse === b.fromVerse && a.toChapter === b.toChapter && a.toVerse === b.toVerse;
+}
+
 /** The passage a reference names as it is written: verses, on into a later chapter where `toVerseChapter` says so (`lastChapterOfVerses`). */
 function passageAsWritten(ref: ScriptureRefShape & { chapter: number }): Passage {
   if (ref.fromVerse !== undefined) return { chapter: ref.chapter, toChapter: lastChapterOfVerses(ref), fromVerse: ref.fromVerse, toVerse: ref.toVerse ?? ref.fromVerse };
@@ -222,10 +227,10 @@ function versesNameable(held: VersePlace[]): VersePlace[] {
  * The same reference in another Bible, in the stored shape — for a form that edits it (the picker).
  * A verse or a range of verses becomes the verses that hold it there (Пс 50:12 → Ps 51:10); a whole
  * chapter stays a whole chapter where it is one there (Пс 22 → Ps 23) and becomes its verses where it
- * is a part (Пс 114 → Ps 116:1-9). The shape has no verse range across a chapter seam, so a range
- * that falls across two chapters there is given as those chapters (Пс 9:20-25 → Ps 9-10) — print
- * and compare through `passagesIn`, which says Ps 9:19-10:4. A place the reference's own Bible does
- * not have is left as it was written, and so is a reference with no Bible.
+ * is a part (Пс 114 → Ps 116:1-9). A run across a chapter seam keeps its endpoints in
+ * `toVerseChapter` (Synodal Psalm 9:20-25 → KJV Psalm 9:19-10:4), with `toChapter` for readers
+ * of that field. A place the reference's own Bible does not have is left as it was written,
+ * and so is a reference with no Bible.
  */
 export function referenceIn<T extends ScriptureRefShape>(ref: T, to: BibleId): T {
   const from = ref.bible;
@@ -238,8 +243,11 @@ export function referenceIn<T extends ScriptureRefShape>(ref: T, to: BibleId): T
   if (!start || !end) return ref;
 
   const there = { ...withoutPlace(ref), bible: to };
-  if (start.chapter !== end.chapter) return { ...there, chapter: start.chapter, toChapter: end.chapter };
   const wholeChapter = ref.fromVerse === undefined && start.verse === 1 && end.verse === verseCount(to, book, end.chapter);
+  if (start.chapter !== end.chapter) return {
+    ...there, chapter: start.chapter, toChapter: end.chapter,
+    ...(!wholeChapter ? { fromVerse: start.verse, toVerseChapter: end.chapter, toVerse: end.verse } : {}),
+  };
   if (wholeChapter) return { ...there, chapter: start.chapter };
   return { ...there, chapter: start.chapter, fromVerse: start.verse, ...(end.verse !== start.verse ? { toVerse: end.verse } : {}) };
 }

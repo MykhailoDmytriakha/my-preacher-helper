@@ -72,9 +72,10 @@ describe('a reference in another Bible', () => {
     expect(referenceIn(ps('kjv', 147), 'rst')).toEqual({ bible: 'rst', book: 'Psalms', chapter: 146, toChapter: 147 });
   });
 
-  it('moves a range into the chapter that holds it, and covers a range split across two chapters', () => {
+  it('moves a range into the chapter that holds it, and keeps the ends of a range split across two chapters', () => {
     expect(referenceIn(ps('rst', 9, 22, 39), 'kjv')).toEqual(ps('kjv', 10, 1, 18));
-    expect(referenceIn(ps('rst', 9, 20, 25), 'kjv')).toEqual({ bible: 'kjv', book: 'Psalms', chapter: 9, toChapter: 10 });
+    // Six verses stay six verses, not the 38 of Ps 9-10 (BUG-20261017-reference-across-chapters-in-other-bible).
+    expect(referenceIn(ps('rst', 9, 20, 25), 'kjv')).toEqual({ bible: 'kjv', book: 'Psalms', chapter: 9, fromVerse: 19, toChapter: 10, toVerseChapter: 10, toVerse: 4 });
   });
 
   it('keeps a chapter whose verses stand in two chapters with a gap between as the chapter holding most of it', () => {
