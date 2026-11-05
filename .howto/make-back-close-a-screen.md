@@ -1,4 +1,4 @@
-when: Back leaves the page instead of closing the screen · back opened the previous page · browser back closes window · swipe back · history step · pushState · popstate · screen over the page · назад ушёл со страницы · назад открыл Библию, а не разбор · кнопка назад браузера · свайп назад · окно поверх страницы · шаг в истории
+when: Back leaves the page instead of closing the screen · window with unsaved typing closed by Back · Back asks first · useBackAsksFirst · holdsWork · Forward does not reopen a new screen · reopened screen opens again at Done · screen gone after a Bible change · back opened the previous page · browser back closes window · swipe back · history step · pushState · popstate · screen over the page · назад ушёл со страницы · назад открыл Библию, а не разбор · кнопка назад браузера · свайп назад · окно поверх страницы · шаг в истории
 
 # Make Back close a screen opened over the page
 
@@ -11,6 +11,9 @@ A full screen opened over a page (the analysis screen over Studies' list or the 
 - Changes inside the screen (a mode, a new record given its id) are written in place, on the same step.
 - The screen's own way back takes its step (`history.back()`), so Back afterwards goes where it went before the screen opened. Without a step, forget the address in place — only while the address still names this screen's record: a late close must never touch the page the person has moved on to.
 - Listen to `popstate` in the screen: off its entry → close through the screen's own close (the analysis flushes there). The host listens too: Forward onto a step whose record it holds opens it again.
+- **A window holding work not yet saved** (a form) takes a step the same way, through the window layer: `useModalLayer({ holdsWork })` → `hooks/useBackAsksFirst.ts`; `FormDialog` passes `unsaved`. Back leaves the step and runs the window's own close, which asks (`useDiscardQuestion`); kept open, it stands on a new step. While nothing may close it (`closeDisabled`, a save on its way) Back closes nothing either. Saved or emptied, it takes its step back. Tests: `__tests__/components/ui/FormDialog.unsavedClose.test.tsx`.
+- **A screen with no record yet** (a new analysis before its first change) keeps what it needs on its step: `pushHistoryStep(url, remember)` (the passage, `readNewAnalysisStep`). Forward opens it from there — and the screen so opened **adopts that step** (`historyStepHere`), as one arrived at by an address does; pushing another left a step under it that reopened the screen at «Готово» (caught live 05.11).
+- **A screen whose page is rebuilt under it** (the reader keyed by its Bible: «Перейти на «Синодальный»» from an analysis made there) hands its address on instead of taking it: `useAnalysisAddress().handOn()` before the change — the next page opens it from the address, as after a reload.
 - Worked example: `components/bible/analysis/analysisAddress.ts` (`openAnalysisStep`, `leaveAnalysisAddress`) and `useAnalysisAddress.ts`, used by `AnalysisEditor`; hosts `studies/StudyAnalysisWindow.tsx`, `bible/analysis/ReaderAnalysis.tsx`. Tests: `__tests__/components/bible/analysisHistoryStep.test.tsx`.
 
 ## Traps
@@ -23,4 +26,5 @@ A full screen opened over a page (the analysis screen over Studies' list or the 
 - Next's patched `pushState` skips its own sync when the state carries `__NA`: the URL changes without `useSearchParams` moving. That is wanted here (nothing re-renders on open); read the address with `window.location`, not `useSearchParams`.
 
 ## History
+- 2026-11-05 — windows with unsaved typing ask on Back (`useBackAsksFirst`, six forms); a new analysis reopened by Forward; an analysis carried over a Bible change (case `2026-10-12-block-diagram`, phase 14). Live: comment typed → Back → «Отбросить изменения?», window kept; new analysis → Back → Forward → «Готово» closes; KJV → notice → button → the analysis open in the Synodal.
 - 2026-11-03 — the analysis screen made a step (case `2026-10-12-block-diagram`, item 13.3); live: open → Back → the list at scroll 400 → 400; «К списку» → Back → the Bible; Forward reopens; the reader's text stays.

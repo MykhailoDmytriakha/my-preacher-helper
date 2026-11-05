@@ -9,7 +9,7 @@ import { AnalysisIcon } from '@/components/Icons';
 import { PassagePickBar } from '../verseCopy/PassagePickBar';
 import { VerseCopyBar } from '../verseCopy/VerseCopyBar';
 
-import { analysesListHref, readAnalysisAddress } from './analysisAddress';
+import { analysesListHref, readAnalysisAddress, readNewAnalysisStep } from './analysisAddress';
 import { AnalysisEditor, type AnalysisOpening } from './AnalysisEditor';
 import { useAnalysisReshape } from './useAnalysisReshape';
 
@@ -30,7 +30,7 @@ const ANALYSES_DOOR: AnalysisDoor = { home: 'analyses', href: analysesListHref }
  * The analysis's verses are changed by choosing them again, its own chosen to start with (the owner, 2026-10-29). Its door
  * «Все разборы» leads to Studies' list opened at it, and Back returns to it open over the text (the owner, 03.11).
  */
-export function ReaderAnalysis({ copy, text, wide, bookId, bible, locale, opening, onOpening, marks, onOpenScreen }: {
+export function ReaderAnalysis({ copy, text, wide, bookId, bible, locale, opening, onOpening, marks, onOpenScreen, onUseBible }: {
   copy: VerseCopy;
   text: BookText | null;
   wide: boolean;
@@ -43,6 +43,8 @@ export function ReaderAnalysis({ copy, text, wide, bookId, bible, locale, openin
   marks?: AnalysisMarks | null;
   /** Another screen of the app opened from an analysis (a sermon made from it), the reader's way. */
   onOpenScreen?: (href: string) => void;
+  /** An analysis made in another Bible: the reader turns to that Bible (`OtherBibleNotice`). */
+  onUseBible?: (bible: BibleId) => void;
 }) {
   const { t } = useTranslation();
   const choosing = copy.purpose === 'analysis' && text;
@@ -67,8 +69,12 @@ export function ReaderAnalysis({ copy, text, wide, bookId, bible, locale, openin
     const moved = () => {
       clearTimeout(after);
       after = setTimeout(() => {
+        if (now.current.opening || !now.current.text) return;
         const named = readAnalysisAddress();
-        if (named && !now.current.opening && now.current.text) now.current.onOpening({ kind: 'open', id: named.id, editing: named.mode === 'edit' });
+        if (named) { now.current.onOpening({ kind: 'open', id: named.id, editing: named.mode === 'edit' }); return; }
+        // A new analysis's step, before it had a note: it opens again on the passage it was begun on.
+        const begun = readNewAnalysisStep();
+        if (begun) now.current.onOpening({ kind: 'new', passage: begun });
       }, 0);
     };
     window.addEventListener('popstate', moved);
@@ -79,11 +85,13 @@ export function ReaderAnalysis({ copy, text, wide, bookId, bible, locale, openin
     copy.startPassage({ chapter: passage.chapter, verse: passage.fromVerse }, { chapter: passage.toChapter, verse: passage.toVerse });
     setReshaping(id);
   };
-  const open = (passage: PickedPassage) => {
+  const open = async (passage: PickedPassage) => {
     copy.clear();
     if (!reshaping) { onOpening({ kind: 'new', passage }); return; }
-    const said = reshape(reshaping, passage);
-    if (said) toast.success(said); else toast(t('analysis.reshape.apart'));
+    const outcome = await reshape(reshaping, passage);
+    if (!outcome) toast(t('analysis.reshape.apart'));
+    else if (outcome.kind === 'refused') toast.error(t('analysis.reshape.refused'));
+    else toast.success(outcome.said);
     onOpening({ kind: 'open', id: reshaping, editing: true });
   };
   return (
@@ -92,7 +100,7 @@ export function ReaderAnalysis({ copy, text, wide, bookId, bible, locale, openin
       {choosing ? (
         <PassagePickBar copy={copy} wide={wide} onOpen={open} action={t(reshaping ? 'analysis.pick.apply' : 'analysis.pick.open')} icon={<AnalysisIcon className="h-5 w-5" />} cancelLabel={t('analysis.pick.cancel')} />
       ) : copy.purpose === 'comment' ? null : <VerseCopyBar copy={copy} wide={wide} />}
-      {opening && text ? <AnalysisEditor opening={opening} text={text} bookId={bookId} bible={bible} locale={locale} marks={marks} onClose={() => onOpening(null)} onEditVerses={editVerses} door={ANALYSES_DOOR} onOpenScreen={onOpenScreen} /> : null}
+      {opening && text ? <AnalysisEditor opening={opening} text={text} bookId={bookId} bible={bible} locale={locale} marks={marks} onClose={() => onOpening(null)} onEditVerses={editVerses} door={ANALYSES_DOOR} onOpenScreen={onOpenScreen} onUseBible={onUseBible} /> : null}
     </>
   );
 }

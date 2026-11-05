@@ -180,7 +180,7 @@ export function useCommentPlace({ standing, newPlace, choosesOwn, restoreOwn, bi
  * The place under the window's title: «Было у Ис 40:31 — перенесётся по «Готово»» with «Вернуть» once it is moved, the
  * list of places while open, and the words of the place it stands on now.
  */
-export function CommentPlaceShown({ where, place, busy, deciding, onChooseVerses, versesChoosable }: {
+export function CommentPlaceShown({ where, place, busy, deciding, onChooseVerses, versesRefusal }: {
   where: ReturnType<typeof useCommentPlace>;
   /** Where it stood when the window opened, as the screen under it names it. */
   place: string;
@@ -193,12 +193,18 @@ export function CommentPlaceShown({ where, place, busy, deciding, onChooseVerses
    * screen has no text to choose them in.
    */
   onChooseVerses?: (here: ScriptureReference, moveTo: (reference: ScriptureReference) => void) => void;
-  /** Whether its verses can be chosen there now — moved to another book, they cannot be chosen in this one's text. */
-  versesChoosable?: (here: ScriptureReference) => boolean;
+  /**
+   * Why its verses cannot be chosen there now — moved to another book, or not one run in this Bible; said where the
+   * button would stand, so its absence is not a riddle. Null — they can.
+   */
+  versesRefusal?: (here: ScriptureReference) => string | null;
 }) {
   const { t } = useTranslation();
   const { here } = where;
-  const choose = onChooseVerses && here && !deciding && (versesChoosable?.(here) ?? true) ? (
+  const refused = onChooseVerses && here && !deciding ? versesRefusal?.(here) ?? null : null;
+  const choose = refused ? (
+    <p data-testid="comment-verses-why" className="text-sm text-gray-600 dark:text-gray-400">{refused}</p>
+  ) : onChooseVerses && here && !deciding ? (
     <button type="button" onClick={() => onChooseVerses(here, where.moveTo)} disabled={busy} data-testid="comment-choose-verses" className="min-h-8 rounded-lg bg-indigo-50 px-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-100 disabled:opacity-50 dark:bg-indigo-950/50 dark:text-indigo-300 dark:hover:bg-indigo-950">
       {t('comment.changeVerses')}
     </button>

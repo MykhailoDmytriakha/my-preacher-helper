@@ -19,7 +19,7 @@ import { useCopyNames } from '../verseCopy/useVerseCopy';
 import { arrowNear, dragArrow, fromLine, tieArrows, useGeometry, type Arrow } from './analysisGeometry';
 import { saveAnalysisHelpPrefs, useAnalysisHelpPrefs, useAnalysisHelpWritable } from './analysisHelpPrefs';
 import {
-  ARROW, AnalysisHeader, AnalysisLine, PanelGlyph, UntieMark, type AnalysisDoor, type AnalysisMode, type LineDrag, type LineRole, type LineSteps, type LineWord, type WordDrag,
+  ARROW, AnalysisHeader, AnalysisLine, OtherBibleNotice, PanelGlyph, UntieMark, type AnalysisDoor, type AnalysisMode, type LineDrag, type LineRole, type LineSteps, type LineWord, type WordDrag,
 } from './AnalysisParts';
 import { AnalysisSermons, AnalysisSermonsPanel } from './AnalysisSermons';
 import { RelationGlyph } from './RelationParts';
@@ -76,7 +76,7 @@ function roleOf(state: AnalysisState, mode: AnalysisMode, selected: number | nul
  * In both the reader's marker, pencil and eraser paint the words (`useAnalysisMarks`). An analysis that exists opens for
  * viewing, a new one for editing. The rules are `utils/passageAnalysis.ts`; the note behind it is `useAnalysisNote`.
  */
-export function AnalysisEditor({ opening, text, bookId, bible, locale, marks: lentMarks, marksStatus, onClose, backLabel, door, onEditVerses, onOpenScreen }: {
+export function AnalysisEditor({ opening, text, bookId, bible, locale, marks: lentMarks, marksStatus, onClose, backLabel, door, onEditVerses, onOpenScreen, onUseBible }: {
   opening: AnalysisOpening; text: BookText; bookId: string; bible: BibleId; locale: AppLocale; onClose: () => void;
   /** The way back's words when it leads elsewhere than the reader's text (Studies' list). */
   backLabel?: string;
@@ -88,6 +88,8 @@ export function AnalysisEditor({ opening, text, bookId, bible, locale, marks: le
   marks?: AnalysisMarks | null;
   /** The book's marks' notice when no reader stands beside the analysis to show it (Studies) — also while marks cannot open. */
   marksStatus?: ReactNode;
+  /** Opened over a Bible it was not made in: the screen's way to its own Bible (the reader's translation). */
+  onUseBible?: (bible: BibleId) => void;
   /** Its verses chosen again in the reader: the note it is kept in (none yet for an untouched new one) and its passage. */
   onEditVerses?: (id: string | null, passage: PickedPassage) => void;
 }) {
@@ -100,6 +102,8 @@ export function AnalysisEditor({ opening, text, bookId, bible, locale, marks: le
   const [overArrow, setOverArrow] = useState<number | null>(null);
   const leaveArrow = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [drag, setDrag] = useState<Drag | null>(null);
+  /** The word touched by a finger or the Pencil: its marks and its line's arrows stand, as under the mouse. */
+  const [pointed, setPointed] = useState<number | null>(null);
   const [message, setMessage] = useState<Message>(null);
   const justDragged = useRef(false);
   const { contentRef, geometry, at } = useGeometry();
@@ -128,7 +132,7 @@ export function AnalysisEditor({ opening, text, bookId, bible, locale, marks: le
   const layer = useModalLayer({ onClose: escape });
   const undo = () => { note.undo(); setMessage(null); };
   useUndoShortcut(mode === 'edit', undo, contentRef);
-  useAnalysisAddress({ opening, id: note.id, mode, gone: note.missing, onGone: onClose, onBack: close });
+  const address = useAnalysisAddress({ opening, id: note.id, mode, gone: note.missing, onGone: onClose, onBack: close });
 
   // A mark over a word: ↵ — a new line on the same step as the line it is cut from, ↳ — one step under it.
   const cutWord = (word: number, level: CutLevel) => { const next = cutAt(state, word, total, level); if (next) change(next); };
@@ -166,7 +170,11 @@ export function AnalysisEditor({ opening, text, bookId, bible, locale, marks: le
     setDrag({ kind, from, startX: event.clientX, startY: event.clientY, moved: false, x: 0, y: 0, target: null, blocked: kind === 'tie' && needsArrow(state, from) });
   };
   const wordDrag: WordDrag = {
-    down: (word, event) => startDrag('relate', word, event),
+    down: (word, event) => {
+      // Where nothing hovers, a word touched is the word pointed at; a press on one of its marks keeps it so.
+      if (!(event.target as HTMLElement).closest('button')) setPointed(event.pointerType === 'touch' || event.pointerType === 'pen' ? word : null);
+      startDrag('relate', word, event);
+    },
     move: (event) => {
       if (!drag) return;
       if (!drag.moved && Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < 6) return;
@@ -267,6 +275,18 @@ export function AnalysisEditor({ opening, text, bookId, bible, locale, marks: le
   } : null;
   const doorOut = barDoor(door, onOpenScreen, note);
 
+  // Opened over a Bible it was not made in: its parts are laid nowhere, nothing here changes it, and its own Bible is offered
+  // (BUG-20261030-analysis-other-bible-overwrite) — the window, its way back and its door stay.
+  if (note.otherBible) {
+    return createPortal(
+      <div {...layer} role="dialog" aria-modal="true" aria-label={title} className="fixed inset-0 z-[120] flex flex-col bg-white text-gray-900 dark:bg-gray-950 dark:text-gray-100">
+        <AnalysisHeader title={title} parts="" mode={mode} onClose={close} backLabel={backLabel} door={doorOut} />
+        <div className="min-w-0 flex-1 overflow-auto px-4 pb-24 pt-10 sm:pl-20 sm:pr-12"><OtherBibleNotice bible={note.otherBible} onUseBible={onUseBible ? (own) => { address.handOn(); onUseBible(own); } : undefined} /></div>
+      </div>,
+      document.body,
+    );
+  }
+
   return createPortal(
     <div {...layer} role="dialog" aria-modal="true" aria-label={title} className="fixed inset-0 z-[120] flex flex-col bg-white text-gray-900 dark:bg-gray-950 dark:text-gray-100">
       <AnalysisHeader title={title} parts={t('analysis.partCount', { count: starts.length })} mode={mode}
@@ -281,7 +301,7 @@ export function AnalysisEditor({ opening, text, bookId, bible, locale, marks: le
             its dot — past a two-digit verse number hung in the margin. */}
         <div className={`min-w-0 flex-1 overflow-auto px-4 pb-24 pt-10 sm:pl-20 sm:pr-12 ${marks.paneClass}`}
           onClick={pressBackground} onMouseMove={pointArrows} onMouseLeave={overArrowOff} {...marks.strokeEvents}>
-          <AnalysisNotices ready={note.ready} changedText={note.changedText} sync={note.sync} refused={note.refused} onSaveAgain={note.saveAgain} />
+          <AnalysisNotices ready={note.ready} changedText={note.changedText} sync={note.sync} refused={note.refused} onSaveAgain={note.saveAgain} notApplied={note.notApplied} />
           {marksStatus}
           <div ref={contentRef} className="relative">
             {arrows.map((arrow) => (
@@ -300,7 +320,7 @@ export function AnalysisEditor({ opening, text, bookId, bible, locale, marks: le
             {starts.map((start) => (
               <AnalysisLine key={start} start={start} depth={depthOf(state, start)} role={roleOf(state, mode, selected, start)}
                 words={wordsOf(start)} steps={stepsOf(start)} drag={mode === 'edit' ? wordDrag : null} handle={mode === 'edit' && !marks.painting ? lineDrag : null}
-                flags={relations.flagsOf(start)} painting={marks.painting}
+                flags={relations.flagsOf(start)} painting={marks.painting} pointed={mode === 'edit' && !marks.painting ? pointed : null}
                 onWord={pressWord} onCut={cutWord} onGlue={glueLine} onHoverWord={relations.pointWord} />
             ))}
             {untieAt?.mid ? <UntieMark x={untieAt.mid.x} y={untieAt.mid.y} onPress={() => untie(untieAt.start!)} onEnter={() => overArrowOn(untieAt.start!)} onLeave={overArrowOff} /> : null}
@@ -323,8 +343,8 @@ export function AnalysisEditor({ opening, text, bookId, bible, locale, marks: le
  * form needs from the person — a refusal or a version from elsewhere, with the engine's own choices (keep mine, take the
  * server's, try again). The app-wide notice stands behind this screen, so it is said here.
  */
-function AnalysisNotices({ ready, changedText, sync, refused, onSaveAgain }: {
-  ready: boolean; changedText: boolean; sync: ReturnType<typeof useAnalysisNote>['sync']; refused: boolean; onSaveAgain: () => void;
+function AnalysisNotices({ ready, changedText, sync, refused, onSaveAgain, notApplied }: {
+  ready: boolean; changedText: boolean; sync: ReturnType<typeof useAnalysisNote>['sync']; refused: boolean; onSaveAgain: () => void; notApplied: boolean;
 }) {
   const { t } = useTranslation();
   const decision = sync && !PHASES_TAKING_CHANGES.has(sync.status?.phase ?? 'saved');
@@ -338,6 +358,7 @@ function AnalysisNotices({ ready, changedText, sync, refused, onSaveAgain }: {
       ) : null}
       {ready || decision || refused ? null : <p role="status" className="mb-4 rounded-xl bg-gray-50 px-3 py-2 text-sm text-gray-600 dark:bg-gray-900 dark:text-gray-300">{t('analysis.loading')}</p>}
       {changedText ? <p className="mb-4 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-950/40 dark:text-amber-200">{t('analysis.changedText')}</p> : null}
+      {notApplied ? <p role="status" className="mb-4 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-950/40 dark:text-amber-200">{t('analysis.notApplied')}</p> : null}
       {sync ? (
         <DataSyncStatus subject={sync.recoveryIdentity} status={sync.status} error={sync.state ? null : sync.error} className="mb-4"
           onRetry={() => sync.retry()} onKeepLocal={() => sync.keepLocal()} onAcceptRemote={() => sync.acceptRemote()} />

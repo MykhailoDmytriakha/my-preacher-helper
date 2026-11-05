@@ -301,6 +301,7 @@ export function mergeFields(base: FieldValue, mine: FieldValue, theirs: FieldVal
 } {
   if (equalValues(mine, base)) return { value: theirs, conflicts: [] };
   if (equalValues(theirs, base) || equalValues(mine, theirs)) return { value: mine, conflicts: [] };
+  if (mergedWhole(path)) return { value: mine, conflicts: [{ path, base, mine, theirs }] };
   if (base.exists && mine.exists && theirs.exists) {
     if (object(base.value) && object(mine.value) && object(theirs.value)) {
       return mergeObjects(base.value, mine.value, theirs.value, path);
@@ -313,6 +314,18 @@ export function mergeFields(base: FieldValue, mine: FieldValue, theirs: FieldVal
     }
   }
   return { value: mine, conflicts: [{ path, base, mine, theirs }] };
+}
+
+/**
+ * Values that merge only as a whole: changed on both sides they are a conflict, never mixed key by key. A passage analysis
+ * keeps its parts as word numbers from the passage start, so a key from one side means other words on the other once the
+ * start has moved (BUG-20261030-analysis-merge-across-reshape): an offline «link 2 → 5» merged into an analysis whose
+ * verses moved stood on other words, acknowledged.
+ */
+const WHOLE_VALUES: readonly (readonly string[])[] = [['analysis']];
+
+function mergedWhole(path: readonly string[]): boolean {
+  return WHOLE_VALUES.some(whole => equalValues([...whole], [...path]));
 }
 
 /** Trees whose points move between lists, by where they live and the key of a point's own list. */

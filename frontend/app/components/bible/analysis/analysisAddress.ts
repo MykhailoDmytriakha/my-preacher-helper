@@ -3,6 +3,7 @@ import { browserMoved, historyStepHere, pushHistoryStep, stepStateOnly, takeHist
 import { addressWithout } from '@/utils/urlUtils';
 
 import type { AnalysisMode } from './AnalysisParts';
+import type { PickedPassage } from '../verseCopy/passagePick';
 import type { StudyNote } from '@/models/models';
 import type { AppLocale } from '@/utils/appLocale';
 
@@ -50,10 +51,20 @@ export function writeAnalysisAddress(value: AnalysisAddress | null): void {
 
 /**
  * The screen opened over the page: a step in history naming this analysis — or, a new one with no note yet, the page's
- * own address until it has one. Its id, for `leaveAnalysisAddress`.
+ * own address until it has one — its passage kept on the step, so Forward opens it again (BUG-20261104-forward-skips-new-analysis).
+ * Its id, for `leaveAnalysisAddress`.
  */
-export function openAnalysisStep(value: AnalysisAddress | null): string {
-  return pushHistoryStep(addressNaming(value));
+export function openAnalysisStep(value: AnalysisAddress | null, passage?: PickedPassage): string {
+  return pushHistoryStep(addressNaming(value), value || !passage ? undefined : { [NEW_PASSAGE]: passage });
+}
+
+const NEW_PASSAGE = 'analysisPassage';
+
+/** The passage of a new analysis whose step this entry is, before it had a note; null on any other entry. */
+export function readNewAnalysisStep(): PickedPassage | null {
+  if (typeof window === 'undefined') return null;
+  const kept = ((window.history.state ?? {}) as Record<string, unknown>)[NEW_PASSAGE] as PickedPassage | undefined;
+  return kept && typeof kept.chapter === 'number' && typeof kept.fromVerse === 'number' ? kept : null;
 }
 
 /**

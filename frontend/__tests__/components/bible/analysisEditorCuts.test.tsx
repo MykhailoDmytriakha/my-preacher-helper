@@ -40,10 +40,11 @@ const ANALYSIS: StudyNote = {
 /** The note the editor opens: the analysis above, or one with links of meaning. */
 let current: StudyNote = ANALYSIS;
 const commit = jest.fn(() => Promise.resolve());
-/** The parts the last change laid on the note. */
+/** The parts on the note after the changes laid so far — each laid on the draft the ones before it made, as the form does. */
 const laid = () => {
-  const change = (commit.mock.calls.at(-1) as unknown as [(value: Record<string, unknown>) => { analysis: { cuts: number[]; links: Record<string, number> } }])[0];
-  return change({ ...current }).analysis;
+  type Change = (value: Record<string, unknown>) => Record<string, unknown> | null;
+  const draft = (commit.mock.calls as unknown as Array<[Change]>).reduce<Record<string, unknown>>((value, [change]) => change(value) ?? value, { ...current });
+  return (draft as { analysis: { cuts: number[]; links: Record<string, number> } }).analysis;
 };
 
 const renderEditor = (editing: boolean) => render(
@@ -82,6 +83,36 @@ describe('cutting and gluing the lines of an analysis', () => {
     expect(laid().links['5']).toBeGreaterThanOrEqual(3);
     fireEvent.click(within(word(3)).getByRole('button', { name: 'analysis.markGlue' }));
     expect(laid().cuts).toEqual([1, 5]);
+  });
+
+  // Without a pointer that hovers (a phone, an iPad by finger or Pencil) a word touched is the word pointed at: its marks
+  // and its line's arrows and dot stand until another word is touched (UX review 04.11, BUG-20261104-analysis-edit-needs-hover).
+  it('shows a touched word\'s marks and its line\'s arrows without hover, and not for the mouse', () => {
+    // jsdom has no PointerEvent: a mouse event that keeps the pointer's kind.
+    class TestPointerEvent extends MouseEvent {
+      pointerType: string;
+      constructor(type: string, init: PointerEventInit = {}) { super(type, init); this.pointerType = init.pointerType ?? ''; }
+    }
+    const realPointerEvent = window.PointerEvent;
+    window.PointerEvent = TestPointerEvent as unknown as typeof PointerEvent;
+    try {
+      renderEditor(true);
+      const marksOf = (index: number) => within(word(index)).getByRole('button', { name: 'analysis.level.sameAria' }).parentElement!;
+      const arrowsOf = (index: number) => word(index).closest('[data-line]')!.querySelector<HTMLElement>('button[aria-label="analysis.level.down"]')!.parentElement!;
+      expect(marksOf(1)).toHaveClass('hidden');
+      fireEvent.pointerDown(word(1), { pointerType: 'mouse', button: 0 });
+      expect(marksOf(1)).toHaveClass('hidden');
+      fireEvent.pointerDown(word(1), { pointerType: 'touch', button: 0 });
+      expect(marksOf(1)).not.toHaveClass('hidden');
+      expect(arrowsOf(1)).not.toHaveClass('invisible');
+      fireEvent.click(within(word(1)).getByRole('button', { name: 'analysis.level.sameAria' }));
+      expect(laid().cuts).toEqual([1, 3]);
+      // Another word touched takes the marks over.
+      fireEvent.pointerDown(word(5), { pointerType: 'pen', button: 0 });
+      expect(marksOf(5)).not.toHaveClass('hidden');
+    } finally {
+      window.PointerEvent = realPointerEvent;
+    }
   });
 
   it('still lights a part up at a press on its word in «Просмотр», changing nothing', () => {

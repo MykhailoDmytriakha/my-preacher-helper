@@ -8,7 +8,7 @@ import { CommentIcon } from '@/components/Icons';
 import { getLocalizedAbbrev } from '@/utils/bibleBooks';
 import { passageWords, type BookText } from '@/utils/bibleText';
 import { newClientId } from '@/utils/clientId';
-import { passagesIn } from '@/utils/scriptureReferenceNumbering';
+import { passagesIn, samePassage } from '@/utils/scriptureReferenceNumbering';
 
 import { fitCommentPassage, isParagraph, paragraphRefusal, spanOf, type LaidParagraph, type PassageFitSaid } from './commentParagraphs';
 import { passageLabel } from './useBookUsage';
@@ -81,13 +81,18 @@ export function ReaderCommentDialog(props: {
     copy.clear();
     if (choosing) {
       // The verses it offered, taken back as they were: its place stays as written — in its own Bible, every piece of it.
-      if (!samePicked(passage, choosing.offered)) choosing.moveTo(referenceOf(passage, bookId, bible, choosing.id));
+      if (!samePassage(passage, choosing.offered)) choosing.moveTo(referenceOf(passage, bookId, bible, choosing.id));
       setChoosing(null);
       return;
     }
     setCommenting({ kind: 'new', reference: referenceOf(passage, bookId, bible, newClientId()) });
   };
   const runHere = (here: ScriptureReference) => choosableRun(here, bookId, bible);
+  // Said where «Изменить стихи» would stand: the comment's own Bible, where its verses are one run again.
+  const versesRefusal = (here: ScriptureReference) => {
+    const why = versesNotChoosable(here, bookId, bible);
+    return why ? t(`comment.verses.${why}`, { translation: t(`bible.translations.${here.bible ?? bible}.short`) }) : null;
+  };
   const chooseVerses = (here: ScriptureReference, moveTo: (reference: ScriptureReference) => void) => {
     const run = runHere(here);
     if (!run || !key) return;
@@ -114,7 +119,7 @@ export function ReaderCommentDialog(props: {
         <PassagePickBar copy={copy} wide={wide} onOpen={chosen} action={t(choosing ? 'common.done' : 'comment.pick.write')} icon={<CommentIcon className="h-5 w-5" />} cancelLabel={t('comment.pick.cancel')} />
       ) : null}
       {commenting && text && key ? (
-        <OpenReaderCommentDialog key={key} {...props} commenting={commenting} text={text} away={choosing?.key === key} onChooseVerses={chooseVerses} versesChoosable={(here) => runHere(here) !== null} placeRefusal={placeRefusal} />
+        <OpenReaderCommentDialog key={key} {...props} commenting={commenting} text={text} away={choosing?.key === key} onChooseVerses={chooseVerses} versesRefusal={versesRefusal} placeRefusal={placeRefusal} />
       ) : null}
     </>
   );
@@ -131,9 +136,13 @@ export function choosableRun(here: ScriptureReference, bookId: string, bible: Bi
   return pieces.length === 1 && pieces[0].fromVerse !== undefined ? pieces[0] : null;
 }
 
-const samePicked = (a: PickedPassage, b: PickedPassage) => a.chapter === b.chapter && a.fromVerse === b.fromVerse && a.toChapter === b.toChapter && a.toVerse === b.toVerse;
+/** Why a comment's verses are not chosen again here (`choosableRun`): moved to another book, or not one run in this Bible. */
+export function versesNotChoosable(here: ScriptureReference, bookId: string, bible: BibleId): 'otherBook' | 'notOneRun' | null {
+  if (choosableRun(here, bookId, bible)) return null;
+  return here.book === bookId ? 'notOneRun' : 'otherBook';
+}
 
-function OpenReaderCommentDialog({ commenting, text, bookId, bible, locale, passageOf, onClose, away, onChooseVerses, versesChoosable, placeRefusal }: {
+function OpenReaderCommentDialog({ commenting, text, bookId, bible, locale, passageOf, onClose, away, onChooseVerses, versesRefusal, placeRefusal }: {
   commenting: ReaderCommenting;
   text: BookText;
   bookId: string;
@@ -145,7 +154,7 @@ function OpenReaderCommentDialog({ commenting, text, bookId, bible, locale, pass
   onClose: () => void;
   away: boolean;
   onChooseVerses: (here: ScriptureReference, moveTo: (reference: ScriptureReference) => void) => void;
-  versesChoosable: (here: ScriptureReference) => boolean;
+  versesRefusal: (here: ScriptureReference) => string | null;
   placeRefusal: (reference: ScriptureReference) => string | null;
 }) {
   const { t } = useTranslation();
@@ -159,7 +168,7 @@ function OpenReaderCommentDialog({ commenting, text, bookId, bible, locale, pass
   const target: CommentTarget = commenting.kind === 'edit' ? { kind: 'edit', id: commenting.id } : { kind: 'new', reference: commenting.reference };
   const placeOf = (one: ScriptureReference) => readerPlaceName(one, bible, locale);
   // A comment on whole chapters keeps its chapter doors: its verses are not chosen in the text.
-  return <CommentDialog target={target} place={place} context={context} bible={bible} placeOf={placeOf} onClose={onClose} away={away} onChooseVerses={onVerses ? onChooseVerses : undefined} versesChoosable={versesChoosable} placeRefusal={placeRefusal} />;
+  return <CommentDialog target={target} place={place} context={context} bible={bible} placeOf={placeOf} onClose={onClose} away={away} onChooseVerses={onVerses ? onChooseVerses : undefined} versesRefusal={versesRefusal} placeRefusal={placeRefusal} />;
 }
 
 /** What the reader says when the verses chosen for a comment come out other than pressed, or a place may not be saved. */

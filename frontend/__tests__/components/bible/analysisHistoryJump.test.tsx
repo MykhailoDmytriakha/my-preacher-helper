@@ -25,7 +25,7 @@ jest.mock('@/components/bible/analysis/AnalysisEditor', () => ({
     const id = opening.kind === 'open' ? opening.id : null;
     const mode = opening.kind === 'open' && opening.editing ? 'edit' : 'view';
     useAnalysisAddress({ opening, id, mode, gone: false, onGone: onClose, onBack: onClose });
-    return <div data-testid="screen" data-id={id ?? ''} data-mode={mode} />;
+    return <div data-testid="screen" data-id={id ?? ''} data-mode={mode}><button type="button" onClick={onClose}>done</button></div>;
   },
 }));
 jest.mock('@/components/bible/analysis/useAnalysisReshape', () => ({ useAnalysisReshape: () => jest.fn() }));
@@ -149,6 +149,33 @@ describe('a jump in history from one analysis\'s step to another\'s', () => {
     await act(() => new Promise((resolve) => setTimeout(resolve, 30)));
     expect(here()).toBe(A);
     expect(historyStepHere()).toBe('a-step');
+  });
+
+  it('Forward onto a new analysis\'s step opens it again on the passage it was begun on', async () => {
+    // BUG-20261104-forward-skips-new-analysis: a new analysis has no id yet, so its step named nothing to open again.
+    window.history.pushState(null, '', '/bible?book=ephesians');
+    function NewHost() {
+      const [opening, setOpening] = useState<AnalysisOpening | null>(null);
+      return (
+        <>
+          <ReaderAnalysis copy={copy} text={TEXT} wide bookId="Ephesians" bible="rst" locale="ru" opening={opening} onOpening={setOpening} onOpenScreen={jest.fn()} />
+          <button type="button" onClick={() => setOpening({ kind: 'new', passage: { chapter: 1, fromVerse: 1, toChapter: 1, toVerse: 1 } })}>new</button>
+        </>
+      );
+    }
+    render(<NewHost />);
+    act(() => screen.getByRole('button', { name: 'new' }).click());
+    expect(screen.getByTestId('screen')).toBeInTheDocument();
+    act(() => window.history.back());
+    await waitFor(() => expect(screen.queryByTestId('screen')).not.toBeInTheDocument());
+    act(() => window.history.forward());
+    await waitFor(() => expect(screen.getByTestId('screen')).toBeInTheDocument());
+    // Brought back, it stands on that step and adds none: «Готово» takes the step back, and nothing opens it again (the live
+    // check, 05.11: a second step under it reopened the window at «Готово»).
+    act(() => screen.getByRole('button', { name: 'done' }).click());
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+    expect(screen.queryByTestId('screen')).not.toBeInTheDocument();
+    expect(here()).toBe('/bible?book=ephesians');
   });
 
   it('over the reader\'s text, opens the analysis the entry names', async () => {

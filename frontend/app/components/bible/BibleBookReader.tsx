@@ -1034,7 +1034,7 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
         onOpenBible={openInBible}
       />
       <VerseMenu copy={verseCopy} comment={commentDoors.verse} analysis />
-      <ReaderAnalysis copy={verseCopy} text={text} wide={wide} bookId={bookId} bible={bible} locale={locale} opening={analysing} onOpening={setAnalysing} marks={marks.analysisMarks} onOpenScreen={goToScreen} />
+      <ReaderAnalysis copy={verseCopy} text={text} wide={wide} bookId={bookId} bible={bible} locale={locale} opening={analysing} onOpening={setAnalysing} marks={marks.analysisMarks} onOpenScreen={goToScreen} onUseBible={changeBible} />
       {/* While verses are chosen their bar stands where the tools are: the tools wait. */}
       {verseCopy.picking ? null : wide ? (
         <FloatingTextScaleControls>

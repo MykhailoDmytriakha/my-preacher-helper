@@ -6,14 +6,15 @@ import { useTranslation } from 'react-i18next';
 import { PHASES_TAKING_CHANGES, useDataDocument } from '@/data-engine/react.client';
 import { useStudyNotesEngine } from '@/hooks/useStudyNotesEngine';
 import { getLocalizedAbbrev } from '@/utils/bibleBooks';
+import { isBibleId, type BibleId } from '@/utils/bibles';
 import { newClientId } from '@/utils/clientId';
 import { analysisMarkdown, EMPTY_ANALYSIS, passageWords, settled, type AnalysisState, type Relation } from '@/utils/passageAnalysis';
+import { samePassage } from '@/utils/scriptureReferenceNumbering';
 
 import type { PickedPassage } from '../verseCopy/passagePick';
 import type { DocumentData } from '@/data-engine/types';
 import type { ScriptureReference, StudyAnalysis, StudyNote } from '@/models/models';
 import type { AppLocale } from '@/utils/appLocale';
-import type { BibleId } from '@/utils/bibles';
 import type { BookText } from '@/utils/bibleText';
 
 /** What the reader asked to open: a passage just chosen, or an analysis already made. */
@@ -30,7 +31,7 @@ export const passageOfReference = (reference: ScriptureReference | undefined): P
   const toChapter = reference.toVerseChapter ?? reference.toChapter ?? reference.chapter;
   return { chapter: reference.chapter, fromVerse: reference.fromVerse, toChapter, toVerse: reference.toVerse ?? reference.fromVerse };
 };
-const samePassage = (a: PickedPassage | null, b: PickedPassage) => Boolean(a) && a!.chapter === b.chapter && a!.fromVerse === b.fromVerse && a!.toChapter === b.toChapter && a!.toVerse === b.toVerse;
+const sameAsOpened = (kept: PickedPassage | null, opened: PickedPassage) => kept !== null && samePassage(kept, opened);
 /** «1:3–14», «1:7», «1:15–2:10». */
 export const passageSpan = (p: PickedPassage) => (p.chapter === p.toChapter ? `${p.chapter}:${p.fromVerse}${p.toVerse !== p.fromVerse ? `–${p.toVerse}` : ''}` : `${p.chapter}:${p.fromVerse}–${p.toChapter}:${p.toVerse}`);
 /** The same parts, ties and links of meaning, whatever order they were made in. */
@@ -81,7 +82,7 @@ export function useAnalysisNote({ opening, text, bookId, bible, locale }: { open
     if (ownId) return engine.notes.find((note) => note.id === ownId);
     if (opening.kind === 'open') return undefined;
     return engine.notes.find((note) => note.type === 'analysis' && note.analysis?.bible === bible && note.scriptureRefs[0]?.book === bookId
-      && samePassage(passageOfReference(note.scriptureRefs[0]), opening.passage));
+      && sameAsOpened(passageOfReference(note.scriptureRefs[0]), opening.passage));
   }, [engine.notes, opening, ownId, bible, bookId]);
   // A note made here opens its form only once its creation is kept on this device: opened before, it could find neither
   // the document nor its creation and wait for a connection (Codex, 30.10). It is this screen's note from the start.
@@ -121,7 +122,12 @@ export function useAnalysisNote({ opening, text, bookId, bible, locale }: { open
     const timer = setTimeout(() => setWaitedOut(true), 8000);
     return () => clearTimeout(timer);
   }, [listPending]);
-  const ready = ownId ? writable : !refused && (!listPending || waitedOut) && !found;
+  // An analysis lies on the words of the Bible it was made in: opened over another — from «Моё», or by an address after
+  // another Bible was chosen in this visit — it is laid nowhere and changed by nothing here, or its parts would stand on
+  // other words and the first change would write them over (BUG-20261030-analysis-other-bible-overwrite).
+  const madeIn = copy?.analysis?.bible ?? copy?.scriptureRefs?.[0]?.bible;
+  const otherBible = opening.kind === 'open' && isBibleId(madeIn) && madeIn !== bible ? madeIn : null;
+  const ready = !otherBible && (ownId ? writable : !refused && (!listPending || waitedOut) && !found);
 
   const [state, setState] = useState<AnalysisState>(EMPTY_ANALYSIS);
   const [history, setHistory] = useState<AnalysisState[]>([]);
@@ -138,12 +144,19 @@ export function useAnalysisNote({ opening, text, bookId, bible, locale }: { open
     loaded.current = true;
     if (touched.current) return;
     const read = analysisState(stored, total);
+    seen.current = read;
     setState(read);
     setOpensForViewing(read.cuts.length > 0);
   }, [ownId, storedKey, total]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // This screen's changes laid on the form and not yet in its draft; the draft is taken in only at zero.
   const onTheWay = useRef(0);
+  // The analysis the screen last showed or laid: an action is worked out from it. The draft holding something else — a
+  // change from another device that reached it while the screen held still — is not written over: the action is not
+  // applied, the screen takes the draft in and says so (BUG-20261030-analysis-write-over-newer).
+  const seen = useRef<AnalysisState | null>(null);
+  const declined = useRef(false);
+  const [notApplied, setNotApplied] = useState(false);
   const storedRef = useRef(stored);
   storedRef.current = stored;
   const stateRef = useRef(state);
@@ -151,6 +164,7 @@ export function useAnalysisNote({ opening, text, bookId, bible, locale }: { open
   const takeIn = useCallback(() => {
     if (!loaded.current || !total || onTheWay.current || !storedRef.current) return;
     const read = analysisState(storedRef.current, total);
+    seen.current = read;
     if (sameAnalysis(read, stateRef.current)) return;
     setState(read);
     // An undo here would bring back a step from before that change, over it.
@@ -165,10 +179,27 @@ export function useAnalysisNote({ opening, text, bookId, bible, locale }: { open
     if (!writable) { waiting.current = next; return; }
     onTheWay.current += 1;
     const fields = valueOf(next) as unknown as DocumentData;
-    void form.commit((value): DocumentData | null => (value ? { ...value, ...fields, updatedAt: new Date().toISOString() } : value))
+    const base = seen.current;
+    seen.current = next;
+    void form.commit((value): DocumentData | null => {
+      if (!value) return value;
+      const now = value.analysis ? analysisState(value.analysis as unknown as StudyAnalysis, total) : null;
+      if (base && now && !sameAnalysis(now, base)) {
+        declined.current = true;
+        return value;
+      }
+      return { ...value, ...fields, updatedAt: new Date().toISOString() };
+    })
       .catch(() => undefined) // the form says it: `sync`
-      .finally(() => { onTheWay.current -= 1; takeIn(); });
-  }, [form, takeIn, valueOf, writable]);
+      .finally(() => {
+        onTheWay.current -= 1;
+        if (declined.current && !onTheWay.current) {
+          declined.current = false;
+          setNotApplied(true);
+        }
+        takeIn();
+      });
+  }, [form, takeIn, total, valueOf, writable]);
   useEffect(() => {
     if (!writable || !waiting.current) return;
     const next = waiting.current;
@@ -199,7 +230,10 @@ export function useAnalysisNote({ opening, text, bookId, bible, locale }: { open
       ...(passage.toChapter !== passage.chapter ? { toChapter: passage.toChapter, toVerseChapter: passage.toChapter } : {}), toVerse: passage.toVerse,
     };
     setRefused(false);
-    const created = engine.createNote({ userId: engine.uid ?? '', title: t('analysis.title', { place }), scriptureRefs: [reference], tags: [], type: 'analysis', ...valueOf(next) });
+    // Made again under the id it was refused with: a first attempt queued after all and this one are one note, not two.
+    const again = refusedId.current;
+    const created = engine.createNote({ userId: engine.uid ?? '', title: t('analysis.title', { place }), scriptureRefs: [reference], tags: [], type: 'analysis', ...valueOf(next) },
+      again ? { id: again } : undefined);
     waiting.current = null;
     noteId.current = created.note.id;
     loaded.current = true;
@@ -237,6 +271,7 @@ export function useAnalysisNote({ opening, text, bookId, bible, locale }: { open
   const change = useCallback((next: AnalysisState) => {
     if (!ready) return;
     touched.current = true;
+    setNotApplied(false);
     setHistory((list) => [...list, state]);
     setState(next);
     if (noteId.current) lay(next); else create(next);
@@ -263,6 +298,10 @@ export function useAnalysisNote({ opening, text, bookId, bible, locale }: { open
     sync: resource ? form : null,
     /** The note asked for is on no copy this device can reach: neither in the read list nor in a form. */
     missing: opening.kind === 'open' && !engine.loading && !found && !form.data && !form.loading,
+    /** An action of this screen was not applied: the analysis had changed on another device meanwhile. */
+    notApplied,
+    /** The Bible the analysis was made in, when it is not the one it is opened over: then it is laid nowhere. */
+    otherBible,
     /** The passage's words in this Bible are not the ones the analysis was made on. */
     changedText: Boolean(stored && stored.words !== total),
     /** This device refused to keep the new analysis: what is on the screen is not saved; `saveAgain` tries once more. */

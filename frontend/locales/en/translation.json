@@ -4480,6 +4480,10 @@
     "pickPlace": "Which verse or chapter is it on?",
     "changePlace": "Change the verse or chapter",
     "changeVerses": "Change verses",
+    "verses": {
+      "notOneRun": "In this translation the comment’s verses do not stand in one run — they can be changed in {{translation}}, the translation it was written in.",
+      "otherBook": "The verses of another book are not chosen in this text — change the place with the pencil button."
+    },
     "open": "Open the comment",
     "noteTitle": "Note title",
     "noteTitlePlaceholder": "What is this note about?",
@@ -4522,6 +4526,10 @@
     "title": "Analysis · {{place}}",
     "back": "Back to text",
     "backToList": "To the list",
+    "otherBible": {
+      "text": "This analysis was made on {{name}}: its parts stand on that translation's words. Open that translation to read and edit the analysis.",
+      "open": "Switch to {{name}}"
+    },
     "door": {
       "bible": "In the Bible",
       "analyses": "All analyses"
@@ -4543,6 +4551,7 @@
     },
     "markGlue": "Join with the line above",
     "changedText": "The passage’s text in this Bible has changed since it was analysed: part of the analysis may have shifted.",
+    "notApplied": "The analysis just changed on another device — your last action was not applied, so as not to erase that change. Please do it again.",
     "notKept": "This analysis was not saved on this device — what you see is only on the screen.",
     "saveAgain": "Save again",
     "pick": {
@@ -4553,7 +4562,7 @@
     },
     "edit": {
       "title": "Divide into parts",
-      "hintMark": "Hover over a word to see two marks. The word and everything after it move to a new line:",
+      "hintMark": "Point at a word or touch it to see two marks. The word and everything after it move to a new line:",
       "markSame": "on the same level;",
       "markUnder": "one level below — under this line, shifted right.",
       "hintGlue": "The “join” mark on a line’s first word glues it back.",
@@ -4589,7 +4598,8 @@
       "done": "The analysis now covers {{place}}.",
       "own": "Your work in {{place}} is kept as an analysis of its own.",
       "joined": "Your work in {{place}} was added to the analysis of {{other}}.",
-      "apart": "The new verses do not reach the analysis — choose a passage with at least one of its verses."
+      "apart": "The new verses do not reach the analysis — choose a passage with at least one of its verses.",
+      "refused": "Your work in the verses taken off could not be moved, so the analysis keeps its verses — nothing is lost."
     },
     "relation": {
       "made": "«{{a}}» and «{{b}}» are linked by meaning. Press the flag at the end of the line for direction, colour or removal.",

@@ -37,6 +37,8 @@ const accepted = (key: string, request: Promise<unknown>): WriteSubmission => {
   // the label follows that same answer: a phone flag "online" over café Wi-Fi would call a write
   // saved while the engine is holding it.
   const acceptance = persistence.then((): WriteAcceptance => (getConnectivityStatus() ? { kind: 'persisted' } : { kind: 'queued', receipt: key }));
+  // A caller that waits on `persistence` alone (the analysis's reshape) leaves this one: its refusal is no unhandled error.
+  void acceptance.catch(() => undefined);
   return { acceptance, persistence };
 };
 
@@ -110,8 +112,10 @@ export function useStudyNotesEngine(enabled: boolean) {
     checking: Boolean(collection.state?.checking),
     error: collection.error ? new Error(collection.error) : null,
     refetch: async () => { await collection.refresh(); },
-    createNote: (note: Omit<StudyNote, 'id' | 'createdAt' | 'updatedAt' | 'isDraft'>): WriteSubmission & { note: StudyNote } => {
-      const id = newClientId();
+    /** A new note; `id` — the one a refused creation had, made again under it so a first attempt queued after all and its
+     *  retry are one document (BUG-20261030-analysis-second-on-one-passage). */
+    createNote: (note: Omit<StudyNote, 'id' | 'createdAt' | 'updatedAt' | 'isDraft'>, options: { id?: string } = {}): WriteSubmission & { note: StudyNote } => {
+      const id = options.id ?? newClientId();
       const at = now();
       const optimistic: StudyNote = { ...note, id, createdAt: at, updatedAt: at, isDraft: isDraft(note), materialIds: [], relatedSermonIds: note.relatedSermonIds || [] };
       const value = deepCleanUndefined({

@@ -26,13 +26,18 @@ const endOf = (p: PickedPassage): VerseAt => ({ chapter: p.toChapter, verse: p.t
  * A PASSAGE'S ANALYSIS GIVEN NEW ENDS (case 2026-10-12-block-diagram; the owner, 2026-10-29: «нужно иметь возможность
  * редактировать объём … куда они пойдут? … в следующий разбор»). The verses chosen again in the reader become the
  * analysis's passage; its parts follow by `reshapeAnalysis`. Work in the verses taken off is never lost: it joins the
- * analysis that touches them, if there is one, or becomes an analysis of its own; untouched verses just go. Returns
- * what happened, in words, or null when the new verses do not touch the analysis.
+ * analysis that touches them, if there is one, or becomes an analysis of its own; untouched verses just go. The work goes
+ * to its new home first, and only once it is kept there is the analysis shortened: a home that refuses it (an analysis
+ * waiting on a choice) leaves the analysis as it was, and that is said (BUG-20261030-analysis-reshape-loses-moved-work —
+ * the shortened analysis was written first and a refused neighbour lost the work). Resolves to what happened — done, in
+ * words, or refused — or null when the new verses do not touch the analysis.
  */
+export type ReshapeOutcome = { kind: 'done'; said: string } | { kind: 'refused' } | null;
+
 export function useAnalysisReshape({ text, bookId, bible, locale }: { text: BookText | null; bookId: string; bible: BibleId; locale: AppLocale }) {
   const { t } = useTranslation();
   const engine = useStudyNotesEngine(true);
-  return useCallback((id: string, next: PickedPassage): string | null => {
+  return useCallback(async (id: string, next: PickedPassage): Promise<ReshapeOutcome> => {
     const note = engine.notes.find((entry) => entry.id === id);
     const old = passageOfReference(note?.scriptureRefs[0]);
     if (!text || !note || !old) return null;
@@ -53,16 +58,20 @@ export function useAnalysisReshape({ text, bookId, bible, locale }: { text: Book
       ...(base ?? { bible, book: bookId }), id: base?.id ?? newClientId(), chapter: p.chapter, fromVerse: p.fromVerse,
       toChapter: p.toChapter !== p.chapter ? p.toChapter : undefined, toVerseChapter: p.toChapter !== p.chapter ? p.toChapter : undefined, toVerse: p.toVerse,
     });
-    const save = (target: StudyNote | null, p: PickedPassage, state: AnalysisState) => {
+    // Kept on this device, or refused: the promise says which. An analysis is written against the copy its new shape was
+    // made from: changed meanwhile — another device's link come while a neighbour's write waited — the write is refused,
+    // not laid over it (Codex, 05.11).
+    const save = async (target: StudyNote | null, p: PickedPassage, state: AnalysisState): Promise<void> => {
       const passageWordsOf = passageWords(text, p);
       const fields = { title: t('analysis.title', { place: placeOf(p) }), content: analysisMarkdown(passageWordsOf, state), analysis: storedAnalysis(state, bible, passageWordsOf.length) };
       if (target) {
-        void engine.updateNote({ id: target.id, updates: { ...fields, scriptureRefs: [reference(p, target.scriptureRefs[0])] } }).result.catch(() => undefined);
+        const expectedBaseline = { analysis: target.analysis, scriptureRefs: target.scriptureRefs };
+        await engine.updateNote({ id: target.id, updates: { ...fields, scriptureRefs: [reference(p, target.scriptureRefs[0])] }, expectedBaseline }).result;
         return;
       }
-      void engine.createNote({ userId: engine.uid ?? '', ...fields, scriptureRefs: [reference(p)], tags: [], type: 'analysis' }).acceptance.catch(() => undefined);
+      await engine.createNote({ userId: engine.uid ?? '', ...fields, scriptureRefs: [reference(p)], tags: [], type: 'analysis' }).acceptance;
     };
-    save(note, next, reshaped.state);
+    const moves: Array<() => Promise<void>> = [];
 
     const said = [t('analysis.reshape.done', { place: placeOf(next) })];
     // Work in the verses taken off: into the analysis that touches them on the far side, else an analysis of its own.
@@ -81,17 +90,23 @@ export function useAnalysisReshape({ text, bookId, bible, locale }: { text: Book
           ? joinAnalyses(piece, pieceTotal, storedState(other, otherTotal), otherTotal)
           : joinAnalyses(storedState(other, otherTotal), otherTotal, piece, pieceTotal);
         const p = side === 'back' ? between(startOf(taken), endOf(otherPassage)) : between(startOf(otherPassage), endOf(taken));
-        save(other, p, joined);
+        moves.push(() => save(other, p, joined));
         said.push(t('analysis.reshape.joined', { place: placeOf(taken), other: placeOf(p) }));
         return;
       }
-      save(null, taken, piece);
+      moves.push(() => save(null, taken, piece));
       said.push(t('analysis.reshape.own', { place: placeOf(taken) }));
     };
     const takenFront = verseBefore(text, startOf(next));
     if (reshaped.front && takenFront) keep(reshaped.front, between(startOf(old), takenFront), 'front');
     const takenBack = verseAfter(text, endOf(next));
     if (reshaped.back && takenBack) keep(reshaped.back, between(takenBack, endOf(old)), 'back');
-    return said.join(' ');
+    try {
+      for (const move of moves) await move();
+      await save(note, next, reshaped.state);
+    } catch {
+      return { kind: 'refused' };
+    }
+    return { kind: 'done', said: said.join(' ') };
   }, [bible, bookId, engine, locale, t, text]);
 }

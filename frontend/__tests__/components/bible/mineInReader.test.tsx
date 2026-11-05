@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { BibleBookReader } from '@/components/bible/BibleBookReader';
-import { choosableRun } from '@/components/bible/ReaderCommentDialog';
+import { choosableRun, versesNotChoosable } from '@/components/bible/ReaderCommentDialog';
 import { resetMinePrefsForTests, saveMinePrefs } from '@/components/bible/minePrefs';
 import { arriveOnTrail, readPlaceTrail, resetPlaceTrailForTests } from '@/components/bible/placeTrailStore';
 import { analysedVerses, badgeLabel, entriesAt, useBookUsage } from '@/components/bible/useBookUsage';
@@ -622,6 +622,13 @@ describe('paragraphs of comments (case 2026-10-12-block-diagram, phase 9)', () =
     expect(choosableRun({ id: 'r', bible: 'rst', book: 'Psalms', chapter: 114 }, 'Psalms', 'kjv')).toBeNull();
     expect(choosableRun({ id: 'r', bible: 'rst', book: 'Psalms', chapter: 114, fromVerse: 2, toVerse: 4 }, 'Psalms', 'kjv')).toEqual(expect.objectContaining({ chapter: 116, fromVerse: 2 }));
     expect(choosableRun({ id: 'r', bible: 'rst', book: 'Ruth', chapter: 1, fromVerse: 16 }, 'Psalms', 'rst')).toBeNull();
+  });
+
+  // Where «Изменить стихи» is not offered, the place says why: King James Romans 16:23-25 is two pieces in the Synodal.
+  it('says why a comment\'s verses are not chosen again here', () => {
+    expect(versesNotChoosable({ id: 'r', bible: 'kjv', book: 'Romans', chapter: 16, fromVerse: 23, toVerse: 25 }, 'Romans', 'rst')).toBe('notOneRun');
+    expect(versesNotChoosable({ id: 'r', bible: 'kjv', book: 'Romans', chapter: 16, fromVerse: 23, toVerse: 25 }, 'Romans', 'kjv')).toBeNull();
+    expect(versesNotChoosable({ id: 'r', bible: 'rst', book: 'Ruth', chapter: 1, fromVerse: 16 }, 'Psalms', 'rst')).toBe('otherBook');
   });
 
   // Codex review r3: the paragraphs' rule is a comment's — a comment saved as a note was refused by it.

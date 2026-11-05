@@ -3,8 +3,9 @@
 import { useEffect, useLayoutEffect, useRef } from 'react';
 
 import { closeOnBrowserMove, historyStepHere } from '@/utils/historyStep';
+import { samePassage } from '@/utils/scriptureReferenceNumbering';
 
-import { leaveAnalysisAddress, openAnalysisStep, readAnalysisAddress, writeAnalysisAddress } from './analysisAddress';
+import { leaveAnalysisAddress, openAnalysisStep, readAnalysisAddress, readNewAnalysisStep, writeAnalysisAddress } from './analysisAddress';
 
 import type { AnalysisMode } from './AnalysisParts';
 import type { AnalysisOpening } from './useAnalysisNote';
@@ -33,6 +34,8 @@ export function useAnalysisAddress({ opening, id, mode, gone, onGone, onBack }: 
   const leaving = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   /** Closed because the browser moved: the entry it moved to is the person's choice, not the screen's to change. */
   const movedOff = useRef(false);
+  /** Its reader is being replaced by the same place in the analysis's own Bible: the address stays for the next reader. */
+  const handedOn = useRef(false);
   const current = useRef({ id, onBack });
   current.current = { id, onBack };
 
@@ -42,11 +45,14 @@ export function useAnalysisAddress({ opening, id, mode, gone, onGone, onBack }: 
   useLayoutEffect(() => {
     clearTimeout(leaving.current);
     if (step.current === undefined) {
-      const arrived = opening.kind === 'open' && readAnalysisAddress()?.id === opening.id;
-      step.current = arrived ? historyStepHere() : openAnalysisStep(id ? { id, mode } : null);
+      // Arrived on its own entry — by an address, or a new analysis brought back by Forward onto its step: that step it is.
+      const kept = readNewAnalysisStep();
+      const arrived = opening.kind === 'open' ? readAnalysisAddress()?.id === opening.id : kept !== null && samePassage(kept, opening.passage);
+      step.current = arrived ? historyStepHere() : openAnalysisStep(id ? { id, mode } : null, opening.kind === 'new' ? opening.passage : undefined);
     }
     return () => {
-      leaving.current = setTimeout(() => { if (!movedOff.current) leaveAnalysisAddress(current.current.id, step.current ?? null); }, 0);
+      const stays = handedOn.current;
+      leaving.current = setTimeout(() => { if (!movedOff.current && !stays) leaveAnalysisAddress(current.current.id, step.current ?? null); }, 0);
     };
     // The step is the opening's: decided at mount, as `opening` is.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -66,4 +72,16 @@ export function useAnalysisAddress({ opening, id, mode, gone, onGone, onBack }: 
   }, []);
 
   useEffect(() => { if (gone) onGone(); }, [gone, onGone]);
+
+  return {
+    /**
+     * The reader goes over to another Bible and this screen with it (`OtherBibleNotice`): unmounted now, it leaves its
+     * address and step as they are, and the reader in that Bible opens it from them, as after a reload. A Bible change
+     * refused (a comment holding words) leaves the screen standing, and it leaves its address as always.
+     */
+    handOn: () => {
+      handedOn.current = true;
+      setTimeout(() => { handedOn.current = false; }, 0);
+    },
+  };
 }

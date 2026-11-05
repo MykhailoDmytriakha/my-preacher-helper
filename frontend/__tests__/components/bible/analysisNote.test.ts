@@ -81,6 +81,27 @@ describe('an analysis note — what the screen may write', () => {
     expect(engine.updateNote).not.toHaveBeenCalled();
   });
 
+  it('never writes over a change from elsewhere it has not shown: the action is not applied, and that is said', async () => {
+    // BUG-20261030-analysis-write-over-newer: the next action was a whole analysis worked out from the screen, laid over the
+    // draft — a link that reached the draft from the phone while the screen held still was erased.
+    engine.loading = false;
+    engine.notes = [madeElsewhere];
+    opening = { kind: 'open', id: 'elsewhere', editing: true };
+    let land: () => void = () => undefined;
+    commit.mockImplementationOnce(() => new Promise<void>((done) => { land = done; }));
+    const { result } = render();
+    const pink = changeRelation(result.current.state, 1, 4, { color: 'pink' }, total);
+    act(() => result.current.change(pink));
+    act(() => result.current.change(cutAt(result.current.state, 8, total, 'same') ?? result.current.state));
+    // The draft the second action lands on: the pink, and a link made on the phone the screen never showed.
+    const fromPhone = { ...madeElsewhere.analysis!, relations: { '1-4': { dir: 'fwd' as const, color: 'pink' as const }, '5-9': { dir: 'fwd' as const, color: 'teal' as const } } };
+    const updater = (commit.mock.calls[1] as unknown as [(value: Record<string, unknown>) => Record<string, unknown> | null])[0];
+    const written = updater({ ...madeElsewhere, analysis: fromPhone });
+    expect((written?.analysis as typeof fromPhone).relations['5-9']).toEqual({ dir: 'fwd', color: 'teal' });
+    await act(async () => { land(); });
+    expect(result.current.notApplied).toBe(true);
+  });
+
   it('keeps a change on its way: a draft arriving meanwhile does not take it back, and is taken in once the change lands', async () => {
     // The owner, 30.10: «иногда выбранный цвет сбивается».
     engine.loading = false;
@@ -113,7 +134,8 @@ describe('an analysis note — what the screen may write', () => {
     rerender();
     expect(result.current.state.drawn).toEqual([3]);
     act(() => result.current.change(changeRelation(result.current.state, 1, 4, { color: 'pink' }, total)));
-    const laid = (commit.mock.calls.at(-1) as unknown as [(value: Record<string, unknown>) => { analysis: { drawn?: number[] } }])[0]({ ...tied });
+    // The draft the change lands on is the one the screen took in: the tie drawn elsewhere is in it.
+    const laid = (commit.mock.calls.at(-1) as unknown as [(value: Record<string, unknown>) => { analysis: { drawn?: number[] } }])[0]({ ...tied, analysis: { ...tied.analysis, drawn: [3] } });
     expect(laid.analysis.drawn).toEqual([3]);
   });
 
@@ -186,6 +208,9 @@ describe('an analysis note — what the screen may write', () => {
     await act(async () => { result.current.saveAgain(); });
     expect(engine.createNote).toHaveBeenCalledTimes(2);
     expect(engine.createNote.mock.calls[1][0].analysis.cuts).toEqual([5]);
+    // Made again under the same id (BUG-20261030-analysis-second-on-one-passage): a first creation queued after all meets
+    // its retry as one document, never two analyses of one passage.
+    expect(engine.createNote.mock.calls[1][1]).toEqual({ id: engine.createNote.mock.results[0].value.note.id });
     expect(result.current.refused).toBe(false);
   });
 

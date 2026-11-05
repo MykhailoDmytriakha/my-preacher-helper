@@ -34,10 +34,11 @@ export function stepStateOnly(): Record<string, string> | null {
   return step ? { [STEP]: step } : null;
 }
 
-/** A new entry at `url` (path, query and hash) for a screen opened over the page; its id. */
-export function pushHistoryStep(url: string): string {
+/** A new entry at `url` (path, query and hash) for a screen opened over the page; its id. `remember` — what the screen
+ *  needs to open again on that entry when its address cannot say it (a new analysis with no note yet). */
+export function pushHistoryStep(url: string, remember?: Record<string, unknown>): string {
   const step = newStepId();
-  window.history.pushState({ ...((window.history.state ?? {}) as Record<string, unknown>), [STEP]: step }, '', url);
+  window.history.pushState({ ...((window.history.state ?? {}) as Record<string, unknown>), ...remember, [STEP]: step }, '', url);
   return step;
 }
 
