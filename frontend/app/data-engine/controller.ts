@@ -22,6 +22,8 @@ import type { RecoveryOrigin, VersionedRecovery } from './recoverySource';
 import type { DataEngineRuntime, RuntimeEvent } from './runtime';
 import type { CommandResult, DataCommand, DocumentData, ResourceRef, ResourceSnapshot } from './types';
 
+const PENDING_DELIVERY_FIRST = 'pending-delivery-first';
+
 /** A retired controller rejects late work; this is cancellation, not a storage failure. */
 export class InactiveEditorError extends Error {
   constructor() { super('Editor is no longer active'); this.name = 'InactiveEditorError'; }
@@ -96,7 +98,7 @@ export interface EditorState {
   /** The refusal's code, when it has one, so a screen can say it in words (actionFailureMessage). */
   errorCode?: string | null;
   result: CommandResult | null;
-  /** A command is being prepared or durably queued; it is not yet an acknowledgement. */
+  /** A command or explicit choice is being durably prepared; this is not an acknowledgement. */
   preparing?: boolean;
   /** An explicit Save has not transferred its captured intent to a durable request. */
   captureFailed?: boolean;
@@ -128,6 +130,7 @@ export class EditorController {
   private manualRequests = new Set<string>();
   private result: CommandResult | null = null;
   private preparations = 0;
+  private choices = 0;
   /** Submitted generations must reach the request store before a future RAM draft reaches a checkpoint. */
   private pendingCaptures = new CaptureContinuations();
   private disposed = false;
@@ -201,7 +204,7 @@ export class EditorController {
   getState(): EditorState {
     this.assertCurrent();
     const checkpoint = this.session.checkpoint();
-    return { checkpoint, durable: this.durable, error: this.error, errorCode: this.errorCode, result: this.result, preparing: this.preparations > 0, captureFailed: this.pendingCaptures.failed,
+    return { checkpoint, durable: this.durable, error: this.error, errorCode: this.errorCode, result: this.result, preparing: this.preparations > 0 || this.choices > 0, captureFailed: this.pendingCaptures.failed,
       preparedOperationId: this.prepared?.operationId,
       actionResolutionRequired: this.atomicPending.size > 0,
       manualWork: Object.keys(checkpoint.pending).some(id => this.manualRequests.has(id)) };
@@ -223,6 +226,9 @@ export class EditorController {
 
   save(capturedIntent?: SessionCheckpoint, selection?: readonly ManualPath[], onCaptured?: (receipt: DocumentWriteReceipt) => void, captureScope?: string): Promise<void> {
     this.assertCurrent();
+    // Never freeze a Save against a choice whose durable baseline is still unsettled.
+    if (this.choices > 0) return Promise.reject(Object.assign(
+      new Error('Finish the current version choice before saving'), { code: PENDING_DELIVERY_FIRST }));
     const captured = capturedIntent ?? this.session.checkpoint();
     this.assertManualResolution(selection, captured);
     this.preparations += 1;
@@ -304,7 +310,7 @@ export class EditorController {
   remove(onCaptured?: (receipt: DocumentWriteReceipt) => void, captureScope?: string): Promise<void> {
     this.assertCurrent();
     const checkpoint = this.session.checkpoint();
-    if (Object.keys(checkpoint.pending).length || this.prepared || this.preparations) return Promise.reject(Object.assign(new Error('Resolve pending commands before deleting'), { code: 'pending-delivery-first' }));
+    if (Object.keys(checkpoint.pending).length || this.prepared || this.preparations || this.choices) return Promise.reject(Object.assign(new Error('Resolve pending commands before deleting'), { code: PENDING_DELIVERY_FIRST }));
     if (!checkpoint.confirmed.value || checkpoint.confirmed.metadata?.deleted) return onCaptured ? this.save(checkpoint, undefined, onCaptured, captureScope) : Promise.resolve();
     if (!this.durable) return Promise.reject(Object.assign(new Error('Save the local draft before deleting'), { code: 'not-on-device-yet' }));
     const persisting = this.edit(null);
@@ -325,7 +331,7 @@ export class EditorController {
     const captures = this.pendingCaptures.boundary();
     // The draft as the person chose; typing that lands before this queued choice runs is kept.
     const atChoice = this.session.checkpoint().draft;
-    return this.enqueue(async () => {
+    return this.enqueueChoice(async () => {
       this.assertRecoveryChoice(expected);
       this.assertManualResolution(selection);
       const before = this.session.checkpoint();
@@ -333,7 +339,10 @@ export class EditorController {
       const refusedWork = !selection && Object.keys(before.pending).length > 0 && !before.remoteCandidate
         && !Object.keys(before.pending).some(id => this.manualRequests.has(id));
       const cancelled = Object.keys(this.session.checkpoint().pending);
-      if (this.options.commits && cancelled.length && !isDirectLegacyDocumentIntent(cancelled, this.prepared?.operationId)) await this.cancelCommits(expected ? Object.keys(expected.checkpoint.pending) : undefined);
+      if (this.options.commits && cancelled.length && !isDirectLegacyDocumentIntent(cancelled, this.prepared?.operationId)) {
+        await this.resolveCommitChoice('remote', captures, selection, expected, undefined, { draft: atChoice, refused: refusedWork });
+        return;
+      }
       if (this.prepared) {
         await this.options.runtime.discard(this.prepared.operationId);
         this.session.release(this.prepared.operationId);
@@ -341,7 +350,7 @@ export class EditorController {
       }
       this.assertManualResolution(selection);
       this.pendingCaptures.retire(captures);
-      this.session.acceptRemote();
+      this.session.acceptRemote(atChoice);
       if (refusedWork) this.session.dropRefused(atChoice);
       this.result = null;
       await this.persist();
@@ -353,7 +362,7 @@ export class EditorController {
   keepLocal(selection?: readonly ManualPath[], amendment?: { base: DocumentData; value: DocumentData }, expected?: EditorRecord): Promise<void> {
     const captures = this.pendingCaptures.boundary();
     const correction = amendment ? JSON.parse(JSON.stringify(amendment)) as typeof amendment : undefined;
-    return this.enqueue(async () => {
+    return this.enqueueChoice(async () => {
       this.assertRecoveryChoice(expected);
       if (correction && (!selection || !equalValues(correction.value, projectManualSelection(correction.base, correction.value, selection)))) {
         throw new Error('Manual resolution changed an unselected field');
@@ -373,12 +382,15 @@ export class EditorController {
         await this.persist();
       }
       const cancelled = Object.keys(this.session.checkpoint().pending);
-      if (this.options.commits && cancelled.length && !isDirectLegacyDocumentIntent(cancelled, this.prepared?.operationId)) await this.cancelCommits(expected ? Object.keys(expected.checkpoint.pending) : undefined);
       const checkpoint = this.session.checkpoint();
       if (this.result?.kind === 'refused' && this.result.code === 'generation-mismatch'
         && (!checkpoint.remoteCandidate?.metadata
           || checkpoint.remoteCandidate.metadata.generation === this.prepared?.generation)) {
         throw Object.assign(new Error('Read the current document before resolving a generation mismatch'), { code: 'fresh-read-required' });
+      }
+      if (this.options.commits && cancelled.length && !isDirectLegacyDocumentIntent(cancelled, this.prepared?.operationId)) {
+        await this.resolveCommitChoice('local', captures, selection, expected, correction);
+        return;
       }
       // Validate recovery before retiring its only durable terminal receipt.
       const preview = DataSession.restore(checkpoint);
@@ -485,7 +497,7 @@ export class EditorController {
   }
 
   private canFollowSubmittedWork(): boolean {
-    return this.durable && !this.prepared && !this.preparations && !this.pendingCaptures.pending
+    return this.durable && !this.prepared && !this.preparations && !this.choices && !this.pendingCaptures.pending
       && !this.unfinalized.length && !this.atomicPending.size
       && (!this.result || this.result.kind === 'acknowledged')
       && (this.options.canFollowSubmittedWork?.() ?? true);
@@ -590,13 +602,67 @@ export class EditorController {
     }
   }
 
-  private async cancelCommits(selected?: readonly string[]): Promise<void> {
-    await this.options.commits!.cancel(selected ? '' : this.options.editorId, selected ?? Object.keys(this.session.checkpoint().pending));
+  /** Publish an editor's explicit choice only with its durable checkpoint. */
+  private async resolveCommitChoice(choice: 'local' | 'remote', captures: ReadonlySet<object>,
+    selection?: readonly ManualPath[], expected?: EditorRecord,
+    correction?: { base: DocumentData; value: DocumentData },
+    remoteChoice?: { draft: DocumentData | null; refused: boolean }): Promise<void> {
+    if (this.prepared) throw Object.assign(new Error('Resolve pending commands before replacing saved intent'), { code: PENDING_DELIVERY_FIRST });
+    const cancelled = Object.keys(this.session.checkpoint().pending);
+    const selected = expected ? Object.keys(expected.checkpoint.pending) : undefined;
+    let source: SessionCheckpoint | undefined;
+    let projected: EditorRecord | undefined;
+    await this.options.commits!.cancelWithCheckpoint(selected ? '' : this.options.editorId,
+      selected ?? cancelled, () => {
+        this.assertCurrent();
+        // A newer explicit Save owns its capture. Do not checkpoint later RAM over it.
+        if ([...this.pendingCaptures.boundary()].some(attempt => !captures.has(attempt))) {
+          throw Object.assign(new Error('Finish the later Save before replacing saved intent'), { code: PENDING_DELIVERY_FIRST });
+        }
+        const record = this.record();
+        source = record.checkpoint;
+        this.assertManualResolution(selection, source);
+        const session = DataSession.restore(source);
+        const completed = new Set(record.completedCommits ?? []);
+        for (const id of Object.keys(source.pending)) { session.release(id); completed.add(id); }
+        if (choice === 'local') {
+          session.keepLocal();
+          if (correction) {
+            const current = session.checkpoint();
+            const merged = mergeDocumentFields(correction.base, correction.value, current.draft);
+            session.edit(chooseLocalPlacement(current.confirmed.resource.collection,
+              correction.base, correction.value, current.draft,
+              merged.value.exists ? merged.value.value as DocumentData : null, mergeFields));
+          }
+        } else {
+          session.acceptRemote(remoteChoice?.draft);
+          if (remoteChoice?.refused) session.dropRefused(remoteChoice.draft);
+        }
+        projected = { ...record, checkpoint: session.checkpoint(), completedCommits: [...completed] };
+        return projected;
+      });
     this.assertCurrent();
-    for (const id of Object.keys(this.session.checkpoint().pending)) {
-      this.session.release(id);
-      if (!this.completedCommits.includes(id)) this.completedCommits.push(id);
+    if (!source || !projected) throw new Error('Choice checkpoint projection was not captured');
+    const current = this.session.checkpoint();
+    const laterTyping = current.editGeneration !== source.editGeneration;
+    this.session = DataSession.restore(projected.checkpoint);
+    if (laterTyping) {
+      const merged = mergeDocumentFields(source.draft, current.draft, projected.checkpoint.draft);
+      this.session.edit(chooseLocalPlacement(current.confirmed.resource.collection,
+        source.draft, current.draft, projected.checkpoint.draft,
+        merged.value.exists ? merged.value.value as DocumentData : null, mergeFields));
     }
+    this.completedCommits = projected.completedCommits ?? [];
+    this.pendingCaptures.retire(captures);
+    this.result = null;
+    this.held = isRecoverableCheckpoint(projected);
+    this.clearedCommits = this.completedCommits.length;
+    this.durable = !laterTyping;
+    this.error = null;
+    this.errorCode = null;
+    this.emit();
+    if (laterTyping) await this.persist();
+    await this.options.commits!.finishCancellation(this.options.editorId, cancelled);
   }
 
   private async finishAcknowledgements(): Promise<void> {
@@ -608,6 +674,12 @@ export class EditorController {
     }
     this.unfinalized = [];
     await this.persist();
+  }
+
+  private enqueueChoice(action: () => Promise<void>): Promise<void> {
+    this.choices += 1;
+    this.emit();
+    return this.enqueue(action).finally(() => { this.choices -= 1; this.emit(); });
   }
 
   private enqueue(action: () => Promise<void>): Promise<void> {

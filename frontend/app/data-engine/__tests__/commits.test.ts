@@ -1,26 +1,33 @@
 import { CommitQueue, createMemoryCommitStore } from '../commits';
+import { createIndexedDbCheckpoints } from '../checkpoint.client';
+import { createIndexedDbCommitStore } from '../commits.client';
+import { installStorageHarness } from './storageHarness';
 import { DataEngine } from '../engine';
 import { ResourceObserver } from '../observer';
 import { applyCommand } from '../protocol';
 import { DataEngineRuntime } from '../runtime';
 import { DataSession } from '../session';
 import { describeSync } from '../status';
-import { recoveryCheckpointId, selectRecoverableCheckpoints } from '../recovery.client';
+import { reconcileRecoveryRecord, recoveryCheckpointId, selectRecoverableCheckpoints } from '../recovery.client';
 import { planDataCommand } from '../serverRelations';
 
 import type { CheckpointRecoveryStore, EditorRecord } from '../controller';
 import type { CommandResult, EngineTransport, JournalEntry, ResourceSnapshot } from '../types';
 
+jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
+
 const copy = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 const initial = (): ResourceSnapshot => ({ resource: { collection: 'sermons', id: 'sermon' }, value: { userId: 'owner', title: 'base', scratch: [], rev: { core: 1 } }, metadata: { protocol: 1, generation: 'g', revision: 1, deleted: false } });
 const settle = async () => { for (let i = 0; i < 100; i += 1) await Promise.resolve(); };
 
-function setup() {
+function setup({ nativeChoice = false } = {}) {
   let server = initial(), sequence = 0;
   const entries = new Map<string, JournalEntry>();
   const receipts = new Map<string, CommandResult>();
-  const requests = createMemoryCommitStore();
+  if (nativeChoice) installStorageHarness();
+  const requests = nativeChoice ? createIndexedDbCommitStore() : createMemoryCommitStore();
   const records = new Map<string, EditorRecord>();
+  const putCheckpoint = jest.fn(async (record: EditorRecord) => { records.set(record.editorId, copy(record)); });
   let cache = initial();
   const transport: EngineTransport = {
     read: jest.fn(async () => copy(server)),
@@ -42,21 +49,22 @@ function setup() {
     const queue = new CommitQueue({ store: requests, runtime, operationId: () => `op-${++sequence}`, readConfirmed: resource => transport.read('owner', resource) });
     queue.setOwner('owner'); return { queue, runtime };
   };
+  const checkpoints = nativeChoice ? createIndexedDbCheckpoints() : {
+    read: async (_owner: string, id: string) => records.get(id),
+    put: putCheckpoint,
+    listRecoverable: async (owner: string, resource: import('../types').ResourceRef) => selectRecoverableCheckpoints([...records.values()].map(record => [recoveryCheckpointId(record.owner, record.editorId), record]), owner, resource),
+    create: async (record: EditorRecord) => { if (records.has(record.editorId)) throw new Error('occupied'); records.set(record.editorId, copy(record)); },
+  } as CheckpointRecoveryStore;
   const makeEngine = () => {
     const runtime = makeRuntime();
     const observer = new ResourceObserver({ transport, source: { listen: () => () => undefined } });
     const engine = new DataEngine({ runtime, observer, transport, commits: requests,
-      checkpoints: {
-        read: async (_owner, id) => records.get(id),
-        put: async record => { records.set(record.editorId, copy(record)); },
-        listRecoverable: async (owner, resource) => selectRecoverableCheckpoints([...records.values()].map(record => [recoveryCheckpointId(record.owner, record.editorId), record]), owner, resource),
-        create: async record => { if (records.has(record.editorId)) throw new Error('occupied'); records.set(record.editorId, copy(record)); },
-      } as CheckpointRecoveryStore,
+      checkpoints,
       snapshots: { read: async () => copy(cache), put: async (_owner, snapshot) => { cache = copy(snapshot); } },
       operationId: () => `op-${++sequence}` });
     engine.setOnline(false); engine.setOwner('owner'); return engine;
   };
-  return { requests, transport, journal, entries, records, receipts, makeQueue, makeEngine, server: () => copy(server), replace: (snapshot: ResourceSnapshot) => { server = snapshot; } };
+  return { requests, checkpoints, transport, journal, entries, records, putCheckpoint, receipts, makeQueue, makeEngine, server: () => copy(server), replace: (snapshot: ResourceSnapshot) => { server = snapshot; } };
 }
 
 describe('Durable commit requests', () => {
@@ -242,18 +250,14 @@ describe('Durable commit requests', () => {
   });
 
   it.each(['local', 'remote'] as const)('restores both choices after interrupted %s conflict cancellation and Retry', async choice => {
-    const s = setup(), engine = s.makeEngine(), editor = await engine.openEditor(initial().resource, 'page');
+    const s = setup({ nativeChoice: true }), engine = s.makeEngine(), editor = await engine.openEditor(initial().resource, 'page');
     try {
       await editor.commit(value => ({ ...value, title: 'my held words' }));
       s.replace({ ...initial(), value: { ...initial().value, title: 'remote words' }, metadata: { ...initial().metadata!, revision: 2 } });
       engine.setOnline(true); await engine.retry(); await settle();
       const status = () => describeSync(editor.getState(), editor.getObservation(), editor.getDelivery());
       expect(status()).toMatchObject({ phase: 'conflict', canKeepLocal: true, canAcceptRemote: true });
-      const write = s.requests.compareAndSet.bind(s.requests);
-      const failing = jest.spyOn(s.requests, 'compareAndSet').mockImplementation(async (previous, next) => {
-        if (next.state === 'cancelled') throw new Error('disk full');
-        return write(previous, next);
-      });
+      const failing = jest.spyOn(s.requests, 'compareAndSetWithCheckpoint').mockRejectedValueOnce(new Error('disk full'));
       await expect(choice === 'local' ? editor.keepLocal() : editor.acceptRemote()).rejects.toThrow('disk full');
       failing.mockRestore(); await engine.retry(); await settle();
       expect(editor.getState().checkpoint.draft?.title).toBe('my held words');
@@ -269,21 +273,40 @@ describe('Durable commit requests', () => {
   });
 
   it.each(['local', 'remote'] as const)('persists the %s choice before reporting a journal cleanup failure', async choice => {
-    const s = setup(), engine = s.makeEngine(), editor = await engine.openEditor(initial().resource, 'page');
+    const s = setup({ nativeChoice: true }), engine = s.makeEngine(), editor = await engine.openEditor(initial().resource, 'page');
     try {
       await editor.commit(value => ({ ...value, title: 'my held words' }));
       s.replace({ ...initial(), value: { ...initial().value, title: 'remote words' }, metadata: { ...initial().metadata!, revision: 2 } });
       engine.setOnline(true); await engine.retry(); await settle();
-      jest.mocked(s.journal.remove).mockRejectedValueOnce(new Error('cleanup failed'));
+      jest.mocked(s.journal.remove).mockRejectedValue(new Error('cleanup failed'));
       await expect(choice === 'local' ? editor.keepLocal() : editor.acceptRemote()).rejects.toThrow('cleanup failed');
+      jest.mocked(s.journal.remove).mockImplementation(async (_owner, id) => { s.entries.delete(id); });
       const expected = choice === 'local' ? 'my held words' : 'remote words';
       expect(editor.getState().checkpoint).toMatchObject({ draft: { title: expected }, pending: {}, conflicts: [] });
-      expect([...s.records.values()].at(-1)?.checkpoint.draft?.title).toBe(expected);
+      expect((await s.checkpoints.read('owner', 'page'))?.checkpoint.draft?.title ?? s.server().value?.title).toBe(expected);
       await engine.retry(); await settle();
       expect(editor.getState().checkpoint).toMatchObject({ draft: { title: expected }, pending: {}, conflicts: [] });
       expect(s.entries.size).toBe(0); expect(s.transport.send).toHaveBeenCalledTimes(1);
       if (choice === 'local') { await editor.save(); await engine.retry(); }
       expect(s.server().value?.title).toBe(expected);
+    } finally { engine.dispose(); }
+  });
+
+  it.each(['local', 'remote'] as const)('keeps the conflict recoverable when a custom store cannot atomically save the %s choice', async choice => {
+    const s = setup(), engine = s.makeEngine(), editor = await engine.openEditor(initial().resource, 'page');
+    try {
+      await editor.commit(value => ({ ...value, title: 'my held words' }));
+      s.replace({ ...initial(), value: { ...initial().value, title: 'remote words' }, metadata: { ...initial().metadata!, revision: 2 } });
+      engine.setOnline(true); await engine.retry(); await settle();
+      const before = copy(s.records.get('page')!);
+      await expect(choice === 'local' ? editor.keepLocal() : editor.acceptRemote()).rejects.toThrow('Atomic choice checkpoint storage is required');
+      expect(s.records.get('page')).toEqual(before);
+      const requests = await s.requests.list('owner');
+      expect(requests[0]).toMatchObject({ state: 'conflict', value: { title: 'my held words' } });
+      expect(reconcileRecoveryRecord(before, requests).checkpoint.draft?.title).toBe('my held words');
+      expect(editor.getState().result?.kind).toBe('conflict');
+      expect(describeSync(editor.getState(), editor.getObservation(), editor.getDelivery()).phase).toBe('localFailure');
+      expect(s.transport.send).toHaveBeenCalledTimes(1);
     } finally { engine.dispose(); }
   });
 
@@ -316,7 +339,7 @@ describe('Durable commit requests', () => {
   });
 
   it('turns a draft the domain policy cannot express into a refusal the person can resolve, not a queue that retries for ever', async () => {
-    const s = setup(); const engine = s.makeEngine(); const editor = await engine.openEditor(initial().resource, 'tab');
+    const s = setup({ nativeChoice: true }); const engine = s.makeEngine(); const editor = await engine.openEditor(initial().resource, 'tab');
     // Membership belongs to the series, so no command exists for this draft — and none ever will.
     await editor.commit(current => ({ ...current, seriesId: 'series-1' }));
     engine.setOnline(true); await engine.retry().catch(() => undefined); await settle();
@@ -328,7 +351,7 @@ describe('Durable commit requests', () => {
 
     // The way out works: before, cancel() refused because nothing had reached a terminal state.
     await editor.keepLocal();
-    expect((await s.requests.list('owner')).map(item => item.state)).toEqual(['cancelled']);
+    expect((await s.requests.list('owner')).every(item => item.state === 'cancelled')).toBe(true);
     // …and the next honest save is not chained behind the dead one.
     await editor.commit(current => ({ ...current, seriesId: undefined, title: 'after' } as never));
     await engine.retry(); await settle();

@@ -1,5 +1,8 @@
 import { DataEngine, canReplaceSnapshot, type SnapshotStore } from '../engine';
 import { createMemoryCommitStore } from '../commits';
+import { createIndexedDbCommitStore } from '../commits.client';
+import { createIndexedDbCheckpoints } from '../checkpoint.client';
+import { installStorageHarness } from './storageHarness';
 import { AddressedFailures } from '../failures';
 import { ResourceObserver, type SnapshotEvent } from '../observer';
 import { applyCommand } from '../protocol';
@@ -12,6 +15,8 @@ import { redeliveryDelay } from '../unanswered';
 import type { ManualScopeStore, ManualStorageRecord } from '../manualScopes.client';
 import type { CheckpointStore, EditorRecord } from '../controller';
 import type { EngineTransport, JournalEntry, JournalStore, ResourceRef, ResourceSnapshot } from '../types';
+
+jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
 
 const copy = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 const resource = { collection: 'studyNotes', id: 'note' };
@@ -29,14 +34,15 @@ const deferred = <T,>() => {
   return { promise, resolve, reject };
 };
 
-function setup({ cached = true, online = true } = {}) {
+function setup({ cached = true, online = true, nativeChoice = false } = {}) {
+  if (nativeChoice) installStorageHarness();
   let sequence = 0;
   const records = new Map<string, EditorRecord>();
   const entries = new Map<string, JournalEntry>();
   const cache = new Map<string, ResourceSnapshot>();
   const server = new Map<string, ResourceSnapshot>([[keyOf('owner', resource), initial()]]);
   if (cached) cache.set(keyOf('owner', resource), initial());
-  const checkpoints: CheckpointStore = {
+  const checkpoints: CheckpointStore = nativeChoice ? createIndexedDbCheckpoints() : {
     read: jest.fn(async (owner, id) => {
       const value = records.get(JSON.stringify([owner, id])); return value && copy(value);
     }),
@@ -66,7 +72,7 @@ function setup({ cached = true, online = true } = {}) {
   const runtime = new DataEngineRuntime({ journal, transport });
   const observer = new ResourceObserver({ source, transport });
   const onError = jest.fn();
-  const commits = createMemoryCommitStore();
+  const commits = nativeChoice ? createIndexedDbCommitStore() : createMemoryCommitStore();
   const manualRows = new Map<string, ManualStorageRecord>();
   const manualScopes: ManualScopeStore = {
     read: jest.fn(async (owner, id) => { const row = manualRows.get(JSON.stringify([owner, id])); return row && copy(row); }),
@@ -87,7 +93,7 @@ describe('DataEngine composition', () => {
 
   it.each(['studyMaterials', 'series'].flatMap(collection => ['local', 'remote'].map(choice => [collection, choice])))
     ('resolves acknowledged %s relation rebase with the %s choice without losing membership', async (collection, choice) => {
-    const s = setup({ online: false });
+    const s = setup({ online: false, nativeChoice: true });
     const primary: ResourceSnapshot = { resource: { collection, id: 'qa-ack-rebase-document' },
       value: { userId: 'owner', title: 'Old title', createdAt: '2026-10-16T00:00:00.000Z', updatedAt: '2026-10-16T00:00:00.000Z',
         ...(collection === 'series' ? { theme: 'QA series', bookOrTopic: 'James', status: 'active', items: [], sermonIds: [], seriesKind: 'sermon' } : { type: 'study', noteIds: [] }) },
@@ -263,7 +269,7 @@ describe('DataEngine composition', () => {
   });
 
   it('pins pristine manual baseline and preserves the conflict when remote changes before typing', async () => {
-    const s = setup({ online: false }); const editor = await s.engine.openEditor(resource, 'manual');
+    const s = setup({ online: false, nativeChoice: true }); const editor = await s.engine.openEditor(resource, 'manual');
     const form = editor.form('title', [['title']]); await form.begin();
     s.next({ ...initial(2), value: { ...initial().value, title: 'Other device' } }); await drainMicrotasks();
     await form.update(value => ({ ...value, title: 'Mine' }));
@@ -277,7 +283,7 @@ describe('DataEngine composition', () => {
     await editor.acceptRemote();
     expect(editor.getState().checkpoint.draft?.title).toBe('Other device');
     expect(Object.keys(editor.getState().checkpoint.pending)).toEqual([]);
-    expect((await s.commits.list('owner'))[0].state).toBe('cancelled');
+    expect((await s.commits.list('owner')).every(request => request.state === 'cancelled')).toBe(true);
     s.engine.dispose();
   });
 
@@ -296,7 +302,7 @@ describe('DataEngine composition', () => {
   });
 
   it('preserves amended manual input when journal retirement fails, and recovers it in a new editor', async () => {
-    const s = setup(); const editor = await s.engine.openEditor(resource, 'repair');
+    const s = setup({ nativeChoice: true }); const editor = await s.engine.openEditor(resource, 'repair');
     const form = editor.form('title', [['title']]); await form.begin();
     await form.update(value => ({ ...value, title: 'Mine' }));
     s.server.set(keyOf('owner', resource), { ...initial(), value: { ...initial().value!, title: 'Theirs' } });
@@ -304,8 +310,9 @@ describe('DataEngine composition', () => {
     await form.begin(); await form.update(value => ({ ...value, title: 'Corrected mine' }));
     await expect(form.save()).rejects.toThrow('Resolve the failed delivery');
     const count = (await s.commits.list('owner')).length;
-    jest.mocked(s.journal.remove).mockRejectedValueOnce(new Error('Journal disk failure'));
+    jest.mocked(s.journal.remove).mockRejectedValue(new Error('Journal disk failure'));
     await expect(form.resolve('local')).rejects.toThrow('Journal disk failure');
+    jest.mocked(s.journal.remove).mockImplementation(async (recordOwner, id) => { s.entries.delete(JSON.stringify([recordOwner, id])); });
     expect(form.getState()).toMatchObject({ value: { title: 'Corrected mine' }, dirty: true, durable: true, record: { active: false } });
     expect((await s.commits.list('owner'))).toHaveLength(count);
     editor.close({ flush: false });
@@ -513,7 +520,7 @@ describe('DataEngine composition', () => {
   });
 
   it('notifies saved-work readers after a durable request answer and stops after unsubscribe', async () => {
-    const s = setup({ online: false }); const editor = await s.engine.openEditor(resource, 'tab');
+    const s = setup({ online: false, nativeChoice: true }); const editor = await s.engine.openEditor(resource, 'tab');
     await editor.edit({ ...editor.getState().checkpoint.draft, content: 'Retained words' }); await editor.save();
     const reads: ReturnType<typeof s.commits.list>[] = [];
     const listener = jest.fn(() => { reads.push(s.commits.list('owner')); });
@@ -620,7 +627,7 @@ describe('DataEngine composition', () => {
   });
 
   it('publishes a terminal refusal and clears it only after explicit recovery', async () => {
-    const s = setup({ online: false }); const editor = await s.engine.openEditor(resource, 'tab');
+    const s = setup({ online: false, nativeChoice: true }); const editor = await s.engine.openEditor(resource, 'tab');
     await editor.edit({ ...editor.getState().checkpoint.draft, content: 'mine' }); await editor.save();
     jest.mocked(s.transport.send).mockResolvedValue({ kind: 'refused', operationId: 'operation-1', code: 'permission-denied' });
     const listener = jest.fn(); editor.subscribe(listener);
@@ -633,7 +640,7 @@ describe('DataEngine composition', () => {
   });
 
   it('keeps local conflict fields on explicit choice without sending until save is requested', async () => {
-    const s = setup({ online: false }); const editor = await s.engine.openEditor(resource, 'tab');
+    const s = setup({ online: false, nativeChoice: true }); const editor = await s.engine.openEditor(resource, 'tab');
     await editor.edit({ ...editor.getState().checkpoint.draft, content: 'mine' }); await editor.save();
     s.server.set(keyOf('owner', resource), { ...initial(2, 'theirs'), value: { ...initial(2, 'theirs').value, title: 'Remote title' } });
     s.engine.setOnline(true); await s.engine.retry();

@@ -8,6 +8,8 @@ import { reconcileRecoveryRecord, validateRecoveryRecord } from './recovery.clie
 import { COMMIT_ROW_KINDS, collectCommitRows, commitCaptureKey, commitDependencyKey, commitGenerationKey, commitProjectionKey, commitRowKey, commitSnapshotKey, readCommitRows } from './retention.client';
 import { createEngineStorageTransaction, validateCommitReferences, type StorageRead } from './storage.client';
 
+import type { EditorRecord } from './controller';
+
 const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 const changed = () => Object.assign(new Error('Commit changed'), { code: 'commit-changed' });
 
@@ -81,9 +83,13 @@ export function createIndexedDbCommitStore(): CommitStore {
       }));
     });
   };
-  const compareAndSetBatch = async (changes: readonly { previous: CommitRequest; next: CommitRequest }[]): Promise<CommitRequest[]> => {
+  const compareAndSetBatchInternal = async (changes: readonly { previous: CommitRequest; next: CommitRequest }[],
+    project?: (saved: CommitRequest[]) => EditorRecord): Promise<CommitRequest[]> => {
     const frozen = clone(changes); assertCommitIdentities(frozen.map(change => change.previous));
-    if (!frozen.length) return [];
+    if (!frozen.length) {
+      if (project) throw new Error('A checkpoint projection requires at least one changed commit');
+      return [];
+    }
     return transaction('readwrite', (store, read, done) => {
       const result: CommitRequest[] = []; let remaining = frozen.length;
       frozen.forEach(({ previous, next }, index) => {
@@ -98,11 +104,21 @@ export function createIndexedDbCommitStore(): CommitStore {
             store.put({ commitReferences: [saved.id] }, commitSnapshotKey(saved.owner, saved.id));
           }
           store.put(saved, commitRowKey(saved)); result[index] = saved;
-          if (!--remaining) collectCommitRows(store, read, saved.owner, () => done(result));
+          if (!--remaining) {
+            if (project) {
+              const record = project(clone(result));
+              if (record.owner !== previous.owner) throw new Error('Checkpoint projection owner differs from changed commits');
+              writeCheckpointRecord(store, read, record, false, () => done(result));
+            } else collectCommitRows(store, read, saved.owner, () => done(result));
+          }
         });
       });
     });
   };
+  const compareAndSetBatch = (changes: readonly { previous: CommitRequest; next: CommitRequest }[]): Promise<CommitRequest[]> =>
+    compareAndSetBatchInternal(changes);
+  const compareAndSetWithCheckpoint = (changes: readonly { previous: CommitRequest; next: CommitRequest }[],
+    project: (saved: CommitRequest[]) => EditorRecord): Promise<CommitRequest[]> => compareAndSetBatchInternal(changes, project);
   return {
     list: owner => transaction('readonly', (store, read, done) => {
       readCommitRows(store, read, owner, done);
@@ -140,6 +156,7 @@ export function createIndexedDbCommitStore(): CommitStore {
     compareAndSet: (previous, next) => compareAndSetBatch([{ previous, next }]).then(records => records[0]),
     createBatch,
     compareAndSetBatch,
+    compareAndSetWithCheckpoint,
     listCaptures: (owner, prefix) => transaction('readonly', (store, read, done) => {
       readCommitRows(store, read, owner, requests => {
         const candidates = requests.filter(request => request.retentionScope?.startsWith(prefix));

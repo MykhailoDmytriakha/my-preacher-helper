@@ -167,7 +167,7 @@ it.each([
   const keep = surface === 'delete-dialog'
     ? await within(screen.getByRole('dialog', { name: 'workspaces.series.deleteSeries' })).findByRole('button', { name: 'freshness.conflictKeepMine' })
     : await screen.findByRole('button', { name: 'freshness.conflictKeepMine' });
-  const cancellation = interrupted ? jest.spyOn(harness.commits, 'compareAndSet').mockRejectedValueOnce(new Error('QA cancellation storage failed')) : null;
+  const cancellation = interrupted ? jest.spyOn(harness.commits, 'compareAndSetWithCheckpoint').mockRejectedValueOnce(new Error('QA cancellation storage failed')) : null;
   await waitFor(() => expect(keep).toBeEnabled()); fireEvent.click(keep);
   await act(async () => { await settleEngine(); await harness.engine.retry(); await settleEngine(); });
   if (cancellation) {

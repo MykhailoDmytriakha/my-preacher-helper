@@ -74,6 +74,9 @@ export interface CommitStore {
   releaseCapture?(owner: string, scope: string, requestId: string): Promise<void>;
   /** All revisions win together, or no participant changes. */
   compareAndSetBatch?(changes: readonly { previous: CommitRequest; next: CommitRequest }[]): Promise<CommitRequest[]>;
+  /** Cancellation and its chosen editor projection commit together, or neither is published. */
+  compareAndSetWithCheckpoint?(changes: readonly { previous: CommitRequest; next: CommitRequest }[],
+    project: (saved: CommitRequest[]) => EditorRecord): Promise<CommitRequest[]>;
 }
 
 export function assertCommitIdentities(requests: readonly CommitRequest[]): void {
@@ -402,6 +405,21 @@ export class CommitQueue {
     return this.cancelOwned(editorId, additionalRequestIds, false);
   }
 
+  /** An editor choice owns both the cancellation and its exact durable checkpoint. */
+  async cancelWithCheckpoint(editorId: string, additionalRequestIds: readonly string[],
+    project: (saved: CommitRequest[]) => EditorRecord): Promise<void> {
+    if (!this.options.store.compareAndSetWithCheckpoint) throw new Error('Atomic choice checkpoint storage is required');
+    const { owner, generation, records, chosen } = await this.planCancellation(editorId, additionalRequestIds, false);
+    const saved = await this.options.store.compareAndSetWithCheckpoint(records.map(previous => ({ previous,
+      next: this.cancelledRequest(previous, chosen) })), requests => {
+      this.assertCurrent(owner, generation);
+      return project(requests);
+    });
+    this.assertCurrent(owner, generation);
+    this.requested = true;
+    saved.forEach(request => this.emit(request));
+  }
+
   /** Only the action owner may retire a relation and its dependent local work. */
   cancelAction(requestIds: readonly string[]): Promise<void> {
     return this.cancelOwned('', requestIds, true);
@@ -434,7 +452,7 @@ export class CommitQueue {
     }
   }
 
-  private async cancelOwned(editorId: string, additionalRequestIds: readonly string[], wholeAction: boolean): Promise<void> {
+  private async planCancellation(editorId: string, additionalRequestIds: readonly string[], wholeAction: boolean) {
     const owner = this.owner, generation = this.generation;
     if (!owner) throw new Error(AUTHENTICATION_REQUIRED);
     const all = await this.options.store.list(owner);
@@ -445,12 +463,23 @@ export class CommitQueue {
     if (!wholeAction && records.some(record => record.atomic)) throw Object.assign(
       new Error('Resolve the complete action before replacing one participant'), { code: 'atomic-action-resolution-required' });
     const journal = await this.options.runtime.list();
+    this.assertCurrent(owner, generation);
     if (!canCancelSavedIntent(records, journal)) throw Object.assign(new Error('Resolve pending commands before replacing saved intent'), { code: 'pending-delivery-first' });
+    return { owner, generation, records, chosen };
+  }
+
+  private cancelledRequest(record: CommitRequest, chosen: ReadonlySet<string>): CommitRequest {
+    return { ...record, state: 'cancelled', unfinalized: pendingCommitRetirement(record),
+      ...(chosen.has(record.id) ? { cancelledByChoice: true } : {}) };
+  }
+
+  private async cancelOwned(editorId: string, additionalRequestIds: readonly string[], wholeAction: boolean): Promise<void> {
+    const { owner, generation, records, chosen } = await this.planCancellation(editorId, additionalRequestIds, wholeAction);
     this.requested = true;
     if (wholeAction) return cancelActionCommits(orderCommitRequests(records), this.atomicContext(owner, generation));
     for (const record of records) {
       this.assertCurrent(owner, generation);
-      const cancelled = await this.options.store.compareAndSet(record, { ...record, state: 'cancelled', unfinalized: pendingCommitRetirement(record), ...(chosen.has(record.id) ? { cancelledByChoice: true } : {}) });
+      const cancelled = await this.options.store.compareAndSet(record, this.cancelledRequest(record, chosen));
       this.assertCurrent(owner, generation);
       this.emit(cancelled);
     }

@@ -269,12 +269,17 @@ export class DataSession {
   }
 
   /** Replacing local intent is allowed only after each pending delivery is explicitly settled. */
-  acceptRemote(): void {
+  acceptRemote(atChoice?: DocumentData | null): void {
     if (Object.keys(this.state.pending).length) throw Object.assign(new Error('Resolve pending commands before accepting remote data'), { code: 'pending-delivery-first' });
     if (!this.state.remoteCandidate) return;
     this.state.confirmed = copy(this.state.remoteCandidate);
-    this.state.draft = copy(this.state.remoteCandidate.value);
     this.state.remoteCandidate = null;
+    if (atChoice !== undefined) {
+      // The choice replaces the shown draft, while later typing remains a new local action.
+      this.dropRefused(atChoice);
+      return;
+    }
+    this.state.draft = copy(this.state.confirmed.value);
     this.state.editGeneration += 1;
     this.state.dirty = false;
     this.state.conflicts = [];

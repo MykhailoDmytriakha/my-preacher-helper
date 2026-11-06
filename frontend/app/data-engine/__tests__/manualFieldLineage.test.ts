@@ -184,20 +184,29 @@ it('retains stage words when a newer parent send has an unknown outcome', async 
 });
 
 
+async function waitForChoiceSignal(signal: Promise<void>, label: string): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([signal, new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error(label)), 5000); })]);
+  } finally { if (timer) clearTimeout(timer); }
+}
+
 it.each([
   ['local', 'parent close'], ['remote', 'parent close'],
   ['local', 'owner change'], ['remote', 'owner change'],
-] as const)('retains stage ancestry when %s choice is interrupted by %s', async (choice, boundary) => {
+] as const)('before durable choice commit, retains stage ancestry when %s choice is interrupted by %s', async (choice, boundary) => {
   const s = await pendingFieldStage();
   let release!: () => void, entered!: () => void;
   const held = new Promise<void>(resolve => { release = resolve; });
   const started = new Promise<void>(resolve => { entered = resolve; });
   try {
     const scopeId = s.form.getState()!.record.scopeId;
-    const put = s.h.checkpoints.put.bind(s.h.checkpoints);
-    jest.spyOn(s.h.checkpoints, 'put').mockImplementationOnce(async record => { entered(); await held; return put(record); });
+    const compare = s.h.commits.compareAndSetWithCheckpoint!.bind(s.h.commits);
+    jest.spyOn(s.h.commits, 'compareAndSetWithCheckpoint').mockImplementationOnce(async (changes, project) => {
+      entered(); await held; return compare(changes, project);
+    });
     const choosing = choice === 'local' ? s.editor.keepLocal() : s.editor.acceptRemote();
-    void choosing.catch(() => undefined); await started;
+    void choosing.catch(() => undefined); await waitForChoiceSignal(started, 'Choice did not reach the pre-transaction seam');
     if (boundary === 'parent close') s.editor.dispose(); else s.engine.setOwner('another-owner');
     release(); await expect(choosing).rejects.toThrow(); await settleEngine();
     if (boundary === 'owner change') s.engine.setOwner('owner');
@@ -209,10 +218,68 @@ it.each([
     expect({ dirty: recovered.dirty, durable: recovered.durable, stage: recovered.record.stage, saved: recovered.record.savedSelection,
       baseline: recovered.record.baseline.metadata, predecessor: recovered.record.predecessor, editor: editor.getState().checkpoint, server: s.h.server }).toMatchObject({ dirty: true, durable: true });
     expect(recovered.value.preparation).toEqual({ mainIdea: { contextIdea: 'Opening words' } });
+    // The interrupted transaction chose nothing; the restored parent still needs an explicit choice.
+    expect(editor.getState().result?.kind).toBe('conflict');
+    await editor.keepLocal();
     if (form.getState()?.choiceRequired) await form.resolve('local'); else await form.save();
     await s.engine.retry(); await settleEngine();
     expect(s.h.server.value?.preparation).toEqual({ mainIdea: { contextIdea: 'Opening words' } });
   } finally { release?.(); s.browser.dispose(); await settleEngine(); jest.restoreAllMocks(); }
+});
+
+it.each([
+  ['local', 'parent close'], ['remote', 'parent close'],
+  ['local', 'owner change'], ['remote', 'owner change'],
+] as const)('after native choice commit, retains stage ancestry when %s choice is interrupted by %s', async (choice, boundary) => {
+  const s = await pendingFieldStage();
+  const browser = s.browser;
+  let entered!: () => void;
+  const started = new Promise<void>(resolve => { entered = resolve; });
+  let held = false;
+  try {
+    const scopeId = s.form.getState()!.record.scopeId;
+    const sourceIds = Object.keys(s.editor.getState().checkpoint.pending);
+    if (!sourceIds.length) throw new Error('Choice editor has no pending request IDs to guard');
+    const expectedIds = new Set(sourceIds);
+    let observedIds: string[] = [];
+    s.h.storage.holdCompletionAfterCommit = (rows, mode) => {
+      if (held || mode !== 'readwrite') return false;
+      const cancelled = new Set([...rows.values()].flatMap(value => {
+        if (typeof value !== 'object' || value === null || !('id' in value) || !('state' in value) || !('owner' in value)) return [];
+        const row = value as { id: unknown; state: unknown; owner: unknown };
+        return row.owner === 'owner' && row.state === 'cancelled' && typeof row.id === 'string' && expectedIds.has(row.id) ? [row.id] : [];
+      }));
+      if ([...expectedIds].some(id => !cancelled.has(id))) return false;
+      observedIds = [...cancelled].sort(); held = true; entered(); return true;
+    };
+    const choosing = choice === 'local' ? s.editor.keepLocal() : s.editor.acceptRemote();
+    void choosing.catch(() => undefined);
+    await waitForChoiceSignal(started, 'Choice did not reach native commit before completion');
+    expect(observedIds).toEqual([...expectedIds].sort());
+    if (boundary === 'parent close') s.editor.dispose();
+    else { s.engine.setOwner('another-owner'); }
+    s.h.storage.holdCompletionAfterCommit = undefined;
+    s.h.storage.finishCompletion();
+    await expect(choosing).rejects.toThrow(); await settleEngine();
+    if (boundary === 'owner change') s.engine.setOwner('owner');
+    const editor = await browser.engine.openEditor(resource, browser.editorId(resource));
+    const form = editor.form('prep-mainIdea-contextIdea', [['preparation', 'mainIdea', 'contextIdea']]);
+    await form.begin();
+    expect(await form.listRecoverable()).toEqual(expect.arrayContaining([expect.objectContaining({ scopeId })]));
+    await form.recover(scopeId);
+    const recovered = form.getState()!;
+    if (!recovered.dirty) throw new Error('Recovered unsent ancestry became clean: ' + JSON.stringify({ record: recovered.record, editor: editor.getState().checkpoint, server: s.h.server }));
+    expect({ dirty: recovered.dirty, durable: recovered.durable, stage: recovered.record.stage, saved: recovered.record.savedSelection,
+      baseline: recovered.record.baseline.metadata, predecessor: recovered.record.predecessor, editor: editor.getState().checkpoint, server: s.h.server }).toMatchObject({ dirty: true, durable: true });
+    expect(recovered.value.preparation).toEqual({ mainIdea: { contextIdea: 'Opening words' } });
+    if (form.getState()?.choiceRequired) await form.resolve('local'); else await form.save();
+    await s.engine.retry(); await settleEngine();
+    expect(s.h.server.value?.preparation).toEqual({ mainIdea: { contextIdea: 'Opening words' } });
+  } finally {
+    s.h.storage.holdCompletionAfterCommit = undefined;
+    if (held) s.h.storage.finishCompletion();
+    browser.dispose(); s.browser.dispose(); await settleEngine(); jest.restoreAllMocks();
+  }
 });
 
 

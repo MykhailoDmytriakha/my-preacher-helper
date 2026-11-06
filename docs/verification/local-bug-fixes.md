@@ -5773,3 +5773,84 @@ full Jest gate with this helper. The test-only file is not a browser runtime mod
 After confirming deployed version/worker, one read-only window Back/Forward check may
 confirm retained Unit280 behavior; do not create production load or infer a physical-
 device result from Jest. Other returned fixes and unrelated flaky regressions remain open.
+
+## Unit283 — atomic persistence of explicit conflict choices (2026-11-05)
+
+**BUG-20261105-cancel-retirement-before-choice-save; local behavior repair.** A failed
+Keep my text checkpoint could leave an already choice-cancelled request beside the old
+checkpoint. Normal recovery then selected remote words without offering the local text.
+The immutable request and old checkpoint still contained those words; loss of every
+physical copy was never claimed. Delaying journal cleanup alone did not repair recovery.
+
+`CommitQueue.cancelWithCheckpoint` now reuses the native CAS transaction and existing
+checkpoint writer: cancelled requests and the chosen projection commit or abort together.
+The controller installs that projection after completion and merges later typing through
+the existing document-field and placement rules. Take Remote retains the draft seen at
+its click as the replacement boundary. A synchronous choice admission counter refuses
+Save/Delete before a new capture can register; typing remains available and a fresh Save
+works after completion. Unsupported custom stores refuse the pending-request choice before
+mutation. One queue, action cancellation, server protocol and whole-action ownership remain
+canonical. The offline-write recipe and project architecture map describe this boundary.
+
+**Causal tests and class controls.** Original memory recovery:1red/36controls. The real
+IndexedDB adapter with a transaction harness:1red/11controls before the repair. Two later
+Save cases were red with18controls: an overlapping failed capture also poisoned a fresh
+Save after the choice. A separate pre-projection Take Remote case was red with21controls
+because it replaced text typed after the click. The final native cases cover checkpoint
+put/delete rollback, stale CAS and owner checks, successful retry, late typing on both
+sides of projection/completion, and overlapping Save followed by a successful fresh Save.
+Ordinary commits, manual fields, refusal, action/membership/reshape/carry and placement
+controls remain in the shared focused suite. Old custom-port fixtures now explicitly test
+fail-closed behavior; native-choice fixtures use the actual checkpoint capability.
+
+**Gates and exact candidate.** Fresh Codex focused coverage passes417tests/21suites;
+UI/session coverage passes98tests/6suites. Types pass, lint has0errors/60inherited warnings.
+Official `npm run build` runs the complete build test gate:12,937passed/17pre-existing skips,
+1,137passed suites/3skipped, then produces build `hTGn5Kk6Ih4Xgo3hHaNpT`. Its2,750source,
+915compiled and one service-worker files are pinned and archived (3,668members), with the
+actual build receipt. The earlier full fast failure was an outdated fault spy in one UI
+test: the new atomic method bypassed its old spy; only that method name changed, preserving
+all expectations. The official full build gate subsequently passed. The earlier417run
+preceded that one test-fixture change; fresh v12 repeats417on the exact final candidate.
+
+**Actual Chrome before/after and visual boundary.** The pinned broken build
+`c8K9ZrTCvKOlZeRvgqF3q` reproduced Groups → description → offline edit → real conflict →
+Keep → exact native checkpoint abort → fresh fault-free page showing remote words with
+no usable local recovery. On the final build, all16R3behavior checks pass: failed checkpoint
+put leaves the original conflict and local disk copy; a fresh page restores the local
+text; retry Keep reaches canonical ACK and settles the scoped queue; Take Remote succeeds
+and survives reload; failed checkpoint deletion preserves conflict/local text, followed by
+fresh recovery and successful Take retry/reload. Both choices also hold the app callback
+after a trusted native transaction completion, accept trusted keyboard input while held,
+then release that same event and confirm the later words in canonical state and after a
+real reload. No fake completion event or document/command response supplies these outcomes.
+Root inspected seven wide/390px phone frames; fresh Codex inspected recovery and held-input
+frames. Resized Chrome is not physical-phone/iPad acceptance.
+
+Both BEFORE and final AFTER raw native/supervisor exits remain1 with `qaComplete=false`.
+Final AFTER has `fixed=true`, all16behavior checks true, no scenario failure, no failed
+poll, no forbidden traffic and no page errors. Its RSC navigation aborts, health HEAD aborts
+and two online-started listener aborts remain unresolved diagnostics; they are not declared
+harmless or a clean-health result. The separate final verifier accepts only the scoped
+causal behavior, pinned source/build, red/green gates and teardown. It never changes those
+raw results or asserts production/full-health acceptance. R1's ambiguous Group-link selector
+and R2's wrong expectation that a cancelled original request become acknowledged remain
+excluded incomplete attempts. All exact synthetic fixtures were canonically deleted with
+tombstone readback; owned Chrome profiles/services are stopped and all nine QA ports free.
+The final stand macOS `top` sample was273M. Production Firestore was not used.
+
+**Evidence.** Ignored local artifacts use `cancel-window-283-*`: causal BEFORE archive and
+verifier, native REDs and later-input regressions, actual gates, final source/build archive,
+R1/R2 excluded receipts, R3 raw/teardown/frames, independent source/diagnostic reviews and
+`verify-final-v2.py`. The first final verifier refused the earlier417source binding and is
+retained; v2 binds fresh v12. The owner approved separate-context Codex review; it is not a
+different-provider review. The committed registry, tests and bug ID preserve the Git trail. Fresh Codex reran the BEFORE and final v2 verifiers with exit0, inspected the frames, and rejected three in-memory negative controls: false behavior, untrusted native completion and wrong reloaded text. Original artifacts stayed unchanged.
+
+**Production plan, not executed.** After separately authorized merge/push/deploy, confirm
+the deployed commit and refreshed worker. With one disposable Group and at most two tabs,
+check the sequential offline-edit/conflict path: Keep preserves the selected local text,
+Take preserves the selected stored text, and a fresh opening retains each result. Check
+ordinary description editing afterwards. Fault injection and held-native-completion probes
+remain emulator-only; ordinary production clicks do not prove those interruption boundaries.
+Remove only the fixture and close every QA tab. Owner and physical-device acceptance remain
+separate; unrelated returned bugs and deferred owner choices stay open.
