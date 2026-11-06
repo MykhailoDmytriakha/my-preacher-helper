@@ -6515,3 +6515,8 @@ Production plan, not executed: after separate publication authorization, confirm
 ## Unit299 — deterministic pending-scroll test (BUG-20261106-flaky-plan-section-scroll-test)
 - Production scroll code is unchanged: RAF then150ms. The test now freezes its clock, advances RAF16ms, proves0scrolls, changes URL, advances300ms and retains exactly1scroll targeting main. Neighboring before-first-switch test already controls its clock; after-first-scroll cases explicitly await that first arrival.
 - The original unchanged test fails2calls vs1 with a250ms delayed test-query return (late-ready-v2); final test passes the same stand, and the whole file37/37;tsc0,targeteslint0. Temporarily removing production clearTimeout makes the final test fail again; source restored byte-for-byte. The first external-helper import failure ran0tests and is excluded; the first0ms RAF probe did not arm the timer and is superseded by16ms. This is a test-precondition fix, not a newly established production scroll defect; no browser/production behavior change claimed.
+
+
+## Unit297 acceptance closure — radio53/56
+- Claude independently accepted group/series at390px offline:0alerts, one Retry, reconnect and retry; no page errors. Real save/storage/recovery failures were not attempted natively; their evidence remains controlled tests, with physical-device and production acceptance still separate.
+- On frozen candidate5ebc44f4, Claude reported the official build exit0:13077pass/17skip across1153suites,53/53routes,tsc0,eslint0. Rules are unchanged from previously accepted df9f65bd. The tracker record is now removed; this documentation commit belongs to the next transfer batch.
