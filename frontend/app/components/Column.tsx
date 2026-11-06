@@ -557,7 +557,7 @@ export default function Column({
                                   if (!pointLocked) handleStartEdit(point);
                                 }}
                               >
-                                <ScriptureText text={point.text} />
+                                <ScriptureText text={point.text} tone="inherit" />
                               </span>
                             </div>
                             {!pointLocked && (
@@ -887,7 +887,7 @@ export default function Column({
             {localSermonPoints.map((point: SermonPoint) => (
               <li key={point.id}>
                 <div className="flex items-center">
-                  <span><ScriptureText text={point.text} /></span>
+                  <span><ScriptureText text={point.text} tone="inherit" /></span>
                   {thoughtsPerSermonPoint[point.id] > 0 && (
                     <span className="ml-2 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-white px-1.5 text-xs leading-none align-middle tabular-nums text-gray-700">
                       {thoughtsPerSermonPoint[point.id]}
@@ -899,7 +899,7 @@ export default function Column({
                     {sortSubPointsByPosition(point.subPoints).map((sp) => (
                       <li key={sp.id} className="text-xs text-white/70 flex items-center gap-1.5">
                         <span className="w-1 h-1 rounded-full bg-white/50 flex-shrink-0" />
-                        <ScriptureText text={sp.text} />
+                        <ScriptureText text={sp.text} tone="inherit" />
                       </li>
                     ))}
                   </ul>

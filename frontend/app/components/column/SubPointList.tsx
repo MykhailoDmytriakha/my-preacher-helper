@@ -206,7 +206,7 @@ export const SubPointList: React.FC<SubPointListProps> = ({
         title={sp.text}
         onDoubleClick={() => startEditingSubPoint(sp)}
       >
-        <ScriptureText text={sp.text} />
+        <ScriptureText text={sp.text} tone={isSidebar ? 'inherit' : 'default'} />
       </span>
       {!isPointLocked && (
         <div className="flex w-10 flex-shrink-0 items-center justify-end gap-0.5 opacity-100 lg:opacity-40 transition-opacity lg:group-hover/sp:opacity-100">

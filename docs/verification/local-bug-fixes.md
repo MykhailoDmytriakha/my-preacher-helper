@@ -6232,3 +6232,61 @@ cache and repeat. Check English does not request RU/UK and perform a selected-la
 Retain diagnostics, close the QA tab, avoid AI/audio/content writes and do not loop quota failures.
 Cold whole-app startup, owner/physical iPad and native Ukrainian acceptance are not claimed here.
 Other Claude returns, parent279.4, licence decisions and deferred emulator defaults remain open.
+
+
+## Unit 288 — Readable scripture links on saturated structure headers
+
+**Bug.** `BUG-20261028-reading-screens-without-verse-links`, Claude radio #5 item4 return.
+Local candidate only; source/test/browser acceptance does not establish production deployment.
+
+**Cause and change.** The shared inline link's fixed indigo foreground overrode the light
+foreground of saturated section summaries and Focus sidebars. `ScriptureText` now offers
+`tone="inherit"`, keeping foreground and underline together in the existing link owner.
+Column's normal point/subpoint summaries and Focus point opt in; `SubPointList` opts in only
+for its sidebar variant. Ordinary body/tinted-card, Markdown and `ScriptureOpening` links keep
+the default palette. Parsing, written-language marks, click/double-click and verse-window ownership
+are unchanged. No data/schema/cache/locale or shared launch-default change.
+
+**Proof.** Frozen Column integration regression: 2 red / 5 controls before, 7 green after;
+the exact test bytes remain unchanged. Related 95 tests across 7 suites, TypeScript 0,
+lint 0 errors / 60 existing warnings. Official `npm run build` actual 0 / sourceStable:
+12,968 passed / 17 skipped, 1143 passed suites / 3 skipped; production build completed in 26.88s.
+BEFORE accepted build `aGfVZ8oR8QKRGoWg8BI6m`; AFTER `CYnb_1zmbbsSiJUoIplGr`.
+Both archives have 3679 verified members; final source 2762 / compiled 914 / worker 1.
+
+Actual local Chrome enters from Sermons through the real structure button. Matrix of 22 visible,
+focused, center-hittable reference targets: normal summary point/subpoint in all 3 sections at 1280,
+Focus introduction point/subpoint at 1280, normal introduction point/subpoint at 390, and ordinary
+body controls; repeat light/dark through the actual theme UI. Frozen computed-color oracle:
+20 red / 35 controls becomes55/55. Actual John 3:16 and Romans 8:28 windows show verse words,
+close without route/editor change, and leave the exact canonical fixture unchanged. Root viewed
+BEFORE/AFTER normal, Focus and portrait images; long sidebar labels retain their existing clipping,
+so the overview does not prove a whole clipped label became visible. Foreground snapshots and
+trusted opening check the exact link after native scrolling; no clipping redesign is claimed.
+
+**Evidence and limits.** Case artifacts `scripture-contrast-288-*`; accepted runtime is
+`scripture-contrast-288-r3-before` → `scripture-contrast-288-r2-after` on the build IDs above.
+The two AFTER attempts reuse the same final source and build.
+`scripture-contrast-288-final-proof-v1.json` freezes 289 inputs; compact verifier and its 3 deliberately
+broken controls reject altered color, untrusted clicks and changed canonical content.
+Source review found no high-confidence defect. Independent acceptance is recorded in the case.
+No physical device, quantitative WCAG contrast, offline browser or production acceptance claimed.
+The presentation-only path changes no networking or persistence. One BEFORE and two AFTER local
+aborted RSC request observations remain; HTTP/page/console/forbidden/browser-write errors are zero.
+fullHealthAcceptance remains false. The server measured 324M via macOS top before stopping.
+Exact synthetic fixture ACK/tombstone verified; owned Chrome,
+Auth SDK and services closed, 9 ports free; owner :3000 and production Firestore untouched.
+
+Initial stand v1 failed before services on an out-of-scope variable; R2 BEFORE stopped on a native
+click in a clipped long label. Both remain failures. R3 selects an actual visible native hit and
+keeps the Focus header in frame. First AFTER browser completed 55/55, but the stand omitted a
+provenance field from READY and shutdown validation failed; its supervisor closed all ports.
+A fresh AFTER runtime adds that metadata and completes export/shutdown normally on unchanged
+source/build. Prepared-only checks are explicitly weaker than the entire stand lifecycle.
+
+**Production plan, not executed.** After separately authorized merge/push/deploy, verify deployed
+commit. In one existing authenticated tab open an existing sermon's structure whose point/subpoint
+contains a reference: inspect colored summaries in light/dark and phone/desktop widths, switch
+Focus/Normal, open and close the same verse, and check an ordinary thought link remains distinctive.
+Use existing content without editing it, retain diagnostics, and close the QA tab. Physical iPad
+acceptance remains separate. Other Claude returns, parent279.4 and owner-deferred decisions stay open.

@@ -21,9 +21,15 @@ import type { Element, ElementContent, Root, RootContent, Text } from 'hast';
  * note, a shared page or a PDF is untouched.
  */
 
-/** The one look of a reference to open: the sermon's verse, every reference in text. */
+const SCRIPTURE_LINK_BASE_CLASSES = 'rounded font-semibold underline underline-offset-4 transition';
+
+/** Default references stand apart from ordinary reading text, including a sermon's opening verse. */
 export const SCRIPTURE_LINK_CLASSES =
-  'rounded font-semibold text-indigo-700 underline decoration-indigo-300 underline-offset-4 transition hover:decoration-indigo-600 dark:text-indigo-300 dark:decoration-indigo-500/60 dark:hover:decoration-indigo-300';
+  `${SCRIPTURE_LINK_BASE_CLASSES} text-indigo-700 decoration-indigo-300 hover:decoration-indigo-600 dark:text-indigo-300 dark:decoration-indigo-500/60 dark:hover:decoration-indigo-300`;
+
+/** Colored surfaces already own a readable foreground; links retain it and their underline. */
+const SCRIPTURE_LINK_INHERITED_CLASSES = `${SCRIPTURE_LINK_BASE_CLASSES} text-inherit decoration-current`;
+type ScriptureLinkTone = 'default' | 'inherit';
 
 type ScriptureLinksValue = { locale: AppLocale; written: AppLocale | null; onOpen: (reference: SheetReference) => void };
 
@@ -90,7 +96,7 @@ export function WrittenInMark({ bible }: { bible: BibleId }) {
   );
 }
 
-function ScriptureLink({ found, children }: { found: Pick<ReferenceInText, 'raw' | 'reference' | 'writtenIn'>; children: ReactNode }) {
+function ScriptureLink({ found, children, tone = 'default' }: { found: Pick<ReferenceInText, 'raw' | 'reference' | 'writtenIn'>; children: ReactNode; tone?: ScriptureLinkTone }) {
   const links = useScriptureLinks();
   if (!links) return <>{children}</>;
   const open = (event: MouseEvent) => {
@@ -100,7 +106,7 @@ function ScriptureLink({ found, children }: { found: Pick<ReferenceInText, 'raw'
   };
   return (
     <>
-      <button type="button" onClick={open} onDoubleClick={(event) => event.stopPropagation()} className={SCRIPTURE_LINK_CLASSES} {...{ [SCRIPTURE_LINK_MARK]: '' }}>
+      <button type="button" onClick={open} onDoubleClick={(event) => event.stopPropagation()} className={tone === 'inherit' ? SCRIPTURE_LINK_INHERITED_CLASSES : SCRIPTURE_LINK_CLASSES} {...{ [SCRIPTURE_LINK_MARK]: '' }}>
         {children}
       </button>
       {found.writtenIn ? <WrittenInMark bible={found.writtenIn} /> : null}
@@ -109,7 +115,7 @@ function ScriptureLink({ found, children }: { found: Pick<ReferenceInText, 'raw'
 }
 
 /** Plain text — a question, a leader's note — with its references as links. */
-export function ScriptureText({ text, searchQuery = '', wrapSearchMatches = false }: { text: string; searchQuery?: string; wrapSearchMatches?: boolean }) {
+export function ScriptureText({ text, searchQuery = '', wrapSearchMatches = false, tone = 'default' }: { text: string; searchQuery?: string; wrapSearchMatches?: boolean; tone?: ScriptureLinkTone }) {
   const links = useScriptureLinks();
   const found = useMemo(() => (links ? referencesInText(text, links.locale, links.written) : []), [text, links]);
   // A search lights its matches in the words and inside a link alike: the link stays a link (case
@@ -120,7 +126,7 @@ export function ScriptureText({ text, searchQuery = '', wrapSearchMatches = fals
   let at = 0;
   for (const each of found) {
     if (each.start > at) parts.push(<Fragment key={`text-${at}`}>{lit(text.slice(at, each.start))}</Fragment>);
-    parts.push(<ScriptureLink key={each.start} found={each}>{lit(each.raw)}</ScriptureLink>);
+    parts.push(<ScriptureLink key={each.start} found={each} tone={tone}>{lit(each.raw)}</ScriptureLink>);
     at = each.end;
   }
   if (at < text.length) parts.push(<Fragment key={`text-${at}`}>{lit(text.slice(at))}</Fragment>);

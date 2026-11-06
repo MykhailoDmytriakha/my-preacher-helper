@@ -134,3 +134,45 @@ it('opens references in a displayed column point instead of editing its title', 
   expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ book: 'Ruth', chapter: 1, fromVerse: 2, label: 'Ruth 1:2' }));
   expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
 });
+
+
+describe('Column scripture foreground ownership', () => {
+  const outlinePoints = [{ id: 'contrast-point', text: 'Read Ruth 1:2', subPoints: [
+    { id: 'contrast-subpoint', text: 'Remember John 3:16', position: 1 },
+  ] }];
+
+  it.each([false, true])('keeps point and subpoint references in the colored foreground (focus=%s)', (focus) => {
+    const onOpen = jest.fn();
+    const { container } = render(<ScriptureLinks onOpen={onOpen}>
+      <Column id="main" title="Main" items={[]} outlinePoints={outlinePoints} isFocusMode={focus} />
+    </ScriptureLinks>);
+    const colored = focus ? container.querySelector('div.sticky')
+      : screen.getByRole('heading', { name: /^Main/, level: 2 }).closest('div.relative.mb-2');
+    expect(colored).not.toBeNull();
+    const links = colored!.querySelectorAll<HTMLButtonElement>('[data-scripture-link]');
+    expect(links).toHaveLength(2);
+    for (const link of links) {
+      expect(link).toHaveClass('text-inherit', 'decoration-current', 'underline');
+      expect(link).not.toHaveClass('text-indigo-700');
+      expect(link).not.toHaveClass('dark:text-indigo-300');
+      fireEvent.click(link);
+      fireEvent.doubleClick(link);
+    }
+    expect(onOpen).toHaveBeenNthCalledWith(1, expect.objectContaining({ book: 'Ruth', chapter: 1, fromVerse: 2 }));
+    expect(onOpen).toHaveBeenNthCalledWith(2, expect.objectContaining({ book: 'John', chapter: 3, fromVerse: 16 }));
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+  });
+
+  it('keeps distinctive default links in the ordinary point card and nested list', () => {
+    const { container } = render(<ScriptureLinks onOpen={jest.fn()}>
+      <Column id="main" title="Main" items={[]} outlinePoints={outlinePoints} />
+    </ScriptureLinks>);
+    const pointLink = container.querySelector('h4 [data-scripture-link]');
+    const subpointLink = container.querySelector('span[title="Remember John 3:16"] [data-scripture-link]');
+    for (const link of [pointLink, subpointLink]) {
+      expect(link).not.toBeNull();
+      expect(link).toHaveClass('text-indigo-700', 'dark:text-indigo-300');
+      expect(link).not.toHaveClass('text-inherit');
+    }
+  });
+});
