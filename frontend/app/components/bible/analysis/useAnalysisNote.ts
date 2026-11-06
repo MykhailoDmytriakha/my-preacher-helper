@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
+
 
 import { analysisCreationScope, PHASES_TAKING_CHANGES, useDataDocument } from '@/data-engine/react.client';
 import { useStudyNotesEngine } from '@/hooks/useStudyNotesEngine';
@@ -11,6 +11,7 @@ import { newClientId } from '@/utils/clientId';
 import { analysisMarkdown, analysisState, EMPTY_ANALYSIS, passageWords, storedAnalysis, storedState, type AnalysisState } from '@/utils/passageAnalysis';
 import { samePassage } from '@/utils/scriptureReferenceNumbering';
 import { analysisPassage, analysisSourceMatches, studyAnalysisSource } from '@/utils/studyAnalysisSource';
+import { useTranslation } from '@locales/useTranslation';
 
 import type { PickedPassage } from '../verseCopy/passagePick';
 import type { DocumentData } from '@/data-engine/types';

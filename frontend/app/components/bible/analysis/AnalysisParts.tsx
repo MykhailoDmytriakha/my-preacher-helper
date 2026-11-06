@@ -1,13 +1,14 @@
 'use client';
 
 import { ArrowLeftIcon, ArrowUturnLeftIcon, ChevronLeftIcon, ChevronRightIcon, PencilSquareIcon, XMarkIcon } from '@heroicons/react/24/outline';
-import { useTranslation } from 'react-i18next';
+
 
 import { BibleIcon } from '@/components/bible/BibleIcon';
 import { AnalysisIcon } from '@/components/Icons';
 import Switch from '@/components/ui/Switch';
 import { withModifier } from '@/utils/keyboardModifier';
 import { PLACE_DOOR_TONES } from '@/utils/themeColors';
+import { useTranslation } from '@locales/useTranslation';
 
 import { ANALYSIS_LINE_HEIGHT, ANALYSIS_LINE_PADDING, type AnalysisLineSpacing } from './analysisGeometry';
 

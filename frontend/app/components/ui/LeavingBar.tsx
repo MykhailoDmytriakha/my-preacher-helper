@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useTranslation } from 'react-i18next';
+
+import { useTranslation } from '@locales/useTranslation';
 
 /**
  * A THIN LINE ALONG THE TOP OF THE SCREEN WHILE THE APP GOES TO ANOTHER SCREEN. A button that leaves with

@@ -2,13 +2,14 @@
 
 import { PlusIcon } from '@heroicons/react/20/solid';
 import { useState } from 'react';
-import { useTranslation } from 'react-i18next';
+
 
 import { BuiltSermonsList } from '@/components/sermon/BuiltSermonsList';
 import { EngineCreateSermonModal } from '@/components/sermon/EngineCreateSermonModal';
 import { useEngineSermonsBuiltOnNote } from '@/hooks/useSermonNoteLinks';
 import { documentScreenHref } from '@/utils/documentScreenHref';
 import { NOTE_TO_SERMON_COLORS } from '@/utils/themeColors';
+import { useTranslation } from '@locales/useTranslation';
 
 import { USAGE_KIND_LOOK } from '../usageKinds';
 

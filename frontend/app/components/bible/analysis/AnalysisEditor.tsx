@@ -3,7 +3,7 @@
 import { ChevronDownIcon } from '@heroicons/react/20/solid';
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type MouseEvent, type PointerEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { useTranslation } from 'react-i18next';
+
 
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { PHASES_TAKING_CHANGES } from '@/data-engine/react.client';
@@ -14,6 +14,7 @@ import {
   partText, stepDown, stepUp, tieTo, tieTurns, type AnalysisState, type AnalysisWord, type CutLevel,
 } from '@/utils/passageAnalysis';
 import { passageCopyText } from '@/utils/verseCopy';
+import { useTranslation } from '@locales/useTranslation';
 
 import { useCopyNames } from '../verseCopy/useVerseCopy';
 

@@ -2,10 +2,11 @@
 
 import { ChevronDownIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { useState } from 'react';
-import { useTranslation } from 'react-i18next';
+
 
 import { RELATION_COLORS, RELATION_DIRS, relationSign, type Relation, type RelationColor, type RelationDir } from '@/utils/passageAnalysis';
 import { ANALYSIS_RELATION_TONES } from '@/utils/themeColors';
+import { useTranslation } from '@locales/useTranslation';
 
 /*
  * A LINK OF MEANING ON THE SCREEN (case 2026-10-12-block-diagram, 3.41; the owner's choice on the canvas, «Флажки у

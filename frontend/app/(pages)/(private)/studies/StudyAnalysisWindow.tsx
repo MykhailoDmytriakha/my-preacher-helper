@@ -3,7 +3,6 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import { analysisPassageHref, forgetListArrival, leaveAnalysisAddress, readAnalysisAddress, readListArrival } from '@/components/bible/analysis/analysisAddress';
@@ -15,6 +14,7 @@ import { useWayInOnce } from '@/hooks/useWayInOnce';
 import { resolveAppLocale } from '@/utils/appLocale';
 import { bibleForLocale, isBibleId, type BibleId } from '@/utils/bibles';
 import { fetchBookText, type BookText } from '@/utils/bibleText';
+import { useTranslation } from '@locales/useTranslation';
 
 import type { StudyNote } from '@/models/models';
 
@@ -40,9 +40,9 @@ export function analysisBible(note: Pick<StudyNote, 'analysis' | 'scriptureRefs'
  * kept on the device opens at once, and nothing is said.
  */
 export function StudyAnalysisWindow({ note, editing, onClose }: { note: StudyNote; editing: boolean; onClose: () => void }) {
-  const { t, i18n } = useTranslation();
+  const { t, language } = useTranslation();
   const router = useRouter();
-  const locale = resolveAppLocale(i18n.language);
+  const locale = resolveAppLocale(language);
   const bookId = note.scriptureRefs[0]?.book ?? '';
   const bible = analysisBible(note, bibleForLocale(locale));
   const [text, setText] = useState<BookText | null>(null);

@@ -1,10 +1,10 @@
 'use client';
 
 import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
-import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
+import { useTranslation } from '@locales/useTranslation';
 
 import type { BookMarksStore } from './markStore';
 

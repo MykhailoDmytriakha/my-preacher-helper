@@ -1,6 +1,6 @@
 'use client';
 
-import { useTranslation } from 'react-i18next';
+import { useTranslation } from '@locales/useTranslation';
 
 import { USAGE_KIND_LOOK } from '../usageKinds';
 

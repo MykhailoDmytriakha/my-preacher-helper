@@ -2,7 +2,7 @@
 
 import { PencilSquareIcon } from '@heroicons/react/24/outline';
 import { useLayoutEffect, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
+
 
 import { BookNavigator } from '@/components/bible/BiblePicker';
 import { useBookTexts } from '@/components/bible/useBookTexts';
@@ -14,6 +14,7 @@ import { passageWords, verseWords, type BookText } from '@/utils/bibleText';
 import { chaptersAround, movedReference, versesAround } from '@/utils/scriptureNeighbours';
 import { formatScriptureReference } from '@/utils/scriptureReference';
 import { passagesIn, referenceBibleFor, sameScriptureReference, scriptureReferencesOverlap, withStoredBible } from '@/utils/scriptureReferenceNumbering';
+import { useTranslation } from '@locales/useTranslation';
 
 import type { ScriptureReference, StudyNote } from '@/models/models';
 

@@ -4,7 +4,7 @@
 import { Dialog, DialogBackdrop, DialogPanel, DialogTitle } from '@headlessui/react';
 import { XMarkIcon } from '@heroicons/react/24/outline';
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react';
-import { useTranslation } from 'react-i18next';
+
 
 import Switch from '@/components/ui/Switch';
 import { useExternalModalHistory } from '@/hooks/useExternalModalHistory';
@@ -14,6 +14,7 @@ import { getLocalizedAbbrev } from '@/utils/bibleBooks';
 import { verseWords } from '@/utils/bibleText';
 import { linkBefore, linkOnScreen, litLinkKey, ownLink, type SeenVerses, type Trail, type TrailPlace } from '@/utils/placeTrail';
 import { placeIn } from '@/utils/versification';
+import { useTranslation } from '@locales/useTranslation';
 
 import { ownTrailPlace, saveTrailPrefs, usePlaceTrail, useTrailPrefs, useTrailPrefsWritable } from './placeTrailStore';
 import { useBookTexts } from './useBookTexts';

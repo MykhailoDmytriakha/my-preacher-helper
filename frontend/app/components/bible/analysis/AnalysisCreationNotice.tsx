@@ -1,8 +1,8 @@
 'use client';
 
-import { useTranslation } from 'react-i18next';
-
 import { analysisMarkdown, storedAnalysis } from '@/utils/passageAnalysis';
+import { useTranslation } from '@locales/useTranslation';
+
 
 import { AnalysisPreview } from './AnalysisPreview';
 

@@ -78,6 +78,25 @@ const eslintConfig = [
     },
   },
   {
+    files: ["**/*.{ts,tsx,js,jsx}"],
+    ignores: [
+      "locales/useTranslation.ts",
+      "**/__tests__/**",
+      "**/*.test.{ts,tsx,js,jsx}",
+      "**/*.spec.{ts,tsx,js,jsx}",
+      "**/test-utils/**",
+    ],
+    rules: {
+      "no-restricted-imports": ["error", {
+        paths: [{
+          name: "react-i18next",
+          importNames: ["useTranslation", "default"],
+          message: "Use @locales/useTranslation to preserve render-language snapshots.",
+        }],
+      }],
+    },
+  },
+  {
     files: [
       "**/__tests__/**/*.{ts,tsx,js,jsx}",
       "**/*.test.{ts,tsx,js,jsx}",

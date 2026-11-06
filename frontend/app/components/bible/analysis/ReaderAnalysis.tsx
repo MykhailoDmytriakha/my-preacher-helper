@@ -1,12 +1,12 @@
 'use client';
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import { AnalysisIcon } from '@/components/Icons';
 import { useResolvedUid } from '@/hooks/useResolvedUid';
 import { refusalMessage } from '@/utils/actionFailureMessage';
+import { useTranslation } from '@locales/useTranslation';
 
 
 import { PassagePickBar } from '../verseCopy/PassagePickBar';

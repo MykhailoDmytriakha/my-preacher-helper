@@ -1,12 +1,13 @@
 'use client';
 
 import { useCallback } from 'react';
-import { useTranslation } from 'react-i18next';
+
 
 import { useStudyNotesEngine } from '@/hooks/useStudyNotesEngine';
 import { getLocalizedAbbrev } from '@/utils/bibleBooks';
 import { newClientId } from '@/utils/clientId';
 import { buildAnalysisReshapePlan } from '@/utils/studyAnalysisReshape';
+import { useTranslation } from '@locales/useTranslation';
 
 import { passageSpan } from './useAnalysisNote';
 

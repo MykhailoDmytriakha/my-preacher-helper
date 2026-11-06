@@ -2,7 +2,6 @@
 
 import { ClockIcon, MagnifyingGlassIcon, QuestionMarkCircleIcon, XCircleIcon } from '@heroicons/react/24/outline';
 import { useCallback, useDeferredValue, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
-import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import { useClipboard } from '@/hooks/useClipboard';
@@ -16,6 +15,7 @@ import { lineKey } from '@/utils/bibleSearch/words';
 import { isBrowserOffline } from '@/utils/connectivity';
 import { withModifier } from '@/utils/keyboardModifier';
 import { verseCopyText } from '@/utils/verseCopy';
+import { useTranslation } from '@locales/useTranslation';
 
 import { booksOf, bookSequence } from '../bookOrder';
 import { clearSearchHistory, rememberSearch, restoreSearchHistory, useSearchHistory, type SearchHistoryEntry } from '../searchHistoryStore';

@@ -49,7 +49,6 @@ Follow this order for imports:
 ```typescript
 // External libraries
 import { useState, useEffect } from 'react';
-import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 // Path alias imports (ordered by alias)
@@ -57,6 +56,7 @@ import type { Sermon } from '@/models/models';
 import { ChevronIcon, RefreshIcon } from '@components/Icons';
 import { getSermonById } from '@/services/sermon.service';
 import { formatDate } from '@/utils/dateFormatter';
+import { useTranslation } from '@locales/useTranslation';
 
 // Local imports (if applicable)
 import './styles.css';
@@ -155,4 +155,6 @@ Consider adding ESLint rules to enforce import standards:
 1. Use the `standardize-imports.js` script to identify files needing updates
 2. Prioritize updating components in heavily modified areas first
 3. Consider batch updates for similar file types
-4. Add the recommended ESLint rules to prevent new non-standard imports 
+4. Add the recommended ESLint rules to prevent new non-standard imports
+
+Application translation hooks use `@locales/useTranslation` so hydration and late subscriptions share one language snapshot. ESLint rejects direct library-hook, namespace and default-module imports in production; the canonical adapter and library compatibility tests remain exempt. Named providers and translation types remain valid library imports.

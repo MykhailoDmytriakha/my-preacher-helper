@@ -1,12 +1,13 @@
 'use client';
 
 import { useMemo, useState, type ReactNode } from 'react';
-import { useTranslation } from 'react-i18next';
+
 
 import {
   changeRelation, dropRelation, nextRelationColor, partEnd, relateWords, relationOn, type AnalysisState, type Relation,
 } from '@/utils/passageAnalysis';
 import { ANALYSIS_RELATION_TONES } from '@/utils/themeColors';
+import { useTranslation } from '@locales/useTranslation';
 
 import { relationArrows, type Geometry } from './analysisGeometry';
 import { RelationFlag, RelationMenu } from './RelationParts';

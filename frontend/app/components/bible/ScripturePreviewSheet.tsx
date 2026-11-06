@@ -3,7 +3,7 @@
 import { ArrowLeftIcon, ArrowRightIcon, ChevronRightIcon, DocumentTextIcon } from '@heroicons/react/24/outline';
 import Link from 'next/link';
 import { useEffect, useId, useMemo, useState } from 'react';
-import { useTranslation } from 'react-i18next';
+
 
 import { FoldableMarkdown } from '@/components/ui/FoldableMarkdown';
 import { useAppLocale } from '@/hooks/useAppLocale';
@@ -12,6 +12,7 @@ import { useScriptureUsage } from '@/hooks/useScriptureUsage';
 import { cssHighlightRegistry } from '@/utils/cssHighlights';
 import { formatScriptureReference, type ScriptureRefShape } from '@/utils/scriptureReference';
 import { referenceBibleFor } from '@/utils/scriptureReferenceNumbering';
+import { useTranslation } from '@locales/useTranslation';
 
 import { ReaderSheet, SheetCloseButton } from './ReaderSheet';
 import { VerseSheet } from './VerseSheet';

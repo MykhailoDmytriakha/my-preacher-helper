@@ -85,6 +85,16 @@
 
 ## 🔵 P3 — открыто
 
+### BUG-20261106-offline-record-duplicates-sync-error · Без сети под итогом записи появляются лишние красные ошибки и кнопки повтора
+**P3:** содержимое не теряется, но обычное отсутствие сети выглядит поломкой. Якоря: `frontend/app/components/RecordUnavailable.tsx:24`, `frontend/app/data-engine/DataSyncStatus.tsx:173`, `frontend/app/components/series/EngineSeriesDetail.tsx:71`. Найдено Claude при независимой проверке, рация #32; отдельного повтора Codex пока нет.
+**Ожидание / шаги / эффект.** Открыть не сохранённую на устройстве группу или серию без сети. После ожидания нужен один понятный итог и один «Повторить»; сейчас ниже добавляются красные ошибки и ещё одна кнопка.
+**Как должно работать.** Нет связи — обычное состояние. Настоящие ошибки сохранения и восстановление текста должны оставаться видимыми; скрывать все сообщения общего блока нельзя.
+| Экран | Статус |
+|---|---|
+| Группа и серия | Claude подтвердил дублирование в Chrome390; повторить локально |
+| Проведение группы, изучение, молитва, порядок, ручной план | Проверить всех потребителей RecordUnavailable; у ручного плана в проверке Claude один повтор |
+
+
 ### BUG-20261101-moved-comment-skips-paragraph-rule · Комментарий, унесённый «В другое место» в другую книгу, не проверяется правилом абзацев
 **P3** — ничего не теряется: комментарий сохраняется, но если он пересекает абзац той книги, рисуется простым комментарием под первым стихом. Найдено 01.11 (дело `2026-10-12-block-diagram`, пункт на потом L25); после 05.11 живьём не перепроверялось.
 **Якорь.** `frontend/app/components/bible/ReaderCommentDialog.tsx:109` — абзацы для проверки берутся только из открытой книги (`reference.book === bookId ? … : []`).
@@ -215,21 +225,16 @@
 
 ## 🔍 Требует перепроверки
 
-### BUG-20261106-pending-frame-disagrees-with-dom · Some pending screenshots omit Back/status despite matching DOM and hit tests
-
-**Severity.** Unconfirmed P2 candidate: a real missing exit during loading would affect navigation; user-visible impact and a product defect are not established.
-**Found.** 2026-11-06 · root visual review of Unit290 synthetic native Chrome runs, build `1WK28573ZtjRPj1WFzVXd`, 390/1280, dedicated Auth/Firestore emulators; no production data.
-**Anchors.** `frontend/app/components/RecordUnavailable.tsx:24-29`; `frontend/app/components/skeletons/SeriesDetailSkeleton.tsx:1`; case artifacts `record-loading-290-r5-after-native-raw-v1.json` and `record-loading-290-r6-after-native-raw-v1.json`.
-**Expected / observed.** Captured pixels should agree with the visible pending page. R5 series390 and manual1280 pending captures omit Back/status wholly or partly; R6 series390 t750 also omits them. R4 series390, R6 series390 t250 and R6 manual1280 visibly contain them. In five R6 before/after samples Back has opacity1, visible geometry and an actual center hit target; document/collection reads remain held. The underlying cause may be rendering or capture; it is not established. No direct Back navigation was tested in this supplemental sequence.
-**Reproduce.** On the same isolated production build, hold the exact record read without changing its payload; capture pending DOM/ancestor styles, center hit test and consecutive screenshots with their animation options. Compare pixels with the before/after observations, then test a trusted Back click while still pending. Preserve contradictory frames. Frequency is not established: these are retained captures, not a randomized rate estimate.
-**User expectation.** A person waiting for their own record sees loading and can leave. Retained text stays readable. Normal route loading before the client is ready must be distinguished from the client pending view; this observation does not authorize a data or presence change.
-**Class.** Pending rendering versus native screenshot observation.
-| Place | Verdict | Reason |
-|---|---|---|
-| Shared RecordUnavailable pending branch | Not proven defective | Source retains Back; sampled DOM/geometry/hit target agree; some pixels disagree. |
-| App Router route skeleton / browser painting / screenshot call | Requires recheck | The responsible layer has not been isolated; frame timestamps and animation options are retained. |
-| Data-engine readers and server presence | No separate defect established | Real unchanged reads were held; no browser content writes, page errors or data loss. |
-**Effect / next.** Keep this separate from the fixed premature-unavailability verdict. Establish the pixel/click discrepancy on a normal visible browser before changing product code. Unit290 registry and root visual report preserve the exact negative and positive frames.
+### BUG-20261106-pending-frame-disagrees-with-dom · На части снимков ожидания не видно «Назад» и статуса, хотя DOM и проверка попадания их находят
+**Предварительно P2, требует перепроверки:** отсутствие выхода мешало бы навигации; дефект приложения пока не установлен. Якоря: `frontend/app/components/RecordUnavailable.tsx:24-29`, `frontend/app/components/skeletons/SeriesDetailSkeleton.tsx:1`; локальные `record-loading-290-r5-after-native-raw-v1.json` и `record-loading-290-r6-after-native-raw-v1.json`.
+**Наблюдение.** Chrome, сборка `1WK28573ZtjRPj1WFzVXd`, эмуляторы, 390/1280: часть кадров серии и ручного плана не показывает кнопку или статус. Другие кадры того же сценария их показывают. В пяти замерах R6 кнопка видима по геометрии, opacity=1 и находится в точке нажатия; оба чтения ещё удерживаются. Причина расхождения пикселей с замерами неизвестна; прямой переход кнопкой в дополнительном прогоне не проверялся.
+**Повтор / ожидание.** Задержать точное чтение записи, снять соседние кадры вместе с DOM, стилями и настройками анимации, нажать «Назад» настоящим вводом. Человек должен видеть ожидание и иметь выход; сохранённый текст остаётся. Противоречивые кадры сохранить, частота неизвестна.
+| Место | Статус |
+|---|---|
+| RecordUnavailable | Дефект не доказан: исходник, DOM и попадание сохраняют кнопку, часть пикселей расходится |
+| Заглушка маршрута, отрисовка Chrome, снятие кадра | Ответственный слой не установлен |
+| Чтение и наличие записи в движке | Отдельного дефекта не установлено; данные не менялись |
+**Дальше.** Проверить в обычном видимом браузере до изменения кода. Это отдельная неопределённость; преждевременное сообщение о недоступности закрыто отдельно. Точные кадры и границы приёмки сохранены в журнале проверок Unit290.
 
 
 ### BUG-20261102-read-cache-answer-order-unproven · A delayed older DTO response may become the last saved read

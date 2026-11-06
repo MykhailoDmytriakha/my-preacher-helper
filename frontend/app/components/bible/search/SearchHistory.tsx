@@ -1,7 +1,8 @@
 'use client';
 
 import { ClockIcon, XMarkIcon } from '@heroicons/react/24/outline';
-import { useTranslation } from 'react-i18next';
+
+import { useTranslation } from '@locales/useTranslation';
 
 import { HOVER_ROW, SELECTED_ROW } from './searchStyles';
 

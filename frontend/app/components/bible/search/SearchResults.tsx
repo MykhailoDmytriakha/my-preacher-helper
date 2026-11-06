@@ -2,7 +2,8 @@
 
 import { CheckIcon, ChevronDownIcon, ChevronRightIcon, DocumentDuplicateIcon, QuestionMarkCircleIcon, SignalSlashIcon } from '@heroicons/react/24/outline';
 import { memo } from 'react';
-import { useTranslation } from 'react-i18next';
+
+import { useTranslation } from '@locales/useTranslation';
 
 import { HOVER_ROW, KEYCAP, SELECTED_ROW } from './searchStyles';
 
