@@ -1,7 +1,7 @@
 'use client';
 
 import { XMarkIcon } from '@heroicons/react/24/outline';
-import React, { useId, type ReactNode, type ButtonHTMLAttributes, type RefObject } from 'react';
+import React, { useCallback, useId, type ReactNode, type ButtonHTMLAttributes, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 
 import { useDiscardQuestion } from '@/hooks/useConfirm';
@@ -59,6 +59,12 @@ interface FormDialogProps {
    * no ring for Tab), yet kept, with everything typed in it, until it comes back.
    */
   away?: boolean;
+  /**
+   * The window holds words not yet saved: every way out — ✕, Escape, a press beside it, the browser's Back — asks before
+   * they go (`useDiscardQuestion`); Back runs that same close policy through the registry's modal history. Pass a plain `onClose`: the
+   * question is this window's (BUG-20261101-browser-back-closes-window-unasked).
+   */
+  unsaved?: boolean;
 }
 
 const WIDTH_BY_SIZE: Record<NonNullable<FormDialogProps['size']>, string> = {
@@ -69,7 +75,7 @@ const WIDTH_BY_SIZE: Record<NonNullable<FormDialogProps['size']>, string> = {
 };
 
 /** Presentation only: submission, draft retention and dismissal belong to the caller. */
-export default function FormDialog({ title, titleAction, eyebrow, description, tone = 'blue', size, dismissOnBackdrop = false, closeDisabled = false, onClose, returnFocusTo, footer, onSubmit, noValidate, children, showCloseButton = false, layerClassName, away = false }: FormDialogProps) {
+export default function FormDialog({ title, titleAction, eyebrow, description, tone = 'blue', size, dismissOnBackdrop = false, closeDisabled = false, onClose, returnFocusTo, footer, onSubmit, noValidate, children, showCloseButton = false, layerClassName, away = false, unsaved = false }: FormDialogProps) {
   const { t } = useTranslation();
   const titleId = useId();
   const descriptionId = useId();
@@ -78,7 +84,9 @@ export default function FormDialog({ title, titleAction, eyebrow, description, t
    * whether it is the topmost — is one rule for every window in the app (`useModalLayer`).
    * This dialog is simply one of its callers.
    */
-  const layer = useModalLayer({ onClose, closeDisabled, returnFocusTo, active: !away });
+  const { askBeforeDiscard, discardDialog } = useDiscardQuestion();
+  const close = useCallback(() => { void askBeforeDiscard(unsaved, onClose); }, [askBeforeDiscard, onClose, unsaved]);
+  const layer = useModalLayer({ onClose: close, closeDisabled, returnFocusTo, active: !away });
   const banded = footer !== undefined;
   const width = WIDTH_BY_SIZE[size ?? (banded ? 'form' : 'standard')];
 
@@ -97,7 +105,7 @@ export default function FormDialog({ title, titleAction, eyebrow, description, t
         {description && <p id={descriptionId} className="mt-1 text-sm text-gray-500 dark:text-gray-400">{description}</p>}
       </div>
       {(!banded || showCloseButton) && (
-        <button type="button" onClick={onClose} aria-label={t('common.close')} disabled={closeDisabled}
+        <button type="button" onClick={close} aria-label={t('common.close')} disabled={closeDisabled}
           className="shrink-0 rounded-xl p-2 text-gray-500 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50 dark:text-gray-400 dark:hover:bg-gray-800">
           <XMarkIcon className="h-6 w-6" />
         </button>
@@ -115,19 +123,20 @@ export default function FormDialog({ title, titleAction, eyebrow, description, t
     );
     return createPortal(
       <div {...layer} hidden={away} className={`fixed inset-0 ${layerClassName ?? 'z-[110]'} flex items-end justify-center overscroll-contain bg-black/50 p-0 sm:items-center sm:p-4 ${away ? 'hidden' : ''}`}
-        onClick={event => { if (dismissOnBackdrop && !closeDisabled && event.target === event.currentTarget) onClose(); }}>
+        onClick={event => { if (dismissOnBackdrop && !closeDisabled && event.target === event.currentTarget) close(); }}>
         <div role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={description ? descriptionId : undefined}
           onClick={event => event.stopPropagation()}
           className={`flex max-h-[92vh] w-full flex-col overflow-hidden rounded-t-2xl bg-gray-50 shadow-xl dark:bg-gray-900 sm:max-h-[85vh] sm:rounded-2xl ${width}`}>
           {onSubmit ? <form onSubmit={onSubmit} noValidate={noValidate} className="flex min-h-0 flex-col">{bands}</form> : bands}
         </div>
+        {discardDialog}
       </div>, document.body,
     );
   }
 
   return createPortal(
     <div {...layer} hidden={away} className={`fixed inset-0 ${layerClassName ?? 'z-[100]'} flex items-center justify-center overscroll-contain bg-black/50 backdrop-blur-sm sm:px-4 ${away ? 'hidden' : ''}`}
-      onClick={event => { if (dismissOnBackdrop && !closeDisabled && event.target === event.currentTarget) onClose(); }}>
+      onClick={event => { if (dismissOnBackdrop && !closeDisabled && event.target === event.currentTarget) close(); }}>
       <div role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={description ? descriptionId : undefined}
         className={`flex h-[100dvh] w-full flex-col overflow-hidden border border-gray-200/70 bg-white shadow-2xl dark:border-gray-800 dark:bg-gray-900 sm:h-auto sm:max-h-[85vh] sm:rounded-2xl ${width}`}>
         <div className={`h-1 w-full shrink-0 bg-gradient-to-r ${FORM_COLORS[tone].gradient}`} />
@@ -136,6 +145,7 @@ export default function FormDialog({ title, titleAction, eyebrow, description, t
           {children}
         </div>
       </div>
+      {discardDialog}
     </div>, document.body,
   );
 }

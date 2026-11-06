@@ -1,12 +1,14 @@
 "use client";
 
-import { XMarkIcon, CalendarIcon, MapPinIcon, BookOpenIcon } from "@heroicons/react/24/outline";
-import { format, isValid, parseISO } from "date-fns";
+import { XMarkIcon, CalendarIcon, MapPinIcon } from "@heroicons/react/24/outline";
+import { isValid, parseISO } from "date-fns";
 import Link from "next/link";
 
+import { BibleIcon } from '@/components/bible/BibleIcon';
 import { useAppLocale } from '@/hooks/useAppLocale';
 import { useModalLayer } from '@/hooks/useModalLayer';
 import { PreachDate, Sermon } from "@/models/models";
+import { formatDay } from '@/utils/appLocale';
 import { BookInfo } from "@/utils/bibleBooks";
 import { useTranslation } from "@locales/useTranslation";
 
@@ -77,7 +79,7 @@ export default function BibleBookSermonsModal({
                             {entries.map(({ sermon, preachDate }) => {
                                 const parsedDate = parseISO(preachDate.date);
                                 const formattedDate = isValid(parsedDate)
-                                    ? format(parsedDate, 'd MMM yyyy', { locale: dateLocale })
+                                    ? formatDay(parsedDate, dateLocale)
                                     : preachDate.date;
                                 return (
                                     <div
@@ -98,7 +100,7 @@ export default function BibleBookSermonsModal({
                                         </div>
 
                                         <div className="mt-2 flex items-start gap-2 text-sm text-gray-600 dark:text-gray-300">
-                                            <BookOpenIcon className="w-4 h-4 mt-0.5 text-purple-500" />
+                                            <BibleIcon className="w-4 h-4 mt-0.5 shrink-0 text-purple-500" aria-hidden="true" />
                                             <span className="break-words whitespace-pre-line flex-1">
                                                 {sermon.verse || t('calendar.analytics.bookModalNoVerse', { defaultValue: 'No scripture provided' })}
                                             </span>

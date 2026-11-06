@@ -175,6 +175,11 @@ export function scriptureReferencesOverlap(a: ScriptureRefShape, b: ScriptureRef
  */
 export type Passage = { chapter: number; toChapter: number; fromVerse?: number; toVerse?: number };
 
+/** Two passages of one book name the same interval when their endpoints match. */
+export function samePassage(a: Passage, b: Passage): boolean {
+  return a.chapter === b.chapter && a.fromVerse === b.fromVerse && a.toChapter === b.toChapter && a.toVerse === b.toVerse;
+}
+
 /** The passage a reference names as it is written: verses, on into a later chapter where `toVerseChapter` says so (`verseEndChapter`). */
 function passageAsWritten(ref: ScriptureRefShape & { chapter: number }): Passage {
   if (ref.fromVerse !== undefined) return { chapter: ref.chapter, toChapter: verseEndChapter(ref) ?? ref.chapter, fromVerse: ref.fromVerse, toVerse: ref.toVerse ?? ref.fromVerse };

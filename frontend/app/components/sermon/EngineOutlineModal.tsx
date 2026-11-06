@@ -47,7 +47,7 @@ export function EngineOutlineModal({ sermonId, onClose, withScratch = false }: {
     if (readOnly || !valid || !form.dirty || !form.durable || !form.status?.canSave) return;
     try { await form.save(); onClose(); } catch { /* The shared form retains and reports the failure. */ }
   };
-  return <FormDialog title={t('planEditor.title')} size="wide" onClose={onClose} dismissOnBackdrop showCloseButton
+  return <FormDialog title={t('planEditor.title')} size="wide" onClose={() => { void form.cancel().then(onClose).catch(() => undefined); }} unsaved={form.dirty} dismissOnBackdrop showCloseButton
     onSubmit={event => { event.preventDefault(); void save(); }}
     footer={<FormActions onCancel={() => { void form.cancel().then(onClose).catch(() => undefined); }} cancelLabel={t('buttons.cancel')}
         submitLabel={t(withScratch ? 'scratch.board.apply' : 'buttons.save')} savingLabel={t('buttons.saving')} saving={form.busy} cancelDisabled={form.busy} unsaved={form.dirty}

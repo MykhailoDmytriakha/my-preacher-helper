@@ -49,7 +49,7 @@ export function EngineEditSeriesModal({ seriesId, onClose }: { seriesId: string;
     onClose();
   };
   return <FormDialog noValidate title={t('workspaces.series.editSeries')} eyebrow={t('navigation.series')}
-    description={t('workspaces.series.form.editHint')} onClose={onClose} showCloseButton onSubmit={event => { event.preventDefault(); void save().catch(() => undefined); }}
+    description={t('workspaces.series.form.editHint')} onClose={() => { void form.cancel().then(onClose).catch(() => undefined); }} unsaved={form.dirty} showCloseButton onSubmit={event => { event.preventDefault(); void save().catch(() => undefined); }}
     footer={
       <FormActions onCancel={() => { void form.cancel().then(onClose).catch(() => undefined); }}
         cancelLabel={t('workspaces.series.actions.cancel')} submitLabel={t('workspaces.series.actions.saveChanges')}

@@ -5,6 +5,7 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 
 import { Chip } from '@/components/ui/Chip';
 import { useModalLayer } from '@/hooks/useModalLayer';
+import { STUDIES_ACTION } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
 
 import { STUDIES_INPUT_SHARED_CLASSES } from './constants';
@@ -177,7 +178,7 @@ export default function TagCatalogModal({
             <button
               type="button"
               onClick={onClose}
-              className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700 transition-colors"
+              className={`rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition-colors ${STUDIES_ACTION}`}
             >
               {t('studiesWorkspace.tagCatalog.done')}
             </button>

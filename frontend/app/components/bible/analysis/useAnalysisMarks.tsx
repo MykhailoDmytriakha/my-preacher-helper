@@ -16,7 +16,9 @@ import type { AnalysisWord } from '@/utils/passageAnalysis';
  * writes them — the engine keeps one form per book, and a second one opened here could push the reader's out.
  * `mark` keeps a stroke — false when it cannot be kept now, said to the person; `lost` runs if it is not kept after all.
  */
-export type AnalysisMarks = { marks: BookMarks; order: VerseOrder; mark: (change: MarksChange, lost: () => void) => boolean };
+export type AnalysisMarks = {
+  marks: BookMarks; order: VerseOrder; mark: (change: MarksChange, lost: () => void) => boolean;
+};
 
 type Stroke = { pointerId: number; start: WordAt; last: WordAt; kind: StrokeKind; erase: boolean };
 const NO_MARKS: BookMarks = {};

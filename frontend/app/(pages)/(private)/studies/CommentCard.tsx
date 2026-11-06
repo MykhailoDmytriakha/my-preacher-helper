@@ -3,6 +3,7 @@
 
 import { useOpenStoredReference } from '@/components/bible/useOpenStoredReference';
 import { CommentIcon } from '@/components/Icons';
+import { useAppLocale } from '@/hooks/useAppLocale';
 import { relativeDay } from '@/utils/relativeDay';
 import MarkdownDisplay from '@components/MarkdownDisplay';
 import { useTranslation } from '@locales/useTranslation';
@@ -18,7 +19,8 @@ import type { StudyNote } from '@/models/models';
  * own job: the place opens its verse over the page, as a note's does (the owner, 2026-10-28).
  */
 export function CommentCard({ note, searchQuery, onOpen }: { note: StudyNote; searchQuery?: string; onOpen: (id: string) => void }) {
-  const { t, language: interfaceLanguage } = useTranslation();
+  const { t } = useTranslation();
+  const { dateLocale } = useAppLocale();
   const openReference = useOpenStoredReference();
   return (
     <article
@@ -52,7 +54,7 @@ export function CommentCard({ note, searchQuery, onOpen }: { note: StudyNote; se
               }}
             />
           ))}
-          <span>{relativeDay(note.updatedAt, t, undefined, interfaceLanguage)}</span>
+          <span>{relativeDay(note.updatedAt, t, dateLocale)}</span>
         </div>
       </div>
     </article>

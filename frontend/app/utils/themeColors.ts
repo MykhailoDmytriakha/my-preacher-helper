@@ -532,6 +532,12 @@ export const CHIP_TONES = {
 
 export type ChipTone = keyof typeof CHIP_TONES;
 
+/**
+ * Studies' main action — its emerald, dark enough for white words: 5.5:1, where emerald-600 gave 3.77:1 under the 4.5:1 of
+ * WCAG AA (Codex UX review, 04.11). Every Studies button that adds or confirms takes it from here.
+ */
+export const STUDIES_ACTION = 'bg-emerald-700 text-white hover:bg-emerald-800';
+
 /** Shared presentation for entity forms; callers retain their own write contracts. */
 export const FORM_COLORS = {
   field: 'border-gray-200 bg-white focus:border-blue-400 focus:ring-blue-100 dark:border-gray-700 dark:bg-gray-800 dark:text-white dark:focus:border-blue-500 dark:focus:ring-blue-900/40',
@@ -553,4 +559,14 @@ export const ANALYSIS_RELATION_TONES = {
   sky: { stroke: 'stroke-sky-600 dark:stroke-sky-400', text: 'text-sky-700 dark:text-sky-300', edge: 'border-l-sky-500', tint: 'bg-sky-100 dark:bg-sky-500/20', ring: 'ring-sky-500', swatch: 'bg-sky-500' },
   lime: { stroke: 'stroke-lime-600 dark:stroke-lime-400', text: 'text-lime-700 dark:text-lime-300', edge: 'border-l-lime-500', tint: 'bg-lime-100 dark:bg-lime-500/20', ring: 'ring-lime-500', swatch: 'bg-lime-500' },
   violet: { stroke: 'stroke-violet-600 dark:stroke-purple-400', text: 'text-violet-700 dark:text-purple-300', edge: 'border-l-violet-500', tint: 'bg-violet-100 dark:bg-violet-500/20', ring: 'ring-violet-500', swatch: 'bg-violet-500' },
+} as const;
+
+/**
+ * A door to another place wears that place's colour on a pale plate: the Bible's indigo as in the menu, analyses' violet as
+ * their tab (the owner chose «бледная заливка», 04.11). The Bible's door was first spelled in the verse sheet's «Открыть в
+ * Библии»; every door to the Bible takes it from here, with the Bible's own sign (`BibleIcon`).
+ */
+export const PLACE_DOOR_TONES = {
+  bible: 'border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 dark:border-indigo-500/40 dark:bg-indigo-950/40 dark:text-indigo-300 dark:hover:bg-indigo-900/50',
+  analyses: 'border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100 dark:border-violet-500/40 dark:bg-violet-950/40 dark:text-violet-300 dark:hover:bg-violet-900/50',
 } as const;

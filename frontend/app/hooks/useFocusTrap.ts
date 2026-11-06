@@ -27,9 +27,18 @@ export function useFocusTrap(containerRef: RefObject<HTMLElement | null>, active
       const first = reachable[0];
       const last = reachable[reachable.length - 1];
       const current = document.activeElement;
-      if (!reachable.includes(current as HTMLElement)) {
+      if (!container.contains(current)) {
+        // Focus escaped the whole ring; jsdom and native browsers both need the active edge restored explicitly.
         event.preventDefault();
         (event.shiftKey ? last : first).focus({ preventScroll: true });
+      } else if (!reachable.includes(current as HTMLElement)) {
+        // The layer or another in-ring target is focused but is not a Tab stop. Let Tab proceed toward
+        // the next control and wrap only when this direction has no reachable control.
+        const ahead = (element: HTMLElement) => Boolean(current!.compareDocumentPosition(element) & Node.DOCUMENT_POSITION_FOLLOWING);
+        if (event.shiftKey ? !reachable.some((element) => !ahead(element)) : !reachable.some(ahead)) {
+          event.preventDefault();
+          (event.shiftKey ? last : first).focus({ preventScroll: true });
+        }
       } else if (event.shiftKey && current === first) {
         event.preventDefault();
         last.focus({ preventScroll: true });

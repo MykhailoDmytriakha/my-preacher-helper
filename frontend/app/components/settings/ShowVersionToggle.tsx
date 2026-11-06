@@ -3,9 +3,10 @@
 import React, { useEffect, useState } from 'react';
 
 import SettingsToggleRow from '@/components/settings/SettingsToggleRow';
+import { useAppLocale } from '@/hooks/useAppLocale';
 import { useAuth } from '@/hooks/useAuth';
 import { useUserSettings } from '@/hooks/useUserSettings';
-import { formatDateTimeForLocale } from '@/utils/dateFormatter';
+import { formatDayTime } from '@/utils/appLocale';
 import { awaitSettingsWrite } from '@/utils/settingsWrite';
 import { useTranslation } from '@locales/useTranslation';
 
@@ -17,7 +18,8 @@ const BUILD_TIME = process.env.NEXT_PUBLIC_BUILD_TIME || '';
  * Settings. Useful for confirming a redeploy actually landed in production.
  */
 export default function ShowVersionToggle() {
-  const { t, language: interfaceLanguage } = useTranslation();
+  const { t } = useTranslation();
+  const { dateLocale } = useAppLocale();
   const { user } = useAuth();
   const [enabled, setEnabled] = useState(false);
   const [hasLoaded, setHasLoaded] = useState(false);
@@ -54,7 +56,7 @@ export default function ShowVersionToggle() {
     }
   };
 
-  const buildTimeLabel = BUILD_TIME ? formatDateTimeForLocale(BUILD_TIME, interfaceLanguage) : '';
+  const buildTimeLabel = BUILD_TIME ? formatDayTime(BUILD_TIME, dateLocale) : '';
 
   return (
     <SettingsToggleRow

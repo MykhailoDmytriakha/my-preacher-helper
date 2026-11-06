@@ -91,10 +91,6 @@ export function EngineThoughtModal({ sermonId, thoughtId, allowedTags, onClose }
     onEmpty: () => toast.error(t('errors.audioProcessing')), onError: words => toast.error(sayFailure(words, t)),
   });
   const isBusy = form.busy || dictation.isProcessing || dictation.isRecording;
-  const close = () => {
-    if (isBusy) return;
-    void askBeforeDiscard(Boolean(dictation.error), onClose);
-  };
   const recovery = useRecoveryDiscovery({ identity: form.recoveryIdentity, enabled: !loading, version: String(form.active),
     list: async () => (await form.listRecoverable()).map(source => ({ id: source.scopeId,
       title: String(source.record.baseline.value?.title ?? sermonId),
@@ -108,7 +104,7 @@ export function EngineThoughtModal({ sermonId, thoughtId, allowedTags, onClose }
   };
   const cancel = async () => {
     if (isBusy) return;
-    const discard = async () => { await form.cancel(); onClose(); };
+    const discard = async () => { await Promise.all([form.cancel(), dictation.discard()]); onClose(); };
     // The form already asks for dirty text; a failed raw take can exist without any typed edit.
     await askBeforeDiscard(Boolean(dictation.error) && !form.dirty, discard);
   };
@@ -119,8 +115,14 @@ export function EngineThoughtModal({ sermonId, thoughtId, allowedTags, onClose }
   };
   const availableTags = allowedTags.filter(allowed => !shown.tags.some(tag => tag === allowed.name
     || (normalizeStructureTag(tag) !== null && normalizeStructureTag(tag) === normalizeStructureTag(allowed.name))));
+  const discardAndClose = async () => {
+    if (isBusy) return;
+    await Promise.all([form.cancel(), dictation.discard()]);
+    onClose();
+  };
   return <><FormDialog size="standard" title={t(thoughtId ? 'editThought.editTitle' : 'createThought.title')}
-    eyebrow={t('thought.editorLabel')} onClose={close} closeDisabled={isBusy} dismissOnBackdrop showCloseButton
+    eyebrow={t('thought.editorLabel')} onClose={() => { void discardAndClose().catch(() => undefined); }}
+    unsaved={form.dirty || Boolean(dictation.error)} closeDisabled={isBusy} dismissOnBackdrop showCloseButton
     onSubmit={event => { event.preventDefault(); void save(); }}
     footer={<FormActions onCancel={() => { void cancel().catch(() => undefined); }} cancelLabel={t('buttons.cancel')}
         submitLabel={t('buttons.save')} savingLabel={t('buttons.saving')} saving={form.busy} cancelDisabled={isBusy} unsaved={form.dirty}

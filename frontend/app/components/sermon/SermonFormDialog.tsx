@@ -192,7 +192,7 @@ export default function SermonFormDialog({
   );
 
   return (
-    <FormDialog title={heading} dismissOnBackdrop onClose={() => { void askBeforeDiscard(unsaved, onCancel); }} showCloseButton onSubmit={handleSubmit} footer={footer} closeDisabled={saving} layerClassName={layerClassName}>
+    <FormDialog title={heading} dismissOnBackdrop onClose={onCancel} unsaved={unsaved} showCloseButton onSubmit={handleSubmit} footer={footer} closeDisabled={saving} layerClassName={layerClassName}>
       {notice && (
         <div
           role="alert"

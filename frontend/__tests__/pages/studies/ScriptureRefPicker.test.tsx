@@ -53,6 +53,7 @@ describe('ScriptureRefPicker, saving a reference nobody changed', () => {
 
   it('gives it back as written when the person pressed the scope already chosen', () => {
     const onConfirm = jest.fn();
+    // Synodal Ps 9:20-25 opens in the English reader as the verses Ps 9:19-10:4.
     render(<ScriptureRefPicker initialRef={{ id: 'r6', bible: 'rst', book: 'Psalms', chapter: 9, fromVerse: 20, toVerse: 25 }} mode="edit" onConfirm={onConfirm} onCancel={jest.fn()} />);
     fireEvent.click(screen.getByRole('button', { name: 'studiesWorkspace.scopeVerses' }));
     fireEvent.click(screen.getByRole('button', { name: 'common.save' }));

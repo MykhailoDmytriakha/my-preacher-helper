@@ -5,11 +5,11 @@ import { toast } from 'sonner';
 
 import { createBrowserDataEngine } from '@/data-engine/browser.client';
 import { DataEngineProvider } from '@/data-engine/react.client';
+import { getSermons } from '@services/sermon.service';
+import { getStudyNotes } from '@services/studies.service';
 import { useAuth } from '@/providers/AuthProvider';
 import { settleEngine } from '../../../test-utils/documentEngineHarness';
 import { membershipEngineHarness } from '../../../test-utils/membershipEngineHarness';
-import { getSermons } from '@services/sermon.service';
-import { getStudyNotes } from '@services/studies.service';
 
 import {
   applySourceNoteLinkPatch,
@@ -42,8 +42,8 @@ jest.mock('react-i18next', () => ({
 }));
 
 const mockUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;
-const mockGetStudyNotes = getStudyNotes as jest.MockedFunction<typeof getStudyNotes>;
 const mockGetSermons = getSermons as jest.MockedFunction<typeof getSermons>;
+const mockGetStudyNotes = getStudyNotes as jest.MockedFunction<typeof getStudyNotes>;
 
 /** Wrapper plus the client itself: the reverse side reads this cache, so tests can inspect it. */
 const harness = () => {

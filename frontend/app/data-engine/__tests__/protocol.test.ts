@@ -125,6 +125,27 @@ describe('DataEngine command protocol', () => {
     expect(result.conflicts.map(conflict => conflict.path)).toEqual([['custom', 'updatedAt']]);
   });
 
+  it('merges a passage analysis only as a whole: changed on both sides, it is a conflict, never a key-by-key mix', () => {
+    // BUG-20261030-analysis-merge-across-reshape (Codex probe, 04.11): its parts are word numbers from the passage start.
+    // The phone, offline, linked words 2 → 5; the laptop meanwhile added a verse before the passage and every number moved
+    // by five. Merged key by key, the old «2-5» stood on other words and was acknowledged.
+    const before = { bible: 'rst', words: 10, cuts: [3], links: {}, relations: {} };
+    const phone = { ...before, relations: { '2-5': { dir: 'fwd', color: 'amber' } } };
+    const laptop = { bible: 'rst', words: 15, cuts: [8], links: {}, relations: {} };
+    const merged = mergeFields(field(before), field(phone), field(laptop), ['analysis']);
+    expect(merged.conflicts).toHaveLength(1);
+    expect(merged.conflicts[0].path).toEqual(['analysis']);
+    const note = { userId: 'owner', content: 'x', analysis: laptop };
+    const command: DataCommand = {
+      protocol: 1, operationId: 'operation-analysis', owner: 'owner', resource: { collection: 'studyNotes', id: 'note-1' }, generation: null,
+      dependsOn: [], kind: 'update', changes: [{ path: ['analysis'], before: field(before), after: field(phone) }],
+    };
+    expect(applyCommand(command, { resource: { collection: 'studyNotes', id: 'note-1' }, value: note, metadata: null }).kind).not.toBe('acknowledged');
+    // One side alone, or both the same, is no conflict.
+    expect(mergeFields(field(before), field(phone), field(before), ['analysis'])).toEqual({ value: field(phone), conflicts: [] });
+    expect(mergeFields(field(before), field(before), field(laptop), ['analysis'])).toEqual({ value: field(laptop), conflicts: [] });
+  });
+
   it('does not resolve deletion against concurrent authored text silently', () => {
     const result = mergeFields(field([{ id: 'a', text: 'base' }]), field([]), field([{ id: 'a', text: 'new' }]));
     expect(result.conflicts).toHaveLength(1);

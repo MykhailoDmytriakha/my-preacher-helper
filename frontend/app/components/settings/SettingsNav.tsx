@@ -1,9 +1,10 @@
 'use client';
 
-import { UserCircleIcon, SparklesIcon, TagIcon, DocumentTextIcon, ShieldCheckIcon, BookOpenIcon } from '@heroicons/react/24/outline';
+import { UserCircleIcon, SparklesIcon, TagIcon, DocumentTextIcon, ShieldCheckIcon } from '@heroicons/react/24/outline';
 import Link from 'next/link';
 import React from 'react';
 
+import { BibleIcon } from '@/components/bible/BibleIcon';
 import { SETTINGS_SECTIONS, settingsSectionHref, type SettingsSection } from '@/utils/settingsSections';
 import { useTranslation } from '@locales/useTranslation';
 
@@ -20,7 +21,7 @@ const sectionIcon: Record<SettingsSection, React.ComponentType<React.SVGProps<SV
   limits: SparklesIcon,
   tags: TagIcon,
   templates: DocumentTextIcon,
-  bible: BookOpenIcon,
+  bible: BibleIcon,
 };
 
 const sectionLabelKey: Record<SettingsSection, string> = {

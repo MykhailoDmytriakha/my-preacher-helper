@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState, useMemo, useRef } from 'react';
 import { toast } from 'sonner';
 
 import RecordingDraftBanner from '@/components/audio-recorder/RecordingDraftBanner';
+import { withAnalysisAddress } from '@/components/bible/analysis/analysisAddress';
 import { ScriptureLinks } from '@/components/bible/ScriptureLinks';
 import { ScripturePreviewSheet } from '@/components/bible/ScripturePreviewSheet';
 import { CommentDialog } from '@/components/CommentDialog';
@@ -41,12 +42,11 @@ import { NOTE_AGGREGATE } from '@/services/studies.service';
 import { isUsageCapReachedError } from '@/services/usageLimits';
 import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { apiClient } from '@/utils/apiClient';
-import { textLanguage } from '@/utils/appLocale';
+import { formatDay, textLanguage } from '@/utils/appLocale';
 import { interfaceLanguageHeaders } from '@/utils/authenticatedRequest';
 import { referenceFromTyped } from '@/utils/bibleLink';
 import { newClientId } from '@/utils/clientId';
 import { serializeContent } from '@/utils/contentFingerprint';
-import { formatDateForLocale } from '@/utils/dateFormatter';
 import { studyNoteLanguage } from '@/utils/documentLanguage';
 import { sectionDisplayLabel, findSectionById } from '@/utils/markdownSections';
 import { findNoteDraftCopies } from '@/utils/newNoteDrafts';
@@ -641,15 +641,14 @@ const NOTE_PANEL_STORAGE_KEY = 'studyNote.sidePanelCollapsed';
 
 /** Creation and last-edit dates. Metadata, so it sits with the rest of the metadata. */
 function NoteDates({ note, t }: { note: StudyNote; t: ReturnType<typeof useTranslation>['t'] }) {
-    const created = new Date(note.createdAt);
-    const updated = new Date(note.updatedAt);
-    const { language: interfaceLanguage } = useTranslation();
-    const format = (d: Date) => formatDateForLocale(d, interfaceLanguage);
+    const { dateLocale } = useAppLocale();
+    const created = formatDay(note.createdAt, dateLocale);
+    const updated = formatDay(note.updatedAt, dateLocale);
     return (
         <>
-            <div>{t('notePanel.created', { date: format(created) })}</div>
-            {format(updated) !== format(created) && (
-                <div>{t('notePanel.updated', { date: format(updated) })}</div>
+            <div>{t('notePanel.created', { date: created })}</div>
+            {updated !== created && (
+                <div>{t('notePanel.updated', { date: updated })}</div>
             )}
         </>
     );
@@ -693,7 +692,19 @@ function NoteCommentWindow({ open, note, locale, onClose, onErased }: { open: bo
     return <CommentDialog target={{ kind: 'edit', id: note.id }} place={reference ? formatScriptureReference(reference, { locale }) : ''} onClose={onClose} onErased={onErased} />;
 }
 
-export default function StudyNoteEditorPage() {
+/** Analysis notes open in their analysis window over the analyses list, not in the ordinary note editor. */
+export default function StudyNotePage() {
+    const router = useRouter();
+    const routeId = useRouteId();
+    const { notes } = useStudyNotes();
+    const analysisId = notes.some((note) => note.id === routeId && note.type === 'analysis') ? routeId : null;
+    useEffect(() => {
+        if (analysisId) router.replace(withAnalysisAddress('/studies?tab=analyses', { id: analysisId, mode: 'view' }));
+    }, [analysisId, router]);
+    return analysisId ? null : <StudyNoteEditorPage />;
+}
+
+function StudyNoteEditorPage() {
     const opening = useNewNoteOpening();
     return <>
         <UnreadableNoteDrafts owner={opening.owner} documentId={opening.documentId} />

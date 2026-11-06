@@ -85,6 +85,28 @@
 
 ## 🔵 P3 — открыто
 
+### BUG-20261101-moved-comment-skips-paragraph-rule · Комментарий, унесённый «В другое место» в другую книгу, не проверяется правилом абзацев
+**P3** — ничего не теряется: комментарий сохраняется, но если он пересекает абзац той книги, рисуется простым комментарием под первым стихом. Найдено 01.11 (дело `2026-10-12-block-diagram`, пункт на потом L25); после 05.11 живьём не перепроверялось.
+**Якорь.** `frontend/app/components/bible/ReaderCommentDialog.tsx:109` — абзацы для проверки берутся только из открытой книги (`reference.book === bookId ? … : []`).
+**Шаги.** Комментарий на отрывок → «В другое место» → другая книга и отрывок, пересекающий её абзац → сохранить → там он стоит простым комментарием под первым стихом, без отказа.
+**Как должно работать для пользователя.** Правило абзацев одно для всех дверей: в своей книге и в другой комментарий получает тот же ответ — отказ с объяснением, если пересекает абзац.
+**Направление.** Читать абзацы книги назначения (её заметки уже на устройстве) и звать тот же `paragraphRefusal` из `commentParagraphs.ts`, без второй проверки.
+
+### BUG-20261103-analysis-header-eats-phone-screen · На телефоне шапка разбора занимает от четверти до почти половины экрана
+**P3** — данные целы, но тексту остаётся 55–73 % экрана, а читать и размечать надо именно текст. **Найден.** 2026-11-03 · агент на визуальной приёмке вкладки «Разборы» (телефон 390×844, тестовый аккаунт); то же окно открывается и из Библии.
+**Якоря.** `frontend/app/components/bible/analysis/AnalysisParts.tsx:45` — шапка `shrink-0 flex-wrap` стоит над текстом всегда и не уходит при прокрутке; `frontend/app/components/bible/analysis/AnalysisEditor.tsx:261` — на узком экране проповеди из разбора (`AnalysisSermons`) встают в шапку по одной на строку.
+**Замер (390×844).** Без проповедей шапка 225 px (27 %): «К тексту/К списку» и название · «Правка/Просмотр» · маркер, карандаш, ластик, «Отменить» · «Готово» — четыре ряда. С тремя проповедями — 341 px (40 %), с четырьмя — 379 px (45 %).
+**Как должно работать для пользователя.** Открыл разбор на телефоне — видит текст. Нужное всегда — «назад», режим, инструменты — занимает не больше одного-двух рядов; проповеди из разбора доступны одним нажатием, а не стоят столбиком над текстом.
+**Фикс (направление).** Нужна картина экрана до кода (развилка вида, на доску владельцу): проповеди на телефоне — одной кнопкой «Проповеди · N» с меню, как боковая панель на компьютере; ряды шапки собрать в два («назад · название · Готово» и «режим · инструменты»). Отвергнуто: прятать шапку при прокрутке — инструменты маркера нужны посреди текста.
+
+### BUG-20261104-small-text-contrast · Бледные подписи и зелёные кнопки вне «Изучений»: контраст ниже 4.5:1
+**P3** — читается с трудом на солнце и слабым зрением, данные целы. Найдено 04.11 UX-ревью Codex. **«Изучения» закрыты 05.11** (дело `2026-10-12-block-diagram`, 14.19): одно действие `STUDIES_ACTION` (`frontend/app/utils/themeColors.ts`, `emerald-700`, белое 5.5:1) на всех кнопках раздела, подписи карточки `gray-500` / `dark:text-gray-400`. **Остаток.** Около 24 зелёных кнопок `bg-emerald-600 text-white` в других разделах (3.77:1) и `text-gray-400` мелких подписей по приложению (2.54:1 на белом).
+**Как должно работать для пользователя.** Мелкие подписи и кнопки читаются в обеих темах с первого взгляда (WCAG AA 4.5:1).
+**Направление.** Прочесать по токенам `themeColors.ts`, не по экранам: действие раздела — свой токен, как `STUDIES_ACTION`; подписи — `gray-500`/`gray-600` и `dark:text-gray-400`. Сначала опись мест (`grep -rn "bg-emerald-600 text-white\|text-gray-400" app`), потом правка токенами с проверкой снимков.
+**Сюда же.** Кнопка «Т» в заметках и совете в светлой теме бледная (`text-white` на `bg-violet-500/10`), из дела bugs-fix-29 (02.10): общий компонент не меняли без владельца.
+**Порядок (владелец 05.11).** Отдельная задача, не дело разборов: до правки показать владельцу на доске (Canvas), о чём речь, — подписи и кнопки до и после на настоящих экранах — и согласовать; потом правка токенами.
+
+
 ### BUG-20261021-bible-marks-check-failed-line · В Библии появляется «Не удалось проверить обновления. Версия на сервере ещё не проверена»
 **Severity.** P3 — строка о сбое проверки пометок, без потери текста; есть «Повторить». Шум там, где человек читает.
 **Найден.** 2026-10-21 · отзыв владельца из приложения (письмо «New Feedback (bug)», 04:02 UTC, версия `78a5122`, `/bible`, Mac, Chrome 154): «почему-то недавно показывалась версия на сервере, не проверена… в районе Второзакония, 7:7». Воспроизведение — со слов владельца, агентом не проверялось.
@@ -164,33 +186,18 @@
 **Инженерная задача.** Искать конструкцию, в которой готовый результат не пропадает, а учёт остаётся корректным и завершаемым. Выбор внутренней очереди или API `after()` не отдавать владельцу; `after()` сам ограничен сроком функции и не является надёжной очередью. Общий id открытия и завершения телеметрии должен исключать позднюю незакрытую запись. Недосписание не принято владельцем; если после проверки останется неизбежный денежный компромисс, вынести его отдельно с фактами и ценой.
 
 ### BUG-20260815-offline-queued-text-invisible-in-other-tabs · Офлайн-правка одной вкладки не видна в уже открытой другой
-**P3** — текст не теряется: вторая доставка встречает конфликт и хранит свои слова (`frontend/app/data-engine/__tests__/twoTabsOffline.test.ts`), но до доставки человек видит в другой вкладке старый текст · у каждой вкладки свой экземпляр движка; открытый редактор принимает чужое изменение только подтверждённым — с сервера или из подтверждённой копии на устройстве (`data-engine/controller.ts`: из заявок применяются только свои и из своего черновика).
-**Инженерная задача, низкий приоритет.** Последовательно продолжая работу в другой открытой вкладке того же устройства, человек должен видеть свою сохранённую на устройстве работу. Проверить обмен через существующий движок и локальные записи, не заводить отдельный писатель экрана. Неоднозначное объединение не должно терять текст. Слова уже защищены при доставке, поэтому этот край ниже заметных сбоев; решение «оставить» владельцем не принято.
+**P3** — обычное продолжение сохранённого текста локально проверено; остаются сохранённые формы и участники составных переносов. Один человек, вернувшись в другую вкладку, должен видеть свою работу до продолжения или удаления; приватные слова и право решить отказ сохраняются.
+**Дальше.** Воспроизвести возврат после carry/reshape, сохранённой формы, отказа, создания и удаления. Не присваивать другой вкладке право решить всю команду. Локальная проверка обычного пути и будущая приёмка на проде: `docs/verification/local-bug-fixes.md`, Unit279.
 
-**Unit279 reproduced additional return boundaries (2026-11-02).** Actual engine probes confirm: a second root based on a collected ACK is skipped on the first return; an acknowledged ancestor plus a queued child shows only the ancestor; collection between live admission and checkpoint persistence can leave a stale pending ID in RAM. Anchors: `frontend/app/data-engine/controller.ts` (`onCommit`, `adoptSubmittedSuccessor`, `persist`), `engine.ts` (`refreshLocalCopies`), `submittedWork.ts`. The three causal regressions are now retained in `localReturnAckChain.test.ts`; these are synthetic transaction/transport interleavings, not native-browser or production proof. Continue the existing unique submitted chain and obtain durable checkpoint ownership before publishing it into the live editor; row absence alone must never become an ACK.
-
-**Unit279 native lifecycle finding.** The first compiled AFTER run captured an unexpected `DataEngine background operation failed AbortError: Collection reader changed during the request` while the tab became hidden. `CollectionReader.reloadWatchedCaches` forwards a superseded generation's expected cancellation to the engine (`collections.ts`, `reloadRows`/`assertCurrent`/`reloadWatchedCaches`). Settle only an obsolete reader's cancellation; retain an actual current-generation storage abort as a failure. The stale B frame in that run was hidden and is not accepted as a successful foreground verification; lifecycle/native-record diagnostics are required before interpreting that observation.
-
-**Unit279 foreground AFTER finding (2026-11-05).** Installed headless Chrome reproduces the same stale note with B actually visible/focused and unchanged time origin; five setup/typing checks pass, then B still shows the baseline. Group detail automatically begins an untouched `group-meeting` manual form (`useGroupMeetingEditor.ts`). The new ordinary-continuation guard in `engine.ts` rejects every active form, even without private words. Distinguish an untouched open control from actual unsent/capturing manual work; keep the latter protected. Raw HL result, failure screenshot, source/build archive and cleanup audit remain separate from acceptance.
-
-**Unit279 local ordinary continuation verified (2026-11-05).** The original stale open Group editor now shows the captured note on actual tab return, without reload, and its continuation receives an exact successor identity. An automatically opened untouched meeting form no longer blocks it. Dirty/capturing/failed or non-durable stages remain protected; tests cover private typing during candidate persistence. HL5 installed headless Chrome passed 13 behavioral checks, including fresh offline C at 820 px, exact ordered A/B ACKs and five stable canonical reads; fixture and owned processes were cleaned. The raw runner remains exit 1 because its strict transport envelope did not classify expected offline/cancellation diagnostics. A separate verifier classifies 27 failed requests and 26 console rows and rejects 8 negative controls; no page/unhandled/forbidden/HTTP errors. Online HEAD diagnostics require the same request’s 204 response and an observed fulfilled, non-aborted browser fetch; a phase-only allowance was rejected in fresh review. Gates:268 targeted and 12,806 full tests, type/lint/build green. Full proof and production plan: `docs/verification/local-bug-fixes.md` Unit279. This is not production or physical-device acceptance.
-
-**Current class map / remaining scope.**
-| mechanism / consumer | verdict | reason |
+**Класс.**
+| место | состояние | граница |
 |---|---|---|
-| `browser.client.ts` focus/pageshow/visibility → `engine.ts` local return | locally fixed | Reuses the existing owner-scoped durable queue; focus is only a reread hint. |
-| `commits.ts` replay and `controller.ts` ordinary existing-document continuation | locally fixed | Revision fence, unique observed chain, native reference pin, post-pin frontier/lifetime recheck; no second writer. |
-| `collections.ts` watched caches and superseded reads | locally fixed | Reload local presentation; settle only an obsolete reader cancellation. |
-| Group detail and its auto-begun date form | locally fixed | Actual unchanged-document browser path now works; genuine private stage state remains guarded. |
-| Authenticated server commands, snapshots, confirmed generations | unchanged / not the defect | Canonical ACK, merge, idempotency and owner checks retain their existing owners. Queued text is never declared confirmed. |
-| Retained/manual source roots, atomic carry/reshape participants, refused/create/delete continuation | still open for separate verification | Ordinary admission deliberately cannot borrow their command/decision authority. Reproduce and verify their user paths before closing this card. |
-| Unconverted legacy React Query writers | unaffected by this code | They do not use this engine return path; their own outbox rules remain. |
-
-**Related verified subcase (Phase60).** A single already-open editor also ignores a separate ordinary action while offline when its earlier edit is already acknowledged: the new request has no pending predecessor. The scratch Undo actual-hook control captures the restore but the visible note stays absent (scratch-undo-controls.log). Phase60 addresses this exact-known-confirmed-root case; real cross-instance/tab propagation and ambiguous branch behavior still need separate acceptance. Do not close this broader record merely because the Scratch subcase becomes green.
-
-**Граница Unit257.** Новый порядок удаления ждёт уже сохранённое использование ресурса, но не переносит авторское содержимое в другой уже открытый редактор и не угадывает старый порядок. В этом пункте остаётся проверить переход после carry/reshape к уже открытой другой вкладке того же участника и её последующее удаление: изменение авторских полей должно быть видно до продолжения, а защита устаревшего baseline не должна обходиться как служебный индекс. Это направление перепроверки общего распространения локальных правок; новый отдельный UI-отказ этими словами не утверждается.
-
----
+| `browser.client.ts`, `engine.ts` — возврат к вкладке | локально проверено | Подсказка перечитать очередь, не подтверждение сервера. |
+| `commits.ts`, `controller.ts` — обычная цепочка существующей сущности | локально проверено | Одна доказанная цепочка, владение до показа, повторная проверка черновика. |
+| `collections.ts` — видимые списки | локально проверено | Только устаревшая отмена завершается тихо; настоящий сбой остаётся видимым. |
+| Группа и автоматически открытая форма даты | локально проверено | Нетронутая форма пропускает обновление, настоящий ввод защищён. |
+| `manualScope.ts`, составные carry/reshape, отказанные/create/delete команды | требует отдельной проверки | Своё владение и решение команды нельзя заимствовать обычным продолжением. |
+| Серверные ACK/версии и неподключённые legacy-писатели | прежние правила | Этот клиентский путь не заменяет их механизмы. |
 
 ## ⏸ Отложено владельцем
 
@@ -207,6 +214,12 @@
 ---
 
 ## 🔍 Требует перепроверки
+
+### BUG-20261105-modal-history-back-test-flaky · Проверка закрытия окна по «Назад» иногда падает в общем прогоне
+**P3, требует перепроверки.** Claude сообщил через рацию #1: на `a495dfcb` общий `test:fast` дал12 805 зелёных и один отказ `closes one visible empty window on Back`; отдельный тест прошёл3из3. **Якорь:** `frontend/__tests__/hooks/useModalLayer.history.test.tsx:100`. Текущий intake754817f9 уже меняет общий механизм истории: два полных прогона на его кандидатной сборке прошли12 916тестов, но это не доказывает устранение нестабильности.
+**Как должно работать:** тест ожидает фактического асинхронного перехода и проверяет ровно одно закрытие окна с сохранением страницы; высокая нагрузка не должна случайно блокировать сборку. Не увеличивать задержки вслепую и не убирать полезные проверки.
+**Перепроверить:** сохранить пилотный raw-отказ Claude, сравнить механизм/ожидание до и после intake, воспроизвести под контролируемой нагрузкой и устранить подтверждённую причину. Сбой приложения в браузере этим сообщением не установлен. Объём/корень пока не исследованы; текущий баг не прерывать.
+
 
 ### BUG-20261102-read-cache-answer-order-unproven · A delayed older DTO response may become the last saved read
 **Status / severity.** RECHECK; possible P3 stale entitlement/referral presentation. No authored text loss or production reproduction is established.
@@ -301,20 +314,6 @@
 **P3, требует перепроверки** — общий проверочный прогон получает ложный или пока не объяснённый красный результат; пользовательский дефект этим не установлен. **Найдено:** Codex31.10 при Unit246 build-v6; исходники этой проверки и формы мысли не менялись. **Якорь:** `frontend/__tests__/integration/thoughtEditWriteRefusal.test.tsx:162`.
 **Шаги:** полный `npm run build` → `test:build` с двумя Jest workers; тест `keeps the exact edit open, tells the refusal, and rolls rendered content back` превысил15000мс. Отдельный повтор того же файла без изменения проверок прошёл (301мс тело теста, actual0); предшествующий полный build-v5 тоже был зелёным. Причина ещё не установлена; одновременные общие прогоны в других рабочих папках наблюдались, но это только возможное условие нагрузки.
 **Ожидалось/получилось:** отказ записи сохраняет точный редактируемый текст, показывает отказ и возвращает сохранённое содержимое; отдельный прогон это подтвердил, общий один раз не завершил тест в срок. **Как должна работать фича:** после отказа форма остаётся открытой с набранными словами; сообщение не обещает сохранение. **Дальше:** полный v6 завершился actual1 (один таймаут,12229успехов); полный повтор v7 с неизменёнными проверками и `workerIdleMemoryLimit=512MB` прошёл12230тестов. Причина единичного таймаута остаётся неизвестной; при повторе снять место ожидания; не увеличивать таймаут и не ослаблять утверждения без причины. Локальные артефакты: `analysis-create-246-production-build-v6.log`, `analysis-create-246-thought-refusal-control-v1.json`.
-
-
-### BUG-20261030-analysis-write-over-newer · В окне разбора Библии независимая правка после подтверждения сохранения ещё требует перепроверки
-**Якоря.** `frontend/app/components/bible/analysis/useAnalysisNote.ts` (`lay`, `takeIn`), `data-engine/controller.ts` (`enqueue`, `observe`, `onCommit`), `data-engine/session.ts` (`observe`, `applyCommit`).
-**Уточнение.** Исходная гипотеза — свежая копия заменяет черновик, пока собственное сохранение ещё ждёт, — противоречит реальному порядку очереди. Неподтверждённым остаётся более узкое окно после подтверждения сервера, до приёма нового состояния экраном. Потеря на этом пути живьём не получена; код не исправлялся.
-**Как должно работать.** Две независимые правки разбора сохраняются вместе; перед исправлением нужен реальный теряющий данные сценарий. Это агентская гипотеза по коду, не сообщение владельца о потере.
-
-| Путь | Что осталось проверить |
-|---|---|
-| Обычное наблюдение при незавершённой записи | Исходная гипотеза опровергнута: очередь и `remoteCandidate` удерживают свежую копию отдельно. |
-| Подтверждение записи и следующее нажатие | Проверенные чередования сохраняют работу; более короткое окно обновления экрана не исключено. |
-| Отмена своей правки, ожидание формы новой заметки, `flush` | Отдельные жизненные циклы; эта проверка их не закрывает. |
-| Слияние с изменённым объёмом стихов | Локально проверено в Unit242; это отдельный механизм, который не доказывает и не опровергает короткое окно обновления экрана. |
-
 
 
 ### BUG-20261028-table-click-tab-selection · Быстрый Tab после щелчка по первой ячейке иногда добавляет строку вместо перехода во вторую
@@ -522,6 +521,9 @@
 
 ## ⚪ Осознанно НЕ чиним (решения владельца)
 - **BUG-20261030-cross-account-device-cache — доступ к файлам личного профиля Chrome вне приложения.** Уточнение владельца31.10.2026: другой человек не пользуется тем же компьютером и обычным Chrome без отдельного входа в пользователя компьютера; ответ «Нет, так не бывает». Поэтому сценарий чтения офлайн-копий другим пользователем того же профиля не входит в текущую модель использования. Офлайн-копии сохраняются при выходе; разделение данных аккаунтов внутри приложения остаётся обязательным. Это снятое предположение о совместном доступе, не исправление шифрования файлов. Если совместное использование появится, границу доступа нужно пересмотреть.
+- **Правка разбора с клавиатуры (Tab и Enter до разрезов, ступеней и ручек) — не делаем** (бывшая BUG-20261104-analysis-edit-needs-hover, решение владельца 05.11: «этого не нужно»). Мышью, пальцем и Pencil правка доступна (касание — 05.11, `AnalysisEditor.tsx` `pointed`).
+- **Повтор отказанной смены объёма разбора может положить перенесённую работу во второй разбор** (бывшая BUG-20261105-reshape-retry-duplicates-moved-work, 05.11). Нужна правка этого разбора с другого устройства ровно в миллисекунды записи соседа и повтор человеком — мерка владельца про доли секунды (ниже, «Правка той же мысли…»). Дубль, не потеря. Лечение, если понадобится: одна атомарная команда на оба документа (`.howto/save-several-documents-atomically.md`).
+- **Закрытие экрана в миг создания разбора пишет ждущую правку без проверки снимка** (бывшая BUG-20261030-analysis-write-over-newer, остаток, 05.11; `useAnalysisNote.ts` `flush`). Нужна правка этого же нового разбора с другого устройства в те же миллисекунды — та же мерка. Правка экрана, отмена и смена объёма защищены. Лечение, если понадобится: `expectedBaseline` в `flush`.
 - **Лимит AI: перерасход у жёсткого потолка в пределах одного допущенного действия** (бывшая B9, TOCTOU). Проверка (`createUsageAdmission` / `assert*Available` в `frontend/app/services/usageLimits.server.ts`) и списание (`consumeUsage`, транзакция) — разные шаги: N вызовов, начатых при «потолок − 1», проходят все, а одно допущенное действие может списать больше одной единицы (мысль — до трёх попыток, `thought.structured.ts`; экспорт озвучки — все порции одного экспорта, `audio/generate/route.ts`). Решение владельца 2026-07-14 (F7 «по благодати»): жёсткий блок ровно на лимите не нужен — начатое доигрывается, новые после лимита идут в грации до «лимит + 10 %» (минимум +2), на потолке — блок с тёплым сообщением; малый перерасход допустим по построению. Грация построена в `c9e376b0`; закреплена `frontend/__tests__/services/usageLimits.server.test.ts` (warning → grace → blocked; начатое ниже потолка допускается) и `usageLimits.test.ts`. Не путать с обходом потолка продолжениями экспорта — это отдельная запись BUG-20261003-audio-continuation-skips-limit.
 - **Порядки служения: слова живут в памяти страницы до подтверждения сервера.** Один узел, четыре следствия: (1) `pagehide`/unmount ЗАПУСКАЕТ запись, но транзакции нужен сервер — процесс, убитый в ту же секунду, уносит текст; (2) браузер online, а Firestore недостижим (captive portal, умирающая связь) — запись падает громко, текст остаётся в поле, но reload его теряет; (3) отказ в сохранении названия оставляет напечатанное только в DOM; (4) удаление шага, пересчитанное на свежем документе, уносит слова, дописанные туда другим устройством. Экран в каждом случае ГОВОРИТ об отказе — молчаливой потери нет. Лечение у всех четырёх одно: журнал операций на уровне шага (durable intent до записи, снятие только по подтверждению). Заплатка в одном месте не сходится — Codex три раунда подряд выдавал P1 в этом же узле; узел вынесен в отдельную работу сознательно.
 - **Порядки служения: два устройства правят ОДИН И ТОТ ЖЕ шаг** — побеждает последний. Транзакция пересчитывает патч на свежем документе, поэтому разные шаги одного служения сливаются верно; совпадение поля в один и тот же момент — та же мерка, что и у мысли: система для человека, который через часы продолжил на другом устройстве. Настоящее лечение — журнал операций на уровне шага, отдельная работа.

@@ -150,7 +150,7 @@ export function useStudyNotesEngine(enabled: boolean) {
     releaseAnalysisCreation: (sourceId: string, adoptedId: string): Promise<void> => actions.releaseStudyAnalysisCreation(sourceId, adoptedId),
     combineAnalysisCreation: async (sourceId: string, targetId: string, text: BookText): Promise<string> =>
       (await actions.transferStudyAnalysisCreation(sourceId, targetId, text)).id,
-    createNote: (note: Omit<StudyNote, 'id' | 'createdAt' | 'updatedAt' | 'isDraft'>, options?: { id: string; captureScope?: string }): StudyNoteSubmission & { note: StudyNote } => {
+    createNote: (note: Omit<StudyNote, 'id' | 'createdAt' | 'updatedAt' | 'isDraft'>, options?: { id?: string; captureScope?: string }): StudyNoteSubmission & { note: StudyNote } => {
       const id = options?.id ?? newClientId();
       const at = now();
       const optimistic: StudyNote = { ...note, id, createdAt: at, updatedAt: at, isDraft: isDraft(note), materialIds: [], relatedSermonIds: note.relatedSermonIds || [] };

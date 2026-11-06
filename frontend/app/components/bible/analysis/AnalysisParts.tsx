@@ -3,13 +3,36 @@
 import { ArrowLeftIcon, ArrowUturnLeftIcon, ChevronLeftIcon, ChevronRightIcon, PencilSquareIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { useTranslation } from 'react-i18next';
 
+import { BibleIcon } from '@/components/bible/BibleIcon';
+import { AnalysisIcon } from '@/components/Icons';
 import Switch from '@/components/ui/Switch';
 import { withModifier } from '@/utils/keyboardModifier';
+import { PLACE_DOOR_TONES } from '@/utils/themeColors';
 
 import { ANALYSIS_LINE_HEIGHT, ANALYSIS_LINE_PADDING, type AnalysisLineSpacing } from './analysisGeometry';
 
+import type { BibleId } from '@/utils/bibles';
 import type { AnalysisWord, CutLevel } from '@/utils/passageAnalysis';
 import type { PointerEvent, ReactNode } from 'react';
+
+/**
+ * An analysis opened over a Bible it was not made in (BUG-20261030-analysis-other-bible-overwrite): its parts stand on its own
+ * Bible's words, so here it is laid nowhere — it says which Bible it belongs to and, where the screen can, opens that one.
+ */
+export function OtherBibleNotice({ bible, onUseBible }: { bible: BibleId; onUseBible?: (bible: BibleId) => void }) {
+  const { t } = useTranslation();
+  const name = t(`bible.translations.${bible}.name`);
+  return (
+    <div role="status" className="flex flex-col items-start gap-3 rounded-xl bg-indigo-50 px-4 py-3 text-sm text-indigo-900 dark:bg-indigo-950/40 dark:text-indigo-100">
+      <p className="leading-relaxed">{t('analysis.otherBible.text', { name })}</p>
+      {onUseBible ? (
+        <button type="button" onClick={() => onUseBible(bible)} className={`inline-flex h-10 items-center gap-1.5 rounded-xl border px-3 font-semibold transition ${PLACE_DOOR_TONES.bible}`}>
+          <BibleIcon className="h-4 w-4" aria-hidden="true" />{t('analysis.otherBible.open', { name })}
+        </button>
+      ) : null}
+    </div>
+  );
+}
 
 /** How a line stands in «Просмотр»: the chosen part, the way up to it, what hangs on it, stepped back, or as it is. */
 export type LineRole = 'focus' | 'path' | 'kid' | 'dim' | 'plain';
@@ -27,9 +50,23 @@ const RING: Record<LineRole, string> = {
   plain: '',
 };
 
+/**
+ * THE DOOR TO AN ANALYSIS'S OTHER HOME (the owner, 03.11: «перекрёстки»), beside its way back: opened in Studies, its
+ * passage in the Bible (`bible`); opened in the Bible, the list of all analyses (`analyses`). `href` — the address there for
+ * the note the screen holds at the press (none yet for an untouched new one), or null when there is nowhere to go.
+ */
+export type AnalysisDoor = { home: 'bible' | 'analyses'; href: (id: string | null) => string | null };
+
 /** The bar over the analysis: back to the text, the place and how many parts, «Правка»/«Просмотр», the marks' tools, undo, done. */
-export function AnalysisHeader({ title, parts, mode, onMode, canUndo, onUndo, onClose, onEditVerses, tools, allLinks, sermons }: {
-  title: string; parts: string; mode: AnalysisMode; onMode: (mode: AnalysisMode) => void; canUndo: boolean; onUndo: () => void; onClose: () => void;
+export function AnalysisHeader({ title, parts, mode, onMode, canUndo, onUndo, onClose, backLabel, door, onEditVerses, tools, allLinks, sermons }: {
+  title: string; parts: string; mode: AnalysisMode; onClose: () => void;
+  /** The modes and «Отменить» — absent where nothing here can be changed (an analysis over another Bible: its notice alone). */
+  onMode?: (mode: AnalysisMode) => void; canUndo?: boolean; onUndo?: () => void;
+  /** Where the way back leads, in words: the reader's text by default; Studies' list when opened there. */
+  backLabel?: string;
+  /** Right after the way back, the door to the analysis's other home. On a phone's narrow bar it is its icon alone: its name
+   *  there pushed the analysis's title onto a row of its own, +48–52 px over the text (measured 03.11, five analyses). */
+  door?: { home: AnalysisDoor['home']; onPress: () => void } | null;
   /** In «Просмотр», with links of meaning to show: the switch that draws all their arrows at once (the owner, 30.10). Null —
    *  it does not act now, and its room is kept empty. */
   allLinks?: { on: boolean; onToggle: () => void } | null;
@@ -44,8 +81,14 @@ export function AnalysisHeader({ title, parts, mode, onMode, canUndo, onUndo, on
   return (
     <header className="flex shrink-0 flex-wrap items-center gap-3 border-b border-gray-200 px-4 py-2.5 dark:border-gray-800 sm:px-5">
       <button type="button" onClick={onClose} className={`inline-flex h-10 items-center gap-1.5 rounded-xl px-3 text-sm font-semibold ${OUTLINE}`}>
-        <ArrowLeftIcon className="h-4 w-4" aria-hidden="true" />{t('analysis.back')}
+        <ArrowLeftIcon className="h-4 w-4" aria-hidden="true" />{backLabel ?? t('analysis.back')}
       </button>
+      {door ? (
+        <button type="button" onClick={door.onPress} aria-label={t(`analysis.door.${door.home}`)} className={`inline-flex h-10 items-center gap-1.5 rounded-xl border px-3 text-sm font-semibold transition ${PLACE_DOOR_TONES[door.home]}`}>
+          {door.home === 'bible' ? <BibleIcon className="h-4 w-4" aria-hidden="true" /> : <AnalysisIcon className="h-4 w-4" aria-hidden="true" />}
+          <span className="hidden sm:inline">{t(`analysis.door.${door.home}`)}</span>
+        </button>
+      ) : null}
       {onEditVerses ? (
         <button type="button" onClick={onEditVerses} aria-label={t('analysis.editVerses')} className="group/tip relative min-w-0 rounded-lg px-1 text-left hover:bg-gray-100 dark:hover:bg-gray-900">
           <span className="flex items-center gap-1.5 truncate text-base font-bold">{title}<PencilSquareIcon className="h-4 w-4 shrink-0 text-gray-400" aria-hidden="true" /></span>
@@ -59,26 +102,30 @@ export function AnalysisHeader({ title, parts, mode, onMode, canUndo, onUndo, on
         </div>
       )}
       {sermons}
-      <div className="mx-auto flex gap-1 rounded-xl bg-gray-100 p-1 dark:bg-gray-900" role="group" aria-label={t('analysis.modes')}>
-        {(['edit', 'view'] as const).map((value) => (
-          <button key={value} type="button" aria-pressed={mode === value} onClick={() => onMode(value)}
-            className={`h-9 rounded-lg px-4 text-sm font-semibold ${mode === value ? 'bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-white' : 'text-gray-600 dark:text-gray-300'}`}>
-            {t(value === 'edit' ? 'analysis.modeEdit' : 'analysis.modeView')}
-          </button>
-        ))}
-      </div>
-      {/* Reserve the all-links control's space in both modes to keep the centered mode switch still.
-          Visibility hides its pointer and keyboard targets where the action is unavailable.
-          BUG-20261031-analysis-mode-switch-jumps. */}
+      {onMode ? (
+        <div className="mx-auto flex gap-1 rounded-xl bg-gray-100 p-1 dark:bg-gray-900" role="group" aria-label={t('analysis.modes')}>
+          {(['edit', 'view'] as const).map((value) => (
+            <button key={value} type="button" aria-pressed={mode === value} onClick={() => onMode(value)}
+              className={`h-9 rounded-lg px-4 text-sm font-semibold ${mode === value ? 'bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-white' : 'text-gray-600 dark:text-gray-300'}`}>
+              {t(value === 'edit' ? 'analysis.modeEdit' : 'analysis.modeView')}
+            </button>
+          ))}
+        </div>
+      ) : <div className="mx-auto" />}
+      {/* «Все связи» holds its room in both modes and shows only where it acts, so a change of mode moves nothing in the bar
+          (BUG-20261031-analysis-mode-switch-jumps: the switch above, centred by its margins, jumped 65 px). Hidden by
+          visibility, it takes no press and no focus. */}
       <span data-testid="analysis-all-links" className={allLinks ? 'inline-flex' : 'invisible inline-flex'}>
         <Switch checked={allLinks?.on ?? false} onClick={allLinks?.onToggle} label={t('analysis.view.allLinks')} />
       </span>
       {tools}
-      <button type="button" disabled={!canUndo} onClick={onUndo} aria-keyshortcuts="Meta+Z Control+Z"
-        className={`group/tip relative inline-flex h-10 items-center gap-1.5 rounded-xl px-3 text-sm font-semibold disabled:opacity-40 ${OUTLINE}`}>
-        <ArrowUturnLeftIcon className="h-4 w-4" aria-hidden="true" />{t('analysis.undo')}
-        {mode === 'edit' ? <HoverLabel text={t('analysis.undoKeys', { keys: withModifier('Z') })} /> : null}
-      </button>
+      {onUndo ? (
+        <button type="button" disabled={!canUndo} onClick={onUndo} aria-keyshortcuts="Meta+Z Control+Z"
+          className={`group/tip relative inline-flex h-10 items-center gap-1.5 rounded-xl px-3 text-sm font-semibold disabled:opacity-40 ${OUTLINE}`}>
+          <ArrowUturnLeftIcon className="h-4 w-4" aria-hidden="true" />{t('analysis.undo')}
+          {mode === 'edit' ? <HoverLabel text={t('analysis.undoKeys', { keys: withModifier('Z') })} /> : null}
+        </button>
+      ) : null}
       <button type="button" onClick={onClose} className="h-10 rounded-xl bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700">{t('analysis.done')}</button>
     </header>
   );
@@ -141,11 +188,11 @@ function LevelMark({ level, onPress }: { level: CutLevel; onPress: () => void })
 }
 
 /** The grey mark over a line's first word: glues the line back to the one above, as a press on the word does. */
-function GlueMark({ onPress }: { onPress: () => void }) {
+function GlueMark({ onPress, shown }: { onPress: () => void; shown: boolean }) {
   const { t } = useTranslation();
   return (
     <button type="button" aria-label={t('analysis.markGlue')} onClick={(event) => { event.stopPropagation(); onPress(); }}
-      className="group/tip absolute -left-2 -top-3 z-10 hidden h-[18px] w-[18px] items-center justify-center rounded-[5px] bg-gray-500 text-white hover:bg-gray-700 group-hover:inline-flex">
+      className={`group/tip absolute -left-2 -top-3 z-10 h-[18px] w-[18px] items-center justify-center rounded-[5px] bg-gray-500 text-white hover:bg-gray-700 ${wordMarksShown(shown)}`}>
       <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" d={MARK_GLUE} /></svg>
       <HoverLabel text={t('analysis.markGlue')} />
     </button>
@@ -166,14 +213,20 @@ function StepButton({ side, onPress }: { side: 'up' | 'down'; onPress: (() => vo
   );
 }
 
+/** A line's arrows and dot: under the pointer, or on the line of the word touched where nothing hovers. */
+const LINE_ON_HOVER = 'invisible opacity-0 group-hover/line:visible group-hover/line:opacity-100';
+const LINE_SHOWN = 'visible opacity-100';
+/** A word's marks: under the pointer, or over the word touched where nothing hovers. */
+const wordMarksShown = (shown: boolean) => (shown ? 'inline-flex' : 'hidden group-hover:inline-flex');
+
 /**
  * The two arrows left of a line, shown only while the pointer is on it (the owner, 2026-10-29: «если я никуда не навел,
  * то оно будет выглядеть как при просмотре»): both stand, the one with nowhere to go pale. Hidden they are `invisible`,
  * not only see-through, so their names stay out of the line's text when the lines are copied.
  */
-function StepPair({ steps, left, top }: { steps: LineSteps; left: number; top: number }) {
+function StepPair({ steps, left, top, shown }: { steps: LineSteps; left: number; top: number; shown: boolean }) {
   return (
-    <span className="invisible absolute z-10 flex opacity-0 transition-opacity group-hover/line:visible group-hover/line:opacity-100" style={{ left, top }}>
+    <span className={`absolute z-10 flex transition-opacity ${shown ? LINE_SHOWN : LINE_ON_HOVER}`} style={{ left, top }}>
       <StepButton side="up" onPress={steps.up} />
       <StepButton side="down" onPress={steps.down} />
     </span>
@@ -242,14 +295,14 @@ export type LineDrag = Omit<WordDrag, 'down'> & { down: (start: number, event: P
  * word, it ties the line to that word; the words themselves are dragged for links of meaning — a line's first word too,
  * so two lines' first words can be linked («испытывайте» and «узнавайте», 30.10).
  */
-function LineHandle({ start, left, top, drag }: { start: number; left: number; top: number; drag: LineDrag }) {
+function LineHandle({ start, left, top, drag, shown }: { start: number; left: number; top: number; drag: LineDrag; shown: boolean }) {
   const { t } = useTranslation();
   // At rest the dot alone; under the pointer, and while held, a ring comes round it (the owner, 30.10: «без внешнего
   // круга, при hover появляется внешний круг»). The press is taken by a 16 px circle, wider than the dot.
   return (
     <span data-handle={start} role="button" aria-label={t('analysis.edit.handle')}
       onPointerDown={(event) => drag.down(start, event)} onPointerMove={drag.move} onPointerUp={drag.up} onPointerCancel={drag.cancel}
-      className="group/tip invisible absolute z-10 flex h-4 w-4 cursor-grab touch-none items-center justify-center rounded-full opacity-0 transition-opacity active:cursor-grabbing group-hover/line:visible group-hover/line:opacity-100"
+      className={`group/tip absolute z-10 flex h-4 w-4 cursor-grab touch-none items-center justify-center rounded-full transition-opacity active:cursor-grabbing ${shown ? LINE_SHOWN : LINE_ON_HOVER}`}
       style={{ left, top }}>
       <span aria-hidden="true" className="absolute inset-[1px] scale-50 rounded-full bg-indigo-500/10 opacity-0 shadow-[inset_0_0_0_1.5px_#818cf8] transition-[opacity,transform] duration-150 ease-out group-hover/tip:scale-100 group-hover/tip:opacity-100 group-active/tip:scale-100 group-active/tip:opacity-100 dark:bg-indigo-400/15" />
       <span aria-hidden="true" className="relative h-1.5 w-1.5 rounded-full bg-indigo-500 transition-colors group-hover/tip:bg-indigo-600 dark:bg-indigo-400 dark:group-hover/tip:bg-indigo-300" />
@@ -263,8 +316,13 @@ function LineHandle({ start, left, top, drag }: { start: number; left: number; t
  * «Просмотр» (the owner, 2026-10-29): no number — ↵ ↳ over a word cut (a press on the word itself does not), a word held and dragged links it by meaning, the
  * dot held and dragged ties the line.
  */
-export function AnalysisLine({ start, depth, spacing, role, words, steps, drag, handle, flags, painting, onWord, onCut, onGlue, onHoverWord }: {
+export function AnalysisLine({ start, depth, spacing, role, words, steps, drag, handle, flags, painting, pointed = null, onWord, onCut, onGlue, onHoverWord }: {
   start: number; depth: number; spacing?: AnalysisLineSpacing; role: LineRole; words: LineWord[]; steps: LineSteps | null; drag: WordDrag | null;
+  /**
+   * The word touched where no pointer hovers — a finger, the Pencil: its marks, and its line's arrows and dot, stand as
+   * under the mouse (BUG-20261104-analysis-edit-needs-hover).
+   */
+  pointed?: number | null;
   /** The dot that ties the line, in «Правка» with no tool in hand. */
   handle?: LineDrag | null;
   /** The flags of the links of meaning with a word of this line, after its last word. */
@@ -282,12 +340,13 @@ export function AnalysisLine({ start, depth, spacing, role, words, steps, drag, 
   const first = words[0]?.word;
   const lead = first?.startsVerse ? 6 + String(first.verse).length * 7 : 0;
   const edge = pad + 6 - lead;
+  const lineShown = pointed !== null && words.some((item) => item.index === pointed);
   return (
     <div data-line={start} className={`group/line relative transition-opacity ${role === 'dim' ? 'opacity-30' : ''}`} style={{ paddingLeft: pad, paddingBlock: ANALYSIS_LINE_PADDING, marginTop: spacing?.before ?? 0 }}>
-      {steps ? <StepPair steps={steps} left={edge - 66} top={10 + (spacing?.within ?? 0) / 2} /> : null}
-      {handle ? <LineHandle start={start} left={edge - 17} top={15 + (spacing?.within ?? 0) / 2} drag={handle} /> : null}
+      {steps ? <StepPair steps={steps} left={edge - 66} top={10 + (spacing?.within ?? 0) / 2} shown={lineShown} /> : null}
+      {handle ? <LineHandle start={start} left={edge - 17} top={15 + (spacing?.within ?? 0) / 2} shown={lineShown} drag={handle} /> : null}
       <span className={`rounded-lg px-1.5 py-0.5 font-serif text-[19px] [box-decoration-break:clone] ${drag || painting ? 'select-none' : ''} ${RING[role]}`} style={{ lineHeight: `${ANALYSIS_LINE_HEIGHT + (spacing?.within ?? 0)}px` }}>
-        {words.map((item) => <WordOfLine key={item.index} item={item} drag={drag} painting={painting} onWord={onWord} onCut={onCut} onGlue={onGlue} onHoverWord={onHoverWord} />)}
+        {words.map((item) => <WordOfLine key={item.index} item={item} drag={drag} painting={painting} pointed={item.index === pointed} onWord={onWord} onCut={onCut} onGlue={onGlue} onHoverWord={onHoverWord} />)}
         {flags}
       </span>
     </div>
@@ -295,11 +354,11 @@ export function AnalysisLine({ start, depth, spacing, role, words, steps, drag, 
 }
 
 /** What stands over a word while the pointer is on it: ↵ and ↳ over a word inside a line, «склеить» over its first word. */
-function WordMarks({ item, onCut, onGlue }: { item: LineWord; onCut: (index: number, level: CutLevel) => void; onGlue: (index: number) => void }) {
-  if (item.mark === 'glue') return <GlueMark onPress={() => onGlue(item.index)} />;
+function WordMarks({ item, shown, onCut, onGlue }: { item: LineWord; shown: boolean; onCut: (index: number, level: CutLevel) => void; onGlue: (index: number) => void }) {
+  if (item.mark === 'glue') return <GlueMark onPress={() => onGlue(item.index)} shown={shown} />;
   if (item.mark !== 'break') return null;
   return (
-    <span className="absolute -left-2.5 -top-[15px] z-10 hidden gap-[3px] group-hover:inline-flex">
+    <span className={`absolute -left-2.5 -top-[15px] z-10 gap-[3px] ${wordMarksShown(shown)}`}>
       <LevelMark level="same" onPress={() => onCut(item.index, 'same')} />
       <LevelMark level="under" onPress={() => onCut(item.index, 'under')} />
     </span>
@@ -320,8 +379,8 @@ function VerseNumber({ item }: { item: LineWord }) {
 
 const TARGET_LOOK = { yes: 'bg-indigo-100 ring-2 ring-indigo-500 dark:bg-indigo-900', no: 'bg-rose-100 dark:bg-rose-950' };
 
-function WordOfLine({ item, drag, painting, onWord, onCut, onGlue, onHoverWord }: {
-  item: LineWord; drag: WordDrag | null; painting?: boolean; onWord: (index: number) => void; onCut: (index: number, level: CutLevel) => void;
+function WordOfLine({ item, drag, painting, pointed, onWord, onCut, onGlue, onHoverWord }: {
+  item: LineWord; drag: WordDrag | null; painting?: boolean; pointed: boolean; onWord: (index: number) => void; onCut: (index: number, level: CutLevel) => void;
   onGlue: (index: number) => void;
   onHoverWord?: (index: number | null) => void;
 }) {
@@ -343,7 +402,7 @@ function WordOfLine({ item, drag, painting, onWord, onCut, onGlue, onHoverWord }
       <span data-word={item.index} onClick={() => onWord(item.index)} {...hover}
         onPointerDown={held ? (event) => held.down(item.index, event) : undefined} onPointerMove={held?.move} onPointerUp={held?.up} onPointerCancel={held?.cancel}
         className={`group relative rounded ${look}`}>
-        <WordMarks item={item} onCut={onCut} onGlue={onGlue} />
+        <WordMarks item={item} shown={pointed} onCut={onCut} onGlue={onGlue} />
         {/* The middle of the small letters (vertical-align: middle): where a tie's arrow leaves the line. */}
         {item.leads ? <span data-mid={item.index} aria-hidden="true" className="inline-block h-0 w-0 align-middle" /> : null}
         {item.word.text}

@@ -14,8 +14,9 @@ import { useState } from 'react';
 
 import HighlightedText from '@/components/HighlightedText';
 import { Chip } from '@/components/ui/Chip';
+import { useAppLocale } from '@/hooks/useAppLocale';
 import { PrayerRequest, PrayerStatus } from '@/models/models';
-import { formatDateForLocale } from '@/utils/dateFormatter';
+import { formatDay } from '@/utils/appLocale';
 import { getPrayerSearchTarget, getPrayerUpdateSearchSnippet } from '@/utils/prayerFilters';
 import { awaitWriteOperation, type WriteOperation } from '@/utils/recoverableWrite';
 import { useTranslation } from '@locales/useTranslation';
@@ -57,7 +58,8 @@ export default function PrayerRequestCard({
   onEdit,
   searchQuery = '',
 }: Props) {
-  const { t, language: interfaceLanguage } = useTranslation();
+  const { t } = useTranslation();
+  const { dateLocale } = useAppLocale();
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirming, setConfirming] = useState(false);
 
@@ -133,7 +135,7 @@ export default function PrayerRequestCard({
           <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-400 dark:text-gray-500">
             <span className="flex items-center gap-1">
               <ClockIcon className="h-3 w-3" />
-              {formatDateForLocale(prayer.updatedAt, interfaceLanguage)}
+              {formatDay(prayer.updatedAt, dateLocale)}
             </span>
             {prayer.updates.length > 0 && (
               <span>{t('prayer.updates_count', { count: prayer.updates.length })}</span>
@@ -141,7 +143,7 @@ export default function PrayerRequestCard({
             {prayer.answeredAt && (
               <span className="flex items-center gap-1 text-green-600 dark:text-green-400">
                 <CheckCircleIcon className="h-3 w-3" />
-                {formatDateForLocale(prayer.answeredAt, interfaceLanguage)}
+                {formatDay(prayer.answeredAt, dateLocale)}
               </span>
             )}
           </div>

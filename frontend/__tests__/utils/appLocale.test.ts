@@ -1,4 +1,6 @@
-import { APP_LANGUAGE_HEADER, browserInterfaceLanguage, detectTextLocale, requestLanguage, resolveAppLocale } from '@/utils/appLocale';
+import { enUS, ru, uk } from 'date-fns/locale';
+
+import { APP_LANGUAGE_HEADER, browserInterfaceLanguage, detectTextLocale, formatDay, formatDayTime, requestLanguage, resolveAppLocale } from '@/utils/appLocale';
 
 describe('resolveAppLocale', () => {
   it.each([
@@ -51,5 +53,34 @@ describe('the interface language carried to the server', () => {
     expect(requestLanguage({ headers: new Headers({ [APP_LANGUAGE_HEADER]: 'ru' }) })).toBe('ru');
     expect(requestLanguage({ headers: new Headers() })).toBeUndefined();
     expect(requestLanguage({})).toBeUndefined();
+  });
+});
+
+describe('a day as a person reads it', () => {
+  // BUG-20261102-dates-in-browser-language: a Russian interface on an English browser showed «7/26/2026» on Studies'
+  // cards — the browser's own date speaks the browser's language, not the interface's.
+  const day = new Date(2026, 6, 26, 15, 4);
+
+  it('says the day in the interface language, whatever the browser speaks', () => {
+    expect(formatDay(day, ru)).toBe('26 июл. 2026');
+    expect(formatDay(day, uk)).toBe('26 лип. 2026');
+    expect(formatDay(day, enUS)).toBe('26 Jul 2026');
+    expect(formatDay(day.toISOString(), ru)).toBe('26 июл. 2026');
+  });
+
+  it('reads a bare day as that day where the person is, not as UTC midnight', () => {
+    // West of Greenwich, «2026-07-26» read as an instant is the evening of the 25th: a series starting on the 26th
+    // showed the 25th in Seattle.
+    expect(formatDay('2026-07-26', enUS)).toBe('26 Jul 2026');
+  });
+
+  it('says the time on the language\'s own clock', () => {
+    expect(formatDayTime(day, ru)).toBe('26 июл. 2026, 15:04');
+    expect(formatDayTime(day, enUS)).toBe('26 Jul 2026, 3:04 PM');
+  });
+
+  it('says nothing for a date that is not one, instead of «Invalid Date»', () => {
+    expect(formatDay('', ru)).toBe('');
+    expect(formatDayTime('not a date', enUS)).toBe('');
   });
 });

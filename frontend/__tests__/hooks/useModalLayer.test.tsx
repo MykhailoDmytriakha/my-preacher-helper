@@ -221,9 +221,9 @@ describe('a modal layer keeps Tab inside', () => {
     expect(button('backdrop action')).toHaveFocus();
   });
 
-  it('starts focus inside an explicitly named ring rather than other overlay content', () => {
+  it('starts focus on an available dialog container in an explicitly named ring', () => {
     render(<TabWindow ring="panel" />);
-    expect(button('first')).toHaveFocus();
+    expect(screen.getByRole('dialog')).toHaveFocus();
   });
 
   it('adopts a ring that mounts later without resetting focus on ordinary rerenders', () => {

@@ -4,12 +4,12 @@ import {
     ChartBarIcon,
     MapPinIcon,
     UserGroupIcon,
-    CalendarIcon,
-    BookOpenIcon
+    CalendarIcon
 } from "@heroicons/react/24/outline";
 import { format } from "date-fns";
 import { useMemo, useState } from "react";
 
+import { BibleIcon } from "@/components/bible/BibleIcon";
 import BibleBookSermonsModal from "@/components/calendar/BibleBookSermonsModal";
 import { buildBookPreachEntries, buildMonthlyPreachEntries, computeAnalyticsStats, parseDateInfo } from "@/components/calendar/calendarAnalytics";
 import MonthlySermonsModal from "@/components/calendar/MonthlySermonsModal";
@@ -209,7 +209,7 @@ export default function AnalyticsSection({ sermonsByDate }: AnalyticsSectionProp
                 {/* Bible Books Distribution */}
                 <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm">
                     <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100 mb-6 flex items-center gap-2">
-                        <BookOpenIcon className="w-5 h-5 text-purple-500" />
+                        <BibleIcon className="w-5 h-5 text-purple-500" aria-hidden="true" />
                         {t('calendar.analytics.bibleBooks', { defaultValue: 'Bible Books Distribution' })}
                     </h3>
 

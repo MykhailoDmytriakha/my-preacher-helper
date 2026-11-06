@@ -55,21 +55,21 @@ function screenFor(kind: string) {
 }
 
 describe('Dates follow the interface language', () => {
-  it.each(['prayer', 'study', 'series', 'share link'])('%s updates all numeric dates when the app language changes', (kind) => {
+  it.each(['prayer', 'study', 'series', 'share link'])('%s updates all dates when the app language changes', (kind) => {
     mockLanguage = 'ru-RU';
     const view = render(screenFor(kind));
-    expect(view.container).toHaveTextContent('15.01.2026');
+    expect(view.container).toHaveTextContent('15 янв. 2026');
     expect(view.container).not.toHaveTextContent('1/15/2026');
 
     mockLanguage = 'en-US';
     view.rerender(screenFor(kind));
-    expect(view.container).toHaveTextContent('1/15/2026');
-    expect(view.container).not.toHaveTextContent('15.01.2026');
+    expect(view.container).toHaveTextContent('15 Jan 2026');
+    expect(view.container).not.toHaveTextContent('15 янв. 2026');
 
     mockLanguage = 'uk-UA';
     view.rerender(screenFor(kind));
-    expect(view.container).toHaveTextContent('15.01.2026');
-    expect(view.container).not.toHaveTextContent('1/15/2026');
+    expect(view.container).toHaveTextContent('15 січ. 2026');
+    expect(view.container).not.toHaveTextContent('15 Jan 2026');
   });
 
   it('formats a group meeting in the app language while preserving its calendar day', () => {

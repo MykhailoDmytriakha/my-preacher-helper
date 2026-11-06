@@ -5,7 +5,7 @@ import { useEffect, useInsertionEffect, useLayoutEffect, useRef } from 'react';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useScrollLock } from '@/hooks/useScrollLock';
 import { isAvailableFocusTarget } from '@/utils/focusableElements';
-import { hasExternalDialogFocus, isTopmostLayer, registerModalLayer, updateModalLayerFocusRing } from '@/utils/modalLayerRegistry';
+import { hasExternalDialogFocus, isTopmostLayer, registerModalLayer, updateModalLayerFocusRing, updateModalLayerHistory } from '@/utils/modalLayerRegistry';
 
 export { hasOpenLayer, isTopmostLayer } from '@/utils/modalLayerRegistry';
 
@@ -26,7 +26,7 @@ export { hasOpenLayer, isTopmostLayer } from '@/utils/modalLayerRegistry';
  * by window — a form with typing in it must not vanish that way — so the caller keeps it.
  */
 export interface ModalLayerOptions {
-  /** How this window closes. Escape and browser history call the same policy. */
+  /** How this window closes on Escape; Back uses this policy unless `onBack` is supplied. */
   onClose: () => void;
   /**
    * Nothing may close the window right now — a save is in flight, say. Escape stays silent,
@@ -41,6 +41,10 @@ export interface ModalLayerOptions {
   returnFocusTo?: React.RefObject<HTMLElement | null>;
   /** An explicit Tab ring inside the layer, when the overlay includes other reading content. */
   focusRing?: React.RefObject<HTMLElement | null>;
+  /** `current` guards an existing caller-owned visit; `false` leaves history entirely to that caller. */
+  browserHistory?: boolean | 'current';
+  /** A URL-bearing window may leave on Back while Escape first dismisses an inner tool. */
+  onBack?: () => void;
 }
 
 export interface ModalLayerProps<T extends HTMLElement = HTMLDivElement> {
@@ -55,12 +59,17 @@ export function useModalLayer<T extends HTMLElement = HTMLDivElement>({
   closeOnEscape = true,
   returnFocusTo,
   focusRing,
+  browserHistory = true,
+  onBack,
 }: ModalLayerOptions): ModalLayerProps<T> {
   const ref = useRef<T>(null);
   useScrollLock(active);
 
-  const close = useRef({ onClose, closeDisabled });
-  useLayoutEffect(() => { close.current = { onClose, closeDisabled }; });
+  const close = useRef({ onClose: onBack ?? onClose, closeDisabled });
+  useLayoutEffect(() => { close.current = { onClose: onBack ?? onClose, closeDisabled }; });
+  const requestBack = useRef(() => {
+    if (!close.current.closeDisabled) close.current.onClose();
+  }).current;
   const opener = useRef<HTMLElement | null>(null);
   const registration = useRef<{ element: HTMLElement; release: () => void } | null>(null);
   // Capture before React's layout-time autoFocus; reading in a passive effect loses the opener.
@@ -72,15 +81,18 @@ export function useModalLayer<T extends HTMLElement = HTMLDivElement>({
   // element keeps its registration, so typing/rerenders never reset focus or the return target.
   useLayoutEffect(() => {
     const element = active ? ref.current : null;
+    const historyClose = browserHistory ? requestBack : undefined;
+    const historyMode = browserHistory === 'current' ? 'current' : 'transient';
     if (registration.current?.element === element) {
-      if (element) updateModalLayerFocusRing(element, focusRing?.current ?? element);
+      if (element) {
+        updateModalLayerFocusRing(element, focusRing?.current ?? element);
+        updateModalLayerHistory(element, historyClose, historyMode);
+      }
       return;
     }
     registration.current?.release();
     registration.current = element
-      ? { element, release: registerModalLayer(element, returnFocusTo?.current ?? null, opener.current, focusRing?.current ?? element, () => {
-        if (!close.current.closeDisabled) close.current.onClose();
-      }) }
+      ? { element, release: registerModalLayer(element, returnFocusTo?.current ?? null, opener.current, focusRing?.current ?? element, historyClose, false, historyMode) }
       : null;
   });
   useLayoutEffect(() => () => {

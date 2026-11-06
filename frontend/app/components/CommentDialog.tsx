@@ -143,7 +143,7 @@ function useWaitingDraft(
   return differs ? offered : null;
 }
 
-export function CommentDialog({ target, place, context, bible, placeOf, placePicker, restorePlace, onErased, onClose, returnFocusTo, openingPlace, away, onChooseVerses, versesChoosable, placeRefusal }: {
+export function CommentDialog({ target, place, context, bible, placeOf, placePicker, restorePlace, onErased, onClose, returnFocusTo, openingPlace, away, onChooseVerses, versesRefusal, placeRefusal }: {
   target: CommentTarget;
   /** "Ис 40:31", "Ис 40–41": the place the comment is written to; empty while a new one's place is not chosen. */
   place: string;
@@ -173,8 +173,8 @@ export function CommentDialog({ target, place, context, bible, placeOf, placePic
    * chosen — the move waits for «Готово», as a move from the list does.
    */
   onChooseVerses?: (here: ScriptureReference, moveTo: (reference: ScriptureReference) => void) => void;
-  /** With `onChooseVerses`: whether its verses can be chosen in the text there (the book read, one run of verses). */
-  versesChoosable?: (here: ScriptureReference) => boolean;
+  /** With `onChooseVerses`: why its verses cannot be chosen in the text there (another book, not one run of verses); null — they can. */
+  versesRefusal?: (here: ScriptureReference) => string | null;
   /**
    * Why a place chosen in this window cannot be saved — a paragraph that would cross another (phase 9); null where it may.
    * Asked on «Готово» of a new comment's place and of a written one's new place: the list of places and a paragraph
@@ -375,8 +375,9 @@ export function CommentDialog({ target, place, context, bible, placeOf, placePic
         </div>
       ) : null}
       description={t('comment.description')}
-      onClose={requestClose}
+      onClose={closeDiscarding}
       returnFocusTo={returnFocusTo}
+      unsaved={unsaved}
       closeDisabled={saving}
       onSubmit={save}
       footer={(
@@ -417,7 +418,7 @@ export function CommentDialog({ target, place, context, bible, placeOf, placePic
             onDiscard={() => { draft.discardRecovered(); answerDraftQuestion(); }}
           />
         ) : null}
-        <CommentPlaceShown where={where} place={place} busy={saving} deciding={deciding} onChooseVerses={onChooseVerses} versesChoosable={versesChoosable} />
+        <CommentPlaceShown where={where} place={place} busy={saving} deciding={deciding} onChooseVerses={onChooseVerses} versesRefusal={versesRefusal} />
         {/* Still while a save is accepted — words typed then would be closed away with the window — and while words from last time wait for an answer. */}
         {text === null ? null : <RichMarkdownEditor value={text} onChange={setText} placeholder={t('comment.placeholder')} minHeight="11rem" autoFocus editable={!saving && !deciding} />}
         <CommentWayBar text={written} />

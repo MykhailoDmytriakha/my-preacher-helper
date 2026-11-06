@@ -39,6 +39,12 @@ export function hasDifferentAnalysisPositionBasis(...values: (DocumentData | nul
   return bases.some(basis => basis === null || !equalValues(basis, bases[0]));
 }
 
+/** Only complete analysis documents can prove a shared origin for positional maps. */
+export function hasMatchingAnalysisPositionBasis(base: DocumentData, mine: DocumentData, theirs: DocumentData): boolean {
+  return [base, mine, theirs].every(value => value.type === 'analysis')
+    && !hasDifferentAnalysisPositionBasis(base, mine, theirs);
+}
+
 /** Ordinary saves may merge same-passage maps; across passages the authored frame stays whole. */
 export function keepAnalysisPositionFrame(base: DocumentData | null, mine: DocumentData | null, theirs: DocumentData | null,
   merged: { value: FieldValue; conflicts: ConflictDetail[] }): void {

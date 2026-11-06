@@ -5634,3 +5634,93 @@ return to B without reload, append, fresh offline read, reconnect and confirm th
 through the accepted server copy; reload once more and verify it remains. Check an independent
 private form draft stays held. Remove only that fixture, close the QA tabs, and distinguish the
 owner's physical-device acceptance from browser resizing. Never run background production polling.
+
+## Unit280 — main intake and pending analysis Back/Stay (2026-11-05)
+
+**Local readiness only.** Integrates main `754817f974d18b531786fb06deb4b3a84556c388`
+with local `a495dfcb6fbec1239321215ffaf4594c805801a7`, without rebasing either history.
+The composition retains local durable captures, offline continuation, atomic analysis
+reshape/recovery and source-Bible identity while adopting main's canonical cross-chapter
+references, analysis visit addresses, modal focus/history and interface-language dates.
+Footer forms retain their existing opt-in backdrop dismissal; the shared modal registry
+owns Back and focus. The unused duplicate Back hook is removed.
+
+**BUG-20261105-analysis-back-forgets-unkept-visit.** A new analysis could remain open
+after Back → Stay while its analysis address had already disappeared. The shared modal
+history now supports the caller's existing visit without adding a second synthetic visit.
+It restores that visit before asking the editor to leave, for the whole new-analysis
+lifetime, including a capture receipt arriving during the question. Choosing Stay keeps
+the address and mark; another Back asks again; confirmed Leave returns once to the same
+Bible location. Existing saved-analysis Back/Forward and explicit departure guards remain.
+
+**Red/green.** The address regression has one causal failure with 29 passing controls on
+the composed broken candidate. The repaired address suite has 34 passing cases, including
+refused capture, repeated Back, receipt arrival and explicit Leave. Fresh focused source
+acceptance reran 35 cases across the caller-history and analysis-address suites. Native
+BEFORE runs R2/R3 reproduce the lost address with a real pending IndexedDB first capture;
+they are causal observations only and remain `qaComplete:false`, with their original
+unpaired diagnostic preserved. Their broken build `dAgxoxOgsrAcqgFpJCR4z` is archived.
+
+**Final source gates.** Full fast tests: 12,916 passed across 1,135 passing suites; 17
+pre-existing skipped tests. TypeScript and lint pass (0 lint errors, 60 inherited warnings).
+The official `npm run build` repeats the full test gate and passes. Build:
+`Us0MaVCR2QuyKc25AYIf_`; 2,747 source files, 915 compiled files and one service worker
+are pinned. Frozen source/build archive `main-intake-280-after-source-and-build-v1.zip`
+has 3,664 verified members and SHA256
+`2784b640e7559e8aa7a84ff4f71545d2ed19338cb6f7bdf66bea8af9955dc116`.
+This is local source/build evidence, not a deployed version.
+
+**Actual browser and personal visual acceptance.** Installed Google Chrome runs against
+owned local Auth/Firestore emulators and the pinned production build. R7 confirms pending
+first capture → Back → Stay, retained mark/address, repeated Back and one confirmed Leave
+to the identical reader URL, entry and history position. Its native process exits 0 with
+`pass:true`, `qaComplete:true`; the local Listen cancellation is paired with its actual
+fetch abort. Root inspected the wide/tablet/phone and returned-reader frames.
+
+The ordinary-text continuation case is repeated on the merged build: offline A → foreground
+B without reload → immutable A/B continuation → fresh offline C → exact server ACKs at
+revisions 2 and 3 and five stable canonical reads. All 13 behavior checks pass. Its raw
+native process and original supervisor remain exit 1; the strict diagnostic classifier
+and historical export schema prevented their aggregate acceptance. The separate v4
+qualifier exits 0, verifies exact request/fetch diagnostic pairs and all pinned evidence,
+and rejects eight injected negative controls. It does not rewrite either raw exit. Fresh
+acceptance separately reran that qualifier and the source verifier and inspected the
+screenshots. Retained/manual and compound-source continuation still belongs to open279.4.
+
+BroadR5 native and supervisor both exit 0 with all five cases passing: Studies saved-analysis
+Back/Forward and list scroll; comment reference → verse preview → Open in the Bible with
+its exact cross-chapter/source address; unsaved comment text after Keep; Russian creation
+date on an expanded Studies card; and a footer form retaining its draft after backdrop
+click. Forbidden traffic, failed requests, page/console errors and unexpected browser
+command writes are all zero. Root inspected all six actual frames, including the analysis
+at 1280×1000, 820×1180 and 390×844. The existing phone analysis-header-height P3 stays open;
+rendered resizing does not claim physical-device acceptance.
+
+BroadR1–R4 remain excluded receipts: alias loading, an overly narrow local-read policy,
+an omitted preview-to-Bible click, and a date check aimed at the collapsed card. The last
+also exposed QA init scripts accessing storage on an opaque document; the successful
+helper limits initialization to the exact local app origin. None justified a product
+change. All synthetic fixtures were created/deleted through canonical commands and their
+exact tombstones confirmed. All owned Chrome profiles and service processes are stopped,
+all nine stand ports are free and original emulator imports are hash-unchanged. The broad
+server's macOS `top` sample was 391M. No production quota was used.
+
+**Evidence and independent acceptance.** Local case artifacts use `main-intake-280-*`;
+source/build verifier, source reviews, R7 fresh qualification and BroadR5 fresh acceptance
+are retained beside immutable raw receipts. Case artifacts are ignored by Git; this registry,
+source tests and the bug ID in the merge commit are the durable repository trail. The
+owner explicitly approved Codex-subagent review; it is a separate-context review, not a
+different-provider review. The incoming radio report also keeps the intermittent modal
+history test and other returned fixes open for separate investigation after this intake.
+
+**Production plan, not executed.** After a separately authorized merge/push/deploy, confirm
+the deployed commit and refreshed worker first. With one disposable note/analysis and at
+most two tabs, check Studies → saved analysis → Back/Forward/list position; a cross-chapter
+comment reference through its preview into the Bible; edited comment → Escape → Keep;
+and a footer create form → backdrop retaining the draft. In a Russian interface on an
+English browser, expand the note and verify its saved creation date is Russian. A controllable
+local-capture interruption is proved on the emulator; do not substitute an ordinary online
+Back for that boundary on production. Repeat the ordinary offline Group-note continuation
+recipe from Unit279 with exact final server text, then remove only the fixture and close
+all QA tabs. No background production polling, physical Pencil/iPad or owner acceptance is
+claimed here.

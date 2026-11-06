@@ -1,7 +1,7 @@
 'use client';
 
 import { ChevronDownIcon } from '@heroicons/react/20/solid';
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type MouseEvent, type PointerEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type MouseEvent, type PointerEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 
@@ -17,15 +17,16 @@ import { passageCopyText } from '@/utils/verseCopy';
 
 import { useCopyNames } from '../verseCopy/useVerseCopy';
 
-import { writeAnalysisAddress, writeAnalysisSourceAddress } from './analysisAddress';
+import { writeAnalysisSourceAddress } from './analysisAddress';
 import { AnalysisCreationNotice } from './AnalysisCreationNotice';
 import { analysisLineSpacing, arrowNear, dragArrow, fromLine, tieArrows, useGeometry, type Arrow } from './analysisGeometry';
 import { saveAnalysisHelpPrefs, useAnalysisHelpPrefs, useAnalysisHelpWritable } from './analysisHelpPrefs';
 import {
-  ARROW, AnalysisHeader, AnalysisLine, PanelGlyph, UntieMark, type AnalysisMode, type LineDrag, type LineRole, type LineSteps, type LineWord, type WordDrag,
+  ARROW, AnalysisHeader, AnalysisLine, OtherBibleNotice, PanelGlyph, UntieMark, type AnalysisDoor, type AnalysisMode, type LineDrag, type LineRole, type LineSteps, type LineWord, type WordDrag,
 } from './AnalysisParts';
 import { AnalysisSermons, AnalysisSermonsPanel } from './AnalysisSermons';
 import { RelationGlyph } from './RelationParts';
+import { useAnalysisAddress } from './useAnalysisAddress';
 import { useAnalysisDeparture } from './useAnalysisDeparture';
 import { useAnalysisMarks, type AnalysisMarks } from './useAnalysisMarks';
 import { useAnalysisNote, type AnalysisOpening } from './useAnalysisNote';
@@ -49,6 +50,18 @@ type Message = { text: string; warn: boolean } | null;
 /** The mode it opens in: «Просмотр» when reopened there from the address, cuts or not (Codex, 30.10); else «Правка». */
 const firstMode = (opening: AnalysisOpening): AnalysisMode => (opening.kind === 'open' && opening.editing === false ? 'view' : 'edit');
 
+/** The door in the bar: the other home's address asked at the press, for the note held then, its work kept first. */
+function barDoor(door: AnalysisDoor | undefined, onOpenScreen: ((href: string) => void) | undefined, note: { noteId: () => string | null; flush: () => void }) {
+  if (!door || !onOpenScreen) return null;
+  const onPress = () => {
+    const href = door.href(note.noteId());
+    if (!href) return;
+    note.flush();
+    onOpenScreen(href);
+  };
+  return { home: door.home, onPress };
+}
+
 /** How each part stands in «Просмотр»: the chosen one, the way up from it, what hangs on it; in «Правка» all as they are. */
 function roleOf(state: AnalysisState, mode: AnalysisMode, selected: number | null, start: number): LineRole {
   if (mode === 'edit' || selected === null) return 'plain';
@@ -67,12 +80,20 @@ function roleOf(state: AnalysisState, mode: AnalysisMode, selected: number | nul
  * In both the reader's marker, pencil and eraser paint the words (`useAnalysisMarks`). An analysis that exists opens for
  * viewing, a new one for editing. The rules are `utils/passageAnalysis.ts`; the note behind it is `useAnalysisNote`.
  */
-export function AnalysisEditor({ opening, text, bookId, bible, locale, marks: lentMarks, onClose, onEditVerses, onOpenScreen }: {
+export function AnalysisEditor({ opening, text, bookId, bible, locale, marks: lentMarks, marksStatus, onClose, backLabel, door, onEditVerses, onOpenScreen, onUseBible }: {
   opening: AnalysisOpening; text: BookText; bookId: string; bible: BibleId; locale: AppLocale; onClose: () => void;
+  /** The way back's words when it leads elsewhere than the reader's text (Studies' list). */
+  backLabel?: string;
+  /** The door to the analysis's other home, taken by `onOpenScreen`, its work kept first. */
+  door?: AnalysisDoor;
   /** Another screen of the app opened from here (a sermon made from this analysis), the reader's way. */
   onOpenScreen?: (href: string) => void;
   /** The reader's marks of this book, or nothing (signed out, or not read yet). */
   marks?: AnalysisMarks | null;
+  /** The book's marks' notice when no reader stands beside the analysis to show it (Studies) — also while marks cannot open. */
+  marksStatus?: ReactNode;
+  /** Opened over a Bible it was not made in: the screen's way to its own Bible (the reader's translation). */
+  onUseBible?: (bible: BibleId) => void;
   /** Its verses chosen again in the reader: the note it is kept in (none yet for an untouched new one) and its passage. */
   onEditVerses?: (id: string | null, passage: PickedPassage) => void;
 }) {
@@ -85,6 +106,8 @@ export function AnalysisEditor({ opening, text, bookId, bible, locale, marks: le
   const [overArrow, setOverArrow] = useState<number | null>(null);
   const leaveArrow = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [drag, setDrag] = useState<Drag | null>(null);
+  /** The word touched by a finger or the Pencil: its marks and its line's arrows stand, as under the mouse. */
+  const [pointed, setPointed] = useState<number | null>(null);
   const [message, setMessage] = useState<Message>(null);
   const justDragged = useRef(false);
   const { contentRef, geometry, at } = useGeometry();
@@ -101,18 +124,18 @@ export function AnalysisEditor({ opening, text, bookId, bible, locale, marks: le
   const relations = useAnalysisRelations({ state, total, geometry, at, bare, editing: mode === 'edit', showAll: mode === 'view' && allLinks, change, say: setMessage });
   const marks = useAnalysisMarks({ source: lentMarks ?? null, words });
 
+  const leaveAddress = useRef<() => void>(() => undefined);
   const departureSubject = useMemo(() => ({ owner: note.owner, opening, text, bookId, bible }), [note.owner, opening, text, bookId, bible]);
   const { requestDeparture, departureDialog } = useAnalysisDeparture({ unkept: note.capturing || note.refused, subject: departureSubject });
-  const leave = useCallback((finish: () => void) => {
-    void requestDeparture(() => { note.flush(); writeAnalysisAddress(null); finish(); });
-  }, [note, requestDeparture]);
-  const close = useCallback(() => leave(onClose), [leave, onClose]);
+
   const sourceBible = note.source?.bible;
   const sourceMode = opening.kind === 'open' && opening.editing !== undefined ? firstMode(opening) : note.hasSavedParts ? 'view' : mode;
-  useEffect(() => {
-    if (note.sourceMatches || !note.id || !sourceBible || !note.sourceReference) return;
-    writeAnalysisSourceAddress({ id: note.id, mode: sourceMode }, note.sourceReference, sourceBible, locale);
-  }, [locale, note.id, note.sourceMatches, note.sourceReference, sourceBible, sourceMode]);
+
+  const leave = useCallback((finish: () => void) => {
+    void requestDeparture(() => { note.flush(); leaveAddress.current(); finish(); });
+  }, [note, requestDeparture]);
+  const close = useCallback(() => leave(onClose), [leave, onClose]);
+
   // Escape lets go of one thing at a time: a link's menu, a drag, the lit part — then the screen. The tool in hand is
   // put away by its own bar (`MarkToolbar`), which spends that press.
   const { letGo } = relations;
@@ -122,10 +145,17 @@ export function AnalysisEditor({ opening, text, bookId, bible, locale, marks: le
     if (selected === null) { close(); return; }
     setSelected(null); setMessage(null);
   }, [close, drag, letGo, selected]);
-  const layer = useModalLayer({ onClose: escape });
+  // Keep this visit's Back owner stable while its first local capture settles.
+  const layer = useModalLayer({ onClose: escape, onBack: close, browserHistory: opening.kind === 'new' ? 'current' : false });
   const undo = () => { note.undo(); setMessage(null); };
   useUndoShortcut(mode === 'edit', undo, contentRef);
-  useAnalysisAddress(note.sourceMatches ? note.id : null, mode, note.missing, close);
+  const { handOn, leave: leaveVisit } = useAnalysisAddress({ opening, id: note.id, mode, gone: note.missing, onGone: onClose, onBack: close });
+  leaveAddress.current = leaveVisit;
+  useEffect(() => {
+    if (note.sourceMatches || !note.id || !sourceBible || !note.sourceReference) return;
+    handOn();
+    writeAnalysisSourceAddress({ id: note.id, mode: sourceMode }, note.sourceReference, sourceBible, locale);
+  }, [handOn, locale, note.id, note.sourceMatches, note.sourceReference, sourceBible, sourceMode]);
 
   // A mark over a word: ↵ — a new line on the same step as the line it is cut from, ↳ — one step under it.
   const cutWord = (word: number, level: CutLevel) => { const next = cutAt(state, word, total, level); if (next) change(next); };
@@ -163,7 +193,11 @@ export function AnalysisEditor({ opening, text, bookId, bible, locale, marks: le
     setDrag({ kind, from, startX: event.clientX, startY: event.clientY, moved: false, x: 0, y: 0, target: null, blocked: kind === 'tie' && needsArrow(state, from) });
   };
   const wordDrag: WordDrag = {
-    down: (word, event) => startDrag('relate', word, event),
+    down: (word, event) => {
+      // Where nothing hovers, a word touched is the word pointed at; a press on one of its marks keeps it so.
+      if (!(event.target as HTMLElement).closest('button')) setPointed(event.pointerType === 'touch' || event.pointerType === 'pen' ? word : null);
+      startDrag('relate', word, event);
+    },
     move: (event) => {
       if (!drag) return;
       if (!drag.moved && Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < 6) return;
@@ -262,12 +296,25 @@ export function AnalysisEditor({ opening, text, bookId, bible, locale, marks: le
     noteId: analysisId, place, verse: note.passage ? passageCopyText(text.chapters, note.passage, copyNames) : '',
     onOpen: (href: string) => { note.flush(); onOpenScreen(href); },
   } : null;
+  const doorOut = barDoor(door, onOpenScreen, note);
+
+  // Opened over a Bible it was not made in: its parts are laid nowhere, nothing here changes it, and its own Bible is offered
+  // (BUG-20261030-analysis-other-bible-overwrite) — the window, its way back and its door stay.
+  if (note.otherBible) {
+    return createPortal(
+      <div {...layer} role="dialog" aria-modal="true" aria-label={title} className="fixed inset-0 z-[120] flex flex-col bg-white text-gray-900 dark:bg-gray-950 dark:text-gray-100">
+        <AnalysisHeader title={title} parts="" mode={mode} onClose={close} backLabel={backLabel} door={doorOut} />
+        <div className="min-w-0 flex-1 overflow-auto px-4 pb-24 pt-10 sm:pl-20 sm:pr-12"><OtherBibleNotice bible={note.otherBible} onUseBible={onUseBible ? (own) => { handOn(); onUseBible(own); } : undefined} /></div>
+      </div>,
+      document.body,
+    );
+  }
 
   return createPortal(
     <div {...layer} role="dialog" aria-modal="true" aria-label={title} className="fixed inset-0 z-[120] flex flex-col bg-white text-gray-900 dark:bg-gray-950 dark:text-gray-100">
       <AnalysisHeader title={title} parts={t('analysis.partCount', { count: starts.length })} mode={mode}
         onMode={(value) => { setMode(value); setSelected(null); setMessage(null); }}
-        canUndo={note.canUndo} onUndo={undo} onClose={close} tools={marks.toolbar}
+        canUndo={note.canUndo} onUndo={undo} onClose={close} backLabel={backLabel} door={doorOut} tools={marks.toolbar}
         allLinks={mode === 'view' && state.relations.length ? { on: allLinks, onToggle: () => setAllLinks(!allLinks) } : null}
         onEditVerses={onEditVerses && note.passage ? () => {
           const passage = note.passage;
@@ -281,7 +328,8 @@ export function AnalysisEditor({ opening, text, bookId, bible, locale, marks: le
             its dot and a verse number hung in the margin, at every screen width. */}
         <div className={`min-w-0 flex-1 overflow-auto pl-20 pr-4 pb-24 pt-10 sm:pr-12 ${marks.paneClass}`}
           onClick={pressBackground} onMouseMove={pointArrows} onMouseLeave={overArrowOff} {...marks.strokeEvents}>
-          <AnalysisNotices creation={note} ready={note.ready} changedText={note.changedText} sync={note.sync} refused={note.refused} onSaveAgain={note.saveAgain} />
+          <AnalysisNotices creation={note} ready={note.ready} changedText={note.changedText} sync={note.sync} refused={note.refused} onSaveAgain={note.saveAgain} notApplied={note.notApplied} />
+          {marksStatus}
           <div ref={contentRef} className="relative flow-root">
             {arrows.map((arrow) => (
               <svg key={arrow.key} data-arrow={arrow.key} aria-hidden="true" width={geometry.width || 1} height={geometry.height || 1} className="pointer-events-none absolute left-0 top-0 overflow-visible">
@@ -299,7 +347,7 @@ export function AnalysisEditor({ opening, text, bookId, bible, locale, marks: le
             {starts.map((start) => (
               <AnalysisLine key={start} start={start} spacing={spacing[start]} depth={depthOf(state, start)} role={roleOf(state, mode, selected, start)}
                 words={wordsOf(start)} steps={stepsOf(start)} drag={mode === 'edit' ? wordDrag : null} handle={mode === 'edit' && !marks.painting ? lineDrag : null}
-                flags={relations.flagsOf(start)} painting={marks.painting}
+                flags={relations.flagsOf(start)} painting={marks.painting} pointed={mode === 'edit' && !marks.painting ? pointed : null}
                 onWord={pressWord} onCut={cutWord} onGlue={glueLine} onHoverWord={relations.pointWord} />
             ))}
             {untieAt?.mid ? <UntieMark x={untieAt.mid.x} y={untieAt.mid.y} onPress={() => untie(untieAt.start!)} onEnter={() => overArrowOn(untieAt.start!)} onLeave={overArrowOff} /> : null}
@@ -319,25 +367,13 @@ export function AnalysisEditor({ opening, text, bookId, bible, locale, marks: le
 }
 
 /**
- * The open analysis in the page's address while its note exists, in its mode, gone from it when the screen closes
- * (`analysisAddress.ts`). An analysis on no copy this device can reach (`gone`) closes the screen; one deleted elsewhere
- * with work still here stays, and the note's status asks what to keep.
- */
-function useAnalysisAddress(id: string | null, mode: AnalysisMode, gone: boolean, onClose: () => void) {
-  useEffect(() => { if (id) writeAnalysisAddress({ id, mode }); }, [id, mode]);
-  // A keyed reader remount follows a source arrival; its target must keep the analysis address.
-  // Explicit close and verse picking remove it instead.
-  useEffect(() => { if (gone) onClose(); }, [gone, onClose]);
-}
-
-/**
  * What stands over the text when something is off: the analyses still being read, a changed text, and what the note's
  * form needs from the person — a refusal or a version from elsewhere, with the engine's own choices (keep mine, take the
  * server's, try again). The app-wide notice stands behind this screen, so it is said here.
  */
-function AnalysisNotices({ ready, changedText, sync, refused, onSaveAgain, creation }: {
+function AnalysisNotices({ ready, changedText, sync, refused, onSaveAgain, creation, notApplied }: {
   creation: ReturnType<typeof useAnalysisNote>;
-  ready: boolean; changedText: boolean; sync: ReturnType<typeof useAnalysisNote>['sync']; refused: boolean; onSaveAgain: () => void;
+  ready: boolean; changedText: boolean; sync: ReturnType<typeof useAnalysisNote>['sync']; refused: boolean; onSaveAgain: () => void; notApplied: boolean;
 }) {
   const { t } = useTranslation();
   const health = useSyncExternalStore(subscribeDeviceStorage, getDeviceStorageHealth, getDeviceStorageHealth);
@@ -360,6 +396,7 @@ function AnalysisNotices({ ready, changedText, sync, refused, onSaveAgain, creat
       ) : null}
       {ready || decision || refused || creation.capturing ? null : <p role="status" className="mb-4 rounded-xl bg-gray-50 px-3 py-2 text-sm text-gray-600 dark:bg-gray-900 dark:text-gray-300">{t('analysis.loading')}</p>}
       {changedText ? <p className="mb-4 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-950/40 dark:text-amber-200">{t('analysis.changedText')}</p> : null}
+      {notApplied ? <p role="status" className="mb-4 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-950/40 dark:text-amber-200">{t('analysis.notApplied')}</p> : null}
       {sync && !creation.duplicateRefusal ? (
         <DataSyncStatus subject={sync.recoveryIdentity} status={sync.status} error={sync.state ? null : sync.error} className="mb-4"
           onRetry={() => sync.retry()} onKeepLocal={() => sync.keepLocal()} onAcceptRemote={() => sync.acceptRemote()} />

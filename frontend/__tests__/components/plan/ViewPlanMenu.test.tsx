@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import React from 'react';
 
 import ViewPlanMenu from '@/components/plan/ViewPlanMenu';
@@ -95,6 +96,7 @@ describe('ViewPlanMenu', () => {
   });
 
   it('holds the background, keeps Tab inside, and restores focus when dismissed', async () => {
+    const user = userEvent.setup();
     renderMenu();
     const trigger = screen.getByRole('button', { name: /view plan/i });
     fireEvent.click(trigger);
@@ -102,9 +104,11 @@ describe('ViewPlanMenu', () => {
     const dialog = await screen.findByRole('dialog', { name: 'Plan - Main' });
     const close = screen.getByTitle('Close');
     expect(document.documentElement.style.overflow).toBe('hidden');
-    expect(close).toHaveFocus();
+    expect(dialog).toHaveFocus();
 
-    fireEvent.keyDown(close, { key: 'Tab' });
+    await user.tab();
+    expect(close).toHaveFocus();
+    await user.tab();
     expect(close).toHaveFocus();
     fireEvent.click(dialog);
     expect(dialog).toBeInTheDocument();

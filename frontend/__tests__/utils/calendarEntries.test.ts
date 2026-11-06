@@ -195,8 +195,10 @@ describe('everything the calendar shows, in one shape', () => {
   });
 
   describe('a study note', () => {
-    it('gives a passage\'s analysis no card: it lives in the Bible, not among the studies a card opens', () => {
-      expect(noteEntries([note({ id: 'a1', type: 'analysis' })], WORDS)).toEqual([]);
+    it('gives a passage\'s analysis its card too: it stands in Studies, and its page opens it there', () => {
+      // The owner, 02.11: analyses have their tab in Studies; their page leads to their screen (`studies/[id]/page.tsx`).
+      const [entry] = noteEntries([note({ id: 'a1', type: 'analysis' })], WORDS);
+      expect(entry).toMatchObject({ kind: 'note', refId: 'a1', href: '/studies/a1' });
     });
 
     it('stands on the day it was written, named by its title, with its Scripture underneath', () => {

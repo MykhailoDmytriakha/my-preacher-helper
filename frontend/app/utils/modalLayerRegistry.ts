@@ -1,9 +1,9 @@
 import { focusInside, isAvailableFocusTarget } from './focusableElements';
-import { syncModalHistory } from './modalHistory.client';
+import { syncModalHistory, type ModalHistoryMode } from './modalHistory.client';
 
 export type ModalCloseRequest = () => void;
 
-type Layer = { requestClose?: ModalCloseRequest; external: boolean; element: HTMLElement; focusRoot: HTMLElement; surfacesBeneath: ReadonlySet<Element>; returnTargets: HTMLElement[]; zIndex: number };
+type Layer = { historyMode: ModalHistoryMode; requestClose?: ModalCloseRequest; external: boolean; element: HTMLElement; focusRoot: HTMLElement; surfacesBeneath: ReadonlySet<Element>; returnTargets: HTMLElement[]; zIndex: number };
 const layers: Layer[] = [];
 
 /** The top layer alone owns Escape and keyboard focus. */
@@ -44,8 +44,8 @@ export function hasExternalDialogFocus(container: HTMLElement, beneath?: Readonl
     !surface.closest('[data-modal-layer]') && (!beneath || !beneath.has(surface) || surface.getAttribute('aria-modal') === 'true'));
 }
 
-export function registerModalLayer(element: HTMLElement, opener: HTMLElement | null, fallback: HTMLElement | null, focusRoot: HTMLElement = element, requestClose?: ModalCloseRequest, external = false): () => void {
-  const entry = { element, focusRoot, requestClose, external, surfacesBeneath: new Set(document.querySelectorAll(EXTERNAL_FOCUS_SURFACES)), zIndex: Number(getComputedStyle(element).zIndex) || 0, returnTargets: [...new Set([opener, fallback].filter((node): node is HTMLElement => node !== null))] };
+export function registerModalLayer(element: HTMLElement, opener: HTMLElement | null, fallback: HTMLElement | null, focusRoot: HTMLElement = element, requestClose?: ModalCloseRequest, external = false, historyMode: ModalHistoryMode = 'transient'): () => void {
+  const entry = { element, focusRoot, requestClose, historyMode, external, surfacesBeneath: new Set(document.querySelectorAll(EXTERNAL_FOCUS_SURFACES)), zIndex: Number(getComputedStyle(element).zIndex) || 0, returnTargets: [...new Set([opener, fallback].filter((node): node is HTMLElement => node !== null))] };
   layers.push(entry);
   // Child layout effects run first for portals mounted together. Keyboard ownership follows
   // visual layers; equal layers keep opening order. Lower registration cannot take focus back.
@@ -68,7 +68,7 @@ export function registerModalLayer(element: HTMLElement, opener: HTMLElement | n
     if (target) {
       target.focus({ preventScroll: true });
     } else if (parent && !parent.contains(document.activeElement)) {
-      focusInside(parent);
+      focusLayerTarget(parent);
     }
   };
 }
@@ -78,7 +78,28 @@ function focusTopLayer(): void {
   const top = layers.at(-1);
   if (!top || top.external || !isAvailableFocusTarget(top.focusRoot)) return;
   if (!top.focusRoot.contains(document.activeElement) ||
-    (document.activeElement instanceof HTMLElement && !isAvailableFocusTarget(document.activeElement))) focusInside(top.focusRoot);
+    (document.activeElement instanceof HTMLElement && !isAvailableFocusTarget(document.activeElement))) focusLayerTarget(top.focusRoot);
+}
+
+/** Focus the dialog as a programmatic target, leaving autofocus and existing in-window focus alone. */
+function focusLayerTarget(root: HTMLElement): void {
+  const candidate = root.matches('[role="dialog"], [role="alertdialog"]')
+    ? root : root.querySelector<HTMLElement>('[role="dialog"], [role="alertdialog"]');
+  if (!candidate || !isAvailableFocusTarget(candidate)) {
+    focusInside(root);
+    return;
+  }
+  if (!candidate.hasAttribute('tabindex')) candidate.setAttribute('tabindex', '-1');
+  candidate.focus({ preventScroll: true });
+}
+
+/** Update a live visit's Back policy without changing its focus registration or return targets. */
+export function updateModalLayerHistory(element: HTMLElement, requestClose: ModalCloseRequest | undefined, historyMode: ModalHistoryMode): void {
+  const layer = layers.find(entry => entry.element === element);
+  if (!layer || (layer.requestClose === requestClose && layer.historyMode === historyMode)) return;
+  layer.requestClose = requestClose;
+  layer.historyMode = historyMode;
+  if (isTopmostLayer(element)) syncHistory();
 }
 
 /** A late panel changes the ring without unregistering the window or replacing its return targets. */
@@ -91,8 +112,10 @@ export function updateModalLayerFocusRing(element: HTMLElement, focusRoot: HTMLE
 
 /** Both built-in and library dialogs share visual ordering; library focus stays with its owner. */
 function syncHistory(): void {
-  syncModalHistory(layers.some(layer => layer.requestClose) ? () => {
-    const top = layers.at(-1);
-    if (top && isAvailableFocusTarget(top.element)) top.requestClose?.();
-  } : null);
+  // A URL-bearing top layer owns its own Back path; a lower modal must not intercept it.
+  const top = layers.at(-1);
+  syncModalHistory(top?.requestClose ? () => {
+    const currentTop = layers.at(-1);
+    if (currentTop && isAvailableFocusTarget(currentTop.element)) currentTop.requestClose?.();
+  } : null, top?.historyMode ?? 'transient');
 }

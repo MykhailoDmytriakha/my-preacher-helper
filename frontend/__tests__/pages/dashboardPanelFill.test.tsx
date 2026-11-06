@@ -156,14 +156,16 @@ describe('dashboard panels fill the height the grid row hands them', () => {
     expect(row.textContent?.match(/40:31/g)).toHaveLength(1);
   });
 
-  it('counts the study notes Studies shows, not a passage analysis, and lists none', async () => {
-    // Codex, 30.10: the count took in the analyses the list and Studies leave out.
-    const analysis = (n: number) => ({ ...notes[0], id: `analysis-${n}`, title: `Разбор ${n}`, type: 'analysis' as const, updatedAt: '2026-09-30T10:00:00.000Z' });
+  it('counts what Studies shows — its analyses too — and lists an analysis as one, leading to its page', async () => {
+    // Codex, 30.10: the count must say what Studies shows; since 02.11 Studies shows analyses in their own tab.
+    const analysis = (n: number) => ({ ...notes[0], id: `analysis-${n}`, title: `Разбор ${n}`, type: 'analysis' as const, tags: [], updatedAt: '2026-10-30T10:00:00.000Z' });
     mockNotes = [...notes.slice(0, 4), analysis(1), analysis(2)] as typeof notes;
     const { container } = render(<DashboardPage />);
-    expect(await screen.findByText('Note 1')).toBeInTheDocument();
-    expect(container.querySelector('a[href="/studies"] p.text-2xl')).toHaveTextContent('4');
-    expect(screen.queryByText('Разбор 1')).not.toBeInTheDocument();
+    expect(await screen.findByText('Разбор 1')).toBeInTheDocument();
+    expect(container.querySelector('a[href="/studies"] p.text-2xl')).toHaveTextContent('6');
+    const row = screen.getByText('Разбор 1').closest('a') as HTMLElement;
+    expect(row).toHaveAttribute('href', '/studies/analysis-1');
+    expect(row).toHaveTextContent('dashboardHome.sections.studies.analysisTag');
   });
 
   it('stops at the last note instead of inventing rows to fill the card', async () => {

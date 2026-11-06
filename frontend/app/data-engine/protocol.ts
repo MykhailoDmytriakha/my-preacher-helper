@@ -1,7 +1,7 @@
 import { getUtf8ByteLength } from '@/utils/feedbackPayload';
 import { isServiceOrderCatalogKey, isServiceOrderSeedTarget, serviceOrderSeedCycle } from '@/utils/serviceOrderSeedIdentity';
 
-import { ANALYSIS_RESHAPE_FIELDS, ANALYSIS_RESHAPE_FRAME, keepAnalysisPositionFrame, lacksAnalysisFrameProof } from './analysisReshapeFields';
+import { ANALYSIS_RESHAPE_FIELDS, ANALYSIS_RESHAPE_FRAME, hasMatchingAnalysisPositionBasis, keepAnalysisPositionFrame, lacksAnalysisFrameProof } from './analysisReshapeFields';
 import { equalValues, object, own, readField } from './fieldValues';
 import { mergeIdentityTree } from './identityTreeMerge';
 import { relationMirrorFields } from './relationMirrors';
@@ -378,6 +378,7 @@ export function mergeFields(base: FieldValue, mine: FieldValue, theirs: FieldVal
 } {
   if (equalValues(mine, base)) return { value: theirs, conflicts: [] };
   if (equalValues(theirs, base) || equalValues(mine, theirs)) return { value: mine, conflicts: [] };
+  if (mergedWhole(path)) return { value: mine, conflicts: [{ path, base, mine, theirs }] };
   const newMap = !base.exists && path.length > 0 && !path[path.length - 1].startsWith('id:');
   if (mine.exists && theirs.exists && object(mine.value) && object(theirs.value)
     && !isAtomicScriptureReference(path) && (newMap || (base.exists && object(base.value)))) {
@@ -400,6 +401,18 @@ function mergeArrayFields(base: FieldValue, mine: FieldValue, theirs: FieldValue
   if (tree) return tree;
   const merged = mergeArrays(base.value as Json[], mine.value as Json[], theirs.value as Json[], path);
   return merged && children ? settleTreeTwins(base, mine, theirs, merged, path, children) : merged;
+}
+
+/**
+ * Values that merge only as a whole: changed on both sides they are a conflict, never mixed key by key. A passage analysis
+ * keeps its parts as word numbers from the passage start, so a key from one side means other words on the other once the
+ * start has moved (BUG-20261030-analysis-merge-across-reshape): an offline «link 2 → 5» merged into an analysis whose
+ * verses moved stood on other words, acknowledged.
+ */
+const WHOLE_VALUES: readonly (readonly string[])[] = [['analysis']];
+
+function mergedWhole(path: readonly string[]): boolean {
+  return WHOLE_VALUES.some(whole => equalValues([...whole], [...path]));
 }
 
 /** Trees whose points move between lists, by where they live and the key of a point's own list. */
@@ -491,7 +504,12 @@ export function mergeDocumentFields(base: DocumentData | null, mine: DocumentDat
 function mergeObjects(base: DocumentData, mine: DocumentData, theirs: DocumentData, path: string[]): ReturnType<typeof mergeFields> {
   const result: DocumentData = {}, conflicts: ConflictDetail[] = [];
   for (const key of new Set([...Object.keys(base), ...Object.keys(mine), ...Object.keys(theirs)])) {
-    const merged = mergeFields(readField(base, [key]), readField(mine, [key]), readField(theirs, [key]), [...path, key]);
+    // A complete document can prove matching word origins; bare analysis values cannot.
+    const samePosition = path.length === 0 && key === 'analysis' && hasMatchingAnalysisPositionBasis(base, mine, theirs)
+      && object(base.analysis) && object(mine.analysis) && object(theirs.analysis);
+    const merged = samePosition
+      ? mergeObjects(base.analysis as DocumentData, mine.analysis as DocumentData, theirs.analysis as DocumentData, [key])
+      : mergeFields(readField(base, [key]), readField(mine, [key]), readField(theirs, [key]), [...path, key]);
     if (merged.value.exists) result[key] = merged.value.value as Json;
     conflicts.push(...merged.conflicts);
   }

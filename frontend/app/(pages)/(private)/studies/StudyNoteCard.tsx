@@ -14,17 +14,22 @@ import {
 import { useRouter } from 'next/navigation';
 import { useMemo, useCallback, useEffect } from 'react';
 
+import { AnalysisGlimpse, AnalysisOutline } from '@/components/bible/analysis/AnalysisOutline';
 import { useOpenStoredReference } from '@/components/bible/useOpenStoredReference';
+import { AnalysisIcon } from '@/components/Icons';
 import { Chip } from '@/components/ui/Chip';
 import { FoldableMarkdown } from '@/components/ui/FoldableMarkdown';
+import { useAppLocale } from '@/hooks/useAppLocale';
 import { useClipboard } from '@/hooks/useClipboard';
 import { StudyNote } from '@/models/models';
-import { formatDateForLocale } from '@/utils/dateFormatter';
+import { formatDay } from '@/utils/appLocale';
+import { analysisPlainText } from '@/utils/passageAnalysis';
 import { relativeDay } from '@/utils/relativeDay';
 import { formatScriptureReference, scriptureReferenceSearchText, type ScriptureRefShape } from '@/utils/scriptureReference';
 import { extractSearchSnippets } from '@/utils/searchUtils';
 import { formatStudyNoteForCopy } from '@/utils/studyNoteUtils';
 import { UI_COLORS } from '@/utils/themeColors';
+import { TOUCH_AREA } from '@/utils/touchTarget';
 import HighlightedText from '@components/HighlightedText';
 import MarkdownDisplay from '@components/MarkdownDisplay';
 import { useTranslation } from '@locales/useTranslation';
@@ -37,9 +42,13 @@ interface StudyNoteCardProps {
   note: StudyNote;
   bibleLocale: AppLocale;
   isExpanded: boolean;
+  /** The list was opened at it — from the Bible's analysis screen, «Все разборы»: lit for a moment. */
+  isLit?: boolean;
   /** Folds this one card open or shut, without leaving the list. */
   onToggleExpand: (noteId: string) => void;
   onEdit: (note: StudyNote) => void;
+  /** The card's row pressed: the note's own page unless the list opens it otherwise (an analysis, in its screen). */
+  onOpen?: (note: StudyNote) => void;
   searchQuery?: string;
   onShare?: (note: StudyNote) => void;
   /** Whether this note has an active share link */
@@ -102,17 +111,55 @@ const ALERT_CLASS = [
   `dark:${UI_COLORS.danger.darkBorder}`,
 ].join(' ');
 
+/** Folded, a note shows its first lines; an analysis the opening of its structure, never a list of points. */
+function FoldedPreview({ note, searchQuery }: { note: StudyNote; searchQuery: string }) {
+  if (note.type === 'analysis') return <AnalysisGlimpse text={note.content} analysis={note.analysis} />;
+  return (
+    <div className="line-clamp-2">
+      <MarkdownDisplay content={note.content} compact searchQuery={searchQuery || undefined} />
+    </div>
+  );
+}
+
+/** Opened, a note shows all its words; an analysis its whole structure, drawn as everywhere else, read in its screen on a press. */
+function OpenedBody({ note, searchQuery, onOpen, place }: { note: StudyNote; searchQuery: string; onOpen: () => void; place: string }) {
+  const { t } = useTranslation();
+  if (note.type === 'analysis') {
+    return <AnalysisOutline text={note.content} analysis={note.analysis} grow searchQuery={searchQuery} onOpen={onOpen} label={t('bible.mine.openAnalysis', { place })} />;
+  }
+  return (
+    <div className="text-sm text-gray-700 dark:text-gray-200">
+      <FoldableMarkdown content={note.content} searchQuery={searchQuery} />
+    </div>
+  );
+}
+
+/** The card's frame: its border by kind and fold, and — the list opened at it — a ring for a moment. */
+function cardFrame(type: StudyNote['type'], expanded: boolean, lit: boolean): string {
+  const question = type === 'question';
+  const border = expanded
+    ? question ? 'border-amber-200 dark:border-amber-700' : 'border-emerald-200 dark:border-emerald-700'
+    : question
+      ? 'border-amber-100 dark:border-amber-900/50 hover:border-amber-200 dark:hover:border-amber-800'
+      : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600';
+  const ring = lit ? 'ring-2 ring-violet-400 ring-offset-2 dark:ring-violet-500 dark:ring-offset-gray-900' : '';
+  return `rounded-xl border bg-white shadow-sm transition-all duration-200 dark:bg-gray-800 ${border} ${ring}`;
+}
+
 export default function StudyNoteCard({
   note,
   bibleLocale,
   isExpanded,
+  isLit = false,
   onToggleExpand,
   onEdit,
+  onOpen,
   searchQuery = '',
   onShare,
   hasShareLink = false,
 }: StudyNoteCardProps) {
-  const { t, language: interfaceLanguage } = useTranslation();
+  const { t } = useTranslation();
+  const { dateLocale } = useAppLocale();
   const router = useRouter();
 
   const { isCopied, copyToClipboard, reset: resetCopy } = useClipboard({ successDuration: 1500 });
@@ -123,6 +170,8 @@ export default function StudyNoteCard({
     const markdownContent = formatStudyNoteForCopy(note, bibleLocale);
     await copyToClipboard(markdownContent);
   };
+
+  const open = () => (onOpen ? onOpen(note) : router.push(`/studies/${note.id}${window.location.search}`));
 
   const handleShareNote = () => {
     if (!onShare) return;
@@ -136,7 +185,7 @@ export default function StudyNoteCard({
   const scriptureRefsLabel = t('studiesWorkspace.scriptureRefs');
   const tagsLabel = t('studiesWorkspace.tags');
 
-  const formatRelativeTime = (dateStr: string) => relativeDay(dateStr, t, undefined, interfaceLanguage);
+  const formatRelativeTime = (dateStr: string) => relativeDay(dateStr, t, dateLocale);
 
   // Check if note needs AI analysis (no title, no refs, no tags)
 
@@ -211,22 +260,10 @@ export default function StudyNoteCard({
     contentSnippets.length + matchingTags.length + matchingRefs.length + (titleMatches ? 1 : 0);
   const hasSearchDetails =
     contentSnippets.length > 0 || matchingTags.length > 0 || matchingRefs.length > 0 || !hasAnyMatch;
+  const preview = <FoldedPreview note={note} searchQuery={searchQuery} />;
 
   return (
-    <article
-      className={`
-        rounded-xl border bg-white shadow-sm transition-all duration-200
-        dark:bg-gray-800
-        ${isExpanded
-          ? note.type === 'question'
-            ? 'border-amber-200 dark:border-amber-700'
-            : 'border-emerald-200 dark:border-emerald-700'
-          : note.type === 'question'
-            ? 'border-amber-100 dark:border-amber-900/50 hover:border-amber-200 dark:hover:border-amber-800'
-            : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
-        }
-      `}
-    >
+    <article data-note-id={note.id} data-lit={isLit ? 'true' : undefined} className={cardFrame(note.type, isExpanded, isLit)}>
       {/* Header row: the chevron folds the card open, the rest of the row opens the note */}
       <div className="flex w-full items-start gap-3 p-4">
         {/* Deliberately a sibling of the navigating row, not a child of it. As a plain
@@ -239,7 +276,7 @@ export default function StudyNoteCard({
           aria-expanded={isExpanded}
           aria-label={isExpanded ? t('common.collapse') : t('common.expand')}
           title={isExpanded ? t('common.collapse') : t('common.expand')}
-          className="mt-0.5 flex-shrink-0 rounded text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-gray-500 dark:hover:bg-gray-700 dark:hover:text-gray-200"
+          className={`mt-0.5 flex-shrink-0 rounded text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-200 ${TOUCH_AREA.small}`}
         >
           {isExpanded ? (
             <ChevronDownIcon className="h-5 w-5" />
@@ -253,14 +290,14 @@ export default function StudyNoteCard({
           onClick={(e) => {
             // A button or a link of the note's own Markdown (the collapsed preview) does its own job.
             if ((e.target as HTMLElement).closest('button, a')) return;
-            router.push(`/studies/${note.id}${window.location.search}`);
+            open();
           }}
           onKeyDown={(e) => {
             if (e.key !== 'Enter' && e.key !== ' ') return;
             // A key pressed on an inner control (a button, a link in the preview) belongs to it.
             if (e.target !== e.currentTarget) return;
             e.preventDefault();
-            router.push(`/studies/${note.id}${window.location.search}`);
+            open();
           }}
           className="min-w-0 flex flex-1 items-start gap-3 text-left cursor-pointer"
         >
@@ -290,6 +327,10 @@ export default function StudyNoteCard({
                       more. `ariaLabel` above keeps the chip named for a screen reader. */}
                   <span className="hidden sm:inline">{questionLabel}</span>
                 </Chip>
+              )}
+              {/* An analysis says its kind by the mark the Bible gives it; its title already names it in words. */}
+              {note.type === 'analysis' && (
+                <AnalysisIcon className="mt-0.5 h-5 w-5 shrink-0 text-violet-600 dark:text-violet-300" aria-hidden="true" />
               )}
               <h4 className="flex-1 text-base font-semibold text-gray-900 dark:text-gray-50 line-clamp-3 leading-tight">
                 {searchQuery ? (
@@ -327,7 +368,12 @@ export default function StudyNoteCard({
                           <div className="space-y-6">
                             {contentSnippets.slice(0, COLLAPSED_SNIPPET_LIMIT).map((snippet, index) => (
                               <div key={index} className={CONTENT_SNIPPET_CLASS}>
-                                <MarkdownDisplay content={snippet} compact searchQuery={searchQuery} />
+                                {/* An analysis's snippet is its words line by line, lit — never its list of points. */}
+                                {note.type === 'analysis' ? (
+                                  <p className="whitespace-pre-line font-serif"><HighlightedText text={analysisPlainText(snippet)} searchQuery={searchQuery} /></p>
+                                ) : (
+                                  <MarkdownDisplay content={snippet} compact searchQuery={searchQuery} />
+                                )}
                               </div>
                             ))}
                           </div>
@@ -384,16 +430,8 @@ export default function StudyNoteCard({
                         </div>
                       )}
                     </div>
-                  ) : (
-                    <div className="line-clamp-2">
-                      <MarkdownDisplay content={note.content} compact searchQuery={searchQuery} />
-                    </div>
-                  )
-                ) : (
-                  <div className="line-clamp-2">
-                    <MarkdownDisplay content={note.content} compact />
-                  </div>
-                )}
+                  ) : preview
+                ) : preview}
               </div>
             )}
 
@@ -432,17 +470,18 @@ export default function StudyNoteCard({
                 a near miss lands on the strip, not on the row underneath.
               */}
               <div
-                className="-m-1.5 ml-auto flex shrink-0 items-center gap-1 p-1.5"
+                className="-m-1.5 ml-auto flex shrink-0 items-center gap-3 p-1.5"
                 onClick={(e) => e.stopPropagation()}
               >
-                {onShare && (
+                {/* A share page shows a note's words; an analysis is a structure on the Bible's text, not shared yet. */}
+                {onShare && note.type !== 'analysis' && (
                   <button
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
                       handleShareNote();
                     }}
-                    className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition disabled:opacity-50 ${hasShareLink
+                    className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition disabled:opacity-50 ${TOUCH_AREA.compact} ${hasShareLink
                       ? 'text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 dark:text-emerald-400 dark:hover:bg-emerald-900/30 dark:hover:text-emerald-300'
                       : 'text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-200'
                       }`}
@@ -458,7 +497,7 @@ export default function StudyNoteCard({
                     e.stopPropagation();
                     handleCopyNote();
                   }}
-                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-200"
+                  className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-200 ${TOUCH_AREA.compact}`}
                   title={isCopied ? t('common.copied', 'Copied!') : t('common.copy', 'Copy')}
                   aria-label={isCopied ? t('common.copied', 'Copied!') : t('common.copy', 'Copy')}
                 >
@@ -482,9 +521,7 @@ export default function StudyNoteCard({
         <div className="border-t border-gray-100 dark:border-gray-700">
           {/* Full content */}
           <div className="px-4 py-4 pl-4 sm:pl-12">
-            <div className="text-sm text-gray-700 dark:text-gray-200">
-              <FoldableMarkdown content={note.content} searchQuery={searchQuery} />
-            </div>
+            <OpenedBody note={note} searchQuery={searchQuery} onOpen={open} place={note.scriptureRefs[0] ? formatRef(note.scriptureRefs[0]) : (note.title ?? '')} />
           </div>
 
           {/* Scripture references */}
@@ -538,12 +575,12 @@ export default function StudyNoteCard({
             <div className="flex items-center justify-between">
               <button
                 onClick={() => onEdit(note)}
-                className="inline-flex items-center gap-1.5 rounded-md bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 transition hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
+                className={`inline-flex items-center gap-1.5 rounded-md bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 transition hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600 ${TOUCH_AREA.short}`}
               >
                 <PencilIcon className="h-3.5 w-3.5" />
                 {t('common.edit')}
               </button>
-              <span className="text-xs text-gray-400 dark:text-gray-500">{formatDateForLocale(note.createdAt, interfaceLanguage)}</span>
+              <span className="text-xs text-gray-500 dark:text-gray-400">{formatDay(note.createdAt, dateLocale)}</span>
             </div>
           </div>
         </div>

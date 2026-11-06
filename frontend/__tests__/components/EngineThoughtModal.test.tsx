@@ -14,7 +14,7 @@ jest.mock('@/providers/AuthProvider', () => ({ useAuth: () => ({ user: { uid: 'o
 jest.mock('@/data-engine/browser.client', () => ({ createBrowserDataEngine: jest.fn() }));
 jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
 jest.mock('@/providers/ConnectionProvider', () => ({ useConnection: () => ({ isMagicAvailable: false }) }));
-jest.mock('@/hooks/useTextDictation', () => ({ useTextDictation: jest.fn(() => ({ accept: jest.fn(async () => undefined) })) }));
+jest.mock('@/hooks/useTextDictation', () => ({ useTextDictation: jest.fn(() => ({ accept: jest.fn(async () => undefined), discard: jest.fn(async () => undefined) })) }));
 jest.mock('@/components/thought/ThoughtTextHeader', () => ({ ThoughtTextHeader: () => null }));
 jest.mock('@/components/ui/RichMarkdownEditor', () => ({ RichMarkdownEditor: ({ value, onChange }: { value: string; onChange: (value: string) => void }) =>
   <textarea aria-label="Thought" value={value} onChange={event => onChange(event.target.value)} /> }));
@@ -51,7 +51,7 @@ async function deliver(harness: ReturnType<typeof membershipEngineHarness>) {
 }
 beforeEach(() => {
   jest.clearAllMocks();
-  jest.mocked(useTextDictation).mockReturnValue({ accept: jest.fn(async () => undefined) } as unknown as ReturnType<typeof useTextDictation>);
+  jest.mocked(useTextDictation).mockReturnValue({ accept: jest.fn(async () => undefined), discard: jest.fn(async () => undefined) } as unknown as ReturnType<typeof useTextDictation>);
   process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = 'sermons';
 });
 afterEach(() => { delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS; });
@@ -87,7 +87,9 @@ it('recovers unsent creation after restart with its original identity and Cancel
   fireEvent.click(screen.getByRole('button', { name: 'buttons.cancel' }));
   fireEvent.click(await screen.findByRole('button', { name: 'common.discardChanges.confirm' }));
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
-  await deliver(harness); expect(harness.transport.send).toHaveBeenCalledTimes(1); restored.unmount();
+  await deliver(harness); expect(harness.transport.send).toHaveBeenCalledTimes(1);
+  expect(jest.mocked(useTextDictation).mock.results.at(-1)!.value.discard).toHaveBeenCalledTimes(1);
+  restored.unmount();
 });
 
 it('merges a remote sibling edit without applying it to the open form ancestor', async () => {
@@ -227,12 +229,16 @@ it('asks before Cancel throws typed text away, and keeping on editing keeps it',
   const { harness, view } = setup(); await ready('');
   fireEvent.click(screen.getByRole('button', { name: 'buttons.cancel' }));
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  const discard = jest.mocked(useTextDictation).mock.results.at(-1)!.value.discard;
+  expect(discard).toHaveBeenCalledTimes(1);
+  jest.mocked(discard).mockClear();
   fireEvent.click(screen.getByRole('button', { name: 'Open' })); await ready('');
   fireEvent.change(screen.getByLabelText('Thought'), { target: { value: 'Dictated words' } }); await settle();
   fireEvent.click(screen.getByRole('button', { name: 'buttons.cancel' }));
   fireEvent.click(await screen.findByRole('button', { name: 'common.discardChanges.keep' }));
   await waitFor(() => expect(screen.getAllByRole('dialog')).toHaveLength(1)); await settle();
   expect(screen.getByLabelText('Thought')).toHaveValue('Dictated words');
+  expect(discard).not.toHaveBeenCalled();
   await save(); await deliver(harness);
   expect(JSON.stringify(harness.read(resource).value?.thoughts)).toContain('Dictated words'); view.unmount();
 });

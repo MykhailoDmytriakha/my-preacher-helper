@@ -3,12 +3,13 @@
 
 import { Dialog, DialogBackdrop, DialogPanel, DialogTitle } from '@headlessui/react';
 import { XMarkIcon } from '@heroicons/react/24/outline';
-import { useCallback, useEffect, useId, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import Switch from '@/components/ui/Switch';
 import { useExternalModalHistory } from '@/hooks/useExternalModalHistory';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
+import { useSlidingRow } from '@/hooks/useSlidingRow';
 import { getLocalizedAbbrev } from '@/utils/bibleBooks';
 import { verseWords } from '@/utils/bibleText';
 import { linkBefore, linkOnScreen, litLinkKey, ownLink, type SeenVerses, type Trail, type TrailPlace } from '@/utils/placeTrail';
@@ -106,40 +107,6 @@ const STRIP_FRAMES: Record<StripLook, string> = {
   page: 'relative min-w-0 py-1.5',
 };
 
-/**
- * A link cut by the row's edge fades out instead of standing there as a broken pill (a capsule's rounding
- * cut one to a sliver). Only an end that hides links fades: at rest the row's first and last links stand
- * whole. The row scrolls inside the frame, so the frame's own border never fades.
- */
-const FADED_ENDS = {
-  none: '',
-  start: '[mask-image:linear-gradient(to_right,transparent,#000_1.5rem)]',
-  end: '[mask-image:linear-gradient(to_left,transparent,#000_1.5rem)]',
-  both: '[mask-image:linear-gradient(to_right,transparent,#000_1.5rem,#000_calc(100%_-_1.5rem),transparent)]',
-} as const;
-
-function useHiddenEnds(rowRef: RefObject<HTMLElement | null>): keyof typeof FADED_ENDS {
-  const [ends, setEnds] = useState<keyof typeof FADED_ENDS>('none');
-  useEffect(() => {
-    const row = rowRef.current;
-    if (!row) return undefined;
-    const measure = () => {
-      const start = row.scrollLeft > 1;
-      const end = row.scrollLeft + row.clientWidth < row.scrollWidth - 1;
-      setEnds(start && end ? 'both' : start ? 'start' : end ? 'end' : 'none');
-    };
-    measure();
-    row.addEventListener('scroll', measure, { passive: true });
-    const sizes = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
-    sizes?.observe(row);
-    if (row.firstElementChild) sizes?.observe(row.firstElementChild);
-    return () => {
-      row.removeEventListener('scroll', measure);
-      sizes?.disconnect();
-    };
-  }, [rowRef]);
-  return ends;
-}
 
 export function PlaceTrailStrip({ trail, bible, locale, look, onGo, lit = false }: {
   trail: Trail; bible: BibleId; locale: AppLocale; look: StripLook; onGo: (link: TrailPlace) => void;
@@ -147,16 +114,14 @@ export function PlaceTrailStrip({ trail, bible, locale, look, onGo, lit = false 
   lit?: boolean;
 }) {
   const { t } = useTranslation();
-  const rowRef = useRef<HTMLDivElement | null>(null);
-  const hidden = useHiddenEnds(rowRef);
+  const { rowRef, fade } = useSlidingRow<HTMLDivElement>('[data-trail-at]', litLinkKey(trail), { center: false });
+  useTrailCentering(rowRef, 'horizontal', `${litLinkKey(trail)}|${look}`);
   // The place being read stands in the middle of the row whenever the light goes to another link or the
   // links shift — a new link at the end, the light moved back; ordinary reading changes no link,
   // so the row stays where it was scrolled.
-  const light = litLinkKey(trail);
-  useTrailCentering(rowRef, 'horizontal', `${light}|${look}`);
   return (
     <nav aria-label={t(TRAIL_TITLE)} className={STRIP_FRAMES[look]}>
-      <div ref={rowRef} className={`relative overflow-x-auto overscroll-contain ${look === 'page' ? 'px-4' : ''} ${FADED_ENDS[hidden]}`}>
+      <div ref={rowRef} className={`relative overflow-x-auto overscroll-contain ${look === 'page' ? 'px-4' : ''} ${fade}`}>
         <ol className="flex w-max items-center gap-1.5">
           {trail.links.map((link, index) => {
             const here = lit && index === trail.at;

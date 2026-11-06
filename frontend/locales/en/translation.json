@@ -475,6 +475,7 @@
     "wayBack": {
       "note": "Note",
       "notes": "Notes",
+      "analysis": "Analysis",
       "plan": "Plan",
       "sermon": "Sermon",
       "group": "Group",
@@ -1100,7 +1101,8 @@
           "tags": "Tags",
           "notes": "Notes",
           "questions": "Questions"
-        }
+        },
+        "analysisTag": "Analysis"
       },
       "groups": {
         "title": "Latest groups",
@@ -3668,7 +3670,8 @@
       "all": "All",
       "notes": "Notes",
       "comments": "Comments",
-      "questions": "Questions"
+      "questions": "Questions",
+      "analyses": "Analyses"
     },
     "type": {
       "note": "Note",
@@ -3924,7 +3927,12 @@
     "removeReference": "Remove reference {{reference}}",
     "removeTag": "Remove tag {{tag}}",
     "loadError": "Could not load the notes.",
-    "loadOffline": "No connection to the server. If the notes were never loaded on this device, they will appear when the connection returns."
+    "loadOffline": "No connection to the server. If the notes were never loaded on this device, they will appear when the connection returns.",
+    "newAnalysis": "New analysis",
+    "newAnalysisHint": "Tap a verse, choose «Analyse the passage» and mark the verses.",
+    "analysesEmptyTitle": "Your analyses will be here",
+    "analysesEmptyHint": "An analysis starts in the Bible: tap a verse, choose «Analyse the passage» and mark the verses. Once made, it shows here and opens right from here.",
+    "analysisNotHere": "This analysis is not in the list on this device — it may not have loaded yet, or it was deleted. Once it appears in the list, open it from there."
   },
   "groupFlow": {
     "title": "Group Flow",
@@ -4612,6 +4620,10 @@
     "pickPlace": "Which verse or chapter is it on?",
     "changePlace": "Change the verse or chapter",
     "changeVerses": "Change verses",
+    "verses": {
+      "notOneRun": "In this translation the comment’s verses do not stand in one run — they can be changed in {{translation}}, the translation it was written in.",
+      "otherBook": "The verses of another book are not chosen in this text — change the place with the pencil button."
+    },
     "open": "Open the comment",
     "noteTitle": "Note title",
     "noteTitlePlaceholder": "What is this note about?",
@@ -4697,7 +4709,7 @@
     },
     "edit": {
       "title": "Divide into parts",
-      "hintMark": "Hover over a word to see two marks. The word and everything after it move to a new line:",
+      "hintMark": "Point at a word or touch it to see two marks. The word and everything after it move to a new line:",
       "markSame": "on the same level;",
       "markUnder": "one level below — under this line, shifted right.",
       "hintGlue": "The “join” mark on a line’s first word glues it back.",
@@ -4736,7 +4748,8 @@
       "done": "The analysis now covers {{place}}.",
       "own": "Your work in {{place}} is kept as an analysis of its own.",
       "joined": "Your work in {{place}} was added to the analysis of {{other}}.",
-      "apart": "The new verses do not reach the analysis — choose a passage with at least one of its verses."
+      "apart": "The new verses do not reach the analysis — choose a passage with at least one of its verses.",
+      "refused": "Your work in the verses taken off could not be moved, so the analysis keeps its verses — nothing is lost."
     },
     "relation": {
       "made": "«{{a}}» and «{{b}}» are linked by meaning. Press the flag at the end of the line for direction, colour or removal.",
@@ -4787,6 +4800,16 @@
       "tie": "a line's dot onto a word: tie it",
       "untie": "× on an arrow: untie the line",
       "relation": "word onto word: a link of meaning; press a ringed word to change it"
-    }
+    },
+    "backToList": "To the list",
+    "otherBible": {
+      "text": "This analysis was made on {{name}}: its parts stand on that translation's words. Open that translation to read and edit the analysis.",
+      "open": "Switch to {{name}}"
+    },
+    "door": {
+      "bible": "In the Bible",
+      "analyses": "All analyses"
+    },
+    "notApplied": "The analysis just changed on another device — your last action was not applied, so as not to erase that change. Please do it again."
   }
 }

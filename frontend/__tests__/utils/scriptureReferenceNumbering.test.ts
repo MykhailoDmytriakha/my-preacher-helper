@@ -7,6 +7,7 @@ import {
   noteLanguage,
   passagesIn,
   referenceIn,
+  samePassage,
   sameScriptureReference,
   versesHeldIn,
   withNoteReferenceBibles,
@@ -263,6 +264,17 @@ describe('a run of verses over a chapter seam (BUG-20261031-verse-run-across-cha
     expect(passagesIn(eph({ toVerseChapter: 5, toVerse: 2 }), 'rst')).toEqual([{ chapter: 4, toChapter: 5, fromVerse: 31, toVerse: 2 }]);
     expect(versesHeldIn(eph({ toVerseChapter: 5, toVerse: 2 }), 'rst').map(({ chapter, verse }) => `${chapter}:${verse}`)).toEqual(['4:31', '4:32', '5:1', '5:2']);
     expect(formatScriptureReference(eph({ toVerseChapter: 5, toVerse: 2 }), { locale: 'ru' })).toContain('4:31-5:2');
+  });
+
+  it('compares passage projections by their exact endpoints', () => {
+    expect(samePassage(
+      { chapter: 4, toChapter: 5, fromVerse: 31, toVerse: 2 },
+      { chapter: 4, toChapter: 5, fromVerse: 31, toVerse: 2 },
+    )).toBe(true);
+    expect(samePassage(
+      { chapter: 4, toChapter: 5, fromVerse: 31, toVerse: 2 },
+      { chapter: 4, toChapter: 5, fromVerse: 30, toVerse: 2 },
+    )).toBe(false);
   });
 
   it('keeps older references as they were read: a chapter range left beside verses does not stretch them', () => {

@@ -1,25 +1,25 @@
-import { inStudies, inStudyNoteTab, STUDY_NOTE_TABS } from '@/utils/studyNoteTabs';
+import { inStudyNoteTab, STUDY_NOTE_TABS } from '@/utils/studyNoteTabs';
 
 describe('inStudyNoteTab — which tab of Studies a note stands in', () => {
+  const where = (type?: 'note' | 'question' | 'comment' | 'analysis') => STUDY_NOTE_TABS.filter((tab) => inStudyNoteTab({ type }, tab));
+
   it('keeps notes, comments and questions apart, and all of them in «Все»', () => {
-    const where = (type?: 'note' | 'question' | 'comment') => STUDY_NOTE_TABS.filter((tab) => inStudyNoteTab({ type }, tab));
     expect(where(undefined)).toEqual(['all', 'notes']);
     expect(where('note')).toEqual(['all', 'notes']);
     expect(where('comment')).toEqual(['all', 'comments']);
     expect(where('question')).toEqual(['all', 'questions']);
   });
 
-  it('shows a passage analysis in no tab yet — it opens in the Bible, not in the note editor', () => {
-    expect(STUDY_NOTE_TABS.filter((tab) => inStudyNoteTab({ type: 'analysis' }, tab))).toEqual([]);
+  it('gives a passage analysis its own tab «Разборы», and «Все» — never «Заметки»', () => {
+    // The owner, 02.11: «Изучение, вкладка „Разборы“».
+    expect(where('analysis')).toEqual(['all', 'analyses']);
   });
-});
 
-describe('inStudies — what Studies and the home page count', () => {
-  it('counts what the tabs show: notes, comments and questions, not a passage analysis', () => {
-    // Codex, 30.10: «Все» said 3 over one card when two analyses stood beside one note.
-    const notes = [{ type: 'note' as const }, { type: 'analysis' as const }, { type: 'analysis' as const }];
-    expect(notes.filter(inStudies)).toHaveLength(notes.filter((note) => inStudyNoteTab(note, 'all')).length);
-    expect(notes.filter(inStudies)).toEqual([{ type: 'note' }]);
-    expect([undefined, 'question', 'comment'].every((type) => inStudies({ type: type as 'question' }))).toBe(true);
+  it('counts in «Все» exactly what the other tabs show between them', () => {
+    // Codex, 30.10: «Все» once said 3 over one card while two analyses stood beside one note.
+    const notes = [{ type: 'note' as const }, { type: 'analysis' as const }, { type: 'comment' as const }, { type: 'question' as const }, {}];
+    const inOwnTabs = STUDY_NOTE_TABS.filter((tab) => tab !== 'all')
+      .reduce((sum, tab) => sum + notes.filter((note) => inStudyNoteTab(note, tab)).length, 0);
+    expect(notes.filter((note) => inStudyNoteTab(note, 'all'))).toHaveLength(inOwnTabs);
   });
 });

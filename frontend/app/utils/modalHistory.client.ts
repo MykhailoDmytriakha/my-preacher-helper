@@ -1,5 +1,7 @@
 import { newHistoryEntryId } from './historyEntry';
 
+export type ModalHistoryMode = 'transient' | 'current';
+
 const KEY = 'preacherModalHistory';
 const POSITION = 'preacherHistoryPosition';
 type Mark = { token: string; kind: 'base' | 'page'; first: boolean };
@@ -18,6 +20,7 @@ const markOf = (state: unknown): Mark | null => {
 let installed = false;
 let mutation = 0;
 let requestClose: (() => void) | null = null;
+let historyMode: ModalHistoryMode = 'transient';
 let current: Visit | null = null;
 let skipping: -1 | 1 | null = null;
 let returning: { close: (() => void) | null } | null = null;
@@ -50,6 +53,8 @@ function transient(action: () => void) {
 
 function arm() {
   if (!requestClose || skipping || returning) return;
+  // A caller-owned URL already has a visit; guard it without adding a modal copy.
+  if (historyMode === 'current') { remember(); return; }
   if (markOf(window.history.state)?.kind === 'page') { remember(); return; }
   const state = record(window.history.state);
   const position = positionOf(state) ?? 0;
@@ -62,9 +67,10 @@ function arm() {
 }
 
 /** One global guard delegates window choice and close policy to the existing visual registry. */
-export function syncModalHistory(close: (() => void) | null): void {
+export function syncModalHistory(close: (() => void) | null, mode: ModalHistoryMode = 'transient'): void {
   installModalHistory();
   requestClose = close;
+  historyMode = mode;
   arm();
 }
 

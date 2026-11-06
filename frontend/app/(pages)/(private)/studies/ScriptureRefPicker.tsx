@@ -9,6 +9,7 @@ import { useModalLayer } from '@/hooks/useModalLayer';
 import { ScriptureReference } from '@/models/models';
 import { getBooksForDropdown } from '@/utils/bibleBooks';
 import { verseEndChapter, referenceBibleFor, referenceIn, withStoredBible } from '@/utils/scriptureReferenceNumbering';
+import { STUDIES_ACTION } from '@/utils/themeColors';
 import { chapterCount, verseCount } from '@/utils/versification';
 import { useTranslation } from '@locales/useTranslation';
 
@@ -109,7 +110,6 @@ export default function ScriptureRefPicker({
 
   // Get max verses for current book and chapter (dynamic based on selection)
   const maxVerses = useMemo(() => verseCount(bible, book, chapter), [bible, book, chapter]);
-
   const endMaxVerses = useMemo(() => verseCount(bible, book, endChapter), [bible, book, endChapter]);
   const endVerseOptions = useMemo(() => Array.from({ length: endMaxVerses }, (_, i) => i + 1), [endMaxVerses]);
 
@@ -129,11 +129,10 @@ export default function ScriptureRefPicker({
     if (endChapter > maxChapters || endChapter < chapter) setEndChapter(chapter <= maxChapters ? chapter : 1);
   }, [book, maxChapters, chapter, toChapter, endChapter]);
 
-  // Reset fromVerse and toVerse if they exceed max verses when book/chapter changes
+  // Each endpoint is counted in its own chapter.
   useEffect(() => {
     if (fromVerse > maxVerses) {
       setFromVerse(1);
-      setToVerse('');
     }
     if (toVerse !== '' && (toVerse > endMaxVerses || (endChapter === chapter && toVerse < fromVerse))) setToVerse('');
   }, [book, chapter, endChapter, maxVerses, endMaxVerses, fromVerse, toVerse]);
@@ -199,9 +198,11 @@ export default function ScriptureRefPicker({
       // Verse or verse range
       ref.chapter = chapter;
       ref.fromVerse = fromVerse;
-      if (toVerse && (endChapter > chapter || toVerse >= fromVerse)) {
+      if (toVerse !== '' && (endChapter > chapter || toVerse >= fromVerse)) {
         ref.toVerse = toVerse;
-        if (endChapter > chapter) ref.endChapter = endChapter;
+        if (endChapter > chapter) {
+          ref.endChapter = endChapter;
+        }
       }
     }
 
@@ -279,7 +280,7 @@ export default function ScriptureRefPicker({
                   type="button"
                   onClick={() => { if (s !== scope) { setTouched(true); setScope(s); } }}
                   className={`px-2 py-1 text-xs rounded-md transition-colors ${scope === s
-                    ? 'bg-emerald-600 text-white'
+                    ? 'bg-emerald-700 text-white'
                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'
                     }`}
                 >
@@ -325,7 +326,12 @@ export default function ScriptureRefPicker({
               size="sm"
               accent="emerald"
                   value={chapter}
-                  onChange={(e) => { setTouched(true); setChapter(Number(e.target.value)); }}
+                  onChange={(e) => {
+                    setTouched(true);
+                    const next = Number(e.target.value);
+                    if (endChapter === chapter) setEndChapter(next);
+                    setChapter(next);
+                  }}
                   onKeyDown={handleKeyDown}
                 >
                   {chapterOptions.map((ch) => (
@@ -336,7 +342,7 @@ export default function ScriptureRefPicker({
                 </Select>
               </div>
 
-              {/* The existing endpoint chapter control also completes an exact verse range. */}
+              {/* The last chapter of a whole-chapter range or a verse run. */}
               {(scope === REFERENCE_SCOPE_CHAPTER_RANGE || scope === REFERENCE_SCOPE_VERSES) && (
                 <div>
                   <label htmlFor={`${fieldId}-to-chapter`} className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
@@ -348,7 +354,11 @@ export default function ScriptureRefPicker({
               accent="emerald"
                     aria-label={t('studiesWorkspace.toChapter')}
                     value={scope === REFERENCE_SCOPE_VERSES ? endChapter : toChapter}
-                    onChange={(e) => { setTouched(true); if (scope === REFERENCE_SCOPE_VERSES) setEndChapter(Number(e.target.value)); else setToChapter(Number(e.target.value)); }}
+                    onChange={(e) => {
+                      setTouched(true);
+                      if (scope === REFERENCE_SCOPE_VERSES) setEndChapter(Number(e.target.value));
+                      else setToChapter(Number(e.target.value));
+                    }}
                     onKeyDown={handleKeyDown}
                   >
                     {chapterOptions.filter((ch) => ch >= chapter).map((ch) => (
@@ -399,7 +409,7 @@ export default function ScriptureRefPicker({
                   <option value="">—</option>
                   {endVerseOptions.filter((v) => endChapter > chapter || v >= fromVerse).map((v) => (
                     <option key={v} value={v}>
-                      {v}
+                      {endChapter > chapter ? `${endChapter}:${v}` : v}
                     </option>
                   ))}
                 </Select>
@@ -421,7 +431,7 @@ export default function ScriptureRefPicker({
             type="button"
             onClick={handleConfirm}
             disabled={!isValid}
-            className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            className={`rounded-md px-3 py-1.5 text-sm font-semibold shadow-sm disabled:cursor-not-allowed disabled:opacity-50 ${STUDIES_ACTION}`}
           >
             {mode === 'edit' ? t('common.save') : t('studiesWorkspace.addReferenceShort')}
           </button>

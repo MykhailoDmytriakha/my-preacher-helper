@@ -56,7 +56,7 @@ it('registers a portal panel that first renders after the component mount', asyn
   opener();
   const user = userEvent.setup();
   render(<Layer delayed />);
-  expect(screen.getByRole('button', { name: 'First' })).toHaveFocus();
+  expect(screen.getByRole('dialog', { name: 'Picker' })).toHaveFocus();
   screen.getByRole('button', { name: 'Last' }).focus();
   await user.tab();
   expect(screen.getByRole('button', { name: 'First' })).toHaveFocus();
@@ -67,7 +67,7 @@ it('leaves inactive layers alone and handles each reopening from its current ope
   const { rerender } = render(<Layer active={false} />);
   expect(open).toHaveFocus();
   rerender(<Layer />);
-  expect(screen.getByRole('button', { name: 'First' })).toHaveFocus();
+  expect(screen.getByRole('dialog', { name: 'Picker' })).toHaveFocus();
   rerender(<Layer active={false} />);
   expect(open).toHaveFocus();
   const other = opener();
@@ -143,7 +143,7 @@ it('does not steal focus when a lower layer disappears under the active dialog',
 it('keeps focus ownership through StrictMode effect replay', () => {
   const open = opener();
   const { unmount } = render(<React.StrictMode><Layer /></React.StrictMode>);
-  expect(screen.getByRole('button', { name: 'First' })).toHaveFocus();
+  expect(screen.getByRole('dialog', { name: 'Picker' })).toHaveFocus();
   unmount();
   expect(open).toHaveFocus();
 });

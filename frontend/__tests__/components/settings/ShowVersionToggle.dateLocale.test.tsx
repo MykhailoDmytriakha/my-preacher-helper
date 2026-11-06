@@ -29,11 +29,11 @@ afterAll(() => {
 it('updates the visible build timestamp with the selected app language', () => {
   mockLanguage = 'ru';
   const view = render(<ShowVersionToggle />);
-  expect(view.container).toHaveTextContent('15.01.2026, 12:34:56');
+  expect(view.container).toHaveTextContent('15 янв. 2026, 12:34');
   mockLanguage = 'en';
   view.rerender(<ShowVersionToggle />);
-  expect(view.container).toHaveTextContent('1/15/2026, 12:34:56 PM');
+  expect(view.container).toHaveTextContent('15 Jan 2026, 12:34 PM');
   mockLanguage = 'uk';
   view.rerender(<ShowVersionToggle />);
-  expect(view.container).toHaveTextContent('15.01.2026, 12:34:56');
+  expect(view.container).toHaveTextContent('15 січ. 2026, 12:34');
 });

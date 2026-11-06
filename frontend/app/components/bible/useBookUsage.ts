@@ -6,6 +6,7 @@ import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'rea
 import { isLiveCollectionDocument, useDataCollection } from '@/data-engine/react.client';
 import { useResolvedUid } from '@/hooks/useResolvedUid';
 import { getLocalizedAbbrev } from '@/utils/bibleBooks';
+import { samePassage } from '@/utils/scriptureReferenceNumbering';
 import { SCRIPTURE_USAGE_KINDS, bookUsage, passageCovers, usageDocuments, type BookUsageEntry, type ScriptureUsageKind } from '@/utils/scriptureUsage';
 import { verseCount } from '@/utils/versification';
 import { useTranslation } from '@locales/useTranslation';
@@ -30,7 +31,6 @@ export type MinePlace = { chapter: number; verse: number | null; stretch?: MineS
 /** A badge's kind and passage: what an analysis's badge opens. */
 export type MineStretch = { kind: ScriptureUsageKind; passage: Passage };
 
-const samePassage = (a: Passage, b: Passage) => a.chapter === b.chapter && a.fromVerse === b.fromVerse && a.toChapter === b.toChapter && a.toVerse === b.toVerse;
 
 type CollectionState = ReturnType<typeof useDataCollection>['state'];
 

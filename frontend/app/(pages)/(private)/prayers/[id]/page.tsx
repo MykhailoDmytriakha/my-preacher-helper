@@ -25,6 +25,7 @@ import { RecordUnavailable } from '@/components/RecordUnavailable';
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
 import { Chip } from '@/components/ui/Chip';
 import UnreadableConflictDrafts from '@/components/UnreadableConflictDrafts';
+import { useAppLocale } from '@/hooks/useAppLocale';
 import { usePrayerDetail } from '@/hooks/usePrayerDetail';
 import { usePrayerRequests } from '@/hooks/usePrayerRequests';
 import { useRouteId } from '@/hooks/useRouteId';
@@ -32,8 +33,7 @@ import { useWayInOnce } from '@/hooks/useWayInOnce';
 import { PrayerStatus } from '@/models/models';
 import { useAuth } from '@/providers/AuthProvider';
 import { PRAYER_CORE_AGGREGATE, PRAYER_STATUS_AGGREGATE } from '@/services/prayerRequests.client';
-import { textLanguage } from '@/utils/appLocale';
-import { formatDateForLocale, formatDateTimeForLocale } from '@/utils/dateFormatter';
+import { formatDay, formatDayTime, textLanguage } from '@/utils/appLocale';
 import {
   announceIfPersisted,
   awaitWriteOperation,
@@ -45,7 +45,8 @@ import '@locales/i18n';
 const PRAYER_FOCUS_TYPES = new Set(['title', 'description', 'answer', 'tags']);
 
 export default function PrayerDetailPage() {
-  const { t, language: interfaceLanguage } = useTranslation();
+  const { t } = useTranslation();
+  const { dateLocale } = useAppLocale();
   const id = useRouteId();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -319,16 +320,16 @@ export default function PrayerDetailPage() {
         <div className="flex flex-wrap gap-4 text-xs text-gray-400 dark:text-gray-500 border-t border-gray-100 dark:border-gray-700 pt-3">
           <span className="flex items-center gap-1">
             <ClockIcon className="h-3.5 w-3.5" />
-            {t('prayer.detail.addedOn')}: {formatDateForLocale(prayer.createdAt, interfaceLanguage)}
+            {t('prayer.detail.addedOn')}: {formatDay(prayer.createdAt, dateLocale)}
           </span>
           <span className="flex items-center gap-1">
             <ClockIcon className="h-3.5 w-3.5" />
-            {t('prayer.detail.updatedOn')}: {formatDateForLocale(prayer.updatedAt, interfaceLanguage)}
+            {t('prayer.detail.updatedOn')}: {formatDay(prayer.updatedAt, dateLocale)}
           </span>
           {prayer.answeredAt && (
             <span className="flex items-center gap-1 text-green-600 dark:text-green-400">
               <CheckCircleIcon className="h-3.5 w-3.5" />
-              {t('prayer.detail.answeredOn')}: {formatDateForLocale(prayer.answeredAt, interfaceLanguage)}
+              {t('prayer.detail.answeredOn')}: {formatDay(prayer.answeredAt, dateLocale)}
             </span>
           )}
         </div>
@@ -461,7 +462,7 @@ export default function PrayerDetailPage() {
                   <ScriptureText text={update.text} searchQuery={highlightQuery} />
                 </p>
                 <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
-                  {formatDateTimeForLocale(update.createdAt, interfaceLanguage)}
+                  {formatDayTime(update.createdAt, dateLocale)}
                 </p>
               </div>
             ))}
