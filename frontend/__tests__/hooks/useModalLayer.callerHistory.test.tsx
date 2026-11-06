@@ -1,8 +1,12 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useState } from 'react';
+
+import { installHistoryTimers, runHistoryAction } from '@test-utils/historyTasks';
 
 import { useAnalysisAddress } from '@/components/bible/analysis/useAnalysisAddress';
 import { useModalLayer } from '@/hooks/useModalLayer';
+
+installHistoryTimers();
 
 function AnalysisScreen({ onClose }: { onClose: () => void }) {
   const layer = useModalLayer({ onClose, browserHistory: false });
@@ -20,8 +24,7 @@ function Page() {
   </>;
 }
 
-const back = async () => { await act(async () => { window.history.back(); await new Promise(resolve => setTimeout(resolve, 40)); }); };
-afterEach(async () => { cleanup(); await act(async () => { await new Promise(resolve => setTimeout(resolve, 60)); }); });
+const back = async () => { await runHistoryAction(() => window.history.back()); };
 
 it('gives a URL-bearing top screen one entry and its own Back, then restores the lower window guard', async () => {
   window.history.pushState(null, '', '/studies');

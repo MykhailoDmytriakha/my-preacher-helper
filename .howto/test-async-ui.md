@@ -51,3 +51,24 @@ See also: `.howto/mock-in-jest.md` · `.howto/test-with-fake-timers.md`
 - Name original screenshots with the complete unique case name and refuse overwrites. A retry with corrected selectors is a new case and preserves the failed originals. A strict diagnostic envelope can remain false while every requested product behavior passes; report both facts and the exact unattributed requests. Do not call that a fully passing native run or suppress its failed gates; assess whether they block the scoped acceptance, and never rerun only to obtain a cosmetically clean network log.
 
 - After reloading a page in a recovery test, wait for its actual heading and expected saved content before asserting that an outage banner disappeared. A hidden banner immediately after `domcontentloaded` may mean the app is still showing a loading spinner. Keep that screenshot as a failed proof attempt; actual API200 and a loaded recovered screen are separate evidence.
+
+
+## Native history task completion in Jest
+
+A fixed25–80ms sleep does not prove that jsdom finished Back/Forward. Its session
+history queues two nested zero-delay tasks; a modal may queue a compensating
+return, and a fragment can queue another event. A busy first popstate task can
+consume the sleep before the return runs. In BUG-20261105-modal-history-back-test-flaky,
+one60ms native-event task reproduced the original close-count failure while
+Escape still passed; the six-suite probe had4failures and14controls.
+
+Use `installHistoryTimers` and `runHistoryAction` from
+`frontend/test-utils/historyTasks.ts` in the narrow modal-history suites. They
+scope fake timers to each test, execute the real history action, and drain its
+queued tasks inside React `act`. Keep `performance` and microtasks real. Keep
+all existing UI/text/address assertions after the drain. Batch two rapid Back
+calls in ONE action before draining; draining each separately changes that case.
+Finish any `waitFor` before teardown, which unmounts windows, drains pending
+tasks, resets the route when requested, and restores real timers in `finally`.
+Do not use this timer owner for live browser acceptance or unrelated timer tests.
+A negative control that disables `history.back` must still fail the close assertion.

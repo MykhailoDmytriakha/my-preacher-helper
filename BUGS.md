@@ -215,12 +215,6 @@
 
 ## 🔍 Требует перепроверки
 
-### BUG-20261105-modal-history-back-test-flaky · Проверка закрытия окна по «Назад» иногда падает в общем прогоне
-**P3, требует перепроверки.** Claude сообщил через рацию #1: на `a495dfcb` общий `test:fast` дал12 805 зелёных и один отказ `closes one visible empty window on Back`; отдельный тест прошёл3из3. **Якорь:** `frontend/__tests__/hooks/useModalLayer.history.test.tsx:100`. Текущий intake754817f9 уже меняет общий механизм истории: два полных прогона на его кандидатной сборке прошли12 916тестов, но это не доказывает устранение нестабильности.
-**Как должно работать:** тест ожидает фактического асинхронного перехода и проверяет ровно одно закрытие окна с сохранением страницы; высокая нагрузка не должна случайно блокировать сборку. Не увеличивать задержки вслепую и не убирать полезные проверки.
-**Перепроверить:** сохранить пилотный raw-отказ Claude, сравнить механизм/ожидание до и после intake, воспроизвести под контролируемой нагрузкой и устранить подтверждённую причину. Сбой приложения в браузере этим сообщением не установлен. Объём/корень пока не исследованы; текущий баг не прерывать.
-
-
 ### BUG-20261102-read-cache-answer-order-unproven · A delayed older DTO response may become the last saved read
 **Status / severity.** RECHECK; possible P3 stale entitlement/referral presentation. No authored text loss or production reproduction is established.
 **Found.** 2026-11-02, Unit274 pre-code review; separate from one tab replacing the entire saved client.

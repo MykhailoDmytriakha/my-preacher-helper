@@ -1,10 +1,14 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import React, { useState } from 'react';
+
+import { installHistoryTimers, runHistoryAction } from '@test-utils/historyTasks';
 
 import { useModalLayer } from '@/hooks/useModalLayer';
 import { canGoBackToPage } from '@/utils/modalHistory.client';
 
 import '@testing-library/jest-dom';
+
+installHistoryTimers();
 
 function DirectPage() {
   const [open, setOpen] = useState(false);
@@ -24,10 +28,7 @@ it('retains the direct-page fallback after closing, Back to the first page, and 
   fireEvent.click(screen.getByText('Close'));
   expect(canGoBackToPage()).toBe(false);
 
-  await act(async () => {
-    window.history.back();
-    await new Promise(resolve => setTimeout(resolve, 25));
-  });
+  await runHistoryAction(() => window.history.back());
   expect(window.location.pathname).toBe('/settings');
   expect(canGoBackToPage()).toBe(false);
 
@@ -36,11 +37,11 @@ it('retains the direct-page fallback after closing, Back to the first page, and 
   expect(canGoBackToPage()).toBe(false);
   fireEvent.click(screen.getByText('Return to dashboard'));
   expect(window.location.pathname).toBe('/dashboard');
-  await act(async () => { window.history.back(); await new Promise(resolve => setTimeout(resolve, 40)); });
+  await runHistoryAction(() => window.history.back());
   expect(window.location.pathname).toBe('/settings');
   expect(canGoBackToPage()).toBe(false);
   fireEvent.click(screen.getByText('Open'));
-  await act(async () => { window.history.back(); await new Promise(resolve => setTimeout(resolve, 40)); });
+  await runHistoryAction(() => window.history.back());
   expect(screen.queryByRole('dialog', { name: 'Settings window' })).not.toBeInTheDocument();
   expect(window.location.pathname).toBe('/settings');
   view.unmount();

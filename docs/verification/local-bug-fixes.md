@@ -5724,3 +5724,52 @@ Back for that boundary on production. Repeat the ordinary offline Group-note con
 recipe from Unit279 with exact final server text, then remove only the fixture and close
 all QA tabs. No background production polling, physical Pencil/iPad or owner acceptance is
 claimed here.
+
+## Unit282 — deterministic modal-history regression waits (2026-11-05)
+
+**BUG-20261105-modal-history-back-test-flaky; local test-only repair.** The regression
+could assert that no window closed while jsdom was still processing browser Back. It
+waited25ms instead of finishing the native history tasks. Installed jsdom queues two
+nested traversal tasks; the modal's existing return and a fragment can enqueue more.
+One shared `test-utils/historyTasks.ts` now scopes virtual timers to six history suites,
+executes the actual history action, and drains its resulting tasks inside React `act`.
+Teardown unmounts, drains, resets the route when requested, and restores real timers in
+`finally`. Rapid double Back remains one batched action. All18original cases and their
+existing outcome assertions (156unchanged expectation lines) remain; the application algorithm is unchanged.
+
+**Causal red/green and controls.** On clean654a9438, the unchanged original six tests
+pass. A60ms busy first native `popstate` task reproduces the exact first-test failure:
+expected one close, received zero. Escape remains green. Across the six suites, that
+probe produces4causal failures and14controls. The same controlled event delay after
+repair passes all18cases; the final runner pins all seven test inputs. Disabling the
+actual `history.back` action still fails the original close assertion. This is a
+controlled reproduction of the test's timing assumption, not a reconstruction of
+Claude's historical full-run scheduling or a claim that Chrome failed.
+
+**Gates.** Related modal/focus/address coverage:116tests in12suites pass. TypeScript
+passes; lint has0errors and60inherited warnings. The full fast gate passes12,916tests across1,135suites, with17pre-existing skipped tests and no failures.
+No runtime build was repeated: the only frontend changes are six test fixtures and one
+test helper. All other2,741original source files, all915compiled files and the service
+worker retain the accepted Unit280 hashes/build `Us0MaVCR2QuyKc25AYIf_`.
+
+**Browser and review boundary.** Root's real Chrome emulator/visual acceptance in
+Unit280 applies to these identical application bytes; it is explicitly reused, not a
+new browser run for this Jest-only fix. There is no production or physical-device
+acceptance claim. Source review found no blocking task/teardown issue and independently
+checked the app/compiled pins. A separate-context Codex reviewer reran the baseline verifier,
+final18-case slow-pop regression and final evidence verifier successfully before local closure.
+
+**Evidence.** Local ignored case artifacts use `modal-history-282-*`: archived Claude
+pilot, baseline actual receipts, slow-pop setup, final pinned runner, meaningful disabled-
+Back negative control, focused/full/type/lint gates, source/runtime-byte binding and
+fresh acceptance receipts. The negative-control v1 copied a descriptive slowPopMs60
+label although its command actually used the disabled-Back setup; it remains preserved.
+V2 records slowPopMs0/disabledBacktrue accurately and repeats the same causal negative.
+The original failed run is never relabelled green. See `.howto/test-async-ui.md` for the
+shared timer owner and why fixed sleeps or uncompleted negative UI checks are insufficient.
+
+**Production plan, not executed.** The separately authorized deployment must pass its
+full Jest gate with this helper. The test-only file is not a browser runtime module.
+After confirming deployed version/worker, one read-only window Back/Forward check may
+confirm retained Unit280 behavior; do not create production load or infer a physical-
+device result from Jest. Other returned fixes and unrelated flaky regressions remain open.

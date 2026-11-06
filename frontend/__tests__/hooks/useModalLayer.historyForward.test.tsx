@@ -1,6 +1,8 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import React, { useCallback, useState } from 'react';
 
+import { installHistoryTimers, runHistoryAction } from '@test-utils/historyTasks';
+
 import '@testing-library/jest-dom';
 
 type UseModalLayer = typeof import('@/hooks/useModalLayer').useModalLayer;
@@ -12,6 +14,8 @@ const capturePopstate = () => {
 // Install before loading the hook: its shared history listener may consume the event.
 window.addEventListener('popstate', capturePopstate, true);
 
+installHistoryTimers(() => window.history.replaceState(null, '', '/'));
+
 function seedPageHistory() {
   window.history.replaceState(null, '', '/dashboard');
   window.history.pushState(null, '', '/bible');
@@ -22,18 +26,11 @@ function pushRoute(path: string) {
 }
 
 async function goBack() {
-  await act(async () => {
-    window.history.back();
-    // jsdom dispatches popstate asynchronously; callers also wait for the visible result.
-    await new Promise(resolve => setTimeout(resolve, 25));
-  });
+  await runHistoryAction(() => window.history.back());
 }
 
 async function goForward() {
-  await act(async () => {
-    window.history.forward();
-    await new Promise(resolve => setTimeout(resolve, 25));
-  });
+  await runHistoryAction(() => window.history.forward());
 }
 
 function LayerSurface({
@@ -138,10 +135,6 @@ beforeAll(async () => {
   ({ useModalLayer } = await import('@/hooks/useModalLayer'));
 });
 
-afterEach(() => {
-  window.history.replaceState(null, '', '/');
-});
-
 afterAll(() => {
   window.removeEventListener('popstate', capturePopstate, true);
 });
@@ -243,11 +236,8 @@ describe('Forward traversal with modal layers', () => {
     const top = render(<ManagedLayer name="Top question" onClose={topClosed} zIndex={200} />);
 
     try {
-      await act(async () => {
-        window.history.back();
-        window.history.back();
-        await new Promise(resolve => setTimeout(resolve, 50));
-      });
+      await runHistoryAction(() => { window.history.back();
+        window.history.back(); });
       await waitFor(() => expect(popstatePaths.length).toBeGreaterThan(0));
       console.info(`Observed ${popstatePaths.length} popstate event(s) after two rapid Back calls: ${popstatePaths.join(', ')}`);
       await waitFor(() => {

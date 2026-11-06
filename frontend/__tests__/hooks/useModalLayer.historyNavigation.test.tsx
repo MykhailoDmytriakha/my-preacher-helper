@@ -1,9 +1,13 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import React, { useCallback, useState } from 'react';
 
+import { installHistoryTimers, runHistoryAction } from '@test-utils/historyTasks';
+
 import { useModalLayer } from '@/hooks/useModalLayer';
 
 import '@testing-library/jest-dom';
+
+installHistoryTimers(() => window.history.replaceState(null, '', '/'));
 
 function seedPageHistory() {
   window.history.replaceState(null, '', '/dashboard');
@@ -11,18 +15,11 @@ function seedPageHistory() {
 }
 
 async function goBack() {
-  await act(async () => {
-    window.history.back();
-    // jsdom schedules native history traversal asynchronously and the layer may consume popstate.
-    await new Promise(resolve => setTimeout(resolve, 25));
-  });
+  await runHistoryAction(() => window.history.back());
 }
 
 async function goForward() {
-  await act(async () => {
-    window.history.forward();
-    await new Promise(resolve => setTimeout(resolve, 25));
-  });
+  await runHistoryAction(() => window.history.forward());
 }
 
 function Layer({
@@ -91,10 +88,6 @@ function DirtyLayer({ onClose }: { onClose: () => void }) {
 }
 
 beforeEach(seedPageHistory);
-
-afterEach(() => {
-  window.history.replaceState(null, '', '/');
-});
 
 describe('modal layer browser-history navigation', () => {
   it('uses the next Back for the previous real page after a clean window closes', async () => {

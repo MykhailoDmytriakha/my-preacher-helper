@@ -1,9 +1,13 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import React, { useCallback, useState } from 'react';
+
+import { installHistoryTimers, runHistoryAction } from '@test-utils/historyTasks';
 
 import { useModalLayer } from '@/hooks/useModalLayer';
 
 import '@testing-library/jest-dom';
+
+installHistoryTimers(() => window.history.replaceState(null, '', '/'));
 
 function seedPageHistory() {
   window.history.replaceState(null, '', '/dashboard');
@@ -11,12 +15,7 @@ function seedPageHistory() {
 }
 
 async function goBack() {
-  await act(async () => {
-    window.history.back();
-    // jsdom schedules native history traversal asynchronously. The application deliberately
-    // consumes that event before router/bubble observers; observe the resulting UI instead.
-    await new Promise(resolve => setTimeout(resolve, 25));
-  });
+  await runHistoryAction(() => window.history.back());
 }
 
 function Layer({
@@ -91,10 +90,6 @@ function DirtyLayer({ onClose }: { onClose: () => void }) {
 }
 
 beforeEach(seedPageHistory);
-
-afterEach(() => {
-  window.history.replaceState(null, '', '/');
-});
 
 describe('modal layers and browser Back', () => {
   it('closes one visible empty window on Back without leaving its page', async () => {
