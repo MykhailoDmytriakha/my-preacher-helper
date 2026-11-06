@@ -244,6 +244,16 @@ describe('Orders of service', () => {
     expect(toast.error).toHaveBeenCalledWith('serviceOrders.writeFailed');
   });
 
+  it('does not describe a database refusal as a request to connect to the internet', async () => {
+    orderState.canSeed = true;
+    mockSeed.mockRejectedValueOnce(Object.assign(new Error('Saved data temporarily unavailable'), { code: 'unavailable' }));
+    render(<ServiceOrdersPage />);
+    fireEvent.click(screen.getAllByRole('button', { name: 'serviceOrders.seed' }).pop() as HTMLElement);
+    await waitFor(() => expect(screen.getByTestId('service-orders-failure')).toHaveTextContent('serviceOrders.writeFailed'));
+    expect(screen.getByTestId('service-orders-failure')).not.toHaveTextContent('serviceOrders.seedOffline');
+    expect(toast.error).toHaveBeenCalledWith('serviceOrders.writeFailed');
+  });
+
   it('explains that a complete server refresh is required when seeding cannot verify the list', async () => {
     orderState.canSeed = true;
     mockSeed.mockRejectedValueOnce(new Error('OFFLINE_SEED'));

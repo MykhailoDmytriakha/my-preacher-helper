@@ -97,8 +97,9 @@ export function useServiceOrdersEngine(userId: string | null | undefined, enable
     setSeeding(true);
     work.promise = (async () => {
       try {
-        const state = await collection.refresh().catch(() => { throw new Error('OFFLINE_SEED'); }) as CollectionState;
-        if (!state.complete || state.freshness !== 'server' || state.error) throw new Error('OFFLINE_SEED');
+        const state = await collection.refresh() as CollectionState;
+        if (state.error) throw new Error(state.error);
+        if (!state.complete || state.freshness !== 'server') throw new Error('OFFLINE_SEED');
         const fresh = rowsOf(state.documents);
         const present = new Set(fresh.map(order => order.catalogKey).filter(Boolean));
         const drafts = buildSeedOrders(userId, t as unknown as (key: string, options?: Record<string, unknown>) => unknown,

@@ -169,7 +169,7 @@ describe('whether a rite is gone — said only by the server', () => {
    * from what this device holds. A rite created on the laptop is simply not there yet; "absent" needs
    * a refresh that reached the server (Codex review of the connectivity construction, 2026-10-10).
    */
-  const renderWithRefresh = (answer: { complete: boolean; freshness: string; snapshots: unknown[]; documents: unknown[] }) => {
+  const renderWithRefresh = (answer: { complete: boolean; freshness: string; snapshots: unknown[]; documents: unknown[]; error?: string | null }) => {
     jest.mocked(useDocumentActions).mockReturnValue(actions as never);
     jest.mocked(useDataCollection).mockImplementation(() => ({
       state: { snapshots: answer.snapshots, documents: answer.documents, complete: answer.complete, freshness: answer.freshness, checking: false, version: 1, error: null },
@@ -213,20 +213,46 @@ describe('whether a rite is gone — said only by the server', () => {
     expect(store.size).toBe(0);
   });
 
-  it('reports a failed refresh as unavailable seeding without capturing creates', async () => {
+  it('preserves a rejected refresh instead of reporting an offline seed', async () => {
     online = true;
+    const failure = Object.assign(new Error('Saved data temporarily unavailable'), { code: 'unavailable', retryAfterMs: 30000 });
     jest.mocked(useDocumentActions).mockReturnValue(actions as never);
     jest.mocked(useDataCollection).mockReturnValue({
       state: { snapshots: [], documents: [], complete: true, freshness: 'server', checking: false, version: 1, error: null },
-      loading: false, error: null, refresh: jest.fn(async () => { throw new Error('HTTP 503'); }),
+      loading: false, error: null, refresh: jest.fn(async () => { throw failure; }),
     } as never);
     const { result } = renderHook(() => useServiceOrdersEngine('u', true));
 
     await act(async () => {
-      await expect(result.current.seedStandardSet()).rejects.toThrow('OFFLINE_SEED');
+      await expect(result.current.seedStandardSet()).rejects.toBe(failure);
     });
 
     expect(actions.create).not.toHaveBeenCalled();
+    expect(result.current.seeding).toBe(false);
+  });
+
+  it.each([
+    { complete: true, freshness: 'server' },
+    { complete: false, freshness: 'cache' },
+    { complete: false, freshness: 'unknown' },
+  ] as const)('preserves a returned refresh error before checking $freshness completeness', async state => {
+    online = true;
+    const { result } = renderWithRefresh({ ...state, snapshots: [], documents: [], error: 'Saved list read refused' });
+    await act(async () => {
+      await expect(result.current.seedStandardSet()).rejects.toThrow('Saved list read refused');
+    });
+    expect(actions.create).not.toHaveBeenCalled();
+    expect(result.current.seeding).toBe(false);
+  });
+
+  it('preserves a creation failure after a successful server refresh', async () => {
+    online = true;
+    const failure = Object.assign(new Error('Create refused'), { code: 'permission-denied' });
+    const { result } = renderWithRefresh({ complete: true, freshness: 'server', snapshots: [], documents: [] });
+    actions.create.mockRejectedValueOnce(failure);
+    await act(async () => {
+      await expect(result.current.seedStandardSet()).rejects.toBe(failure);
+    });
     expect(result.current.seeding).toBe(false);
   });
 
