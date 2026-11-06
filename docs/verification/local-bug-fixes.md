@@ -4282,6 +4282,8 @@ Scope: BUG-20261028-verse-menu-keyboard, BUG-20261030-verse-menu-focus-before-vi
 
 With cross-reference badges hidden, the original main Bible reader gave John 3:17 no focusable entry to its existing menu. In actual Chrome at 390×844 and 1280×1000, 240 ordinary Tab presses could not reach the verse; a separate real right-click still opened its menu and Comment. The reader now explicitly enables a native verse-action button through BookRibbon's optional capability. Tab reaches it, focus reveals it, Enter or Space opens the existing menu, and the number/badge still owns cross-references. Other ribbon consumers do not get inert menu buttons. useVerseCopy owns opening and row geometry for keyboard, context menu and hold. The renderer reserves the same small text gutter whenever the reader has that capability; disabling an active mark tool hides the action without changing text width.
 
+Later return: Unit289 replaces this constant-gutter tradeoff with space only for the visible keyboard button. The original evidence here remains historical; see Unit289 for the new width and focus/open/return acceptance.
+
 Real browser acceptance exposed two further failures on this same path. VerseMenu registered its focus layer while positioning kept the menu hidden; native Chrome refused initial focus even though jsdom allowed it. Activating the existing modal layer only after positioning supplies a visible focus ring and removes the duplicate local focus/restoration effect. Next, Comment destroyed its originating menu item, so Escape returned focus to body. The existing modal-layer returnFocusTo now passes through FormDialog and CommentDialog to the reader's live verse button. This optional DOM reference stays in UI state; CommentTarget, persisted content, IDs and revisions do not change. Chapter comments, direct comment editing and Studies callers keep their default contract.
 
 Permanent regressions establish four entry failures with 18 useful passing controls, one visibility-focus failure, and one return-focus failure with one ordinary-opener control, all with zero runtime errors. The final three suites pass 25 tests. Focused coverage passes 238 tests in 13 suites, including shared modal, comment, hold, pick and page-origin contracts. Four gates pass: TypeScript, lint, unused code and translations. The official production build passes 11,781 tests in 1,017 suites; 17 tests in three suites remain skipped. Final build B9WRg5qCNcvvNVJOv9MXL authenticates 2,554 source files, 915 compiled files and two workers.
@@ -6290,3 +6292,51 @@ contains a reference: inspect colored summaries in light/dark and phone/desktop 
 Focus/Normal, open and close the same verse, and check an ordinary thought link remains distinctive.
 Use existing content without editing it, retain diagnostics, and close the QA tab. Physical iPad
 acceptance remains separate. Other Claude returns, parent279.4 and owner-deferred decisions stay open.
+
+
+## Unit 289 — Reclaim hidden verse-menu space
+
+**Bug.** `BUG-20261028-verse-menu-keyboard`, Claude radio #5 item5 return from Unit221.
+Local source/test/browser acceptance; production and physical-device acceptance remain separate.
+
+**Cause and change.** The reader's capability object reserved 36px for every drawn verse even
+when its keyboard button was hidden or disabled by a mark tool. The shared `BookRibbon` row now
+reserves 2.25rem only for its direct menu button under `:focus-visible`, using the existing Tailwind
+`:has` pattern. Other rows keep normal text width. Button semantics, snapshots, menu owner,
+verse numbers, cross-reference chips, comments, gestures and storage are unchanged. Detached
+chapters and `VerseSheet` never opt into this reader capability. No new React state or data rule.
+Focus/open/return can rewrap that verse; this replaces Unit221's constant-gutter tradeoff.
+
+**Proof.** Unchanged permanent regression: 2 RED / 3 controls → 5 GREEN. Related 53 tests in 6 suites,
+TypeScript 0, lint 0 errors / 60 existing warnings. Official `npm run build` actual 0 / sourceStable:
+12,973 passed / 17 skipped tests, 1144 passed / 3 skipped suites; Next build 26.55s.
+BEFORE `CYnb_1zmbbsSiJUoIplGr`; AFTER `FLoC-qu-y80JW06GgAet9`.
+Archived source/build inventories 3679/3680 members; final 2763 sources, 914 compiled files, 1 worker.
+
+Same shared native Chrome observer drives actual Bible search to KJV John 3:17 and 18 states at
+390×844/1280×1000: idle, Tab focus, Enter/Space menu, Escape return, blur, tool disable/restore.
+Frozen geometry oracle 18 RED / 62 controls → 80/80. Root viewed 3 BEFORE and 7 AFTER frames: normal
+width while reading/marking, clear glyphs beside the focused button and menus fitting both widths.
+Trusted keyboard/click and actual first Copy focus are retained. All diagnostic arrays empty;
+fullHealthAcceptance remains false. Owned Chrome/profile/Auth SDK and services closed, both exports
+acknowledged, 9 ports free; macOS top measured 332M before server stop. Owner :3000/production untouched.
+AFTER imports exact R2 BEFORE stopped exports; Unit266 config and accepted Unit288 provenance
+remain verified. No cold/offline, new pointer/hold/comment-save or physical Pencil proof is claimed.
+
+**Evidence.** `verse-menu-gutter-289-*`; final proof freezes 207 inputs. Compact verifier authenticates
+archives/current bytes, reruns the frozen oracle and rejects deliberately wrong padding, untrusted
+keyboard events and incomplete cleanup. Initial BEFORE v1 stopped after 10 states because the
+observer hit-tested wrapped text's union rectangle. It remains incomplete; R2 uses actual text
+fragments and shows the whole verse before measurement. No app change supplied that retry.
+
+**Production plan, not executed.** After separately authorized merge/push/deploy, confirm deployed
+commit. Use one existing authenticated tab/profile, open Bible and a known verse. Inspect ordinary
+reading at phone/desktop widths, Tab to its menu button, open via Enter/Space and close via Escape;
+check focus, word clearance and menu position. Take/put away a mark tool without drawing and check
+reading width. Keep existing data unchanged, retain diagnostics and close the tab. Physical-device
+acceptance, other Claude returns, parent279.4 and owner-deferred decisions remain open.
+
+Independent Codex subagent acceptance reruns the compact verifier and related 53 tests/types/lint,
+inspects retained narrow/wide frames and finds no source blocker. It authenticates retained native
+receipts and historical RED rather than claiming a fresh browser or official-build execution.
+Local commit provenance is checked separately after commit.

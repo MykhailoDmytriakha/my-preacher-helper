@@ -279,7 +279,7 @@ function VerseRow({ chapter, verse, raw, lang, crossRefs, signs, mine, detached 
       style={{ scrollMarginTop: READING_TOP, marginBottom: room }}
       // Every verse at the same spacing: the paragraphs are the person's own (comments on a run of verses), so the
       // translation's paragraph marks add no room of their own (the owner, 01.11: «вроде не должно»).
-      className={`mb-2.5 md:mb-0 md:flex md:flex-wrap md:gap-x-3 ${ARRIVAL_CLASSES} ${detached ? '' : `${CHOSEN_CLASSES} ${FOUND_CLASSES}`} ${verseMenu ? 'pr-9' : ''}`}
+      className={`mb-2.5 md:mb-0 md:flex md:flex-wrap md:gap-x-3 ${ARRIVAL_CLASSES} ${detached ? '' : `${CHOSEN_CLASSES} ${FOUND_CLASSES}`} [&:has(>[data-verse-menu]:focus-visible)]:pr-9`}
     >
       {/* Painted first, so a mark's sign stands over it. */}
       {analysed ? <AnalysedBar at={analysed} chapter={chapter} verse={verse} /> : null}

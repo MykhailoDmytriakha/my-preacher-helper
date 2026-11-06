@@ -173,7 +173,7 @@ export function useVerseCopy({ textRef, text, bible, bookId, drawn, crossRefs, e
   /** The verse as the interface names it, for its menu. */
   const labelOf = useCallback((at: VerseAt) => `${getLocalizedAbbrev(bookId, locale)} ${at.chapter}:${at.verse}`, [bookId, locale]);
 
-  // Keep the door's room stable while a mark tool temporarily disables the action.
+  // Expose the reader capability; each row owns space for its visible keyboard button.
   const ribbonMenu = useMemo<RibbonVerseMenu>(() => ({
     enabled,
     label: (chapter, verse) => t('bible.copy.menu', { place: labelOf({ chapter, verse }) }),
