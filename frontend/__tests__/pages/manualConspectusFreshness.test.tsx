@@ -214,6 +214,19 @@ it('names a server-confirmed missing manual-plan sermon and leaves for the sermo
 });
 
 
+it('shows loading without an unavailable verdict while the first sermon read waits', async () => {
+  window.localStorage.clear();
+  harness = documentEngineHarness({ resource: { collection: 'sermons', id: 'sermon-1' }, value: null, metadata: null }, { cached: false });
+  jest.mocked(harness.transport.read).mockImplementation(() => new Promise(() => undefined));
+  jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
+  const client = queryClient();
+  const view = rtlRender(page(client));
+  expect(await screen.findByRole('button', { name: 'common.back' })).toBeEnabled();
+  expect(screen.queryByText('recordAvailability.notHereYet')).not.toBeInTheDocument();
+  expect(view.container.querySelector('[data-page-loading]')).not.toBeNull();
+  view.unmount(); client.clear();
+});
+
 it('keeps a previous manual-plan cell readable and unchanged while the missing sermon read waits', async () => {
   const key = draftKey('user-1', 'sermon-1', 'plan:kept-point');
   saveDraft(key, 'A paragraph kept before leaving');

@@ -7,6 +7,7 @@ import ConductBlock from '@/components/groups/conduct/ConductBlock';
 import ConductOverview from '@/components/groups/conduct/ConductOverview';
 import ConductPreflight from '@/components/groups/conduct/ConductPreflight';
 import { RecordUnavailable } from '@/components/RecordUnavailable';
+import { GroupDetailSkeletonCards } from '@/components/skeletons/GroupDetailSkeleton';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { DataDocumentProvider } from '@/data-engine/react.client';
 import { useConductTimer } from '@/hooks/useConductTimer';
@@ -144,12 +145,12 @@ function ConductView({ groupId, group, loading, saveFlow, updateDuration, setupD
   // A meeting already running keeps its pinned blocks. Before Start, even an unanswered read has an exit.
   if (!group && phase === 'preflight') {
     return <div className="page-gesture-follow fixed inset-0 z-[200] overflow-y-auto bg-white dark:bg-gray-950">
-      <RecordUnavailable presence={presence} checking={loading} onBack={() => router.push('/groups')} onRetry={onRetry}>{feedback}</RecordUnavailable>
+      <RecordUnavailable presence={presence} checking={loading} pageLoading={loading} loadingFallback={<GroupDetailSkeletonCards ariaHidden />} onBack={() => router.push('/groups')} onRetry={onRetry}>{feedback}</RecordUnavailable>
     </div>;
   }
   if (loading && phase === 'preflight') {
     return <div className="page-gesture-follow fixed inset-0 z-[200] overflow-y-auto bg-white dark:bg-gray-950">
-      <RecordUnavailable presence={presence} checking onBack={() => router.push('/groups')} onRetry={onRetry}>{feedback}</RecordUnavailable>
+      <RecordUnavailable presence={presence} checking pageLoading loadingFallback={<GroupDetailSkeletonCards ariaHidden />} onBack={() => router.push('/groups')} onRetry={onRetry}>{feedback}</RecordUnavailable>
     </div>;
   }
 

@@ -255,6 +255,7 @@ it('knows a series with no group members has zero meetings without reading group
 it('declares the unresolved series page and releases it when its document arrives', async () => {
   const { view } = setup();
   expect(screen.getByText('recordAvailability.checking')).toBeVisible();
+  expect(screen.queryByText('recordAvailability.notHereYet')).not.toBeInTheDocument();
   expect(view.container.querySelector('[data-page-loading]')).not.toBeNull();
   await screen.findByRole('heading', { name: 'b', level: 1 });
   expect(view.container.querySelector('[data-page-loading]')).toBeNull();

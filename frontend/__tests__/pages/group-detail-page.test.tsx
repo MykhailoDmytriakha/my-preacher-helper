@@ -297,6 +297,7 @@ describe('GroupDetailPage', () => {
     expect(document.querySelectorAll('.animate-pulse').length).toBeGreaterThan(0);
     expect(document.querySelector('[data-page-loading]')).not.toBeNull();
     expect(screen.queryByDisplayValue('Family Group')).not.toBeInTheDocument();
+    expect(screen.queryByText('recordAvailability.notHereYet')).not.toBeInTheDocument();
     expect(await screen.findByDisplayValue('Family Group')).toBeInTheDocument();
     expect(document.querySelectorAll('.animate-pulse')).toHaveLength(0);
     expect(document.querySelector('[data-page-loading]')).toBeNull();

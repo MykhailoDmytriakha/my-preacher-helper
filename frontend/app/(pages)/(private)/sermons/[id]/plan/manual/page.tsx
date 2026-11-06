@@ -10,6 +10,7 @@ import MarkdownDisplay from "@/components/MarkdownDisplay";
 import { ProgressSidebar } from "@/components/plan/ProgressSidebar";
 import { RecordUnavailable } from "@/components/RecordUnavailable";
 import { OutlineWriteRecovery } from '@/components/sermon/OutlineWriteRecovery';
+import { SermonDetailSkeleton } from "@/components/skeletons/SermonDetailSkeleton";
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { DataDocumentProvider, useDataEngine } from '@/data-engine/react.client';
 import { useDraftQuestion } from "@/hooks/useDurableDraft";
@@ -425,6 +426,7 @@ function ManualConspectusContent({ source, readOnly: copyReadOnly = false }: { s
 
   if (!sermon) {
     return <RecordUnavailable presence={source.document.presence} checking={loading}
+      pageLoading={loading && orphans.length === 0} loadingFallback={<SermonDetailSkeleton />}
       onBack={() => router.push('/sermons')} onRetry={source.refreshSermon}>
       <OrphanedPlanText subject={JSON.stringify([owner, sermonId])} cells={orphans} readOnly onDiscard={() => undefined} />
     </RecordUnavailable>;

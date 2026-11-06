@@ -6340,3 +6340,85 @@ Independent Codex subagent acceptance reruns the compact verifier and related 53
 inspects retained narrow/wide frames and finds no source blocker. It authenticates retained native
 receipts and historical RED rather than claiming a fresh browser or official-build execution.
 Local commit provenance is checked separately after commit.
+
+
+## Unit 290 — Distinguish first loading from a settled unavailable record
+
+**Bug.** `BUG-20261004-missing-record-dead-end-screens`, Claude radio #5 item6 return.
+Source/test, primary native gates and scoped root visual acceptance pass. A separate pixel/DOM discrepancy remains under Requires recheck.
+Local proof does not establish production or physical-device acceptance.
+
+**Cause and change.** `RecordUnavailable` previously chose its final not-on-this-device message,
+connection advice and Retry even while the first read was unresolved. It now owns a neutral pending
+branch with Back and retained children. Only the screen's explicit `pageLoading` permits its existing
+`loadingFallback`; authoritative absent/deleting and settled unknown answers keep the final panel.
+Retry during an unanswered read only awaited the same observer promise; effective retry after a
+settled result is unchanged. No presence, chronology, cache, command or server rule changes.
+
+The existing three group card placeholders were first extracted without changing DOM/classes/aria
+in separate local commit `02b4102e`, independently accepted. Route and page reuse that module.
+
+| # | Affected screen | Change and permanent regression | Primary native evidence |
+|---|---|---|---|
+| 1 | Group detail | Shared group cards; retained group copy stays readable. `group-detail-page.test.tsx`. | Pending, actual title, warm offline at 390/1280; real absence and Retry at 1280. |
+| 2 | Series detail | Existing `SeriesDetailSkeleton`; retained metadata unchanged. `EngineSeriesDetail.test.tsx`. | Same state matrix; actual narrow pending view is witnessed by R4 and R6 t250. Contradictory captures remain a separate recheck. |
+| 3 | Manual plan | Existing `SermonDetailSkeleton` only without orphaned cells. `manualConspectusFreshness.test.tsx`. | Same state matrix; retained paragraph remains a separate real-engine test control. |
+| 4 | Meeting preflight | Shared group cards while the document/form initializes. `group-conduct-engine.test.tsx`. | Same state matrix; initialized meeting's pinned-flow rule unchanged. |
+
+The common `RecordUnavailable.loading.test.tsx` covers pending/settled transitions, Back/Retry,
+retained words and authoritative absence/deletion. Study-note, prayer and service-order detail
+already select their own cold-loading branch; source review and the full suite protect these
+neighbors. Server readers and offline data delivery do not choose this UI verdict.
+
+**Tests and build.** Final identical test bytes: HEAD 02b production: 7 RED / 79 controls → candidate 86 GREEN
+in 5 suites. The new manual cold-read test explicitly starts uncached and clears unrelated prior local
+drafts; its retained-text control creates its own paragraph. Earlier v1–v4 fixture mistakes remain
+in the case. Root and fresh Codex each pass 193 related tests / 10 suites, TypeScript 0 and lint 0 errors
+with 60 inherited warnings. Official build actual 0 / sourceStable: 12980 passed/17 skipped tests,
+1145 passed/3 skipped suites; Next 26.08s. BEFORE `FLoC-qu-y80JW06GgAet9`, AFTER `1WK28573ZtjRPj1WFzVXd`.
+Accepted BEFORE archive 3680 members; candidate 3684, covering 2765 sources/916 compiled files / 1 worker.
+
+**Native evidence.** R4 BEFORE 36 states: frozen oracle 18 RED / 113 controls. R5 AFTER 36 states: 131/131,
+actual supervisor/worker 0, 6 observer checks, 24 foreground captures. V5 observation logic is byte-identical
+to V4 after normalizing one artifact-prefix line; no product expectation changed. Real document reads
+are delayed unchanged, then released. Three canonical synthetic fixtures stay unchanged during UI
+use and receive 6 create/delete ACKs plus exact tombstones. Browser content writes 0; owned Chrome,
+Auth SDK and services close, both exports acknowledged, 9 ports free; Next measured 351M with macOS top.
+
+Page/HTTP errors 0. BEFORE/R5 each retain 56 console errors, 69 request failures and 16 blocked cleardot
+requests; fullHealthAcceptance=false. Warm-offline means the already displayed page with connectivity
+removed, not a cold offline navigation, reload or service-worker acceptance. Owner:3000/production untouched.
+
+**Preserved QA failures.** Initial seed comparison omitted server-owned rev handling; a synthetic record
+remains only in its closed immutable failed export. R2 browser setup accessed localStorage on about:blank;
+R3 sampled two route frames before the exact document read. Canonical BEFORE is R4. First AFTER R4 child
+completed 36 states / 131 checks and cleanup, but its wrapper exited 1 on missing expectedScreenshotFiles;
+that run is retained and is not the final lifecycle. R5 fixes the wrapper and completes 0 on the same
+build. A callable raw validator now executes against retained output before services start.
+
+**Production plan, not executed.** After separately authorized merge/push/deploy, confirm the deployed
+commit. Use one existing authenticated browser profile, one tab, existing noncritical records. Open a
+group, series, manual plan and meeting preflight under a temporary slow connection; pending pages show
+loading rather than absence, then reveal their content. Already shown text must remain when offline.
+Use a nonexistent address to check final not-found/Back/Retry, and a manual plan with retained words to
+confirm they remain copyable. Stop any preflight without starting a meeting, do not edit/delete owner
+content, retain diagnostics and close the QA tab. Cold-offline/reload, physical-device acceptance,
+other Claude returns, parent 279.4 and owner-deferred launch decisions remain separate.
+
+**Visual acceptance boundary.** Root inspected four narrow BEFORE frames, ten R5 frames and four R6
+frames. Normal pending views, actual healthy content and final absence are visibly witnessed. R6
+series 390 t250 with animations allowed shows Back/checking; t750 with animations disabled omits them,
+although all five surrounding DOM/center-hit samples retain the actual Back target while both reads
+are held. R6 manual 1280 visibly contains Back/checking. The differing screenshot options/times do not
+establish cause. `BUG-20261106-pending-frame-disagrees-with-dom` remains under Requires recheck; not every
+capture is accepted as a simultaneous pixel witness. R5 stays the frozen 131/131 regression; R6 is
+supplemental diagnosis. Root visual report lists exact frames/digests; no trusted Back navigation,
+physical device or production acceptance is claimed by that diagnostic.
+
+**Repeatable proof.** `record-loading-290-final-proof-v1.json` seals 158 inputs and 76 frames. The verifier
+checks exact source/build archives and current bytes, final gates, unchanged RED/GREEN test inputs,
+actual lifecycle exits, fixture ACK/tombstones and cleanup; three deliberate bad verdict/trust/cleanup
+controls are rejected. R6 remains supplemental, and the separate capture discrepancy stays open.
+Source review found no concrete blocker; independent acceptance and post-commit provenance are
+recorded separately in the case. No additional fresh browser or complete rebuild by that reviewer
+is implied by retained-receipt verification.

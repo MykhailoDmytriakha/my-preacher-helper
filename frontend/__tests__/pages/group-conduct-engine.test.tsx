@@ -179,6 +179,8 @@ it('leaves a way back while a conduct group read has no answer', async () => {
   jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
   const view = render(<DataEngineProvider><ConductPage /></DataEngineProvider>);
   expect(await screen.findByRole('button', { name: 'common.back' })).toBeEnabled();
+  expect(screen.queryByText('recordAvailability.notHereYet')).not.toBeInTheDocument();
+  expect(view.container.querySelector('[data-page-loading]')).not.toBeNull();
   expect(screen.queryByText('recordAvailability.notFound')).not.toBeInTheDocument();
   view.unmount();
 });

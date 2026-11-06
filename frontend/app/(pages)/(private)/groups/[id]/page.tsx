@@ -291,11 +291,10 @@ function GroupDetailView({ editor }: { editor: GroupPageEditor }) {
   if (!user?.uid) return null;
 
   if (!group) {
-    return <RecordUnavailable presence={editor.presence} checking={loading} pageLoading={loading && !editor.retainedGroup}
+    return <RecordUnavailable presence={editor.presence} checking={loading} pageLoading={loading && !editor.retainedGroup} loadingFallback={<GroupDetailSkeletonCards ariaHidden />}
       onBack={() => router.push('/groups')} onRetry={editor.refresh}>
       {feedback}
       {editor.retainedGroup && <GroupReadOnlyContent group={editor.retainedGroup} allowConduct={false} />}
-      {loading && !editor.retainedGroup && <GroupDetailSkeletonCards ariaHidden />}
     </RecordUnavailable>;
   }
   if (editor.presence?.kind === 'absent' || editor.presence?.kind === 'deleting') {
