@@ -1,0 +1,35 @@
+/* A nested card can be narrow even on a wide screen. Its own content width owns the rail. */
+.card {
+  container-type: inline-size;
+  container-name: structure-thought;
+}
+
+.card .actions {
+  width: auto;
+}
+
+.card .actions,
+.card .secondaryActions {
+  flex-direction: row;
+  flex-wrap: wrap;
+}
+
+/* Keep the established phone action row. Above it, leave at least 12rem for thought text. */
+@media (min-width: 640px) {
+  @container structure-thought (min-width: 16rem) {
+    .card .withActions {
+      grid-template-columns: minmax(0, 1fr) 2.5rem;
+      row-gap: 0;
+    }
+
+    .card .actions {
+      width: 2.5rem;
+    }
+
+    .card .actions,
+    .card .secondaryActions {
+      flex-direction: column;
+      flex-wrap: nowrap;
+    }
+  }
+}

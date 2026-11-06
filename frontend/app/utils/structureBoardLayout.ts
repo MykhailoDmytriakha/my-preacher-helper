@@ -13,7 +13,8 @@ export const outlinePointGridClass = 'grid grid-cols-[repeat(auto-fit,minmax(min
 export const boardLayoutClass = (visibleCount: number, isVertical: boolean): string => {
   if (visibleCount <= 1) return 'flex flex-col';
   if (isVertical) return 'flex flex-col gap-6';
-  return `${structureThoughtGridClass} gap-6`;
+  // Three 24rem sections and two 1rem gaps fit the 1184px board on a 1280px laptop.
+  return `${structureThoughtGridClass} gap-x-4 gap-y-6`;
 };
 
 /** Both a pair and all three sections may be stacked; focus has no layout toggle. */

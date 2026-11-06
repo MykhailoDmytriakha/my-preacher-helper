@@ -15,6 +15,7 @@ import { useTranslation } from "@locales/useTranslation";
 import CardContent from "./CardContent";
 import { getSectionIconClasses } from "./column/utils";
 import { LockToggleButton } from "./LockToggleButton";
+import layout from "./SortableItem.module.css";
 
 const ACTION_BUTTON_BASE_CLASS = "flex h-8 w-8 items-center justify-center rounded-full shadow-sm transition-colors";
 
@@ -210,7 +211,7 @@ export const SortableItemActions = ({
   return (
     <div
       data-testid={`sortable-item-actions-${item.id}`}
-      className={`flex w-auto flex-row flex-wrap items-center gap-1.5 sm:w-10 sm:flex-col sm:flex-nowrap ${isDragging || isDeleting ? "invisible" : ""} ${className ?? ""}`}
+      className={`flex items-center gap-1.5 ${layout.actions} ${isDragging || isDeleting ? "invisible" : ""} ${className ?? ""}`}
     >
       {canToggleLock && (
         <LockToggleButton
@@ -227,7 +228,7 @@ export const SortableItemActions = ({
         />
       )}
 
-      <div className={`flex flex-row flex-wrap items-center gap-1.5 transition-opacity sm:flex-col sm:flex-nowrap ${hoverActionsClass}`}>
+      <div className={`flex items-center gap-1.5 transition-opacity ${layout.secondaryActions} ${hoverActionsClass}`}>
         {canEdit && (
           <button
             onPointerDown={stopEvent}
@@ -419,14 +420,14 @@ function SortableItemCard({
       {...attributes}
       {...(isDragDisabled ? {} : (listeners as Record<string, unknown> | undefined))}
       aria-disabled={isSemanticallyDisabled || undefined}
-      className={cardClassName}
+      className={`${cardClassName} ${layout.card}`}
     >
-      <div className={`grid items-start gap-x-4 gap-y-3 sm:gap-y-0 ${hasVisibleRailActions({
+      <div className={`grid grid-cols-1 items-start gap-x-4 gap-y-3 ${hasVisibleRailActions({
         canToggleLock,
         canEdit,
         showMoveAction,
         showDeleteAction,
-      }) ? "grid-cols-1 sm:grid-cols-[minmax(0,1fr)_2.5rem]" : "grid-cols-1"}`}>
+      }) ? layout.withActions : ""}`}>
         <div className="min-w-0">
           <CardContent item={item} locationContext={locationContext} />
           <SortableItemReviewFooter

@@ -5854,3 +5854,84 @@ ordinary description editing afterwards. Fault injection and held-native-complet
 remain emulator-only; ordinary production clicks do not prove those interruption boundaries.
 Remove only the fixture and close every QA tab. Owner and physical-device acceptance remain
 separate; unrelated returned bugs and deferred owner choices stay open.
+
+
+## Unit284 — Laptop section overview with readable nested thoughts
+
+**Bug / local status.** `BUG-20261003-structure-board-cards-narrow-on-ipad`, returned by
+Claude radio#5p2. Locally verified on `codex/bugs-local-fixes`; this entry accompanies the
+local fix commit. Production and physical-device acceptance remain separate. Build base
+is025d0a0e; the accepted dirty frontend overlay is explicitly pinned, including its new CSS
+module. No source-history rewrite, push, main merge or deployment was part of this fix.
+
+**Cause and class.** At1280px, the board has1184px after its existing gutters. Three24rem
+sections plus two24px gaps need1200px, so Conclusion wraps below the first pair. Forcing
+three sections leaves nested thoughts only150.7px of text; smaller gaps alone leave156px.
+The thought action rail used the viewport's `sm:` condition even inside a narrow nested
+card. The old tablet repair's24rem minimum remains useful and is preserved.
+
+`structureBoardLayout.ts` keeps24rem tracks with16px horizontal/24px vertical gaps;
+explicit vertical and single-section focus paths remain unchanged. `SortableItem.module.css`
+owns the grid and both action groups through one named card container. Above640px a card
+with at least16rem of content width uses the2.5rem side rail; tighter cards use the existing
+below-text action row. Below640px the established phone row remains. No duplicate controls,
+font reduction, JavaScript width state or data writer was added. The normal, focused and
+ambiguous thought cards share this rule; the drag preview remains the same card without
+mutation callbacks. Read-only boards and loading skeletons inherit the shared outer gaps;
+read-only cards have no action rail. The separate16rem outline-point grid is unchanged.
+
+**Regression and gates.** The frozen native-geometry oracle was written before product
+changes. BEFORE is1RED/43controls: the sole failure is1280px with2columns instead of3.
+The same oracle AFTER is44/44. jsdom does not compute CSS geometry; existing Jest
+focus/vertical/layout contracts are a separate check. Final focused v2 and fresh Codex v3
+are90/90 across7suites; TypeScript exit0; lint exit0 with60inherited warnings. Official
+`npm run build` v2 exits0/sourceStable with12,937passed tests and17skipped, then builds
+Next successfully. Build v1 was intentionally stopped before the final inner-action-group
+correction; its SIGTERM receipt/log are retained and never used as a passing build.
+
+**Native comparison.** Both complete observers exit0. Six exact widths are820/1024/1180/
+1280/1440/390. Natural section counts BEFORE1/2/2/2/3/1 become1/2/2/3/3/1. AFTER minimum
+paragraph widths are512/228/306/212/209.3/266px at16px text. At1280 ordinary/nested text is
+214/212px. Every row contains the same seven exact canonical fixture paragraphs and has
+no horizontal page overflow. Twenty of20native button-center hits pass before and after.
+Phone and narrow nested action groups remain rows; wider cards retain their side rail.
+Trusted native clicks exercise Vertical→Horizontal and Introduction focus→Normal Mode;
+both return to the exact natural geometry. Trusted drag creates a312px preview of a312px
+source; Escape removes it and restores the board. The canonical sermon snapshot is exactly
+unchanged after all presentation probes/actions. Temporary probe styles are removed.
+
+Root inspected natural1280/390/820, focus and drag frames; fresh Codex also compared BEFORE
+and AFTER1280, vertical and the other responsive frames. The run uses native headless
+Chrome with actual Auth/Firestore emulators and synthetic canonical seed data. It is not
+physical-iPad, installed-PWA or production acceptance.
+
+**Proof and boundaries.** AFTER build `DbwVZv-sGxnCpzUNRirVs` pins2751source/914compiled/
+1service-worker files. The verified3668-member source/build archive has SHA-256
+`309196ef3a422b42a91b878bf462135c689e461bc77d76022b4317a75f1c13ee`.
+The prior accepted hTG build archive supplies the unchanged BEFORE bytes. Case artifacts
+use `board-columns-284-*`; final proof v1 binds96input hashes. The aggregate verifier
+`board-columns-284-verify-final-v1.py` has SHA-256
+`25d507dc4497e24143ed875de1152caf310f865857bd97ded11843ccf018a201`;
+proof JSON SHA-256 is`bd6676848b45add321ef043ba01924e2df86e4bb2ee4e9d9911aada6a6d5f400`.
+Root and fresh Codex reran it with exit0 and rejected three in-memory negative controls:
+wrong column count, untrusted navigation and changed canonical content. Original artifacts
+remain unchanged. Independent acceptance is in the ignored case report.
+
+Two AFTER RSC `net::ERR_ABORTED` events remain unexplained and retained, without original
+fetch-promise/signal correlation. There are no HTTP/console/page errors, forbidden requests
+or browser content commands. Raw observer `fixed:false`, `pass:false` and full-health false
+remain unchanged: the separate verifier accepts only this local layout result. Earlier
+R1 seed-timestamp, R2 text-selector/heartbeat-guard and R3 point-title-selector failures are
+retained with their actual exits. R3's narrower six-width table was independently usable;
+only R4 supplies the complete BEFORE/probe/restoration. All exact synthetic fixtures were
+canonically tombstoned; owned Chrome profile and services closed; all9ports free. Final
+macOS `top` server sample253M. Production Firestore was not used.
+
+**Production plan, not executed.** After separately authorized merge/push/deploy, verify
+the deployed commit and refreshed assets. Reuse one existing browser profile and one app
+tab; open an existing sermon with three populated sections. At1280 horizontal layout,
+verify all three sections, long nested thoughts, visible action targets and no overflow.
+Check820/390, explicit Vertical and focus/Normal Mode; confirm the sermon remains unchanged.
+Avoid editing, recording, AI commands and production fault injection. A drag cancellation
+may be checked without dropping/saving. Close the QA tab afterwards. Physical iPad/PWA and
+owner visual acceptance remain separate; unrelated returned bugs/deferred choices stay open.
