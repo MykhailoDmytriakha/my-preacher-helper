@@ -2,14 +2,16 @@
 
 import { useState, type ReactNode } from 'react';
 
+import { RecordReadSummary } from '@/components/common/recordReadSummary';
 import { useTranslation } from '@locales/useTranslation';
 
+import type { RecordReadNotice } from '@/components/common/recordReadSummary';
 import type { RecordPresence } from '@/data-engine/recordPresence';
 
 /** Absence needs server proof; waiting and an unread cache always leave a way out. */
-export function RecordUnavailable({ presence, checking = false, pageLoading = false, loadingFallback, onBack, onRetry, children }: {
+export function RecordUnavailable({ presence, checking = false, pageLoading = false, loadingFallback, onBack, onRetry, readNotice, children }: {
   presence?: RecordPresence; checking?: boolean; pageLoading?: boolean; loadingFallback?: ReactNode; onBack: () => void;
-  onRetry?: () => unknown | Promise<unknown>; children?: ReactNode;
+  onRetry?: () => unknown | Promise<unknown>; readNotice?: RecordReadNotice; children?: ReactNode;
 }) {
   const { t } = useTranslation();
   const [retrying, setRetrying] = useState(false);
@@ -37,6 +39,6 @@ export function RecordUnavailable({ presence, checking = false, pageLoading = fa
       {(checking || retrying) && <p className="text-sm">{t('recordAvailability.checking')}</p>}
       {onRetry && <button type="button" disabled={retrying} onClick={() => { void retry(); }} className="rounded-lg border px-3 py-2 disabled:opacity-50">{t('dataSync.retry')}</button>}
     </div>
-    {children}
+    <RecordReadSummary notice={readNotice}>{children}</RecordReadSummary>
   </section>;
 }

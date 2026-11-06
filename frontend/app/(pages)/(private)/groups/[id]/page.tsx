@@ -291,14 +291,14 @@ function GroupDetailView({ editor }: { editor: GroupPageEditor }) {
   if (!user?.uid) return null;
 
   if (!group) {
-    return <RecordUnavailable presence={editor.presence} checking={loading} pageLoading={loading && !editor.retainedGroup} loadingFallback={<GroupDetailSkeletonCards ariaHidden />}
+    return <RecordUnavailable readNotice={editor.readNotice} presence={editor.presence} checking={loading} pageLoading={loading && !editor.retainedGroup} loadingFallback={<GroupDetailSkeletonCards ariaHidden />}
       onBack={() => router.push('/groups')} onRetry={editor.refresh}>
       {feedback}
       {editor.retainedGroup && <GroupReadOnlyContent group={editor.retainedGroup} allowConduct={false} />}
     </RecordUnavailable>;
   }
   if (editor.presence?.kind === 'absent' || editor.presence?.kind === 'deleting') {
-    return <><RecordUnavailable presence={editor.presence} onBack={() => router.push('/groups')} onRetry={editor.refresh}>{feedback}</RecordUnavailable>
+    return <><RecordUnavailable readNotice={editor.readNotice} presence={editor.presence} onBack={() => router.push('/groups')} onRetry={editor.refresh}>{feedback}</RecordUnavailable>
       <GroupReadOnlyContent group={editor.retainedGroup ?? group} allowConduct={false} />{confirmDialog}</>;
   }
 

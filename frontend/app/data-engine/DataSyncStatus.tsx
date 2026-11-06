@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 
+import { useRecordReadSummary } from '@/components/common/recordReadSummary';
 import { useSyncOutlet } from '@/components/common/syncOutlet';
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
 import { useConfirm, useDiscardQuestion } from '@/hooks/useConfirm';
@@ -116,8 +117,11 @@ export function DataSyncStatus({ subject, status, error, errorWords, onKeepLocal
   // check, an unconfirmed copy, a delivery still unanswered — nor offers a Retry that can only be
   // refused again (BUG-20261019-outage-said-as-two-check-lines). Choices and refusals still speak.
   const serverNoticeShown = useServerUnavailableNotice();
+  const recordReadSummary = useRecordReadSummary();
+  const claimedRead = Boolean(recordReadSummary && (recordReadSummary.subject === subject
+    || (errorWords && recordReadSummary.words === errorWords)));
   const unconfirmedCopy = useLasting(Boolean(status && status.freshness !== 'server')) && !serverNoticeShown;
-  const readTrouble = useLasting(Boolean(status?.readFailed)) && !serverNoticeShown;
+  const readTrouble = useLasting(Boolean(status?.readFailed)) && !serverNoticeShown && !claimedRead;
   const selected = recoveryChoices.find(choice => choice.id === selectedId);
   const selectedCopy = useRef(selected);
   useLayoutEffect(() => {
@@ -127,7 +131,10 @@ export function DataSyncStatus({ subject, status, error, errorWords, onKeepLocal
   const busy = busyFor.has(subject);
   // `error` arrives already in words: the engine hooks translate where they catch
   // (BUG-20261003-engine-error-sentence-on-screen); a failed choice here is said the same way.
-  const failure = sayNotice(errorWords, error ?? null) ?? (failed && failed.subject === subject ? sayFailure(failed.words, t) : null);
+  const ownerFailure = recordReadSummary && errorWords && recordReadSummary.words === errorWords
+    && 'key' in errorWords && errorWords.readNotice
+    ? null : sayNotice(errorWords, error ?? null);
+  const failure = ownerFailure ?? (failed && failed.subject === subject ? sayFailure(failed.words, t) : null);
   const run = (callback: () => void | Promise<void>) => {
     if (runningFor.current.has(subject)) return;
     runningFor.current.add(subject);

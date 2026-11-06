@@ -1,3 +1,4 @@
+import type { RecordReadNotice } from '@/components/common/recordReadSummary';
 import type { RecordPresence } from '@/data-engine/recordPresence';
 import type { Group } from '@/models/models';
 import type { Dispatch, ReactNode, SetStateAction } from 'react';
@@ -10,6 +11,7 @@ export interface GroupPageEditor {
   loading: boolean;
   readOnly?: boolean;
   presence?: RecordPresence;
+  readNotice?: RecordReadNotice;
   refresh?: () => unknown | Promise<unknown>;
   title: string;
   setTitle: Dispatch<SetStateAction<string>>;

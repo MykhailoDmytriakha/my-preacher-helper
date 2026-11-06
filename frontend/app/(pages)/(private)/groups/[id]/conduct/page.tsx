@@ -19,6 +19,7 @@ import { groupLanguage } from '@/utils/documentLanguage';
 import { normalizeFlow } from '@/utils/groupFlow';
 import { useTranslation } from '@locales/useTranslation';
 
+import type { RecordReadNotice } from '@/components/common/recordReadSummary';
 import type { Group, GroupBlockTemplate } from '@/models/models';
 import type { ReactNode } from 'react';
 
@@ -44,7 +45,7 @@ function EngineConductPage({ groupId }: { groupId: string }) {
    */
   if (document.document.readOnly && document.group) {
     return <ConductView groupId={groupId} group={document.group} loading={false} saveFlow={async () => undefined}
-      presence={document.document.presence} onRetry={document.refresh} lockDurations readOnlyNote={document.document.readOnlyReason} />;
+      readNotice={{ subject: document.document.recoveryIdentity, words: document.document.errorWords }} presence={document.document.presence} onRetry={document.refresh} lockDurations readOnlyNote={document.document.readOnlyReason} />;
   }
   const feedback = <div className="shrink-0 px-5 py-2 empty:hidden">
     <DataSyncStatus subject={document.document.recoveryIdentity} status={document.status} error={document.error} errorWords={document.errorWords} onRetry={document.refresh}
@@ -55,13 +56,13 @@ function EngineConductPage({ groupId }: { groupId: string }) {
       recoveryLoading={recovery.loading} recoveryError={recovery.error} onDiscardRecovery={recovery.discard} />}
   </div>;
   return <ConductView groupId={groupId} group={document.group ? { ...document.group, flow } : null}
-    presence={document.document.presence} onRetry={document.refresh}
+    readNotice={{ subject: document.document.recoveryIdentity, words: document.document.errorWords }} presence={document.document.presence} onRetry={document.refresh}
     loading={document.loading || form.loading} saveFlow={() => form.save()}
     updateDuration={(id, duration) => { void updateDuration(id, duration).catch(() => undefined); }}
     setupDisabled={form.loading || !form.active || form.busy || form.status?.phase === 'deleted'} feedback={feedback} />;
 }
-function ConductView({ groupId, group, loading, saveFlow, updateDuration, setupDisabled = false, lockDurations = false, readOnlyNote, feedback, presence, onRetry }: {
-  presence?: import('@/data-engine/recordPresence').RecordPresence; onRetry?: () => unknown | Promise<unknown>;
+function ConductView({ groupId, group, loading, saveFlow, updateDuration, setupDisabled = false, lockDurations = false, readOnlyNote, feedback, presence, onRetry, readNotice }: {
+  readNotice?: RecordReadNotice; presence?: import('@/data-engine/recordPresence').RecordPresence; onRetry?: () => unknown | Promise<unknown>;
   groupId: string; group: Group | null; loading: boolean; saveFlow: (flow: GroupFlowItem[]) => Promise<void>;
   updateDuration?: (id: string, durationMin: number | null) => void; setupDisabled?: boolean;
   lockDurations?: boolean; readOnlyNote?: string | null; feedback?: ReactNode;
@@ -145,12 +146,12 @@ function ConductView({ groupId, group, loading, saveFlow, updateDuration, setupD
   // A meeting already running keeps its pinned blocks. Before Start, even an unanswered read has an exit.
   if (!group && phase === 'preflight') {
     return <div className="page-gesture-follow fixed inset-0 z-[200] overflow-y-auto bg-white dark:bg-gray-950">
-      <RecordUnavailable presence={presence} checking={loading} pageLoading={loading} loadingFallback={<GroupDetailSkeletonCards ariaHidden />} onBack={() => router.push('/groups')} onRetry={onRetry}>{feedback}</RecordUnavailable>
+      <RecordUnavailable readNotice={readNotice} presence={presence} checking={loading} pageLoading={loading} loadingFallback={<GroupDetailSkeletonCards ariaHidden />} onBack={() => router.push('/groups')} onRetry={onRetry}>{feedback}</RecordUnavailable>
     </div>;
   }
   if (loading && phase === 'preflight') {
     return <div className="page-gesture-follow fixed inset-0 z-[200] overflow-y-auto bg-white dark:bg-gray-950">
-      <RecordUnavailable presence={presence} checking pageLoading loadingFallback={<GroupDetailSkeletonCards ariaHidden />} onBack={() => router.push('/groups')} onRetry={onRetry}>{feedback}</RecordUnavailable>
+      <RecordUnavailable readNotice={readNotice} presence={presence} checking pageLoading loadingFallback={<GroupDetailSkeletonCards ariaHidden />} onBack={() => router.push('/groups')} onRetry={onRetry}>{feedback}</RecordUnavailable>
     </div>;
   }
 

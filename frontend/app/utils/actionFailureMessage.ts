@@ -27,7 +27,7 @@ export type FailureValue = string | { key: string };
 /** One sentence — by key, or words as they are — or several said one after another (`parts`). */
 export type FailureWords =
   | { said: string }
-  | { key: string; values?: Record<string, FailureValue>; announcedBy?: 'server-outage' }
+  | { key: string; values?: Record<string, FailureValue>; announcedBy?: 'server-outage'; readNotice?: true }
   | { parts: FailureWords[] };
 
 const SAID = new Set(['read-only', 'said']);
@@ -93,7 +93,7 @@ const sayOf = (error: unknown): FailureWords | null => {
  */
 const SERVER_DID_NOT_ANSWER = new Set(['unavailable', 'deadline-exceeded']);
 
-export function failureWords(error: unknown, fallbackKey: string): FailureWords {
+function classifiedFailureWords(error: unknown, fallbackKey: string, read: boolean): FailureWords {
   const code = error instanceof Error ? failureCode(error) ?? '' : '';
   const said = SAID.has(code) ? sayOf(error) : null;
   if (said) return said;
@@ -103,7 +103,12 @@ export function failureWords(error: unknown, fallbackKey: string): FailureWords 
   const known = KNOWN.get(code);
   if (known) return { key: known };
   logFailureOnce(error);
-  return { key: fallbackKey, ...(SERVER_DID_NOT_ANSWER.has(code) ? { announcedBy: 'server-outage' as const } : {}) };
+  return { key: fallbackKey, ...(read ? { readNotice: true as const } : {}), ...(SERVER_DID_NOT_ANSWER.has(code) ? { announcedBy: 'server-outage' as const } : {}) };
+}
+
+/** Only a generic read fallback can be owned by a missing-record summary; known storage/instructions stay. */
+export function failureWords(error: unknown, fallbackKey: string): FailureWords {
+  return classifiedFailureWords(error, fallbackKey, true);
 }
 
 /** For a refused action: an unknown refusal keeps the engine's own sentence, which may be an instruction. */
@@ -116,7 +121,7 @@ export function refusalWords(error: unknown, fallbackKey: string): FailureWords 
     return { key: fallbackKey };
   }
   if (error instanceof Error && error.message && !SAID.has(code) && !KNOWN.has(code) && !ranOutOfTime(error)) return { said: error.message };
-  return failureWords(error, fallbackKey);
+  return classifiedFailureWords(error, fallbackKey, false);
 }
 
 /** Omit only failed reads owned by the active app outage notice; action refusals have no such owner. */
