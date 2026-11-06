@@ -39,6 +39,7 @@ import FlowItemRow from '@/components/groups/FlowItemRow';
 import { GroupReadOnlyContent } from '@/components/groups/GroupReadOnlyContent';
 import { RecordUnavailable } from '@/components/RecordUnavailable';
 import { SeriesMembershipDialog } from '@/components/series/SeriesMembershipDialog';
+import { GroupDetailSkeletonCards } from '@/components/skeletons/GroupDetailSkeleton';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import DatePickerField from '@/components/ui/DatePickerField';
 import { LiveTextInput, LiveTextArea } from '@/components/ui/LiveTextInput';
@@ -294,7 +295,7 @@ function GroupDetailView({ editor }: { editor: GroupPageEditor }) {
       onBack={() => router.push('/groups')} onRetry={editor.refresh}>
       {feedback}
       {editor.retainedGroup && <GroupReadOnlyContent group={editor.retainedGroup} allowConduct={false} />}
-      {loading && !editor.retainedGroup && [1, 2, 3].map(index => <div key={index} aria-hidden className="h-24 animate-pulse rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800" />)}
+      {loading && !editor.retainedGroup && <GroupDetailSkeletonCards ariaHidden />}
     </RecordUnavailable>;
   }
   if (editor.presence?.kind === 'absent' || editor.presence?.kind === 'deleting') {
@@ -306,7 +307,7 @@ function GroupDetailView({ editor }: { editor: GroupPageEditor }) {
     return <div className="space-y-4" data-page-loading="">
       <button type="button" onClick={() => router.push('/groups')}>{t('common.back')}</button>
       {feedback}
-      {[1, 2, 3].map(index => <div key={index} className="h-24 animate-pulse rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800" />)}
+      <GroupDetailSkeletonCards />
     </div>;
   }
 
