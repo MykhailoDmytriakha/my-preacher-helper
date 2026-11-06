@@ -1,5 +1,6 @@
 import { BIBLE_BOOKS_DATA } from '@/utils/bibleBooks';
 import { BIBLES, type BibleId } from '@/utils/bibles';
+import { warmWordFormData } from '@/utils/bibleSearch/wordFormData';
 import { BIBLE_TEXT_CACHE, isBookShaped } from '@/utils/bibleTextCache';
 import { chapterCount } from '@/utils/versification';
 
@@ -206,7 +207,7 @@ export type WarmResult = {
   /** Books that are on the device now. */
   onDevice: number;
   total: number;
-  /** The device refused to store (no Cache Storage, or a write failed): offline reading is not possible. */
+  /** The device refused a required offline copy (no Cache Storage, or a write failed). */
   storageFailed: boolean;
 };
 
@@ -272,6 +273,7 @@ const warmInFlight = new Map<BibleId, Promise<WarmResult>>();
 const warmAgain = new Set<BibleId>();
 
 /**
+ * Keep reading and its word-search prerequisite together, without building a lexical index.
  * The warm-up, never twice at once for one Bible: a reconnect and a return to the tab may both ask
  * for it. A request that arrives during a run is not lost — a book that failed before the
  * connection came back would be skipped by that run — so one more pass follows over what is still
@@ -284,11 +286,17 @@ export function warmBibleTextOnce(options: WarmOptions): Promise<WarmResult> {
     warmAgain.add(bible);
     return running;
   }
+  const warm = async (): Promise<WarmResult> => {
+    const text = await warmBibleText(options), language = BIBLES[bible].language;
+    if (language === 'en') return text;
+    const forms = await warmWordFormData(language, { cacheStorage: options.cacheStorage, timeoutMs: options.deadlineMs });
+    return forms.storageFailed ? { ...text, storageFailed: true } : text;
+  };
   const run = async (): Promise<WarmResult> => {
-    let result = await warmBibleText(options);
+    let result = await warm();
     while (warmAgain.has(bible)) {
       warmAgain.delete(bible);
-      result = await warmBibleText(options);
+      result = await warm();
     }
     return result;
   };

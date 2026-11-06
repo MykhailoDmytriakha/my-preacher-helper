@@ -148,6 +148,7 @@ const original = Module._load;
 const stubs = {
   '@/utils/bibleBooks': require(path.join(process.argv[3], 'frontend/app/utils/bibleBooks.ts')),
   '@/utils/bibles': { BIBLES: {} },
+  '@/utils/bibleSearch/wordFormData': { warmWordFormData: () => { throw new Error('Vocabulary extraction must not warm device resources'); } },
   '@/utils/bibleTextCache': { BIBLE_TEXT_CACHE: 'unused', isBookShaped: () => false },
   '@/utils/versification': { chapterCount: () => 0 },
 };

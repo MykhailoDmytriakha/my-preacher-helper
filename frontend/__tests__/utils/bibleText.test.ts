@@ -9,6 +9,11 @@ import {
 import { BIBLE_IDS, BIBLES, type BibleId } from '@/utils/bibles';
 import { BIBLE_TEXT_CACHE } from '@/utils/bibleTextCache';
 
+// This unit suite owns book warming/coalescing; bibleOfflinePreparation covers the real shared loader.
+jest.mock('@/utils/bibleSearch/wordFormData', () => ({
+  warmWordFormData: jest.fn(async () => ({ onDevice: true, storageFailed: false })),
+}));
+
 const PUBLIC_DIR = join(__dirname, '..', '..', 'public');
 
 const readBook = (bookId: string, bible: BibleId = 'rst') =>

@@ -5941,6 +5941,8 @@ owner visual acceptance remain separate; unrelated returned bugs/deferred choice
 
 ## Unit285 — Load verified word forms only when searching words
 
+**Later return.** Claude radio#20 identified a missing offline prerequisite after ordinary Bible preparation. Unit287 below restores that existing first-offline-search behavior. Unit285's delivery/lexical evidence remains historical; its requirement for a preliminary online query is superseded. Original raw failures and archives are unchanged.
+
 **Bug / local status.** `BUG-20261027-search-delo-finds-dlya`, Claude radio#5p3 delivery
 return. The earlier lexical-admission fix remains. This unit removes its eager dictionary
 cost from ordinary reading. Source/build and native comparisons are locally verified, including fresh Codex acceptance;
@@ -6135,3 +6137,98 @@ sections, readable nested text and visible controls; also check1263. Check820/39
 Horizontal and Focus/Normal without saving content; an optional drag cancels with Escape.
 Avoid AI/audio or fault injection and close the QA tab. Owner visual and physical-device
 acceptance remains separate. Other Claude returns, parent279.4 and deferred choices remain open.
+
+
+## Unit287 — Keep the first word search available after ordinary Bible preparation
+
+**Bug / local status.** `BUG-20261027-search-delo-finds-dlya`, Claude radio#20 return after
+037b0636. The lexical-admission and lightweight-delivery fixes remain. This unit restores
+first offline word search after an ordinary online Bible visit, without a preliminary query.
+Local source/build/native verification is complete; production, owner and physical-device
+acceptance remain separate. The candidate was built at cf3cf75e plus an exact ten-file frontend
+overlay. Only the authorized local branch is committed; no feature-to-main, push or deployment.
+
+**Cause and class.** `warmBibleTextOnce` kept the 66 books but omitted the now-external
+word-form prerequisite. All word-search surfaces share `searchIndexStore` and
+`wordFormData`; BiblePage is the sole app mount of BibleBookReader and owns whole-Bible
+preparation. Verse/reference/analysis windows fetch particular books and introduce no separate
+whole-Bible promise. Server/static delivery and worker cache names stay separate.
+
+`warmWordFormData` reuses the existing validated loader and named immutable asset cache.
+The existing per-Bible coalescing/reconnect loop now warms this Bible's RU/UK payload after
+its books, without constructing a lexical index. English has no payload. Retained copies are
+checked by presence, not parsed again. Only the existing loader writes this named cache, after
+validation; actual queries validate cached contents again. Arbitrary preexisting/manual storage
+corruption is a residual, not a new cache-health promise. Old immutable addresses are retained:
+eviction must account for an already-open old client's offline address.
+
+A missing/network-refused payload can retry on later preparation. A refused storage write is
+reported through the existing combined offline-storage warning; the online query remains usable.
+The warning now accurately names books or word search in EN/RU/UK. The generator's tokenizer
+extraction stubs the new warm dependency and throws if extraction attempts device warming.
+Full local regeneration against pinned inputs reproduced exact RU/UK bytes and assets; only
+`corpus.sourceHashes.bibleTextTs` changed in sources.json. No dictionary content/license change.
+
+| # | problem | local fix | regression | browser / visual evidence |
+|---|---|---|---|---|
+|1|Ordinary warm omits first offline word search|Shared selected-language preparation after books|`bibleOfflinePreparation.test.ts`: RU/UK missing-cache RED to GREEN|Real KJV to RST ordinary selection, no online query, 66 books each; first offline Russian search returns699|
+|2|Later visits/reconnect need cheap, shared retry|Existing coalescing plus presence-only dictionary fast path|Book coalescing tests and unmocked integration presence/retry tests|Fresh document uses the exact warm cache with dictionary transport denied; exact101 options preserved|
+|3|Storage refusal must not pretend offline success or break live search|Post-write presence check, combined truthful warning|Integration refusal/live-search control and existing loader refusal tests|Warning copy reviewed in three locales; actual storage-fault UI injection not claimed|
+|4|Other screens/English must stay light|No eager JSON, no lexical-index construction, no English payload|Architecture and search/index suites|English 66-book warm observes zero dictionaries; Russian warm observes no Ukrainian/eager-JS payload; native Ukrainian not claimed|
+
+**Causal proof.** Frozen integration test SHA
+`5dc5bb63d061c6a09864458a1976df880d56bfc74b7e44ab71cd2ddc6690d876` ran
+4RED/2controls before the implementation and6/6 after without changing the test.
+The native product oracle v3 SHA
+`1e5a60aad567bc4fa70bdc1239d3e8191000555ec78d4c5fd66c7e05e499a3f0`
+gives4causalRED/14controls on R2 and18/18 on AFTER. The BEFORE device had66KJV and66RST
+books, zero word-input events and no dictionary cache. Both first same-document and fresh-document
+offline queries showed explicit preparation failure. AFTER retains1494428Russian bytes/SHA
+`33e59bbc86e1326d52b5035a103444e03be34d732719899d1c59965b8a30e5c9`
+before any word query, preserves that copy across the document/query, and returns the historical
+699-result boundary and exact101options in both offline scenarios. Root and fresh Codex viewed
+390px BEFORE/AFTER; root also viewed both1280px ordinary online frames.
+
+**Gates and inspection.** Root and fresh Codex focused140/11; final fresh types0,
+lint0/60inherited warnings, translations8. Official build12965pass/17skip,
+1143passed/3skipped suites of1146; Next production build27.55s, actual0/sourceStable.
+Independent source review found the initial narrow storage-warning copy; the three-locale correction
+passed its repeat review. The writer trace found no normal unvalidated writer into the named cache.
+
+**Proof artifacts.** Prefix `word-search-warm-287` under the existing local all-bugs case.
+BEFORE build `Dk6XIl9_3J7_73InYMwBp` reuses the exact3678-member Unit286 source/build archive.
+AFTER build `aGfVZ8oR8QKRGoWg8BI6m` has3679 members:2762sources (2761tracked+1new test),
+914compiled files,1worker and2embedded proof records. All member hashes were checked.
+Final proof SHA `1fdcf0762bf19f0516e9ee68c2e8800311bb406d1e838cac8a0835727708826b`
+freezes185inputs. Compact verifier v4 SHA
+`16d084a7a15f2933e7b0f171083164f9d00f234ede6c1ffed34cb93cceaf6fdb`
+checks actual gates, current source/build, both archives, historical failed boundaries and the
+frozen oracle. Root normal replay0 and negative-control replay0; missing cache, altered result and
+untrusted translation click are rejected. Negative controls use deep copies and temporary files;
+original raw evidence is unchanged. Fresh final replay is recorded downstream to avoid circular hashes.
+
+**Preserved failures and scope.** Original BEFORE/R2 observers remain FAILED actual1,
+observationComplete:false, because the blocked external-probe initiating stack was unavailable.
+Their terminal user-path observations are accepted only by the separate product-scoped oracle.
+The R2 launcher first refused a stale namespace; AFTER setup versions1/2 failed before services
+for missing createRequire and a duplicated port list. Root v3 reuses canonical ports and passed
+read-only input validation before running the browser. Those failures remain in the evidence.
+Generator v1 reproduced bytes but its wrapper rejected omitted optional-JAR verification metadata;
+v2 and final v3 used the original pinned jar. Focused v1 and lint v1 failures remain too.
+
+AFTER native actual0/observationComplete:true does not claim full browser health: six offline
+cleardot attempts were actually blocked, with26request-failure and18console-error observations
+retained; the initiating caller remainsUNKNOWN. HTTP/page/body-read errors are zero. Two context
+response observations have one complete Russian content address/hash, while one page CDP request
+was observed; an exact wire-transfer count or service-worker relationship is not established.
+No diagnostics were erased. All owned Chrome/profile/Auth SDK/emulators/server closed; nine ports
+free; macOS top measured333M before the server stopped. Owner3000 and production Firestore untouched.
+
+**Production plan, not executed.** After separately authorized merge/push/deploy, verify deployed
+commit and immutable asset hashes. Reuse one existing authenticated profile/tab to avoid account
+redownload/polling. Visit the chosen Bible online without searching, wait for66books and its selected
+word-data copy, go offline and search a real word; then reload a fresh document on that device's warm
+cache and repeat. Check English does not request RU/UK and perform a selected-language control.
+Retain diagnostics, close the QA tab, avoid AI/audio/content writes and do not loop quota failures.
+Cold whole-app startup, owner/physical iPad and native Ukrainian acceptance are not claimed here.
+Other Claude returns, parent279.4, licence decisions and deferred emulator defaults remain open.

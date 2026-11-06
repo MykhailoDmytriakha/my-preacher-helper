@@ -47,8 +47,8 @@ export default function BiblePage() {
     if (!slug) setLastPlace(readLastPlace());
   }, [slug]);
 
-  // In the background: the whole text of the Bible being read onto the device (about 1.5 MB), again
-  // whenever the connection returns or the person comes back to the tab, until every book is there.
+  // In the background: keep this Bible and its word-search data on the device, again whenever the
+  // connection returns or the person comes back to the tab. Retained resources are not reparsed.
   // Silent while it works; only a device that refuses to store is worth a word.
   useEffect(() => {
     if (!bible) return undefined;
