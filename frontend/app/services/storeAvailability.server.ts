@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 
-import { withinDeadline } from '@/utils/withinDeadline';
+import { RouteDeadlineError, withinDeadline } from '@/utils/withinDeadline';
 
 /**
  * A ROUTE THE APP CALLS BY ITSELF ANSWERS BEFORE THE BROWSER GIVES UP
@@ -26,6 +26,8 @@ import { withinDeadline } from '@/utils/withinDeadline';
 /** Reads take well under a second; both deadlines stay under the browser's 5 s and 8 s, cold start included. */
 const READ_DEADLINE_MS = 3_000;
 const WRITE_DEADLINE_MS = 5_000;
+/** Manual collection work may outlast a point read, still below admin client/function walls. */
+const ADMINISTRATIVE_DEADLINE_MS = 5_000;
 /** How long an instance stops asking a store that failed that way; the daily quota returns at midnight Pacific. */
 const PAUSE_MS = 30_000;
 /** gRPC status RESOURCE_EXHAUSTED, as the Firestore server SDK reports it on its errors. */
@@ -51,15 +53,19 @@ const unavailable = () => new StoreUnavailableError(Math.max(1, Math.ceil((pause
  */
 export async function withStore<T>(
   work: () => Promise<T>,
-  { write = false, startedAt = performance.now() }: { write?: boolean; startedAt?: number } = {}
+  { write = false, startedAt = performance.now(), workload = 'interactive' }: { write?: boolean; startedAt?: number; workload?: 'interactive' | 'administrative' } = {}
 ): Promise<T> {
+  const administrative = workload === 'administrative';
   if (!write && Date.now() < pausedUntil) throw unavailable();
   let asked = false;
   let silent: Error | undefined;
   const ask = () => { asked = true; return work(); };
   try {
-    return await withinDeadline(ask, startedAt + (write ? WRITE_DEADLINE_MS : READ_DEADLINE_MS), () => (silent = new Error('Store silent')));
+    return await withinDeadline(ask, startedAt + (administrative ? ADMINISTRATIVE_DEADLINE_MS : write ? WRITE_DEADLINE_MS : READ_DEADLINE_MS),
+      () => (silent = administrative ? new RouteDeadlineError('waiting for administrative store work') : new Error('Store silent')));
   } catch (error) {
+    // A manual scan's own wall says nothing about the health of unrelated reads.
+    if (error === silent && administrative) throw error;
     // Out of time before the store was even asked: nothing was learned about the store.
     if (error === silent && !asked) throw unavailable();
     if (error !== silent && (error as { code?: unknown } | null)?.code !== RESOURCE_EXHAUSTED) throw error;
@@ -82,6 +88,15 @@ export function storeRetryHeaders(error: unknown): Record<string, string> {
  */
 export function storeUnavailableResponse(error: StoreUnavailableError): NextResponse {
   return NextResponse.json({ code: error.code }, { status: error.status, headers: { 'Cache-Control': 'no-store', ...storeRetryHeaders(error) } });
+}
+
+/** Keep a request's own administrative deadline distinct from a Store outage in the browser. */
+export function storeFailureResponse(error: unknown): NextResponse | undefined {
+  if (error instanceof StoreUnavailableError) return storeUnavailableResponse(error);
+  if (error instanceof RouteDeadlineError) {
+    return NextResponse.json({ code: 'deadline-exceeded' }, { status: 504, headers: { 'Cache-Control': 'no-store' } });
+  }
+  return undefined;
 }
 
 export function __resetStoreAvailabilityForTests(): void {

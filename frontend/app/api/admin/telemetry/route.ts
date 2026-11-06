@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { describePrompt, resolvePromptKey } from "@/api/clients/ai/promptRegistry";
-import { StoreUnavailableError, storeUnavailableResponse, withStore } from '@/services/storeAvailability.server';
+import { storeFailureResponse, withStore } from '@/services/storeAvailability.server';
 
 import { checkTelemetryAdminAuth, TELEMETRY_COLLECTION } from "./telemetryAdmin";
 
@@ -44,7 +44,7 @@ export async function GET(request: Request) {
 
   try {
     const { adminDb } = await import("@/config/firebaseAdminConfig");
-    const snapshot = await withStore(() => adminDb.collection(TELEMETRY_COLLECTION).get(), { startedAt });
+    const snapshot = await withStore(() => adminDb.collection(TELEMETRY_COLLECTION).get(), { startedAt, workload: 'administrative' });
 
     const summary: Record<string, { total: number; versions: Record<string, VersionAccumulator> }> = {};
 
@@ -164,7 +164,8 @@ export async function GET(request: Request) {
 
     return NextResponse.json(result);
   } catch (error) {
-    if (error instanceof StoreUnavailableError) return storeUnavailableResponse(error);
+    const refusal = storeFailureResponse(error);
+    if (refusal) return refusal;
     return NextResponse.json({ error: String(error) }, { status: 500 });
   }
 }
@@ -194,9 +195,10 @@ export async function DELETE(request: Request) {
       }
 
       return NextResponse.json({ deleted: total });
-    }, { write: true, startedAt });
+    }, { write: true, startedAt, workload: 'administrative' });
   } catch (error) {
-    if (error instanceof StoreUnavailableError) return storeUnavailableResponse(error);
+    const refusal = storeFailureResponse(error);
+    if (refusal) return refusal;
     return NextResponse.json({ error: String(error) }, { status: 500 });
   }
 }

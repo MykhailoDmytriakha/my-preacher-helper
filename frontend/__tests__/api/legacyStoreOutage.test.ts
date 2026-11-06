@@ -45,7 +45,7 @@ const id = { params: Promise.resolve({ id: 'qa-legacy-bounds-140-record' }) };
 const user = { params: Promise.resolve({ uid: 'qa-legacy-bounds-140-user' }) };
 const prompt = { params: Promise.resolve({ promptName: 'qa-legacy-bounds-140-prompt' }) };
 
-type RouteCase = { name: string; method: string; body?: unknown; mutation?: boolean; run: (request: Request) => Promise<Response> };
+type RouteCase = { name: string; method: string; body?: unknown; mutation?: boolean; administrative?: boolean; run: (request: Request) => Promise<Response> };
 const routes: RouteCase[] = [
   { name: 'council list', method: 'GET', run: councils.GET },
   { name: 'council detail', method: 'GET', run: request => council.GET(request, id) },
@@ -55,13 +55,13 @@ const routes: RouteCase[] = [
   { name: 'material detail', method: 'GET', run: request => material.GET(request, id) },
   { name: 'model defaults read', method: 'GET', run: defaults.GET },
   { name: 'model defaults save', method: 'POST', mutation: true, body: { text: { providerId: defaultText.providerId, modelId: defaultText.modelId } }, run: defaults.POST },
-  { name: 'user list', method: 'GET', run: users.GET },
+  { name: 'user list', administrative: true, method: 'GET', run: users.GET },
   { name: 'entitlement save', method: 'POST', mutation: true, body: { paidTier: 'free' }, run: request => entitlement.POST(request, user) },
-  { name: 'telemetry summary', method: 'GET', run: telemetry.GET },
-  { name: 'telemetry purge', method: 'DELETE', mutation: true, run: telemetry.DELETE },
-  { name: 'prompt telemetry list', method: 'GET', run: request => promptTelemetry.GET(request, prompt) },
+  { name: 'telemetry summary', administrative: true, method: 'GET', run: telemetry.GET },
+  { name: 'telemetry purge', administrative: true, method: 'DELETE', mutation: true, run: telemetry.DELETE },
+  { name: 'prompt telemetry list', administrative: true, method: 'GET', run: request => promptTelemetry.GET(request, prompt) },
   { name: 'prompt review save', method: 'PATCH', mutation: true, body: { eventId: 'qa-legacy-bounds-140-event', quality: 'good' }, run: request => promptTelemetry.PATCH(request, prompt) },
-  { name: 'prompt telemetry purge', method: 'DELETE', mutation: true, run: request => promptTelemetry.DELETE(request, prompt) },
+  { name: 'prompt telemetry purge', administrative: true, method: 'DELETE', mutation: true, run: request => promptTelemetry.DELETE(request, prompt) },
 ];
 const requestFor = (row: RouteCase) => new Request('http://localhost/api/qa-local', {
   method: row.method, headers: { Authorization: 'Bearer local-fixture', 'Content-Type': 'application/json' },
@@ -95,11 +95,12 @@ afterEach(() => { jest.restoreAllMocks(); jest.useRealTimers(); });
 it.each(routes)('$name answers a silent store before the browser gives up', async row => {
   let response: Response | undefined;
   void row.run(requestFor(row)).then(value => { response = value; });
-  await jest.advanceTimersByTimeAsync(row.mutation ? 5_100 : 3_100);
+  await jest.advanceTimersByTimeAsync(row.administrative || row.mutation ? 5_100 : 3_100);
   expect(response).toBeDefined();
-  expect(response?.status).toBe(503);
-  expect(Number(response?.headers.get('Retry-After'))).toBeGreaterThan(0);
-  expect(await response?.json()).toEqual({ code: 'unavailable' });
+  expect(response?.status).toBe(row.administrative ? 504 : 503);
+  if (row.administrative) expect(response?.headers.has('Retry-After')).toBe(false);
+  else expect(Number(response?.headers.get('Retry-After'))).toBeGreaterThan(0);
+  expect(await response?.json()).toEqual({ code: row.administrative ? 'deadline-exceeded' : 'unavailable' });
 });
 
 it.each(routes)('$name reports actual quota refusal with the shared pause', async row => {
@@ -118,7 +119,7 @@ it.each(routes.filter(row => row.mutation))('$name still asks the store during a
   void row.run(requestFor(row)).then(value => { response = value; });
   await jest.advanceTimersByTimeAsync(5_100);
   expect(mockGet.mock.calls.length + mockSet.mock.calls.length).toBeGreaterThan(0);
-  expect(response?.status).toBe(503);
+  expect(response?.status).toBe(row.administrative ? 504 : 503);
 });
 
 it('counts authentication time in the existing read budget', async () => {
@@ -171,7 +172,8 @@ it.each(routes.filter(row => row.method === 'DELETE'))('$name bounds a silent la
   void row.run(requestFor(row)).then(value => { response = value; });
   await jest.advanceTimersByTimeAsync(5_100);
   expect(mockCommit).toHaveBeenCalledTimes(2);
-  expect(response?.status).toBe(503);
+  expect(response?.status).toBe(504);
+  expect(response?.headers.has('Retry-After')).toBe(false);
 });
 
 it('lets an already-started review finish once after the refusal response', async () => {

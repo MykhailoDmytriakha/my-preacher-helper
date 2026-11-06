@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 
-import { StoreUnavailableError, storeUnavailableResponse, withStore } from '@/services/storeAvailability.server';
+import { storeFailureResponse, withStore } from '@/services/storeAvailability.server';
 
 import {
   buildTelemetryQualityReview,
@@ -69,7 +69,7 @@ export async function GET(
         .where("promptVersion", "==", versionFilter);
     }
 
-    const snapshot = await withStore(() => query.get(), { startedAt });
+    const snapshot = await withStore(() => query.get(), { startedAt, workload: 'administrative' });
     const records = snapshot.docs
       .map((doc) => ({ documentId: doc.id, ...doc.data() } as TelemetryRecordForAdmin))
       .filter((record) => !qualityFilter || record.qualityReview?.quality === qualityFilter)
@@ -89,7 +89,8 @@ export async function GET(
       records,
     });
   } catch (error) {
-    if (error instanceof StoreUnavailableError) return storeUnavailableResponse(error);
+    const refusal = storeFailureResponse(error);
+    if (refusal) return refusal;
     return NextResponse.json({ error: String(error) }, { status: 500 });
   }
 }
@@ -136,7 +137,8 @@ export async function PATCH(
       });
     }, { write: true, startedAt });
   } catch (error) {
-    if (error instanceof StoreUnavailableError) return storeUnavailableResponse(error);
+    const refusal = storeFailureResponse(error);
+    if (refusal) return refusal;
     if (error instanceof ZodError) {
       return NextResponse.json({ error: "Invalid review payload", issues: error.issues }, { status: 400 });
     }
@@ -191,9 +193,10 @@ export async function DELETE(
         version: versionFilter ?? null,
         deleted: total,
       });
-    }, { write: true, startedAt });
+    }, { write: true, startedAt, workload: 'administrative' });
   } catch (error) {
-    if (error instanceof StoreUnavailableError) return storeUnavailableResponse(error);
+    const refusal = storeFailureResponse(error);
+    if (refusal) return refusal;
     return NextResponse.json({ error: String(error) }, { status: 500 });
   }
 }

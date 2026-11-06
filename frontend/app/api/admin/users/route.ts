@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 import { requireAdminEmail } from '@/api/admin/adminAuth';
 import { adminAuth, adminDb } from '@/config/firebaseAdminConfig';
 import { readReferralWarning } from '@/services/referral.server';
-import { StoreUnavailableError, storeUnavailableResponse, withStore } from '@/services/storeAvailability.server';
+import { storeFailureResponse, withStore } from '@/services/storeAvailability.server';
 import {
   normalizeUserEntitlementServerSide,
   resolveEffectiveTier,
@@ -46,7 +46,7 @@ export async function GET(request: Request): Promise<NextResponse> {
       withStore(() => Promise.all([
         adminDb.collection('users').get(),
         adminDb.collection('referralEvents').get(),
-      ]), { startedAt }),
+      ]), { startedAt, workload: 'administrative' }),
     ]);
     const entitlementDocuments = new Map<string, Record<string, unknown>>(
       entitlementSnapshot.docs.map((document) => [
@@ -94,7 +94,8 @@ export async function GET(request: Request): Promise<NextResponse> {
       ...(authPage.pageToken ? { nextPageToken: authPage.pageToken } : {}),
     });
   } catch (error) {
-    if (error instanceof StoreUnavailableError) return storeUnavailableResponse(error);
+    const refusal = storeFailureResponse(error);
+    if (refusal) return refusal;
     return jsonResponse({ error: 'Internal server error' }, 500);
   }
 }
