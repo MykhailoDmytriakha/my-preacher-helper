@@ -328,11 +328,11 @@ const NoteCard: React.FC<{
  * on the structure, or «Открыть», goes to it in the Bible, where it is changed; the way back returns here.
  */
 const AnalysisCard: React.FC<{ note: StudyNote; defaultOpen: boolean }> = ({ note, defaultOpen }) => {
-  const { t, i18n } = useTranslation();
+  const { t, language } = useTranslation();
   const router = useRouter();
   const pathname = usePathname();
   const [open, setOpen] = useState(defaultOpen);
-  const locale = resolveAppLocale(i18n?.language);
+  const locale = resolveAppLocale(language);
   const href = noteScreenHref(note, { locale, from: pathname || undefined });
   const title = studyNoteOwnName(note, locale) || t('studiesWorkspace.untitled');
   const parts = useMemo(() => analysisOutline(note.content ?? '').length, [note.content]);

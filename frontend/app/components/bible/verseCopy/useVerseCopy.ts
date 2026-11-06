@@ -40,8 +40,8 @@ export function copyNamesOf(bible: BibleId, bookId: string, interfaceLanguage: s
 
 /** `copyNamesOf` for the book being read. */
 export function useCopyNames(bible: BibleId, bookId: string): CopyNames {
-  const { t, i18n } = useTranslation();
-  return useMemo(() => copyNamesOf(bible, bookId, i18n.language, t), [bible, bookId, i18n.language, t]);
+  const { t, language } = useTranslation();
+  return useMemo(() => copyNamesOf(bible, bookId, language, t), [bible, bookId, language, t]);
 }
 
 const subscribeNever = () => () => undefined;
@@ -109,8 +109,8 @@ export function useVerseCopy({ textRef, text, bible, bookId, drawn, crossRefs, e
   /** The paragraphs' rule while verses are chosen for a comment. */
   limitComment?: PassageLimit;
 }) {
-  const { t, i18n } = useTranslation();
-  const locale = resolveAppLocale(i18n.language);
+  const { t, language } = useTranslation();
+  const locale = resolveAppLocale(language);
   const names = useCopyNames(bible, bookId);
   const canShare = useSyncExternalStore(subscribeNever, canShareNow, () => false);
   const [menu, setMenu] = useState<VerseMenuAt | null>(null);

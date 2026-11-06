@@ -63,8 +63,8 @@ export function useCommentPlace({ standing, newPlace, choosesOwn, restoreOwn, bi
   /** The comment itself, not counted as another one at its place. */
   ownId?: string;
 }) {
-  const { t, i18n } = useTranslation();
-  const locale = resolveAppLocale(i18n?.language);
+  const { t, language } = useTranslation();
+  const locale = resolveAppLocale(language);
   const screenBible = bible ?? referenceBibleFor(locale);
   const labelOf = (ref: ScriptureReference) => (placeOf ? placeOf(ref) : formatScriptureReference(ref, { locale }));
   /*

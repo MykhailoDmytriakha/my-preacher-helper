@@ -315,14 +315,14 @@ function ReferenceList({ references, loading, place, verseText, copyText, titleI
   othersOpen: boolean; onToggleOthers: () => void;
   onPick: (reference: CrossReference) => void; onClose: () => void;
 }) {
-  const { t, i18n } = useTranslation();
+  const { t, language } = useTranslation();
   const { othersAsVerses } = useCrossReferencePrefs();
   const writable = useCrossReferencePrefsWritable();
   const main = references.filter(isMainReference);
   const others = references.filter((reference) => !isMainReference(reference));
   const label = (reference: CrossReference) => crossReferenceLabel(reference, bible, locale);
   const textOf = (reference: CrossReference) => passageText(texts.get(reference.book), reference, bible);
-  const copyOf = (reference: CrossReference) => passageCopy(texts.get(reference.book), reference, bible, copyNamesOf(bible, reference.book, i18n.language, t));
+  const copyOf = (reference: CrossReference) => passageCopy(texts.get(reference.book), reference, bible, copyNamesOf(bible, reference.book, language, t));
   return (
     <>
       <div className="flex items-center justify-between gap-2">

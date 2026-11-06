@@ -44,9 +44,9 @@ interface SourceNoteChipsProps {
 }
 
 const SourceNoteChips: React.FC<SourceNoteChipsProps> = ({ sermon, openInNewTab = false }) => {
-  const { t, i18n } = useTranslation();
+  const { t, language } = useTranslation();
   const pathname = usePathname();
-  const locale = resolveAppLocale(i18n?.language);
+  const locale = resolveAppLocale(language);
   const { notes } = useSourceNotes(sermon);
 
   if (notes.length === 0) return null;
