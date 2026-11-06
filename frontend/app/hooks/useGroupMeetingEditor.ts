@@ -49,7 +49,7 @@ export function useGroupMeetingEditor(groupId: string, stored: GroupMeetingDate[
     return () => { window.removeEventListener('pagehide', flush); document.removeEventListener('visibilitychange', hidden); };
   }, [debouncedSave]);
   const first = meetings(form.data)[0];
-  const recovery = useRecoveryDiscovery({ identity: form.recoveryIdentity, enabled: !form.loading,
+  const recovery = useRecoveryDiscovery({ identity: form.recoveryIdentity, enabled: !form.loading && form.recoveryReady,
     version: JSON.stringify([form.active, form.status?.phase]),
     list: async () => (await form.listRecoverable()).map(source => {
       const { scopeId, record } = source;

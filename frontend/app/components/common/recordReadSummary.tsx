@@ -4,7 +4,12 @@ import { createContext, useContext, type ReactNode } from 'react';
 
 import type { FailureWords } from '@/utils/actionFailureMessage';
 
-export interface RecordReadNotice { subject: unknown; words?: FailureWords }
+export interface RecordReadNotice {
+  subject: unknown;
+  /** Explicit form readers of this same record, never an unrelated document's subject. */
+  relatedSubjects?: readonly unknown[];
+  words?: FailureWords;
+}
 const Context = createContext<RecordReadNotice | null>(null);
 
 /** Claim only this record's rendered read summary; other subjects and refusals keep their notices. */

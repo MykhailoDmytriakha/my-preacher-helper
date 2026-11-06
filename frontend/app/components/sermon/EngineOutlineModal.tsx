@@ -36,7 +36,7 @@ export function EngineOutlineModal({ sermonId, onClose, withScratch = false }: {
     void form.update(current => deepCleanUndefined(replaceSermonOutline(current as unknown as Sermon, next)) as unknown as DocumentData)
       .catch(() => undefined);
   };
-  const recovery = useRecoveryDiscovery({ identity: form.recoveryIdentity, enabled: !loading, version: String(form.active),
+  const recovery = useRecoveryDiscovery({ identity: form.recoveryIdentity, enabled: !loading && form.recoveryReady, version: String(form.active),
     list: async () => (await form.listRecoverable()).map(source => ({ id: source.scopeId,
       title: String(source.record.baseline.value?.title ?? sermonId),
       preview: sections.flatMap(section => {

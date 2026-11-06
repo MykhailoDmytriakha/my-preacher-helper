@@ -1215,6 +1215,8 @@ export function useDataForm(resource: ResourceRef | null, slot: string, selectio
     readOnly,
     active: target?.state?.record.active ?? false,
     data: ownStage ?? document.data,
+    /** Settled loading can mean an opening failed; only an acquired manual form can list its drafts. */
+    recoveryReady: Boolean(targetForm),
     // The opening may include submitted predecessors; it is never a confirmed snapshot.
     openingData: target?.state?.openingValue ?? null,
     // This may be a previously saved intent, so it is deliberately not called confirmed.

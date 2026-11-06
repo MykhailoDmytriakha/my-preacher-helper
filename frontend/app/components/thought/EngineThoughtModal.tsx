@@ -91,7 +91,7 @@ export function EngineThoughtModal({ sermonId, thoughtId, allowedTags, onClose }
     onEmpty: () => toast.error(t('errors.audioProcessing')), onError: words => toast.error(sayFailure(words, t)),
   });
   const isBusy = form.busy || dictation.isProcessing || dictation.isRecording;
-  const recovery = useRecoveryDiscovery({ identity: form.recoveryIdentity, enabled: !loading, version: String(form.active),
+  const recovery = useRecoveryDiscovery({ identity: form.recoveryIdentity, enabled: !loading && form.recoveryReady, version: String(form.active),
     list: async () => (await form.listRecoverable()).map(source => ({ id: source.scopeId,
       title: String(source.record.baseline.value?.title ?? sermonId),
       preview: recoveryPreview(source.record.stage[0].value, source.record.openingSelection?.[0]?.value ?? source.record.baseline.value?.thoughts),

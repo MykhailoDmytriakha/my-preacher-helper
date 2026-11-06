@@ -35,7 +35,7 @@ export function useGroupPageEditor(groupId: string): GroupPageEditor {
   return {
     readOnly: data.document.readOnly,
     presence: data.document.presence,
-    readNotice: { subject: data.document.recoveryIdentity, words: data.document.errorWords },
+    readNotice: { subject: data.document.recoveryIdentity, relatedSubjects: [meeting.form.recoveryIdentity], words: data.document.errorWords },
     refresh: data.refresh,
     group, retainedGroup, loading: data.loading || Boolean(group && meeting.loading), title: group?.title ?? '', setTitle: field('title'),
     description: group?.description ?? '', setDescription: next => change(current => ({ ...current, description: nextValue(next, current.description ?? '') })),

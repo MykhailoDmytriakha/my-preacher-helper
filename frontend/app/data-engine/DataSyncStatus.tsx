@@ -119,6 +119,7 @@ export function DataSyncStatus({ subject, status, error, errorWords, onKeepLocal
   const serverNoticeShown = useServerUnavailableNotice();
   const recordReadSummary = useRecordReadSummary();
   const claimedRead = Boolean(recordReadSummary && (recordReadSummary.subject === subject
+    || recordReadSummary.relatedSubjects?.includes(subject)
     || (errorWords && recordReadSummary.words === errorWords)));
   const unconfirmedCopy = useLasting(Boolean(status && status.freshness !== 'server')) && !serverNoticeShown;
   const readTrouble = useLasting(Boolean(status?.readFailed)) && !serverNoticeShown && !claimedRead;
@@ -131,8 +132,7 @@ export function DataSyncStatus({ subject, status, error, errorWords, onKeepLocal
   const busy = busyFor.has(subject);
   // `error` arrives already in words: the engine hooks translate where they catch
   // (BUG-20261003-engine-error-sentence-on-screen); a failed choice here is said the same way.
-  const ownerFailure = recordReadSummary && errorWords && recordReadSummary.words === errorWords
-    && 'key' in errorWords && errorWords.readNotice
+  const ownerFailure = claimedRead && errorWords && 'key' in errorWords && errorWords.readNotice
     ? null : sayNotice(errorWords, error ?? null);
   const failure = ownerFailure ?? (failed && failed.subject === subject ? sayFailure(failed.words, t) : null);
   const run = (callback: () => void | Promise<void>) => {

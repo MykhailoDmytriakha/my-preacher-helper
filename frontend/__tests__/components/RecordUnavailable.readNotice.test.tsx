@@ -116,3 +116,24 @@ it('claims inherited primary read words even when a manual form owns the display
   expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   expect(screen.getAllByRole('button', { name: 'dataSync.retry' })).toHaveLength(1);
 });
+
+it('claims a separately failed form explicitly owned by the same record', () => {
+  const primary = readFailure(), form = readFailure();
+  render(<RecordUnavailable presence={UNKNOWN_RECORD_PRESENCE} onBack={jest.fn()} onRetry={jest.fn()}
+    readNotice={{ subject: 'record', relatedSubjects: ['meeting-form'], words: primary }}>
+    <DataSyncStatus subject="meeting-form" status={saved} error="dataSync.readFailed" errorWords={form} onRetry={jest.fn()} />
+  </RecordUnavailable>); settle();
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  expect(screen.getAllByRole('button', { name: 'dataSync.retry' })).toHaveLength(1);
+});
+
+it.each(['action', 'storage'] as const)('keeps a related form %s refusal visible', kind => {
+  const words = kind === 'action' ? refusalWords(new Error('Form words not saved'), 'dataSync.actionFailed')
+    : failureWords(Object.assign(new Error('Device storage refused'), { code: 'storage-silent' }), 'dataSync.readFailed');
+  render(<RecordUnavailable presence={UNKNOWN_RECORD_PRESENCE} onBack={jest.fn()} onRetry={jest.fn()}
+    readNotice={{ subject: 'record', relatedSubjects: ['meeting-form'], words: readFailure() }}>
+    <DataSyncStatus subject="meeting-form" status={{ ...saved, phase: 'localFailure' }} error="Form failure" errorWords={words} onRetry={jest.fn()} />
+  </RecordUnavailable>); settle();
+  expect(screen.getByRole('alert')).toHaveTextContent(kind === 'action' ? 'Form words not saved' : 'dataSync.readOnly.storage');
+  expect(screen.getAllByRole('button', { name: 'dataSync.retry' })).toHaveLength(2);
+});

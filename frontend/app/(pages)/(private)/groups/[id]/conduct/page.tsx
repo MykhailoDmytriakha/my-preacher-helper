@@ -45,7 +45,7 @@ function EngineConductPage({ groupId }: { groupId: string }) {
    */
   if (document.document.readOnly && document.group) {
     return <ConductView groupId={groupId} group={document.group} loading={false} saveFlow={async () => undefined}
-      readNotice={{ subject: document.document.recoveryIdentity, words: document.document.errorWords }} presence={document.document.presence} onRetry={document.refresh} lockDurations readOnlyNote={document.document.readOnlyReason} />;
+      readNotice={{ subject: document.document.recoveryIdentity, relatedSubjects: [form.recoveryIdentity], words: document.document.errorWords }} presence={document.document.presence} onRetry={document.refresh} lockDurations readOnlyNote={document.document.readOnlyReason} />;
   }
   const feedback = <div className="shrink-0 px-5 py-2 empty:hidden">
     <DataSyncStatus subject={document.document.recoveryIdentity} status={document.status} error={document.error} errorWords={document.errorWords} onRetry={document.refresh}
@@ -56,7 +56,7 @@ function EngineConductPage({ groupId }: { groupId: string }) {
       recoveryLoading={recovery.loading} recoveryError={recovery.error} onDiscardRecovery={recovery.discard} />}
   </div>;
   return <ConductView groupId={groupId} group={document.group ? { ...document.group, flow } : null}
-    readNotice={{ subject: document.document.recoveryIdentity, words: document.document.errorWords }} presence={document.document.presence} onRetry={document.refresh}
+    readNotice={{ subject: document.document.recoveryIdentity, relatedSubjects: [form.recoveryIdentity], words: document.document.errorWords }} presence={document.document.presence} onRetry={document.refresh}
     loading={document.loading || form.loading} saveFlow={() => form.save()}
     updateDuration={(id, duration) => { void updateDuration(id, duration).catch(() => undefined); }}
     setupDisabled={form.loading || !form.active || form.busy || form.status?.phase === 'deleted'} feedback={feedback} />;
