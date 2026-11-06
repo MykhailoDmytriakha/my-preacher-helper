@@ -41,13 +41,15 @@ type Row = { resource: { id: string }; value: Record<string, unknown> | null; de
 let mockRows: Record<string, Row[]> = {};
 // Whether the engine has read each whole list; a list still being read, or offered as a copy, is not complete.
 let mockComplete = true;
+let mockCollectionError: Error | null = null;
+let mockCollectionReadOnly = false;
 const mockWatched: Array<string | null> = [];
 jest.mock('@/data-engine/react.client', () => ({
   ...jest.requireActual('@/data-engine/react.client'),
   useDataDocument: () => ({ data: null, loading: true, commit: jest.fn(), status: null, recoveryIdentity: {} }),
   useDataCollection: (name: string | null) => (mockWatched.push(name), {
     state: name ? { documents: mockRows[name] ?? [], complete: mockComplete, freshness: 'server' } : null,
-    loading: false, error: null, refresh: jest.fn(),
+    loading: false, error: mockCollectionError, readOnly: mockCollectionReadOnly, refresh: jest.fn(),
   }),
 }));
 jest.mock('@/hooks/useResolvedUid', () => ({ useResolvedUid: () => ({ uid: 'owner', isAuthLoading: false }) }));
@@ -92,6 +94,8 @@ const order = (id: string, refs: string[]) => row(id, { title: id, steps: [{ id:
 beforeEach(() => {
   mockRows = {};
   mockComplete = true;
+  mockCollectionError = null;
+  mockCollectionReadOnly = false;
   mockPush.mockClear();
   mockCreateNote.mockClear();
   mockUpdateNote.mockClear();
@@ -360,6 +364,45 @@ describe('a reader comment opened at a translated run', () => {
     expect(within(dialog).getByLabelText('comment-editor')).toHaveValue('QA223 retained comment words.');
     expect(within(dialog).getByText(verseWords(romansText.chapters[15][23]))).toBeInTheDocument();
     expect(within(dialog).getByRole('heading', { name: 'Comment · Rom 16:24' })).toBeInTheDocument();
+  });
+});
+
+describe('cached paragraphs in a comment destination', () => {
+  const targetComment = (id: string, extra: Partial<Row> = {}) => row(id, {
+    type: 'comment', content: `Words of ${id}`, tags: [],
+    scriptureRefs: [{ id: `ref-${id}`, bible: 'kjv', book: 'Romans', chapter: 16, fromVerse: 24, toVerse: 27 }],
+  }, extra);
+
+  it('projects owned live destination comments in the reader Bible without subscribing again', () => {
+    mockRows = { studyNotes: [targetComment('kept'), targetComment('deleting', { deleting: true }),
+      { ...targetComment('foreign'), value: { ...targetComment('foreign').value, userId: 'someone-else' } }] };
+    const { result } = renderHook(() => useBookUsage('Ruth', 'rst', 'en', true));
+    const watchedBefore = mockWatched.length;
+    const target = result.current.paragraphsForBook('Romans');
+    expect(target?.laid).toHaveLength(1);
+    expect(target?.laid[0]).toMatchObject({ owner: 'kept', first: '14:24', last: '14:26' });
+    expect(target?.bodyOf(target.laid[0].id)).toBe('Words of kept');
+    expect(target?.bodyOf('kept')).toBe('Words of kept');
+    expect(mockWatched).toHaveLength(watchedBefore);
+    expect(result.current.commentLaid).toEqual([]);
+  });
+
+  it('uses the same layout and words when the destination is the open book', () => {
+    mockRows = { studyNotes: [targetComment('kept')] };
+    const { result } = renderHook(() => useBookUsage('Romans', 'rst', 'en', true));
+    const target = result.current.paragraphsForBook('Romans');
+    expect(target?.laid).toBe(result.current.commentLaid);
+    expect(target?.bodyOf).toBe(result.current.commentBody);
+    expect(target?.laid[0]).toMatchObject({ owner: 'kept', first: '14:24', last: '14:26' });
+  });
+
+  it.each(['incomplete', 'read-error', 'read-only'] as const)('does not prove an empty destination when notes are %s', reason => {
+    mockComplete = reason !== 'incomplete';
+    mockCollectionError = reason === 'read-error' ? new Error('read refused') : null;
+    mockCollectionReadOnly = reason === 'read-only';
+    const { result } = renderHook(() => useBookUsage('Ruth', 'rst', 'en', true));
+    expect(result.current.paragraphsForBook('Romans')).toBeNull();
+    expect(result.current.paragraphsForBook('Ruth')).toBeNull();
   });
 });
 

@@ -4650,6 +4650,7 @@
       "took": "Paragraphs never cross: the paragraph «{{title}}» is taken whole",
       "cross": "Paragraphs never cross: the passage stopped at the paragraph «{{title}}»",
       "same": "This is already the paragraph «{{title}}» — open its heading",
+      "unavailable": "Paragraphs cannot be checked right now. Your comment is still here; try saving again later.",
       "deep": "A paragraph within a paragraph — two levels at most"
     }
   },

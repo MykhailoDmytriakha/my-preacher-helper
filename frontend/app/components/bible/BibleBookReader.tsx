@@ -1106,7 +1106,7 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, dec
         onEditComment={(id, passage) => { mine.close(); editComment(id, passage); }}
         onOpenAnalysis={(id) => { mine.close(); setAnalysing({ kind: 'open', id }); }}
       />
-      <ReaderCommentDialog commenting={commenting} setCommenting={setCommenting} text={text} bookId={bookId} bible={bible} locale={locale} passageOf={commentPassage} onClose={closeComment} copy={verseCopy} wide={wide} laid={mine.commentLaid} bodyOf={mine.commentBody} />
+      <ReaderCommentDialog commenting={commenting} setCommenting={setCommenting} text={text} bookId={bookId} bible={bible} locale={locale} passageOf={commentPassage} onClose={closeComment} copy={verseCopy} wide={wide} paragraphsForBook={mine.paragraphsForBook} />
       <MarkedElsewhereSheet
         at={marks.elsewhere.at}
         bookId={bookId}

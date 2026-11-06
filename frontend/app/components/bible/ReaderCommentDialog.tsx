@@ -11,7 +11,7 @@ import { passagesIn, samePassage } from '@/utils/scriptureReferenceNumbering';
 import { useTranslation } from '@locales/useTranslation';
 
 import { fitCommentPassage, isParagraph, paragraphRefusal, spanOf, type LaidParagraph, type PassageFitSaid } from './commentParagraphs';
-import { passageLabel, type MinePlace } from './useBookUsage';
+import { passageLabel, type BookCommentLayout, type MinePlace } from './useBookUsage';
 import { PassagePickBar } from './verseCopy/PassagePickBar';
 
 import type { RibbonChapterComment } from './BookRibbon';
@@ -69,11 +69,10 @@ export function ReaderCommentDialog(props: {
   onClose: () => void;
   copy: VerseCopy;
   wide: boolean;
-  /** The paragraphs on the book, and a comment's words by it or a piece of it (`useBookUsage`): a place saved keeps their rule. */
-  laid: readonly LaidParagraph[];
-  bodyOf: (id: string) => string;
+  /** Cached owned comments projected into the destination book; null means the collection is not known yet. */
+  paragraphsForBook: (bookId: string) => BookCommentLayout | null;
 }) {
-  const { commenting, setCommenting, text, bookId, bible, copy, wide, laid, bodyOf } = props;
+  const { commenting, setCommenting, text, bookId, bible, copy, wide, paragraphsForBook } = props;
   const { t } = useTranslation();
   const key = commenting ? (commenting.kind === 'new' ? commenting.reference.id : commenting.id) : null;
   // The window whose verses are being chosen again — its key, the verses it offered, how it takes new ones; a choice let
@@ -108,15 +107,16 @@ export function ReaderCommentDialog(props: {
     copy.startPassage({ chapter: offered.chapter, verse: offered.fromVerse }, { chapter: offered.toChapter, verse: offered.toVerse }, 'comment');
   };
   const editing = commenting?.kind === 'edit' ? commenting.id : undefined;
-  // Every piece of the place in this book that is a paragraph keeps the rule; a comment on one verse always may stand
-  // (Codex review r2: a verse inside two paragraphs was refused as a third level). A place in another book is not laid out
-  // here: it stands as a comment there if it breaks the rule, nothing lost.
+  // Every projected piece follows the destination book's same rule; a single verse always may stand.
   const placeRefusal = (reference: ScriptureReference) => {
-    const others = laid.filter((paragraph) => paragraph.owner !== editing);
-    const pieces = reference.book === bookId ? passagesIn(reference, bible).filter(isParagraph) : [];
+    const pieces = passagesIn(reference, bible).filter(isParagraph);
+    if (!pieces.length) return null;
+    const target = paragraphsForBook(reference.book);
+    if (!target) return t('comment.pick.unavailable');
+    const others = target.laid.filter(paragraph => paragraph.owner !== editing);
     for (const piece of pieces) {
       const refusal = paragraphRefusal(spanOf(piece)!, others);
-      if (refusal) return sayFit(refusal, (id) => paragraphName(bodyOf(id)), t);
+      if (refusal) return sayFit(refusal, id => paragraphName(target.bodyOf(id)), t);
     }
     return null;
   };

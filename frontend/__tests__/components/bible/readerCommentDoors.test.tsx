@@ -88,7 +88,7 @@ function ReaderDoorsHarness({ wholeChapter = false, canSwitchBible = false }: { 
         ? <button type="button" onClick={() => doors.chapter?.open(14)}>Open chapter comment</button>
         : <button type="button" onClick={() => doors.verse?.open({ chapter: 16, verse: 24 })}>Open verse comment</button>}
       {canSwitchBible ? <button type="button" onClick={() => setBible('kjv')}>Switch reader Bible</button> : null}
-      <ReaderCommentDialog commenting={commenting} text={text} bookId={bookId} bible={bible} locale="en" passageOf={passageOf} onClose={close} setCommenting={setCommenting} copy={copy} wide laid={[]} bodyOf={() => originalBody} />
+      <ReaderCommentDialog commenting={commenting} text={text} bookId={bookId} bible={bible} locale="en" passageOf={passageOf} onClose={close} setCommenting={setCommenting} copy={copy} wide paragraphsForBook={() => ({ laid: [], bodyOf: () => originalBody })} />
     </>
   );
 }

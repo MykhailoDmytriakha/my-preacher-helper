@@ -11,7 +11,7 @@ import { SCRIPTURE_USAGE_KINDS, bookUsage, passageCovers, usageDocuments, type B
 import { verseCount } from '@/utils/versification';
 import { useTranslation } from '@locales/useTranslation';
 
-import { isParagraph, layParagraphs } from './commentParagraphs';
+import { isParagraph, layParagraphs, type LaidParagraph } from './commentParagraphs';
 import { useMinePrefs } from './minePrefs';
 import { USAGE_KIND_LOOK } from './usageKinds';
 
@@ -33,6 +33,16 @@ export type MineStretch = { kind: ScriptureUsageKind; passage: Passage };
 
 
 type CollectionState = ReturnType<typeof useDataCollection>['state'];
+
+export interface BookCommentLayout { laid: readonly LaidParagraph[]; bodyOf(id: string): string }
+/** One projection owns paragraph layout and its displayed words in every book. */
+function commentLayoutOf(entries: readonly BookUsageEntry[]): BookCommentLayout {
+  return {
+    laid: layParagraphs(entries.filter(entry => entry.kind === 'comment' && isParagraph(entry.passage))
+      .map(entry => ({ id: entry.key, owner: entry.id, passage: entry.passage }))).laid,
+    bodyOf: id => entries.find(entry => entry.kind === 'comment' && (entry.key === id || entry.id === id))?.body ?? '',
+  };
+}
 
 /** The person's own documents of a list: the ones being deleted on this device are already gone for them. */
 function owned<T>(state: CollectionState, uid: string | undefined): T[] {
@@ -146,9 +156,8 @@ export function useBookUsage(bookId: string, bible: BibleId, locale: AppLocale, 
   const entries = useMemo(() => JSON.parse(entriesKey) as BookUsageEntry[], [entriesKey]);
   const shown = show && entries.length > 0;
   // The paragraphs the comments make, whatever way comments show: the choice of verses for a comment keeps to them too.
-  const commentLaid = useMemo(() => layParagraphs(entries
-    .filter((entry) => entry.kind === 'comment' && isParagraph(entry.passage))
-    .map((entry) => ({ id: entry.key, owner: entry.id, passage: entry.passage }))).laid, [entries]);
+  const commentLayout = useMemo(() => commentLayoutOf(entries), [entries]);
+  const { laid: commentLaid, bodyOf: commentBody } = commentLayout;
 
   const [openAt, setOpenAt] = useState<MinePlace | null>(null);
   const close = useCallback(() => setOpenAt(null), []);
@@ -270,7 +279,10 @@ export function useBookUsage(bookId: string, bible: BibleId, locale: AppLocale, 
   // rule as a mark's creation, `marks/markStore.ts`). Meanwhile a written comment still opens from its own words.
   // Switched off, the material and its doors are gone — «only the text remains».
   const commentsReady = show && armed && notes.state?.complete === true && !notes.error && !notes.readOnly;
-  /** A comment's own words, by the comment or by a piece of it: a paragraph is named by them where the choice of verses stops at it. */
-  const commentBody = useCallback((id: string) => entries.find((entry) => entry.kind === 'comment' && (entry.key === id || entry.id === id))?.body ?? '', [entries]);
-  return { ribbon, mapMarks, openAt: open, listed: open ? listed : null, close, commentPassage, commentOn, commentsReady, commentLaid, commentBody };
+  /** Reuse cached owned material in the destination; an unknown collection cannot prove a free paragraph. */
+  const paragraphsForBook = useCallback((targetBook: string): BookCommentLayout | null => {
+    if (!commentsReady) return null;
+    return targetBook === bookId ? commentLayout : commentLayoutOf(bookUsage(documents, targetBook, bible));
+  }, [commentsReady, bookId, commentLayout, documents, bible]);
+  return { ribbon, mapMarks, openAt: open, listed: open ? listed : null, close, commentPassage, commentOn, commentsReady, commentLaid, commentBody, paragraphsForBook };
 }
