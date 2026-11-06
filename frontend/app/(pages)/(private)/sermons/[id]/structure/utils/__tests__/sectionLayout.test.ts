@@ -7,12 +7,12 @@ describe('boardLayoutClass', () => {
   });
 
   it('2 visible sections -> container-fit tracks when horizontal, stacked when vertical', () => {
-    expect(boardLayoutClass(2, false)).toBe('grid grid-cols-[repeat(auto-fit,minmax(min(100%,24rem),1fr))] gap-x-4 gap-y-6');
+    expect(boardLayoutClass(2, false)).toBe('grid grid-cols-[repeat(auto-fit,minmax(min(100%,23rem),1fr))] gap-x-4 gap-y-6');
     expect(boardLayoutClass(2, true)).toBe('flex flex-col gap-6');
   });
 
   it('3 visible sections -> container-fit tracks when horizontal, stacked when vertical', () => {
-    expect(boardLayoutClass(3, false)).toBe('grid grid-cols-[repeat(auto-fit,minmax(min(100%,24rem),1fr))] gap-x-4 gap-y-6');
+    expect(boardLayoutClass(3, false)).toBe('grid grid-cols-[repeat(auto-fit,minmax(min(100%,23rem),1fr))] gap-x-4 gap-y-6');
     expect(boardLayoutClass(3, true)).toBe('flex flex-col gap-6');
   });
 });

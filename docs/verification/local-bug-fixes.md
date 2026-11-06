@@ -5858,6 +5858,8 @@ separate; unrelated returned bugs and deferred owner choices stay open.
 
 ## Unit284 — Laptop section overview with readable nested thoughts
 
+**Later return.** Claude radio#17 found that this historical1280px overlay-scrollbar acceptance left no width reserve. Unit286 below supersedes that criterion with measured classic scrollbars,1263px and an additional20px loss. The original archives and scoped evidence remain unchanged.
+
 **Bug / local status.** `BUG-20261003-structure-board-cards-narrow-on-ipad`, returned by
 Claude radio#5p2. Locally verified on `codex/bugs-local-fixes`; this entry accompanies the
 local fix commit. Production and physical-device acceptance remain separate. Build base
@@ -6050,3 +6052,86 @@ local emulator fault controls, never injected production failures. Existing inst
 can already have a warm dictionary copy, which is not proof of cold delivery. Avoid writes,
 AI calls and fresh profiles per scenario; close the QA tab. Owner visual and physical-device
 acceptance remain separate. Other Claude returns, deferred choices and parent279.4 stay open.
+
+
+## Unit286 — Keep three laptop sections with an occupying scrollbar
+
+**Bug / local status.** `BUG-20261003-structure-board-cards-narrow-on-ipad`, returned in
+Claude radio#17 after Unit284. Locally verified; this record accompanies the authorized
+local commit. Production, physical-device and owner visual acceptance remain separate.
+The current build source is037b0636 plus the explicit two-file frontend overlay.
+
+**Cause, choice and class.** Three24rem sections plus two16px gaps need1184px. That exactly
+fills the no-gutter1280px board and fails after a1px reduction. The real app in scoped native
+Chrome with classic scrollbars measured an11px gutter: at1280 it has1173px and two sections;
+at1263 it has1156px and two. The common CDP launcher did not contain `--hide-scrollbars`;
+default Mac headless behavior still produced an overlay/zero-width gutter. The separate
+inline control is calibration, not app acceptance.
+
+The existing shared minimum is now23rem: three tracks and gaps need1136px, leaving37px at
+the observed1280 classic case and20px at1263. At1280 with a17px gutter the arithmetic leaves
+31px; a physical Windows or Mac setting was not tested. Horizontal/vertical gaps remain16/
+24px. Font, padding, action controls and the existing card-container CSS rule are unchanged.
+The rule remains in one module, used by the editable board, ambiguous thoughts, read-only
+board and skeleton. The latter two have source/shared-rule coverage, not a separately
+claimed native visit. Focus/vertical keep their flex paths. The independent16rem outline
+point grid and its plan/template/scratch callers are unchanged. No data/writer/schema changed.
+Removing all gaps would leave only4px at1263 and remove separation; changing page gutters
+would alter the whole screen. An extra viewport breakpoint would repeat the earlier narrow
+nested-text problem. The shared minimum preserves the natural wide tablet column.
+
+**Regression and gates.** The frozen native oracle existed before product edits. Actual
+BEFORE is4RED/60controls: three sections fail at1263/1279/1280 and after an exactly measured
+20px board-width loss. All other paragraph/font/action/data/cleanup controls pass. Fresh
+Codex accepted the BEFORE pins, nine frozen hashes and rendered frames. AFTER passes the
+same64/64. Existing section-layout literal expectations are updated; the meaningful geometry
+regression is the actual browser measurement, since jsdom does not lay out CSS.
+
+Root focusedv1 and fresh Codex focusedv2 both pass90/7suites, sourceStabletrue. TypeScript
+exits0; lint exits0 with60inherited warnings. Official `npm run build` v1 exits0/sourceStable:
+12,959passed/17skipped tests,1,142passed/3skipped suites; Next build25.41s. No full suite was
+repeated after a passing unchanged build; the native run uses those exact archived bytes.
+
+**Native comparison and visual acceptance.** Both genuine Chrome observers and supervisors
+complete with actual exit0. Sizes820/1024/1180/1232/1263/1279/1280/1440/390 show section counts
+BEFORE1/2/2/2/2/2/2/3/1 and AFTER1/2/2/2/3/3/3/3/1. Each retains seven exact fixture paragraphs,
+font16 and no horizontal overflow or text/action overlap. AFTER minimum text widths are
+202.65625px at1263,208.328125px at1280,501px at820 and255px at390. The20px probe narrows the
+1280 board1173→1153px, retains three tracks and201.65625px minimum text, then restores the
+exact inline style and original layout. Every measured text width exceeds the192px floor.
+
+Twenty of20action-center hit tests pass. Four trusted clicks exercise Vertical/Horizontal
+and Introduction Focus/Normal; both restore exact natural geometry. Trusted drag makes a
+308.328125px preview from a308.328125px card; Escape cancels and restores the layout. Canonical
+sermon snapshots remain exactly unchanged. Node-side canonical create/delete is limited to
+the exact synthetic fixture generation; browser content commands are absent. Root inspected
+normal1280/1263/820/390; fresh Codex also viewed reserve, vertical/focus and drag captures.
+Synthetic emulator data and desktop viewport sizes do not establish physical iPad/PWA proof.
+
+**Proof and remaining boundary.** BEFORE reuses the accepted Unit285 qD build archive, with
+current committed037b0636 bytes matched to the original A58 build overlay. AFTER build
+`Dk6XIl9_3J7_73InYMwBp` pins2,761source files,914compiled files and1worker. Both archives have
+3,678members. AFTER ZIP SHA-256 is
+`ed34d151dda145ff26ab65ccf51fca1c2839cdb34b06fa11af5f6d73b8c757eb`.
+The final proof binds158input hashes; proof SHA is
+`1c811c42965ce292b64b810d723fa61e0de989e6af8866123628a88df06e37a7`;
+verifier SHA is`40d2d1d78836cb52efedf3a5b40e12674c8563c00e7703a71a49213f4cbb9bb1`.
+Root and fresh Codex reran normal verification and three altered-observation controls:
+wrong1263px column count, untrusted navigation and changed canonical title are rejected for
+their intended reasons. Frozen originals are never changed. Artifacts use `board-columns-286-*`.
+
+Each raw run retains one localhost RSC prefetch `net::ERR_ABORTED`; cause is UNKNOWN. No
+original fetch-promise/signal correlation qualifies it. HTTP/console/page/forbidden/browser
+content-write arrays are empty. `diagnosticsClean:false`, `fullHealthAcceptance:false` and
+AFTER `fixed:false/pass:false` remain: acceptance is only the separately verified layout.
+All exact fixtures were tombstoned, owned Chrome/profile/Auth SDK and services closed,
+nine ports free, baseline exports unchanged. AFTER server macOS `top` was237M. Production
+Firestore, owner port3000, push, deployment and feature-to-main were untouched.
+
+**Production plan, not executed.** After separately authorized merge/push/deploy, verify
+the deployed commit/assets. Reuse one existing profile/tab and an existing populated sermon.
+In Structure horizontal mode at1280, measure the actual occupying scrollbar and check three
+sections, readable nested text and visible controls; also check1263. Check820/390, Vertical/
+Horizontal and Focus/Normal without saving content; an optional drag cancels with Escape.
+Avoid AI/audio or fault injection and close the QA tab. Owner visual and physical-device
+acceptance remains separate. Other Claude returns, parent279.4 and deferred choices remain open.
