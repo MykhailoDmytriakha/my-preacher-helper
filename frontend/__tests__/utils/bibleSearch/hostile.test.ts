@@ -1,3 +1,7 @@
+import { prepareWordForms } from '../../../test-utils/bibleWordForms';
+
+prepareWordForms(["ru"]);
+
 import { PROTESTANT_BOOKS, SYNODAL_BOOKS } from '@/components/bible/bookOrder';
 import { readLine } from '@/utils/bibleSearch/query';
 import { fitsPattern, matcherOf } from '@/utils/bibleSearch/wordForms';

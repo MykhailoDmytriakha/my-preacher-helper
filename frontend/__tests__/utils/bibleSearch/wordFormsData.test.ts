@@ -3,11 +3,17 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import sources from '@/utils/bibleSearch/wordFormsData/sources.json';
+import assets from '@/utils/bibleSearch/wordFormsData/assets.json';
 
 const root = path.resolve(__dirname, '../../../..');
 const sha = (relative: string) => createHash('sha256').update(fs.readFileSync(path.join(root, relative))).digest('hex');
 
 describe('the generated lexical data follows the current Bible text and normalizer', () => {
+  it('uses the supported content-addressed asset manifest shape', () => {
+    expect(assets.schema).toBe(1);
+    expect(Object.keys(assets.languages).sort()).toEqual(['ru', 'uk']);
+  });
+
   it('was generated with the current application text functions', () => {
     expect(sha('frontend/app/utils/bibleSearch/words.ts')).toBe(sources.corpus.sourceHashes.wordsTs);
     expect(sha('frontend/app/utils/bibleBooks.ts')).toBe(sources.corpus.sourceHashes.bibleBooksTs);
@@ -23,10 +29,18 @@ describe('the generated lexical data follows the current Bible text and normaliz
   });
 
   it.each(['ru', 'uk'] as const)('retains the recorded %s payload and format', (language) => {
-    const relative = `frontend/app/utils/bibleSearch/wordFormsData/${language}.json`;
+    const asset = assets.languages[language];
+    const relative = `frontend/public/bible-word-forms/${asset.file}`;
+    const bytes = fs.readFileSync(path.join(root, relative));
+    expect(asset.file).toBe(`${language}-${sources[language].sha256}.json`);
     expect(sha(relative)).toBe(sources[language].sha256);
-    const data = JSON.parse(fs.readFileSync(path.join(root, relative), 'utf8')) as { schema: number; language: string };
+    expect(asset.sha256).toBe(sources[language].sha256);
+    expect(bytes.byteLength).toBe(sources[language].bytes);
+    expect(asset.bytes).toBe(sources[language].bytes);
+    const data = JSON.parse(bytes.toString('utf8')) as { schema: number; language: string; entries: unknown[]; paradigms: unknown[] };
     expect(data.schema).toBe(1);
     expect(data.language).toBe(language);
+    expect(asset.entries).toBe(data.entries.length);
+    expect(asset.paradigms).toBe(data.paradigms.length);
   });
 });

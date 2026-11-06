@@ -1,3 +1,7 @@
+import { prepareWordForms } from '../../../test-utils/bibleWordForms';
+
+prepareWordForms(["ru"]);
+
 import fs from 'fs';
 import path from 'path';
 
@@ -21,7 +25,7 @@ const johnOnly = new BibleSearchIndex(order);
 johnOnly.addBook(JSON.parse(fs.readFileSync(path.join(process.cwd(), 'public/bible-text/rst/v1', `${bookSlug('John')}.json`), 'utf8')) as BookText);
 
 function model(line: string, index: Partial<SearchIndexState>, offline: boolean, more: Partial<ModelInput> = {}) {
-  const state = { index: johnOnly, indexed: 1, total: 66, loading: false, missing: 65, version: 1, ...index } as SearchIndexState;
+  const state = { index: johnOnly, indexed: 1, total: 66, loading: false, missing: 65, version: 1, wordFormsReady: true, wordFormsError: null, ...index } as SearchIndexState;
   const reading = readLine(line, { bible: 'rst', books: SYNODAL_BOOKS });
   const answer = reading.kind === 'search' ? answerSearch(johnOnly, reading.query, SYNODAL_BOOKS) : null;
   const input: ModelInput = {

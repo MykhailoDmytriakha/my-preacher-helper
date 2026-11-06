@@ -1,3 +1,7 @@
+import { prepareWordForms } from '../../../test-utils/bibleWordForms';
+
+prepareWordForms(["ru", "uk"]);
+
 import fs from 'node:fs';
 import path from 'node:path';
 

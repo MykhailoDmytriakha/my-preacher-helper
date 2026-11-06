@@ -99,10 +99,16 @@ function basesOf(term: string, language: SearchLanguage): string[] {
   return Array.from(bases).sort();
 }
 
+const patternOf = (term: string): string => term.replace(/\*+/g, '*').slice(0, PATTERN_LIMIT);
+const patternTooShort = (pattern: string): boolean => pattern.replace(/[*_]/g, '').length < 2;
+
+/** Query validation is available before lexical data; ordinary short words remain exact words. */
+export const isTooShortPattern = (term: string): boolean => PATTERN.test(term) && patternTooShort(patternOf(term));
+
 export function matcherOf(term: string, language: SearchLanguage): WordMatcher {
   if (PATTERN.test(term)) {
-    const pattern = term.replace(/\*+/g, '*').slice(0, PATTERN_LIMIT);
-    return { term, pattern: true, tooShort: pattern.replace(/[*_]/g, '').length < 2, key: `p:${pattern}`, test: (word) => fitsPattern(word, pattern) };
+    const pattern = patternOf(term);
+    return { term, pattern: true, tooShort: patternTooShort(pattern), key: `p:${pattern}`, test: (word) => fitsPattern(word, pattern) };
   }
   if (term.length < 3) return { term, pattern: false, tooShort: false, key: `w:${term}`, test: (word) => word === term };
   const lexical = language === 'en' ? null : lexicalFormsOf(term, language);

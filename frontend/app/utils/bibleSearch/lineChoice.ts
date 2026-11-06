@@ -21,9 +21,9 @@ export type LineChoice = {
 export type Answering = { answerFor: (reading: LineReading) => SearchAnswer | null; isWord: (word: string) => boolean };
 
 /** How a line is answered over the books indexed so far — one way for the search window and for the found verses in the reader. */
-export function answeringOf(index: BibleSearchIndex, indexed: number, books: BookGroups): Answering {
+export function answeringOf(index: BibleSearchIndex, indexed: number, books: BookGroups, wordFormsReady: boolean): Answering {
   return {
-    answerFor: (each) => (each.kind === 'search' && indexed > 0 ? answerSearch(index, each.query, books) : null),
+    answerFor: (each) => (each.kind === 'search' && indexed > 0 && wordFormsReady ? answerSearch(index, each.query, books) : null),
     isWord: (word) => isBibleWord(index, word),
   };
 }

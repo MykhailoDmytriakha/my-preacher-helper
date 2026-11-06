@@ -1,3 +1,7 @@
+import { prepareWordForms } from '../../../test-utils/bibleWordForms';
+
+prepareWordForms(["ru", "uk"]);
+
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -39,7 +43,7 @@ const shown = (line: string, corpus: Fixture = rst) => {
   const { query, answer } = search(line, corpus);
   const input: ModelInput = {
     reading: { kind: 'search', query, prefixBooks: [] }, answer, books: corpus.books,
-    index: { index: corpus.index, indexed: corpus.order.length, total: corpus.order.length, loading: false, missing: 0, version: 1 },
+    index: { index: corpus.index, indexed: corpus.order.length, total: corpus.order.length, loading: false, missing: 0, version: 1, wordFormsReady: true, wordFormsError: null },
     bible: corpus.bible, locale: (corpus.bible === 'rst' ? 'ru' : corpus.bible === 'ubio' ? 'uk' : 'en') as AppLocale,
     t, wide: true, asWords: false, bookReadAs: null, allBooks: false, fixChapters: false, opened: new Set(),
     offline: false, layoutFixed: null, limit: 100, booksBegun: null,

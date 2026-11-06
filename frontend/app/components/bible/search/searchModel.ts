@@ -1,6 +1,6 @@
 import { getLocalizedAbbrev, getLocalizedBookName } from '@/utils/bibleBooks';
 import { phraseWordMatchers } from '@/utils/bibleSearch/phrases';
-import { readSearch, type BookGroups, type LineReading, type SearchQuery, type SearchScope } from '@/utils/bibleSearch/query';
+import { canShowWordSearch, readSearch, type BookGroups, type LineReading, type SearchQuery, type SearchScope } from '@/utils/bibleSearch/query';
 import { scopeBookIds, type SearchAnswer, type WiderStep } from '@/utils/bibleSearch/results';
 import { piecesOfText } from '@/utils/bibleSearch/words';
 import { chapterCount, verseCount } from '@/utils/versification';
@@ -467,13 +467,14 @@ function searchModel(input: ModelInput, reading: Extract<LineReading, { kind: 's
   if (prefixBooks.length && answer?.hits.length) rows.push({ type: 'head', key: 'books-head', title: t('bible.search.booksHead') });
   prefixBooks.forEach((bookId) => rows.push({ type: 'book', key: `book-${bookId}`, title: words.name(bookId), sub: words.chapters(bookId), run: words.write(`${words.abbrev(bookId)} `) }));
   // A word of two letters is still being typed: the books it begins are the answer for now.
-  const hasWords = query.terms.length > 0 || query.phrases.length > 0;
-  if (!hasWords || (!query.scope && query.all.replace(/\s/g, '').length < 3)) return { ...empty, rows };
+  if (!canShowWordSearch(query)) return { ...empty, rows };
 
   const coverage = coverageOf(input);
   if (!answer) {
+    // The view offers the lexical-data retry; a missing dictionary is not a missing Bible.
+    if (index.wordFormsError) return { ...empty, rows };
     // No book to search yet: on its way, or none came.
-    if (index.loading) rows.push({ type: 'more', key: 'loading', text: t('bible.search.loadingBooks') });
+    if (index.loading) rows.push({ type: 'more', key: 'loading', text: t(index.wordFormsReady ? 'bible.search.loadingBooks' : 'bible.search.preparingSearch') });
     else rows.push(fix(t('bible.search.unavailableTitle'), t('bible.search.unavailableText')));
     return { ...empty, rows };
   }

@@ -7,7 +7,7 @@ import { chapterCount, verseCount } from '@/utils/versification';
 
 import { digitsForNumberWords, isNumberWord, ordinalOf } from './numberWords';
 import { phraseText, type SearchPhrase } from './phrases';
-import { matcherOf, type SearchLanguage, type WordMatcher } from './wordForms';
+import { isTooShortPattern, matcherOf, type SearchLanguage, type WordMatcher } from './wordForms';
 import { normalizeWord, wordsOfText } from './words';
 
 /**
@@ -511,6 +511,10 @@ function scopeReading(query: SearchQuery, hasWords: boolean, bible: BibleId): Li
   return placeIn(bible, scope.bookId, scope.chapter, scope.fromVerse, scope.toVerse, false);
 }
 
+/** The line may offer book prefixes before it has enough text to show word-search results. */
+export const canShowWordSearch = (query: SearchQuery): boolean =>
+  (query.terms.length > 0 || query.phrases.length > 0) && Boolean(query.scope || query.all.replace(/\s/g, '').length >= 3);
+
 /** What the line means, in the order a person means it: a place first, then a search. */
 export function readLine(raw: string, context: LineContext): LineReading {
   if (!raw.trim()) return { kind: 'empty' };
@@ -535,7 +539,7 @@ export function readLine(raw: string, context: LineContext): LineReading {
   const scoped = scopeReading(query, hasWords, context.bible);
   if (scoped) return scoped;
   const { scope } = query;
-  if (matchersOf(query).some((matcher) => matcher.tooShort)) return { kind: 'tooShort', query };
+  if (query.terms.some(isTooShortPattern)) return { kind: 'tooShort', query };
   const languages: SearchLanguage[] = Array.from(new Set([languageOf(context.bible), 'ru', 'uk', 'en'] as SearchLanguage[]));
   // Words searched as words offer no book their first letters begin («плач» is not «Плач Иеремии» then).
   return { kind: 'search', query, prefixBooks: scope || context.asWords ? [] : booksBeginningWith(raw, languages) };

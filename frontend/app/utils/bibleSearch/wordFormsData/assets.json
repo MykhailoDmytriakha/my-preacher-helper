@@ -1,0 +1,19 @@
+{
+  "languages": {
+    "ru": {
+      "bytes": 1494428,
+      "entries": 11641,
+      "file": "ru-33e59bbc86e1326d52b5035a103444e03be34d732719899d1c59965b8a30e5c9.json",
+      "paradigms": 2457,
+      "sha256": "33e59bbc86e1326d52b5035a103444e03be34d732719899d1c59965b8a30e5c9"
+    },
+    "uk": {
+      "bytes": 743754,
+      "entries": 14994,
+      "file": "uk-44ef131658d1be6fa2bd640a9cff564b5c425e8aee11f0adc54f4bc49b75576c.json",
+      "paradigms": 1096,
+      "sha256": "44ef131658d1be6fa2bd640a9cff564b5c425e8aee11f0adc54f4bc49b75576c"
+    }
+  },
+  "schema": 1
+}

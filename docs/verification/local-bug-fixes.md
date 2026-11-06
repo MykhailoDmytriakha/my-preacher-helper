@@ -5935,3 +5935,118 @@ Check820/390, explicit Vertical and focus/Normal Mode; confirm the sermon remain
 Avoid editing, recording, AI commands and production fault injection. A drag cancellation
 may be checked without dropping/saving. Close the QA tab afterwards. Physical iPad/PWA and
 owner visual acceptance remain separate; unrelated returned bugs/deferred choices stay open.
+
+
+## Unit285 — Load verified word forms only when searching words
+
+**Bug / local status.** `BUG-20261027-search-delo-finds-dlya`, Claude radio#5p3 delivery
+return. The earlier lexical-admission fix remains. This unit removes its eager dictionary
+cost from ordinary reading. Source/build and native comparisons are locally verified, including fresh Codex acceptance;
+this entry accompanies the authorized local fix commit. Production and physical-device acceptance
+remain separate. The build was made at a58e4155 plus an explicitly pinned dirty frontend overlay.
+
+**Cause and class.** Both large JSON payloads were static runtime dependencies of
+`wordFormLexicon.ts`. Lazy construction of the lexicon did not defer their transfer. The
+accepted BEFORE build delivered both languages inside one2,376,295-byte decoded JS chunk
+before any word query; computed gzip size445,306bytes is an estimate, not measured wire traffic.
+Dynamic JS import alone would still be fetched by the existing all-JS service-worker precache.
+Natural desktop autofocus is intentional and must not count as a request for word search.
+
+The one shared rule now spans the Bible page, reader book/search pickers and retained found
+results. Pure `query.ts` parsing/too-short checks do not consult lexical data; `canShowWordSearch`
+owns eligibility. `BibleSearch` and `useFoundVerses` request dictionaries only for an eligible
+word query and pass real readiness to `answeringOf`; no approximate answer precedes readiness.
+The shared search-index store runs book and lexical jobs independently, keeps their errors
+separate and preserves queued online retries. Saved book text still joins before missing
+network books. An unrelated successful book request cannot erase a lexical failure. Empty
+focus, book prefixes and complete place references remain dictionary-free. English requires
+no payload; RU/UK requests select only their language. Parser-only/server paths have no
+runtime lexical-data consumer. Fixtures that explicitly call synchronous semantic helpers
+preload real data through `frontend/test-utils/bibleWordForms.ts`; runtime callers retain
+an explicit readiness boundary. There is no second queue, user-data writer or schema migration.
+
+**Assets and failure behavior.** The original RU1,494,428bytes and UK743,754bytes are moved
+unchanged into content-addressed public JSON. RU SHA-256 is
+`33e59bbc86e1326d52b5035a103444e03be34d732719899d1c59965b8a30e5c9`;
+UK is`44ef131658d1be6fa2bd640a9cff564b5c425e8aee11f0adc54f4bc49b75576c`.
+A small generated catalog records sizes and shape counts; source/licence provenance is
+unchanged. `wordFormData.ts` uses the canonical timed fetch and validates a complete language
+payload before using/storing it in `bible-word-forms-v1`. Invalid cached data is rejected.
+Cache refusal preserves a live query but cannot promise later offline use. Rejected lexical
+loads can retry. Both result surfaces show preparation/failure/retry in all three interface
+languages instead of a false zero-result answer; place choices remain usable. The generator
+emits the same public-asset/catalog contract, including isolated custom-output paths. Existing
+corpus/normalizer freshness and false-form assertions are retained. The licensing owner
+question and cold whole-app offline startup are separate open matters.
+
+**Regression and gates.** Before product changes, the static dependency regression produced
+3RED/348controls across15suites. Readiness regressions exposed two candidate defects with
+2RED/14controls; the corrected independent jobs pass all16. Final focusedv3 is370/19suites;
+fresh focusedv4 repeats370/19 with sourceStabletrue. TypeScript v4 exits0; lintv3 exits0 with
+60inherited warnings; translationv2 is8/8. Official `npm run build` v2 exits0/sourceStable:
+12,959passed/17skipped tests,1,142passed/3skipped suites, successful Next production build.
+Initial type/lint failures and buildv1's empty-helper-suite failure/interruption remain retained.
+Jest discovers every `.ts` under `__tests__`; the helper was moved to the existing test-utils
+boundary. Python generator compile/help passed; no corpus regeneration is claimed.
+
+**Native original-scenario comparison.** Genuine Chrome with local Auth/Firestore emulators
+and synthetic identity first opens the Bible at1280 then390, retaining natural autofocus.
+R2BEFORE completes with actual exit0 and preserves the eager delivery. A separately completed
+clean CORE AFTER has actual worker/supervisor exit0, observationComplete=true and six empty
+diagnostic arrays. Before typing: zero dictionary payloads, including JS payload markers.
+After typing «дело»: only the Russian asset loads. The exact699-result root text and101option
+labels match BEFORE (including Show More); root-text SHA is
+`0c0c0c9d82dbeb0caa7374f51cd7898d23797e211b7ab240b7b9011434049504`.
+The same frozen delivery oracle gives BEFORE1RED/9controls and CORE AFTER10/10. Root visually
+inspected the search and idle frames; independent image/evidence acceptance is recorded in
+the ignored case report. Native DOM/network evidence is separate from Jest/static coverage.
+
+**Supplemental observations and limits.** The earlier expanded AFTER remains FAILED:
+actual exit1, observationComplete=false, fullHealthAcceptance=false. Its seven functional
+controls observed: empty Ukrainian picker without a lexicon request; visible first-load
+failure; trusted Retry with real Ukrainian21-result search; English12-result search without
+another dictionary; eight trusted button clicks; actual RU cache bytes/fullSHA plus699results
+in a fresh document with dictionary transport denied; and699results during warm full-network
+offline search. The reload first loads application code online, so cold whole-app offline
+reload is not proved. The failed expanded raw run is never promoted by the clean CORE run.
+Two distinct UK503responses contain the exact44-byte injected refusal, but the script records
+only one fault: the second request's correlation remains UNKNOWN. Two blocked Google
+cleardot.gif requests occur in the offline stage; their initiator is UNKNOWN. No production
+Firestore/API request or application content command was allowed. There were no page errors
+or response-read failures. The failed attempt and every original diagnostic are preserved.
+
+**Build proof and cleanup.** AFTER build `qD5v9W6rtSuXZixIR7ht0` pins2,761source files,
+914compiled files and1worker. Its3,678-member source/build archive SHA-256 is
+`e5b49151d9efc73a75f6597cef1013f055e30c8aa0392dc87043dcd9c38e4561`;
+the build manifest SHA is`c4af1c2143a4cada139cad21394017caabd32d2e5cd220fdc19b19d81780cccc`.
+BEFORE reuses Unit284's accepted exact-source archive and build, with all2,751frontend bytes
+matched to the now-committed a58 baseline. Artifacts use `search-lexicon-285-*`. Incorrect
+early baseline binding, unfocused-field assumption and preflight ENOBUFS attempts remain
+excluded with actual results; subsequent preflights retain full provenance checks. All three
+completed stands closed their exact owned Chrome/profile/services, removed the local Auth
+identity and left nine checked ports free; baseline exports remained unchanged. The expanded
+AFTER's final server `top` sample was250M. Owner port3000 was untouched. No production,
+physical iPad, push, deployment or feature-to-main action occurred.
+
+The final pure verifier has SHA-256
+`f8b76d16b39ef29df58dc6348093c319f18e9be1e9b70dde20d210c3a66e834d`;
+its immutable5,419,558-byte proof manifest SHA is
+`fd968ef943abe0c9856fa3c7dbfedb3c187efbaff3d0e75532b3f0d508071bd4`.
+It verifies358recorded input artifacts, complete archives and accepted current-source bytes;
+root reran it with exit0. Three in-memory negative controls are rejected: an idle payload,
+changed actual result text and changed actual device-cache SHA. The original raw inputs are
+unchanged. Fresh Codex acceptance repeats focused370/19, both frozen delivery oracles and
+the rendered frames; its excluded acceptance report refers to the immutable proof without
+a circular hash dependency. Later post-commit checks require a clean descendant and exactly
+the same frontend bytes; a Git commit is not misreported as a new build.
+
+**Production plan, not executed.** After separately authorized merge/push/deploy, verify the
+deployed commit, asset catalog and refreshed worker. Use one existing profile and one app tab.
+Observe a cold dictionary cache without deleting unrelated user data: ordinary Bible/reader
+opening and place selection must make no dictionary request. Search a familiar RU term,
+confirm only RU downloads and expected verses remain; repeat UK and English. Reuse downloaded
+language data after ordinary reload and warm offline search. Inspect preparation/retry using
+local emulator fault controls, never injected production failures. Existing installations
+can already have a warm dictionary copy, which is not proof of cold delivery. Avoid writes,
+AI calls and fresh profiles per scenario; close the QA tab. Owner visual and physical-device
+acceptance remain separate. Other Claude returns, deferred choices and parent279.4 stay open.

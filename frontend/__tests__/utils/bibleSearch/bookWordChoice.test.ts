@@ -1,3 +1,7 @@
+import { prepareWordForms } from '../../../test-utils/bibleWordForms';
+
+prepareWordForms(["ru", "uk"]);
+
 import fs from 'fs';
 import path from 'path';
 
@@ -18,7 +22,7 @@ function corpus(bible: BibleId, only?: string[]) {
   return { index, books, order };
 }
 const rst = corpus('rst');
-const choose = (raw: string, asWords = false) => chooseReading(raw, { bible: 'rst', books: rst.books, asWords }, answeringOf(rst.index, rst.order.length, rst.books));
+const choose = (raw: string, asWords = false) => chooseReading(raw, { bible: 'rst', books: rst.books, asWords }, answeringOf(rst.index, rst.order.length, rst.books, true));
 const scope = (raw: string) => {
   const reading = choose(raw).reading;
   return reading.kind === 'search' ? reading.query.scope : null;
@@ -73,7 +77,7 @@ describe('exact book names with a word meaning', () => {
   it('adds the choice only after the available index attests the name and keeps the static fallback', () => {
     const partial = corpus('rst', ['Genesis']);
     const read = (line: string) => {
-      const result = chooseReading(line, { bible: 'rst', books: partial.books }, answeringOf(partial.index, 1, partial.books));
+      const result = chooseReading(line, { bible: 'rst', books: partial.books }, answeringOf(partial.index, 1, partial.books, true));
       return result.reading.kind === 'search' ? result.reading.query.scope : null;
     };
     expect(read('Иоанн крест')).toMatchObject({ wordLike: false });
@@ -90,7 +94,7 @@ describe('exact book names with a word meaning', () => {
   ] as const)('uses the actual %s translation vocabulary for %s', (bible, raw, bookId, bookCount, wordCount) => {
     const data = corpus(bible);
     const context = { bible, books: data.books };
-    const answer = answeringOf(data.index, data.order.length, data.books);
+    const answer = answeringOf(data.index, data.order.length, data.books, true);
     const chosen = chooseReading(raw, context, answer);
     expect(chosen.reading.kind === 'search' && chosen.reading.query.scope).toMatchObject({ kind: 'book', bookId, wordLike: true });
     expect(chosen.answer?.hits).toHaveLength(bookCount);

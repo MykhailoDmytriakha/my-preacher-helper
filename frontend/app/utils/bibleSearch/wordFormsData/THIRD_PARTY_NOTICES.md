@@ -1,6 +1,6 @@
 # Bible search word-form data notices
 
-These generated files contain Russian and Ukrainian lexical forms selected from the Bible texts checked into this repository. The application consumes only the generated static JSON; Python, Java, and the lexical-analysis packages are build-time tools.
+The generated Russian and Ukrainian lexical payloads are published as content-addressed JSON files in `frontend/public/bible-word-forms/`; the small `assets.json` in this directory records their names, hashes, sizes, and counts. The application loads that manifest before requesting a language payload. Python, Java, and the lexical-analysis packages are build-time tools.
 
 ## Russian
 
@@ -51,6 +51,6 @@ The generator derives its vocabulary directly from `frontend/public/bible-text/r
 
    The `.info` file must remain beside the dictionary. The pinned decoded UTF-8 table hash is `e0de0f91de8d8f46a00a36497b08cbc537b0386808fb5f39a18313725692a9e0`.
 
-The generator reads no case artifacts or local QA-only files. The current checked-in Bible source corpus has 66 Russian and 66 Ukrainian book files; its live counts and hashes are emitted rather than enforced as fixed counts, so later checked-in text changes can regenerate corresponding data.
+The generator reads no case artifacts or local QA-only files. The current checked-in Bible source corpus has 66 Russian and 66 Ukrainian book files; its live counts and hashes are emitted rather than enforced as fixed counts, so later checked-in text changes can regenerate corresponding data. By default, the canonical `--output-dir` writes metadata and `assets.json` here and the payloads to `frontend/public/bible-word-forms/`. Supplying a custom `--output-dir` routes payloads to that directory's `assets/` child; `--asset-dir` explicitly selects another payload destination.
 
 The vocabulary extraction loads the canonical `bibleBooks.ts` apostrophe rule used by `words.ts`; `sources.json` records both modules and `bibleText.ts`. The dictionary-token filter and normalization derive their apostrophe set from that same runtime rule. A module-hash freshness regression prevents silently keeping data generated against a different tokenizer.

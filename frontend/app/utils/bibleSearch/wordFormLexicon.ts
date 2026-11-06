@@ -1,13 +1,5 @@
-import ru from './wordFormsData/ru.json';
-import uk from './wordFormsData/uk.json';
-
-type Language = 'ru' | 'uk';
-type LexiconData = {
-  schema: number;
-  language: Language;
-  paradigms: readonly string[];
-  entries: readonly (readonly [lemma: string, stem: string, paradigm: number])[];
-};
+import { isWordFormData, type WordFormData as LexiconData, type WordFormLanguage as Language } from './wordFormAssets';
+import { fetchWordFormData } from './wordFormData';
 
 const LOOKUPS_KEPT = 128;
 
@@ -75,10 +67,34 @@ class WordFormLexicon {
 }
 
 const loaded: Partial<Record<Language, WordFormLexicon>> = {};
+const loading: Partial<Record<Language, Promise<void>>> = {};
+
+export const wordFormLexiconReady = (language: Language): boolean => Boolean(loaded[language]);
+
+/** One request per language; a refused load leaves no poisoned promise and can be retried. */
+export function loadWordFormLexicon(language: Language,
+  readData: (language: Language) => Promise<LexiconData> = fetchWordFormData): Promise<void> {
+  if (loaded[language]) return Promise.resolve();
+  if (loading[language]) return loading[language];
+  const run = Promise.resolve().then(() => readData(language)).then(data => {
+    if (!isWordFormData(data, language)) throw new Error(`Word forms for ${language}: invalid language payload`);
+    loaded[language] = new WordFormLexicon(data);
+  });
+  loading[language] = run.finally(() => { delete loading[language]; });
+  return loading[language];
+}
+
 const lexicon = (language: Language): WordFormLexicon => {
-  if (!loaded[language]) loaded[language] = new WordFormLexicon((language === 'ru' ? ru : uk) as unknown as LexiconData);
-  return loaded[language];
+  const current = loaded[language];
+  if (!current) throw new Error(`Word forms for ${language} are not ready`);
+  return current;
 };
+
+/** Tests reset only settled lexical state; application callers retain it for the page's life. */
+export function resetWordFormLexiconsForTests(): void {
+  delete loaded.ru; delete loaded.uk;
+  delete loading.ru; delete loading.uk;
+}
 
 /** A query's verified readings. This validates candidate spellings; it does not add search candidates. */
 export const lexicalFormsOf = (word: string, language: Language): { key: string; words: ReadonlySet<string> } | null => lexicon(language).forms(word);

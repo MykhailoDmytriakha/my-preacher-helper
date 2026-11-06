@@ -12,6 +12,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 DATA = ROOT / 'frontend/app/utils/bibleSearch/wordFormsData'
+PUBLIC_ASSETS = ROOT / 'frontend/public/bible-word-forms'
 EXPECTED_UK_SHA256 = 'e0de0f91de8d8f46a00a36497b08cbc537b0386808fb5f39a18313725692a9e0'
 EXPECTED_UK_JAR_SHA256 = '463d9054b8d4cfacb9cd69566395826a6fe32fb6e7da91dbf79d37ddf7d56ba0'
 UK_POM_SHA256 = '6a66d8efe6a5c774932401b04411a8feca7d6628631e4ef80819cfafa133dc38'
@@ -221,16 +222,24 @@ def main() -> None:
     parser.add_argument('--uk-table', type=Path, required=True, help='Decoded Morfologik search dictionary; exact source hash is enforced')
     parser.add_argument('--uk-jar', type=Path, help='Optional original Maven jar; if supplied, its pinned SHA-256 is checked')
     parser.add_argument('--output-dir', type=Path, default=DATA)
+    parser.add_argument('--asset-dir', type=Path, help='Directory for content-addressed language payloads; defaults to the public asset directory only for canonical metadata output')
     args = parser.parse_args()
+
+    output_dir = args.output_dir.resolve()
+    if args.asset_dir is not None:
+        asset_dir = args.asset_dir.resolve()
+    elif output_dir == DATA.resolve():
+        asset_dir = PUBLIC_ASSETS
+    else:
+        asset_dir = output_dir / 'assets'
 
     vocab, corpus_meta = extract_vocabulary()
     if set(vocab) != {'ru', 'uk'}:
         raise SystemExit('Expected exactly Russian and Ukrainian vocabularies')
-    args.output_dir.mkdir(parents=True, exist_ok=True)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    asset_dir.mkdir(parents=True, exist_ok=True)
     ru_bytes, ru_stats = build_ru(vocab['ru'])
     uk_bytes, uk_stats = build_uk(vocab['uk'], args.uk_table.resolve(), args.uk_jar.resolve() if args.uk_jar else None)
-    (args.output_dir / 'ru.json').write_bytes(ru_bytes)
-    (args.output_dir / 'uk.json').write_bytes(uk_bytes)
     source_meta = {
         'schema': 1,
         'corpus': corpus_meta,
@@ -247,8 +256,21 @@ def main() -> None:
     }
     for lang, data in [('ru', ru_bytes), ('uk', uk_bytes)]:
         source_meta[lang] = {'sha256': hashlib.sha256(data).hexdigest(), 'bytes': len(data)}
-    (args.output_dir / 'sources.json').write_text(json.dumps(source_meta, ensure_ascii=False, indent=2, sort_keys=True) + '\n', encoding='utf-8')
-    print(json.dumps({'ru': ru_stats, 'uk': uk_stats, 'outputHashes': {k: source_meta[k]['sha256'] for k in ('ru', 'uk')}}, ensure_ascii=False, sort_keys=True))
+    assets = {'schema': 1, 'languages': {}}
+    for lang, data, stats in [('ru', ru_bytes, ru_stats), ('uk', uk_bytes, uk_stats)]:
+        digest = source_meta[lang]['sha256']
+        filename = f'{lang}-{digest}.json'
+        (asset_dir / filename).write_bytes(data)
+        assets['languages'][lang] = {
+            'file': filename,
+            'sha256': digest,
+            'bytes': len(data),
+            'entries': stats['entries'],
+            'paradigms': stats['paradigms'],
+        }
+    (output_dir / 'assets.json').write_text(json.dumps(assets, ensure_ascii=False, indent=2, sort_keys=True) + '\n', encoding='utf-8')
+    (output_dir / 'sources.json').write_text(json.dumps(source_meta, ensure_ascii=False, indent=2, sort_keys=True) + '\n', encoding='utf-8')
+    print(json.dumps({'ru': ru_stats, 'uk': uk_stats, 'outputHashes': {k: source_meta[k]['sha256'] for k in ('ru', 'uk')}, 'assetDir': str(asset_dir)}, ensure_ascii=False, sort_keys=True))
 
 
 if __name__ == '__main__':

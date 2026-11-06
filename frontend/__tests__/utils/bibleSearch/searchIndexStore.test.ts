@@ -1,3 +1,7 @@
+import { prepareWordForms } from '../../../test-utils/bibleWordForms';
+
+prepareWordForms(["ru"]);
+
 import { loadSearchIndex, resetSearchIndexesForTests, searchIndexState } from '@/utils/bibleSearch/searchIndexStore';
 import { fetchBookText, keptBookText } from '@/utils/bibleText';
 

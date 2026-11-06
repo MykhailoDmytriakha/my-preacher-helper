@@ -10,8 +10,8 @@ import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useStableHandler } from '@/hooks/useStableHandler';
 import { BIBLES, type BibleId } from '@/utils/bibles';
 import { answeringOf, chooseReading } from '@/utils/bibleSearch/lineChoice';
-import { readSearch } from '@/utils/bibleSearch/query';
-import { useSearchIndex } from '@/utils/bibleSearch/searchIndexStore';
+import { canShowWordSearch, readLine, readSearch } from '@/utils/bibleSearch/query';
+import { loadSearchIndex, useSearchIndex } from '@/utils/bibleSearch/searchIndexStore';
 import { lineKey } from '@/utils/bibleSearch/words';
 import { isBrowserOffline } from '@/utils/connectivity';
 import { withModifier } from '@/utils/keyboardModifier';
@@ -27,6 +27,7 @@ import { SearchHelp } from './SearchHelp';
 import { SearchHistory, type HistoryRow } from './SearchHistory';
 import { searchToKeep } from './searchKeeping';
 import { buildSearchModel, rowForEnter, SHOWN_VERSES, type Intent, type OpenTarget } from './searchModel';
+import { SearchPreparationFailure } from './SearchPreparationFailure';
 import { SearchResults, type VerseRow } from './SearchResults';
 import { SignBar, type SearchSign } from './SignBar';
 import { useSearchKeeping } from './useSearchKeeping';
@@ -119,14 +120,18 @@ export function BibleSearch({ bible, locale, wide, surface, hereBook = null, aut
   const books = useMemo(() => booksOf(bible), [bible]);
   const order = useMemo(() => bookSequence(booksOf(bible)), [bible]);
   const language = BIBLES[bible].language;
-  const index = useSearchIndex(bible, order, focused || deferred.trim() !== '' || panel === 'history');
+  const typedReading = useMemo(() => readLine(deferred, { bible, books, hereBook, asWords }), [deferred, bible, books, hereBook, asWords]);
+  const needsWordForms = (typedReading.kind === 'search' && canShowWordSearch(typedReading.query)) || (panel === 'history' && history.length > 0);
+  const index = useSearchIndex(bible, order, focused || deferred.trim() !== '' || panel === 'history', needsWordForms);
+  const preparationFailed = needsWordForms && Boolean(index.wordFormsError);
+  const retryPreparation = useCallback(() => { void loadSearchIndex(bible, order); }, [bible, order]);
 
   // The line read — and read again with the English layout turned, when that is what makes it mean
   // something — and what to show under it. A function of the text, so Enter reads the line as it is now.
   const offline = isBrowserOffline();
   // How many verses a line shows: forty, or as many as «Показать ещё» opened on this very line.
   const limitFor = useCallback((text: string) => (more && more.line === lineKey(text) && more.asWords === asWords ? more.limit : SHOWN_VERSES), [more, asWords]);
-  const answering = useMemo(() => answeringOf(index.index, index.indexed, books), [index, books]);
+  const answering = useMemo(() => answeringOf(index.index, index.indexed, books, index.wordFormsReady), [index, books]);
   const understand = useCallback((text: string) => {
     const { reading, answer, layoutFixed, booksBegun } = chooseReading(text, { bible, books, hereBook, asWords }, answering);
     const searched = layoutFixed ?? text;
@@ -554,6 +559,7 @@ export function BibleSearch({ bible, locale, wide, surface, hereBook = null, aut
         </section>
       ) : null}
 
+      {preparationFailed && <SearchPreparationFailure onRetry={retryPreparation} />}
       {showResults ? (
         <div className={`${card} ${surface === 'window' ? '-mx-1' : ''}`}>
           <SearchResults

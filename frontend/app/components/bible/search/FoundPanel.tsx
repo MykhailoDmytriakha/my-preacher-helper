@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 
 import { drawnAround, type FoundRange, type FoundVerse } from './foundInBible';
 import { SHOWN_VERSES, verseRef } from './searchModel';
+import { SearchPreparationFailure } from './SearchPreparationFailure';
 
 import type { FoundVerses } from './useFoundVerses';
 import type { AppLocale } from '@/utils/appLocale';
@@ -77,6 +78,7 @@ export function FoundPanel({ line, found, atKey, arrived = null, locale, onGo, o
           <XMarkIcon className="h-4 w-4" aria-hidden="true" />
         </button>
       </div>
+      {found.preparationFailed && found.retryPreparation && <SearchPreparationFailure onRetry={found.retryPreparation} />}
       <div className="shrink-0 border-b border-gray-100 px-2.5 py-2.5 dark:border-gray-800">
         <button type="button" onClick={onBack}
           className="flex h-9 w-full items-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-3 text-left text-[13px] font-semibold text-indigo-700 hover:bg-indigo-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:border-indigo-500/40 dark:bg-indigo-950/40 dark:text-indigo-300 dark:hover:bg-indigo-950/70">

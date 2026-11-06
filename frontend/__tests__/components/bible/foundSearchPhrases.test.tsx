@@ -21,7 +21,7 @@ const order = bookSequence(books);
 const text = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'public/bible-text/kjv/v1/ephesians.json'), 'utf8')) as BookText;
 const index = new BibleSearchIndex(order);
 index.addBook(text);
-const state: SearchIndexState = { index, indexed: 1, total: order.length, loading: false, missing: order.length - 1, version: 1 };
+const state: SearchIndexState = { index, indexed: 1, total: order.length, loading: false, missing: order.length - 1, version: 1, wordFormsReady: true, wordFormsError: null };
 const t = ((key: string) => key) as TFunction;
 
 beforeEach(() => {
@@ -30,7 +30,7 @@ beforeEach(() => {
 
 describe('the search window and the found column share phrase semantics', () => {
   it.each(['Eph "by gra', 'Eph "by grace"', 'Eph gra'])('keeps the same hits and highlighted words for %s', (line) => {
-    const choice = chooseReading(line, { bible: 'kjv', books, asWords: false }, answeringOf(index, 1, books));
+    const choice = chooseReading(line, { bible: 'kjv', books, asWords: false }, answeringOf(index, 1, books, true));
     const model = buildSearchModel({
       ...choice, books, index: state, bible: 'kjv', locale: 'en', t, wide: true,
       asWords: false, bookReadAs: null, allBooks: false, fixChapters: false,
