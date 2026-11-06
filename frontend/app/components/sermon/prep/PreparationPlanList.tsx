@@ -1,5 +1,6 @@
 import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react';
 
+import { LiveTextInput } from '@/components/ui/LiveTextInput';
 import { usePreparationFieldOpening } from '@/hooks/usePreparationFieldOpening';
 import { UI_COLORS } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
@@ -35,8 +36,8 @@ export function PreparationPlanList({ binding, kind }: { binding?: PreparationPl
       </button>
     </div>
     <ul className="space-y-2">
-      {(binding?.value ?? []).map(item => <li key={item.id} className="flex items-center gap-2">
-        <input type="text" value={item.title} onChange={event => { const title = event.target.value; edit(current => current.map(point => point.id === item.id ? { ...point, title } : point)); }}
+      {(binding?.value ?? []).map(item => <li key={`${binding?.subject}:${item.id}`} className="flex items-center gap-2">
+        <LiveTextInput type="text" value={item.title} onChange={title => binding?.edit(current => current.map(point => point.id === item.id ? { ...point, title } : point))}
           placeholder={t(`${prefix}.itemPlaceholder`)} aria-label={t(`${prefix}.itemLabel`)}
           className={`flex-1 rounded-md border px-3 py-2 bg-white dark:bg-gray-800 ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder} focus:outline-none focus:ring-2 focus:ring-offset-0`} />
         {([['moveUp', ArrowUp, () => move(item.id, -1)], ['moveDown', ArrowDown, () => move(item.id, 1)],

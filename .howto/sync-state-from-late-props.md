@@ -23,3 +23,5 @@ when: useState(prop) keeps old value · modal shows stale data · prop arrives a
 - 2026-08-14: the dirty-ref guard was needed on the edit-sermon form because optimistic writes and their rollback replaced `sermon` under a mounted form and erased what the person had typed.
 
 See also: `.howto/fix-effect-dependencies.md`
+
+For a text control whose canonical draft echoes asynchronously, reuse `components/ui/LiveTextInput` or `useBufferedText`; pass the update promise through so a refusal releases the pending guard. Scope repeated controls by owner/resource subject and stable item ID. `PreparationPlanList.typing.test.tsx` covers both homiletic lists, delayed/refused echoes, reorder and a changed subject. This buffer owns only immediate display, never persistence or conflict policy.
