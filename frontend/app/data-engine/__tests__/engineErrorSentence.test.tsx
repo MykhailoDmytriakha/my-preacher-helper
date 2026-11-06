@@ -326,8 +326,10 @@ describe('failureWords', () => {
     expect(refusalWords(Object.assign(new Error('Server busy'), { status: 503 }), 'fallback')).toEqual({ said: 'Server busy' });
   });
 
-  it('reads only its own codes, never the prototype', () => {
-    expect(failureWords(Object.assign(new Error('x'), { code: 'constructor' }), 'fallback')).toEqual({ key: 'fallback' });
+  it.each(['constructor', '__proto__', 'toString'])('keeps prototype-like code %s as a marked generic read fallback', code => {
+    const error = Object.assign(new Error('x'), { code });
+    expect(failureWords(error, 'fallback')).toEqual({ key: 'fallback', readNotice: true });
+    expect(refusalWords(error, 'fallback')).toEqual({ said: 'x' });
   });
 
   it('says the fallback for any other failure and logs each original once', () => {
