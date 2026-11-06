@@ -982,15 +982,21 @@ describe('Sermon Plan Page UI Smoke Test', () => {
       const scrollIntoView = jest.fn();
       Element.prototype.scrollIntoView = scrollIntoView;
       mockSearchParams = new URLSearchParams('section=introduction');
-      renderWithQueryClient(<SermonPlanPage />);
-      await screen.findByTestId('plan-introduction-left-section');
-      // Within the wait, the address names another section.
-      mockSearchParams = new URLSearchParams('section=main');
-      await act(async () => { await harness.remote({ planText: { 'intro-p1': 'Drawn again' } }); });
-      await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
-      await act(async () => { await new Promise((resolve) => setTimeout(resolve, 400)); });
-      expect(scrollIntoView).toHaveBeenCalledTimes(1);
-      expect((scrollIntoView.mock.contexts[0] as Element).closest('[data-section]')?.getAttribute('data-section')).toBe('main');
+      jest.useFakeTimers({ doNotFake: ['queueMicrotask', 'nextTick'] });
+      try {
+        renderWithQueryClient(<SermonPlanPage />);
+        await screen.findByTestId('plan-introduction-left-section');
+        // Arm the first scroll's timer without letting it fire, even when the DOM query is slow.
+        await act(async () => { jest.advanceTimersByTime(16); });
+        expect(scrollIntoView).not.toHaveBeenCalled();
+        mockSearchParams = new URLSearchParams('section=main');
+        await act(async () => { await harness.remote({ planText: { 'intro-p1': 'Drawn again' } }); });
+        await act(async () => { jest.advanceTimersByTime(300); });
+        expect(scrollIntoView).toHaveBeenCalledTimes(1);
+        expect((scrollIntoView.mock.contexts[0] as Element).closest('[data-section]')?.getAttribute('data-section')).toBe('main');
+      } finally {
+        jest.useRealTimers();
+      }
     });
 
     // Codex review r3, 2026-10-27: to Main and back to Introduction before Main's scroll came.

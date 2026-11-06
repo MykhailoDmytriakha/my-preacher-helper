@@ -18,3 +18,5 @@ Turn fake timers on in `beforeEach` and off with `jest.useRealTimers()` in `afte
 - 2026-03-01: debounced-save tests that counted on a save at mount broke once the save guards were added.
 
 See also: `.howto/test-async-ui.md` · `.howto/run-jest-tests.md`
+
+If a scenario requires changing the URL before a delayed scroll, freeze the clock before rendering. A slow findBy result must not silently consume that precondition. Advance the RAF separately (16ms under modern fake timers), assert no scroll, change the address, then advance beyond the callback delay. Preserve both the count and target assertions. `sermonPlan.test.tsx` uses this for the pending-section case; delaying only the test query250ms reproduced the original false failure. Restoring real timers belongs in finally so an assertion failure also cleans up.
