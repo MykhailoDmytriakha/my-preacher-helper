@@ -51,15 +51,22 @@ export function removeLegacyPreparation(copy: LegacyPreparationCopy, owner: stri
   return true;
 }
 
+/** Only these known arrays own structural point identities; unknown historical fields stay readable. */
+function preparationPlanPath(path: readonly string[]): boolean {
+  if (path[0] === 'exegeticalPlan') return path.slice(1).every(field => field === 'children');
+  return path.length === 2 && path[0] === 'homileticPlan' && (path[1] === 'updatedPlan' || path[1] === 'sermonPlan');
+}
+
 /** Full readable field values; export separately retains the exact original record and format. */
 export function preparationCopyText(value: Value, label: (field: string) => string, flag: (value: boolean) => string): string {
-  const lines = (current: unknown): string[] => {
+  const lines = (current: unknown, path: readonly string[] = [], planItem = false): string[] => {
     if (current === null || current === undefined) return [];
     if (typeof current === 'boolean') return [flag(current)];
     if (typeof current === 'string' || typeof current === 'number') return [String(current)];
-    if (Array.isArray(current)) return current.flatMap(lines);
+    if (Array.isArray(current)) return current.flatMap(entry => lines(entry, path, preparationPlanPath(path)));
     return Object.entries(current as Value).flatMap(([field, entry]) => {
-      const inner = lines(entry);
+      if (planItem && field === 'id' && typeof entry === 'string' && typeof (current as Value).title === 'string') return [];
+      const inner = lines(entry, [...path, field]);
       return inner.length ? [label(field) + ':', ...inner.map(line => '  ' + line)] : [];
     });
   };

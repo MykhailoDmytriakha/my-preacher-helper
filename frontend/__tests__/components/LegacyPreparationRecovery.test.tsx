@@ -46,6 +46,22 @@ describe('legacy preparation recovery controls', () => {
     expect(useRemotePeek).toHaveBeenCalledWith({ fresh: true });
   });
 
+  it('copies plan words without structural identities and keeps the exact historical original', async () => {
+    const original = JSON.stringify({ value: { exegeticalPlan: [{ id: 'private-root-uuid', title: 'My first point',
+      children: [{ id: 'private-child-uuid', title: 'My child point' }] }],
+      homileticPlan: { sermonPlan: [{ id: 'private-sermon-uuid', title: 'My sermon point' }] } }, savedAt: 10 }, null, 3);
+    localStorage.setItem(key, original);
+    renderRecovery(); await screen.findByRole('region', { name: 'legacyPreparation.title' });
+    fireEvent.click(within(notice()).getByRole('button', { name: 'legacyPreparation.copyText' }));
+    await waitFor(() => expect(copy).toHaveBeenCalledTimes(1));
+    const text = copy.mock.calls[0][0] as string;
+    for (const word of ['My first point', 'My child point', 'My sermon point']) expect(text).toContain(word);
+    expect(text).not.toContain('private-root-uuid'); expect(text).not.toContain('private-child-uuid');
+    expect(text).not.toContain('private-sermon-uuid');
+    expect(localStorage.getItem(key)).toBe(original);
+    expect(snapshot.value?.preparation).toEqual({ authorIntent: 'Current words' });
+  });
+
   it('does not ask the server again when the editor re-emits the same confirmed version while typing', async () => {
     const view = renderRecovery(); await screen.findByRole('region', { name: 'legacyPreparation.title' });
     await waitFor(() => expect(peek).toHaveBeenCalledTimes(1));

@@ -111,3 +111,38 @@ describe('historical preparation originals', () => {
     expect(text.indexOf('Third words')).toBeLessThan(text.indexOf('Fourth words'));
   });
 });
+
+
+describe('readable plan copies', () => {
+  const read = (value: Record<string, unknown>) => preparationCopyText(value, field => field, value => value ? 'Yes' : 'No');
+  it('omits tree identities but preserves nested titles, order and additional authored fields', () => {
+    const value = { exegeticalPlan: [{ id: 'root-uuid', title: 'First point', note: 'Keep this note', children: [
+      { id: 'child-uuid', title: 'Child point', children: [{ id: 'leaf-uuid', title: 'Leaf point' }] },
+    ] }, { id: 'sibling-uuid', title: 'Last point' }] };
+    const original = JSON.stringify(value);
+    const text = read(value);
+    for (const word of ['First point', 'Keep this note', 'Child point', 'Leaf point', 'Last point']) expect(text).toContain(word);
+    for (const identity of ['root-uuid', 'child-uuid', 'leaf-uuid', 'sibling-uuid']) expect(text).not.toContain(identity);
+    expect(text).not.toMatch(/\bid:/);
+    expect(text.indexOf('Child point')).toBeLessThan(text.indexOf('Last point'));
+    expect(JSON.stringify(value)).toBe(original);
+  });
+  it.each(['updatedPlan', 'sermonPlan'])('omits %s identities while keeping every title', field => {
+    const text = read({ homileticPlan: { modernTranslation: 'Introductory words', [field]: [
+      { id: 'first-uuid', title: 'First point' }, { id: 'second-uuid', title: 'Second point' },
+    ] } });
+    for (const word of ['Introductory words', 'First point', 'Second point']) expect(text).toContain(word);
+    expect(text).not.toContain('first-uuid'); expect(text).not.toContain('second-uuid');
+    expect(text).not.toMatch(/\bid:/);
+  });
+  it('retains unknown identity fields and malformed historical points rather than dropping evidence', () => {
+    const text = read({ future: { id: 'Authored identifier', title: 'Unknown shape' },
+      exegeticalPlan: [{ id: 'Malformed point without a title' }],
+      'homileticPlan.updatedPlan': [{ id: 'Literal field identifier', title: 'Unknown dotted field' }] });
+    for (const word of ['Authored identifier', 'Unknown shape', 'Malformed point without a title', 'Literal field identifier']) expect(text).toContain(word);
+  });
+  it('does not strip identity-looking words from authored titles', () => {
+    const text = read({ exegeticalPlan: [{ id: 'technical-node', title: 'id: quoted-uuid belongs in these words' }] });
+    expect(text).toContain('id: quoted-uuid belongs in these words');
+  });
+});
