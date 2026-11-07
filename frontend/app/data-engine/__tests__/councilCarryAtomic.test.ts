@@ -1,4 +1,8 @@
+import { waitFor } from '@testing-library/react';
+
 import { DataEngine } from '../engine';
+import { editorIdentity } from '../editorIdentity';
+import { liveSubmittedWork } from '../liveSubmittedWork';
 import { createIndexedDbCheckpoints } from '../checkpoint.client';
 import { ResourceObserver } from '../observer';
 import { commitProjectionKey } from '../retention.client';
@@ -271,6 +275,266 @@ describe('durable atomic carry into an existing council', () => {
     expect(reopened.getState().checkpoint.draft?.topics).toEqual(captured.value?.topics);
     expect((await s.store.list('owner')).map(request => request.id)).toEqual(ids);
     restarted.dispose();
+  });
+
+  it.each(['source', 'destination'] as const)('shows the saved carry in an already-open %s council on offline return', async side => {
+    const s = setup(), { target } = existingTarget(s);
+    const author = s.makeEngine().engine, reader = s.makeEngine().engine;
+    try {
+      const resource = side === 'source' ? s.source.resource : target.resource;
+      const source = await author.openEditor(s.source.resource, editorIdentity('author-tab', s.source.resource, 'default', 'source-opening'));
+      const mounted = await reader.openEditor(resource, editorIdentity('reader-tab', resource, 'default', 'reader-opening'));
+      const initial = mounted.getState().checkpoint.confirmed;
+      reader.setVisible(false);
+
+      const submitted = await source.carryCouncilTopicToExisting('topic', 'next');
+      const expected = side === 'source'
+        ? [expect.objectContaining({ title: 'Unfinished matter', carriedToCouncilId: 'next' })]
+        : [expect.objectContaining({ title: 'Existing words' }), expect.objectContaining({ title: 'Unfinished matter' })];
+      expect(submitted.value?.topics).toHaveLength(2);
+      const requests = await s.store.list('owner');
+      expect(requests).toHaveLength(2);
+      expect(requests[0].atomic).toEqual(requests[1].atomic);
+      expect(s.transport.send).not.toHaveBeenCalled();
+
+      reader.setVisible(true);
+      await waitFor(() => expect(mounted.getState().checkpoint.draft?.topics).toEqual(expected));
+      expect(mounted.getState().checkpoint.confirmed).toEqual(initial);
+      expect(mounted.getState().actionResolutionRequired).toBe(true);
+      expect(mounted.getState().savedIntentReplaceable).toBe(false);
+      expect(s.rows.get(resourceKey(resource))).toEqual(initial);
+    } finally { author.dispose(); reader.dispose(); }
+  });
+
+  it('rejects a live projection when the other saved participant is missing or belongs elsewhere', async () => {
+    const s = setup(), { target } = existingTarget(s), { engine } = s.makeEngine();
+    try {
+      const source = await engine.openEditor(s.source.resource, 'source-parent');
+      await source.carryCouncilTopicToExisting('topic', 'next');
+      const requests = await s.store.list('owner');
+      const checkpoint = new DataSession(target).checkpoint();
+      const editor = editorIdentity('reader-tab', target.resource, 'default', 'opening');
+      const participant = requests.find(request => request.baseline.resource.id === 'next')!;
+      const primary = requests.find(request => request.id === request.atomic?.id)!;
+      expect(liveSubmittedWork('owner', editor, checkpoint, requests)?.checkpoint.draft?.topics).toHaveLength(2);
+      expect(liveSubmittedWork('owner', editor, checkpoint, [participant])).toBeNull();
+      expect(liveSubmittedWork('owner', editor, checkpoint, [participant, { ...primary, owner: 'different-owner' }])).toBeNull();
+    } finally { engine.dispose(); }
+  });
+
+  it('keeps unsaved words private when returning to the destination with a completed local carry', async () => {
+    const s = setup(), { target } = existingTarget(s);
+    const author = s.makeEngine().engine, reader = s.makeEngine().engine;
+    try {
+      const source = await author.openEditor(s.source.resource, 'source-parent');
+      const mounted = await reader.openEditor(target.resource, 'already-open-destination');
+      await mounted.edit({ ...target.value, title: 'Private destination words' });
+      reader.setVisible(false);
+      await source.carryCouncilTopicToExisting('topic', 'next');
+      reader.setVisible(true);
+      await waitFor(() => expect(reader.getPending()).toEqual([]));
+      const checkpoint = mounted.getState().checkpoint;
+      expect(checkpoint.draft?.title).toBe('Private destination words');
+      expect(checkpoint.draft?.topics).toHaveLength(1);
+      expect(checkpoint.pending).toEqual({});
+    } finally { author.dispose(); reader.dispose(); }
+  });
+
+  it('rolls back both borrowed effects after an explicit whole-action discard, preserving later words', async () => {
+    const s = setup(), { target } = existingTarget(s);
+    const author = s.makeEngine().engine, reader = s.makeEngine().engine;
+    try {
+      const source = await author.openEditor(s.source.resource, 'author-source');
+      const sourceReader = await reader.openEditor(s.source.resource, 'reader-source');
+      const targetReader = await reader.openEditor(target.resource, 'reader-destination');
+      reader.setVisible(false);
+      await source.carryCouncilTopicToExisting('topic', 'next');
+      reader.setVisible(true);
+      await waitFor(() => expect(targetReader.getState().checkpoint.draft?.topics).toHaveLength(2));
+      await waitFor(() => expect(sourceReader.getState().actionResolutionRequired).toBe(true));
+      const shown = targetReader.getState().checkpoint.draft!;
+      await targetReader.edit({ ...shown, title: 'Later private destination title' });
+
+      s.refuse(); reader.setOnline(true); await reader.retry();
+      const [action] = sourceReader.getActions();
+      expect(action.delivery.canDiscard).toBe(true);
+      expect(targetReader.getState().savedIntentReplaceable).toBe(false);
+      await expect(targetReader.keepLocal()).rejects.toThrow();
+      expect((await s.store.list('owner')).every(request => request.state === 'refused')).toBe(true);
+      await sourceReader.discardAction(action.id);
+      await waitFor(() => expect(targetReader.getState().checkpoint.draft?.topics).toHaveLength(1));
+      expect(targetReader.getState().checkpoint.draft?.title).toBe('Later private destination title');
+      expect((sourceReader.getState().checkpoint.draft?.topics as DocumentData[])[0]).not.toHaveProperty('carriedToCouncilId');
+      expect(sourceReader.getState().actionResolutionRequired).toBe(false);
+      expect(targetReader.getState().actionResolutionRequired).toBe(false);
+      expect(s.rows.get('councils/source')).toEqual(s.source);
+      expect(s.rows.get('councils/next')).toEqual(target);
+    } finally { author.dispose(); reader.dispose(); }
+  });
+
+  it('follows another saved transfer on a second return while the first still waits for network', async () => {
+    const s = setup(), { target } = existingTarget(s);
+    (s.source.value!.topics as DocumentData[]).push({ id: 'second', title: 'Second matter', questions: [], options: [] });
+    s.rows.set('councils/source', clone(s.source)); s.cached.set('councils/source', clone(s.source));
+    const author = s.makeEngine().engine, reader = s.makeEngine().engine;
+    try {
+      const source = await author.openEditor(s.source.resource, 'author-source');
+      const mounted = await reader.openEditor(target.resource, 'reader-destination');
+      reader.setVisible(false);
+      await source.carryCouncilTopicToExisting('topic', 'next');
+      reader.setVisible(true);
+      await waitFor(() => expect(mounted.getState().checkpoint.draft?.topics).toHaveLength(2));
+      reader.setVisible(false);
+      await source.carryCouncilTopicToExisting('second', 'next');
+      reader.setVisible(true);
+      await waitFor(() => expect(mounted.getState().checkpoint.draft?.topics).toMatchObject([
+        { title: 'Existing words' }, { title: 'Unfinished matter' }, { title: 'Second matter' },
+      ]));
+      expect(mounted.getState().actionResolutionRequired).toBe(true);
+      expect(s.transport.send).not.toHaveBeenCalled();
+    } finally { author.dispose(); reader.dispose(); }
+  });
+
+  it('follows a carry after its own locally saved destination change without losing that change', async () => {
+    const s = setup(), { target } = existingTarget(s);
+    const author = s.makeEngine().engine, reader = s.makeEngine().engine;
+    try {
+      const source = await author.openEditor(s.source.resource, editorIdentity('author-tab', s.source.resource, 'default', 'source'));
+      const mounted = await reader.openEditor(target.resource, editorIdentity('reader-tab', target.resource, 'default', 'target'));
+      await mounted.commit(value => ({ ...value, title: 'Saved destination title' }));
+      reader.setVisible(false);
+      await source.carryCouncilTopicToExisting('topic', 'next');
+      const requests = await s.store.list('owner');
+      const prior = requests.find(request => !request.atomic)!;
+      expect(requests.find(request => request.atomic && request.baseline.resource.id === 'next')?.predecessor).toBe(prior.id);
+
+      reader.setVisible(true);
+      await waitFor(() => expect(mounted.getState().checkpoint.draft).toMatchObject({
+        title: 'Saved destination title', topics: [{ title: 'Existing words' }, { title: 'Unfinished matter' }],
+      }));
+      expect(mounted.getState().checkpoint.pending[prior.id]).toBeDefined();
+      expect(mounted.getState().actionResolutionRequired).toBe(true);
+      expect(s.transport.send).not.toHaveBeenCalled();
+    } finally { author.dispose(); reader.dispose(); }
+  });
+
+  it('keeps an earlier refused destination Save when discarding only the dependent carry', async () => {
+    const s = setup(), { target } = existingTarget(s);
+    const author = s.makeEngine().engine, reader = s.makeEngine().engine;
+    try {
+      const source = await author.openEditor(s.source.resource, editorIdentity('author-tab', s.source.resource, 'default', 'source'));
+      const mounted = await reader.openEditor(target.resource, editorIdentity('reader-tab', target.resource, 'default', 'target'));
+      await mounted.commit(value => ({ ...value, title: 'Refused destination title' }));
+      reader.setVisible(false);
+      await source.carryCouncilTopicToExisting('topic', 'next');
+      reader.setVisible(true);
+      await waitFor(() => expect(mounted.getState().checkpoint.draft?.topics).toHaveLength(2));
+      const prior = (await s.store.list('owner')).find(request => !request.atomic)!;
+
+      s.refuse(); reader.setOnline(true); await reader.retry();
+      await waitFor(async () => expect((await s.store.list('owner')).every(request => request.state === 'refused')).toBe(true));
+      author.setVisible(true);
+      await waitFor(() => expect(source.getActions()[0]?.delivery.canDiscard).toBe(true));
+      await source.discardAction(source.getActions()[0].id);
+      reader.setVisible(true);
+      await waitFor(() => expect(mounted.getState().checkpoint.draft?.topics).toHaveLength(1));
+      expect(mounted.getState().checkpoint.draft?.title).toBe('Refused destination title');
+      expect(mounted.getState().checkpoint.pending[prior.id]).toBeDefined();
+      expect(mounted.getState().result).toMatchObject({ kind: 'refused', operationId: prior.id });
+      expect(mounted.getState().actionResolutionRequired).toBe(false);
+      expect((await s.store.list('owner')).find(request => request.id === prior.id)?.state).toBe('refused');
+      expect(s.rows.get(resourceKey(target.resource))).toEqual(target);
+    } finally { author.dispose(); reader.dispose(); }
+  });
+
+  it('keeps a later saved destination title as a draft after discarding its refused carry', async () => {
+    const s = setup(), { target } = existingTarget(s);
+    const author = s.makeEngine().engine, reader = s.makeEngine().engine;
+    try {
+      const source = await author.openEditor(s.source.resource, editorIdentity('author-tab', s.source.resource, 'default', 'source'));
+      const mounted = await reader.openEditor(target.resource, editorIdentity('reader-tab', target.resource, 'default', 'target'));
+      reader.setVisible(false);
+      await source.carryCouncilTopicToExisting('topic', 'next');
+      reader.setVisible(true);
+      await waitFor(() => expect(mounted.getState().checkpoint.draft?.topics).toHaveLength(2));
+      await mounted.commit(value => ({ ...value, title: 'Later saved destination title' }));
+      const requests = await s.store.list('owner');
+      const participant = requests.find(request => request.atomic && request.baseline.resource.id === 'next')!;
+      const later = requests.find(request => !request.atomic)!;
+      expect(later.predecessor).toBe(participant.id);
+
+      s.refuse(); reader.setOnline(true); await reader.retry();
+      author.setVisible(true);
+      await waitFor(() => expect(source.getActions()[0]?.delivery.canDiscard).toBe(true));
+      await source.discardAction(source.getActions()[0].id);
+      reader.setVisible(true);
+      await waitFor(() => expect(mounted.getState().checkpoint.pending).toEqual({}));
+      expect(mounted.getState().checkpoint.draft).toMatchObject({
+        title: 'Later saved destination title', topics: [{ title: 'Existing words' }],
+      });
+      expect(mounted.getState().checkpoint.dirty).toBe(true);
+      expect(mounted.getState().actionResolutionRequired).toBe(false);
+      expect(s.rows.get(resourceKey(target.resource))).toEqual(target);
+      mounted.close();
+      const choices = await reader.listRecoverable(target.resource);
+      expect(choices.some(choice => choice.record.checkpoint.draft?.title === 'Later saved destination title')).toBe(true);
+    } finally { author.dispose(); reader.dispose(); }
+  });
+
+  it('follows a third carry after only the first received an acknowledgement', async () => {
+    const s = setup(), { target } = existingTarget(s);
+    (s.source.value!.topics as DocumentData[]).push(
+      { id: 'second', title: 'Second matter', questions: [], options: [] },
+      { id: 'third', title: 'Third matter', questions: [], options: [] },
+    );
+    s.rows.set('councils/source', clone(s.source)); s.cached.set('councils/source', clone(s.source));
+    const author = s.makeEngine().engine, reader = s.makeEngine().engine;
+    const send = jest.mocked(s.transport.send).getMockImplementation()!;
+    let unblock!: () => void;
+    const barrier = new Promise<void>(resolve => { unblock = resolve; });
+    let secondInFlight = false;
+    jest.mocked(s.transport.send).mockImplementation(async command => {
+      if (command.kind === 'relation' && command.relation === 'council-carry'
+        && command.edits[0].afterTopics.some(topic => topic.id === 'second' && topic.carriedToCouncilId)) {
+        secondInFlight = true;
+        await barrier;
+      }
+      return send(command);
+    });
+    let delivery: Promise<unknown> | undefined;
+    try {
+      const source = await author.openEditor(s.source.resource, 'author-source');
+      const mounted = await reader.openEditor(target.resource, 'reader-destination');
+      reader.setVisible(false);
+      await source.carryCouncilTopicToExisting('topic', 'next');
+      await source.carryCouncilTopicToExisting('second', 'next');
+      reader.setVisible(true);
+      await waitFor(() => expect(mounted.getState().checkpoint.draft?.topics).toHaveLength(3));
+      reader.setOnline(true);
+      delivery = reader.retry().catch(() => undefined);
+      await waitFor(() => expect(secondInFlight).toBe(true));
+      await waitFor(() => expect(mounted.getState().checkpoint.confirmed.metadata?.revision).toBe(5));
+      const waiting = mounted.getState().checkpoint;
+      expect(waiting.draft?.topics).toHaveLength(3);
+      expect(waiting.draft?.rev).toBe(1);
+      expect(Object.values(waiting.pending)).toHaveLength(1);
+      expect(Object.values(waiting.pending)[0].value?.rev).toBeUndefined();
+
+      reader.setOnline(false);
+      reader.setVisible(false);
+      author.setVisible(true);
+      await waitFor(() => expect(source.getState().checkpoint.confirmed.metadata?.revision).toBe(2));
+      await source.carryCouncilTopicToExisting('third', 'next');
+      reader.setVisible(true);
+      await waitFor(() => expect(mounted.getState().checkpoint.draft?.topics).toMatchObject([
+        { title: 'Existing words' }, { title: 'Unfinished matter' }, { title: 'Second matter' }, { title: 'Third matter' },
+      ]));
+      expect(mounted.getState().checkpoint.confirmed.metadata?.revision).toBe(5);
+    } finally {
+      unblock();
+      await delivery;
+      author.dispose(); reader.dispose();
+    }
   });
 
   it('chains two carries to the same destination with distinct copy identities', async () => {

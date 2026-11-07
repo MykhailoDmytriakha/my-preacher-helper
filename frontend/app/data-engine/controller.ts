@@ -6,7 +6,7 @@ import { assertCommitCapture } from './commits';
 import { isDirectLegacyDocumentIntent, type DocumentAnswer } from './documentDelivery';
 import { requiredDomainTargets } from './domainPolicy';
 import { areDifferentTabManualParents, editorSlot, readManualScopeIdentity } from './editorIdentity';
-import { liveSubmittedWork } from './liveSubmittedWork';
+import { liveSubmittedWork, sameLiveAtomicProof } from './liveSubmittedWork';
 import { chooseLocalPlacement } from './localPlacementChoice';
 import { projectExactManualChoice, type ExactManualChoice } from './manualChoice';
 import { sameManualSources } from './manualReturnSources';
@@ -531,7 +531,7 @@ export class EditorController {
 
   private canFollowSubmittedWork(): boolean {
     return this.durable && !this.prepared && !this.preparations && !this.choices && !this.pendingCaptures.pending
-      && !this.unfinalized.length && !this.atomicPending.size
+      && !this.unfinalized.length
       && (!this.result || this.result.kind === 'acknowledged')
       && (this.options.canFollowSubmittedWork?.() ?? true);
   }
@@ -577,18 +577,21 @@ export class EditorController {
           if (sources?.size) currentSources = await this.options.manualReturnSources?.(related(current));
         } catch (error) { await this.options.store.put(this.record()); throw error; }
         if (!unchanged()) { await this.options.store.put(this.record()); return; }
-        if (!equalValues(related(requests), related(current)) || !sameManualSources(sources, currentSources)) {
-          // References prove existence, not the request revision or the unique frontier.
+        if (!equalValues(related(requests), related(current)) || !sameManualSources(sources, currentSources)
+          || !sameLiveAtomicProof(continuation.atomicProof, current)) {
+          // References prove existence, not the request revision, the unique frontier or the other action participants.
           await this.options.store.put(this.record()); continue;
         }
         this.session = DataSession.restore(continuation.checkpoint);
         this.completedCommits = completedCommits;
         this.result = continuation.acknowledged.at(-1)?.result ?? this.result;
+        const followed = current.filter(request => continuation.checkpoint.pending[request.id]);
+        this.atomicPending = new Set(followed.filter(request => request.atomic).map(request => request.id));
         this.held = isRecoverableCheckpoint(candidate);
         this.clearedCommits = completedCommits.length;
         this.durable = true; this.error = null; this.errorCode = null;
         this.emit();
-        return current.filter(request => continuation.checkpoint.pending[request.id]);
+        return followed;
       }
     });
   }
@@ -647,7 +650,16 @@ export class EditorController {
     if (this.completedCommits.includes(request.id)) return;
     if (request.atomic && !['acknowledged', 'cancelled'].includes(request.state)) this.atomicPending.add(request.id);
     else this.atomicPending.delete(request.id);
-    if (request.state === 'cancelled' && request.cancelledByAction) this.result = null;
+    if (request.state === 'cancelled' && request.cancelledByAction) {
+      const priorId = request.predecessor;
+      if (request.atomic?.kind === 'council-carry' && priorId && this.session.checkpoint().pending[priorId]) {
+        const requests = await this.options.commits?.list(); this.assertCurrent();
+        const prior = requests?.find(record => record.id === priorId && ['refused', 'conflict'].includes(record.state));
+        this.result = prior?.result ?? null;
+      } else if (request.atomic || request.baseline.resource.collection !== 'councils' || this.result?.operationId === request.id) {
+        this.result = null;
+      }
+    }
     if (request.result && ['acknowledged', 'conflict', 'refused'].includes(request.state)) this.result = request.result;
     if (this.session.applyCommit(request)) this.completedCommits.push(request.id);
     // Cancelled elsewhere with nothing of ours left in flight: the old refusal or conflict answers nothing.

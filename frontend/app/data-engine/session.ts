@@ -21,6 +21,17 @@ export interface SessionCheckpoint {
 
 const copy = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
+/** An active earlier council Save owns its words even if its dependent transfer is discarded. */
+function actionRollbackBase(request: CommitRequest, accepted: ResourceSnapshot, predecessor?: DocumentData | null):
+  { value: DocumentData | null; conflicts: ConflictDetail[] } {
+  if (request.atomic?.kind === 'council-carry' && predecessor) {
+    if (!accepted.value) return { value: predecessor, conflicts: [] };
+    const retained = mergeDocumentFields(request.baseline.value, predecessor, accepted.value);
+    return { value: retained.value.exists ? retained.value.value as DocumentData : null, conflicts: retained.conflicts };
+  }
+  return { value: accepted.value ?? (!accepted.metadata && !request.baseline.value ? predecessor ?? null : null), conflicts: [] };
+}
+
 /** What a screen showed: the confirmed copy and the edit it reflected. */
 export type ShownCopy = Pick<SessionCheckpoint, 'confirmed' | 'editGeneration'>;
 
@@ -109,7 +120,10 @@ export class DataSession {
   applyCommit(request: CommitRequest): boolean {
     if (request.state === 'cancelled') {
       const held = this.state.pending[request.id];
-      if (request.cancelledByAction && held) this.rollbackAction(request);
+      // Council action cancellation retires dependent Saves after rolling back the carry.
+      // Their separately authored words have already been rebased and remain in the draft.
+      const dependentCouncilSave = !request.atomic && request.baseline.resource.collection === 'councils';
+      if (request.cancelledByAction && held && !dependentCouncilSave) this.rollbackAction(request);
       const latest = Boolean(held) && Object.values(this.state.pending).every(other => other.generation <= held.generation);
       this.release(request.id);
       if (held && !request.cancelledByAction && !Object.keys(this.state.pending).length) {
@@ -128,7 +142,7 @@ export class DataSession {
   private rollbackAction(request: CommitRequest): void {
     const accepted = this.state.remoteCandidate ?? this.state.confirmed;
     const predecessor = request.predecessor ? this.state.pending[request.predecessor] : undefined;
-    const rollbackValue = accepted.value ?? (!accepted.metadata && !request.baseline.value ? predecessor?.value ?? null : null);
+    const { value: rollbackValue, conflicts: retainedConflicts } = actionRollbackBase(request, accepted, predecessor?.value);
     const rebased = mergeDocumentFields(request.value, this.state.draft, rollbackValue);
     if (request.atomic?.kind === 'analysis-reshape') keepAnalysisReshapeFrame(request.value, this.state.draft, rollbackValue, rebased);
     // Discard owns membership only. Later saved metadata in a dependent request
@@ -150,7 +164,7 @@ export class DataSession {
       const carried = ((request.value?.topics ?? []) as DocumentData[]).filter(topic => typeof topic.id === 'string'
         && typeof topic.carriedToCouncilId === 'string' && before.find(old => old.id === topic.id)?.carriedToCouncilId !== topic.carriedToCouncilId);
       const paths = carried.map(topic => ['topics', { id: topic.id as string }, 'carriedToCouncilId']);
-      const ordinary = mergeDocumentFields(this.state.confirmed.value, this.state.draft, accepted.value);
+      const ordinary = mergeDocumentFields(this.state.confirmed.value, this.state.draft, rollbackValue);
       if (ordinary.value.exists) {
         rebased.value = { exists: true, value: projectManualSelection(ordinary.value.value as DocumentData, rebased.value.value as DocumentData, paths) };
         const owned = (conflict: ConflictDetail) => conflict.path[0] === 'topics' && conflict.path.at(-1) === 'carriedToCouncilId';
@@ -159,10 +173,13 @@ export class DataSession {
         rebased.conflicts = [...new Map(conflicts.map(conflict => [JSON.stringify(conflict.path), conflict])).values()];
       }
     }
+    const conflicts = retainedConflicts.length
+      ? [...new Map([...retainedConflicts, ...rebased.conflicts].map(conflict => [JSON.stringify(conflict.path), conflict])).values()]
+      : rebased.conflicts;
     this.state.confirmed = copy(accepted);
     this.state.draft = rebased.value.exists ? copy(rebased.value.value as DocumentData) : null;
-    this.state.conflicts = copy(rebased.conflicts);
-    this.state.remoteCandidate = rebased.conflicts.length ? copy(accepted) : null;
+    this.state.conflicts = copy(conflicts);
+    this.state.remoteCandidate = conflicts.length ? copy(accepted) : null;
     this.state.editGeneration += 1;
     this.state.dirty = !equalValues(this.state.draft, accepted.value);
   }
