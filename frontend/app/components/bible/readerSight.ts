@@ -156,3 +156,18 @@ export function useRevealWritten({ textRef, surfaceRef, readingInsetRef }: {
     frame.current = requestAnimationFrame(look);
   }, [readingInsetRef, surfaceRef, textRef]);
 }
+
+/**
+ * Where a jump to a verse lands (BUG-20261107-jump-hides-paragraph-heading): the verse's row, or — when the verse starts
+ * paragraphs — the topmost of their headings, drawn just above the row (`ParagraphHeads` in `BookRibbon.tsx`), so the
+ * person arrives at the heading with the verse under it. Not when the headings would push the verse past the upper half of
+ * the room under the reading line (`room`): the jump is to the verse. The place read stays the verse (`jumpTo`).
+ */
+export function arrivalTarget(row: HTMLElement, room: number): HTMLElement {
+  let top = row;
+  for (let before = row.previousElementSibling; before instanceof HTMLElement && before.hasAttribute('data-paragraph-head'); before = before.previousElementSibling) {
+    top = before;
+  }
+  if (top === row) return row;
+  return row.getBoundingClientRect().top - top.getBoundingClientRect().top <= room / 2 ? top : row;
+}

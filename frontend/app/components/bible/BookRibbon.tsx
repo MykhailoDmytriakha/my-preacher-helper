@@ -228,13 +228,14 @@ function AnalysedBar({ at, chapter, verse }: { at: AnalysedVerse; chapter: numbe
 /**
  * The headings of the paragraphs starting at a verse (the owner's boards, 31.10): each a comment's own words — the same grey
  * type as a comment under a verse — above the verse, with room above it; a paragraph inside another has its heading set in
- * a step (the heading only — the verses stay in their column). `data-paragraph-head` is what the line beside them measures.
+ * a step (the heading only — the verses stay in their column). `data-paragraph-head` is what the line beside them measures,
+ * and a jump to the verse lands at the topmost of them, on the reading line as a verse does (`arrivalTarget`).
  */
 function ParagraphHeads({ heads, onEdit, chapter, verse }: { heads: readonly ParagraphHead[]; onEdit: (id: string, passage: Passage) => void; chapter: number; verse: number }) {
   return (
     <>
       {heads.map((head) => (
-        <div key={head.key} data-paragraph-head={head.key} data-comment={head.id} className={head.level ? 'mb-1 mt-2 pl-6 md:pl-16' : 'mb-1 mt-[18px] md:pl-10'}>
+        <div key={head.key} data-paragraph-head={head.key} data-comment={head.id} style={{ scrollMarginTop: READING_TOP }} className={head.level ? 'mb-1 mt-2 pl-6 md:pl-16' : 'mb-1 mt-[18px] md:pl-10'}>
           <CommentsOnText comments={[head]} onEdit={onEdit} testId={`paragraph-${chapter}:${verse}-${head.id}`} />
         </div>
       ))}
