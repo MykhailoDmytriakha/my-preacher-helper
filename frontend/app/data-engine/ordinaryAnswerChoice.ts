@@ -1,14 +1,16 @@
 import { cancellationScope } from './atomicCommits';
 import { orderCommitRequests } from './commits';
 import { isDocumentEditor } from './editorIdentity';
+import { chooseLocalPlacement } from './localPlacementChoice';
 import { projectSavedChoiceDependents } from './manualChoice';
-import { equalValues } from './protocol';
+import { equalValues, mergeDocumentFields, mergeFields } from './protocol';
 import { canReplaceSnapshot } from './snapshotFreshness';
 import { snapshotBelongsToOwner } from './snapshotIdentity';
 
 import type { CommitRequest } from './commits';
+import type { CouncilRefusalCoverage, OpenDocumentAnswer } from './openDocumentAnswers';
 import type { SessionCheckpoint } from './session';
-import type { CommandResult, ResourceSnapshot } from './types';
+import type { CommandResult, DocumentData, ResourceSnapshot } from './types';
 
 export interface OrdinaryAnswerChoice {
   first: CommitRequest;
@@ -103,14 +105,37 @@ function hasOnlyCapturedWords(checkpoint: SessionCheckpoint, request: CommitRequ
     || (request.initialized && equalValues(checkpoint.draft, request.intended))));
 }
 
-/** The inline question covers a proved saved suffix, while unrelated or unsent words stay visible. */
-export function laterOrdinaryAnswerCopies(checkpoint: SessionCheckpoint, requests: readonly CommitRequest[]) {
+/** Two checkpoints can show the same refused capture on different, independently known copies. */
+function equivalentCouncilCopy(checkpoint: SessionCheckpoint, first: CommitRequest): CouncilRefusalCoverage['equivalent'] {
+  const confirmed = ordinaryBasis(first);
+  const authored = first.initialized ? first.intended : first.value;
+  const observed = checkpoint.remoteCandidate ?? checkpoint.confirmed;
+  if (!authored || !confirmed.metadata || !observed.metadata || !observed.value || observed.metadata.deleted
+    || !canReplaceSnapshot(confirmed, observed) || observed.metadata.revision <= confirmed.metadata.revision
+    || !snapshotBelongsToOwner(first.owner, observed)) return undefined;
+  const merged = mergeDocumentFields(confirmed.value, authored, observed.value);
+  const projected = chooseLocalPlacement(observed.resource.collection, confirmed.value, authored, observed.value,
+    merged.value.exists ? merged.value.value as DocumentData : null, mergeFields);
+  const variants = [{ confirmed, draft: authored }, { confirmed: observed, draft: projected }];
+  const matches = (variant: typeof variants[number]) => equalValues(variant.confirmed, checkpoint.confirmed)
+    && equalValues(variant.draft, checkpoint.draft);
+  return variants.some(matches) ? variants.find(variant => !matches(variant)) : undefined;
+}
+
+/** The inline question covers proved copies of the same work, while unrelated or unsent words stay visible. */
+export function ordinaryAnswerCoverage(checkpoint: SessionCheckpoint, requests: readonly CommitRequest[]): Pick<OpenDocumentAnswer, 'laterSaves' | 'councilRefusal'> {
   const held = Object.keys(checkpoint.pending);
-  if (held.length !== 1) return [];
+  if (held.length !== 1) return {};
   const first = requests.find(request => request.id === held[0]);
-  if (!first || !hasOnlyCapturedWords(checkpoint, first)) return [];
-  const choice = ordinaryAnswerChoice(first, requests);
-  return choice?.scope.slice(1).map((request, index) => ({
+  const choice = first && ordinaryAnswerChoice(first, requests);
+  if (!choice) return {};
+  if (choice.scope.length === 1 && choice.answer.kind === 'refused' && checkpoint.confirmed.resource.collection === 'councils') {
+    const equivalent = equivalentCouncilCopy(checkpoint, choice.first);
+    return { councilRefusal: { confirmed: checkpoint.confirmed, remoteCandidate: checkpoint.remoteCandidate,
+      ...(equivalent ? { equivalent } : {}) } };
+  }
+  if (choice.scope.length === 1 || !hasOnlyCapturedWords(checkpoint, choice.first)) return {};
+  return { laterSaves: choice.scope.slice(1).map((request, index) => ({
     id: request.id, operationIds: choice.scope.slice(0, index + 2).map(member => member.id), draft: request.value,
-  })) ?? [];
+  })) };
 }

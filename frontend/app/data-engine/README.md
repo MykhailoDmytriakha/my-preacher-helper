@@ -218,7 +218,11 @@ The exact `getOpenAnswerScopes` / `useOpenDocumentAnswerScopes` view also carrie
 IDs and draft words. A routed document screen owns the global question only when
 `isRecoveryHeldOpen` matches every record in its complete group by owner, resource, nonempty
 pending IDs and equal draft. Adopted one-shot requests follow the same rule; transient action
-editors are not answering screens. Independent saved work and later unseen words stay visible.
+editors are not answering screens. After discarding a refused council carry, the answering editor
+can cover the same single refused save across council update times and proved rebases. Both copies
+must agree on the authored fields and the opened editor must have seen any other stored version
+held by the recoverable copy. On reopen the captured draft loads while the latest local server
+copy is read in the background. Independent saved work and later unseen words stay visible.
 The older resource snapshot keeps its stable notification boundary. Both views are derived;
 Legacy direct-command checkpoints retain owned journal answers; no checkpoint schema changes.
 `waitsForDecision` consumes this query view alongside checkpoint conflicts and legacy answers. Until the person decides, further one-shot changes to that document are refused

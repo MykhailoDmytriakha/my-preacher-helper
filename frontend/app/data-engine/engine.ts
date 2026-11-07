@@ -21,7 +21,7 @@ import { ManualScope, recoverManualScopeRecord, reconcileManualCaptures, sameMan
 import { captureMembershipPins } from './membershipCapture';
 import { describeActionDelivery, describeMembershipDelivery, type MembershipDelivery } from './membershipDelivery';
 import { CREATION_SCOPE_PREFIX, MembershipScope, type MembershipScopeRecord } from './membershipScope';
-import { laterOrdinaryAnswerCopies, ordinaryStoredChoice, reviewOrdinaryAnswerChoice } from './ordinaryAnswerChoice';
+import { ordinaryAnswerCoverage, ordinaryStoredChoice, reviewOrdinaryAnswerChoice } from './ordinaryAnswerChoice';
 import { getResourcePolicy, equalValues, isValidIdentifier } from './protocol';
 import { documentRecordPresence, type RecordPresence } from './recordPresence';
 import { forkCheckpoint, isPassiveManualContinuation, isRecoverableCheckpoint, reconcileRecoveryRecord, recoveryCheckpointId, validateRecoveryRecord } from './recovery.client';
@@ -1133,10 +1133,9 @@ export class DataEngine {
       const checkpoint = !entry.closed ? entry.controller?.getState().checkpoint : null;
       if (!checkpoint || !entry.controller!.hasChoiceAuthority(checkpoint) || !savedDocumentAnswer(this.owner ?? '', checkpoint.confirmed.resource,
         Object.keys(checkpoint.pending), requests, journal)) continue;
-      const laterSaves = laterOrdinaryAnswerCopies(checkpoint, requests);
       const scope = { owner: this.owner ?? '', resource: checkpoint.confirmed.resource,
         operationIds: Object.keys(checkpoint.pending).sort(), draft: checkpoint.draft,
-        ...(laterSaves.length ? { laterSaves } : {}) };
+        ...ordinaryAnswerCoverage(checkpoint, requests) };
       if (!scopes.some(previous => equalValues(previous, scope))) scopes.push(scope);
     }
     return scopes;
@@ -1159,7 +1158,9 @@ export class DataEngine {
         draft: scope.draft === null ? null : Object.freeze(copy(scope.draft)),
         ...(scope.laterSaves ? { laterSaves: Object.freeze(scope.laterSaves.map(save => Object.freeze({
           ...save, operationIds: Object.freeze([...save.operationIds]), draft: save.draft === null ? null : Object.freeze(copy(save.draft)),
-        }))) } : {}) })));
+        }))) } : {}),
+        ...(scope.councilRefusal ? { councilRefusal: Object.freeze(copy(scope.councilRefusal)) } : {}),
+      })));
       for (const listener of this.openAnswerScopeListeners) {
         try { listener(); } catch { /* Rendering never changes editor ownership. */ }
       }
@@ -1533,6 +1534,10 @@ export class DataEngine {
   private async knownSnapshot(owner: string, generation: number, resource: ResourceRef): Promise<ResourceSnapshot | undefined> {
     const requests = await this.commits.list(); this.assertCurrent(owner, generation);
     requests.forEach(request => this.rememberCommit(request));
+    return this.cachedSnapshotWithAcknowledgements(owner, generation, resource);
+  }
+
+  private async cachedSnapshotWithAcknowledgements(owner: string, generation: number, resource: ResourceRef): Promise<ResourceSnapshot | undefined> {
     let snapshot = await this.options.snapshots.read(owner, resource); this.assertCurrent(owner, generation);
     if (snapshot && !sameResource(snapshot.resource, resource)) throw new Error(CACHED_IDENTITY_MISMATCH);
     for (const request of this.commitRecords.values()) {
@@ -1672,6 +1677,14 @@ export class DataEngine {
       // Restore and reconcile before attaching a source that may emit synchronously.
       if (!creating && canReplaceSnapshot(controller.getState().checkpoint.confirmed, snapshot)) {
         await controller.observe(snapshot, 'cache');
+      }
+      // The refusal opens on its capture basis. Learn a newer stored copy without making
+      // recovery of the durable draft depend on a second IndexedDB store responding.
+      if (submittedCheckpoint && ordinaryAnswerCoverage(controller.getState().checkpoint, requests).councilRefusal) {
+        this.background(this.cachedSnapshotWithAcknowledgements(owner, generation, frozen).then(cached => {
+          if (!entry.closed && this.current(owner, generation) && cached
+            && canReplaceSnapshot(controller.getState().checkpoint.confirmed, cached)) return controller.observe(cached, 'cache');
+        }), owner, generation, frozen);
       }
       assertOpening();
       let lastConfirmed: ResourceSnapshot | null = null;

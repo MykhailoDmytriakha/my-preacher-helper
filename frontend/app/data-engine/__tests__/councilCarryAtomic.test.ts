@@ -3,6 +3,7 @@ import { waitFor } from '@testing-library/react';
 import { DataEngine } from '../engine';
 import { editorIdentity } from '../editorIdentity';
 import { liveSubmittedWork } from '../liveSubmittedWork';
+import { recoveryHeldOpen } from '../openDocumentAnswers';
 import { createIndexedDbCheckpoints } from '../checkpoint.client';
 import { ResourceObserver } from '../observer';
 import { commitProjectionKey } from '../retention.client';
@@ -69,6 +70,12 @@ function setup() {
   ];
   const checkpoints = createIndexedDbCheckpoints();
   const cached = new Map<string, ResourceSnapshot>([[resourceKey(source.resource), clone(source)]]);
+  let pausedCacheRead: Promise<void> | undefined;
+  const pauseCacheReads = () => {
+    let resume!: () => void;
+    pausedCacheRead = new Promise<void>(resolve => { resume = resolve; });
+    return () => { pausedCacheRead = undefined; resume(); };
+  };
   const makeEngine = () => {
     const runtime = new DataEngineRuntime({ transport, journal: {
       list: async owner => clone([...entries.values()].filter(entry => entry.command.owner === owner)),
@@ -78,12 +85,15 @@ function setup() {
     const onError = jest.fn();
     const engine = new DataEngine({ runtime, transport, commits: store, checkpoints,
       observer: new ResourceObserver({ transport, source: { listen: () => () => undefined } }),
-      snapshots: { read: async (_owner, resource) => { const row = cached.get(resourceKey(resource)); return row && clone(row); },
+      snapshots: { read: async (_owner, resource) => {
+        await pausedCacheRead;
+        const row = cached.get(resourceKey(resource)); return row && clone(row);
+      },
         put: async (_owner, snapshot) => { cached.set(resourceKey(snapshot.resource), clone(snapshot)); } },
       operationId: () => `carry-${++sequence}`, onError });
     engine.setOnline(false); engine.setOwner('owner'); return { engine, onError };
   };
-  return { rows, store, storage, cached, checkpoints, source, transport, make, makeEngine, captures, created, refuse: () => { refuse = true; } };
+  return { rows, store, storage, cached, pauseCacheReads, checkpoints, source, transport, make, makeEngine, captures, created, refuse: () => { refuse = true; } };
 }
 
 describe('durable atomic carry into a new council', () => {
@@ -445,6 +455,104 @@ describe('durable atomic carry into an existing council', () => {
       expect((await s.store.list('owner')).find(request => request.id === prior.id)?.state).toBe('refused');
       expect(s.rows.get(resourceKey(target.resource))).toEqual(target);
     } finally { author.dispose(); reader.dispose(); }
+  });
+
+  it('treats a council title refusal with different update times as the same visible decision', () => {
+    const s = setup(), { target } = existingTarget(s);
+    const session = new DataSession(target);
+    const draft = { ...target.value, title: 'Refused words', updatedAt: 'first-capture' };
+    session.edit(draft);
+    session.registerCommit('refused-title', session.checkpoint().editGeneration, draft);
+    const record = { owner: 'owner', editorId: 'earlier-tab', checkpoint: session.checkpoint(), prepared: null, unfinalized: [] };
+    const open = { owner: 'owner', resource: target.resource, operationIds: ['refused-title'],
+      draft: { ...draft, updatedAt: 'rebased-after-carry' }, councilRefusal: { confirmed: target, remoteCandidate: null } };
+    expect(recoveryHeldOpen([record], [open])).toBe(true);
+    expect(recoveryHeldOpen([record], [{ ...open, draft: { ...open.draft, title: 'Private later words' } }])).toBe(false);
+    const differentBasis = { ...target, metadata: { ...target.metadata!, generation: 'a-new-council' } };
+    expect(recoveryHeldOpen([{ ...record, checkpoint: { ...record.checkpoint, confirmed: differentBasis } }], [open])).toBe(false);
+    const newer = { ...target, metadata: { ...target.metadata!, revision: target.metadata!.revision + 1 },
+      value: { ...target.value, title: 'A newer stored title' } };
+    const newerCopy = { ...record, checkpoint: { ...record.checkpoint, remoteCandidate: newer } };
+    expect(recoveryHeldOpen([newerCopy], [open])).toBe(false);
+    expect(recoveryHeldOpen([newerCopy], [{ ...open, councilRefusal: { confirmed: target, remoteCandidate: newer } }])).toBe(true);
+  });
+
+  it.each(['return', 'reopen'] as const)('shows one decision for the earlier refused title on %s after discarding the carry', async entry => {
+    const s = setup(), { target } = existingTarget(s);
+    const author = s.makeEngine().engine, writer = s.makeEngine().engine, reader = s.makeEngine().engine;
+    try {
+      const from = await author.openEditor(s.source.resource, editorIdentity('author-tab', s.source.resource, 'default', 'source'));
+      const edited = await writer.openEditor(target.resource, editorIdentity('writer-tab', target.resource, 'default', 'target'));
+      let mounted = await reader.openEditor(target.resource, editorIdentity('reader-tab', target.resource, 'default', 'target'));
+      reader.setVisible(false);
+      await edited.commit(value => ({ ...value, title: 'Refused destination title' }));
+      await from.carryCouncilTopicToExisting('topic', target.resource.id);
+      const saved = await s.store.list('owner');
+      const prior = saved.find(request => !request.atomic)!;
+      const transfer = saved.find(request => request.atomic && request.baseline.resource.id === target.resource.id)!;
+      expect(transfer.predecessor).toBe(prior.id);
+      writer.setVisible(true);
+      await waitFor(() => expect(edited.getState().checkpoint.draft?.topics).toHaveLength(2));
+
+      const stored = { ...target, metadata: { ...target.metadata!, revision: target.metadata!.revision + 1 },
+        value: { ...target.value!, title: 'Stored destination title', independent: 'A field from the server' } };
+      s.rows.set(resourceKey(target.resource), stored);
+      s.cached.set(resourceKey(target.resource), stored);
+      s.refuse();
+      author.setOnline(true);
+      await author.retry();
+      await waitFor(async () => expect((await s.store.list('owner')).map(row => row.state)).toEqual(['refused', 'refused', 'refused']));
+      expect(s.transport.send).toHaveBeenCalledTimes(1);
+      writer.setVisible(true);
+      writer.setOnline(true);
+      await writer.retry(target.resource);
+      await waitFor(() => expect(edited.getState().checkpoint.remoteCandidate ?? edited.getState().checkpoint.confirmed).toEqual(stored));
+
+      await waitFor(() => expect(from.getActions()).toEqual([{
+        id: transfer.atomic!.id, delivery: { phase: 'refused', code: 'atomic-predecessor-conflict', canDiscard: true },
+      }]));
+      await from.discardAction(transfer.atomic!.id);
+      const after = await s.store.list('owner');
+      expect(after.find(row => row.id === prior.id)?.state).toBe('refused');
+      expect(after.filter(row => row.atomic).every(row => row.state === 'cancelled')).toBe(true);
+      writer.setVisible(true);
+      await waitFor(() => expect(edited.getState().checkpoint.draft).toMatchObject({
+        title: 'Refused destination title', independent: 'A field from the server',
+      }));
+      expect(edited.getState().checkpoint.draft?.topics).toHaveLength(1);
+
+      if (entry === 'reopen') {
+        mounted.close({ flush: false });
+        const resumeCache = s.pauseCacheReads();
+        try {
+          mounted = await reader.openEditor(target.resource, editorIdentity('reader-tab', target.resource, 'default', 'reopened'));
+          expect(mounted.getState().checkpoint.draft?.title).toBe('Refused destination title');
+        } finally { resumeCache(); }
+        await waitFor(() => expect(mounted.getState().checkpoint.remoteCandidate ?? mounted.getState().checkpoint.confirmed).toEqual(stored));
+      }
+      reader.setVisible(true);
+      await waitFor(() => expect(mounted.getState().result).toMatchObject({ kind: 'refused', operationId: prior.id }));
+      expect(mounted.getState().checkpoint.draft?.title).toBe('Refused destination title');
+      const drafts = (await reader.listRecoverable(target.resource)).filter(item => item.answer === 'refused').map(item => item.record);
+      expect(drafts).toHaveLength(1);
+      const scopes = reader.getOpenAnswerScopes();
+      expect(recoveryHeldOpen(drafts, scopes)).toBe(true);
+      const [draft] = drafts;
+      expect(recoveryHeldOpen([{ ...draft, checkpoint: { ...draft.checkpoint,
+        draft: { ...draft.checkpoint.draft, independent: 'Unseen private words' },
+      } }], scopes)).toBe(false);
+      expect(recoveryHeldOpen([{ ...draft, checkpoint: { ...draft.checkpoint,
+        confirmed: target,
+      } }], scopes)).toBe(false);
+      const newer = { ...stored, metadata: { ...stored.metadata, revision: stored.metadata.revision + 1 },
+        value: { ...stored.value, title: 'A newer stored title' } };
+      expect(recoveryHeldOpen([{ ...draft, checkpoint: { ...draft.checkpoint, remoteCandidate: newer } }], scopes)).toBe(false);
+      await mounted.acceptRemote();
+      expect(mounted.getState().checkpoint.draft).toEqual(stored.value);
+      expect(s.rows.get(resourceKey(s.source.resource))).toEqual(s.source);
+      expect(s.rows.get(resourceKey(target.resource))).toEqual(stored);
+      expect(s.transport.send).toHaveBeenCalledTimes(1);
+    } finally { author.dispose(); writer.dispose(); reader.dispose(); }
   });
 
   it('keeps a later saved destination title as a draft after discarding its refused carry', async () => {
