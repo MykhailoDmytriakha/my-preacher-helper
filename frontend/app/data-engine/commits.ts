@@ -617,9 +617,7 @@ export class CommitQueue {
       }
       advancedOperations.add(groupId ?? record.id);
       try {
-        const advanced = deletion ? await this.applyCommandAnswer(record, deletion, owner, generation)
-          : await this.advanceRequest(record, records, owner, generation, ready, trackAnswer);
-        changed = advanced || changed;
+        changed = await this.advanceRequest(record, records, owner, generation, ready, trackAnswer, deletion) || changed;
       } catch (error) { onFailure(record, error); }
     }
     const journal = this.deliveryRequested ? await this.deliverBatch(owner, generation, attempted, ready, narrow, awaiting) : [];
@@ -653,7 +651,8 @@ export class CommitQueue {
   }
 
   private advanceRequest(record: CommitRequest, records: CommitRequest[], owner: string, generation: number,
-    ready = referenceReadiness(owner, records), trackAnswer?: TrackCommitAnswer): Promise<boolean> {
+    ready = referenceReadiness(owner, records), trackAnswer?: TrackCommitAnswer, retainedDeletion: CommandResult | null = null): Promise<boolean> {
+    if (retainedDeletion) return this.applyCommandAnswer(record, retainedDeletion, owner, generation);
     const participants = atomicParticipants(record, records);
     if (participants.some(participant => !deleteOrderReady(participant, records))) return Promise.resolve(false);
     if (!participants[0].command && participants.every(participant => participant.initialized && !terminal(participant) && !participant.unfinalized.length)) {

@@ -201,19 +201,7 @@ export class EditorController {
     controller.unsubscribe = options.runtime.subscribe(event => controller.onRuntime(event));
     if (options.commits) controller.stopCommits = options.commits.subscribe(({ request }) => controller.onCommit(request));
     try {
-      // A checkpoint may have committed before its journal entry; resubmission is idempotent.
-      const prepared = controller.prepared;
-      if (prepared) {
-        await options.runtime.submit(prepared);
-        // Old direct deletes may already have the exact answer in the local journal.
-        if (prepared.kind === 'delete') {
-          const retained = (await options.runtime.list()).find(entry => entry.command.operationId === prepared.operationId)?.result;
-          if (retained && confirmedExistingDeletion(prepared, retained)) {
-            controller.onRuntime({ kind: 'result', owner: options.owner, result: retained });
-            await controller.settled();
-          }
-        }
-      }
+      if (controller.prepared) await controller.resumePrepared(controller.prepared);
       await controller.finishAcknowledgements();
       if (options.commits) {
         for (const request of orderActionProjections(await options.commits.list())) {
@@ -489,6 +477,17 @@ export class EditorController {
     this.unsubscribe();
     this.stopCommits();
     this.listeners.clear();
+  }
+
+  private async resumePrepared(prepared: DataCommand): Promise<void> {
+    // A checkpoint may have committed before its journal entry; resubmission is idempotent.
+    await this.options.runtime.submit(prepared);
+    // Old direct deletes may already have the exact answer in the local journal.
+    if (prepared.kind !== 'delete') return;
+    const retained = (await this.options.runtime.list()).find(entry => entry.command.operationId === prepared.operationId)?.result;
+    if (!retained || !confirmedExistingDeletion(prepared, retained)) return;
+    this.onRuntime({ kind: 'result', owner: this.options.owner, result: retained });
+    await this.settled();
   }
 
   private onRuntime(event: RuntimeEvent): void {
