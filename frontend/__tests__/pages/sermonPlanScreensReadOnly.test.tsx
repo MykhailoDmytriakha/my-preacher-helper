@@ -136,6 +136,32 @@ const READING_BUTTONS = [
 ];
 const WRITING_BUTTONS = /^(plan\.(save|editMode|viewMode|markKeyFragments|generate|regenerate|renamePoint|renameSubPoint|deletePoint|deleteSubPoint|addPoint|addSubPoint|fromNote\.entry)|structure\.)/;
 
+describe('saved text whose plan point was removed', () => {
+  beforeEach(() => {
+    writes.length = 0;
+    mockSearchParams = new URLSearchParams();
+    window.localStorage.clear();
+  });
+
+  it.each([['from thoughts', AiPlanPage], ['by hand', ManualConspectusPage]])(
+    'offers unknown-order words from a fresh saved copy in the %s plan',
+    (_name, Page) => {
+      mockReadOnly = true;
+      mockSermon = sermonFixture({
+        planText: { p1: 'Unchanged neighboring paragraph', missing: 'Saved after the card disappeared', cleared: '' },
+      });
+
+      renderPage(<Page />);
+
+      const recovery = screen.getByRole('status', { name: 'plan.orphanedTitle' });
+      expect(recovery).toHaveTextContent('Saved after the card disappeared');
+      expect(recovery).not.toHaveTextContent('Unchanged neighboring paragraph');
+      expect(screen.getAllByText('Unchanged neighboring paragraph').length).toBeGreaterThan(0);
+      expect(writes).toEqual([]);
+    },
+  );
+});
+
 describe('the AI plan screen on a copy for reading', () => {
   beforeEach(() => {
     writes.length = 0;

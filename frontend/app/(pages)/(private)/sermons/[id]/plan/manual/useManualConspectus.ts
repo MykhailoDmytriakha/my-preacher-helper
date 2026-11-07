@@ -227,15 +227,14 @@ export function useManualConspectus({
    * same node saved from two devices still races, which is what the stated baseline settles.
    */
   const writeText = useCallback(async (
-    changedText: Record<string, string>,
-    removedNodeIds: string[] = []
+    changedText: Record<string, string>
   ) => {
     const currentSermon = sermonRef.current;
     if (!currentSermon) return;
 
     // The engine writer lays the text into the document the screen renders; a cell whose write
     // is still queued keeps judging by its last confirmed baseline (`pendingPlanTextNodeIds`).
-    await planWriter.savePlanText(currentSermon.id, changedText, removedNodeIds, {
+    await planWriter.savePlanText(currentSermon.id, changedText, [], {
       userId: currentSermon.userId,
       baselineByNodeId: baseline.forNodes(Object.keys(changedText)),
     });
@@ -254,7 +253,6 @@ export function useManualConspectus({
     }
 
     baseline.confirm(changedText);
-    baseline.forget(removedNodeIds);
     /**
      * A CELL THAT JUST SAVED IS NO LONGER CONTESTED, and forgetting to say so costs a false
      * conflict later: a batch refused because of ONE card reports the server's values for ALL of
@@ -623,8 +621,7 @@ export function useManualConspectus({
      *
      * The sub-point's cell is BLANKED rather than deleted here, and that is what makes one
      * write possible: `deleteField()` is a sentinel object that cannot survive the outbox's
-     * JSON, while an empty string survives anything. The now-empty key is swept up below, and
-     * that sweep is free to fail — the meaningful part already happened.
+     * JSON, while an empty string survives anything and masks any legacy copy of that cell.
      */
     /**
      * NOTHING TO RESCUE MEANS NOTHING TO WRITE — and that is not a micro-optimisation.
@@ -635,8 +632,8 @@ export function useManualConspectus({
      * that has never had per-node text would therefore make the whole introduction vanish from
      * reading, preaching and export — while it sat untouched in Firestore.
      *
-     * So an empty sub-point is pure cleanup: remove its key, touch nothing else. Only a real
-     * rescue writes, and then the flag flipping is correct, because the parent really does hold
+     * An empty sub-point needs only the outline change. Only a real rescue writes, and then
+     * the flag flipping is correct, because the parent really does hold
      * text now.
      */
     const rescuing = rescued !== "" && mergedParent !== (contentByNodeId[pointId] ?? "");
@@ -667,26 +664,10 @@ export function useManualConspectus({
         ? { ...point, subPoints: (point.subPoints ?? []).filter((sub) => sub.id !== subPointId) }
         : point
     ))));
-    if (removed) {
-      detachThoughtsFrom((thought) => thought.subPointId === subPointId, "subPoint");
-      // Sweeping the emptied key is tidiness, not correctness — it already holds nothing, and
-      // nothing reads the text of a node that is gone from the structure.
-      await writeText({}, [subPointId]).catch((error) =>
-        debugLog("Sub-point delete: sweeping the emptied key failed — harmless", { subPointId, error }));
-    }
+    if (removed) detachThoughtsFrom((thought) => thought.subPointId === subPointId, "subPoint");
   }, [contentByNodeId, detachThoughtsFrom, persistOutline, t, writeText]);
 
-  /**
-   * SKELETON FIRST HERE, the opposite of a sub-point deletion, because this one DROPS text
-   * instead of rescuing it. Clearing the text first and failing on the skeleton left the
-   * point standing and its writing gone for good.
-   *
-   * A failure on the SECOND write is now harmless, and that is the whole gain of the new
-   * shape: text whose node is gone is never read — assembly walks the structure — so the
-   * worst case is an unused key. No compensating rollback is needed, and the one that used
-   * to live here was itself dangerous: it re-sent an outline built before the server's
-   * answer, which a three-way merge could read as deleting a point added elsewhere.
-   */
+  /** The accepted outline removal retires the text it observed in the same command. */
   const deletePoint = useCallback(async (pointId: string) => {
     const outline = sermonRef.current?.outline;
     const section = sectionOfPoint(pointId);
@@ -708,12 +689,7 @@ export function useManualConspectus({
       return next;
     });
 
-    try {
-      await writeText({}, removedNodeIds);
-    } catch (error) {
-      debugLog("Point delete: node gone, clearing its text failed — harmless", { pointId, error });
-    }
-  }, [detachThoughtsFrom, persistOutline, sectionOfPoint, writeText]);
+  }, [detachThoughtsFrom, persistOutline, sectionOfPoint]);
 
   /**
    * Recovered cells come back marked UNSAVED, which is the whole point: they were never

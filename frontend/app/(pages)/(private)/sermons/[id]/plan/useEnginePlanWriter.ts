@@ -3,6 +3,7 @@ import { useMemo } from 'react';
 import { useDataDocument } from '@/data-engine/react.client';
 import { StaleWriteError } from '@/services/conflictSafeUpdate.client';
 import { SERMON_PLAN_AGGREGATE } from '@/services/sermons.client';
+import { liveNodeIds, readPlanText } from '@/utils/planText';
 
 import { createEngineStructureWriter, editEngineSermon, useEngineStructureWriter } from '../structure/useEngineStructureWriter';
 
@@ -28,10 +29,12 @@ export function createEnginePlanWriter(document: Pick<SermonDocument, 'update'>,
       const conflicts = await editEngineSermon(document, owner, current => {
         const stored = current.planText ?? {};
         const baseline = context.baselineByNodeId;
-        const refused = baseline ? Object.keys(changedText).filter(nodeId =>
-          (stored[nodeId] ?? null) !== (baseline[nodeId] ?? null) && (stored[nodeId] ?? null) !== changedText[nodeId]) : [];
+        const compared = context.orphaned ? readPlanText(current) : stored;
+        const live = context.orphaned ? liveNodeIds(current.outline) : undefined;
+        const refused = Object.keys(changedText).filter(nodeId => live?.has(nodeId)
+          || (baseline && (compared[nodeId] ?? null) !== (baseline[nodeId] ?? null) && (compared[nodeId] ?? null) !== changedText[nodeId]));
         if (refused.length) {
-          return { next: current, result: Object.fromEntries(refused.map(nodeId => [`planText.${nodeId}`, stored[nodeId] ?? null])) };
+          return { next: current, result: Object.fromEntries(refused.map(nodeId => [`planText.${nodeId}`, compared[nodeId] ?? null])) };
         }
         const planText = { ...stored, ...changedText };
         removedNodeIds.forEach(nodeId => { delete planText[nodeId]; });

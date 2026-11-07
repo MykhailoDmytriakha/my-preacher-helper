@@ -2652,7 +2652,7 @@
     "draftRecoverySameOnServer": "The plan already holds the same text",
     "draftRecoveryEmpty": "(empty)",
     "orphanedTitle": "Text of points no longer in the plan",
-    "orphanedBody": "While you were writing, these points were removed elsewhere. The text is not saved — copy it if you need it.",
+    "orphanedBody": "These words no longer have a point in the plan. Copy any text you want to keep.",
     "orphanedCopy": "Copy",
     "orphanedDiscard": "Let it go",
     "orphanedBlocksLeaving": "First decide about the text of removed points shown above: copy it or let it go."

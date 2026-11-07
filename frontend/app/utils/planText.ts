@@ -1,5 +1,8 @@
 import { buildSectionOutlineMarkdown } from "@/(pages)/(private)/sermons/[id]/plan/buildSectionOutlineMarkdown";
 
+import { liveNodeIds, PLAN_TEXT_SECTIONS as SECTIONS, readPlanText } from "./planTextStorage";
+
+import type { PlanTextMap } from "./planTextStorage";
 import type { CombinedPlan } from "@/(pages)/(private)/sermons/[id]/plan/types";
 import type { Sermon, SermonOutline } from "@/models/models";
 
@@ -25,68 +28,9 @@ import type { Sermon, SermonOutline } from "@/models/models";
  * production and local run against the SAME database.
  */
 
-/** Node id → the text written under that node. */
-export type PlanTextMap = Record<string, string>;
+export { liveNodeIds, readPlanText, type PlanTextMap } from "./planTextStorage";
 
-const SECTIONS = ["introduction", "main", "conclusion"] as const;
 type SectionKey = (typeof SECTIONS)[number];
-
-/**
- * Every node id the structure currently holds — points and sub-points alike. Assembly and
- * cleanup both need it: it is the definition of "text that still belongs to something".
- */
-export function liveNodeIds(outline: SermonOutline | null | undefined): Set<string> {
-  const ids = new Set<string>();
-  SECTIONS.forEach((section) => {
-    (outline?.[section] ?? []).forEach((point) => {
-      ids.add(point.id);
-      (point.subPoints ?? []).forEach((subPoint) => ids.add(subPoint.id));
-    });
-  });
-  return ids;
-}
-
-/**
- * The plan's text, wherever it currently lives.
- *
- * `planText` wins when present. Otherwise the old per-section cells are read and flattened
- * into the same shape — a pure read, changing nothing in storage. A sermon therefore keeps
- * working untouched until the first save moves it over.
- */
-export function readPlanText(sermon: Sermon | null | undefined): PlanTextMap {
-  if (!sermon) return {};
-
-  /**
-   * MERGED, NOT CHOSEN — and this distinction is the whole safety of the transition.
-   *
-   * Preferring `planText` wholesale looked right and silently hid text: a sermon whose
-   * section held two points, of which only one had been saved since, ends up with ONE key
-   * in `planText`. Treating that as "the new shape is in charge" made the OTHER point
-   * vanish from the editor, from reading, from preaching and from export — its text still
-   * in storage, simply no longer looked at.
-   *
-   * So the old cells are the base and the new keys are laid over them: whatever has been
-   * written under the new shape wins for its own node, and every node not yet moved keeps
-   * showing what it always had. A sermon converges as it is used, and never loses sight of
-   * anything on the way.
-   */
-  const collected: PlanTextMap = {};
-
-  const stored = sermon.plan ?? sermon.draft;
-  if (stored) {
-    SECTIONS.forEach((section) => {
-      Object.entries(stored[section]?.outlinePoints ?? {}).forEach(([nodeId, text]) => {
-        if (typeof text === "string") collected[nodeId] = text;
-      });
-    });
-  }
-
-  Object.entries(sermon.planText ?? {}).forEach(([nodeId, text]) => {
-    if (typeof text === "string") collected[nodeId] = text;
-  });
-
-  return collected;
-}
 
 /**
  * THE CELLS A PLAN EDITOR SHOWS ONCE STORAGE HAS SPOKEN — one rule for both plan editors.

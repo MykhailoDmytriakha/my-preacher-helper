@@ -7,6 +7,7 @@ import { mergeIdentityTree } from './identityTreeMerge';
 import { relationMirrorFields } from './relationMirrors';
 import { validateResourceDocument } from './resourceSchemas';
 import { preservesSermonLinks, scratchConsumptionConflicts } from './sermonIntegrity';
+import { preserveUnorderedPlanText, retireObservedPlanText, stalePlanTextDiscards } from './sermonPlanText';
 
 export { commandFingerprint, equalValues, readField } from './fieldValues';
 export { ANALYSIS_RESHAPE_FIELDS, ANALYSIS_RESHAPE_FRAME } from './analysisReshapeFields';
@@ -153,7 +154,19 @@ function validateUpdate(command: Extract<DataCommand, { kind: 'update' }>, polic
       if (paths.some(path => prefix(path, change.path) || prefix(change.path, path))) fail('Overlapping field changes');
       paths.push(change.path);
     }
+    const removal = command.observedPlanTextRemoval;
+    if (removal !== undefined && (command.resource.collection !== 'sermons' || !paths.some(path => path[0] === 'outline')
+      || !validPlanTextEvidence(removal))) fail('Invalid plan text removal evidence');
+    const discard = command.observedPlanTextDiscard;
+    if (discard !== undefined) {
+      const next = command.changes.find(change => change.path[0] === 'planText')?.after.value;
+      if (command.resource.collection !== 'sermons' || !validPlanTextEvidence(discard) || !object(next)
+        || !Object.keys(discard).every(id => own(next, id) && next[id] === '')) fail('Invalid plan text discard evidence');
+    }
+}
 
+function validPlanTextEvidence(evidence: unknown): boolean {
+  return object(evidence) && Object.entries(evidence).every(([id, text]) => id.length > 0 && typeof text === 'string');
 }
 
 function validatePayload(command: DataCommand, policy: ReturnType<typeof getResourcePolicy>): void {
@@ -579,7 +592,7 @@ export function advanceResourceSnapshot(current: ResourceSnapshot, value: Docume
 }
 
 /** Mutates only the cloned candidate; a conflict prevents the entire candidate from committing. */
-function applyExistingFields(command: Extract<DataCommand, { kind: 'update' | 'delete' }>, value: DocumentData): ConflictDetail[] {
+function applyExistingFields(command: Extract<DataCommand, { kind: 'update' | 'delete' }>, value: DocumentData, previous: DocumentData): ConflictDetail[] {
   if (command.kind === 'delete') {
     // A relation may have updated a reverse index after this person's saved DELETE.
     // Compare authored content; the cascade still resolves the actual owning relationships.
@@ -599,8 +612,9 @@ function applyExistingFields(command: Extract<DataCommand, { kind: 'update' | 'd
     for (const field of ANALYSIS_RESHAPE_FRAME) putField(value, [field], readField(merged.value.value as DocumentData, [field]));
     conflicts.push(...merged.conflicts);
   }
+  const planText = command.resource.collection === 'sermons' && command.changes.find(change => change.path[0] === 'planText');
   for (const change of command.changes) {
-    if (frameChanges.includes(change)) continue;
+    if (frameChanges.includes(change) || change === planText) continue;
     // Keep the wire candidate valid for legacy documents missing metadata. The accepted
     // write replaces this provisional value; a client clock never arbitrates content.
     const merged = change.path[0] === 'updatedAt' ? { value: change.after, conflicts: [] }
@@ -608,7 +622,31 @@ function applyExistingFields(command: Extract<DataCommand, { kind: 'update' | 'd
     putField(value, change.path, merged.value);
     conflicts.push(...merged.conflicts);
   }
+  conflicts.push(...applyPlanTextUpdate(command, planText || undefined, previous, value));
   return conflicts;
+}
+
+function applyPlanTextUpdate(command: Extract<DataCommand, { kind: 'update' }>, planText: FieldChange | undefined,
+  previous: DocumentData, candidate: DocumentData): ConflictDetail[] {
+  if (planText) {
+    const stale = command.observedPlanTextDiscard
+      ? stalePlanTextDiscards(previous, candidate, command.observedPlanTextDiscard) : [];
+    if (stale.length) return stale;
+    const change = preserveUnorderedPlanText(planText, previous, candidate, command.observedPlanTextRemoval);
+    const merged = mergeFields(change.before, change.after, readField(candidate, change.path), change.path);
+    if (merged.conflicts.length) return merged.conflicts;
+    putField(candidate, change.path, merged.value);
+  }
+  if (command.observedPlanTextRemoval) retireObservedPlanText(previous, candidate, command.observedPlanTextRemoval);
+  return [];
+}
+
+function commandFields(command: Exclude<DataCommand, { kind: 'relation' }>, value: DocumentData, previous: DocumentData | null): string[] {
+  if (command.kind !== 'update') return Object.keys(value);
+  const fields = command.changes.map(change => change.path[0]);
+  if (command.observedPlanTextRemoval && !equalValues(previous?.planText, value.planText)
+    && !fields.includes('planText')) fields.push('planText');
+  return fields;
 }
 
 export function applyCommand(command: DataCommand, current: ResourceSnapshot): CommandResult {
@@ -636,24 +674,25 @@ export function applyCommand(command: DataCommand, current: ResourceSnapshot): C
       // an explicit decision; never infer an ancestor from delivery time or word count.
       return refused('decision-required');
     }
-    const conflicts = applyExistingFields(command, value);
+    const conflicts = applyExistingFields(command, value, current.value);
     if (conflicts.length) return { kind: 'conflict', operationId: command.operationId, snapshot: current, conflicts };
   }
-  if (!validCandidate(command, value, current.value)) return refused('invalid-document');
+  const changedFields = commandFields(command, value, current.value);
+  if (!validCandidate(command, value, current.value, changedFields)) return refused('invalid-document');
   return {
     kind: 'acknowledged', operationId: command.operationId,
-    snapshot: advanceResourceSnapshot(current, command.kind === 'delete' ? null : value, command.operationId,
-      command.kind === 'update' ? command.changes.map(change => change.path[0]) : Object.keys(value)),
+    snapshot: advanceResourceSnapshot(current, command.kind === 'delete' ? null : value, command.operationId, changedFields),
   };
 }
 
-function validCandidate(command: Exclude<DataCommand, { kind: 'relation' }>, value: DocumentData, previous: DocumentData | null): boolean {
+function validCandidate(command: Exclude<DataCommand, { kind: 'relation' }>, value: DocumentData, previous: DocumentData | null,
+  changedFields: string[]): boolean {
   if (command.kind === 'delete') return true;
   try {
     validateResourceDocument(command.resource.collection, value, {
       kind: command.kind,
       previous,
-      changedFields: command.kind === 'update' ? command.changes.map(change => change.path[0]) : undefined,
+      changedFields: command.kind === 'update' ? changedFields : undefined,
     });
     return command.resource.collection !== 'sermons' || preservesSermonLinks(previous, value);
   } catch { return false; }

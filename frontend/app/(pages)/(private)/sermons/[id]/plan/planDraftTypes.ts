@@ -14,8 +14,9 @@ export interface PlanOrphanCell {
   id: string;
   text: string;
   copyKey?: string;
+  stored?: true;
 }
 
 export function planOrphanIdentity(cell: PlanOrphanCell): string {
-  return cell.copyKey ?? JSON.stringify([cell.id, cell.text]);
+  return cell.copyKey ?? JSON.stringify([cell.stored ?? false, cell.id, cell.text]);
 }

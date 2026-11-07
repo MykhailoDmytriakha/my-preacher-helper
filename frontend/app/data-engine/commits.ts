@@ -7,6 +7,8 @@ import { commandReferenceResources, documentReferenceResources, referenceReadine
 import { prepareDomainCommand, requiredDomainTargets } from './domainPolicy';
 import { AddressedFailures, type AddressedFailure } from './failures';
 import { equalValues, mergeDocumentFields, MAX_RELATION_RESOURCES } from './protocol';
+import { capturePlanTextEvidence, type PlanTextEvidence } from './sermonPlanText';
+import { coversCommittedEffect } from './snapshotFreshness';
 
 import type { CaptureTransferProof, CaptureTransferResult } from './captureTransfer';
 import type { DocumentWriteReceipt } from './commitReceipt';
@@ -38,6 +40,8 @@ export interface CommitRequest {
   baseline: ResourceSnapshot;
   value: DocumentData | null;
   predecessor: string | null;
+  /** Immutable evidence taken before this action leaves its editor. */
+  planTextEvidence?: PlanTextEvidence;
   /** Earlier locally captured uses of this resource; owned atomically by DELETE capture storage. */
   deleteAfter?: string[];
   revision: number;
@@ -103,6 +107,7 @@ export interface CommitEvent { request: CommitRequest }
 export function assertCommitCapture(current: CommitRequest, incoming: CommitRequest): void {
   if (current.owner !== incoming.owner || current.editorId !== incoming.editorId || current.editGeneration !== incoming.editGeneration
     || current.predecessor !== incoming.predecessor || !equalValues(current.baseline, incoming.baseline)
+    || !equalValues(current.planTextEvidence ?? null, incoming.planTextEvidence ?? null)
     || !equalValues(current.value, incoming.value) || !equalValues(current.atomic ?? null, incoming.atomic ?? null)
     || !equalValues(current.deleteAfter ?? null, incoming.deleteAfter ?? null)
     || current.retentionScope !== incoming.retentionScope
@@ -162,6 +167,15 @@ function selectSavePredecessor(records: readonly CommitRequest[], owner: string,
   }
   return records.filter(record => record.editorId === editorId && record.state !== 'cancelled')
     .sort((a, b) => b.editGeneration - a.editGeneration)[0];
+}
+
+function captureSermonPlan(baseline: ResourceSnapshot, draft: DocumentData | null, predecessor?: CommitRequest): PlanTextEvidence {
+  const ack = predecessor?.result?.kind === 'acknowledged' ? predecessor.result : undefined;
+  const effect = ack?.committed ?? ack?.snapshot.metadata;
+  // If this action already observed the ACK, use its captured baseline. Otherwise the earlier
+  // local action's value is known, and a later ACK could contain unseen words.
+  const alreadyObserved = effect && coversCommittedEffect(baseline, baseline.resource, effect);
+  return capturePlanTextEvidence({ before: alreadyObserved ? baseline.value : predecessor?.value ?? baseline.value, after: draft });
 }
 
 /** Saved intent lives independently of editors. Only this queue prepares its commands. */
@@ -274,11 +288,13 @@ export class CommitQueue {
     if (!frozenOptions?.transfer && !intent.dirty && (!predecessor || equalValues(predecessor.value, intent.draft))) return null;
     if (intent.conflicts.length) throw Object.assign(new Error('Resolve the conflict before saving'), { code: 'resolve-version-first' });
     const baseline = clone(intent.confirmed);
+    const planTextEvidence = baseline.resource.collection === 'sermons' ? captureSermonPlan(baseline, intent.draft, predecessor) : undefined;
     const record: CommitRequest = {
       id: this.options.operationId(), owner, editorId, editGeneration: intent.editGeneration,
       ...(frozenOptions?.retentionScope ? { retentionScope: frozenOptions.retentionScope } : {}),
       ...(frozenOptions?.transfer ? { transferredFrom: clone(frozenOptions.transfer.proof) } : {}),
       baseline, value: clone(intent.draft), predecessor: predecessor?.id ?? null,
+      ...(planTextEvidence ? { planTextEvidence } : {}),
       revision: 0, initialized: false, working: baseline, intended: clone(intent.draft),
       command: null, submitted: null, sequence: 0, state: 'queued', result: null, unfinalized: [],
     };
@@ -553,7 +569,10 @@ export class CommitQueue {
     this.assertCurrent(owner, generation);
     const operationId = record.sequence === 0 ? record.id : `${record.id}-${record.sequence}`;
     let prepared: ReturnType<typeof prepareDomainCommand>;
-    try { prepared = prepareDomainCommand(owner, operationId, record.working, record.intended, targets); }
+    const evidence = record.working.resource.collection === 'sermons'
+      ? record.planTextEvidence ?? capturePlanTextEvidence({ before: record.baseline.value, after: record.value })
+      : undefined;
+    try { prepared = prepareDomainCommand(owner, operationId, record.working, record.intended, targets, evidence); }
     catch (error) {
       // The policy names WHY this draft can never be a command (two sections carried in one
       // save, a destination that was deleted, a derived field). Left as a throw, the request

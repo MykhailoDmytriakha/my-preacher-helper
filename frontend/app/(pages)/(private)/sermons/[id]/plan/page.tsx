@@ -980,6 +980,8 @@ function PlanPageContent({ source, readOnly = false, wayIn }: { source: SermonSo
     <OrphanedPlanText
       subject={JSON.stringify([sermon?.userId, sermonId])}
       cells={planOrphans}
+      storedSermon={source.confirmedSermon}
+      liveIds={livePlanNodes}
       readOnly={readOnly}
       onDiscard={(cells) => {
         planDraft.forget(cells);

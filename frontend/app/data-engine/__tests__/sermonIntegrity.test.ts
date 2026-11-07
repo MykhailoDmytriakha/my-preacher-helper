@@ -1,5 +1,7 @@
+import { prepareDomainCommand } from '../domainPolicy';
 import { applyCommand, diffFields } from '../protocol';
 import { preservesSermonLinks } from '../sermonIntegrity';
+import { capturePlanTextEvidence } from '../sermonPlanText';
 
 import type { DataCommand, DocumentData, ResourceSnapshot } from '../types';
 const resource = { collection: 'sermons', id: 'sermon' };
@@ -59,4 +61,120 @@ it('does not let an existing duplicate excuse adding a third placement', () => {
   const broken = { ...value, structure: { ...structure, introduction: ['thought'] } };
   expect(preservesSermonLinks(broken, { ...broken, structure: { ...broken.structure, conclusion: ['thought'] } })).toBe(false);
   expect(preservesSermonLinks(broken, value)).toBe(true);
+});
+
+describe('plan text in an explicit outline removal', () => {
+  const keptOutline = { ...outline, introduction: [{ id: 'kept', text: 'Keep this point' }] };
+  const base = { ...value, thoughts: [], structure: { ...structure, main: [] }, thoughtsBySection: { ...structure, main: [] },
+    outline: keptOutline, planText: { point: 'Observed paragraph', sub: 'Observed subpoint', kept: 'Neighboring paragraph' } };
+  const removed = { ...base, outline: { ...keptOutline, main: [] } };
+  const confirmed = (data: DocumentData): ResourceSnapshot => ({
+    resource, value: data, metadata: { protocol: 1, generation: 'sermon-generation', revision: 1, deleted: false },
+  });
+  const deletion = () => prepareDomainCommand('owner', 'remove-point', confirmed(base), removed).command;
+
+  it('retires both previously seen texts with the removed point in one accepted update', () => {
+    expect(applyCommand(deletion(), confirmed(base))).toMatchObject({ kind: 'acknowledged', snapshot: {
+      value: { outline: removed.outline, planText: { point: '', sub: '', kept: 'Neighboring paragraph' } },
+    } });
+  });
+
+  it('keeps a different paragraph that was not seen by the device which removed the point', () => {
+    const remote = { ...base, planText: { ...base.planText, point: 'Unseen paragraph' } };
+    expect(applyCommand(deletion(), confirmed(remote))).toMatchObject({ kind: 'acknowledged', snapshot: {
+      value: { outline: removed.outline, planText: { point: 'Unseen paragraph', sub: '', kept: 'Neighboring paragraph' } },
+    } });
+  });
+
+  it('preserves an offline edit that cannot be ordered against an already accepted removal', () => {
+    const stored = applyCommand(deletion(), confirmed(base));
+    if (stored.kind !== 'acknowledged') throw new Error('Point was not removed');
+    const laterDelivery = prepareDomainCommand('owner', 'offline-text', confirmed(base),
+      { ...base, planText: { ...base.planText, point: 'Offline paragraph' } }).command;
+    expect(applyCommand(laterDelivery, stored.snapshot)).toMatchObject({ kind: 'acknowledged', snapshot: {
+      value: { outline: removed.outline, planText: { point: 'Offline paragraph', sub: '', kept: 'Neighboring paragraph' } },
+    } });
+  });
+
+  it('preserves the same user’s unseen words when the removal was prepared after a predecessor ACK', () => {
+    const remote = { ...base, planText: { ...base.planText, point: 'New in the ACK' } };
+    const prepared = prepareDomainCommand('owner', 'rebased-removal', confirmed(remote),
+      { ...remote, outline: removed.outline }, [], capturePlanTextEvidence({ before: base, after: removed }));
+    expect(applyCommand(prepared.command, confirmed(remote))).toMatchObject({ kind: 'acknowledged', snapshot: {
+      value: { outline: removed.outline, planText: { point: 'New in the ACK', sub: '', kept: 'Neighboring paragraph' } },
+    } });
+  });
+
+  it('masks an observed legacy cell but accepts unknown words written from that legacy baseline', () => {
+    const oldPlan: DocumentData = { ...base, plan: { main: { outlinePoints: { point: 'Observed legacy paragraph' } } } };
+    delete oldPlan.planText;
+    const oldSnapshot = confirmed(oldPlan);
+    const removal = prepareDomainCommand('owner', 'remove-legacy-point', oldSnapshot, { ...oldPlan, outline: removed.outline }).command;
+    const stored = applyCommand(removal, oldSnapshot);
+    expect(stored).toMatchObject({ kind: 'acknowledged', snapshot: { value: { planText: { point: '' } } } });
+    if (stored.kind !== 'acknowledged') throw new Error('Legacy point was not removed');
+    const edit = prepareDomainCommand('owner', 'late-legacy-edit', oldSnapshot, { ...oldPlan, planText: { point: 'Offline paragraph' } }).command;
+    expect(applyCommand(edit, stored.snapshot)).toMatchObject({ kind: 'acknowledged', snapshot: {
+      value: { planText: { point: 'Offline paragraph' } },
+    } });
+  });
+
+  it('does not let an older cleanup erase an orphan that it never explicitly discarded', () => {
+    const oldClientBaseline = { ...removed, planText: { point: 'Unordered words', kept: 'Neighboring paragraph' } };
+    const cleanup = prepareDomainCommand('owner', 'old-cleanup', confirmed(oldClientBaseline),
+      { ...oldClientBaseline, planText: { kept: 'Neighboring paragraph' } }).command;
+    expect(applyCommand(cleanup, confirmed(oldClientBaseline))).toMatchObject({ kind: 'acknowledged', snapshot: {
+      value: { planText: { point: 'Unordered words', kept: 'Neighboring paragraph' } },
+    } });
+  });
+
+  it('protects older combined outline and text updates without evidence', () => {
+    const obsolete = command(base, { ...removed, planText: { kept: 'Neighboring paragraph' } });
+    expect(applyCommand({ ...obsolete, generation: 'sermon-generation' }, confirmed(base))).toMatchObject({
+      kind: 'acknowledged', snapshot: { value: { outline: removed.outline, planText: base.planText } },
+    });
+  });
+
+  it('suppresses the local text of a removed point when both actions share one command', () => {
+    const combined = prepareDomainCommand('owner', 'combined-local-actions', confirmed(base), {
+      ...removed, planText: { ...base.planText, point: 'Earlier local words', kept: 'Updated neighbor' },
+    }).command;
+    expect(applyCommand(combined, confirmed(base))).toMatchObject({
+      kind: 'acknowledged', snapshot: { value: {
+        outline: removed.outline, planText: { point: '', sub: '', kept: 'Updated neighbor' },
+      } },
+    });
+    const remote = { ...base, planText: { ...base.planText, point: 'Unseen paragraph' } };
+    expect(applyCommand(combined, confirmed(remote))).toMatchObject({
+      kind: 'acknowledged', snapshot: { value: {
+        outline: removed.outline, planText: { point: 'Unseen paragraph', sub: '', kept: 'Updated neighbor' },
+      } },
+    });
+  });
+
+  it('suppresses co-captured words even if the removed point had no previously saved text', () => {
+    const blank: DocumentData = { ...base };
+    delete blank.planText;
+    const combined = prepareDomainCommand('owner', 'combined-first-words', confirmed(blank), {
+      ...blank, outline: removed.outline, planText: { point: 'Earlier local words' },
+    }).command;
+    const result = applyCommand(combined, confirmed(blank));
+    expect(result).toMatchObject({ kind: 'acknowledged', snapshot: { value: { outline: removed.outline } } });
+    if (result.kind !== 'acknowledged') throw new Error('Removal refused');
+    expect(result.snapshot.value?.planText).toBeUndefined();
+  });
+
+  it('lets the person discard the exact orphan but preserves replacement words and restored points', () => {
+    const orphan = { ...removed, planText: { point: 'Shown paragraph', kept: 'Neighboring paragraph' } };
+    const discard = prepareDomainCommand('owner', 'discard-orphan', confirmed(orphan),
+      { ...orphan, planText: { ...orphan.planText, point: '' } }).command;
+
+    expect(applyCommand(discard, confirmed(orphan))).toMatchObject({ kind: 'acknowledged', snapshot: {
+      value: { planText: { point: '', kept: 'Neighboring paragraph' } },
+    } });
+    expect(applyCommand(discard, confirmed({ ...orphan, planText: { ...orphan.planText, point: 'Unseen replacement' } })))
+      .toMatchObject({ kind: 'conflict', conflicts: [{ path: ['planText', 'point'], theirs: { value: 'Unseen replacement' } }] });
+    expect(applyCommand(discard, confirmed({ ...orphan, outline: keptOutline })))
+      .toMatchObject({ kind: 'conflict', conflicts: [{ path: ['planText', 'point'] }] });
+  });
 });

@@ -525,6 +525,8 @@ function ManualConspectusContent({ source, readOnly: copyReadOnly = false }: { s
       <OrphanedPlanText
       subject={JSON.stringify([sermon?.userId, sermonId])}
         cells={orphans}
+        storedSermon={source.confirmedSermon}
+        liveIds={livePlanNodes}
         readOnly={readOnly}
         onDiscard={(cells) => {
           draft.forget(cells);

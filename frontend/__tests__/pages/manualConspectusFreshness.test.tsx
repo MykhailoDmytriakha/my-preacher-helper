@@ -179,14 +179,18 @@ describe('the save button on the hand-written screen', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'plan.draftRecoveryRestore' }));
     expect(screen.queryByText('plan.orphanedTitle')).not.toBeInTheDocument();
 
-    // Another device removes the point this card belonged to.
+    // This older outline update has no proof about what was stored under the removed point.
+    const savedText = (harness.server.value?.planText as Record<string, string>).p1;
     await act(async () => { await harness.remote({ outline: { introduction: [], main: [], conclusion: [] } }); });
 
     expect(await screen.findByText('plan.orphanedTitle')).toBeInTheDocument();
-    expect(screen.getByText('абзац, набранный здесь')).toBeInTheDocument();
-    fireEvent.click(screen.getByText('plan.orphanedDiscard'));
+    const localCopy = screen.getByText('абзац, набранный здесь').closest('li')!;
+    expect(screen.getByText(savedText)).toBeInTheDocument();
+    fireEvent.click(within(localCopy).getByText('plan.orphanedDiscard'));
     fireEvent.click(await screen.findByRole('button', { name: 'common.discardText.confirm' }));
-    await waitFor(() => expect(screen.queryByText('plan.orphanedTitle')).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByText('абзац, набранный здесь')).not.toBeInTheDocument());
+    expect(screen.getByText(savedText)).toBeInTheDocument();
+    expect(harness.transport.send).not.toHaveBeenCalled();
   });
 
   it('lights up in the section colour the moment something is unsaved', async () => {

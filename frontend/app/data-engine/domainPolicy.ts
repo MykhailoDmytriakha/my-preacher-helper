@@ -8,6 +8,7 @@ import { carriedCopy, validCouncilCarry } from './councilCarryContent';
 import { materialNoteIds } from './documentReferences';
 import { diffFields, equalValues, readField, validateCommand, MAX_RELATION_RESOURCES } from './protocol';
 import { relationMirrorFields } from './relationMirrors';
+import { capturePlanTextEvidence, withPlanTextEvidence, type PlanTextEvidence } from './sermonPlanText';
 
 import type { CommandBase, DataCommand, DocumentData, FieldChange, ResourceRef, ResourceSnapshot } from './types';
 
@@ -150,7 +151,8 @@ function prepareUpdate(base: CommandBase, confirmed: ResourceSnapshot & { value:
 }
 
 /** One command per ACK boundary. Authored baselines stay pinned; first marks use a logical empty book. */
-export function prepareDomainCommand(owner: string, operationId: string, confirmed: ResourceSnapshot, draft: DocumentData | null, targets: readonly ResourceSnapshot[] = []): DomainPreparation {
+export function prepareDomainCommand(owner: string, operationId: string, confirmed: ResourceSnapshot, draft: DocumentData | null, targets: readonly ResourceSnapshot[] = [],
+  planTextEvidence?: PlanTextEvidence): DomainPreparation {
   const base: CommandBase = { protocol: 1, owner, operationId, resource: copy(confirmed.resource), generation: confirmed.metadata?.generation ?? null, dependsOn: [] };
   let prepared: DomainPreparation;
   if (draft === null) prepared = { command: { ...base, kind: 'delete', baseline: copy(confirmed.value ?? {}) }, submittedValue: null };
@@ -170,7 +172,10 @@ export function prepareDomainCommand(owner: string, operationId: string, confirm
     ] } : seed ? { ...base, kind: 'relation', relation: 'service-order-seed', value: copy(draft) }
       : { ...base, kind: 'create', value: copy(draft) }, submittedValue: copy(draft) };
   } else prepared = prepareUpdate(base, { ...confirmed, value: confirmed.value }, draft, targets);
-  return { ...prepared, command: copy(validateCommand(prepared.command)) };
+  const command = confirmed.resource.collection === 'sermons' && prepared.command.kind === 'update'
+    ? withPlanTextEvidence(prepared.command, planTextEvidence ?? capturePlanTextEvidence({ before: confirmed.value, after: draft }))
+    : prepared.command;
+  return { ...prepared, command: copy(validateCommand(command)) };
 }
 
 /** A move owns membership fields; creating a member also owns its absent document. */

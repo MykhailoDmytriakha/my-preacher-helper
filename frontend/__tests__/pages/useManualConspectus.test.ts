@@ -161,15 +161,12 @@ describe('useManualConspectus deletions', () => {
     expect(mockToastError).toHaveBeenCalledWith('errors.failedToSaveOutline');
   });
 
-  it('drops the point keys only after the structure write is accepted', async () => {
+  it('leaves text retirement to the accepted outline command', async () => {
     const { view } = renderConspectus(sermonWithText());
     await act(async () => { await view.result.current.deletePoint('point-1'); });
 
-    await waitFor(() => expect(mockSavePlanText).toHaveBeenCalled());
-
-    const [, changedText, removed] = mockSavePlanText.mock.calls[0];
-    expect(changedText).toEqual({});
-    expect(removed).toEqual(['point-1', 'sub-1']);
+    expect(mockUpdateSermonOutline).toHaveBeenCalled();
+    expect(mockSavePlanText).not.toHaveBeenCalled();
   });
 
   it('rescues the sub-point text before touching the structure', async () => {
@@ -183,7 +180,7 @@ describe('useManualConspectus deletions', () => {
      * sub-point. Split across two writes, a failure in between left the words in BOTH places,
      * and a retry added them again; offline it was worse, because only the first half was
      * queued and the replay later merged the text into a parent whose sub-point still stood.
-     * The empty key is swept afterwards, and that sweep is free to fail.
+     * The blank also masks the legacy sub-point copy after the outline is accepted.
      */
     const [, changedText, removed] = mockSavePlanText.mock.calls[0];
     expect(changedText['point-1']).toContain('Point text');
@@ -191,9 +188,7 @@ describe('useManualConspectus deletions', () => {
     expect(changedText['sub-1']).toBe('');
     expect(removed ?? []).toEqual([]);
 
-    const [, sweptText, sweptKeys] = mockSavePlanText.mock.calls.at(-1)!;
-    expect(sweptText).toEqual({});
-    expect(sweptKeys).toEqual(['sub-1']);
+    expect(mockSavePlanText).toHaveBeenCalledTimes(1);
   });
 
   it('keeps the rescued sub-point text when the structure write fails', async () => {
