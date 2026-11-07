@@ -11,6 +11,29 @@ import type { CommandResult, DocumentData, EngineMetadata, JournalEntry, Resourc
 export interface AtomicCommitIdentity { id: string; participants: string[]; kind?: 'create-member' | 'council-carry' | 'analysis-reshape' }
 const sameResource = (a: ResourceRef, b: ResourceRef) => a.collection === b.collection && a.id === b.id;
 
+/** Actions whose existing document editors can follow the complete saved effect. */
+export function isLiveWholeAction(request: CommitRequest): boolean {
+  return request.atomic?.kind === 'council-carry' || request.atomic?.kind === 'analysis-reshape';
+}
+
+/** These ordinary Saves lose their queue dependency, but their authored words remain. */
+export function isRetiredActionDependent(request: CommitRequest): boolean {
+  const collection = request.baseline.resource.collection;
+  return Boolean(request.cancelledByAction && !request.atomic && !request.transferredTo
+    && (collection === 'councils' || collection === 'studyNotes'));
+}
+
+/** Project only whole-action cancellations newest first, while each held predecessor can
+ * still supply its authored words. Delivery and other results retain their original order. */
+export function orderActionProjections(requests: readonly CommitRequest[]): readonly CommitRequest[] {
+  const rollback = (request: CommitRequest) => request.state === 'cancelled' && request.cancelledByAction
+    && (isLiveWholeAction(request) || isRetiredActionDependent(request));
+  const cancelled = requests.filter(rollback);
+  if (cancelled.length < 2) return requests;
+  let next = cancelled.length;
+  return requests.map(request => rollback(request) ? cancelled[--next] : request);
+}
+
 /** The same predecessor rebase is used for ordinary and atomic saved intent. */
 export function initializeCommit(record: CommitRequest, records: readonly CommitRequest[]): CommitRequest | null {
   const predecessor = record.predecessor && records.find(candidate => candidate.id === record.predecessor);
@@ -163,5 +186,5 @@ export async function cancelActionCommits(records: readonly CommitRequest[], con
   if (!context.store.compareAndSetBatch) throw new Error('Atomic commit storage is required');
   // Dependents and every participant retire together, even across several moves.
   const saved = await context.store.compareAndSetBatch(records.map(previous => ({ previous, next: { ...previous, state: 'cancelled' as const, cancelledByAction: true, unfinalized: pendingCommitRetirement(previous) } })));
-  context.assertCurrent(); saved.forEach(context.emit);
+  context.assertCurrent(); orderActionProjections(saved).forEach(context.emit);
 }

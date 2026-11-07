@@ -1,5 +1,6 @@
 import { failureCode } from '@/utils/failureCode';
 
+import { isLiveWholeAction, isRetiredActionDependent, orderActionProjections } from './atomicCommits';
 import { firstBookMarksIntent, isFirstBookMarksDraft } from './bibleMarksCreation';
 import { CaptureContinuations } from './captureContinuations';
 import { assertCommitCapture } from './commits';
@@ -201,7 +202,7 @@ export class EditorController {
       if (controller.prepared) await options.runtime.submit(controller.prepared);
       await controller.finishAcknowledgements();
       if (options.commits) {
-        for (const request of await options.commits.list()) {
+        for (const request of orderActionProjections(await options.commits.list())) {
           if (request.editorId === options.editorId || controller.session.checkpoint().pending[request.id]) await controller.applyCommit(request);
         }
       }
@@ -652,11 +653,11 @@ export class EditorController {
     else this.atomicPending.delete(request.id);
     if (request.state === 'cancelled' && request.cancelledByAction) {
       const priorId = request.predecessor;
-      if (request.atomic?.kind === 'council-carry' && priorId && this.session.checkpoint().pending[priorId]) {
+      if (isLiveWholeAction(request) && priorId && this.session.checkpoint().pending[priorId]) {
         const requests = await this.options.commits?.list(); this.assertCurrent();
         const prior = requests?.find(record => record.id === priorId && ['refused', 'conflict'].includes(record.state));
         this.result = prior?.result ?? null;
-      } else if (request.atomic || request.baseline.resource.collection !== 'councils' || this.result?.operationId === request.id) {
+      } else if (!isRetiredActionDependent(request) || this.result?.operationId === request.id) {
         this.result = null;
       }
     }

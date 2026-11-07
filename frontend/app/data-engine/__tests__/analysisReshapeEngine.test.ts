@@ -1,6 +1,9 @@
+import { waitFor } from '@testing-library/react';
 import { inMemoryRelationReader } from '@test-utils/inMemoryRelationReader';
 
 import { DataEngine } from '../engine';
+import { editorIdentity } from '../editorIdentity';
+import { liveSubmittedWork } from '../liveSubmittedWork';
 import { createIndexedDbCheckpoints } from '../checkpoint.client';
 import { ResourceObserver } from '../observer';
 import { createIndexedDbCommitStore } from '../commits.client';
@@ -144,6 +147,171 @@ describe('DataEngine analysis reshape capture and recovery', () => {
     expect((await s.commits.list('owner')).filter(request => participantIds.includes(request.id)).every(request => request.state === 'acknowledged')).toBe(true);
     expect((await restarted.listAnalysisReshapes())).toEqual([]);
     restarted.dispose();
+  });
+
+  it.each(['source', 'target'] as const)('shows a durably reshaped %s in an already-open editor on offline return', async side => {
+    const s = setup(), author = s.createEngine(), reader = s.createEngine();
+    const before = s[side];
+    try {
+      const mounted = await reader.openEditor(before.resource, editorIdentity('reader-tab', before.resource, 'analysis', 'opening'));
+      reader.setVisible(false);
+      const changes = s.edits();
+      await author.reshapeStudyAnalysis(changes);
+      const requests = await s.commits.list('owner');
+      expect(requests).toHaveLength(2);
+      expect(requests[0].atomic).toEqual(requests[1].atomic);
+      expect(s.transport.send).not.toHaveBeenCalled();
+      expect(s.rows.get(key(before.resource))).toEqual(before);
+
+      reader.setVisible(true);
+      const expected = changes.find(edit => edit.resource.id === before.resource.id)!.value;
+      await waitFor(() => expect(mounted.getState().checkpoint.draft).toMatchObject({
+        content: expected.content, scriptureRefs: expected.scriptureRefs, analysis: expected.analysis,
+      }));
+      expect(mounted.getState().checkpoint.confirmed).toEqual(before);
+      expect(mounted.getState().actionResolutionRequired).toBe(true);
+      expect(mounted.getState().savedIntentReplaceable).toBe(false);
+    } finally { author.dispose(); reader.dispose(); }
+  });
+
+  it('proves all three saved participants and leaves a private reader frame untouched', async () => {
+    const s = setup(), author = s.createEngine(), reader = s.createEngine();
+    const third = note('third', 5);
+    s.rows.set(key(third.resource), clone(third)); s.cached.set(key(third.resource), clone(third));
+    try {
+      const editorId = editorIdentity('reader-tab', s.target.resource, 'analysis', 'opening');
+      const mounted = await reader.openEditor(s.target.resource, editorId);
+      const initial = mounted.getState().checkpoint;
+      reader.setVisible(false);
+      await author.reshapeStudyAnalysis([...s.edits(), {
+        resource: third.resource, expected: third.value, value: reshaped(third, 'right recipient words', 4),
+      }]);
+      const requests = await s.commits.list('owner');
+      expect(requests).toHaveLength(3);
+      expect(liveSubmittedWork('owner', editorId, initial, requests)?.checkpoint.draft?.content).toBe('joined removed words');
+      expect(liveSubmittedWork('owner', editorId, initial, requests.filter(row => row.baseline.resource.id !== third.resource.id))).toBeNull();
+      await mounted.edit({ ...initial.draft, content: 'Private recipient words' });
+      const privateFrame = mounted.getState().checkpoint;
+      expect(liveSubmittedWork('owner', editorId, privateFrame, requests)).toBeNull();
+      reader.setVisible(true);
+      expect(mounted.getState().checkpoint.draft?.content).toBe('Private recipient words');
+    } finally { author.dispose(); reader.dispose(); }
+  });
+
+  it('follows a saved reshape on the source while its recipient is still a local creation', async () => {
+    const s = setup({ target: 'new' }), author = s.createEngine(), reader = s.createEngine();
+    try {
+      const mounted = await reader.openEditor(s.source.resource, 'reader-source');
+      reader.setVisible(false);
+      await author.reshapeStudyAnalysis(s.edits());
+      reader.setVisible(true);
+      await waitFor(() => expect(mounted.getState().checkpoint.draft?.content).toBe('remaining source words'));
+      expect(s.rows.has(key(s.target.resource))).toBe(false);
+      expect(mounted.getState().actionResolutionRequired).toBe(true);
+    } finally { author.dispose(); reader.dispose(); }
+  });
+
+  it('keeps a refused earlier Save and its own answer when discarding the dependent reshape', async () => {
+    const s = setup(), author = s.createEngine(), reader = s.createEngine();
+    try {
+      const mounted = await reader.openEditor(s.target.resource, editorIdentity('reader-tab', s.target.resource, 'analysis', 'opening'));
+      await mounted.commit(value => ({ ...value, title: 'Earlier independent title' }));
+      const earlier = (await s.commits.list('owner'))[0];
+      const saved = mounted.getState().checkpoint.draft;
+      reader.setVisible(false);
+      await author.reshapeStudyAnalysis(s.edits(s.source.value!, saved));
+      reader.setVisible(true);
+      await waitFor(() => expect(mounted.getState().checkpoint.draft?.content).toBe('joined removed words'));
+      expect(mounted.getState().checkpoint.draft?.title).toBe('Earlier independent title');
+      s.setMode('refuse'); reader.setOnline(true); await reader.retry();
+      const [action] = await author.listAnalysisReshapes();
+      expect(action.delivery.canDiscard).toBe(true);
+      await author.discardAnalysisReshape(action.id);
+      reader.setVisible(true);
+      await waitFor(() => expect(mounted.getState().checkpoint.draft?.content).toBe('original-target'));
+      expect(mounted.getState().checkpoint.draft?.title).toBe('Earlier independent title');
+      expect(mounted.getState().checkpoint.pending[earlier.id]).toBeDefined();
+      expect(mounted.getState().result).toMatchObject({kind: 'refused', operationId: earlier.id});
+      expect(mounted.getState().actionResolutionRequired).toBe(false);
+    } finally { author.dispose(); reader.dispose(); }
+  });
+
+  it('keeps a separately saved later authored frame as a draft after discarding the reshape', async () => {
+    const s = setup(), author = s.createEngine(), reader = s.createEngine();
+    try {
+      const mounted = await reader.openEditor(s.target.resource, 'reader-target');
+      reader.setVisible(false);
+      await author.reshapeStudyAnalysis(s.edits());
+      reader.setVisible(true);
+      await waitFor(() => expect(mounted.getState().checkpoint.draft?.content).toBe('joined removed words'));
+      const shown = mounted.getState().checkpoint.draft!;
+      const later = { ...shown, title: 'Later analysis', content: 'Later independent words', scriptureRefs: [reference('later-ref', 6)],
+        analysis: { ...(shown.analysis as DocumentData), cuts: [1] } };
+      await mounted.commit(() => later);
+      const records = await s.commits.list('owner');
+      const dependent = records.find(row => !row.atomic)!;
+      const participant = records.find(row => row.atomic && row.baseline.resource.id === s.target.resource.id)!;
+      expect(dependent.predecessor).toBe(participant.id);
+      s.setMode('refuse'); reader.setOnline(true); await reader.retry();
+      const [action] = await author.listAnalysisReshapes();
+      expect(action.delivery.canDiscard).toBe(true);
+      await expect(mounted.acceptRemote()).rejects.toMatchObject({code: 'atomic-action-resolution-required'});
+      await author.discardAnalysisReshape(action.id);
+      reader.setVisible(true);
+      await waitFor(() => expect(mounted.getState().checkpoint.pending).toEqual({}));
+      expect(mounted.getState().checkpoint.draft).toMatchObject(later);
+      expect(mounted.getState().checkpoint.dirty).toBe(true);
+      expect(mounted.getState().actionResolutionRequired).toBe(false);
+      mounted.close();
+      expect((await reader.listRecoverable(s.target.resource)).some(choice => choice.record.checkpoint.draft?.content === later.content)).toBe(true);
+      expect(s.rows.get(key(s.target.resource))).toEqual(s.target);
+    } finally { author.dispose(); reader.dispose(); }
+  });
+
+  it.each(['mounted', 'reopened'] as const)('keeps separately saved words between discarded reshapes in a %s recipient', async opening => {
+    const s = setup(), author = s.createEngine(), reader = s.createEngine();
+    const editorId = editorIdentity('reader-tab', s.target.resource, 'analysis', 'opening');
+    try {
+      const mounted = await reader.openEditor(s.target.resource, editorId);
+      reader.setVisible(false);
+      const first = s.edits();
+      await author.reshapeStudyAnalysis(first);
+      const firstAction = (await author.listAnalysisReshapes())[0];
+      reader.setVisible(true);
+      await waitFor(() => expect(mounted.getState().checkpoint.draft?.content).toBe('joined removed words'));
+      const base = mounted.getState().checkpoint.draft!;
+      const separate = { ...base, title: 'Separately saved analysis', content: 'Words authored between the reshapes',
+        scriptureRefs: [reference('separate-ref', 6)], analysis: { ...(base.analysis as DocumentData), cuts: [1] } };
+      await mounted.commit(() => separate);
+
+      reader.setVisible(false);
+      const second = [
+        { ...first[0], expected: first[0].value, value: reshaped(s.source, 'Source after the second reshape', 1) },
+        { ...first[1], expected: separate, value: reshaped({ ...s.target, value: separate }, 'Second reshape frame', 4) },
+      ];
+      await author.reshapeStudyAnalysis(second);
+      const requests = await s.commits.list('owner');
+      const middle = requests.find(row => !row.atomic)!;
+      expect(requests.some(row => row.predecessor === middle.id && row.atomic?.kind === 'analysis-reshape')).toBe(true);
+      reader.setVisible(true);
+      await waitFor(() => expect(mounted.getState().checkpoint.draft?.content).toBe('Second reshape frame'));
+      if (opening === 'reopened') mounted.close();
+
+      s.setMode('refuse'); reader.setOnline(true); await reader.retry();
+      const refused = (await author.listAnalysisReshapes()).find(action => action.id === firstAction.id);
+      expect(refused?.delivery.canDiscard).toBe(true);
+      await author.discardAnalysisReshape(firstAction.id);
+      reader.setVisible(true);
+      if (opening === 'reopened') {
+        const choices = await reader.listRecoverable(s.target.resource);
+        expect(choices.some(choice => choice.record.checkpoint.draft?.content === separate.content)).toBe(true);
+      }
+      const inspected = opening === 'mounted' ? mounted : await reader.openEditor(s.target.resource, editorId);
+      await waitFor(() => expect(inspected.getState().checkpoint.pending).toEqual({}));
+      expect(inspected.getState().checkpoint.draft).toMatchObject(separate);
+      expect(inspected.getState().checkpoint.dirty).toBe(true);
+      expect(s.rows.get(key(s.target.resource))).toEqual(s.target);
+    } finally { author.dispose(); reader.dispose(); }
   });
 
   it('pins each participant behind its exact pending predecessor when the author already saved earlier words', async () => {

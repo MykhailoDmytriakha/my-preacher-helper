@@ -1,4 +1,5 @@
 import { hasDifferentAnalysisPositionBasis, keepAnalysisReshapeFrame } from './analysisReshapeFields';
+import { isLiveWholeAction, isRetiredActionDependent } from './atomicCommits';
 import { firstBookMarksIntent } from './bibleMarksCreation';
 import { prepareDomainCommand } from './domainPolicy';
 import { ACTION_SLOT, editorSlot } from './editorIdentity';
@@ -21,10 +22,10 @@ export interface SessionCheckpoint {
 
 const copy = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
-/** An active earlier council Save owns its words even if its dependent transfer is discarded. */
+/** An active earlier Save owns its words even if the dependent whole action is discarded. */
 function actionRollbackBase(request: CommitRequest, accepted: ResourceSnapshot, predecessor?: DocumentData | null):
   { value: DocumentData | null; conflicts: ConflictDetail[] } {
-  if (request.atomic?.kind === 'council-carry' && predecessor) {
+  if (isLiveWholeAction(request) && predecessor) {
     if (!accepted.value) return { value: predecessor, conflicts: [] };
     const retained = mergeDocumentFields(request.baseline.value, predecessor, accepted.value);
     return { value: retained.value.exists ? retained.value.value as DocumentData : null, conflicts: retained.conflicts };
@@ -120,10 +121,9 @@ export class DataSession {
   applyCommit(request: CommitRequest): boolean {
     if (request.state === 'cancelled') {
       const held = this.state.pending[request.id];
-      // Council action cancellation retires dependent Saves after rolling back the carry.
-      // Their separately authored words have already been rebased and remain in the draft.
-      const dependentCouncilSave = !request.atomic && request.baseline.resource.collection === 'councils';
-      if (request.cancelledByAction && held && !dependentCouncilSave) this.rollbackAction(request);
+      // The whole action already rebased its dependent Saves. Their separately authored words
+      // stay in the draft when their obsolete request identity is released.
+      if (request.cancelledByAction && held && !isRetiredActionDependent(request)) this.rollbackAction(request);
       const latest = Boolean(held) && Object.values(this.state.pending).every(other => other.generation <= held.generation);
       this.release(request.id);
       if (held && !request.cancelledByAction && !Object.keys(this.state.pending).length) {

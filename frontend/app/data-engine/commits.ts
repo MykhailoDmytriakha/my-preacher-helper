@@ -1,4 +1,4 @@
-import { advanceAtomicCommit, atomicParticipants, cancellationScope, cancelActionCommits, canCancelSavedIntent, initializeCommit, type AtomicCommitIdentity } from './atomicCommits';
+import { advanceAtomicCommit, atomicParticipants, cancellationScope, cancelActionCommits, canCancelSavedIntent, initializeCommit, orderActionProjections, type AtomicCommitIdentity } from './atomicCommits';
 import { isFirstBookMarksDraft } from './bibleMarksCreation';
 import { pendingCommitRetirement, retireCommitJournal } from './commitJournal';
 import { CommitReceipts } from './commitReceipt';
@@ -266,7 +266,7 @@ export class CommitQueue {
     const owner = this.owner, generation = this.generation;
     const requests = await this.list();
     if (!owner || !this.current(owner, generation)) return [];
-    for (const request of requests) {
+    for (const request of orderActionProjections(requests)) {
       if (!this.current(owner, generation)) return [];
       // A previous read may have found private typing or an active form. Retry admission
       // on return even at the same version; emit still refuses an older delivery state.

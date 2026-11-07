@@ -2,6 +2,7 @@
 
 import { z } from 'zod';
 
+import { orderActionProjections } from './atomicCommits';
 import { readManualScopeIdentity } from './editorIdentity';
 import { equalValues, getResourcePolicy, isValidIdentifier, validateCommand } from './protocol';
 import { recoverySources } from './recoveryPresence';
@@ -99,7 +100,7 @@ export function isPassiveManualContinuation(record: EditorRecord): boolean {
 export function reconcileRecoveryRecord(record: EditorRecord, requests: readonly CommitRequest[]): EditorRecord {
   const session = DataSession.restore(record.checkpoint);
   const completed = new Set(record.completedCommits ?? []);
-  for (const request of requests) {
+  for (const request of orderActionProjections(requests)) {
     if (request.owner !== record.owner || !sameResource(request.baseline.resource, record.checkpoint.confirmed.resource)
       || completed.has(request.id)
       || (request.editorId !== record.editorId && !session.checkpoint().pending[request.id])) continue;

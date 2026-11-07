@@ -1,4 +1,4 @@
-import { atomicParticipants } from './atomicCommits';
+import { atomicParticipants, isLiveWholeAction } from './atomicCommits';
 import { areDifferentTabEditors } from './editorIdentity';
 import { markBorrowedManualSources } from './manualReturnSources';
 import { equalValues } from './protocol';
@@ -10,22 +10,25 @@ import { submittedWorkCheckpoint } from './submittedWork';
 import type { CommitRequest } from './commits';
 import type { SessionCheckpoint } from './session';
 
-const COUNCIL_CARRY = 'council-carry';
-
-/** A council transfer is one saved intent, including when one participant is a new council. */
-function liveCouncilCarry(request: CommitRequest, requests: readonly CommitRequest[]): CommitRequest[] | null {
-  if (request.atomic?.kind !== COUNCIL_CARRY) return null;
+/** A transfer or reshape is one saved intent, including participants that it creates. */
+function liveActionParticipants(request: CommitRequest, requests: readonly CommitRequest[]): CommitRequest[] | null {
+  const kind = request.atomic?.kind;
+  if (kind !== 'council-carry' && kind !== 'analysis-reshape') return null;
   let participants: CommitRequest[];
   try { participants = atomicParticipants(request, requests); } catch { return null; }
+  const council = kind === 'council-carry';
+  const collection = council ? 'councils' : 'studyNotes';
   const states = request.state === 'acknowledged' ? ['acknowledged'] : ['queued', 'prepared'];
-  if (participants.length !== 2 || participants[0].baseline.value === null
-    || participants[0].baseline.resource.id === participants[1].baseline.resource.id
+  if (participants.length > (council ? 2 : 3) || participants[0].baseline.value === null
+    || new Set(participants.map(participant => participant.baseline.resource.id)).size !== participants.length
     || participants.some(participant => !states.includes(participant.state) || participant.retentionScope
-      || participant.baseline.resource.collection !== 'councils' || participant.baseline.metadata?.deleted
+      || participant.baseline.resource.collection !== collection || participant.baseline.metadata?.deleted
       || (participant.baseline.value === null && participant.baseline.metadata !== null)
       || !participant.value || participant.value.userId !== request.owner
+      || (!council && (participant.value.type !== 'analysis'
+        || (participant.baseline.value && participant.baseline.value.type !== 'analysis')))
       || !snapshotBelongsToOwner(request.owner, participant.baseline)
-      || (participant.command && (participant.command.kind !== 'relation' || participant.command.relation !== COUNCIL_CARRY)))) return null;
+      || (participant.command && (participant.command.kind !== 'relation' || participant.command.relation !== kind)))) return null;
   return participants;
 }
 
@@ -56,7 +59,7 @@ function canFollowChain(current: SessionCheckpoint, chain: readonly CommitReques
   return known.length === pending.length
     && known.every(request => equalValues(request.value, current.pending[request.id].value))
     && (equalValues(current.draft, latest[1].value) || matchesShownPrefix(current, chain, latest[0]))
-    && next.length > 0 && next.every(request => request.atomic?.kind === COUNCIL_CARRY);
+    && next.length > 0 && next.every(isLiveWholeAction);
 }
 
 function readLiveChainProof(chain: readonly CommitRequest[], requests: readonly CommitRequest[],
@@ -67,7 +70,7 @@ function readLiveChainProof(chain: readonly CommitRequest[], requests: readonly 
     if (request.retentionScope || request.baseline.value === null || request.value === null
       || !['queued', 'prepared', 'acknowledged'].includes(request.state)) return null;
     if (request.atomic) {
-      const participants = liveCouncilCarry(request, requests);
+      const participants = liveActionParticipants(request, requests);
       if (!participants) return null;
       for (const participant of participants) atomicIds.add(participant.id);
     } else if ((request.command && request.command.kind !== 'update')
