@@ -13,6 +13,7 @@ import { canReplaceDocumentIntent, isDirectLegacyDocumentIntent, requiresWholeAc
 import { ACTION_SLOT, areDifferentTabManualParents, editorSlot, isManualChoiceRecoveryIdentity, manualScopeIdentity, readManualScopeIdentity } from './editorIdentity';
 import { AddressedFailures, eachFailure, PausedReadFailure } from './failures';
 import { collectionHeadRef } from './feed';
+import { submittedEditorCheckpoint } from './liveSubmittedWork';
 import { LocalWriteback, type LocalWriteHandoff } from './localWriteback';
 import { exactManualRequest, exactManualWords, recoverManualChoiceCopy } from './manualChoice';
 import { assertDurableManualChoice, assertManualChoiceInput, assertManualComparison, manualComparison, type ManualComparison } from './manualComparison';
@@ -21,7 +22,7 @@ import { ManualScope, recoverManualScopeRecord, reconcileManualCaptures, sameMan
 import { captureMembershipPins } from './membershipCapture';
 import { describeActionDelivery, describeMembershipDelivery, type MembershipDelivery } from './membershipDelivery';
 import { CREATION_SCOPE_PREFIX, MembershipScope, type MembershipScopeRecord } from './membershipScope';
-import { ordinaryAnswerCoverage, ordinaryStoredChoice, reviewOrdinaryAnswerChoice } from './ordinaryAnswerChoice';
+import { hasBranchedOrdinaryAnswer, ordinaryAnswerCoverage, ordinaryStoredChoice, requireDocumentChoiceForBranch, reviewOrdinaryAnswerChoice } from './ordinaryAnswerChoice';
 import { getResourcePolicy, equalValues, isValidIdentifier } from './protocol';
 import { documentRecordPresence, type RecordPresence } from './recordPresence';
 import { forkCheckpoint, isPassiveManualContinuation, isRecoverableCheckpoint, reconcileRecoveryRecord, recoveryCheckpointId, validateRecoveryRecord } from './recovery.client';
@@ -29,7 +30,6 @@ import { RecoveryPresence, recoverySources, type RecoveryPresenceKind, type Reco
 import { DataSession } from './session';
 import { canReplaceSnapshot, coversCommittedEffect, storesNewCopy } from './snapshotFreshness';
 import { snapshotBelongsToOwner } from './snapshotIdentity';
-import { submittedWorkCheckpoint } from './submittedWork';
 import { redeliveryDelay } from './unanswered';
 
 import type { CollectionReader, CollectionState } from './collections';
@@ -76,7 +76,7 @@ export interface DataEngineOptions {
 }
 
 export interface ManagedManualForm {
-  getState(): (ReturnType<ManualScope['getState']> & { comparison?: ManualComparison; exactChoice?: true }) | null;
+  getState(): (ReturnType<ManualScope['getState']> & { comparison?: ManualComparison; exactChoice?: true; documentChoiceRequired?: true }) | null;
   subscribe(listener: () => void): () => void;
   begin(): Promise<void>;
   follow(): Promise<void>;
@@ -1086,8 +1086,8 @@ export class DataEngine {
 
   /**
    * Whether a screen opened on this document now would take over its queued work: exactly one chain
-   * of unfinished requests (`submittedWorkCheckpoint`). When there are several, the engine does not
-   * pick among them, so a waiting draft of the document has no screen that can decide it.
+   * of unfinished requests, or one proved answer shared by all ordinary branches. The screen
+   * does not pick a later branch. Several independent answers still need separate recovery.
    */
   async screenDecides(resource: ResourceRef): Promise<boolean> {
     const owner = this.requireOwner();
@@ -1095,7 +1095,7 @@ export class DataEngine {
     const generation = this.generation;
     const requests = await this.commits.list();
     this.assertCurrent(owner, generation);
-    return submittedWorkCheckpoint(owner, copy(resource), requests) !== null;
+    return submittedEditorCheckpoint(owner, copy(resource), requests) !== null;
   }
 
   /**
@@ -1625,7 +1625,7 @@ export class DataEngine {
       const requests = creating ? [] : await this.commits.list();
       assertOpening();
       requests.forEach(request => this.rememberCommit(request));
-      const submittedCheckpoint = submittedWorkCheckpoint(owner, frozen, requests);
+      const submittedCheckpoint = submittedEditorCheckpoint(owner, frozen, requests);
       const manualStore = this.options.manualScopes;
       const readManualSources = manualStore && ((related: readonly CommitRequest[]) => manualReturnSources(manualStore, owner, editorId, frozen, related));
       if (submittedCheckpoint && readManualSources) {
@@ -1678,13 +1678,21 @@ export class DataEngine {
       if (!creating && canReplaceSnapshot(controller.getState().checkpoint.confirmed, snapshot)) {
         await controller.observe(snapshot, 'cache');
       }
-      // The refusal opens on its capture basis. Learn a newer stored copy without making
-      // recovery of the durable draft depend on a second IndexedDB store responding.
-      if (submittedCheckpoint && ordinaryAnswerCoverage(controller.getState().checkpoint, requests).councilRefusal) {
-        this.background(this.cachedSnapshotWithAcknowledgements(owner, generation, frozen).then(cached => {
-          if (!entry.closed && this.current(owner, generation) && cached
-            && canReplaceSnapshot(controller.getState().checkpoint.confirmed, cached)) return controller.observe(cached, 'cache');
-        }), owner, generation, frozen);
+      // The answer opens on its capture basis. Do not block opening a saved draft on a second
+      // IndexedDB store, but a newly opened branched choice must wait for the known stored copy.
+      const checkpoint = controller.getState().checkpoint;
+      let loadingBranchAnswer = Boolean(submittedCheckpoint && hasBranchedOrdinaryAnswer(Object.keys(checkpoint.pending), requests));
+      if (loadingBranchAnswer || (submittedCheckpoint && ordinaryAnswerCoverage(checkpoint, requests).councilRefusal)) {
+        const observing = this.cachedSnapshotWithAcknowledgements(owner, generation, frozen).then(cached => {
+          if (entry.closed || !this.current(owner, generation) || !cached) return;
+          const { confirmed, remoteCandidate } = controller.getState().checkpoint;
+          if (storesNewCopy(remoteCandidate ?? confirmed, cached)) return controller.observe(cached, 'cache');
+        }).finally(() => {
+          if (!loadingBranchAnswer) return;
+          loadingBranchAnswer = false;
+          if (!entry.closed && this.current(owner, generation)) this.emit(entry);
+        });
+        this.background(observing, owner, generation, frozen);
       }
       assertOpening();
       let lastConfirmed: ResourceSnapshot | null = null;
@@ -1774,6 +1782,12 @@ export class DataEngine {
         if (!receipt) throw new Error('Write capture did not return its receipt');
         return receipt;
       };
+      const choose = async (choice: 'local' | 'remote', expected?: EditorRecord) => {
+        active();
+        if (loadingBranchAnswer) throw Object.assign(new Error('Read the current version before choosing'), { code: 'fresh-read-required' });
+        await this.resolveEditorChoice(entry, owner, generation, choice, expected);
+        active();
+      };
       const managed: ManagedEditor = {
         getState: () => {
           active();
@@ -1787,7 +1801,7 @@ export class DataEngine {
             const scope = intent.borrowedManualScope ?? reopenedManualAnswerScope(request, editorId, this.commitRecords);
             return scope ? [scope] : [];
           });
-          return { ...state, borrowedManualAnswers, savedIntentReplaceable: legacy ? undefined : !borrowedManualAnswers.length && controller.hasChoiceAuthority(state.checkpoint)
+          return { ...state, borrowedManualAnswers, savedIntentReplaceable: legacy ? undefined : !loadingBranchAnswer && !borrowedManualAnswers.length && controller.hasChoiceAuthority(state.checkpoint)
             && canReplaceDocumentIntent(owner, editorId, pendingIds, [...this.commitRecords.values()], this.pending) };
         },
         getObservation: () => { active(); return copy(entry.observation); },
@@ -1851,8 +1865,8 @@ export class DataEngine {
         removeWithReceipt: options => withReceipt(captured => remove(captured, options?.captureScope)),
         save: async () => { active(); await controller.save(); active(); this.backgroundDrain(); this.prepareCommitsInBackground(); active(); },
         remove: () => remove(),
-        acceptRemote: async expected => { active(); await this.resolveEditorChoice(entry, owner, generation, 'remote', expected); active(); },
-        keepLocal: async expected => { active(); await this.resolveEditorChoice(entry, owner, generation, 'local', expected); active(); },
+        acceptRemote: expected => choose('remote', expected),
+        keepLocal: expected => choose('local', expected),
         dispose: () => {
           this.close(entry);
           if (this.editors.get(editorId) === entry) this.editors.delete(editorId);
@@ -2223,9 +2237,12 @@ export class DataEngine {
         const controller = parent.controller!;
         const checkpoint = controller.getState().checkpoint;
         const request = exactRequest(form, checkpoint);
-        const exact = request && canReplaceDocumentIntent(owner, '', [request.id], [...this.commitRecords.values()], this.pending);
+        const records = [...this.commitRecords.values()];
+        const exact = request && canReplaceDocumentIntent(owner, '', [request.id], records, this.pending);
+        const documentChoiceRequired = !exact && hasBranchedOrdinaryAnswer(Object.keys(checkpoint.pending), records);
         return { ...form, ...(exact ? { exactChoice: true as const } : {}),
-          comparison: exact || controller.hasChoiceAuthority(checkpoint)
+          ...(documentChoiceRequired ? { documentChoiceRequired: true as const } : {}),
+          comparison: exact || ((!documentChoiceRequired || form.choiceRequired) && controller.hasChoiceAuthority(checkpoint))
             ? manualComparison(form, checkpoint, this.commitRecords, exact ? request : undefined) : undefined };
       },
       subscribe: listener => { active(); listeners.add(listener); return () => { listeners.delete(listener); }; },
@@ -2266,7 +2283,11 @@ export class DataEngine {
           requests.forEach(request => this.rememberCommit(request));
           assertComparison();
         }
-        const exact = exactRequest(initial, parent.controller!.getState().checkpoint);
+        const checkpoint = parent.controller!.getState().checkpoint;
+        const exact = exactRequest(initial, checkpoint);
+        if (!exact && (choice === 'local' || !initial?.choiceRequired)) {
+          requireDocumentChoiceForBranch(Object.keys(checkpoint.pending), [...this.commitRecords.values()]);
+        }
         if (!exact && !initial?.choiceRequired) parent.controller!.assertChoiceAuthority();
         const updating = choice === 'local' && options?.updater && scope ? scope.update(options.updater) : undefined;
         // Normalization is synchronous; later input is checked against this exact chosen stage.

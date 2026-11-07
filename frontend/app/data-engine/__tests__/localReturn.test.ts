@@ -1,9 +1,10 @@
 import { waitFor } from '@testing-library/react';
 import { documentEngineHarness, settleEngine } from '@test-utils/documentEngineHarness';
-import { editorIdentity, recoveryEditorIdentity } from '@/data-engine/editorIdentity';
+import { editorIdentity, manualScopeIdentity, recoveryEditorIdentity } from '@/data-engine/editorIdentity';
 import { liveSubmittedWork } from '@/data-engine/liveSubmittedWork';
 import { recoveryHeldOpen } from '@/data-engine/openDocumentAnswers';
 import { DataSession } from '@/data-engine/session';
+import { describeManualSync, describeSync } from '@/data-engine/status';
 
 jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
 const resource = { collection: 'groups', id: 'offline-group-279' };
@@ -110,6 +111,168 @@ it.each(['return take stored', 'return keep mine', 'source take stored', 'source
     } finally { a.dispose(); b.dispose(); }
   },
 );
+
+it.each(['source takes stored', 'new editor keeps mine', 'new editor takes newer stored', 'notice takes stored'] as const)(
+  'settles a common refusal while preserving both separately saved continuations: %s', async choice => {
+    const { h, a, b, inA, inB } = await setup();
+    const firstTitle = 'Common title refused by the server';
+    const branchTitles = ['First separately saved title', 'Second separately saved title'];
+    try {
+      b.setVisible(false);
+      await inA.commit(current => ({ ...current!, title: firstTitle }));
+      const [first] = await h.commits.list('owner');
+      b.setVisible(true);
+      await waitFor(() => expect(inB.getState().checkpoint.draft?.title).toBe(firstTitle));
+      await inB.edit({ ...inB.getState().checkpoint.draft!, title: branchTitles[1] });
+      b.setVisible(false);
+      await inA.commit(current => ({ ...current!, title: branchTitles[0] }));
+      b.setVisible(true);
+      await settleEngine();
+      expect(inB.getState().checkpoint.draft?.title).toBe(branchTitles[1]);
+      await inB.save();
+      const captured = await h.commits.list('owner');
+      expect(captured.filter(request => request.predecessor === first.id).map(request => request.value?.title))
+        .toEqual(branchTitles);
+      const refusal = { kind: 'refused', operationId: first.id, code: 'receipt-too-large' } as const;
+      jest.mocked(h.transport.send).mockResolvedValueOnce(refusal);
+      a.setOnline(true);
+      await a.retry();
+      await waitFor(() => expect(inA.getState().result).toEqual(refusal));
+      expect(h.transport.send).toHaveBeenCalledTimes(1);
+      inB.dispose();
+      if (choice.startsWith('new editor')) {
+        h.silentRemote({ title: 'Newer title already on this device', description: 'Independent stored words' });
+        await a.retry(resource);
+        await waitFor(async () => expect(await b.peekCached(resource)).toEqual(h.server));
+      }
+
+      if (choice === 'source takes stored') {
+        await inA.acceptRemote();
+        expect(inA.getState().checkpoint.draft).toEqual(original);
+      } else {
+        inA.dispose();
+        if (choice === 'notice takes stored') expect(await b.takeStoredVersion(resource, [first.id])).toBe(1);
+        else {
+          const delayed = choice === 'new editor takes newer stored';
+          let release!: () => void;
+          const cacheRead = new Promise<void>(resolve => { release = resolve; });
+          const reader = delayed ? h.createBrowser({ beforeSnapshotRead: () => cacheRead }).engine : b;
+          try {
+            if (delayed) { reader.setOnline(false); reader.setOwner('owner'); }
+            const fresh = await reader.openEditor(resource, editorIdentity('tab-B', resource, 'group', 'branch-choice'));
+            expect(fresh.getState().result).toEqual(refusal);
+            expect(Object.keys(fresh.getState().checkpoint.pending)).toEqual([first.id]);
+            expect(fresh.getState().checkpoint.draft?.title).toBe(firstTitle);
+            if (delayed) {
+              expect(fresh.getState().savedIntentReplaceable).toBe(false);
+              await expect(fresh.acceptRemote()).rejects.toMatchObject({ code: 'fresh-read-required' });
+              expect((await h.commits.list('owner')).find(request => request.id === first.id)?.state).toBe('refused');
+            }
+            release();
+            await waitFor(() => expect(fresh.getState().checkpoint.remoteCandidate).toEqual(h.server));
+            await waitFor(() => expect(fresh.getState().savedIntentReplaceable).toBe(true));
+            if (choice === 'new editor keeps mine') {
+              await fresh.keepLocal();
+              expect(fresh.getState().checkpoint.draft).toMatchObject({ title: firstTitle, description: 'Independent stored words' });
+            } else {
+              await fresh.acceptRemote();
+              expect(fresh.getState().checkpoint.draft).toEqual(h.server.value);
+            }
+          } finally { release(); if (delayed) reader.dispose(); }
+        }
+      }
+      const retained = (await b.listRecoverable(resource)).filter(({ record }) => record.retainedManualChoice);
+      expect(retained.map(({ record }) => record.checkpoint.draft?.title).sort()).toEqual([...branchTitles].sort());
+      expect((await h.commits.list('owner')).some(request => request.state !== 'cancelled')).toBe(false);
+    } finally { a.dispose(); b.dispose(); }
+  },
+);
+
+it.each(['local', 'remote', 'local after a manual continuation'] as const)('keeps a branched ordinary flow answer out of the conduct form: %s', async choice => {
+  const { h, a, b, inA, inB } = await setup();
+  const flow = (durationMin: number) => [{ id: 'block', templateId: 'template', order: 0, durationMin }];
+  try {
+    b.setVisible(false);
+    await inA.commit(current => ({ ...current!, flow: flow(20) }));
+    const [first] = await h.commits.list('owner');
+    b.setVisible(true);
+    await waitFor(() => expect(inB.getState().checkpoint.draft?.flow).toEqual(flow(20)));
+    await inB.edit({ ...inB.getState().checkpoint.draft!, flow: flow(40) });
+    b.setVisible(false);
+    await inA.commit(current => ({ ...current!, flow: flow(30) }));
+    b.setVisible(true);
+    await inB.save();
+    const queued = await h.commits.list('owner');
+    expect(queued.filter(request => request.predecessor === first.id).map(request => request.value?.flow))
+      .toEqual([flow(30), flow(40)]);
+    h.silentRemote({ flow: flow(10) });
+    a.setOnline(true);
+    await a.retry();
+    await waitFor(() => expect(inA.getState().result?.kind).toBe('conflict'));
+    inA.dispose(); inB.dispose();
+
+    const fresh = await b.openEditor(resource, editorIdentity('tab-B', resource, 'group', 'conduct'));
+    await waitFor(() => expect(fresh.getState().savedIntentReplaceable).toBe(true));
+    const form = fresh.form('conduct-setup', [['flow']]);
+    await form.begin();
+    const mixed = choice === 'local after a manual continuation';
+    if (mixed) {
+      // A Save admitted in a different form can arrive after this editor acquired the ordinary answer.
+      const sibling = queued.find(request => request.predecessor === first.id)!;
+      const value = { ...sibling.value!, flow: flow(50) };
+      const editorId = manualScopeIdentity(editorIdentity('tab-C', resource, 'group', 'conduct-C'), 'conduct-setup');
+      await h.commits.create({ ...sibling, id: 'manual-flow-branch', editorId, editGeneration: 1,
+        predecessor: sibling.id, value, intended: value });
+    }
+    await expect(form.resolve(choice === 'remote' ? 'remote' : 'local')).rejects.toMatchObject({ code: 'other-changes-first' });
+    if (mixed) {
+      await expect(fresh.acceptRemote()).rejects.toMatchObject({ code: 'decision-changed' });
+      expect((await h.commits.list('owner')).map(request => request.state)).toEqual(['conflict', 'queued', 'queued', 'queued']);
+      return;
+    }
+    const state = fresh.getState();
+    const parentStatus = describeSync(state, fresh.getObservation(), fresh.getDelivery());
+    expect(parentStatus).toMatchObject({ canKeepLocal: true, canAcceptRemote: true });
+    expect(describeManualSync(form.getState(), state, parentStatus, null)).toMatchObject({ canKeepLocal: false, canAcceptRemote: false });
+    expect((await h.commits.list('owner')).map(request => request.state)).toEqual(['conflict', 'queued', 'queued']);
+
+    await fresh.acceptRemote();
+    const retained = (await b.listRecoverable(resource)).filter(({ record }) => record.retainedManualChoice);
+    expect(retained.map(({ record }) => record.checkpoint.draft?.flow)).toEqual(expect.arrayContaining([flow(30), flow(40)]));
+    expect(retained).toHaveLength(2);
+  } finally { a.dispose(); b.dispose(); }
+});
+
+it('rejects a field choice if another ordinary continuation lands during retirement', async () => {
+  const { h, a, b, inA, inB } = await setup();
+  const flow = (durationMin: number) => [{ id: 'block', templateId: 'template', order: 0, durationMin }];
+  try {
+    b.setVisible(false);
+    await inA.commit(current => ({ ...current!, flow: flow(20) }));
+    await inA.commit(current => ({ ...current!, flow: flow(30) }));
+    h.silentRemote({ flow: flow(10) });
+    a.setOnline(true);
+    await a.retry();
+    await waitFor(() => expect(inA.getState().result?.kind).toBe('conflict'));
+    inA.dispose();
+    b.setVisible(true);
+    await waitFor(() => expect(inB.getState().savedIntentReplaceable).toBe(true));
+    const form = inB.form('conduct-setup', [['flow']]);
+    await form.begin();
+    const [first, second] = await h.commits.list('owner');
+    expect(second.predecessor).toBe(first.id);
+    const value = { ...second.value!, flow: flow(40) };
+    const late = { ...second, id: 'second-flow-branch', editGeneration: 3, value, intended: value };
+    const commit = h.commits.compareAndSetWithCheckpoint!.bind(h.commits);
+    jest.spyOn(h.commits, 'compareAndSetWithCheckpoint').mockImplementationOnce(async (changes, project, target) => {
+      await h.commits.create(late);
+      return commit(changes, project, target);
+    });
+    await expect(form.resolve('remote')).rejects.toMatchObject({ code: 'commit-changed' });
+    expect((await h.commits.list('owner')).map(request => [request.id, request.state]))
+      .toEqual([[first.id, 'conflict'], [second.id, 'queued'], [late.id, 'queued']]);
+  } finally { a.dispose(); b.dispose(); }
+});
 
 it('does not keep an early generation refusal on a later revision of the rejected generation', async () => {
   const { h, a, b, inA, inB } = await setup();

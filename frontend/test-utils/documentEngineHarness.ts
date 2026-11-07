@@ -38,7 +38,7 @@ export function documentEngineHarness(initial: ResourceSnapshot, { cached: onDev
   const commits = createIndexedDbCommitStore(), checkpoints = createIndexedDbCheckpoints();
   let engine!: DataEngine;
   let activeRuntime!: DataEngineRuntime;
-  const createBrowser = (options?: { withCollections?: boolean; onError?: (error: unknown) => void; beforeSnapshotWrite?: (snapshot: ResourceSnapshot) => Promise<void> }): BrowserDataEngine => {
+  const createBrowser = (options?: { withCollections?: boolean; onError?: (error: unknown) => void; beforeSnapshotRead?: () => Promise<void>; beforeSnapshotWrite?: (snapshot: ResourceSnapshot) => Promise<void> }): BrowserDataEngine => {
     const runtime = new DataEngineRuntime({ transport, journal: {
       list: async owner => [...journal.values()].filter(item => item.command.owner === owner).map(copy),
       put: async entry => { journal.set(entry.command.operationId, copy(entry)); },
@@ -47,7 +47,7 @@ export function documentEngineHarness(initial: ResourceSnapshot, { cached: onDev
     activeRuntime = runtime;
     const observer = new ResourceObserver({ transport, source: { listen: () => () => undefined } });
     const snapshots = {
-      read: async () => (cached ? copy(cached) : undefined), put: async (_owner: string, value: ResourceSnapshot) => { await options?.beforeSnapshotWrite?.(value); cached = copy(value); },
+      read: async () => { if (options?.beforeSnapshotRead) await options.beforeSnapshotRead(); return cached ? copy(cached) : undefined; }, put: async (_owner: string, value: ResourceSnapshot) => { await options?.beforeSnapshotWrite?.(value); cached = copy(value); },
       list: async (owner: string, collection: string) => cached && cached.resource.collection === collection && cached.value?.userId === owner ? [copy(cached)] : [],
     };
     let cursor: CollectionCursor | undefined;

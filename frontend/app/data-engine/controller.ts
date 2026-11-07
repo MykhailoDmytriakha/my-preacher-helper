@@ -13,7 +13,7 @@ import { chooseLocalPlacement } from './localPlacementChoice';
 import { projectExactManualChoice, projectSavedChoiceDependents, type ExactManualChoice } from './manualChoice';
 import { sameManualSources } from './manualReturnSources';
 import { projectManualSelection, type ManualPath } from './manualScope';
-import { assertOrdinaryAnswerScope, ordinaryChoiceCheckpoint, reviewOrdinaryAnswerChoice } from './ordinaryAnswerChoice';
+import { assertOrdinaryAnswerScope, ordinaryChoiceCheckpoint, requireDocumentChoiceForBranch, reviewOrdinaryAnswerChoice } from './ordinaryAnswerChoice';
 import { confirmedExistingDeletion, equalValues, mergeDocumentFields, mergeFields } from './protocol';
 import { isRecoverableCheckpoint } from './recovery.client';
 import { recoveryChoiceFingerprint } from './recoveryChoice';
@@ -754,7 +754,8 @@ export class EditorController {
         const { confirmed, draft } = projected.checkpoint;
         return [projected, ...projectSavedChoiceDependents(record.owner, ordinary.first, confirmed, draft,
           retired, choice === 'local' ? record.editorId : undefined)];
-      }, ordinary ? { roots: [ordinary.first] } : undefined);
+      }, ordinary ? { roots: [ordinary.first] }
+        : selection ? { assertScope: requests => requireDocumentChoiceForBranch(cancelled, requests) } : undefined);
     if (!source || !projected) throw new Error('Choice checkpoint projection was not captured');
     await this.applyChoiceProjection(source, projected, captures);
     await this.options.commits!.finishCancellation(ordinary ? '' : this.options.editorId, ordinary ? ids : cancelled);

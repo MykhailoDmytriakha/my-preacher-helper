@@ -2,7 +2,7 @@ import { atomicParticipants, isLiveWholeAction } from './atomicCommits';
 import { isDocumentDeletion } from './deletionOrdering';
 import { areDifferentTabEditors, areDifferentTabManualParents } from './editorIdentity';
 import { markBorrowedManualSources } from './manualReturnSources';
-import { ordinaryAnswerChoice } from './ordinaryAnswerChoice';
+import { commonOrdinaryAnswer, ordinaryAnswerChoice } from './ordinaryAnswerChoice';
 import { equalValues } from './protocol';
 import { DataSession } from './session';
 import { canReplaceSnapshot } from './snapshotFreshness';
@@ -11,6 +11,7 @@ import { submittedWorkCheckpoint } from './submittedWork';
 
 import type { CommitRequest } from './commits';
 import type { SessionCheckpoint } from './session';
+import type { ResourceRef } from './types';
 
 /** A transfer or reshape is one saved intent, including participants that it creates. */
 function liveActionParticipants(request: CommitRequest, requests: readonly CommitRequest[]): CommitRequest[] | null {
@@ -109,12 +110,21 @@ export function sameLiveAtomicProof(proof: readonly CommitRequest[], requests: r
   return proof.every(participant => equalValues(participant, requests.find(request => request.id === participant.id)));
 }
 
+/** A document editor can review the shared answer without picking a competing continuation. */
+export function submittedEditorCheckpoint(owner: string, resource: ResourceRef, requests: readonly CommitRequest[]): SessionCheckpoint | null {
+  const complete = submittedWorkCheckpoint(owner, resource, requests);
+  if (complete) return complete;
+  const root = commonOrdinaryAnswer(owner, resource, requests);
+  return root ? submittedWorkCheckpoint(owner, resource, requests.filter(request =>
+    request.id === root.id || request.state === 'acknowledged' || request.state === 'cancelled')) : null;
+}
+
 /** Eligibility for a live clean editor; reconstruction and ACK projection retain their existing owners. */
 export function liveSubmittedWork(owner: string, editorId: string, current: SessionCheckpoint,
   requests: readonly CommitRequest[], manualSources?: ReadonlyMap<string, string>): { checkpoint: SessionCheckpoint; acknowledged: CommitRequest[]; atomicProof: CommitRequest[]; answer: CommitRequest['result'] } | null {
   if (current.conflicts.length || current.remoteCandidate) return null;
   const resource = current.confirmed.resource;
-  const complete = submittedWorkCheckpoint(owner, resource, requests);
+  const complete = submittedEditorCheckpoint(owner, resource, requests);
   if (!complete) return null;
   const all = requests.filter(request => complete.pending[request.id]);
   const chain = answeredOrdinaryPrefix(all, requests);

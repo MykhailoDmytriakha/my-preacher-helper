@@ -473,9 +473,12 @@ export class CommitQueue {
   /** An editor choice owns both the cancellation and its exact durable checkpoint. */
   async cancelWithCheckpoint(editorId: string, additionalRequestIds: readonly string[],
     project: (saved: CommitRequest[]) => EditorRecord | EditorRecord[],
-    reviewed?: { roots: readonly CommitRequest[]; retained?: ReadonlySet<string> }): Promise<void> {
+    review?: { roots: readonly CommitRequest[]; retained?: ReadonlySet<string> }
+      | { assertScope: (requests: readonly CommitRequest[]) => void }): Promise<void> {
     if (!this.options.store.compareAndSetWithCheckpoint) throw new Error('Atomic choice checkpoint storage is required');
     const { owner, generation, records, chosen } = await this.planCancellation(editorId, additionalRequestIds, false);
+    const reviewed = review && 'roots' in review ? review : undefined;
+    if (review && 'assertScope' in review) review.assertScope(records);
     if (reviewed && (chosen.size !== reviewed.roots.length || reviewed.roots.some(root => !chosen.has(root.id)
       || !records.some(record => record.id === root.id && record.revision === root.revision
         && ['conflict', 'refused'].includes(record.state))))) {
@@ -492,7 +495,7 @@ export class CommitQueue {
     })) {
       throw Object.assign(new Error('Resolve the failed Save from its form to preserve later work'), { code: 'pending-delivery-first' });
     }
-    const choiceRequestIds = reviewed || selectedManual.length ? [...chosen] : undefined;
+    const choiceRequestIds = review || selectedManual.length ? [...chosen] : undefined;
     const saved = await this.options.store.compareAndSetWithCheckpoint(records.map(previous => ({ previous,
       next: { ...this.cancelledRequest(previous, chosen), ...(reviewed && !chosen.has(previous.id) && (reviewed.retained?.has(previous.id) ?? true)
         ? { retainedAfterChoice: true as const } : {}) },

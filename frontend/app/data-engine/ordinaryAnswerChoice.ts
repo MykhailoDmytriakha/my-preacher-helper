@@ -10,12 +10,13 @@ import { snapshotBelongsToOwner } from './snapshotIdentity';
 import type { CommitRequest } from './commits';
 import type { CouncilRefusalCoverage, OpenDocumentAnswer } from './openDocumentAnswers';
 import type { SessionCheckpoint } from './session';
-import type { CommandResult, DocumentData, ResourceSnapshot } from './types';
+import type { CommandResult, DocumentData, ResourceRef, ResourceSnapshot } from './types';
 
 export interface OrdinaryAnswerChoice {
   first: CommitRequest;
   answer: Extract<CommandResult, { kind: 'conflict' | 'refused' }>;
   scope: readonly CommitRequest[];
+  branched: boolean;
 }
 
 function ordinaryUpdate(request: CommitRequest): boolean {
@@ -37,21 +38,72 @@ function ordinaryAnswer(first: CommitRequest): OrdinaryAnswerChoice['answer'] | 
     && snapshotBelongsToOwner(first.owner, stored) ? answer : null;
 }
 
-/** Select one answered ordinary edit and prove any linear, unsent suffix. */
+function answerScope(first: CommitRequest, requests: readonly CommitRequest[]): CommitRequest[] {
+  return cancellationScope(requests.filter(request => request.owner === first.owner), '', [first.id]);
+}
+
+function hasFork(scope: readonly CommitRequest[]): boolean {
+  const ids = new Set(scope.map(request => request.id));
+  const parents = new Set<string>();
+  for (const { predecessor } of scope) {
+    if (!predecessor || !ids.has(predecessor)) continue;
+    if (parents.has(predecessor)) return true;
+    parents.add(predecessor);
+  }
+  return false;
+}
+
+/** Prove one answered edit and its complete tree of unsent ordinary updates. */
 export function ordinaryAnswerChoice(first: CommitRequest, requests: readonly CommitRequest[]): OrdinaryAnswerChoice | null {
   const answer = ordinaryAnswer(first);
   if (!answer) return null;
-  const owned = requests.filter(request => request.owner === first.owner);
   let scope: CommitRequest[];
-  try { scope = orderCommitRequests(cancellationScope(owned, '', [first.id])); } catch { return null; }
+  try { scope = orderCommitRequests(answerScope(first, requests)); } catch { return null; }
   if (scope[0]?.id !== first.id) return null;
-  if (scope.slice(1).some((request, index) => request.predecessor !== scope[index].id
-    || request.state !== 'queued' || request.initialized || request.command || !ordinaryUpdate(request)
-    || !equalValues(request.baseline.resource, first.baseline.resource))) return null;
-  return { first, answer, scope };
+  const proved = new Set([first.id]);
+  for (const request of scope.slice(1)) {
+    if (!request.predecessor || !proved.has(request.predecessor) || request.state !== 'queued'
+      || request.initialized || request.command || !ordinaryUpdate(request)
+      || !equalValues(request.baseline.resource, first.baseline.resource)) return null;
+    proved.add(request.id);
+  }
+  return { first, answer, scope, branched: hasFork(scope) };
 }
 
-/** A new branch or form in the suffix cannot be swept by an ordinary answer choice. */
+/** When no single continuation can be opened, the only common answered Save may still be reviewed. */
+export function commonOrdinaryAnswer(owner: string, resource: ResourceRef, requests: readonly CommitRequest[]): CommitRequest | undefined {
+  const unfinished = requests.filter(request => request.owner === owner && equalValues(request.baseline.resource, resource)
+    && request.state !== 'acknowledged' && request.state !== 'cancelled');
+  const answered = unfinished.filter(request => request.state === 'conflict' || request.state === 'refused');
+  if (answered.length !== 1) return undefined;
+  const choice = ordinaryAnswerChoice(answered[0], requests);
+  return choice?.branched && choice.scope.length === unfinished.length ? choice.first : undefined;
+}
+
+/** A field form cannot decide a whole-document fork, even when a different writer joined it. */
+export function hasBranchedOrdinaryAnswer(held: readonly string[], requests: readonly CommitRequest[]): boolean {
+  return requests.some(request => held.includes(request.id) && ordinaryAnswer(request) && hasFork(answerScope(request, requests)));
+}
+
+export function requireDocumentChoiceForBranch(held: readonly string[], requests: readonly CommitRequest[]): void {
+  if (hasBranchedOrdinaryAnswer(held, requests)) {
+    throw Object.assign(new Error('Resolve the branched Save from its document'), { code: 'other-changes-first' });
+  }
+}
+
+function lineage(byId: ReadonlyMap<string, CommitRequest>, tip: CommitRequest): string[] {
+  const ids = [tip.id];
+  let predecessor = tip.predecessor;
+  while (predecessor) {
+    const parent = byId.get(predecessor);
+    if (!parent) break;
+    ids.push(parent.id);
+    predecessor = parent.predecessor;
+  }
+  return ids.reverse();
+}
+
+/** A different kind of saved action cannot be swept by an ordinary answer choice. */
 export function reviewOrdinaryAnswerChoice(first: CommitRequest, requests: readonly CommitRequest[]): OrdinaryAnswerChoice | null {
   if (!ordinaryAnswer(first)) return null;
   const choice = ordinaryAnswerChoice(first, requests);
@@ -75,7 +127,8 @@ export function ordinaryChoiceCheckpoint(choice: OrdinaryAnswerChoice, source: S
   }
   const latest = scope.filter(request => source.pending[request.id]).at(-1);
   if (scope.length === 1 || !latest) return source;
-  if (!hasOnlyCapturedWords(source, latest)) {
+  const path = new Set(lineage(new Map(scope.map(request => [request.id, request])), latest));
+  if (Object.keys(source.pending).some(id => !path.has(id)) || !hasOnlyCapturedWords(source, latest)) {
     throw Object.assign(new Error('Save or resolve other document changes before choosing'), { code: 'other-changes-first' });
   }
   if (latest.id === first.id) return source;
@@ -135,7 +188,8 @@ export function ordinaryAnswerCoverage(checkpoint: SessionCheckpoint, requests: 
       ...(equivalent ? { equivalent } : {}) } };
   }
   if (choice.scope.length === 1 || !hasOnlyCapturedWords(checkpoint, choice.first)) return {};
-  return { laterSaves: choice.scope.slice(1).map((request, index) => ({
-    id: request.id, operationIds: choice.scope.slice(0, index + 2).map(member => member.id), draft: request.value,
+  const byId = new Map(choice.scope.map(request => [request.id, request]));
+  return { laterSaves: choice.scope.slice(1).map(request => ({
+    id: request.id, operationIds: lineage(byId, request), draft: request.value,
   })) };
 }
