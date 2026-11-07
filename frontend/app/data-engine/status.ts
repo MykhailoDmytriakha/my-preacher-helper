@@ -41,13 +41,18 @@ export interface SyncStatus {
 }
 
 /** A Save-button stage owns its opening ancestor, even while the parent observes newer data. */
-export function describeManualSync(form: ReturnType<ManualScope['getState']> | null, editor: EditorState | null, parent: SyncStatus | null, error: string | null, presence?: RecordPresence): SyncStatus | null {
+export function describeManualSync(form: (ReturnType<ManualScope['getState']> & { exactChoice?: true }) | null, editor: EditorState | null, parent: SyncStatus | null, error: string | null, presence?: RecordPresence): SyncStatus | null {
   // A form resolves only its own fields, so dropping a refused change of the whole document is not its
   // choice to offer (a screen's editor offers it; EditorController.acceptRemote). A real newer version
   // from elsewhere is still offered, as it always was.
   if (parent?.phase === 'refused' && !parent.hasForeignChange) parent = { ...parent, canAcceptRemote: false };
   // A selected-field form never owns a whole-document deletion, including while it opens.
   if (parent?.deleting) parent = { ...parent, deleting: false };
+  if (form?.exactChoice && editor && parent) {
+    const ready = form.durable && !form.capturing && !form.captureFailed;
+    return { ...parent, canSave: false, canRemove: false, canAcceptRemote: ready && !form.dirty,
+      canKeepLocal: ready && !manualObservation(form, editor, presence).deleted };
+  }
   if (!form || (!form.record.active && !form.choiceRequired) || !editor || !parent) return parent;
   if (form.choiceRequired) return describeManualChoice(form, editor, parent, error, presence);
   // Explicit Keep local may include durable corrections to a known failed command.

@@ -1,7 +1,8 @@
 'use client';
 
+import { cancellationScope } from './atomicCommits';
 import { isCapturedTransferReplay, planCaptureTransfer } from './captureTransfer';
-import { checkpointKey, writeCheckpointRecord } from './checkpointStorage.client';
+import { checkpointKey, writeCheckpointRecord, writeChoiceCheckpoints } from './checkpointStorage.client';
 import { assertCommitBatch, assertCommitCapture, assertCommitIdentities, orderCommitRequests, type CommitRequest, type CommitStore } from './commits';
 import { captureDeleteOrder, replayDeleteOrder } from './deletionOrdering';
 import { reconcileRecoveryRecord, validateRecoveryRecord } from './recovery.client';
@@ -52,7 +53,7 @@ function writeRecord(store: IDBObjectStore, read: StorageRead, frozen: CommitReq
             store.put(frozen, commitRowKey(frozen));
             retainPredecessor(store, frozen);
             done(frozen);
-          });
+          }, !frozen.initialized && frozen.predecessor ? frozen.predecessor : undefined);
         });
       });
     });
@@ -84,7 +85,7 @@ export function createIndexedDbCommitStore(collect = collectCommitRows): CommitS
     });
   };
   const compareAndSetBatchInternal = async (changes: readonly { previous: CommitRequest; next: CommitRequest }[],
-    project?: (saved: CommitRequest[]) => EditorRecord): Promise<CommitRequest[]> => {
+    project?: (saved: CommitRequest[]) => EditorRecord | EditorRecord[], choiceRequestIds?: readonly string[]): Promise<CommitRequest[]> => {
     const frozen = clone(changes); assertCommitIdentities(frozen.map(change => change.previous));
     if (!frozen.length) {
       if (project) throw new Error('A checkpoint projection requires at least one changed commit');
@@ -92,7 +93,7 @@ export function createIndexedDbCommitStore(collect = collectCommitRows): CommitS
     }
     return transaction('readwrite', (store, read, done) => {
       const result: CommitRequest[] = []; let remaining = frozen.length;
-      frozen.forEach(({ previous, next }, index) => {
+      const write = () => frozen.forEach(({ previous, next }, index) => {
         read(store.get(commitRowKey(previous)), (current: CommitRequest | undefined) => {
           if (!current || current.id !== previous.id || current.revision !== previous.revision) throw changed();
           if (next.id !== previous.id || next.owner !== previous.owner || next.editorId !== previous.editorId
@@ -106,19 +107,27 @@ export function createIndexedDbCommitStore(collect = collectCommitRows): CommitS
           store.put(saved, commitRowKey(saved)); result[index] = saved;
           if (!--remaining) {
             if (project) {
-              const record = project(clone(result));
-              if (record.owner !== previous.owner) throw new Error('Checkpoint projection owner differs from changed commits');
-              writeCheckpointRecord(store, read, record, false, () => done(result), collect);
+              const projection = project(clone(result));
+              writeChoiceCheckpoints(store, read, previous.owner, Array.isArray(projection) ? projection : [projection],
+                () => done(result), collect);
             } else collect(store, read, saved.owner, () => done(result));
           }
         });
+      });
+      if (!choiceRequestIds?.length) { write(); return; }
+      readCommitRows(store, read, frozen[0].previous.owner, records => {
+        const expected = new Set(frozen.map(change => change.previous.id));
+        const frontier = cancellationScope(records, '', choiceRequestIds);
+        if (frontier.length !== expected.size || frontier.some(request => !expected.has(request.id))) throw changed();
+        write();
       });
     });
   };
   const compareAndSetBatch = (changes: readonly { previous: CommitRequest; next: CommitRequest }[]): Promise<CommitRequest[]> =>
     compareAndSetBatchInternal(changes);
   const compareAndSetWithCheckpoint = (changes: readonly { previous: CommitRequest; next: CommitRequest }[],
-    project: (saved: CommitRequest[]) => EditorRecord): Promise<CommitRequest[]> => compareAndSetBatchInternal(changes, project);
+    project: (saved: CommitRequest[]) => EditorRecord | EditorRecord[], choiceRequestIds?: readonly string[]): Promise<CommitRequest[]> =>
+    compareAndSetBatchInternal(changes, project, choiceRequestIds);
   return {
     list: owner => transaction('readonly', (store, read, done) => {
       readCommitRows(store, read, owner, done);

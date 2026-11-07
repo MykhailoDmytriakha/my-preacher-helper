@@ -5,9 +5,11 @@ import { CaptureContinuations } from './captureContinuations';
 import { assertCommitCapture } from './commits';
 import { isDirectLegacyDocumentIntent, type DocumentAnswer } from './documentDelivery';
 import { requiredDomainTargets } from './domainPolicy';
-import { editorSlot } from './editorIdentity';
+import { areDifferentTabManualParents, editorSlot, readManualScopeIdentity } from './editorIdentity';
 import { liveSubmittedWork } from './liveSubmittedWork';
 import { chooseLocalPlacement } from './localPlacementChoice';
+import { projectExactManualChoice, type ExactManualChoice } from './manualChoice';
+import { sameManualSources } from './manualReturnSources';
 import { projectManualSelection, type ManualPath } from './manualScope';
 import { equalValues, mergeDocumentFields, mergeFields } from './protocol';
 import { isRecoverableCheckpoint } from './recovery.client';
@@ -43,6 +45,8 @@ export interface EditorRecord extends VersionedRecovery {
   unfinalized: string[];
   completedCommits?: string[];
   recoverySources?: RecoverySource[];
+  /** Basis of the retained changes, separate from the last accepted server snapshot. */
+  retainedManualChoice?: { base: DocumentData | null; decidingEditorId?: string };
 }
 
 export interface CheckpointStore {
@@ -64,6 +68,7 @@ export interface RecoveryCheckpoint {
 
 export interface CheckpointRecoveryStore extends CheckpointStore {
   listRecoverable(owner: string, resource?: ResourceRef): Promise<RecoveryCheckpoint[]>;
+  listManualChoiceCopies?(owner: string, resource?: ResourceRef): Promise<RecoveryCheckpoint[]>;
   /** Atomic create-if-absent; recovery never overwrites an active editor checkpoint. */
   create(record: EditorRecord): Promise<void>;
   /** Removes only the exact explicitly selected closed copy, never an unresolved Save. */
@@ -96,6 +101,7 @@ interface ControllerOptions {
   submittedCheckpoint?: SessionCheckpoint;
   /** An active private form keeps ordinary root continuation outside its parent editor. */
   canFollowSubmittedWork?: () => boolean;
+  manualReturnSources?: (requests: readonly CommitRequest[]) => Promise<ReadonlyMap<string, string>>;
   /** Presentation ancestry becomes known before replay or pending ACK projection awaits. */
   onRecoverySources?(sources: readonly RecoverySource[]): void;
 }
@@ -114,6 +120,8 @@ export interface EditorState {
   actionResolutionRequired?: boolean;
   /** Derived by the engine from every held request and its cancellation scope. */
   savedIntentReplaceable?: boolean;
+  /** Borrowed form scopes with actual terminal answers, available for explicit recovery. */
+  borrowedManualAnswers?: readonly string[];
   /** A legacy checkpoint may still own a command directly rather than a commit request. */
   preparedOperationId?: string;
   /** A form's save is among the pending work: dropping a refusal of the whole document is not offered. */
@@ -216,7 +224,7 @@ export class EditorController {
     return { checkpoint, durable: this.durable, error: this.error, errorCode: this.errorCode, result: this.result, preparing: this.preparations > 0 || this.choices > 0, captureFailed: this.pendingCaptures.failed,
       preparedOperationId: this.prepared?.operationId,
       actionResolutionRequired: this.atomicPending.size > 0,
-      manualWork: Object.keys(checkpoint.pending).some(id => this.manualRequests.has(id)) };
+      manualWork: Object.entries(checkpoint.pending).some(([id, intent]) => intent.borrowedManualScope || this.manualRequests.has(id)) };
   }
 
   subscribe(listener: () => void): () => void {
@@ -342,6 +350,7 @@ export class EditorController {
     const atChoice = this.session.checkpoint().draft;
     return this.enqueueChoice(async () => {
       this.assertRecoveryChoice(expected);
+      this.assertChoiceAuthority();
       this.assertManualResolution(selection);
       const before = this.session.checkpoint();
       // A refusal has no other version to take: "use the server's version" drops the refused change.
@@ -378,6 +387,7 @@ export class EditorController {
     const correction = amendment ? JSON.parse(JSON.stringify(amendment)) as typeof amendment : undefined;
     return this.enqueueChoice(async () => {
       this.assertRecoveryChoice(expected);
+      this.assertChoiceAuthority();
       if (correction && (!selection || !equalValues(correction.value, projectManualSelection(correction.base, correction.value, selection)))) {
         throw new Error('Manual resolution changed an unselected field');
       }
@@ -432,6 +442,15 @@ export class EditorController {
       await this.persist();
       if (this.options.commits && cancelled.length) await this.options.commits.finishCancellation(this.options.editorId, cancelled);
     });
+  }
+
+  hasChoiceAuthority(checkpoint = this.session.checkpoint()): boolean {
+    return Object.values(checkpoint.pending).every(intent => !intent.borrowedManualScope);
+  }
+
+  assertChoiceAuthority(checkpoint = this.session.checkpoint()): void {
+    if (!this.hasChoiceAuthority(checkpoint)) throw Object.assign(
+      new Error('Resolve the saved change from its original form or recover that form first'), { code: PENDING_DELIVERY_FIRST });
   }
 
   /** A form may resolve only its fields; unrelated unsent editor work needs its own decision. */
@@ -527,7 +546,7 @@ export class EditorController {
   }
 
   /** Continue a clean cross-tab editor only after its canonical pending references are durable. */
-  followSubmittedWork(): Promise<void> {
+  followSubmittedWork(): Promise<CommitRequest[] | undefined> {
     return this.enqueue(async () => {
       if (!this.options.commits) return;
       const related = (requests: readonly CommitRequest[]) => requests.filter(request => request.owner === this.options.owner
@@ -537,7 +556,10 @@ export class EditorController {
         const before = this.session.checkpoint();
         const requests = await this.options.commits.list(); this.assertCurrent();
         if (!this.canFollowSubmittedWork() || !equalValues(before, this.session.checkpoint())) return;
-        const continuation = liveSubmittedWork(this.options.owner, this.options.editorId, before, requests);
+        const sources = await this.options.manualReturnSources?.(related(requests));
+        this.assertCurrent();
+        if (!this.canFollowSubmittedWork() || !equalValues(before, this.session.checkpoint())) return;
+        const continuation = liveSubmittedWork(this.options.owner, this.options.editorId, before, requests, sources);
         if (!continuation) return;
         const completedCommits = [...new Set([...this.completedCommits, ...continuation.acknowledged.map(request => request.id)])];
         const candidate = { ...this.record(), checkpoint: continuation.checkpoint, completedCommits };
@@ -549,10 +571,13 @@ export class EditorController {
           await this.options.store.put(this.record()); return;
         }
         let current: CommitRequest[];
-        try { current = await this.options.commits.list(); }
-        catch (error) { await this.options.store.put(this.record()); throw error; }
+        let currentSources: ReadonlyMap<string, string> | undefined;
+        try {
+          current = await this.options.commits.list();
+          if (sources?.size) currentSources = await this.options.manualReturnSources?.(related(current));
+        } catch (error) { await this.options.store.put(this.record()); throw error; }
         if (!unchanged()) { await this.options.store.put(this.record()); return; }
-        if (!equalValues(related(requests), related(current))) {
+        if (!equalValues(related(requests), related(current)) || !sameManualSources(sources, currentSources)) {
           // References prove existence, not the request revision or the unique frontier.
           await this.options.store.put(this.record()); continue;
         }
@@ -562,7 +587,8 @@ export class EditorController {
         this.held = isRecoverableCheckpoint(candidate);
         this.clearedCommits = completedCommits.length;
         this.durable = true; this.error = null; this.errorCode = null;
-        this.emit(); return;
+        this.emit();
+        return current.filter(request => continuation.checkpoint.pending[request.id]);
       }
     });
   }
@@ -589,9 +615,28 @@ export class EditorController {
     const current = requests.find(record => record.id === request.id);
     if (!current) return false;
     assertCommitCapture(current, request);
+    const { owner, editorId, snapshot } = this.options;
     // Known competing branches stay separate; no event may choose one before this queue snapshot.
-    const chain = submittedWorkCheckpoint(this.options.owner, this.options.snapshot.resource, requests);
-    return Boolean(chain?.pending[current.id]) && this.session.adoptSubmittedSuccessor(current);
+    const chain = submittedWorkCheckpoint(owner, snapshot.resource, requests);
+    if (!chain?.pending[current.id]) return false;
+    const source = readManualScopeIdentity(current.editorId);
+    const predecessor = current.predecessor && requests.find(record => record.id === current.predecessor);
+    const parent = predecessor && readManualScopeIdentity(predecessor.editorId)?.parentEditorId;
+    if (parent === editorId && areDifferentTabManualParents(parent, source?.parentEditorId ?? current.editorId, snapshot.resource)) {
+      return false;
+    }
+    if (!source || !areDifferentTabManualParents(source.parentEditorId, editorId, snapshot.resource)) {
+      return this.session.adoptSubmittedSuccessor(current);
+    }
+    // An editor deciding its own Save must not select someone else's later descendant.
+    if (!current.predecessor || !Object.values(pending).every(intent => intent.borrowedManualScope)) return false;
+    const related = requests.filter(item => item.owner === owner && equalValues(item.baseline.resource, snapshot.resource));
+    const borrowedScope = (await this.options.manualReturnSources?.(related))?.get(current.id);
+    this.assertCurrent();
+    const latest = this.session.checkpoint().pending;
+    return Boolean(borrowedScope && latest[current.predecessor]?.borrowedManualScope
+      && Object.values(latest).every(intent => intent.borrowedManualScope)
+      && this.session.adoptSubmittedSuccessor(current, borrowedScope));
   }
 
   private async applyCommit(request: CommitRequest): Promise<void> {
@@ -635,6 +680,7 @@ export class EditorController {
         }
         const record = this.record();
         source = record.checkpoint;
+        this.assertChoiceAuthority(source);
         this.assertManualResolution(selection, source);
         const session = DataSession.restore(source);
         const completed = new Set(record.completedCommits ?? []);
@@ -655,8 +701,13 @@ export class EditorController {
         projected = { ...record, checkpoint: session.checkpoint(), completedCommits: [...completed] };
         return projected;
       });
-    this.assertCurrent();
     if (!source || !projected) throw new Error('Choice checkpoint projection was not captured');
+    await this.applyChoiceProjection(source, projected, captures);
+    await this.options.commits!.finishCancellation(this.options.editorId, cancelled);
+  }
+
+  private async applyChoiceProjection(source: SessionCheckpoint, projected: EditorRecord, captures: ReadonlySet<object>): Promise<void> {
+    this.assertCurrent();
     const current = this.session.checkpoint();
     const laterTyping = current.editGeneration !== source.editGeneration;
     this.session = DataSession.restore(projected.checkpoint);
@@ -676,7 +727,42 @@ export class EditorController {
     this.errorCode = null;
     this.emit();
     if (laterTyping) await this.persist();
-    await this.options.commits!.finishCancellation(this.options.editorId, cancelled);
+  }
+
+  resolveExactManualChoice(decision: ExactManualChoice, recheck: () => void): Promise<void> {
+    const captures = this.pendingCaptures.boundary();
+    const expected = this.captureRecoveryChoice();
+    return this.enqueueChoice(async () => {
+      if (!this.options.commits) throw new Error('An exact choice requires the commit queue');
+      recheck();
+      this.assertRecoveryChoice(expected);
+      const result = decision.request.result;
+      if (decision.choice === 'local' && result?.kind === 'refused' && result.code === 'generation-mismatch') {
+        const generation = decision.request.command?.generation ?? decision.request.baseline.metadata?.generation;
+        if (!decision.stored.metadata || decision.stored.metadata.generation === generation) {
+          throw Object.assign(new Error('Read the current document before resolving a generation mismatch'), { code: 'fresh-read-required' });
+        }
+      }
+      if (this.options.publishStoredChoice) await this.options.publishStoredChoice(decision.stored);
+      let source: SessionCheckpoint | undefined;
+      let projected: EditorRecord | undefined;
+      await this.options.commits.cancelWithCheckpoint('', [decision.request.id], retired => {
+        this.assertCurrent();
+        recheck();
+        this.assertRecoveryChoice(expected);
+        if ([...this.pendingCaptures.boundary()].some(attempt => !captures.has(attempt))) {
+          throw Object.assign(new Error('Finish the later Save before replacing saved intent'), { code: PENDING_DELIVERY_FIRST });
+        }
+        const record = this.record();
+        source = record.checkpoint;
+        const records = projectExactManualChoice(record, decision, retired);
+        [projected] = records;
+        return records;
+      }, decision.request);
+      if (!source || !projected) throw new Error('Choice checkpoint projection was not captured');
+      await this.applyChoiceProjection(source, projected, captures);
+      await this.options.commits.finishCancellation('', [decision.request.id]);
+    });
   }
 
   private async finishAcknowledgements(): Promise<void> {
@@ -696,10 +782,10 @@ export class EditorController {
     return this.enqueue(action).finally(() => { this.choices -= 1; this.emit(); });
   }
 
-  private enqueue(action: () => Promise<void>): Promise<void> {
+  private enqueue<T>(action: () => Promise<T>): Promise<T> {
     const next = this.queue.catch(() => undefined).then(async () => {
       this.assertCurrent();
-      try { await action(); } catch (error) {
+      try { return await action(); } catch (error) {
         this.durable = false;
         this.error = error instanceof Error ? error.message : 'Data engine storage failed';
         this.errorCode = failureCode(error);

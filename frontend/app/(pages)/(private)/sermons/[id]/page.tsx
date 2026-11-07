@@ -666,7 +666,7 @@ function SermonPageContent({ id }: { id: string }) {
       {/* No top padding: the page frame under the breadcrumbs already gives it. */}
       <SermonHeader sermon={sermon} series={series} editor={{
         subject: core.syncSubject ?? core.recoveryIdentity, values: core.coreValues, isReadOnly: core.isReadOnly, status: core.status, comparison: core.syncComparison, error: core.error, errorWords: core.errorWords,
-        titleForm: core.titleBinding, verseForm: core.verseBinding,
+        titleForm: core.titleBinding, verseForm: core.verseBinding, recovery: core.headerRecovery,
         keepLocal: core.keepLocal, acceptRemote: core.acceptRemote, retry: core.retry,
       }} />
       <LegacyPreparationRecovery owner={user?.uid ?? null} confirmed={core.confirmed} />

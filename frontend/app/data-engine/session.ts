@@ -16,7 +16,7 @@ export interface SessionCheckpoint {
   editGeneration: number;
   remoteCandidate: ResourceSnapshot | null;
   conflicts: ConflictDetail[];
-  pending: Record<string, { generation: number; value: DocumentData | null; operations?: string[] }>;
+  pending: Record<string, { generation: number; value: DocumentData | null; operations?: string[]; borrowedManualScope?: string }>;
 }
 
 const copy = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
@@ -80,7 +80,7 @@ export class DataSession {
   }
 
   /** Follow one ordinary saved descendant, or a one-shot root update of this exact confirmed copy. */
-  adoptSubmittedSuccessor(request: CommitRequest): boolean {
+  adoptSubmittedSuccessor(request: CommitRequest, borrowedManualScope?: string): boolean {
     const parent = request.predecessor ? this.state.pending[request.predecessor] : undefined;
     const resource = this.state.confirmed.resource;
     const root = !request.predecessor && Object.keys(this.state.pending).length === 0
@@ -99,6 +99,7 @@ export class DataSession {
     const draft = merged.value.exists ? merged.value.value as DocumentData : null;
     this.edit(draft);
     this.registerCommit(request.id, this.state.editGeneration, request.value, request.command?.operationId);
+    if (borrowedManualScope) this.state.pending[request.id].borrowedManualScope = borrowedManualScope;
     // Unsent sibling words still need their own autosave; the adopted action never captures them.
     if (!equalValues(draft, request.value)) this.edit(draft);
     return true;
@@ -114,7 +115,7 @@ export class DataSession {
       if (held && !request.cancelledByAction && !Object.keys(this.state.pending).length) {
         // Nothing of this editor's is in flight any more, so a conflict it held answers nothing: decided
         // work settles fully; work swept along by a choice about another draft stays an ordinary draft.
-        if (request.cancelledByChoice && latest) this.settleDecided(held.value);
+        if ((request.cancelledByChoice || request.retainedAfterChoice) && latest) this.settleDecided(held.value);
         else this.state.conflicts = [];
       }
       return true;

@@ -5,6 +5,7 @@ import { CommitReceipts } from './commitReceipt';
 import { captureDeleteOrder, deleteOrderReady, replayDeleteOrder } from './deletionOrdering';
 import { commandReferenceResources, documentReferenceResources, referenceReadiness } from './documentReferences';
 import { prepareDomainCommand, requiredDomainTargets } from './domainPolicy';
+import { areDifferentTabManualParents, readManualScopeIdentity } from './editorIdentity';
 import { AddressedFailures, type AddressedFailure } from './failures';
 import { equalValues, mergeDocumentFields, MAX_RELATION_RESOURCES } from './protocol';
 import { capturePlanTextEvidence, type PlanTextEvidence } from './sermonPlanText';
@@ -34,6 +35,8 @@ export interface CommitRequest {
    * whose latest request was decided this way waits for nothing (`reconcileRecoveryRecord`).
    */
   cancelledByChoice?: boolean;
+  /** A later dependent stopped by an exact choice has its own durable recovery copy. */
+  retainedAfterChoice?: true;
   owner: string;
   editorId: string;
   editGeneration: number;
@@ -86,7 +89,7 @@ export interface CommitStore {
   compareAndSetBatch?(changes: readonly { previous: CommitRequest; next: CommitRequest }[]): Promise<CommitRequest[]>;
   /** Cancellation and its chosen editor projection commit together, or neither is published. */
   compareAndSetWithCheckpoint?(changes: readonly { previous: CommitRequest; next: CommitRequest }[],
-    project: (saved: CommitRequest[]) => EditorRecord): Promise<CommitRequest[]>;
+    project: (saved: CommitRequest[]) => EditorRecord | EditorRecord[], choiceRequestIds?: readonly string[]): Promise<CommitRequest[]>;
 }
 
 export function assertCommitIdentities(requests: readonly CommitRequest[]): void {
@@ -459,14 +462,31 @@ export class CommitQueue {
 
   /** An editor choice owns both the cancellation and its exact durable checkpoint. */
   async cancelWithCheckpoint(editorId: string, additionalRequestIds: readonly string[],
-    project: (saved: CommitRequest[]) => EditorRecord): Promise<void> {
+    project: (saved: CommitRequest[]) => EditorRecord | EditorRecord[], reviewed?: CommitRequest): Promise<void> {
     if (!this.options.store.compareAndSetWithCheckpoint) throw new Error('Atomic choice checkpoint storage is required');
     const { owner, generation, records, chosen } = await this.planCancellation(editorId, additionalRequestIds, false);
+    if (reviewed && (chosen.size !== 1 || !records.some(record => record.id === reviewed.id && record.revision === reviewed.revision
+      && ['conflict', 'refused'].includes(record.state)))) {
+      throw Object.assign(new Error('The shown saved copy changed'), { code: 'decision-changed' });
+    }
+    const selectedManual = records.filter(record => chosen.has(record.id) && readManualScopeIdentity(record.editorId));
+    if (!reviewed && selectedManual.some(root => {
+      const origin = readManualScopeIdentity(root.editorId)!.parentEditorId;
+      return cancellationScope(records, '', [root.id]).some(dependent => {
+        const writer = readManualScopeIdentity(dependent.editorId)?.parentEditorId ?? dependent.editorId;
+        return dependent.editorId !== root.editorId
+          && (!chosen.has(dependent.id) || areDifferentTabManualParents(origin, writer, root.baseline.resource));
+      });
+    })) {
+      throw Object.assign(new Error('Resolve the failed Save from its form to preserve later work'), { code: 'pending-delivery-first' });
+    }
+    const choiceRequestIds = reviewed || selectedManual.length ? [...chosen] : undefined;
     const saved = await this.options.store.compareAndSetWithCheckpoint(records.map(previous => ({ previous,
-      next: this.cancelledRequest(previous, chosen) })), requests => {
+      next: { ...this.cancelledRequest(previous, chosen), ...(reviewed && !chosen.has(previous.id) ? { retainedAfterChoice: true as const } : {}) },
+    })), requests => {
       this.assertCurrent(owner, generation);
       return project(requests);
-    });
+    }, choiceRequestIds);
     this.assertCurrent(owner, generation);
     this.requested = true;
     saved.forEach(request => this.emit(request));

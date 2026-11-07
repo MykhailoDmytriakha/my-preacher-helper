@@ -34,7 +34,7 @@ export function EngineScratchWorkspace({ sermonId, isReadOnly = false, onConfirm
   const recovery = useRecoveryDiscovery({ identity: scratch.recoveryIdentity,
     enabled: Boolean(owner) && !scratch.loading && scratch.status !== null,
     version: JSON.stringify([scratch.status?.phase, scratch.confirmed?.metadata?.revision]),
-    list: async () => (await latest.current.listRecoverable()).map(source => {
+    list: async () => (await latest.current.listRecoverable({ omitBorrowedSlots: ['title', 'verse'], manualChoiceCopies: 'omit' })).map(source => {
       const { id, record } = source;
       const draft = record.checkpoint.draft;
       const title = draft?.title ?? record.checkpoint.confirmed.value?.title;

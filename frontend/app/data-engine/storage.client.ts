@@ -17,15 +17,18 @@ export function createEngineStorageTransaction(): StorageTransaction {
 }
 
 /** A stale recovery read must retry before it can create a dangling durable reference. */
-export function validateCommitReferences(store: IDBObjectStore, read: StorageRead, owner: string, ids: readonly string[], proceed: () => void): void {
+export function validateCommitReferences(store: IDBObjectStore, read: StorageRead, owner: string, ids: readonly string[], proceed: () => void,
+  activePredecessor?: string): void {
   const references = [...new Set(ids)];
   if (!references.length) { proceed(); return; }
   let remaining = references.length;
   for (const id of references) {
     read(store.get(['identity', owner, id]), (key: IDBValidKey | undefined) => {
       if (!key) throw Object.assign(new Error('Saved request reference changed'), { code: 'commit-reference-changed' });
-      read(store.get(key), value => {
-        if (!value) throw Object.assign(new Error('Saved request reference changed'), { code: 'commit-reference-changed' });
+      read(store.get(key), (value: { state?: string } | undefined) => {
+        if (!value || (id === activePredecessor && value.state === 'cancelled')) {
+          throw Object.assign(new Error('Saved request reference changed'), { code: 'commit-reference-changed' });
+        }
         remaining -= 1;
         if (!remaining) proceed();
       });

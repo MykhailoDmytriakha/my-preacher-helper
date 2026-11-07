@@ -10,18 +10,20 @@ import { CommitQueue, type CommitRequest, type CommitStore } from './commits';
 import { EditorController, InactiveEditorError, type CheckpointRecoveryStore, type CheckpointStore, type EditorRecord, type EditorState, type RecoveryCheckpoint } from './controller';
 import { captureCouncilCarry, pinCouncilDestination } from './councilCarry';
 import { canReplaceDocumentIntent, isDirectLegacyDocumentIntent, requiresWholeActionResolution, savedDocumentAnswer } from './documentDelivery';
-import { ACTION_SLOT, editorSlot } from './editorIdentity';
+import { ACTION_SLOT, areDifferentTabManualParents, editorSlot, isManualChoiceRecoveryIdentity, manualScopeIdentity, readManualScopeIdentity } from './editorIdentity';
 import { AddressedFailures, eachFailure, PausedReadFailure } from './failures';
 import { collectionHeadRef } from './feed';
 import { LocalWriteback, type LocalWriteHandoff } from './localWriteback';
+import { exactManualRequest, exactManualWords, recoverManualChoiceCopy } from './manualChoice';
 import { assertDurableManualChoice, assertManualChoiceInput, assertManualComparison, manualComparison, type ManualComparison } from './manualComparison';
+import { manualReturnSources, markBorrowedManualSources, reopenedManualAnswerScope, shouldFollowReopenedManualStage } from './manualReturnSources';
 import { ManualScope, recoverManualScopeRecord, reconcileManualCaptures, sameManualSelection, type ManualCapture, type ManualPath, type ManualSavedIntent } from './manualScope';
 import { captureMembershipPins } from './membershipCapture';
 import { describeActionDelivery, describeMembershipDelivery, type MembershipDelivery } from './membershipDelivery';
 import { CREATION_SCOPE_PREFIX, MembershipScope, type MembershipScopeRecord } from './membershipScope';
 import { getResourcePolicy, equalValues, isValidIdentifier } from './protocol';
 import { documentRecordPresence, type RecordPresence } from './recordPresence';
-import { forkCheckpoint, isRecoverableCheckpoint, reconcileRecoveryRecord, recoveryCheckpointId, validateRecoveryRecord } from './recovery.client';
+import { forkCheckpoint, isPassiveManualContinuation, isRecoverableCheckpoint, reconcileRecoveryRecord, recoveryCheckpointId, validateRecoveryRecord } from './recovery.client';
 import { RecoveryPresence, recoverySources, type RecoveryPresenceKind, type RecoveryPresenceLease, type RecoveryPresencePort } from './recoveryPresence';
 import { DataSession } from './session';
 import { canReplaceSnapshot, coversCommittedEffect, storesNewCopy } from './snapshotFreshness';
@@ -73,7 +75,7 @@ export interface DataEngineOptions {
 }
 
 export interface ManagedManualForm {
-  getState(): (ReturnType<ManualScope['getState']> & { comparison?: ManualComparison }) | null;
+  getState(): (ReturnType<ManualScope['getState']> & { comparison?: ManualComparison; exactChoice?: true }) | null;
   subscribe(listener: () => void): () => void;
   begin(): Promise<void>;
   follow(): Promise<void>;
@@ -357,11 +359,40 @@ export class DataEngine {
     };
     // A collected ACK may be the exact baseline of the next submitted root.
     await Promise.all(editors.map(observeAccepted)); this.assertCurrent(owner, generation);
-    await Promise.all(editors.map(entry => !entry.closed && entry.controller?.followSubmittedWork()));
+    await Promise.all(editors.map(entry => this.followEditorOnReturn(entry, owner, generation)));
     this.assertCurrent(owner, generation);
     // A source may have completed while its stale hint was being checked/pinned.
     await Promise.all(editors.map(observeAccepted)); this.assertCurrent(owner, generation);
     await this.options.collections?.reloadWatchedCaches();
+  }
+
+  private async followEditorOnReturn(entry: EditorEntry, owner: string, generation: number): Promise<void> {
+    const controller = entry.controller;
+    if (entry.closed || !controller) return;
+    const followed = await controller.followSubmittedWork();
+    if (entry.closed || !this.current(owner, generation)) return;
+    followed?.forEach(request => this.rememberCommit(request));
+    const after = controller.getState().checkpoint;
+    await Promise.all([...this.manualForms.values()].filter(form => form.parent === entry)
+      .map(form => this.followReturnedManualForm(form, owner, after)));
+  }
+
+  private async followReturnedManualForm(form: ManualFormEntry, owner: string, checkpoint: SessionCheckpoint): Promise<void> {
+    const scope = form.scope;
+    if (!scope) return;
+    const { record, dirty, value } = scope.getState();
+    if (!record.active || record.savedGeneration !== null || record.recoverySources?.length) return;
+    const predecessor = record.predecessor && this.commitRecords.get(record.predecessor.id);
+    const source = predecessor?.state === 'cancelled' && readManualScopeIdentity(predecessor.editorId);
+    const target = source && readManualScopeIdentity(record.scopeId);
+    if (source && target && areDifferentTabManualParents(source.parentEditorId, target.parentEditorId, record.resource)) {
+      await scope.continueAfterChoice(this.captureManual(form.parent, owner, form.selection, checkpoint), predecessor!.id);
+      form.emit();
+      return;
+    }
+    if (dirty || !form.selection.some(path => !sameManualSelection(value, checkpoint.draft, path))) return;
+    const capture = this.captureManual(form.parent, owner, form.selection, checkpoint);
+    if (capture.provenance.some(item => checkpoint.pending[item.requestId]?.borrowedManualScope)) await form.form.follow();
   }
 
   setOnline(online: boolean): void {
@@ -996,19 +1027,23 @@ export class DataEngine {
       .map(({ id, record }) => {
         const reconciled = reconcileRecoveryRecord(record, requests);
         const pendingIds = Object.keys(reconciled.checkpoint.pending);
-        const answer = savedDocumentAnswer(owner, reconciled.checkpoint.confirmed.resource,
-          pendingIds, requests, this.pending);
+        const answer = Object.values(reconciled.checkpoint.pending).some(intent => intent.borrowedManualScope)
+          ? null : savedDocumentAnswer(owner, reconciled.checkpoint.confirmed.resource, pendingIds, requests, this.pending);
         const actionResolutionRequired = requiresWholeActionResolution(owner, record.editorId, pendingIds, requests);
         return { id, record: reconciled, ...(!record.recoveryVersion && !equalValues(record, reconciled) ? { discardRecord: copy(record) } : {}), ...(answer ? { answer } : {}), ...(actionResolutionRequired ? { actionResolutionRequired: true } : {}) };
       })
-      .filter(({ record }) => isRecoverableCheckpoint(record));
+      .filter(({ record }) => isRecoverableCheckpoint(record) && !isPassiveManualContinuation(record));
   }
 
   /** Choice-list boundary; unresolved-decision consumers retain listRecoverable. */
-  async listRecoveryChoices(resource?: ResourceRef): Promise<RecoveryCheckpoint[]> {
+  async listRecoveryChoices(resource?: ResourceRef, manualChoicesOnly = false): Promise<RecoveryCheckpoint[]> {
     const owner = this.requireOwner(), generation = this.generation;
-    const records = await this.listRecoverable(resource);
-    return this.recoveryChoices(owner, generation, 'checkpoint', records, record => record.id);
+    if (resource) this.validateResource(resource, owner);
+    const store = this.recoveryStore();
+    const records = manualChoicesOnly && store.listManualChoiceCopies
+      ? await store.listManualChoiceCopies(owner, resource) : await this.listRecoverable(resource);
+    const choices = manualChoicesOnly ? records.filter(({ record }) => isManualChoiceRecoveryIdentity(record.editorId)) : records;
+    return this.recoveryChoices(owner, generation, 'checkpoint', choices, record => record.id);
   }
 
   /** Explicit removal owns only the shown persisted version, with no queue cancellation. */
@@ -1095,7 +1130,7 @@ export class DataEngine {
       // A transient action has no answering screen; opening it cannot hide the global question.
       if (editorSlot(editorId) === ACTION_SLOT) continue;
       const checkpoint = !entry.closed ? entry.controller?.getState().checkpoint : null;
-      if (!checkpoint || !savedDocumentAnswer(this.owner ?? '', checkpoint.confirmed.resource,
+      if (!checkpoint || !entry.controller!.hasChoiceAuthority(checkpoint) || !savedDocumentAnswer(this.owner ?? '', checkpoint.confirmed.resource,
         Object.keys(checkpoint.pending), requests, journal)) continue;
       const scope = { owner: this.owner ?? '', resource: checkpoint.confirmed.resource,
         operationIds: Object.keys(checkpoint.pending).sort(), draft: checkpoint.draft };
@@ -1229,7 +1264,17 @@ export class DataEngine {
         read: async (uid, id) => {
           const record = await store.read(uid, id); active(); storedSource = record;
           const requests = await this.commits.list(); active();
-          return record && reconcileRecoveryRecord(record, requests);
+          const retained = record?.retainedManualChoice;
+          if (!retained) return record && reconcileRecoveryRecord(record, requests);
+          if (retained.decidingEditorId) {
+            const deciding = await store.read(uid, retained.decidingEditorId); active();
+            if ((deciding?.checkpoint.dirty && equalValues(deciding.checkpoint.draft, retained.base))
+              || requests.some(request => sameResource(request.baseline.resource, frozen) && !['acknowledged', 'cancelled'].includes(request.state))) {
+              throw Object.assign(new Error('Finish the earlier choice before recovering this draft'), { code: 'pending-delivery-first' });
+            }
+          }
+          const known = await this.knownSnapshot(owner, generation, frozen); active();
+          return recoverManualChoiceCopy(record!, known);
         },
         create: async record => {
           active(); presence?.add((record.recoverySources ?? []).map(source => source.id));
@@ -1562,6 +1607,13 @@ export class DataEngine {
       assertOpening();
       requests.forEach(request => this.rememberCommit(request));
       const submittedCheckpoint = submittedWorkCheckpoint(owner, frozen, requests);
+      const manualStore = this.options.manualScopes;
+      const readManualSources = manualStore && ((related: readonly CommitRequest[]) => manualReturnSources(manualStore, owner, editorId, frozen, related));
+      if (submittedCheckpoint && readManualSources) {
+        const sources = await readManualSources(requests.filter(request => sameResource(request.baseline.resource, frozen)));
+        assertOpening();
+        markBorrowedManualSources(submittedCheckpoint, sources);
+      }
       const resumingCreation = Boolean(submittedCheckpoint && submittedCheckpoint.confirmed.value === null && !submittedCheckpoint.confirmed.metadata);
       const snapshot: ResourceSnapshot = creating
         ? { resource: frozen, value: null, metadata: null }
@@ -1575,6 +1627,7 @@ export class DataEngine {
         publishStoredChoice: snapshot => this.publishStoredChoice(owner, generation, snapshot),
         commits: this.commits,
         submittedCheckpoint: submittedCheckpoint ?? undefined,
+        manualReturnSources: readManualSources,
         canFollowSubmittedWork: () => ![...this.manualForms.values()].some(form => {
           if (form.parent !== entry) return false;
           const stage = form.scope?.getState();
@@ -1697,8 +1750,14 @@ export class DataEngine {
           const pendingIds = Object.keys(state.checkpoint.pending);
           // Directly owned legacy commands keep their existing terminal-journal proof.
           const legacy = isDirectLegacyDocumentIntent(pendingIds, state.preparedOperationId);
-          return { ...state, savedIntentReplaceable: legacy ? undefined : canReplaceDocumentIntent(owner, editorId,
-            pendingIds, [...this.commitRecords.values()], this.pending) };
+          const borrowedManualAnswers = Object.entries(state.checkpoint.pending).flatMap(([id, intent]) => {
+            const request = this.commitRecords.get(id);
+            if (!request || !['conflict', 'refused'].includes(request.state)) return [];
+            const scope = intent.borrowedManualScope ?? reopenedManualAnswerScope(request, editorId, this.commitRecords);
+            return scope ? [scope] : [];
+          });
+          return { ...state, borrowedManualAnswers, savedIntentReplaceable: legacy ? undefined : !borrowedManualAnswers.length && controller.hasChoiceAuthority(state.checkpoint)
+            && canReplaceDocumentIntent(owner, editorId, pendingIds, [...this.commitRecords.values()], this.pending) };
         },
         getObservation: () => { active(); return copy(entry.observation); },
         getPresence: () => {
@@ -1852,10 +1911,11 @@ export class DataEngine {
     const provenance = selection.flatMap(path => {
       const match = pending.find(([id]) => {
         const request = this.commitRecords.get(id);
-        return request?.value && request.owner === owner && request.state !== 'cancelled'
-          && sameResource(request.baseline.resource, checkpoint.confirmed.resource)
-          // A saved create owns document existence, including selected fields still absent.
-          && ((!request.baseline.value && request.baseline.metadata === null) || !sameManualSelection(request.baseline.value, request.value, path))
+        if (!request?.value || request.owner !== owner || request.state === 'cancelled'
+          || !sameResource(request.baseline.resource, checkpoint.confirmed.resource)) return false;
+        const predecessor = request.predecessor && this.commitRecords.get(request.predecessor);
+        const ancestor = predecessor ? predecessor.value : request.initialized ? request.working.value : request.baseline.value;
+        return ((!request.baseline.value && request.baseline.metadata === null) || !sameManualSelection(ancestor, request.value, path))
           && sameManualSelection(checkpoint.draft, request.value, path);
       });
       return match ? [{ path, requestId: match[0] }] : [];
@@ -1935,7 +1995,7 @@ export class DataEngine {
     const store = this.options.manualScopes;
     const listeners = new Set<() => void>();
     const emit = () => { if (parent.closed || !this.current(owner, generation)) return; for (const listener of listeners) { try { listener(); } catch { /* Rendering cannot change staged intent. */ } } };
-    const state = { parent, selection: copy(selection), scopeId: JSON.stringify([parentEditorId, 'manual', slot]), scope: null as ManualScope | null, form: null as unknown as ManagedManualForm, emit, presence: null as RecoveryPresenceLease | null, opening: null as Promise<void> | null };
+    const state = { parent, selection: copy(selection), scopeId: manualScopeIdentity(parentEditorId, slot), scope: null as ManualScope | null, form: null as unknown as ManagedManualForm, emit, presence: null as RecoveryPresenceLease | null, opening: null as Promise<void> | null };
     this.manualForms.set(registryKey, state);
     let opening: Promise<void> | null = null;
     const active = () => { this.assertCurrent(owner, generation); if (parent.closed || this.manualForms.get(registryKey) !== state) throw new Error('Manual parent editor changed'); };
@@ -1960,10 +2020,10 @@ export class DataEngine {
         const source = sourceScopeId ? await store.read(owner, sourceScopeId) : undefined; active();
         if (sourceScopeId && !source?.record) throw Object.assign(new Error('Manual recovery record no longer exists'), { code: 'draft-gone' });
         if (source?.record && ((recovery === 'same-slot' && source.slot !== slot) || !sameResource(source.record.resource, resource) || !equalValues(source.record.selection, selection))) throw new Error('Manual recovery selection mismatch');
-        let targetId = source ? JSON.stringify([parentEditorId, 'manual', slot, this.options.operationId()]) : state.scopeId;
+        let targetId = source ? manualScopeIdentity(parentEditorId, slot, this.options.operationId()) : state.scopeId;
         let existing = source ?? await store.read(owner, targetId); active();
         if (!source && existing && !existing.record && existing.discarded) {
-          targetId = JSON.stringify([parentEditorId, 'manual', slot, this.options.operationId()]);
+          targetId = manualScopeIdentity(parentEditorId, slot, this.options.operationId());
           existing = undefined;
         }
         if (existing?.record) existing = { ...existing, record: reconcileManualCaptures(existing.record, records) };
@@ -2043,8 +2103,10 @@ export class DataEngine {
             const restarting = !source && !existing.record.active && equalValues(existing.record.stage, existing.record.savedSelection)
               && (!existing.record.predecessor || port.isSettled(existing.record.predecessor.id));
             await (restarting ? scope.restart() : scope.reopen());
-            const predecessor = scope.getState().record.predecessor;
+            const stage = scope.getState();
+            const predecessor = stage.record.predecessor;
             if (predecessor && port.isCancelled(predecessor.id)) await scope.continueAfterChoice(capture(), predecessor.id);
+            else if (!source && shouldFollowReopenedManualStage(stage, frozenCapture)) await scope.follow(frozenCapture);
           } else await scope.settled();
           active();
         } catch (error) {
@@ -2055,13 +2117,47 @@ export class DataEngine {
           throw error;
         }
         initializing = false;
-        state.scope = scope; emit();
+        state.scope = scope;
+        if (sourceScopeId) this.emit(parent); else emit();
       };
       opening = run().catch(error => { state.presence?.release(); state.presence = null; throw error; }).finally(() => { opening = null; state.opening = null; });
       state.opening = opening;
       return opening;
     };
     const requireScope = () => { active(); if (!state.scope) throw new Error('Open the manual form before editing'); return state.scope; };
+    const exactRequest = (stage: ReturnType<ManualScope['getState']> | undefined, checkpoint: SessionCheckpoint) =>
+      exactManualRequest(stage, checkpoint, this.commitRecords);
+    const finishExactChoice = async (choice: 'local' | 'remote', scope: ManualScope, request: CommitRequest,
+      updating: Promise<void> | undefined, assertComparison: () => void) => {
+        await updating; active(); assertComparison();
+        const controller = parent.controller!;
+        const shown = scope.getState();
+        const checkpoint = controller.getState().checkpoint;
+        const stored = manualComparison(shown, checkpoint, this.commitRecords, request)?.stored ?? checkpoint.remoteCandidate ?? checkpoint.confirmed;
+        const predecessor = shown.record.predecessor;
+        const privateStage = shown.dirty && predecessor && predecessor.id !== request.id
+          ? { scopeId: shown.record.scopeId, generation: shown.record.generation, predecessorId: predecessor.id, base: predecessor.value, value: shown.value }
+          : undefined;
+        await controller.resolveExactManualChoice({ choice, request, stored, value: exactManualWords(shown, request), selection, privateStage }, () => {
+          active(); assertComparison();
+          const current = scope.getState();
+          const reviewed = exactRequest(current, controller.getState().checkpoint);
+          if (!current.durable || reviewed?.id !== request.id || reviewed.revision !== request.revision
+            || current.record.generation !== shown.record.generation || !equalValues(current.value, shown.value)) throw Object.assign(new Error('The shown saved copy changed'), { code: 'decision-changed' });
+        });
+        active();
+        if (choice === 'local') {
+          await controller.save(undefined, selection); active();
+          this.prepareCommitsInBackground(); this.backgroundDrain();
+        }
+        const latest = scope.getState();
+        if (latest.dirty && latest.record.generation !== shown.record.generation) {
+          await scope.suspend();
+          return;
+        }
+        await scope.cancel(); active();
+        if (shown.record.active && controller.getState().checkpoint.draft) await start();
+    };
     // Admission and capture stay above; this continuation owns the queued parent decision.
     const finishChoice = async (choice: 'local' | 'remote', scope: ManualScope | null,
       staged: ReturnType<ManualScope['getState']> | undefined, updating: Promise<void> | undefined,
@@ -2091,7 +2187,14 @@ export class DataEngine {
       getState: () => {
         active();
         const form = state.scope?.getState();
-        return form ? { ...form, comparison: manualComparison(form, parent.controller!.getState().checkpoint, this.commitRecords) } : null;
+        if (!form) return null;
+        const controller = parent.controller!;
+        const checkpoint = controller.getState().checkpoint;
+        const request = exactRequest(form, checkpoint);
+        const exact = request && canReplaceDocumentIntent(owner, '', [request.id], [...this.commitRecords.values()], this.pending);
+        return { ...form, ...(exact ? { exactChoice: true as const } : {}),
+          comparison: exact || controller.hasChoiceAuthority(checkpoint)
+            ? manualComparison(form, checkpoint, this.commitRecords, exact ? request : undefined) : undefined };
       },
       subscribe: listener => { active(); listeners.add(listener); return () => { listeners.delete(listener); }; },
       begin: () => start(),
@@ -2109,7 +2212,12 @@ export class DataEngine {
         else await scope.save();
         if (!scope.getState().dirty) await scope.cancel();
       }),
-      cancel: () => execute(() => requireScope().cancel()),
+      cancel: () => execute(async () => {
+        const scope = requireScope();
+        const privateStage = scope.getState().dirty;
+        await scope.cancel(); active();
+        if (privateStage && this.visible) await this.followEditorOnReturn(parent, owner, generation);
+      }),
       retry: () => execute(async () => { if (state.scope) await state.scope.retryPersistence(); else await start(); await this.retry(resource); }),
       resolve: (choice, options) => execute(async () => {
         const expected = options?.expectedComparison;
@@ -2119,7 +2227,15 @@ export class DataEngine {
         };
         assertComparison();
         const scope = state.scope;
-        assertDurableManualChoice(scope?.getState());
+        const initial = scope?.getState();
+        assertDurableManualChoice(initial);
+        if (initial?.record.predecessor) {
+          const requests = await this.commits.list(); active();
+          requests.forEach(request => this.rememberCommit(request));
+          assertComparison();
+        }
+        const exact = exactRequest(initial, parent.controller!.getState().checkpoint);
+        if (!exact && !initial?.choiceRequired) parent.controller!.assertChoiceAuthority();
         const updating = choice === 'local' && options?.updater && scope ? scope.update(options.updater) : undefined;
         // Normalization is synchronous; later input is checked against this exact chosen stage.
         if (updating && expected) expectedIdentity = state.form.getState()?.comparison?.identity;
@@ -2136,7 +2252,8 @@ export class DataEngine {
           if (parent.controller!.getState().checkpoint.draft) await start();
           return;
         }
-        await finishChoice(choice, scope, staged, updating, assertComparison, Boolean(expected));
+        if (exact && scope) await finishExactChoice(choice, scope, exact, updating, assertComparison);
+        else await finishChoice(choice, scope, staged, updating, assertComparison, Boolean(expected));
       }),
       listRecoverable: async () => {
         active();
@@ -2144,9 +2261,19 @@ export class DataEngine {
         if (repairing) await repairing; active();
         const values = await store.list(owner, resource);
         const requests = await this.commits.list(); active();
-        const settled = new Set(requests.filter(request => ['acknowledged', 'cancelled'].includes(request.state)).map(request => request.id));
-        const candidates = values.filter(value => value.scopeId !== state.scopeId && (recovery === 'same-selection' || value.slot === slot) && equalValues(value.record.selection, selection)
-          && (!equalValues(value.record.stage, value.record.savedSelection) || Boolean(value.record.predecessor && !settled.has(value.record.predecessor.id))));
+        const byId = new Map(requests.map(request => [request.id, request]));
+        const candidates = values.filter(value => {
+          if (value.scopeId === state.scopeId || (recovery !== 'same-selection' && value.slot !== slot)
+            || !equalValues(value.record.selection, selection)) return false;
+          const record = value.record;
+          if (!equalValues(record.stage, record.savedSelection)) return true;
+          if (!record.predecessor) return false;
+          const request = byId.get(record.predecessor.id);
+          if (request && ['acknowledged', 'cancelled'].includes(request.state)) return false;
+          const source = request && readManualScopeIdentity(request.editorId);
+          return record.savedGeneration !== null || Boolean(record.recoverySources?.length) || !source
+            || !areDifferentTabManualParents(source.parentEditorId, value.parentEditorId, resource);
+        });
         const choices = await this.recoveryChoices(owner, generation, 'manual', candidates, value => value.scopeId);
         active(); return choices;
       },

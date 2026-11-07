@@ -39,9 +39,16 @@ export function installStorageHarness() {
         });
         return request;
       };
-      const inRange = (range: { lower: unknown[] }) => [...draft].filter(([key]) => {
+      type KeyRange = { lower: unknown[]; upper: unknown[] };
+      const inRange = ({ lower, upper }: KeyRange) => [...draft].filter(([key]) => {
         const parsed = JSON.parse(key);
-        return range.lower.every((part, index) => parsed[index] === part);
+        const first = lower.at(-1), last = upper.at(-1);
+        if (lower.length === upper.length && typeof first === 'string' && typeof last === 'string' && first !== last) {
+          const value = parsed[lower.length - 1];
+          return lower.slice(0, -1).every((part, index) => parsed[index] === part)
+            && typeof value === 'string' && value >= first && value <= last;
+        }
+        return lower.every((part, index) => parsed[index] === part);
       });
       const store = {
         transaction: tx,
@@ -54,12 +61,12 @@ export function installStorageHarness() {
           if (harness.writeFailureFor?.(key, undefined)) throw new Error('disk full');
           draft.delete(JSON.stringify(key));
         },
-        getAll: (range: { lower: unknown[] }) => {
+        getAll: (range: KeyRange) => {
           const rows = inRange(range).map(([, value]) => value);
           harness.onFullRead?.(range.lower[0], mode, rows.length);
           return read(rows);
         },
-        getAllKeys: (range: { lower: unknown[] }) => read(inRange(range).map(([key]) => JSON.parse(key))),
+        getAllKeys: (range: KeyRange) => read(inRange(range).map(([key]) => JSON.parse(key))),
       } as unknown as IDBObjectStore;
       const result = action(store);
       void Promise.resolve().then(() => { if (harness.holdCommit) harness.finishCommit = complete; else complete(); });

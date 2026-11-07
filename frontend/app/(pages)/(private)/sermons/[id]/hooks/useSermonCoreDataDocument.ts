@@ -1,6 +1,6 @@
 import { manualFormDecision } from '@/components/common/manualTextBinding';
 import { usePublishShellTitle } from '@/components/navigation/shellTitles';
-import { useDataDocument, useDataEngine, useDataForm } from '@/data-engine/react.client';
+import { useDataDocument, useDataEngine, useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
 
 import { useSermonPreparationFields } from './useSermonPreparationFields';
 
@@ -76,12 +76,52 @@ export function useSermonCoreDataDocument(sermonId: string | null) {
     }));
     return delivery === 'commit' ? document.commit(update) : document.update(update);
   };
-  const fieldDecision = manualFormDecision(titleForm) ?? manualFormDecision(verseForm) ?? preparationFields.decision;
+  const headerForms = { title: titleForm, verse: verseForm };
+  const borrowed = [...(titleForm.borrowedRecoveryIds ?? []), ...(verseForm.borrowedRecoveryIds ?? [])];
+  const recoveringHeader = borrowed.length > 0 && document.state?.savedIntentReplaceable === false
+    && !titleForm.exactChoice && !verseForm.exactChoice;
+  const recoveryReady = titleForm.recoveryReady && verseForm.recoveryReady;
+  const recovery = useRecoveryDiscovery({
+    identity: document.recoveryIdentity,
+    enabled: recoveryReady,
+    version: JSON.stringify([borrowed, recoveringHeader, document.status?.phase, document.confirmed?.metadata?.revision]),
+    list: async () => {
+      const preserved = document.listRecoverable({ manualChoiceCopies: 'only' });
+      const forms = recoveringHeader ? Object.values(headerForms).map(async form => {
+        if (!form.borrowedRecoveryIds?.length) return [];
+        return (await form.listRecoverable()).filter(source => form.borrowedRecoveryIds.includes(source.scopeId)).map(source => ({
+          id: source.scopeId,
+          title: String(source.record.baseline.value?.title ?? sermonId ?? ''),
+          preview: source.record.stage[0]?.exists ? String(source.record.stage[0].value ?? '') : '',
+        }));
+      }) : [];
+      const [copies, ...records] = await Promise.all([preserved, ...forms]);
+      return [...records.flat(), ...copies.map(source => {
+        const { id, record: { checkpoint } } = source;
+        return { id, title: String(checkpoint.draft?.title ?? checkpoint.confirmed.value?.title ?? sermonId ?? ''),
+          preview: checkpoint.draft?.verse !== checkpoint.confirmed.value?.verse ? String(checkpoint.draft?.verse ?? '') : '',
+          discard: () => document.discardRecovery(source) };
+      })];
+    },
+    recover: id => {
+      const form = Object.values(headerForms).find(candidate => candidate.borrowedRecoveryIds?.includes(id));
+      return form ? form.recover(id) : document.recover(id);
+    },
+  });
+  const recoveredDecision = (slot: 'title' | 'verse') => {
+    const form = headerForms[slot];
+    const comparison = form.active || form.exactChoice ? form.comparison : undefined;
+    return manualFormDecision(form, comparison ? { identity: comparison.identity,
+      mine: String(comparison.mine[slot] ?? ''), stored: String(comparison.stored.value?.[slot] ?? '') } : undefined);
+  };
+  const fieldDecision = recoveredDecision('title') ?? recoveredDecision('verse') ?? preparationFields.decision;
   return {
     ...document,
     ...(fieldDecision ? { syncSubject: fieldDecision.subject, status: fieldDecision.status, error: fieldDecision.error,
       errorWords: undefined, keepLocal: fieldDecision.keepLocal, acceptRemote: fieldDecision.acceptRemote, retry: fieldDecision.retry } : {}),
     syncComparison: fieldDecision?.comparison,
+    headerRecovery: recoveryReady ? { recoveryChoices: recovery.choices, recoveryLoading: recovery.loading,
+      recoveryError: recovery.error, onRecover: recovery.recover, onDiscardRecovery: recovery.discard } : undefined,
     titleForm, verseForm,
     ...preparationFields,
     titleBinding: textBinding(titleForm, 'title'), verseBinding: textBinding(verseForm, 'verse'),

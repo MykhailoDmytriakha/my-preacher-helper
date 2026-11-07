@@ -41,7 +41,7 @@ export interface ManualFieldDecision {
   retry(): Promise<void>;
 }
 export function manualFormDecision(form: ReturnType<typeof useDataForm>, comparison?: TextComparison): ManualFieldDecision | undefined {
-  if (!form.choiceRequired && !comparison) return undefined;
+  if (!form.choiceRequired && !form.exactChoice && !comparison) return undefined;
   const discard = Boolean(comparison && form.canDiscardStage);
   return { comparison, subject: form.recoveryIdentity, status: discard && form.status ? { ...form.status, canAcceptRemote: true } : form.status, error: form.localError ?? null,
     keepLocal: form.keepLocal, acceptRemote: discard ? form.discardStageAndAcceptRemote : form.acceptRemote, retry: form.retry };

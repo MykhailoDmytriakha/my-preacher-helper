@@ -1,13 +1,15 @@
 'use client';
 
 import { settleCheckpointRecords, writeCheckpointRecord, checkpointKey } from './checkpointStorage.client';
+import { MANUAL_CHOICE_RECOVERY_PREFIX } from './editorIdentity';
 import { recoveryCheckpointId, selectRecoverableCheckpoints, validateRecoveryRecord } from './recovery.client';
 import { discardRecoveryRecord } from './recoveryDiscard.client';
 import { pinRecoveryVersion } from './recoverySource.client';
 import { checkpointCommitReferences, collectCommitRows, commitProjectionKey } from './retention.client';
 import { createEngineStorageTransaction, engineOwnerRange } from './storage.client';
 
-import type { CheckpointRecoveryStore, EditorRecord } from './controller';
+import type { CheckpointRecoveryStore, EditorRecord, RecoveryCheckpoint } from './controller';
+import type { ResourceRef } from './types';
 
 const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
@@ -20,13 +22,17 @@ export function createIndexedDbCheckpoints(collect = collectCommitRows): Checkpo
       writeCheckpointRecord(store, read, frozen, creating, () => done(undefined), collect);
     });
   };
+  const list = (owner: string, resource: ResourceRef | undefined, range: IDBKeyRange) => transaction<RecoveryCheckpoint[]>('readonly', (store, read, done) => {
+    read(store.getAll(range), (values: EditorRecord[]) => {
+      const records = values.map(record => [recoveryCheckpointId(owner, record.editorId), record] as const);
+      done(selectRecoverableCheckpoints(records, owner, resource));
+    });
+  });
   return {
-    listRecoverable: (owner, resource) => transaction('readonly', (store, read, done) => {
-      read(store.getAll(engineOwnerRange('checkpoint', owner)), values => {
-        const records = (values as EditorRecord[]).map(record => [recoveryCheckpointId(owner, record.editorId), record] as const);
-        done(selectRecoverableCheckpoints(records, owner, resource));
-      });
-    }),
+    listRecoverable: (owner, resource) => list(owner, resource, engineOwnerRange('checkpoint', owner)),
+    listManualChoiceCopies: (owner, resource) => list(owner, resource, IDBKeyRange.bound(
+      ['checkpoint', owner, MANUAL_CHOICE_RECOVERY_PREFIX], ['checkpoint', owner, MANUAL_CHOICE_RECOVERY_PREFIX + '\uffff'])),
+
     discardRecovery: (record, isCurrent) => discardRecoveryRecord(transaction, {
       owner: record.owner, key: checkpointKey(record.owner, record.editorId), expected: record,
       validate: value => validateRecoveryRecord(value, record.owner, record.editorId, record.checkpoint.confirmed.resource),

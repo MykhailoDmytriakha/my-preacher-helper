@@ -18,6 +18,17 @@ export function writeCheckpointRecord(store: IDBObjectStore, read: StorageRead, 
   placeCheckpointRecord(store, read, record, creating, versionRecoveryRecord, () => collect(store, read, record.owner, done));
 }
 
+/** Store the deciding copy and any later work it leaves for recovery in the same transaction. */
+export function writeChoiceCheckpoints(store: IDBObjectStore, read: StorageRead, owner: string, records: EditorRecord[],
+  done: () => void, collect = collectCommitRows): void {
+  if (!records.length || records.some(record => record.owner !== owner)) throw new Error('Checkpoint projection owner differs from changed commits');
+  const next = (index: number): void => {
+    if (index === records.length) { collect(store, read, owner, done); return; }
+    placeCheckpointRecord(store, read, records[index], index > 0, versionRecoveryRecord, () => next(index + 1));
+  };
+  next(0);
+}
+
 /**
  * What a closed editor's copy may become once its Saves were answered — what the editor itself would have written on
  * those answers while open, and nothing more: removed when nothing of the person's is left; or, when every Save in it

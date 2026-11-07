@@ -16,7 +16,7 @@ import { isCollectionOnEngine, isDataEngineEnabled } from './clientPolicy';
 import { isLiveCollectionDocument as liveCollectionDocument, type CollectionPresentationRow } from './collectionPresentation';
 import { isInactiveEditorError as inactiveEditor } from './controller';
 import { isDirectLegacyDocumentIntent, savedDocumentAnswer, type DocumentAnswer } from './documentDelivery';
-import { ACTION_SLOT, editorSlot } from './editorIdentity';
+import { ACTION_SLOT, editorSlot, isManualChoiceRecoveryIdentity, readManualScopeIdentity, recoveryEditorIdentity } from './editorIdentity';
 import { needsConnection } from './engine';
 import { LegacyQueryCopies, LegacyQueryMigrationGate } from './LegacyQueryRecovery';
 import { ARCHIVED_COLLECTIONS, isEngineOwnedLegacyMutation, isEngineOwnedLegacyQuery, legacyCacheMayBeOverwritten } from './legacyQueryRecovery.client';
@@ -24,6 +24,7 @@ import { discoverLegacyRecovery as discoverLegacyOriginals, exportLegacyRecovery
 import { recoveryHeldOpen as heldOpen, type OpenDocumentAnswer } from './openDocumentAnswers';
 import { mergeFields } from './protocol';
 import { collectionRecordPresence, documentRecordPresence, UNKNOWN_RECORD_PRESENCE, type RecordPresence } from './recordPresence';
+import { isOnlySubmittedCopy } from './recovery.client';
 import { captureRecoveryChoice as captureChoice, recoveryChoiceFingerprint, type RecoveryChoiceScope } from './recoveryChoice';
 import { validateResourceDocument } from './resourceSchemas';
 import { deletedUnder } from './session';
@@ -902,7 +903,7 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
     cancelScheduledSave();
     return new Promise((resolve, reject) => {
       requestedRecovery.current?.reject(aborted());
-      const request = { base, sourceId, editorId: `${browser.editorId({ collection, id }, slot)}:recovery:${newClientId()}`, resolve, reject };
+      const request = { base, sourceId, editorId: recoveryEditorIdentity(browser.editorId({ collection, id }, slot), newClientId()), resolve, reject };
       requestedRecovery.current = request;
       setSelection(request);
     });
@@ -1022,12 +1023,27 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
      * failure is not the document's, and its success does not clear the document's own failure
      * (BUG-20261003-draft-search-failure-shown-twice).
      */
-    listRecoverable: async () => {
+    listRecoverable: async (options?: { omitBorrowedSlots?: readonly string[]; manualChoiceCopies?: 'only' | 'omit' }) => {
       if (!isCurrent() || !browser || !owner || !collection || !id) throw new Error(EDITOR_CHANGED);
       // Listing drafts reads the editor's storage; when it is silent the search says so instead of spinning.
-      const records = await untilStorageSilent(browser.engine.listRecoveryChoices({ collection, id }), () => undefined, readOnlyReason(true));
+      const resource = { collection, id };
+      const listing = options?.manualChoiceCopies === 'only'
+        ? browser.engine.listRecoveryChoices(resource, true) : browser.engine.listRecoveryChoices(resource);
+      const records = await untilStorageSilent(listing, () => undefined, readOnlyReason(true));
       if (!isCurrent()) throw new Error(EDITOR_CHANGED);
-      return records;
+      if (!options) return records;
+      const pending = current?.state.checkpoint.pending ?? {};
+      const duplicate = (id: string): boolean => {
+        const scope = pending[id]?.borrowedManualScope;
+        const slot = scope && readManualScopeIdentity(scope)?.slot;
+        return Boolean(slot && options.omitBorrowedSlots?.includes(slot));
+      };
+      return records.filter(({ record }) => {
+        const preserved = isManualChoiceRecoveryIdentity(record.editorId);
+        if (options.manualChoiceCopies === 'only') return preserved;
+        if (options.manualChoiceCopies === 'omit' && preserved) return false;
+        return !isOnlySubmittedCopy(record, duplicate);
+      });
     },
     discardRecovery: async (source: RecoveryCheckpoint) => {
       if (!isCurrent() || !browser || !owner || !collection || !id
@@ -1220,6 +1236,8 @@ export function useDataForm(resource: ResourceRef | null, slot: string, selectio
     data: ownStage ?? document.data,
     /** Settled loading can mean an opening failed; only an acquired manual form can list its drafts. */
     recoveryReady: Boolean(targetForm),
+    borrowedRecoveryIds: [...new Set((document.state?.borrowedManualAnswers ?? []).filter(id => readManualScopeIdentity(id)?.slot === slot))],
+    exactChoice: target?.state?.exactChoice ?? false,
     // The opening may include submitted predecessors; it is never a confirmed snapshot.
     openingData: target?.state?.openingValue ?? null,
     // This may be a previously saved intent, so it is deliberately not called confirmed.

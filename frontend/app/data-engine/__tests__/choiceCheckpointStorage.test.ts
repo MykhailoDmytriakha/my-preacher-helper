@@ -57,6 +57,37 @@ describe('atomic choice checkpoint storage', () => {
     });
   });
 
+  it('rolls back the choice when writing a retained dependent fails', async () => {
+    const commits = createIndexedDbCommitStore(), checkpoints = createIndexedDbCheckpoints();
+    const saved = await commits.createBatch!([request('chosen', 1), request('dependent', 2)]);
+    await checkpoints.put(checkpoint('Original decision checkpoint'));
+    const original = await checkpoints.read(owner, editorId);
+    const later = { ...checkpoint('Later work'), editorId: 'later-recovery' };
+    const key = JSON.stringify(checkpointKey(owner, later.editorId));
+    storage.writeFailureFor = (writeKey, value) => JSON.stringify(writeKey) === key && value !== undefined;
+    const changes = cancelChanges(saved);
+    const project = () => [checkpoint('Chosen words'), later];
+
+    await expect(commits.compareAndSetWithCheckpoint!(changes, project)).rejects.toThrow('disk full');
+    expect(await commits.list(owner)).toEqual(saved);
+    expect(await checkpoints.read(owner, editorId)).toEqual(original);
+    expect(await checkpoints.read(owner, later.editorId)).toBeUndefined();
+
+    storage.writeFailureFor = undefined;
+    await commits.compareAndSetWithCheckpoint!(changes, project);
+    expect((await checkpoints.read(owner, editorId))?.checkpoint.draft?.title).toBe('Chosen words');
+    expect((await checkpoints.read(owner, later.editorId))?.checkpoint.draft?.title).toBe('Later work');
+  });
+
+  it('rejects a new capture that names a predecessor already retired by a choice', async () => {
+    const commits = createIndexedDbCommitStore();
+    const earlier = await commits.create(request('old-predecessor'));
+    await commits.compareAndSet(earlier, { ...earlier, state: 'cancelled', cancelledByChoice: true });
+    const later = { ...request('too-late', 2), predecessor: earlier.id };
+    await expect(commits.create(later)).rejects.toMatchObject({ code: 'commit-reference-changed' });
+    expect((await commits.list(owner)).map(row => [row.id, row.state])).toEqual([[earlier.id, 'cancelled']]);
+  });
+
   it('leaves all rows and the old checkpoint untouched when one batch member is stale', async () => {
     const commits = createIndexedDbCommitStore(), checkpoints = createIndexedDbCheckpoints();
     const saved = await commits.createBatch!([request('stale-a', 1), request('stale-b', 2)]);

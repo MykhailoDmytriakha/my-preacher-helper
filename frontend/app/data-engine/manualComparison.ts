@@ -1,3 +1,4 @@
+import { exactManualWords } from './manualChoice';
 import { sameManualSelection } from './manualScope';
 import { canReplaceSnapshot } from './snapshotFreshness';
 
@@ -10,8 +11,8 @@ export interface ManualComparison { identity: string; requestId: string; mine: D
 
 /** Only an actual answered ancestor of this selected field may explain its two versions. */
 export function manualComparison(form: ReturnType<ManualScope['getState']>, parent: SessionCheckpoint,
-  requests: ReadonlyMap<string, CommitRequest>): ManualComparison | undefined {
-  let id = form.record.predecessor?.id;
+  requests: ReadonlyMap<string, CommitRequest>, exact?: CommitRequest): ManualComparison | undefined {
+  let id = exact?.id ?? form.record.predecessor?.id;
   const visited = new Set<string>();
   while (id && !visited.has(id)) {
     visited.add(id);
@@ -25,9 +26,9 @@ export function manualComparison(form: ReturnType<ManualScope['getState']>, pare
       if (!stored.value || stored.metadata?.deleted) return undefined;
       const changed = form.record.selection.some(path => !sameManualSelection(request.baseline.value, request.value, path)
         && !sameManualSelection(request.baseline.value, stored.value, path) && !sameManualSelection(request.value, stored.value, path));
-      if (changed) return { identity: JSON.stringify([form.record.scopeId, request.id, form.record.stage, stored]), requestId: request.id, mine: form.value, stored: JSON.parse(JSON.stringify(stored)) as ResourceSnapshot };
+      if (changed) return { identity: JSON.stringify([form.record.scopeId, request.id, form.record.stage, stored]), requestId: request.id, mine: exact ? exactManualWords(form, exact) : form.value, stored: JSON.parse(JSON.stringify(stored)) as ResourceSnapshot };
     }
-    id = request.predecessor ?? undefined;
+    id = exact ? undefined : request.predecessor ?? undefined;
   }
   return undefined;
 }

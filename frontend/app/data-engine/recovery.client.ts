@@ -2,7 +2,8 @@
 
 import { z } from 'zod';
 
-import { getResourcePolicy, isValidIdentifier, validateCommand } from './protocol';
+import { readManualScopeIdentity } from './editorIdentity';
+import { equalValues, getResourcePolicy, isValidIdentifier, validateCommand } from './protocol';
 import { recoverySources } from './recoveryPresence';
 import { recoveryOrigins } from './recoverySource';
 import { DataSession } from './session';
@@ -18,13 +19,14 @@ const recordSchema = z.object({
   owner: id, editorId: z.string().min(1), prepared: z.unknown().nullable(), unfinalized: z.array(id).default([]),
   completedCommits: z.array(id).optional(),
   recoveryVersion: z.string().min(1).optional(),
+  retainedManualChoice: z.object({ base: z.unknown(), decidingEditorId: z.string().min(1).optional() }).optional(),
   recoveryOrigins: z.array(z.object({ id: z.string().min(1), version: z.string().min(1) })).optional(),
   recoverySources: z.array(z.object({ id: z.string().min(1) })).optional(),
   checkpoint: z.object({
     confirmed: snapshotSchema, draft: z.unknown(), dirty: z.boolean(), editGeneration: z.number().int().safe().nonnegative(),
     remoteCandidate: snapshotSchema.nullable(),
     conflicts: z.array(z.object({ path: z.array(z.string()), base: fieldSchema, mine: fieldSchema, theirs: fieldSchema })).default([]),
-    pending: z.record(id, z.object({ generation: z.number().int().safe().nonnegative(), value: z.unknown(), operations: z.array(id).optional() })),
+    pending: z.record(id, z.object({ generation: z.number().int().safe().nonnegative(), value: z.unknown(), operations: z.array(id).optional(), borrowedManualScope: z.string().refine(value => readManualScopeIdentity(value) !== null).optional() })),
   }),
 });
 const sameResource = (a: ResourceRef, b: ResourceRef) => a.collection === b.collection && a.id === b.id;
@@ -64,11 +66,28 @@ export function validateRecoveryRecord(value: unknown, owner: string, editorId: 
   const conflicts: ConflictDetail[] = record.checkpoint.conflicts.map(conflict => ({ ...conflict, base: field(conflict.base), mine: field(conflict.mine), theirs: field(conflict.theirs) }));
   const createIntent = record.checkpoint.confirmed.value === null && record.checkpoint.confirmed.metadata === null;
   const pending = Object.fromEntries(Object.entries(record.checkpoint.pending).map(([operationId, intent]) => [operationId, { ...intent, value: ownedDocument(intent.value, createIntent) }]));
-  return clone({ ...record, prepared, checkpoint: { ...record.checkpoint, draft: ownedDocument(record.checkpoint.draft, createIntent), pending, conflicts } });
+  const retainedManualChoice = record.retainedManualChoice && {
+    ...record.retainedManualChoice, base: ownedDocument(record.retainedManualChoice.base),
+  };
+  return clone({ ...record, retainedManualChoice, prepared,
+    checkpoint: { ...record.checkpoint, draft: ownedDocument(record.checkpoint.draft, createIntent), pending, conflicts } });
 }
 
 export function isRecoverableCheckpoint(record: EditorRecord): boolean {
   return record.checkpoint.dirty || record.prepared !== null || Object.keys(record.checkpoint.pending).length > 0 || record.unfinalized.length > 0;
+}
+
+/** A submitted projection is distinct from a checkpoint that also contains private work. */
+export function isOnlySubmittedCopy(record: EditorRecord, includes: (requestId: string) => boolean): boolean {
+  const { checkpoint, prepared, unfinalized } = record;
+  const pending = Object.entries(checkpoint.pending);
+  return !prepared && !unfinalized.length && pending.every(([id]) => includes(id))
+    && pending.some(([, intent]) => intent.generation === checkpoint.editGeneration && equalValues(intent.value, checkpoint.draft));
+}
+
+/** A saved projection still pins its receipts, but offers no competing recovery copy. */
+export function isPassiveManualContinuation(record: EditorRecord): boolean {
+  return isOnlySubmittedCopy(record, id => Boolean(record.checkpoint.pending[id].borrowedManualScope));
 }
 
 /**
@@ -105,7 +124,7 @@ export function selectRecoverableCheckpoints(records: readonly (readonly [unknow
 }
 
 function checkpointForkRecord(original: EditorRecord, sourceId: string, editorId: string, version: string | null): EditorRecord {
-  return clone({ ...original, editorId, recoveryVersion: undefined,
+  return clone({ ...original, editorId, recoveryVersion: undefined, retainedManualChoice: undefined,
     recoverySources: recoverySources(original.recoverySources, sourceId),
     recoveryOrigins: version ? recoveryOrigins(original.recoveryOrigins, { id: sourceId, version }) : undefined });
 }
