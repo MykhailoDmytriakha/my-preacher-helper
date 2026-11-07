@@ -4,6 +4,7 @@ import { X, CornerDownRight, ArrowDown, ChevronLeft, ChevronRight } from 'lucide
 import React, { useEffect, useRef } from 'react';
 
 import '@locales/i18n';
+import planActions from '@/components/plan-editor/PlanRowActions.module.css';
 import { useBufferedText } from '@/components/ui/useBufferedText';
 import { NEUTRAL_CAPTION } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
@@ -93,7 +94,7 @@ const TreeNode: React.FC<TreeNodeProps> = ({
         </>
       )}
 
-      <div className="group">
+      <div className={planActions.row}>
         <div className="relative">
           {hasMarker && (
             <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-medium text-gray-500 dark:text-gray-400 pointer-events-none">
@@ -194,7 +195,7 @@ const TreeNode: React.FC<TreeNodeProps> = ({
               onClick={() => onRemove(node.id)}
               aria-label={t('wizard.steps.exegeticalPlan.builder.tooltips.delete')}
               title={t('wizard.steps.exegeticalPlan.builder.tooltips.delete') as string}
-              className="w-5 h-5 opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 flex items-center justify-center transition-all"
+              className={`w-5 h-5 text-gray-400 hover:text-red-500 flex items-center justify-center transition-colors ${planActions.actions}`}
             >
               <X className="w-3.5 h-3.5" />
             </button>

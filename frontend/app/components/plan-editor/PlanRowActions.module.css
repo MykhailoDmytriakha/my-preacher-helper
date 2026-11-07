@@ -1,0 +1,8 @@
+/* A hidden destructive action must not receive pointer input. Narrow rows may
+ * keep their existing always-visible controls with ordinary utility classes. */
+@media (hover: hover) and (pointer: fine) {
+  :where(.row:not(:hover) .actions:not(:focus-within)) {
+    opacity: 0;
+    pointer-events: none;
+  }
+}

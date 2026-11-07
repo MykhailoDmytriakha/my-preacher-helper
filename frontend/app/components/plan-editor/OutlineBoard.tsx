@@ -35,6 +35,7 @@ import { useTranslation } from '@locales/useTranslation';
 import { DraggableCard, DropZone } from './BoardDragPrimitives';
 import { dragIdFor, parseDragId, intoPointDropId, gapDropId, subGapDropId, sectionDropId, resolveOutlineDrop, describeDropPlace } from './outlineBoardModel';
 import { indexScratchNotes } from './outlineBoardNotes';
+import planActions from './PlanRowActions.module.css';
 import { ScratchNotePool, ScratchNoteStrip, SCRATCH_DROP_OVER_CLASS } from './ScratchNoteLayer';
 import { useOutlineBoardDrag } from './useOutlineBoardDrag';
 
@@ -833,7 +834,7 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
                          * in the air the whole card is the container: a wash, no
                          * outline — the outline means "nest", and a note never nests.
                          */
-                        className={`group relative rounded-lg border bg-white dark:bg-gray-800 shadow-sm transition-colors ${
+                        className={`group relative rounded-lg border bg-white dark:bg-gray-800 shadow-sm transition-colors ${planActions.row} ${
                           isDragging ? 'opacity-40 border-slate-200 dark:border-gray-700' : 'border-slate-200 dark:border-gray-700'
                         } ${
                           isIntoTarget
@@ -931,7 +932,7 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
                           )}
 
                           {editingPointId !== point.id && !isReadOnly && (
-                            <div className="flex items-center gap-0.5 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
+                            <div className={`flex items-center gap-0.5 max-lg:opacity-100 max-lg:pointer-events-auto ${planActions.actions}`}>
                               {!directText && <button type="button"
                                 aria-label={t('common.edit')}
                                 onClick={() => {

@@ -6599,3 +6599,21 @@ The related run passed 283 Jest tests across 20 suites, TypeScript and scoped ES
 Browser QA used local Auth and Firestore emulators and emitted no application write commands. A separate cold Groups dev readiness timeout occurred both before and after and recovered with a warm reload. The measured runs began after the list rendered. Chrome, its temporary profile and both services were closed. Physical-device and production acceptance remain pending.
 
 After deployment, check the deployed version and refreshed assets. On an approved disposable account, open Groups and check the ready, partially ready and undated captions at both widths in both themes. Open the text-size control in wide Bible and a narrow Studies note, apply a size and restore it. Check a green confirmation control with safe cancellation. Compare the visible captions and measure representative foreground/background pairs against 4.5:1.
+
+## BUG-20261106-exegetical-delete-invisible-hit-target · Reveal plan deletion before interaction
+
+On the original commit `92c34ee9`, native Chrome touch reached the fully transparent deletion target for both an exegetical parent and child. The Classic sermon outline and the Structure editor had the same problem on the wider tablet layout. Desktop Tab could reach the transparent exegetical control, and the hidden control participated in pointer hit testing. Each surface already asked for confirmation before deleting.
+
+The shared `PlanRowActions.module.css` couples visibility and hit testing for the three row controls. Fine-pointer hover layouts reveal the action on row hover or focus within the action. Touch layouts show it at rest. Narrow Classic and Structure editor layouts retain visible actions with a mouse. The excision of a subtree, confirmation, edit authorization and document persistence continue through their existing handlers.
+
+| Surface or layer | Result |
+|---|---|
+| `TreeNode` | Both parent and nested child use the same affordance. They were reproduced at 390×844. |
+| `SermonOutline` and `OutlineBoard` | Both affected toolbar variants use the same CSS. Native touch reproduced them at 1024×768 and verified them after the change. At 900×850 with a mouse their controls remained visible and operable. |
+| Subpoint rows, sidebar and server | Subpoint removal rails are visible at rest. The sidebar already disables pointer input on its transparent overlay. Confirmation, offline capture, the server command and its guards have no separate opacity state. |
+
+The same native Chrome assertions went from 6 failures out of 30 to 30 passing. Wide desktop at 1440×900 proved no hidden pointer hit, visible keyboard focus, real row hover, and confirmation by Enter and click. Cancel preserved the corresponding points. Confirm on the disposable exegetical tree emitted one acknowledged write (HTTP 200, revision 2), removed only the parent and child, and a settled reload retained the sibling. The earlier immediate reload before any command was sent restored the rows and showed a recovery action. It is a separate observation to investigate. It was excluded from the persistence pass.
+
+Independent Codex review reported no concrete CSS cascade, focus or nested-row issue. The targeted gate passed 134 tests in 12 suites, TypeScript and scoped ESLint. Original screenshots were visually inspected. Raw results and replay commands are in the local case at `artifacts/plan-delete-307-native/README.md`. Local Auth and Firestore only. Browser and services closed, six ports released and the build config restored exactly. Physical-device and production acceptance remain pending.
+
+After deployment, verify the deployed revision. Use a disposable sermon with a parent, child and sibling. On a real touch device, open Preparation → Exegetical Plan, Classic and Structure editor. Check the visible deletion affordance before touching, verify Cancel leaves the row, then confirm the disposable parent after checking the intended subtree. Wait for the saved state and reload. On desktop use pointer hover and Tab to reveal the control and Cancel the dialog.

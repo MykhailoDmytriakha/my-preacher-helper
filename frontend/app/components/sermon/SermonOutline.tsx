@@ -6,6 +6,7 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 're
 
 import { ScriptureText } from '@/components/bible/ScriptureLinks';
 import { SubPointList } from '@/components/column/SubPointList';
+import planActions from '@/components/plan-editor/PlanRowActions.module.css';
 import { useStructureWriter } from '@/components/sermon/structureWriter';
 import { useConfirm } from '@/hooks/useConfirm';
 import { usePangeaAnnouncements } from '@/hooks/useDragAnnouncements';
@@ -508,7 +509,7 @@ const SermonOutlineEditor: React.FC<SermonOutlineProps> = ({
             <ScriptureText text={point.text} />
           </span>
         </div>
-        <div className="flex items-center space-x-1 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 lg:group-focus-within:opacity-100 transition-opacity">
+        <div className={`flex items-center space-x-1 max-lg:opacity-100 max-lg:pointer-events-auto ${planActions.actions}`}>
           {addSubPointButton}
           <button aria-label={t('common.edit')} onClick={() => handleStartEdit(point)} disabled={isReadOnly} className={`p-1 text-gray-500 hover:text-indigo-600 dark:text-gray-400 dark:hover:text-indigo-400 ${isReadOnly ? DISABLED_ACTION_CLASSES : ''}`}>
             <PencilIcon className="h-4 w-4" />
@@ -640,7 +641,7 @@ const SermonOutlineEditor: React.FC<SermonOutlineProps> = ({
                             t={t}
                             hideList={editingPointId === point.id || Boolean(collapsedPoints[point.id])}
                             renderHeader={(addSubPointButton) => (
-                              <div className={`flex items-center group p-2 rounded ${!snapshot.isDragging ? 'hover:bg-gray-50 dark:hover:bg-gray-700' : ''}`}>
+                              <div className={`flex items-center group p-2 rounded ${planActions.row} ${!snapshot.isDragging ? 'hover:bg-gray-50 dark:hover:bg-gray-700' : ''}`}>
                                 {/* Drag Handle */}
                                 <div
                                   {...providedDraggable.dragHandleProps}

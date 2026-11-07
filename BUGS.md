@@ -207,12 +207,6 @@
 **Улики.** QA на localhost:3047 с заранее созданными группами. Запросы страницы и проверки входа ответили 200. В записи Chrome видно истечение `contrast-ready groups`; исключение скрипта не зафиксировано. Исходные отчёты `contrast-306-before-report.md` и `contrast-306-after-report.md`, журнал `contrast-306-native-after-after.browser.jsonl` в локальном деле.
 **Дальше.** Повторить обычный вход и переход с главной страницы в «Группы» на эмуляторе с сохранением состояния загрузки и сетевых событий. Отдельно проверить тот же сценарий на локальной production-сборке. Пока причина, эффект на боевом сайте и связь с холодным входом в Библию не установлены.
 
-### BUG-20261106-exegetical-delete-invisible-hit-target · Невидимый крестик плана остаётся нажимаемым
-**P3, перепроверить в touch UI.** Проповедь → Подготовка → Экзегетический план: без hover крестик скрыт opacity, но принимает нажатия. Сообщил Claude в main-рации#84; native iPad-повтор ещё не снят.
-**Якоря.** `frontend/app/components/sermon/prep/exegeticalPlan/TreeNode.tsx:192` — opacity0 без pointer-events-none; `ExegeticalPlanModule.tsx:117` уже вызывает confirm перед удалением. Удаление без вопроса в текущем коде не подтверждается.
-**Ожидание / проверка.** Touch-пользователь видит доступное удаление до нажатия; невидимая область не запускает действие. Проверить hover:none, keyboard focus, Cancel/Confirm и дочерние узлы; сохранить существующее подтверждение.
-
-
 ### BUG-20261106-bible-cold-dev-invalid-script · Холодный dev-вход в Библию не открывает книгу
 **P3, перепроверить.** На двух свежих QA Next3047 первый вход даёт SyntaxError и затем ChunkLoadError; после reload и завершения загрузки книга открылась. Причина и production-эффект не установлены.
 **Якоря.** Native CDP AFTER305: `app/layout.js`, line281/column28 (zero based), length655279. Raw `analysis-source-305-{before,after}-*` в локальном деле; исходные bytes не пойманы.
