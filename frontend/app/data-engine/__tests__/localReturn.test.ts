@@ -2,6 +2,7 @@ import { waitFor } from '@testing-library/react';
 import { documentEngineHarness, settleEngine } from '@test-utils/documentEngineHarness';
 import { editorIdentity, recoveryEditorIdentity } from '@/data-engine/editorIdentity';
 import { liveSubmittedWork } from '@/data-engine/liveSubmittedWork';
+import { recoveryHeldOpen } from '@/data-engine/openDocumentAnswers';
 import { DataSession } from '@/data-engine/session';
 
 jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
@@ -55,6 +56,141 @@ it.each(['conflict', 'refused'] as const)('offers an ordinary %s in the already-
     expect(inB.getState().checkpoint.draft?.title).toBe(outcome === 'conflict' ? remoteTitle : original.title);
     expect(inB.getState().checkpoint.pending).toEqual({});
     expect(h.transport.send).toHaveBeenCalledTimes(1);
+  } finally { a.dispose(); b.dispose(); }
+});
+
+it.each(['remote', 'local', 'racing capture', 'private words'] as const)('settles the first conflict with %s and retains the later ordinary Save', async choice => {
+  const { h, a, b, inA, inB } = await setup();
+  const early = 'First saved title', later = 'Later saved title', stored = 'Stored server title';
+  try {
+    b.setVisible(false);
+    await inA.commit(current => ({ ...current!, title: early }));
+    await inA.commit(current => ({ ...current!, title: later }));
+    const [first, second] = await h.commits.list('owner');
+    expect(second.predecessor).toBe(first.id);
+    h.silentRemote({ title: stored, description: 'Independent server field' });
+    a.setOnline(true);
+    await a.retry();
+    await waitFor(() => expect(inA.getState().result).toMatchObject({ kind: 'conflict', operationId: first.id }));
+    inA.dispose();
+
+    b.setVisible(true);
+    await waitFor(() => expect(inB.getState().result).toMatchObject({ kind: 'conflict', operationId: first.id }));
+    expect(inB.getState().checkpoint.draft?.title).toBe(early);
+    expect(inB.getState().savedIntentReplaceable).toBe(true);
+    if (choice === 'private words') {
+      await inB.edit({ ...inB.getState().checkpoint.draft!, description: 'Private words typed in B' });
+      await expect(inB.acceptRemote()).rejects.toMatchObject({ code: 'other-changes-first' });
+      expect(inB.getState().checkpoint.draft?.description).toBe('Private words typed in B');
+      expect((await h.commits.list('owner')).map(request => request.state)).toEqual(['conflict', 'queued']);
+      return;
+    }
+    await waitFor(async () => {
+      const drafts = (await b.listRecoverable(resource)).filter(item => item.answer === 'conflict').map(item => item.record);
+      expect(drafts.some(draft => draft.checkpoint.draft?.title === later)).toBe(true);
+      expect(recoveryHeldOpen(drafts, b.getOpenAnswerScopes())).toBe(true);
+    });
+    if (choice === 'racing capture') {
+      const commit = h.commits.compareAndSetWithCheckpoint!.bind(h.commits);
+      const value = { ...second.value!, title: 'Third save captured during the choice' };
+      const late = { ...second, id: 'third-save', editGeneration: 3, predecessor: second.id,
+        revision: 0, initialized: false, value, intended: value, command: null,
+        submitted: null, state: 'queued' as const, result: null, unfinalized: [] };
+      jest.spyOn(h.commits, 'compareAndSetWithCheckpoint').mockImplementationOnce(async (changes, project, target) => {
+        await h.commits.create(late);
+        return commit(changes, project, target);
+      });
+      await expect(inB.acceptRemote()).rejects.toMatchObject({ code: 'commit-changed' });
+      const retained = await h.commits.list('owner');
+      expect(retained.map(request => [request.id, request.state])).toEqual([
+        [first.id, 'conflict'], [second.id, 'queued'], [late.id, 'queued'],
+      ]);
+      return;
+    }
+    if (choice === 'remote') await inB.acceptRemote();
+    else { await inB.keepLocal(); await inB.save(); }
+    b.setOnline(true);
+    await b.retry();
+
+    const selected = choice === 'remote' ? stored : early;
+    await waitFor(() => expect(inB.getState().checkpoint.draft).toMatchObject({
+      title: selected, description: 'Independent server field',
+    }));
+    const retained = await b.listRecoverable(resource);
+    expect(retained.some(copy => copy.record.checkpoint.draft?.title === later)).toBe(true);
+    expect(h.server.value?.title).toBe(selected);
+  } finally { a.dispose(); b.dispose(); }
+});
+
+it('keeps only the answered Save even when the deciding editor holds the later Save', async () => {
+  const { h, a, b, inA } = await setup();
+  try {
+    await inA.commit(current => ({ ...current!, title: 'First saved title' }));
+    await inA.commit(current => ({ ...current!, title: 'Later saved title' }));
+    h.silentRemote({ title: 'Stored server title', description: 'Independent server field' });
+    a.setOnline(true);
+    await a.retry();
+    await waitFor(() => expect(inA.getState().result?.kind).toBe('conflict'));
+
+    await inA.keepLocal();
+    await inA.save();
+    await a.retry();
+    await waitFor(() => expect(h.server.value).toMatchObject({
+      title: 'First saved title', description: 'Independent server field',
+    }));
+    const retained = await a.listRecoverable(resource);
+    expect(retained.some(copy => copy.record.checkpoint.draft?.title === 'Later saved title')).toBe(true);
+  } finally { a.dispose(); b.dispose(); }
+});
+
+it('leaves a later Save untouched when it lands after a tip conflict was reviewed', async () => {
+  const { h, a, b, inA, inB } = await setup();
+  try {
+    b.setVisible(false);
+    await inA.commit(current => ({ ...current!, title: 'First saved title' }));
+    h.silentRemote({ title: 'Stored server title' });
+    a.setOnline(true);
+    await a.retry();
+    await waitFor(() => expect(inA.getState().result?.kind).toBe('conflict'));
+    inA.dispose();
+    b.setVisible(true);
+    await waitFor(() => expect(inB.getState().result?.kind).toBe('conflict'));
+    const [first] = await h.commits.list('owner');
+    const value = { ...first.value!, title: 'Later saved title' };
+    const later = { ...first, id: 'later-save', editGeneration: 2, predecessor: first.id,
+      revision: 0, initialized: false, value, intended: value, command: null,
+      submitted: null, state: 'queued' as const, result: null, unfinalized: [] };
+    const commit = h.commits.compareAndSetWithCheckpoint!.bind(h.commits);
+    jest.spyOn(h.commits, 'compareAndSetWithCheckpoint').mockImplementationOnce(async (changes, project, target) => {
+      await h.commits.create(later);
+      return commit(changes, project, target);
+    });
+    await expect(inB.acceptRemote()).rejects.toMatchObject({ code: 'commit-changed' });
+    expect((await h.commits.list('owner')).map(request => [request.id, request.state]))
+      .toEqual([[first.id, 'conflict'], [later.id, 'queued']]);
+  } finally { a.dispose(); b.dispose(); }
+});
+
+it('retains the later ordinary Save when taking the server version outside the original editor', async () => {
+  const { h, a, b, inA } = await setup();
+  try {
+    b.setVisible(false);
+    await inA.commit(current => ({ ...current!, title: 'First saved title' }));
+    await inA.commit(current => ({ ...current!, description: 'Later saved description' }));
+    const [first, second] = await h.commits.list('owner');
+    expect(second.predecessor).toBe(first.id);
+    h.silentRemote({ title: 'Stored server title', description: 'Independent server field' });
+    a.setOnline(true);
+    await a.retry();
+    await waitFor(() => expect(inA.getState().result).toMatchObject({ kind: 'conflict', operationId: first.id }));
+    inA.dispose();
+
+    expect(await b.takeStoredVersion(resource, [first.id])).toBe(1);
+    const retained = await b.listRecoverable(resource);
+    expect(retained.map(copy => copy.record.checkpoint.draft)).toContainEqual(expect.objectContaining({
+      title: 'Stored server title', description: 'Later saved description',
+    }));
+    expect(h.server.value?.title).toBe('Stored server title');
   } finally { a.dispose(); b.dispose(); }
 });
 

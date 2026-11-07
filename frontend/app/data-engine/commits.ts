@@ -470,11 +470,13 @@ export class CommitQueue {
 
   /** An editor choice owns both the cancellation and its exact durable checkpoint. */
   async cancelWithCheckpoint(editorId: string, additionalRequestIds: readonly string[],
-    project: (saved: CommitRequest[]) => EditorRecord | EditorRecord[], reviewed?: CommitRequest): Promise<void> {
+    project: (saved: CommitRequest[]) => EditorRecord | EditorRecord[],
+    reviewed?: { roots: readonly CommitRequest[]; retained?: ReadonlySet<string> }): Promise<void> {
     if (!this.options.store.compareAndSetWithCheckpoint) throw new Error('Atomic choice checkpoint storage is required');
     const { owner, generation, records, chosen } = await this.planCancellation(editorId, additionalRequestIds, false);
-    if (reviewed && (chosen.size !== 1 || !records.some(record => record.id === reviewed.id && record.revision === reviewed.revision
-      && ['conflict', 'refused'].includes(record.state)))) {
+    if (reviewed && (chosen.size !== reviewed.roots.length || reviewed.roots.some(root => !chosen.has(root.id)
+      || !records.some(record => record.id === root.id && record.revision === root.revision
+        && ['conflict', 'refused'].includes(record.state))))) {
       throw Object.assign(new Error('The shown saved copy changed'), { code: 'decision-changed' });
     }
     const selectedManual = records.filter(record => chosen.has(record.id) && readManualScopeIdentity(record.editorId));
@@ -490,7 +492,8 @@ export class CommitQueue {
     }
     const choiceRequestIds = reviewed || selectedManual.length ? [...chosen] : undefined;
     const saved = await this.options.store.compareAndSetWithCheckpoint(records.map(previous => ({ previous,
-      next: { ...this.cancelledRequest(previous, chosen), ...(reviewed && !chosen.has(previous.id) ? { retainedAfterChoice: true as const } : {}) },
+      next: { ...this.cancelledRequest(previous, chosen), ...(reviewed && !chosen.has(previous.id) && (reviewed.retained?.has(previous.id) ?? true)
+        ? { retainedAfterChoice: true as const } : {}) },
     })), requests => {
       this.assertCurrent(owner, generation);
       return project(requests);

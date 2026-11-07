@@ -211,7 +211,9 @@ describe('a screen draft answered after the screen was left', () => {
     await oneShotWorks(context);
     // The swept work was not chosen about: its text stays recoverable rather than vanishing.
     const left = await context.harness.engine.listRecoverable(resource);
-    expect(left.map(({ record }) => record.checkpoint.draft?.verse)).toContain('Queued behind the conflict');
+    expect(left.map(({ record }) => record.checkpoint.draft)).toContainEqual(expect.objectContaining({
+      title: 'Written on the phone', verse: 'Queued behind the conflict',
+    }));
   });
 
   /**

@@ -82,36 +82,43 @@ export function projectExactManualChoice(record: EditorRecord, decision: ExactMa
     : decision.stored.value;
   const decided = { ...record, checkpoint: afterChoice(decision.stored, draft, checkpoint.editGeneration + 1),
     completedCommits: [...new Set([...(record.completedCommits ?? []), ...ids])] };
+  return [decided, ...projectSavedChoiceDependents(record.owner, decision.request, decision.stored, draft, retired,
+    decision.choice === 'local' ? record.editorId : undefined, decision.privateStage)];
+}
+
+/** A choice retires blocked request identities while retaining each later branch's own delta. */
+export function projectSavedChoiceDependents(owner: string, chosen: CommitRequest, stored: ResourceSnapshot,
+  draft: DocumentData | null, retired: readonly CommitRequest[], decidingEditorId?: string,
+  privateStage?: ExactManualChoice['privateStage']): EditorRecord[] {
   const byId = new Map(retired.map(request => [request.id, request]));
   const predecessors = new Set(retired.map(request => request.predecessor));
-  const projected = new Map<string, DocumentData | null>([[decision.request.id, draft]]);
+  const projected = new Map<string, DocumentData | null>([[chosen.id, draft]]);
   const retain = (id: string, value: DocumentData | null): EditorRecord => ({
-    owner: record.owner, editorId: manualChoiceRecoveryIdentity(decision.request.id, id), prepared: null, unfinalized: [],
-    retainedManualChoice: { base: draft, ...(decision.choice === 'local' ? { decidingEditorId: record.editorId } : {}) },
-    checkpoint: { ...afterChoice(decision.stored, value, 1), dirty: true },
+    owner, editorId: manualChoiceRecoveryIdentity(chosen.id, id), prepared: null, unfinalized: [],
+    retainedManualChoice: { base: draft, ...(decidingEditorId ? { decidingEditorId } : {}) },
+    checkpoint: { ...afterChoice(stored, value, 1), dirty: true },
   });
-  const later = orderCommitRequests(retired).flatMap(request => {
+  const later = orderCommitRequests([...retired]).flatMap(request => {
     if (!request.retainedAfterChoice || !request.predecessor) return [];
     const ancestor = byId.get(request.predecessor);
     if (!ancestor || !projected.has(ancestor.id)) throw new Error('The later Save lost its reviewed ancestor');
     const basis = projected.get(ancestor.id)!;
     const merged = mergeDocumentFields(ancestor.value, request.value, basis);
-    const laterDraft = chooseLocalPlacement(decision.stored.resource.collection, ancestor.value, request.value, basis,
+    const laterDraft = chooseLocalPlacement(stored.resource.collection, ancestor.value, request.value, basis,
       merged.value.exists ? merged.value.value as DocumentData : null, mergeFields);
     projected.set(request.id, laterDraft);
     if (predecessors.has(request.id) || equalValues(draft, laterDraft)) return [];
     return [retain(request.id, laterDraft)];
   });
-  const privateStage = decision.privateStage;
   if (privateStage) {
     const basis = projected.get(privateStage.predecessorId);
     if (basis === undefined) throw Object.assign(new Error('The shown saved copy changed'), { code: 'decision-changed' });
     const merged = mergeDocumentFields(privateStage.base, privateStage.value, basis);
-    const value = chooseLocalPlacement(decision.stored.resource.collection, privateStage.base, privateStage.value, basis,
+    const value = chooseLocalPlacement(stored.resource.collection, privateStage.base, privateStage.value, basis,
       merged.value.exists ? merged.value.value as DocumentData : null, mergeFields);
     later.push(retain(JSON.stringify(['stage', privateStage.scopeId, privateStage.generation]), value));
   }
-  return [decided, ...later];
+  return later;
 }
 
 /** Apply the later draft's actual delta only on explicit recovery, over the latest accepted copy. */

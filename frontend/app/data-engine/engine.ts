@@ -21,6 +21,7 @@ import { ManualScope, recoverManualScopeRecord, reconcileManualCaptures, sameMan
 import { captureMembershipPins } from './membershipCapture';
 import { describeActionDelivery, describeMembershipDelivery, type MembershipDelivery } from './membershipDelivery';
 import { CREATION_SCOPE_PREFIX, MembershipScope, type MembershipScopeRecord } from './membershipScope';
+import { laterOrdinaryAnswerCopies, ordinaryStoredChoice, reviewOrdinaryConflictChoice } from './ordinaryConflictChoice';
 import { getResourcePolicy, equalValues, isValidIdentifier } from './protocol';
 import { documentRecordPresence, type RecordPresence } from './recordPresence';
 import { forkCheckpoint, isPassiveManualContinuation, isRecoverableCheckpoint, reconcileRecoveryRecord, recoveryCheckpointId, validateRecoveryRecord } from './recovery.client';
@@ -1132,8 +1133,10 @@ export class DataEngine {
       const checkpoint = !entry.closed ? entry.controller?.getState().checkpoint : null;
       if (!checkpoint || !entry.controller!.hasChoiceAuthority(checkpoint) || !savedDocumentAnswer(this.owner ?? '', checkpoint.confirmed.resource,
         Object.keys(checkpoint.pending), requests, journal)) continue;
+      const laterSaves = laterOrdinaryAnswerCopies(checkpoint, requests);
       const scope = { owner: this.owner ?? '', resource: checkpoint.confirmed.resource,
-        operationIds: Object.keys(checkpoint.pending).sort(), draft: checkpoint.draft };
+        operationIds: Object.keys(checkpoint.pending).sort(), draft: checkpoint.draft,
+        ...(laterSaves.length ? { laterSaves } : {}) };
       if (!scopes.some(previous => equalValues(previous, scope))) scopes.push(scope);
     }
     return scopes;
@@ -1153,7 +1156,10 @@ export class DataEngine {
     if (!equalValues(work, this.openAnswerScopes)) {
       this.openAnswerScopes = Object.freeze(work.map(scope => Object.freeze({ ...copy(scope),
         resource: Object.freeze(copy(scope.resource)), operationIds: Object.freeze([...scope.operationIds]),
-        draft: scope.draft === null ? null : Object.freeze(copy(scope.draft)) })));
+        draft: scope.draft === null ? null : Object.freeze(copy(scope.draft)),
+        ...(scope.laterSaves ? { laterSaves: Object.freeze(scope.laterSaves.map(save => Object.freeze({
+          ...save, operationIds: Object.freeze([...save.operationIds]), draft: save.draft === null ? null : Object.freeze(copy(save.draft)),
+        }))) } : {}) })));
       for (const listener of this.openAnswerScopeListeners) {
         try { listener(); } catch { /* Rendering never changes editor ownership. */ }
       }
@@ -1194,7 +1200,13 @@ export class DataEngine {
       }
       if (chosen) await this.publishStoredChoice(owner, generation, chosen);
       const ids = answered.map(request => request.id);
-      await this.commits.cancel('', ids); this.assertCurrent(owner, generation);
+      const reviewed = answered.flatMap(request => reviewOrdinaryConflictChoice(request, requests) ?? []);
+      if (reviewed.length) {
+        const retained = new Set(reviewed.flatMap(choice => choice.scope.slice(1).map(request => request.id)));
+        await this.commits.cancelWithCheckpoint('', ids, retired => ordinaryStoredChoice(owner, reviewed, retired),
+          { roots: answered, retained });
+      } else await this.commits.cancel('', ids);
+      this.assertCurrent(owner, generation);
       await Promise.all([...this.editors.values()].filter(entry => entry.controller
         && sameResource(entry.controller.getState().checkpoint.confirmed.resource, resource)).map(entry => entry.controller!.settled()));
       this.assertCurrent(owner, generation);

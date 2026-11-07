@@ -2,6 +2,7 @@ import { atomicParticipants, isLiveWholeAction } from './atomicCommits';
 import { isDocumentDeletion } from './deletionOrdering';
 import { areDifferentTabEditors, areDifferentTabManualParents } from './editorIdentity';
 import { markBorrowedManualSources } from './manualReturnSources';
+import { ordinaryConflictChoice } from './ordinaryConflictChoice';
 import { equalValues } from './protocol';
 import { DataSession } from './session';
 import { canReplaceSnapshot } from './snapshotFreshness';
@@ -97,6 +98,13 @@ function readLiveChainProof(chain: readonly CommitRequest[], requests: readonly 
   return requests.filter(request => atomicIds.has(request.id));
 }
 
+/** Show the answered save alone. Its unsent suffix remains durable until the exact choice. */
+function answeredOrdinaryPrefix(chain: CommitRequest[], requests: readonly CommitRequest[]): CommitRequest[] {
+  const index = chain.findIndex(request => request.state === 'conflict');
+  if (index < 0 || index === chain.length - 1 || !ordinaryConflictChoice(chain[index], requests)) return chain;
+  return chain.slice(0, index + 1);
+}
+
 export function sameLiveAtomicProof(proof: readonly CommitRequest[], requests: readonly CommitRequest[]): boolean {
   return proof.every(participant => equalValues(participant, requests.find(request => request.id === participant.id)));
 }
@@ -106,10 +114,12 @@ export function liveSubmittedWork(owner: string, editorId: string, current: Sess
   requests: readonly CommitRequest[], manualSources?: ReadonlyMap<string, string>): { checkpoint: SessionCheckpoint; acknowledged: CommitRequest[]; atomicProof: CommitRequest[]; answer: CommitRequest['result'] } | null {
   if (current.conflicts.length || current.remoteCandidate) return null;
   const resource = current.confirmed.resource;
-  const submitted = submittedWorkCheckpoint(owner, resource, requests);
+  const complete = submittedWorkCheckpoint(owner, resource, requests);
+  if (!complete) return null;
+  const all = requests.filter(request => complete.pending[request.id]);
+  const chain = answeredOrdinaryPrefix(all, requests);
+  const submitted = chain === all ? complete : submittedWorkCheckpoint(owner, resource, chain);
   if (!submitted) return null;
-  const ids = new Set(Object.keys(submitted.pending));
-  const chain = requests.filter(request => ids.has(request.id));
   if (!canFollowChain(current, chain)) return null;
   const atomicProof = readLiveChainProof(chain, requests, current, editorId, manualSources);
   if (!atomicProof) return null;

@@ -90,6 +90,10 @@ function tabForEditor(editorId: string, resource: ResourceRef): string | null {
   }
 }
 
+export function isDocumentEditor(editorId: string, resource: ResourceRef): boolean {
+  return tabForEditor(openingEditorId(editorId), resource) !== null;
+}
+
 /** A cross-tab continuation needs two ordinary, fully resource-bound editor identities. */
 export function areDifferentTabEditors(sourceId: string, recipientId: string, resource: ResourceRef): boolean {
   const source = tabForEditor(sourceId, resource), recipient = tabForEditor(recipientId, resource);

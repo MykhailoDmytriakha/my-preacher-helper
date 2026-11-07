@@ -10,9 +10,10 @@ import { requiredDomainTargets } from './domainPolicy';
 import { areDifferentTabManualParents, editorSlot, readManualScopeIdentity } from './editorIdentity';
 import { liveSubmittedWork, sameLiveAtomicProof } from './liveSubmittedWork';
 import { chooseLocalPlacement } from './localPlacementChoice';
-import { projectExactManualChoice, type ExactManualChoice } from './manualChoice';
+import { projectExactManualChoice, projectSavedChoiceDependents, type ExactManualChoice } from './manualChoice';
 import { sameManualSources } from './manualReturnSources';
 import { projectManualSelection, type ManualPath } from './manualScope';
+import { assertOrdinaryConflictScope, ordinaryChoiceCheckpoint, reviewOrdinaryConflictChoice } from './ordinaryConflictChoice';
 import { confirmedExistingDeletion, equalValues, mergeDocumentFields, mergeFields } from './protocol';
 import { isRecoverableCheckpoint } from './recovery.client';
 import { recoveryChoiceFingerprint } from './recoveryChoice';
@@ -701,11 +702,18 @@ export class EditorController {
     if (this.prepared) throw Object.assign(new Error('Resolve pending commands before replacing saved intent'), { code: PENDING_DELIVERY_FIRST });
     const cancelled = Object.keys(this.session.checkpoint().pending);
     const selected = expected ? Object.keys(expected.checkpoint.pending) : undefined;
+    const shown = this.record();
+    const ordinary = !selection && !correction && await this.ordinaryConflictFor(cancelled);
     let source: SessionCheckpoint | undefined;
     let projected: EditorRecord | undefined;
-    await this.options.commits!.cancelWithCheckpoint(selected ? '' : this.options.editorId,
-      selected ?? cancelled, () => {
+    const ids = ordinary ? [ordinary.first.id] : selected ?? cancelled;
+    const decidingEditor = ordinary || selected ? '' : this.options.editorId;
+    await this.options.commits!.cancelWithCheckpoint(decidingEditor, ids, retired => {
         this.assertCurrent();
+        if (ordinary) {
+          if (ordinary.scope.length > 1) this.assertRecoveryChoice(shown);
+          assertOrdinaryConflictScope(ordinary, retired);
+        }
         // A newer explicit Save owns its capture. Do not checkpoint later RAM over it.
         if ([...this.pendingCaptures.boundary()].some(attempt => !captures.has(attempt))) {
           throw Object.assign(new Error('Finish the later Save before replacing saved intent'), { code: PENDING_DELIVERY_FIRST });
@@ -714,7 +722,8 @@ export class EditorController {
         source = record.checkpoint;
         this.assertChoiceAuthority(source);
         this.assertManualResolution(selection, source);
-        const session = DataSession.restore(source);
+        const decided = ordinary ? ordinaryChoiceCheckpoint(ordinary, source) : source;
+        const session = DataSession.restore(decided);
         const completed = new Set(record.completedCommits ?? []);
         for (const id of Object.keys(source.pending)) { session.release(id); completed.add(id); }
         if (choice === 'local') {
@@ -727,15 +736,30 @@ export class EditorController {
               merged.value.exists ? merged.value.value as DocumentData : null, mergeFields));
           }
         } else {
-          session.acceptRemote(remoteChoice?.draft);
+          session.acceptRemote(decided === source ? remoteChoice?.draft : undefined);
           if (remoteChoice?.refused) session.dropRefused(remoteChoice.draft);
         }
         projected = { ...record, checkpoint: session.checkpoint(), completedCommits: [...completed] };
-        return projected;
-      });
+        if (!ordinary) return projected;
+        const { confirmed, draft } = projected.checkpoint;
+        return [projected, ...projectSavedChoiceDependents(record.owner, ordinary.first, confirmed, draft,
+          retired, choice === 'local' ? record.editorId : undefined)];
+      }, ordinary ? { roots: [ordinary.first] } : undefined);
     if (!source || !projected) throw new Error('Choice checkpoint projection was not captured');
     await this.applyChoiceProjection(source, projected, captures);
-    await this.options.commits!.finishCancellation(this.options.editorId, cancelled);
+    await this.options.commits!.finishCancellation(ordinary ? '' : this.options.editorId, ordinary ? ids : cancelled);
+  }
+
+  private async ordinaryConflictFor(held: readonly string[]) {
+    const requests = await this.options.commits!.list();
+    this.assertCurrent();
+    const conflicts = requests.filter(request => held.includes(request.id) && request.state === 'conflict');
+    const ordinary = conflicts.flatMap(request => reviewOrdinaryConflictChoice(request, requests) ?? []);
+    if (!ordinary.length) return null;
+    if (conflicts.length !== 1 || (this.result && this.result.operationId !== ordinary[0].first.id)) {
+      throw Object.assign(new Error('Resolve the saved conflicts separately'), { code: 'other-changes-first' });
+    }
+    return ordinary[0];
   }
 
   private async applyChoiceProjection(source: SessionCheckpoint, projected: EditorRecord, captures: ReadonlySet<object>): Promise<void> {
@@ -790,7 +814,7 @@ export class EditorController {
         const records = projectExactManualChoice(record, decision, retired);
         [projected] = records;
         return records;
-      }, decision.request);
+      }, { roots: [decision.request] });
       if (!source || !projected) throw new Error('Choice checkpoint projection was not captured');
       await this.applyChoiceProjection(source, projected, captures);
       await this.options.commits.finishCancellation('', [decision.request.id]);

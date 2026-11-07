@@ -106,11 +106,10 @@ export function createIndexedDbCommitStore(collect = collectCommitRows): CommitS
           }
           store.put(saved, commitRowKey(saved)); result[index] = saved;
           if (!--remaining) {
-            if (project) {
-              const projection = project(clone(result));
-              writeChoiceCheckpoints(store, read, previous.owner, Array.isArray(projection) ? projection : [projection],
-                () => done(result), collect);
-            } else collect(store, read, saved.owner, () => done(result));
+            const projection = project?.(clone(result)) ?? [];
+            const checkpoints = Array.isArray(projection) ? projection : [projection];
+            if (checkpoints.length) writeChoiceCheckpoints(store, read, previous.owner, checkpoints, () => done(result), collect);
+            else collect(store, read, saved.owner, () => done(result));
           }
         });
       });
