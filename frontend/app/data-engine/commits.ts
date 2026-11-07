@@ -108,6 +108,7 @@ export function assertCommitBatch(requests: readonly CommitRequest[]): void {
 export interface AtomicCapture { editorId: string; captured: SessionCheckpoint; predecessorId?: string | null; retentionScope?: string }
 
 export interface CommitEvent { request: CommitRequest }
+export type TrackCommitAnswer = (request: CommitRequest, apply: (result: CommandResult) => Promise<boolean>) => void;
 export function assertCommitCapture(current: CommitRequest, incoming: CommitRequest): void {
   if (current.owner !== incoming.owner || current.editorId !== incoming.editorId || current.editGeneration !== incoming.editGeneration
     || current.predecessor !== incoming.predecessor || !equalValues(current.baseline, incoming.baseline)
@@ -398,19 +399,9 @@ export class CommitQueue {
         const records = await this.options.store.list(owner);
         this.assertCurrent(owner, generation);
         records.forEach(request => this.receipts.observe(request));
-        const batch = await this.advanceBatch(records, owner, generation, failures, races);
+        const batch = await this.advanceBatch(records, owner, generation, failures, races, attempted);
         races = batch.races;
-        let changed = batch.changed;
-        if (this.deliveryRequested) {
-          const ready = referenceReadiness(owner, records);
-          await this.options.runtime.drain(attempted, this.options.canDeliver ?? (() => true),
-            command => ready(commandReferenceResources(command), command.operationId));
-          this.assertCurrent(owner, generation);
-          const journal = await this.options.runtime.list();
-          if (journal.some(entry => records.some(record => !failures.has(record.id) && !terminal(record) && record.command?.operationId === entry.command.operationId)
-            && ['acknowledged', 'conflict', 'refused'].includes(entry.state))) changed = true;
-        }
-        this.requested = this.requested || changed;
+        this.requested = this.requested || batch.changed;
       } while (this.requested && this.current(owner, generation));
       // Every request that failed, each about its own document (BUG-20261003-background-failure-without-address).
       if (failures.size) throw new AddressedFailures([...failures.values()]);
@@ -505,9 +496,22 @@ export class CommitQueue {
     }
   }
 
-  private async advanceBatch(records: CommitRequest[], owner: string, generation: number, failures: Map<string, AddressedFailure>, races: number) {
+  private async advanceBatch(records: CommitRequest[], owner: string, generation: number,
+    failures: Map<string, AddressedFailure>, races: number, attempted: Set<string>) {
     let changed = false;
     const advancedOperations = new Set<string>();
+    const awaiting = new Map<string, { request: CommitRequest; apply: (result: CommandResult) => Promise<boolean> }>();
+    const trackAnswer: TrackCommitAnswer = (request, apply) => {
+      if (request.command) awaiting.set(request.command.operationId, { request, apply });
+    };
+    const onFailure = (request: CommitRequest, error: unknown) => {
+      if (!this.current(owner, generation)) throw error;
+      if ((error as { code?: string }).code === COMMIT_CHANGED && ++races < 100) {
+        changed = true;
+        return;
+      }
+      for (const participant of atomicParticipants(request, records)) failures.set(participant.id, { error, about: participant.baseline.resource });
+    };
     const ready = referenceReadiness(owner, records);
     for (const record of records) {
       this.assertCurrent(owner, generation);
@@ -521,23 +525,38 @@ export class CommitQueue {
       }
       advancedOperations.add(groupId ?? record.id);
       try {
-        changed = await this.advanceRequest(record, records, owner, generation, ready) || changed;
-      }
-      catch (error) {
-        if ((error as { code?: string }).code === COMMIT_CHANGED && ++races < 100) { changed = true; continue; }
-        if (!this.current(owner, generation)) throw error;
-        for (const participant of atomicParticipants(record, records)) failures.set(participant.id, { error, about: participant.baseline.resource });
-      }
+        changed = await this.advanceRequest(record, records, owner, generation, ready, trackAnswer) || changed;
+      } catch (error) { onFailure(record, error); }
+    }
+    const journal = this.deliveryRequested ? await this.deliverBatch(owner, generation, attempted, ready) : [];
+    for (const entry of journal) {
+      if (!['acknowledged', 'conflict', 'refused'].includes(entry.state)) continue;
+      const answer = awaiting.get(entry.command.operationId);
+      if (answer && entry.result) {
+        // The answer only updates its exact durable capture. Selecting successors still takes a fresh snapshot.
+        try { changed = await answer.apply(entry.result) || changed; }
+        catch (error) { onFailure(answer.request, error); }
+      } else if (records.some(record => !failures.has(record.id) && !terminal(record)
+        && record.command?.operationId === entry.command.operationId)) changed = true;
     }
     return { changed, races };
   }
 
-  private atomicContext(owner: string, generation: number) {
-    return { ...this.options, assertCurrent: () => this.assertCurrent(owner, generation), emit: (request: CommitRequest) => this.emit(request) };
+  private async deliverBatch(owner: string, generation: number, attempted: Set<string>, ready: ReturnType<typeof referenceReadiness>) {
+    await this.options.runtime.drain(attempted, this.options.canDeliver ?? (() => true),
+      command => ready(commandReferenceResources(command), command.operationId));
+    this.assertCurrent(owner, generation);
+    const journal = await this.options.runtime.list();
+    this.assertCurrent(owner, generation);
+    return journal;
+  }
+
+  private atomicContext(owner: string, generation: number, trackAnswer?: TrackCommitAnswer) {
+    return { ...this.options, assertCurrent: () => this.assertCurrent(owner, generation), emit: (request: CommitRequest) => this.emit(request), trackAnswer };
   }
 
   private advanceRequest(record: CommitRequest, records: CommitRequest[], owner: string, generation: number,
-    ready = referenceReadiness(owner, records)): Promise<boolean> {
+    ready = referenceReadiness(owner, records), trackAnswer?: TrackCommitAnswer): Promise<boolean> {
     const participants = atomicParticipants(record, records);
     if (participants.some(participant => !deleteOrderReady(participant, records))) return Promise.resolve(false);
     if (!participants[0].command && participants.every(participant => participant.initialized && !terminal(participant) && !participant.unfinalized.length)) {
@@ -549,20 +568,27 @@ export class CommitQueue {
       // refusal from today's absence, or invent a confirmed source from local planned words.
       if (!ready(references, record.atomic?.id ?? record.id)) return Promise.resolve(false);
     }
-    return record.atomic ? advanceAtomicCommit(participants, records, this.atomicContext(owner, generation))
-      : this.advance(record, records, owner, generation);
+    return record.atomic ? advanceAtomicCommit(participants, records, this.atomicContext(owner, generation, trackAnswer))
+      : this.advance(record, records, owner, generation, trackAnswer);
   }
 
-  private async advance(record: CommitRequest, records: CommitRequest[], owner: string, generation: number): Promise<boolean> {
+  private async persistTransition(record: CommitRequest, next: CommitRequest, owner: string, generation: number): Promise<CommitRequest> {
+    this.assertCurrent(owner, generation);
+    const updated = await this.options.store.compareAndSet(record, next);
+    this.assertCurrent(owner, generation);
+    this.emit(updated);
+    return updated;
+  }
+
+  private async advance(record: CommitRequest, records: CommitRequest[], owner: string, generation: number,
+    trackAnswer?: TrackCommitAnswer): Promise<boolean> {
     const commit = async (next: CommitRequest, queueNow = false) => {
-      this.assertCurrent(owner, generation);
-      const updated = await this.options.store.compareAndSet(record, next);
-      this.assertCurrent(owner, generation);
-      this.emit(updated);
+      const updated = await this.persistTransition(record, next, owner, generation);
       // Only the durable materialization winner can enqueue the command.
       if (queueNow && updated.command && this.current(owner, generation)) {
         await this.options.runtime.submit(updated.command);
         this.assertCurrent(owner, generation);
+        trackAnswer?.(updated, result => this.applyCommandAnswer(updated, result, owner, generation));
       }
       return true;
     };
@@ -576,7 +602,7 @@ export class CommitQueue {
       const prepared = this.prepareIndependentUpdate(initialized, owner);
       return commit(prepared ?? initialized, prepared !== null);
     }
-    if (record.command) return this.advanceCommand(record, owner, generation, commit);
+    if (record.command) return this.advanceCommand(record, owner, generation, trackAnswer);
     if (equalValues(record.working.value, record.intended)) return commit({ ...record, state: 'acknowledged', result: { kind: 'acknowledged', operationId: record.id, snapshot: record.working } });
     const targets = await Promise.all(requiredDomainTargets(record.working, record.intended).map(this.options.readConfirmed));
     if (isFirstBookMarksDraft(record.working, record.intended)) {
@@ -625,7 +651,7 @@ export class CommitQueue {
     return { ...record, command: prepared.command, submitted: prepared.submittedValue, state: 'prepared' };
   }
 
-  private async advanceCommand(record: CommitRequest, owner: string, generation: number, commit: (next: CommitRequest) => Promise<boolean>): Promise<boolean> {
+  private async advanceCommand(record: CommitRequest, owner: string, generation: number, trackAnswer?: TrackCommitAnswer): Promise<boolean> {
     const journal = await this.options.runtime.list();
     this.assertCurrent(owner, generation);
     const entry = journal.find(item => item.command.operationId === record.command!.operationId);
@@ -633,22 +659,24 @@ export class CommitQueue {
       // The persisted command won CAS before any tab may submit it.
       await this.options.runtime.submit(record.command!);
       this.assertCurrent(owner, generation);
+      trackAnswer?.(record, result => this.applyCommandAnswer(record, result, owner, generation));
       return false;
     }
-    const result = entry.result;
+    return this.applyCommandAnswer(record, entry.result, owner, generation);
+  }
+
+  private async applyCommandAnswer(record: CommitRequest, result: CommandResult, owner: string, generation: number): Promise<boolean> {
+    const commit = async (next: CommitRequest) => { await this.persistTransition(record, next, owner, generation); return true; };
     if (result.kind !== 'acknowledged') return commit({ ...record, state: result.kind === 'refused' ? 'refused' : 'conflict', result: { ...result, operationId: record.id } });
     const rebased = mergeDocumentFields(record.submitted, record.intended, result.snapshot.value);
     if (rebased.conflicts.length) return commit({ ...record, state: 'conflict', result: { kind: 'conflict', operationId: record.id, snapshot: result.snapshot, conflicts: rebased.conflicts } });
     const intended = rebased.value.exists ? rebased.value.value as DocumentData : null;
     const complete = equalValues(intended, result.snapshot.value);
     // The durable request owns projection; an editor is not needed to retire ACKs.
-    const updated = await this.options.store.compareAndSet(record, { ...record, working: clone(result.snapshot), intended,
+    return commit({ ...record, working: clone(result.snapshot), intended,
       command: null, submitted: null, sequence: record.sequence + 1,
       state: complete ? 'acknowledged' : 'queued', result: complete ? { ...result, operationId: record.id } : null,
       unfinalized: [...record.unfinalized, record.command!.operationId] });
-    this.assertCurrent(owner, generation);
-    this.emit(updated);
-    return true;
   }
 
   private emit(request: CommitRequest, allowRepeat = true): void {

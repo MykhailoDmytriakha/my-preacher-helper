@@ -79,6 +79,21 @@ it('keeps both pending sides across restart and sends exactly one immutable comm
   expect((await queue.list()).map(row => row.result)).toMatchObject(saved.map(row => ({ operationId: row.id, snapshot: { resource: row.baseline.resource } })));
 });
 
+it('applies both sides of a fresh move answer without rescanning every request', async () => {
+  const s = setup(), { queue } = s.make();
+  await queue.saveAtomic(s.moving());
+  const scan = jest.spyOn(s.requests, 'list');
+  await queue.drain(true);
+  const passes = scan.mock.calls.length;
+  scan.mockRestore();
+
+  expect(s.transport.send).toHaveBeenCalledTimes(1);
+  expect(s.rows.get('a')?.value?.items).toEqual([]);
+  expect(s.rows.get('b')?.value?.items).toEqual([member]);
+  expect((await queue.list()).map(request => request.state)).toEqual(['acknowledged', 'acknowledged']);
+  expect(passes).toBeLessThanOrEqual(5);
+});
+
 const creatingMember = () => {
   const creation = new DataSession({ resource: { collection: 'sermons', id: 'new' }, value: null, metadata: null });
   creation.edit({ userId: 'owner', title: 'New sermon', verse: 'Romans 1', date: 'now', thoughts: [] });

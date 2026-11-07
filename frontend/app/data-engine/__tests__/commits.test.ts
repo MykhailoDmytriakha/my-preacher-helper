@@ -437,7 +437,7 @@ describe('Durable commit requests', () => {
     expect((await queue.list()).every(record => record.state === 'acknowledged' && !record.unfinalized.length)).toBe(true);
   });
 
-  it('does not rescan the whole queue for each local step of an ordinary Save', async () => {
+  it('applies an ordinary Save answer without a second full queue read', async () => {
     const s = setup({ nativeChoice: true });
     const { queue } = s.makeQueue();
     const editor = new DataSession(initial());
@@ -459,7 +459,51 @@ describe('Durable commit requests', () => {
     expect(s.server().value?.title).toBe(titles.at(-1));
     expect(s.server().metadata?.revision).toBe(titles.length + 1);
     expect((await queue.list()).every(row => row.state === 'acknowledged' && !row.unfinalized.length)).toBe(true);
-    expect(rowsRead).toBeLessThanOrEqual(titles.length * (2 * titles.length + 3));
+    expect(rowsRead).toBeLessThanOrEqual(titles.length * (titles.length + 3));
+  });
+
+  it('finds a successor saved in another tab during delivery and applies it after its predecessor', async () => {
+    const s = setup({ nativeChoice: true });
+    const { queue } = s.makeQueue(), other = s.makeQueue().queue;
+    const editor = new DataSession(initial());
+    editor.edit({ ...initial().value, title: 'First saved version' });
+    const first = (await queue.save('first-tab', editor.checkpoint()))!;
+    const send = jest.mocked(s.transport.send).getMockImplementation()!;
+    let nextId: string | undefined;
+    jest.mocked(s.transport.send).mockImplementationOnce(async command => {
+      const later = new DataSession(initial());
+      later.edit({ ...initial().value, title: 'Later saved version' });
+      nextId = (await other.save('second-tab', later.checkpoint(), { predecessorId: first.id }))?.id;
+      return send(command);
+    });
+
+    await queue.drain(true);
+    expect(nextId).toBeDefined();
+    expect(jest.mocked(s.transport.send).mock.calls.map(([command]) => command.operationId)).toEqual([first.id, nextId]);
+    expect(s.server().value?.title).toBe('Later saved version');
+    expect((await queue.list()).map(row => row.state)).toEqual(['acknowledged', 'acknowledged']);
+  });
+
+  it('reloads an altered prepared request before applying its answer and never resends it', async () => {
+    const s = setup({ nativeChoice: true });
+    const { queue } = s.makeQueue();
+    const editor = new DataSession(initial());
+    editor.edit({ ...initial().value, title: 'Saved despite a newer local revision' });
+    const saved = (await queue.save('editor', editor.checkpoint()))!;
+    const send = jest.mocked(s.transport.send).getMockImplementation()!;
+    let revised = 0;
+    jest.mocked(s.transport.send).mockImplementationOnce(async command => {
+      const [prepared] = await s.requests.list('owner');
+      expect(prepared.id).toBe(saved.id);
+      revised = (await s.requests.compareAndSet(prepared, prepared)).revision;
+      return send(command);
+    });
+
+    await queue.drain(true);
+    expect(s.transport.send).toHaveBeenCalledTimes(1);
+    const [completed] = await queue.list();
+    expect(completed).toMatchObject({ id: saved.id, state: 'acknowledged', unfinalized: [] });
+    expect(completed.revision).toBeGreaterThan(revised);
   });
 
   it('does not enqueue a prepared update after its publication retires the owner', async () => {

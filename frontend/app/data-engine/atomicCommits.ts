@@ -4,7 +4,7 @@ import { prepareAtomicDomainCommand } from './domainPolicy';
 import { equalValues, mergeDocumentFields, MAX_RELATION_RESOURCES } from './protocol';
 import { coversCommittedEffect } from './snapshotFreshness';
 
-import type { CommitRequest, CommitStore } from './commits';
+import type { CommitRequest, CommitStore, TrackCommitAnswer } from './commits';
 import type { DataEngineRuntime } from './runtime';
 import type { CommandResult, DocumentData, EngineMetadata, JournalEntry, ResourceRef, ResourceSnapshot } from './types';
 
@@ -59,6 +59,7 @@ export interface AtomicCommitContext {
   readCommitted?: (resource: ResourceRef, proof: EngineMetadata) => Promise<ResourceSnapshot>;
   assertCurrent: () => void;
   emit: (request: CommitRequest) => void;
+  trackAnswer?: TrackCommitAnswer;
 }
 
 /** Called only by CommitQueue. Every state transition wins CAS for all participants. */
@@ -99,10 +100,18 @@ export async function advanceAtomicCommit(participants: CommitRequest[], records
   }
   const journal = await context.runtime.list(); context.assertCurrent();
   const entry = journal.find(item => item.command.operationId === primary.command!.operationId);
+  const apply = (result: CommandResult) => applyAtomicAnswer(participants, result, context, commit);
   if (!entry?.result || !['acknowledged', 'conflict', 'refused'].includes(entry.state)) {
-    await context.runtime.submit(primary.command); context.assertCurrent(); return false;
+    await context.runtime.submit(primary.command); context.assertCurrent();
+    context.trackAnswer?.(primary, apply);
+    return false;
   }
-  const result = entry.result;
+  return apply(entry.result);
+}
+
+async function applyAtomicAnswer(participants: CommitRequest[], result: CommandResult, context: AtomicCommitContext,
+  commit: (next: CommitRequest[]) => Promise<boolean>): Promise<boolean> {
+  const primary = participants[0];
   if (result.kind !== 'acknowledged') return commit(participants.map(record => {
     const projected = failureFor(record, result);
     return { ...record, state: projected.kind === 'conflict' ? 'conflict' : 'refused', result: projected };
