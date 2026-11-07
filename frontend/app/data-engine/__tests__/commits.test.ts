@@ -67,6 +67,29 @@ function setup({ nativeChoice = false } = {}) {
   return { requests, checkpoints, transport, journal, entries, records, putCheckpoint, receipts, makeQueue, makeEngine, server: () => copy(server), replace: (snapshot: ResourceSnapshot) => { server = snapshot; } };
 }
 
+async function captureSermonChains(s: ReturnType<typeof setup>, queue: CommitQueue, lengths: readonly [number, number]) {
+  const documents = new Map(['sermon-a', 'sermon-b'].map(id => [id, { ...initial(), resource: { ...initial().resource, id } }]));
+  const operations = new Map<string, string[]>();
+  jest.mocked(s.transport.send).mockImplementation(async command => {
+    const previous = s.receipts.get(command.operationId);
+    if (previous) return previous;
+    const result = applyCommand(command, documents.get(command.resource.id)!);
+    if (result.kind === 'acknowledged') documents.set(command.resource.id, result.snapshot);
+    s.receipts.set(command.operationId, result);
+    return result;
+  });
+  for (const [index, [id, snapshot]] of [...documents].entries()) {
+    const editor = new DataSession(snapshot);
+    const chain: string[] = [];
+    for (let revision = 1; revision <= lengths[index]; revision += 1) {
+      editor.edit({ ...snapshot.value, title: id + '-' + revision });
+      chain.push((await queue.save(id, editor.checkpoint()))!.id);
+    }
+    operations.set(id, chain);
+  }
+  return { documents, operations };
+}
+
 describe('Durable commit requests', () => {
   beforeEach(() => jest.useFakeTimers());
   afterEach(() => { jest.clearAllTimers(); jest.useRealTimers(); });
@@ -460,6 +483,66 @@ describe('Durable commit requests', () => {
     expect(s.server().metadata?.revision).toBe(titles.length + 1);
     expect((await queue.list()).every(row => row.state === 'acknowledged' && !row.unfinalized.length)).toBe(true);
     expect(rowsRead).toBeLessThanOrEqual(4 * titles.length);
+  });
+
+  it('delivers separate chains in document order within the full request read budget', async () => {
+    const s = setup({ nativeChoice: true });
+    const { queue } = s.makeQueue();
+    const { documents, operations: expected } = await captureSermonChains(s, queue, [12, 9]);
+    let fullRows = 0;
+    const list = s.requests.list;
+    const scan = jest.spyOn(s.requests, 'list').mockImplementation(async owner => {
+      const rows = await list(owner);
+      fullRows += rows.length;
+      return rows;
+    });
+
+    await queue.drain(true);
+
+    scan.mockRestore();
+    const commands = jest.mocked(s.transport.send).mock.calls.map(([command]) => command);
+    expect(commands).toHaveLength(21);
+    for (const [id, operations] of expected) {
+      expect(commands.filter(command => command.resource.id === id).map(command => command.operationId)).toEqual(operations);
+      expect(documents.get(id)?.value?.title).toBe(id + '-' + operations.length);
+      expect(documents.get(id)?.metadata?.revision).toBe(operations.length + 1);
+    }
+    expect((await queue.list()).every(row => row.state === 'acknowledged' && !row.unfinalized.length)).toBe(true);
+    expect(fullRows).toBeLessThanOrEqual(4 * commands.length);
+  });
+
+  it('finishes the other chain after losing an exact reply and retries only the unresolved command', async () => {
+    const s = setup({ nativeChoice: true });
+    const { queue } = s.makeQueue();
+    const { documents, operations } = await captureSermonChains(s, queue, [3, 4]);
+    const first = operations.get('sermon-a')!, other = operations.get('sermon-b')!;
+    const send = jest.mocked(s.transport.send).getMockImplementation()!;
+    let lost = false;
+    jest.mocked(s.transport.send).mockImplementation(async command => {
+      const result = await send(command);
+      if (command.operationId === first[1] && !lost) {
+        lost = true;
+        throw new Error('Connection lost after the server saved');
+      }
+      return result;
+    });
+    const sent = (id: string) => jest.mocked(s.transport.send).mock.calls.map(([command]) => command)
+      .filter(command => command.resource.id === id).map(command => command.operationId);
+
+    await queue.drain(true);
+
+    expect(s.entries.get(first[1])?.state).toBe('unknown');
+    expect(sent('sermon-a')).toEqual(first.slice(0, 2));
+    expect(sent('sermon-b')).toEqual(other);
+    expect(documents.get('sermon-b')?.value?.title).toBe('sermon-b-4');
+
+    await queue.drain(true);
+
+    expect(sent('sermon-a')).toEqual([first[0], first[1], first[1], first[2]]);
+    expect(sent('sermon-b')).toEqual(other);
+    expect(documents.get('sermon-a')?.metadata?.revision).toBe(4);
+    expect((await queue.list()).every(row => row.state === 'acknowledged' && !row.unfinalized.length)).toBe(true);
+    expect(s.entries.size).toBe(0);
   });
 
   it('finds a successor saved in another tab during delivery and applies it after its predecessor', async () => {

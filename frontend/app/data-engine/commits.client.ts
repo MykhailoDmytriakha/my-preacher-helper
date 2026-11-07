@@ -133,13 +133,12 @@ export function createIndexedDbCommitStore(collect = collectCommitRows): CommitS
     readByIds: (owner, ids) => transaction('readonly', (store, read, done) => {
       readCommitIdentities(store, read, owner, ids, requests => done([...requests.values()]));
     }),
-    readChainStep: (owner, knownIds, pair) => transaction('readonly', (store, read, done) => {
+    readChainStep: (owner, knownIds, ids) => transaction('readonly', (store, read, done) => {
       // Every request kind already shares this durable identity index, including older writers.
       read(store.getAllKeys(engineOwnerRange('identity', owner)), keys => {
         if (keys.some(key => !Array.isArray(key) || typeof key[2] !== 'string' || !knownIds.has(key[2]))) { done(null); return; }
-        readCommitIdentities(store, read, owner, pair, requests => {
-          const [prior, next] = pair.map(id => requests.get(id));
-          done(prior && next ? [prior, next] : null);
+        readCommitIdentities(store, read, owner, ids, requests => {
+          done(requests.size === ids.length ? ids.map(id => requests.get(id)!) : null);
         });
       });
     }),

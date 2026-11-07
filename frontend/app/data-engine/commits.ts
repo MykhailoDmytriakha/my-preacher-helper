@@ -64,7 +64,7 @@ export interface CommitStore {
   /** Read the current rows for a known operation without opening the rest of the queue. */
   readByIds?(owner: string, ids: readonly string[]): Promise<CommitRequest[]>;
   /** Return exact rows only while the snapshot contains every current request identity. */
-  readChainStep?(owner: string, knownIds: ReadonlySet<string>, pair: readonly [string, string]): Promise<ChainStep | null>;
+  readChainStep?(owner: string, knownIds: ReadonlySet<string>, ids: readonly string[]): Promise<CommitRequest[] | null>;
   /** Atomically unique by owner/editor/generation. Repeats return the original request. */
   create(request: CommitRequest): Promise<CommitRequest>;
   /** Native adapters capture the exact checkpoint and canonical request in one transaction. */
@@ -144,25 +144,32 @@ function hasExternalIntent(snapshot: ResourceSnapshot, intended: DocumentData | 
     || requiredDomainTargets(snapshot, intended).length);
 }
 
-type ChainStep = [CommitRequest, CommitRequest];
-
-type DeliveryChain = {
+type DeliveryChains = {
   knownIds: ReadonlySet<string>;
-  pending: CommitRequest[];
+  groups: CommitRequest[][];
   next: number;
 };
 
-/** A single existing-document editor chain has no outstanding creation or competing work. */
-function ordinaryDeliveryChain(records: readonly CommitRequest[]): DeliveryChain | null {
-  const pending = records.filter(record => !terminal(record) || record.unfinalized.length);
-  if (pending.length < 2) return null;
-  pending.sort((a, b) => a.editGeneration - b.editGeneration);
-  const first = pending[0];
-  if (pending.some(record => record.atomic || record.deleteAfter !== undefined || !record.baseline.value
-    || !record.value || record.editorId !== first.editorId || !resourceMatches(record.baseline.resource, first.baseline.resource))) return null;
-  if (pending.slice(1).some((record, index) => record.state !== 'queued' || record.initialized
-    || record.unfinalized.length || record.predecessor !== pending[index].id)) return null;
-  return { knownIds: new Set(records.map(record => record.id)), pending, next: 1 };
+/** Existing-document chains are independent only when each resource has one linear editor queue. */
+function ordinaryDeliveryChains(records: readonly CommitRequest[]): DeliveryChains | null {
+  const byResource = new Map<string, CommitRequest[]>();
+  for (const record of records) {
+    if (terminal(record) && !record.unfinalized.length) continue;
+    if (record.atomic || record.deleteAfter !== undefined || !record.baseline.value || !record.value) return null;
+    const { collection, id } = record.baseline.resource;
+    const key = JSON.stringify([collection, id]);
+    const group = byResource.get(key) ?? [];
+    group.push(record);
+    byResource.set(key, group);
+  }
+  const groups = [...byResource.values()];
+  if (!groups.some(group => group.length > 1)) return null;
+  for (const group of groups) {
+    group.sort((a, b) => a.editGeneration - b.editGeneration);
+    if (group.slice(1).some((record, index) => record.editorId !== group[0].editorId
+      || record.state !== 'queued' || record.initialized || record.unfinalized.length || record.predecessor !== group[index].id)) return null;
+  }
+  return { knownIds: new Set(records.map(record => record.id)), groups, next: 1 };
 }
 
 type CommitSaveOptions = { predecessorId?: string | null; predecessorIds?: readonly string[]; retentionScope?: string;
@@ -422,15 +429,15 @@ export class CommitQueue {
       let races = 0;
       const attempted = new Set<string>();
       const failures = new Map<string, AddressedFailure>();
-      let chain: DeliveryChain | null = null;
+      let chains: DeliveryChains | null = null;
       do {
         this.requested = false;
-        const step: ChainStep | null = chain && await this.readChainStep(owner, chain);
+        const step: CommitRequest[] | null = chains && await this.readChainStep(owner, chains);
         this.assertCurrent(owner, generation);
         const records: CommitRequest[] = step ?? await this.options.store.list(owner);
         this.assertCurrent(owner, generation);
-        if (step && chain) chain.next += 1;
-        else chain = this.deliveryRequested && this.options.store.readChainStep ? ordinaryDeliveryChain(records) : null;
+        if (step && chains) chains.next += 1;
+        else chains = this.deliveryRequested && this.options.store.readChainStep ? ordinaryDeliveryChains(records) : null;
         records.forEach(request => this.receipts.observe(request));
         const batch = await this.advanceBatch(records, owner, generation, failures, races, attempted, step !== null);
         races = batch.races;
@@ -530,21 +537,25 @@ export class CommitQueue {
     }
   }
 
-  private async readChainStep(owner: string, chain: DeliveryChain): Promise<ChainStep | null> {
-    const expected = chain.pending[chain.next];
-    if (!expected) return null;
+  private async readChainStep(owner: string, { groups, knownIds, next }: DeliveryChains): Promise<CommitRequest[] | null> {
+    const successors = groups.flatMap(group => group[next] ?? []);
+    if (!successors.length) return null;
     try {
-      if (hasExternalIntent(expected.baseline, expected.value)) return null;
+      if (successors.some(expected => hasExternalIntent(expected.baseline, expected.value))) return null;
     } catch {
       return null;
     }
-    const priorId = chain.pending[chain.next - 1].id;
-    const step = await this.options.store.readChainStep?.(owner, chain.knownIds, [priorId, expected.id]);
-    if (!step) return null;
-    const [prior, next] = step;
-    if (prior.state !== 'acknowledged' || prior.result?.kind !== 'acknowledged'
-      || next.revision !== expected.revision) return null;
-    assertCommitCapture(next, expected);
+    // Include a just-finished chain for its last journal retirement, even without a successor.
+    const previousIds = groups.flatMap(group => group[next - 1]?.id ?? []);
+    const ids = [...previousIds, ...successors.map(expected => expected.id)];
+    const step = await this.options.store.readChainStep?.(owner, knownIds, ids);
+    if (!step || step.slice(0, previousIds.length).some(prior => prior.state !== 'acknowledged'
+      || prior.result?.kind !== 'acknowledged')) return null;
+    for (const [index, expected] of successors.entries()) {
+      const current = step[previousIds.length + index];
+      if (current.revision !== expected.revision) return null;
+      assertCommitCapture(current, expected);
+    }
     return step;
   }
 
