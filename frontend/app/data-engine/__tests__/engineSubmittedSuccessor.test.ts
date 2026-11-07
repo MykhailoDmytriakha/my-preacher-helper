@@ -112,3 +112,67 @@ it('keeps a refused action visible beside private words and retires only its sub
   expect(describeSync(reader.getState(), reader.getObservation(), reader.getDelivery()).canSave).toBe(true);
   browser.dispose();
 });
+
+it.each(['list', 'editor', 'offline', 'cache failure'] as const)('keeps the chosen server version on a watched list before the feed replies (%s)', async surface => {
+  const harness = documentEngineHarness({ resource, value, metadata: { protocol: 1, generation: 'g', revision: 1, deleted: false } });
+  let rejectChoiceCache = false;
+  const browser = harness.createBrowser({ withCollections: true, beforeSnapshotWrite: async snapshot => {
+    if (rejectChoiceCache && snapshot.metadata?.revision === 2) throw new Error('Choice cache refused the write');
+  } });
+  const { engine } = browser;
+  engine.setOwner('owner'); engine.setOnline(true);
+  const titles: unknown[] = [];
+  const stop = engine.watchCollection(resource.collection, state => {
+    titles.push(state.documents?.find(row => row.resource.id === resource.id)?.value?.title);
+  });
+  try {
+    await engine.readCollection(resource.collection);
+    await settleEngine();
+    expect(titles.at(-1)).toBe('Original words');
+    const editor = await engine.openEditor(resource, browser.editorId(resource));
+    harness.silentRemote({ title: 'Saved on the other device' });
+    await editor.edit({ ...value, title: 'Delayed local words' });
+    await editor.save();
+    await settleEngine(); await settleEngine();
+    const conflict = (await harness.commits.list('owner')).find(request => request.state === 'conflict');
+    expect(conflict?.result).toMatchObject({ kind: 'conflict', snapshot: harness.server });
+    expect(titles.at(-1)).toBe('Delayed local words');
+    if (surface === 'offline') {
+      engine.setOnline(false);
+      await settleEngine();
+    }
+    if (surface === 'cache failure') {
+      rejectChoiceCache = true;
+      await expect(engine.takeStoredVersion(resource, [conflict!.id])).rejects.toThrow('Choice cache refused the write');
+      expect((await harness.commits.list('owner')).find(request => request.id === conflict!.id)?.state).toBe('conflict');
+      expect(titles.at(-1)).toBe('Delayed local words');
+      rejectChoiceCache = false;
+    }
+    const beforeChoice = titles.length;
+
+    if (surface !== 'editor') {
+      editor.close({ flush: false });
+      expect(await engine.takeStoredVersion(resource, [conflict!.id])).toBe(1);
+    } else {
+      await editor.acceptRemote();
+      editor.close({ flush: false });
+    }
+    await settleEngine();
+
+    expect(titles.at(-1)).toBe('Saved on the other device');
+    expect(titles.slice(beforeChoice)).not.toContain('Original words');
+    expect(harness.server.value?.title).toBe('Saved on the other device');
+    if (surface === 'offline') {
+      const reopened = harness.createBrowser({ withCollections: true });
+      reopened.engine.setOwner('owner'); reopened.engine.setOnline(false);
+      try {
+        const state = await reopened.engine.readCollection(resource.collection);
+        expect(state.documents?.find(row => row.resource.id === resource.id)?.value?.title).toBe('Saved on the other device');
+      } finally {
+        reopened.dispose();
+      }
+    }
+  } finally {
+    stop(); browser.dispose();
+  }
+});

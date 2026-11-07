@@ -350,13 +350,6 @@
 **User contract.** Read only authorized retained content; changes always require the normal server check. Reproduce with disposable authorized admin fixtures before selecting a cache/access design. Separate from BUG-20261017-offline-settings-and-prayer-route-missing.
 
 
-### BUG-20261017-stored-choice-list-projection - Immediate list cards can show the opening copy after taking the saved version
-**Status.** Requires recheck: immediate visible mismatch and seven-second DOM residue reproduced under isolated collection-head Listen; source/product cause is not established.
-**Found / anchors.** 2026-10-17, actual localhost Groups -> group -> step minutes5 -> local12 versus accepted remote8 -> Groups -> take saved version. The actual RAM protocol remains8 and the notice disappears, but the immediate390px card shows5. Council's analogous remote topic removal also leaves the opening topic on its immediate list capture. Readers: `frontend/app/hooks/useGroupsDataCollection.ts:12-17`, `frontend/app/(pages)/(private)/groups/page.tsx:36,219`; shared choices `frontend/app/components/EngineConflictBanner.tsx`.
-**Expected / observed.** After an explicit choice, show that selected version or indicate that the screen is refreshing. Do not show opening values as if the decision selected them. The immediate screenshot shows the mismatch; seven-second DOM text still contains the topic, but its later screenshot shows only a blank visible area. The RAM harness blocks live Firestore collection-head notifications. This does not establish data loss or a production defect.
-**Reproduce / next.** Repeat both choices over accepted real protocol commands, inspect the list immediately and after7/15seconds, then navigate/reload. Check collection projection/cancellation before changing source; confirm the RAM harness also models collection version/change delivery correctly.
-**User behavior.** One person continues with their own selected saved version. Preserve accepted words and distinguish persistence from what the current card displays. Source cause/runtime duration and backend behavior remain unverified.
-
 ### BUG-20261017-undo-before-capture-hard-restart · Немедленный перезапуск после Undo может опередить локальный захват
 `frontend/app/components/sermon/ScratchPanel.tsx:401` · `frontend/app/data-engine/react.client.tsx:320` · `frontend/app/data-engine/engine.ts:1018`. Без сети: удалить мысль → список → Undo → сразу перезапустить документ. Восстановление не попало в очередь; обычный переход работает. Ожидание: подтверждённое локальное действие переживает перезапуск. Границу захвата и связь с BUG-20261016-engine-draft-before-request ещё проверить.
 

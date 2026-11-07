@@ -1111,6 +1111,13 @@ export class DataEngine {
       && sameResource(request.baseline.resource, resource) && (!selected || selected.has(request.id))
       && (request.state === 'refused' || request.state === 'conflict'));
     if (answered.length) {
+      let chosen: ResourceSnapshot | undefined;
+      for (const request of answered) {
+        const result = request.result;
+        if (result && (result.kind === 'conflict' || result.kind === 'deleted')
+          && sameResource(result.snapshot.resource, resource) && canReplaceSnapshot(chosen, result.snapshot)) chosen = result.snapshot;
+      }
+      if (chosen) await this.publishStoredChoice(owner, generation, chosen);
       const ids = answered.map(request => request.id);
       await this.commits.cancel('', ids); this.assertCurrent(owner, generation);
       await Promise.all([...this.editors.values()].filter(entry => entry.controller
@@ -1119,6 +1126,18 @@ export class DataEngine {
       await this.commits.finishCancellation('', ids); this.assertCurrent(owner, generation);
     }
     return answered.length;
+  }
+
+  /** Keep the chosen confirmed row visible when cancellation removes the list's draft overlay. */
+  private async publishStoredChoice(owner: string, generation: number, snapshot: ResourceSnapshot): Promise<void> {
+    const collections = this.options.collections;
+    if (!collections) return;
+    this.assertCurrent(owner, generation);
+    if (!snapshotBelongsToOwner(owner, snapshot)) throw new Error(SERVER_SNAPSHOT_IDENTITY_MISMATCH);
+    await this.persistSnapshot(owner, generation, snapshot);
+    this.assertCurrent(owner, generation);
+    await collections.reloadCached(snapshot.resource.collection);
+    this.assertCurrent(owner, generation);
   }
 
   /**
@@ -1466,6 +1485,7 @@ export class DataEngine {
         operationId: this.options.operationId,
         readConfirmed: resource => this.read(resource),
         readWriteTarget: resource => this.readWriteTarget(resource),
+        publishStoredChoice: snapshot => this.publishStoredChoice(owner, generation, snapshot),
         commits: this.commits,
         submittedCheckpoint: submittedCheckpoint ?? undefined,
         canFollowSubmittedWork: () => ![...this.manualForms.values()].some(form => {

@@ -82,6 +82,7 @@ interface ControllerOptions {
   isCurrentOwner: (owner: string) => boolean;
   readConfirmed?: (resource: ResourceRef) => Promise<ResourceSnapshot>;
   readWriteTarget?: (resource: ResourceRef) => Promise<ResourceSnapshot | null>;
+  publishStoredChoice?: (snapshot: ResourceSnapshot) => Promise<void>;
   commits?: CommitQueue;
   /** Proven submitted intent for a fresh opening; an existing checkpoint takes precedence. */
   submittedCheckpoint?: SessionCheckpoint;
@@ -338,6 +339,11 @@ export class EditorController {
       // A refusal has no other version to take: "use the server's version" drops the refused change.
       const refusedWork = !selection && Object.keys(before.pending).length > 0 && !before.remoteCandidate
         && !Object.keys(before.pending).some(id => this.manualRequests.has(id));
+      const chosen = before.remoteCandidate ?? (refusedWork ? before.confirmed : null);
+      if (chosen && this.options.publishStoredChoice) {
+        await this.options.publishStoredChoice(chosen);
+        this.assertCurrent();
+      }
       const cancelled = Object.keys(this.session.checkpoint().pending);
       if (this.options.commits && cancelled.length && !isDirectLegacyDocumentIntent(cancelled, this.prepared?.operationId)) {
         await this.resolveCommitChoice('remote', captures, selection, expected, undefined, { draft: atChoice, refused: refusedWork });
