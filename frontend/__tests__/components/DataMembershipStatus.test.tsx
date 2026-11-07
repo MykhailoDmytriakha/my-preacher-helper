@@ -26,3 +26,21 @@ it('does not report a server acknowledgement while local capture persistence fai
   render(<DataMembershipStatus action={action({ durable: false, error: 'storage full', delivery: { phase: 'acknowledged', canDiscard: false, code: null } })} />);
   expect(screen.getByRole('status')).toHaveTextContent('dataSync.phase.localFailure'); expect(screen.getByRole('alert')).toHaveTextContent('storage full');
 });
+
+// BUG-20261107-outdated-tab-refusal-unexplained: a refused series action on a tab older than the server says the way out.
+describe('a refused action on a tab older than the server', () => {
+  const originalVersion = process.env.NEXT_PUBLIC_APP_VERSION;
+  const originalFetch = global.fetch;
+  afterEach(() => { process.env.NEXT_PUBLIC_APP_VERSION = originalVersion; global.fetch = originalFetch; });
+  it.each([['9eac14b', true], ['391f890', false]])('server serving %s: the reload notice shown = %s', async (served, shown) => {
+    process.env.NEXT_PUBLIC_APP_VERSION = '391f890';
+    global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ version: served }) }) as unknown as typeof fetch;
+    render(<DataMembershipStatus action={action({ delivery: { phase: 'refused', canDiscard: true, code: 'decision-required' } })} />);
+    await waitFor(() => expect(global.fetch).toHaveBeenCalled());
+    if (shown) expect(await screen.findByText('dataSync.outdatedTab.body')).toBeInTheDocument();
+    else {
+      await new Promise(resolve => setTimeout(resolve, 0));
+      expect(screen.queryByText('dataSync.outdatedTab.body')).not.toBeInTheDocument();
+    }
+  });
+});

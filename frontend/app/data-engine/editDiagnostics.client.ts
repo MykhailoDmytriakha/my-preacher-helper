@@ -40,7 +40,12 @@ export function watchEditQueue(engine: PendingSource, ownerOf: () => string | nu
       if (!before) recordDiagnostic('edit', { collection: collection(entry), result: 'queued' });
       if (before?.state === entry.state) continue;
       if (entry.state === 'acknowledged') recordDiagnostic('edit', { collection: collection(entry), result: 'delivered', elapsedMs: age(entry) });
-      else if (REPORTED.has(entry.state)) recordDiagnostic('edit', { collection: collection(entry), result: entry.state, elapsedMs: age(entry) });
+      else if (REPORTED.has(entry.state)) {
+        // A refusal keeps the server's code — a protocol word such as `decision-required`, never content:
+        // without it the report said "refused" eight times and not why (BUG-20261107-outdated-tab-refusal-unexplained).
+        const code = entry.result?.kind === 'refused' ? entry.result.code : undefined;
+        recordDiagnostic('edit', { collection: collection(entry), result: entry.state, ...(code ? { code } : {}), elapsedMs: age(entry) });
+      }
     }
     for (const [id, entry] of previous) {
       if (next.has(id) || SETTLED.has(entry.state)) continue;

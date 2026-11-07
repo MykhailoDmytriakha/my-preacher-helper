@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
+import { OutdatedTabNotice } from '@/components/common/OutdatedTabNotice';
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
 import { captureRecoveryChoice, isCollectionOnEngine, isDataEngineEnabled, isOneShotRecord, isRecoveryHeldOpen, useDataEngine, useDocumentActions, useOpenDocumentAnswerScopes, waitsForDecision, type OpenDocumentAnswer, type RecoveryChoiceScope } from '@/data-engine/react.client';
 import { useClipboard } from '@/hooks/useClipboard';
@@ -41,10 +42,14 @@ type Kind = 'conflict' | 'refused' | 'refusedCreate' | 'deletedThere' | 'deleted
  * well. Otherwise (several chains of requests, between which the engine never picks) no screen can,
  * and the stored version is the one choice, offered here.
  */
-interface Waiting extends RecoveryChoiceScope { resource: ResourceRef; kind: Kind; mine: string[]; theirs: string; screen: boolean; screenValue?: DocumentData | null; decidable?: boolean; formWork?: boolean; actionResolutionRequired?: boolean }
+interface Waiting extends RecoveryChoiceScope { resource: ResourceRef; kind: Kind; mine: string[]; theirs: string; screen: boolean; screenValue?: DocumentData | null; decidable?: boolean; formWork?: boolean; actionResolutionRequired?: boolean;
+  /** The server refused one of its drafts — told apart from `kind`, which says `several` for many drafts, refused or not. */
+  refused?: boolean }
 
 /** The look both notices share: one for a change decided here, one for a screen's draft decided there. */
 const REFUSED_TITLE = 'dataSync.phase.refused';
+/** The kinds the server answered with a refusal, which an outdated tab may have caused. */
+const REFUSAL_KINDS = new Set<Kind>(['refused', 'refusedCreate', 'refusedDelete']);
 const CONFLICT_TITLE = 'freshness.conflictTitle';
 const COPY_ACTION = 'freshness.copyTextAction';
 const ACCEPT_REMOTE = 'dataSync.acceptRemote';
@@ -206,6 +211,7 @@ function waitingDocuments(records: readonly RecoveryCheckpoint[], journal: reado
       const screenValue = screenValues[0];
       const sameScreen = screenValues.every(value => documentScreenHref(resource, value) === documentScreenHref(resource, screenValue));
       documents.push({ resource, kind: kindOf(drafts.map(draft => draft.record), refused), screen, screenValue: sameScreen ? screenValue : null,
+        refused: drafts.some(({ record: draft }) => Object.keys(draft.checkpoint.pending).some(id => refused.has(id))),
         actionResolutionRequired: drafts.some(draft => draft.actionResolutionRequired),
         mine: [...new Set(drafts.map(({ record: draft }) => changedText(draft.checkpoint.draft, draft.checkpoint.confirmed.value, name, resource.collection, display)).filter(Boolean))],
         theirs: changedText(checkpoint.remoteCandidate?.value ?? checkpoint.confirmed.value, null, name, resource.collection, display),
@@ -395,11 +401,14 @@ function EngineConflicts({ pollMs, search }: { pollMs: number; search?: string }
   };
 
   const mine = entry.mine.join('\n\n———\n\n');
+  // A refusal on a tab older than the server: the way out is a reload (BUG-20261107-outdated-tab-refusal-unexplained).
+  const outdated = <OutdatedTabNotice refused={Boolean(entry.refused) || REFUSAL_KINDS.has(entry.kind)} className="mb-3" />;
   if (entry.actionResolutionRequired) {
-    return <ScreenDraftNotice entry={entry} mine={mine} busy={busy} onCopy={() => { void copyToClipboard(mine); }} />;
+    return <>{outdated}<ScreenDraftNotice entry={entry} mine={mine} busy={busy} onCopy={() => { void copyToClipboard(mine); }} /></>;
   }
   if (entry.screen) {
     return <>
+      {outdated}
       {entry.decidable
         ? <ScreenDraftNotice entry={entry} mine={mine} busy={busy} onCopy={() => { void copyToClipboard(mine); }} onTakeStored={() => { void askBeforeSettling(entry, 'theirs'); }} />
         : <UndecidableScreenDrafts entry={entry} mine={mine} busy={busy} onCopy={() => { void copyToClipboard(mine); }} onTakeStored={() => { void askBeforeSettling(entry, 'theirs'); }} />}
@@ -435,6 +444,7 @@ function EngineConflicts({ pollMs, search }: { pollMs: number; search?: string }
   const shown = deletion ? entry.theirs : mine;
   return (
     <>
+    {outdated}
     <div role="alert" className={NOTICE_BOX}>
       <p className={NOTICE_TITLE}>{title}</p>
       {body && <p className={NOTICE_BODY}>{body}</p>}

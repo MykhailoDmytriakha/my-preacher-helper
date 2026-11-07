@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 
+import { OutdatedTabNotice } from '@/components/common/OutdatedTabNotice';
 import { useRecordReadSummary } from '@/components/common/recordReadSummary';
 import { useSyncOutlet } from '@/components/common/syncOutlet';
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
@@ -192,6 +193,8 @@ export function DataSyncStatus({ subject, status, error, errorWords, onKeepLocal
       {showFreshness && <p className="mt-1 text-xs">{t(`dataSync.freshness.${status.freshness}`)}</p>}
       {readTrouble && <p className="mt-1 text-xs">{t('dataSync.readFailed')}</p>}
     </div>}
+    {/* A refusal on a tab older than the server: the way out is a reload (BUG-20261107-outdated-tab-refusal-unexplained). */}
+    <OutdatedTabNotice refused={status?.phase === 'refused'} />
     {failure && <p role="alert" className="text-rose-700 dark:text-rose-300">{failure}</p>}
     {((!conflictBanner && (keep || accept)) || showRetry) && <div className="flex flex-wrap gap-2">
       {!conflictBanner && keep && <button type="button" className={buttonClass} disabled={busy} onClick={deleting ? repeatDeletion : () => keepChecked(keep)}>{t(deleting ? (status?.phase === 'refused' ? 'dataSync.retryDelete' : 'dataSync.deleteAnyway') : 'dataSync.keepLocal')}</button>}
