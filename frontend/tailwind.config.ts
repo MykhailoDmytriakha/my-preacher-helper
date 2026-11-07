@@ -4,11 +4,9 @@ import type { Config } from "tailwindcss";
 
 const config: Config = {
   darkMode: "class",
-  content: [
-    "./pages/**/*.{js,ts,jsx,tsx,mdx}",
-    "./components/**/*.{js,ts,jsx,tsx,mdx}",
-    "./app/**/*.{js,ts,jsx,tsx,mdx}",
-  ],
+  // Next's Webpack dev server can rebuild while serving the first chunks if
+  // Tailwind reports a content directory that does not exist.
+  content: ["./app/**/*.{js,ts,jsx,tsx,mdx}"],
   safelist: [
     // Ensure dark variants generated for dynamic theme classes
     'dark:bg-amber-900/40',
