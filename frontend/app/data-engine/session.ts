@@ -6,6 +6,7 @@ import { ACTION_SLOT, editorSlot } from './editorIdentity';
 import { chooseLocalPlacement } from './localPlacementChoice';
 import { projectManualSelection } from './manualScope';
 import { equalValues, mergeDocumentFields, mergeFields } from './protocol';
+import { canReplaceSnapshot } from './snapshotFreshness';
 
 import type { CommitRequest } from './commits';
 import type { CommandResult, ConflictDetail, DataCommand, DocumentData, ResourceSnapshot } from './types';
@@ -206,7 +207,8 @@ export class DataSession {
     if (result.kind !== 'acknowledged') {
       if ('snapshot' in result) this.observe(result.snapshot, { source: 'server' });
       // A pinned manual Save can conflict with the parent's already observed baseline.
-      if (result.kind === 'conflict' && this.matches(result.snapshot) && !this.isOlder(result.snapshot)) {
+      if (result.kind === 'conflict' && this.matches(result.snapshot) && !this.isOlder(result.snapshot)
+        && canReplaceSnapshot(this.state.remoteCandidate ?? undefined, result.snapshot)) {
         this.state.remoteCandidate = copy(result.snapshot);
         this.state.conflicts = copy(result.conflicts);
       }
@@ -238,7 +240,8 @@ export class DataSession {
 
   observe(snapshot: ResourceSnapshot, { source }: { source: 'server' | 'cache' }): void {
     if (!this.matches(snapshot) || this.isOlder(snapshot)) return;
-    if (source === 'cache' && snapshot.value === null) return;
+    // A versioned tombstone survives acknowledgement collection. A cache miss proves nothing.
+    if (source === 'cache' && snapshot.value === null && !snapshot.metadata?.deleted) return;
     if (equalValues(snapshot, this.state.confirmed)) return;
     if (this.state.dirty || Object.keys(this.state.pending).length) {
       const candidate = this.state.remoteCandidate;

@@ -28,7 +28,10 @@ export function useCouncilDataDocument(councilId: string) {
   // Both council screens render read-only when handed a copy (BUG-20260927-engine-open-hangs-on-silent-device-storage).
   const document = useDataDocument({ collection: 'councils', id: councilId }, { slot: 'council', readOnlyCopy: true });
   const actions = useDocumentActions();
-  const data = document.data;
+  // The retained copy is readable while the same-device deletion is waiting or needs a decision.
+  const presence = document.presence;
+  const deleting = presence?.kind === 'deleting';
+  const data = deleting ? document.remote?.value ?? presence.snapshot?.value : document.data;
   const council = useMemo<Council | null>(
     () => (data ? hydrateCouncil(data as Record<string, unknown>, councilId) : null),
     [data, councilId]
@@ -123,7 +126,7 @@ export function useCouncilDataDocument(councilId: string) {
     council,
     loading: document.loading,
     /** A copy for reading while device storage is silent; every change is refused with a reason. */
-    readOnly: document.readOnly,
+    readOnly: document.readOnly || deleting,
     error: document.error, errorWords: document.errorWords,
     status: document.status,
     /** What the sync block speaks about (DataSyncStatus `subject`). */

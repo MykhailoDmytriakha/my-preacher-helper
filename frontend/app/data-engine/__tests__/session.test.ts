@@ -39,6 +39,18 @@ describe('DataSession', () => {
     session.observe(snap('A', 2), { source: 'server' });
     expect(session.getState().confirmed).toEqual(snap('newer remote', 4));
   });
+  it('keeps the newer stored copy when a delayed deletion conflict answers an older revision', () => {
+    const session = new DataSession(snap());
+    session.edit(null);
+    session.prepare('delete', 'owner');
+    const newest = snap('latest stored words', 3);
+    session.observe(newest, { source: 'server' });
+    session.accept({ kind: 'conflict', operationId: 'delete', snapshot: snap('earlier stored words', 2), conflicts: [] });
+    expect(session.getState()).toMatchObject({ draft: null, remoteCandidate: newest, pending: { delete: { value: null } } });
+    session.release('delete');
+    session.acceptRemote();
+    expect(session.getState()).toMatchObject({ confirmed: newest, draft: newest.value });
+  });
   it('preserves a user reversal while its previous write is still in flight', () => {
     const session = new DataSession(snap());
     session.edit({ content: 'A' }); session.prepare('first', 'owner');

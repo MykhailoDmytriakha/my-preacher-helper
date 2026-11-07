@@ -1,5 +1,6 @@
 import { atomicParticipants, isLiveWholeAction } from './atomicCommits';
-import { areDifferentTabEditors } from './editorIdentity';
+import { isDocumentDeletion } from './deletionOrdering';
+import { areDifferentTabEditors, areDifferentTabManualParents } from './editorIdentity';
 import { markBorrowedManualSources } from './manualReturnSources';
 import { equalValues } from './protocol';
 import { DataSession } from './session';
@@ -59,7 +60,16 @@ function canFollowChain(current: SessionCheckpoint, chain: readonly CommitReques
   return known.length === pending.length
     && known.every(request => equalValues(request.value, current.pending[request.id].value))
     && (equalValues(current.draft, latest[1].value) || matchesShownPrefix(current, chain, latest[0]))
-    && next.length > 0 && next.every(isLiveWholeAction);
+    && next.length > 0 && next.every(request => isLiveWholeAction(request) || isDocumentDeletion(request));
+}
+
+function deletionAnswer(request: CommitRequest | undefined): CommitRequest['result'] {
+  if (!request || !isDocumentDeletion(request)) return null;
+  const result = request.result;
+  if (result?.operationId !== request.id || result.kind !== request.state) return null;
+  if (result.kind === 'refused') return result;
+  return result.kind === 'conflict' && equalValues(result.snapshot.resource, request.baseline.resource)
+    && snapshotBelongsToOwner(request.owner, result.snapshot) ? result : null;
 }
 
 function readLiveChainProof(chain: readonly CommitRequest[], requests: readonly CommitRequest[],
@@ -67,9 +77,12 @@ function readLiveChainProof(chain: readonly CommitRequest[], requests: readonly 
   const resource = current.confirmed.resource;
   const atomicIds = new Set<string>();
   for (const request of chain) {
-    if (request.retentionScope || request.baseline.value === null || request.value === null
-      || !['queued', 'prepared', 'acknowledged'].includes(request.state)) return null;
-    if (request.atomic) {
+    if (request.retentionScope || request.baseline.value === null
+      || (!['queued', 'prepared', 'acknowledged'].includes(request.state) && !deletionAnswer(request))) return null;
+    if (isDocumentDeletion(request)) {
+      if (!areDifferentTabManualParents(request.editorId, editorId, resource)) return null;
+    } else if (request.value === null) return null;
+    else if (request.atomic) {
       const participants = liveActionParticipants(request, requests);
       if (!participants) return null;
       for (const participant of participants) atomicIds.add(participant.id);
@@ -86,7 +99,7 @@ export function sameLiveAtomicProof(proof: readonly CommitRequest[], requests: r
 
 /** Eligibility for a live clean editor; reconstruction and ACK projection retain their existing owners. */
 export function liveSubmittedWork(owner: string, editorId: string, current: SessionCheckpoint,
-  requests: readonly CommitRequest[], manualSources?: ReadonlyMap<string, string>): { checkpoint: SessionCheckpoint; acknowledged: CommitRequest[]; atomicProof: CommitRequest[] } | null {
+  requests: readonly CommitRequest[], manualSources?: ReadonlyMap<string, string>): { checkpoint: SessionCheckpoint; acknowledged: CommitRequest[]; atomicProof: CommitRequest[]; answer: CommitRequest['result'] } | null {
   if (current.conflicts.length || current.remoteCandidate) return null;
   const resource = current.confirmed.resource;
   const submitted = submittedWorkCheckpoint(owner, resource, requests);
@@ -99,12 +112,16 @@ export function liveSubmittedWork(owner: string, editorId: string, current: Sess
   const acknowledged = chain.filter(request => request.state === 'acknowledged');
   if (acknowledged.some(request => request.result?.kind !== 'acknowledged'
     || !equalValues(request.result.snapshot.resource, resource) || !snapshotBelongsToOwner(owner, request.result.snapshot))) return null;
-  const observedAncestor = chain.some(request => equalValues(current.confirmed, request.baseline)
+  const answer = deletionAnswer(chain.at(-1));
+  // A clean reader may already have seen the same newer record that refused the deletion.
+  const sawDeletionConflict = answer?.kind === 'conflict' && equalValues(current.confirmed, answer.snapshot);
+  const observedAncestor = sawDeletionConflict || chain.some(request => equalValues(current.confirmed, request.baseline)
     || (request.initialized && equalValues(current.confirmed, request.working))
     || (request.result?.kind === 'acknowledged' && equalValues(current.confirmed, request.result.snapshot)));
   if (!observedAncestor) return null;
   const checkpoint = replaySubmitted(submitted, chain);
-  if (!canReplaceSnapshot(current.confirmed, checkpoint.confirmed)) return null;
+  if (sawDeletionConflict) checkpoint.confirmed = current.confirmed;
+  else if (!canReplaceSnapshot(current.confirmed, checkpoint.confirmed)) return null;
   // A persistent editor identity never starts its local generation over when borrowing a chain.
   checkpoint.editGeneration += current.editGeneration;
   for (const [id, pending] of Object.entries(checkpoint.pending)) {
@@ -113,5 +130,5 @@ export function liveSubmittedWork(owner: string, editorId: string, current: Sess
     if (previous?.borrowedManualScope) pending.borrowedManualScope = previous.borrowedManualScope;
   }
   markBorrowedManualSources(checkpoint, manualSources);
-  return { checkpoint, acknowledged, atomicProof };
+  return { checkpoint, acknowledged, atomicProof, answer };
 }

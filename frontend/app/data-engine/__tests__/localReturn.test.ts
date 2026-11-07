@@ -29,6 +29,117 @@ it('shows the saved offline title in an already-open clean second editor after r
   } finally { a.dispose(); b.dispose(); }
 });
 
+it.each(['acknowledged', 'conflict'] as const)('shows a durable deletion in the already-open second editor until it is %s', async outcome => {
+  const { h, a, b, inA, inB } = await setup();
+  try {
+    b.setVisible(false);
+    await inA.remove();
+    const [captured] = await h.commits.list('owner');
+    expect(captured).toMatchObject({ value: null, baseline: { value: original } });
+    expect(h.transport.send).not.toHaveBeenCalled();
+    expect(h.server.value).toEqual(original);
+
+    b.setVisible(true);
+    await waitFor(() => expect(inB.getPresence()).toMatchObject({ kind: 'deleting', snapshot: { value: original } }));
+    expect(inB.getState().checkpoint).toMatchObject({ draft: null, pending: { [captured.id]: { value: null } } });
+    if (outcome === 'conflict') h.silentRemote({ title: 'The council has newer words' });
+    a.setVisible(false);
+    b.setOnline(true);
+    await b.retry();
+    await waitFor(() => expect(inB.getState().result?.kind).toBe(outcome));
+    if (outcome === 'acknowledged') {
+      expect(inB.getPresence().kind).toBe('absent');
+      expect(h.server.metadata?.deleted).toBe(true);
+    } else {
+      await inB.acceptRemote();
+      expect(inB.getState().checkpoint.draft?.title).toBe('The council has newer words');
+      expect(h.server.metadata?.deleted).toBe(false);
+    }
+    expect(h.transport.send).toHaveBeenCalledTimes(1);
+  } finally { a.dispose(); b.dispose(); }
+});
+
+it('offers the exact failed deletion when first returning after its answer', async () => {
+  const { h, a, b, inA, inB } = await setup(true);
+  try {
+    b.setVisible(false);
+    await inA.remove();
+    const [captured] = await h.commits.list('owner');
+    h.silentRemote({ title: 'Newer server words' });
+    a.setOnline(true);
+    await a.retry();
+    await waitFor(() => expect(inA.getState().result?.kind).toBe('conflict'));
+
+    b.setVisible(true);
+    await waitFor(() => expect(inB.getState().result).toMatchObject({ kind: 'conflict', operationId: captured.id }));
+    expect(inB.getState().savedIntentReplaceable).toBe(true);
+    await inB.acceptRemote();
+    expect(inB.getState().checkpoint.draft?.title).toBe('Newer server words');
+    b.setOnline(true);
+    await b.retry();
+    expect(h.transport.send).toHaveBeenCalledTimes(1);
+  } finally { a.dispose(); b.dispose(); }
+});
+
+it('restores the retained record when the followed deletion from a recovered editor is refused', async () => {
+  const { h, a, b, inA, inB } = await setup(true);
+  try {
+    b.setVisible(false);
+    await inA.remove();
+    const [captured] = await h.commits.list('owner');
+    b.setVisible(true);
+    await waitFor(() => expect(inB.getPresence().kind).toBe('deleting'));
+
+    jest.mocked(h.transport.send).mockResolvedValueOnce({
+      kind: 'refused', operationId: captured.id, code: 'permission-denied',
+    });
+    a.setVisible(false);
+    b.setOnline(true);
+    await b.retry();
+    await waitFor(() => expect(inB.getState().result?.kind).toBe('refused'));
+    expect(inB.getState().manualWork).toBe(false);
+    await inB.acceptRemote();
+    expect(inB.getPresence()).toMatchObject({ kind: 'present', snapshot: { value: original } });
+    expect(h.server.value).toEqual(original);
+    expect(h.transport.send).toHaveBeenCalledTimes(1);
+  } finally { a.dispose(); b.dispose(); }
+});
+
+it('shows a confirmed deletion on first offline return after its receipt is collected', async () => {
+  const { h, a, b, inA, inB } = await setup();
+  try {
+    b.setVisible(false);
+    await inA.remove();
+    a.setOnline(true);
+    await a.retry();
+    await waitFor(() => expect(inA.getState().result?.kind).toBe('acknowledged'));
+    await waitFor(async () => expect(await h.commits.list('owner')).toEqual([]));
+    expect(h.server.metadata?.deleted).toBe(true);
+    const readsBeforeReturn = jest.mocked(h.transport.read).mock.calls.length;
+
+    b.setVisible(true);
+    await waitFor(() => expect(inB.getPresence()).toMatchObject({
+      kind: 'absent', snapshot: { value: null, metadata: { generation: 'g1', revision: 2, deleted: true } },
+    }));
+    expect(jest.mocked(h.transport.read).mock.calls).toHaveLength(readsBeforeReturn);
+  } finally { a.dispose(); b.dispose(); }
+});
+
+it('keeps private words in the second editor during a same-device deletion', async () => {
+  const { h, a, b, inA, inB } = await setup();
+  try {
+    await inB.edit({ ...original, title: 'Private second-tab words' });
+    b.setVisible(false);
+    await inA.remove();
+    b.setVisible(true);
+    await settleEngine();
+    await settleEngine();
+    expect(inB.getState().checkpoint).toMatchObject({ draft: { title: 'Private second-tab words' }, pending: {} });
+    expect(h.transport.send).not.toHaveBeenCalled();
+    expect(h.server.value).toEqual(original);
+  } finally { a.dispose(); b.dispose(); }
+});
+
 it.each(['closed', 'pristine', 'from a recovered source'] as const)('follows a durable manual Save on return, %s', async opening => {
   const { h, a, b, inA, inB } = await setup(opening === 'from a recovered source');
   try {

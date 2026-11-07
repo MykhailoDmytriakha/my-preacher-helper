@@ -177,9 +177,10 @@ export function DataSyncStatus({ subject, status, error, errorWords, onKeepLocal
   // What the person was shown goes into the technical report's path (owner, 2026-10-10).
   useEffect(() => { if (troublePhase) recordDiagnostic('sync-trouble', { code: troublePhase }); }, [troublePhase]);
   // Unfinished drafts from earlier sessions are a choice for the person, so they are announced.
+  const pendingDeletion = Boolean(status?.deleting && !trouble);
   const showPhase = Boolean(status) && (trouble || recoveryChoices.length > 0);
   const showRetry = Boolean(onRetry && (failure || readTrouble || (trouble && !(comparison && conflictBanner))));
-  const said = [showPhase, showFreshness, readTrouble, failure, recoveryChoices.length, recoveryError, keep, accept, showRetry];
+  const said = [pendingDeletion, showPhase, showFreshness, readTrouble, failure, recoveryChoices.length, recoveryError, keep, accept, showRetry];
   if (!said.some(Boolean)) return <>{discardDialog}{deleteDialog}</>;
   const buttonClass = 'rounded-lg border border-current px-3 py-1.5 text-sm disabled:opacity-50';
   const content = <>
@@ -187,8 +188,9 @@ export function DataSyncStatus({ subject, status, error, errorWords, onKeepLocal
     {title && <p className="font-medium">{title}</p>}
     {comparison && <FieldComparison comparison={comparison} />}
     {conflictBanner ? <SaveConflictBanner description={comparison ? t('dataSync.fieldVersionChanged') : undefined}
-      takeTheirsLabel={comparison ? t('dataSync.useStoredVersion') : undefined} onKeepMine={() => keepChecked(keep)} onTakeTheirs={() => run(() => askBeforeDiscard(true, accept, () => currentSubject.current === subject && currentComparison.current === comparisonIdentity))} busy={busy} /> : status && (showPhase || showFreshness || readTrouble) && <div role="status" aria-live="polite" className="text-gray-600 dark:text-gray-300">
-      {showPhase && <p>{t(deleting ? (status.phase === 'refused' ? 'dataSync.deleteRefusedTitle' : 'dataSync.deleteConflictTitle') : trouble ? `dataSync.phase.${status.phase}` : 'dataSync.unfinishedWork')}</p>}
+      takeTheirsLabel={comparison ? t('dataSync.useStoredVersion') : undefined} onKeepMine={() => keepChecked(keep)} onTakeTheirs={() => run(() => askBeforeDiscard(true, accept, () => currentSubject.current === subject && currentComparison.current === comparisonIdentity))} busy={busy} /> : status && (pendingDeletion || showPhase || showFreshness || readTrouble) && <div role="status" aria-live="polite" className="text-gray-600 dark:text-gray-300">
+      {pendingDeletion && <p>{t('recordAvailability.deleting')}</p>}
+      {showPhase && !pendingDeletion && <p>{t(deleting ? (status.phase === 'refused' ? 'dataSync.deleteRefusedTitle' : 'dataSync.deleteConflictTitle') : trouble ? `dataSync.phase.${status.phase}` : 'dataSync.unfinishedWork')}</p>}
       {showPhase && deleting && <p>{t(status.phase === 'refused' ? 'dataSync.deleteRefusedBody' : 'dataSync.deleteConflictBody')}</p>}
       {showFreshness && <p className="mt-1 text-xs">{t(`dataSync.freshness.${status.freshness}`)}</p>}
       {readTrouble && <p className="mt-1 text-xs">{t('dataSync.readFailed')}</p>}

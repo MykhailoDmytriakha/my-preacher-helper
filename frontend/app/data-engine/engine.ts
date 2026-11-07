@@ -1781,6 +1781,7 @@ export class DataEngine {
           const accepted = [...this.commitRecords.values()].flatMap(request =>
             request.owner === owner && request.result?.kind === 'acknowledged'
               && sameResource(request.result.snapshot.resource, frozen) ? [request.result.snapshot] : []);
+          if (checkpoint.confirmed.value === null && checkpoint.confirmed.metadata?.deleted) accepted.push(checkpoint.confirmed);
           return copy(documentRecordPresence(frozen, entry.observation, undefined, accepted));
         },
         getDelivery: () => { active(); return copy(this.editorDelivery(entry, this.pending)); },

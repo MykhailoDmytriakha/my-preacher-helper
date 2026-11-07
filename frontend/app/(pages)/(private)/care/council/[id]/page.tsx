@@ -29,7 +29,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
 import { ReorderArrows } from '@/(pages)/(private)/care/orders/ReorderArrows';
@@ -193,6 +193,13 @@ function CouncilDetailContent({ source, engineCouncilId }: { source: CouncilDeta
    */
   const [reordering, setReordering] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
+  useEffect(() => {
+    if (readOnly) {
+      setConfirmDelete(false);
+      setReordering(false);
+      setActiveId(null);
+    }
+  }, [readOnly]);
   // The same dnd-kit setup as the orders of service: eight pixels before a drag starts, so a
   // tap stays a tap; the keyboard sensor lets it be done without a pointer at all.
   // The drag hint and announcements in the interface language (BUG-20261006-library-screen-reader-words-english).
@@ -227,6 +234,7 @@ function CouncilDetailContent({ source, engineCouncilId }: { source: CouncilDeta
   const held = council.status === 'held';
   /** Preparing, and the editor is open — a held council or a copy for reading offers no edits. */
   const editable = !held && !readOnly;
+  const arranging = editable && reordering;
   const councilsById = Object.fromEntries(councils.map((item) => [item.id, item])) as Record<string, Council | undefined>;
   const patch = (updater: (current: Council) => Council) => updateCouncil(council.id, updater);
   const patchTopic = (topicId: string, updater: TopicUpdater) =>
@@ -346,7 +354,7 @@ function CouncilDetailContent({ source, engineCouncilId }: { source: CouncilDeta
           </div>
 
           {!readOnly && <div className="flex shrink-0 flex-wrap items-center gap-2">
-            {reordering ? (
+            {arranging ? (
               <button type="button" onClick={() => setReordering(false)} className={buttonPrimary} data-testid="council-reorder-done">
                 <Check className="h-4 w-4" strokeWidth={2.5} aria-hidden="true" />
                 {t('council.detail.reorderDone')}
@@ -400,7 +408,7 @@ function CouncilDetailContent({ source, engineCouncilId }: { source: CouncilDeta
         </div>
         {editable && (
           <p className="mt-3 max-w-2xl px-1 text-sm leading-relaxed text-gray-600 dark:text-gray-400">
-            {reordering ? t('council.detail.reorderHint') : t('council.detail.conductHint')}
+            {arranging ? t('council.detail.reorderHint') : t('council.detail.conductHint')}
           </p>
         )}
       </header>
@@ -425,7 +433,7 @@ function CouncilDetailContent({ source, engineCouncilId }: { source: CouncilDeta
           )}
         </div>
 
-        {reordering ? (
+        {arranging ? (
           <DndContext
             accessibility={dndAccessibility}
             sensors={sensors}
@@ -484,7 +492,7 @@ function CouncilDetailContent({ source, engineCouncilId }: { source: CouncilDeta
           person is at the end of it when the next section comes to mind, and the new section
           belongs right there, under the last one — not behind a scroll to the top and back.
         */}
-        {editable && !reordering && council.topics.length > 0 && (
+        {editable && !arranging && council.topics.length > 0 && (
           <div className="mt-3 flex justify-end">
             <button type="button" onClick={() => addTopic('bottom')} className={buttonQuiet} data-testid="council-add-topic-bottom">
               <Plus className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
@@ -496,7 +504,7 @@ function CouncilDetailContent({ source, engineCouncilId }: { source: CouncilDeta
 
 
       <ConfirmModal
-        isOpen={confirmDelete}
+        isOpen={!readOnly && confirmDelete}
         onClose={() => setConfirmDelete(false)}
         onConfirm={async () => {
           setConfirmDelete(false);

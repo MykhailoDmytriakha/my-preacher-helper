@@ -7,6 +7,11 @@ import type { ResourceRef } from './types';
 const terminal = (request: CommitRequest) => ['acknowledged', 'conflict', 'refused', 'cancelled'].includes(request.state);
 const sameResource = (a: ResourceRef, b: ResourceRef) => a.collection === b.collection && a.id === b.id;
 
+export function isDocumentDeletion(request: CommitRequest): boolean {
+  return !request.atomic && request.baseline.value !== null && request.value === null
+    && (!request.command || request.command.kind === 'delete');
+}
+
 /** Called inside capture storage: every observed request was saved before this deletion. */
 export function captureDeleteOrder(request: CommitRequest, records: readonly CommitRequest[]): CommitRequest {
   if (request.value !== null || request.deleteAfter !== undefined) return request;

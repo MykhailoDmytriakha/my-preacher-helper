@@ -5,6 +5,11 @@ import { toast } from 'sonner';
 import CouncilDetailPage from '@/(pages)/(private)/care/council/[id]/page';
 import CouncilListPage from '@/(pages)/(private)/care/council/page';
 
+const council = { id: 'council-1', userId: 'owner', title: 'Draft council', status: 'draft', topics: [
+  { id: 'topic-1', title: 'First', kind: 'discussion', questions: [], options: [], outcomes: [] },
+  { id: 'topic-2', title: 'Second', kind: 'discussion', questions: [], options: [], outcomes: [] },
+] };
+const mockCouncil = { council: null as typeof council | null, readOnly: false };
 const mockRefresh = jest.fn();
 const mockState = { error: 'Read refused', loading: false, councils: [] };
 jest.mock('next/navigation', () => ({ useRouter: () => ({ push: jest.fn() }), useParams: () => ({ id: 'council-1' }), usePathname: () => '/care/council/council-1', useSearchParams: () => new URLSearchParams() }));
@@ -13,7 +18,7 @@ jest.mock('@/hooks/useUserSettings', () => ({ useUserSettings: () => ({ settings
 jest.mock('@/hooks/useCouncilsDataCollection', () => ({ useCouncilsDataCollection: () => ({ ...mockState, knownIds: new Set(), refresh: mockRefresh }) }));
 jest.mock('@/hooks/useCouncilsRead', () => ({ useCouncilsRead: () => mockState }));
 jest.mock('@/hooks/useCouncilDataDocument', () => ({ useCouncilDataDocument: () => ({
-  ...mockState, council: null, refresh: mockRefresh, recovery: { choices: [] },
+  ...mockState, ...mockCouncil, refresh: mockRefresh, recovery: { choices: [] },
 }) }));
 jest.mock('@/data-engine/react.client', () => ({ DataDocumentProvider: ({ children }: { children: React.ReactNode }) => children }));
 jest.mock('@/data-engine/DataSyncStatus', () => ({ DataSyncStatus: () => null }));
@@ -23,7 +28,12 @@ jest.mock('@/(pages)/(private)/care/council/EngineCouncilCreator', () => ({ Engi
 jest.mock('@/components/ui/RichMarkdownEditor', () => ({ RichMarkdownEditor: () => null }));
 jest.mock('sonner', () => ({ toast: { error: jest.fn(), success: jest.fn() } }));
 
-beforeEach(() => { jest.resetAllMocks(); });
+beforeEach(() => {
+  jest.clearAllMocks();
+  mockRefresh.mockReset();
+  mockCouncil.council = null;
+  mockCouncil.readOnly = false;
+});
 
 describe.each([['list', CouncilListPage], ['detail', CouncilDetailPage]] as const)('%s read retry', (_name, Page) => {
   it('keeps the existing read error without an escaping asynchronous rejection or a second notice', async () => {
@@ -45,4 +55,33 @@ describe.each([['list', CouncilListPage], ['detail', CouncilDetailPage]] as cons
     expect(mockRefresh).toHaveBeenCalledTimes(1);
     expect(toast.error).not.toHaveBeenCalled();
   });
+});
+
+it('closes the original delete confirmation when a council switches to its read-only copy', () => {
+  mockCouncil.council = council;
+  const { rerender } = render(<CouncilDetailPage />);
+  fireEvent.click(screen.getByRole('button', { name: 'council.detail.delete' }));
+  expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+  mockCouncil.readOnly = true;
+  rerender(<CouncilDetailPage />);
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  mockCouncil.readOnly = false;
+  rerender(<CouncilDetailPage />);
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+});
+
+it('returns from Arrange to reading when the council switches to its read-only copy', () => {
+  mockCouncil.council = council;
+  const { rerender } = render(<CouncilDetailPage />);
+  fireEvent.click(screen.getByTestId('council-reorder'));
+  expect(screen.getByText('council.detail.reorderHint')).toBeInTheDocument();
+
+  mockCouncil.readOnly = true;
+  rerender(<CouncilDetailPage />);
+  expect(screen.queryByText('council.detail.reorderHint')).not.toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: 'First' })).toBeInTheDocument();
+  mockCouncil.readOnly = false;
+  rerender(<CouncilDetailPage />);
+  expect(screen.getByTestId('council-reorder')).toBeInTheDocument();
 });

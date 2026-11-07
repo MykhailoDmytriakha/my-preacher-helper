@@ -4,6 +4,7 @@ import { isLiveWholeAction, isRetiredActionDependent, orderActionProjections } f
 import { firstBookMarksIntent, isFirstBookMarksDraft } from './bibleMarksCreation';
 import { CaptureContinuations } from './captureContinuations';
 import { assertCommitCapture } from './commits';
+import { isDocumentDeletion } from './deletionOrdering';
 import { isDirectLegacyDocumentIntent, type DocumentAnswer } from './documentDelivery';
 import { requiredDomainTargets } from './domainPolicy';
 import { areDifferentTabManualParents, editorSlot, readManualScopeIdentity } from './editorIdentity';
@@ -585,7 +586,7 @@ export class EditorController {
         }
         this.session = DataSession.restore(continuation.checkpoint);
         this.completedCommits = completedCommits;
-        this.result = continuation.acknowledged.at(-1)?.result ?? this.result;
+        this.result = continuation.answer ?? continuation.acknowledged.at(-1)?.result ?? this.result;
         const followed = current.filter(request => continuation.checkpoint.pending[request.id]);
         this.atomicPending = new Set(followed.filter(request => request.atomic).map(request => request.id));
         this.held = isRecoverableCheckpoint(candidate);
@@ -645,9 +646,9 @@ export class EditorController {
 
   private async applyCommit(request: CommitRequest): Promise<void> {
     this.assertCurrent();
-    // A request whose owner is no editor identity is a form's (or an action scope's) — also when this
-    // editor took it over from a screen that was left. Its refusal is resolved there, not here.
-    if (this.session.checkpoint().pending[request.id] && editorSlot(request.editorId) === null) this.manualRequests.add(request.id);
+    // Forms and action scopes resolve their own refusals. A recovered editor can still own a document deletion.
+    if (this.session.checkpoint().pending[request.id] && editorSlot(request.editorId) === null
+      && !isDocumentDeletion(request)) this.manualRequests.add(request.id);
     if (this.completedCommits.includes(request.id)) return;
     if (request.atomic && !['acknowledged', 'cancelled'].includes(request.state)) this.atomicPending.add(request.id);
     else this.atomicPending.delete(request.id);
