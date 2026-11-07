@@ -86,6 +86,27 @@ function setup(options: { target?: 'existing' | 'new'; holdReads?: boolean } = {
 }
 
 describe('DataEngine analysis reshape capture and recovery', () => {
+  it('does not read ordinary Saves when no analysis action is waiting', async () => {
+    const s = setup(), engine = s.createEngine();
+    try {
+      for (let index = 0; index < 25; index += 1) {
+        const baseline = note('other-' + index, 4);
+        const value = { ...baseline.value, content: 'queued words' };
+        await s.commits.create({
+          id: 'ordinary-' + index, owner: 'owner', editorId: 'editor-' + index, editGeneration: 1,
+          baseline, value, predecessor: null, revision: 0, initialized: false, working: baseline,
+          intended: value, command: null, submitted: null, sequence: 0, state: 'queued', result: null, unfinalized: [],
+        });
+      }
+      let ordinaryReads = 0;
+      s.storage.onFullRead = (kind, mode, count) => {
+        if (kind === 'request' && mode === 'readonly') ordinaryReads += count;
+      };
+      await expect(engine.listAnalysisReshapes()).resolves.toEqual([]);
+      expect(ordinaryReads).toBe(0);
+    } finally { engine.dispose(); }
+  });
+
   it('keeps a real three-part reshape action identity behind its action-level recovery path', async () => {
     const s = setup(), engine = s.createEngine();
     await engine.reshapeStudyAnalysis(s.edits());

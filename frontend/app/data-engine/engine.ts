@@ -949,7 +949,8 @@ export class DataEngine {
   /** An action remains discoverable after every participating editor has closed. */
   async listAnalysisReshapes(): Promise<Array<{ id: string; resource: ResourceRef; title: string; delivery: MembershipDelivery }>> {
     const owner = this.requireOwner(), generation = this.generation;
-    const requests = await this.commits.list(); this.assertCurrent(owner, generation);
+    const requests = await (this.options.commits.listForAnalysisRecovery?.(owner) ?? this.commits.list());
+    this.assertCurrent(owner, generation);
     return requests.filter(request => request.atomic?.kind === ANALYSIS_RESHAPE && request.id === request.atomic.id
       && !['acknowledged', 'cancelled'].includes(request.state)).map(request => ({ id: request.id,
       resource: copy(request.baseline.resource), title: typeof request.value?.title === 'string' ? request.value.title : '',
@@ -987,6 +988,8 @@ export class DataEngine {
     if (repairing) await repairing;
     this.assertCurrent(owner, generation);
     const records = await this.recoveryStore().listRecoverable(owner, resource && copy(resource));
+    this.assertCurrent(owner, generation);
+    if (!records.some(({ record }) => !this.editors.has(record.editorId))) return [];
     const requests = await this.commits.list();
     this.assertCurrent(owner, generation);
     return records.filter(({ record }) => !this.editors.has(record.editorId))
@@ -1549,7 +1552,10 @@ export class DataEngine {
       if (entry.closed) throw this.abortError();
     };
     try {
-      const repairing = this.localWriteback.retry(owner, address => address.kind === 'checkpoint' && address.id === editorId);
+      // A later action on this document must see a Save captured by the screen that just closed.
+      const repairing = this.localWriteback.retry(owner, address =>
+        (address.kind === 'checkpoint' && address.id === editorId)
+        || (address.kind === 'closing-save' && address.resource !== undefined && sameResource(address.resource, frozen)));
       if (repairing) await repairing;
       assertOpening();
       const requests = creating ? [] : await this.commits.list();
@@ -1771,13 +1777,11 @@ export class DataEngine {
           // The entry closes now, synchronously: the same editor identity may reopen at once
           // (navigation back to this document), and an open entry would refuse it.
           const keeping = unwritten ? this.keepUnwritten(unwritten, owner, generation, pending, frozen) : undefined;
-          // Capture is deferred until after synchronous closure, but presence already owns its completion.
-          const saving = leaving ? Promise.resolve().then(() => this.commits.save(editorId, leaving.checkpoint,
-            leaving.predecessorId ? { predecessorId: leaving.predecessorId } : undefined)).then(() => { this.backgroundDrain(); }) : undefined;
+          // Register before closing. The local handoff outlives the controller and gates only
+          // another opening of this resource, even if no checkpoint discovery has to read the queue.
+          const saving = leaving ? this.keepClosingSave(owner, generation, editorId, leaving.checkpoint, leaving.predecessorId) : undefined;
           this.close(entry, keeping ?? saving);
           if (this.editors.get(editorId) === entry) this.editors.delete(editorId);
-          // The request belongs to the engine queue and outlives the controller that just closed.
-          if (saving) this.background(saving, owner, generation, frozen);
         },
       };
       this.backgroundDrain();
@@ -1803,6 +1807,14 @@ export class DataEngine {
     if (!checkpoint.dirty || !unqueued || waitsForPerson) return null;
     const predecessorId = pending.sort((a, b) => b[1].generation - a[1].generation)[0]?.[0];
     return { checkpoint: JSON.parse(JSON.stringify(checkpoint)) as SessionCheckpoint, ...(predecessorId ? { predecessorId } : {}) };
+  }
+
+  private keepClosingSave(owner: string, generation: number, editorId: string, checkpoint: SessionCheckpoint, predecessorId?: string): Promise<void> {
+    const capture = this.commits.admitSave(editorId, checkpoint);
+    const pending = this.retainLocal({ address: { owner, kind: 'closing-save', id: editorId, resource: checkpoint.confirmed.resource },
+      persist: async () => { await capture(predecessorId ? { predecessorId } : undefined); } }, generation);
+    void pending.then(() => { if (this.current(owner, generation)) this.backgroundDrain(); }, () => undefined);
+    return pending;
   }
 
   /** The checkpoint a closing editor has not written yet; a retired controller has none to give. */

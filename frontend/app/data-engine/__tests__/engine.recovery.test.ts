@@ -40,6 +40,17 @@ function setup(creating = false) {
 }
 
 describe('DataEngine explicit recovery', () => {
+  it('does not read queued Saves when there is no saved editor to recover', async () => {
+    const s = setup();
+    try {
+      s.records.clear();
+      await tick();
+      const list = jest.spyOn(s.commits, 'list');
+      await expect(s.engine.listRecoverable(resource)).resolves.toEqual([]);
+      expect(list).not.toHaveBeenCalled();
+    } finally { s.engine.dispose(); }
+  });
+
   it('exposes explicit removal on the managed editor and refuses a second unresolved deletion', async () => {
     const s = setup(); const editor = await s.engine.openEditor(resource, 'ordinary');
     await editor.remove(); await tick();

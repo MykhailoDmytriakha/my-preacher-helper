@@ -39,6 +39,10 @@ export function installStorageHarness() {
         });
         return request;
       };
+      const inRange = (range: { lower: unknown[] }) => [...draft].filter(([key]) => {
+        const parsed = JSON.parse(key);
+        return range.lower.every((part, index) => parsed[index] === part);
+      });
       const store = {
         transaction: tx,
         get: (key: unknown) => read(draft.get(JSON.stringify(key))),
@@ -51,12 +55,11 @@ export function installStorageHarness() {
           draft.delete(JSON.stringify(key));
         },
         getAll: (range: { lower: unknown[] }) => {
-          const rows = [...draft].filter(([key]) => {
-            const parsed = JSON.parse(key); return parsed[0] === range.lower[0] && parsed[1] === range.lower[1];
-          }).map(([, value]) => value);
+          const rows = inRange(range).map(([, value]) => value);
           harness.onFullRead?.(range.lower[0], mode, rows.length);
           return read(rows);
         },
+        getAllKeys: (range: { lower: unknown[] }) => read(inRange(range).map(([key]) => JSON.parse(key))),
       } as unknown as IDBObjectStore;
       const result = action(store);
       void Promise.resolve().then(() => { if (harness.holdCommit) harness.finishCommit = complete; else complete(); });

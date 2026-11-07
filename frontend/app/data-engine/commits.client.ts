@@ -6,7 +6,7 @@ import { assertCommitBatch, assertCommitCapture, assertCommitIdentities, orderCo
 import { captureDeleteOrder, replayDeleteOrder } from './deletionOrdering';
 import { reconcileRecoveryRecord, validateRecoveryRecord } from './recovery.client';
 import { COMMIT_ROW_KINDS, collectCommitRows, commitCaptureKey, commitDependencyKey, commitGenerationKey, commitProjectionKey, commitRowKey, commitSnapshotKey, readCommitIdentities, readCommitRows } from './retention.client';
-import { createEngineStorageTransaction, validateCommitReferences, type StorageRead } from './storage.client';
+import { createEngineStorageTransaction, engineOwnerRange, validateCommitReferences, type StorageRead } from './storage.client';
 
 import type { EditorRecord } from './controller';
 
@@ -123,6 +123,13 @@ export function createIndexedDbCommitStore(collect = collectCommitRows): CommitS
     list: owner => transaction('readonly', (store, read, done) => {
       readCommitRows(store, read, owner, done);
     }),
+    listForAnalysisRecovery: owner => transaction('readonly', (store, read, done) => {
+      read(store.getAllKeys(engineOwnerRange('analysis-reshape-request', owner)), keys => {
+        if (!keys.length) { done([]); return; }
+        // An action's cancellation evidence can also contain ordinary dependent Saves.
+        readCommitRows(store, read, owner, done);
+      });
+    }),
     readByIds: (owner, ids) => transaction('readonly', (store, read, done) => {
       readCommitIdentities(store, read, owner, ids, requests => done([...requests.values()]));
     }),
@@ -161,19 +168,23 @@ export function createIndexedDbCommitStore(collect = collectCommitRows): CommitS
     compareAndSetBatch,
     compareAndSetWithCheckpoint,
     listCaptures: (owner, prefix) => transaction('readonly', (store, read, done) => {
-      readCommitRows(store, read, owner, requests => {
-        const candidates = requests.filter(request => request.retentionScope?.startsWith(prefix));
-        if (!candidates.length) { done([]); return; }
-        const held: CommitRequest[] = []; let remaining = candidates.length;
-        for (const request of candidates) read(store.get(commitCaptureKey(owner, request.retentionScope!, request.id)), reference => {
-          if (reference?.commitReferences?.length === 1 && reference.commitReferences[0] === request.id) held.push(request);
-          if (!--remaining) done(held);
+      read(store.getAllKeys(engineOwnerRange('reference', owner, 'capture')), keys => {
+        const ids = keys.flatMap(key => Array.isArray(key) && key.length === 5 && typeof key[3] === 'string'
+          && key[3].startsWith(prefix) && typeof key[4] === 'string' ? [key[4]] : []);
+        readCommitIdentities(store, read, owner, ids, requests => {
+          const candidates = [...requests.values()].filter(request => request.retentionScope?.startsWith(prefix));
+          if (!candidates.length) { done([]); return; }
+          const held: CommitRequest[] = []; let remaining = candidates.length;
+          for (const request of candidates) read(store.get(commitCaptureKey(owner, request.retentionScope!, request.id)), reference => {
+            if (reference?.commitReferences?.length === 1 && reference.commitReferences[0] === request.id) held.push(request);
+            if (!--remaining) done(held);
+          });
         });
       });
     }),
     releaseCapture: (owner, scope, id) => transaction('readwrite', (store, read, done) => {
-      readCommitRows(store, read, owner, requests => {
-        if (!requests.some(request => request.id === id && request.retentionScope === scope)) { done(undefined); return; }
+      readCommitIdentities(store, read, owner, [id], requests => {
+        if (requests.get(id)?.retentionScope !== scope) { done(undefined); return; }
         const key = commitCaptureKey(owner, scope, id);
         read(store.get(key), reference => {
           if (reference?.commitReferences?.length === 1 && reference.commitReferences[0] === id) store.delete(key);

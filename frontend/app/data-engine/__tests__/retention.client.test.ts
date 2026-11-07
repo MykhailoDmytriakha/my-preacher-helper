@@ -27,6 +27,20 @@ const acknowledge = (request: CommitRequest): CommitRequest => ({ ...request, st
 let storage: ReturnType<typeof installStorageHarness>;
 beforeEach(() => { jest.clearAllMocks(); storage = installStorageHarness(); });
 
+it('finds a held backup by its reference without reading unrelated queued Saves', async () => {
+  const commits = createIndexedDbCommitStore();
+  const note = await commits.create({ ...request('backup'), retentionScope: 'draft-capture:v1:backup' });
+  for (let index = 0; index < 25; index += 1) {
+    await commits.create(request('ordinary-' + index, 'editor-' + index));
+  }
+  let ordinaryReads = 0;
+  storage.onFullRead = (kind, mode, count) => {
+    if (kind === 'request' && mode === 'readonly') ordinaryReads += count;
+  };
+  expect((await commits.listCaptures!('owner', 'draft-capture:v1:')).map(row => row.id)).toEqual([note.id]);
+  expect(ordinaryReads).toBe(0);
+});
+
 it('does not rematerialize a long pending queue for each accepted Save during delivery', async () => {
   const measure = async (pending: number) => {
     storage = installStorageHarness();

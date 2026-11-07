@@ -59,6 +59,8 @@ export interface CommitRequest {
 
 export interface CommitStore {
   list(owner: string): Promise<CommitRequest[]>;
+  /** Full cancellation evidence is needed only if this owner has an analysis action. */
+  listForAnalysisRecovery?(owner: string): Promise<CommitRequest[]>;
   /** Read the current rows for a known operation without opening the rest of the queue. */
   readByIds?(owner: string, ids: readonly string[]): Promise<CommitRequest[]>;
   /** Atomically unique by owner/editor/generation. Repeats return the original request. */

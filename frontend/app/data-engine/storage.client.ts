@@ -5,7 +5,10 @@ import { createStorageTransaction, type StorageRead, type StorageTransaction } f
 
 export type { StorageRead, StorageTransaction } from '@/utils/storageTransaction';
 
-export const engineOwnerRange = (kind: string, owner: string): IDBKeyRange => IDBKeyRange.bound([kind, owner], [kind, owner, []]);
+export const engineOwnerRange = (kind: string, owner: string, ...path: string[]): IDBKeyRange => {
+  const prefix = [kind, owner, ...path];
+  return IDBKeyRange.bound(prefix, [...prefix, []]);
+};
 
 /** Shared transactions make checkpoint/recovery references atomic with request retention. */
 export function createEngineStorageTransaction(): StorageTransaction {
