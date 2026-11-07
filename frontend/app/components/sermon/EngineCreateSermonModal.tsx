@@ -127,6 +127,7 @@ export function EngineCreateSermonModal({ recoveryId, preSelectedSeriesId, allow
       </button>}
       <DataMembershipStatus action={{ ...action, retry: async () => {
         if (!action.phase) { await open(); return; }
+        if (action.phase === 'saving' && creation) { await action.save(); onQueued(creation.resource.id); return; }
         await action.retry();
         if (creation?.requestedSeriesId) await action.openSeries();
       } }} onDiscarded={onClose} />

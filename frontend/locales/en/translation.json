@@ -301,6 +301,7 @@
       "otherChangesFirst": "Save or decide the other changes to this record first.",
       "draftGone": "This draft is no longer available.",
       "draftDone": "This draft has nothing left to recover.",
+      "membershipStageChanged": "This form changed in another tab. Your copy is still here. Check it before closing and reopening the form.",
       "draftOpen": "This draft is still open in another tab. Close it there, then try again.",
       "draftPresenceUnknown": "Could not check whether this draft is closed. Try again before removing it.",
       "partGone": "This part is no longer available."

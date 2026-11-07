@@ -773,10 +773,10 @@ export class DataEngine {
         if (record.owner !== owner) throw new Error('Membership persistence owner changed');
         return store.persist(record, revision);
       },
-      readSaveReceipt: record => {
+      readSaveReceipt: (record, editingRevision) => {
         this.assertCurrent(owner, generation);
         if (record.owner !== owner) throw new Error('Membership receipt owner changed');
-        return store.readSaveReceipt(record);
+        return store.readSaveReceipt(record, editingRevision);
       },
       save: async captures => {
         this.assertCurrent(owner, generation);

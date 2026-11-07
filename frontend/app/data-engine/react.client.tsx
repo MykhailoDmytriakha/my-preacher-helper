@@ -648,8 +648,9 @@ export function useDataMembership() {
     };
   }, [browser, owner, identity, refresh]);
   const state = stored?.identity === identity ? stored.state : null;
+  const errorWords = failure?.identity === identity ? failure.words : null;
   return {
-    ready: Boolean(browser && owner), error: failure?.identity === identity ? say(failure.words) : null,
+    ready: Boolean(browser && owner), error: errorWords ? say(errorWords) : null, errorWords,
     values: state?.values ?? [], phase: state?.record.phase ?? null, durable: state?.durable ?? false,
     action: state?.record.action ?? null, scopeId: state?.record.scopeId ?? null,
     creation: state?.record.creation ?? null,

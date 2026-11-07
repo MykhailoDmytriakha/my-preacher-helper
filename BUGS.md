@@ -229,13 +229,6 @@
 **Effect / user contract.** An opened menu must show its options, and selecting one must close it and show the corresponding editor. Background animation must not leave an invisible interactive popup. Opening and closing the selector alone must not change a sermon or discard a draft.
 
 
-### BUG-20261107-overlapping-explicit-membership-save-keeps-stale-form · Два явных сохранения одной восстановленной формы могут оставить проигравшую форму зависшей
-**Severity / статус.** Предварительно P3, требует проверки пути в браузере. Второй агент обнаружил при ревью BUG-20261031-no-weblocks-overlapping-save-freezes-dialog отдельную гонку до первой записи Save. Проверка двух экземпляров `membershipScope.test.ts` подтверждает, что только один выигрывает CAS. Нужен живой сценарий двойного явного сохранения после восстановления одной стадии.
-**Путь.** Без сигнала об открытой форме восстановить одну и ту же сохранённую стадию в двух вкладках. Начать оба Save, пока хранилище ещё не приняло первый. Проверить, что показывает проигравшая форма после подтверждения победителя и своего Retry.
-**Якорь / риск.** `frontend/app/data-engine/membershipScope.ts` меняет фазу на `saving` до CAS. Если первый durable Save этой формы не подтверждён, конфликт ревизий остаётся отказом. Форма может остаться только для чтения со старой ревизией, а повтор продолжит упираться в тот же конфликт.
-**Как должно работать.** Если обе формы сохраняли одну и ту же копию и это доказано, проигравшая видит завершившееся сохранение. При разных копиях текст остаётся доступен и человек получает понятное объяснение. Смена владельца, отмена и реальный сбой хранилища сохраняют свои отдельные исходы. Проверить проповедь, группу и общий этап привязки к серии.
-
-
 ### BUG-20261031-title-edit-before-form-ready · Правка заголовка проповеди, начатая сразу после появления заголовка, может упасть с «форма не готова»
 **Найден.** 2026-10-31 · полный прогон тестов под нагрузкой: `__tests__/pages/sermons/sermonTitleTakeTheirs.test.tsx` «shows the other version's title once the person takes it» упал 2 раза примерно из 9 полных прогонов за сессию 31.10 (второй — в прогоне вырезания «Предпросмотра структуры»); отдельно каждый раз зелёный. Агентом в интерфейсе не воспроизводилось.
 **Якоря.** `frontend/app/data-engine/react.client.tsx:1119` — `run` бросает `The manual form is not ready`, пока форма поля не открыта · `frontend/app/(pages)/(private)/sermons/[id]/hooks/useSermonCoreDataDocument.ts:33` — `textBinding` отдаёт `value` из формы, но не говорит, готова ли она к `begin`.

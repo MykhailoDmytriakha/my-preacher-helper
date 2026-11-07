@@ -4,7 +4,7 @@ import { DataMembershipStatus } from '@/data-engine/DataMembershipStatus';
 import type { useDataMembership } from '@/data-engine/react.client';
 
 type Action = ReturnType<typeof useDataMembership>;
-const action = (patch: Partial<Action> = {}): Action => ({ ready: true, error: null, values: [], phase: 'submitted', durable: true,
+const action = (patch: Partial<Action> = {}): Action => ({ ready: true, error: null, errorWords: null, values: [], phase: 'submitted', durable: true,
   action: null, creation: null, beginCreate: jest.fn(), openSeries: jest.fn(), updateCreation: jest.fn(), scopeId: 'scope', recoveryIdentity: {}, recoveryVersion: 0, delivery: { phase: 'unknown', canDiscard: false, code: null },
   begin: jest.fn(), recover: jest.fn(), dismiss: jest.fn(), update: jest.fn(), save: jest.fn(), cancel: jest.fn(), retry: jest.fn(), discard: jest.fn(), discardRecovery: jest.fn(), listRecoverable: jest.fn(), listRecoveryChoices: jest.fn(), ...patch });
 it('offers only retry for uncertain delivery and does not call discard', async () => {
@@ -25,6 +25,16 @@ it('offers whole-action discard only with engine proof and closes only after suc
 it('does not report a server acknowledgement while local capture persistence failed', () => {
   render(<DataMembershipStatus action={action({ durable: false, error: 'storage full', delivery: { phase: 'acknowledged', canDiscard: false, code: null } })} />);
   expect(screen.getByRole('status')).toHaveTextContent('dataSync.phase.localFailure'); expect(screen.getByRole('alert')).toHaveTextContent('storage full');
+  expect(screen.getByRole('button', { name: 'dataSync.retry' })).toBeInTheDocument();
+});
+it('explains a changed membership stage without offering a local write retry', () => {
+  const key = 'dataSync.failure.membershipStageChanged';
+  render(<DataMembershipStatus action={action({
+    phase: 'saving', durable: false, error: key, errorWords: { key }, delivery: null,
+  })} />);
+  expect(screen.getByRole('alert')).toHaveTextContent(key);
+  expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'dataSync.retry' })).not.toBeInTheDocument();
 });
 
 // BUG-20261107-outdated-tab-refusal-unexplained: a refused series action on a tab older than the server says the way out.

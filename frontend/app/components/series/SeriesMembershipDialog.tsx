@@ -44,6 +44,7 @@ export function SeriesMembershipDialog({ seriesId, mode, member, recoveryId, onC
   const target = action.values.find(entry => entry.id === targetId);
   const series = target ? hydrateSeries({ ...target.value, id: targetId } as unknown as Series) : null;
   const editing = action.phase === 'editing';
+  const showSelection = editing || (action.phase === 'saving' && Boolean(action.error));
   const kind = action.action?.kind ?? (mode === 'reorder' ? 'reorder' : mode === 'remove' ? 'remove' : 'assign');
   const selected = action.action?.kind === 'assign' ? action.action.refs : [];
   const changeSelection = (refs: Member[]) => action.update(refs.length ? { kind: 'assign', targetId, refs } : null);
@@ -53,6 +54,11 @@ export function SeriesMembershipDialog({ seriesId, mode, member, recoveryId, onC
     try { await action.save(); action.dismiss(); onClose(); }
     catch { /* The stage retains the original action and its error. */ }
     finally { setSaving(false); }
+  };
+  const retry = async () => {
+    if (action.phase === 'saving') { await action.save(); action.dismiss(); onClose(); return; }
+    if (action.phase) await action.retry();
+    else await open();
   };
   const cancel = async () => { await action.cancel(); onClose(); };
   const title = t(dialogTitle(mode, kind));
@@ -64,15 +70,15 @@ export function SeriesMembershipDialog({ seriesId, mode, member, recoveryId, onC
         submitLabel={t('common.save')} saving={saving} submitDisabled={!action.durable || !action.action} unsaved={action.action !== null} />
     ) : undefined}>
     <div className="space-y-4">
-      <DataMembershipStatus action={{ ...action, retry: action.phase ? action.retry : open }} onDiscarded={onClose} />
-      {editing && mode === 'target' && member && <TargetChoices action={action} member={member} disabled={saving} />}
-      {editing && mode !== 'target' && series && kind === 'assign' && <fieldset disabled={saving}>
+      <DataMembershipStatus action={{ ...action, retry }} onDiscarded={onClose} />
+      {showSelection && mode === 'target' && member && <TargetChoices action={action} member={member} disabled={saving || !editing} />}
+      {showSelection && mode !== 'target' && series && kind === 'assign' && <fieldset disabled={saving || !editing}>
         {mode !== 'group' && <SermonChoices current={series.items ?? []} selected={selected} onChange={changeSelection} />}
         {(mode === 'group' || mode === 'recover') && <GroupChoices current={series.items ?? []} selected={selected} onChange={changeSelection} />}
       </fieldset>}
       {editing && mode === 'sermon' && onCreateSermon && <button type="button" className="rounded-lg border px-3 py-2"
         disabled={saving} onClick={() => { action.dismiss(); onCreateSermon(); }}>{t('addSermon.createNewSermon')}</button>}
-      {editing && series && kind === 'reorder' && <ReorderChoices items={series.items ?? []} disabled={saving}
+      {showSelection && series && kind === 'reorder' && <ReorderChoices items={series.items ?? []} disabled={saving || !editing}
         onChange={itemIds => action.update({ kind: 'reorder', seriesId: targetId, itemIds })} />}
       {kind === 'remove' && <p>{t('workspaces.series.actions.membershipRemoveHint')}</p>}
     </div>

@@ -272,14 +272,130 @@ describe('durable pinned membership stage', () => {
 });
 
 describe('membership stage storage', () => {
-  it('fences competing restored tabs before any capture and isolates owners', async () => {
+  it('returns the same capture to both restored tabs that explicitly Save the same editing stage', async () => {
     const t = fixture(), original = t.begin(); await original.update(move);
     const record = (await t.scopes.read('owner', 'scope'))!;
     const first = MembershipScope.restore(record, t.port), second = MembershipScope.restore(record, t.port);
     const results = await Promise.allSettled([first.save(), second.save()]);
-    expect(results.filter(result => result.status === 'fulfilled')).toHaveLength(1);
-    expect(t.save).toHaveBeenCalledTimes(1); expect(await t.scopes.read('other', 'scope')).toBeUndefined(); expect(await t.scopes.list('other')).toEqual([]);
+    const ids = (await t.commits.list('owner')).map(request => request.id);
+    expect(ids).toHaveLength(2);
+    expect(results).toEqual([{ status: 'fulfilled', value: ids }, { status: 'fulfilled', value: ids }]);
+    expect(first.getState().durable).toBe(true);
+    expect(second.getState().durable).toBe(true);
+    expect(await t.scopes.read('other', 'scope')).toBeUndefined();
+    expect(await t.scopes.list('other')).toEqual([]);
+    expect(t.send).not.toHaveBeenCalled();
   });
+
+  it('recognizes the exact editing revision after the winning Save has already compacted', async () => {
+    const t = fixture(), original = t.begin(); await original.update(move);
+    const record = (await t.scopes.read('owner', 'scope'))!;
+    const first = MembershipScope.restore(record, t.port);
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const second = MembershipScope.restore(record, { ...t.port, persist: async (next, revision) => {
+      await gate;
+      return t.port.persist(next, revision);
+    } });
+    const delayed = second.save();
+    void delayed.catch(() => undefined);
+    let ids: string[];
+    try {
+      ids = await first.save();
+      for (const request of await t.commits.list('owner')) {
+        await t.commits.compareAndSet(request, { ...request, state: 'acknowledged', result: {
+          kind: 'acknowledged', operationId: request.id,
+          snapshot: { ...request.baseline, value: request.value },
+        } });
+      }
+      await t.scopes.compact('owner', record.scopeId);
+      await t.commits.releaseProjection!('owner', ids);
+      expect(await t.scopes.completion('owner', record.scopeId)).toBe('acknowledged');
+      expect(await t.commits.list('owner')).toEqual([]);
+    } finally { release(); }
+    await expect(delayed).resolves.toEqual(ids!);
+    expect(second.getState()).toMatchObject({ durable: true, record: { phase: 'submitted', requestIds: ids! } });
+    expect(t.save).toHaveBeenCalledTimes(1);
+  });
+
+  it('retains a different unsaved title even if another tab compacted an answer at the same generation', async () => {
+    const t = fixture(), resource = { collection: 'sermons', id: 'different-creation' };
+    const initial = { userId: 'owner', title: 'Original title', verse: 'John 3:16', date: 'now', thoughts: [] };
+    const original = MembershipScope.beginCreation('owner', 'creation:diff', resource, initial, t.port);
+    await original.settled();
+    const record = (await t.scopes.read('owner', 'creation:diff'))!;
+    const winner = MembershipScope.restore(record, t.port);
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const other = MembershipScope.restore(record, { ...t.port, persist: async (next, revision) => {
+      await gate;
+      return t.port.persist(next, revision);
+    } });
+    const unsent = other.updateCreation({ ...initial, title: 'Words from the other tab' });
+    void unsent.catch(() => undefined);
+    const rejected = other.save();
+    void rejected.catch(() => undefined);
+    try {
+      await winner.updateCreation({ ...initial, title: 'Saved title' });
+      await winner.save();
+      const [request] = await t.commits.list('owner');
+      expect(other.getState().record.generation).toBe(request.editGeneration);
+      await t.commits.compareAndSet(request, { ...request, state: 'acknowledged', result: {
+        kind: 'acknowledged', operationId: request.id,
+        snapshot: { resource, value: request.value, metadata: { protocol: 1, generation: request.id, revision: 1, deleted: false } },
+      } });
+      await t.scopes.compact('owner', record.scopeId);
+      expect(await t.scopes.completion('owner', record.scopeId)).toBe('acknowledged');
+    } finally { release(); }
+    await expect(unsent).rejects.toMatchObject({ code: 'membership-stage-changed' });
+    await expect(rejected).rejects.toMatchObject({ code: 'membership-stage-changed' });
+    await expect(other.save()).rejects.toMatchObject({ code: 'membership-stage-changed' });
+    expect(other.getState()).toMatchObject({ durable: false, record: { phase: 'saving',
+      creation: { value: { title: 'Words from the other tab' } } } });
+    expect(t.save).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['sermons', 'groups'] as const)('shares one linked creation capture when both restored %s forms Save', async collection => {
+    const t = fixture(), resource = { collection, id: 'exact-member' };
+    const initial: DocumentData = collection === 'sermons'
+      ? { userId: 'owner', title: 'Exact sermon', verse: 'John 3:16', date: 'now', thoughts: [] }
+      : { userId: 'owner', title: 'Exact group', status: 'draft', templates: [], flow: [], createdAt: 'now', updatedAt: 'now' };
+    const original = MembershipScope.beginCreation('owner', 'creation:exact', resource, initial, t.port);
+    await original.settled();
+    await original.pinCreationSeries(pins());
+    await original.update({ kind: 'assign', targetId: 'b', refs: [{ type: collection === 'sermons' ? 'sermon' : 'group', refId: resource.id }] });
+    const record = (await t.scopes.read('owner', 'creation:exact'))!;
+    const first = MembershipScope.restore(record, t.port), second = MembershipScope.restore(record, t.port);
+    const [one, two] = await Promise.all([first.save(), second.save()]);
+    expect(one).toEqual(two);
+    expect(one).toHaveLength(2);
+    expect((await t.commits.list('owner')).map(request => request.id)).toEqual(one);
+    expect(t.send).not.toHaveBeenCalled();
+  });
+
+  it('keeps a genuine first-write failure and permits retry without claiming a receipt', async () => {
+    const t = fixture(), scope = t.begin();
+    await scope.update(move);
+    const error = new Error('disk full');
+    t.persist.mockRejectedValueOnce(error);
+    await expect(scope.save()).rejects.toBe(error);
+    expect(scope.getState()).toMatchObject({ durable: false, record: { phase: 'saving', action: move } });
+    expect(t.save).not.toHaveBeenCalled();
+    await expect(scope.save()).resolves.toHaveLength(2);
+    expect(scope.getState()).toMatchObject({ durable: true, record: { phase: 'submitted' } });
+  });
+
+  it('keeps the same durable editing revision when a creation field is already normalized', async () => {
+    const t = fixture();
+    const resource = { collection: 'sermons', id: 'same-creation' };
+    const value = { userId: 'owner', title: 'Exact title', verse: 'John 3:16', date: 'now', thoughts: [] };
+    const scope = MembershipScope.beginCreation('owner', 'creation:same', resource, value, t.port);
+    await scope.settled();
+    const original = scope.getState().record;
+    await scope.updateCreation({ ...value });
+    expect(scope.getState()).toMatchObject({ durable: true, record: original });
+  });
+
   it.each([
     { milestone: 'submitted', linked: false },
     { milestone: 'compacted', linked: false },

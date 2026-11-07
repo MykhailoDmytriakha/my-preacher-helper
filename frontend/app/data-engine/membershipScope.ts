@@ -31,7 +31,8 @@ export interface MembershipScopePort {
   isCurrent(): boolean;
   /** Returns the durable CAS revision. Creation uses expectedRevision=null. */
   persist(record: MembershipScopeRecord, expectedRevision: number | null): Promise<MembershipScopeRecord>;
-  readSaveReceipt(record: MembershipScopeRecord): Promise<MembershipSaveReceipt | null>;
+  /** Undefined means already frozen; null means the original editing revision cannot be proved. */
+  readSaveReceipt(record: MembershipScopeRecord, editingRevision?: number | null): Promise<MembershipSaveReceipt | null>;
   /** Uses CommitQueue, which deduplicates the captured scope/resource/generation. */
   save(captures: readonly AtomicCapture[]): Promise<readonly { id: string }[]>;
 }
@@ -91,6 +92,7 @@ export class MembershipScope {
   private durable = false;
   // Later capture or submission can fail without undoing the durable freeze.
   private frozen: boolean;
+  private saveFromRevision: number | null = null;
   private closed = false;
   private readonly listeners = new Set<() => void>();
   private constructor(record: MembershipScopeRecord, private readonly port: MembershipScopePort, restored: boolean) {
@@ -129,6 +131,7 @@ export class MembershipScope {
   updateCreation(value: DocumentData): Promise<void> {
     this.assertEditing();
     if (!this.record.creation) throw new Error('Open a creation stage first');
+    if (this.durable && equalValues(this.record.creation.value, value)) return this.settled();
     const next = { ...this.record, creation: { ...this.record.creation, value: clone(value) } };
     validateCreation(next); this.record = next;
     this.record.generation += 1; this.durable = false; this.emit(); return this.enqueuePersistence();
@@ -156,21 +159,21 @@ export class MembershipScope {
     if (this.record.phase === 'cancelled') throw new Error('Membership action was cancelled');
     if (this.record.creation?.requestedSeriesId) throw new Error('Resolve the requested series before saving');
     if (this.record.creation) validateResourceDocument(this.record.creation.resource.collection, this.record.creation.value, { kind: 'create' });
+    // Only a local copy that matched its last durable editing row can use that row as proof.
+    if (this.record.phase === 'editing') this.saveFromRevision = this.durable ? this.revision : null;
     // Freeze before any await. No later selection can change an uncertain capture.
     this.record.phase = 'saving'; this.durable = false; this.emit();
-    const result = this.enqueue(async () => {
+    const result = this.enqueue(() => this.finishSave(async () => {
       // A restored Save was already frozen by the original window. Rewriting its
       // saving row would only advance the CAS revision before the same capture.
       if (!this.frozen) await this.write();
-      return this.finishSave(async () => {
-        const captures = this.captures();
-        const requests = captures.length ? await this.port.save(captures) : [];
-        this.assertCurrent();
-        if (requests.length !== captures.length || new Set(requests.map(request => request.id)).size !== requests.length) throw new Error('Incomplete membership capture');
-        this.record.phase = 'submitted'; this.record.requestIds = requests.map(request => request.id);
-        await this.write();
-      });
-    });
+      const captures = this.captures();
+      const requests = captures.length ? await this.port.save(captures) : [];
+      this.assertCurrent();
+      if (requests.length !== captures.length || new Set(requests.map(request => request.id)).size !== requests.length) throw new Error('Incomplete membership capture');
+      this.record.phase = 'submitted'; this.record.requestIds = requests.map(request => request.id);
+      await this.write();
+    }));
     this.saving = result;
     void result.finally(() => { this.saving = null; }).catch(() => undefined);
     return result;
@@ -212,10 +215,10 @@ export class MembershipScope {
     try { await write(); }
     catch (error) {
       this.assertCurrent();
-      const receipt = await this.port.readSaveReceipt(this.record).catch(() => null);
+      const receipt = await this.port.readSaveReceipt(this.record, this.frozen ? undefined : this.saveFromRevision).catch(() => null);
       this.assertCurrent();
       if (!receipt) throw error;
-      this.revision = receipt.revision;
+      this.revision = receipt.revision; this.frozen = true;
       this.record = { ...this.record, ...receipt, phase: 'submitted' };
       this.durable = true;
       this.emit();
