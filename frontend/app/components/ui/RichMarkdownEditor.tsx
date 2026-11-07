@@ -4,6 +4,7 @@ import React, { useEffect } from 'react';
 
 import { richMarkdownExtensions } from './richMarkdownExtensions';
 import { RichMarkdownToolbar } from './RichMarkdownToolbar';
+import { syncClickedTextSelection } from './syncClickedTextSelection';
 import { useBufferedText } from './useBufferedText';
 import { useStickyEditorViewport } from './useStickyEditorViewport';
 
@@ -85,7 +86,10 @@ export function RichMarkdownEditor({
                     editor={editor}
                     className="w-full flex-1 flex flex-col"
                     style={{ minHeight: 'inherit' }}
-                    onClick={() => editor.chain().focus().run()}
+                    onClick={event => {
+                        syncClickedTextSelection(editor.view, event.nativeEvent);
+                        editor.chain().focus().run();
+                    }}
                 />
             </div>
         </div>
