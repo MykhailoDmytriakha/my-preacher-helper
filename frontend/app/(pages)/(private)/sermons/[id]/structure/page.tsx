@@ -37,6 +37,7 @@ import {
   type WriteOperation,
 } from "@/utils/recoverableWrite";
 import { normalizeStructureTag } from "@/utils/tagUtils";
+import { NEUTRAL_CAPTION } from '@/utils/themeColors';
 import { getSectionLabel } from "@lib/sections";
 import { useTranslation } from '@locales/useTranslation';
 import { getSermonPlanData, planEditorRoute } from "@utils/sermonPlanAccess";
@@ -872,7 +873,7 @@ function StructureBoard({ sermonId, engine, holdingRef, syncStatus, readOnly = f
             </Link>
             <span className="hidden h-4 w-px bg-gray-200 dark:bg-gray-700 sm:block" aria-hidden="true" />
             <h1 className="min-w-0 truncate text-base font-semibold text-gray-800 dark:text-gray-100 md:text-lg">
-              <span className="font-normal text-gray-400 dark:text-gray-500">{t('structure.title')} </span>
+              <span className={`font-normal ${NEUTRAL_CAPTION}`}>{t('structure.title')} </span>
               <ScriptureText text={sermon.title} />
             </h1>
           </div>

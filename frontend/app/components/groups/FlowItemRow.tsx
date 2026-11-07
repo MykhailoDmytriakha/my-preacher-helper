@@ -14,6 +14,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { FlowItemSummary } from '@/components/groups/FlowItemSummary';
 import { GroupBlockTemplate, GroupFlowItem } from '@/models/models';
+import { NEUTRAL_CAPTION } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
 
 const STATUS_DOT: Record<string, string> = {
@@ -139,7 +140,7 @@ export default function FlowItemRow({
             </button>
 
             {/* Number */}
-            <span className="flex-shrink-0 text-xs font-bold text-gray-400 dark:text-gray-500 tabular-nums w-5 text-center">
+            <span className={`flex-shrink-0 text-xs font-bold ${NEUTRAL_CAPTION} tabular-nums w-5 text-center`}>
                 {index + 1}
             </span>
 

@@ -7,6 +7,7 @@ import { Chip } from '@/components/ui/Chip';
 import { useModalLayer } from '@/hooks/useModalLayer';
 import { ScriptureReference } from '@/models/models';
 import { formatScriptureReference } from '@/utils/scriptureReference';
+import { NEUTRAL_CAPTION } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
 
 import type { AppLocale } from '@/utils/appLocale';
@@ -161,7 +162,7 @@ export default function AnalysisConfirmationModal({
                                 </span>
                                 <div className="mt-1.5 flex flex-col gap-1">
                                     {titleChanged && (
-                                        <span className="text-xs text-gray-400 dark:text-gray-500 break-words">
+                                        <span className={`text-xs ${NEUTRAL_CAPTION} break-words`}>
                                             {currentTitle}
                                         </span>
                                     )}
@@ -210,7 +211,7 @@ export default function AnalysisConfirmationModal({
                                         </Chip>
                                     ))}
                                     {!keptTags.length && !addedTags.length && (
-                                        <span className="text-sm text-gray-400 italic">
+                                        <span className={`text-sm ${NEUTRAL_CAPTION} italic`}>
                                             {t('studiesWorkspace.aiAnalyze.noNewTags', { defaultValue: 'No new tags suggested' })}
                                         </span>
                                     )}
@@ -256,7 +257,7 @@ export default function AnalysisConfirmationModal({
                                         </Chip>
                                     ))}
                                     {!keptRefs.length && !addedRefs.length && (
-                                        <span className="text-sm text-gray-400 italic">
+                                        <span className={`text-sm ${NEUTRAL_CAPTION} italic`}>
                                             {t('studiesWorkspace.aiAnalyze.noNewRefs', { defaultValue: 'No new references suggested' })}
                                         </span>
                                     )}

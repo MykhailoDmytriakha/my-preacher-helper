@@ -48,6 +48,7 @@ import {
   refusedWrite,
   skippedWrite,
 } from '@/utils/recoverableWrite';
+import { NEUTRAL_CAPTION } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
 import '@locales/i18n';
 
@@ -750,7 +751,7 @@ export default function PrayerPage() {
           ))}
         </div>
       ) : filtered.length === 0 && readState === 'ready' ? (
-        <div className="py-16 text-center text-gray-400 dark:text-gray-500">
+        <div className={`py-16 text-center ${NEUTRAL_CAPTION}`}>
           <FireIcon className="mx-auto mb-3 h-12 w-12 opacity-30" />
           <p className="text-sm">
             {prayerRequests.length === 0 ? t('prayer.empty') : t('prayer.emptyFiltered')}

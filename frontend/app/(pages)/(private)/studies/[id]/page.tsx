@@ -57,6 +57,7 @@ import { isRecordingOnlyNoteDraft } from '@/utils/studyNoteAudioRecovery';
 import { noteRecordingMetadata } from '@/utils/studyNoteRecordings';
 import { inStudyNoteTab, STUDY_NOTE_TABS, type StudyNoteTab } from '@/utils/studyNoteTabs';
 import { formatStudyNoteForCopy, studyNoteOwnName } from '@/utils/studyNoteUtils';
+import { NEUTRAL_CAPTION } from '@/utils/themeColors';
 import { isTypingIn } from '@/utils/typingTarget';
 import HighlightedText from '@components/HighlightedText';
 import { useTranslation } from '@locales/useTranslation';
@@ -463,7 +464,7 @@ function EditorHeader({
             >
                 <ChevronLeftIcon className="h-4 w-4" />
             </button>
-            <span className="text-xs font-mono text-gray-400 dark:text-gray-500 min-w-[3rem] text-center select-none tabular-nums">
+            <span className={`text-xs font-mono ${NEUTRAL_CAPTION} min-w-[3rem] text-center select-none tabular-nums`}>
                 {currentIndex >= 0 ? `${currentIndex + 1} / ${filteredNotes.length}` : '—'}
             </span>
             <button

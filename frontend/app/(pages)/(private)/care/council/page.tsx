@@ -18,7 +18,7 @@ import { refusalMessage } from '@/utils/actionFailureMessage';
 import { newClientId } from '@/utils/clientId';
 import { councilProgress, daysUntil, splitForList, topicPreview } from '@/utils/council';
 import { formatDate, formatDateOnly } from '@/utils/dateFormatter';
-import { CARE_CARD_TONES } from '@/utils/themeColors';
+import { NEUTRAL_CAPTION, CARE_CARD_TONES } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
 
 import { EngineCouncilCreator } from './EngineCouncilCreator';
@@ -327,7 +327,7 @@ function CouncilRow({ council }: { council: Council }) {
               );
             })}
             {hidden > 0 && (
-              <li className="pl-6 text-xs text-gray-400 dark:text-gray-500">{t('council.moreTopics', { count: hidden })}</li>
+              <li className={`pl-6 text-xs ${NEUTRAL_CAPTION}`}>{t('council.moreTopics', { count: hidden })}</li>
             )}
           </ol>
         )}

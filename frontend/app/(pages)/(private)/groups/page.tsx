@@ -23,6 +23,7 @@ import { Group } from '@/models/models';
 import { useAuth } from '@/providers/AuthProvider';
 import { recordDiagnostic } from '@/utils/appDiagnostics';
 import { newClientId } from '@/utils/clientId';
+import { EMERALD_ACTION } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
 
 import type { ReactNode } from 'react';
@@ -115,7 +116,7 @@ function GroupsView({ source, onCreate, onDelete, feedback }: {
             </button>
             <button
               onClick={onCreate}
-              className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700"
+              className={`${EMERALD_ACTION} inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold shadow-sm transition`}
             >
               <PlusIcon className="h-4 w-4" />
               {t('workspaces.groups.actions.newGroup', { defaultValue: 'New group' })}
@@ -210,7 +211,7 @@ function GroupsView({ source, onCreate, onDelete, feedback }: {
           </p>
           <button
             onClick={onCreate}
-            className="mt-4 inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700"
+            className={`${EMERALD_ACTION} mt-4 inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold shadow-sm transition`}
           >
             <PlusIcon className="h-4 w-4" />
             {t('workspaces.groups.actions.newGroup', { defaultValue: 'New group' })}

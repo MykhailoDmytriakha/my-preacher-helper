@@ -2,12 +2,14 @@
 
 import React from 'react';
 
+import { NEUTRAL_CAPTION } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
 
 import '@locales/i18n';
 import TreeNode from './TreeNode';
 
 import type { ExegeticalPlanNode } from '@/models/models';
+
 
 interface TreeBuilderProps {
   tree: ExegeticalPlanNode[];
@@ -71,7 +73,7 @@ const TreeBuilder: React.FC<TreeBuilderProps> = ({
                 checked={autoSaveEnabled}
                 onChange={onToggleAutoSave}
               />
-              <span className="text-[10px] font-medium text-gray-400 group-hover:text-gray-600 dark:group-hover:text-gray-300 transition-colors uppercase tracking-tight">
+              <span className={`text-[10px] font-medium ${NEUTRAL_CAPTION} uppercase tracking-tight`}>
                 {t('wizard.steps.exegeticalPlan.builder.autoSave')}
               </span>
             </label>

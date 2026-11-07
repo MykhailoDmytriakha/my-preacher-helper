@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { type ReactNode } from 'react';
 
 import { formatDateOnly } from '@/utils/dateFormatter';
-import { NOTE_TO_SERMON_COLORS, SOURCE_NOTE_COLORS } from '@/utils/themeColors';
+import { NEUTRAL_CAPTION, NOTE_TO_SERMON_COLORS, SOURCE_NOTE_COLORS } from '@/utils/themeColors';
 
 import type { Sermon } from '@/models/models';
 
@@ -88,7 +88,7 @@ export function BuiltSermonsList({ title, sermons, empty, openLabel, onOpen, tes
           })}
         </ul>
       ) : (
-        <p className="px-0.5 text-xs leading-4 text-gray-400 dark:text-gray-500" data-testid="built-sermons-empty">
+        <p className={`px-0.5 text-xs leading-4 ${NEUTRAL_CAPTION}`} data-testid="built-sermons-empty">
           {empty}
         </p>
       )}

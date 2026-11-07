@@ -15,7 +15,7 @@ import { markdownPreviewText } from '@/utils/markdownUtils';
 import { awaitWriteOperation, type WriteOperation } from '@/utils/recoverableWrite';
 import { getShareNotePath, getShareNoteUrl } from '@/utils/shareNoteUtils';
 import { studyNoteOwnName } from '@/utils/studyNoteUtils';
-import { STUDIES_ACTION } from '@/utils/themeColors';
+import { NEUTRAL_CAPTION, STUDIES_ACTION } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
 
 interface ShareLinksPanelProps {
@@ -204,7 +204,7 @@ export default function ShareLinksPanel({
                     <p className="font-semibold text-gray-900 dark:text-gray-100 truncate">
                       {note ? nameOf(note) : notesRead === 'ready' ? t(UNTITLED_NOTE) : t('common.unknown')}
                     </p>
-                    <p className="text-[11px] text-gray-400 dark:text-gray-500 font-mono truncate">
+                    <p className={`text-[11px] ${NEUTRAL_CAPTION} font-mono truncate`}>
                       {sharePath}
                     </p>
                   </div>

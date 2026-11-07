@@ -20,6 +20,7 @@ import { newClientId } from '@/utils/clientId';
 import { OutlineCapture } from '@/utils/outlineCapture';
 import { chooseOutlineLocalChanges, OutlineChoiceReviewRequiredError } from '@/utils/outlineChoice';
 import { awaitWriteOperation } from '@/utils/recoverableWrite';
+import { EMERALD_ACTION } from '@/utils/themeColors';
 import { isTypingIn } from '@/utils/typingTarget';
 import { writeFailureTranslationKey } from '@/utils/writeRecovery';
 import { useTranslation } from '@locales/useTranslation';
@@ -726,7 +727,7 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
                   onClick={saveAsTemplate}
                   disabled={savingTemplate || !saveAsName.trim()}
                   aria-busy={savingTemplate}
-                  className="rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium px-4 py-2 disabled:opacity-40 disabled:cursor-not-allowed"
+                  className={`${EMERALD_ACTION} rounded-lg text-sm font-medium px-4 py-2 disabled:opacity-40 disabled:cursor-not-allowed`}
                 >
                   {t('planEditor.saveAs.save')}
                 </button>

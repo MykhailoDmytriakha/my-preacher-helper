@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { LiveTextInput } from '@/components/ui/LiveTextInput';
 import { GroupBlockTemplate, GroupFlowItem } from '@/models/models';
+import { EMERALD_ACTION, NEUTRAL_CAPTION } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
 
 interface ConductPreflightProps {
@@ -166,7 +167,7 @@ export default function ConductPreflight({ flow, templates, onStart, onBack, onU
                         : 'border-gray-300 bg-white focus:border-emerald-500 dark:border-gray-600 dark:bg-gray-700'
                     } dark:text-gray-200`}
                   />
-                  <span className="text-sm text-gray-400">
+                  <span className={`text-sm ${NEUTRAL_CAPTION}`}>
                     {minLabel}
                   </span>
                 </div>
@@ -181,7 +182,7 @@ export default function ConductPreflight({ flow, templates, onStart, onBack, onU
         <button
           disabled={disabled}
           onClick={() => onStart(displayedFlow, totalMeetingMin)}
-          className="w-full rounded-xl bg-emerald-600 px-6 py-3 text-base font-semibold text-white shadow-sm transition hover:bg-emerald-700 active:scale-[0.98]"
+          className={`${EMERALD_ACTION} w-full rounded-xl px-6 py-3 text-base font-semibold shadow-sm transition active:scale-[0.98]`}
         >
           {t('conduct.preflight.startButton', { defaultValue: 'Start Meeting' })} →
         </button>

@@ -47,7 +47,7 @@ import { Chip } from '@/components/ui/Chip';
 import { useDndKitAccessibility } from '@/hooks/useDragAnnouncements';
 import { useServiceOrders } from '@/hooks/useServiceOrders';
 import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
-import { CARE_CARD_TONES } from '@/utils/themeColors';
+import { EMERALD_ACTION, NEUTRAL_CAPTION, CARE_CARD_TONES } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
 
 import { ReorderArrows, ServiceOrderFailure } from './ReorderArrows';
@@ -273,7 +273,7 @@ export default function ServiceOrdersPage() {
             <button
               type="button"
               onClick={() => setReordering(false)}
-              className="inline-flex items-center rounded-full bg-emerald-700 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-emerald-800 dark:bg-emerald-600 dark:hover:bg-emerald-500"
+              className={`${EMERALD_ACTION} inline-flex items-center rounded-full px-5 py-2.5 text-sm font-bold transition`}
             >
               {t('serviceOrders.reorderDone')}
             </button>
@@ -299,7 +299,7 @@ export default function ServiceOrdersPage() {
                  */
                 disabled={creating || !isOnline}
                 title={!isOnline ? (t('serviceOrders.createOffline') as string) : undefined}
-                className="inline-flex items-center gap-2 rounded-full bg-emerald-700 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-emerald-800 disabled:opacity-60 dark:bg-emerald-600 dark:hover:bg-emerald-500"
+                className={`${EMERALD_ACTION} inline-flex items-center gap-2 rounded-full px-4 py-2.5 text-sm font-bold transition disabled:opacity-60`}
               >
                 <Plus className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
                 {t('serviceOrders.custom')}
@@ -389,7 +389,7 @@ export default function ServiceOrdersPage() {
 
       {!isEmpty && (
         // A footnote, not an announcement: it is true, but it is not what the page is for.
-        <p className="mt-6 text-xs leading-relaxed text-gray-400 dark:text-gray-500">
+        <p className={`mt-6 text-xs leading-relaxed ${NEUTRAL_CAPTION}`}>
           {t('serviceOrders.boundary')}
         </p>
       )}
@@ -442,7 +442,7 @@ function FirstOpening({
         onClick={onSeed}
         disabled={seeding || !isOnline}
         title={!isOnline ? (t(SEED_OFFLINE) as string) : undefined}
-        className="mt-7 inline-flex items-center rounded-full bg-emerald-700 px-6 py-3 text-sm font-bold text-white transition hover:bg-emerald-800 disabled:opacity-60 dark:bg-emerald-600 dark:hover:bg-emerald-500"
+        className={`${EMERALD_ACTION} mt-7 inline-flex items-center rounded-full px-6 py-3 text-sm font-bold transition disabled:opacity-60`}
       >
         {seeding ? t('serviceOrders.seeding') : t('serviceOrders.seed')}
       </button>
@@ -459,7 +459,7 @@ function FirstOpening({
 
       {failure && <ServiceOrderFailure message={sayFailure(failure, t)} testId="service-orders-failure" />}
 
-      <p className="mt-10 max-w-md text-xs leading-relaxed text-gray-400 dark:text-gray-500">
+      <p className={`mt-10 max-w-md text-xs leading-relaxed ${NEUTRAL_CAPTION}`}>
         {t('serviceOrders.boundary')}
       </p>
     </section>
@@ -509,7 +509,7 @@ function CouldNotBeRead({ onRetry }: { onRetry: () => void }) {
       <button
         type="button"
         onClick={onRetry}
-        className="mt-5 inline-flex items-center rounded-full bg-emerald-700 px-6 py-3 text-sm font-bold text-white transition hover:bg-emerald-800 dark:bg-emerald-600 dark:hover:bg-emerald-500"
+        className={`${EMERALD_ACTION} mt-5 inline-flex items-center rounded-full px-6 py-3 text-sm font-bold transition`}
       >
         {t('serviceOrders.retry')}
       </button>

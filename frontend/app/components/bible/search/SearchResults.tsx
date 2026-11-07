@@ -3,6 +3,7 @@
 import { CheckIcon, ChevronDownIcon, ChevronRightIcon, DocumentDuplicateIcon, QuestionMarkCircleIcon, SignalSlashIcon } from '@heroicons/react/24/outline';
 import { memo } from 'react';
 
+import { NEUTRAL_CAPTION } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
 
 import { HOVER_ROW, KEYCAP, SELECTED_ROW } from './searchStyles';
@@ -299,7 +300,7 @@ function SearchHeadView({ head, chipHeight, onRun, onToggleBooks, allInBible }: 
             {head.wider.map((step) => (
               <button key={step.label} type="button" onClick={() => onRun(step.run)} className={`${CHIP} ${chipHeight}`}>
                 {step.label}
-                <span className="tabular-nums text-gray-400">{step.count}</span>
+                <span className={`tabular-nums ${NEUTRAL_CAPTION}`}>{step.count}</span>
               </button>
             ))}
           </div>
@@ -312,7 +313,7 @@ function SearchHeadView({ head, chipHeight, onRun, onToggleBooks, allInBible }: 
             {head.books.map((book) => (
               <button key={book.label} type="button" onClick={() => onRun(book.run)} className={`${CHIP} ${chipHeight}`}>
                 {book.label}
-                <span className="tabular-nums text-gray-400">{book.count}</span>
+                <span className={`tabular-nums ${NEUTRAL_CAPTION}`}>{book.count}</span>
               </button>
             ))}
             {head.booksToggle ? (

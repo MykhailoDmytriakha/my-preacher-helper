@@ -5,7 +5,7 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 
 import { Chip } from '@/components/ui/Chip';
 import { useModalLayer } from '@/hooks/useModalLayer';
-import { STUDIES_ACTION } from '@/utils/themeColors';
+import { NEUTRAL_CAPTION, STUDIES_ACTION } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
 
 import { STUDIES_INPUT_SHARED_CLASSES } from './constants';
@@ -170,7 +170,7 @@ export default function TagCatalogModal({
                   </span>
                 </span>
               ) : (
-                <span className="text-gray-400 dark:text-gray-500">
+                <span className={NEUTRAL_CAPTION}>
                   {t('studiesWorkspace.tagCatalog.noneSelected')}
                 </span>
               )}

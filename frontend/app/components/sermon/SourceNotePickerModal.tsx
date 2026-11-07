@@ -12,7 +12,7 @@ import { formatDateOnly } from '@/utils/dateFormatter';
 import { formatScriptureReference } from '@/utils/scriptureReference';
 import { compareById, timeOrZero } from '@/utils/sortHelpers';
 import { matchesStudyNoteQuery, studyNoteOwnName } from '@/utils/studyNoteUtils';
-import { SOURCE_NOTE_COLORS, UI_COLORS } from '@/utils/themeColors';
+import { NEUTRAL_CAPTION, SOURCE_NOTE_COLORS, UI_COLORS } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
 
 import type { SourceNoteSaveResult } from '@/hooks/useSermonNoteLinks';
@@ -242,7 +242,7 @@ export default function SourceNotePickerModal({
                         <span className="block text-sm font-medium text-gray-500 line-through dark:text-gray-400">
                           {t('sermon.sourceNotes.picker.deletedNote')}
                         </span>
-                        <span className="mt-1 block text-xs text-gray-400 dark:text-gray-500">
+                        <span className={`mt-1 block text-xs ${NEUTRAL_CAPTION}`}>
                           {t('sermon.sourceNotes.picker.deletedNoteHint')}
                         </span>
                       </span>

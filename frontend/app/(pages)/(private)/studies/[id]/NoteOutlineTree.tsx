@@ -5,6 +5,7 @@ import React from 'react';
 
 import { jumpToSection, type MarkdownOutlineControl } from '@/hooks/useMarkdownOutline';
 import { sectionDisplayLabel, type MarkdownSection } from '@/utils/markdownSections';
+import { NEUTRAL_CAPTION } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
 
 /**
@@ -164,7 +165,7 @@ function OutlineRow({
                     {label}
                 </button>
                 {collapsed && section.children.length > 0 && (
-                    <span className="mt-0.5 shrink-0 text-[11px] text-gray-400 dark:text-gray-600">
+                    <span className={`mt-0.5 shrink-0 text-[11px] ${NEUTRAL_CAPTION}`}>
                         {section.children.length}
                     </span>
                 )}

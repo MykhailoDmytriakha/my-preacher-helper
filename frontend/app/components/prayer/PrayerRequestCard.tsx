@@ -19,6 +19,7 @@ import { PrayerRequest, PrayerStatus } from '@/models/models';
 import { formatDay } from '@/utils/appLocale';
 import { getPrayerSearchTarget, getPrayerUpdateSearchSnippet } from '@/utils/prayerFilters';
 import { awaitWriteOperation, type WriteOperation } from '@/utils/recoverableWrite';
+import { NEUTRAL_CAPTION } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
 
 import PrayerStatusBadge from './PrayerStatusBadge';
@@ -118,7 +119,7 @@ export default function PrayerRequestCard({
               </p>
             </div>
           ) : latestUpdate && (
-            <p className="mt-1.5 text-xs text-gray-400 dark:text-gray-500 line-clamp-1 italic">
+            <p className={`mt-1.5 text-xs ${NEUTRAL_CAPTION} line-clamp-1 italic`}>
               <HighlightedText text={latestUpdate.text} searchQuery={searchQuery} />
             </p>
           )}
@@ -132,7 +133,7 @@ export default function PrayerRequestCard({
             </div>
           )}
 
-          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-400 dark:text-gray-500">
+          <div className={`mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs ${NEUTRAL_CAPTION}`}>
             <span className="flex items-center gap-1">
               <ClockIcon className="h-3 w-3" />
               {formatDay(prayer.updatedAt, dateLocale)}

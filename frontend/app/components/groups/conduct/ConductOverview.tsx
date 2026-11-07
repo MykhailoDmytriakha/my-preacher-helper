@@ -5,6 +5,7 @@ import { useMemo } from 'react';
 
 import { formatTime } from '@/hooks/useConductTimer';
 import { GroupBlockTemplate, GroupFlowItem } from '@/models/models';
+import { EMERALD_ACTION, NEUTRAL_CAPTION } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
 
 interface ConductOverviewProps {
@@ -115,7 +116,7 @@ export default function ConductOverview({
                   </span>
                 ) : item.durationMin && item.durationMin > 0 && !isVisited ? (
                   // Future block with planned duration
-                  <span className="text-xs text-gray-400 dark:text-gray-500">
+                  <span className={`text-xs ${NEUTRAL_CAPTION}`}>
                     {item.durationMin} {t('groupFlow.minutesShort', { defaultValue: 'min' })}
                   </span>
                 ) : null}
@@ -143,7 +144,7 @@ export default function ConductOverview({
           onClick={onEnd}
           className={`w-full rounded-xl px-6 py-3 text-base font-semibold shadow-sm transition active:scale-[0.98] ${
             allCompleted
-              ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+              ? EMERALD_ACTION
               : 'border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'
           }`}
         >

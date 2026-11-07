@@ -10,6 +10,22 @@
 
 // Constants for repeated strings
 const TEXT_WHITE = "text-white";
+const EMERALD_BACKGROUND = 'bg-emerald-700';
+const EMERALD_HOVER = 'hover:bg-emerald-800';
+
+export const EMERALD_SURFACE = `${EMERALD_BACKGROUND} ${TEXT_WHITE}`;
+export const EMERALD_ACTION = `${EMERALD_SURFACE} ${EMERALD_HOVER}`;
+const SUBTLE_CAPTION = 'text-gray-500 dark:text-gray-400';
+export const NEUTRAL_CAPTION = 'text-gray-600 dark:text-gray-300';
+
+export const GROUP_READINESS_COLORS = {
+  ready: 'text-emerald-700 dark:text-emerald-400',
+  partial: 'text-amber-700 dark:text-amber-400',
+  empty: SUBTLE_CAPTION,
+} as const;
+
+export const TEXT_SCALE_TRIGGER = 'bg-violet-50 text-violet-700 hover:bg-violet-100 dark:bg-violet-950 dark:text-white dark:hover:bg-violet-900';
+
 const TEXT_BLUE_ACCENT = 'text-blue-600 dark:text-blue-400';
 
 // Scratch material keeps the lightbulb accent used by outline reminders.
@@ -21,7 +37,7 @@ export const SCRATCH_REMINDER_COLORS = {
 export const PLAN_REFINEMENT_COLORS = {
   panel: 'border-blue-200 bg-blue-50/40 dark:border-blue-800/60 dark:bg-blue-950/20',
   heading: 'text-gray-900 dark:text-gray-100',
-  muted: 'text-gray-500 dark:text-gray-400',
+  muted: SUBTLE_CAPTION,
   icon: TEXT_BLUE_ACCENT,
   field: 'border-gray-300 bg-white text-gray-900 placeholder:text-gray-400 focus:border-blue-500 focus:ring-blue-500/20 dark:border-gray-600 dark:bg-gray-900/60 dark:text-gray-100',
   chip: 'border-gray-200 bg-white text-gray-600 hover:border-blue-300 hover:text-blue-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:border-blue-500',
@@ -291,7 +307,7 @@ export const SOURCE_NOTE_COLORS = {
     'border-gray-200 hover:border-emerald-200 hover:bg-emerald-50/40 dark:border-gray-700 dark:hover:border-emerald-500/40 dark:hover:bg-emerald-900/10',
   checkbox: 'text-emerald-600 focus:ring-emerald-500',
   refChip: 'bg-emerald-100/70 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-100',
-  primaryButton: 'bg-emerald-600 text-white hover:bg-emerald-700',
+  primaryButton: EMERALD_ACTION,
   /** The reverse block on a note, which is about opening a SERMON. */
   reverseHeading: TEXT_BLUE_ACCENT,
 } as const;
@@ -323,7 +339,7 @@ export const NOTE_TO_SERMON_COLORS = {
   /** The sermon's name — the row's whole point, so it gets the full width and two lines. */
   builtRowTitle: 'text-blue-700 dark:text-blue-200',
   /** Verse and date, one step back: they identify the row, they are not what you read. */
-  builtRowMeta: 'text-gray-500 dark:text-gray-400',
+  builtRowMeta: SUBTLE_CAPTION,
   /** How many, next to the heading — so the count is legible without counting rows. */
   builtCount: 'bg-blue-100 text-blue-700 dark:bg-blue-900/60 dark:text-blue-200',
   /** The opener on the note: a dashed pill reads as "add one here". */
@@ -536,13 +552,13 @@ export type ChipTone = keyof typeof CHIP_TONES;
  * Studies' main action — its emerald, dark enough for white words: 5.5:1, where emerald-600 gave 3.77:1 under the 4.5:1 of
  * WCAG AA (Codex UX review, 04.11). Every Studies button that adds or confirms takes it from here.
  */
-export const STUDIES_ACTION = 'bg-emerald-700 text-white hover:bg-emerald-800';
+export const STUDIES_ACTION = EMERALD_ACTION;
 
 /** Shared presentation for entity forms; callers retain their own write contracts. */
 export const FORM_COLORS = {
   field: 'border-gray-200 bg-white focus:border-blue-400 focus:ring-blue-100 dark:border-gray-700 dark:bg-gray-800 dark:text-white dark:focus:border-blue-500 dark:focus:ring-blue-900/40',
   blue: { gradient: 'from-blue-600 via-indigo-600 to-sky-500', action: 'bg-blue-600 hover:bg-blue-700' },
-  emerald: { gradient: 'from-emerald-600 via-cyan-600 to-blue-600', action: 'bg-emerald-600 hover:bg-emerald-700' },
+  emerald: { gradient: 'from-emerald-600 via-cyan-600 to-blue-600', action: `${EMERALD_BACKGROUND} ${EMERALD_HOVER}` },
   rose: { gradient: 'from-rose-500 via-pink-500 to-rose-400', action: 'bg-rose-500 hover:bg-rose-600' },
 } as const;
 

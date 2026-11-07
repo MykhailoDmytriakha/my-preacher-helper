@@ -14,6 +14,7 @@ import { GroupBlockTemplate, GroupFlowItem } from '@/models/models';
 import { resolveAppLocale, textLanguage, type AppLocale } from '@/utils/appLocale';
 import { namesAPlace, referenceFromTyped, writtenInFor } from '@/utils/bibleLink';
 import { sameScriptureReference } from '@/utils/scriptureReferenceNumbering';
+import { EMERALD_ACTION, NEUTRAL_CAPTION } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
 
 import type { BibleId } from '@/utils/bibles';
@@ -217,7 +218,7 @@ export default function ConductBlock({
             <ul className="mt-[1em] space-y-[0.5em]">
               {template.questions.map((q, i) => (
                 <li key={i} className="flex gap-[0.5em] text-[0.875em] text-gray-700 dark:text-gray-300">
-                  <span className="font-semibold text-gray-400">{i + 1}.</span>
+                  <span className={`font-semibold ${NEUTRAL_CAPTION}`}>{i + 1}.</span>
                   <span className="min-w-0 break-words"><ScriptureText text={q} /></span>
                 </li>
               ))}
@@ -251,7 +252,7 @@ export default function ConductBlock({
         <span className={`font-mono text-3xl font-bold tabular-nums transition-colors ${blockTimerColor}`}>
           {blockDisplayTime}
         </span>
-        <p className="mt-0.5 text-xs text-gray-400 dark:text-gray-500">
+        <p className={`mt-0.5 text-xs ${NEUTRAL_CAPTION}`}>
           {hasDuration
             ? isOvertime
               ? t('conduct.block.overtime', { defaultValue: 'Overtime' })
@@ -281,7 +282,7 @@ export default function ConductBlock({
         ) : (
           <button
             onClick={() => go(onNext)}
-            className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 active:scale-[0.98]"
+            className={`${EMERALD_ACTION} inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold shadow-sm transition active:scale-[0.98]`}
           >
             {t('conduct.block.next', { defaultValue: 'Next' })} →
           </button>

@@ -5,6 +5,7 @@ import React, { useEffect, useRef } from 'react';
 
 import '@locales/i18n';
 import { useBufferedText } from '@/components/ui/useBufferedText';
+import { NEUTRAL_CAPTION } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
 
 import type { TreeNodeProps } from './types';
@@ -171,7 +172,7 @@ const TreeNode: React.FC<TreeNodeProps> = ({
               onClick={() => onAddChild(node.id)}
               aria-label={t('wizard.steps.exegeticalPlan.builder.tooltips.addChild')}
               title={`${t('wizard.steps.exegeticalPlan.builder.tooltips.addChild')} (⌘+Enter)`}
-              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] text-gray-400 dark:text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded transition-colors"
+              className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] ${NEUTRAL_CAPTION} hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded transition-colors`}
             >
               <CornerDownRight className="w-3 h-3" />
               <span className="sr-only sm:not-sr-only">Sub</span>
@@ -181,7 +182,7 @@ const TreeNode: React.FC<TreeNodeProps> = ({
               onClick={() => onAddSibling(node.id)}
               aria-label={t('wizard.steps.exegeticalPlan.builder.tooltips.addSibling')}
               title={`${t('wizard.steps.exegeticalPlan.builder.tooltips.addSibling')} (Enter)`}
-              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] text-gray-400 dark:text-gray-500 hover:text-green-600 dark:hover:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20 rounded transition-colors"
+              className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] ${NEUTRAL_CAPTION} hover:text-green-700 dark:hover:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20 rounded transition-colors`}
             >
               <ArrowDown className="w-3 h-3" />
               <span className="sr-only sm:not-sr-only">Next</span>

@@ -6,7 +6,7 @@ import { Fragment, memo } from 'react';
 import { CommentIcon } from '@/components/Icons';
 import { Chip } from '@/components/ui/Chip';
 import { parseVerse, type BookText, type VerseSegment } from '@/utils/bibleText';
-import { BIBLE_READER_COLORS } from '@/utils/themeColors';
+import { NEUTRAL_CAPTION, BIBLE_READER_COLORS } from '@/utils/themeColors';
 
 import { CommentsOnText, type TextComment } from './CommentsOnText';
 import { MineBadge as MineBadgeButton, MineMoreBadge } from './MineBadge';
@@ -180,7 +180,7 @@ function MineBadges({ badges, mine, chapter, verse, testId }: { badges: readonly
   );
 }
 
-const VERSE_NUMBER_CLASSES = 'mr-1 inline-block select-none align-super text-[10px] font-semibold tabular-nums text-gray-400 md:mr-0 md:w-7 md:shrink-0 md:pt-[0.35rem] md:text-right md:text-xs dark:text-gray-500';
+const VERSE_NUMBER_CLASSES = `mr-1 inline-block select-none align-super text-[10px] font-semibold tabular-nums ${NEUTRAL_CAPTION} md:mr-0 md:w-7 md:shrink-0 md:pt-[0.35rem] md:text-right md:text-xs`;
 
 /** Where a verse or a chapter jumped to stands: the reading top, where "the verse I am at" is measured from. */
 const READING_TOP = 'var(--reading-top)';

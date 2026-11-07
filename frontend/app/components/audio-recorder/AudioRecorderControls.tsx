@@ -1,6 +1,7 @@
 import { useRef } from "react";
 
 import { usePanelPosition } from "@/hooks/usePanelPosition";
+import { NEUTRAL_CAPTION } from '@/utils/themeColors';
 import { MicFilledIcon } from "@components/Icons";
 
 import {
@@ -438,8 +439,8 @@ export const RecordingProgress = ({
                   <span className="font-mono text-sm font-semibold tabular-nums text-gray-700 dark:text-gray-200">
                     {formatTime(recordingTime)}
                   </span>
-                  <span className="text-xs text-gray-400 dark:text-gray-500">/</span>
-                  <span className="font-mono text-xs tabular-nums text-gray-400 dark:text-gray-500">
+                  <span className={`text-xs ${NEUTRAL_CAPTION}`}>/</span>
+                  <span className={`font-mono text-xs tabular-nums ${NEUTRAL_CAPTION}`}>
                     {formatTime(maxDuration)}
                   </span>
                 </>

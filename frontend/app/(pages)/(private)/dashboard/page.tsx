@@ -45,6 +45,7 @@ import { getEffectiveIsPreached } from '@/utils/preachDateStatus';
 import { awaitWriteOperation } from '@/utils/recoverableWrite';
 import { formatScriptureReference } from '@/utils/scriptureReference';
 import { studyNoteOwnName } from '@/utils/studyNoteUtils';
+import { NEUTRAL_CAPTION } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
 
 import type { TFunction } from 'i18next';
@@ -537,7 +538,7 @@ function AgendaPanel({ agendaItems, readState }: { agendaItems: AgendaItem[]; re
                   </div>
                   <div className="text-xs">
                     <p className="font-semibold text-gray-500 dark:text-gray-400">{item.day}</p>
-                    <p className="mt-0.5 text-gray-400 dark:text-gray-500">{item.date}</p>
+                    <p className={`mt-0.5 ${NEUTRAL_CAPTION}`}>{item.date}</p>
                   </div>
                 </div>
                 <div className="pb-4">
@@ -593,7 +594,7 @@ function PrayerFocusPanel({ prayers, readState }: { prayers: PrayerItem[]; readS
                 <p className="mt-1 line-clamp-2 text-xs leading-5 text-gray-500 dark:text-gray-400">
                   {prayer.description}
                 </p>
-                <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">{prayer.age}</p>
+                <p className={`mt-1 text-xs ${NEUTRAL_CAPTION}`}>{prayer.age}</p>
               </div>
               <ChevronRight className="self-center h-4 w-4 text-gray-400" />
             </Link>
@@ -733,7 +734,7 @@ function LatestGroupsPanel({ groups, readState }: { groups: GroupItem[]; readSta
                 <p className="truncate text-sm font-semibold text-gray-950 dark:text-white">{group.title}</p>
                 <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{group.progress}</p>
                 {group.next && (
-                  <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">{group.next}</p>
+                  <p className={`mt-1 text-xs ${NEUTRAL_CAPTION}`}>{group.next}</p>
                 )}
               </div>
               {/* Status on the right (like sermons/series); amber category, active=solid / completed=soft */}

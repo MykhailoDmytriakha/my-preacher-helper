@@ -16,6 +16,7 @@ import {
   MAX_FEEDBACK_IMAGES,
   MAX_FEEDBACK_TEXT_BYTES,
 } from '@/utils/feedbackPayload';
+import { NEUTRAL_CAPTION } from '@/utils/themeColors';
 import { writeFailureTranslationKey } from '@/utils/writeRecovery';
 import { useTranslation } from "@locales/useTranslation";
 
@@ -365,7 +366,7 @@ export default function FeedbackForm({ onSubmit, onCancel }: FeedbackFormProps) 
             </svg>
             {t('feedback.attachImages')}
           </label>
-          <span className="text-xs text-gray-400 dark:text-gray-500" suppressHydrationWarning={true}>
+          <span className={`text-xs ${NEUTRAL_CAPTION}`} suppressHydrationWarning={true}>
             {t('feedback.imagesNote')}
           </span>
         </div>
@@ -379,7 +380,7 @@ export default function FeedbackForm({ onSubmit, onCancel }: FeedbackFormProps) 
         </p>
 
         <p
-          className="mt-1 text-xs text-gray-400 dark:text-gray-500"
+          className={`mt-1 text-xs ${NEUTRAL_CAPTION}`}
           data-testid="attachment-budget"
         >
           {t('feedback.attachmentBudgetRemaining', {

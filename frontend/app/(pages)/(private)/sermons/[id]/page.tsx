@@ -47,6 +47,7 @@ import { ranOutOfTime } from "@/utils/aiTimeFailure";
 import { newClientId } from "@/utils/clientId";
 import { sermonLanguage } from "@/utils/documentLanguage";
 import { deleteRecordingDraft, saveRecordingDraft } from '@/utils/recordingDraftStore';
+import { NEUTRAL_CAPTION } from '@/utils/themeColors';
 import { transcriptionFailureWords } from '@/utils/transcriptionRetryClient';
 import { getSermonModeUrl } from '@/utils/urlUtils';
 import { useThoughtFiltering } from '@hooks/useThoughtFiltering';
@@ -83,8 +84,8 @@ const AudioRecorder = dynamicImport(
 
 const formatSuperscriptVerses = (text: string): string => {
   if (!text) return text;
-  let result = text.replace(/^(\d{1,3})(?=\s)/, '<sup class="text-gray-300 dark:text-gray-600">$1</sup>');
-  result = result.replace(/(\s)(\d{1,3})(?=\s)/g, '$1<sup class="text-gray-300 dark:text-gray-600">$2</sup>');
+  let result = text.replace(/^(\d{1,3})(?=\s)/, `<sup class="${NEUTRAL_CAPTION}">$1</sup>`);
+  result = result.replace(/(\s)(\d{1,3})(?=\s)/g, `$1<sup class="${NEUTRAL_CAPTION}">$2</sup>`);
   return result;
 };
 

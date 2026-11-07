@@ -4,6 +4,7 @@ import { Check, PauseCircle, XCircle } from 'lucide-react';
 
 import { LiveTextInput } from '@/components/ui/LiveTextInput';
 import { isInfoTopic, outcomeText, topicState, type TopicOutcome } from '@/utils/council';
+import { NEUTRAL_CAPTION } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
 
 import type { CouncilTopic } from '@/models/models';
@@ -152,7 +153,7 @@ export function CouncilOutcomePanel({
       <div className="flex flex-wrap items-center gap-2">
         {/* The first one is a reading, not a button: it lights when the section has a decision. */}
         <span
-          className={`${outcomeClass(state === 'decided')} ${state === 'decided' ? '' : 'border-dashed text-gray-400 dark:text-gray-500'}`}
+          className={`${outcomeClass(state === 'decided')} ${state === 'decided' ? '' : `border-dashed ${NEUTRAL_CAPTION}`}`}
           data-testid="council-discussed"
           aria-live="polite"
         >

@@ -30,7 +30,7 @@ import { isKnownOffline } from '@/utils/connectivity';
 import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
 import { measureNoteForCut, WORDS_PER_CLAIM_HIGH, WORDS_PER_CLAIM_LOW } from '@/utils/noteCutCorridor';
 import { formatScriptureReference } from '@/utils/scriptureReference';
-import { NOTE_TO_SERMON_COLORS } from '@/utils/themeColors';
+import { NEUTRAL_CAPTION, NOTE_TO_SERMON_COLORS } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
 
 import type { DocumentData } from '@/data-engine/types';
@@ -676,7 +676,7 @@ export default function CreateSermonFromNoteModal({
                   const cutOfThisStep = sliceIndex >= 0 ? sliceResults[sliceIndex] : null;
                   const tone =
                     status === 'pending'
-                      ? 'text-gray-400 dark:text-gray-500'
+                      ? NEUTRAL_CAPTION
                       : status === 'error'
                         ? 'text-red-700 dark:text-red-300'
                         : 'text-gray-900 dark:text-gray-100';

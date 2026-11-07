@@ -4,6 +4,7 @@ import { Type } from 'lucide-react';
 import React, { useState, useRef, useEffect, type ReactNode } from 'react';
 
 import { useModalLayer } from '@/hooks/useModalLayer';
+import { TEXT_SCALE_TRIGGER } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
 
 import { TextScaleControls } from './TextScaleControls';
@@ -90,10 +91,9 @@ const FloatingTextScaleControls: React.FC<FloatingTextScaleControlsProps> = ({
           aria-hidden={isOpen}
           tabIndex={isOpen ? -1 : 0}
           className={`
-            w-14 h-14 rounded-full bg-violet-500/10 hover:bg-violet-600/15
-            dark:bg-violet-400/8 dark:hover:bg-violet-500/12
+            w-14 h-14 rounded-full ${TEXT_SCALE_TRIGGER}
             border-2 border-violet-300 dark:border-violet-300
-            text-white shadow-lg transition-all duration-300 ease-out
+            shadow-lg transition-all duration-300 ease-out
             hover:shadow-xl hover:scale-110 active:scale-95
             focus:outline-none focus:ring-4 focus:ring-violet-300 dark:focus:ring-violet-800
             flex items-center justify-center group backdrop-blur-sm

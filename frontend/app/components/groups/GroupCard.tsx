@@ -19,6 +19,7 @@ import { formatDateForLocale } from '@/utils/dateFormatter';
 import { parseDateOnlyAsLocalDate } from '@/utils/dateOnly';
 import { groupMeetingDay } from '@/utils/groupMeeting';
 import { getSeriesForRef } from '@/utils/seriesMembership';
+import { GROUP_READINESS_COLORS, NEUTRAL_CAPTION } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
 
 import type { ChipTone } from '@/utils/chipClasses';
@@ -89,12 +90,12 @@ export default function GroupCard({ group, series = [], onDelete }: GroupCardPro
 
   const readinessColor =
     totalBlocks === 0
-      ? 'text-gray-400 dark:text-gray-500'
+      ? GROUP_READINESS_COLORS.empty
       : filledCount === totalBlocks
-        ? 'text-emerald-600 dark:text-emerald-400'
+        ? GROUP_READINESS_COLORS.ready
         : filledCount > 0
-          ? 'text-amber-500 dark:text-amber-400'
-          : 'text-gray-500 dark:text-gray-400';
+          ? GROUP_READINESS_COLORS.partial
+          : GROUP_READINESS_COLORS.empty;
   const primaryMeetingDate = resolvePrimaryMeetingDate(group.meetingDates);
   const meetingDateLabel = primaryMeetingDate?.isUpcoming
     ? t('workspaces.groups.itemsLabel.nextMeeting', { defaultValue: 'Next meeting' })
@@ -184,13 +185,13 @@ export default function GroupCard({ group, series = [], onDelete }: GroupCardPro
           <p className="mt-2 line-clamp-2 text-sm text-gray-600 dark:text-gray-400">{group.description}</p>
         )}
 
-        <div className="mt-auto grid grid-cols-3 gap-2 pt-4 text-xs text-gray-600 dark:text-gray-300">
+        <div className={`mt-auto grid grid-cols-3 gap-2 pt-4 text-xs ${NEUTRAL_CAPTION}`}>
           <div className="rounded-lg bg-gray-50 px-2 py-2 text-center dark:bg-gray-900/60">
             <div className={`inline-flex items-center gap-1 ${readinessColor}`}>
               <CheckCircleIcon className="h-3.5 w-3.5" />
               <span className="font-medium">{filledCount}/{totalBlocks}</span>
             </div>
-            <div className="mt-1 text-[11px] opacity-80">
+            <div className="mt-1 text-[11px]">
               {t('workspaces.groups.itemsLabel.readiness', { defaultValue: 'Ready' })}
             </div>
           </div>
@@ -199,7 +200,7 @@ export default function GroupCard({ group, series = [], onDelete }: GroupCardPro
               <ClockIcon className="h-3.5 w-3.5" />
               <span>{totalDuration > 0 ? `${totalDuration}` : '—'}</span>
             </div>
-            <div className="mt-1 text-[11px] opacity-80">
+            <div className="mt-1 text-[11px]">
               {t('workspaces.groups.itemsLabel.duration', { defaultValue: 'Min' })}
             </div>
           </div>
@@ -208,7 +209,7 @@ export default function GroupCard({ group, series = [], onDelete }: GroupCardPro
               <CalendarDaysIcon className="h-3.5 w-3.5 shrink-0" />
               <span className="min-w-0 break-words">{meetingDateValue}</span>
             </div>
-            <div className="mt-1 text-[11px] opacity-80">{meetingDateLabel}</div>
+            <div className="mt-1 text-[11px]">{meetingDateLabel}</div>
           </div>
         </div>
       </Link>

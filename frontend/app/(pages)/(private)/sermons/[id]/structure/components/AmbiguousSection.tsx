@@ -5,6 +5,7 @@ import React from "react";
 import SortableItem from "@/components/SortableItem";
 import { Item } from "@/models/models";
 import { structureBodyPaddingClass, structureThoughtGridClass } from "@/utils/structureBoardLayout";
+import { NEUTRAL_CAPTION } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
 
 interface DummyDropZoneProps {
@@ -23,7 +24,7 @@ const DummyDropZone: React.FC<DummyDropZoneProps> = ({ container }) => {
       ref={setNodeRef}
       data-container={container}
       style={{ minHeight: "80px" }}
-      className={`p-4 text-center text-gray-400 dark:text-gray-500 border-dashed border-2 col-span-full rounded transition-all ${
+      className={`p-4 text-center ${NEUTRAL_CAPTION} border-dashed border-2 col-span-full rounded transition-all ${
         isOver 
           ? 'border-blue-400 dark:border-blue-500 bg-blue-50 dark:bg-blue-900/20' 
           : 'border-gray-300 dark:border-gray-600'
@@ -44,7 +45,7 @@ const AdditionalDropZone: React.FC = () => {
   return (
     <div
       ref={setNodeRef}
-      className={`p-3 text-center text-gray-400 dark:text-gray-500 border-dashed border-2 rounded transition-all ${
+      className={`p-3 text-center ${NEUTRAL_CAPTION} border-dashed border-2 rounded transition-all ${
         isOver 
           ? 'border-blue-400 dark:border-blue-500 bg-blue-50 dark:bg-blue-900/20' 
           : 'border-gray-300 dark:border-gray-600'

@@ -24,7 +24,7 @@ import { namesAPlace, referenceFromTyped, writtenInFor } from '@/utils/bibleLink
 import { newClientId } from '@/utils/clientId';
 import { serviceOrderLanguage } from '@/utils/documentLanguage';
 import { selectServiceOrderContent } from '@/utils/serviceOrderFreshness';
-import { CARE_CARD_TONES } from '@/utils/themeColors';
+import { EMERALD_ACTION, NEUTRAL_CAPTION, CARE_CARD_TONES } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
 
 import { ReorderArrows, ServiceOrderFailure } from '../ReorderArrows';
@@ -1010,7 +1010,7 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
             onClick={startEditing}
             className={`inline-flex shrink-0 items-center rounded-full px-5 py-2.5 text-sm font-bold transition ${
               editing
-                ? 'bg-emerald-700 text-white hover:bg-emerald-800 dark:bg-emerald-600 dark:hover:bg-emerald-500'
+                ? EMERALD_ACTION
                 : 'border border-gray-300 text-gray-700 hover:border-gray-400 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800'
             }`}
           >
@@ -1183,7 +1183,7 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
                     ) : (
                       // Says the words are missing rather than showing a specimen he could
                       // read out by accident. The app never supplies wording here.
-                      <p className="mt-1 text-sm text-gray-300 dark:text-gray-600">
+                      <p className={`mt-1 text-sm ${NEUTRAL_CAPTION}`}>
                         {t('serviceOrders.stepEmpty')}
                       </p>
                     )}

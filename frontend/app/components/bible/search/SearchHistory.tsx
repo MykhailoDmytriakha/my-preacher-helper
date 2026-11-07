@@ -2,6 +2,7 @@
 
 import { ClockIcon, XMarkIcon } from '@heroicons/react/24/outline';
 
+import { NEUTRAL_CAPTION } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
 
 import { HOVER_ROW, SELECTED_ROW } from './searchStyles';
@@ -101,7 +102,7 @@ export function SearchHistory({ rows, selected, touch, cleared, example, onPick,
                         ? <span key={index} className="font-semibold text-indigo-600 dark:text-indigo-300">{piece}</span>
                         : <span key={index}>{piece}</span>))}
                     </span>
-                    {row.count !== null ? <span className="shrink-0 pr-1 text-[13px] tabular-nums text-gray-400">{t('bible.search.verses', { count: row.count })}</span> : null}
+                    {row.count !== null ? <span className={`shrink-0 pr-1 text-[13px] tabular-nums ${NEUTRAL_CAPTION}`}>{t('bible.search.verses', { count: row.count })}</span> : null}
                   </button>
                   <button
                     type="button"

@@ -10,6 +10,7 @@ import { Chip } from '@/components/ui/Chip';
 import { useAppLocale } from '@/hooks/useAppLocale';
 import { formatDay } from '@/utils/appLocale';
 import { getEffectiveIsPreached } from '@/utils/preachDateStatus';
+import { EMERALD_ACTION } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
 
 import type { Group, Series, SeriesItem, Sermon } from '@/models/models';
@@ -89,7 +90,7 @@ export function SeriesDetailView({ series, items, onBack, onAddSermons, onAddGro
             </button>}
             {!readOnly && <button
               onClick={onAddGroups}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 sm:w-auto sm:min-w-[180px]"
+              className={`${EMERALD_ACTION} inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold shadow-sm transition sm:w-auto sm:min-w-[180px]`}
             >
               <PlusIcon className="h-4 w-4" />
               {t('workspaces.series.actions.addGroup', { defaultValue: 'Add group' })}
@@ -203,7 +204,7 @@ export function SeriesDetailView({ series, items, onBack, onAddSermons, onAddGro
             </button>}
             {!readOnly && <button
               onClick={onAddGroups}
-              className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700"
+              className={`${EMERALD_ACTION} inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold shadow-sm transition`}
             >
               <PlusIcon className="h-4 w-4" />
               {t('workspaces.series.actions.addGroup', { defaultValue: 'Add group' })}

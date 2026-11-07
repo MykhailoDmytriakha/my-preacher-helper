@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { CALENDAR_KIND_STYLE } from '@/components/calendar/calendarKinds';
 import { Chip } from '@/components/ui/Chip';
 import { getContrastColor } from '@/utils/color';
+import { NEUTRAL_CAPTION } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
 
 import type { Series } from '@/models/models';
@@ -145,7 +146,7 @@ export function CalendarEntryCard({
               </li>
             ))}
             {entry.sections.hidden > 0 && (
-              <li className="pl-6 text-xs text-gray-400 dark:text-gray-500">
+              <li className={`pl-6 text-xs ${NEUTRAL_CAPTION}`}>
                 {t('council.moreTopics', { count: entry.sections.hidden })}
               </li>
             )}

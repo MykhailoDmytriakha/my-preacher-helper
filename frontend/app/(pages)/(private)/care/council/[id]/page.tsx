@@ -55,7 +55,7 @@ import { useRouteId } from '@/hooks/useRouteId';
 import { actionFailureMessage } from '@/utils/actionFailureMessage';
 import { applyOutcome, councilLanguage, hasProgress, isInfoTopic, newOption, newQuestion, newTopic, outcomeText, preparingCouncils, removeTopicOption, reorderTopics, setTopicKind, topicState } from '@/utils/council';
 import { formatDate, formatDateOnly } from '@/utils/dateFormatter';
-import { CARE_CARD_TONES } from '@/utils/themeColors';
+import { NEUTRAL_CAPTION, CARE_CARD_TONES } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
 
 import type { CouncilFinishUndo } from '@/hooks/useCouncilDataDocument';
@@ -632,7 +632,7 @@ function TopicCard({
                 </div>
               )}
               {!held && isBare && (
-                <p className="mt-1 text-sm text-gray-400 dark:text-gray-500">{t(readOnly ? 'council.topic.emptyReadOnly' : 'council.topic.empty')}</p>
+                <p className={`mt-1 text-sm ${NEUTRAL_CAPTION}`}>{t(readOnly ? 'council.topic.emptyReadOnly' : 'council.topic.empty')}</p>
               )}
 
               {topic.questions.length > 0 && (

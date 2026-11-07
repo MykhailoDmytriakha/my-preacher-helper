@@ -14,6 +14,7 @@ import { passageWords, verseWords, type BookText } from '@/utils/bibleText';
 import { chaptersAround, movedReference, versesAround } from '@/utils/scriptureNeighbours';
 import { formatScriptureReference } from '@/utils/scriptureReference';
 import { passagesIn, referenceBibleFor, sameScriptureReference, scriptureReferencesOverlap, withStoredBible } from '@/utils/scriptureReferenceNumbering';
+import { NEUTRAL_CAPTION } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
 
 import type { ScriptureReference, StudyNote } from '@/models/models';
@@ -334,7 +335,7 @@ export function CommentPlaceList({ bible, locale, at, home, text, taken, onPick,
       <div ref={scrollRef} className="relative max-h-72 overflow-y-auto">
         {rows.map((row) => {
           if (row.kind === 'head') {
-            return <div key={row.key} className="bg-gray-50 px-3 py-1 text-[11px] font-bold text-gray-400 dark:bg-gray-950 dark:text-gray-500">{row.label}</div>;
+            return <div key={row.key} className={`bg-gray-50 px-3 py-1 text-[11px] font-bold ${NEUTRAL_CAPTION} dark:bg-gray-950`}>{row.label}</div>;
           }
           const current = sameSpot(row.spot, at);
           const note = sameSpot(row.spot, home) ? t('comment.placeHere') : taken(row.spot) ? t('comment.placeTaken') : '';
@@ -349,7 +350,7 @@ export function CommentPlaceList({ bible, locale, at, home, text, taken, onPick,
                 ? 'bg-indigo-50 dark:bg-indigo-900/50'
                 : 'hover:bg-gray-50 dark:hover:bg-gray-800/60'}`}
             >
-              <span className={`shrink-0 text-xs font-bold tabular-nums text-gray-400 dark:text-gray-500 ${byChapter ? '' : 'min-w-10'}`}>{row.label}</span>
+              <span className={`shrink-0 text-xs font-bold tabular-nums ${NEUTRAL_CAPTION} ${byChapter ? '' : 'min-w-10'}`}>{row.label}</span>
               <span className="min-w-0 flex-1 truncate font-serif text-sm text-gray-700 dark:text-gray-300">{row.words}</span>
               {note ? <span className="shrink-0 text-[11px] font-semibold text-gray-500 dark:text-gray-400">{note}</span> : null}
             </button>

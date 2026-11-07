@@ -12,7 +12,7 @@ import { Chip } from "@/components/ui/Chip";
 import { Plan, Sermon, SermonPoint, Thought } from "@/models/models";
 import { legacySectionText, readPlanText } from "@/utils/planText";
 import { buildSubPointRenderableEntries } from "@/utils/subPoints";
-import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
+import { NEUTRAL_CAPTION, SERMON_SECTION_COLORS } from "@/utils/themeColors";
 import MarkdownDisplay from "@components/MarkdownDisplay";
 import { RichMarkdownEditor } from "@components/ui/RichMarkdownEditor";
 import { useTranslation } from "@locales/useTranslation";
@@ -316,7 +316,7 @@ const SermonPointCard = React.forwardRef<HTMLDivElement, SermonPointCardProps>((
                         {entry.items.map(renderThought)}
                       </div>
                     ) : (
-                      <p className="text-xs text-gray-400 dark:text-gray-500 ml-2">{t("plan.noThoughts")}</p>
+                      <p className={`text-xs ${NEUTRAL_CAPTION} ml-2`}>{t("plan.noThoughts")}</p>
                     )}
                   </div>
                 )

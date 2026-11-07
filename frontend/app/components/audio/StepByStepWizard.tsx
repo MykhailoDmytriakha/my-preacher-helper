@@ -53,7 +53,7 @@ import { CHUNKS_CHANGED, TTS_CHUNK_FAILED } from '@/utils/audioChunkIdentity';
 import { concatenateAudioBlobs } from '@/utils/audioConcat';
 import { getAuthenticatedRequestHeaders } from '@/utils/authenticatedRequest';
 import { getSortedThoughts } from '@/utils/sermonSorting';
-import { SERMON_SECTION_COLORS } from '@/utils/themeColors';
+import { NEUTRAL_CAPTION, SERMON_SECTION_COLORS } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
 
 import ChunkEditorModal from './ChunkEditorModal';
@@ -156,8 +156,8 @@ const GOOGLE_VOICE_OPTIONS: { id: GoogleTTSVoice; descKey: string }[] = [
 const ACTIVE_PILL = 'border-orange-400 bg-orange-50 text-orange-700 dark:border-orange-500/60 dark:bg-orange-500/10 dark:text-orange-300';
 const INACTIVE_PILL = 'border-gray-200 bg-white text-gray-600 hover:border-orange-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300';
 
-/** Class for a secondary description: dimmed when its option is active, muted otherwise. */
-const mutedDescClass = (active: boolean): string => (active ? 'opacity-70' : 'text-gray-400');
+/** Selected options already supply a readable accent color. */
+const mutedDescClass = (active: boolean): string => (active ? '' : NEUTRAL_CAPTION);
 
 // ============================================================================
 // Helpers
@@ -779,7 +779,7 @@ export default function StepByStepWizard({
                                         ? AVAILABLE_VOICES.map(v => renderVoicePill(v.id, v.id.charAt(0).toUpperCase() + v.id.slice(1), t(v.descKey, { defaultValue: '' }), voice === v.id, () => setVoice(v.id)))
                                         : GOOGLE_VOICE_OPTIONS.map(v => renderVoicePill(v.id, v.id, t(v.descKey), googleVoice === v.id, () => setGoogleVoice(v.id)))}
                                 </div>
-                                <p className="mt-2 text-[11px] text-gray-400">
+                                <p className={`mt-2 text-[11px] ${NEUTRAL_CAPTION}`}>
                                     {ttsProvider === 'google'
                                         ? t('audioExport.googleVoiceHint', { defaultValue: '4 мужских голоса — от молодого (слева) к старшему (справа). ▷ — прослушать.' })
                                         : t('audioExport.openaiVoiceHint', { defaultValue: 'Голоса OpenAI. ▷ — прослушать.' })}
@@ -817,7 +817,7 @@ export default function StepByStepWizard({
                                 <button
                                     key={s.id}
                                     onClick={() => toggleSection(s.id)}
-                                    className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${on ? 'border-gray-300 bg-white text-gray-700 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-200' : 'border-gray-200 bg-gray-50 text-gray-400 dark:border-gray-800 dark:bg-gray-800/40'}`}
+                                    className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${on ? 'border-gray-300 bg-white text-gray-700 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-200' : `border-gray-200 bg-gray-50 ${NEUTRAL_CAPTION} dark:border-gray-800 dark:bg-gray-800/40`}`}
                                 >
                                     <span className={`flex h-4 w-4 items-center justify-center rounded border ${on ? 'border-orange-500 bg-orange-500 text-white' : 'border-gray-300 dark:border-gray-600'}`}>
                                         {on && <Check className="h-3 w-3" />}
@@ -871,7 +871,7 @@ export default function StepByStepWizard({
                         <div className="min-w-0 flex-1">
                             <div className="mb-1 flex items-center gap-2">
                                 <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${theme.text} dark:${theme.darkText}`} style={{ backgroundColor: `${theme.base}24` }}>{section.label}</span>
-                                <span className="text-[10px] text-gray-400">{th.text.length} {charsLabel}</span>
+                                <span className={`text-[10px] ${NEUTRAL_CAPTION}`}>{th.text.length} {charsLabel}</span>
                             </div>
                             <p className="text-sm leading-relaxed text-gray-700 dark:text-gray-300">{th.text}</p>
                         </div>
@@ -903,7 +903,7 @@ export default function StepByStepWizard({
                                 ) : (
                                     <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${theme.text} dark:${theme.darkText}`} style={{ backgroundColor: `${theme.base}24` }}>{section.label}</span>
                                 )}
-                                <span className="text-[10px] text-gray-400">{chunk.text.length} {charsLabel}</span>
+                                <span className={`text-[10px] ${NEUTRAL_CAPTION}`}>{chunk.text.length} {charsLabel}</span>
                                 {editable && <Pencil className="ml-auto h-3.5 w-3.5 text-gray-300 opacity-0 transition group-hover:opacity-100 group-hover:text-orange-500" />}
                             </div>
                             <p className={`text-sm leading-relaxed ${isTransition ? 'font-bold text-orange-900 dark:text-orange-200' : 'font-medium text-gray-800 dark:text-gray-200'}`}>{chunk.text}</p>
@@ -919,7 +919,7 @@ export default function StepByStepWizard({
     // Render: STEP 2 — source
     // ============================================================================
     const colHead = (icon: React.ReactNode, title: string, editBadge?: boolean) => (
-        <div className="mb-3 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-gray-400">
+        <div className={`mb-3 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider ${NEUTRAL_CAPTION}`}>
             {icon}{title}
             {editBadge && (
                 <span className="inline-flex items-center gap-1 rounded bg-orange-50 px-1.5 py-0.5 normal-case font-medium text-orange-600 dark:bg-orange-900/20 dark:text-orange-300">
@@ -963,7 +963,7 @@ export default function StepByStepWizard({
                             );
                         })}
                         {ttsProvider === 'google' && (
-                            <span className="ml-1 text-[11px] text-gray-400">{t('audioExport.aiOpenaiOnly', { defaultValue: 'AI-оптимизация — только для OpenAI' })}</span>
+                            <span className={`ml-1 text-[11px] ${NEUTRAL_CAPTION}`}>{t('audioExport.aiOpenaiOnly', { defaultValue: 'AI-оптимизация — только для OpenAI' })}</span>
                         )}
                     </div>
                 </div>
@@ -1073,7 +1073,7 @@ export default function StepByStepWizard({
                     </div>
                 ) : (
                     <>
-                        <p className="flex items-center gap-1.5 text-xs text-gray-400"><Eye className="h-3 w-3" />{t('audioExport.previewHint', { defaultValue: 'Финальный текст одним блоком на каждую секцию — только просмотр. Правки делаются на шаге «Источник».' })}</p>
+                        <p className={`flex items-center gap-1.5 text-xs ${NEUTRAL_CAPTION}`}><Eye className="h-3 w-3" />{t('audioExport.previewHint', { defaultValue: 'Финальный текст одним блоком на каждую секцию — только просмотр. Правки делаются на шаге «Источник».' })}</p>
                         <div className="max-h-[calc(95vh-360px)] min-h-[16rem] space-y-3 overflow-y-auto pr-1">
                             {visibleSections.map(section => {
                                 const sectionChunks = chunks.filter(c => c.sectionId === section.id && c.text.trim());
@@ -1084,7 +1084,7 @@ export default function StepByStepWizard({
                                     <div key={section.id} className="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-800">
                                         <div className="flex items-center gap-2 border-b border-gray-100 px-4 py-2.5 dark:border-gray-800" style={{ backgroundColor: `${theme.base}1f` }}>
                                             <span className={`text-xs font-bold uppercase tracking-wider ${theme.text} dark:${theme.darkText}`}>{section.label}</span>
-                                            <span className="ml-auto text-[10px] text-gray-400 dark:text-gray-500">{charCount} {charsLabel}</span>
+                                            <span className={`ml-auto text-[10px] ${NEUTRAL_CAPTION}`}>{charCount} {charsLabel}</span>
                                         </div>
                                         <div className="space-y-2.5 px-5 py-4">
                                             {sectionChunks.map((c, i) => c.kind === 'transition' ? (
@@ -1129,7 +1129,7 @@ export default function StepByStepWizard({
                     <div className="h-3 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
                         <div className="h-full bg-gradient-to-r from-orange-500 to-amber-500 transition-all duration-500" style={{ width: `${percent}%` }} />
                     </div>
-                    <p className="mt-3 font-mono text-xs text-gray-400">
+                    <p className={`mt-3 font-mono text-xs ${NEUTRAL_CAPTION}`}>
                         {genProgress.current > 0
                             ? t('audioExport.generatingChunk', { defaultValue: 'Generating chunk {{current}}/{{total}}...', current: genProgress.current, total: genProgress.total })
                             : (genProgress.status || `${genProgress.current} / ${genProgress.total}`)}
@@ -1137,7 +1137,7 @@ export default function StepByStepWizard({
                 </div>
                 <button
                     onClick={handleCancelGeneration}
-                    className="mt-8 rounded-full border border-gray-200 px-6 py-2 text-sm font-medium text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:border-gray-700 dark:hover:bg-gray-800"
+                    className={`mt-8 rounded-full border border-gray-200 px-6 py-2 text-sm font-medium ${NEUTRAL_CAPTION} transition-colors hover:bg-gray-100 dark:border-gray-700 dark:hover:bg-gray-800`}
                 >
                     {t('audioExport.cancelGeneration', { defaultValue: 'Cancel Generation' })}
                 </button>
@@ -1185,7 +1185,7 @@ export default function StepByStepWizard({
         if (step === 1) {
             return (
                 <div className="flex items-center justify-between">
-                    <span className="text-xs text-gray-400">{t('audioExport.stepCount', { defaultValue: 'Шаг {{n}} из 3', n: 1 })}</span>
+                    <span className={`text-xs ${NEUTRAL_CAPTION}`}>{t('audioExport.stepCount', { defaultValue: 'Шаг {{n}} из 3', n: 1 })}</span>
                     <button
                         onClick={goToStep2}
                         disabled={sections.length === 0 || entitlementLoading || entitlementError || !userEntitlement?.functions?.tts}

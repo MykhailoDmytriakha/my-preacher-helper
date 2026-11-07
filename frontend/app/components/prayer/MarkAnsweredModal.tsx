@@ -9,6 +9,7 @@ import FormDialog from '@/components/ui/FormDialog';
 import { FORM_INPUT_CLASS } from '@/components/ui/FormField';
 import { isStaleWriteError } from '@/services/conflictSafeUpdate.client';
 import { announceIfPersisted, awaitWriteOperation, type WriteOperation } from '@/utils/recoverableWrite';
+import { EMERALD_ACTION } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
 
 interface Props {
@@ -71,7 +72,7 @@ export default function MarkAnsweredModal({ onClose, onSubmit }: Props) {
             {t('prayer.markAnswered.skip')}
           </button>
           <button type="button" onClick={() => handleSubmit(answerText)} disabled={saving || !answerText.trim()}
-            className="rounded-xl bg-emerald-600 px-5 py-3 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60">
+            className={`${EMERALD_ACTION} rounded-xl px-5 py-3 text-sm font-semibold shadow-sm disabled:cursor-not-allowed disabled:opacity-60`}>
             {saving ? '...' : t('prayer.markAnswered.submit')}
           </button>
         </div>

@@ -17,6 +17,7 @@ import { PLAN_TEMPLATE_AGGREGATE } from '@/services/planTemplates.client';
 import { newClientId } from '@/utils/clientId';
 import { awaitWriteOperation } from '@/utils/recoverableWrite';
 import { validTemplateConflict } from '@/utils/refusedDraftPayloads';
+import { NEUTRAL_CAPTION } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
 
 import type { PlanTemplate, SermonOutline } from '@/models/models';
@@ -375,9 +376,9 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user, reque
       </div>
 
       {loading ? (
-        <p className="text-sm text-gray-400">{t('settings.loading')}</p>
+        <p className={`text-sm ${NEUTRAL_CAPTION}`}>{t('settings.loading')}</p>
       ) : templates.length === 0 ? (
-        <p className="text-sm text-gray-400 dark:text-gray-500">{t('planTemplates.empty')}</p>
+        <p className={`text-sm ${NEUTRAL_CAPTION}`}>{t('planTemplates.empty')}</p>
       ) : (
         <ul className="space-y-2">
           {templates.map((tpl) => {
@@ -418,7 +419,7 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user, reque
                   ) : (
                     <>
                       <span className="flex-1 text-sm font-medium text-gray-800 dark:text-gray-200 truncate">{tpl.name}</span>
-                      <span className="text-xs text-gray-400 tabular-nums">
+                      <span className={`text-xs ${NEUTRAL_CAPTION} tabular-nums`}>
                         {countPoints(tpl.structure)} {t('planTemplates.pointsLabel', { count: countPoints(tpl.structure) })}
                       </span>
                       <button

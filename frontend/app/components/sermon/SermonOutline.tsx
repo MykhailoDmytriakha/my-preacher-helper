@@ -13,7 +13,7 @@ import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { newClientId } from '@/utils/clientId';
 import { OutlineCapture } from '@/utils/outlineCapture';
 import { capitalizeFirstLetter, normalizeCapitalizedTitle } from '@/utils/textNormalization';
-import { getSectionStyling } from '@/utils/themeColors';
+import { NEUTRAL_CAPTION, getSectionStyling } from '@/utils/themeColors';
 import { getPreachOrderedThoughtsBySection } from '@/utils/thoughtOrdering';
 import { getFocusModeUrl } from '@/utils/urlUtils';
 import { writeFailureTranslationKey } from '@/utils/writeRecovery';
@@ -604,7 +604,7 @@ const SermonOutlineEditor: React.FC<SermonOutlineProps> = ({
                     {sortedSubs.length > 0 && (
                       <div className="ml-9 mb-2 border-l border-gray-200 dark:border-gray-600 pl-3 space-y-0.5">
                         {sortedSubs.map(sp => (
-                          <div key={sp.id} className="flex items-center gap-1.5 text-xs text-gray-400 dark:text-gray-500">
+                          <div key={sp.id} className={`flex items-center gap-1.5 text-xs ${NEUTRAL_CAPTION}`}>
                             <span className="w-1 h-1 rounded-full bg-gray-300 dark:bg-gray-500" />
                             {sp.text}
                           </div>

@@ -5,6 +5,7 @@ import React, { useEffect, useId, useMemo, useRef, useState } from "react";
 
 import { useUserChurches } from "@/hooks/useUserChurches";
 import { Church } from "@/models/models";
+import { NEUTRAL_CAPTION } from '@/utils/themeColors';
 import { useTranslation } from "@locales/useTranslation";
 
 interface ChurchFieldProps {
@@ -245,7 +246,7 @@ export default function ChurchField({
         </p>
       )}
       {showHistoryCount && !isNewName && (
-        <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+        <p className={`mt-1 text-xs ${NEUTRAL_CAPTION}`}>
           {availableChurches.length > 0
             ? t("calendar.churchAutocomplete.historyCount", { count: availableChurches.length })
             : t("calendar.churchAutocomplete.emptyHistory")}

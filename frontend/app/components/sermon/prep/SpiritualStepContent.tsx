@@ -3,7 +3,7 @@
 import { BookOpen, Sparkles, Wrench, AlertTriangle } from 'lucide-react';
 import React from 'react';
 
-import { UI_COLORS } from '@/utils/themeColors';
+import { NEUTRAL_CAPTION, UI_COLORS } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
 
 import type { Preparation } from '@/models/models';
@@ -57,7 +57,7 @@ const SpiritualStepContent: React.FC<SpiritualStepContentProps> = ({
               <ul className="list-disc pl-5 mt-1 space-y-1 text-sm">
                 <li>
                   {t('wizard.steps.spiritual.spiritualSide.nehemiahRef')}: &ldquo;
-                  <sup className="text-gray-300 dark:text-gray-800">8</sup>
+                  <sup className={NEUTRAL_CAPTION}>8</sup>
                   {' '}{t('wizard.steps.spiritual.spiritualSide.nehemiahText')}&rdquo;
                 </li>
                 <li>{t('wizard.steps.spiritual.spiritualSide.spirit')}</li>

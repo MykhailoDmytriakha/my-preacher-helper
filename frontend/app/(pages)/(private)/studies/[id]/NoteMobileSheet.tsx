@@ -5,6 +5,7 @@ import React, { useEffect, useState } from 'react';
 
 import { type MarkdownOutlineControl } from '@/hooks/useMarkdownOutline';
 import { useModalLayer } from '@/hooks/useModalLayer';
+import { NEUTRAL_CAPTION } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
 
 import { NoteOutlineTree } from './NoteOutlineTree';
@@ -131,14 +132,14 @@ export function NoteMobileSheet({
                                 compact
                             />
                         ) : (
-                            <p className="px-3 py-4 text-sm text-gray-400 dark:text-gray-500">
+                            <p className={`px-3 py-4 text-sm ${NEUTRAL_CAPTION}`}>
                                 {t('notePanel.outlineEmpty')}
                             </p>
                         )
                     ) : (
                         <div className="flex flex-col gap-5 px-3 pb-2 pt-1">
                             {meta && (
-                                <div className="text-xs leading-[17px] text-gray-400 dark:text-gray-500">
+                                <div className={`text-xs leading-[17px] ${NEUTRAL_CAPTION}`}>
                                     {meta}
                                 </div>
                             )}
@@ -171,7 +172,7 @@ function SheetTabButton({
             type="button"
             onClick={onClick}
             aria-pressed={active}
-            className={`rounded-lg px-3 py-2 text-sm font-semibold transition-colors ${active ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200' : 'text-gray-400 dark:text-gray-500'}`}
+            className={`rounded-lg px-3 py-2 text-sm font-semibold transition-colors ${active ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200' : NEUTRAL_CAPTION}`}
         >
             {children}
         </button>

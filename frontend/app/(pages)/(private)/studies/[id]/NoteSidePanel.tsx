@@ -11,6 +11,7 @@ import {
 import React from 'react';
 
 import { type MarkdownOutlineControl } from '@/hooks/useMarkdownOutline';
+import { NEUTRAL_CAPTION } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
 
 import { NoteOutlineTree } from './NoteOutlineTree';
@@ -46,7 +47,7 @@ const RAIL_BUTTON =
     'flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-200/70 hover:text-gray-700 dark:text-gray-500 dark:hover:bg-gray-800';
 
 const SECTION_LABEL =
-    'text-[11px] font-bold uppercase tracking-[0.06em] text-gray-400 dark:text-gray-500';
+    `text-[11px] font-bold uppercase tracking-[0.06em] ${NEUTRAL_CAPTION}`;
 
 /**
  * Everything about the note that is not the note's text: its table of contents,
@@ -116,7 +117,7 @@ export function NoteSidePanel({
             className="hidden h-full min-h-0 w-[272px] shrink-0 flex-col gap-4 self-start overflow-y-auto overscroll-y-contain border-r border-gray-200 bg-gray-50 px-3.5 pb-24 pt-4 lg:flex dark:border-gray-800 dark:bg-gray-900/40"
         >
             <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0 text-xs leading-[17px] text-gray-400 dark:text-gray-500">{meta}</div>
+                <div className={`min-w-0 text-xs leading-[17px] ${NEUTRAL_CAPTION}`}>{meta}</div>
                 <button
                     type="button"
                     onClick={onToggleCollapsed}
@@ -177,7 +178,7 @@ function OutlineSection({ outline, foldable, activeSectionId }: Pick<NoteSidePan
                     activeSectionId={activeSectionId}
                 />
             ) : (
-                <p className="px-2 text-xs leading-4 text-gray-400 dark:text-gray-500">
+                <p className={`px-2 text-xs leading-4 ${NEUTRAL_CAPTION}`}>
                     {t('notePanel.outlineEmpty')}
                 </p>
             )}

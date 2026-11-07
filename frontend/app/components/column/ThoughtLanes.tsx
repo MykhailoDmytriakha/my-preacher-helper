@@ -9,6 +9,7 @@ import { ScriptureText } from '@/components/bible/ScriptureLinks';
 import PointNote from '@/components/PointNote';
 import { structureBodyPaddingClass, structureSubPointInsetClass } from '@/utils/structureBoardLayout';
 import { buildSubPointRenderableEntries } from '@/utils/subPoints';
+import { NEUTRAL_CAPTION } from '@/utils/themeColors';
 
 import { BG_GRAY_LIGHT_DARK } from './constants';
 
@@ -191,7 +192,7 @@ const SubPointDropTarget: React.FC<{
           <div className={`min-h-[40px] rounded border border-dashed px-4 py-2 text-center text-sm ${
             isHovered
               ? "border-blue-300 text-blue-400 dark:border-blue-600 dark:text-blue-400"
-              : "border-gray-300 text-gray-400 dark:border-gray-600 dark:text-gray-500"
+              : `border-gray-300 ${NEUTRAL_CAPTION} dark:border-gray-600`
           }`}>
             {t("structure.dropThoughtsHere")}
           </div>
@@ -231,7 +232,7 @@ export const PointThoughtLane: React.FC<{
       className={`min-h-[80px] ${structureBodyPaddingClass} transition-all ${isOver ? 'ring-1 ring-blue-300/40 dark:ring-blue-500/30' : ''}`}
     >
       {!hasItems && !hasSubPoints ? (
-        <div className="text-center text-gray-400 dark:text-gray-500 text-sm py-6 px-4 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded transition-all">
+        <div className={`text-center ${NEUTRAL_CAPTION} text-sm py-6 px-4 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded transition-all`}>
           {t('structure.dropThoughtsHere')}
         </div>
       ) : (
@@ -315,7 +316,7 @@ export const UnassignedThoughtLane: React.FC<{
           }`}
       >
         {items.length === 0 ? (
-          <div className="text-center text-gray-400 dark:text-gray-500 text-sm py-6 px-4 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded transition-all">
+          <div className={`text-center ${NEUTRAL_CAPTION} text-sm py-6 px-4 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded transition-all`}>
             {t('structure.dropToUnassign', { defaultValue: 'Drop thoughts here to unassign them from structure points' })}
           </div>
         ) : (
@@ -324,7 +325,7 @@ export const UnassignedThoughtLane: React.FC<{
               {items.map(item => renderItem(item))}
 
               {/* Additional drop area at the end for consistency */}
-              <div className={`text-center text-gray-400 dark:text-gray-500 text-sm py-4 mt-2 px-4 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded transition-all ${isOver ? 'border-blue-400 dark:border-blue-500 bg-blue-50 dark:bg-blue-900/20' : ''
+              <div className={`text-center ${NEUTRAL_CAPTION} text-sm py-4 mt-2 px-4 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded transition-all ${isOver ? 'border-blue-400 dark:border-blue-500 bg-blue-50 dark:bg-blue-900/20' : ''
                 }`}>
                 {t('structure.dropToUnassign')}
               </div>

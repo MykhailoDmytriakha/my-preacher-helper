@@ -5,6 +5,7 @@ import { useId } from 'react';
 import { createPortal } from 'react-dom';
 
 import { useModalLayer } from '@/hooks/useModalLayer';
+import { EMERALD_ACTION } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
 
 
@@ -102,9 +103,9 @@ export default function ConfirmModal({
                         <button
                             type="button"
                             disabled={isDeleting || confirmDisabled}
-                            className={`inline-flex w-full justify-center rounded-xl px-3 py-2 text-sm font-semibold text-white shadow-sm sm:ml-3 sm:w-auto transition disabled:opacity-60 disabled:cursor-not-allowed ${isDestructive
-                                ? 'bg-red-600 hover:bg-red-500'
-                                : 'bg-emerald-600 hover:bg-emerald-500'
+                            className={`inline-flex w-full justify-center rounded-xl px-3 py-2 text-sm font-semibold shadow-sm sm:ml-3 sm:w-auto transition disabled:opacity-60 disabled:cursor-not-allowed ${isDestructive
+                                ? 'bg-red-600 text-white hover:bg-red-500'
+                                : EMERALD_ACTION
                                 }`}
                             onClick={onConfirm}
                         >

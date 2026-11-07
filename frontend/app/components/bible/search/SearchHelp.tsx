@@ -2,6 +2,7 @@
 
 import { Fragment } from 'react';
 
+import { NEUTRAL_CAPTION } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
 
 import type { BibleId } from '@/utils/bibles';
@@ -65,7 +66,7 @@ export function SearchHelp({ bible, columns, touch, onTry }: { bible: BibleId; c
     <div>
       <div className="flex items-baseline justify-between gap-3 border-b border-gray-100 pb-2.5 dark:border-gray-800">
         <h2 className="text-[15px] font-semibold tracking-tight text-gray-900 dark:text-white">{t('bible.search.help')}</h2>
-        <span className="text-xs text-gray-400 dark:text-gray-500">{t('bible.search.helpTip')}</span>
+        <span className={`text-xs ${NEUTRAL_CAPTION}`}>{t('bible.search.helpTip')}</span>
       </div>
       <div className={columns === 2 ? 'grid grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] gap-x-10' : ''}>
         {groups.map((group, column) => (

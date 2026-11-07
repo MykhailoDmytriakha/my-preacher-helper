@@ -9,6 +9,7 @@ import { FlowItemSummary } from '@/components/groups/FlowItemSummary';
 import MarkdownDisplay from '@/components/MarkdownDisplay';
 import { groupLanguage } from '@/utils/documentLanguage';
 import { normalizeFlow } from '@/utils/groupFlow';
+import { NEUTRAL_CAPTION } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
 
 import type { Group, GroupBlockTemplate } from '@/models/models';
@@ -84,7 +85,7 @@ export function GroupReadOnlyContent({ group, allowConduct = true }: { group: Gr
               const template = templatesById.get(item.templateId);
               return (
                 <li key={item.id} className="flex items-start gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 dark:border-gray-700 dark:bg-gray-800">
-                  <span className="w-5 flex-shrink-0 pt-0.5 text-center text-xs font-bold tabular-nums text-gray-400 dark:text-gray-500">{index + 1}</span>
+                  <span className={`w-5 flex-shrink-0 pt-0.5 text-center text-xs font-bold tabular-nums ${NEUTRAL_CAPTION}`}>{index + 1}</span>
                   <FlowItemSummary flowItem={item} template={template} fullNotes>
                     {template && <BlockDetails template={template} />}
                   </FlowItemSummary>

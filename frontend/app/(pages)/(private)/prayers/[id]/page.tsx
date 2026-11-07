@@ -39,6 +39,7 @@ import {
   awaitWriteOperation,
   skippedWrite,
 } from '@/utils/recoverableWrite';
+import { NEUTRAL_CAPTION } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
 import '@locales/i18n';
 
@@ -317,7 +318,7 @@ export default function PrayerDetailPage() {
         </div>
 
         {/* Meta */}
-        <div className="flex flex-wrap gap-4 text-xs text-gray-400 dark:text-gray-500 border-t border-gray-100 dark:border-gray-700 pt-3">
+        <div className={`flex flex-wrap gap-4 text-xs ${NEUTRAL_CAPTION} border-t border-gray-100 dark:border-gray-700 pt-3`}>
           <span className="flex items-center gap-1">
             <ClockIcon className="h-3.5 w-3.5" />
             {t('prayer.detail.addedOn')}: {formatDay(prayer.createdAt, dateLocale)}
@@ -441,13 +442,13 @@ export default function PrayerDetailPage() {
           <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
             {t('prayer.detail.updates')}
             {prayer.updates.length > 0 && (
-              <span className="ml-1.5 text-xs font-normal text-gray-400">({prayer.updates.length})</span>
+              <span className={`ml-1.5 text-xs font-normal ${NEUTRAL_CAPTION}`}>({prayer.updates.length})</span>
             )}
           </h2>
         </div>
 
         {sortedUpdates.length === 0 ? (
-          <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-4">
+          <p className={`text-sm ${NEUTRAL_CAPTION} text-center py-4`}>
             {t('prayer.detail.noUpdates')}
           </p>
         ) : (
@@ -461,7 +462,7 @@ export default function PrayerDetailPage() {
                 <p className="text-sm text-gray-800 dark:text-gray-200 whitespace-pre-wrap">
                   <ScriptureText text={update.text} searchQuery={highlightQuery} />
                 </p>
-                <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                <p className={`mt-1 text-xs ${NEUTRAL_CAPTION}`}>
                   {formatDayTime(update.createdAt, dateLocale)}
                 </p>
               </div>

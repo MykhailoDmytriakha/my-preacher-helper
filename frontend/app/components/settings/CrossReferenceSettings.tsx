@@ -8,6 +8,7 @@ import { ChoiceButtons, SettingRow } from '@/components/settings/SettingRow';
 import Switch from '@/components/ui/Switch';
 import { resolveAppLocale } from '@/utils/appLocale';
 import { getLocalizedAbbrev } from '@/utils/bibleBooks';
+import { NEUTRAL_CAPTION } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
 
 /**
@@ -55,7 +56,7 @@ export default function CrossReferenceSettings() {
         <div aria-hidden="true" className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 dark:border-gray-700 dark:bg-gray-900" data-testid="cross-reference-sample">
           <p className="text-xs text-gray-500 dark:text-gray-400">{t('settings.bible.crossRefs.sampleCaption', { place })}</p>
           <p className="mt-1 font-serif text-[17px] leading-relaxed text-gray-800 dark:text-gray-100">
-            <span className="mr-1.5 font-sans text-xs font-semibold tabular-nums text-gray-400 dark:text-gray-500">{verse}</span>
+            <span className={`mr-1.5 font-sans text-xs font-semibold tabular-nums ${NEUTRAL_CAPTION}`}>{verse}</span>
             {t('settings.bible.crossRefs.sampleVerse')}
             {prefs.show ? <>{' '}<CrossRefsChip count={prefs.mode === 'all' ? total : main} testId="cross-reference-sample-chip" /></> : null}
           </p>

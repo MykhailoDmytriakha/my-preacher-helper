@@ -54,8 +54,8 @@ describe('ConfirmModal', () => {
     );
 
     const confirmButton = screen.getByRole('button', { name: 'common.confirm' });
-    expect(confirmButton).toHaveClass('bg-emerald-600');
-    expect(confirmButton).toHaveClass('hover:bg-emerald-500');
+    expect(confirmButton).toHaveClass('bg-emerald-700', 'text-white');
+    expect(confirmButton).toHaveClass('hover:bg-emerald-800');
   });
 
   it('calls handlers for confirm and cancel actions', () => {

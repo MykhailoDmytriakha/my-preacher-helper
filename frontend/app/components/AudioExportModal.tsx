@@ -13,6 +13,7 @@ import { Volume2 } from 'lucide-react';
 import React, { useState, useCallback } from 'react';
 
 import { useModalLayer } from '@/hooks/useModalLayer';
+import { NEUTRAL_CAPTION } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
 
 import StepByStepWizard from './audio/StepByStepWizard';
@@ -100,8 +101,8 @@ export default function AudioExportModal({
                             const dot = on
                                 ? 'bg-orange-500 text-white'
                                 : done ? 'bg-orange-100 text-orange-600 dark:bg-orange-900/40 dark:text-orange-300'
-                                    : 'bg-gray-200 text-gray-400 dark:bg-gray-700 dark:text-gray-500';
-                            const txt = on ? 'font-semibold text-gray-900 dark:text-gray-100' : 'text-gray-400 dark:text-gray-500';
+                                    : `bg-gray-200 ${NEUTRAL_CAPTION} dark:bg-gray-700`;
+                            const txt = on ? 'font-semibold text-gray-900 dark:text-gray-100' : NEUTRAL_CAPTION;
                             return (
                                 <React.Fragment key={label}>
                                     <span className={`flex items-center gap-1.5 ${txt}`}>
