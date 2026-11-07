@@ -17,6 +17,7 @@ import { AudioRecorder } from "@/components/AudioRecorder";
 import OutlineBoard, { type DragHandleProps } from "@/components/plan-editor/OutlineBoard";
 import AudioRecorderPortalBridge from "@/components/sermon/AudioRecorderPortalBridge";
 import ConfirmModal from "@/components/ui/ConfirmModal";
+import { showUndoNotice } from "@/components/ui/showUndoNotice";
 import { useAiUsage } from "@/hooks/useAiUsage";
 import { useTextDictation } from '@/hooks/useTextDictation';
 import { composePlanFromScratch } from "@/services/scratch.service";
@@ -389,25 +390,21 @@ export default function ScratchPanel({
       deleteScratchNote(noteId);
       clearComposition();
       if (!deletedNote) return;
-      let restoring = false;
-
-      toast.success(t("scratch.card.deleteSuccess"), {
+      showUndoNotice({
         ...SCRATCH_TOAST_OPTIONS,
-        action: {
-          label: t("scratch.card.undoDelete"),
-          onClick: async () => {
-            if (scratchMutationLockedRef.current || restoring) return;
-            restoring = true;
-            try {
-              const restored = await restoreScratchNote(deletedNote);
-              if (!restored) return;
-              markScratchChanged();
-              clearComposition();
-            } catch (error) {
-              console.error('Failed to restore a scratch note', error);
-              toast.error(t('common.saveError'), SCRATCH_TOAST_OPTIONS);
-            } finally { restoring = false; }
-          },
+        kind: "success",
+        message: t("scratch.card.deleteSuccess"),
+        label: t("scratch.card.undoDelete"),
+        saving: t("dataSync.phase.savingLocally"),
+        onUndo: async () => {
+          if (scratchMutationLockedRef.current) throw new Error("Scratch notes are read-only");
+          if (!await restoreScratchNote(deletedNote)) throw new Error("The scratch note could not be restored");
+          markScratchChanged();
+          clearComposition();
+        },
+        failureMessage: error => {
+          console.error("Failed to restore a scratch note", error);
+          return t("common.saveError");
         },
       });
     },

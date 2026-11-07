@@ -32,7 +32,7 @@ jest.mock('next/navigation', () => ({
   usePathname: () => '/care/council/source',
   useSearchParams: () => new URLSearchParams(),
 }));
-jest.mock('sonner', () => ({ toast: { error: jest.fn(), success: jest.fn(), warning: jest.fn(), message: jest.fn() } }));
+jest.mock('sonner', () => ({ toast: { error: jest.fn(), success: jest.fn(), warning: jest.fn(), message: jest.fn(), loading: jest.fn(), dismiss: jest.fn() } }));
 jest.mock('@/data-engine/react.client', () => ({
   ...jest.requireActual('@/data-engine/react.client'),
   isCollectionOnEngine: () => true,

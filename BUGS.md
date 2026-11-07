@@ -350,9 +350,6 @@
 **User contract.** Read only authorized retained content; changes always require the normal server check. Reproduce with disposable authorized admin fixtures before selecting a cache/access design. Separate from BUG-20261017-offline-settings-and-prayer-route-missing.
 
 
-### BUG-20261017-undo-before-capture-hard-restart · Немедленный перезапуск после Undo может опередить локальный захват
-`frontend/app/components/sermon/ScratchPanel.tsx:401` · `frontend/app/data-engine/react.client.tsx:320` · `frontend/app/data-engine/engine.ts:1018`. Без сети: удалить мысль → список → Undo → сразу перезапустить документ. Восстановление не попало в очередь; обычный переход работает. Ожидание: подтверждённое локальное действие переживает перезапуск. Границу захвата и связь с BUG-20261016-engine-draft-before-request ещё проверить.
-
 ### BUG-20261016-marks-form-error-in-hidden-tab · Книга, открытая в скрытой вкладке: пометки показывают «С этой записью что-то пошло не так» и не поднимаются сами, когда вкладку открыли
 **Severity.** P3 — нужен заход в книгу, пока вкладка скрыта (ссылка открыта в фоне на компьютере; возможно, восстановление приложения iPad из фона). Пометки и инструменты не видны до «Повторить».
 **Найден.** 2026-10-16 · попутно при замере: вкладка Claude-in-Chrome (`visibilityState: hidden`), Псалтирь, над текстом статус ошибки формы (`useReaderMarks.tsx` — `DataSyncStatus` с `error`, когда форма не открылась); подмена видимости и `visibilitychange` его не сняли, «Повторить» снял. Не проверено, не артефакт ли это самой вкладки расширения.

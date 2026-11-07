@@ -23,7 +23,7 @@ jest.mock('next/navigation', () => ({
   usePathname: () => mockPathname,
   useSearchParams: () => new URLSearchParams(),
 }));
-jest.mock('sonner', () => ({ toast: { error: jest.fn(), success: jest.fn(), message: jest.fn() } }));
+jest.mock('sonner', () => ({ toast: { error: jest.fn(), success: jest.fn(), message: jest.fn(() => 'council-undo'), loading: jest.fn(), dismiss: jest.fn() } }));
 jest.mock('@/data-engine/DataSyncStatus', () => ({ DataSyncStatus: () => null }));
 jest.mock('@/components/ui/RichMarkdownEditor', () => ({ RichMarkdownEditor: () => null }));
 jest.mock('@/components/FloatingTextScaleControls', () => ({ __esModule: true, default: () => null }));
@@ -114,12 +114,16 @@ describe('council Finish command boundaries', () => {
     expect(captured).toHaveLength(1);
     expect(captured[0].value?.status).toBe('held');
     clickUndo(true);
+    expect(toast.loading).toHaveBeenCalledTimes(1);
+    expect(toast.loading).toHaveBeenCalledWith('dataSync.phase.savingLocally',
+      expect.objectContaining({ id: 'council-undo', dismissible: false }));
     let chain = captured;
     await waitFor(async () => { await settleEngine(); chain = await harness.commits.list('owner'); expect(chain).toHaveLength(2); });
     const undo = chain.find(request => request.id !== captured[0].id)!;
     expect(undo.predecessor).toBe(captured[0].id);
     expect(undo.value).toMatchObject({ status: 'preparing', topics: words });
     expect(undo.value).not.toHaveProperty('heldAt');
+    await waitFor(() => expect(toast.dismiss).toHaveBeenCalledWith('council-undo'));
     // The person sees the locally saved reversal before the network returns.
     await waitFor(() => expect(screen.getByTestId('council-title')).toHaveValue('Council before finishing'));
     await act(async () => { harness.engine.setOnline(true); await harness.engine.retry(); await settleEngine(); });

@@ -126,8 +126,10 @@ jest.mock("@/components/ui/ConfirmModal", () => {
 
 jest.mock("sonner", () => ({
   toast: {
-    success: jest.fn(),
+    success: jest.fn(() => "scratch-undo"),
     error: jest.fn(),
+    loading: jest.fn(),
+    dismiss: jest.fn(),
   },
 }));
 
@@ -136,6 +138,8 @@ const toastMock = () =>
     toast: {
       success: jest.Mock;
       error: jest.Mock;
+      loading: jest.Mock;
+      dismiss: jest.Mock;
     };
   }).toast;
 
@@ -211,7 +215,7 @@ describe("ScratchPanel", () => {
     expect(props.deleteScratchNote).toHaveBeenCalledWith("note-1");
     const [, options] = toastMock().success.mock.calls[0] as [
       string,
-      { position: string; action: { label: string; onClick: () => void } },
+      { position: string; action: { label: string; onClick: (event: MouseEvent) => Promise<void> } },
     ];
     expect(toastMock().success).toHaveBeenCalledWith(
       "Note deleted",
@@ -221,7 +225,7 @@ describe("ScratchPanel", () => {
       })
     );
 
-    await act(async () => { await options.action.onClick(); });
+    await act(async () => { await options.action.onClick(new MouseEvent("click", { cancelable: true })); });
     expect(props.restoreScratchNote).toHaveBeenCalledWith(note);
   });
 
@@ -233,26 +237,72 @@ describe("ScratchPanel", () => {
     renderScratchPanel({ notes: [note], restoreScratchNote: restore });
     fireEvent.click(within(screen.getByTestId("scratch-note-card-note-1")).getByRole("button", { name: "Delete note" }));
     fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Delete" }));
-    const options = toastMock().success.mock.calls[0][1] as { action: { onClick: () => Promise<void> } };
+    const options = toastMock().success.mock.calls[0][1] as { action: { onClick: (event: MouseEvent) => Promise<void> } };
     let first!: Promise<void>; let second!: Promise<void>;
-    act(() => { first = options.action.onClick(); second = options.action.onClick(); });
+    act(() => {
+      first = options.action.onClick(new MouseEvent("click", { cancelable: true }));
+      second = options.action.onClick(new MouseEvent("click", { cancelable: true }));
+    });
     const calls = restore.mock.calls.length;
     await act(async () => { settle(note); await Promise.all([first, second]); });
     expect(calls).toBe(1);
   });
 
-  it("reports a failed Undo instead of hiding the restoration failure", async () => {
+  it("keeps the Undo visible as saving and guards reload until the local capture finishes", async () => {
+    const note: ScratchNote = { id: "note-1", text: "Keep these words", createdAt: "2026-07-05" };
+    let settle!: (value: ScratchNote) => void;
+    const capture = new Promise<ScratchNote>(resolve => { settle = resolve; });
+    renderScratchPanel({ notes: [note], restoreScratchNote: () => capture });
+    fireEvent.click(within(screen.getByTestId("scratch-note-card-note-1")).getByRole("button", { name: "Delete note" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Delete" }));
+
+    const [, options] = toastMock().success.mock.calls[0] as [
+      string,
+      { action: { onClick: (event: MouseEvent) => Promise<void> } },
+    ];
+    const click = new MouseEvent("click", { cancelable: true });
+    const reloadWhileSaving = new Event("beforeunload", { cancelable: true });
+    let undo!: Promise<void>;
+    act(() => { undo = options.action.onClick(click); });
+    try {
+      window.dispatchEvent(reloadWhileSaving);
+      expect(click.defaultPrevented).toBe(true);
+      expect(reloadWhileSaving.defaultPrevented).toBe(true);
+      expect(toastMock().loading).toHaveBeenCalledWith(
+        "dataSync.phase.savingLocally",
+        { id: "scratch-undo", position: "bottom-right", action: undefined, dismissible: false }
+      );
+      expect(toastMock().dismiss).not.toHaveBeenCalled();
+    } finally {
+      await act(async () => { settle(note); await undo; });
+    }
+    const reloadAfterSaving = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(reloadAfterSaving);
+    expect(reloadAfterSaving.defaultPrevented).toBe(false);
+    expect(toastMock().dismiss).toHaveBeenCalledWith("scratch-undo");
+  });
+
+  it("reports a failed Undo and keeps it available to retry", async () => {
     const note: ScratchNote = { id: "note-1", text: "Keep these words", createdAt: "2026-07-05" };
     const failure = new Error("Local capture failed");
     const report = jest.spyOn(console, "error").mockImplementation(() => undefined);
     try {
-      const props = renderScratchPanel({ notes: [note], restoreScratchNote: jest.fn().mockRejectedValue(failure) });
+      const props = renderScratchPanel({ notes: [note], restoreScratchNote: jest.fn().mockRejectedValueOnce(failure).mockResolvedValueOnce(note) });
       fireEvent.click(within(screen.getByTestId("scratch-note-card-note-1")).getByRole("button", { name: "Delete note" }));
       fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Delete" }));
-      const options = toastMock().success.mock.calls[0][1] as { action: { onClick: () => Promise<void> } };
-      await act(async () => { await options.action.onClick(); });
+      const options = toastMock().success.mock.calls[0][1] as { action: { onClick: (event: MouseEvent) => Promise<void> } };
+      await act(async () => { await options.action.onClick(new MouseEvent("click", { cancelable: true })); });
       expect(props.restoreScratchNote).toHaveBeenCalledWith(note);
-      expect(toastMock().error).toHaveBeenCalledWith("common.saveError", { position: "bottom-right" });
+      expect(toastMock().error).toHaveBeenCalledWith("common.saveError", {
+        id: "scratch-undo", position: "bottom-right", dismissible: true, action: options.action,
+      });
+      expect(toastMock().dismiss).not.toHaveBeenCalled();
+      const reloadAfterFailure = new Event("beforeunload", { cancelable: true });
+      window.dispatchEvent(reloadAfterFailure);
+      expect(reloadAfterFailure.defaultPrevented).toBe(false);
+      await act(async () => { await options.action.onClick(new MouseEvent("click", { cancelable: true })); });
+      expect(props.restoreScratchNote).toHaveBeenCalledTimes(2);
+      expect(toastMock().dismiss).toHaveBeenCalledWith("scratch-undo");
       expect(report).toHaveBeenCalledWith("Failed to restore a scratch note", failure);
     } finally { report.mockRestore(); }
   });
