@@ -211,15 +211,16 @@ export function CrossRefsChip({ count, label, onOpen, testId, phone = false }: {
 
 /**
  * An analysed passage has a bar in the margin from its first verse to its last (the owner, 2026-10-29: «откуда до куда идёт
- * разбор»). A verse inside it reaches up past the room above (10 px on a phone) and only the bar's
- * ends are round: pieces meeting edge to edge, each rounded, left a notch at every verse. A chapter's heading breaks it.
+ * разбор»). A verse inside it reaches up past the room above and only the bar's ends are round: pieces meeting edge to
+ * edge, each rounded, left a notch at every verse. A chapter's heading breaks it. Not on a phone (the owner, 2026-11-06:
+ * «в мобильном режиме убери полоску слева»): there the passage's badge alone names where the analysis runs.
  */
 function AnalysedBar({ at, chapter, verse }: { at: AnalysedVerse; chapter: number; verse: number }) {
   return (
     <span
       aria-hidden="true"
       data-testid={`analysed-${chapter}:${verse}`}
-      className={`pointer-events-none absolute -left-1 w-[3px] bg-violet-500 dark:bg-violet-400 ${at.top || verse === 1 ? 'top-1.5 rounded-t-full' : '-top-3'} ${at.bottom ? 'bottom-1 rounded-b-full' : 'bottom-0'}`}
+      className={`pointer-events-none absolute -left-1 w-[3px] max-md:hidden bg-violet-500 dark:bg-violet-400 ${at.top || verse === 1 ? 'top-1.5 rounded-t-full' : '-top-3'} ${at.bottom ? 'bottom-1 rounded-b-full' : 'bottom-0'}`}
     />
   );
 }

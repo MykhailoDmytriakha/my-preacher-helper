@@ -572,6 +572,14 @@ describe('paragraphs of comments (case 2026-10-12-block-diagram, phase 9)', () =
     expect(screen.queryByTestId('analysed-2:3')).not.toBeInTheDocument();
   });
 
+  // The owner, 06.11: on a phone the bar is gone; the passage's badge still names where the analysis runs.
+  it('keeps an analysed passage\'s bar off a phone\'s narrow column', async () => {
+    mockRows = { studyNotes: [row('narrow', { title: 'Разбор', content: '', tags: [], type: 'analysis', scriptureRefs: [{ bible: 'rst', book: 'Ruth', chapter: 1, fromVerse: 16, toVerse: 17 }] })] };
+    renderRuth();
+    expect(await screen.findByTestId('analysed-1:16')).toHaveClass('max-md:hidden');
+    expect(screen.getByTestId('analysed-1:17')).toHaveClass('max-md:hidden');
+  });
+
   // Codex review r3: another book or Bible is a new reader on the page, and a window stepped aside went with the old one,
   // unasked. The translation's door takes the same hold (`useCommentHoldsReader`); this reader shows the book's doors.
   it('brings a stepped-aside window back instead of leaving for another book', async () => {
