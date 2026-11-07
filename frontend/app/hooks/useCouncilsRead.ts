@@ -12,8 +12,8 @@ export interface CouncilsRead {
 }
 
 /**
- * THE ONE WAY TO READ COUNCILS. Screens that only display councils — the care hub, the
- * breadcrumbs, the calendar — read the engine collection through here and never carry their own
+ * THE ONE WAY TO READ COUNCILS. Screens that only display councils — the care hub and
+ * the calendar — read the engine collection through here and never carry their own
  * branch, so no screen can show a council another screen already knows is gone.
  */
 export function useCouncilsRead(): CouncilsRead {

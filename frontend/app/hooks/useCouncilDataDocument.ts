@@ -2,6 +2,7 @@
 
 import { useCallback, useMemo } from 'react';
 
+import { usePublishShellTitle } from '@/components/navigation/shellTitles';
 import { useDataDocument, useDocumentActions, useRecoveryDiscovery } from '@/data-engine/react.client';
 import { hydrateCouncil } from '@/services/councils.client';
 import { holdCouncil, reopenCouncil } from '@/utils/council';
@@ -36,6 +37,7 @@ export function useCouncilDataDocument(councilId: string) {
     () => (data ? hydrateCouncil(data as Record<string, unknown>, councilId) : null),
     [data, councilId]
   );
+  usePublishShellTitle('councils', councilId, council);
 
   const apply = useCallback((mutate: (current: Council) => Council, at?: string) => (current: DocumentData | null): DocumentData => {
     if (!current) throw missing();

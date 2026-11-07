@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { usePathname, useSearchParams } from 'next/navigation';
 
 import { useEngineSermonSource } from '@/(pages)/(private)/sermons/[id]/hooks/useEngineSermonSource';
@@ -7,6 +7,8 @@ import { useEngineStructureWriter } from '@/(pages)/(private)/sermons/[id]/struc
 import Breadcrumbs from '@/components/navigation/Breadcrumbs';
 import { ShellTitlesProvider, usePublishShellTitle } from '@/components/navigation/shellTitles';
 import { useDataDocument } from '@/data-engine/react.client';
+import { useCouncilDataDocument } from '@/hooks/useCouncilDataDocument';
+import { useCouncilsRead } from '@/hooks/useCouncilsRead';
 
 // BUG-20261004-breadcrumb-keeps-old-sermon-title: on the data engine the page renders and writes the
 // engine copy, while the breadcrumbs read the collection copy — a renamed sermon or series kept its old
@@ -25,7 +27,7 @@ jest.mock('@/hooks/useSeriesRead', () => ({
   useSeriesRead: jest.fn(() => ({ series: { id: 'series-1', title: 'Old series title' }, loading: false })),
 }));
 jest.mock('@/hooks/useServiceOrders', () => ({ useServiceOrders: () => ({ orders: [] }) }));
-jest.mock('@/hooks/useCouncilsRead', () => ({ useCouncilsRead: () => ({ councils: [], loading: false, error: null, refresh: jest.fn() }) }));
+jest.mock('@/hooks/useCouncilsRead', () => ({ useCouncilsRead: jest.fn(() => ({ councils: [], loading: false, error: null, refresh: jest.fn() })) }));
 jest.mock('@/hooks/usePrayerDetail', () => ({ usePrayerDetail: () => ({ prayer: null }) }));
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string, options?: { defaultValue?: string }) => options?.defaultValue ?? key }),
@@ -99,4 +101,36 @@ it.each([
   render(<ShellTitlesProvider><Breadcrumbs /><Holder /></ShellTitlesProvider>);
   expect(screen.getByText('Engine sermon title')).toBeInTheDocument();
   expect(screen.queryByText('Old sermon title')).not.toBeInTheDocument();
+});
+
+it.each([
+  ['/care/council/council-1', false],
+  ['/care/council/council-1/conduct', true],
+] as const)('names the open council version on %s', (path, readOnly) => {
+  function CouncilHolder() {
+    useCouncilDataDocument('council-1');
+    return null;
+  }
+
+  jest.mocked(usePathname).mockReturnValue(path);
+  (useCouncilsRead as jest.Mock).mockReturnValue({
+    councils: [{ id: 'council-1', title: 'Another version in the list' }],
+    loading: false, error: null, refresh: jest.fn(),
+  });
+  const show = (title: string) => {
+    (useDataDocument as jest.Mock).mockReturnValue({ ...engineDocument(title), readOnly, status: null });
+    return <ShellTitlesProvider><Breadcrumbs /><CouncilHolder /></ShellTitlesProvider>;
+  };
+  const { rerender } = render(show('Title of the first saved edit'));
+  const trail = () => within(screen.getByTestId('breadcrumbs'));
+  expect(trail().getByText('Title of the first saved edit')).toBeInTheDocument();
+  expect(trail().queryByText('Another version in the list')).not.toBeInTheDocument();
+
+  rerender(show('Title of the recovered draft'));
+  expect(trail().getByText('Title of the recovered draft')).toBeInTheDocument();
+  expect(trail().queryByText('Title of the first saved edit')).not.toBeInTheDocument();
+
+  rerender(<ShellTitlesProvider><Breadcrumbs /></ShellTitlesProvider>);
+  expect(trail().getByText('Council')).toBeInTheDocument();
+  expect(trail().queryByText('Title of the recovered draft')).not.toBeInTheDocument();
 });
