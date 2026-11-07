@@ -55,7 +55,7 @@ function SeriesWorkspace({ seriesId }: { seriesId: string }) {
   const [membership, setMembership] = useState<MembershipDialog | null>(null);
   const metadata = useDataForm({ collection: 'series', id: seriesId }, 'series-metadata', SERIES_METADATA_SELECTION);
   const metadataRecovery = useRecoveryDiscovery({ identity: metadata.recoveryIdentity, enabled: !metadata.loading && metadata.recoveryReady,
-    version: JSON.stringify([editing, metadata.active, metadata.dirty]),
+    version: JSON.stringify([editing, metadata.recoveryVersion, metadata.dirty]),
     list: async () => (await metadata.listRecoverable()).map(source => ({ id: source.scopeId,
       title: String(source.record.baseline.value?.title ?? t(SERIES_LABEL)),
       preview: source.record.stage.filter(field => field.exists && typeof field.value === 'string').map(field => String(field.value)).join('\n').slice(0, 500),

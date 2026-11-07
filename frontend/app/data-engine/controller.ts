@@ -10,10 +10,10 @@ import { requiredDomainTargets } from './domainPolicy';
 import { areDifferentTabManualParents, editorSlot, readManualScopeIdentity } from './editorIdentity';
 import { liveSubmittedWork, sameLiveAtomicProof } from './liveSubmittedWork';
 import { chooseLocalPlacement } from './localPlacementChoice';
-import { projectExactManualChoice, projectSavedChoiceDependents, type ExactManualChoice } from './manualChoice';
+import { projectExactManualChoice, type ExactManualChoice } from './manualChoice';
 import { sameManualSources } from './manualReturnSources';
 import { projectManualSelection, type ManualPath } from './manualScope';
-import { assertOrdinaryAnswerScope, ordinaryChoiceCheckpoint, requireDocumentChoiceForBranch, reviewOrdinaryAnswerChoice } from './ordinaryAnswerChoice';
+import { assertOrdinaryAnswerScope, ordinaryChoiceCheckpoint, projectOrdinaryChoiceDependents, requireDocumentChoiceForBranch, reviewOrdinaryAnswerChoice, type ManualChoiceSources } from './ordinaryAnswerChoice';
 import { confirmedExistingDeletion, equalValues, mergeDocumentFields, mergeFields } from './protocol';
 import { isRecoverableCheckpoint } from './recovery.client';
 import { recoveryChoiceFingerprint } from './recoveryChoice';
@@ -114,6 +114,7 @@ interface ControllerOptions {
   /** An active private form keeps ordinary root continuation outside its parent editor. */
   canFollowSubmittedWork?: () => boolean;
   manualReturnSources?: (requests: readonly CommitRequest[]) => Promise<ReadonlyMap<string, string>>;
+  manualChoiceSources?: (requests: readonly CommitRequest[]) => Promise<ManualChoiceSources>;
   /** Presentation ancestry becomes known before replay or pending ACK projection awaits. */
   onRecoverySources?(sources: readonly RecoverySource[]): void;
 }
@@ -581,10 +582,12 @@ export class EditorController {
         const before = this.session.checkpoint();
         const requests = await this.options.commits.list(); this.assertCurrent();
         if (!this.canFollowSubmittedWork() || !equalValues(before, this.session.checkpoint())) return;
-        const sources = await this.options.manualReturnSources?.(related(requests));
+        const [sources, manualChoices] = await Promise.all([
+          this.options.manualReturnSources?.(related(requests)), this.options.manualChoiceSources?.(requests),
+        ]);
         this.assertCurrent();
         if (!this.canFollowSubmittedWork() || !equalValues(before, this.session.checkpoint())) return;
-        const continuation = liveSubmittedWork(this.options.owner, this.options.editorId, before, requests, sources);
+        const continuation = liveSubmittedWork(this.options.owner, this.options.editorId, before, requests, sources, manualChoices);
         if (!continuation) return;
         const completedCommits = [...new Set([...this.completedCommits, ...continuation.acknowledged.map(request => request.id)])];
         const candidate = { ...this.record(), checkpoint: continuation.checkpoint, completedCommits };
@@ -597,13 +600,17 @@ export class EditorController {
         }
         let current: CommitRequest[];
         let currentSources: ReadonlyMap<string, string> | undefined;
+        let currentChoices: ManualChoiceSources | undefined;
         try {
           current = await this.options.commits.list();
-          if (sources?.size) currentSources = await this.options.manualReturnSources?.(related(current));
+          [currentSources, currentChoices] = await Promise.all([
+            sources?.size ? this.options.manualReturnSources?.(related(current)) : undefined,
+            manualChoices?.size ? this.options.manualChoiceSources?.(current) : undefined,
+          ]);
         } catch (error) { await this.options.store.put(this.record()); throw error; }
         if (!unchanged()) { await this.options.store.put(this.record()); return; }
         if (!equalValues(related(requests), related(current)) || !sameManualSources(sources, currentSources)
-          || !sameLiveAtomicProof(continuation.atomicProof, current)) {
+          || !sameManualSources(manualChoices, currentChoices) || !sameLiveAtomicProof(continuation.atomicProof, current)) {
           // References prove existence, not the request revision, the unique frontier or the other action participants.
           await this.options.store.put(this.record()); continue;
         }
@@ -752,8 +759,9 @@ export class EditorController {
         projected = { ...record, checkpoint: session.checkpoint(), completedCommits: [...completed] };
         if (!ordinary) return projected;
         const { confirmed, draft } = projected.checkpoint;
-        return [projected, ...projectSavedChoiceDependents(record.owner, ordinary.first, confirmed, draft,
-          retired, choice === 'local' ? record.editorId : undefined)];
+        const recovery = projectOrdinaryChoiceDependents(record.owner, ordinary, confirmed, draft,
+          retired, choice === 'local' ? record.editorId : undefined);
+        return { ...recovery, editorRecords: [projected, ...recovery.editorRecords] };
       }, ordinary ? { roots: [ordinary.first] }
         : selection ? { assertScope: requests => requireDocumentChoiceForBranch(cancelled, requests) } : undefined);
     if (!source || !projected) throw new Error('Choice checkpoint projection was not captured');
@@ -765,7 +773,10 @@ export class EditorController {
     const requests = await this.options.commits!.list();
     this.assertCurrent();
     const answered = requests.filter(request => held.includes(request.id) && ['conflict', 'refused'].includes(request.state));
-    const ordinary = answered.flatMap(request => reviewOrdinaryAnswerChoice(request, requests) ?? []);
+    if (!answered.length) return null;
+    const manualChoices = await this.options.manualChoiceSources?.(requests);
+    this.assertCurrent();
+    const ordinary = answered.flatMap(request => reviewOrdinaryAnswerChoice(request, requests, manualChoices) ?? []);
     if (!ordinary.length) return null;
     if (answered.length !== 1 || (this.result && this.result.operationId !== ordinary[0].first.id)) {
       throw Object.assign(new Error('Resolve the saved answers separately'), { code: 'other-changes-first' });

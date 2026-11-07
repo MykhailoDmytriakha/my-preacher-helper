@@ -85,6 +85,18 @@ export function recoverManualScopeRecord(record: ManualScopeRecord, scopeId: str
   } : {}) });
 }
 
+/** A retained Save becomes an unopened stage based on the accepted copy, with no delivery authority. */
+export function retainedManualScopeRecord(source: ManualScopeRecord, scopeId: string, baseline: ResourceSnapshot,
+  draft: DocumentData, predecessor: ManualSavedIntent | null = null): ManualScopeRecord | null {
+  const { owner, resource, selection } = source;
+  const ancestor = validateAncestor(baseline, predecessor, { owner, resource });
+  const savedSelection = selection.map(path => readSelection(ancestor, path));
+  const stage = selection.map(path => readSelection(draft, path));
+  if (equalValues(stage, savedSelection)) return null;
+  return { kind: 'manual', version: 1, owner, resource, scopeId, selection, baseline, predecessor,
+    stage, savedSelection, openingSelection: savedSelection, openingGeneration: 0, generation: 0, savedGeneration: null, active: false };
+}
+
 /** A stage-only selection over a pinned ancestor. Delivery and merge stay in CommitQueue. */
 export class ManualScope {
   private record: ManualScopeRecord;

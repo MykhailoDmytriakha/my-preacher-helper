@@ -54,7 +54,7 @@ export function usePreparationField<T>(resource: ResourceRef | null, path: reado
     // Each failure stays with the form; unchanged input is not repeatedly submitted.
   }, [loading, active, busy, error, readOnly, data, follow, stalePristine]);
   const recovery = useRecoveryDiscovery({ identity: form.recoveryIdentity, enabled: !form.loading && form.active,
-    version: String(form.active),
+    version: form.recoveryVersion,
     list: async () => (await form.listRecoverable()).map(source => ({ id: source.scopeId,
       title: String(source.record.baseline.value?.title ?? resource?.id ?? ''),
       preview: source.record.stage[0]?.exists ? codec.describe(codec.read(source.record.stage[0].value)) : '',

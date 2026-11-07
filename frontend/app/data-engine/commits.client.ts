@@ -3,13 +3,13 @@
 import { cancellationScope } from './atomicCommits';
 import { isCapturedTransferReplay, planCaptureTransfer } from './captureTransfer';
 import { checkpointKey, writeCheckpointRecord, writeChoiceCheckpoints } from './checkpointStorage.client';
-import { assertCommitBatch, assertCommitCapture, assertCommitIdentities, orderCommitRequests, type CommitRequest, type CommitStore } from './commits';
+import { assertCommitBatch, assertCommitCapture, assertCommitIdentities, orderCommitRequests, type ChoiceCheckpoint, type CommitRequest, type CommitStore } from './commits';
 import { captureDeleteOrder, replayDeleteOrder } from './deletionOrdering';
+import { writeManualChoiceRecoveries } from './manualScopes.client';
 import { reconcileRecoveryRecord, validateRecoveryRecord } from './recovery.client';
 import { COMMIT_ROW_KINDS, collectCommitRows, commitCaptureKey, commitDependencyKey, commitGenerationKey, commitProjectionKey, commitRowKey, commitSnapshotKey, readCommitIdentities, readCommitRows } from './retention.client';
 import { createEngineStorageTransaction, engineOwnerRange, validateCommitReferences, type StorageRead } from './storage.client';
 
-import type { EditorRecord } from './controller';
 
 const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 const changed = () => Object.assign(new Error('Commit changed'), { code: 'commit-changed' });
@@ -85,7 +85,7 @@ export function createIndexedDbCommitStore(collect = collectCommitRows): CommitS
     });
   };
   const compareAndSetBatchInternal = async (changes: readonly { previous: CommitRequest; next: CommitRequest }[],
-    project?: (saved: CommitRequest[]) => EditorRecord | EditorRecord[], choiceRequestIds?: readonly string[]): Promise<CommitRequest[]> => {
+    project?: (saved: CommitRequest[]) => ChoiceCheckpoint, choiceRequestIds?: readonly string[]): Promise<CommitRequest[]> => {
     const frozen = clone(changes); assertCommitIdentities(frozen.map(change => change.previous));
     if (!frozen.length) {
       if (project) throw new Error('A checkpoint projection requires at least one changed commit');
@@ -93,7 +93,7 @@ export function createIndexedDbCommitStore(collect = collectCommitRows): CommitS
     }
     return transaction('readwrite', (store, read, done) => {
       const result: CommitRequest[] = []; let remaining = frozen.length;
-      const write = () => frozen.forEach(({ previous, next }, index) => {
+      const write = (before: readonly CommitRequest[] = []) => frozen.forEach(({ previous, next }, index) => {
         read(store.get(commitRowKey(previous)), (current: CommitRequest | undefined) => {
           if (!current || current.id !== previous.id || current.revision !== previous.revision) throw changed();
           if (next.id !== previous.id || next.owner !== previous.owner || next.editorId !== previous.editorId
@@ -107,9 +107,15 @@ export function createIndexedDbCommitStore(collect = collectCommitRows): CommitS
           store.put(saved, commitRowKey(saved)); result[index] = saved;
           if (!--remaining) {
             const projection = project?.(clone(result)) ?? [];
-            const checkpoints = Array.isArray(projection) ? projection : [projection];
-            if (checkpoints.length) writeChoiceCheckpoints(store, read, previous.owner, checkpoints, () => done(result), collect);
-            else collect(store, read, saved.owner, () => done(result));
+            const checkpoints = 'editorRecords' in projection ? projection.editorRecords
+              : Array.isArray(projection) ? projection : [projection];
+            const finish = () => {
+              if (checkpoints.length) writeChoiceCheckpoints(store, read, previous.owner, checkpoints, () => done(result), collect);
+              else collect(store, read, saved.owner, () => done(result));
+            };
+            if ('manualRecoveries' in projection && projection.manualRecoveries.length) {
+              writeManualChoiceRecoveries(store, read, previous.owner, projection.manualRecoveries, before, result, finish);
+            } else finish();
           }
         });
       });
@@ -118,14 +124,14 @@ export function createIndexedDbCommitStore(collect = collectCommitRows): CommitS
         const expected = new Set(frozen.map(change => change.previous.id));
         const frontier = cancellationScope(records, '', choiceRequestIds);
         if (frontier.length !== expected.size || frontier.some(request => !expected.has(request.id))) throw changed();
-        write();
+        write(records);
       });
     });
   };
   const compareAndSetBatch = (changes: readonly { previous: CommitRequest; next: CommitRequest }[],
     choiceRequestIds?: readonly string[]): Promise<CommitRequest[]> => compareAndSetBatchInternal(changes, undefined, choiceRequestIds);
   const compareAndSetWithCheckpoint = (changes: readonly { previous: CommitRequest; next: CommitRequest }[],
-    project: (saved: CommitRequest[]) => EditorRecord | EditorRecord[], choiceRequestIds?: readonly string[]): Promise<CommitRequest[]> =>
+    project: (saved: CommitRequest[]) => ChoiceCheckpoint, choiceRequestIds?: readonly string[]): Promise<CommitRequest[]> =>
     compareAndSetBatchInternal(changes, project, choiceRequestIds);
   return {
     list: owner => transaction('readonly', (store, read, done) => {

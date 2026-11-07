@@ -50,7 +50,7 @@ export function useGroupMeetingEditor(groupId: string, stored: GroupMeetingDate[
   }, [debouncedSave]);
   const first = meetings(form.data)[0];
   const recovery = useRecoveryDiscovery({ identity: form.recoveryIdentity, enabled: !form.loading && form.recoveryReady,
-    version: JSON.stringify([form.active, form.status?.phase]),
+    version: JSON.stringify([form.recoveryVersion, form.status?.phase]),
     list: async () => (await form.listRecoverable()).map(source => {
       const { scopeId, record } = source;
       const first = (record.stage[0].value as unknown as GroupMeetingDate[] | undefined)?.[0];

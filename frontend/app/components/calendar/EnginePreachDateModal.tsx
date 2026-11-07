@@ -49,7 +49,7 @@ export function EnginePreachDateModal({ sermonId, action, onClose }: {
   })();
   const valid = removal || Boolean(row && toDateOnlyKey(row.date) && row.church.name.trim());
   const readOnly = loading || !form.active || form.busy || form.status?.phase === 'deleted';
-  const recovery = useRecoveryDiscovery({ identity: form.recoveryIdentity, enabled: !loading && form.recoveryReady, version: String(form.active),
+  const recovery = useRecoveryDiscovery({ identity: form.recoveryIdentity, enabled: !loading && form.recoveryReady, version: form.recoveryVersion,
     list: async () => (await form.listRecoverable()).map(source => ({ id: source.scopeId,
       title: String(source.record.baseline.value?.title ?? sermonId), preview: ((source.record.stage[0]?.value ?? []) as unknown as PreachDate[])
         .map(date => [date.date, date.church.name, date.audience, date.notes].filter(Boolean).join(' · ')).join('\n').slice(0, 500),

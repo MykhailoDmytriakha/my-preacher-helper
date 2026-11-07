@@ -16,7 +16,7 @@ export function useGroupConductForm(groupId: string, available = true) {
   const form = useDataForm({ collection: 'groups', id: groupId }, 'conduct-setup', [['flow']]);
   const { loading, begin } = form;
   useEffect(() => { if (available && !loading) void begin().catch(() => undefined); }, [available, loading, begin]);
-  const recovery = useRecoveryDiscovery({ identity: form.recoveryIdentity, enabled: !loading && form.recoveryReady, version: String(form.active),
+  const recovery = useRecoveryDiscovery({ identity: form.recoveryIdentity, enabled: !loading && form.recoveryReady, version: form.recoveryVersion,
     list: async () => (await form.listRecoverable()).map(source => {
       const { scopeId, record } = source;
       return { id: scopeId, title: String(record.baseline.value?.title ?? groupId),

@@ -1,15 +1,19 @@
 'use client';
 
+import { isDocumentEditor, manualChoiceRecoveryIdentity, manualScopeIdentity, readManualScopeIdentity } from './editorIdentity';
+import { chooseLocalPlacement } from './localPlacementChoice';
 import { retireManualRecoverySources } from './manualRecovery.client';
-import { ManualScope, type ManualScopeRecord } from './manualScope';
-import { equalValues } from './protocol';
+import { storedManualContinuation } from './manualReturnSources';
+import { ManualScope, retainedManualScopeRecord, type ManualScopeRecord } from './manualScope';
+import { equalValues, mergeDocumentFields, mergeFields } from './protocol';
 import { changedRecoveryChoice, discardRecoveryRecord } from './recoveryDiscard.client';
 import { pinRecoveryVersion, versionRecoveryRecord } from './recoverySource.client';
 import { collectCommitRows } from './retention.client';
-import { createEngineStorageTransaction, engineOwnerRange, validateCommitReferences } from './storage.client';
+import { createEngineStorageTransaction, engineOwnerRange, validateCommitReferences, type StorageRead } from './storage.client';
 
+import type { CommitRequest, ManualChoiceRecovery } from './commits';
 import type { VersionedRecovery } from './recoverySource';
-import type { ResourceRef } from './types';
+import type { DocumentData, ResourceRef } from './types';
 
 export interface StoredManualScope extends VersionedRecovery {
   owner: string;
@@ -56,6 +60,57 @@ function validate(value: ManualStorageRecord, owner = value.owner, scopeId = val
     isCurrent: () => true, persist: async () => undefined, save: async () => { throw new Error('Validation cannot submit'); },
   } }, record);
   return copy(value);
+}
+
+/** Retain exact form Saves in the same transaction that retires their blocked requests. */
+export function writeManualChoiceRecoveries(store: IDBObjectStore, read: StorageRead, owner: string,
+  recoveries: readonly ManualChoiceRecovery[], before: readonly CommitRequest[], retired: readonly CommitRequest[], done: () => void): void {
+  const byId = new Map(retired.map(request => [request.id, request]));
+  const changed = () => Object.assign(new Error('The saved form changed'), { code: 'decision-changed' });
+  const next = (index: number): void => {
+    if (index === recoveries.length) { done(); return; }
+    const { rootId, requestId, stored } = recoveries[index];
+    const root = byId.get(rootId), request = byId.get(requestId);
+    const identity = request && readManualScopeIdentity(request.editorId);
+    if (!root?.cancelledByChoice || !request?.retainedAfterChoice || request.predecessor !== rootId
+      || !root.value || !request.value || !stored.value || root.owner !== owner || request.owner !== owner
+      || !equalValues(root.baseline.resource, stored.resource) || !equalValues(request.baseline.resource, stored.resource)
+      || !identity || !isDocumentEditor(identity.parentEditorId, stored.resource)) throw changed();
+    const base = root.value, saved = request.value, accepted = stored.value;
+    read(store.get(key(owner, request.editorId)), (source: ManualStorageRecord | undefined) => {
+      const original = source && validate(source, owner, request.editorId);
+      const proved = storedManualContinuation(original, root, request, before);
+      if (!original?.record || !proved) throw changed();
+      if (!equalValues(original.record, proved)) {
+        // A capture can survive the tab that was writing its separate form receipt. Record that
+        // receipt before retiring the capture, while keeping any later private stage it proved.
+        const repaired = validate({ ...original, record: proved, commitReferences: [request.id] });
+        store.put(versionRecoveryRecord(repaired), key(owner, request.editorId));
+      }
+      const merged = mergeDocumentFields(base, saved, accepted);
+      const draft = chooseLocalPlacement(stored.resource.collection, base, saved, accepted,
+        merged.value.exists ? merged.value.value as DocumentData : null, mergeFields);
+      if (!draft) throw changed();
+      const scopeId = manualScopeIdentity(identity.parentEditorId, identity.slot, manualChoiceRecoveryIdentity(rootId, requestId));
+      // A coincident stored value does not retire a later Save. The chosen root may still be
+      // kept and sent later. Keep its real capture as ancestry without calling it confirmed.
+      const record = retainedManualScopeRecord(proved, scopeId, stored, draft)
+        ?? retainedManualScopeRecord(proved, scopeId, stored, saved, {
+          id: root.id, owner, resource: stored.resource, value: base, predecessorId: root.predecessor,
+        });
+      if (!record) { next(index + 1); return; }
+      read(store.get(key(owner, scopeId)), current => {
+        if (current) throw changed();
+        const commitReferences = record.predecessor ? [record.predecessor.id] : [];
+        const value = validate({ owner, scopeId, ...identity, record, commitReferences });
+        validateCommitReferences(store, read, owner, commitReferences, () => {
+          store.put(versionRecoveryRecord(value), key(owner, scopeId));
+          next(index + 1);
+        });
+      });
+    });
+  };
+  next(0);
 }
 
 /** Shares the commit database so a saved form cannot race collection of its predecessor. */

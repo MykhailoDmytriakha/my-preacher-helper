@@ -1241,6 +1241,7 @@ export function useDataForm(resource: ResourceRef | null, slot: string, selectio
     data: ownStage ?? document.data,
     /** Settled loading can mean an opening failed; only an acquired manual form can list its drafts. */
     recoveryReady: Boolean(targetForm),
+    recoveryVersion: JSON.stringify([Boolean(stage?.record.active), Boolean(stage?.documentChoiceRequired), document.status?.phase]),
     borrowedRecoveryIds: [...new Set((document.state?.borrowedManualAnswers ?? []).filter(id => readManualScopeIdentity(id)?.slot === slot))],
     exactChoice: target?.state?.exactChoice ?? false,
     // The opening may include submitted predecessors; it is never a confirmed snapshot.

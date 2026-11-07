@@ -60,6 +60,17 @@ export interface CommitRequest {
   unfinalized: string[];
 }
 
+export interface ManualChoiceRecovery {
+  rootId: string;
+  requestId: string;
+  stored: ResourceSnapshot;
+}
+
+export type ChoiceCheckpoint = EditorRecord | EditorRecord[] | {
+  editorRecords: EditorRecord[];
+  manualRecoveries: ManualChoiceRecovery[];
+};
+
 export interface CommitStore {
   list(owner: string): Promise<CommitRequest[]>;
   /** Full cancellation evidence is needed only if this owner has an analysis action. */
@@ -91,7 +102,7 @@ export interface CommitStore {
     choiceRequestIds?: readonly string[]): Promise<CommitRequest[]>;
   /** Cancellation and its chosen editor projection commit together, or neither is published. */
   compareAndSetWithCheckpoint?(changes: readonly { previous: CommitRequest; next: CommitRequest }[],
-    project: (saved: CommitRequest[]) => EditorRecord | EditorRecord[], choiceRequestIds?: readonly string[]): Promise<CommitRequest[]>;
+    project: (saved: CommitRequest[]) => ChoiceCheckpoint, choiceRequestIds?: readonly string[]): Promise<CommitRequest[]>;
 }
 
 export function assertCommitIdentities(requests: readonly CommitRequest[]): void {
@@ -472,7 +483,7 @@ export class CommitQueue {
 
   /** An editor choice owns both the cancellation and its exact durable checkpoint. */
   async cancelWithCheckpoint(editorId: string, additionalRequestIds: readonly string[],
-    project: (saved: CommitRequest[]) => EditorRecord | EditorRecord[],
+    project: (saved: CommitRequest[]) => ChoiceCheckpoint,
     review?: { roots: readonly CommitRequest[]; retained?: ReadonlySet<string> }
       | { assertScope: (requests: readonly CommitRequest[]) => void }): Promise<void> {
     if (!this.options.store.compareAndSetWithCheckpoint) throw new Error('Atomic choice checkpoint storage is required');

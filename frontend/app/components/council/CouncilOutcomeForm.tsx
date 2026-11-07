@@ -26,7 +26,7 @@ export function CouncilOutcomeForm({ councilId, topicId, onClose }: {
   const topic = topics(form.data).find(item => item.id === topicId);
   const initial = topics(form.initialData).find(item => item.id === topicId);
   const recovery = useRecoveryDiscovery({
-    identity: form.recoveryIdentity, enabled: !loading && form.recoveryReady, version: String(form.active),
+    identity: form.recoveryIdentity, enabled: !loading && form.recoveryReady, version: form.recoveryVersion,
     list: async () => (await form.listRecoverable()).map(source => {
       const { scopeId, record } = source;
       const selected = record.stage[0];

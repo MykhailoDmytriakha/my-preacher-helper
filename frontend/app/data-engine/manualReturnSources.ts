@@ -1,10 +1,10 @@
 import { areDifferentTabManualParents, areSameTabManualParents, readManualScopeIdentity } from './editorIdentity';
-import { reconcileManualCaptures } from './manualScope';
+import { projectManualSelection, reconcileManualCaptures } from './manualScope';
 import { equalValues } from './protocol';
 
 import type { CommitRequest } from './commits';
 import type { ManualScope, ManualCapture } from './manualScope';
-import type { ManualScopeStore } from './manualScopes.client';
+import type { ManualScopeStore, ManualStorageRecord } from './manualScopes.client';
 import type { SessionCheckpoint } from './session';
 import type { ResourceRef } from './types';
 
@@ -33,6 +33,32 @@ export function reopenedManualAnswerScope(request: CommitRequest, editorId: stri
   return hasForeignContinuation(origin, new Set([request.id]), resource, related, requests) ? request.editorId : undefined;
 }
 
+/** Validate the exact saved capture even when the form has subsequently staged other words. */
+export function storedManualSave(scope: ManualStorageRecord | undefined, owner: string, scopeId: string,
+  resource: ResourceRef, requests: readonly CommitRequest[]) {
+  const identity = readManualScopeIdentity(scopeId);
+  if (!identity || !scope?.record || scope.owner !== owner || scope.scopeId !== scopeId || scope.parentEditorId !== identity.parentEditorId
+    || scope.slot !== identity.slot || scope.record.scopeId !== scopeId || scope.record.owner !== owner
+    || !equalValues(scope.record.resource, resource)) return undefined;
+  const record = reconcileManualCaptures(scope.record, requests);
+  const saved = record.predecessor;
+  if (!saved || record.savedGeneration === null) return undefined;
+  const request = requests.find(row => row.id === saved.id);
+  if (!request || request.owner !== owner || request.editorId !== scopeId || request.editGeneration !== record.savedGeneration
+    || !equalValues(request.baseline.resource, resource) || request.predecessor !== saved.predecessorId
+    || !equalValues(request.value, saved.value)) return undefined;
+  return { record, request };
+}
+
+/** A form continuation may only own changes inside its durable selection. */
+export function storedManualContinuation(scope: ManualStorageRecord | undefined, root: CommitRequest,
+  request: CommitRequest, requests: readonly CommitRequest[]) {
+  const proved = storedManualSave(scope, root.owner, request.editorId, root.baseline.resource, requests);
+  if (proved?.request.id !== request.id || !root.value || !request.value
+    || !equalValues(projectManualSelection(root.value, request.value, proved.record.selection), request.value)) return undefined;
+  return proved.record;
+}
+
 /** The durable form envelope, rather than the spelling of a request ID, proves its source. */
 export async function manualReturnSources(store: ManualScopeStore, owner: string, editorId: string,
   resource: ResourceRef, requests: readonly CommitRequest[]): Promise<Map<string, string>> {
@@ -49,15 +75,7 @@ export async function manualReturnSources(store: ManualScopeStore, owner: string
       && hasForeignContinuation(origin, new Set(outstanding.filter(row => row.editorId === scopeId).map(row => row.id)), resource, requests, byId);
     if (!otherTab && !reopened) return;
     const scope = await store.read(owner, scopeId);
-    if (!scope?.record || scope.owner !== owner || scope.scopeId !== scopeId || scope.parentEditorId !== identity.parentEditorId
-      || scope.slot !== identity.slot || scope.record.scopeId !== scopeId || scope.record.owner !== owner
-      || !equalValues(scope.record.resource, resource)) return;
-    const record = reconcileManualCaptures(scope.record, requests);
-    const saved = record.predecessor;
-    if (!saved || record.savedGeneration === null) return;
-    let request = byId.get(saved.id);
-    if (!request || request.editorId !== scopeId || request.editGeneration !== record.savedGeneration
-      || request.predecessor !== saved.predecessorId || !equalValues(request.value, saved.value)) return;
+    let request = storedManualSave(scope, owner, scopeId, resource, requests)?.request;
     while (request?.editorId === scopeId && !proven.has(request.id)) {
       proven.set(request.id, scopeId);
       request = request.predecessor ? byId.get(request.predecessor) : undefined;
@@ -72,8 +90,8 @@ export function markBorrowedManualSources(checkpoint: SessionCheckpoint, sources
   }
 }
 
-export function sameManualSources(before?: ReadonlyMap<string, string>, after?: ReadonlyMap<string, string>): boolean {
-  return (before?.size ?? 0) === (after?.size ?? 0) && [...before ?? []].every(([id, scopeId]) => after?.get(id) === scopeId);
+export function sameManualSources<T>(before?: ReadonlyMap<string, T>, after?: ReadonlyMap<string, T>): boolean {
+  return (before?.size ?? 0) === (after?.size ?? 0) && [...before ?? []].every(([id, source]) => equalValues(after?.get(id), source));
 }
 
 export function shouldFollowReopenedManualStage(stage: ReturnType<ManualScope['getState']>, capture: ManualCapture): boolean {

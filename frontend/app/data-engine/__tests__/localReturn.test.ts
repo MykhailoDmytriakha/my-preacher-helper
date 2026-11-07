@@ -6,6 +6,8 @@ import { recoveryHeldOpen } from '@/data-engine/openDocumentAnswers';
 import { DataSession } from '@/data-engine/session';
 import { describeManualSync, describeSync } from '@/data-engine/status';
 
+import type { StoredManualScope } from '@/data-engine/manualScopes.client';
+
 jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
 const resource = { collection: 'groups', id: 'offline-group-279' };
 const original = { userId: 'owner', title: 'Opening group', status: 'draft', templates: [], flow: [], createdAt: 'now', updatedAt: 'now' };
@@ -188,7 +190,7 @@ it.each(['source takes stored', 'new editor keeps mine', 'new editor takes newer
   },
 );
 
-it.each(['local', 'remote', 'local after a manual continuation'] as const)('keeps a branched ordinary flow answer out of the conduct form: %s', async choice => {
+it.each(['local', 'remote', 'local after a manual continuation', 'local after an unproven manual leaf'] as const)('keeps a branched ordinary flow answer out of the conduct form: %s', async choice => {
   const { h, a, b, inA, inB } = await setup();
   const flow = (durationMin: number) => [{ id: 'block', templateId: 'template', order: 0, durationMin }];
   try {
@@ -215,14 +217,14 @@ it.each(['local', 'remote', 'local after a manual continuation'] as const)('keep
     await waitFor(() => expect(fresh.getState().savedIntentReplaceable).toBe(true));
     const form = fresh.form('conduct-setup', [['flow']]);
     await form.begin();
-    const mixed = choice === 'local after a manual continuation';
+    const mixed = choice.startsWith('local after');
     if (mixed) {
       // A Save admitted in a different form can arrive after this editor acquired the ordinary answer.
       const sibling = queued.find(request => request.predecessor === first.id)!;
       const value = { ...sibling.value!, flow: flow(50) };
       const editorId = manualScopeIdentity(editorIdentity('tab-C', resource, 'group', 'conduct-C'), 'conduct-setup');
       await h.commits.create({ ...sibling, id: 'manual-flow-branch', editorId, editGeneration: 1,
-        predecessor: sibling.id, value, intended: value });
+        predecessor: choice === 'local after an unproven manual leaf' ? first.id : sibling.id, value, intended: value });
     }
     await expect(form.resolve(choice === 'remote' ? 'remote' : 'local')).rejects.toMatchObject({ code: 'other-changes-first' });
     if (mixed) {
@@ -242,6 +244,132 @@ it.each(['local', 'remote', 'local after a manual continuation'] as const)('keep
     expect(retained).toHaveLength(2);
   } finally { a.dispose(); b.dispose(); }
 });
+
+it.each([
+  'source takes stored', 'source keeps mine', 'fresh editor takes stored', 'notice takes stored',
+  'source preserves later form typing', 'source keeps mine against matching stored form words', 'notice takes newer stored words',
+  'source recovers a saved form after interrupted receipt',
+] as const)(
+  'settles an early ordinary answer without losing a separately saved manual continuation: %s', async choice => {
+    const { h, a, b, inA, inB } = await setup();
+    const flow = (durationMin: number) => [{ id: 'block', templateId: 'template', order: 0, durationMin }];
+    try {
+      b.setVisible(false);
+      await inA.commit(current => ({ ...current!, flow: flow(20) }));
+      const [first] = await h.commits.list('owner');
+      b.setVisible(true);
+      await waitFor(() => expect(inB.getState().checkpoint.draft?.flow).toEqual(flow(20)));
+      const form = inB.form('conduct-setup', [['flow']]);
+      await form.begin();
+      await form.update(value => ({ ...value, flow: flow(40) }));
+      const interrupted = choice === 'source recovers a saved form after interrupted receipt';
+      const manualKey = JSON.stringify(['manual', 'owner', form.getState()?.record.scopeId]);
+      const beforeReceipt = h.storage.rows.get(manualKey) as StoredManualScope;
+      b.setVisible(false);
+      await inA.commit(current => ({ ...current!, flow: flow(30),
+        ...(choice === 'fresh editor takes stored' ? { description: 'Ordinary-only words' } : {}) }));
+      await form.save();
+      const saved = await h.commits.list('owner');
+      const branches = saved.filter(request => request.predecessor === first.id);
+      expect(branches.map(request => request.value)).toEqual([
+        expect.objectContaining({ flow: flow(30) }),
+        expect.objectContaining({ flow: flow(40) }),
+      ]);
+      const sourceScope = branches[1].editorId;
+      expect(sourceScope).toBe(form.getState()?.record.scopeId);
+      if (interrupted) {
+        inB.dispose(); await settleEngine();
+        expect(beforeReceipt.record.savedSelection).toEqual([{ exists: true, value: flow(20) }]);
+        // The request transaction completed, but the separate form receipt was still pending.
+        h.storage.rows.set(manualKey, beforeReceipt);
+      }
+      const laterTyping = choice === 'source preserves later form typing';
+      if (laterTyping) {
+        await form.begin();
+        await form.update(value => ({ ...value, flow: flow(50) }));
+      }
+
+      const newerStored = choice === 'notice takes newer stored words';
+      const storedDuration = choice === 'source keeps mine against matching stored form words' ? 40 : 10;
+      h.silentRemote({ flow: flow(newerStored ? 40 : storedDuration) });
+      a.setOnline(true);
+      await a.retry();
+      await waitFor(() => expect(inA.getState().result).toMatchObject({ kind: 'conflict', operationId: first.id }));
+      expect((await h.commits.list('owner')).map(request => request.state)).toEqual(['conflict', 'queued', 'queued']);
+
+      if (!laterTyping) inB.dispose();
+      if (newerStored) {
+        h.silentRemote({ flow: flow(storedDuration) });
+        await a.retry(resource);
+        await waitFor(async () => expect(await b.peekCached(resource)).toEqual(h.server));
+      }
+      let reopened;
+      if (choice === 'source takes stored' || laterTyping || interrupted) {
+        if (choice === 'source takes stored') {
+          const before = await h.commits.list('owner');
+          h.storage.writeFailureFor = key => Array.isArray(key) && key[0] === 'manual' && key[1] === 'owner' && key[2] !== sourceScope;
+          await expect(inA.acceptRemote()).rejects.toThrow('disk full');
+          h.storage.writeFailureFor = undefined;
+          expect(await h.commits.list('owner')).toEqual(before);
+          expect(inA.getState().result?.kind).toBe('conflict');
+        }
+        await expect(inA.acceptRemote()).resolves.toBeUndefined();
+        expect(inA.getState().checkpoint.draft).toMatchObject({ flow: flow(10) });
+        if (interrupted) {
+          const receipt = h.storage.rows.get(manualKey) as StoredManualScope;
+          expect(receipt.record.predecessor?.id).toBe(branches[1].id);
+          expect(receipt.record.savedSelection).toEqual([{ exists: true, value: flow(40) }]);
+        }
+      } else if (choice === 'source keeps mine' || storedDuration === 40) {
+        await expect(inA.keepLocal()).resolves.toBeUndefined();
+        expect(inA.getState().checkpoint.draft).toMatchObject({ flow: flow(20) });
+      } else {
+        inA.dispose();
+        if (choice === 'notice takes stored' || newerStored) {
+          expect(await b.takeStoredVersion(resource, [first.id])).toBe(1);
+        } else {
+          reopened = await b.openEditor(resource, editorIdentity('tab-B', resource, 'group', 'conduct-return'));
+          expect(reopened.getState().result).toMatchObject({ kind: 'conflict', operationId: first.id });
+          await waitFor(() => expect(reopened!.getState().savedIntentReplaceable).toBe(true));
+          await waitFor(() => expect(b.getOpenAnswerScopes()[0]?.laterSaves?.map(save => save.draft?.flow))
+            .toEqual(expect.arrayContaining([flow(30), flow(40)])));
+          const current = reopened.getState().checkpoint;
+          const composed = { owner: 'owner', editorId: 'earlier-form-parent', prepared: null, unfinalized: [],
+            checkpoint: { ...current, draft: { ...branches[0].value!, flow: flow(40) }, pending: {
+              ...current.pending, ...Object.fromEntries(branches.map(branch => [branch.id, { generation: branch.editGeneration, value: branch.value }])),
+            } } };
+          const openAnswers = b.getOpenAnswerScopes();
+          expect(recoveryHeldOpen([composed], openAnswers)).toBe(true);
+          expect(recoveryHeldOpen([{ ...composed, checkpoint: { ...composed.checkpoint,
+            draft: { ...composed.checkpoint.draft, title: 'Unseen private words' },
+          } }], openAnswers)).toBe(false);
+          await reopened.acceptRemote();
+          expect(reopened.getState().checkpoint.draft).toMatchObject({ flow: flow(10) });
+        }
+      }
+      if (laterTyping) {
+        expect(form.getState()?.record.stage).toEqual([{ exists: true, value: flow(50) }]);
+        inB.dispose();
+      }
+      expect((await b.listRecoverable(resource)).map(copy => copy.record.checkpoint.draft?.flow)).toContainEqual(flow(30));
+      reopened ??= await b.openEditor(resource, editorIdentity('tab-B', resource, 'group', 'conduct-return'));
+      const restoredForm = reopened.form('conduct-setup', [['flow']]);
+      const choices = await restoredForm.listRecoverable();
+      const retained = choices.find(candidate => candidate.scopeId !== sourceScope);
+      expect(retained?.record.stage).toEqual([{ exists: true, value: flow(40) }]);
+      if (laterTyping) expect(choices.find(candidate => candidate.scopeId === sourceScope)?.record.stage)
+        .toEqual([{ exists: true, value: flow(50) }]);
+      if (interrupted) {
+        expect(choices.some(candidate => candidate.scopeId === sourceScope)).toBe(false);
+        await expect(restoredForm.recover(sourceScope)).rejects.toMatchObject({ code: 'decision-changed' });
+      }
+      await restoredForm.recover(retained!.scopeId);
+      expect(restoredForm.getState()?.value?.flow).toEqual(flow(40));
+      expect(h.server.value?.flow).toEqual(flow(storedDuration));
+      expect(h.transport.send).toHaveBeenCalledTimes(1);
+    } finally { a.dispose(); b.dispose(); }
+  },
+);
 
 it('rejects a field choice if another ordinary continuation lands during retirement', async () => {
   const { h, a, b, inA, inB } = await setup();

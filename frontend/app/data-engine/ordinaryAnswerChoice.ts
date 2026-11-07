@@ -1,21 +1,28 @@
 import { cancellationScope } from './atomicCommits';
 import { orderCommitRequests } from './commits';
-import { isDocumentEditor } from './editorIdentity';
+import { isDocumentEditor, readManualScopeIdentity } from './editorIdentity';
 import { chooseLocalPlacement } from './localPlacementChoice';
 import { projectSavedChoiceDependents } from './manualChoice';
+import { storedManualContinuation } from './manualReturnSources';
+import { projectManualSelection, type ManualPath } from './manualScope';
 import { equalValues, mergeDocumentFields, mergeFields } from './protocol';
 import { canReplaceSnapshot } from './snapshotFreshness';
 import { snapshotBelongsToOwner } from './snapshotIdentity';
 
-import type { CommitRequest } from './commits';
-import type { CouncilRefusalCoverage, OpenDocumentAnswer } from './openDocumentAnswers';
+import type { CommitRequest, ManualChoiceRecovery } from './commits';
+import type { EditorRecord } from './controller';
+import type { ManualScopeStore } from './manualScopes.client';
+import type { CouncilRefusalCoverage, CoveredSavedAnswer, OpenDocumentAnswer } from './openDocumentAnswers';
 import type { SessionCheckpoint } from './session';
 import type { CommandResult, DocumentData, ResourceRef, ResourceSnapshot } from './types';
+
+export type ManualChoiceSources = ReadonlyMap<string, { scopeId: string; selection: readonly ManualPath[] }>;
 
 export interface OrdinaryAnswerChoice {
   first: CommitRequest;
   answer: Extract<CommandResult, { kind: 'conflict' | 'refused' }>;
   scope: readonly CommitRequest[];
+  manual: readonly CommitRequest[];
   branched: boolean;
 }
 
@@ -53,30 +60,57 @@ function hasFork(scope: readonly CommitRequest[]): boolean {
   return false;
 }
 
-/** Prove one answered edit and its complete tree of unsent ordinary updates. */
-export function ordinaryAnswerChoice(first: CommitRequest, requests: readonly CommitRequest[]): OrdinaryAnswerChoice | null {
+/** Identify an ordinary tree, allowing only independent form leaves directly below its root. */
+function candidateOrdinaryAnswer(first: CommitRequest, requests: readonly CommitRequest[]): OrdinaryAnswerChoice | null {
   const answer = ordinaryAnswer(first);
   if (!answer) return null;
   let scope: CommitRequest[];
   try { scope = orderCommitRequests(answerScope(first, requests)); } catch { return null; }
   if (scope[0]?.id !== first.id) return null;
   const proved = new Set([first.id]);
+  const manual: CommitRequest[] = [];
   for (const request of scope.slice(1)) {
     if (!request.predecessor || !proved.has(request.predecessor) || request.state !== 'queued'
-      || request.initialized || request.command || !ordinaryUpdate(request)
-      || !equalValues(request.baseline.resource, first.baseline.resource)) return null;
-    proved.add(request.id);
+      || request.initialized || request.command || !equalValues(request.baseline.resource, first.baseline.resource)) return null;
+    if (ordinaryUpdate(request)) { proved.add(request.id); continue; }
+    const identity = readManualScopeIdentity(request.editorId);
+    if (!identity || !isDocumentEditor(identity.parentEditorId, first.baseline.resource) || request.predecessor !== first.id
+      || !request.baseline.value || !request.value || request.atomic || request.retentionScope
+      || request.transferredFrom || request.transferredTo) return null;
+    manual.push(request);
   }
-  return { first, answer, scope, branched: hasFork(scope) };
+  const branched = hasFork(scope);
+  if (manual.length && !branched) return null;
+  return { first, answer, scope, manual, branched };
+}
+
+/** The shape of a manual identity alone cannot grant an ordinary editor its saved work. */
+export function ordinaryAnswerChoice(first: CommitRequest, requests: readonly CommitRequest[],
+  sources?: ManualChoiceSources): OrdinaryAnswerChoice | null {
+  const choice = candidateOrdinaryAnswer(first, requests);
+  return choice && choice.manual.every(request => sources?.get(request.id)?.scopeId === request.editorId) ? choice : null;
+}
+
+export async function manualOrdinaryChoiceSources(store: ManualScopeStore, owner: string, resource: ResourceRef,
+  requests: readonly CommitRequest[]): Promise<ManualChoiceSources> {
+  const related = requests.filter(request => request.owner === owner && equalValues(request.baseline.resource, resource));
+  const sources = new Map<string, { scopeId: string; selection: readonly ManualPath[] }>();
+  await Promise.all(related.flatMap(root => (candidateOrdinaryAnswer(root, requests)?.manual ?? []).map(async request => {
+    const scope = await store.read(owner, request.editorId);
+    const record = storedManualContinuation(scope, root, request, related);
+    if (record) sources.set(request.id, { scopeId: record.scopeId, selection: record.selection });
+  })));
+  return sources;
 }
 
 /** When no single continuation can be opened, the only common answered Save may still be reviewed. */
-export function commonOrdinaryAnswer(owner: string, resource: ResourceRef, requests: readonly CommitRequest[]): CommitRequest | undefined {
+export function commonOrdinaryAnswer(owner: string, resource: ResourceRef, requests: readonly CommitRequest[],
+  sources?: ManualChoiceSources): CommitRequest | undefined {
   const unfinished = requests.filter(request => request.owner === owner && equalValues(request.baseline.resource, resource)
     && request.state !== 'acknowledged' && request.state !== 'cancelled');
   const answered = unfinished.filter(request => request.state === 'conflict' || request.state === 'refused');
   if (answered.length !== 1) return undefined;
-  const choice = ordinaryAnswerChoice(answered[0], requests);
+  const choice = ordinaryAnswerChoice(answered[0], requests, sources);
   return choice?.branched && choice.scope.length === unfinished.length ? choice.first : undefined;
 }
 
@@ -104,9 +138,10 @@ function lineage(byId: ReadonlyMap<string, CommitRequest>, tip: CommitRequest): 
 }
 
 /** A different kind of saved action cannot be swept by an ordinary answer choice. */
-export function reviewOrdinaryAnswerChoice(first: CommitRequest, requests: readonly CommitRequest[]): OrdinaryAnswerChoice | null {
+export function reviewOrdinaryAnswerChoice(first: CommitRequest, requests: readonly CommitRequest[],
+  sources?: ManualChoiceSources): OrdinaryAnswerChoice | null {
   if (!ordinaryAnswer(first)) return null;
-  const choice = ordinaryAnswerChoice(first, requests);
+  const choice = ordinaryAnswerChoice(first, requests, sources);
   if (!choice) throw Object.assign(new Error('The later saved work needs its own review'), { code: 'decision-changed' });
   return choice;
 }
@@ -140,16 +175,31 @@ export function ordinaryChoiceCheckpoint(choice: OrdinaryAnswerChoice, source: S
   return { ...source, confirmed, draft: first.initialized ? first.intended : first.value, remoteCandidate };
 }
 
+/** Keep a later form Save in its own form, separate from the editor's retained copies. */
+export function projectOrdinaryChoiceDependents(owner: string, choice: OrdinaryAnswerChoice, stored: ResourceSnapshot,
+  draft: DocumentData | null, retired: CommitRequest[], decidingEditorId?: string) {
+  const manual = new Set(choice.manual.map(request => request.id));
+  return {
+    editorRecords: projectSavedChoiceDependents(owner, choice.first, stored, draft,
+      retired.filter(request => !manual.has(request.id)), decidingEditorId),
+    manualRecoveries: choice.manual.map(request => ({ rootId: choice.first.id, requestId: request.id, stored })),
+  };
+}
+
 /** Preserve each reviewed chain's own later changes when taking the stored version from the notice. */
 export function ordinaryStoredChoice(owner: string, choices: readonly OrdinaryAnswerChoice[], retired: CommitRequest[], known?: ResourceSnapshot) {
-  return choices.flatMap(choice => {
+  const editorRecords: EditorRecord[] = [], manualRecoveries: ManualChoiceRecovery[] = [];
+  for (const choice of choices) {
     const scope = cancellationScope(retired, '', [choice.first.id], true);
     assertOrdinaryAnswerScope(choice, scope);
-    const base = ordinaryBasis(choice.first);
-    const stored = choice.answer.kind === 'conflict' ? choice.answer.snapshot
-      : known && canReplaceSnapshot(base, known) && snapshotBelongsToOwner(owner, known) ? known : base;
-    return projectSavedChoiceDependents(owner, choice.first, stored, stored.value, scope);
-  });
+    const answered = choice.answer.kind === 'conflict' ? choice.answer.snapshot : ordinaryBasis(choice.first);
+    const stored = known && equalValues(answered.resource, known.resource) && snapshotBelongsToOwner(owner, known)
+      && canReplaceSnapshot(answered, known) ? known : answered;
+    const projection = projectOrdinaryChoiceDependents(owner, choice, stored, stored.value, scope);
+    editorRecords.push(...projection.editorRecords);
+    manualRecoveries.push(...projection.manualRecoveries);
+  }
+  return { editorRecords, manualRecoveries };
 }
 
 function hasOnlyCapturedWords(checkpoint: SessionCheckpoint, request: CommitRequest): boolean {
@@ -175,12 +225,28 @@ function equivalentCouncilCopy(checkpoint: SessionCheckpoint, first: CommitReque
   return variants.some(matches) ? variants.find(variant => !matches(variant)) : undefined;
 }
 
+/** A form's parent overlays only its selected fields on the ordinary draft it currently holds. */
+function composedManualCoverage(choice: OrdinaryAnswerChoice, sources: ManualChoiceSources): CoveredSavedAnswer[] {
+  const operationIds = choice.scope.map(request => request.id);
+  const ordinary = choice.scope.filter(request => ordinaryUpdate(request));
+  return choice.manual.flatMap(request => {
+    const source = sources.get(request.id);
+    if (!source || !request.value) return [];
+    const value = request.value;
+    return ordinary.flatMap(base => {
+      try { return [{ id: request.id, operationIds, draft: projectManualSelection(base.value!, value, source.selection) }]; }
+      catch { return []; } // An ordinary branch may have removed the selected item entirely.
+    });
+  });
+}
+
 /** The inline question covers proved copies of the same work, while unrelated or unsent words stay visible. */
-export function ordinaryAnswerCoverage(checkpoint: SessionCheckpoint, requests: readonly CommitRequest[]): Pick<OpenDocumentAnswer, 'laterSaves' | 'councilRefusal'> {
+export function ordinaryAnswerCoverage(checkpoint: SessionCheckpoint, requests: readonly CommitRequest[],
+  sources?: ManualChoiceSources): Pick<OpenDocumentAnswer, 'laterSaves' | 'councilRefusal'> {
   const held = Object.keys(checkpoint.pending);
   if (held.length !== 1) return {};
   const first = requests.find(request => request.id === held[0]);
-  const choice = first && ordinaryAnswerChoice(first, requests);
+  const choice = first && ordinaryAnswerChoice(first, requests, sources);
   if (!choice) return {};
   if (choice.scope.length === 1 && choice.answer.kind === 'refused' && checkpoint.confirmed.resource.collection === 'councils') {
     const equivalent = equivalentCouncilCopy(checkpoint, choice.first);
@@ -189,7 +255,9 @@ export function ordinaryAnswerCoverage(checkpoint: SessionCheckpoint, requests: 
   }
   if (choice.scope.length === 1 || !hasOnlyCapturedWords(checkpoint, choice.first)) return {};
   const byId = new Map(choice.scope.map(request => [request.id, request]));
-  return { laterSaves: choice.scope.slice(1).map(request => ({
+  const laterSaves: CoveredSavedAnswer[] = choice.scope.slice(1).map(request => ({
     id: request.id, operationIds: lineage(byId, request), draft: request.value,
-  })) };
+  }));
+  if (sources?.size) laterSaves.push(...composedManualCoverage(choice, sources));
+  return { laterSaves };
 }

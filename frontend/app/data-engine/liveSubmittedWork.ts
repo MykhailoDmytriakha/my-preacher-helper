@@ -2,7 +2,7 @@ import { atomicParticipants, isLiveWholeAction } from './atomicCommits';
 import { isDocumentDeletion } from './deletionOrdering';
 import { areDifferentTabEditors, areDifferentTabManualParents } from './editorIdentity';
 import { markBorrowedManualSources } from './manualReturnSources';
-import { commonOrdinaryAnswer, ordinaryAnswerChoice } from './ordinaryAnswerChoice';
+import { commonOrdinaryAnswer, ordinaryAnswerChoice, type ManualChoiceSources } from './ordinaryAnswerChoice';
 import { equalValues } from './protocol';
 import { DataSession } from './session';
 import { canReplaceSnapshot } from './snapshotFreshness';
@@ -111,20 +111,22 @@ export function sameLiveAtomicProof(proof: readonly CommitRequest[], requests: r
 }
 
 /** A document editor can review the shared answer without picking a competing continuation. */
-export function submittedEditorCheckpoint(owner: string, resource: ResourceRef, requests: readonly CommitRequest[]): SessionCheckpoint | null {
+export function submittedEditorCheckpoint(owner: string, resource: ResourceRef, requests: readonly CommitRequest[],
+  manualChoices?: ManualChoiceSources): SessionCheckpoint | null {
   const complete = submittedWorkCheckpoint(owner, resource, requests);
   if (complete) return complete;
-  const root = commonOrdinaryAnswer(owner, resource, requests);
+  const root = commonOrdinaryAnswer(owner, resource, requests, manualChoices);
   return root ? submittedWorkCheckpoint(owner, resource, requests.filter(request =>
     request.id === root.id || request.state === 'acknowledged' || request.state === 'cancelled')) : null;
 }
 
 /** Eligibility for a live clean editor; reconstruction and ACK projection retain their existing owners. */
 export function liveSubmittedWork(owner: string, editorId: string, current: SessionCheckpoint,
-  requests: readonly CommitRequest[], manualSources?: ReadonlyMap<string, string>): { checkpoint: SessionCheckpoint; acknowledged: CommitRequest[]; atomicProof: CommitRequest[]; answer: CommitRequest['result'] } | null {
+  requests: readonly CommitRequest[], manualSources?: ReadonlyMap<string, string>,
+  manualChoices?: ManualChoiceSources): { checkpoint: SessionCheckpoint; acknowledged: CommitRequest[]; atomicProof: CommitRequest[]; answer: CommitRequest['result'] } | null {
   if (current.conflicts.length || current.remoteCandidate) return null;
   const resource = current.confirmed.resource;
-  const complete = submittedEditorCheckpoint(owner, resource, requests);
+  const complete = submittedEditorCheckpoint(owner, resource, requests, manualChoices);
   if (!complete) return null;
   const all = requests.filter(request => complete.pending[request.id]);
   const chain = answeredOrdinaryPrefix(all, requests);
