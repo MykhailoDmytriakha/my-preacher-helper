@@ -1,5 +1,5 @@
 import { AddressedFailures } from './failures';
-import { commandFingerprint, validateCommand } from './protocol';
+import { commandFingerprint, confirmedExistingDeletion, validateCommand } from './protocol';
 
 import type { CommandResult, DataCommand, EngineTransport, JournalEntry, JournalStore } from './types';
 
@@ -74,7 +74,8 @@ export class DataEngineRuntime {
     const generation = this.generation;
     if (!owner) throw new Error('Authentication required');
     const entry = (await this.options.journal.list(owner)).find(item => item.command.operationId === operationId);
-    if (entry && entry.state !== 'acknowledged') throw new Error('Cannot finalize an unacknowledged command');
+    const confirmedDeletion = entry?.state === 'conflict' && entry.result && confirmedExistingDeletion(entry.command, entry.result);
+    if (entry && entry.state !== 'acknowledged' && !confirmedDeletion) throw new Error('Cannot finalize an unacknowledged command');
     await this.options.journal.remove(owner, operationId);
     await this.publishJournal(owner, generation);
   }

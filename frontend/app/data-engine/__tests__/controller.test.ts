@@ -62,6 +62,55 @@ describe('EditorController durable lifecycle', () => {
     expect(restored.getState().checkpoint.dirty).toBe(false);
   });
 
+  it.each(['stored', 'arriving'] as const)('settles a legacy direct delete with a %s exact deleted reply', async timing => {
+    const s = setup();
+    const editor = await EditorController.open(s.options);
+    await editor.remove();
+    const [entry] = [...s.entries.values()];
+    expect(entry.command.kind).toBe('delete');
+    const snapshot = { ...initial(), value: null, metadata: { ...initial().metadata!, revision: 2, deleted: true } };
+    const result = { kind: 'deleted' as const, operationId: entry.command.operationId, snapshot };
+    let receiver = editor;
+    if (timing === 'stored') {
+      await s.journal.put({ ...entry, state: 'conflict', result });
+      editor.dispose();
+      receiver = await EditorController.open(s.options);
+    } else {
+      jest.mocked(s.transport.send).mockResolvedValueOnce(result);
+      await s.runtime.drain();
+      await receiver.settled();
+    }
+    expect(receiver.getState().checkpoint).toMatchObject({ confirmed: snapshot, pending: {}, dirty: false });
+    expect(s.entries.size).toBe(0);
+    expect(s.transport.send).toHaveBeenCalledTimes(timing === 'stored' ? 0 : 1);
+    receiver.dispose();
+  });
+
+  it('keeps a legacy deletion answer when its confirmed snapshot fails to reach the cache', async () => {
+    const s = setup();
+    const editor = await EditorController.open(s.options);
+    await editor.remove();
+    const [entry] = [...s.entries.values()];
+    const snapshot = { ...initial(), value: null, metadata: { ...initial().metadata!, revision: 2, deleted: true } };
+    const result = { kind: 'deleted' as const, operationId: entry.command.operationId, snapshot };
+    await s.journal.put({ ...entry, state: 'conflict', result });
+    editor.dispose();
+    const persistConfirmedDeletion = jest.fn<Promise<void>, [ResourceSnapshot]>()
+      .mockRejectedValueOnce(new Error('confirmed cache write interrupted')).mockResolvedValue(undefined);
+    const options = { ...s.options, persistConfirmedDeletion };
+
+    await expect(EditorController.open(options)).rejects.toThrow('confirmed cache write interrupted');
+    expect([...s.records.values()][0].prepared).toEqual(entry.command);
+    expect(s.entries.get(entry.command.operationId)?.result).toEqual(result);
+
+    const recovered = await EditorController.open(options);
+    expect(persistConfirmedDeletion).toHaveBeenLastCalledWith(snapshot);
+    expect(recovered.getState().checkpoint).toMatchObject({ confirmed: snapshot, pending: {} });
+    expect(s.entries.size).toBe(0);
+    expect(s.transport.send).not.toHaveBeenCalled();
+    recovered.dispose();
+  });
+
   it('retains ACK for replay when checkpoint storage fails and recovers without reload', async () => {
     const s = setup(); const editor = await EditorController.open(s.options);
     await editor.edit({ ...initial().value, content: 'mine' }); await editor.save();

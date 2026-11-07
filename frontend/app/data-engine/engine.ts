@@ -1625,6 +1625,10 @@ export class DataEngine {
         readConfirmed: resource => this.read(resource),
         readWriteTarget: resource => this.readWriteTarget(resource),
         publishStoredChoice: snapshot => this.publishStoredChoice(owner, generation, snapshot),
+        persistConfirmedDeletion: async snapshot => {
+          const cached = await this.persistSnapshot(owner, generation, snapshot);
+          if (!canReplaceSnapshot(snapshot, cached)) throw new Error('Confirmed deletion was not stored');
+        },
         commits: this.commits,
         submittedCheckpoint: submittedCheckpoint ?? undefined,
         manualReturnSources: readManualSources,

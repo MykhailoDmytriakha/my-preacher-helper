@@ -125,6 +125,36 @@ it('shows a confirmed deletion on first offline return after its receipt is coll
   } finally { a.dispose(); b.dispose(); }
 });
 
+it.each(['clean', 'private'] as const)('uses a proven already-deleted reply on first offline return with a %s editor', async opening => {
+  const { h, a, b, inA, inB } = await setup();
+  try {
+    if (opening === 'private') await inB.edit({ ...original, title: 'Private second-tab words' });
+    b.setVisible(false);
+    await inA.remove();
+    const [captured] = await h.commits.list('owner');
+    h.silentRemoteDelete();
+    // The command answer gets through. No document read reaches the returning tab.
+    jest.mocked(h.transport.read).mockRejectedValue(new Error('Document read interrupted'));
+    a.setOnline(true);
+    await a.retry();
+    expect(h.transport.send).toHaveBeenCalledTimes(1);
+    const result = await jest.mocked(h.transport.send).mock.results[0].value;
+    expect(result).toMatchObject({ kind: 'deleted', operationId: captured.id, snapshot: h.server });
+    await waitFor(() => expect(inA.getState().checkpoint).toMatchObject({ confirmed: h.server, draft: null, pending: {} }));
+
+    b.setVisible(true);
+    if (opening === 'private') {
+      await waitFor(() => expect(inB.getState().checkpoint).toMatchObject({
+        draft: { title: 'Private second-tab words' }, remoteCandidate: h.server, pending: {}, dirty: true,
+      }));
+    } else {
+      await waitFor(() => expect(inB.getPresence()).toMatchObject({ kind: 'absent', snapshot: h.server }));
+      expect(inB.getState().checkpoint).toMatchObject({ confirmed: h.server, draft: null, pending: {}, dirty: false });
+    }
+    expect(h.transport.send).toHaveBeenCalledTimes(1);
+  } finally { a.dispose(); b.dispose(); }
+});
+
 it('keeps private words in the second editor during a same-device deletion', async () => {
   const { h, a, b, inA, inB } = await setup();
   try {

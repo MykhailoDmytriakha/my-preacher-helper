@@ -13,7 +13,7 @@ import { chooseLocalPlacement } from './localPlacementChoice';
 import { projectExactManualChoice, type ExactManualChoice } from './manualChoice';
 import { sameManualSources } from './manualReturnSources';
 import { projectManualSelection, type ManualPath } from './manualScope';
-import { equalValues, mergeDocumentFields, mergeFields } from './protocol';
+import { confirmedExistingDeletion, equalValues, mergeDocumentFields, mergeFields } from './protocol';
 import { isRecoverableCheckpoint } from './recovery.client';
 import { recoveryChoiceFingerprint } from './recoveryChoice';
 import { DataSession, type SessionCheckpoint, type ShownCopy } from './session';
@@ -98,6 +98,8 @@ interface ControllerOptions {
   readConfirmed?: (resource: ResourceRef) => Promise<ResourceSnapshot>;
   readWriteTarget?: (resource: ResourceRef) => Promise<ResourceSnapshot | null>;
   publishStoredChoice?: (snapshot: ResourceSnapshot) => Promise<void>;
+  /** A clean legacy checkpoint can be collected, so cache the proof before retiring its reply. */
+  persistConfirmedDeletion?: (snapshot: ResourceSnapshot) => Promise<void>;
   commits?: CommitQueue;
   /** Proven submitted intent for a fresh opening; an existing checkpoint takes precedence. */
   submittedCheckpoint?: SessionCheckpoint;
@@ -200,7 +202,18 @@ export class EditorController {
     if (options.commits) controller.stopCommits = options.commits.subscribe(({ request }) => controller.onCommit(request));
     try {
       // A checkpoint may have committed before its journal entry; resubmission is idempotent.
-      if (controller.prepared) await options.runtime.submit(controller.prepared);
+      const prepared = controller.prepared;
+      if (prepared) {
+        await options.runtime.submit(prepared);
+        // Old direct deletes may already have the exact answer in the local journal.
+        if (prepared.kind === 'delete') {
+          const retained = (await options.runtime.list()).find(entry => entry.command.operationId === prepared.operationId)?.result;
+          if (retained && confirmedExistingDeletion(prepared, retained)) {
+            controller.onRuntime({ kind: 'result', owner: options.owner, result: retained });
+            await controller.settled();
+          }
+        }
+      }
       await controller.finishAcknowledgements();
       if (options.commits) {
         for (const request of orderActionProjections(await options.commits.list())) {
@@ -483,11 +496,17 @@ export class EditorController {
       || (event.result.operationId !== this.prepared?.operationId && !this.unfinalized.includes(event.result.operationId))) return;
     void this.enqueue(async () => {
       if (this.prepared?.operationId !== event.result.operationId && !this.unfinalized.includes(event.result.operationId)) return;
-      this.result = event.result;
-      this.session.accept(event.result);
-      if (event.result.kind === 'acknowledged') {
+      const deletion = this.prepared && confirmedExistingDeletion(this.prepared, event.result);
+      if (deletion) {
+        await this.options.persistConfirmedDeletion?.(deletion.snapshot);
+        this.assertCurrent();
+      }
+      const result = deletion ?? event.result;
+      this.result = result;
+      this.session.accept(result);
+      if (result.kind === 'acknowledged') {
         this.prepared = null;
-        if (!this.unfinalized.includes(event.result.operationId)) this.unfinalized.push(event.result.operationId);
+        if (!this.unfinalized.includes(result.operationId)) this.unfinalized.push(result.operationId);
       }
       await this.persist();
       await this.finishAcknowledgements();

@@ -7,7 +7,7 @@ import { commandReferenceResources, documentReferenceResources, referenceReadine
 import { prepareDomainCommand, requiredDomainTargets } from './domainPolicy';
 import { areDifferentTabManualParents, readManualScopeIdentity } from './editorIdentity';
 import { AddressedFailures, type AddressedFailure } from './failures';
-import { equalValues, mergeDocumentFields, MAX_RELATION_RESOURCES } from './protocol';
+import { confirmedExistingDeletion, equalValues, mergeDocumentFields, MAX_RELATION_RESOURCES } from './protocol';
 import { capturePlanTextEvidence, type PlanTextEvidence } from './sermonPlanText';
 import { coversCommittedEffect } from './snapshotFreshness';
 
@@ -129,6 +129,14 @@ const INVALID_PREDECESSOR_REQUEST = 'Invalid predecessor request';
 const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 const terminal = (request: CommitRequest) => ['acknowledged', 'conflict', 'refused', 'cancelled'].includes(request.state);
 const resourceMatches = (a: ResourceRef, b: ResourceRef) => a.collection === b.collection && a.id === b.id;
+function retainedDeletionReply(record: CommitRequest): CommandResult | null {
+  if (record.state !== 'conflict' || !record.command || record.result?.kind !== 'deleted'
+    || record.result.operationId !== record.id) return null;
+  // Earlier clients stored the terminal reply under the durable request identity.
+  const answer = { ...record.result, operationId: record.command.operationId };
+  return confirmedExistingDeletion(record.command, answer);
+}
+
 export const orderCommitRequests = (records: CommitRequest[]): CommitRequest[] => {
   const byId = new Map(records.map(record => [record.id, record]));
   const dependents = new Map<string, CommitRequest[]>();
@@ -600,7 +608,8 @@ export class CommitQueue {
       this.assertCurrent(owner, generation);
       const groupId = record.atomic?.id;
       if (failures.has(record.id) || (groupId && advancedOperations.has(groupId))) continue;
-      if (terminal(record) && !record.unfinalized.length) {
+      const deletion = retainedDeletionReply(record);
+      if (terminal(record) && !record.unfinalized.length && !deletion) {
         // A retained answer is evidence for its dependents, not a new answer on every pass.
         // Explicit device refresh still replays it for a newly ready editor.
         this.emit(record, false);
@@ -608,7 +617,9 @@ export class CommitQueue {
       }
       advancedOperations.add(groupId ?? record.id);
       try {
-        changed = await this.advanceRequest(record, records, owner, generation, ready, trackAnswer) || changed;
+        const advanced = deletion ? await this.applyCommandAnswer(record, deletion, owner, generation)
+          : await this.advanceRequest(record, records, owner, generation, ready, trackAnswer);
+        changed = advanced || changed;
       } catch (error) { onFailure(record, error); }
     }
     const journal = this.deliveryRequested ? await this.deliverBatch(owner, generation, attempted, ready, narrow, awaiting) : [];
@@ -752,6 +763,7 @@ export class CommitQueue {
 
   private async applyCommandAnswer(record: CommitRequest, result: CommandResult, owner: string, generation: number): Promise<boolean> {
     const commit = async (next: CommitRequest) => { await this.persistTransition(record, next, owner, generation); return true; };
+    if (record.command) result = confirmedExistingDeletion(record.command, result) ?? result;
     if (result.kind !== 'acknowledged') return commit({ ...record, state: result.kind === 'refused' ? 'refused' : 'conflict', result: { ...result, operationId: record.id } });
     const rebased = mergeDocumentFields(record.submitted, record.intended, result.snapshot.value);
     if (rebased.conflicts.length) return commit({ ...record, state: 'conflict', result: { kind: 'conflict', operationId: record.id, snapshot: result.snapshot, conflicts: rebased.conflicts } });

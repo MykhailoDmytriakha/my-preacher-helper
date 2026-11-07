@@ -94,6 +94,50 @@ describe('Durable commit requests', () => {
   beforeEach(() => jest.useFakeTimers());
   afterEach(() => { jest.clearAllTimers(); jest.useRealTimers(); });
 
+  it('settles a previously stored exact deleted reply offline without sending again', async () => {
+    const s = setup();
+    const { queue, runtime } = s.makeQueue();
+    const baseline = initial();
+    const editor = new DataSession(baseline);
+    editor.edit(null);
+    await queue.save('editor', editor.checkpoint());
+    await queue.drain(false);
+    const [prepared] = await queue.list();
+    expect(prepared.command?.kind).toBe('delete');
+    const command = prepared.command!;
+    const snapshot = { ...baseline, value: null, metadata: { ...baseline.metadata!, revision: 2, deleted: true } };
+    const result: CommandResult = { kind: 'deleted', operationId: command.operationId, snapshot };
+    await s.journal.put({ command, state: 'conflict', createdAt: 1, attempts: 1, result });
+    await s.requests.compareAndSet(prepared, { ...prepared, state: 'conflict', result: { ...result, operationId: prepared.id } });
+
+    await queue.drain(false);
+    expect(await queue.list()).toMatchObject([{
+      id: prepared.id, state: 'acknowledged', command: null, unfinalized: [],
+      result: { kind: 'acknowledged', operationId: prepared.id, snapshot },
+    }]);
+    expect(await runtime.list()).toEqual([]);
+    expect(s.transport.send).not.toHaveBeenCalled();
+  });
+
+  it.each(['different generation', 'unversioned absence'])('keeps a deleted reply for review when it has %s', async evidence => {
+    const s = setup();
+    const { queue, runtime } = s.makeQueue();
+    const baseline = initial();
+    const editor = new DataSession(baseline);
+    editor.edit(null);
+    await queue.save('editor', editor.checkpoint());
+    const metadata = evidence === 'different generation' ? { ...baseline.metadata!, generation: 'other', deleted: true } : null;
+    jest.mocked(s.transport.send).mockImplementationOnce(async command => ({
+      kind: 'deleted', operationId: command.operationId, snapshot: { ...baseline, value: null, metadata },
+    }));
+    await queue.drain(true);
+    const [saved] = await queue.list();
+    expect(saved).toMatchObject({ state: 'conflict', result: { kind: 'deleted' } });
+    expect(await runtime.list()).toMatchObject([{ state: 'conflict', result: { kind: 'deleted' } }]);
+    await expect(runtime.finalize(saved.command!.operationId)).rejects.toThrow('unacknowledged');
+    expect(s.transport.send).toHaveBeenCalledTimes(1);
+  });
+
   it('publishes an unchanged answer again only when explicitly refreshing device copies', async () => {
     const { queue } = setup().makeQueue();
     const editor = new DataSession(initial());

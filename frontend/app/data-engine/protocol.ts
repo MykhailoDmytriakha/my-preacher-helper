@@ -651,6 +651,16 @@ function commandFields(command: Exclude<DataCommand, { kind: 'relation' }>, valu
   return fields;
 }
 
+/** This exact delete already holds on the server, for the same incarnation of the record. */
+export function confirmedExistingDeletion(command: DataCommand, result: CommandResult):
+  Extract<CommandResult, { kind: 'acknowledged' }> | null {
+  if (command.kind !== 'delete' || command.generation === null || result.kind !== 'deleted'
+    || result.operationId !== command.operationId || !equalValues(result.snapshot.resource, command.resource)
+    || result.snapshot.value !== null || !result.snapshot.metadata?.deleted
+    || result.snapshot.metadata.generation !== command.generation) return null;
+  return { kind: 'acknowledged', operationId: result.operationId, snapshot: result.snapshot };
+}
+
 export function applyCommand(command: DataCommand, current: ResourceSnapshot): CommandResult {
   validateCommand(command);
   const refused = (code: string): CommandResult => ({ kind: 'refused', operationId: command.operationId, code });
