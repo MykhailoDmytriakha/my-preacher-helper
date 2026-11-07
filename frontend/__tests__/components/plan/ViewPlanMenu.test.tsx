@@ -2,7 +2,10 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 
+import PlanOverlayPortal from '@/(pages)/(private)/sermons/[id]/plan/PlanOverlayPortal';
 import ViewPlanMenu from '@/components/plan/ViewPlanMenu';
+
+import type { Sermon } from '@/models/models';
 
 let translationOverrides: Record<string, string | undefined> = {};
 
@@ -70,6 +73,44 @@ describe('ViewPlanMenu', () => {
       onStartPreachingMode,
     };
   }
+
+  it('holds keyboard focus in the full plan and returns it to the persistent menu button', () => {
+    function Workspace() {
+      const [menuOpen, setMenuOpen] = React.useState(false);
+      const [overlayOpen, setOverlayOpen] = React.useState(false);
+      const menu = React.useRef<HTMLDivElement>(null);
+      const content = React.useRef<HTMLDivElement>(null);
+      const returnFocusTo = React.useRef<HTMLElement | null>(null);
+      const plan = { introduction: 'Intro', main: 'Main', conclusion: 'Closing' };
+      const sermon = { id: 's1', title: 'Saved sermon', verse: '', thoughts: [] } as unknown as Sermon;
+      return <>
+        <ViewPlanMenu combinedPlan={plan} sectionMenuRef={menu} showSectionMenu={menuOpen} setShowSectionMenu={setMenuOpen}
+          onRequestPlanOverlay={(opener?: HTMLElement) => { returnFocusTo.current = opener ?? null; setOverlayOpen(true); }} />
+        <PlanOverlayPortal {...{ returnFocusTo }} isPlanOverlay={overlayOpen} sermon={sermon} combinedPlan={plan}
+          t={key => key} timerState={null} isPreachingMode={false} noContentText="Empty" copyStatus="idle"
+          planOverlayContentRef={content} onCopy={async () => undefined}
+          onOpenPlanImmersive={() => undefined} onClosePlanView={() => setOverlayOpen(false)} />
+      </>;
+    }
+    render(<Workspace />);
+    const view = screen.getByRole('button', { name: 'View Plan' });
+    fireEvent.click(view);
+    const full = screen.getByRole('button', { name: 'Full Plan' });
+    full.focus();
+    fireEvent.click(full);
+    const overlay = screen.getByTestId('sermon-plan-overlay');
+    const buttons = overlay.querySelectorAll('button');
+    const first = buttons[0];
+    const last = buttons[buttons.length - 1];
+    first.focus();
+    fireEvent.keyDown(first, { key: 'Tab', shiftKey: true });
+    expect(last).toHaveFocus();
+    fireEvent.keyDown(last, { key: 'Tab' });
+    expect(first).toHaveFocus();
+    fireEvent.keyDown(first, { key: 'Escape' });
+    expect(overlay).not.toBeInTheDocument();
+    expect(view).toHaveFocus();
+  });
 
   it('dismisses a section with Escape', async () => {
     renderMenu();

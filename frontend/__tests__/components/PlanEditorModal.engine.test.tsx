@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 
 import { createEngineStructureWriter } from '@/(pages)/(private)/sermons/[id]/structure/useEngineStructureWriter';
 import PlanEditorModal from '@/components/plan-editor/PlanEditorModal';
@@ -121,6 +121,66 @@ describe('the structure editor on an engine document', () => {
     jest.clearAllMocks();
   });
   afterEach(() => { jest.useRealTimers(); });
+
+  it.each([
+    { title: 'planEditor.clearConfirm.title', trigger: 'planEditor.clear', first: 'common.cancel', last: 'planEditor.clearConfirm.confirm' },
+    { title: 'planEditor.apply.title', trigger: 'Three points', first: 'planEditor.apply.replace', last: 'common.cancel' },
+    { title: 'planEditor.saveAs.title', trigger: 'planEditor.saveAsTemplate', first: null, last: 'planEditor.saveAs.save' },
+  ])('keeps keyboard focus in $title and returns to the opening control', ({ title, trigger, first, last }) => {
+    documentCopy = sermonWith({ introduction: [], main: [{ id: 'p1', text: 'Grace' }], conclusion: [] });
+    const view = openEditor(documentCopy);
+    const parent = screen.getByRole('dialog', { name: 'planEditor.title' });
+    const inEditor = within(parent);
+    const opensFromMenu = trigger !== 'planEditor.clear';
+    const opener = inEditor.getByRole('button', { name: opensFromMenu ? 'planEditor.templates' : trigger });
+    opener.focus();
+    fireEvent.click(opener);
+    if (opensFromMenu) {
+      const choice = inEditor.getByRole('button', { name: new RegExp(trigger) });
+      choice.focus();
+      fireEvent.click(choice);
+    }
+    const question = screen.getByRole('heading', { name: title }).parentElement!;
+    const inQuestion = within(question);
+    const input = first ? null : inQuestion.getByRole('textbox');
+    if (input) fireEvent.change(input, { target: { value: 'New template name' } });
+    const firstControl = input ?? inQuestion.getByRole('button', { name: first! });
+    const lastControl = inQuestion.getByRole('button', { name: last });
+    firstControl.focus();
+    fireEvent.keyDown(firstControl, { key: 'Tab', shiftKey: true });
+    expect(lastControl).toHaveFocus();
+    fireEvent.keyDown(lastControl, { key: 'Tab' });
+    expect(firstControl).toHaveFocus();
+    fireEvent.keyDown(firstControl, { key: 'Escape' });
+    expect(question).not.toBeInTheDocument();
+    expect(parent).toBeInTheDocument();
+    expect(opener).toHaveFocus();
+    expect(fakeDocument.update).not.toHaveBeenCalled();
+    view.unmount();
+  });
+
+  it('leaves structure undo with the editor once its foreground question is dismissed', () => {
+    documentCopy = sermonWith({ introduction: [], main: [{ id: 'p1', text: 'Grace' }], conclusion: [] });
+    const view = openEditor(documentCopy);
+    const editor = within(screen.getByRole('dialog', { name: 'planEditor.title' }));
+    fireEvent.click(editor.getByText('edit-a-point'));
+    expect(editor.getByTestId('board-text')).toHaveTextContent('edit 1');
+    const writesBeforeQuestion = fakeDocument.update.mock.calls.length;
+    const clear = editor.getByRole('button', { name: 'planEditor.clear' });
+    clear.focus();
+    fireEvent.click(clear);
+    const question = within(screen.getByRole('dialog', { name: 'planEditor.clearConfirm.title' }));
+    const cancel = question.getByRole('button', { name: 'common.cancel' });
+    cancel.focus();
+    fireEvent.keyDown(cancel, { key: 'z', ctrlKey: true });
+    expect(editor.getByTestId('board-text')).toHaveTextContent('edit 1');
+    expect(fakeDocument.update).toHaveBeenCalledTimes(writesBeforeQuestion);
+    fireEvent.keyDown(cancel, { key: 'Escape' });
+    expect(clear).toHaveFocus();
+    fireEvent.keyDown(clear, { key: 'z', ctrlKey: true });
+    expect(editor.getByTestId('board-text')).toHaveTextContent('Grace');
+    view.unmount();
+  });
 
   it('hands accepted board input to the engine before any departure can retire the screen', () => {
     documentCopy = sermonWith({ introduction: [], main: [{ id: 'p1', text: 'Grace' }], conclusion: [] });

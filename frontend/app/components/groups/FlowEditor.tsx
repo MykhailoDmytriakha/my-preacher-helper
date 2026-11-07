@@ -1,7 +1,10 @@
 'use client';
 
 import { XMarkIcon } from '@heroicons/react/24/outline';
+import { useId } from 'react';
 
+import { useMediaQuery } from '@/hooks/useMediaQuery';
+import { useModalLayer } from '@/hooks/useModalLayer';
 import { GroupBlockStatus, GroupBlockTemplate, GroupFlowItem } from '@/models/models';
 import { useTranslation } from '@locales/useTranslation';
 
@@ -30,6 +33,9 @@ export default function FlowEditor({
     onClose,
 }: FlowEditorProps) {
     const { t } = useTranslation();
+    const titleId = useId();
+    const modal = !useMediaQuery('(min-width: 1280px)');
+    const layer = useModalLayer({ active: modal, onClose });
 
     return (
         <>
@@ -44,10 +50,12 @@ export default function FlowEditor({
                 fields scroll in their own area, which never hands the wheel over to the page: on
                 desktop the panel is bounded by the page (--flow-editor-max-h) instead of growing
                 past the window, where it froze under the nav while the other column scrolled. */}
-            <div className="fixed inset-0 z-50 flex flex-col bg-white dark:bg-gray-900 xl:static xl:z-auto xl:max-h-[var(--flow-editor-max-h,calc(100dvh-2rem))] xl:rounded-2xl xl:border xl:border-gray-200 xl:shadow-sm xl:dark:border-gray-800">
+            <div {...layer} role={modal ? 'dialog' : undefined} aria-modal={modal || undefined}
+                aria-labelledby={modal ? titleId : undefined}
+                className="fixed inset-0 z-50 flex flex-col bg-white dark:bg-gray-900 xl:static xl:z-auto xl:max-h-[var(--flow-editor-max-h,calc(100dvh-2rem))] xl:rounded-2xl xl:border xl:border-gray-200 xl:shadow-sm xl:dark:border-gray-800">
                 {/* Header */}
                 <div className="flex shrink-0 items-center justify-between gap-3 px-5 pb-6 pt-5">
-                    <h3 className="min-w-0 flex-1 break-words text-lg font-bold text-gray-900 dark:text-gray-100 xl:text-base xl:font-semibold">
+                    <h3 id={titleId} className="min-w-0 flex-1 break-words text-lg font-bold text-gray-900 dark:text-gray-100 xl:text-base xl:font-semibold">
                         {flowItem.instanceTitle || template.title}
                     </h3>
                     <button

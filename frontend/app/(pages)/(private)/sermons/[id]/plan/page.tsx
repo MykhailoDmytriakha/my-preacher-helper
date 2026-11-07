@@ -16,7 +16,6 @@ import { useAiUsage } from "@/hooks/useAiUsage";
 import { useDraftQuestion } from "@/hooks/useDurableDraft";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useRouteId } from "@/hooks/useRouteId";
-import { useScrollLock } from '@/hooks/useScrollLock';
 import { useWayInOnce, type WayIn } from "@/hooks/useWayInOnce";
 import { SermonPoint, Sermon, Thought } from "@/models/models";
 import { TimerPhase } from "@/types/TimerState";
@@ -181,6 +180,7 @@ function PlanPageContent({ source, readOnly = false, wayIn }: { source: SermonSo
   const {
     mode: planViewMode,
     openOverlay: handleOpenPlanOverlay,
+    overlayReturnFocus,
     openImmersive: handleOpenPlanImmersive,
     openPreaching: handleOpenPlanPreaching,
     close: handleClosePlanView,
@@ -449,13 +449,6 @@ function PlanPageContent({ source, readOnly = false, wayIn }: { source: SermonSo
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [showSectionMenu]);
-
-  /*
-   * The plan overlay holds the page like every other window does — through the counted lock,
-   * not by writing on the body itself. Its own version saved "the overflow before me", which
-   * on top of another window was already `hidden`, and restored that on the way out.
-   */
-  useScrollLock(isPlanOverlay);
 
   useEffect(() => {
     if (!isPlanOverlay) {
@@ -1182,6 +1175,7 @@ function PlanPageContent({ source, readOnly = false, wayIn }: { source: SermonSo
         </div>
       )}
       <PlanOverlayPortal
+        returnFocusTo={overlayReturnFocus}
         isPlanOverlay={isPlanOverlay}
         sermon={sermon}
         combinedPlan={combinedPlan}

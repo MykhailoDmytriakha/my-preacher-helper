@@ -1,5 +1,5 @@
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useRef } from "react";
 
 import type { PlanViewMode } from "./types";
 
@@ -48,7 +48,11 @@ export default function usePlanViewMode() {
     [pathname, router, searchParams]
   );
 
-  const openOverlay = useCallback(() => updateMode("overlay"), [updateMode]);
+  const overlayReturnFocus = useRef<HTMLElement | null>(null);
+  const openOverlay = useCallback((opener?: HTMLElement) => {
+    overlayReturnFocus.current = opener ?? null;
+    updateMode("overlay");
+  }, [updateMode]);
   const openImmersive = useCallback(() => updateMode("immersive"), [updateMode]);
   const openPreaching = useCallback(
     () => updateMode("preaching", { replace: false }),
@@ -59,6 +63,7 @@ export default function usePlanViewMode() {
   return {
     mode,
     openOverlay,
+    overlayReturnFocus,
     openImmersive,
     openPreaching,
     close,

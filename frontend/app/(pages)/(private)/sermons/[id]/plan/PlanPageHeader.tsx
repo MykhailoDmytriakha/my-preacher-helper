@@ -83,7 +83,7 @@ export interface PlanPageHeaderProps {
   onLeave?: React.MouseEventHandler<HTMLAnchorElement>;
   onSwitched?: (mode: PlanEditorMode) => void;
   beforeSwitch?: () => Promise<boolean>;
-  onRequestPlanOverlay: () => void;
+  onRequestPlanOverlay: (opener?: HTMLElement) => void;
   onRequestPreachingMode: () => void;
   onStartPreachingMode: () => void;
   /**

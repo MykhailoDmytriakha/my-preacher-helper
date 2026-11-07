@@ -13,6 +13,7 @@ import { DataDocumentProvider } from '@/data-engine/react.client';
 import { useConductTimer } from '@/hooks/useConductTimer';
 import { useGroupConductForm } from '@/hooks/useGroupConductForm';
 import { useGroupDataDocument } from '@/hooks/useGroupDataDocument';
+import { useModalLayer } from '@/hooks/useModalLayer';
 import { useRouteId } from '@/hooks/useRouteId';
 import { GroupFlowItem } from '@/models/models';
 import { groupLanguage } from '@/utils/documentLanguage';
@@ -142,22 +143,24 @@ function ConductView({ groupId, group, loading, saveFlow, updateDuration, setupD
 
   const handleEnd = () => router.push(`/groups/${groupId}`);
   const handleBack = () => router.push(`/groups/${groupId}`);
+  const layer = useModalLayer({ onClose: handleBack, browserHistory: false, closeOnEscape: false });
+  const workspace = { ...layer, role: 'dialog', 'aria-modal': true, 'aria-label': group?.title || t('conduct.preflight.title') };
 
   // A meeting already running keeps its pinned blocks. Before Start, even an unanswered read has an exit.
   if (!group && phase === 'preflight') {
-    return <div className="page-gesture-follow fixed inset-0 z-[200] overflow-y-auto bg-white dark:bg-gray-950">
+    return <div {...workspace} className="page-gesture-follow fixed inset-0 z-[200] overflow-y-auto bg-white dark:bg-gray-950">
       <RecordUnavailable readNotice={readNotice} presence={presence} checking={loading} pageLoading={loading} loadingFallback={<GroupDetailSkeletonCards ariaHidden />} onBack={() => router.push('/groups')} onRetry={onRetry}>{feedback}</RecordUnavailable>
     </div>;
   }
   if (loading && phase === 'preflight') {
-    return <div className="page-gesture-follow fixed inset-0 z-[200] overflow-y-auto bg-white dark:bg-gray-950">
+    return <div {...workspace} className="page-gesture-follow fixed inset-0 z-[200] overflow-y-auto bg-white dark:bg-gray-950">
       <RecordUnavailable readNotice={readNotice} presence={presence} checking pageLoading loadingFallback={<GroupDetailSkeletonCards ariaHidden />} onBack={() => router.push('/groups')} onRetry={onRetry}>{feedback}</RecordUnavailable>
     </div>;
   }
 
   if (activeFlow.length === 0) {
     return (
-      <div className="page-gesture-follow fixed inset-0 z-[200] flex flex-col items-center justify-center gap-4 bg-white dark:bg-gray-950">
+      <div {...workspace} className="page-gesture-follow fixed inset-0 z-[200] flex flex-col items-center justify-center gap-4 bg-white dark:bg-gray-950">
         {feedback}
         <p className="text-gray-600 dark:text-gray-400">
           {t('groupFlow.emptyState', { defaultValue: 'No blocks yet' })}
@@ -176,7 +179,7 @@ function ConductView({ groupId, group, loading, saveFlow, updateDuration, setupD
   const currentTemplate = templates.find((tpl) => tpl.id === currentFlowItem?.templateId);
 
   return (
-    <div className="page-gesture-follow fixed inset-0 z-[200] flex flex-col bg-white dark:bg-gray-950">
+    <div {...workspace} className="page-gesture-follow fixed inset-0 z-[200] flex flex-col bg-white dark:bg-gray-950">
       {feedback}
       {phase === 'preflight' && readOnlyNote && (
         <p role="status" className="shrink-0 border-b border-amber-200 bg-amber-50 px-5 py-2 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">

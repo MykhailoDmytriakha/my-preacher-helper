@@ -2,6 +2,7 @@ import { Maximize2, X } from "lucide-react";
 import React from "react";
 import { createPortal } from "react-dom";
 
+import { useModalLayer } from '@/hooks/useModalLayer';
 import { Sermon } from "@/models/models";
 import { sermonLanguage } from "@/utils/documentLanguage";
 
@@ -24,6 +25,7 @@ interface PlanOverlayPortalProps {
   onCopy: () => Promise<void>;
   onOpenPlanImmersive: () => void;
   onClosePlanView: () => void;
+  returnFocusTo?: React.RefObject<HTMLElement | null>;
 }
 
 export default function PlanOverlayPortal({
@@ -39,19 +41,21 @@ export default function PlanOverlayPortal({
   onCopy,
   onOpenPlanImmersive,
   onClosePlanView,
+  returnFocusTo,
 }: PlanOverlayPortalProps) {
+  const layer = useModalLayer({ onClose: onClosePlanView, active: isPlanOverlay && Boolean(sermon), returnFocusTo, browserHistory: false });
   if (!isPlanOverlay || typeof document === "undefined" || !sermon) {
     return null;
   }
 
   return createPortal(
-    <div className="fixed inset-0 z-50 flex flex-col bg-black/60 backdrop-blur-sm" data-testid="sermon-plan-overlay">
+    <div {...layer} className="fixed inset-0 z-50 flex flex-col bg-black/60 backdrop-blur-sm" data-testid="sermon-plan-overlay">
       {/* CARRIES ITS OWN MARKDOWN RULES, like the fullscreen and preaching views do. Relying
           on the host page to have mounted them meant the same plan read differently depending
           on which editor the person opened this from. */}
       <PlanMarkdownGlobalStyles variant="overlay" />
       <div className="flex flex-1 justify-center p-4 overflow-y-auto">
-        <div className="flex w-full flex-1 max-w-5xl flex-col overflow-hidden rounded-lg bg-white shadow-xl dark:bg-gray-900 max-h-[calc(100vh-2rem)] min-h-0">
+        <div role="dialog" aria-modal="true" aria-label={t("plan.pageTitle")} className="flex w-full flex-1 max-w-5xl flex-col overflow-hidden rounded-lg bg-white shadow-xl dark:bg-gray-900 max-h-[calc(100vh-2rem)] min-h-0">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 bg-white px-6 py-4 dark:border-gray-700 dark:bg-gray-900">
             <div>
               <p className="text-lg font-semibold text-gray-900 dark:text-white">{sermon.title}</p>

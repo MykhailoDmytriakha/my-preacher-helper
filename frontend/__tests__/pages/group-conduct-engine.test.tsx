@@ -27,6 +27,21 @@ function setup() {
   function Workspace() { return <DataEngineProvider><ConductPage /></DataEngineProvider>; }
   return { harness, Workspace, view: render(<Workspace />) };
 }
+it('keeps Tab in the meeting setup and leaves the route in charge of navigation', async () => {
+  const { harness, view } = setup();
+  const start = await screen.findByRole('button', { name: /conduct.preflight.startButton/ });
+  const back = screen.getByRole('button', { name: /conduct.preflight.backToGroup/ });
+  await waitFor(() => expect(start).toBeEnabled());
+  start.focus();
+  fireEvent.keyDown(start, { key: 'Tab' });
+  expect(back).toHaveFocus();
+  fireEvent.keyDown(back, { key: 'Tab', shiftKey: true });
+  expect(start).toHaveFocus();
+  fireEvent.keyDown(start, { key: 'Escape' });
+  expect(start).toBeInTheDocument();
+  expect(harness.transport.send).not.toHaveBeenCalled();
+  view.unmount();
+});
 it('allows starting an unchanged setup without submitting a redundant write', async () => {
   const { harness, view } = setup();
   const start = await screen.findByRole('button', { name: /conduct.preflight.startButton/ });

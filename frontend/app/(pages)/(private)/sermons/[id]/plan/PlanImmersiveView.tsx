@@ -49,7 +49,7 @@ export default function PlanImmersiveView({
           <div className="flex items-center gap-2 h-10">
             <PlanCopyButton status={copyStatus} onCopy={onCopy} t={t} />
             <button
-              onClick={onOpenPlanOverlay}
+              onClick={() => onOpenPlanOverlay()}
               className="flex items-center justify-center w-12 h-12 p-0 rounded-md transition-all duration-200 bg-gray-600 text-white hover:bg-gray-700"
               title={t("plan.exitFullscreen")}
             >

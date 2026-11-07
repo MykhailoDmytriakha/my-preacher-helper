@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react';
+import { useState } from 'react';
 
 import FlowEditor from '@/components/groups/FlowEditor';
 import { GroupBlockTemplate, GroupFlowItem } from '@/models/models';
@@ -18,6 +19,9 @@ jest.mock('@/components/ui/RichMarkdownEditor', () => ({
         />
     ),
 }));
+
+let mockWide = true;
+jest.mock('@/hooks/useMediaQuery', () => ({ useMediaQuery: () => mockWide }));
 
 const mockFlowItem: GroupFlowItem = {
     id: 'f1',
@@ -48,6 +52,40 @@ describe('FlowEditor', () => {
         onUpdateFlowItem,
         onClose,
     };
+
+    it.each([false, true])('gives the block editor a keyboard boundary only on a narrow screen (wide=%s)', wide => {
+        mockWide = wide;
+        function GroupFlow() {
+            const [open, setOpen] = useState(false);
+            return <>
+                <button type="button" onClick={() => setOpen(true)}>Open block</button>
+                {open && <FlowEditor {...defaultProps} onClose={() => setOpen(false)} />}
+            </>;
+        }
+        const view = render(<GroupFlow />);
+        try {
+            const opener = screen.getByRole('button', { name: 'Open block' });
+            opener.focus();
+            fireEvent.click(opener);
+            const close = screen.getByRole('button', { name: 'common.close' });
+            const last = screen.getByRole('textbox', { name: 'Leader Notes' });
+            last.focus();
+            fireEvent.keyDown(last, { key: 'Tab' });
+            expect(wide ? last : close).toHaveFocus();
+            close.focus();
+            fireEvent.keyDown(close, { key: 'Tab', shiftKey: true });
+            expect(wide ? close : last).toHaveFocus();
+            fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+            if (wide) expect(close).toBeInTheDocument();
+            else {
+                expect(close).not.toBeInTheDocument();
+                expect(opener).toHaveFocus();
+            }
+        } finally {
+            view.unmount();
+            mockWide = true;
+        }
+    });
 
     it('renders editor fields', () => {
         render(<FlowEditor {...defaultProps} />);

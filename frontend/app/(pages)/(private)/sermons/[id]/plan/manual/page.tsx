@@ -361,6 +361,7 @@ function ManualConspectusContent({ source, readOnly: copyReadOnly = false }: { s
    */
   const {
     openOverlay,
+    overlayReturnFocus,
     openImmersive,
     openPreaching,
     close: closePlanView,
@@ -473,6 +474,7 @@ function ManualConspectusContent({ source, readOnly: copyReadOnly = false }: { s
       {unavailable && <RecordUnavailable presence={source.document.presence}
         onBack={() => router.push('/sermons')} onRetry={source.refreshSermon} />}
       <PlanOverlayPortal
+        returnFocusTo={overlayReturnFocus}
         isPlanOverlay={isOverlay}
         sermon={sermon}
         combinedPlan={combinedPlan}

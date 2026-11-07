@@ -3,7 +3,7 @@
 import { ChevronDownIcon } from '@heroicons/react/20/solid';
 import { ArrowUturnLeftIcon, ArrowUturnRightIcon, Squares2X2Icon, TrashIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import Link from 'next/link';
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { toast } from 'sonner';
 
@@ -17,6 +17,7 @@ import { usePanelPosition } from '@/hooks/usePanelPosition';
 import { usePlanTemplates } from '@/hooks/usePlanTemplates';
 import { isOutlineCollisionError } from '@/services/sermons.client';
 import { newClientId } from '@/utils/clientId';
+import { keyboardReaches } from '@/utils/modalLayerRegistry';
 import { OutlineCapture } from '@/utils/outlineCapture';
 import { chooseOutlineLocalChanges, OutlineChoiceReviewRequiredError } from '@/utils/outlineChoice';
 import { awaitWriteOperation } from '@/utils/recoverableWrite';
@@ -104,6 +105,26 @@ interface PlanEditorModalProps {
   isReadOnly?: boolean;
 }
 
+/** These questions sit inside the portalled editor and take its keyboard while open. */
+function PlanEditorQuestion({ title, onClose, closeDisabled, returnFocusTo, children }: {
+  title: string;
+  onClose: () => void;
+  closeDisabled?: boolean;
+  returnFocusTo?: React.RefObject<HTMLElement | null>;
+  children: React.ReactNode;
+}) {
+  const titleId = useId();
+  const layer = useModalLayer({ onClose, closeDisabled, returnFocusTo });
+  return (
+    <div {...layer} className="absolute inset-0 z-[201] flex items-center justify-center bg-slate-900/40 p-4">
+      <div role="dialog" aria-modal="true" aria-labelledby={titleId} className="w-full max-w-sm bg-white dark:bg-gray-800 rounded-xl shadow-2xl p-5">
+        <h3 id={titleId} className="text-base font-semibold text-slate-800 dark:text-gray-100">{title}</h3>
+        {children}
+      </div>
+    </div>
+  );
+}
+
 const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
   isOpen,
   onClose,
@@ -133,11 +154,8 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
    * One rule for every window: the page lock, Escape and "am I the topmost window". Escape is
    * refused while an apply is in flight or a nested dialog is open — those own the key then.
    */
-  const layer = useModalLayer({
-    onClose,
-    active: isOpen,
-    closeDisabled: Boolean(pendingApply) || saveAsOpen || clearConfirmOpen,
-  });
+  const questionOpen = Boolean(pendingApply) || saveAsOpen || clearConfirmOpen;
+  const layer = useModalLayer({ onClose, active: isOpen, closeDisabled: questionOpen });
   const [saveAsName, setSaveAsName] = useState('');
   const saveAsNameRef = useRef(saveAsName);
   saveAsNameRef.current = saveAsName;
@@ -148,6 +166,7 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
   const sessionRef = useRef(0);
   const menuRef = useRef<HTMLDivElement>(null);
   const templatesPanelRef = useRef<HTMLDivElement>(null);
+  const templatesButtonRef = useRef<HTMLButtonElement>(null);
   usePanelPosition(templatesPanelRef, isOpen && templatesMenuOpen && !isReadOnly);
   const outlineRef = useRef<SermonOutline>(emptyOutline());
 
@@ -336,7 +355,7 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
     if (!isOpen || isReadOnly) return;
     const onKey = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey)) return;
-      if (isTypingIn(e.target)) return;
+      if (!keyboardReaches(layer.ref.current) || isTypingIn(e.target)) return;
       const key = e.key.toLowerCase();
       if (key === 'z' && !e.shiftKey) {
         e.preventDefault();
@@ -348,7 +367,7 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [isOpen, isReadOnly, undo, redo]);
+  }, [isOpen, isReadOnly, layer.ref, undo, redo]);
 
   const totalPoints = useMemo(() => countPoints(outline), [outline]);
 
@@ -424,7 +443,7 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
 
   return createPortal(
     <div {...layer} className="fixed inset-0 z-[200] flex items-center justify-center overscroll-contain p-4 sm:p-6">
-      <div className="absolute inset-0 bg-slate-900/80 backdrop-blur-sm" onClick={onClose} aria-hidden="true" />
+      <div className="absolute inset-0 bg-slate-900/80 backdrop-blur-sm" onClick={questionOpen ? undefined : onClose} aria-hidden="true" />
 
       <div
         role="dialog"
@@ -478,6 +497,7 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
             {!isReadOnly && (
               <div className="relative" ref={menuRef}>
                 <button
+                  ref={templatesButtonRef}
                   onClick={() => setTemplatesMenuOpen((v) => !v)}
                   className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 dark:border-gray-600 bg-white dark:bg-gray-800 hover:bg-slate-50 dark:hover:bg-gray-700 px-3 py-1.5 text-sm font-medium text-slate-700 dark:text-gray-200"
                 >
@@ -671,96 +691,84 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
         </footer>
 
         {pendingApply && (
-          <div className="absolute inset-0 z-30 flex items-center justify-center bg-slate-900/40 p-4">
-            <div className="w-full max-w-sm bg-white dark:bg-gray-800 rounded-xl shadow-2xl p-5">
-              <h3 className="text-base font-semibold text-slate-800 dark:text-gray-100">{t('planEditor.apply.title')}</h3>
-              <p className="mt-2 text-sm text-slate-500 dark:text-gray-400">{t('planEditor.apply.message', { count: totalPoints })}</p>
-              <div className="mt-4 flex flex-col gap-2">
-                <button
-                  onClick={() => applyTemplate(pendingApply, 'replace')}
-                  className="w-full rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-sm font-medium px-4 py-2"
-                >
-                  {t('planEditor.apply.replace')}
-                </button>
-                <button
-                  onClick={() => applyTemplate(pendingApply, 'append')}
-                  className="w-full rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2"
-                >
-                  {t('planEditor.apply.append')}
-                </button>
-                <button
-                  onClick={() => setPendingApply(null)}
-                  className="w-full rounded-lg border border-slate-300 dark:border-gray-600 text-slate-600 dark:text-gray-300 text-sm font-medium px-4 py-2 hover:bg-slate-50 dark:hover:bg-gray-700"
-                >
-                  {t(CANCEL_KEY)}
-                </button>
-              </div>
+          <PlanEditorQuestion title={t('planEditor.apply.title')} onClose={() => setPendingApply(null)} returnFocusTo={templatesButtonRef}>
+            <p className="mt-2 text-sm text-slate-500 dark:text-gray-400">{t('planEditor.apply.message', { count: totalPoints })}</p>
+            <div className="mt-4 flex flex-col gap-2">
+              <button
+                onClick={() => applyTemplate(pendingApply, 'replace')}
+                className="w-full rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-sm font-medium px-4 py-2"
+              >
+                {t('planEditor.apply.replace')}
+              </button>
+              <button
+                onClick={() => applyTemplate(pendingApply, 'append')}
+                className="w-full rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2"
+              >
+                {t('planEditor.apply.append')}
+              </button>
+              <button
+                onClick={() => setPendingApply(null)}
+                className="w-full rounded-lg border border-slate-300 dark:border-gray-600 text-slate-600 dark:text-gray-300 text-sm font-medium px-4 py-2 hover:bg-slate-50 dark:hover:bg-gray-700"
+              >
+                {t(CANCEL_KEY)}
+              </button>
             </div>
-          </div>
+          </PlanEditorQuestion>
         )}
 
         {saveAsOpen && (
-          <div className="absolute inset-0 z-30 flex items-center justify-center bg-slate-900/40 p-4">
-            <div className="w-full max-w-sm bg-white dark:bg-gray-800 rounded-xl shadow-2xl p-5">
-              <h3 className="text-base font-semibold text-slate-800 dark:text-gray-100">{t('planEditor.saveAs.title')}</h3>
-              <input
-                type="text"
-                value={saveAsName}
-                onChange={(e) => setSaveAsName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') saveAsTemplate();
-                  if (e.key === 'Escape' && !savingTemplate) setSaveAsOpen(false);
-                }}
-                placeholder={t('planEditor.saveAs.namePlaceholder')}
-                className="mt-3 w-full p-2 text-sm bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                autoFocus
-              />
-              <div className="mt-4 flex justify-end gap-2">
-                <button
-                  onClick={() => setSaveAsOpen(false)}
-                  disabled={savingTemplate}
-                  className="rounded-lg border border-slate-300 dark:border-gray-600 text-slate-600 dark:text-gray-300 text-sm font-medium px-4 py-2 hover:bg-slate-50 dark:hover:bg-gray-700"
-                >
-                  {t(CANCEL_KEY)}
-                </button>
-                <button
-                  onClick={saveAsTemplate}
-                  disabled={savingTemplate || !saveAsName.trim()}
-                  aria-busy={savingTemplate}
-                  className={`${EMERALD_ACTION} rounded-lg text-sm font-medium px-4 py-2 disabled:opacity-40 disabled:cursor-not-allowed`}
-                >
-                  {t('planEditor.saveAs.save')}
-                </button>
-              </div>
+          <PlanEditorQuestion title={t('planEditor.saveAs.title')} onClose={() => setSaveAsOpen(false)} returnFocusTo={templatesButtonRef} closeDisabled={savingTemplate}>
+            <input
+              type="text"
+              value={saveAsName}
+              onChange={(e) => setSaveAsName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') saveAsTemplate();
+              }}
+              placeholder={t('planEditor.saveAs.namePlaceholder')}
+              className="mt-3 w-full p-2 text-sm bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              autoFocus
+            />
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                onClick={() => setSaveAsOpen(false)}
+                disabled={savingTemplate}
+                className="rounded-lg border border-slate-300 dark:border-gray-600 text-slate-600 dark:text-gray-300 text-sm font-medium px-4 py-2 hover:bg-slate-50 dark:hover:bg-gray-700"
+              >
+                {t(CANCEL_KEY)}
+              </button>
+              <button
+                onClick={saveAsTemplate}
+                disabled={savingTemplate || !saveAsName.trim()}
+                aria-busy={savingTemplate}
+                className={`${EMERALD_ACTION} rounded-lg text-sm font-medium px-4 py-2 disabled:opacity-40 disabled:cursor-not-allowed`}
+              >
+                {t('planEditor.saveAs.save')}
+              </button>
             </div>
-          </div>
+          </PlanEditorQuestion>
         )}
 
         {clearConfirmOpen && (
-          <div className="absolute inset-0 z-30 flex items-center justify-center bg-slate-900/40 p-4">
-            <div className="w-full max-w-sm bg-white dark:bg-gray-800 rounded-xl shadow-2xl p-5">
-              <h3 className="text-base font-semibold text-slate-800 dark:text-gray-100">
-                {t('planEditor.clearConfirm.title')}
-              </h3>
-              <p className="mt-2 text-sm text-slate-500 dark:text-gray-400">
-                {t('planEditor.clearConfirm.message', { count: totalPoints })}
-              </p>
-              <div className="mt-4 flex justify-end gap-2">
-                <button
-                  onClick={() => setClearConfirmOpen(false)}
-                  className="rounded-lg border border-slate-300 dark:border-gray-600 text-slate-600 dark:text-gray-300 text-sm font-medium px-4 py-2 hover:bg-slate-50 dark:hover:bg-gray-700"
-                >
-                  {t(CANCEL_KEY)}
-                </button>
-                <button
-                  onClick={clearPlan}
-                  className="rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-sm font-medium px-4 py-2"
-                >
-                  {t('planEditor.clearConfirm.confirm')}
-                </button>
-              </div>
+          <PlanEditorQuestion title={t('planEditor.clearConfirm.title')} onClose={() => setClearConfirmOpen(false)}>
+            <p className="mt-2 text-sm text-slate-500 dark:text-gray-400">
+              {t('planEditor.clearConfirm.message', { count: totalPoints })}
+            </p>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                onClick={() => setClearConfirmOpen(false)}
+                className="rounded-lg border border-slate-300 dark:border-gray-600 text-slate-600 dark:text-gray-300 text-sm font-medium px-4 py-2 hover:bg-slate-50 dark:hover:bg-gray-700"
+              >
+                {t(CANCEL_KEY)}
+              </button>
+              <button
+                onClick={clearPlan}
+                className="rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-sm font-medium px-4 py-2"
+              >
+                {t('planEditor.clearConfirm.confirm')}
+              </button>
             </div>
-          </div>
+          </PlanEditorQuestion>
         )}
       </div>
     </div>,
