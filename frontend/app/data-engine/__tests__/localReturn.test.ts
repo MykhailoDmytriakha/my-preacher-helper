@@ -1,6 +1,8 @@
 import { waitFor } from '@testing-library/react';
 import { documentEngineHarness, settleEngine } from '@test-utils/documentEngineHarness';
 import { editorIdentity, recoveryEditorIdentity } from '@/data-engine/editorIdentity';
+import { liveSubmittedWork } from '@/data-engine/liveSubmittedWork';
+import { DataSession } from '@/data-engine/session';
 
 jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
 const resource = { collection: 'groups', id: 'offline-group-279' };
@@ -26,6 +28,79 @@ it('shows the saved offline title in an already-open clean second editor after r
     expect(h.server.value?.title).toBe('Opening group');
     b.setVisible(true); await settleEngine(); await settleEngine();
     expect(inB.getState().checkpoint.draft?.title).toBe('Saved locally in A');
+  } finally { a.dispose(); b.dispose(); }
+});
+
+it.each(['conflict', 'refused'] as const)('offers an ordinary %s in the already-open clean second editor', async outcome => {
+  const { h, a, b, inA, inB } = await setup();
+  const localTitle = 'Saved in the first tab';
+  const remoteTitle = 'Newer server words';
+  try {
+    b.setVisible(false);
+    await inA.commit(current => ({ ...current!, title: localTitle }));
+    const [captured] = await h.commits.list('owner');
+    if (outcome === 'conflict') h.silentRemote({ title: remoteTitle });
+    else jest.mocked(h.transport.send).mockResolvedValueOnce({
+      kind: 'refused', operationId: captured.id, code: 'permission-denied',
+    });
+    a.setOnline(true);
+    await a.retry();
+    await waitFor(() => expect(inA.getState().result).toMatchObject({ kind: outcome, operationId: captured.id }));
+
+    b.setVisible(true);
+    await waitFor(() => expect(inB.getState().result).toMatchObject({ kind: outcome, operationId: captured.id }));
+    expect(inB.getState().checkpoint.draft?.title).toBe(localTitle);
+    expect(inB.getState().savedIntentReplaceable).toBe(true);
+    await inB.acceptRemote();
+    expect(inB.getState().checkpoint.draft?.title).toBe(outcome === 'conflict' ? remoteTitle : original.title);
+    expect(inB.getState().checkpoint.pending).toEqual({});
+    expect(h.transport.send).toHaveBeenCalledTimes(1);
+  } finally { a.dispose(); b.dispose(); }
+});
+
+it('keeps independently updated fields when the returning editor already saw the conflict snapshot', async () => {
+  const { h, a, b, inA } = await setup();
+  try {
+    b.setVisible(false);
+    await inA.commit(current => ({ ...current!, title: 'Title changed locally' }));
+    h.silentRemote({ title: 'Title changed remotely', description: 'Independent newer description' });
+    a.setOnline(true);
+    await a.retry();
+    await waitFor(() => expect(inA.getState().result?.kind).toBe('conflict'));
+    const [captured] = await h.commits.list('owner');
+
+    const recent = new DataSession(h.server).checkpoint();
+    const returningId = editorIdentity('tab-B', resource, 'group', 'opening-B');
+    const followed = liveSubmittedWork('owner', returningId, recent, [captured]);
+    expect(followed?.answer).toMatchObject({ kind: 'conflict', operationId: captured.id });
+    const choice = DataSession.restore(followed!.checkpoint);
+    choice.release(captured.id);
+    choice.keepLocal();
+    expect(choice.getState().draft).toMatchObject({
+      title: 'Title changed locally', description: 'Independent newer description',
+    });
+    expect(choice.getState().confirmed).toEqual(h.server);
+  } finally { a.dispose(); b.dispose(); }
+});
+
+it('keeps unsent words in the second editor when returning after an ordinary conflict', async () => {
+  const { h, a, b, inA, inB } = await setup();
+  try {
+    await inB.edit({ ...original, title: 'Private words in the second tab' });
+    b.setVisible(false);
+    await inA.commit(current => ({ ...current!, title: 'Saved in the first tab' }));
+    h.silentRemote({ title: 'Newer server words' });
+    a.setOnline(true);
+    await a.retry();
+    await waitFor(() => expect(inA.getState().result?.kind).toBe('conflict'));
+    b.setVisible(true);
+    await settleEngine(); await settleEngine();
+
+    expect(inB.getState().checkpoint.draft?.title).toBe('Private words in the second tab');
+    expect(inB.getState().checkpoint.pending).toEqual({});
+    expect(inB.getState().result).toBeNull();
+    expect(await h.commits.list('owner')).toEqual([expect.objectContaining({ state: 'conflict' })]);
+    expect(h.transport.send).toHaveBeenCalledTimes(1);
   } finally { a.dispose(); b.dispose(); }
 });
 

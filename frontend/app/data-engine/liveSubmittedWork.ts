@@ -63,8 +63,10 @@ function canFollowChain(current: SessionCheckpoint, chain: readonly CommitReques
     && next.length > 0 && next.every(request => isLiveWholeAction(request) || isDocumentDeletion(request));
 }
 
-function deletionAnswer(request: CommitRequest | undefined): CommitRequest['result'] {
-  if (!request || !isDocumentDeletion(request)) return null;
+function documentAnswer(request: CommitRequest | undefined, editorId: string): CommitRequest['result'] {
+  if (!request || request.atomic || request.retentionScope || request.baseline.value === null) return null;
+  if (!isDocumentDeletion(request) && (request.value === null || (request.command && request.command.kind !== 'update')
+    || !areDifferentTabEditors(request.editorId, editorId, request.baseline.resource))) return null;
   const result = request.result;
   if (result?.operationId !== request.id || result.kind !== request.state) return null;
   if (result.kind === 'refused') return result;
@@ -76,9 +78,11 @@ function readLiveChainProof(chain: readonly CommitRequest[], requests: readonly 
   current: SessionCheckpoint, editorId: string, manualSources?: ReadonlyMap<string, string>): CommitRequest[] | null {
   const resource = current.confirmed.resource;
   const atomicIds = new Set<string>();
+  const tip = chain.at(-1);
   for (const request of chain) {
     if (request.retentionScope || request.baseline.value === null
-      || (!['queued', 'prepared', 'acknowledged'].includes(request.state) && !deletionAnswer(request))) return null;
+      || (!['queued', 'prepared', 'acknowledged'].includes(request.state)
+        && (request !== tip || !documentAnswer(request, editorId)))) return null;
     if (isDocumentDeletion(request)) {
       if (!areDifferentTabManualParents(request.editorId, editorId, resource)) return null;
     } else if (request.value === null) return null;
@@ -112,16 +116,19 @@ export function liveSubmittedWork(owner: string, editorId: string, current: Sess
   const acknowledged = chain.filter(request => request.state === 'acknowledged');
   if (acknowledged.some(request => request.result?.kind !== 'acknowledged'
     || !equalValues(request.result.snapshot.resource, resource) || !snapshotBelongsToOwner(owner, request.result.snapshot))) return null;
-  const answer = deletionAnswer(chain.at(-1));
-  // A clean reader may already have seen the same newer record that refused the deletion.
-  const sawDeletionConflict = answer?.kind === 'conflict' && equalValues(current.confirmed, answer.snapshot);
-  const observedAncestor = sawDeletionConflict || chain.some(request => equalValues(current.confirmed, request.baseline)
+  const answer = documentAnswer(chain.at(-1), editorId);
+  // The returning editor may already have seen the newer record from this exact conflict.
+  const sawConflict = answer?.kind === 'conflict' && equalValues(current.confirmed, answer.snapshot);
+  const observedAncestor = sawConflict || chain.some(request => equalValues(current.confirmed, request.baseline)
     || (request.initialized && equalValues(current.confirmed, request.working))
     || (request.result?.kind === 'acknowledged' && equalValues(current.confirmed, request.result.snapshot)));
   if (!observedAncestor) return null;
   const checkpoint = replaySubmitted(submitted, chain);
-  if (sawDeletionConflict) checkpoint.confirmed = current.confirmed;
-  else if (!canReplaceSnapshot(current.confirmed, checkpoint.confirmed)) return null;
+  if (sawConflict) {
+    // A delete has no authored fields to rebase. An update still needs its original
+    // confirmed ancestor so Keep mine can distinguish edits from untouched server fields.
+    if (checkpoint.draft === null) checkpoint.confirmed = current.confirmed;
+  } else if (!canReplaceSnapshot(current.confirmed, checkpoint.confirmed)) return null;
   // A persistent editor identity never starts its local generation over when borrowing a chain.
   checkpoint.editGeneration += current.editGeneration;
   for (const [id, pending] of Object.entries(checkpoint.pending)) {
