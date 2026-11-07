@@ -608,6 +608,7 @@ function TopicCard({
   const info = isInfoTopic(topic);
   const handled = state !== 'open';
   const canCarry = state === 'open' || state === 'postponed';
+  const carriedLinkId = canCarry ? topic.carriedToCouncilId : undefined;
   const isBare = !topic.summary && topic.questions.length === 0 && (info || topic.options.length === 0);
 
   return (
@@ -817,8 +818,8 @@ function TopicCard({
                       </div>
                     </div>
                   ) : (
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0 flex-[1_1_6rem]">
                         <p className={labelClass}>{t('council.topic.atCouncil')}</p>
                         <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-gray-100">
                           {outcomeLine(topic, outcome) || (
@@ -839,18 +840,20 @@ function TopicCard({
                           </ul>
                         )}
                       </div>
-                      {!readOnly && <div className="flex shrink-0 flex-col items-end gap-1">
+                      {!readOnly && <div className="ml-auto flex max-w-full shrink-0 flex-col items-end gap-1">
                         <button type="button" onClick={startOutcomeEdit} className={buttonText}>
                           <Pencil className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
                           {t('council.topic.editOutcome')}
                         </button>
-                        {canCarry && topic.carriedToCouncilId ? (
+                        {carriedLinkId ? (
                           <Link
-                            href={`/care/council/${topic.carriedToCouncilId}`}
-                            className={`${buttonText} text-indigo-700 dark:text-indigo-300`}
+                            href={`/care/council/${carriedLinkId}`}
+                            className={`${buttonText} max-w-full text-right text-indigo-700 dark:text-indigo-300`}
                           >
-                            <ArrowRightToLine className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
-                            {t('council.topic.carriedTo', { title: carriedTo?.title ?? t('council.nextCouncilTitle') })}
+                            <ArrowRightToLine className="h-3.5 w-3.5 shrink-0" strokeWidth={2} aria-hidden="true" />
+                            <span className="min-w-0 [overflow-wrap:anywhere]">
+                              {t('council.topic.carriedTo', { title: carriedTo?.title ?? t('council.nextCouncilTitle') })}
+                            </span>
                           </Link>
                         ) : canCarry ? (
                           <button
