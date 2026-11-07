@@ -6637,3 +6637,13 @@ Installed Chrome on the local emulators passed seven native assertions at 390×8
 Evidence and replay are in the local case at `artifacts/plan-capture-308-before/README.md` and `artifacts/plan-capture-308-after/README.md`. Chrome and its profiles closed, both servers exited normally, six ports were released and the generated TypeScript configuration was restored byte-for-byte.
 
 After deployment, confirm the deployed revision and open a disposable sermon containing a parent, child and sibling. On a touch device, confirm removal and reload once the dialog closes. Check that the parent and child stay gone and the sibling remains. Repeat while offline if the app shell is already cached, then restore connectivity once and verify the resulting plan. Keep IndexedDB fault injection on the emulator.
+
+## BUG-20261106-preview-pwa-rejects-cut-route-exports · Restore direct local PWA preview
+
+Next's integrated route type check rejected the runtime helpers exported by the study-note cut route. The handlers now import the pure extraction and grounding helpers and the same character limit from `noteCutSource.ts`. GET and POST remain the route's only runtime exports. Existing helper bodies and the limit match the original. A scan of API route declarations found no other ordinary runtime helpers exported from a route.
+
+The same `npm run preview:pwa -- -p 3047 -H 127.0.0.1` command exited 1 on `5c27b228` with `collectNoteHeadings is not a valid Route export field`. It then passed integrated type checking, finished the build, and served an HTTP readiness request. Two focused Jest suites passed all 55 tests, including the mocked POST and existing Create Sermon from Note behavior. Scoped ESLint passed.
+
+Installed Chrome against local Auth and Firestore rendered a disposable note and both headings at 1440×900 and 390×844. The owner got the two correct sections from the cut GET endpoint. The same request without authorization got 401. On the phone-size reload an activated service worker controlled the rendered page. Both original frames were visually inspected. Chrome profiles, the preview and the emulators were cleaned up, and generated build files were restored.
+
+Evidence and replay instructions are in the local case at `artifacts/preview-pwa-310/README.md`. The build failure concerns local preview. After authorized deployment, confirm the deployed revision and use a disposable owned study note with two headings to verify that the read-only cut plan still returns both sections and that an anonymous request gets 401. The provider-backed POST and physical devices were outside the live check.

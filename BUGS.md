@@ -87,13 +87,6 @@
 ## 🔵 P3 — открыто
 
 
-### BUG-20261106-preview-pwa-rejects-cut-route-exports · Локальный PWA-просмотр останавливается при сборке API заметок
-**P3.** Команда `npm run preview:pwa` использует прямой `next build` и не доходит до запуска локального просмотра. На `acb658c0` с эмуляторами встроенная проверка Next 15.5.12 отказала: `collectNoteHeadings is not a valid Route export field`. Штатный скрипт `scripts/build-production.js` с отдельной проверкой типов и компиляцией завершился успешно.
-**Якоря.** `frontend/package.json` → `preview:pwa`; `frontend/app/api/studies/notes/[id]/cut/route.ts` экспортирует служебные `collectNoteHeadings`, `groundKeyPassage` и `MAX_CUT_CHARS` вместе с обработчиками. Точная ошибка и успешный контроль в `artifacts/groups-cold-309/{direct-build,build}.log`.
-**Дальше.** Оставить на маршруте только поддерживаемые runtime-экспорты, перенести чистые функции и константу к их тестам без изменения ответа API. Повторить прямую сборку и запуск локального PWA-просмотра на эмуляторах.
-
-
-
 ### BUG-20261103-analysis-header-eats-phone-screen · На телефоне шапка разбора занимает от четверти до почти половины экрана
 **P3** — данные целы, но тексту остаётся 55–73 % экрана, а читать и размечать надо именно текст. **Найден.** 2026-11-03 · агент на визуальной приёмке вкладки «Разборы» (телефон 390×844, тестовый аккаунт); то же окно открывается и из Библии.
 **Якоря.** `frontend/app/components/bible/analysis/AnalysisParts.tsx:45` — шапка `shrink-0 flex-wrap` стоит над текстом всегда и не уходит при прокрутке; `frontend/app/components/bible/analysis/AnalysisEditor.tsx:261` — на узком экране проповеди из разбора (`AnalysisSermons`) встают в шапку по одной на строку.

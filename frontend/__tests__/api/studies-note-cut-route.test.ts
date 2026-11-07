@@ -1,7 +1,8 @@
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
-import { collectNoteHeadings, GET, groundKeyPassage, MAX_CUT_CHARS, POST } from '@/api/studies/notes/[id]/cut/route';
+import { GET, POST } from '@/api/studies/notes/[id]/cut/route';
 import { __resetStoreAvailabilityForTests } from '@/services/storeAvailability.server';
 import { UsageCapReachedError } from '@/services/usageLimits';
+import { collectNoteHeadings, groundKeyPassage, MAX_CUT_CHARS } from '@/utils/noteCutSource';
 import { cutStudyNoteIntoScratch } from '@clients/studyNoteCut.structured';
 import { studiesRepository } from '@repositories/studies.repository';
 
