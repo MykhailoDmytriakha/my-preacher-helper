@@ -437,6 +437,70 @@ describe('Durable commit requests', () => {
     expect((await queue.list()).every(record => record.state === 'acknowledged' && !record.unfinalized.length)).toBe(true);
   });
 
+  it('does not rescan the whole queue for each local step of an ordinary Save', async () => {
+    const s = setup({ nativeChoice: true });
+    const { queue } = s.makeQueue();
+    const editor = new DataSession(initial());
+    const titles = Array.from({ length: 12 }, (_, index) => `saved-${index + 1}`);
+    for (const title of titles) {
+      editor.edit({ ...initial().value, title });
+      await queue.save('editor', editor.checkpoint());
+    }
+    let rowsRead = 0;
+    const list = s.requests.list;
+    const scan = jest.spyOn(s.requests, 'list').mockImplementation(async owner => {
+      const requests = await list(owner);
+      rowsRead += requests.length;
+      return requests;
+    });
+    await queue.drain(true);
+    scan.mockRestore();
+    expect(s.transport.send).toHaveBeenCalledTimes(titles.length);
+    expect(s.server().value?.title).toBe(titles.at(-1));
+    expect(s.server().metadata?.revision).toBe(titles.length + 1);
+    expect((await queue.list()).every(row => row.state === 'acknowledged' && !row.unfinalized.length)).toBe(true);
+    expect(rowsRead).toBeLessThanOrEqual(titles.length * (2 * titles.length + 3));
+  });
+
+  it('does not enqueue a prepared update after its publication retires the owner', async () => {
+    const s = setup({ nativeChoice: true });
+    const { queue } = s.makeQueue();
+    const editor = new DataSession(initial());
+    editor.edit({ ...initial().value, title: 'only for the original owner' });
+    await queue.save('editor', editor.checkpoint());
+
+    const stop = queue.subscribe(({ request }) => {
+      if (request.state === 'prepared') queue.setOwner(null);
+    });
+    try { await queue.drain(false); } finally { stop(); }
+
+    expect(s.entries.size).toBe(0);
+    const [prepared] = await s.requests.list('owner');
+    expect(prepared.state).toBe('prepared');
+    await s.makeQueue().queue.drain(true);
+    expect(s.transport.send).toHaveBeenCalledWith(prepared.command);
+  });
+
+  it('replays the exact prepared command when the first journal insertion fails', async () => {
+    const s = setup({ nativeChoice: true });
+    const { queue } = s.makeQueue();
+    const editor = new DataSession(initial());
+    editor.edit({ ...initial().value, title: 'saved before journal failure' });
+    await queue.save('editor', editor.checkpoint());
+    s.journal.put.mockRejectedValueOnce(new Error('journal unavailable'));
+
+    await expect(queue.drain(false)).rejects.toThrow('journal unavailable');
+    const [prepared] = await queue.list();
+    expect(prepared).toMatchObject({ initialized: true, state: 'prepared', command: { operationId: prepared.id } });
+    expect(s.transport.send).not.toHaveBeenCalled();
+
+    const restarted = s.makeQueue().queue;
+    await restarted.drain(true);
+    expect(s.transport.send).toHaveBeenCalledTimes(1);
+    expect(s.transport.send).toHaveBeenCalledWith(prepared.command);
+    expect((await restarted.list())[0].state).toBe('acknowledged');
+  });
+
   it('rebases C from known submitted B when compact ACK A already contains B, retaining B until its receipt', () => {
     const session = new DataSession(initial());
     const a = { ...initial().value, title: 'A' }, b = { ...initial().value, title: 'B' };

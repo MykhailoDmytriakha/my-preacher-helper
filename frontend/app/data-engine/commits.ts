@@ -554,18 +554,28 @@ export class CommitQueue {
   }
 
   private async advance(record: CommitRequest, records: CommitRequest[], owner: string, generation: number): Promise<boolean> {
-    const commit = async (next: CommitRequest) => {
+    const commit = async (next: CommitRequest, queueNow = false) => {
       this.assertCurrent(owner, generation);
       const updated = await this.options.store.compareAndSet(record, next);
       this.assertCurrent(owner, generation);
       this.emit(updated);
+      // Only the durable materialization winner can enqueue the command.
+      if (queueNow && updated.command && this.current(owner, generation)) {
+        await this.options.runtime.submit(updated.command);
+        this.assertCurrent(owner, generation);
+      }
       return true;
     };
     if (record.unfinalized.length) {
       await retireCommitJournal([record], this.options.runtime, () => this.assertCurrent(owner, generation));
       return commit({ ...record, unfinalized: [] });
     }
-    if (!record.initialized) return this.initialize(record, records, commit);
+    if (!record.initialized) {
+      const initialized = initializeCommit(record, records);
+      if (!initialized) return false;
+      const prepared = this.prepareIndependentUpdate(initialized, owner);
+      return commit(prepared ?? initialized, prepared !== null);
+    }
     if (record.command) return this.advanceCommand(record, owner, generation, commit);
     if (equalValues(record.working.value, record.intended)) return commit({ ...record, state: 'acknowledged', result: { kind: 'acknowledged', operationId: record.id, snapshot: record.working } });
     const targets = await Promise.all(requiredDomainTargets(record.working, record.intended).map(this.options.readConfirmed));
@@ -576,6 +586,25 @@ export class CommitQueue {
       targets.push(target);
     }
     this.assertCurrent(owner, generation);
+    return commit(this.materialize(record, owner, targets));
+  }
+
+  /** A local, single-document update can initialize and prepare from the same durable evidence. */
+  private prepareIndependentUpdate(record: CommitRequest, owner: string): CommitRequest | null {
+    if (record.state !== 'queued' || record.command || record.deleteAfter?.length
+      || !record.working.value || !record.intended || equalValues(record.working.value, record.intended)) return null;
+    try {
+      if (documentReferenceResources(record.working.resource, record.working.value, record.intended).length
+        || requiredDomainTargets(record.working, record.intended).length) return null;
+      const prepared = this.materialize(record, owner, []);
+      return prepared.command?.kind === 'update' && !commandReferenceResources(prepared.command).length ? prepared : null;
+    } catch {
+      // Preserve the ordinary initialize-then-prepare path and its retryable failures.
+      return null;
+    }
+  }
+
+  private materialize(record: CommitRequest, owner: string, targets: ResourceSnapshot[]): CommitRequest {
     const operationId = record.sequence === 0 ? record.id : `${record.id}-${record.sequence}`;
     let prepared: ReturnType<typeof prepareDomainCommand>;
     const evidence = record.working.resource.collection === 'sermons'
@@ -590,15 +619,10 @@ export class CommitQueue {
       // A failure WITHOUT a code (a target that could not be read offline) stays retryable.
       const code = (error as { code?: unknown }).code;
       if (typeof code !== 'string') throw error;
-      return commit({ ...record, state: 'refused', result: { kind: 'refused', operationId: record.id, code } });
+      return { ...record, state: 'refused', result: { kind: 'refused', operationId: record.id, code } };
     }
     if (!resourceMatches(prepared.command.resource, record.baseline.resource)) throw new Error('Commit resource changed');
-    return commit({ ...record, command: prepared.command, submitted: prepared.submittedValue, state: 'prepared' });
-  }
-
-  private async initialize(record: CommitRequest, records: CommitRequest[], commit: (next: CommitRequest) => Promise<boolean>): Promise<boolean> {
-    const initialized = initializeCommit(record, records);
-    return initialized ? commit(initialized) : false;
+    return { ...record, command: prepared.command, submitted: prepared.submittedValue, state: 'prepared' };
   }
 
   private async advanceCommand(record: CommitRequest, owner: string, generation: number, commit: (next: CommitRequest) => Promise<boolean>): Promise<boolean> {

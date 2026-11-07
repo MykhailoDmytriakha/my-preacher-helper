@@ -25,10 +25,12 @@ it('does not replay a delayed queued list over a newer preparation event', async
   try {
     const refreshing = s.queue.refreshStored();
     await s.queue.drain(false);
-    expect(s.events.map(event => event.request.state)).toEqual(['queued', 'prepared']);
+    const published = [...s.events];
+    expect(published.at(-1)?.request).toMatchObject({ id: s.request.id, state: 'prepared' });
+    expect(published.at(-1)!.request.revision).toBeGreaterThan(s.request.revision);
     const reads = s.read.mock.calls.length;
     release(); await refreshing;
-    expect(s.events.map(event => event.request.state)).toEqual(['queued', 'prepared']);
+    expect(s.events).toEqual(published);
     expect(s.read).toHaveBeenCalledTimes(reads); expect(s.send).not.toHaveBeenCalled();
   } finally { release(); spy.mockRestore(); s.close(); }
 });
