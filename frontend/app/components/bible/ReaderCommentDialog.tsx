@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { toast } from 'sonner';
 
 import { CommentDialog, type CommentTarget } from '@/components/CommentDialog';
 import { CommentIcon } from '@/components/Icons';
@@ -10,13 +11,14 @@ import { newClientId } from '@/utils/clientId';
 import { passagesIn, samePassage } from '@/utils/scriptureReferenceNumbering';
 import { useTranslation } from '@locales/useTranslation';
 
-import { fitCommentPassage, isParagraph, paragraphRefusal, spanOf, type LaidParagraph, type PassageFitSaid } from './commentParagraphs';
+import { fitCommentPassage, isParagraph, isParagraphComment, paragraphRefusal, spanOf, versePosition, type LaidParagraph, type PassageFitSaid } from './commentParagraphs';
 import { passageLabel, type BookCommentLayout, type MinePlace } from './useBookUsage';
 import { PassagePickBar } from './verseCopy/PassagePickBar';
 
 import type { RibbonChapterComment } from './BookRibbon';
 import type { PickedPassage } from './verseCopy/passagePick';
 import type { PassageLimit, VerseCopy } from './verseCopy/useVerseCopy';
+import type { VerseWriting } from './verseCopy/VerseCopyBar';
 import type { VerseComment } from './verseCopy/VerseMenu';
 import type { ScriptureReference } from '@/models/models';
 import type { AppLocale } from '@/utils/appLocale';
@@ -35,8 +37,11 @@ export function readerPlaceName(reference: ScriptureReference, bible: BibleId, l
 
 /** The displayed occurrence that opened a written comment, scoped to its reader. */
 type ReaderCommentOpening = { bookId: string; bible: BibleId; passage: Passage };
-/** What the reader asked to open: a comment already written, or a new one on a verse or a chapter. */
-export type ReaderCommenting = ({ kind: 'edit'; id: string; opening?: ReaderCommentOpening } | { kind: 'new'; reference: ScriptureReference }) & { opener?: HTMLElement | null };
+/**
+ * What the reader asked to open: a comment already written, or a new one on a verse or a chapter — a new one written from
+ * the chosen verses' bar knows what the person made it (`paragraph`, the owner, 2026-11-06).
+ */
+export type ReaderCommenting = ({ kind: 'edit'; id: string; opening?: ReaderCommentOpening } | { kind: 'new'; reference: ScriptureReference; paragraph?: boolean }) & { opener?: HTMLElement | null };
 
 /** Display provenance stays in the reader: the comment's target remains its stored id. */
 function editingComment(id: string, bookId: string, bible: BibleId, passage?: Passage, opener?: HTMLElement | null): ReaderCommenting {
@@ -44,7 +49,7 @@ function editingComment(id: string, bookId: string, bible: BibleId, passage?: Pa
 }
 
 /** A passage chosen in the reader as a comment's place: one verse as before, a run with its last verse — past its chapter, with the chapter that verse stands in. */
-function referenceOf(passage: PickedPassage, book: string, bible: BibleId, id: string): ScriptureReference {
+export function referenceOf(passage: PickedPassage, book: string, bible: BibleId, id: string): ScriptureReference {
   const run = passage.toChapter !== passage.chapter
     ? { toVerseChapter: passage.toChapter, toVerse: passage.toVerse }
     : passage.toVerse !== passage.fromVerse ? { toVerse: passage.toVerse } : {};
@@ -67,6 +72,8 @@ export function ReaderCommentDialog(props: {
   locale: AppLocale;
   passageOf: (id: string) => Passage | undefined;
   onClose: () => void;
+  /** A comment saved here, by id: the reader brings it into sight (`readerSight.ts`). */
+  onSaved?: (id: string) => void;
   copy: VerseCopy;
   wide: boolean;
   /** Cached owned comments projected into the destination book; null means the collection is not known yet. */
@@ -99,17 +106,18 @@ export function ReaderCommentDialog(props: {
     const why = versesNotChoosable(here, bookId, bible);
     return why ? t(`comment.verses.${why}`, { translation: t(`bible.translations.${here.bible ?? bible}.short`) }) : null;
   };
-  const chooseVerses = (here: ScriptureReference, moveTo: (reference: ScriptureReference) => void) => {
+  const chooseVerses = (here: ScriptureReference, moveTo: (reference: ScriptureReference) => void, asParagraph?: boolean) => {
     const run = runHere(here);
     if (!run || !key) return;
     const offered = { chapter: run.chapter, fromVerse: run.fromVerse!, toChapter: run.toChapter, toVerse: run.toVerse ?? run.fromVerse! };
     setChoosing({ key, id: here.id, offered, moveTo });
-    copy.startPassage({ chapter: offered.chapter, verse: offered.fromVerse }, { chapter: offered.toChapter, verse: offered.toVerse }, 'comment');
+    copy.startPassage({ chapter: offered.chapter, verse: offered.fromVerse }, { chapter: offered.toChapter, verse: offered.toVerse }, 'comment', asParagraph);
   };
   const editing = commenting?.kind === 'edit' ? commenting.id : undefined;
-  // Every projected piece follows the destination book's same rule; a single verse always may stand.
-  const placeRefusal = (reference: ScriptureReference) => {
-    const pieces = passagesIn(reference, bible).filter(isParagraph);
+  // Every projected piece follows the destination book's same rule — the paragraphs' rule, a paragraph's alone: a comment
+  // on several verses crosses nothing (the owner, 2026-11-06). Never chosen, the kind is read from the length as before.
+  const placeRefusal = (reference: ScriptureReference, paragraph?: boolean) => {
+    const pieces = passagesIn(reference, bible).filter((piece) => isParagraphComment(piece, paragraph));
     if (!pieces.length) return null;
     const target = paragraphsForBook(reference.book);
     if (!target) return t('comment.pick.unavailable');
@@ -149,7 +157,7 @@ export function versesNotChoosable(here: ScriptureReference, bookId: string, bib
   return here.book === bookId ? 'notOneRun' : 'otherBook';
 }
 
-function OpenReaderCommentDialog({ commenting, text, bookId, bible, locale, passageOf, onClose, away, onChooseVerses, versesRefusal, placeRefusal }: {
+function OpenReaderCommentDialog({ commenting, text, bookId, bible, locale, passageOf, onClose, onSaved, away, onChooseVerses, versesRefusal, placeRefusal }: {
   commenting: ReaderCommenting;
   text: BookText;
   bookId: string;
@@ -159,10 +167,11 @@ function OpenReaderCommentDialog({ commenting, text, bookId, bible, locale, pass
   /** Where a written comment stands in the Bible being read (`useBookUsage().commentPassage`). */
   passageOf: (id: string) => Passage | undefined;
   onClose: () => void;
+  onSaved?: (id: string) => void;
   away: boolean;
-  onChooseVerses: (here: ScriptureReference, moveTo: (reference: ScriptureReference) => void) => void;
+  onChooseVerses: (here: ScriptureReference, moveTo: (reference: ScriptureReference) => void, asParagraph?: boolean) => void;
   versesRefusal: (here: ScriptureReference) => string | null;
-  placeRefusal: (reference: ScriptureReference) => string | null;
+  placeRefusal: (reference: ScriptureReference, paragraph?: boolean) => string | null;
 }) {
   const { t } = useTranslation();
   const returnFocusTo = useRef<HTMLElement | null>(commenting.opener ?? null);
@@ -179,8 +188,11 @@ function OpenReaderCommentDialog({ commenting, text, bookId, bible, locale, pass
     : t(passage && passage.toChapter > passage.chapter ? 'comment.wholeChapters' : 'comment.wholeChapter', { place });
   const target: CommentTarget = commenting.kind === 'edit' ? { kind: 'edit', id: commenting.id } : { kind: 'new', reference: commenting.reference };
   const placeOf = (one: ScriptureReference) => readerPlaceName(one, bible, locale);
-  // A comment on whole chapters keeps its chapter doors: its verses are not chosen in the text.
-  return <CommentDialog target={target} place={place} context={context} bible={bible} placeOf={placeOf} onClose={onClose} returnFocusTo={returnFocusTo} openingPlace={opening ? place : undefined} away={away} onChooseVerses={onVerses ? onChooseVerses : undefined} versesRefusal={versesRefusal} placeRefusal={placeRefusal} />;
+  // A comment on whole chapters keeps its chapter doors: its verses are not chosen in the text. On verses, the window says
+  // what it is — a comment or a paragraph — and lets it be changed: a new one as the bar's button chose, a written one as
+  // it was saved or, never chosen, as its length reads (the owner, 2026-11-06).
+  const paragraphChoice = onVerses ? { initial: commenting.kind === 'new' ? commenting.paragraph ?? false : isParagraph(passage) } : undefined;
+  return <CommentDialog target={target} place={place} context={context} bible={bible} placeOf={placeOf} onClose={onClose} onSaved={onSaved} returnFocusTo={returnFocusTo} openingPlace={opening ? place : undefined} away={away} onChooseVerses={onVerses ? onChooseVerses : undefined} versesRefusal={versesRefusal} placeRefusal={placeRefusal} paragraphChoice={paragraphChoice} />;
 }
 
 /** What the reader says when the verses chosen for a comment come out other than pressed, or a place may not be saved. */
@@ -196,7 +208,9 @@ function paragraphName(body: string): string {
 
 /**
  * THE PARAGRAPHS' RULE WHILE A COMMENT'S VERSES ARE CHOSEN (`commentParagraphs.ts`): the reader's verse choice keeps it,
- * the comment whose verses are chosen again left out of the paragraphs it is checked against.
+ * the comment whose verses are chosen again left out of the paragraphs it is checked against. The rule is a paragraph's:
+ * what the comment is, its window says now (`asParagraph`) — a comment crosses nothing, one switched to a paragraph keeps
+ * the rule before it is saved as one (Codex review, 2026-11-07); with no window yet, a written one as it is laid.
  */
 export function useCommentLimit({ text, laid, bodyOf, commenting }: {
   text: BookText | null;
@@ -206,8 +220,10 @@ export function useCommentLimit({ text, laid, bodyOf, commenting }: {
 }): PassageLimit {
   const { t } = useTranslation();
   const editing = commenting?.kind === 'edit' ? commenting.id : undefined;
-  return useCallback((verses, end, before) => {
-    if (!text) return { verses };
+  return useCallback((verses, end, before, asParagraph) => {
+    // A comment that is no paragraph keeps no paragraphs' rule: its verses are chosen freely.
+    const paragraph = asParagraph ?? !(editing && !laid.some((laidOne) => laidOne.owner === editing));
+    if (!text || !paragraph) return { verses };
     const fit = fitCommentPassage(text, laid, verses, end, before, editing);
     return { verses: fit.verses, ...(fit.said ? { said: sayFit(fit.said, (id) => paragraphName(bodyOf(id)), t) } : {}) };
   }, [text, laid, bodyOf, editing, t]);
@@ -281,4 +297,29 @@ export function useCommentDoors({ ready, commentOn, commentPassage, setCommentin
       open: (chapter) => open(chapter, null),
     },
   }), [ready, commentOn, open, t, passageOf]);
+}
+
+/**
+ * WRITING ON THE CHOSEN VERSES (case 2026-11-06-comment-paragraph): the bar's «Комментарий» or «Абзац» opens a new
+ * comment's window on them, of the kind pressed. A paragraph that would cross another, be another's very verses or lie
+ * three deep is said at once, the verses kept chosen to be changed; a comment on any verses in a row may stand.
+ */
+export function useWriteOnVerses({ setCommenting, bookId, bible, laid, bodyOf, clear }: {
+  setCommenting: (commenting: ReaderCommenting) => void;
+  bookId: string;
+  bible: BibleId;
+  laid: readonly LaidParagraph[];
+  bodyOf: (id: string) => string;
+  clear: () => void;
+}): (kind: VerseWriting, passage: PickedPassage) => void {
+  const { t } = useTranslation();
+  return useCallback((kind, passage) => {
+    if (kind === 'paragraph') {
+      const span = { from: versePosition(passage.chapter, passage.fromVerse), to: versePosition(passage.toChapter, passage.toVerse) };
+      const refusal = paragraphRefusal(span, laid);
+      if (refusal) { toast.error(sayFit(refusal, (id) => paragraphName(bodyOf(id)), t)); return; }
+    }
+    clear();
+    setCommenting({ kind: 'new', reference: referenceOf(passage, bookId, bible, newClientId()), paragraph: kind === 'paragraph' });
+  }, [setCommenting, bookId, bible, laid, bodyOf, clear, t]);
 }

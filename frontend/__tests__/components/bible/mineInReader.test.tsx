@@ -23,8 +23,8 @@ jest.mock('@locales/useTranslation', () => {
       const result = actual.useTranslation();
       return {
         ...result,
-        t: (key: string, options?: { place?: string }) => (key === 'comment.title'
-          ? english.comment.title.replace('{{place}}', options?.place ?? '')
+        t: (key: string, options?: { place?: string }) => (key === 'comment.title' || key === 'comment.titleParagraph'
+          ? english.comment[key === 'comment.title' ? 'title' : 'titleParagraph'].replace('{{place}}', options?.place ?? '')
           : result.t(key, options)),
       };
     },
@@ -336,11 +336,12 @@ describe('a reader comment opened at a translated run', () => {
     const expectedContext = verseWords(romansText.chapters[chapter - 1][verse - 1]);
     expect(rowElement).toHaveTextContent(expectedContext);
     await userEvent.click(edit);
-    const expectedTitle = chapter === 14 ? 'Comment · Rom 14:24–26' : 'Comment · Rom 16:24';
-    const dialog = await screen.findByRole('dialog', { name: /^Comment · Rom / });
+    // The run 14:24–26 is drawn as a paragraph: its window says so (case 2026-11-06-comment-paragraph).
+    const expectedTitle = chapter === 14 ? 'Paragraph · Rom 14:24–26' : 'Comment · Rom 16:24';
+    const dialog = await screen.findByRole('dialog', { name: /^(Comment|Paragraph) · Rom / });
     expect(within(dialog).getByLabelText('comment-editor')).toHaveValue('QA223 retained comment words.');
     expect(dialog).toHaveTextContent(expectedContext);
-    expect(within(dialog).getByRole('heading', { name: chapter === 14 ? /^Comment · Rom 14:24–26/ : expectedTitle })).toBeInTheDocument();
+    expect(within(dialog).getByRole('heading', { name: chapter === 14 ? /^Paragraph · Rom 14:24–26/ : expectedTitle })).toBeInTheDocument();
   };
 
   it('opens the comment from the later RST run at Romans 16:24', async () => {
@@ -434,34 +435,67 @@ describe('paragraphs of comments (case 2026-10-12-block-diagram, phase 9)', () =
     // Across «Глава 3»: a heading above 2:22, room after 3:1.
     expect((screen.getByText('Жатва кончается').closest('[data-paragraph-head]') as HTMLElement).nextElementSibling).toBe(rowOf('2:22'));
     expect(rowOf('3:1').style.marginBottom).toBe('18px');
-    // A comment that would cross a paragraph is not lost: it stands under its first verse.
-    expect(screen.getByTestId('comments-1:20')).toHaveTextContent('Через край абзаца');
+    // A comment that would cross a paragraph is not lost: it stands under its last verse, with its place
+    // (the owner, 2026-11-06: «комментарий на несколько стихов под последним стихом»).
+    expect(screen.getByTestId('comments-2:3')).toHaveTextContent('Через край абзаца');
+    expect(screen.getByTestId('comments-2:3')).toHaveTextContent('1:20–2:3');
     // A comment on one verse stands against the right edge.
     expect(within(screen.getByTestId('comments-1:5')).getByText('Сыновья умерли').closest('.justify-end')).not.toBeNull();
     // The line beside them is drawn over the text (Codex review r3: these tests stayed green with it gone).
     expect(screen.getByTestId('paragraph-lines').querySelectorAll('[data-piece="ring"]').length).toBeGreaterThan(0);
   });
 
-  it('chooses a new comment\'s verses in the text first: the first verse moves as freely as the last, and «Написать комментарий» writes on them', async () => {
+  // The owner, 2026-11-06: «сначала выбирать стихи, а потом что с ними делать» — one choice of verses, no grips, and the
+  // bar's «Комментарий» or «Абзац» writes what the person chose on verses in a row.
+  it('chooses the verses first — a press adds one, Shift takes a run — and the bar\'s «Абзац» writes a paragraph on them', async () => {
     mockRows = { studyNotes: [] };
     renderRuth();
     await waitFor(() => expect(verseText('1:16')).toBeTruthy());
     fireEvent.contextMenu(verseText('1:16'), { clientX: 200, clientY: 300 });
     await userEvent.click(await screen.findByRole('menuitem', { name: 'comment.verseMenu' }));
     expect(await screen.findByRole('region', { name: 'Руф 1:16' })).toBeInTheDocument();
-    // The chosen verse carries its two grips (Codex review r3: these tests stayed green with them gone).
-    expect(screen.getByTestId('passage-grips').querySelectorAll('[data-passage-grip]')).toHaveLength(2);
+    expect(screen.queryByTestId('passage-grips')).not.toBeInTheDocument();
+    // Not in a row: a copy may take them, a comment, a paragraph and an analysis wait.
     fireEvent.click(verseText('1:20'), { detail: 1 });
-    expect(screen.getByRole('region', { name: 'Руф 1:16–20' })).toBeInTheDocument();
-    // A verse in the middle, nearer the first: the first verse comes down to it.
-    fireEvent.click(verseText('1:17'), { detail: 1 });
-    const bar = screen.getByRole('region', { name: 'Руф 1:17–20' });
-    await userEvent.click(within(bar).getByRole('button', { name: 'comment.pick.write' }));
+    const apart = screen.getByRole('region', { name: 'Руф 1:16, 20' });
+    expect(within(apart).queryByRole('button', { name: 'bible.copy.writeParagraph' })).not.toBeInTheDocument();
+    expect(within(apart).getByText('bible.copy.onlyInRow')).toBeInTheDocument();
+    fireEvent.click(verseText('1:20'), { detail: 1 });
+    fireEvent.click(verseText('1:20'), { detail: 1, shiftKey: true });
+    const bar = screen.getByRole('region', { name: 'Руф 1:16–20' });
+    await userEvent.click(within(bar).getByRole('button', { name: 'bible.copy.writeParagraph' }));
+    expect(screen.getByRole('button', { name: 'comment.kind.paragraph' })).toHaveAttribute('aria-pressed', 'true');
     await userEvent.type(await screen.findByLabelText('comment-editor'), 'Верность');
     await userEvent.click(screen.getByRole('button', { name: 'common.done' }));
     expect(mockCreateNote).toHaveBeenCalledWith(expect.objectContaining({
-      type: 'comment', scriptureRefs: [expect.objectContaining({ bible: 'rst', book: 'Ruth', chapter: 1, fromVerse: 17, toVerse: 20 })],
+      type: 'comment', paragraph: true, scriptureRefs: [expect.objectContaining({ bible: 'rst', book: 'Ruth', chapter: 1, fromVerse: 16, toVerse: 20 })],
     }));
+  });
+
+  // The owner, 2026-11-06: «и абзац для одного стиха, и комментарий для одного стиха… комментарий и для нескольких стихов».
+  it('draws a paragraph on one verse as a heading, and a comment on a run of verses under its last verse with its place', async () => {
+    mockRows = { studyNotes: [
+      row('one', { type: 'comment', content: 'Решение Руфи', paragraph: true, scriptureRefs: [{ id: 'r-one', bible: 'rst', book: 'Ruth', chapter: 1, fromVerse: 16 }], tags: [] }),
+      row('run', { type: 'comment', content: 'Путь в Вифлеем', paragraph: false, scriptureRefs: [{ id: 'r-run', bible: 'rst', book: 'Ruth', chapter: 1, fromVerse: 19, toVerse: 21 }], tags: [] }),
+    ] };
+    renderRuth();
+    const heading = (await screen.findByText('Решение Руфи')).closest('[data-paragraph-head]') as HTMLElement;
+    expect(heading.nextElementSibling).toBe(rowOf('1:16'));
+    expect(screen.queryByTestId('comments-1:19')).not.toBeInTheDocument();
+    expect(screen.getByTestId('comments-1:21')).toHaveTextContent('Путь в Вифлеем');
+    expect(screen.getByTestId('comments-1:21')).toHaveTextContent('1:19–21');
+    expect(document.querySelector('[data-paragraph-head][data-comment="run"]')).toBeNull();
+  });
+
+  it('makes a written paragraph a comment from its window, writing only the kind', async () => {
+    mockRows = { studyNotes: [comment('run', 'Обещание Руфи', { chapter: 1, fromVerse: 16, toVerse: 18 })] };
+    renderRuth();
+    await userEvent.click(await screen.findByText('Обещание Руфи'));
+    // Never chosen, a comment on a run reads as a paragraph, as before.
+    expect(await screen.findByRole('button', { name: 'comment.kind.paragraph' })).toHaveAttribute('aria-pressed', 'true');
+    await userEvent.click(screen.getByRole('button', { name: 'comment.kind.comment' }));
+    await userEvent.click(screen.getByRole('button', { name: 'common.done' }));
+    expect(mockUpdateNote).toHaveBeenCalledWith(expect.objectContaining({ id: 'run', updates: { paragraph: false } }));
   });
 
   it('changes a written comment\'s verses from its window: the window steps aside while they are chosen, and comes back to move it on «Готово»', async () => {
@@ -538,10 +572,10 @@ describe('paragraphs of comments (case 2026-10-12-block-diagram, phase 9)', () =
     await screen.findByText('Обещание Руфи');
     fireEvent.contextMenu(verseText('1:17'), { clientX: 200, clientY: 300 });
     await userEvent.click(await screen.findByRole('menuitem', { name: 'comment.verseMenu' }));
-    await userEvent.click(within(await screen.findByRole('region', { name: 'Руф 1:17' })).getByRole('button', { name: 'comment.pick.write' }));
+    await userEvent.click(within(await screen.findByRole('region', { name: 'Руф 1:17' })).getByRole('button', { name: 'bible.copy.writeComment' }));
     await userEvent.type(await screen.findByLabelText('comment-editor'), 'Слово клятвы');
     await userEvent.click(screen.getByRole('button', { name: 'common.done' }));
-    expect(mockCreateNote).toHaveBeenCalledWith(expect.objectContaining({ scriptureRefs: [expect.objectContaining({ chapter: 1, fromVerse: 17 })] }));
+    expect(mockCreateNote).toHaveBeenCalledWith(expect.objectContaining({ paragraph: false, scriptureRefs: [expect.objectContaining({ chapter: 1, fromVerse: 17 })] }));
   });
 
   // Codex review r2: the list moved the comment as it was written, not with the verses just chosen.
@@ -666,8 +700,9 @@ describe('paragraphs of comments (case 2026-10-12-block-diagram, phase 9)', () =
       mockRows = { studyNotes: [] };
       renderRuth();
       await waitFor(() => expect(verseText('1:16')).toBeTruthy());
+      // The grips stand where verses are chosen for an analysis (a comment's verses are chosen with the shared bar now).
       fireEvent.contextMenu(verseText('1:16'), { clientX: 200, clientY: 300 });
-      await userEvent.click(await screen.findByRole('menuitem', { name: 'comment.verseMenu' }));
+      await userEvent.click(await screen.findByRole('menuitem', { name: 'analysis.verseMenu' }));
       await screen.findByRole('region', { name: 'Руф 1:16' });
       return screen.getByTestId('passage-grips').querySelector<HTMLElement>('[data-passage-grip="last"]')!;
     };

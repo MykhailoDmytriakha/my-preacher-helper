@@ -650,6 +650,13 @@ export interface StudyNote {
   relatedSermonIds?: string[];
   /** Absent on documents written before the field existed — read as 'note'. */
   type?: StudyNoteType;
+  /**
+   * Only on a comment: what it is in the reader, chosen by the person (the owner, 2026-11-06: «и абзац для одного стиха,
+   * и комментарий для нескольких стихов»). True — a paragraph, its words a heading over its verses; false — a comment
+   * beside them, on one verse or many. Absent on comments written before the choice existed: one on a run of verses is
+   * read as a paragraph, one on a verse as a comment (`commentParagraphs.ts`, `isParagraphComment`).
+   */
+  paragraph?: boolean;
   /** Only on an analysis: its parts and what they hang on. */
   analysis?: StudyAnalysis;
   /**

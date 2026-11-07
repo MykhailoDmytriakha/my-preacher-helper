@@ -1,7 +1,7 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import { CommentDialog } from '@/components/CommentDialog';
+import { CommentDialog, CommentWayBar } from '@/components/CommentDialog';
 import { StaleWriteError } from '@/services/conflictSafeUpdate.client';
 import { draftKey, saveDraft } from '@/utils/durableDraft';
 import { readDraftAddress } from '@/utils/draftAddress';
@@ -219,6 +219,41 @@ describe('CommentDialog', () => {
     await waitFor(() => expect(onClose).toHaveBeenCalled());
   });
 
+  // Visual pass 2026-11-07: a paragraph written on the verse at the top got its heading under the header — the reader brings
+  // what was saved into sight, by the id the window hands it; one that grew into a note leaves the reader and is not shown.
+  it('hands the reader the id of what it saved — new or written — and none for a note', async () => {
+    const onSaved = jest.fn();
+    mockEngine.createNote.mockImplementationOnce(() => ({ ...accepted(), note: { id: 'new-1' } }));
+    const { unmount } = render(<CommentDialog target={{ kind: 'new', reference }} place="Ис 40:31" onClose={jest.fn()} onSaved={onSaved} />);
+    await userEvent.type(screen.getByLabelText('editor'), 'Ждать — не бездействие.');
+    await userEvent.click(screen.getByRole('button', { name: 'common.done' }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalledWith('new-1'));
+    unmount();
+    onSaved.mockClear();
+    const edited = render(<CommentDialog target={{ kind: 'edit', id: 'c1' }} place="Ис 40:31" onClose={jest.fn()} onSaved={onSaved} />);
+    await userEvent.type(screen.getByLabelText('editor'), ' И в терпении.');
+    await userEvent.click(screen.getByRole('button', { name: 'common.done' }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalledWith('c1'));
+    edited.unmount();
+    onSaved.mockClear();
+    const closed = jest.fn();
+    render(<CommentDialog target={{ kind: 'edit', id: 'c1' }} place="Ис 40:31" onClose={closed} onSaved={onSaved} />);
+    await userEvent.type(screen.getByLabelText('editor'), ` ${words(64)}`);
+    await userEvent.type(screen.getByLabelText(/comment.noteTitle/), 'Сила в ожидании');
+    await userEvent.click(screen.getByRole('button', { name: 'comment.toNote' }));
+    // Closed after the save was taken: by then a reveal would have been asked for.
+    await waitFor(() => expect(closed).toHaveBeenCalled());
+    expect(onSaved).not.toHaveBeenCalled();
+  });
+
+  // Visual pass 2026-11-07: the window titled «Абзац» began its way with «Комментарий» — one thing, one name in the window.
+  it('starts the way to a note with what is being written: a comment, or a paragraph', () => {
+    const { rerender } = render(<CommentWayBar text="Жёны и мужья" />);
+    expect(screen.getByTestId('comment-way')).toHaveTextContent(/^studiesWorkspace\.type\.comment/);
+    rerender(<CommentWayBar text="Жёны и мужья" paragraph />);
+    expect(screen.getByTestId('comment-way')).toHaveTextContent(/^comment\.kind\.paragraph/);
+  });
+
   it('past five sentences fills the way to green and makes it a note, the text whole', async () => {
     render(<CommentDialog target={{ kind: 'new', reference }} place="Ис 40:31" onClose={jest.fn()} />);
     const editor = screen.getByLabelText('editor');
@@ -342,6 +377,33 @@ describe('CommentDialog', () => {
     }));
   });
 
+  // Codex review of the visual pass, 2026-11-07: the kind is the person's as the words are. A comment never given a kind,
+  // made a paragraph here and a comment on another device: «keep mine» goes with what the other device stored as its baseline
+  // (else refused again on every press), and «take theirs» shows their kind in the switch and writes nothing of this one.
+  it('carries the comment\'s kind through a conflict: keep mine goes against their kind, take theirs takes it', async () => {
+    const refused = () => ({ acceptance: Promise.reject(new StaleWriteError('note', 4, 6, { paragraph: false })), persistence: Promise.resolve(), result: Promise.resolve({}) }) as never;
+    mockEngine.updateNote.mockImplementationOnce(refused).mockImplementationOnce(() => ({ ...accepted(), result: Promise.resolve({}) }) as never);
+    const { unmount } = render(<CommentDialog target={{ kind: 'edit', id: 'c1' }} place="Ис 40:31" onClose={jest.fn()} paragraphChoice={{ initial: false }} />);
+    await userEvent.click(screen.getByRole('button', { name: 'comment.kind.paragraph' }));
+    await userEvent.click(screen.getByRole('button', { name: 'common.done' }));
+    expect(mockEngine.updateNote).toHaveBeenLastCalledWith(expect.objectContaining({ updates: { paragraph: true }, expectedBaseline: { paragraph: undefined } }));
+    await userEvent.click(await screen.findByRole('button', { name: 'freshness.conflictKeepMine' }));
+    await waitFor(() => expect(mockEngine.updateNote).toHaveBeenCalledTimes(2));
+    expect(mockEngine.updateNote).toHaveBeenLastCalledWith(expect.objectContaining({ updates: { paragraph: true }, expectedRevision: 6, expectedBaseline: { paragraph: false } }));
+    unmount();
+
+    mockEngine.updateNote.mockReset().mockImplementationOnce(refused).mockImplementation(() => ({ ...accepted(), result: Promise.resolve({}) }) as never);
+    const onClose = jest.fn();
+    render(<CommentDialog target={{ kind: 'edit', id: 'c1' }} place="Ис 40:31" onClose={onClose} paragraphChoice={{ initial: false }} />);
+    await userEvent.click(screen.getByRole('button', { name: 'comment.kind.paragraph' }));
+    await userEvent.click(screen.getByRole('button', { name: 'common.done' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'freshness.conflictTakeTheirs' }));
+    expect(screen.getByRole('button', { name: 'comment.kind.comment' })).toHaveAttribute('aria-pressed', 'true');
+    await userEvent.click(screen.getByRole('button', { name: 'common.done' }));
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(mockEngine.updateNote).toHaveBeenCalledTimes(1);
+  });
+
   it('keeps the words on the device until saved: the same door, opened again after a reload, offers them back to see and restore', async () => {
     const { unmount } = render(<CommentDialog target={{ kind: 'new', reference }} place="Ис 40:31" onClose={jest.fn()} />);
     await userEvent.type(screen.getByLabelText('editor'), 'Ждать — не бездействие.');
@@ -358,6 +420,46 @@ describe('CommentDialog', () => {
     expect(screen.getByLabelText('editor')).toHaveValue('Ждать — не бездействие.');
     expect(screen.getByLabelText('editor')).not.toHaveAttribute('readonly');
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+
+  // Codex review r2–r4, 2026-11-07: the words on the device are the words, their name and place — not the kind. A kind among
+  // them kept copies from being retired between the reader and Studies; words brought back take the kind the window opened with.
+  it('keeps the words, not the kind, on the device: brought back after a reload, the kind is the window\'s own', async () => {
+    const { unmount } = render(<CommentDialog target={{ kind: 'new', reference }} place="Ис 40:31" onClose={jest.fn()} paragraphChoice={{ initial: false }} />);
+    await userEvent.click(screen.getByRole('button', { name: 'comment.kind.paragraph' }));
+    await userEvent.type(screen.getByLabelText('editor'), 'Ожидание');
+    unmount();
+    expect(keptDrafts()).toEqual([expect.not.objectContaining({ paragraph: expect.anything() })]);
+    render(<CommentDialog target={{ kind: 'new', reference: { ...reference, id: 'again' } }} place="Ис 40:31" onClose={jest.fn()} paragraphChoice={{ initial: true }} />);
+    await userEvent.click(within(await screen.findByRole('status')).getByRole('button', { name: 'unsavedDraft.restore' }));
+    expect(screen.getByLabelText('editor')).toHaveValue('Ожидание');
+    expect(screen.getByRole('button', { name: 'comment.kind.paragraph' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  // Codex review r3, 2026-11-07: a copy kept before the kind existed, or by Studies, whose window has no switch, restored and
+  // saved in the reader's window is retired — left behind, it was offered again later with words gone stale.
+  it.each([true, false])('retires a copy kept without a kind once it is restored and saved in the reader\'s window: title present=%s', async (hasTitle) => {
+    saveDraft(draftKey('owner', 'new:rst:Isaiah:40:31', 'comment'), { text: 'Legacy retained words.', reference, ...(hasTitle ? { title: '' } : {}) });
+    const close = jest.fn();
+    render(<CommentDialog target={{ kind: 'new', reference: { ...reference, id: 'fresh-door' } }} place="Isa 40:31" onClose={close} paragraphChoice={{ initial: false }} />);
+    await userEvent.click(within(await screen.findByRole('status')).getByRole('button', { name: 'unsavedDraft.restore' }));
+    await userEvent.click(screen.getByRole('button', { name: 'common.done' }));
+    await waitFor(() => expect(close).toHaveBeenCalled());
+    expect(mockEngine.createNote).toHaveBeenCalledWith(expect.objectContaining({ content: 'Legacy retained words.', paragraph: false }));
+    expect(keptDrafts()).toEqual([]);
+  });
+
+  it('retires a written comment\'s copy left by Studies once the reader\'s window restores and saves it', async () => {
+    const studies = render(<CommentDialog target={{ kind: 'edit', id: 'c1' }} place="Ис 40:31" onClose={jest.fn()} />);
+    await userEvent.type(screen.getByLabelText('editor'), ' Моё.');
+    studies.unmount();
+    const close = jest.fn();
+    render(<CommentDialog target={{ kind: 'edit', id: 'c1' }} place="Ис 40:31" onClose={close} paragraphChoice={{ initial: false }} />);
+    await userEvent.click(within(await screen.findByRole('status')).getByRole('button', { name: 'unsavedDraft.restore' }));
+    await userEvent.click(screen.getByRole('button', { name: 'common.done' }));
+    await waitFor(() => expect(close).toHaveBeenCalled());
+    expect(mockEngine.updateNote).toHaveBeenLastCalledWith(expect.objectContaining({ updates: { content: 'Сила приходит в ожидании. Моё.' } }));
+    expect(keptDrafts()).toEqual([]);
   });
 
   // Words on the device equal to the comment's are no question. Compared with the words being typed, they turned into an

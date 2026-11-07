@@ -834,14 +834,18 @@
       "copiedWithPlace": "Copied with the reference · {{place}}",
       "failed": "Couldn’t copy",
       "shareFailed": "Couldn’t share",
-      "severalHint": "Tap verses to add them. Press and hold for a passage",
-      "severalHintMouse": "Click verses to add them; Shift+click for a passage",
+      "severalHint": "Tap more verses · hold for a passage",
+      "severalHintMouse": "Click more verses · Shift+click for a passage",
       "format": "How to copy",
       "asQuote": "As a quote",
       "numbered": "Numbered",
       "clear": "Clear selection",
       "copyVerse": "Copy verse {{place}}",
-      "copiedVerse": "Copied: {{place}}"
+      "copiedVerse": "Copied: {{place}}",
+      "writeComment": "Comment",
+      "writeParagraph": "Paragraph",
+      "analyse": "Analyze",
+      "onlyInRow": "Comment, paragraph and analysis — for verses in a row"
     },
     "found": {
       "position": "{{at}} of {{count}}",
@@ -4651,12 +4655,19 @@
     "pick": {
       "write": "Write a comment",
       "cancel": "Cancel choosing verses",
-      "hint": "Press the passage's last verse — the nearer end moves to the verse pressed. One verse is a comment, several a paragraph.",
+      "hint": "Press the passage's last verse — the nearer end moves to the verse pressed.",
       "took": "Paragraphs never cross: the paragraph «{{title}}» is taken whole",
       "cross": "Paragraphs never cross: the passage stopped at the paragraph «{{title}}»",
       "same": "This is already the paragraph «{{title}}» — open its heading",
       "unavailable": "Paragraphs cannot be checked right now. Your comment is still here; try saving again later.",
       "deep": "A paragraph within a paragraph — two levels at most"
+    },
+    "titleParagraph": "Paragraph · {{place}}",
+    "paragraphDescription": "A heading over the verses: briefly, what this passage is about.",
+    "kind": {
+      "label": "What it is",
+      "comment": "Comment",
+      "paragraph": "Paragraph"
     }
   },
   "richText": {

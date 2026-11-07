@@ -50,6 +50,8 @@ export type UsageDocument = {
   body?: string;
   /** An analysis's ties and links of meaning, drawn with its parts (`body`) where it is listed. */
   analysis?: StudyAnalysis;
+  /** A comment's kind as the person chose it (`StudyNote.paragraph`); absent where never chosen. */
+  paragraph?: boolean;
 };
 
 /** Stronger links first: the same reference, then an overlapping passage, then a mention in the text. */
@@ -93,7 +95,7 @@ export function forgetReadDocumentsForTests(): void {
 export function usageDocuments(sources: UsageSources): UsageDocument[] {
   const { notes, sermons, groups, serviceOrders = [], currentNoteId, locale } = sources;
   const documents: UsageDocument[] = [];
-  const add = (kind: ScriptureUsageKind, source: { id: string; updatedAt?: string }, read: () => { title: string; candidates: Candidate[]; body?: string; analysis?: StudyAnalysis }) => {
+  const add = (kind: ScriptureUsageKind, source: { id: string; updatedAt?: string }, read: () => { title: string; candidates: Candidate[]; body?: string; analysis?: StudyAnalysis; paragraph?: boolean }) => {
     const collection = COLLECTION_OF[kind];
     const document = readOnce(`${collection}/${source.id}`, source, locale, () => {
       const href = documentScreenHref({ collection, id: source.id });
@@ -112,7 +114,7 @@ export function usageDocuments(sources: UsageSources): UsageDocument[] {
       const note = withNoteReferenceBibles(stored, locale);
       const content = note.content ?? '';
       const listed = (note.scriptureRefs ?? []).map(reference => ({ reference, text: content, at: 0, inText: false, listed: true }));
-      if (comment) return { title: note.title ?? '', candidates: listed, body: content };
+      if (comment) return { title: note.title ?? '', candidates: listed, body: content, ...(typeof stored.paragraph === 'boolean' ? { paragraph: stored.paragraph } : {}) };
       if (analysis) return { title: note.title ?? '', candidates: listed, body: content, ...(stored.analysis ? { analysis: stored.analysis } : {}) };
       return { title: note.title ?? '', candidates: [...listed, ...inText(content, locale, studyNoteLanguage(note))] };
     });
@@ -207,6 +209,8 @@ export type BookUsageEntry = {
   body?: string;
   /** An analysis's ties and links of meaning (`UsageDocument.analysis`). */
   analysis?: StudyAnalysis;
+  /** A comment's kind as the person chose it (`UsageDocument.paragraph`). */
+  paragraph?: boolean;
 };
 
 /** How kinds follow each other on one verse and on the minimap: the sermon first, then notes and comments, groups and service orders. */
@@ -262,7 +266,7 @@ function documentInBook(document: UsageDocument, bookId: string, bible: BibleId)
   return entries;
 }
 
-function layDocument({ kind, id, title, href, updatedAt, candidates, body, analysis }: UsageDocument, bookId: string, bible: BibleId): BookUsageEntry[] {
+function layDocument({ kind, id, title, href, updatedAt, candidates, body, analysis, paragraph }: UsageDocument, bookId: string, bible: BibleId): BookUsageEntry[] {
   const mentions = candidates.filter(candidate => candidate.inText);
   const own = new Map<string, BookUsageEntry>();
   candidates.forEach(candidate => {
@@ -274,7 +278,7 @@ function layDocument({ kind, id, title, href, updatedAt, candidates, body, analy
     const said = /\p{L}/u.test(typed?.raw ? words.replace(typed.raw, '') : words) ? words : '';
     passagesIn(candidate.reference, bible).forEach(passage => {
       const key = `${kind}:${id}:${passageKey(passage)}`;
-      if (!own.has(key)) own.set(key, { key, kind, id, title, href, updatedAt, passage, excerpt: said, ...(body !== undefined ? { body } : {}), ...(analysis ? { analysis } : {}) });
+      if (!own.has(key)) own.set(key, { key, kind, id, title, href, updatedAt, passage, excerpt: said, ...(body !== undefined ? { body } : {}), ...(analysis ? { analysis } : {}), ...(paragraph !== undefined ? { paragraph } : {}) });
     });
   });
   // A document stands on a place once: a sermon on 4:9-11 whose thought names 4:10 is one badge, not two.

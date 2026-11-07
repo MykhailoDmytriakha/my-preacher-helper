@@ -95,3 +95,13 @@ export function pickedPassage(text: BookText, chosen: readonly VerseAt[]): Picke
   const last = sorted[sorted.length - 1];
   return { chapter: first.chapter, fromVerse: first.verse, toChapter: last.chapter, toVerse: last.verse };
 }
+
+/**
+ * Whether the chosen verses stand in a row — one running piece of the text, across a chapter's end too: a comment, a
+ * paragraph and an analysis are written only on such a piece (the owner, 2026-11-06: «если стихи выбраны последовательно,
+ * то кнопки «комментарий»»); a copy takes any verses. A verse chosen twice counts once.
+ */
+export function inOneRun(text: BookText, chosen: readonly VerseAt[]): boolean {
+  const places = [...new Set(chosen.map((at) => bookIndex(text, at)))].sort((a, b) => a - b);
+  return places.length > 0 && places[places.length - 1] - places[0] === places.length - 1;
+}

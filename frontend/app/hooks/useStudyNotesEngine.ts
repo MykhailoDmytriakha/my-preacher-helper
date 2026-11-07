@@ -21,7 +21,9 @@ const resource = (id: string) => ({ collection: 'studyNotes', id });
 const now = () => new Date().toISOString();
 const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 /** The note text a person edits; relations (`materialIds`) move only through their material. */
-const EDITABLE: (keyof StudyNote)[] = ['title', 'content', 'scriptureRefs', 'tags', 'type', 'dictationSourceIds', 'recordingSourceIds', 'analysis'];
+// 'paragraph' — a comment switched between a comment and a paragraph in the reader's window: without it here the switch,
+// the whole of such a save, was dropped before the engine and nothing was written (case 2026-11-06-comment-paragraph).
+const EDITABLE: (keyof StudyNote)[] = ['title', 'content', 'scriptureRefs', 'tags', 'type', 'dictationSourceIds', 'recordingSourceIds', 'analysis', 'paragraph'];
 export type StudyNoteSubmission = WriteSubmission & {
   /** Exact canonical capture; absent on refused/skipped compatibility results. */
   capture?: Promise<DocumentWriteReceipt>;
@@ -66,7 +68,7 @@ const storedReferences = (references: unknown) => references !== null && typeof 
 
 const creationValue = (note: Omit<StudyNote, 'id' | 'createdAt' | 'updatedAt' | 'isDraft'>, at: string): DocumentData => deepCleanUndefined({
   userId: note.userId, content: note.content ?? '', title: note.title || '', scriptureRefs: note.scriptureRefs || [],
-  tags: note.tags || [], type: note.type || 'note', analysis: note.analysis, isDraft: isDraft(note), createdAt: at, updatedAt: at,
+  tags: note.tags || [], type: note.type || 'note', analysis: note.analysis, paragraph: note.paragraph, isDraft: isDraft(note), createdAt: at, updatedAt: at,
   ...(note.dictationSourceIds?.length ? { dictationSourceIds: [...new Set(note.dictationSourceIds)] } : {}),
   ...(note.recordingSourceIds?.length ? { recordingSourceIds: [...new Set(note.recordingSourceIds)] } : {}),
 }) as unknown as DocumentData;

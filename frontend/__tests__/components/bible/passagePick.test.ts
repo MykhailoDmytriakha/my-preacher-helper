@@ -1,4 +1,5 @@
 import { bookIndex, pickedPassage, pulledEnd, pulledRow, stretchPassage, versesBetween } from '@/components/bible/verseCopy/passagePick';
+import { inOneRun } from '@/utils/passagePick';
 
 import type { BookText } from '@/utils/bibleText';
 
@@ -60,5 +61,17 @@ describe('passagePick — a passage for an analysis is one piece of text', () =>
     expect(pulledRow(middles, 69, 'first')).toBe(1);
     expect(pulledRow(middles, -10, 'first')).toBe(0);
     expect(pulledRow([], 10, 'first')).toBe(-1);
+  });
+});
+
+// The owner, 2026-11-06: «если стихи выбраны последовательно, то кнопки «комментарий»».
+describe('verses chosen in a row', () => {
+  it('is one running piece in any order and across a chapter\'s end; a gap or nothing chosen is not', () => {
+    expect(inOneRun(BOOK, [v(1, 3), v(1, 2), v(1, 4)])).toBe(true);
+    expect(inOneRun(BOOK, [v(1, 5), v(2, 1)])).toBe(true);
+    expect(inOneRun(BOOK, [v(1, 2)])).toBe(true);
+    expect(inOneRun(BOOK, [v(1, 2), v(1, 2), v(1, 3)])).toBe(true);
+    expect(inOneRun(BOOK, [v(1, 2), v(1, 4)])).toBe(false);
+    expect(inOneRun(BOOK, [])).toBe(false);
   });
 });

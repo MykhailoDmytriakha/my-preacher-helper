@@ -1,4 +1,4 @@
-import { fitCommentPassage, isParagraph, layParagraphs, paragraphRefusal, spanOf, versePosition } from '@/components/bible/commentParagraphs';
+import { fitCommentPassage, isParagraph, isParagraphComment, layParagraphs, paragraphRefusal, spanOf, versePosition } from '@/components/bible/commentParagraphs';
 
 import type { BookText } from '@/utils/bibleText';
 import type { Passage } from '@/utils/scriptureReferenceNumbering';
@@ -98,5 +98,28 @@ describe('a comment that falls into two pieces in the Bible read (Codex review r
     // 14:25–28 crosses the comment's own piece 14:24–26: left out, it stands; counted, it would be stopped at its edge.
     const verses = Array.from({ length: 4 }, (_, i) => ({ chapter: 14, verse: 25 + i }));
     expect(fitCommentPassage(text, laid, verses, 'last', verses.slice(0, 3), 'c')).toEqual({ verses });
+  });
+});
+
+// The owner, 2026-11-06: «и абзац для одного стиха, и комментарий для одного стиха… комментарий и для нескольких стихов».
+describe('what a comment is, as the person chose it (case 2026-11-06-comment-paragraph)', () => {
+  it('follows the choice on one verse and on many; never chosen, reads the length as before; never on whole chapters', () => {
+    expect(isParagraphComment(at(3, 18), true)).toBe(true);
+    expect(isParagraphComment(at(3, 20, 21), false)).toBe(false);
+    expect(isParagraphComment(at(3, 20, 21))).toBe(true);
+    expect(isParagraphComment(at(3, 18))).toBe(false);
+    expect(isParagraphComment({ chapter: 3, toChapter: 3 }, true)).toBe(false);
+  });
+
+  it('lays a paragraph on one verse inside another, and leaves a comment on a run of verses out of the paragraphs', () => {
+    const { laid } = layParagraphs([
+      { id: 'home', passage: at(3, 18, 1, 4), paragraph: true },
+      { id: 'wives', passage: at(3, 18), paragraph: true },
+      { id: 'children', passage: at(3, 20, 21), paragraph: false },
+    ]);
+    expect(laid.map(({ id, level, first, last }) => ({ id, level, first, last }))).toEqual([
+      { id: 'home', level: 0, first: '3:18', last: '4:1' },
+      { id: 'wives', level: 1, first: '3:18', last: '3:18' },
+    ]);
   });
 });

@@ -11,7 +11,7 @@ import { SCRIPTURE_USAGE_KINDS, bookUsage, passageCovers, usageDocuments, type B
 import { verseCount } from '@/utils/versification';
 import { useTranslation } from '@locales/useTranslation';
 
-import { isParagraph, layParagraphs, type LaidParagraph } from './commentParagraphs';
+import { isParagraphComment, layParagraphs, type LaidParagraph } from './commentParagraphs';
 import { useMinePrefs } from './minePrefs';
 import { USAGE_KIND_LOOK } from './usageKinds';
 
@@ -38,8 +38,8 @@ export interface BookCommentLayout { laid: readonly LaidParagraph[]; bodyOf(id: 
 /** One projection owns paragraph layout and its displayed words in every book. */
 function commentLayoutOf(entries: readonly BookUsageEntry[]): BookCommentLayout {
   return {
-    laid: layParagraphs(entries.filter(entry => entry.kind === 'comment' && isParagraph(entry.passage))
-      .map(entry => ({ id: entry.key, owner: entry.id, passage: entry.passage }))).laid,
+    laid: layParagraphs(entries.filter(entry => entry.kind === 'comment' && isParagraphComment(entry.passage, entry.paragraph))
+      .map(entry => ({ id: entry.key, owner: entry.id, passage: entry.passage, ...(entry.paragraph !== undefined ? { paragraph: entry.paragraph } : {}) }))).laid,
     bodyOf: id => entries.find(entry => entry.kind === 'comment' && (entry.key === id || entry.id === id))?.body ?? '',
   };
 }
@@ -179,17 +179,19 @@ export function useBookUsage(bookId: string, bible: BibleId, locale: AppLocale, 
     };
     const onVerses = new Map<string | number, Map<string, Gathered>>();
     const onChapters = new Map<string | number, Map<string, Gathered>>();
-    // Comments as words: under the verse a comment starts at, under every heading of the chapters it is written to.
+    // Comments as words: under the verse a comment is written to — under the last of its verses, with their place, when it
+    // runs over several (the owner, 2026-11-06: «комментарий на несколько стихов под последним стихом») — and under every
+    // heading of the chapters it is written to.
     const asText = commentsShown === 'text' && Boolean(onEditComment);
     const textAt = new Map<string, Map<string, TextComment>>();
     const textOnChapters = new Map<number, Map<string, TextComment>>();
-    const write = <K,>(into: Map<K, Map<string, TextComment>>, at: K, entry: BookUsageEntry, passage: Passage) => {
+    const write = <K,>(into: Map<K, Map<string, TextComment>>, at: K, entry: BookUsageEntry, passage: Passage, label?: string) => {
       const comments = into.get(at) ?? new Map<string, TextComment>();
-      comments.set(entry.id, { id: entry.id, body: entry.body ?? '', passage, editLabel: t('bible.mine.editComment', { place: passageLabel(abbrev, passage) }) });
+      comments.set(entry.id, { id: entry.id, body: entry.body ?? '', passage, editLabel: t('bible.mine.editComment', { place: passageLabel(abbrev, passage) }), ...(label ? { label } : {}) });
       into.set(at, comments);
     };
-    // A comment on a run of verses is a paragraph (`commentParagraphs.ts`): its words a heading above its first verse, room
-    // after its last. One that breaks the paragraphs' rules stays a comment under its first verse.
+    // A comment made a paragraph (`commentParagraphs.ts`): its words a heading above its first verse, room after its last.
+    // One that breaks the paragraphs' rules stays a comment.
     const laid = asText ? commentLaid : [];
     const heads = new Map<string, ParagraphHead[]>();
     const room = new Map<string, number>();
@@ -207,7 +209,9 @@ export function useBookUsage(bookId: string, bible: BibleId, locale: AppLocale, 
       const { passage } = entry;
       if (asText && entry.kind === 'comment') {
         if (drawnAsParagraph.has(entry.key)) return;
-        if (passage.fromVerse !== undefined) write(textAt, `${passage.chapter}:${passage.fromVerse}`, entry, passage);
+        const last = passage.toVerse ?? passage.fromVerse;
+        const run = passage.fromVerse !== undefined && (passage.toChapter !== passage.chapter || last !== passage.fromVerse);
+        if (passage.fromVerse !== undefined) write(textAt, `${passage.toChapter}:${last}`, entry, passage, run ? badgeLabel(passage, bible, bookId) : undefined);
         else for (let chapter = passage.chapter; chapter <= passage.toChapter; chapter++) write(textOnChapters, chapter, entry, entry.passage);
         return;
       }
