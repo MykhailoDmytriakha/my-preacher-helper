@@ -806,23 +806,36 @@ export class DataEngine {
     const source = { collection: 'studyNotes', id: sourceId }, adopted = { collection: 'studyNotes', id: adoptedId };
     this.validateResource(source, owner); this.validateResource(adopted, owner);
     if (!this.options.commits.releaseCapture) return;
-    const requests = await this.commits.list(); this.assertCurrent(owner, generation);
-    const roots = requests.filter(request => request.owner === owner && request.retentionScope === analysisCreationScope(sourceId)
-      && sameResource(request.baseline.resource, source));
-    const replacements = requests.filter(request => request.owner === owner && request.transferredFrom
-      && sameResource(request.transferredFrom.source, source) && sameResource(request.baseline.resource, adopted));
-    const held = replacements.length ? replacements : sourceId === adoptedId ? roots : [];
+    const requests = (await this.commits.list()).filter(request => request.owner === owner);
+    this.assertCurrent(owner, generation);
+    const direct = sameResource(source, adopted);
+    const roots = direct ? requests.filter(request => request.retentionScope === analysisCreationScope(sourceId)
+      && sameResource(request.baseline.resource, source)) : [];
+    const replacements = requests.filter(request => request.transferredFrom
+      && request.retentionScope?.startsWith(ANALYSIS_CREATION_TRANSFER_PREFIX) && sameResource(request.baseline.resource, adopted)
+      && (direct || sameResource(request.transferredFrom.source, source)));
+    const held = [...roots, ...replacements];
     if (!held.length) return;
-    const owns = (request: CommitRequest): boolean => [...this.editors.values()].some(entry => {
-      if (entry.closed || !entry.controller) return false;
-      const checkpoint = entry.controller.getState().checkpoint;
-      return sameResource(checkpoint.confirmed.resource, adopted) && (Boolean(checkpoint.pending[request.id])
+    const owns = (request: CommitRequest): boolean => [...this.editors].some(([editorId, entry]) => {
+      if (entry.closed || !entry.controller || editorSlot(editorId) === ACTION_SLOT) return false;
+      const { checkpoint, durable } = entry.controller.getState();
+      return sameResource(checkpoint.confirmed.resource, adopted) && ((durable && Boolean(checkpoint.pending[request.id]))
         || (request.result?.kind === 'acknowledged' && request.result.snapshot.metadata !== null
           && coversCommittedEffect(checkpoint.confirmed, adopted, request.result.snapshot.metadata)));
     });
-    if (held.some(request => !owns(request))) return analysisCreationReview();
-    for (const request of [...roots, ...replacements]) if (request.retentionScope) {
-      await this.options.commits.releaseCapture(owner, request.retentionScope, request.id); this.assertCurrent(owner, generation);
+    if (!held.every(owns)) return analysisCreationReview();
+    for (const request of held) {
+      const proof = request.transferredFrom;
+      // Keep the replacement's proof until its exact retired root is released.
+      const root = proof && requests.find(candidate => candidate.id === proof.requestIds[0] && candidate.state === 'cancelled'
+        && candidate.retentionScope === analysisCreationScope(proof.source.id) && sameResource(candidate.baseline.resource, proof.source)
+        && candidate.transferredTo?.requestId === request.id && sameResource(candidate.transferredTo.resource, adopted));
+      if (root?.retentionScope) {
+        await this.options.commits.releaseCapture(owner, root.retentionScope, root.id); this.assertCurrent(owner, generation);
+      }
+      if (request.retentionScope) {
+        await this.options.commits.releaseCapture(owner, request.retentionScope, request.id); this.assertCurrent(owner, generation);
+      }
     }
   }
 

@@ -44,7 +44,7 @@ let formConfirmed: ResourceSnapshot | null = null;
 let formActionResolutionRequired = false;
 const form = (resource: { id: string } | null) => {
   const note = resource ? formNote ?? engine.notes.find((entry) => entry.id === resource.id) : undefined;
-  return { data: note ?? null, confirmed: formConfirmed, state: note && formStateAvailable ? { result: formRefusal ? { kind: 'refused', code: formRefusal } : null, actionResolutionRequired: formActionResolutionRequired } : null, status: note ? { phase: formPhase } : null, readOnly: false, loading: false, error: null, commit, recoveryIdentity: {} };
+  return { data: note ?? null, confirmed: formConfirmed, state: note && formStateAvailable ? { result: formRefusal ? { kind: 'refused', code: formRefusal } : null, actionResolutionRequired: formActionResolutionRequired, checkpoint: { confirmed: formConfirmed ?? { metadata: null }, pending: {} } } : null, status: note ? { phase: formPhase } : null, readOnly: false, loading: false, error: null, commit, recoveryIdentity: {} };
 };
 let opening: AnalysisOpening = { kind: 'new', passage: PASSAGE };
 const render = () => renderHook(() => useAnalysisNote({ opening, text: EPHESIANS, bookId: 'Ephesians', bible: 'rst', locale: 'ru' }));
@@ -424,6 +424,28 @@ describe('an analysis note — what the screen may write', () => {
     expect(mounted.result.current.state.cuts).toEqual([3]);
     expect(mounted.result.current.missing).toBe(false);
     expect(engine.createNote).not.toHaveBeenCalled();
+    expect(commit).not.toHaveBeenCalled();
+  });
+
+  it('retries a direct-opening release when the target checkpoint confirms the transfer', async () => {
+    engine.loading = false; engine.notes = [madeElsewhere];
+    opening = { kind: 'open', id: madeElsewhere.id };
+    formStateAvailable = false;
+    const metadata = { protocol: 1 as const, generation: 'target', revision: 1, deleted: false };
+    formConfirmed = { resource: { collection: 'studyNotes', id: madeElsewhere.id },
+      value: madeElsewhere as unknown as DocumentData, metadata };
+    engine.releaseAnalysisCreation.mockRejectedValueOnce(new Error('Transfer is not adopted yet'));
+    const { rerender } = render();
+    expect(engine.releaseAnalysisCreation).not.toHaveBeenCalled();
+
+    await act(async () => { formStateAvailable = true; rerender(); });
+    expect(engine.releaseAnalysisCreation).toHaveBeenCalledTimes(1);
+    await act(async () => { rerender(); });
+    expect(engine.releaseAnalysisCreation).toHaveBeenCalledTimes(1);
+
+    await act(async () => { formConfirmed = { ...formConfirmed!, metadata: { ...metadata, revision: 2 } }; rerender(); });
+    expect(engine.releaseAnalysisCreation).toHaveBeenCalledTimes(2);
+    expect(engine.releaseAnalysisCreation).toHaveBeenLastCalledWith(madeElsewhere.id, madeElsewhere.id);
     expect(commit).not.toHaveBeenCalled();
   });
 

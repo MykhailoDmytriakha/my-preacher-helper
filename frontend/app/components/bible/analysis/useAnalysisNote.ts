@@ -113,7 +113,7 @@ export function useAnalysisNote({ opening, text, bookId, bible, locale }: { open
   const creating = useRef(false);
   const adoptionSource = useRef<string | null>(null);
   const [recoveringAddress, setRecoveringAddress] = useState(Boolean(openingId));
-  const releasedAdoption = useRef<string | null>(null);
+  const releasedAdoption = useRef<{ key: string; evidence: string; complete: boolean } | null>(null);
   const [waitedOut, setWaitedOut] = useState(false);
   const listPending = engine.loading || engine.checking;
   useEffect(() => {
@@ -336,15 +336,20 @@ export function useAnalysisNote({ opening, text, bookId, bible, locale }: { open
   }, [combinationRetry, duplicateRefusal, engine, existingAnalysis, ownId, storedKey, text, waitingCapture]);
 
   useEffect(() => {
-    const sourceId = adoptionSource.current;
-    if (!sourceId || !ownId || !kept || combining || !form.state) return;
-    const key = JSON.stringify([sourceId, ownId]);
-    if (releasedAdoption.current === key) return;
-    releasedAdoption.current = key;
-    // Release only the temporary hold. The engine verifies that this open form owns
-    // the request; its checkpoint and ordinary delivery references continue protecting it.
-    void engine.releaseAnalysisCreation(sourceId, ownId).catch(() => undefined);
-  }, [combining, engine, form.state, kept, ownId]);
+    const sourceId = adoptionSource.current ?? (ownId === openingId ? openingId : null);
+    if (!engine.uid || !sourceId || !ownId || !kept || combining || !sourceMatches || !form.state) return;
+    const key = JSON.stringify([engine.uid, sourceId, ownId]);
+    const checkpoint = form.state.checkpoint;
+    const metadata = checkpoint?.confirmed.metadata;
+    const evidence = JSON.stringify([metadata?.generation, metadata?.revision, form.state.durable, Object.keys(checkpoint?.pending ?? {}).sort()]);
+    const previous = releasedAdoption.current;
+    if (previous?.key === key && (previous.complete || previous.evidence === evidence)) return;
+    const attempt = { key, evidence, complete: false };
+    releasedAdoption.current = attempt;
+    // A direct opening can adopt an incoming transfer. The engine checks the actual
+    // editor's receipt and keeps any capture whose ownership it cannot prove.
+    void engine.releaseAnalysisCreation(sourceId, ownId).then(() => { attempt.complete = true; }, () => undefined);
+  }, [combining, engine, form.state, kept, openingId, ownId, sourceMatches]);
 
   const retryCombination = useCallback(() => {
     attemptedTransfer.current = null;

@@ -464,6 +464,53 @@ describe('public analysis creation handoff', () => {
     } finally { seeded.engine.dispose(); }
   });
 
+  it.each(['pending', 'acknowledged'] as const)('releases a %s transfer hold when a restarted editor opens the target directly', async state => {
+    const s = fixture(), seeded = await seedRefusedCreation(s);
+    const commits = createIndexedDbCommitStore();
+    try {
+      await seeded.engine.transferStudyAnalysisCreation(source.id, target.id, text);
+      const rows = await commits.list(owner);
+      const sourceRequest = rows.find(request => request.baseline.resource.id === source.id)!;
+      const transfer = rows.find(request => request.transferredFrom)!;
+      if (state === 'acknowledged') {
+        seeded.engine.setOnline(true);
+        await seeded.engine.retry();
+        expect((await commits.list(owner)).find(request => request.id === transfer.id)?.state).toBe('acknowledged');
+      }
+      seeded.engine.dispose();
+
+      const restarted = s.makeEngine();
+      try {
+        const other = { collection: 'studyNotes', id: 'unrelated-analysis' };
+        const otherEditor = await restarted.createEditor(other, editorIdentity('handoff-test', other, 'analysis', 'unrelated-opening'));
+        const otherValue = analysis(other.id, [8]);
+        const otherReceipt = await otherEditor.commitWithReceipt(() => otherValue, { captureScope: analysisCreationScope(other.id) });
+
+        await expect(restarted.releaseStudyAnalysisCreation(target.id, target.id))
+          .rejects.toMatchObject({ code: 'analysis-creation-review' });
+        expect((await restarted.listWriteCaptures('analysis-creation:')).map(row => row.requestId)).toContain(sourceRequest.id);
+        expect((await restarted.listWriteCaptures(ANALYSIS_CREATION_TRANSFER_PREFIX)).map(row => row.requestId)).toContain(transfer.id);
+
+        const editor = await restarted.openEditor(target, editorIdentity('handoff-test', target, 'target', 'direct-opening'));
+        const adopted = editor.getState().checkpoint;
+        if (state === 'pending') expect(adopted.pending).toHaveProperty(transfer.id);
+        else expect(adopted.confirmed.metadata?.revision).toBe(2);
+        expect(adopted.draft?.analysis).toEqual(transfer.value?.analysis);
+
+        await restarted.releaseStudyAnalysisCreation(target.id, target.id);
+        await restarted.releaseStudyAnalysisCreation(target.id, target.id);
+
+        expect(await restarted.listWriteCaptures(ANALYSIS_CREATION_TRANSFER_PREFIX)).toEqual([]);
+        expect((await restarted.listWriteCaptures('analysis-creation:')).map(row => row.requestId)).toEqual([otherReceipt.requestId]);
+        expect(editor.getState().checkpoint.draft?.analysis).toEqual(transfer.value?.analysis);
+        if (state === 'pending') {
+          expect(editor.getState().checkpoint.pending).toHaveProperty(transfer.id);
+          expect((await commits.list(owner)).find(request => request.id === transfer.id)?.value).toEqual(transfer.value);
+        }
+      } finally { restarted.dispose(); }
+    } finally { seeded.engine.dispose(); }
+  });
+
   it('projects both transfer sides, keeps later source and destination words, then collects their requests', async () => {
     const s = fixture(), seeded = await seedRefusedCreation(s);
     try {
