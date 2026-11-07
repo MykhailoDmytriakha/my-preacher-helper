@@ -112,3 +112,8 @@ pin tracked and new source files plus compiled/worker bytes, use the same browse
 the fix, and retain failed attempts. Stop/export only PID-verified owned services after every
 browser context closes. Local evidence and future production steps live in
 `docs/verification/local-bug-fixes.md` under `BUG-20261021-offline-history-scroll-position`.
+
+
+## Keep the contents of a retained service
+
+CollectionReader can retain a null-value tombstone while a disconnect changes its freshness from server to cache. collectionRecordPresence then conservatively says unknown instead of asserting a fresh server absence. A screen showing a retained copy must choose its words from the local draft or that retained copy, not from an absent live row. Service-order detail uses the existing RetainedOrderSteps with typed ?? kept.steps in both retained branches. Keep this display fallback out of liveSteps/typedRef and the writer; retain an intentional empty array. Test an actual title-only draft/refusal, acknowledged deletion and real offline transition: a mocked orders=[] alone does not prove reachability. Viewing must not recreate the deleted record. The retained view tells the person to copy before leaving; do not mistake it for a hard-reload persistence guarantee.

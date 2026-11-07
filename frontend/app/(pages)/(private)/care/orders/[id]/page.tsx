@@ -802,7 +802,7 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
           testId="service-order-gone"
         />
 
-        <RetainedOrderSteps steps={liveSteps} refsDraft={refsDraft} />
+        <RetainedOrderSteps steps={typed ?? lastKnown.current.steps} refsDraft={refsDraft} />
       </div>
     );
   }

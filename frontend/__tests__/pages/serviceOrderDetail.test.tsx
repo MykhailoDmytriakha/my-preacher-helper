@@ -1351,6 +1351,40 @@ describe('when the rite is deleted elsewhere mid-edit', () => {
     expect(mockRenameOrder).not.toHaveBeenCalled();
   });
 
+  it('keeps unchanged steps when a title-only retained copy becomes unknown offline', async () => {
+    jest.useFakeTimers();
+    const originalSteps = [step('s1', 'Welcome original', 'First original words'), step('s2', 'Prayer original', 'Second original words')];
+    state.orders = [order(originalSteps)];
+    const tombstone = { resource: { collection: 'serviceOrders', id: 'order-1' }, value: null,
+      metadata: { protocol: 1 as const, generation: 'g', revision: 2, deleted: true } };
+    const view = render(<ServiceOrderPage />);
+    try {
+      fireEvent.click(screen.getByRole('button', { name: 'serviceOrders.edit' }));
+      fireEvent.change(screen.getByRole('textbox', { name: 'serviceOrders.orderTitle' }), { target: { value: '' } });
+      act(() => { jest.advanceTimersByTime(700); });
+      expect(screen.getByText('serviceOrders.titleRequired')).toBeVisible();
+      state.orders = [];
+      state.orderPresence = () => ({ kind: 'absent', source: 'server', snapshot: tombstone });
+      view.rerender(<ServiceOrderPage />);
+      expect(screen.getByText('First original words')).toBeVisible();
+      expect(screen.getByText('Second original words')).toBeVisible();
+
+      // The real collection reader retains its tombstone but downgrades freshness on disconnect.
+      state.isOnline = false;
+      state.orderPresence = () => ({ kind: 'unknown', source: 'cache', snapshot: tombstone });
+      view.rerender(<ServiceOrderPage />);
+      expect(screen.getByText('First original words')).toBeVisible();
+      expect(screen.getByText('Second original words')).toBeVisible();
+      expect(screen.getByTestId('service-order-gone')).toHaveTextContent('serviceOrders.goneWithWords');
+      expect(mockUpdateSteps).not.toHaveBeenCalled();
+      expect(mockRenameOrder).not.toHaveBeenCalled();
+    } finally {
+      view.unmount();
+      jest.clearAllTimers();
+      jest.useRealTimers();
+    }
+  });
+
   it('keeps typed words while an unavailable read does not prove the order was deleted', async () => {
     mockRecheck.mockResolvedValueOnce('unreachable');
     const { rerender } = render(<ServiceOrderPage />);
@@ -1382,6 +1416,7 @@ describe('when the rite is deleted elsewhere mid-edit', () => {
 
   /** The name he was typing is a word like any other, and it lives only in that field. */
   it('shows the name that was being typed', () => {
+    state.orders = [order([step('s1', 'Opening original'), step('s2', 'Prayer original')])];
     const { rerender } = render(<ServiceOrderPage />);
     fireEvent.click(screen.getByRole('button', { name: 'serviceOrders.edit' }));
 
@@ -1393,6 +1428,8 @@ describe('when the rite is deleted elsewhere mid-edit', () => {
     rerender(<ServiceOrderPage />);
 
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Погребение ребёнка');
+    expect(screen.getByText('1. Opening original')).toBeVisible();
+    expect(screen.getByText('2. Prayer original')).toBeVisible();
   });
 
   /**
