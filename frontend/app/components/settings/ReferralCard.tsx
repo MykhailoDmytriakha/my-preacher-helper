@@ -4,6 +4,8 @@ import { useQuery } from '@tanstack/react-query';
 import React, { useEffect, useState } from 'react';
 
 import { useClipboard } from '@/hooks/useClipboard';
+import { accountReadHttpFailure, accountReadQuery } from '@/utils/accountReadQuery';
+import { accountReadFromResponse } from '@/utils/accountReadVersion';
 import { apiClient } from '@/utils/apiClient';
 import { useTranslation } from '@locales/useTranslation';
 
@@ -23,17 +25,15 @@ export default function ReferralCard({ user }: ReferralCardProps) {
    * outcome like every other one (`apiClient`). Supplemental: a failure keeps the card usable.
    */
   const { data: invitedCount = null } = useQuery({
-    queryKey: ['referral-stats', user?.uid],
-    enabled: Boolean(user),
     // A failure throws rather than answering null, so the number already seen stays on screen and in
     // the saved copy instead of being replaced by nothing.
-    queryFn: async (): Promise<number> => {
+    ...accountReadQuery(['referral-stats', user?.uid], async () => {
       const token = await user!.getIdToken();
       const response = await apiClient('/api/referral/stats', {
         category: 'metadata',
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (!response.ok) throw new Error(`Referral stats: ${response.status}`);
+      if (!response.ok) throw accountReadHttpFailure(response.status, `Referral stats: ${response.status}`);
       const body: unknown = await response.json();
       if (
         body !== null
@@ -42,9 +42,10 @@ export default function ReferralCard({ user }: ReferralCardProps) {
         && typeof body.invitedCount === 'number'
         && Number.isInteger(body.invitedCount)
         && body.invitedCount >= 0
-      ) return body.invitedCount;
+      ) return accountReadFromResponse(response, body.invitedCount);
       throw new Error('Referral stats: unexpected answer');
-    },
+    }),
+    enabled: Boolean(user),
   });
 
   useEffect(() => {

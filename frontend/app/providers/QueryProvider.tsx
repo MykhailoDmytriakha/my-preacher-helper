@@ -1,7 +1,7 @@
 'use client';
 
 import { QueryClient, QueryClientProvider, IsRestoringProvider, hydrate, onlineManager, useIsRestoring, type Query } from '@tanstack/react-query';
-import { PersistQueryClientProvider, type PersistedClient } from '@tanstack/react-query-persist-client';
+import { PersistQueryClientProvider, persistQueryClientSave, type PersistedClient } from '@tanstack/react-query-persist-client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
@@ -12,6 +12,8 @@ import { useAuth } from '@/providers/AuthProvider';
 import { isOfflineQueuedError, isStaleWriteError, isWriteRefusedError } from '@/services/conflictSafeUpdate.client';
 import { notifyUsageCapReached } from '@/services/usageCapClient';
 import { createAccountQueryPersister, OwnerMutationCache } from '@/utils/accountQueryCache';
+import { accountReadOwner } from '@/utils/accountReadCache';
+import { isVersionedAccountRead, keepCurrentAccountRead } from '@/utils/accountReadVersion';
 import { isConnectionFailure } from '@/utils/apiClient';
 import { getConnectivityStatus, subscribeToConnectivity } from '@/utils/connectivity';
 import { registerOfflineMutationDefaults } from '@/utils/mutationDefaults';
@@ -57,15 +59,29 @@ export const shouldDehydrateMutation = (mutation: {
  * only when the person chooses.
  */
 export const HELD_AFTER_LATE_RESTORE = 'held-after-late-restore';
-export function takeInLateRestore(queryClient: QueryClient, restored: PersistedClient): void {
-  if (Date.now() - restored.timestamp > PERSISTED_CACHE_MAX_AGE || (restored.buster ?? '') !== '') return;
+export function takeInLateRestore(queryClient: QueryClient, restored: PersistedClient): boolean {
+  if (Date.now() - restored.timestamp > PERSISTED_CACHE_MAX_AGE || (restored.buster ?? '') !== '') return false;
   const held = Object.assign(new Error('Saved offline in an earlier session; retry to send it'), { code: HELD_AFTER_LATE_RESTORE });
   hydrate(queryClient, {
     ...restored.clientState,
+    queries: restored.clientState.queries.filter(saved => {
+      if (!accountReadOwner(saved.queryKey)) return true;
+      const query = queryClient.getQueryCache().get(saved.queryHash);
+      if (!query) return true;
+      const current = query.state;
+      if (current.status === 'error' && !isConnectionFailure(current.error)) return false;
+      if (keepCurrentAccountRead(current.data, saved.state.data)) return false;
+      if (!isVersionedAccountRead(saved.state.data)) return true;
+      // TanStack hydration compares device timestamps. Apply the newer source even when the
+      // browser clock did not advance, and leave any ongoing fetch in progress.
+      queryClient.setQueryData(saved.queryKey, saved.state.data, { updatedAt: saved.state.dataUpdatedAt });
+      return false;
+    }),
     mutations: restored.clientState.mutations.map(mutation => mutation.state.isPaused
       ? { ...mutation, state: { ...mutation.state, isPaused: false, status: 'error' as const, error: held } }
       : mutation),
   });
+  return true;
 }
 
 /**
@@ -197,9 +213,22 @@ const QueryRuntimeProvider = ({ children, owner, authLoading }: { children: Reac
 
   useEffect(() => reconnectRecovery.connect(queryClient), [queryClient, reconnectRecovery]);
 
+  const dehydrateOptions = {
+    shouldDehydrateQuery: shouldPersistQuery,
+    // A previously saved intent stays recoverable while its delivery is indeterminate.
+    shouldDehydrateMutation: (mutation: Parameters<typeof mutationCache.wasDurable>[0]) => shouldDehydrateMutation(mutation)
+      || (mutation.state.status === 'pending' && mutationCache.wasDurable(mutation) && shouldPersistLegacyMutation(mutation.options.mutationKey)),
+  };
   const [persister] = useState(() => authLoading ? undefined : createAccountQueryPersister(owner, {
     mayOverwrite: () => active.current && queryCacheMayBeOverwritten(owner),
-    onLateRestore: (restored) => { if (isCurrentOwner()) takeInLateRestore(queryClient, restored); },
+    onLateRestore: (restored) => {
+      if (!isCurrentOwner() || !takeInLateRestore(queryClient, restored)) return;
+      // The disk write gate opens after this callback. Save the merged state, including live
+      // answers that were skipped while the original cache was still unread.
+      void Promise.resolve().then(() => {
+        if (persister && isCurrentOwner()) return persistQueryClientSave({ queryClient, persister, dehydrateOptions });
+      }).catch(error => console.warn('QueryProvider: could not save the merged query cache', error));
+    },
   }));
 
   // Public server-rendered content stays visible while Firebase restores. Queries cannot restore,
@@ -212,14 +241,7 @@ const QueryRuntimeProvider = ({ children, owner, authLoading }: { children: Reac
       persistOptions={{
         persister,
         maxAge: PERSISTED_CACHE_MAX_AGE,
-        dehydrateOptions: {
-          // MUTATION PERSISTENCE (C1 Fix): Crucial for zero-data-loss
-          shouldDehydrateQuery: shouldPersistQuery,
-          // A previously saved intent stays recoverable while its delivery is indeterminate.
-          // The persister saves that in-flight copy as an error for manual review, never auto-replay.
-          shouldDehydrateMutation: mutation => shouldDehydrateMutation(mutation)
-            || (mutation.state.status === 'pending' && mutationCache.wasDurable(mutation) && shouldPersistLegacyMutation(mutation.options.mutationKey)),
-        },
+        dehydrateOptions,
       }}
     >
       <ResumeOwnedMutations client={queryClient} mayRun={isCurrentOwner} />

@@ -4,7 +4,7 @@ import { useAuth } from '@/providers/AuthProvider';
 import { actionBlockedLabelKey, isActionBlocked, type UsageAction } from '@/utils/usageGates';
 
 import { useServerFirstQuery } from './useServerFirstQuery';
-import { fetchUserEntitlement, USER_ENTITLEMENT_QUERY_KEY } from './useUserEntitlement';
+import { userEntitlementQuery, USER_ENTITLEMENT_QUERY_KEY } from './useUserEntitlement';
 
 export const AI_USAGE_QUERY_KEY = USER_ENTITLEMENT_QUERY_KEY;
 
@@ -18,9 +18,7 @@ export const AI_USAGE_QUERY_KEY = USER_ENTITLEMENT_QUERY_KEY;
 export function useAiUsage() {
   const { user } = useAuth();
   const query = useServerFirstQuery({
-    queryKey: [...AI_USAGE_QUERY_KEY, user?.uid ?? null],
-    queryFn: () => fetchUserEntitlement(user!),
-    enabled: Boolean(user),
+    ...userEntitlementQuery(user),
     mode: 'server-first',
   });
 

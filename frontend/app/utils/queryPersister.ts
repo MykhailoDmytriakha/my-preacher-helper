@@ -1,7 +1,7 @@
 import { del, get, set } from 'idb-keyval';
 
 import { debugLog } from '@/utils/debugMode';
-import { answerWithin, watchedStore } from '@/utils/deviceStorage';
+import { answerWithin, isStorageSilent, watchedStore } from '@/utils/deviceStorage';
 
 import type { PersistedClient, Persister } from '@tanstack/react-query-persist-client';
 
@@ -136,10 +136,13 @@ function restorePersistedClient(client: PersistedClient | undefined): PersistedC
 
 /** idb-keyval's default database — where the query cache has always lived — watched like every other store. */
 export const queryCacheStore = watchedStore('keyval-store', 'keyval', 'query-cache');
+export const queryCacheIsSilent = () => isStorageSilent(['query-cache']);
 
 export const LEGACY_QUERY_CACHE_KEY = 'react-query-cache';
 export function accountQueryCacheKey(owner: string): [string, string] { return [LEGACY_QUERY_CACHE_KEY, owner]; }
-export function accountReadCacheKey(owner: string): [string, string, string] { return [...accountQueryCacheKey(owner), 'readonly-records-v1']; }
+export function accountReadCacheKey(owner: string, version: 'v1' | 'v2' = 'v2'): [string, string, string] {
+  return [...accountQueryCacheKey(owner), `readonly-records-${version}`];
+}
 
 /** The serializer and unread barrier apply equally to default and account-specific storage. */
 export interface QueryClientStorage {

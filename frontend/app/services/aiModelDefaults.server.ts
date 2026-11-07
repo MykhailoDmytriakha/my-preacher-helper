@@ -58,12 +58,13 @@ export function normalizeAiModelDefaults(data: unknown): AiModelDefaultsState {
   return { stored, effective };
 }
 
+export function aiModelDefaultsDocument() {
+  return adminDb.collection(CONFIG_COLLECTION).doc(AI_MODEL_DEFAULTS_DOCUMENT);
+}
+
 /** Reads the single server-managed config document and resolves catalog fallbacks per function. */
 export async function getAiModelDefaultsState(): Promise<AiModelDefaultsState> {
-  const snapshot = await adminDb
-    .collection(CONFIG_COLLECTION)
-    .doc(AI_MODEL_DEFAULTS_DOCUMENT)
-    .get();
+  const snapshot = await aiModelDefaultsDocument().get();
 
   return normalizeAiModelDefaults(snapshot.exists ? snapshot.data() : undefined);
 }

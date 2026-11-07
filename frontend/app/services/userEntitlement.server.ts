@@ -93,11 +93,12 @@ function getModelPreferences(data: Record<string, unknown> | undefined) {
   };
 }
 
-function getDefaultEntitlement(now: Date): UserEntitlementWithTextPreference {
-  return {
-    paidTier: 'free',
-    usage: normalizeEntitlementUsage(undefined, now),
-  };
+export function userEntitlementDocument(uid: string) {
+  return adminDb.collection(USERS_COLLECTION).doc(uid);
+}
+
+export function normalizeEntitlementWithModelPreferences(data: Record<string, unknown> | undefined, now: Date): UserEntitlementWithModelPreferences {
+  return { ...normalizeUserEntitlementServerSide(data, now), ...getModelPreferences(data) };
 }
 
 /**
@@ -158,13 +159,9 @@ export async function getUserEntitlementServerSide(
   options?: { includeTextPreference?: boolean; includeModelPreferences?: boolean }
 ): Promise<UserEntitlementWithModelPreferences> {
   const now = new Date();
-  const snapshot = await adminDb.collection(USERS_COLLECTION).doc(uid).get();
-  if (!snapshot.exists) return getDefaultEntitlement(now);
-
-  const data = snapshot.data() as Record<string, unknown> | undefined;
-
-  return {
-    ...normalizeUserEntitlementServerSide(data, now),
-    ...(options?.includeTextPreference || options?.includeModelPreferences ? getModelPreferences(data) : {}),
-  };
+  const snapshot = await userEntitlementDocument(uid).get();
+  const data = snapshot.exists ? snapshot.data() : undefined;
+  return options?.includeTextPreference || options?.includeModelPreferences
+    ? normalizeEntitlementWithModelPreferences(data, now)
+    : normalizeUserEntitlementServerSide(data, now);
 }

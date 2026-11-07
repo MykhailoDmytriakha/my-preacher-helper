@@ -1,9 +1,13 @@
+jest.mock('server-only', () => ({}), { virtual: true });
+
 jest.mock('@/config/firebaseAdminConfig', () => ({
   adminAuth: { verifyIdToken: jest.fn() },
+  adminDb: { runTransaction: jest.fn() },
 }));
 
 jest.mock('@/services/userEntitlement.server', () => ({
-  getUserEntitlementServerSide: jest.fn(),
+  userEntitlementDocument: jest.fn(),
+  normalizeEntitlementWithModelPreferences: jest.fn(),
   resolveEffectiveTier: jest.fn(),
 }));
 
@@ -12,7 +16,8 @@ jest.mock('@/services/usageLimits.server', () => ({
 }));
 
 jest.mock('@/services/aiModelDefaults.server', () => ({
-  getAiModelDefaults: jest.fn(),
+  aiModelDefaultsDocument: jest.fn(),
+  normalizeAiModelDefaults: jest.fn(),
 }));
 
 jest.mock('@/api/clients/ai/tierPolicy', () => ({
@@ -32,23 +37,35 @@ jest.mock('next/server', () => ({
   },
 }));
 
+import { Timestamp } from 'firebase-admin/firestore';
+
 import { getFunctionCatalog, getFunctionDefault } from '@/api/clients/ai/functionCatalog';
 import { GET } from '@/api/me/entitlement/route';
 import { __resetStoreAvailabilityForTests } from '@/services/storeAvailability.server';
 
-const { adminAuth } = jest.requireMock('@/config/firebaseAdminConfig') as {
+const { adminAuth, adminDb } = jest.requireMock('@/config/firebaseAdminConfig') as {
   adminAuth: { verifyIdToken: jest.Mock };
+  adminDb: { runTransaction: jest.Mock };
 };
 const entitlementService = jest.requireMock('@/services/userEntitlement.server') as {
-  getUserEntitlementServerSide: jest.Mock;
+  userEntitlementDocument: jest.Mock;
+  normalizeEntitlementWithModelPreferences: jest.Mock;
   resolveEffectiveTier: jest.Mock;
 };
 const usageService = jest.requireMock('@/services/usageLimits.server') as {
   resolveUsageRemaining: jest.Mock;
 };
 const defaultsService = jest.requireMock('@/services/aiModelDefaults.server') as {
-  getAiModelDefaults: jest.Mock;
+  aiModelDefaultsDocument: jest.Mock;
+  normalizeAiModelDefaults: jest.Mock;
 };
+
+const userReference = { path: 'users/caller-uid' };
+const defaultsReference = { path: 'config/aiModelDefaults' };
+const userData = { source: 'user' };
+const defaultsData = { source: 'defaults' };
+const readTime = new Timestamp(1794036480, 500000002);
+const getAll = jest.fn();
 
 const usage = {
   ai: {
@@ -76,17 +93,24 @@ describe('GET /api/me/entitlement', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    entitlementService.userEntitlementDocument.mockReturnValue(userReference);
+    defaultsService.aiModelDefaultsDocument.mockReturnValue(defaultsReference);
+    adminDb.runTransaction.mockImplementation(callback => callback({ getAll }));
+    getAll.mockResolvedValue([
+      { readTime: new Timestamp(1794036480, 500000001), data: () => userData },
+      { readTime, data: () => defaultsData },
+    ]);
     adminAuth.verifyIdToken.mockResolvedValue({ uid: 'caller-uid' });
     usageService.resolveUsageRemaining.mockReturnValue(usage);
-    defaultsService.getAiModelDefaults.mockResolvedValue({
+    defaultsService.normalizeAiModelDefaults.mockReturnValue({ effective: {
       transcription: { providerId: 'openai', modelId: 'gpt-4o-transcribe' },
       text: { providerId: 'gemini', modelId: 'gemini-3.1-flash-lite-preview' },
       tts: { providerId: 'gemini', modelId: 'gemini-3.1-flash-tts' },
-    });
+    } });
   });
 
   it('returns every paid catalog model and the saved current model per function', async () => {
-    entitlementService.getUserEntitlementServerSide.mockResolvedValue({
+    entitlementService.normalizeEntitlementWithModelPreferences.mockReturnValue({
       paidTier: 'tier2',
       preferredTranscription: { providerId: 'openai', modelId: 'gpt-4o-mini-transcribe' },
       preferredText: { providerId: 'openrouter', modelId: 'deepseek/deepseek-v4-pro' },
@@ -96,7 +120,12 @@ describe('GET /api/me/entitlement', () => {
 
     const response = await GET(request('Bearer valid-token'));
 
-    expect(entitlementService.getUserEntitlementServerSide).toHaveBeenCalledWith('caller-uid', { includeModelPreferences: true });
+    expect(entitlementService.userEntitlementDocument).toHaveBeenCalledWith('caller-uid');
+    expect(adminDb.runTransaction).toHaveBeenCalledWith(expect.any(Function), { readOnly: true });
+    expect(getAll).toHaveBeenCalledWith(userReference, defaultsReference);
+    expect(entitlementService.normalizeEntitlementWithModelPreferences).toHaveBeenCalledWith(userData, readTime.toDate());
+    expect(defaultsService.normalizeAiModelDefaults).toHaveBeenCalledWith(defaultsData);
+    expect(response.headers.get('X-Account-Read-Version')).toBe('1794036480:500000002');
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
       effectiveTier: 'tier2',
@@ -118,12 +147,12 @@ describe('GET /api/me/entitlement', () => {
   });
 
   it('exposes only defaults to free users and never elevates a stored paid preference', async () => {
-    defaultsService.getAiModelDefaults.mockResolvedValue({
+    defaultsService.normalizeAiModelDefaults.mockReturnValue({ effective: {
       transcription: { providerId: 'openai', modelId: 'gpt-4o-mini-transcribe' },
       text: { providerId: 'gemini', modelId: 'gemini-3.1-flash-lite-preview' },
       tts: { providerId: 'gemini', modelId: 'gemini-3.1-flash-tts' },
-    });
-    entitlementService.getUserEntitlementServerSide.mockResolvedValue({
+    } });
+    entitlementService.normalizeEntitlementWithModelPreferences.mockReturnValue({
       paidTier: 'free',
       preferredTranscription: { providerId: 'openai', modelId: 'gpt-4o-transcribe' },
       preferredText: { providerId: 'openrouter', modelId: 'deepseek/deepseek-v4-pro' },
@@ -154,7 +183,7 @@ describe('GET /api/me/entitlement', () => {
 
     expect(response.status).toBe(401);
     await expect(response.json()).resolves.toEqual({ error: 'Unauthorized' });
-    expect(entitlementService.getUserEntitlementServerSide).not.toHaveBeenCalled();
+    expect(adminDb.runTransaction).not.toHaveBeenCalled();
   });
 
   // BUG-20261019-quota-outage-burns-vercel-functions: the screen asks for this on every reconnect with a
@@ -165,7 +194,7 @@ describe('GET /api/me/entitlement', () => {
     try {
       __resetStoreAvailabilityForTests();
       adminAuth.verifyIdToken.mockImplementation(() => new Promise(resolve => setTimeout(() => resolve({ uid: 'caller-uid' }), 2_500)));
-      entitlementService.getUserEntitlementServerSide.mockImplementation(() => new Promise(() => undefined));
+      getAll.mockImplementation(() => new Promise(() => undefined));
       void GET(request('Bearer token')).then(response => { answer = response as unknown as typeof answer; });
       await jest.advanceTimersByTimeAsync(3_000);
       expect(answer?.status).toBe(503);
@@ -180,7 +209,7 @@ describe('GET /api/me/entitlement', () => {
     let answer: { status: number; headers: Headers; json: () => Promise<unknown> } | undefined;
     try {
       __resetStoreAvailabilityForTests();
-      entitlementService.getUserEntitlementServerSide.mockImplementation(() => new Promise(() => undefined));
+      getAll.mockImplementation(() => new Promise(() => undefined));
       void GET(request('Bearer token')).then(response => { answer = response as unknown as typeof answer; });
       await jest.advanceTimersByTimeAsync(3_000);
       expect(answer?.status).toBe(503);

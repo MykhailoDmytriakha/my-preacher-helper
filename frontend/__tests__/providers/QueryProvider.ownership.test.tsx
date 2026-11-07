@@ -5,6 +5,7 @@ import React from 'react';
 
 import { QueryProvider } from '@/providers/QueryProvider';
 import { createAccountQueryPersister } from '@/utils/accountQueryCache';
+import { accountReadCacheKey } from '@/utils/queryPersister';
 
 const mockAuth = { user: { uid: 'B' } as { uid: string } | null, loading: false };
 const mockRows = new Map<string, unknown>();
@@ -201,4 +202,36 @@ it('keeps public content rendered without exposing a restored query while identi
   await act(async () => { await Promise.resolve(); });
   expect(get).not.toHaveBeenCalled();
   expect(current?.getQueryData(['referral-stats', 'A'])).toBeUndefined();
+});
+
+
+it('persists a newer live answer after late disk restoration, without another query update', async () => {
+  const queryKey = ['referral-stats', 'B'];
+  const old = { readVersion: '1794036480:500000001', value: 0 };
+  const live = { readVersion: '1794036480:500000002', value: 1 };
+  const initial = new QueryClient();
+  initial.setQueryData(queryKey, old, { updatedAt: 300 });
+  const seed = createAccountQueryPersister('B');
+  await seed.restoreClient();
+  await seed.persistClient({ timestamp: Date.now(), buster: '', clientState: dehydrate(initial) });
+  initial.clear();
+  const stored = mockRows.get(keyOf(accountReadCacheKey('B')));
+
+  let finish!: (value: unknown) => void;
+  jest.mocked(get).mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  jest.useFakeTimers();
+  try {
+    const view = render(workspace());
+    await act(async () => { await jest.advanceTimersByTimeAsync(3001); });
+    expect(screen.getByText('Workspace ready')).toBeVisible();
+    await act(async () => { current!.setQueryData(queryKey, live, { updatedAt: 200 }); });
+    expect(mockRows.get(keyOf(accountReadCacheKey('B')))).toEqual(stored);
+
+    await act(async () => { finish(stored); await jest.advanceTimersByTimeAsync(0); });
+    expect(current!.getQueryData(queryKey)).toEqual(live);
+    view.unmount();
+    expect(await persistedQueryData('B', queryKey)).toEqual(live);
+  } finally {
+    jest.useRealTimers();
+  }
 });

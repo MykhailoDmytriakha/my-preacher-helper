@@ -3,7 +3,9 @@ import { createHash, randomUUID } from 'node:crypto';
 import { FieldPath, Filter } from 'firebase-admin/firestore';
 
 import { adminDb } from '@/config/firebaseAdminConfig';
+import { aiModelDefaultsDocument } from '@/services/aiModelDefaults.server';
 import { storeRetryHeaders } from '@/services/storeAvailability.server';
+import { userEntitlementDocument } from '@/services/userEntitlement.server';
 
 import { stampAcceptedResource } from './acceptedResource.server';
 import { isCollectionServed, isLegacyOpen, mayBeRetiredByCascade } from './activation';
@@ -554,6 +556,17 @@ export function serverErrorResponse(error: unknown): Response {
   return Response.json({ code: invalid ? INVALID_ARGUMENT : 'unavailable' }, { status: invalid ? 400 : 503, headers: { 'Cache-Control': 'no-store', ...storeRetryHeaders(error) } });
 }
 
+
+/** Read both inputs to the account's entitlement at one consistent Firestore snapshot. */
+export async function readAccountEntitlementSnapshot(uid: string) {
+  checkOwner(uid);
+  const [user, defaults] = await adminDb.runTransaction(
+    transaction => transaction.getAll(userEntitlementDocument(uid), aiModelDefaultsDocument()),
+    { readOnly: true },
+  );
+  const readTime = user.readTime.valueOf() >= defaults.readTime.valueOf() ? user.readTime : defaults.readTime;
+  return { userData: user.data(), defaultsData: defaults.data(), readTime };
+}
 
 /** Native IO for operational audio receipts, separate from person-edit commands and feeds. */
 export function createAudioExportStore(userId: string, sermonId: string, database: Firestore = adminDb): AudioExportStore {

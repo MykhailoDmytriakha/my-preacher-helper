@@ -1,15 +1,19 @@
+import { hashKey } from '@tanstack/react-query';
 import { get } from 'idb-keyval';
 
+import { accountReadValue, accountReadVersion, isVersionedAccountRead, keepCurrentAccountRead, keepCurrentReadVersion, type AccountRead } from '@/utils/accountReadVersion';
 import { newClientId } from '@/utils/clientId';
+import { answerWithin } from '@/utils/deviceStorage';
 import { TechnicalFailure } from '@/utils/failureCode';
-import { queryCacheStore } from '@/utils/queryPersister';
+import { resolveOwnerUid } from '@/utils/queryKeys';
+import { accountReadCacheKey, queryCacheIsSilent, queryCacheStore } from '@/utils/queryPersister';
 import { updateStoredValue } from '@/utils/storageUpdate';
 
 import type { QueryClientStorage } from '@/utils/queryPersister';
 import type { PersistedClient } from '@tanstack/react-query-persist-client';
 
 type SavedQuery = PersistedClient['clientState']['queries'][number];
-type SavedRecord = { revision: number; query: SavedQuery | null };
+type SavedRecord = { revision: number; query: SavedQuery | null; retiredReadVersion?: string };
 type ReadCache = {
   schema: 1;
   epoch: string;
@@ -22,12 +26,15 @@ type ObservedRecord = { revision: number; fingerprint: string | null };
 const object = (value: unknown): value is Record<string, unknown> => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 
 /** Only these server DTOs still use React Query; authored documents use the Data Engine. */
+export function accountReadOwner(key: readonly unknown[]): string | undefined {
+  if (!Array.isArray(key)) return;
+  if (key.length === 2 && key[0] === 'referral-stats' && typeof key[1] === 'string') return key[1];
+  if (key.length === 4 && key[0] === 'me' && key[1] === 'entitlement' && key[2] === 'v2' && typeof key[3] === 'string') return key[3];
+}
+
 export function isOwnedReadQuery(query: SavedQuery, owner: string): boolean {
-  const key = query?.queryKey;
-  const owned = Array.isArray(key) && ((key.length === 2 && key[0] === 'referral-stats' && key[1] === owner)
-    || (key.length === 4 && key[0] === 'me' && key[1] === 'entitlement' && key[2] === 'v2' && key[3] === owner));
-  const data = query?.state?.data;
-  return owned && typeof query.queryHash === 'string' && data !== undefined
+  const data = accountReadValue(query?.state?.data);
+  return accountReadOwner(query?.queryKey) === owner && typeof query.queryHash === 'string' && data !== undefined
     && (!object(data) || ['userId', 'ownerId'].every(field => !(field in data) || data[field] === owner));
 }
 
@@ -49,6 +56,7 @@ function checkedCache(value: unknown, owner: string): ReadCache {
   for (const [hash, row] of Object.entries(value.records)) {
     if (!object(row) || !Number.isSafeInteger(row.revision) || (row.revision as number) <= 0
       || (row.revision as number) > (value.sequence as number)
+      || (row.retiredReadVersion !== undefined && (row.query !== null || !keepCurrentReadVersion(row.retiredReadVersion, undefined)))
       || (row.query !== null && (!isOwnedReadQuery(row.query as SavedQuery, owner) || (row.query as SavedQuery).queryHash !== hash))) {
       throw new TechnicalFailure('Saved read cache contains an invalid record');
     }
@@ -62,10 +70,25 @@ function asClient(cache: ReadCache): PersistedClient {
   } };
 }
 
-/**
- * One atomic owner map, with per-record admission and a retained clear fence. Legacy input stays
- * in its original namespace. Changed DTO answers use commit order, not server-version chronology.
- */
+/** A tab can finish a request after another tab has already saved a newer source answer. */
+export async function preferSavedAccountRead<T>(key: readonly unknown[], candidate: AccountRead<T>): Promise<AccountRead<T>> {
+  const owner = accountReadOwner(key);
+  if (!owner || resolveOwnerUid() !== owner || queryCacheIsSilent()) return candidate;
+  try {
+    const read = await answerWithin(get<unknown>(accountReadCacheKey(owner), queryCacheStore));
+    if (!read.answered || read.value === undefined || resolveOwnerUid() !== owner) return candidate;
+    const cache = checkedCache(read.value, owner);
+    const saved = cache.records[hashKey(key)]?.query?.state.data;
+    if (cache.buster === '' && isVersionedAccountRead(saved) && keepCurrentAccountRead(saved, candidate)) {
+      return saved as AccountRead<T>;
+    }
+  } catch {
+    // The successful authenticated response still works if this optional device read fails.
+  }
+  return candidate;
+}
+
+/** One atomic owner map, with per-record admission and a retained clear fence. */
 export function createAccountReadStorage(owner: string, key: IDBValidKey, options: {
   readLegacy: () => Promise<PersistedClient | undefined>;
   mayWrite: () => boolean;
@@ -93,12 +116,15 @@ export function createAccountReadStorage(owner: string, key: IDBValidKey, option
       let restored: ReadCache;
       if (saved !== undefined) restored = checkedCache(saved, owner);
       else {
-        const legacy = await options.readLegacy();
-        const imported = emptyCache();
-        imported.buster = legacy?.buster ?? '';
-        imported.timestamp = legacy?.timestamp ?? imported.timestamp;
-        for (const query of legacy?.clientState?.queries ?? []) {
-          if (isOwnedReadQuery(query, owner)) imported.records[query.queryHash] = { revision: ++imported.sequence, query };
+        const previous = await get<unknown>(accountReadCacheKey(owner, 'v1'), queryCacheStore);
+        const imported = previous === undefined ? emptyCache() : { ...checkedCache(previous, owner), epoch: newClientId() };
+        if (previous === undefined) {
+          const legacy = await options.readLegacy();
+          imported.buster = legacy?.buster ?? '';
+          imported.timestamp = legacy?.timestamp ?? imported.timestamp;
+          for (const query of legacy?.clientState?.queries ?? []) {
+            if (isOwnedReadQuery(query, owner)) imported.records[query.queryHash] = { revision: ++imported.sequence, query };
+          }
         }
         checkedCache(imported, owner);
         // Another tab can initialize or clear this namespace during the legacy read.
@@ -128,6 +154,9 @@ export function createAccountReadStorage(owner: string, key: IDBValidKey, option
           for (const [hash, query] of incoming) {
             const nextFingerprint = fingerprint(query);
             if (observed.get(hash)?.fingerprint === nextFingerprint) continue;
+            const row = records[hash];
+            const previousVersion = row?.retiredReadVersion ?? accountReadVersion(row?.query?.state.data);
+            if (keepCurrentReadVersion(previousVersion, accountReadVersion(query.state.data))) continue;
             records[hash] = { revision: ++sequence, query };
             accepted.set(hash, { revision: sequence, fingerprint: nextFingerprint });
           }
@@ -135,7 +164,8 @@ export function createAccountReadStorage(owner: string, key: IDBValidKey, option
             if (incoming.has(hash) || baseline.fingerprint === null) continue;
             // Absence retires only the record this tab actually read, never newer unseen work.
             if (records[hash]?.revision !== baseline.revision) continue;
-            records[hash] = { revision: ++sequence, query: null };
+            const retiredReadVersion = accountReadVersion(records[hash]?.query?.state.data);
+            records[hash] = { revision: ++sequence, query: null, ...(retiredReadVersion ? { retiredReadVersion } : {}) };
             accepted.set(hash, { revision: sequence, fingerprint: null });
           }
           return sequence === cache.sequence ? cache : { ...cache, records, sequence, buster: frame.buster, timestamp: frame.timestamp };

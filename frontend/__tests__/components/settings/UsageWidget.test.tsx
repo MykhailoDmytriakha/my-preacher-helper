@@ -45,7 +45,7 @@ const mockEntitlement = (overrides?: {
   ai?: UsageMetricSnapshot;
   transcription?: UsageMetricSnapshot;
   audio?: UsageMetricSnapshot;
-}) => {
+}, error?: Error) => {
   const ai = overrides?.ai ?? metric(85, 100, 110, 'warning');
   const transcription = overrides?.transcription ?? metric(90, 3600, 3960, 'normal');
   const audio = overrides?.audio ?? metric(20, 1200, 1320, 'normal');
@@ -80,7 +80,8 @@ const mockEntitlement = (overrides?: {
       },
     },
     isLoading: false,
-    isError: false,
+    isError: Boolean(error),
+    error,
   } as unknown as ReturnType<typeof useUserEntitlement>);
 };
 
@@ -221,4 +222,11 @@ describe('UsageWidget', () => {
     fireEvent.pointerDown(document.body);
     expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
   });
+});
+
+
+it('continues showing known limits when a refetch cannot reach the account store', () => {
+  mockEntitlement(undefined, Object.assign(new Error('Store unavailable'), { code: 'unavailable' }));
+  render(<UsageWidget user={{ uid: 'user-1' } as never} />);
+  expect(screen.getByRole('region')).toBeVisible();
 });

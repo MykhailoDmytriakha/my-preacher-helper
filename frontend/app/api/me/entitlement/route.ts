@@ -3,10 +3,11 @@ import { NextResponse } from 'next/server';
 import { aiFunctionIds, getFunctionCatalog, getFunctionDefault } from '@/api/clients/ai/functionCatalog';
 import { TIER_LIMITS } from '@/api/clients/ai/tierPolicy';
 import { adminAuth } from '@/config/firebaseAdminConfig';
-import { getAiModelDefaults } from '@/services/aiModelDefaults.server';
+import { readAccountEntitlement } from '@/data-engine/serverOperations.server';
 import { StoreUnavailableError, storeRetryHeaders, withStore } from '@/services/storeAvailability.server';
 import { resolveUsageRemaining } from '@/services/usageLimits.server';
-import { getUserEntitlementServerSide, resolveEffectiveTier } from '@/services/userEntitlement.server';
+import { resolveEffectiveTier } from '@/services/userEntitlement.server';
+import { ACCOUNT_READ_VERSION_HEADER } from '@/utils/accountReadVersion';
 
 import type { AiFunctionId, FunctionCatalogEntry } from '@/api/clients/ai/functionCatalog';
 
@@ -62,11 +63,7 @@ export async function GET(request: Request) {
   if (!uid) return jsonNoStore({ error: 'Unauthorized' }, { status: 401 });
 
   try {
-    const [entitlement, configuredDefaults] = await withStore(() => Promise.all([
-      getUserEntitlementServerSide(uid, { includeModelPreferences: true }),
-      getAiModelDefaults(),
-    ]), { startedAt });
-    const now = new Date();
+    const { entitlement, configuredDefaults, now, readVersion } = await withStore(() => readAccountEntitlement(uid), { startedAt });
     const effectiveTier = resolveEffectiveTier(entitlement, now);
     const preferences = {
       // Existing settings documents keep working until the user changes this preference.
@@ -99,7 +96,7 @@ export async function GET(request: Request) {
       limits: TIER_LIMITS[effectiveTier],
       paidTier: entitlement.paidTier,
       ...(entitlement.promotion ? { promotion: entitlement.promotion } : {}),
-    });
+    }, { headers: { [ACCOUNT_READ_VERSION_HEADER]: readVersion } });
   } catch (error) {
     if (error instanceof StoreUnavailableError) {
       return jsonNoStore({ code: error.code }, { status: error.status, headers: storeRetryHeaders(error) });

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 
 import { adminAuth, adminDb } from '@/config/firebaseAdminConfig';
 import { StoreUnavailableError, storeRetryHeaders, withStore } from '@/services/storeAvailability.server';
+import { ACCOUNT_READ_VERSION_HEADER, formatAccountReadVersion } from '@/utils/accountReadVersion';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,7 +38,9 @@ export async function GET(request: Request): Promise<NextResponse> {
       .where('inviterUid', '==', uid)
       .count()
       .get(), { startedAt });
-    return jsonResponse({ invitedCount: snapshot.data().count });
+    return jsonResponse({ invitedCount: snapshot.data().count }, 200, {
+      [ACCOUNT_READ_VERSION_HEADER]: formatAccountReadVersion(snapshot.readTime),
+    });
   } catch (error) {
     if (error instanceof StoreUnavailableError) return jsonResponse({ code: error.code }, error.status, storeRetryHeaders(error));
     return jsonResponse({ error: 'internalServerError' }, 500);

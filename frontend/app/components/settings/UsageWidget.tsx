@@ -7,6 +7,7 @@ import Tooltip from '@/components/ui/Tooltip';
 import UsageBar from '@/components/usage/UsageBar';
 import { UsageGraceNotice, UsageHardCapNotice } from '@/components/usage/UsageGraceIndicator';
 import { useUserEntitlement } from '@/hooks/useUserEntitlement';
+import { isConnectionFailure } from '@/utils/connectionFailure';
 import { useTranslation } from '@locales/useTranslation';
 
 import type { User } from 'firebase/auth';
@@ -23,7 +24,7 @@ const formatMinutes = (seconds: number): string => {
 
 export default function UsageWidget({ user }: UsageWidgetProps) {
   const { t } = useTranslation();
-  const { data: entitlement, isLoading, isError } = useUserEntitlement(user);
+  const { data: entitlement, isLoading, isError, error } = useUserEntitlement(user);
 
   if (!user) return null;
 
@@ -38,7 +39,7 @@ export default function UsageWidget({ user }: UsageWidgetProps) {
     );
   }
 
-  if (isError || !entitlement) return null;
+  if (!entitlement || (isError && !isConnectionFailure(error))) return null;
 
   const tierLabel = entitlement.effectiveTier === 'free'
     ? t('settings.usage.tier.free')

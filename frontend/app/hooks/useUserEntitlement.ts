@@ -1,5 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 
+import { accountReadHttpFailure, accountReadQuery } from '@/utils/accountReadQuery';
+import { accountReadFromResponse, accountReadValue, type AccountRead } from '@/utils/accountReadVersion';
 import { apiClient } from '@/utils/apiClient';
 
 import type { AiFunctionId, FunctionCatalogEntry } from '@/api/clients/ai/functionCatalog';
@@ -22,23 +24,30 @@ export interface UserEntitlementResponse {
   promotion?: UserEntitlement['promotion'];
 }
 
-export async function fetchUserEntitlement(user: Pick<User, 'getIdToken'>): Promise<UserEntitlementResponse> {
+async function readUserEntitlement(user: Pick<User, 'getIdToken'>): Promise<AccountRead<UserEntitlementResponse>> {
   const token = await user.getIdToken();
   const response = await apiClient('/api/me/entitlement', { category: 'metadata',
     headers: { Authorization: `Bearer ${token}` },
   });
 
   if (!response.ok) {
-    throw new Error('Could not load entitlement');
+    throw accountReadHttpFailure(response.status, 'Could not load entitlement');
   }
 
-  return response.json() as Promise<UserEntitlementResponse>;
+  return accountReadFromResponse(response, await response.json() as UserEntitlementResponse);
+}
+
+export async function fetchUserEntitlement(user: Pick<User, 'getIdToken'>): Promise<UserEntitlementResponse> {
+  return accountReadValue(await readUserEntitlement(user));
+}
+
+export function userEntitlementQuery(user: User | null) {
+  return {
+    ...accountReadQuery([...USER_ENTITLEMENT_QUERY_KEY, user?.uid ?? null], () => readUserEntitlement(user!)),
+    enabled: Boolean(user),
+  };
 }
 
 export function useUserEntitlement(user: User | null) {
-  return useQuery({
-    queryKey: [...USER_ENTITLEMENT_QUERY_KEY, user?.uid ?? null],
-    queryFn: () => fetchUserEntitlement(user as User),
-    enabled: Boolean(user),
-  });
+  return useQuery(userEntitlementQuery(user));
 }

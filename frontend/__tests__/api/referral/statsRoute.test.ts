@@ -33,7 +33,7 @@ describe('GET /api/referral/stats', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     adminAuth.verifyIdToken.mockResolvedValue({ uid: 'caller-uid' });
-    getMock.mockResolvedValue({ data: () => ({ count: 4 }) });
+    getMock.mockResolvedValue({ data: () => ({ count: 4 }), readTime: { seconds: 1794036480, nanoseconds: 2 } });
     countMock.mockReturnValue({ get: getMock });
     whereMock.mockReturnValue({ count: countMock });
     adminDb.collection.mockReturnValue({ where: whereMock });
@@ -68,6 +68,7 @@ describe('GET /api/referral/stats', () => {
     expect(bodyReader).not.toHaveBeenCalled();
     expect(response.status).toBe(200);
     expect(response.headers.get('Cache-Control')).toContain('no-store');
+    expect(response.headers.get('X-Account-Read-Version')).toBe('1794036480:000000002');
     await expect(response.json()).resolves.toEqual({ invitedCount: 4 });
   });
 

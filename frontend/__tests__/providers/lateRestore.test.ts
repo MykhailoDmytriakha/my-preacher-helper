@@ -87,3 +87,45 @@ describe('restoring the saved query cache after a long pause', () => {
   });
 
 });
+
+it.each([
+  ['older source with a later local clock', '1794036480:500000001', 400, false],
+  ['newer source with an equal local clock', '1794036480:500000003', 300, true],
+  ['newer source with a rolled-back local clock', '1794036480:500000003', 200, true],
+] as const)('uses source order for a late restore: %s', (_label, readVersion, updatedAt, takeSaved) => {
+  const queryKey = ['referral-stats', 'owner'];
+  const client = new QueryClient();
+  const live = { readVersion: '1794036480:500000002', value: 1 };
+  const saved = { readVersion, value: 2 };
+  client.setQueryData(queryKey, live, { updatedAt: 300 });
+  const copy = restored();
+  const query = copy.clientState.queries[0];
+  query.queryKey = queryKey;
+  query.queryHash = JSON.stringify(queryKey);
+  query.state.data = saved;
+  query.state.dataUpdatedAt = updatedAt;
+
+  takeInLateRestore(client, copy);
+
+  expect(client.getQueryData(queryKey)).toEqual(takeSaved ? saved : live);
+  client.clear();
+});
+
+it('does not replace a terminal server refusal with a late device copy', () => {
+  const queryKey = ['referral-stats', 'owner'];
+  const client = new QueryClient();
+  const queryHash = JSON.stringify(queryKey);
+  client.setQueryData(queryKey, { readVersion: '1794036480:500000001', value: 1 });
+  const refusal = new Error('Unauthorized');
+  client.getQueryCache().get(queryHash)!.setState({ status: 'error', error: refusal });
+  const copy = restored();
+  const query = copy.clientState.queries[0];
+  query.queryKey = queryKey;
+  query.queryHash = queryHash;
+  query.state.data = { readVersion: '1794036480:500000002', value: 2 };
+
+  takeInLateRestore(client, copy);
+
+  expect(client.getQueryState(queryKey)).toMatchObject({ status: 'error', error: refusal });
+  client.clear();
+});

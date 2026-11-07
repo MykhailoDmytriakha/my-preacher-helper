@@ -8,6 +8,7 @@ import { isCollectionOnEngine } from '@/data-engine/clientPolicy';
 import { useUserEntitlement } from '@/hooks/useUserEntitlement';
 import { useUserSettings } from '@/hooks/useUserSettings';
 import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
+import { isConnectionFailure } from '@/utils/connectionFailure';
 import { awaitSettingsWrite } from '@/utils/settingsWrite';
 import { useTranslation } from '@locales/useTranslation';
 
@@ -70,7 +71,7 @@ function MiniBar({ value, kind }: { value: 1 | 2 | 3 | 4 | 5; kind: 'quality' | 
 
 export default function ModelSelector({ user }: ModelSelectorProps) {
   const { t } = useTranslation();
-  const { data: entitlement, isLoading: entitlementLoading, isError: entitlementError } = useUserEntitlement(user);
+  const { data: entitlement, isLoading: entitlementLoading, isError: entitlementError, error } = useUserEntitlement(user);
   const { settings, updateFunctionModelPreference, updatingFunctionModelPreference } = useUserSettings(user?.uid);
   const [saveError, setSaveError] = useState<FailureWords | null>(null);
 
@@ -80,7 +81,7 @@ export default function ModelSelector({ user }: ModelSelectorProps) {
     return <div className="rounded-[14px] bg-white p-4 shadow-sm dark:bg-slate-800 md:p-6" data-testid="model-selector-loading"><div className="animate-pulse"><div className="h-5 w-1/3 rounded bg-slate-200 dark:bg-slate-700" /><div className="mt-3 h-4 w-2/3 rounded bg-slate-200 dark:bg-slate-700" /></div></div>;
   }
 
-  if (entitlementError || !entitlement) {
+  if (!entitlement || (entitlementError && !isConnectionFailure(error))) {
     return <div className="rounded-[14px] bg-white p-4 shadow-sm dark:bg-slate-800 md:p-6"><p className="text-sm text-red-600 dark:text-red-400" role="alert">{t('settings.modelSelector.loadError')}</p></div>;
   }
 
@@ -101,7 +102,7 @@ export default function ModelSelector({ user }: ModelSelectorProps) {
     const functionEntitlement = entitlement.functions[fn];
     if (!functionEntitlement) return;
     const current = currentSelection(fn);
-    if (isFree || sameTarget(current, model) || updatingFunctionModelPreference) return;
+    if (isFree || entitlementError || sameTarget(current, model) || updatingFunctionModelPreference) return;
 
     setSaveError(null);
     try {
@@ -148,10 +149,11 @@ export default function ModelSelector({ user }: ModelSelectorProps) {
                   const selected = sameTarget(current, model);
                   const selectable = allowed.some((entry) => sameTarget(entry, model));
                   const locked = !selectable;
+                  const disabled = locked || entitlementError || updatingFunctionModelPreference;
                   const inputId = `model-${fn}-${model.providerId}-${model.modelId}`;
                   return (
-                    <label key={inputId} htmlFor={inputId} className={`flex items-center gap-3 px-3 py-3 ${index > 0 ? 'border-t border-slate-100 dark:border-slate-700' : ''} ${locked ? 'cursor-default opacity-50' : 'cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700/40'}`}>
-                      <input id={inputId} type="radio" name={`preferred-${fn}`} checked={selected} disabled={locked || updatingFunctionModelPreference} onChange={() => void handleSelect(fn, model)} className="peer sr-only" />
+                    <label key={inputId} htmlFor={inputId} className={`flex items-center gap-3 px-3 py-3 ${index > 0 ? 'border-t border-slate-100 dark:border-slate-700' : ''} ${disabled ? 'cursor-default opacity-50' : 'cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700/40'}`}>
+                      <input id={inputId} type="radio" name={`preferred-${fn}`} checked={selected} disabled={disabled} onChange={() => void handleSelect(fn, model)} className="peer sr-only" />
                       <span data-testid={selected ? 'selected-radio-indicator' : undefined} aria-hidden="true" className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 border-slate-400 bg-white peer-checked:border-blue-600 peer-focus-visible:ring-2 peer-focus-visible:ring-blue-500 peer-focus-visible:ring-offset-2 peer-disabled:border-slate-300 dark:border-slate-500 dark:bg-slate-800 dark:peer-checked:border-blue-400 dark:peer-disabled:border-slate-600 dark:peer-focus-visible:ring-offset-slate-800">
                         {selected && <span className="h-2 w-2 rounded-full bg-blue-600 dark:bg-blue-400" />}
                       </span>
