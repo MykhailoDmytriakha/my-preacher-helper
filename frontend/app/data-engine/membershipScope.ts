@@ -25,10 +25,13 @@ export interface MembershipScopeRecord {
   requestIds: string[];
   creation?: MembershipCreation;
 }
+export interface MembershipSaveReceipt { revision: number; requestIds: string[] }
+
 export interface MembershipScopePort {
   isCurrent(): boolean;
   /** Returns the durable CAS revision. Creation uses expectedRevision=null. */
   persist(record: MembershipScopeRecord, expectedRevision: number | null): Promise<MembershipScopeRecord>;
+  readSaveReceipt(record: MembershipScopeRecord): Promise<MembershipSaveReceipt | null>;
   /** Uses CommitQueue, which deduplicates the captured scope/resource/generation. */
   save(captures: readonly AtomicCapture[]): Promise<readonly { id: string }[]>;
 }
@@ -86,10 +89,13 @@ export class MembershipScope {
   private queue: Promise<unknown> = Promise.resolve();
   private saving: Promise<string[]> | null = null;
   private durable = false;
+  // Later capture or submission can fail without undoing the durable freeze.
+  private frozen: boolean;
   private closed = false;
   private readonly listeners = new Set<() => void>();
   private constructor(record: MembershipScopeRecord, private readonly port: MembershipScopePort, restored: boolean) {
     validateMembershipScope(record); this.record = clone(record); this.revision = restored ? record.revision : null; this.durable = restored;
+    this.frozen = restored && (record.phase === 'saving' || record.phase === 'submitted');
   }
   static begin(owner: string, scopeId: string, pins: readonly MembershipPin[], port: MembershipScopePort): MembershipScope {
     const scope = new MembershipScope({ kind: 'membership', version: 1, owner, scopeId, pins: clone([...pins]), revision: 0,
@@ -144,20 +150,26 @@ export class MembershipScope {
   save(): Promise<string[]> {
     this.assertCurrent();
     if (this.saving) return this.saving;
-    if (this.record.phase === 'submitted') return this.enqueue(async () => { if (!this.durable) await this.write(); return [...this.record.requestIds]; });
+    if (this.record.phase === 'submitted') return this.enqueue(() => this.finishSave(async () => {
+      if (!this.durable) await this.write();
+    }));
     if (this.record.phase === 'cancelled') throw new Error('Membership action was cancelled');
     if (this.record.creation?.requestedSeriesId) throw new Error('Resolve the requested series before saving');
     if (this.record.creation) validateResourceDocument(this.record.creation.resource.collection, this.record.creation.value, { kind: 'create' });
     // Freeze before any await. No later selection can change an uncertain capture.
     this.record.phase = 'saving'; this.durable = false; this.emit();
     const result = this.enqueue(async () => {
-      await this.write();
-      const captures = this.captures();
-      const requests = captures.length ? await this.port.save(captures) : [];
-      this.assertCurrent();
-      if (requests.length !== captures.length || new Set(requests.map(request => request.id)).size !== requests.length) throw new Error('Incomplete membership capture');
-      this.record.phase = 'submitted'; this.record.requestIds = requests.map(request => request.id);
-      await this.write(); return [...this.record.requestIds];
+      // A restored Save was already frozen by the original window. Rewriting its
+      // saving row would only advance the CAS revision before the same capture.
+      if (!this.frozen) await this.write();
+      return this.finishSave(async () => {
+        const captures = this.captures();
+        const requests = captures.length ? await this.port.save(captures) : [];
+        this.assertCurrent();
+        if (requests.length !== captures.length || new Set(requests.map(request => request.id)).size !== requests.length) throw new Error('Incomplete membership capture');
+        this.record.phase = 'submitted'; this.record.requestIds = requests.map(request => request.id);
+        await this.write();
+      });
     });
     this.saving = result;
     void result.finally(() => { this.saving = null; }).catch(() => undefined);
@@ -196,6 +208,20 @@ export class MembershipScope {
       captured: { confirmed: { resource: clone(resource), value: null, metadata: null }, draft: clone(value), dirty: true,
         editGeneration: this.record.generation, conflicts: [], remoteCandidate: null, pending: {} } }, ...membership];
   }
+  private async finishSave(write: () => Promise<void>): Promise<string[]> {
+    try { await write(); }
+    catch (error) {
+      this.assertCurrent();
+      const receipt = await this.port.readSaveReceipt(this.record).catch(() => null);
+      this.assertCurrent();
+      if (!receipt) throw error;
+      this.revision = receipt.revision;
+      this.record = { ...this.record, ...receipt, phase: 'submitted' };
+      this.durable = true;
+      this.emit();
+    }
+    return [...this.record.requestIds];
+  }
   private async write(): Promise<void> {
     this.assertCurrent();
     await this.writeLocal();
@@ -206,6 +232,7 @@ export class MembershipScope {
     const submitted = clone(this.record);
     const stored = await this.port.persist(submitted, this.revision);
     this.revision = stored.revision; this.record.revision = stored.revision;
+    if (stored.phase === 'saving' || stored.phase === 'submitted') this.frozen = true;
     if (equalValues({ ...submitted, revision: stored.revision }, this.record)) this.durable = true;
     this.emit();
   }

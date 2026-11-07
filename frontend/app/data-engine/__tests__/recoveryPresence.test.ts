@@ -107,6 +107,7 @@ function harness(presence?: RecoveryPresencePort) {
       membershipRows.set(rowKey, saved); return clone(saved);
     },
     compact: async () => undefined,
+    readSaveReceipt: async () => null,
     completion: async () => null,
   };
   const commits = createMemoryCommitStore();

@@ -36,7 +36,7 @@ function fixture() {
     return result ? [result] : [];
   });
   const persist = jest.fn((record: MembershipScopeRecord, revision: number | null) => scopes.persist(record, revision));
-  const port = { isCurrent: () => current, persist, save };
+  const port = { isCurrent: () => current, persist, save, readSaveReceipt: scopes.readSaveReceipt };
   return { disk, scopes, commits, queue, send, save, persist, port, changeOwner: () => { current = false; },
     begin: (id = 'scope', captured = pins()) => MembershipScope.begin('owner', id, captured, port) };
 }
@@ -280,6 +280,66 @@ describe('membership stage storage', () => {
     expect(results.filter(result => result.status === 'fulfilled')).toHaveLength(1);
     expect(t.save).toHaveBeenCalledTimes(1); expect(await t.scopes.read('other', 'scope')).toBeUndefined(); expect(await t.scopes.list('other')).toEqual([]);
   });
+  it.each([
+    { milestone: 'submitted', linked: false },
+    { milestone: 'compacted', linked: false },
+    { milestone: 'before capture', linked: false },
+    { milestone: 'submitted', linked: true },
+  ])('completes one frozen creation in both tabs when the winner is $milestone (linked group: $linked)', async ({ milestone, linked }) => {
+    const t = fixture();
+    const resource = linked ? { collection: 'groups', id: 'new-group' } : { collection: 'sermons', id: 'overlapping-sermon' };
+    const initial: DocumentData = linked
+      ? { userId: 'owner', title: 'Exact group', status: 'draft', templates: [], flow: [], createdAt: 'now', updatedAt: 'now' }
+      : { userId: 'owner', title: 'Exact title', verse: 'John 3:16', date: 'now', thoughts: [] };
+    const first = MembershipScope.beginCreation('owner', 'creation:overlap', resource, initial, t.port);
+    await first.settled();
+    if (linked) {
+      await first.pinCreationSeries(pins());
+      await first.update({ kind: 'assign', targetId: 'b', refs: [{ type: 'group', refId: resource.id }] });
+    }
+    const capture = t.save.getMockImplementation()!;
+    let signalHeld!: () => void;
+    const held = new Promise<void>(resolve => { signalHeld = resolve; });
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    t.save.mockImplementationOnce(async captures => {
+      const saved = milestone === 'before capture' ? null : await capture(captures);
+      signalHeld();
+      await gate;
+      return saved ?? capture(captures);
+    });
+    const original = first.save();
+    void original.catch(() => undefined);
+    await held;
+    const frozen = (await t.scopes.read('owner', 'creation:overlap'))!;
+    expect(frozen.phase).toBe('saving');
+    const second = MembershipScope.restore(frozen, t.port);
+    let ids: string[];
+    try {
+      ids = await second.save();
+      expect(ids).toHaveLength(linked ? 2 : 1);
+      if (milestone !== 'submitted') {
+        for (const request of await t.commits.list('owner')) {
+          await t.commits.compareAndSet(request, { ...request, state: 'acknowledged', result: {
+            kind: 'acknowledged', operationId: request.id, snapshot: {
+              resource, value: initial, metadata: { protocol: 1, generation: request.id, revision: 1, deleted: false },
+            },
+          } });
+        }
+        await t.scopes.compact('owner', frozen.scopeId);
+        await t.commits.releaseProjection!('owner', ids);
+        expect(await t.scopes.completion('owner', frozen.scopeId)).toBe('acknowledged');
+        expect(await t.commits.list('owner')).toEqual([]);
+      }
+      expect(await t.scopes.readSaveReceipt({ ...frozen, owner: 'other' })).toBeNull();
+      expect(await t.scopes.readSaveReceipt({ ...frozen, generation: frozen.generation + 1 })).toBeNull();
+      expect(await t.scopes.readSaveReceipt({ ...frozen, phase: 'submitted', requestIds: ['different'] })).toBeNull();
+    } finally { release(); }
+    await expect(original).resolves.toEqual(ids!);
+    expect(first.getState()).toMatchObject({ durable: true, record: { phase: 'submitted', requestIds: ids, creation: { resource, value: initial } } });
+    if (milestone === 'submitted') expect((await t.commits.list('owner')).map(request => request.id)).toEqual(ids!);
+    expect(t.send).not.toHaveBeenCalled();
+  });
   it('keeps frozen pins/actions and validates predecessor references in the same transaction', async () => {
     const t = fixture(), scope = t.begin(); await scope.update(move);
     const record = (await t.scopes.read('owner', 'scope'))!;
@@ -301,6 +361,7 @@ describe('membership stage storage', () => {
     // The queue's independent projection references still protect these payloads.
     expect(await t.commits.list('owner')).toHaveLength(2);
     await expect(t.scopes.persist(scope.getState().record, scope.getState().record.revision)).rejects.toThrow('another session');
+    expect(await t.scopes.readSaveReceipt(scope.getState().record)).toBeNull();
   });
   it('reports read failures and holds durability until transaction completion', async () => {
     const t = fixture(); t.disk.holdCommit = true; let settled = false;

@@ -15,7 +15,7 @@ function fixture() {
   const save = jest.fn(async () => [{ id: 'saved' }]);
   const scope = MembershipScope.begin('owner', 'scope', [{ baseline: { resource: { collection: 'series', id: 's' }, metadata: null,
     value: { userId: 'owner', title: 'Series', items: [{ id: 'group-g', type: 'group', refId: 'g', position: 1 }], sermonIds: [], seriesKind: 'group' } }, predecessor: null }],
-  { isCurrent: () => true, persist: async (record, revision) => ({ ...record, revision: (revision ?? -1) + 1 }), save });
+  { isCurrent: () => true, persist: async (record, revision) => ({ ...record, revision: (revision ?? -1) + 1 }), readSaveReceipt: async () => null, save });
   const engine = { listWriteCaptures: jest.fn(async () => []), releaseWriteCapture: jest.fn(async () => undefined),
     subscribeSavedWork: jest.fn(() => () => undefined), setOwner: jest.fn(), beginMembership: jest.fn(async () => scope), recoverMembership: jest.fn(async () => scope),
     releaseMembership: jest.fn(), listMembershipRecovery: jest.fn(async () => [scope.getState().record]),
@@ -69,7 +69,7 @@ it('exposes creation typing before optional series opening and sends only throug
   const t = fixture(), capture = jest.fn(async captures => captures.map((_: unknown, index: number) => ({ id: `created-${index}` })));
   const scope = MembershipScope.beginCreation('owner', 'creation:scope', { collection: 'sermons', id: 'new' },
     { userId: 'owner', title: '', verse: '', date: 'now', thoughts: [] },
-    { isCurrent: () => true, persist: async (record, revision) => ({ ...record, revision: (revision ?? -1) + 1 }), save: capture });
+    { isCurrent: () => true, persist: async (record, revision) => ({ ...record, revision: (revision ?? -1) + 1 }), readSaveReceipt: async () => null, save: capture });
   const begin = jest.fn(async () => scope), open = jest.fn(async () => scope.pinCreationSeries(t.scope.getState().record.pins));
   Object.assign(t.engine, { beginMemberCreation: begin, openCreationSeries: open });
   const { result } = renderHook(useDataMembership, { wrapper: Wrapper });

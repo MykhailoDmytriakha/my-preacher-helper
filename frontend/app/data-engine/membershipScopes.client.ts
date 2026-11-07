@@ -1,6 +1,6 @@
 'use client';
 
-import { CREATION_SCOPE_PREFIX, validateMembershipScope, type MembershipScopeRecord } from './membershipScope';
+import { CREATION_SCOPE_PREFIX, validateMembershipScope, type MembershipSaveReceipt, type MembershipScopeRecord } from './membershipScope';
 import { equalValues } from './protocol';
 import { discardRecoveryRecord } from './recoveryDiscard.client';
 import { collectCommitRows, commitCaptureKey } from './retention.client';
@@ -15,8 +15,12 @@ export interface MembershipScopeStore {
   compact(owner: string, scopeId: string): Promise<void>;
   discardRecovery?(record: MembershipScopeRecord, isCurrent: () => boolean): Promise<void>;
   completion(owner: string, scopeId: string): Promise<'acknowledged' | 'cancelled' | null>;
+  readSaveReceipt(record: MembershipScopeRecord): Promise<MembershipSaveReceipt | null>;
 }
-interface ScopeWatermark { owner: string; scopeId: string; revision: number; closed: true; outcome?: 'acknowledged' | 'cancelled' }
+interface ScopeWatermark {
+  owner: string; scopeId: string; revision: number; closed: true; outcome?: 'acknowledged' | 'cancelled';
+  save?: { generation: number; requestIds: string[] };
+}
 const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 const key = (owner: string, id: string): IDBValidKey => [id.startsWith(CREATION_SCOPE_PREFIX) ? 'creation-scope' : 'membership-scope', owner, id];
 const referenceKey = (owner: string, id: string): IDBValidKey => ['reference', owner, 'membership', id];
@@ -45,6 +49,21 @@ export function createIndexedDbMembershipScopes(): MembershipScopeStore {
     completion: (owner, scopeId) => transaction('readonly', (store, read, done) => read(store.get(key(owner, scopeId)), (value: MembershipScopeRecord | ScopeWatermark | undefined) => {
       done(value && !live(value) && value.owner === owner && value.scopeId === scopeId ? value.outcome ?? null : null);
     })),
+    // Only a previously frozen Save may use this proof. The owner and scope were
+    // fixed when it was opened, and its generation cannot change after freezing.
+    readSaveReceipt: record => transaction('readonly', (store, read, done) => {
+      read(store.get(key(record.owner, record.scopeId)), (current: MembershipScopeRecord | ScopeWatermark | undefined) => {
+        if (!current || current.owner !== record.owner || current.scopeId !== record.scopeId || current.revision <= record.revision
+          || (record.phase !== 'saving' && record.phase !== 'submitted')) { done(null); return; }
+        const saved = live(current)
+          ? current.phase === 'submitted' && equalValues(current, { ...record, phase: 'submitted',
+            revision: current.revision, requestIds: current.requestIds }) ? current : undefined
+          : current.outcome === 'acknowledged' ? current.save : undefined;
+        if (!saved || saved.generation !== record.generation
+          || (record.phase === 'submitted' && !equalValues(saved.requestIds, record.requestIds))) { done(null); return; }
+        done({ revision: current.revision, requestIds: [...saved.requestIds] });
+      });
+    }),
     read: (owner, scopeId) => transaction('readonly', (store, read, done) => read(store.get(key(owner, scopeId)), (value: MembershipScopeRecord | ScopeWatermark | undefined) => {
       done(value && live(value) ? validated(value, owner, scopeId) : undefined);
     })),
@@ -85,7 +104,9 @@ export function createIndexedDbMembershipScopes(): MembershipScopeStore {
       if (!value || !live(value) || !['cancelled', 'submitted'].includes(value.phase)) { done(undefined); return; }
       const record = validated(value, owner, scopeId);
       const finish = (outcome: 'acknowledged' | 'cancelled') => {
-        store.put({ owner, scopeId, revision: record.revision + 1, closed: true, outcome }, key(owner, scopeId));
+        const watermark: ScopeWatermark = { owner, scopeId, revision: record.revision + 1, closed: true, outcome };
+        if (outcome === 'acknowledged') watermark.save = { generation: record.generation, requestIds: record.requestIds };
+        store.put(watermark, key(owner, scopeId));
         store.delete(referenceKey(owner, scopeId)); collectCommitRows(store, read, owner, () => done(undefined));
       };
       if (!record.requestIds.length) { finish(record.phase === 'cancelled' ? 'cancelled' : 'acknowledged'); return; }
