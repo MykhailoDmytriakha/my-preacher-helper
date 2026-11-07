@@ -63,6 +63,8 @@ export interface CommitStore {
   listForAnalysisRecovery?(owner: string): Promise<CommitRequest[]>;
   /** Read the current rows for a known operation without opening the rest of the queue. */
   readByIds?(owner: string, ids: readonly string[]): Promise<CommitRequest[]>;
+  /** Return exact rows only while the snapshot contains every current request identity. */
+  readChainStep?(owner: string, knownIds: ReadonlySet<string>, pair: readonly [string, string]): Promise<ChainStep | null>;
   /** Atomically unique by owner/editor/generation. Repeats return the original request. */
   create(request: CommitRequest): Promise<CommitRequest>;
   /** Native adapters capture the exact checkpoint and canonical request in one transaction. */
@@ -136,6 +138,32 @@ export const orderCommitRequests = (records: CommitRequest[]): CommitRequest[] =
   if (ordered.length !== records.length) throw new Error('Invalid commit dependency cycle');
   return ordered;
 };
+
+function hasExternalIntent(snapshot: ResourceSnapshot, intended: DocumentData | null): boolean {
+  return Boolean(documentReferenceResources(snapshot.resource, snapshot.value, intended).length
+    || requiredDomainTargets(snapshot, intended).length);
+}
+
+type ChainStep = [CommitRequest, CommitRequest];
+
+type DeliveryChain = {
+  knownIds: ReadonlySet<string>;
+  pending: CommitRequest[];
+  next: number;
+};
+
+/** A single existing-document editor chain has no outstanding creation or competing work. */
+function ordinaryDeliveryChain(records: readonly CommitRequest[]): DeliveryChain | null {
+  const pending = records.filter(record => !terminal(record) || record.unfinalized.length);
+  if (pending.length < 2) return null;
+  pending.sort((a, b) => a.editGeneration - b.editGeneration);
+  const first = pending[0];
+  if (pending.some(record => record.atomic || record.deleteAfter !== undefined || !record.baseline.value
+    || !record.value || record.editorId !== first.editorId || !resourceMatches(record.baseline.resource, first.baseline.resource))) return null;
+  if (pending.slice(1).some((record, index) => record.state !== 'queued' || record.initialized
+    || record.unfinalized.length || record.predecessor !== pending[index].id)) return null;
+  return { knownIds: new Set(records.map(record => record.id)), pending, next: 1 };
+}
 
 type CommitSaveOptions = { predecessorId?: string | null; predecessorIds?: readonly string[]; retentionScope?: string;
   checkpoint?: (saved: CommitRequest) => EditorRecord;
@@ -394,14 +422,20 @@ export class CommitQueue {
       let races = 0;
       const attempted = new Set<string>();
       const failures = new Map<string, AddressedFailure>();
+      let chain: DeliveryChain | null = null;
       do {
         this.requested = false;
-        const records = await this.options.store.list(owner);
+        const step: ChainStep | null = chain && await this.readChainStep(owner, chain);
         this.assertCurrent(owner, generation);
+        const records: CommitRequest[] = step ?? await this.options.store.list(owner);
+        this.assertCurrent(owner, generation);
+        if (step && chain) chain.next += 1;
+        else chain = this.deliveryRequested && this.options.store.readChainStep ? ordinaryDeliveryChain(records) : null;
         records.forEach(request => this.receipts.observe(request));
-        const batch = await this.advanceBatch(records, owner, generation, failures, races, attempted);
+        const batch = await this.advanceBatch(records, owner, generation, failures, races, attempted, step !== null);
         races = batch.races;
-        this.requested = this.requested || batch.changed;
+        // A narrow step never declares the full queue exhausted.
+        this.requested = this.requested || batch.changed || step !== null;
       } while (this.requested && this.current(owner, generation));
       // Every request that failed, each about its own document (BUG-20261003-background-failure-without-address).
       if (failures.size) throw new AddressedFailures([...failures.values()]);
@@ -496,8 +530,26 @@ export class CommitQueue {
     }
   }
 
+  private async readChainStep(owner: string, chain: DeliveryChain): Promise<ChainStep | null> {
+    const expected = chain.pending[chain.next];
+    if (!expected) return null;
+    try {
+      if (hasExternalIntent(expected.baseline, expected.value)) return null;
+    } catch {
+      return null;
+    }
+    const priorId = chain.pending[chain.next - 1].id;
+    const step = await this.options.store.readChainStep?.(owner, chain.knownIds, [priorId, expected.id]);
+    if (!step) return null;
+    const [prior, next] = step;
+    if (prior.state !== 'acknowledged' || prior.result?.kind !== 'acknowledged'
+      || next.revision !== expected.revision) return null;
+    assertCommitCapture(next, expected);
+    return step;
+  }
+
   private async advanceBatch(records: CommitRequest[], owner: string, generation: number,
-    failures: Map<string, AddressedFailure>, races: number, attempted: Set<string>) {
+    failures: Map<string, AddressedFailure>, races: number, attempted: Set<string>, narrow: boolean) {
     let changed = false;
     const advancedOperations = new Set<string>();
     const awaiting = new Map<string, { request: CommitRequest; apply: (result: CommandResult) => Promise<boolean> }>();
@@ -528,7 +580,7 @@ export class CommitQueue {
         changed = await this.advanceRequest(record, records, owner, generation, ready, trackAnswer) || changed;
       } catch (error) { onFailure(record, error); }
     }
-    const journal = this.deliveryRequested ? await this.deliverBatch(owner, generation, attempted, ready) : [];
+    const journal = this.deliveryRequested ? await this.deliverBatch(owner, generation, attempted, ready, narrow, awaiting) : [];
     for (const entry of journal) {
       if (!['acknowledged', 'conflict', 'refused'].includes(entry.state)) continue;
       const answer = awaiting.get(entry.command.operationId);
@@ -542,9 +594,12 @@ export class CommitQueue {
     return { changed, races };
   }
 
-  private async deliverBatch(owner: string, generation: number, attempted: Set<string>, ready: ReturnType<typeof referenceReadiness>) {
-    await this.options.runtime.drain(attempted, this.options.canDeliver ?? (() => true),
-      command => ready(commandReferenceResources(command), command.operationId));
+  private async deliverBatch(owner: string, generation: number, attempted: Set<string>,
+    ready: ReturnType<typeof referenceReadiness>, narrow: boolean, submitted: ReadonlyMap<string, unknown>) {
+    await this.options.runtime.drain(attempted, this.options.canDeliver ?? (() => true), command => {
+      const references = commandReferenceResources(command);
+      return (!narrow || (submitted.has(command.operationId) && !references.length)) && ready(references, command.operationId);
+    });
     this.assertCurrent(owner, generation);
     const journal = await this.options.runtime.list();
     this.assertCurrent(owner, generation);
@@ -620,8 +675,7 @@ export class CommitQueue {
     if (record.state !== 'queued' || record.command || record.deleteAfter?.length
       || !record.working.value || !record.intended || equalValues(record.working.value, record.intended)) return null;
     try {
-      if (documentReferenceResources(record.working.resource, record.working.value, record.intended).length
-        || requiredDomainTargets(record.working, record.intended).length) return null;
+      if (hasExternalIntent(record.working, record.intended)) return null;
       const prepared = this.materialize(record, owner, []);
       return prepared.command?.kind === 'update' && !commandReferenceResources(prepared.command).length ? prepared : null;
     } catch {

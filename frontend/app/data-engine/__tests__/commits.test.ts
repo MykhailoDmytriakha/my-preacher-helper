@@ -437,7 +437,7 @@ describe('Durable commit requests', () => {
     expect((await queue.list()).every(record => record.state === 'acknowledged' && !record.unfinalized.length)).toBe(true);
   });
 
-  it('applies an ordinary Save answer without a second full queue read', async () => {
+  it('advances a known Save chain without reloading its full payload on each answer', async () => {
     const s = setup({ nativeChoice: true });
     const { queue } = s.makeQueue();
     const editor = new DataSession(initial());
@@ -459,7 +459,7 @@ describe('Durable commit requests', () => {
     expect(s.server().value?.title).toBe(titles.at(-1));
     expect(s.server().metadata?.revision).toBe(titles.length + 1);
     expect((await queue.list()).every(row => row.state === 'acknowledged' && !row.unfinalized.length)).toBe(true);
-    expect(rowsRead).toBeLessThanOrEqual(titles.length * (titles.length + 3));
+    expect(rowsRead).toBeLessThanOrEqual(4 * titles.length);
   });
 
   it('finds a successor saved in another tab during delivery and applies it after its predecessor', async () => {
@@ -482,6 +482,78 @@ describe('Durable commit requests', () => {
     expect(jest.mocked(s.transport.send).mock.calls.map(([command]) => command.operationId)).toEqual([first.id, nextId]);
     expect(s.server().value?.title).toBe('Later saved version');
     expect((await queue.list()).map(row => row.state)).toEqual(['acknowledged', 'acknowledged']);
+  });
+
+  it('returns to the full queue when another tab extends an already known Save chain', async () => {
+    const s = setup({ nativeChoice: true });
+    const { queue } = s.makeQueue(), other = s.makeQueue().queue;
+    const editor = new DataSession(initial());
+    editor.edit({ ...initial().value, title: 'First' });
+    const first = (await queue.save('editor', editor.checkpoint()))!;
+    editor.edit({ ...initial().value, title: 'Second' });
+    const second = (await queue.save('editor', editor.checkpoint()))!;
+    const checkStep = jest.fn(s.requests.readChainStep!);
+    s.requests.readChainStep = checkStep;
+    const send = jest.mocked(s.transport.send).getMockImplementation()!;
+    let laterId: string | undefined;
+    jest.mocked(s.transport.send).mockImplementationOnce(async command => {
+      const later = new DataSession(initial());
+      later.edit({ ...initial().value, title: 'Third' });
+      laterId = (await other.save('other-editor', later.checkpoint(), { predecessorId: second.id }))?.id;
+      return send(command);
+    });
+
+    await queue.drain(true);
+
+    expect(checkStep).toHaveBeenCalledTimes(1);
+    await expect(checkStep.mock.results[0].value).resolves.toBeNull();
+    expect(jest.mocked(s.transport.send).mock.calls.map(([command]) => command.operationId)).toEqual([first.id, second.id, laterId]);
+    expect(s.server().value?.title).toBe('Third');
+  });
+
+  it('keeps a later Save with new document references on the full delivery path', async () => {
+    const s = setup({ nativeChoice: true });
+    const { queue } = s.makeQueue();
+    const editor = new DataSession(initial());
+    editor.edit({ ...initial().value, title: 'First' });
+    const first = (await queue.save('editor', editor.checkpoint()))!;
+    editor.edit({ ...initial().value, title: 'Linked', sourceNoteIds: ['source-note'] });
+    const second = (await queue.save('editor', editor.checkpoint()))!;
+    const checkStep = jest.fn(s.requests.readChainStep!);
+    s.requests.readChainStep = checkStep;
+
+    await queue.drain(true);
+
+    expect(checkStep).not.toHaveBeenCalled();
+    expect(jest.mocked(s.transport.send).mock.calls.map(([command]) => command.operationId)).toEqual([first.id, second.id]);
+    expect(s.server().value?.sourceNoteIds).toEqual(['source-note']);
+  });
+
+  it('uses the fresh successor revision when another tab cancels it without changing queue membership', async () => {
+    const s = setup({ nativeChoice: true });
+    const { queue } = s.makeQueue();
+    const editor = new DataSession(initial());
+    editor.edit({ ...initial().value, title: 'First' });
+    const first = (await queue.save('editor', editor.checkpoint()))!;
+    editor.edit({ ...initial().value, title: 'Cancelled' });
+    const second = (await queue.save('editor', editor.checkpoint()))!;
+    const anotherTabStore = createIndexedDbCommitStore();
+    const checkStep = jest.fn(s.requests.readChainStep!);
+    s.requests.readChainStep = checkStep;
+    const send = jest.mocked(s.transport.send).getMockImplementation()!;
+    jest.mocked(s.transport.send).mockImplementationOnce(async command => {
+      await anotherTabStore.compareAndSet(second, { ...second, state: 'cancelled', cancelledByChoice: true });
+      return send(command);
+    });
+
+    await queue.drain(true);
+
+    expect(checkStep).toHaveBeenCalledTimes(1);
+    await expect(checkStep.mock.results[0].value).resolves.toMatchObject([
+      { id: first.id, state: 'acknowledged' }, { id: second.id, state: 'cancelled', revision: second.revision + 1 },
+    ]);
+    expect(jest.mocked(s.transport.send).mock.calls.map(([command]) => command.operationId)).toEqual([first.id]);
+    expect(s.server().value?.title).toBe('First');
   });
 
   it('reloads an altered prepared request before applying its answer and never resends it', async () => {
