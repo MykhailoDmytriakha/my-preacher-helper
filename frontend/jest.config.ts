@@ -20,6 +20,8 @@ const config: Config = {
   testTimeout: 15000,
   // Performance optimizations
   maxWorkers: '50%', // Use 50% of available cores for better performance
+  // Recycle oversized workers between suites so native shutdown fits Jest's deadline.
+  workerIdleMemoryLimit: '512MB',
   cache: true, // Enable caching for faster subsequent runs
   // Vercel restores .next/cache between deployments. Jest's own cache keys
   // include source/config/transform state, so reuse is fast but still fail-safe.
