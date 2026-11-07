@@ -1,4 +1,4 @@
-when: carry fixes from Codex branch · take bug fixes from another branch into main · cherry-pick conflicts everywhere · merge the whole branch or not · codex/bugs-local-fixes · перенести фиксы из ветки Codex · забрать починенное · по одному багу · конфликты при cherry-pick
+when: carry fixes from Codex branch · take bug fixes from another branch into main · cherry-pick conflicts everywhere · merge the whole branch or not · codex/bugs-local-fixes · перенести фиксы из ветки Codex · забрать починенное · по одному багу · конфликты при cherry-pick · fast-forward Codex branch · light review order · land a big range · rules before code · перемотка main на ветку Codex · облегчённый порядок проверки
 
 # Carry finished fixes from a parallel branch into main
 
@@ -12,6 +12,14 @@ Codex fixes bugs for weeks in its own worktree (`~/.codex/worktrees/bugs-local-f
 - **Text files carry only his own lines.** `BUGS.md`: remove the entry by its heading (`rmbug.py BUGS.md <ID> <commit>` prints `IDENTICAL` when the removed text equals his removal). `.howto/`, `MEMORY.md`: when the patch conflicts, keep main's side and add exactly the lines his commit added (`resolve_plus.py`). His `docs/verification/` journal stays in his branch; the commit message points to it.
 - **Red, then green, on main.** Apply only his test to the intake tree and see it fail, then the piece and see it pass. Behaviour no Jest test reaches (native typing speed) is accepted on his recorded browser A/B, named as such in the commit.
 - **Gates on the intake worktree, then fast-forward.** Full `npm run test:fast`, `npx tsc --noEmit`, `npm run lint`, `node scripts/build-production.js` in the intake copy, a read-only live look (`live-intake.cjs`), then in the main checkout `git merge --ff-only <intake-branch>` (it refuses if another session's uncommitted file would be touched) and push.
+
+## Once his branch contains main — fast-forward and keep landing
+
+- **Whole branch by fast-forward.** When his branch already contains today's main, it is main plus his commits. `git merge --ff-only codex/bugs-local-fixes` in the main checkout then cannot conflict. On 2026-11-06 the data-engine bundle (~79 bugs) landed this way: `45d83239..bb2daba2`.
+- **Per fix, the light order.** Codex commits each fix separately on a branch that contains main. Each commit carries its red→green test, the related tests, `tsc` and `lint`. Main does three things itself. First, an independent code review. Second, red→green on main: his tests on the parent must be red, on the fix green. Third, one full `npm run build` on the candidate tip. The heavy order took 67–105 min per fix and was dropped by the owner on 2026-11-06 (12:18). It added a native stand, archives and a fresh session to every fix; the light order takes 5–15 min. A returned fix goes back with the failing test or the exact screen.
+- **Rules before code.** When the range changes `frontend/firestore.rules`, run `npm run test:rules`. Then deploy them (`npx firebase deploy --only firestore:rules --project my-preacher-helper`) before the push. Code that writes under the new rules must not reach production before the rules do.
+- **A big landing grows the Vercel test run.** The build machine has 2 cores and 8 GB. Check `.howto/run-jest-tests.md` → `test:build` (`--workerIdleMemoryLimit=512MB`) before the first push of a large range.
+- **Channel.** `.sessions/radio-claude-codex.md` (outside git, append-only): `### #N · Who → Whom · time`, each answer starts with «принял #N». A closed round ends with `РАЦИЯ ЗАКРЫТА`; the next session that lands his commits reads the radio's tail first.
 
 ## Why
 
