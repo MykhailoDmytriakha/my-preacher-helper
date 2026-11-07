@@ -163,8 +163,9 @@ function renderScratchPanel(overrides: Partial<ComponentProps<typeof ScratchPane
     ...overrides,
   };
 
-  render(<ScratchPanel {...props} />);
-  return props;
+  const view = render(<ScratchPanel {...props} />);
+  return { ...props, updatePanel: (next: Partial<ComponentProps<typeof ScratchPanel>>) =>
+    view.rerender(<ScratchPanel {...props} {...next} />) };
 }
 
 describe("ScratchPanel", () => {
@@ -196,6 +197,52 @@ describe("ScratchPanel", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
     expect(screen.queryByRole("textbox", { name: "Write a note" })).not.toBeInTheDocument();
+  });
+
+  it("edits a durably queued scratch note while the structure editor still waits", () => {
+    const note = { id: "note-1", text: "Already saved on this device", createdAt: "2026-07-05" };
+    const onEditPlan = jest.fn();
+    const queued = { notes: [note], isScratchWritePending: true, canEditQueuedNotes: true, onEditPlan };
+    const props = renderScratchPanel(queued);
+    const card = within(screen.getByTestId("scratch-note-card-note-1"));
+
+    expect(screen.getByRole("button", { name: "planEditor.title" })).toBeDisabled();
+    fireEvent.click(card.getByText(note.text));
+    const editor = card.getByRole("textbox");
+    fireEvent.change(editor, { target: { value: "Continued while offline" } });
+    fireEvent.keyDown(editor, { key: "Enter" });
+
+    expect(props.updateScratchNote).toHaveBeenCalledWith("note-1", { text: "Continued while offline" });
+    fireEvent.click(card.getByRole("button", { name: "Delete note" }));
+    expect(screen.getByRole("dialog")).toBeVisible();
+    expect(props.deleteScratchNote).not.toHaveBeenCalled();
+    expect(onEditPlan).not.toHaveBeenCalled();
+  });
+
+  it("hands off words already typed if delivery needs a decision before Enter", () => {
+    const note = { id: "note-1", text: "Already saved on this device", createdAt: "2026-07-05" };
+    const props = renderScratchPanel({ notes: [note], isScratchWritePending: true, canEditQueuedNotes: true });
+    const card = within(screen.getByTestId("scratch-note-card-note-1"));
+    fireEvent.click(card.getByText(note.text));
+    const editor = card.getByRole("textbox");
+    fireEvent.change(editor, { target: { value: "Words typed before the refusal" } });
+
+    props.updatePanel({ canEditQueuedNotes: false });
+    fireEvent.keyDown(editor, { key: "Enter" });
+
+    expect(props.updateScratchNote).toHaveBeenCalledWith("note-1", { text: "Words typed before the refusal" });
+    fireEvent.click(card.getByText(note.text));
+    expect(card.queryByRole("textbox")).not.toBeInTheDocument();
+  });
+
+  it("keeps an unproven pending note read-only", () => {
+    const note = { id: "note-1", text: "Pending local storage", createdAt: "2026-07-05" };
+    const props = renderScratchPanel({ notes: [note], isScratchWritePending: true });
+    const card = within(screen.getByTestId("scratch-note-card-note-1"));
+    fireEvent.click(card.getByText(note.text));
+    expect(card.queryByRole("textbox")).not.toBeInTheDocument();
+    expect(card.queryByRole("button", { name: "Delete note" })).not.toBeInTheDocument();
+    expect(props.updateScratchNote).not.toHaveBeenCalled();
   });
 
   it("keeps scratch labels out of note cards and restores a deleted note from the toast action", async () => {

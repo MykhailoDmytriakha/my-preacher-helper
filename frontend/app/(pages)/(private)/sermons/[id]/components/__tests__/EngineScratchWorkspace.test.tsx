@@ -74,6 +74,16 @@ describe('EngineScratchWorkspace', () => {
     expect(statusProps().onKeepLocal).toBeUndefined(); expect(statusProps().onAcceptRemote).toBeUndefined(); expect(statusProps().onRetry).toBeUndefined();
   });
 
+  it.each([
+    ['queued', true, true], ['sending', true, true], ['unknown', true, true],
+    ['savingLocally', false, false], ['localFailure', false, false], ['refused', true, false],
+  ])('derives the note-editing permission for %s with durable=%s', (phase, durable, allowed) => {
+    const state = { durable } as ReturnType<typeof useScratchDataDocument>['state'];
+    setup({ state, status: syncStatus(phase) });
+    render(<EngineScratchWorkspace sermonId="sermon" />);
+    expect(panelProps()).toMatchObject({ canEditQueuedNotes: allowed, isScratchWritePending: true });
+  });
+
   it('emits only distinct confirmed snapshots, never the dirty visible draft', () => {
     const scratch = setup(); const publish = jest.fn(); const view = render(<EngineScratchWorkspace sermonId="sermon" onConfirmed={publish} />);
     expect(publish).toHaveBeenCalledWith(scratch.confirmed);

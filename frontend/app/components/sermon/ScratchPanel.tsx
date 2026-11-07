@@ -64,6 +64,7 @@ interface ScratchPanelProps {
   /** Put a note among the notes of one container: `neighbourIds` as displayed, without it; `index` among them. */
   moveScratchNote?: (noteId: string, neighbourIds: string[], index: number) => void;
   isScratchWritePending: boolean;
+  canEditQueuedNotes?: boolean;
   scratchRevision: number;
   onEditPlan?: () => void;
   onApplyOutline?: (outline: SermonOutline, consumedNoteIds: string[]) => void | { delivery: 'queued' } | Promise<void | { delivery: 'queued' }>;
@@ -123,6 +124,7 @@ export default function ScratchPanel({
   deleteScratchNote,
   moveScratchNote,
   isScratchWritePending,
+  canEditQueuedNotes = false,
   scratchRevision,
   onApplyOutline,
   onOutlineChange,
@@ -151,7 +153,8 @@ export default function ScratchPanel({
   /** Note queued for deletion — the trash click only ARMS it, the modal confirms. */
   const [pendingDeleteNoteId, setPendingDeleteNoteId] = useState<string | null>(null);
   const isCaptureLocked = isReadOnly || isApplying;
-  const isBoardLocked = isReadOnly || isApplying || isScratchWritePending;
+  const isBoardLocked = isCaptureLocked || isScratchWritePending;
+  const isNoteEditingLocked = isCaptureLocked || (isScratchWritePending && !canEditQueuedNotes);
   const scratchSignature = useMemo(() => getScratchSignature(notes), [notes]);
   const scratchRevisionRef = useRef(scratchRevision);
   const scratchWritePendingRef = useRef(isScratchWritePending);
@@ -429,9 +432,9 @@ export default function ScratchPanel({
   const confirmDeleteNote = useCallback(() => {
     const noteId = pendingDeleteNoteId;
     setPendingDeleteNoteId(null);
-    if (!noteId) return;
+    if (!noteId || isNoteEditingLocked) return;
     handleDeleteNote(noteId);
-  }, [handleDeleteNote, pendingDeleteNoteId]);
+  }, [handleDeleteNote, isNoteEditingLocked, pendingDeleteNoteId]);
 
   const pendingDeleteNote = pendingDeleteNoteId
     ? notes.find((note) => note.id === pendingDeleteNoteId) ?? null
@@ -872,12 +875,12 @@ export default function ScratchPanel({
     return (
       <ScratchNoteCard
         note={currentNote}
-        isReadOnly={isBoardLocked}
-        dragHandleProps={onEditPlan ? undefined : dragHandleProps}
+        isReadOnly={isNoteEditingLocked}
+        dragHandleProps={onEditPlan || isBoardLocked ? undefined : dragHandleProps}
         onEdit={handleEditNote}
         onDelete={requestDeleteNote}
-        onUnplace={placements[currentNote.id] ? (noteId) => handleScratchPlace(noteId, null) : undefined}
-        placeTargets={onEditPlan ? undefined : placeTargets}
+        onUnplace={!isBoardLocked && placements[currentNote.id] ? (noteId) => handleScratchPlace(noteId, null) : undefined}
+        placeTargets={onEditPlan || isBoardLocked ? undefined : placeTargets}
         currentTargetKey={placementKey(placements[currentNote.id])}
         onPlaceInto={handlePlaceInto}
       />

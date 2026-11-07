@@ -56,6 +56,10 @@ export function EngineScratchWorkspace({ sermonId, isReadOnly = false, onConfirm
   const deleted = Boolean(confirmed?.metadata?.deleted || (confirmed && confirmed.value === null && scratch.presence?.kind !== 'creating')
     || (scratch.remote && scratch.remote.value === null) || scratch.remote?.metadata?.deleted);
 
+  const phase = scratch.status?.phase;
+  const canEditQueuedNotes = Boolean(scratch.state?.durable
+    && (phase === 'queued' || phase === 'sending' || phase === 'unknown'));
+
   return <section className="space-y-4" data-testid="engine-scratch-workspace">
     {/* ONE CONFLICT, ONE QUESTION (BUG-20261006-sermon-conflict-choice-shown-twice). On the sermon page
         this workspace holds the page's own document — its provider hands every hook one editor — and the
@@ -70,7 +74,7 @@ export function EngineScratchWorkspace({ sermonId, isReadOnly = false, onConfirm
       addRecordedScratchNote={scratch.addRecordedScratchNote}
       addScratchNote={scratch.addScratchNote} restoreScratchNote={scratch.restoreScratchNote}
       updateScratchNote={scratch.updateScratchNote} deleteScratchNote={scratch.deleteScratchNote} moveScratchNote={scratch.moveScratchNote}
-      isScratchWritePending={scratch.isWritePending} scratchRevision={scratch.scratchRevision}
+      isScratchWritePending={scratch.isWritePending} canEditQueuedNotes={canEditQueuedNotes} scratchRevision={scratch.scratchRevision}
       onEditPlan={() => setProposalOpen(true)}
       isReadOnly={isReadOnly || deleted || !owner} />}
     {proposalOpen && !isReadOnly && !deleted && owner && <EngineOutlineModal key={`${owner}:${sermonId}`} sermonId={sermonId}
