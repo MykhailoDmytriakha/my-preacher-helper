@@ -1,6 +1,6 @@
 import rstEphesians from '../../../public/bible-text/rst/v1/ephesians.json';
 
-import { analysisMarkdown, analysisState, passageWords, storedAnalysis, type AnalysisState } from '@/utils/passageAnalysis';
+import { analysisMarkdown, analysisState, passageWords, storedAnalysis, tieTo, type AnalysisState } from '@/utils/passageAnalysis';
 import type { BookText } from '@/utils/bibleText';
 import type { DocumentData } from '../types';
 import { analysisCreationScope, planStudyAnalysisCreation } from '../analysisCreation';
@@ -69,6 +69,44 @@ describe('study analysis creation transfer planning', () => {
     if (result.kind !== 'ready') throw new Error(result.reason);
     expect(stateOf(result.value)).toEqual(storedAnalysis({ cuts: [3, 5, 7], links: { 5: 0, 7: 1 },
       relations: [...localState.relations, ...targetState.relations] }, 'rst', words.length));
+  });
+
+  it('preserves both disjoint arrows drawn on separate offline creations', () => {
+    const initial = note('source', initialState);
+    const local = tieTo({ cuts: [3, 5], links: {}, relations: [] }, 5, 0, words.length);
+    const target = tieTo({ cuts: [3, 7], links: {}, relations: [] }, 7, 1, words.length);
+    if (local === 'own' || target === 'own') throw new Error('Invalid fixture draw');
+
+    const result = makePlan(initial, note('source', local), note('target', target));
+
+    expect(result).toMatchObject({ kind: 'ready', value: {
+      analysis: { cuts: [3, 5, 7], links: { 5: 0, 7: 1 }, drawn: [5, 7] },
+    } });
+  });
+
+  it('keeps an explicit arrow when the other copy uses the same tie without an arrow', () => {
+    const initial = note('source', initialState);
+    const plain: AnalysisState = { cuts: [3], links: { 3: 0 }, relations: [] };
+    const drawn = tieTo(plain, 3, 0, words.length);
+    if (drawn === 'own') throw new Error('Invalid fixture draw');
+    const target = note('target', plain);
+    stateOf(target).drawn = [];
+
+    const result = makePlan(initial, note('source', drawn), target);
+
+    expect(result).toMatchObject({ kind: 'ready', value: { analysis: { links: { 3: 0 }, drawn: [3] } } });
+  });
+
+  it('keeps different drawn endpoints on the same line for review', () => {
+    const initial = note('source', initialState);
+    const local = tieTo(initialState, 3, 0, words.length);
+    const target = tieTo(initialState, 3, 1, words.length);
+    if (local === 'own' || target === 'own') throw new Error('Invalid fixture draw');
+
+    expect(makePlan(initial, note('source', local), note('target', target))).toEqual({
+      kind: 'review',
+      reason: 'The local and existing marks disagree at the same position.',
+    });
   });
 
   it('does not treat the first generated mark as a permanent merge baseline', () => {
@@ -144,6 +182,10 @@ describe('study analysis creation transfer planning', () => {
     ['dropped cut', (analysis: DocumentData) => ({ ...analysis, cuts: [...analysis.cuts as number[], 99] })],
     ['dropped link', (analysis: DocumentData) => ({ ...analysis, links: { ...analysis.links as DocumentData, 99: 0 } })],
     ['dropped relation', (analysis: DocumentData) => ({ ...analysis, relations: { ...analysis.relations as DocumentData, '9-2': { dir: 'fwd', color: 'amber' } } })],
+    ['non-array drawn field', (analysis: DocumentData) => ({ ...analysis, drawn: '5' })],
+    ['non-integer drawn position', (analysis: DocumentData) => ({ ...analysis, drawn: [5.5] })],
+    ['drawn position without a link', (analysis: DocumentData) => ({ ...analysis, drawn: [5] })],
+    ['repeated drawn position', (analysis: DocumentData) => ({ ...analysis, links: { 5: 0 }, drawn: [5, 5] })],
   ])('reviews raw stored analysis containing a %s rather than normalizing it away', (_label, mutate) => {
     const initial = note('source', initialState);
     const local = note('source', { cuts: [3, 5], links: {}, relations: [] });

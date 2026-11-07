@@ -12,6 +12,7 @@ export type StudyAnalysisCreationPlan = { kind: 'ready'; value: DocumentData } |
 type AnalysisRecord = Record<string, unknown>;
 
 const object = (value: unknown): value is AnalysisRecord => value !== null && typeof value === 'object' && !Array.isArray(value);
+const isPosition = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value);
 const review = (reason: string): StudyAnalysisCreationPlan => ({ kind: 'review', reason });
 
 /** Marks a note as an initial analysis created by this generated-transfer flow. */
@@ -26,19 +27,21 @@ function stableLocalFields(value: DocumentData): DocumentData {
 function readCanonicalState(value: DocumentData, bible: BibleId, words: ReturnType<typeof passageWords>): AnalysisState | null {
   if (value.type !== 'analysis' || typeof value.content !== 'string' || !object(value.analysis)) return null;
   const raw = value.analysis;
-  const allowed = new Set(['bible', 'words', 'cuts', 'links', 'relations']);
+  const { drawn, ...frame } = raw;
+  const allowed = new Set(['bible', 'words', 'cuts', 'links', 'relations', 'drawn']);
   if (Object.keys(raw).some(key => !allowed.has(key))
     || !['bible', 'words', 'cuts', 'links'].every(key => Object.prototype.hasOwnProperty.call(raw, key))
     || raw.bible !== bible || raw.words !== words.length || !Array.isArray(raw.cuts) || !object(raw.links)
-    || (raw.relations !== undefined && !object(raw.relations))) return null;
-  if (!raw.cuts.every(cut => typeof cut === 'number' && Number.isSafeInteger(cut))
+    || (raw.relations !== undefined && !object(raw.relations))
+    || (drawn !== undefined && (!Array.isArray(drawn) || !drawn.every(isPosition)))) return null;
+  if (!raw.cuts.every(isPosition)
     || Object.entries(raw.links).some(([key, word]) => !Number.isSafeInteger(Number(key)) || String(Number(key)) !== key
-      || typeof word !== 'number' || !Number.isSafeInteger(word))) return null;
+      || !isPosition(word))) return null;
   try {
     const state = analysisState(raw as unknown as StudyAnalysis, words.length);
     const canonical = storedAnalysis(state, bible, words.length) as unknown as DocumentData;
-    // `relations` was added after the original stored format; only its absence is accepted as empty.
-    const normalized = { ...raw, relations: raw.relations ?? {} } as DocumentData;
+    // Older analyses omit relations, and the stored format omits an empty drawn list.
+    const normalized = { ...frame, relations: raw.relations ?? {}, ...(drawn?.length ? { drawn } : {}) } as DocumentData;
     if (!equalValues(normalized, canonical) || value.content !== analysisMarkdown(words, state)) return null;
     return state;
   } catch {
@@ -109,6 +112,7 @@ export function planStudyAnalysisCreation(initial: DocumentData, local: Document
     cuts: Object.keys(cuts).map(Number).sort((a, b) => a - b),
     links: Object.fromEntries(Object.entries(links).map(([key, word]) => [Number(key), word as number])),
     relations: mergedRelations,
+    drawn: [...new Set([...(localState.drawn ?? []), ...(targetState.drawn ?? [])])].sort((a, b) => a - b),
   };
   const mergedStored = storedAnalysis(mergedState, basis.bible, words.length);
   const settled = analysisState(mergedStored, words.length);
