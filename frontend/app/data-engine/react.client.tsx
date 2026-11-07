@@ -470,7 +470,8 @@ export function useShareCapabilityActions() {
     const command = entry.command;
     if (command.relation !== 'share-link-create' && command.relation !== 'share-link-revoke') return [];
     return [{ id: command.operationId, kind: command.relation === 'share-link-create' ? 'create' as const : 'revoke' as const,
-      targetId: command.relation === 'share-link-create' ? command.note.id : command.resource.id, state: shownDeliveryState(entry) }];
+      targetId: command.relation === 'share-link-create' ? command.note.id : command.resource.id, state: shownDeliveryState(entry),
+      ...(entry.result?.kind === 'refused' ? { code: entry.result.code } : {}) }];
   }), [observed, identity, owner]);
   const run = useCallback(async (action: (engine: BrowserDataEngine['engine']) => Promise<void>) => {
     if (!browser || !owner || current.current !== identity) throw new Error(ENGINE_NOT_READY);
@@ -478,7 +479,8 @@ export function useShareCapabilityActions() {
     if (current.current !== identity) throw new Error(EDITOR_CHANGED);
   }, [browser, owner, identity]);
   return useMemo(() => ({ ready: Boolean(browser && owner), actions,
-    create: (noteId: string, locale: AppLocale) => run(engine => engine.createShareLink(noteId, locale)),
+    create: (noteId: string, locale: AppLocale, observed?: ResourceSnapshot | null, replaces?: string) => run(engine =>
+      observed === undefined ? engine.createShareLink(noteId, locale) : engine.createShareLink(noteId, locale, observed, replaces)),
     revoke: (linkId: string) => run(engine => engine.revokeShareLink(linkId)),
     retry: (operationId: string) => run(engine => engine.retryShareCapability(operationId)),
   }), [browser, owner, actions, run]);

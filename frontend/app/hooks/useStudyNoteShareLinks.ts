@@ -44,6 +44,10 @@ export function useStudyNoteShareLinks() {
       if (!trouble) continue;
       const id = `share-capability:${uid}:${action.id}`;
       next.add(id);
+      if (action.code === 'share-link-review-required') {
+        toast.error(t('studiesWorkspace.shareLinks.createReviewRequired'), { id, duration: Infinity });
+        continue;
+      }
       const key = action.kind === 'create' ? 'studiesWorkspace.shareLinks.createUnconfirmed' : 'studiesWorkspace.shareLinks.revokeUnconfirmed';
       toast.error(t(key), { id, duration: Infinity, action: { label: t('dataSync.retry'), onClick: () => {
         void capability.retry(action.id).catch(() => { if (currentOwner.current === uid) toast.error(t(key), { id }); });
@@ -67,8 +71,10 @@ export function useStudyNoteShareLinks() {
     try {
       const held = capability.actions.find(action => action.kind === kind && action.targetId === targetId
         && ['refused', 'conflict'].includes(action.state));
-      if (held) await capability.retry(held.id);
-      else if (kind === 'create') await capability.create(targetId, locale);
+      if (kind === 'create' && (!held || held.code === 'share-link-review-required')) {
+        const presence = notePresence(targetId);
+        await capability.create(targetId, locale, presence.kind === 'present' ? presence.snapshot : null, held?.id);
+      } else if (held) await capability.retry(held.id);
       else await capability.revoke(targetId);
     } catch (error) {
       if (currentOwner.current === uid) toast.error(t(key), { id: `share-capability-capture:${address}` });

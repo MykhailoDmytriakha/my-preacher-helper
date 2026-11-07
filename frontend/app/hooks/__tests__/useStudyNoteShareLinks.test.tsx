@@ -34,17 +34,17 @@ const mockGetLinks = getStudyNoteShareLinks as jest.Mock;
 const mockCreateLegacy = createStudyNoteShareLink as jest.Mock;
 const mockDeleteLegacy = deleteStudyNoteShareLink as jest.Mock;
 
-type Action = { id: string; kind: 'create' | 'revoke'; targetId: string; state: 'pending' | 'refused' | 'conflict' | 'unknown' };
+type Action = { id: string; kind: 'create' | 'revoke'; targetId: string; code?: string; state: 'pending' | 'refused' | 'conflict' | 'unknown' };
 type Capability = {
   ready: boolean;
   actions: Action[];
-  create: jest.Mock<Promise<void>, [string, AppLocale]>;
+  create: jest.Mock<Promise<void>, [string, AppLocale, unknown?, string?]>;
   revoke: jest.Mock<Promise<void>, [string]>;
   retry: jest.Mock<Promise<void>, [string]>;
 };
 const makeCapability = (overrides: Partial<Capability> = {}): Capability => ({
   ready: true, actions: [],
-  create: jest.fn<Promise<void>, [string, AppLocale]>().mockResolvedValue(undefined),
+  create: jest.fn<Promise<void>, [string, AppLocale, unknown?, string?]>().mockResolvedValue(undefined),
   revoke: jest.fn<Promise<void>, [string]>().mockResolvedValue(undefined),
   retry: jest.fn<Promise<void>, [string]>().mockResolvedValue(undefined), ...overrides,
 });
@@ -53,6 +53,8 @@ let uid: string | undefined;
 let authLoading: boolean;
 let linkRows: Array<{ resource: { collection: string; id: string }; value: Partial<StudyNoteShareLink> }>;
 let retiredNotes = new Set<string>();
+const observedNote = (id: string) => ({ resource: { collection: 'studyNotes', id }, value: { userId: 'owner' },
+  metadata: { protocol: 1, generation: 'note-generation', revision: 2, deleted: false, shareRevocation: 'revoke' } });
 const refresh = jest.fn(async () => undefined);
 
 const makeLink = (id: string, noteId: string, ownerId = 'owner'): StudyNoteShareLink => ({
@@ -78,7 +80,7 @@ beforeEach(() => {
       state: { documents: linkRows, snapshots: [] }, loading: false, error: null, refresh,
     };
     if (collection === 'studyNotes') return {
-      presence: (id: string) => retiredNotes.has(id) ? { snapshot: { metadata: { deleted: true } } } : { snapshot: null },
+      presence: (id: string) => retiredNotes.has(id) ? { snapshot: { metadata: { deleted: true } } } : { kind: 'present', snapshot: observedNote(id) },
     };
     return { state: null, loading: false, error: null, refresh, presence: () => ({ snapshot: null }) };
   });
@@ -112,7 +114,7 @@ describe('useStudyNoteShareLinks', () => {
     await act(async () => { await result.current.createShareLink('note-1'); });
     await act(async () => { await result.current.deleteShareLink('link-9'); });
     expect(capability.create).toHaveBeenCalledTimes(1);
-    expect(capability.create).toHaveBeenCalledWith('note-1', 'ru');
+    expect(capability.create).toHaveBeenCalledWith('note-1', 'ru', observedNote('note-1'), undefined);
     expect(capability.revoke).toHaveBeenCalledTimes(1);
     expect(capability.revoke).toHaveBeenCalledWith('link-9');
     expect(mockCreateLegacy).not.toHaveBeenCalled();
@@ -194,6 +196,20 @@ describe('useStudyNoteShareLinks', () => {
     expect(toastError.mock.calls.some(([, options]) => (options as { id?: string } | undefined)?.id === 'share-capability:next-owner:operation-44')).toBe(false);
     toastError.mockRestore(); toastDismiss.mockRestore();
   });
+  it('requires a new create choice after a stale share request and sends the observed access version', async () => {
+    const toastError = jest.spyOn(toast, 'error').mockImplementation(() => '');
+    capability = makeCapability({ actions: [{ id: 'held-refusal', kind: 'create', targetId: 'note-1',
+      state: 'refused', code: 'share-link-review-required' }] });
+    const { result } = renderHook(() => useStudyNoteShareLinks());
+    expect(toastError).toHaveBeenCalledWith('studiesWorkspace.shareLinks.createReviewRequired',
+      { id: 'share-capability:owner:held-refusal', duration: Infinity });
+    expect(capability.retry).not.toHaveBeenCalled();
+    await act(async () => { await result.current.createShareLink('note-1'); });
+    expect(capability.create).toHaveBeenCalledWith('note-1', 'ru', observedNote('note-1'), 'held-refusal');
+    expect(capability.retry).not.toHaveBeenCalled();
+    toastError.mockRestore();
+  });
+
   it.each(['create', 'revoke'] as const)('recovers the exact refused %s action when its ordinary button is pressed again', async kind => {
     const toastError = jest.spyOn(toast, 'error').mockImplementation(() => '');
     capability = makeCapability({ actions: [{ id: 'held-refusal', kind, targetId: 'same-target', state: 'refused' }] });

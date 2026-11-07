@@ -13,7 +13,8 @@ import type { CollectionChanges, CollectionPage, CollectionTransport, CommandRes
 
 const json: z.ZodType<Json> = z.lazy(() => z.union([z.null(), z.boolean(), z.number().finite(), z.string(), z.array(json), z.record(json)]));
 const resourceSchema = z.object({ collection: z.string(), id: z.string() });
-const metadataSchema = z.object({ protocol: z.literal(1), generation: z.string().min(1), revision: z.number().int().safe().positive(), deleted: z.boolean(), operationId: z.string().refine(isValidIdentifier).optional() });
+const metadataSchema = z.object({ protocol: z.literal(1), generation: z.string().min(1), revision: z.number().int().safe().positive(), deleted: z.boolean(), operationId: z.string().refine(isValidIdentifier).optional(),
+  shareRevocation: z.string().refine(isValidIdentifier).optional() });
 const field = z.object({ exists: z.boolean(), value: json.optional() });
 export const snapshotSchema: z.ZodType<ResourceSnapshot> = z.object({
   resource: resourceSchema,
@@ -95,7 +96,8 @@ export function createHttpEngineTransport(): EngineTransport & CollectionTranspo
   return {
     async send(command) {
       assertOwner(command.owner);
-      const { value } = await requestOwnerJson<unknown>('/api/data-engine/commands', { method: 'POST', payload: command, messages });
+      const query = command.kind === 'relation' && command.relation === 'share-link-revoke' ? '?shareNoteReceipt=1' : '';
+      const { value } = await requestOwnerJson<unknown>('/api/data-engine/commands' + query, { method: 'POST', payload: command, messages });
       assertOwner(command.owner);
       const result = parse(resultSchema, value);
       if (result.operationId !== command.operationId || ('snapshot' in result && (

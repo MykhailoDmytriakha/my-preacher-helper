@@ -105,10 +105,13 @@ function readMetadata(raw: unknown): EngineMetadata | null {
   const data = raw as Partial<EngineMetadata>;
   if (data.protocol !== 1 || typeof data.generation !== 'string' || !data.generation
       || !Number.isSafeInteger(data.revision) || (data.revision ?? 0) < 1 || typeof data.deleted !== 'boolean'
-      || (data.operationId !== undefined && (typeof data.operationId !== 'string' || !data.operationId))) {
+      || (data.operationId !== undefined && (typeof data.operationId !== 'string' || !data.operationId))
+      || (data.shareRevocation !== undefined && !isValidIdentifier(data.shareRevocation))) {
     throw new DataEngineServerError('unsupported-protocol', 409);
   }
-  return { protocol: 1, generation: data.generation, revision: data.revision!, deleted: data.deleted, ...(data.operationId ? { operationId: data.operationId } : {}) };
+  return { protocol: 1, generation: data.generation, revision: data.revision!, deleted: data.deleted,
+    ...(data.operationId ? { operationId: data.operationId } : {}),
+    ...(data.shareRevocation ? { shareRevocation: data.shareRevocation } : {}) };
 }
 
 function snapshotFromRaw(resource: ResourceRef, raw: Record<string, unknown> | undefined): ResourceSnapshot {

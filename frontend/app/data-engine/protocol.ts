@@ -220,7 +220,8 @@ function validateShareLinkCreate(command: Extract<DataCommand, { relation: 'shar
   if (command.resource.collection !== 'studyNoteShareLinks' || command.generation !== null
     || !exactKeys(command.resource as unknown as Record<string, unknown>, ['collection', 'id'])
     || !object(command.note)
-    || !exactKeys(command.note as unknown as Record<string, unknown>, ['id', 'generation'])
+    || !exactKeys(command.note, own(command.note, 'shareRevocation') ? ['id', 'generation', 'shareRevocation'] : ['id', 'generation'])
+    || (own(command.note, 'shareRevocation') && command.note.shareRevocation !== null && !isValidIdentifier(command.note.shareRevocation))
     || !isValidIdentifier(command.note.id)
     || !(command.note.generation === null || isValidIdentifier(command.note.generation))
     || !['en', 'ru', 'uk'].includes(command.authorLanguage)) fail('Invalid share-link creation');
@@ -587,7 +588,8 @@ export function advanceResourceSnapshot(current: ResourceSnapshot, value: Docume
   return {
     resource: { ...current.resource }, value: next,
     metadata: { protocol: 1, generation: current.metadata?.generation ?? operationId,
-      revision: (current.metadata?.revision ?? 0) + 1, deleted: next === null, operationId },
+      revision: (current.metadata?.revision ?? 0) + 1, deleted: next === null, operationId,
+      ...(current.metadata?.shareRevocation ? { shareRevocation: current.metadata.shareRevocation } : {}) },
   };
 }
 

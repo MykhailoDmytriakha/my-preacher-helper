@@ -54,7 +54,7 @@ export type DataCommand = CommandBase & (
       resource: ResourceRef; generation: string | null; beforeItems: DocumentData[]; afterItems: DocumentData[];
     } }
   /** Server-owned share-link capability creation, tied to the note version the person saw. */
-  | { kind: 'relation'; relation: 'share-link-create'; note: { id: string; generation: string | null };
+  | { kind: 'relation'; relation: 'share-link-create'; note: { id: string; generation: string | null; shareRevocation?: string | null };
       authorLanguage: 'en' | 'ru' | 'uk' }
   /** Revoke exactly the capability addressed by the unversioned resource ID. */
   | { kind: 'relation'; relation: 'share-link-revoke' }
@@ -77,6 +77,8 @@ export interface EngineMetadata {
   deleted: boolean;
   /** Identifies our own server-confirmed change before its HTTP acknowledgement arrives. */
   operationId?: string;
+  /** Latest committed revocation for this note, independent of its authored content. */
+  shareRevocation?: string;
 }
 
 export interface ResourceSnapshot {

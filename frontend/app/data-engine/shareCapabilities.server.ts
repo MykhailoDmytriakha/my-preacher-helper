@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import { advanceResourceSnapshot } from './protocol';
+import { advanceResourceSnapshot, isValidIdentifier } from './protocol';
 import { validateResourceDocument } from './resourceSchemas';
 
 import type { DataCommand, ResourceSnapshot } from './types';
@@ -9,7 +9,8 @@ export type ShareCapabilityCommand = Extract<DataCommand, { relation: 'share-lin
 
 interface CapabilityPorts {
   /** The existing relation reader owns owner checks, generation admission and the scope bound. */
-  readLiveNote(note: { id: string; generation: string | null }): Promise<void>;
+  readLiveNote(noteId: string): Promise<ResourceSnapshot>;
+  readRevokedLinkNote(noteId: string): Promise<ResourceSnapshot | undefined>;
   listLinks(noteId: string): Promise<ResourceSnapshot[]>;
   refuse(code: string): never;
 }
@@ -21,11 +22,21 @@ export async function planShareCapability(command: ShareCapabilityCommand, prima
     // observation still names this permanent exact ID; typed creation never reuses any prior ID.
     if (command.generation !== null && (primary.metadata?.generation ?? null) !== command.generation) ports.refuse('generation-mismatch');
     // A tombstone also pins an absent legacy ID. No later create may reuse that capability address.
-    return [advanceResourceSnapshot(primary, null, command.operationId, [])];
+    const retired = advanceResourceSnapshot(primary, null, command.operationId, []);
+    const noteId = primary.value?.noteId;
+    if (!isValidIdentifier(noteId) || typeof noteId !== 'string') return [retired];
+    const note = await ports.readRevokedLinkNote(noteId);
+    if (!note?.value || note.metadata?.deleted) return [retired];
+    const { metadata } = advanceResourceSnapshot(note, note.value, command.operationId, []);
+    return [retired, { ...note, metadata: { ...metadata!, shareRevocation: command.operationId } }];
   }
 
   if (primary.value || primary.metadata) ports.refuse('resource-already-exists');
-  await ports.readLiveNote(command.note);
+  const note = await ports.readLiveNote(command.note.id);
+  // A command captured before this protocol has no access observation. Only a new,
+  // explicit creation may reopen access. Receipt replays never reach this branch.
+  if (command.note.shareRevocation !== (note.metadata?.shareRevocation ?? null)) ports.refuse('share-link-review-required');
+  if (command.note.generation !== (note.metadata?.generation ?? null)) ports.refuse('generation-mismatch');
   const active = (await ports.listLinks(command.note.id)).filter(link => link.value && !link.metadata?.deleted);
   if (active.length > 1) ports.refuse('ambiguous-share-links');
   if (active.length) {

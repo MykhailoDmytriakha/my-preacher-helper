@@ -1165,6 +1165,31 @@ describe('durable share capability actions', () => {
     await drainMicrotasks();
   });
 
+  it('never substitutes the current note access marker into delivery retry', async () => {
+    const s = setup({ online: false });
+    try {
+      await s.engine.createShareLink('note', 'en');
+      const old = (await s.runtime.list())[0];
+      const snapshot = initial();
+      const observed = { ...snapshot, metadata: { ...snapshot.metadata!, shareRevocation: 'revocation', revision: 2 } };
+      s.cache.set(keyOf('owner', snapshot.resource), observed);
+      await s.journal.put({ ...old, state: 'refused', result: { kind: 'refused', operationId: old.command.operationId, code: 'temporary-refusal' } });
+      await s.engine.retryShareCapability(old.command.operationId);
+      const retried = (await s.runtime.list())[0];
+      expect(retried.command).toMatchObject({ note: { shareRevocation: null } });
+      await s.journal.put({ ...retried, state: 'refused', result: {
+        kind: 'refused', operationId: retried.command.operationId, code: 'share-link-review-required',
+      } });
+      await s.engine.retryShareCapability(retried.command.operationId);
+      expect((await s.runtime.list()).map(entry => entry.command.operationId)).toEqual([retried.command.operationId]);
+      await s.engine.createShareLink('note', 'en', observed, retried.command.operationId);
+      const [next] = await s.runtime.list();
+      expect(next.command).toMatchObject({ note: { shareRevocation: 'revocation' } });
+      expect(next.command.operationId).not.toBe(retried.command.operationId);
+      expect(s.transport.send).not.toHaveBeenCalled();
+    } finally { s.engine.dispose(); }
+  });
+
   it('retains an accepted command when its local snapshot projection fails, and repairs it before finalizing', async () => {
     const s = setup({ online: false });
     const ref = { collection: 'studyNoteShareLinks', id: 'existing-link' };

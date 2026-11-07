@@ -507,16 +507,28 @@ export class DataEngine {
     return this.open(resource, editorId, false, options);
   }
 
-  /** A public capability is a server action, never a draft of editable token fields. */
-  async createShareLink(noteId: string, authorLanguage: AppLocale): Promise<void> {
+  /** Capture the confirmed note the person saw before a share request can wait for delivery. */
+  async createShareLink(noteId: string, authorLanguage: AppLocale, observed?: ResourceSnapshot | null, replaces?: string): Promise<void> {
     const owner = this.requireOwner(), generation = this.generation;
-    const note = await this.read({ collection: 'studyNotes', id: noteId }); this.assertCurrent(owner, generation);
-    if (!snapshotBelongsToOwner(owner, note)) throw Object.assign(new Error('The note belongs to another owner'), { code: 'permission-denied' });
+    const resource = { collection: 'studyNotes', id: noteId };
+    const note = observed === undefined ? await this.read(resource) : observed && copy(observed);
+    this.assertCurrent(owner, generation);
+    if (!note) throw Object.assign(new Error('Read the note before sharing it'), { code: NEEDS_CONNECTION });
+    if (!sameResource(note.resource, resource) || !snapshotBelongsToOwner(owner, note)) {
+      throw Object.assign(new Error('The note belongs to another owner'), { code: 'permission-denied' });
+    }
     if (!note.value || note.metadata?.deleted) throw Object.assign(new Error('The note no longer exists'), { code: 'referenced-document-deleted' });
+    if (replaces) {
+      const prior = (await this.options.runtime.list()).find(entry => entry.command.operationId === replaces);
+      this.assertCurrent(owner, generation);
+      if (!prior || !['refused', 'conflict'].includes(prior.state) || prior.command.kind !== 'relation'
+        || prior.command.relation !== 'share-link-create' || prior.command.note.id !== noteId) throw new Error('The share decision changed');
+    }
     const operationId = this.options.operationId();
     await this.captureShareCapability({ protocol: 1, operationId, owner, resource: { collection: 'studyNoteShareLinks', id: this.options.operationId() },
       generation: null, dependsOn: [], kind: 'relation', relation: 'share-link-create',
-      note: { id: noteId, generation: note.metadata?.generation ?? null }, authorLanguage }, owner, generation);
+      note: { id: noteId, generation: note.metadata?.generation ?? null, shareRevocation: note.metadata?.shareRevocation ?? null }, authorLanguage }, owner, generation);
+    if (replaces) await this.options.runtime.discard(replaces);
   }
 
   async revokeShareLink(linkId: string): Promise<void> {
@@ -538,8 +550,13 @@ export class DataEngine {
     if (command.resource.collection !== 'studyNoteShareLinks' || command.kind !== 'relation'
       || !['share-link-create', 'share-link-revoke'].includes(command.relation)) throw new Error('Not a share capability action');
     if (!['refused', 'conflict'].includes(entry.state)) { await this.retry(); return; }
-    if (command.relation === 'share-link-create') await this.createShareLink(command.note.id, command.authorLanguage);
-    else await this.revokeShareLink(command.resource.id);
+    if (command.relation === 'share-link-create') {
+      if (command.note.shareRevocation === undefined
+        || (entry.result?.kind === 'refused' && entry.result.code === 'share-link-review-required')) return;
+      // Delivery retry keeps the old access observation, even when a terminal receipt needs a new ID.
+      await this.captureShareCapability({ ...command, operationId: this.options.operationId(),
+        resource: { ...command.resource, id: this.options.operationId() } }, owner, generation);
+    } else await this.revokeShareLink(command.resource.id);
     this.assertCurrent(owner, generation);
     await this.options.runtime.discard(operationId);
   }
@@ -1259,7 +1276,9 @@ export class DataEngine {
       const effects = [{ resource: result.snapshot.resource, metadata: result.committed ?? result.snapshot.metadata }, ...(result.affected ?? [])];
       for (const effect of effects) {
         this.assertCurrent(owner, generation);
-        if (effect.resource.collection !== 'studyNoteShareLinks' || !effect.metadata) throw new Error('Invalid capability acknowledgement');
+        if (!['studyNoteShareLinks', 'studyNotes'].includes(effect.resource.collection) || !effect.metadata) {
+          throw new Error('Invalid capability acknowledgement');
+        }
         const supplied = [result.snapshot, ...(result.relatedSnapshots ?? [])].find(snapshot => sameResource(snapshot.resource, effect.resource)
           && coversCommittedEffect(snapshot, effect.resource, effect.metadata!));
         const snapshot = supplied ?? await this.readCommittedSnapshot(effect.resource, effect.metadata);
@@ -1268,7 +1287,9 @@ export class DataEngine {
         if (!coversCommittedEffect(cached, effect.resource, effect.metadata)) throw new Error('Capability acknowledgement projection is not covered');
       }
       this.assertCurrent(owner, generation);
-      await this.options.collections?.reloadCached('studyNoteShareLinks'); this.assertCurrent(owner, generation);
+      for (const collection of new Set(effects.map(effect => effect.resource.collection))) {
+        await this.options.collections?.reloadCached(collection); this.assertCurrent(owner, generation);
+      }
       await this.options.runtime.finalize(result.operationId);
     });
     this.capabilityProjections.set(key, operation);

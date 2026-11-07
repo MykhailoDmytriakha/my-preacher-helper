@@ -313,7 +313,19 @@ class RelationPlanner {
 
   private async shareCapability(command: ShareCapabilityCommand): Promise<void> {
     const writes = await planShareCapability(command, this.primary, {
-      readLiveNote: async note => { this.live(await this.get({ collection: 'studyNotes', id: note.id }), note.generation); },
+      readLiveNote: async id => {
+        const snapshot = await this.get({ collection: 'studyNotes', id });
+        this.live(snapshot);
+        return snapshot;
+      },
+      readRevokedLinkNote: async id => {
+        try { return await this.get({ collection: 'studyNotes', id }); }
+        catch (error) {
+          // Revoking a legacy owned link must work even when its referenced note is foreign.
+          if (error && typeof error === 'object' && 'code' in error && error.code === PERMISSION_DENIED) return undefined;
+          throw error;
+        }
+      },
       listLinks: noteId => this.list('studyNoteShareLinks', { field: 'noteId', operator: '==', value: noteId }),
       refuse: fail,
     });

@@ -41,6 +41,14 @@ it('accepts the exact server-owned share-link create and revoke relation envelop
   expect(validateCommand(revokeCommand({ generation: 'link-generation' }))).toMatchObject({ generation: 'link-generation' });
 });
 
+it('accepts explicit revocation observations on a create command', () => {
+  expect(validateCommand(createCommand({ note: { id: 'note', generation: null, shareRevocation: null } })))
+    .toMatchObject({ note: { shareRevocation: null } });
+  expect(validateCommand(createCommand({ note: { id: 'note', generation: null, shareRevocation: 'access-revoked' } })))
+    .toMatchObject({ note: { shareRevocation: 'access-revoked' } });
+  expect(() => validateCommand(createCommand({ note: { id: 'note', generation: null, shareRevocation: 1 } }))).toThrow();
+});
+
 it('requires the share-link create operation alias to be unversioned', () => {
   expect(() => validateCommand(createCommand({ generation: 'already-exists' }))).toThrow('Invalid share-link creation');
 });

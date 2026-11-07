@@ -13,9 +13,9 @@ const note = (): ResourceSnapshot => ({ resource: { collection: 'studyNotes', id
   value: { userId: owner, content: 'Keep these words' }, metadata: { protocol: 1, generation: 'note-generation', revision: 2, deleted: false } });
 const reader = inMemoryRelationReader(owner, resource => records.get(`${resource.collection}/${resource.id}`)
   ?? { resource, value: null, metadata: null }, () => records.values());
-const create = (id = 'first'): DataCommand => ({ protocol: 1, owner, operationId: `create-${id}`,
+const create = (id = 'first', shareRevocation: string | null = null): DataCommand => ({ protocol: 1, owner, operationId: `create-${id}`,
   resource: absent(id).resource, generation: null, dependsOn: [], kind: 'relation', relation: 'share-link-create',
-  note: { id: 'note', generation: 'note-generation' }, authorLanguage: 'ru',
+  note: { id: 'note', generation: 'note-generation', shareRevocation }, authorLanguage: 'ru',
 } as unknown as DataCommand);
 const revoke = (current: ResourceSnapshot, operationId = 'revoke'): DataCommand => ({ protocol: 1, owner, operationId,
   resource: current.resource, generation: current.metadata?.generation ?? null, dependsOn: [], kind: 'relation', relation: 'share-link-revoke',
@@ -46,11 +46,41 @@ describe('server-owned share capability planning', () => {
     const first = structuredClone(link());
     expect((await execute(revoke(first))).result.kind).toBe('acknowledged');
     expect(link()).toMatchObject({ value: null, metadata: { deleted: true, operationId: 'revoke' } });
-    expect((await execute(create('second'))).result.kind).toBe('acknowledged');
+    expect(records.get('studyNotes/note')).toMatchObject({ value: note().value,
+      metadata: { generation: 'note-generation', revision: 3, shareRevocation: 'revoke' } });
+    expect((await execute(create('second', 'revoke'))).result.kind).toBe('acknowledged');
     expect(link('second').value?.token).not.toEqual(first.value?.token);
     expect((await execute(revoke(first, 'later-revoke-first'))).result.kind).toBe('acknowledged');
     expect(link('second').value?.token).toBeTruthy();
+    expect(records.get('studyNotes/note')?.metadata?.shareRevocation).toBe('revoke');
     expect(link()).toMatchObject({ value: null, metadata: { deleted: true } });
+  });
+
+  it('refuses a first delivery captured before a later link was created and revoked', async () => {
+    const earlier = create('held');
+    expect((await execute(create('later'))).result.kind).toBe('acknowledged');
+    expect((await execute(revoke(link('later')))).result.kind).toBe('acknowledged');
+
+    const result = await execute(earlier);
+
+    expect(result).toEqual({ result: { kind: 'refused', operationId: earlier.operationId, code: 'share-link-review-required' }, writes: [] });
+    expect(link('held')).toBeUndefined();
+    expect(link('later').value).toBeNull();
+  });
+
+  it('retains a legacy pending creation without treating missing evidence as current access', async () => {
+    const modern = create('legacy');
+    if (modern.kind !== 'relation' || modern.relation !== 'share-link-create') throw new Error('Expected create');
+    delete modern.note.shareRevocation;
+    expect(await execute(modern)).toMatchObject({ result: { kind: 'refused', code: 'share-link-review-required' }, writes: [] });
+  });
+
+  it('permits revoking an owned legacy link even when its note now belongs to another owner', async () => {
+    const legacy = { ...absent('legacy'), value: { ownerId: owner, noteId: 'note', token: 'legacy-token', createdAt: 'created', viewCount: 3 } };
+    records.set(key(legacy), legacy);
+    records.get('studyNotes/note')!.value!.userId = 'other';
+    expect(await execute(revoke(legacy))).toMatchObject({ result: { kind: 'acknowledged', snapshot: { value: null } } });
+    expect(records.get('studyNotes/note')?.metadata?.shareRevocation).toBeUndefined();
   });
 
   it('gives a second explicit creation an alias proof for the existing active link, without minting another capability', async () => {

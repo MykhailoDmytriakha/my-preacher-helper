@@ -3868,6 +3868,7 @@
       "copyLink": "Copy",
       "deleteLink": "Delete link",
       "revokeLink": "Disable link",
+      "createReviewRequired": "Access changed after this request. Select the note and choose Create link if you want to open access again.",
       "createUnconfirmed": "Could not confirm that the share link was created. Try again.",
       "revokeUnconfirmed": "Could not confirm that the share link was disabled — it may still open the note. Try again.",
       "openLink": "Open",

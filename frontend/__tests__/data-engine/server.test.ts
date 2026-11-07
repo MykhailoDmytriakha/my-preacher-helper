@@ -1142,10 +1142,14 @@ describe('complete write-set activation boundary', () => {
 describe('share capability receipt replay', () => {
   const owner = 'owner-1';
   const notePath = 'studyNotes/share-note';
-  const createLink = (id: string): DataCommand => ({ protocol: 1, owner, operationId: `share-create-${id}`,
+  const createLink = (id: string): DataCommand => {
+    const observed = documents.get(notePath)?._dataEngine as ResourceSnapshot['metadata'] | undefined;
+    return { protocol: 1, owner, operationId: `share-create-${id}`,
     resource: { collection: 'studyNoteShareLinks', id }, generation: null, dependsOn: [], kind: 'relation',
-    relation: 'share-link-create', note: { id: 'share-note', generation: null }, authorLanguage: 'en',
-  } as unknown as DataCommand);
+      relation: 'share-link-create', note: { id: 'share-note', generation: observed?.generation ?? null,
+        shareRevocation: observed?.shareRevocation ?? null }, authorLanguage: 'en',
+    };
+  };
   const revokeLink = (id: string, generation: string, operationId = `share-revoke-${id}`): DataCommand => ({ protocol: 1, owner, operationId,
     resource: { collection: 'studyNoteShareLinks', id }, generation, dependsOn: [], kind: 'relation', relation: 'share-link-revoke',
   } as unknown as DataCommand);
@@ -1162,7 +1166,8 @@ describe('share capability receipt replay', () => {
     const replayed = await processCommand(owner, first);
     expect(replayed).toMatchObject({ kind: 'acknowledged', snapshot: { value: null, metadata: { deleted: true } }, committed: { operationId: first.operationId, deleted: false } });
     expect(active()).toEqual([]);
-    expect(documents.get(notePath)).toEqual(before);
+    expect(documents.get(notePath)).toMatchObject({ ...before, _dataEngine: { shareRevocation: 'share-revoke-first' } });
+    expect(documents.get(notePath)).not.toHaveProperty('updatedAt');
     expect(receipts()).toHaveLength(2);
   });
 
@@ -1190,6 +1195,38 @@ describe('share capability receipt replay', () => {
     expect(results.map(result => result.kind)).toEqual(['acknowledged', 'acknowledged']);
     expect(active()).toHaveLength(1);
     expect(receipts()).toHaveLength(2);
+  });
+
+  it('rejects the older first delivery and keeps its refusal after the note is edited', async () => {
+    const held = createLink('held');
+    const current = createLink('current');
+    expect((await processCommand(owner, current)).kind).toBe('acknowledged');
+    expect((await processCommand(owner, revokeLink('current', current.operationId))).kind).toBe('acknowledged');
+    const refusal = await processCommand(owner, held);
+    expect(refusal).toMatchObject({ kind: 'refused', code: 'share-link-review-required' });
+    expect(active()).toEqual([]);
+    const stored = documents.get(notePath)!;
+    const metadata = stored._dataEngine as NonNullable<ResourceSnapshot['metadata']>;
+    expect(await processCommand(owner, { protocol: 1, owner, operationId: 'edit-shared-note',
+      resource: { collection: 'studyNotes', id: 'share-note' }, generation: metadata.generation, dependsOn: [], kind: 'update',
+      changes: [{ path: ['content'], before: { exists: true, value: stored.content }, after: { exists: true, value: 'Edited after revoke' } }],
+    })).toMatchObject({ kind: 'acknowledged', snapshot: { metadata: { shareRevocation: 'share-revoke-current' } } });
+    expect(await processCommand(owner, held)).toEqual(refusal);
+    expect((await processCommand(owner, createLink('explicit'))).kind).toBe('acknowledged');
+    expect(active()).toHaveLength(1);
+  });
+
+  it('retains both revocation effects in the canonical receipt', async () => {
+    const create = createLink('first');
+    await processCommand(owner, create);
+    const revoke = revokeLink('first', create.operationId);
+    const result = await processCommand(owner, revoke);
+    expect(result).toMatchObject({ kind: 'acknowledged', snapshot: { value: null } });
+    expect(documents.get(notePath)?._dataEngine).toMatchObject({ shareRevocation: revoke.operationId });
+    expect(active()).toEqual([]);
+    for (const ack of [result, await processCommand(owner, revoke)]) expect(ack).toMatchObject({
+      relatedSnapshots: [{ resource: { collection: 'studyNotes', id: 'share-note' }, metadata: { shareRevocation: revoke.operationId } }],
+    });
   });
 
   it('keeps the same operation identity immutable across create and revoke', async () => {

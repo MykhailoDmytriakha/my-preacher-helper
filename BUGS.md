@@ -211,17 +211,6 @@
 **Evidence / boundary.** `cache-tabs-274-plan-review-v3.md` provides a concrete source-level counterexample; no live reproduction yet. Unit274's record/epoch repair must retain this limit rather than claim universal freshness. Use the existing shared read boundary if confirmed; do not add feature-specific queues.
 
 
-### BUG-20261102-share-link-late-first-delivery · An earlier unsent creation may publish after a later revocation
-**Severity (provisional).** P2: first delivery of a stale creation could issue public access after the owner revoked another capability for the same note.
-**Found.** 2026-11-02; Unit275 source inspection. This is an unproven adjacent chronology case, not the already reproduced repeated-command case.
-**Anchors.** `frontend/app/data-engine/types.ts` share-link-create carries only the note generation; `frontend/app/data-engine/shareCapabilities.server.ts` admits a fresh primary when no active link remains.
-**Expected / possible actual.** An old creation captured on device A before device B creates/revokes a link should not later publish access merely because its first delivery is late. A new explicit creation should still work. Current command identity protects replays of an already applied operation, but does not prove this first delivery's place relative to a different capability lifecycle.
-**Recheck.** Capture A without delivery; create and revoke B against the same unchanged note; deliver A for the first time. Run server regression and isolated emulator/API controls; do not infer ordering from device clocks. No reproduction or user-visible effect claimed yet.
-**User contract.** Reconnection alone must not reverse the person's later access decision. Keep the old intent visible if its relationship to that decision cannot be proved.
-**Class / boundary.** A missing observed capability lifecycle baseline, rather than reused operation identity. Unit275 fixes server-applied request replay; this separate case remains open for verification before any broader chronology claim.
-
-
-
 ### BUG-20261030-worker-background-get-failures · Nine background page GETs fail during an online reload scenario
 **Severity (provisional).** P3 — a noisy/possibly redundant background path; the original analysis workflow and its three reloads passed, with no JavaScript error or authored-data loss established.
 **Anchor / observation limit.** `frontend/app/utils/offlineRscNavigation.ts` warming and the former Serwist `cacheOnNavigation` helper are possible producers, not proven causes. The original `main-intake-229-after-native-analysis-v3.json` records only pathname, method, resource type, worker ownership, error and timestamps; full URL/query, headers, initiator and reload lifecycle are absent. Nine worker-owned GET `net::ERR_FAILED` events span43ms. Current native272v4/fresh-v2 do not reproduce that online error set; their explicitly classified cancellations do not disprove an intermittent failure.
