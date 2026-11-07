@@ -21,6 +21,7 @@ interface ConfirmModalProps {
     isDeleting?: boolean;
     children?: React.ReactNode;
     confirmDisabled?: boolean;
+    closeDisabled?: boolean;
 }
 
 /**
@@ -46,11 +47,13 @@ export default function ConfirmModal({
     isDeleting = false,
     children,
     confirmDisabled = false,
+    closeDisabled = false,
 }: ConfirmModalProps) {
     const { t } = useTranslation();
     const titleId = useId();
     const descriptionId = useId();
-    const layer = useModalLayer({ onClose, active: isOpen, closeDisabled: isDeleting });
+    const cannotClose = isDeleting || closeDisabled;
+    const layer = useModalLayer({ onClose, active: isOpen, closeDisabled: cannotClose });
 
     if (!isOpen || typeof document === 'undefined') return null;
 
@@ -62,7 +65,7 @@ export default function ConfirmModal({
             <div
                 className="fixed inset-0 bg-gray-900/60 backdrop-blur-sm animate-fadeIn"
                 aria-hidden="true"
-                onClick={() => { if (!isDeleting) onClose(); }}
+                onClick={() => { if (!cannotClose) onClose(); }}
             />
             <div className="flex min-h-full items-center justify-center p-4 text-center sm:p-0">
                 <div
@@ -120,7 +123,7 @@ export default function ConfirmModal({
                         <button
                             type="button"
                             autoFocus
-                            disabled={isDeleting}
+                            disabled={cannotClose}
                             className="mt-3 inline-flex w-full justify-center rounded-xl bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 sm:mt-0 sm:w-auto transition disabled:opacity-60 dark:bg-gray-900 dark:text-gray-200 dark:ring-gray-700 dark:hover:bg-gray-800"
                             onClick={onClose}
                         >

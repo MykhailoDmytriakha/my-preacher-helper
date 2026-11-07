@@ -68,12 +68,13 @@ export function useSermonCoreDataDocument(sermonId: string | null) {
    * Typing: the change goes into the open document's draft, applied to its newest preparation; the
    * document saves it after a short pause, when the page is hidden and when it is left.
    */
-  const editPreparation = (edit: (current: Preparation) => Preparation) => {
+  const editPreparation = (edit: (current: Preparation) => Preparation, delivery: 'draft' | 'commit' = 'draft') => {
     if (isReadOnly) return Promise.reject(new Error(NOT_EDITABLE));
-    return document.update(owned(current => ({
+    const update = owned(current => ({
       ...current,
       preparation: edit((current.preparation ?? {}) as Preparation) as DocumentData,
-    })));
+    }));
+    return delivery === 'commit' ? document.commit(update) : document.update(update);
   };
   const fieldDecision = manualFormDecision(titleForm) ?? manualFormDecision(verseForm) ?? preparationFields.decision;
   return {

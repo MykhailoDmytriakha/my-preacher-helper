@@ -166,6 +166,25 @@ describe('useSermonCoreDataDocument', () => {
     expect(s.api.save).not.toHaveBeenCalled();
   });
 
+  it('queues confirmed plan deletion immediately while ordinary plan edits remain buffered', async () => {
+    const s = setup();
+    const { result } = renderHook(() => useSermonCoreDataDocument('sermon'));
+    const edit = result.current.editPreparation;
+    await edit(current => ({ ...current, exegeticalPlan: [{ id: 'first', title: 'Written words' }] }));
+    expect(s.api.commit).not.toHaveBeenCalled();
+    expect(s.api.save).not.toHaveBeenCalled();
+
+    let accept!: () => void;
+    s.defer(new Promise<void>(resolve => { accept = resolve; }));
+    const deletion = edit(current => ({ ...current, exegeticalPlan: [] }), 'commit');
+    expect(s.api.commit).toHaveBeenCalledTimes(1);
+    expect(s.api.save).not.toHaveBeenCalled();
+    accept();
+    await deletion;
+    expect(s.api.save).toHaveBeenCalledTimes(1);
+    expect(s.session.checkpoint().draft?.preparation).toMatchObject({ authorIntent: 'Keep', exegeticalPlan: [] });
+  });
+
   it('reads empty defaults and adds preparation to a legacy document without that map', async () => {
     const s = setup(null); const { result, rerender } = renderHook(() => useSermonCoreDataDocument(null));
     expect(result.current.coreValues).toEqual({ title: '', verse: '' });

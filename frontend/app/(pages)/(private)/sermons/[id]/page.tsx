@@ -566,6 +566,8 @@ function SermonPageContent({ id }: { id: string }) {
           value={prepDraft?.exegeticalPlan || []}
           // Each plan edit goes straight into the document, which saves and merges it.
           onEdit={(edit) => core.editPreparation(prep => ({ ...prep, exegeticalPlan: edit(prep.exegeticalPlan ?? []) }))}
+          onCommitRemoval={(edit) => core.editPreparation(prep => ({ ...prep, exegeticalPlan: edit(prep.exegeticalPlan ?? []) }), 'commit')}
+          onRetryRemoval={core.save}
           saving={savingPrep}
           authorIntentField={core.authorIntentField}
           sermonId={sermon?.id}

@@ -13,6 +13,10 @@ export interface ExegeticalPlanModuleProps {
    * document saves it. Given this, the module keeps no draft and ignores `onSave` / `saving`.
    */
   onEdit?: (edit: PlanEdit) => Promise<void> | void;
+  /** An explicit deletion joins the durable queue immediately. */
+  onCommitRemoval?: (edit: PlanEdit) => Promise<void>;
+  /** Retry the existing draft and request without applying the removal twice. */
+  onRetryRemoval?: () => Promise<void>;
   onSave?: (nodes: ExegeticalPlanNode[]) => Promise<void> | void;
   saving?: boolean;
   authorIntentField?: PreparationTextBinding;

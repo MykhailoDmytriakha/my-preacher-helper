@@ -2,7 +2,9 @@
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 
-import { useConfirm } from '@/hooks/useConfirm';
+import ConfirmModal from '@/components/ui/ConfirmModal';
+import { failureCode } from '@/utils/failureCode';
+import { useTranslation } from '@locales/useTranslation';
 
 import { AuthorIntentField } from './AuthorIntentField';
 import BlockDiagramSection from './BlockDiagramSection';
@@ -29,22 +31,42 @@ import {
 import type { ExegeticalPlanModuleProps, PlanEdit } from './types';
 import type { ExegeticalPlanNode } from '@/models/models';
 
+interface RemovalQuestion {
+  subject: unknown;
+  node: ExegeticalPlanNode;
+}
+
+interface RemovalState {
+  question: RemovalQuestion;
+  phase: 'confirm' | 'saving' | 'failed';
+  applied: boolean;
+  decisionKey?: string;
+}
+
 const NO_DRAFT_TITLES: Record<string, string> = {};
 
 const ExegeticalPlanModule: React.FC<ExegeticalPlanModuleProps> = ({
   value = [],
   subject,
   onEdit,
+  onCommitRemoval,
+  onRetryRemoval,
   onSave,
   saving,
   authorIntentField,
   sermonId,
   sourceNoteIds
 }) => {
-  const { confirm, confirmDialog, withdraw } = useConfirm();
-  const currentSubject = useRef(subject);
-  currentSubject.current = subject;
-  useEffect(() => () => { withdraw(); }, [subject, withdraw]);
+  const { t } = useTranslation();
+  const [deletion, setDeletion] = useState<RemovalState | null>(null);
+  const runningRemovals = useRef(new Set<unknown>());
+  const removal = deletion?.question.subject === subject ? deletion : null;
+  const removing = removal?.phase === 'saving';
+  const removalFailed = removal?.phase === 'failed';
+  const retryRequired = removalFailed && removal.applied && !removal.decisionKey;
+  useEffect(() => {
+    setDeletion(current => current?.question.subject === subject ? current : null);
+  }, [subject]);
   const [showInstruction, setShowInstruction] = useState(false);
   // An empty plan shows one line to type into; it joins the plan once it is edited.
   const [blankPlan, setBlankPlan] = useState<ExegeticalPlanNode[]>(() => [createNewNode()]);
@@ -109,40 +131,64 @@ const ExegeticalPlanModule: React.FC<ExegeticalPlanModuleProps> = ({
     apply(nodes => [...nodes, newNode]);
   }, [apply]);
 
-  const latestTree = useRef(tree);
-  latestTree.current = tree;
-  const handleRemoveNode = useCallback(async (id: string) => {
-    const shown = findNode(tree, id);
-    const shownSubject = subject;
-    if (!shown || !await confirm({ title: { key: 'common.deleteItem.title' },
-      description: { key: 'common.deleteItem.description' }, confirmText: { key: 'common.delete' }, cancelText: { key: 'common.cancel' } })) return;
-    if (currentSubject.current !== shownSubject || JSON.stringify(findNode(latestTree.current, id)) !== JSON.stringify(shown)) return;
-    const newTree = removeNode(latestTree.current, id);
+  const handleRemoveNode = (id: string) => {
+    const node = findNode(tree, id);
+    if (node && !runningRemovals.current.has(subject)) {
+      setDeletion({ question: { subject, node }, phase: 'confirm', applied: false });
+    }
+  };
+  const closeRemoval = () => {
+    if (!runningRemovals.current.has(subject) && !retryRequired) setDeletion(null);
+  };
+  const confirmRemoval = async () => {
+    if (!removal || removal.decisionKey || runningRemovals.current.has(subject)) return;
+    const { question } = removal;
+    const { node } = question;
+    if (!removal.applied && JSON.stringify(findNode(tree, node.id)) !== JSON.stringify(node)) {
+      closeRemoval();
+      return;
+    }
+    const cut: PlanEdit = nodes => removeNode(nodes, node.id);
+    if (!onCommitRemoval || (!removal.applied && showsBlank && node.id === blankPlan[0].id)) {
+      if (!onEdit) {
+        const remaining = syncDraftTitles(cut(tree));
+        setDraftTitles(previous => Object.fromEntries(Object.entries(previous).filter(([id]) => Object.hasOwn(remaining, id))));
+      }
+      apply(cut);
+      closeRemoval();
+      return;
+    }
 
-    const getAllNodeIds = (nodes: ExegeticalPlanNode[]): string[] => {
-      const ids: string[] = [];
-      nodes.forEach(node => {
-        ids.push(node.id);
-        if (node.children) {
-          ids.push(...getAllNodeIds(node.children));
-        }
+    runningRemovals.current.add(subject);
+    setDeletion({ ...removal, phase: 'saving' });
+    let applied = removal.applied;
+    let changed = false;
+    try {
+      if (applied && onRetryRemoval) {
+        await onRetryRemoval();
+      } else {
+        await onCommitRemoval(nodes => {
+          if (JSON.stringify(findNode(nodes, node.id)) !== JSON.stringify(node)) {
+            changed = true;
+            throw Object.assign(new Error('The confirmed plan point changed'), { code: 'decision-changed' });
+          }
+          applied = true;
+          return cut(nodes);
+        });
+      }
+      setDeletion(current => current?.question === question ? null : current);
+    } catch (error) {
+      const code = failureCode(error);
+      const decisionKey = code === 'resolve-version-first' ? 'dataSync.failure.resolveVersionFirst'
+        : code === 'pending-delivery-first' ? 'dataSync.failure.pendingDeliveryFirst' : undefined;
+      setDeletion(current => {
+        if (current?.question !== question) return current;
+        return changed ? null : { question, phase: 'failed', applied, decisionKey };
       });
-      return ids;
-    };
-
-    const remainingIds = new Set(getAllNodeIds(newTree));
-    setDraftTitles(prev => {
-      const updated: Record<string, string> = {};
-      Object.keys(prev).forEach(key => {
-        if (remainingIds.has(key)) {
-          updated[key] = prev[key];
-        }
-      });
-      return updated;
-    });
-
-    apply(nodes => removeNode(nodes, id));
-  }, [tree, subject, apply, confirm]);
+    } finally {
+      runningRemovals.current.delete(subject);
+    }
+  };
 
   const handleAddChild = useCallback((parentId: string) => {
     const newNode = createNewNode();
@@ -214,7 +260,17 @@ const ExegeticalPlanModule: React.FC<ExegeticalPlanModuleProps> = ({
 
   return (
     <div className="space-y-4">
-      {confirmDialog}
+      <ConfirmModal isOpen={removal !== null}
+        onClose={closeRemoval} onConfirm={confirmRemoval}
+        title={t('common.deleteItem.title')} description={t('common.deleteItem.description')}
+        isDeleting={removing}
+        closeDisabled={retryRequired}
+        confirmDisabled={Boolean(removal?.decisionKey)}
+        confirmText={t(removalFailed ? 'dataSync.retry' : 'common.delete')}
+        cancelText={t(removalFailed ? 'common.close' : 'common.cancel')}>
+        {removing && <p role="status">{t('dataSync.phase.savingLocally')}</p>}
+        {removalFailed && <p role="alert">{t(removal.decisionKey ?? 'dataSync.phase.localFailure')}</p>}
+      </ConfirmModal>
       <BlockDiagramSection sermonId={sermonId} sourceNoteIds={sourceNoteIds} />
 
       <InstructionSection
