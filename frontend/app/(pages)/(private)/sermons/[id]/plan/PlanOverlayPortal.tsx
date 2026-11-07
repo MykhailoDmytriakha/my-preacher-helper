@@ -57,7 +57,7 @@ export default function PlanOverlayPortal({
       <div className="flex flex-1 justify-center p-4 overflow-y-auto">
         <div role="dialog" aria-modal="true" aria-label={t("plan.pageTitle")} className="flex w-full flex-1 max-w-5xl flex-col overflow-hidden rounded-lg bg-white shadow-xl dark:bg-gray-900 max-h-[calc(100vh-2rem)] min-h-0">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 bg-white px-6 py-4 dark:border-gray-700 dark:bg-gray-900">
-            <div>
+            <div className="min-w-0 max-w-full [overflow-wrap:anywhere]">
               <p className="text-lg font-semibold text-gray-900 dark:text-white">{sermon.title}</p>
               <p className="text-sm text-gray-500 dark:text-gray-400">{t("plan.pageTitle")}</p>
             </div>

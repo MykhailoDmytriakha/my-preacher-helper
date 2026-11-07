@@ -42,7 +42,7 @@ export default function PlanImmersiveView({
       <PlanMarkdownGlobalStyles variant="immersive" />
       <div className="min-h-screen flex flex-col bg-gray-50 dark:bg-gray-900" data-testid="sermon-plan-immersive-view">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-6 py-4">
-          <div>
+          <div className="min-w-0 max-w-full [overflow-wrap:anywhere]">
             <p className="text-lg font-semibold text-gray-900 dark:text-white">{sermon.title}</p>
             <p className="text-sm text-gray-500 dark:text-gray-400">{t("plan.pageTitle")}</p>
           </div>

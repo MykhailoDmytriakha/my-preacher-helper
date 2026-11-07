@@ -146,7 +146,7 @@ export default function PlanPageHeader({
       <div className="space-y-2">
         <h1
           data-testid="plan-header-title"
-          className="text-2xl font-bold text-gray-900 dark:text-white lg:text-3xl"
+          className="[overflow-wrap:anywhere] text-2xl font-bold text-gray-900 dark:text-white lg:text-3xl"
         >
           {sermon.title}
         </h1>
