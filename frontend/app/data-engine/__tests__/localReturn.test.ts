@@ -7,6 +7,7 @@ import { DataSession } from '@/data-engine/session';
 import { describeManualSync, describeSync } from '@/data-engine/status';
 
 import type { StoredManualScope } from '@/data-engine/manualScopes.client';
+import type { DocumentData } from '@/data-engine/types';
 
 jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
 const resource = { collection: 'groups', id: 'offline-group-279' };
@@ -370,6 +371,148 @@ it.each([
     } finally { a.dispose(); b.dispose(); }
   },
 );
+
+it.each(['description', 'other field of the same block', 'same duration', 'two saves in the same form'] as const)(
+  'offers the early choice when an ordinary group edit follows a saved form on one branch: %s', async kind => {
+    const { h, a, b, inA, inB } = await setup();
+    const flow = (durationMin: number, instanceNotes?: string) => [{ id: 'block', templateId: 'template', order: 0, durationMin,
+      ...(instanceNotes ? { instanceNotes } : {}) }];
+    const description = 'Later ordinary words after the meeting form';
+    const notes = 'Later notes on the same block';
+    const replacesDuration = kind === 'same duration';
+    const repeated = kind === 'two saves in the same form';
+    const formDuration = repeated ? 55 : 40;
+    const changesNotes = kind === 'other field of the same block';
+    const change: DocumentData = replacesDuration || changesNotes ? { flow: replacesDuration ? flow(50) : flow(40, notes) } : { description };
+    const recoveredChange = replacesDuration || changesNotes
+      ? { flow: replacesDuration ? flow(50) : flow(10, notes) } : { description, flow: flow(10) };
+    try {
+      b.setVisible(false);
+      await inA.commit(current => ({ ...current!, flow: flow(20) }));
+      const [first] = await h.commits.list('owner');
+      b.setVisible(true);
+      await waitFor(() => expect(inB.getState().checkpoint.draft?.flow).toEqual(flow(20)));
+      const form = inB.form('conduct-setup', [['flow']]);
+      await form.begin();
+      await form.update(value => ({ ...value, flow: flow(40) }));
+      await form.save();
+      const [, manual] = await h.commits.list('owner');
+      expect(manual).toMatchObject({ predecessor: first.id, editorId: form.getState()?.record.scopeId,
+        value: { flow: flow(40) } });
+      let formRequest = manual;
+      if (repeated) {
+        await form.begin();
+        await form.update(value => ({ ...value, flow: flow(formDuration) }));
+        await form.save();
+        formRequest = (await h.commits.list('owner'))[2];
+        expect(formRequest).toMatchObject({ predecessor: manual.id, editorId: manual.editorId,
+          value: { flow: flow(formDuration) } });
+      }
+      await inB.commit(current => ({ ...current!, ...change }));
+      b.setVisible(false);
+      await inA.commit(current => ({ ...current!, flow: flow(30) }));
+      const requests = await h.commits.list('owner');
+      expect(requests).toEqual(expect.arrayContaining([
+        expect.objectContaining({ predecessor: formRequest.id, value: expect.objectContaining({ flow: flow(formDuration), ...change }) }),
+        expect.objectContaining({ predecessor: first.id, value: expect.objectContaining({ flow: flow(30) }) }),
+      ]));
+
+      h.silentRemote({ flow: flow(10) });
+      a.setOnline(true);
+      await a.retry();
+      await waitFor(() => expect(inA.getState().result).toMatchObject({ kind: 'conflict', operationId: first.id }));
+      expect((await h.commits.list('owner')).map(request => request.state))
+        .toEqual(['conflict', ...Array.from({ length: repeated ? 4 : 3 }, () => 'queued')]);
+      inA.dispose();
+      inB.dispose();
+      const reopened = await b.openEditor(resource, editorIdentity('tab-B', resource, 'group', 'interleaved-return'));
+      expect(reopened.getState().result).toMatchObject({ kind: 'conflict', operationId: first.id });
+      await waitFor(() => expect(reopened.getState().savedIntentReplaceable).toBe(true));
+      if (replacesDuration) {
+        const later = requests.find(request => request.predecessor === formRequest.id)!;
+        const checkpoint = reopened.getState().checkpoint;
+        const privateRevert = { owner: 'owner', editorId: 'interleaved-private', prepared: null, unfinalized: [],
+          checkpoint: { ...checkpoint, draft: { ...later.value!, flow: flow(40) }, pending: {
+            ...checkpoint.pending, ...Object.fromEntries([formRequest, later].map(request =>
+              [request.id, { generation: request.editGeneration, value: request.value }])),
+          } } };
+        expect(recoveryHeldOpen([privateRevert], b.getOpenAnswerScopes())).toBe(false);
+      }
+      await reopened.acceptRemote();
+      expect(reopened.getState().checkpoint.draft?.flow).toEqual(flow(10));
+
+      const drafts = (await b.listRecoverable(resource)).filter(candidate => candidate.record.retainedManualChoice);
+      expect(drafts.map(candidate => candidate.record.checkpoint.draft)).toEqual(expect.arrayContaining([
+        expect.objectContaining({ flow: flow(30) }),
+        expect.objectContaining(recoveredChange),
+      ]));
+      const restored = reopened.form('conduct-setup', [['flow']]);
+      const retained = await restored.listRecoverable();
+      if (replacesDuration) {
+        expect(retained).toEqual([]);
+      } else {
+        expect(retained.map(candidate => candidate.record.stage)).toEqual([[{ exists: true, value: flow(formDuration) }]]);
+        await restored.recover(retained[0].scopeId);
+        expect(restored.getState()?.value?.flow).toEqual(flow(formDuration));
+      }
+      expect(h.server.value?.flow).toEqual(flow(10));
+      expect(h.transport.send).toHaveBeenCalledTimes(1);
+    } finally { a.dispose(); b.dispose(); }
+  },
+);
+
+it('retains a nested form field whose item was added by a blocked ordinary council edit', async () => {
+  const council = { collection: 'councils', id: 'nested-form-council' };
+  const initial = { userId: 'owner', title: 'Original council', status: 'preparing', topics: [], createdAt: 'now', updatedAt: 'now' };
+  const h = documentEngineHarness({ resource: council, value: initial, metadata: { protocol: 1, generation: 'g1', revision: 1, deleted: false } });
+  const a = h.createBrowser().engine, b = h.createBrowser().engine;
+  const topic = { id: 'new-topic', title: 'New matter', questions: [], options: [], decision: 'Initial question' };
+  const slot = 'outcome:new-topic';
+  const selection = [['topics', { id: topic.id }, 'decision']] as const;
+  a.setOnline(false); a.setOwner('owner'); b.setOnline(false); b.setOwner('owner');
+  try {
+    const author = await a.openEditor(council, editorIdentity('tab-A', council, 'council', 'author'));
+    const reader = await b.openEditor(council, editorIdentity('tab-B', council, 'council', 'reader'));
+    b.setVisible(false);
+    await author.commit(current => ({ ...current!, title: 'Early council words' }));
+    const [root] = await h.commits.list('owner');
+    b.setVisible(true);
+    await waitFor(() => expect(reader.getState().checkpoint.draft?.title).toBe('Early council words'));
+    await reader.commit(current => ({ ...current!, topics: [topic] }));
+    const [, creation] = await h.commits.list('owner');
+    const form = reader.form(slot, selection);
+    await form.begin();
+    await form.update(value => ({ ...value, topics: [{ ...topic, decision: 'Saved conclusion' }] }));
+    await form.save();
+    b.setVisible(false);
+    await author.commit(current => ({ ...current!, title: 'Independent council words' }));
+    const requests = await h.commits.list('owner');
+    const savedForm = requests.find(request => request.editorId === form.getState()?.record.scopeId);
+    expect(creation.predecessor).toBe(root.id);
+    expect(savedForm).toMatchObject({ predecessor: creation.id, value: { topics: [{ ...topic, decision: 'Saved conclusion' }] } });
+
+    h.silentRemote({ title: 'Stored council words' });
+    a.setOnline(true);
+    await a.retry();
+    await waitFor(() => expect(author.getState().result).toMatchObject({ kind: 'conflict', operationId: root.id }));
+    await author.acceptRemote();
+    reader.dispose();
+    const editor = await b.openEditor(council, editorIdentity('tab-B', council, 'council', 'nested-return'));
+    const drafts = (await b.listRecoverable(council)).filter(candidate => candidate.record.retainedManualChoice);
+    expect(drafts.map(candidate => candidate.record.checkpoint.draft)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ topics: [topic] }),
+      expect.objectContaining({ title: 'Independent council words' }),
+    ]));
+    const recovery = editor.form(slot, selection);
+    const [retained] = await recovery.listRecoverable();
+    expect(retained?.record.predecessor?.id).toBe(creation.id);
+    expect(retained?.record.stage).toEqual([{ exists: true, value: 'Saved conclusion' }]);
+    await recovery.recover(retained.scopeId);
+    expect(recovery.getState()?.value?.topics).toEqual([{ ...topic, decision: 'Saved conclusion' }]);
+    expect(h.server.value?.topics).toEqual([]);
+    expect(h.transport.send).toHaveBeenCalledTimes(1);
+  } finally { a.dispose(); b.dispose(); }
+});
 
 it('rejects a field choice if another ordinary continuation lands during retirement', async () => {
   const { h, a, b, inA, inB } = await setup();

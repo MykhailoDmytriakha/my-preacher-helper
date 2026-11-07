@@ -50,12 +50,33 @@ export function storedManualSave(scope: ManualStorageRecord | undefined, owner: 
   return { record, request };
 }
 
+/** Older captures must lead to the latest receipt within the same durable opening. */
+function precedesManualReceipt(request: CommitRequest, latest: CommitRequest,
+  requests: readonly CommitRequest[], openingGeneration: number): boolean {
+  if (request.editorId !== latest.editorId || request.editGeneration < openingGeneration) return false;
+  const byId = new Map(requests.map(row => [row.id, row]));
+  const seen = new Set<string>();
+  let current: CommitRequest | undefined = latest;
+  let generation = Infinity;
+  while (current && !seen.has(current.id)) {
+    if (current.editorId === latest.editorId) {
+      if (current.editGeneration >= generation) return false;
+      generation = current.editGeneration;
+    }
+    if (current.id === request.id) return true;
+    seen.add(current.id);
+    current = current.predecessor ? byId.get(current.predecessor) : undefined;
+  }
+  return false;
+}
+
 /** A form continuation may only own changes inside its durable selection. */
-export function storedManualContinuation(scope: ManualStorageRecord | undefined, root: CommitRequest,
+export function storedManualContinuation(scope: ManualStorageRecord | undefined, predecessor: CommitRequest,
   request: CommitRequest, requests: readonly CommitRequest[]) {
-  const proved = storedManualSave(scope, root.owner, request.editorId, root.baseline.resource, requests);
-  if (proved?.request.id !== request.id || !root.value || !request.value
-    || !equalValues(projectManualSelection(root.value, request.value, proved.record.selection), request.value)) return undefined;
+  const proved = storedManualSave(scope, predecessor.owner, request.editorId, predecessor.baseline.resource, requests);
+  if (!proved || request.predecessor !== predecessor.id || !predecessor.value || !request.value
+    || (proved.request.id !== request.id && !precedesManualReceipt(request, proved.request, requests, proved.record.openingGeneration ?? 0))
+    || !equalValues(projectManualSelection(predecessor.value, request.value, proved.record.selection), request.value)) return undefined;
   return proved.record;
 }
 

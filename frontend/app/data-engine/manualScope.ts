@@ -93,6 +93,9 @@ export function retainedManualScopeRecord(source: ManualScopeRecord, scopeId: st
   const savedSelection = selection.map(path => readSelection(ancestor, path));
   const stage = selection.map(path => readSelection(draft, path));
   if (equalValues(stage, savedSelection)) return null;
+  // A nested field may still depend on an earlier draft creating its parent.
+  // Its exact captured predecessor can provide that structure for recovery.
+  try { project(ancestor, selection, stage); } catch { return null; }
   return { kind: 'manual', version: 1, owner, resource, scopeId, selection, baseline, predecessor,
     stage, savedSelection, openingSelection: savedSelection, openingGeneration: 0, generation: 0, savedGeneration: null, active: false };
 }
@@ -157,7 +160,8 @@ export class ManualScope {
     const opening = this.record.openingSelection ?? (this.record.savedGeneration === null ? this.record.savedSelection : null);
     const choiceRequired = !equalValues(this.record.stage, this.record.savedSelection)
       && Boolean(this.record.predecessor && this.options.port.isCancelled?.(this.record.predecessor.id));
-    return { capturing: this.captures.capturing, ...(choiceRequired ? { choiceRequired: true as const } : {}), ...(this.captures.failed ? { captureFailed: true } : {}), record: copy(this.record), openingValue: opening ? project(this.record.baseline.value ?? this.record.predecessor!.value, this.record.selection, opening) : null, value: this.value(), dirty: !equalValues(this.record.stage, this.record.savedSelection), durable: this.durable };
+    const basis = this.record.predecessor?.value ?? this.record.baseline.value!;
+    return { capturing: this.captures.capturing, ...(choiceRequired ? { choiceRequired: true as const } : {}), ...(this.captures.failed ? { captureFailed: true } : {}), record: copy(this.record), openingValue: opening ? project(basis, this.record.selection, opening) : null, value: this.value(), dirty: !equalValues(this.record.stage, this.record.savedSelection), durable: this.durable };
   }
 
   update(updater: (current: DocumentData) => DocumentData): Promise<void> {

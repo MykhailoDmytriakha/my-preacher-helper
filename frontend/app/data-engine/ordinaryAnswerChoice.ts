@@ -60,7 +60,7 @@ function hasFork(scope: readonly CommitRequest[]): boolean {
   return false;
 }
 
-/** Identify an ordinary tree, allowing only independent form leaves directly below its root. */
+/** Identify a tree of ordinary and form updates without granting it any unproved form ownership. */
 function candidateOrdinaryAnswer(first: CommitRequest, requests: readonly CommitRequest[]): OrdinaryAnswerChoice | null {
   const answer = ordinaryAnswer(first);
   if (!answer) return null;
@@ -72,12 +72,14 @@ function candidateOrdinaryAnswer(first: CommitRequest, requests: readonly Commit
   for (const request of scope.slice(1)) {
     if (!request.predecessor || !proved.has(request.predecessor) || request.state !== 'queued'
       || request.initialized || request.command || !equalValues(request.baseline.resource, first.baseline.resource)) return null;
-    if (ordinaryUpdate(request)) { proved.add(request.id); continue; }
-    const identity = readManualScopeIdentity(request.editorId);
-    if (!identity || !isDocumentEditor(identity.parentEditorId, first.baseline.resource) || request.predecessor !== first.id
-      || !request.baseline.value || !request.value || request.atomic || request.retentionScope
-      || request.transferredFrom || request.transferredTo) return null;
-    manual.push(request);
+    if (!ordinaryUpdate(request)) {
+      const identity = readManualScopeIdentity(request.editorId);
+      if (!identity || !isDocumentEditor(identity.parentEditorId, first.baseline.resource)
+        || !request.baseline.value || !request.value || request.atomic || request.retentionScope
+        || request.transferredFrom || request.transferredTo) return null;
+      manual.push(request);
+    }
+    proved.add(request.id);
   }
   const branched = hasFork(scope);
   if (manual.length && !branched) return null;
@@ -95,9 +97,14 @@ export async function manualOrdinaryChoiceSources(store: ManualScopeStore, owner
   requests: readonly CommitRequest[]): Promise<ManualChoiceSources> {
   const related = requests.filter(request => request.owner === owner && equalValues(request.baseline.resource, resource));
   const sources = new Map<string, { scopeId: string; selection: readonly ManualPath[] }>();
+  const byId = new Map(related.map(request => [request.id, request]));
+  const reads = new Map<string, ReturnType<ManualScopeStore['read']>>();
   await Promise.all(related.flatMap(root => (candidateOrdinaryAnswer(root, requests)?.manual ?? []).map(async request => {
-    const scope = await store.read(owner, request.editorId);
-    const record = storedManualContinuation(scope, root, request, related);
+    const predecessor = request.predecessor && byId.get(request.predecessor);
+    if (!predecessor) return;
+    let read = reads.get(request.editorId);
+    if (!read) { read = store.read(owner, request.editorId); reads.set(request.editorId, read); }
+    const record = storedManualContinuation(await read, predecessor, request, related);
     if (record) sources.set(request.id, { scopeId: record.scopeId, selection: record.selection });
   })));
   return sources;
@@ -178,11 +185,20 @@ export function ordinaryChoiceCheckpoint(choice: OrdinaryAnswerChoice, source: S
 /** Keep a later form Save in its own form, separate from the editor's retained copies. */
 export function projectOrdinaryChoiceDependents(owner: string, choice: OrdinaryAnswerChoice, stored: ResourceSnapshot,
   draft: DocumentData | null, retired: CommitRequest[], decidingEditorId?: string) {
-  const manual = new Set(choice.manual.map(request => request.id));
+  const manual = new Map(choice.manual.map(request => [request.id, request.editorId]));
+  const byId = new Map(choice.scope.map(request => [request.id, request]));
+  const parents = new Set(choice.scope.map(request => request.predecessor));
+  const manualRecoveries = manual.size ? choice.scope.filter(request => !parents.has(request.id)).flatMap(tip => {
+    const forms = new Map<string, string[]>();
+    for (const id of lineage(byId, tip)) {
+      const scope = manual.get(id);
+      if (scope) forms.set(scope, [...forms.get(scope) ?? [], id]);
+    }
+    return [...forms.values()].map(requestIds => ({ rootId: choice.first.id, requestIds, tipId: tip.id, stored }));
+  }) : [];
   return {
-    editorRecords: projectSavedChoiceDependents(owner, choice.first, stored, draft,
-      retired.filter(request => !manual.has(request.id)), decidingEditorId),
-    manualRecoveries: choice.manual.map(request => ({ rootId: choice.first.id, requestId: request.id, stored })),
+    editorRecords: projectSavedChoiceDependents(owner, choice.first, stored, draft, retired, decidingEditorId, undefined, new Set(manual.keys())),
+    manualRecoveries,
   };
 }
 
@@ -227,13 +243,18 @@ function equivalentCouncilCopy(checkpoint: SessionCheckpoint, first: CommitReque
 
 /** A form's parent overlays only its selected fields on the ordinary draft it currently holds. */
 function composedManualCoverage(choice: OrdinaryAnswerChoice, sources: ManualChoiceSources): CoveredSavedAnswer[] {
-  const operationIds = choice.scope.map(request => request.id);
   const ordinary = choice.scope.filter(request => ordinaryUpdate(request));
+  const byId = new Map(choice.scope.map(request => [request.id, request]));
   return choice.manual.flatMap(request => {
     const source = sources.get(request.id);
     if (!source || !request.value) return [];
     const value = request.value;
+    const formLineage = lineage(byId, request);
     return ordinary.flatMap(base => {
+      const baseLineage = lineage(byId, base);
+      // A later editor capture speaks for its own words, including overlapping fields.
+      if (baseLineage.includes(request.id)) return [];
+      const operationIds = [...new Set([...baseLineage, ...formLineage])];
       try { return [{ id: request.id, operationIds, draft: projectManualSelection(base.value!, value, source.selection) }]; }
       catch { return []; } // An ordinary branch may have removed the selected item entirely.
     });

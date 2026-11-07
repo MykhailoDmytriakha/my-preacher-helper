@@ -1,11 +1,11 @@
 'use client';
 
 import { isDocumentEditor, manualChoiceRecoveryIdentity, manualScopeIdentity, readManualScopeIdentity } from './editorIdentity';
-import { chooseLocalPlacement } from './localPlacementChoice';
+import { replaySavedChoiceDelta } from './manualChoice';
 import { retireManualRecoverySources } from './manualRecovery.client';
 import { storedManualContinuation } from './manualReturnSources';
-import { ManualScope, retainedManualScopeRecord, type ManualScopeRecord } from './manualScope';
-import { equalValues, mergeDocumentFields, mergeFields } from './protocol';
+import { ManualScope, retainedManualScopeRecord, sameManualSelection, type ManualScopeRecord } from './manualScope';
+import { equalValues } from './protocol';
 import { changedRecoveryChoice, discardRecoveryRecord } from './recoveryDiscard.client';
 import { pinRecoveryVersion, versionRecoveryRecord } from './recoverySource.client';
 import { collectCommitRows } from './retention.client';
@@ -62,43 +62,82 @@ function validate(value: ManualStorageRecord, owner = value.owner, scopeId = val
   return copy(value);
 }
 
+/** Replay only the later captured changes to see what this branch still owes to the form. */
+function branchWithoutForm(byId: ReadonlyMap<string, CommitRequest>, predecessor: CommitRequest,
+  form: CommitRequest, tip: CommitRequest): { value: DocumentData; formRequests: CommitRequest[] } | null {
+  const suffix: CommitRequest[] = [];
+  const seen = new Set<string>();
+  let current: CommitRequest | undefined = tip;
+  while (current && current.id !== form.id && !seen.has(current.id)) {
+    suffix.push(current);
+    seen.add(current.id);
+    current = current.predecessor ? byId.get(current.predecessor) : undefined;
+  }
+  if (current?.id !== form.id) return null;
+  let value = predecessor.value;
+  let before = form.value;
+  const formRequests = [form];
+  for (const request of suffix.reverse()) {
+    if (request.editorId === form.editorId) formRequests.push(request);
+    else value = replaySavedChoiceDelta(form.baseline.resource, before, request.value, value);
+    before = request.value;
+  }
+  return value && { value, formRequests };
+}
+
 /** Retain exact form Saves in the same transaction that retires their blocked requests. */
 export function writeManualChoiceRecoveries(store: IDBObjectStore, read: StorageRead, owner: string,
   recoveries: readonly ManualChoiceRecovery[], before: readonly CommitRequest[], retired: readonly CommitRequest[], done: () => void): void {
   const byId = new Map(retired.map(request => [request.id, request]));
+  const written = new Map<string, ManualScopeRecord['stage'][]>();
   const changed = () => Object.assign(new Error('The saved form changed'), { code: 'decision-changed' });
   const next = (index: number): void => {
     if (index === recoveries.length) { done(); return; }
-    const { rootId, requestId, stored } = recoveries[index];
-    const root = byId.get(rootId), request = byId.get(requestId);
+    const { rootId, requestIds, tipId, stored } = recoveries[index];
+    const root = byId.get(rootId), request = byId.get(requestIds[0]), tip = byId.get(tipId);
+    const predecessor = request?.predecessor ? byId.get(request.predecessor) : undefined;
     const identity = request && readManualScopeIdentity(request.editorId);
-    if (!root?.cancelledByChoice || !request?.retainedAfterChoice || request.predecessor !== rootId
-      || !root.value || !request.value || !stored.value || root.owner !== owner || request.owner !== owner
-      || !equalValues(root.baseline.resource, stored.resource) || !equalValues(request.baseline.resource, stored.resource)
+    if (!root?.cancelledByChoice || !request?.retainedAfterChoice || !tip?.retainedAfterChoice
+      || !predecessor?.value || !request.value || !tip.value || !stored.value
+      || [root, predecessor, request, tip].some(row => row.owner !== owner || !equalValues(row.baseline.resource, stored.resource))
       || !identity || !isDocumentEditor(identity.parentEditorId, stored.resource)) throw changed();
-    const base = root.value, saved = request.value, accepted = stored.value;
+    const base = predecessor.value, saved = tip.value, accepted = stored.value;
+    const branch = branchWithoutForm(byId, predecessor, request, tip);
+    if (!branch || !equalValues(requestIds, branch.formRequests.map(row => row.id))) throw changed();
+    const without = branch.value;
     read(store.get(key(owner, request.editorId)), (source: ManualStorageRecord | undefined) => {
       const original = source && validate(source, owner, request.editorId);
-      const proved = storedManualContinuation(original, root, request, before);
-      if (!original?.record || !proved) throw changed();
+      if (!original?.record) throw changed();
+      let proved: ManualScopeRecord | undefined;
+      for (const saved of branch.formRequests) {
+        const prior = saved.predecessor ? byId.get(saved.predecessor) : undefined;
+        proved = prior && saved.retainedAfterChoice ? storedManualContinuation(original, prior, saved, before) : undefined;
+        if (!proved) throw changed();
+      }
+      if (!proved?.predecessor) throw changed();
       if (!equalValues(original.record, proved)) {
         // A capture can survive the tab that was writing its separate form receipt. Record that
         // receipt before retiring the capture, while keeping any later private stage it proved.
-        const repaired = validate({ ...original, record: proved, commitReferences: [request.id] });
+        const repaired = validate({ ...original, record: proved, commitReferences: [proved.predecessor.id] });
         store.put(versionRecoveryRecord(repaired), key(owner, request.editorId));
       }
-      const merged = mergeDocumentFields(base, saved, accepted);
-      const draft = chooseLocalPlacement(stored.resource.collection, base, saved, accepted,
-        merged.value.exists ? merged.value.value as DocumentData : null, mergeFields);
-      if (!draft) throw changed();
-      const scopeId = manualScopeIdentity(identity.parentEditorId, identity.slot, manualChoiceRecoveryIdentity(rootId, requestId));
-      // A coincident stored value does not retire a later Save. The chosen root may still be
-      // kept and sent later. Keep its real capture as ancestry without calling it confirmed.
+      if (proved.selection.every(path => sameManualSelection(without, saved, path))) { next(index + 1); return; }
+      const draft = replaySavedChoiceDelta(stored.resource, without, saved, accepted);
+      const fallback = replaySavedChoiceDelta(stored.resource, without, saved, base);
+      if (!draft || !fallback) throw changed();
+      const latestFormId = requestIds[requestIds.length - 1];
+      const recoveryId = tipId === latestFormId ? latestFormId : JSON.stringify([latestFormId, tipId]);
+      const scopeId = manualScopeIdentity(identity.parentEditorId, identity.slot, manualChoiceRecoveryIdentity(rootId, recoveryId));
+      // A coincident stored value can still be changed by the kept root. Use the actual
+      // capture predecessor as ancestry when the form needs to retain that same value.
       const record = retainedManualScopeRecord(proved, scopeId, stored, draft)
-        ?? retainedManualScopeRecord(proved, scopeId, stored, saved, {
-          id: root.id, owner, resource: stored.resource, value: base, predecessorId: root.predecessor,
+        ?? retainedManualScopeRecord(proved, scopeId, stored, fallback, {
+          id: predecessor.id, owner, resource: stored.resource, value: base, predecessorId: predecessor.predecessor,
         });
-      if (!record) { next(index + 1); return; }
+      if (!record) throw changed();
+      const stages = written.get(request.editorId) ?? [];
+      if (stages.some(stage => equalValues(stage, record.stage))) { next(index + 1); return; }
+      written.set(request.editorId, [...stages, record.stage]);
       read(store.get(key(owner, scopeId)), current => {
         if (current) throw changed();
         const commitReferences = record.predecessor ? [record.predecessor.id] : [];

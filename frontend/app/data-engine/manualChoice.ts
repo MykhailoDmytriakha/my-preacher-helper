@@ -86,13 +86,23 @@ export function projectExactManualChoice(record: EditorRecord, decision: ExactMa
     decision.choice === 'local' ? record.editorId : undefined, decision.privateStage)];
 }
 
+/** Replay a captured delta without treating the entire captured document as a new edit. */
+export function replaySavedChoiceDelta(resource: ResourceSnapshot['resource'], base: DocumentData | null,
+  value: DocumentData | null, target: DocumentData | null): DocumentData | null {
+  const merged = mergeDocumentFields(base, value, target);
+  return chooseLocalPlacement(resource.collection, base, value, target,
+    merged.value.exists ? merged.value.value as DocumentData : null, mergeFields);
+}
+
 /** A choice retires blocked request identities while retaining each later branch's own delta. */
 export function projectSavedChoiceDependents(owner: string, chosen: CommitRequest, stored: ResourceSnapshot,
   draft: DocumentData | null, retired: readonly CommitRequest[], decidingEditorId?: string,
-  privateStage?: ExactManualChoice['privateStage']): EditorRecord[] {
+  privateStage?: ExactManualChoice['privateStage'], formRequests?: ReadonlySet<string>): EditorRecord[] {
   const byId = new Map(retired.map(request => [request.id, request]));
   const predecessors = new Set(retired.map(request => request.predecessor));
   const projected = new Map<string, DocumentData | null>([[chosen.id, draft]]);
+  const editors = new Map<string, string>();
+  const retained = new Set<string>();
   const retain = (id: string, value: DocumentData | null): EditorRecord => ({
     owner, editorId: manualChoiceRecoveryIdentity(chosen.id, id), prepared: null, unfinalized: [],
     retainedManualChoice: { base: draft, ...(decidingEditorId ? { decidingEditorId } : {}) },
@@ -103,19 +113,19 @@ export function projectSavedChoiceDependents(owner: string, chosen: CommitReques
     const ancestor = byId.get(request.predecessor);
     if (!ancestor || !projected.has(ancestor.id)) throw new Error('The later Save lost its reviewed ancestor');
     const basis = projected.get(ancestor.id)!;
-    const merged = mergeDocumentFields(ancestor.value, request.value, basis);
-    const laterDraft = chooseLocalPlacement(stored.resource.collection, ancestor.value, request.value, basis,
-      merged.value.exists ? merged.value.value as DocumentData : null, mergeFields);
+    const formOwned = formRequests?.has(request.id);
+    const laterDraft = formOwned ? basis : replaySavedChoiceDelta(stored.resource, ancestor.value, request.value, basis);
     projected.set(request.id, laterDraft);
-    if (predecessors.has(request.id) || equalValues(draft, laterDraft)) return [];
-    return [retain(request.id, laterDraft)];
+    const editor = formOwned ? editors.get(ancestor.id) : request.id;
+    if (editor) editors.set(request.id, editor);
+    if (!editor || predecessors.has(request.id) || retained.has(editor) || equalValues(draft, laterDraft)) return [];
+    retained.add(editor);
+    return [retain(editor, laterDraft)];
   });
   if (privateStage) {
     const basis = projected.get(privateStage.predecessorId);
     if (basis === undefined) throw Object.assign(new Error('The shown saved copy changed'), { code: 'decision-changed' });
-    const merged = mergeDocumentFields(privateStage.base, privateStage.value, basis);
-    const value = chooseLocalPlacement(stored.resource.collection, privateStage.base, privateStage.value, basis,
-      merged.value.exists ? merged.value.value as DocumentData : null, mergeFields);
+    const value = replaySavedChoiceDelta(stored.resource, privateStage.base, privateStage.value, basis);
     later.push(retain(JSON.stringify(['stage', privateStage.scopeId, privateStage.generation]), value));
   }
   return later;
@@ -127,8 +137,6 @@ export function recoverManualChoiceCopy(record: EditorRecord, known?: ResourceSn
   if (!retained) return record;
   const original = record.checkpoint.confirmed;
   const confirmed = known && canReplaceSnapshot(original, known) ? known : original;
-  const merged = mergeDocumentFields(retained.base, record.checkpoint.draft, confirmed.value);
-  const draft = chooseLocalPlacement(confirmed.resource.collection, retained.base, record.checkpoint.draft, confirmed.value,
-    merged.value.exists ? merged.value.value as DocumentData : null, mergeFields);
+  const draft = replaySavedChoiceDelta(confirmed.resource, retained.base, record.checkpoint.draft, confirmed.value);
   return { ...record, checkpoint: afterChoice(confirmed, draft, record.checkpoint.editGeneration) };
 }

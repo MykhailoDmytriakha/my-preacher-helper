@@ -62,7 +62,8 @@ export interface CommitRequest {
 
 export interface ManualChoiceRecovery {
   rootId: string;
-  requestId: string;
+  requestIds: string[];
+  tipId: string;
   stored: ResourceSnapshot;
 }
 
