@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 
 import ConductPage from '@/(pages)/(private)/groups/[id]/conduct/page';
 import { createBrowserDataEngine } from '@/data-engine/browser.client';
+import { editorIdentity } from '@/data-engine/editorIdentity';
 import { DataEngineProvider } from '@/data-engine/react.client';
 import { documentEngineHarness, settleEngine } from '../../test-utils/documentEngineHarness';
 
@@ -17,16 +18,68 @@ jest.mock('@/components/groups/conduct/ConductOverview', () => ({ __esModule: tr
 const flow = (durationMin = 5) => [{ id: 'block', templateId: 'template', order: 1, durationMin }];
 beforeEach(() => { jest.clearAllMocks(); mockRouteParams = { id: 'group-1' }; });
 afterEach(() => { window.history.replaceState(null, '', '/'); });
-function setup() {
-  const harness = documentEngineHarness({ resource: { collection: 'groups', id: 'group-1' },
+const resource = { collection: 'groups', id: 'group-1' };
+function groupHarness() {
+  return documentEngineHarness({ resource,
     metadata: { protocol: 1, generation: 'g', revision: 1, deleted: false }, value: {
       userId: 'owner', title: 'Meeting group', status: 'draft', createdAt: 'created', updatedAt: 'old', flow: flow(),
       templates: [{ id: 'template', type: 'notes', title: 'Reading', content: '', status: 'draft', createdAt: 'created', updatedAt: 'old' }],
     } });
+}
+function setup(harness = groupHarness()) {
   jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
   function Workspace() { return <DataEngineProvider><ConductPage /></DataEngineProvider>; }
   return { harness, Workspace, view: render(<Workspace />) };
 }
+it('shows the shared duration conflict once while the conduct form keeps its private input', async () => {
+  const harness = groupHarness();
+  const a = harness.createBrowser().engine;
+  const b = harness.createBrowser().engine;
+  a.setOnline(false); a.setOwner('owner');
+  b.setOnline(false); b.setOwner('owner');
+  try {
+    const first = await a.openEditor(resource, editorIdentity('tab-A', resource, 'group', 'detail-A'));
+    const second = await b.openEditor(resource, editorIdentity('tab-B', resource, 'group', 'detail-B'));
+    b.setVisible(false);
+    await first.commit(current => ({ ...current!, flow: flow(20) }));
+    b.setVisible(true);
+    await waitFor(() => expect(second.getState().checkpoint.draft?.flow).toEqual(flow(20)));
+    await second.edit({ ...second.getState().checkpoint.draft!, flow: flow(40) });
+    b.setVisible(false);
+    await first.commit(current => ({ ...current!, flow: flow(30) }));
+    b.setVisible(true);
+    await second.save();
+    const [root, ...later] = await harness.commits.list('owner');
+    expect(later.map(request => request.predecessor)).toEqual([root.id, root.id]);
+    harness.silentRemote({ flow: flow(10) });
+    a.setOnline(true);
+    await a.retry();
+    await waitFor(() => expect(first.getState().result?.kind).toBe('conflict'));
+    first.dispose(); second.dispose();
+
+    const { view } = setup(harness);
+    try {
+      const start = await screen.findByRole('button', { name: /conduct.preflight.startButton/ });
+      expect(await screen.findByRole('button', { name: 'freshness.conflictKeepMine' })).toBeVisible();
+      const duration = screen.getByDisplayValue('20');
+      await waitFor(() => expect(duration).toBeEnabled());
+      expect(start).toBeDisabled();
+      expect(screen.getAllByRole('button', { name: 'dataSync.retry' })).toHaveLength(1);
+      expect(screen.queryByText('dataSync.phase.conflict')).not.toBeInTheDocument();
+      fireEvent.change(duration, { target: { value: '45' } });
+      await act(async () => { await settleEngine(); });
+      expect(duration).toHaveValue(45);
+      fireEvent.click(start);
+      await act(async () => { await settleEngine(); });
+      expect(screen.getAllByRole('button', { name: 'dataSync.retry' })).toHaveLength(1);
+      expect(harness.transport.send).toHaveBeenCalledTimes(1);
+      fireEvent.click(screen.getByRole('button', { name: 'freshness.conflictTakeTheirs' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'common.discardText.confirm' }));
+      await waitFor(() => expect(start).toBeEnabled());
+    } finally { view.unmount(); }
+  } finally { a.dispose(); b.dispose(); }
+});
+
 it('keeps Tab in the meeting setup and leaves the route in charge of navigation', async () => {
   const { harness, view } = setup();
   const start = await screen.findByRole('button', { name: /conduct.preflight.startButton/ });

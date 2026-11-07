@@ -15,11 +15,12 @@ interface ConductPreflightProps {
   onBack: () => void;
   onUpdateDuration?: (id: string, durationMin: number | null) => void;
   disabled?: boolean;
+  startDisabled?: boolean;
   /** The saved durations, unchangeable — a copy for reading has nowhere to keep a change. Start stays. */
   lockDurations?: boolean;
 }
 
-export default function ConductPreflight({ flow, templates, onStart, onBack, onUpdateDuration, disabled = false, lockDurations = false }: ConductPreflightProps) {
+export default function ConductPreflight({ flow, templates, onStart, onBack, onUpdateDuration, disabled = false, startDisabled = false, lockDurations = false }: ConductPreflightProps) {
   const { t } = useTranslation();
   const [localFlow, setLocalFlow] = useState<GroupFlowItem[]>(flow);
   const [totalMeetingMin, setTotalMeetingMin] = useState<number | null>(null);
@@ -180,9 +181,9 @@ export default function ConductPreflight({ flow, templates, onStart, onBack, onU
       {/* Start button */}
       <div className="border-t border-gray-200 px-5 py-4 dark:border-gray-700">
         <button
-          disabled={disabled}
+          disabled={disabled || startDisabled}
           onClick={() => onStart(displayedFlow, totalMeetingMin)}
-          className={`${EMERALD_ACTION} w-full rounded-xl px-6 py-3 text-base font-semibold shadow-sm transition active:scale-[0.98]`}
+          className={`${EMERALD_ACTION} w-full rounded-xl px-6 py-3 text-base font-semibold shadow-sm transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60`}
         >
           {t('conduct.preflight.startButton', { defaultValue: 'Start Meeting' })} →
         </button>

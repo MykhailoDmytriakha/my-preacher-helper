@@ -1229,10 +1229,15 @@ export function useDataForm(resource: ResourceRef | null, slot: string, selectio
    * document's — "take theirs" cancels it — so it shows the document, which carries a Save still
    * on its way as well (BUG-20261003-take-theirs-title-keeps-discarded-text).
    */
-  const ownStage = target?.state && (target.state.record.active || target.state.dirty) ? target.state.value : null;
+  const stage = target?.state;
+  const ownStage = stage && (stage.record.active || stage.dirty) ? stage.value : null;
+  // Screens with a separate document notice can omit a form's copy while it has no failure of its own.
+  const mirrorsDocumentConflict = Boolean(stage?.documentChoiceRequired && stage.durable
+    && !stage.choiceRequired && !stage.captureFailed && !stage.capturing && failure?.identity !== identity);
   return {
     readOnly,
-    active: target?.state?.record.active ?? false,
+    active: stage?.record.active ?? false,
+    ...(stage?.documentChoiceRequired ? { documentChoiceRequired: true as const, mirrorsDocumentConflict } : {}),
     data: ownStage ?? document.data,
     /** Settled loading can mean an opening failed; only an acquired manual form can list its drafts. */
     recoveryReady: Boolean(targetForm),

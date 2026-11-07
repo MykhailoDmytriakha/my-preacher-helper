@@ -48,10 +48,12 @@ function EngineConductPage({ groupId }: { groupId: string }) {
     return <ConductView groupId={groupId} group={document.group} loading={false} saveFlow={async () => undefined}
       readNotice={{ subject: document.document.recoveryIdentity, relatedSubjects: [form.recoveryIdentity], words: document.document.errorWords }} presence={document.document.presence} onRetry={document.refresh} lockDurations readOnlyNote={document.document.readOnlyReason} />;
   }
+  const formFeedback = form.mirrorsDocumentConflict ? { status: null }
+    : { status: form.status, error: form.error, errorWords: form.errorWords };
   const feedback = <div className="shrink-0 px-5 py-2 empty:hidden">
     <DataSyncStatus subject={document.document.recoveryIdentity} status={document.status} error={document.error} errorWords={document.errorWords} onRetry={document.refresh}
       onAcceptRemote={document.acceptRemote} onKeepLocal={document.keepLocal} />
-    {form.active && <DataSyncStatus subject={form.recoveryIdentity} status={form.status} error={form.error} errorWords={form.errorWords} onRetry={form.retry}
+    {form.active && <DataSyncStatus subject={form.recoveryIdentity} {...formFeedback} onRetry={form.retry}
       onKeepLocal={form.keepLocal} onAcceptRemote={form.acceptRemote}
       recoveryChoices={recovery.choices} onRecover={recovery.recover}
       recoveryLoading={recovery.loading} recoveryError={recovery.error} onDiscardRecovery={recovery.discard} />}
@@ -60,12 +62,13 @@ function EngineConductPage({ groupId }: { groupId: string }) {
     readNotice={{ subject: document.document.recoveryIdentity, relatedSubjects: [form.recoveryIdentity], words: document.document.errorWords }} presence={document.document.presence} onRetry={document.refresh}
     loading={document.loading || form.loading} saveFlow={() => form.save()}
     updateDuration={(id, duration) => { void updateDuration(id, duration).catch(() => undefined); }}
-    setupDisabled={form.loading || !form.active || form.busy || form.status?.phase === 'deleted'} feedback={feedback} />;
+    setupDisabled={form.loading || !form.active || form.busy || form.status?.phase === 'deleted'}
+    startDisabled={form.documentChoiceRequired} feedback={feedback} />;
 }
-function ConductView({ groupId, group, loading, saveFlow, updateDuration, setupDisabled = false, lockDurations = false, readOnlyNote, feedback, presence, onRetry, readNotice }: {
+function ConductView({ groupId, group, loading, saveFlow, updateDuration, setupDisabled = false, startDisabled = false, lockDurations = false, readOnlyNote, feedback, presence, onRetry, readNotice }: {
   readNotice?: RecordReadNotice; presence?: import('@/data-engine/recordPresence').RecordPresence; onRetry?: () => unknown | Promise<unknown>;
   groupId: string; group: Group | null; loading: boolean; saveFlow: (flow: GroupFlowItem[]) => Promise<void>;
-  updateDuration?: (id: string, durationMin: number | null) => void; setupDisabled?: boolean;
+  updateDuration?: (id: string, durationMin: number | null) => void; setupDisabled?: boolean; startDisabled?: boolean;
   lockDurations?: boolean; readOnlyNote?: string | null; feedback?: ReactNode;
 }) {
   const router = useRouter();
@@ -193,6 +196,7 @@ function ConductView({ groupId, group, loading, saveFlow, updateDuration, setupD
           onStart={handleStart}
           onUpdateDuration={updateDuration}
           disabled={setupDisabled}
+          startDisabled={startDisabled}
           lockDurations={lockDurations}
           onBack={handleBack}
         />
