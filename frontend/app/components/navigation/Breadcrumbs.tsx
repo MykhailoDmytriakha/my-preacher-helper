@@ -520,7 +520,7 @@ export default function Breadcrumbs({ forceShow = false }: { forceShow?: boolean
         {items.map((item, index) => {
           const isLast = index === items.length - 1;
           return (
-            <li key={`${item.label}-${index}`} className="flex items-center">
+            <li key={`${item.label}-${index}`} className="flex min-w-0 max-w-full items-center [overflow-wrap:anywhere]">
               {item.href && !item.isCurrent ? (
                 <Link
                   href={item.href}
