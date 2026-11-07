@@ -1,6 +1,6 @@
 'use client';
 
-import { writeCheckpointRecord, checkpointKey } from './checkpointStorage.client';
+import { settleCheckpointRecords, writeCheckpointRecord, checkpointKey } from './checkpointStorage.client';
 import { recoveryCheckpointId, selectRecoverableCheckpoints, validateRecoveryRecord } from './recovery.client';
 import { discardRecoveryRecord } from './recoveryDiscard.client';
 import { pinRecoveryVersion } from './recoverySource.client';
@@ -44,5 +44,11 @@ export function createIndexedDbCheckpoints(): CheckpointRecoveryStore {
       read(store.get(checkpointKey(owner, editorId)), (record: EditorRecord | undefined) => done(record === undefined ? undefined : clone(record)));
     }),
     put: record => write(record, false),
+    settleClosed: (owner, entries) => {
+      const frozen = clone(entries);
+      return transaction<void>('readwrite', (store, read, done) => {
+        settleCheckpointRecords(store, read, owner, frozen, () => done(undefined));
+      });
+    },
   };
 }
