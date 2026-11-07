@@ -2,7 +2,7 @@ import { atomicParticipants, isLiveWholeAction } from './atomicCommits';
 import { isDocumentDeletion } from './deletionOrdering';
 import { areDifferentTabEditors, areDifferentTabManualParents } from './editorIdentity';
 import { markBorrowedManualSources } from './manualReturnSources';
-import { ordinaryConflictChoice } from './ordinaryConflictChoice';
+import { ordinaryAnswerChoice } from './ordinaryAnswerChoice';
 import { equalValues } from './protocol';
 import { DataSession } from './session';
 import { canReplaceSnapshot } from './snapshotFreshness';
@@ -100,8 +100,8 @@ function readLiveChainProof(chain: readonly CommitRequest[], requests: readonly 
 
 /** Show the answered save alone. Its unsent suffix remains durable until the exact choice. */
 function answeredOrdinaryPrefix(chain: CommitRequest[], requests: readonly CommitRequest[]): CommitRequest[] {
-  const index = chain.findIndex(request => request.state === 'conflict');
-  if (index < 0 || index === chain.length - 1 || !ordinaryConflictChoice(chain[index], requests)) return chain;
+  const index = chain.findIndex(request => ['conflict', 'refused'].includes(request.state));
+  if (index < 0 || index === chain.length - 1 || !ordinaryAnswerChoice(chain[index], requests)) return chain;
   return chain.slice(0, index + 1);
 }
 
@@ -126,15 +126,26 @@ export function liveSubmittedWork(owner: string, editorId: string, current: Sess
   const acknowledged = chain.filter(request => request.state === 'acknowledged');
   if (acknowledged.some(request => request.result?.kind !== 'acknowledged'
     || !equalValues(request.result.snapshot.resource, resource) || !snapshotBelongsToOwner(owner, request.result.snapshot))) return null;
-  const answer = documentAnswer(chain.at(-1), editorId);
+  const tip = chain.at(-1);
+  const answer = documentAnswer(tip, editorId);
   // The returning editor may already have seen the newer record from this exact conflict.
   const sawConflict = answer?.kind === 'conflict' && equalValues(current.confirmed, answer.snapshot);
   const observedAncestor = sawConflict || chain.some(request => equalValues(current.confirmed, request.baseline)
     || (request.initialized && equalValues(current.confirmed, request.working))
     || (request.result?.kind === 'acknowledged' && equalValues(current.confirmed, request.result.snapshot)));
-  if (!observedAncestor) return null;
   const checkpoint = replaySubmitted(submitted, chain);
-  if (sawConflict) {
+  // A refusal does not carry a snapshot. Keep the original edit basis even when this tab
+  // separately read a newer stored copy of the same document generation.
+  const newerStoredRefusal = !observedAncestor && answer?.kind === 'refused' && tip
+    && Boolean(ordinaryAnswerChoice(tip, requests)) && current.confirmed.value !== null
+    && checkpoint.confirmed.metadata && current.confirmed.metadata
+    && current.confirmed.metadata.revision > checkpoint.confirmed.metadata.revision
+    && canReplaceSnapshot(checkpoint.confirmed, current.confirmed)
+    && snapshotBelongsToOwner(owner, current.confirmed);
+  if (!observedAncestor && !newerStoredRefusal) return null;
+  if (newerStoredRefusal) {
+    checkpoint.remoteCandidate = current.confirmed;
+  } else if (sawConflict) {
     // A delete has no authored fields to rebase. An update still needs its original
     // confirmed ancestor so Keep mine can distinguish edits from untouched server fields.
     if (checkpoint.draft === null) checkpoint.confirmed = current.confirmed;

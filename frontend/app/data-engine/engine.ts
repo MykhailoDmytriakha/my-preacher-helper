@@ -21,7 +21,7 @@ import { ManualScope, recoverManualScopeRecord, reconcileManualCaptures, sameMan
 import { captureMembershipPins } from './membershipCapture';
 import { describeActionDelivery, describeMembershipDelivery, type MembershipDelivery } from './membershipDelivery';
 import { CREATION_SCOPE_PREFIX, MembershipScope, type MembershipScopeRecord } from './membershipScope';
-import { laterOrdinaryAnswerCopies, ordinaryStoredChoice, reviewOrdinaryConflictChoice } from './ordinaryConflictChoice';
+import { laterOrdinaryAnswerCopies, ordinaryStoredChoice, reviewOrdinaryAnswerChoice } from './ordinaryAnswerChoice';
 import { getResourcePolicy, equalValues, isValidIdentifier } from './protocol';
 import { documentRecordPresence, type RecordPresence } from './recordPresence';
 import { forkCheckpoint, isPassiveManualContinuation, isRecoverableCheckpoint, reconcileRecoveryRecord, recoveryCheckpointId, validateRecoveryRecord } from './recovery.client';
@@ -1200,10 +1200,12 @@ export class DataEngine {
       }
       if (chosen) await this.publishStoredChoice(owner, generation, chosen);
       const ids = answered.map(request => request.id);
-      const reviewed = answered.flatMap(request => reviewOrdinaryConflictChoice(request, requests) ?? []);
+      const reviewed = answered.flatMap(request => reviewOrdinaryAnswerChoice(request, requests) ?? []);
       if (reviewed.length) {
         const retained = new Set(reviewed.flatMap(choice => choice.scope.slice(1).map(request => request.id)));
-        await this.commits.cancelWithCheckpoint('', ids, retired => ordinaryStoredChoice(owner, reviewed, retired),
+        const known = reviewed.some(choice => choice.answer.kind === 'refused' && choice.scope.length > 1)
+          ? await this.knownSnapshot(owner, generation, resource) : undefined;
+        await this.commits.cancelWithCheckpoint('', ids, retired => ordinaryStoredChoice(owner, reviewed, retired, known),
           { roots: answered, retained });
       } else await this.commits.cancel('', ids);
       this.assertCurrent(owner, generation);

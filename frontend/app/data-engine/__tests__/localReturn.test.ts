@@ -59,6 +59,86 @@ it.each(['conflict', 'refused'] as const)('offers an ordinary %s in the already-
   } finally { a.dispose(); b.dispose(); }
 });
 
+it.each(['return take stored', 'return keep mine', 'source take stored', 'source keep mine', 'outside the editor'] as const)(
+  'settles an early ordinary refusal and preserves the later Save: %s', async choice => {
+    const { h, a, b, inA, inB } = await setup();
+    const early = 'First title refused by the server', later = 'Description saved after the first title';
+    try {
+      b.setVisible(false);
+      await inA.commit(current => ({ ...current!, title: early }));
+      await inA.commit(current => ({ ...current!, description: later }));
+      const [first, second] = await h.commits.list('owner');
+      expect(second.predecessor).toBe(first.id);
+      const refusal = { kind: 'refused', operationId: first.id, code: 'receipt-too-large' } as const;
+      jest.mocked(h.transport.send).mockResolvedValueOnce(refusal);
+      a.setOnline(true);
+      await a.retry();
+      await waitFor(() => expect(inA.getState().result).toEqual(refusal));
+      expect((await h.commits.list('owner')).map(request => request.state)).toEqual(['refused', 'queued']);
+
+      const returning = choice.startsWith('return');
+      const outside = choice === 'outside the editor';
+      const keep = choice.endsWith('keep mine');
+      if (returning || outside) inA.dispose();
+      const deciding = returning ? inB : inA;
+      if (returning) {
+        b.setVisible(true);
+        await waitFor(() => expect(deciding.getState().result).toEqual(refusal));
+        expect(deciding.getState().checkpoint.draft).toMatchObject({ title: early });
+        expect(deciding.getState().checkpoint.draft?.description).toBeUndefined();
+        expect(deciding.getState().savedIntentReplaceable).toBe(true);
+      }
+      if (outside) expect(await b.takeStoredVersion(resource, [first.id])).toBe(1);
+      else if (keep) {
+        await deciding.keepLocal();
+        expect(deciding.getState().checkpoint.draft?.description).toBeUndefined();
+        await deciding.save();
+        const engine = returning ? b : a;
+        engine.setOnline(true);
+        await engine.retry();
+      } else {
+        await deciding.acceptRemote();
+        expect(deciding.getState().checkpoint.draft).toEqual(original);
+      }
+      const selected = keep ? early : original.title;
+      await waitFor(() => expect(h.server.value?.title).toBe(selected));
+      expect(h.server.value?.description).toBeUndefined();
+      const copies = await b.listRecoverable(resource);
+      expect(copies.map(copy => copy.record.checkpoint.draft)).toContainEqual(expect.objectContaining({
+        title: selected, description: later,
+      }));
+    } finally { a.dispose(); b.dispose(); }
+  },
+);
+
+it('does not keep an early generation refusal on a later revision of the rejected generation', async () => {
+  const { h, a, b, inA, inB } = await setup();
+  try {
+    b.setOnline(true);
+    await h.remote({ title: 'Newer stored title of the same generation' });
+    await waitFor(() => expect(inB.getState().checkpoint.confirmed).toEqual(h.server));
+    b.setVisible(false);
+    b.setOnline(false);
+    await inA.commit(current => ({ ...current!, title: 'First title refused by the server' }));
+    await inA.commit(current => ({ ...current!, description: 'Later saved description' }));
+    const [first, second] = await h.commits.list('owner');
+    const refusal = { kind: 'refused', operationId: first.id, code: 'generation-mismatch' } as const;
+    jest.mocked(h.transport.send).mockResolvedValueOnce(refusal);
+    a.setOnline(true);
+    await a.retry();
+    await waitFor(() => expect(inA.getState().result).toEqual(refusal));
+    inA.dispose();
+
+    b.setVisible(true);
+    await waitFor(() => expect(inB.getState().result).toEqual(refusal));
+    expect(inB.getState().checkpoint.remoteCandidate).toEqual(h.server);
+    await expect(inB.keepLocal()).rejects.toMatchObject({ code: 'fresh-read-required' });
+    expect((await h.commits.list('owner')).map(request => [request.id, request.state])).toEqual([
+      [first.id, 'refused'], [second.id, 'queued'],
+    ]);
+  } finally { a.dispose(); b.dispose(); }
+});
+
 it.each(['remote', 'local', 'racing capture', 'private words'] as const)('settles the first conflict with %s and retains the later ordinary Save', async choice => {
   const { h, a, b, inA, inB } = await setup();
   const early = 'First saved title', later = 'Later saved title', stored = 'Stored server title';

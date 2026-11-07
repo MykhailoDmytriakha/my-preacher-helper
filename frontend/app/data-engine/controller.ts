@@ -13,7 +13,7 @@ import { chooseLocalPlacement } from './localPlacementChoice';
 import { projectExactManualChoice, projectSavedChoiceDependents, type ExactManualChoice } from './manualChoice';
 import { sameManualSources } from './manualReturnSources';
 import { projectManualSelection, type ManualPath } from './manualScope';
-import { assertOrdinaryConflictScope, ordinaryChoiceCheckpoint, reviewOrdinaryConflictChoice } from './ordinaryConflictChoice';
+import { assertOrdinaryAnswerScope, ordinaryChoiceCheckpoint, reviewOrdinaryAnswerChoice } from './ordinaryAnswerChoice';
 import { confirmedExistingDeletion, equalValues, mergeDocumentFields, mergeFields } from './protocol';
 import { isRecoverableCheckpoint } from './recovery.client';
 import { recoveryChoiceFingerprint } from './recoveryChoice';
@@ -28,6 +28,13 @@ import type { DataEngineRuntime, RuntimeEvent } from './runtime';
 import type { CommandResult, DataCommand, DocumentData, ResourceRef, ResourceSnapshot } from './types';
 
 const PENDING_DELIVERY_FIRST = 'pending-delivery-first';
+
+function requireFreshGeneration(result: CommandResult | null | undefined, rejected: string | null | undefined,
+  candidate: ResourceSnapshot | null): void {
+  if (result?.kind !== 'refused' || result.code !== 'generation-mismatch') return;
+  if (candidate?.metadata && candidate.metadata.generation !== rejected) return;
+  throw Object.assign(new Error('Read the current document before resolving a generation mismatch'), { code: 'fresh-read-required' });
+}
 
 /** A retired controller rejects late work; this is cancellation, not a storage failure. */
 export class InactiveEditorError extends Error {
@@ -411,11 +418,8 @@ export class EditorController {
       }
       const cancelled = Object.keys(this.session.checkpoint().pending);
       const checkpoint = this.session.checkpoint();
-      if (this.result?.kind === 'refused' && this.result.code === 'generation-mismatch'
-        && (!checkpoint.remoteCandidate?.metadata
-          || checkpoint.remoteCandidate.metadata.generation === this.prepared?.generation)) {
-        throw Object.assign(new Error('Read the current document before resolving a generation mismatch'), { code: 'fresh-read-required' });
-      }
+      const submittedGeneration = this.prepared ? this.prepared.generation : checkpoint.confirmed.metadata?.generation;
+      requireFreshGeneration(this.result, submittedGeneration, checkpoint.remoteCandidate);
       if (this.options.commits && cancelled.length && !isDirectLegacyDocumentIntent(cancelled, this.prepared?.operationId)) {
         await this.resolveCommitChoice('local', captures, selection, expected, correction);
         return;
@@ -703,7 +707,7 @@ export class EditorController {
     const cancelled = Object.keys(this.session.checkpoint().pending);
     const selected = expected ? Object.keys(expected.checkpoint.pending) : undefined;
     const shown = this.record();
-    const ordinary = !selection && !correction && await this.ordinaryConflictFor(cancelled);
+    const ordinary = !selection && !correction && await this.ordinaryAnswerFor(cancelled);
     let source: SessionCheckpoint | undefined;
     let projected: EditorRecord | undefined;
     const ids = ordinary ? [ordinary.first.id] : selected ?? cancelled;
@@ -712,7 +716,7 @@ export class EditorController {
         this.assertCurrent();
         if (ordinary) {
           if (ordinary.scope.length > 1) this.assertRecoveryChoice(shown);
-          assertOrdinaryConflictScope(ordinary, retired);
+          assertOrdinaryAnswerScope(ordinary, retired);
         }
         // A newer explicit Save owns its capture. Do not checkpoint later RAM over it.
         if ([...this.pendingCaptures.boundary()].some(attempt => !captures.has(attempt))) {
@@ -727,6 +731,10 @@ export class EditorController {
         const completed = new Set(record.completedCommits ?? []);
         for (const id of Object.keys(source.pending)) { session.release(id); completed.add(id); }
         if (choice === 'local') {
+          if (ordinary) {
+            const rejected = ordinary.first.command ? ordinary.first.command.generation : decided.confirmed.metadata?.generation;
+            requireFreshGeneration(ordinary.answer, rejected, decided.remoteCandidate);
+          }
           session.keepLocal();
           if (correction) {
             const current = session.checkpoint();
@@ -737,7 +745,9 @@ export class EditorController {
           }
         } else {
           session.acceptRemote(decided === source ? remoteChoice?.draft : undefined);
-          if (remoteChoice?.refused) session.dropRefused(remoteChoice.draft);
+          if (remoteChoice?.refused && !decided.remoteCandidate) {
+            session.dropRefused(decided === source ? remoteChoice.draft : decided.draft);
+          }
         }
         projected = { ...record, checkpoint: session.checkpoint(), completedCommits: [...completed] };
         if (!ordinary) return projected;
@@ -750,14 +760,14 @@ export class EditorController {
     await this.options.commits!.finishCancellation(ordinary ? '' : this.options.editorId, ordinary ? ids : cancelled);
   }
 
-  private async ordinaryConflictFor(held: readonly string[]) {
+  private async ordinaryAnswerFor(held: readonly string[]) {
     const requests = await this.options.commits!.list();
     this.assertCurrent();
-    const conflicts = requests.filter(request => held.includes(request.id) && request.state === 'conflict');
-    const ordinary = conflicts.flatMap(request => reviewOrdinaryConflictChoice(request, requests) ?? []);
+    const answered = requests.filter(request => held.includes(request.id) && ['conflict', 'refused'].includes(request.state));
+    const ordinary = answered.flatMap(request => reviewOrdinaryAnswerChoice(request, requests) ?? []);
     if (!ordinary.length) return null;
-    if (conflicts.length !== 1 || (this.result && this.result.operationId !== ordinary[0].first.id)) {
-      throw Object.assign(new Error('Resolve the saved conflicts separately'), { code: 'other-changes-first' });
+    if (answered.length !== 1 || (this.result && this.result.operationId !== ordinary[0].first.id)) {
+      throw Object.assign(new Error('Resolve the saved answers separately'), { code: 'other-changes-first' });
     }
     return ordinary[0];
   }
@@ -792,12 +802,9 @@ export class EditorController {
       if (!this.options.commits) throw new Error('An exact choice requires the commit queue');
       recheck();
       this.assertRecoveryChoice(expected);
-      const result = decision.request.result;
-      if (decision.choice === 'local' && result?.kind === 'refused' && result.code === 'generation-mismatch') {
+      if (decision.choice === 'local') {
         const generation = decision.request.command?.generation ?? decision.request.baseline.metadata?.generation;
-        if (!decision.stored.metadata || decision.stored.metadata.generation === generation) {
-          throw Object.assign(new Error('Read the current document before resolving a generation mismatch'), { code: 'fresh-read-required' });
-        }
+        requireFreshGeneration(decision.request.result, generation, decision.stored);
       }
       if (this.options.publishStoredChoice) await this.options.publishStoredChoice(decision.stored);
       let source: SessionCheckpoint | undefined;
