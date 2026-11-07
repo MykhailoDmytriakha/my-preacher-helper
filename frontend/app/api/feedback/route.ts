@@ -143,14 +143,25 @@ function silentStorageCount(report: Record<string, unknown>): number {
   return Array.isArray(silent) ? silent.length : 0;
 }
 
+/**
+ * The tab's version, and the server's beside it when they differ: a tab open across a deploy runs old code
+ * against new rules (BUG-20261107-outdated-tab-refusal-unexplained). The server knows its own build, so the
+ * person's send path makes no extra request for it.
+ */
+function versionLine(running: string | null): string | null {
+  if (!running) return null;
+  const served = plainValue(process.env.NEXT_PUBLIC_APP_VERSION);
+  return served && served !== running ? `version ${running} (server serves ${served})` : `version ${running}`;
+}
+
 function diagnosticsSummary(report: Record<string, unknown>): string {
   if (report.unavailable === true) return 'the browser did not let the app collect them';
-  const version = plainValue(report.runningVersion);
+  const version = versionLine(plainValue(report.runningVersion));
   const route = plainValue(report.route);
   const pending = (report.edits as { pending?: unknown } | null | undefined)?.pending;
   const silent = silentStorageCount(report);
   return [
-    version && `version ${version}`,
+    version,
     route && `page ${route}`,
     deviceOf((report.environment ?? {}) as Record<string, unknown>),
     typeof pending === 'number' && `edits waiting to be sent: ${pending}`,

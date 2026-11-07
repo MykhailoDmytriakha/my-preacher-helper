@@ -565,6 +565,27 @@ describe('api/feedback/route', () => {
         expect(JSON.parse(String(attached.content))).toEqual(diagnostics);
     });
 
+    /**
+     * BUG-20261107-outdated-tab-refusal-unexplained: a report from a tab that outlived a deploy named only the tab's
+     * version; that the server already served another build had to be found by hand. The letter says both when they
+     * differ — the server knows its own build, so the send path still makes no extra request.
+     */
+    test.each([
+        ['names the build the server serves when the tab runs another one', 'def5678', 'version abc1234 (server serves def5678) · page /studies/:id'],
+        ['says only the version when the tab runs the build the server serves', 'abc1234', 'version abc1234 · page /studies/:id'],
+    ])('POST %s', async (_label, served, line) => {
+        const original = process.env.NEXT_PUBLIC_APP_VERSION;
+        process.env.NEXT_PUBLIC_APP_VERSION = served;
+        try {
+            await post({ feedbackText: 'my edits were refused', feedbackType: 'bug', diagnostics: report });
+        } finally {
+            process.env.NEXT_PUBLIC_APP_VERSION = original;
+        }
+        const email = mockSendMail.mock.calls[0][0];
+        expect(email.text).toContain(line);
+        expect(email.html).toContain(line);
+    });
+
     test('POST stores the report as its own field and attaches it to the letter as a file', async () => {
         const response = await post({ feedbackText: 'the note did not arrive', feedbackType: 'bug', images: [], diagnostics: report });
         expect(response.status).toBe(200);

@@ -171,6 +171,50 @@ describe('a late conflict on a document no screen has open', () => {
     expect(harness.server.value?.content).toBe('Opening text');
   });
 
+  // BUG-20261107-outdated-tab-refusal-unexplained: the app-wide notice of a refusal says the way out on a tab older than the server.
+  it('adds the reload way out to a refused change when this tab is older than the server', async () => {
+    const originalVersion = process.env.NEXT_PUBLIC_APP_VERSION;
+    const originalFetch = global.fetch;
+    process.env.NEXT_PUBLIC_APP_VERSION = '391f890';
+    global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ version: '9eac14b' }) }) as unknown as typeof fetch;
+    try {
+      setup();
+      await waitFor(() => expect(actions?.ready).toBe(true));
+      await act(async () => { await actions!.commit(resource, current => ({ ...current!, title: 'Refused title', content: 42 as never })); await settleEngine(); await settleEngine(); });
+      await waitFor(() => expect(screen.getByText('dataSync.phase.refused')).toBeInTheDocument());
+      expect(await screen.findByText('dataSync.outdatedTab.body')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'dataSync.outdatedTab.action' })).toBeInTheDocument();
+      expect(screen.getByText('freshness.copyTextAction')).toBeInTheDocument();
+    } finally {
+      process.env.NEXT_PUBLIC_APP_VERSION = originalVersion;
+      global.fetch = originalFetch;
+    }
+  });
+
+  // Several refused drafts of one document are presented as `several`; the refusal still says the reload way out (Codex review, 07.11).
+  it('adds the reload way out when several drafts of one document were all refused on an outdated tab', async () => {
+    const originalVersion = process.env.NEXT_PUBLIC_APP_VERSION;
+    const originalFetch = global.fetch;
+    process.env.NEXT_PUBLIC_APP_VERSION = '391f890';
+    global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ version: '9eac14b' }) }) as unknown as typeof fetch;
+    try {
+      const harness = setup();
+      await waitFor(() => expect(actions?.ready).toBe(true));
+      const send = jest.mocked(harness.transport.send);
+      send.mockImplementation(async () => { throw Object.assign(new TypeError('Failed to fetch'), { code: 'unavailable' }); });
+      for (const content of ['Offline one', 'Offline two']) {
+        await act(async () => { await actions!.commit(resource, current => ({ ...current!, content })); await settleEngine(); });
+      }
+      send.mockImplementation(async command => ({ kind: 'refused', operationId: command.operationId, code: 'decision-required' }));
+      await act(async () => { await harness.engine.retry(resource); await settleEngine(); await settleEngine(); });
+      await waitFor(() => expect(screen.getByText('dataSync.severalDrafts')).toBeInTheDocument());
+      expect(await screen.findByText('dataSync.outdatedTab.body')).toBeInTheDocument();
+    } finally {
+      process.env.NEXT_PUBLIC_APP_VERSION = originalVersion;
+      global.fetch = originalFetch;
+    }
+  });
+
   it('asks before deleting a record another device changed, and keeps it when asked', async () => {
     const harness = setup();
     await waitFor(() => expect(actions?.ready).toBe(true));

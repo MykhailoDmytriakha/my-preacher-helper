@@ -4,7 +4,9 @@ import { toast } from 'sonner';
 import { useDataCollection, useShareCapabilityActions } from '@/data-engine/react.client';
 import { useAppLocale } from '@/hooks/useAppLocale';
 import { useResolvedUid } from '@/hooks/useResolvedUid';
+import { useRunningBuildBehind } from '@/hooks/useRunningBuildBehind';
 import { useServerUnavailableNotice } from '@/hooks/useServerUnavailableNotice';
+import { reloadPage } from '@/utils/reloadPage';
 import { useTranslation } from '@locales/useTranslation';
 
 import type { StudyNoteShareLink } from '@/models/models';
@@ -23,6 +25,9 @@ export function useStudyNoteShareLinks() {
   const serverNoticeShown = useServerUnavailableNotice();
   const running = useRef(new Set<string>());
   const said = useRef(new Set<string>());
+  // A refused action on a tab older than the server: Retry sends the same old request again; a reload is the way out
+  // (BUG-20261107-outdated-tab-refusal-unexplained). The action itself is durable and waits for the current code.
+  const outdated = useRunningBuildBehind(capability.actions.some(action => action.state === 'refused'));
 
   const shareLinks = useMemo(() => {
     if (!uid || !links.state) return NO_SHARE_LINKS;
@@ -44,6 +49,10 @@ export function useStudyNoteShareLinks() {
       if (!trouble) continue;
       const id = `share-capability:${uid}:${action.id}`;
       next.add(id);
+      if (outdated && action.state === 'refused') {
+        toast.error(t('dataSync.outdatedTab.retryBody'), { id, duration: Infinity, action: { label: t('dataSync.outdatedTab.action'), onClick: reloadPage } });
+        continue;
+      }
       const key = action.kind === 'create' ? 'studiesWorkspace.shareLinks.createUnconfirmed' : 'studiesWorkspace.shareLinks.revokeUnconfirmed';
       toast.error(t(key), { id, duration: Infinity, action: { label: t('dataSync.retry'), onClick: () => {
         void capability.retry(action.id).catch(() => { if (currentOwner.current === uid) toast.error(t(key), { id }); });
@@ -51,7 +60,7 @@ export function useStudyNoteShareLinks() {
     }
     for (const id of said.current) if (!next.has(id)) toast.dismiss(id);
     said.current = next;
-  }, [capability, serverNoticeShown, uid, t]);
+  }, [capability, serverNoticeShown, uid, t, outdated]);
   useEffect(() => () => { for (const id of said.current) toast.dismiss(id); said.current.clear(); }, [uid]);
 
   const submit = async (kind: 'create' | 'revoke', targetId: string): Promise<void> => {

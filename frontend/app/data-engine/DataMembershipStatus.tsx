@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 
+import { OutdatedTabNotice } from '@/components/common/OutdatedTabNotice';
 import { useTranslation } from '@locales/useTranslation';
 
 import { isSyncTrouble } from './status';
@@ -40,6 +41,8 @@ export function DataMembershipStatus({ action, onDiscarded }: { action: Membersh
   return <div className="space-y-2 text-sm">
     {trouble && <p role="status" aria-live="polite" className="text-gray-600 dark:text-gray-300">{t(trouble)}</p>}
     {action.error && <p role="alert" className="text-rose-700 dark:text-rose-300">{action.error}</p>}
+    {/* A refusal on a tab older than the server: the way out is a reload (BUG-20261107-outdated-tab-refusal-unexplained). */}
+    <OutdatedTabNotice refused={action.delivery?.phase === 'refused'} />
     {(action.error || (trouble && !['refused', 'conflict'].includes(action.delivery?.phase ?? ''))) &&
       <button type="button" disabled={busy} className="rounded-lg border px-3 py-1.5 disabled:opacity-50" onClick={() => { void run(action.retry); }}>{t('dataSync.retry')}</button>}
     {action.delivery?.canDiscard && <div className="space-y-2">

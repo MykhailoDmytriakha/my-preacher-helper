@@ -10,9 +10,11 @@ import { ServerUnavailableNoticeContext } from '@/hooks/useServerUnavailableNoti
 import type { ReactElement, ReactNode } from 'react';
 import { diagnosticEvents } from '@/utils/appDiagnostics';
 import { __resetServerAvailabilityForTests, reportServerAvailable, reportServerUnavailable } from '@/utils/serverAvailability';
+import { reloadPage } from '@/utils/reloadPage';
 
 import type { SyncPhase, SyncStatus } from '../status';
 
+jest.mock('@/utils/reloadPage', () => ({ reloadPage: jest.fn() }));
 jest.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => {
   const dictionary = jest.requireActual('../../../locales/en/translation.json');
   return key.split('.').reduce((value, part) => value?.[part], dictionary) ?? key;
@@ -503,4 +505,58 @@ it('still offers retry when the field comparison has an actual action failure', 
     comparison={{ identity: 'copy-b', mine: 'Earlier words', stored: 'Later words' }} error="Action failed"
     onKeepLocal={jest.fn()} onAcceptRemote={jest.fn()} onRetry={jest.fn()} />);
   expect(screen.getByRole('button', { name: en.dataSync.retry })).toBeInTheDocument();
+});
+
+/**
+ * BUG-20261107-outdated-tab-refusal-unexplained. A tab left open across a deploy keeps the old code; when the
+ * server's rules moved on, every change it sends is refused, and "changes refused" with keep/take buttons sent
+ * the person round in circles (eight refused edits in the owner's report of 07.11). A refusal on a tab whose
+ * build differs from the one the server serves says the way out: reload, the draft stays on the device.
+ */
+describe('a refusal on a tab older than the server', () => {
+  const originalVersion = process.env.NEXT_PUBLIC_APP_VERSION;
+  const originalFetch = global.fetch;
+  const serverServes = (version: string) => {
+    global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ version }) }) as unknown as typeof fetch;
+  };
+  beforeEach(() => { process.env.NEXT_PUBLIC_APP_VERSION = '391f890'; jest.mocked(reloadPage).mockClear(); });
+  afterEach(() => { process.env.NEXT_PUBLIC_APP_VERSION = originalVersion; global.fetch = originalFetch; });
+
+  it('says the app was updated and reloads the page when asked', async () => {
+    serverServes('9eac14b');
+    render(<DataSyncStatus subject="analysis" status={status('refused', { canKeepLocal: true, canAcceptRemote: true })}
+      onKeepLocal={jest.fn()} onAcceptRemote={jest.fn()} onRetry={jest.fn()} />);
+    expect(await screen.findByText(en.dataSync.outdatedTab.body)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: en.dataSync.outdatedTab.action }));
+    expect(reloadPage).toHaveBeenCalledTimes(1);
+    // The person's other choices stay where they were: the notice adds the way out, it takes nothing away.
+    expect(screen.getByRole('button', { name: en.dataSync.keepLocal })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: en.dataSync.acceptRemote })).toBeInTheDocument();
+    expect(diagnosticEvents().some(event => event.name === 'sync-trouble' && event.data.code === 'outdated-build')).toBe(true);
+  });
+
+  it('stays silent when the tab runs the build the server serves', async () => {
+    serverServes('391f890');
+    render(<DataSyncStatus subject="analysis" status={status('refused', { canKeepLocal: true })} onKeepLocal={jest.fn()} />);
+    await waitFor(() => expect(global.fetch).toHaveBeenCalled());
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.queryByText(en.dataSync.outdatedTab.body)).not.toBeInTheDocument();
+  });
+
+  it('does not ask about the build for a conflict, which is a matter of the data', async () => {
+    serverServes('9eac14b');
+    render(<DataSyncStatus subject="analysis" status={status('conflict', { canKeepLocal: true, canAcceptRemote: true })}
+      onKeepLocal={jest.fn()} onAcceptRemote={jest.fn()} />);
+    await act(async () => { await Promise.resolve(); });
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(screen.queryByText(en.dataSync.outdatedTab.body)).not.toBeInTheDocument();
+  });
+
+  it('claims nothing when the server cannot be asked', async () => {
+    global.fetch = jest.fn().mockRejectedValue(new TypeError('Failed to fetch')) as unknown as typeof fetch;
+    render(<DataSyncStatus subject="analysis" status={status('refused', { canKeepLocal: true })} onKeepLocal={jest.fn()} />);
+    await waitFor(() => expect(global.fetch).toHaveBeenCalled());
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.queryByText(en.dataSync.outdatedTab.body)).not.toBeInTheDocument();
+  });
 });

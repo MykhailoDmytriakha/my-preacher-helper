@@ -4,8 +4,8 @@ import { ArrowPathIcon } from '@heroicons/react/24/outline';
 import { useEffect, useState } from 'react';
 
 import Tooltip from '@/components/ui/Tooltip';
-import { apiClient } from '@/utils/apiClient';
 import { reloadPage } from '@/utils/reloadPage';
+import { isRunningBuildBehind } from '@/utils/runningBuild';
 import { useTranslation } from '@locales/useTranslation';
 import { isIPadStandalonePwa } from '@utils/pwaEnv';
 
@@ -18,7 +18,9 @@ import { isIPadStandalonePwa } from '@utils/pwaEnv';
  * frightened people more than the event does: "reload" reads as "something is about
  * to be lost", and it could appear mid-sentence while a thought was being dictated.
  *
- * Nothing about the update is urgent. It is simply something the person MAY do — so
+ * Nothing about the update is urgent — until the server refuses a change because its rules moved
+ * on past this tab's code; that moment is said beside the refusal itself, by `OutdatedTabNotice`
+ * (BUG-20261107-outdated-tab-refusal-unexplained). Otherwise it is simply something the person MAY do — so
  * it belongs where the other things they may do live: a small icon in the header,
  * present only while there is actually something to update, explaining itself on
  * hover.
@@ -75,19 +77,8 @@ export function AppUpdateButton() {
 
     const onControllerChange = async () => {
       if (!hadControllerAtBoot) return;
-
-      const running = process.env.NEXT_PUBLIC_APP_VERSION;
-      try {
-        const response = await apiClient('/api/health', { category: 'health', cache: 'no-store' });
-        if (!response.ok) return;
-        const { version } = (await response.json()) as { version?: string };
-        // Both sides must be known AND different. An unknown version on either side is not
-        // evidence of staleness, and locally both read "dev" — which is correctly silent.
-        if (cancelled || !version || !running || version === running) return;
-        setUpdateReady(true);
-      } catch {
-        // Offline, or the server did not answer. Nothing is proven, so nothing is claimed.
-      }
+      // The comparison and its silence on anything unproven live in one place (`runningBuild.ts`).
+      if (await isRunningBuildBehind() && !cancelled) setUpdateReady(true);
     };
 
     container.addEventListener('controllerchange', onControllerChange);

@@ -176,6 +176,31 @@ describe('useStudyNoteShareLinks', () => {
     second.unmount(); toastError.mockRestore();
   });
 
+  // BUG-20261107-outdated-tab-refusal-unexplained: Retry from an outdated tab sends the same old request; the way out is a reload.
+  it.each([['9eac14b', true], ['391f890', false]])('a refused action with the server serving %s offers the reload = %s', async (served, outdated) => {
+    const originalVersion = process.env.NEXT_PUBLIC_APP_VERSION;
+    const originalFetch = global.fetch;
+    process.env.NEXT_PUBLIC_APP_VERSION = '391f890';
+    global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ version: served }) }) as unknown as typeof fetch;
+    const toastError = jest.spyOn(toast, 'error').mockImplementation(() => '');
+    try {
+      capability = makeCapability({ actions: [{ id: 'operation-45', kind: 'create', targetId: 'note-1', state: 'refused' }] });
+      const { unmount } = renderHook(() => useStudyNoteShareLinks());
+      await waitFor(() => expect(global.fetch).toHaveBeenCalled());
+      if (outdated) await waitFor(() => expect(toastError.mock.calls.at(-1)?.[0]).toBe('dataSync.outdatedTab.retryBody'));
+      else await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)); });
+      const last = toastError.mock.calls.at(-1)!;
+      expect(last[0]).toBe(outdated ? 'dataSync.outdatedTab.retryBody' : 'studiesWorkspace.shareLinks.createUnconfirmed');
+      expect((last[1] as { id?: string; action?: { label?: string } }).id).toBe('share-capability:owner:operation-45');
+      expect((last[1] as { action?: { label?: string } }).action?.label).toBe(outdated ? 'dataSync.outdatedTab.action' : 'dataSync.retry');
+      unmount();
+    } finally {
+      process.env.NEXT_PUBLIC_APP_VERSION = originalVersion;
+      global.fetch = originalFetch;
+      toastError.mockRestore();
+    }
+  });
+
   it('dismisses durable recovery on acknowledgement and owner change', async () => {
     const toastError = jest.spyOn(toast, 'error').mockImplementation(() => '');
     const toastDismiss = jest.spyOn(toast, 'dismiss').mockImplementation(() => '');

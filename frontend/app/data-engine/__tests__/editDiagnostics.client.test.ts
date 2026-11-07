@@ -95,3 +95,21 @@ it('puts the queue as it stands into the report', () => {
   stop();
   expect(buildDiagnosticReport().edits).toBeNull();
 });
+
+/**
+ * BUG-20261107-outdated-tab-refusal-unexplained: the report said eight edits were "refused" and not why —
+ * the reason had to be read from the owner's own device storage. A refusal keeps the server's code: a short
+ * word the protocol speaks (`decision-required`), never the document or its words.
+ */
+it('keeps the code the server refused an edit with', () => {
+  const engine = fakeEngine();
+  const stop = watchEditQueue(engine);
+  const refused = { ...entry('a', 'refused'), result: { kind: 'refused', operationId: 'a', code: 'decision-required' } } as unknown as JournalEntry;
+  engine.set([entry('a', 'queued')]);
+  engine.set([refused]);
+  expect(jest.mocked(recordDiagnostic).mock.calls).toEqual([
+    ['edit', { collection: 'studyNotes', result: 'queued' }],
+    ['edit', { collection: 'studyNotes', result: 'refused', code: 'decision-required', elapsedMs: expect.any(Number) }],
+  ]);
+  stop();
+});

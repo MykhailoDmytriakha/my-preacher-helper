@@ -255,6 +255,11 @@
     "checking": "Checking for updates…",
     "readFailed": "Could not check for updates.",
     "keepLocal": "Keep my changes",
+    "outdatedTab": {
+      "body": "The app has been updated, but this tab still runs the previous version. Reload the page and save again: your draft stays on this device.",
+      "action": "Reload page",
+      "retryBody": "The app has been updated, but this tab still runs the previous version. Reload the page and try again."
+    },
     "acceptRemote": "Use server version",
     "retry": "Retry",
     "recoveryLabel": "Saved draft",
