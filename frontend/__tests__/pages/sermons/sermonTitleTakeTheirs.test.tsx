@@ -27,6 +27,8 @@ async function openSermon() {
 }
 
 async function saveTitle(view: Awaited<ReturnType<typeof openSermon>>, title: string) {
+  // Reading the title can precede acquisition of its separate manual form.
+  await waitFor(() => expect(view.result.current.titleForm.recoveryReady).toBe(true));
   await act(async () => { await view.result.current.titleBinding.begin(); });
   await act(async () => { await view.result.current.titleBinding.save(title); await settleEngine(); await settleEngine(); });
 }
