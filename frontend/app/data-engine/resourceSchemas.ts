@@ -111,7 +111,7 @@ const shapes: Record<string, z.ZodRawShape> = {
     audioSources: preparedAudioSources.optional(),
     createdAt: text.optional(), updatedAt: text.optional(),
   },
-  studyNotes: { ...owner, ...timestamps, dictationSourceIds: z.array(id).optional(), recordingSourceIds: z.array(id).optional(), content: text, title: text.optional(), scriptureRefs: children(scripture), tags: strings, isDraft: boolean, materialIds: z.array(id).optional(), type: z.enum(['note', 'question', 'comment', 'analysis']).optional(),
+  studyNotes: { ...owner, ...timestamps, dictationSourceIds: z.array(id).optional(), recordingSourceIds: z.array(id).optional(), content: text, title: text.optional(), scriptureRefs: children(scripture), tags: strings, isDraft: boolean, materialIds: z.array(id).optional(), type: z.enum(['note', 'question', 'comment', 'analysis']).optional(), paragraph: boolean.optional(),
     analysis: object({ bible: id, words: number.int().nonnegative(), cuts: z.array(number.int().positive()), links: z.record(number.int().nonnegative()),
       relations: z.record(object({ dir: z.enum(['fwd', 'back', 'both', 'none']), color: id })).optional(),
       drawn: z.array(number.int().nonnegative()).optional() }).optional() },

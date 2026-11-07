@@ -57,11 +57,15 @@ export function VerseHoldSurface({ copy, articleRef, className, gestureIgnore, p
       if (click.shift) copy.rangeTo(click.at);
       else copy.toggle(click.at);
     },
+    // A hold chooses (the owner, 2026-11-06: «долгий тап на стихе начинает выбирать, потом долгий тап на стихе — это выбор
+    // до текущего стиха, короткий тап — это выбор только одного стиха»): reading, it starts the choice on this verse and the
+    // bar of what to do with the verses comes; choosing, it takes every verse up to this one. The verse's menu stays the
+    // mouse's right button and the keyboard's.
     onLongPress: () => {
       const press = pressRef.current;
       if (!press || !copy.enabled) return;
       if (copy.picking) copy.rangeTo(press);
-      else copy.openMenu(press, press.row, { x: press.x, y: press.y, touch: press.touch, held: true });
+      else copy.startPicking(press, press.touch);
     },
   });
   /*

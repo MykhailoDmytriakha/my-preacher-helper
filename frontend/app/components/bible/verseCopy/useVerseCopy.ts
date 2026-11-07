@@ -56,7 +56,8 @@ const PASSAGE_HINTS: Record<PassagePurpose, string> = { analysis: 'analysis.pick
  * A rule a passage keeps beside running on (`commentParagraphs.ts` for a comment): given the verses a press made and the
  * end it moved, the verses allowed and, when they differ, what to say.
  */
-export type PassageLimit = (verses: VerseAt[], end: 'first' | 'last' | null, before: VerseAt[]) => { verses: VerseAt[]; said?: string };
+/** `asParagraph` — what the window whose verses are chosen says the comment is now; undefined — no window yet. */
+export type PassageLimit = (verses: VerseAt[], end: 'first' | 'last' | null, before: VerseAt[], asParagraph?: boolean) => { verses: VerseAt[]; said?: string };
 const canShareNow = () => typeof navigator !== 'undefined' && typeof navigator.share === 'function';
 
 function setOnRows(root: HTMLElement | null, attribute: string, keys: ReadonlySet<string>) {
@@ -217,27 +218,38 @@ export function useVerseCopy({ textRef, text, bible, bookId, drawn, crossRefs, e
     }
   }, [acted, clearIfStill, t, textOf]);
 
+  // The choice started on a verse — by a hold, or the menu's «Выбрать несколько» — is an act on it: the verse goes on the
+  // trail, as its menu opened did before a hold chose (case 2026-11-06-comment-paragraph). How to add more is said in the
+  // bar, under the place, while one verse is chosen (`byTouch` picks the words): a toast said it at every hold, over the
+  // phone's header and the verse just chosen, and stayed over the window opened from the bar (visual pass, 2026-11-07).
+  const [byTouch, setByTouch] = useState(false);
   const startPicking = useCallback((at: VerseAt, touch: boolean) => {
     setMenu(null);
     setPicked([at]);
     setFormat(null);
     setPurpose('copy');
-    toast(t(touch ? 'bible.copy.severalHint' : 'bible.copy.severalHintMouse'));
-  }, [t]);
+    setByTouch(touch);
+    acted([{ chapter: at.chapter, verse: at.verse }]);
+  }, [acted]);
+  const limitRef = useRef(limitComment);
+  limitRef.current = limitComment;
+  // What the comment whose verses are chosen is, as its window says now — handed to the paragraphs' rule, which is a
+  // paragraph's alone (`useCommentLimit`): a new comment stretched over a paragraph took that paragraph whole, a written one
+  // switched to a paragraph kept none (Codex review of the visual pass, 2026-11-07).
+  const commentKindRef = useRef<boolean | undefined>(undefined);
   /**
    * Verses for an analysis or a comment, starting with this one (the verse menu's «Разобрать отрывок», «Комментарий»), or
    * all of an analysis's or a comment's own to change its ends.
    */
-  const startPassage = useCallback((at: VerseAt, to?: VerseAt, forWhat: PassagePurpose = 'analysis') => {
+  const startPassage = useCallback((at: VerseAt, to?: VerseAt, forWhat: PassagePurpose = 'analysis', asParagraph?: boolean) => {
     forgetPull();
+    commentKindRef.current = asParagraph;
     setMenu(null);
     setPicked(to && text ? versesBetween(text, at, to) : [at]);
     setFormat(null);
     setPurpose(forWhat);
     toast(t(PASSAGE_HINTS[forWhat]), { id: PASSAGE_HINT });
   }, [forgetPull, t, text]);
-  const limitRef = useRef(limitComment);
-  limitRef.current = limitComment;
   /**
    * A grip let go: the pull goes into the report as one line, and the click the browser may send after the lift is its
    * own; a pull the browser broke off sends none.
@@ -277,7 +289,7 @@ export function useVerseCopy({ textRef, text, bible, bookId, drawn, crossRefs, e
     const before = pickedRef.current ?? [];
     const { verses, end } = stretchPassage(text, before, at);
     const limit = purposeRef.current === 'comment' ? limitRef.current : undefined;
-    const kept = limit ? limit(verses, end, before) : { verses };
+    const kept = limit ? limit(verses, end, before, commentKindRef.current) : { verses };
     if (kept.said) toast(kept.said, { id: PASSAGE_LIMIT });
     recordPick(text, by, before, kept.verses, pullClick.current ? performance.now() - pullClick.current.at : Number.POSITIVE_INFINITY);
     setPicked(kept.verses);
@@ -288,7 +300,7 @@ export function useVerseCopy({ textRef, text, bible, bookId, drawn, crossRefs, e
     if (!text || !before.length) return;
     const verses = pulledEnd(text, before, end, at);
     const limit = purposeRef.current === 'comment' ? limitRef.current : undefined;
-    const kept = limit ? limit(verses, end, before) : { verses };
+    const kept = limit ? limit(verses, end, before, commentKindRef.current) : { verses };
     if (kept.said) toast(kept.said, { id: PASSAGE_LIMIT });
     // A pull goes into the report once, when it is let go; an arrow at once.
     if (by === 'pull') pulling.current = { end, from: pulling.current?.from ?? before, now: kept.verses };
@@ -385,7 +397,7 @@ export function useVerseCopy({ textRef, text, bible, bookId, drawn, crossRefs, e
     ribbonMenu,
     menu, openMenu, closeMenu: useCallback(() => setMenu(null), []),
     hold: setHeld,
-    picked, picking: choosing, startPicking, toggle, rangeTo, clear,
+    picked, picking: choosing, byTouch, startPicking, toggle, rangeTo, clear,
     purpose, startPassage, moveEnd, pullStarted, pullEnded, takesPullClick, forgetPullClick, passage: purpose !== 'copy' && picked && text ? pickedPassage(text, picked) : null,
     format: format ?? DEFAULT_COPY_FORMAT, setFormat,
     copy, share, canShare,

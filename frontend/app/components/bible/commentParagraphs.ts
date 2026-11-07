@@ -9,7 +9,9 @@ import type { Passage } from '@/utils/scriptureReferenceNumbering';
  * stand above its first verse as a heading, in the comment's own type, and a line along its verses shows where it runs —
  * across a chapter's heading too. Paragraphs never cross: one lies whole inside another or apart from it, two levels deep
  * at most. This module owns those rules; the reader draws by them (`useBookUsage`) and the choice of verses for a comment
- * keeps to them (`useVerseCopy`). Nothing is stored: a paragraph is a comment whose place is longer than one verse.
+ * keeps to them (`useVerseCopy`). What a comment is, the person chooses (`StudyNote.paragraph`, the owner, 2026-11-06:
+ * «и абзац для одного стиха, и комментарий для нескольких стихов»): a paragraph on one verse, a comment on many. A comment
+ * written before that choice existed keeps the old reading — a paragraph when its place is longer than one verse.
  */
 
 /** How deep paragraphs may lie inside each other: a paragraph and paragraphs inside it. */
@@ -17,9 +19,10 @@ export const PARAGRAPH_DEPTH = 2;
 
 /**
  * A comment's piece on verses of the book read, its place counted in the Bible being read. `id` names the piece — a comment
- * read in another Bible may fall into two (King James Romans 16:24–27 is Synodal 14:24–26 and 16:24); `owner`, the comment.
+ * read in another Bible may fall into two (King James Romans 16:24–27 is Synodal 14:24–26 and 16:24); `owner`, the comment;
+ * `paragraph`, what the person chose it to be (absent: never chosen).
  */
-export type PlacedComment = { id: string; owner?: string; passage: Passage };
+export type PlacedComment = { id: string; owner?: string; passage: Passage; paragraph?: boolean };
 
 /** A run of verses as positions in the book: comparable across chapters. */
 export type VerseSpan = { from: number; to: number };
@@ -39,11 +42,17 @@ export function spanOf(passage: Passage): VerseSpan | null {
   return { from: versePosition(passage.chapter, passage.fromVerse), to: versePosition(passage.toChapter, passage.toVerse ?? passage.fromVerse) };
 }
 
-/** Whether a comment's place is a paragraph: verses, more than one. */
+/** Whether a place is longer than one verse: how a comment written before the person chose its kind is read. */
 export const isParagraph = (passage: Passage) => {
   const span = spanOf(passage);
   return span !== null && span.to > span.from;
 };
+
+/**
+ * Whether a comment is a paragraph: as the person chose it, on one verse or many; never chosen — by its length
+ * (`isParagraph`). A comment on whole chapters is never one: a paragraph runs along verses.
+ */
+export const isParagraphComment = (passage: Passage, paragraph?: boolean) => (spanOf(passage) === null ? false : paragraph ?? isParagraph(passage));
 
 /** Whether a run may stand among paragraphs laid already (each `{ id, span }`): apart from or wholly in or around each. */
 export function paragraphRefusal(span: VerseSpan, laid: readonly { id: string; span: VerseSpan }[]): ParagraphRefusal | null {
@@ -67,7 +76,7 @@ export function paragraphRefusal(span: VerseSpan, laid: readonly { id: string; s
 export function layParagraphs(comments: readonly PlacedComment[]): { laid: LaidParagraph[]; apart: Set<string> } {
   const runs = comments.flatMap((comment) => {
     const span = spanOf(comment.passage);
-    return span && span.to > span.from ? [{ comment, span }] : [];
+    return span && isParagraphComment(comment.passage, comment.paragraph) ? [{ comment, span }] : [];
   }).sort((a, b) => a.span.from - b.span.from || b.span.to - a.span.to);
   const kept: { id: string; owner: string; span: VerseSpan; passage: Passage }[] = [];
   const apart = new Set<string>();
@@ -114,7 +123,7 @@ function takenWhole(span: VerseSpan, others: readonly LaidParagraph[], first: st
  * THE VERSES CHOSEN FOR A COMMENT KEEP THE PARAGRAPHS' RULE (the owner's boards, 31.10): a press into another paragraph
  * takes that paragraph whole, when the result may stand; a run that would cross one or lie three deep stops at the last
  * verse it may reach, the end just moved drawn back; the very run of another paragraph is not taken — it is opened by its
- * heading. One verse always may: that is a comment, not a paragraph. `ignore` — the comment whose verses are changed:
+ * heading. One verse always may: it crosses nothing. `ignore` — the comment whose verses are changed:
  * every piece of it is left out.
  */
 export function fitCommentPassage(text: BookText, laid: readonly LaidParagraph[], verses: VerseAt[], end: 'first' | 'last' | null, before: VerseAt[], ignore?: string): { verses: VerseAt[]; said?: PassageFitSaid } {

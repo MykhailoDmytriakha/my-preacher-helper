@@ -36,7 +36,8 @@ const fields: Record<string, readonly string[]> = {
   sermons: ['title', 'verse', 'date', 'thoughts', 'scratch', 'outline', 'thoughtsBySection', 'structure',
     'insights', 'draft', 'plan', 'planText', 'planMode', 'isPreached', 'preparation', 'seriesId',
     'seriesPosition', 'sourceNoteIds', 'church', 'preachDates', 'audioChunks', 'audioMetadata', 'audioSources'],
-  studyNotes: ['title', 'content', 'scriptureRefs', 'tags', 'isDraft', 'materialIds', 'type', 'dictationSourceIds', 'recordingSourceIds', 'analysis'],
+  // 'paragraph' — what a comment is in the reader, as the person chose it (case 2026-11-06-comment-paragraph).
+  studyNotes: ['title', 'content', 'scriptureRefs', 'tags', 'isDraft', 'materialIds', 'type', 'dictationSourceIds', 'recordingSourceIds', 'analysis', 'paragraph'],
   studyMaterials: ['title', 'description', 'type', 'noteIds', 'sections'],
   groups: ['title', 'description', 'status', 'templates', 'flow', 'meetingDates', 'seriesId', 'seriesPosition'],
   series: ['title', 'description', 'theme', 'bookOrTopic', 'sermonIds', 'items', 'seriesKind',

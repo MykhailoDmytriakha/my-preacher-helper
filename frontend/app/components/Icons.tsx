@@ -330,6 +330,19 @@ export const AnalysisIcon = ({ className, ...props }: IconProps) => (
 );
 
 /**
+ * A paragraph's mark — the line beside a paragraph's verses as the reader draws it (a ring at the heading, a dot at the
+ * end) and the lines of text beside it: the mark of the canvas «Сначала стихи, потом действие» (2026-11-06). A line icon at
+ * the heroicons' weight; no size of its own, the caller sizes it.
+ */
+export const ParagraphIcon = ({ className, ...props }: IconProps) => (
+  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={1.6} aria-hidden="true" className={className} {...props}>
+    <circle cx="4" cy="4.5" r="2.2" />
+    <path strokeLinecap="round" d="M4 6.8v8.4M8.5 4.5h9M8.5 9h7M8.5 13h8" />
+    <circle cx="4" cy="16.4" r="1.1" fill="currentColor" stroke="none" />
+  </svg>
+);
+
+/**
  * A comment's mark — three lines of handwriting and a pencil (the owner's choice 2026-10-28 on the canvas,
  * «строки и карандаш»). No size of its own: the caller sizes it, as a heroicon, so a badge's 10 px circle and
  * a menu's 18 px one draw the same thing.

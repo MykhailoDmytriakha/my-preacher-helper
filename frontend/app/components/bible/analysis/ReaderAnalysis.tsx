@@ -10,7 +10,7 @@ import { useTranslation } from '@locales/useTranslation';
 
 
 import { PassagePickBar } from '../verseCopy/PassagePickBar';
-import { VerseCopyBar } from '../verseCopy/VerseCopyBar';
+import { VerseCopyBar, type VerseWriting } from '../verseCopy/VerseCopyBar';
 
 import { analysesListHref, readAnalysisAddress, readNewAnalysisStep } from './analysisAddress';
 import { AnalysisEditor, type AnalysisOpening } from './AnalysisEditor';
@@ -33,7 +33,7 @@ const ANALYSES_DOOR: AnalysisDoor = { home: 'analyses', href: analysesListHref }
  * The analysis's verses are changed by choosing them again, its own chosen to start with (the owner, 2026-10-29). Its door
  * «Все разборы» leads to Studies' list opened at it, and Back returns to it open over the text (the owner, 03.11).
  */
-export function ReaderAnalysis({ copy, text, wide, bookId, bible, locale, opening, onOpening, marks, onOpenScreen, onUseBible }: {
+export function ReaderAnalysis({ copy, text, wide, bookId, bible, locale, opening, onOpening, marks, onOpenScreen, onUseBible, onWrite }: {
   copy: VerseCopy;
   text: BookText | null;
   wide: boolean;
@@ -48,6 +48,8 @@ export function ReaderAnalysis({ copy, text, wide, bookId, bible, locale, openin
   onOpenScreen?: (href: string) => void;
   /** An analysis made in another Bible: the reader turns to that Bible (`OtherBibleNotice`). */
   onUseBible?: (bible: BibleId) => void;
+  /** The chosen verses' bar writes a comment or a paragraph on them: the reader's comment window. */
+  onWrite?: (kind: VerseWriting, passage: PickedPassage) => void;
 }) {
   const { t } = useTranslation();
   const { uid } = useResolvedUid();
@@ -120,7 +122,7 @@ export function ReaderAnalysis({ copy, text, wide, bookId, bible, locale, openin
       {/* Verses chosen for a comment have the comment's own bar (`ReaderCommentDialog.tsx`). */}
       {choosing ? (
         <PassagePickBar copy={copy} wide={wide} onOpen={open} busy={busy} action={t(reshaping ? 'analysis.pick.apply' : 'analysis.pick.open')} icon={<AnalysisIcon className="h-5 w-5" />} cancelLabel={t('analysis.pick.cancel')} />
-      ) : copy.purpose === 'comment' ? null : <VerseCopyBar copy={copy} wide={wide} />}
+      ) : copy.purpose === 'comment' ? null : <VerseCopyBar copy={copy} wide={wide} text={text} onWrite={onWrite} onAnalyse={(passage) => { copy.clear(); onOpening({ kind: 'new', passage }); }} />}
       {opening && text ? <AnalysisEditor opening={opening} text={text} bookId={bookId} bible={bible} locale={locale} marks={marks} onClose={() => onOpening(null)} onEditVerses={editVerses} door={ANALYSES_DOOR} onOpenScreen={onOpenScreen} onUseBible={onUseBible} /> : null}
     </>
   );

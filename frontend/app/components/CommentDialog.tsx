@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { toast } from 'sonner';
 
 import { CommentPlaceShown, MovePlaceButton, useCommentPlace } from '@/components/CommentPlaceMove';
-import { CommentIcon } from '@/components/Icons';
+import { CommentIcon, ParagraphIcon } from '@/components/Icons';
 import MarkdownDisplay from '@/components/MarkdownDisplay';
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
 import FormDialog, { FormActions } from '@/components/ui/FormDialog';
@@ -32,7 +32,7 @@ export type CommentTarget = CommentDraftTarget;
 const NO_TYPE: StudyNoteType = 'note';
 
 /** What another device stored, for every field this window compares. */
-type StoredVersion = { revision: number; content: string; type: StudyNoteType; title: string; scriptureRefs: ScriptureReference[] | null; reported: string[] };
+type StoredVersion = { revision: number; content: string; type: StudyNoteType; title: string; scriptureRefs: ScriptureReference[] | null; paragraph: boolean | undefined; reported: string[] };
 
 /**
  * WHAT A SAVE OF A WRITTEN COMMENT WRITES: only the fields this window changed, each guarded by the value it opened with.
@@ -42,18 +42,18 @@ type StoredVersion = { revision: number; content: string; type: StudyNoteType; t
  */
 function changesOf(
   { mine, guard }: { mine: StudyNote; guard: StudyNote },
-  fields: { content: string; type: StudyNoteType; title?: string },
+  fields: { content: string; type: StudyNoteType; title?: string; paragraph?: boolean },
   placing: { updates: Partial<StudyNote>; baseline: Record<string, unknown> },
 ): { updates: Partial<StudyNote>; baseline: Record<string, unknown> } {
   // What this window changed is measured from where its edits began (`mine`); each such field is guarded by the version it
   // now works from (`guard`) — after «keep mine» the other device's. Measured from that one, the words left untouched here
   // would count as changed and go out over the words written there (Codex review r3, 2026-10-28).
-  const read = (note: StudyNote) => ({ content: note.content ?? '', type: note.type ?? NO_TYPE, title: note.title ?? '' });
+  const read = (note: StudyNote) => ({ content: note.content ?? '', type: note.type ?? NO_TYPE, title: note.title ?? '', paragraph: note.paragraph });
   const was = read(mine);
   const guarded = read(guard);
   const updates: Partial<StudyNote> = { ...placing.updates };
   const baseline: Record<string, unknown> = { ...placing.baseline };
-  for (const field of ['content', 'type', 'title'] as const) {
+  for (const field of ['content', 'type', 'title', 'paragraph'] as const) {
     const value = fields[field];
     // The words go out trimmed: words stored with a trailing space are not changed by being saved as they were.
     if (value === undefined || value === (field === 'content' ? was.content.trim() : was[field])) continue;
@@ -70,7 +70,7 @@ function changesOf(
  * (Codex review r2, 2026-10-28) — and from what the window opened with while the list does not have it.
  */
 function storedVersion({ actualRevision, serverValues }: { actualRevision: number; serverValues: Record<string, unknown> }, opened: StudyNote | undefined, live: StudyNote | undefined): StoredVersion {
-  const { content, type, title, scriptureRefs } = serverValues;
+  const { content, type, title, scriptureRefs, paragraph } = serverValues;
   const known = live ?? opened;
   return {
     revision: actualRevision,
@@ -78,6 +78,8 @@ function storedVersion({ actualRevision, serverValues }: { actualRevision: numbe
     type: typeof type === 'string' ? type as StudyNoteType : known ? known.type ?? NO_TYPE : 'comment',
     title: typeof title === 'string' ? title : known?.title ?? '',
     scriptureRefs: Array.isArray(scriptureRefs) ? scriptureRefs as ScriptureReference[] : live?.scriptureRefs ?? null,
+    // The kind is the person's as the words are: reported, it is what the other device chose (null — never chosen there).
+    paragraph: 'paragraph' in serverValues ? (typeof paragraph === 'boolean' ? paragraph : undefined) : known?.paragraph,
     reported: Object.keys(serverValues),
   };
 }
@@ -95,6 +97,7 @@ function asItStands(version: StoredVersion, live: StudyNote | undefined): Stored
     type: version.reported.includes('type') ? version.type : live.type ?? NO_TYPE,
     title: now('title', version.title),
     scriptureRefs: version.reported.includes('scriptureRefs') ? version.scriptureRefs : live.scriptureRefs ?? version.scriptureRefs,
+    paragraph: version.reported.includes('paragraph') ? version.paragraph : live.paragraph,
   };
 }
 
@@ -102,16 +105,18 @@ function asItStands(version: StoredVersion, live: StudyNote | undefined): Stored
  * THE WAY FROM A COMMENT TO A NOTE (the owner, 2026-10-28: «эта полоска должна показывать от чего-то до заметки…
  * от серого постепенно зеленеть»): the comment's grey mark at one end, the note's green one at the other, the
  * line filling from grey to green as the person writes. Its unit is the way itself, so it needs no number; a
- * screen reader hears the count (`utils/commentLength.ts`).
+ * screen reader hears the count (`utils/commentLength.ts`). Written as a paragraph, its start is the paragraph's:
+ * the window's title says «Абзац», and one thing has one name in the window (case 2026-11-06-comment-paragraph).
  */
-export function CommentWayBar({ text }: { text: string }) {
+export function CommentWayBar({ text, paragraph = false }: { text: string; paragraph?: boolean }) {
   const { t } = useTranslation();
   const { sentences, share, isNote } = measureComment(text);
   const label = isNote ? t('comment.wayNote') : t('comment.wayLabel', { count: Math.min(COMMENT_SENTENCES, Math.round(sentences)), total: COMMENT_SENTENCES });
+  const StartIcon = paragraph ? ParagraphIcon : CommentIcon;
   return (
     <div className="flex items-center gap-2" data-testid="comment-way">
-      <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-gray-500"><CommentIcon className="h-2.5 w-2.5 text-white" /></span>
-      <span className="text-xs font-semibold text-gray-600 dark:text-gray-300">{t('studiesWorkspace.type.comment')}</span>
+      <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-gray-500"><StartIcon className="h-2.5 w-2.5 text-white" /></span>
+      <span className="text-xs font-semibold text-gray-600 dark:text-gray-300">{paragraph ? t('comment.kind.paragraph') : t('studiesWorkspace.type.comment')}</span>
       <div role="img" aria-label={label} className="relative h-1 flex-1 overflow-hidden rounded-full bg-gradient-to-r from-[#8b8f98] to-emerald-600 dark:from-gray-400 dark:to-emerald-400">
         <div className="absolute inset-y-0 right-0 bg-gray-200 transition-[width] duration-200 dark:bg-gray-700" style={{ width: `${Math.round((1 - share) * 100)}%` }} data-testid="comment-way-rest" />
       </div>
@@ -143,7 +148,70 @@ function useWaitingDraft(
   return differs ? offered : null;
 }
 
-export function CommentDialog({ target, place, context, bible, placeOf, placePicker, restorePlace, onErased, onClose, returnFocusTo, openingPlace, away, onChooseVerses, versesRefusal, placeRefusal }: {
+/**
+ * WHAT THE COMMENT IS IN THE READER, as the person chooses it in the window (case 2026-11-06-comment-paragraph): a new one as
+ * its button chose, a written one as it was saved or — never chosen — as the reader's `initial` reads it. The kind it opened
+ * with is taken once (`take`): the reader may name the same comment's place anew, and a kind read again from that would look
+ * changed with nothing touched. `changed` — the person switched it here.
+ */
+function useCommentKind(target: CommentTarget, found: StudyNote | undefined, choice: { initial: boolean } | undefined) {
+  const kindOf = (note: StudyNote | undefined) => note?.paragraph ?? choice?.initial ?? false;
+  const [asParagraph, setAsParagraph] = useState(() => (target.kind === 'edit' ? kindOf(found) : choice?.initial ?? false));
+  const opened = useRef<boolean | null>(target.kind === 'edit' && found ? kindOf(found) : null);
+  const take = (note: StudyNote) => {
+    opened.current = kindOf(note);
+    setAsParagraph(opened.current);
+  };
+  // The kind is not kept with the words on the device: a draft is the words, their name and place, and its copy is retired
+  // only by a save that reads exactly as it did. A kind among them broke that between the reader and Studies and for copies
+  // from before the choice (Codex review r3–r4, 2026-11-07); words brought back take the kind the window opened with.
+  const changed = Boolean(choice) && opened.current !== null && asParagraph !== opened.current;
+  /**
+   * The kind as the window shows and saves it, given whether the words have grown into a note: a note has no kind. `offered` —
+   * the switch is shown; `heading` — saved as a paragraph; `fields` — what a new one is saved with; `switched` — a written
+   * one's kind to write, when changed here; `madeParagraphAt` — the place a comment made a paragraph where it stands is checked
+   * at, as one moved there is.
+   */
+  const asWritten = (isNote: boolean, standing: ScriptureReference | undefined) => {
+    const offered = Boolean(choice) && !isNote;
+    const heading = offered && asParagraph;
+    return {
+      offered,
+      heading,
+      titleKey: heading ? 'comment.titleParagraph' : 'comment.title',
+      descriptionKey: heading ? 'comment.paragraphDescription' : 'comment.description',
+      fields: offered ? { paragraph: asParagraph } : {},
+      switched: offered && changed ? asParagraph : undefined,
+      madeParagraphAt: offered && changed && asParagraph ? standing ?? null : null,
+    };
+  };
+  return { asParagraph, setAsParagraph, take, changed, asWritten };
+}
+
+/** «Комментарий | Абзац» at the top of the window: what the comment is in the reader. */
+function CommentKindSwitch({ paragraph, onChange, disabled }: { paragraph: boolean; onChange: (paragraph: boolean) => void; disabled: boolean }) {
+  const { t } = useTranslation();
+  return (
+    <div role="group" aria-label={t('comment.kind.label')} className="flex gap-0.5 rounded-xl bg-gray-100 p-[3px] dark:bg-gray-950" data-testid="comment-kind">
+      {([false, true] as const).map((one) => (
+        <button
+          key={String(one)}
+          type="button"
+          aria-pressed={paragraph === one}
+          disabled={disabled}
+          onClick={() => onChange(one)}
+          className={`h-8 flex-1 whitespace-nowrap rounded-lg px-3 text-sm font-semibold disabled:opacity-50 ${paragraph === one
+            ? 'bg-white text-gray-900 shadow-sm dark:bg-indigo-600 dark:text-white'
+            : 'text-gray-600 dark:text-gray-300'}`}
+        >
+          {t(one ? 'comment.kind.paragraph' : 'comment.kind.comment')}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+export function CommentDialog({ target, place, context, bible, placeOf, placePicker, restorePlace, onErased, onClose, onSaved, returnFocusTo, openingPlace, away, onChooseVerses, versesRefusal, placeRefusal, paragraphChoice }: {
   target: CommentTarget;
   /** "Ис 40:31", "Ис 40–41": the place the comment is written to; empty while a new one's place is not chosen. */
   place: string;
@@ -163,6 +231,11 @@ export function CommentDialog({ target, place, context, bible, placeOf, placePic
   /** After the comment is erased, where the screen under the window shows it still (its own page): leave it. */
   onErased?: () => void;
   onClose: () => void;
+  /**
+   * Saved as a comment — the device took it — given its id, just before the window closes: the reader brings it into sight
+   * (`readerSight.ts`). Not called for one that grew into a note: it leaves the screen under the window.
+   */
+  onSaved?: (id: string) => void;
   returnFocusTo?: RefObject<HTMLElement | null>;
   /** An explicitly clicked displayed occurrence; it never changes the authored reference. */
   openingPlace?: string;
@@ -172,7 +245,7 @@ export function CommentDialog({ target, place, context, bible, placeOf, placePic
    * The reader's «Изменить стихи» (phase 9): given where the comment stands now, and how to move it once the verses are
    * chosen — the move waits for «Готово», as a move from the list does.
    */
-  onChooseVerses?: (here: ScriptureReference, moveTo: (reference: ScriptureReference) => void) => void;
+  onChooseVerses?: (here: ScriptureReference, moveTo: (reference: ScriptureReference) => void, asParagraph?: boolean) => void;
   /** With `onChooseVerses`: why its verses cannot be chosen in the text there (another book, not one run of verses); null — they can. */
   versesRefusal?: (here: ScriptureReference) => string | null;
   /**
@@ -180,7 +253,13 @@ export function CommentDialog({ target, place, context, bible, placeOf, placePic
    * Asked on «Готово» of a new comment's place and of a written one's new place: the list of places and a paragraph
    * arriving from another device after the verses were chosen do not go round the rule.
    */
-  placeRefusal?: (reference: ScriptureReference) => string | null;
+  placeRefusal?: (reference: ScriptureReference, paragraph?: boolean) => string | null;
+  /**
+   * The reader's choice of what the comment is (the owner, 2026-11-06: «комментарий и абзац — разные вещи»): the window
+   * shows «Комментарий | Абзац» and saves the one chosen (`StudyNote.paragraph`). `initial` — a new one's kind as its
+   * button chose, a written one's as its length reads when it was never chosen. Absent (Studies): no choice, as before.
+   */
+  paragraphChoice?: { initial: boolean };
 }) {
   const { t } = useTranslation();
   const { uid, notes, createNote, updateNote, deleteNote } = useStudyNotesEngine(true);
@@ -197,12 +276,17 @@ export function CommentDialog({ target, place, context, bible, placeOf, placePic
   const [text, setText] = useState<string | null>(target.kind === 'edit' ? found?.content ?? null : '');
   // The name it takes past five sentences, as a note (the owner, 2026-10-28: «без имени толку нету»).
   const [title, setTitle] = useState(found?.title ?? '');
+  // What it is in the reader — a paragraph or a comment — as the person chooses it here (`paragraphChoice`).
+  const kind = useCommentKind(target, found, paragraphChoice);
   useEffect(() => {
     if (text !== null || !found) return;
     opened.current = found;
     mine.current = found;
     setText(found.content);
     setTitle(found.title ?? '');
+    kind.take(found);
+    // Taken once, when the written comment first arrives — as its words are.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [found, text]);
   const [saving, setSaving] = useState(false);
   // Another device changed the comment since it opened: what it holds now, to keep mine on top of it or take it.
@@ -261,7 +345,8 @@ export function CommentDialog({ target, place, context, bible, placeOf, placePic
   const empty = sentences === 0;
   // A comment stands on a verse or a chapter: a whole book names no place in the reader, so it cannot be one's place.
   const placed = target.kind === 'edit' || Boolean(target.reference?.chapter);
-  const unsaved = written !== initial || title !== initialTitle || where.moved !== null;
+  // The kind changed here — a paragraph made a comment, or one made a paragraph, its words untouched — is unsaved work too.
+  const unsaved = written !== initial || title !== initialTitle || where.moved !== null || kind.changed;
   // A note without a name is no use (the owner, 2026-10-28): the main button waits for one.
   const named = !isNote || Boolean(title.trim());
   // Thrown away by the person's own choice: retired like saved words, so the write on closing does not keep them.
@@ -288,18 +373,22 @@ export function CommentDialog({ target, place, context, bible, placeOf, placePic
   const adopt = (found: StoredVersion) => {
     if (!opened.current) return;
     opened.current = {
-      ...opened.current, content: found.content, type: found.type, title: found.title,
+      ...opened.current, content: found.content, type: found.type, title: found.title, paragraph: found.paragraph,
       ...(found.scriptureRefs ? { scriptureRefs: found.scriptureRefs } : {}),
       rev: { ...(opened.current.rev ?? {}), [NOTE_AGGREGATE]: found.revision },
     };
   };
 
+  // As a comment — not a note — it is what the switch says: a heading over its verses or words beside them; the kind goes
+  // out where the window offers the choice — a new one's always, a written one's only when switched here.
+  const asWritten = kind.asWritten(isNote, (opened.current ?? found)?.scriptureRefs?.[0]);
   const save = (event?: React.FormEvent) => {
     event?.preventDefault();
     if (empty || saving || !placed || !named) return;
     const placing = target.kind === 'new' ? keptPlace : where.moved;
-    // The paragraphs' rule is a comment's: one saved as a note leaves the reader's paragraphs (Codex review r3).
-    const refused = placing && !isNote ? placeRefusal?.(placing) : null;
+    // The paragraphs' rule is a paragraph's: one saved as a note leaves the reader's paragraphs (Codex review r3).
+    const checked = placing ?? asWritten.madeParagraphAt;
+    const refused = checked && !isNote ? placeRefusal?.(checked, paragraphChoice ? kind.asParagraph : undefined) : null;
     if (refused) { toast.error(refused); return; }
     const content = written.trim();
     const note = opened.current;
@@ -310,21 +399,24 @@ export function CommentDialog({ target, place, context, bible, placeOf, placePic
     const naming = isNote ? { title: title.trim() } : {};
     if (target.kind === 'new') {
       setSaving(true);
-      createNote({ userId: uid ?? '', content, title: naming.title ?? '', scriptureRefs: keptPlace ? [keptPlace] : [], tags: [], type }).acceptance.then(saved, failed);
+      const created = createNote({ userId: uid ?? '', content, title: naming.title ?? '', scriptureRefs: keptPlace ? [keptPlace] : [], tags: [], type, ...asWritten.fields });
+      created.acceptance.then(() => saved(created.note.id), failed);
       return;
     }
-    const { updates, baseline } = changesOf({ mine: mine.current ?? note!, guard: note! }, { content, type, ...naming }, where.write(note?.scriptureRefs ?? []));
+    const { updates, baseline } = changesOf({ mine: mine.current ?? note!, guard: note! }, { content, type, ...naming, paragraph: asWritten.switched }, where.write(note?.scriptureRefs ?? []));
     // Nothing changed — nothing to write: «Готово» closes, and no revision moves for it.
     if (!Object.keys(updates).length) {
       closeDiscarding();
       return;
     }
     setSaving(true);
-    updateNote({ id: target.id, updates, expectedRevision: note?.rev?.[NOTE_AGGREGATE] ?? null, expectedBaseline: baseline }).acceptance.then(saved, failed);
+    const { id } = target;
+    updateNote({ id, updates, expectedRevision: note?.rev?.[NOTE_AGGREGATE] ?? null, expectedBaseline: baseline }).acceptance.then(() => saved(id), failed);
   };
-  const saved = () => {
+  const saved = (id: string) => {
     settle();
     if (isNote) toast.success(t('comment.becameNote'));
+    else onSaved?.(id);
     onClose();
   };
 
@@ -355,8 +447,10 @@ export function CommentDialog({ target, place, context, bible, placeOf, placePic
       return;
     }
     adopt(theirs);
-    // Taken, their version is where this window's edits begin now.
+    // Taken, their version is where this window's edits begin now — their kind too: the switch shows what they chose
+    // (visual pass, Codex review 2026-11-07: «take theirs» took their words and left this window's switch).
     mine.current = opened.current;
+    if (opened.current) kind.take(opened.current);
     setText(theirs.content);
     setTitle(theirs.title);
     // Their version is taken whole: where they left it stands, and a place chosen here is let go.
@@ -368,13 +462,13 @@ export function CommentDialog({ target, place, context, bible, placeOf, placePic
   return (
     <FormDialog
       away={away}
-      title={shownPlace ? t('comment.title', { place: shownPlace }) : t('comment.titleNew')}
+      title={shownPlace ? t(asWritten.titleKey, { place: shownPlace }) : t('comment.titleNew')}
       titleAction={where.movable ? (
         <div ref={where.buttonRef}>
           <MovePlaceButton open={where.open} disabled={saving || deciding} onToggle={where.toggle} />
         </div>
       ) : null}
-      description={t('comment.description')}
+      description={t(asWritten.descriptionKey)}
       onClose={closeDiscarding}
       returnFocusTo={returnFocusTo}
       unsaved={unsaved}
@@ -400,6 +494,7 @@ export function CommentDialog({ target, place, context, bible, placeOf, placePic
       )}
     >
       <div className="space-y-4">
+        {asWritten.offered ? <CommentKindSwitch paragraph={kind.asParagraph} onChange={kind.setAsParagraph} disabled={saving || deciding} /> : null}
         {/* The words waiting are answered first: they may bring their own place back, so the choice of one waits. */}
         {/* Nor while a save is accepted: a place chosen then would show, and the one sent would be saved (Codex review r3). */}
         {deciding || saving ? null : placePicker?.({ requestClose })}
@@ -418,10 +513,11 @@ export function CommentDialog({ target, place, context, bible, placeOf, placePic
             onDiscard={() => { draft.discardRecovered(); answerDraftQuestion(); }}
           />
         ) : null}
-        <CommentPlaceShown where={where} place={place} busy={saving} deciding={deciding} onChooseVerses={onChooseVerses} versesRefusal={versesRefusal} />
+        {/* The verses are chosen for what the switch says now: a comment's keep no paragraphs' rule (Codex review, 2026-11-07). */}
+        <CommentPlaceShown where={where} place={place} busy={saving} deciding={deciding} onChooseVerses={onChooseVerses ? (here, moveTo) => onChooseVerses(here, moveTo, asWritten.offered ? kind.asParagraph : undefined) : undefined} versesRefusal={versesRefusal} />
         {/* Still while a save is accepted — words typed then would be closed away with the window — and while words from last time wait for an answer. */}
         {text === null ? null : <RichMarkdownEditor value={text} onChange={setText} placeholder={t('comment.placeholder')} minHeight="11rem" autoFocus editable={!saving && !deciding} />}
-        <CommentWayBar text={written} />
+        <CommentWayBar text={written} paragraph={asWritten.heading} />
         {isNote ? (
           <div className="space-y-3">
             <p className="text-sm leading-relaxed text-gray-700 dark:text-gray-300">{t('comment.becomesNote')}</p>

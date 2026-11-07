@@ -83,14 +83,15 @@ async function hold(target: Element) {
 }
 
 describe('a Pencil\'s hold and the system\'s selection (the owner\'s iPad, 31.10)', () => {
-  it('a Pencil held still on a verse opens its menu as a finger does, the verse lifted over the page', async () => {
+  it('a Pencil held still on a verse starts the choice as a finger does: the verse chosen, the bar up', async () => {
     await renderRuth();
     pointer(verseText('1:16'), 'pointerdown', 'pen');
     await wait(LONG_PRESS_MS + 30);
     pointer(verseText('1:16'), 'pointerup', 'pen');
     await wait(460);
-    expect(screen.getByRole('menu', { name: 'bible.copy.menu' })).toBeInTheDocument();
-    expect(row('1:16')).toHaveAttribute('data-verse-held');
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(screen.getByRole('region', { name: 'Руф 1:16' })).toBeInTheDocument();
+    expect(row('1:16')).toHaveAttribute('data-verse-chosen');
   });
 
   // Codex, 02.11: a second finger on a chip took the Pencil's hold over.
@@ -103,7 +104,8 @@ describe('a Pencil\'s hold and the system\'s selection (the owner\'s iPad, 31.10
     await wait(LONG_PRESS_MS + 30);
     pointer(verseText('1:16'), 'pointerup', 'pen');
     await wait(460);
-    expect(screen.getByRole('menu', { name: 'bible.copy.menu' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Руф 1:16' })).toBeInTheDocument();
+    expect(row('1:19')).not.toHaveAttribute('data-verse-chosen');
   });
 
   it('a Pencil that moves along the line is a stroke: no menu', async () => {
@@ -156,19 +158,20 @@ describe('taking verses out of the reader', () => {
     expect(menuButton).toHaveFocus();
   }, 15000);
 
-  it('a verse held opens its menu; Copy puts the verse, its place and its Bible in the clipboard', async () => {
+  // The owner, 2026-11-06: «долгий тап на стихе начинает выбирать» — the bar, not a menu, says what to do with it.
+  it('a verse held is chosen; the bar’s Copy puts the verse, its place and its Bible in the clipboard', async () => {
     await renderRuth();
     await hold(verseText('1:16'));
-    const menu = screen.getByRole('menu', { name: 'bible.copy.menu' });
-    // Lifted while its menu is open; the phone has no share window here, so no «Отправить».
-    expect(row('1:16')).toHaveAttribute('data-verse-held');
-    expect(within(menu).queryByRole('menuitem', { name: 'bible.copy.share' })).toBeNull();
-    await userEvent.click(within(menu).getByRole('menuitem', { name: 'bible.copy.copy' }));
+    expect(screen.queryByRole('menu')).toBeNull();
+    const bar = screen.getByRole('region', { name: 'Руф 1:16' });
+    // The phone has no share window here, so no «Поделиться».
+    expect(within(bar).queryByRole('button', { name: 'bible.copy.share' })).toBeNull();
+    await userEvent.click(within(bar).getByRole('button', { name: 'bible.copy.copy' }));
     expect(writeText).toHaveBeenCalledWith(quote(16));
     // Ruth 1:16 stops at a semicolon, so the quote ends with «…».
     expect(writeText.mock.calls[0][0]).toBe(`Руф 1:16 (${MARK}): "${words(1, 16).slice(0, -1)}…"`);
-    expect(screen.queryByRole('menu')).toBeNull();
-    expect(row('1:16')).not.toHaveAttribute('data-verse-held');
+    expect(screen.queryByRole('region', { name: /Руф/ })).toBeNull();
+    expect(row('1:16')).not.toHaveAttribute('data-verse-chosen');
   });
 
   // The owner, 2026-10-27: the Bible is not named when it is the interface's own (the test's interface is English).
@@ -177,7 +180,7 @@ describe('taking verses out of the reader', () => {
     render(<BibleBookReader bible="kjv" initialBible="kjv" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={{ chapter: 1, verse: 16 }} onOpenBook={jest.fn()} />);
     await screen.findByTestId('cross-refs-1:16');
     await hold(verseText('1:16'));
-    await userEvent.click(within(screen.getByRole('menu', { name: 'bible.copy.menu' })).getByRole('menuitem', { name: 'bible.copy.copy' }));
+    await userEvent.click(within(screen.getByRole('region', { name: 'Ruth 1:16' })).getByRole('button', { name: 'bible.copy.copy' }));
     const copied = writeText.mock.calls[0][0] as string;
     expect(copied).toBe(verseCopyText([{ chapter: 1, verse: 16, words: verseWords(kjvRuth.chapters[0][15]) }], 'quote', { book: 'Ruth' }));
     expect(copied.startsWith('Ruth 1:16: "')).toBe(true);
@@ -196,27 +199,29 @@ describe('taking verses out of the reader', () => {
   });
 
   // Codex review, 2026-10-27: only the click a hold ends with is not a choice.
-  it('the click that ends a hold chooses nothing; the next one does', async () => {
+  it('the click that ends a hold takes nothing back; the next press chooses', async () => {
     await renderRuth();
     pointer(verseText('1:16'), 'pointerdown');
     await wait(LONG_PRESS_MS + 30);
     pointer(verseText('1:16'), 'pointerup');
-    const copyItem = screen.getByRole('menuitem', { name: 'bible.copy.copy' });
-    fireEvent.click(copyItem, { detail: 1 });
-    expect(writeText).not.toHaveBeenCalled();
-    fireEvent.click(copyItem, { detail: 1 });
-    expect(writeText).toHaveBeenCalledWith(quote(16));
+    fireEvent.click(verseText('1:16'), { detail: 1 });
+    expect(row('1:16')).toHaveAttribute('data-verse-chosen');
+    await wait(460);
+    pointer(verseText('1:17'), 'pointerdown');
+    pointer(verseText('1:17'), 'pointerup');
+    fireEvent.click(verseText('1:17'), { detail: 1 });
+    expect(screen.getByRole('region', { name: 'Руф 1:16–17' })).toBeInTheDocument();
   });
 
-  // Codex review r2: the lift's click may go to the verse (its press's target); a press begun in the menu is a choice.
-  it('a press begun in the menu right after a hold is a choice', async () => {
+  // Codex review r2: the lift's click may go to the verse (its press's target); a press begun in the bar is a choice.
+  it('a press begun in the bar right after a hold is a choice', async () => {
     await renderRuth();
     pointer(verseText('1:16'), 'pointerdown');
     await wait(LONG_PRESS_MS + 30);
     pointer(verseText('1:16'), 'pointerup');
-    const copyItem = screen.getByRole('menuitem', { name: 'bible.copy.copy' });
-    pointer(copyItem, 'pointerdown', 'mouse');
-    fireEvent.click(copyItem, { detail: 1 });
+    const copyButton = within(screen.getByRole('region', { name: 'Руф 1:16' })).getByRole('button', { name: 'bible.copy.copy' });
+    pointer(copyButton, 'pointerdown', 'mouse');
+    fireEvent.click(copyButton, { detail: 1 });
     expect(writeText).toHaveBeenCalledWith(quote(16));
   });
 
@@ -249,10 +254,9 @@ describe('taking verses out of the reader', () => {
     window.getSelection()!.removeAllRanges();
   });
 
-  it('«Выбрать несколько»: presses choose verses, Shift chooses a passage, the bar copies them as a quote', async () => {
+  it('a hold chooses, presses add verses, Shift chooses a passage, the bar copies them as a quote', async () => {
     await renderRuth();
     await hold(verseText('1:16'));
-    await userEvent.click(screen.getByRole('menuitem', { name: 'bible.copy.several' }));
     await userEvent.click(verseText('1:17'));
     // A press on a verse's number chooses it too, and does not open its links.
     await userEvent.click(screen.getByTestId('cross-refs-1:19'));
@@ -273,7 +277,6 @@ describe('taking verses out of the reader', () => {
   it('choosing several, a press given up chooses nothing, and a hold on a chip chooses the passage', async () => {
     await renderRuth();
     await hold(verseText('1:16'));
-    await userEvent.click(screen.getByRole('menuitem', { name: 'bible.copy.several' }));
     pointer(verseText('1:18'), 'pointerdown', 'mouse');
     pointer(verseText('1:18'), 'pointermove', 'mouse', 80);
     pointer(verseText('1:18'), 'pointerup', 'mouse');
@@ -289,7 +292,6 @@ describe('taking verses out of the reader', () => {
     writeText.mockImplementationOnce(() => new Promise<void>((resolve) => { answer = resolve; }));
     await renderRuth();
     await hold(verseText('1:16'));
-    await userEvent.click(screen.getByRole('menuitem', { name: 'bible.copy.several' }));
     await userEvent.click(screen.getByRole('button', { name: 'bible.copy.copy' }));
     screen.getByTestId('cross-refs-1:19').focus();
     fireEvent.keyDown(screen.getByTestId('cross-refs-1:19'), { key: 'Enter' });
@@ -299,11 +301,9 @@ describe('taking verses out of the reader', () => {
     expect(screen.getByRole('region', { name: 'Руф 1:16, 19' })).toBeInTheDocument();
   });
 
-  it('chooses the next verse with a new tap immediately after the hold menu starts picking', async () => {
+  it('chooses the next verse with a new tap immediately after the menu’s «Выбрать несколько»', async () => {
     await renderRuth();
-    pointer(verseText('1:16'), 'pointerdown');
-    await wait(LONG_PRESS_MS + 30);
-    pointer(verseText('1:16'), 'pointerup');
+    fireEvent.contextMenu(verseText('1:16'), { clientX: 200, clientY: 300 });
     const several = screen.getByRole('menuitem', { name: 'bible.copy.several' });
     pointer(several, 'pointerdown');
     pointer(several, 'pointerup');
@@ -319,14 +319,12 @@ describe('taking verses out of the reader', () => {
   it('the bar copies numbered when asked, and Escape lets the choice go', async () => {
     await renderRuth();
     await hold(verseText('1:16'));
-    await userEvent.click(screen.getByRole('menuitem', { name: 'bible.copy.several' }));
     await userEvent.click(verseText('1:17'));
     await userEvent.click(screen.getByRole('button', { name: 'bible.copy.numbered' }));
     await userEvent.click(screen.getByRole('button', { name: 'bible.copy.copy' }));
     expect(writeText).toHaveBeenCalledWith([`Руф 1:16–17 (${MARK}):`, `16 ${words(1, 16)}`, `17 ${words(1, 17)}`].join('\n'));
 
     await hold(verseText('1:16'));
-    await userEvent.click(screen.getByRole('menuitem', { name: 'bible.copy.several' }));
     expect(row('1:16')).toHaveAttribute('data-verse-chosen');
     await userEvent.keyboard('{Escape}');
     expect(screen.queryByRole('region', { name: /Руф/ })).toBeNull();
@@ -338,7 +336,7 @@ describe('taking verses out of the reader', () => {
     Object.defineProperty(navigator, 'share', { value: share, configurable: true });
     await renderRuth();
     await hold(verseText('1:16'));
-    await userEvent.click(screen.getByRole('menuitem', { name: 'bible.copy.share' }));
+    await userEvent.click(within(screen.getByRole('region', { name: 'Руф 1:16' })).getByRole('button', { name: 'bible.copy.share' }));
     expect(share).toHaveBeenCalledWith({ text: quote(16) });
   });
 
@@ -389,7 +387,6 @@ describe('taking verses out of the reader', () => {
     expect(points()).toEqual(['1:16', '1:18', '1:19']);
     await userEvent.keyboard('{Escape}');
     await hold(verseText('2:3'));
-    await userEvent.click(screen.getByRole('menuitem', { name: 'bible.copy.several' }));
     await userEvent.click(verseText('1:5'));
     await userEvent.click(verseText('1:6'));
     await userEvent.click(screen.getByRole('button', { name: 'bible.copy.copy' }));
@@ -402,10 +399,12 @@ describe('taking verses out of the reader', () => {
     writeText.mockImplementationOnce(() => new Promise<void>((resolve) => { answer = resolve; }));
     await renderRuth();
     await hold(verseText('1:18'));
-    await userEvent.click(screen.getByRole('menuitem', { name: 'bible.copy.copy' }));
+    await userEvent.click(within(screen.getByRole('region', { name: 'Руф 1:18' })).getByRole('button', { name: 'bible.copy.copy' }));
     expect(writeText).toHaveBeenCalledTimes(1);
+    // The copy is still on its way, so the choice is still up: let go, a new hold is a new act on 1:20.
+    await userEvent.click(within(screen.getByRole('region', { name: 'Руф 1:18' })).getByRole('button', { name: 'bible.copy.clear' }));
     await hold(verseText('1:20'));
-    expect(screen.getByRole('menu')).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Руф 1:20' })).toBeInTheDocument();
     await act(async () => { answer(); });
     const trail = readPlaceTrail();
     expect(`${trail.links[trail.at].chapter}:${trail.links[trail.at].verse}`).toBe('1:20');

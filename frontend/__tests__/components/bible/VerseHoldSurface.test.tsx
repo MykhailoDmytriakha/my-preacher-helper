@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { useRef } from 'react';
+import { toast } from 'sonner';
 
 import { VerseCopyBar } from '@/components/bible/verseCopy/VerseCopyBar';
 import { VerseHoldSurface } from '@/components/bible/verseCopy/VerseHoldSurface';
@@ -36,6 +37,7 @@ const advance = (ms: number) => act(() => { jest.advanceTimersByTime(ms); });
 const verse = () => screen.getByText('First verse.');
 
 beforeEach(() => {
+  jest.clearAllMocks();
   jest.useFakeTimers();
   window.getSelection()?.removeAllRanges();
 });
@@ -69,14 +71,19 @@ describe('the current owner of a held verse', () => {
     expect(screen.queryByRole('region')).not.toBeInTheDocument();
   });
 
-  it.each(['touch', 'mouse'])('still opens the menu for an ordinary %s hold', (kind) => {
+  // The owner, 2026-11-06: «долгий тап на стихе начинает выбирать» — a hold chooses the verse and brings the bar. How to
+  // add more is said in the bar, in the words of the hand that held (visual pass, 2026-11-07): no toast over the text.
+  it.each([['touch', 'bible.copy.severalHint'], ['mouse', 'bible.copy.severalHintMouse']])('starts the choice of verses on an ordinary %s hold: the bar with its hint, no menu', (kind, hint) => {
     render(<Reader />);
     const words = verse();
     pointer(words, 'pointerdown', kind);
     advance(LONG_PRESS_MS + 30);
     pointer(words, 'pointerup', kind);
-    expect(screen.getByRole('menu')).toBeInTheDocument();
-    expect(screen.getByRole('menuitem', { name: 'bible.copy.copy' })).toBeInTheDocument();
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+    const bar = screen.getByRole('region');
+    expect(bar.querySelector('[data-copy-hint]')).toHaveTextContent(new RegExp(`^${hint}$`));
+    expect(toast).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'bible.copy.copy' })).toBeInTheDocument();
   });
 
   it.each(['touch', 'mouse'])('takes no %s hold that starts with a tool already in hand', (kind) => {
@@ -114,6 +121,6 @@ describe('the current owner of a held verse', () => {
     pointer(words, 'pointerdown');
     advance(LONG_PRESS_MS + 30);
     pointer(words, 'pointerup');
-    expect(screen.getByRole('menu')).toBeInTheDocument();
+    expect(screen.getByRole('region')).toBeInTheDocument();
   });
 });

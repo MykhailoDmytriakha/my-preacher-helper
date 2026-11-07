@@ -309,6 +309,21 @@ describe('study notes on the engine', () => {
     expect(store.get('n1')).not.toHaveProperty('materialIds');
   });
 
+  // The reader's window switches a written comment between a comment and a paragraph (case 2026-11-06-comment-paragraph); the
+  // switch is the whole save — the words are untouched — so a dropped field writes nothing and the comment stays as it was.
+  it.each([
+    ['a comment made a paragraph', { paragraph: false }, true],
+    ['a never-chosen one on a run made a comment', {}, false],
+  ])('writes the kind the window chose: %s', async (_, stored, chosen) => {
+    store.set('n1', note({ type: 'comment', title: '', content: 'Наставления дому', ...stored }));
+    const { result } = render();
+    await act(async () => {
+      await awaitAcceptance(result.current.updateNote({ id: 'n1', updates: { paragraph: chosen }, expectedRevision: 4,
+        expectedBaseline: { paragraph: (stored as { paragraph?: boolean }).paragraph } }), () => undefined);
+    });
+    expect(store.get('n1')).toEqual(expect.objectContaining({ paragraph: chosen, content: 'Наставления дому', type: 'comment' }));
+  });
+
   it('reports a save made while there is no connection as queued, never as saved', async () => {
     // The engine holds delivery while the last request did not reach the server, so the label follows
     // that same answer — a phone flag saying "online" over café Wi-Fi must not make it "saved".

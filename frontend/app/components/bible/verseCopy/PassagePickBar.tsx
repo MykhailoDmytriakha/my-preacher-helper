@@ -44,7 +44,7 @@ export function PassagePickBar({ copy, wide, onOpen, action, icon, cancelLabel, 
   );
   const shell = 'fixed z-[110] rounded-2xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900';
   return wide ? (
-    <div role="region" aria-label={place} className={`${shell} bottom-6 left-1/2 flex w-[min(44rem,calc(100vw-2rem))] -translate-x-1/2 items-center gap-3 py-2.5 pl-2.5 pr-2.5`}>
+    <div role="region" aria-label={place} data-verse-bar="" className={`${shell} bottom-6 left-1/2 flex w-[min(44rem,calc(100vw-2rem))] -translate-x-1/2 items-center gap-3 py-2.5 pl-2.5 pr-2.5`}>
       {clear}
       <div className="min-w-[7.5rem] flex-1">
         <div className="truncate font-bold text-gray-900 dark:text-white">{place}</div>
@@ -53,7 +53,7 @@ export function PassagePickBar({ copy, wide, onOpen, action, icon, cancelLabel, 
       {openButton}
     </div>
   ) : (
-    <div role="region" aria-label={place} className={`${shell} inset-x-2 bottom-[calc(0.75rem+env(safe-area-inset-bottom))] p-3`}>
+    <div role="region" aria-label={place} data-verse-bar="" className={`${shell} inset-x-2 bottom-[calc(0.75rem+env(safe-area-inset-bottom))] p-3`}>
       <div className="mb-2.5 flex items-center gap-2">
         <span className="min-w-0 flex-1 truncate font-bold text-gray-900 dark:text-white">{place}</span>
         <span className="shrink-0 text-sm text-gray-500 dark:text-gray-400">{count}</span>
