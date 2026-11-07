@@ -472,6 +472,39 @@ describe('paragraphs of comments (case 2026-10-12-block-diagram, phase 9)', () =
     }));
   });
 
+  // BUG-20261107-jump-hides-paragraph-heading, measured on the stand: a jump put the verse on the reading line and the headings
+  // of the paragraphs it starts above it, under the header (a phone) or the reader's panel (an iPad). The jump lands at the
+  // topmost heading; the place read is the verse; a verse inside a paragraph is jumped to itself.
+  it.each([
+    [16, 'outer'],
+    [17, null],
+  ] as const)('a jump to 1:%s lands at the heading of the paragraphs it starts, and keeps the verse as the place', async (verse, heading) => {
+    mockRows = { studyNotes: [
+      comment('outer', 'Руфь остаётся с Ноеминью', { chapter: 1, fromVerse: 16, toVerse: 22 }),
+      comment('inner', 'Обещание Руфи', { chapter: 1, fromVerse: 16, toVerse: 18 }),
+    ] };
+    // The headings come with the person's list, after the text: the text grows, and the reader's watch over it jumps again.
+    const grown: Array<() => void> = [];
+    const RealObserver = globalThis.ResizeObserver;
+    globalThis.ResizeObserver = class {
+      constructor(callback: ResizeObserverCallback) { grown.push(() => callback([], this as unknown as ResizeObserver)); }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver;
+    try {
+      render(<BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={{ chapter: 1, verse }} onOpenBook={jest.fn()} />);
+      await screen.findByText('Руфь остаётся с Ноеминью');
+      act(() => grown.forEach((grow) => grow()));
+      const landed = (Element.prototype.scrollIntoView as jest.Mock).mock.contexts;
+      const target = heading ? document.querySelector(`[data-paragraph-head][data-comment="${heading}"]`) : rowOf(`1:${verse}`);
+      await waitFor(() => expect(landed.at(-1)).toBe(target));
+      await waitFor(() => expect(JSON.parse(window.localStorage.getItem('bible:last-place') ?? 'null')).toEqual(expect.objectContaining({ chapter: 1, verse })));
+    } finally {
+      globalThis.ResizeObserver = RealObserver;
+    }
+  });
+
   // The owner, 2026-11-06: «и абзац для одного стиха, и комментарий для одного стиха… комментарий и для нескольких стихов».
   it('draws a paragraph on one verse as a heading, and a comment on a run of verses under its last verse with its place', async () => {
     mockRows = { studyNotes: [

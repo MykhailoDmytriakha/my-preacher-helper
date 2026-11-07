@@ -1,6 +1,6 @@
 import { act, renderHook } from '@testing-library/react';
 
-import { sightShift, touchedVerse, useChosenVerseInSight } from '@/components/bible/readerSight';
+import { arrivalTarget, sightShift, touchedVerse, useChosenVerseInSight } from '@/components/bible/readerSight';
 
 // Visual pass 2026-11-07, live on a 390 px phone: a verse held at 694–788 px went under the bar of the verses chosen (its top
 // at 652 px), and a paragraph written on the verse at the top got its heading under the header.
@@ -92,5 +92,48 @@ describe('the verse just chosen, kept above the bar', () => {
     expect(scrollTo).not.toHaveBeenCalled();
     act(() => { jest.advanceTimersByTime(30); });
     expect(scrollTo).toHaveBeenCalledWith(1000 + (788 - 652 + 12));
+  });
+});
+
+// BUG-20261107-jump-hides-paragraph-heading, measured on the stand (Col 3:18 starts two paragraphs): a jump put the verse on the
+// reading line and its headings above it — at 10 and 44 px under a header ending at 57 px on a phone.
+describe('where a jump to a verse lands', () => {
+  const at = (element: HTMLElement, top: number) => {
+    element.getBoundingClientRect = () => ({ top, bottom: top + 30, left: 0, right: 0, width: 0, height: 30, x: 0, y: top, toJSON: () => ({}) });
+    return element;
+  };
+  const verseRow = (key: string, top: number) => {
+    const row = at(document.createElement('div'), top);
+    row.dataset.verse = key;
+    return row;
+  };
+  const heading = (top: number) => {
+    const head = at(document.createElement('div'), top);
+    head.setAttribute('data-paragraph-head', `head-${top}`);
+    return head;
+  };
+  const page = (...elements: HTMLElement[]) => {
+    document.body.replaceChildren(...elements);
+    return elements;
+  };
+
+  it('is the verse itself when no paragraph starts at it', () => {
+    const [, row] = page(verseRow('3:17', 100), verseRow('3:18', 200));
+    expect(arrivalTarget(row, 700)).toBe(row);
+  });
+
+  it('is the topmost heading of the paragraphs the verse starts', () => {
+    const [, outer, , row] = page(verseRow('3:17', 60), heading(130), heading(164), verseRow('3:18', 200));
+    expect(arrivalTarget(row, 700)).toBe(outer);
+  });
+
+  it('is not a heading of the verse before', () => {
+    const [, , row] = page(heading(60), verseRow('3:17', 100), verseRow('3:18', 200));
+    expect(arrivalTarget(row, 700)).toBe(row);
+  });
+
+  it('is the verse when its headings would push it past the upper half of the room', () => {
+    const [, row] = page(heading(-200), verseRow('3:18', 200));
+    expect(arrivalTarget(row, 700)).toBe(row);
   });
 });

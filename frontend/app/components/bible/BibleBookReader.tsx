@@ -41,7 +41,7 @@ import { PhoneReaderTools } from './PhoneReaderTools';
 import { useReaderTrail, type TrailBack } from './PlaceTrail';
 import { arriveOnTrail, changeTranslationOnTrail, leaveOnTrail, openedForTranslation, ownTrailPlace, stepOnTrail } from './placeTrailStore';
 import { ReaderCommentDialog, useCommentDoors, useCommentHoldsReader, useCommentLimit, useReaderCommenting, useWriteOnVerses } from './ReaderCommentDialog';
-import { useChosenVerseInSight, useRevealWritten } from './readerSight';
+import { arrivalTarget, useChosenVerseInSight, useRevealWritten } from './readerSight';
 import { readingSurface } from './readingSurface';
 import { openedAlone } from './search/foundInBible';
 import { useFoundInReader } from './search/useFoundInReader';
@@ -519,7 +519,8 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, dec
   }, []);
 
   // A chapter opens at its heading, so "Chapter 12" shows above its first verse; any other verse
-  // at the verse itself. A verse the chapter does not have opens the chapter.
+  // at the verse itself, or at the headings of the paragraphs it starts (`arrivalTarget`). A verse the
+  // chapter does not have opens the chapter.
   // The verse jumped to is the place until the page moves from where the jump left it: a verse near
   // the end of a book cannot reach the top, and the verse that does is not where the person is.
   // A chapter of a big book not drawn yet is drawn first; `then` runs once the jump is made.
@@ -531,11 +532,12 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, dec
     showChapter({ chapter }, () => {
       const root = textRef.current;
       const row = verse > 1 ? root?.querySelector<HTMLElement>(`[data-verse="${chapter}:${verse}"]`) : null;
-      const target = row ?? root?.querySelector<HTMLElement>(`[data-chapter="${chapter}"]`);
+      const surface = surfaceRef.current;
+      // A verse that starts paragraphs is come to at their headings, the verse under them (`arrivalTarget`).
+      const target = row ? arrivalTarget(row, surface.height() - readingInsetRef.current) : root?.querySelector<HTMLElement>(`[data-chapter="${chapter}"]`);
       if (!target) return;
       // The room first: without it a verse near the end of the book cannot come to the top.
       fitRoom();
-      const surface = surfaceRef.current;
       const was = surface.top();
       const place = { chapter, verse: row ? verse : 1 };
       const movedPinnedPage = surfaceRef.current.target === window
