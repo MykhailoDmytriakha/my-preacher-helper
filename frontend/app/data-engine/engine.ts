@@ -4,6 +4,7 @@ import { analysisCreationScope } from './analysisCreation';
 import { ANALYSIS_CREATION_TRANSFER_PREFIX, analysisCreationReview, captureAnalysisCreation } from './analysisCreationCapture';
 import { captureAnalysisReshape, type StudyAnalysisWrite } from './analysisReshape';
 import { ANALYSIS_RESHAPE_FIELDS, sameAnalysisFrame } from './analysisReshapeFields';
+import { closedCopySettlement } from './checkpointStorage.client';
 import { collectionDocumentViews } from './collectionView';
 import { CommitQueue, type CommitRequest, type CommitStore } from './commits';
 import { EditorController, InactiveEditorError, type CheckpointRecoveryStore, type CheckpointStore, type EditorRecord, type EditorState, type RecoveryCheckpoint } from './controller';
@@ -206,6 +207,7 @@ export class DataEngine {
   private readonly stopCommits: () => void;
   private commitRecords = new Map<string, CommitRequest>();
   private localRefresh: { generation: number; requested: boolean; operation: Promise<void> } | null = null;
+  private settling: { owner: string; generation: number; operation: Promise<void> } | null = null;
   private manualForms = new Map<string, ManualFormEntry>();
   private membershipForms = new Map<string, MembershipScope>();
   private membershipOpenings = new Map<string, Promise<MembershipScope>>();
@@ -1227,6 +1229,37 @@ export class DataEngine {
     }
   }
 
+  /**
+   * An editor closed while its Save was on the way leaves its copy behind, and nothing settles that copy when the answer
+   * arrives: it keeps its answered rows forever, and every later storage pass reads all of them in full — on a device with
+   * a long history the engine's store stopped answering for minutes (BUG-20261107-engine-state-held-by-old-local-backlog).
+   * Once no tab holds the editor, finish what it would have done on those answers while open — the same reconciliation,
+   * written by the rule `closedCopySettlement` names. A copy open in some tab — its editor, or a recovery taking it over —
+   * or of unknown presence stays. Runs beside delivery and again at the end of the pass; a failure is said and never
+   * stops the person's own work.
+   */
+  private settleClosedEditors(owner: string, generation: number): Promise<void> {
+    if (this.settling?.owner === owner && this.settling.generation === generation) return this.settling.operation;
+    const store = this.options.checkpoints as Partial<CheckpointRecoveryStore>;
+    if (typeof store.settleClosed !== 'function' || typeof store.listRecoverable !== 'function') return Promise.resolve();
+    const operation: Promise<void> = (async () => {
+      const stored = (await store.listRecoverable!(owner)).filter(({ record }) => !this.editors.has(record.editorId));
+      this.assertCurrent(owner, generation);
+      if (!stored.length) return;
+      const requests = await this.commits.list(); this.assertCurrent(owner, generation);
+      const answered = stored.map(({ id, record }) => ({ id, stored: record, settled: reconcileRecoveryRecord(record, requests) }))
+        .filter(entry => closedCopySettlement(entry.stored, entry.settled) !== null);
+      if (!answered.length) return;
+      const held = await Promise.all(answered.map(entry => this.recoveryPresence.held(owner, 'checkpoint', entry.id)));
+      this.assertCurrent(owner, generation);
+      const closed = answered.filter((_entry, index) => held[index] === false);
+      if (closed.length) await store.settleClosed!(owner, closed.map(({ stored: record, settled }) => ({ stored: record, settled })));
+    })().catch(error => { if (this.current(owner, generation)) this.reportFailure(error); })
+      .finally(() => { if (this.settling?.operation === operation) this.settling = null; });
+    this.settling = { owner, generation, operation };
+    return operation;
+  }
+
   private recoveryStore(): CheckpointRecoveryStore {
     const store = this.options.checkpoints as Partial<CheckpointRecoveryStore>;
     if (typeof store.listRecoverable !== 'function' || typeof store.create !== 'function') throw new Error('Checkpoint recovery is not supported by this store');
@@ -1248,19 +1281,26 @@ export class DataEngine {
       return controller?.needsPersistenceRetry() ? aboutEditor(controller, controller.retryPersistence()) : undefined;
     }));
     this.assertCurrent(owner, generation);
-    await this.commits.drain(this.canSend());
-    this.assertCurrent(owner, generation);
-    // Only an explicit document retry requests a fresh read; the background
-    // delivery timer must not turn into an extra polling loop for every editor.
-    if (resource) await about(resource, this.options.observer.refresh(resource));
-    this.assertCurrent(owner, generation);
-    await Promise.all([...this.editors.values()].map(entry => entry.controller && aboutEditor(entry.controller, entry.controller.settled())));
-    this.assertCurrent(owner, generation);
-    await Promise.all([...this.cacheWrites.values()]
-      .filter(write => write.owner === owner && write.generation === generation)
-      .map(write => about(write.resource, write.operation)));
-    await this.completeAcceptedProjections(owner, generation);
-    await this.completeCapabilityProjections(owner, generation);
+    // Started beside delivery, never ahead of it; what the pass releases is settled again at its end, also on failure.
+    const settling = this.settleClosedEditors(owner, generation);
+    try {
+      await this.commits.drain(this.canSend());
+      this.assertCurrent(owner, generation);
+      // Only an explicit document retry requests a fresh read; the background
+      // delivery timer must not turn into an extra polling loop for every editor.
+      if (resource) await about(resource, this.options.observer.refresh(resource));
+      this.assertCurrent(owner, generation);
+      await Promise.all([...this.editors.values()].map(entry => entry.controller && aboutEditor(entry.controller, entry.controller.settled())));
+      this.assertCurrent(owner, generation);
+      await Promise.all([...this.cacheWrites.values()]
+        .filter(write => write.owner === owner && write.generation === generation)
+        .map(write => about(write.resource, write.operation)));
+      await this.completeAcceptedProjections(owner, generation);
+      await this.completeCapabilityProjections(owner, generation);
+    } finally {
+      await settling;
+      await this.settleClosedEditors(owner, generation);
+    }
   }
 
   private async completeAcceptedProjections(owner: string, generation: number): Promise<void> {

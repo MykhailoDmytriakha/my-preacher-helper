@@ -295,6 +295,19 @@ action slot and field selection; sharing fields does not make opposite actions i
 with unique slots (see `EngineThoughtModal`). Do not use it for opposite actions. An acknowledged or explicitly cancelled Save is
 terminal: reopening starts from the current document, and clean inactive manual
 records can be compacted. Later unsaved typing must still survive.
+An editor closed while its Save was on the way cannot settle its own checkpoint when
+the answer arrives. Each delivery pass does it for it, beside delivery and again at its
+end (`settleClosedEditors`, rule `closedCopySettlement`): the same `reconcileRecoveryRecord`; a copy that keeps
+nothing of the person's is removed; a copy whose Saves were all answered but which
+still holds words drops the answered Saves and keeps its words and its recovery
+version (a recovered target names that version to retire it). Only when no tab holds
+the editor (`held === false`; unknown keeps it), the stored copy is unchanged since it
+was read, and every answered row that carries an accepted copy, a transfer or a whole
+action has released its projection and accepted-cache holds — an older row without the
+accepted-cache hold may be the device's only accepted copy. A plain cancelled Save
+carries nothing to cache; its lingering hold is the editor's to drop.
+Without this, such copies and their answered rows stayed forever and every later
+storage pass read them all (BUG-20261107-engine-state-held-by-old-local-backlog).
 Cancellation persists both its terminal state and journal-cleanup ownership before
 removing a receipt. The deciding editor/action persists the chosen projection before
 targeted cleanup runs; retry/restart may finish cleanup without replaying decided work.

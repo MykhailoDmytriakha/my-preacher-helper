@@ -70,6 +70,14 @@ export interface CheckpointRecoveryStore extends CheckpointStore {
   discardRecovery?(record: EditorRecord, isCurrent: () => boolean): Promise<void>;
   /** Exact optional native source pin; unsupported stores retain original copies. */
   pinRecovery?(record: EditorRecord): Promise<string | null>;
+  /** Closed editors' copies whose Saves were all answered; unsupported stores keep them. */
+  settleClosed?(owner: string, entries: readonly SettledCheckpoint[]): Promise<void>;
+}
+
+/** A stored copy as it was read, and the same copy with its answered Saves applied. */
+export interface SettledCheckpoint {
+  stored: EditorRecord;
+  settled: EditorRecord;
 }
 
 interface ControllerOptions {
