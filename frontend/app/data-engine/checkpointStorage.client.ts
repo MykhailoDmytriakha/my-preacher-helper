@@ -14,8 +14,8 @@ export const checkpointKey = (owner: string, editorId: string): IDBValidKey => [
 
 /** Reuse the same validation and retention rules inside an existing native transaction. */
 export function writeCheckpointRecord(store: IDBObjectStore, read: StorageRead, record: EditorRecord,
-  creating: boolean, done: () => void): void {
-  placeCheckpointRecord(store, read, record, creating, versionRecoveryRecord, () => collectCommitRows(store, read, record.owner, done));
+  creating: boolean, done: () => void, collect = collectCommitRows): void {
+  placeCheckpointRecord(store, read, record, creating, versionRecoveryRecord, () => collect(store, read, record.owner, done));
 }
 
 /**
@@ -38,9 +38,9 @@ export function closedCopySettlement(stored: EditorRecord, settled: EditorRecord
  * row has no separate cache hold of its own.
  */
 export function settleCheckpointRecords(store: IDBObjectStore, read: StorageRead, owner: string,
-  entries: readonly SettledCheckpoint[], done: () => void): void {
+  entries: readonly SettledCheckpoint[], done: () => void, collect = collectCommitRows): void {
   const next = (index: number): void => {
-    if (index === entries.length) { collectCommitRows(store, read, owner, done); return; }
+    if (index === entries.length) { collect(store, read, owner, done); return; }
     const skip = () => next(index + 1);
     let expected: EditorRecord, frozen: EditorRecord;
     try {

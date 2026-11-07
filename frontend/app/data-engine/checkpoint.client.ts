@@ -4,7 +4,7 @@ import { settleCheckpointRecords, writeCheckpointRecord, checkpointKey } from '.
 import { recoveryCheckpointId, selectRecoverableCheckpoints, validateRecoveryRecord } from './recovery.client';
 import { discardRecoveryRecord } from './recoveryDiscard.client';
 import { pinRecoveryVersion } from './recoverySource.client';
-import { checkpointCommitReferences, commitProjectionKey } from './retention.client';
+import { checkpointCommitReferences, collectCommitRows, commitProjectionKey } from './retention.client';
 import { createEngineStorageTransaction, engineOwnerRange } from './storage.client';
 
 import type { CheckpointRecoveryStore, EditorRecord } from './controller';
@@ -12,12 +12,12 @@ import type { CheckpointRecoveryStore, EditorRecord } from './controller';
 const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
 /** Checkpoint projection and request reference release are one durable transaction. */
-export function createIndexedDbCheckpoints(): CheckpointRecoveryStore {
+export function createIndexedDbCheckpoints(collect = collectCommitRows): CheckpointRecoveryStore {
   const transaction = createEngineStorageTransaction();
   const write = (record: EditorRecord, creating: boolean) => {
     const frozen = validateRecoveryRecord(record, record.owner, record.editorId);
     return transaction<void>('readwrite', (store, read, done) => {
-      writeCheckpointRecord(store, read, frozen, creating, () => done(undefined));
+      writeCheckpointRecord(store, read, frozen, creating, () => done(undefined), collect);
     });
   };
   return {
@@ -47,7 +47,7 @@ export function createIndexedDbCheckpoints(): CheckpointRecoveryStore {
     settleClosed: (owner, entries) => {
       const frozen = clone(entries);
       return transaction<void>('readwrite', (store, read, done) => {
-        settleCheckpointRecords(store, read, owner, frozen, () => done(undefined));
+        settleCheckpointRecords(store, read, owner, frozen, () => done(undefined), collect);
       });
     },
   };

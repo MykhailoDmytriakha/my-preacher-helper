@@ -5,7 +5,7 @@ import { checkpointKey, writeCheckpointRecord } from './checkpointStorage.client
 import { assertCommitBatch, assertCommitCapture, assertCommitIdentities, orderCommitRequests, type CommitRequest, type CommitStore } from './commits';
 import { captureDeleteOrder, replayDeleteOrder } from './deletionOrdering';
 import { reconcileRecoveryRecord, validateRecoveryRecord } from './recovery.client';
-import { COMMIT_ROW_KINDS, collectCommitRows, commitCaptureKey, commitDependencyKey, commitGenerationKey, commitProjectionKey, commitRowKey, commitSnapshotKey, readCommitRows } from './retention.client';
+import { COMMIT_ROW_KINDS, collectCommitRows, commitCaptureKey, commitDependencyKey, commitGenerationKey, commitProjectionKey, commitRowKey, commitSnapshotKey, readCommitIdentities, readCommitRows } from './retention.client';
 import { createEngineStorageTransaction, validateCommitReferences, type StorageRead } from './storage.client';
 
 import type { EditorRecord } from './controller';
@@ -70,7 +70,7 @@ function createRecord(store: IDBObjectStore, read: StorageRead, frozen: CommitRe
 }
 
 /** Each request has its own row; a participant batch shares one IndexedDB transaction. */
-export function createIndexedDbCommitStore(): CommitStore {
+export function createIndexedDbCommitStore(collect = collectCommitRows): CommitStore {
   const transaction = createEngineStorageTransaction();
   const createBatch = async (requests: readonly CommitRequest[]): Promise<CommitRequest[]> => {
     const frozen = clone(requests); assertCommitBatch(frozen);
@@ -108,8 +108,8 @@ export function createIndexedDbCommitStore(): CommitStore {
             if (project) {
               const record = project(clone(result));
               if (record.owner !== previous.owner) throw new Error('Checkpoint projection owner differs from changed commits');
-              writeCheckpointRecord(store, read, record, false, () => done(result));
-            } else collectCommitRows(store, read, saved.owner, () => done(result));
+              writeCheckpointRecord(store, read, record, false, () => done(result), collect);
+            } else collect(store, read, saved.owner, () => done(result));
           }
         });
       });
@@ -123,12 +123,15 @@ export function createIndexedDbCommitStore(): CommitStore {
     list: owner => transaction('readonly', (store, read, done) => {
       readCommitRows(store, read, owner, done);
     }),
+    readByIds: (owner, ids) => transaction('readonly', (store, read, done) => {
+      readCommitIdentities(store, read, owner, ids, requests => done([...requests.values()]));
+    }),
     create: request => createBatch([request]).then(records => records[0]),
     createWithCheckpoint: (request, project) => {
       const frozen = clone(request);
       return transaction('readwrite', (store, read, done) => {
         createRecord(store, read, frozen, saved => {
-          writeCheckpointRecord(store, read, project(clone(saved)), false, () => done(saved));
+          writeCheckpointRecord(store, read, project(clone(saved)), false, () => done(saved), collect);
         });
       });
     },
@@ -148,7 +151,7 @@ export function createIndexedDbCommitStore(): CommitStore {
           createRecord(store, read, frozen, saved => {
             const retired = planCaptureTransfer(saved, expected, records);
             for (const source of retired) { store.put(source, commitRowKey(source)); retainPredecessor(store, source); }
-            writeCheckpointRecord(store, read, project(clone(saved)), false, () => done({ request: saved, retired }));
+            writeCheckpointRecord(store, read, project(clone(saved)), false, () => done({ request: saved, retired }), collect);
           }, true);
         });
       });
@@ -174,35 +177,46 @@ export function createIndexedDbCommitStore(): CommitStore {
         const key = commitCaptureKey(owner, scope, id);
         read(store.get(key), reference => {
           if (reference?.commitReferences?.length === 1 && reference.commitReferences[0] === id) store.delete(key);
-          collectCommitRows(store, read, owner, () => done(undefined));
+          collect(store, read, owner, () => done(undefined));
         });
       });
     }),
     releaseProjection: (owner, ids) => transaction('readwrite', (store, read, done) => {
-      readCommitRows(store, read, owner, requests => {
-        const projections: CommitRequest[] = [];
-        for (const id of ids) {
-          const request = requests.find(candidate => candidate.id === id);
-          if (!request) continue;
-          const participants = request.atomic ? request.atomic.participants.map(participant => requests.find(candidate => candidate.id === participant)) : [request];
-          if (participants.some(participant => !participant || !['acknowledged', 'cancelled'].includes(participant.state) || participant.unfinalized.length)) continue;
-          store.delete(commitProjectionKey(owner, id));
-          store.delete(commitSnapshotKey(owner, id));
-          projections.push(request);
-        }
-        const ordered = orderCommitRequests(requests);
-        const projectNext = (index: number): void => {
-          const request = projections[index];
-          if (!request) { collectCommitRows(store, read, owner, () => done(undefined)); return; }
-          // Recovery and transfer targets can close before their terminal result arrives.
-          // Reconcile the current checkpoint through its existing whole-record settlement;
-          // later private words and exact source versions keep their ordinary protection.
-          read(store.get(checkpointKey(owner, request.editorId)), record => {
-            if (!record || (!request.transferredFrom && !request.transferredTo && !record.recoveryOrigins?.length)) { projectNext(index + 1); return; }
-            writeCheckpointRecord(store, read, reconcileRecoveryRecord(validateRecoveryRecord(record, owner, request.editorId, request.baseline.resource), ordered), false, () => projectNext(index + 1));
-          });
-        };
-        projectNext(0);
+      readCommitIdentities(store, read, owner, ids, requested => {
+        const missing = [...requested.values()].flatMap(request =>
+          request.atomic?.participants.filter(id => !requested.has(id)) ?? []);
+        readCommitIdentities(store, read, owner, missing, participants => {
+          const ready = [...requested.values()].filter(request =>
+            (request.atomic?.participants ?? [request.id]).every(id => {
+              const item = requested.get(id) ?? participants.get(id);
+              return item && ['acknowledged', 'cancelled'].includes(item.state) && !item.unfinalized.length;
+            }));
+          let ordered: CommitRequest[] | undefined;
+          const projectNext = (index: number): void => {
+            const request = ready[index];
+            if (!request) {
+              if (ready.length) collect(store, read, owner, () => done(undefined));
+              else done(undefined);
+              return;
+            }
+            store.delete(commitProjectionKey(owner, request.id));
+            store.delete(commitSnapshotKey(owner, request.id));
+            read(store.get(checkpointKey(owner, request.editorId)), record => {
+              if (!record || (!request.transferredFrom && !request.transferredTo && !record.recoveryOrigins?.length)) {
+                projectNext(index + 1); return;
+              }
+              // Transferred and recovered targets still reconcile through the complete dependency order.
+              const project = (requests: CommitRequest[]) => {
+                const frozen = validateRecoveryRecord(record, owner, request.editorId, request.baseline.resource);
+                writeCheckpointRecord(store, read, reconcileRecoveryRecord(frozen, requests), false,
+                  () => projectNext(index + 1), (_store, _read, _owner, finish) => finish());
+              };
+              if (ordered) project(ordered);
+              else readCommitRows(store, read, owner, requests => { ordered = orderCommitRequests(requests); project(ordered); });
+            });
+          };
+          projectNext(0);
+        });
       });
     }),
   };

@@ -71,6 +71,27 @@ describe('Durable commit requests', () => {
   beforeEach(() => jest.useFakeTimers());
   afterEach(() => { jest.clearAllTimers(); jest.useRealTimers(); });
 
+  it('publishes an unchanged answer again only when explicitly refreshing device copies', async () => {
+    const { queue } = setup().makeQueue();
+    const editor = new DataSession(initial());
+    editor.edit({ ...initial().value, title: 'Saved words' });
+    await queue.save('editor', editor.checkpoint());
+    const accepted = jest.fn();
+    queue.subscribe(({ request }) => {
+      if (request.state === 'acknowledged' && !request.unfinalized.length) accepted(request.result);
+    });
+    await queue.drain(true);
+    expect(accepted).toHaveBeenCalled();
+    accepted.mockClear();
+
+    await queue.drain(true);
+    await queue.drain(true);
+    expect(accepted).not.toHaveBeenCalled();
+
+    await queue.refreshStored();
+    expect(accepted).toHaveBeenCalledTimes(1);
+  });
+
   it('does not confirm an unchanged copy while another editor has pending work for that resource', async () => {
     const s = setup(); const { queue } = s.makeQueue();
     const other = new DataSession(initial()); other.edit({ ...initial().value, title: 'Other pending words' });

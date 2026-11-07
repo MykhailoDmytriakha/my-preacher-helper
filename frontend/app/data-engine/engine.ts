@@ -61,6 +61,8 @@ export interface DataEngineOptions {
   operationId: () => string;
   commits: CommitStore;
   manualScopes?: ManualScopeStore;
+  /** Keep native cleanup out of the per-response path until this delivery pass has finished. */
+  deferCommitCollection?: (owner: string) => () => Promise<void>;
   membershipScopes?: MembershipScopeStore;
   /** Retired device writes survive replacement of the browser provider. */
   localWriteback?: LocalWriteback;
@@ -206,6 +208,7 @@ export class DataEngine {
   private readonly commits: CommitQueue;
   private readonly stopCommits: () => void;
   private commitRecords = new Map<string, CommitRequest>();
+  private readonly projectedCommitEvents = new Map<string, number>();
   private localRefresh: { generation: number; requested: boolean; operation: Promise<void> } | null = null;
   private settling: { owner: string; generation: number; operation: Promise<void> } | null = null;
   private manualForms = new Map<string, ManualFormEntry>();
@@ -237,7 +240,17 @@ export class DataEngine {
       if (['acknowledged', 'cancelled'].includes(request.state) && this.options.manualScopes) {
         this.background(this.options.manualScopes.compact(request.owner, request.editorId), request.owner, this.generation, request.baseline.resource);
       }
-      if (request.result?.kind === 'acknowledged') this.background(this.completeAcceptedProjection(request.owner, this.generation, request), request.owner, this.generation, request.result.snapshot.resource);
+      if (request.result?.kind === 'acknowledged' && (this.projectedCommitEvents.get(request.id) ?? -1) < request.revision) {
+        this.projectedCommitEvents.set(request.id, request.revision);
+        const generation = this.generation;
+        const projection = this.completeAcceptedProjection(request.owner, generation, request).catch(error => {
+          if (this.current(request.owner, generation) && this.projectedCommitEvents.get(request.id) === request.revision) {
+            this.projectedCommitEvents.delete(request.id);
+          }
+          throw error;
+        });
+        this.background(projection, request.owner, generation, request.result.snapshot.resource);
+      }
       for (const [editorId, entry] of this.editors) if (!entry.closed && (editorId === request.editorId || (request.atomic?.kind === COUNCIL_CARRY && entry.controller
         && sameResource(entry.controller.getState().checkpoint.confirmed.resource, request.baseline.resource)))) this.emit(entry);
     });
@@ -277,6 +290,7 @@ export class DataEngine {
     this.options.runtime.setOwner(owner);
     this.commits.setOwner(owner);
     this.commitRecords.clear();
+    this.projectedCommitEvents.clear();
     this.options.collections?.setOwner(owner);
     this.options.observer.setOwner(owner);
     this.refreshedOperations.clear();
@@ -327,7 +341,10 @@ export class DataEngine {
     const present = new Set(requests.map(request => request.id));
     // A complete read may retire an old projection, never a newer event or a held delivery.
     for (const [id, request] of before) {
-      if (!present.has(id) && this.commitRecords.get(id) === request) this.commitRecords.delete(id);
+      if (!present.has(id) && this.commitRecords.get(id) === request) {
+        this.commitRecords.delete(id);
+        this.projectedCommitEvents.delete(id);
+      }
     }
     const editors = [...this.editors.values()].filter(entry => !entry.closed && entry.controller);
     await Promise.all(editors.map(entry => entry.controller!.settled())); this.assertCurrent(owner, generation);
@@ -1282,6 +1299,7 @@ export class DataEngine {
     }));
     this.assertCurrent(owner, generation);
     // Started beside delivery, never ahead of it; what the pass releases is settled again at its end, also on failure.
+    const finishCollection = this.options.deferCommitCollection?.(owner);
     const settling = this.settleClosedEditors(owner, generation);
     try {
       await this.commits.drain(this.canSend());
@@ -1298,8 +1316,12 @@ export class DataEngine {
       await this.completeAcceptedProjections(owner, generation);
       await this.completeCapabilityProjections(owner, generation);
     } finally {
-      await settling;
-      await this.settleClosedEditors(owner, generation);
+      try {
+        await settling;
+        await this.settleClosedEditors(owner, generation);
+      } finally {
+        await finishCollection?.().catch(error => { if (this.current(owner, generation)) this.reportFailure(error); });
+      }
     }
   }
 
@@ -1325,8 +1347,9 @@ export class DataEngine {
     }
     this.assertCurrent(owner, generation);
     if (!this.options.commits.releaseProjection) return;
-    const requests = loaded ?? await this.commits.list(); this.assertCurrent(owner, generation);
     const ids = request.atomic?.participants ?? [request.id];
+    const requests = request.atomic ? loaded ?? await (this.options.commits.readByIds?.(owner, ids) ?? this.commits.list()) : [request];
+    this.assertCurrent(owner, generation);
     const participants = ids.map(id => requests.find(candidate => candidate.id === id));
     if (participants.some(participant => !participant || !['acknowledged', 'cancelled'].includes(participant.state) || participant.unfinalized.length)) return;
     for (const participant of participants) if (participant!.id !== request.id && participant!.result?.kind === 'acknowledged') {
@@ -2280,7 +2303,8 @@ export class DataEngine {
     // Capture is already durable. The shared runner may join or be upgraded to
     // delivery, so completion here must never wait for its network acknowledgement.
     // Preparation failures stay visible and retryable through the existing owner scope.
-    this.background(this.commits.drain(false), this.owner, this.generation);
+    const finishCollection = this.options.deferCommitCollection?.(this.owner);
+    this.background(this.commits.drain(false).finally(() => finishCollection?.()), this.owner, this.generation);
   }
 
   /**

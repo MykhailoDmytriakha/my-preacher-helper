@@ -8,6 +8,7 @@ export function installStorageHarness() {
   const harness = { rows: new Map<string, unknown>(), holdCommit: false, finishCommit: undefined as (() => void) | undefined,
     readFailure: false, writeFailure: false,
     writeFailureFor: undefined as ((key: unknown, value: unknown) => boolean) | undefined,
+    onFullRead: undefined as ((kind: unknown, mode: IDBTransactionMode, count: number) => void) | undefined,
     holdCompletionAfterCommit: undefined as ((rows: ReadonlyMap<string, unknown>, mode: IDBTransactionMode) => boolean) | undefined,
     finishCompletion: () => { completionCallbacks.shift()?.(); } };
   Object.defineProperty(globalThis, 'IDBKeyRange', { configurable: true, value: { bound: (lower: unknown, upper: unknown) => ({ lower, upper }) } });
@@ -49,9 +50,13 @@ export function installStorageHarness() {
           if (harness.writeFailureFor?.(key, undefined)) throw new Error('disk full');
           draft.delete(JSON.stringify(key));
         },
-        getAll: (range: { lower: unknown[] }) => read([...draft].filter(([key]) => {
-          const parsed = JSON.parse(key); return parsed[0] === range.lower[0] && parsed[1] === range.lower[1];
-        }).map(([, value]) => value)),
+        getAll: (range: { lower: unknown[] }) => {
+          const rows = [...draft].filter(([key]) => {
+            const parsed = JSON.parse(key); return parsed[0] === range.lower[0] && parsed[1] === range.lower[1];
+          }).map(([, value]) => value);
+          harness.onFullRead?.(range.lower[0], mode, rows.length);
+          return read(rows);
+        },
       } as unknown as IDBObjectStore;
       const result = action(store);
       void Promise.resolve().then(() => { if (harness.holdCommit) harness.finishCommit = complete; else complete(); });

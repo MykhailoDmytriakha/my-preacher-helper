@@ -1,13 +1,17 @@
 import { createIndexedDbCheckpoints } from '../checkpoint.client';
 import { createIndexedDbCommitStore } from '../commits.client';
+import { DataEngine } from '../engine';
+import { ResourceObserver } from '../observer';
 import { forkCheckpoint, recoveryCheckpointId } from '../recovery.client';
-import { collectCommitRows, commitProjectionKey } from '../retention.client';
+import { collectCommitRows, commitProjectionKey, createCommitCollectionWindow } from '../retention.client';
+import { DataEngineRuntime } from '../runtime';
 import { DataSession } from '../session';
 import { createEngineStorageTransaction, validateCommitReferences } from '../storage.client';
 import { installStorageHarness } from './storageHarness';
 
 import type { CommitRequest } from '../commits';
 import type { EditorRecord } from '../controller';
+import type { ResourceSnapshot } from '../types';
 
 jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
 const snapshot = { resource: { collection: 'studyNotes', id: 'note' }, value: { userId: 'owner', content: 'base' }, metadata: null };
@@ -22,6 +26,66 @@ const record = (request: CommitRequest, completed = false): EditorRecord => {
 const acknowledge = (request: CommitRequest): CommitRequest => ({ ...request, state: 'acknowledged', result: { kind: 'acknowledged', operationId: request.id, snapshot: { ...snapshot, value: request.value } } });
 let storage: ReturnType<typeof installStorageHarness>;
 beforeEach(() => { jest.clearAllMocks(); storage = installStorageHarness(); });
+
+it('does not rematerialize a long pending queue for each accepted Save during delivery', async () => {
+  const measure = async (pending: number) => {
+    storage = installStorageHarness();
+    const collection = createCommitCollectionWindow();
+    const commits = createIndexedDbCommitStore(collection.collect);
+    const answered = await commits.create(request('answered'));
+    for (let index = 0; index < pending; index += 1) {
+      await commits.create(request('pending-' + index, 'editor-' + index));
+    }
+    await commits.compareAndSet(answered, acknowledge(answered));
+    const finish = collection.begin('owner');
+    const finishOverlap = collection.begin('owner');
+    let scanned = 0;
+    storage.onFullRead = (kind, mode, count) => { if (kind === 'request' && mode === 'readwrite') scanned += count; };
+    await commits.releaseProjection!('owner', [answered.id]);
+    await finish();
+    const perAnswer = scanned;
+    await finishOverlap();
+    expect(scanned - perAnswer).toBe(pending + 1);
+    expect((await commits.list('owner')).map(item => item.state)).toEqual(Array(pending).fill('queued'));
+    return perAnswer;
+  };
+  const small = await measure(2);
+  const large = await measure(80);
+  expect(large).toBeLessThanOrEqual(small);
+  expect(small).toBe(0);
+});
+
+it('keeps a long delivery pass from making every subsequent queue read revisit all released answers', async () => {
+  const collection = createCommitCollectionWindow();
+  const commits = createIndexedDbCommitStore(collection.collect);
+  const answered = [];
+  for (let index = 0; index < 40; index += 1) {
+    const saved = await commits.create(request('answered-' + index, 'editor-' + index));
+    answered.push(await commits.compareAndSet(saved, acknowledge(saved)));
+  }
+  const finish = collection.begin('owner');
+  for (const saved of answered) await commits.releaseProjection!('owner', [saved.id]);
+  const leftDuringDelivery = (await commits.list('owner')).length;
+  await finish();
+  expect(await commits.list('owner')).toEqual([]);
+  expect(leftDuringDelivery).toBeLessThan(answered.length);
+});
+
+it('collects released rows on a later pass and keeps an answered row whose snapshot was not cached', async () => {
+  const collection = createCommitCollectionWindow();
+  const commits = createIndexedDbCommitStore(collection.collect);
+  const released = await commits.create(request('released', 'first'));
+  const held = await commits.create(request('uncached', 'second'));
+  await commits.compareAndSet(released, acknowledge(released));
+  await commits.compareAndSet(held, acknowledge(held));
+  const abandoned = collection.begin('owner');
+  await commits.releaseProjection!('owner', [released.id]);
+  expect((await commits.list('owner')).map(row => row.id)).toEqual(['released', 'uncached']);
+  // A new provider must be able to collect an interrupted pass from the same device store.
+  await createCommitCollectionWindow().begin('owner')();
+  expect((await commits.list('owner')).map(row => row.id)).toEqual(['uncached']);
+  await abandoned();
+});
 
 it('bounds full payloads over a thousand acknowledged autosaves and factory reloads, retaining small dedupe markers', async () => {
   const commits = createIndexedDbCommitStore(), checkpoints = createIndexedDbCheckpoints();
@@ -102,6 +166,46 @@ it('does not release protection when the checkpoint transaction aborts', async (
   await expect(checkpoints.put(value)).rejects.toThrow('disk full'); storage.writeFailure = false;
   expect(storage.rows.has(JSON.stringify(commitProjectionKey('owner', a.id)))).toBe(true);
   expect(await commits.list('owner')).toHaveLength(1);
+});
+
+it('projects every accepted participant found on return without reloading unrelated pending Saves for each answer', async () => {
+  const commits = createIndexedDbCommitStore(), checkpoints = createIndexedDbCheckpoints();
+  const transport = { read: jest.fn(), send: jest.fn() };
+  const cache = new Map<string, ResourceSnapshot>();
+  const runtime = new DataEngineRuntime({ transport, journal: { list: async () => [], put: async () => undefined, remove: async () => undefined } });
+  const engine = new DataEngine({ runtime, observer: new ResourceObserver({ transport, source: { listen: () => () => undefined } }),
+    transport, commits, checkpoints, operationId: () => 'unused', snapshots: {
+      read: async (_owner, resource) => cache.get(resource.id),
+      put: async (_owner, accepted) => { cache.set(accepted.resource.id, accepted); },
+    } });
+  try {
+    engine.setOnline(false);
+    engine.setOwner('owner');
+    await engine.retry();
+    const atomic = { id: 'a', participants: ['a', 'b'] };
+    const alternate = { ...snapshot, resource: { ...snapshot.resource, id: 'second-note' } };
+    const captured = await commits.createBatch!([
+      { ...request('a', 'first'), atomic },
+      { ...request('b', 'second'), atomic, baseline: alternate, working: alternate },
+    ]);
+    await commits.compareAndSetBatch!(captured.map(previous => ({ previous, next: {
+      ...previous, state: 'acknowledged', result: { kind: 'acknowledged', operationId: previous.id,
+        snapshot: { ...previous.baseline, value: previous.value } },
+    } })));
+    for (let index = 0; index < 20; index += 1) await commits.create(request('pending-' + index, 'other-' + index));
+
+    let readOnlyQueueRows = 0;
+    storage.onFullRead = (kind, mode, count) => { if (kind === 'request' && mode === 'readonly') readOnlyQueueRows += count; };
+    engine.setVisible(true);
+    // The release transaction is queued by a background subscriber, after the exact snapshots have been cached.
+    for (let turn = 0; turn < 300; turn += 1) await Promise.resolve();
+
+    expect([...cache.values()].map(accepted => accepted.value?.content).sort()).toEqual(['a', 'b']);
+    expect(storage.rows.has(JSON.stringify(commitProjectionKey('owner', 'a')))).toBe(false);
+    expect(storage.rows.has(JSON.stringify(commitProjectionKey('owner', 'b')))).toBe(false);
+    expect(transport.send).not.toHaveBeenCalled();
+    expect(readOnlyQueueRows).toBe(20);
+  } finally { engine.dispose(); }
 });
 
 it('retains both atomic participants until every projection and delivery reference is released', async () => {

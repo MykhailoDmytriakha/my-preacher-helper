@@ -59,6 +59,8 @@ export interface CommitRequest {
 
 export interface CommitStore {
   list(owner: string): Promise<CommitRequest[]>;
+  /** Read the current rows for a known operation without opening the rest of the queue. */
+  readByIds?(owner: string, ids: readonly string[]): Promise<CommitRequest[]>;
   /** Atomically unique by owner/editor/generation. Repeats return the original request. */
   create(request: CommitRequest): Promise<CommitRequest>;
   /** Native adapters capture the exact checkpoint and canonical request in one transaction. */
@@ -509,7 +511,12 @@ export class CommitQueue {
       this.assertCurrent(owner, generation);
       const groupId = record.atomic?.id;
       if (failures.has(record.id) || (groupId && advancedOperations.has(groupId))) continue;
-      if (terminal(record) && !record.unfinalized.length) { this.emit(record); continue; }
+      if (terminal(record) && !record.unfinalized.length) {
+        // A retained answer is evidence for its dependents, not a new answer on every pass.
+        // Explicit device refresh still replays it for a newly ready editor.
+        this.emit(record, false);
+        continue;
+      }
       advancedOperations.add(groupId ?? record.id);
       try {
         changed = await this.advanceRequest(record, records, owner, generation, ready) || changed;
@@ -618,8 +625,9 @@ export class CommitQueue {
     return true;
   }
 
-  private emit(request: CommitRequest): void {
-    if ((this.emittedRevisions.get(request.id) ?? 0) > request.revision) return;
+  private emit(request: CommitRequest, allowRepeat = true): void {
+    const previous = this.emittedRevisions.get(request.id);
+    if (previous !== undefined && (previous > request.revision || (!allowRepeat && previous === request.revision))) return;
     this.emittedRevisions.set(request.id, request.revision);
     this.receipts.observe(request);
     for (const listener of this.listeners) { try { listener({ request: clone(request) }); } catch { /* Rendering cannot change delivery. */ } }

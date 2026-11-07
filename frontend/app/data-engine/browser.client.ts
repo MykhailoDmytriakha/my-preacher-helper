@@ -21,6 +21,7 @@ import { createIndexedDbManualScopes } from './manualScopes.client';
 import { createIndexedDbMembershipScopes } from './membershipScopes.client';
 import { ResourceObserver } from './observer';
 import { recoveryPresenceKey } from './recoveryPresence';
+import { createCommitCollectionWindow } from './retention.client';
 import { DataEngineRuntime } from './runtime';
 import { createIndexedDbSnapshots } from './snapshots.client';
 import { createFirestoreObservationSource } from './source.client';
@@ -52,14 +53,16 @@ export function createBrowserDataEngine({ onError }: { onError?: (error: unknown
   const observer = new ResourceObserver({ source: createFirestoreObservationSource(), transport });
   const snapshots = createIndexedDbSnapshots();
   const collections = new CollectionReader({ transport, observer, snapshots, cursors: createIndexedDbCollectionCursors(), onError: report });
+  const commitCollection = createCommitCollectionWindow();
   const engine = new DataEngine({
-    runtime, observer, transport, checkpoints: createIndexedDbCheckpoints(), collections,
+    runtime, observer, transport, checkpoints: createIndexedDbCheckpoints(commitCollection.collect), collections,
     snapshots, operationId: newClientId, onError: report, localWriteback: retiredWrites,
     recoveryPresence: {
       hold: (owner, kind, id) => holdWhileOpen(recoveryPresenceKey(owner, kind, id)),
       held: (owner, kind, id) => heldInSomeTab(recoveryPresenceKey(owner, kind, id)),
     },
-    commits: createIndexedDbCommitStore(), manualScopes: createIndexedDbManualScopes(), membershipScopes: createIndexedDbMembershipScopes(),
+    commits: createIndexedDbCommitStore(commitCollection.collect), manualScopes: createIndexedDbManualScopes(commitCollection.collect),
+    membershipScopes: createIndexedDbMembershipScopes(), deferCommitCollection: commitCollection.begin,
   });
   let active = true;
   let owner: string | null = null;

@@ -59,7 +59,7 @@ function validate(value: ManualStorageRecord, owner = value.owner, scopeId = val
 }
 
 /** Shares the commit database so a saved form cannot race collection of its predecessor. */
-export function createIndexedDbManualScopes(): ManualScopeStore {
+export function createIndexedDbManualScopes(collect = collectCommitRows): ManualScopeStore {
   const transaction = createEngineStorageTransaction();
   const write = async (value: StoredManualScope, create: boolean) => {
     const frozen = validate(value) as StoredManualScope;
@@ -72,7 +72,7 @@ export function createIndexedDbManualScopes(): ManualScopeStore {
         validateCommitReferences(store, read, frozen.owner, frozen.commitReferences, () => {
           const writeTarget = () => {
             store.put(versionRecoveryRecord(frozen), key(frozen.owner, frozen.scopeId));
-            retireManualRecoverySources(store, read, frozen, validate, () => collectCommitRows(store, read, frozen.owner, done));
+            retireManualRecoverySources(store, read, frozen, validate, () => collect(store, read, frozen.owner, done));
           };
           // A follow/restart may drop an acknowledged predecessor. Settle its existing proof
           // before replacing that row and releasing the reference that proves the ACK.
@@ -116,18 +116,18 @@ export function createIndexedDbManualScopes(): ManualScopeStore {
         if (!value) { done(undefined); return; }
         const existing = validate(value, owner, scopeId), record = existing.record;
         if (!record) { done(undefined); return; }
-        const collect = () => collectCommitRows(store, read, owner, done);
+        const sweep = () => collect(store, read, owner, done);
         retireManualRecoverySources(store, read, existing as StoredManualScope, validate, () => {
-          if (record.active || !equalValues(record.stage, record.savedSelection)) { collect(); return; }
+          if (record.active || !equalValues(record.stage, record.savedSelection)) { sweep(); return; }
           const finish = () => {
             const compact: ManualScopeWatermark = { owner, scopeId, parentEditorId: existing.parentEditorId, slot: existing.slot,
               record: null, watermark: { generation: record.generation, selection: record.selection, resource: record.resource }, commitReferences: [] };
-            store.put(versionRecoveryRecord(compact), key(owner, scopeId)); collect();
+            store.put(versionRecoveryRecord(compact), key(owner, scopeId)); sweep();
           };
           if (!record.predecessor) { finish(); return; }
           read(store.get(['identity', owner, record.predecessor.id]), (requestKey: IDBValidKey | undefined) => {
-            if (!requestKey) { collect(); return; }
-            read(store.get(requestKey), (request: { state: string } | undefined) => { if (request && ['acknowledged', 'cancelled'].includes(request.state)) finish(); else collect(); });
+            if (!requestKey) { sweep(); return; }
+            read(store.get(requestKey), (request: { state: string } | undefined) => { if (request && ['acknowledged', 'cancelled'].includes(request.state)) finish(); else sweep(); });
           });
         });
       });

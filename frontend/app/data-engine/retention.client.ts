@@ -1,6 +1,6 @@
 'use client';
 
-import { engineOwnerRange, type StorageRead } from './storage.client';
+import { createEngineStorageTransaction, engineOwnerRange, type StorageRead } from './storage.client';
 
 import type { CommitRequest } from './commits';
 import type { EditorRecord } from './controller';
@@ -22,6 +22,23 @@ export function readCommitRows(store: IDBObjectStore, read: StorageRead, owner: 
   for (const kind of COMMIT_ROW_KINDS) read(store.getAll(engineOwnerRange(kind, owner)), values => {
     rows.push(...values as CommitRequest[]);
     if (!--remaining) done(rows);
+  });
+}
+
+/** Read only the immutable request identities needed for one projection. */
+export function readCommitIdentities(store: IDBObjectStore, read: StorageRead, owner: string, ids: readonly string[],
+  done: (requests: Map<string, CommitRequest>) => void): void {
+  const unique = [...new Set(ids)];
+  const requests = new Map<string, CommitRequest>();
+  let remaining = unique.length;
+  if (!remaining) { done(requests); return; }
+  const finish = () => { if (!--remaining) done(requests); };
+  for (const id of unique) read(store.get(['identity', owner, id]), (key: IDBValidKey | undefined) => {
+    if (!key) { finish(); return; }
+    read(store.get(key), (request: CommitRequest | undefined) => {
+      if (request?.owner === owner && request.id === id) requests.set(id, request);
+      finish();
+    });
   });
 }
 
@@ -87,4 +104,38 @@ export function collectCommitRows(store: IDBObjectStore, read: StorageRead, owne
       finish();
     });
   }
+}
+
+// Give consecutive writes one sweep while keeping released payloads out of later queue reads.
+const COLLECTION_BATCH_SIZE = 32;
+
+/** Release exact references immediately. Batch their collection during delivery and sweep at its end.
+ * A stopped page leaves the original durable rows behind. The next delivery pass collects those too.
+ */
+export function createCommitCollectionWindow() {
+  const transaction = createEngineStorageTransaction();
+  const passes = new Map<string, { count: number; writes: number }>();
+  const collect: typeof collectCommitRows = (store, read, owner, done) => {
+    const pass = passes.get(owner);
+    if (pass) {
+      pass.writes += 1;
+      if (pass.writes < COLLECTION_BATCH_SIZE) { done(); return; }
+      pass.writes = 0;
+    }
+    collectCommitRows(store, read, owner, done);
+  };
+  const begin = (owner: string) => {
+    const pass = passes.get(owner) ?? { count: 0, writes: 0 };
+    passes.set(owner, pass);
+    pass.count += 1;
+    return async () => {
+      pass.count -= 1;
+      if (pass.count) return;
+      passes.delete(owner);
+      await transaction<void>('readwrite', (store, read, done) => {
+        collectCommitRows(store, read, owner, () => done(undefined));
+      });
+    };
+  };
+  return { collect, begin };
 }
