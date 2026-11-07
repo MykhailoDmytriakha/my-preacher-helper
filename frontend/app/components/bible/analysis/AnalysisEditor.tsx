@@ -291,8 +291,8 @@ export function AnalysisEditor({ opening, text, bookId, bible, locale, marks: le
   if (typeof document === 'undefined') return null;
 
   const title = t('analysis.title', { place });
-  // Only a kept analysis can be named by a sermon; an untouched new one has no note yet.
-  const analysisId = note.noteId();
+  // A new analysis may already have an address while its first local capture is still pending.
+  const analysisId = note.capturing || note.refused ? null : note.noteId();
   const sermons = onOpenScreen && analysisId ? {
     noteId: analysisId, place, verse: note.passage ? passageCopyText(text.chapters, note.passage, copyNames) : '',
     onOpen: (href: string) => { note.flush(); onOpenScreen(href); },

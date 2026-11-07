@@ -26,6 +26,7 @@ jest.mock('@/data-engine/react.client', () => ({
 }));
 jest.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key, i18n: { language: 'en' } }) }));
 jest.mock('@/components/bible/verseCopy/VerseCopyBar', () => ({ VerseCopyBar: () => null }));
+jest.mock('@/hooks/useSermonNoteLinks', () => ({ useEngineSermonsBuiltOnNote: () => [] }));
 
 const rstText: BookText = {
   id: 'Ephesians',
@@ -207,7 +208,7 @@ describe('ordinary departure before the first analysis capture', () => {
     const onClose = jest.fn(() => view.unmount()), onEditVerses = jest.fn(() => view.unmount());
     const opening: AnalysisOpening = { kind: 'new', passage };
     const element = (nextOpening: AnalysisOpening = opening) => <AnalysisEditor opening={nextOpening} text={rstText}
-      bookId="Ephesians" bible="rst" locale={locale} onClose={onClose} onEditVerses={onEditVerses} />;
+      bookId="Ephesians" bible="rst" locale={locale} onClose={onClose} onEditVerses={onEditVerses} onOpenScreen={jest.fn()} />;
     const view: ReturnType<typeof render> = render(element());
     const word = document.querySelector('[data-word="5"]');
     expect(word).not.toBeNull();
@@ -216,6 +217,45 @@ describe('ordinary departure before the first analysis capture', () => {
     expect(document.querySelector('[data-line="5"]')).not.toBeNull();
     return { view, element, onClose, onEditVerses, resolve, reject, created: () => created };
   };
+
+  it('offers sermon creation only after the first analysis capture is accepted', async () => {
+    const capture = await firstCapture();
+    const sermonDoors = () => screen.queryAllByRole('button', { name: /^analysis\.sermon\.(newAria|create)$/ });
+    try {
+      expect(screen.getByText('analysis.firstCaptureSaving')).toBeInTheDocument();
+      expect(document.querySelector('[data-line="5"]')).not.toBeNull();
+      expect(sermonDoors()).toHaveLength(0);
+      engine.notes = [capture.created()];
+      formNote = capture.created();
+      await act(async () => { capture.resolve(); });
+      await waitFor(() => expect(sermonDoors()).toHaveLength(2));
+      expect(screen.queryByText('analysis.firstCaptureSaving')).not.toBeInTheDocument();
+      expect(document.querySelector('[data-line="5"]')).not.toBeNull();
+      expect(engine.createNote).toHaveBeenCalledTimes(1);
+    } finally {
+      capture.view.unmount();
+      await act(async () => { capture.resolve(); });
+    }
+  });
+
+  it('keeps sermon creation unavailable after a refused first analysis capture', async () => {
+    const capture = await firstCapture();
+    try {
+      await act(async () => { capture.reject(new Error('Device capture refused')); });
+      expect(screen.getByText('analysis.notKept')).toBeInTheDocument();
+      expect(screen.queryAllByRole('button', { name: /^analysis\.sermon\.(newAria|create)$/ })).toHaveLength(0);
+      expect(document.querySelector('[data-line="5"]')).not.toBeNull();
+    } finally { capture.view.unmount(); }
+  });
+
+  it('keeps sermon creation available for an already stored analysis', () => {
+    putAddress(canonicalRstUrl);
+    const view = render(<AnalysisEditor opening={{ kind: 'open', id: sourceAnalysis.id, editing: true }} text={rstText}
+      bookId="Ephesians" bible="rst" locale={locale} onClose={jest.fn()} onOpenScreen={jest.fn()} />);
+    try {
+      expect(screen.queryAllByRole('button', { name: /^analysis\.sermon\.(newAria|create)$/ })).toHaveLength(2);
+    } finally { view.unmount(); }
+  });
 
   describe.each(['pending', 'refused'] as const)('while the first local capture is %s', (state) => {
     it.each(['done', 'back', 'escape', 'verses'] as const)('keeps the authored mark before an ordinary %s departure', async (exit) => {
