@@ -122,8 +122,8 @@ export function createIndexedDbCommitStore(collect = collectCommitRows): CommitS
       });
     });
   };
-  const compareAndSetBatch = (changes: readonly { previous: CommitRequest; next: CommitRequest }[]): Promise<CommitRequest[]> =>
-    compareAndSetBatchInternal(changes);
+  const compareAndSetBatch = (changes: readonly { previous: CommitRequest; next: CommitRequest }[],
+    choiceRequestIds?: readonly string[]): Promise<CommitRequest[]> => compareAndSetBatchInternal(changes, undefined, choiceRequestIds);
   const compareAndSetWithCheckpoint = (changes: readonly { previous: CommitRequest; next: CommitRequest }[],
     project: (saved: CommitRequest[]) => EditorRecord | EditorRecord[], choiceRequestIds?: readonly string[]): Promise<CommitRequest[]> =>
     compareAndSetBatchInternal(changes, project, choiceRequestIds);

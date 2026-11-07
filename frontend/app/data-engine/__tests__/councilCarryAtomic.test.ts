@@ -118,6 +118,35 @@ describe('durable atomic carry into a new council', () => {
     restarted.close();
   });
 
+  it('keeps a refused carry intact when another Save enters its dependency scope during cancellation', async () => {
+    const s = setup(), deciding = s.make(), later = s.make();
+    try {
+      const [source, destination] = await deciding.queue.saveAtomic(s.captures);
+      s.refuse();
+      await deciding.queue.drain(true);
+      expect((await s.store.list('owner')).map(row => row.state)).toEqual(['refused', 'refused']);
+      const readJournal = deciding.runtime.list.bind(deciding.runtime);
+      const words = 'Title saved while the carry decision was being recorded';
+      jest.spyOn(deciding.runtime, 'list').mockImplementationOnce(async () => {
+        const edit = new DataSession(source.baseline);
+        edit.edit({ ...source.value, title: words });
+        const saved = await later.queue.save(editorIdentity('later-tab', source.baseline.resource, 'default', 'source'),
+          edit.checkpoint(), { predecessorId: source.id });
+        expect(saved).toMatchObject({ predecessor: source.id, state: 'queued', value: { title: words } });
+        return readJournal();
+      });
+
+      await expect(deciding.queue.cancelAction([source.id, destination.id])).rejects.toMatchObject({ code: 'commit-changed' });
+      expect(await s.store.list('owner')).toEqual(expect.arrayContaining([
+        expect.objectContaining({ id: source.id, state: 'refused' }),
+        expect.objectContaining({ id: destination.id, state: 'refused' }),
+        expect.objectContaining({ predecessor: source.id, state: 'queued', value: expect.objectContaining({ title: words }) }),
+      ]));
+      expect(s.transport.send).toHaveBeenCalledTimes(1);
+      expect(s.rows.get('councils/source')).toEqual(s.source);
+    } finally { deciding.close(); later.close(); }
+  });
+
   it('replays a lost reply with the same identity without creating a second council or copy', async () => {
     const s = setup(), first = s.make();
     const send = jest.mocked(s.transport.send).getMockImplementation()!;

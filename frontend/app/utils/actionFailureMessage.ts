@@ -50,6 +50,7 @@ const KNOWN = new Map<string, string>([
   ['draft-done', 'dataSync.failure.draftDone'],
   ['draft-open', 'dataSync.failure.draftOpen'],
   ['membership-stage-changed', 'dataSync.failure.membershipStageChanged'],
+  ['commit-changed', 'dataSync.failure.savedWorkChanged'],
   ['draft-presence-unknown', 'dataSync.failure.draftPresenceUnknown'],
   ['part-gone', 'dataSync.failure.partGone'],
 ]);

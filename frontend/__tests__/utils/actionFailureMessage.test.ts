@@ -64,3 +64,12 @@ it.each([['en', en], ['ru', ru], ['uk', uk]])('uses %s words when an earlier act
     (value as Record<string, unknown> | undefined)?.[part], locale) as string ?? key;
   expect(sayFailure(refusalWords(error, 'common.saveError'), translate)).toBe(locale.dataSync.failure.decisionRequired);
 });
+
+it.each([['en', en], ['ru', ru], ['uk', uk]])('explains a changed saved decision in %s', (_name, locale) => {
+  const error = Object.assign(new Error('Commit changed'), { code: 'commit-changed' });
+  const words = refusalWords(error, 'common.saveError');
+  expect(words).toEqual({ key: 'dataSync.failure.savedWorkChanged' });
+  const translate = (key: string) => key.split('.').reduce<unknown>((value, part) =>
+    (value as Record<string, unknown> | undefined)?.[part], locale) as string ?? key;
+  expect(sayFailure(words, translate)).not.toBe('dataSync.failure.savedWorkChanged');
+});

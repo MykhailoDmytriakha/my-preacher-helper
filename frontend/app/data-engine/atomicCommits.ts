@@ -181,10 +181,12 @@ export function canCancelSavedIntent(records: readonly CommitRequest[], journal:
   return !unsafe && records.some(record => ['conflict', 'refused'].includes(record.state));
 }
 
-export async function cancelActionCommits(records: readonly CommitRequest[], context: AtomicCommitContext): Promise<void> {
+export async function cancelActionCommits(records: readonly CommitRequest[], roots: readonly string[], context: AtomicCommitContext): Promise<void> {
   if (!records.length) return;
   if (!context.store.compareAndSetBatch) throw new Error('Atomic commit storage is required');
-  // Dependents and every participant retire together, even across several moves.
-  const saved = await context.store.compareAndSetBatch(records.map(previous => ({ previous, next: { ...previous, state: 'cancelled' as const, cancelledByAction: true, unfinalized: pendingCommitRetirement(previous) } })));
+  // Recheck the full dependency scope in the transaction before retiring the action and its dependents.
+  const saved = await context.store.compareAndSetBatch(records.map(previous => ({
+    previous, next: { ...previous, state: 'cancelled', cancelledByAction: true, unfinalized: pendingCommitRetirement(previous) },
+  })), roots);
   context.assertCurrent(); orderActionProjections(saved).forEach(context.emit);
 }

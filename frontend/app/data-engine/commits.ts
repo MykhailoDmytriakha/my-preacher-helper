@@ -86,7 +86,9 @@ export interface CommitStore {
   /** Release only this owner/scope/request hold, then use the shared collector. */
   releaseCapture?(owner: string, scope: string, requestId: string): Promise<void>;
   /** All revisions win together, or no participant changes. */
-  compareAndSetBatch?(changes: readonly { previous: CommitRequest; next: CommitRequest }[]): Promise<CommitRequest[]>;
+  /** With choice roots, reject if the full dependency scope differs from the batch in the same transaction. */
+  compareAndSetBatch?(changes: readonly { previous: CommitRequest; next: CommitRequest }[],
+    choiceRequestIds?: readonly string[]): Promise<CommitRequest[]>;
   /** Cancellation and its chosen editor projection commit together, or neither is published. */
   compareAndSetWithCheckpoint?(changes: readonly { previous: CommitRequest; next: CommitRequest }[],
     project: (saved: CommitRequest[]) => EditorRecord | EditorRecord[], choiceRequestIds?: readonly string[]): Promise<CommitRequest[]>;
@@ -559,7 +561,7 @@ export class CommitQueue {
   private async cancelOwned(editorId: string, additionalRequestIds: readonly string[], wholeAction: boolean): Promise<void> {
     const { owner, generation, records, chosen } = await this.planCancellation(editorId, additionalRequestIds, wholeAction);
     this.requested = true;
-    if (wholeAction) return cancelActionCommits(orderCommitRequests(records), this.atomicContext(owner, generation));
+    if (wholeAction) return cancelActionCommits(orderCommitRequests(records), additionalRequestIds, this.atomicContext(owner, generation));
     for (const record of records) {
       this.assertCurrent(owner, generation);
       const cancelled = await this.options.store.compareAndSet(record, this.cancelledRequest(record, chosen));
