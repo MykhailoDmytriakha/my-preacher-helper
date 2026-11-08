@@ -1,16 +1,18 @@
 import { isGroupStatus } from '@/utils/groupDocument';
 
 import { boundedActionTime } from './actionClock';
-import { equalValues } from './fieldValues';
+import { isSermonChurch } from './churchFieldValue';
+import { equalValues, readField } from './fieldValues';
+import { captureSermonChurchFill } from './sermonChurchFill';
 
 import type { ActionTime } from './actionClock';
 import type { CommitRequest } from './commits';
 import type { SessionCheckpoint, ShownCopy } from './session';
-import type { DataCommand, DocumentData, FieldChange, ResourceSnapshot } from './types';
-import type { Group } from '@/models/models';
+import type { DataCommand, DocumentData, FieldChange, FieldValue, ResourceSnapshot } from './types';
+import type { Church, Group } from '@/models/models';
 
 export type DocumentFieldStamp = { observedRevision: number; time: ActionTime | null; predecessorOperationId?: string };
-export type DocumentFieldObservation = DocumentFieldStamp & { before: string; after: string };
+export type DocumentFieldObservation<Value = string> = DocumentFieldStamp & { before: Value; after: Value };
 export type DocumentFieldAction = DocumentFieldObservation & { time: ActionTime };
 export type ServiceOrderTitleSeen = { title: string; generation: string; revision: number; requestId?: string };
 export type ServiceOrderTitleCapture = { time: ActionTime; seen: ServiceOrderTitleSeen };
@@ -24,7 +26,7 @@ export type ServiceOrderTitleHistoryPage = {
 
 export type GroupTimedField = 'title' | 'status';
 
-export type DocumentFieldTarget = {
+type TextDocumentFieldTarget = {
   field: GroupTimedField | 'verse';
   action: 'serviceOrderTitleAction' | 'sermonTitleAction' | 'sermonVerseAction' | 'groupTitleAction' | 'groupStatusAction';
   proof: 'serviceOrderTitle' | 'sermonTitle' | 'sermonVerse' | 'groupTitle' | 'groupStatus';
@@ -32,17 +34,22 @@ export type DocumentFieldTarget = {
   causal?: true;
 };
 
+export type DocumentFieldTarget = TextDocumentFieldTarget | typeof SERMON_CHURCH;
+export type SermonChurchObservation = DocumentFieldObservation<FieldValue>;
+
 export type GroupStatusHistoryPage = {
   owner: string; groupId: string; generation: string; nextCursor: string | null;
   entries: { id: string; status: Group['status']; winnerStatus: Group['status']; acceptedAt: string }[];
 };
 
+const SERMON_CHURCH = { field: 'church', action: 'sermonChurchAction', proof: 'sermonChurch', causal: true } as const;
+
 const shortTitle = (value: unknown): value is string => typeof value === 'string' && value.length <= 1024;
-const SERVICE_ORDER_TITLE: DocumentFieldTarget = { field: 'title', action: 'serviceOrderTitleAction', proof: 'serviceOrderTitle',
+const SERVICE_ORDER_TITLE: TextDocumentFieldTarget = { field: 'title', action: 'serviceOrderTitleAction', proof: 'serviceOrderTitle',
   accepts: (value): value is string => shortTitle(value) && value.trim().length > 0 };
-const SERMON_TITLE = { field: 'title', action: 'sermonTitleAction', proof: 'sermonTitle', accepts: shortTitle, causal: true } as const satisfies DocumentFieldTarget;
+const SERMON_TITLE = { field: 'title', action: 'sermonTitleAction', proof: 'sermonTitle', accepts: shortTitle, causal: true } as const satisfies TextDocumentFieldTarget;
 const SERMON_VERSE = { field: 'verse', action: 'sermonVerseAction', proof: 'sermonVerse', causal: true,
-  accepts: (value): value is string => typeof value === 'string' } as const satisfies DocumentFieldTarget;
+  accepts: (value): value is string => typeof value === 'string' } as const satisfies TextDocumentFieldTarget;
 const GROUP_TITLE = { field: 'title', action: 'groupTitleAction', proof: 'groupTitle', accepts: shortTitle, draft: 'groupTitleDraft' } as const satisfies GroupFieldTarget;
 const GROUP_STATUS = { field: 'status', action: 'groupStatusAction', proof: 'groupStatus', accepts: isGroupStatus, draft: 'groupStatusDraft' } as const satisfies GroupFieldTarget;
 export const GROUP_TIMED_FIELDS = [GROUP_TITLE, GROUP_STATUS] as const;
@@ -50,11 +57,11 @@ export const GROUP_TIMED_FIELDS = [GROUP_TITLE, GROUP_STATUS] as const;
 export function documentFieldTargets(collection: string): readonly DocumentFieldTarget[] {
   if (collection === 'serviceOrders') return [SERVICE_ORDER_TITLE];
   if (collection === 'groups') return GROUP_TIMED_FIELDS;
-  if (collection === 'sermons') return [SERMON_TITLE, SERMON_VERSE];
+  if (collection === 'sermons') return [SERMON_TITLE, SERMON_VERSE, SERMON_CHURCH];
   return [];
 }
 
-function isShortDocumentTitle(value: unknown, target: DocumentFieldTarget): value is string {
+function isShortDocumentTitle(value: unknown, target: TextDocumentFieldTarget): value is string {
   return target.accepts(value);
 }
 
@@ -65,6 +72,11 @@ export type SermonTitleHistoryPage = {
 export type SermonVerseHistoryPage = {
   owner: string; sermonId: string; generation: string; nextCursor: string | null;
   entries: { id: string; verse: string; winnerVerse: string; acceptedAt: string }[];
+};
+
+export type SermonChurchHistoryPage = {
+  owner: string; sermonId: string; generation: string; nextCursor: string | null;
+  entries: { id: string; church: Church | null; winnerChurch: Church | null; acceptedAt: string }[];
 };
 
 export type GroupTitleHistoryPage = {
@@ -111,29 +123,41 @@ export function captureServiceOrderTitle(baseline: ResourceSnapshot, value: Docu
   return { before: capture.seen.title, after, observedRevision: capture.seen.revision, time: capture.time };
 }
 
-type SermonFieldTarget = typeof SERMON_TITLE | typeof SERMON_VERSE;
+type SermonTextTarget = typeof SERMON_TITLE | typeof SERMON_VERSE;
+type SermonFieldTarget = SermonTextTarget | typeof SERMON_CHURCH;
 
 function knownSermonFieldPredecessor(baseline: ResourceSnapshot, predecessor: CommitRequest | undefined,
-  target: SermonFieldTarget, value: string, records: readonly CommitRequest[]): string | undefined {
+  target: SermonFieldTarget, value: string | FieldValue, records: readonly CommitRequest[]): string | undefined {
   if (!predecessor) return undefined;
   const requests = new Map(records.map(request => [request.id, request]));
   const visited = new Set<string>();
   for (let request: CommitRequest | undefined = predecessor; request && !visited.has(request.id);
     request = requests.get(request.predecessor ?? '')) {
     if (request.owner !== predecessor.owner || !equalValues(request.baseline.resource, baseline.resource)
-      || request.baseline.metadata?.generation !== baseline.metadata?.generation || request.value?.[target.field] !== value
+      || request.baseline.metadata?.generation !== baseline.metadata?.generation || !equalValues(target.field === 'church' ? readField(request.value ?? {}, [target.field]) : request.value?.[target.field], value)
       || ['cancelled', 'refused', 'conflict'].includes(request.state)) break;
     const action = request[target.action];
-    if (action) return action.after === value ? request.id : undefined;
+    if (action) return equalValues(action.after, value) ? request.id : undefined;
     visited.add(request.id);
   }
 }
 
 function captureSermonField(baseline: ResourceSnapshot, predecessor: CommitRequest | undefined, draft: DocumentData | null,
-  target: SermonFieldTarget, time: ActionTime | null, records: readonly CommitRequest[]): DocumentFieldObservation | undefined {
+  target: SermonTextTarget, time: ActionTime | null, records: readonly CommitRequest[]): DocumentFieldObservation | undefined {
   const before = (predecessor ? predecessor.value : baseline.value)?.[target.field], after = draft?.[target.field];
   if (!target.accepts(before) || !target.accepts(after) || !after.trim() || before === after) return undefined;
   const predecessorOperationId = knownSermonFieldPredecessor(baseline, predecessor, target, before, records);
+  return { before, after, time, observedRevision: baseline.metadata!.revision, ...(predecessorOperationId && { predecessorOperationId }) };
+}
+
+function captureSermonChurch(baseline: ResourceSnapshot, predecessor: CommitRequest | undefined, draft: DocumentData | null,
+  time: ActionTime | null, records: readonly CommitRequest[]): SermonChurchObservation | undefined {
+  if (!draft) return undefined;
+  const original = (predecessor ? predecessor.value : baseline.value) ?? {};
+  const before = readField(original, ['church']);
+  const after = readField(draft, ['church']);
+  if (!isSermonChurch(before) || !isSermonChurch(after) || equalValues(before, after)) return undefined;
+  const predecessorOperationId = knownSermonFieldPredecessor(baseline, predecessor, SERMON_CHURCH, before, records);
   return { before, after, time, observedRevision: baseline.metadata!.revision, ...(predecessorOperationId && { predecessorOperationId }) };
 }
 
@@ -145,13 +169,17 @@ export function captureSermonFields(baseline: ResourceSnapshot, predecessor: Com
   if (time === undefined) return {};
   const title = captureSermonField(baseline, predecessor, draft, SERMON_TITLE, time, records);
   const verse = captureSermonField(baseline, predecessor, draft, SERMON_VERSE, time, records);
-  return { ...(title && { sermonTitleAction: title }), ...(verse && { sermonVerseAction: verse }) };
+  const church = captureSermonChurch(baseline, predecessor, draft, time, records);
+  const opening = (predecessor ? predecessor.value : baseline.value)?.preachDates;
+  const fill = draft && captureSermonChurchFill(opening, draft.preachDates, readField(draft, ['church']));
+  return { ...(title && { sermonTitleAction: title }), ...(verse && { sermonVerseAction: verse }),
+    ...(church && { sermonChurchAction: church }), ...(fill && { sermonChurchFill: fill }) };
 }
 
 export type GroupFieldStamp = { field: GroupTimedField; time: ActionTime };
 export type GroupFieldDraft = { generation: string; action: DocumentFieldAction };
 export type GroupFieldActions = { groupTitleAction?: DocumentFieldAction; groupStatusAction?: DocumentFieldAction };
-type GroupFieldTarget = DocumentFieldTarget & { action: keyof GroupFieldActions; draft: 'groupTitleDraft' | 'groupStatusDraft' };
+type GroupFieldTarget = TextDocumentFieldTarget & { action: keyof GroupFieldActions; draft: 'groupTitleDraft' | 'groupStatusDraft' };
 
 /** An autosaved field retains the displayed ancestor across keystrokes and unrelated edits. */
 export function stageGroupField(checkpoint: SessionCheckpoint, value: DocumentData | null, shown: ShownCopy | undefined,
@@ -211,26 +239,42 @@ export function groupFieldAcknowledgementAncestor(ancestor: DocumentData | null,
   }, ancestor);
 }
 
+function withFieldValue(value: DocumentData, field: string, selected: FieldValue): DocumentData {
+  const next = { ...value };
+  if (selected.exists) next[field] = selected.value!;
+  else delete next[field];
+  return next;
+}
+
 export function pendingDocumentFieldAncestor(record: CommitRequest, before: DocumentData | null, accepted: ResourceSnapshot): DocumentData | null {
-  if (!before || accepted.metadata?.generation !== record.baseline.metadata?.generation) return before;
+  if (!before || !accepted.value || accepted.metadata?.generation !== record.baseline.metadata?.generation) return before;
   return documentFieldTargets(record.baseline.resource.collection).reduce((value, target) => {
-    const stored = accepted.value?.[target.field];
-    return record[target.action] && target.accepts(stored) ? { ...value, [target.field]: stored } : value;
+    if (!record[target.action]) return value;
+    const stored = readField(accepted.value!, [target.field]);
+    const valid = target.field === 'church' ? isSermonChurch(stored) : target.accepts(stored.value);
+    return valid ? withFieldValue(value, target.field, stored) : value;
   }, before);
 }
 
-export function documentFieldCommandAncestor(working: ResourceSnapshot, action: DocumentFieldObservation, field: DocumentFieldTarget['field']): ResourceSnapshot {
-  if (!working.value || working.metadata?.deleted) return working;
-  return { ...working, value: { ...working.value, [field]: action.before } };
+type StoredObservation = DocumentFieldObservation<string | FieldValue>;
+
+function observedValue(value: string | FieldValue): FieldValue {
+  return typeof value === 'string' ? { exists: true, value } : value;
 }
 
-export function withDocumentFieldAction(command: DataCommand, target: DocumentFieldTarget, action?: DocumentFieldObservation): DataCommand {
+export function documentFieldCommandAncestor(working: ResourceSnapshot, action: StoredObservation, field: DocumentFieldTarget['field']): ResourceSnapshot {
+  if (!working.value || working.metadata?.deleted) return working;
+  return { ...working, value: withFieldValue(working.value, field, observedValue(action.before)) };
+}
+
+export function withDocumentFieldAction(command: DataCommand, target: DocumentFieldTarget, action?: StoredObservation): DataCommand {
   if (!action || command.kind !== 'update') return command;
   const change = documentFieldChange(command.changes, target);
-  if (!change?.before.exists || change.before.value !== action.before || !change.after.exists || change.after.value !== action.after) return command;
-  if (target.field === 'verse') {
+  if (!change || !equalValues(change.before, observedValue(action.before)) || !equalValues(change.after, observedValue(action.after))) return command;
+  if (target.field === 'verse' || target.field === 'church') {
     const { observedRevision, time, predecessorOperationId } = action;
-    return { ...command, sermonVerseAction: { observedRevision, time, ...(predecessorOperationId && { predecessorOperationId }) } };
+    return { ...command, [target.action]: { observedRevision, time, ...(predecessorOperationId && { predecessorOperationId }) } };
   }
+  if (typeof action.before !== 'string' || typeof action.after !== 'string') return command;
   return { ...command, [target.action]: action };
 }

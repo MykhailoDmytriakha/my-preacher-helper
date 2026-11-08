@@ -13,8 +13,8 @@ import { isCollectionServed, isLegacyOpen, mayBeRetiredByCascade } from './activ
 import { BIBLE_MARK_HISTORY, BIBLE_MARK_PROOFS, bibleMarkProofVerses, bibleMarkTracking, metadataAfterBibleMarks, orderBibleMarks } from './bibleMarkOrder.server';
 import { existingRowDate, MEETING_DATE_TARGET, PREACH_DATE_TARGET } from './datedRowAction';
 import { metadataAfterDatedRow, orderDatedRow } from './datedRowOrder.server';
-import { metadataAfterDocumentFields, orderDocumentFields, DOCUMENT_TITLE_HISTORY, GROUP_STATUS_HISTORY, SERMON_VERSE_HISTORY } from './documentFieldOrder.server';
-import { equalValues } from './fieldValues';
+import { metadataAfterDocumentFields, orderDocumentFields, DOCUMENT_TITLE_HISTORY, GROUP_STATUS_HISTORY, SERMON_CHURCH_HISTORY, SERMON_VERSE_HISTORY } from './documentFieldOrder.server';
+import { equalValues, readField } from './fieldValues';
 import { GROUP_MEETING_FIELD_POLICY, type GroupMeetingFieldHistoryPage } from './groupMeetingFieldAction';
 import { GROUP_MEETING_FIELD_HISTORY, metadataAfterGroupMeetingFields, orderGroupMeetingFields } from './groupMeetingFieldOrder.server';
 import { PREACH_DATE_FIELD_POLICY, type PreachDateField, type PreachDateFieldHistoryPage } from './preachDateFieldAction';
@@ -31,7 +31,7 @@ import { coversCommittedEffect } from './snapshotFreshness';
 import type { AudioExportKey, AudioExportRecord, AudioExportStore, AudioExportTransaction, AudioExportUsage } from './audioExportStore';
 import type { BibleMarkHistoryEntry, BibleMarkHistoryPage } from './bibleMarkStroke';
 import type { DisplacedRowDate, MeetingDateHistoryPage, PreachDateHistoryPage } from './datedRowAction';
-import type { GroupStatusHistoryPage, GroupTitleHistoryPage, DocumentTitleHistoryEntry, SermonTitleHistoryPage, SermonVerseHistoryPage, ServiceOrderTitleHistoryPage } from './documentFieldAction';
+import type { GroupStatusHistoryPage, GroupTitleHistoryPage, DocumentTitleHistoryEntry, SermonChurchHistoryPage, SermonTitleHistoryPage, SermonVerseHistoryPage, ServiceOrderTitleHistoryPage } from './documentFieldAction';
 import type { RowDetailPolicy } from './rowDetailAction';
 import type { RowValue } from './rowFieldAction';
 import type { FeedWrite } from './serverFeed';
@@ -424,16 +424,17 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
   persistRowDetailHistory(transaction, command, primarySnapshot, PREACH_STATUS_POLICY, statusOrder);
   for (const { target, order } of fieldOrder?.fields ?? []) {
     const displaced = order.displaced;
-    if (!displaced || primarySnapshot.value?.[target.field] !== displaced.winnerValue) continue;
+    if (!displaced || !primarySnapshot.value || !equalValues(readField(primarySnapshot.value, [target.field]), displaced.winnerValue)) continue;
     const destination = {
       title: { collection: DOCUMENT_TITLE_HISTORY, winner: 'winnerTitle' },
       status: { collection: GROUP_STATUS_HISTORY, winner: 'winnerStatus' },
       verse: { collection: SERMON_VERSE_HISTORY, winner: 'winnerVerse' },
+      church: { collection: SERMON_CHURCH_HISTORY, winner: 'winnerChurch' },
     }[target.field];
     const history = adminDb.collection(command.resource.collection).doc(command.resource.id).collection(destination.collection);
     const { value, winnerValue, ...evidence } = displaced;
     transaction.set(history.doc(historyEntryId(primarySnapshot, command.operationId)), {
-      ...evidence, [target.field]: value, [destination.winner]: winnerValue, acceptedAt: new Date().toISOString(),
+      ...evidence, [target.field]: value.value ?? null, [destination.winner]: winnerValue.value ?? null, acceptedAt: new Date().toISOString(),
     });
   }
   persistBibleMarkOrder(transaction, command, primarySnapshot, markOrder);
@@ -676,6 +677,12 @@ export async function listSermonTitleHistory(owner: string, sermonId: string, ge
 export async function listSermonVerseHistory(owner: string, sermonId: string, generation: string, cursor?: string): Promise<SermonVerseHistoryPage> {
   const resource = { collection: 'sermons', id: sermonId };
   const page = await listHistoryEntries<SermonVerseHistoryPage['entries'][number]>(owner, resource, SERMON_VERSE_HISTORY, generation, cursor, 'sermon-gone');
+  return { owner, sermonId, generation, ...page };
+}
+
+export async function listSermonChurchHistory(owner: string, sermonId: string, generation: string, cursor?: string): Promise<SermonChurchHistoryPage> {
+  const resource = { collection: 'sermons', id: sermonId };
+  const page = await listHistoryEntries<SermonChurchHistoryPage['entries'][number]>(owner, resource, SERMON_CHURCH_HISTORY, generation, cursor, 'sermon-gone');
   return { owner, sermonId, generation, ...page };
 }
 

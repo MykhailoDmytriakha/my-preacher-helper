@@ -3,10 +3,10 @@ import { createHash } from 'node:crypto';
 
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { isCollectionServed } from '@/data-engine/activation';
-import { DataEngineServerError, listBibleMarkHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listSermonTitleHistory, listSermonVerseHistory, listServiceOrderTitleHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
+import { DataEngineServerError, listBibleMarkHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listSermonChurchHistory, listSermonTitleHistory, listSermonVerseHistory, listServiceOrderTitleHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
 import { collectionHeadId, HEADS_COLLECTION, sequenceId } from '@/data-engine/serverFeed';
 import { DataSession } from '@/data-engine/session';
-import type { DataCommand, ResourceSnapshot } from '@/data-engine/types';
+import type { DataCommand, FieldValue, ResourceSnapshot } from '@/data-engine/types';
 
 jest.mock('@/data-engine/activation', () => ({ ...jest.requireActual('@/data-engine/activation'), isCollectionServed: jest.fn(() => true) }));
 
@@ -1466,6 +1466,141 @@ describe('transactional DataEngine server', () => {
         expect(history()).toHaveLength(1);
       }
     });
+
+  describe('sermon church chronology', () => {
+    const originalChurch = { id: 'opening', name: 'Opening church', city: 'Opening city' };
+    const deskChurch = { id: 'desk', name: 'Desk church', city: 'Desk city' };
+    const phoneChurch = { id: 'phone', name: 'Phone church', city: 'Phone city' };
+    const field = (church: typeof originalChurch | null): FieldValue => church
+      ? { exists: true, value: church } : { exists: false };
+
+    it.each([
+      { opening: originalChurch, desk: deskChurch, phone: phoneChurch, offset: 20, winner: deskChurch, loser: phoneChurch },
+      { opening: originalChurch, desk: deskChurch, phone: phoneChurch, offset: 80, winner: phoneChurch, loser: deskChurch },
+      { opening: originalChurch, desk: deskChurch, phone: null, offset: 80, winner: null, loser: deskChurch },
+      { opening: originalChurch, desk: null, phone: phoneChurch, offset: 80, winner: phoneChurch, loser: null },
+      { opening: null, desk: deskChurch, phone: phoneChurch, offset: 80, winner: phoneChurch, loser: deskChurch },
+    ])('keeps the complete winner after delayed delivery at $offset ($opening / $desk / $phone)', async scenario => {
+      const seed = create('sermon-church-seed') as Extract<DataCommand, { kind: 'create' }>;
+      const notes = 'Notes on a separately named date';
+      const preachDates = [{ id: 'date', date: '2099-04-10', church: { id: 'calendar', name: 'Calendar only', city: 'Calendar city' },
+        status: 'planned', notes, createdAt: '2099-01-01T00:00:00.000Z' }];
+      const value = { ...seed.value, preachDates };
+      if (scenario.opening) Object.assign(value, { church: scenario.opening });
+      expect((await processCommand(seed.owner, { ...seed, value })).kind).toBe('acknowledged');
+      const edit = (operationId: string, chosen: typeof originalChurch | null, offset: number) => ({
+        ...update(operationId, 'sermon-church-seed'),
+        changes: [{ path: ['church'], before: field(scenario.opening), after: field(chosen) }],
+        sermonChurchAction: { observedRevision: 1, time: { earliestMs: 1_800_000_000_000 + offset, latestMs: 1_800_000_000_005 + offset } },
+      });
+      expect((await processCommand(seed.owner, edit('desk', scenario.desk, 40))).kind).toBe('acknowledged');
+      const request = edit('phone', scenario.phone, scenario.offset);
+      const result = await processCommand(seed.owner, request);
+      expect(result.kind).toBe('acknowledged');
+      const stored = documents.get('sermons/sermon-1');
+      expect(stored?.church).toEqual(scenario.winner ?? undefined);
+      expect(stored?.preachDates).toEqual(preachDates);
+      const history = () => [...documents.entries()].filter(([path]) => path.startsWith('sermons/sermon-1/_churchHistory/'));
+      expect(history()).toHaveLength(1);
+      expect(history()[0][1]).toMatchObject({ church: scenario.loser, winnerChurch: scenario.winner, generation: 'sermon-church-seed' });
+      expect(await listSermonChurchHistory(seed.owner, seed.resource.id, 'sermon-church-seed')).toMatchObject({
+        entries: [{ church: scenario.loser, winnerChurch: scenario.winner }],
+      });
+      await expect(listSermonChurchHistory('another-owner', seed.resource.id, 'sermon-church-seed')).rejects.toMatchObject({ status: 403 });
+      await expect(listSermonChurchHistory(seed.owner, seed.resource.id, 'old-generation')).rejects.toMatchObject({ status: 404 });
+      expect(await processCommand(seed.owner, request)).toEqual(result);
+      expect(history()).toHaveLength(1);
+    });
+
+    it.each([
+      { explicitChurch: false, phoneAt: 20, winner: deskChurch },
+      { explicitChurch: true, phoneAt: 20, winner: deskChurch },
+      { explicitChurch: true, phoneAt: 80, winner: phoneChurch },
+    ])('applies a planned fill only while its date is unnamed and the church choice wins ($explicitChurch / $phoneAt)',
+      async ({ explicitChurch, phoneAt, winner }) => {
+        const seed = create('sermon-church-projection') as Extract<DataCommand, { kind: 'create' }>;
+        const unnamed = { id: 'church-unspecified', name: 'Church not specified', city: '' };
+        const calendarChurch = { id: 'calendar', name: 'Calendar only', city: 'Calendar city' };
+        const row = { id: 'date', date: '2099-04-10', church: unnamed,
+          status: 'planned', notes: 'Keep this note', createdAt: '2099-01-01T00:00:00.000Z' };
+        const dateChurch = explicitChurch ? calendarChurch : unnamed;
+        expect((await processCommand(seed.owner, { ...seed, value: { ...seed.value, church: originalChurch, preachDates: [row] } })).kind)
+          .toBe('acknowledged');
+        const change = (operationId: string, chosen: typeof originalChurch, offset: number) => ({
+          ...update(operationId, 'sermon-church-projection'),
+          changes: [{ path: ['church'], before: field(originalChurch), after: field(chosen) }],
+          sermonChurchAction: { observedRevision: 1, time: { earliestMs: 1_800_000_000_000 + offset, latestMs: 1_800_000_000_005 + offset } },
+        });
+        const dates = (after: typeof row) => ({ path: ['preachDates'], before: { exists: true, value: [row] }, after: { exists: true, value: [after] } });
+        const desk = change('desk', deskChurch, 40);
+        expect((await processCommand(seed.owner, { ...desk, changes: explicitChurch
+          ? [...desk.changes, dates({ ...row, church: calendarChurch })] : desk.changes })).kind).toBe('acknowledged');
+        const phone = change('phone', phoneChurch, phoneAt);
+        expect(await processCommand(seed.owner, { ...phone,
+          changes: [...phone.changes, dates({ ...row, church: phoneChurch })],
+          sermonChurchFill: { rowId: row.id, rowCreatedAt: row.createdAt, church: phoneChurch },
+        })).toMatchObject({ kind: 'acknowledged', snapshot: { value: { church: winner, preachDates: [{ ...row, church: dateChurch }] } } });
+      });
+
+    it.each([true, false])('moves a date even when its inferred church is stale ($explicitChurch)', async explicitChurch => {
+      const seed = create('sermon-date-church-projection') as Extract<DataCommand, { kind: 'create' }>;
+      const unnamed = { id: 'church-unspecified', name: 'Church not specified', city: '' };
+      const row = { id: 'date', date: '2099-04-10', church: unnamed, status: 'planned', notes: 'Keep notes',
+        createdAt: '2099-01-01T00:00:00.000Z' };
+      const nextDate = '2099-04-20';
+      expect((await processCommand(seed.owner, { ...seed, value: { ...seed.value, church: originalChurch, preachDates: [row] } })).kind)
+        .toBe('acknowledged');
+      const dates = (after: typeof row) => ({ path: ['preachDates'], before: { exists: true, value: [row] }, after: { exists: true, value: [after] } });
+      const deskChanges = explicitChurch ? [dates({ ...row, church: deskChurch })]
+        : [{ path: ['church'], before: field(originalChurch), after: field(deskChurch) }];
+      expect((await processCommand(seed.owner, { ...update('desk', 'sermon-date-church-projection'), changes: deskChanges })).kind).toBe('acknowledged');
+      const phone = {
+        ...update('phone', 'sermon-date-church-projection'), changes: [dates({ ...row, date: nextDate, church: originalChurch })],
+        sermonChurchFill: { rowId: row.id, rowCreatedAt: row.createdAt, church: originalChurch },
+      };
+      expect(await processCommand(seed.owner, phone)).toMatchObject({ kind: 'acknowledged', snapshot: { value: {
+        church: explicitChurch ? originalChurch : deskChurch,
+        preachDates: [{ ...row, date: nextDate, church: explicitChurch ? deskChurch : unnamed }],
+      } } });
+    });
+
+    it.each([deskChurch, null])('creates the new date with the current church when the observed sermon choice has since changed (%j)', async latest => {
+      const seed = create('sermon-new-date-church') as Extract<DataCommand, { kind: 'create' }>;
+      const row = { id: 'date', date: '2099-04-10', church: originalChurch, status: 'planned', createdAt: '2099-01-01T00:00:00.000Z' };
+      expect((await processCommand(seed.owner, { ...seed, value: { ...seed.value, church: originalChurch, preachDates: [] } })).kind)
+        .toBe('acknowledged');
+      expect((await processCommand(seed.owner, { ...update('desk', 'sermon-new-date-church'),
+        changes: [{ path: ['church'], before: field(originalChurch), after: field(latest) }],
+      })).kind).toBe('acknowledged');
+      const phone = {
+        ...update('phone', 'sermon-new-date-church'),
+        changes: [{ path: ['preachDates'], before: { exists: true, value: [] }, after: { exists: true, value: [row] } }],
+        sermonChurchFill: { rowId: row.id, rowCreatedAt: row.createdAt, church: originalChurch },
+      };
+      expect(await processCommand(seed.owner, phone)).toMatchObject({ kind: 'acknowledged', snapshot: { value: {
+        preachDates: [{ ...row, church: latest ?? { id: 'church-unspecified', name: 'Church not specified', city: '' } }],
+      } } });
+    });
+
+    it('retains the two whole churches when the action intervals overlap', async () => {
+      const seed = create('sermon-church-uncertain') as Extract<DataCommand, { kind: 'create' }>;
+      expect((await processCommand(seed.owner, { ...seed, value: { ...seed.value, church: originalChurch } })).kind).toBe('acknowledged');
+      const edit = (operationId: string, chosen: typeof originalChurch, offset: number) => ({
+        ...update(operationId, 'sermon-church-uncertain'),
+        changes: [{ path: ['church'], before: field(originalChurch), after: field(chosen) }],
+        sermonChurchAction: { observedRevision: 1, time: { earliestMs: 1_800_000_000_000 + offset, latestMs: 1_800_000_010_000 + offset } },
+      });
+      // Each changes different properties, but a different church must not inherit the other version's city.
+      const desk = { ...originalChurch, city: 'Desk city' };
+      const phone = { ...phoneChurch, city: originalChurch.city };
+      expect((await processCommand(seed.owner, edit('desk', desk, 40))).kind).toBe('acknowledged');
+      expect(await processCommand(seed.owner, edit('phone', phone, 45))).toMatchObject({
+        kind: 'conflict', snapshot: { value: { church: desk } },
+        conflicts: [{ path: ['church'], base: field(originalChurch), mine: field(phone), theirs: field(desk) }],
+      });
+      expect([...documents.keys()].filter(path => path.includes('/_churchHistory/'))).toEqual([]);
+    });
+  });
 
   it('retains competing free text after a remote return to the opening passage', async () => {
     const seed = create('sermon-verse-return') as Extract<DataCommand, { kind: 'create' }>;

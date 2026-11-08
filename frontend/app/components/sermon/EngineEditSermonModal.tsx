@@ -68,10 +68,14 @@ export function EngineEditSermonModal({ sermonId, onClose }: { sermonId: string;
     detailsHint={t('editSermon.plannedDateHint')}
     titleHistory={owner && generation && <DocumentFieldHistory key={JSON.stringify([owner, sermonId, generation])}
       current={value?.title ?? ''} disabled={historyDisabled}
-      session={{ owner, generation, sermonId, restore: title => form.update(current => ({ ...current, title })) }} />}
+      session={{ owner, generation, sermonId, restore: (title: string) => form.update(current => ({ ...current, title })) }} />}
     verseHistory={owner && generation && <DocumentFieldHistory key={JSON.stringify([owner, sermonId, generation, 'verse'])}
       current={value?.verse ?? ''} disabled={historyDisabled}
       session={{ owner, generation, sermonId, field: 'verse', restore: verse => form.update(current => ({ ...current, verse })) }} />}
+    churchHistory={owner && generation && <DocumentFieldHistory key={JSON.stringify([owner, sermonId, generation, 'church'])}
+      current={value?.church ?? null} disabled={historyDisabled}
+      session={{ owner, generation, sermonId, field: 'church', restore: church => form.update(current =>
+        sermonMetadataPatch(current, { church: church ?? undefined }, plannedId, newDate.createdAt, unspecifiedChurch, openingRow)) }} />}
     seriesStatus={<div className="space-y-3 p-4 empty:hidden">
       <DataSyncStatus subject={form.recoveryIdentity} status={form.status} error={form.error} errorWords={form.errorWords} onRetry={form.retry}
         onKeepLocal={form.keepLocal} onAcceptRemote={form.acceptRemote}

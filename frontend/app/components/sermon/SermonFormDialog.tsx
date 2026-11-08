@@ -74,6 +74,7 @@ interface SermonFormDialogProps {
   seriesStatus?: React.ReactNode;
   titleHistory?: React.ReactNode;
   verseHistory?: React.ReactNode;
+  churchHistory?: React.ReactNode;
   /** Omitted → no planned-date row at all (some create flows deliberately have none). */
   showPlannedDate?: boolean;
   /** Sits under the second group, in the caller's words. */
@@ -104,6 +105,7 @@ export default function SermonFormDialog({
   seriesStatus,
   titleHistory,
   verseHistory,
+  churchHistory,
   showPlannedDate = false,
   detailsHint,
   titleMaxRows = 4,
@@ -266,6 +268,7 @@ export default function SermonFormDialog({
               disabled={locked}
               inputClassName={`${FIELD_INPUT} pr-12`}
             />
+            {churchHistory}
           </div>
 
           {showPlannedDate && (

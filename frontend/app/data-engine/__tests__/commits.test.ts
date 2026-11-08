@@ -1,3 +1,4 @@
+import { initializeCommit } from '../atomicCommits';
 import { CommitQueue, createMemoryCommitStore } from '../commits';
 import { createIndexedDbCheckpoints } from '../checkpoint.client';
 import { createIndexedDbCommitStore } from '../commits.client';
@@ -310,6 +311,26 @@ describe('Durable commit requests', () => {
       predecessorId: middle.id, groupMeetingFieldCaptures: { location: capture('Library', 15) },
     }))!;
     expect(last.groupMeetingFieldActions?.location).toMatchObject({ before: 'Side room', after: 'Library', predecessorOperationId: first.id });
+  });
+
+  it('retains the original inferred church on a new date after a preceding ACK observes another church', async () => {
+    const church = { id: 'opening', name: 'Opening church', city: 'Opening city' };
+    const desk = { id: 'desk', name: 'Desk church', city: 'Desk city' };
+    const row = { id: 'date', date: '2026-12-13', createdAt: '2026-11-08', status: 'planned', church };
+    const basis = initial();
+    const opening = { ...basis, value: { ...basis.value, church, verse: 'John 3:16', date: row.createdAt, thoughts: [], preachDates: [] } };
+    const { queue } = setup({ opening }).makeQueue();
+    const session = new DataSession(opening);
+    session.edit({ ...opening.value, title: 'Local title' });
+    const first = (await queue.save('sermon', session.checkpoint()))!;
+    session.applyCommit(first);
+    session.edit({ ...opening.value, title: 'Local title', preachDates: [row] });
+    const second = (await queue.save('sermon', session.checkpoint(), { predecessorId: first.id, sermonMetadataTime: null }))!;
+    const ack = { ...opening, value: { ...opening.value, title: 'Local title', church: desk },
+      metadata: { ...opening.metadata!, revision: 2, operationId: first.id } };
+    const ready = initializeCommit(second, [{ ...first, state: 'acknowledged', result: { kind: 'acknowledged', operationId: first.id, snapshot: ack } }]);
+    expect(ready).toMatchObject({ sermonChurchFill: { rowId: row.id, rowCreatedAt: row.createdAt, church },
+      intended: { title: 'Local title', church: desk, preachDates: [row] } });
   });
 
   it('never stamps an inferred church as a choice when only the city was edited', async () => {

@@ -11,6 +11,7 @@ import { isCapturedPreachDateFieldConflict, preachDateRebaseChoices, retainAutho
 import { alignImplicitPreachStatuses, isCapturedPreachStatusConflict, replacedPreachStatusRows, retainPreachStatusIntent } from './preachStatusAction';
 import { equalValues, mergeDocumentFields, MAX_RELATION_RESOURCES } from './protocol';
 import { isCapturedRowConflict } from './rowFieldAction';
+import { rebaseSermonChurchFill } from './sermonChurchFill';
 import { coversCommittedEffect } from './snapshotFreshness';
 
 import type { CommitRequest, CommitStore, TrackCommitAnswer } from './commits';
@@ -64,7 +65,12 @@ export function initializeCommit(record: CommitRequest, records: readonly Commit
     const scopedChoices = [...replacement, ...preachingChoices, ...statusChoices];
     if (scopedChoices.length) return { ...record, initialized: true, state: 'conflict',
       result: { kind: 'conflict', operationId: record.id, snapshot, conflicts: scopedChoices } };
-    const dates = sameGeneration ? alignImplicitPreachStatuses(ancestor?.preachDates, record.value?.preachDates,
+    const churchFill = sameGeneration ? record.sermonChurchFill : undefined;
+    // Keep a new row's original inferred value on the wire. Only the server
+    // transaction knows which sermon church is current when the row is saved.
+    const authoredDates = churchFill ? rebaseSermonChurchFill(predecessor.value?.preachDates, record.value?.preachDates, snapshot.value?.preachDates,
+      { exists: true, value: churchFill.church }, churchFill) : record.value?.preachDates;
+    const dates = sameGeneration ? alignImplicitPreachStatuses(ancestor?.preachDates, authoredDates,
       snapshot.value?.preachDates, record.preachStatusActions) : undefined;
     const authored = record.value && dates !== undefined && dates !== record.value.preachDates ? { ...record.value, preachDates: dates } : record.value;
     const rebased = mergeDocumentFields(ancestor, authored, snapshot.value);

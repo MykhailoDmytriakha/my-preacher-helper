@@ -6,13 +6,22 @@ import { requestOwnerJson } from '@/services/ownerHttpTransport.client';
 import { storedFieldValue } from '@/utils/storedFieldValue';
 import { useTranslation } from '@locales/useTranslation';
 
-import type { GroupStatusHistoryPage, GroupTitleHistoryPage, SermonTitleHistoryPage, SermonVerseHistoryPage, ServiceOrderTitleHistoryPage } from '@/data-engine/documentFieldAction';
-type DocumentHistoryPage = ServiceOrderTitleHistoryPage | GroupTitleHistoryPage | GroupStatusHistoryPage | SermonTitleHistoryPage | SermonVerseHistoryPage;
-type HistoryEntry = { id: string; value: string; winner: string };
+import type { GroupStatusHistoryPage, GroupTitleHistoryPage, SermonChurchHistoryPage, SermonTitleHistoryPage, SermonVerseHistoryPage, ServiceOrderTitleHistoryPage } from '@/data-engine/documentFieldAction';
+import type { Church } from '@/models/models';
+
+type DocumentHistoryPage = ServiceOrderTitleHistoryPage | GroupTitleHistoryPage | GroupStatusHistoryPage | SermonTitleHistoryPage | SermonVerseHistoryPage | SermonChurchHistoryPage;
+type HistoryValue = string | Church | null;
+type HistoryEntry = { id: string; value: HistoryValue; winner: HistoryValue };
 type HistoryPage = { entries: HistoryEntry[]; nextCursor: string | null };
-type HistorySession = ({ orderId: string } | { groupId: string; field?: 'status' } | { sermonId: string; field?: 'verse' }) & {
-  owner: string; generation: string; restore: (title: string) => Promise<void>;
-};
+type HistorySession = { owner: string; generation: string } & (
+  (({ orderId: string } | { groupId: string; field?: 'status' } | { sermonId: string; field?: 'verse' }) & { restore: (value: string) => Promise<void> })
+  | { sermonId: string; field: 'church'; restore: (value: Church | null) => Promise<void> }
+);
+
+function sameHistoryValue(left: HistoryValue, right: HistoryValue): boolean {
+  return left === right || Boolean(left && right && typeof left === 'object' && typeof right === 'object'
+    && left.id === right.id && left.name === right.name && left.city === right.city);
+}
 
 const unavailable = 'Field history unavailable';
 const messages = { failed: unavailable, unavailable, timedOut: unavailable };
@@ -28,6 +37,11 @@ const historyLabels = {
     failed: 'common.statusHistoryRestoreFailed', empty: 'common.statusHistoryEmpty', kept: 'common.statusHistoryKept',
     current: 'common.statusHistoryCurrent', restore: 'common.statusHistoryRestore', more: 'common.statusHistoryMore',
   },
+  church: {
+    heading: 'common.churchHistory', loading: 'common.churchHistoryLoading', unavailable: 'common.churchHistoryUnavailable',
+    failed: 'common.churchHistoryRestoreFailed', empty: 'common.churchHistoryEmpty', kept: 'common.churchHistoryKept',
+    current: 'common.churchHistoryCurrent', restore: 'common.churchHistoryRestore', more: 'common.churchHistoryMore',
+  },
   verse: {
     heading: 'common.verseHistory', loading: 'common.verseHistoryLoading', unavailable: 'common.verseHistoryUnavailable',
     failed: 'common.verseHistoryRestoreFailed', empty: 'common.verseHistoryEmpty', kept: 'common.verseHistoryKept',
@@ -35,7 +49,7 @@ const historyLabels = {
   },
 } as const;
 
-export function DocumentFieldHistory({ session, current, disabled }: { session: HistorySession; current: string; disabled: boolean }) {
+export function DocumentFieldHistory({ session, current, disabled }: { session: HistorySession; current: HistoryValue; disabled: boolean }) {
   const { t } = useTranslation();
   const { owner, generation } = session;
   const { collection, resourceId, key } = 'groupId' in session
@@ -47,7 +61,10 @@ export function DocumentFieldHistory({ session, current, disabled }: { session: 
   const labels = historyLabels[field];
   const endpoint = field + '-history';
   const heading = t(labels.heading);
-  const format = (value: string) => field === 'status' ? String(storedFieldValue(t, 'groups', 'status', value)) : value || t('common.untitled');
+  const format = (value: HistoryValue) => {
+    if (typeof value !== 'string') return value ? [value.name, value.city].filter(Boolean).join(', ') : t('calendar.unspecifiedChurch');
+    return field === 'status' ? String(storedFieldValue(t, 'groups', 'status', value)) : value || t('common.untitled');
+  };
   const panel = useId();
   const [open, setOpen] = useState(false);
   const [page, setPage] = useState<HistoryPage | null>(null);
@@ -69,15 +86,20 @@ export function DocumentFieldHistory({ session, current, disabled }: { session: 
       const entries = value.entries.map(entry => 'status' in entry
         ? { id: entry.id, value: entry.status, winner: entry.winnerStatus }
         : 'verse' in entry ? { id: entry.id, value: entry.verse, winner: entry.winnerVerse }
-          : { id: entry.id, value: entry.title, winner: entry.winnerTitle });
+          : 'church' in entry ? { id: entry.id, value: entry.church, winner: entry.winnerChurch }
+            : { id: entry.id, value: entry.title, winner: entry.winnerTitle });
       setPage(previous => ({ nextCursor: value.nextCursor, entries: [...(cursor ? previous?.entries ?? [] : []), ...entries] }));
     } catch { setError('load'); }
     finally { setLoading(false); }
   };
-  const restore = async (next: string) => {
+  const restore = async (next: HistoryValue) => {
     setRestoring(true);
     setError(undefined);
-    try { await session.restore(next); }
+    try {
+      if ('field' in session && session.field === 'church') {
+        if (typeof next !== 'string') await session.restore(next);
+      } else if (typeof next === 'string') await session.restore(next);
+    }
     catch { setError('restore'); }
     finally { setRestoring(false); }
   };
@@ -96,9 +118,9 @@ export function DocumentFieldHistory({ session, current, disabled }: { session: 
             <p className="font-medium">{format(entry.value)}</p>
             <p>{t(labels.kept, { title: format(entry.winner) })}</p>
           </div>
-          <button type="button" disabled={disabled || restoring || current === entry.value}
+          <button type="button" disabled={disabled || restoring || sameHistoryValue(current, entry.value)}
             className="min-h-8 text-xs font-medium text-emerald-700 hover:underline disabled:opacity-50 dark:text-emerald-400"
-            onClick={() => void restore(entry.value)}>{current === entry.value ? t(labels.current)
+            onClick={() => void restore(entry.value)}>{sameHistoryValue(current, entry.value) ? t(labels.current)
               : t(labels.restore)}</button>
         </li>)}
       </ul>}

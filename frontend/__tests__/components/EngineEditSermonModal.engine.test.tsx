@@ -107,7 +107,7 @@ it('keeps an unnamed date unnamed after typing and clearing the church before Sa
   view.unmount();
 });
 
-it('uses the same explicit Save time for the edited title, passage and planned day', async () => {
+it('uses the same explicit Save time for the edited title, passage, church and planned day', async () => {
   const time = { earliestMs: 1_800_000_000_005, latestMs: 1_800_000_000_012 };
   const capture = jest.spyOn(actionClock, 'capture').mockReturnValue(time);
   const { harness, view } = setup();
@@ -115,6 +115,8 @@ it('uses the same explicit Save time for the edited title, passage and planned d
     const title = await ready();
     fireEvent.change(title, { target: { value: '  Revised title  ' } });
     fireEvent.change(screen.getByLabelText('addSermon.verseLabel'), { target: { value: 'Romans 8:1' } });
+    fireEvent.change(screen.getByRole('combobox', { name: 'calendar.church' }), { target: { value: 'O' } });
+    fireEvent.pointerDown(await screen.findByRole('option', { name: /Other chapel/ }));
     fireEvent.change(screen.getByLabelText('Planned date'), { target: { value: '2099-10-09' } });
     await act(async () => { await settleEngine(); });
     expect(capture).not.toHaveBeenCalled();
@@ -123,6 +125,7 @@ it('uses the same explicit Save time for the edited title, passage and planned d
     expect(harness.transport.send).toHaveBeenCalledWith(expect.objectContaining({
       sermonTitleAction: { before: 'Opening', after: 'Revised title', observedRevision: 1, time },
       sermonVerseAction: { observedRevision: 1, time },
+      sermonChurchAction: { observedRevision: 1, time },
       preachDateAction: { rowId: 'first', before: '2099-10-03', after: '2099-10-09', observedRevision: 1, time },
     }));
   } finally {

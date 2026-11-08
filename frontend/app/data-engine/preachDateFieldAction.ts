@@ -1,4 +1,5 @@
-import { equalValues, object, own, readField } from './fieldValues';
+import { isChurchValue, type ChurchValue } from './churchFieldValue';
+import { equalValues, readField } from './fieldValues';
 import { replacedRowDetail, rowDetailConflict } from './rowDetailAction';
 import { captureRowDetailActions, type RowDetailCaptures } from './rowDetailCapture';
 import { boundedRowId, existingRowField, existingRowFields, isCapturedRowConflict, replaceExistingRowField, rowConflictPath } from './rowFieldAction';
@@ -18,11 +19,8 @@ export type PreachDateFieldHistoryPage = {
   entries: Array<{ id: string; acceptedAt: string; fields: PreachDateFieldHistoryEntry[] }>;
 };
 
-type ChurchValue = DocumentData & { id: string; name: string; city?: string };
 const short = (value: unknown): value is string => typeof value === 'string' && value.length <= 1024;
 const optionalShort = (value: unknown): value is string | null => value === null || short(value);
-const isChurchValue = (value: unknown): value is ChurchValue => object(value) && short(value.id) && short(value.name)
-  && (!own(value, 'city') || short(value.city)) && Object.keys(value).every(key => ['id', 'name', 'city'].includes(key));
 
 export const PREACH_ROW_BIRTH: RowFieldTarget<string> = {
   field: 'preachDates', leaf: 'createdAt',

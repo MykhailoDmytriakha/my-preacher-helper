@@ -17,7 +17,7 @@ const isServerEntry = (source: string) => /^api\/(?:.+\/)?route\.ts$/.test(sourc
 const ENGINE_ROUTES = new Set(['api/data-engine/commands/route.ts', 'api/data-engine/documents/[collection]/[id]/route.ts',
   'api/data-engine/collections/[collection]/route.ts', 'api/data-engine/changes/[collection]/route.ts',
   'api/data-engine/documents/[collection]/[id]/preach-date-history/route.ts', 'api/data-engine/documents/[collection]/[id]/mark-history/route.ts',
-  'api/data-engine/documents/[collection]/[id]/title-history/route.ts', 'api/data-engine/documents/[collection]/[id]/verse-history/route.ts', 'api/data-engine/documents/[collection]/[id]/status-history/route.ts', 'api/data-engine/documents/[collection]/[id]/meeting-date-history/route.ts',
+  'api/data-engine/documents/[collection]/[id]/title-history/route.ts', 'api/data-engine/documents/[collection]/[id]/verse-history/route.ts', 'api/data-engine/documents/[collection]/[id]/church-history/route.ts', 'api/data-engine/documents/[collection]/[id]/status-history/route.ts', 'api/data-engine/documents/[collection]/[id]/meeting-date-history/route.ts',
   'api/data-engine/documents/[collection]/[id]/meeting-field-history/route.ts',
   'api/data-engine/documents/[collection]/[id]/preach-date-field-history/route.ts',
   'api/data-engine/documents/[collection]/[id]/preach-status-history/route.ts']);

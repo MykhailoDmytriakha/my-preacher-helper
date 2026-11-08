@@ -7449,3 +7449,13 @@ In Sermons, open a sermon and choose Options and Edit. An unnamed or newly added
 Three regressions went red to green. 325 tests in 11 suites, TypeScript, scoped ESLint and local build 35rcwS5xGOjAnNThzlKj8 passed. Six Chrome scenarios on isolated emulators covered the original selection, creation of a date, a named date, clearing, offline delivery and reload. In the handoff scenario an explicit date edit on the second device stayed accepted when the earlier phone save arrived. The phone asked which church to keep for the date. Independent code review and browser evidence are in the case artifacts under action-chronology-356/planned-church-verified.
 
 For authorized production acceptance, verify the deployed revision. On one disposable sermon, type the first letter of an existing church and select it from the list. Save and reload. Confirm the original date and its notes stay and the name and city match the selected church. Repeat on a row with a church explicitly set for the date and confirm it stays.
+
+## BUG-20261016-engine-asks-instead-of-chronology · Church on the sermon
+
+Open a sermon and choose Options and Edit. The church selection or clear uses the exact Save time, and the complete name, city and identity are handled together. The person can restore a displaced choice or clear from Church history and save it in the ordinary form.
+
+The planned date retains an independently selected church. An automatic fill is tied to the exact date identity and the accepted sermon church. An older fill cannot block a date move. When a new date is saved after another device changes the sermon church, the transaction uses the current selection.
+
+Twelve behavior regressions went red to green. 456 tests in nine suites, TypeScript, ESLint with zero errors, and guarded production-mode build 7GBfr-Z9F9aFjWc31qVaL passed. Six Chrome scenarios on isolated emulators covered both action orders for selection and clear, history and reload, competing automatic fills, and a date move alongside a separately authored calendar church. Independent review confirmed the causal and row-identity boundaries. Evidence is in artifacts/action-chronology-356/sermon-church-order-verified.
+
+For authorized production acceptance, verify the deployed revision and worker. Use one disposable sermon to choose and clear its church, then restore a displaced choice and reload. Check that the date and its own explicitly named church remain. Close both profiles after the check.

@@ -22,11 +22,12 @@ import { coversCommittedEffect } from './snapshotFreshness';
 import type { CaptureTransferProof, CaptureTransferResult } from './captureTransfer';
 import type { DocumentWriteReceipt } from './commitReceipt';
 import type { EditorRecord } from './controller';
-import type { DocumentFieldAction, DocumentFieldObservation } from './documentFieldAction';
+import type { DocumentFieldAction, DocumentFieldObservation, SermonChurchObservation } from './documentFieldAction';
 import type { GroupMeetingFieldActions, GroupMeetingFieldCaptures } from './groupMeetingFieldAction';
 import type { PreachDateFieldActions, PreachDateFieldSave } from './preachDateFieldAction';
 import type { PreachStatusAction, PreachStatusCapture } from './preachStatusAction';
 import type { DataEngineRuntime } from './runtime';
+import type { SermonChurchFill } from './sermonChurchFill';
 import type { SessionCheckpoint } from './session';
 import type { CommandResult, DataCommand, DocumentData, EditorCommitAction, EngineMetadata, ResourceRef, ResourceSnapshot } from './types';
 
@@ -68,6 +69,8 @@ export interface CommitRequest {
   serviceOrderTitleAction?: DocumentFieldAction;
   sermonTitleAction?: DocumentFieldObservation;
   sermonVerseAction?: DocumentFieldObservation;
+  sermonChurchAction?: SermonChurchObservation;
+  sermonChurchFill?: SermonChurchFill;
   groupTitleAction?: DocumentFieldAction;
   groupStatusAction?: DocumentFieldAction;
   /** Earlier locally captured uses of this resource; owned atomically by DELETE capture storage. */
@@ -160,6 +163,8 @@ export function assertCommitCapture(current: CommitRequest, incoming: CommitRequ
     || !equalValues(current.serviceOrderTitleAction ?? null, incoming.serviceOrderTitleAction ?? null)
     || !equalValues(current.sermonTitleAction ?? null, incoming.sermonTitleAction ?? null)
     || !equalValues(current.sermonVerseAction ?? null, incoming.sermonVerseAction ?? null)
+    || !equalValues(current.sermonChurchAction ?? null, incoming.sermonChurchAction ?? null)
+    || !equalValues(current.sermonChurchFill ?? null, incoming.sermonChurchFill ?? null)
     || !equalValues(current.groupTitleAction ?? null, incoming.groupTitleAction ?? null)
     || !equalValues(current.groupStatusAction ?? null, incoming.groupStatusAction ?? null)
     || !equalValues(current.bibleMarkStroke ?? null, incoming.bibleMarkStroke ?? null)
@@ -264,7 +269,7 @@ function pendingRowFields(record: CommitRequest) {
 }
 
 function hasTimedAncestor(record: CommitRequest): boolean {
-  return record.sequence === 0 && Boolean(record.serviceOrderTitleAction || record.sermonTitleAction || record.sermonVerseAction || record.groupTitleAction || record.groupStatusAction || pendingBibleMarkRebase(record) || pendingMeetingDateRebase(record) || pendingRowFields(record).length || pendingPreachStatusActions(record).length);
+  return record.sequence === 0 && Boolean(record.serviceOrderTitleAction || record.sermonTitleAction || record.sermonVerseAction || record.sermonChurchAction || record.groupTitleAction || record.groupStatusAction || pendingBibleMarkRebase(record) || pendingMeetingDateRebase(record) || pendingRowFields(record).length || pendingPreachStatusActions(record).length);
 }
 
 function freezeSaveOptions(options: CommitSaveOptions | undefined): CommitSaveOptions | undefined {
@@ -893,6 +898,7 @@ export class CommitQueue {
     if (command.kind === 'update' && record.sequence === 0 && command.generation === record.baseline.metadata?.generation) {
       const meetingActions = matchingMeetingFieldActions(command.changes, record.groupMeetingFieldActions);
       if (meetingActions) command.groupMeetingFieldActions = meetingActions;
+      if (record.sermonChurchFill && command.changes.some(change => change.path[0] === 'preachDates')) command.sermonChurchFill = record.sermonChurchFill;
       const preachActions = matchingRowDetailActions(command.changes, record.preachDateFieldActions, PREACH_DATE_FIELD_POLICY);
       if (preachActions) command.preachDateFieldActions = preachActions;
       const statusActions = matchingPreachStatusActions(command.changes, status);

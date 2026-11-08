@@ -5,6 +5,7 @@ import type { DocumentFieldAction, DocumentFieldObservation, DocumentFieldStamp,
 import type { GroupMeetingFieldActions } from './groupMeetingFieldAction';
 import type { PreachDateFieldActions } from './preachDateFieldAction';
 import type { PreachStatusAction } from './preachStatusAction';
+import type { SermonChurchFill } from './sermonChurchFill';
 
 export type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
 export type DocumentData = Record<string, Json>;
@@ -61,6 +62,8 @@ export type DataCommand = CommandBase & (
       serviceOrderTitleAction?: DocumentFieldAction;
       sermonTitleAction?: DocumentFieldObservation;
       sermonVerseAction?: DocumentFieldStamp;
+      sermonChurchAction?: DocumentFieldStamp;
+      sermonChurchFill?: SermonChurchFill;
       groupTitleAction?: DocumentFieldAction;
       groupStatusAction?: DocumentFieldAction;
       /** Exact plan cells observed before an explicit outline removal. */
