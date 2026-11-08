@@ -9,6 +9,7 @@ import { bookSequence, PROTESTANT_BOOKS, SYNODAL_BOOKS } from '@/components/bibl
 import { readLine } from '@/utils/bibleSearch/query';
 import { answerSearch } from '@/utils/bibleSearch/results';
 import { BibleSearchIndex } from '@/utils/bibleSearch/searchIndex';
+import { wordsOfText } from '@/utils/bibleSearch/words';
 import { bookSlug, type BookText } from '@/utils/bibleText';
 
 /** The whole Synodal text from the files the app serves: the numbers below are the real ones. */
@@ -55,6 +56,47 @@ describe('search over the Synodal text', () => {
   it('finds the forms of a word: «вера» — веры, вере, веру', () => {
     expect(answer('Рим 4 вера').forms).toEqual(expect.arrayContaining(['вере', 'вера', 'веры', 'веру']));
     expect(answer('1 Кор 13 любовь').forms).toEqual(expect.arrayContaining(['любовь', 'любви']));
+  });
+
+  it.each([
+    ['рай', 'раю'],
+    ['ад', 'ада'],
+    ['сказал', 'сказав'],
+  ])('retains %s and its form %s in the same result group', (line, form) => {
+    const result = answer(line);
+    const own = result.hits.slice(0, result.kin?.own ?? result.hits.length);
+    expect(own.some(hit => {
+      const words = wordsOfText(hit.text);
+      return words.includes(form) && !words.includes(line);
+    })).toBe(true);
+  });
+
+  it('finds the ordinary noun from an attested dictionary form absent from the translation', () => {
+    const hits = places('раем');
+    expect(hits).toContain('Luke 23:43');
+    expect(hits).not.toContain('Ezekiel 27:22');
+  });
+
+  it('does not turn a hell search into a match for the name Ada', () => {
+    expect(places('ад')).not.toContain('Genesis 4:19');
+    expect(places('"Ада"')).toContain('Genesis 4:19');
+  });
+
+  it('keeps the capitalized ordinary noun and excludes an unrelated abbreviated reading', () => {
+    expect(places('аде')).toContain('Isaiah 14:9');
+    expect(answer('имя').forms).toContain('имени');
+    expect(answer('имя').forms).not.toContain('им');
+  });
+
+  it('does not treat a known short word as a prefix while other books are loading', () => {
+    const index = new BibleSearchIndex(bookSequence(SYNODAL_BOOKS));
+    const file = path.join(__dirname, '../../../public/bible-text/rst/v1', 'genesis.json');
+    index.addBook(JSON.parse(fs.readFileSync(file, 'utf8')) as BookText);
+    const reading = readLine('Быт ад', ru);
+    if (reading.kind !== 'search') throw new Error('Expected a scoped word search');
+    const result = answerSearch(index, reading.query, SYNODAL_BOOKS);
+    expect(result.hits).toHaveLength(0);
+    expect(result.begun).toEqual([]);
   });
 
   it('the phrase is found where its words stand together', () => {

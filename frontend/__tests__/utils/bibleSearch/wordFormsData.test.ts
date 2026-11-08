@@ -4,6 +4,7 @@ import path from 'node:path';
 
 import sources from '@/utils/bibleSearch/wordFormsData/sources.json';
 import assets from '@/utils/bibleSearch/wordFormsData/assets.json';
+import shortNouns from '@/utils/bibleSearch/wordFormsData/shortNouns.json';
 
 const root = path.resolve(__dirname, '../../../..');
 const sha = (relative: string) => createHash('sha256').update(fs.readFileSync(path.join(root, relative))).digest('hex');
@@ -26,6 +27,17 @@ describe('the generated lexical data follows the current Bible text and normaliz
     const recorded = sources.corpus.corpus[bible];
     expect(recorded.map((book) => book.path).sort()).toEqual(files);
     for (const book of recorded) expect(sha(book.path)).toBe(book.sha256);
+  });
+
+  it('retains the recorded short noun groups with each spelling owned by one lemma', () => {
+    const relative = 'frontend/app/utils/bibleSearch/wordFormsData/shortNouns.json';
+    expect(sha(relative)).toBe(sources.shortNouns.sha256);
+    for (const language of ['ru', 'uk'] as const) {
+      const groups = Object.values(shortNouns[language]);
+      expect(groups).toHaveLength(sources.shortNouns.entries[language]);
+      const forms = groups.flatMap(group => [...group.forms, ...group.aliases]);
+      expect(new Set(forms).size).toBe(forms.length);
+    }
   });
 
   it.each(['ru', 'uk'] as const)('retains the recorded %s payload and format', (language) => {

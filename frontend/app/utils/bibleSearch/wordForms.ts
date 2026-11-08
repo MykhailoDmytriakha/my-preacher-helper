@@ -1,10 +1,11 @@
+import { shortNounFormsOf } from './shortNounForms';
 import { isLexicalWord, lexicalFormsOf } from './wordFormLexicon';
 
 /**
  * Candidate inflections come from the existing endings and spelling rules. Known Russian/Ukrainian
  * words also need a shared verified lexical reading; letters alone must not turn one word into another.
  * Unknown names keep ordinary same-base endings, with no invented internal vowel. Explicit patterns,
- * short words and English retain their existing contracts.
+ * unverified short words and English retain their existing contracts.
  */
 export type SearchLanguage = 'ru' | 'uk' | 'en';
 
@@ -35,7 +36,14 @@ export type WordMatcher = {
   /** One key per set of forms: «вера» and «веры» search the same. */
   key: string;
   test: (word: string) => boolean;
+  /** A verified compact noun stays complete and keeps its identity through every form. */
+  lemma?: string;
+  /** Extra evidence from the printed token when a verified form has another reading. */
+  testSurface?: (word: string, surface: string) => boolean;
 };
+
+export const matchesSurface = (matcher: WordMatcher, word: string, surface: string): boolean =>
+  matcher.testSurface ? matcher.testSurface(word, surface) : matcher.test(word);
 
 const PATTERN = /[*_]/;
 /** A pattern longer than a word of the Bible, or with more stars than help, is cut to this. */
@@ -109,6 +117,15 @@ export function matcherOf(term: string, language: SearchLanguage): WordMatcher {
   if (PATTERN.test(term)) {
     const pattern = patternOf(term);
     return { term, pattern: true, tooShort: patternTooShort(pattern), key: `p:${pattern}`, test: (word) => fitsPattern(word, pattern) };
+  }
+  const short = language === 'en' ? undefined : shortNounFormsOf(term, language);
+  if (short) {
+    const { key, lemma, forms, excluded } = short;
+    return {
+      term, pattern: false, tooShort: false, lemma, key, test: word => forms.has(word),
+      ...(excluded.size ? { testSurface: (word: string, surface: string) =>
+        forms.has(word) && (word === term || !excluded.has(surface)) } : {}),
+    };
   }
   if (term.length < 3) return { term, pattern: false, tooShort: false, key: `w:${term}`, test: (word) => word === term };
   const lexical = language === 'en' ? null : lexicalFormsOf(term, language);

@@ -3,8 +3,8 @@ import { getLocalizedAbbrev } from '@/utils/bibleBooks';
 import { matchingPhraseForms, type SearchPhrase } from './phrases';
 import { matchersOf, partBooks, type BookGroups, type SearchQuery, type SearchScope } from './query';
 import { hasLexicalLemma } from './wordFormLexicon';
-import { matcherOf, withoutEnding, type SearchLanguage, type WordMatcher } from './wordForms';
-import { wordsOfText } from './words';
+import { matcherOf, matchesSurface, withoutEnding, type SearchLanguage, type WordMatcher } from './wordForms';
+import { piecesOfText, wordsOfText } from './words';
 
 
 import type { BibleSearchIndex, VerseHit } from './searchIndex';
@@ -67,7 +67,14 @@ const exactly = (term: string): WordMatcher => ({ term, pattern: false, tooShort
 /** Whether the Bible has this word as written: «иисус», «петр», «коринф» are words; «корин», «духо» are not. */
 export const isBibleWord = (index: BibleSearchIndex, word: string): boolean => index.knows(exactly(word));
 
-const eitherOf = (one: WordMatcher, other: WordMatcher): WordMatcher => ({ ...one, key: `${one.key}|${other.key}`, test: (word) => one.test(word) || other.test(word) });
+const eitherOf = (one: WordMatcher, other: WordMatcher): WordMatcher => ({
+  ...one,
+  key: `${one.key}|${other.key}`,
+  test: (word) => one.test(word) || other.test(word),
+  ...(one.testSurface || other.testSurface ? {
+    testSurface: (word: string, surface: string) => matchesSurface(one, word, surface) || matchesSurface(other, word, surface),
+  } : {}),
+});
 
 /**
  * The matchers a search runs with, and what each widens to with its kin. A word the Bible has as typed keeps to its
@@ -81,7 +88,9 @@ function matchersIn(index: BibleSearchIndex, query: SearchQuery): { matchers: Wo
   const matchers: WordMatcher[] = [];
   const widened: WordMatcher[] = [];
   for (const own of matchersOf(query)) {
-    const beginning = own.pattern || index.knows(exactly(own.term)) ? null : matcherOf(`${own.term}*`, query.language);
+    const beginning = own.pattern || own.lemma || index.knows(exactly(own.term))
+      ? null
+      : matcherOf(`${own.term}*`, query.language);
     let related = own;
     if (beginning && !index.knows(own)) {
       // An unfinished spelling is not an inflection. Its real endingless word can still be offered as kin.
@@ -149,7 +158,7 @@ function kinOf(stem: string, language: SearchLanguage): WordMatcher | null {
 
 /** The word in its forms or any word of its stem (the owner, 2026-10-27: «Прит свет» did not find «светильник»). */
 function withKin(own: WordMatcher, language: SearchLanguage): WordMatcher | null {
-  const stem = own.pattern ? null : stemOf(own.term, language);
+  const stem = own.pattern ? null : stemOf(own.lemma ?? own.term, language);
   const kin = stem ? kinOf(stem, language) : null;
   return kin ? { ...eitherOf(own, kin), key: `k:${own.key}|${kin.key}` } : null;
 }
@@ -158,10 +167,16 @@ function withKin(own: WordMatcher, language: SearchLanguage): WordMatcher | null
  * (thousands of verses) stays as quick to type as any other word. */
 function formsIn(hits: readonly VerseHit[], matchers: readonly WordMatcher[], phrases: readonly SearchPhrase[]): string[] {
   const formCounts = new Map<string, number>();
+  const count = (word: string) => formCounts.set(word, (formCounts.get(word) ?? 0) + 1);
+  const usesSurface = matchers.some(matcher => matcher.testSurface);
   for (const hit of hits.slice(0, FORMS_SAMPLE)) {
     const words = wordsOfText(hit.text);
-    for (const word of words) if (matchers.some((matcher) => matcher.test(word))) formCounts.set(word, (formCounts.get(word) ?? 0) + 1);
-    for (const phrase of phrases) for (const form of matchingPhraseForms(words, phrase)) formCounts.set(form, (formCounts.get(form) ?? 0) + 1);
+    const found = usesSurface
+      ? piecesOfText(hit.text).flatMap(({ word, text }) =>
+        word !== null && matchers.some(matcher => matchesSurface(matcher, word, text)) ? [word] : [])
+      : words.filter(word => matchers.some(matcher => matcher.test(word)));
+    found.forEach(count);
+    for (const phrase of phrases) for (const form of matchingPhraseForms(words, phrase)) count(form);
   }
   return Array.from(formCounts.entries()).sort((a, b) => b[1] - a[1]).map(([form]) => form);
 }
@@ -201,7 +216,13 @@ export function answerSearch(index: BibleSearchIndex, query: SearchQuery, books:
   // One pass over the index: the widened words find every verse, and a verse is the word's own when each own word
   // stands in it — the line is read at every keystroke (Codex review, 2026-10-27: two searches per reading).
   const found = index.search(kinned ? widened : matchers, query.phrases);
+  const usesSurface = matchers.some(matcher => matcher.testSurface);
   const isOwn = (hit: VerseHit) => {
+    if (usesSurface) {
+      const pieces = piecesOfText(hit.text);
+      return matchers.every(matcher => pieces.some(({ word, text }) =>
+        word !== null && matchesSurface(matcher, word, text)));
+    }
     const words = wordsOfText(hit.text);
     return matchers.every((matcher) => words.some((word) => matcher.test(word)));
   };

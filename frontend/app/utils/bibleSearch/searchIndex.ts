@@ -1,9 +1,8 @@
 import { verseWords, type BookText } from '@/utils/bibleText';
 
 import { findPhraseRun, phraseWordMatchers, type SearchPhrase } from './phrases';
-import { wordsOfText } from './words';
-
-import type { WordMatcher } from './wordForms';
+import { matchesSurface, type WordMatcher } from './wordForms';
+import { piecesOfText, wordsOfText } from './words';
 
 /**
  * THE WORDS OF A BIBLE, KEPT FOR SEARCH. Every distinct word of the text gets a number once; a verse is
@@ -17,6 +16,17 @@ const KEPT_FLAGS = 48;
 
 export type IndexedVerse = { book: string; chapter: number; verse: number; text: string; words: Uint32Array };
 export type VerseHit = { book: string; chapter: number; verse: number; text: string };
+
+/** Check original spelling only for the small set of candidates with ambiguous normalized forms. */
+function printedWordFilter(matchers: readonly WordMatcher[]): (text: string) => boolean {
+  const surfaceMatchers = matchers.filter(matcher => matcher.testSurface);
+  if (!surfaceMatchers.length) return () => true;
+  return text => {
+    const pieces = piecesOfText(text);
+    return surfaceMatchers.every(matcher => pieces.some(({ word, text: surface }) =>
+      word !== null && matchesSurface(matcher, word, surface)));
+  };
+}
 
 export class BibleSearchIndex {
   private readonly vocabulary: string[] = [];
@@ -94,6 +104,7 @@ export class BibleSearchIndex {
   search(matchers: readonly WordMatcher[], phrases: readonly SearchPhrase[], inBooks?: ReadonlySet<string> | null): VerseHit[] {
     if (!matchers.length && !phrases.length) return [];
     const flags = matchers.map((matcher) => this.flagsFor(matcher));
+    const matchesPrintedWords = printedWordFilter(matchers);
     const phraseTests: Array<Array<(word: number) => boolean>> = [];
     for (const phrase of phrases) {
       const tests: Array<(word: number) => boolean> = [];
@@ -117,8 +128,9 @@ export class BibleSearchIndex {
       if (!verses) continue;
       for (const verse of verses) {
         const { words } = verse;
-        if (!flags.every((each) => words.some((id) => each[id] === 1))) continue;
-        if (!phraseTests.every((tests) => findPhraseRun(words, tests) >= 0)) continue;
+        if (!flags.every((each) => words.some((id) => each[id] === 1))
+          || !phraseTests.every((tests) => findPhraseRun(words, tests) >= 0)
+          || !matchesPrintedWords(verse.text)) continue;
         hits.push({ book: verse.book, chapter: verse.chapter, verse: verse.verse, text: verse.text });
       }
     }

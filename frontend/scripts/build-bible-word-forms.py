@@ -10,6 +10,8 @@ from __future__ import annotations
 import argparse, hashlib, json, os, re, subprocess, tempfile
 from pathlib import Path
 
+from bible_short_nouns import short_nouns
+
 ROOT = Path(__file__).resolve().parents[2]
 DATA = ROOT / 'frontend/app/utils/bibleSearch/wordFormsData'
 PUBLIC_ASSETS = ROOT / 'frontend/public/bible-word-forms'
@@ -134,7 +136,7 @@ def build_uk(vocab: set[str], table: Path, jar: Path | None) -> tuple[bytes, dic
     return data, info
 
 
-def extract_vocabulary() -> tuple[dict[str, set[str]], dict]:
+def extract_vocabulary() -> tuple[dict[str, set[str]], dict, dict]:
     """Walk live checked-in Bible files with the exact TypeScript search cleaners."""
     ts_node = ROOT / 'frontend/node_modules/ts-node/register/transpile-only.js'
     if not ts_node.exists():
@@ -156,17 +158,19 @@ Module._load = function(request, parent, isMain) {
   if (Object.prototype.hasOwnProperty.call(stubs, request)) return stubs[request];
   return original.call(this, request, parent, isMain);
 };
-const { wordsOfText } = require(process.argv[1]);
+const { piecesOfText, wordsOfText } = require(process.argv[1]);
 const { verseWords } = require(process.argv[2]);
 const root = process.argv[3];
 const out = process.argv[4];
-const result = { schema: 1, vocabularies: { ru: new Set(), uk: new Set() }, corpus: {}, sourceHashes: {} };
+const result = { schema: 1, vocabularies: { ru: new Set(), uk: new Set() }, corpus: {}, sourceHashes: {}, surfaces: {} };
 const apostrophes = stubs['@/utils/bibleBooks'].APOSTROPHES;
 result.apostrophes = Array.from({ length: 65536 }, (_, code) => String.fromCharCode(code)).filter(char => { apostrophes.lastIndex = 0; return apostrophes.test(char); }).join('');
 for (const [bible, language] of [['rst', 'ru'], ['ubio', 'uk']]) {
   const dir = path.join(root, 'frontend/public/bible-text', bible, 'v1');
   const files = fs.readdirSync(dir).filter(name => name.endsWith('.json')).sort();
   result.corpus[bible] = [];
+  const lower = new Set();
+  const upper = new Map();
   for (const name of files) {
     const relativePath = `frontend/public/bible-text/${bible}/v1/${name}`;
     const bytes = fs.readFileSync(path.join(dir, name));
@@ -177,13 +181,25 @@ for (const [bible, language] of [['rst', 'ru'], ['ubio', 'uk']]) {
       if (!Array.isArray(chapter)) throw new Error(`Malformed chapter in ${relativePath}`);
       for (const raw of chapter) {
         if (typeof raw !== 'string') throw new Error(`Malformed verse in ${relativePath}`);
-        for (const word of wordsOfText(verseWords(raw))) result.vocabularies[language].add(word);
+        const plain = verseWords(raw);
+        for (const word of wordsOfText(plain)) result.vocabularies[language].add(word);
+        for (const { word, text } of piecesOfText(plain)) {
+          if (word === null) continue;
+          if (!/^\p{Lu}/u.test(text)) lower.add(word);
+          else {
+            if (!upper.has(word)) upper.set(word, new Set());
+            upper.get(word).add(text);
+          }
+        }
         verses += 1;
       }
     }
     result.corpus[bible].push({ path: relativePath, sha256: crypto.createHash('sha256').update(bytes).digest('hex'), verses });
   }
   result.vocabularies[language] = [...result.vocabularies[language]].sort();
+  result.surfaces[language] = { lower: [...lower].sort(), upper: Object.fromEntries(
+    [...upper].map(([word, spellings]) => [word, [...spellings].sort()])
+  ) };
 }
 result.sourceHashes.bibleBooksTs = crypto.createHash('sha256').update(fs.readFileSync(path.join(root, 'frontend/app/utils/bibleBooks.ts'))).digest('hex');
 result.sourceHashes.wordsTs = crypto.createHash('sha256').update(fs.readFileSync(process.argv[1])).digest('hex');
@@ -212,10 +228,12 @@ console.log(JSON.stringify({ counts: Object.fromEntries(Object.entries(result.vo
         raise SystemExit('Canonical apostrophe extraction is empty')
     if doc['sourceHashes']['wordsTs'] != EXPECTED_NORMALIZER_SHA256:
         raise SystemExit('words.ts changed from the pinned normalizer reviewed for this data')
+    for value in doc['surfaces'].values():
+        value['lower'] = set(value['lower'])
     return {lang: set(tokens) for lang, tokens in doc['vocabularies'].items()}, {
         'sourceHashes': doc['sourceHashes'], 'corpus': doc['corpus'],
         'counts': {lang: len(tokens) for lang, tokens in doc['vocabularies'].items()},
-    }
+    }, doc['surfaces']
 
 
 def main() -> None:
@@ -234,14 +252,21 @@ def main() -> None:
     else:
         asset_dir = output_dir / 'assets'
 
-    vocab, corpus_meta = extract_vocabulary()
+    vocab, corpus_meta, surfaces = extract_vocabulary()
     if set(vocab) != {'ru', 'uk'}:
         raise SystemExit('Expected exactly Russian and Ukrainian vocabularies')
     output_dir.mkdir(parents=True, exist_ok=True)
     asset_dir.mkdir(parents=True, exist_ok=True)
     ru_bytes, ru_stats = build_ru(vocab['ru'])
     uk_bytes, uk_stats = build_uk(vocab['uk'], args.uk_table.resolve(), args.uk_jar.resolve() if args.uk_jar else None)
+    noun_data = {
+        lang: short_nouns(lang, compact, vocab[lang], surfaces[lang], norm, args.uk_table.resolve())
+        for lang, compact in [('ru', ru_bytes), ('uk', uk_bytes)]
+    }
+    noun_bytes = (json.dumps(noun_data, ensure_ascii=False, separators=(',', ':'), sort_keys=True) + '\n').encode('utf-8')
+    (output_dir / 'shortNouns.json').write_bytes(noun_bytes)
     source_meta = {
+        'shortNouns': {'sha256': hashlib.sha256(noun_bytes).hexdigest(), 'entries': {lang: len(rows) for lang, rows in noun_data.items()}},
         'schema': 1,
         'corpus': corpus_meta,
         'russian': {'source': 'PyMorphy3 known parses and OpenCorpora Russian dictionary', 'dictionaryRevision': '417150',

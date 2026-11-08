@@ -14,6 +14,10 @@ The Ukrainian forms derive only from the official `ua.net.nlp:morfologik-ukraini
 
 The generated selection is modified: it selects lemma groups intersecting current Ukrainian Bible vocabulary, applies app search normalization and the complete-single-token filter, and serializes compact lemma/prefix/paradigm records. `sources.json` records the pinned Maven artifact hashes and decoded-table hash.
 
+## Short nouns
+
+The same pinned sources generate the small `shortNouns.json` table. It selects common nouns with short dictionary stems, keeps single-meaning ordinary noun forms, and separates forms present in the Bible from aliases that may be typed. Proper-name collisions are audited against original spellings from the same books. Capitalized collisions outside the reviewed spellings require review before generation succeeds. The table is bundled with search and its exact bytes are checked against `sources.json`.
+
 ## Regeneration from a fresh checkout
 
 The generator derives its vocabulary directly from `frontend/public/bible-text/rst/v1/*.json` and `frontend/public/bible-text/ubio/v1/*.json`, calling the app's actual `verseWords` and `wordsOfText` TypeScript functions. It records every relative book path, content hash, and verse count in `sources.json`. It requires the repository's frontend development dependencies to be installed (`cd frontend && npm ci`) because it loads those TypeScript functions through the existing `ts-node` dependency. This is build tooling only; the app runtime has no Node, Python, Java, network, or morphology package dependency beyond its ordinary JavaScript app runtime.

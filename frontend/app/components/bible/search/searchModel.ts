@@ -2,6 +2,7 @@ import { getLocalizedAbbrev, getLocalizedBookName } from '@/utils/bibleBooks';
 import { phraseWordMatchers } from '@/utils/bibleSearch/phrases';
 import { canShowWordSearch, readSearch, type BookGroups, type LineReading, type SearchQuery, type SearchScope } from '@/utils/bibleSearch/query';
 import { scopeBookIds, type SearchAnswer, type WiderStep } from '@/utils/bibleSearch/results';
+import { matchesSurface, type WordMatcher } from '@/utils/bibleSearch/wordForms';
 import { piecesOfText } from '@/utils/bibleSearch/words';
 import { chapterCount, verseCount } from '@/utils/versification';
 
@@ -9,7 +10,6 @@ import type { AppLocale } from '@/utils/appLocale';
 import type { BibleId } from '@/utils/bibles';
 import type { BooksBegun } from '@/utils/bibleSearch/lineChoice';
 import type { SearchIndexState } from '@/utils/bibleSearch/searchIndexStore';
-import type { WordMatcher } from '@/utils/bibleSearch/wordForms';
 import type { TFunction } from 'i18next';
 
 /**
@@ -161,7 +161,7 @@ export function highlightMatchersOf(query: SearchQuery, matchers: readonly WordM
 export function litPieces(text: string, matchers: readonly WordMatcher[]): Array<{ text: string; lit: boolean }> {
   return piecesOfText(text).map((piece) => ({
     text: piece.text,
-    lit: piece.word !== null && matchers.some((matcher) => matcher.test(piece.word as string)),
+    lit: piece.word !== null && matchers.some(matcher => matchesSurface(matcher, piece.word as string, piece.text)),
   }));
 }
 

@@ -709,6 +709,13 @@
     }
   },
   "schema": 1,
+  "shortNouns": {
+    "entries": {
+      "ru": 27,
+      "uk": 44
+    },
+    "sha256": "9100726ae682439caf252b68f09a5c18d32667ad2aa6fc030f5b114fc080d28f"
+  },
   "tokenFilter": "complete single search tokens: raw form starts/ends with Unicode letter; internal Unicode letters or apostrophes only; no digits, hyphens, compounds, or truncated leading-apostrophe forms",
   "uk": {
     "bytes": 743754,
