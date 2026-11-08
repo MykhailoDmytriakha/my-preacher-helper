@@ -7560,3 +7560,9 @@ Two server regressions and the removed-section choice went red to green. The res
 Seven Chrome scenarios on isolated Auth and Firestore emulators covered both action orders, independent explanation, known-time clear, uncalibrated choice, two queued titles, deletion, history and reload. Visual acceptance covered phone and desktop widths. Evidence is in artifacts/action-chronology-356/council-topic-title-verified.
 
 For authorized production acceptance, open one disposable preparing council with two sections in two profiles for the same account. Rename a section offline on the phone, later rename it from the computer and edit its explanation. Reconnect and verify the later title, both sections and the independent explanation. Restore the earlier title from Section title history and reload. Close both profiles.
+
+## BUG-20261108-council-delete-suite-missing-provider · Run the two council delete regressions
+
+The council deletion suite now supplies the owner through its existing Data Engine mock. Both original assertions ran and passed after failing at page mount. The success test checks that navigation waits for capture and uses replace. The refusal test checks that the route stays open and reports the error. 94 tests in nine suites, TypeScript and scoped ESLint passed. The application source is identical, so Chrome used the existing guarded build h54BlEG0f4a8pZZl4xvOF.
+
+On isolated emulators, desktop Chrome verified cancel, confirmed deletion, return to the list, and absence after reload. Phone-width Chrome verified that an injected local IndexedDB write refusal kept the council readable, showed an error and sent no deletion. The stored council was unchanged. Evidence is in artifacts/council-delete-provider-verified. For authorized production acceptance, use one disposable council to confirm cancellation and deletion, then reload the list. Keep injected storage failures local.

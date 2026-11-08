@@ -25,6 +25,7 @@ jest.mock('next/navigation', () => ({ useRouter: () => ({ push: mockPush, replac
 jest.mock('sonner', () => ({ toast: { error: jest.fn(), success: jest.fn(), warning: jest.fn() } }));
 jest.mock('@/data-engine/react.client', () => ({
   ...jest.requireActual('@/data-engine/react.client'),
+  useDataEngine: () => ({ owner: council.userId }),
   DataDocumentProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 jest.mock('@/data-engine/DataSyncStatus', () => ({ DataSyncStatus: () => null }));
