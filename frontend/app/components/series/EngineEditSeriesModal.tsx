@@ -8,6 +8,7 @@ import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { useDataEngine, useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
 import { fillRequiredField, fillRequiredFieldError, sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
+import { storedFieldValue } from '@/utils/storedFieldValue';
 import { useTranslation } from '@locales/useTranslation';
 
 import SeriesFormFields, { missingSeriesField, seriesFormPatch, seriesFormValues, type SeriesFormValues } from './SeriesFormFields';
@@ -78,7 +79,7 @@ export function EngineEditSeriesModal({ seriesId, onClose }: { seriesId: string;
           status: 'workspaces.series.form.status', color: 'workspaces.series.form.color' }}
         describeValue={(field, value) => {
           if (value === null) return t('workspaces.series.history.notSet');
-          return field === 'status' ? t('workspaces.series.form.statuses.' + value) : value;
+          return field === 'status' ? String(storedFieldValue(t, 'series', 'status', value)) : value;
         }}
         disabled={() => !form.active || !form.durable || form.busy}
         onRestore={(field, value) => form.update(current => {

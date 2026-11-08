@@ -2250,6 +2250,7 @@
     "failedUnavailable": "Could not generate this — please try again"
   },
   "common": {
+    "untitled": "Untitled",
     "statusHistory": "Status history",
     "statusHistoryLoading": "Loading status history…",
     "statusHistoryUnavailable": "Status history is unavailable.",

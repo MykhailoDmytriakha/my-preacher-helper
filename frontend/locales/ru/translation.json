@@ -2284,6 +2284,7 @@
     "failedUnavailable": "Не получилось сгенерировать — попробуйте ещё раз"
   },
   "common": {
+    "untitled": "Без названия",
     "statusHistory": "История статусов",
     "statusHistoryLoading": "Загрузка истории статусов…",
     "statusHistoryUnavailable": "История статусов недоступна.",
