@@ -240,6 +240,23 @@ describe('DataSession explicit local conflict resolution', () => {
     expect(session.prepare('resolved', 'owner')).toMatchObject({ changes: [{ path: ['content'], before: { exists: true, value: 'theirs' }, after: { exists: true, value: 'mine' } }] });
   });
 
+  it('chooses an exact council completion together with its status when the other device reopened it', () => {
+    const before = '2026-11-08T00:00:00.000Z', restored = '2026-11-08T00:00:01.000Z';
+    const base = { ...snap(), resource: { collection: 'councils', id: 'council' },
+      value: { userId: 'owner', title: 'Council', status: 'held', heldAt: before, topics: [] } };
+    const session = new DataSession(base);
+    session.edit({ ...base.value, heldAt: restored }, undefined, { field: 'heldAt', time: null });
+    const remote = { ...base, metadata: { ...base.metadata!, revision: 2 },
+      value: { userId: 'owner', title: 'Renamed on desktop', status: 'preparing', topics: [] } };
+    session.observe(remote, { source: 'server' });
+    session.keepLocal();
+    expect(session.getState().draft).toMatchObject({ status: 'held', heldAt: restored, title: 'Renamed on desktop' });
+    expect(session.prepare('resolved', 'owner')).toMatchObject({ changes: expect.arrayContaining([
+      { path: ['status'], before: { exists: true, value: 'preparing' }, after: { exists: true, value: 'held' } },
+      { path: ['heldAt'], before: { exists: false }, after: { exists: true, value: restored } },
+    ]) });
+  });
+
   it('requires settled pending identities and preserves deleted drafts for a new copy', () => {
     const session = new DataSession(snap()); session.edit({ content: 'mine' }); session.prepare('pending', 'owner');
     expect(() => session.keepLocal()).toThrow('Resolve pending');

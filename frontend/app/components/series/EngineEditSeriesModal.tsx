@@ -73,11 +73,14 @@ export function EngineEditSeriesModal({ seriesId, onClose }: { seriesId: string;
       </fieldset>
       {owner && generation && <DocumentMetadataHistory<SeriesTimedField> key={JSON.stringify([owner, seriesId, generation])}
         owner={owner} generation={generation} collection="series" id={seriesId} current={form.data}
-        prefix="workspaces.series.history" nullable="color"
+        prefix="workspaces.series.history" nullable={['color']}
         labels={{ title: 'workspaces.series.form.title', bookOrTopic: 'workspaces.series.form.bookOrTopic',
           status: 'workspaces.series.form.status', color: 'workspaces.series.form.color' }}
-        describeValue={(field, value) => field === 'status' ? t('workspaces.series.form.statuses.' + value) : value}
-        disabled={!form.active || !form.durable || form.busy}
+        describeValue={(field, value) => {
+          if (value === null) return t('workspaces.series.history.notSet');
+          return field === 'status' ? t('workspaces.series.form.statuses.' + value) : value;
+        }}
+        disabled={() => !form.active || !form.durable || form.busy}
         onRestore={(field, value) => form.update(current => {
           const next = { ...current };
           if (value === null) delete next[field];

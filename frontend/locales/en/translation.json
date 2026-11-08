@@ -4332,7 +4332,9 @@
       "current": "Current value",
       "restore": "Use this value",
       "more": "More values",
-      "notSet": "No date set"
+      "notSet": "No date set",
+      "lifecycle": "Council status",
+      "heldOn": "Held on {{when}}"
     },
     "detail": {
       "titleLabel": "Council name",

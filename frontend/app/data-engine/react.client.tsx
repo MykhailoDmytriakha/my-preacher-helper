@@ -1012,10 +1012,11 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
       });
     },
     /** Freeze the intended save before any asynchronous draft persistence. */
-    commit: (updater: (current: DocumentData | null) => DocumentData | null, action?: 'bible-mark-stroke') => {
+    commit: (updater: (current: DocumentData | null) => DocumentData | null, action?: 'bible-mark-stroke' | 'council-lifecycle') => {
       const time = action && owner ? actionClock.capture(owner) : undefined;
       cancelScheduledSave();
-      return run(editor => time ? editor.commit(updater, { kind: 'bible-mark-stroke', time }) : editor.commit(updater));
+      return run(editor => action === 'council-lifecycle' ? editor.commit(updater, { kind: action, time: time ?? null })
+        : time ? editor.commit(updater, { kind: 'bible-mark-stroke', time }) : editor.commit(updater));
     },
     actions: current?.actions ?? [],
     carryCouncilTopicToNew: (topicId: string, title: string) => {

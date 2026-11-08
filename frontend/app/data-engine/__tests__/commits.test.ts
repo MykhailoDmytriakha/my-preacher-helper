@@ -341,6 +341,45 @@ describe('Durable commit requests', () => {
     expect(s.server().value).not.toHaveProperty('date');
   });
 
+  it.each([true, false])('keeps both council actions across a queue restart (clock available: %s)', async hasClock => {
+    const opening: ResourceSnapshot = {
+      resource: { collection: 'councils', id: 'council' },
+      metadata: { protocol: 1, generation: 'council', revision: 1, deleted: false },
+      value: { userId: 'owner', title: 'Keep this council', date: '2099-04-10', status: 'preparing',
+        topics: [], createdAt: 'now', updatedAt: 'now' },
+    };
+    const time = (offset: number) => hasClock ? { earliestMs: 1_800_000_000_000 + offset, latestMs: 1_800_000_000_005 + offset } : null;
+    const heldAt = '2026-11-08T00:00:00.000Z';
+    const s = setup({ opening });
+    const engine = s.makeEngine();
+    const editor = await engine.openEditor(opening.resource, 'council');
+    await editor.commit(current => ({ ...current, status: 'held', heldAt }), { kind: 'council-lifecycle', time: time(10) });
+    const first = (await s.makeQueue().queue.list())[0];
+    expect(first.councilLifecycleAction).toEqual({
+      before: { exists: false }, after: { exists: true, value: heldAt }, observedRevision: 1, time: time(10),
+    });
+    await editor.commit(current => {
+      const reopened = { ...current, status: 'preparing' } as NonNullable<ResourceSnapshot['value']>;
+      delete reopened.heldAt;
+      return reopened;
+    }, { kind: 'council-lifecycle', time: time(30) });
+    const second = (await s.makeQueue().queue.list()).find(request => request.id !== first.id)!;
+    expect(second.councilLifecycleAction).toMatchObject({ predecessorOperationId: first.id, time: time(30) });
+    const accepted = { ...opening, metadata: { ...opening.metadata!, revision: 4, operationId: 'desktop-undo' } };
+    s.replace(accepted);
+    jest.mocked(s.transport.send).mockResolvedValueOnce({ kind: 'acknowledged', operationId: first.id, snapshot: accepted });
+    const restarted = s.makeQueue().queue;
+    await restarted.drain(true);
+    expect(s.transport.send).toHaveBeenCalledWith(expect.objectContaining({
+      operationId: second.id,
+      councilLifecycleAction: { observedRevision: 1, predecessorOperationId: first.id, time: time(30) },
+      changes: expect.arrayContaining([
+        { path: ['status'], before: { exists: true, value: 'held' }, after: { exists: true, value: 'preparing' } },
+        { path: ['heldAt'], before: { exists: true, value: heldAt }, after: { exists: false } },
+      ]),
+    }));
+  });
+
   it('keeps exact series title and color predecessors through an unrelated status Save', async () => {
     const opening: ResourceSnapshot = {
       resource: { collection: 'series', id: 'series' },

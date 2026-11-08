@@ -1811,8 +1811,9 @@ export class DataEngine {
           const title = validatedTitleCapture(checkpoint.confirmed, checkpoint.draft, next, action.title, known);
           captured = title ? { kind: 'service-order-title', title } : undefined;
         }
-        const persistence = controller.edit(next);
-        const saving = controller.save(undefined, undefined, onCaptured, captureScope, captured);
+        const lifecycle = captured?.kind === 'council-lifecycle' ? { field: 'heldAt' as const, time: captured.time } : undefined;
+        const persistence = controller.edit(next, undefined, lifecycle);
+        const saving = controller.save(undefined, undefined, onCaptured, captureScope, lifecycle ? undefined : captured);
         return Promise.all([persistence, saving]).then(() => { active(); this.backgroundDrain(); this.prepareCommitsInBackground(); active(); });
       };
       const remove = async (onCaptured?: (receipt: DocumentWriteReceipt) => void, captureScope?: string) => {

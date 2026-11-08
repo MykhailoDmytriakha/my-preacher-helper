@@ -14,8 +14,8 @@ type MetadataHistoryPage<Field extends string> = {
 export function DocumentMetadataHistory<Field extends string>({ owner, collection, id, generation, current, disabled,
   labels, prefix, nullable, describeValue, onRestore }: {
   owner: string; collection: 'series' | 'councils'; id: string; generation: string;
-  current: Partial<Record<Field, unknown>> | null; disabled: boolean; labels: Record<Field, string>;
-  prefix: string; nullable: Field; describeValue: (field: Field, value: string) => string;
+  current: Partial<Record<Field, unknown>> | null; disabled: (field: Field) => boolean; labels: Record<Field, string>;
+  prefix: string; nullable: readonly Field[]; describeValue: (field: Field, value: string | null) => string;
   onRestore: (field: Field, value: string | null) => Promise<void>;
 }) {
   const { t } = useTranslation();
@@ -34,7 +34,6 @@ export function DocumentMetadataHistory<Field extends string>({ owner, collectio
     catch { setRestoreFailed(true); }
     finally { setRestoring(false); }
   };
-  const describe = (field: Field, value: string | null) => value === null ? t(prefix + '.notSet') : describeValue(field, value);
   const heading = t(prefix + '.heading');
   return <div className="space-y-2 text-sm">
     <button type="button" className="min-h-8 font-medium text-blue-700 hover:underline dark:text-blue-400"
@@ -52,10 +51,10 @@ export function DocumentMetadataHistory<Field extends string>({ owner, collectio
           return <li key={entry.id + ':' + field.field} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-200 px-3 py-2 dark:border-gray-700">
             <div className="min-w-0 break-words">
               <p className="font-medium">{t(labels[field.field])}</p>
-              <p>{describe(field.field, field.value)}</p>
-              <p>{t(prefix + '.kept', { value: describe(field.field, field.winner) })}</p>
+              <p>{describeValue(field.field, field.value)}</p>
+              <p>{t(prefix + '.kept', { value: describeValue(field.field, field.winner) })}</p>
             </div>
-            <button type="button" disabled={disabled || restoring || same || (field.value === null && field.field !== nullable)}
+            <button type="button" disabled={disabled(field.field) || restoring || same || (field.value === null && !nullable.includes(field.field))}
               className="min-h-8 font-medium text-blue-700 hover:underline disabled:opacity-50 dark:text-blue-400"
               onClick={() => void restore(field)}>{t(same ? prefix + '.current' : prefix + '.restore')}</button>
           </li>;

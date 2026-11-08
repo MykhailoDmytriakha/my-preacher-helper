@@ -46,7 +46,8 @@ export interface CommandBase {
 
 export type EditorCommitAction =
   | { kind: 'bible-mark-stroke'; time: ActionTime }
-  | { kind: 'service-order-title'; title: ServiceOrderTitleCapture };
+  | { kind: 'service-order-title'; title: ServiceOrderTitleCapture }
+  | { kind: 'council-lifecycle'; time: ActionTime | null };
 
 export type BibleMarkStrokeStamp = { observedRevision: number; time: ActionTime };
 
@@ -70,6 +71,7 @@ export type DataCommand = CommandBase & (
       groupStatusAction?: DocumentFieldAction;
       councilTitleAction?: DocumentFieldObservation;
       councilDateAction?: DocumentFieldStamp;
+      councilLifecycleAction?: DocumentFieldStamp;
       /** Exact plan cells observed before an explicit outline removal. */
       observedPlanTextRemoval?: Record<string, string>;
       /** Exact orphaned text explicitly cleared while its point was absent. */

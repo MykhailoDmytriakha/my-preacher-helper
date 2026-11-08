@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { isStandaloneScriptureReference } from '@/utils/bibleLink';
 
 import { boundedActionTime, compareActionTime } from './actionClock';
+import { councilLifecycleValue, councilStatusOf, matchesCouncilLifecycle } from './councilFieldAction';
 import { acceptsDocumentField, documentFieldChange, documentFieldTargets } from './documentFieldAction';
 import { commandFingerprint, equalValues, object, readField } from './fieldValues';
 import { proofRevision } from './rowFieldAction';
@@ -26,7 +27,7 @@ type DocumentFieldOrder = {
   uncertain?: ConflictDetail[];
 };
 
-const usesDigest = (target: DocumentFieldTarget) => target.field === 'verse' || target.field === 'church' || target.field === 'date' || target.action === 'seriesFieldActions';
+const usesDigest = (target: DocumentFieldTarget) => target.field === 'verse' || target.field === 'church' || target.field === 'date' || target.field === 'heldAt' || target.action === 'seriesFieldActions';
 const fieldDigest = (value: FieldValue, target: DocumentFieldTarget) => createHash('sha256')
   .update(target.field === 'verse' ? String(value.value) : commandFingerprint(value)).digest('base64url');
 
@@ -34,8 +35,8 @@ function previousField(raw: unknown, current: ResourceSnapshot, target: Document
   const proof = object(raw) ? raw[target.proof] : undefined;
   if (!object(proof)) return undefined;
   if (!current.value) return undefined;
-  const value = readField(current.value, [target.field]);
-  if (!acceptsDocumentField(value, target) || !proofRevision(proof.revision) || proof.revision > (current.metadata?.revision ?? 0)
+  const value = target.field === 'heldAt' ? councilLifecycleValue(current.value) : readField(current.value, [target.field]);
+  if (!value || !acceptsDocumentField(value, target) || !proofRevision(proof.revision) || proof.revision > (current.metadata?.revision ?? 0)
     || (usesDigest(target) ? proof.digest !== fieldDigest(value, target) : proof[target.field] !== value.value)) return undefined;
   const time = proof.time === null ? null : boundedActionTime(proof.time);
   return time !== undefined ? { value, revision: proof.revision, time,
@@ -46,6 +47,7 @@ function readAction(command: Extract<DataCommand, { kind: 'update' }>, change: F
   const action: unknown = target.action === 'seriesFieldActions' ? command.seriesFieldActions?.[target.field] : command[target.action];
   const { before, after } = change;
   if (!object(action) || !acceptsDocumentField(before, target) || !acceptsDocumentField(after, target) || equalValues(before, after)
+    || (target.field === 'heldAt' && !matchesCouncilLifecycle(command.changes, change))
     || (!usesDigest(target) && (before.value !== action.before || after.value !== action.after))
     || !proofRevision(action.observedRevision) || action.observedRevision > revision) return undefined;
   const time = target.causal && action.time === null ? null : boundedActionTime(action.time);
@@ -89,7 +91,7 @@ function orderDocumentField(command: DataCommand, current: ResourceSnapshot, raw
   if (command.kind !== 'update') return { command };
   const change = documentFieldChange(command.changes, target);
   if (!change || !current.metadata || current.metadata.deleted || command.generation !== current.metadata.generation) return { command };
-  const stored = current.value && readField(current.value, [target.field]);
+  const stored = target.field === 'heldAt' ? councilLifecycleValue(current.value) : current.value && readField(current.value, [target.field]);
   if (!stored || !acceptsDocumentField(stored, target)) return { command, stamp: null };
   const action = readAction(command, change, current.metadata.revision, serverMs, target);
   if (!action) return { command, stamp: null };
@@ -135,11 +137,22 @@ function resolveSeriesTitleMirror(original: DataCommand, order: DocumentFieldOrd
   return { ...ordered, changes };
 }
 
+function alignCouncilLifecycle(order: DocumentFieldOrder, current: ResourceSnapshot): DataCommand {
+  const { command, displaced } = order;
+  if (command.kind !== 'update' || !displaced || !current.value) return command;
+  const before = readField(current.value, ['status']);
+  const after = { exists: true, value: councilStatusOf(displaced.winnerValue) };
+  const companion = { path: ['status'], before, after };
+  const changes = command.changes.filter(change => change.path.length !== 1 || change.path[0] !== 'status');
+  return { ...command, changes: equalValues(before, after) ? changes : [...changes, companion] };
+}
+
 export function orderDocumentFields(command: DataCommand, current: ResourceSnapshot, raw: unknown, serverMs: number) {
   const fields = documentFieldTargets(command.resource.collection).map(target => {
     const order = orderDocumentField(command, current, raw, serverMs, target);
     if (target.field === 'church') command = resolvePlannedChurchFill(command, order.command, current);
     else if (target.action === 'seriesFieldActions' && target.field === 'title') command = resolveSeriesTitleMirror(command, order, current);
+    else if (target.field === 'heldAt') command = alignCouncilLifecycle(order, current);
     else command = order.command;
     return { target, order };
   });
@@ -151,8 +164,8 @@ export function metadataAfterDocumentFields(snapshot: ResourceSnapshot, raw: Rec
   if (!metadata) return metadata;
   const proofs = documentFieldTargets(snapshot.resource.collection).flatMap(target => {
     if (!snapshot.value) return [];
-    const value = readField(snapshot.value, [target.field]);
-    if (!acceptsDocumentField(value, target)) return [];
+    const value = target.field === 'heldAt' ? councilLifecycleValue(snapshot.value) : readField(snapshot.value, [target.field]);
+    if (!value || !acceptsDocumentField(value, target)) return [];
     const order = fields?.fields.find(item => item.target === target)?.order;
     const rawMetadata = raw?._dataEngine;
     const previous = order?.previous ?? previousField(rawMetadata, snapshot, target);

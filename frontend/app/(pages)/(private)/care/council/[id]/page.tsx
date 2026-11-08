@@ -55,12 +55,12 @@ import { useDndKitAccessibility } from '@/hooks/useDragAnnouncements';
 import { useRouteId } from '@/hooks/useRouteId';
 import { actionFailureMessage } from '@/utils/actionFailureMessage';
 import { applyOutcome, councilLanguage, hasProgress, isInfoTopic, newOption, newQuestion, newTopic, outcomeText, preparingCouncils, removeTopicOption, reorderTopics, setTopicKind, topicState } from '@/utils/council';
-import { formatDate, formatDateForLocale, formatDateOnly } from '@/utils/dateFormatter';
+import { formatDate, formatDateForLocale, formatDateOnly, formatDateTimeForLocale } from '@/utils/dateFormatter';
 import { shownDayOf } from '@/utils/dateOnly';
 import { NEUTRAL_CAPTION, CARE_CARD_TONES } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
 
-import type { CouncilTimedField } from '@/data-engine/councilFieldAction';
+import type { CouncilHistoryField, CouncilTimedField } from '@/data-engine/councilFieldAction';
 import type { CouncilFinishUndo } from '@/hooks/useCouncilDataDocument';
 import type { Council, CouncilTopic } from '@/models/models';
 import '@locales/i18n';
@@ -152,8 +152,8 @@ function EngineCouncilDetailWorkspace({ councilId }: { councilId: string }) {
     updateCouncil: (id: string, updater: (current: Council) => Council, field?: CouncilTimedField) => {
       void document.updateCouncil(id, updater, field).catch(report);
     },
-    history: owner && generation ? { owner, generation, restore: (field: CouncilTimedField, value: string | null) =>
-      document.updateCouncil(councilId, current => {
+    history: owner && generation ? { owner, generation, restore: (field: CouncilHistoryField, value: string | null) =>
+      field === 'heldAt' ? document.restoreCouncilLifecycle(value) : document.updateCouncil(councilId, current => {
         if (field === 'title') return { ...current, title: value ?? current.title };
         const next = { ...current };
         if (value) next.date = value;
@@ -183,7 +183,7 @@ interface CouncilDetailSource {
   error: unknown;
   refresh: () => unknown;
   updateCouncil: (id: string, updater: (current: Council) => Council, field?: CouncilTimedField) => void;
-  history?: { owner: string; generation: string; restore: (field: CouncilTimedField, value: string | null) => Promise<void> };
+  history?: { owner: string; generation: string; restore: (field: CouncilHistoryField, value: string | null) => Promise<void> };
   deleteCouncil: (id: string) => Promise<boolean>;
   finishCouncil: () => Promise<CouncilFinishUndo>;
   carryTopicToNext: (id: string, topic: CouncilTopic, fallbackTitle: string, targetId?: string | 'new') => Promise<Council | undefined>;
@@ -423,11 +423,19 @@ function CouncilDetailContent({ source, engineCouncilId }: { source: CouncilDeta
           </div>}
         </div>
         {source.history && <div className="mt-2 px-1">
-          <DocumentMetadataHistory<CouncilTimedField> key={JSON.stringify([source.history.owner, council.id, source.history.generation])}
+          <DocumentMetadataHistory<CouncilHistoryField> key={JSON.stringify([source.history.owner, council.id, source.history.generation])}
             owner={source.history.owner} generation={source.history.generation} collection="councils" id={council.id}
-            current={{ title: council.title, date: council.date || undefined }} disabled={held || readOnly}
-            prefix="council.history" nullable="date" labels={{ title: 'council.detail.titleLabel', date: 'council.detail.dateLabel' }}
-            describeValue={(field, value) => field === 'date' ? value ? formatDateForLocale(shownDayOf(value), language) : t('council.history.notSet') : value}
+            current={{ title: council.title, date: council.date || undefined, heldAt: council.heldAt }}
+            disabled={field => readOnly || (held && field !== 'heldAt')}
+            prefix="council.history" nullable={['date', 'heldAt']}
+            labels={{ title: 'council.detail.titleLabel', date: 'council.detail.dateLabel', heldAt: 'council.history.lifecycle' }}
+            describeValue={(field, value) => {
+              if (field === 'heldAt') return value
+                ? t('council.history.heldOn', { when: formatDateTimeForLocale(value, language) })
+                : t('council.status.preparing');
+              if (field === 'date') return value ? formatDateForLocale(shownDayOf(value), language) : t('council.history.notSet');
+              return value ?? '';
+            }}
             onRestore={source.history.restore} />
         </div>}
         {editable && (

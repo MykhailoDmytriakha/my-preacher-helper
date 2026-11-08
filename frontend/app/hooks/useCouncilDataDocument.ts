@@ -13,6 +13,7 @@ import type { Council, CouncilTopic } from '@/models/models';
 
 export type CouncilFinishUndo = () => Promise<void>;
 
+const COUNCIL_LIFECYCLE_ACTION = 'council-lifecycle';
 const missing = () => new Error('The council is not available for editing');
 
 /**
@@ -68,12 +69,18 @@ export function useCouncilDataDocument(councilId: string) {
     const at = new Date().toISOString();
     // A failed local capture already left this intent in the draft. Retry its capture unchanged.
     if (council.status === 'held') await document.save();
-    else await document.commit(apply(current => holdCouncil(current, at), at));
+    else await document.commit(apply(current => holdCouncil(current, at), at), COUNCIL_LIFECYCLE_ACTION);
     return async () => {
       const undoneAt = new Date().toISOString();
-      await actions.commit({ collection: 'councils', id: councilId }, apply(current => reopenCouncil(current, undoneAt), undoneAt));
+      await actions.commit({ collection: 'councils', id: councilId }, apply(current => reopenCouncil(current, undoneAt), undoneAt),
+        { kind: COUNCIL_LIFECYCLE_ACTION, time: actions.captureActionTime() ?? null });
     };
   }, [council, document, apply, actions, councilId]);
+
+  const restoreCouncilLifecycle = useCallback(async (heldAt: string | null) => {
+    const at = new Date().toISOString();
+    await document.commit(apply(current => heldAt ? holdCouncil(current, heldAt) : reopenCouncil(current, at), at), COUNCIL_LIFECYCLE_ACTION);
+  }, [document, apply]);
 
   const carryTopicToNext = useCallback(async (_id: string, topic: CouncilTopic, targetCouncilId?: string, fallbackTitle?: string) => {
     if (!council) throw missing();
@@ -139,6 +146,7 @@ export function useCouncilDataDocument(councilId: string) {
     keepLocal: document.keepLocal,
     updateCouncil,
     finishCouncil,
+    restoreCouncilLifecycle,
     deleteCouncil,
     carryTopicToNext,
     actions: document.actions,

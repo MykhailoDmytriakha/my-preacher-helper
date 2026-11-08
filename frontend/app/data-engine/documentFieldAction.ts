@@ -2,7 +2,7 @@ import { isGroupStatus } from '@/utils/groupDocument';
 
 import { boundedActionTime } from './actionClock';
 import { isSermonChurch } from './churchFieldValue';
-import { COUNCIL_TIMED_FIELDS, type CouncilFieldActions, type CouncilFieldTarget, type CouncilTimedField } from './councilFieldAction';
+import { COUNCIL_LIFECYCLE, COUNCIL_TIMED_FIELDS, councilLifecycleValue, matchesCouncilLifecycle, withCouncilLifecycle, type CouncilFieldActions, type CouncilFieldTarget } from './councilFieldAction';
 import { equalValues, readField } from './fieldValues';
 import { SERIES_FIELD_TARGETS } from './seriesFieldAction';
 import { captureSermonChurchFill } from './sermonChurchFill';
@@ -56,12 +56,13 @@ const SERMON_VERSE = { field: 'verse', action: 'sermonVerseAction', proof: 'serm
 const GROUP_TITLE = { field: 'title', action: 'groupTitleAction', proof: 'groupTitle', accepts: shortTitle, draft: 'groupTitleDraft' } as const satisfies GroupFieldTarget;
 const GROUP_STATUS = { field: 'status', action: 'groupStatusAction', proof: 'groupStatus', accepts: isGroupStatus, draft: 'groupStatusDraft' } as const satisfies GroupFieldTarget;
 export const GROUP_TIMED_FIELDS = [GROUP_TITLE, GROUP_STATUS] as const;
+const COUNCIL_FIELDS = [...COUNCIL_TIMED_FIELDS, COUNCIL_LIFECYCLE];
 
 export function documentFieldTargets(collection: string): readonly DocumentFieldTarget[] {
   if (collection === 'serviceOrders') return [SERVICE_ORDER_TITLE];
   if (collection === 'groups') return GROUP_TIMED_FIELDS;
   if (collection === 'series') return SERIES_FIELD_TARGETS;
-  if (collection === 'councils') return COUNCIL_TIMED_FIELDS;
+  if (collection === 'councils') return COUNCIL_FIELDS;
   if (collection === 'sermons') return [SERMON_TITLE, SERMON_VERSE, SERMON_CHURCH];
   return [];
 }
@@ -149,7 +150,8 @@ function knownMetadataFieldPredecessor(baseline: ResourceSnapshot, predecessor: 
   for (let request: CommitRequest | undefined = predecessor; request && !visited.has(request.id);
     request = requests.get(request.predecessor ?? '')) {
     if (request.owner !== predecessor.owner || !equalValues(request.baseline.resource, baseline.resource)
-      || request.baseline.metadata?.generation !== baseline.metadata?.generation || !equalValues(target.field === 'church' || target.field === 'date' || target.action === 'seriesFieldActions' ? readField(request.value ?? {}, [target.field]) : request.value?.[target.field], value)
+      || request.baseline.metadata?.generation !== baseline.metadata?.generation || !equalValues(target.field === 'heldAt' ? councilLifecycleValue(request.value)
+        : target.field === 'church' || target.field === 'date' || target.action === 'seriesFieldActions' ? readField(request.value ?? {}, [target.field]) : request.value?.[target.field], value)
       || ['cancelled', 'refused', 'conflict'].includes(request.state)) break;
     const action = capturedDocumentField(request, target);
     if (action) return equalValues(action.after, value) ? request.id : undefined;
@@ -202,7 +204,7 @@ export function captureDocumentMetadataFields(baseline: ResourceSnapshot, predec
     ...(church && { sermonChurchAction: church }), ...(fill && { sermonChurchFill: fill }) };
 }
 
-export type AutosaveFieldStamp = { field: GroupTimedField | CouncilTimedField; time: ActionTime | null };
+export type AutosaveFieldStamp = { field: GroupTimedField | CouncilFieldTarget['field']; time: ActionTime | null };
 type AutosaveFieldValue = string | FieldValue;
 type AutosaveFieldAction = DocumentFieldObservation<AutosaveFieldValue>;
 export type AutosaveFieldDraft = { generation: string; action: AutosaveFieldAction };
@@ -214,12 +216,13 @@ export type AutosaveFieldDrafts = Partial<Record<AutosaveFieldTarget['draft'], A
 
 export function autosaveFieldTargets(collection: string): readonly AutosaveFieldTarget[] {
   if (collection === 'groups') return GROUP_TIMED_FIELDS;
-  if (collection === 'councils') return COUNCIL_TIMED_FIELDS;
+  if (collection === 'councils') return COUNCIL_FIELDS;
   return [];
 }
 
 function autosaveFieldValue(document: DocumentData | null | undefined, target: AutosaveFieldTarget): AutosaveFieldValue | undefined {
   if (target.field === 'date') return readField(document ?? {}, [target.field]);
+  if (target.field === 'heldAt') return councilLifecycleValue(document);
   const value = document?.[target.field];
   return typeof value === 'string' ? value : undefined;
 }
@@ -274,7 +277,7 @@ export function uncapturedAutosaveFields(checkpoint: SessionCheckpoint, baseline
   return Object.fromEntries(autosaveFieldTargets(checkpoint.confirmed.resource.collection).flatMap(target => {
     const action = uncapturedAutosaveField(checkpoint, target);
     if (!action) return [];
-    const predecessorOperationId = target.action === 'councilTitleAction' || target.action === 'councilDateAction'
+    const predecessorOperationId = target.action === 'councilTitleAction' || target.action === 'councilDateAction' || target.action === 'councilLifecycleAction'
       ? knownMetadataFieldPredecessor(baseline, predecessor, target, action.before, records) : undefined;
     return [[target.action, { ...action, ...(predecessorOperationId && { predecessorOperationId }) }]];
   }));
@@ -292,11 +295,12 @@ export function autosaveAcknowledgementAncestor(ancestor: DocumentData | null, a
     const value = autosaveFieldValue(accepted.value, target);
     if (!action || !equalValues(action.before, autosaveFieldValue(before, target))
       || accepted.metadata?.generation !== checkpoint[target.draft]?.generation || !acceptsAutosaveField(value, target)) return before;
-    return withFieldValue(before, target.field, observedValue(value));
+    return withDocumentFieldValue(before, target.field, observedValue(value));
   }, ancestor);
 }
 
-function withFieldValue(value: DocumentData, field: string, selected: FieldValue): DocumentData {
+function withDocumentFieldValue(value: DocumentData, field: string, selected: FieldValue): DocumentData {
+  if (field === 'heldAt') return withCouncilLifecycle(value, selected);
   const next = { ...value };
   if (selected.exists) next[field] = selected.value!;
   else delete next[field];
@@ -307,12 +311,12 @@ export function pendingDocumentFieldAncestor(record: CommitRequest, before: Docu
   if (!before || !accepted.value || accepted.metadata?.generation !== record.baseline.metadata?.generation) return before;
   return documentFieldTargets(record.baseline.resource.collection).reduce((value, target) => {
     if (!capturedDocumentField(record, target)) return value;
-    const stored = readField(accepted.value!, [target.field]);
-    if (!acceptsDocumentField(stored, target)) return value;
-    const rebased = withFieldValue(value, target.field, stored);
+    const stored = target.field === 'heldAt' ? councilLifecycleValue(accepted.value) : readField(accepted.value!, [target.field]);
+    if (!stored || !acceptsDocumentField(stored, target)) return value;
+    const rebased = withDocumentFieldValue(value, target.field, stored);
     if (target.action !== 'seriesFieldActions' || target.field !== 'title' || record.value?.title !== record.value?.theme) return rebased;
     const mirror = readField(accepted.value!, ['theme']);
-    return equalValues(mirror, stored) ? withFieldValue(rebased, 'theme', mirror) : rebased;
+    return equalValues(mirror, stored) ? withDocumentFieldValue(rebased, 'theme', mirror) : rebased;
   }, before);
 }
 
@@ -324,7 +328,7 @@ function observedValue(value: string | FieldValue): FieldValue {
 
 export function documentFieldCommandAncestor(working: ResourceSnapshot, action: StoredObservation, field: DocumentFieldTarget['field']): ResourceSnapshot {
   if (!working.value || working.metadata?.deleted) return working;
-  const value = withFieldValue(working.value, field, observedValue(action.before));
+  const value = withDocumentFieldValue(working.value, field, observedValue(action.before));
   return { ...working, value: field === 'title' && action.openingTheme !== undefined ? { ...value, theme: action.openingTheme } : value };
 }
 
@@ -338,7 +342,8 @@ export function withDocumentFieldAction(command: DataCommand, target: DocumentFi
     return { ...command, seriesFieldActions: { ...command.seriesFieldActions,
       [target.field]: { ...stamp, ...(action.openingTheme !== undefined && { openingTheme: action.openingTheme }) } } };
   }
-  if (target.field === 'verse' || target.field === 'church' || target.field === 'date') return { ...command, [target.action]: stamp };
+  if (target.field === 'heldAt' && !matchesCouncilLifecycle(command.changes, change)) return command;
+  if (target.field === 'verse' || target.field === 'church' || target.field === 'date' || target.field === 'heldAt') return { ...command, [target.action]: stamp };
   if (typeof action.before !== 'string' || typeof action.after !== 'string') return command;
   return { ...command, [target.action]: action };
 }

@@ -25,6 +25,7 @@ jest.mock('sonner', () => ({ toast: { error: jest.fn(), success: jest.fn(), warn
 jest.mock('@/data-engine/react.client', () => ({
   ...jest.requireActual('@/data-engine/react.client'),
   isCollectionOnEngine: () => true,
+  useDataEngine: () => ({ owner: null }),
   DataDocumentProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 jest.mock('@/data-engine/DataSyncStatus', () => ({ DataSyncStatus: () => null }));

@@ -1557,6 +1557,62 @@ describe('transactional DataEngine server', () => {
     });
   });
 
+  describe('council lifecycle chronology', () => {
+    const owner = 'owner-1';
+    const resource = { collection: 'councils', id: 'lifecycle-council' };
+    const base = { protocol: 1, owner, resource, dependsOn: [] };
+    const title = 'Council with sections', date = '2099-04-13';
+    const topics = [{ id: 'section', title: 'Keep the section', kind: 'info', questions: [], options: [], discussed: true }];
+    const seed = () => processCommand(owner, { ...base, operationId: 'council-create', kind: 'create', generation: null,
+      value: { userId: owner, title, date, status: 'preparing', topics,
+        createdAt: '2026-11-08T00:00:00.000Z', updatedAt: '2026-11-08T00:00:00.000Z' } });
+    const value = (text: string | null) => text === null ? { exists: false } : { exists: true, value: text };
+    const change = (operationId: string, before: string | null, after: string | null, observedRevision: number, offset: number) => ({
+      ...base, operationId, kind: 'update', generation: 'council-create',
+      changes: [
+        { path: ['status'], before: value(before === null ? 'preparing' : 'held'), after: value(after === null ? 'preparing' : 'held') },
+        { path: ['heldAt'], before: value(before), after: value(after) },
+      ],
+      councilLifecycleAction: { observedRevision, time: { earliestMs: 1_800_000_000_000 + offset, latestMs: 1_800_000_000_005 + offset } },
+    });
+    const desktopHeld = '2026-11-08T00:00:01.000Z', phoneHeld = '2026-11-08T00:00:02.000Z';
+
+    it.each([20, 80])('orders two finishes by action time and preserves the complete held state (%s)', async offset => {
+      expect((await seed()).kind).toBe('acknowledged');
+      expect((await processCommand(owner, change('desktop-finish', null, desktopHeld, 1, 40))).kind).toBe('acknowledged');
+      expect(await processCommand(owner, change('phone-finish', null, phoneHeld, 1, offset))).toMatchObject({
+        kind: 'acknowledged', snapshot: { value: { status: 'held', heldAt: offset < 40 ? desktopHeld : phoneHeld, title, date, topics } },
+      });
+    });
+
+    it('keeps a later Undo when an old offline Finish is delivered afterwards', async () => {
+      expect((await seed()).kind).toBe('acknowledged');
+      expect((await processCommand(owner, change('desktop-finish', null, desktopHeld, 1, 40))).kind).toBe('acknowledged');
+      expect((await processCommand(owner, change('desktop-undo', desktopHeld, null, 2, 80))).kind).toBe('acknowledged');
+      expect(await processCommand(owner, change('phone-finish', null, phoneHeld, 1, 20))).toMatchObject({
+        kind: 'acknowledged', snapshot: { value: { status: 'preparing', title, date, topics } },
+      });
+      expect(documents.get('councils/lifecycle-council')).not.toHaveProperty('heldAt');
+      expect(await listCouncilMetadataHistory(owner, resource.id, 'council-create')).toMatchObject({
+        entries: [{ fields: [{ field: 'heldAt', value: phoneHeld, winner: null }] }],
+      });
+      const restored = await processCommand(owner, change('restore-old-finish', null, phoneHeld, 3, 120));
+      expect(restored).toMatchObject({ kind: 'acknowledged', snapshot: { value: { status: 'held', heldAt: phoneHeld, title, date, topics } } });
+    });
+
+    it('preserves a manual choice when a delayed Finish has no reliable clock', async () => {
+      expect((await seed()).kind).toBe('acknowledged');
+      expect((await processCommand(owner, change('desktop-finish', null, desktopHeld, 1, 40))).kind).toBe('acknowledged');
+      expect((await processCommand(owner, change('desktop-undo', desktopHeld, null, 2, 80))).kind).toBe('acknowledged');
+      const phone = change('phone-finish', null, phoneHeld, 1, 20);
+      expect(await processCommand(owner, { ...phone, councilLifecycleAction: { observedRevision: 1, time: null } })).toMatchObject({
+        kind: 'conflict', conflicts: [{ path: ['heldAt'] }], snapshot: { value: { status: 'preparing', title, date, topics } },
+      });
+      expect(documents.get('councils/lifecycle-council')).not.toHaveProperty('heldAt');
+      expect((await listCouncilMetadataHistory(owner, resource.id, 'council-create')).entries).toHaveLength(0);
+    });
+  });
+
   describe('series metadata chronology', () => {
     const resource = { collection: 'series', id: 'timed-series' };
     const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] };

@@ -1,6 +1,7 @@
 import { hasDifferentAnalysisPositionBasis, keepAnalysisReshapeFrame } from './analysisReshapeFields';
 import { isLiveWholeAction, isRetiredActionDependent } from './atomicCommits';
 import { firstBookMarksIntent } from './bibleMarksCreation';
+import { councilLifecycleValue, withCouncilLifecycle } from './councilFieldAction';
 import { autosaveAcknowledgementAncestor, autosaveFieldTargets, hasUncapturedAutosaveField, sameAutosaveCapture, stageAutosaveField } from './documentFieldAction';
 import { prepareDomainCommand } from './domainPolicy';
 import { ACTION_SLOT, editorSlot } from './editorIdentity';
@@ -341,9 +342,14 @@ export class DataSession {
         this.state.confirmed.value, this.state.draft, candidate.value,
         merged.value.exists ? merged.value.value as DocumentData : null, mergeFields);
       const statusChoice = chooseLocalPreachDateEdits(this.state.confirmed, this.state.draft, candidate, preachStatuses);
+      const resolved = statusChoice ?? chosen;
+      const council = this.state.confirmed.resource.collection === 'councils';
+      const lifecycle = council ? councilLifecycleValue(this.state.draft) : undefined;
+      const openingLifecycle = council ? councilLifecycleValue(this.state.confirmed.value) : undefined;
       this.state.confirmed = copy(candidate);
-      // The explicit choice retains one coherent placement and independently merged words.
-      this.state.draft = copy(statusChoice ?? chosen);
+      // A restored held time owns the status even if that status had not changed on this device.
+      this.state.draft = copy(resolved && lifecycle && openingLifecycle && !equalValues(lifecycle, openingLifecycle)
+        ? withCouncilLifecycle(resolved, lifecycle) : resolved);
     }
     this.clearAutosaveFieldDrafts();
     this.state.remoteCandidate = null;
