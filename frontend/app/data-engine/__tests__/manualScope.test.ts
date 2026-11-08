@@ -21,6 +21,31 @@ function fixture(selection: readonly ManualPath[] = [['title']], base = snapshot
 const deferred = <T,>() => { let resolve!: (value: T) => void; const promise = new Promise<T>(done => { resolve = done; }); return { promise, resolve }; };
 
 describe('manual form scope', () => {
+  it('recognizes a meeting correction as durable when no field-action evidence is available', async () => {
+    const meeting = { id: 'meeting', date: '2026-12-13', location: 'Hall', createdAt: '2026-11-08' };
+    const test = fixture([['meetingDates']], { ...snapshot(), resource: { collection: 'groups', id: 'group' },
+      value: { userId: 'owner', title: 'Group', status: 'draft', templates: [], flow: [], meetingDates: [meeting] } });
+    const scope = ManualScope.begin(test.options);
+    await scope.update(value => ({ ...value, meetingDates: [{ ...meeting, date: '2026-12-24' }] }));
+    const restored = ManualScope.restore(test.options, test.disk());
+    expect(restored.getState().value.meetingDates).toEqual([{ ...meeting, date: '2026-12-24' }]);
+    expect(scope.getState()).toMatchObject({ dirty: true, durable: true, value: restored.getState().value });
+    expect(test.save).not.toHaveBeenCalled();
+  });
+
+  it('recognizes a new preaching date with an audience as durable before there is a dated row to compare', async () => {
+    const date = { id: 'date', date: '2026-12-13', createdAt: '2026-11-08', status: 'planned',
+      church: { id: 'church', name: 'Church', city: 'Town' } };
+    const base = snapshot();
+    const test = fixture([['preachDates']], base);
+    const scope = ManualScope.begin(test.options);
+    await scope.update(value => ({ ...value, preachDates: [{ ...date, audience: 'Leaders' }] }), { rowId: date.id, detail: 'audience' });
+    const restored = ManualScope.restore(test.options, test.disk());
+    expect(restored.getState().value.preachDates).toEqual([{ ...date, audience: 'Leaders' }]);
+    expect(scope.getState()).toMatchObject({ dirty: true, durable: true, value: restored.getState().value });
+    expect(test.save).not.toHaveBeenCalled();
+  });
+
   it('restores both meeting action times from disk without sending until Save', async () => {
     const meeting = { id: 'meeting', date: '', location: 'Hall', createdAt: '2026-11-08' };
     const base: ResourceSnapshot = {

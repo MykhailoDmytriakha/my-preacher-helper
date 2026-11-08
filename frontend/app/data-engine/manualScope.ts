@@ -393,7 +393,8 @@ export class ManualScope {
     this.durable = false;
     const record = copy(this.record);
     await this.options.port.persist(record);
-    if (equalValues(record, this.record)) this.durable = true;
+    // Compare the stored representation on both sides, including omitted optional evidence.
+    if (equalValues(record, copy(this.record))) this.durable = true;
   }
   private enqueuePersistence<T>(operation: () => Promise<T>): Promise<T> {
     // The invocation already checked authority. Only its original device copy may outlive it.
