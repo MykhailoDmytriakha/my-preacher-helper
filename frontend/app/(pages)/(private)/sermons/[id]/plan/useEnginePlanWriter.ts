@@ -48,10 +48,8 @@ export function createEnginePlanWriter(document: Pick<SermonDocument, 'update'>,
 /** The engine plan writer for one open sermon; render inside that sermon's DataDocumentProvider. */
 export function useEnginePlanWriter(sermonId: string, owner: string | null) {
   const outlineRecovery = useEngineStructureWriter(sermonId, owner);
-  const { document, writer: structure } = outlineRecovery;
-  const lifetime = useMemo(() => ({ owner, sermonId, document: null as SermonDocument | null }), [owner, sermonId]);
-  lifetime.document = document;
-  const writer = useMemo(() => createEnginePlanWriter({ update: (fn, options) => lifetime.document!.update(fn, options) }, owner, structure),
-    [lifetime, owner, structure]);
+  const { writeTarget, writer: structure } = outlineRecovery;
+  const writer = useMemo(() => createEnginePlanWriter(writeTarget, owner, structure),
+    [writeTarget, owner, structure]);
   return { writer, outlineRecovery };
 }

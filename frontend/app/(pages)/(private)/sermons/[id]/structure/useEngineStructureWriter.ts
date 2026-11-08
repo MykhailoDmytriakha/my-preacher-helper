@@ -110,11 +110,16 @@ export function useEngineStructureWriter(sermonId: string, owner: string | null)
   const document = useDataDocument({ collection: 'sermons', id: sermonId });
   const recovery = useOutlineConflict(owner ?? '', sermonId);
   usePublishShellTitle('sermons', sermonId, document.data);
-  // A writer follows this resource's latest editor, never the next route's editor. Refusals
-  // retain the same owner/resource-bound recovery callback even if the screen has departed.
-  const lifetime = useMemo(() => ({ owner, sermonId, document: null as SermonDocument | null }), [owner, sermonId]);
-  lifetime.document = document;
-  const writer = useMemo(() => createEngineStructureWriter({ update: (fn, options) => lifetime.document!.update(fn, options) }, owner, recovery.retain),
-    [lifetime, owner, recovery.retain]);
-  return { writer, document, recovery };
+  // Follow the latest document state only within this opening. On recovery, the old
+  // target keeps its old facade, which rejects writes after that opening has retired.
+  const opening = useMemo(() => ({
+    owner, sermonId, identity: document.recoveryIdentity, document: null as SermonDocument | null,
+  }), [owner, sermonId, document.recoveryIdentity]);
+  opening.document = document;
+  const writeTarget = useMemo<Pick<SermonDocument, 'update'>>(() => ({
+    update: (fn, options) => opening.document!.update(fn, options),
+  }), [opening]);
+  const writer = useMemo(() => createEngineStructureWriter(writeTarget, owner, recovery.retain),
+    [writeTarget, owner, recovery.retain]);
+  return { writer, document, recovery, writeTarget };
 }

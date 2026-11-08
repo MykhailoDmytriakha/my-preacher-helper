@@ -253,6 +253,49 @@ describe('React DataEngine contract', () => {
     }
   );
 
+  it.each([
+    ['structure outline', useEngineStructureWriter, 'outline'],
+    ['plan outline', usePlanOutlineWriter, 'outline'],
+    ['plan text', usePlanOutlineWriter, 'text'],
+    ['plan mode', usePlanOutlineWriter, 'mode'],
+  ] as const)('keeps a retired %s writer out of a recovered opening of the same sermon', async (_screen, useWriter, kind) => {
+    const id = 'sermon', target = { collection: 'sermons', id };
+    const base = { introduction: [], main: [{ id: 'point', text: 'Opening' }], conclusion: [] };
+    const value = { userId: 'owner', title: 'Original', thoughts: [], outline: base };
+    const earlier = makeEditor(), restored = makeEditor();
+    const confirmed = { ...snapshot(), resource: target, value };
+    const recovered = { ...value, title: 'Recovered' };
+    earlier.setState({ ...earlier.state, checkpoint: { ...earlier.state.checkpoint, confirmed, draft: value } });
+    restored.setState({ ...restored.state, checkpoint: { ...restored.state.checkpoint, confirmed, draft: recovered, dirty: true } });
+    const browser = makeBrowser(earlier.editor);
+    browser.engine.recoverEditor.mockResolvedValue(restored.editor);
+    jest.mocked(createBrowserDataEngine).mockReturnValue(browser.browser);
+
+    const { result } = renderHook(() => useWriter(id, 'owner'), { wrapper: Wrapper });
+    await waitFor(() => expect(result.current.document.data?.title).toBe('Original'));
+    const departed = result.current.writer;
+    let recovering!: Promise<void>;
+    await act(async () => { recovering = result.current.document.recover('["owner","earlier-copy"]'); });
+    await act(async () => recovering);
+    expect(earlier.editor.close).toHaveBeenCalledWith({ flush: true });
+    expect(result.current.document.data?.title).toBe('Recovered');
+
+    const changed = { ...base, main: [{ id: 'point', text: 'Words from retired opening' }] };
+    const lateEdit = () => {
+      if (kind === 'text' && 'savePlanText' in departed) return departed.savePlanText(id, { point: 'Retired plan text' });
+      if (kind === 'mode' && 'savePlanMode' in departed) return departed.savePlanMode(id, 'manual');
+      return departed.updateSermonOutline(id, changed, base);
+    };
+    await act(async () => { await expect(lateEdit()).rejects.toThrow('The active editor changed'); });
+    expect(restored.editor.edit).not.toHaveBeenCalled();
+
+    const active = result.current.writer;
+    const next = { ...base, main: [{ id: 'point', text: 'Words from the active opening' }] };
+    await act(async () => { await active.updateSermonOutline(id, next, base); });
+    expect(result.current.writer).toBe(active);
+    expect(result.current.document.data).toMatchObject({ title: 'Recovered', outline: next });
+  });
+
   /** Feature comparison must not become a document failure or cancel unrelated saved intent. */
   it.each([false, true])('keeps a handled outline question out of document errors and preserves earlier autosave=%s', async dirty => {
     const outline = (text: string) => ({ introduction: [{ id: 'p', text }], main: [], conclusion: [] });
