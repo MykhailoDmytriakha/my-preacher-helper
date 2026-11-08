@@ -3,6 +3,8 @@ import { isFirstBookMarksDraft } from './bibleMarksCreation';
 import { captureBibleMarkStroke, restoreBibleMarkAncestor, withBibleMarkStroke, type CapturedBibleMarkStroke } from './bibleMarkStroke';
 import { pendingCommitRetirement, retireCommitJournal } from './commitJournal';
 import { CommitReceipts } from './commitReceipt';
+import { COUNCIL_TOPIC_TITLE_POLICY } from './councilTopicTitleAction';
+import { captureCouncilTopicTitles, matchingCouncilTopicTitles } from './councilTopicTitleAutosave';
 import { capturedDateBaseline, captureDatedRowAction, datedRowTarget, existingRowDate, matchesDatedRowChange, MEETING_DATE_TARGET, replaceExistingDate, type DatedRowActionCapture, type DatedRowActionEvidence } from './datedRowAction';
 import { captureDeleteOrder, deleteOrderReady, replayDeleteOrder } from './deletionOrdering';
 import { captureDocumentMetadataFields, capturedDocumentField, capturePrayerStatusFields, capturePrayerTitle, captureServiceOrderTitle, documentFieldCommandAncestor, documentFieldTargets, matchesPrayerTitleRequest, uncapturedAutosaveFields, withDocumentFieldAction } from './documentFieldAction';
@@ -24,6 +26,7 @@ import type { CaptureTransferProof, CaptureTransferResult } from './captureTrans
 import type { DocumentWriteReceipt } from './commitReceipt';
 import type { EditorRecord } from './controller';
 import type { CouncilFieldActions } from './councilFieldAction';
+import type { CouncilTopicTitleActions } from './councilTopicTitleAutosave';
 import type { DocumentFieldAction, DocumentFieldObservation, SermonChurchObservation } from './documentFieldAction';
 import type { GroupMeetingFieldActions, GroupMeetingFieldCaptures } from './groupMeetingFieldAction';
 import type { PrayerStatusObservations } from './prayerStatusAction';
@@ -35,7 +38,7 @@ import type { SermonChurchFill } from './sermonChurchFill';
 import type { SessionCheckpoint } from './session';
 import type { CommandResult, DataCommand, DocumentData, EditorCommitAction, EngineMetadata, ResourceRef, ResourceSnapshot } from './types';
 
-export interface CommitRequest extends CouncilFieldActions, PrayerStatusObservations {
+export interface CommitRequest extends CouncilFieldActions, PrayerStatusObservations, CouncilTopicTitleActions {
   id: string;
   atomic?: AtomicCommitIdentity;
   /** A durable stage owns capture before it can persist the resulting request IDs. */
@@ -171,6 +174,7 @@ export function assertCommitCapture(current: CommitRequest, incoming: CommitRequ
     || !equalValues(current.serviceOrderTitleAction ?? null, incoming.serviceOrderTitleAction ?? null)
     || !equalValues(current.serviceOrderFlagActions ?? null, incoming.serviceOrderFlagActions ?? null)
     || !equalValues(current.serviceOrderStepTitleActions ?? null, incoming.serviceOrderStepTitleActions ?? null)
+    || !equalValues(current.councilTopicTitleActions ?? null, incoming.councilTopicTitleActions ?? null)
     || !equalValues(current.prayerTitleAction ?? null, incoming.prayerTitleAction ?? null)
     || !equalValues(current.prayerStatusAction ?? null, incoming.prayerStatusAction ?? null)
     || !equalValues(current.prayerAnsweredAtAction ?? null, incoming.prayerAnsweredAtAction ?? null)
@@ -284,6 +288,7 @@ function pendingRowFields(record: CommitRequest) {
     ...pendingRowDetailRebases(record, record.preachDateFieldActions, PREACH_DATE_FIELD_POLICY),
     ...pendingRowDetailRebases(record, record.serviceOrderFlagActions, SERVICE_ORDER_FLAG_POLICY),
     ...pendingRowDetailRebases(record, record.serviceOrderStepTitleActions, SERVICE_ORDER_STEP_TITLE_POLICY),
+    ...(record.councilTopicTitleActions ?? []).flatMap(title => pendingRowDetailRebases(record, { title }, COUNCIL_TOPIC_TITLE_POLICY)),
   ];
 }
 
@@ -471,6 +476,7 @@ export class CommitQueue {
       editorAction?.kind === 'prayer-status' ? editorAction.status : undefined, records, owner);
     const metadataFields = captureDocumentMetadataFields(baseline, predecessor, intent.draft, frozenOptions?.documentMetadataTime, records);
     const autosaveFields = uncapturedAutosaveFields(intent, baseline, predecessor, records);
+    const topicTitles = captureCouncilTopicTitles(intent, baseline, predecessor, records);
     const groupMeetingFieldActions = captureMeetingFieldActions(baseline, predecessor, intent.draft, frozenOptions?.groupMeetingFieldCaptures, records);
     const preachDateFieldActions = capturePreachDateFields(baseline, predecessor, intent.draft, frozenOptions?.preachDateFieldSave, records);
     const preachStatusActions = capturePreachStatusActions(baseline, predecessor, intent.draft, frozenOptions?.preachStatusCapture, records);
@@ -483,6 +489,7 @@ export class CommitQueue {
       ...prayerStatus,
       ...metadataFields,
       ...autosaveFields,
+      ...(topicTitles.length && { councilTopicTitleActions: topicTitles }),
       ...(groupMeetingFieldActions && { groupMeetingFieldActions }),
       ...(preachDateFieldActions && { preachDateFieldActions }),
       ...(preachStatusActions && { preachStatusActions }),
@@ -938,6 +945,8 @@ export class CommitQueue {
       if (flags && matchesServiceOrderStep(command.changes, SERVICE_ORDER_FLAG_TARGET, flags.flagged)) command.serviceOrderFlagActions = flags;
       const stepTitles = record.serviceOrderStepTitleActions;
       if (stepTitles && matchesServiceOrderStep(command.changes, SERVICE_ORDER_STEP_TITLE_TARGET, stepTitles.title)) command.serviceOrderStepTitleActions = stepTitles;
+      const topicTitles = matchingCouncilTopicTitles(command.changes, record.councilTopicTitleActions);
+      if (topicTitles?.length) command.councilTopicTitleActions = topicTitles;
       const statusActions = matchingPreachStatusActions(command.changes, status);
       if (statusActions.length) command.preachStatusActions = statusActions;
     }

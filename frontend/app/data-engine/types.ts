@@ -1,5 +1,6 @@
 /** The wire contract is shared by browser and server; it imports no transport. */
 import type { ActionTime } from './actionClock';
+import type { CouncilTopicTitleAction } from './councilTopicTitleAction';
 import type { DatedRowActionEvidence } from './datedRowAction';
 import type { DocumentFieldAction, DocumentFieldObservation, DocumentFieldStamp, PrayerTitleCapture, ServiceOrderTitleCapture } from './documentFieldAction';
 import type { GroupMeetingFieldActions } from './groupMeetingFieldAction';
@@ -70,6 +71,7 @@ export type DataCommand = CommandBase & (
       serviceOrderTitleAction?: DocumentFieldAction;
       serviceOrderFlagActions?: ServiceOrderFlagActions;
       serviceOrderStepTitleActions?: ServiceOrderStepTitleActions;
+      councilTopicTitleActions?: CouncilTopicTitleAction[];
       prayerTitleAction?: DocumentFieldObservation;
       prayerStatusAction?: DocumentFieldObservation;
       prayerAnsweredAtAction?: DocumentFieldStamp;

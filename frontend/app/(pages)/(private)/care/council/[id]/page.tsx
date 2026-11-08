@@ -38,6 +38,8 @@ import { ScriptureLinksInWindow } from '@/components/bible/VerseWindow';
 import { showCouncilCarryPrepared, useCouncilFinishAction } from '@/components/council/councilActionNotice';
 import { CouncilOutcomeForm } from '@/components/council/CouncilOutcomeForm';
 import { CouncilOutcomePanel, useOutcomeLine, useRecordedOutcomeLabel, useTopicStateLine } from '@/components/council/CouncilOutcomePanel';
+import { councilTopicTitleComparison } from '@/components/council/councilTopicTitleComparison';
+import { CouncilTopicTitleHistory } from '@/components/council/CouncilTopicTitleHistory';
 import MarkdownDisplay from '@/components/MarkdownDisplay';
 import { Chip } from '@/components/ui/Chip';
 import ConfirmModal from '@/components/ui/ConfirmModal';
@@ -144,6 +146,8 @@ function EngineCouncilDetailWorkspace({ councilId }: { councilId: string }) {
     }
   };
   const generation = document.confirmed?.metadata?.generation;
+  const comparison = councilTopicTitleComparison(document.checkpoint, t);
+  const shownChoice = comparison ? document.checkpoint : undefined;
   const source = {
     council: document.council, councils: list.councils, loading: document.loading || list.loading,
     // A copy shown while device storage is silent is for reading only (BUG-20260927-engine-open-hangs-on-silent-device-storage).
@@ -152,6 +156,7 @@ function EngineCouncilDetailWorkspace({ councilId }: { councilId: string }) {
     updateCouncil: (id: string, updater: (current: Council) => Council, field?: CouncilTimedField) => {
       void document.updateCouncil(id, updater, field).catch(report);
     },
+    renameTopic: (topicId: string, title: string) => document.renameTopic(topicId, title),
     history: owner && generation ? { owner, generation, restore: (field: CouncilHistoryField, value: string | null) =>
       field === 'heldAt' ? document.restoreCouncilLifecycle(value) : document.updateCouncil(councilId, current => {
         if (field === 'title') return { ...current, title: value ?? current.title };
@@ -167,7 +172,7 @@ function EngineCouncilDetailWorkspace({ councilId }: { councilId: string }) {
   };
   return <>
     <DataSyncStatus subject={document.recoveryIdentity} status={document.status} error={document.error} errorWords={document.errorWords} className="mb-4"
-      onRetry={() => document.refresh()} onKeepLocal={() => document.keepLocal()} onAcceptRemote={() => document.acceptRemote()}
+      comparison={comparison} onRetry={() => document.refresh()} onKeepLocal={() => document.keepLocal(shownChoice)} onAcceptRemote={() => document.acceptRemote(shownChoice)}
       recoveryChoices={recovery.choices} onRecover={recovery.recover}
       recoveryLoading={recovery.loading} recoveryError={recovery.error} onDiscardRecovery={recovery.discard} />
     {document.actions?.map(action => <DataMembershipStatus key={action.id} action={{ durable: true, phase: 'submitted',
@@ -183,6 +188,7 @@ interface CouncilDetailSource {
   error: unknown;
   refresh: () => unknown;
   updateCouncil: (id: string, updater: (current: Council) => Council, field?: CouncilTimedField) => void;
+  renameTopic?: (id: string, title: string) => Promise<void>;
   history?: { owner: string; generation: string; restore: (field: CouncilHistoryField, value: string | null) => Promise<void> };
   deleteCouncil: (id: string) => Promise<boolean>;
   finishCouncil: () => Promise<CouncilFinishUndo>;
@@ -437,6 +443,10 @@ function CouncilDetailContent({ source, engineCouncilId }: { source: CouncilDeta
               return value ?? '';
             }}
             onRestore={source.history.restore} />
+          {source.renameTopic && <CouncilTopicTitleHistory
+            key={JSON.stringify([source.history.owner, council.id, source.history.generation, 'topics'])}
+            owner={source.history.owner} generation={source.history.generation} councilId={council.id}
+            topics={council.topics} disabled={readOnly || held || editingTopicId !== null} onRestore={source.renameTopic} />}
         </div>}
         {editable && (
           <p className="mt-3 max-w-2xl px-1 text-sm leading-relaxed text-gray-600 dark:text-gray-400">
@@ -504,6 +514,10 @@ function CouncilDetailContent({ source, engineCouncilId }: { source: CouncilDeta
                 onEdit={() => setEditingTopicId(topic.id)}
                 onDone={() => setEditingTopicId(null)}
                 onChange={(updater) => patchTopic(topic.id, updater)}
+                onRename={(title) => {
+                  if (source.renameTopic) void source.renameTopic(topic.id, title).catch(error => toast.error(actionFailureMessage(error, t, 'council.save.refused')));
+                  else void patchTopic(topic.id, current => ({ ...current, title }));
+                }}
                 onRemove={() => removeTopic(topic.id)}
                 carrying={carrying.has(topic.id)}
                 onCarryToNext={(targetId) => { void carryToNext(topic, targetId); }}
@@ -579,6 +593,7 @@ function TopicCard({
   onEdit,
   onDone,
   onChange,
+  onRename,
   onRemove,
   onCarryToNext,
   carrying,
@@ -595,6 +610,7 @@ function TopicCard({
   onEdit: () => void;
   onDone: () => void;
   onChange: (updater: TopicUpdater) => void;
+  onRename: (title: string) => void;
   onRemove: () => void;
   onCarryToNext: (targetId?: string | 'new') => void;
   carrying: boolean;
@@ -649,7 +665,7 @@ function TopicCard({
         <span className={`mt-0.5 w-6 shrink-0 text-sm font-extrabold ${tone.count}`}>{index}</span>
         <div className="min-w-0 flex-1">
           {editing ? (
-            <TopicEditor subjectId={subjectId} topic={topic} onChange={onChange} onRemove={onRemove} onDone={onDone} />
+            <TopicEditor subjectId={subjectId} topic={topic} onChange={onChange} onRename={onRename} onRemove={onRemove} onDone={onDone} />
           ) : (
             <>
               <div className="flex flex-wrap items-center gap-2">
@@ -948,12 +964,14 @@ function TopicEditor({
   subjectId,
   topic,
   onChange,
+  onRename,
   onRemove,
   onDone,
 }: {
   subjectId: string;
   topic: CouncilTopic;
   onChange: (updater: TopicUpdater) => void;
+  onRename: (title: string) => void;
   onRemove: () => void;
   onDone: () => void;
 }) {
@@ -1020,7 +1038,7 @@ function TopicEditor({
       <LiveTextInput
         autoFocus
         value={topic.title}
-        onChange={(next) => onChange((current) => ({ ...current, title: next }))}
+        onChange={onRename}
         placeholder={t('council.detail.newTopicPlaceholder')}
         aria-label={t('council.detail.newTopicPlaceholder')}
         className={`${inputClass} text-base font-bold`}

@@ -2,6 +2,7 @@ import { hasDifferentAnalysisPositionBasis, keepAnalysisReshapeFrame } from './a
 import { isLiveWholeAction, isRetiredActionDependent } from './atomicCommits';
 import { firstBookMarksIntent } from './bibleMarksCreation';
 import { councilLifecycleValue, withCouncilLifecycle } from './councilFieldAction';
+import { acknowledgeCouncilTopicTitles, councilTopicTitleAckAncestor, hasUncapturedCouncilTopicTitle, stageCouncilTopicTitle } from './councilTopicTitleAutosave';
 import { autosaveAcknowledgementAncestor, autosaveFieldTargets, hasUncapturedAutosaveField, sameAutosaveCapture, stageAutosaveField } from './documentFieldAction';
 import { prepareDomainCommand } from './domainPolicy';
 import { ACTION_SLOT, editorSlot } from './editorIdentity';
@@ -12,18 +13,20 @@ import { equalValues, mergeDocumentFields, mergeFields } from './protocol';
 import { canReplaceSnapshot } from './snapshotFreshness';
 
 import type { CommitRequest } from './commits';
+import type { CouncilTopicTitleActions, CouncilTopicTitleDrafts } from './councilTopicTitleAutosave';
 import type { AutosaveFieldActions, AutosaveFieldDrafts, AutosaveFieldStamp } from './documentFieldAction';
 import type { PreachStatusAction } from './preachStatusAction';
 import type { CommandResult, ConflictDetail, DataCommand, DocumentData, ResourceSnapshot } from './types';
 
 export interface SessionCheckpoint extends AutosaveFieldDrafts {
+  councilTopicTitleDrafts?: CouncilTopicTitleDrafts;
   confirmed: ResourceSnapshot;
   draft: DocumentData | null;
   dirty: boolean;
   editGeneration: number;
   remoteCandidate: ResourceSnapshot | null;
   conflicts: ConflictDetail[];
-  pending: Record<string, { generation: number; value: DocumentData | null; operations?: string[]; borrowedManualScope?: string } & AutosaveFieldActions>;
+  pending: Record<string, { generation: number; value: DocumentData | null; operations?: string[]; borrowedManualScope?: string } & AutosaveFieldActions & CouncilTopicTitleActions>;
 }
 
 const copy = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
@@ -90,19 +93,23 @@ export class DataSession {
       if (draft) this.state[target.draft] = draft;
       else delete this.state[target.draft];
     }
+    const topicTitles = stageCouncilTopicTitle(this.state, value, shown, autosaveStamp?.field === 'council-topic-title' ? autosaveStamp : undefined);
+    if (topicTitles) this.state.councilTopicTitleDrafts = topicTitles;
+    else delete this.state.councilTopicTitleDrafts;
     this.state.draft = copy(value);
     this.state.editGeneration += 1;
-    this.state.dirty = !equalValues(value, this.state.confirmed.value) || hasUncapturedAutosaveField(this.state);
+    this.state.dirty = !equalValues(value, this.state.confirmed.value) || hasUncapturedAutosaveField(this.state) || hasUncapturedCouncilTopicTitle(this.state);
   }
 
   /** A durable save request owns its captured value, independently of later typing. */
-  registerCommit(operationId: string, generation: number, value: DocumentData | null, preparedId?: string, autosaveActions?: AutosaveFieldActions): void {
+  registerCommit(operationId: string, generation: number, value: DocumentData | null, preparedId?: string, autosaveActions?: AutosaveFieldActions & CouncilTopicTitleActions): void {
     if (!this.state.pending[operationId]) this.state.pending[operationId] = { generation, value: copy(value) };
     const pending = this.state.pending[operationId];
     for (const target of autosaveFieldTargets(this.state.confirmed.resource.collection)) {
       const action = autosaveActions?.[target.action];
       if (action) Object.assign(pending, { [target.action]: copy(action) });
     }
+    if (autosaveActions?.councilTopicTitleActions) pending.councilTopicTitleActions = copy(autosaveActions.councilTopicTitleActions);
     if (preparedId && preparedId !== operationId && !pending.operations?.includes(preparedId)) pending.operations = [...(pending.operations ?? []), preparedId];
   }
 
@@ -234,6 +241,7 @@ export class DataSession {
       const action = submitted[target.action];
       if (sameAutosaveCapture(action, this.state[target.draft]?.action)) delete this.state[target.draft];
     }
+    acknowledgeCouncilTopicTitles(this.state, submitted.councilTopicTitleActions);
     let accepted = this.isOlder(result.snapshot) ? this.state.confirmed : result.snapshot;
     const candidate = this.state.remoteCandidate;
     if (candidate?.metadata && accepted.metadata
@@ -248,13 +256,13 @@ export class DataSession {
       pending.generation > submitted.generation && (id === acceptedOperation || pending.operations?.includes(acceptedOperation)))?.[1];
     const ancestor = newerSubmitted ? newerSubmitted.value : submitted.value;
     const fieldAncestor = autosaveAcknowledgementAncestor(ancestor, accepted, this.state);
-    const rebased = mergeDocumentFields(fieldAncestor, this.state.draft, accepted.value);
+    const rebased = mergeDocumentFields(councilTopicTitleAckAncestor(fieldAncestor, accepted, this.state), this.state.draft, accepted.value);
     if (wholeAnalysisFrame) keepAnalysisReshapeFrame(ancestor, this.state.draft, accepted.value, rebased);
     this.state.confirmed = copy(accepted);
     this.state.draft = rebased.value.exists ? copy(rebased.value.value as DocumentData) : null;
     this.state.conflicts = copy(rebased.conflicts);
     this.state.remoteCandidate = rebased.conflicts.length ? copy(accepted) : null;
-    this.state.dirty = !equalValues(this.state.draft, accepted.value) || hasUncapturedAutosaveField(this.state);
+    this.state.dirty = !equalValues(this.state.draft, accepted.value) || hasUncapturedAutosaveField(this.state) || hasUncapturedCouncilTopicTitle(this.state);
   }
 
   observe(snapshot: ResourceSnapshot, { source }: { source: 'server' | 'cache' }): void {
@@ -359,6 +367,7 @@ export class DataSession {
   }
 
   private clearAutosaveFieldDrafts(): void {
+    delete this.state.councilTopicTitleDrafts;
     for (const target of autosaveFieldTargets(this.state.confirmed.resource.collection)) delete this.state[target.draft];
   }
 

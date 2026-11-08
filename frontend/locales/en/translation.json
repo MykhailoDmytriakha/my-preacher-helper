@@ -4386,6 +4386,14 @@
       "notFound": "There is no such council.",
       "backToList": "Back to councils"
     },
+    "topicTitleHistory": {
+      "earlier": "Earlier: {{value}}",
+      "gone": "This section was removed on another device. The title change cannot be applied.",
+      "title": "Section title history",
+      "untitled": "Untitled section",
+      "removed": "Removed section",
+      "restore": "Restore section title"
+    },
     "topic": {
       "summary": "Explanation",
       "summaryHint": "What happened and what you propose. Figures, sums, what you compared go here too — lists and formatting work as in notes.",

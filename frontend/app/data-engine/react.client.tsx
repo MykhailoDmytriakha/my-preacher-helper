@@ -688,7 +688,7 @@ export function useDataMembership() {
 /** A feature may present its own expected question; storage and lifecycle failures still surface. */
 export interface DocumentUpdateOptions {
   handlesRefusal?: (failure: unknown) => boolean;
-  action?: 'group-title' | 'group-status' | 'council-title' | 'council-date';
+  action?: 'group-title' | 'group-status' | 'council-title' | 'council-date' | { kind: 'council-topic-title'; rowId: string };
 }
 
 interface DocumentOptions {
@@ -1007,6 +1007,7 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
         }
         // An expected question changed no draft and must not cancel an earlier save.
         cancelScheduledSave();
+        if (owner && typeof action === 'object') return editor.edit(next, shown, { field: action.kind, rowId: action.rowId, time: time ?? null });
         return time || observeWithoutClock ? editor.edit(next, shown, { field, time: time ?? null }) : editor.edit(next, shown);
       }).then(() => { if (refused) throw refused.error; }, error => {
         // A question already established for the departed owner must still reach its backup.

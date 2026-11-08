@@ -4,6 +4,7 @@ import { isLiveWholeAction, isRetiredActionDependent, orderActionProjections } f
 import { firstBookMarksIntent, isFirstBookMarksDraft } from './bibleMarksCreation';
 import { CaptureContinuations } from './captureContinuations';
 import { assertCommitCapture } from './commits';
+import { councilTopicTitleRow, hasCouncilTopic } from './councilTopicTitleAction';
 import { isDocumentDeletion } from './deletionOrdering';
 import { isDirectLegacyDocumentIntent, type DocumentAnswer } from './documentDelivery';
 import { requiredDomainTargets } from './domainPolicy';
@@ -729,11 +730,14 @@ export class EditorController {
     await this.options.commits!.cancelWithCheckpoint(decidingEditor, ids, retired => {
         this.assertCurrent();
         this.assertRecoveryChoice(expected);
-        const comparedStep = expected?.checkpoint.confirmed.resource.collection === 'serviceOrders'
-          && expected.checkpoint.conflicts.length === 1 && serviceOrderStepField(expected.checkpoint.conflicts[0].path);
-        if (expected && (comparedStep || retired.some(request => expected.checkpoint.pending[request.id] && (request.serviceOrderFlagActions || request.serviceOrderStepTitleActions)))
+        const checkpoint = expected?.checkpoint;
+        const path = checkpoint?.conflicts.length === 1 ? checkpoint.conflicts[0].path : undefined;
+        const collection = checkpoint?.confirmed.resource.collection;
+        const comparedRow = collection === 'serviceOrders' ? serviceOrderStepField(path) : collection === 'councils' && councilTopicTitleRow(path);
+        if (expected && (comparedRow || retired.some(request => expected.checkpoint.pending[request.id]
+          && (request.serviceOrderFlagActions || request.serviceOrderStepTitleActions || request.councilTopicTitleActions)))
           && retired.some(request => !expected.checkpoint.pending[request.id])) {
-          throw Object.assign(new Error('Another saved change appeared during the step choice'), { code: 'decision-changed' });
+          throw Object.assign(new Error('Another saved change appeared during the field choice'), { code: 'decision-changed' });
         }
         if (ordinary) {
           if (ordinary.scope.length > 1) this.assertRecoveryChoice(shown);
@@ -757,11 +761,14 @@ export class EditorController {
             requireFreshGeneration(ordinary.answer, rejected, decided.remoteCandidate);
           }
           const stored = decided.remoteCandidate?.value;
-          const stepRequests = ordinary ? [ordinary.first] : retired.filter(request => request.cancelledByChoice && source!.pending[request.id]);
-          if (stored && stepRequests.some(request => {
+          const rowRequests = ordinary ? [ordinary.first] : retired.filter(request => request.cancelledByChoice && source!.pending[request.id]);
+          if (stored && rowRequests.some(request => {
             const step = request.serviceOrderFlagActions?.flagged ?? request.serviceOrderStepTitleActions?.title;
             return step && !hasServiceOrderStep(stored.steps, step.rowId);
           })) throw Object.assign(new Error('The step that was edited is gone'), { code: 'service-order-step-gone' });
+          if (stored && rowRequests.some(request => request.councilTopicTitleActions?.some(title => !hasCouncilTopic(stored.topics, title.rowId)))) {
+            throw Object.assign(new Error('The section that was edited is gone'), { code: 'topic-gone' });
+          }
           const statusActions = ordinary ? ordinary.first.preachStatusActions
             : retired.flatMap(request => request.cancelledByChoice && source!.pending[request.id] ? request.preachStatusActions ?? [] : []);
           session.keepLocal(statusActions);

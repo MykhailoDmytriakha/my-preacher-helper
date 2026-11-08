@@ -1340,6 +1340,44 @@ describe('transactional DataEngine server', () => {
   });
 
   it.each([
+    { label: 'phone first', mobileAt: 15, winner: 'Computer section', kind: 'acknowledged' },
+    { label: 'phone last', mobileAt: 100, winner: 'Phone section', kind: 'acknowledged' },
+    { label: 'no clock', mobileAt: null, winner: 'Computer section', kind: 'conflict' },
+  ])('orders one council section title without replacing its explanation: $label', async ({ mobileAt, winner, kind }) => {
+    const resource = { collection: 'councils', id: 'topic-title-order' };
+    const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] };
+    const now = '2026-11-08T00:00:00.000Z';
+    const topic = { id: 'opening', title: 'Opening', summary: 'Original words', questions: [], options: [] };
+    const other = { ...topic, id: 'other', title: 'Other section' };
+    const topics = [topic, other];
+    expect((await processCommand(base.owner, { ...base, kind: 'create', operationId: 'seed', generation: null,
+      value: { userId: base.owner, title: 'Council', status: 'preparing', createdAt: now, updatedAt: now, topics },
+    })).kind).toBe('acknowledged');
+    const edit = (operationId: string, after: typeof topics, at: number | null) => ({
+      ...base, kind: 'update', operationId, generation: 'seed',
+      changes: [{ path: ['topics'], before: { exists: true, value: topics }, after: { exists: true, value: after } }],
+      councilTopicTitleActions: [{ rowId: topic.id, rowCreatedAt: topic.id, before: topic.title,
+        after: after[0].title, observedRevision: 1,
+        time: at === null ? null : { earliestMs: 1_800_000_000_000 + at, latestMs: 1_800_000_000_004 + at } }],
+    });
+    const desktop = [{ ...topic, title: 'Computer section', summary: 'Later explanation' }, other];
+    expect((await processCommand(base.owner, edit('desktop', desktop, 65))).kind).toBe('acknowledged');
+    const phone = edit('phone', [{ ...topic, title: 'Phone section' }, other], mobileAt);
+    const answer = await processCommand(base.owner, phone);
+    expect(answer).toMatchObject({ kind, snapshot: { value: { title: 'Council', topics: [{ ...desktop[0], title: winner }, other] } } });
+    expect(await processCommand(base.owner, phone)).toEqual(answer);
+    const history = [...documents.entries()].filter(([path]) => path.startsWith('councils/topic-title-order/_topicTitleHistory/'));
+    if (mobileAt === null) {
+      expect(answer).toMatchObject({ conflicts: [{ path: ['topics', 'id:opening', 'title'] }] });
+      expect(history).toHaveLength(0);
+    } else {
+      expect(history).toHaveLength(1);
+      expect(history[0][1]).toMatchObject({ fields: [{ rowId: topic.id, field: 'title',
+        value: winner === 'Computer section' ? 'Phone section' : 'Computer section', winnerValue: winner }] });
+    }
+  });
+
+  it.each([
     { label: 'earlier', mobileAt: 15, title: 'Computer opening', kind: 'acknowledged' },
     { label: 'later', mobileAt: 100, title: 'Phone opening', kind: 'acknowledged' },
     { label: 'unclocked', mobileAt: null, title: 'Computer opening', kind: 'conflict' },

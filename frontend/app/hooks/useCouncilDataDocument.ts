@@ -63,6 +63,14 @@ export function useCouncilDataDocument(councilId: string) {
     else await document.update(change);
   }, [council, document, apply]);
 
+  const renameTopic = useCallback(async (topicId: string, title: string) => {
+    if (!council) throw missing();
+    await document.update(apply(current => {
+      if (!current.topics.some(topic => topic.id === topicId)) throw Object.assign(new Error('The section no longer exists'), { code: 'topic-gone' });
+      return { ...current, topics: current.topics.map(topic => topic.id === topicId ? { ...topic, title } : topic) };
+    }), { action: { kind: 'council-topic-title', rowId: topicId } });
+  }, [council, document, apply]);
+
   /** Capture before leaving; Undo belongs to the entity, never to the departed screen editor. */
   const finishCouncil = useCallback(async (): Promise<CouncilFinishUndo> => {
     if (!council) throw missing();
@@ -140,11 +148,13 @@ export function useCouncilDataDocument(councilId: string) {
     /** What the sync block speaks about (DataSyncStatus `subject`). */
     recoveryIdentity: document.recoveryIdentity,
     confirmed: document.confirmed,
+    checkpoint: document.state?.checkpoint,
     remote: document.remote,
     refresh: document.retry,
     acceptRemote: document.acceptRemote,
     keepLocal: document.keepLocal,
     updateCouncil,
+    renameTopic,
     finishCouncil,
     restoreCouncilLifecycle,
     deleteCouncil,

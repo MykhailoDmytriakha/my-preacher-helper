@@ -657,6 +657,68 @@ describe('Durable commit requests', () => {
     } finally { engine.dispose(); }
   });
 
+  it('retains the later saved title of the same council section after an earlier ACK with other words', async () => {
+    const s = setup();
+    const { queue } = s.makeQueue();
+    const topic = { id: 'opening', title: 'Opening', summary: 'Original explanation', questions: [], options: [] };
+    const neighbor = { ...topic, id: 'neighbor', title: 'Neighbor' };
+    const opening: ResourceSnapshot = {
+      resource: { collection: 'councils', id: 'council' },
+      value: { userId: 'owner', title: 'Council', status: 'preparing', topics: [topic, neighbor], createdAt: '2026-11-08', updatedAt: '2026-11-08' },
+      metadata: { protocol: 1, generation: 'council', revision: 1, deleted: false },
+    };
+    const editor = new DataSession(opening);
+    const firstTime = { earliestMs: 1_800_000_000_020, latestMs: 1_800_000_000_024 };
+    const nextTime = { earliestMs: 1_800_000_000_030, latestMs: 1_800_000_000_034 };
+    editor.edit({ ...opening.value, topics: [{ ...topic, title: 'First' }, neighbor] }, undefined,
+      { field: 'council-topic-title', rowId: topic.id, time: firstTime });
+    const first = (await queue.save('council', editor.checkpoint()))!;
+    editor.applyCommit(first);
+    editor.edit({ ...opening.value, topics: [{ ...topic, title: 'Second' }, neighbor] }, undefined,
+      { field: 'council-topic-title', rowId: topic.id, time: nextTime });
+    const second = (await queue.save('council', editor.checkpoint(), { predecessorId: first.id }))!;
+    const expected = { rowId: topic.id, rowCreatedAt: topic.id, before: 'First', after: 'Second', time: nextTime,
+      observedRevision: 1, predecessorOperationId: first.id };
+    expect(second.councilTopicTitleActions).toEqual([expected]);
+    const desk = { ...topic, title: 'Remote title', summary: 'Keep remote explanation' };
+    const accepted = { ...opening, value: { ...opening.value, topics: [desk, neighbor] },
+      metadata: { ...opening.metadata!, revision: 2, operationId: first.id } };
+    s.replace(accepted);
+    jest.mocked(s.transport.send).mockResolvedValueOnce({ kind: 'acknowledged', operationId: first.id, snapshot: accepted });
+    await s.makeQueue().queue.drain(true);
+    expect(s.transport.send).toHaveBeenCalledWith(expect.objectContaining({ operationId: second.id,
+      councilTopicTitleActions: [expected], changes: [{ path: ['topics'],
+        before: { exists: true, value: [{ ...desk, title: 'First' }, neighbor] },
+        after: { exists: true, value: [{ ...desk, title: 'Second' }, neighbor] },
+      }],
+    }));
+  });
+
+  it('does not recreate a removed council section when keeping a rejected title', async () => {
+    const topic = { id: 'opening', title: 'Opening', summary: 'Original words', questions: [], options: [] };
+    const opening: ResourceSnapshot = {
+      resource: { collection: 'councils', id: 'council' },
+      value: { userId: 'owner', title: 'Council', status: 'preparing', topics: [topic], createdAt: '2026-11-08', updatedAt: '2026-11-08' },
+      metadata: { protocol: 1, generation: 'council', revision: 1, deleted: false },
+    };
+    const s = setup({ opening, nativeChoice: true });
+    const engine = s.makeEngine(), editor = await engine.openEditor(opening.resource, 'page');
+    try {
+      const renamed = { ...topic, title: 'New section title' };
+      await editor.edit({ ...opening.value, topics: [renamed] }, undefined, { field: 'council-topic-title', rowId: topic.id, time: null });
+      await editor.save();
+      s.replace({ ...opening, value: { ...opening.value, topics: [] }, metadata: { ...opening.metadata!, revision: 2 } });
+      engine.setOnline(true); await engine.retry(); await settle();
+      expect(editor.getState().result?.kind).toBe('conflict');
+      await expect(editor.keepLocal()).rejects.toMatchObject({ code: 'topic-gone' });
+      expect(editor.getState().checkpoint.draft?.topics).toEqual([renamed]);
+      expect(s.server().value?.topics).toEqual([]);
+      await editor.acceptRemote();
+      expect(editor.getState().checkpoint.draft?.topics).toEqual([]);
+      expect(s.transport.send).toHaveBeenCalledTimes(1);
+    } finally { engine.dispose(); }
+  });
+
   it('cannot recreate a deleted step by keeping the rejected flag', async () => {
     const step = { id: 'opening', title: 'Opening', body: 'Original words', flagged: false };
     const opening: ResourceSnapshot = {

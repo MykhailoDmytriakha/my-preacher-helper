@@ -3,6 +3,7 @@ import { explicitPreachedFlag } from '@/utils/preachDateStatus';
 import { sameAnalysisFrame } from './analysisReshapeFields';
 import { rebaseBibleMarkAncestor } from './bibleMarkStroke';
 import { pendingCommitRetirement, retireCommitJournal } from './commitJournal';
+import { COUNCIL_TOPIC_TITLE } from './councilTopicTitleAction';
 import { datedRowTarget, isCapturedDateConflict } from './datedRowAction';
 import { pendingDocumentFieldAncestor } from './documentFieldAction';
 import { prepareAtomicDomainCommand } from './domainPolicy';
@@ -90,6 +91,7 @@ export function initializeCommit(record: CommitRequest, records: readonly Commit
       || isCapturedPreachDateFieldConflict(conflict, record.preachDateFieldActions)
       || (stepFlag && isCapturedRowConflict(conflict, stepFlag, SERVICE_ORDER_FLAG_TARGET))
       || (stepTitle && isCapturedRowConflict(conflict, stepTitle, SERVICE_ORDER_STEP_TITLE_TARGET))
+      || record.councilTopicTitleActions?.some(title => isCapturedRowConflict(conflict, title, COUNCIL_TOPIC_TITLE))
       || GROUP_MEETING_FIELDS.some(field => {
         const meeting = record.groupMeetingFieldActions?.[field];
         return meeting && isCapturedRowConflict(conflict, meeting, meetingFieldTarget(field));
