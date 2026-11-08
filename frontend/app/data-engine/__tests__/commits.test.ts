@@ -218,12 +218,12 @@ describe('Durable commit requests', () => {
     const editor = new DataSession(base);
     const firstTime = { earliestMs: 1_800_000_000_020, latestMs: 1_800_000_000_025 };
     const lastTime = { earliestMs: 1_800_000_000_060, latestMs: 1_800_000_000_065 };
-    editor.edit({ ...base.value, title: 'Typing' }, undefined, { ...firstTime, earliestMs: firstTime.earliestMs - 1 });
-    editor.edit({ ...base.value, title: 'First phone title' }, undefined, firstTime);
+    editor.edit({ ...base.value, title: 'Typing' }, undefined, { field: 'title', time: { ...firstTime, earliestMs: firstTime.earliestMs - 1 } });
+    editor.edit({ ...base.value, title: 'First phone title' }, undefined, { field: 'title', time: firstTime });
     const first = (await queue.save('group', editor.checkpoint()))!;
     expect(first.groupTitleAction).toEqual({ before: 'Original', after: 'First phone title', observedRevision: 1, time: firstTime });
     editor.applyCommit(first);
-    editor.edit({ ...base.value, title: 'Last phone title' }, undefined, lastTime);
+    editor.edit({ ...base.value, title: 'Last phone title' }, undefined, { field: 'title', time: lastTime });
     editor.edit({ ...editor.getState().draft, status: 'active' });
     const restored = DataSession.restore(JSON.parse(JSON.stringify(editor.checkpoint())));
     const desk = { ...base, value: { ...base.value, title: 'Desk', description: 'Desk notes' },
@@ -479,7 +479,7 @@ describe('Durable commit requests', () => {
     const editor = await engine.openEditor(opening.resource, 'tab');
     const time = { earliestMs: 1_800_000_000_020, latestMs: 1_800_000_000_025 };
     const action = { before: 'Original', after: 'Title entered before leaving', observedRevision: 1, time };
-    await editor.edit({ ...opening.value, title: action.after }, undefined, time);
+    await editor.edit({ ...opening.value, title: action.after }, undefined, { field: 'title', time: time });
     expect(await s.requests.list('owner')).toEqual([]);
     editor.close({ flush: true }); await settle();
     expect(await s.requests.list('owner')).toEqual([expect.objectContaining({ groupTitleAction: action })]);
@@ -489,6 +489,35 @@ describe('Durable commit requests', () => {
     restarted.setOnline(true); await restarted.retry(); await settle();
     expect(s.transport.send).toHaveBeenCalledWith(expect.objectContaining({ groupTitleAction: action }));
     expect(s.server().value?.title).toBe(action.after);
+    restarted.dispose();
+  });
+
+  it('keeps separate status and title action times when closing before group autosave', async () => {
+    const opening: ResourceSnapshot = {
+      resource: { collection: 'groups', id: 'group' },
+      value: { userId: 'owner', title: 'Original', status: 'draft', templates: [], flow: [],
+        meetingDates: [], createdAt: '2026-11-08', updatedAt: '2026-11-08' },
+      metadata: { protocol: 1, generation: 'group', revision: 1, deleted: false },
+    };
+    const s = setup({ opening });
+    const engine = s.makeEngine();
+    const editor = await engine.openEditor(opening.resource, 'tab');
+    const titleTime = { earliestMs: 1_800_000_000_020, latestMs: 1_800_000_000_025 };
+    const statusTime = { earliestMs: 1_800_000_000_030, latestMs: 1_800_000_000_035 };
+    await editor.edit({ ...opening.value, title: 'New title' }, undefined, { field: 'title', time: titleTime });
+    await editor.edit({ ...editor.getState().checkpoint.draft, status: 'active' }, undefined, { field: 'status', time: statusTime });
+    editor.close({ flush: true }); await settle();
+    const actions = {
+      groupTitleAction: { before: 'Original', after: 'New title', observedRevision: 1, time: titleTime },
+      groupStatusAction: { before: 'draft', after: 'active', observedRevision: 1, time: statusTime },
+    };
+    expect(await s.requests.list('owner')).toEqual([expect.objectContaining(actions)]);
+    expect(s.transport.send).not.toHaveBeenCalled();
+    engine.dispose(); await settle();
+    const restarted = s.makeEngine();
+    restarted.setOnline(true); await restarted.retry(); await settle();
+    expect(s.transport.send).toHaveBeenCalledWith(expect.objectContaining(actions));
+    expect(s.server().value).toMatchObject({ title: 'New title', status: 'active' });
     restarted.dispose();
   });
 

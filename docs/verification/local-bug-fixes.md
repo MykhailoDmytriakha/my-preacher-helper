@@ -7369,3 +7369,13 @@ The group title's ordinary autosave captures the time on input and retains the e
 The original two tests went from red to green. 396 related tests passed, including closing the editor before autosave and delivering after restart. TypeScript, lint and the local build passed. Six group scenarios and a service-order compatibility scenario passed in installed Chrome at 390 and 1280 pixels on local Auth and Firestore emulators. History and restore were inspected before and after reload. Evidence is in `artifacts/action-chronology-356/group-title-verified`. The umbrella bug remains open for other fields and writers.
 
 For authorized production acceptance, verify the revision and active worker. Open one disposable group in two profiles, repeat both action orders and two offline edits around an online edit, and restore from Title history. After reloading, check the title, description and meeting, then close the profiles.
+
+## BUG-20261016-engine-asks-instead-of-chronology · Group status
+
+Open Groups and select an existing group. Changing its status from two profiles used to produce a conflict in both action orders. A later offline change could leave the computer's earlier value in effect.
+
+The ordinary group autosave now keeps independent action times and ancestors for title and status. A proven later status wins, and Status history restores the displaced value through the same writer. Ambiguous order remains an explicit choice.
+
+Two original server regressions went from red to green. 385 related tests passed, including a shared save with opposite title and status winners and closing before autosave with delivery after restart. TypeScript, scoped lint and the local build passed. Four status scenarios and a title compatibility check passed in installed Chrome on local Auth and Firestore emulators. I inspected history and restoration at 390 and 1280 pixels. Evidence is in `artifacts/action-chronology-356/group-status-verified`. The remaining short fields stay in the umbrella issue.
+
+For authorized production acceptance, verify the revision and active worker. Change the same disposable group's status in both orders across two profiles, with the offline profile always delivering last. Restore from Status history, reload and verify status, title and meeting data. Close the profiles.

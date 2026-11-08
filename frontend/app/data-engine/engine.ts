@@ -10,7 +10,7 @@ import { CommitQueue, type CommitRequest, type CommitStore } from './commits';
 import { EditorController, InactiveEditorError, type CheckpointRecoveryStore, type CheckpointStore, type EditorRecord, type EditorState, type RecoveryCheckpoint } from './controller';
 import { captureCouncilCarry, pinCouncilDestination } from './councilCarry';
 import { canReplaceDocumentIntent, isDirectLegacyDocumentIntent, requiresWholeActionResolution, savedDocumentAnswer } from './documentDelivery';
-import { validatedTitleCapture } from './documentTitle';
+import { validatedTitleCapture } from './documentFieldAction';
 import { ACTION_SLOT, areDifferentTabManualParents, editorSlot, isManualChoiceRecoveryIdentity, manualScopeIdentity, readManualScopeIdentity } from './editorIdentity';
 import { AddressedFailures, eachFailure, PausedReadFailure } from './failures';
 import { collectionHeadRef } from './feed';
@@ -34,10 +34,10 @@ import { snapshotBelongsToOwner } from './snapshotIdentity';
 import { redeliveryDelay } from './unanswered';
 
 
-import type { ActionTime } from './actionClock';
 import type { CollectionReader, CollectionState } from './collections';
 import type { DocumentWriteReceipt } from './commitReceipt';
 import type { DatedRowActionCapture } from './datedRowAction';
+import type { GroupFieldStamp } from './documentFieldAction';
 import type { ManualScopeStore, StoredManualScope } from './manualScopes.client';
 import type { MembershipScopeStore } from './membershipScopes.client';
 import type { Observation, ResourceObserver } from './observer';
@@ -108,7 +108,7 @@ export interface ManagedEditor {
   form(slot: string, selection: readonly ManualPath[], recovery?: ManualRecoveryPolicy): ManagedManualForm;
   subscribe(listener: () => void): () => void;
   /** `shown` is the copy the screen showed while the person typed (`DataSession.edit`). */
-  edit(value: DocumentData | null, shown?: ShownCopy, groupTitleTime?: ActionTime): Promise<void>;
+  edit(value: DocumentData | null, shown?: ShownCopy, groupFieldStamp?: GroupFieldStamp): Promise<void>;
   /** Capture, stage and durably save one invocation without including later typing. */
   commit(updater: (current: DocumentData | null) => DocumentData | null, action?: EditorCommitAction): Promise<void>;
   /** Same local capture, with separate exact-request server acceptance for backup cleanup. */
@@ -1908,7 +1908,7 @@ export class DataEngine {
           entry.listeners.add(subscription);
           return () => { entry.listeners.delete(subscription); };
         },
-        edit: (value, shown, groupTitleTime) => { active(); return controller.edit(value, shown, groupTitleTime); },
+        edit: (value, shown, groupFieldStamp) => { active(); return controller.edit(value, shown, groupFieldStamp); },
         commit: (updater, action) => commit(updater, undefined, undefined, action),
         commitWithReceipt: (updater, options) => withReceipt(captured => commit(updater, captured, options?.captureScope, options?.action)),
         removeWithReceipt: options => withReceipt(captured => remove(captured, options?.captureScope)),

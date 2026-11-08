@@ -20,9 +20,9 @@ import { recoveryChoiceFingerprint } from './recoveryChoice';
 import { DataSession, type SessionCheckpoint, type ShownCopy } from './session';
 import { submittedWorkCheckpoint } from './submittedWork';
 
-import type { ActionTime } from './actionClock';
 import type { DocumentWriteReceipt } from './commitReceipt';
 import type { CommitQueue, CommitRequest } from './commits';
+import type { GroupFieldStamp } from './documentFieldAction';
 import type { RecoverySource } from './recoveryPresence';
 import type { RecoveryOrigin, VersionedRecovery } from './recoverySource';
 import type { DataEngineRuntime, RuntimeEvent } from './runtime';
@@ -247,9 +247,9 @@ export class EditorController {
   }
 
   /** `shown` — the copy the screen showed while typing (`DataSession.edit`). */
-  edit(value: DocumentData | null, shown?: ShownCopy, groupTitleTime?: ActionTime): Promise<void> {
+  edit(value: DocumentData | null, shown?: ShownCopy, groupFieldStamp?: GroupFieldStamp): Promise<void> {
     this.assertCurrent();
-    this.session.edit(value, shown, groupTitleTime);
+    this.session.edit(value, shown, groupFieldStamp);
     this.durable = false;
     this.emit();
     return this.enqueue(() => this.persist());

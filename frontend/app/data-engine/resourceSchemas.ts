@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import { providerIds } from '@/api/clients/ai/providerId';
 import { getUtf8ByteLength } from '@/utils/feedbackPayload';
+import { GROUP_STATUSES } from '@/utils/groupDocument';
 import { groupMeetingDay } from '@/utils/groupMeeting';
 import { SERVICE_ORDER_CATALOG } from '@/utils/serviceOrderCatalog';
 import { preservesStudyAnalysisSource } from '@/utils/studyAnalysisSource';
@@ -116,7 +117,7 @@ const shapes: Record<string, z.ZodRawShape> = {
       relations: z.record(object({ dir: z.enum(['fwd', 'back', 'both', 'none']), color: id })).optional(),
       drawn: z.array(number.int().nonnegative()).optional() }).optional() },
   studyMaterials: { ...owner, ...timestamps, title: id, description: text.optional(), type: z.enum(['sermon', 'study', 'group', 'guide']), noteIds: z.array(id), sections: children(object({ id, title: text, noteIds: z.array(id), connector: text.optional() })).optional() },
-  groups: { ...owner, ...timestamps, title: text, description: text.optional(), status, templates: children(block), flow: children(flowItem), meetingDates: children(meeting).optional(), seriesId: id.nullable().optional(), seriesPosition: number.nullable().optional() },
+  groups: { ...owner, ...timestamps, title: text, description: text.optional(), status: z.enum(GROUP_STATUSES), templates: children(block), flow: children(flowItem), meetingDates: children(meeting).optional(), seriesId: id.nullable().optional(), seriesPosition: number.nullable().optional() },
   series: { ...owner, ...timestamps, title: text.optional(), description: text.optional(), theme: text, bookOrTopic: text, sermonIds: z.array(id), items: children(seriesItem).optional(), seriesKind: z.enum(['sermon', 'group', 'mixed']).optional(), startDate: text.optional(), duration: number.optional(), color: text.optional(), status },
   prayerRequests: { ...owner, ...timestamps, title: id, description: text.optional(), categoryId: id.optional(), tags: strings.optional(), status: z.enum(['active', 'answered', 'not_answered']), updates: children(object({ id, text, createdAt: text })), answeredAt: text.optional(), answerText: text.optional() },
   prayerCategories: { ...owner, createdAt: text, updatedAt: text.optional(), name: id, color: text.optional() },

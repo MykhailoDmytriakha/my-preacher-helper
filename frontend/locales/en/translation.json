@@ -2249,6 +2249,15 @@
     "failedUnavailable": "Could not generate this — please try again"
   },
   "common": {
+    "statusHistory": "Status history",
+    "statusHistoryLoading": "Loading status history…",
+    "statusHistoryUnavailable": "Status history is unavailable.",
+    "statusHistoryEmpty": "No displaced statuses were saved.",
+    "statusHistoryKept": "Status kept at the time: {{title}}.",
+    "statusHistoryRestore": "Restore status",
+    "statusHistoryCurrent": "Current status",
+    "statusHistoryRestoreFailed": "The status could not be restored.",
+    "statusHistoryMore": "More statuses",
     "titleHistory": "Title history",
     "titleHistoryLoading": "Loading title history…",
     "titleHistoryUnavailable": "Title history is unavailable.",

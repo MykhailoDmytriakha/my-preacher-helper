@@ -1,7 +1,7 @@
 /** The wire contract is shared by browser and server; it imports no transport. */
 import type { ActionTime } from './actionClock';
 import type { DatedRowActionEvidence } from './datedRowAction';
-import type { DocumentTitleAction, ServiceOrderTitleCapture } from './documentTitle';
+import type { DocumentFieldAction, ServiceOrderTitleCapture } from './documentFieldAction';
 
 export type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
 export type DocumentData = Record<string, Json>;
@@ -52,8 +52,9 @@ export type DataCommand = CommandBase & (
       preachDateAction?: DatedRowActionEvidence;
       meetingDateAction?: DatedRowActionEvidence;
       bibleMarkStroke?: BibleMarkStrokeStamp;
-      serviceOrderTitleAction?: DocumentTitleAction;
-      groupTitleAction?: DocumentTitleAction;
+      serviceOrderTitleAction?: DocumentFieldAction;
+      groupTitleAction?: DocumentFieldAction;
+      groupStatusAction?: DocumentFieldAction;
       /** Exact plan cells observed before an explicit outline removal. */
       observedPlanTextRemoval?: Record<string, string>;
       /** Exact orphaned text explicitly cleared while its point was absent. */

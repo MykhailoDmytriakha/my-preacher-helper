@@ -2283,6 +2283,15 @@
     "failedUnavailable": "Не получилось сгенерировать — попробуйте ещё раз"
   },
   "common": {
+    "statusHistory": "История статусов",
+    "statusHistoryLoading": "Загрузка истории статусов…",
+    "statusHistoryUnavailable": "История статусов недоступна.",
+    "statusHistoryEmpty": "Прежние статусы ещё не сохранены.",
+    "statusHistoryKept": "Статус, сохранённый в тот момент: {{title}}.",
+    "statusHistoryRestore": "Восстановить статус",
+    "statusHistoryCurrent": "Текущий статус",
+    "statusHistoryRestoreFailed": "Не удалось восстановить статус.",
+    "statusHistoryMore": "Другие статусы",
     "titleHistory": "История названий",
     "titleHistoryLoading": "Загружаем историю названий…",
     "titleHistoryUnavailable": "История названий сейчас недоступна.",

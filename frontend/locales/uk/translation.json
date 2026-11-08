@@ -2283,6 +2283,15 @@
     "failedUnavailable": "Не вдалося згенерувати — спробуйте ще раз"
   },
   "common": {
+    "statusHistory": "Історія статусів",
+    "statusHistoryLoading": "Завантаження історії статусів…",
+    "statusHistoryUnavailable": "Історія статусів недоступна.",
+    "statusHistoryEmpty": "Попередні статуси ще не збережено.",
+    "statusHistoryKept": "Статус, збережений на той момент: {{title}}.",
+    "statusHistoryRestore": "Відновити статус",
+    "statusHistoryCurrent": "Поточний статус",
+    "statusHistoryRestoreFailed": "Не вдалося відновити статус.",
+    "statusHistoryMore": "Інші статуси",
     "titleHistory": "Історія назв",
     "titleHistoryLoading": "Завантажуємо історію назв…",
     "titleHistoryUnavailable": "Історія назв зараз недоступна.",

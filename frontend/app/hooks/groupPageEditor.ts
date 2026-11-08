@@ -20,6 +20,7 @@ export interface GroupPageEditor {
   setDescription: Dispatch<SetStateAction<string>>;
   status: Group['status'];
   setStatus: Dispatch<SetStateAction<Group['status']>>;
+  statusHistory?: NonNullable<GroupPageEditor['titleHistory']> & { field: 'status' };
   templates: Group['templates'];
   setTemplates: Dispatch<SetStateAction<Group['templates']>>;
   flow: Group['flow'];

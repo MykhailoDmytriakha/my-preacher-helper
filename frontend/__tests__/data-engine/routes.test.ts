@@ -7,9 +7,10 @@ import { GET as markHistory } from '@/api/data-engine/documents/[collection]/[id
 import { GET as meetingHistory } from '@/api/data-engine/documents/[collection]/[id]/meeting-date-history/route';
 import { GET as history } from '@/api/data-engine/documents/[collection]/[id]/preach-date-history/route';
 import { GET as read } from '@/api/data-engine/documents/[collection]/[id]/route';
+import { GET as statusHistory } from '@/api/data-engine/documents/[collection]/[id]/status-history/route';
 import { GET as titleHistory } from '@/api/data-engine/documents/[collection]/[id]/title-history/route';
 import { ENGINE_OWNED_COLLECTIONS } from '@/data-engine/engineOwnedCollections';
-import { assertDataEngineEnabled, DataEngineServerError, listBibleMarkHistory, listDocuments, listGroupTitleHistory, listMeetingDateHistory, listPreachDateHistory, listServiceOrderTitleHistory, processCommand, readCollectionChanges, readCommandBody, readDocument } from '@/data-engine/server';
+import { assertDataEngineEnabled, DataEngineServerError, listBibleMarkHistory, listDocuments, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listPreachDateHistory, listServiceOrderTitleHistory, processCommand, readCollectionChanges, readCommandBody, readDocument } from '@/data-engine/server';
 import { __resetStoreAvailabilityForTests } from '@/services/storeAvailability.server';
 
 jest.mock('@/config/firebaseAdminConfig', () => ({ adminDb: {} }));
@@ -26,6 +27,7 @@ jest.mock('@/data-engine/server', () => ({
   listMeetingDateHistory: jest.fn(),
   listServiceOrderTitleHistory: jest.fn(),
   listGroupTitleHistory: jest.fn(),
+  listGroupStatusHistory: jest.fn(),
   readCollectionChanges: jest.fn(),
 }));
 
@@ -184,6 +186,18 @@ describe('DataEngine HTTP routes', () => {
     expect(response.status).toBe(200);
     expect(response.headers.get('cache-control')).toBe('no-store');
     expect(listServiceOrderTitleHistory).toHaveBeenCalledWith('verified-owner', 'order', 'g1', undefined);
+  });
+
+  it('reads status history only for the authenticated group owner', async () => {
+    const input = request('http://localhost/api/data-engine/documents/groups/group/status-history?generation=g1');
+    jest.mocked(listGroupStatusHistory).mockResolvedValue({ owner: 'verified-owner', groupId: 'group', generation: 'g1', entries: [], nextCursor: null });
+    const response = await statusHistory(input, { params: Promise.resolve({ collection: 'groups', id: 'group' }) });
+    expect(response.status).toBe(200);
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(listGroupStatusHistory).toHaveBeenCalledWith('verified-owner', 'group', 'g1', undefined);
+    const wrong = await statusHistory(input, { params: Promise.resolve({ collection: 'series', id: 'group' }) });
+    expect(wrong.status).toBe(400);
+    expect(listGroupStatusHistory).toHaveBeenCalledTimes(1);
   });
 
   it('reads group title history for only the verified owner and returns no-store', async () => {

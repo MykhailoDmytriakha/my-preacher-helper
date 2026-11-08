@@ -13,7 +13,7 @@ import { isCollectionServed, isLegacyOpen, mayBeRetiredByCascade } from './activ
 import { BIBLE_MARK_HISTORY, BIBLE_MARK_PROOFS, bibleMarkProofVerses, bibleMarkTracking, metadataAfterBibleMarks, orderBibleMarks } from './bibleMarkOrder.server';
 import { existingRowDate, MEETING_DATE_TARGET, PREACH_DATE_TARGET } from './datedRowAction';
 import { metadataAfterDatedRow, orderDatedRow } from './datedRowOrder.server';
-import { metadataAfterDocumentTitle, orderDocumentTitle, DOCUMENT_TITLE_HISTORY } from './documentTitleOrder.server';
+import { metadataAfterDocumentFields, orderDocumentFields, DOCUMENT_TITLE_HISTORY, GROUP_STATUS_HISTORY } from './documentFieldOrder.server';
 import { advanceResourceSnapshot, commandFingerprint, getResourcePolicy, isValidIdentifier, TOMBSTONE_OWNER_FIELD, validateCommand } from './protocol';
 import { validateResourceDocument } from './resourceSchemas';
 import { assembleChangePage, collectionHeadId, HEADS_COLLECTION, parseChangePointer, planFeedWrites, readHeadVersion, sequenceId } from './serverFeed';
@@ -24,7 +24,7 @@ import { coversCommittedEffect } from './snapshotFreshness';
 import type { AudioExportKey, AudioExportRecord, AudioExportStore, AudioExportTransaction, AudioExportUsage } from './audioExportStore';
 import type { BibleMarkHistoryEntry, BibleMarkHistoryPage } from './bibleMarkStroke';
 import type { DisplacedRowDate, MeetingDateHistoryPage, PreachDateHistoryPage } from './datedRowAction';
-import type { GroupTitleHistoryPage, DocumentTitleHistoryEntry, ServiceOrderTitleHistoryPage } from './documentTitle';
+import type { GroupStatusHistoryPage, GroupTitleHistoryPage, DocumentTitleHistoryEntry, ServiceOrderTitleHistoryPage } from './documentFieldAction';
 import type { FeedWrite } from './serverFeed';
 import type { CollectionChanges, CollectionPage, CommandReceipt, CommandResult, ConflictDetail, DataCommand, DocumentData, EngineMetadata, EngineReadOptions, Json, ResourceRef, ResourceSnapshot } from './types';
 import type { AiResultReceiptStore, ReceiptRecord } from '@/services/aiResultReceipt.server';
@@ -353,7 +353,7 @@ function persistBibleMarkOrder(transaction: Transaction, command: DataCommand, s
   }
 }
 
-async function persistAcceptedCommand(transaction: Transaction, { owner, command, snapshot: primarySnapshot, effects, rawDocuments, dateOrder, markOrder, titleOrder }: {
+async function persistAcceptedCommand(transaction: Transaction, { owner, command, snapshot: primarySnapshot, effects, rawDocuments, dateOrder, markOrder, fieldOrder }: {
   owner: string;
   command: DataCommand;
   snapshot: ResourceSnapshot;
@@ -361,7 +361,7 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
   rawDocuments: ReadonlyMap<string, Record<string, unknown> | undefined>;
   dateOrder?: ReturnType<typeof orderDatedRow>;
   markOrder?: ReturnType<typeof orderBibleMarks>;
-  titleOrder?: ReturnType<typeof orderDocumentTitle>;
+  fieldOrder?: ReturnType<typeof orderDocumentFields>;
 }) {
   const feedWrites = await prepareFeedWrites(transaction, owner, command.operationId, effects);
   const primaryKey = resourceKey(command.resource);
@@ -375,7 +375,7 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
     const dated = metadataAfterDatedRow(snapshot, raw, primary ? command : undefined, primary ? dateOrder : undefined);
     const metadata = snapshot.resource.collection === 'bibleMarks'
       ? metadataAfterBibleMarks(snapshot, raw?._dataEngine, primary ? markOrder : undefined)
-      : metadataAfterDocumentTitle({ ...snapshot, metadata: dated }, raw?._dataEngine, primary ? titleOrder : undefined);
+      : metadataAfterDocumentFields({ ...snapshot, metadata: dated }, raw?._dataEngine, primary ? fieldOrder : undefined);
     transaction.set(adminDb.collection(snapshot.resource.collection).doc(snapshot.resource.id), { ...value, _dataEngine: metadata });
   }
   const displaced = dateOrder?.displaced;
@@ -384,10 +384,14 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
     const history = adminDb.collection(command.resource.collection).doc(command.resource.id).collection(target.history);
     transaction.set(history.doc(historyEntryId(primarySnapshot, command.operationId)), { ...displaced, acceptedAt: new Date().toISOString() });
   }
-  const displacedTitle = titleOrder?.displaced;
-  if (displacedTitle && primarySnapshot.value?.title === displacedTitle.winnerTitle) {
-    const history = adminDb.collection(command.resource.collection).doc(command.resource.id).collection(DOCUMENT_TITLE_HISTORY);
-    transaction.set(history.doc(historyEntryId(primarySnapshot, command.operationId)), { ...displacedTitle, acceptedAt: new Date().toISOString() });
+  for (const { target, order } of fieldOrder?.fields ?? []) {
+    const displaced = order.displaced;
+    if (!displaced || primarySnapshot.value?.[target.field] !== displaced.winnerValue) continue;
+    const history = adminDb.collection(command.resource.collection).doc(command.resource.id)
+      .collection(target.field === 'status' ? GROUP_STATUS_HISTORY : DOCUMENT_TITLE_HISTORY);
+    const { value, winnerValue, ...evidence } = displaced;
+    const values = target.field === 'status' ? { status: value, winnerStatus: winnerValue } : { title: value, winnerTitle: winnerValue };
+    transaction.set(history.doc(historyEntryId(primarySnapshot, command.operationId)), { ...evidence, ...values, acceptedAt: new Date().toISOString() });
   }
   persistBibleMarkOrder(transaction, command, primarySnapshot, markOrder);
   persistFeedWrites(transaction, feedWrites);
@@ -434,7 +438,7 @@ export async function processCommand(owner: string, input: unknown): Promise<Com
     let effects: ResourceSnapshot[] = [];
     let dateOrder: ReturnType<typeof orderDatedRow> | undefined;
     let markOrder: ReturnType<typeof orderBibleMarks> | undefined;
-    let titleOrder: ReturnType<typeof orderDocumentTitle> | undefined;
+    let fieldOrder: ReturnType<typeof orderDocumentFields> | undefined;
     const rawDocuments = new Map<string, Record<string, unknown> | undefined>([[resourceKey(command.resource), raw]]);
     if (blocked.length) {
       result = { kind: 'blocked', operationId: command.operationId, dependencies: blocked };
@@ -443,8 +447,8 @@ export async function processCommand(owner: string, input: unknown): Promise<Com
       const serverMs = stored.readTime?.toMillis();
       dateOrder = orderDatedRow(command, current, raw?._dataEngine, serverMs);
       markOrder = await planBibleMarkOrder(transaction, documentRef, dateOrder.command, current, raw?._dataEngine, serverMs);
-      titleOrder = orderDocumentTitle(markOrder.command, current, raw?._dataEngine, serverMs);
-      const planned = await planDataCommand(titleOrder.command, current, {
+      fieldOrder = orderDocumentFields(markOrder.command, current, raw?._dataEngine, serverMs);
+      const planned = await planDataCommand(fieldOrder.command, current, {
         get: async resource => {
           resourcePolicy(resource);
           const document = await transaction.get(adminDb.collection(resource.collection).doc(resource.id));
@@ -482,7 +486,7 @@ export async function processCommand(owner: string, input: unknown): Promise<Com
           return matches;
         },
       });
-      const plan = retainUncertainChronology(planned, command, current, [...(dateOrder.uncertain ?? []), ...(markOrder.uncertain ?? []), ...(titleOrder.uncertain ?? [])]);
+      const plan = retainUncertainChronology(planned, command, current, [...(dateOrder.uncertain ?? []), ...(markOrder.uncertain ?? []), ...(fieldOrder.uncertain ?? [])]);
       const acceptedAt = new Date().toISOString();
       // The planner exposes writes only for acknowledged commands.
       effects = plan.writes.map(effect => stampAcceptedResource(snapshotFromRaw(effect.resource, rawDocuments.get(resourceKey(effect.resource))), effect, acceptedAt));
@@ -510,7 +514,7 @@ export async function processCommand(owner: string, input: unknown): Promise<Com
       deletedTag = raw.name;
     }
     if (result.kind === 'acknowledged') {
-      await persistAcceptedCommand(transaction, { owner, command, snapshot: result.snapshot, effects, rawDocuments, dateOrder, markOrder, titleOrder });
+      await persistAcceptedCommand(transaction, { owner, command, snapshot: result.snapshot, effects, rawDocuments, dateOrder, markOrder, fieldOrder });
     }
     // A blocked receipt fixes the identity but may advance after its dependencies acknowledge.
     transaction.set(commandReceiptRef, serializeReceipt(receipt));
@@ -596,6 +600,12 @@ export async function listServiceOrderTitleHistory(owner: string, orderId: strin
 export async function listGroupTitleHistory(owner: string, groupId: string, generation: string, cursor?: string): Promise<GroupTitleHistoryPage> {
   const resource = { collection: 'groups', id: groupId };
   const page = await listHistoryEntries<DocumentTitleHistoryEntry>(owner, resource, DOCUMENT_TITLE_HISTORY, generation, cursor, 'group-gone');
+  return { owner, groupId, generation, ...page };
+}
+
+export async function listGroupStatusHistory(owner: string, groupId: string, generation: string, cursor?: string): Promise<GroupStatusHistoryPage> {
+  const resource = { collection: 'groups', id: groupId };
+  const page = await listHistoryEntries<GroupStatusHistoryPage['entries'][number]>(owner, resource, GROUP_STATUS_HISTORY, generation, cursor, 'group-gone');
   return { owner, groupId, generation, ...page };
 }
 

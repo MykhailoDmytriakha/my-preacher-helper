@@ -684,7 +684,7 @@ export function useDataMembership() {
 /** A feature may present its own expected question; storage and lifecycle failures still surface. */
 export interface DocumentUpdateOptions {
   handlesRefusal?: (failure: unknown) => boolean;
-  action?: 'group-title';
+  action?: 'group-title' | 'group-status';
 }
 
 interface DocumentOptions {
@@ -986,7 +986,7 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
       return run(editor => editor.edit(value, current?.state.checkpoint));
     },
     update: (updater: (current: DocumentData | null) => DocumentData | null, options?: DocumentUpdateOptions) => {
-      const time = options?.action === 'group-title' && owner ? actionClock.capture(owner) : undefined;
+      const time = options?.action && owner ? actionClock.capture(owner) : undefined;
       let refused: { error: unknown } | null = null;
       return run(editor => {
         const live = editor.getState().checkpoint, shown = current?.state.checkpoint;
@@ -1000,7 +1000,7 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
         }
         // An expected question changed no draft and must not cancel an earlier save.
         cancelScheduledSave();
-        return time ? editor.edit(next, shown, time) : editor.edit(next, shown);
+        return time ? editor.edit(next, shown, { field: options?.action === 'group-status' ? 'status' : 'title', time }) : editor.edit(next, shown);
       }).then(() => { if (refused) throw refused.error; }, error => {
         // A question already established for the departed owner must still reach its backup.
         throw refused ? refused.error : error;

@@ -2,6 +2,7 @@ import { sameAnalysisFrame } from './analysisReshapeFields';
 import { rebaseBibleMarkAncestor } from './bibleMarkStroke';
 import { pendingCommitRetirement, retireCommitJournal } from './commitJournal';
 import { datedRowTarget, isCapturedDateConflict } from './datedRowAction';
+import { pendingDocumentFieldAncestor } from './documentFieldAction';
 import { prepareAtomicDomainCommand } from './domainPolicy';
 import { equalValues, mergeDocumentFields, MAX_RELATION_RESOURCES } from './protocol';
 import { coversCommittedEffect } from './snapshotFreshness';
@@ -46,10 +47,8 @@ export function initializeCommit(record: CommitRequest, records: readonly Commit
       return { ...record, initialized: true, state: 'refused', result: { kind: 'refused', operationId: record.id, code: 'resolve-version-first' } };
     }
     const markAncestor = rebaseBibleMarkAncestor(predecessor.value, snapshot, record.baseline, record.bibleMarkStroke);
-    const titleAncestor = (record.serviceOrderTitleAction || record.groupTitleAction) && predecessor.value && typeof snapshot.value?.title === 'string'
-      && snapshot.metadata?.generation === record.baseline.metadata?.generation
-      ? { ...predecessor.value, title: snapshot.value.title } : undefined;
-    const rebased = mergeDocumentFields(markAncestor ?? titleAncestor ?? predecessor.value, record.value, snapshot.value);
+    const ancestor = markAncestor ?? pendingDocumentFieldAncestor(record, predecessor.value, snapshot);
+    const rebased = mergeDocumentFields(ancestor, record.value, snapshot.value);
     const target = datedRowTarget(record.baseline.resource.collection);
     const action = target && record[target.evidence];
     const deferDate = target && action && rebased.conflicts.length === 1 && snapshot.metadata?.generation === record.baseline.metadata?.generation
