@@ -157,7 +157,9 @@ describe('First offline Bible marks book', () => {
     } finally { engine.dispose(); }
   });
 
-  it('preserves an after-read whole-verse deletion until the person explicitly keeps the new layer', async () => {
+  // A verse erased whole is a verse without marks (BUG-20261107-marks-same-verse-offline-conflict): erased there after the read,
+  // with a marker added here on its other layer, nothing is in question — the pencil stays erased, the marker stays.
+  it('keeps an after-read whole-verse deletion and the new layer drawn here, with no question', async () => {
     const { harness, engine, editor } = await offlineBook({ v26_4: { p: '0-1-blue' } });
     const read = jest.mocked(harness.transport.read).getMockImplementation()!;
     jest.mocked(harness.transport.read).mockImplementationOnce(async (...args) => {
@@ -166,9 +168,7 @@ describe('First offline Bible marks book', () => {
     try {
       await editor.commit(() => book({ v26_4: { m: '0-0-red' } }));
       engine.setOnline(true); await engine.retry(); await settleEngine();
-      expect(editor.getState().result?.kind).toBe('conflict');
-      expect(harness.server.value?.verses).toEqual({});
-      await editor.keepLocal(); await editor.save(); await engine.retry(); await settleEngine();
+      expect(editor.getState().result?.kind).toBe('acknowledged');
       expect(harness.server.value?.verses).toEqual({ v26_4: { m: '0-0-red' } });
     } finally { engine.dispose(); }
   });

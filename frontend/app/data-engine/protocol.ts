@@ -1,3 +1,4 @@
+import { mergeVerseLayer } from '@/utils/bibleMarkLayers';
 import { getUtf8ByteLength } from '@/utils/feedbackPayload';
 import { isServiceOrderCatalogKey, isServiceOrderSeedTarget, serviceOrderSeedCycle } from '@/utils/serviceOrderSeedIdentity';
 
@@ -393,6 +394,8 @@ export function mergeFields(base: FieldValue, mine: FieldValue, theirs: FieldVal
 } {
   if (equalValues(mine, base)) return { value: theirs, conflicts: [] };
   if (equalValues(theirs, base) || equalValues(mine, theirs)) return { value: mine, conflicts: [] };
+  const marks = verseMarksAt(path);
+  if (marks) return mergeVerseMarks(marks, base, mine, theirs, path);
   if (mergedWhole(path)) return { value: mine, conflicts: [{ path, base, mine, theirs }] };
   const newMap = !base.exists && path.length > 0 && !path[path.length - 1].startsWith('id:');
   if (mine.exists && theirs.exists && object(mine.value) && object(theirs.value)
@@ -407,6 +410,33 @@ export function mergeFields(base: FieldValue, mine: FieldValue, theirs: FieldVal
     }
   }
   return { value: mine, conflicts: [{ path, base, mine, theirs }] };
+}
+
+/**
+ * A verse of Bible marks (`bibleMarks`, the only document with a `verses` map of `v<chapter>_<verse>` fields) and its marker and
+ * pencil layers. A layer is one string of word runs, and merged as one value strokes on different words of one verse collided —
+ * the owner's iPad, 2026-11-07 (BUG-20261107-marks-same-verse-offline-conflict): it merges word by word (`mergeVerseLayer`).
+ */
+function verseMarksAt(path: readonly string[]): 'verse' | 'm' | 'p' | null {
+  if (path[0] !== 'verses' || !/^v\d+_\d+$/.test(path[1] ?? '')) return null;
+  if (path.length === 2) return 'verse';
+  return path.length === 3 && (path[2] === 'm' || path[2] === 'p') ? path[2] : null;
+}
+
+/** A verse absent on one side is a verse without marks there; a merged verse left without marks is absent, as a book keeps it. */
+function mergeVerseMarks(at: 'verse' | 'm' | 'p', base: FieldValue, mine: FieldValue, theirs: FieldValue, path: string[]): ReturnType<typeof mergeFields> {
+  const question = { value: mine, conflicts: [{ path, base, mine, theirs }] };
+  const sides = [base, mine, theirs];
+  if (at !== 'verse') {
+    const merged = mergeVerseLayer(at, ...sides.map(side => (side.exists ? side.value : undefined)) as [unknown, unknown, unknown]);
+    if (!merged) return question;
+    return { value: merged.value === undefined ? { exists: false } : { exists: true, value: merged.value }, conflicts: [] };
+  }
+  if (!sides.every(side => !side.exists || object(side.value))) return question;
+  const verse = (side: FieldValue) => (side.exists ? side.value : {}) as DocumentData;
+  const merged = mergeObjects(verse(base), verse(mine), verse(theirs), path);
+  const value = merged.value.exists ? merged.value.value : null;
+  return { value: object(value) && Object.keys(value).length ? merged.value : { exists: false }, conflicts: merged.conflicts };
 }
 
 /** Tree identity spans sibling lists; ambiguous historical inputs retain their established fallback. */

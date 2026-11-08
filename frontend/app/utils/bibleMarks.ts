@@ -9,22 +9,15 @@
  * each verse's edge.
  */
 
+import { isMarkColor, isPencilColor, layerRuns, runText, tidy, type MarkColor, type MarkerRun, type PencilColor, type PencilRun } from './bibleMarkLayers';
 import { verseWords } from './bibleText';
 import { placesIn } from './versification';
 
 import type { BibleId } from './bibles';
 
-/** The five meanings of the owner's reading plan, in its order. */
-export const MARK_COLORS = ['red', 'green', 'yellow', 'orange', 'blue'] as const;
-export type MarkColor = (typeof MARK_COLORS)[number];
+// The stored form of a verse layer — colours, runs, their one way of writing — lives apart, light enough for the data engine.
+export { isMarkColor, isPencilColor, MARK_COLORS, PENCIL_COLORS, type MarkColor, type MarkerRun, type PencilColor, type PencilRun } from './bibleMarkLayers';
 
-/** The pencil's colours: plain grey, or one of the five meanings as a line (the owner, 2026-10-16). */
-export const PENCIL_COLORS = ['gray', ...MARK_COLORS] as const;
-export type PencilColor = (typeof PENCIL_COLORS)[number];
-
-/** A run of words `[first, last]` in a verse, with its colour. */
-export type MarkerRun = [number, number, MarkColor];
-export type PencilRun = [number, number, PencilColor];
 
 export type VerseMarks = { m?: MarkerRun[]; p?: PencilRun[] };
 
@@ -40,11 +33,6 @@ export type StrokeKind = { tool: 'marker'; color: MarkColor } | { tool: 'pencil'
 /** The words a mark counts in a verse: its plain words split on white space (a line break is a space). */
 export const countVerseWords = (raw: string): number => verseWords(raw).split(/\s+/).filter(Boolean).length;
 
-export const isMarkColor = (value: unknown): value is MarkColor =>
-  typeof value === 'string' && (MARK_COLORS as readonly string[]).includes(value);
-
-export const isPencilColor = (value: unknown): value is PencilColor =>
-  typeof value === 'string' && (PENCIL_COLORS as readonly string[]).includes(value);
 
 /** The book's verses in reading order, as "chapter:verse", with their word counts. */
 export type VerseOrder = { keys: string[]; position: Map<string, number>; words: Map<string, number> };
@@ -82,20 +70,6 @@ function cut<T extends [number, number, ...unknown[]]>(runs: readonly T[], from:
   return kept;
 }
 
-/** Sorted, with neighbours of the same kind joined: one way to write the same marks. */
-function tidy<T extends [number, number, ...unknown[]]>(runs: T[]): T[] {
-  const sorted = [...runs].sort((a, b) => a[0] - b[0]);
-  const joined: T[] = [];
-  for (const run of sorted) {
-    const previous = joined[joined.length - 1];
-    if (previous && previous[2] === run[2] && previous[1] + 1 >= run[0]) {
-      previous[1] = Math.max(previous[1], run[1]);
-    } else {
-      joined.push([...run] as T);
-    }
-  }
-  return joined;
-}
 
 function paintVerse(marks: VerseMarks | undefined, from: number, to: number, kind: StrokeKind, erase: boolean): VerseMarks {
   let m = marks?.m ?? [];
@@ -193,9 +167,10 @@ export function readBookMarks(value: unknown): BookMarks {
  * THE MARKS AS A STORED DOCUMENT — one document per person, Bible and book (`bibleMarks`), its verses a
  * map so marks in different verses from two devices merge by themselves, and a verse's marker and pencil
  * as well. A layer of a verse is ONE string of runs, "first-last-colour" joined by commas ("0-1-blue,2-3-red"):
- * the data engine merges a list of strings as a set, so a verse recoloured blue on one device and green
- * on the other would keep both colours on the same words; one string is one value, and the same verse
- * changed on two devices becomes a question to the person. A verse key starts with a letter ("v26_4" for
+ * the data engine merged a list of strings as a set, so a verse recoloured blue on one device and green
+ * on the other kept both colours on the same words. The engine merges a layer word by word
+ * (`bibleMarkLayers.mergeVerseLayer`): strokes on different words of one verse keep each other, and only a
+ * word changed differently on two devices becomes a question to the person. A verse key starts with a letter ("v26_4" for
  * 26:4) to be a plain field name anywhere.
  */
 export type StoredVerse = { m?: string; p?: string };
@@ -206,16 +181,6 @@ const verseOfField = (field: string): string | null => {
   const match = /^v(\d+)_(\d+)$/.exec(field);
   return match ? `${match[1]}:${match[2]}` : null;
 };
-const runText = (run: readonly [number, number, string]) => `${run[0]}-${run[1]}-${run[2]}`;
-const runOf = (text: unknown): unknown[] | null => {
-  if (typeof text !== 'string') return null;
-  const match = /^(\d+)-(\d+)-([a-z]+)$/.exec(text);
-  return match ? [Number(match[1]), Number(match[2]), match[3]] : null;
-};
-
-// A list of run strings is how the first marks were kept, while they were tried on 2026-10-16.
-const layerRuns = (layer: unknown): unknown[] =>
-  (typeof layer === 'string' ? layer.split(',') : Array.isArray(layer) ? layer : []).map(runOf).filter(Boolean) as unknown[];
 
 export function encodeBookMarks(book: BookMarks): StoredVerses {
   const stored: StoredVerses = {};
