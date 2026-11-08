@@ -13,7 +13,7 @@ import { useTranslation } from '@locales/useTranslation';
 
 import type { ActionTime } from '@/data-engine/actionClock';
 import type { CollectionState } from '@/data-engine/collections';
-import type { ServiceOrderTitleSeen } from '@/data-engine/serviceOrderTitle';
+import type { ServiceOrderTitleSeen } from '@/data-engine/documentTitle';
 import type { DocumentData, EditorCommitAction, ResourceSnapshot } from '@/data-engine/types';
 import type { ServiceOrder, ServiceOrderCatalogKey, ServiceOrderStep } from '@/models/models';
 

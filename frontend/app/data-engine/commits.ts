@@ -6,19 +6,19 @@ import { CommitReceipts } from './commitReceipt';
 import { capturedDateBaseline, captureDatedRowAction, datedRowTarget, existingRowDate, matchesDatedRowChange, MEETING_DATE_TARGET, replaceExistingDate, type DatedRowActionCapture, type DatedRowActionEvidence } from './datedRowAction';
 import { captureDeleteOrder, deleteOrderReady, replayDeleteOrder } from './deletionOrdering';
 import { commandReferenceResources, documentReferenceResources, referenceReadiness } from './documentReferences';
+import { captureServiceOrderTitle, titleCommandAncestor, uncapturedGroupTitle, withDocumentTitleAction } from './documentTitle';
 import { prepareDomainCommand, requiredDomainTargets } from './domainPolicy';
 import { areDifferentTabManualParents, readManualScopeIdentity } from './editorIdentity';
 import { AddressedFailures, type AddressedFailure } from './failures';
 import { confirmedExistingDeletion, equalValues, mergeDocumentFields, MAX_RELATION_RESOURCES } from './protocol';
 import { capturePlanTextEvidence, type PlanTextEvidence } from './sermonPlanText';
-import { captureServiceOrderTitle, titleCommandAncestor, withServiceOrderTitleAction } from './serviceOrderTitle';
 import { coversCommittedEffect } from './snapshotFreshness';
 
 import type { CaptureTransferProof, CaptureTransferResult } from './captureTransfer';
 import type { DocumentWriteReceipt } from './commitReceipt';
 import type { EditorRecord } from './controller';
+import type { DocumentTitleAction } from './documentTitle';
 import type { DataEngineRuntime } from './runtime';
-import type { ServiceOrderTitleAction } from './serviceOrderTitle';
 import type { SessionCheckpoint } from './session';
 import type { CommandResult, DataCommand, DocumentData, EditorCommitAction, EngineMetadata, ResourceRef, ResourceSnapshot } from './types';
 
@@ -54,7 +54,8 @@ export interface CommitRequest {
   deferPreachDateRebase?: true;
   bibleMarkStroke?: CapturedBibleMarkStroke;
   deferBibleMarkRebase?: true;
-  serviceOrderTitleAction?: ServiceOrderTitleAction;
+  serviceOrderTitleAction?: DocumentTitleAction;
+  groupTitleAction?: DocumentTitleAction;
   /** Earlier locally captured uses of this resource; owned atomically by DELETE capture storage. */
   deleteAfter?: string[];
   revision: number;
@@ -143,6 +144,7 @@ export function assertCommitCapture(current: CommitRequest, incoming: CommitRequ
     || current.predecessor !== incoming.predecessor || !equalValues(current.baseline, incoming.baseline)
     || !equalValues(current.planTextEvidence ?? null, incoming.planTextEvidence ?? null)
     || !equalValues(current.serviceOrderTitleAction ?? null, incoming.serviceOrderTitleAction ?? null)
+    || !equalValues(current.groupTitleAction ?? null, incoming.groupTitleAction ?? null)
     || !equalValues(current.bibleMarkStroke ?? null, incoming.bibleMarkStroke ?? null)
     || !equalValues(current.preachDateAction ?? null, incoming.preachDateAction ?? null)
     || !equalValues(current.meetingDateAction ?? null, incoming.meetingDateAction ?? null)
@@ -231,7 +233,7 @@ function pendingMeetingDateRebase(record: CommitRequest): DatedRowActionEvidence
 }
 
 function hasTimedAncestor(record: CommitRequest): boolean {
-  return record.sequence === 0 && Boolean(record.serviceOrderTitleAction || pendingBibleMarkRebase(record) || pendingMeetingDateRebase(record));
+  return record.sequence === 0 && Boolean(record.serviceOrderTitleAction || record.groupTitleAction || pendingBibleMarkRebase(record) || pendingMeetingDateRebase(record));
 }
 
 function freezeSaveOptions(options: CommitSaveOptions | undefined): CommitSaveOptions | undefined {
@@ -398,10 +400,12 @@ export class CommitQueue {
     const editorAction = frozenOptions?.action;
     const mark = captureBibleMarkStroke(baseline, predecessor, intent.draft, editorAction?.kind === 'bible-mark-stroke' ? editorAction.time : undefined);
     const title = captureServiceOrderTitle(baseline, intent.draft, editorAction?.kind === 'service-order-title' ? editorAction.title : undefined);
+    const groupTitleAction = uncapturedGroupTitle(intent);
     const record: CommitRequest = {
       id: this.options.operationId(), owner, editorId, editGeneration: intent.editGeneration,
       ...(mark && { bibleMarkStroke: mark }),
       ...(title && { serviceOrderTitleAction: title }),
+      ...(groupTitleAction && { groupTitleAction }),
       ...(dateTarget && action && { [dateTarget.evidence]: action }),
       ...(frozenOptions?.retentionScope ? { retentionScope: frozenOptions.retentionScope } : {}),
       ...(frozenOptions?.transfer ? { transferredFrom: clone(frozenOptions.transfer.proof) } : {}),
@@ -799,7 +803,7 @@ export class CommitQueue {
       ? record.planTextEvidence ?? capturePlanTextEvidence({ before: record.baseline.value, after: record.value })
       : undefined;
     const markRebase = pendingBibleMarkRebase(record);
-    const title = record.sequence === 0 ? record.serviceOrderTitleAction : undefined;
+    const title = record.sequence === 0 ? record.serviceOrderTitleAction ?? record.groupTitleAction : undefined;
     const meeting = pendingMeetingDateRebase(record);
     let source = record.working;
     if (title) source = titleCommandAncestor(source, title);
@@ -833,7 +837,7 @@ export class CommitQueue {
         command[dateTarget.evidence] = action;
       }
     }
-    const timed = record.sequence === 0 ? withBibleMarkStroke(withServiceOrderTitleAction(command, title), record.bibleMarkStroke) : command;
+    const timed = record.sequence === 0 ? withBibleMarkStroke(withDocumentTitleAction(command, title), record.bibleMarkStroke) : command;
     return { ...record, command: timed, submitted: prepared.submittedValue, state: 'prepared' };
   }
 

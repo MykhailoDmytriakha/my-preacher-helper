@@ -10,6 +10,7 @@ import { CommitQueue, type CommitRequest, type CommitStore } from './commits';
 import { EditorController, InactiveEditorError, type CheckpointRecoveryStore, type CheckpointStore, type EditorRecord, type EditorState, type RecoveryCheckpoint } from './controller';
 import { captureCouncilCarry, pinCouncilDestination } from './councilCarry';
 import { canReplaceDocumentIntent, isDirectLegacyDocumentIntent, requiresWholeActionResolution, savedDocumentAnswer } from './documentDelivery';
+import { validatedTitleCapture } from './documentTitle';
 import { ACTION_SLOT, areDifferentTabManualParents, editorSlot, isManualChoiceRecoveryIdentity, manualScopeIdentity, readManualScopeIdentity } from './editorIdentity';
 import { AddressedFailures, eachFailure, PausedReadFailure } from './failures';
 import { collectionHeadRef } from './feed';
@@ -27,13 +28,13 @@ import { getResourcePolicy, equalValues, isValidIdentifier } from './protocol';
 import { documentRecordPresence, type RecordPresence } from './recordPresence';
 import { forkCheckpoint, isPassiveManualContinuation, isRecoverableCheckpoint, reconcileRecoveryRecord, recoveryCheckpointId, validateRecoveryRecord } from './recovery.client';
 import { RecoveryPresence, recoverySources, type RecoveryPresenceKind, type RecoveryPresenceLease, type RecoveryPresencePort } from './recoveryPresence';
-import { validatedTitleCapture } from './serviceOrderTitle';
 import { DataSession } from './session';
 import { canReplaceSnapshot, coversCommittedEffect, storesNewCopy } from './snapshotFreshness';
 import { snapshotBelongsToOwner } from './snapshotIdentity';
 import { redeliveryDelay } from './unanswered';
 
 
+import type { ActionTime } from './actionClock';
 import type { CollectionReader, CollectionState } from './collections';
 import type { DocumentWriteReceipt } from './commitReceipt';
 import type { DatedRowActionCapture } from './datedRowAction';
@@ -107,7 +108,7 @@ export interface ManagedEditor {
   form(slot: string, selection: readonly ManualPath[], recovery?: ManualRecoveryPolicy): ManagedManualForm;
   subscribe(listener: () => void): () => void;
   /** `shown` is the copy the screen showed while the person typed (`DataSession.edit`). */
-  edit(value: DocumentData | null, shown?: ShownCopy): Promise<void>;
+  edit(value: DocumentData | null, shown?: ShownCopy, groupTitleTime?: ActionTime): Promise<void>;
   /** Capture, stage and durably save one invocation without including later typing. */
   commit(updater: (current: DocumentData | null) => DocumentData | null, action?: EditorCommitAction): Promise<void>;
   /** Same local capture, with separate exact-request server acceptance for backup cleanup. */
@@ -1907,7 +1908,7 @@ export class DataEngine {
           entry.listeners.add(subscription);
           return () => { entry.listeners.delete(subscription); };
         },
-        edit: (value, shown) => { active(); return controller.edit(value, shown); },
+        edit: (value, shown, groupTitleTime) => { active(); return controller.edit(value, shown, groupTitleTime); },
         commit: (updater, action) => commit(updater, undefined, undefined, action),
         commitWithReceipt: (updater, options) => withReceipt(captured => commit(updater, captured, options?.captureScope, options?.action)),
         removeWithReceipt: options => withReceipt(captured => remove(captured, options?.captureScope)),

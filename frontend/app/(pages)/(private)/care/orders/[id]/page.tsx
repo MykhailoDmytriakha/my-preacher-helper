@@ -9,6 +9,7 @@ import { ScriptureLinks, ScriptureText, WrittenInMark } from '@/components/bible
 import { useVerseWindow } from '@/components/bible/VerseWindow';
 import { RecordUnavailable } from '@/components/RecordUnavailable';
 import { Chip } from '@/components/ui/Chip';
+import { DocumentTitleHistory } from '@/components/ui/DocumentTitleHistory';
 import { useAppLocale } from '@/hooks/useAppLocale';
 import { useConfirm } from '@/hooks/useConfirm';
 import { useRouteId } from '@/hooks/useRouteId';
@@ -29,7 +30,6 @@ import { useTranslation } from '@locales/useTranslation';
 
 import { ReorderArrows, ServiceOrderFailure } from '../ReorderArrows';
 
-import { ServiceOrderTitleHistory } from './ServiceOrderTitleHistory';
 
 import type { ActionTime } from '@/data-engine/actionClock';
 import type { ServiceOrder, ServiceOrderStep } from '@/models/models';
@@ -1023,7 +1023,7 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
           </button>
         </div>
 
-        {titleHistorySession && <ServiceOrderTitleHistory key={JSON.stringify([titleHistorySession.owner, orderId, titleHistorySession.generation])}
+        {titleHistorySession && <DocumentTitleHistory key={JSON.stringify([titleHistorySession.owner, orderId, titleHistorySession.generation])}
           session={titleHistorySession} title={titleDraft ?? order.title} disabled={hasLocalChanges || editing} />}
 
         {order.summary && !editing && (

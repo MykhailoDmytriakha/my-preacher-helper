@@ -20,15 +20,15 @@ const copy = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 const initial = (): ResourceSnapshot => ({ resource: { collection: 'sermons', id: 'sermon' }, value: { userId: 'owner', title: 'base', scratch: [], rev: { core: 1 } }, metadata: { protocol: 1, generation: 'g', revision: 1, deleted: false } });
 const settle = async () => { for (let i = 0; i < 100; i += 1) await Promise.resolve(); };
 
-function setup({ nativeChoice = false } = {}) {
-  let server = initial(), sequence = 0;
+function setup({ nativeChoice = false, opening = initial() } = {}) {
+  let server = opening, sequence = 0;
   const entries = new Map<string, JournalEntry>();
   const receipts = new Map<string, CommandResult>();
   if (nativeChoice) installStorageHarness();
   const requests = nativeChoice ? createIndexedDbCommitStore() : createMemoryCommitStore();
   const records = new Map<string, EditorRecord>();
   const putCheckpoint = jest.fn(async (record: EditorRecord) => { records.set(record.editorId, copy(record)); });
-  let cache = initial();
+  let cache = opening;
   const transport: EngineTransport = {
     read: jest.fn(async () => copy(server)),
     send: jest.fn(async command => {
@@ -203,6 +203,45 @@ describe('Durable commit requests', () => {
       meetingDateAction: { rowId: meeting.id, before: firstDate, after: '', observedRevision: 1, time },
       changes: [{ path: ['meetingDates'], before: { exists: true, value: [{ ...meeting, date: firstDate, location: 'Side room' }] },
         after: { exists: true, value: [{ ...meeting, date: '', location: 'Side room' }] } }],
+    }));
+  });
+
+  it('carries each group title through the durable queue and preserves its exact ancestor across an earlier ACK', async () => {
+    const s = setup();
+    const { queue } = s.makeQueue();
+    const base: ResourceSnapshot = {
+      resource: { collection: 'groups', id: 'group' },
+      value: { userId: 'owner', title: 'Original', description: 'Notes', status: 'draft', templates: [], flow: [],
+        meetingDates: [], createdAt: '2026-11-08', updatedAt: '2026-11-08' },
+      metadata: { protocol: 1, generation: 'group', revision: 1, deleted: false },
+    };
+    const editor = new DataSession(base);
+    const firstTime = { earliestMs: 1_800_000_000_020, latestMs: 1_800_000_000_025 };
+    const lastTime = { earliestMs: 1_800_000_000_060, latestMs: 1_800_000_000_065 };
+    editor.edit({ ...base.value, title: 'Typing' }, undefined, { ...firstTime, earliestMs: firstTime.earliestMs - 1 });
+    editor.edit({ ...base.value, title: 'First phone title' }, undefined, firstTime);
+    const first = (await queue.save('group', editor.checkpoint()))!;
+    expect(first.groupTitleAction).toEqual({ before: 'Original', after: 'First phone title', observedRevision: 1, time: firstTime });
+    editor.applyCommit(first);
+    editor.edit({ ...base.value, title: 'Last phone title' }, undefined, lastTime);
+    editor.edit({ ...editor.getState().draft, status: 'active' });
+    const restored = DataSession.restore(JSON.parse(JSON.stringify(editor.checkpoint())));
+    const desk = { ...base, value: { ...base.value, title: 'Desk', description: 'Desk notes' },
+      metadata: { ...base.metadata!, revision: 2, operationId: first.id } };
+    restored.applyCommit({ ...first, state: 'acknowledged', result: { kind: 'acknowledged', operationId: first.id, snapshot: desk } });
+    expect(restored.getState()).toMatchObject({ draft: { title: 'Last phone title', description: 'Desk notes', status: 'active' }, conflicts: [] });
+    const next = (await queue.save('group', restored.checkpoint(), { predecessorId: first.id }))!;
+    const action = { before: 'First phone title', after: 'Last phone title', observedRevision: 1, time: lastTime };
+    expect(next.groupTitleAction).toEqual(action);
+    s.replace(desk);
+    jest.mocked(s.transport.send).mockResolvedValueOnce({ kind: 'acknowledged', operationId: first.id, snapshot: desk });
+    await s.makeQueue().queue.drain(true);
+    expect(s.transport.send).toHaveBeenCalledWith(expect.objectContaining({ operationId: next.id,
+      groupTitleAction: action,
+      changes: expect.arrayContaining([
+        { path: ['title'], before: { exists: true, value: 'First phone title' }, after: { exists: true, value: 'Last phone title' } },
+        { path: ['status'], before: { exists: true, value: 'draft' }, after: { exists: true, value: 'active' } },
+      ]),
     }));
   });
 
@@ -426,6 +465,31 @@ describe('Durable commit requests', () => {
     engine.setOnline(true); await engine.retry(); await settle();
     expect(s.server().value?.title).toBe('typed just before leaving');
     engine.dispose();
+  });
+
+  it('persists the exact staged group title when closing before autosave and delivers it after restart', async () => {
+    const opening: ResourceSnapshot = {
+      resource: { collection: 'groups', id: 'group' },
+      value: { userId: 'owner', title: 'Original', status: 'draft', templates: [], flow: [],
+        meetingDates: [], createdAt: '2026-11-08', updatedAt: '2026-11-08' },
+      metadata: { protocol: 1, generation: 'group', revision: 1, deleted: false },
+    };
+    const s = setup({ opening });
+    const engine = s.makeEngine();
+    const editor = await engine.openEditor(opening.resource, 'tab');
+    const time = { earliestMs: 1_800_000_000_020, latestMs: 1_800_000_000_025 };
+    const action = { before: 'Original', after: 'Title entered before leaving', observedRevision: 1, time };
+    await editor.edit({ ...opening.value, title: action.after }, undefined, time);
+    expect(await s.requests.list('owner')).toEqual([]);
+    editor.close({ flush: true }); await settle();
+    expect(await s.requests.list('owner')).toEqual([expect.objectContaining({ groupTitleAction: action })]);
+    expect(s.transport.send).not.toHaveBeenCalled();
+    engine.dispose(); await settle();
+    const restarted = s.makeEngine();
+    restarted.setOnline(true); await restarted.retry(); await settle();
+    expect(s.transport.send).toHaveBeenCalledWith(expect.objectContaining({ groupTitleAction: action }));
+    expect(s.server().value?.title).toBe(action.after);
+    restarted.dispose();
   });
 
   it('lets a deletion started just before leaving land', async () => {

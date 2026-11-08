@@ -13,19 +13,19 @@ import { isCollectionServed, isLegacyOpen, mayBeRetiredByCascade } from './activ
 import { BIBLE_MARK_HISTORY, BIBLE_MARK_PROOFS, bibleMarkProofVerses, bibleMarkTracking, metadataAfterBibleMarks, orderBibleMarks } from './bibleMarkOrder.server';
 import { existingRowDate, MEETING_DATE_TARGET, PREACH_DATE_TARGET } from './datedRowAction';
 import { metadataAfterDatedRow, orderDatedRow } from './datedRowOrder.server';
+import { metadataAfterDocumentTitle, orderDocumentTitle, DOCUMENT_TITLE_HISTORY } from './documentTitleOrder.server';
 import { advanceResourceSnapshot, commandFingerprint, getResourcePolicy, isValidIdentifier, TOMBSTONE_OWNER_FIELD, validateCommand } from './protocol';
 import { validateResourceDocument } from './resourceSchemas';
 import { assembleChangePage, collectionHeadId, HEADS_COLLECTION, parseChangePointer, planFeedWrites, readHeadVersion, sequenceId } from './serverFeed';
 import { planDataCommand } from './serverRelations';
-import { metadataAfterServiceOrderTitle, orderServiceOrderTitle, SERVICE_ORDER_TITLE_HISTORY } from './serviceOrderTitleOrder.server';
 import { coversCommittedEffect } from './snapshotFreshness';
 
 
 import type { AudioExportKey, AudioExportRecord, AudioExportStore, AudioExportTransaction, AudioExportUsage } from './audioExportStore';
 import type { BibleMarkHistoryEntry, BibleMarkHistoryPage } from './bibleMarkStroke';
 import type { DisplacedRowDate, MeetingDateHistoryPage, PreachDateHistoryPage } from './datedRowAction';
+import type { GroupTitleHistoryPage, DocumentTitleHistoryEntry, ServiceOrderTitleHistoryPage } from './documentTitle';
 import type { FeedWrite } from './serverFeed';
-import type { ServiceOrderTitleHistoryEntry, ServiceOrderTitleHistoryPage } from './serviceOrderTitle';
 import type { CollectionChanges, CollectionPage, CommandReceipt, CommandResult, ConflictDetail, DataCommand, DocumentData, EngineMetadata, EngineReadOptions, Json, ResourceRef, ResourceSnapshot } from './types';
 import type { AiResultReceiptStore, ReceiptRecord } from '@/services/aiResultReceipt.server';
 import type { DocumentReference, Firestore, Transaction } from 'firebase-admin/firestore';
@@ -361,7 +361,7 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
   rawDocuments: ReadonlyMap<string, Record<string, unknown> | undefined>;
   dateOrder?: ReturnType<typeof orderDatedRow>;
   markOrder?: ReturnType<typeof orderBibleMarks>;
-  titleOrder?: ReturnType<typeof orderServiceOrderTitle>;
+  titleOrder?: ReturnType<typeof orderDocumentTitle>;
 }) {
   const feedWrites = await prepareFeedWrites(transaction, owner, command.operationId, effects);
   const primaryKey = resourceKey(command.resource);
@@ -372,11 +372,10 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
       ? { [TOMBSTONE_OWNER_FIELD]: owner }
       : preserveStoredTypes(raw, snapshot.value) as Record<string, unknown>;
     const primary = key === primaryKey;
+    const dated = metadataAfterDatedRow(snapshot, raw, primary ? command : undefined, primary ? dateOrder : undefined);
     const metadata = snapshot.resource.collection === 'bibleMarks'
       ? metadataAfterBibleMarks(snapshot, raw?._dataEngine, primary ? markOrder : undefined)
-      : snapshot.resource.collection === 'serviceOrders'
-        ? metadataAfterServiceOrderTitle(snapshot, raw?._dataEngine, primary ? titleOrder : undefined)
-        : metadataAfterDatedRow(snapshot, raw, primary ? command : undefined, primary ? dateOrder : undefined);
+      : metadataAfterDocumentTitle({ ...snapshot, metadata: dated }, raw?._dataEngine, primary ? titleOrder : undefined);
     transaction.set(adminDb.collection(snapshot.resource.collection).doc(snapshot.resource.id), { ...value, _dataEngine: metadata });
   }
   const displaced = dateOrder?.displaced;
@@ -387,7 +386,7 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
   }
   const displacedTitle = titleOrder?.displaced;
   if (displacedTitle && primarySnapshot.value?.title === displacedTitle.winnerTitle) {
-    const history = adminDb.collection(command.resource.collection).doc(command.resource.id).collection(SERVICE_ORDER_TITLE_HISTORY);
+    const history = adminDb.collection(command.resource.collection).doc(command.resource.id).collection(DOCUMENT_TITLE_HISTORY);
     transaction.set(history.doc(historyEntryId(primarySnapshot, command.operationId)), { ...displacedTitle, acceptedAt: new Date().toISOString() });
   }
   persistBibleMarkOrder(transaction, command, primarySnapshot, markOrder);
@@ -435,7 +434,7 @@ export async function processCommand(owner: string, input: unknown): Promise<Com
     let effects: ResourceSnapshot[] = [];
     let dateOrder: ReturnType<typeof orderDatedRow> | undefined;
     let markOrder: ReturnType<typeof orderBibleMarks> | undefined;
-    let titleOrder: ReturnType<typeof orderServiceOrderTitle> | undefined;
+    let titleOrder: ReturnType<typeof orderDocumentTitle> | undefined;
     const rawDocuments = new Map<string, Record<string, unknown> | undefined>([[resourceKey(command.resource), raw]]);
     if (blocked.length) {
       result = { kind: 'blocked', operationId: command.operationId, dependencies: blocked };
@@ -444,7 +443,7 @@ export async function processCommand(owner: string, input: unknown): Promise<Com
       const serverMs = stored.readTime?.toMillis();
       dateOrder = orderDatedRow(command, current, raw?._dataEngine, serverMs);
       markOrder = await planBibleMarkOrder(transaction, documentRef, dateOrder.command, current, raw?._dataEngine, serverMs);
-      titleOrder = orderServiceOrderTitle(markOrder.command, current, raw?._dataEngine, serverMs);
+      titleOrder = orderDocumentTitle(markOrder.command, current, raw?._dataEngine, serverMs);
       const planned = await planDataCommand(titleOrder.command, current, {
         get: async resource => {
           resourcePolicy(resource);
@@ -590,8 +589,14 @@ export async function listBibleMarkHistory(owner: string, bookId: string, genera
 
 export async function listServiceOrderTitleHistory(owner: string, orderId: string, generation: string, cursor?: string): Promise<ServiceOrderTitleHistoryPage> {
   const resource = { collection: 'serviceOrders', id: orderId };
-  const page = await listHistoryEntries<ServiceOrderTitleHistoryEntry>(owner, resource, SERVICE_ORDER_TITLE_HISTORY, generation, cursor, 'service-order-gone');
+  const page = await listHistoryEntries<DocumentTitleHistoryEntry>(owner, resource, DOCUMENT_TITLE_HISTORY, generation, cursor, 'service-order-gone');
   return { owner, orderId, generation, ...page };
+}
+
+export async function listGroupTitleHistory(owner: string, groupId: string, generation: string, cursor?: string): Promise<GroupTitleHistoryPage> {
+  const resource = { collection: 'groups', id: groupId };
+  const page = await listHistoryEntries<DocumentTitleHistoryEntry>(owner, resource, DOCUMENT_TITLE_HISTORY, generation, cursor, 'group-gone');
+  return { owner, groupId, generation, ...page };
 }
 
 export type ResourcePage = CollectionPage & ClockEcho;

@@ -7359,3 +7359,13 @@ The shared dated-row mechanism uses the time a finished date is entered or clear
 The original date regressions and additional bounds and queue checks went from red to green. The 351 related tests, TypeScript, scoped lint and local build passed. Installed Chrome at 390 and 1280 pixels verified seven scenarios on local emulators. These include both action orders, a legacy date, two offline edits, independent date and location, and explicit choice for description edits. Restore survived reload while meeting identity and neighboring fields remained intact. Evidence is in `artifacts/action-chronology-356/group-meeting-date-verified`. The group title remains part of the umbrella issue.
 
 For authorized production acceptance, confirm the deployed revision and active worker. Open the same disposable group in two profiles and repeat the earlier and later clear. Check date history, restore the undated state, and reload. Verify the meeting and location remain. Close the QA profiles.
+
+## BUG-20261016-engine-asks-instead-of-chronology · Group title
+
+Open Groups and select an existing group. Before the fix, renaming the same group in two profiles produced a conflict in both action orders. If the phone entered a later title offline, the earlier computer title remained after the phone reconnected.
+
+The group title's ordinary autosave captures the time on input and retains the exact shown title and generation through the durable draft and queue. The server compares only this short title when time intervals establish the action order. Title history loads on request and restores through the same writer. Uncertain order and competing descriptions keep the explicit choice.
+
+The original two tests went from red to green. 396 related tests passed, including closing the editor before autosave and delivering after restart. TypeScript, lint and the local build passed. Six group scenarios and a service-order compatibility scenario passed in installed Chrome at 390 and 1280 pixels on local Auth and Firestore emulators. History and restore were inspected before and after reload. Evidence is in `artifacts/action-chronology-356/group-title-verified`. The umbrella bug remains open for other fields and writers.
+
+For authorized production acceptance, verify the revision and active worker. Open one disposable group in two profiles, repeat both action orders and two offline edits around an online edit, and restore from Title history. After reloading, check the title, description and meeting, then close the profiles.

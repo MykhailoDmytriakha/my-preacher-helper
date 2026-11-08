@@ -46,7 +46,7 @@ export function initializeCommit(record: CommitRequest, records: readonly Commit
       return { ...record, initialized: true, state: 'refused', result: { kind: 'refused', operationId: record.id, code: 'resolve-version-first' } };
     }
     const markAncestor = rebaseBibleMarkAncestor(predecessor.value, snapshot, record.baseline, record.bibleMarkStroke);
-    const titleAncestor = record.serviceOrderTitleAction && predecessor.value && typeof snapshot.value?.title === 'string'
+    const titleAncestor = (record.serviceOrderTitleAction || record.groupTitleAction) && predecessor.value && typeof snapshot.value?.title === 'string'
       && snapshot.metadata?.generation === record.baseline.metadata?.generation
       ? { ...predecessor.value, title: snapshot.value.title } : undefined;
     const rebased = mergeDocumentFields(markAncestor ?? titleAncestor ?? predecessor.value, record.value, snapshot.value);

@@ -43,6 +43,7 @@ import { SeriesMembershipDialog } from '@/components/series/SeriesMembershipDial
 import { GroupDetailSkeletonCards } from '@/components/skeletons/GroupDetailSkeleton';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import DatePickerField from '@/components/ui/DatePickerField';
+import { DocumentTitleHistory } from '@/components/ui/DocumentTitleHistory';
 import { LiveTextInput, LiveTextArea } from '@/components/ui/LiveTextInput';
 import Select from '@/components/ui/Select';
 import { DataDocumentProvider } from '@/data-engine/react.client';
@@ -99,7 +100,7 @@ function GroupDetailView({ editor }: { editor: GroupPageEditor }) {
   const { group, loading, title, setTitle, description, setDescription, status, setStatus,
     templates, setTemplates, flow, setFlow, meetingDate, setMeetingDate, meetingLocation, setMeetingLocation,
     meetingAudience, setMeetingAudience, deleteGroupDetail, feedback,
-    meetingFieldsEnabled, meetingHistory } = editor;
+    meetingFieldsEnabled, meetingHistory, titleHistory } = editor;
   const [selectedFlowItemId, setSelectedFlowItemId] = useState<string | null>(null);
   const { confirm, confirmDialog } = useConfirm();
   const [deletingGroup, setDeletingGroup] = useState(false);
@@ -346,6 +347,9 @@ function GroupDetailView({ editor }: { editor: GroupPageEditor }) {
               onChange={(value) => { setTitle(value); }}
               className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-2xl font-bold text-gray-900 shadow-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 transition focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30"
             />
+            {titleHistory && <DocumentTitleHistory
+              key={JSON.stringify([titleHistory.owner, titleHistory.groupId, titleHistory.generation])}
+              session={titleHistory} title={title} disabled={titleHistory.disabled} />}
             <LiveTextArea
               value={description}
               onChange={(value) => { setDescription(value); }}

@@ -1,6 +1,7 @@
 import { hasDifferentAnalysisPositionBasis, keepAnalysisReshapeFrame } from './analysisReshapeFields';
 import { isLiveWholeAction, isRetiredActionDependent } from './atomicCommits';
 import { firstBookMarksIntent } from './bibleMarksCreation';
+import { groupTitleAcknowledgementAncestor, stageGroupTitle, uncapturedGroupTitle } from './documentTitle';
 import { prepareDomainCommand } from './domainPolicy';
 import { ACTION_SLOT, editorSlot } from './editorIdentity';
 import { chooseLocalPlacement } from './localPlacementChoice';
@@ -8,7 +9,9 @@ import { projectManualSelection } from './manualScope';
 import { equalValues, mergeDocumentFields, mergeFields } from './protocol';
 import { canReplaceSnapshot } from './snapshotFreshness';
 
+import type { ActionTime } from './actionClock';
 import type { CommitRequest } from './commits';
+import type { DocumentTitleAction, GroupTitleDraft } from './documentTitle';
 import type { CommandResult, ConflictDetail, DataCommand, DocumentData, ResourceSnapshot } from './types';
 
 export interface SessionCheckpoint {
@@ -18,7 +21,8 @@ export interface SessionCheckpoint {
   editGeneration: number;
   remoteCandidate: ResourceSnapshot | null;
   conflicts: ConflictDetail[];
-  pending: Record<string, { generation: number; value: DocumentData | null; operations?: string[]; borrowedManualScope?: string }>;
+  pending: Record<string, { generation: number; value: DocumentData | null; operations?: string[]; borrowedManualScope?: string; groupTitleAction?: DocumentTitleAction }>;
+  groupTitleDraft?: GroupTitleDraft;
 }
 
 const copy = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
@@ -35,7 +39,7 @@ function actionRollbackBase(request: CommitRequest, accepted: ResourceSnapshot, 
 }
 
 /** What a screen showed: the confirmed copy and the edit it reflected. */
-export type ShownCopy = Pick<SessionCheckpoint, 'confirmed' | 'editGeneration'>;
+export type ShownCopy = Pick<SessionCheckpoint, 'confirmed' | 'editGeneration'> & Partial<Pick<SessionCheckpoint, 'draft'>>;
 
 /**
  * Whether the draft went to a deletion from another device after a screen showed `shown`, with
@@ -75,20 +79,24 @@ export class DataSession {
    * deletion arrived, and waits the way such typing does (`observe`): over the copy it was typed on,
    * with the deletion as the newer version the person decides on.
    */
-  edit(value: DocumentData | null, shown?: ShownCopy): void {
+  edit(value: DocumentData | null, shown?: ShownCopy, groupTitleTime?: ActionTime): void {
     if (value !== null && shown && deletedUnder(this.state, shown)) {
       this.state.remoteCandidate = copy(this.state.confirmed);
       this.state.confirmed = copy(shown.confirmed);
     }
+    const title = stageGroupTitle(this.state, value, shown, groupTitleTime);
+    if (title) this.state.groupTitleDraft = title;
+    else delete this.state.groupTitleDraft;
     this.state.draft = copy(value);
     this.state.editGeneration += 1;
-    this.state.dirty = !equalValues(value, this.state.confirmed.value);
+    this.state.dirty = !equalValues(value, this.state.confirmed.value) || Boolean(uncapturedGroupTitle(this.state));
   }
 
   /** A durable save request owns its captured value, independently of later typing. */
-  registerCommit(operationId: string, generation: number, value: DocumentData | null, preparedId?: string): void {
+  registerCommit(operationId: string, generation: number, value: DocumentData | null, preparedId?: string, groupTitleAction?: DocumentTitleAction): void {
     if (!this.state.pending[operationId]) this.state.pending[operationId] = { generation, value: copy(value) };
     const pending = this.state.pending[operationId];
+    if (groupTitleAction) pending.groupTitleAction = copy(groupTitleAction);
     if (preparedId && preparedId !== operationId && !pending.operations?.includes(preparedId)) pending.operations = [...(pending.operations ?? []), preparedId];
   }
 
@@ -111,7 +119,7 @@ export class DataSession {
     if (merged.conflicts.length) return false;
     const draft = merged.value.exists ? merged.value.value as DocumentData : null;
     this.edit(draft);
-    this.registerCommit(request.id, this.state.editGeneration, request.value, request.command?.operationId);
+    this.registerCommit(request.id, this.state.editGeneration, request.value, request.command?.operationId, request.groupTitleAction);
     if (borrowedManualScope) this.state.pending[request.id].borrowedManualScope = borrowedManualScope;
     // Unsent sibling words still need their own autosave; the adopted action never captures them.
     if (!equalValues(draft, request.value)) this.edit(draft);
@@ -135,7 +143,7 @@ export class DataSession {
       }
       return true;
     }
-    this.registerCommit(request.id, request.editGeneration, request.value, request.atomic?.id ?? request.command?.operationId);
+    this.registerCommit(request.id, request.editGeneration, request.value, request.atomic?.id ?? request.command?.operationId, request.groupTitleAction);
     if (request.result && ['acknowledged', 'conflict', 'refused'].includes(request.state)) this.accept(request.result, request.atomic?.kind === 'analysis-reshape');
     return request.state === 'acknowledged';
   }
@@ -216,6 +224,7 @@ export class DataSession {
     }
     if (!this.matches(result.snapshot)) return;
     delete this.state.pending[result.operationId];
+    if (submitted.groupTitleAction && equalValues(submitted.groupTitleAction, this.state.groupTitleDraft?.action ?? null)) delete this.state.groupTitleDraft;
     let accepted = this.isOlder(result.snapshot) ? this.state.confirmed : result.snapshot;
     const candidate = this.state.remoteCandidate;
     if (candidate?.metadata && accepted.metadata
@@ -229,13 +238,14 @@ export class DataSession {
     const newerSubmitted = acceptedOperation && Object.entries(this.state.pending).find(([id, pending]) =>
       pending.generation > submitted.generation && (id === acceptedOperation || pending.operations?.includes(acceptedOperation)))?.[1];
     const ancestor = newerSubmitted ? newerSubmitted.value : submitted.value;
-    const rebased = mergeDocumentFields(ancestor, this.state.draft, accepted.value);
+    const titleAncestor = groupTitleAcknowledgementAncestor(ancestor, accepted, this.state);
+    const rebased = mergeDocumentFields(titleAncestor, this.state.draft, accepted.value);
     if (wholeAnalysisFrame) keepAnalysisReshapeFrame(ancestor, this.state.draft, accepted.value, rebased);
     this.state.confirmed = copy(accepted);
     this.state.draft = rebased.value.exists ? copy(rebased.value.value as DocumentData) : null;
     this.state.conflicts = copy(rebased.conflicts);
     this.state.remoteCandidate = rebased.conflicts.length ? copy(accepted) : null;
-    this.state.dirty = !equalValues(this.state.draft, accepted.value);
+    this.state.dirty = !equalValues(this.state.draft, accepted.value) || Boolean(uncapturedGroupTitle(this.state));
   }
 
   observe(snapshot: ResourceSnapshot, { source }: { source: 'server' | 'cache' }): void {
@@ -252,6 +262,7 @@ export class DataSession {
     }
     this.state.confirmed = copy(snapshot);
     this.state.draft = copy(snapshot.value);
+    delete this.state.groupTitleDraft;
     this.state.remoteCandidate = null;
   }
 
@@ -280,6 +291,7 @@ export class DataSession {
    * typed since then stays (three-way merge), because a later keystroke is not part of that choice.
    */
   dropRefused(atChoice: DocumentData | null): void {
+    delete this.state.groupTitleDraft;
     const merged = mergeDocumentFields(atChoice, this.state.draft, this.state.confirmed.value);
     this.state.draft = merged.value.exists ? copy(merged.value.value as DocumentData) : null;
     this.state.dirty = !equalValues(this.state.draft, this.state.confirmed.value);
@@ -301,6 +313,7 @@ export class DataSession {
       return;
     }
     this.state.draft = copy(this.state.confirmed.value);
+    delete this.state.groupTitleDraft;
     this.state.editGeneration += 1;
     this.state.dirty = false;
     this.state.conflicts = [];
@@ -323,6 +336,7 @@ export class DataSession {
       // The explicit choice retains one coherent placement and independently merged words.
       this.state.draft = copy(chosen);
     }
+    delete this.state.groupTitleDraft;
     this.state.remoteCandidate = null;
     this.state.conflicts = [];
     this.state.editGeneration += 1;

@@ -1,10 +1,10 @@
-import { submittedServiceOrderTitle } from './serviceOrderTitle';
+import { submittedServiceOrderTitle } from './documentTitle';
 import { DataSession } from './session';
 import { canReplaceSnapshot } from './snapshotFreshness';
 import { submittedWorkCheckpoint } from './submittedWork';
 
 import type { CommitRequest } from './commits';
-import type { ServiceOrderTitleSeen } from './serviceOrderTitle';
+import type { ServiceOrderTitleSeen } from './documentTitle';
 import type { DocumentData, JournalEntry, ResourceRef, ResourceSnapshot } from './types';
 
 /** Read-only presentation; its value must never be used as an editor's confirmed baseline. */

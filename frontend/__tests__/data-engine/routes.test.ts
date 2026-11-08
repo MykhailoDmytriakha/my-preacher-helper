@@ -9,7 +9,7 @@ import { GET as history } from '@/api/data-engine/documents/[collection]/[id]/pr
 import { GET as read } from '@/api/data-engine/documents/[collection]/[id]/route';
 import { GET as titleHistory } from '@/api/data-engine/documents/[collection]/[id]/title-history/route';
 import { ENGINE_OWNED_COLLECTIONS } from '@/data-engine/engineOwnedCollections';
-import { assertDataEngineEnabled, DataEngineServerError, listBibleMarkHistory, listDocuments, listMeetingDateHistory, listPreachDateHistory, listServiceOrderTitleHistory, processCommand, readCollectionChanges, readCommandBody, readDocument } from '@/data-engine/server';
+import { assertDataEngineEnabled, DataEngineServerError, listBibleMarkHistory, listDocuments, listGroupTitleHistory, listMeetingDateHistory, listPreachDateHistory, listServiceOrderTitleHistory, processCommand, readCollectionChanges, readCommandBody, readDocument } from '@/data-engine/server';
 import { __resetStoreAvailabilityForTests } from '@/services/storeAvailability.server';
 
 jest.mock('@/config/firebaseAdminConfig', () => ({ adminDb: {} }));
@@ -25,6 +25,7 @@ jest.mock('@/data-engine/server', () => ({
   listPreachDateHistory: jest.fn(),
   listMeetingDateHistory: jest.fn(),
   listServiceOrderTitleHistory: jest.fn(),
+  listGroupTitleHistory: jest.fn(),
   readCollectionChanges: jest.fn(),
 }));
 
@@ -183,6 +184,17 @@ describe('DataEngine HTTP routes', () => {
     expect(response.status).toBe(200);
     expect(response.headers.get('cache-control')).toBe('no-store');
     expect(listServiceOrderTitleHistory).toHaveBeenCalledWith('verified-owner', 'order', 'g1', undefined);
+  });
+
+  it('reads group title history for only the verified owner and returns no-store', async () => {
+    const context = { params: Promise.resolve({ collection: 'groups', id: 'group' }) };
+    const input = request('http://localhost/api/data-engine/documents/groups/group/title-history?generation=g1');
+    jest.mocked(listGroupTitleHistory).mockResolvedValue({ owner: 'verified-owner', groupId: 'group', generation: 'g1', entries: [], nextCursor: null });
+    const response = await titleHistory(input, context);
+    expect(response.status).toBe(200);
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(listGroupTitleHistory).toHaveBeenCalledWith('verified-owner', 'group', 'g1', undefined);
+    expect(listServiceOrderTitleHistory).not.toHaveBeenCalled();
   });
 
   it('calibrates on the existing authenticated group document read', async () => {

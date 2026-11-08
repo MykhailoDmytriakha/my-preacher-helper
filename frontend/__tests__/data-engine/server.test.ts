@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { isCollectionServed } from '@/data-engine/activation';
-import { DataEngineServerError, listBibleMarkHistory, listDocuments, listMeetingDateHistory, listPreachDateHistory, listServiceOrderTitleHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
+import { DataEngineServerError, listBibleMarkHistory, listDocuments, listGroupTitleHistory, listMeetingDateHistory, listPreachDateHistory, listServiceOrderTitleHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
 import { collectionHeadId, HEADS_COLLECTION, sequenceId } from '@/data-engine/serverFeed';
 import { DataSession } from '@/data-engine/session';
 import type { DataCommand, ResourceSnapshot } from '@/data-engine/types';
@@ -966,6 +966,48 @@ describe('transactional DataEngine server', () => {
         time: { earliestMs: 1_800_000_000_000, latestMs: 1_800_000_000_010 } },
     })).toMatchObject({ kind: 'conflict', conflicts: [{ path: ['meetingDates', 'id:meeting-0', 'date'] }],
       snapshot: { value: { meetingDates: changed } } });
+  });
+
+  it.each([
+    { scenario: 'earlier offline title', offset: 20, title: 'Phone', winner: 'Desk', archived: 'Phone', kind: 'acknowledged' },
+    { scenario: 'later offline title', offset: 60, title: 'Phone', winner: 'Phone', archived: 'Desk', kind: 'acknowledged' },
+    { scenario: 'overlapping time', offset: 45, title: 'Phone', winner: 'Desk', archived: null, kind: 'conflict' },
+    { scenario: 'independent description', offset: 20, title: 'Phone', winner: 'Phone', archived: null, kind: 'acknowledged' },
+  ])('orders only the exact group title: $scenario', async ({ scenario, offset, title, winner, archived, kind }) => {
+    const resource = { collection: 'groups', id: 'group-title' };
+    const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] };
+    const now = '2026-11-08T00:00:00.000Z';
+    const value = { userId: base.owner, title: 'Original', description: 'Original description', status: 'draft',
+      templates: [], flow: [], meetingDates: [], createdAt: now, updatedAt: now };
+    expect((await processCommand(base.owner, { ...base, kind: 'create', operationId: 'seed', generation: null, value })).kind).toBe('acknowledged');
+    const update = (operationId: string, key: 'title' | 'description', after: string) => ({
+      ...base, kind: 'update', operationId, generation: 'seed',
+      changes: [{ path: [key], before: { exists: true, value: value[key] }, after: { exists: true, value: after } }],
+    });
+    const rename = (operationId: string, after: string, offsetMs: number) => ({
+      ...update(operationId, 'title', after),
+      groupTitleAction: { before: value.title, after, observedRevision: 1,
+        time: { earliestMs: 1_800_000_000_000 + offsetMs, latestMs: 1_800_000_000_010 + offsetMs } },
+    });
+    const adjacent = scenario === 'independent description';
+    expect((await processCommand(base.owner, adjacent ? update('desk', 'description', 'Desk notes') : rename('desk', 'Desk', 40))).kind).toBe('acknowledged');
+    const phone = rename('phone', title, offset);
+    const result = await processCommand(base.owner, phone);
+    expect(result).toMatchObject({ kind, snapshot: { value: { title: winner, description: adjacent ? 'Desk notes' : value.description,
+      status: 'draft', meetingDates: [] } } });
+    const history = [...documents.entries()].filter(([path]) => path.startsWith('groups/group-title/_titleHistory/'));
+    expect(history).toHaveLength(archived === null ? 0 : 1);
+    if (archived !== null) {
+      expect(history[0][1]).toMatchObject({ title: archived, winnerTitle: winner, generation: 'seed' });
+      expect(await listGroupTitleHistory(base.owner, resource.id, 'seed')).toMatchObject({
+        owner: base.owner, groupId: resource.id, generation: 'seed', entries: [{ title: archived, winnerTitle: winner }],
+      });
+      await expect(listGroupTitleHistory('another-owner', resource.id, 'seed')).rejects.toMatchObject({ status: 403 });
+      await expect(listGroupTitleHistory(base.owner, resource.id, 'old-generation')).rejects.toMatchObject({ status: 404 });
+      expect(await processCommand(base.owner, phone)).toEqual(result);
+      expect([...documents.keys()].filter(path => path.startsWith('groups/group-title/_titleHistory/'))).toHaveLength(1);
+    }
+    if (kind === 'conflict') expect(result).toMatchObject({ conflicts: [{ path: ['title'] }] });
   });
 
   it.each([

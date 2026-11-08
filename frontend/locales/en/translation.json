@@ -2249,6 +2249,15 @@
     "failedUnavailable": "Could not generate this — please try again"
   },
   "common": {
+    "titleHistory": "Title history",
+    "titleHistoryLoading": "Loading title history…",
+    "titleHistoryUnavailable": "Title history is unavailable.",
+    "titleHistoryEmpty": "No replaced titles were saved.",
+    "titleHistoryKept": "Title kept at the time: {{title}}.",
+    "titleHistoryRestore": "Restore title",
+    "titleHistoryCurrent": "Current title",
+    "titleHistoryRestoreFailed": "The title could not be restored.",
+    "titleHistoryMore": "Show more titles",
     "deleteItem": {
       "title": "Delete this item?",
       "description": "The item and its contents will be deleted. This cannot be undone."
@@ -4580,15 +4589,6 @@
     "refs": "Scripture",
     "refsHint": "comma separated: John 11:25–26, Ps 23",
     "orderTitle": "Name of the service",
-    "titleHistory": "Title history",
-    "titleHistoryLoading": "Loading title history…",
-    "titleHistoryUnavailable": "Title history is unavailable.",
-    "titleHistoryEmpty": "No replaced titles were saved.",
-    "titleHistoryKept": "Title kept at the time: {{title}}.",
-    "titleHistoryRestore": "Restore title",
-    "titleHistoryCurrent": "Current title",
-    "titleHistoryRestoreFailed": "The title could not be restored.",
-    "titleHistoryMore": "Show more titles",
     "deleteOrder": "Delete this service",
     "deleteConfirm": "Delete this service? It cannot be brought back.",
     "emptySteps": "This service has no steps yet.",

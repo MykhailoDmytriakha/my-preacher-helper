@@ -18,7 +18,7 @@ export function useGroupPageEditor(groupId: string): GroupPageEditor {
   const group = data.group;
   // The public facade records failures for DataSyncStatus; a React event cannot await them.
   const change = (mutate: (current: Group) => Group) => { void data.update(mutate).catch(() => undefined); };
-  const field = <K extends 'title' | 'status' | 'templates' | 'flow'>(key: K): Dispatch<SetStateAction<Group[K]>> =>
+  const field = <K extends 'status' | 'templates' | 'flow'>(key: K): Dispatch<SetStateAction<Group[K]>> =>
     next => change(current => ({ ...current, [key]: nextValue(next, current[key]) }));
   const meeting = useGroupMeetingEditor(groupId, group?.meetingDates ?? [], Boolean(data.document.state?.manualWork),
     (Boolean(data.document.confirmed?.value) || data.document.presence.kind === 'creating') && data.document.presence.kind !== 'absent' && data.document.presence.kind !== 'deleting');
@@ -35,6 +35,13 @@ export function useGroupPageEditor(groupId: string): GroupPageEditor {
   const confirmed = data.document.confirmed;
   const owner = confirmed?.value?.userId;
   const generation = confirmed?.metadata?.generation;
+  const editTitle = (next: SetStateAction<string>) =>
+    data.update(current => ({ ...current, title: nextValue(next, current.title) }), { action: 'group-title' });
+  const titleHistory = typeof owner === 'string' && generation ? {
+    owner, generation, groupId,
+    disabled: Boolean(data.document.readOnly || data.status?.phase === 'conflict' || data.status?.phase === 'refused'),
+    restore: editTitle,
+  } : undefined;
   const meetingHistory = first && typeof owner === 'string' && generation ? {
     owner, generation, rowId: first.id, date: first.date,
     disabled: manual || !meeting.enabled || Boolean(meeting.form.choiceRequired) || Boolean(meeting.form.documentChoiceRequired),
@@ -45,7 +52,7 @@ export function useGroupPageEditor(groupId: string): GroupPageEditor {
     presence: data.document.presence,
     readNotice: { subject: data.document.recoveryIdentity, relatedSubjects: [meeting.form.recoveryIdentity], words: data.document.errorWords },
     refresh: data.refresh,
-    group, retainedGroup, loading: data.loading || Boolean(group && meeting.loading), title: group?.title ?? '', setTitle: field('title'),
+    group, retainedGroup, loading: data.loading || Boolean(group && meeting.loading), title: group?.title ?? '', setTitle: next => { void editTitle(next).catch(() => undefined); }, titleHistory,
     description: group?.description ?? '', setDescription: next => change(current => ({ ...current, description: nextValue(next, current.description ?? '') })),
     status: group?.status ?? 'draft', setStatus: field('status'), templates: group?.templates ?? [], setTemplates: field('templates'),
     flow: group?.flow ?? [], setFlow: field('flow'), meetingDate: first?.date ?? '', setMeetingDate: meeting.field('date'),

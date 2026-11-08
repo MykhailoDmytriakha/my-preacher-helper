@@ -15,6 +15,7 @@ export interface GroupPageEditor {
   refresh?: () => unknown | Promise<unknown>;
   title: string;
   setTitle: Dispatch<SetStateAction<string>>;
+  titleHistory?: { owner: string; generation: string; groupId: string; disabled: boolean; restore: (title: string) => Promise<void> };
   description: string;
   setDescription: Dispatch<SetStateAction<string>>;
   status: Group['status'];

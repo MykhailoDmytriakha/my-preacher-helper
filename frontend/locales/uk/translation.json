@@ -2283,6 +2283,15 @@
     "failedUnavailable": "Не вдалося згенерувати — спробуйте ще раз"
   },
   "common": {
+    "titleHistory": "Історія назв",
+    "titleHistoryLoading": "Завантажуємо історію назв…",
+    "titleHistoryUnavailable": "Історія назв зараз недоступна.",
+    "titleHistoryEmpty": "Збережених попередніх назв поки немає.",
+    "titleHistoryKept": "Тоді залишилася назва {{title}}.",
+    "titleHistoryRestore": "Відновити назву",
+    "titleHistoryCurrent": "Поточна назва",
+    "titleHistoryRestoreFailed": "Назву не вдалося відновити.",
+    "titleHistoryMore": "Показати ще назви",
     "deleteItem": {
       "title": "Видалити цей елемент?",
       "description": "Елемент і його вміст буде видалено. Цю дію неможливо скасувати."
@@ -4667,15 +4676,6 @@
     "refs": "Місця Писання",
     "refsHint": "через кому: Ів. 11:25–26, Пс. 22",
     "orderTitle": "Назва служіння",
-    "titleHistory": "Історія назв",
-    "titleHistoryLoading": "Завантажуємо історію назв…",
-    "titleHistoryUnavailable": "Історія назв зараз недоступна.",
-    "titleHistoryEmpty": "Збережених попередніх назв поки немає.",
-    "titleHistoryKept": "Тоді залишилася назва {{title}}.",
-    "titleHistoryRestore": "Відновити назву",
-    "titleHistoryCurrent": "Поточна назва",
-    "titleHistoryRestoreFailed": "Назву не вдалося відновити.",
-    "titleHistoryMore": "Показати ще назви",
     "deleteOrder": "Видалити служіння",
     "deleteConfirm": "Видалити це служіння? Повернути його не вийде.",
     "emptySteps": "У цьому служінні поки немає кроків.",

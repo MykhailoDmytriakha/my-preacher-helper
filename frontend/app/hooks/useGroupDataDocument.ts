@@ -8,6 +8,7 @@ import { newClientId } from '@/utils/clientId';
 import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
 import { hydrateGroup, normalizeStoredGroupFlow } from '@/utils/groupDocument';
 
+import type { DocumentUpdateOptions } from '@/data-engine/react.client';
 import type { DocumentData } from '@/data-engine/types';
 import type { Group, GroupMeetingDate } from '@/models/models';
 
@@ -17,8 +18,8 @@ export function useGroupDataDocument(groupId: string) {
   const group = useMemo(() => document.data
     ? hydrateGroup({ ...document.data, id: groupId } as unknown as Group) : null, [document.data, groupId]);
   usePublishShellTitle('groups', groupId, group);
-  const update = useCallback(async (mutate: (current: Group) => Group) => {
-    await document.update(current => {
+  const update = useCallback(async (mutate: (current: Group) => Group, options?: DocumentUpdateOptions) => {
+    const change = (current: DocumentData | null) => {
       if (!current) throw new Error('The group is not available for editing');
       const before = hydrateGroup({ ...current, id: groupId } as unknown as Group);
       const next = mutate(before);
@@ -30,7 +31,8 @@ export function useGroupDataDocument(groupId: string) {
       const { id: _id, ...value } = next;
       return deepCleanUndefined({ ...value, flow: normalizeStoredGroupFlow(value.flow),
         updatedAt: new Date().toISOString() }) as unknown as DocumentData;
-    });
+    };
+    await (options ? document.update(change, options) : document.update(change));
   }, [document, groupId]);
   const updateGroupDetail = useCallback((patch: Partial<Group>) => update(current => ({ ...current, ...patch })), [update]);
   const addMeetingDate = useCallback(async (input: Omit<GroupMeetingDate, 'id' | 'createdAt'> & { id?: string }) => {
