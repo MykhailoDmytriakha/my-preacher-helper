@@ -1340,6 +1340,42 @@ describe('transactional DataEngine server', () => {
   });
 
   it.each([
+    { label: 'direct type conversion would clear a recorded result', recorded: true, deviceSeesOutcome: true, typeSwitch: true, code: 'council-topic-outcome-first' },
+    { label: 'late type conversion missed a newly recorded result', recorded: true, deviceSeesOutcome: false, typeSwitch: true, code: 'council-topic-outcome-first' },
+    { label: 'late outcome was recorded under the older type', recorded: false, deviceSeesOutcome: false, typeSwitch: false, code: 'council-topic-kind-changed' },
+  ])('protects a council topic outcome: $label', async ({ recorded, deviceSeesOutcome, typeSwitch, code }) => {
+    const resource = { collection: 'councils', id: 'topic-outcome-fence' };
+    const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] };
+    const now = '2026-11-08T00:00:00.000Z';
+    const opening = { id: 'section', title: 'Section', kind: 'decision', summary: 'Keep this note',
+      questions: [], options: [{ id: 'first', text: 'First option' }] };
+    const decided = { ...opening, discussed: true, decision: 'Keep this recorded decision', acceptedOptionId: 'first' };
+    const info = { ...opening, kind: 'info' };
+    const stored = recorded ? decided : info;
+    expect((await processCommand(base.owner, { ...base, kind: 'create', operationId: 'seed', generation: null,
+      value: { userId: base.owner, title: 'Council', status: 'preparing', createdAt: now, updatedAt: now, topics: [stored] },
+    })).kind).toBe('acknowledged');
+    const edit = (operationId: string, before: typeof opening, after: typeof opening) => ({
+      ...base, kind: 'update', operationId, generation: 'seed',
+      changes: [{ path: ['topics'], before: { exists: true, value: [before] }, after: { exists: true, value: [after] } }],
+    });
+    const command = edit('late', deviceSeesOutcome ? decided : opening, typeSwitch ? info : decided);
+    expect(await processCommand(base.owner, command)).toMatchObject({ kind: 'refused', code });
+    expect(await readDocument(base.owner, resource)).toMatchObject({ value: { topics: [stored] } });
+    if (!recorded) {
+      const manualRebase = edit('retry-on-info', info, { ...decided, kind: 'info' });
+      expect(await processCommand(base.owner, manualRebase)).toMatchObject({ kind: 'refused', code: 'council-topic-kind-changed' });
+      expect(await readDocument(base.owner, resource)).toMatchObject({ value: { topics: [info] } });
+    }
+    if (recorded) {
+      expect((await processCommand(base.owner, edit('explicit-clear', decided, opening))).kind).toBe('acknowledged');
+      expect(await processCommand(base.owner, edit('new-type', opening, info))).toMatchObject({
+        kind: 'acknowledged', snapshot: { value: { topics: [info] } },
+      });
+    }
+  });
+
+  it.each([
     { label: 'phone first', mobileAt: 15, winner: false, kind: 'acknowledged' },
     { label: 'phone last', mobileAt: 100, winner: true, kind: 'acknowledged' },
     { label: 'no clock', mobileAt: null, winner: false, kind: 'conflict' },

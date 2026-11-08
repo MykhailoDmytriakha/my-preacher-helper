@@ -1,5 +1,6 @@
 import { textLanguage, type AppLocale } from '@/utils/appLocale';
 import { newClientId } from '@/utils/clientId';
+import { hasRecordedCouncilTopicOutcome } from '@/utils/councilTopicOutcome';
 
 import type {
   Council,
@@ -135,22 +136,10 @@ export function mergeUnsentCouncils(
 
 export const isInfoTopic = (topic: CouncilTopic): boolean => topic.kind === 'info';
 
-/**
- * CHANGING WHAT A SECTION IS ALSO CHANGES WHAT ITS OUTCOME MEANS. "Said" on an announcement is
- * not "decided" on a decision, and an accepted option makes no sense once there are no options
- * to accept. The mark is derived from content on a decision section and set by hand on an
- * announcement, so carrying it across the border leaves a section that claims an outcome nobody
- * gave it. The outcome is cleared with the border crossing; the content — title, explanation,
- * questions, options — stays untouched.
- */
+/** A different section type cannot inherit or clear an outcome. Its own editor clears it. */
 export function setTopicKind(topic: CouncilTopic, kind: 'decision' | 'info'): CouncilTopic {
-  if ((topic.kind ?? 'decision') === kind) return topic;
-  const next: CouncilTopic = { ...topic, kind };
-  delete next.discussed;
-  delete next.acceptedOptionId;
-  delete next.decision;
-  delete next.resolution;
-  return next;
+  if ((topic.kind ?? 'decision') === kind || hasRecordedCouncilTopicOutcome(topic)) return topic;
+  return { ...topic, kind };
 }
 
 /**

@@ -4,6 +4,7 @@ import { explicitPreachedFlag } from '@/utils/preachDateStatus';
 import { isServiceOrderCatalogKey, isServiceOrderSeedTarget, serviceOrderSeedCycle } from '@/utils/serviceOrderSeedIdentity';
 
 import { ANALYSIS_RESHAPE_FIELDS, ANALYSIS_RESHAPE_FRAME, hasMatchingAnalysisPositionBasis, keepAnalysisPositionFrame, lacksAnalysisFrameProof } from './analysisReshapeFields';
+import { councilTopicConflictCode, councilTopicTransitionRefusal, retainCouncilTopicFrame } from './councilTopicTransition';
 import { equalValues, object, own, readField } from './fieldValues';
 import { mergeIdentityTree } from './identityTreeMerge';
 import { relationMirrorFields } from './relationMirrors';
@@ -568,6 +569,8 @@ function mergeObjects(base: DocumentData, mine: DocumentData, theirs: DocumentDa
     if (merged.value.exists) result[key] = merged.value.value as Json;
     conflicts.push(...merged.conflicts);
   }
+  const topicConflict = retainCouncilTopicFrame(base, mine, theirs, result, path);
+  if (topicConflict) conflicts.push(topicConflict);
   return { value: { exists: true, value: result }, conflicts };
 }
 
@@ -745,6 +748,13 @@ export function applyCommand(command: DataCommand, current: ResourceSnapshot): C
       return refused('decision-required');
     }
     const conflicts = applyExistingFields(command, value, current.value);
+    const topics = command.kind === 'update' && command.resource.collection === 'councils'
+      ? command.changes.find(change => change.path[0] === 'topics') : undefined;
+    if (topics) {
+      const reason = councilTopicConflictCode(conflicts)
+        ?? councilTopicTransitionRefusal(topics.before.value, topics.after.value, current.value.topics, value.topics);
+      if (reason) return refused(reason);
+    }
     if (conflicts.length) return { kind: 'conflict', operationId: command.operationId, snapshot: current, conflicts };
   }
   const changedFields = commandFields(command, value, current.value);

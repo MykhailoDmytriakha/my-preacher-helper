@@ -4443,6 +4443,8 @@
       "kind": "Section type",
       "kindDecision": "Decision",
       "kindInfo": "Announcement",
+      "clearOutcomeFirst": "This section has an outcome. Clear it under Edit outcome before changing the section type.",
+      "kindChanged": "The section type changed on another device. Review the saved type before applying this outcome.",
       "kindHint": "A decision waits for an outcome at the council. An announcement — context, news, a report — is marked as said.",
       "infoChip": "announcement",
       "told": "said",

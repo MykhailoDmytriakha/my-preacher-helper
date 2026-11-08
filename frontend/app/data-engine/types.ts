@@ -139,6 +139,7 @@ export interface ResourceSnapshot {
 
 export interface ConflictDetail {
   path: string[];
+  code?: string;
   base: FieldValue;
   mine: FieldValue;
   theirs: FieldValue;

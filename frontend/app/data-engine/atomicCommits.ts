@@ -5,6 +5,7 @@ import { rebaseBibleMarkAncestor } from './bibleMarkStroke';
 import { pendingCommitRetirement, retireCommitJournal } from './commitJournal';
 import { COUNCIL_ASSEMBLY } from './councilAssemblyAction';
 import { COUNCIL_TOPIC_TITLE } from './councilTopicTitleAction';
+import { councilTopicConflictCode, councilTopicTransitionRefusal } from './councilTopicTransition';
 import { datedRowTarget, isCapturedDateConflict } from './datedRowAction';
 import { pendingDocumentFieldAncestor } from './documentFieldAction';
 import { prepareAtomicDomainCommand } from './domainPolicy';
@@ -81,6 +82,11 @@ export function initializeCommit(record: CommitRequest, records: readonly Commit
     const action = target && record[target.evidence];
     const isDateConflict = (conflict: typeof rebased.conflicts[number]) => target && action && isCapturedDateConflict(conflict, action, target);
     const merged = rebased.value.exists ? rebased.value.value as DocumentData : null;
+    if (sameGeneration && record.baseline.resource.collection === 'councils' && !equalValues(predecessor.value?.topics, record.value?.topics)) {
+      const code = councilTopicConflictCode(rebased.conflicts)
+        ?? councilTopicTransitionRefusal(predecessor.value?.topics, record.value?.topics, snapshot.value?.topics, merged?.topics);
+      if (code) return { ...record, initialized: true, state: 'refused', result: { kind: 'refused', operationId: record.id, code } };
+    }
     const church = sameGeneration ? retainAuthoredChurch(merged, snapshot, record.preachDateFieldActions) : merged;
     const intended = sameGeneration ? retainPreachStatusIntent(church, snapshot, record.preachStatusActions) : church;
     const flag = record.preachStatusActions?.length ? explicitPreachedFlag(intended?.preachDates, false) : undefined;

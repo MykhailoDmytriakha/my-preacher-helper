@@ -3,9 +3,11 @@
 import { useCallback, useMemo } from 'react';
 
 import { usePublishShellTitle } from '@/components/navigation/shellTitles';
+import { councilTopicConflictCode, councilTopicRefusalCode } from '@/data-engine/councilTopicTransition';
 import { useDataDocument, useDocumentActions, useRecoveryDiscovery } from '@/data-engine/react.client';
 import { hydrateCouncil } from '@/services/councils.client';
-import { holdCouncil, reopenCouncil } from '@/utils/council';
+import { holdCouncil, reopenCouncil, setTopicKind } from '@/utils/council';
+import { hasRecordedCouncilTopicOutcome } from '@/utils/councilTopicOutcome';
 
 import type { CouncilTimedField } from '@/data-engine/councilFieldAction';
 import type { DocumentData } from '@/data-engine/types';
@@ -85,6 +87,18 @@ export function useCouncilDataDocument(councilId: string) {
     await document.commit(updater, flag ? { kind: 'council-assembly', flag } : undefined);
   }, [actions, apply, council, document]);
 
+  const changeTopicKind = useCallback(async (topicId: string, kind: 'decision' | 'info') => {
+    if (!council) throw missing();
+    // Capture an explicit outcome clear separately. Changing the type may never claim that clear.
+    await document.save();
+    await document.commit(apply(current => {
+      const topic = current.topics.find(item => item.id === topicId);
+      if (!topic) throw Object.assign(new Error('The section no longer exists'), { code: 'topic-gone' });
+      if (hasRecordedCouncilTopicOutcome(topic)) throw Object.assign(new Error('Clear the recorded outcome before changing type'), { code: 'council-topic-outcome-first' });
+      return { ...current, topics: current.topics.map(item => item.id === topicId ? setTopicKind(item, kind) : item) };
+    }));
+  }, [apply, council, document]);
+
   /** Capture before leaving; Undo belongs to the entity, never to the departed screen editor. */
   const finishCouncil = useCallback(async (): Promise<CouncilFinishUndo> => {
     if (!council) throw missing();
@@ -152,12 +166,16 @@ export function useCouncilDataDocument(councilId: string) {
     recover,
   });
 
+  const topicReview = councilTopicRefusalCode(document.state?.result) ?? councilTopicConflictCode(document.state?.checkpoint.conflicts ?? []);
   return {
     council,
     loading: document.loading,
     /** A copy for reading while device storage is silent; every change is refused with a reason. */
     readOnly: document.readOnly || deleting,
-    error: document.error, errorWords: document.errorWords,
+    error: document.error,
+    errorWords: topicReview
+      ? { key: topicReview === 'council-topic-outcome-first' ? 'council.topic.clearOutcomeFirst' : 'council.topic.kindChanged' }
+      : document.errorWords,
     status: document.status,
     /** What the sync block speaks about (DataSyncStatus `subject`). */
     recoveryIdentity: document.recoveryIdentity,
@@ -170,6 +188,7 @@ export function useCouncilDataDocument(councilId: string) {
     updateCouncil,
     renameTopic,
     setAssembly,
+    changeTopicKind,
     finishCouncil,
     restoreCouncilLifecycle,
     deleteCouncil,

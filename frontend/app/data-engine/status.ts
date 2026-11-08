@@ -1,3 +1,4 @@
+import { councilTopicConflictCode, councilTopicRefusalCode } from './councilTopicTransition';
 import { sameManualSelection } from './manualScope';
 import { shownDeliveryState } from './unanswered';
 
@@ -132,7 +133,7 @@ export function describeSync(state: EditorState, observation: Observation, deliv
     canAcceptRemote: !state.actionResolutionRequired && (foreign
       || (phase === 'conflict' && Boolean(candidate) && state.savedIntentReplaceable === true)
       || (phase === 'refused' && !state.manualWork)) && settled,
-    canKeepLocal: !state.actionResolutionRequired && settled && !deletedCandidate && (foreign || phase === 'conflict' || phase === 'refused'),
+    canKeepLocal: !councilTopicRefusalCode(state.result) && !councilTopicConflictCode(checkpoint.conflicts) && !state.actionResolutionRequired && settled && !deletedCandidate && (foreign || phase === 'conflict' || phase === 'refused'),
   };
 }
 

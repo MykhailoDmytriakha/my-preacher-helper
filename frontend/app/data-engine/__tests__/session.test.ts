@@ -78,6 +78,33 @@ describe('DataSession', () => {
     }
   });
 
+  it('keeps an unsent council outcome in its original type when a preceding ACK carries a new type', () => {
+    const topic = { id: 'section', title: 'Section', kind: 'decision', resolution: 'postponed', questions: [], options: [] };
+    const base: ResourceSnapshot = {
+      resource: { collection: 'councils', id: 'council' },
+      value: { userId: 'owner', title: 'Council', status: 'preparing', topics: [topic] },
+      metadata: { protocol: 1, generation: 'council', revision: 1, deleted: false },
+    };
+    const editor = new DataSession(base);
+    const submitted = { ...base.value, title: 'Renamed council' };
+    editor.edit(submitted);
+    editor.registerCommit('title', editor.checkpoint().editGeneration, submitted);
+    const { resolution: _old, ...cleared } = topic;
+    editor.edit({ ...submitted, topics: [cleared] });
+    const remote = { ...base, value: { ...submitted, topics: [{ ...topic, kind: 'info' }] },
+      metadata: { ...base.metadata!, operationId: 'title', revision: 2 } };
+    editor.accept({ kind: 'acknowledged', operationId: 'title', snapshot: remote });
+    expect(editor.checkpoint()).toMatchObject({
+      draft: { title: 'Renamed council', topics: [cleared] },
+      remoteCandidate: remote,
+      conflicts: [{ code: 'council-topic-kind-changed' }],
+    });
+    expect(() => editor.keepLocal()).toThrow('The original section type and outcome must be reviewed separately');
+    expect(editor.checkpoint().draft?.topics).toEqual([cleared]);
+    editor.acceptRemote();
+    expect(editor.checkpoint().draft).toEqual(remote.value);
+  });
+
   it('rebases only post-submit edits over server metadata and independently merged siblings', () => {
     const base = { ...snap(), value: { userId: 'owner', title: 'A', content: 'B', tags: ['old'], rev: { note: 1 } } };
     const session = new DataSession(base);

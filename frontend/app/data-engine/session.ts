@@ -3,6 +3,7 @@ import { isLiveWholeAction, isRetiredActionDependent } from './atomicCommits';
 import { firstBookMarksIntent } from './bibleMarksCreation';
 import { councilLifecycleValue, withCouncilLifecycle } from './councilFieldAction';
 import { acknowledgeCouncilTopicTitles, councilTopicTitleAckAncestor, hasUncapturedCouncilTopicTitle, stageCouncilTopicTitle } from './councilTopicTitleAutosave';
+import { councilTopicConflictCode, rejectCouncilTopicChoice } from './councilTopicTransition';
 import { autosaveAcknowledgementAncestor, autosaveFieldTargets, hasUncapturedAutosaveField, sameAutosaveCapture, stageAutosaveField } from './documentFieldAction';
 import { prepareDomainCommand } from './domainPolicy';
 import { ACTION_SLOT, editorSlot } from './editorIdentity';
@@ -315,7 +316,16 @@ export class DataSession {
     // A choice about an earlier request cannot silently decide later positional work.
     this.state.conflicts = hasDifferentAnalysisPositionBasis(atChoice, this.state.draft, this.state.confirmed.value) ? copy(merged.conflicts) : [];
     if (this.state.conflicts.length) this.state.remoteCandidate = copy(this.state.confirmed);
+    this.retainCouncilTopicReview(merged.conflicts);
     this.state.editGeneration += 1;
+  }
+
+  retainCouncilTopicReview(conflicts: readonly ConflictDetail[]): void {
+    if (councilTopicConflictCode(conflicts)) {
+      this.state.conflicts = copy([...conflicts]);
+      this.state.remoteCandidate = copy(this.state.confirmed);
+      this.state.dirty = true;
+    }
   }
 
   /** Replacing local intent is allowed only after each pending delivery is explicitly settled. */
@@ -339,6 +349,7 @@ export class DataSession {
   /** Explicit conflict choice: keep edited fields and retain untouched remote siblings. */
   keepLocal(preachStatuses?: readonly PreachStatusAction[]): void {
     if (Object.keys(this.state.pending).length) throw Object.assign(new Error('Resolve pending commands before keeping local data'), { code: 'pending-delivery-first' });
+    rejectCouncilTopicChoice(councilTopicConflictCode(this.state.conflicts));
     const candidate = this.state.remoteCandidate;
     if (candidate?.value === null || candidate?.metadata?.deleted || this.state.confirmed.metadata?.deleted) {
       throw Object.assign(new Error('Remote document was deleted; use a new copy to preserve this draft'), { code: 'use-new-copy' });
@@ -346,6 +357,7 @@ export class DataSession {
     if (candidate) {
       const marks = firstBookMarksIntent(this.state.confirmed, this.state.draft, candidate);
       const merged = mergeDocumentFields(marks?.baseline ?? this.state.confirmed.value, marks?.value ?? this.state.draft, candidate.value);
+      rejectCouncilTopicChoice(councilTopicConflictCode(merged.conflicts));
       const chosen = chooseLocalPlacement(this.state.confirmed.resource.collection,
         this.state.confirmed.value, this.state.draft, candidate.value,
         merged.value.exists ? merged.value.value as DocumentData : null, mergeFields);

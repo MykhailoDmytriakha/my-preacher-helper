@@ -7576,3 +7576,13 @@ The baseline brought back an earlier offline mark after the computer had marked 
 Seven native Chrome scenarios on isolated emulators verified both orders, independent explanation, unknown timing, a legacy section without the mark, two rapid offline clicks, and a removed section. History restoration survived reload. Evidence is in artifacts/action-chronology-356/council-assembly-verified.
 
 For authorized production acceptance, open one disposable preparing council in two profiles for the same account. Mark a section for the members' meeting offline on the phone. On the computer, later mark and clear the same section. Reconnect and check that it stays clear. Restore the earlier mark in Members’ meeting history, reload, and check the explanation and neighboring section. Close both profiles.
+
+## BUG-20261108-council-topic-kind-clears-outcome · Keep the recorded council outcome
+
+In Heart matters → Brothers' council → a preparing council → edit a section, an existing outcome locks the alternative section type. The editor points to Edit outcome for the deliberate clear. Clearing the outcome and changing the type are captured separately, including while offline. The title, explanation, options, questions and neighboring sections are independent.
+
+The browser baseline changed the type and removed both the selected option and written outcome in one click. The server and local merge now preserve a recorded outcome across late incompatible commands. The queue checks the authored type before rebasing a saved request, and the same rule holds unsent work when an earlier acknowledgement brings a new type. The refusal keeps the local draft available and names the reason. A generic keep choice cannot turn the incompatible edit into a clear. Known chronology of competing type choices on open sections remains tracked separately.
+
+549 related tests, eight translation tests, scoped ESLint, TypeScript and guarded build OsAXfB5136gLg51XdILuR passed. The before and after regressions cover the direct loss, both device orders, manual retry, an earlier acknowledgement and unsent typing. Independent review reproduced and rechecked the delivery and local choice bypasses.
+
+Four native Chrome scenarios at 390 and 1280 pixels on isolated emulators verified the recorded outcome guard, explicit clearing and retyping, the same sequence while offline, and both incompatible device orders. Evidence is in artifacts/council-topic-outcome-verified. For authorized production acceptance, use one disposable preparing council, record an outcome, open the section editor, and verify that the reason is visible and the outcome remains. Then explicitly clear the disposable outcome, change the type and reload. Close the profile.

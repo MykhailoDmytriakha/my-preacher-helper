@@ -39,6 +39,8 @@ const KNOWN = new Map<string, string>([
   ['series-list-incomplete', 'dataSync.failure.seriesListIncomplete'],
   ['series-changes-pending', 'dataSync.failure.seriesChangesPending'],
   // Refusals that tell the person what to do first (BUG-20261003-engine-refusals-speak-english).
+  ['council-topic-outcome-first', 'council.topic.clearOutcomeFirst'],
+  ['council-topic-kind-changed', 'council.topic.kindChanged'],
   ['topic-gone', 'council.topicTitleHistory.gone'],
   ['service-order-step-gone', 'serviceOrders.flagHistory.stepGone'],
   ['preach-date-gone', 'dataSync.failure.preachDateGone'],

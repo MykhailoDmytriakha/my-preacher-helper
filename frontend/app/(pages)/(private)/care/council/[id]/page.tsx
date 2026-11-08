@@ -56,7 +56,8 @@ import { useCouncilsRead } from '@/hooks/useCouncilsRead';
 import { useDndKitAccessibility } from '@/hooks/useDragAnnouncements';
 import { useRouteId } from '@/hooks/useRouteId';
 import { actionFailureMessage } from '@/utils/actionFailureMessage';
-import { applyOutcome, councilLanguage, hasProgress, isInfoTopic, newOption, newQuestion, newTopic, outcomeText, preparingCouncils, removeTopicOption, reorderTopics, setTopicKind, topicState } from '@/utils/council';
+import { applyOutcome, councilLanguage, hasProgress, isInfoTopic, newOption, newQuestion, newTopic, outcomeText, preparingCouncils, removeTopicOption, reorderTopics, topicState } from '@/utils/council';
+import { hasRecordedCouncilTopicOutcome } from '@/utils/councilTopicOutcome';
 import { formatDate, formatDateForLocale, formatDateOnly, formatDateTimeForLocale } from '@/utils/dateFormatter';
 import { shownDayOf } from '@/utils/dateOnly';
 import { NEUTRAL_CAPTION, CARE_CARD_TONES } from '@/utils/themeColors';
@@ -158,6 +159,7 @@ function EngineCouncilDetailWorkspace({ councilId }: { councilId: string }) {
     },
     renameTopic: (topicId: string, title: string) => document.renameTopic(topicId, title),
     setAssembly: document.setAssembly,
+    changeTopicKind: document.changeTopicKind,
     history: owner && generation ? { owner, generation, restore: (field: CouncilHistoryField, value: string | null) =>
       field === 'heldAt' ? document.restoreCouncilLifecycle(value) : document.updateCouncil(councilId, current => {
         if (field === 'title') return { ...current, title: value ?? current.title };
@@ -191,6 +193,7 @@ interface CouncilDetailSource {
   updateCouncil: (id: string, updater: (current: Council) => Council, field?: CouncilTimedField) => void;
   renameTopic: (id: string, title: string) => Promise<void>;
   setAssembly: (topic: CouncilTopic, selected: boolean) => Promise<void>;
+  changeTopicKind: (id: string, kind: 'decision' | 'info') => Promise<void>;
   history?: { owner: string; generation: string; restore: (field: CouncilHistoryField, value: string | null) => Promise<void> };
   deleteCouncil: (id: string) => Promise<boolean>;
   finishCouncil: () => Promise<CouncilFinishUndo>;
@@ -528,6 +531,9 @@ function CouncilDetailContent({ source, engineCouncilId }: { source: CouncilDeta
                 onSetAssembly={(selected) => {
                   void source.setAssembly(topic, selected).catch(error => toast.error(actionFailureMessage(error, t, 'council.save.refused')));
                 }}
+                onChangeKind={(kind) => {
+                  void source.changeTopicKind(topic.id, kind).catch(error => toast.error(actionFailureMessage(error, t, 'council.save.refused')));
+                }}
                 onRemove={() => removeTopic(topic.id)}
                 carrying={carrying.has(topic.id)}
                 onCarryToNext={(targetId) => { void carryToNext(topic, targetId); }}
@@ -605,6 +611,7 @@ function TopicCard({
   onChange,
   onRename,
   onSetAssembly,
+  onChangeKind,
   onRemove,
   onCarryToNext,
   carrying,
@@ -623,6 +630,7 @@ function TopicCard({
   onChange: (updater: TopicUpdater) => void;
   onRename: (title: string) => void;
   onSetAssembly: (selected: boolean) => void;
+  onChangeKind: (kind: 'decision' | 'info') => void;
   onRemove: () => void;
   onCarryToNext: (targetId?: string | 'new') => void;
   carrying: boolean;
@@ -677,7 +685,7 @@ function TopicCard({
         <span className={`mt-0.5 w-6 shrink-0 text-sm font-extrabold ${tone.count}`}>{index}</span>
         <div className="min-w-0 flex-1">
           {editing ? (
-            <TopicEditor subjectId={subjectId} topic={topic} onChange={onChange} onRename={onRename} onSetAssembly={onSetAssembly} onRemove={onRemove} onDone={onDone} />
+            <TopicEditor subjectId={subjectId} topic={topic} onChange={onChange} onRename={onRename} onSetAssembly={onSetAssembly} onChangeKind={onChangeKind} onRemove={onRemove} onDone={onDone} />
           ) : (
             <>
               <div className="flex flex-wrap items-center gap-2">
@@ -978,6 +986,7 @@ function TopicEditor({
   onChange,
   onRename,
   onSetAssembly,
+  onChangeKind,
   onRemove,
   onDone,
 }: {
@@ -986,11 +995,13 @@ function TopicEditor({
   onChange: (updater: TopicUpdater) => void;
   onRename: (title: string) => void;
   onSetAssembly: (selected: boolean) => void;
+  onChangeKind: (kind: 'decision' | 'info') => void;
   onRemove: () => void;
   onDone: () => void;
 }) {
   const { t } = useTranslation();
   const { confirm, confirmDialog } = useConfirm();
+  const outcomeRecorded = hasRecordedCouncilTopicOutcome(topic);
   const targetRef = useRef({
     subjectId,
     topicId: topic.id,
@@ -1070,7 +1081,8 @@ function TopicEditor({
             size="md"
             tone="indigo"
             selected={!isInfoTopic(topic)}
-            onClick={() => onChange((current) => setTopicKind(current, 'decision'))}
+            disabled={outcomeRecorded && isInfoTopic(topic)}
+            onClick={() => { if (isInfoTopic(topic)) onChangeKind('decision'); }}
             data-testid="council-kind-decision"
           >
             {t('council.topic.kindDecision')}
@@ -1080,13 +1092,14 @@ function TopicEditor({
             tone="indigo"
             selected={isInfoTopic(topic)}
             icon={<Megaphone className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden="true" />}
-            onClick={() => onChange((current) => setTopicKind(current, 'info'))}
+            disabled={outcomeRecorded && !isInfoTopic(topic)}
+            onClick={() => { if (!isInfoTopic(topic)) onChangeKind('info'); }}
             data-testid="council-kind-info"
           >
             {t('council.topic.kindInfo')}
           </Chip>
         </div>
-        <p className={hintClass}>{t('council.topic.kindHint')}</p>
+        <p className={hintClass}>{t(outcomeRecorded ? 'council.topic.clearOutcomeFirst' : 'council.topic.kindHint')}</p>
       </div>
 
       <div>

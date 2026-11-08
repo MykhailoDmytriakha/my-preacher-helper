@@ -6,6 +6,7 @@ import { CaptureContinuations } from './captureContinuations';
 import { assertCommitCapture } from './commits';
 import { councilAssemblyRow } from './councilAssemblyAction';
 import { councilTopicTitleRow, hasCouncilTopic } from './councilTopicTitleAction';
+import { assertCouncilTopicChoice } from './councilTopicTransition';
 import { isDocumentDeletion } from './deletionOrdering';
 import { isDirectLegacyDocumentIntent, type DocumentAnswer } from './documentDelivery';
 import { requiredDomainTargets } from './domainPolicy';
@@ -429,6 +430,7 @@ export class EditorController {
       const cancelled = Object.keys(this.session.checkpoint().pending);
       const checkpoint = this.session.checkpoint();
       const submittedGeneration = this.prepared ? this.prepared.generation : checkpoint.confirmed.metadata?.generation;
+      assertCouncilTopicChoice(this.result);
       requireFreshGeneration(this.result, submittedGeneration, checkpoint.remoteCandidate);
       if (this.options.commits && cancelled.length && !isDirectLegacyDocumentIntent(cancelled, this.prepared?.operationId)) {
         await this.resolveCommitChoice('local', captures, selection, expected, correction);
@@ -764,6 +766,7 @@ export class EditorController {
           }
           const stored = decided.remoteCandidate?.value;
           const rowRequests = ordinary ? [ordinary.first] : retired.filter(request => request.cancelledByChoice && source!.pending[request.id]);
+          for (const request of rowRequests) assertCouncilTopicChoice(request.result);
           if (stored && rowRequests.some(request => {
             const step = request.serviceOrderFlagActions?.flagged ?? request.serviceOrderStepTitleActions?.title;
             return step && !hasServiceOrderStep(stored.steps, step.rowId);
@@ -839,6 +842,7 @@ export class EditorController {
       this.session.edit(chooseLocalPlacement(current.confirmed.resource.collection,
         source.draft, current.draft, projected.checkpoint.draft,
         merged.value.exists ? merged.value.value as DocumentData : null, mergeFields));
+      this.session.retainCouncilTopicReview(merged.conflicts);
     }
     this.completedCommits = projected.completedCommits ?? [];
     this.pendingCaptures.retire(captures);

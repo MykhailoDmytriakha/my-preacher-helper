@@ -244,12 +244,22 @@ describe('a background read never erases what is still being typed', () => {
   });
 });
 
-describe('changing what a section is clears an outcome that no longer applies', () => {
-  it('drops the mark when an announcement becomes a decision', () => {
-    const said = topic({ kind: 'info', discussed: true, options: [], questions: [] });
-    const asDecision = setTopicKind(said, 'decision');
-    expect(asDecision.discussed).toBeUndefined();
-    expect(topicState(asDecision)).toBe('open');
+describe('recorded council outcomes protect the section type', () => {
+  it.each([
+    [{ kind: 'info' as const, discussed: true }, 'decision' as const],
+    [{ kind: 'decision' as const, decision: 'Keep the recorded decision' }, 'info' as const],
+    [{ kind: 'decision' as const, acceptedOptionId: 'o1' }, 'info' as const],
+    [{ kind: 'decision' as const, resolution: 'postponed' as const }, 'info' as const],
+  ])('keeps the section unchanged with a recorded outcome %j', (outcome, kind) => {
+    const recorded = topic(outcome);
+    expect(setTopicKind(recorded, kind)).toEqual(recorded);
+  });
+
+  it('allows an explicitly cleared outcome to be followed by a type change', () => {
+    const recorded = topic({ kind: 'decision', discussed: true, decision: 'Old decision', acceptedOptionId: 'o1' });
+    const open = applyOutcome(recorded, { decision: '', acceptedOptionId: '' }, { at: '2026-11-08', trackChanges: false });
+    expect(setTopicKind(open, 'info')).toMatchObject({ kind: 'info', options: recorded.options, questions: recorded.questions });
+    expect(topicState(setTopicKind(open, 'info'))).toBe('open');
   });
 
   it('drops the accepted option when that option is deleted', () => {

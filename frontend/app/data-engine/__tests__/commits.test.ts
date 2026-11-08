@@ -657,6 +657,55 @@ describe('Durable commit requests', () => {
     } finally { engine.dispose(); }
   });
 
+  it.each(['postponed', 'dropped'])('keeps the authored section kind when a preceding ACK brings a different kind and %s', async resolution => {
+    const s = setup();
+    const { queue } = s.makeQueue();
+    const topic = { id: 'opening', title: 'Opening', kind: 'decision', resolution: 'postponed', questions: [], options: [] };
+    const opening: ResourceSnapshot = {
+      resource: { collection: 'councils', id: 'council' },
+      value: { userId: 'owner', title: 'Council', status: 'preparing', topics: [topic], createdAt: '2026-11-08', updatedAt: '2026-11-08' },
+      metadata: { protocol: 1, generation: 'council', revision: 1, deleted: false },
+    };
+    const editor = new DataSession(opening);
+    editor.edit({ ...opening.value, title: 'Other title' });
+    const first = (await queue.save('council', editor.checkpoint()))!;
+    editor.applyCommit(first);
+    const { resolution: _old, ...noOutcome } = topic;
+    editor.edit({ ...first.value, topics: [{ ...noOutcome, kind: 'info' }] });
+    const second = (await queue.save('council', editor.checkpoint(), { predecessorId: first.id }))!;
+    const accepted = { ...opening, value: { ...first.value, topics: [{ ...topic, kind: 'info', resolution }] },
+      metadata: { ...opening.metadata!, revision: 2, operationId: first.id } };
+    expect(initializeCommit(second, [{ ...first, state: 'acknowledged',
+      result: { kind: 'acknowledged', operationId: first.id, snapshot: accepted } }])).toMatchObject({
+      state: 'refused', result: { kind: 'refused', code: 'council-topic-kind-changed' },
+    });
+  });
+
+  it.each(['postponed', 'dropped'])('keeps the newer outcome (%s) when a rejected old section conversion is reviewed', async resolution => {
+    const topic = { id: 'opening', title: 'Opening', kind: 'decision', resolution: 'postponed', questions: [], options: [] };
+    const opening: ResourceSnapshot = {
+      resource: { collection: 'councils', id: 'council' },
+      value: { userId: 'owner', title: 'Council', status: 'preparing', topics: [topic], createdAt: '2026-11-08', updatedAt: '2026-11-08' },
+      metadata: { protocol: 1, generation: 'council', revision: 1, deleted: false },
+    };
+    const s = setup({ opening, nativeChoice: true });
+    const engine = s.makeEngine(), editor = await engine.openEditor(opening.resource, 'page');
+    try {
+      const { resolution: _old, ...noOutcome } = topic;
+      const converted = { ...noOutcome, kind: 'info' };
+      await editor.edit({ ...opening.value, topics: [converted] });
+      await editor.save();
+      const later = { ...topic, kind: 'info', resolution };
+      s.replace({ ...opening, value: { ...opening.value, topics: [later] }, metadata: { ...opening.metadata!, revision: 2 } });
+      engine.setOnline(true); await engine.retry(); await settle();
+      expect(editor.getState().result).toMatchObject({ kind: 'refused', code: 'council-topic-kind-changed' });
+      await expect(editor.keepLocal()).rejects.toMatchObject({ code: 'council-topic-kind-changed' });
+      expect(editor.getState().checkpoint.draft?.topics).toEqual([converted]);
+      expect(s.server().value?.topics).toEqual([later]);
+      expect(s.transport.send).toHaveBeenCalledTimes(1);
+    } finally { engine.dispose(); }
+  });
+
   it('replays both opposite council assembly clicks after the queue restarts', async () => {
     const s = setup();
     const { queue } = s.makeQueue();
