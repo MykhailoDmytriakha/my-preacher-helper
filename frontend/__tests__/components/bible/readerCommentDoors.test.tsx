@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event';
 import { useRef, useState } from 'react';
 
 import { useVerseCopy } from '@/components/bible/verseCopy/useVerseCopy';
+import { StaleWriteError } from '@/services/conflictSafeUpdate.client';
 import type React from 'react';
 
 import { ReaderCommentDialog, useCommentDoors, useReaderCommenting } from '@/components/bible/ReaderCommentDialog';
@@ -113,6 +114,22 @@ describe('reader comment doors preserve the selected displayed passage', () => {
     await user.click(screen.getByRole('button', { name: 'common.done' }));
     expect(mockEngine.createNote).not.toHaveBeenCalled();
     expect(mockEngine.updateNote).not.toHaveBeenCalled();
+  });
+
+  it.each([laterKjvReference, { ...laterKjvReference, bible: undefined }])('keeps the opened occurrence when taking words for an unchanged split reference ($bible)', async (reference) => {
+    mockEngine.updateNote.mockImplementationOnce(() => ({ acceptance: Promise.reject(new StaleWriteError('note', 7, 8,
+      { content: 'Accepted words at the same place.', type: 'comment', scriptureRefs: [reference] })), persistence: Promise.resolve() }));
+    const user = userEvent.setup();
+    render(<ReaderDoorsHarness />);
+    await user.click(screen.getByRole('button', { name: 'Open verse comment' }));
+    await screen.findByRole('dialog', { name: 'Comment · Rom 16:24' });
+    await user.type(screen.getByLabelText('comment-editor'), ' Local edit.');
+    await user.click(screen.getByRole('button', { name: 'common.done' }));
+    await user.click(await screen.findByRole('button', { name: 'freshness.conflictTakeTheirs' }));
+    expect(screen.getByLabelText('comment-editor')).toHaveValue('Accepted words at the same place.');
+    expect(screen.getByRole('button', { name: 'comment.kind.comment' })).toHaveAttribute('aria-pressed', 'true');
+    await user.click(screen.getByRole('button', { name: 'common.done' }));
+    expect(mockEngine.updateNote).toHaveBeenCalledTimes(1);
   });
 
   it('opens an existing whole-chapter comment from the chapter door with that chapter context', async () => {

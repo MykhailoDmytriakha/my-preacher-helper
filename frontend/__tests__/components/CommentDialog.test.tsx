@@ -7,7 +7,7 @@ import { draftKey, saveDraft } from '@/utils/durableDraft';
 import { readDraftAddress } from '@/utils/draftAddress';
 import { commentDraftReference } from '@/utils/commentDrafts';
 
-import type { StudyNote } from '@/models/models';
+import type { ScriptureReference, StudyNote } from '@/models/models';
 import type React from 'react';
 
 /*
@@ -401,6 +401,33 @@ describe('CommentDialog', () => {
     expect(screen.getByRole('button', { name: 'comment.kind.comment' })).toHaveAttribute('aria-pressed', 'true');
     await userEvent.click(screen.getByRole('button', { name: 'common.done' }));
     await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(mockEngine.updateNote).toHaveBeenCalledTimes(1);
+  });
+
+  const paragraphRange = { ...reference, fromVerse: 30, toVerse: 31 };
+  it.each([
+    ['legacy verse to range', reference, paragraphRange, null, true],
+    ['legacy range to verse', paragraphRange, reference, null, false],
+    ['explicit comment on a range', reference, paragraphRange, false, false],
+    ['explicit paragraph on one verse', paragraphRange, reference, true, true],
+  ] as const)('takes the accepted kind for %s without writing it back', async (_label, opening, acceptedPlace, paragraph, expected) => {
+    mockEngine.notes = [{ ...stored, scriptureRefs: [opening] }];
+    mockEngine.updateNote.mockImplementationOnce(() => ({ acceptance: Promise.reject(new StaleWriteError('note', 4, 6,
+      { content: 'Accepted words.', type: 'comment', scriptureRefs: [acceptedPlace], paragraph })),
+    persistence: Promise.resolve(), result: Promise.resolve({}) }) as never);
+    const onClose = jest.fn();
+    const inferFromReference = jest.fn((place: ScriptureReference) => (place.toVerse ?? 0) > (place.fromVerse ?? 0));
+    const choice = { initial: opening === paragraphRange, inferFromReference };
+    render(<CommentDialog target={{ kind: 'edit', id: 'c1' }} place="Ис 40:31" onClose={onClose} paragraphChoice={choice} />);
+    await userEvent.type(screen.getByLabelText('editor'), ' Local.');
+    await userEvent.click(screen.getByRole('button', { name: 'common.done' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'freshness.conflictTakeTheirs' }));
+    expect(screen.getByLabelText('editor')).toHaveValue('Accepted words.');
+    expect(screen.getByRole('button', { name: expected ? 'comment.kind.paragraph' : 'comment.kind.comment' })).toHaveAttribute('aria-pressed', 'true');
+    if (paragraph === null) expect(inferFromReference).toHaveBeenCalledWith(acceptedPlace);
+    else expect(inferFromReference).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole('button', { name: 'common.done' }));
+    expect(onClose).toHaveBeenCalledTimes(1);
     expect(mockEngine.updateNote).toHaveBeenCalledTimes(1);
   });
 

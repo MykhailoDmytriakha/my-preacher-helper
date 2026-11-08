@@ -8,7 +8,7 @@ import { CommentIcon } from '@/components/Icons';
 import { getLocalizedAbbrev } from '@/utils/bibleBooks';
 import { passageWords, type BookText } from '@/utils/bibleText';
 import { newClientId } from '@/utils/clientId';
-import { passagesIn, samePassage } from '@/utils/scriptureReferenceNumbering';
+import { passagesIn, samePassage, withStoredBible } from '@/utils/scriptureReferenceNumbering';
 import { useTranslation } from '@locales/useTranslation';
 
 import { fitCommentPassage, isParagraph, isParagraphComment, paragraphRefusal, spanOf, versePosition, type LaidParagraph, type PassageFitSaid } from './commentParagraphs';
@@ -191,7 +191,15 @@ function OpenReaderCommentDialog({ commenting, text, bookId, bible, locale, pass
   // A comment on whole chapters keeps its chapter doors: its verses are not chosen in the text. On verses, the window says
   // what it is — a comment or a paragraph — and lets it be changed: a new one as the bar's button chose, a written one as
   // it was saved or, never chosen, as its length reads (the owner, 2026-11-06).
-  const paragraphChoice = onVerses ? { initial: commenting.kind === 'new' ? commenting.paragraph ?? false : isParagraph(passage) } : undefined;
+  const paragraphChoice = onVerses ? {
+    initial: commenting.kind === 'new' ? commenting.paragraph ?? false : isParagraph(passage),
+    inferFromReference: (reference: ScriptureReference) => {
+      const pieces = passagesIn(withStoredBible(reference, locale), bible);
+      // An unchanged occurrence keeps the kind the reader shows at that piece of a split reference.
+      const shown = reference.book === bookId && passage ? pieces.find(piece => samePassage(piece, passage)) : undefined;
+      return shown ? isParagraph(shown) : pieces.some(isParagraph);
+    },
+  } : undefined;
   return <CommentDialog target={target} place={place} context={context} bible={bible} placeOf={placeOf} onClose={onClose} onSaved={onSaved} returnFocusTo={returnFocusTo} openingPlace={opening ? place : undefined} away={away} onChooseVerses={onVerses ? onChooseVerses : undefined} versesRefusal={versesRefusal} placeRefusal={placeRefusal} paragraphChoice={paragraphChoice} />;
 }
 

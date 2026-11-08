@@ -148,18 +148,24 @@ function useWaitingDraft(
   return differs ? offered : null;
 }
 
+type ParagraphChoice = {
+  initial: boolean;
+  inferFromReference?: (reference: ScriptureReference) => boolean;
+};
+
 /**
  * WHAT THE COMMENT IS IN THE READER, as the person chooses it in the window (case 2026-11-06-comment-paragraph): a new one as
  * its button chose, a written one as it was saved or — never chosen — as the reader's `initial` reads it. The kind it opened
  * with is taken once (`take`): the reader may name the same comment's place anew, and a kind read again from that would look
- * changed with nothing touched. `changed` — the person switched it here.
+ * changed with nothing touched. Taking a stored version gives the window a new place to read. `changed` — the person switched it here.
  */
-function useCommentKind(target: CommentTarget, found: StudyNote | undefined, choice: { initial: boolean } | undefined) {
-  const kindOf = (note: StudyNote | undefined) => note?.paragraph ?? choice?.initial ?? false;
+function useCommentKind(target: CommentTarget, found: StudyNote | undefined, choice: ParagraphChoice | undefined) {
+  const kindOf = (note: StudyNote | undefined, acceptedPlace?: ScriptureReference) => note?.paragraph
+    ?? (acceptedPlace ? choice?.inferFromReference?.(acceptedPlace) : undefined) ?? choice?.initial ?? false;
   const [asParagraph, setAsParagraph] = useState(() => (target.kind === 'edit' ? kindOf(found) : choice?.initial ?? false));
   const opened = useRef<boolean | null>(target.kind === 'edit' && found ? kindOf(found) : null);
-  const take = (note: StudyNote) => {
-    opened.current = kindOf(note);
+  const take = (note: StudyNote, acceptedPlace?: ScriptureReference) => {
+    opened.current = kindOf(note, acceptedPlace);
     setAsParagraph(opened.current);
   };
   // The kind is not kept with the words on the device: a draft is the words, their name and place, and its copy is retired
@@ -257,9 +263,10 @@ export function CommentDialog({ target, place, context, bible, placeOf, placePic
   /**
    * The reader's choice of what the comment is (the owner, 2026-11-06: «комментарий и абзац — разные вещи»): the window
    * shows «Комментарий | Абзац» and saves the one chosen (`StudyNote.paragraph`). `initial` — a new one's kind as its
-   * button chose, a written one's as its length reads when it was never chosen. Absent (Studies): no choice, as before.
+   * button chose, a written one's as its length reads when it was never chosen. An accepted version can be read from its
+   * own reference. Studies supplies no switch.
    */
-  paragraphChoice?: { initial: boolean };
+  paragraphChoice?: ParagraphChoice;
 }) {
   const { t } = useTranslation();
   const { uid, notes, createNote, updateNote, deleteNote } = useStudyNotesEngine(true);
@@ -450,7 +457,7 @@ export function CommentDialog({ target, place, context, bible, placeOf, placePic
     // Taken, their version is where this window's edits begin now — their kind too: the switch shows what they chose
     // (visual pass, Codex review 2026-11-07: «take theirs» took their words and left this window's switch).
     mine.current = opened.current;
-    if (opened.current) kind.take(opened.current);
+    if (opened.current) kind.take(opened.current, theirs.scriptureRefs?.[0]);
     setText(theirs.content);
     setTitle(theirs.title);
     // Their version is taken whole: where they left it stands, and a place chosen here is let go.
