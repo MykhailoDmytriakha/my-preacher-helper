@@ -21,6 +21,7 @@ import { useMemo, useState } from 'react';
 import '@locales/i18n';
 
 import AddSermonModal from '@/components/AddSermonModal';
+import { BibleIcon } from '@/components/bible/BibleIcon';
 import { ListReadFeedback } from '@/components/ListReadFeedback';
 import CreatePrayerModal from '@/components/prayer/CreatePrayerModal';
 import { Chip } from '@/components/ui/Chip';
@@ -45,6 +46,7 @@ import { getEffectiveIsPreached } from '@/utils/preachDateStatus';
 import { awaitWriteOperation } from '@/utils/recoverableWrite';
 import { formatScriptureReference } from '@/utils/scriptureReference';
 import { studyNoteOwnName } from '@/utils/studyNoteUtils';
+import { PLACE_DOOR_TONES } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
 
 import type { TFunction } from 'i18next';
@@ -334,7 +336,9 @@ export default function DashboardPage() {
   return (
     <div className="space-y-4 pb-8 text-gray-900 dark:text-gray-100">
       <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div>
+        {/* On a phone the page's name already stands in the bar above; its room goes to the way into the Bible (the
+            owner, 2026-11-07). The name stays for screen readers, and out of the flow it leaves no gap. */}
+        <div className="sr-only sm:not-sr-only">
           <h1 className="text-2xl font-bold tracking-tight text-gray-950 dark:text-white sm:text-3xl">
             {t('dashboardHome.title')}
           </h1>
@@ -342,6 +346,10 @@ export default function DashboardPage() {
             {t('dashboardHome.subtitle')}
           </p>
         </div>
+        <Link href="/bible" className={`${quickActionBaseClass} ${PLACE_DOOR_TONES.bible} focus-visible:ring-indigo-500 sm:hidden`}>
+          <BibleIcon className="h-4 w-4" aria-hidden="true" />
+          {t('navigation.bible')}
+        </Link>
 
         <div className="grid gap-2 sm:grid-cols-3 lg:min-w-[520px]">
           <button

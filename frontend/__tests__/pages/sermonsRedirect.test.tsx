@@ -16,6 +16,7 @@ const mockRouterPush = jest.fn();
 const mockAddSermonProps = jest.fn();
 
 const mockTranslationMap: Record<string, string> = {
+  'navigation.bible': 'Библия',
   'navigation.sermons': 'Проповеди',
   'navigation.studies': 'Изучения',
   'navigation.groups': 'Группы',
@@ -436,6 +437,17 @@ describe('Dashboard page', () => {
     expect(within(groupsSection).getByText('Домашнее общение')).toBeInTheDocument();
     expect(within(groupsSection).getByText('Активна')).toBeInTheDocument();
     expect(within(groupsSection).getByText('Завершена')).toBeInTheDocument();
+  });
+
+  // The owner, 2026-11-07, on his phone: «надпись „панель сегодняшней работы“ убираем, а вместо неё добавляем кнопку Библия».
+  it('gives a phone the way into the Bible where the page\'s name stood, the name kept for screen readers', () => {
+    render(<DashboardPage />);
+    const bible = screen.getByRole('link', { name: 'Библия' });
+    expect(bible).toHaveAttribute('href', '/bible');
+    // Only on a phone: from 640 px the name stands as it did and the button goes.
+    expect(bible).toHaveClass('sm:hidden');
+    const name = screen.getByRole('heading', { name: 'Панель' }).parentElement!;
+    expect(name).toHaveClass('sr-only', 'sm:not-sr-only');
   });
 
   it('opens create modals for sermon and prayer quick actions instead of navigating to sections', () => {
