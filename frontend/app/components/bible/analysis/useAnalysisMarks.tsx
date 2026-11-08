@@ -100,7 +100,7 @@ export function useAnalysisMarks({ source, words }: { source: AnalysisMarks | nu
     return { fill: on.color ? MARK_FILL_CLASS[on.color] : '', pencil: on.pencil ? PENCIL_LINE_CLASS[on.pencil] : '' };
   };
 
-  const toolbar: ReactNode = source ? <MarkToolbar tool={tool} /> : null;
+  const toolbar: ReactNode = source ? <MarkToolbar tool={tool} compactOnPhone /> : null;
   return {
     toolbar, painting, paintOf, strokeEvents,
     /** A finger with a tool in hand paints along a line and still scrolls up and down, as in the reader. */

@@ -62,7 +62,7 @@ const DOT_HALO = 'ring-2 ring-white dark:ring-gray-900';
  * restyling the whole book (the earlier global :has workaround, 2026-10-16).
  * Open, a palette stands in the row before its tool and the row makes room for it — or, in the capsule, over the tools.
  */
-function Palette({ swatches, label, variant, open }: { swatches: Swatch[]; label: string; variant: 'line' | 'column' | 'dots'; open: boolean }) {
+function Palette({ swatches, label, variant, open, className = '' }: { swatches: Swatch[]; label: string; variant: 'line' | 'column' | 'dots'; open: boolean; className?: string }) {
   if (variant === 'dots') {
     return (
       <div role="group" aria-label={label} hidden={!open} data-mark-palette="" className={`items-center gap-1 ${open ? 'flex' : 'hidden'}`}>
@@ -92,7 +92,7 @@ function Palette({ swatches, label, variant, open }: { swatches: Swatch[]; label
       aria-label={label}
       hidden={!open}
       data-mark-palette=""
-      className={`items-center gap-2 ${open ? 'flex' : 'hidden'} ${variant === 'column' ? PALETTE_COLUMN : PALETTE_LINE}`}
+      className={`items-center gap-2 ${open ? 'flex' : 'hidden'} ${variant === 'column' ? PALETTE_COLUMN : PALETTE_LINE} ${className}`}
     >
       {swatches.map((swatch) => (
         <button
@@ -192,20 +192,22 @@ function useToolParts(tool: MarkToolState) {
   return { t, markerSwatches, pencilSwatches, buttons };
 }
 
-export function MarkToolbar({ tool, vertical = false, className = '' }: { tool: MarkToolState; vertical?: boolean; className?: string }) {
+export function MarkToolbar({ tool, vertical = false, compactOnPhone = false, className = '' }: { tool: MarkToolState; vertical?: boolean; compactOnPhone?: boolean; className?: string }) {
   const { t, markerSwatches, pencilSwatches, buttons } = useToolParts(tool);
   const rootRef = useRef<HTMLDivElement>(null);
   usePutAwayOnEscape(rootRef, tool.inHand !== null, tool.putAway, true);
   const variant = vertical ? 'column' : 'line';
 
+  const gap = compactOnPhone ? 'gap-0.5 sm:gap-2.5' : 'gap-2.5';
+  const paletteClassName = compactOnPhone ? 'max-sm:absolute max-sm:right-0 max-sm:top-full max-sm:z-10 max-sm:mt-1' : '';
   return (
-    <div ref={rootRef} data-mark-toolbar="" role="toolbar" aria-label={t('bible.marks.toolbar')} aria-orientation={vertical ? 'vertical' : 'horizontal'} className={`relative flex items-center gap-2.5 ${vertical ? 'flex-col' : ''} ${className}`}>
-      <span className={`flex items-center gap-2.5 ${vertical ? 'flex-col' : ''}`}>
-        <Palette swatches={markerSwatches} label={t('bible.marks.colors')} variant={variant} open={tool.palette === 'marker'} />
+    <div ref={rootRef} data-mark-toolbar="" role="toolbar" aria-label={t('bible.marks.toolbar')} aria-orientation={vertical ? 'vertical' : 'horizontal'} className={`relative flex items-center ${gap} ${vertical ? 'flex-col' : ''} ${className}`}>
+      <span className={`flex items-center ${gap} ${vertical ? 'flex-col' : ''}`}>
+        <Palette swatches={markerSwatches} label={t('bible.marks.colors')} variant={variant} className={paletteClassName} open={tool.palette === 'marker'} />
         {buttons.marker}
       </span>
-      <span className={`flex items-center gap-2.5 ${vertical ? 'flex-col' : ''}`}>
-        <Palette swatches={pencilSwatches} label={t('bible.marks.pencilColors')} variant={variant} open={tool.palette === 'pencil'} />
+      <span className={`flex items-center ${gap} ${vertical ? 'flex-col' : ''}`}>
+        <Palette swatches={pencilSwatches} label={t('bible.marks.pencilColors')} variant={variant} className={paletteClassName} open={tool.palette === 'pencil'} />
         {buttons.pencil}
       </span>
       {buttons.eraser}

@@ -1,7 +1,7 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import { AnalysisSermons, AnalysisSermonsPanel } from '@/components/bible/analysis/AnalysisSermons';
+import { AnalysisSermons, AnalysisSermonsMenu, AnalysisSermonsPanel } from '@/components/bible/analysis/AnalysisSermons';
 import { EngineCreateSermonModal } from '@/components/sermon/EngineCreateSermonModal';
 import { useEngineSermonsBuiltOnNote } from '@/hooks/useSermonNoteLinks';
 
@@ -24,12 +24,12 @@ jest.mock('@/components/sermon/EngineCreateSermonModal', () => ({
 const COPIED = 'Еф 1:3–4: "Благословен Бог и Отец Господа нашего Иисуса Христа, благословивший нас… так как Он избрал нас в Нем…"';
 const sermons = (list: Array<Partial<Sermon>>) => jest.mocked(useEngineSermonsBuiltOnNote).mockReturnValue(list as Sermon[]);
 
-describe('an analysis\'s sermons by its name', () => {
+describe('the analysis header sermon menu', () => {
   beforeEach(() => jest.clearAllMocks());
 
   it('offers «Проповедь +» while none is made from it, and opens «Новая проповедь» with the passage in full and the analysis', async () => {
     sermons([]);
-    render(<AnalysisSermons noteId="analysis-1" place="Еф 1:3–14" verse={COPIED} onOpen={jest.fn()} />);
+    render(<AnalysisSermonsMenu noteId="analysis-1" place="Еф 1:3–14" verse={COPIED} onOpen={jest.fn()} />);
     const capsule = screen.getByRole('button', { name: 'analysis.sermon.newAria' });
     expect(capsule).toHaveTextContent('analysis.sermon.new');
     await userEvent.click(capsule);
@@ -41,6 +41,49 @@ describe('an analysis\'s sermons by its name', () => {
     await userEvent.click(within(dialog).getByRole('button', { name: 'save' }));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
+
+  it('keeps linked sermons behind one compact trigger and opens the chosen sermon', async () => {
+    sermons([{ id: 's1', title: 'Благословен Бог' }, { id: 's2', title: '  ' }]);
+    const onOpen = jest.fn();
+    const user = userEvent.setup();
+    render(<AnalysisSermonsMenu noteId="analysis-1" place="Еф 1:3–14" verse={COPIED} onOpen={onOpen} />);
+
+    expect(within(screen.getByTestId('analysis-sermons')).getAllByRole('button')).toHaveLength(1);
+    const trigger = screen.getByRole('button', { name: 'analysis.sermon.openList' });
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    await user.click(trigger);
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByText('Благословен Бог')).toBeInTheDocument();
+    expect(screen.getByText('analysis.sermon.untitled')).toBeInTheDocument();
+
+    await user.keyboard('{Escape}');
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    expect(trigger).toHaveFocus();
+    await user.click(trigger);
+    await user.click(screen.getAllByRole('button', { name: 'analysis.sermon.open' })[0]);
+    expect(onOpen).toHaveBeenCalledWith('/sermons/s1');
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('can still create another sermon from the compact list', async () => {
+    sermons([{ id: 's1', title: 'Existing sermon' }]);
+    const user = userEvent.setup();
+    render(<AnalysisSermonsMenu noteId="analysis-1" place="Еф 1:3–14" verse={COPIED} onOpen={jest.fn()} />);
+
+    const trigger = screen.getByRole('button', { name: 'analysis.sermon.openList' });
+    await user.click(trigger);
+    await user.click(screen.getByRole('button', { name: 'analysis.sermon.another' }));
+    expect(screen.getByRole('dialog', { name: 'new sermon' })).toBeInTheDocument();
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    expect(jest.mocked(EngineCreateSermonModal)).toHaveBeenCalledWith(
+      expect.objectContaining({ sourceNoteIds: ['analysis-1'] }),
+      undefined,
+    );
+  });
+});
+
+describe('the reader badge sheet sermon capsules', () => {
+  beforeEach(() => jest.clearAllMocks());
 
   it('names each sermon made from it — a press opens it — and «+» makes another', async () => {
     sermons([{ id: 's1', title: 'Благословен Бог' }, { id: 's2', title: '  ' }]);

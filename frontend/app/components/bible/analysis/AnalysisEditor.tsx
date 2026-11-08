@@ -25,7 +25,7 @@ import { saveAnalysisHelpPrefs, useAnalysisHelpPrefs, useAnalysisHelpWritable } 
 import {
   ARROW, AnalysisHeader, AnalysisLine, OtherBibleNotice, PanelGlyph, UntieMark, type AnalysisDoor, type AnalysisMode, type LineDrag, type LineRole, type LineSteps, type LineWord, type WordDrag,
 } from './AnalysisParts';
-import { AnalysisSermons, AnalysisSermonsPanel } from './AnalysisSermons';
+import { AnalysisSermonsMenu, AnalysisSermonsPanel } from './AnalysisSermons';
 import { RelationGlyph } from './RelationParts';
 import { useAnalysisAddress } from './useAnalysisAddress';
 import { useAnalysisDeparture } from './useAnalysisDeparture';
@@ -304,7 +304,7 @@ export function AnalysisEditor({ opening, text, bookId, bible, locale, marks: le
   if (note.otherBible) {
     return createPortal(
       <div {...layer} role="dialog" aria-modal="true" aria-label={title} className="fixed inset-0 z-[120] flex flex-col bg-white text-gray-900 dark:bg-gray-950 dark:text-gray-100">
-        <AnalysisHeader title={title} parts="" mode={mode} onClose={close} backLabel={backLabel} door={doorOut} />
+        <AnalysisHeader title={title} shortTitle={place} parts="" mode={mode} onClose={close} backLabel={backLabel} door={doorOut} />
         <div className="min-w-0 flex-1 overflow-auto px-4 pb-24 pt-10 sm:pl-20 sm:pr-12"><OtherBibleNotice bible={note.otherBible} onUseBible={onUseBible ? (own) => { handOn(); onUseBible(own); } : undefined} /></div>
       </div>,
       document.body,
@@ -313,7 +313,7 @@ export function AnalysisEditor({ opening, text, bookId, bible, locale, marks: le
 
   return createPortal(
     <div {...layer} role="dialog" aria-modal="true" aria-label={title} className="fixed inset-0 z-[120] flex flex-col bg-white text-gray-900 dark:bg-gray-950 dark:text-gray-100">
-      <AnalysisHeader title={title} parts={t('analysis.partCount', { count: starts.length })} mode={mode}
+      <AnalysisHeader title={title} shortTitle={place} parts={t('analysis.partCount', { count: starts.length })} mode={mode}
         onMode={(value) => { setMode(value); setSelected(null); setMessage(null); }}
         canUndo={note.canUndo} onUndo={undo} onClose={close} backLabel={backLabel} door={doorOut} tools={marks.toolbar}
         allLinks={mode === 'view' && state.relations.length ? { on: allLinks, onToggle: () => setAllLinks(!allLinks) } : null}
@@ -323,7 +323,7 @@ export function AnalysisEditor({ opening, text, bookId, bible, locale, marks: le
         } : undefined}
 
         // On a screen without the side panel the sermons stand by the name; with it, in the panel (the owner, 31.10).
-        sermons={sermons ? <span className="lg:hidden"><AnalysisSermons {...sermons} /></span> : null} />
+        sermons={sermons ? <div className="shrink-0 lg:hidden"><AnalysisSermonsMenu {...sermons} /></div> : null} />
       <div className="flex min-h-0 flex-1">
         {/* The top padding leaves room for a mark's name over the first line, the left one for a top line's two arrows and
             its dot and a verse number hung in the margin, at every screen width. */}

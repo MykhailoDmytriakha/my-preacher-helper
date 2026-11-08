@@ -4807,6 +4807,7 @@
       "new": "Sermon",
       "newAria": "New sermon from the analysis of {{place}}",
       "another": "Another sermon from the analysis of {{place}}",
+      "openList": "Sermons · {{count}}",
       "open": "Open the sermon “{{title}}”",
       "untitled": "Untitled sermon",
       "linked": "will be linked to the sermon",

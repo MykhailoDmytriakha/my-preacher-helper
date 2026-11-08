@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowLeftIcon, ArrowUturnLeftIcon, ChevronLeftIcon, ChevronRightIcon, PencilSquareIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { ArrowLeftIcon, ArrowUturnLeftIcon, ChevronLeftIcon, ChevronRightIcon, EyeIcon, LinkIcon, PencilSquareIcon, XMarkIcon } from '@heroicons/react/24/outline';
 
 
 import { BibleIcon } from '@/components/bible/BibleIcon';
@@ -59,8 +59,8 @@ const RING: Record<LineRole, string> = {
 export type AnalysisDoor = { home: 'bible' | 'analyses'; href: (id: string | null) => string | null };
 
 /** The bar over the analysis: back to the text, the place and how many parts, «Правка»/«Просмотр», the marks' tools, undo, done. */
-export function AnalysisHeader({ title, parts, mode, onMode, canUndo, onUndo, onClose, backLabel, door, onEditVerses, tools, allLinks, sermons }: {
-  title: string; parts: string; mode: AnalysisMode; onClose: () => void;
+export function AnalysisHeader({ title, shortTitle = title, parts, mode, onMode, canUndo, onUndo, onClose, backLabel, door, onEditVerses, tools, allLinks, sermons }: {
+  title: string; shortTitle?: string; parts: string; mode: AnalysisMode; onClose: () => void;
   /** The modes and «Отменить» — absent where nothing here can be changed (an analysis over another Bible: its notice alone). */
   onMode?: (mode: AnalysisMode) => void; canUndo?: boolean; onUndo?: () => void;
   /** Where the way back leads, in words: the reader's text by default; Studies' list when opened there. */
@@ -79,55 +79,70 @@ export function AnalysisHeader({ title, parts, mode, onMode, canUndo, onUndo, on
   sermons?: ReactNode;
 }) {
   const { t } = useTranslation();
+  const back = backLabel ?? t('analysis.back');
+  const passage = <><span className="sm:hidden">{shortTitle}</span><span className="hidden sm:inline">{title}</span></>;
   return (
-    <header className="flex shrink-0 flex-wrap items-center gap-3 border-b border-gray-200 px-4 py-2.5 dark:border-gray-800 sm:px-5">
-      <button type="button" onClick={onClose} className={`inline-flex h-10 items-center gap-1.5 rounded-xl px-3 text-sm font-semibold ${OUTLINE}`}>
-        <ArrowLeftIcon className="h-4 w-4" aria-hidden="true" />{backLabel ?? t('analysis.back')}
-      </button>
-      {door ? (
-        <button type="button" onClick={door.onPress} aria-label={t(`analysis.door.${door.home}`)} className={`inline-flex h-10 items-center gap-1.5 rounded-xl border px-3 text-sm font-semibold transition ${PLACE_DOOR_TONES[door.home]}`}>
-          {door.home === 'bible' ? <BibleIcon className="h-4 w-4" aria-hidden="true" /> : <AnalysisIcon className="h-4 w-4" aria-hidden="true" />}
-          <span className="hidden sm:inline">{t(`analysis.door.${door.home}`)}</span>
+    <header className="relative z-10 grid shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-1 gap-y-1 border-b border-gray-200 px-2 py-1.5 dark:border-gray-800 sm:flex sm:flex-wrap sm:gap-3 sm:px-5 sm:py-2.5">
+      <div className="flex min-w-0 items-center gap-1 sm:contents">
+        <button type="button" onClick={onClose} aria-label={back} className={`inline-flex h-11 w-10 shrink-0 items-center justify-center gap-1.5 rounded-xl text-sm font-semibold sm:h-10 sm:w-auto sm:px-3 ${OUTLINE}`}>
+          <ArrowLeftIcon className="h-4 w-4" aria-hidden="true" /><span className="hidden sm:inline">{back}</span>
         </button>
-      ) : null}
-      {onEditVerses ? (
-        <button type="button" onClick={onEditVerses} aria-label={t('analysis.editVerses')} className="group/tip relative min-w-0 rounded-lg px-1 text-left hover:bg-gray-100 dark:hover:bg-gray-900">
-          <span className="flex items-center gap-1.5 truncate text-base font-bold">{title}<PencilSquareIcon className="h-4 w-4 shrink-0 text-gray-400" aria-hidden="true" /></span>
-          <span className="block text-xs text-gray-500 dark:text-gray-400">{parts}</span>
-          <HoverLabel text={t('analysis.editVerses')} from="left" />
-        </button>
-      ) : (
-        <div className="min-w-0">
-          <div className="truncate text-base font-bold">{title}</div>
-          <div className="text-xs text-gray-500 dark:text-gray-400">{parts}</div>
-        </div>
-      )}
-      {sermons}
+        {door ? (
+          <button type="button" onClick={door.onPress} aria-label={t(`analysis.door.${door.home}`)} className={`inline-flex h-11 w-10 shrink-0 items-center justify-center gap-1.5 rounded-xl border text-sm font-semibold transition sm:h-10 sm:w-auto sm:px-3 ${PLACE_DOOR_TONES[door.home]}`}>
+            {door.home === 'bible' ? <BibleIcon className="h-4 w-4" aria-hidden="true" /> : <AnalysisIcon className="h-4 w-4" aria-hidden="true" />}
+            <span className="hidden sm:inline">{t(`analysis.door.${door.home}`)}</span>
+          </button>
+        ) : null}
+        {onEditVerses ? (
+          <button type="button" onClick={onEditVerses} aria-label={t('analysis.editVerses')} title={title} className="group/tip relative min-w-0 flex-1 rounded-lg px-1 text-left hover:bg-gray-100 dark:hover:bg-gray-900 sm:flex-initial">
+            <span className="flex items-center gap-1 text-sm font-bold sm:gap-1.5 sm:text-base">
+              <span className="min-w-0 max-sm:line-clamp-2 max-sm:leading-4 sm:truncate">{passage}</span><PencilSquareIcon className="h-4 w-4 shrink-0 text-gray-400" aria-hidden="true" />
+            </span>
+            <span className="block truncate text-xs text-gray-500 dark:text-gray-400">{parts}</span>
+            <HoverLabel text={t('analysis.editVerses')} from="left" />
+          </button>
+        ) : (
+          <div className="min-w-0 flex-1 sm:flex-initial" title={title}>
+            <div className="text-sm font-bold max-sm:line-clamp-2 max-sm:leading-4 sm:truncate sm:text-base">{passage}</div>
+            <div className="truncate text-xs text-gray-500 dark:text-gray-400">{parts}</div>
+          </div>
+        )}
+        {sermons}
+      </div>
       {onMode ? (
-        <div className="mx-auto flex gap-1 rounded-xl bg-gray-100 p-1 dark:bg-gray-900" role="group" aria-label={t('analysis.modes')}>
-          {(['edit', 'view'] as const).map((value) => (
-            <button key={value} type="button" aria-pressed={mode === value} onClick={() => onMode(value)}
-              className={`h-9 rounded-lg px-4 text-sm font-semibold ${mode === value ? 'bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-white' : 'text-gray-600 dark:text-gray-300'}`}>
-              {t(value === 'edit' ? 'analysis.modeEdit' : 'analysis.modeView')}
+        <div className="col-span-2 col-start-1 row-start-2 flex min-w-0 items-center gap-0.5 sm:contents">
+          <div className="flex shrink-0 gap-0.5 rounded-xl bg-gray-100 p-0.5 dark:bg-gray-900 sm:mx-auto sm:gap-1 sm:p-1" role="group" aria-label={t('analysis.modes')}>
+            {(['edit', 'view'] as const).map((value) => {
+              const label = t(value === 'edit' ? 'analysis.modeEdit' : 'analysis.modeView');
+              const Icon = value === 'edit' ? PencilSquareIcon : EyeIcon;
+              return (
+                <button key={value} type="button" aria-label={label} aria-pressed={mode === value} onClick={() => onMode(value)}
+                  className={`inline-flex h-10 min-w-10 items-center justify-center rounded-lg px-1 text-xs font-semibold sm:h-9 sm:px-4 sm:text-sm ${mode === value ? 'bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-white' : 'text-gray-600 dark:text-gray-300'}`}>
+                  <Icon className="h-4 w-4 min-[390px]:hidden" aria-hidden="true" />
+                  <span className="hidden min-[390px]:inline">{label}</span>
+                </button>
+              );
+            })}
+          </div>
+          {/* Keep the switch's slot stable across modes so its appearance does not move the mode selector. */}
+          <span data-testid="analysis-all-links" className={`inline-flex shrink-0 ${allLinks ? '' : 'invisible'}`}>
+            <Switch checked={allLinks?.on ?? false} onClick={allLinks?.onToggle} aria-label={t('analysis.view.allLinks')}
+              className="relative max-sm:gap-0 max-sm:px-0" label={<>
+                <span className="hidden sm:inline">{t('analysis.view.allLinks')}</span>
+                <LinkIcon aria-hidden="true" className={`pointer-events-none absolute top-1/2 z-10 h-3 w-3 -translate-y-1/2 sm:hidden ${allLinks?.on ? 'left-1 text-white' : 'right-1 text-gray-600 dark:text-gray-200'}`} />
+              </>} />
+          </span>
+          {tools}
+          {onUndo ? (
+            <button type="button" disabled={!canUndo} onClick={onUndo} aria-label={t('analysis.undo')} aria-keyshortcuts="Meta+Z Control+Z"
+              className={`group/tip relative inline-flex h-10 w-10 shrink-0 items-center justify-center gap-1.5 rounded-xl text-sm font-semibold disabled:opacity-40 sm:w-auto sm:px-3 ${OUTLINE}`}>
+              <ArrowUturnLeftIcon className="h-4 w-4" aria-hidden="true" /><span className="hidden sm:inline">{t('analysis.undo')}</span>
+              {mode === 'edit' ? <HoverLabel text={t('analysis.undoKeys', { keys: withModifier('Z') })} from="left" /> : null}
             </button>
-          ))}
+          ) : null}
         </div>
-      ) : <div className="mx-auto" />}
-      {/* «Все связи» holds its room in both modes and shows only where it acts, so a change of mode moves nothing in the bar
-          (BUG-20261031-analysis-mode-switch-jumps: the switch above, centred by its margins, jumped 65 px). Hidden by
-          visibility, it takes no press and no focus. */}
-      <span data-testid="analysis-all-links" className={allLinks ? 'inline-flex' : 'invisible inline-flex'}>
-        <Switch checked={allLinks?.on ?? false} onClick={allLinks?.onToggle} label={t('analysis.view.allLinks')} />
-      </span>
-      {tools}
-      {onUndo ? (
-        <button type="button" disabled={!canUndo} onClick={onUndo} aria-keyshortcuts="Meta+Z Control+Z"
-          className={`group/tip relative inline-flex h-10 items-center gap-1.5 rounded-xl px-3 text-sm font-semibold disabled:opacity-40 ${OUTLINE}`}>
-          <ArrowUturnLeftIcon className="h-4 w-4" aria-hidden="true" />{t('analysis.undo')}
-          {mode === 'edit' ? <HoverLabel text={t('analysis.undoKeys', { keys: withModifier('Z') })} /> : null}
-        </button>
       ) : null}
-      <button type="button" onClick={onClose} className="h-10 rounded-xl bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700">{t('analysis.done')}</button>
+      <button type="button" onClick={onClose} className={`col-start-2 row-start-1 h-11 rounded-xl bg-indigo-600 px-2.5 text-sm font-semibold text-white hover:bg-indigo-700 sm:h-10 sm:px-4 ${onMode ? '' : 'sm:ml-auto'}`}>{t('analysis.done')}</button>
     </header>
   );
 }
