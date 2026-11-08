@@ -15,7 +15,7 @@ import { resolveAppLocale } from '@/utils/appLocale';
 import { getLocalizedAbbrev, getLocalizedBookName } from '@/utils/bibleBooks';
 import { wayBackKind } from '@/utils/bibleLink';
 import { BIBLES, type BibleId } from '@/utils/bibles';
-import { bookSlug, fetchBookText, verseWords, type BookText } from '@/utils/bibleText';
+import { bookSlug, verseWords, type BookText } from '@/utils/bibleText';
 import { actedVerses, linkOnScreen, type SeenVerses } from '@/utils/placeTrail';
 import { revealBelow } from '@/utils/revealBelow';
 import { BIBLE_READER_COLORS } from '@/utils/themeColors';
@@ -46,6 +46,7 @@ import { echoedPosition, readingSurface, SCROLL_ECHO_MS } from './readingSurface
 import { openedAlone } from './search/foundInBible';
 import { useFoundInReader } from './search/useFoundInReader';
 import { useBookCrossRefs } from './useBookCrossRefs';
+import { useBookOpening, type BookOpeningStatus } from './useBookOpening';
 import { useBookUsage } from './useBookUsage';
 import { chapterAtLine, useChapterWindow } from './useChapterWindow';
 import { useFollowAfterClose } from './useFollowAfterClose';
@@ -85,7 +86,6 @@ type BibleBookReaderProps = {
   onChangeBible: (bible: BibleId) => void;
 };
 
-type LoadState = { status: 'loading' } | { status: 'ready'; text: BookText } | { status: 'error' };
 
 /** How long the verse stays lit before it starts to fade (the owner, 2026-10-15: five seconds). */
 const ARRIVAL_LIT_MS = 5000;
@@ -159,8 +159,22 @@ function ChapterControl({ bookId, bible, locale, current, verse, text, wide, onO
 }
 
 /** While the text is on its way, and when it could not be opened. */
-function LoadNotice({ status, onRetry }: { status: LoadState['status']; onRetry: () => void }) {
+function LoadNotice({ status, onRetry, onReadNow }: {
+  status: BookOpeningStatus;
+  onRetry: () => void;
+  onReadNow: () => void;
+}) {
   const { t } = useTranslation();
+  if (status === 'waiting-for-offline') {
+    return (
+      <div className="flex flex-col items-center gap-2 py-10 text-center text-sm text-gray-500 dark:text-gray-400">
+        <p role="status">{t('bible.preparingOfflineReload')}</p>
+        <button type="button" className="min-h-11 rounded-xl border px-4 font-semibold text-indigo-600 dark:text-indigo-300" onClick={onReadNow}>
+          {t('bible.readBeforeOfflineReady')}
+        </button>
+      </div>
+    );
+  }
   if (status === 'loading') {
     return <p role="status" className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">{t('bible.loading')}</p>;
   }
@@ -357,7 +371,6 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, dec
   const router = useRouter();
   const locale = resolveAppLocale(interfaceLanguage);
   const wide = useMediaQuery('(min-width: 768px)', false);
-  const [state, setState] = useState<LoadState>({ status: 'loading' });
   const [attempt, setAttempt] = useState(0);
   const [currentChapter, setCurrentChapter] = useState(1);
   const [currentVerse, setCurrentVerse] = useState(1);
@@ -402,17 +415,7 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, dec
   const placeLabel = useCallback(({ chapter, verse }: Place) => `${abbrev} ${chapter}:${verse}`, [abbrev]);
   const readingLabel = useCallback((place: Place) => t('bible.minimapReading', { place: placeLabel(place) }), [placeLabel, t]);
 
-  useEffect(() => {
-    let cancelled = false;
-    setState({ status: 'loading' });
-    fetchBookText(bookId, bible).then(
-      (text) => { if (!cancelled) setState({ status: 'ready', text }); },
-      () => { if (!cancelled) setState({ status: 'error' }); }
-    );
-    return () => { cancelled = true; };
-  }, [bible, bookId, attempt]);
-
-  const text = state.status === 'ready' ? state.text : null;
+  const { text, status: openingStatus, readNow } = useBookOpening(bookId, bible, attempt);
   // Cross references: the chips with the verses and the window of one verse's links.
   const crossRefs = useBookCrossRefs(bookId, bible, text, 'reader');
   const closeCrossRefs = crossRefs.close;
@@ -1066,7 +1069,7 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, dec
       ) : null}
       {trail.underLine}
 
-      <LoadNotice status={state.status} onRetry={() => setAttempt((value) => value + 1)} />
+      <LoadNotice status={openingStatus} onRetry={() => setAttempt((value) => value + 1)} onReadNow={readNow} />
       <div ref={marksDecisionRef}>{marks.syncStatus}</div>
 
       <div className={`flex items-start gap-5 ${frame.row}`}>

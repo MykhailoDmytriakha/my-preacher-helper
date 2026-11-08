@@ -237,7 +237,7 @@ describe('one owner for offline navigation caching', () => {
     expect(entryBehavior.historyPreserved).toBe(true);
   });
 
-  it('still registers the actual application service worker', () => {
-    expect(entryBehavior.registrations).toEqual([{ url: 'https://app.test/sw.js', scope: '/' }]);
+  it('leaves service worker registration to the initial HTML', () => {
+    expect(entryBehavior.registrations).toEqual([]);
   });
 });

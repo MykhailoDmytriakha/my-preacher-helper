@@ -49,6 +49,8 @@ const typegenDistDir = process.env.NEXT_TYPEGEN_DIST_DIR;
 const withSerwist = withSerwistInit({
   swSrc: "app/sw.ts",
   swDest: "public/sw.js",
+  // The initial HTML starts the one registration while the app code is still loading.
+  register: false,
   // Seen-page Flight payloads and the precached shell own offline navigation.
   // The optional HTML helper duplicates those writes and throws on late offline fetches.
   cacheOnNavigation: false,
@@ -207,6 +209,7 @@ const nextConfig = {
   env: {
     NEXT_PUBLIC_APP_VERSION: (process.env.VERCEL_GIT_COMMIT_SHA || "dev").slice(0, 7),
     NEXT_PUBLIC_BUILD_TIME: new Date().toISOString(),
+    NEXT_PUBLIC_APP_WORKER_ENABLED: swDisabled ? "false" : "true",
     // Always defined, so the build can fold the test-login condition away (utils/testLogin.ts):
     // an unset NEXT_PUBLIC_ variable stays in the bundle as a runtime lookup, and the test
     // account's credentials would ship with it. "true" only where a Preview opted in.

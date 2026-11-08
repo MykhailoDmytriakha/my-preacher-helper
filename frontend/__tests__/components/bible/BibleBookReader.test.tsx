@@ -91,6 +91,27 @@ beforeEach(() => {
 });
 
 describe('BibleBookReader', () => {
+  it.each(['worker ready', 'read now'])('holds the first text until the offline opening is ready or the reader chooses to continue: %s', async (exit) => {
+    let ready!: () => void;
+    const startup = new Promise<void>(resolve => { ready = resolve; });
+    Reflect.set(window, '__mphOfflineWorkerReady', startup);
+    try {
+      const { container } = render(
+        <BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={null} onOpenBook={jest.fn()} />,
+      );
+      await act(async () => {});
+      expect(global.fetch).toHaveBeenCalledWith('/bible-text/rst/v1/ruth.json', expect.anything());
+      expect(container.querySelector('[data-verse="1:1"]')).not.toBeInTheDocument();
+      const readNow = screen.getByRole('button', { name: 'bible.readBeforeOfflineReady' });
+      if (exit === 'worker ready') await act(async () => { ready(); });
+      else await userEvent.click(readNow);
+      expect(await screen.findByText('Павел, Апостол')).toBeInTheDocument();
+    } finally {
+      ready();
+      Reflect.deleteProperty(window, '__mphOfflineWorkerReady');
+    }
+  });
+
   it.each([true, false])('claims shell panes only for a mounted wide reader: wide=%s', async (wide) => {
     screenWidth = wide ? 1024 : 390;
     const { container, unmount } = render(

@@ -466,6 +466,8 @@
     "notFound": "There is no such book. Open the list of books.",
     "minimap": "Book minimap: scroll it with the wheel or a finger, click a place to move the text there",
     "minimapReading": "Reading {{place}}",
+    "preparingOfflineReload": "Preparing this book to reopen offline…",
+    "readBeforeOfflineReady": "Read now",
     "offlineSaveFailed": "Could not save all Bible data on this device: some books or word search may be unavailable offline.",
     "goToNotFound": "No such book or chapter — check the reference.",
     "endOfBook": "End of the book",

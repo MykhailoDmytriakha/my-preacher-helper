@@ -14,6 +14,7 @@ import { AuthProvider } from "./providers/AuthProvider";
 import { ConnectionProvider } from "./providers/ConnectionProvider";
 import { QueryProvider } from "./providers/QueryProvider";
 import { TextScaleProvider } from "./providers/TextScaleProvider";
+import { OFFLINE_WORKER_START_SCRIPT } from "./utils/offlineWorkerStartup";
 import { APP_THEME_COLORS } from "./utils/themeColors";
 import { THEME_INIT_SCRIPT } from "./utils/themeInitScript";
 import { NuqsAdapter } from "nuqs/adapters/next/app";
@@ -56,6 +57,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
+        {process.env.NEXT_PUBLIC_APP_WORKER_ENABLED === "true" ? (
+          <script dangerouslySetInnerHTML={{ __html: OFFLINE_WORKER_START_SCRIPT }} />
+        ) : null}
       </head>
       <body
         className={`${interSans.variable} ${robotoMono.variable} antialiased`}
