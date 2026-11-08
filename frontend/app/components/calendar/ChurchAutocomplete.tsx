@@ -10,7 +10,7 @@ import { useTranslation } from "@locales/useTranslation";
 interface ChurchAutocompleteProps {
     initialValue?: Church;
     value?: Church;
-    onChange: (church: Church) => void;
+    onChange: (church: Church, detail: 'church' | 'churchCity') => void;
 }
 
 /**
@@ -32,9 +32,9 @@ export default function ChurchAutocomplete({
     );
 
     const church = value ?? localChurch;
-    const publish = (next: Church) => {
+    const publish = (next: Church, detail: 'church' | 'churchCity') => {
         setChurch(next);
-        onChange(next);
+        onChange(next, detail);
     };
 
     return (
@@ -48,7 +48,8 @@ export default function ChurchAutocomplete({
                     value={church.name ? church : undefined}
                     // Clearing the name keeps the city the person already typed: they are
                     // editing one record, and an empty name is not a reason to lose the city.
-                    onChange={(next) => publish({ id: next?.id ?? church.id, name: next?.name ?? "", city: next?.city || church.city || "" })}
+                    onChange={(next) => publish({ id: next?.id ?? church.id, name: next?.name ?? "", city: next?.city || church.city || "" }, 'church')}
+                    onSelect={next => publish(next, 'church')}
                     hideLabel
                     showHistoryCount
                     inputClassName={`${FIELD_INPUT} pr-12`}
@@ -63,7 +64,7 @@ export default function ChurchAutocomplete({
                     id="church-city"
                     type="text"
                     value={church.city || ""}
-                    onChange={(e) => publish({ ...church, city: e.target.value })}
+                    onChange={(e) => publish({ ...church, city: e.target.value }, 'churchCity')}
                     placeholder={t('calendar.churchAutocomplete.cityPlaceholder')}
                     className={FIELD_INPUT}
                 />

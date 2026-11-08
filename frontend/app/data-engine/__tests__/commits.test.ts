@@ -267,6 +267,27 @@ describe('Durable commit requests', () => {
     expect(last.groupMeetingFieldActions?.location).toMatchObject({ before: 'Side room', after: 'Library', predecessorOperationId: first.id });
   });
 
+  it('never stamps an inferred church as a choice when only the city was edited', async () => {
+    const s = setup();
+    const { queue } = s.makeQueue();
+    const date = { id: 'date', date: '2026-12-13', createdAt: '2026-11-08', status: 'planned',
+      church: { id: '', name: '', city: '' } };
+    const base: ResourceSnapshot = {
+      resource: { collection: 'sermons', id: 'sermon' },
+      value: { userId: 'owner', title: 'Sermon', verse: 'John 3:16', date: '2026-11-08', thoughts: [], preachDates: [date] },
+      metadata: { protocol: 1, generation: 'sermon', revision: 1, deleted: false },
+    };
+    const editor = new DataSession(base);
+    editor.edit({ ...base.value, preachDates: [{ ...date, church: { id: 'fallback', name: 'Default church', city: 'City' }, audience: 'Leaders' }] });
+    const time = { earliestMs: 1_800_000_000_020, latestMs: 1_800_000_000_025 };
+    const next = await queue.save('date', editor.checkpoint(), { preachDateFieldSave: {
+      rowId: date.id, rowCreatedAt: date.createdAt, fields: { churchCity: true, audience: true }, time,
+    } });
+    expect(next?.preachDateFieldActions).toEqual({
+      audience: { rowId: date.id, rowCreatedAt: date.createdAt, before: null, after: 'Leaders', observedRevision: 1, time },
+    });
+  });
+
   it('carries each group title through the durable queue and preserves its exact ancestor across an earlier ACK', async () => {
     const s = setup();
     const { queue } = s.makeQueue();

@@ -43,6 +43,25 @@ describe('manual form scope', () => {
     } });
   });
 
+  it('keeps authored preaching details across recovery and timestamps them only on explicit Save', async () => {
+    const church = { id: 'church', name: 'Church', city: 'Town' };
+    const date = { id: 'date', date: '2026-12-13', createdAt: '2026-11-08', status: 'planned', church };
+    const base = snapshot();
+    base.value = { ...base.value, preachDates: [date] };
+    const test = fixture([['preachDates']], base);
+    const scope = ManualScope.begin(test.options);
+    await scope.update(value => ({ ...value, preachDates: [{ ...date, church: { ...church, city: 'Other town' } }] }),
+      { rowId: date.id, detail: 'churchCity' });
+    await scope.update(value => ({ ...value, preachDates: [{ ...date, church: { ...church, city: 'Other town' }, notes: 'Private note' }] }));
+    const restored = ManualScope.restore(test.options, test.disk());
+    expect(test.save).not.toHaveBeenCalled();
+    const time = { earliestMs: 1_800_000_000_020, latestMs: 1_800_000_000_025 };
+    await restored.save({ rowId: date.id, time });
+    expect(test.save.mock.calls[0][2]).toMatchObject({
+      preachDateFieldSave: { rowId: date.id, rowCreatedAt: date.createdAt, fields: { churchCity: true }, time },
+    });
+  });
+
   it('pins pristine A at open; remote C before first typing cannot become the Save baseline', async () => {
     const test = fixture();
     const scope = ManualScope.begin(test.options);

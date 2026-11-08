@@ -396,7 +396,7 @@ export function mergeFields(base: FieldValue, mine: FieldValue, theirs: FieldVal
   if (equalValues(theirs, base) || equalValues(mine, theirs)) return { value: mine, conflicts: [] };
   const marks = verseMarksAt(path);
   if (marks) return mergeVerseMarks(marks, base, mine, theirs, path);
-  if (mergedWhole(path)) return { value: mine, conflicts: [{ path, base, mine, theirs }] };
+  if (mergedWhole(path, base.value, mine.value, theirs.value)) return { value: mine, conflicts: [{ path, base, mine, theirs }] };
   const newMap = !base.exists && path.length > 0 && !path[path.length - 1].startsWith('id:');
   if (mine.exists && theirs.exists && object(mine.value) && object(theirs.value)
     && !isAtomicScriptureReference(path) && (newMap || (base.exists && object(base.value)))) {
@@ -456,7 +456,15 @@ function mergeArrayFields(base: FieldValue, mine: FieldValue, theirs: FieldValue
  */
 const WHOLE_VALUES: readonly (readonly string[])[] = [['analysis']];
 
-function mergedWhole(path: readonly string[]): boolean {
+function mergedWhole(path: readonly string[], base: Json | undefined, mine: Json | undefined, theirs: Json | undefined): boolean {
+  if (path[0] === 'preachDates' && path[1]?.startsWith('id:') && object(base) && object(mine) && object(theirs)) {
+    // An edit of the original row cannot be carried onto a replacement using the same ID.
+    if (path.length === 2) return base.createdAt !== mine.createdAt || base.createdAt !== theirs.createdAt;
+    // A changed congregation cannot inherit individual properties from a competing church.
+    if (path.length === 3 && path[2] === 'church') {
+      return base.id !== mine.id || base.id !== theirs.id || base.name !== mine.name || base.name !== theirs.name;
+    }
+  }
   return WHOLE_VALUES.some(whole => equalValues([...whole], [...path]));
 }
 

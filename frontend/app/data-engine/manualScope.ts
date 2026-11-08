@@ -2,6 +2,7 @@ import { CaptureContinuations } from './captureContinuations';
 import { datedRowTarget } from './datedRowAction';
 import { stageMeetingFieldCaptures } from './groupMeetingFieldAction';
 import { retireLocalWrite, type LocalWriteHandoff } from './localWriteback';
+import { stagePreachDateField } from './preachDateFieldAction';
 import { equalValues, getResourcePolicy, isValidIdentifier } from './protocol';
 import { recoverySources, type RecoverySource } from './recoveryPresence';
 import { recoveryOrigins, validateRecoveryOrigins, type RecoveryOrigin } from './recoverySource';
@@ -11,6 +12,7 @@ import { canReplaceSnapshot } from './snapshotFreshness';
 import type { CommitRequest } from './commits';
 import type { DatedRowActionCapture } from './datedRowAction';
 import type { GroupMeetingFieldCaptures, GroupMeetingFieldInput } from './groupMeetingFieldAction';
+import type { PreachDateFieldDraft, PreachDateFieldInput, PreachDateFieldSave } from './preachDateFieldAction';
 import type { SessionCheckpoint } from './session';
 import type { DocumentData, FieldValue, Json, ResourceRef, ResourceSnapshot } from './types';
 
@@ -42,6 +44,7 @@ export interface ManualScopeRecord {
   stage: FieldValue[];
   savedSelection: FieldValue[];
   groupMeetingFieldCaptures?: GroupMeetingFieldCaptures;
+  preachDateFieldDraft?: PreachDateFieldDraft;
   /** Immutable per opening; older saved records may lack this evidence. */
   openingSelection?: FieldValue[];
   /** Bounds canonical Save identities belonging to this opening, including retired capture returns. */
@@ -54,7 +57,8 @@ export interface ManualScopeRecord {
   /** Only a Save captured by this recovered scope may settle its sources after ACK. */
   recoverySavedRequestId?: string;
 }
-export type ManualSaveOptions = { predecessorId?: string | null; preachDateAction?: DatedRowActionCapture; meetingDateAction?: DatedRowActionCapture; groupMeetingFieldCaptures?: GroupMeetingFieldCaptures };
+export type ManualFieldInput = GroupMeetingFieldInput | PreachDateFieldInput;
+export type ManualSaveOptions = { predecessorId?: string | null; preachDateAction?: DatedRowActionCapture; meetingDateAction?: DatedRowActionCapture; groupMeetingFieldCaptures?: GroupMeetingFieldCaptures; preachDateFieldSave?: PreachDateFieldSave };
 export type ManualSave = (scopeId: string, captured: SessionCheckpoint, options: ManualSaveOptions) => Promise<ManualSavedIntent>;
 export interface ManualScopePort {
   capture(): ManualCapture;
@@ -170,7 +174,7 @@ export class ManualScope {
     return { capturing: this.captures.capturing, ...(choiceRequired ? { choiceRequired: true as const } : {}), ...(this.captures.failed ? { captureFailed: true } : {}), record: copy(this.record), openingValue: opening ? project(basis, this.record.selection, opening) : null, value: this.value(), dirty: !equalValues(this.record.stage, this.record.savedSelection), durable: this.durable };
   }
 
-  update(updater: (current: DocumentData) => DocumentData, meetingFieldInput?: GroupMeetingFieldInput): Promise<void> {
+  update(updater: (current: DocumentData) => DocumentData, fieldInput?: ManualFieldInput): Promise<void> {
     this.assertActive();
     const current = this.value();
     const next = copy(updater(copy(current)));
@@ -178,7 +182,10 @@ export class ManualScope {
     const selectedOnly = project(current, this.record.selection, stage);
     if (!equalValues(next, selectedOnly)) throw new Error('Manual update changed an unselected field');
     if (this.record.resource.collection === 'groups') {
-      this.record.groupMeetingFieldCaptures = stageMeetingFieldCaptures(this.record.groupMeetingFieldCaptures, current, selectedOnly, meetingFieldInput);
+      this.record.groupMeetingFieldCaptures = stageMeetingFieldCaptures(this.record.groupMeetingFieldCaptures, current, selectedOnly, fieldInput && 'field' in fieldInput ? fieldInput : undefined);
+    }
+    if (this.record.resource.collection === 'sermons' && fieldInput && 'detail' in fieldInput) {
+      this.record.preachDateFieldDraft = stagePreachDateField(this.record.preachDateFieldDraft, fieldInput, current, selectedOnly);
     }
     this.record.stage = stage;
     this.record.generation += 1;
@@ -216,6 +223,9 @@ export class ManualScope {
     const admitted = this.options.port.admitSave?.(captured.scopeId, frozen);
     const dateTarget = datedRowTarget(captured.baseline.resource.collection);
     const dateAction = action && copy(action);
+    const detail = captured.preachDateFieldDraft;
+    const preachDateFieldSave = detail && dateTarget?.evidence === 'preachDateAction' && dateAction?.rowId === detail.rowId
+      ? { ...detail, time: dateAction.time } : undefined;
     this.tail = { generation: captured.generation, stage: copy(captured.stage) };
     const saving = this.enqueuePersistence(this.captures.register(async captureComplete => {
       if (!admitted) this.assertCurrent();
@@ -235,6 +245,7 @@ export class ManualScope {
         predecessorId: predecessor?.id ?? null,
         ...(dateTarget && dateAction && { [dateTarget.evidence]: dateAction }),
         ...(captured.groupMeetingFieldCaptures && { groupMeetingFieldCaptures: captured.groupMeetingFieldCaptures }),
+        ...(preachDateFieldSave && { preachDateFieldSave }),
       });
       if (!admitted) this.assertCurrent();
       validateIntent(request, this.options);
@@ -244,7 +255,10 @@ export class ManualScope {
       if (captured.recoveryOrigins?.length) this.record.recoverySavedRequestId = request.id;
       this.record.savedSelection = copy(captured.stage);
       this.record.savedGeneration = captured.generation;
-      if (this.record.generation === captured.generation) delete this.record.groupMeetingFieldCaptures;
+      if (this.record.generation === captured.generation) {
+        delete this.record.groupMeetingFieldCaptures;
+        delete this.record.preachDateFieldDraft;
+      }
       captureComplete();
       // The receipt is local evidence even after UI authority ends; later words stay separate.
       await (admitted ? this.writeLocal() : this.write());
@@ -278,6 +292,7 @@ export class ManualScope {
       this.captures.retire(captures);
       this.record.stage = copy(this.record.savedSelection);
       delete this.record.groupMeetingFieldCaptures;
+      delete this.record.preachDateFieldDraft;
       await this.writeLocal();
     });
   }

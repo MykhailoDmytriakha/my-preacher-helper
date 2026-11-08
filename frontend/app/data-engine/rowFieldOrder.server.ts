@@ -1,5 +1,5 @@
 import { boundedActionTime, compareActionTime } from './actionClock';
-import { object } from './fieldValues';
+import { equalValues, object } from './fieldValues';
 import { boundedRowId, isRowChange, matchesRowAction, proofRevision, replaceExistingRowField, rowConflictPath, rowConflictValue } from './rowFieldAction';
 
 import type { ActionTime } from './actionClock';
@@ -11,7 +11,7 @@ type Update = Extract<DataCommand, { kind: 'update' }>;
 export function readRowAction<Value extends RowValue>(command: Update, raw: unknown, target: RowFieldTarget<Value>,
   serverMs: number): RowFieldEvidence<Value> | undefined {
   if (!object(raw) || !boundedRowId(raw.rowId) || !target.accepts(raw.before) || !target.accepts(raw.after)
-    || raw.before === raw.after || !proofRevision(raw.observedRevision) || !Number.isFinite(serverMs)) return undefined;
+    || equalValues(raw.before, raw.after) || !proofRevision(raw.observedRevision) || !Number.isFinite(serverMs)) return undefined;
   const time = boundedActionTime(raw.time);
   if (!time || time.earliestMs > serverMs + 5) return undefined;
   const action = { rowId: raw.rowId, before: raw.before, after: raw.after, observedRevision: raw.observedRevision, time };
@@ -29,7 +29,7 @@ export function orderConcurrentRowField<Value extends RowValue>(command: Update,
     command: Update; chronology: number; displaced?: DisplacedRowField<Value>;
   } {
   const chronology = stored.time ? compareActionTime(action.time, stored.time) : 0;
-  if (!stored.time || !chronology || stored.value === action.after) return { command, chronology };
+  if (!stored.time || !chronology || equalValues(stored.value, action.after)) return { command, chronology };
   const incomingWins = chronology > 0;
   const changes = command.changes.map(change => isRowChange(change, target) ? {
     ...change,

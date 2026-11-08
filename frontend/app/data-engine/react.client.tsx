@@ -39,6 +39,7 @@ import type { EditorRecord, EditorState, RecoveryCheckpoint } from './controller
 import type { DatedRowActionCapture } from './datedRowAction';
 import type { ManagedEditor, ManagedManualForm, ManualRecoveryPolicy } from './engine';
 import type { GroupMeetingField, GroupMeetingFieldInput } from './groupMeetingFieldAction';
+import type { ManualFieldInput } from './manualScope';
 import type { ManualPath } from './manualScope';
 import type { StoredManualScope } from './manualScopes.client';
 import type { MembershipDelivery } from './membershipDelivery';
@@ -1278,8 +1279,8 @@ export function useDataForm(resource: ResourceRef | null, slot: string, selectio
       const controller = new AbortController(); proposals.pending.add(controller);
       return run(form => form.propose(producer, controller.signal)).finally(() => proposals.pending.delete(controller));
     },
-    update: (updater: (draft: DocumentData) => DocumentData, meetingFieldInput?: GroupMeetingFieldInput) =>
-      run(form => form.update(updater, meetingFieldInput), false),
+    update: (updater: (draft: DocumentData) => DocumentData, fieldInput?: ManualFieldInput) =>
+      run(form => form.update(updater, fieldInput), false),
     captureMeetingField: (field: GroupMeetingField, rowId: string): GroupMeetingFieldInput | undefined => {
       const time = owner && current() && actionClock.capture(owner);
       return time ? { field, rowId, time } : undefined;

@@ -7389,3 +7389,13 @@ The durable meeting form now captures each short field's action time and exact r
 Four original behavior regressions and four review regressions went red to green. 449 related tests, TypeScript, scoped lint and the production-mode local build passed. Six scenarios passed in Chrome at 390 and 1280 pixels with guarded local Auth and Firestore. Both original orders, independent fields, restore after reload, and a stored blank from a previously omitted value were verified. Visual evidence is in `artifacts/action-chronology-356/group-meeting-fields-verified`. The broader chronology audit remains open.
 
 For authorized production acceptance, verify the deployed revision and worker. Use two profiles of one account and one disposable group. Repeat both action orders for each field, with the phone delivering last. Restore through Location and audience history, reload, verify the date and second meeting, and close both profiles.
+
+## BUG-20261016-engine-asks-instead-of-chronology · Preaching date audience, city and church
+
+Open Sermons, select an existing sermon, and edit an existing row in Preaching dates. The same short detail used to conflict in both action orders, and the first delivered change stayed canonical.
+
+The pinned form now records which details the person edited and gives them the explicit Save time. Independent changes still merge. A city belongs to the shown church. A selected church is one value, including its own optional city. Ordinary conflict handling also protects row and church identity without an action clock. History restores through the normal form and preserves the date, status, notes and the second row.
+
+Eight original regressions went from red to green. 463 related tests, TypeScript, scoped lint, independent code review and the local production-mode build passed. Twelve Chrome scenarios on local Auth and Firestore covered both orders, explicit selection, omitted city, separate fields, retained choices and restore after reload. Visual evidence is in `artifacts/action-chronology-356/preach-short-fields-verified`. The rest of the chronology audit remains open.
+
+For authorized production acceptance, verify the revision and worker. Repeat both orders in two profiles on a disposable sermon, with the offline phone delivering last. Check explicit selection without a city, history restore, reload, and the other fields and rows. Close both profiles.

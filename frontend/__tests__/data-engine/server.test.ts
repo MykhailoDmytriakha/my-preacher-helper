@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { isCollectionServed } from '@/data-engine/activation';
-import { DataEngineServerError, listBibleMarkHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listPreachDateHistory, listServiceOrderTitleHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
+import { DataEngineServerError, listBibleMarkHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listPreachDateFieldHistory, listPreachDateHistory, listServiceOrderTitleHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
 import { collectionHeadId, HEADS_COLLECTION, sequenceId } from '@/data-engine/serverFeed';
 import { DataSession } from '@/data-engine/session';
 import type { DataCommand, ResourceSnapshot } from '@/data-engine/types';
@@ -1024,6 +1024,124 @@ describe('transactional DataEngine server', () => {
     } else {
       expect(next).toMatchObject({ kind: 'conflict', snapshot: { value: { meetingDates: [accepted] } } });
     }
+  });
+
+  it.each([
+    { field: 'audience', offset: 20, kind: 'acknowledged' },
+    { field: 'audience', offset: 60, kind: 'acknowledged' },
+    { field: 'churchCity', offset: 20, kind: 'acknowledged' },
+    { field: 'churchCity', offset: 60, kind: 'acknowledged' },
+    { field: 'churchIdentity', offset: 20, kind: 'acknowledged' },
+    { field: 'churchIdentity', offset: 60, kind: 'acknowledged' },
+    { field: 'churchSelection', offset: 20, kind: 'acknowledged' },
+    { field: 'churchSelection', offset: 60, kind: 'acknowledged' },
+    { field: 'audience', offset: 45, kind: 'conflict' },
+    { field: 'notes', offset: 60, kind: 'conflict' },
+  ] as const)('orders the exact preaching detail $field at offset $offset', async ({ field, offset, kind }) => {
+    const resource = { collection: 'sermons', id: 'sermon-preaching-detail' };
+    const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] };
+    const now = '2026-11-08T00:00:00.000Z';
+    const meeting = { id: 'event', date: '2026-12-13', status: 'planned', createdAt: now,
+      church: { id: 'original-church', name: 'Original chapel', city: 'Original city' }, notes: 'Original note' };
+    const other = { ...meeting, id: 'follow-up', date: '2027-01-03' };
+    const value = { userId: base.owner, title: 'Sermon', verse: 'John 3:16', date: now, createdAt: now,
+      updatedAt: now, thoughts: [], isPreached: false, preachDates: [meeting, other] };
+    expect((await processCommand(base.owner, { ...base, kind: 'create', operationId: 'seed', generation: null, value })).kind).toBe('acknowledged');
+
+    const change = (operationId: string, who: 'phone' | 'desktop', at: number) => {
+      const next = { ...meeting, church: { ...meeting.church } } as typeof meeting & { audience?: string };
+      type DetailValue = string | null | { id: string; name: string; city?: string };
+      let before: DetailValue = null;
+      let after: DetailValue;
+      if (field === 'audience') after = next.audience = who === 'phone' ? '' : 'Leaders';
+      else if (field === 'churchCity') {
+        before = meeting.church.city;
+        after = next.church.city = who + ' city';
+      } else if (field === 'churchIdentity') {
+        before = meeting.church;
+        after = next.church = { ...meeting.church, id: who + '-church', name: who + ' chapel' };
+      } else if (field === 'churchSelection') {
+        before = meeting.church;
+        after = next.church = { id: who + '-church', name: who + ' chapel', city: who + ' city' };
+      } else after = next.notes = who + ' note';
+      return { next, command: { ...base, kind: 'update', operationId, generation: 'seed',
+        changes: [{ path: ['preachDates'], before: { exists: true, value: value.preachDates },
+          after: { exists: true, value: [next, other] } }],
+        ...(field === 'notes' ? {} : { preachDateFieldActions: { [field === 'churchIdentity' || field === 'churchSelection' ? 'church' : field]: {
+          rowId: meeting.id, rowCreatedAt: meeting.createdAt, before, after, observedRevision: 1,
+          time: { earliestMs: 1_800_000_000_000 + at, latestMs: 1_800_000_000_010 + at },
+        } } }),
+      } };
+    };
+    const desktop = change('desktop', 'desktop', 40);
+    const phone = change('phone', 'phone', offset);
+    expect((await processCommand(base.owner, desktop.command)).kind).toBe('acknowledged');
+    const result = await processCommand(base.owner, phone.command);
+    const winner = kind === 'acknowledged' && offset > 40 ? phone.next : desktop.next;
+    expect(result).toMatchObject({ kind, snapshot: { value: { isPreached: false, preachDates: [winner, other] } } });
+    if (kind === 'conflict') {
+      expect(result).toMatchObject({ conflicts: [{ path: ['preachDates', 'id:event', field] }] });
+    } else {
+      const history = await listPreachDateFieldHistory(base.owner, resource.id, 'seed');
+      expect(history.entries).toHaveLength(1);
+      expect(history.entries[0].fields).toHaveLength(1);
+      expect(history.entries[0].fields[0]).toMatchObject({
+        rowId: meeting.id, rowCreatedAt: now, field: field === 'churchIdentity' || field === 'churchSelection' ? 'church' : field,
+        ...(field === 'churchCity' && { scope: { id: meeting.church.id, name: meeting.church.name } }),
+      });
+      await expect(listPreachDateFieldHistory('another-owner', resource.id, 'seed')).rejects.toMatchObject({ status: 403 });
+      await expect(listPreachDateFieldHistory(base.owner, resource.id, 'other')).rejects.toMatchObject({ status: 404 });
+    }
+  });
+
+  it.each([true, false])('keeps competing church identities together with clock evidence: %s', async timed => {
+    const resource = { collection: 'sermons', id: 'sermon-church-choice' };
+    const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] };
+    const now = '2026-11-08T00:00:00.000Z';
+    const church = { id: '', name: 'Chapel', city: 'Town' };
+    const date = { id: 'date', date: '2026-12-13', createdAt: now, status: 'planned', church };
+    const value = { userId: base.owner, title: 'Sermon', verse: 'John 3:16', date: now, createdAt: now, updatedAt: now, thoughts: [], preachDates: [date] };
+    expect((await processCommand(base.owner, { ...base, kind: 'create', operationId: 'seed', generation: null, value })).kind).toBe('acknowledged');
+    const update = (operationId: string, after: typeof church, offset: number) => ({
+      ...base, kind: 'update', generation: 'seed', operationId,
+      changes: [{ path: ['preachDates'], before: { exists: true, value: [date] }, after: { exists: true, value: [{ ...date, church: after }] } }],
+      ...(timed && { preachDateFieldActions: { church: { rowId: date.id, rowCreatedAt: now, before: church, after, observedRevision: 1,
+        time: { earliestMs: 1_800_000_000_000 + offset, latestMs: 1_800_000_000_010 + offset } } } }),
+    });
+    const selected = { ...church, id: 'history-church' };
+    const typed = { ...church, name: 'Different chapel' };
+    expect((await processCommand(base.owner, update('desktop', selected, 40))).kind).toBe('acknowledged');
+    const conflict = await processCommand(base.owner, update('phone', typed, 45));
+    expect(conflict).toMatchObject({ kind: 'conflict', snapshot: { value: { preachDates: [{ ...date, church: selected }] } },
+      conflicts: expect.arrayContaining([expect.objectContaining({ path: ['preachDates', 'id:date', 'church'] })]) });
+    expect((await listPreachDateFieldHistory(base.owner, resource.id, 'seed')).entries).toEqual([]);
+  });
+
+  it.each(['changed church', 'reused row'] as const)('does not move unclocked details across a %s', async scenario => {
+    const resource = { collection: 'sermons', id: 'sermon-preaching-identity' };
+    const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] };
+    const now = '2026-11-08T00:00:00.000Z';
+    const date = { id: 'date', date: '2026-12-13', createdAt: now, status: 'planned', audience: 'Leaders',
+      church: { id: 'original', name: 'Original chapel', city: 'Town' } };
+    const value = { userId: base.owner, title: 'Sermon', verse: 'John 3:16', date: now, createdAt: now,
+      updatedAt: now, thoughts: [], preachDates: [date] };
+    expect((await processCommand(base.owner, { ...base, kind: 'create', operationId: 'seed', generation: null, value })).kind).toBe('acknowledged');
+    const update = (operationId: string, before: typeof date[], after: typeof date[]) => ({
+      ...base, kind: 'update', operationId, generation: 'seed',
+      changes: [{ path: ['preachDates'], before: { exists: true, value: before }, after: { exists: true, value: after } }],
+    });
+    const church = { id: 'new', name: 'New chapel', city: date.church.city };
+    const replacement = scenario === 'changed church' ? { ...date, church } : { ...date, createdAt: '2026-11-08T00:05:00.000Z' };
+    if (scenario === 'reused row') {
+      expect((await processCommand(base.owner, update('delete', [date], []))).kind).toBe('acknowledged');
+      expect((await processCommand(base.owner, update('replace', [], [replacement]))).kind).toBe('acknowledged');
+    } else expect((await processCommand(base.owner, update('church', [date], [replacement]))).kind).toBe('acknowledged');
+    const stale = scenario === 'changed church' ? { ...date, church: { ...date.church, city: 'Different town' } } : { ...date, audience: 'Guests' };
+    const path = scenario === 'changed church' ? ['preachDates', 'id:date', 'church'] : ['preachDates', 'id:date'];
+    expect(await processCommand(base.owner, update('late', [date], [stale]))).toMatchObject({
+      kind: 'conflict', conflicts: [{ path }], snapshot: { value: { preachDates: [replacement] } },
+    });
+    expect((await listPreachDateFieldHistory(base.owner, resource.id, 'seed')).entries).toEqual([]);
   });
 
   it('keeps a choice when unstamped meeting edits return to the old date', async () => {

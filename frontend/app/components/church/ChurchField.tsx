@@ -16,6 +16,8 @@ interface ChurchFieldProps {
    * field was cleared, which callers must be able to store as "no church stated".
    */
   onChange: (church: Church | undefined) => void;
+  /** Optional distinction between a saved congregation and free typing. */
+  onSelect?: (church: Church) => void;
   id?: string;
   disabled?: boolean;
   /** Renders without its own label, for callers that print one themselves. */
@@ -49,6 +51,7 @@ const EMPTY_CHURCH_ID = "";
 export default function ChurchField({
   value,
   onChange,
+  onSelect,
   id,
   disabled = false,
   hideLabel = false,
@@ -91,7 +94,8 @@ export default function ChurchField({
   }, [open]);
 
   const pick = (church: Church) => {
-    onChange(church);
+    if (onSelect) onSelect(church);
+    else onChange(church);
     setOpen(false);
     setHighlighted(-1);
   };

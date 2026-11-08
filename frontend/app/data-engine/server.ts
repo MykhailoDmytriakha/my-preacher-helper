@@ -14,10 +14,13 @@ import { BIBLE_MARK_HISTORY, BIBLE_MARK_PROOFS, bibleMarkProofVerses, bibleMarkT
 import { existingRowDate, MEETING_DATE_TARGET, PREACH_DATE_TARGET } from './datedRowAction';
 import { metadataAfterDatedRow, orderDatedRow } from './datedRowOrder.server';
 import { metadataAfterDocumentFields, orderDocumentFields, DOCUMENT_TITLE_HISTORY, GROUP_STATUS_HISTORY } from './documentFieldOrder.server';
-import { MEETING_ROW_BIRTH, meetingFieldTarget, type GroupMeetingFieldHistoryPage } from './groupMeetingFieldAction';
+import { equalValues } from './fieldValues';
+import { GROUP_MEETING_FIELD_POLICY, type GroupMeetingFieldHistoryPage } from './groupMeetingFieldAction';
 import { GROUP_MEETING_FIELD_HISTORY, metadataAfterGroupMeetingFields, orderGroupMeetingFields } from './groupMeetingFieldOrder.server';
+import { PREACH_DATE_FIELD_POLICY, type PreachDateField, type PreachDateFieldHistoryPage } from './preachDateFieldAction';
 import { advanceResourceSnapshot, commandFingerprint, getResourcePolicy, isValidIdentifier, TOMBSTONE_OWNER_FIELD, validateCommand } from './protocol';
 import { validateResourceDocument } from './resourceSchemas';
+import { metadataAfterRowDetails, orderRowDetails, type RowDetailOrder } from './rowDetailOrder.server';
 import { existingRowField } from './rowFieldAction';
 import { assembleChangePage, collectionHeadId, HEADS_COLLECTION, parseChangePointer, planFeedWrites, readHeadVersion, sequenceId } from './serverFeed';
 import { planDataCommand } from './serverRelations';
@@ -28,6 +31,8 @@ import type { AudioExportKey, AudioExportRecord, AudioExportStore, AudioExportTr
 import type { BibleMarkHistoryEntry, BibleMarkHistoryPage } from './bibleMarkStroke';
 import type { DisplacedRowDate, MeetingDateHistoryPage, PreachDateHistoryPage } from './datedRowAction';
 import type { GroupStatusHistoryPage, GroupTitleHistoryPage, DocumentTitleHistoryEntry, ServiceOrderTitleHistoryPage } from './documentFieldAction';
+import type { RowDetailPolicy } from './rowDetailAction';
+import type { RowValue } from './rowFieldAction';
 import type { FeedWrite } from './serverFeed';
 import type { CollectionChanges, CollectionPage, CommandReceipt, CommandResult, ConflictDetail, DataCommand, DocumentData, EngineMetadata, EngineReadOptions, Json, ResourceRef, ResourceSnapshot } from './types';
 import type { AiResultReceiptStore, ReceiptRecord } from '@/services/aiResultReceipt.server';
@@ -323,7 +328,13 @@ function retainUncertainChronology(plan: Awaited<ReturnType<typeof planDataComma
   if (!uncertain.length || (plan.result.kind !== 'acknowledged' && plan.result.kind !== 'conflict')) return plan;
   const conflicts = new Map(uncertain.map(item => [JSON.stringify(item.path), item]));
   if (plan.result.kind === 'conflict') {
-    for (const item of plan.result.conflicts) conflicts.set(JSON.stringify(item.path), item);
+    const contains = (parent: ConflictDetail, child: ConflictDetail) =>
+      parent.path.length < child.path.length && parent.path.every((part, index) => child.path[index] === part);
+    for (const item of plan.result.conflicts) {
+      if (uncertain.some(parent => contains(parent, item))) continue;
+      for (const child of uncertain) if (contains(item, child)) conflicts.delete(JSON.stringify(child.path));
+      conflicts.set(JSON.stringify(item.path), item);
+    }
   }
   return { result: { kind: 'conflict', operationId: command.operationId, snapshot: current, conflicts: [...conflicts.values()] }, writes: [] };
 }
@@ -356,7 +367,21 @@ function persistBibleMarkOrder(transaction: Transaction, command: DataCommand, s
   }
 }
 
-async function persistAcceptedCommand(transaction: Transaction, { owner, command, snapshot: primarySnapshot, effects, rawDocuments, dateOrder, meetingOrder, markOrder, fieldOrder }: {
+function persistRowDetailHistory<Field extends string, Value extends RowValue>(transaction: Transaction, command: DataCommand,
+  snapshot: ResourceSnapshot, policy: RowDetailPolicy<Field, Value>, order?: RowDetailOrder<Field, Value>) {
+  const rows = snapshot.value?.[policy.birth.field];
+  const fields = order?.displaced.filter(entry =>
+    equalValues(existingRowField(rows, entry.rowId, policy.target(entry.field)), entry.winnerValue)
+    && existingRowField(rows, entry.rowId, policy.birth) === entry.rowCreatedAt
+    && (entry.scope === undefined || equalValues(entry.scope, policy.scopes?.(rows, entry.field)?.get(entry.rowId))));
+  if (!fields?.length || !snapshot.metadata) return;
+  const history = adminDb.collection(command.resource.collection).doc(command.resource.id).collection(policy.history);
+  transaction.set(history.doc(historyEntryId(snapshot, command.operationId)), {
+    generation: snapshot.metadata.generation, fields, acceptedAt: new Date().toISOString(),
+  });
+}
+
+async function persistAcceptedCommand(transaction: Transaction, { owner, command, snapshot: primarySnapshot, effects, rawDocuments, dateOrder, meetingOrder, preachingOrder, markOrder, fieldOrder }: {
   owner: string;
   command: DataCommand;
   snapshot: ResourceSnapshot;
@@ -364,6 +389,7 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
   rawDocuments: ReadonlyMap<string, Record<string, unknown> | undefined>;
   dateOrder?: ReturnType<typeof orderDatedRow>;
   meetingOrder?: ReturnType<typeof orderGroupMeetingFields>;
+  preachingOrder?: RowDetailOrder<PreachDateField, RowValue>;
   markOrder?: ReturnType<typeof orderBibleMarks>;
   fieldOrder?: ReturnType<typeof orderDocumentFields>;
 }) {
@@ -378,9 +404,10 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
     const primary = key === primaryKey;
     const dated = metadataAfterDatedRow(snapshot, raw, primary ? command : undefined, primary ? dateOrder : undefined);
     const meeting = metadataAfterGroupMeetingFields({ ...snapshot, metadata: dated }, raw, primary ? meetingOrder : undefined);
+    const preaching = metadataAfterRowDetails({ ...snapshot, metadata: meeting }, raw, PREACH_DATE_FIELD_POLICY, primary ? preachingOrder : undefined);
     const metadata = snapshot.resource.collection === 'bibleMarks'
       ? metadataAfterBibleMarks(snapshot, raw?._dataEngine, primary ? markOrder : undefined)
-      : metadataAfterDocumentFields({ ...snapshot, metadata: meeting }, raw?._dataEngine, primary ? fieldOrder : undefined);
+      : metadataAfterDocumentFields({ ...snapshot, metadata: preaching }, raw?._dataEngine, primary ? fieldOrder : undefined);
     transaction.set(adminDb.collection(snapshot.resource.collection).doc(snapshot.resource.id), { ...value, _dataEngine: metadata });
   }
   const displaced = dateOrder?.displaced;
@@ -389,15 +416,8 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
     const history = adminDb.collection(command.resource.collection).doc(command.resource.id).collection(target.history);
     transaction.set(history.doc(historyEntryId(primarySnapshot, command.operationId)), { ...displaced, acceptedAt: new Date().toISOString() });
   }
-  const meetingFields = meetingOrder?.displaced.filter(entry => existingRowField(
-    primarySnapshot.value?.meetingDates, entry.rowId, meetingFieldTarget(entry.field),
-  ) === entry.winnerValue && existingRowField(primarySnapshot.value?.meetingDates, entry.rowId, MEETING_ROW_BIRTH) === entry.rowCreatedAt);
-  if (meetingFields?.length) {
-    const history = adminDb.collection(command.resource.collection).doc(command.resource.id).collection(GROUP_MEETING_FIELD_HISTORY);
-    transaction.set(history.doc(historyEntryId(primarySnapshot, command.operationId)), {
-      generation: primarySnapshot.metadata!.generation, fields: meetingFields, acceptedAt: new Date().toISOString(),
-    });
-  }
+  persistRowDetailHistory(transaction, command, primarySnapshot, GROUP_MEETING_FIELD_POLICY, meetingOrder);
+  persistRowDetailHistory(transaction, command, primarySnapshot, PREACH_DATE_FIELD_POLICY, preachingOrder);
   for (const { target, order } of fieldOrder?.fields ?? []) {
     const displaced = order.displaced;
     if (!displaced || primarySnapshot.value?.[target.field] !== displaced.winnerValue) continue;
@@ -452,6 +472,7 @@ export async function processCommand(owner: string, input: unknown): Promise<Com
     let effects: ResourceSnapshot[] = [];
     let dateOrder: ReturnType<typeof orderDatedRow> | undefined;
     let meetingOrder: ReturnType<typeof orderGroupMeetingFields> | undefined;
+    let preachingOrder: RowDetailOrder<PreachDateField, RowValue> | undefined;
     let markOrder: ReturnType<typeof orderBibleMarks> | undefined;
     let fieldOrder: ReturnType<typeof orderDocumentFields> | undefined;
     const rawDocuments = new Map<string, Record<string, unknown> | undefined>([[resourceKey(command.resource), raw]]);
@@ -462,7 +483,8 @@ export async function processCommand(owner: string, input: unknown): Promise<Com
       const serverMs = stored.readTime?.toMillis();
       dateOrder = orderDatedRow(command, current, raw?._dataEngine, serverMs);
       meetingOrder = orderGroupMeetingFields(dateOrder.command, current, raw?._dataEngine, serverMs);
-      markOrder = await planBibleMarkOrder(transaction, documentRef, meetingOrder.command, current, raw?._dataEngine, serverMs);
+      preachingOrder = orderRowDetails(meetingOrder.command, current, raw?._dataEngine, serverMs, PREACH_DATE_FIELD_POLICY);
+      markOrder = await planBibleMarkOrder(transaction, documentRef, preachingOrder.command, current, raw?._dataEngine, serverMs);
       fieldOrder = orderDocumentFields(markOrder.command, current, raw?._dataEngine, serverMs);
       const planned = await planDataCommand(fieldOrder.command, current, {
         get: async resource => {
@@ -502,7 +524,7 @@ export async function processCommand(owner: string, input: unknown): Promise<Com
           return matches;
         },
       });
-      const plan = retainUncertainChronology(planned, command, current, [...(dateOrder.uncertain ?? []), ...meetingOrder.uncertain, ...(markOrder.uncertain ?? []), ...(fieldOrder.uncertain ?? [])]);
+      const plan = retainUncertainChronology(planned, command, current, [...(dateOrder.uncertain ?? []), ...meetingOrder.uncertain, ...preachingOrder.uncertain, ...(markOrder.uncertain ?? []), ...(fieldOrder.uncertain ?? [])]);
       const acceptedAt = new Date().toISOString();
       // The planner exposes writes only for acknowledged commands.
       effects = plan.writes.map(effect => stampAcceptedResource(snapshotFromRaw(effect.resource, rawDocuments.get(resourceKey(effect.resource))), effect, acceptedAt));
@@ -530,7 +552,7 @@ export async function processCommand(owner: string, input: unknown): Promise<Com
       deletedTag = raw.name;
     }
     if (result.kind === 'acknowledged') {
-      await persistAcceptedCommand(transaction, { owner, command, snapshot: result.snapshot, effects, rawDocuments, dateOrder, meetingOrder, markOrder, fieldOrder });
+      await persistAcceptedCommand(transaction, { owner, command, snapshot: result.snapshot, effects, rawDocuments, dateOrder, meetingOrder, preachingOrder, markOrder, fieldOrder });
     }
     // A blocked receipt fixes the identity but may advance after its dependencies acknowledge.
     transaction.set(commandReceiptRef, serializeReceipt(receipt));
@@ -589,6 +611,13 @@ export async function listPreachDateHistory(owner: string, sermonId: string, gen
   const resource = { collection: 'sermons', id: sermonId };
   const page = await listHistoryEntries<DisplacedRowDate & { id: string; acceptedAt: string }>(
     owner, resource, PREACH_DATE_TARGET.history, generation, cursor, 'preach-date-gone',
+  );
+  return { owner, sermonId, generation, ...page };
+}
+
+export async function listPreachDateFieldHistory(owner: string, sermonId: string, generation: string, cursor?: string): Promise<PreachDateFieldHistoryPage> {
+  const page = await listHistoryEntries<PreachDateFieldHistoryPage['entries'][number]>(
+    owner, { collection: 'sermons', id: sermonId }, PREACH_DATE_FIELD_POLICY.history, generation, cursor, 'preach-date-gone',
   );
   return { owner, sermonId, generation, ...page };
 }

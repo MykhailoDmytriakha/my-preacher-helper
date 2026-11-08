@@ -5,6 +5,7 @@ import { datedRowTarget, isCapturedDateConflict } from './datedRowAction';
 import { pendingDocumentFieldAncestor } from './documentFieldAction';
 import { prepareAtomicDomainCommand } from './domainPolicy';
 import { GROUP_MEETING_FIELDS, meetingFieldTarget, replacedMeetingField } from './groupMeetingFieldAction';
+import { isCapturedPreachDateFieldConflict, preachDateRebaseChoices, retainAuthoredChurch } from './preachDateFieldAction';
 import { equalValues, mergeDocumentFields, MAX_RELATION_RESOURCES } from './protocol';
 import { isCapturedRowConflict } from './rowFieldAction';
 import { coversCommittedEffect } from './snapshotFreshness';
@@ -50,18 +51,21 @@ export function initializeCommit(record: CommitRequest, records: readonly Commit
     }
     const markAncestor = rebaseBibleMarkAncestor(predecessor.value, snapshot, record.baseline, record.bibleMarkStroke);
     const ancestor = markAncestor ?? pendingDocumentFieldAncestor(record, predecessor.value, snapshot);
+    const sameGeneration = snapshot.metadata?.generation === record.baseline.metadata?.generation;
+    const preachingChoices = sameGeneration ? preachDateRebaseChoices(snapshot, ancestor, record.preachDateFieldActions) : [];
     const replacement = GROUP_MEETING_FIELDS.flatMap(field => {
       const action = record.groupMeetingFieldActions?.[field];
       return (action && replacedMeetingField(snapshot, field, action)) || [];
     });
-    if (replacement.length) return { ...record, initialized: true, state: 'conflict',
-      result: { kind: 'conflict', operationId: record.id, snapshot, conflicts: replacement } };
+    const scopedChoices = [...replacement, ...preachingChoices];
+    if (scopedChoices.length) return { ...record, initialized: true, state: 'conflict',
+      result: { kind: 'conflict', operationId: record.id, snapshot, conflicts: scopedChoices } };
     const rebased = mergeDocumentFields(ancestor, record.value, snapshot.value);
     const target = datedRowTarget(record.baseline.resource.collection);
     const action = target && record[target.evidence];
-    const sameGeneration = snapshot.metadata?.generation === record.baseline.metadata?.generation;
     const isDateConflict = (conflict: typeof rebased.conflicts[number]) => target && action && isCapturedDateConflict(conflict, action, target);
     const canOrder = sameGeneration && rebased.conflicts.every(conflict => isDateConflict(conflict)
+      || isCapturedPreachDateFieldConflict(conflict, record.preachDateFieldActions)
       || GROUP_MEETING_FIELDS.some(field => {
         const meeting = record.groupMeetingFieldActions?.[field];
         return meeting && isCapturedRowConflict(conflict, meeting, meetingFieldTarget(field));
@@ -70,7 +74,9 @@ export function initializeCommit(record: CommitRequest, records: readonly Commit
     if (rebased.conflicts.length && !canOrder) return { ...record, initialized: true, state: 'conflict', result: { kind: 'conflict', operationId: record.id, snapshot, conflicts: rebased.conflicts } };
     // The preceding ACK can carry another device's date. Send the original ancestor
     // for this exact leaf so the server can order it or keep the ordinary choice.
-    return { ...record, initialized: true, working: snapshot, intended: rebased.value.exists ? rebased.value.value as DocumentData : null,
+    const intended = rebased.value.exists ? rebased.value.value as DocumentData : null;
+    return { ...record, initialized: true, working: snapshot,
+      intended: sameGeneration ? retainAuthoredChurch(intended, snapshot, record.preachDateFieldActions) : intended,
       ...(deferDate && { deferPreachDateRebase: true }), ...(markAncestor && { deferBibleMarkRebase: true }) };
   }
   return { ...record, initialized: true };

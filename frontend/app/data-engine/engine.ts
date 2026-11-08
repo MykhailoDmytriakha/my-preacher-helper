@@ -19,7 +19,7 @@ import { LocalWriteback, type LocalWriteHandoff } from './localWriteback';
 import { exactManualRequest, exactManualWords, recoverManualChoiceCopy } from './manualChoice';
 import { assertDurableManualChoice, assertManualChoiceInput, assertManualComparison, manualComparison, type ManualComparison } from './manualComparison';
 import { manualReturnSources, markBorrowedManualSources, reopenedManualAnswerScope, shouldFollowReopenedManualStage } from './manualReturnSources';
-import { ManualScope, recoverManualScopeRecord, reconcileManualCaptures, sameManualSelection, type ManualCapture, type ManualPath, type ManualSavedIntent, type ManualSaveOptions } from './manualScope';
+import { ManualScope, recoverManualScopeRecord, reconcileManualCaptures, sameManualSelection, type ManualCapture, type ManualFieldInput, type ManualPath, type ManualSavedIntent, type ManualSaveOptions } from './manualScope';
 import { captureMembershipPins } from './membershipCapture';
 import { describeActionDelivery, describeMembershipDelivery, type MembershipDelivery } from './membershipDelivery';
 import { CREATION_SCOPE_PREFIX, MembershipScope, type MembershipScopeRecord } from './membershipScope';
@@ -86,7 +86,7 @@ export interface ManagedManualForm {
   subscribe(listener: () => void): () => void;
   begin(): Promise<void>;
   follow(): Promise<void>;
-  update(updater: (value: DocumentData) => DocumentData, meetingFieldInput?: GroupMeetingFieldInput): Promise<void>;
+  update(updater: (value: DocumentData) => DocumentData, fieldInput?: ManualFieldInput): Promise<void>;
   propose(producer: (source: DocumentData) => Promise<DocumentData>, signal?: AbortSignal): Promise<void>;
   save(updater?: (value: DocumentData) => DocumentData, action?: DatedRowActionCapture | GroupMeetingFieldInput): Promise<void>;
   cancel(): Promise<void>;
@@ -2303,7 +2303,7 @@ export class DataEngine {
       subscribe: listener => { active(); listeners.add(listener); return () => { listeners.delete(listener); }; },
       begin: () => start(),
       follow: () => execute(() => requireScope().follow(capture())),
-      update: (updater, meetingFieldInput) => execute(() => requireScope().update(updater, meetingFieldInput)),
+      update: (updater, fieldInput) => execute(() => requireScope().update(updater, fieldInput)),
       propose: (producer, signal) => execute(() => requireScope().propose(async source => {
         const proposed = await producer(source); active(); return proposed;
       }, signal)),

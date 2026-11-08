@@ -9,6 +9,7 @@ import { useTranslation } from '@locales/useTranslation';
 
 import { DatedRowHistory } from './DatedRowHistory';
 import { EnginePreachDateModal } from './EnginePreachDateModal';
+import { PreachDateFieldHistory } from './PreachDateFieldHistory';
 import { PreachDateRows } from './PreachDateRows';
 
 import type { PreachDateAction } from './preachDateForm';
@@ -41,10 +42,13 @@ export function EnginePreachDateList({ sermonId, showDocumentStatus = true }: {
     </div>
     <PreachDateRows preachDates={sermon?.preachDates ?? []} isPreached={Boolean(sermon?.isPreached)} disabled={disabled}
       onEdit={date => setAction({ kind: 'edit', dateId: date.id })} onDelete={dateId => setAction({ kind: 'delete', dateId })} />
-    {owner && generation && <DatedRowHistory key={JSON.stringify([owner, sermonId, generation])}
+    {owner && generation && <DatedRowHistory key={JSON.stringify(['date', owner, sermonId, generation])}
       owner={owner} collection="sermons" id={sermonId} generation={generation} disabled={disabled}
       liveDates={new Map(sermon?.preachDates?.map(date => [date.id, date.date]))}
       onRestore={(dateId, restoreDate) => setAction({ kind: 'edit', dateId, restoreDate })} />}
-    {!document.readOnly && action && <EnginePreachDateModal key={`${action.kind}:${action.dateId ?? 'new'}:${action.restoreDate ?? ''}`} sermonId={sermonId} action={action} onClose={() => setAction(null)} />}
+    {owner && generation && <PreachDateFieldHistory key={JSON.stringify(['details', owner, sermonId, generation])}
+      owner={owner} sermonId={sermonId} generation={generation} dates={sermon?.preachDates ?? []} disabled={disabled}
+      onRestore={(entry, historyId) => setAction({ kind: 'edit', dateId: entry.rowId, restoreField: { ...entry, historyId } })} />}
+    {!document.readOnly && action && <EnginePreachDateModal key={JSON.stringify([action.kind, action.dateId, action.restoreDate, action.restoreField?.historyId])} sermonId={sermonId} action={action} onClose={() => setAction(null)} />}
   </section>;
 }
