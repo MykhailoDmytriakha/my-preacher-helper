@@ -5,10 +5,12 @@ import { getEffectivePreachDateStatus, getPreferredDateToMarkAsPreached } from '
 
 import type { PreachDateValues } from './PreachDateFields';
 import type { PreachDateFieldHistoryEntry } from '@/data-engine/preachDateFieldAction';
+import type { PreachStatusHistoryEntry } from '@/data-engine/preachStatusAction';
 import type { DocumentData } from '@/data-engine/types';
 import type { PreachDate, PreachDateStatus, Sermon } from '@/models/models';
 
-export type PreachDateAction = { kind: 'add' | 'edit' | 'mark' | 'unmark' | 'delete'; dateId?: string; status?: PreachDateStatus; restoreDate?: string; restoreField?: PreachDateFieldHistoryEntry & { historyId: string } };
+export type PreachDateAction = { kind: 'add' | 'edit' | 'mark' | 'unmark' | 'delete'; dateId?: string; status?: PreachDateStatus; restoreDate?: string; restoreField?: PreachDateFieldHistoryEntry & { historyId: string };
+  restoreStatus?: PreachStatusHistoryEntry & { historyId: string } };
 export const PREACH_DATE_SELECTION = [['preachDates'], ['isPreached']] as const;
 
 function writeDates(source: Sermon, dates: PreachDate[]): DocumentData {
@@ -61,6 +63,11 @@ export function restoredPreachDateField(row: PreachDate, entry: PreachDateFieldH
   return next;
 }
 
+export function canRestorePreachStatus(row: PreachDate, entry: PreachStatusHistoryEntry): boolean {
+  return row.id === entry.rowId && row.createdAt === entry.rowCreatedAt
+    && (entry.value === 'planned' || entry.value === 'preached');
+}
+
 export function preparePreachDate(current: DocumentData, action: PreachDateAction, row: PreachDate): DocumentData {
   const sermon = current as unknown as Sermon, dates = sermon.preachDates ?? [];
   if (action.kind === 'unmark') return writeDates(sermon, dates.map(date => ({ ...date, status: 'planned' })));
@@ -72,7 +79,11 @@ export function preparePreachDate(current: DocumentData, action: PreachDateActio
   const next = { ...(existing ?? row), church,
     ...(action.kind === 'edit' && action.restoreDate && { date: action.restoreDate }),
     ...(action.kind === 'mark' ? { status: 'preached' as const } : {}) };
-  const edited = action.kind === 'edit' && action.restoreField && existing ? restoredPreachDateField(existing, action.restoreField) : next;
+  let edited = action.kind === 'edit' && action.restoreField && existing ? restoredPreachDateField(existing, action.restoreField) : next;
+  if (action.kind === 'edit' && action.restoreStatus && existing) {
+    if (!canRestorePreachStatus(existing, action.restoreStatus) || action.restoreStatus.value === null) throw preachDateGone();
+    edited = { ...existing, status: action.restoreStatus.value };
+  }
   return writeDates(sermon, existing ? dates.map(date => date.id === row.id ? edited : date) : [...dates, edited]);
 }
 

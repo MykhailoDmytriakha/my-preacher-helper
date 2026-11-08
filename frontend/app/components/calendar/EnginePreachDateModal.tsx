@@ -11,7 +11,7 @@ import { getTodayDateOnlyKey, toDateOnlyKey } from '@/utils/dateOnly';
 import { useTranslation } from '@locales/useTranslation';
 
 import { PreachDateFields } from './PreachDateFields';
-import { canRestorePreachDateField, patchPreachDate, preachDateTarget, preparePreachDate, PREACH_DATE_SELECTION } from './preachDateForm';
+import { canRestorePreachDateField, canRestorePreachStatus, patchPreachDate, preachDateTarget, preparePreachDate, PREACH_DATE_SELECTION } from './preachDateForm';
 
 import type { PreachDateAction } from './preachDateForm';
 import type { DocumentData } from '@/data-engine/types';
@@ -22,7 +22,8 @@ export function EnginePreachDateModal({ sermonId, action, onClose }: {
   sermonId: string; action: PreachDateAction; onClose: () => void;
 }) {
   const { t } = useTranslation();
-  const restoreKey = action.restoreField ? ':field:' + action.restoreField.historyId : '';
+  const restoreKey = action.restoreField ? ':field:' + action.restoreField.historyId
+    : action.restoreStatus ? ':status:' + action.restoreStatus.historyId : '';
   const slot = `preach-date:${action.kind}:${action.dateId ?? 'new'}${action.restoreDate ? ':' + action.restoreDate : ''}${restoreKey}`;
   const form = useDataForm({ collection: 'sermons', id: sermonId }, slot, PREACH_DATE_SELECTION);
   const [newRow] = useState<PreachDate>(() => ({ id: newClientId(), createdAt: new Date().toISOString(), date: getTodayDateOnlyKey(),
@@ -33,7 +34,10 @@ export function EnginePreachDateModal({ sermonId, action, onClose }: {
   const initial = form.initialData as unknown as Sermon | null, value = form.data as unknown as Sermon | null;
   const target = preachDateTarget(initial, value, action, newRow.id);
   const initialRow = initial?.preachDates?.find(date => date.id === target);
-  const unavailableRestore = Boolean(form.active && action.restoreField && (!initialRow || !canRestorePreachDateField(initialRow, action.restoreField)));
+  const unavailableRestore = Boolean(form.active && (
+    (action.restoreField && (!initialRow || !canRestorePreachDateField(initialRow, action.restoreField)))
+    || (action.restoreStatus && (!initialRow || !canRestorePreachStatus(initialRow, action.restoreStatus)))));
+
   useEffect(() => {
     if (!form.active || unavailableRestore || initialized.current === form.recoveryIdentity) return;
     initialized.current = form.recoveryIdentity;
@@ -62,9 +66,10 @@ export function EnginePreachDateModal({ sermonId, action, onClose }: {
   const save = async () => {
     if (readOnly || !valid || !form.dirty || !form.durable || !form.status?.canSave) return;
     try {
-      if (action.kind === 'edit' || (action.kind === 'mark' && initial?.preachDates?.some(date => date.id === target))) {
-        await form.save(undefined, { preachDateId: target });
-      }
+      if (action.kind === 'unmark') await form.save(undefined, { preachStatus: { status: 'planned' } });
+      else if (action.kind === 'mark' && initialRow) await form.save(undefined, { preachStatus: { status: 'preached', rowId: target } });
+      else if (action.restoreStatus?.value) await form.save(undefined, { preachStatus: { status: action.restoreStatus.value, rowId: target } });
+      else if (action.kind === 'edit') await form.save(undefined, { preachDateId: target });
       else await form.save();
       onClose();
     } catch { /* The shared form retains the draft and reports delivery. */ }
@@ -79,6 +84,9 @@ export function EnginePreachDateModal({ sermonId, action, onClose }: {
       onKeepLocal={valid ? form.keepLocal : undefined} onAcceptRemote={form.acceptRemote}
       recoveryChoices={recovery.choices} recoveryLoading={recovery.loading} recoveryError={recovery.error}
       onRecover={recovery.recover} onDiscardRecovery={recovery.discard} />
+    {!unavailableRestore && action.restoreStatus?.value && <p role="status" className="mb-3 text-sm">
+      {t('calendar.restorePreachStatusTo', { status: t(action.restoreStatus.value === 'preached' ? 'calendar.status.preached' : 'calendar.status.planned') })}
+    </p>}
     {unavailableRestore ? <p role="alert">{t('calendar.preachDetailUnavailableForDate')}</p> : removal ? <p>{action.kind === 'delete' ? initial?.preachDates?.find(date => date.id === target)?.date : value?.title}</p>
       : row && <PreachDateFields value={{ date: row.date ?? '', church: row.church, audience: row.audience ?? '', notes: row.notes ?? '' }}
         disabled={readOnly} onChange={(patch, churchDetail) => {

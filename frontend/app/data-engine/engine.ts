@@ -43,6 +43,7 @@ import type { ManualScopeStore, StoredManualScope } from './manualScopes.client'
 import type { MembershipScopeStore } from './membershipScopes.client';
 import type { Observation, ResourceObserver } from './observer';
 import type { OpenDocumentAnswer } from './openDocumentAnswers';
+import type { PreachStatusSave } from './preachStatusAction';
 import type { DataEngineRuntime, RuntimeEvent } from './runtime';
 import type { SessionCheckpoint, ShownCopy } from './session';
 import type { EditorCommitAction } from './types';
@@ -88,7 +89,7 @@ export interface ManagedManualForm {
   follow(): Promise<void>;
   update(updater: (value: DocumentData) => DocumentData, fieldInput?: ManualFieldInput): Promise<void>;
   propose(producer: (source: DocumentData) => Promise<DocumentData>, signal?: AbortSignal): Promise<void>;
-  save(updater?: (value: DocumentData) => DocumentData, action?: DatedRowActionCapture | GroupMeetingFieldInput): Promise<void>;
+  save(updater?: (value: DocumentData) => DocumentData, action?: DatedRowActionCapture | GroupMeetingFieldInput | { preachStatus: PreachStatusSave }): Promise<void>;
   cancel(): Promise<void>;
   retry(): Promise<void>;
   resolve(choice: 'local' | 'remote', options?: { discardStage?: boolean; expectedComparison?: ManualComparison; updater?: (current: DocumentData) => DocumentData }): Promise<void>;
@@ -2313,12 +2314,14 @@ export class DataEngine {
         }
         const scope = requireScope();
         const fieldInput = action && 'field' in action ? action : undefined;
-        const dateInput = action && 'field' in action ? undefined : action;
+        const status = action && 'preachStatus' in action ? action.preachStatus : undefined;
+        const dateInput = status?.rowId && status.time ? { rowId: status.rowId, time: status.time }
+          : action && 'rowId' in action && !('field' in action) ? action : undefined;
         if (updater) {
           const staged = scope.update(updater, fieldInput);
-          const saving = scope.save(dateInput);
+          const saving = scope.save(dateInput, status);
           await Promise.all([staged, saving]);
-        } else await scope.save(dateInput);
+        } else await scope.save(dateInput, status);
         if (!scope.getState().dirty) await scope.cancel();
       }),
       cancel: () => execute(async () => {

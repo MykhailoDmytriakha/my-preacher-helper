@@ -14,6 +14,7 @@ import { projectExactManualChoice, type ExactManualChoice } from './manualChoice
 import { sameManualSources } from './manualReturnSources';
 import { projectManualSelection, type ManualPath } from './manualScope';
 import { assertOrdinaryAnswerScope, ordinaryChoiceCheckpoint, projectOrdinaryChoiceDependents, requireDocumentChoiceForBranch, reviewOrdinaryAnswerChoice, type ManualChoiceSources } from './ordinaryAnswerChoice';
+import { chooseLocalPreachStatuses } from './preachStatusChoice';
 import { confirmedExistingDeletion, equalValues, mergeDocumentFields, mergeFields } from './protocol';
 import { isRecoverableCheckpoint } from './recovery.client';
 import { recoveryChoiceFingerprint } from './recoveryChoice';
@@ -746,11 +747,15 @@ export class EditorController {
             const rejected = ordinary.first.command ? ordinary.first.command.generation : decided.confirmed.metadata?.generation;
             requireFreshGeneration(ordinary.answer, rejected, decided.remoteCandidate);
           }
-          session.keepLocal();
+          const statusActions = ordinary ? ordinary.first.preachStatusActions
+            : retired.flatMap(request => request.cancelledByChoice && source!.pending[request.id] ? request.preachStatusActions ?? [] : []);
+          session.keepLocal(statusActions);
           if (correction) {
             const current = session.checkpoint();
             const merged = mergeDocumentFields(correction.base, correction.value, current.draft);
-            session.edit(chooseLocalPlacement(current.confirmed.resource.collection,
+            const status = chooseLocalPreachStatuses({ ...decided.confirmed, value: correction.base }, correction.value,
+              { ...current.confirmed, value: current.draft }, statusActions);
+            session.edit(status ?? chooseLocalPlacement(current.confirmed.resource.collection,
               correction.base, correction.value, current.draft,
               merged.value.exists ? merged.value.value as DocumentData : null, mergeFields));
           }

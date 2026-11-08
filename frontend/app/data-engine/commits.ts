@@ -12,6 +12,7 @@ import { areDifferentTabManualParents, readManualScopeIdentity } from './editorI
 import { AddressedFailures, type AddressedFailure } from './failures';
 import { captureMeetingFieldActions, GROUP_MEETING_FIELD_POLICY, matchingMeetingFieldActions } from './groupMeetingFieldAction';
 import { capturePreachDateFields, PREACH_DATE_FIELD_POLICY } from './preachDateFieldAction';
+import { capturePreachStatusActions, matchingPreachStatusActions, pendingPreachStatusActions, replacePreachStatuses } from './preachStatusAction';
 import { confirmedExistingDeletion, equalValues, mergeDocumentFields, MAX_RELATION_RESOURCES } from './protocol';
 import { matchingRowDetailActions, pendingRowDetailRebases } from './rowDetailCapture';
 import { replaceExistingRowField } from './rowFieldAction';
@@ -24,6 +25,7 @@ import type { EditorRecord } from './controller';
 import type { DocumentFieldAction } from './documentFieldAction';
 import type { GroupMeetingFieldActions, GroupMeetingFieldCaptures } from './groupMeetingFieldAction';
 import type { PreachDateFieldActions, PreachDateFieldSave } from './preachDateFieldAction';
+import type { PreachStatusAction, PreachStatusCapture } from './preachStatusAction';
 import type { DataEngineRuntime } from './runtime';
 import type { SessionCheckpoint } from './session';
 import type { CommandResult, DataCommand, DocumentData, EditorCommitAction, EngineMetadata, ResourceRef, ResourceSnapshot } from './types';
@@ -59,6 +61,7 @@ export interface CommitRequest {
   meetingDateAction?: DatedRowActionEvidence;
   groupMeetingFieldActions?: GroupMeetingFieldActions;
   preachDateFieldActions?: PreachDateFieldActions;
+  preachStatusActions?: PreachStatusAction[];
   deferPreachDateRebase?: true;
   bibleMarkStroke?: CapturedBibleMarkStroke;
   deferBibleMarkRebase?: true;
@@ -160,6 +163,7 @@ export function assertCommitCapture(current: CommitRequest, incoming: CommitRequ
     || !equalValues(current.meetingDateAction ?? null, incoming.meetingDateAction ?? null)
     || !equalValues(current.groupMeetingFieldActions ?? null, incoming.groupMeetingFieldActions ?? null)
     || !equalValues(current.preachDateFieldActions ?? null, incoming.preachDateFieldActions ?? null)
+    || !equalValues(current.preachStatusActions ?? null, incoming.preachStatusActions ?? null)
     || !equalValues(current.value, incoming.value) || !equalValues(current.atomic ?? null, incoming.atomic ?? null)
     || !equalValues(current.deleteAfter ?? null, incoming.deleteAfter ?? null)
     || current.retentionScope !== incoming.retentionScope
@@ -230,6 +234,7 @@ type CommitSaveOptions = { predecessorId?: string | null; predecessorIds?: reado
   meetingDateAction?: DatedRowActionCapture;
   groupMeetingFieldCaptures?: GroupMeetingFieldCaptures;
   preachDateFieldSave?: PreachDateFieldSave;
+  preachStatusCapture?: PreachStatusCapture;
   action?: EditorCommitAction;
   checkpoint?: (saved: CommitRequest) => EditorRecord;
   transfer?: { proof: CaptureTransferProof; sources: readonly CommitRequest[] } };
@@ -254,7 +259,7 @@ function pendingRowFields(record: CommitRequest) {
 }
 
 function hasTimedAncestor(record: CommitRequest): boolean {
-  return record.sequence === 0 && Boolean(record.serviceOrderTitleAction || record.groupTitleAction || record.groupStatusAction || pendingBibleMarkRebase(record) || pendingMeetingDateRebase(record) || pendingRowFields(record).length);
+  return record.sequence === 0 && Boolean(record.serviceOrderTitleAction || record.groupTitleAction || record.groupStatusAction || pendingBibleMarkRebase(record) || pendingMeetingDateRebase(record) || pendingRowFields(record).length || pendingPreachStatusActions(record).length);
 }
 
 function freezeSaveOptions(options: CommitSaveOptions | undefined): CommitSaveOptions | undefined {
@@ -263,6 +268,7 @@ function freezeSaveOptions(options: CommitSaveOptions | undefined): CommitSaveOp
     meetingDateAction: options.meetingDateAction && clone(options.meetingDateAction),
     groupMeetingFieldCaptures: options.groupMeetingFieldCaptures && clone(options.groupMeetingFieldCaptures),
     preachDateFieldSave: options.preachDateFieldSave && clone(options.preachDateFieldSave),
+    preachStatusCapture: options.preachStatusCapture && clone(options.preachStatusCapture),
     action: options.action && clone(options.action) };
 }
 
@@ -426,6 +432,7 @@ export class CommitQueue {
     const groupActions = uncapturedGroupFields(intent);
     const groupMeetingFieldActions = captureMeetingFieldActions(baseline, predecessor, intent.draft, frozenOptions?.groupMeetingFieldCaptures, records);
     const preachDateFieldActions = capturePreachDateFields(baseline, predecessor, intent.draft, frozenOptions?.preachDateFieldSave, records);
+    const preachStatusActions = capturePreachStatusActions(baseline, predecessor, intent.draft, frozenOptions?.preachStatusCapture, records);
     const record: CommitRequest = {
       id: this.options.operationId(), owner, editorId, editGeneration: intent.editGeneration,
       ...(mark && { bibleMarkStroke: mark }),
@@ -433,6 +440,7 @@ export class CommitQueue {
       ...groupActions,
       ...(groupMeetingFieldActions && { groupMeetingFieldActions }),
       ...(preachDateFieldActions && { preachDateFieldActions }),
+      ...(preachStatusActions && { preachStatusActions }),
       ...(dateTarget && action && { [dateTarget.evidence]: action }),
       ...(frozenOptions?.retentionScope ? { retentionScope: frozenOptions.retentionScope } : {}),
       ...(frozenOptions?.transfer ? { transferredFrom: clone(frozenOptions.transfer.proof) } : {}),
@@ -849,7 +857,9 @@ export class CommitQueue {
       const rows = replaceExistingRowField(source.value[target.field], action.rowId, action.before, target);
       if (rows !== undefined) source = { ...source, value: { ...source.value, [target.field]: rows } };
     }
-    try { prepared = prepareDomainCommand(owner, operationId, source, record.intended, targets, evidence); }
+    const status = pendingPreachStatusActions(record);
+    if (source.value && status.length) source = { ...source, value: replacePreachStatuses(source.value, status, 'before') };
+    try { prepared = prepareDomainCommand(owner, operationId, source, record.intended, targets, evidence, Boolean(status.length)); }
     catch (error) {
       // The policy names WHY this draft can never be a command (two sections carried in one
       // save, a destination that was deleted, a derived field). Left as a throw, the request
@@ -877,6 +887,8 @@ export class CommitQueue {
       if (meetingActions) command.groupMeetingFieldActions = meetingActions;
       const preachActions = matchingRowDetailActions(command.changes, record.preachDateFieldActions, PREACH_DATE_FIELD_POLICY);
       if (preachActions) command.preachDateFieldActions = preachActions;
+      const statusActions = matchingPreachStatusActions(command.changes, status);
+      if (statusActions.length) command.preachStatusActions = statusActions;
     }
     const stamped = fields.reduce((current, target) => withDocumentFieldAction(current, target, record[target.action]), command);
     const timed = record.sequence === 0 ? withBibleMarkStroke(stamped, record.bibleMarkStroke) : command;

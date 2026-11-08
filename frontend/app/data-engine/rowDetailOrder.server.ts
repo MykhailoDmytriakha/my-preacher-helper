@@ -4,7 +4,7 @@ import { boundedActionTime } from './actionClock';
 import { commandFingerprint, equalValues, object } from './fieldValues';
 import { matchesRowDetailBirth, replacedRowDetail, rowDetailConflict } from './rowDetailAction';
 import { boundedRowId, existingRowField, existingRowFields, isRowChange, proofRevision } from './rowFieldAction';
-import { orderConcurrentRowField, readRowAction, uncertainRowChange } from './rowFieldOrder.server';
+import { orderConcurrentRowField, readRowObservation, uncertainRowChange } from './rowFieldOrder.server';
 
 import type { ActionTime } from './actionClock';
 import type { RowDetailAction, RowDetailHistoryEntry, RowDetailPolicy } from './rowDetailAction';
@@ -14,7 +14,7 @@ import type { ConflictDetail, DataCommand, ResourceSnapshot } from './types';
 const MAX_PROOFS = 32;
 
 type Update = Extract<DataCommand, { kind: 'update' }>;
-type Proof = { rowId: string; digest: string; revision: number; time: ActionTime | null; operationId: string };
+type Proof = { rowId: string; digest: string; revision: number; time: ActionTime | null; operationId: string; causal?: true };
 type FieldPlan<Field extends string, Value extends RowValue> = {
   command: Update;
   stamp?: RowDetailAction<Value>;
@@ -38,19 +38,21 @@ function readProofs(raw: unknown, key: string, field: string) {
     if (!object(item) || !boundedRowId(item.rowId) || !proofRevision(item.revision)
       || typeof item.operationId !== 'string' || typeof item.digest !== 'string' || !/^[a-zA-Z0-9_-]{43}$/.test(item.digest)) return [];
     const time = item.time === null ? null : boundedActionTime(item.time);
-    return time !== undefined ? [{ rowId: item.rowId, digest: item.digest, revision: item.revision, time, operationId: item.operationId }] : [];
+    return time !== undefined ? [{ rowId: item.rowId, digest: item.digest, revision: item.revision, time, operationId: item.operationId,
+      ...(item.causal === true && { causal: true as const }) }] : [];
   });
   return { values, floor };
 }
 
 function orderField<Field extends string, Value extends RowValue>(command: Update, current: ResourceSnapshot, raw: unknown, serverMs: number,
-  field: Field, policy: RowDetailPolicy<Field, Value>): FieldPlan<Field, Value> {
+  field: Field, policy: RowDetailPolicy<Field, Value>, submitted: unknown): FieldPlan<Field, Value> {
   const target = policy.target(field);
-  const actions: unknown = Reflect.get(command, policy.actions);
-  const submitted = object(actions) ? actions[field] : undefined;
-  const evidence = readRowAction(command, submitted, target, serverMs);
+  const evidence = readRowObservation(command, submitted, target, serverMs, {
+    allowUnclocked: policy.allowUnclocked,
+    allowUnchanged: after => Boolean(policy.allowUnchanged?.(field, after)),
+  });
   const revision = current.metadata!.revision;
-  if (!evidence || evidence.observedRevision > revision || !object(submitted) || !policy.birth.accepts(submitted.rowCreatedAt)) return { command };
+  if (!evidence || policy.validAfter?.(field, evidence.after) === false || evidence.observedRevision > revision || !object(submitted) || !policy.birth.accepts(submitted.rowCreatedAt)) return { command };
   const action = { ...evidence, rowCreatedAt: submitted.rowCreatedAt };
   if (!matchesRowDetailBirth(command.changes, action, policy.birth)) return { command };
   const replacement = replacedRowDetail(current, action, target, policy.birth);
@@ -75,14 +77,30 @@ function orderField<Field extends string, Value extends RowValue>(command: Updat
   const { values, floor } = readProofs(raw, policy.proofs, field);
   const key = digest(action.rowCreatedAt, value, scope);
   const previous = values.find(proof => proof.rowId === action.rowId && proof.revision <= revision && proof.digest === key);
-  if (previous && previous.revision > action.observedRevision) {
-    if (previous.time && equalValues(value, action.before) && previous.operationId === submitted.predecessorOperationId) return { command, stamp: action };
-    return orderUnobservedRowDetail(command, action, field, target, value, previous, scope);
-  }
-  if (!previous && equalValues(value, action.before) && action.observedRevision < Math.min(floor, revision)) {
+  const sameIntent = equalValues(action.before, action.after);
+  const unobserved = previous && previous.revision > action.observedRevision;
+  const proofEvicted = !previous && action.observedRevision < Math.min(floor, revision);
+  if (proofEvicted && equalValues(value, action.before) && !equalValues(value, action.after)) {
     return { command, uncertain: uncertainRowChange(action, target) };
   }
-  return { command, ...(!equalValues(value, action.after) && (previous || action.observedRevision === revision) ? { stamp: action } : {}) };
+  if (sameIntent && !unobserved && !equalValues(value, action.after)) {
+    return { command, uncertain: rowDetailConflict(action, target, value) };
+  }
+  const followsPredecessor = unobserved && (previous.time || (policy.allowUnclocked && previous.causal)) && equalValues(value, action.before)
+    && previous.operationId === submitted.predecessorOperationId;
+  if (!action.time) {
+    if (followsPredecessor) return { command, ...(sameIntent && { sameValueWithoutOrder: action.rowId }) };
+    if ((unobserved || proofEvicted) && !equalValues(value, action.after)) {
+      return { command, uncertain: rowDetailConflict(action, target, value) };
+    }
+    return { command, ...((unobserved || sameIntent) && equalValues(value, action.after) && { sameValueWithoutOrder: action.rowId }) };
+  }
+  const timed = { ...action, time: action.time };
+  if (unobserved) {
+    if (followsPredecessor) return { command, stamp: timed };
+    return orderUnobservedRowDetail(command, timed, field, target, value, previous, scope);
+  }
+  return { command, ...((sameIntent || !equalValues(value, action.after)) && (previous || action.observedRevision === revision) ? { stamp: timed } : {}) };
 }
 
 function orderUnobservedRowDetail<Field extends string, Value extends RowValue>(command: Update, action: RowDetailAction<Value>,
@@ -92,24 +110,45 @@ function orderUnobservedRowDetail<Field extends string, Value extends RowValue>(
     ...(ordered.chronology > 0 ? { stamp: action } : {}) };
   if (ordered.chronology > 0) return { command, stamp: action };
   if (!ordered.chronology && equalValues(value, action.after)) return { command, sameValueWithoutOrder: action.rowId };
+  if (!ordered.chronology && equalValues(action.before, action.after)) return { command, uncertain: rowDetailConflict(action, target, value) };
   if (!ordered.chronology && equalValues(value, action.before)) return { command, uncertain: uncertainRowChange(action, target) };
   return { command };
 }
 
+function submissions<Field extends string, Value extends RowValue>(command: Update, field: Field, policy: RowDetailPolicy<Field, Value>): unknown[] {
+  const raw: unknown = Reflect.get(command, policy.actions);
+  if (policy.repeatedFields?.includes(field)) {
+    if (!Array.isArray(raw)) return [];
+    const byId = new Map<string, unknown>();
+    for (const action of raw) {
+      if (!object(action) || !boundedRowId(action.rowId)) continue;
+      // Ambiguous intent for one row is never evidence of its chronology.
+      byId.set(action.rowId, byId.has(action.rowId) ? undefined : action);
+    }
+    return [...byId.values()].filter(action => action !== undefined);
+  }
+  const single = object(raw) ? raw[field] : undefined;
+  return single === undefined ? [] : [single];
+}
+
 export function orderRowDetails<Field extends string, Value extends RowValue>(command: DataCommand, current: ResourceSnapshot,
   raw: unknown, serverMs: number, policy: RowDetailPolicy<Field, Value>) {
-  const fields = new Map<Field, FieldPlan<Field, Value>>();
+  const fields = new Map<Field, FieldPlan<Field, Value>[]>();
   if (command.resource.collection === policy.collection && command.kind === 'update' && current.metadata && !current.metadata.deleted
     && command.generation === current.metadata.generation) {
     let ordered: Update = command;
     for (const field of policy.fields) {
-      const plan: FieldPlan<Field, Value> = orderField(ordered, current, raw, serverMs, field, policy);
-      fields.set(field, plan);
-      ordered = plan.command;
+      const plans: FieldPlan<Field, Value>[] = [];
+      for (const submitted of submissions(ordered, field, policy)) {
+        const plan: FieldPlan<Field, Value> = orderField(ordered, current, raw, serverMs, field, policy, submitted);
+        plans.push(plan);
+        ordered = plan.command;
+      }
+      if (plans.length) fields.set(field, plans);
     }
     command = ordered;
   }
-  const plans = [...fields.values()];
+  const plans = [...fields.values()].flat();
   return { command, fields, displaced: plans.flatMap(plan => plan.displaced ?? []), uncertain: plans.flatMap(plan => plan.uncertain ?? []) };
 }
 
@@ -126,16 +165,20 @@ export function metadataAfterRowDetails<Field extends string, Value extends RowV
     const current = existingRowFields(rows, target), previous = existingRowFields(oldRows, target);
     const currentScopes = policy.scopes?.(rows, field), previousScopes = policy.scopes?.(oldRows, field);
     const stored = readProofs(raw?._dataEngine, policy.proofs, field);
-    const plan = order?.fields.get(field);
-    const stamp = plan?.stamp;
+    const plans = order?.fields.get(field) ?? [];
+    const stamps = new Map(plans.flatMap(plan => plan.stamp ? [[plan.stamp.rowId, plan.stamp] as const] : []));
+    const unordered = new Set(plans.map(plan => plan.sameValueWithoutOrder));
     const updated = [...current].flatMap(([rowId, value]): Proof[] => {
       const born = births.get(rowId);
       if (value === undefined || !born || !boundedRowId(rowId) || !metadata.operationId) return [];
       const scope = currentScopes?.get(rowId);
-      const time = stamp?.rowId === rowId && stamp.rowCreatedAt === born && equalValues(stamp.after, value) ? stamp.time : null;
-      return time || !equalValues(previous.get(rowId), value) || previousBirths.get(rowId) !== born
-        || !equalValues(previousScopes?.get(rowId), scope) || plan?.sameValueWithoutOrder === rowId
-        ? [{ rowId, digest: digest(born, value, scope), revision: metadata.revision, time, operationId: metadata.operationId }] : [];
+      const stamp = stamps.get(rowId);
+      const time = stamp?.rowCreatedAt === born && equalValues(stamp.after, value) ? stamp.time : null;
+      const changed = !equalValues(previous.get(rowId), value) || previousBirths.get(rowId) !== born;
+      // A same-value acknowledgement with uncertain order does not prove who set the value.
+      return time || changed || !equalValues(previousScopes?.get(rowId), scope) || unordered.has(rowId)
+        ? [{ rowId, digest: digest(born, value, scope), revision: metadata.revision, time, operationId: metadata.operationId,
+          ...(policy.allowUnclocked && changed && { causal: true as const }) }] : [];
     });
     const newRows = new Set(updated.map(proof => proof.rowId));
     const retained = [...updated, ...stored.values.filter(proof => {

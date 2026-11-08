@@ -6,11 +6,13 @@ import { prepareDomainCommand } from './domainPolicy';
 import { ACTION_SLOT, editorSlot } from './editorIdentity';
 import { chooseLocalPlacement } from './localPlacementChoice';
 import { projectManualSelection } from './manualScope';
+import { chooseLocalPreachStatuses } from './preachStatusChoice';
 import { equalValues, mergeDocumentFields, mergeFields } from './protocol';
 import { canReplaceSnapshot } from './snapshotFreshness';
 
 import type { CommitRequest } from './commits';
 import type { GroupFieldActions, GroupFieldDraft, GroupFieldStamp } from './documentFieldAction';
+import type { PreachStatusAction } from './preachStatusAction';
 import type { CommandResult, ConflictDetail, DataCommand, DocumentData, ResourceSnapshot } from './types';
 
 export interface SessionCheckpoint {
@@ -328,7 +330,7 @@ export class DataSession {
   }
 
   /** Explicit conflict choice: keep edited fields and retain untouched remote siblings. */
-  keepLocal(): void {
+  keepLocal(preachStatuses?: readonly PreachStatusAction[]): void {
     if (Object.keys(this.state.pending).length) throw Object.assign(new Error('Resolve pending commands before keeping local data'), { code: 'pending-delivery-first' });
     const candidate = this.state.remoteCandidate;
     if (candidate?.value === null || candidate?.metadata?.deleted || this.state.confirmed.metadata?.deleted) {
@@ -340,9 +342,10 @@ export class DataSession {
       const chosen = chooseLocalPlacement(this.state.confirmed.resource.collection,
         this.state.confirmed.value, this.state.draft, candidate.value,
         merged.value.exists ? merged.value.value as DocumentData : null, mergeFields);
+      const statusChoice = chooseLocalPreachStatuses(this.state.confirmed, this.state.draft, candidate, preachStatuses);
       this.state.confirmed = copy(candidate);
       // The explicit choice retains one coherent placement and independently merged words.
-      this.state.draft = copy(chosen);
+      this.state.draft = copy(statusChoice ?? chosen);
     }
     this.clearGroupFieldDrafts();
     this.state.remoteCandidate = null;

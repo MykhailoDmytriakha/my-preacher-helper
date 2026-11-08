@@ -121,6 +121,32 @@ describe('Durable commit requests', () => {
     expect(next?.preachDateAction).toBeUndefined();
   });
 
+  it.each(['add', 'mark'] as const)('captures a later unclocked status after the local %s of that exact date', async firstKind => {
+    const s = setup();
+    const { queue } = s.makeQueue();
+    const baseline = initial();
+    const row = { id: 'date', date: '2026-12-13', status: 'planned', createdAt: '2026-11-01T00:00:00.000Z',
+      church: { id: 'church', name: 'Church' } };
+    const starting = firstKind === 'add' ? [] : [row];
+    Object.assign(baseline.value!, { verse: 'John 3:16', date: row.createdAt, thoughts: [], preachDates: starting, isPreached: false });
+    s.replace(baseline);
+    const editor = new DataSession(baseline);
+    const rows = [{ rowId: row.id, rowCreatedAt: row.createdAt }];
+    const marked = firstKind === 'mark';
+    editor.edit({ ...baseline.value, isPreached: marked, preachDates: [{ ...row, status: marked ? 'preached' : 'planned' }] });
+    const first = (await queue.save('edit', editor.checkpoint(), marked ? {
+      preachStatusCapture: { status: 'preached', rowId: row.id, rows, time: null },
+    } : undefined))!;
+    editor.edit({ ...baseline.value, isPreached: !marked, preachDates: [{ ...row, status: marked ? 'planned' : 'preached' }] });
+    const next = (await queue.save('edit', editor.checkpoint(), { predecessorId: first.id,
+      preachStatusCapture: marked ? { status: 'planned', rows, time: null } : { status: 'preached', rowId: row.id, rows, time: null },
+    }))!;
+    expect(next.preachStatusActions).toMatchObject([{ rowId: row.id, time: null, predecessorOperationId: first.id }]);
+
+    await s.makeQueue().queue.drain(true);
+    expect(s.transport.send).toHaveBeenCalledWith(expect.objectContaining({ operationId: next.id, preachStatusActions: next.preachStatusActions }));
+  });
+
   it('submits a chained date Save with its original date ancestor after the predecessor ACK contains a different date', async () => {
     const s = setup();
     const { queue } = s.makeQueue();

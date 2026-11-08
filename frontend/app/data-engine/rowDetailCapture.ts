@@ -5,7 +5,7 @@ import { boundedRowId, existingRowField, matchesRowAction } from './rowFieldActi
 
 import type { ActionTime } from './actionClock';
 import type { CommitRequest } from './commits';
-import type { RowDetailActions, RowDetailPolicy } from './rowDetailAction';
+import type { RowDetailActions, RowDetailObservation, RowDetailPolicy } from './rowDetailAction';
 import type { RowValue } from './rowFieldAction';
 import type { DocumentData, FieldChange, ResourceSnapshot } from './types';
 
@@ -13,9 +13,9 @@ export type RowDetailCaptures<Field extends string, Value extends RowValue> = Pa
   rowId: string; rowCreatedAt: string; after: Value; time: ActionTime;
 }>>;
 
-function knownPredecessor<Field extends string, Value extends RowValue>(predecessor: CommitRequest | undefined,
+export function knownRowDetailPredecessor<Field extends string, Value extends RowValue>(predecessor: CommitRequest | undefined,
   requests: ReadonlyMap<string, CommitRequest>, baseline: ResourceSnapshot, policy: RowDetailPolicy<Field, Value>,
-  actionsFor: (request: CommitRequest) => RowDetailActions<Field, Value> | undefined,
+  actionFor: (request: CommitRequest) => Pick<RowDetailObservation<Value>, 'rowId' | 'rowCreatedAt' | 'after'> | undefined,
   field: Field, rowId: string, rowCreatedAt: string, value: Value, scope: RowValue | undefined): string | undefined {
   const visited = new Set<string>();
   const target = policy.target(field);
@@ -26,7 +26,7 @@ function knownPredecessor<Field extends string, Value extends RowValue>(predeces
       || saved.metadata?.generation !== baseline.metadata?.generation || request.state === 'cancelled' || request.state === 'refused'
       || existingRowField(rows, rowId, policy.birth) !== rowCreatedAt || !equalValues(existingRowField(rows, rowId, target), value)
       || !equalValues(policy.scopes?.(rows, field)?.get(rowId), scope)) break;
-    const authored = actionsFor(request)?.[field];
+    const authored = actionFor(request);
     if (authored?.rowId === rowId) return authored.rowCreatedAt === rowCreatedAt && equalValues(authored.after, value) ? request.id : undefined;
     visited.add(request.id);
   }
@@ -53,7 +53,7 @@ export function captureRowDetailActions<Field extends string, Value extends RowV
     if (!time || before === undefined || after === undefined || equalValues(before, after) || !equalValues(after, capture.after) || !rowCreatedAt
       || rowCreatedAt !== capture.rowCreatedAt || rowCreatedAt !== existingRowField(afterRows, rowId, policy.birth)
       || (scopes && (scope === undefined || !equalValues(scope, policy.scopes?.(afterRows, field)?.get(rowId))))) return [];
-    const predecessorOperationId = knownPredecessor(predecessor, requests, baseline, policy, actionsFor, field, rowId, rowCreatedAt, before, scope);
+    const predecessorOperationId = knownRowDetailPredecessor(predecessor, requests, baseline, policy, request => actionsFor(request)?.[field], field, rowId, rowCreatedAt, before, scope);
     return [[field, { rowId, rowCreatedAt, before, after, time, observedRevision,
       ...(predecessorOperationId && { predecessorOperationId }) }]] as const;
   });

@@ -45,6 +45,7 @@ import type { StoredManualScope } from './manualScopes.client';
 import type { MembershipDelivery } from './membershipDelivery';
 import type { MembershipAction } from './membershipIntent';
 import type { MembershipScope, MembershipScopeRecord } from './membershipScope';
+import type { PreachStatusIntent } from './preachStatusAction';
 import type { EditorCommitAction } from './types';
 import type { DocumentData, EngineReadOptions, FailureAddress, FieldValue, JournalEntry, ResourceRef, ResourceSnapshot } from './types';
 import type { AppLocale } from '@/utils/appLocale';
@@ -1289,9 +1290,10 @@ export function useDataForm(resource: ResourceRef | null, slot: string, selectio
       const time = owner && current() && actionClock.capture(owner);
       return time ? { rowId, after, time } : undefined;
     },
-    save: (updater?: (draft: DocumentData) => DocumentData, action?: { preachDateId: string } | DatedRowActionCapture | GroupMeetingFieldInput) => {
+    save: (updater?: (draft: DocumentData) => DocumentData, action?: { preachDateId: string } | { preachStatus: PreachStatusIntent } | DatedRowActionCapture | GroupMeetingFieldInput) => {
       if (!action || 'time' in action) return run(form => action ? form.save(updater, action) : form.save(updater));
-      const time = owner && actionClock.capture(owner);
+      const time = owner && current() && actionClock.capture(owner);
+      if ('preachStatus' in action) return run(form => form.save(updater, { preachStatus: { ...action.preachStatus, time: time || null } }));
       return run(form => time ? form.save(updater, { rowId: action.preachDateId, time }) : form.save(updater));
     },
     cancel: () => run(form => form.cancel()),

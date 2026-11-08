@@ -7,6 +7,13 @@ const PLANNED_STATUS: PreachDateStatus = 'planned';
 const isKnownPreachDateStatus = (status: PreachDate['status']): status is PreachDateStatus =>
   status === PLANNED_STATUS || status === PREACHED_STATUS;
 
+/** A known preached date determines the flag even if another row still has legacy status. */
+export function explicitPreachedFlag(dates: unknown, allowEmpty: boolean): boolean | undefined {
+  if (!Array.isArray(dates) || (!dates.length && !allowEmpty)) return undefined;
+  if (dates.some(date => date?.status === PREACHED_STATUS)) return true;
+  return dates.every(date => date?.status === PLANNED_STATUS) ? false : undefined;
+}
+
 const toTimestamp = (value: string): number | null => {
   const dateKey = toDateOnlyKey(value);
   if (!dateKey) {

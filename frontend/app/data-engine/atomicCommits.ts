@@ -1,3 +1,5 @@
+import { explicitPreachedFlag } from '@/utils/preachDateStatus';
+
 import { sameAnalysisFrame } from './analysisReshapeFields';
 import { rebaseBibleMarkAncestor } from './bibleMarkStroke';
 import { pendingCommitRetirement, retireCommitJournal } from './commitJournal';
@@ -6,6 +8,7 @@ import { pendingDocumentFieldAncestor } from './documentFieldAction';
 import { prepareAtomicDomainCommand } from './domainPolicy';
 import { GROUP_MEETING_FIELDS, meetingFieldTarget, replacedMeetingField } from './groupMeetingFieldAction';
 import { isCapturedPreachDateFieldConflict, preachDateRebaseChoices, retainAuthoredChurch } from './preachDateFieldAction';
+import { alignImplicitPreachStatuses, isCapturedPreachStatusConflict, replacedPreachStatusRows, retainPreachStatusIntent } from './preachStatusAction';
 import { equalValues, mergeDocumentFields, MAX_RELATION_RESOURCES } from './protocol';
 import { isCapturedRowConflict } from './rowFieldAction';
 import { coversCommittedEffect } from './snapshotFreshness';
@@ -57,14 +60,24 @@ export function initializeCommit(record: CommitRequest, records: readonly Commit
       const action = record.groupMeetingFieldActions?.[field];
       return (action && replacedMeetingField(snapshot, field, action)) || [];
     });
-    const scopedChoices = [...replacement, ...preachingChoices];
+    const statusChoices = sameGeneration ? replacedPreachStatusRows(snapshot, record.preachStatusActions) : [];
+    const scopedChoices = [...replacement, ...preachingChoices, ...statusChoices];
     if (scopedChoices.length) return { ...record, initialized: true, state: 'conflict',
       result: { kind: 'conflict', operationId: record.id, snapshot, conflicts: scopedChoices } };
-    const rebased = mergeDocumentFields(ancestor, record.value, snapshot.value);
+    const dates = sameGeneration ? alignImplicitPreachStatuses(ancestor?.preachDates, record.value?.preachDates,
+      snapshot.value?.preachDates, record.preachStatusActions) : undefined;
+    const authored = record.value && dates !== undefined && dates !== record.value.preachDates ? { ...record.value, preachDates: dates } : record.value;
+    const rebased = mergeDocumentFields(ancestor, authored, snapshot.value);
     const target = datedRowTarget(record.baseline.resource.collection);
     const action = target && record[target.evidence];
     const isDateConflict = (conflict: typeof rebased.conflicts[number]) => target && action && isCapturedDateConflict(conflict, action, target);
+    const merged = rebased.value.exists ? rebased.value.value as DocumentData : null;
+    const church = sameGeneration ? retainAuthoredChurch(merged, snapshot, record.preachDateFieldActions) : merged;
+    const intended = sameGeneration ? retainPreachStatusIntent(church, snapshot, record.preachStatusActions) : church;
+    const flag = record.preachStatusActions?.length ? explicitPreachedFlag(intended?.preachDates, false) : undefined;
     const canOrder = sameGeneration && rebased.conflicts.every(conflict => isDateConflict(conflict)
+      || isCapturedPreachStatusConflict(conflict, record.preachStatusActions)
+      || (flag !== undefined && conflict.path.length === 1 && conflict.path[0] === 'isPreached')
       || isCapturedPreachDateFieldConflict(conflict, record.preachDateFieldActions)
       || GROUP_MEETING_FIELDS.some(field => {
         const meeting = record.groupMeetingFieldActions?.[field];
@@ -74,9 +87,7 @@ export function initializeCommit(record: CommitRequest, records: readonly Commit
     if (rebased.conflicts.length && !canOrder) return { ...record, initialized: true, state: 'conflict', result: { kind: 'conflict', operationId: record.id, snapshot, conflicts: rebased.conflicts } };
     // The preceding ACK can carry another device's date. Send the original ancestor
     // for this exact leaf so the server can order it or keep the ordinary choice.
-    const intended = rebased.value.exists ? rebased.value.value as DocumentData : null;
-    return { ...record, initialized: true, working: snapshot,
-      intended: sameGeneration ? retainAuthoredChurch(intended, snapshot, record.preachDateFieldActions) : intended,
+    return { ...record, initialized: true, working: snapshot, intended: intended && flag !== undefined ? { ...intended, isPreached: flag } : intended,
       ...(deferDate && { deferPreachDateRebase: true }), ...(markAncestor && { deferBibleMarkRebase: true }) };
   }
   return { ...record, initialized: true };

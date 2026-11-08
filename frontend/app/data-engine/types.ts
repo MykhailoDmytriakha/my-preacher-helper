@@ -4,6 +4,7 @@ import type { DatedRowActionEvidence } from './datedRowAction';
 import type { DocumentFieldAction, ServiceOrderTitleCapture } from './documentFieldAction';
 import type { GroupMeetingFieldActions } from './groupMeetingFieldAction';
 import type { PreachDateFieldActions } from './preachDateFieldAction';
+import type { PreachStatusAction } from './preachStatusAction';
 
 export type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
 export type DocumentData = Record<string, Json>;
@@ -55,6 +56,7 @@ export type DataCommand = CommandBase & (
       meetingDateAction?: DatedRowActionEvidence;
       groupMeetingFieldActions?: GroupMeetingFieldActions;
       preachDateFieldActions?: PreachDateFieldActions;
+      preachStatusActions?: PreachStatusAction[];
       bibleMarkStroke?: BibleMarkStrokeStamp;
       serviceOrderTitleAction?: DocumentFieldAction;
       groupTitleAction?: DocumentFieldAction;

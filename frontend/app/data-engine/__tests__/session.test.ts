@@ -1,9 +1,65 @@
+import { projectExactManualChoice } from '../manualChoice';
 import { applyCommand, validateCommand } from '../protocol';
 import { DataSession } from '../session';
+import type { CommitRequest } from '../commits';
+import type { PreachStatusAction } from '../preachStatusAction';
 import type { ResourceSnapshot } from '../types';
 const snap = (content = 'base', revision = 1): ResourceSnapshot => ({ resource: { collection: 'studyNotes', id: 'one' }, value: { content }, metadata: { protocol: 1, generation: 'g1', revision, deleted: false } });
 
 describe('DataSession', () => {
+  it.each(['kept', 'deleted', 'replaced', 'deleted with notes', 'replaced with notes'] as const)('keeps status intent only for the same date through local and recovered choices when the row is %s', scenario => {
+    const birth = '2026-11-08T00:00:00.000Z';
+    const row = { id: 'date', createdAt: birth, date: '2026-12-13', status: 'planned', notes: 'Base notes' };
+    const neighbor = { ...row, id: 'other', status: 'preached' };
+    const base: ResourceSnapshot = { ...snap(), resource: { collection: 'sermons', id: 'one' },
+      value: { userId: 'owner', isPreached: true, preachDates: [row, neighbor] } };
+    const withNotes = scenario.endsWith('with notes');
+    const removed = scenario.startsWith('deleted'), replaced = scenario.startsWith('replaced');
+    const ownRow = withNotes ? { ...row, notes: 'A new private note' } : row;
+    const mine = { ...base.value!, isPreached: false, preachDates: [ownRow, { ...neighbor, status: 'planned' }] };
+    const remoteRow = { ...row, status: 'preached', notes: 'Remote notes',
+      ...(replaced && { createdAt: '2026-11-08T01:00:00.000Z' }) };
+    const added = { ...row, id: 'new', status: 'preached' };
+    const stored = { ...base, metadata: { ...base.metadata!, revision: 2 },
+      value: { ...base.value!, preachDates: [...(removed ? [] : [remoteRow]), neighbor, added] } };
+    const expected = { ...stored.value, preachDates: [
+      ...(removed ? [] : [{ ...remoteRow, status: replaced ? 'preached' : 'planned' }]),
+      { ...neighbor, status: 'planned' }, added,
+    ] };
+    const actions: PreachStatusAction[] = [row, neighbor].map(date => ({
+      rowId: date.id, rowCreatedAt: birth, before: date.id === row.id ? 'planned' : 'preached',
+      after: 'planned', observedRevision: 1, time: null,
+    }));
+    const conflict = { kind: 'conflict' as const, operationId: 'first', snapshot: stored, conflicts: [] };
+    const request: CommitRequest = {
+      id: 'first', owner: 'owner', editorId: 'form', editGeneration: 1,
+      baseline: base, value: mine, predecessor: null, revision: 1, initialized: false,
+      working: base, intended: mine, command: null, submitted: null, sequence: 0,
+      state: 'conflict', result: conflict, unfinalized: [], preachStatusActions: actions,
+    };
+    const original = new DataSession(base);
+    original.edit(mine);
+    original.applyCommit(request);
+    const checkpoint = original.checkpoint();
+    original.release(request.id);
+    if (withNotes) {
+      expect(() => original.keepLocal(actions)).toThrow(expect.objectContaining({ code: 'preach-date-edits-retained' }));
+      expect(original.checkpoint()).toMatchObject({ draft: mine, remoteCandidate: stored });
+    } else {
+      original.keepLocal(actions);
+      expect(original.checkpoint().draft).toEqual(expected);
+    }
+    const record = { owner: 'owner', editorId: 'form', prepared: null, unfinalized: [], checkpoint };
+    for (const choice of ['local', 'remote'] as const) {
+      const project = () => projectExactManualChoice(record, { choice, request, stored, value: mine,
+        selection: [['preachDates'], ['isPreached']] }, [request]);
+      if (choice === 'local' && withNotes) {
+        expect(project).toThrow(expect.objectContaining({ code: 'preach-date-edits-retained' }));
+        expect(record.checkpoint).toMatchObject({ draft: mine, pending: { first: { value: mine } } });
+      } else expect(project()[0].checkpoint.draft).toEqual(choice === 'local' ? expected : stored.value);
+    }
+  });
+
   it('rebases only post-submit edits over server metadata and independently merged siblings', () => {
     const base = { ...snap(), value: { userId: 'owner', title: 'A', content: 'B', tags: ['old'], rev: { note: 1 } } };
     const session = new DataSession(base);

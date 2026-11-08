@@ -118,7 +118,7 @@ function materialTargets(owner: string, required: ResourceRef[], targets: readon
   });
 }
 
-function prepareUpdate(base: CommandBase, confirmed: ResourceSnapshot & { value: DocumentData }, draft: DocumentData, targets: readonly ResourceSnapshot[]): DomainPreparation {
+function prepareUpdate(base: CommandBase, confirmed: ResourceSnapshot & { value: DocumentData }, draft: DocumentData, targets: readonly ResourceSnapshot[], keepPreachDateBasis: boolean): DomainPreparation {
   const changes = diffFields(confirmed.value, draft);
   const collection = confirmed.resource.collection;
   if (collection === 'studyNotes' && !preservesStudyAnalysisSource(confirmed.value, draft)) return failure('An analysis must keep its original word source', 'invalid-document');
@@ -139,6 +139,9 @@ function prepareUpdate(base: CommandBase, confirmed: ResourceSnapshot & { value:
     };
   }
   if (collection === 'series' && changes.some(change => ['sermonIds', 'seriesKind'].includes(change.path[0]))) return failure('Series mirrors are derived from items', 'derived-field');
+  if (collection === 'sermons' && keepPreachDateBasis && !changes.some(change => change.path[0] === 'preachDates')) {
+    changes.push({ path: ['preachDates'], before: readField(confirmed.value, ['preachDates']), after: readField(draft, ['preachDates']) });
+  }
   const writable = collection === 'studyNotes' ? changes.filter(change => change.path[0] !== 'isDraft') : changes;
   if (!writable.length) return failure('Only a server-derived field changed', 'derived-field');
   // Unchanged roots prove which passage the positions were authored against. A delayed
@@ -152,7 +155,7 @@ function prepareUpdate(base: CommandBase, confirmed: ResourceSnapshot & { value:
 
 /** One command per ACK boundary. Authored baselines stay pinned; first marks use a logical empty book. */
 export function prepareDomainCommand(owner: string, operationId: string, confirmed: ResourceSnapshot, draft: DocumentData | null, targets: readonly ResourceSnapshot[] = [],
-  planTextEvidence?: PlanTextEvidence): DomainPreparation {
+  planTextEvidence?: PlanTextEvidence, keepPreachDateBasis = false): DomainPreparation {
   const base: CommandBase = { protocol: 1, owner, operationId, resource: copy(confirmed.resource), generation: confirmed.metadata?.generation ?? null, dependsOn: [] };
   let prepared: DomainPreparation;
   if (draft === null) prepared = { command: { ...base, kind: 'delete', baseline: copy(confirmed.value ?? {}) }, submittedValue: null };
@@ -171,7 +174,7 @@ export function prepareDomainCommand(owner: string, operationId: string, confirm
       ...diffFields(target!.value!, marks.value).filter(change => change.path[0] === 'updatedAt'),
     ] } : seed ? { ...base, kind: 'relation', relation: 'service-order-seed', value: copy(draft) }
       : { ...base, kind: 'create', value: copy(draft) }, submittedValue: copy(draft) };
-  } else prepared = prepareUpdate(base, { ...confirmed, value: confirmed.value }, draft, targets);
+  } else prepared = prepareUpdate(base, { ...confirmed, value: confirmed.value }, draft, targets, keepPreachDateBasis);
   const command = confirmed.resource.collection === 'sermons' && prepared.command.kind === 'update'
     ? withPlanTextEvidence(prepared.command, planTextEvidence ?? capturePlanTextEvidence({ before: confirmed.value, after: draft }))
     : prepared.command;

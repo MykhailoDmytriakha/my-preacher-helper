@@ -11,12 +11,16 @@ export type RowFieldTarget<Value extends RowValue> = {
   accepts(value: unknown): value is Value;
 };
 
-export type RowFieldEvidence<Value extends RowValue> = {
+export type RowFieldObservation<Value extends RowValue> = {
   rowId: string;
   before: Value;
   after: Value;
-  time: ActionTime;
+  time: ActionTime | null;
   observedRevision: number;
+};
+
+export type RowFieldEvidence<Value extends RowValue> = RowFieldObservation<Value> & {
+  time: ActionTime;
 };
 
 export type DisplacedRowField<Value extends RowValue> = {
@@ -77,7 +81,7 @@ export function isRowChange(change: FieldChange, target: RowFieldTarget<RowValue
   return change.path.length === 1 && change.path[0] === target.field;
 }
 
-export function matchesRowAction<Value extends RowValue>(changes: FieldChange[], action: RowFieldEvidence<Value>, target: RowFieldTarget<Value>): boolean {
+export function matchesRowAction<Value extends RowValue>(changes: FieldChange[], action: RowFieldObservation<Value>, target: RowFieldTarget<Value>): boolean {
   const change = changes.find(item => isRowChange(item, target));
   return Boolean(change?.before.exists && change.after.exists
     && equalValues(existingRowField(change.before.value, action.rowId, target), action.before)
@@ -87,7 +91,7 @@ export function matchesRowAction<Value extends RowValue>(changes: FieldChange[],
 export const rowConflictPath = (rowId: string, target: RowFieldTarget<RowValue>) => [target.field, 'id:' + rowId, ...leafPath(target.leaf)];
 export const rowConflictValue = (value: RowValue): FieldValue => value === null ? { exists: false } : { exists: true, value };
 
-export function isCapturedRowConflict<Value extends RowValue>(conflict: ConflictDetail, action: RowFieldEvidence<Value>, target: RowFieldTarget<Value>): boolean {
+export function isCapturedRowConflict<Value extends RowValue>(conflict: ConflictDetail, action: RowFieldObservation<Value>, target: RowFieldTarget<Value>): boolean {
   const path = rowConflictPath(action.rowId, target);
   return conflict.path.length === path.length && path.every((part, index) => conflict.path[index] === part)
     && equalValues(conflict.base.exists ? conflict.base.value : null, action.before)

@@ -62,6 +62,22 @@ describe('manual form scope', () => {
     });
   });
 
+  it('captures unclocked bulk status intent only for dates from the opening', async () => {
+    const initial = { id: 'first', date: '2026-12-13', createdAt: '2026-11-08', status: 'preached', church: { id: 'c', name: 'Church' } };
+    const before = snapshot();
+    before.value = { ...before.value, preachDates: [initial], isPreached: true };
+    const test = fixture([['preachDates'], ['isPreached']], before);
+    const scope = ManualScope.begin(test.options);
+    await scope.update(current => ({ ...current, isPreached: false, preachDates: [
+      { ...initial, status: 'planned' }, { ...initial, id: 'added-in-stage', status: 'planned' },
+    ] }));
+    const restored = ManualScope.restore(test.options, test.disk());
+    await restored.save(undefined, { status: 'planned', time: null });
+    expect(test.save.mock.calls[0][2].preachStatusCapture).toEqual({
+      status: 'planned', time: null, rows: [{ rowId: initial.id, rowCreatedAt: initial.createdAt }],
+    });
+  });
+
   it('pins pristine A at open; remote C before first typing cannot become the Save baseline', async () => {
     const test = fixture();
     const scope = ManualScope.begin(test.options);

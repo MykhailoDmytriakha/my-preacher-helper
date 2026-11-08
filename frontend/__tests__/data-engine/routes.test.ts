@@ -6,13 +6,14 @@ import { POST } from '@/api/data-engine/commands/route';
 import { GET as markHistory } from '@/api/data-engine/documents/[collection]/[id]/mark-history/route';
 import { GET as meetingFieldHistory } from '@/api/data-engine/documents/[collection]/[id]/meeting-field-history/route';
 import { GET as meetingHistory } from '@/api/data-engine/documents/[collection]/[id]/meeting-date-history/route';
+import { GET as preachStatusHistory } from '@/api/data-engine/documents/[collection]/[id]/preach-status-history/route';
 import { GET as detailHistory } from '@/api/data-engine/documents/[collection]/[id]/preach-date-field-history/route';
 import { GET as history } from '@/api/data-engine/documents/[collection]/[id]/preach-date-history/route';
 import { GET as read } from '@/api/data-engine/documents/[collection]/[id]/route';
 import { GET as statusHistory } from '@/api/data-engine/documents/[collection]/[id]/status-history/route';
 import { GET as titleHistory } from '@/api/data-engine/documents/[collection]/[id]/title-history/route';
 import { ENGINE_OWNED_COLLECTIONS } from '@/data-engine/engineOwnedCollections';
-import { assertDataEngineEnabled, DataEngineServerError, listBibleMarkHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listPreachDateFieldHistory, listPreachDateHistory, listServiceOrderTitleHistory, processCommand, readCollectionChanges, readCommandBody, readDocument } from '@/data-engine/server';
+import { assertDataEngineEnabled, DataEngineServerError, listBibleMarkHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listServiceOrderTitleHistory, processCommand, readCollectionChanges, readCommandBody, readDocument } from '@/data-engine/server';
 import { __resetStoreAvailabilityForTests } from '@/services/storeAvailability.server';
 
 jest.mock('@/config/firebaseAdminConfig', () => ({ adminDb: {} }));
@@ -27,6 +28,7 @@ jest.mock('@/data-engine/server', () => ({
   listDocuments: jest.fn(),
   listPreachDateHistory: jest.fn(),
   listPreachDateFieldHistory: jest.fn(),
+  listPreachStatusHistory: jest.fn(),
   listMeetingDateHistory: jest.fn(),
   listGroupMeetingFieldHistory: jest.fn(),
   listServiceOrderTitleHistory: jest.fn(),
@@ -169,6 +171,17 @@ describe('DataEngine HTTP routes', () => {
     expect(listPreachDateFieldHistory).toHaveBeenCalledWith('verified-owner', 'sermon-1', 'g1', undefined);
     expect((await detailHistory(input, { params: Promise.resolve({ collection: 'groups', id: 'sermon-1' }) })).status).toBe(400);
     expect(listPreachDateFieldHistory).toHaveBeenCalledTimes(1);
+  });
+
+  it('reads preaching status history for the authenticated sermon owner with no-store', async () => {
+    const input = request('http://localhost/api/data-engine/documents/sermons/sermon-1/preach-status-history?generation=g1');
+    jest.mocked(listPreachStatusHistory).mockResolvedValue({ owner: 'verified-owner', sermonId: 'sermon-1', generation: 'g1', entries: [], nextCursor: null });
+    const response = await preachStatusHistory(input, documentContext);
+    expect(response.status).toBe(200);
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(listPreachStatusHistory).toHaveBeenCalledWith('verified-owner', 'sermon-1', 'g1', undefined);
+    expect((await preachStatusHistory(input, { params: Promise.resolve({ collection: 'groups', id: 'sermon-1' }) })).status).toBe(400);
+    expect(listPreachStatusHistory).toHaveBeenCalledTimes(1);
   });
 
   it('gates the mark history route and binds its no-store answer to the authenticated owner', async () => {

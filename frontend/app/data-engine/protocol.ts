@@ -1,5 +1,6 @@
 import { mergeVerseLayer } from '@/utils/bibleMarkLayers';
 import { getUtf8ByteLength } from '@/utils/feedbackPayload';
+import { explicitPreachedFlag } from '@/utils/preachDateStatus';
 import { isServiceOrderCatalogKey, isServiceOrderSeedTarget, serviceOrderSeedCycle } from '@/utils/serviceOrderSeedIdentity';
 
 import { ANALYSIS_RESHAPE_FIELDS, ANALYSIS_RESHAPE_FRAME, hasMatchingAnalysisPositionBasis, keepAnalysisPositionFrame, lacksAnalysisFrameProof } from './analysisReshapeFields';
@@ -653,9 +654,12 @@ function applyExistingFields(command: Extract<DataCommand, { kind: 'update' | 'd
     for (const field of ANALYSIS_RESHAPE_FRAME) putField(value, [field], readField(merged.value.value as DocumentData, [field]));
     conflicts.push(...merged.conflicts);
   }
-  const planText = command.resource.collection === 'sermons' && command.changes.find(change => change.path[0] === 'planText');
+  const sermon = command.resource.collection === 'sermons';
+  const planText = sermon && command.changes.find(change => change.path[0] === 'planText');
+  const datesChanged = sermon && command.changes.some(change => change.path[0] === 'preachDates');
+  const preachedFlag = datesChanged ? command.changes.find(change => change.path[0] === 'isPreached') : undefined;
   for (const change of command.changes) {
-    if (frameChanges.includes(change) || change === planText) continue;
+    if (frameChanges.includes(change) || change === planText || change === preachedFlag) continue;
     // Keep the wire candidate valid for legacy documents missing metadata. The accepted
     // write replaces this provisional value; a client clock never arbitrates content.
     const merged = change.path[0] === 'updatedAt' ? { value: change.after, conflicts: [] }
@@ -663,8 +667,22 @@ function applyExistingFields(command: Extract<DataCommand, { kind: 'update' | 'd
     putField(value, change.path, merged.value);
     conflicts.push(...merged.conflicts);
   }
+  if (datesChanged) conflicts.push(...applyPreachedFlag(preachedFlag, value));
   conflicts.push(...applyPlanTextUpdate(command, planText || undefined, previous, value));
   return conflicts;
+}
+
+/** With explicit row statuses the sermon flag is a projection of the merged dates. */
+function applyPreachedFlag(change: FieldChange | undefined, value: DocumentData): ConflictDetail[] {
+  const flag = explicitPreachedFlag(value.preachDates, Boolean(change));
+  if (flag !== undefined) {
+    value.isPreached = flag;
+    return [];
+  }
+  if (!change) return [];
+  const merged = mergeFields(change.before, change.after, readField(value, change.path), change.path);
+  putField(value, change.path, merged.value);
+  return merged.conflicts;
 }
 
 function applyPlanTextUpdate(command: Extract<DataCommand, { kind: 'update' }>, planText: FieldChange | undefined,

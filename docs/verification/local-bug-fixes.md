@@ -7399,3 +7399,13 @@ The pinned form now records which details the person edited and gives them the e
 Eight original regressions went from red to green. 463 related tests, TypeScript, scoped lint, independent code review and the local production-mode build passed. Twelve Chrome scenarios on local Auth and Firestore covered both orders, explicit selection, omitted city, separate fields, retained choices and restore after reload. Visual evidence is in `artifacts/action-chronology-356/preach-short-fields-verified`. The rest of the chronology audit remains open.
 
 For authorized production acceptance, verify the revision and worker. Repeat both orders in two profiles on a disposable sermon, with the offline phone delivering last. Check explicit selection without a city, history restore, reload, and the other fields and rows. Close both profiles.
+
+## BUG-20261016-engine-asks-instead-of-chronology · Preaching status
+
+Open a sermon and choose Mark as Preached or Mark as Not Preached in Options. An older offline status could undo a later Save after the computer changed the same date and returned it to its original status. An unmark could also clear the sermon flag while a newly added date remained preached.
+
+Save records the action time and exact date row. A later action wins when its order is known. An offline successor can follow its confirmed local predecessor without a clock. Unclear order still asks for a choice. History opens the ordinary date form and restores the displaced status on Save. The sermon flag follows the resulting dates. Keeping a status preserves a deletion and leaves edited notes or other details in the draft.
+
+Four server regressions went red to green. 470 tests in 15 suites, TypeScript, scoped lint with no errors, and local production-mode build `YYcW_gmxIhKirJn4i6oai` passed. Two Chrome profiles on isolated emulators verified both orders in both directions, history and restoration after reload, and access to a retained note after the date was deleted. The conflict banner's missing note is tracked separately in BUG-20261108-preach-date-conflict-hides-values. Evidence is in `artifacts/action-chronology-356/preach-status-verified`. The remaining chronology writers are still under audit.
+
+For authorized production acceptance, verify the deployed revision and worker. On one disposable sermon, repeat both action orders with the phone delivering last. Restore through Preaching status history, reload, and check the selected row and its neighbor. Close both profiles.

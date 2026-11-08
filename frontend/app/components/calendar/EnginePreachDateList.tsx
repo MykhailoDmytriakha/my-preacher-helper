@@ -13,6 +13,8 @@ import { PreachDateFieldHistory } from './PreachDateFieldHistory';
 import { PreachDateRows } from './PreachDateRows';
 
 import type { PreachDateAction } from './preachDateForm';
+import type { PreachDateFieldHistoryEntry } from '@/data-engine/preachDateFieldAction';
+import type { PreachStatusHistoryEntry } from '@/data-engine/preachStatusAction';
 import type { Sermon } from '@/models/models';
 
 /** Reuses the sermon workspace editor; standalone history keeps its own read-only fallback. */
@@ -28,6 +30,10 @@ export function EnginePreachDateList({ sermonId, showDocumentStatus = true }: {
   const sermon = document.data as unknown as Sermon | null;
   const [action, setAction] = useState<PreachDateAction | null>(null);
   const disabled = document.readOnly || document.loading || !sermon || document.status?.phase === 'deleted';
+  const restore = (entry: PreachDateFieldHistoryEntry | PreachStatusHistoryEntry, historyId: string) => {
+    setAction({ kind: 'edit', dateId: entry.rowId,
+      ...(entry.field === 'status' ? { restoreStatus: { ...entry, historyId } } : { restoreField: { ...entry, historyId } }) });
+  };
   return <section aria-labelledby={headingId} className="space-y-4">
     {showDocumentStatus && document.readOnly && <p role="status">{document.readOnlyReason}</p>}
     {showDocumentStatus && <DataSyncStatus subject={document.recoveryIdentity} status={document.status} error={document.error} errorWords={document.errorWords} onRetry={document.retry} />}
@@ -48,7 +54,10 @@ export function EnginePreachDateList({ sermonId, showDocumentStatus = true }: {
       onRestore={(dateId, restoreDate) => setAction({ kind: 'edit', dateId, restoreDate })} />}
     {owner && generation && <PreachDateFieldHistory key={JSON.stringify(['details', owner, sermonId, generation])}
       owner={owner} sermonId={sermonId} generation={generation} dates={sermon?.preachDates ?? []} disabled={disabled}
-      onRestore={(entry, historyId) => setAction({ kind: 'edit', dateId: entry.rowId, restoreField: { ...entry, historyId } })} />}
-    {!document.readOnly && action && <EnginePreachDateModal key={JSON.stringify([action.kind, action.dateId, action.restoreDate, action.restoreField?.historyId])} sermonId={sermonId} action={action} onClose={() => setAction(null)} />}
+      onRestore={restore} />}
+    {owner && generation && <PreachDateFieldHistory key={JSON.stringify(['status', owner, sermonId, generation])}
+      owner={owner} sermonId={sermonId} generation={generation} dates={sermon?.preachDates ?? []} disabled={disabled}
+      kind="status" onRestore={restore} />}
+    {!document.readOnly && action && <EnginePreachDateModal key={JSON.stringify([action.kind, action.dateId, action.restoreDate, action.restoreField?.historyId, action.restoreStatus?.historyId])} sermonId={sermonId} action={action} onClose={() => setAction(null)} />}
   </section>;
 }

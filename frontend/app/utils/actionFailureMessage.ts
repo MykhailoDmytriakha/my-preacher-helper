@@ -40,6 +40,7 @@ const KNOWN = new Map<string, string>([
   ['series-changes-pending', 'dataSync.failure.seriesChangesPending'],
   // Refusals that tell the person what to do first (BUG-20261003-engine-refusals-speak-english).
   ['preach-date-gone', 'dataSync.failure.preachDateGone'],
+  ['preach-date-edits-retained', 'dataSync.failure.preachDateEditsRetained'],
   ['fresh-read-required', 'dataSync.failure.freshReadRequired'],
   ['resolve-version-first', 'dataSync.failure.resolveVersionFirst'],
   ['decision-required', 'dataSync.failure.decisionRequired'],

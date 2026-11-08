@@ -3,6 +3,7 @@ import { datedRowTarget } from './datedRowAction';
 import { stageMeetingFieldCaptures } from './groupMeetingFieldAction';
 import { retireLocalWrite, type LocalWriteHandoff } from './localWriteback';
 import { stagePreachDateField } from './preachDateFieldAction';
+import { capturePreachStatusOpening, type PreachStatusCapture, type PreachStatusSave } from './preachStatusAction';
 import { equalValues, getResourcePolicy, isValidIdentifier } from './protocol';
 import { recoverySources, type RecoverySource } from './recoveryPresence';
 import { recoveryOrigins, validateRecoveryOrigins, type RecoveryOrigin } from './recoverySource';
@@ -58,7 +59,7 @@ export interface ManualScopeRecord {
   recoverySavedRequestId?: string;
 }
 export type ManualFieldInput = GroupMeetingFieldInput | PreachDateFieldInput;
-export type ManualSaveOptions = { predecessorId?: string | null; preachDateAction?: DatedRowActionCapture; meetingDateAction?: DatedRowActionCapture; groupMeetingFieldCaptures?: GroupMeetingFieldCaptures; preachDateFieldSave?: PreachDateFieldSave };
+export type ManualSaveOptions = { predecessorId?: string | null; preachDateAction?: DatedRowActionCapture; meetingDateAction?: DatedRowActionCapture; groupMeetingFieldCaptures?: GroupMeetingFieldCaptures; preachDateFieldSave?: PreachDateFieldSave; preachStatusCapture?: PreachStatusCapture };
 export type ManualSave = (scopeId: string, captured: SessionCheckpoint, options: ManualSaveOptions) => Promise<ManualSavedIntent>;
 export interface ManualScopePort {
   capture(): ManualCapture;
@@ -210,7 +211,7 @@ export class ManualScope {
     await this.update(() => proposed);
   }
 
-  save(action?: DatedRowActionCapture): Promise<{ delivery: 'queued'; requestId: string } | null> {
+  save(action?: DatedRowActionCapture, status?: PreachStatusSave): Promise<{ delivery: 'queued'; requestId: string } | null> {
     this.assertActive();
     if (this.getState().choiceRequired) throw Object.assign(new Error('Choose which field words to keep before saving'), { code: 'resolve-version-first' });
     const captured = copy(this.record);
@@ -223,6 +224,10 @@ export class ManualScope {
     const admitted = this.options.port.admitSave?.(captured.scopeId, frozen);
     const dateTarget = datedRowTarget(captured.baseline.resource.collection);
     const dateAction = action && copy(action);
+    const dateIndex = captured.selection.findIndex(path => samePath(path, ['preachDates']));
+    const openingDates = (captured.openingSelection ?? captured.savedSelection)[dateIndex];
+    const preachStatusCapture = status && dateTarget?.evidence === 'preachDateAction' && openingDates?.exists
+      ? capturePreachStatusOpening(openingDates.value, copy(status)) : undefined;
     const detail = captured.preachDateFieldDraft;
     const preachDateFieldSave = detail && dateTarget?.evidence === 'preachDateAction' && dateAction?.rowId === detail.rowId
       ? { ...detail, time: dateAction.time } : undefined;
@@ -246,6 +251,7 @@ export class ManualScope {
         ...(dateTarget && dateAction && { [dateTarget.evidence]: dateAction }),
         ...(captured.groupMeetingFieldCaptures && { groupMeetingFieldCaptures: captured.groupMeetingFieldCaptures }),
         ...(preachDateFieldSave && { preachDateFieldSave }),
+        ...(preachStatusCapture && { preachStatusCapture }),
       });
       if (!admitted) this.assertCurrent();
       validateIntent(request, this.options);
