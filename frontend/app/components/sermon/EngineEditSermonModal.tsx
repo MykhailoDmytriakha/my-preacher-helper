@@ -43,7 +43,7 @@ export function EngineEditSermonModal({ sermonId, onClose }: { sermonId: string;
   };
   const save = async () => {
     if (saving || form.busy || !form.active || !form.durable || form.status?.phase === 'deleted') return;
-    const metadataAction = form.captureSermonMetadataAction(plannedId, plannedDate?.date ?? '');
+    const metadataAction = form.captureSermonMetadataAction({ rowId: plannedId, after: plannedDate?.date ?? '' });
     setSaving(true);
     try {
       // Membership keeps its own immutable identity if the metadata capture needs a retry.

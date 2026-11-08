@@ -39,7 +39,8 @@ export function useSermonCoreDataDocument(sermonId: string | null) {
     active: form.active, busy: form.busy, ready: form.recoveryReady, value: typeof form.data?.[field] === 'string' ? form.data[field] : '',
     begin: form.begin, cancel: form.cancel,
     update: value => form.update(current => ({ ...current, [field]: value })),
-    save: value => form.save(current => ({ ...current, [field]: value })),
+    save: value => form.save(current => ({ ...current, [field]: value }),
+      field === 'title' ? form.captureSermonMetadataAction() : undefined),
   });
   // A copy shown while device storage is silent is for reading: the page disables every editor,
   // the recorder first — a dictated thought must never meet a refusal after the fact

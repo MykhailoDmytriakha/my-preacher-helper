@@ -77,6 +77,19 @@ describe('useSermonCoreDataDocument', () => {
     expect(s.api.commit).not.toHaveBeenCalled();
   });
 
+  it('captures the title action only when saving from the sermon header', async () => {
+    setup();
+    const { result } = renderHook(() => useSermonCoreDataDocument('sermon'));
+    const capture = { sermonMetadata: { titleTime: { earliestMs: 1_800_000_000_000, latestMs: 1_800_000_000_010 } } };
+    const form = result.current.titleForm;
+    jest.mocked(form.captureSermonMetadataAction).mockReturnValue(capture);
+    await result.current.titleBinding.update('New title');
+    expect(form.captureSermonMetadataAction).not.toHaveBeenCalled();
+    await result.current.titleBinding.save('New title');
+    expect(form.captureSermonMetadataAction).toHaveBeenCalledTimes(1);
+    expect(form.save).toHaveBeenCalledWith(expect.any(Function), capture);
+  });
+
   it('applies rapid core patches from stale callbacks to the current draft without replacing siblings', async () => {
     const s = setup(); const { result, rerender } = renderHook(() => useSermonCoreDataDocument('sermon'));
     const patch = result.current.patchCore;

@@ -1290,9 +1290,9 @@ export function useDataForm(resource: ResourceRef | null, slot: string, selectio
       const time = owner && current() && actionClock.capture(owner);
       return time ? { rowId, after, time } : undefined;
     },
-    captureSermonMetadataAction: (rowId: string, after: string): ManualSermonMetadataSave => {
+    captureSermonMetadataAction: (date?: { rowId: string; after: string }): ManualSermonMetadataSave => {
       const time = owner && current() ? actionClock.capture(owner) : undefined;
-      return { sermonMetadata: { titleTime: time ?? null, ...(time && { dateAction: { rowId, after, time } }) } };
+      return { sermonMetadata: { titleTime: time ?? null, ...(date && time && { dateAction: { ...date, time } }) } };
     },
     save: (updater?: (draft: DocumentData) => DocumentData, action?: { preachDateId: string } | { preachStatus: PreachStatusIntent } | DatedRowActionCapture | GroupMeetingFieldInput | ManualSermonMetadataSave) => {
       if (!action || 'time' in action || 'sermonMetadata' in action) return run(form => action ? form.save(updater, action) : form.save(updater));

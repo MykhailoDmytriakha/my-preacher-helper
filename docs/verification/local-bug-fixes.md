@@ -7425,3 +7425,11 @@ Open Sermons, select a sermon, then Options and Edit. Earlier and later offline 
 Three original and two review regressions went red to green. 513 tests across 21 suites, TypeScript, scoped lint and production-mode local build `a5rGwP2d6jiw5O9hWk11t` passed. Four native Chrome scenarios on guarded local emulators covered both orders, return to the original title, and independent title and day edits. Title history restores into the form and sends after Save. Reload preserved the restored title and adjacent fields. The local evidence is in `artifacts/action-chronology-356/sermon-title-verified`. Other writers remain under audit.
 
 For authorized production acceptance, verify the deployed revision and worker. On one disposable sermon use two profiles to repeat both orders with the offline profile delivering last. Open Title history, restore a title with Save, reload, and verify the planned day and verse. Close both profiles.
+
+## BUG-20261016-engine-asks-instead-of-chronology · Sermon header title
+
+The pencil beside the title on a sermon page now captures the same explicit Save time as Options and Edit. It previously fell back to conflict in both action orders against the other editor. Both entrances use the same pinned manual form contract and the existing title history. The server and the history component are shared with the previous fix.
+
+One regression went red to green. 449 tests in 11 suites, TypeScript, scoped lint and production-mode local build `UthVXeJmiGu0XT8ATxm7B` passed. Three native Chrome scenarios on guarded emulators covered both action orders between entrances and two pencil edits, plus history restore and reload. Visual evidence is in `artifacts/action-chronology-356/header-title-verified`.
+
+For authorized production acceptance, repeat the two orders on a disposable sermon with a pencil and the menu form, reopen history, restore, and reload. Close both profiles after checking the adjacent verse and dates.
