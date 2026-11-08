@@ -1678,6 +1678,12 @@
   "admin": {
     "title": "Администрирование",
     "loading": "Проверка доступа администратора...",
+    "offlineReadOnly": "Копия админки без сети. Для изменений подключитесь к интернету.",
+    "offlineUnavailableTitle": "Для открытия админки нужна связь",
+    "offlineUnavailableDescription": "На этом устройстве нет сохранённых данных админки для этого аккаунта.",
+    "accessUnavailableTitle": "Не удалось проверить доступ к админке",
+    "accessUnavailableDescription": "Повторите, когда сервер будет доступен.",
+    "offlineSectionUnavailable": "На этом устройстве нет сохранённой копии этого раздела.",
     "notAuthorizedTitle": "Нет доступа",
     "notAuthorizedDescription": "У вас нет доступа к инструментам администрирования.",
     "backHome": "На главную",

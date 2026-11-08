@@ -1650,6 +1650,12 @@
   "admin": {
     "title": "Admin",
     "loading": "Checking administrator access...",
+    "offlineReadOnly": "Offline admin copy. Connect to change anything.",
+    "offlineUnavailableTitle": "Connect to open administration",
+    "offlineUnavailableDescription": "There is no saved admin view for this account on this device.",
+    "accessUnavailableTitle": "Could not verify administrator access",
+    "accessUnavailableDescription": "Try again when the server is available.",
+    "offlineSectionUnavailable": "This section has no saved copy on this device.",
     "notAuthorizedTitle": "Not authorized",
     "notAuthorizedDescription": "You do not have permission to access admin tools.",
     "backHome": "Back to home",

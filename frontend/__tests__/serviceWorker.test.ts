@@ -375,7 +375,8 @@ describe('service worker transport boundary', () => {
       expect(rule.matcher(opened('https://my-preacher-helper.com/dashboard'))).toBe(true);
       expect(rule.matcher(opened(START, 'cors'))).toBe(false);
       expect(rule.matcher(opened('https://my-preacher-helper.com/sermons/a'))).toBe(true);
-      for (const path of ['/login', '/share/notes/token', '/api/me/settings', '/admin', '/unknown', '/settings/new-section']) {
+      expect(rule.matcher(opened('https://my-preacher-helper.com/admin'))).toBe(true);
+      for (const path of ['/login', '/share/notes/token', '/api/me/settings', '/admin/private', '/unknown', '/settings/new-section']) {
         expect(rule.matcher(opened(`https://my-preacher-helper.com${path}`))).toBe(false);
       }
       expect(rule.matcher(opened('https://elsewhere.example/'))).toBe(false);

@@ -5,13 +5,30 @@ import React from 'react';
 
 import AdminPage from '@/(pages)/(private)/admin/page';
 import { auth } from '@/services/firebaseAuth.service';
-import { beginConnectivityRequest } from '@/utils/connectivity';
+import { __resetConnectivityForTests, beginConnectivityRequest, reportServerReachable, reportServerUnreachable } from '@/utils/connectivity';
 import { __resetServerAvailabilityForTests, isServerUnavailable, reportServerUnavailable } from '@/utils/serverAvailability';
+
+const mockAdminCopies = new Map<string, unknown>();
+
+jest.mock('idb-keyval', () => ({
+  ...jest.requireActual('idb-keyval'),
+  get: jest.fn(async (key: IDBValidKey) => mockAdminCopies.get(JSON.stringify(key))),
+}));
+jest.mock('@/utils/storageUpdate', () => ({
+  updateStoredValue: jest.fn(async (key: IDBValidKey, change: (current: unknown) => unknown) => {
+    const name = JSON.stringify(key);
+    mockAdminCopies.set(name, change(mockAdminCopies.get(name)));
+  }),
+}));
 
 const mockTranslate = (key: string) => key;
 
 jest.mock('@/services/firebaseAuth.service', () => ({
   auth: { currentUser: null, onAuthStateChanged: jest.fn() },
+}));
+
+jest.mock('@/providers/AuthProvider', () => ({
+  useAuth: () => ({ user: jest.requireMock('@/services/firebaseAuth.service').auth.currentUser, loading: false }),
 }));
 
 jest.mock('@/components/navigation/LanguageInitializer', () => () => <div data-testid="language-initializer" />);
@@ -61,6 +78,8 @@ describe('Admin Page', () => {
     jest.clearAllMocks();
     fetchMock.resetMocks();
     __resetServerAvailabilityForTests();
+    __resetConnectivityForTests();
+    mockAdminCopies.clear();
     (auth as { currentUser: unknown }).currentUser = adminUser;
     mockOnAuthStateChanged.mockImplementation((callback) => {
       if (typeof callback === 'function') callback(adminUser as never);
@@ -76,6 +95,98 @@ describe('Admin Page', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('admin.targetUid')).not.toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith('/api/admin/me', expect.objectContaining({ headers: { Authorization: 'Bearer firebase-id-token' } }));
+  });
+
+  it('reopens both previously authorized views offline and keeps them read-only', async () => {
+    mockAuthorizedList();
+    const online = render(<AdminPage />);
+    expect(await screen.findByText('alpha@example.com')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'admin.modelDefaults.nav.modelDefaults' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'admin.modelDefaults.save' })).toBeEnabled());
+    online.unmount();
+
+    fetchMock.mockReject(new TypeError('Failed to fetch'));
+    const network = jest.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    const offline = render(<AdminPage />);
+    try {
+      expect(await screen.findByText('alpha@example.com')).toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: 'admin.notAuthorizedTitle' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'admin.users.manualEdit' })).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'admin.modelDefaults.nav.modelDefaults' }));
+      expect(screen.getByRole('button', { name: 'admin.modelDefaults.save' })).toBeDisabled();
+    } finally {
+      offline.unmount();
+      network.mockRestore();
+    }
+  });
+
+  it('explains that a connection is needed when no authorized view is stored', async () => {
+    fetchMock.mockReject(new TypeError('Failed to fetch'));
+    const network = jest.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    const view = render(<AdminPage />);
+    try {
+      expect(await screen.findByRole('heading', { name: 'admin.offlineUnavailableTitle' })).toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: 'admin.notAuthorizedTitle' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    } finally {
+      view.unmount();
+      network.mockRestore();
+    }
+  });
+
+  it('does not restore another account’s copy or a copy retired by an explicit denial', async () => {
+    mockAuthorizedList();
+    const allowed = render(<AdminPage />);
+    expect(await screen.findByText('alpha@example.com')).toBeInTheDocument();
+    allowed.unmount();
+
+    const network = jest.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    const switchUser = (user: typeof adminUser) => { (auth as { currentUser: unknown }).currentUser = user; };
+    try {
+      switchUser({ ...adminUser, uid: 'other-account' });
+      fetchMock.mockReject(new TypeError('Failed to fetch'));
+      const other = render(<AdminPage />);
+      expect(await screen.findByRole('heading', { name: 'admin.offlineUnavailableTitle' })).toBeInTheDocument();
+      expect(screen.queryByText('alpha@example.com')).not.toBeInTheDocument();
+      other.unmount();
+
+      network.mockReturnValue(true);
+      __resetConnectivityForTests();
+      switchUser(adminUser);
+      fetchMock.mockResponseOnce(JSON.stringify({ error: 'Forbidden' }), { status: 403 });
+      const denied = render(<AdminPage />);
+      expect(await screen.findByRole('heading', { name: 'admin.notAuthorizedTitle' })).toBeInTheDocument();
+      denied.unmount();
+
+      network.mockReturnValue(false);
+      fetchMock.mockReject(new TypeError('Failed to fetch'));
+      const afterDenial = render(<AdminPage />);
+      expect(await screen.findByRole('heading', { name: 'admin.offlineUnavailableTitle' })).toBeInTheDocument();
+      expect(screen.queryByText('alpha@example.com')).not.toBeInTheDocument();
+      afterDenial.unmount();
+    } finally {
+      network.mockRestore();
+    }
+  });
+
+  it('keeps an unsaved model choice through a temporary loss of connectivity', async () => {
+    mockAuthorizedList();
+    render(<AdminPage />);
+    expect(await screen.findByText('alpha@example.com')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'admin.modelDefaults.nav.modelDefaults' }));
+    const provider = () => screen.getByLabelText('admin.modelDefaults.functions.text: admin.modelDefaults.provider');
+    await waitFor(() => expect(provider()).toBeEnabled());
+    fireEvent.change(provider(), { target: { value: 'openrouter' } });
+    expect(provider()).toHaveValue('openrouter');
+
+    act(() => reportServerUnreachable(beginConnectivityRequest()));
+    expect(provider()).toBeDisabled();
+    expect(provider()).toHaveValue('gemini');
+
+    mockAuthorizedList();
+    act(() => reportServerReachable(beginConnectivityRequest()));
+    await waitFor(() => expect(provider()).toBeEnabled());
+    expect(provider()).toHaveValue('openrouter');
   });
 
   it('renders the KPI strip and user rows after server authorization', async () => {

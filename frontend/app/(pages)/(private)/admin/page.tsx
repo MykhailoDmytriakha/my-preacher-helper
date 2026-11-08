@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { FormEvent, KeyboardEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   aiFunctionIds,
@@ -15,7 +15,7 @@ import UsageBar from '@/components/usage/UsageBar';
 import { useModalLayer } from '@/hooks/useModalLayer';
 import { stickyTopBelowNav, useStickyOffsets } from '@/hooks/useStickyOffsets';
 import { TIER_VALUES, Tier, UserEntitlement } from '@/models/models';
-import { auth } from '@/services/firebaseAuth.service';
+import { useAuth } from '@/providers/AuthProvider';
 import { hardCap } from '@/services/usageLimits';
 import { refusalWords, saidError, sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { apiClient } from '@/utils/apiClient';
@@ -23,6 +23,7 @@ import { EMERALD_SURFACE } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
 import '@locales/i18n';
 
+import { adminToken, isAdminDenial, useAdminReadAccess } from './useAdminReadAccess';
 import { useAdminUserEditorClose } from './useAdminUserEditorClose';
 
 import type {
@@ -35,7 +36,6 @@ import type { ChipTone } from '@/utils/chipClasses';
 
 const NO_EMAIL_KEY = 'admin.users.noEmail';
 
-type AdminAccessState = 'checking' | 'authorized' | 'unauthorized';
 type AdminSection = 'users' | 'modelDefaults';
 type PromotionMode = 'unchanged' | 'set' | 'clear';
 type Role = 'user' | 'admin' | 'superuser';
@@ -229,34 +229,36 @@ const parseAdminModelDefaultsResponse = (value: unknown): AdminModelDefaultsResp
   return { stored, effective: effective as AiModelDefaults };
 };
 
-const fetchAdminUsers = async (pageToken?: string): Promise<AdminUsersResponse> => {
-  const currentUser = auth.currentUser;
-  if (!currentUser) throw new Error('Unauthenticated');
-
-  const token = await currentUser.getIdToken();
+const fetchAdminUsers = async (owner: string, pageToken?: string): Promise<AdminUsersResponse> => {
+  const token = await adminToken(owner);
   const url = pageToken
     ? `/api/admin/users?${new URLSearchParams({ pageToken }).toString()}`
     : '/api/admin/users';
   const response = await apiClient(url, { category: 'detail', answersFromStore: true, headers: { Authorization: `Bearer ${token}` } });
   const responseBody = await parseResponse(response);
   const parsed = parseAdminUsersResponse(responseBody);
-  if (!response.ok || !parsed) throw new Error('Could not load users');
+  if (!response.ok || !parsed) throw Object.assign(new Error('Could not load users'), { status: response.status });
   return parsed;
 };
 
-const fetchAdminModelDefaults = async (): Promise<AdminModelDefaultsResponse> => {
-  const currentUser = auth.currentUser;
-  if (!currentUser) throw new Error('Unauthenticated');
-
-  const token = await currentUser.getIdToken();
+const fetchAdminModelDefaults = async (owner: string): Promise<AdminModelDefaultsResponse> => {
+  const token = await adminToken(owner);
   const response = await apiClient('/api/admin/ai-defaults', { category: 'metadata', answersFromStore: true,
     headers: { Authorization: `Bearer ${token}` },
   });
   const responseBody = await parseResponse(response);
   const parsed = parseAdminModelDefaultsResponse(responseBody);
-  if (!response.ok || !parsed) throw new Error('Could not load model defaults');
+  if (!response.ok || !parsed) throw Object.assign(new Error('Could not load model defaults'), { status: response.status });
   return parsed;
 };
+
+const deniedRead = (error: unknown): boolean =>
+  isRecord(error) && typeof error.status === 'number' && isAdminDenial(error.status);
+
+function retainedUsers(previous: unknown, page: AdminUsersResponse): AdminUsersResponse {
+  const prior = parseAdminUsersResponse(previous);
+  return prior && page.nextPageToken ? { ...page, users: mergeUserPages(prior.users, page.users) } : page;
+}
 
 const timestampValue = (value: string | null): number => {
   if (!value) return 0;
@@ -522,6 +524,7 @@ type ModelDefaultsSectionProps = {
   defaults: AiModelDefaults;
   loading: boolean;
   ready: boolean;
+  readOnly: boolean;
   saving: boolean;
   error: string;
   success: boolean;
@@ -591,6 +594,7 @@ function ModelDefaultsSection({
   defaults,
   loading,
   ready,
+  readOnly,
   saving,
   error,
   success,
@@ -598,7 +602,7 @@ function ModelDefaultsSection({
   onSave,
 }: ModelDefaultsSectionProps) {
   const { t } = useTranslation();
-  const disabled = !ready || loading || saving;
+  const disabled = readOnly || !ready || loading || saving;
 
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900" aria-labelledby="admin-page-title">
@@ -625,6 +629,7 @@ function DetailItem({ label, children }: { label: string; children: React.ReactN
 
 type DrawerProps = {
   open: boolean;
+  readOnly: boolean;
   user: AdminUser | null;
   targetUid: string;
   paidTier: Tier | '';
@@ -671,7 +676,7 @@ function UserDrawer(props: DrawerProps) {
           <fieldset className="contents" disabled={props.submitting}>
           <div className="flex-1 overflow-y-auto px-5 py-4">
             {user && <><h2 className="mb-3 text-[11px] font-bold uppercase tracking-[0.08em] text-slate-400 dark:text-slate-500">{t('admin.users.profile')}</h2><dl className="grid grid-cols-2 gap-x-4 gap-y-3"><DetailItem label={t('admin.users.fields.email')}>{user.email ?? t(NO_EMAIL_KEY)}</DetailItem><DetailItem label={t('admin.users.fields.verified')}>{user.emailVerified ? t('admin.users.verified') : t('admin.users.unverified')}</DetailItem><DetailItem label={t('admin.users.fields.disabled')}>{user.disabled ? t('admin.users.disabled') : t('admin.users.enabled')}</DetailItem><DetailItem label={t('admin.users.fields.lastLogin')}><ActivityTime fallback={t('admin.users.neverLoggedIn')} language={interfaceLanguage} value={user.lastSignInTime} /></DetailItem><DetailItem label={t('admin.users.fields.lastSeen')}><ActivityTime fallback={t('admin.users.neverSeen')} language={interfaceLanguage} value={resolveLastSeenAt(user)} /></DetailItem><DetailItem label={t('admin.users.fields.creation')}>{formatDate(user.creationTime, '—', interfaceLanguage)}</DetailItem><DetailItem label={t('admin.users.fields.paidTier')}><TierBadge tier={user.paidTier} /></DetailItem><DetailItem label={t('admin.users.fields.effectiveTier')}><TierBadge tier={user.effectiveTier} /></DetailItem><DetailItem label={t('admin.users.fields.promotion')}>{promotion}</DetailItem><DetailItem label={t('admin.users.fields.referredBy')}>{user.referredBy ?? '—'}</DetailItem><DetailItem label={t('admin.users.fields.invitedCount')}>{user.referralCount}</DetailItem>{user.referralWarning && <DetailItem label={t('admin.users.fields.referralWarning')}>{t('admin.users.referralWarning.detail', { count: user.referralWarning.referralCount, date: formatDate(user.referralWarning.at, '—', interfaceLanguage) })}</DetailItem>}</dl></>}
-            <h2 className={`${user ? 'mt-6' : ''} mb-3 text-[11px] font-bold uppercase tracking-[0.08em] text-slate-400 dark:text-slate-500`}>{t('admin.users.editSection')}</h2>
+            {!props.readOnly && <><h2 className={`${user ? 'mt-6' : ''} mb-3 text-[11px] font-bold uppercase tracking-[0.08em] text-slate-400 dark:text-slate-500`}>{t('admin.users.editSection')}</h2>
             <div className="space-y-4">
               <label className="block text-sm font-semibold text-slate-600 dark:text-slate-300" htmlFor="target-uid">{t('admin.targetUid')}<input className={fieldClassName} id="target-uid" onChange={(event) => props.onTargetUidChange(event.target.value)} required value={props.targetUid} /></label>
               <p className="-mt-2 text-xs text-slate-400 dark:text-slate-500">{t('admin.users.manualUidHint')}</p>
@@ -679,9 +684,9 @@ function UserDrawer(props: DrawerProps) {
               <fieldset><legend className="mb-1.5 text-sm font-semibold text-slate-600 dark:text-slate-300">{t('admin.promotion')}</legend><div aria-label={t('admin.promotionAction')} className="flex overflow-hidden rounded-lg border border-slate-300 dark:border-slate-600">{(['unchanged', 'set', 'clear'] as PromotionMode[]).map((mode) => <button aria-pressed={props.promotionMode === mode} className={`${props.promotionMode === mode ? 'bg-blue-600 text-white' : 'bg-slate-50 text-slate-600 hover:bg-slate-100 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'} flex-1 border-r border-slate-300 px-2 py-2 text-xs font-bold last:border-r-0 dark:border-slate-600`} key={mode} onClick={() => props.onPromotionModeChange(mode)} type="button">{t(`admin.users.promo.${mode}`)}</button>)}</div>{props.promotionMode === 'set' && <div className="mt-3 grid grid-cols-2 gap-3"><label className="text-xs font-semibold text-slate-500 dark:text-slate-400" htmlFor="promotion-tier">{t('admin.promotionTier')}<select className={fieldClassName} id="promotion-tier" onChange={(event) => props.onPromotionTierChange(event.target.value as Tier)} value={props.promotionTier}>{TIER_VALUES.map((tier) => <option key={tier} value={tier}>{t(`admin.users.tiers.${tier}`)}</option>)}</select></label><label className="text-xs font-semibold text-slate-500 dark:text-slate-400" htmlFor="promotion-expires-at">{t('admin.promotionExpiresAt')}<input className={fieldClassName} id="promotion-expires-at" onChange={(event) => props.onPromotionExpiresAtChange(event.target.value)} type="datetime-local" value={props.promotionExpiresAt} /></label></div>}<p className="mt-1.5 text-xs text-slate-400 dark:text-slate-500">{t('admin.users.promoHint')}</p></fieldset>
               <fieldset><legend className="mb-1.5 text-sm font-semibold text-slate-600 dark:text-slate-300">{t('admin.usage')}</legend><div className="grid grid-cols-2 gap-3"><label className="text-xs font-semibold text-slate-500 dark:text-slate-400" htmlFor="ai-usage">{t('admin.aiUsage')}<input className={fieldClassName} id="ai-usage" min="0" onChange={(event) => props.onAiUsageChange(event.target.value)} step="any" type="number" value={props.aiUsage} /></label><label className="text-xs font-semibold text-slate-500 dark:text-slate-400" htmlFor="transcription-seconds">{t('admin.transcriptionSeconds')}<input className={fieldClassName} id="transcription-seconds" min="0" onChange={(event) => props.onTranscriptionSecondsChange(event.target.value)} step="any" type="number" value={props.transcriptionSeconds} /></label><label className="text-xs font-semibold text-slate-500 dark:text-slate-400" htmlFor="audio-seconds">{t('admin.audioSeconds')}<input className={fieldClassName} id="audio-seconds" min="0" onChange={(event) => props.onAudioSecondsChange(event.target.value)} step="any" type="number" value={props.audioSeconds} /></label></div></fieldset>
               {props.submitError && <p className="text-sm text-rose-700 dark:text-rose-300" role="alert">{props.submitError}</p>}
-            </div>
+            </div></>}
           </div>
-          <footer className="flex gap-3 border-t border-slate-200 bg-white px-5 py-4 dark:border-slate-700 dark:bg-slate-900"><button className="rounded-lg border border-slate-300 bg-slate-50 px-4 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700" onClick={props.onClose} type="button">{t('admin.users.cancel')}</button><button className="flex-1 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-blue-500 dark:hover:bg-blue-400" disabled={props.submitting} type="submit">{props.submitting ? t('admin.submitting') : t('admin.users.save')}</button></footer>
+          <footer className="flex gap-3 border-t border-slate-200 bg-white px-5 py-4 dark:border-slate-700 dark:bg-slate-900"><button className="rounded-lg border border-slate-300 bg-slate-50 px-4 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700" onClick={props.onClose} type="button">{t('admin.users.cancel')}</button>{!props.readOnly && <button className="flex-1 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-blue-500 dark:hover:bg-blue-400" disabled={props.submitting} type="submit">{props.submitting ? t('admin.submitting') : t('admin.users.save')}</button>}</footer>
           </fieldset>
         </form>
       </aside>
@@ -689,12 +694,129 @@ function UserDrawer(props: DrawerProps) {
   );
 }
 
-export default function AdminPage() {
-  const { t, language: interfaceLanguage } = useTranslation();
+function AdminScreen({
+  activeSection, onSectionChange, onManualEdit, readOnly, usersAvailable, modelsAvailable, userList, modelSection,
+}: {
+  activeSection: AdminSection;
+  onSectionChange: (section: AdminSection) => void;
+  onManualEdit?: () => void;
+  readOnly: boolean;
+  usersAvailable: boolean;
+  modelsAvailable: boolean;
+  userList: UserListProps;
+  modelSection: ModelDefaultsSectionProps;
+}) {
+  const { t } = useTranslation();
   const { navHeight } = useStickyOffsets();
-  const [access, setAccess] = useState<AdminAccessState>('checking');
+  const usersSection = activeSection === 'users';
+  const available = usersSection ? usersAvailable : modelsAvailable;
+
+  return (
+    <>
+      <LanguageInitializer />
+      <main className="mx-auto max-w-screen-2xl px-4 py-7 md:px-5 md:py-8">
+        {readOnly && <p className="mb-4 rounded-lg bg-amber-50 px-4 py-2 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-100" role="status">{t('admin.offlineReadOnly')}</p>}
+        <div className="grid gap-5 md:grid-cols-[15rem_minmax(0,1fr)] md:items-start md:gap-8">
+          <aside className="md:sticky" style={{ top: stickyTopBelowNav(navHeight) }}>
+            <AdminNav activeSection={activeSection} onSectionChange={onSectionChange} />
+          </aside>
+          <div className="min-w-0">
+            <header className="mb-5 flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white" id="admin-page-title">
+                  {t(usersSection ? 'admin.users.pageTitle' : 'admin.modelDefaults.title')}
+                </h1>
+                <p className="mt-1 max-w-2xl text-sm text-slate-500 dark:text-slate-400">
+                  {t(usersSection ? 'admin.users.pageDescription' : 'admin.modelDefaults.description')}
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                {usersSection && onManualEdit && <button className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800" onClick={onManualEdit} type="button">{t('admin.users.manualEdit')}</button>}
+                <Link className="text-sm font-bold text-blue-700 hover:underline dark:text-blue-300" href="/settings">{t('admin.backToSettings')}</Link>
+              </div>
+            </header>
+            {readOnly && !available ? <p>{t('admin.offlineSectionUnavailable')}</p> : usersSection ? (
+              <>
+                <KpiStrip users={userList.users} />
+                <UserList
+                  {...userList}
+                  error={readOnly ? '' : userList.error}
+                  loading={!readOnly && userList.loading}
+                  loadingMore={!readOnly && userList.loadingMore}
+                  nextPageToken={readOnly ? undefined : userList.nextPageToken}
+                />
+              </>
+            ) : (
+              <ModelDefaultsSection
+                {...modelSection}
+                error={readOnly ? '' : modelSection.error}
+                loading={!readOnly && modelSection.loading}
+                success={!readOnly && modelSection.success}
+              />
+            )}
+          </div>
+        </div>
+      </main>
+    </>
+  );
+}
+
+type EntitlementDraft = {
+  paidTier: Tier | '';
+  role: Role | '';
+  promotionDirty: boolean;
+  promotionMode: PromotionMode;
+  promotionTier: Tier;
+  promotionExpiresAt: string;
+  aiUsage: string;
+  transcriptionSeconds: string;
+  audioSeconds: string;
+};
+
+function entitlementChange(draft: EntitlementDraft): { patch: EntitlementPatch } | { error: string } {
+  const usage = {
+    aiUsed: parseNonNegativeNumber(draft.aiUsage),
+    transcriptionSecondsUsed: parseNonNegativeNumber(draft.transcriptionSeconds),
+    audioSecondsUsed: parseNonNegativeNumber(draft.audioSeconds),
+  };
+  if ((draft.aiUsage.trim() && usage.aiUsed === undefined) ||
+      (draft.transcriptionSeconds.trim() && usage.transcriptionSecondsUsed === undefined) ||
+      (draft.audioSeconds.trim() && usage.audioSecondsUsed === undefined)) {
+    return { error: 'admin.invalidUsage' };
+  }
+  const patch: EntitlementPatch = {};
+  if (draft.paidTier) patch.paidTier = draft.paidTier;
+  // A prefilled promotion is sent only after an explicit edit.
+  if (draft.promotionDirty && draft.promotionMode === 'clear') patch.promotion = null;
+  else if (draft.promotionDirty && draft.promotionMode === 'set') {
+    const expiresAt = new Date(draft.promotionExpiresAt);
+    if (!draft.promotionExpiresAt || Number.isNaN(expiresAt.getTime())) return { error: 'admin.invalidPromotion' };
+    patch.promotion = { tier: draft.promotionTier, expiresAt: expiresAt.toISOString() };
+  }
+  if (Object.values(usage).some(value => value !== undefined)) patch.usage = usage;
+  if (draft.role) patch.role = draft.role;
+  return Object.keys(patch).length ? { patch } : { error: 'admin.noChanges' };
+}
+
+function AdminLoading() {
+  const { t } = useTranslation();
+  return <main className="mx-auto flex min-h-[60vh] max-w-3xl items-center justify-center px-4 text-slate-600 dark:text-slate-300"><p role="status">{t('admin.loading')}</p></main>;
+}
+
+export default function AdminPage() {
+  const { user, loading } = useAuth();
+  useEffect(() => {
+    if (!loading && !user) window.location.href = '/';
+  }, [loading, user]);
+  return user && !loading ? <AdminWorkspace key={user.uid} owner={user.uid} /> : <AdminLoading />;
+}
+
+function AdminWorkspace({ owner }: { owner: string }) {
+  const { t, language: interfaceLanguage } = useTranslation();
+  const { access, copy, isCurrent, keep, refuse, recheck, readOnly } = useAdminReadAccess(owner);
+  const canEdit = access === 'authorized' && !readOnly;
   const [activeSection, setActiveSection] = useState<AdminSection>('users');
-  const [users, setUsers] = useState<AdminUser[]>([]);
+  const [liveUsers, setUsers] = useState<AdminUser[]>();
   const [usersLoading, setUsersLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [usersError, setUsersError] = useState(false);
@@ -716,12 +838,20 @@ export default function AdminPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<FailureWords | null>(null);
   const [toastVisible, setToastVisible] = useState(false);
+  const modelsEdited = useRef(false);
+  const [confirmedModels, setConfirmedModels] = useState<AiModelDefaults>();
   const [modelDefaults, setModelDefaults] = useState<AiModelDefaults>(CATALOG_DEFAULTS);
   const [modelDefaultsLoading, setModelDefaultsLoading] = useState(false);
   const [modelDefaultsReady, setModelDefaultsReady] = useState(false);
   const [modelDefaultsSaving, setModelDefaultsSaving] = useState(false);
   const [modelDefaultsError, setModelDefaultsError] = useState<FailureWords | null>(null);
   const [modelDefaultsSaved, setModelDefaultsSaved] = useState(false);
+  const cachedUsers = useMemo(() => parseAdminUsersResponse(copy?.users)?.users, [copy?.users]);
+  const cachedModels = useMemo(() => parseAdminModelDefaultsResponse(copy?.models)?.effective, [copy?.models]);
+  const offlineUsers = cachedUsers ?? liveUsers;
+  const offlineModels = confirmedModels ?? cachedModels;
+  const displayedUsers = readOnly ? offlineUsers : liveUsers;
+  const users = useMemo(() => displayedUsers ?? [], [displayedUsers]);
   const selectedUser = useMemo(() => users.find((user) => user.uid === selectedUid) ?? null, [selectedUid, users]);
   const filteredUsers = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
@@ -735,34 +865,21 @@ export default function AdminPage() {
   }, [filter, search, users]);
 
   useEffect(() => {
-    let cancelled = false;
-    let adminCheckId = 0;
-    const unsubscribe = auth.onAuthStateChanged((currentUser) => {
-      const currentCheckId = ++adminCheckId;
-      if (!currentUser) { window.location.href = '/'; return; }
-      setAccess('checking');
-      if (typeof currentUser.getIdToken !== 'function') { if (!cancelled && currentCheckId === adminCheckId) setAccess('unauthorized'); return; }
-      void (async () => {
-        try {
-          const token = await currentUser.getIdToken();
-          const response = await apiClient('/api/admin/me', { category: 'metadata', headers: { Authorization: `Bearer ${token}` } });
-          const data = await parseResponse(response);
-          const isAdmin = response.ok && data !== null && typeof data === 'object' && 'admin' in data && data.admin === true;
-          if (!cancelled && currentCheckId === adminCheckId) setAccess(isAdmin ? 'authorized' : 'unauthorized');
-        } catch { if (!cancelled && currentCheckId === adminCheckId) setAccess('unauthorized'); }
-      })();
-    });
-    return () => { cancelled = true; unsubscribe(); };
-  }, []);
-
-  useEffect(() => {
     if (access !== 'authorized') return undefined;
     let cancelled = false;
     setUsersLoading(true);
     setUsersError(false);
-    void fetchAdminUsers().then((page) => { if (!cancelled) { setUsers(page.users); setNextPageToken(page.nextPageToken); } }).catch(() => { if (!cancelled) setUsersError(true); }).finally(() => { if (!cancelled) setUsersLoading(false); });
+    void fetchAdminUsers(owner).then(async (page) => {
+      if (cancelled) return;
+      const current = await keep(previous => ({ users: retainedUsers(previous?.users, page) }));
+      if (current && !cancelled) { setUsers(page.users); setNextPageToken(page.nextPageToken); }
+    }).catch((error: unknown) => {
+      if (cancelled) return;
+      if (deniedRead(error)) refuse();
+      else setUsersError(true);
+    }).finally(() => { if (!cancelled) setUsersLoading(false); });
     return () => { cancelled = true; };
-  }, [access]);
+  }, [access, keep, owner, refuse]);
 
   useEffect(() => {
     if (access !== 'authorized') return undefined;
@@ -770,20 +887,33 @@ export default function AdminPage() {
     setModelDefaultsLoading(true);
     setModelDefaultsReady(false);
     setModelDefaultsError(null);
-    void fetchAdminModelDefaults()
-      .then((response) => {
-        if (!cancelled) {
-          setModelDefaults(response.effective);
+    void fetchAdminModelDefaults(owner)
+      .then(async (response) => {
+        if (cancelled) return;
+        const current = await keep(() => ({ models: response }));
+        if (current && !cancelled) {
+          setConfirmedModels(response.effective);
+          if (!modelsEdited.current) setModelDefaults(response.effective);
           setModelDefaultsReady(true);
         }
       })
-      .catch(() => {
-        if (!cancelled) setModelDefaultsError({ key: 'admin.modelDefaults.loadFailed' });
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        if (deniedRead(error)) refuse();
+        else setModelDefaultsError({ key: 'admin.modelDefaults.loadFailed' });
       })
-      .finally(() => {
-        if (!cancelled) setModelDefaultsLoading(false);
-      });
+      .finally(() => { if (!cancelled) setModelDefaultsLoading(false); });
     return () => { cancelled = true; };
+  }, [access, keep, owner, refuse]);
+
+  useEffect(() => {
+    if (access === 'unauthorized') {
+      setDrawerOpen(false);
+      setUsers(undefined);
+      setConfirmedModels(undefined);
+      setModelDefaults(CATALOG_DEFAULTS);
+      modelsEdited.current = false;
+    }
   }, [access]);
 
   useEffect(() => {
@@ -793,7 +923,7 @@ export default function AdminPage() {
   }, [toastVisible]);
 
   const editorClose = useAdminUserEditorClose({
-    open: drawerOpen && access === 'authorized', busy: submitting,
+    open: drawerOpen && access !== 'unauthorized', busy: submitting,
     fields: { targetUid, paidTier, role, promotionMode, promotionTier, promotionExpiresAt, aiUsage, transcriptionSeconds, audioSeconds },
     onClose: () => setDrawerOpen(false),
   });
@@ -816,30 +946,37 @@ export default function AdminPage() {
   };
 
   const handleLoadMore = async () => {
-    if (!nextPageToken || loadingMore) return;
+    if (!canEdit || !nextPageToken || loadingMore) return;
     setLoadingMore(true); setUsersError(false);
-    try { const page = await fetchAdminUsers(nextPageToken); setUsers((current) => mergeUserPages(current, page.users)); setNextPageToken(page.nextPageToken); } catch { setUsersError(true); } finally { setLoadingMore(false); }
+    try {
+      const page = await fetchAdminUsers(owner, nextPageToken);
+      const merged = { ...page, users: mergeUserPages(users, page.users) };
+      if (!await keep(previous => ({ users: retainedUsers(previous?.users, merged) }))) return;
+      setUsers(merged.users);
+      setNextPageToken(page.nextPageToken);
+    } catch (error) {
+      if (!isCurrent()) return;
+      if (deniedRead(error)) refuse();
+      else setUsersError(true);
+    } finally { setLoadingMore(false); }
   };
 
   const handleModelDefaultChange = (fn: AiFunctionId, target: FunctionModelTarget) => {
+    modelsEdited.current = true;
     setModelDefaults((current) => ({ ...current, [fn]: target }));
     setModelDefaultsError(null);
     setModelDefaultsSaved(false);
   };
 
   const handleModelDefaultsSave = async () => {
-    if (!modelDefaultsReady) return;
-    const currentUser = auth.currentUser;
-    if (!currentUser) {
-      setModelDefaultsError({ key: 'admin.unauthenticated' });
-      return;
-    }
+    if (!canEdit || !modelDefaultsReady) return;
 
     setModelDefaultsSaving(true);
     setModelDefaultsError(null);
     setModelDefaultsSaved(false);
     try {
-      const token = await currentUser.getIdToken();
+      const token = await adminToken(owner);
+      if (!isCurrent()) return;
       const response = await apiClient('/api/admin/ai-defaults', { category: 'crud', answersFromStore: true,
         method: 'POST',
         headers: {
@@ -850,9 +987,14 @@ export default function AdminPage() {
       });
       const responseBody = await parseResponse(response);
       const parsed = parseAdminModelDefaultsResponse(responseBody);
+      if (!isCurrent()) return;
+      if (isAdminDenial(response.status)) refuse();
       if (!response.ok || !parsed) {
         throw responseFailure(responseBody, 'admin.modelDefaults.saveFailed');
       }
+      if (!await keep(() => ({ models: parsed }))) return;
+      modelsEdited.current = false;
+      setConfirmedModels(parsed.effective);
       setModelDefaults(parsed.effective);
       setModelDefaultsSaved(true);
     } catch (error) {
@@ -862,8 +1004,8 @@ export default function AdminPage() {
     }
   };
 
-  const patchSelectedUser = (uid: string, updatedEntitlement: UserEntitlement, patch: EntitlementPatch) => {
-    setUsers((currentUsers) => currentUsers.map((user) => {
+  const patchSelectedUser = async (uid: string, updatedEntitlement: UserEntitlement, patch: EntitlementPatch) => {
+    const patched = (currentUsers: AdminUser[]) => currentUsers.map((user) => {
       if (user.uid !== uid) return user;
       const promotion = updatedEntitlement.promotion ?? null;
       const usage = updatedEntitlement.usage
@@ -873,53 +1015,109 @@ export default function AdminPage() {
           }
         : user.usage;
       return { ...user, paidTier: updatedEntitlement.paidTier, promotion, usage, role: patch.role ?? user.role, referredBy: updatedEntitlement.referredBy ?? user.referredBy, effectiveTier: resolveEffectiveTierClient(updatedEntitlement.paidTier, promotion) };
-    }));
+    });
+    const current = await keep(previous => {
+      const retained = parseAdminUsersResponse(previous?.users);
+      return retained ? { users: { ...retained, users: patched(retained.users) } } : {};
+    });
+    if (current) setUsers(currentUsers => patched(currentUsers ?? []));
+    return current;
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (submitting) return;
+    if (!canEdit || submitting) return;
     setSubmitError(null);
     const uid = targetUid.trim();
     if (!uid) { setSubmitError({ key: 'admin.targetUidRequired' }); return; }
-    const usage = { aiUsed: parseNonNegativeNumber(aiUsage), transcriptionSecondsUsed: parseNonNegativeNumber(transcriptionSeconds), audioSecondsUsed: parseNonNegativeNumber(audioSeconds) };
-    if ((aiUsage.trim() && usage.aiUsed === undefined) || (transcriptionSeconds.trim() && usage.transcriptionSecondsUsed === undefined) || (audioSeconds.trim() && usage.audioSecondsUsed === undefined)) { setSubmitError({ key: 'admin.invalidUsage' }); return; }
-    const patch: EntitlementPatch = {};
-    if (paidTier) patch.paidTier = paidTier;
-    // Security invariant: promotion is sent only after an explicit Keep/Set/Clear edit.
-    if (promotionDirty && promotionMode === 'clear') patch.promotion = null;
-    else if (promotionDirty && promotionMode === 'set') {
-      const expiresAt = new Date(promotionExpiresAt);
-      if (!promotionExpiresAt || Number.isNaN(expiresAt.getTime())) { setSubmitError({ key: 'admin.invalidPromotion' }); return; }
-      patch.promotion = { tier: promotionTier, expiresAt: expiresAt.toISOString() };
-    }
-    if (usage.aiUsed !== undefined || usage.transcriptionSecondsUsed !== undefined || usage.audioSecondsUsed !== undefined) patch.usage = usage;
-    if (role) patch.role = role;
-    if (Object.keys(patch).length === 0) { setSubmitError({ key: 'admin.noChanges' }); return; }
-    const currentUser = auth.currentUser;
-    if (!currentUser) { setSubmitError({ key: 'admin.unauthenticated' }); return; }
+    const change = entitlementChange({
+      paidTier, role, promotionDirty, promotionMode, promotionTier, promotionExpiresAt, aiUsage, transcriptionSeconds, audioSeconds,
+    });
+    if ('error' in change) { setSubmitError({ key: change.error }); return; }
+    const { patch } = change;
     const savedCheckpoint = editorClose.captureSubmission();
     setSubmitting(true);
     try {
-      const token = await currentUser.getIdToken();
+      const token = await adminToken(owner);
+      if (!isCurrent()) return;
       const response = await apiClient(`/api/admin/users/${encodeURIComponent(uid)}/entitlement`, { category: 'crud', answersFromStore: true, method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(patch) });
       const data = await parseResponse(response);
+      if (!isCurrent()) return;
+      if (isAdminDenial(response.status)) refuse();
       if (!response.ok) throw responseFailure(data, 'admin.requestFailed');
-      patchSelectedUser(uid, data as UserEntitlement, patch);
+      if (!await patchSelectedUser(uid, data as UserEntitlement, patch)) return;
       editorClose.confirmSaved(savedCheckpoint);
       setPromotionDirty(false); setToastVisible(true);
     } catch (error) { setSubmitError(refusalWords(error, 'admin.requestFailed')); } finally { setSubmitting(false); }
   };
 
-  if (access === 'checking') return <main className="mx-auto flex min-h-[60vh] max-w-3xl items-center justify-center px-4 text-slate-600 dark:text-slate-300"><p role="status">{t('admin.loading')}</p></main>;
-  if (access !== 'authorized') return <main className="mx-auto max-w-3xl px-4 py-10"><section className="rounded-xl border border-rose-200 bg-rose-50 p-6 text-rose-900 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-100"><h1 className="text-xl font-semibold">{t('admin.notAuthorizedTitle')}</h1><p className="mt-2">{t('admin.notAuthorizedDescription')}</p><Link className="mt-4 inline-block font-medium underline" href="/">{t('admin.backHome')}</Link></section></main>;
+  if (access === 'checking') return <AdminLoading />;
+  if (access === 'unavailable' || (readOnly && !offlineUsers && !offlineModels)) {
+    const title = readOnly ? 'admin.offlineUnavailableTitle' : 'admin.accessUnavailableTitle';
+    const description = readOnly ? 'admin.offlineUnavailableDescription' : 'admin.accessUnavailableDescription';
+    return <main className="mx-auto max-w-3xl px-4 py-10">
+      <section className="rounded-xl border border-slate-200 bg-slate-50 p-6 dark:border-slate-700 dark:bg-slate-900">
+        <h1 className="text-xl font-semibold">{t(title)}</h1>
+        <p className="mt-2">{t(description)}</p>
+        <button className="mt-4 font-medium underline" onClick={recheck} type="button">{t('buttons.retry')}</button>
+      </section>
+    </main>;
+  }
+  if (access === 'unauthorized') return <main className="mx-auto max-w-3xl px-4 py-10"><section className="rounded-xl border border-rose-200 bg-rose-50 p-6 text-rose-900 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-100"><h1 className="text-xl font-semibold">{t('admin.notAuthorizedTitle')}</h1><p className="mt-2">{t('admin.notAuthorizedDescription')}</p><Link className="mt-4 inline-block font-medium underline" href="/">{t('admin.backHome')}</Link></section></main>;
 
-  const pageTitle = activeSection === 'users'
-    ? t('admin.users.pageTitle')
-    : t('admin.modelDefaults.title');
-  const pageDescription = activeSection === 'users'
-    ? t('admin.users.pageDescription')
-    : t('admin.modelDefaults.description');
-
-  return <><LanguageInitializer /><main className="mx-auto max-w-screen-2xl px-4 py-7 md:px-5 md:py-8"><div className="grid gap-5 md:grid-cols-[15rem_minmax(0,1fr)] md:items-start md:gap-8"><aside className="md:sticky" style={{ top: stickyTopBelowNav(navHeight) }}><AdminNav activeSection={activeSection} onSectionChange={setActiveSection} /></aside><div className="min-w-0"><header className="mb-5 flex flex-wrap items-start justify-between gap-4"><div><h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white" id="admin-page-title">{pageTitle}</h1><p className="mt-1 max-w-2xl text-sm text-slate-500 dark:text-slate-400">{pageDescription}</p></div><div className="flex items-center gap-3">{activeSection === 'users' && <button className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800" onClick={openManualEditor} type="button">{t('admin.users.manualEdit')}</button>}<Link className="text-sm font-bold text-blue-700 hover:underline dark:text-blue-300" href="/settings">{t('admin.backToSettings')}</Link></div></header>{activeSection === 'users' ? <><KpiStrip users={users} /><UserList error={usersError ? t('admin.users.loadFailed') : ''} filter={filter} filteredUsers={filteredUsers} language={interfaceLanguage} loading={usersLoading} loadingMore={loadingMore} nextPageToken={nextPageToken} onFilterChange={setFilter} onLoadMore={handleLoadMore} onSearchChange={setSearch} onSelect={selectUser} search={search} selectedUid={selectedUid} users={users} /></> : <ModelDefaultsSection defaults={modelDefaults} error={modelDefaultsError ? sayFailure(modelDefaultsError, t) : ''} loading={modelDefaultsLoading} onChange={handleModelDefaultChange} onSave={handleModelDefaultsSave} ready={modelDefaultsReady} saving={modelDefaultsSaving} success={modelDefaultsSaved} />}</div></div></main><UserDrawer aiUsage={aiUsage} audioSeconds={audioSeconds} onAiUsageChange={setAiUsage} onAudioSecondsChange={setAudioSeconds} onClose={editorClose.requestClose} onPaidTierChange={setPaidTier} onPromotionExpiresAtChange={(value) => { setPromotionExpiresAt(value); setPromotionDirty(true); }} onPromotionModeChange={(value) => { setPromotionMode(value); setPromotionDirty(true); }} onPromotionTierChange={(value) => { setPromotionTier(value); setPromotionDirty(true); }} onRoleChange={setRole} onSubmit={handleSubmit} onTargetUidChange={handleTargetUidChange} onTranscriptionSecondsChange={setTranscriptionSeconds} open={drawerOpen} paidTier={paidTier} promotionExpiresAt={promotionExpiresAt} promotionMode={promotionMode} promotionTier={promotionTier} role={role} submitError={submitError ? sayFailure(submitError, t) : ''} submitting={submitting} targetUid={targetUid} transcriptionSeconds={transcriptionSeconds} user={selectedUser} />{editorClose.discardDialog}{toastVisible && <div aria-live="polite" className={`pointer-events-none fixed bottom-6 left-1/2 z-[60] flex -translate-x-1/2 items-center gap-2 rounded-xl px-4 py-3 text-sm font-bold shadow-xl ${EMERALD_SURFACE}`}><span aria-hidden="true">✓</span>{t('admin.users.toastSaved')}</div>}</>;
+  return (
+    <>
+      <AdminScreen
+        activeSection={activeSection}
+        onSectionChange={setActiveSection}
+        onManualEdit={canEdit ? openManualEditor : undefined}
+        readOnly={readOnly}
+        usersAvailable={Boolean(offlineUsers)}
+        modelsAvailable={Boolean(offlineModels)}
+        userList={{
+          error: usersError ? t('admin.users.loadFailed') : '',
+          filter, filteredUsers, language: interfaceLanguage,
+          loading: usersLoading, loadingMore, nextPageToken,
+          onFilterChange: setFilter, onLoadMore: handleLoadMore, onSearchChange: setSearch,
+          onSelect: selectUser, search, selectedUid, users,
+        }}
+        modelSection={{
+          defaults: readOnly ? offlineModels ?? CATALOG_DEFAULTS : modelDefaults,
+          error: modelDefaultsError ? sayFailure(modelDefaultsError, t) : '',
+          loading: modelDefaultsLoading, onChange: handleModelDefaultChange, onSave: handleModelDefaultsSave,
+          ready: readOnly ? Boolean(offlineModels) : modelDefaultsReady,
+          readOnly, saving: modelDefaultsSaving, success: modelDefaultsSaved,
+        }}
+      />
+      <UserDrawer
+        aiUsage={aiUsage}
+        audioSeconds={audioSeconds}
+        onAiUsageChange={setAiUsage}
+        onAudioSecondsChange={setAudioSeconds}
+        onClose={editorClose.requestClose}
+        onPaidTierChange={setPaidTier}
+        onPromotionExpiresAtChange={(value) => { setPromotionExpiresAt(value); setPromotionDirty(true); }}
+        onPromotionModeChange={(value) => { setPromotionMode(value); setPromotionDirty(true); }}
+        onPromotionTierChange={setPromotionTier}
+        onRoleChange={setRole}
+        onSubmit={handleSubmit}
+        onTargetUidChange={handleTargetUidChange}
+        onTranscriptionSecondsChange={setTranscriptionSeconds}
+        open={drawerOpen && (!readOnly || Boolean(selectedUser))}
+        readOnly={readOnly}
+        paidTier={paidTier}
+        promotionExpiresAt={promotionExpiresAt}
+        promotionMode={promotionMode}
+        promotionTier={promotionTier}
+        role={role}
+        submitError={submitError ? sayFailure(submitError, t) : ''}
+        submitting={submitting}
+        targetUid={targetUid}
+        transcriptionSeconds={transcriptionSeconds}
+        user={selectedUser}
+      />
+      {editorClose.discardDialog}
+      {toastVisible && <div aria-live="polite" className={`pointer-events-none fixed bottom-6 left-1/2 z-[60] flex -translate-x-1/2 items-center gap-2 rounded-xl px-4 py-3 text-sm font-bold shadow-xl ${EMERALD_SURFACE}`}><span aria-hidden="true">✓</span>{t('admin.users.toastSaved')}</div>}
+    </>
+  );
 }

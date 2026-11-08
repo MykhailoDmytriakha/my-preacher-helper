@@ -45,6 +45,7 @@ type OfflineRoute = {
 // Reuse the layout and page modules a normal visit already loads.
 const SettingsSectionLayout = lazy(() => import('@/(pages)/(private)/settings/layout'));
 const LAZY_ROUTES: Record<Exclude<OfflineShellRoute, 'dashboard'>, OfflineRoute> = {
+  admin: { Component: lazy(() => import('@/(pages)/(private)/admin/page')) },
   settings: { Component: lazy(() => import('@/(pages)/(private)/settings/page')), Layout: SettingsSectionLayout },
   'settings:user': { Component: lazy(() => import('@/(pages)/(private)/settings/user/page')), Layout: SettingsSectionLayout },
   'settings:limits': { Component: lazy(() => import('@/(pages)/(private)/settings/limits/page')), Layout: SettingsSectionLayout },

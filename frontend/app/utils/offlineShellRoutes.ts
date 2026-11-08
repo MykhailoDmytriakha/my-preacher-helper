@@ -4,6 +4,7 @@ import { SETTINGS_SECTIONS, settingsSectionHref, type SettingsSection } from './
 const ROUTES = {
   dashboard: /^\/(?:dashboard)?$/,
   settings: /^\/settings$/,
+  admin: /^\/admin$/,
   sermons: /^\/sermons$/,
   series: /^\/series$/,
   groups: /^\/groups$/,

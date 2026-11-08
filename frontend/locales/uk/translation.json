@@ -1678,6 +1678,12 @@
   "admin": {
     "title": "Адміністрування",
     "loading": "Перевірка доступу адміністратора...",
+    "offlineReadOnly": "Копія адмінки без мережі. Для змін підключіться до інтернету.",
+    "offlineUnavailableTitle": "Для відкриття адмінки потрібен зв’язок",
+    "offlineUnavailableDescription": "На цьому пристрої немає збережених даних адмінки для цього акаунта.",
+    "accessUnavailableTitle": "Не вдалося перевірити доступ до адмінки",
+    "accessUnavailableDescription": "Повторіть, коли сервер буде доступний.",
+    "offlineSectionUnavailable": "На цьому пристрої немає збереженої копії цього розділу.",
     "notAuthorizedTitle": "Немає доступу",
     "notAuthorizedDescription": "У вас немає доступу до інструментів адміністрування.",
     "backHome": "На головну",

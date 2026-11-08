@@ -304,12 +304,6 @@
 **Найден.** 2026-10-18 · владелец: спиннер или пустой экран. `frontend/app/(pages)/(private)/sermons/[id]/plan/manual/page.tsx:411`, `frontend/app/sw.ts:100` — точки проверки, остаточная причина не установлена.
 **Ожидалось.** Уже просмотренный план быстро открывается из локальной копии без ожидания фоновой проверки сервера; чужой аккаунт не показывается. На проверенном Chrome длительное ожидание не повторилось. Длительность и устройство владельца неизвестны; нужны замер и стадия ожидания, если после `82b5e9d` задержка сохраняется. Связь с исправлением таймера не доказана.
 
-### BUG-20261017-admin-offline-data · Previously seen admin content has no offline route or saved data view
-**P3 recheck** — admin reads require live access/API; a route entry alone could replace an honest connection notice with a false access refusal. `frontend/app/~offline/page.tsx:45`; `frontend/app/(pages)/(private)/admin/page.tsx:735` and`:898`.
-**Expected / source risk.** Seen content should remain readable on this device without granting new rights. Current route is absent and the page holds API results in memory; non-admin QA confirms generic fallback but cannot establish an authorized admin's data-loss symptom.
-**User contract.** Read only authorized retained content; changes always require the normal server check. Reproduce with disposable authorized admin fixtures before selecting a cache/access design. Separate from BUG-20261017-offline-settings-and-prayer-route-missing.
-
-
 ### BUG-20261016-marks-form-error-in-hidden-tab · Книга, открытая в скрытой вкладке: пометки показывают «С этой записью что-то пошло не так» и не поднимаются сами, когда вкладку открыли
 **Severity.** P3 — нужен заход в книгу, пока вкладка скрыта (ссылка открыта в фоне на компьютере; возможно, восстановление приложения iPad из фона). Пометки и инструменты не видны до «Повторить».
 **Найден.** 2026-10-16 · попутно при замере: вкладка Claude-in-Chrome (`visibilityState: hidden`), Псалтирь, над текстом статус ошибки формы (`useReaderMarks.tsx` — `DataSyncStatus` с `error`, когда форма не открылась); подмена видимости и `visibilitychange` его не сняли, «Повторить» снял. Не проверено, не артефакт ли это самой вкладки расширения.
