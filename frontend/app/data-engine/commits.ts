@@ -4,6 +4,7 @@ import { captureBibleMarkStroke, restoreBibleMarkAncestor, withBibleMarkStroke, 
 import { pendingCommitRetirement, retireCommitJournal } from './commitJournal';
 import { CommitReceipts } from './commitReceipt';
 import { captureCouncilAssembly, COUNCIL_ASSEMBLY_POLICY, matchingCouncilAssembly, type CouncilAssemblyActions } from './councilAssemblyAction';
+import { captureCouncilTopicKind, COUNCIL_TOPIC_KIND_POLICY, matchingCouncilTopicKind, type CouncilTopicKindActions } from './councilTopicKindAction';
 import { COUNCIL_TOPIC_TITLE_POLICY } from './councilTopicTitleAction';
 import { captureCouncilTopicTitles, matchingCouncilTopicTitles } from './councilTopicTitleAutosave';
 import { capturedDateBaseline, captureDatedRowAction, datedRowTarget, existingRowDate, matchesDatedRowChange, MEETING_DATE_TARGET, replaceExistingDate, type DatedRowActionCapture, type DatedRowActionEvidence } from './datedRowAction';
@@ -77,6 +78,7 @@ export interface CommitRequest extends CouncilFieldActions, PrayerStatusObservat
   serviceOrderTitleAction?: DocumentFieldAction;
   serviceOrderFlagActions?: ServiceOrderFlagActions;
   councilAssemblyActions?: CouncilAssemblyActions;
+  councilTopicKindActions?: CouncilTopicKindActions;
   serviceOrderStepTitleActions?: ServiceOrderStepTitleActions;
   prayerTitleAction?: DocumentFieldObservation;
   sermonTitleAction?: DocumentFieldObservation;
@@ -178,6 +180,7 @@ export function assertCommitCapture(current: CommitRequest, incoming: CommitRequ
     || !equalValues(current.serviceOrderStepTitleActions ?? null, incoming.serviceOrderStepTitleActions ?? null)
     || !equalValues(current.councilTopicTitleActions ?? null, incoming.councilTopicTitleActions ?? null)
     || !equalValues(current.councilAssemblyActions ?? null, incoming.councilAssemblyActions ?? null)
+    || !equalValues(current.councilTopicKindActions ?? null, incoming.councilTopicKindActions ?? null)
     || !equalValues(current.prayerTitleAction ?? null, incoming.prayerTitleAction ?? null)
     || !equalValues(current.prayerStatusAction ?? null, incoming.prayerStatusAction ?? null)
     || !equalValues(current.prayerAnsweredAtAction ?? null, incoming.prayerAnsweredAtAction ?? null)
@@ -292,6 +295,7 @@ function pendingRowFields(record: CommitRequest) {
     ...pendingRowDetailRebases(record, record.serviceOrderFlagActions, SERVICE_ORDER_FLAG_POLICY),
     ...pendingRowDetailRebases(record, record.serviceOrderStepTitleActions, SERVICE_ORDER_STEP_TITLE_POLICY),
     ...pendingRowDetailRebases(record, record.councilAssemblyActions, COUNCIL_ASSEMBLY_POLICY),
+    ...pendingRowDetailRebases(record, record.councilTopicKindActions, COUNCIL_TOPIC_KIND_POLICY),
     ...(record.councilTopicTitleActions ?? []).flatMap(title => pendingRowDetailRebases(record, { title }, COUNCIL_TOPIC_TITLE_POLICY)),
   ];
 }
@@ -463,7 +467,8 @@ export class CommitQueue {
     const step = editorAction?.kind === 'service-order-flag' ? { field: 'flagged' as const, change: editorAction.flag }
       : editorAction?.kind === 'service-order-step-title' ? { field: 'title' as const, change: editorAction.title } : undefined;
     const assembly = editorAction?.kind === 'council-assembly' ? editorAction.flag : undefined;
-    if (!step && !assembly && editorAction?.kind !== 'service-order-title' && editorAction?.kind !== 'prayer-title' && editorAction?.kind !== 'prayer-status'
+    const topicKind = editorAction?.kind === 'council-topic-kind' ? editorAction.topicKind : undefined;
+    if (!step && !assembly && !topicKind && editorAction?.kind !== 'service-order-title' && editorAction?.kind !== 'prayer-title' && editorAction?.kind !== 'prayer-status'
       && !frozenOptions?.transfer && !intent.dirty && (!predecessor || equalValues(predecessor.value, intent.draft))) return null;
     if (intent.conflicts.length) throw Object.assign(new Error('Resolve the conflict before saving'), { code: 'resolve-version-first' });
     const baseline = clone(intent.confirmed);
@@ -474,6 +479,7 @@ export class CommitQueue {
     const title = captureServiceOrderTitle(baseline, intent.draft, editorAction?.kind === 'service-order-title' ? editorAction.title : undefined);
     const stepActions = captureServiceOrderStep(baseline, predecessor, intent.draft, step, records);
     const councilAssemblyActions = captureCouncilAssembly(baseline, predecessor, intent.draft, assembly, records);
+    const councilTopicKindActions = captureCouncilTopicKind(baseline, predecessor, intent.draft, topicKind, records);
     const prayerCapture = editorAction?.kind === 'prayer-title' ? editorAction.title : undefined;
     const prayerPredecessor = prayerCapture?.seen.requestId
       ? matchesPrayerTitleRequest(records.find(record => record.id === prayerCapture.seen.requestId), owner, baseline.resource, prayerCapture.seen) : false;
@@ -492,6 +498,7 @@ export class CommitQueue {
       ...(title && { serviceOrderTitleAction: title }),
       ...stepActions,
       ...(councilAssemblyActions && { councilAssemblyActions }),
+      ...(councilTopicKindActions && { councilTopicKindActions }),
       ...(prayerTitle && { prayerTitleAction: prayerTitle }),
       ...prayerStatus,
       ...metadataFields,
@@ -956,6 +963,8 @@ export class CommitQueue {
       if (topicTitles?.length) command.councilTopicTitleActions = topicTitles;
       const assembly = matchingCouncilAssembly(command.changes, record.councilAssemblyActions);
       if (assembly) command.councilAssemblyActions = assembly;
+      const topicKind = matchingCouncilTopicKind(command.changes, record.councilTopicKindActions);
+      if (topicKind) command.councilTopicKindActions = topicKind;
       const statusActions = matchingPreachStatusActions(command.changes, status);
       if (statusActions.length) command.preachStatusActions = statusActions;
     }

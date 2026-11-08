@@ -4,6 +4,7 @@ import { sameAnalysisFrame } from './analysisReshapeFields';
 import { rebaseBibleMarkAncestor } from './bibleMarkStroke';
 import { pendingCommitRetirement, retireCommitJournal } from './commitJournal';
 import { COUNCIL_ASSEMBLY } from './councilAssemblyAction';
+import { COUNCIL_TOPIC_KIND } from './councilTopicKindAction';
 import { COUNCIL_TOPIC_TITLE } from './councilTopicTitleAction';
 import { councilTopicConflictCode, councilTopicTransitionRefusal } from './councilTopicTransition';
 import { datedRowTarget, isCapturedDateConflict } from './datedRowAction';
@@ -93,6 +94,7 @@ export function initializeCommit(record: CommitRequest, records: readonly Commit
     const stepFlag = record.serviceOrderFlagActions?.flagged;
     const stepTitle = record.serviceOrderStepTitleActions?.title;
     const assembly = record.councilAssemblyActions?.forAssembly;
+    const topicKind = record.councilTopicKindActions?.kind;
     const canOrder = sameGeneration && rebased.conflicts.every(conflict => isDateConflict(conflict)
       || isCapturedPreachStatusConflict(conflict, record.preachStatusActions)
       || (flag !== undefined && conflict.path.length === 1 && conflict.path[0] === 'isPreached')
@@ -100,6 +102,7 @@ export function initializeCommit(record: CommitRequest, records: readonly Commit
       || (stepFlag && isCapturedRowConflict(conflict, stepFlag, SERVICE_ORDER_FLAG_TARGET))
       || (stepTitle && isCapturedRowConflict(conflict, stepTitle, SERVICE_ORDER_STEP_TITLE_TARGET))
       || (assembly && isCapturedRowConflict(conflict, assembly, COUNCIL_ASSEMBLY))
+      || (topicKind && isCapturedRowConflict(conflict, topicKind, COUNCIL_TOPIC_KIND))
       || record.councilTopicTitleActions?.some(title => isCapturedRowConflict(conflict, title, COUNCIL_TOPIC_TITLE))
       || GROUP_MEETING_FIELDS.some(field => {
         const meeting = record.groupMeetingFieldActions?.[field];

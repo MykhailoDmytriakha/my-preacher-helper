@@ -175,10 +175,11 @@ export function metadataAfterRowDetails<Field extends string, Value extends RowV
       const stamp = stamps.get(rowId);
       const time = stamp?.rowCreatedAt === born && equalValues(stamp.after, value) ? stamp.time : null;
       const changed = !equalValues(previous.get(rowId), value) || previousBirths.get(rowId) !== born;
+      const enteredScope = policy.causalScopeEntry && scope !== undefined && previousScopes?.get(rowId) === undefined;
       // A same-value acknowledgement with uncertain order does not prove who set the value.
       return time || changed || !equalValues(previousScopes?.get(rowId), scope) || unordered.has(rowId)
         ? [{ rowId, digest: digest(born, value, scope), revision: metadata.revision, time, operationId: metadata.operationId,
-          ...(policy.allowUnclocked && changed && { causal: true as const }) }] : [];
+          ...(policy.allowUnclocked && (changed || enteredScope) && { causal: true as const }) }] : [];
     });
     const newRows = new Set(updated.map(proof => proof.rowId));
     const retained = [...updated, ...stored.values.filter(proof => {

@@ -1,7 +1,7 @@
 import { COUNCIL_TOPIC_ID } from './councilTopicTitleAction';
 import { matchesRowDetailBirth } from './rowDetailAction';
 import { captureSeenRowDetail } from './rowDetailCapture';
-import { alignOptionalRowFlag, boundedRowId, matchesRowAction } from './rowFieldAction';
+import { alignOptionalRowField, boundedRowId, matchesRowAction } from './rowFieldAction';
 
 import type { CommitRequest } from './commits';
 import type { RowDetailHistoryEntry, RowDetailObservation, RowDetailPolicy } from './rowDetailAction';
@@ -44,5 +44,5 @@ export function matchingCouncilAssembly(changes: FieldChange[], actions: Council
 
 export function alignCouncilAssembly(command: DataCommand, current: ResourceSnapshot): DataCommand {
   if (command.kind !== 'update' || command.resource.collection !== COUNCIL_ASSEMBLY_POLICY.collection) return command;
-  return alignOptionalRowFlag(command, current, COUNCIL_ASSEMBLY, command.councilAssemblyActions?.forAssembly?.rowId);
+  return alignOptionalRowField(command, current, COUNCIL_ASSEMBLY, command.councilAssemblyActions?.forAssembly?.rowId);
 }

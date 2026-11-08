@@ -193,7 +193,7 @@ interface CouncilDetailSource {
   updateCouncil: (id: string, updater: (current: Council) => Council, field?: CouncilTimedField) => void;
   renameTopic: (id: string, title: string) => Promise<void>;
   setAssembly: (topic: CouncilTopic, selected: boolean) => Promise<void>;
-  changeTopicKind: (id: string, kind: 'decision' | 'info') => Promise<void>;
+  changeTopicKind: (topic: CouncilTopic, kind: 'decision' | 'info') => Promise<void>;
   history?: { owner: string; generation: string; restore: (field: CouncilHistoryField, value: string | null) => Promise<void> };
   deleteCouncil: (id: string) => Promise<boolean>;
   finishCouncil: () => Promise<CouncilFinishUndo>;
@@ -458,6 +458,11 @@ function CouncilDetailContent({ source, engineCouncilId }: { source: CouncilDeta
             owner={source.history.owner} generation={source.history.generation} councilId={council.id}
             topics={council.topics} disabled={readOnly || held || editingTopicId !== null}
             field="forAssembly" onRestore={source.setAssembly} />
+          <CouncilTopicHistory
+            key={JSON.stringify([source.history.owner, council.id, source.history.generation, 'topic-types'])}
+            owner={source.history.owner} generation={source.history.generation} councilId={council.id}
+            topics={council.topics} disabled={readOnly || held || editingTopicId !== null}
+            field="kind" onRestore={source.changeTopicKind} />
         </div>}
         {editable && (
           <p className="mt-3 max-w-2xl px-1 text-sm leading-relaxed text-gray-600 dark:text-gray-400">
@@ -531,9 +536,8 @@ function CouncilDetailContent({ source, engineCouncilId }: { source: CouncilDeta
                 onSetAssembly={(selected) => {
                   void source.setAssembly(topic, selected).catch(error => toast.error(actionFailureMessage(error, t, 'council.save.refused')));
                 }}
-                onChangeKind={(kind) => {
-                  void source.changeTopicKind(topic.id, kind).catch(error => toast.error(actionFailureMessage(error, t, 'council.save.refused')));
-                }}
+                onChangeKind={(kind) => source.changeTopicKind(topic, kind)
+                  .catch(error => { toast.error(actionFailureMessage(error, t, 'council.save.refused')); })}
                 onRemove={() => removeTopic(topic.id)}
                 carrying={carrying.has(topic.id)}
                 onCarryToNext={(targetId) => { void carryToNext(topic, targetId); }}
@@ -630,7 +634,7 @@ function TopicCard({
   onChange: (updater: TopicUpdater) => void;
   onRename: (title: string) => void;
   onSetAssembly: (selected: boolean) => void;
-  onChangeKind: (kind: 'decision' | 'info') => void;
+  onChangeKind: (kind: 'decision' | 'info') => Promise<void>;
   onRemove: () => void;
   onCarryToNext: (targetId?: string | 'new') => void;
   carrying: boolean;
@@ -995,13 +999,22 @@ function TopicEditor({
   onChange: (updater: TopicUpdater) => void;
   onRename: (title: string) => void;
   onSetAssembly: (selected: boolean) => void;
-  onChangeKind: (kind: 'decision' | 'info') => void;
+  onChangeKind: (kind: 'decision' | 'info') => Promise<void>;
   onRemove: () => void;
   onDone: () => void;
 }) {
   const { t } = useTranslation();
   const { confirm, confirmDialog } = useConfirm();
   const outcomeRecorded = hasRecordedCouncilTopicOutcome(topic);
+  const currentKind = topic.kind ?? 'decision';
+  const [pendingKind, setPendingKind] = useState<{ kind: 'decision' | 'info' } | null>(null);
+  const waitingForKind = pendingKind !== null && currentKind !== pendingKind.kind;
+  const chooseKind = (kind: 'decision' | 'info') => {
+    if (outcomeRecorded || waitingForKind || currentKind === kind) return;
+    const selection = { kind };
+    setPendingKind(selection);
+    void onChangeKind(kind).finally(() => setPendingKind(current => current === selection ? null : current));
+  };
   const targetRef = useRef({
     subjectId,
     topicId: topic.id,
@@ -1081,8 +1094,8 @@ function TopicEditor({
             size="md"
             tone="indigo"
             selected={!isInfoTopic(topic)}
-            disabled={outcomeRecorded && isInfoTopic(topic)}
-            onClick={() => { if (isInfoTopic(topic)) onChangeKind('decision'); }}
+            disabled={waitingForKind || (outcomeRecorded && isInfoTopic(topic))}
+            onClick={() => chooseKind('decision')}
             data-testid="council-kind-decision"
           >
             {t('council.topic.kindDecision')}
@@ -1092,8 +1105,8 @@ function TopicEditor({
             tone="indigo"
             selected={isInfoTopic(topic)}
             icon={<Megaphone className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden="true" />}
-            disabled={outcomeRecorded && !isInfoTopic(topic)}
-            onClick={() => { if (!isInfoTopic(topic)) onChangeKind('info'); }}
+            disabled={waitingForKind || (outcomeRecorded && !isInfoTopic(topic))}
+            onClick={() => chooseKind('info')}
             data-testid="council-kind-info"
           >
             {t('council.topic.kindInfo')}

@@ -1016,7 +1016,7 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
     },
     /** Freeze the intended save before any asynchronous draft persistence. */
     commit: (updater: (current: DocumentData | null) => DocumentData | null,
-      action?: 'bible-mark-stroke' | 'council-lifecycle' | Extract<EditorCommitAction, { kind: 'council-assembly' }>) => {
+      action?: 'bible-mark-stroke' | 'council-lifecycle' | Extract<EditorCommitAction, { kind: 'council-assembly' | 'council-topic-kind' }>) => {
       const time = typeof action === 'string' && owner ? actionClock.capture(owner) : undefined;
       const capture = typeof action === 'object' ? action : action === 'council-lifecycle' ? { kind: action, time: time ?? null } as const
         : time ? { kind: 'bible-mark-stroke', time } as const : undefined;

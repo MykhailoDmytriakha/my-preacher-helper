@@ -1339,6 +1339,68 @@ describe('transactional DataEngine server', () => {
     expect((await listMeetingDateHistory(base.owner, resource.id, 'seed')).entries).toEqual([]);
   });
 
+  it.each([true, false])('recognizes an explicit outcome clear before the queued type choice (clock: %s)', async clocked => {
+    const resource = { collection: 'councils', id: 'topic-clear-and-convert' };
+    const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] };
+    const now = '2026-11-08T00:00:00.000Z';
+    const open = { id: 'opening', title: 'Opening', kind: 'decision', questions: [], options: [] };
+    const recorded = { ...open, decision: 'Recorded decision', discussed: true };
+    const selected = { ...open, kind: 'info' };
+    expect((await processCommand(base.owner, { ...base, kind: 'create', operationId: 'seed', generation: null,
+      value: { userId: base.owner, title: 'Council', status: 'preparing', createdAt: now, updatedAt: now, topics: [recorded] },
+    })).kind).toBe('acknowledged');
+    const edit = (operationId: string, before: typeof open, after: typeof open) => ({
+      ...base, kind: 'update', operationId, generation: 'seed',
+      changes: [{ path: ['topics'], before: { exists: true, value: [before] }, after: { exists: true, value: [after] } }],
+    });
+    expect((await processCommand(base.owner, edit('clear', recorded, open))).kind).toBe('acknowledged');
+    const command = { ...edit('choose-type', open, selected), dependsOn: ['clear'],
+      councilTopicKindActions: { kind: { rowId: open.id, rowCreatedAt: open.id, before: 'decision', after: 'info', observedRevision: 1,
+        predecessorOperationId: 'clear', time: clocked ? { earliestMs: 1_800_000_000_040, latestMs: 1_800_000_000_044 } : null } },
+    };
+    expect(await processCommand(base.owner, command)).toMatchObject({ kind: 'acknowledged', snapshot: { value: { topics: [selected] } } });
+  });
+
+  it.each([
+    { label: 'phone first', mobileAt: 15, winner: 'decision', kind: 'acknowledged', legacy: false },
+    { label: 'phone last', mobileAt: 100, winner: 'info', kind: 'acknowledged', legacy: false },
+    { label: 'no clock', mobileAt: null, winner: 'decision', kind: 'conflict', legacy: false },
+    { label: 'legacy default', mobileAt: 15, winner: 'decision', kind: 'acknowledged', legacy: true },
+  ])('orders the exact council topic type while it has no outcome: $label', async ({ mobileAt, winner, kind, legacy }) => {
+    const resource = { collection: 'councils', id: 'topic-kind-order' };
+    const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] };
+    const now = '2026-11-08T00:00:00.000Z';
+    const topic = { id: 'opening', title: 'Opening', ...(!legacy && { kind: 'decision' }), summary: 'Original words', questions: [], options: [] };
+    const other = { ...topic, id: 'other', title: 'Other section' };
+    const topics = [topic, other];
+    expect((await processCommand(base.owner, { ...base, kind: 'create', operationId: 'seed', generation: null,
+      value: { userId: base.owner, title: 'Council', status: 'preparing', createdAt: now, updatedAt: now, topics },
+    })).kind).toBe('acknowledged');
+    const edit = (operationId: string, before: typeof topics, after: typeof topics, at: number | null, observedRevision: number) => ({
+      ...base, kind: 'update', operationId, generation: 'seed',
+      changes: [{ path: ['topics'], before: { exists: true, value: before }, after: { exists: true, value: after } }],
+      councilTopicKindActions: { kind: { rowId: topic.id, rowCreatedAt: topic.id, before: before[0].kind ?? 'decision',
+        after: after[0].kind ?? 'decision', observedRevision, time: at === null ? null : { earliestMs: 1_800_000_000_000 + at, latestMs: 1_800_000_000_004 + at } } },
+    });
+    const info = [{ ...topic, kind: 'info' }, other];
+    const decision = [{ ...topic, kind: 'decision', summary: 'Later explanation' }, other];
+    expect((await processCommand(base.owner, edit('desktop-info', topics, info, 45, 1))).kind).toBe('acknowledged');
+    expect((await processCommand(base.owner, edit('desktop-decision', info, decision, 65, 2))).kind).toBe('acknowledged');
+    const phone = edit('phone', topics, info, mobileAt, 1);
+    const answer = await processCommand(base.owner, phone);
+    expect(answer).toMatchObject({ kind, snapshot: { value: { topics: [{ ...decision[0], kind: winner }, other] } } });
+    expect(await processCommand(base.owner, phone)).toEqual(answer);
+    const history = [...documents.entries()].filter(([path]) => path.startsWith('councils/topic-kind-order/_topicKindHistory/'));
+    if (mobileAt === null) {
+      expect(answer).toMatchObject({ conflicts: [{ path: ['topics', 'id:opening', 'kind'] }] });
+      expect(history).toHaveLength(0);
+    } else {
+      expect(history).toHaveLength(1);
+      expect(history[0][1]).toMatchObject({ fields: [{ rowId: topic.id, field: 'kind',
+        value: winner === 'decision' ? 'info' : 'decision', winnerValue: winner }] });
+    }
+  });
+
   it.each([
     { label: 'direct type conversion would clear a recorded result', recorded: true, deviceSeesOutcome: true, typeSwitch: true, code: 'council-topic-outcome-first' },
     { label: 'late type conversion missed a newly recorded result', recorded: true, deviceSeesOutcome: false, typeSwitch: true, code: 'council-topic-outcome-first' },

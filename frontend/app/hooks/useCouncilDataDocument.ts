@@ -87,17 +87,26 @@ export function useCouncilDataDocument(councilId: string) {
     await document.commit(updater, flag ? { kind: 'council-assembly', flag } : undefined);
   }, [actions, apply, council, document]);
 
-  const changeTopicKind = useCallback(async (topicId: string, kind: 'decision' | 'info') => {
+  const changeTopicKind = useCallback(async (shown: CouncilTopic, kind: 'decision' | 'info') => {
     if (!council) throw missing();
-    // Capture an explicit outcome clear separately. Changing the type may never claim that clear.
-    await document.save();
+    const before = shown.kind ?? 'decision';
+    if (before === kind) return;
+    const metadata = document.confirmed?.metadata;
+    const topicKind = metadata && { rowId: shown.id, before, after: kind, generation: metadata.generation,
+      observedRevision: metadata.revision, time: actions.captureActionTime() ?? null };
+    // Capture an explicit outcome clear separately. An already open section has no clear to flush.
+    const pending = Object.values(document.state?.checkpoint.pending ?? {}).reduce<NonNullable<typeof document.state>['checkpoint']['pending'][string] | undefined>(
+      (latest, item) => !latest || item.generation > latest.generation ? item : latest, undefined);
+    const saved = pending ? pending.value : document.confirmed?.value;
+    const savedTopic = saved && hydrateCouncil(saved, councilId).topics.find(item => item.id === shown.id);
+    if (savedTopic && hasRecordedCouncilTopicOutcome(savedTopic)) await document.save();
     await document.commit(apply(current => {
-      const topic = current.topics.find(item => item.id === topicId);
+      const topic = current.topics.find(item => item.id === shown.id);
       if (!topic) throw Object.assign(new Error('The section no longer exists'), { code: 'topic-gone' });
       if (hasRecordedCouncilTopicOutcome(topic)) throw Object.assign(new Error('Clear the recorded outcome before changing type'), { code: 'council-topic-outcome-first' });
-      return { ...current, topics: current.topics.map(item => item.id === topicId ? setTopicKind(item, kind) : item) };
-    }));
-  }, [apply, council, document]);
+      return { ...current, topics: current.topics.map(item => item.id === shown.id ? setTopicKind(item, kind) : item) };
+    }), topicKind ? { kind: 'council-topic-kind', topicKind } : undefined);
+  }, [actions, apply, council, councilId, document]);
 
   /** Capture before leaving; Undo belongs to the entity, never to the departed screen editor. */
   const finishCouncil = useCallback(async (): Promise<CouncilFinishUndo> => {

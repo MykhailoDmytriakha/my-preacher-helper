@@ -107,13 +107,16 @@ export function captureSeenRowDetail<Field extends string, Value extends RowValu
     || existingRowField(draft?.[target.field], rowId, policy.birth) !== born
     || !equalValues(existingRowField(draft?.[target.field], rowId, target), after)) return undefined;
   const byId = new Map(records.map(request => [request.id, request]));
+  const scope = policy.scopes?.(ancestor?.[target.field], field)?.get(rowId);
   const predecessorOperationId = knownRowDetailPredecessor(predecessor, byId, baseline, policy, request => {
     const action = actionFor(request);
     if (action?.rowId === rowId) return action;
     const opening = request.predecessor ? byId.get(request.predecessor)?.value : request.baseline.value;
-    return existingRowField(opening?.[target.field], rowId, policy.birth) === undefined
-      && existingRowField(request.value?.[target.field], rowId, policy.birth) === born
-      ? { rowId, rowCreatedAt: born, after: before } : undefined;
-  }, field, rowId, born, before, undefined);
+    const openingRows = opening?.[target.field];
+    const sameBirth = existingRowField(request.value?.[target.field], rowId, policy.birth) === born;
+    const created = existingRowField(openingRows, rowId, policy.birth) === undefined;
+    const enteredScope = policy.causalScopeEntry && scope !== undefined && policy.scopes?.(openingRows, field)?.get(rowId) === undefined;
+    return sameBirth && (created || enteredScope) ? { rowId, rowCreatedAt: born, after: before } : undefined;
+  }, field, rowId, born, before, scope);
   return { rowId, rowCreatedAt: born, before, after, observedRevision, time, ...(predecessorOperationId && { predecessorOperationId }) };
 }

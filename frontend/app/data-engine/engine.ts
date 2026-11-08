@@ -1802,7 +1802,7 @@ export class DataEngine {
         active();
         const checkpoint = controller.getState().checkpoint;
         const rowVersion = action?.kind === 'service-order-flag' || action?.kind === 'council-assembly' ? action.flag
-          : action?.kind === 'service-order-step-title' ? action.title : undefined;
+          : action?.kind === 'service-order-step-title' ? action.title : action?.kind === 'council-topic-kind' ? action.topicKind : undefined;
         if (rowVersion && checkpoint.confirmed.metadata?.generation !== rowVersion.generation) {
           throw Object.assign(new Error('The shown record changed'), { code: 'decision-changed' });
         }

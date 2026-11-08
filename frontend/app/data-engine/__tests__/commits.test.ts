@@ -706,6 +706,29 @@ describe('Durable commit requests', () => {
     } finally { engine.dispose(); }
   });
 
+  it('keeps the explicit local outcome clear as the predecessor of the queued topic type', async () => {
+    const s = setup();
+    const { queue } = s.makeQueue();
+    const topic = { id: 'opening', title: 'Opening', kind: 'decision', questions: [], options: [] };
+    const opening: ResourceSnapshot = {
+      resource: { collection: 'councils', id: 'council' },
+      value: { userId: 'owner', title: 'Council', status: 'preparing',
+        topics: [{ ...topic, discussed: true, decision: 'Recorded decision' }] },
+      metadata: { protocol: 1, generation: 'council', revision: 1, deleted: false },
+    };
+    const editor = new DataSession(opening);
+    editor.edit({ ...opening.value, topics: [topic] });
+    const clear = (await queue.save('council', editor.checkpoint()))!;
+    editor.applyCommit(clear);
+    editor.edit({ ...opening.value, topics: [{ ...topic, kind: 'info' }] });
+    const conversion = (await queue.save('council', editor.checkpoint(), { predecessorId: clear.id,
+      action: { kind: 'council-topic-kind', topicKind: {
+        generation: 'council', observedRevision: 1, rowId: topic.id, before: 'decision', after: 'info', time: null,
+      } },
+    }))!;
+    expect(conversion.councilTopicKindActions?.kind).toMatchObject({ rowId: topic.id, time: null, predecessorOperationId: clear.id });
+  });
+
   it('replays both opposite council assembly clicks after the queue restarts', async () => {
     const s = setup();
     const { queue } = s.makeQueue();

@@ -4392,6 +4392,10 @@
       "unmarked": "Not marked for the meeting",
       "restore": "Restore meeting mark"
     },
+    "topicKindHistory": {
+      "title": "Section type history",
+      "restore": "Restore section type"
+    },
     "topicTitleHistory": {
       "earlier": "Earlier: {{value}}",
       "gone": "This section was removed on another device. The change cannot be applied.",

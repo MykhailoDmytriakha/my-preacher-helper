@@ -100,21 +100,22 @@ export function isCapturedRowConflict<Value extends RowValue>(conflict: Conflict
     && (conflict.theirs.exists ? target.accepts(conflict.theirs.value) : target.missing !== undefined);
 }
 
-/** For this one row, a missing optional flag and false display the same unchecked value. */
-export function alignOptionalRowFlag(command: Extract<DataCommand, { kind: 'update' }>, current: ResourceSnapshot,
-  target: RowFieldTarget<boolean>, rowId: string | undefined): DataCommand {
+/** A missing optional row value can display the same value as its explicit default. */
+export function alignOptionalRowField<Value extends RowValue>(command: Extract<DataCommand, { kind: 'update' }>, current: ResourceSnapshot,
+  target: RowFieldTarget<Value>, rowId: string | undefined): DataCommand {
   const rows = current.value?.[target.field];
   const leaf = target.leaf;
-  if (target.missing !== false || typeof leaf !== 'string' || !boundedRowId(rowId) || !Array.isArray(rows)
-    || existingRowField(rows, rowId, target) !== false) return command;
+  const missing = target.missing;
+  if (missing === undefined || typeof leaf !== 'string' || !boundedRowId(rowId) || !Array.isArray(rows)
+    || !equalValues(existingRowField(rows, rowId, target), missing)) return command;
   const stored = rows.find(row => object(row) && row.id === rowId);
   if (!object(stored)) return command;
   const exists = readField(stored, [leaf]).exists;
   const align = (side: FieldValue): FieldValue => {
-    if (!Array.isArray(side.value) || existingRowField(side.value, rowId, target) !== false) return side;
+    if (!Array.isArray(side.value) || !equalValues(existingRowField(side.value, rowId, target), missing)) return side;
     return { ...side, value: side.value.map(row => {
       if (!object(row) || row.id !== rowId || readField(row, [leaf]).exists === exists) return row;
-      return putRowField(row, leaf, exists ? false : null);
+      return putRowField(row, leaf, exists ? missing : null);
     }) };
   };
   return { ...command, changes: command.changes.map(change => isRowChange(change, target)

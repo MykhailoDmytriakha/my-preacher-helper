@@ -5,6 +5,7 @@ import { firstBookMarksIntent, isFirstBookMarksDraft } from './bibleMarksCreatio
 import { CaptureContinuations } from './captureContinuations';
 import { assertCommitCapture } from './commits';
 import { councilAssemblyRow } from './councilAssemblyAction';
+import { councilTopicKindRow } from './councilTopicKindAction';
 import { councilTopicTitleRow, hasCouncilTopic } from './councilTopicTitleAction';
 import { assertCouncilTopicChoice } from './councilTopicTransition';
 import { isDocumentDeletion } from './deletionOrdering';
@@ -737,9 +738,9 @@ export class EditorController {
         const path = checkpoint?.conflicts.length === 1 ? checkpoint.conflicts[0].path : undefined;
         const collection = checkpoint?.confirmed.resource.collection;
         const comparedRow = collection === 'serviceOrders' ? serviceOrderStepField(path)
-          : collection === 'councils' && (councilTopicTitleRow(path) || councilAssemblyRow(path));
+          : collection === 'councils' && (councilTopicTitleRow(path) || councilAssemblyRow(path) || councilTopicKindRow(path));
         if (expected && (comparedRow || retired.some(request => expected.checkpoint.pending[request.id]
-          && (request.serviceOrderFlagActions || request.serviceOrderStepTitleActions || request.councilTopicTitleActions || request.councilAssemblyActions)))
+          && (request.serviceOrderFlagActions || request.serviceOrderStepTitleActions || request.councilTopicTitleActions || request.councilAssemblyActions || request.councilTopicKindActions)))
           && retired.some(request => !expected.checkpoint.pending[request.id])) {
           throw Object.assign(new Error('Another saved change appeared during the field choice'), { code: 'decision-changed' });
         }
@@ -772,8 +773,8 @@ export class EditorController {
             return step && !hasServiceOrderStep(stored.steps, step.rowId);
           })) throw Object.assign(new Error('The step that was edited is gone'), { code: 'service-order-step-gone' });
           if (stored && rowRequests.some(request => {
-            const flag = request.councilAssemblyActions?.forAssembly;
-            return (flag && !hasCouncilTopic(stored.topics, flag.rowId))
+            const selected = request.councilAssemblyActions?.forAssembly ?? request.councilTopicKindActions?.kind;
+            return (selected && !hasCouncilTopic(stored.topics, selected.rowId))
               || request.councilTopicTitleActions?.some(title => !hasCouncilTopic(stored.topics, title.rowId));
           })) {
             throw Object.assign(new Error('The section that was edited is gone'), { code: 'topic-gone' });

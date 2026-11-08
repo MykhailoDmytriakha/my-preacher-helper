@@ -1,6 +1,6 @@
 import { matchesRowDetailBirth } from './rowDetailAction';
 import { captureSeenRowDetail } from './rowDetailCapture';
-import { alignOptionalRowFlag, boundedRowId, existingRowField, matchesRowAction } from './rowFieldAction';
+import { alignOptionalRowField, boundedRowId, existingRowField, matchesRowAction } from './rowFieldAction';
 
 import type { CommitRequest } from './commits';
 import type { RowDetailHistoryEntry, RowDetailObservation, RowDetailPolicy } from './rowDetailAction';
@@ -73,5 +73,5 @@ export function matchesServiceOrderStep<Value extends string | boolean>(changes:
 /** The unchecked checkbox is the same when a legacy row omits it or stores false. */
 export function alignServiceOrderFlagRepresentation(command: DataCommand, current: ResourceSnapshot): DataCommand {
   if (command.kind !== 'update' || command.resource.collection !== SERVICE_ORDER_FLAG_POLICY.collection) return command;
-  return alignOptionalRowFlag(command, current, SERVICE_ORDER_FLAG_TARGET, command.serviceOrderFlagActions?.flagged?.rowId);
+  return alignOptionalRowField(command, current, SERVICE_ORDER_FLAG_TARGET, command.serviceOrderFlagActions?.flagged?.rowId);
 }

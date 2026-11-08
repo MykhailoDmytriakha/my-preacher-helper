@@ -1,4 +1,5 @@
 import { COUNCIL_ASSEMBLY, councilAssemblyRow } from '@/data-engine/councilAssemblyAction';
+import { COUNCIL_TOPIC_KIND, councilTopicKindRow } from '@/data-engine/councilTopicKindAction';
 import { COUNCIL_TOPIC_TITLE, councilTopicTitleRow } from '@/data-engine/councilTopicTitleAction';
 import { equalValues } from '@/data-engine/fieldValues';
 import { existingRowField, replaceExistingRowField } from '@/data-engine/rowFieldAction';
@@ -29,6 +30,9 @@ export function councilTopicComparison(checkpoint: SessionCheckpoint | undefined
   const title = councilTopicTitleRow(path);
   if (title) return compareTopicField(checkpoint, title, COUNCIL_TOPIC_TITLE, t('council.detail.newTopicPlaceholder'),
     value => value || t('council.topicTitleHistory.untitled'));
+  const kind = councilTopicKindRow(path);
+  if (kind) return compareTopicField(checkpoint, kind, COUNCIL_TOPIC_KIND, t('council.topic.kind'),
+    value => t(value === 'info' ? 'council.topic.kindInfo' : 'council.topic.kindDecision'));
   const assembly = councilAssemblyRow(path);
   if (assembly) return compareTopicField(checkpoint, assembly, COUNCIL_ASSEMBLY, t('council.topic.forAssembly'),
     value => t(value ? 'council.assemblyHistory.marked' : 'council.assemblyHistory.unmarked'));
