@@ -344,8 +344,13 @@ export function AnalysisLine({ start, depth, spacing, role, words, steps, drag, 
   const lead = hangNumbers && first?.startsVerse ? 6 + String(first.verse).length * 7 : 0;
   const edge = pad + 6 - lead;
   const lineShown = pointed !== null && words.some((item) => item.index === pointed);
+  // The line's own strip from its leftmost control to its words: the arrows and the dot stand left of where the line
+  // begins — further for a verse number hung in the margin, which takes no pointer — and show only while the pointer is
+  // on the line, so without it they went out on the way to them (BUG-20261107-analysis-line-controls-unreachable).
+  const reach = steps ? edge - 66 : handle ? edge - 17 : null;
   return (
     <div data-line={start} className={`group/line relative transition-opacity ${role === 'dim' ? 'opacity-30' : ''}`} style={{ paddingLeft: pad, paddingBlock: ANALYSIS_LINE_PADDING, marginTop: spacing?.before ?? 0 }}>
+      {reach !== null && reach < pad ? <span aria-hidden="true" data-line-reach="" className="absolute inset-y-0" style={{ left: reach, width: pad - reach }} /> : null}
       {steps ? <StepPair steps={steps} left={edge - 66} top={10 + (spacing?.within ?? 0) / 2} shown={lineShown} /> : null}
       {handle ? <LineHandle start={start} left={edge - 17} top={15 + (spacing?.within ?? 0) / 2} shown={lineShown} drag={handle} /> : null}
       <span className={`rounded-lg px-1.5 py-0.5 font-serif text-[19px] [box-decoration-break:clone] ${drag || painting ? 'select-none' : ''} ${RING[role]}`} style={{ lineHeight: `${ANALYSIS_LINE_HEIGHT + (spacing?.within ?? 0)}px` }}>
