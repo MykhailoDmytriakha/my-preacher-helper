@@ -18,7 +18,9 @@ import { chooseLocalPreachDateEdits } from './preachDateChoice';
 import { confirmedExistingDeletion, equalValues, mergeDocumentFields, mergeFields } from './protocol';
 import { isRecoverableCheckpoint } from './recovery.client';
 import { recoveryChoiceFingerprint } from './recoveryChoice';
+import { existingRowField } from './rowFieldAction';
 import { keepUncontestedSermonFields } from './sermonFieldChoice';
+import { serviceOrderFlagRow, SERVICE_ORDER_FLAG_TARGET } from './serviceOrderFlagAction';
 import { DataSession, type SessionCheckpoint, type ShownCopy } from './session';
 import { submittedWorkCheckpoint } from './submittedWork';
 
@@ -728,6 +730,12 @@ export class EditorController {
     await this.options.commits!.cancelWithCheckpoint(decidingEditor, ids, retired => {
         this.assertCurrent();
         this.assertRecoveryChoice(expected);
+        const comparedFlag = expected?.checkpoint.confirmed.resource.collection === 'serviceOrders'
+          && expected.checkpoint.conflicts.length === 1 && serviceOrderFlagRow(expected.checkpoint.conflicts[0].path);
+        if (expected && (comparedFlag || retired.some(request => expected.checkpoint.pending[request.id] && request.serviceOrderFlagActions))
+          && retired.some(request => !expected.checkpoint.pending[request.id])) {
+          throw Object.assign(new Error('Another saved change appeared during the flag choice'), { code: 'decision-changed' });
+        }
         if (ordinary) {
           if (ordinary.scope.length > 1) this.assertRecoveryChoice(shown);
           assertOrdinaryAnswerScope(ordinary, retired);
@@ -749,6 +757,12 @@ export class EditorController {
             const rejected = ordinary.first.command ? ordinary.first.command.generation : decided.confirmed.metadata?.generation;
             requireFreshGeneration(ordinary.answer, rejected, decided.remoteCandidate);
           }
+          const stored = decided.remoteCandidate?.value;
+          const flagRequests = ordinary ? [ordinary.first] : retired.filter(request => request.cancelledByChoice && source!.pending[request.id]);
+          if (stored && flagRequests.some(request => {
+            const flag = request.serviceOrderFlagActions?.flagged;
+            return flag && existingRowField(stored.steps, flag.rowId, SERVICE_ORDER_FLAG_TARGET) === undefined;
+          })) throw Object.assign(new Error('The step that was flagged is gone'), { code: 'service-order-step-gone' });
           const statusActions = ordinary ? ordinary.first.preachStatusActions
             : retired.flatMap(request => request.cancelledByChoice && source!.pending[request.id] ? request.preachStatusActions ?? [] : []);
           session.keepLocal(statusActions);

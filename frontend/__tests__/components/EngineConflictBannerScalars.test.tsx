@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import React, { useEffect } from 'react';
 
 import { EngineConflictBanner } from '@/components/EngineConflictBanner';
@@ -79,6 +79,40 @@ describe('authored scalar values in saved-version choices', () => {
       if (previous) Object.defineProperty(navigator, 'clipboard', previous); else Reflect.deleteProperty(navigator, 'clipboard');
       if (secure) Object.defineProperty(window, 'isSecureContext', secure); else Reflect.deleteProperty(window, 'isSecureContext');
     }
+  });
+
+  it.each([false, true])('keeps a step flag decision scoped to what is shown (also edited words: %s)', async withWords => {
+    const resource = { collection: 'serviceOrders', id: 'flag-versions' };
+    const item = { id: 'flag-step', title: 'Opening step', body: 'Keep these words.' };
+    const value = { userId: 'owner', title: 'Sunday service', steps: [item], rank: 1, createdAt: at, updatedAt: at };
+    const harness = documentEngineHarness({ resource, value, metadata: { protocol: 1, generation: 'g1', revision: 1, deleted: false } });
+    jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
+    render(<DataEngineProvider><Actions /><EngineConflictBanner pollMs={25} /></DataEngineProvider>);
+    await waitFor(() => expect(actions?.ready).toBe(true));
+    harness.silentRemote({ steps: [{ ...item, flagged: false }] });
+    await act(async () => { await actions!.commit(resource, current => ({ ...current!, steps: [{ ...item, flagged: true,
+      ...(withWords && { body: 'A private local paragraph' }) }] })); await settleEngine(); });
+    if (withWords) {
+      await screen.findByText('A private local paragraph', { exact: false });
+      expect(screen.getByRole('button', { name: 'freshness.conflictKeepMine' })).toBeVisible();
+      expect(screen.queryByRole('region', { name: 'dataSync.versionComparison' })).not.toBeInTheDocument();
+      return;
+    }
+    const panel = await screen.findByRole('region', { name: 'dataSync.versionComparison' });
+    expect(within(panel).getByLabelText('dataSync.yourVersion')).toHaveTextContent('serviceOrders.flagHistory.marked');
+    expect(within(panel).getByLabelText('dataSync.storedVersion')).toHaveTextContent('serviceOrders.flagHistory.unmarked');
+    expect(screen.getByRole('button', { name: 'dataSync.useLocalVersion' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'dataSync.useStoredVersion' })).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'freshness.conflictKeepMine' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Keep these words.')).not.toBeInTheDocument();
+    jest.spyOn(harness.engine, 'takeStoredVersion').mockRejectedValue(new Error('An exact field choice needs its shown checkpoint'));
+    const error = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      fireEvent.click(screen.getByRole('button', { name: 'dataSync.useStoredVersion' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'dataSync.confirmStoredField.confirm' }));
+      await waitFor(() => expect(panel).not.toBeInTheDocument());
+      expect(harness.server.value?.steps).toEqual([{ ...item, flagged: false }]);
+    } finally { error.mockRestore(); }
   });
 
   it.each([true, false])('names a changed service-order mark when it becomes %s', async flagged => {

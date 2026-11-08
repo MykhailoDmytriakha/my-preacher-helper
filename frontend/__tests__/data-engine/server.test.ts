@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { isCollectionServed } from '@/data-engine/activation';
-import { DataEngineServerError, listBibleMarkHistory, listCouncilMetadataHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listPrayerStatusHistory, listPrayerTitleHistory, listSermonChurchHistory, listSermonTitleHistory, listSermonVerseHistory, listSeriesMetadataHistory, listServiceOrderTitleHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
+import { DataEngineServerError, listBibleMarkHistory, listCouncilMetadataHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listPrayerStatusHistory, listPrayerTitleHistory, listSermonChurchHistory, listSermonTitleHistory, listSermonVerseHistory, listSeriesMetadataHistory, listServiceOrderFlagHistory, listServiceOrderTitleHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
 import { collectionHeadId, HEADS_COLLECTION, sequenceId } from '@/data-engine/serverFeed';
 import { DataSession } from '@/data-engine/session';
 import type { DataCommand, FieldValue, ResourceSnapshot } from '@/data-engine/types';
@@ -1337,6 +1337,66 @@ describe('transactional DataEngine server', () => {
     })).toMatchObject({ kind: 'conflict', conflicts: [{ path: ['meetingDates', 'id:meeting', 'date'] }],
       snapshot: { value: { meetingDates: [meeting] } } });
     expect((await listMeetingDateHistory(base.owner, resource.id, 'seed')).entries).toEqual([]);
+  });
+
+  it('accepts the first explicit flag on an older step that omitted the optional flag', async () => {
+    const resource = { collection: 'serviceOrders', id: 'missing-flag' };
+    const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] };
+    const opening = { id: 'opening', title: 'Opening' };
+    const now = '2026-11-08T00:00:00.000Z';
+    await processCommand(base.owner, { ...base, kind: 'create', operationId: 'seed', generation: null,
+      value: { userId: base.owner, title: 'Sunday', rank: 100, createdAt: now, updatedAt: now, steps: [opening] },
+    });
+    const answer = await processCommand(base.owner, { ...base, kind: 'update', operationId: 'mark', generation: 'seed',
+      changes: [{ path: ['steps'], before: { exists: true, value: [{ ...opening, flagged: false }] },
+        after: { exists: true, value: [{ ...opening, flagged: true }] } }],
+      serviceOrderFlagActions: { flagged: { rowId: opening.id, rowCreatedAt: opening.id, before: false, after: true, observedRevision: 1,
+        time: { earliestMs: 1_800_000_000_020, latestMs: 1_800_000_000_024 } } },
+    });
+    expect(answer).toMatchObject({ kind: 'acknowledged', snapshot: { value: { steps: [{ ...opening, flagged: true }] } } });
+  });
+
+  it.each([
+    { label: 'earlier', phoneAt: 15, flag: false, kind: 'acknowledged' },
+    { label: 'later', phoneAt: 100, flag: true, kind: 'acknowledged' },
+    { label: 'unclocked', phoneAt: null, flag: false, kind: 'conflict' },
+  ])('orders a service step flag after the other device returns to the opening value: $label', async ({ phoneAt, flag, kind }) => {
+    const resource = { collection: 'serviceOrders', id: 'flag-round-trip' };
+    const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] };
+    const now = '2026-11-08T00:00:00.000Z';
+    const opening = { id: 'opening', title: 'Opening', body: 'Original words', scriptureRefs: [], flagged: false };
+    const other = { ...opening, id: 'other', title: 'Prayer', flagged: true };
+    const initial = [opening, other];
+    expect((await processCommand(base.owner, { ...base, kind: 'create', operationId: 'seed', generation: null,
+      value: { userId: base.owner, title: 'Sunday', rank: 100, createdAt: now, updatedAt: now, steps: initial },
+    })).kind).toBe('acknowledged');
+    const change = (operationId: string, before: typeof initial, after: typeof initial, at: number | null, observedRevision: number) => ({
+      ...base, kind: 'update', operationId, generation: 'seed',
+      changes: [{ path: ['steps'], before: { exists: true, value: before }, after: { exists: true, value: after } }],
+      serviceOrderFlagActions: { flagged: { rowId: opening.id, rowCreatedAt: opening.id, before: before[0].flagged,
+        after: after[0].flagged, observedRevision, time: at === null ? null : { earliestMs: 1_800_000_000_000 + at, latestMs: 1_800_000_000_004 + at } } },
+    });
+    const marked = [{ ...opening, flagged: true }, other];
+    expect((await processCommand(base.owner, change('desktop-on', initial, marked, 40, 1))).kind).toBe('acknowledged');
+    const unmarked = [{ ...opening, body: 'Later words on desktop' }, other];
+    expect((await processCommand(base.owner, change('desktop-off', marked, unmarked, 65, 2))).kind).toBe('acknowledged');
+    const phone = change('phone-on', initial, marked, phoneAt, 1);
+    const answer = await processCommand(base.owner, phone);
+    expect(answer).toMatchObject({ kind, snapshot: { value: { steps: [{ ...unmarked[0], flagged: flag }, other] } } });
+    expect(await processCommand(base.owner, phone)).toEqual(answer);
+    const history = [...documents.entries()].filter(([path]) => path.startsWith('serviceOrders/flag-round-trip/_stepFlagHistory/'));
+    if (phoneAt === null) {
+      expect(answer).toMatchObject({ conflicts: [{ path: ['steps', 'id:opening', 'flagged'] }] });
+      expect(history).toHaveLength(0);
+    } else {
+      expect(history).toHaveLength(1);
+      expect(history[0][1]).toMatchObject({ fields: [{ rowId: opening.id, field: 'flagged', value: !flag, winnerValue: flag }] });
+      await expect(listServiceOrderFlagHistory(base.owner, resource.id, 'seed')).resolves.toMatchObject({
+        owner: base.owner, orderId: resource.id, generation: 'seed', entries: [{ fields: [{ rowId: opening.id, value: !flag, winnerValue: flag }] }],
+      });
+      await expect(listServiceOrderFlagHistory('other-owner', resource.id, 'seed')).rejects.toMatchObject({ status: 403 });
+      await expect(listServiceOrderFlagHistory(base.owner, resource.id, 'old-generation')).rejects.toMatchObject({ status: 404 });
+    }
   });
 
   it('does not guess when a meeting date proof was evicted after a return to the same date', async () => {

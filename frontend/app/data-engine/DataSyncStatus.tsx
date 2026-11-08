@@ -69,7 +69,7 @@ export interface DataSyncStatusProps {
 }
 
 
-function FieldComparison({ comparison }: { comparison: TextComparison }) {
+export function FieldComparison({ comparison }: { comparison: TextComparison }) {
   const { t } = useTranslation();
   const localLabel = comparison.valueKind ? 'yourVersion' : 'yourFieldVersion';
   const storedLabel = comparison.valueKind ? 'storedVersion' : 'storedFieldVersion';

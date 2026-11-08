@@ -15,8 +15,9 @@ import { capturePreachDateFields, PREACH_DATE_FIELD_POLICY } from './preachDateF
 import { capturePreachStatusActions, matchingPreachStatusActions, pendingPreachStatusActions, replacePreachStatuses } from './preachStatusAction';
 import { confirmedExistingDeletion, equalValues, mergeDocumentFields, MAX_RELATION_RESOURCES } from './protocol';
 import { matchingRowDetailActions, pendingRowDetailRebases } from './rowDetailCapture';
-import { replaceExistingRowField } from './rowFieldAction';
+import { existingRowField, replaceExistingRowField } from './rowFieldAction';
 import { capturePlanTextEvidence, type PlanTextEvidence } from './sermonPlanText';
+import { captureServiceOrderFlag, matchingServiceOrderFlag, SERVICE_ORDER_FLAG_POLICY, SERVICE_ORDER_FLAG_TARGET, type ServiceOrderFlagActions } from './serviceOrderFlagAction';
 import { coversCommittedEffect } from './snapshotFreshness';
 
 import type { CaptureTransferProof, CaptureTransferResult } from './captureTransfer';
@@ -70,6 +71,7 @@ export interface CommitRequest extends CouncilFieldActions, PrayerStatusObservat
   bibleMarkStroke?: CapturedBibleMarkStroke;
   deferBibleMarkRebase?: true;
   serviceOrderTitleAction?: DocumentFieldAction;
+  serviceOrderFlagActions?: ServiceOrderFlagActions;
   prayerTitleAction?: DocumentFieldObservation;
   sermonTitleAction?: DocumentFieldObservation;
   sermonVerseAction?: DocumentFieldObservation;
@@ -166,6 +168,7 @@ export function assertCommitCapture(current: CommitRequest, incoming: CommitRequ
     || current.predecessor !== incoming.predecessor || !equalValues(current.baseline, incoming.baseline)
     || !equalValues(current.planTextEvidence ?? null, incoming.planTextEvidence ?? null)
     || !equalValues(current.serviceOrderTitleAction ?? null, incoming.serviceOrderTitleAction ?? null)
+    || !equalValues(current.serviceOrderFlagActions ?? null, incoming.serviceOrderFlagActions ?? null)
     || !equalValues(current.prayerTitleAction ?? null, incoming.prayerTitleAction ?? null)
     || !equalValues(current.prayerStatusAction ?? null, incoming.prayerStatusAction ?? null)
     || !equalValues(current.prayerAnsweredAtAction ?? null, incoming.prayerAnsweredAtAction ?? null)
@@ -277,6 +280,7 @@ function pendingRowFields(record: CommitRequest) {
   return [
     ...pendingRowDetailRebases(record, record.groupMeetingFieldActions, GROUP_MEETING_FIELD_POLICY),
     ...pendingRowDetailRebases(record, record.preachDateFieldActions, PREACH_DATE_FIELD_POLICY),
+    ...pendingRowDetailRebases(record, record.serviceOrderFlagActions, SERVICE_ORDER_FLAG_POLICY),
   ];
 }
 
@@ -443,7 +447,7 @@ export class CommitQueue {
       result.retired.forEach(publish);
       return clone(result.request);
     }
-    if (frozenOptions?.action?.kind !== 'service-order-title' && frozenOptions?.action?.kind !== 'prayer-title' && frozenOptions?.action?.kind !== 'prayer-status' && !frozenOptions?.transfer && !intent.dirty && (!predecessor || equalValues(predecessor.value, intent.draft))) return null;
+    if (frozenOptions?.action?.kind !== 'service-order-title' && frozenOptions?.action?.kind !== 'service-order-flag' && frozenOptions?.action?.kind !== 'prayer-title' && frozenOptions?.action?.kind !== 'prayer-status' && !frozenOptions?.transfer && !intent.dirty && (!predecessor || equalValues(predecessor.value, intent.draft))) return null;
     if (intent.conflicts.length) throw Object.assign(new Error('Resolve the conflict before saving'), { code: 'resolve-version-first' });
     const baseline = clone(intent.confirmed);
     const planTextEvidence = baseline.resource.collection === 'sermons' ? captureSermonPlan(baseline, intent.draft, predecessor) : undefined;
@@ -452,6 +456,8 @@ export class CommitQueue {
     const editorAction = frozenOptions?.action;
     const mark = captureBibleMarkStroke(baseline, predecessor, intent.draft, editorAction?.kind === 'bible-mark-stroke' ? editorAction.time : undefined);
     const title = captureServiceOrderTitle(baseline, intent.draft, editorAction?.kind === 'service-order-title' ? editorAction.title : undefined);
+    const serviceOrderFlagActions = captureServiceOrderFlag(baseline, predecessor, intent.draft,
+      editorAction?.kind === 'service-order-flag' ? editorAction.flag : undefined, records);
     const prayerCapture = editorAction?.kind === 'prayer-title' ? editorAction.title : undefined;
     const prayerPredecessor = prayerCapture?.seen.requestId
       ? matchesPrayerTitleRequest(records.find(record => record.id === prayerCapture.seen.requestId), owner, baseline.resource, prayerCapture.seen) : false;
@@ -467,6 +473,7 @@ export class CommitQueue {
       id: this.options.operationId(), owner, editorId, editGeneration: intent.editGeneration,
       ...(mark && { bibleMarkStroke: mark }),
       ...(title && { serviceOrderTitleAction: title }),
+      ...(serviceOrderFlagActions && { serviceOrderFlagActions }),
       ...(prayerTitle && { prayerTitleAction: prayerTitle }),
       ...prayerStatus,
       ...metadataFields,
@@ -887,6 +894,7 @@ export class CommitQueue {
     }
     for (const { action, target } of pendingRowFields(record)) {
       if (!source.value) break;
+      if (target === SERVICE_ORDER_FLAG_TARGET && existingRowField(source.value[target.field], action.rowId, target) === action.before) continue;
       const rows = replaceExistingRowField(source.value[target.field], action.rowId, action.before, target);
       if (rows !== undefined) source = { ...source, value: { ...source.value, [target.field]: rows } };
     }
@@ -921,6 +929,8 @@ export class CommitQueue {
       if (record.sermonChurchFill && command.changes.some(change => change.path[0] === 'preachDates')) command.sermonChurchFill = record.sermonChurchFill;
       const preachActions = matchingRowDetailActions(command.changes, record.preachDateFieldActions, PREACH_DATE_FIELD_POLICY);
       if (preachActions) command.preachDateFieldActions = preachActions;
+      const flagActions = matchingServiceOrderFlag(command.changes, record.serviceOrderFlagActions);
+      if (flagActions) command.serviceOrderFlagActions = flagActions;
       const statusActions = matchingPreachStatusActions(command.changes, status);
       if (statusActions.length) command.preachStatusActions = statusActions;
     }

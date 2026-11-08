@@ -6,7 +6,11 @@ import { toast } from 'sonner';
 
 import { OutdatedTabNotice } from '@/components/common/OutdatedTabNotice';
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
+import { FieldComparison } from '@/data-engine/DataSyncStatus';
+import { equalValues, object } from '@/data-engine/fieldValues';
 import { captureRecoveryChoice, councilRefusalHeldOpen, isCollectionOnEngine, isDataEngineEnabled, isOneShotRecord, isRecoveryHeldOpen, useDataEngine, useDocumentActions, useOpenDocumentAnswerScopes, waitsForDecision, type OpenDocumentAnswer, type RecoveryChoiceScope } from '@/data-engine/react.client';
+import { existingRowField } from '@/data-engine/rowFieldAction';
+import { serviceOrderFlagRow, SERVICE_ORDER_FLAG_TARGET } from '@/data-engine/serviceOrderFlagAction';
 import { useClipboard } from '@/hooks/useClipboard';
 import { useConfirm, useDiscardQuestion } from '@/hooks/useConfirm';
 import { useShellPathname } from '@/hooks/useShellPathname';
@@ -23,6 +27,7 @@ import { tagDeletionConfirmation } from '@/utils/tagDeletionConfirmation';
 import { useTranslation } from '@locales/useTranslation';
 
 import type { EditorRecord, RecoveryCheckpoint } from '@/data-engine/controller';
+import type { TextComparison } from '@/data-engine/DataSyncStatus';
 import type { DocumentData, JournalEntry, ResourceRef } from '@/data-engine/types';
 
 /** Bookkeeping the person never typed: never shown as "your change". */
@@ -76,6 +81,26 @@ const show = (value: unknown): string => {
 type Item = Record<string, unknown> & { id: string };
 type DisplayValue = (scope: string, field: string, value: unknown, document?: DocumentData) => unknown;
 const isItem = (value: unknown): value is Item => Boolean(value) && typeof value === 'object' && typeof (value as { id?: unknown }).id === 'string';
+function flagComparison(entry: Waiting, t: (key: string) => string): TextComparison | undefined {
+  if (entry.resource.collection !== 'serviceOrders' || entry.records.length !== 1) return undefined;
+  const { confirmed, draft, remoteCandidate, conflicts, pending } = entry.records[0].checkpoint;
+  const id = serviceOrderFlagRow(conflicts[0]?.path);
+  if (!id || !draft || !confirmed.value || !remoteCandidate?.value || conflicts.length !== 1 || Object.keys(pending).length !== 1) return undefined;
+  const mine = existingRowField(draft.steps, id, SERVICE_ORDER_FLAG_TARGET);
+  const stored = existingRowField(remoteCandidate.value.steps, id, SERVICE_ORDER_FLAG_TARGET);
+  if (mine === undefined || stored === undefined || mine === stored) return undefined;
+  const compared = (value: DocumentData) => ({
+    ...Object.fromEntries(Object.entries(value).filter(([key]) => !BOOKKEEPING.has(key))),
+    steps: Array.isArray(value.steps) ? value.steps.map(step => object(step)
+      ? { ...step, scriptureRefs: step.scriptureRefs ?? [], flagged: step.id === id ? false : Boolean(step.flagged) } : step) : value.steps,
+  });
+  if (!equalValues(compared(confirmed.value), compared(draft))) return undefined;
+  const step = Array.isArray(draft.steps) ? draft.steps.find(item => isItem(item) && item.id === id) : undefined;
+  const title = isItem(step) && typeof step.title === 'string' && step.title.trim() ? step.title : t('serviceOrders.flag');
+  const words = (flag: boolean) => t(flag ? 'serviceOrders.flagHistory.marked' : 'serviceOrders.flagHistory.unmarked');
+  return { title, valueKind: 'field', mine: words(mine), stored: words(stored) };
+}
+
 const REFERENCE_COORDINATES = ['chapter', 'toChapter', 'fromVerse', 'endChapter', 'toVerseChapter', 'toVerse'];
 const REFERENCE_FIELDS = new Set(['id', 'bible', 'book', 'text', ...REFERENCE_COORDINATES]);
 
@@ -344,7 +369,7 @@ function EngineConflicts({ pollMs, search }: { pollMs: number; search?: string }
   }, [browser, owner, waiting, openAnswers, pathname, screenSearch, withdraw, withdrawDelete]);
   if (!entry) return <>{discardDialog}{confirmDialog}</>;
 
-  const askBeforeSettling = async (target: Waiting, choice: 'mine' | 'theirs') => {
+  const askBeforeSettling = async (target: Waiting, choice: 'mine' | 'theirs', fieldOnly = false) => {
     const targetBrowser = browser;
     const targetOwner = owner;
     const pending = { target, browser: targetBrowser, owner: targetOwner };
@@ -356,8 +381,8 @@ function EngineConflicts({ pollMs, search }: { pollMs: number; search?: string }
         const currentEntry = visibleWaiting(fresh, pathname, openAnswers, screenSearch);
         if (browserRef.current !== targetBrowser || ownerRef.current !== targetOwner
           || !sameWaitingChoice(currentEntry, target) || !sameWaitingChoice(entryRef.current, target)) return;
-        await settle(choice, targetBrowser, target);
-      }, isCurrent);
+        await settle(choice, targetBrowser, target, fieldOnly);
+      }, isCurrent, fieldOnly ? 'dataSync.confirmStoredField' : undefined);
     } finally {
       if (pendingChoice.current === pending) pendingChoice.current = null;
     }
@@ -388,11 +413,12 @@ function EngineConflicts({ pollMs, search }: { pollMs: number; search?: string }
     }
   };
 
-  const settle = async (choice: 'mine' | 'theirs', targetBrowser = browser, target = entry) => {
+  const settle = async (choice: 'mine' | 'theirs', targetBrowser = browser, target = entry, exactField = false) => {
     if (busy) return;
     setBusy(true);
     try {
       if (target.screen) await targetBrowser?.engine.takeStoredVersion(target.resource, target.operationIds);
+      else if (exactField) await actions.resolve(target.resource, choice, target, true);
       else await actions.resolve(target.resource, choice, target);
     }
     catch (error) {
@@ -432,13 +458,18 @@ function EngineConflicts({ pollMs, search }: { pollMs: number; search?: string }
     </>;
   }
   if (entry.kind === 'conflict') {
+    const comparison = flagComparison(entry, t);
     return (
       <>
+        {comparison && <section aria-label={t('dataSync.versionComparison')} className="mb-3"><FieldComparison comparison={comparison} /></section>}
         <SaveConflictBanner
           entityKey={entry.resource.collection === 'studyNotes' ? 'entityNote' : entry.resource.collection === 'sermons' ? 'entitySermon' : 'entityRecord'}
-          pendingText={mine || undefined}
+          pendingText={comparison ? undefined : mine || undefined}
+          description={comparison ? t('dataSync.fieldVersionChanged') : undefined}
+          keepMineLabel={comparison ? t('dataSync.useLocalVersion') : undefined}
+          takeTheirsLabel={comparison ? t('dataSync.useStoredVersion') : undefined}
           onKeepMine={() => { void settle('mine'); }}
-          onTakeTheirs={() => { void askBeforeSettling(entry, 'theirs'); }}
+          onTakeTheirs={() => { void askBeforeSettling(entry, 'theirs', Boolean(comparison)); }}
           busy={busy}
           className="mb-3"
         />

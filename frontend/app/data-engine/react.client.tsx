@@ -419,14 +419,16 @@ export function useDocumentActions() {
      * reopened editor. Legacy direct commands still open only the exact shown checkpoint and check
      * it inside the controller queue. Omitted scope retains existing callers. Returns settled work.
      */
-    resolve: async (resource: ResourceRef, choice: 'mine' | 'theirs', scope?: RecoveryChoiceScope): Promise<number> => {
+    resolve: async (resource: ResourceRef, choice: 'mine' | 'theirs', scope?: RecoveryChoiceScope, exactField = false): Promise<number> => {
       if (!browser || !owner) throw new Error(ENGINE_NOT_READY);
       // One-shot drafts only: a screen editor's draft of the same document is that screen's to settle.
       let waiting = (await waitingFor(resource)).filter(({ record }) => isOneShotRecord(record));
       const shown = (record: EditorRecord) => scope?.records.find(expected => expected.owner === owner && expected.editorId === record.editorId
         && recoveryChoiceFingerprint([expected]) === recoveryChoiceFingerprint([record]));
+      if (exactField && (!scope || waiting.length !== 1 || !shown(waiting[0].record))) throw Object.assign(
+        new Error('The shown saved copy changed'), { code: 'decision-changed' });
       let taken = 0;
-      if (scope && choice === 'theirs') {
+      if (scope && choice === 'theirs' && !exactField) {
         // Modern copies settle through the same request-scoped projection as screen drafts.
         taken = await browser.engine.takeStoredVersion(resource, scope.operationIds);
         // Only directly owned legacy commands still need an editor; never reopen cancelled modern work.

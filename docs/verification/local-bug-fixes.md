@@ -7533,3 +7533,12 @@ Manual forms now compare the same stored representation on both sides of a succe
 The original exact recovery regression and two focused manual-scope regressions went red to green. 256 tests in nine related suites, scoped ESLint, TypeScript, and guarded build `poUfqv9aw9spYIgu_NKun` passed. Independent review verified the newer-write and storage-failure guards. Native Chrome confirmed a group date correction was in IndexedDB before the choice, stayed off the server until chosen, and survived reload on both profiles. The preaching-date conflict was a live control. Evidence is in `artifacts/action-chronology-356/manual-stage-durability-verified`.
 
 For authorized production acceptance after deployment, use a disposable group and two profiles for the same account. Start from an existing meeting, use a previously cached profile with no current clock calibration to save an offline date, save a different date online, then reconnect. If the app asks for a choice, edit the date once more and verify the choice remains available. Choose the corrected date, reload both profiles, and check that the location, audience, and other meeting stay unchanged.
+
+
+## BUG-20261016-engine-asks-instead-of-chronology · Service step flag
+
+In Heart matters → Conducting services → a service → Edit, Do not forget follows the later known click and archives the displaced flag. The history restores the exact value for the same step. If the timing is unknown, the comparison shows both values. A removed step stays removed. The choice is fenced to the exact visible conflict and preserves a later edit that the comparison did not show.
+
+The baseline Chrome run reproduced the earlier phone mark returning after a later desktop clear. Five final Chrome scenarios on isolated emulators covered both action orders, history and reload, an uncalibrated phone, a legacy step without the flag, and a deleted step. The body and adjacent step stayed unchanged. 606 tests in nine suites, eight translation tests, scoped ESLint with zero errors, TypeScript, and guarded build H6jYGMv3UPSb53IQTImzk passed. Independent review verified the corrections. Evidence is in artifacts/action-chronology-356/service-order-step-flag-verified.
+
+For authorized production acceptance, open one disposable service in two profiles under the same account. Mark a step offline on the phone, later mark and clear it on the other device, and reconnect. Confirm the flag stays clear, restore the former mark from history, reload, and check the step text and the neighboring step. Close both profiles.

@@ -7,6 +7,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 
 import { ScriptureLinks, ScriptureText, WrittenInMark } from '@/components/bible/ScriptureLinks';
 import { useVerseWindow } from '@/components/bible/VerseWindow';
+import { ServiceOrderFlagHistory } from '@/components/care/ServiceOrderFlagHistory';
 import { RecordUnavailable } from '@/components/RecordUnavailable';
 import { Chip } from '@/components/ui/Chip';
 import { DocumentFieldHistory } from '@/components/ui/DocumentFieldHistory';
@@ -19,6 +20,7 @@ import {
   isStaleWriteError,
   isUnreachableWriteError,
 } from '@/services/conflictSafeUpdate.client';
+import { SERVICE_ORDER_STEPS_AGGREGATE } from '@/services/serviceOrders.client';
 import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { textLanguage } from '@/utils/appLocale';
 import { namesAPlace, referenceFromTyped, writtenInFor } from '@/utils/bibleLink';
@@ -32,6 +34,7 @@ import { ReorderArrows, ServiceOrderFailure } from '../ReorderArrows';
 
 
 import type { ActionTime } from '@/data-engine/actionClock';
+import type { ServiceOrderFlagCapture, ServiceOrderFlagVersion } from '@/data-engine/serviceOrderFlagAction';
 import type { ServiceOrder, ServiceOrderStep } from '@/models/models';
 import '@locales/i18n';
 
@@ -73,6 +76,7 @@ type WriteOptions = {
   undo?: (steps: ServiceOrderStep[]) => ServiceOrderStep[] | null;
   /** The one field this write carries, whose words are on the screen and nowhere else. */
   field?: { stepId: string; name: string; value?: string };
+  flag?: ServiceOrderFlagCapture;
   /** A step this change took OUT of the rite. */
   removed?: string;
   /** A step this change BROUGHT INTO BEING, which may survive its own refusal. */
@@ -180,18 +184,22 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
   const { t } = useTranslation();
   const { locale } = useAppLocale();
   const { confirm, confirmDialog } = useConfirm();
-  const { orders, loading, isOnline, updateSteps, openedWith, closedEditing, recheck, orderPresence, renameOrder, captureTitleTime, titleHistory, deleteOrder } =
+  const { orders, loading, isOnline, updateSteps, stepFlagVersion, openedWith, closedEditing, recheck, orderPresence, renameOrder, captureTitleTime, titleHistory, deleteOrder } =
     useServiceOrders();
   const cachedOrder = orders.find((candidate) => candidate.id === orderId);
   const presence = orderPresence?.(orderId);
   // The copy on screen; it follows the engine row whenever nothing on screen is unsaved (below).
-  const [acceptedOrder, setAcceptedOrder] = useState<ServiceOrder | null>(null);
+  const [accepted, setAccepted] = useState<{ order: ServiceOrder; flagVersion?: ServiceOrderFlagVersion } | null>(null);
+  const acceptedOrder = accepted?.order;
+  const fromShownOrder = useCallback((shown: ServiceOrder) => ({
+    order: shown, flagVersion: stepFlagVersion?.(shown.id, shown.rev?.[SERVICE_ORDER_STEPS_AGGREGATE] ?? 0),
+  }), [stepFlagVersion]);
   useEffect(() => {
-    if (!acceptedOrder && cachedOrder) setAcceptedOrder(cachedOrder);
-  }, [acceptedOrder, cachedOrder]);
+    if (!acceptedOrder && cachedOrder) setAccepted(fromShownOrder(cachedOrder));
+  }, [acceptedOrder, cachedOrder, fromShownOrder]);
   const order = cachedOrder ? acceptedOrder ?? cachedOrder : undefined;
   const confirmContent = (patch: Partial<ServiceOrder>) => {
-    setAcceptedOrder(current => current ? { ...current, ...patch } : current);
+    setAccepted(current => current ? { ...current, order: { ...current.order, ...patch } } : current);
   };
   /** Always the current document, for a write that runs long after the keystroke that armed it. */
   const orderRef = useRef(order);
@@ -615,7 +623,7 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
     mirror(mutate);
     const sentSteps = typedRef.current;
     try {
-      const committed = await updateSteps(orderId, mutate);
+      const committed = await (options?.flag ? updateSteps(orderId, mutate, options.flag) : updateSteps(orderId, mutate));
       if (committed) confirmContent({ steps: selectServiceOrderContent({ steps: committed }).steps });
       /*
        * AN ANSWER IS ONLY WORTH ADOPTING IF THE EDITOR HAS NOT MOVED ON.
@@ -766,8 +774,8 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
   useEffect(() => {
     if (!cachedOrder || hasLocalChanges || acceptedOrder === cachedOrder) return;
     if (acceptedOrder && acceptedOrder.title !== cachedOrder.title) setSession(newClientId());
-    setAcceptedOrder(cachedOrder);
-  }, [cachedOrder, hasLocalChanges, acceptedOrder]);
+    setAccepted(fromShownOrder(cachedOrder));
+  }, [cachedOrder, hasLocalChanges, acceptedOrder, fromShownOrder]);
 
   // Both the current and retained reading copy open through the same screen-owned window.
   const reading = (children: ReactNode) => (
@@ -877,7 +885,7 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
    * as confirmed, and they existed nowhere. Refusing says what happened while the words are
    * still in the field in front of the person who wrote them.
    */
-  const patchStep = (stepId: string, field: string, patch: Partial<ServiceOrderStep>) =>
+  const patchStep = (stepId: string, field: string, patch: Partial<ServiceOrderStep>, flag?: ServiceOrderFlagCapture) =>
     write(
       (steps) => {
         if (!steps.some((step) => step.id === stepId)) throw new StepGoneError();
@@ -887,8 +895,14 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
       // a moment later cleared the marker its BODY had left, and the refused paragraph was
       // adopted away with it. Kept as a pair rather than a joined string, so a step id that
       // happens to contain a colon cannot be read as belonging to another step.
-      { field: { stepId, name: field, value: patchedValue(patch, field) } }
+      { field: { stepId, name: field, value: patchedValue(patch, field) }, flag }
     );
+
+  const setStepFlag = (step: ServiceOrderStep, flagged: boolean) => {
+    const version = accepted?.flagVersion ?? fromShownOrder(order).flagVersion;
+    const seen = version && { ...version, rowId: step.id, before: Boolean(step.flagged), after: flagged, time: captureTitleTime?.() ?? null };
+    return patchStep(step.id, 'flagged', { flagged }, seen);
+  };
 
   /**
    * The id is minted ONCE, outside the mutator. It used to be created inside, so a write that
@@ -1025,6 +1039,10 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
 
         {titleHistorySession && <DocumentFieldHistory key={JSON.stringify([titleHistorySession.owner, orderId, titleHistorySession.generation])}
           session={titleHistorySession} current={titleDraft ?? order.title} disabled={hasLocalChanges || editing} />}
+        {titleHistorySession && <ServiceOrderFlagHistory
+          key={JSON.stringify([titleHistorySession.owner, orderId, titleHistorySession.generation])}
+          owner={titleHistorySession.owner} orderId={orderId} generation={titleHistorySession.generation}
+          steps={liveSteps} disabled={hasLocalChanges || editing} onRestore={setStepFlag} />}
 
         {order.summary && !editing && (
           <p className="mt-2 text-sm leading-relaxed text-gray-600 dark:text-gray-400">
@@ -1139,7 +1157,7 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
                     <div className="flex flex-wrap items-center gap-2 pt-1">
                       <button
                         type="button"
-                        onClick={() => patchStep(step.id, 'flagged', { flagged: !step.flagged })}
+                        onClick={() => setStepFlag(step, !step.flagged)}
                         aria-pressed={Boolean(step.flagged)}
                         className={`rounded-full border px-3 py-1 text-[11px] font-bold transition ${
                           step.flagged

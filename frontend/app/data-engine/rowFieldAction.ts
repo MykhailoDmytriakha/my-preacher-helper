@@ -3,7 +3,7 @@ import { equalValues, object, readField } from './fieldValues';
 import type { ActionTime } from './actionClock';
 import type { ConflictDetail, DocumentData, FieldChange, FieldValue, Json } from './types';
 
-export type RowValue = string | null | DocumentData;
+export type RowValue = string | boolean | null | DocumentData;
 export type RowFieldTarget<Value extends RowValue> = {
   field: string;
   leaf: string | readonly [string, string];
@@ -93,8 +93,9 @@ export const rowConflictValue = (value: RowValue): FieldValue => value === null 
 
 export function isCapturedRowConflict<Value extends RowValue>(conflict: ConflictDetail, action: RowFieldObservation<Value>, target: RowFieldTarget<Value>): boolean {
   const path = rowConflictPath(action.rowId, target);
+  const missing = target.missing ?? null;
   return conflict.path.length === path.length && path.every((part, index) => conflict.path[index] === part)
-    && equalValues(conflict.base.exists ? conflict.base.value : null, action.before)
-    && equalValues(conflict.mine.exists ? conflict.mine.value : null, action.after)
-    && (conflict.theirs.exists ? target.accepts(conflict.theirs.value) : target.missing === null);
+    && equalValues(conflict.base.exists ? conflict.base.value : missing, action.before)
+    && equalValues(conflict.mine.exists ? conflict.mine.value : missing, action.after)
+    && (conflict.theirs.exists ? target.accepts(conflict.theirs.value) : target.missing !== undefined);
 }

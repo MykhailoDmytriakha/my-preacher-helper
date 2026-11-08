@@ -3,7 +3,7 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import { isLiveCollectionDocument, useDataCollection, useDocumentActions } from '@/data-engine/react.client';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { StaleWriteError } from '@/services/conflictSafeUpdate.client';
-import { SERVICE_ORDER_META_AGGREGATE, hydrateServiceOrder } from '@/services/serviceOrders.client';
+import { SERVICE_ORDER_META_AGGREGATE, SERVICE_ORDER_STEPS_AGGREGATE, hydrateServiceOrder } from '@/services/serviceOrders.client';
 import { newClientId } from '@/utils/clientId';
 import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
 import { buildSeedOrders, SERVICE_ORDER_CATALOG } from '@/utils/serviceOrderCatalog';
@@ -14,6 +14,7 @@ import { useTranslation } from '@locales/useTranslation';
 import type { ActionTime } from '@/data-engine/actionClock';
 import type { CollectionState } from '@/data-engine/collections';
 import type { ServiceOrderTitleSeen } from '@/data-engine/documentFieldAction';
+import type { ServiceOrderFlagCapture, ServiceOrderFlagVersion } from '@/data-engine/serviceOrderFlagAction';
 import type { DocumentData, EditorCommitAction, ResourceSnapshot } from '@/data-engine/types';
 import type { ServiceOrder, ServiceOrderCatalogKey, ServiceOrderStep } from '@/models/models';
 
@@ -165,19 +166,28 @@ export function useServiceOrdersEngine(userId: string | null | undefined, enable
   /** The deletion carries what this device last saw, so a rite edited elsewhere meanwhile is not taken. */
   const deleteOrder = (id: string) => queued(id, () => actions.remove(resource(id)));
 
-  const updateSteps = (id: string, mutate: (steps: ServiceOrderStep[]) => ServiceOrderStep[] | null) =>
+  const stepFlagVersion = useCallback((id: string, shownRevision: number): ServiceOrderFlagVersion | undefined => {
+    const shown = confirmedOrderRows(collectionState.current, id).find(row =>
+      (asOrder(row.value!, id).rev?.[SERVICE_ORDER_STEPS_AGGREGATE] ?? 0) === shownRevision)?.metadata;
+    return shown ? { generation: shown.generation, observedRevision: shown.revision } : undefined;
+  }, []);
+
+  const updateSteps = (id: string, mutate: (steps: ServiceOrderStep[]) => ServiceOrderStep[] | null, flag?: ServiceOrderFlagCapture) =>
     queued(id, async () => {
       setSavingSteps(count => count + 1);
       let committed: ServiceOrderStep[] | null = null;
       try {
-        await actions.commit(resource(id), current => {
+        if (activeOwner.current !== userId) throw new Error('The service order owner changed');
+        const update = (current: DocumentData | null) => {
           committed = null;
           if (!current) throw notFound();
           const steps = mutate(asOrder(current, id).steps);
           if (!steps) return current;
           committed = steps;
           return { ...current, steps: deepCleanUndefined(steps) as unknown as DocumentData[], updatedAt: now() };
-        });
+        };
+        if (flag) await actions.commit(resource(id), update, { kind: 'service-order-flag', flag });
+        else await actions.commit(resource(id), update);
         // Assigned inside the commit callback, so the type is stated: TypeScript would narrow it to null.
         return committed as ServiceOrderStep[] | null;
       } finally {
@@ -289,6 +299,7 @@ export function useServiceOrdersEngine(userId: string | null | undefined, enable
     createCustomOrder,
     deleteOrder,
     updateSteps,
+    stepFlagVersion,
     openedWith: (id: string, opening: { title: string; revision: number }, session: string) => {
       const key = baselineKey(id, session);
       if (!baselines.current.has(key)) {

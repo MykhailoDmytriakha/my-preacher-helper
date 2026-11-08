@@ -48,7 +48,7 @@ export function PreachDateFieldHistory({ owner, sermonId, generation, dates, dis
       return t(value === 'preached' ? 'calendar.status.preached' : 'calendar.status.planned');
     }
     if (value === null) return t('calendar.preachDetailUnset');
-    if (typeof value === 'string') return value || t('calendar.preachDetailBlank');
+    if (typeof value !== 'object') return String(value) || t('calendar.preachDetailBlank');
     return [value.name, value.city].filter(part => typeof part === 'string' && part).join(' · ');
   };
   return <div>

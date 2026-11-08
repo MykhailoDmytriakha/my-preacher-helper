@@ -12,6 +12,7 @@ import { alignImplicitPreachStatuses, isCapturedPreachStatusConflict, replacedPr
 import { equalValues, mergeDocumentFields, MAX_RELATION_RESOURCES } from './protocol';
 import { isCapturedRowConflict } from './rowFieldAction';
 import { rebaseSermonChurchFill } from './sermonChurchFill';
+import { SERVICE_ORDER_FLAG_TARGET } from './serviceOrderFlagAction';
 import { coversCommittedEffect } from './snapshotFreshness';
 
 import type { CommitRequest, CommitStore, TrackCommitAnswer } from './commits';
@@ -81,10 +82,12 @@ export function initializeCommit(record: CommitRequest, records: readonly Commit
     const church = sameGeneration ? retainAuthoredChurch(merged, snapshot, record.preachDateFieldActions) : merged;
     const intended = sameGeneration ? retainPreachStatusIntent(church, snapshot, record.preachStatusActions) : church;
     const flag = record.preachStatusActions?.length ? explicitPreachedFlag(intended?.preachDates, false) : undefined;
+    const stepFlag = record.serviceOrderFlagActions?.flagged;
     const canOrder = sameGeneration && rebased.conflicts.every(conflict => isDateConflict(conflict)
       || isCapturedPreachStatusConflict(conflict, record.preachStatusActions)
       || (flag !== undefined && conflict.path.length === 1 && conflict.path[0] === 'isPreached')
       || isCapturedPreachDateFieldConflict(conflict, record.preachDateFieldActions)
+      || (stepFlag && isCapturedRowConflict(conflict, stepFlag, SERVICE_ORDER_FLAG_TARGET))
       || GROUP_MEETING_FIELDS.some(field => {
         const meeting = record.groupMeetingFieldActions?.[field];
         return meeting && isCapturedRowConflict(conflict, meeting, meetingFieldTarget(field));

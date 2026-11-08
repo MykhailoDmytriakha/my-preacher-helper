@@ -591,6 +591,97 @@ describe('Durable commit requests', () => {
     }));
   });
 
+  it('keeps both step flag clicks in the restarted offline queue even when the first ACK already shows the second value', async () => {
+    const s = setup();
+    const { queue } = s.makeQueue();
+    const opening = { id: 'opening', title: 'Opening', flagged: false };
+    const base: ResourceSnapshot = {
+      resource: { collection: 'serviceOrders', id: 'order' },
+      value: { userId: 'owner', title: 'Sunday', rank: 100, steps: [opening], createdAt: '2026-11-08', updatedAt: '2026-11-08' },
+      metadata: { protocol: 1, generation: 'order', revision: 1, deleted: false },
+    };
+    const editor = new DataSession(base);
+    const firstTime = { earliestMs: 1_800_000_000_020, latestMs: 1_800_000_000_024 };
+    const secondTime = { earliestMs: 1_800_000_000_030, latestMs: 1_800_000_000_034 };
+    const seen = { rowId: opening.id, generation: 'order', observedRevision: 1 };
+    editor.edit({ ...base.value, steps: [{ ...opening, flagged: true }] });
+    const first = (await queue.save('order', editor.checkpoint(), { action: { kind: 'service-order-flag',
+      flag: { ...seen, before: false, after: true, time: firstTime },
+    } }))!;
+    editor.applyCommit(first);
+    editor.edit({ ...base.value, steps: [opening] });
+    const next = (await queue.save('order', editor.checkpoint(), { predecessorId: first.id, action: { kind: 'service-order-flag',
+      flag: { ...seen, before: true, after: false, time: secondTime },
+    } }))!;
+    const action = { rowId: opening.id, rowCreatedAt: opening.id, before: true, after: false, observedRevision: 1,
+      time: secondTime, predecessorOperationId: first.id };
+    const desk = { ...base, value: { ...base.value, steps: [{ ...opening, body: 'Keep the desk words' }] },
+      metadata: { ...base.metadata!, revision: 2, operationId: first.id } };
+    s.replace(desk);
+    jest.mocked(s.transport.send).mockResolvedValueOnce({ kind: 'acknowledged', operationId: first.id, snapshot: desk });
+    await s.makeQueue().queue.drain(true);
+    expect(s.transport.send).toHaveBeenCalledWith(expect.objectContaining({ operationId: next.id,
+      serviceOrderFlagActions: { flagged: action }, changes: [{ path: ['steps'],
+        before: { exists: true, value: [{ ...opening, flagged: true, body: 'Keep the desk words' }] },
+        after: { exists: true, value: [{ ...opening, body: 'Keep the desk words' }] },
+      }],
+    }));
+  });
+
+  it('keeps an unseen dependent Save when reviewing a legacy step flag conflict', async () => {
+    const step = { id: 'opening', title: 'Opening' };
+    const opening: ResourceSnapshot = {
+      resource: { collection: 'serviceOrders', id: 'order' },
+      value: { userId: 'owner', title: 'Sunday', rank: 100, steps: [step], createdAt: '2026-11-08', updatedAt: '2026-11-08' },
+      metadata: { protocol: 1, generation: 'order', revision: 1, deleted: false },
+    };
+    const s = setup({ opening, nativeChoice: true });
+    const engine = s.makeEngine(), editor = await engine.openEditor(opening.resource, 'page');
+    try {
+      const flagged = { ...opening.value!, steps: [{ ...step, flagged: true }] };
+      await editor.commit(() => flagged);
+      const { queue } = s.makeQueue();
+      const [root] = await queue.list();
+      const child = new DataSession(opening);
+      child.edit({ ...flagged, title: 'Unseen later title' });
+      await queue.save('other-editor', child.checkpoint(), { predecessorId: root.id });
+      s.replace({ ...opening, value: { ...opening.value, steps: [{ ...step, flagged: false }] },
+        metadata: { ...opening.metadata!, revision: 2 } });
+      engine.setOnline(true); await engine.retry(); await settle();
+      expect(editor.getState().checkpoint.conflicts[0]?.path).toEqual(['steps', 'id:opening', 'flagged']);
+      const reviewed = await s.checkpoints.read('owner', 'page');
+      expect(Object.keys(reviewed!.checkpoint.pending)).toEqual([root.id]);
+      await expect(editor.acceptRemote(reviewed)).rejects.toMatchObject({ code: 'decision-changed' });
+      expect((await queue.list()).map(request => request.state)).toEqual(['conflict', 'queued']);
+      expect(s.server().value?.steps).toEqual([{ ...step, flagged: false }]);
+    } finally { engine.dispose(); }
+  });
+
+  it('cannot recreate a deleted step by keeping the rejected flag', async () => {
+    const step = { id: 'opening', title: 'Opening', body: 'Original words', flagged: false };
+    const opening: ResourceSnapshot = {
+      resource: { collection: 'serviceOrders', id: 'order' },
+      value: { userId: 'owner', title: 'Sunday', rank: 100, steps: [step], createdAt: '2026-11-08', updatedAt: '2026-11-08' },
+      metadata: { protocol: 1, generation: 'order', revision: 1, deleted: false },
+    };
+    const s = setup({ opening, nativeChoice: true });
+    const engine = s.makeEngine(), editor = await engine.openEditor(opening.resource, 'page');
+    try {
+      await editor.commit(value => ({ ...value, steps: [{ ...step, flagged: true }] }), { kind: 'service-order-flag',
+        flag: { rowId: step.id, before: false, after: true, generation: 'order', observedRevision: 1, time: null },
+      });
+      s.replace({ ...opening, value: { ...opening.value, steps: [] }, metadata: { ...opening.metadata!, revision: 2 } });
+      engine.setOnline(true); await engine.retry(); await settle();
+      expect(editor.getState().result?.kind).toBe('conflict');
+      await expect(editor.keepLocal()).rejects.toMatchObject({ code: 'service-order-step-gone' });
+      expect(editor.getState().checkpoint.draft?.steps).toEqual([{ ...step, flagged: true }]);
+      expect(s.server().value?.steps).toEqual([]);
+      await editor.acceptRemote();
+      expect(editor.getState().checkpoint.draft?.steps).toEqual([]);
+      expect(s.transport.send).toHaveBeenCalledTimes(1);
+    } finally { engine.dispose(); }
+  });
+
   it('replays the next title with the exact local predecessor after its ACK retained a different title', async () => {
     const s = setup();
     const { queue } = s.makeQueue();

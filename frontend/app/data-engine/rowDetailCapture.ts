@@ -72,7 +72,7 @@ export function matchingRowDetailActions<Field extends string, Value extends Row
 }
 
 export function pendingRowDetailRebases<Field extends string, Value extends RowValue>(record: CommitRequest,
-  actions: RowDetailActions<Field, Value> | undefined, policy: RowDetailPolicy<Field, Value>) {
+  actions: Partial<Record<Field, RowDetailObservation<Value>>> | undefined, policy: RowDetailPolicy<Field, Value>) {
   if (record.sequence !== 0 || !actions || !record.working.value
     || record.working.metadata?.generation !== record.baseline.metadata?.generation) return [];
   return policy.fields.flatMap(field => {
