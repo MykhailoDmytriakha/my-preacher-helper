@@ -131,6 +131,7 @@ const baseUseStudyNotesValue = (): ReturnType<typeof useStudyNotes> => ({
   notePresence: () => ({ kind: 'unknown', source: null, snapshot: null }),
   confirmedDictationSources: new Map(),
   confirmedCreationIds: new Set(),
+  commentCollectionReady: true,
   loading: false,
   checking: false,
   error: null,

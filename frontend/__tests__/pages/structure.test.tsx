@@ -337,7 +337,7 @@ describe('Structure Page', () => {
       const harness = documentEngineHarness({
         resource: { collection: 'sermons', id: 'sermon-123' },
         metadata: { protocol: 1, generation: 'g1', revision: 1, deleted: false },
-        value: { userId: 'owner', title: 'Test Sermon', verse: '', date: '2024-01-01', thoughts: [thought] },
+        value: { userId: 'owner', title: 'Test Sermon', verse: '', date: '2024-01-01', thoughts: [{ ...thought }] },
       });
       jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
       const containers = {
