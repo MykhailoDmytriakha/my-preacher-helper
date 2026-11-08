@@ -5,7 +5,6 @@ import '@testing-library/jest-dom';
 import { getSectionIconClasses } from '@/components/column/utils';
 import SortableItem, {
   getCardClassName,
-  getHighlightStyles,
   HighlightBadge,
   SortableItemActions,
   SortableItemPreview,
@@ -554,7 +553,7 @@ Second paragraph with indentation.
     expect(container).toBeInTheDocument();
     expect(container?.className).toContain('border-yellow-400');
     expect(container?.className).toContain('shadow-yellow-200');
-    expect(container).toHaveStyle({ borderColor: 'rgb(250, 204, 21)', backgroundColor: 'rgb(254, 249, 195)' });
+    expect(container).toHaveClass('bg-yellow-100', 'dark:bg-yellow-950');
 
     const badge = screen.getByText('structure.aiAssigned');
     expect(badge).toBeInTheDocument();
@@ -577,18 +576,26 @@ Second paragraph with indentation.
     expect(badge.closest('span.rounded-full')?.className).toMatch(/text-blue-\d+/);
 
     const container = screen.getByText('Test content for the item').closest('div[role="button"]') as HTMLElement | null;
-    expect(container).toHaveStyle({ borderColor: 'rgb(59, 130, 246)', backgroundColor: 'rgb(219, 234, 254)' });
+    expect(container).toHaveClass('border-blue-500', 'bg-blue-100', 'dark:bg-blue-950');
+  });
+
+  test.each([
+    ['assigned', 'bg-yellow-100', 'dark:bg-yellow-950'],
+    ['moved', 'bg-blue-100', 'dark:bg-blue-950'],
+  ] as const)('lets the active theme paint the %s suggestion card', (highlightType, light, dark) => {
+    render(<SortableItem item={mockItem} containerId={mockContainerId}
+      isHighlighted highlightType={highlightType} onKeep={mockOnEdit} onRevert={mockOnEdit} />);
+
+    const card = screen.getByText('Test content for the item').closest('div[role="button"]');
+    expect(card).toBeInstanceOf(HTMLElement);
+    expect(card).toHaveClass(light, dark);
+    expect((card as HTMLElement).style.backgroundColor).toBe('');
+    expect((card as HTMLElement).style.borderColor).toBe('');
+    expect(screen.getByTitle('structure.keepChanges')).toHaveClass('text-green-700', 'dark:text-green-400');
+    expect(screen.getByTitle('structure.revertChanges')).toHaveClass('text-orange-700', 'dark:text-orange-400');
   });
 
   test('covers exported helper branches directly', () => {
-    expect(getHighlightStyles(true, 'assigned')).toEqual({
-      borderColor: 'rgb(250, 204, 21)',
-      backgroundColor: 'rgb(254, 249, 195)',
-    });
-    expect(getHighlightStyles(true, 'moved')).toEqual({
-      borderColor: 'rgb(59, 130, 246)',
-      backgroundColor: 'rgb(219, 234, 254)',
-    });
     expect(getSectionIconClasses('conclusion')).toContain('text-green-800');
     expect(getSectionIconClasses('custom')).toBe('text-gray-600 dark:text-gray-300');
 

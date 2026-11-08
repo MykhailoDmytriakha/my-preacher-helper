@@ -9,6 +9,7 @@ import React from "react";
 import { Chip } from '@/components/ui/Chip';
 import { Item } from "@/models/models";
 import { structureThoughtPaddingClass } from "@/utils/structureBoardLayout";
+import { STRUCTURE_SUGGESTION_COLORS } from "@/utils/themeColors";
 import { EditIcon, TrashIcon } from "@components/Icons";
 import { useTranslation } from "@locales/useTranslation";
 
@@ -80,14 +81,6 @@ const stopEvent = (event: React.MouseEvent | React.PointerEvent) => {
   }
 };
 
-export const getHighlightStyles = (isHighlighted: boolean, highlightType: "assigned" | "moved") => {
-  if (!isHighlighted) return {};
-
-  return highlightType === "assigned"
-    ? { borderColor: "rgb(250, 204, 21)", backgroundColor: "rgb(254, 249, 195)" }
-    : { borderColor: "rgb(59, 130, 246)", backgroundColor: "rgb(219, 234, 254)" };
-};
-
 export const getCardClassName = ({
   isHighlighted,
   highlightType,
@@ -107,23 +100,17 @@ export const getCardClassName = ({
   isOverlay: boolean;
   isLocked: boolean;
 }) => {
-  const surfaceClass = isLocked
-    ? "bg-slate-50 dark:bg-slate-900/40"
-    : "bg-white dark:bg-gray-800";
-
-  const highlightClass = isHighlighted
-    ? `border-2 shadow-lg ${highlightType === "assigned"
-      ? "border-yellow-400 shadow-yellow-200"
-      : "border-blue-400 shadow-blue-200"}`
+  const appearanceClass = isHighlighted
+    ? `border-2 shadow-lg ${STRUCTURE_SUGGESTION_COLORS[highlightType]}`
     : `border ${isLocked
-      ? "border-slate-300 dark:border-slate-700 shadow-sm"
-      : "border-gray-200 dark:border-gray-700 shadow-md"}`;
+      ? "bg-slate-50 dark:bg-slate-900/40 border-slate-300 dark:border-slate-700 shadow-sm"
+      : "bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 shadow-md"}`;
 
   const dragStateClass = isDeleting ? "pointer-events-none" : "";
   const dragOpacityClass = isDragDisabled && !isLocked ? `opacity-75 ${cursorClass}` : cursorClass;
   const marginClass = isOverlay ? "" : "mb-6";
 
-  return `relative group/card min-h-[144px] rounded-lg ${structureThoughtPaddingClass} ${surfaceClass} ${marginClass} ${highlightClass} ${hoverShadowClass} ${dragStateClass} ${dragOpacityClass}`;
+  return `relative group/card min-h-[144px] rounded-lg ${structureThoughtPaddingClass} ${appearanceClass} ${marginClass} ${hoverShadowClass} ${dragStateClass} ${dragOpacityClass}`;
 };
 
 export const HighlightBadge = ({
@@ -319,11 +306,11 @@ const SortableItemReviewFooter = ({
               stopEvent(event);
               onKeep(item.id, containerId);
             }}
-            className={`focus:outline-none border border-green-200 bg-green-50 hover:bg-green-100 dark:border-green-700 dark:bg-green-900/30 dark:hover:bg-green-900/50 ${ACTION_BUTTON_BASE_CLASS}`}
+            className={`focus:outline-none border ${STRUCTURE_SUGGESTION_COLORS.keep} ${ACTION_BUTTON_BASE_CLASS}`}
             title={t("structure.keepChanges", { defaultValue: "Keep this change" })}
             disabled={disabled}
           >
-            <CheckIcon className="h-5 w-5 text-green-500 hover:text-green-700" />
+            <CheckIcon className="h-5 w-5" />
           </button>
         )}
         {onRevert && (
@@ -334,11 +321,11 @@ const SortableItemReviewFooter = ({
               stopEvent(event);
               onRevert(item.id, containerId);
             }}
-            className={`focus:outline-none border border-orange-200 bg-orange-50 hover:bg-orange-100 dark:border-orange-700 dark:bg-orange-900/30 dark:hover:bg-orange-900/50 ${ACTION_BUTTON_BASE_CLASS}`}
+            className={`focus:outline-none border ${STRUCTURE_SUGGESTION_COLORS.revert} ${ACTION_BUTTON_BASE_CLASS}`}
             title={t("structure.revertChanges", { defaultValue: "Revert to original" })}
             disabled={disabled}
           >
-            <ArrowUturnLeftIcon className="h-5 w-5 text-orange-500 hover:text-orange-700" />
+            <ArrowUturnLeftIcon className="h-5 w-5" />
           </button>
         )}
       </div>
@@ -376,7 +363,6 @@ function SortableItemCard({
   const isDragDisabled = effectiveDeleting || mutationDisabled || isOverlay;
   const { t } = useTranslation();
 
-  const highlightStyles = getHighlightStyles(isHighlighted, highlightType);
   const hoverShadowClass = isDragDisabled ? "" : "hover:shadow-xl";
   const cursorClass = isDragDisabled ? "cursor-default" : "cursor-grab";
   const sectionIconColorClasses = getSectionIconClasses(containerId);
@@ -405,7 +391,6 @@ function SortableItemCard({
     // overlapping" during a drag.
     opacity: isActiveItem ? 0 : (isDragging || effectiveDeleting ? 0.5 : 1),
     pointerEvents: (isActiveItem || isOverlay ? "none" : "auto") as React.CSSProperties["pointerEvents"],
-    ...highlightStyles,
   } as React.CSSProperties;
 
   return (

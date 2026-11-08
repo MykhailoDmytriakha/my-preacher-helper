@@ -34,6 +34,13 @@ export const SCRATCH_REMINDER_COLORS = {
   text: 'text-slate-500 dark:text-gray-400',
 } as const;
 
+export const STRUCTURE_SUGGESTION_COLORS = {
+  assigned: 'border-yellow-400 bg-yellow-100 shadow-yellow-200 dark:border-yellow-500 dark:bg-yellow-950 dark:shadow-yellow-950/50',
+  moved: 'border-blue-500 bg-blue-100 shadow-blue-200 dark:border-blue-500 dark:bg-blue-950 dark:shadow-blue-950/50',
+  keep: 'border-green-200 bg-green-50 text-green-700 hover:bg-green-100 hover:text-green-800 dark:border-green-700 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/50 dark:hover:text-green-300',
+  revert: 'border-orange-200 bg-orange-50 text-orange-700 hover:bg-orange-100 hover:text-orange-800 dark:border-orange-700 dark:bg-orange-900/30 dark:text-orange-400 dark:hover:bg-orange-900/50 dark:hover:text-orange-300',
+} as const;
+
 export const PLAN_REFINEMENT_COLORS = {
   panel: 'border-blue-200 bg-blue-50/40 dark:border-blue-800/60 dark:bg-blue-950/20',
   heading: 'text-gray-900 dark:text-gray-100',
