@@ -52,6 +52,7 @@ export interface OwnerHttpOptions {
   /** Preserve the request class of metadata readers using this shared owner boundary. */
   category?: RequestCategory;
   payload?: unknown;
+  headers?: Record<string, string>;
   /** Overall bound, abort included; the per-request `apiClient` timeout stays shorter. */
   deadlineMs?: number;
   /** Statuses handed back as an answer instead of thrown — 409 for a refused compare-and-set. */
@@ -63,7 +64,7 @@ export interface OwnerHttpOptions {
 
 export async function requestOwnerJson<T>(
   url: string,
-  { method, payload, expectedOwner, deadlineMs = 10000, answerStatuses = [409], messages, keepalive, category = 'crud' }: OwnerHttpOptions
+  { method, payload, expectedOwner, deadlineMs = 10000, answerStatuses = [409], messages, keepalive, headers: requestHeaders, category = 'crud' }: OwnerHttpOptions
 ): Promise<{ status: number; value: T }> {
   const resolvedMethod = method ?? (payload === undefined ? 'GET' : 'PATCH');
   const owner = resolveOwnerUid();
@@ -85,9 +86,12 @@ export async function requestOwnerJson<T>(
      * finish it as the page closes, which is strictly better than a refusal.
      */
     const withinKeepaliveBudget = body === undefined || new Blob([body]).size < 60_000;
+    const requiredHeaders = { ...headers, 'Content-Type': 'application/json' };
+    const outgoingHeaders = requestHeaders ? new Headers(requestHeaders) : undefined;
+    for (const [name, value] of Object.entries(requiredHeaders)) outgoingHeaders?.set(name, value);
     const response = await apiClient(url, {
       method: resolvedMethod,
-      headers: { ...headers, 'Content-Type': 'application/json' },
+      headers: outgoingHeaders ?? requiredHeaders,
       ...(body === undefined ? {} : { body }),
       cache: 'no-store',
       category,

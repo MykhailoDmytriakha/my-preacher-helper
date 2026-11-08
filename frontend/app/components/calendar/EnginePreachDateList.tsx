@@ -4,10 +4,11 @@ import { CalendarDaysIcon, PlusIcon } from '@heroicons/react/24/outline';
 import { useId, useState } from 'react';
 
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
-import { useDataDocument } from '@/data-engine/react.client';
+import { useDataDocument, useDataEngine } from '@/data-engine/react.client';
 import { useTranslation } from '@locales/useTranslation';
 
 import { EnginePreachDateModal } from './EnginePreachDateModal';
+import { PreachDateHistory } from './PreachDateHistory';
 import { PreachDateRows } from './PreachDateRows';
 
 import type { PreachDateAction } from './preachDateForm';
@@ -19,8 +20,10 @@ export function EnginePreachDateList({ sermonId, showDocumentStatus = true }: {
   showDocumentStatus?: boolean;
 }) {
   const { t } = useTranslation();
+  const { owner } = useDataEngine();
   const headingId = useId();
   const document = useDataDocument({ collection: 'sermons', id: sermonId }, { autoSave: false, readOnlyCopy: true });
+  const generation = document.confirmed?.metadata?.generation;
   const sermon = document.data as unknown as Sermon | null;
   const [action, setAction] = useState<PreachDateAction | null>(null);
   const disabled = document.readOnly || document.loading || !sermon || document.status?.phase === 'deleted';
@@ -38,6 +41,10 @@ export function EnginePreachDateList({ sermonId, showDocumentStatus = true }: {
     </div>
     <PreachDateRows preachDates={sermon?.preachDates ?? []} isPreached={Boolean(sermon?.isPreached)} disabled={disabled}
       onEdit={date => setAction({ kind: 'edit', dateId: date.id })} onDelete={dateId => setAction({ kind: 'delete', dateId })} />
-    {!document.readOnly && action && <EnginePreachDateModal key={`${action.kind}:${action.dateId ?? 'new'}`} sermonId={sermonId} action={action} onClose={() => setAction(null)} />}
+    {owner && generation && <PreachDateHistory key={JSON.stringify([owner, sermonId, generation])}
+      owner={owner} sermonId={sermonId} generation={generation} disabled={disabled}
+      liveDates={new Map(sermon?.preachDates?.map(date => [date.id, date.date]))}
+      onRestore={(dateId, restoreDate) => setAction({ kind: 'edit', dateId, restoreDate })} />}
+    {!document.readOnly && action && <EnginePreachDateModal key={`${action.kind}:${action.dateId ?? 'new'}:${action.restoreDate ?? ''}`} sermonId={sermonId} action={action} onClose={() => setAction(null)} />}
   </section>;
 }

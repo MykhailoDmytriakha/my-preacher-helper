@@ -7,6 +7,7 @@ import { validateResourceDocument } from './resourceSchemas';
 import { canReplaceSnapshot } from './snapshotFreshness';
 
 import type { CommitRequest } from './commits';
+import type { PreachDateActionCapture } from './preachDateAction';
 import type { SessionCheckpoint } from './session';
 import type { DocumentData, FieldValue, Json, ResourceRef, ResourceSnapshot } from './types';
 
@@ -49,7 +50,8 @@ export interface ManualScopeRecord {
   /** Only a Save captured by this recovered scope may settle its sources after ACK. */
   recoverySavedRequestId?: string;
 }
-export type ManualSave = (scopeId: string, captured: SessionCheckpoint, options: { predecessorId?: string | null }) => Promise<ManualSavedIntent>;
+export type ManualSaveOptions = { predecessorId?: string | null; preachDateAction?: PreachDateActionCapture };
+export type ManualSave = (scopeId: string, captured: SessionCheckpoint, options: ManualSaveOptions) => Promise<ManualSavedIntent>;
 export interface ManualScopePort {
   capture(): ManualCapture;
   isCurrent(): boolean;
@@ -194,7 +196,7 @@ export class ManualScope {
     await this.update(() => proposed);
   }
 
-  save(): Promise<{ delivery: 'queued'; requestId: string } | null> {
+  save(action?: PreachDateActionCapture): Promise<{ delivery: 'queued'; requestId: string } | null> {
     this.assertActive();
     if (this.getState().choiceRequired) throw Object.assign(new Error('Choose which field words to keep before saving'), { code: 'resolve-version-first' });
     const captured = copy(this.record);
@@ -205,6 +207,7 @@ export class ManualScope {
     const frozen: SessionCheckpoint = { confirmed: captured.baseline, draft: frozenValue, dirty: true,
       editGeneration: captured.generation, remoteCandidate: null, conflicts: [], pending: {} };
     const admitted = this.options.port.admitSave?.(captured.scopeId, frozen);
+    const preachDateAction = action && copy(action);
     this.tail = { generation: captured.generation, stage: copy(captured.stage) };
     const saving = this.enqueuePersistence(this.captures.register(async captureComplete => {
       if (!admitted) this.assertCurrent();
@@ -220,7 +223,7 @@ export class ManualScope {
       const value = project(predecessor?.value ?? baseline.value!, captured.selection, captured.stage);
       const checkpoint: SessionCheckpoint = { confirmed: baseline, draft: value, dirty: true, editGeneration: captured.generation,
         remoteCandidate: null, conflicts: [], pending: {} };
-      const request = await (admitted ?? this.options.port.save)(captured.scopeId, checkpoint, { predecessorId: predecessor?.id ?? null });
+      const request = await (admitted ?? this.options.port.save)(captured.scopeId, checkpoint, { predecessorId: predecessor?.id ?? null, ...(preachDateAction && { preachDateAction }) });
       if (!admitted) this.assertCurrent();
       validateIntent(request, this.options);
       if (!equalValues(request.value, value) || request.predecessorId !== (predecessor?.id ?? null)) throw new Error('Manual save identity mismatch');

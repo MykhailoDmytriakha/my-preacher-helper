@@ -8,6 +8,26 @@ const command: DataCommand = { protocol: 1, operationId: 'op', owner: 'owner', r
 // A server snapshot always names its owner (protocol: the server stamps userId).
 const snapshot: ResourceSnapshot = { resource: command.resource, value: { text: 'mine', userId: 'owner' }, metadata: { protocol: 1, generation: 'g1', revision: 1, deleted: false } };
 describe('HTTP engine transport', () => {
+  it('pairs the existing sermon list read with a fresh clock challenge and discards cached echoes', async () => {
+    const receive = jest.fn();
+    const clock = { begin: () => ({ challenge: 'challenge', receive }) };
+    const page = { snapshots: [], nextCursor: null, version: 0 };
+    jest.mocked(requestOwnerJson).mockClear().mockResolvedValueOnce({
+      status: 200, value: { ...page, actionClock: { challenge: 'cached', serverMs: 1_800_000_000_000 } },
+    }).mockResolvedValueOnce({
+      status: 200, value: { ...page, actionClock: { challenge: 'challenge', serverMs: 1_800_000_000_001 } },
+    });
+    const transport = createHttpEngineTransport(clock);
+    expect(await transport.list('owner', 'sermons')).toEqual(page);
+    expect(receive).not.toHaveBeenCalled();
+    expect(await transport.list('owner', 'sermons')).toEqual(page);
+    expect(requestOwnerJson).toHaveBeenCalledTimes(2);
+    expect(requestOwnerJson).toHaveBeenLastCalledWith('/api/data-engine/collections/sermons', expect.objectContaining({
+      headers: { 'x-engine-action-clock': 'challenge' },
+    }));
+    expect(receive).toHaveBeenCalledWith('owner', 1_800_000_000_001);
+  });
+
   it('preserves proven related snapshots and rejects incomplete, ambiguous or foreign participant evidence', async () => {
     const metadata = { ...snapshot.metadata!, operationId: 'op' };
     const related: ResourceSnapshot = { resource: { collection: 'series', id: 'secondary' }, value: { userId: 'owner', theme: 'Related' }, metadata };

@@ -3,9 +3,10 @@ import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.
 import { GET as changes } from '@/api/data-engine/changes/[collection]/route';
 import { GET as list } from '@/api/data-engine/collections/[collection]/route';
 import { POST } from '@/api/data-engine/commands/route';
+import { GET as history } from '@/api/data-engine/documents/[collection]/[id]/preach-date-history/route';
 import { GET as read } from '@/api/data-engine/documents/[collection]/[id]/route';
 import { ENGINE_OWNED_COLLECTIONS } from '@/data-engine/engineOwnedCollections';
-import { listDocuments, processCommand, readCollectionChanges, readCommandBody, readDocument } from '@/data-engine/server';
+import { assertDataEngineEnabled, DataEngineServerError, listDocuments, listPreachDateHistory, processCommand, readCollectionChanges, readCommandBody, readDocument } from '@/data-engine/server';
 import { __resetStoreAvailabilityForTests } from '@/services/storeAvailability.server';
 
 jest.mock('@/config/firebaseAdminConfig', () => ({ adminDb: {} }));
@@ -15,7 +16,9 @@ jest.mock('@/data-engine/server', () => ({
   processCommand: jest.fn(),
   readCommandBody: jest.fn(),
   readDocument: jest.fn(),
+  assertDataEngineEnabled: jest.fn(jest.requireActual('@/data-engine/server').assertDataEngineEnabled),
   listDocuments: jest.fn(),
+  listPreachDateHistory: jest.fn(),
   readCollectionChanges: jest.fn(),
 }));
 
@@ -130,11 +133,35 @@ describe('DataEngine HTTP routes', () => {
     expect(response.headers.get('cache-control')).toBe('no-store');
   });
 
+  it('gates date history before storage and uses only the authenticated owner when served', async () => {
+    const input = request('http://localhost/api/data-engine/documents/sermons/sermon-1/preach-date-history?generation=g1');
+    jest.mocked(assertDataEngineEnabled).mockImplementationOnce(() => { throw new DataEngineServerError('data-engine-disabled', 503); });
+    expect((await history(input, documentContext)).status).toBe(503);
+    expect(assertDataEngineEnabled).toHaveBeenLastCalledWith('sermons');
+    expect(listPreachDateHistory).not.toHaveBeenCalled();
+
+    jest.mocked(listPreachDateHistory).mockResolvedValue({ owner: 'verified-owner', sermonId: 'sermon-1', generation: 'g1', entries: [], nextCursor: null });
+    const response = await history(input, documentContext);
+    expect(response.status).toBe(200);
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(listPreachDateHistory).toHaveBeenCalledWith('verified-owner', 'sermon-1', 'g1', undefined);
+  });
+
   it('passes exact resource identifiers and forbids cached document responses', async () => {
     const response = await read(request(), documentContext);
     expect(readDocument).toHaveBeenCalledWith('verified-owner', { collection: 'sermons', id: 'sermon-1' });
     expect(response.headers.get('cache-control')).toBe('no-store');
     expect(await response.json()).toMatchObject({ value: null, metadata: null });
+  });
+
+  it('passes a valid clock challenge on the authenticated sermon list without using it as a pagination key', async () => {
+    const input = request('http://localhost/api/data-engine/collections/sermons');
+    input.headers.set('x-engine-action-clock', 'fresh-1');
+    expect((await list(input, listContext)).status).toBe(200);
+    expect(listDocuments).toHaveBeenLastCalledWith('verified-owner', 'sermons', { actionClockChallenge: 'fresh-1' });
+    input.headers.set('x-engine-action-clock', 'x'.repeat(81));
+    expect((await list(input, listContext)).status).toBe(200);
+    expect(listDocuments).toHaveBeenLastCalledWith('verified-owner', 'sermons', {});
   });
 
   it('passes only bounded pagination to the owner-constrained list implementation', async () => {

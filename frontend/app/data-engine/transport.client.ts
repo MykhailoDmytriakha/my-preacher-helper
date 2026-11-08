@@ -6,6 +6,8 @@ import { requestOwnerJson } from '@/services/ownerHttpTransport.client';
 import { newClientId } from '@/utils/clientId';
 import { resolveOwnerUid } from '@/utils/queryKeys';
 
+import { ACTION_CLOCK_HEADER, isClockTime } from './actionClock';
+import { actionClock } from './actionClock.client';
 import { getResourcePolicy, isValidIdentifier } from './protocol';
 import { coversCommittedEffect } from './snapshotFreshness';
 
@@ -92,7 +94,7 @@ function validateRelatedSnapshots(owner: string, result: Extract<CommandResult, 
   catch { throw Object.assign(new Error('Mismatched related acknowledgement owner or resource'), { code: 'data-loss' }); }
 }
 
-export function createHttpEngineTransport(): EngineTransport & CollectionTransport {
+export function createHttpEngineTransport(clock: Pick<typeof actionClock, 'begin'> = actionClock): EngineTransport & CollectionTransport {
   return {
     async send(command) {
       assertOwner(command.owner);
@@ -123,10 +125,18 @@ export function createHttpEngineTransport(): EngineTransport & CollectionTranspo
     async list(owner, collection, options) {
       assertOwner(owner);
       const query = collectionQuery(collection, options);
-      const { value } = await requestOwnerJson<unknown>(`/api/data-engine/collections/${encodeURIComponent(collection)}${query ? `?${query}` : ''}`, { method: 'GET', answerStatuses: [], messages });
+      const probe = collection === 'sermons' ? clock.begin() : undefined;
+      const { value } = await requestOwnerJson<unknown>(`/api/data-engine/collections/${encodeURIComponent(collection)}${query ? `?${query}` : ''}`, { method: 'GET', answerStatuses: [], messages,
+        ...(probe && { headers: { [ACTION_CLOCK_HEADER]: probe.challenge } }),
+      });
       assertOwner(owner);
       const page = parse(pageSchema, value);
       validateCollectionSnapshots(owner, collection, page.snapshots);
+      if (probe && value && typeof value === 'object' && 'actionClock' in value) {
+        const echo = value.actionClock;
+        if (echo && typeof echo === 'object' && 'challenge' in echo && echo.challenge === probe.challenge
+          && 'serverMs' in echo && isClockTime(echo.serverMs)) probe.receive(owner, echo.serverMs);
+      }
       return page;
     },
     async changes(owner, collection, after, options) {

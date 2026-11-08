@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { isCollectionServed } from '@/data-engine/activation';
-import { DataEngineServerError, listDocuments, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
+import { DataEngineServerError, listDocuments, listPreachDateHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
 import { collectionHeadId, HEADS_COLLECTION, sequenceId } from '@/data-engine/serverFeed';
 import { DataSession } from '@/data-engine/session';
 import type { DataCommand, ResourceSnapshot } from '@/data-engine/types';
@@ -35,7 +35,7 @@ function matchesFilter(data: Raw, filter: QueryFilter): boolean {
 const documents = new Map<string, Raw>();
 let transactionTail: Promise<unknown>;
 let failCommit = false;
-const snapshot = (path: string) => ({ exists: documents.has(path), data: () => documents.get(path), id: path.split('/').at(-1)! });
+const snapshot = (path: string) => ({ readTime: { toMillis: () => 1_800_000_000_123 }, exists: documents.has(path), data: () => documents.get(path), id: path.split('/').at(-1)! });
 function queryFor(collection: string) {
   let maximum = 50;
   let cursor = '';
@@ -46,7 +46,7 @@ function queryFor(collection: string) {
     orderBy: jest.fn().mockImplementation(() => query),
     limit: jest.fn().mockImplementation((value: number) => { maximum = value; return query; }),
     startAfter: jest.fn().mockImplementation((value: string) => { cursor = value; return query; }),
-    get: async () => ({ docs: [...documents.entries()].filter(([key, data]) => key.startsWith(`${collection}/`) && !key.slice(collection.length + 1).includes('/') && conditions.every(condition => matchesFilter(data, condition)) && key.slice(collection.length + 1) > cursor).sort(([a], [b]) => a.localeCompare(b)).slice(0, maximum).map(([key]) => snapshot(key)) }),
+    get: async () => ({ readTime: { toMillis: () => 1_800_000_000_123.456 }, docs: [...documents.entries()].filter(([key, data]) => key.startsWith(`${collection}/`) && !key.slice(collection.length + 1).includes('/') && conditions.every(condition => matchesFilter(data, condition)) && key.slice(collection.length + 1) > cursor).sort(([a], [b]) => a.localeCompare(b)).slice(0, maximum).map(([key]) => snapshot(key)) }),
   };
   return query;
 }
@@ -874,6 +874,79 @@ describe('transactional DataEngine server', () => {
     expect(first.snapshots.map(item => item.resource.id)).toEqual(['a']);
     expect(first.nextCursor).toBe('a');
     expect(await listDocuments('owner-1', 'sermons', { limit: 1, cursor: 'a' })).toEqual({ snapshots: [expect.objectContaining({ resource: { collection: 'sermons', id: 'b' }, value: null })], nextCursor: null, version: 0 });
+  });
+
+  it.each(['earlier', 'later', 'overlap', 'legacy'] as const)('handles a late-delivered %s date action and preserves the displaced date only when ordering is certain', async arrival => {
+    const row = { id: 'date', date: '2026-12-13', status: 'planned', createdAt: '2026-11-01T00:00:00.000Z',
+      church: { id: 'church', name: 'Church', city: 'City' }, audience: 'Original' };
+    const seed = create('chronology-seed') as Extract<DataCommand, { kind: 'create' }>;
+    const created = await processCommand('owner-1', { ...seed, value: { ...seed.value, preachDates: [row] } });
+    expect(created.kind).toBe('acknowledged');
+    if (created.kind !== 'acknowledged') return;
+    const save = (operationId: string, date: string, earliestMs: number) => ({
+      protocol: 1, operationId, owner: 'owner-1', resource, generation: 'chronology-seed', dependsOn: [], kind: 'update',
+      changes: [{ path: ['preachDates'], before: { exists: true, value: [row] }, after: { exists: true, value: [{ ...row, date }] } }],
+      preachDateAction: { rowId: 'date', before: row.date, after: date, observedRevision: created.snapshot.metadata!.revision,
+        time: { earliestMs, latestMs: earliestMs + 10 } },
+    });
+    const baseMs = 1_800_000_000_000;
+    const initialSave = save('first-arrival', '2026-12-20', baseMs - 50);
+    const { preachDateAction: _action, ...legacySave } = initialSave;
+    const first = await processCommand('owner-1', arrival === 'legacy' ? legacySave : initialSave);
+    expect(first.kind).toBe('acknowledged');
+    if (arrival === 'legacy') {
+      expect((await processCommand('owner-1', save('already-satisfied', '2026-12-20', baseMs - 70))).kind).toBe('acknowledged');
+    }
+    const delayed = save('late-arrival', '2026-12-27', baseMs - { earlier: 90, later: 20, overlap: 45, legacy: 20 }[arrival]);
+    const answer = await processCommand('owner-1', delayed);
+    const history = () => [...documents.entries()].filter(([key]) => key.startsWith('sermons/sermon-1/_preachDateHistory/'));
+    if (arrival === 'overlap' || arrival === 'legacy') {
+      expect(answer.kind).toBe('conflict');
+      expect(history()).toHaveLength(0);
+      return;
+    }
+    const winner = arrival === 'earlier' ? '2026-12-20' : '2026-12-27';
+    const loser = arrival === 'earlier' ? '2026-12-27' : '2026-12-20';
+    expect(answer).toMatchObject({ kind: 'acknowledged', snapshot: { value: { preachDates: [{ date: winner, audience: 'Original' }] } } });
+    expect(history()).toHaveLength(1);
+    expect(history()[0][1]).toMatchObject({ rowId: 'date', date: loser, winnerDate: winner, generation: 'chronology-seed' });
+    expect(await listPreachDateHistory('owner-1', resource.id, 'chronology-seed')).toMatchObject({
+      owner: 'owner-1', sermonId: resource.id, generation: 'chronology-seed', entries: [{ date: loser, winnerDate: winner }], nextCursor: null,
+    });
+    await expect(listPreachDateHistory('other-owner', resource.id, 'chronology-seed')).rejects.toMatchObject({ status: 403 });
+    await expect(listPreachDateHistory('owner-1', resource.id, 'different-generation')).rejects.toMatchObject({ status: 404 });
+    expect((await processCommand('owner-1', delayed)).kind).toBe('acknowledged');
+    expect(history()).toHaveLength(1);
+  });
+
+  it('keeps a later explicit return to the original date over an older queued change from that original', async () => {
+    const row = { id: 'date', date: '2026-12-13', status: 'planned', createdAt: '2026-11-01T00:00:00.000Z',
+      church: { id: 'church', name: 'Church', city: 'City' } };
+    const seed = create('chronology-aba') as Extract<DataCommand, { kind: 'create' }>;
+    const created = await processCommand('owner-1', { ...seed, value: { ...seed.value, preachDates: [row] } });
+    expect(created.kind).toBe('acknowledged');
+    const save = (operationId: string, before: string, after: string, observedRevision: number, offset: number) =>
+      processCommand('owner-1', { ...update(operationId, 'chronology-aba'),
+        changes: [{ path: ['preachDates'], before: { exists: true, value: [{ ...row, date: before }] }, after: { exists: true, value: [{ ...row, date: after }] } }],
+        preachDateAction: { rowId: row.id, before, after, observedRevision,
+          time: { earliestMs: 1_800_000_000_000 + offset, latestMs: 1_800_000_000_005 + offset } },
+      });
+    expect((await save('change', row.date, '2026-12-20', 1, 20)).kind).toBe('acknowledged');
+    expect((await save('return', '2026-12-20', row.date, 2, 40)).kind).toBe('acknowledged');
+    expect(await save('late', row.date, '2026-12-27', 1, 10)).toMatchObject({
+      kind: 'acknowledged', snapshot: { value: { preachDates: [{ date: row.date }] } },
+    });
+    expect(await listPreachDateHistory('owner-1', resource.id, 'chronology-aba')).toMatchObject({
+      entries: [{ date: '2026-12-27', winnerDate: row.date }],
+    });
+  });
+
+  it('pairs only a requested sermon list sample with the Firestore query read time', async () => {
+    expect(await listDocuments('owner-1', 'sermons', { actionClockChallenge: 'fresh' })).toMatchObject({
+      snapshots: [], actionClock: { challenge: 'fresh', serverMs: 1_800_000_000_123 },
+    });
+    expect(await listDocuments('owner-1', 'sermons')).not.toHaveProperty('actionClock');
+    expect(await listDocuments('owner-1', 'studyNotes', { actionClockChallenge: 'fresh' })).not.toHaveProperty('actionClock');
   });
 
   it('writes a tombstone no legacy owner query can match, and still owns, replays and lists it', async () => {

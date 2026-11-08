@@ -8,7 +8,10 @@ import { storeRetryHeaders } from '@/services/storeAvailability.server';
 import { userEntitlementDocument } from '@/services/userEntitlement.server';
 
 import { stampAcceptedResource } from './acceptedResource.server';
+import { ACTION_CLOCK_HEADER, isClockChallenge } from './actionClock';
 import { isCollectionServed, isLegacyOpen, mayBeRetiredByCascade } from './activation';
+import { existingPreachDate } from './preachDateAction';
+import { metadataAfterPreachDate, orderPreachDate, PREACH_DATE_HISTORY } from './preachDateOrder.server';
 import { advanceResourceSnapshot, commandFingerprint, getResourcePolicy, isValidIdentifier, TOMBSTONE_OWNER_FIELD, validateCommand } from './protocol';
 import { validateResourceDocument } from './resourceSchemas';
 import { assembleChangePage, collectionHeadId, HEADS_COLLECTION, parseChangePointer, planFeedWrites, readHeadVersion, sequenceId } from './serverFeed';
@@ -17,10 +20,16 @@ import { coversCommittedEffect } from './snapshotFreshness';
 
 
 import type { AudioExportKey, AudioExportRecord, AudioExportStore, AudioExportTransaction, AudioExportUsage } from './audioExportStore';
+import type { DisplacedPreachDate, PreachDateHistoryPage } from './preachDateAction';
 import type { FeedWrite } from './serverFeed';
 import type { CollectionChanges, CollectionPage, CommandReceipt, CommandResult, DataCommand, DocumentData, EngineMetadata, Json, ResourceRef, ResourceSnapshot } from './types';
 import type { AiResultReceiptStore, ReceiptRecord } from '@/services/aiResultReceipt.server';
 import type { Firestore, Transaction } from 'firebase-admin/firestore';
+
+export function sermonActionClockChallenge(headers: Headers): string | undefined {
+  const challenge = headers.get(ACTION_CLOCK_HEADER);
+  return isClockChallenge(challenge) ? challenge : undefined;
+}
 
 export const MAX_COMMAND_BYTES = 1024 * 1024;
 const MAX_RECEIPT_BYTES = 1_000_000;
@@ -293,6 +302,38 @@ export async function recordSharedNoteView(linkId: string, token: string): Promi
 }
 
 /** Trusted server callers pass their authenticated owner explicitly; no auth comes from the payload. */
+const resourceKey = (resource: ResourceRef) => JSON.stringify([resource.collection, resource.id]);
+
+async function persistAcceptedCommand(transaction: Transaction, { owner, command, snapshot: primarySnapshot, effects, rawDocuments, dateOrder }: {
+  owner: string;
+  command: DataCommand;
+  snapshot: ResourceSnapshot;
+  effects: ResourceSnapshot[];
+  rawDocuments: ReadonlyMap<string, Record<string, unknown> | undefined>;
+  dateOrder?: ReturnType<typeof orderPreachDate>;
+}) {
+  const feedWrites = await prepareFeedWrites(transaction, owner, command.operationId, effects);
+  const primaryKey = resourceKey(command.resource);
+  for (const snapshot of effects) {
+    const key = resourceKey(snapshot.resource);
+    const raw = rawDocuments.get(key);
+    const value = snapshot.value === null
+      ? { [TOMBSTONE_OWNER_FIELD]: owner }
+      : preserveStoredTypes(raw, snapshot.value) as Record<string, unknown>;
+    const primary = key === primaryKey;
+    const metadata = metadataAfterPreachDate(snapshot, raw?._dataEngine, primary ? command : undefined, primary ? dateOrder : undefined);
+    transaction.set(adminDb.collection(snapshot.resource.collection).doc(snapshot.resource.id), { ...value, _dataEngine: metadata });
+  }
+  const displaced = dateOrder?.displaced;
+  if (displaced && existingPreachDate(primarySnapshot.value?.preachDates, displaced.rowId) === displaced.winnerDate) {
+    const hash = createHash('sha256').update(JSON.stringify([displaced.generation, command.operationId])).digest('hex');
+    const descendingRevision = String(Number.MAX_SAFE_INTEGER - primarySnapshot.metadata!.revision).padStart(16, '0');
+    const history = adminDb.collection(command.resource.collection).doc(command.resource.id).collection(PREACH_DATE_HISTORY);
+    transaction.set(history.doc(`${descendingRevision}-${hash}`), { ...displaced, acceptedAt: new Date().toISOString() });
+  }
+  persistFeedWrites(transaction, feedWrites);
+}
+
 export async function processCommand(owner: string, input: unknown): Promise<CommandResult> {
   checkOwner(owner);
   let command: DataCommand;
@@ -332,12 +373,14 @@ export async function processCommand(owner: string, input: unknown): Promise<Com
     });
     let result: CommandResult;
     let effects: ResourceSnapshot[] = [];
-    const resourceKey = (resource: ResourceRef) => JSON.stringify([resource.collection, resource.id]);
+    let dateOrder: ReturnType<typeof orderPreachDate> | undefined;
     const rawDocuments = new Map<string, Record<string, unknown> | undefined>([[resourceKey(command.resource), raw]]);
     if (blocked.length) {
       result = { kind: 'blocked', operationId: command.operationId, dependencies: blocked };
     } else {
-      const plan = await planDataCommand(command, snapshotFromRaw(command.resource, raw), {
+      const current = snapshotFromRaw(command.resource, raw);
+      dateOrder = orderPreachDate(command, current, raw?._dataEngine, stored.readTime?.toMillis());
+      const plan = await planDataCommand(dateOrder.command, current, {
         get: async resource => {
           resourcePolicy(resource);
           const document = await transaction.get(adminDb.collection(resource.collection).doc(resource.id));
@@ -402,14 +445,7 @@ export async function processCommand(owner: string, input: unknown): Promise<Com
       deletedTag = raw.name;
     }
     if (result.kind === 'acknowledged') {
-      const feedWrites = await prepareFeedWrites(transaction, owner, command.operationId, effects);
-      for (const snapshot of effects) {
-        const value = snapshot.value === null
-          ? { [TOMBSTONE_OWNER_FIELD]: owner }
-          : preserveStoredTypes(rawDocuments.get(resourceKey(snapshot.resource)), snapshot.value) as Record<string, unknown>;
-        transaction.set(adminDb.collection(snapshot.resource.collection).doc(snapshot.resource.id), { ...value, _dataEngine: snapshot.metadata });
-      }
-      persistFeedWrites(transaction, feedWrites);
+      await persistAcceptedCommand(transaction, { owner, command, snapshot: result.snapshot, effects, rawDocuments, dateOrder });
     }
     // A blocked receipt fixes the identity but may advance after its dependencies acknowledge.
     transaction.set(commandReceiptRef, serializeReceipt(receipt));
@@ -436,7 +472,28 @@ export async function readDocument(owner: string, resource: ResourceRef): Promis
   return snapshotFromRaw(resource, raw);
 }
 
-export type ResourcePage = CollectionPage;
+export async function listPreachDateHistory(owner: string, sermonId: string, generation: string, cursor?: string): Promise<PreachDateHistoryPage> {
+  checkOwner(owner);
+  if (!validSegment(sermonId) || !validSegment(generation) || (cursor !== undefined && !/^\d{16}-[0-9a-f]{64}$/.test(cursor))) {
+    throw new DataEngineServerError(INVALID_ARGUMENT, 400);
+  }
+  const resource = { collection: 'sermons', id: sermonId };
+  const reference = adminDb.collection(resource.collection).doc(resource.id);
+  return adminDb.runTransaction(async transaction => {
+    const document = await transaction.get(reference);
+    const raw = document.exists ? document.data() : undefined;
+    if (!owns(owner, resource, raw)) throw new DataEngineServerError(PERMISSION_DENIED, 403);
+    const snapshot = snapshotFromRaw(resource, raw);
+    if (!snapshot.value || snapshot.metadata?.generation !== generation) throw new DataEngineServerError('preach-date-gone', 404);
+    const pageSize = 20;
+    const query = reference.collection(PREACH_DATE_HISTORY).where('generation', '==', generation).orderBy(FieldPath.documentId()).limit(pageSize + 1);
+    const page = await transaction.get(cursor ? query.startAfter(cursor) : query);
+    const entries = page.docs.slice(0, pageSize).map(item => ({ ...item.data(), id: item.id }) as DisplacedPreachDate & { id: string; acceptedAt: string });
+    return { owner, sermonId, generation, entries, nextCursor: page.docs.length > pageSize ? entries.at(-1)!.id : null };
+  });
+}
+
+export type ResourcePage = CollectionPage & { actionClock?: { challenge: string; serverMs: number } };
 
 /** Said only while true, so an answer about a closed or unserved collection is byte-identical to before. */
 const legacyOpenness = (collection: string): { legacyOpen?: true } => isLegacyOpen(collection) ? { legacyOpen: true } : {};
@@ -446,7 +503,7 @@ function headReference(owner: string, collection: string) {
   catch { throw new DataEngineServerError(INVALID_ARGUMENT, 400); }
 }
 
-export async function listDocuments(owner: string, collection: string, options: { limit?: number; cursor?: string } = {}): Promise<ResourcePage> {
+export async function listDocuments(owner: string, collection: string, options: { limit?: number; cursor?: string; actionClockChallenge?: string } = {}): Promise<ResourcePage> {
   checkOwner(owner);
   const policy = resourcePolicy({ collection, id: owner });
   const limit = options.limit ?? 50;
@@ -483,7 +540,11 @@ export async function listDocuments(owner: string, collection: string, options: 
       if (bytes > MAX_LIST_BYTES && snapshots.length > 0) break;
       snapshots.push(snapshot);
     }
-    return { snapshots, nextCursor: rows.length > snapshots.length ? snapshots.at(-1)!.resource.id : null, version, ...legacyOpenness(collection) };
+    const actionClock = collection === 'sermons' && options.actionClockChallenge && page.readTime
+      ? { challenge: options.actionClockChallenge, serverMs: Math.floor(page.readTime.toMillis()) }
+      : undefined;
+    return { snapshots, nextCursor: rows.length > snapshots.length ? snapshots.at(-1)!.resource.id : null, version,
+      ...legacyOpenness(collection), ...(actionClock && { actionClock }) };
   });
 }
 

@@ -1,4 +1,6 @@
 /** The wire contract is shared by browser and server; it imports no transport. */
+import type { PreachDateActionEvidence } from './preachDateAction';
+
 export type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
 export type DocumentData = Record<string, Json>;
 
@@ -39,6 +41,7 @@ export type DataCommand = CommandBase & (
   | { kind: 'create'; value: DocumentData }
   | { kind: 'relation'; relation: 'service-order-seed'; value: DocumentData }
   | { kind: 'update'; changes: FieldChange[];
+      preachDateAction?: PreachDateActionEvidence;
       /** Exact plan cells observed before an explicit outline removal. */
       observedPlanTextRemoval?: Record<string, string>;
       /** Exact orphaned text explicitly cleared while its point was absent. */

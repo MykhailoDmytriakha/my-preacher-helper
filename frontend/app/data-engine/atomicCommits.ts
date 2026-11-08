@@ -1,6 +1,7 @@
 import { sameAnalysisFrame } from './analysisReshapeFields';
 import { pendingCommitRetirement, retireCommitJournal } from './commitJournal';
 import { prepareAtomicDomainCommand } from './domainPolicy';
+import { isCapturedDateConflict } from './preachDateAction';
 import { equalValues, mergeDocumentFields, MAX_RELATION_RESOURCES } from './protocol';
 import { coversCommittedEffect } from './snapshotFreshness';
 
@@ -44,8 +45,14 @@ export function initializeCommit(record: CommitRequest, records: readonly Commit
       return { ...record, initialized: true, state: 'refused', result: { kind: 'refused', operationId: record.id, code: 'resolve-version-first' } };
     }
     const rebased = mergeDocumentFields(predecessor.value, record.value, snapshot.value);
-    if (rebased.conflicts.length) return { ...record, initialized: true, state: 'conflict', result: { kind: 'conflict', operationId: record.id, snapshot, conflicts: rebased.conflicts } };
-    return { ...record, initialized: true, working: snapshot, intended: rebased.value.exists ? rebased.value.value as DocumentData : null };
+    const action = record.preachDateAction;
+    const deferDate = action && rebased.conflicts.length === 1 && snapshot.metadata?.generation === record.baseline.metadata?.generation
+      && isCapturedDateConflict(rebased.conflicts[0], action);
+    if (rebased.conflicts.length && !deferDate) return { ...record, initialized: true, state: 'conflict', result: { kind: 'conflict', operationId: record.id, snapshot, conflicts: rebased.conflicts } };
+    // The preceding ACK can carry another device's date. Send the original ancestor
+    // for this exact leaf so the server can order it or keep the ordinary choice.
+    return { ...record, initialized: true, working: snapshot, intended: rebased.value.exists ? rebased.value.value as DocumentData : null,
+      ...(deferDate && { deferPreachDateRebase: true }) };
   }
   return { ...record, initialized: true };
 }

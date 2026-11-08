@@ -94,6 +94,58 @@ describe('Durable commit requests', () => {
   beforeEach(() => jest.useFakeTimers());
   afterEach(() => { jest.clearAllTimers(); jest.useRealTimers(); });
 
+  it('retains the date action through an offline queue restart and only attaches it to an exact existing date change', async () => {
+    const s = setup();
+    const { queue } = s.makeQueue();
+    const baseline = initial();
+    const row = { id: 'date', date: '2026-12-13', status: 'planned', createdAt: '2026-11-01T00:00:00.000Z',
+      church: { id: 'church', name: 'Church', city: 'City' }, audience: 'Original' };
+    Object.assign(baseline.value!, { verse: 'John 3:16', date: row.createdAt, thoughts: [], preachDates: [row], isPreached: false });
+    s.replace(baseline);
+    const editor = new DataSession(baseline);
+    const time = { earliestMs: 1_800_000_000_000, latestMs: 1_800_000_000_010 };
+    const capture = { rowId: 'date', time };
+    editor.edit({ ...baseline.value, preachDates: [{ ...row, date: '2026-12-20' }] });
+    const saved = await queue.save('edit', editor.checkpoint(), { preachDateAction: capture });
+    expect(saved?.preachDateAction).toEqual({ ...capture, before: '2026-12-13', after: '2026-12-20', observedRevision: 1 });
+
+    const restarted = s.makeQueue().queue;
+    await restarted.drain(true);
+    expect(s.transport.send).toHaveBeenCalledWith(expect.objectContaining({ operationId: saved?.id, preachDateAction: saved?.preachDateAction }));
+
+    expect((await restarted.list()).find(request => request.id === saved?.id)?.state).toBe('acknowledged');
+    const current = s.server();
+    const audience = new DataSession(current);
+    audience.edit({ ...current.value, preachDates: [{ ...row, date: '2026-12-20', audience: 'Changed' }] });
+    const next = await restarted.save('audience', audience.checkpoint(), { preachDateAction: capture });
+    expect(next?.preachDateAction).toBeUndefined();
+  });
+
+  it('submits a chained date Save with its original date ancestor after the predecessor ACK contains a different date', async () => {
+    const s = setup();
+    const { queue } = s.makeQueue();
+    const baseline = initial();
+    const row = { id: 'date', date: '2026-12-13', status: 'planned', createdAt: '2026-11-01T00:00:00.000Z',
+      church: { id: 'church', name: 'Church', city: 'City' } };
+    Object.assign(baseline.value!, { verse: 'John 3:16', date: row.createdAt, thoughts: [], preachDates: [row], isPreached: false });
+    const editor = new DataSession(baseline);
+    editor.edit({ ...baseline.value, preachDates: [{ ...row, date: '2026-12-20' }] });
+    const first = (await queue.save('edit', editor.checkpoint()))!;
+    editor.edit({ ...baseline.value, preachDates: [{ ...row, date: '2026-12-31' }] });
+    const time = { earliestMs: 1_800_000_000_020, latestMs: 1_800_000_000_030 };
+    const next = (await queue.save('edit', editor.checkpoint(), { predecessorId: first.id, preachDateAction: { rowId: row.id, time } }))!;
+
+    const other = { ...baseline, value: { ...baseline.value, preachDates: [{ ...row, date: '2026-12-27' }] },
+      metadata: { ...baseline.metadata!, revision: 2, operationId: first.id } };
+    s.replace(other);
+    jest.mocked(s.transport.send).mockResolvedValueOnce({ kind: 'acknowledged', operationId: first.id, snapshot: other });
+    await queue.drain(true);
+    expect(s.transport.send).toHaveBeenCalledWith(expect.objectContaining({ operationId: next.id,
+      preachDateAction: { rowId: row.id, before: '2026-12-20', after: '2026-12-31', observedRevision: 1, time },
+      changes: expect.arrayContaining([expect.objectContaining({ path: ['preachDates'], before: { exists: true, value: [{ ...row, date: '2026-12-20' }] } })]),
+    }));
+  });
+
   it('settles a previously stored exact deleted reply offline without sending again', async () => {
     const s = setup();
     const { queue, runtime } = s.makeQueue();

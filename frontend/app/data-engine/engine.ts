@@ -18,7 +18,7 @@ import { LocalWriteback, type LocalWriteHandoff } from './localWriteback';
 import { exactManualRequest, exactManualWords, recoverManualChoiceCopy } from './manualChoice';
 import { assertDurableManualChoice, assertManualChoiceInput, assertManualComparison, manualComparison, type ManualComparison } from './manualComparison';
 import { manualReturnSources, markBorrowedManualSources, reopenedManualAnswerScope, shouldFollowReopenedManualStage } from './manualReturnSources';
-import { ManualScope, recoverManualScopeRecord, reconcileManualCaptures, sameManualSelection, type ManualCapture, type ManualPath, type ManualSavedIntent } from './manualScope';
+import { ManualScope, recoverManualScopeRecord, reconcileManualCaptures, sameManualSelection, type ManualCapture, type ManualPath, type ManualSavedIntent, type ManualSaveOptions } from './manualScope';
 import { captureMembershipPins } from './membershipCapture';
 import { describeActionDelivery, describeMembershipDelivery, type MembershipDelivery } from './membershipDelivery';
 import { CREATION_SCOPE_PREFIX, MembershipScope, type MembershipScopeRecord } from './membershipScope';
@@ -38,6 +38,7 @@ import type { ManualScopeStore, StoredManualScope } from './manualScopes.client'
 import type { MembershipScopeStore } from './membershipScopes.client';
 import type { Observation, ResourceObserver } from './observer';
 import type { OpenDocumentAnswer } from './openDocumentAnswers';
+import type { PreachDateActionCapture } from './preachDateAction';
 import type { DataEngineRuntime, RuntimeEvent } from './runtime';
 import type { SessionCheckpoint, ShownCopy } from './session';
 import type { CommandResult, DataCommand, DocumentData, EngineMetadata, EngineReadOptions, EngineTransport, FailureAddress, JournalEntry, ResourceRef, ResourceSnapshot } from './types';
@@ -82,7 +83,7 @@ export interface ManagedManualForm {
   follow(): Promise<void>;
   update(updater: (value: DocumentData) => DocumentData): Promise<void>;
   propose(producer: (source: DocumentData) => Promise<DocumentData>, signal?: AbortSignal): Promise<void>;
-  save(updater?: (value: DocumentData) => DocumentData): Promise<void>;
+  save(updater?: (value: DocumentData) => DocumentData, action?: PreachDateActionCapture): Promise<void>;
   cancel(): Promise<void>;
   retry(): Promise<void>;
   resolve(choice: 'local' | 'remote', options?: { discardStage?: boolean; expectedComparison?: ManualComparison; updater?: (current: DocumentData) => DocumentData }): Promise<void>;
@@ -2154,7 +2155,7 @@ export class DataEngine {
           admitSave: (scopeId: string, checkpoint: SessionCheckpoint) => {
             active();
             const frozen = copy(checkpoint), admitted = this.commits.admitSave(scopeId, frozen);
-            return async (submittedScope: string, submitted: SessionCheckpoint, options: { predecessorId?: string | null }) => {
+            return async (submittedScope: string, submitted: SessionCheckpoint, options: ManualSaveOptions) => {
               if (submittedScope !== scopeId || !equalValues(submitted, frozen)) throw new Error('Admitted manual Save changed its words');
               const request = await admitted(options);
               if (!request?.value) throw new Error('Manual Save did not create an intent');
@@ -2165,7 +2166,7 @@ export class DataEngine {
               return intent(request);
             };
           },
-          save: async (scopeId: string, checkpoint: import('./session').SessionCheckpoint, options: { predecessorId?: string | null }) => {
+          save: async (scopeId: string, checkpoint: import('./session').SessionCheckpoint, options: ManualSaveOptions) => {
             // Save was invoked while the form was active. Its captured intent belongs to the
             // owner even if navigation closes the page before earlier local writes finish.
             this.assertCurrent(owner, generation);
@@ -2289,13 +2290,13 @@ export class DataEngine {
       propose: (producer, signal) => execute(() => requireScope().propose(async source => {
         const proposed = await producer(source); active(); return proposed;
       }, signal)),
-      save: updater => execute(async () => {
+      save: (updater, action) => execute(async () => {
         if (hasFailedDelivery()) {
           throw Object.assign(new Error('Resolve the failed delivery with Keep local or Accept remote before saving'), { code: 'resolve-version-first' });
         }
         const scope = requireScope();
-        if (updater) { const staged = scope.update(updater); const saving = scope.save(); await Promise.all([staged, saving]); }
-        else await scope.save();
+        if (updater) { const staged = scope.update(updater); const saving = scope.save(action); await Promise.all([staged, saving]); }
+        else await scope.save(action);
         if (!scope.getState().dirty) await scope.cancel();
       }),
       cancel: () => execute(async () => {

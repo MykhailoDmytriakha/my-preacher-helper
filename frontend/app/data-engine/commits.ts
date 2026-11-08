@@ -7,6 +7,7 @@ import { commandReferenceResources, documentReferenceResources, referenceReadine
 import { prepareDomainCommand, requiredDomainTargets } from './domainPolicy';
 import { areDifferentTabManualParents, readManualScopeIdentity } from './editorIdentity';
 import { AddressedFailures, type AddressedFailure } from './failures';
+import { capturedDateBaseline, capturePreachDateAction, matchesPreachDateChange, type PreachDateActionCapture, type PreachDateActionEvidence } from './preachDateAction';
 import { confirmedExistingDeletion, equalValues, mergeDocumentFields, MAX_RELATION_RESOURCES } from './protocol';
 import { capturePlanTextEvidence, type PlanTextEvidence } from './sermonPlanText';
 import { coversCommittedEffect } from './snapshotFreshness';
@@ -45,6 +46,8 @@ export interface CommitRequest {
   predecessor: string | null;
   /** Immutable evidence taken before this action leaves its editor. */
   planTextEvidence?: PlanTextEvidence;
+  preachDateAction?: PreachDateActionEvidence;
+  deferPreachDateRebase?: true;
   /** Earlier locally captured uses of this resource; owned atomically by DELETE capture storage. */
   deleteAfter?: string[];
   revision: number;
@@ -132,6 +135,7 @@ export function assertCommitCapture(current: CommitRequest, incoming: CommitRequ
   if (current.owner !== incoming.owner || current.editorId !== incoming.editorId || current.editGeneration !== incoming.editGeneration
     || current.predecessor !== incoming.predecessor || !equalValues(current.baseline, incoming.baseline)
     || !equalValues(current.planTextEvidence ?? null, incoming.planTextEvidence ?? null)
+    || !equalValues(current.preachDateAction ?? null, incoming.preachDateAction ?? null)
     || !equalValues(current.value, incoming.value) || !equalValues(current.atomic ?? null, incoming.atomic ?? null)
     || !equalValues(current.deleteAfter ?? null, incoming.deleteAfter ?? null)
     || current.retentionScope !== incoming.retentionScope
@@ -198,8 +202,14 @@ function ordinaryDeliveryChains(records: readonly CommitRequest[]): DeliveryChai
 }
 
 type CommitSaveOptions = { predecessorId?: string | null; predecessorIds?: readonly string[]; retentionScope?: string;
+  preachDateAction?: PreachDateActionCapture;
   checkpoint?: (saved: CommitRequest) => EditorRecord;
   transfer?: { proof: CaptureTransferProof; sources: readonly CommitRequest[] } };
+
+function freezeSaveOptions(options: CommitSaveOptions | undefined): CommitSaveOptions | undefined {
+  return options && { ...options, predecessorIds: options.predecessorIds && [...options.predecessorIds],
+    transfer: options.transfer && clone(options.transfer), preachDateAction: options.preachDateAction && clone(options.preachDateAction) };
+}
 
 /** Equal parent generations still have an exact order in the durable dependency chain. */
 function selectCandidatePredecessor(records: readonly CommitRequest[], ids: readonly string[], owner: string, resource: ResourceRef): CommitRequest {
@@ -329,8 +339,7 @@ export class CommitQueue {
   private async captureSaved(owner: string, editorId: string, captured: SessionCheckpoint, options: CommitSaveOptions | undefined,
     check: () => void, publish: (request: CommitRequest) => void): Promise<CommitRequest | null> {
     const intent = clone(captured);
-    const frozenOptions = options && { ...options, predecessorIds: options.predecessorIds && [...options.predecessorIds],
-      transfer: options.transfer && clone(options.transfer) };
+    const frozenOptions = freezeSaveOptions(options);
     if (frozenOptions?.transfer && (!this.options.store.createWithTransfer || !frozenOptions.checkpoint)) {
       throw new Error('Atomic capture transfer storage is required');
     }
@@ -354,8 +363,10 @@ export class CommitQueue {
     if (intent.conflicts.length) throw Object.assign(new Error('Resolve the conflict before saving'), { code: 'resolve-version-first' });
     const baseline = clone(intent.confirmed);
     const planTextEvidence = baseline.resource.collection === 'sermons' ? captureSermonPlan(baseline, intent.draft, predecessor) : undefined;
+    const action = capturePreachDateAction(baseline, predecessor, intent.draft, frozenOptions?.preachDateAction);
     const record: CommitRequest = {
       id: this.options.operationId(), owner, editorId, editGeneration: intent.editGeneration,
+      ...(action && { preachDateAction: action }),
       ...(frozenOptions?.retentionScope ? { retentionScope: frozenOptions.retentionScope } : {}),
       ...(frozenOptions?.transfer ? { transferredFrom: clone(frozenOptions.transfer.proof) } : {}),
       baseline, value: clone(intent.draft), predecessor: predecessor?.id ?? null,
@@ -763,7 +774,17 @@ export class CommitQueue {
       return { ...record, state: 'refused', result: { kind: 'refused', operationId: record.id, code } };
     }
     if (!resourceMatches(prepared.command.resource, record.baseline.resource)) throw new Error('Commit resource changed');
-    return { ...record, command: prepared.command, submitted: prepared.submittedValue, state: 'prepared' };
+    const { command } = prepared;
+    const action = record.preachDateAction;
+    if (action && command.kind === 'update' && record.sequence === 0
+      && command.generation === record.baseline.metadata?.generation) {
+      const changes = record.deferPreachDateRebase ? capturedDateBaseline(command.changes, action) : command.changes;
+      if (matchesPreachDateChange(changes, action)) {
+        command.changes = changes;
+        command.preachDateAction = action;
+      }
+    }
+    return { ...record, command, submitted: prepared.submittedValue, state: 'prepared' };
   }
 
   private async advanceCommand(record: CommitRequest, owner: string, generation: number, trackAnswer?: TrackCommitAnswer): Promise<boolean> {

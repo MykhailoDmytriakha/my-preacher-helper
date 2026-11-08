@@ -10,6 +10,7 @@ import { LIST_STORAGE, OPENING_STORAGE, getDeviceStorageHealth, isStorageSilent,
 import { connectDraftCaptureRecovery } from '@/utils/draftCaptureRecovery.client';
 import { useTranslation } from '@locales/useTranslation';
 
+import { actionClock } from './actionClock.client';
 import { analysisCreationScope as initialAnalysisScope } from './analysisCreation';
 import { createBrowserDataEngine, type BrowserDataEngine } from './browser.client';
 import { isCollectionOnEngine, isDataEngineEnabled } from './clientPolicy';
@@ -1271,7 +1272,10 @@ export function useDataForm(resource: ResourceRef | null, slot: string, selectio
       return run(form => form.propose(producer, controller.signal)).finally(() => proposals.pending.delete(controller));
     },
     update: (updater: (draft: DocumentData) => DocumentData) => run(form => form.update(updater), false),
-    save: (updater?: (draft: DocumentData) => DocumentData) => run(form => form.save(updater)),
+    save: (updater?: (draft: DocumentData) => DocumentData, action?: { preachDateId: string }) => {
+      const time = action && owner && actionClock.capture(owner);
+      return run(form => action && time ? form.save(updater, { rowId: action.preachDateId, time }) : form.save(updater));
+    },
     cancel: () => run(form => form.cancel()),
     keepLocal: (updater?: (current: DocumentData) => DocumentData) => run(form => form.resolve('local', { expectedComparison: target?.state?.comparison, updater })),
     acceptRemote: () => run(form => form.resolve('remote', { expectedComparison: target?.state?.comparison })),

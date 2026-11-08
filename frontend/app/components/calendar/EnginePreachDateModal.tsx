@@ -22,7 +22,8 @@ export function EnginePreachDateModal({ sermonId, action, onClose }: {
   sermonId: string; action: PreachDateAction; onClose: () => void;
 }) {
   const { t } = useTranslation();
-  const form = useDataForm({ collection: 'sermons', id: sermonId }, `preach-date:${action.kind}:${action.dateId ?? 'new'}`, PREACH_DATE_SELECTION);
+  const slot = `preach-date:${action.kind}:${action.dateId ?? 'new'}${action.restoreDate ? ':' + action.restoreDate : ''}`;
+  const form = useDataForm({ collection: 'sermons', id: sermonId }, slot, PREACH_DATE_SELECTION);
   const [newRow] = useState<PreachDate>(() => ({ id: newClientId(), createdAt: new Date().toISOString(), date: getTodayDateOnlyKey(),
     church: { id: '', name: '', city: '' }, status: action.status ?? 'planned' }));
   const initialized = useRef<object | null>(null);
@@ -56,7 +57,11 @@ export function EnginePreachDateModal({ sermonId, action, onClose }: {
       discard: () => form.discardRecovery(source) })), recover: form.recover });
   const save = async () => {
     if (readOnly || !valid || !form.dirty || !form.durable || !form.status?.canSave) return;
-    try { await form.save(); onClose(); } catch { /* The shared form retains the draft and reports delivery. */ }
+    try {
+      if (action.kind === 'edit') await form.save(undefined, { preachDateId: target });
+      else await form.save();
+      onClose();
+    } catch { /* The shared form retains the draft and reports delivery. */ }
   };
   const title = action.kind === 'unmark' ? 'optionMenu.markAsNotPreached' : action.kind === 'mark' ? 'optionMenu.markAsPreached'
     : action.kind === 'delete' ? 'calendar.deleteConfirm' : action.kind === 'edit' ? 'calendar.editPreachDate' : 'calendar.addPreachDate';

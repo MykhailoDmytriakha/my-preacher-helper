@@ -7,7 +7,7 @@ import type { PreachDateValues } from './PreachDateFields';
 import type { DocumentData } from '@/data-engine/types';
 import type { PreachDate, PreachDateStatus, Sermon } from '@/models/models';
 
-export type PreachDateAction = { kind: 'add' | 'edit' | 'mark' | 'unmark' | 'delete'; dateId?: string; status?: PreachDateStatus };
+export type PreachDateAction = { kind: 'add' | 'edit' | 'mark' | 'unmark' | 'delete'; dateId?: string; status?: PreachDateStatus; restoreDate?: string };
 export const PREACH_DATE_SELECTION = [['preachDates'], ['isPreached']] as const;
 
 function writeDates(source: Sermon, dates: PreachDate[]): DocumentData {
@@ -44,6 +44,7 @@ export function preparePreachDate(current: DocumentData, action: PreachDateActio
   const church = !isUnspecifiedChurch(existing?.church) ? existing!.church
     : !isUnspecifiedChurch(sermon.church) ? sermon.church! : { id: '', name: '', city: '' };
   const next = { ...(existing ?? row), church,
+    ...(action.kind === 'edit' && action.restoreDate && { date: action.restoreDate }),
     ...(action.kind === 'mark' ? { status: 'preached' as const } : {}) };
   return writeDates(sermon, existing ? dates.map(date => date.id === row.id ? next : date) : [...dates, next]);
 }
