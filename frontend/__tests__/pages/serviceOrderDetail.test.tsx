@@ -20,7 +20,7 @@ const mockClosedEditing = jest.fn().mockResolvedValue(undefined);
 const mockRecheck = jest.fn().mockResolvedValue('absent');
 const mockDeleteOrder = jest.fn().mockResolvedValue(undefined);
 const mockPush = jest.fn();
-const mockStepFlagVersion = jest.fn();
+const mockStepVersion = jest.fn();
 const mockCaptureTitleTime = jest.fn();
 
 
@@ -35,7 +35,7 @@ jest.mock('@/hooks/useServiceOrders', () => ({
   useServiceOrders: () => ({
     ...state,
     updateSteps: mockUpdateSteps,
-    stepFlagVersion: mockStepFlagVersion,
+    stepVersion: mockStepVersion,
     captureTitleTime: mockCaptureTitleTime,
     openedWith: mockOpenedWith,
     closedEditing: mockClosedEditing,
@@ -77,7 +77,7 @@ const step = (id: string, title: string, body = ''): ServiceOrderStep => ({ id, 
 describe('One service', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockStepFlagVersion.mockReset();
+    mockStepVersion.mockReset();
     mockCaptureTitleTime.mockReset();
     jest.useRealTimers();
     state.orders = [order([step('s1', 'Перед началом'), step('s2', 'Молитва')])];
@@ -90,17 +90,33 @@ describe('One service', () => {
     const opening = { ...order([step('s1', 'Opening', 'Earlier words')]), rev: { steps: 1 } };
     const time = { earliestMs: 10, latestMs: 11 };
     state.orders = [opening];
-    mockStepFlagVersion.mockImplementation((_id: string, revision: number) => revision === 1 ? { generation: 'g', observedRevision: 5 } : undefined);
+    mockStepVersion.mockImplementation((_id: string, revision: number) => revision === 1 ? { generation: 'g', observedRevision: 5 } : undefined);
     mockCaptureTitleTime.mockReturnValue(time);
     const view = render(<ServiceOrderPage />);
     fireEvent.click(screen.getByRole('button', { name: 'serviceOrders.edit' }));
     fireEvent.change(screen.getByRole('textbox', { name: 'serviceOrders.stepWords' }), { target: { value: 'New private words' } });
-    mockStepFlagVersion.mockImplementation((_id: string, revision: number) => revision === 3 ? { generation: 'g', observedRevision: 7 } : undefined);
+    mockStepVersion.mockImplementation((_id: string, revision: number) => revision === 3 ? { generation: 'g', observedRevision: 7 } : undefined);
     state.orders = [{ ...opening, rev: { steps: 3 } }];
     view.rerender(<ServiceOrderPage />);
     fireEvent.click(screen.getByRole('button', { name: 'serviceOrders.flag' }));
     await waitFor(() => expect(mockUpdateSteps).toHaveBeenCalledWith('order-1', expect.any(Function), {
-      rowId: 's1', generation: 'g', observedRevision: 5, before: false, after: true, time,
+      field: 'flagged', change: { rowId: 's1', generation: 'g', observedRevision: 5, before: false, after: true, time },
+    }));
+  });
+
+  it('saves the original step title and last input time together after a burst of typing', async () => {
+    state.orders = [{ ...order([step('s1', 'Opening', 'Original words')]), rev: { steps: 1 } }];
+    mockStepVersion.mockReturnValue({ generation: 'g', observedRevision: 5 });
+    const finalTime = { earliestMs: 20, latestMs: 21 };
+    mockCaptureTitleTime.mockReturnValueOnce({ earliestMs: 10, latestMs: 11 }).mockReturnValueOnce(finalTime);
+    render(<ServiceOrderPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'serviceOrders.edit' }));
+    const input = screen.getByRole('textbox', { name: 'serviceOrders.stepTitle' });
+    fireEvent.change(input, { target: { value: 'Op' } });
+    fireEvent.change(input, { target: { value: 'Opening revised' } });
+    fireEvent.blur(input);
+    await waitFor(() => expect(mockUpdateSteps).toHaveBeenCalledWith('order-1', expect.any(Function), {
+      field: 'title', change: { rowId: 's1', generation: 'g', observedRevision: 5, before: 'Opening', after: 'Opening revised', time: finalTime },
     }));
   });
 

@@ -17,7 +17,7 @@ import { confirmedExistingDeletion, equalValues, mergeDocumentFields, MAX_RELATI
 import { matchingRowDetailActions, pendingRowDetailRebases } from './rowDetailCapture';
 import { existingRowField, replaceExistingRowField } from './rowFieldAction';
 import { capturePlanTextEvidence, type PlanTextEvidence } from './sermonPlanText';
-import { captureServiceOrderFlag, matchingServiceOrderFlag, SERVICE_ORDER_FLAG_POLICY, SERVICE_ORDER_FLAG_TARGET, type ServiceOrderFlagActions } from './serviceOrderFlagAction';
+import { captureServiceOrderStep, matchesServiceOrderStep, SERVICE_ORDER_FLAG_POLICY, SERVICE_ORDER_FLAG_TARGET, SERVICE_ORDER_STEP_TITLE_POLICY, SERVICE_ORDER_STEP_TITLE_TARGET, type ServiceOrderFlagActions, type ServiceOrderStepTitleActions } from './serviceOrderStepAction';
 import { coversCommittedEffect } from './snapshotFreshness';
 
 import type { CaptureTransferProof, CaptureTransferResult } from './captureTransfer';
@@ -72,6 +72,7 @@ export interface CommitRequest extends CouncilFieldActions, PrayerStatusObservat
   deferBibleMarkRebase?: true;
   serviceOrderTitleAction?: DocumentFieldAction;
   serviceOrderFlagActions?: ServiceOrderFlagActions;
+  serviceOrderStepTitleActions?: ServiceOrderStepTitleActions;
   prayerTitleAction?: DocumentFieldObservation;
   sermonTitleAction?: DocumentFieldObservation;
   sermonVerseAction?: DocumentFieldObservation;
@@ -169,6 +170,7 @@ export function assertCommitCapture(current: CommitRequest, incoming: CommitRequ
     || !equalValues(current.planTextEvidence ?? null, incoming.planTextEvidence ?? null)
     || !equalValues(current.serviceOrderTitleAction ?? null, incoming.serviceOrderTitleAction ?? null)
     || !equalValues(current.serviceOrderFlagActions ?? null, incoming.serviceOrderFlagActions ?? null)
+    || !equalValues(current.serviceOrderStepTitleActions ?? null, incoming.serviceOrderStepTitleActions ?? null)
     || !equalValues(current.prayerTitleAction ?? null, incoming.prayerTitleAction ?? null)
     || !equalValues(current.prayerStatusAction ?? null, incoming.prayerStatusAction ?? null)
     || !equalValues(current.prayerAnsweredAtAction ?? null, incoming.prayerAnsweredAtAction ?? null)
@@ -281,6 +283,7 @@ function pendingRowFields(record: CommitRequest) {
     ...pendingRowDetailRebases(record, record.groupMeetingFieldActions, GROUP_MEETING_FIELD_POLICY),
     ...pendingRowDetailRebases(record, record.preachDateFieldActions, PREACH_DATE_FIELD_POLICY),
     ...pendingRowDetailRebases(record, record.serviceOrderFlagActions, SERVICE_ORDER_FLAG_POLICY),
+    ...pendingRowDetailRebases(record, record.serviceOrderStepTitleActions, SERVICE_ORDER_STEP_TITLE_POLICY),
   ];
 }
 
@@ -447,17 +450,19 @@ export class CommitQueue {
       result.retired.forEach(publish);
       return clone(result.request);
     }
-    if (frozenOptions?.action?.kind !== 'service-order-title' && frozenOptions?.action?.kind !== 'service-order-flag' && frozenOptions?.action?.kind !== 'prayer-title' && frozenOptions?.action?.kind !== 'prayer-status' && !frozenOptions?.transfer && !intent.dirty && (!predecessor || equalValues(predecessor.value, intent.draft))) return null;
+    const editorAction = frozenOptions?.action;
+    const step = editorAction?.kind === 'service-order-flag' ? { field: 'flagged' as const, change: editorAction.flag }
+      : editorAction?.kind === 'service-order-step-title' ? { field: 'title' as const, change: editorAction.title } : undefined;
+    if (!step && editorAction?.kind !== 'service-order-title' && editorAction?.kind !== 'prayer-title' && editorAction?.kind !== 'prayer-status'
+      && !frozenOptions?.transfer && !intent.dirty && (!predecessor || equalValues(predecessor.value, intent.draft))) return null;
     if (intent.conflicts.length) throw Object.assign(new Error('Resolve the conflict before saving'), { code: 'resolve-version-first' });
     const baseline = clone(intent.confirmed);
     const planTextEvidence = baseline.resource.collection === 'sermons' ? captureSermonPlan(baseline, intent.draft, predecessor) : undefined;
     const dateTarget = datedRowTarget(baseline.resource.collection);
     const action = dateTarget && captureDatedRowAction(baseline, predecessor, intent.draft, frozenOptions?.[dateTarget.evidence]);
-    const editorAction = frozenOptions?.action;
     const mark = captureBibleMarkStroke(baseline, predecessor, intent.draft, editorAction?.kind === 'bible-mark-stroke' ? editorAction.time : undefined);
     const title = captureServiceOrderTitle(baseline, intent.draft, editorAction?.kind === 'service-order-title' ? editorAction.title : undefined);
-    const serviceOrderFlagActions = captureServiceOrderFlag(baseline, predecessor, intent.draft,
-      editorAction?.kind === 'service-order-flag' ? editorAction.flag : undefined, records);
+    const stepActions = captureServiceOrderStep(baseline, predecessor, intent.draft, step, records);
     const prayerCapture = editorAction?.kind === 'prayer-title' ? editorAction.title : undefined;
     const prayerPredecessor = prayerCapture?.seen.requestId
       ? matchesPrayerTitleRequest(records.find(record => record.id === prayerCapture.seen.requestId), owner, baseline.resource, prayerCapture.seen) : false;
@@ -473,7 +478,7 @@ export class CommitQueue {
       id: this.options.operationId(), owner, editorId, editGeneration: intent.editGeneration,
       ...(mark && { bibleMarkStroke: mark }),
       ...(title && { serviceOrderTitleAction: title }),
-      ...(serviceOrderFlagActions && { serviceOrderFlagActions }),
+      ...stepActions,
       ...(prayerTitle && { prayerTitleAction: prayerTitle }),
       ...prayerStatus,
       ...metadataFields,
@@ -929,8 +934,10 @@ export class CommitQueue {
       if (record.sermonChurchFill && command.changes.some(change => change.path[0] === 'preachDates')) command.sermonChurchFill = record.sermonChurchFill;
       const preachActions = matchingRowDetailActions(command.changes, record.preachDateFieldActions, PREACH_DATE_FIELD_POLICY);
       if (preachActions) command.preachDateFieldActions = preachActions;
-      const flagActions = matchingServiceOrderFlag(command.changes, record.serviceOrderFlagActions);
-      if (flagActions) command.serviceOrderFlagActions = flagActions;
+      const flags = record.serviceOrderFlagActions;
+      if (flags && matchesServiceOrderStep(command.changes, SERVICE_ORDER_FLAG_TARGET, flags.flagged)) command.serviceOrderFlagActions = flags;
+      const stepTitles = record.serviceOrderStepTitleActions;
+      if (stepTitles && matchesServiceOrderStep(command.changes, SERVICE_ORDER_STEP_TITLE_TARGET, stepTitles.title)) command.serviceOrderStepTitleActions = stepTitles;
       const statusActions = matchingPreachStatusActions(command.changes, status);
       if (statusActions.length) command.preachStatusActions = statusActions;
     }

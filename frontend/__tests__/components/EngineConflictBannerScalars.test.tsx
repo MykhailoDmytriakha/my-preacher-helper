@@ -115,6 +115,25 @@ describe('authored scalar values in saved-version choices', () => {
     } finally { error.mockRestore(); }
   });
 
+  it('shows both versions of the same step title without showing unrelated text', async () => {
+    const resource = { collection: 'serviceOrders', id: 'step-title-versions' };
+    const item = { id: 'step', title: 'Opening step', body: 'Keep these words.' };
+    const value = { userId: 'owner', title: 'Sunday service', steps: [item], rank: 1, createdAt: at, updatedAt: at };
+    const harness = documentEngineHarness({ resource, value, metadata: { protocol: 1, generation: 'g1', revision: 1, deleted: false } });
+    jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
+    render(<DataEngineProvider><Actions /><EngineConflictBanner pollMs={25} /></DataEngineProvider>);
+    await waitFor(() => expect(actions?.ready).toBe(true));
+    harness.silentRemote({ steps: [{ ...item, title: '' }] });
+    await act(async () => {
+      await actions!.commit(resource, current => ({ ...current!, steps: [{ ...item, title: 'Opening from phone' }] }));
+      await settleEngine();
+    });
+    const panel = await screen.findByRole('region', { name: 'dataSync.versionComparison' });
+    expect(within(panel).getByLabelText('dataSync.yourVersion')).toHaveTextContent('Opening from phone');
+    expect(within(panel).getByLabelText('dataSync.storedVersion')).toHaveTextContent('serviceOrders.flagHistory.untitled');
+    expect(screen.queryByText('Keep these words.')).not.toBeInTheDocument();
+  });
+
   it.each([true, false])('names a changed service-order mark when it becomes %s', async flagged => {
     const item = { id: 'changed-step', title: 'Opening step', body: 'Keep these words.', flagged: !flagged };
     const value = { userId: 'owner', title: 'Sunday service', steps: [item], rank: 1, createdAt: at, updatedAt: at };

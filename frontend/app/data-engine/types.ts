@@ -8,7 +8,7 @@ import type { PreachDateFieldActions } from './preachDateFieldAction';
 import type { PreachStatusAction } from './preachStatusAction';
 import type { SeriesFieldStamps } from './seriesFieldAction';
 import type { SermonChurchFill } from './sermonChurchFill';
-import type { ServiceOrderFlagActions, ServiceOrderFlagCapture } from './serviceOrderFlagAction';
+import type { ServiceOrderFlagActions, ServiceOrderFlagCapture, ServiceOrderStepTitleActions, ServiceOrderStepTitleCapture } from './serviceOrderStepAction';
 
 export type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
 export type DocumentData = Record<string, Json>;
@@ -50,6 +50,7 @@ export type EditorCommitAction =
   | { kind: 'bible-mark-stroke'; time: ActionTime }
   | { kind: 'service-order-title'; title: ServiceOrderTitleCapture }
   | { kind: 'service-order-flag'; flag: ServiceOrderFlagCapture }
+  | { kind: 'service-order-step-title'; title: ServiceOrderStepTitleCapture }
   | { kind: 'council-lifecycle'; time: ActionTime | null }
   | { kind: 'prayer-title'; title: PrayerTitleCapture }
   | { kind: 'prayer-status'; status: PrayerStatusCapture };
@@ -68,6 +69,7 @@ export type DataCommand = CommandBase & (
       bibleMarkStroke?: BibleMarkStrokeStamp;
       serviceOrderTitleAction?: DocumentFieldAction;
       serviceOrderFlagActions?: ServiceOrderFlagActions;
+      serviceOrderStepTitleActions?: ServiceOrderStepTitleActions;
       prayerTitleAction?: DocumentFieldObservation;
       prayerStatusAction?: DocumentFieldObservation;
       prayerAnsweredAtAction?: DocumentFieldStamp;

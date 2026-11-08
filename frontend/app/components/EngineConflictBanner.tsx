@@ -10,7 +10,7 @@ import { FieldComparison } from '@/data-engine/DataSyncStatus';
 import { equalValues, object } from '@/data-engine/fieldValues';
 import { captureRecoveryChoice, councilRefusalHeldOpen, isCollectionOnEngine, isDataEngineEnabled, isOneShotRecord, isRecoveryHeldOpen, useDataEngine, useDocumentActions, useOpenDocumentAnswerScopes, waitsForDecision, type OpenDocumentAnswer, type RecoveryChoiceScope } from '@/data-engine/react.client';
 import { existingRowField } from '@/data-engine/rowFieldAction';
-import { serviceOrderFlagRow, SERVICE_ORDER_FLAG_TARGET } from '@/data-engine/serviceOrderFlagAction';
+import { serviceOrderStepField, SERVICE_ORDER_FLAG_TARGET, SERVICE_ORDER_STEP_TITLE_TARGET } from '@/data-engine/serviceOrderStepAction';
 import { useClipboard } from '@/hooks/useClipboard';
 import { useConfirm, useDiscardQuestion } from '@/hooks/useConfirm';
 import { useShellPathname } from '@/hooks/useShellPathname';
@@ -81,20 +81,29 @@ const show = (value: unknown): string => {
 type Item = Record<string, unknown> & { id: string };
 type DisplayValue = (scope: string, field: string, value: unknown, document?: DocumentData) => unknown;
 const isItem = (value: unknown): value is Item => Boolean(value) && typeof value === 'object' && typeof (value as { id?: unknown }).id === 'string';
-function flagComparison(entry: Waiting, t: (key: string) => string): TextComparison | undefined {
+function serviceStepComparison(entry: Waiting, t: (key: string) => string): TextComparison | undefined {
   if (entry.resource.collection !== 'serviceOrders' || entry.records.length !== 1) return undefined;
   const { confirmed, draft, remoteCandidate, conflicts, pending } = entry.records[0].checkpoint;
-  const id = serviceOrderFlagRow(conflicts[0]?.path);
-  if (!id || !draft || !confirmed.value || !remoteCandidate?.value || conflicts.length !== 1 || Object.keys(pending).length !== 1) return undefined;
-  const mine = existingRowField(draft.steps, id, SERVICE_ORDER_FLAG_TARGET);
-  const stored = existingRowField(remoteCandidate.value.steps, id, SERVICE_ORDER_FLAG_TARGET);
-  if (mine === undefined || stored === undefined || mine === stored) return undefined;
+  const target = serviceOrderStepField(conflicts[0]?.path);
+  if (!target || !draft || !confirmed.value || !remoteCandidate?.value || conflicts.length !== 1 || Object.keys(pending).length !== 1) return undefined;
+  const { id, field } = target;
   const compared = (value: DocumentData) => ({
     ...Object.fromEntries(Object.entries(value).filter(([key]) => !BOOKKEEPING.has(key))),
     steps: Array.isArray(value.steps) ? value.steps.map(step => object(step)
-      ? { ...step, scriptureRefs: step.scriptureRefs ?? [], flagged: step.id === id ? false : Boolean(step.flagged) } : step) : value.steps,
+      ? { ...step, scriptureRefs: step.scriptureRefs ?? [], flagged: step.id === id && field === 'flagged' ? false : Boolean(step.flagged),
+        ...(step.id === id && field === 'title' && { title: '' }) } : step) : value.steps,
   });
   if (!equalValues(compared(confirmed.value), compared(draft))) return undefined;
+  if (field === 'title') {
+    const mine = existingRowField(draft.steps, id, SERVICE_ORDER_STEP_TITLE_TARGET);
+    const stored = existingRowField(remoteCandidate.value.steps, id, SERVICE_ORDER_STEP_TITLE_TARGET);
+    if (mine === undefined || stored === undefined || mine === stored) return undefined;
+    const untitled = t('serviceOrders.flagHistory.untitled');
+    return { title: t('serviceOrders.stepTitle'), valueKind: 'field', mine: mine || untitled, stored: stored || untitled };
+  }
+  const mine = existingRowField(draft.steps, id, SERVICE_ORDER_FLAG_TARGET);
+  const stored = existingRowField(remoteCandidate.value.steps, id, SERVICE_ORDER_FLAG_TARGET);
+  if (mine === undefined || stored === undefined || mine === stored) return undefined;
   const step = Array.isArray(draft.steps) ? draft.steps.find(item => isItem(item) && item.id === id) : undefined;
   const title = isItem(step) && typeof step.title === 'string' && step.title.trim() ? step.title : t('serviceOrders.flag');
   const words = (flag: boolean) => t(flag ? 'serviceOrders.flagHistory.marked' : 'serviceOrders.flagHistory.unmarked');
@@ -458,7 +467,7 @@ function EngineConflicts({ pollMs, search }: { pollMs: number; search?: string }
     </>;
   }
   if (entry.kind === 'conflict') {
-    const comparison = flagComparison(entry, t);
+    const comparison = serviceStepComparison(entry, t);
     return (
       <>
         {comparison && <section aria-label={t('dataSync.versionComparison')} className="mb-3"><FieldComparison comparison={comparison} /></section>}

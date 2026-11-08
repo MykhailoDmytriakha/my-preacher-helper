@@ -1801,7 +1801,9 @@ export class DataEngine {
       const commit = (updater: (current: DocumentData | null) => DocumentData | null, onCaptured?: (receipt: DocumentWriteReceipt) => void, captureScope?: string, action?: EditorCommitAction) => {
         active();
         const checkpoint = controller.getState().checkpoint;
-        if (action?.kind === 'service-order-flag' && checkpoint.confirmed.metadata?.generation !== action.flag.generation) {
+        const stepVersion = action?.kind === 'service-order-flag' ? action.flag
+          : action?.kind === 'service-order-step-title' ? action.title : undefined;
+        if (stepVersion && checkpoint.confirmed.metadata?.generation !== stepVersion.generation) {
           throw Object.assign(new Error('The shown service order changed'), { code: 'decision-changed' });
         }
         const next = updater(checkpoint.draft);

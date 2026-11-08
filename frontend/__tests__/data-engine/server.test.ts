@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { isCollectionServed } from '@/data-engine/activation';
-import { DataEngineServerError, listBibleMarkHistory, listCouncilMetadataHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listPrayerStatusHistory, listPrayerTitleHistory, listSermonChurchHistory, listSermonTitleHistory, listSermonVerseHistory, listSeriesMetadataHistory, listServiceOrderFlagHistory, listServiceOrderTitleHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
+import { DataEngineServerError, listBibleMarkHistory, listCouncilMetadataHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listPrayerStatusHistory, listPrayerTitleHistory, listSermonChurchHistory, listSermonTitleHistory, listSermonVerseHistory, listSeriesMetadataHistory, listServiceOrderFlagHistory, listServiceOrderStepTitleHistory, listServiceOrderTitleHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
 import { collectionHeadId, HEADS_COLLECTION, sequenceId } from '@/data-engine/serverFeed';
 import { DataSession } from '@/data-engine/session';
 import type { DataCommand, FieldValue, ResourceSnapshot } from '@/data-engine/types';
@@ -1337,6 +1337,53 @@ describe('transactional DataEngine server', () => {
     })).toMatchObject({ kind: 'conflict', conflicts: [{ path: ['meetingDates', 'id:meeting', 'date'] }],
       snapshot: { value: { meetingDates: [meeting] } } });
     expect((await listMeetingDateHistory(base.owner, resource.id, 'seed')).entries).toEqual([]);
+  });
+
+  it.each([
+    { label: 'earlier', mobileAt: 15, title: 'Computer opening', kind: 'acknowledged' },
+    { label: 'later', mobileAt: 100, title: 'Phone opening', kind: 'acknowledged' },
+    { label: 'unclocked', mobileAt: null, title: 'Computer opening', kind: 'conflict' },
+    { label: 'earlier before clear', mobileAt: 15, title: '', kind: 'acknowledged', computerTitle: '' },
+    { label: 'later with a legacy long title', mobileAt: 100, title: 'Phone opening', kind: 'acknowledged', openingTitle: 'X'.repeat(501) },
+  ])('orders the exact service step title and keeps the body: $label', async ({
+    mobileAt, title, kind, computerTitle = 'Computer opening', openingTitle = 'Opening',
+  }) => {
+    const resource = { collection: 'serviceOrders', id: 'step-title-order' };
+    const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] };
+    const now = '2026-11-08T00:00:00.000Z';
+    const opening = { id: 'opening', title: openingTitle, body: 'Original words', scriptureRefs: [], flagged: false };
+    const other = { ...opening, id: 'other', title: 'Prayer', flagged: true };
+    const initial = [opening, other];
+    expect((await processCommand(base.owner, { ...base, kind: 'create', operationId: 'seed', generation: null,
+      value: { userId: base.owner, title: 'Sunday', rank: 100, createdAt: now, updatedAt: now, steps: initial },
+    })).kind).toBe('acknowledged');
+    const edit = (operationId: string, after: typeof initial, at: number | null) => ({
+      ...base, kind: 'update', operationId, generation: 'seed',
+      changes: [{ path: ['steps'], before: { exists: true, value: initial }, after: { exists: true, value: after } }],
+      serviceOrderStepTitleActions: { title: { rowId: opening.id, rowCreatedAt: opening.id, before: opening.title,
+        after: after[0].title, observedRevision: 1,
+        time: at === null ? null : { earliestMs: 1_800_000_000_000 + at, latestMs: 1_800_000_000_004 + at } } },
+    });
+    const desktop = [{ ...opening, title: computerTitle, body: 'Later words on desktop' }, other];
+    expect((await processCommand(base.owner, edit('desktop', desktop, 65))).kind).toBe('acknowledged');
+    const phone = edit('phone', [{ ...opening, title: 'Phone opening' }, other], mobileAt);
+    const answer = await processCommand(base.owner, phone);
+    expect(answer).toMatchObject({ kind, snapshot: { value: { title: 'Sunday', steps: [{ ...desktop[0], title }, other] } } });
+    expect(await processCommand(base.owner, phone)).toEqual(answer);
+    const history = [...documents.entries()].filter(([path]) => path.startsWith('serviceOrders/step-title-order/_stepTitleHistory/'));
+    if (mobileAt === null) {
+      expect(answer).toMatchObject({ conflicts: [{ path: ['steps', 'id:opening', 'title'] }] });
+      expect(history).toHaveLength(0);
+    } else {
+      expect(history).toHaveLength(1);
+      const displaced = { rowId: opening.id, field: 'title', value: title === computerTitle ? 'Phone opening' : computerTitle, winnerValue: title };
+      expect(history[0][1]).toMatchObject({ fields: [displaced] });
+      await expect(listServiceOrderStepTitleHistory(base.owner, resource.id, 'seed')).resolves.toMatchObject({
+        owner: base.owner, orderId: resource.id, generation: 'seed', entries: [{ fields: [displaced] }],
+      });
+      await expect(listServiceOrderStepTitleHistory('other-owner', resource.id, 'seed')).rejects.toMatchObject({ status: 403 });
+      await expect(listServiceOrderStepTitleHistory(base.owner, resource.id, 'old-generation')).rejects.toMatchObject({ status: 404 });
+    }
   });
 
   it('accepts the first explicit flag on an older step that omitted the optional flag', async () => {

@@ -4689,13 +4689,21 @@
     "stepTitle": "What happens",
     "addStep": "Add a step",
     "removeStep": "Remove step",
+    "stepTitleHistory": {
+      "title": "Step title history",
+      "loading": "Loading step title history…",
+      "unavailable": "Step title history could not be loaded.",
+      "restoreFailed": "Could not restore this title.",
+      "empty": "No earlier step titles were saved.",
+      "restore": "Restore step title"
+    },
     "flagHistory": {
       "title": "Step flag history",
       "marked": "Marked",
       "unmarked": "Unmarked",
       "loading": "Loading step flag history…",
       "unavailable": "Step flag history could not be loaded.",
-      "stepGone": "This step was removed on another device. Its flag is no longer available.",
+      "stepGone": "This step was removed on another device. The change cannot be applied.",
       "restoreFailed": "Could not restore this flag.",
       "empty": "No earlier flags were saved.",
       "untitled": "Untitled step",
