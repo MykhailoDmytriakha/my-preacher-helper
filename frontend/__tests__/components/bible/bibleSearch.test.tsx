@@ -120,16 +120,17 @@ describe('the one line', () => {
   it('offers «Все N — в Библии» only where the reader can keep the found verses, and opens the search on the first in the Bible\'s order', async () => {
     const plain = renderLine();
     await userEvent.type(plain.line, 'пс 118 ожив');
-    await screen.findByText('bible.search.verses{"count":9}');
-    expect(screen.queryByRole('button', { name: 'bible.search.allInBible{"count":9}' })).not.toBeInTheDocument();
+    await screen.findByText(/^bible\.search\.verses/);
+    expect(screen.queryByRole('button', { name: /^bible\.search\.allInBible/ })).not.toBeInTheDocument();
     document.body.innerHTML = '';
     const onOpenFound = jest.fn();
     const { line, onOpen } = renderLine({ onOpenFound });
     await userEvent.type(line, 'пс 118 ожив');
-    await screen.findByText('bible.search.verses{"count":9}');
-    await userEvent.click(screen.getByRole('button', { name: 'bible.search.allInBible{"count":9}' }));
-    // The window lists «оживи» first, its kin after; the Bible's order starts at 118:25.
-    expect(onOpenFound).toHaveBeenCalledWith({ line: 'пс 118 ожив', asWords: false }, { bookId: 'Psalms', chapter: 118, verse: 25 });
+    await screen.findByText(/^bible\.search\.verses/);
+    await userEvent.click(screen.getByRole('button', { name: /^bible\.search\.allInBible/ }));
+    // The window starts with «оживи». In Bible order, the related «жить» comes first.
+    expect(options()[0].textContent).toContain('118:25');
+    expect(onOpenFound).toHaveBeenCalledWith({ line: 'пс 118 ожив', asWords: false }, { bookId: 'Psalms', chapter: 118, verse: 17 });
     expect(onOpen).not.toHaveBeenCalled();
   });
 
@@ -152,7 +153,7 @@ describe('the one line', () => {
     rememberOpened('rst', 'пс 118 ожив', false, 'Psalms 118:107', 100);
     const { line } = renderLine({ startSearch: { line: 'пс 118 ожив', asWords: false } });
     expect(line).toHaveValue('пс 118 ожив');
-    await screen.findByText('bible.search.verses{"count":9}');
+    await screen.findByText(/^bible\.search\.verses/);
     await waitFor(() => expect(options().find((option) => option.getAttribute('aria-selected') === 'true')?.textContent).toMatch(/118:107/));
   });
 
@@ -321,14 +322,16 @@ describe('the one line', () => {
     // The name also has a word meaning, so the existing secondary action now names only the widened term.
     await userEvent.click(screen.getByRole('button', { name: 'bible.search.searchOnly{"words":"«хлеб»"}' }));
     expect(line).toHaveValue('хлеб');
-    expect(await screen.findByText('bible.search.verses{"count":567}')).toBeInTheDocument();
+    expect(await screen.findByText(/^bible\.search\.verses/)).toBeInTheDocument();
+    expect(options().some(row => row.textContent?.includes('Быт 3:19'))).toBe(true);
   });
 
   it('reads a book whose name is a word as the book, and searches the words on request', async () => {
     const { line } = renderLine();
     await userEvent.type(line, 'плач скрежет');
-    await screen.findByText(/bible\.search\.wordLike/);
-    await userEvent.click(screen.getByRole('button', { name: /bible\.search\.searchAsWords/ }));
+    await screen.findByText('bible.search.verses{"count":1}');
+    expect(options()[0].textContent).toContain('Плач 2:16');
+    await userEvent.click(screen.getByRole('button', { name: 'bible.search.asWordLink{"word":"плач"}' }));
     expect(await screen.findByText('bible.search.verses{"count":7}')).toBeInTheDocument();
     expect(screen.getByText('bible.search.asWords')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /bible\.search\.searchInBook/ })).toBeInTheDocument();
@@ -494,7 +497,7 @@ describe('the line under pressure (Codex review, 2026-10-23)', () => {
   it('keeps «search as words» through the history', async () => {
     const { line } = renderLine();
     await userEvent.type(line, 'плач скрежет');
-    await userEvent.click(await screen.findByRole('button', { name: /bible\.search\.searchAsWords/ }));
+    await userEvent.click(await screen.findByRole('button', { name: 'bible.search.asWordLink{"word":"плач"}' }));
     await screen.findByText('bible.search.verses{"count":7}');
     await userEvent.keyboard('{Enter}');
     await userEvent.clear(line);
@@ -702,18 +705,17 @@ describe('the search history fills with the searches worked with', () => {
 
 // BUG-20261027-search-book-name-that-is-a-word: exact names retain the book and expose the existing word choice.
 it.each([
-  { raw: 'Рим Павел', word: 'рим', before: 1, after: 5, sample: 'Деян 28:16' },
-  { raw: 'Иоанн крест', word: 'иоанн', before: 14, after: 33, sample: 'Мф 3:1' },
-])('can search $raw as words and return to its original book without rewriting the line', async ({ raw, word, before, after, sample }) => {
+  { raw: 'Рим Павел', word: 'рим', bookVerse: 'Рим 1:1', wordVerse: 'Деян 28:16' },
+  { raw: 'Иоанн крест', word: 'иоанн', bookVerse: 'Ин 19:17', wordVerse: 'Мф 3:1' },
+])('can search $raw as words and return to its original book without rewriting the line', async ({ raw, word, bookVerse, wordVerse }) => {
   const { line } = renderLine();
   fireEvent.change(line, { target: { value: raw } });
-  await screen.findByText(`bible.search.verses{"count":${before}}`);
+  await screen.findByText(bookVerse);
   await userEvent.click(screen.getByRole('button', { name: `bible.search.asWordLink{"word":"${word}"}` }));
-  await screen.findByText(`bible.search.verses{"count":${after}}`);
+  await screen.findByText(wordVerse);
   expect(line).toHaveValue(raw);
-  expect(options().some(row => row.textContent?.includes(sample))).toBe(true);
   await userEvent.click(screen.getByRole('button', { name: /bible\.search\.searchInBook/ }));
-  await screen.findByText(`bible.search.verses{"count":${before}}`);
+  await screen.findByText(bookVerse);
   expect(line).toHaveValue(raw);
 });
 
@@ -721,7 +723,7 @@ it('offers the word choice when an exact name has no results in its book', async
   const { line } = renderLine();
   fireEvent.change(line, { target: { value: 'Иуда предал' } });
   await userEvent.click(await screen.findByRole('button', { name: 'bible.search.searchAsWords{"words":"иуда предал"}' }));
-  await screen.findByText('bible.search.verses{"count":7}');
+  await screen.findByText(/^bible\.search\.verses/);
   expect(line).toHaveValue('Иуда предал');
   expect(options().some(row => row.textContent?.includes('Мф 10:4'))).toBe(true);
   await userEvent.click(screen.getByRole('button', { name: /bible\.search\.searchInBook/ }));

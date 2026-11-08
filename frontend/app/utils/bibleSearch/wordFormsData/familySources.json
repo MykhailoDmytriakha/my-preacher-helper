@@ -1,0 +1,108 @@
+{
+  "inputs": {
+    "DerivBaseRU.tsv": "a8f1aefd8a7b6152e59bd4d7677664872ebc5caec13dbe80b45fec312e4f5e48",
+    "english-wordnet-2025-json.zip": "7d749f6e2c39e6970e4997839dcf6e42fd281f3c2fae0171d2192bae8cfa4b51",
+    "kaikki-ru.jsonl.gz": "86a781a5685d614efd439e326eed0bf0ad9cda9f67b854f8b6c93212c5345b3e",
+    "kaikki-uk.jsonl.gz": "2b8074025c192314a3906b6bb33587ff1c97f06b398f422308001561124b9586",
+    "ukwiktionary.xml.bz2": "a30f0650ac21fa1081b2fc4af772889905f408194ab981b6b177fd6bced6eac0"
+  },
+  "kjvBooks": {
+    "1-chronicles.json": "66d799b7fce3da1ea67528ef3bc84f80a0a2cbf031d80df084309d67717de562",
+    "1-corinthians.json": "2f19fbad78c16d3b522d7cb33d169107250400488b001d701d7571c492f62722",
+    "1-john.json": "1744189924db71acbc21dd41a05fa091554d702cbc522834dd13d17c47ad9afc",
+    "1-kings.json": "b6af00918eb6dcb53db47693b88241cf3a0b870b69963718263403689c474d38",
+    "1-peter.json": "862214a23fa2c4d9279eeee12c97192f5ab59b2a646f14ade35134424e22d27b",
+    "1-samuel.json": "9216d02150438dfd7fe2d1b83a36bc93192a2da2f30d0c9ffaa79fae4677b90d",
+    "1-thessalonians.json": "b738417b0b323a0a12902d2cec60de9f229f32dd4fc070945bdb4635e9f0b45b",
+    "1-timothy.json": "7359fc421c759ebb0e0f9fb34691ce7ff1d3e3cce7c53c1fd9b2f069dcd2258d",
+    "2-chronicles.json": "5c3f2347a23fda659ff235137ae540871591fafb0e6e112a3d9080afcf795748",
+    "2-corinthians.json": "28ec6d4383f75961b8fadf2c71dcb263d9a153c45a423cf3213edc52ecc1c6b0",
+    "2-john.json": "fdbfa1dfb0286a92d1437636e163f6d8e5611772109a4f1edc3492dcb2012ac1",
+    "2-kings.json": "e88de9e8ee42fbfea133e8f217854171c784f88dcef79c7da8bd63b0ea4b2f09",
+    "2-peter.json": "ff2bc360acd90bd5e50a5fd802e74ba07480262edd15a0509699114a08650cb5",
+    "2-samuel.json": "d58ad8458481efbaf727aef906393d7754a5fd6379a2c086cdf2f178b3692833",
+    "2-thessalonians.json": "36c8c1fb7093e94ddeef691949c862d985f1ea502dd587783aeb9cffdb943040",
+    "2-timothy.json": "7f50b4789e69bf39d2758ab40fb7ffc774775c0dbc57fbc373d1d8c024f33d95",
+    "3-john.json": "68f998cb80edafddc43ecf83782baeea3b9d3d87aff20a7ae3a24f782fb82949",
+    "acts.json": "e75c69f8513768afe8c8fe640db9cd3e701a37792ec74be8110a28e863438fe9",
+    "amos.json": "c49825a6ea4e38b636f988ff166fe96420660cca003c0eb0593682e4b3d48e13",
+    "colossians.json": "10e6faefcf6ed511c8246e6e2537943b6266a4fe76ce8db0fe6efcd4ad2dbd5b",
+    "daniel.json": "8e096119b2da7f3419533d313c3c867d00419fbb381c6d74213c2eb87e7918d9",
+    "deuteronomy.json": "ded4adf68d9ef732d4f60d43166bbf16639d5ebfdf60089a2aef27c31eb0737a",
+    "ecclesiastes.json": "821afd590230d32265bbf85ee2325ad5160791dc7defa4b546614457466422d4",
+    "ephesians.json": "80cce6fa9e387b779a5d79dbcb47c58a5c55f3aab60f6b00d7cdfb1f37363fff",
+    "esther.json": "51af19010fd3dc13a56c250fcb4d8bb72262db9e8cdc92ff226ef5d55c42c97a",
+    "exodus.json": "38dc97955211a685913ec989a8c458e26321c1bcc1c5e6886a3dda5fd3e063db",
+    "ezekiel.json": "358df228d5f919e316dd1f213f47fbd8faad774dbe41ba594f812f427409001c",
+    "ezra.json": "9b2778f625b93c26a444c5d0e9ba618fc3bfac1d2e53df8de7c4337dec8a3fd9",
+    "galatians.json": "77ca5858288c67834f242ccf5056c3e5487e72580ee2a8f8ad1b1c1739d752b7",
+    "genesis.json": "507a078fef480683cd8b770bd832ac5a4dce948173001a7940c34c1b7213dd65",
+    "habakkuk.json": "8613e1496c86f149c66e8a5c219ed43fc2d9ede1c31e9f8f01e5f7d0000f91a8",
+    "haggai.json": "a1129ee2b08f401f3f54ffd7e0db7e54fb00125fb19a2dda190a6ca3bf41d411",
+    "hebrews.json": "1ae50357b5d3bc43448c14113e48c9e26824760f009d9bec257f6d1178ba0aba",
+    "hosea.json": "9327c02005339f674d0b61c41aaba2c55d934e63583b39d3c4e716245580397d",
+    "isaiah.json": "520254a3a31eeefc262d968c6dc01f49d7813c2eda884369ee99b7ca48c0c57b",
+    "james.json": "bcadd3e421c37a5a9c9c78b2c22a6a199dc33850c9d1963e58f9bd9d72f2b2d9",
+    "jeremiah.json": "e393858db1e0c5ef3e42866b8fd88ab01fe0d79b0dc3ca26ba4de94c5b7772ee",
+    "job.json": "23b0d056af02eb5b06b00e59492a628677f8e233775564c0cd9013aff04c580f",
+    "joel.json": "b090f506f6a3f87a6e3b3cb0c995194e802812faa6b065ab287e7c330dc7e2b8",
+    "john.json": "d5d91bb12bb3cf797ebbfbf9d82b1152feb0370ca37bc2e488d3c443088afca7",
+    "jonah.json": "7e842841603930c10dfb4138bd7ba73560a4609e2f3d1b9437d81b639cc7953b",
+    "joshua.json": "d3b88d2d604633e973c8a08af1f2451219a5bc840d4aa04dd541a48cacefebd2",
+    "jude.json": "d82da002a7d694cc3f8451a70706c19301e12231ef67d8e454be34331db0255e",
+    "judges.json": "626230251d3aad3f5d4b122f24257767b6053dfec67f9ea6ba493c71715fb707",
+    "lamentations.json": "cce24031f470351b80a0f82e67999cd983a53b424ac62d4a82b8c8892a64c7a2",
+    "leviticus.json": "ccc94c272f4d2a3c4d415fe7fee3ce4d0ebb5441d285ad235258f23892d3440b",
+    "luke.json": "c04178231dd52cdb3c20e31286dfabe781a8fe9e858d5cdb1ed640930e5b3315",
+    "malachi.json": "3be4537d3561468597fd70e7236ca8aa9da19853c8b9dd9e94d40aae673b1910",
+    "mark.json": "2df3de09f90ba6c4609c87a194702a8c1dea856b1135412dd3ce90016dab560e",
+    "matthew.json": "177664c8c360910329590696f1e94ca79a1ae44d2ebae2a2b623eedc5de80920",
+    "micah.json": "f443ba826ef7a6253836f3b509564a23befef69de5515803c9fce78f584a011e",
+    "nahum.json": "6cd737cf608d888ac8f42f312d78b837f9ff2da7973cc464f1fdf7e800adb571",
+    "nehemiah.json": "86ad628770c1b9cab5dd9ab2757d1abdb5f6eaad4855cfce740958475d9a03d4",
+    "numbers.json": "1f17eab924496c1763ab582d712d914750f128efd4783165e14d6fa0066ef97d",
+    "obadiah.json": "d9a7fdea8ffdc443e87b05ca9cf8b724421cc707db4fecc365a347a85b4b1fb5",
+    "philemon.json": "95b1a30c4ae631431252d1bec3a962288b3b28a85c033a822d7ba4202efa04db",
+    "philippians.json": "e8f868427d225570878c0eae05e24887dba27089f24b0f88e67320ba90472ccf",
+    "proverbs.json": "38d6d8484e76dd989e0aa93abfd6ba339426c2bf932572f002f4c0b38bfa1d6e",
+    "psalms.json": "d9ac30134f32fa2fbb34d79a254dfeee4b263dcb92d57d870f99afb048a14acb",
+    "revelation.json": "7ec33945d39a2e16d4e90b150b11207887b6bfb2a63323204e9f550777f4aa1b",
+    "romans.json": "83af22e1b8faec8893e4bd47beabf9616a8e7a22aa5dbb520c96036cf284a5e7",
+    "ruth.json": "9744659ceaaf7ad98887e8d268a984afb22bfd9e17964ba96041f21fa232b20d",
+    "song-of-solomon.json": "87669db26be621de6fedd985ad217cbf3c2fd2b288de9afba061a687a89705fb",
+    "titus.json": "a8b0fbafefebf3d4364225f9583db508ed76776a12a833214ef666b809008316",
+    "zechariah.json": "7a4a6d81a38c11ff5a276ccdf1bf15bd57092f4de924f61427a0ce5583de25cd",
+    "zephaniah.json": "bd068efc1963d5b3c860c4de3232f6c067f708b95a0f6b9cf368bddfa2679376"
+  },
+  "languages": {
+    "en": {
+      "edgeCount": 838,
+      "sources": {
+        "reviewed": 16,
+        "wordnet-derivations": 825
+      }
+    },
+    "ru": {
+      "edgeCount": 6986,
+      "sources": {
+        "derivbase-confirmed-by-wiktionary": 615,
+        "reviewed": 120,
+        "wiktionary-direct": 6645
+      }
+    },
+    "uk": {
+      "edgeCount": 4111,
+      "sources": {
+        "reviewed": 32,
+        "ukrainian-wiktionary-editorial": 939,
+        "wiktionary-direct": 3334
+      }
+    }
+  },
+  "schema": 1,
+  "sha256": "63a556225246a955d73544ab389fb11d2305e0492c7f2323c0425232d697989f",
+  "tokenizers": {
+    "app/utils/bibleSearch/words.ts": "e37e50c9b93bf5dbb03f5b8e46e5b42b10aad95a134fd8612b4693be7355f38b",
+    "app/utils/bibleText.ts": "baa66be73a3fd90a2d83328c74d0c1349ef7f0c735dbd78839d82095fa1a41b2"
+  }
+}

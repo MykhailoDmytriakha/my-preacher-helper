@@ -31,17 +31,24 @@ const scope = (raw: string) => {
 // BUG-20261027-search-book-name-that-is-a-word: the existing UI action needs positive word evidence.
 describe('exact book names with a word meaning', () => {
   it.each([
-    ['Рим Павел', 'Romans', 1, 5],
-    ['Иоанн крест', 'John', 14, 33],
-    ['Иуда предал', 'Jude', 0, 7],
-  ])('keeps the book and offers the word meaning of %s', (raw, bookId, bookCount, wordCount) => {
-    const reading = choose(String(raw));
+    ['Рим Павел', 'Romans', 1, 3, { book: 'Acts', chapter: 19, verse: 21 }],
+    ['Иоанн крест', 'John', 4, 0, { book: 'Matthew', chapter: 3, verse: 1 }],
+    ['Иуда предал', 'Jude', 0, 5, { book: 'Matthew', chapter: 10, verse: 4 }],
+  ] as const)('keeps the book and offers the word meaning of %s', (raw, bookId, bookOwn, wordOwn, wordHit) => {
+    const reading = choose(raw);
     expect(reading.reading.kind).toBe('search');
-    expect(scope(String(raw))).toMatchObject({ kind: 'book', bookId, chapter: null, wordLike: true });
-    expect(reading.answer?.hits).toHaveLength(Number(bookCount));
-    const words = choose(String(raw), true);
+    expect(scope(raw)).toMatchObject({ kind: 'book', bookId, chapter: null, wordLike: true });
+    expect(reading.answer?.kin?.own ?? reading.answer?.hits.length).toBe(bookOwn);
+    expect(reading.answer?.hits.every((hit) => hit.book === bookId)).toBe(true);
+    const words = choose(raw, true);
     expect(words.reading.kind === 'search' && words.reading.query.scope).toBeNull();
-    expect(words.answer?.hits).toHaveLength(Number(wordCount));
+    expect(words.answer?.kin?.own ?? words.answer?.hits.length).toBe(wordOwn);
+    expect(words.answer?.hits).toContainEqual(expect.objectContaining(wordHit));
+  });
+
+  it('recognizes the Baptist and the irregular verb form in the cross family', () => {
+    expect(choose('Иоанн крест', true).answer?.kin?.forms).toContain('креститель');
+    expect(choose('Иоанн крест').answer?.kin?.forms).toContain('крещу');
   });
 
   it('decorates the final reading after correcting the keyboard layout', () => {

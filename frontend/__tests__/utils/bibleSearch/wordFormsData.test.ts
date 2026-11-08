@@ -5,6 +5,8 @@ import path from 'node:path';
 import sources from '@/utils/bibleSearch/wordFormsData/sources.json';
 import assets from '@/utils/bibleSearch/wordFormsData/assets.json';
 import shortNouns from '@/utils/bibleSearch/wordFormsData/shortNouns.json';
+import families from '@/utils/bibleSearch/wordFormsData/families.json';
+import familySources from '@/utils/bibleSearch/wordFormsData/familySources.json';
 
 const root = path.resolve(__dirname, '../../../..');
 const sha = (relative: string) => createHash('sha256').update(fs.readFileSync(path.join(root, relative))).digest('hex');
@@ -54,5 +56,37 @@ describe('the generated lexical data follows the current Bible text and normaliz
     expect(data.language).toBe(language);
     expect(asset.entries).toBe(data.entries.length);
     expect(asset.paradigms).toBe(data.paradigms.length);
+  });
+});
+
+
+describe('the generated word-family index follows its lexemes and Bible editions', () => {
+  it('matches its recorded data, tokenizers, and King James corpus', () => {
+    expect(families.schema).toBe(1);
+    expect(sha('frontend/app/utils/bibleSearch/wordFormsData/families.json')).toBe(familySources.sha256);
+    for (const [file, hash] of Object.entries(familySources.tokenizers)) {
+      expect(sha(`frontend/${file}`)).toBe(hash);
+    }
+    const directory = 'frontend/public/bible-text/kjv/v1';
+    const files = fs.readdirSync(path.join(root, directory)).filter(file => file.endsWith('.json')).sort();
+    expect(Object.keys(familySources.kjvBooks).sort()).toEqual(files);
+    for (const [file, hash] of Object.entries(familySources.kjvBooks)) {
+      expect(sha(`${directory}/${file}`)).toBe(hash);
+    }
+  });
+
+  it('binds every undirected edge to one valid pair of lexemes', () => {
+    for (const language of ['ru', 'uk'] as const) {
+      expect(families[language].wordFormsSha256).toBe(assets.languages[language].sha256);
+    }
+    for (const language of ['ru', 'uk', 'en'] as const) {
+      const edges = families[language].edges;
+      const count = language === 'en' ? families.en.lexemes.length : assets.languages[language].entries;
+      expect(edges).toHaveLength(familySources.languages[language].edgeCount);
+      expect(edges.every(([from, to]) =>
+        Number.isInteger(from) && Number.isInteger(to) && from >= 0 && from < to && to < count)).toBe(true);
+      expect(new Set(edges.map(([from, to]) => `${from}:${to}`)).size).toBe(edges.length);
+    }
+    expect(new Set(families.en.lexemes).size).toBe(families.en.lexemes.length);
   });
 });

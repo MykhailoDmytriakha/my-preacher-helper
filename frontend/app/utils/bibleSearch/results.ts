@@ -2,7 +2,7 @@ import { getLocalizedAbbrev } from '@/utils/bibleBooks';
 
 import { matchingPhraseForms, type SearchPhrase } from './phrases';
 import { matchersOf, partBooks, type BookGroups, type SearchQuery, type SearchScope } from './query';
-import { hasLexicalLemma } from './wordFormLexicon';
+import { familyMatcher } from './wordFamilies';
 import { matcherOf, matchesSurface, withoutEnding, type SearchLanguage, type WordMatcher } from './wordForms';
 import { piecesOfText, wordsOfText } from './words';
 
@@ -32,7 +32,7 @@ export type SearchAnswer = {
   /** The words searched as beginnings: the Bible has none of them whole («оде» while «одежда» is typed). */
   begun: string[];
   /**
-   * The words of the same stem, after the word's own forms: the first `own` hits hold the word itself, the rest only
+   * The words of the same lexical family, after the word's own forms: the first `own` hits hold the word itself, the rest only
    * its kin («свет» — «светильник», «светлый»); `forms` are those kin words, the commonest first. Null — none searched.
    */
   kin: { own: number; forms: string[] } | null;
@@ -97,70 +97,22 @@ function matchersIn(index: BibleSearchIndex, query: SearchQuery): { matchers: Wo
       const base = withoutEnding(own.term, query.language);
       if (base !== own.term && index.knows(exactly(base))) related = matcherOf(base, query.language);
     }
-    const kin = withKin(related, query.language) ?? related;
     const known = beginning !== null && index.knows(related);
     if (beginning && (index.knows(beginning) || !known)) {
       begun.push(own.term);
       matchers.push(beginning);
-      widened.push(known ? eitherOf(beginning, kin) : beginning);
+      widened.push(known ? eitherOf(beginning, related) : beginning);
     } else {
       matchers.push(own);
-      widened.push(kin);
+      widened.push(withKin(own, query.language) ?? own);
     }
   }
   return { matchers, widened, begun };
 }
 
-/**
- * The stems whose kin are searched with a word. From four letters, any word the stem begins: «свет» finds «светильник»
- * and «светлый». Three letters begin other words too often — «гор» begins «город» (479 verses), «вер» «верблюд» and
- * «верх», «бог» «богатство», «мол» «молоко» — so their kin are only the words a word-forming suffix makes of them:
- * a verb's or its noun's «-и-», «-у-», «-ь-» («суд» — «судить», «судилище», «судья»; «род» — «родила»; «вера» —
- * «верующий»), «-ост-» («милость», «радости»), «-ен-» («верен»), «-ов-», «-евн-» («духовный», «душевный»), «-ес-»
- * («небо» — «небесный»), «-н-», «-ьн-», «-ск-», «-ств-» («мирный», «сильный», «царство»). Chosen on the Synodal text, 2026-10-27, after the owner's
- * «дух», «душ» and «суд»: a vowel «-о-», «-а-», «-е-» brings mostly other words, «-ев-» alone «верёвки»; the few the
- * chosen ones let in — «левиты» for «лев», «весьма» for «весь», «делить» for «дело» — come after the word's own verses.
- * English keeps to four letters.
- */
-const KIN_STEM_LETTERS = 4;
-const SHORT_STEM_LETTERS = 3;
-const SHORT_STEM_SUFFIXES: Readonly<Record<SearchLanguage, readonly string[]>> = {
-  ru: ['и', 'у', 'ь', 'ост', 'ен', 'ов', 'евн', 'ес', 'н', 'ск', 'ств'],
-  uk: ['и', 'і', 'у', 'ь', 'іст', 'ен', 'ов', 'евн', 'ес', 'н', 'ськ', 'ств'],
-  en: [],
-};
-
-/**
- * The stem a word's kin begin with: the word without its ending and a last vowel or soft sign — «слава» → «слав»,
- * «светом» → «свет» like «свет» (Codex review, 2026-10-27: «Прит светом» lost the kin «Прит свет» finds); null — too short.
- */
-export function stemOf(term: string, language: SearchLanguage): string | null {
-  const stem = withoutEnding(term, language).replace(/[аеёиоуыэюяьйіїєъaeiouy]$/u, '');
-  return stem.length >= SHORT_STEM_LETTERS && /^\p{L}+$/u.test(stem) ? stem : null;
-}
-
-/** The words of a stem: any it begins, or for a short one those a word-forming suffix makes; null — none searched. */
-function kinOf(stem: string, language: SearchLanguage): WordMatcher | null {
-  if (stem.length >= KIN_STEM_LETTERS) return matcherOf(`${stem}*`, language);
-  const suffixes = SHORT_STEM_SUFFIXES[language];
-  if (!suffixes.length) return null;
-  const hasSuffix = (word: string) => word.startsWith(stem) && suffixes.some((suffix) => word.startsWith(suffix, stem.length));
-  return {
-    term: stem, pattern: false, tooShort: false, key: `s:${language}:${stem}`,
-    test: (word) => {
-      if (!word.startsWith(stem)) return false;
-      if (hasSuffix(word)) return true;
-      // A related verb keeps its conjugated forms even when the derivational suffix is no longer visible.
-      return language !== 'en' && hasLexicalLemma(word, language, hasSuffix);
-    },
-  };
-}
-
-/** The word in its forms or any word of its stem (the owner, 2026-10-27: «Прит свет» did not find «светильник»). */
 function withKin(own: WordMatcher, language: SearchLanguage): WordMatcher | null {
-  const stem = own.pattern ? null : stemOf(own.lemma ?? own.term, language);
-  const kin = stem ? kinOf(stem, language) : null;
-  return kin ? { ...eitherOf(own, kin), key: `k:${own.key}|${kin.key}` } : null;
+  const kin = familyMatcher(own, language);
+  return kin ? eitherOf(own, kin) : null;
 }
 
 /** The forms found, the commonest first — read from the first verses: enough to name them, and «Господь»

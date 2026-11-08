@@ -3,11 +3,17 @@ import { fetchWordFormData } from './wordFormData';
 
 const LOOKUPS_KEPT = 128;
 
+// The Synodal text retains this instrumental spelling in Acts 15:11 and other verses.
+const PRINTED_VARIANTS: Readonly<Partial<Record<Language, ReadonlyMap<string, string>>>> = {
+  ru: new Map([['благодатию', 'благодатью']]),
+};
+
 /** Verified complete word forms, stored as shared suffix sets rather than repeated full words. */
 class WordFormLexicon {
   private readonly suffixes: string[][];
   private readonly suffixSets: Set<string>[];
   private readonly byStem = new Map<string, number[]>();
+  private readonly byLemma = new Map<string, number>();
   private readonly stemLengths: number[];
   private readonly lookups = new Map<string, readonly number[]>();
   private readonly maxWordLength: number;
@@ -18,7 +24,8 @@ class WordFormLexicon {
     const longestSuffix = this.suffixes.map((values) => values.reduce((length, value) => Math.max(length, value.length), 0));
     const lengths = new Set<number>();
     let longest = 0;
-    data.entries.forEach(([, stem, paradigm], id) => {
+    data.entries.forEach(([lemma, stem, paradigm], id) => {
+      this.byLemma.set(lemma, id);
       const entries = this.byStem.get(stem);
       if (entries) entries.push(id);
       else this.byStem.set(stem, [id]);
@@ -31,37 +38,45 @@ class WordFormLexicon {
 
   identities(word: string): readonly number[] {
     // A pasted long line must not cause quadratic prefix work or enter the lookup cache.
-    if (word.length > this.maxWordLength) return [];
-    const kept = this.lookups.get(word);
+    const spelling = PRINTED_VARIANTS[this.data.language]?.get(word) ?? word;
+    if (spelling.length > this.maxWordLength) return [];
+    const kept = this.lookups.get(spelling);
     if (kept) return kept;
     const identities: number[] = [];
     for (const length of this.stemLengths) {
-      if (length > word.length) break;
-      const entries = this.byStem.get(word.slice(0, length));
+      if (length > spelling.length) break;
+      const entries = this.byStem.get(spelling.slice(0, length));
       if (!entries) continue;
-      const ending = word.slice(length);
+      const ending = spelling.slice(length);
       for (const id of entries) {
         if (this.suffixSets[this.data.entries[id][2]].has(ending)) identities.push(id);
       }
     }
     identities.sort((left, right) => left - right);
-    this.lookups.set(word, identities);
+    this.lookups.set(spelling, identities);
     if (this.lookups.size > LOOKUPS_KEPT) this.lookups.delete(this.lookups.keys().next().value as string);
     return identities;
   }
 
-  hasLemma(word: string, accepts: (lemma: string) => boolean): boolean {
-    return this.identities(word).some((id) => accepts(this.data.entries[id][0]));
+  lexemeId(lemma: string): number | undefined {
+    return this.byLemma.get(lemma);
+  }
+
+  formsOfLexeme(id: number): string[] {
+    const entry = this.data.entries[id];
+    if (!entry) return [];
+    const [, stem, paradigm] = entry;
+    const forms = this.suffixes[paradigm].map(ending => stem + ending);
+    for (const [printed, standard] of PRINTED_VARIANTS[this.data.language] ?? []) {
+      if (forms.includes(standard)) forms.push(printed);
+    }
+    return forms;
   }
 
   forms(word: string): { key: string; words: ReadonlySet<string> } | null {
     const identities = this.identities(word);
     if (!identities.length) return null;
-    const words = new Set<string>();
-    for (const id of identities) {
-      const [, stem, paradigm] = this.data.entries[id];
-      for (const ending of this.suffixes[paradigm]) words.add(stem + ending);
-    }
+    const words = new Set(identities.flatMap(id => this.formsOfLexeme(id)));
     return { key: `l:${this.data.language}:${identities.join('|')}`, words };
   }
 }
@@ -102,5 +117,6 @@ export const lexicalFormsOf = (word: string, language: Language): { key: string;
 /** Unknown names may keep regular endings, but must not claim a known word of another identity. */
 export const isLexicalWord = (word: string, language: Language): boolean => lexicon(language).identities(word).length > 0;
 
-/** A separate kin rule may inspect the real lemma of a spelling without guessing a new form. */
-export const hasLexicalLemma = (word: string, language: Language, accepts: (lemma: string) => boolean): boolean => lexicon(language).hasLemma(word, accepts);
+export const lexicalIdsOf = (word: string, language: Language): readonly number[] => lexicon(language).identities(word);
+export const lexemeIdOf = (lemma: string, language: Language): number | undefined => lexicon(language).lexemeId(lemma);
+export const formsOfLexeme = (id: number, language: Language): string[] => lexicon(language).formsOfLexeme(id);

@@ -51,7 +51,8 @@ describe('a line whose first letters may be books', () => {
     expect(peter.answer?.hits.length).toBeGreaterThan(50);
     const matthew = choose('Мф иисус сказал');
     expect(matthew.reading.kind === 'search' && matthew.reading.query.scope).toMatchObject({ kind: 'book', bookId: 'Matthew' });
-    expect(matthew.answer?.hits).toHaveLength(75);
+    expect(matthew.answer?.kin?.own ?? matthew.answer?.hits.length).toBe(75);
+    expect(matthew.answer?.hits.every((hit) => hit.book === 'Matthew')).toBe(true);
     for (const line of ['Иисус', 'Иисус в', 'Иисус в лодк']) expect(choose(line).reading.kind).toBe('search');
   });
 
