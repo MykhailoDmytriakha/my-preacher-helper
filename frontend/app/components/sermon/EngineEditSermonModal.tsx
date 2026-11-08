@@ -11,7 +11,7 @@ import { newClientId } from '@/utils/clientId';
 import { useTranslation } from '@locales/useTranslation';
 
 import SermonFormDialog from './SermonFormDialog';
-import { SERMON_METADATA_SELECTION, sermonMetadataDateId, sermonMetadataPatch } from './sermonMetadataForm';
+import { SERMON_METADATA_SELECTION, sermonMetadataDateId, sermonMetadataForSave, sermonMetadataPatch } from './sermonMetadataForm';
 
 import type { SermonFormValues } from './SermonFormDialog';
 import type { Church, Sermon } from '@/models/models';
@@ -35,11 +35,12 @@ export function EngineEditSermonModal({ sermonId, onClose }: { sermonId: string;
   const initial = form.initialData as unknown as Sermon | null, value = form.data as unknown as Sermon | null;
   const plannedId = sermonMetadataDateId(initial, value, newDate.id, new Date(newDate.createdAt));
   const plannedDate = value?.preachDates?.find(date => date.id === plannedId);
+  const openingRow = initial?.preachDates?.find(row => row.id === plannedId);
+  const unspecifiedChurch = t('calendar.unspecifiedChurch');
   const change = (patch: Partial<SermonFormValues>) => {
     if ('seriesId' in patch) void series.change(patch.seriesId ?? '').catch(() => undefined);
     if (Object.keys(patch).some(key => key !== 'seriesId')) void form.update(current => sermonMetadataPatch(current, patch,
-      plannedId, newDate.createdAt, t('calendar.unspecifiedChurch'),
-      Boolean(initial?.preachDates?.some(row => row.id === plannedId)))).catch(() => undefined);
+      plannedId, newDate.createdAt, unspecifiedChurch, openingRow)).catch(() => undefined);
   };
   const save = async () => {
     if (saving || form.busy || !form.active || !form.durable || form.status?.phase === 'deleted') return;
@@ -48,7 +49,7 @@ export function EngineEditSermonModal({ sermonId, onClose }: { sermonId: string;
     try {
       // Membership keeps its own immutable identity if the metadata capture needs a retry.
       await series.save();
-      await form.save(current => ({ ...current, title: String(current.title).trim(), verse: String(current.verse).trim() }), metadataAction);
+      await form.save(current => sermonMetadataForSave(current, plannedId, openingRow, unspecifiedChurch), metadataAction);
       onClose();
     } catch { /* Both public owners retain input and publish their own failure. */ }
     finally { setSaving(false); }

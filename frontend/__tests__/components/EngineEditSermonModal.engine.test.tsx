@@ -8,20 +8,26 @@ import { DataEngineProvider } from '@/data-engine/react.client';
 import { settleEngine } from '../../test-utils/documentEngineHarness';
 import { membershipEngineHarness } from '../../test-utils/membershipEngineHarness';
 import type { ResourceSnapshot } from '@/data-engine/types';
+import type { PreachDate } from '@/models/models';
 
 jest.mock('@/providers/AuthProvider', () => ({ useAuth: () => ({ user: { uid: 'owner' } }) }));
 jest.mock('@/data-engine/browser.client', () => ({ createBrowserDataEngine: jest.fn() }));
 jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
-jest.mock('@/components/church/ChurchField', () => ({ __esModule: true, default: () => null }));
+jest.mock('@/hooks/useUserChurches', () => ({
+  useUserChurches: () => ({ availableChurches: [mockOtherChurch] }),
+}));
 jest.mock('@/components/ui/DatePickerField', () => ({ __esModule: true, default: ({ value, onChange }: { value: string; onChange: (value: string) => void }) =>
   <input aria-label="Planned date" value={value} onChange={event => onChange(event.target.value)} /> }));
 const resource = { collection: 'sermons', id: 'sermon' };
 const church = { id: 'church', name: 'Named church' };
+const mockOtherChurch = { id: 'other-church', name: 'Other chapel', city: 'Other city' };
+const unspecifiedChurch = { id: 'church-unspecified', name: 'Unspecified', city: '' };
+const originalDates = [
+  { id: 'first', date: '2099-10-03', status: 'planned', church, createdAt: 'now' },
+  { id: 'second', date: '2099-10-04', status: 'planned', church, createdAt: 'now' },
+];
 const original: ResourceSnapshot = { resource, metadata: { protocol: 1, generation: 'g', revision: 1, deleted: false },
-  value: { userId: 'owner', title: 'Opening', verse: 'Romans 1', date: '2026-09-19', thoughts: [], preachDates: [
-    { id: 'first', date: '2099-10-03', status: 'planned', church, createdAt: 'now' },
-    { id: 'second', date: '2099-10-04', status: 'planned', church, createdAt: 'now' },
-  ] } };
+  value: { userId: 'owner', title: 'Opening', verse: 'Romans 1', date: '2026-09-19', thoughts: [], preachDates: originalDates } };
 function setup(snapshot = original) {
   const harness = membershipEngineHarness([snapshot]);
   jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
@@ -55,6 +61,49 @@ it('pins the actual document, keeps the selected date identity across reorder an
   expect(harness.read(resource).value).toMatchObject({ title: 'Edited', preachDates: [
     { id: 'first', date: '2099-10-09' }, { id: 'second', date: '2099-10-04' },
   ] });
+  view.unmount();
+});
+
+it.each([
+  { scenario: 'an existing unnamed date', openingChurch: unspecifiedChurch, expected: mockOtherChurch },
+  { scenario: 'a newly staged date', openingChurch: undefined, expected: mockOtherChurch },
+  { scenario: 'an explicitly named date', openingChurch: church, expected: church },
+])('stores the final choice for $scenario without touching other dates', async ({ openingChurch, expected }) => {
+  const { harness, view } = setup({ ...original, value: { ...original.value!, preachDates: [
+    ...(openingChurch ? [{ ...originalDates[0], church: openingChurch, notes: 'Keep this note' }] : []),
+    { ...originalDates[1], status: 'preached' },
+  ] } });
+  await ready();
+  const picker = screen.getByRole('combobox', { name: 'calendar.church' });
+  fireEvent.change(picker, { target: { value: 'O' } });
+  if (!openingChurch) fireEvent.change(screen.getByLabelText('Planned date'), { target: { value: '2099-10-03' } });
+  fireEvent.pointerDown(await screen.findByRole('option', { name: /Other chapel/ }));
+  expect(picker).toHaveValue('Other chapel');
+  expect(harness.transport.send).not.toHaveBeenCalled();
+  await save();
+  await act(async () => { await harness.engine.retry(); await settleEngine(); });
+  expect(harness.transport.send).toHaveBeenCalledTimes(1);
+  expect(harness.read(resource).value).toMatchObject({ church: mockOtherChurch });
+  const stored = harness.read(resource).value?.preachDates as unknown as PreachDate[];
+  const date = stored.find(row => row.date === '2099-10-03');
+  expect(date?.church).toEqual(expected);
+  if (openingChurch) expect(date).toMatchObject({ id: 'first', notes: 'Keep this note', createdAt: 'now' });
+  expect(stored.find(row => row.id === 'second')).toEqual({ ...originalDates[1], status: 'preached' });
+  view.unmount();
+});
+
+it('keeps an unnamed date unnamed after typing and clearing the church before Save', async () => {
+  const unnamed = { ...originalDates[0], church: unspecifiedChurch, notes: 'Keep this note' };
+  const { harness, view } = setup({ ...original, value: { ...original.value!, preachDates: [unnamed, originalDates[1]] } });
+  const title = await ready();
+  const picker = screen.getByRole('combobox', { name: 'calendar.church' });
+  fireEvent.change(picker, { target: { value: 'O' } });
+  fireEvent.change(picker, { target: { value: '' } });
+  fireEvent.change(title, { target: { value: 'Only title changed' } });
+  await save();
+  await act(async () => { await harness.engine.retry(); await settleEngine(); });
+  expect(harness.read(resource).value).toMatchObject({ title: 'Only title changed', preachDates: [unnamed, originalDates[1]] });
+  expect(harness.read(resource).value).not.toHaveProperty('church');
   view.unmount();
 });
 
