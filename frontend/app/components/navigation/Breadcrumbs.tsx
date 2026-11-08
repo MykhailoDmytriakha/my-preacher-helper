@@ -4,7 +4,6 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useMemo } from 'react';
 
-import { useGroupRead } from '@/hooks/useGroupRead';
 import { usePrayerDetail } from '@/hooks/usePrayerDetail';
 import { useSeriesRead } from '@/hooks/useSeriesRead';
 import { useSermonRead } from '@/hooks/useSermonRead';
@@ -185,7 +184,6 @@ type TranslateFn = (key: string, options?: { defaultValue?: string }) => string;
 
 type SermonData = ReturnType<typeof useSermonRead>['sermon'];
 type SeriesData = ReturnType<typeof useSeriesRead>['series'];
-type GroupData = ReturnType<typeof useGroupRead>['group'];
 type PrayerData = ReturnType<typeof usePrayerDetail>['prayer'];
 
 const shouldSkipRootSegment = (segment: string, index: number) =>
@@ -199,7 +197,7 @@ type BuildSegmentCrumbParams = {
   t: TranslateFn;
   sermon: SermonData;
   series: SeriesData;
-  group: GroupData;
+  groupTitle: string | null;
   prayer: PrayerData;
   serviceOrder: { title: string } | undefined;
   councilTitle: string | null;
@@ -208,7 +206,7 @@ type BuildSegmentCrumbParams = {
 type DetailLabelContext = {
   sermon: SermonData;
   series: SeriesData;
-  group: GroupData;
+  groupTitle: string | null;
   prayer: PrayerData;
   serviceOrder: { title: string } | undefined;
   councilTitle: string | null;
@@ -219,7 +217,7 @@ type DetailLabelResolver = (context: DetailLabelContext) => string | null;
 const detailLabelResolvers: Record<string, DetailLabelResolver> = {
   sermons: ({ sermon }) => sermon?.title || null,
   series: ({ series }) => (series ? series.title || `Series ${series.id.slice(-4)}` : null),
-  groups: ({ group }) => group?.title || null,
+  groups: ({ groupTitle }) => groupTitle,
   prayers: ({ prayer }) => prayer?.title || null,
   orders: ({ serviceOrder }) => serviceOrder?.title || null,
   council: ({ councilTitle }) => councilTitle,
@@ -257,7 +255,7 @@ const buildSegmentCrumb = ({
   t,
   sermon,
   series,
-  group,
+  groupTitle,
   prayer,
   serviceOrder,
   councilTitle,
@@ -273,7 +271,7 @@ const buildSegmentCrumb = ({
   }
 
   if (parent) {
-    const detailLabel = resolveDetailLabel(parent, t, { sermon, series, group, prayer, serviceOrder, councilTitle });
+    const detailLabel = resolveDetailLabel(parent, t, { sermon, series, groupTitle, prayer, serviceOrder, councilTitle });
     if (detailLabel) {
       return buildCrumb(detailLabel, isLast, currentPath);
     }
@@ -344,8 +342,7 @@ export default function Breadcrumbs({ forceShow = false }: { forceShow?: boolean
     ? { ...(storedSeries ?? { id: seriesId }), title: shownSeriesTitle } as SeriesData
     : storedSeries), [storedSeries, seriesId, shownSeriesTitle]);
 
-  // Get group data if we have groupId
-  const { group } = useGroupRead(groupId || '');
+  const groupTitle = useShellTitle('groups', groupId);
 
   // Get prayer data if we have prayerId
   const { prayer } = usePrayerDetail(prayerId || '');
@@ -440,7 +437,7 @@ export default function Breadcrumbs({ forceShow = false }: { forceShow?: boolean
 
       const isLast = index === segments.length - 1;
       const parent = segments[index - 1];
-      crumbs.push(buildSegmentCrumb({ segment, parent, currentPath, isLast, t, sermon, series, group, prayer, serviceOrder, councilTitle }));
+      crumbs.push(buildSegmentCrumb({ segment, parent, currentPath, isLast, t, sermon, series, groupTitle, prayer, serviceOrder, councilTitle }));
     });
 
     /**
@@ -498,13 +495,13 @@ export default function Breadcrumbs({ forceShow = false }: { forceShow?: boolean
       sermonId,
       sermonTitle: sermon?.title,
       groupId,
-      groupTitle: group?.title,
+      groupTitle,
       itemsLength: crumbs.length,
       items: JSON.stringify(crumbs)
     });
 
     return crumbs.length > 1 ? crumbs : [];
-  }, [pathname, searchParams, sermon, sermonId, series, group, groupId, prayer, serviceOrder, councilTitle, shouldHide, t]);
+  }, [pathname, searchParams, sermon, sermonId, series, groupTitle, groupId, prayer, serviceOrder, councilTitle, shouldHide, t]);
 
   if (shouldHide) {
     return null;

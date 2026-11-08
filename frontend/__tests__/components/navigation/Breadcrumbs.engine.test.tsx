@@ -9,6 +9,8 @@ import { ShellTitlesProvider, usePublishShellTitle } from '@/components/navigati
 import { useDataDocument } from '@/data-engine/react.client';
 import { useCouncilDataDocument } from '@/hooks/useCouncilDataDocument';
 import { useCouncilsRead } from '@/hooks/useCouncilsRead';
+import { useGroupDataDocument } from '@/hooks/useGroupDataDocument';
+import { useGroupsDataCollection } from '@/hooks/useGroupsDataCollection';
 
 // BUG-20261004-breadcrumb-keeps-old-sermon-title: on the data engine the page renders and writes the
 // engine copy, while the breadcrumbs read the collection copy — a renamed sermon or series kept its old
@@ -28,6 +30,7 @@ jest.mock('@/hooks/useSeriesRead', () => ({
 }));
 jest.mock('@/hooks/useServiceOrders', () => ({ useServiceOrders: () => ({ orders: [] }) }));
 jest.mock('@/hooks/useCouncilsRead', () => ({ useCouncilsRead: jest.fn(() => ({ councils: [], loading: false, error: null, refresh: jest.fn() })) }));
+jest.mock('@/hooks/useGroupsDataCollection', () => ({ useGroupsDataCollection: jest.fn(() => ({ groups: [], loading: false, error: null })) }));
 jest.mock('@/hooks/usePrayerDetail', () => ({ usePrayerDetail: () => ({ prayer: null }) }));
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string, options?: { defaultValue?: string }) => options?.defaultValue ?? key }),
@@ -133,4 +136,35 @@ it.each([
   rerender(<ShellTitlesProvider><Breadcrumbs /></ShellTitlesProvider>);
   expect(trail().getByText('Council')).toBeInTheDocument();
   expect(trail().queryByText('Title of the recovered draft')).not.toBeInTheDocument();
+});
+
+
+it.each([
+  ['/groups/group-1', false],
+  ['/groups/group-1/conduct', true],
+] as const)('names the group version held by the open screen on %s', (path, readOnly) => {
+  function GroupHolder() {
+    const { group } = useGroupDataDocument('group-1');
+    return <span data-testid="open-group-title">{group?.title}</span>;
+  }
+
+  jest.mocked(usePathname).mockReturnValue(path);
+  (useGroupsDataCollection as jest.Mock).mockReturnValue({ groups: [{ id: 'group-1', title: 'Stored group title' }], loading: false, error: null });
+  const show = (title: string) => {
+    (useDataDocument as jest.Mock).mockReturnValue({ ...engineDocument(title), readOnly, status: null });
+    return <ShellTitlesProvider><Breadcrumbs /><GroupHolder /></ShellTitlesProvider>;
+  };
+  const { rerender } = render(show('First group draft'));
+  const trail = within(screen.getByTestId('breadcrumbs'));
+  expect(screen.getByTestId('open-group-title')).toHaveTextContent('First group draft');
+  expect(trail.getByText('First group draft')).toBeInTheDocument();
+
+  rerender(show('Recovered group draft'));
+  expect(screen.getByTestId('open-group-title')).toHaveTextContent('Recovered group draft');
+  expect(trail.getByText('Recovered group draft')).toBeInTheDocument();
+  expect(trail.queryByText('Stored group title')).not.toBeInTheDocument();
+
+  rerender(<ShellTitlesProvider><Breadcrumbs /></ShellTitlesProvider>);
+  expect(trail.getByText('Group')).toBeInTheDocument();
+  expect(trail.queryByText('Recovered group draft')).not.toBeInTheDocument();
 });

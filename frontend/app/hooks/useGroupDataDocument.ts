@@ -2,6 +2,7 @@
 
 import { useCallback, useMemo } from 'react';
 
+import { usePublishShellTitle } from '@/components/navigation/shellTitles';
 import { useDataDocument, useRecoveryDiscovery } from '@/data-engine/react.client';
 import { newClientId } from '@/utils/clientId';
 import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
@@ -15,6 +16,7 @@ export function useGroupDataDocument(groupId: string) {
   const document = useDataDocument({ collection: 'groups', id: groupId }, { slot: 'group' });
   const group = useMemo(() => document.data
     ? hydrateGroup({ ...document.data, id: groupId } as unknown as Group) : null, [document.data, groupId]);
+  usePublishShellTitle('groups', groupId, group);
   const update = useCallback(async (mutate: (current: Group) => Group) => {
     await document.update(current => {
       if (!current) throw new Error('The group is not available for editing');
