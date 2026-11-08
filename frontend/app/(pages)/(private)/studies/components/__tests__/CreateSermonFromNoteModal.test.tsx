@@ -73,6 +73,7 @@ const mockOutline = fetchNoteCutOutline as jest.Mock;
 /** What the outline route answers for a note that fits in one request. */
 const oneSliceOutline = {
   noteId: 'n1',
+  sourceVersion: 'test-source',
   words: 6300,
   totalSections: 13,
   sections: [],
@@ -212,7 +213,7 @@ describe('CreateSermonFromNoteModal', () => {
     expect(mockPush).toHaveBeenCalledWith(`/sermons/${mintedId}?mode=raw`);
     expect(mockCreateResources).toEqual([{ collection: 'sermons', id: mintedId }]);
 
-    expect(mockCut).toHaveBeenCalledWith('n1', { offset: 0, limit: 13, words: 6300 });
+    expect(mockCut).toHaveBeenCalledWith('n1', { offset: 0, limit: 13, words: 6300, sourceVersion: 'test-source' });
     expect(mockCreate).toHaveBeenCalledTimes(1);
     expect(mockCreate.mock.calls[0][0]).toEqual(
       expect.objectContaining({
@@ -371,9 +372,9 @@ describe('CreateSermonFromNoteModal', () => {
 
     // Each slice is one request, asked for by section window, in reading order.
     expect(mockCut.mock.calls.map((call) => call[1])).toEqual([
-      { offset: 0, limit: 5, words: 2400 },
-      { offset: 5, limit: 4, words: 1900 },
-      { offset: 9, limit: 4, words: 2000 },
+      { offset: 0, limit: 5, words: 2400, sourceVersion: 'test-source' },
+      { offset: 5, limit: 4, words: 1900, sourceVersion: 'test-source' },
+      { offset: 9, limit: 4, words: 2000, sourceVersion: 'test-source' },
     ]);
     expect(screen.getByTestId('create-sermon-step-cut:1')).toHaveTextContent(
       'studiesWorkspace.createSermon.steps.cutSlice:{"from":6,"to":9,"total":13}'
@@ -411,6 +412,43 @@ describe('CreateSermonFromNoteModal', () => {
     // The outline is read once — the plan does not change because a slice failed.
     expect(mockOutline).toHaveBeenCalledTimes(1);
     expect(mockCreate.mock.calls[0][0].scratch).toEqual([atoms[0], atoms[1]]);
+  });
+
+  it('restarts an edited note from its new outline without carrying over old cards or losing typed fields', async () => {
+    const user = userEvent.setup();
+    const revised = { ...atoms[1], text: 'Карточка из обновлённой заметки' };
+    mockOutline.mockResolvedValueOnce({
+      ...oneSliceOutline,
+      sourceVersion: 'old-source',
+      slices: [{ offset: 0, limit: 7, words: 3000 }, { offset: 7, limit: 6, words: 3000 }],
+    }).mockResolvedValueOnce({ ...oneSliceOutline, sourceVersion: 'new-source' });
+    mockCut
+      .mockResolvedValueOnce({ ...cutAnswer, notes: [atoms[0]] })
+      .mockRejectedValueOnce(Object.assign(new CutStudyNoteError('The study note changed', 409), { code: 'cut-source-changed' }))
+      .mockResolvedValueOnce({ ...cutAnswer, notes: [revised] });
+
+    renderModal();
+    await user.clear(titleInput());
+    await user.type(titleInput(), 'Моя тема');
+    await user.clear(verseInput());
+    await user.type(verseInput(), 'Ин 15:5');
+    await user.click(createButton());
+
+    const restart = await screen.findByRole('button', { name: 'studiesWorkspace.createSermon.restartCut' });
+    expect(mockCreate).not.toHaveBeenCalled();
+    expect(screen.getByTestId('create-sermon-step-plan')).toHaveTextContent('studiesWorkspace.createSermon.errors.sourceChanged');
+    expect(titleInput()).toHaveValue('Моя тема');
+    expect(verseInput()).toHaveValue('Ин 15:5');
+    await user.click(restart);
+
+    await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
+    expect(mockOutline).toHaveBeenCalledTimes(2);
+    expect(mockCut.mock.calls.map((call) => [call[1].offset, call[1].sourceVersion])).toEqual([
+      [0, 'old-source'], [7, 'old-source'], [0, 'new-source'],
+    ]);
+    expect(mockCreate.mock.calls[0][0]).toEqual(expect.objectContaining({
+      title: 'Моя тема', verse: 'Ин 15:5', scratch: [revised],
+    }));
   });
 
   it('a note that cannot even be read says so, and costs no AI call', async () => {

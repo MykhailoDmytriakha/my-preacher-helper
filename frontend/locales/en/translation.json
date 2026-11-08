@@ -3792,6 +3792,7 @@
       "cancel": "Cancel",
       "close": "Close",
       "retry": "Try again",
+      "restartCut": "Start again",
       "openScratch": "Open the scratch notes",
       "doneHint": "The sermon is already in your list and linked to the note. Open the scratch notes or close this window.",
       "steps": {
@@ -3807,6 +3808,7 @@
         "offline": "You need to be online: the server picks out the key thoughts.",
         "empty": "The note has no text.",
         "planFailed": "The note could not be read. Try again.",
+        "sourceChanged": "The note changed while its key thoughts were being picked out. Start again to use the updated note.",
         "titleRequired": "A sermon title is required.",
         "verseRequired": "A Scripture reference is required.",
         "cutFailed": "Could not pick out the key thoughts. Try again.",

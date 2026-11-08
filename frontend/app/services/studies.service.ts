@@ -118,6 +118,7 @@ export interface CutStudyNoteResponse {
 /** The plan of a cut, read from the stored note without calling a model. */
 export interface NoteCutOutline {
   noteId: string;
+  sourceVersion: string;
   words: number;
   totalSections: number;
   sections: Array<{ index: number; heading: string; words: number }>;
@@ -156,7 +157,11 @@ export async function fetchNoteCutOutline(noteId: string): Promise<NoteCutOutlin
   if (!body || slices.length === 0) {
     throw new CutStudyNoteError('The note has nothing to cut', 400);
   }
+  if (typeof body.sourceVersion !== 'string' || !body.sourceVersion) {
+    throw new CutStudyNoteError('The cut outline did not include a source version', 502);
+  }
   return {
+    sourceVersion: body.sourceVersion,
     noteId: typeof body.noteId === 'string' && body.noteId ? body.noteId : noteId,
     words: typeof body.words === 'number' ? body.words : 0,
     totalSections: typeof body.totalSections === 'number' ? body.totalSections : slices.length,
@@ -186,7 +191,7 @@ export class CutStudyNoteError extends Error {
  */
 export async function cutStudyNoteIntoScratch(
   noteId: string,
-  slice?: { offset: number; limit: number }
+  slice?: { offset: number; limit: number; sourceVersion: string }
 ): Promise<CutStudyNoteResponse> {
   const ownerId = resolveOwnerUid();
   const authHeaders = await getAuthenticatedRequestHeaders(ownerId ?? null);

@@ -30,6 +30,7 @@ import { newClientId } from '@/utils/clientId';
 import { isKnownOffline } from '@/utils/connectivity';
 import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
 import { measureNoteForCut, WORDS_PER_CLAIM_HIGH, WORDS_PER_CLAIM_LOW } from '@/utils/noteCutCorridor';
+import { CUT_SOURCE_CHANGED } from '@/utils/noteCutSource';
 import { formatScriptureReference } from '@/utils/scriptureReference';
 import { NEUTRAL_CAPTION, NOTE_TO_SERMON_COLORS } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
@@ -74,6 +75,7 @@ import type { AppLocale } from '@/utils/appLocale';
  */
 const PLAN_STEP = 'plan';
 const CREATE_STEP = 'create';
+const SOURCE_CHANGED_ERROR = 'studiesWorkspace.createSermon.errors.sourceChanged';
 const cutStepId = (index: number) => `cut:${index}`;
 type StepStatus = 'pending' | 'running' | 'done' | 'error';
 
@@ -378,6 +380,7 @@ export default function CreateSermonFromNoteModal({
   const errorWordsFor = (step: string, cause: unknown): FailureWords => {
     if (cause instanceof VerseMissingAfterCutError) return { key: 'studiesWorkspace.createSermon.errors.verseRequired' };
     if (cause instanceof CutStudyNoteError) {
+      if (cause.code === CUT_SOURCE_CHANGED) return { key: SOURCE_CHANGED_ERROR };
       if (cause.usageCap) return { key: 'studiesWorkspace.createSermon.errors.usageCap' };
       if (cause.status === 400) return { key: 'studiesWorkspace.createSermon.errors.empty' };
       if (cause.status === 413) return { key: 'studiesWorkspace.createSermon.errors.noteTooLong', values: { limit: String(MAX_CUT_WORDS_THOUSANDS) } };
@@ -435,7 +438,10 @@ export default function CreateSermonFromNoteModal({
           continue;
         }
         setStep(current, 'running');
-        const answer = await cutStudyNoteIntoScratch(noteId, plan.slices[index]);
+        const answer = await cutStudyNoteIntoScratch(noteId, {
+          ...plan.slices[index],
+          sourceVersion: plan.sourceVersion,
+        });
         if (!aliveRef.current) return;
         results[index] = answer;
         sliceResultsRef.current = results;
@@ -480,7 +486,16 @@ export default function CreateSermonFromNoteModal({
       setPhase('done');
     } catch (cause) {
       if (!aliveRef.current) return;
-      console.error('CreateSermonFromNote: step failed', current, cause);
+      if (current !== CREATE_STEP && cause instanceof CutStudyNoteError && cause.code === CUT_SOURCE_CHANGED) {
+        outlineRef.current = null;
+        sliceResultsRef.current = [];
+        setOutline(null);
+        setSliceResults([]);
+        setSteps({});
+        current = PLAN_STEP;
+      } else {
+        console.error('CreateSermonFromNote: step failed', current, cause);
+      }
       setStep(current, 'error');
       setError(errorWordsFor(current, cause));
       setPhase('error');
@@ -745,7 +760,9 @@ export default function CreateSermonFromNoteModal({
                   onClick={() => void run()}
                   className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${NOTE_TO_SERMON_COLORS.primaryButton}`}
                 >
-                  {t('studiesWorkspace.createSermon.retry')}
+                  {t(error && 'key' in error && error.key === SOURCE_CHANGED_ERROR
+                    ? 'studiesWorkspace.createSermon.restartCut'
+                    : 'studiesWorkspace.createSermon.retry')}
                 </button>
               )}
               {done && (

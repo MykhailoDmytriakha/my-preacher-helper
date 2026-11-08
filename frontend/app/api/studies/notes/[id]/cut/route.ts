@@ -1,6 +1,6 @@
 import 'openai/shims/node';
 
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
 import { NextResponse } from 'next/server';
 
@@ -11,8 +11,9 @@ import { StoreUnavailableError, storeUnavailableResponse, withStore } from '@/se
 import { isUsageCapReachedError } from '@/services/usageLimits';
 import { AI_RESULT_UNAVAILABLE } from '@/utils/aiResultOperation';
 import { requestLanguage } from '@/utils/appLocale';
+import { serializeContent } from '@/utils/contentFingerprint';
 import { expectedScratchCountCorridor } from '@/utils/noteCutCorridor';
-import { collectNoteHeadings, groundKeyPassage, MAX_CUT_CHARS, normalizeHeading } from '@/utils/noteCutSource';
+import { collectNoteHeadings, CUT_SOURCE_CHANGED, groundKeyPassage, MAX_CUT_CHARS, normalizeHeading } from '@/utils/noteCutSource';
 import { planNoteCutSlices, sectionsText, sliceSections, splitNoteIntoSections } from '@/utils/noteSections';
 import { formatScriptureReference } from '@/utils/scriptureReference';
 import { RouteDeadlineError, withinDeadline } from '@/utils/withinDeadline';
@@ -41,7 +42,8 @@ import type { ScratchNote, ScriptureReference } from '@/models/models';
  * CUT IN SLICES, NOT IN ONE BREATH. `GET` answers with the note's outline — its sections
  * and the slices they will be cut in — and costs nothing: no model is called. `POST` then
  * cuts one slice `[offset, offset + limit)` per request, the browser driving them in
- * order. This is the same shape the audio route uses for the same wall.
+ * order. Each slice must still match the version in the outline so that a sermon
+ * can never combine cards from two saved versions of the note.
  *
  * Why: the whole manuscript in one call ran 36.2s against the 60s function ceiling
  * (`vercel.json`), which left no room to retry a transient provider failure — and one
@@ -120,25 +122,40 @@ async function loadOwnedNote(
     };
   }
 
-  const content = note.content ?? '';
+  return { id, uid, note, content: note.content ?? '' };
+}
+
+function invalidCutContent(content: string): NextResponse | null {
   if (!content.trim()) {
-    return { refusal: NextResponse.json({ success: false, error: 'The note has no text to cut' }, { status: 400 }) };
+    return NextResponse.json({ success: false, error: 'The note has no text to cut' }, { status: 400 });
   }
   if (content.length > MAX_CUT_CHARS) {
-    return {
-      refusal: NextResponse.json(
-        { success: false, error: 'The note is too long to cut in one go', limit: MAX_CUT_CHARS, length: content.length },
-        { status: 413 }
-      ),
-    };
+    return NextResponse.json(
+      { success: false, error: 'The note is too long to cut in one go', limit: MAX_CUT_CHARS, length: content.length },
+      { status: 413 },
+    );
   }
+  return null;
+}
 
-  return { id, uid, note, content };
+function cutSource(id: string, note: OwnedNote, content: string) {
+  const scriptureRefs = (note.scriptureRefs ?? []).map(formatRefForPrompt);
+  const inputs = ['cut', id, content, note.title, scriptureRefs];
+  const version = createHash('sha256').update(serializeContent(inputs)).digest('hex');
+  return { scriptureRefs, inputs, version };
+}
+
+function cutSourceChanged() {
+  return NextResponse.json(
+    { success: false, code: CUT_SOURCE_CHANGED, error: 'The note no longer matches the cut outline. Read its outline again.' },
+    { status: 409 },
+  );
 }
 
 export interface CutNoteOutlineBody {
   success: true;
   noteId: string;
+  sourceVersion: string;
   words: number;
   totalSections: number;
   sections: { index: number; heading: string; words: number }[];
@@ -151,18 +168,21 @@ export interface CutNoteOutlineBody {
  *
  * The browser needs to know how many requests the cut will take BEFORE it starts, so the
  * person sees the whole list of steps rather than a spinner that might mean anything. It
- * is read from the STORED note, the same text the cut itself will read, so the plan and
- * the work can never be about two different versions.
+ * includes the version of the saved input. The POST checks that version against
+ * the same snapshot it will read for the model.
  */
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const loaded = await loadOwnedNote(request, params);
     if ('refusal' in loaded) return loaded.refusal;
 
+    const invalid = invalidCutContent(loaded.content);
+    if (invalid) return invalid;
     const sections = splitNoteIntoSections(loaded.content);
     const body: CutNoteOutlineBody = {
       success: true,
       noteId: loaded.id,
+      sourceVersion: cutSource(loaded.id, loaded.note, loaded.content).version,
       words: sections.reduce((sum, section) => sum + section.words, 0),
       totalSections: sections.length,
       sections: sections.map(({ index, heading, words }) => ({ index, heading, words })),
@@ -178,17 +198,18 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 }
 
 /** The slice the caller asked for; absent or unusable values mean the whole note. */
-async function readSliceWindow(request: Request): Promise<{ offset: number; limit?: number }> {
+async function readSliceWindow(request: Request): Promise<{ offset: number; limit?: number; sourceVersion?: string }> {
   let body: unknown = null;
   try {
     body = await request.json();
   } catch {
     body = null;
   }
-  const record = (body ?? {}) as { offset?: unknown; limit?: unknown };
+  const record = (body ?? {}) as { offset?: unknown; limit?: unknown; sourceVersion?: unknown };
   const offset = Number.isInteger(record.offset) ? Math.max(0, record.offset as number) : 0;
   const limit = Number.isInteger(record.limit) && (record.limit as number) > 0 ? (record.limit as number) : undefined;
-  return { offset, limit };
+  const sourceVersion = typeof record.sourceVersion === 'string' ? record.sourceVersion : undefined;
+  return { offset, limit, sourceVersion };
 }
 
 const cutTimedOut = (operationEnded = false) =>
@@ -208,8 +229,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if ('refusal' in loaded) return loaded.refusal;
     const { id, uid, note, content } = loaded;
 
+    const { offset, limit, sourceVersion } = await beforeDeadline(() => readSliceWindow(request), 'while reading the request');
+    const source = cutSource(id, note, content);
+    if (sourceVersion !== undefined && sourceVersion !== source.version) return cutSourceChanged();
+    const invalid = invalidCutContent(content);
+    if (invalid) return invalid;
+
     const allSections = splitNoteIntoSections(content);
-    const { offset, limit } = await beforeDeadline(() => readSliceWindow(request), 'while reading the request');
     const slice = sliceSections(allSections, offset, limit);
     if (slice.length === 0) {
       return NextResponse.json(
@@ -218,18 +244,24 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       );
     }
 
-    const sliceContent = sectionsText(slice);
     const isPartial = slice.length < allSections.length;
-    const scriptureRefs = (note.scriptureRefs ?? []).map(formatRefForPrompt);
+    // An older client may still cut a whole note in one call. It cannot safely resume an unversioned slice.
+    if (isPartial && sourceVersion === undefined) {
+      return NextResponse.json(
+        { success: false, code: 'cut-source-version-required', error: 'Refresh the app before cutting a note in several parts.' },
+        { status: 409 },
+      );
+    }
+    const sliceContent = sectionsText(slice);
     const { operationId, recovery } = aiResultRecoveryForRequest(request, {
       ownerId: uid,
-      source: ['cut', id, content, note.title, scriptureRefs, offset, limit],
+      source: [...source.inputs, offset, limit],
       deadline: startedAt + AI_RESULT_RESPONSE_BUDGET_MS,
     });
     const result = await cutStudyNoteIntoScratch({
       content: sliceContent,
       title: note.title,
-      scriptureRefs,
+      scriptureRefs: source.scriptureRefs,
       userId: uid,
       recovery,
       slice: isPartial

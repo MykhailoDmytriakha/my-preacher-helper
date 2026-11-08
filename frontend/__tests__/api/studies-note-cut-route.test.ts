@@ -349,7 +349,9 @@ describe('POST — cutting one slice of the note', () => {
   });
 
   it('hands the model only the sections asked for, and says which part of the note they are', async () => {
-    const response = await POST(request({ offset: 1, limit: 1 }), params('note-1'));
+    const outline = await (await GET(request(), params('note-1'))).json();
+    expect(outline.sourceVersion).toMatch(/^[0-9a-f]{64}$/);
+    const response = await POST(request({ offset: 1, limit: 1, sourceVersion: outline.sourceVersion }), params('note-1'));
     const body = await response.json();
 
     const passed = mockCut.mock.calls[0][0];
@@ -361,6 +363,44 @@ describe('POST — cutting one slice of the note', () => {
     expect(body.totalSections).toBe(2);
     expect(body.offset).toBe(1);
     expect(body.limit).toBe(1);
+  });
+
+  it.each([
+    { content: ownNote.content.replace('Связка.', 'Замена.') },
+    { content: '' },
+    { title: 'Новое название' },
+    { scriptureRefs: [{ ...ownNote.scriptureRefs[0], fromVerse: 10 }] },
+  ])('refuses the next slice before calling the model when the cut source changes (%j)', async (edit) => {
+    const outline = await (await GET(request(), params('note-1'))).json();
+    const first = await POST(request({ offset: 0, limit: 1, sourceVersion: outline.sourceVersion }), params('note-1'));
+    expect(first.status).toBe(200);
+    mockGetNote.mockResolvedValue({ ...ownNote, ...edit });
+
+    const resumed = await POST(request({ offset: 1, limit: 1, sourceVersion: outline.sourceVersion }), params('note-1'));
+
+    expect(resumed.status).toBe(409);
+    await expect(resumed.json()).resolves.toMatchObject({ code: 'cut-source-changed' });
+    expect(mockCut).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the same version across changes unrelated to cutting', async () => {
+    const original = await (await GET(request(), params('note-1'))).json();
+    mockGetNote.mockResolvedValue({ ...ownNote, tags: ['new tag'], updatedAt: '2026-11-08' });
+    const edited = await (await GET(request(), params('note-1'))).json();
+    expect(edited.sourceVersion).toBe(original.sourceVersion);
+
+    const resumed = await POST(request({ offset: 1, limit: 1, sourceVersion: original.sourceVersion }), params('note-1'));
+
+    expect(resumed.status).toBe(200);
+    expect(mockCut).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses a partial cut without the version from its outline', async () => {
+    const response = await POST(request({ offset: 1, limit: 1 }), params('note-1'));
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({ code: 'cut-source-version-required' });
+    expect(mockCut).not.toHaveBeenCalled();
   });
 
   it('cuts the whole note when no slice is asked for, and says nothing about excerpts', async () => {

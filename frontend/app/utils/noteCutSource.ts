@@ -2,6 +2,7 @@ import { uniqueHeadingLookup } from '@/utils/headingLookup';
 import { markdownHeadingRanges } from '@/utils/markdownHeadings';
 
 export const MAX_CUT_CHARS = 60_000;
+export const CUT_SOURCE_CHANGED = 'cut-source-changed';
 
 export const normalizeHeading = (value: string) => value.replace(/\s+/g, ' ').trim().toLowerCase();
 
