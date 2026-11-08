@@ -1,4 +1,4 @@
-when: open an analysis outside the reader · AnalysisEditor in Studies · analysis door · its other home · В Библии · Все разборы · перекрёсток разбора · analysis tab · analyses tab · open analysis in Studies · analysis opens in the note editor · analysis on another Bible · разбор в изучениях · вкладка разборы · открыть разбор не в Библии · разбор открылся как заметка
+when: open an analysis outside the reader · AnalysisEditor in Studies · analysis door · its other home · В Библии · Все разборы · перекрёсток разбора · analysis tab · analyses tab · open analysis in Studies · analysis opens in the note editor · analysis on another Bible · разбор в изучениях · вкладка разборы · открыть разбор не в Библии · разбор открылся как заметка · analysis on a phone · AnalysisPhone · AnalysisPhoneBar · usePhoneAnalysis · capsule ‹ › · bar hides on scroll · разбор на телефоне · шапка разбора · отступ слева в разборе · сообщение разбора не видно
 
 # Open a passage's analysis outside the reader
 
@@ -18,6 +18,16 @@ An analysis lives in two places: its passage in the Bible and the list of all an
 - Over Studies' list: `{ home: 'bible', href: () => analysisPassageHref(note, { locale, from: <the address at the press> }) }` — the passage lit, the reader's way back named «← Разбор» (`wayBackKind` sees `analysis=` in a Studies address).
 - Over the reader: `{ home: 'analyses', href: analysesListHref }` — `/studies?tab=analyses&at=<id>`; Studies brings that card into sight, lights it for a moment and takes `at` out of the address at once (`useListArrival`).
 - A door goes to the place, it does not move the screen: `onOpenScreen` after `note.flush()`, the screen closes with the page, and its step in history stays — Back from the other home reopens the analysis where it was. The address is asked at the press (`href(note.noteId())`): the mode written in place by then, a new analysis's note once it has one.
+
+## On a phone (the owner's canvas «Шапка разбора на телефоне», 07.11, variant 4)
+
+Below 768 px the editor takes its phone form, one module for all of it: `AnalysisPhone.tsx` (`usePhoneAnalysis` reads the width on the first paint, so a phone never shows the wide bar first).
+- **Bar:** ← (only in «Просмотр») · the place (pressed — `onEditVerses`) · ⋯ · «Править»/«Готово». On a phone «Готово» returns to «Просмотр»; only ← closes. The bar lies over the text and leaves while it is scrolled down in «Просмотр» (`useBarOnScroll`), back on any scroll up or near the top; in «Правка» and with ⋯ open it stays.
+- **⋯** is a bottom sheet with its own modal layer (Escape, Back close it first): «Все связи», `AnalysisSermonsPanel`, the `door`, «Изменить стихи» — what the wide bar and side panel hold.
+- **No margin:** the 80 px left padding (`pl-20`) exists for the step arrows and a hung verse number; on a phone the verse number stands in the line (`AnalysisLine hangNumbers={false}`) and ‹ › of the line touched are in `AnalysisEditCapsule` at the bottom, with undo. A press of any pointer points a word there (`setPointed`), since nothing hovers.
+- **No marks' tools:** `useAnalysisMarks({ paints: false })` — the marks are shown, nothing paints, even with a tool in hand from the reader.
+- **What the analysis says** (`message`) stands in the side panel from 1024 px; below it `useSaidOverText` shows it over the text and clears it after 5 s — iPad upright included (BUG-20261107-analysis-messages-hidden-below-lg).
+- Tests: `__tests__/components/bible/analysisPhone.test.tsx` (a `matchMedia` stub that answers `min-width` and `max-width`). Live: `.cases/2026-11-06-comment-paragraph/stand/phone-accept.cjs`, `wide-check.cjs`, `sim-analysis.mjs` (iPhone Safari); a synthetic `PointerEvent` from JS throws in `setPointerCapture` — drive presses with real touches (CDP), not `dispatchEvent`.
 
 ## Doors
 

@@ -405,3 +405,17 @@ export function tieArrows(state: AnalysisState, geometry: Geometry, lit: (start:
   }));
   return out;
 }
+
+/** How far a tie's upright keeps from the text's left edge, at least. */
+const MARGIN_CLEAR = 6;
+
+/**
+ * The left room the text needs: `base` — the screen's own margin (80 px on a wide screen for the arrows ‹ › and a hung verse
+ * number; 20 px on a phone, which keeps neither there) — or more, as far as the farthest tie's upright reaches left of the
+ * lines, each further tie a lane further (Codex, 07.11: eleven ties to one line ran 3 px past a phone's edge). The arrows'
+ * places are inside the text, so the room a margin gives them does not move them: no loop between the two.
+ */
+export function textMargin(arrows: readonly Arrow[], base: number): number {
+  const farthest = Math.min(0, ...arrows.flatMap((arrow) => (arrow.points ?? []).map(([x]) => x)));
+  return Math.max(base, Math.ceil(MARGIN_CLEAR - farthest));
+}

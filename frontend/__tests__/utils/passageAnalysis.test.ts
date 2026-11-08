@@ -83,10 +83,30 @@ describe('passageAnalysis — the rules of a block diagram', () => {
     const down = stepDown(state, at('Апостол'), total)!;
     expect([at('волею'), at('Апостол'), at('Иисуса')].map((part) => partNumbers(down).get(part))).toEqual(['1.1', '1.1.1', '1.1.1.1']);
     expect(partStarts(down).filter((part) => needsArrow(down, part))).toEqual([]);
-    // Nowhere to go: «Павел,» hangs on nothing and has no line above; «волею Божиею» has no line above on its step.
+    // Nowhere to go: «Павел,» hangs on nothing; «волею Божиею» has no line above on its step.
     expect(stepUp(state, 0, total)).toBeNull();
-    expect(stepDown(state, 0, total)).toBeNull();
     expect(stepDown(state, at('волею'), total)).toBeNull();
+  });
+
+  // The owner, 2026-11-07: on the first line «Ибо» both arrows stood pale — «стрелки всех строк будут вести себя одинаково».
+  it('steps the first line down under the line after it, which takes its place, as its dot dropped on that line does', () => {
+    const state = ownersExample(); // 1 «Павел,» · 1.1 «волею Божиею» · 1.2 «Апостол» · 1.2.1 «Иисуса Христа,»
+    const down = stepDown(state, 0, total)!;
+    expect(down).not.toBeNull();
+    // «волею Божиею» hung on «Павел,»: it rises to the top, and «Павел,» hangs on it, one step under, by an arrow.
+    expect(holderOf(down, at('волею'))).toBeNull();
+    expect(holderOf(down, 0)).toBe(at('волею'));
+    expect(depthOf(down, 0)).toBe(1);
+    expect(needsArrow(down, 0)).toBe(true);
+    // What hung on «Павел,» goes along with it; and now it can step back up.
+    expect(holderOf(down, at('Апостол'))).toBe(0);
+    expect(stepUp(down, 0, total)).not.toBeNull();
+    // A next line standing on its own stays where it is; the first line hangs on it.
+    const neighbours = cutAt(EMPTY_ANALYSIS, at('волею'), total, 'same')!;
+    const under = stepDown(neighbours, 0, total)!;
+    expect([holderOf(under, 0), holderOf(under, at('волею'))]).toEqual([at('волею'), null]);
+    // A passage of one line has nothing to step under.
+    expect(stepDown(EMPTY_ANALYSIS, 0, total)).toBeNull();
   });
 
   it('leaves a neighbour where it hangs when the part above it steps up, and the arrow says so', () => {

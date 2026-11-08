@@ -33,7 +33,11 @@ const HOLD_MS = 3_000;
  * verse, and one made in the verse is here. The words are elements of their own, so they are painted by classes
  * (`markPaint.ts`), not by the browser's highlights. A stroke let go stays shown until its save arrives, as in the reader.
  */
-export function useAnalysisMarks({ source, words }: { source: AnalysisMarks | null; words: readonly AnalysisWord[] }) {
+export function useAnalysisMarks({ source, words, paints = true }: {
+  source: AnalysisMarks | null; words: readonly AnalysisWord[];
+  /** False on a phone: the marks are shown, but no tool is offered and none paints (the owner, 2026-11-07: «их не будет»). */
+  paints?: boolean;
+}) {
   const tool = useMarkTool();
   const [stroke, setStroke] = useState<Stroke | null>(null);
   const [held, setHeld] = useState<MarksChange[]>([]);
@@ -56,7 +60,7 @@ export function useAnalysisMarks({ source, words }: { source: AnalysisMarks | nu
   const order = source?.order ?? null;
   const shown = stroke && order ? applyStroke(base, order, stroke.start, stroke.last, stroke.kind, stroke.erase) : base;
 
-  const painting = Boolean(source) && tool.inHand !== null;
+  const painting = paints && Boolean(source) && tool.inHand !== null;
   const placeOf = (index: number | null): WordAt | null => {
     const word = index === null ? undefined : words[index];
     return word ? { verse: `${word.chapter}:${word.verse}`, index: word.at } : null;
@@ -100,7 +104,7 @@ export function useAnalysisMarks({ source, words }: { source: AnalysisMarks | nu
     return { fill: on.color ? MARK_FILL_CLASS[on.color] : '', pencil: on.pencil ? PENCIL_LINE_CLASS[on.pencil] : '' };
   };
 
-  const toolbar: ReactNode = source ? <MarkToolbar tool={tool} /> : null;
+  const toolbar: ReactNode = source && paints ? <MarkToolbar tool={tool} /> : null;
   return {
     toolbar, painting, paintOf, strokeEvents,
     /** A finger with a tool in hand paints along a line and still scrolls up and down, as in the reader. */

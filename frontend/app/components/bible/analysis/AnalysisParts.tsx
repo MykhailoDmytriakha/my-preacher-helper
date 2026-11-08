@@ -317,8 +317,10 @@ function LineHandle({ start, left, top, drag, shown }: { start: number; left: nu
  * «Просмотр» (the owner, 2026-10-29): no number — ↵ ↳ over a word cut (a press on the word itself does not), a word held and dragged links it by meaning, the
  * dot held and dragged ties the line.
  */
-export function AnalysisLine({ start, depth, spacing, role, words, steps, drag, handle, flags, painting, pointed = null, onWord, onCut, onGlue, onHoverWord }: {
+export function AnalysisLine({ start, depth, spacing, role, words, steps, drag, handle, flags, painting, pointed = null, hangNumbers = true, onWord, onCut, onGlue, onHoverWord }: {
   start: number; depth: number; spacing?: AnalysisLineSpacing; role: LineRole; words: LineWord[]; steps: LineSteps | null; drag: WordDrag | null;
+  /** A verse number that opens the line hangs in the margin; false — it stands in the line (a phone keeps no margin). */
+  hangNumbers?: boolean;
   /**
    * The word touched where no pointer hovers — a finger, the Pencil: its marks, and its line's arrows and dot, stand as
    * under the mouse (BUG-20261104-analysis-edit-needs-hover).
@@ -339,7 +341,7 @@ export function AnalysisLine({ start, depth, spacing, role, words, steps, drag, 
   // Left of where the line starts — its first letter, or a verse number hung in the margin — the dot sits close, its centre
   // 9 px off, where the tie's arrow leaves; its ring under the pointer keeps 2 px from the letter. The arrows ‹ › stand left of it.
   const first = words[0]?.word;
-  const lead = first?.startsVerse ? 6 + String(first.verse).length * 7 : 0;
+  const lead = hangNumbers && first?.startsVerse ? 6 + String(first.verse).length * 7 : 0;
   const edge = pad + 6 - lead;
   const lineShown = pointed !== null && words.some((item) => item.index === pointed);
   return (
@@ -347,7 +349,7 @@ export function AnalysisLine({ start, depth, spacing, role, words, steps, drag, 
       {steps ? <StepPair steps={steps} left={edge - 66} top={10 + (spacing?.within ?? 0) / 2} shown={lineShown} /> : null}
       {handle ? <LineHandle start={start} left={edge - 17} top={15 + (spacing?.within ?? 0) / 2} shown={lineShown} drag={handle} /> : null}
       <span className={`rounded-lg px-1.5 py-0.5 font-serif text-[19px] [box-decoration-break:clone] ${drag || painting ? 'select-none' : ''} ${RING[role]}`} style={{ lineHeight: `${ANALYSIS_LINE_HEIGHT + (spacing?.within ?? 0)}px` }}>
-        {words.map((item) => <WordOfLine key={item.index} item={item} drag={drag} painting={painting} pointed={item.index === pointed} onWord={onWord} onCut={onCut} onGlue={onGlue} onHoverWord={onHoverWord} />)}
+        {words.map((item) => <WordOfLine key={item.index} item={item} drag={drag} painting={painting} pointed={item.index === pointed} hangNumber={hangNumbers} onWord={onWord} onCut={onCut} onGlue={onGlue} onHoverWord={onHoverWord} />)}
         {flags}
       </span>
     </div>
@@ -367,12 +369,12 @@ function WordMarks({ item, shown, onCut, onGlue }: { item: LineWord; shown: bool
 }
 
 /** A verse's number before the word that starts it; one that opens a line hangs in the margin left of it. */
-function VerseNumber({ item }: { item: LineWord }) {
+function VerseNumber({ item, hang }: { item: LineWord; hang: boolean }) {
   // Hung (the owner, 2026-10-29): taking room in the line it pushed the first letter right of the lines on its step,
-  // and the indent is what says the step.
+  // and the indent is what says the step. A phone keeps no margin for it (canvas, 2026-11-07): there it stands in the line.
   return (
     <sup data-lead={item.leads ? item.index : undefined}
-      className={`pr-0.5 font-sans text-[11px] font-bold text-indigo-500 ${item.leads ? 'pointer-events-none absolute right-full top-0 leading-none' : ''}`}>
+      className={`pr-0.5 font-sans text-[11px] font-bold text-indigo-500 ${item.leads && hang ? 'pointer-events-none absolute right-full top-0 leading-none' : ''}`}>
       {item.word.verse}
     </sup>
   );
@@ -380,8 +382,8 @@ function VerseNumber({ item }: { item: LineWord }) {
 
 const TARGET_LOOK = { yes: 'bg-indigo-100 ring-2 ring-indigo-500 dark:bg-indigo-900', no: 'bg-rose-100 dark:bg-rose-950' };
 
-function WordOfLine({ item, drag, painting, pointed, onWord, onCut, onGlue, onHoverWord }: {
-  item: LineWord; drag: WordDrag | null; painting?: boolean; pointed: boolean; onWord: (index: number) => void; onCut: (index: number, level: CutLevel) => void;
+function WordOfLine({ item, drag, painting, pointed, hangNumber = true, onWord, onCut, onGlue, onHoverWord }: {
+  item: LineWord; drag: WordDrag | null; painting?: boolean; pointed: boolean; hangNumber?: boolean; onWord: (index: number) => void; onCut: (index: number, level: CutLevel) => void;
   onGlue: (index: number) => void;
   onHoverWord?: (index: number | null) => void;
 }) {
@@ -399,7 +401,7 @@ function WordOfLine({ item, drag, painting, pointed, onWord, onCut, onGlue, onHo
   const hover = item.linked && onHoverWord ? { onMouseEnter: () => onHoverWord(item.index), onMouseLeave: () => onHoverWord(null) } : {};
   return (
     <span className={item.leads && item.word.startsVerse ? 'relative' : undefined}>
-      {item.word.startsVerse ? <VerseNumber item={item} /> : null}
+      {item.word.startsVerse ? <VerseNumber item={item} hang={hangNumber} /> : null}
       <span data-word={item.index} onClick={() => onWord(item.index)} {...hover}
         onPointerDown={held ? (event) => held.down(item.index, event) : undefined} onPointerMove={held?.move} onPointerUp={held?.up} onPointerCancel={held?.cancel}
         className={`group relative rounded ${look}`}>
