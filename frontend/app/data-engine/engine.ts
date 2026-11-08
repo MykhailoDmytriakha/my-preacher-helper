@@ -2320,9 +2320,9 @@ export class DataEngine {
           : action && 'rowId' in action && !('field' in action) ? action : undefined);
         if (updater) {
           const staged = scope.update(updater, fieldInput);
-          const saving = scope.save(dateInput, status, metadata?.titleTime);
+          const saving = scope.save(dateInput, status, metadata?.time);
           await Promise.all([staged, saving]);
-        } else await scope.save(dateInput, status, metadata?.titleTime);
+        } else await scope.save(dateInput, status, metadata?.time);
         if (!scope.getState().dirty) await scope.cancel();
       }),
       cancel: () => execute(async () => {

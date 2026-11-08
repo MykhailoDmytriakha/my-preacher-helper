@@ -73,6 +73,7 @@ interface SermonFormDialogProps {
   seriesDisabled?: boolean;
   seriesStatus?: React.ReactNode;
   titleHistory?: React.ReactNode;
+  verseHistory?: React.ReactNode;
   /** Omitted → no planned-date row at all (some create flows deliberately have none). */
   showPlannedDate?: boolean;
   /** Sits under the second group, in the caller's words. */
@@ -102,6 +103,7 @@ export default function SermonFormDialog({
   seriesDisabled = false,
   seriesStatus,
   titleHistory,
+  verseHistory,
   showPlannedDate = false,
   detailsHint,
   titleMaxRows = 4,
@@ -241,6 +243,7 @@ export default function SermonFormDialog({
               aria-required="true"
               aria-invalid={missingFieldRef.current === 'verse' || undefined}
             />
+            {verseHistory}
             {verseNote}
           </div>
         </div>

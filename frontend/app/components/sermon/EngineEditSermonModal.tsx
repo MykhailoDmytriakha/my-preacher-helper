@@ -54,6 +54,7 @@ export function EngineEditSermonModal({ sermonId, onClose }: { sermonId: string;
     finally { setSaving(false); }
   };
   const generation = form.openingGeneration;
+  const historyDisabled = saving || form.busy || !form.active || form.status?.phase === 'deleted';
   const cancel = async () => { await form.cancel(); await series.cancel(); onClose(); };
   return <SermonFormDialog heading={t('editSermon.editSermon')}
     values={{ title: value?.title ?? '', verse: value?.verse ?? '', church: value?.church as Church | undefined,
@@ -65,8 +66,11 @@ export function EngineEditSermonModal({ sermonId, onClose }: { sermonId: string;
     seriesOptions={series.options} seriesLoading={series.loading} seriesDisabled={series.disabled}
     detailsHint={t('editSermon.plannedDateHint')}
     titleHistory={owner && generation && <DocumentFieldHistory key={JSON.stringify([owner, sermonId, generation])}
-      current={value?.title ?? ''} disabled={saving || form.busy || !form.active || form.status?.phase === 'deleted'}
+      current={value?.title ?? ''} disabled={historyDisabled}
       session={{ owner, generation, sermonId, restore: title => form.update(current => ({ ...current, title })) }} />}
+    verseHistory={owner && generation && <DocumentFieldHistory key={JSON.stringify([owner, sermonId, generation, 'verse'])}
+      current={value?.verse ?? ''} disabled={historyDisabled}
+      session={{ owner, generation, sermonId, field: 'verse', restore: verse => form.update(current => ({ ...current, verse })) }} />}
     seriesStatus={<div className="space-y-3 p-4 empty:hidden">
       <DataSyncStatus subject={form.recoveryIdentity} status={form.status} error={form.error} errorWords={form.errorWords} onRetry={form.retry}
         onKeepLocal={form.keepLocal} onAcceptRemote={form.acceptRemote}

@@ -168,6 +168,19 @@ export function writtenInFor(raw: string, reference: ScriptureRefShape & { bible
   return !asRead || !namesAPlace(asRead) || !sameScriptureReference(asRead, reference) ? reference.bible : undefined;
 }
 
+/** An entire field naming one passage can be replaced as a unit. Quotes and lists cannot. */
+export function isStandaloneScriptureReference(value: string): boolean {
+  const text = value.trim().replace(/\.$/, '');
+  if (!text || text.length > 128 || /[,;\r\n]/.test(text)) return false;
+  const written = textLanguage(text);
+  return (['en', 'ru', 'uk'] as const).some(locale => {
+    if (!isReferenceShaped(text, locale, written)) return false;
+    const reference = typedReference(text, locale, written);
+    return reference !== null && namesAPlace(reference)
+      && (reference.toChapter === undefined || reference.toChapter >= (reference.chapter ?? 0));
+  });
+}
+
 /**
  * A reference kept as typed text — a block's passage, one typed into a note's field — read in the Bible
  * it was written in: its book's name, then the document's words (`written`), then the interface. Null

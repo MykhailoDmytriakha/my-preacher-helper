@@ -7433,3 +7433,11 @@ The pencil beside the title on a sermon page now captures the same explicit Save
 One regression went red to green. 449 tests in 11 suites, TypeScript, scoped lint and production-mode local build `UthVXeJmiGu0XT8ATxm7B` passed. Three native Chrome scenarios on guarded emulators covered both action orders between entrances and two pencil edits, plus history restore and reload. Visual evidence is in `artifacts/action-chronology-356/header-title-verified`.
 
 For authorized production acceptance, repeat the two orders on a disposable sermon with a pencil and the menu form, reopen history, restore, and reload. Close both profiles after checking the adjacent verse and dates.
+
+## BUG-20261016-engine-asks-instead-of-chronology · Sermon scripture reference
+
+Open a sermon and edit Scripture Verse using the pencil or Options and Edit. Explicit Save records the observed version and action time in either entrance. Known ordering can replace one valid standalone scripture reference and archive the displaced reference. Free text, quotes, lists, invalid ranges and uncertain order keep the conflict. The shared history stages a prior reference in the ordinary form until Save.
+
+Five original regressions went red to green. 662 tests in 21 suites, TypeScript, scoped lint and local production-mode build `rhvQOGGZ3GUHdy-penNnb` passed. Four Chrome scenarios on isolated emulators covered both action orders across the two entrances, history, restoration and reload. Two more showed that a prose draft survived reload and that an explicit choice before reload saved the full text. On the tested reload path neither the card nor the reopened form offered the choice, though the draft remained visible. Visual evidence is in `artifacts/action-chronology-356/sermon-verse-verified`. The general conflict display remains open under BUG-20261108-preach-date-conflict-hides-values.
+
+For authorized production acceptance, verify the deployed revision and worker. Repeat both orders on one disposable sermon using a single reference, open Scripture history, restore with Save and reload. Check the title and date and close the two profiles.

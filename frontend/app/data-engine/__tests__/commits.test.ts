@@ -153,12 +153,12 @@ describe('Durable commit requests', () => {
     const baseline = initial();
     const editor = new DataSession(baseline);
     editor.edit({ ...baseline.value, title: 'First local title' });
-    const first = (await queue.save('edit', editor.checkpoint(), { sermonTitleTime: null }))!;
+    const first = (await queue.save('edit', editor.checkpoint(), { sermonMetadataTime: null }))!;
     editor.edit({ ...baseline.value, title: 'First local title', verse: 'John 3:16' });
-    const verse = (await queue.save('edit', editor.checkpoint(), { predecessorId: first.id, sermonTitleTime: null }))!;
+    const verse = (await queue.save('edit', editor.checkpoint(), { predecessorId: first.id, sermonMetadataTime: null }))!;
     expect(verse.sermonTitleAction).toBeUndefined();
     editor.edit({ ...baseline.value, title: String(baseline.value?.title), verse: 'John 3:16' });
-    const second = (await queue.save('edit', editor.checkpoint(), { predecessorId: verse.id, sermonTitleTime: null }))!;
+    const second = (await queue.save('edit', editor.checkpoint(), { predecessorId: verse.id, sermonMetadataTime: null }))!;
     expect(second.sermonTitleAction).toEqual({ before: 'First local title', after: baseline.value?.title, time: null,
       observedRevision: 1, predecessorOperationId: first.id });
     await s.makeQueue().queue.drain(true);

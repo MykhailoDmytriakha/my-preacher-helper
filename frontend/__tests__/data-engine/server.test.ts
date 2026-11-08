@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { isCollectionServed } from '@/data-engine/activation';
-import { DataEngineServerError, listBibleMarkHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listSermonTitleHistory, listServiceOrderTitleHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
+import { DataEngineServerError, listBibleMarkHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listSermonTitleHistory, listSermonVerseHistory, listServiceOrderTitleHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
 import { collectionHeadId, HEADS_COLLECTION, sequenceId } from '@/data-engine/serverFeed';
 import { DataSession } from '@/data-engine/session';
 import type { DataCommand, ResourceSnapshot } from '@/data-engine/types';
@@ -1426,6 +1426,68 @@ describe('transactional DataEngine server', () => {
     });
     expect(await listGroupStatusHistory(base.owner, resource.id, 'seed')).toMatchObject({ entries: [{ status: 'active', winnerStatus: 'completed' }] });
     expect(await listGroupTitleHistory(base.owner, resource.id, 'seed')).toMatchObject({ entries: [{ title: 'Desk title', winnerTitle: 'Phone title' }] });
+  });
+
+  it.each([
+    { desk: 'Ephesians 2:8', phone: 'Romans 8:1', offset: 20, expected: 'Ephesians 2:8', archived: 'Romans 8:1' },
+    { desk: 'Ephesians 2:8', phone: 'Romans 8:1', offset: 80, expected: 'Romans 8:1', archived: 'Ephesians 2:8' },
+    { desk: 'Еф 2:8', phone: 'Рим 8:1–4', offset: 80, expected: 'Рим 8:1–4', archived: 'Еф 2:8' },
+    { desk: 'Ephesians 2:8', phone: 'Romans 8:1', offset: 45, expected: 'Ephesians 2:8', archived: null },
+    { desk: 'Ephesians 2:8', phone: 'Romans 8:1', offset: null, expected: 'Ephesians 2:8', archived: null },
+    { desk: 'Ephesians 2:8 — Keep this note', phone: 'Romans 8:1', offset: 80, expected: 'Ephesians 2:8 — Keep this note', archived: null },
+    { desk: 'Ephesians 2:8', phone: 'Romans 8:1; John 3:16', offset: 80, expected: 'Ephesians 2:8', archived: null },
+    { desk: 'Ephesians 2:8', phone: 'John 3-2', offset: 80, expected: 'Ephesians 2:8', archived: null },
+  ] as const)('orders a sermon passage only when the exact alternatives are standalone references ($desk / $phone / $offset)',
+    async ({ desk, phone, offset, expected, archived }) => {
+      const seed = create('sermon-verse-seed') as Extract<DataCommand, { kind: 'create' }>;
+      const original = { ...seed.value, title: 'Opening title', verse: 'John 3:16' };
+      expect((await processCommand('owner-1', { ...seed, value: original })).kind).toBe('acknowledged');
+      const edit = (id: string, verse: string, at: number | null) => ({
+        ...update(id, 'sermon-verse-seed'),
+        changes: [{ path: ['verse'], before: { exists: true, value: original.verse }, after: { exists: true, value: verse } }],
+        sermonVerseAction: { observedRevision: 1, time: at === null ? null : { earliestMs: 1_800_000_000_000 + at, latestMs: 1_800_000_000_010 + at } },
+      });
+      expect((await processCommand('owner-1', edit('desk', desk, 40))).kind).toBe('acknowledged');
+      const request = edit('phone', phone, offset);
+      const answer = await processCommand('owner-1', request);
+      expect(answer).toMatchObject({ kind: archived ? 'acknowledged' : 'conflict',
+        snapshot: { value: { verse: expected, title: original.title } } });
+      if (!archived) expect(answer).toMatchObject({ conflicts: [{ path: ['verse'] }] });
+      const history = () => [...documents.entries()].filter(([path]) => path.startsWith('sermons/sermon-1/_verseHistory/'));
+      expect(history()).toHaveLength(archived ? 1 : 0);
+      if (archived) {
+        expect(history()[0][1]).toMatchObject({ verse: archived, winnerVerse: expected, generation: 'sermon-verse-seed' });
+        expect(await listSermonVerseHistory('owner-1', resource.id, 'sermon-verse-seed')).toMatchObject({
+          owner: 'owner-1', sermonId: resource.id, entries: [{ verse: archived, winnerVerse: expected }],
+        });
+        await expect(listSermonVerseHistory('other-owner', resource.id, 'sermon-verse-seed')).rejects.toMatchObject({ status: 403 });
+        await expect(listSermonVerseHistory('owner-1', resource.id, 'old-generation')).rejects.toMatchObject({ status: 404 });
+        expect(await processCommand('owner-1', request)).toEqual(answer);
+        expect(history()).toHaveLength(1);
+      }
+    });
+
+  it('retains competing free text after a remote return to the opening passage', async () => {
+    const seed = create('sermon-verse-return') as Extract<DataCommand, { kind: 'create' }>;
+    const verse = 'John 3:16';
+    const quote = 'Ephesians 2:8 — ' + 'A note from preparation. '.repeat(300);
+    expect((await processCommand('owner-1', { ...seed, value: { ...seed.value, verse } })).kind).toBe('acknowledged');
+    const edit = (id: string, before: string, after: string, observedRevision: number, offset: number) =>
+      processCommand('owner-1', { ...update(id, 'sermon-verse-return'),
+        changes: [{ path: ['verse'], before: { exists: true, value: before }, after: { exists: true, value: after } }],
+        sermonVerseAction: { observedRevision, time: { earliestMs: 1_800_000_000_000 + offset, latestMs: 1_800_000_000_001 + offset } },
+      });
+    expect((await edit('desk-first', verse, quote, 1, 40)).kind).toBe('acknowledged');
+    const metadata = documents.get('sermons/sermon-1')?._dataEngine;
+    expect(metadata).toMatchObject({ sermonVerse: { digest: expect.stringMatching(/^[a-zA-Z0-9_-]{43}$/) } });
+    expect(JSON.stringify(metadata)).not.toContain(quote);
+    expect((await edit('desk-return', quote, verse, 2, 60)).kind).toBe('acknowledged');
+    const phone = 'Romans 8:1 — My other note';
+    expect(await edit('late-phone', verse, phone, 1, 80)).toMatchObject({
+      kind: 'conflict', snapshot: { value: { verse } },
+      conflicts: [{ path: ['verse'], mine: { value: phone }, theirs: { value: verse } }],
+    });
+    expect((await listSermonVerseHistory('owner-1', resource.id, 'sermon-verse-return')).entries).toEqual([]);
   });
 
   it.each([
