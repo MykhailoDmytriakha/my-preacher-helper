@@ -3,9 +3,10 @@
 import { useEffect, useState } from 'react';
 
 import { useEngineSeriesField } from '@/components/series/useEngineSeriesField';
+import { DocumentFieldHistory } from '@/components/ui/DocumentFieldHistory';
 import { DataMembershipStatus } from '@/data-engine/DataMembershipStatus';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
-import { useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
+import { useDataEngine, useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
 import { newClientId } from '@/utils/clientId';
 import { useTranslation } from '@locales/useTranslation';
 
@@ -18,6 +19,7 @@ import type { Church, Sermon } from '@/models/models';
 /** The form pins its own fields; list props and later remote reads cannot change its ancestor. */
 export function EngineEditSermonModal({ sermonId, onClose }: { sermonId: string; onClose: () => void }) {
   const { t } = useTranslation();
+  const { owner } = useDataEngine();
   const form = useDataForm({ collection: 'sermons', id: sermonId }, 'sermon-metadata', SERMON_METADATA_SELECTION);
   const series = useEngineSeriesField({ type: 'sermon', refId: sermonId });
   const [newDate] = useState(() => ({ id: newClientId(), createdAt: new Date().toISOString() }));
@@ -41,16 +43,17 @@ export function EngineEditSermonModal({ sermonId, onClose }: { sermonId: string;
   };
   const save = async () => {
     if (saving || form.busy || !form.active || !form.durable || form.status?.phase === 'deleted') return;
-    const dateAction = form.captureDateAction(plannedId, plannedDate?.date ?? '');
+    const metadataAction = form.captureSermonMetadataAction(plannedId, plannedDate?.date ?? '');
     setSaving(true);
     try {
       // Membership keeps its own immutable identity if the metadata capture needs a retry.
       await series.save();
-      await form.save(current => ({ ...current, title: String(current.title).trim(), verse: String(current.verse).trim() }), dateAction);
+      await form.save(current => ({ ...current, title: String(current.title).trim(), verse: String(current.verse).trim() }), metadataAction);
       onClose();
     } catch { /* Both public owners retain input and publish their own failure. */ }
     finally { setSaving(false); }
   };
+  const generation = form.openingGeneration;
   const cancel = async () => { await form.cancel(); await series.cancel(); onClose(); };
   return <SermonFormDialog heading={t('editSermon.editSermon')}
     values={{ title: value?.title ?? '', verse: value?.verse ?? '', church: value?.church as Church | undefined,
@@ -61,6 +64,9 @@ export function EngineEditSermonModal({ sermonId, onClose }: { sermonId: string;
     submitDisabled={!form.durable || series.unsettled || (!form.dirty && !series.changed)} showPlannedDate
     seriesOptions={series.options} seriesLoading={series.loading} seriesDisabled={series.disabled}
     detailsHint={t('editSermon.plannedDateHint')}
+    titleHistory={owner && generation && <DocumentFieldHistory key={JSON.stringify([owner, sermonId, generation])}
+      current={value?.title ?? ''} disabled={saving || form.busy || !form.active || form.status?.phase === 'deleted'}
+      session={{ owner, generation, sermonId, restore: title => form.update(current => ({ ...current, title })) }} />}
     seriesStatus={<div className="space-y-3 p-4 empty:hidden">
       <DataSyncStatus subject={form.recoveryIdentity} status={form.status} error={form.error} errorWords={form.errorWords} onRetry={form.retry}
         onKeepLocal={form.keepLocal} onAcceptRemote={form.acceptRemote}

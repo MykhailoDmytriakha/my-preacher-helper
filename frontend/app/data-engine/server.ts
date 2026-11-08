@@ -31,7 +31,7 @@ import { coversCommittedEffect } from './snapshotFreshness';
 import type { AudioExportKey, AudioExportRecord, AudioExportStore, AudioExportTransaction, AudioExportUsage } from './audioExportStore';
 import type { BibleMarkHistoryEntry, BibleMarkHistoryPage } from './bibleMarkStroke';
 import type { DisplacedRowDate, MeetingDateHistoryPage, PreachDateHistoryPage } from './datedRowAction';
-import type { GroupStatusHistoryPage, GroupTitleHistoryPage, DocumentTitleHistoryEntry, ServiceOrderTitleHistoryPage } from './documentFieldAction';
+import type { GroupStatusHistoryPage, GroupTitleHistoryPage, DocumentTitleHistoryEntry, SermonTitleHistoryPage, ServiceOrderTitleHistoryPage } from './documentFieldAction';
 import type { RowDetailPolicy } from './rowDetailAction';
 import type { RowValue } from './rowFieldAction';
 import type { FeedWrite } from './serverFeed';
@@ -410,7 +410,7 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
     const status = metadataAfterRowDetails({ ...snapshot, metadata: preaching }, raw, PREACH_STATUS_POLICY, primary ? statusOrder : undefined);
     const metadata = snapshot.resource.collection === 'bibleMarks'
       ? metadataAfterBibleMarks(snapshot, raw?._dataEngine, primary ? markOrder : undefined)
-      : metadataAfterDocumentFields({ ...snapshot, metadata: status }, raw?._dataEngine, primary ? fieldOrder : undefined);
+      : metadataAfterDocumentFields({ ...snapshot, metadata: status }, raw, primary ? fieldOrder : undefined);
     transaction.set(adminDb.collection(snapshot.resource.collection).doc(snapshot.resource.id), { ...value, _dataEngine: metadata });
   }
   const displaced = dateOrder?.displaced;
@@ -660,6 +660,12 @@ export async function listServiceOrderTitleHistory(owner: string, orderId: strin
   const resource = { collection: 'serviceOrders', id: orderId };
   const page = await listHistoryEntries<DocumentTitleHistoryEntry>(owner, resource, DOCUMENT_TITLE_HISTORY, generation, cursor, 'service-order-gone');
   return { owner, orderId, generation, ...page };
+}
+
+export async function listSermonTitleHistory(owner: string, sermonId: string, generation: string, cursor?: string): Promise<SermonTitleHistoryPage> {
+  const resource = { collection: 'sermons', id: sermonId };
+  const page = await listHistoryEntries<DocumentTitleHistoryEntry>(owner, resource, DOCUMENT_TITLE_HISTORY, generation, cursor, 'sermon-gone');
+  return { owner, sermonId, generation, ...page };
 }
 
 export async function listGroupTitleHistory(owner: string, groupId: string, generation: string, cursor?: string): Promise<GroupTitleHistoryPage> {

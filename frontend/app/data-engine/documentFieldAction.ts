@@ -9,7 +9,10 @@ import type { SessionCheckpoint, ShownCopy } from './session';
 import type { DataCommand, DocumentData, FieldChange, ResourceSnapshot } from './types';
 import type { Group } from '@/models/models';
 
-export type DocumentFieldAction = { before: string; after: string; observedRevision: number; time: ActionTime };
+export type DocumentFieldObservation = {
+  before: string; after: string; observedRevision: number; time: ActionTime | null; predecessorOperationId?: string;
+};
+export type DocumentFieldAction = DocumentFieldObservation & { time: ActionTime };
 export type ServiceOrderTitleSeen = { title: string; generation: string; revision: number; requestId?: string };
 export type ServiceOrderTitleCapture = { time: ActionTime; seen: ServiceOrderTitleSeen };
 export type DisplacedDocumentTitle = {
@@ -24,8 +27,8 @@ export type GroupTimedField = 'title' | 'status';
 
 export type DocumentFieldTarget = {
   field: GroupTimedField;
-  action: 'serviceOrderTitleAction' | 'groupTitleAction' | 'groupStatusAction';
-  proof: 'serviceOrderTitle' | 'groupTitle' | 'groupStatus';
+  action: 'serviceOrderTitleAction' | 'sermonTitleAction' | 'groupTitleAction' | 'groupStatusAction';
+  proof: 'serviceOrderTitle' | 'sermonTitle' | 'groupTitle' | 'groupStatus';
   accepts: (value: unknown) => value is string;
 };
 
@@ -37,6 +40,7 @@ export type GroupStatusHistoryPage = {
 const shortTitle = (value: unknown): value is string => typeof value === 'string' && value.length <= 1024;
 const SERVICE_ORDER_TITLE: DocumentFieldTarget = { field: 'title', action: 'serviceOrderTitleAction', proof: 'serviceOrderTitle',
   accepts: (value): value is string => shortTitle(value) && value.trim().length > 0 };
+const SERMON_TITLE: DocumentFieldTarget = { field: 'title', action: 'sermonTitleAction', proof: 'sermonTitle', accepts: shortTitle };
 const GROUP_TITLE = { field: 'title', action: 'groupTitleAction', proof: 'groupTitle', accepts: shortTitle, draft: 'groupTitleDraft' } as const satisfies GroupFieldTarget;
 const GROUP_STATUS = { field: 'status', action: 'groupStatusAction', proof: 'groupStatus', accepts: isGroupStatus, draft: 'groupStatusDraft' } as const satisfies GroupFieldTarget;
 export const GROUP_TIMED_FIELDS = [GROUP_TITLE, GROUP_STATUS] as const;
@@ -44,12 +48,17 @@ export const GROUP_TIMED_FIELDS = [GROUP_TITLE, GROUP_STATUS] as const;
 export function documentFieldTargets(collection: string): readonly DocumentFieldTarget[] {
   if (collection === 'serviceOrders') return [SERVICE_ORDER_TITLE];
   if (collection === 'groups') return GROUP_TIMED_FIELDS;
+  if (collection === 'sermons') return [SERMON_TITLE];
   return [];
 }
 
 function isShortDocumentTitle(value: unknown, target: DocumentFieldTarget): value is string {
   return target.accepts(value);
 }
+
+export type SermonTitleHistoryPage = {
+  owner: string; sermonId: string; generation: string; entries: DocumentTitleHistoryEntry[]; nextCursor: string | null;
+};
 
 export type GroupTitleHistoryPage = {
   owner: string; groupId: string; generation: string; entries: DocumentTitleHistoryEntry[]; nextCursor: string | null;
@@ -93,6 +102,33 @@ export function captureServiceOrderTitle(baseline: ResourceSnapshot, value: Docu
   const after = value?.title;
   if (!isShortDocumentTitle(after, SERVICE_ORDER_TITLE) || after === capture.seen.title) return undefined;
   return { before: capture.seen.title, after, observedRevision: capture.seen.revision, time: capture.time };
+}
+
+function knownSermonTitlePredecessor(baseline: ResourceSnapshot, predecessor: CommitRequest | undefined,
+  title: string, records: readonly CommitRequest[]): string | undefined {
+  if (!predecessor) return undefined;
+  const requests = new Map(records.map(request => [request.id, request]));
+  const visited = new Set<string>();
+  for (let request: CommitRequest | undefined = predecessor; request && !visited.has(request.id);
+    request = requests.get(request.predecessor ?? '')) {
+    if (request.owner !== predecessor.owner || !equalValues(request.baseline.resource, baseline.resource)
+      || request.baseline.metadata?.generation !== baseline.metadata?.generation || request.value?.title !== title
+      || ['cancelled', 'refused', 'conflict'].includes(request.state)) break;
+    if (request.sermonTitleAction) return request.sermonTitleAction.after === title ? request.id : undefined;
+    visited.add(request.id);
+  }
+}
+
+/** The title and any other selected fields share the explicit Save, but keep their own ancestors. */
+export function captureSermonTitle(baseline: ResourceSnapshot, predecessor: CommitRequest | undefined,
+  draft: DocumentData | null, captured: ActionTime | null | undefined, records: readonly CommitRequest[]): DocumentFieldObservation | undefined {
+  if (captured === undefined || baseline.resource.collection !== 'sermons' || !baseline.metadata || baseline.metadata.deleted) return undefined;
+  const time = captured === null ? null : boundedActionTime(captured);
+  const before = (predecessor ? predecessor.value : baseline.value)?.title, after = draft?.title;
+  if (time === undefined || !shortTitle(before) || !shortTitle(after) || !after.trim() || before === after) return undefined;
+  const predecessorOperationId = knownSermonTitlePredecessor(baseline, predecessor, before, records);
+  return { before, after, time, observedRevision: baseline.metadata.revision,
+    ...(predecessorOperationId && { predecessorOperationId }) };
 }
 
 export type GroupFieldStamp = { field: GroupTimedField; time: ActionTime };
@@ -166,12 +202,12 @@ export function pendingDocumentFieldAncestor(record: CommitRequest, before: Docu
   }, before);
 }
 
-export function documentFieldCommandAncestor(working: ResourceSnapshot, action: DocumentFieldAction, field: GroupTimedField): ResourceSnapshot {
+export function documentFieldCommandAncestor(working: ResourceSnapshot, action: DocumentFieldObservation, field: GroupTimedField): ResourceSnapshot {
   if (!working.value || working.metadata?.deleted) return working;
   return { ...working, value: { ...working.value, [field]: action.before } };
 }
 
-export function withDocumentFieldAction(command: DataCommand, target: DocumentFieldTarget, action?: DocumentFieldAction): DataCommand {
+export function withDocumentFieldAction(command: DataCommand, target: DocumentFieldTarget, action?: DocumentFieldObservation): DataCommand {
   if (!action || command.kind !== 'update') return command;
   const change = documentFieldChange(command.changes, target);
   return change?.before.exists && change.before.value === action.before && change.after.exists && change.after.value === action.after

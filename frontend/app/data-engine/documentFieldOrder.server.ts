@@ -1,14 +1,15 @@
 import { boundedActionTime, compareActionTime } from './actionClock';
 import { documentFieldChange, documentFieldTargets } from './documentFieldAction';
 import { object } from './fieldValues';
+import { proofRevision } from './rowFieldAction';
 
 import type { ActionTime } from './actionClock';
-import type { DocumentFieldAction, DocumentFieldTarget } from './documentFieldAction';
+import type { DocumentFieldObservation, DocumentFieldTarget } from './documentFieldAction';
 import type { ConflictDetail, DataCommand, FieldChange, ResourceSnapshot } from './types';
 
 export const DOCUMENT_TITLE_HISTORY = '_titleHistory';
 export const GROUP_STATUS_HISTORY = '_statusHistory';
-type FieldProof = { value: string; revision: number; time: ActionTime | null };
+type FieldProof = { value: string; revision: number; time: ActionTime | null; operationId?: string };
 type DocumentFieldOrder = {
   command: DataCommand;
   stamp?: ActionTime | null;
@@ -25,25 +26,29 @@ function previousField(raw: unknown, current: ResourceSnapshot, target: Document
     || typeof proof.revision !== 'number' || !Number.isSafeInteger(proof.revision)
     || proof.revision < 1 || proof.revision > (current.metadata?.revision ?? 0)) return undefined;
   const time = proof.time === null ? null : boundedActionTime(proof.time);
-  return time !== undefined ? { value, revision: proof.revision, time } : undefined;
+  return time !== undefined ? { value, revision: proof.revision, time,
+    ...(typeof proof.operationId === 'string' && { operationId: proof.operationId }) } : undefined;
 }
 
-function readAction(command: Extract<DataCommand, { kind: 'update' }>, change: FieldChange, revision: number, serverMs: number, target: DocumentFieldTarget): DocumentFieldAction | undefined {
+function readAction(command: Extract<DataCommand, { kind: 'update' }>, change: FieldChange, revision: number, serverMs: number, target: DocumentFieldTarget): DocumentFieldObservation | undefined {
   const action: unknown = command[target.action];
   if (!object(action) || !target.accepts(action.before) || !target.accepts(action.after) || action.before === action.after
     || !change.before.exists || !change.after.exists || change.before.value !== action.before || change.after.value !== action.after
     || typeof action.observedRevision !== 'number' || !Number.isSafeInteger(action.observedRevision)
-    || action.observedRevision < 1 || action.observedRevision > revision || !Number.isFinite(serverMs)) return undefined;
-  const time = boundedActionTime(action.time);
-  return time && time.earliestMs <= serverMs + 5 ? { before: action.before, after: action.after, observedRevision: action.observedRevision, time } : undefined;
+    || action.observedRevision < 1 || action.observedRevision > revision) return undefined;
+  const sermon = target.action === 'sermonTitleAction';
+  const time = sermon && action.time === null ? null : boundedActionTime(action.time);
+  if (time === undefined || (time && (!Number.isFinite(serverMs) || time.earliestMs > serverMs + 5))) return undefined;
+  return { before: action.before, after: action.after, observedRevision: action.observedRevision, time,
+    ...(sermon && typeof action.predecessorOperationId === 'string' && { predecessorOperationId: action.predecessorOperationId }) };
 }
 
-function decideUnobservedField(command: Extract<DataCommand, { kind: 'update' }>, change: FieldChange, action: DocumentFieldAction,
+function decideUnobservedField(command: Extract<DataCommand, { kind: 'update' }>, change: FieldChange, action: DocumentFieldObservation,
   previous: FieldProof): DocumentFieldOrder {
   const { value, time } = previous;
-  const order = time ? compareActionTime(action.time, time) : 0;
+  const order = time && action.time ? compareActionTime(action.time, time) : 0;
   if (action.after === value) return order > 0 ? { command, stamp: action.time } : order < 0 ? { command, previous } : { command, stamp: null };
-  if (!order || !time) {
+  if (!order || !time || !action.time) {
     const uncertain = action.before === value ? [{ path: change.path, base: change.before, mine: change.after, theirs: change.before }] : undefined;
     return { command, uncertain };
   }
@@ -74,7 +79,13 @@ function orderDocumentField(command: DataCommand, current: ResourceSnapshot, raw
   const action = readAction(command, change, current.metadata.revision, serverMs, target);
   if (!action) return { command, stamp: null };
   const previous = previousField(raw, current, target);
-  if (previous && previous.revision > action.observedRevision) return decideUnobservedField(command, change, action, previous);
+  if (previous && previous.revision > action.observedRevision) {
+    // An exact local predecessor is causal even when its action clock was unavailable.
+    if (action.predecessorOperationId && previous.operationId === action.predecessorOperationId && previous.value === action.before) {
+      return { command, stamp: action.time };
+    }
+    return decideUnobservedField(command, change, action, previous);
+  }
   if (action.after === current.value?.[target.field]) return { command, previous };
   return { command, stamp: previous || action.observedRevision === current.metadata.revision ? action.time : null };
 }
@@ -88,16 +99,28 @@ export function orderDocumentFields(command: DataCommand, current: ResourceSnaps
   return { command, fields, uncertain: fields.flatMap(({ order }) => order.uncertain ?? []) };
 }
 
-export function metadataAfterDocumentFields(snapshot: ResourceSnapshot, raw: unknown, fields?: ReturnType<typeof orderDocumentFields>) {
+export function metadataAfterDocumentFields(snapshot: ResourceSnapshot, raw: Record<string, unknown> | undefined, fields?: ReturnType<typeof orderDocumentFields>) {
   const metadata = snapshot.metadata;
   if (!metadata) return metadata;
   const proofs = documentFieldTargets(snapshot.resource.collection).flatMap(target => {
     const value = snapshot.value?.[target.field];
     if (!target.accepts(value)) return [];
     const order = fields?.fields.find(item => item.target === target)?.order;
-    const previous = order?.previous ?? previousField(raw, snapshot, target);
-    const proof = order?.stamp === undefined && previous ? previous : { value, revision: metadata.revision, time: order?.stamp ?? null };
-    return [[target.proof, { [target.field]: proof.value, revision: proof.revision, time: proof.time }]] as const;
+    const rawMetadata = raw?._dataEngine;
+    const previous = order?.previous ?? previousField(rawMetadata, snapshot, target);
+    const sermon = target.action === 'sermonTitleAction';
+    const changedTitle = sermon && raw?.title !== value;
+    // The first unrelated write to an older sermon, including a secondary effect,
+    // observes the same title at the original revision.
+    const revision = sermon && !changedTitle && order?.stamp === undefined && object(rawMetadata)
+      && rawMetadata.generation === metadata.generation && proofRevision(rawMetadata.revision)
+      ? rawMetadata.revision : metadata.revision;
+    const proof: FieldProof = order?.stamp === undefined && previous ? previous : {
+      value, revision, time: order?.stamp ?? null,
+      ...(changedTitle && metadata.operationId && { operationId: metadata.operationId }),
+    };
+    return [[target.proof, { [target.field]: proof.value, revision: proof.revision, time: proof.time,
+      ...(sermon && proof.operationId && { operationId: proof.operationId }) }]] as const;
   });
   return { ...metadata, ...Object.fromEntries(proofs) };
 }

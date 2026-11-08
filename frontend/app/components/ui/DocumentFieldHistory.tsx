@@ -6,11 +6,11 @@ import { requestOwnerJson } from '@/services/ownerHttpTransport.client';
 import { storedFieldValue } from '@/utils/storedFieldValue';
 import { useTranslation } from '@locales/useTranslation';
 
-import type { GroupStatusHistoryPage, GroupTitleHistoryPage, ServiceOrderTitleHistoryPage } from '@/data-engine/documentFieldAction';
-type DocumentHistoryPage = ServiceOrderTitleHistoryPage | GroupTitleHistoryPage | GroupStatusHistoryPage;
+import type { GroupStatusHistoryPage, GroupTitleHistoryPage, SermonTitleHistoryPage, ServiceOrderTitleHistoryPage } from '@/data-engine/documentFieldAction';
+type DocumentHistoryPage = ServiceOrderTitleHistoryPage | GroupTitleHistoryPage | GroupStatusHistoryPage | SermonTitleHistoryPage;
 type HistoryEntry = { id: string; value: string; winner: string };
 type HistoryPage = { entries: HistoryEntry[]; nextCursor: string | null };
-type HistorySession = ({ orderId: string } | { groupId: string; field?: 'status' }) & {
+type HistorySession = ({ orderId: string } | { groupId: string; field?: 'status' } | { sermonId: string }) & {
   owner: string; generation: string; restore: (title: string) => Promise<void>;
 };
 
@@ -20,9 +20,12 @@ const messages = { failed: unavailable, unavailable, timedOut: unavailable };
 export function DocumentFieldHistory({ session, current, disabled }: { session: HistorySession; current: string; disabled: boolean }) {
   const { t } = useTranslation();
   const { owner, generation } = session;
-  const group = 'groupId' in session;
-  const resourceId = group ? session.groupId : session.orderId;
-  const status = group && session.field === 'status';
+  const { collection, resourceId, key } = 'groupId' in session
+    ? { collection: 'groups', resourceId: session.groupId, key: 'groupId' }
+    : 'sermonId' in session
+      ? { collection: 'sermons', resourceId: session.sermonId, key: 'sermonId' }
+      : { collection: 'serviceOrders', resourceId: session.orderId, key: 'orderId' };
+  const status = 'groupId' in session && session.field === 'status';
   const endpoint = status ? 'status-history' : 'title-history';
   const heading = t(status ? 'common.statusHistory' : 'common.titleHistory');
   const format = (value: string) => status ? String(storedFieldValue(t, 'groups', 'status', value)) : value || t('common.untitled');
@@ -39,10 +42,10 @@ export function DocumentFieldHistory({ session, current, disabled }: { session: 
     try {
       const params = new URLSearchParams({ generation, ...(cursor && { cursor }) });
       const { value } = await requestOwnerJson<DocumentHistoryPage>(
-        `/api/data-engine/documents/${group ? 'groups' : 'serviceOrders'}/${encodeURIComponent(resourceId)}/${endpoint}?${params}`,
+        `/api/data-engine/documents/${collection}/${encodeURIComponent(resourceId)}/${endpoint}?${params}`,
         { expectedOwner: owner, answerStatuses: [], messages },
       );
-      const returnedId = group && 'groupId' in value ? value.groupId : !group && 'orderId' in value ? value.orderId : undefined;
+      const returnedId = Object.hasOwn(value, key) ? Reflect.get(value, key) : undefined;
       if (value.owner !== owner || returnedId !== resourceId || value.generation !== generation || !Array.isArray(value.entries)) throw new Error(unavailable);
       const entries = value.entries.map(entry => 'status' in entry
         ? { id: entry.id, value: entry.status, winner: entry.winnerStatus }
@@ -58,7 +61,7 @@ export function DocumentFieldHistory({ session, current, disabled }: { session: 
     catch { setError('restore'); }
     finally { setRestoring(false); }
   };
-  return <div className={group ? "text-sm" : "mt-3 text-sm"}>
+  return <div className={collection === "groups" ? "text-sm" : "mt-3 text-sm"}>
     <button type="button" aria-expanded={open} aria-controls={panel} disabled={loading}
       className="min-h-8 text-xs font-medium text-emerald-700 hover:underline dark:text-emerald-400"
       onClick={() => { setOpen(!open); if (!open) void load(); }}>{heading}</button>

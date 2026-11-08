@@ -1,7 +1,7 @@
 /** The wire contract is shared by browser and server; it imports no transport. */
 import type { ActionTime } from './actionClock';
 import type { DatedRowActionEvidence } from './datedRowAction';
-import type { DocumentFieldAction, ServiceOrderTitleCapture } from './documentFieldAction';
+import type { DocumentFieldAction, DocumentFieldObservation, ServiceOrderTitleCapture } from './documentFieldAction';
 import type { GroupMeetingFieldActions } from './groupMeetingFieldAction';
 import type { PreachDateFieldActions } from './preachDateFieldAction';
 import type { PreachStatusAction } from './preachStatusAction';
@@ -59,6 +59,7 @@ export type DataCommand = CommandBase & (
       preachStatusActions?: PreachStatusAction[];
       bibleMarkStroke?: BibleMarkStrokeStamp;
       serviceOrderTitleAction?: DocumentFieldAction;
+      sermonTitleAction?: DocumentFieldObservation;
       groupTitleAction?: DocumentFieldAction;
       groupStatusAction?: DocumentFieldAction;
       /** Exact plan cells observed before an explicit outline removal. */

@@ -58,20 +58,22 @@ it('pins the actual document, keeps the selected date identity across reorder an
   view.unmount();
 });
 
-it('sends the Save time for an edited existing planned date from the sermon form', async () => {
+it('uses the same explicit Save time for the edited title and planned day', async () => {
   const time = { earliestMs: 1_800_000_000_005, latestMs: 1_800_000_000_012 };
   const capture = jest.spyOn(actionClock, 'capture').mockReturnValue(time);
   const { harness, view } = setup();
   try {
-    await ready();
+    const title = await ready();
+    fireEvent.change(title, { target: { value: '  Revised title  ' } });
     fireEvent.change(screen.getByLabelText('Planned date'), { target: { value: '2099-10-09' } });
     await act(async () => { await settleEngine(); });
     expect(capture).not.toHaveBeenCalled();
     await save();
     await act(async () => { await harness.engine.retry(); await settleEngine(); });
-    expect(harness.transport.send).toHaveBeenCalledWith(expect.objectContaining({ preachDateAction: {
-      rowId: 'first', before: '2099-10-03', after: '2099-10-09', observedRevision: 1, time,
-    } }));
+    expect(harness.transport.send).toHaveBeenCalledWith(expect.objectContaining({
+      sermonTitleAction: { before: 'Opening', after: 'Revised title', observedRevision: 1, time },
+      preachDateAction: { rowId: 'first', before: '2099-10-03', after: '2099-10-09', observedRevision: 1, time },
+    }));
   } finally {
     capture.mockRestore();
     view.unmount();

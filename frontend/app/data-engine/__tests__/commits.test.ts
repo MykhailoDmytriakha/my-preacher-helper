@@ -147,6 +147,25 @@ describe('Durable commit requests', () => {
     expect(s.transport.send).toHaveBeenCalledWith(expect.objectContaining({ operationId: next.id, preachStatusActions: next.preachStatusActions }));
   });
 
+  it('preserves the exact title predecessor across an unrelated local Save and queue restart', async () => {
+    const s = setup();
+    const { queue } = s.makeQueue();
+    const baseline = initial();
+    const editor = new DataSession(baseline);
+    editor.edit({ ...baseline.value, title: 'First local title' });
+    const first = (await queue.save('edit', editor.checkpoint(), { sermonTitleTime: null }))!;
+    editor.edit({ ...baseline.value, title: 'First local title', verse: 'John 3:16' });
+    const verse = (await queue.save('edit', editor.checkpoint(), { predecessorId: first.id, sermonTitleTime: null }))!;
+    expect(verse.sermonTitleAction).toBeUndefined();
+    editor.edit({ ...baseline.value, title: String(baseline.value?.title), verse: 'John 3:16' });
+    const second = (await queue.save('edit', editor.checkpoint(), { predecessorId: verse.id, sermonTitleTime: null }))!;
+    expect(second.sermonTitleAction).toEqual({ before: 'First local title', after: baseline.value?.title, time: null,
+      observedRevision: 1, predecessorOperationId: first.id });
+    await s.makeQueue().queue.drain(true);
+    expect(s.transport.send).toHaveBeenCalledWith(expect.objectContaining({ operationId: second.id, sermonTitleAction: second.sermonTitleAction }));
+    expect(s.server().value).toMatchObject({ title: baseline.value?.title, verse: 'John 3:16' });
+  });
+
   it('submits a chained date Save with its original date ancestor after the predecessor ACK contains a different date', async () => {
     const s = setup();
     const { queue } = s.makeQueue();

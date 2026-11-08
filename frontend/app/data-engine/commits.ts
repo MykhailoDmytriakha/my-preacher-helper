@@ -5,7 +5,7 @@ import { pendingCommitRetirement, retireCommitJournal } from './commitJournal';
 import { CommitReceipts } from './commitReceipt';
 import { capturedDateBaseline, captureDatedRowAction, datedRowTarget, existingRowDate, matchesDatedRowChange, MEETING_DATE_TARGET, replaceExistingDate, type DatedRowActionCapture, type DatedRowActionEvidence } from './datedRowAction';
 import { captureDeleteOrder, deleteOrderReady, replayDeleteOrder } from './deletionOrdering';
-import { captureServiceOrderTitle, documentFieldCommandAncestor, documentFieldTargets, uncapturedGroupFields, withDocumentFieldAction } from './documentFieldAction';
+import { captureSermonTitle, captureServiceOrderTitle, documentFieldCommandAncestor, documentFieldTargets, uncapturedGroupFields, withDocumentFieldAction } from './documentFieldAction';
 import { commandReferenceResources, documentReferenceResources, referenceReadiness } from './documentReferences';
 import { prepareDomainCommand, requiredDomainTargets } from './domainPolicy';
 import { areDifferentTabManualParents, readManualScopeIdentity } from './editorIdentity';
@@ -22,7 +22,7 @@ import { coversCommittedEffect } from './snapshotFreshness';
 import type { CaptureTransferProof, CaptureTransferResult } from './captureTransfer';
 import type { DocumentWriteReceipt } from './commitReceipt';
 import type { EditorRecord } from './controller';
-import type { DocumentFieldAction } from './documentFieldAction';
+import type { DocumentFieldAction, DocumentFieldObservation } from './documentFieldAction';
 import type { GroupMeetingFieldActions, GroupMeetingFieldCaptures } from './groupMeetingFieldAction';
 import type { PreachDateFieldActions, PreachDateFieldSave } from './preachDateFieldAction';
 import type { PreachStatusAction, PreachStatusCapture } from './preachStatusAction';
@@ -66,6 +66,7 @@ export interface CommitRequest {
   bibleMarkStroke?: CapturedBibleMarkStroke;
   deferBibleMarkRebase?: true;
   serviceOrderTitleAction?: DocumentFieldAction;
+  sermonTitleAction?: DocumentFieldObservation;
   groupTitleAction?: DocumentFieldAction;
   groupStatusAction?: DocumentFieldAction;
   /** Earlier locally captured uses of this resource; owned atomically by DELETE capture storage. */
@@ -156,6 +157,7 @@ export function assertCommitCapture(current: CommitRequest, incoming: CommitRequ
     || current.predecessor !== incoming.predecessor || !equalValues(current.baseline, incoming.baseline)
     || !equalValues(current.planTextEvidence ?? null, incoming.planTextEvidence ?? null)
     || !equalValues(current.serviceOrderTitleAction ?? null, incoming.serviceOrderTitleAction ?? null)
+    || !equalValues(current.sermonTitleAction ?? null, incoming.sermonTitleAction ?? null)
     || !equalValues(current.groupTitleAction ?? null, incoming.groupTitleAction ?? null)
     || !equalValues(current.groupStatusAction ?? null, incoming.groupStatusAction ?? null)
     || !equalValues(current.bibleMarkStroke ?? null, incoming.bibleMarkStroke ?? null)
@@ -235,6 +237,7 @@ type CommitSaveOptions = { predecessorId?: string | null; predecessorIds?: reado
   groupMeetingFieldCaptures?: GroupMeetingFieldCaptures;
   preachDateFieldSave?: PreachDateFieldSave;
   preachStatusCapture?: PreachStatusCapture;
+  sermonTitleTime?: import('./actionClock').ActionTime | null;
   action?: EditorCommitAction;
   checkpoint?: (saved: CommitRequest) => EditorRecord;
   transfer?: { proof: CaptureTransferProof; sources: readonly CommitRequest[] } };
@@ -259,7 +262,7 @@ function pendingRowFields(record: CommitRequest) {
 }
 
 function hasTimedAncestor(record: CommitRequest): boolean {
-  return record.sequence === 0 && Boolean(record.serviceOrderTitleAction || record.groupTitleAction || record.groupStatusAction || pendingBibleMarkRebase(record) || pendingMeetingDateRebase(record) || pendingRowFields(record).length || pendingPreachStatusActions(record).length);
+  return record.sequence === 0 && Boolean(record.serviceOrderTitleAction || record.sermonTitleAction || record.groupTitleAction || record.groupStatusAction || pendingBibleMarkRebase(record) || pendingMeetingDateRebase(record) || pendingRowFields(record).length || pendingPreachStatusActions(record).length);
 }
 
 function freezeSaveOptions(options: CommitSaveOptions | undefined): CommitSaveOptions | undefined {
@@ -269,6 +272,7 @@ function freezeSaveOptions(options: CommitSaveOptions | undefined): CommitSaveOp
     groupMeetingFieldCaptures: options.groupMeetingFieldCaptures && clone(options.groupMeetingFieldCaptures),
     preachDateFieldSave: options.preachDateFieldSave && clone(options.preachDateFieldSave),
     preachStatusCapture: options.preachStatusCapture && clone(options.preachStatusCapture),
+    sermonTitleTime: options.sermonTitleTime && clone(options.sermonTitleTime),
     action: options.action && clone(options.action) };
 }
 
@@ -429,6 +433,7 @@ export class CommitQueue {
     const editorAction = frozenOptions?.action;
     const mark = captureBibleMarkStroke(baseline, predecessor, intent.draft, editorAction?.kind === 'bible-mark-stroke' ? editorAction.time : undefined);
     const title = captureServiceOrderTitle(baseline, intent.draft, editorAction?.kind === 'service-order-title' ? editorAction.title : undefined);
+    const sermonTitle = captureSermonTitle(baseline, predecessor, intent.draft, frozenOptions?.sermonTitleTime, records);
     const groupActions = uncapturedGroupFields(intent);
     const groupMeetingFieldActions = captureMeetingFieldActions(baseline, predecessor, intent.draft, frozenOptions?.groupMeetingFieldCaptures, records);
     const preachDateFieldActions = capturePreachDateFields(baseline, predecessor, intent.draft, frozenOptions?.preachDateFieldSave, records);
@@ -437,6 +442,7 @@ export class CommitQueue {
       id: this.options.operationId(), owner, editorId, editGeneration: intent.editGeneration,
       ...(mark && { bibleMarkStroke: mark }),
       ...(title && { serviceOrderTitleAction: title }),
+      ...(sermonTitle && { sermonTitleAction: sermonTitle }),
       ...groupActions,
       ...(groupMeetingFieldActions && { groupMeetingFieldActions }),
       ...(preachDateFieldActions && { preachDateFieldActions }),
