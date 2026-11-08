@@ -29,8 +29,8 @@ import type { BibleId } from '@/utils/bibles';
  * (`writable`): the page never shows a stroke it cannot keep (2026-10-16: strokes made before the form
  * opened were shown, held in the page's memory, and gone after a reload). While the form is a copy for
  * reading — the device's storage silent for seconds after an iPad wakes — the marks still show and the
- * reader says to wait. What still needs the person — a verse changed on two devices at once — is said
- * by the form's status (`sync`), never as code.
+ * reader says to wait. What still needs the person — a word of a verse changed differently on two devices — is
+ * said by the form's status (`sync`), never as code.
  */
 export const BIBLE_MARKS = 'bibleMarks';
 /** The marks' own form: its drafts are not a screen's typing. */

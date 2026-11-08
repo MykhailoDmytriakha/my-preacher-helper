@@ -57,7 +57,7 @@ type ReaderMarks = {
   textClass: string;
   /** Verses marked in the person's other Bibles: a sign beside each, for the ribbon (2.9.3). */
   signs: RibbonSigns | undefined;
-  /** What the book's marks need from the person, if anything (a verse changed on two devices at once). */
+  /** What the book's marks need from the person, if anything (a word of a verse changed differently on two devices). */
   syncStatus: ReactNode;
   /** An exact book-form choice is ready for the person. */
   pendingDecision: boolean;
