@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, type KeyboardEvent, type MouseEvent, type PointerEvent, type ReactNode, type RefObject } from 'react';
 
-import { useLongPress } from '@/hooks/useLongPress';
+import { LONG_PRESS_MS, useLongPress } from '@/hooks/useLongPress';
 import { recordDiagnostic } from '@/utils/appDiagnostics';
 
 import { verseOfRow, verseRowAt, type VerseAt } from './selectedVerses';
@@ -10,6 +10,8 @@ import { verseOfRow, verseRowAt, type VerseAt } from './selectedVerses';
 import type { VerseCopy } from './useVerseCopy';
 
 type Press = VerseAt & { x: number; y: number; touch: boolean; row: HTMLElement };
+type PenPress = { pointerId: number; startedAt: number };
+type PenRefusal = PenPress & { result: 'movement-refused' | 'stroke-refused'; driftPx: number; elapsedMs: number };
 
 /** A control drawn in a verse — its number, its chip (a `span` with the role of a button), a badge, a link. */
 const CONTROL = 'button, a, [role="button"]';
@@ -44,13 +46,24 @@ export function VerseHoldSurface({ copy, articleRef, className, gestureIgnore, p
   const pressRef = useRef<Press | null>(null);
   const lastTouch = useRef(false);
   /** The Pencil's pointer while its press is held; null for a finger's or a mouse's. */
-  const penPress = useRef<number | null>(null);
+  const penPress = useRef<PenPress | null>(null);
+  // Another contact can start after refusal while the pen is still down.
+  const penRefusal = useRef<PenRefusal | null>(null);
   /** The pointer whose press is being held: another finger touching meanwhile does not take the hold over (Codex, 02.11). */
   const holder = useRef<number | null>(null);
   /** The click being judged while choosing several: the verse it is on and whether Shift was held. */
   const clickRef = useRef<{ at: VerseAt; shift: boolean } | null>(null);
   const { state, handlers } = useLongPress({
-    onArm: () => penPress.current === null || (onPenHold?.(penPress.current) ?? true),
+    onArm: () => penPress.current === null || (onPenHold?.(penPress.current.pointerId) ?? true),
+    onRefused: (reason, driftPx) => {
+      const pen = penPress.current;
+      if (pen) penRefusal.current = {
+        ...pen,
+        result: reason === 'movement' ? 'movement-refused' : 'stroke-refused',
+        driftPx,
+        elapsedMs: performance.now() - pen.startedAt,
+      };
+    },
     onPress: () => {
       const click = clickRef.current;
       if (!copy.picking || !click) return;
@@ -140,13 +153,22 @@ export function VerseHoldSurface({ copy, articleRef, className, gestureIgnore, p
     lastTouch.current = event.pointerType !== 'mouse';
     const othersPress = !copy.picking && onControl(event.target);
     pressRef.current = othersPress ? null : pressAt(event, pen);
-    penPress.current = pen && pressRef.current ? event.pointerId : null;
+    if (pen && penRefusal.current?.pointerId === event.pointerId) penRefusal.current = null;
+    penPress.current = pen && pressRef.current ? { pointerId: event.pointerId, startedAt: performance.now() } : null;
     holder.current = pressRef.current ? event.pointerId : null;
     if (pressRef.current) handlers.onPointerDown?.(event);
   };
   // The holder's pointer gone: the next press, of any pointer, may hold.
   const release = (event: PointerEvent<HTMLElement>) => {
     if (event.pointerId === holder.current) holder.current = null;
+    if (penPress.current?.pointerId === event.pointerId) penPress.current = null;
+    const refusal = penRefusal.current;
+    if (refusal?.pointerId !== event.pointerId) return;
+    penRefusal.current = null;
+    // A quick stroke can cross the movement limit too. Keep only presses sustained for a hold.
+    if (event.type === 'pointerup' && performance.now() - refusal.startedAt >= LONG_PRESS_MS) {
+      recordDiagnostic('pen-hold', { source: 'pen', result: refusal.result, driftPx: refusal.driftPx, elapsedMs: refusal.elapsedMs });
+    }
   };
   const onContextMenu = (event: MouseEvent<HTMLElement>) => {
     const press = pressAt(event);

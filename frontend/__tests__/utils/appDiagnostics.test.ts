@@ -24,6 +24,21 @@ it('stores only allowlisted fields and removes identifiers and query strings fro
   expect(diagnostics.diagnosticErrorCode(null)).toBeUndefined();
 });
 
+it('retains only bounded Pencil hold measurements in the report', () => {
+  diagnostics.recordDiagnostic('pen-hold', {
+    source: 'pen', result: 'stroke-refused', driftPx: 4.32, elapsedMs: 502.4,
+    route: '/bible?private=verse', coordinates: [42, 100],
+  } as never);
+  diagnostics.recordDiagnostic('pen-hold', { source: 'keyboard', result: 'unknown', driftPx: -3, elapsedMs: Infinity });
+  diagnostics.recordDiagnostic('route', { route: '/bible', driftPx: 4 });
+  const events = diagnostics.buildDiagnosticReport().events;
+  expect(events.map(event => event.data)).toEqual([
+    { source: 'pen', result: 'stroke-refused', driftPx: 4.3, elapsedMs: 502 },
+    {},
+    { route: '/bible' },
+  ]);
+});
+
 it('bounds history, drops expired records and coalesces repeated snapshot metadata', () => {
   jest.useFakeTimers();
   for (let index = 0; index < 160; index++) diagnostics.recordDiagnostic('route', { route: '/dashboard' });

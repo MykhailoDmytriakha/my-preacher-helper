@@ -32,7 +32,7 @@ type LongPressHandlers = {
  * button's classes also turn off text selection and the callout (`select-none [-webkit-touch-callout:none]`).
  * Without `onLongPress` the button is an ordinary one.
  */
-export function useLongPress({ onPress, onLongPress, onArm }: {
+export function useLongPress({ onPress, onLongPress, onArm, onRefused }: {
   onPress: () => void;
   onLongPress?: () => void;
   /**
@@ -40,12 +40,14 @@ export function useLongPress({ onPress, onLongPress, onArm }: {
    * else by then — a Pencil's stroke that reached another word). Synchronous, so a lift right after it finds the hold decided.
    */
   onArm?: () => boolean | void;
+  /** The gate that gave up the hold and the farthest observed displacement up to that point. */
+  onRefused?: (reason: 'movement' | 'arm', driftPx: number) => void;
 }): { state: LongPressState; handlers: LongPressHandlers } {
   const [state, setState] = useState<LongPressState>('idle');
-  const armCheck = useRef(onArm);
-  armCheck.current = onArm;
+  const checks = useRef({ onArm, onRefused });
+  checks.current = { onArm, onRefused };
   const timer = useRef<number | null>(null);
-  const origin = useRef<{ x: number; y: number } | null>(null);
+  const origin = useRef<{ x: number; y: number; driftPx: number } | null>(null);
   const armed = useRef(false);
   /** The press was given up — moved away or left the button: the click that may follow it does nothing. */
   const abandoned = useRef(false);
@@ -92,12 +94,13 @@ export function useLongPress({ onPress, onLongPress, onArm }: {
         stopTimer();
         armed.current = false;
         abandoned.current = false;
-        origin.current = { x: event.clientX, y: event.clientY };
+        origin.current = { x: event.clientX, y: event.clientY, driftPx: 0 };
         pointer.current = event.pointerId;
         setState('holding');
         timer.current = window.setTimeout(() => {
           timer.current = null;
-          if (armCheck.current?.() === false) {
+          if (checks.current.onArm?.() === false) {
+            checks.current.onRefused?.('arm', origin.current?.driftPx ?? 0);
             abandoned.current = true;
             reset();
             return;
@@ -109,7 +112,11 @@ export function useLongPress({ onPress, onLongPress, onArm }: {
       onPointerMove: (event) => {
         if (stranger(event)) return;
         const from = origin.current;
-        if (!from || Math.hypot(event.clientX - from.x, event.clientY - from.y) <= MOVE_TOLERANCE_PX) return;
+        if (!from) return;
+        const driftPx = Math.hypot(event.clientX - from.x, event.clientY - from.y);
+        from.driftPx = Math.max(from.driftPx, driftPx);
+        if (driftPx <= MOVE_TOLERANCE_PX) return;
+        checks.current.onRefused?.('movement', from.driftPx);
         abandoned.current = true;
         reset();
       },

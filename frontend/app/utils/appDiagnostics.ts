@@ -19,7 +19,7 @@ const MAX_AGE_MS = DIAGNOSTIC_RETENTION.hours * 60 * 60 * 1000;
 const PER_KIND: Partial<Record<EventName, number>> = {
   gesture: 12, focus: 12, visibility: 20, pageshow: 10, pagehide: 10, 'route-check': 10,
   'snapshot-cache': 10, 'snapshot-pending': 10, 'snapshot-server': 20, 'freshness-check': 10, edit: 30, mark: 20,
-  'verse-pick': 20,
+  'verse-pick': 20, 'pen-hold': 12,
 };
 const SESSION = Date.now();
 const EVENTS = [
@@ -32,6 +32,8 @@ const EVENTS = [
   'edit', 'dictation', 'sync-trouble',
   // A stroke of the Bible marks: what drew it, and how it ended (`components/bible/marks`).
   'mark',
+  // Which gate rejected a sustained Pencil hold, with its displacement but no position or verse.
+  'pen-hold',
   // A reading setting of this device changed: which, from where, to what, and whether the device kept it
   // (`components/bible/crossReferencePrefs.ts`).
   'setting',
@@ -54,6 +56,7 @@ interface EventData extends RuntimeErrorMetadata {
   authenticated?: boolean;
   loading?: boolean;
   elapsedMs?: number;
+  driftPx?: number;
 }
 interface DiagnosticEvent {
   id: string;
@@ -100,7 +103,22 @@ function routeDocument(path: string): string | undefined {
   return ids.length ? fingerprint(ids.join('/')) : undefined;
 }
 
-function safeData(input: EventData): EventData {
+function safePenHoldData(input: EventData, elapsedMs: number | undefined): EventData {
+  const { result, driftPx } = input;
+  const output: EventData = {};
+  if (input.source === 'pen') output.source = 'pen';
+  if (result === 'movement-refused' || result === 'stroke-refused') output.result = result;
+  if (typeof driftPx === 'number' && Number.isFinite(driftPx) && driftPx >= 0) {
+    output.driftPx = Math.round(Math.min(driftPx, 10000) * 10) / 10;
+  }
+  if (elapsedMs !== undefined) output.elapsedMs = Math.min(elapsedMs, MAX_AGE_MS);
+  return output;
+}
+
+function safeData(name: EventName, input: EventData): EventData {
+  const elapsedMs = typeof input.elapsedMs === 'number' && Number.isFinite(input.elapsedMs)
+    ? Math.max(0, Math.round(input.elapsedMs)) : undefined;
+  if (name === 'pen-hold') return safePenHoldData(input, elapsedMs);
   const output: EventData = safeRuntimeErrorMetadata(input);
   if (typeof input.route === 'string') {
     output.route = diagnosticRoute(input.route);
@@ -114,7 +132,7 @@ function safeData(input: EventData): EventData {
   for (const key of ['visible', 'online', 'persisted', 'authenticated', 'loading'] as const) {
     if (typeof input[key] === 'boolean') output[key] = input[key];
   }
-  if (typeof input.elapsedMs === 'number' && Number.isFinite(input.elapsedMs)) output.elapsedMs = Math.max(0, Math.round(input.elapsedMs));
+  if (elapsedMs !== undefined) output.elapsedMs = elapsedMs;
   return output;
 }
 
@@ -126,7 +144,7 @@ export function diagnosticEvents(): DiagnosticEvent[] {
       if (!entry || !EVENTS.includes(entry.name) || !Number.isFinite(entry.at) || !Number.isFinite(entry.session)) return [];
       const id = typeof entry.id === 'string' && /^[a-zA-Z0-9-]{1,100}$/.test(entry.id)
         ? entry.id : `legacy-${entry.session}-${entry.at}-${index}`;
-      return [{ id, at: entry.at, session: entry.session, name: entry.name, data: safeData(entry.data ?? {}) }];
+      return [{ id, at: entry.at, session: entry.session, name: entry.name, data: safeData(entry.name, entry.data ?? {}) }];
     });
   } catch { /* Storage can be unavailable; the current session still has a report. */ }
   // Re-read before every append so another tab's newly persisted events survive.
@@ -156,7 +174,7 @@ function bounded(events: DiagnosticEvent[]): DiagnosticEvent[] {
 
 export function recordDiagnostic(name: EventName, data: EventData = {}) {
   const events = diagnosticEvents();
-  const next = { id: `${Date.now()}-${Math.random().toString(36).slice(2)}`, at: Date.now(), session: SESSION, name, data: safeData(data) };
+  const next = { id: `${Date.now()}-${Math.random().toString(36).slice(2)}`, at: Date.now(), session: SESSION, name, data: safeData(name, data) };
   const last = events.at(-1);
   // Ignore repeated identical metadata, but retain actual checks and lifecycle events.
   if ((name === 'snapshot-cache' || name === 'snapshot-pending') && last?.name === name && next.at - last.at < 1000 && last.session === SESSION && JSON.stringify(last.data) === JSON.stringify(next.data)) return;

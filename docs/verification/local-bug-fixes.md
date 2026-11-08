@@ -7646,3 +7646,11 @@ The common translation hook imports the existing dictionary initializer. It can 
 The baseline council list returned HTTP 200 but reported React #418. Its server response contained the raw translation key while Chrome displayed the translated link. Candidate static HTML has the translated default label on the council list, homepage and not-found route. Three native Chrome council-list runs on isolated emulators used EN, RU and UK. The selected translations were visually checked, with no browser errors or changes to the stored councils. Evidence is in artifacts/council-list-hydration-nov08-verified.
 
 After authorized deployment, confirm the revision, open the council list in a fresh Chrome tab and check the first keyboard link. Check for hydration errors on a direct reload. The homepage and not-found server HTML can be checked without user data.
+
+## BUG-20261102-pencil-hold-refused-by-jitter · Distinguish the Pencil hold refusals
+
+A sustained pen press now leaves one bounded technical event if movement or an existing stroke caused its hold to give up. The event holds the maximum sampled displacement up to refusal and the elapsed time from the press. A separate finger contact cannot erase a refused pen's pending event before its lift. The report retains only source, reason, distance and duration. Existing thresholds, drawing and verse selection behavior stay intact.
+
+Two focused regressions failed on missing diagnostic entries. All 159 related tests, scoped ESLint, TypeScript, guarded build OKqwk1rtx87d_COERs5_v and independent review passed. Native Chrome used trusted CDP pen events on isolated emulators at 1100 and 820 px. A short stroke drew without a diagnostic entry, the two refusal variants produced distinct entries in the technical viewer, and a still hold selected the verse. Before and after screens were visually checked. Evidence is in artifacts/pencil-hold-diagnostics-verified.
+
+After authorized deployment, reproduce with a physical Apple Pencil in Bible and attach technical information to the feedback on failure. Compare holds near the middle and edge of a word with ordinary short strokes. Physical drift and the final gesture threshold remain open in BUGS.md.

@@ -3,11 +3,15 @@ import { act, fireEvent, render as renderUI, screen, waitFor, within } from '@te
 import userEvent from '@testing-library/user-event';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { useRef } from 'react';
 
 import { BibleBookReader } from '@/components/bible/BibleBookReader';
 import { resetCrossReferencePrefsForTests, saveCrossReferencePrefs } from '@/components/bible/crossReferencePrefs';
 import { readPlaceTrail, resetPlaceTrailForTests } from '@/components/bible/placeTrailStore';
+import { useVerseCopy } from '@/components/bible/verseCopy/useVerseCopy';
+import { VerseHoldSurface } from '@/components/bible/verseCopy/VerseHoldSurface';
 import { LONG_PRESS_MS } from '@/hooks/useLongPress';
+import { diagnosticEvents } from '@/utils/appDiagnostics';
 import { verseWords, type BookText } from '@/utils/bibleText';
 import { forgetLoadedCrossRefs } from '@/utils/crossReferences';
 import { verseCopyText } from '@/utils/verseCopy';
@@ -108,14 +112,55 @@ describe('a Pencil\'s hold and the system\'s selection (the owner\'s iPad, 31.10
     expect(row('1:19')).not.toHaveAttribute('data-verse-chosen');
   });
 
-  it('a Pencil that moves along the line is a stroke: no menu', async () => {
+  const pencilRefusals = () => diagnosticEvents().filter(event => event.name === 'pen-hold').map(event => event.data);
+
+  it('reports movement when a sustained Pencil hold gives up, even if a finger touches before the Pencil lifts', async () => {
     await renderRuth();
+    const before = pencilRefusals().length;
     pointer(verseText('1:16'), 'pointerdown', 'pen', 40);
     pointer(verseText('1:16'), 'pointermove', 'pen', 80);
     await wait(LONG_PRESS_MS + 30);
+    pointer(verseText('1:16'), 'pointerdown', 'touch', 40, 2);
     pointer(verseText('1:16'), 'pointerup', 'pen', 80);
-    await wait(460);
-    expect(screen.queryByRole('menu')).toBeNull();
+    pointer(verseText('1:16'), 'pointerup', 'touch', 40, 2);
+    expect(row('1:16')).not.toHaveAttribute('data-verse-chosen');
+    const entries = pencilRefusals().slice(before);
+    expect(entries).toEqual([{ source: 'pen', result: 'movement-refused', driftPx: 40, elapsedMs: expect.any(Number) }]);
+    expect(entries[0].elapsedMs).toBeLessThan(LONG_PRESS_MS);
+  });
+
+  it('reports the stroke gate separately even when the Pencil stayed within the movement limit', async () => {
+    function Reader() {
+      const textRef = useRef<HTMLElement | null>(null);
+      const copy = useVerseCopy({ textRef, text: ruth, bible: 'rst', bookId: 'Ruth', enabled: true });
+      return <VerseHoldSurface copy={copy} articleRef={textRef} className="" onPenHold={() => false}>
+        <div data-verse="1:16"><span data-testid="held-verse">The verse words</span></div>
+      </VerseHoldSurface>;
+    }
+    render(<Reader />);
+    const before = pencilRefusals().length;
+    const verse = screen.getByTestId('held-verse');
+    pointer(verse, 'pointerdown', 'pen', 40);
+    pointer(verse, 'pointermove', 'pen', 44);
+    await wait(LONG_PRESS_MS + 30);
+    pointer(verse, 'pointerup', 'pen', 44);
+    const entries = pencilRefusals().slice(before);
+    expect(entries).toEqual([{ source: 'pen', result: 'stroke-refused', driftPx: 4, elapsedMs: expect.any(Number) }]);
+    expect(entries[0].elapsedMs).toBeGreaterThanOrEqual(LONG_PRESS_MS - 1);
+  });
+
+  it('leaves brief Pencil strokes and finger movement out of the hold report', async () => {
+    await renderRuth();
+    const before = pencilRefusals().length;
+    const verse = verseText('1:16');
+    pointer(verse, 'pointerdown', 'pen', 40);
+    pointer(verse, 'pointermove', 'pen', 60);
+    pointer(verse, 'pointerup', 'pen', 60);
+    pointer(verse, 'pointerdown', 'touch', 40);
+    pointer(verse, 'pointermove', 'touch', 60);
+    await wait(LONG_PRESS_MS + 30);
+    pointer(verse, 'pointerup', 'touch', 60);
+    expect(pencilRefusals()).toHaveLength(before);
   });
 
   it('after a finger\'s press the system never starts a selection on the text; after a mouse\'s it does', async () => {
