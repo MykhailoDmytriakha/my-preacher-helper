@@ -149,7 +149,7 @@ export type PreachDateStatus = 'planned' | 'preached';
 
 export interface PreachDate {
   id: string;
-  date: string;                    // ISO date string (YYYY-MM-DD)
+  date: string;                    // YYYY-MM-DD, or empty when the day is unassigned
   status?: PreachDateStatus;       // planned (scheduled) vs preached (fact)
   church: Church;                  // Required: church name and city
   audience?: string;                // Optional: audience description
@@ -242,10 +242,9 @@ export interface Sermon {
    * Because neither side is a copy of the other, nothing ever has to reconcile them:
    * setting a date does not rewrite this, and changing this does not touch a date.
    *
-   * Absent means "not stated". Storing it here — rather than making `PreachDate.date`
-   * optional so a church could sit in an undated event record — keeps every calendar
-   * reader (25+ direct reads of `pd.date`, several sorting with `localeCompare`) working
-   * on the invariant it already has: a preach date always has a date.
+   * Absent means "not stated". Setting this alone creates no preaching-date row.
+   * An existing date row can keep its own church and notes when its day is cleared.
+   * Its date stays a string so the same row can be edited and scheduled again.
    */
   church?: Church;
 

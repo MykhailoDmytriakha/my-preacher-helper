@@ -8,7 +8,7 @@ import { equalValues, object, own, readField } from './fieldValues';
 import { mergeIdentityTree } from './identityTreeMerge';
 import { relationMirrorFields } from './relationMirrors';
 import { validateResourceDocument } from './resourceSchemas';
-import { preservesSermonLinks, scratchConsumptionConflicts } from './sermonIntegrity';
+import { preservesSermonLinks, recordedPreachDayConflicts, scratchConsumptionConflicts } from './sermonIntegrity';
 import { preserveUnorderedPlanText, retireObservedPlanText, stalePlanTextDiscards } from './sermonPlanText';
 
 export { commandFingerprint, equalValues, readField } from './fieldValues';
@@ -656,7 +656,7 @@ function applyExistingFields(command: Extract<DataCommand, { kind: 'update' | 'd
   }
   const sermon = command.resource.collection === 'sermons';
   const planText = sermon && command.changes.find(change => change.path[0] === 'planText');
-  const datesChanged = sermon && command.changes.some(change => change.path[0] === 'preachDates');
+  const datesChanged = sermon && command.changes.find(change => change.path[0] === 'preachDates');
   const preachedFlag = datesChanged ? command.changes.find(change => change.path[0] === 'isPreached') : undefined;
   for (const change of command.changes) {
     if (frameChanges.includes(change) || change === planText || change === preachedFlag) continue;
@@ -667,7 +667,7 @@ function applyExistingFields(command: Extract<DataCommand, { kind: 'update' | 'd
     putField(value, change.path, merged.value);
     conflicts.push(...merged.conflicts);
   }
-  if (datesChanged) conflicts.push(...applyPreachedFlag(preachedFlag, value));
+  if (datesChanged) conflicts.push(...recordedPreachDayConflicts(datesChanged, value, previous), ...applyPreachedFlag(preachedFlag, value));
   conflicts.push(...applyPlanTextUpdate(command, planText || undefined, previous, value));
   return conflicts;
 }

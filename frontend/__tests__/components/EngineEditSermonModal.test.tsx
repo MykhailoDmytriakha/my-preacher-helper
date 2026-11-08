@@ -105,14 +105,15 @@ describe('EngineEditSermonModal on the data engine', () => {
     view.unmount();
   });
 
-  test('clears the existing planned date and removes it on save', async () => {
+  test('clears the day and retains the planned entry on save', async () => {
     const { harness, onClose, view } = setup(withPlannedDate);
     await ready();
     expect(screen.getByLabelText('Planned date')).toHaveValue('2099-04-10');
     fireEvent.click(screen.getByText('editSermon.clearPlannedDate'));
     expect(screen.getByLabelText('Planned date')).toHaveValue('');
     await saveAndSend(harness, onClose);
-    expect(harness.read(resource).value?.preachDates).toEqual([]);
+    expect(harness.read(resource).value?.preachDates).toMatchObject([{ id: 'pd-existing', date: '', status: 'planned',
+      createdAt: '2099-01-01T00:00:00.000Z', church: { id: 'church-unspecified' } }]);
     view.unmount();
   });
 

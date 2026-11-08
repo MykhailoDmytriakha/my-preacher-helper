@@ -1,5 +1,9 @@
 import { serializeContent } from '@/utils/contentFingerprint';
 
+import { PREACH_DATE_TARGET } from './datedRowAction';
+import { PREACH_STATUS_TARGET } from './preachStatusAction';
+import { existingRowFields, rowConflictPath, rowConflictValue } from './rowFieldAction';
+
 import type { ConflictDetail, DocumentData, FieldChange, Json } from './types';
 
 const sections = ['introduction', 'main', 'conclusion', 'ambiguous'] as const;
@@ -59,5 +63,23 @@ export function scratchConsumptionConflicts(changes: FieldChange[], current: Doc
     if (found && serializeContent(found) === serializeContent(note)) return [];
     return [{ path: ['scratch', String(note.id)], base: { exists: true, value: note }, mine: { exists: false },
       theirs: found ? { exists: true, value: found } : { exists: false } }];
+  });
+}
+
+
+/** Two individually valid saves cannot combine an empty day with an already recorded preaching. */
+export function recordedPreachDayConflicts(change: FieldChange, candidate: DocumentData, previous: DocumentData): ConflictDetail[] {
+  const days = existingRowFields(candidate.preachDates, PREACH_DATE_TARGET);
+  const statuses = existingRowFields(candidate.preachDates, PREACH_STATUS_TARGET);
+  const ours = existingRowFields(change.after.value, PREACH_DATE_TARGET);
+  const ourStatuses = existingRowFields(change.after.value, PREACH_STATUS_TARGET);
+  const stored = existingRowFields(previous.preachDates, PREACH_DATE_TARGET);
+  const observed = existingRowFields(change.before.value, PREACH_DATE_TARGET);
+  return [...days].flatMap(([id, day]) => {
+    const mine = ours.get(id), theirs = stored.get(id);
+    if (day !== '' || statuses.get(id) !== 'preached' || mine === undefined || theirs === undefined || mine === theirs
+      || (mine === '' && ourStatuses.get(id) === 'preached')) return [];
+    return [{ path: rowConflictPath(id, PREACH_DATE_TARGET), base: rowConflictValue(observed.get(id) ?? null),
+      mine: rowConflictValue(mine), theirs: rowConflictValue(theirs) }];
   });
 }

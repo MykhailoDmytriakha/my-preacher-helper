@@ -36,15 +36,17 @@ export function EngineEditSermonModal({ sermonId, onClose }: { sermonId: string;
   const change = (patch: Partial<SermonFormValues>) => {
     if ('seriesId' in patch) void series.change(patch.seriesId ?? '').catch(() => undefined);
     if (Object.keys(patch).some(key => key !== 'seriesId')) void form.update(current => sermonMetadataPatch(current, patch,
-      plannedId, newDate.createdAt, t('calendar.unspecifiedChurch'))).catch(() => undefined);
+      plannedId, newDate.createdAt, t('calendar.unspecifiedChurch'),
+      Boolean(initial?.preachDates?.some(row => row.id === plannedId)))).catch(() => undefined);
   };
   const save = async () => {
     if (saving || form.busy || !form.active || !form.durable || form.status?.phase === 'deleted') return;
+    const dateAction = form.captureDateAction(plannedId, plannedDate?.date ?? '');
     setSaving(true);
     try {
       // Membership keeps its own immutable identity if the metadata capture needs a retry.
       await series.save();
-      await form.save(current => ({ ...current, title: String(current.title).trim(), verse: String(current.verse).trim() }));
+      await form.save(current => ({ ...current, title: String(current.title).trim(), verse: String(current.verse).trim() }), dateAction);
       onClose();
     } catch { /* Both public owners retain input and publish their own failure. */ }
     finally { setSaving(false); }

@@ -32,6 +32,9 @@ export const getEffectivePreachDateStatus = (
     return preachDate.status;
   }
 
+  // A deliberately unassigned day still belongs to the existing planned row.
+  if (preachDate.date === '') return PLANNED_STATUS;
+
   if (sermonIsPreached) {
     return PREACHED_STATUS;
   }
@@ -121,6 +124,11 @@ export const getNextPlannedDate = (sermon: Sermon, referenceDate = new Date()): 
   return plannedDates[plannedDates.length - 1].preachDate;
 };
 
+export function getOnlyUndatedPreachDate(sermon: Sermon): PreachDate | undefined {
+  const undated = getPreachDatesByStatus(sermon, 'planned').filter(row => row.date === '');
+  return undated.length === 1 ? undated[0] : undefined;
+}
+
 export const getPreferredDateToMarkAsPreached = (
   sermon: Sermon,
   referenceDate = new Date()
@@ -130,7 +138,7 @@ export const getPreferredDateToMarkAsPreached = (
     return plannedDate;
   }
 
-  return getLatestPreachedDate(sermon);
+  return getOnlyUndatedPreachDate(sermon) ?? getLatestPreachedDate(sermon);
 };
 
 export const countPreachDatesByStatus = (sermon: Sermon, status: PreachDateStatus): number =>

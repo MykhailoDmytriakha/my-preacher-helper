@@ -2728,6 +2728,7 @@
     "weekView": "Week",
     "agendaView": "Agenda",
     "historyTitle": "Preaching dates",
+    "dateNotSet": "Date not set",
     "preachStatusHistory": "Preaching status history",
     "preachStatusLabel": "Status",
     "restorePreachStatusTo": "Restore status: {{status}}",

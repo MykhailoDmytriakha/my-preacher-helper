@@ -19,17 +19,31 @@ it('fills an unspecified planned church with the new sermon church while preserv
   expect(value.preachDates).toMatchObject([{ church: unnamed }, { church: named }]);
 });
 
-it('removes only the selected date and clears the optional sermon church explicitly', () => {
+it('clears only the selected day, preserving the date row and its notes', () => {
   const result = sermonMetadataPatch({ ...value, church: named }, { church: undefined, plannedDate: '' }, 'selected', 'now', 'Unspecified');
   expect(result).not.toHaveProperty('church');
-  expect(result.preachDates).toEqual([(value.preachDates as unknown[])[1]]);
+  const rows = value.preachDates as Array<Record<string, unknown>>;
+  expect(result.preachDates).toEqual([{ ...rows[0], date: '' }, rows[1]]);
 });
 
 
-it('keeps the edited or removed planned row after restart even when the calendar has moved past its original date', () => {
+it('keeps the edited or cleared planned row after restart even when the calendar has moved past its original date', () => {
   const initial = value as unknown as Sermon;
   const moved = sermonMetadataPatch(value, { plannedDate: '2099-02-03' }, 'selected', 'now', 'Unspecified') as unknown as Sermon;
   expect(sermonMetadataDateId(initial, moved, 'new', new Date('2099-01-02T12:00:00Z'))).toBe('selected');
-  const removed = sermonMetadataPatch(value, { plannedDate: '' }, 'selected', 'now', 'Unspecified') as unknown as Sermon;
-  expect(sermonMetadataDateId(initial, removed, 'new', new Date('2099-01-02T12:00:00Z'))).toBe('selected');
+  const cleared = sermonMetadataPatch(value, { plannedDate: '' }, 'selected', 'now', 'Unspecified') as unknown as Sermon;
+  expect(sermonMetadataDateId(initial, cleared, 'new', new Date('2099-01-02T12:00:00Z'))).toBe('selected');
+});
+
+it('uses the only existing unscheduled row when assigning a day again', () => {
+  const [first] = value.preachDates as unknown as NonNullable<Sermon['preachDates']>;
+  const opening = { ...value, preachDates: [{ ...first, date: '' }] } as unknown as Sermon;
+  expect(sermonMetadataDateId(opening, opening, 'new', new Date('2099-01-01T12:00:00Z'))).toBe('selected');
+});
+
+it('drops a staged new date when its day is cleared before its first Save', () => {
+  const opening = { ...value, preachDates: [] };
+  const staged = sermonMetadataPatch(opening, { plannedDate: '2099-02-01' }, 'new', 'now', 'Unspecified');
+  const cleared = sermonMetadataPatch(staged, { plannedDate: '' }, 'new', 'now', 'Unspecified', false);
+  expect(cleared).toEqual(opening);
 });

@@ -1723,6 +1723,51 @@ describe('transactional DataEngine server', () => {
     expect(history()).toHaveLength(1);
   });
 
+  it.each([[20, '2026-12-13'], [80, '2026-12-13'], [80, '2026-12-13T00:00:00.000Z']] as const)(
+    'orders clearing the planned day at offset %i from %s without losing the row or its notes', async (clearAt, originalDay) => {
+    const row = { id: 'date', date: originalDay, status: 'planned', createdAt: '2026-11-01T00:00:00.000Z',
+      church: { id: 'church', name: 'Church' }, notes: 'Keep my preparation' };
+    const other = { ...row, id: 'another', date: '2027-01-01' };
+    const seed = create('date-clear-seed') as Extract<DataCommand, { kind: 'create' }>;
+    expect((await processCommand('owner-1', { ...seed, value: { ...seed.value, preachDates: [row, other] } })).kind).toBe('acknowledged');
+    const edit = (operationId: string, date: string, offset: number) => processCommand('owner-1', {
+      ...update(operationId, 'date-clear-seed'),
+      changes: [{ path: ['preachDates'], before: { exists: true, value: [row, other] },
+        after: { exists: true, value: [{ ...row, date }, other] } }],
+      preachDateAction: { rowId: row.id, before: row.date, after: date, observedRevision: 1,
+        time: { earliestMs: 1_800_000_000_000 + offset, latestMs: 1_800_000_000_010 + offset } },
+    });
+    expect((await edit('desktop', '2026-12-20', 50)).kind).toBe('acknowledged');
+    const expected = clearAt > 50 ? '' : '2026-12-20';
+    const earlier = clearAt > 50 ? '2026-12-20' : '';
+    expect(await edit('phone', '', clearAt)).toMatchObject({
+      kind: 'acknowledged', snapshot: { value: { preachDates: [{ ...row, date: expected }, other] } },
+    });
+    expect(await listPreachDateHistory('owner-1', resource.id, 'date-clear-seed')).toMatchObject({
+      entries: [{ rowId: row.id, date: earlier, winnerDate: expected }],
+    });
+  });
+
+  it.each(['clear', 'mark'] as const)('reports the exact day conflict when a %s arrives after the other action', async late => {
+    const row = { id: 'date', date: '2026-12-13', status: 'planned', createdAt: '2026-11-01T00:00:00.000Z',
+      church: { id: 'church', name: 'Church' }, notes: 'Keep the note' };
+    const seed = create('date-mark-race') as Extract<DataCommand, { kind: 'create' }>;
+    expect((await processCommand('owner-1', { ...seed, value: { ...seed.value, preachDates: [row] } })).kind).toBe('acknowledged');
+    const cleared = { ...row, date: '' }, recorded = { ...row, status: 'preached' };
+    const edit = (operationId: string, next: typeof row) => processCommand('owner-1', {
+      ...update(operationId, 'date-mark-race'),
+      changes: [{ path: ['preachDates'], before: { exists: true, value: [row] }, after: { exists: true, value: [next] } }],
+    });
+    const stored = late === 'clear' ? recorded : cleared;
+    const mine = late === 'clear' ? cleared : recorded;
+    expect((await edit('first', stored)).kind).toBe('acknowledged');
+    expect(await edit('second', mine)).toMatchObject({ kind: 'conflict',
+      snapshot: { value: { preachDates: [stored] } },
+      conflicts: [{ path: ['preachDates', 'id:date', 'date'],
+        base: { exists: true, value: row.date }, mine: { exists: true, value: mine.date }, theirs: { exists: true, value: stored.date } }],
+    });
+  });
+
   it('keeps a later explicit return to the original date over an older queued change from that original', async () => {
     const row = { id: 'date', date: '2026-12-13', status: 'planned', createdAt: '2026-11-01T00:00:00.000Z',
       church: { id: 'church', name: 'Church', city: 'City' } };

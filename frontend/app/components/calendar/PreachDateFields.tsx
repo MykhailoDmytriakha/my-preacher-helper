@@ -11,15 +11,15 @@ import type { Church } from '@/models/models';
 export interface PreachDateValues { date: string; church: Church; audience: string; notes: string }
 
 /** Presentation shared by legacy and engine owners; every edit goes to its owner. */
-export function PreachDateFields({ value, onChange, disabled = false }: {
-  value: PreachDateValues; onChange: (patch: Partial<PreachDateValues>, detail?: 'church' | 'churchCity') => void; disabled?: boolean;
+export function PreachDateFields({ value, onChange, disabled = false, dateRequired = true }: {
+  value: PreachDateValues; onChange: (patch: Partial<PreachDateValues>, detail?: 'church' | 'churchCity') => void; disabled?: boolean; dateRequired?: boolean;
 }) {
   const { t } = useTranslation();
   return <fieldset disabled={disabled} className={GROUP_CARD}>
     <div className={FIELD_ROW}>
       <label htmlFor="preach-date-input" className={FIELD_LABEL}>{t('calendar.date')}</label>
       <DatePickerField id="preach-date-input" value={value.date} onChange={date => onChange({ date })}
-        inputClassName={`${FIELD_INPUT} pr-12`} required refuseMissingDays />
+        inputClassName={`${FIELD_INPUT} pr-12`} required={dateRequired} refuseMissingDays />
     </div>
     <ChurchAutocomplete value={value.church} onChange={(church, detail) => onChange({ church }, detail)} />
     <div className={FIELD_ROW}>

@@ -1,6 +1,6 @@
 import { churchForNewPreachDate, churchToFillOnPreachDate } from '@/utils/church';
 import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
-import { getNextPlannedDate } from '@/utils/preachDateStatus';
+import { getNextPlannedDate, getOnlyUndatedPreachDate } from '@/utils/preachDateStatus';
 
 import type { SermonFormValues } from './SermonFormDialog';
 import type { DocumentData } from '@/data-engine/types';
@@ -10,21 +10,24 @@ export const SERMON_METADATA_SELECTION = ['title', 'verse', 'church', 'preachDat
 
 /** The planned row identity is fixed by the opening form, never reselected after typing. */
 export function sermonMetadataPatch(current: DocumentData, patch: Partial<SermonFormValues>, plannedId: string,
-  createdAt: string, unspecifiedChurch: string): DocumentData {
+  createdAt: string, unspecifiedChurch: string, retainClearedRow = true): DocumentData {
   const next = { ...current };
   for (const field of ['title', 'verse', 'church'] as const) if (field in patch) {
     if (patch[field] === undefined) delete next[field]; else next[field] = patch[field] as DocumentData[string];
   }
-  return patchPlannedDate(next, patch, plannedId, createdAt, unspecifiedChurch);
+  return patchPlannedDate(next, patch, plannedId, createdAt, unspecifiedChurch, retainClearedRow);
 }
 
 function patchPlannedDate(next: DocumentData, patch: Partial<SermonFormValues>, plannedId: string,
-  createdAt: string, unspecifiedChurch: string): DocumentData {
+  createdAt: string, unspecifiedChurch: string, retainClearedRow: boolean): DocumentData {
   const dates = (next.preachDates ?? []) as unknown as PreachDate[];
   const existing = dates.find(date => date.id === plannedId);
   const church = next.church as unknown as Church | undefined;
   if ('plannedDate' in patch && !patch.plannedDate) {
-    return deepCleanUndefined({ ...next, preachDates: dates.filter(date => date.id !== plannedId) }) as unknown as DocumentData;
+    if (existing) next.preachDates = (retainClearedRow
+      ? dates.map(row => row.id === plannedId ? { ...row, date: '' } : row)
+      : dates.filter(row => row.id !== plannedId)) as unknown as DocumentData[string];
+    return deepCleanUndefined(next);
   }
   if (patch.plannedDate) {
       const fill = existing ? churchToFillOnPreachDate(church, existing.church) : undefined;
@@ -44,5 +47,8 @@ export function sermonMetadataDateId(initial: Sermon | null, value: Sermon | nul
   const original = initial?.preachDates ?? [], current = value?.preachDates ?? [];
   const edited = original.find(before => JSON.stringify(before) !== JSON.stringify(current.find(after => after.id === before.id)));
   const added = current.find(after => !original.some(before => before.id === after.id));
-  return edited?.id ?? added?.id ?? (initial ? getNextPlannedDate(initial, openedAt)?.id : undefined) ?? fallback;
+  const changed = edited ?? added;
+  if (changed) return changed.id;
+  if (!initial) return fallback;
+  return getNextPlannedDate(initial, openedAt)?.id ?? getOnlyUndatedPreachDate(initial)?.id ?? fallback;
 }

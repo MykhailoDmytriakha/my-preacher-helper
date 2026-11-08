@@ -77,7 +77,7 @@ export function preparePreachDate(current: DocumentData, action: PreachDateActio
   const church = !isUnspecifiedChurch(existing?.church) ? existing!.church
     : !isUnspecifiedChurch(sermon.church) ? sermon.church! : { id: '', name: '', city: '' };
   const next = { ...(existing ?? row), church,
-    ...(action.kind === 'edit' && action.restoreDate && { date: action.restoreDate }),
+    ...(action.kind === 'edit' && action.restoreDate !== undefined && { date: action.restoreDate }),
     ...(action.kind === 'mark' ? { status: 'preached' as const } : {}) };
   let edited = action.kind === 'edit' && action.restoreField && existing ? restoredPreachDateField(existing, action.restoreField) : next;
   if (action.kind === 'edit' && action.restoreStatus && existing) {

@@ -14,7 +14,7 @@ import { projectExactManualChoice, type ExactManualChoice } from './manualChoice
 import { sameManualSources } from './manualReturnSources';
 import { projectManualSelection, type ManualPath } from './manualScope';
 import { assertOrdinaryAnswerScope, ordinaryChoiceCheckpoint, projectOrdinaryChoiceDependents, requireDocumentChoiceForBranch, reviewOrdinaryAnswerChoice, type ManualChoiceSources } from './ordinaryAnswerChoice';
-import { chooseLocalPreachStatuses } from './preachStatusChoice';
+import { chooseLocalPreachDateEdits } from './preachDateChoice';
 import { confirmedExistingDeletion, equalValues, mergeDocumentFields, mergeFields } from './protocol';
 import { isRecoverableCheckpoint } from './recovery.client';
 import { recoveryChoiceFingerprint } from './recoveryChoice';
@@ -753,7 +753,7 @@ export class EditorController {
           if (correction) {
             const current = session.checkpoint();
             const merged = mergeDocumentFields(correction.base, correction.value, current.draft);
-            const status = chooseLocalPreachStatuses({ ...decided.confirmed, value: correction.base }, correction.value,
+            const status = chooseLocalPreachDateEdits({ ...decided.confirmed, value: correction.base }, correction.value,
               { ...current.confirmed, value: current.draft }, statusActions);
             session.edit(status ?? chooseLocalPlacement(current.confirmed.resource.collection,
               correction.base, correction.value, current.draft,

@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { useState } from 'react';
 
 import { EngineEditSermonModal } from '@/components/sermon/EngineEditSermonModal';
+import { actionClock } from '@/data-engine/actionClock.client';
 import { createBrowserDataEngine } from '@/data-engine/browser.client';
 import { DataEngineProvider } from '@/data-engine/react.client';
 import { settleEngine } from '../../test-utils/documentEngineHarness';
@@ -55,6 +56,26 @@ it('pins the actual document, keeps the selected date identity across reorder an
     { id: 'first', date: '2099-10-09' }, { id: 'second', date: '2099-10-04' },
   ] });
   view.unmount();
+});
+
+it('sends the Save time for an edited existing planned date from the sermon form', async () => {
+  const time = { earliestMs: 1_800_000_000_005, latestMs: 1_800_000_000_012 };
+  const capture = jest.spyOn(actionClock, 'capture').mockReturnValue(time);
+  const { harness, view } = setup();
+  try {
+    await ready();
+    fireEvent.change(screen.getByLabelText('Planned date'), { target: { value: '2099-10-09' } });
+    await act(async () => { await settleEngine(); });
+    expect(capture).not.toHaveBeenCalled();
+    await save();
+    await act(async () => { await harness.engine.retry(); await settleEngine(); });
+    expect(harness.transport.send).toHaveBeenCalledWith(expect.objectContaining({ preachDateAction: {
+      rowId: 'first', before: '2099-10-03', after: '2099-10-09', observedRevision: 1, time,
+    } }));
+  } finally {
+    capture.mockRestore();
+    view.unmount();
+  }
 });
 
 it('recovers an unsent added date after restart and edits the same embedded identity', async () => {

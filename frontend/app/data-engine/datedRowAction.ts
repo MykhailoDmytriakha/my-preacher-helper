@@ -1,3 +1,4 @@
+import { isDateOnlyKey, shownDayOf } from '@/utils/dateOnly';
 import { groupMeetingDay } from '@/utils/groupMeeting';
 
 import { isActionTime, type ActionTime } from './actionClock';
@@ -30,7 +31,7 @@ export type DatedRowTarget = RowFieldTarget<string> & {
 
 export const PREACH_DATE_TARGET: DatedRowTarget = {
   field: 'preachDates', evidence: 'preachDateAction', proofs: 'preachDateActions', history: '_preachDateHistory',
-  leaf: 'date', accepts: (value): value is string => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value),
+  leaf: 'date', accepts: (value): value is string => typeof value === 'string' && value.length <= 128 && (value === '' || isDateOnlyKey(shownDayOf(value))),
 };
 
 export const MEETING_DATE_TARGET: DatedRowTarget = {

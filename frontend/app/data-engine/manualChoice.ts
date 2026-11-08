@@ -2,7 +2,7 @@ import { orderCommitRequests } from './commits';
 import { manualChoiceRecoveryIdentity } from './editorIdentity';
 import { chooseLocalPlacement } from './localPlacementChoice';
 import { projectManualSelection, type ManualPath } from './manualScope';
-import { chooseLocalPreachStatuses } from './preachStatusChoice';
+import { chooseLocalPreachDateEdits, hasClearedPreachDay } from './preachDateChoice';
 import { equalValues, mergeDocumentFields, mergeFields } from './protocol';
 import { canReplaceSnapshot } from './snapshotFreshness';
 
@@ -79,14 +79,15 @@ export function projectExactManualChoice(record: EditorRecord, decision: ExactMa
     throw Object.assign(new Error('Remote document was deleted; use a new copy to preserve this draft'), { code: 'use-new-copy' });
   }
   const { request, stored } = decision;
-  const hasStatus = decision.choice === 'local' && request.preachStatusActions?.length;
+  const hasDateEdits = decision.choice === 'local'
+    && (request.preachStatusActions?.length || hasClearedPreachDay(request.baseline, request.value));
   const prepared = request.initialized && request.command;
-  const reviewed = hasStatus && prepared
+  const reviewed = hasDateEdits && prepared
     ? replaySavedChoiceDelta(stored.resource, request.value, decision.value, request.intended)
     : decision.value;
-  const status = hasStatus ? chooseLocalPreachStatuses(prepared ? request.working : request.baseline, reviewed, stored, request.preachStatusActions) : undefined;
+  const dateEdits = hasDateEdits ? chooseLocalPreachDateEdits(prepared ? request.working : request.baseline, reviewed, stored, request.preachStatusActions) : undefined;
   const draft = decision.choice === 'local'
-    ? projectManualSelection(decision.stored.value!, status ?? decision.value, decision.selection)
+    ? projectManualSelection(decision.stored.value!, dateEdits ?? decision.value, decision.selection)
     : decision.stored.value;
   const decided = { ...record, checkpoint: afterChoice(decision.stored, draft, checkpoint.editGeneration + 1),
     completedCommits: [...new Set([...(record.completedCommits ?? []), ...ids])] };

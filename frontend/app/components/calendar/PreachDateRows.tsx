@@ -40,7 +40,7 @@ export function PreachDateRows({ preachDates, isPreached: sermonIsPreached = fal
                                         {(() => {
                                             const parsedDate = parseDateOnlyAsLocalDate(pd.date);
                                             if (!parsedDate) {
-                                                return pd.date;
+                                                return pd.date || t('calendar.dateNotSet');
                                             }
                                             return format(parsedDate, 'PP', { locale: dateLocale });
                                         })()}

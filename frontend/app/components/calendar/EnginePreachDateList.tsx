@@ -5,6 +5,7 @@ import { useId, useState } from 'react';
 
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { useDataDocument, useDataEngine } from '@/data-engine/react.client';
+import { getEffectivePreachDateStatus } from '@/utils/preachDateStatus';
 import { useTranslation } from '@locales/useTranslation';
 
 import { DatedRowHistory } from './DatedRowHistory';
@@ -51,6 +52,8 @@ export function EnginePreachDateList({ sermonId, showDocumentStatus = true }: {
     {owner && generation && <DatedRowHistory key={JSON.stringify(['date', owner, sermonId, generation])}
       owner={owner} collection="sermons" id={sermonId} generation={generation} disabled={disabled}
       liveDates={new Map(sermon?.preachDates?.map(date => [date.id, date.date]))}
+      canRestore={(rowId, date) => date !== '' || Boolean(sermon?.preachDates?.some(row =>
+        row.id === rowId && getEffectivePreachDateStatus(row, Boolean(sermon.isPreached)) === 'planned'))}
       onRestore={(dateId, restoreDate) => setAction({ kind: 'edit', dateId, restoreDate })} />}
     {owner && generation && <PreachDateFieldHistory key={JSON.stringify(['details', owner, sermonId, generation])}
       owner={owner} sermonId={sermonId} generation={generation} dates={sermon?.preachDates ?? []} disabled={disabled}

@@ -64,7 +64,7 @@ export function PreachDateFieldHistory({ owner, sermonId, generation, dates, dis
         const current = field === 'status' ? row.status ?? null : field === 'audience' ? row.audience ?? null : field === 'churchCity' ? row.church.city ?? null : row.church;
         const canRestore = field === 'status' ? canRestorePreachStatus(row, entry) : canRestorePreachDateField(row, entry);
         return <li key={id} className="space-y-1 rounded-lg border border-gray-200 px-3 py-2 dark:border-gray-700">
-          <p className="font-medium">{label} · {date ? format(date, 'PP', { locale: dateLocale }) : row.date}</p>
+          <p className="font-medium">{label} · {date ? format(date, 'PP', { locale: dateLocale }) : row.date || t('calendar.dateNotSet')}</p>
           <p className="break-words">{display(entry.value, field)}</p>
           <p className="break-words">{t('calendar.preachDetailKept', { value: display(entry.winnerValue, field) })}</p>
           <button type="button" className={link}

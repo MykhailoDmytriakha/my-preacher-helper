@@ -2764,6 +2764,7 @@
     "weekView": "Тиждень",
     "agendaView": "Список",
     "historyTitle": "Дати проповіді",
+    "dateNotSet": "Дату не визначено",
     "preachStatusHistory": "Історія позначок «Проповідано»",
     "preachStatusLabel": "Статус",
     "restorePreachStatusTo": "Відновити статус «{{status}}»",

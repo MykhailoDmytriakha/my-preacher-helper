@@ -6,7 +6,7 @@ import { prepareDomainCommand } from './domainPolicy';
 import { ACTION_SLOT, editorSlot } from './editorIdentity';
 import { chooseLocalPlacement } from './localPlacementChoice';
 import { projectManualSelection } from './manualScope';
-import { chooseLocalPreachStatuses } from './preachStatusChoice';
+import { chooseLocalPreachDateEdits } from './preachDateChoice';
 import { equalValues, mergeDocumentFields, mergeFields } from './protocol';
 import { canReplaceSnapshot } from './snapshotFreshness';
 
@@ -342,7 +342,7 @@ export class DataSession {
       const chosen = chooseLocalPlacement(this.state.confirmed.resource.collection,
         this.state.confirmed.value, this.state.draft, candidate.value,
         merged.value.exists ? merged.value.value as DocumentData : null, mergeFields);
-      const statusChoice = chooseLocalPreachStatuses(this.state.confirmed, this.state.draft, candidate, preachStatuses);
+      const statusChoice = chooseLocalPreachDateEdits(this.state.confirmed, this.state.draft, candidate, preachStatuses);
       this.state.confirmed = copy(candidate);
       // The explicit choice retains one coherent placement and independently merged words.
       this.state.draft = copy(statusChoice ?? chosen);

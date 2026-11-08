@@ -12,7 +12,7 @@ import type { MeetingDateHistoryPage, PreachDateHistoryPage } from '@/data-engin
 
 type DatedRowHistoryPage = PreachDateHistoryPage | MeetingDateHistoryPage;
 
-export function DatedRowHistory({ owner, collection, id, generation, liveDates, disabled, onRestore }: {
+export function DatedRowHistory({ owner, collection, id, generation, liveDates, disabled, onRestore, canRestore }: {
   owner: string;
   collection: 'sermons' | 'groups';
   id: string;
@@ -20,6 +20,7 @@ export function DatedRowHistory({ owner, collection, id, generation, liveDates, 
   liveDates: ReadonlyMap<string, string>;
   disabled: boolean;
   onRestore: (rowId: string, date: string) => void | Promise<void>;
+  canRestore?: (rowId: string, date: string) => boolean;
 }) {
   const { t } = useTranslation();
   const { dateLocale } = useAppLocale();
@@ -41,7 +42,7 @@ export function DatedRowHistory({ owner, collection, id, generation, liveDates, 
     finally { setRestoring(false); }
   };
   const showDate = (date: string) => {
-    if (date === '') return t('workspaces.groups.meetings.datePlaceholder');
+    if (date === '') return t(collection === 'groups' ? 'workspaces.groups.meetings.datePlaceholder' : 'calendar.dateNotSet');
     const value = parseDateOnlyAsLocalDate(shownDayOf(date));
     return value ? format(value, 'PP', { locale: dateLocale }) : date;
   };
@@ -60,7 +61,7 @@ export function DatedRowHistory({ owner, collection, id, generation, liveDates, 
         {history.entries.map(entry => <li key={entry.id}
           className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-200 px-3 py-2 dark:border-gray-700">
           <span>{t('calendar.earlierDateEntry', { date: showDate(entry.date), keptDate: showDate(entry.winnerDate) })}</span>
-          <button type="button" disabled={disabled || restoring || !liveDates.has(entry.rowId) || liveDates.get(entry.rowId) === entry.date}
+          <button type="button" disabled={disabled || restoring || !liveDates.has(entry.rowId) || liveDates.get(entry.rowId) === entry.date || canRestore?.(entry.rowId, entry.date) === false}
             className="text-xs font-medium text-blue-600 hover:text-blue-500 dark:text-blue-400 disabled:opacity-50"
             onClick={() => void restore(entry.rowId, entry.date)}>{t('calendar.useEarlierDate')}</button>
         </li>)}

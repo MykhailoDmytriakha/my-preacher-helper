@@ -8,6 +8,7 @@ import { useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
 import { newClientId } from '@/utils/clientId';
 import { contentFingerprint } from '@/utils/contentFingerprint';
 import { getTodayDateOnlyKey, toDateOnlyKey } from '@/utils/dateOnly';
+import { getEffectivePreachDateStatus } from '@/utils/preachDateStatus';
 import { useTranslation } from '@locales/useTranslation';
 
 import { PreachDateFields } from './PreachDateFields';
@@ -24,7 +25,7 @@ export function EnginePreachDateModal({ sermonId, action, onClose }: {
   const { t } = useTranslation();
   const restoreKey = action.restoreField ? ':field:' + action.restoreField.historyId
     : action.restoreStatus ? ':status:' + action.restoreStatus.historyId : '';
-  const slot = `preach-date:${action.kind}:${action.dateId ?? 'new'}${action.restoreDate ? ':' + action.restoreDate : ''}${restoreKey}`;
+  const slot = `preach-date:${action.kind}:${action.dateId ?? 'new'}${action.restoreDate !== undefined ? ':' + action.restoreDate : ''}${restoreKey}`;
   const form = useDataForm({ collection: 'sermons', id: sermonId }, slot, PREACH_DATE_SELECTION);
   const [newRow] = useState<PreachDate>(() => ({ id: newClientId(), createdAt: new Date().toISOString(), date: getTodayDateOnlyKey(),
     church: { id: '', name: '', city: '' }, status: action.status ?? 'planned' }));
@@ -34,7 +35,10 @@ export function EnginePreachDateModal({ sermonId, action, onClose }: {
   const initial = form.initialData as unknown as Sermon | null, value = form.data as unknown as Sermon | null;
   const target = preachDateTarget(initial, value, action, newRow.id);
   const initialRow = initial?.preachDates?.find(date => date.id === target);
-  const unavailableRestore = Boolean(form.active && (
+  const dateOptional = action.kind === 'edit' && action.restoreStatus?.value !== 'preached'
+    && Boolean(initialRow && getEffectivePreachDateStatus(initialRow, Boolean(initial?.isPreached)) === 'planned');
+  const cannotRestoreEmptyDay = action.restoreDate === '' && !dateOptional;
+  const unavailableRestore = Boolean(form.active && (cannotRestoreEmptyDay ||
     (action.restoreField && (!initialRow || !canRestorePreachDateField(initialRow, action.restoreField)))
     || (action.restoreStatus && (!initialRow || !canRestorePreachStatus(initialRow, action.restoreStatus)))));
 
@@ -56,7 +60,7 @@ export function EnginePreachDateModal({ sermonId, action, onClose }: {
       return Boolean(prepared && value) && contentFingerprint(prepared ? prepared.preachDates ?? [] : []) !== contentFingerprint(value?.preachDates ?? []);
     } catch { return false; }
   })();
-  const valid = removal || Boolean(row && toDateOnlyKey(row.date) && row.church.name.trim());
+  const valid = removal || Boolean(row && (toDateOnlyKey(row.date) || (dateOptional && row.date === '')) && row.church.name.trim());
   const readOnly = loading || unavailableRestore || !form.active || form.busy || form.status?.phase === 'deleted';
   const recovery = useRecoveryDiscovery({ identity: form.recoveryIdentity, enabled: !loading && form.recoveryReady, version: form.recoveryVersion,
     list: async () => (await form.listRecoverable()).map(source => ({ id: source.scopeId,
@@ -87,9 +91,9 @@ export function EnginePreachDateModal({ sermonId, action, onClose }: {
     {!unavailableRestore && action.restoreStatus?.value && <p role="status" className="mb-3 text-sm">
       {t('calendar.restorePreachStatusTo', { status: t(action.restoreStatus.value === 'preached' ? 'calendar.status.preached' : 'calendar.status.planned') })}
     </p>}
-    {unavailableRestore ? <p role="alert">{t('calendar.preachDetailUnavailableForDate')}</p> : removal ? <p>{action.kind === 'delete' ? initial?.preachDates?.find(date => date.id === target)?.date : value?.title}</p>
+    {unavailableRestore ? <p role="alert">{t('calendar.preachDetailUnavailableForDate')}</p> : removal ? <p>{action.kind === 'delete' ? initialRow?.date || t('calendar.dateNotSet') : value?.title}</p>
       : row && <PreachDateFields value={{ date: row.date ?? '', church: row.church, audience: row.audience ?? '', notes: row.notes ?? '' }}
-        disabled={readOnly} onChange={(patch, churchDetail) => {
+        disabled={readOnly} dateRequired={!dateOptional} onChange={(patch, churchDetail) => {
           const detail = patch.audience !== undefined ? 'audience' : churchDetail;
           void form.update(current => patchPreachDate(current, target, patch), detail ? { detail, rowId: target } : undefined).catch(() => undefined);
         }} />}

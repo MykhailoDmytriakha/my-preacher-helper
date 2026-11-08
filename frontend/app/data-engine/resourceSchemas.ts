@@ -51,7 +51,8 @@ const bySection = object({ introduction: strings, main: strings, conclusion: str
 const planSection = object({ outline: text, outlinePoints: z.record(text).optional() });
 const plan = object({ introduction: planSection, main: planSection, conclusion: planSection });
 const church = object({ id: text, name: text, city: text.optional() });
-const preachDate = object({ id, date: id, status: z.enum(['planned', 'preached']).optional(), church, audience: text.optional(), notes: text.optional(), outcome: outcome.optional(), createdAt: text });
+const preachDate = object({ id, date: z.union([id, z.literal('')]), status: z.enum(['planned', 'preached']).optional(), church, audience: text.optional(), notes: text.optional(), outcome: outcome.optional(), createdAt: text })
+  .refine(row => row.date !== '' || row.status !== 'preached', { path: ['date'], message: 'A recorded preaching needs a day' });
 const audioChunk = object({ text, sectionId: z.enum(['introduction', 'mainPart', 'conclusion']), createdAt: text, index: number.int().nonnegative(), kind: z.enum(['body', 'transition']).optional(), role: z.enum(['intro', 'bridge', 'outro']).optional() });
 const preparedAudioSet = object({
   id, revision: number.int().nonnegative(), sections: z.array(z.enum(['introduction', 'mainPart', 'conclusion'])), chunks: z.array(audioChunk),

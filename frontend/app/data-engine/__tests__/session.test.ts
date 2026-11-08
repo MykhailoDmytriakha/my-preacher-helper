@@ -60,6 +60,24 @@ describe('DataSession', () => {
     }
   });
 
+  it.each(['deleted', 'recorded'] as const)('does not erase or resurrect the row when a cleared day meets a %s preaching', scenario => {
+    const date = { id: 'date', createdAt: '2026-11-08T00:00:00.000Z', date: '2026-12-13', status: 'planned', notes: 'Opening' };
+    const base: ResourceSnapshot = { ...snap(), resource: { collection: 'sermons', id: 'one' },
+      value: { userId: 'owner', title: 'Opening', isPreached: false, preachDates: [date] } };
+    const stored: ResourceSnapshot = { ...base, metadata: { ...base.metadata!, revision: 2 },
+      value: { ...base.value!, isPreached: scenario === 'recorded', preachDates: scenario === 'recorded' ? [{ ...date, status: 'preached' }] : [] } };
+    const mine = { ...base.value!, title: 'My other edit', preachDates: [{ ...date, date: '' }] };
+    const session = DataSession.restore({ ...new DataSession(base).checkpoint(), draft: mine, remoteCandidate: stored, dirty: true });
+    session.keepLocal();
+    expect(session.checkpoint().draft).toEqual({ ...stored.value, title: 'My other edit' });
+    if (scenario === 'deleted') {
+      const mixed = { ...mine, preachDates: [{ ...mine.preachDates[0], notes: 'My edits' }] };
+      const pending = DataSession.restore({ ...new DataSession(base).checkpoint(), draft: mixed, remoteCandidate: stored, dirty: true });
+      expect(() => pending.keepLocal()).toThrow(expect.objectContaining({ code: 'preach-date-edits-retained' }));
+      expect(pending.checkpoint().draft).toEqual(mixed);
+    }
+  });
+
   it('rebases only post-submit edits over server metadata and independently merged siblings', () => {
     const base = { ...snap(), value: { userId: 'owner', title: 'A', content: 'B', tags: ['old'], rev: { note: 1 } } };
     const session = new DataSession(base);

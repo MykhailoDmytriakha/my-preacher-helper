@@ -94,6 +94,55 @@ describe('EnginePreachDateModal on the data engine', () => {
     });
   });
 
+  it('restores an unassigned day to an existing row without changing its notes or church', async () => {
+    const { harness, onClose, view } = setup({ value: { preachDates: [existing] },
+      action: { kind: 'edit', dateId: existing.id, restoreDate: '' } });
+    const date = await ready();
+    await waitFor(() => expect(date).toHaveValue(''));
+    expect(screen.getByDisplayValue(existing.notes!)).toBeInTheDocument();
+    const save = screen.getByRole('button', { name: 'buttons.save' });
+    expect(save).toBeEnabled();
+    fireEvent.click(save);
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    await deliver(harness);
+    expect(dates(harness)).toEqual([{ ...existing, date: '' }]);
+    view.unmount();
+  });
+
+  it('records the only unscheduled row after the user supplies its day', async () => {
+    const { harness, onClose, view } = setup({ value: { preachDates: [{ ...existing, date: '' }] }, action: { kind: 'mark' } });
+    const date = await ready();
+    await waitFor(() => expect(date).toHaveValue(''));
+    expect(screen.getByDisplayValue(existing.notes!)).toBeInTheDocument();
+    const save = screen.getByRole('button', { name: 'buttons.save' });
+    expect(save).toBeDisabled();
+    fireEvent.change(date, { target: { value: '2026-12-20' } });
+    await waitFor(() => expect(save).toBeEnabled());
+    fireEvent.click(save);
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    await deliver(harness);
+    expect(dates(harness)).toEqual([{ ...existing, date: '2026-12-20', status: 'preached' }]);
+    view.unmount();
+  });
+
+  it('requires a day when restoring a recorded status to an unscheduled row', async () => {
+    const time = { earliestMs: 1_800_000_000_000, latestMs: 1_800_000_000_010 };
+    const { harness, onClose, view } = setup({ value: { preachDates: [{ ...existing, date: '' }] },
+      action: { kind: 'edit', dateId: existing.id, restoreStatus: { rowId: existing.id, rowCreatedAt: existing.createdAt,
+        field: 'status', value: 'preached', winnerValue: 'planned', generation: 'g', actionTime: time, winnerActionTime: time, historyId: 'history' } } });
+    const date = await ready();
+    expect(date).toHaveValue('');
+    const save = screen.getByRole('button', { name: 'buttons.save' });
+    expect(save).toBeDisabled();
+    fireEvent.change(date, { target: { value: '2026-12-20' } });
+    await waitFor(() => expect(save).toBeEnabled());
+    fireEvent.click(save);
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    await deliver(harness);
+    expect(dates(harness)).toEqual([{ ...existing, date: '2026-12-20', status: 'preached' }]);
+    view.unmount();
+  });
+
   it('renders with the "Add" title and a date field when no initialData is provided', async () => {
     const { view } = setup();
     await ready();
