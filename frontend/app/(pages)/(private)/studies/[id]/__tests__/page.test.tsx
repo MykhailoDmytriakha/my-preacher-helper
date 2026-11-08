@@ -1,5 +1,6 @@
 import { render, screen, fireEvent, within, waitFor, act } from '@testing-library/react';
 import { useStudyNotes } from '@/hooks/useStudyNotes';
+import type { RecordPresence } from '@/data-engine/recordPresence';
 import { useTags } from '@/hooks/useTags';
 import { useStudyNoteShareLinks } from '@/hooks/useStudyNoteShareLinks';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
@@ -666,6 +667,61 @@ describe('StudyNoteEditorPage Pagination', () => {
             expect(createNote).toHaveBeenCalledTimes(1);
             expect(window.location.pathname).toBe('/studies/A');
         } finally { view.unmount(); localStorage.clear(); jest.clearAllTimers(); jest.useRealTimers(); }
+    });
+
+    it('keeps the same focused editor while the first autosave waits for its new row', async () => {
+        jest.useFakeTimers();
+        localStorage.clear();
+        (useParams as jest.Mock).mockReturnValue({ id: 'new' });
+        window.history.replaceState(null, '', '/studies/new');
+        (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams());
+        const createNote = jest.fn((_, options: { id: string }) => ({
+            acceptance: Promise.resolve({ kind: 'queued', receipt: options.id }),
+            persistence: new Promise<void>(() => undefined),
+            note: { id: options.id },
+        }));
+        const updateNote = jest.fn();
+        const collection = {
+            uid: 'user-1', notes: [], loading: false, createNote, updateNote, deleteNote: jest.fn(),
+            confirmedCreationIds: new Set<string>(),
+            notePresence: jest.fn((id: string): RecordPresence => ({
+                kind: 'absent', source: 'server',
+                snapshot: { resource: { collection: 'studyNotes', id }, value: null, metadata: null },
+            })),
+        };
+        (useStudyNotes as jest.Mock).mockReturnValue(collection);
+        const view = render(<StudyNoteEditorPage />);
+        try {
+            const editor = screen.getByTestId('rich-markdown-editor');
+            act(() => editor.focus());
+            fireEvent.change(editor, { target: { value: 'First words' } });
+            await act(async () => { jest.advanceTimersByTime(1600); });
+
+            expect(createNote).toHaveBeenCalledTimes(1);
+            const id = createNote.mock.calls[0][1].id;
+            expect(window.location.pathname).toBe(`/studies/${id}`);
+            expect(screen.queryByText('recordAvailability.notFound')).not.toBeInTheDocument();
+            expect(screen.getByTestId('rich-markdown-editor')).toBe(editor);
+            expect(editor).toHaveFocus();
+            fireEvent.change(editor, { target: { value: 'First words and more' } });
+            await act(async () => { jest.advanceTimersByTime(1600); });
+            expect(editor).toHaveValue('First words and more');
+            expect(updateNote).not.toHaveBeenCalled();
+
+            collection.notePresence.mockReturnValue({
+                kind: 'absent', source: 'server',
+                snapshot: { resource: { collection: 'studyNotes', id }, value: null,
+                    metadata: { protocol: 1, generation: 'deleted-note', revision: 2, deleted: true } },
+            });
+            view.rerender(<StudyNoteEditorPage />);
+            expect(screen.getByText('recordAvailability.notFound')).toBeVisible();
+            expect(screen.queryByTestId('rich-markdown-editor')).not.toBeInTheDocument();
+        } finally {
+            view.unmount();
+            localStorage.clear();
+            jest.clearAllTimers();
+            jest.useRealTimers();
+        }
     });
 
     it('reopens the selected draft for the same guest owner resolved by the note reader', () => {

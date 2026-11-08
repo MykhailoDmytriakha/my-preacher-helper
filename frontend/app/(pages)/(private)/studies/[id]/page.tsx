@@ -761,6 +761,11 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
     const existingNote = useMemo(() => notes.find(n => n.id === noteId), [notes, noteId]);
     const presence = notePresence?.(noteId);
     const unavailable = !isNew && (presence?.kind === 'absent' || presence?.kind === 'deleting' || (!existingNote && !createdNoteId));
+    // The opening has adopted its reserved ID, but the collection can still be showing the
+    // complete list from before its create. Keep this editor mounted until the row arrives.
+    // The same absence still blocks writes, and a tombstone is an actual removal.
+    const awaitingOwnCreate = createdNoteId === noteId && !confirmedCreationIds?.has(noteId)
+        && presence?.kind === 'absent' && presence.snapshot.metadata === null;
     // A projected row or a local capture alone cannot confirm this note on the server.
     const noteIsAccepted = noteDelivery?.get(noteId)?.pending === false;
     // A comment is edited only in its window (the owner, 2026-10-28), here too: the page's pencil opens it.
@@ -1394,7 +1399,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
             {unsavedRecovery && <RetainedNoteDraft draft={unsavedRecovery} />}
         </div>;
     }
-    if (unavailable) {
+    if (unavailable && !awaitingOwnCreate) {
         const kept = unsavedRecovery ?? (isInitialized ? draftPayload : null);
         return <RecordUnavailable presence={presence} checking={notesLoading} pageLoading={notesLoading && !kept} onBack={handleBack} onRetry={refetch}>
             {unsavedRecovery ? <NoteDraftRecovery readOnly draft={unsavedRecovery} copies={recoveries}

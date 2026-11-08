@@ -16,6 +16,7 @@ Grep every hardcoded reference first, move the content to the new URL, keep the 
 - A placeholder route shows an unsaved entity under a fake id and swaps to the real id after create. `/studies/new` is one today: `studies/[id]/page.tsx` treats `noteId === 'new'` specially, and the dashboard and the studies list link to it.
 - To replace one, every hardcoded shortcut calls the create mutation itself with the same empty defaults (one canonical empty payload, not one per button) and routes to the real id. Then `git grep` the old `/new` link until the count is zero.
 - Leave removal of the legacy placeholder handling to the change that owns that screen; do not fold it into the shortcut change.
+- The first note autosave may adopt its reserved ID before the collection projects it. Keep that opening's editor mounted through a previous list's absence without metadata. This protects focus and selection while writes remain blocked until the note appears. A confirmed tombstone still takes the unavailable path.
 
 ## Why
 
