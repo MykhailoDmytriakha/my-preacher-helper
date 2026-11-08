@@ -7654,3 +7654,9 @@ A sustained pen press now leaves one bounded technical event if movement or an e
 Two focused regressions failed on missing diagnostic entries. All 159 related tests, scoped ESLint, TypeScript, guarded build OKqwk1rtx87d_COERs5_v and independent review passed. Native Chrome used trusted CDP pen events on isolated emulators at 1100 and 820 px. A short stroke drew without a diagnostic entry, the two refusal variants produced distinct entries in the technical viewer, and a still hold selected the verse. Before and after screens were visually checked. Evidence is in artifacts/pencil-hold-diagnostics-verified.
 
 After authorized deployment, reproduce with a physical Apple Pencil in Bible and attach technical information to the feedback on failure. Compare holds near the middle and edge of a word with ordinary short strokes. Physical drift and the final gesture threshold remain open in BUGS.md.
+
+## BUG-20261018-preaching-plan-slow-open · Recheck warm preaching startup
+
+On guarded build OKqwk1rtx87d_COERs5_v, native Chrome at 820 and 1280 px opened a saved manual plan from its sermon card and reached the exact saved text in Preach. Reload rendered the plan in 880–892 ms while the real collection changes request was held for 7.5 seconds. Hard offline took 876–884 ms. When a loopback proxy held the actual HTML navigation preload for 7.5 seconds, the same plan rendered in 3,862–3,875 ms, before the HTML response. The timing matches the current worker deadline plus local startup.
+
+Visual review covered the manual and preaching views. The saved sermon stayed unchanged and no application errors occurred. 144 related tests passed. This recheck changed documentation and the original report stays open. Evidence is in artifacts/preaching-plan-open-nov08-recheck. After authorized deployment, confirm the revision and measure one previously viewed disposable plan, recording the device, mode and time to exact visible text. Keep controlled delays local.
