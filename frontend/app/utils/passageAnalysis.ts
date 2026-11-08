@@ -229,10 +229,20 @@ export function stepUp(state: AnalysisState, start: number, total: number): Anal
 /** The drawn ties, without part `start`'s. */
 const notDrawn = (state: AnalysisState, start: number) => (state.drawn ?? []).filter((part) => part !== start);
 
-/** Part `start` one step down: it hangs on the nearest part above it that stands as deep — 2 becomes 1.1. Null — none. */
+/**
+ * Part `start` one step down: it hangs on the nearest part above it that stands as deep — 2 becomes 1.1. The first part
+ * has no part above: it goes under the part after it, as its dot dropped on that part's first word does (`tieTo`: a part
+ * that hung on it takes its place) — the arrows of every line act alike (the owner, 2026-11-07). Null — nowhere to go.
+ */
 export function stepDown(state: AnalysisState, start: number, total: number): AnalysisState | null {
   const depth = depthOf(state, start);
-  const above = partStarts(state).filter((part) => part < start);
+  const starts = partStarts(state);
+  if (start === starts[0]) {
+    const next = starts[1];
+    const tied = next === undefined ? 'own' : tieTo(state, start, next, total);
+    return tied === 'own' ? null : tied;
+  }
+  const above = starts.filter((part) => part < start);
   for (let n = above.length - 1; n >= 0; n -= 1) {
     const there = depthOf(state, above[n]);
     if (there === depth) return settled({ ...state, links: { ...state.links, [start]: above[n] }, drawn: notDrawn(state, start) }, total);

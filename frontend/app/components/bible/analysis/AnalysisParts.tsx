@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowLeftIcon, ArrowUturnLeftIcon, ChevronLeftIcon, ChevronRightIcon, EyeIcon, LinkIcon, PencilSquareIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { ArrowLeftIcon, ArrowUturnLeftIcon, ChevronLeftIcon, ChevronRightIcon, PencilSquareIcon, XMarkIcon } from '@heroicons/react/24/outline';
 
 
 import { BibleIcon } from '@/components/bible/BibleIcon';
@@ -59,8 +59,8 @@ const RING: Record<LineRole, string> = {
 export type AnalysisDoor = { home: 'bible' | 'analyses'; href: (id: string | null) => string | null };
 
 /** The bar over the analysis: back to the text, the place and how many parts, «Правка»/«Просмотр», the marks' tools, undo, done. */
-export function AnalysisHeader({ title, shortTitle = title, parts, mode, onMode, canUndo, onUndo, onClose, backLabel, door, onEditVerses, tools, allLinks, sermons }: {
-  title: string; shortTitle?: string; parts: string; mode: AnalysisMode; onClose: () => void;
+export function AnalysisHeader({ title, parts, mode, onMode, canUndo, onUndo, onClose, backLabel, door, onEditVerses, tools, allLinks, sermons }: {
+  title: string; parts: string; mode: AnalysisMode; onClose: () => void;
   /** The modes and «Отменить» — absent where nothing here can be changed (an analysis over another Bible: its notice alone). */
   onMode?: (mode: AnalysisMode) => void; canUndo?: boolean; onUndo?: () => void;
   /** Where the way back leads, in words: the reader's text by default; Studies' list when opened there. */
@@ -79,70 +79,55 @@ export function AnalysisHeader({ title, shortTitle = title, parts, mode, onMode,
   sermons?: ReactNode;
 }) {
   const { t } = useTranslation();
-  const back = backLabel ?? t('analysis.back');
-  const passage = <><span className="sm:hidden">{shortTitle}</span><span className="hidden sm:inline">{title}</span></>;
   return (
-    <header className="relative z-10 grid shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-1 gap-y-1 border-b border-gray-200 px-2 py-1.5 dark:border-gray-800 sm:flex sm:flex-wrap sm:gap-3 sm:px-5 sm:py-2.5">
-      <div className="flex min-w-0 items-center gap-1 sm:contents">
-        <button type="button" onClick={onClose} aria-label={back} className={`inline-flex h-11 w-10 shrink-0 items-center justify-center gap-1.5 rounded-xl text-sm font-semibold sm:h-10 sm:w-auto sm:px-3 ${OUTLINE}`}>
-          <ArrowLeftIcon className="h-4 w-4" aria-hidden="true" /><span className="hidden sm:inline">{back}</span>
+    <header className="relative z-10 flex shrink-0 flex-wrap items-center gap-3 border-b border-gray-200 px-4 py-2.5 dark:border-gray-800 sm:px-5">
+      <button type="button" onClick={onClose} className={`inline-flex h-10 items-center gap-1.5 rounded-xl px-3 text-sm font-semibold ${OUTLINE}`}>
+        <ArrowLeftIcon className="h-4 w-4" aria-hidden="true" />{backLabel ?? t('analysis.back')}
+      </button>
+      {door ? (
+        <button type="button" onClick={door.onPress} aria-label={t(`analysis.door.${door.home}`)} className={`inline-flex h-10 items-center gap-1.5 rounded-xl border px-3 text-sm font-semibold transition ${PLACE_DOOR_TONES[door.home]}`}>
+          {door.home === 'bible' ? <BibleIcon className="h-4 w-4" aria-hidden="true" /> : <AnalysisIcon className="h-4 w-4" aria-hidden="true" />}
+          <span className="hidden sm:inline">{t(`analysis.door.${door.home}`)}</span>
         </button>
-        {door ? (
-          <button type="button" onClick={door.onPress} aria-label={t(`analysis.door.${door.home}`)} className={`inline-flex h-11 w-10 shrink-0 items-center justify-center gap-1.5 rounded-xl border text-sm font-semibold transition sm:h-10 sm:w-auto sm:px-3 ${PLACE_DOOR_TONES[door.home]}`}>
-            {door.home === 'bible' ? <BibleIcon className="h-4 w-4" aria-hidden="true" /> : <AnalysisIcon className="h-4 w-4" aria-hidden="true" />}
-            <span className="hidden sm:inline">{t(`analysis.door.${door.home}`)}</span>
-          </button>
-        ) : null}
-        {onEditVerses ? (
-          <button type="button" onClick={onEditVerses} aria-label={t('analysis.editVerses')} title={title} className="group/tip relative min-w-0 flex-1 rounded-lg px-1 text-left hover:bg-gray-100 dark:hover:bg-gray-900 sm:flex-initial">
-            <span className="flex items-center gap-1 text-sm font-bold sm:gap-1.5 sm:text-base">
-              <span className="min-w-0 max-sm:line-clamp-2 max-sm:leading-4 sm:truncate">{passage}</span><PencilSquareIcon className="h-4 w-4 shrink-0 text-gray-400" aria-hidden="true" />
-            </span>
-            <span className="block truncate text-xs text-gray-500 dark:text-gray-400">{parts}</span>
-            <HoverLabel text={t('analysis.editVerses')} from="left" />
-          </button>
-        ) : (
-          <div className="min-w-0 flex-1 sm:flex-initial" title={title}>
-            <div className="text-sm font-bold max-sm:line-clamp-2 max-sm:leading-4 sm:truncate sm:text-base">{passage}</div>
-            <div className="truncate text-xs text-gray-500 dark:text-gray-400">{parts}</div>
-          </div>
-        )}
-        {sermons}
-      </div>
-      {onMode ? (
-        <div className="col-span-2 col-start-1 row-start-2 flex min-w-0 items-center gap-0.5 sm:contents">
-          <div className="flex shrink-0 gap-0.5 rounded-xl bg-gray-100 p-0.5 dark:bg-gray-900 sm:mx-auto sm:gap-1 sm:p-1" role="group" aria-label={t('analysis.modes')}>
-            {(['edit', 'view'] as const).map((value) => {
-              const label = t(value === 'edit' ? 'analysis.modeEdit' : 'analysis.modeView');
-              const Icon = value === 'edit' ? PencilSquareIcon : EyeIcon;
-              return (
-                <button key={value} type="button" aria-label={label} aria-pressed={mode === value} onClick={() => onMode(value)}
-                  className={`inline-flex h-10 min-w-10 items-center justify-center rounded-lg px-1 text-xs font-semibold sm:h-9 sm:px-4 sm:text-sm ${mode === value ? 'bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-white' : 'text-gray-600 dark:text-gray-300'}`}>
-                  <Icon className="h-4 w-4 min-[390px]:hidden" aria-hidden="true" />
-                  <span className="hidden min-[390px]:inline">{label}</span>
-                </button>
-              );
-            })}
-          </div>
-          {/* Keep the switch's slot stable across modes so its appearance does not move the mode selector. */}
-          <span data-testid="analysis-all-links" className={`inline-flex shrink-0 ${allLinks ? '' : 'invisible'}`}>
-            <Switch checked={allLinks?.on ?? false} onClick={allLinks?.onToggle} aria-label={t('analysis.view.allLinks')}
-              className="relative max-sm:gap-0 max-sm:px-0" label={<>
-                <span className="hidden sm:inline">{t('analysis.view.allLinks')}</span>
-                <LinkIcon aria-hidden="true" className={`pointer-events-none absolute top-1/2 z-10 h-3 w-3 -translate-y-1/2 sm:hidden ${allLinks?.on ? 'left-1 text-white' : 'right-1 text-gray-600 dark:text-gray-200'}`} />
-              </>} />
-          </span>
-          {tools}
-          {onUndo ? (
-            <button type="button" disabled={!canUndo} onClick={onUndo} aria-label={t('analysis.undo')} aria-keyshortcuts="Meta+Z Control+Z"
-              className={`group/tip relative inline-flex h-10 w-10 shrink-0 items-center justify-center gap-1.5 rounded-xl text-sm font-semibold disabled:opacity-40 sm:w-auto sm:px-3 ${OUTLINE}`}>
-              <ArrowUturnLeftIcon className="h-4 w-4" aria-hidden="true" /><span className="hidden sm:inline">{t('analysis.undo')}</span>
-              {mode === 'edit' ? <HoverLabel text={t('analysis.undoKeys', { keys: withModifier('Z') })} from="left" /> : null}
-            </button>
-          ) : null}
-        </div>
       ) : null}
-      <button type="button" onClick={onClose} className={`col-start-2 row-start-1 h-11 rounded-xl bg-indigo-600 px-2.5 text-sm font-semibold text-white hover:bg-indigo-700 sm:h-10 sm:px-4 ${onMode ? '' : 'sm:ml-auto'}`}>{t('analysis.done')}</button>
+      {onEditVerses ? (
+        <button type="button" onClick={onEditVerses} aria-label={t('analysis.editVerses')} className="group/tip relative min-w-0 rounded-lg px-1 text-left hover:bg-gray-100 dark:hover:bg-gray-900">
+          <span className="flex items-center gap-1.5 truncate text-base font-bold">{title}<PencilSquareIcon className="h-4 w-4 shrink-0 text-gray-400" aria-hidden="true" /></span>
+          <span className="block text-xs text-gray-500 dark:text-gray-400">{parts}</span>
+          <HoverLabel text={t('analysis.editVerses')} from="left" />
+        </button>
+      ) : (
+        <div className="min-w-0">
+          <div className="truncate text-base font-bold">{title}</div>
+          <div className="text-xs text-gray-500 dark:text-gray-400">{parts}</div>
+        </div>
+      )}
+      {sermons}
+      {onMode ? (
+        <div className="mx-auto flex gap-1 rounded-xl bg-gray-100 p-1 dark:bg-gray-900" role="group" aria-label={t('analysis.modes')}>
+          {(['edit', 'view'] as const).map((value) => (
+            <button key={value} type="button" aria-pressed={mode === value} onClick={() => onMode(value)}
+              className={`h-9 rounded-lg px-4 text-sm font-semibold ${mode === value ? 'bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-white' : 'text-gray-600 dark:text-gray-300'}`}>
+              {t(value === 'edit' ? 'analysis.modeEdit' : 'analysis.modeView')}
+            </button>
+          ))}
+        </div>
+      ) : <div className="mx-auto" />}
+      {/* «Все связи» holds its room in both modes and shows only where it acts, so a change of mode moves nothing in the bar
+          (BUG-20261031-analysis-mode-switch-jumps: the switch above, centred by its margins, jumped 65 px). Hidden by
+          visibility, it takes no press and no focus. */}
+      <span data-testid="analysis-all-links" className={allLinks ? 'inline-flex' : 'invisible inline-flex'}>
+        <Switch checked={allLinks?.on ?? false} onClick={allLinks?.onToggle} label={t('analysis.view.allLinks')} />
+      </span>
+      {tools}
+      {onUndo ? (
+        <button type="button" disabled={!canUndo} onClick={onUndo} aria-keyshortcuts="Meta+Z Control+Z"
+          className={`group/tip relative inline-flex h-10 items-center gap-1.5 rounded-xl px-3 text-sm font-semibold disabled:opacity-40 ${OUTLINE}`}>
+          <ArrowUturnLeftIcon className="h-4 w-4" aria-hidden="true" />{t('analysis.undo')}
+          {mode === 'edit' ? <HoverLabel text={t('analysis.undoKeys', { keys: withModifier('Z') })} /> : null}
+        </button>
+      ) : null}
+      <button type="button" onClick={onClose} className="h-10 rounded-xl bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700">{t('analysis.done')}</button>
     </header>
   );
 }
@@ -332,8 +317,10 @@ function LineHandle({ start, left, top, drag, shown }: { start: number; left: nu
  * «Просмотр» (the owner, 2026-10-29): no number — ↵ ↳ over a word cut (a press on the word itself does not), a word held and dragged links it by meaning, the
  * dot held and dragged ties the line.
  */
-export function AnalysisLine({ start, depth, spacing, role, words, steps, drag, handle, flags, painting, pointed = null, onWord, onCut, onGlue, onHoverWord }: {
+export function AnalysisLine({ start, depth, spacing, role, words, steps, drag, handle, flags, painting, pointed = null, hangNumbers = true, onWord, onCut, onGlue, onHoverWord }: {
   start: number; depth: number; spacing?: AnalysisLineSpacing; role: LineRole; words: LineWord[]; steps: LineSteps | null; drag: WordDrag | null;
+  /** A verse number that opens the line hangs in the margin; false — it stands in the line (a phone keeps no margin). */
+  hangNumbers?: boolean;
   /**
    * The word touched where no pointer hovers — a finger, the Pencil: its marks, and its line's arrows and dot, stand as
    * under the mouse (BUG-20261104-analysis-edit-needs-hover).
@@ -354,15 +341,20 @@ export function AnalysisLine({ start, depth, spacing, role, words, steps, drag, 
   // Left of where the line starts — its first letter, or a verse number hung in the margin — the dot sits close, its centre
   // 9 px off, where the tie's arrow leaves; its ring under the pointer keeps 2 px from the letter. The arrows ‹ › stand left of it.
   const first = words[0]?.word;
-  const lead = first?.startsVerse ? 6 + String(first.verse).length * 7 : 0;
+  const lead = hangNumbers && first?.startsVerse ? 6 + String(first.verse).length * 7 : 0;
   const edge = pad + 6 - lead;
   const lineShown = pointed !== null && words.some((item) => item.index === pointed);
+  // The line's own strip from its leftmost control to its words: the arrows and the dot stand left of where the line
+  // begins — further for a verse number hung in the margin, which takes no pointer — and show only while the pointer is
+  // on the line, so without it they went out on the way to them (BUG-20261107-analysis-line-controls-unreachable).
+  const reach = steps ? edge - 66 : handle ? edge - 17 : null;
   return (
     <div data-line={start} className={`group/line relative transition-opacity ${role === 'dim' ? 'opacity-30' : ''}`} style={{ paddingLeft: pad, paddingBlock: ANALYSIS_LINE_PADDING, marginTop: spacing?.before ?? 0 }}>
+      {reach !== null && reach < pad ? <span aria-hidden="true" data-line-reach="" className="absolute inset-y-0" style={{ left: reach, width: pad - reach }} /> : null}
       {steps ? <StepPair steps={steps} left={edge - 66} top={10 + (spacing?.within ?? 0) / 2} shown={lineShown} /> : null}
       {handle ? <LineHandle start={start} left={edge - 17} top={15 + (spacing?.within ?? 0) / 2} shown={lineShown} drag={handle} /> : null}
       <span className={`rounded-lg px-1.5 py-0.5 font-serif text-[19px] [box-decoration-break:clone] ${drag || painting ? 'select-none' : ''} ${RING[role]}`} style={{ lineHeight: `${ANALYSIS_LINE_HEIGHT + (spacing?.within ?? 0)}px` }}>
-        {words.map((item) => <WordOfLine key={item.index} item={item} drag={drag} painting={painting} pointed={item.index === pointed} onWord={onWord} onCut={onCut} onGlue={onGlue} onHoverWord={onHoverWord} />)}
+        {words.map((item) => <WordOfLine key={item.index} item={item} drag={drag} painting={painting} pointed={item.index === pointed} hangNumber={hangNumbers} onWord={onWord} onCut={onCut} onGlue={onGlue} onHoverWord={onHoverWord} />)}
         {flags}
       </span>
     </div>
@@ -382,12 +374,12 @@ function WordMarks({ item, shown, onCut, onGlue }: { item: LineWord; shown: bool
 }
 
 /** A verse's number before the word that starts it; one that opens a line hangs in the margin left of it. */
-function VerseNumber({ item }: { item: LineWord }) {
+function VerseNumber({ item, hang }: { item: LineWord; hang: boolean }) {
   // Hung (the owner, 2026-10-29): taking room in the line it pushed the first letter right of the lines on its step,
-  // and the indent is what says the step.
+  // and the indent is what says the step. A phone keeps no margin for it (canvas, 2026-11-07): there it stands in the line.
   return (
     <sup data-lead={item.leads ? item.index : undefined}
-      className={`pr-0.5 font-sans text-[11px] font-bold text-indigo-500 ${item.leads ? 'pointer-events-none absolute right-full top-0 leading-none' : ''}`}>
+      className={`pr-0.5 font-sans text-[11px] font-bold text-indigo-500 ${item.leads && hang ? 'pointer-events-none absolute right-full top-0 leading-none' : ''}`}>
       {item.word.verse}
     </sup>
   );
@@ -395,8 +387,8 @@ function VerseNumber({ item }: { item: LineWord }) {
 
 const TARGET_LOOK = { yes: 'bg-indigo-100 ring-2 ring-indigo-500 dark:bg-indigo-900', no: 'bg-rose-100 dark:bg-rose-950' };
 
-function WordOfLine({ item, drag, painting, pointed, onWord, onCut, onGlue, onHoverWord }: {
-  item: LineWord; drag: WordDrag | null; painting?: boolean; pointed: boolean; onWord: (index: number) => void; onCut: (index: number, level: CutLevel) => void;
+function WordOfLine({ item, drag, painting, pointed, hangNumber = true, onWord, onCut, onGlue, onHoverWord }: {
+  item: LineWord; drag: WordDrag | null; painting?: boolean; pointed: boolean; hangNumber?: boolean; onWord: (index: number) => void; onCut: (index: number, level: CutLevel) => void;
   onGlue: (index: number) => void;
   onHoverWord?: (index: number | null) => void;
 }) {
@@ -414,7 +406,7 @@ function WordOfLine({ item, drag, painting, pointed, onWord, onCut, onGlue, onHo
   const hover = item.linked && onHoverWord ? { onMouseEnter: () => onHoverWord(item.index), onMouseLeave: () => onHoverWord(null) } : {};
   return (
     <span className={item.leads && item.word.startsVerse ? 'relative' : undefined}>
-      {item.word.startsVerse ? <VerseNumber item={item} /> : null}
+      {item.word.startsVerse ? <VerseNumber item={item} hang={hangNumber} /> : null}
       <span data-word={item.index} onClick={() => onWord(item.index)} {...hover}
         onPointerDown={held ? (event) => held.down(item.index, event) : undefined} onPointerMove={held?.move} onPointerUp={held?.up} onPointerCancel={held?.cancel}
         className={`group relative rounded ${look}`}>

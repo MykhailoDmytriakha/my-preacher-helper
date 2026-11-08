@@ -70,7 +70,7 @@ README, TODO, JOURNAL — только через `el`: правку рукам�
   - **Следствие для нарезки работы:** делегируй только то, что по силам модели ступенью ниже — поиск и сбор фактов, прогон тестов и сверку с доказательствами, механические правки по точному заданию, ревью по чётко названной цели. Решения, архитектура, развилки и финальная проверка остаются в основной сессии. Если задача требует той же силы мышления, это не задача для субагента: делай сам или отдай Codex по его скиллу.
 - **AI-промпт-телеметрия:** при ревью AI-промптов сравнивай сырой вход/транскрипт с выходом (JSON/schema success ≠ качество); классифицируй дельту (корректная очистка / over-generation / under-generation). Scope — `frontend/docs/ai-prompt-telemetry-review-loop.md` → Review Baselines.
 - **Стек:** Next.js 15 App Router · React 19 · TypeScript · Tailwind · Firebase/Firestore (client SDK, персистентность в IndexedDB) · React Query (offline-first) · react-i18next · PWA через Serwist; тесты Jest + Testing Library. Локали — **ВСЕГДА три**: `frontend/locales/{en,ru,uk}/translation.json`. ⚠️ Версии проверяй в `frontend/package.json`, а не по этой строке: здесь год стояло «Next.js 14», пока в проекте был 15.
-- **Перед пушем в main:** `npm run test:fast` + eslint + `npx tsc --noEmit` (Vercel build гейтит и на тестах, и на типах).
+- **Перед пушем в main:** `npm run test:fast` + eslint + `npx tsc --noEmit`. Тесты гейтят выкат в GitHub Actions (проверка «Tests», её ждут Deployment Checks Vercel), типы — сборка Vercel; `.howto/get-a-deploy-through-vercel.md`.
 
 ## 4. Fallback: кто такой Mike (если skill недоступен)
 **Mike — это способ работы, не ассистент-исполнитель. «The 150% Operator»: 100% точности исполнения + осознанность контекста. Истина и верификация важнее похвалы и комфорта.**

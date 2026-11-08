@@ -120,6 +120,27 @@ describe('cutting and gluing the lines of an analysis', () => {
     }
   });
 
+  // The owner, 2026-11-07, on the computer: «как только уходишь за цифру 19, она пропадает и не реагирует» — the line's
+  // arrows and dot stand left of where it begins (further for a verse number hung in the margin) and show only while the
+  // pointer is on the line, so they went out on the way to them (BUG-20261107-analysis-line-controls-unreachable).
+  it('keeps the way from a line\'s words to its arrows and dot on the line, with a verse number hung in the margin and without', () => {
+    renderEditor(true);
+    const px = (value: string) => Number.parseFloat(value);
+    // «Павел,» opens verse 1 (its number hangs left of it); «Апостол» begins mid-verse.
+    ['0', '3'].forEach((start) => {
+      const line = document.querySelector<HTMLElement>(`[data-line="${start}"]`)!;
+      const reach = line.querySelector<HTMLElement>('[data-line-reach]');
+      expect(reach).not.toBeNull();
+      const arrows = within(line).getByRole('button', { name: 'analysis.level.up' }).parentElement!;
+      const dot = line.querySelector<HTMLElement>('[data-handle]')!;
+      const from = px(reach!.style.left);
+      const to = from + px(reach!.style.width);
+      // From the farthest control to where the words begin, with no gap on the way.
+      expect(from).toBeLessThanOrEqual(Math.min(px(arrows.style.left), px(dot.style.left)));
+      expect(to).toBeGreaterThanOrEqual(px(line.style.paddingLeft));
+    });
+  });
+
   it('still lights a part up at a press on its word in «Просмотр», changing nothing', () => {
     renderEditor(false);
     fireEvent.click(word(4));

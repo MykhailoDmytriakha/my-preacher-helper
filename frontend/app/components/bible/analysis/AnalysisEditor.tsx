@@ -20,11 +20,12 @@ import { useCopyNames } from '../verseCopy/useVerseCopy';
 
 import { writeAnalysisSourceAddress } from './analysisAddress';
 import { AnalysisCreationNotice } from './AnalysisCreationNotice';
-import { analysisLineSpacing, arrowNear, dragArrow, fromLine, tieArrows, useGeometry, type Arrow } from './analysisGeometry';
+import { analysisLineSpacing, arrowNear, dragArrow, fromLine, textMargin, tieArrows, useGeometry, type Arrow } from './analysisGeometry';
 import { saveAnalysisHelpPrefs, useAnalysisHelpPrefs, useAnalysisHelpWritable } from './analysisHelpPrefs';
 import {
   ARROW, AnalysisHeader, AnalysisLine, OtherBibleNotice, PanelGlyph, UntieMark, type AnalysisDoor, type AnalysisMode, type LineDrag, type LineRole, type LineSteps, type LineWord, type WordDrag,
 } from './AnalysisParts';
+import { AnalysisEditCapsule, AnalysisMoreSheet, AnalysisPhoneBar, SaidOverText, useBarOnScroll, usePhoneAnalysis, useSaidOverText } from './AnalysisPhone';
 import { AnalysisSermonsMenu, AnalysisSermonsPanel } from './AnalysisSermons';
 import { RelationGlyph } from './RelationParts';
 import { useAnalysisAddress } from './useAnalysisAddress';
@@ -78,7 +79,8 @@ function roleOf(state: AnalysisState, mode: AnalysisMode, selected: number | nul
  * back, the arrows left of the line under the pointer move it a step up or down, a word held and dragged onto another
  * word ties its line to that word, any other word dragged onto a word links the two by meaning (`useAnalysisRelations`),
  * and the × at a tie's arrow takes the tie away; and «Просмотр» — a part pressed lights its way up to the main thought.
- * In both the reader's marker, pencil and eraser paint the words (`useAnalysisMarks`). An analysis that exists opens for
+ * In both, on a wide screen, the reader's marker, pencil and eraser paint the words (`useAnalysisMarks`); a phone shows the
+ * marks but offers no tools, and takes its own form (`AnalysisPhone.tsx`). An analysis that exists opens for
  * viewing, a new one for editing. The rules are `utils/passageAnalysis.ts`; the note behind it is `useAnalysisNote`.
  */
 export function AnalysisEditor({ opening, text, bookId, bible, locale, marks: lentMarks, marksStatus, onClose, backLabel, door, onEditVerses, onOpenScreen, onUseBible }: {
@@ -123,7 +125,20 @@ export function AnalysisEditor({ opening, text, bookId, bible, locale, marks: le
   const bare = (word: number) => (words[word]?.text ?? '').replace(/[,.;:!?]$/, '');
   const [allLinks, setAllLinks] = useState(false);
   const relations = useAnalysisRelations({ state, total, geometry, at, bare, editing: mode === 'edit', showAll: mode === 'view' && allLinks, change, say: setMessage });
-  const marks = useAnalysisMarks({ source: lentMarks ?? null, words });
+  // A phone: one bar that leaves while the text is read, ⋯ for the rare, ‹ › in a capsule, no marks' tools (`AnalysisPhone.tsx`).
+  const phone = usePhoneAnalysis();
+  const marks = useAnalysisMarks({ source: lentMarks ?? null, words, paints: !phone });
+  const [moreOpen, setMoreOpen] = useState(false);
+  const bar = useBarOnScroll(phone && mode === 'view' && !moreOpen);
+  const said = useSaidOverText(message, () => setMessage(null));
+  // The passage changed under the screen (its verses chosen again on another device): a word's number now names another
+  // word, so all that holds a word by its number is let go — the pointed word, the lit part, a tie's ×, a drag under way and
+  // a link's menu; the capsule or a drop would act on words nobody touched (Codex, 07.11). Keyed by the words themselves: a
+  // new copy of the same text changes nothing.
+  const passageKey = useMemo(() => words.map((word) => `${word.chapter}:${word.verse}:${word.at}:${word.text}`).join(' '), [words]);
+  const letGoOfLinks = useRef(relations.letGo);
+  useEffect(() => { letGoOfLinks.current = relations.letGo; });
+  useEffect(() => { setPointed(null); setSelected(null); setOverArrow(null); setDrag(null); letGoOfLinks.current(); }, [passageKey]);
 
   const leaveAddress = useRef<() => void>(() => undefined);
   const departureSubject = useMemo(() => ({ owner: note.owner, opening, text, bookId, bible }), [note.owner, opening, text, bookId, bible]);
@@ -195,8 +210,9 @@ export function AnalysisEditor({ opening, text, bookId, bible, locale, marks: le
   };
   const wordDrag: WordDrag = {
     down: (word, event) => {
-      // Where nothing hovers, a word touched is the word pointed at; a press on one of its marks keeps it so.
-      if (!(event.target as HTMLElement).closest('button')) setPointed(event.pointerType === 'touch' || event.pointerType === 'pen' ? word : null);
+      // Where nothing hovers, a word touched is the word pointed at; a press on one of its marks keeps it so. On a phone
+      // any press points: its line's arrows are in the capsule, not under the pointer.
+      if (!(event.target as HTMLElement).closest('button')) setPointed(event.pointerType === 'touch' || event.pointerType === 'pen' || phone ? word : null);
       startDrag('relate', word, event);
     },
     move: (event) => {
@@ -298,37 +314,57 @@ export function AnalysisEditor({ opening, text, bookId, bible, locale, marks: le
     onOpen: (href: string) => { note.flush(); onOpenScreen(href); },
   } : null;
   const doorOut = barDoor(door, onOpenScreen, note);
+  const toMode = (value: AnalysisMode) => { setMode(value); setSelected(null); setMessage(null); };
+  const editVerses = onEditVerses && note.passage ? () => {
+    const passage = note.passage;
+    if (passage) leave(() => onEditVerses(note.noteId(), passage));
+  } : undefined;
+  // ⋯ on a phone: what the wide bar and side panel hold — all the links at once, the sermons, the other home, the verses.
+  // Once open it stays through a change of width: a new sermon's form begun in it must not vanish with a turn of the phone.
+  const moreSheet = (changes: boolean) => (moreOpen ? (
+    <AnalysisMoreSheet onClose={() => setMoreOpen(false)} door={doorOut}
+      allLinks={changes && mode === 'view' && state.relations.length ? { on: allLinks, onToggle: () => { setAllLinks(!allLinks); setMoreOpen(false); } } : null}
+      sermons={changes && sermons ? <AnalysisSermonsPanel {...sermons} /> : null} onEditVerses={changes ? editVerses : undefined} />
+  ) : null);
 
   // Opened over a Bible it was not made in: its parts are laid nowhere, nothing here changes it, and its own Bible is offered
   // (BUG-20261030-analysis-other-bible-overwrite) — the window, its way back and its door stay.
   if (note.otherBible) {
     return createPortal(
       <div {...layer} role="dialog" aria-modal="true" aria-label={title} className="fixed inset-0 z-[120] flex flex-col bg-white text-gray-900 dark:bg-gray-950 dark:text-gray-100">
-        <AnalysisHeader title={title} shortTitle={place} parts="" mode={mode} onClose={close} backLabel={backLabel} door={doorOut} />
-        <div className="min-w-0 flex-1 overflow-auto px-4 pb-24 pt-10 sm:pl-20 sm:pr-12"><OtherBibleNotice bible={note.otherBible} onUseBible={onUseBible ? (own) => { handOn(); onUseBible(own); } : undefined} /></div>
+        {phone ? <AnalysisPhoneBar place={place} mode={mode} hidden={false} backLabel={backLabel} onClose={close} onMore={doorOut ? () => setMoreOpen(true) : undefined} />
+          : <AnalysisHeader title={title} parts="" mode={mode} onClose={close} backLabel={backLabel} door={doorOut} />}
+        <div className={`min-w-0 flex-1 overflow-auto px-4 pb-24 ${phone ? 'pt-[calc(5.5rem+env(safe-area-inset-top))]' : 'pt-10 sm:pl-20 sm:pr-12'}`}><OtherBibleNotice bible={note.otherBible} onUseBible={onUseBible ? (own) => { handOn(); onUseBible(own); } : undefined} /></div>
+        {moreSheet(false)}
       </div>,
       document.body,
     );
   }
 
+  // «Правка» on a phone: the line of the word touched, for the capsule's ‹ ›.
+  const pointedLine = phone && mode === 'edit' && pointed !== null && pointed < total ? partOf(state, pointed) : null;
+  const lineSteps = pointedLine === null ? null : stepsOf(pointedLine);
+
   return createPortal(
     <div {...layer} role="dialog" aria-modal="true" aria-label={title} className="fixed inset-0 z-[120] flex flex-col bg-white text-gray-900 dark:bg-gray-950 dark:text-gray-100">
-      <AnalysisHeader title={title} shortTitle={place} parts={t('analysis.partCount', { count: starts.length })} mode={mode}
-        onMode={(value) => { setMode(value); setSelected(null); setMessage(null); }}
-        canUndo={note.canUndo} onUndo={undo} onClose={close} backLabel={backLabel} door={doorOut} tools={marks.toolbar}
-        allLinks={mode === 'view' && state.relations.length ? { on: allLinks, onToggle: () => setAllLinks(!allLinks) } : null}
-        onEditVerses={onEditVerses && note.passage ? () => {
-          const passage = note.passage;
-          if (passage) leave(() => onEditVerses(note.noteId(), passage));
-        } : undefined}
-
-        // On a screen without the side panel the sermons stand by the name; with it, in the panel (the owner, 31.10).
-        sermons={sermons ? <div className="shrink-0 lg:hidden"><AnalysisSermonsMenu {...sermons} /></div> : null} />
+      {phone ? (
+        <AnalysisPhoneBar place={place} mode={mode} hidden={bar.hidden} backLabel={backLabel} onClose={close} onMode={toMode}
+          onEditVerses={editVerses} onMore={() => setMoreOpen(true)} />
+      ) : (
+        <AnalysisHeader title={title} parts={t('analysis.partCount', { count: starts.length })} mode={mode} onMode={toMode}
+          canUndo={note.canUndo} onUndo={undo} onClose={close} backLabel={backLabel} door={doorOut} tools={marks.toolbar}
+          allLinks={mode === 'view' && state.relations.length ? { on: allLinks, onToggle: () => setAllLinks(!allLinks) } : null}
+          onEditVerses={editVerses}
+          // On a screen without the side panel the sermons stand by the name; with it, in the panel (the owner, 31.10).
+          sermons={sermons ? <div className="shrink-0 lg:hidden"><AnalysisSermonsMenu {...sermons} /></div> : null} />
+      )}
       <div className="flex min-h-0 flex-1">
-        {/* The top padding leaves room for a mark's name over the first line, the left one for a top line's two arrows and
-            its dot and a verse number hung in the margin, at every screen width. */}
-        <div className={`min-w-0 flex-1 overflow-auto pl-20 pr-4 pb-24 pt-10 sm:pr-12 ${marks.paneClass}`}
-          onClick={pressBackground} onMouseMove={pointArrows} onMouseLeave={overArrowOff} {...marks.strokeEvents}>
+        {/* The top padding leaves room for a mark's name over the first line (on a phone, under the bar laid over the
+            text); the left one, on a wide screen, for a top line's two arrows, its dot and a verse number hung in the
+            margin. A phone keeps no such margin: its arrows are in the capsule and its verse numbers in the line. Either
+            grows as far as the ties' uprights need (`textMargin`). */}
+        <div className={`min-w-0 flex-1 overflow-auto ${phone ? 'pb-32 pr-4 pt-[calc(5.5rem+env(safe-area-inset-top))]' : 'pb-24 pr-4 pt-10 sm:pr-12'} ${marks.paneClass}`}
+          style={{ paddingLeft: textMargin(arrows, phone ? 20 : 80) }} onScroll={bar.onScroll} onClick={pressBackground} onMouseMove={pointArrows} onMouseLeave={overArrowOff} {...marks.strokeEvents}>
           <AnalysisNotices creation={note} ready={note.ready} changedText={note.changedText} sync={note.sync} refused={note.refused} onSaveAgain={note.saveAgain} notApplied={note.notApplied} />
           {marksStatus}
           <div ref={contentRef} className="relative flow-root">
@@ -346,8 +382,8 @@ export function AnalysisEditor({ opening, text, bookId, bible, locale, marks: le
             ))}
             {relations.dragLine(drag?.moved && drag.kind === 'relate' ? drag : null)}
             {starts.map((start) => (
-              <AnalysisLine key={start} start={start} spacing={spacing[start]} depth={depthOf(state, start)} role={roleOf(state, mode, selected, start)}
-                words={wordsOf(start)} steps={stepsOf(start)} drag={mode === 'edit' ? wordDrag : null} handle={mode === 'edit' && !marks.painting ? lineDrag : null}
+              <AnalysisLine key={start} start={start} spacing={spacing[start]} depth={depthOf(state, start)} role={roleOf(state, mode, selected, start)} hangNumbers={!phone}
+                words={wordsOf(start)} steps={phone ? null : stepsOf(start)} drag={mode === 'edit' ? wordDrag : null} handle={mode === 'edit' && !marks.painting ? lineDrag : null}
                 flags={relations.flagsOf(start)} painting={marks.painting} pointed={mode === 'edit' && !marks.painting ? pointed : null}
                 onWord={pressWord} onCut={cutWord} onGlue={glueLine} onHoverWord={relations.pointWord} />
             ))}
@@ -361,6 +397,18 @@ export function AnalysisEditor({ opening, text, bookId, bible, locale, marks: le
           {message ? <div className={`rounded-xl px-3 py-2 leading-relaxed ${message.warn ? 'bg-rose-50 text-rose-800 dark:bg-rose-950/50 dark:text-rose-200' : 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-200'}`}>{message.text}</div> : null}
         </aside>
       </div>
+      {/* Over the text, at the bottom: what the analysis says where no side panel holds it, and a phone's capsule. */}
+      {said || (phone && mode === 'edit') ? (
+        <div className="pointer-events-none absolute inset-x-0 bottom-[calc(1.25rem+env(safe-area-inset-bottom))] z-30 flex flex-col items-center gap-2 px-4">
+          {said ? <div className="pointer-events-auto"><SaidOverText message={said} /></div> : null}
+          {phone && mode === 'edit' ? (
+            <div className="pointer-events-auto">
+              <AnalysisEditCapsule line={pointedLine === null ? null : short(pointedLine)} up={lineSteps?.up ?? null} down={lineSteps?.down ?? null} canUndo={note.canUndo} onUndo={undo} />
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+      {moreSheet(true)}
       {departureDialog}
     </div>,
     document.body,

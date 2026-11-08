@@ -4697,6 +4697,12 @@
     "modes": "Analysis mode",
     "modeEdit": "Edit",
     "modeView": "View",
+    "startEdit": "Edit",
+    "more": "More",
+    "phone": {
+      "pickLine": "Tap a line",
+      "line": "Line «{{part}}»"
+    },
     "partCount_one": "{{count}} part",
     "partCount_other": "{{count}} parts",
     "level": {
@@ -4742,7 +4748,7 @@
       "hintGlue": "The “join” mark on a line’s first word glues it back.",
       "hintSteps": "Hover over a line to see two arrows on its left. With nowhere to go, an arrow is pale:",
       "stepUp": "one level up — beside the line it hung on;",
-      "stepDown": "one level down — under the line above on the same level.",
+      "stepDown": "one level down — under the line above on the same level; the first line goes under the next one.",
       "hintTie": "To tie a line: point at it — a dot appears left of its first word. Drag the dot onto the word the line belongs to. Drag it up or down — the arrow always appears, to the line just above too. A line moved by ↳ or the arrows stands a step in, with no arrow. A line has one tie: to move it, first remove it with its ×.",
       "hintUntie": "To remove a tie: hover over its arrow — a × appears in the middle.",
       "hintRelation": "A link of meaning: hold any word, a line's first one too, and let go on another word. Both words get a ring in the link's colour, and a flag appears at the end of the line: point at it to draw the arrow; press the flag or a ringed word for direction, colour or removal.",
