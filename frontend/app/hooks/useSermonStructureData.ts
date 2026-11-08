@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 
 import { useTags } from '@/hooks/useTags';
 import { Item, Sermon, SermonPoint, Tag, Thought, ThoughtsBySection } from '@/models/models';
-import { normalizeStructureTag } from '@/utils/tagUtils';
+import { customTagNameKey, normalizeStructureTag } from '@/utils/tagUtils';
 import { canonicalizeStructure } from '@/utils/thoughtOrdering';
 import { getSectionBaseColor } from '@lib/sections';
 
@@ -15,14 +15,14 @@ type TagCatalogue = Record<string, { name: string; color?: string }>;
 function buildTagCatalogue(tags: readonly Tag[]): TagCatalogue {
   const catalogue: TagCatalogue = Object.create(null);
   for (const tag of tags) {
-    const key = tag.name.trim().toLowerCase();
+    const key = customTagNameKey(tag.name);
     if (!catalogue[key]) catalogue[key] = { name: tag.name, color: tag.color };
   }
   return catalogue;
 }
 
 function projectCustomTag(name: string, catalogue: TagCatalogue) {
-  const tag = catalogue[name.trim().toLowerCase()];
+  const tag = catalogue[customTagNameKey(name)];
   return { name: tag?.name || name, color: tag?.color || '#4c51bf' };
 }
 
@@ -150,6 +150,7 @@ export interface StructureEngineSource {
   loading: boolean;
   error: string | null;
   isHolding: () => boolean;
+  durable?: boolean;
   /** Asks the document again — the error screen's retry. */
   retry: () => void;
 }
@@ -215,6 +216,7 @@ export function useSermonStructureData(t: TFunction, engine: StructureEngineSour
   const appliedEngineSermonRef = useRef<Sermon | null>(null);
   const engineBoardPendingRef = useRef(false);
   const engineBuiltRef = useRef(false);
+  const projectBoard = useCallback((next: Sermon) => buildBoard(next, catalogueRef.current).containers, []);
   const applyEngineSermon = useCallback((next: Sermon, allTags: TagCatalogue) => {
     const board = buildBoard(next, allTags);
     setSermonState(next);
@@ -286,5 +288,6 @@ export function useSermonStructureData(t: TFunction, engine: StructureEngineSour
     isAmbiguousVisible,
     setIsAmbiguousVisible,
     syncFromEngine,
+    projectBoard,
   };
 }

@@ -331,8 +331,15 @@ describe('Structure Page', () => {
       await waitFor(() => expect(within(screen.getByTestId('drag-overlay')).getByText('Dragging Thought')).toBeInTheDocument());
     });
 
-    it('renders EditThoughtModal when editingItem is set', async () => {
-      const mockSermon = createMockSermon();
+    it('opens the engine thought from the editing card identity', async () => {
+      const thought = createMockThought({ id: 't1', text: 'Editing Content' });
+      const mockSermon = createMockSermon({ thoughts: [thought] });
+      const harness = documentEngineHarness({
+        resource: { collection: 'sermons', id: 'sermon-123' },
+        metadata: { protocol: 1, generation: 'g1', revision: 1, deleted: false },
+        value: { userId: 'owner', title: 'Test Sermon', verse: '', date: '2024-01-01', thoughts: [thought] },
+      });
+      jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
       const containers = {
         introduction: [],
         main: [],
@@ -344,7 +351,7 @@ describe('Structure Page', () => {
 
       // Mock editing state
       mockedUseSermonActions.mockReturnValue({
-        editingItem: createMockItem({ id: 't1', content: 'Editing Content' }),
+        editingItem: createMockItem({ id: 't1', content: 'An older projection' }),
         addingThoughtToSection: null,
         handleEdit: jest.fn(),
         handleCloseEdit: jest.fn(),
@@ -358,14 +365,8 @@ describe('Structure Page', () => {
     <StructureOnEngine />
   );
 
-      await waitFor(() => {
-        // EditThoughtModal should be present (mocking usually renders it but we check for content or Role)
-        // CardContent/EditModal uses portals or simple divs.
-        // We check for "Editing Content" if it's passed as initialText.
-        // Or check for a specific testid if the modal has one.
-        // Or check for the text inside the modal inputs.
-        expect(screen.getByDisplayValue('Editing Content')).toBeInTheDocument();
-      });
+      expect(await screen.findByDisplayValue('Editing Content')).toBeInTheDocument();
+      expect(screen.queryByDisplayValue('An older projection')).not.toBeInTheDocument();
     });
   });
 });

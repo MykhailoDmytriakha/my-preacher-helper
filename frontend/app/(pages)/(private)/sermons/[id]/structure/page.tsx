@@ -12,11 +12,11 @@ import { ScriptureText } from '@/components/bible/ScriptureLinks';
 import { ScriptureLinksInWindow } from '@/components/bible/VerseWindow';
 import Column from "@/components/Column";
 import { TechnicalDetailsButton } from '@/components/diagnostics/TechnicalDetailsButton';
-import EditThoughtModal from "@/components/EditThoughtModal";
 import { OutlineWriteRecovery } from '@/components/sermon/OutlineWriteRecovery';
 import { useStructureWriter } from "@/components/sermon/structureWriter";
 import { StructurePageSkeleton } from "@/components/skeletons/StructurePageSkeleton";
 import { SortableItemPreview } from "@/components/SortableItem";
+import { EngineThoughtModal } from '@/components/thought/EngineThoughtModal';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { DataDocumentProvider, useDataEngine } from '@/data-engine/react.client';
 import { useAiUsage } from "@/hooks/useAiUsage";
@@ -36,6 +36,7 @@ import {
   skippedWrite,
   type WriteOperation,
 } from "@/utils/recoverableWrite";
+import { normalizeVisualSectionKey } from '@/utils/sermonVisualOrder';
 import { normalizeStructureTag } from "@/utils/tagUtils";
 import { NEUTRAL_CAPTION } from '@/utils/themeColors';
 import { getSectionLabel } from "@lib/sections";
@@ -81,6 +82,7 @@ interface UseSermonStructureDataReturn {
   setIsAmbiguousVisible: React.Dispatch<React.SetStateAction<boolean>>;
   /** Catches the board up with the document once a held card is let go. */
   syncFromEngine: () => void;
+  projectBoard: (sermon: Sermon) => Record<string, Item[]>;
 }
 
 export default function StructurePage() {
@@ -114,7 +116,7 @@ function EngineStructureBoard({ sermonId }: { sermonId: string }) {
     ? ({ ...document.data, id: sermonId, thoughts: document.data.thoughts ?? [] } as unknown as Sermon)
     : null, [document.data, sermonId]);
   const engine = useMemo<StructureEngineSource>(() => ({
-    sermon, loading: document.loading, error: document.error, isHolding: () => holdingRef.current,
+    sermon, loading: document.loading, error: document.error, durable: document.state?.durable, isHolding: () => holdingRef.current,
     retry: () => { void document.retry().catch(() => undefined); },
   }), [sermon, document]);
   // A copy for reading keeps this page and its toolbar; only the board is drawn without controls.
@@ -178,6 +180,7 @@ function StructureBoard({ sermonId, engine, holdingRef, syncStatus, readOnly = f
     isAmbiguousVisible,
     setIsAmbiguousVisible,
     syncFromEngine,
+    projectBoard,
   }: UseSermonStructureDataReturn = useSermonStructureData(t, engine);
 
   // Handle switching to plan view
@@ -240,6 +243,22 @@ function StructureBoard({ sermonId, engine, holdingRef, syncStatus, readOnly = f
   // SermonOutline stats hook
   const { thoughtsPerSermonPoint } = useOutlineStats({ sermon, containers });
 
+  // DnD hook
+  const {
+    sensors: dndSensors,
+    activeId: dndActiveId,
+    handleDragStart: onDragStartHook,
+    handleDragOver: onDragOverHook,
+    handleDragEnd,
+    handleDragCancel: onDragCancelHook,
+  } = useStructureDnd({
+    containers,
+    setContainers,
+    containersRef,
+    sermon,
+    setSermon,
+  });
+
   // AI sorting diff hook
   const {
     highlightedItems,
@@ -258,6 +277,9 @@ function StructureBoard({ sermonId, engine, holdingRef, syncStatus, readOnly = f
     setContainers,
     outlinePoints,
     sermon,
+    capturedSermon: engine.durable && dndActiveId === null ? engine.sermon : null,
+    projectBoard,
+    setSermon,
     sermonId,
     debouncedSaveThought,
     debouncedSaveStructure,
@@ -270,7 +292,6 @@ function StructureBoard({ sermonId, engine, holdingRef, syncStatus, readOnly = f
     handleEdit,
     handleCloseEdit,
     handleAddThoughtToSection,
-    handleSaveEdit,
     handleDeleteThought,
     handleMoveToAmbiguous,
   } = useSermonActions({
@@ -309,22 +330,6 @@ function StructureBoard({ sermonId, engine, holdingRef, syncStatus, readOnly = f
     return position === undefined ? t('dragAndDrop.placeSection', { section }) : t('dragAndDrop.placeSectionAt', { section, position });
   }, [t, columnTitles]);
   const dndAccessibility = useDndKitAccessibility({ placeOf: placeOfThought });
-  // DnD hook
-  const {
-    sensors: dndSensors,
-    activeId: dndActiveId,
-    handleDragStart: onDragStartHook,
-    handleDragOver: onDragOverHook,
-    handleDragEnd,
-    handleDragCancel: onDragCancelHook,
-  } = useStructureDnd({
-    containers,
-    setContainers,
-    containersRef,
-    sermon,
-    setSermon,
-  });
-
   // A drag or an AI review owns the board; the engine's rebuild waits and then catches up.
   const holdingBoard = dndActiveId !== null || isDiffModeActive;
   holdingRef.current = holdingBoard;
@@ -1080,30 +1085,12 @@ function StructureBoard({ sermonId, engine, holdingRef, syncStatus, readOnly = f
           </DragOverlay>
         </DndContext>}
         {editingItem && !readOnly && (
-          <EditThoughtModal
-            recordingContextId={sermonId ? JSON.stringify([sermonId, editingItem.id]) : undefined}
-            initialText={editingItem.content}
-            initialTags={editingItem.customTagNames?.map((tag) => tag.name) || []}
-            initialSermonPointId={editingItem.outlinePointId || undefined}
-            initialSubPointId={editingItem.subPointId ?? undefined}
-            allowedTags={allowedTags}
-            sermonOutline={sermon?.outline}
-            containerSection={addingThoughtToSection || Object.keys(containers).find(key =>
-              containers[key].some(item => item.id === editingItem.id)
-            )}
-            onSave={handleSaveEdit}
-            onClose={handleCloseEdit}
-            /**
-             * Editing stays open offline, the same as on the sermon page
-             * (`sermons/[id]/page.tsx`), because writes queue and replay — that is what
-             * offline-first means here. This used to be narrowed to locally-created
-             * thoughts, and the narrowing was invisible only because connectivity lied:
-             * a session started with no network reported itself online, so the modal
-             * opened editable anyway. Once connectivity told the truth, that same
-             * session silently became read-only — a change nobody asked for, landing on
-             * exactly the person who opens the app on an iPad with the Wi-Fi off.
-             */
-          />
+          <EngineThoughtModal key={editingItem.id} sermonId={sermonId}
+            thoughtId={addingThoughtToSection ? undefined : editingItem.id}
+            initialOutlinePointId={addingThoughtToSection ? editingItem.outlinePointId ?? undefined : undefined}
+            boardSection={normalizeVisualSectionKey(addingThoughtToSection ?? Object.keys(containers).find(section =>
+              containers[section].some(item => item.id === editingItem.id))) ?? 'ambiguous'}
+            allowedTags={allowedTags} onClose={handleCloseEdit} />
         )}
       </div>
       {confirmDialog}

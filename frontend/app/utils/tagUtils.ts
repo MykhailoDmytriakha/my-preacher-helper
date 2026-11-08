@@ -20,6 +20,9 @@ export {
   SECTION_TO_CANONICAL,
 } from '@/utils/structureTags';
 
+/** Match a custom tag to its catalogue entry without changing the stored spelling. */
+export const customTagNameKey = (name: string): string => name.trim().toLowerCase();
+
 // Constants for repeated strings
 // No margin: the chip shape spaces its own children with `gap`.
 const ICON_CLASS_NAME = "w-3.5 h-3.5";

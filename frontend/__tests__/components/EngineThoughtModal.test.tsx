@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { useState } from 'react';
+import { useState, type ComponentProps } from 'react';
 import { useTextDictation } from '@/hooks/useTextDictation';
 
 import { EngineThoughtModal } from '@/components/thought/EngineThoughtModal';
@@ -25,19 +25,24 @@ const structure = { introduction: [], main: [], conclusion: [], ambiguous: ['a',
 const original: ResourceSnapshot = { resource, metadata: { protocol: 1, generation: 'g', revision: 1, deleted: false },
   value: { userId: 'owner', title: 'Sermon', verse: 'Romans 1', date: '2026-09-19', thoughts: [a, b], structure, thoughtsBySection: structure,
     outline: { introduction: [{ id: 'intro', text: 'Introduction' }], main: [{ id: 'main', text: 'Main' }], conclusion: [] } } };
-function setup(thoughtId?: string) {
-  const harness = membershipEngineHarness([original]);
+type BoardPlacement = Pick<ComponentProps<typeof EngineThoughtModal>, 'boardSection' | 'initialOutlinePointId'>;
+function setup(thoughtId?: string, board?: BoardPlacement,
+  tags = a.tags as string[]) {
+  const opening = { ...original, value: { ...original.value, thoughts: [{ ...a, tags }, b] } };
+  const harness = membershipEngineHarness([opening]);
   jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
   function Projection() {
     const document = useDataDocument(resource);
     return <output data-testid="projection">{JSON.stringify(document.data?.thoughts)}</output>;
   }
-  function Content() {
+  function Content({ placement }: { placement?: BoardPlacement }) {
     const [open, setOpen] = useState(true);
     return <><Projection /><button onClick={() => setOpen(true)}>Open</button>{open && <EngineThoughtModal
-      sermonId="sermon" thoughtId={thoughtId} allowedTags={[{ name: 'custom', color: '#000000' }]} onClose={() => setOpen(false)} />}</>;
+      sermonId="sermon" thoughtId={thoughtId} {...placement} allowedTags={[{ name: 'custom', color: '#000000' }]} onClose={() => setOpen(false)} />}</>;
   }
-  function Workspace() { return <DataEngineProvider><DataDocumentProvider resource={resource}><Content /></DataDocumentProvider></DataEngineProvider>; }
+  function Workspace({ placement = board }: { placement?: BoardPlacement }) {
+    return <DataEngineProvider><DataDocumentProvider resource={resource}><Content placement={placement} /></DataDocumentProvider></DataEngineProvider>;
+  }
   return { harness, Workspace, view: render(<Workspace />) };
 }
 async function ready(value: string) { await waitFor(() => expect(screen.getByLabelText('Thought')).toHaveValue(value)); }
@@ -69,6 +74,29 @@ it('keeps typing outside the page document and captures text plus placement in o
     structure: { main: ['a'], ambiguous: ['b'] }, thoughtsBySection: { main: ['a'], ambiguous: ['b'] } }); view.unmount();
 });
 
+it('keeps a new board thought in the chosen column when no outline point was selected', async () => {
+  const { harness } = setup(undefined, { boardSection: 'conclusion' });
+  await ready('');
+  fireEvent.change(screen.getByLabelText('Thought'), { target: { value: 'New conclusion thought' } });
+  await save();
+  await deliver(harness);
+  const value = harness.read(resource).value;
+  const thought = (value?.thoughts as unknown as typeof a[]).find(item => item.text === 'New conclusion thought');
+  expect(thought).toBeDefined();
+  expect(value?.structure).toMatchObject({ conclusion: [thought?.id], ambiguous: ['a', 'b'] });
+});
+
+it('shows one catalogue chip for a legacy tag and removes only its stored occurrence from a board thought', async () => {
+  const { harness } = setup('a', { boardSection: 'ambiguous' }, ['main', ' CUSTOM ']);
+  await ready(a.text);
+  expect(screen.getAllByText('custom')).toHaveLength(1);
+  expect(screen.queryByRole('button', { name: 'thought.addTagAria' })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'thought.removeTagAria' }));
+  await save();
+  await deliver(harness);
+  expect(harness.read(resource).value?.thoughts).toEqual([expect.objectContaining({ id: 'a', tags: ['main'] }), b]);
+});
+
 it('recovers unsent creation after restart with its original identity and Cancel never sends it', async () => {
   const { harness, Workspace, view } = setup(); await ready('');
   fireEvent.change(screen.getByLabelText('Thought'), { target: { value: 'New durable thought' } }); await settle();
@@ -90,6 +118,27 @@ it('recovers unsent creation after restart with its original identity and Cancel
   await deliver(harness); expect(harness.transport.send).toHaveBeenCalledTimes(1);
   expect(jest.mocked(useTextDictation).mock.results.at(-1)!.value.discard).toHaveBeenCalledTimes(1);
   restored.unmount();
+});
+
+it('shows the original point when recovering a new board thought from another column', async () => {
+  const { harness, Workspace, view } = setup(undefined, { boardSection: 'introduction', initialOutlinePointId: 'intro' });
+  await ready('');
+  fireEvent.change(screen.getByLabelText('Thought'), { target: { value: 'An introduction draft' } });
+  await settle();
+  view.unmount();
+  render(<Workspace placement={{ boardSection: 'conclusion' }} />);
+  await ready('');
+  const choice = await screen.findByRole('option', { name: 'Sermon' });
+  fireEvent.change(screen.getByLabelText('dataSync.recoveryLabel'), { target: { value: choice.getAttribute('value') } });
+  fireEvent.click(screen.getByRole('button', { name: 'dataSync.recover' }));
+  await ready('An introduction draft');
+  expect(screen.getByLabelText('editThought.outlinePointLabel')).toHaveTextContent('Introduction');
+  await save();
+  await deliver(harness);
+  const value = harness.read(resource).value;
+  const thought = (value?.thoughts as unknown as Array<typeof a & { outlinePointId?: string }>).find(item => item.text === 'An introduction draft');
+  expect(thought).toMatchObject({ outlinePointId: 'intro' });
+  expect(value?.structure).toMatchObject({ introduction: [thought?.id], conclusion: [] });
 });
 
 it('merges a remote sibling edit without applying it to the open form ancestor', async () => {

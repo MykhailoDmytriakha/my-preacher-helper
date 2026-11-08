@@ -118,7 +118,8 @@ describe('Structure Page - Integration Tests', () => {
     const harness = documentEngineHarness({
       resource: { collection: 'sermons', id: 'sermon-123' },
       metadata: { protocol: 1, generation: 'g1', revision: 1, deleted: false },
-      value: { userId: 'owner', title: 'Test Sermon', verse: '', date: '2024-01-01', thoughts: [] },
+      value: { userId: 'owner', title: 'Test Sermon', verse: '', date: '2024-01-01', thoughts: [],
+        outline: { introduction: [{ id: 'op-intro', text: 'Intro Point' }], main: [{ id: 'op-main', text: 'Main Point' }], conclusion: [] } },
     });
     jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
     searchParamsGetMock.mockImplementation((param: string) =>
@@ -284,7 +285,7 @@ describe('Structure Page - Integration Tests', () => {
       fireEvent.click(addButton);
 
       // The modal opens on the point whose "+" was pressed, not merely with a point field.
-      expect(await screen.findByLabelText('editThought.outlinePointLabel')).toHaveTextContent('Intro Point');
+      await waitFor(() => expect(screen.getByLabelText('editThought.outlinePointLabel')).toHaveTextContent('Intro Point'));
     });
 
     // BUG-20261004-point-add-thought-only-in-one-column: with all columns on screen the point "+" was missing.
@@ -308,7 +309,7 @@ describe('Structure Page - Integration Tests', () => {
     );
 
       fireEvent.click(await screen.findByTitle('Add thought to “Main Point”'));
-      expect(await screen.findByLabelText('editThought.outlinePointLabel')).toHaveTextContent('Main Point');
+      await waitFor(() => expect(screen.getByLabelText('editThought.outlinePointLabel')).toHaveTextContent('Main Point'));
     });
 
     it('clears pending section when closing modal before editing another section', async () => {

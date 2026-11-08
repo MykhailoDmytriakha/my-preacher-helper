@@ -16,7 +16,7 @@ import {
 import { skippedWrite, type WriteOperation } from "@/utils/recoverableWrite";
 import { useTranslation } from '@locales/useTranslation';
 
-import { advanceReviewBaseline } from "../utils/aiReviewPlacement";
+import { advanceReviewBaseline, capturedReviewChanges, reflectCapturedReviewChanges } from "../utils/aiReviewPlacement";
 import { buildStructureFromContainers, isLocalThoughtId } from "../utils/structure";
 
 type AiSortTarget = {
@@ -31,6 +31,9 @@ interface UseAiSortingDiffProps {
   setContainers: React.Dispatch<React.SetStateAction<Record<string, Item[]>>>;
   outlinePoints: { introduction: SermonPoint[]; main: SermonPoint[]; conclusion: SermonPoint[] };
   sermon: Sermon | null;
+  capturedSermon?: Sermon | null;
+  projectBoard?: (sermon: Sermon) => Record<string, Item[]>;
+  setSermon?: React.Dispatch<React.SetStateAction<Sermon | null>>;
   sermonId: string | null;
   debouncedSaveThought: (sermonId: string, thought: Thought, baseThought: Thought | null) => void;
   debouncedSaveStructure: (sermonId: string, structure: ThoughtsBySection, baseStructure?: ThoughtsBySection | null) => void;
@@ -280,6 +283,9 @@ export const useAiSortingDiff = ({
   setContainers,
   outlinePoints,
   sermon,
+  capturedSermon,
+  projectBoard,
+  setSermon,
   sermonId,
 }: UseAiSortingDiffProps) => {
   const { t } = useTranslation();
@@ -401,6 +407,32 @@ export const useAiSortingDiff = ({
   ]);
 
   // Manual actions use this same boundary after their actual device capture.
+  const lastCaptured = useRef<Sermon | null>(null);
+  useEffect(() => {
+    if (!capturedSermon || !projectBoard) return;
+    const previous = lastCaptured.current;
+    lastCaptured.current = capturedSermon;
+    if (!isDiffModeActive || !previous || previous === capturedSermon) return;
+    const board = projectBoard(capturedSermon);
+    const changes = capturedReviewChanges(projectBoard(previous), board);
+    if (!changes.words.size && !changes.placements.length) return;
+    setContainers(current => reflectCapturedReviewChanges(current, board, changes));
+    setPreSortState(current => current && reflectCapturedReviewChanges(current, board, changes));
+    setSermon?.(current => current && {
+      ...current, thoughts: capturedSermon.thoughts,
+      structure: capturedSermon.structure, thoughtsBySection: capturedSermon.thoughtsBySection,
+    });
+    if (changes.placements.some(id => id in highlightedItems)) {
+      const remaining = { ...highlightedItems };
+      for (const id of changes.placements) delete remaining[id];
+      setHighlightedItems(remaining);
+      if (!Object.keys(remaining).length) {
+        setIsDiffModeActive(false);
+        setPreSortState(null);
+      }
+    }
+  }, [capturedSermon, projectBoard, isDiffModeActive, highlightedItems, setContainers, setSermon]);
+
   const handlePlacementCaptured = useCallback((itemId: string, board: Record<string, Item[]>) => {
     setPreSortState(previous => previous ? advanceReviewBaseline(previous, board, [itemId]) : previous);
     setHighlightedItems(previous => {
