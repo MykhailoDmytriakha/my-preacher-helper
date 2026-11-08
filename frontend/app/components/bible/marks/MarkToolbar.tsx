@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, type CSSProperties } from 'react';
+import { useEffect, useRef, type CSSProperties, type ReactNode, type RefObject } from 'react';
 
 import { MARK_COLORS, PENCIL_COLORS, type PencilColor } from '@/utils/bibleMarks';
 import { keyboardReaches } from '@/utils/modalLayerRegistry';
@@ -49,20 +49,50 @@ const SWATCH = 'h-[30px] w-[30px] shrink-0 rounded-full shadow-[inset_0_0_0_1px_
 
 type Swatch = { id: string; color: string; label: string; chosen: boolean; pick: () => void };
 
+/**
+ * In the phone's capsule the colours float over the text as a row of dots with no pill behind them (the owner's choice on the
+ * canvas, 2026-11-07, K4: the column covered the end of the lines): each dot a 44 px target, kept apart from the words by a halo
+ * of the page's own colour.
+ */
+const DOT_HALO = 'ring-2 ring-white dark:ring-gray-900';
+
 /*
  * Both palettes stay mounted and toggle hidden, retaining their established tool and colour behavior.
  * Shell layout is declared separately by useWorkspacePanes, so other sheets can mount without
  * restyling the whole book (the earlier global :has workaround, 2026-10-16).
- * Open, a palette stands in the row before its tool and the row makes room for it.
+ * Open, a palette stands in the row before its tool and the row makes room for it — or, in the capsule, over the tools.
  */
-function Palette({ swatches, label, vertical, open }: { swatches: Swatch[]; label: string; vertical: boolean; open: boolean }) {
+function Palette({ swatches, label, variant, open }: { swatches: Swatch[]; label: string; variant: 'line' | 'column' | 'dots'; open: boolean }) {
+  if (variant === 'dots') {
+    return (
+      <div role="group" aria-label={label} hidden={!open} data-mark-palette="" className={`items-center gap-1 ${open ? 'flex' : 'hidden'}`}>
+        {swatches.map((swatch) => (
+          <button
+            key={swatch.id}
+            type="button"
+            onClick={swatch.pick}
+            aria-pressed={swatch.chosen}
+            aria-label={swatch.label}
+            title={swatch.label}
+            className="group flex h-11 w-11 shrink-0 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+            {...pointerHover}
+          >
+            <span
+              style={{ backgroundColor: swatch.color }}
+              className={`h-8 w-8 rounded-full shadow-md transition-transform duration-150 ease-out group-data-[hover]:scale-[1.06] motion-reduce:transition-none ${swatch.chosen ? TAKEN : DOT_HALO}`}
+            />
+          </button>
+        ))}
+      </div>
+    );
+  }
   return (
     <div
       role="group"
       aria-label={label}
       hidden={!open}
       data-mark-palette=""
-      className={`items-center gap-2 ${open ? 'flex' : 'hidden'} ${vertical ? PALETTE_COLUMN : PALETTE_LINE}`}
+      className={`items-center gap-2 ${open ? 'flex' : 'hidden'} ${variant === 'column' ? PALETTE_COLUMN : PALETTE_LINE}`}
     >
       {swatches.map((swatch) => (
         <button
@@ -81,66 +111,71 @@ function Palette({ swatches, label, vertical, open }: { swatches: Swatch[]; labe
   );
 }
 
-export function MarkToolbar({ tool, vertical = false, className = '' }: { tool: MarkToolState; vertical?: boolean; className?: string }) {
-  const { t } = useTranslation();
-  const { inHand, color, pencilColor, palette, penTool, pressColored, pressEraser, pickColor, pickPencilColor, putAway } = tool;
-  const ring = (name: 'marker' | 'pencil' | 'eraser') => (inHand === name ? TAKEN : penTool === name ? PEN_TOOL : '');
-
-  const holding = inHand !== null;
-  const rootRef = useRef<HTMLDivElement>(null);
+/**
+ * Escape puts the tool away and is spent: the window these tools stand in (a passage's analysis) must not close on the same
+ * press — it re-listened at once with the tool already away and took it (2026-10-30). Tools under a window leave the key to it,
+ * and so does a capsule whose own menu is open (`listening`): that Escape closes the menu first. Pressed on a colour, it gives
+ * the focus back to the tool those colours belong to before they hide, so the keyboard is never left on nothing.
+ */
+function usePutAwayOnEscape(rootRef: RefObject<HTMLDivElement | null>, holding: boolean, putAway: () => void, listening: boolean) {
   useEffect(() => {
-    if (!holding) return undefined;
-    // Escape puts the tool away and is spent: the window these tools stand in (a passage's analysis) must not close on
-    // the same press — it re-listened at once with the tool already away and took it (2026-10-30). Tools under a window
-    // leave the key to it.
+    if (!holding || !listening) return undefined;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape' || !keyboardReaches(rootRef.current)) return;
+      const root = rootRef.current;
+      if (event.key !== 'Escape' || !keyboardReaches(root)) return;
       event.stopPropagation();
+      const focused = document.activeElement;
+      if (root && focused instanceof HTMLElement && root.contains(focused) && focused.closest('[data-mark-palette]')) {
+        root.querySelector<HTMLButtonElement>('button[aria-pressed="true"][aria-expanded="true"]')?.focus();
+      }
       putAway();
     };
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, [holding, putAway]);
+  }, [holding, listening, putAway, rootRef]);
+}
 
+/** The three tools and their colours, as every layout draws them: one place for their labels, rings and presses. */
+function useToolParts(tool: MarkToolState) {
+  const { t } = useTranslation();
+  const { inHand, color, pencilColor, palette, penTool, pressColored, pressEraser, pickColor, pickPencilColor } = tool;
+  const ring = (name: 'marker' | 'pencil' | 'eraser') => (inHand === name ? TAKEN : penTool === name ? PEN_TOOL : '');
   const meaning = (id: string) => t(`bible.marks.meaning.${id}`);
   const pencilMeaning = (id: PencilColor) => (id === 'gray' ? t('bible.marks.plainPencil') : meaning(id));
   const markerSwatches: Swatch[] = MARK_COLORS.map((id) => ({ id, color: MARK_SWATCH[id], label: meaning(id), chosen: id === color, pick: () => pickColor(id) }));
   const pencilSwatches: Swatch[] = PENCIL_COLORS.map((id) => ({ id, color: PENCIL_SWATCH[id], label: pencilMeaning(id), chosen: id === pencilColor, pick: () => pickPencilColor(id) }));
   const markerLabel = t('bible.marks.marker', { meaning: meaning(color) });
   const pencilLabel = t('bible.marks.pencil', { meaning: pencilMeaning(pencilColor) });
-
-  return (
-    <div ref={rootRef} data-mark-toolbar="" role="toolbar" aria-label={t('bible.marks.toolbar')} aria-orientation={vertical ? 'vertical' : 'horizontal'} className={`relative flex items-center gap-2.5 ${vertical ? 'flex-col' : ''} ${className}`}>
-      <span className={`flex items-center gap-2.5 ${vertical ? 'flex-col' : ''}`}>
-        <Palette swatches={markerSwatches} label={t('bible.marks.colors')} vertical={vertical} open={palette === 'marker'} />
-        <button
-          type="button"
-          onClick={() => pressColored('marker')}
-          aria-pressed={inHand === 'marker'}
-          aria-expanded={palette === 'marker'}
-          aria-label={markerLabel}
-          title={markerLabel}
-          className={`${TOOL} ${ring('marker')}`}
-          {...pointerHover}
-        >
-          <MarkerIcon nib={color} />
-        </button>
-      </span>
-      <span className={`flex items-center gap-2.5 ${vertical ? 'flex-col' : ''}`}>
-        <Palette swatches={pencilSwatches} label={t('bible.marks.pencilColors')} vertical={vertical} open={palette === 'pencil'} />
-        <button
-          type="button"
-          onClick={() => pressColored('pencil')}
-          aria-pressed={inHand === 'pencil'}
-          aria-expanded={palette === 'pencil'}
-          aria-label={pencilLabel}
-          title={pencilLabel}
-          className={`${TOOL} ${ring('pencil')}`}
-          {...pointerHover}
-        >
-          <PencilIcon line={pencilColor} />
-        </button>
-      </span>
+  const buttons = {
+    marker: (
+      <button
+        type="button"
+        onClick={() => pressColored('marker')}
+        aria-pressed={inHand === 'marker'}
+        aria-expanded={palette === 'marker'}
+        aria-label={markerLabel}
+        title={markerLabel}
+        className={`${TOOL} ${ring('marker')}`}
+        {...pointerHover}
+      >
+        <MarkerIcon nib={color} />
+      </button>
+    ),
+    pencil: (
+      <button
+        type="button"
+        onClick={() => pressColored('pencil')}
+        aria-pressed={inHand === 'pencil'}
+        aria-expanded={palette === 'pencil'}
+        aria-label={pencilLabel}
+        title={pencilLabel}
+        className={`${TOOL} ${ring('pencil')}`}
+        {...pointerHover}
+      >
+        <PencilIcon line={pencilColor} />
+      </button>
+    ),
+    eraser: (
       <button
         type="button"
         onClick={pressEraser}
@@ -152,6 +187,54 @@ export function MarkToolbar({ tool, vertical = false, className = '' }: { tool: 
       >
         <EraserIcon />
       </button>
+    ),
+  };
+  return { t, markerSwatches, pencilSwatches, buttons };
+}
+
+export function MarkToolbar({ tool, vertical = false, className = '' }: { tool: MarkToolState; vertical?: boolean; className?: string }) {
+  const { t, markerSwatches, pencilSwatches, buttons } = useToolParts(tool);
+  const rootRef = useRef<HTMLDivElement>(null);
+  usePutAwayOnEscape(rootRef, tool.inHand !== null, tool.putAway, true);
+  const variant = vertical ? 'column' : 'line';
+
+  return (
+    <div ref={rootRef} data-mark-toolbar="" role="toolbar" aria-label={t('bible.marks.toolbar')} aria-orientation={vertical ? 'vertical' : 'horizontal'} className={`relative flex items-center gap-2.5 ${vertical ? 'flex-col' : ''} ${className}`}>
+      <span className={`flex items-center gap-2.5 ${vertical ? 'flex-col' : ''}`}>
+        <Palette swatches={markerSwatches} label={t('bible.marks.colors')} variant={variant} open={tool.palette === 'marker'} />
+        {buttons.marker}
+      </span>
+      <span className={`flex items-center gap-2.5 ${vertical ? 'flex-col' : ''}`}>
+        <Palette swatches={pencilSwatches} label={t('bible.marks.pencilColors')} variant={variant} open={tool.palette === 'pencil'} />
+        {buttons.pencil}
+      </span>
+      {buttons.eraser}
+    </div>
+  );
+}
+
+/**
+ * THE PHONE'S CAPSULE (the owner's choice on the canvas, 2026-11-07, K4): the three tools in a row at the bottom centre, with
+ * `trailing` after them (the text menu's «T»), and the colours of the tool in hand as dots over it — one tap a colour, the end
+ * of every line free. `menuOpen`: a menu of the capsule is open — the dots step aside under it, and Escape is the menu's.
+ */
+export function MarkCapsule({ tool, trailing, menuOpen = false }: { tool: MarkToolState; trailing?: ReactNode; menuOpen?: boolean }) {
+  const { t, markerSwatches, pencilSwatches, buttons } = useToolParts(tool);
+  const rootRef = useRef<HTMLDivElement>(null);
+  usePutAwayOnEscape(rootRef, tool.inHand !== null, tool.putAway, !menuOpen);
+  return (
+    <div ref={rootRef} data-mark-toolbar="" role="toolbar" aria-label={t('bible.marks.toolbar')} aria-orientation="horizontal" className="flex flex-col items-center gap-2">
+      {/* Hidden by the attribute, never by a class: `display: contents` would outweigh `[hidden]`. */}
+      <div hidden={menuOpen} className={menuOpen ? undefined : 'contents'}>
+        <Palette swatches={markerSwatches} label={t('bible.marks.colors')} variant="dots" open={tool.palette === 'marker'} />
+        <Palette swatches={pencilSwatches} label={t('bible.marks.pencilColors')} variant="dots" open={tool.palette === 'pencil'} />
+      </div>
+      <div className="flex items-center gap-2.5 rounded-full border border-gray-200 bg-white px-2.5 py-1.5 shadow-xl dark:border-gray-700 dark:bg-gray-900">
+        {buttons.marker}
+        {buttons.pencil}
+        {buttons.eraser}
+        {trailing}
+      </div>
     </div>
   );
 }

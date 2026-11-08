@@ -261,6 +261,19 @@ describe('the three tools', () => {
     expect(screen.queryByRole('group', { name: 'bible.marks.colors' })).not.toBeInTheDocument();
   });
 
+  // Codex, 2026-11-07: Escape on a colour put the tool away and hid the colours with the focus inside them — the keyboard
+  // was left on nothing. The focus goes back to the tool those colours belong to.
+  it.each([['line', false], ['column', true]])('Escape on a colour of the %s returns the focus to its tool', (_layout, vertical) => {
+    render(<Toolbar vertical={vertical} />);
+    const pencil = screen.getByRole('button', { name: /bible\.marks\.pencil/ });
+    fireEvent.click(pencil);
+    const blue = within(screen.getByRole('group', { name: 'bible.marks.pencilColors' })).getByRole('button', { name: 'bible.marks.meaning.blue' });
+    blue.focus();
+    fireEvent.keyDown(blue, { key: 'Escape' });
+    expect(screen.getByTestId('in-hand')).toHaveTextContent('none');
+    expect(pencil).toHaveFocus();
+  });
+
   // 2026-10-30: in a passage's analysis Escape put the marker away and the same press closed the analysis.
   function Window({ onClose, children }: { onClose: () => void; children: ReactNode }) {
     const layer = useModalLayer({ onClose });
