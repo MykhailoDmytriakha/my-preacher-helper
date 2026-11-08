@@ -46,6 +46,7 @@ const EditableVerse: React.FC<EditableVerseProps> = ({
   const editedVerse = manual?.value ?? legacyValue;
   const [localSaving, setIsSaving] = useState(false);
   const isSaving = localSaving || Boolean(manual?.busy);
+  const editDisabled = disabled || isSaving || manual?.ready === false;
   const [error, setError] = useState<FailureWords | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -90,7 +91,7 @@ const EditableVerse: React.FC<EditableVerseProps> = ({
   };
 
   const handleEditClick = () => {
-    if (disabled || isSaving) return;
+    if (editDisabled) return;
     if (manual) { void manualAction(() => manual.begin()); return; }
     setEditedVerse(initialVerse);
     setIsEditing(true);
@@ -201,7 +202,7 @@ const EditableVerse: React.FC<EditableVerseProps> = ({
           <button
             onClick={handleEditClick}
             className={`${buttonPaddingClass} text-gray-500 dark:text-gray-400 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full disabled:opacity-50 disabled:hover:bg-transparent`}
-            disabled={disabled || isSaving}
+            disabled={editDisabled}
             title={t('common.edit')}
           >
             <PencilIcon className={buttonSizeClass} />

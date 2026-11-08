@@ -32,7 +32,7 @@ const buildEditor = (values: { title: string; verse: string }, overrides: Partia
   };
   function form(value: string): SermonHeaderEditor['titleForm'] {
     const binding = {
-      active: false, busy: false, value,
+      active: false, busy: false, ready: true, value,
       begin: jest.fn(async () => { binding.active = true; editor.changed(); }),
       update: jest.fn(async (text: string) => { binding.value = text; editor.changed(); }),
       save: jest.fn(async (_text: string) => { binding.active = false; editor.changed(); }),

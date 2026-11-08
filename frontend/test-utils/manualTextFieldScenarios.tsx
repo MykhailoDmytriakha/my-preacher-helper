@@ -9,15 +9,15 @@ export function manualTextFieldScenarios(field: 'title' | 'verse', renderField: 
 describe(`manual ${field} presentation`, () => {
   const inputLabel = field === 'title' ? 'Edit Title' : 'Scripture Verse';
   const failureLabel = field === 'title' ? 'Failed to save title' : 'Failed to save verse';
-  function setup({ active = false, busy = false, value = 'Opened A', fail = '' } = {}) {
+  function setup({ active = false, busy = false, ready: initialReady = true, value = 'Opened A', fail = '' } = {}) {
     const legacy = jest.fn(async () => undefined);
     const calls = { begin: jest.fn(), update: jest.fn(), save: jest.fn(), cancel: jest.fn() };
-    function Harness({ remote = 'Opened A' }) {
+    function Harness({ remote = 'Opened A', ready = initialReady }) {
       const [editing, setEditing] = useState(active);
       const [text, setText] = useState(value);
       const manual: ManualTextBinding = {
-        active: editing, busy, value: text,
-        begin: async () => { calls.begin(); if (fail === 'begin') throw new Error('storage'); setEditing(true); },
+        active: editing, busy, ready, value: text,
+        begin: async () => { calls.begin(); if (!ready) throw new Error('The manual form is not ready'); if (fail === 'begin') throw new Error('storage'); setEditing(true); },
         update: async next => { calls.update(next); setText(next); if (fail === 'update') throw new Error('storage'); },
         save: async next => { calls.save(next); if (fail === 'save') throw new Error('storage'); setText(next); setEditing(false); },
         cancel: async () => { calls.cancel(); if (fail === 'cancel') throw new Error('storage'); setEditing(false); },
@@ -25,8 +25,24 @@ describe(`manual ${field} presentation`, () => {
       return renderField({ value: remote, onSave: legacy, manual });
     }
     const view = render(<Harness />);
-    return { ...view, calls, legacy, changeRemote: (remote: string) => view.rerender(<Harness remote={remote} />) };
+    return { ...view, calls, legacy, makeReady: () => view.rerender(<Harness ready />), changeRemote: (remote: string) => view.rerender(<Harness remote={remote} />) };
   }
+
+  it('keeps readable text while blocking Edit until this manual form is acquired', async () => {
+    const test = setup({ ready: false });
+    expect(screen.getByText('Opened A')).toBeInTheDocument();
+    await act(async () => { fireEvent.click(screen.getByTitle('Edit')); });
+    expect(screen.queryByText(failureLabel)).not.toBeInTheDocument();
+    expect(test.calls.begin).not.toHaveBeenCalled();
+    expect(screen.getByTitle('Edit')).toBeDisabled();
+
+    test.makeReady();
+    expect(screen.getByTitle('Edit')).toBeEnabled();
+    fireEvent.click(screen.getByTitle('Edit'));
+    await waitFor(() => expect(screen.getByLabelText(inputLabel)).toHaveValue('Opened A'));
+    expect(test.calls.begin).toHaveBeenCalledTimes(1);
+    expect(test.legacy).not.toHaveBeenCalled();
+  });
 
   it('begins the engine form, persists each change and saves the selected value despite a remote prop change', async () => {
     const test = setup();

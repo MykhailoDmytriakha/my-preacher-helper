@@ -38,6 +38,7 @@ const EditableTitle: React.FC<EditableTitleProps> = ({
   const editedTitle = manual?.value ?? legacyValue;
   const [localSaving, setIsSaving] = useState(false);
   const isSaving = localSaving || Boolean(manual?.busy);
+  const editDisabled = disabled || isSaving || manual?.ready === false;
   const [error, setError] = useState<FailureWords | null>(null); // To display potential save errors
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -62,7 +63,7 @@ const EditableTitle: React.FC<EditableTitleProps> = ({
   };
 
   const handleEditClick = () => {
-    if (disabled || isSaving) return;
+    if (editDisabled) return;
     if (manual) { void manualAction(() => manual.begin()); return; }
     setEditedTitle(initialTitle); // Reset edit field to current title when starting edit
     setIsEditing(true);
@@ -162,7 +163,7 @@ const EditableTitle: React.FC<EditableTitleProps> = ({
           <button
             onClick={handleEditClick}
             className={`${buttonPaddingClass} text-gray-500 dark:text-gray-400 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full disabled:opacity-50 disabled:hover:bg-transparent`}
-            disabled={disabled || isSaving}
+            disabled={editDisabled}
             title={t('common.edit')}
           >
             <PencilIcon className={`w-4 h-4 sm:${buttonSizeClass.replace('w-','').replace('h-','w-').replace('w-','h-')}`} /> {/* Adjusted pencil icon size slightly */} 

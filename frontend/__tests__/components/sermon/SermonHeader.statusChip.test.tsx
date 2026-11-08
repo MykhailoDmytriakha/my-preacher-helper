@@ -27,7 +27,7 @@ jest.mock('react-i18next', () => ({
 }));
 
 const form = (value: string) => ({
-  active: false, busy: false, value,
+  active: false, busy: false, ready: true, value,
   begin: jest.fn(async () => undefined), update: jest.fn(async () => undefined),
   save: jest.fn(async () => undefined), cancel: jest.fn(async () => undefined),
 });

@@ -36,7 +36,7 @@ export function useSermonCoreDataDocument(sermonId: string | null) {
   const prepResource = sermonId ? { collection: 'sermons', id: sermonId } : null;
   const preparationFields = useSermonPreparationFields(prepResource);
   const textBinding = (form: typeof titleForm, field: 'title' | 'verse'): ManualTextBinding => ({
-    active: form.active, busy: form.busy, value: typeof form.data?.[field] === 'string' ? form.data[field] : '',
+    active: form.active, busy: form.busy, ready: form.recoveryReady, value: typeof form.data?.[field] === 'string' ? form.data[field] : '',
     begin: form.begin, cancel: form.cancel,
     update: value => form.update(current => ({ ...current, [field]: value })),
     save: value => form.save(current => ({ ...current, [field]: value })),

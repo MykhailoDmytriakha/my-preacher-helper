@@ -12,7 +12,10 @@ export interface ManualValueBinding<T> {
   cancel(): Promise<void>;
 }
 
-export type ManualTextBinding = ManualValueBinding<string>;
+export interface ManualTextBinding extends ManualValueBinding<string> {
+  /** The field's current form is acquired and can be opened. */
+  ready: boolean;
+}
 
 /** An always-visible preparation control opens its canonical form before accepting input. */
 export interface PreparationFieldBinding<T> extends ManualValueBinding<T> {
