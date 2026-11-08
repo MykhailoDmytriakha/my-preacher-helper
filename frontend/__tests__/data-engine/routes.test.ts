@@ -4,11 +4,12 @@ import { GET as changes } from '@/api/data-engine/changes/[collection]/route';
 import { GET as list } from '@/api/data-engine/collections/[collection]/route';
 import { POST } from '@/api/data-engine/commands/route';
 import { GET as markHistory } from '@/api/data-engine/documents/[collection]/[id]/mark-history/route';
+import { GET as meetingHistory } from '@/api/data-engine/documents/[collection]/[id]/meeting-date-history/route';
 import { GET as history } from '@/api/data-engine/documents/[collection]/[id]/preach-date-history/route';
 import { GET as read } from '@/api/data-engine/documents/[collection]/[id]/route';
 import { GET as titleHistory } from '@/api/data-engine/documents/[collection]/[id]/title-history/route';
 import { ENGINE_OWNED_COLLECTIONS } from '@/data-engine/engineOwnedCollections';
-import { assertDataEngineEnabled, DataEngineServerError, listBibleMarkHistory, listDocuments, listPreachDateHistory, listServiceOrderTitleHistory, processCommand, readCollectionChanges, readCommandBody, readDocument } from '@/data-engine/server';
+import { assertDataEngineEnabled, DataEngineServerError, listBibleMarkHistory, listDocuments, listMeetingDateHistory, listPreachDateHistory, listServiceOrderTitleHistory, processCommand, readCollectionChanges, readCommandBody, readDocument } from '@/data-engine/server';
 import { __resetStoreAvailabilityForTests } from '@/services/storeAvailability.server';
 
 jest.mock('@/config/firebaseAdminConfig', () => ({ adminDb: {} }));
@@ -22,6 +23,7 @@ jest.mock('@/data-engine/server', () => ({
   listBibleMarkHistory: jest.fn(),
   listDocuments: jest.fn(),
   listPreachDateHistory: jest.fn(),
+  listMeetingDateHistory: jest.fn(),
   listServiceOrderTitleHistory: jest.fn(),
   readCollectionChanges: jest.fn(),
 }));
@@ -181,6 +183,33 @@ describe('DataEngine HTTP routes', () => {
     expect(response.status).toBe(200);
     expect(response.headers.get('cache-control')).toBe('no-store');
     expect(listServiceOrderTitleHistory).toHaveBeenCalledWith('verified-owner', 'order', 'g1', undefined);
+  });
+
+  it('calibrates on the existing authenticated group document read', async () => {
+    const resource = { collection: 'groups', id: 'group' };
+    const input = request('http://localhost/api/data-engine/documents/groups/group');
+    input.headers.set('x-engine-action-clock', 'group-challenge');
+    jest.mocked(readDocument).mockResolvedValueOnce({ resource, value: null, metadata: null,
+      actionClock: { challenge: 'group-challenge', serverMs: 1_800_000_000_000 } });
+    const response = await read(input, { params: Promise.resolve(resource) });
+    expect(readDocument).toHaveBeenCalledWith('verified-owner', resource, { actionClockChallenge: 'group-challenge' });
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(await response.json()).toMatchObject({ actionClock: { challenge: 'group-challenge' } });
+  });
+
+  it('gates the meeting date history and binds its no-store response to the verified owner', async () => {
+    const context = { params: Promise.resolve({ collection: 'groups', id: 'group' }) };
+    const input = request('http://localhost/api/data-engine/documents/groups/group/meeting-date-history?generation=g1');
+    jest.mocked(assertDataEngineEnabled).mockImplementationOnce(() => { throw new DataEngineServerError('data-engine-disabled', 503); });
+    expect((await meetingHistory(input, context)).status).toBe(503);
+    expect(assertDataEngineEnabled).toHaveBeenLastCalledWith('groups');
+    expect(listMeetingDateHistory).not.toHaveBeenCalled();
+
+    jest.mocked(listMeetingDateHistory).mockResolvedValue({ owner: 'verified-owner', groupId: 'group', generation: 'g1', entries: [], nextCursor: null });
+    const response = await meetingHistory(input, context);
+    expect(response.status).toBe(200);
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(listMeetingDateHistory).toHaveBeenCalledWith('verified-owner', 'group', 'g1', undefined);
   });
 
   it('passes exact resource identifiers and forbids cached document responses', async () => {

@@ -3,12 +3,12 @@ import { isFirstBookMarksDraft } from './bibleMarksCreation';
 import { captureBibleMarkStroke, restoreBibleMarkAncestor, withBibleMarkStroke, type CapturedBibleMarkStroke } from './bibleMarkStroke';
 import { pendingCommitRetirement, retireCommitJournal } from './commitJournal';
 import { CommitReceipts } from './commitReceipt';
+import { capturedDateBaseline, captureDatedRowAction, datedRowTarget, existingRowDate, matchesDatedRowChange, MEETING_DATE_TARGET, replaceExistingDate, type DatedRowActionCapture, type DatedRowActionEvidence } from './datedRowAction';
 import { captureDeleteOrder, deleteOrderReady, replayDeleteOrder } from './deletionOrdering';
 import { commandReferenceResources, documentReferenceResources, referenceReadiness } from './documentReferences';
 import { prepareDomainCommand, requiredDomainTargets } from './domainPolicy';
 import { areDifferentTabManualParents, readManualScopeIdentity } from './editorIdentity';
 import { AddressedFailures, type AddressedFailure } from './failures';
-import { capturedDateBaseline, capturePreachDateAction, matchesPreachDateChange, type PreachDateActionCapture, type PreachDateActionEvidence } from './preachDateAction';
 import { confirmedExistingDeletion, equalValues, mergeDocumentFields, MAX_RELATION_RESOURCES } from './protocol';
 import { capturePlanTextEvidence, type PlanTextEvidence } from './sermonPlanText';
 import { captureServiceOrderTitle, titleCommandAncestor, withServiceOrderTitleAction } from './serviceOrderTitle';
@@ -49,7 +49,8 @@ export interface CommitRequest {
   predecessor: string | null;
   /** Immutable evidence taken before this action leaves its editor. */
   planTextEvidence?: PlanTextEvidence;
-  preachDateAction?: PreachDateActionEvidence;
+  preachDateAction?: DatedRowActionEvidence;
+  meetingDateAction?: DatedRowActionEvidence;
   deferPreachDateRebase?: true;
   bibleMarkStroke?: CapturedBibleMarkStroke;
   deferBibleMarkRebase?: true;
@@ -144,6 +145,7 @@ export function assertCommitCapture(current: CommitRequest, incoming: CommitRequ
     || !equalValues(current.serviceOrderTitleAction ?? null, incoming.serviceOrderTitleAction ?? null)
     || !equalValues(current.bibleMarkStroke ?? null, incoming.bibleMarkStroke ?? null)
     || !equalValues(current.preachDateAction ?? null, incoming.preachDateAction ?? null)
+    || !equalValues(current.meetingDateAction ?? null, incoming.meetingDateAction ?? null)
     || !equalValues(current.value, incoming.value) || !equalValues(current.atomic ?? null, incoming.atomic ?? null)
     || !equalValues(current.deleteAfter ?? null, incoming.deleteAfter ?? null)
     || current.retentionScope !== incoming.retentionScope
@@ -210,7 +212,8 @@ function ordinaryDeliveryChains(records: readonly CommitRequest[]): DeliveryChai
 }
 
 type CommitSaveOptions = { predecessorId?: string | null; predecessorIds?: readonly string[]; retentionScope?: string;
-  preachDateAction?: PreachDateActionCapture;
+  preachDateAction?: DatedRowActionCapture;
+  meetingDateAction?: DatedRowActionCapture;
   action?: EditorCommitAction;
   checkpoint?: (saved: CommitRequest) => EditorRecord;
   transfer?: { proof: CaptureTransferProof; sources: readonly CommitRequest[] } };
@@ -219,13 +222,22 @@ function pendingBibleMarkRebase(record: CommitRequest): CapturedBibleMarkStroke 
   return record.deferBibleMarkRebase && record.sequence === 0 ? record.bibleMarkStroke : undefined;
 }
 
+function pendingMeetingDateRebase(record: CommitRequest): DatedRowActionEvidence | undefined {
+  const action = record.sequence === 0 ? record.meetingDateAction : undefined;
+  if (!action || !record.working.value || record.working.metadata?.generation !== record.baseline.metadata?.generation
+    || existingRowDate(record.working.value.meetingDates, action.rowId, MEETING_DATE_TARGET) === undefined
+    || existingRowDate(record.intended?.meetingDates, action.rowId, MEETING_DATE_TARGET) !== action.after) return undefined;
+  return action;
+}
+
 function hasTimedAncestor(record: CommitRequest): boolean {
-  return record.sequence === 0 && Boolean(record.serviceOrderTitleAction || pendingBibleMarkRebase(record));
+  return record.sequence === 0 && Boolean(record.serviceOrderTitleAction || pendingBibleMarkRebase(record) || pendingMeetingDateRebase(record));
 }
 
 function freezeSaveOptions(options: CommitSaveOptions | undefined): CommitSaveOptions | undefined {
   return options && { ...options, predecessorIds: options.predecessorIds && [...options.predecessorIds],
     transfer: options.transfer && clone(options.transfer), preachDateAction: options.preachDateAction && clone(options.preachDateAction),
+    meetingDateAction: options.meetingDateAction && clone(options.meetingDateAction),
     action: options.action && clone(options.action) };
 }
 
@@ -381,7 +393,8 @@ export class CommitQueue {
     if (intent.conflicts.length) throw Object.assign(new Error('Resolve the conflict before saving'), { code: 'resolve-version-first' });
     const baseline = clone(intent.confirmed);
     const planTextEvidence = baseline.resource.collection === 'sermons' ? captureSermonPlan(baseline, intent.draft, predecessor) : undefined;
-    const action = capturePreachDateAction(baseline, predecessor, intent.draft, frozenOptions?.preachDateAction);
+    const dateTarget = datedRowTarget(baseline.resource.collection);
+    const action = dateTarget && captureDatedRowAction(baseline, predecessor, intent.draft, frozenOptions?.[dateTarget.evidence]);
     const editorAction = frozenOptions?.action;
     const mark = captureBibleMarkStroke(baseline, predecessor, intent.draft, editorAction?.kind === 'bible-mark-stroke' ? editorAction.time : undefined);
     const title = captureServiceOrderTitle(baseline, intent.draft, editorAction?.kind === 'service-order-title' ? editorAction.title : undefined);
@@ -389,7 +402,7 @@ export class CommitQueue {
       id: this.options.operationId(), owner, editorId, editGeneration: intent.editGeneration,
       ...(mark && { bibleMarkStroke: mark }),
       ...(title && { serviceOrderTitleAction: title }),
-      ...(action && { preachDateAction: action }),
+      ...(dateTarget && action && { [dateTarget.evidence]: action }),
       ...(frozenOptions?.retentionScope ? { retentionScope: frozenOptions.retentionScope } : {}),
       ...(frozenOptions?.transfer ? { transferredFrom: clone(frozenOptions.transfer.proof) } : {}),
       baseline, value: clone(intent.draft), predecessor: predecessor?.id ?? null,
@@ -787,8 +800,16 @@ export class CommitQueue {
       : undefined;
     const markRebase = pendingBibleMarkRebase(record);
     const title = record.sequence === 0 ? record.serviceOrderTitleAction : undefined;
-    const source = title ? titleCommandAncestor(record.working, title)
-      : markRebase ? restoreBibleMarkAncestor(record.working, markRebase) : record.working;
+    const meeting = pendingMeetingDateRebase(record);
+    let source = record.working;
+    if (title) source = titleCommandAncestor(source, title);
+    if (markRebase) source = restoreBibleMarkAncestor(source, markRebase);
+    // Even when the previous ACK already shows the intended date, the server
+    // still needs this action's exact ancestor and time to arbitrate later deliveries.
+    if (meeting && source.value) {
+      const rows = replaceExistingDate(source.value.meetingDates, meeting.rowId, meeting.before, MEETING_DATE_TARGET);
+      if (rows !== undefined) source = { ...source, value: { ...source.value, meetingDates: rows } };
+    }
     try { prepared = prepareDomainCommand(owner, operationId, source, record.intended, targets, evidence); }
     catch (error) {
       // The policy names WHY this draft can never be a command (two sections carried in one
@@ -802,13 +823,14 @@ export class CommitQueue {
     }
     if (!resourceMatches(prepared.command.resource, record.baseline.resource)) throw new Error('Commit resource changed');
     const { command } = prepared;
-    const action = record.preachDateAction;
-    if (action && command.kind === 'update' && record.sequence === 0
+    const dateTarget = datedRowTarget(command.resource.collection);
+    const action = dateTarget && record[dateTarget.evidence];
+    if (dateTarget && action && command.kind === 'update' && record.sequence === 0
       && command.generation === record.baseline.metadata?.generation) {
-      const changes = record.deferPreachDateRebase ? capturedDateBaseline(command.changes, action) : command.changes;
-      if (matchesPreachDateChange(changes, action)) {
+      const changes = record.deferPreachDateRebase ? capturedDateBaseline(command.changes, action, dateTarget) : command.changes;
+      if (matchesDatedRowChange(changes, action, dateTarget)) {
         command.changes = changes;
-        command.preachDateAction = action;
+        command[dateTarget.evidence] = action;
       }
     }
     const timed = record.sequence === 0 ? withBibleMarkStroke(withServiceOrderTitleAction(command, title), record.bibleMarkStroke) : command;

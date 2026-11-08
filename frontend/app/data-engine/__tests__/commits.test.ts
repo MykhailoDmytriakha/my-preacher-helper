@@ -175,6 +175,37 @@ describe('Durable commit requests', () => {
     }));
   });
 
+  it('sends the exact meeting action even if its predecessor ACK already shows the date the person chose', async () => {
+    const s = setup();
+    const { queue } = s.makeQueue();
+    const meeting = { id: 'meeting', date: '2026-12-13', createdAt: '2026-11-08', location: 'Main room' };
+    const base: ResourceSnapshot = {
+      resource: { collection: 'groups', id: 'group' },
+      value: { userId: 'owner', title: 'Group', status: 'draft', templates: [], flow: [],
+        meetingDates: [meeting], createdAt: '2026-11-08', updatedAt: '2026-11-08' },
+      metadata: { protocol: 1, generation: 'group', revision: 1, deleted: false },
+    };
+    const editor = new DataSession(base);
+    const firstDate = '2026-12-20';
+    editor.edit({ ...base.value, meetingDates: [{ ...meeting, date: firstDate }] });
+    const first = (await queue.save('meeting', editor.checkpoint()))!;
+    editor.edit({ ...base.value, meetingDates: [{ ...meeting, date: '' }] });
+    const time = { earliestMs: 1_800_000_000_020, latestMs: 1_800_000_000_025 };
+    const next = (await queue.save('meeting', editor.checkpoint(), {
+      predecessorId: first.id, meetingDateAction: { rowId: meeting.id, after: '', time },
+    }))!;
+    const other = { ...base, value: { ...base.value, meetingDates: [{ ...meeting, date: '', location: 'Side room' }] },
+      metadata: { ...base.metadata!, revision: 2, operationId: first.id } };
+    s.replace(other);
+    jest.mocked(s.transport.send).mockResolvedValueOnce({ kind: 'acknowledged', operationId: first.id, snapshot: other });
+    await s.makeQueue().queue.drain(true);
+    expect(s.transport.send).toHaveBeenCalledWith(expect.objectContaining({ operationId: next.id,
+      meetingDateAction: { rowId: meeting.id, before: firstDate, after: '', observedRevision: 1, time },
+      changes: [{ path: ['meetingDates'], before: { exists: true, value: [{ ...meeting, date: firstDate, location: 'Side room' }] },
+        after: { exists: true, value: [{ ...meeting, date: '', location: 'Side room' }] } }],
+    }));
+  });
+
   it('replays the next title with the exact local predecessor after its ACK retained a different title', async () => {
     const s = setup();
     const { queue } = s.makeQueue();

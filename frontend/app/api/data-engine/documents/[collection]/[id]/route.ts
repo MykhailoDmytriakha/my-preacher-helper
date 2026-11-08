@@ -1,5 +1,5 @@
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
-import { assertDataEngineEnabled, readDocument, serverErrorResponse } from '@/data-engine/server';
+import { assertDataEngineEnabled, readActionClockChallenge, readDocument, serverErrorResponse } from '@/data-engine/server';
 import { withStore } from '@/services/storeAvailability.server';
 
 export const runtime = 'nodejs';
@@ -12,7 +12,9 @@ export async function GET(request: Request, context: { params: Promise<{ collect
   try {
     const resource = await context.params;
     assertDataEngineEnabled(resource.collection);
-    return Response.json(await withStore(() => readDocument(owner, resource), { startedAt }), { headers: { 'Cache-Control': 'no-store' } });
+    const challenge = resource.collection === 'groups' ? readActionClockChallenge(resource.collection, request.headers) : undefined;
+    const snapshot = await withStore(() => challenge ? readDocument(owner, resource, { actionClockChallenge: challenge }) : readDocument(owner, resource), { startedAt });
+    return Response.json(snapshot, { headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {
     return serverErrorResponse(error);
   }

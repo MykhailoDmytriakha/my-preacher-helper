@@ -32,6 +32,14 @@ export function useGroupPageEditor(groupId: string): GroupPageEditor {
   const error = meeting.form.error || data.error;
   const choices = [...recovery.choices.map(choice => ({ ...choice, id: `document:${choice.id}` })),
     ...meeting.recovery.choices.map(choice => ({ ...choice, id: `meeting:${choice.id}` }))];
+  const confirmed = data.document.confirmed;
+  const owner = confirmed?.value?.userId;
+  const generation = confirmed?.metadata?.generation;
+  const meetingHistory = first && typeof owner === 'string' && generation ? {
+    owner, generation, rowId: first.id, date: first.date,
+    disabled: manual || !meeting.enabled || Boolean(meeting.form.choiceRequired) || Boolean(meeting.form.documentChoiceRequired),
+    restore: meeting.restoreDate,
+  } : undefined;
   return {
     readOnly: data.document.readOnly,
     presence: data.document.presence,
@@ -43,7 +51,7 @@ export function useGroupPageEditor(groupId: string): GroupPageEditor {
     flow: group?.flow ?? [], setFlow: field('flow'), meetingDate: first?.date ?? '', setMeetingDate: meeting.field('date'),
     meetingLocation: first?.location ?? '', setMeetingLocation: meeting.field('location'),
     meetingAudience: first?.audience ?? '', setMeetingAudience: meeting.field('audience'),
-    meetingFieldsEnabled: meeting.enabled,
+    meetingFieldsEnabled: meeting.enabled, meetingHistory,
     deleteGroupDetail: data.deleteGroupDetail,
     feedback: <DataSyncStatus subject={manual ? meeting.form.recoveryIdentity : data.document.recoveryIdentity} status={status} error={error} errorWords={meeting.form.error ? meeting.form.errorWords : data.document.errorWords}
       onKeepLocal={manual ? meeting.form.keepLocal : data.keepLocal} onAcceptRemote={manual ? meeting.form.acceptRemote : data.acceptRemote} onRetry={manual ? meeting.form.retry : data.refresh}

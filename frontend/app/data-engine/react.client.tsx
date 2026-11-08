@@ -36,6 +36,7 @@ import { useRecoveryDiscovery as useDiscovery, type RecoveryDiscoveryOptions } f
 import type { StudyAnalysisWrite } from './analysisReshape';
 import type { CollectionState } from './collections';
 import type { EditorRecord, EditorState, RecoveryCheckpoint } from './controller';
+import type { DatedRowActionCapture } from './datedRowAction';
 import type { ManagedEditor, ManagedManualForm, ManualRecoveryPolicy } from './engine';
 import type { ManualPath } from './manualScope';
 import type { StoredManualScope } from './manualScopes.client';
@@ -1275,9 +1276,14 @@ export function useDataForm(resource: ResourceRef | null, slot: string, selectio
       return run(form => form.propose(producer, controller.signal)).finally(() => proposals.pending.delete(controller));
     },
     update: (updater: (draft: DocumentData) => DocumentData) => run(form => form.update(updater), false),
-    save: (updater?: (draft: DocumentData) => DocumentData, action?: { preachDateId: string }) => {
-      const time = action && owner && actionClock.capture(owner);
-      return run(form => action && time ? form.save(updater, { rowId: action.preachDateId, time }) : form.save(updater));
+    captureDateAction: (rowId: string, after: string): DatedRowActionCapture | undefined => {
+      const time = owner && current() && actionClock.capture(owner);
+      return time ? { rowId, after, time } : undefined;
+    },
+    save: (updater?: (draft: DocumentData) => DocumentData, action?: { preachDateId: string } | DatedRowActionCapture) => {
+      if (!action || 'time' in action) return run(form => action ? form.save(updater, action) : form.save(updater));
+      const time = owner && actionClock.capture(owner);
+      return run(form => time ? form.save(updater, { rowId: action.preachDateId, time }) : form.save(updater));
     },
     cancel: () => run(form => form.cancel()),
     keepLocal: (updater?: (current: DocumentData) => DocumentData) => run(form => form.resolve('local', { expectedComparison: target?.state?.comparison, updater })),

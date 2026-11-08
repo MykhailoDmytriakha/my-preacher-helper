@@ -7349,3 +7349,13 @@ The title input captures a calibrated time interval before autosave. The durable
 The original ordered regressions and the regression for continuing from an already queued title went from red to green. Related tests, architecture checks, TypeScript, scoped lint and the local build passed. Installed Chrome at 390 and 1280 pixels verified both action orders, two consecutive offline titles with a computer edit in between, a title and a separate paragraph, and competing paragraphs. The archive restored a title and survived reload. The account and data were synthetic and both backends were emulated. Evidence is in `artifacts/action-chronology-356/service-order-title-verified`. The umbrella entry stays open for other writers.
 
 For authorized production acceptance, confirm the revision and active worker. Use one disposable order in at most two profiles. Repeat both action orders and two offline title edits around a connected edit. Open Title history, restore the displaced name and verify after reload that the step words are intact. Close the QA profiles.
+
+## BUG-20261016-engine-asks-instead-of-chronology · Group meeting date
+
+Open Groups and select an existing group. Before the fix, an offline date delivered after an online date edit prompted a choice even when the action order was clear. A later clear could leave the earlier date.
+
+The shared dated-row mechanism uses the time a finished date is entered or cleared. The authenticated group read calibrates the clock. The exact action and row identity stay with the durable request. A proved later date wins. An empty date keeps the meeting and its other fields. Date history loads on demand and restores a day or the undated state through the same form. The explicit choice remains when the order cannot be proved, including after a return to a previous date with evicted timing evidence.
+
+The original date regressions and additional bounds and queue checks went from red to green. The 351 related tests, TypeScript, scoped lint and local build passed. Installed Chrome at 390 and 1280 pixels verified seven scenarios on local emulators. These include both action orders, a legacy date, two offline edits, independent date and location, and explicit choice for description edits. Restore survived reload while meeting identity and neighboring fields remained intact. Evidence is in `artifacts/action-chronology-356/group-meeting-date-verified`. The group title remains part of the umbrella issue.
+
+For authorized production acceptance, confirm the deployed revision and active worker. Open the same disposable group in two profiles and repeat the earlier and later clear. Check date history, restore the undated state, and reload. Verify the meeting and location remain. Close the QA profiles.

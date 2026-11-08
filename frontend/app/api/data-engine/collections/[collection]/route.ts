@@ -1,5 +1,5 @@
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
-import { assertDataEngineEnabled, collectionActionClockChallenge, DataEngineServerError, listDocuments, serverErrorResponse } from '@/data-engine/server';
+import { assertDataEngineEnabled, readActionClockChallenge, DataEngineServerError, listDocuments, serverErrorResponse } from '@/data-engine/server';
 import { withStore } from '@/services/storeAvailability.server';
 
 export const runtime = 'nodejs';
@@ -19,7 +19,7 @@ export async function GET(request: Request, context: { params: Promise<{ collect
     const limit = params.get('limit');
     const cursor = params.get('cursor');
     if (limit !== null && !/^\d+$/.test(limit)) throw new DataEngineServerError('invalid-argument', 400);
-    const challenge = collectionActionClockChallenge(collection, request.headers);
+    const challenge = readActionClockChallenge(collection, request.headers);
     const result = await withStore(() => listDocuments(owner, collection, {
       ...(limit !== null && { limit: Number(limit) }),
       ...(cursor !== null && { cursor }),

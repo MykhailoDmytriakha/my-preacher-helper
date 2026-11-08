@@ -11,8 +11,8 @@ import { stampAcceptedResource } from './acceptedResource.server';
 import { ACTION_CLOCK_HEADER, isClockChallenge, usesActionClock } from './actionClock';
 import { isCollectionServed, isLegacyOpen, mayBeRetiredByCascade } from './activation';
 import { BIBLE_MARK_HISTORY, BIBLE_MARK_PROOFS, bibleMarkProofVerses, bibleMarkTracking, metadataAfterBibleMarks, orderBibleMarks } from './bibleMarkOrder.server';
-import { existingPreachDate } from './preachDateAction';
-import { metadataAfterPreachDate, orderPreachDate, PREACH_DATE_HISTORY } from './preachDateOrder.server';
+import { existingRowDate, MEETING_DATE_TARGET, PREACH_DATE_TARGET } from './datedRowAction';
+import { metadataAfterDatedRow, orderDatedRow } from './datedRowOrder.server';
 import { advanceResourceSnapshot, commandFingerprint, getResourcePolicy, isValidIdentifier, TOMBSTONE_OWNER_FIELD, validateCommand } from './protocol';
 import { validateResourceDocument } from './resourceSchemas';
 import { assembleChangePage, collectionHeadId, HEADS_COLLECTION, parseChangePointer, planFeedWrites, readHeadVersion, sequenceId } from './serverFeed';
@@ -23,14 +23,14 @@ import { coversCommittedEffect } from './snapshotFreshness';
 
 import type { AudioExportKey, AudioExportRecord, AudioExportStore, AudioExportTransaction, AudioExportUsage } from './audioExportStore';
 import type { BibleMarkHistoryEntry, BibleMarkHistoryPage } from './bibleMarkStroke';
-import type { DisplacedPreachDate, PreachDateHistoryPage } from './preachDateAction';
+import type { DisplacedRowDate, MeetingDateHistoryPage, PreachDateHistoryPage } from './datedRowAction';
 import type { FeedWrite } from './serverFeed';
 import type { ServiceOrderTitleHistoryEntry, ServiceOrderTitleHistoryPage } from './serviceOrderTitle';
-import type { CollectionChanges, CollectionPage, CommandReceipt, CommandResult, ConflictDetail, DataCommand, DocumentData, EngineMetadata, Json, ResourceRef, ResourceSnapshot } from './types';
+import type { CollectionChanges, CollectionPage, CommandReceipt, CommandResult, ConflictDetail, DataCommand, DocumentData, EngineMetadata, EngineReadOptions, Json, ResourceRef, ResourceSnapshot } from './types';
 import type { AiResultReceiptStore, ReceiptRecord } from '@/services/aiResultReceipt.server';
 import type { DocumentReference, Firestore, Transaction } from 'firebase-admin/firestore';
 
-export function collectionActionClockChallenge(collection: string, headers: Headers): string | undefined {
+export function readActionClockChallenge(collection: string, headers: Headers): string | undefined {
   if (!usesActionClock(collection)) return undefined;
   const challenge = headers.get(ACTION_CLOCK_HEADER);
   return isClockChallenge(challenge) ? challenge : undefined;
@@ -359,7 +359,7 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
   snapshot: ResourceSnapshot;
   effects: ResourceSnapshot[];
   rawDocuments: ReadonlyMap<string, Record<string, unknown> | undefined>;
-  dateOrder?: ReturnType<typeof orderPreachDate>;
+  dateOrder?: ReturnType<typeof orderDatedRow>;
   markOrder?: ReturnType<typeof orderBibleMarks>;
   titleOrder?: ReturnType<typeof orderServiceOrderTitle>;
 }) {
@@ -376,12 +376,13 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
       ? metadataAfterBibleMarks(snapshot, raw?._dataEngine, primary ? markOrder : undefined)
       : snapshot.resource.collection === 'serviceOrders'
         ? metadataAfterServiceOrderTitle(snapshot, raw?._dataEngine, primary ? titleOrder : undefined)
-        : metadataAfterPreachDate(snapshot, raw?._dataEngine, primary ? command : undefined, primary ? dateOrder : undefined);
+        : metadataAfterDatedRow(snapshot, raw, primary ? command : undefined, primary ? dateOrder : undefined);
     transaction.set(adminDb.collection(snapshot.resource.collection).doc(snapshot.resource.id), { ...value, _dataEngine: metadata });
   }
   const displaced = dateOrder?.displaced;
-  if (displaced && existingPreachDate(primarySnapshot.value?.preachDates, displaced.rowId) === displaced.winnerDate) {
-    const history = adminDb.collection(command.resource.collection).doc(command.resource.id).collection(PREACH_DATE_HISTORY);
+  const target = dateOrder?.target;
+  if (displaced && target && existingRowDate(primarySnapshot.value?.[target.field], displaced.rowId, target) === displaced.winnerDate) {
+    const history = adminDb.collection(command.resource.collection).doc(command.resource.id).collection(target.history);
     transaction.set(history.doc(historyEntryId(primarySnapshot, command.operationId)), { ...displaced, acceptedAt: new Date().toISOString() });
   }
   const displacedTitle = titleOrder?.displaced;
@@ -432,7 +433,7 @@ export async function processCommand(owner: string, input: unknown): Promise<Com
     });
     let result: CommandResult;
     let effects: ResourceSnapshot[] = [];
-    let dateOrder: ReturnType<typeof orderPreachDate> | undefined;
+    let dateOrder: ReturnType<typeof orderDatedRow> | undefined;
     let markOrder: ReturnType<typeof orderBibleMarks> | undefined;
     let titleOrder: ReturnType<typeof orderServiceOrderTitle> | undefined;
     const rawDocuments = new Map<string, Record<string, unknown> | undefined>([[resourceKey(command.resource), raw]]);
@@ -441,7 +442,7 @@ export async function processCommand(owner: string, input: unknown): Promise<Com
     } else {
       const current = snapshotFromRaw(command.resource, raw);
       const serverMs = stored.readTime?.toMillis();
-      dateOrder = orderPreachDate(command, current, raw?._dataEngine, serverMs);
+      dateOrder = orderDatedRow(command, current, raw?._dataEngine, serverMs);
       markOrder = await planBibleMarkOrder(transaction, documentRef, dateOrder.command, current, raw?._dataEngine, serverMs);
       titleOrder = orderServiceOrderTitle(markOrder.command, current, raw?._dataEngine, serverMs);
       const planned = await planDataCommand(titleOrder.command, current, {
@@ -482,7 +483,7 @@ export async function processCommand(owner: string, input: unknown): Promise<Com
           return matches;
         },
       });
-      const plan = retainUncertainChronology(planned, command, current, [...(markOrder.uncertain ?? []), ...(titleOrder.uncertain ?? [])]);
+      const plan = retainUncertainChronology(planned, command, current, [...(dateOrder.uncertain ?? []), ...(markOrder.uncertain ?? []), ...(titleOrder.uncertain ?? [])]);
       const acceptedAt = new Date().toISOString();
       // The planner exposes writes only for acknowledged commands.
       effects = plan.writes.map(effect => stampAcceptedResource(snapshotFromRaw(effect.resource, rawDocuments.get(resourceKey(effect.resource))), effect, acceptedAt));
@@ -528,13 +529,20 @@ export async function processCommand(owner: string, input: unknown): Promise<Com
   return outcome;
 }
 
-export async function readDocument(owner: string, resource: ResourceRef): Promise<ResourceSnapshot> {
+type ClockEcho = { actionClock?: { challenge: string; serverMs: number } };
+
+export async function readDocument(owner: string, resource: ResourceRef, options?: EngineReadOptions & { actionClockChallenge?: string }): Promise<ResourceSnapshot & ClockEcho> {
   checkOwner(owner);
   resourcePolicy(resource);
   const document = await adminDb.collection(resource.collection).doc(resource.id).get();
   const raw = document.exists ? document.data() : undefined;
   if (!owns(owner, resource, raw)) throw new DataEngineServerError(PERMISSION_DENIED, 403);
-  return snapshotFromRaw(resource, raw);
+  const snapshot = snapshotFromRaw(resource, raw);
+  const challenge = options?.actionClockChallenge;
+  if (challenge && resource.collection === 'groups' && document.readTime) {
+    return { ...snapshot, actionClock: { challenge, serverMs: Math.floor(document.readTime.toMillis()) } };
+  }
+  return snapshot;
 }
 
 async function listHistoryEntries<T extends { id: string }>(owner: string, resource: ResourceRef, subcollection: string,
@@ -560,10 +568,18 @@ async function listHistoryEntries<T extends { id: string }>(owner: string, resou
 
 export async function listPreachDateHistory(owner: string, sermonId: string, generation: string, cursor?: string): Promise<PreachDateHistoryPage> {
   const resource = { collection: 'sermons', id: sermonId };
-  const page = await listHistoryEntries<DisplacedPreachDate & { id: string; acceptedAt: string }>(
-    owner, resource, PREACH_DATE_HISTORY, generation, cursor, 'preach-date-gone',
+  const page = await listHistoryEntries<DisplacedRowDate & { id: string; acceptedAt: string }>(
+    owner, resource, PREACH_DATE_TARGET.history, generation, cursor, 'preach-date-gone',
   );
   return { owner, sermonId, generation, ...page };
+}
+
+export async function listMeetingDateHistory(owner: string, groupId: string, generation: string, cursor?: string): Promise<MeetingDateHistoryPage> {
+  const resource = { collection: 'groups', id: groupId };
+  const page = await listHistoryEntries<DisplacedRowDate & { id: string; acceptedAt: string }>(
+    owner, resource, MEETING_DATE_TARGET.history, generation, cursor, 'group-gone',
+  );
+  return { owner, groupId, generation, ...page };
 }
 
 export async function listBibleMarkHistory(owner: string, bookId: string, generation: string, cursor?: string): Promise<BibleMarkHistoryPage> {
@@ -578,7 +594,7 @@ export async function listServiceOrderTitleHistory(owner: string, orderId: strin
   return { owner, orderId, generation, ...page };
 }
 
-export type ResourcePage = CollectionPage & { actionClock?: { challenge: string; serverMs: number } };
+export type ResourcePage = CollectionPage & ClockEcho;
 
 /** Said only while true, so an answer about a closed or unserved collection is byte-identical to before. */
 const legacyOpenness = (collection: string): { legacyOpen?: true } => isLegacyOpen(collection) ? { legacyOpen: true } : {};

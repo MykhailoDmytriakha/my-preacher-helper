@@ -1,6 +1,6 @@
 /** The wire contract is shared by browser and server; it imports no transport. */
 import type { ActionTime } from './actionClock';
-import type { PreachDateActionEvidence } from './preachDateAction';
+import type { DatedRowActionEvidence } from './datedRowAction';
 import type { ServiceOrderTitleAction, ServiceOrderTitleCapture } from './serviceOrderTitle';
 
 export type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
@@ -49,7 +49,8 @@ export type DataCommand = CommandBase & (
   | { kind: 'create'; value: DocumentData; bibleMarkStroke?: BibleMarkStrokeStamp }
   | { kind: 'relation'; relation: 'service-order-seed'; value: DocumentData }
   | { kind: 'update'; changes: FieldChange[];
-      preachDateAction?: PreachDateActionEvidence;
+      preachDateAction?: DatedRowActionEvidence;
+      meetingDateAction?: DatedRowActionEvidence;
       bibleMarkStroke?: BibleMarkStrokeStamp;
       serviceOrderTitleAction?: ServiceOrderTitleAction;
       /** Exact plan cells observed before an explicit outline removal. */

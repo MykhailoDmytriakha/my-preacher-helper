@@ -36,11 +36,11 @@ import { redeliveryDelay } from './unanswered';
 
 import type { CollectionReader, CollectionState } from './collections';
 import type { DocumentWriteReceipt } from './commitReceipt';
+import type { DatedRowActionCapture } from './datedRowAction';
 import type { ManualScopeStore, StoredManualScope } from './manualScopes.client';
 import type { MembershipScopeStore } from './membershipScopes.client';
 import type { Observation, ResourceObserver } from './observer';
 import type { OpenDocumentAnswer } from './openDocumentAnswers';
-import type { PreachDateActionCapture } from './preachDateAction';
 import type { DataEngineRuntime, RuntimeEvent } from './runtime';
 import type { SessionCheckpoint, ShownCopy } from './session';
 import type { EditorCommitAction } from './types';
@@ -86,7 +86,7 @@ export interface ManagedManualForm {
   follow(): Promise<void>;
   update(updater: (value: DocumentData) => DocumentData): Promise<void>;
   propose(producer: (source: DocumentData) => Promise<DocumentData>, signal?: AbortSignal): Promise<void>;
-  save(updater?: (value: DocumentData) => DocumentData, action?: PreachDateActionCapture): Promise<void>;
+  save(updater?: (value: DocumentData) => DocumentData, action?: DatedRowActionCapture): Promise<void>;
   cancel(): Promise<void>;
   retry(): Promise<void>;
   resolve(choice: 'local' | 'remote', options?: { discardStage?: boolean; expectedComparison?: ManualComparison; updater?: (current: DocumentData) => DocumentData }): Promise<void>;

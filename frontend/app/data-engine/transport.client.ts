@@ -94,6 +94,13 @@ function validateRelatedSnapshots(owner: string, result: Extract<CommandResult, 
   catch { throw Object.assign(new Error('Mismatched related acknowledgement owner or resource'), { code: 'data-loss' }); }
 }
 
+function receiveClock(probe: ReturnType<typeof actionClock.begin> | undefined, owner: string, value: unknown): void {
+  if (!probe || !value || typeof value !== 'object' || !('actionClock' in value)) return;
+  const echo = value.actionClock;
+  if (echo && typeof echo === 'object' && 'challenge' in echo && echo.challenge === probe.challenge
+    && 'serverMs' in echo && isClockTime(echo.serverMs)) probe.receive(owner, echo.serverMs);
+}
+
 export function createHttpEngineTransport(clock: Pick<typeof actionClock, 'begin'> = actionClock): EngineTransport & CollectionTransport {
   return {
     async send(command) {
@@ -111,7 +118,10 @@ export function createHttpEngineTransport(clock: Pick<typeof actionClock, 'begin
     async read(owner, resource, options) {
       assertOwner(owner);
       const query = options?.fresh ? new URLSearchParams({ read: newClientId() }).toString() : '';
-      const { value } = await requestOwnerJson<unknown>(`/api/data-engine/documents/${encodeURIComponent(resource.collection)}/${encodeURIComponent(resource.id)}` + (query ? '?' + query : ''), { method: 'GET', answerStatuses: [], messages });
+      const probe = resource.collection === 'groups' ? clock.begin() : undefined;
+      const { value } = await requestOwnerJson<unknown>(`/api/data-engine/documents/${encodeURIComponent(resource.collection)}/${encodeURIComponent(resource.id)}` + (query ? '?' + query : ''), { method: 'GET', answerStatuses: [], messages,
+        ...(probe && { headers: { [ACTION_CLOCK_HEADER]: probe.challenge } }),
+      });
       assertOwner(owner);
       const snapshot = parse(snapshotSchema, value);
       if (snapshot.resource.collection !== resource.collection || snapshot.resource.id !== resource.id) {
@@ -120,6 +130,7 @@ export function createHttpEngineTransport(clock: Pick<typeof actionClock, 'begin
       // The same owner rule as a list: another account's document is never this owner's answer,
       // even when a cache on the way (the service worker) hands one back (cross-account entry, BUGS.md).
       validateCollectionSnapshots(owner, resource.collection, [snapshot]);
+      receiveClock(probe, owner, value);
       return snapshot;
     },
     async list(owner, collection, options) {
@@ -132,11 +143,7 @@ export function createHttpEngineTransport(clock: Pick<typeof actionClock, 'begin
       assertOwner(owner);
       const page = parse(pageSchema, value);
       validateCollectionSnapshots(owner, collection, page.snapshots);
-      if (probe && value && typeof value === 'object' && 'actionClock' in value) {
-        const echo = value.actionClock;
-        if (echo && typeof echo === 'object' && 'challenge' in echo && echo.challenge === probe.challenge
-          && 'serverMs' in echo && isClockTime(echo.serverMs)) probe.receive(owner, echo.serverMs);
-      }
+      receiveClock(probe, owner, value);
       return page;
     },
     async changes(owner, collection, after, options) {

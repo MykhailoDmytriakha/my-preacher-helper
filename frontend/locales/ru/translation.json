@@ -2747,6 +2747,7 @@
     "historyTitle": "Даты проповеди",
     "earlierDates": "История изменений дат",
     "loadingEarlierDates": "Загружаем предыдущие даты…",
+    "restoreEarlierDateFailed": "Не удалось восстановить дату.",
     "earlierDatesUnavailable": "Предыдущие даты сейчас недоступны.",
     "noEarlierDates": "Сохранённых предыдущих дат пока нет.",
     "earlierDateEntry": "Можно восстановить {{date}}. Тогда осталась дата {{keptDate}}.",

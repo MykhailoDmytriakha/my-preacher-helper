@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { isCollectionServed } from '@/data-engine/activation';
-import { DataEngineServerError, listBibleMarkHistory, listDocuments, listPreachDateHistory, listServiceOrderTitleHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
+import { DataEngineServerError, listBibleMarkHistory, listDocuments, listMeetingDateHistory, listPreachDateHistory, listServiceOrderTitleHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
 import { collectionHeadId, HEADS_COLLECTION, sequenceId } from '@/data-engine/serverFeed';
 import { DataSession } from '@/data-engine/session';
 import type { DataCommand, ResourceSnapshot } from '@/data-engine/types';
@@ -874,6 +874,98 @@ describe('transactional DataEngine server', () => {
     expect(first.snapshots.map(item => item.resource.id)).toEqual(['a']);
     expect(first.nextCursor).toBe('a');
     expect(await listDocuments('owner-1', 'sermons', { limit: 1, cursor: 'a' })).toEqual({ snapshots: [expect.objectContaining({ resource: { collection: 'sermons', id: 'b' }, value: null })], nextCursor: null, version: 0 });
+  });
+
+  it.each([
+    { scenario: 'earlier date', offset: 20, phone: '2026-12-20', winner: '2026-12-27', archived: '2026-12-20', kind: 'acknowledged' },
+    { scenario: 'legacy starting date', offset: 60, phone: '2026-12-20', winner: '2026-12-20', archived: '2026-12-27', kind: 'acknowledged' },
+    { scenario: 'later removal of the date', offset: 60, phone: '', winner: '', archived: '2026-12-27', kind: 'acknowledged' },
+    { scenario: 'overlapping times', offset: 43, phone: '', winner: '2026-12-27', archived: null, kind: 'conflict' },
+    { scenario: 'another field in the same meeting', offset: 20, phone: '', winner: '', archived: null, kind: 'acknowledged' },
+  ])('applies group meeting chronology only to the existing date: $scenario', async ({ scenario, offset, phone, winner, archived, kind }) => {
+    const resource = { collection: 'groups', id: 'group-chronology' };
+    const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] };
+    const now = '2026-11-08T00:00:00.000Z';
+    const first = { id: 'first-meeting', date: scenario === 'legacy starting date' ? '2026-12-13T00:00:00.000Z' : '2026-12-13', location: 'Main room', audience: 'Leaders', createdAt: now };
+    const second = { id: 'follow-up', date: '2027-01-03', location: 'Annex', createdAt: now };
+    const meetings = [first, second];
+    expect((await processCommand(base.owner, { ...base, kind: 'create', operationId: 'group-seed', generation: null,
+      value: { userId: base.owner, title: 'Group', status: 'draft', flow: [], templates: [], meetingDates: meetings, createdAt: now, updatedAt: now },
+    })).kind).toBe('acknowledged');
+    const update = (operationId: string, patch: Partial<typeof first>) => ({
+      ...base, kind: 'update', operationId, generation: 'group-seed',
+      changes: [{ path: ['meetingDates'], before: { exists: true, value: meetings }, after: { exists: true, value: [{ ...first, ...patch }, second] } }],
+    });
+    const date = (operationId: string, value: string, offsetMs: number) => ({
+      ...update(operationId, { date: value }),
+      meetingDateAction: { rowId: first.id, before: first.date, after: value, observedRevision: 1,
+        time: { earliestMs: 1_800_000_000_000 + offsetMs, latestMs: 1_800_000_000_010 + offsetMs } },
+    });
+    const differentField = scenario === 'another field in the same meeting';
+    expect((await processCommand(base.owner, differentField ? update('computer', { location: 'Side room' }) : date('computer', '2026-12-27', 40))).kind).toBe('acknowledged');
+    const answer = await processCommand(base.owner, date('phone', phone, offset));
+    expect(answer).toMatchObject({ kind, snapshot: { value: { title: 'Group',
+      meetingDates: [{ ...first, date: winner, location: differentField ? 'Side room' : first.location }, second],
+    } } });
+    const history = [...documents.entries()].filter(([path]) => path.startsWith('groups/group-chronology/_meetingDateHistory/'));
+    expect(history).toHaveLength(archived === null ? 0 : 1);
+    if (archived !== null) {
+      expect(history[0][1]).toMatchObject({ rowId: first.id, date: archived, winnerDate: winner, generation: 'group-seed' });
+      expect(await listMeetingDateHistory(base.owner, resource.id, 'group-seed')).toMatchObject({
+        owner: base.owner, groupId: resource.id, generation: 'group-seed',
+        entries: [{ rowId: first.id, date: archived, winnerDate: winner }],
+      });
+      await expect(listMeetingDateHistory('another-owner', resource.id, 'group-seed')).rejects.toMatchObject({ status: 403 });
+      await expect(listMeetingDateHistory(base.owner, resource.id, 'old-generation')).rejects.toMatchObject({ status: 404 });
+    }
+    if (kind === 'conflict') expect(answer).toMatchObject({ conflicts: [{ path: ['meetingDates', 'id:first-meeting', 'date'] }] });
+  });
+
+  it('keeps a choice when unstamped meeting edits return to the old date', async () => {
+    const resource = { collection: 'groups', id: 'group-date-round-trip' };
+    const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] };
+    const now = '2026-11-08T00:00:00.000Z';
+    const meeting = { id: 'meeting', date: '2026-12-13', location: 'Main room', createdAt: now };
+    expect((await processCommand(base.owner, { ...base, kind: 'create', operationId: 'seed', generation: null,
+      value: { userId: base.owner, title: 'Group', status: 'draft', flow: [], templates: [], meetingDates: [meeting], createdAt: now, updatedAt: now },
+    })).kind).toBe('acknowledged');
+    const edit = (operationId: string, before: string, after: string) => ({
+      ...base, kind: 'update', operationId, generation: 'seed',
+      changes: [{ path: ['meetingDates'], before: { exists: true, value: [{ ...meeting, date: before }] },
+        after: { exists: true, value: [{ ...meeting, date: after }] } }],
+    });
+    expect((await processCommand(base.owner, edit('unset', meeting.date, ''))).kind).toBe('acknowledged');
+    expect((await processCommand(base.owner, edit('return', '', meeting.date))).kind).toBe('acknowledged');
+    expect(await processCommand(base.owner, { ...edit('offline', meeting.date, '2026-12-20'),
+      meetingDateAction: { rowId: meeting.id, before: meeting.date, after: '2026-12-20', observedRevision: 1,
+        time: { earliestMs: 1_800_000_000_000, latestMs: 1_800_000_000_010 } },
+    })).toMatchObject({ kind: 'conflict', conflicts: [{ path: ['meetingDates', 'id:meeting', 'date'] }],
+      snapshot: { value: { meetingDates: [meeting] } } });
+    expect((await listMeetingDateHistory(base.owner, resource.id, 'seed')).entries).toEqual([]);
+  });
+
+  it('does not guess when a meeting date proof was evicted after a return to the same date', async () => {
+    const resource = { collection: 'groups', id: 'evicted-meeting-proof' };
+    const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] };
+    const now = '2026-11-08T00:00:00.000Z';
+    const rows = Array.from({ length: 34 }, (_, index) => ({ id: 'meeting-' + index, date: '2026-12-13', createdAt: now }));
+    expect((await processCommand(base.owner, { ...base, kind: 'create', operationId: 'seed', generation: null,
+      value: { userId: base.owner, title: 'Group', status: 'draft', flow: [], templates: [], meetingDates: rows, createdAt: now, updatedAt: now },
+    })).kind).toBe('acknowledged');
+    const edit = (operationId: string, before: typeof rows, after: typeof rows) => ({
+      ...base, kind: 'update', operationId, generation: 'seed',
+      changes: [{ path: ['meetingDates'], before: { exists: true, value: before }, after: { exists: true, value: after } }],
+    });
+    const unset = [{ ...rows[0], date: '' }, ...rows.slice(1)];
+    expect((await processCommand(base.owner, edit('unset', rows, unset))).kind).toBe('acknowledged');
+    expect((await processCommand(base.owner, edit('return', unset, rows))).kind).toBe('acknowledged');
+    const changed = [rows[0], ...rows.slice(1).map(row => ({ ...row, date: '2026-12-27' }))];
+    expect((await processCommand(base.owner, edit('other-rows', rows, changed))).kind).toBe('acknowledged');
+    expect(await processCommand(base.owner, { ...edit('offline', rows, [{ ...rows[0], date: '2026-12-20' }, ...rows.slice(1)]),
+      meetingDateAction: { rowId: rows[0].id, before: rows[0].date, after: '2026-12-20', observedRevision: 1,
+        time: { earliestMs: 1_800_000_000_000, latestMs: 1_800_000_000_010 } },
+    })).toMatchObject({ kind: 'conflict', conflicts: [{ path: ['meetingDates', 'id:meeting-0', 'date'] }],
+      snapshot: { value: { meetingDates: changed } } });
   });
 
   it.each([

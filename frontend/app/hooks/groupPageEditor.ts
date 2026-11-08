@@ -30,6 +30,8 @@ export interface GroupPageEditor {
   meetingAudience: string;
   setMeetingAudience: Dispatch<SetStateAction<string>>;
   meetingFieldsEnabled: boolean;
+  meetingHistory?: { owner: string; generation: string; rowId: string; date: string; disabled: boolean;
+    restore: (rowId: string, date: string) => Promise<void> };
   deleteGroupDetail: () => void | Promise<void>;
   feedback: ReactNode;
 }

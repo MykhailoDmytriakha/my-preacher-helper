@@ -2711,6 +2711,7 @@
     "historyTitle": "Preaching dates",
     "earlierDates": "Date history",
     "loadingEarlierDates": "Loading earlier dates…",
+    "restoreEarlierDateFailed": "The date could not be restored.",
     "earlierDatesUnavailable": "Earlier dates are unavailable.",
     "noEarlierDates": "No earlier dates were kept.",
     "earlierDateEntry": "Saved for recovery: {{date}}. Date kept at the time: {{keptDate}}.",

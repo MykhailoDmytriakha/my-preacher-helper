@@ -4,8 +4,9 @@ import { useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
 import { useAutoSave } from '@/hooks/useAutoSave';
 import { fillRequiredFieldError } from '@/utils/actionFailureMessage';
 import { newClientId } from '@/utils/clientId';
-import { editFirstGroupMeeting, isReadyGroupMeetingDate } from '@/utils/groupMeeting';
+import { editFirstGroupMeeting, groupMeetingDay, isReadyGroupMeetingDate } from '@/utils/groupMeeting';
 
+import type { DatedRowActionCapture } from '@/data-engine/datedRowAction';
 import type { DocumentData } from '@/data-engine/types';
 import type { GroupMeetingDate } from '@/models/models';
 import type { Dispatch, SetStateAction } from 'react';
@@ -23,9 +24,13 @@ export function useGroupMeetingEditor(groupId: string, stored: GroupMeetingDate[
   const form = useDataForm({ collection: 'groups', id: groupId }, 'group-meeting', [['meetingDates']]);
   const [opened, setOpened] = useState(false);
   const latest = useRef(form); latest.current = form;
+  const dateAction = useRef<{ scope: object; action: DatedRowActionCapture | undefined }>(undefined);
   const { active, loading, begin, cancel } = form;
-  const needsRefresh = available && active && !form.dirty && !pending && JSON.stringify(meetings(form.data)) !== JSON.stringify(stored);
-  useEffect(() => { if (available && !loading && !active) void begin().catch(() => undefined); }, [available, loading, active, begin]);
+  // Save closes its stage before local cleanup settles. Reopening during that gap
+  // retires the same form whose promise is still reporting the saved action.
+  const settling = form.busy || form.capturing;
+  const needsRefresh = available && active && !settling && !form.dirty && !pending && JSON.stringify(meetings(form.data)) !== JSON.stringify(stored);
+  useEffect(() => { if (available && !loading && !active && !settling) void begin().catch(() => undefined); }, [available, loading, active, settling, begin]);
   useEffect(() => { if (active) setOpened(true); }, [active]);
   useEffect(() => {
     if (needsRefresh) void cancel().then(begin).catch(() => undefined);
@@ -38,7 +43,9 @@ export function useGroupMeetingEditor(groupId: string, stored: GroupMeetingDate[
     const current = latest.current;
     // A browser pagehide may precede React's next render. Save reads the engine-owned stage,
     // never the render's possibly older active/dirty flags. Partial input cancels this schedule.
-    void current.save(normalize).catch(() => undefined);
+    const capture = dateAction.current;
+    const action = capture?.scope === current.recoveryIdentity ? capture.action : undefined;
+    void (action ? current.save(normalize, action) : current.save(normalize)).catch(() => undefined);
   }, { delay: 750 });
   useLayoutEffect(() => () => { debouncedSave.flush(); }, [debouncedSave]);
   useEffect(() => {
@@ -66,10 +73,24 @@ export function useGroupMeetingEditor(groupId: string, stored: GroupMeetingDate[
       const previous = meetings(current), value = previous[0]?.[key] ?? '';
       const edited = editFirstGroupMeeting(previous, { [key]: typeof next === 'function' ? next(value) : next }, identity);
       ready = canSave({ meetingDates: edited } as unknown as DocumentData, form.initialData);
+      if (key === 'date' && edited[0]?.date !== previous[0]?.date) {
+        const action = ready && previous[0] && edited[0] ? form.captureDateAction(previous[0].id, edited[0].date.trim()) : undefined;
+        dateAction.current = { scope: form.recoveryIdentity, action };
+      }
       return { ...current, meetingDates: edited } as unknown as DocumentData;
     }).catch(() => undefined);
     if (ready) debouncedSave();
     else debouncedSave.cancel();
   };
-  return { form, recovery, first, field, loading: !opened || loading, enabled: active && !needsRefresh };
+  const restoreDate = async (rowId: string, date: string) => {
+    const chosen = date === '' ? date : groupMeetingDay(date);
+    if (!form.active || form.dirty || pending || needsRefresh || chosen === null) throw new Error('The meeting date is not ready');
+    const action = form.captureDateAction(rowId, chosen);
+    await form.save(current => {
+      const rows = meetings(current);
+      if (rows[0]?.id !== rowId) throw new Error('The meeting changed');
+      return { ...current, meetingDates: [{ ...rows[0], date: chosen }, ...rows.slice(1)] } as unknown as DocumentData;
+    }, action);
+  };
+  return { form, recovery, first, field, restoreDate, loading: !opened || loading, enabled: active && !needsRefresh };
 }

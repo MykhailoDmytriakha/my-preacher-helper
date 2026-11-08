@@ -32,6 +32,7 @@ import { useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
 import { ScriptureLinksInWindow } from '@/components/bible/VerseWindow';
+import { DatedRowHistory } from '@/components/calendar/DatedRowHistory';
 import AddBlockButton from '@/components/groups/AddBlockButton';
 import FlowEditor from '@/components/groups/FlowEditor';
 import FlowFooter from '@/components/groups/FlowFooter';
@@ -98,7 +99,7 @@ function GroupDetailView({ editor }: { editor: GroupPageEditor }) {
   const { group, loading, title, setTitle, description, setDescription, status, setStatus,
     templates, setTemplates, flow, setFlow, meetingDate, setMeetingDate, meetingLocation, setMeetingLocation,
     meetingAudience, setMeetingAudience, deleteGroupDetail, feedback,
-    meetingFieldsEnabled } = editor;
+    meetingFieldsEnabled, meetingHistory } = editor;
   const [selectedFlowItemId, setSelectedFlowItemId] = useState<string | null>(null);
   const { confirm, confirmDialog } = useConfirm();
   const [deletingGroup, setDeletingGroup] = useState(false);
@@ -445,6 +446,11 @@ function GroupDetailView({ editor }: { editor: GroupPageEditor }) {
                 className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm shadow-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 transition focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30"
               />
             </div>
+            {meetingHistory && <DatedRowHistory
+              key={JSON.stringify([meetingHistory.owner, group.id, meetingHistory.generation])}
+              owner={meetingHistory.owner} collection="groups" id={group.id} generation={meetingHistory.generation}
+              disabled={meetingHistory.disabled} liveDates={new Map([[meetingHistory.rowId, meetingHistory.date]])}
+              onRestore={meetingHistory.restore} />}
           </div>
         </div>
       </header>
