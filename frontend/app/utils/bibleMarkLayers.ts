@@ -48,15 +48,16 @@ const runOf = (text: unknown): unknown[] | null => {
 export const layerRuns = (layer: unknown): unknown[] =>
   (typeof layer === 'string' ? layer.split(',') : Array.isArray(layer) ? layer : []).map(runOf).filter(Boolean) as unknown[];
 
-type Layer = 'm' | 'p';
+export type VerseMarkLayer = 'm' | 'p';
 type Run = [number, number, string];
+type LayerSpan = { first: number; last: number; colours: Array<string | undefined> };
 
 /**
  * A layer's runs in their one way of writing, or null when the value does not read back whole — a piece that is not a run, a
  * number past exact integers, a run that ends before it starts, a colour the layer has no place for, one word under two
  * colours: such a value is never merged, it stays a question. No value is no marks.
  */
-function layerRunsOf(layer: Layer, value: unknown): Run[] | null {
+function layerRunsOf(layer: VerseMarkLayer, value: unknown): Run[] | null {
   if (value === undefined) return [];
   const pieces = typeof value === 'string' ? (value === '' ? [] : value.split(',')) : Array.isArray(value) ? value : null;
   if (!pieces) return null;
@@ -81,6 +82,26 @@ function layerRunsOf(layer: Layer, value: unknown): Run[] | null {
 
 const colourAt = (runs: readonly Run[], word: number): string | undefined => runs.find(([first, last]) => first <= word && word <= last)?.[2];
 
+function* spansBetweenRuns(sides: Run[][]): IterableIterator<LayerSpan> {
+  const edges = [...new Set(sides.flatMap(runs => runs.flatMap(([first, last]) => [first, last + 1])))].sort((a, b) => a - b);
+  for (let index = 0; index < edges.length - 1; index += 1) {
+    const first = edges[index], last = edges[index + 1] - 1;
+    yield { first, last, colours: sides.map(runs => colourAt(runs, first)) };
+  }
+}
+
+/** Each returned span has one colour per stored layer and no changes inside its bounds. */
+export function readVerseLayerSpans(layer: VerseMarkLayer, values: readonly unknown[]): IterableIterator<LayerSpan> | null {
+  const runs: Run[][] = [];
+  for (const value of values) {
+    const parsed = layerRunsOf(layer, value);
+    if (!parsed) return null;
+    runs.push(parsed);
+  }
+  return spansBetweenRuns(runs);
+}
+
+
 /**
  * A verse's layer changed on two sides, merged word by word (BUG-20261107-marks-same-verse-offline-conflict): what one side
  * changed from the version both started from is laid over the other's words, so strokes on different words of one verse — made
@@ -89,18 +110,14 @@ const colourAt = (runs: readonly Run[], word: number): string | undefined => run
  * when no word is left marked. Worked span by span between the runs' edges, never word by word: a damaged run as long as a
  * billion words costs no more than a short one (Codex review).
  */
-export function mergeVerseLayer(layer: Layer, base: unknown, mine: unknown, theirs: unknown): { value: string | undefined } | null {
-  const sides = [base, mine, theirs].map(value => layerRunsOf(layer, value));
-  if (sides.some(runs => runs === null)) return null;
-  const [b, m, t] = sides as Run[][];
-  const edges = [...new Set([...b, ...m, ...t].flatMap(([first, last]) => [first, last + 1]))].sort((x, y) => x - y);
+export function mergeVerseLayer(layer: VerseMarkLayer, base: unknown, mine: unknown, theirs: unknown): { value: string | undefined } | null {
+  const spans = readVerseLayerSpans(layer, [base, mine, theirs]);
+  if (!spans) return null;
   const merged: Run[] = [];
-  for (let index = 0; index < edges.length - 1; index += 1) {
-    const from = edges[index], to = edges[index + 1] - 1;
-    const [was, here, there] = [b, m, t].map(runs => colourAt(runs, from));
+  for (const { first, last, colours: [was, here, there] } of spans) {
     const kept = here === was ? there : there === was || there === here ? here : null;
     if (kept === null) return null;
-    if (kept !== undefined) merged.push([from, to, kept]);
+    if (kept !== undefined) merged.push([first, last, kept]);
   }
   const runs = tidy(merged);
   return { value: runs.length ? runs.map(runText).join(',') : undefined };
