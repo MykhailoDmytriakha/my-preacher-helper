@@ -26,8 +26,8 @@ import type { ReactNode } from 'react';
 export function useAnalysisBookMarks({ bible, bookId, text }: { bible: BibleId; bookId: string; text: BookText | null }): { source: AnalysisMarks | null; status: ReactNode } {
   const { user } = useAuth();
   const owner = user?.uid ?? null;
-  const { marks, save, ready, writable, sync } = useBookMarks(owner, bible, bookId);
-  const { writableRef, sayWhy, status } = useMarksWriteGate({ writable, sync }, 'mb-4');
+  const { marks, save, ready, writable, sync, history } = useBookMarks(owner, bible, bookId);
+  const { writableRef, sayWhy, status } = useMarksWriteGate({ writable, sync, history }, 'mb-4', text);
   const order = useMemo(() => (text ? verseOrder(text.chapters, countVerseWords) : null), [text]);
   const mark = useCallback((change: MarksChange, lost: () => void) => {
     if (!writableRef.current) {

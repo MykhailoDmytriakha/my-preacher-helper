@@ -82,8 +82,8 @@ function layerRunsOf(layer: VerseMarkLayer, value: unknown): Run[] | null {
 
 const colourAt = (runs: readonly Run[], word: number): string | undefined => runs.find(([first, last]) => first <= word && word <= last)?.[2];
 
-function* spansBetweenRuns(sides: Run[][]): IterableIterator<LayerSpan> {
-  const edges = [...new Set(sides.flatMap(runs => runs.flatMap(([first, last]) => [first, last + 1])))].sort((a, b) => a - b);
+function* spansBetweenRuns(sides: Run[][], boundaries: readonly number[]): IterableIterator<LayerSpan> {
+  const edges = [...new Set([...boundaries, ...sides.flatMap(runs => runs.flatMap(([first, last]) => [first, last + 1]))])].sort((a, b) => a - b);
   for (let index = 0; index < edges.length - 1; index += 1) {
     const first = edges[index], last = edges[index + 1] - 1;
     yield { first, last, colours: sides.map(runs => colourAt(runs, first)) };
@@ -91,17 +91,20 @@ function* spansBetweenRuns(sides: Run[][]): IterableIterator<LayerSpan> {
 }
 
 /** Each returned span has one colour per stored layer and no changes inside its bounds. */
-export function readVerseLayerSpans(layer: VerseMarkLayer, values: readonly unknown[]): IterableIterator<LayerSpan> | null {
+export function readVerseLayerSpans(layer: VerseMarkLayer, values: readonly unknown[], boundaries: readonly number[] = []): IterableIterator<LayerSpan> | null {
   const runs: Run[][] = [];
   for (const value of values) {
     const parsed = layerRunsOf(layer, value);
     if (!parsed) return null;
     runs.push(parsed);
   }
-  return spansBetweenRuns(runs);
+  return spansBetweenRuns(runs, boundaries);
 }
 
 
+export function encodeVerseLayer(runs: Run[]): string | undefined {
+  return runs.length ? tidy(runs).map(runText).join(',') : undefined;
+}
 /**
  * A verse's layer changed on two sides, merged word by word (BUG-20261107-marks-same-verse-offline-conflict): what one side
  * changed from the version both started from is laid over the other's words, so strokes on different words of one verse — made
@@ -119,6 +122,19 @@ export function mergeVerseLayer(layer: VerseMarkLayer, base: unknown, mine: unkn
     if (kept === null) return null;
     if (kept !== undefined) merged.push([first, last, kept]);
   }
-  const runs = tidy(merged);
-  return { value: runs.length ? runs.map(runText).join(',') : undefined };
+  return { value: encodeVerseLayer(merged) };
+}
+
+/** An explicit restore paints or clears only one saved span of one layer. */
+export function restoreVerseLayerSpan(layer: VerseMarkLayer, stored: unknown, first: number, last: number, colour: string | null): string | undefined | null {
+  const validColour = layer === 'm' ? isMarkColor : isPencilColor;
+  if (!Number.isSafeInteger(first) || !Number.isSafeInteger(last) || first < 0 || last < first || (colour !== null && !validColour(colour))) return null;
+  const spans = readVerseLayerSpans(layer, [stored], [first, last + 1]);
+  if (!spans) return null;
+  const runs: Run[] = [];
+  for (const span of spans) {
+    const kept = first <= span.first && span.last <= last ? colour : span.colours[0];
+    if (kept) runs.push([span.first, span.last, kept]);
+  }
+  return encodeVerseLayer(runs);
 }

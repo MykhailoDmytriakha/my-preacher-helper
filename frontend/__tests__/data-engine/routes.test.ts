@@ -3,10 +3,11 @@ import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.
 import { GET as changes } from '@/api/data-engine/changes/[collection]/route';
 import { GET as list } from '@/api/data-engine/collections/[collection]/route';
 import { POST } from '@/api/data-engine/commands/route';
+import { GET as markHistory } from '@/api/data-engine/documents/[collection]/[id]/mark-history/route';
 import { GET as history } from '@/api/data-engine/documents/[collection]/[id]/preach-date-history/route';
 import { GET as read } from '@/api/data-engine/documents/[collection]/[id]/route';
 import { ENGINE_OWNED_COLLECTIONS } from '@/data-engine/engineOwnedCollections';
-import { assertDataEngineEnabled, DataEngineServerError, listDocuments, listPreachDateHistory, processCommand, readCollectionChanges, readCommandBody, readDocument } from '@/data-engine/server';
+import { assertDataEngineEnabled, DataEngineServerError, listBibleMarkHistory, listDocuments, listPreachDateHistory, processCommand, readCollectionChanges, readCommandBody, readDocument } from '@/data-engine/server';
 import { __resetStoreAvailabilityForTests } from '@/services/storeAvailability.server';
 
 jest.mock('@/config/firebaseAdminConfig', () => ({ adminDb: {} }));
@@ -17,6 +18,7 @@ jest.mock('@/data-engine/server', () => ({
   readCommandBody: jest.fn(),
   readDocument: jest.fn(),
   assertDataEngineEnabled: jest.fn(jest.requireActual('@/data-engine/server').assertDataEngineEnabled),
+  listBibleMarkHistory: jest.fn(),
   listDocuments: jest.fn(),
   listPreachDateHistory: jest.fn(),
   readCollectionChanges: jest.fn(),
@@ -145,6 +147,21 @@ describe('DataEngine HTTP routes', () => {
     expect(response.status).toBe(200);
     expect(response.headers.get('cache-control')).toBe('no-store');
     expect(listPreachDateHistory).toHaveBeenCalledWith('verified-owner', 'sermon-1', 'g1', undefined);
+  });
+
+  it('gates the mark history route and binds its no-store answer to the authenticated owner', async () => {
+    const context = { params: Promise.resolve({ collection: 'bibleMarks', id: 'book' }) };
+    const input = request('http://localhost/api/data-engine/documents/bibleMarks/book/mark-history?generation=g1');
+    jest.mocked(assertDataEngineEnabled).mockImplementationOnce(() => { throw new DataEngineServerError('data-engine-disabled', 503); });
+    expect((await markHistory(input, context)).status).toBe(503);
+    expect(assertDataEngineEnabled).toHaveBeenLastCalledWith('bibleMarks');
+    expect(listBibleMarkHistory).not.toHaveBeenCalled();
+
+    jest.mocked(listBibleMarkHistory).mockResolvedValue({ owner: 'verified-owner', bookId: 'book', generation: 'g1', entries: [], nextCursor: null });
+    const response = await markHistory(input, context);
+    expect(response.status).toBe(200);
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(listBibleMarkHistory).toHaveBeenCalledWith('verified-owner', 'book', 'g1', undefined);
   });
 
   it('passes exact resource identifiers and forbids cached document responses', async () => {

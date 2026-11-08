@@ -4,12 +4,14 @@ import { toast } from 'sonner';
 import { isLiveCollectionDocument, PHASES_TAKING_CHANGES, useDataCollection, useDataDocument } from '@/data-engine/react.client';
 import { refusalMessage } from '@/utils/actionFailureMessage';
 import { diagnosticErrorCode, recordDiagnostic } from '@/utils/appDiagnostics';
+import { restoreVerseLayerSpan } from '@/utils/bibleMarkLayers';
 import { decodeBookMarks, encodeBookMarks, marksKey, type BookMarks, type OtherBookMarks } from '@/utils/bibleMarks';
 import { marksDocumentId } from '@/utils/bibleMarksIdentity';
 import { isBibleId } from '@/utils/bibles';
 import { useTranslation } from '@locales/useTranslation';
 
-import type { DocumentData } from '@/data-engine/types';
+import type { DisplacedMark } from '@/data-engine/bibleMarkStroke';
+import type { DocumentData, Json } from '@/data-engine/types';
 import type { BibleId } from '@/utils/bibles';
 
 /*
@@ -38,6 +40,15 @@ const MARKS_SLOT = 'bible-marks';
 
 export { marksDocumentId } from '@/utils/bibleMarksIdentity';
 
+export type MarkHistorySession = {
+  owner: string;
+  bookId: string;
+  generation: string;
+  restore: (mark: DisplacedMark) => Promise<void>;
+  isApplied: (mark: DisplacedMark) => boolean;
+};
+const dataObject = (value: Json | undefined): value is DocumentData => Boolean(value && typeof value === 'object' && !Array.isArray(value));
+
 type StoredDocument = { verses?: unknown } & Record<string, unknown>;
 export type MarksChange = (marks: BookMarks) => BookMarks;
 
@@ -57,6 +68,7 @@ export type BookMarksStore = {
   others: OtherBookMarks[];
   /** The book's form, for its status: shown only when something needs the person. */
   sync: ReturnType<typeof useDataDocument> | null;
+  history?: MarkHistorySession;
 };
 
 export function useBookMarks(owner: string | null, bible: BibleId, bookId: string): BookMarksStore {
@@ -110,7 +122,7 @@ export function useBookMarks(owner: string | null, bible: BibleId, bookId: strin
     const now = new Date().toISOString();
     current.commit((value): DocumentData => (value
       ? { ...value, verses: encodeBookMarks(change(decodeBookMarks(value.verses))), updatedAt: now }
-      : { userId: person, bible: bibleId, book, verses: encodeBookMarks(change({})), createdAt: now, updatedAt: now }))
+      : { userId: person, bible: bibleId, book, verses: encodeBookMarks(change({})), createdAt: now, updatedAt: now }), 'bible-mark-stroke')
       .catch((error: unknown) => {
         if (formLeft(error)) return;
         lost?.();
@@ -120,6 +132,37 @@ export function useBookMarks(owner: string | null, bible: BibleId, bookId: strin
   }, [id]);
 
   const open = listRead && form.state !== null;
+  const generation = form.confirmed?.metadata?.generation;
+  const history = useMemo<MarkHistorySession | undefined>(() => {
+    if (!owner || !id || !generation) return undefined;
+    return {
+      owner, bookId: id, generation,
+      isApplied: mark => {
+        const verses = latest.current.form.data?.verses;
+        const row = dataObject(verses) ? verses[mark.verse] : undefined;
+        const stored = dataObject(row) ? row[mark.layer] : undefined;
+        return restoreVerseLayerSpan(mark.layer, stored, mark.first, mark.last, mark.colour) === stored;
+      },
+      restore: async mark => {
+        const { form: current, owner: activeOwner, bible: activeBible, bookId: activeBook } = latest.current;
+        if (owner !== activeOwner || id !== marksDocumentId(owner, activeBible, activeBook) || current.readOnly
+          || current.confirmed?.metadata?.generation !== generation) throw new Error('The marks book changed');
+        await current.commit(value => {
+          if (!value || !dataObject(value.verses)) throw new Error('The marks book changed');
+          const verses = { ...value.verses };
+          const row = verses[mark.verse];
+          const layers = dataObject(row) ? { ...row } : {};
+          const restored = restoreVerseLayerSpan(mark.layer, layers[mark.layer], mark.first, mark.last, mark.colour);
+          if (restored === null) throw new Error('The mark could not be restored');
+          if (restored === undefined) delete layers[mark.layer];
+          else layers[mark.layer] = restored;
+          if (Object.keys(layers).length) verses[mark.verse] = layers;
+          else delete verses[mark.verse];
+          return { ...value, verses };
+        }, 'bible-mark-stroke');
+      },
+    };
+  }, [generation, id, owner]);
   return {
     marks: formMarks,
     save,
@@ -127,5 +170,6 @@ export function useBookMarks(owner: string | null, bible: BibleId, bookId: strin
     writable: open && !form.readOnly && PHASES_TAKING_CHANGES.has(form.status?.phase ?? ''),
     others,
     sync: resource ? form : null,
+    history,
   };
 }

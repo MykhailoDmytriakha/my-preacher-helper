@@ -91,9 +91,9 @@ export function useReaderMarks({ textRef, text, ready, bible, bookId, drawn, onM
   const canMark = useSyncExternalStore(subscribeNever, marksSupported, () => false);
   const tool = useMarkTool();
   const zoomed = usePageZoomed();
-  const { marks: stored, save, ready: storeReady, writable, others, sync } = useBookMarks(owner, bible, bookId);
+  const { marks: stored, save, ready: storeReady, writable, others, sync, history } = useBookMarks(owner, bible, bookId);
   // A stroke starts only when it can be kept, and the form's status is where a waiting choice is made (`useMarksWriteGate`).
-  const { writableRef, sayWhy, status: syncStatus } = useMarksWriteGate({ writable, sync }, 'mb-3');
+  const { writableRef, sayWhy, status: syncStatus } = useMarksWriteGate({ writable, sync, history }, 'mb-3', text);
   const beginStroke = tool.beginStroke;
   const begin = useCallback((pen: boolean) => {
     if (writableRef.current) return beginStroke(pen);
@@ -111,8 +111,9 @@ export function useReaderMarks({ textRef, text, ready, bible, bookId, drawn, onM
   marksNow.current = stored;
   const keep = useCallback((change: MarksChange) => {
     if (writableRef.current) {
-      const first = order ? firstChangedVerse(marksNow.current, change(marksNow.current), order) : null;
+      const before = marksNow.current;
       save(change, () => painter.drop(change));
+      const first = order ? firstChangedVerse(before, change(before), order) : null;
       const [chapter, verse] = first ? first.split(':').map(Number) : [];
       if (chapter && verse) markedRef.current?.(chapter, verse);
       return true;
@@ -123,8 +124,9 @@ export function useReaderMarks({ textRef, text, ready, bible, bookId, drawn, onM
   // A stroke made in an analysis: kept by this form as a stroke in the text is, put on the trail the same way.
   const markFromAnalysis = useCallback((change: MarksChange, lost: () => void) => {
     if (!writableRef.current) { sayWhy(); return false; }
-    const first = order ? firstChangedVerse(marksNow.current, change(marksNow.current), order) : null;
+    const before = marksNow.current;
     save(change, lost);
+    const first = order ? firstChangedVerse(before, change(before), order) : null;
     const [chapter, verse] = first ? first.split(':').map(Number) : [];
     if (chapter && verse) markedRef.current?.(chapter, verse);
     return true;

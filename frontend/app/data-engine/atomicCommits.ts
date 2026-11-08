@@ -1,4 +1,5 @@
 import { sameAnalysisFrame } from './analysisReshapeFields';
+import { rebaseBibleMarkAncestor } from './bibleMarkStroke';
 import { pendingCommitRetirement, retireCommitJournal } from './commitJournal';
 import { prepareAtomicDomainCommand } from './domainPolicy';
 import { isCapturedDateConflict } from './preachDateAction';
@@ -44,7 +45,8 @@ export function initializeCommit(record: CommitRequest, records: readonly Commit
     if (record.atomic?.kind === 'analysis-reshape' && !sameAnalysisFrame(predecessor.value, snapshot.value)) {
       return { ...record, initialized: true, state: 'refused', result: { kind: 'refused', operationId: record.id, code: 'resolve-version-first' } };
     }
-    const rebased = mergeDocumentFields(predecessor.value, record.value, snapshot.value);
+    const markAncestor = rebaseBibleMarkAncestor(predecessor.value, snapshot, record.baseline, record.bibleMarkStroke);
+    const rebased = mergeDocumentFields(markAncestor ?? predecessor.value, record.value, snapshot.value);
     const action = record.preachDateAction;
     const deferDate = action && rebased.conflicts.length === 1 && snapshot.metadata?.generation === record.baseline.metadata?.generation
       && isCapturedDateConflict(rebased.conflicts[0], action);
@@ -52,7 +54,7 @@ export function initializeCommit(record: CommitRequest, records: readonly Commit
     // The preceding ACK can carry another device's date. Send the original ancestor
     // for this exact leaf so the server can order it or keep the ordinary choice.
     return { ...record, initialized: true, working: snapshot, intended: rebased.value.exists ? rebased.value.value as DocumentData : null,
-      ...(deferDate && { deferPreachDateRebase: true }) };
+      ...(deferDate && { deferPreachDateRebase: true }), ...(markAncestor && { deferBibleMarkRebase: true }) };
   }
   return { ...record, initialized: true };
 }

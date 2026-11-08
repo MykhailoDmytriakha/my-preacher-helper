@@ -1002,9 +1002,10 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
       });
     },
     /** Freeze the intended save before any asynchronous draft persistence. */
-    commit: (updater: (current: DocumentData | null) => DocumentData | null) => {
+    commit: (updater: (current: DocumentData | null) => DocumentData | null, action?: 'bible-mark-stroke') => {
+      const time = action && owner ? actionClock.capture(owner) : undefined;
       cancelScheduledSave();
-      return run(editor => editor.commit(updater));
+      return run(editor => time ? editor.commit(updater, time) : editor.commit(updater));
     },
     actions: current?.actions ?? [],
     carryCouncilTopicToNew: (topicId: string, title: string) => {

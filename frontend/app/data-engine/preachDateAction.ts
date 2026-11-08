@@ -1,4 +1,4 @@
-import { isClockTime, type ActionTime } from './actionClock';
+import { isActionTime, type ActionTime } from './actionClock';
 
 import type { DocumentData, FieldChange, FieldValue, Json, ResourceSnapshot } from './types';
 
@@ -40,11 +40,6 @@ export function matchesPreachDateChange(changes: FieldChange[], evidence: Preach
   return Boolean(change?.before.exists && change.after.exists
     && existingPreachDate(change.before.value, evidence.rowId) === evidence.before
     && existingPreachDate(change.after.value, evidence.rowId) === evidence.after);
-}
-
-export function isActionTime(value: unknown): value is ActionTime {
-  if (!value || typeof value !== 'object' || !('earliestMs' in value) || !('latestMs' in value)) return false;
-  return isClockTime(value.earliestMs) && isClockTime(value.latestMs) && value.earliestMs <= value.latestMs;
 }
 
 export function isCapturedDateConflict(conflict: { path: string[]; base: FieldValue; mine: FieldValue; theirs: FieldValue },

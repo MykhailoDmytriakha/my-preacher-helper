@@ -6,7 +6,10 @@ import { toast } from 'sonner';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { useTranslation } from '@locales/useTranslation';
 
+import { MarkHistory } from './MarkHistory';
+
 import type { BookMarksStore } from './markStore';
+import type { BookText } from '@/utils/bibleText';
 
 /** The phases of the book's form that wait for the person's choice: no stroke is kept until it is made. */
 const DECISION_PHASES = ['conflict', 'refused', 'deleted', 'localFailure', 'blocked'];
@@ -19,7 +22,7 @@ const DECISION_PHASES = ['conflict', 'refused', 'deleted', 'localFailure', 'bloc
  * changed on two devices) the person is told to choose first, and `status` is where the choice is made. A choice runs for
  * a moment: no stroke until it has, or the choice would sweep the stroke away with the draft it replaces.
  */
-export function useMarksWriteGate({ writable, sync }: Pick<BookMarksStore, 'writable' | 'sync'>, statusClassName: string) {
+export function useMarksWriteGate({ writable, sync, history }: Pick<BookMarksStore, 'writable' | 'sync' | 'history'>, statusClassName: string, text: BookText | null = null) {
   const { t } = useTranslation();
   const [deciding, setDeciding] = useState(false);
   const writableRef = useRef(writable && !deciding);
@@ -39,5 +42,6 @@ export function useMarksWriteGate({ writable, sync }: Pick<BookMarksStore, 'writ
       onKeepLocal={() => { setDeciding(true); return sync.keepLocal().finally(() => setDeciding(false)); }}
       onAcceptRemote={() => { setDeciding(true); return sync.acceptRemote().finally(() => setDeciding(false)); }} />
   ) : null), [statusClassName, sync]);
-  return { writableRef, sayWhy, status };
+  return { writableRef, sayWhy, status: <>{status}{history && <MarkHistory key={JSON.stringify([history.owner, history.bookId, history.generation])}
+    session={history} text={text} disabled={!writable || deciding} />}</> };
 }

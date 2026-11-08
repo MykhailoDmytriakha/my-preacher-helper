@@ -32,6 +32,7 @@ import { canReplaceSnapshot, coversCommittedEffect, storesNewCopy } from './snap
 import { snapshotBelongsToOwner } from './snapshotIdentity';
 import { redeliveryDelay } from './unanswered';
 
+import type { ActionTime } from './actionClock';
 import type { CollectionReader, CollectionState } from './collections';
 import type { DocumentWriteReceipt } from './commitReceipt';
 import type { ManualScopeStore, StoredManualScope } from './manualScopes.client';
@@ -106,7 +107,7 @@ export interface ManagedEditor {
   /** `shown` is the copy the screen showed while the person typed (`DataSession.edit`). */
   edit(value: DocumentData | null, shown?: ShownCopy): Promise<void>;
   /** Capture, stage and durably save one invocation without including later typing. */
-  commit(updater: (current: DocumentData | null) => DocumentData | null): Promise<void>;
+  commit(updater: (current: DocumentData | null) => DocumentData | null, bibleMarkTime?: ActionTime): Promise<void>;
   /** Same local capture, with separate exact-request server acceptance for backup cleanup. */
   commitWithReceipt(updater: (current: DocumentData | null) => DocumentData | null, options?: { captureScope?: string }): Promise<DocumentWriteReceipt>;
   removeWithReceipt(options?: { captureScope?: string }): Promise<DocumentWriteReceipt>;
@@ -1791,10 +1792,10 @@ export class DataEngine {
         void pending.finally(() => { if (this.councilCarries.get(key) === pending) this.councilCarries.delete(key); }).catch(() => undefined);
         return pending;
       };
-      const commit = (updater: (current: DocumentData | null) => DocumentData | null, onCaptured?: (receipt: DocumentWriteReceipt) => void, captureScope?: string) => {
+      const commit = (updater: (current: DocumentData | null) => DocumentData | null, onCaptured?: (receipt: DocumentWriteReceipt) => void, captureScope?: string, bibleMarkTime?: ActionTime) => {
         active();
         const persistence = controller.edit(updater(controller.getState().checkpoint.draft));
-        const saving = controller.save(undefined, undefined, onCaptured, captureScope);
+        const saving = controller.save(undefined, undefined, onCaptured, captureScope, bibleMarkTime);
         return Promise.all([persistence, saving]).then(() => { active(); this.backgroundDrain(); this.prepareCommitsInBackground(); active(); });
       };
       const remove = async (onCaptured?: (receipt: DocumentWriteReceipt) => void, captureScope?: string) => {
@@ -1893,7 +1894,7 @@ export class DataEngine {
           return () => { entry.listeners.delete(subscription); };
         },
         edit: (value, shown) => { active(); return controller.edit(value, shown); },
-        commit: updater => commit(updater),
+        commit: (updater, bibleMarkTime) => commit(updater, undefined, undefined, bibleMarkTime),
         commitWithReceipt: (updater, options) => withReceipt(captured => commit(updater, captured, options?.captureScope)),
         removeWithReceipt: options => withReceipt(captured => remove(captured, options?.captureScope)),
         save: async () => { active(); await controller.save(); active(); this.backgroundDrain(); this.prepareCommitsInBackground(); active(); },

@@ -1,12 +1,12 @@
+import { boundedActionTime, compareActionTime } from './actionClock';
 import { object } from './fieldValues';
-import { existingPreachDate, isActionTime, matchesPreachDateChange, replaceExistingDate, type PreachDateActionEvidence } from './preachDateAction';
+import { existingPreachDate, matchesPreachDateChange, replaceExistingDate, type PreachDateActionEvidence } from './preachDateAction';
 
 import type { ActionTime } from './actionClock';
 import type { DisplacedPreachDate } from './preachDateAction';
 import type { DataCommand, FieldChange, ResourceSnapshot } from './types';
 
 const MAX_PROOFS = 32;
-const MAX_INTERVAL_MS = 175_000;
 
 export const PREACH_DATE_HISTORY = '_preachDateHistory';
 
@@ -14,26 +14,28 @@ type Proof = { rowId: string; date: string; time: ActionTime; revision: number }
 type DateOrder = { command: DataCommand; action?: PreachDateActionEvidence; displaced?: DisplacedPreachDate; kept?: Proof };
 
 const boundedRow = (value: unknown): value is string => typeof value === 'string' && value.length > 0 && value.length <= 128;
-const boundedTime = (value: unknown): value is ActionTime => isActionTime(value) && value.latestMs - value.earliestMs <= MAX_INTERVAL_MS;
 const dateOnly = (value: unknown): value is string => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
-const exactTime = ({ earliestMs, latestMs }: ActionTime): ActionTime => ({ earliestMs, latestMs });
 const revision = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value > 0;
 
 function actionFrom(command: Extract<DataCommand, { kind: 'update' }>, readTimeMs: number): PreachDateActionEvidence | undefined {
   const action: unknown = command.preachDateAction;
-  if (!object(action) || !boundedRow(action.rowId) || !boundedTime(action.time)
+  if (!object(action) || !boundedRow(action.rowId)
     || !dateOnly(action.before) || !dateOnly(action.after) || action.before === action.after
     || !revision(action.observedRevision) || !Number.isFinite(readTimeMs)) return undefined;
-  const evidence = { rowId: action.rowId, time: exactTime(action.time), before: action.before, after: action.after, observedRevision: action.observedRevision };
+  const time = boundedActionTime(action.time);
+  if (!time) return undefined;
+  const evidence = { rowId: action.rowId, time, before: action.before, after: action.after, observedRevision: action.observedRevision };
   if (evidence.time.earliestMs > readTimeMs + 5 || !matchesPreachDateChange(command.changes, evidence)) return undefined;
   return evidence;
 }
 
 function proofs(rawMetadata: unknown): Proof[] {
   if (!object(rawMetadata) || !Array.isArray(rawMetadata.preachDateActions)) return [];
-  return rawMetadata.preachDateActions.slice(0, MAX_PROOFS).flatMap((item: unknown) =>
-    object(item) && boundedRow(item.rowId) && dateOnly(item.date) && boundedTime(item.time) && revision(item.revision)
-      ? [{ rowId: item.rowId, date: item.date, time: exactTime(item.time), revision: item.revision }] : []);
+  return rawMetadata.preachDateActions.slice(0, MAX_PROOFS).flatMap((item: unknown) => {
+    if (!object(item) || !boundedRow(item.rowId) || !dateOnly(item.date) || !revision(item.revision)) return [];
+    const time = boundedActionTime(item.time);
+    return time ? [{ rowId: item.rowId, date: item.date, time, revision: item.revision }] : [];
+  });
 }
 
 function isDateChange(change: FieldChange): boolean {
@@ -63,8 +65,8 @@ export function orderPreachDate(command: DataCommand, current: ResourceSnapshot,
   // delivery alone cannot retroactively assign it a time.
   if (!previous) return currentDate === action.after ? { command } : { command, action };
   if (previous.revision <= action.observedRevision) return { command, action };
-  const older = action.time.latestMs < previous.time.earliestMs;
-  const newer = previous.time.latestMs < action.time.earliestMs;
+  const order = compareActionTime(action.time, previous.time);
+  const older = order < 0, newer = order > 0;
   if (currentDate === action.after) {
     if (older) return { command, kept: previous };
     return newer ? { command, action } : { command };

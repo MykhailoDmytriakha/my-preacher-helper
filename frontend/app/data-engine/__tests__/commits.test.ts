@@ -146,6 +146,35 @@ describe('Durable commit requests', () => {
     }));
   });
 
+  it('preserves the authored Bible word through queue restart and replays the exact ancestor after a different predecessor ACK', async () => {
+    const s = setup();
+    const { queue } = s.makeQueue();
+    const base: ResourceSnapshot = {
+      resource: { collection: 'bibleMarks', id: 'owner_kjv_philemon' },
+      value: { userId: 'owner', bible: 'kjv', book: 'philemon', verses: { v1_1: { m: '0-0-yellow' } } },
+      metadata: { protocol: 1, generation: 'book', revision: 1, deleted: false },
+    };
+    const editor = new DataSession(base);
+    editor.edit({ ...base.value, verses: { v1_1: { m: '0-0-yellow,2-2-red' } } });
+    const first = (await queue.save('mark', editor.checkpoint()))!;
+    editor.edit({ ...base.value, verses: { v1_1: { m: '0-0-yellow,2-2-orange' } } });
+    const time = { earliestMs: 1_800_000_000_020, latestMs: 1_800_000_000_025 };
+    const next = (await queue.save('mark', editor.checkpoint(), { predecessorId: first.id, bibleMarkTime: time }))!;
+    expect(next.bibleMarkStroke).toMatchObject({ observedRevision: 1, time, edits: [{ first: 2, last: 2, before: 'red', after: 'orange' }] });
+    const other = { ...base, value: { ...base.value, verses: { v1_1: { m: '0-0-yellow,2-2-blue,5-5-green' } } },
+      metadata: { ...base.metadata!, revision: 2, operationId: first.id } };
+    s.replace(other);
+    jest.mocked(s.transport.send).mockResolvedValueOnce({ kind: 'acknowledged', operationId: first.id, snapshot: other });
+    await s.makeQueue().queue.drain(true);
+    expect(s.transport.send).toHaveBeenCalledWith(expect.objectContaining({ operationId: next.id,
+      bibleMarkStroke: { observedRevision: 1, time },
+      changes: expect.arrayContaining([expect.objectContaining({ path: ['verses'],
+        before: { exists: true, value: { v1_1: { m: '0-0-yellow,2-2-red,5-5-green' } } },
+        after: { exists: true, value: { v1_1: { m: '0-0-yellow,2-2-orange,5-5-green' } } },
+      })]),
+    }));
+  });
+
   it('settles a previously stored exact deleted reply offline without sending again', async () => {
     const s = setup();
     const { queue, runtime } = s.makeQueue();

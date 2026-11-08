@@ -8,8 +8,9 @@ import { storeRetryHeaders } from '@/services/storeAvailability.server';
 import { userEntitlementDocument } from '@/services/userEntitlement.server';
 
 import { stampAcceptedResource } from './acceptedResource.server';
-import { ACTION_CLOCK_HEADER, isClockChallenge } from './actionClock';
+import { ACTION_CLOCK_HEADER, isClockChallenge, usesActionClock } from './actionClock';
 import { isCollectionServed, isLegacyOpen, mayBeRetiredByCascade } from './activation';
+import { BIBLE_MARK_HISTORY, BIBLE_MARK_PROOFS, bibleMarkProofVerses, bibleMarkTracking, metadataAfterBibleMarks, orderBibleMarks } from './bibleMarkOrder.server';
 import { existingPreachDate } from './preachDateAction';
 import { metadataAfterPreachDate, orderPreachDate, PREACH_DATE_HISTORY } from './preachDateOrder.server';
 import { advanceResourceSnapshot, commandFingerprint, getResourcePolicy, isValidIdentifier, TOMBSTONE_OWNER_FIELD, validateCommand } from './protocol';
@@ -20,13 +21,15 @@ import { coversCommittedEffect } from './snapshotFreshness';
 
 
 import type { AudioExportKey, AudioExportRecord, AudioExportStore, AudioExportTransaction, AudioExportUsage } from './audioExportStore';
+import type { BibleMarkHistoryEntry, BibleMarkHistoryPage } from './bibleMarkStroke';
 import type { DisplacedPreachDate, PreachDateHistoryPage } from './preachDateAction';
 import type { FeedWrite } from './serverFeed';
 import type { CollectionChanges, CollectionPage, CommandReceipt, CommandResult, DataCommand, DocumentData, EngineMetadata, Json, ResourceRef, ResourceSnapshot } from './types';
 import type { AiResultReceiptStore, ReceiptRecord } from '@/services/aiResultReceipt.server';
-import type { Firestore, Transaction } from 'firebase-admin/firestore';
+import type { DocumentReference, Firestore, Transaction } from 'firebase-admin/firestore';
 
-export function sermonActionClockChallenge(headers: Headers): string | undefined {
+export function collectionActionClockChallenge(collection: string, headers: Headers): string | undefined {
+  if (!usesActionClock(collection)) return undefined;
   const challenge = headers.get(ACTION_CLOCK_HEADER);
   return isClockChallenge(challenge) ? challenge : undefined;
 }
@@ -304,13 +307,58 @@ export async function recordSharedNoteView(linkId: string, token: string): Promi
 /** Trusted server callers pass their authenticated owner explicitly; no auth comes from the payload. */
 const resourceKey = (resource: ResourceRef) => JSON.stringify([resource.collection, resource.id]);
 
-async function persistAcceptedCommand(transaction: Transaction, { owner, command, snapshot: primarySnapshot, effects, rawDocuments, dateOrder }: {
+function historyEntryId(snapshot: ResourceSnapshot, operationId: string): string {
+  const metadata = snapshot.metadata!;
+  const hash = createHash('sha256').update(JSON.stringify([metadata.generation, operationId])).digest('hex');
+  return `${String(Number.MAX_SAFE_INTEGER - metadata.revision).padStart(16, '0')}-${hash}`;
+}
+
+function retainUncertainMarks(plan: Awaited<ReturnType<typeof planDataCommand>>, command: DataCommand, current: ResourceSnapshot,
+  order: ReturnType<typeof orderBibleMarks>): Awaited<ReturnType<typeof planDataCommand>> {
+  if (!order.uncertain?.length || (plan.result.kind !== 'acknowledged' && plan.result.kind !== 'conflict')) return plan;
+  const conflicts = new Map(order.uncertain.map(item => [JSON.stringify(item.path), item]));
+  if (plan.result.kind === 'conflict') {
+    for (const item of plan.result.conflicts) conflicts.set(JSON.stringify(item.path), item);
+  }
+  return { result: { kind: 'conflict', operationId: command.operationId, snapshot: current, conflicts: [...conflicts.values()] }, writes: [] };
+}
+
+async function planBibleMarkOrder(transaction: Transaction, document: DocumentReference, command: DataCommand,
+  current: ResourceSnapshot, raw: unknown, serverMs: number) {
+  const tracking = bibleMarkTracking(raw);
+  const verses = bibleMarkProofVerses(command);
+  const proofs = new Map<string, unknown>();
+  if (tracking.floor && verses?.length && command.kind === 'update' && command.generation === current.metadata?.generation) {
+    const collection = document.collection(BIBLE_MARK_PROOFS);
+    const pages = await Promise.all(verses.map(verse => transaction.get(collection.doc(verse))));
+    verses.forEach((verse, index) => proofs.set(verse, pages[index].data()));
+  }
+  return orderBibleMarks(command, current, tracking, verses, proofs, serverMs);
+}
+
+function persistBibleMarkOrder(transaction: Transaction, command: DataCommand, snapshot: ResourceSnapshot, order?: ReturnType<typeof orderBibleMarks>): void {
+  if ((!order?.proofWrites?.size && !order?.displaced?.length) || !snapshot.metadata || !snapshot.value) return;
+  const { generation, revision } = snapshot.metadata;
+  const document = adminDb.collection(command.resource.collection).doc(command.resource.id);
+  for (const [verse, proofs] of order.proofWrites ?? []) {
+    transaction.set(document.collection(BIBLE_MARK_PROOFS).doc(verse), { generation, revision, proofs });
+  }
+  if (order.displaced?.length) {
+    const history = document.collection(BIBLE_MARK_HISTORY);
+    transaction.set(history.doc(historyEntryId(snapshot, command.operationId)), {
+      generation, marks: order.displaced, acceptedAt: new Date().toISOString(),
+    });
+  }
+}
+
+async function persistAcceptedCommand(transaction: Transaction, { owner, command, snapshot: primarySnapshot, effects, rawDocuments, dateOrder, markOrder }: {
   owner: string;
   command: DataCommand;
   snapshot: ResourceSnapshot;
   effects: ResourceSnapshot[];
   rawDocuments: ReadonlyMap<string, Record<string, unknown> | undefined>;
   dateOrder?: ReturnType<typeof orderPreachDate>;
+  markOrder?: ReturnType<typeof orderBibleMarks>;
 }) {
   const feedWrites = await prepareFeedWrites(transaction, owner, command.operationId, effects);
   const primaryKey = resourceKey(command.resource);
@@ -321,16 +369,17 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
       ? { [TOMBSTONE_OWNER_FIELD]: owner }
       : preserveStoredTypes(raw, snapshot.value) as Record<string, unknown>;
     const primary = key === primaryKey;
-    const metadata = metadataAfterPreachDate(snapshot, raw?._dataEngine, primary ? command : undefined, primary ? dateOrder : undefined);
+    const metadata = snapshot.resource.collection === 'bibleMarks'
+      ? metadataAfterBibleMarks(snapshot, raw?._dataEngine, primary ? markOrder : undefined)
+      : metadataAfterPreachDate(snapshot, raw?._dataEngine, primary ? command : undefined, primary ? dateOrder : undefined);
     transaction.set(adminDb.collection(snapshot.resource.collection).doc(snapshot.resource.id), { ...value, _dataEngine: metadata });
   }
   const displaced = dateOrder?.displaced;
   if (displaced && existingPreachDate(primarySnapshot.value?.preachDates, displaced.rowId) === displaced.winnerDate) {
-    const hash = createHash('sha256').update(JSON.stringify([displaced.generation, command.operationId])).digest('hex');
-    const descendingRevision = String(Number.MAX_SAFE_INTEGER - primarySnapshot.metadata!.revision).padStart(16, '0');
     const history = adminDb.collection(command.resource.collection).doc(command.resource.id).collection(PREACH_DATE_HISTORY);
-    transaction.set(history.doc(`${descendingRevision}-${hash}`), { ...displaced, acceptedAt: new Date().toISOString() });
+    transaction.set(history.doc(historyEntryId(primarySnapshot, command.operationId)), { ...displaced, acceptedAt: new Date().toISOString() });
   }
+  persistBibleMarkOrder(transaction, command, primarySnapshot, markOrder);
   persistFeedWrites(transaction, feedWrites);
 }
 
@@ -374,13 +423,16 @@ export async function processCommand(owner: string, input: unknown): Promise<Com
     let result: CommandResult;
     let effects: ResourceSnapshot[] = [];
     let dateOrder: ReturnType<typeof orderPreachDate> | undefined;
+    let markOrder: ReturnType<typeof orderBibleMarks> | undefined;
     const rawDocuments = new Map<string, Record<string, unknown> | undefined>([[resourceKey(command.resource), raw]]);
     if (blocked.length) {
       result = { kind: 'blocked', operationId: command.operationId, dependencies: blocked };
     } else {
       const current = snapshotFromRaw(command.resource, raw);
-      dateOrder = orderPreachDate(command, current, raw?._dataEngine, stored.readTime?.toMillis());
-      const plan = await planDataCommand(dateOrder.command, current, {
+      const serverMs = stored.readTime?.toMillis();
+      dateOrder = orderPreachDate(command, current, raw?._dataEngine, serverMs);
+      markOrder = await planBibleMarkOrder(transaction, documentRef, dateOrder.command, current, raw?._dataEngine, serverMs);
+      const planned = await planDataCommand(markOrder.command, current, {
         get: async resource => {
           resourcePolicy(resource);
           const document = await transaction.get(adminDb.collection(resource.collection).doc(resource.id));
@@ -418,6 +470,7 @@ export async function processCommand(owner: string, input: unknown): Promise<Com
           return matches;
         },
       });
+      const plan = retainUncertainMarks(planned, command, current, markOrder);
       const acceptedAt = new Date().toISOString();
       // The planner exposes writes only for acknowledged commands.
       effects = plan.writes.map(effect => stampAcceptedResource(snapshotFromRaw(effect.resource, rawDocuments.get(resourceKey(effect.resource))), effect, acceptedAt));
@@ -445,7 +498,7 @@ export async function processCommand(owner: string, input: unknown): Promise<Com
       deletedTag = raw.name;
     }
     if (result.kind === 'acknowledged') {
-      await persistAcceptedCommand(transaction, { owner, command, snapshot: result.snapshot, effects, rawDocuments, dateOrder });
+      await persistAcceptedCommand(transaction, { owner, command, snapshot: result.snapshot, effects, rawDocuments, dateOrder, markOrder });
     }
     // A blocked receipt fixes the identity but may advance after its dependencies acknowledge.
     transaction.set(commandReceiptRef, serializeReceipt(receipt));
@@ -472,25 +525,39 @@ export async function readDocument(owner: string, resource: ResourceRef): Promis
   return snapshotFromRaw(resource, raw);
 }
 
-export async function listPreachDateHistory(owner: string, sermonId: string, generation: string, cursor?: string): Promise<PreachDateHistoryPage> {
+async function listHistoryEntries<T extends { id: string }>(owner: string, resource: ResourceRef, subcollection: string,
+  generation: string, cursor: string | undefined, unavailable: string): Promise<{ entries: T[]; nextCursor: string | null }> {
   checkOwner(owner);
-  if (!validSegment(sermonId) || !validSegment(generation) || (cursor !== undefined && !/^\d{16}-[0-9a-f]{64}$/.test(cursor))) {
+  if (!validSegment(resource.id) || !validSegment(generation) || (cursor !== undefined && !/^\d{16}-[0-9a-f]{64}$/.test(cursor))) {
     throw new DataEngineServerError(INVALID_ARGUMENT, 400);
   }
-  const resource = { collection: 'sermons', id: sermonId };
   const reference = adminDb.collection(resource.collection).doc(resource.id);
   return adminDb.runTransaction(async transaction => {
     const document = await transaction.get(reference);
     const raw = document.exists ? document.data() : undefined;
     if (!owns(owner, resource, raw)) throw new DataEngineServerError(PERMISSION_DENIED, 403);
     const snapshot = snapshotFromRaw(resource, raw);
-    if (!snapshot.value || snapshot.metadata?.generation !== generation) throw new DataEngineServerError('preach-date-gone', 404);
+    if (!snapshot.value || snapshot.metadata?.generation !== generation) throw new DataEngineServerError(unavailable, 404);
     const pageSize = 20;
-    const query = reference.collection(PREACH_DATE_HISTORY).where('generation', '==', generation).orderBy(FieldPath.documentId()).limit(pageSize + 1);
+    const query = reference.collection(subcollection).where('generation', '==', generation).orderBy(FieldPath.documentId()).limit(pageSize + 1);
     const page = await transaction.get(cursor ? query.startAfter(cursor) : query);
-    const entries = page.docs.slice(0, pageSize).map(item => ({ ...item.data(), id: item.id }) as DisplacedPreachDate & { id: string; acceptedAt: string });
-    return { owner, sermonId, generation, entries, nextCursor: page.docs.length > pageSize ? entries.at(-1)!.id : null };
+    const entries = page.docs.slice(0, pageSize).map(item => ({ ...item.data(), id: item.id }) as T);
+    return { entries, nextCursor: page.docs.length > pageSize ? entries.at(-1)!.id : null };
   });
+}
+
+export async function listPreachDateHistory(owner: string, sermonId: string, generation: string, cursor?: string): Promise<PreachDateHistoryPage> {
+  const resource = { collection: 'sermons', id: sermonId };
+  const page = await listHistoryEntries<DisplacedPreachDate & { id: string; acceptedAt: string }>(
+    owner, resource, PREACH_DATE_HISTORY, generation, cursor, 'preach-date-gone',
+  );
+  return { owner, sermonId, generation, ...page };
+}
+
+export async function listBibleMarkHistory(owner: string, bookId: string, generation: string, cursor?: string): Promise<BibleMarkHistoryPage> {
+  const resource = { collection: 'bibleMarks', id: bookId };
+  const page = await listHistoryEntries<BibleMarkHistoryEntry>(owner, resource, BIBLE_MARK_HISTORY, generation, cursor, 'marks-book-gone');
+  return { owner, bookId, generation, ...page };
 }
 
 export type ResourcePage = CollectionPage & { actionClock?: { challenge: string; serverMs: number } };
@@ -540,7 +607,7 @@ export async function listDocuments(owner: string, collection: string, options: 
       if (bytes > MAX_LIST_BYTES && snapshots.length > 0) break;
       snapshots.push(snapshot);
     }
-    const actionClock = collection === 'sermons' && options.actionClockChallenge && page.readTime
+    const actionClock = usesActionClock(collection) && options.actionClockChallenge && page.readTime
       ? { challenge: options.actionClockChallenge, serverMs: Math.floor(page.readTime.toMillis()) }
       : undefined;
     return { snapshots, nextCursor: rows.length > snapshots.length ? snapshots.at(-1)!.resource.id : null, version,

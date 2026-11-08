@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { isCollectionServed } from '@/data-engine/activation';
-import { DataEngineServerError, listDocuments, listPreachDateHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
+import { DataEngineServerError, listBibleMarkHistory, listDocuments, listPreachDateHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
 import { collectionHeadId, HEADS_COLLECTION, sequenceId } from '@/data-engine/serverFeed';
 import { DataSession } from '@/data-engine/session';
 import type { DataCommand, ResourceSnapshot } from '@/data-engine/types';
@@ -874,6 +874,149 @@ describe('transactional DataEngine server', () => {
     expect(first.snapshots.map(item => item.resource.id)).toEqual(['a']);
     expect(first.nextCursor).toBe('a');
     expect(await listDocuments('owner-1', 'sermons', { limit: 1, cursor: 'a' })).toEqual({ snapshots: [expect.objectContaining({ resource: { collection: 'sermons', id: 'b' }, value: null })], nextCursor: null, version: 0 });
+  });
+
+  it.each([
+    { arrival: 'earlier', delayedOffset: 10, word: 2, winner: '0-0-yellow,2-2-blue' },
+    { arrival: 'later', delayedOffset: 70, word: 2, winner: '0-0-yellow,2-2-red' },
+    { arrival: 'overlap', delayedOffset: 43, word: 2, winner: '0-0-yellow,2-2-blue' },
+    { arrival: 'different word', delayedOffset: 10, word: 3, winner: '0-0-yellow,2-2-blue,3-3-red' },
+  ])('uses the action order for a delayed Bible mark: $arrival', async ({ arrival, delayedOffset, word, winner }) => {
+    const book = { collection: 'bibleMarks', id: 'owner-1_kjv_philemon' };
+    const start = { v1_1: { m: '0-0-yellow' } };
+    const base = { protocol: 1, owner: 'owner-1', resource: book, dependsOn: [] };
+    const stamp = '2026-11-08T00:00:00.000Z';
+    const created = await processCommand(base.owner, { ...base, kind: 'create', operationId: 'marks-seed', generation: null,
+      value: { userId: base.owner, bible: 'kjv', book: 'philemon', verses: start, createdAt: stamp, updatedAt: stamp },
+    });
+    expect(created.kind).toBe('acknowledged');
+    if (created.kind !== 'acknowledged') return;
+    const save = (operationId: string, run: string, offset: number) => ({
+      ...base, kind: 'update', operationId, generation: 'marks-seed',
+      changes: [{ path: ['verses'], before: { exists: true, value: start }, after: { exists: true, value: { v1_1: { m: '0-0-yellow,' + run } } } }],
+      bibleMarkStroke: { observedRevision: created.snapshot.metadata!.revision,
+        time: { earliestMs: 1_800_000_000_000 + offset, latestMs: 1_800_000_000_010 + offset } },
+    });
+    expect((await processCommand(base.owner, save('blue-arrives-first', '2-2-blue', 40))).kind).toBe('acknowledged');
+    const red = save('red-arrives-last', word + '-' + word + '-red', delayedOffset);
+    const answer = await processCommand(base.owner, red);
+    const history = () => [...documents.entries()].filter(([key]) => key.startsWith('bibleMarks/owner-1_kjv_philemon/_markHistory/'));
+    expect(answer).toMatchObject({ kind: arrival === 'overlap' ? 'conflict' : 'acknowledged', snapshot: { value: { verses: { v1_1: { m: winner } } } } });
+    const ordered = arrival === 'earlier' || arrival === 'later';
+    expect(history()).toHaveLength(ordered ? 1 : 0);
+    if (ordered) {
+      const page = await listBibleMarkHistory(base.owner, book.id, 'marks-seed');
+      expect(page.entries).toHaveLength(1);
+      expect(page.entries[0].marks).toEqual([expect.objectContaining({ verse: 'v1_1', layer: 'm', first: 2, last: 2,
+        colour: arrival === 'later' ? 'blue' : 'red', winnerColour: arrival === 'later' ? 'red' : 'blue' })]);
+      await expect(listBibleMarkHistory('another-owner', book.id, 'marks-seed')).rejects.toMatchObject({ status: 403 });
+      await expect(listBibleMarkHistory(base.owner, book.id, 'wrong-generation')).rejects.toMatchObject({ status: 404 });
+      expect((await processCommand(base.owner, red)).kind).toBe('acknowledged');
+      expect(history()).toHaveLength(1);
+    }
+  });
+
+  it.each(['earlier', 'later'] as const)('carries the %s first stroke through a logical empty ancestor', async order => {
+    const book = { collection: 'bibleMarks', id: 'owner-1_kjv_philemon' };
+    const base = { protocol: 1, owner: 'owner-1', resource: book, dependsOn: [] };
+    const time = (offset: number) => ({ observedRevision: 0, time: { earliestMs: 1_800_000_000_000 + offset, latestMs: 1_800_000_000_005 + offset } });
+    const stamp = '2026-11-08T00:00:00.000Z';
+    expect((await processCommand(base.owner, { ...base, kind: 'create', operationId: 'first-stroke', generation: null,
+      value: { userId: base.owner, bible: 'kjv', book: 'philemon', verses: { v1_1: { p: '2-2-blue' } }, createdAt: stamp, updatedAt: stamp },
+      bibleMarkStroke: time(40),
+    })).kind).toBe('acknowledged');
+    const answer = await processCommand(base.owner, { ...base, kind: 'update', operationId: 'second-delivery', generation: 'first-stroke',
+      changes: [{ path: ['verses'], before: { exists: true, value: { v1_1: {} } }, after: { exists: true, value: { v1_1: { p: '2-2-red' } } } }],
+      bibleMarkStroke: time(order === 'earlier' ? 20 : 60),
+    });
+    expect(answer).toMatchObject({ kind: 'acknowledged', snapshot: { value: { verses: { v1_1: { p: order === 'earlier' ? '2-2-blue' : '2-2-red' } } } } });
+  });
+
+  it('orders only the overlapping word of a delayed erasure and retains the pencil layer', async () => {
+    const book = { collection: 'bibleMarks', id: 'owner-1_kjv_philemon' };
+    const base = { protocol: 1, owner: 'owner-1', resource: book, dependsOn: [] };
+    const time = (offset: number) => ({ observedRevision: 1, time: { earliestMs: 1_800_000_000_000 + offset, latestMs: 1_800_000_000_005 + offset } });
+    const stamp = '2026-11-08T00:00:00.000Z';
+    const original = { v1_1: { m: '2-4-red', p: '2-4-gray' } };
+    expect((await processCommand(base.owner, { ...base, kind: 'create', operationId: 'erase-book', generation: null,
+      value: { userId: base.owner, bible: 'kjv', book: 'philemon', verses: original, createdAt: stamp, updatedAt: stamp },
+    })).kind).toBe('acknowledged');
+    const edit = (operationId: string, value: unknown, offset: number) => processCommand(base.owner, { ...base, kind: 'update',
+      operationId, generation: 'erase-book', changes: [{ path: ['verses'], before: { exists: true, value: original }, after: { exists: true, value } }],
+      bibleMarkStroke: time(offset),
+    });
+    expect((await edit('blue-word', { v1_1: { m: '2-2-red,3-3-blue,4-4-red', p: '2-4-gray' } }, 40)).kind).toBe('acknowledged');
+    expect(await edit('older-erase', { v1_1: { p: '2-4-gray' } }, 20)).toMatchObject({
+      kind: 'acknowledged', snapshot: { value: { verses: { v1_1: { m: '3-3-blue', p: '2-4-gray' } } } },
+    });
+    const page = await listBibleMarkHistory(base.owner, book.id, 'erase-book');
+    expect(page.entries[0].marks).toEqual([expect.objectContaining({ first: 3, last: 3, colour: null, winnerColour: 'blue' })]);
+  });
+
+  it.each(['stamped', 'unstamped'] as const)('keeps a choice when unstamped edits returned a word to its old colour after a %s create', async initial => {
+    const book = { collection: 'bibleMarks', id: 'owner-1_kjv_philemon' };
+    const base = { protocol: 1, owner: 'owner-1', resource: book, dependsOn: [] };
+    const time = { earliestMs: 1_800_000_000_020, latestMs: 1_800_000_000_025 };
+    const stamp = '2026-11-08T00:00:00.000Z';
+    const original = { v1_1: { m: '2-2-blue' } };
+    const created = await processCommand(base.owner, { ...base, kind: 'create', operationId: 'legacy-aba', generation: null,
+      value: { userId: base.owner, bible: 'kjv', book: 'philemon', verses: original, createdAt: stamp, updatedAt: stamp },
+      ...(initial === 'stamped' && { bibleMarkStroke: { observedRevision: 0, time } }),
+    });
+    expect(created.kind).toBe('acknowledged');
+    const edit = (operationId: string, before: unknown, after: unknown, bibleMarkStroke?: { observedRevision: number; time: typeof time }) =>
+      processCommand(base.owner, { ...base, kind: 'update', operationId, generation: 'legacy-aba',
+        changes: [{ path: ['verses'], before: { exists: true, value: before }, after: { exists: true, value: after } }],
+        ...(bibleMarkStroke && { bibleMarkStroke }),
+      });
+    const alternate = { v1_1: { m: '2-2-green' } };
+    expect((await edit('legacy-alternate', original, alternate)).kind).toBe('acknowledged');
+    const conflict = await edit('stale-during-alternate', original, { v1_1: { m: '2-2-red' } }, { observedRevision: 1, time });
+    expect(conflict.kind).toBe('conflict');
+    expect((await edit('legacy-return', alternate, original)).kind).toBe('acknowledged');
+    const delayed = await edit('stale-after-return', original, { v1_1: { m: '2-2-red' } }, { observedRevision: 1, time });
+    expect(delayed).toMatchObject({ kind: 'conflict', snapshot: { value: { verses: original } } });
+    expect((await listBibleMarkHistory(base.owner, book.id, 'legacy-aba')).entries).toEqual([]);
+  });
+
+  it.each([
+    { name: 'many strokes in other verses', bulk: false },
+    { name: 'an oversized write resets proof coverage', bulk: true },
+  ])('protects the newer mark after $name', async ({ bulk }) => {
+    const book = { collection: 'bibleMarks', id: 'owner-1_kjv_philemon' };
+    const base = { protocol: 1, owner: 'owner-1', resource: book, dependsOn: [] };
+    const stamp = '2026-11-08T00:00:00.000Z';
+    const original: Record<string, { m: string }> = { v1_1: { m: '2-2-blue' } };
+    const created = await processCommand(base.owner, { ...base, kind: 'create', operationId: 'capacity-book', generation: null,
+      value: { userId: base.owner, bible: 'kjv', book: 'philemon', verses: original, createdAt: stamp, updatedAt: stamp },
+    });
+    expect(created.kind).toBe('acknowledged');
+    const edit = (operationId: string, before: unknown, after: unknown, observedRevision: number, offset: number) =>
+      processCommand(base.owner, { ...base, kind: 'update', operationId, generation: 'capacity-book',
+        changes: [{ path: ['verses'], before: { exists: true, value: before }, after: { exists: true, value: after } }],
+        bibleMarkStroke: { observedRevision, time: { earliestMs: 1_800_000_000_000 + offset, latestMs: 1_800_000_000_001 + offset } },
+      });
+    const alternate = { v1_1: { m: '2-2-green' } };
+    expect((await edit('alternate', original, alternate, 1, 50)).kind).toBe('acknowledged');
+    expect((await edit('return-blue', alternate, original, 2, 60)).kind).toBe('acknowledged');
+    let verses = original;
+    for (let batch = 0; batch < 3; batch++) {
+      const added = Object.fromEntries(Array.from({ length: 44 }, (_, index) => ['v' + (batch + 2) + '_' + (index + 1), { m: '0-0-orange' }]));
+      const next = { ...verses, ...added };
+      expect((await edit('bulk-' + batch, verses, next, batch + 3, 70 + batch * 10)).kind).toBe('acknowledged');
+      verses = next;
+    }
+    if (bulk) {
+      const added = Object.fromEntries(Array.from({ length: 65 }, (_, index) => ['v10_' + (index + 1), { m: '0-0-yellow' }]));
+      const next = { ...verses, ...added };
+      expect((await edit('oversized', verses, next, 6, 105)).kind).toBe('acknowledged');
+      verses = next;
+    }
+    const answer = await edit('old-red', original, { v1_1: { m: '2-2-red' } }, 1, 40);
+    expect(answer).toMatchObject({ kind: bulk ? 'conflict' : 'acknowledged', snapshot: { value: { verses } } });
+    const page = await listBibleMarkHistory(base.owner, book.id, 'capacity-book');
+    if (bulk) expect(page.entries).toEqual([]);
+    else expect(page.entries[0].marks).toEqual([expect.objectContaining({ verse: 'v1_1', colour: 'red', winnerColour: 'blue' })]);
   });
 
   it.each(['earlier', 'later', 'overlap', 'legacy'] as const)('handles a late-delivered %s date action and preserves the displaced date only when ordering is certain', async arrival => {

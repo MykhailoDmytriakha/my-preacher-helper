@@ -1,5 +1,6 @@
 import { advanceAtomicCommit, atomicParticipants, cancellationScope, cancelActionCommits, canCancelSavedIntent, initializeCommit, orderActionProjections, type AtomicCommitIdentity } from './atomicCommits';
 import { isFirstBookMarksDraft } from './bibleMarksCreation';
+import { captureBibleMarkStroke, restoreBibleMarkAncestor, withBibleMarkStroke, type CapturedBibleMarkStroke } from './bibleMarkStroke';
 import { pendingCommitRetirement, retireCommitJournal } from './commitJournal';
 import { CommitReceipts } from './commitReceipt';
 import { captureDeleteOrder, deleteOrderReady, replayDeleteOrder } from './deletionOrdering';
@@ -12,6 +13,7 @@ import { confirmedExistingDeletion, equalValues, mergeDocumentFields, MAX_RELATI
 import { capturePlanTextEvidence, type PlanTextEvidence } from './sermonPlanText';
 import { coversCommittedEffect } from './snapshotFreshness';
 
+import type { ActionTime } from './actionClock';
 import type { CaptureTransferProof, CaptureTransferResult } from './captureTransfer';
 import type { DocumentWriteReceipt } from './commitReceipt';
 import type { EditorRecord } from './controller';
@@ -48,6 +50,8 @@ export interface CommitRequest {
   planTextEvidence?: PlanTextEvidence;
   preachDateAction?: PreachDateActionEvidence;
   deferPreachDateRebase?: true;
+  bibleMarkStroke?: CapturedBibleMarkStroke;
+  deferBibleMarkRebase?: true;
   /** Earlier locally captured uses of this resource; owned atomically by DELETE capture storage. */
   deleteAfter?: string[];
   revision: number;
@@ -135,6 +139,7 @@ export function assertCommitCapture(current: CommitRequest, incoming: CommitRequ
   if (current.owner !== incoming.owner || current.editorId !== incoming.editorId || current.editGeneration !== incoming.editGeneration
     || current.predecessor !== incoming.predecessor || !equalValues(current.baseline, incoming.baseline)
     || !equalValues(current.planTextEvidence ?? null, incoming.planTextEvidence ?? null)
+    || !equalValues(current.bibleMarkStroke ?? null, incoming.bibleMarkStroke ?? null)
     || !equalValues(current.preachDateAction ?? null, incoming.preachDateAction ?? null)
     || !equalValues(current.value, incoming.value) || !equalValues(current.atomic ?? null, incoming.atomic ?? null)
     || !equalValues(current.deleteAfter ?? null, incoming.deleteAfter ?? null)
@@ -203,12 +208,18 @@ function ordinaryDeliveryChains(records: readonly CommitRequest[]): DeliveryChai
 
 type CommitSaveOptions = { predecessorId?: string | null; predecessorIds?: readonly string[]; retentionScope?: string;
   preachDateAction?: PreachDateActionCapture;
+  bibleMarkTime?: ActionTime;
   checkpoint?: (saved: CommitRequest) => EditorRecord;
   transfer?: { proof: CaptureTransferProof; sources: readonly CommitRequest[] } };
 
+function pendingBibleMarkRebase(record: CommitRequest): CapturedBibleMarkStroke | undefined {
+  return record.deferBibleMarkRebase && record.sequence === 0 ? record.bibleMarkStroke : undefined;
+}
+
 function freezeSaveOptions(options: CommitSaveOptions | undefined): CommitSaveOptions | undefined {
   return options && { ...options, predecessorIds: options.predecessorIds && [...options.predecessorIds],
-    transfer: options.transfer && clone(options.transfer), preachDateAction: options.preachDateAction && clone(options.preachDateAction) };
+    transfer: options.transfer && clone(options.transfer), preachDateAction: options.preachDateAction && clone(options.preachDateAction),
+    bibleMarkTime: options.bibleMarkTime && { ...options.bibleMarkTime } };
 }
 
 /** Equal parent generations still have an exact order in the durable dependency chain. */
@@ -364,8 +375,10 @@ export class CommitQueue {
     const baseline = clone(intent.confirmed);
     const planTextEvidence = baseline.resource.collection === 'sermons' ? captureSermonPlan(baseline, intent.draft, predecessor) : undefined;
     const action = capturePreachDateAction(baseline, predecessor, intent.draft, frozenOptions?.preachDateAction);
+    const mark = captureBibleMarkStroke(baseline, predecessor, intent.draft, frozenOptions?.bibleMarkTime);
     const record: CommitRequest = {
       id: this.options.operationId(), owner, editorId, editGeneration: intent.editGeneration,
+      ...(mark && { bibleMarkStroke: mark }),
       ...(action && { preachDateAction: action }),
       ...(frozenOptions?.retentionScope ? { retentionScope: frozenOptions.retentionScope } : {}),
       ...(frozenOptions?.transfer ? { transferredFrom: clone(frozenOptions.transfer.proof) } : {}),
@@ -730,7 +743,7 @@ export class CommitQueue {
       return commit(prepared ?? initialized, prepared !== null);
     }
     if (record.command) return this.advanceCommand(record, owner, generation, trackAnswer);
-    if (equalValues(record.working.value, record.intended)) return commit({ ...record, state: 'acknowledged', result: { kind: 'acknowledged', operationId: record.id, snapshot: record.working } });
+    if (!pendingBibleMarkRebase(record) && equalValues(record.working.value, record.intended)) return commit({ ...record, state: 'acknowledged', result: { kind: 'acknowledged', operationId: record.id, snapshot: record.working } });
     const targets = await Promise.all(requiredDomainTargets(record.working, record.intended).map(this.options.readConfirmed));
     if (isFirstBookMarksDraft(record.working, record.intended)) {
       const target = await (this.options.readWriteTarget ?? this.options.readConfirmed)(record.working.resource);
@@ -745,7 +758,7 @@ export class CommitQueue {
   /** A local, single-document update can initialize and prepare from the same durable evidence. */
   private prepareIndependentUpdate(record: CommitRequest, owner: string): CommitRequest | null {
     if (record.state !== 'queued' || record.command || record.deleteAfter?.length
-      || !record.working.value || !record.intended || equalValues(record.working.value, record.intended)) return null;
+      || !record.working.value || !record.intended || (!pendingBibleMarkRebase(record) && equalValues(record.working.value, record.intended))) return null;
     try {
       if (hasExternalIntent(record.working, record.intended)) return null;
       const prepared = this.materialize(record, owner, []);
@@ -762,7 +775,9 @@ export class CommitQueue {
     const evidence = record.working.resource.collection === 'sermons'
       ? record.planTextEvidence ?? capturePlanTextEvidence({ before: record.baseline.value, after: record.value })
       : undefined;
-    try { prepared = prepareDomainCommand(owner, operationId, record.working, record.intended, targets, evidence); }
+    const markRebase = pendingBibleMarkRebase(record);
+    const source = markRebase ? restoreBibleMarkAncestor(record.working, markRebase) : record.working;
+    try { prepared = prepareDomainCommand(owner, operationId, source, record.intended, targets, evidence); }
     catch (error) {
       // The policy names WHY this draft can never be a command (two sections carried in one
       // save, a destination that was deleted, a derived field). Left as a throw, the request
@@ -784,7 +799,7 @@ export class CommitQueue {
         command.preachDateAction = action;
       }
     }
-    return { ...record, command, submitted: prepared.submittedValue, state: 'prepared' };
+    return { ...record, command: record.sequence === 0 ? withBibleMarkStroke(command, record.bibleMarkStroke) : command, submitted: prepared.submittedValue, state: 'prepared' };
   }
 
   private async advanceCommand(record: CommitRequest, owner: string, generation: number, trackAnswer?: TrackCommitAnswer): Promise<boolean> {
