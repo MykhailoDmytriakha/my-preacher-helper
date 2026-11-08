@@ -18,6 +18,7 @@ import { useDraftQuestion, useDurableDraft, useSettleShownDraft } from '@/hooks/
 import { useStudyNotesEngine } from '@/hooks/useStudyNotesEngine';
 import { isStaleWriteError } from '@/services/conflictSafeUpdate.client';
 import { NOTE_AGGREGATE } from '@/services/studies.service';
+import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { resolveAppLocale } from '@/utils/appLocale';
 import { newClientId } from '@/utils/clientId';
 import { COMMENT_DRAFT_AGGREGATE, commentDraftDocument, commentDraftReference, commentDraftValue, findCommentDraftCopies, isCommentDraftSaved, type CommentDraft, type CommentDraftTarget, type RestoredCommentPlace } from '@/utils/commentDrafts';
@@ -273,7 +274,7 @@ export function CommentDialog({ target, place, context, bible, placeOf, placePic
    * Asked on «Готово» of a new comment's place and of a written one's new place: the list of places and a paragraph
    * arriving from another device after the verses were chosen do not go round the rule.
    */
-  placeRefusal?: (reference: ScriptureReference, paragraph?: boolean) => string | null;
+  placeRefusal?: (reference: ScriptureReference, paragraph?: boolean) => FailureWords | null;
   /**
    * The reader's choice of what the comment is (the owner, 2026-11-06: «комментарий и абзац — разные вещи»): the window
    * shows «Комментарий | Абзац» and saves the one chosen (`StudyNote.paragraph`). `initial` — a new one's kind as its
@@ -310,7 +311,7 @@ export function CommentDialog({ target, place, context, bible, placeOf, placePic
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [found, text]);
   const [saving, setSaving] = useState(false);
-  const [placementError, setPlacementError] = useState<string | null>(null);
+  const [placementError, setPlacementError] = useState<FailureWords | null>(null);
   // Another device changed the comment since it opened: what it holds now, to keep mine on top of it or take it.
   const [conflict, setConflict] = useState<StoredVersion | null>(null);
   const [restoredWithoutTitle, setRestoredWithoutTitle] = useState(false);
@@ -429,18 +430,18 @@ export function CommentDialog({ target, place, context, bible, placeOf, placePic
     // The paragraphs' rule is a paragraph's: one saved as a note leaves the reader's paragraphs (Codex review r3).
     const checked = placing ?? writing.madeParagraphAt;
     const chosenKind = kind.pending ?? (paragraphChoice ? kind.asParagraph : undefined);
-    let refused: string | null | undefined;
+    let refused: FailureWords | null | undefined;
     if (checked && !isNote) {
       if (placeRefusal) refused = placeRefusal(checked, chosenKind);
       else if (chosenKind === true) {
         const locale = resolveAppLocale(language);
         const targetBible = checked.bible ?? referenceBibleFor(locale);
         refused = paragraphPlaceRefusal(checked, targetBible, chosenKind, target.kind === 'edit' ? target.id : undefined,
-          book => commentCollectionReady ? storedCommentLayout(notes, book, targetBible, locale) : null, t, locale);
+          book => commentCollectionReady ? storedCommentLayout(notes, book, targetBible, locale) : null, locale);
       }
     }
     if (refused) {
-      if (placeRefusal) toast.error(refused);
+      if (placeRefusal) toast.error(sayFailure(refused, t));
       else setPlacementError(refused);
       return;
     }
@@ -552,7 +553,7 @@ export function CommentDialog({ target, place, context, bible, placeOf, placePic
         {/* The words waiting are answered first: they may bring their own place back, so the choice of one waits. */}
         {/* Nor while a save is accepted: a place chosen then would show, and the one sent would be saved (Codex review r3). */}
         {deciding || saving ? null : placePicker?.({ requestClose })}
-        {placementError ? <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm font-medium text-red-800 dark:bg-red-950 dark:text-red-200">{placementError}</p> : null}
+        {placementError ? <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm font-medium text-red-800 dark:bg-red-950 dark:text-red-200">{sayFailure(placementError, t)}</p> : null}
         {conflict ? <SaveConflictBanner entityKey="entityComment" onKeepMine={keepMine} onTakeTheirs={takeTheirs} busy={saving} /> : null}
         {waiting ? (
           <UnsavedDraftOffer

@@ -1,3 +1,4 @@
+import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { passagesIn, withStoredBible } from '@/utils/scriptureReferenceNumbering';
 import { bookUsage, usageDocuments, type BookUsageEntry } from '@/utils/scriptureUsage';
 
@@ -25,7 +26,7 @@ export function storedCommentLayout(notes: readonly StudyNote[], book: string, b
 }
 
 export function paragraphPlaceRefusal(reference: ScriptureReference, bible: BibleId, paragraph: boolean | undefined,
-  editing: string | undefined, paragraphsForBook: (book: string) => BookCommentLayout | null, t: Translate, locale?: AppLocale): string | null {
+  editing: string | undefined, paragraphsForBook: (book: string) => BookCommentLayout | null, locale?: AppLocale): FailureWords | null {
   const pieces = passagesIn(locale ? withStoredBible(reference, locale) : reference, bible);
   const spans = pieces.flatMap(piece => {
     const span = spanOf(piece);
@@ -33,18 +34,24 @@ export function paragraphPlaceRefusal(reference: ScriptureReference, bible: Bibl
   });
   if (!spans.length) return null;
   const layout = paragraphsForBook(reference.book);
-  if (!layout) return t('comment.pick.unavailable');
+  if (!layout) return { key: 'comment.pick.unavailable' };
   const others = layout.laid.filter(item => item.owner !== editing);
   for (const span of spans) {
     const refusal = paragraphRefusal(span, others);
-    if (refusal) return sayFit(refusal, id => paragraphName(layout.bodyOf(id)), t);
+    if (refusal) return paragraphFitWords(refusal, id => paragraphName(layout.bodyOf(id)));
   }
   return null;
 }
 
 /** What the reader says when the verses chosen for a comment come out other than pressed, or a place may not be saved. */
-export function sayFit(said: PassageFitSaid, nameOf: (id: string) => string, t: (key: string, options?: Record<string, unknown>) => string): string {
-  return said.why === 'deep' ? t('comment.pick.deep') : t(`comment.pick.${said.why}`, { title: nameOf(said.with) });
+export function sayFit(said: PassageFitSaid, nameOf: (id: string) => string, t: Translate): string {
+  return sayFailure(paragraphFitWords(said, nameOf), t);
+}
+
+function paragraphFitWords(said: PassageFitSaid, nameOf: (id: string) => string): FailureWords {
+  return said.why === 'deep'
+    ? { key: 'comment.pick.deep' }
+    : { key: `comment.pick.${said.why}`, values: { title: nameOf(said.with) } };
 }
 
 /** A paragraph named by its comment's first words, as far as a toast holds. */

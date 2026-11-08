@@ -22,6 +22,7 @@ import type { PassageLimit, VerseCopy } from './verseCopy/useVerseCopy';
 import type { VerseWriting } from './verseCopy/VerseCopyBar';
 import type { VerseComment } from './verseCopy/VerseMenu';
 import type { ScriptureReference } from '@/models/models';
+import type { FailureWords } from '@/utils/actionFailureMessage';
 import type { AppLocale } from '@/utils/appLocale';
 import type { BibleId } from '@/utils/bibles';
 import type { Passage } from '@/utils/scriptureReferenceNumbering';
@@ -118,7 +119,7 @@ export function ReaderCommentDialog(props: {
   // Every projected piece follows the destination book's same rule — the paragraphs' rule, a paragraph's alone: a comment
   // on several verses crosses nothing (the owner, 2026-11-06). Never chosen, the kind is read from the length as before.
   const placeRefusal = (reference: ScriptureReference, paragraph?: boolean) =>
-    paragraphPlaceRefusal(reference, bible, paragraph, editing, paragraphsForBook, t);
+    paragraphPlaceRefusal(reference, bible, paragraph, editing, paragraphsForBook);
   return (
     <>
       {copy.purpose === 'comment' && text ? (
@@ -162,7 +163,7 @@ function OpenReaderCommentDialog({ commenting, text, bookId, bible, locale, pass
   away: boolean;
   onChooseVerses: (here: ScriptureReference, moveTo: (reference: ScriptureReference) => void, asParagraph?: boolean) => void;
   versesRefusal: (here: ScriptureReference) => string | null;
-  placeRefusal: (reference: ScriptureReference, paragraph?: boolean) => string | null;
+  placeRefusal: (reference: ScriptureReference, paragraph?: boolean) => FailureWords | null;
 }) {
   const { t } = useTranslation();
   const returnFocusTo = useRef<HTMLElement | null>(commenting.opener ?? null);

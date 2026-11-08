@@ -21,20 +21,28 @@ jest.mock('@/components/ui/RichMarkdownEditor', () => ({
   ),
 }));
 
-// Only the new opening-place controls need the visible interpolated heading.
 let mockInterpolateCommentTitle = false;
+let mockPlacementLanguage: 'en' | 'ru' | undefined;
 jest.mock('@locales/useTranslation', () => {
   const actual = jest.requireActual('@locales/useTranslation');
   const english = require('../../locales/en/translation.json');
+  const russian = require('../../locales/ru/translation.json');
   return {
     ...actual,
     useTranslation: () => {
       const result = actual.useTranslation();
       return {
         ...result,
-        t: (key: string, options?: { place?: string }) => (mockInterpolateCommentTitle && key === 'comment.title'
-          ? english.comment.title.replace('{{place}}', options?.place ?? '')
-          : result.t(key, options)),
+        t: (key: string, options?: { place?: string; title?: string }) => {
+          if (mockInterpolateCommentTitle && key === 'comment.title') {
+            return english.comment.title.replace('{{place}}', options?.place ?? '');
+          }
+          if (mockPlacementLanguage && key === 'comment.pick.cross') {
+            const catalog = mockPlacementLanguage === 'ru' ? russian : english;
+            return catalog.comment.pick.cross.replace('{{title}}', options?.title ?? '');
+          }
+          return result.t(key, options);
+        },
       };
     },
   };
@@ -67,6 +75,7 @@ const stored: StudyNote = {
 
 beforeEach(() => {
   mockInterpolateCommentTitle = false;
+  mockPlacementLanguage = undefined;
   mockEngine.notes = [stored];
   jest.clearAllMocks();
   // A test that fails midway leaves its one-time answers queued; the next test must not get them.
@@ -576,17 +585,24 @@ describe('CommentDialog', () => {
     unmount();
   });
 
-  it('keeps a recovered paragraph draft in Studies if its saved place crosses another paragraph', async () => {
+  it('translates a Studies placement refusal when the language changes and keeps the recovered draft', async () => {
+    mockPlacementLanguage = 'en';
     const source = draftKey('owner', 'c1', 'comment', 'reader-writer');
     mockEngine.notes = [
       { ...stored, paragraph: false, scriptureRefs: [{ ...reference, fromVerse: 30, toVerse: 31 }] },
-      { ...stored, id: 'other', paragraph: true, scriptureRefs: [{ ...reference, id: 'other-ref', fromVerse: 29, toVerse: 30 }] },
+      { ...stored, id: 'other', content: 'Neighbouring paragraph', paragraph: true, scriptureRefs: [{ ...reference, id: 'other-ref', fromVerse: 29, toVerse: 30 }] },
     ];
     saveDraft(source, { text: 'Reader draft words.', reference: null, title: '', paragraph: true });
-    render(<CommentDialog target={{ kind: 'edit', id: 'c1' }} place="Ис 40:30–31" onClose={jest.fn()} />);
+    const tree = () => <CommentDialog target={{ kind: 'edit', id: 'c1' }} place="Ис 40:30–31" onClose={jest.fn()} />;
+    const { rerender } = render(tree());
     await userEvent.click(within(await screen.findByRole('status')).getByRole('button', { name: 'unsavedDraft.restore' }));
     await userEvent.click(screen.getByRole('button', { name: 'common.done' }));
-    expect(within(screen.getByRole('dialog')).getByRole('alert')).toHaveTextContent('comment.pick.cross');
+    const refusal = within(screen.getByRole('dialog')).getByRole('alert');
+    expect(refusal).toHaveTextContent(/^Paragraphs never cross:.*«Neighbouring paragraph»$/);
+    mockPlacementLanguage = 'ru';
+    rerender(tree());
+    expect(refusal).toHaveTextContent(/^Абзацы не пересекаются:.*«Neighbouring paragraph»$/);
+    expect(screen.getByLabelText('editor')).toHaveValue('Reader draft words.');
     expect(mockEngine.updateNote).not.toHaveBeenCalled();
     expect(localStorage.getItem(source)).not.toBeNull();
   });
