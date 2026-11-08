@@ -9,6 +9,8 @@ import {
 } from 'react-i18next';
 
 import { DEFAULT_LANGUAGE } from './constants';
+// A shared component can be the first translated consumer during prerendering.
+import './i18n';
 
 import type { FlatNamespace, KeyPrefix } from 'i18next';
 

@@ -7638,3 +7638,11 @@ The prayer capture suite supplies the action clock method through its existing m
 Two native Chrome scenarios on guarded build 9KRTJAzx-7MTvsDtp0oaQ verified the prayer screen across 390 and 1280 px profiles. An answer dialog opened offline could be submitted after reconnect, with the status recorded and earlier prose retained. Editing just the prose updated the list while leaving the later status and the saved answer date in place. Both saved states were inspected visually. The test suite, separately, covers the pending local capture and duplicate invocation. Evidence is in artifacts/prayer-capture-tests-nov08-verified.
 
 After authorized deployment, mark a disposable prayer answered with a short note and reload. Check the status and exact note. Keep controlled disk delays local.
+
+## BUG-20261108-council-list-hydration-error · Load dictionaries before the first translated render
+
+The common translation hook imports the existing dictionary initializer. It can render the default language even when the layout's keyboard skip link is the first translation consumer. The hook still delegates caller and provider instance selection to the library. A real SSR regression failed on the raw key and passed with the shared import. All 254 related tests, scoped ESLint, TypeScript, guarded build KX6fNWRXBVdKdqHFjfEr2 and independent review passed.
+
+The baseline council list returned HTTP 200 but reported React #418. Its server response contained the raw translation key while Chrome displayed the translated link. Candidate static HTML has the translated default label on the council list, homepage and not-found route. Three native Chrome council-list runs on isolated emulators used EN, RU and UK. The selected translations were visually checked, with no browser errors or changes to the stored councils. Evidence is in artifacts/council-list-hydration-nov08-verified.
+
+After authorized deployment, confirm the revision, open the council list in a fresh Chrome tab and check the first keyboard link. Check for hydration errors on a direct reload. The homepage and not-found server HTML can be checked without user data.
