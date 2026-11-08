@@ -24,6 +24,7 @@ import PrayerStatusBadge from '@/components/prayer/PrayerStatusBadge';
 import { RecordUnavailable } from '@/components/RecordUnavailable';
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
 import { Chip } from '@/components/ui/Chip';
+import { DocumentFieldHistory } from '@/components/ui/DocumentFieldHistory';
 import UnreadableConflictDrafts from '@/components/UnreadableConflictDrafts';
 import { useAppLocale } from '@/hooks/useAppLocale';
 import { usePrayerDetail } from '@/hooks/usePrayerDetail';
@@ -41,6 +42,9 @@ import {
 } from '@/utils/recoverableWrite';
 import { NEUTRAL_CAPTION } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
+
+import type { PrayerTitleSeen } from '@/data-engine/documentFieldAction';
+
 import '@locales/i18n';
 
 const PRAYER_FOCUS_TYPES = new Set(['title', 'description', 'answer', 'tags']);
@@ -56,6 +60,7 @@ export default function PrayerDetailPage() {
   const {
     loading,
     updatePrayer,
+    observeTitle,
     deletePrayer,
     addUpdate,
     setStatus,
@@ -95,6 +100,7 @@ export default function PrayerDetailPage() {
    * comparing the server with itself, which always agrees.
    */
   const [editBaseContent, setEditBaseContent] = useState<Record<string, unknown> | null>(null);
+  const [editTitleSeen, setEditTitleSeen] = useState<PrayerTitleSeen>();
   const [showAddUpdate, setShowAddUpdate] = useState(false);
   const [showMarkAnswered, setShowMarkAnswered] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -188,7 +194,8 @@ export default function PrayerDetailPage() {
       prayer.id,
       payload,
       editBaseRevision ?? prayer.rev?.[PRAYER_CORE_AGGREGATE] ?? 0,
-      editBaseContent
+      editBaseContent,
+      ...(editTitleSeen ? [editTitleSeen] : [])
     );
   };
 
@@ -239,6 +246,7 @@ export default function PrayerDetailPage() {
     );
   };
 
+  const titleHistory = observeTitle(prayer);
   const isActive = prayer.status === 'active';
 
   // A reference in the prayer opens its verse in a window, as in a note or a group (case 2026-10-12-block-diagram, L8);
@@ -376,6 +384,7 @@ export default function PrayerDetailPage() {
             <button
               onClick={() => {
                 setEditBaseRevision(prayer.rev?.[PRAYER_CORE_AGGREGATE] ?? 0);
+                setEditTitleSeen(observeTitle(prayer));
                 setEditBaseContent({
                   title: prayer.title,
                   description: prayer.description ?? null,
@@ -435,6 +444,13 @@ export default function PrayerDetailPage() {
           )}
         </div>
       )}
+
+      {user?.uid && titleHistory && <DocumentFieldHistory
+        key={JSON.stringify([user.uid, prayer.id, titleHistory.generation])}
+        current={prayer.title} disabled={resolvingConflict || Boolean(saveConflict)}
+        session={{ owner: user.uid, prayerId: prayer.id, generation: titleHistory.generation,
+          restore: (title: string) => updatePrayer(prayer.id, { title }, prayer.rev?.[PRAYER_CORE_AGGREGATE] ?? 0,
+            { title: prayer.title }, titleHistory) }} />}
 
       {/* Updates timeline */}
       <div className="space-y-3">

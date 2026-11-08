@@ -11,14 +11,17 @@ import type { ActionTime } from './actionClock';
 import type { CommitRequest } from './commits';
 import type { SeriesFieldObservation, SeriesFieldTarget } from './seriesFieldAction';
 import type { SessionCheckpoint, ShownCopy } from './session';
-import type { DataCommand, DocumentData, FieldChange, FieldValue, ResourceSnapshot } from './types';
+import type { DataCommand, DocumentData, FieldChange, FieldValue, ResourceRef, ResourceSnapshot } from './types';
 import type { Church, Group } from '@/models/models';
 
 export type DocumentFieldStamp = { observedRevision: number; time: ActionTime | null; predecessorOperationId?: string };
 export type DocumentFieldObservation<Value = string> = DocumentFieldStamp & { before: Value; after: Value };
 export type DocumentFieldAction = DocumentFieldObservation & { time: ActionTime };
-export type ServiceOrderTitleSeen = { title: string; generation: string; revision: number; requestId?: string };
+export type DocumentTitleSeen = { title: string; generation: string; revision: number; requestId?: string };
+export type ServiceOrderTitleSeen = DocumentTitleSeen;
 export type ServiceOrderTitleCapture = { time: ActionTime; seen: ServiceOrderTitleSeen };
+export type PrayerTitleSeen = DocumentTitleSeen;
+export type PrayerTitleCapture = { time: ActionTime | null; seen: PrayerTitleSeen };
 export type DisplacedDocumentTitle = {
   title: string; winnerTitle: string; generation: string; actionTime: ActionTime; winnerActionTime: ActionTime;
 };
@@ -31,8 +34,8 @@ export type GroupTimedField = 'title' | 'status';
 
 type TextDocumentFieldTarget = {
   field: GroupTimedField | 'verse';
-  action: 'serviceOrderTitleAction' | 'sermonTitleAction' | 'sermonVerseAction' | 'groupTitleAction' | 'groupStatusAction';
-  proof: 'serviceOrderTitle' | 'sermonTitle' | 'sermonVerse' | 'groupTitle' | 'groupStatus';
+  action: 'serviceOrderTitleAction' | 'prayerTitleAction' | 'sermonTitleAction' | 'sermonVerseAction' | 'groupTitleAction' | 'groupStatusAction';
+  proof: 'serviceOrderTitle' | 'prayerTitle' | 'sermonTitle' | 'sermonVerse' | 'groupTitle' | 'groupStatus';
   accepts: (value: unknown) => value is string;
   causal?: true;
 };
@@ -50,6 +53,9 @@ const SERMON_CHURCH = { field: 'church', action: 'sermonChurchAction', proof: 's
 const shortTitle = (value: unknown): value is string => typeof value === 'string' && value.length <= 1024;
 const SERVICE_ORDER_TITLE: TextDocumentFieldTarget = { field: 'title', action: 'serviceOrderTitleAction', proof: 'serviceOrderTitle',
   accepts: (value): value is string => shortTitle(value) && value.trim().length > 0 };
+const PRAYER_TITLE = { field: 'title', action: 'prayerTitleAction', proof: 'prayerTitle', causal: true,
+  accepts: (value: unknown): value is string => shortTitle(value) && value.trim().length > 0,
+} as const satisfies TextDocumentFieldTarget;
 const SERMON_TITLE = { field: 'title', action: 'sermonTitleAction', proof: 'sermonTitle', accepts: shortTitle, causal: true } as const satisfies TextDocumentFieldTarget;
 const SERMON_VERSE = { field: 'verse', action: 'sermonVerseAction', proof: 'sermonVerse', causal: true,
   accepts: (value): value is string => typeof value === 'string' } as const satisfies TextDocumentFieldTarget;
@@ -62,6 +68,7 @@ export function documentFieldTargets(collection: string): readonly DocumentField
   if (collection === 'serviceOrders') return [SERVICE_ORDER_TITLE];
   if (collection === 'groups') return GROUP_TIMED_FIELDS;
   if (collection === 'series') return SERIES_FIELD_TARGETS;
+  if (collection === 'prayerRequests') return [PRAYER_TITLE];
   if (collection === 'councils') return COUNCIL_FIELDS;
   if (collection === 'sermons') return [SERMON_TITLE, SERMON_VERSE, SERMON_CHURCH];
   return [];
@@ -80,6 +87,10 @@ export function capturedDocumentField(record: CommitRequest, target: DocumentFie
 function isShortDocumentTitle(value: unknown, target: TextDocumentFieldTarget): value is string {
   return target.accepts(value);
 }
+
+export type PrayerTitleHistoryPage = {
+  owner: string; prayerId: string; generation: string; entries: DocumentTitleHistoryEntry[]; nextCursor: string | null;
+};
 
 export type SermonTitleHistoryPage = {
   owner: string; sermonId: string; generation: string; entries: DocumentTitleHistoryEntry[]; nextCursor: string | null;
@@ -104,16 +115,34 @@ export function documentFieldChange(changes: readonly FieldChange[], target: Doc
 }
 
 /** Only a displayed title from the exact pending tip can continue a submitted local edit. */
-export function submittedServiceOrderTitle(checkpoint: SessionCheckpoint | null, requests: readonly CommitRequest[],
-  needsAttention: boolean): ServiceOrderTitleSeen | undefined {
-  const shown = checkpoint?.draft?.title;
-  if (checkpoint?.confirmed.resource.collection !== 'serviceOrders' || needsAttention || !isShortDocumentTitle(shown, SERVICE_ORDER_TITLE)) return undefined;
+export function submittedDocumentTitle(checkpoint: SessionCheckpoint | null, requests: readonly CommitRequest[],
+  needsAttention: boolean): DocumentTitleSeen | undefined {
+  if (!checkpoint || needsAttention) return undefined;
+  const { collection } = checkpoint.confirmed.resource;
+  const target = collection === 'serviceOrders' ? SERVICE_ORDER_TITLE : collection === 'prayerRequests' ? PRAYER_TITLE : null;
+  const shown = checkpoint.draft?.title;
+  if (!target || !isShortDocumentTitle(shown, target)) return undefined;
   const tip = Object.keys(checkpoint.pending).at(-1);
-  const request = requests.find(candidate => candidate.id === tip);
-  const basis = request?.baseline.metadata;
+  const byId = new Map(requests.map(request => [request.id, request]));
+  let request = tip && byId.get(tip);
+  // An unrelated queued save must not replace the exact local rename supplying this title.
+  if (collection === 'prayerRequests') {
+    const visited = new Set<string>();
+    while (request && request.value?.title === shown && !request.prayerTitleAction && !visited.has(request.id)) {
+      visited.add(request.id);
+      request = request.predecessor ? byId.get(request.predecessor) : undefined;
+    }
+  }
+  const basis = request ? request.baseline.metadata : null;
   if (!request || request.value?.title !== shown || !basis || basis.deleted || basis.generation !== checkpoint.confirmed.metadata?.generation) return undefined;
-  return { title: shown, generation: basis.generation,
-    revision: request.serviceOrderTitleAction?.observedRevision ?? basis.revision, requestId: request.id };
+  const action = request.serviceOrderTitleAction ?? request.prayerTitleAction;
+  return { title: shown, generation: basis.generation, revision: action?.observedRevision ?? basis.revision, requestId: request.id };
+}
+
+export function matchesPrayerTitleRequest(request: CommitRequest | undefined, owner: string, resource: ResourceRef, seen: PrayerTitleSeen): boolean {
+  return Boolean(request && request.id === seen.requestId && request.owner === owner && equalValues(request.baseline.resource, resource)
+    && request.baseline.metadata?.generation === seen.generation && request.prayerTitleAction?.after === seen.title
+    && request.prayerTitleAction.observedRevision === seen.revision && !['conflict', 'refused', 'cancelled'].includes(request.state));
 }
 
 export function validatedTitleCapture(confirmed: ResourceSnapshot, draft: DocumentData | null, next: DocumentData | null,
@@ -137,6 +166,20 @@ export function captureServiceOrderTitle(baseline: ResourceSnapshot, value: Docu
   const after = value?.title;
   if (!isShortDocumentTitle(after, SERVICE_ORDER_TITLE) || after === capture.seen.title) return undefined;
   return { before: capture.seen.title, after, observedRevision: capture.seen.revision, time: capture.time };
+}
+
+export function capturePrayerTitle(baseline: ResourceSnapshot, value: DocumentData | null,
+  capture?: PrayerTitleCapture, knownPredecessor = false): DocumentFieldObservation | undefined {
+  if (!capture || baseline.resource.collection !== 'prayerRequests' || baseline.metadata?.deleted
+    || baseline.metadata?.generation !== capture.seen.generation || capture.seen.revision > baseline.metadata.revision
+    || !Number.isSafeInteger(capture.seen.revision) || capture.seen.revision < 1
+    || (capture.seen.requestId && !knownPredecessor && baseline.value?.title !== capture.seen.title)) return undefined;
+  const { seen } = capture;
+  const time = capture.time === null ? null : boundedActionTime(capture.time);
+  const after = value?.title;
+  if (time === undefined || !PRAYER_TITLE.accepts(seen.title) || !PRAYER_TITLE.accepts(after) || after === seen.title) return undefined;
+  return { before: seen.title, after, observedRevision: seen.revision, time,
+    ...(knownPredecessor && seen.requestId && { predecessorOperationId: seen.requestId }) };
 }
 
 type SermonTextTarget = typeof SERMON_TITLE | typeof SERMON_VERSE;

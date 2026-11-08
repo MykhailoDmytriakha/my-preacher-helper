@@ -1,7 +1,7 @@
 /** The wire contract is shared by browser and server; it imports no transport. */
 import type { ActionTime } from './actionClock';
 import type { DatedRowActionEvidence } from './datedRowAction';
-import type { DocumentFieldAction, DocumentFieldObservation, DocumentFieldStamp, ServiceOrderTitleCapture } from './documentFieldAction';
+import type { DocumentFieldAction, DocumentFieldObservation, DocumentFieldStamp, PrayerTitleCapture, ServiceOrderTitleCapture } from './documentFieldAction';
 import type { GroupMeetingFieldActions } from './groupMeetingFieldAction';
 import type { PreachDateFieldActions } from './preachDateFieldAction';
 import type { PreachStatusAction } from './preachStatusAction';
@@ -47,7 +47,8 @@ export interface CommandBase {
 export type EditorCommitAction =
   | { kind: 'bible-mark-stroke'; time: ActionTime }
   | { kind: 'service-order-title'; title: ServiceOrderTitleCapture }
-  | { kind: 'council-lifecycle'; time: ActionTime | null };
+  | { kind: 'council-lifecycle'; time: ActionTime | null }
+  | { kind: 'prayer-title'; title: PrayerTitleCapture };
 
 export type BibleMarkStrokeStamp = { observedRevision: number; time: ActionTime };
 
@@ -62,6 +63,7 @@ export type DataCommand = CommandBase & (
       preachStatusActions?: PreachStatusAction[];
       bibleMarkStroke?: BibleMarkStrokeStamp;
       serviceOrderTitleAction?: DocumentFieldAction;
+      prayerTitleAction?: DocumentFieldObservation;
       sermonTitleAction?: DocumentFieldObservation;
       sermonVerseAction?: DocumentFieldStamp;
       sermonChurchAction?: DocumentFieldStamp;

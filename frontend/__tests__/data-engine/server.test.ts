@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { isCollectionServed } from '@/data-engine/activation';
-import { DataEngineServerError, listBibleMarkHistory, listCouncilMetadataHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listSermonChurchHistory, listSermonTitleHistory, listSermonVerseHistory, listSeriesMetadataHistory, listServiceOrderTitleHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
+import { DataEngineServerError, listBibleMarkHistory, listCouncilMetadataHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listPrayerTitleHistory, listSermonChurchHistory, listSermonTitleHistory, listSermonVerseHistory, listSeriesMetadataHistory, listServiceOrderTitleHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
 import { collectionHeadId, HEADS_COLLECTION, sequenceId } from '@/data-engine/serverFeed';
 import { DataSession } from '@/data-engine/session';
 import type { DataCommand, FieldValue, ResourceSnapshot } from '@/data-engine/types';
@@ -1610,6 +1610,57 @@ describe('transactional DataEngine server', () => {
       });
       expect(documents.get('councils/lifecycle-council')).not.toHaveProperty('heldAt');
       expect((await listCouncilMetadataHistory(owner, resource.id, 'council-create')).entries).toHaveLength(0);
+    });
+  });
+
+  describe('prayer title chronology', () => {
+    const owner = 'owner-1';
+    const resource = { collection: 'prayerRequests', id: 'timed-prayer' };
+    const base = { protocol: 1, owner, resource, dependsOn: [] };
+    const title = 'Opening prayer';
+    const description = 'Keep the description';
+    const updates = [{ id: 'update-1', text: 'Keep the update', createdAt: '2026-11-08T00:00:00.000Z' }];
+    const seed = () => processCommand(owner, { ...base, operationId: 'prayer-create', kind: 'create', generation: null,
+      value: { userId: owner, title, description, status: 'active', updates,
+        createdAt: '2026-11-08T00:00:00.000Z', updatedAt: '2026-11-08T00:00:00.000Z' } });
+    const change = (operationId: string, nextTitle: string, offset: number) => ({
+      ...base, operationId, kind: 'update', generation: 'prayer-create',
+      changes: [{ path: ['title'], before: { exists: true, value: title }, after: { exists: true, value: nextTitle } }],
+      prayerTitleAction: { before: title, after: nextTitle, observedRevision: 1,
+        time: { earliestMs: 1_800_000_000_000 + offset, latestMs: 1_800_000_000_005 + offset } },
+    });
+
+    it.each([20, 80])('orders a delayed prayer rename without touching its other fields (%s)', async offset => {
+      expect((await seed()).kind).toBe('acknowledged');
+      const desk = 'Computer prayer', phone = 'Phone prayer';
+      expect((await processCommand(owner, change('desktop-rename', desk, 40))).kind).toBe('acknowledged');
+      const command = change('phone-rename', phone, offset);
+      const result = await processCommand(owner, command);
+      expect(result).toMatchObject({
+        kind: 'acknowledged', snapshot: { value: { title: offset < 40 ? desk : phone, description, updates, status: 'active' } },
+      });
+      const list = () => listPrayerTitleHistory(owner, resource.id, 'prayer-create');
+      expect(await list()).toMatchObject({
+        entries: [{ title: offset < 40 ? phone : desk, winnerTitle: offset < 40 ? desk : phone }],
+      });
+      expect(await processCommand(owner, command)).toEqual(result);
+      expect((await list()).entries).toHaveLength(1);
+      await expect(listPrayerTitleHistory('another-owner', resource.id, 'prayer-create')).rejects.toMatchObject({ status: 403 });
+      await expect(listPrayerTitleHistory(owner, resource.id, 'other-generation')).rejects.toMatchObject({ status: 404 });
+    });
+
+    it('offers a choice for an unseen title after the opening text was restored elsewhere', async () => {
+      expect((await seed()).kind).toBe('acknowledged');
+      const desk = 'Computer prayer';
+      expect((await processCommand(owner, change('desktop-rename', desk, 40))).kind).toBe('acknowledged');
+      const restore = change('desktop-restore', title, 70);
+      expect((await processCommand(owner, { ...restore,
+        changes: [{ path: ['title'], before: { exists: true, value: desk }, after: { exists: true, value: title } }],
+        prayerTitleAction: { ...restore.prayerTitleAction, before: desk, observedRevision: 2 },
+      })).kind).toBe('acknowledged');
+      const phone = change('phone-rename', 'Phone prayer', 20);
+      expect(await processCommand(owner, { ...phone, prayerTitleAction: { ...phone.prayerTitleAction, time: null } }))
+        .toMatchObject({ kind: 'conflict', conflicts: [{ path: ['title'] }], snapshot: { value: { title, description, updates } } });
     });
   });
 

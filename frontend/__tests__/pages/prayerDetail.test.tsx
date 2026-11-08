@@ -49,7 +49,7 @@ jest.mock('@/providers/AuthProvider', () => ({
 }));
 
 jest.mock('@/hooks/usePrayerRequests', () => ({
-  usePrayerRequests: () => mockUsePrayerRequests(),
+  usePrayerRequests: () => ({ observeTitle: () => undefined, ...mockUsePrayerRequests() }),
 }));
 
 jest.mock('@/hooks/usePrayerDetail', () => ({

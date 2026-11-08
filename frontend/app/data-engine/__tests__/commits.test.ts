@@ -1,4 +1,5 @@
 import { initializeCommit } from '../atomicCommits';
+import { collectionDocumentViews } from '../collectionView';
 import { CommitQueue, createMemoryCommitStore } from '../commits';
 import { createIndexedDbCheckpoints } from '../checkpoint.client';
 import { createIndexedDbCommitStore } from '../commits.client';
@@ -377,6 +378,59 @@ describe('Durable commit requests', () => {
         { path: ['status'], before: { exists: true, value: 'held' }, after: { exists: true, value: 'preparing' } },
         { path: ['heldAt'], before: { exists: true, value: heldAt }, after: { exists: false } },
       ]),
+    }));
+  });
+
+  it.each([true, false])('carries the prayer title from the open form through queue restart (clock available: %s)', async hasClock => {
+    const opening: ResourceSnapshot = {
+      resource: { collection: 'prayerRequests', id: 'prayer' },
+      metadata: { protocol: 1, generation: 'prayer', revision: 2, deleted: false },
+      value: { userId: 'owner', title: 'Computer prayer', description: 'Unchanged details', status: 'active',
+        updates: [], createdAt: 'now', updatedAt: 'now' },
+    };
+    const time = hasClock ? { earliestMs: 1_800_000_000_040, latestMs: 1_800_000_000_045 } : null;
+    const s = setup({ opening });
+    const editor = await s.makeEngine().openEditor(opening.resource, 'prayer');
+    await editor.commit(current => ({ ...current, title: 'Phone prayer' }),
+      { kind: 'prayer-title', title: { seen: { title: 'Opening prayer', generation: 'prayer', revision: 1 }, time } });
+    const restarted = s.makeQueue().queue;
+    const [request] = await restarted.list();
+    const evidence = { before: 'Opening prayer', after: 'Phone prayer', observedRevision: 1, time };
+    expect(request.prayerTitleAction).toEqual(evidence);
+    await restarted.drain(true);
+    expect(s.transport.send).toHaveBeenCalledWith(expect.objectContaining({
+      operationId: request.id, prayerTitleAction: evidence,
+      changes: [{ path: ['title'], before: { exists: true, value: 'Opening prayer' }, after: { exists: true, value: 'Phone prayer' } }],
+    }));
+  });
+
+  it('observes a submitted prayer title and sends the next exact rename after an earlier one loses', async () => {
+    const opening: ResourceSnapshot = {
+      resource: { collection: 'prayerRequests', id: 'prayer' },
+      metadata: { protocol: 1, generation: 'prayer', revision: 1, deleted: false },
+      value: { userId: 'owner', title: 'Opening prayer', status: 'active', updates: [], createdAt: 'now', updatedAt: 'now' },
+    };
+    const time = (offset: number) => ({ earliestMs: 1_800_000_000_000 + offset, latestMs: 1_800_000_000_005 + offset });
+    const s = setup({ opening }), queue = s.makeQueue().queue;
+    const editor = await s.makeEngine().openEditor(opening.resource, 'prayer');
+    await editor.commit(current => ({ ...current, title: 'First phone title' }),
+      { kind: 'prayer-title', title: { seen: { title: 'Opening prayer', generation: 'prayer', revision: 1 }, time: time(20) } });
+    const first = (await queue.list())[0];
+    const [shown] = collectionDocumentViews('owner', 'prayerRequests', [opening], await queue.list());
+    expect(shown.submittedTitle).toEqual({ title: 'First phone title', generation: 'prayer', revision: 1, requestId: first.id });
+    await editor.commit(current => ({ ...current, title: 'Last phone title' }),
+      { kind: 'prayer-title', title: { seen: shown.submittedTitle!, time: time(80) } });
+    const second = (await queue.list()).find(request => request.id !== first.id)!;
+    expect(second.prayerTitleAction).toMatchObject({ before: 'First phone title', after: 'Last phone title',
+      predecessorOperationId: first.id, observedRevision: 1, time: time(80) });
+    const accepted = { ...opening, value: { ...opening.value, title: 'Computer title' },
+      metadata: { ...opening.metadata!, revision: 2, operationId: 'desktop-title' } };
+    s.replace(accepted);
+    jest.mocked(s.transport.send).mockResolvedValueOnce({ kind: 'acknowledged', operationId: first.id, snapshot: accepted });
+    await s.makeQueue().queue.drain(true);
+    expect(s.transport.send).toHaveBeenCalledWith(expect.objectContaining({ operationId: second.id,
+      prayerTitleAction: second.prayerTitleAction,
+      changes: [{ path: ['title'], before: { exists: true, value: 'First phone title' }, after: { exists: true, value: 'Last phone title' } }],
     }));
   });
 

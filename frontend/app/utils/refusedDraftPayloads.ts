@@ -48,6 +48,8 @@ export function validPrayerCoreConflict(value: unknown, documentId: string): boo
   const { payload } = conflict;
   return identityMatches(payload.id, documentId)
     && isPlainObject(payload.updates)
+    && (payload.cleared === undefined || (Array.isArray(payload.cleared)
+      && payload.cleared.every(field => field === 'description' || field === 'tags')))
     && validResourceUpdate('prayerRequests', payload.updates);
 }
 

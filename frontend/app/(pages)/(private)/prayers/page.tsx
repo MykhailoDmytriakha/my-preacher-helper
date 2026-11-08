@@ -50,6 +50,9 @@ import {
 } from '@/utils/recoverableWrite';
 import { NEUTRAL_CAPTION } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
+
+import type { PrayerTitleSeen } from '@/data-engine/documentFieldAction';
+
 import '@locales/i18n';
 
 /** Named once: four active-filter chips reach for the same label. */
@@ -80,6 +83,7 @@ export default function PrayerPage() {
 
   const [showCreate, setShowCreate] = useState(false);
   const [editingPrayer, setEditingPrayer] = useState<PrayerRequest | null>(null);
+  const [editingTitleSeen, setEditingTitleSeen] = useState<PrayerTitleSeen>();
   const [addingUpdateForId, setAddingUpdateForId] = useState<string | null>(null);
   /**
    * The prayer being answered, SNAPSHOT at the moment the modal opened — not just
@@ -117,6 +121,7 @@ export default function PrayerPage() {
     error,
     createPrayer,
     updatePrayer,
+    observeTitle,
     deletePrayer,
     addUpdate,
     setStatus,
@@ -290,7 +295,8 @@ export default function PrayerPage() {
         title: editingPrayer.title,
         description: editingPrayer.description ?? null,
         tags: editingPrayer.tags ?? [],
-      }
+      },
+      ...(editingTitleSeen ? [editingTitleSeen] : [])
     );
   };
 
@@ -767,7 +773,7 @@ export default function PrayerPage() {
               onSetStatus={handleSetStatus}
               onDelete={handleDelete}
               onAddUpdate={(id) => setAddingUpdateForId(id)}
-              onEdit={(selectedPrayer) => setEditingPrayer(selectedPrayer)}
+              onEdit={(selectedPrayer) => { setEditingTitleSeen(observeTitle(selectedPrayer)); setEditingPrayer(selectedPrayer); }}
             />
           ))}
         </div>

@@ -10,7 +10,7 @@ import { CommitQueue, type CommitRequest, type CommitStore } from './commits';
 import { EditorController, InactiveEditorError, type CheckpointRecoveryStore, type CheckpointStore, type EditorRecord, type EditorState, type RecoveryCheckpoint } from './controller';
 import { captureCouncilCarry, pinCouncilDestination } from './councilCarry';
 import { canReplaceDocumentIntent, isDirectLegacyDocumentIntent, requiresWholeActionResolution, savedDocumentAnswer } from './documentDelivery';
-import { validatedTitleCapture } from './documentFieldAction';
+import { capturePrayerTitle, matchesPrayerTitleRequest, validatedTitleCapture } from './documentFieldAction';
 import { ACTION_SLOT, areDifferentTabManualParents, editorSlot, isManualChoiceRecoveryIdentity, manualScopeIdentity, readManualScopeIdentity } from './editorIdentity';
 import { AddressedFailures, eachFailure, PausedReadFailure } from './failures';
 import { collectionHeadRef } from './feed';
@@ -1810,6 +1810,16 @@ export class DataEngine {
             && !['conflict', 'refused', 'cancelled'].includes(predecessor.state);
           const title = validatedTitleCapture(checkpoint.confirmed, checkpoint.draft, next, action.title, known);
           captured = title ? { kind: 'service-order-title', title } : undefined;
+        }
+        if (action?.kind === 'prayer-title') {
+          const { seen } = action.title;
+          const known = Boolean(seen.requestId && matchesPrayerTitleRequest(this.commitRecords.get(seen.requestId), owner, frozen, seen));
+          if (!capturePrayerTitle(checkpoint.confirmed, next === checkpoint.draft ? null : next, action.title, known)) {
+            if (next !== checkpoint.draft && (checkpoint.confirmed.metadata?.generation !== seen.generation || checkpoint.draft?.title !== seen.title)) {
+              throw Object.assign(new Error('The prayer title changed'), { code: 'prayer-title-basis-changed' });
+            }
+            captured = undefined;
+          }
         }
         const lifecycle = captured?.kind === 'council-lifecycle' ? { field: 'heldAt' as const, time: captured.time } : undefined;
         const persistence = controller.edit(next, undefined, lifecycle);

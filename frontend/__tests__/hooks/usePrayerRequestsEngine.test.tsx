@@ -64,6 +64,27 @@ describe('prayers on the engine', () => {
     expect(result.current.saveConflict).toBeNull();
   });
 
+  it('saves an authored description without treating the untouched opening title as another rename', async () => {
+    const { result } = render();
+    await act(async () => { await result.current.updatePrayer('p1', { title: 'Opening title', description: 'New description', tags: undefined },
+      1, { title: 'Opening title', description: 'Phone text', tags: [] }); });
+    expect(current).toMatchObject({ title: 'Healing', description: 'New description' });
+    expect(result.current.saveConflict).toBeNull();
+  });
+
+  it.each(['description', 'tags'] as const)('keeps an explicit %s clear through a refused save and reload', async field => {
+    current = { ...stored, tags: ['Server tag'] };
+    const first = render();
+    await act(async () => { await first.result.current.updatePrayer('p1', { [field]: undefined }, 1,
+      { [field]: field === 'description' ? 'Opening text' : ['Opening tag'] }).catch(() => undefined); });
+    expect(first.result.current.saveConflict).not.toBeNull();
+    first.unmount();
+    const second = render();
+    await act(async () => { await second.result.current.keepMineOnConflict(); });
+    expect(current[field]).toBeUndefined();
+    expect(second.result.current.saveConflict).toBeNull();
+  });
+
   it('keeps the refused text across leaving the screen, and retires it only when the resend lands', async () => {
     const first = render();
     await act(async () => { await first.result.current.updatePrayer('p1', { description: 'Laptop text' }, 1, { description: 'Old text' }).catch(() => undefined); });

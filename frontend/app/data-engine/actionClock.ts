@@ -1,11 +1,11 @@
 export const ACTION_CLOCK_HEADER = 'x-engine-action-clock';
 
 export function usesActionClock(collection: string): boolean {
-  return collection === 'sermons' || collection === 'series' || collection === 'councils' || collection === 'groups' || collection === 'bibleMarks' || collection === 'serviceOrders';
+  return collection === 'sermons' || collection === 'series' || collection === 'councils' || collection === 'prayerRequests' || collection === 'groups' || collection === 'bibleMarks' || collection === 'serviceOrders';
 }
 
 export function readsDocumentActionClock(collection: string): boolean {
-  return collection === 'groups' || collection === 'series' || collection === 'councils';
+  return collection === 'groups' || collection === 'series' || collection === 'councils' || collection === 'prayerRequests';
 }
 
 export type ActionTime = { earliestMs: number; latestMs: number };

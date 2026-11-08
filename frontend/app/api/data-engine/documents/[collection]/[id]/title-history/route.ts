@@ -1,11 +1,11 @@
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
-import { assertDataEngineEnabled, DataEngineServerError, listGroupTitleHistory, listSermonTitleHistory, listServiceOrderTitleHistory, serverErrorResponse } from '@/data-engine/server';
+import { assertDataEngineEnabled, DataEngineServerError, listGroupTitleHistory, listPrayerTitleHistory, listSermonTitleHistory, listServiceOrderTitleHistory, serverErrorResponse } from '@/data-engine/server';
 import { withStore } from '@/services/storeAvailability.server';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const titleHistory = { groups: listGroupTitleHistory, sermons: listSermonTitleHistory, serviceOrders: listServiceOrderTitleHistory };
+const titleHistory = { groups: listGroupTitleHistory, prayerRequests: listPrayerTitleHistory, sermons: listSermonTitleHistory, serviceOrders: listServiceOrderTitleHistory };
 
 export async function GET(request: Request, context: { params: Promise<{ collection: string; id: string }> }): Promise<Response> {
   const startedAt = performance.now();
@@ -14,7 +14,7 @@ export async function GET(request: Request, context: { params: Promise<{ collect
   try {
     const { collection, id } = await context.params;
     const params = new URL(request.url).searchParams;
-    if ((collection !== 'serviceOrders' && collection !== 'groups' && collection !== 'sermons') || [...params.keys()].some(key => key !== 'generation' && key !== 'cursor')
+    if ((collection !== 'serviceOrders' && collection !== 'groups' && collection !== 'sermons' && collection !== 'prayerRequests') || [...params.keys()].some(key => key !== 'generation' && key !== 'cursor')
       || params.getAll('generation').length !== 1 || params.getAll('cursor').length > 1) {
       throw new DataEngineServerError('invalid-argument', 400);
     }
