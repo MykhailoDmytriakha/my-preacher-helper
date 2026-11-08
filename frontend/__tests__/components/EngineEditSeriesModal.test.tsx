@@ -11,9 +11,9 @@ jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
 jest.mock('@/components/ui/RichMarkdownEditor', () => ({ RichMarkdownEditor: ({ value, onChange }: { value: string; onChange: (value: string) => void }) =>
   <textarea aria-label="Description" value={value} onChange={event => onChange(event.target.value)} /> }));
 const resource = { collection: 'series', id: 'series' };
-function setup() {
+function setup(theme = 'Opening title', description = 'Opening description', bookOrTopic = 'Romans') {
   const harness = documentEngineHarness({ resource, metadata: { protocol: 1, generation: 'g', revision: 1, deleted: false },
-    value: { userId: 'owner', title: 'Opening title', theme: 'Opening title', description: 'Opening description', bookOrTopic: 'Romans',
+    value: { userId: 'owner', title: 'Opening title', theme, description, bookOrTopic,
       status: 'draft', items: [], sermonIds: [], seriesKind: 'sermon', createdAt: 'now', updatedAt: 'now' } });
   jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
   const onClose = jest.fn();
@@ -50,9 +50,44 @@ it('preserves an unrelated remote field and sends only the explicit metadata edi
   fireEvent.click(screen.getByRole('button', { name: 'workspaces.series.actions.saveChanges' }));
   await waitFor(() => expect(onClose).toHaveBeenCalled());
   await act(async () => { await harness.engine.retry(); await settleEngine(); });
-  expect(harness.server.value).toMatchObject({ title: 'My title', description: 'Other device description', items: [] });
+  expect(harness.server.value).toMatchObject({ title: 'My title', theme: 'My title', description: 'Other device description', items: [] });
   expect(harness.transport.send).toHaveBeenCalledTimes(1); view.unmount();
 });
+it.each([false, true])('keeps a distinct legacy theme when the person changes only the status (title changed and restored: %s)', async restoreTitle => {
+  const description = '  Opening description  ', bookOrTopic = '  Romans  ';
+  const { harness, onClose, view } = setup('Legacy theme', description, bookOrTopic);
+  const title = await screen.findByDisplayValue('Opening title');
+  await waitFor(() => expect(title).toBeEnabled());
+  if (restoreTitle) {
+    fireEvent.change(title, { target: { value: 'Temporary title' } });
+    fireEvent.change(title, { target: { value: 'Opening title' } });
+  }
+  fireEvent.change(screen.getByRole('combobox'), { target: { value: 'active' } });
+  await act(async () => { await settleEngine(); });
+  fireEvent.click(screen.getByRole('button', { name: 'workspaces.series.actions.saveChanges' }));
+  await waitFor(() => expect(onClose).toHaveBeenCalled());
+  await act(async () => { await harness.engine.retry(); await settleEngine(); });
+  expect(harness.server.value).toMatchObject({ title: 'Opening title', theme: 'Legacy theme', status: 'active', description, bookOrTopic });
+  expect(harness.server.value).not.toHaveProperty('color');
+  expect(harness.transport.send).toHaveBeenCalledWith(expect.objectContaining({
+    changes: [expect.objectContaining({ path: ['status'] })],
+  }));
+  view.unmount();
+});
+
+it('saves the displayed default color when the person actually chooses it', async () => {
+  const { harness, onClose, view } = setup();
+  const title = await screen.findByDisplayValue('Opening title');
+  await waitFor(() => expect(title).toBeEnabled());
+  fireEvent.click(screen.getByRole('button', { name: '#3B82F6' }));
+  await act(async () => { await settleEngine(); });
+  fireEvent.click(screen.getByRole('button', { name: 'workspaces.series.actions.saveChanges' }));
+  await waitFor(() => expect(onClose).toHaveBeenCalled());
+  await act(async () => { await harness.engine.retry(); await settleEngine(); });
+  expect(harness.server.value).toMatchObject({ color: '#3B82F6', status: 'draft' });
+  view.unmount();
+});
+
 it('offers unsent metadata after restart and restores it only by explicit choice', async () => {
   const { harness, Workspace, view } = setup();
   const title = await screen.findByDisplayValue('Opening title'); await waitFor(() => expect(title).toBeEnabled());

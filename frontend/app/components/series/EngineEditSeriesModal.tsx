@@ -44,7 +44,13 @@ export function EngineEditSeriesModal({ seriesId, onClose }: { seriesId: string;
       const values = seriesFormValues(current as unknown as Series);
       const emptyNow = missingSeriesField(values);
       if (emptyNow) throw fillRequiredFieldError(emptyNow);
-      return deepCleanUndefined({ ...current, ...seriesFormPatch(values) }) as DocumentData;
+      const { title, theme, ...fields } = seriesFormPatch(values);
+      const opening = form.initialData;
+      // Defaults used to render old records are not changes the person made.
+      const edits = Object.fromEntries(Object.entries(fields).filter(([field]) => current[field] !== opening?.[field]));
+      const keepName = typeof opening?.title === 'string' && opening.title.trim() === title;
+      return deepCleanUndefined({ ...current, ...edits,
+        ...(keepName ? { title: opening.title, theme: opening.theme } : { title, theme }) }) as DocumentData;
     });
     onClose();
   };

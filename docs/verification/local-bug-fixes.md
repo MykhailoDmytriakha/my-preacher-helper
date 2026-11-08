@@ -7459,3 +7459,11 @@ The planned date retains an independently selected church. An automatic fill is 
 Twelve behavior regressions went red to green. 456 tests in nine suites, TypeScript, ESLint with zero errors, and guarded production-mode build 7GBfr-Z9F9aFjWc31qVaL passed. Six Chrome scenarios on isolated emulators covered both action orders for selection and clear, history and reload, competing automatic fills, and a date move alongside a separately authored calendar church. Independent review confirmed the causal and row-identity boundaries. Evidence is in artifacts/action-chronology-356/sermon-church-order-verified.
 
 For authorized production acceptance, verify the deployed revision and worker. Use one disposable sermon to choose and clear its church, then restore a displaced choice and reload. Check that the date and its own explicitly named church remain. Close both profiles after the check.
+
+## BUG-20261108-series-status-overwrites-legacy-theme · Untouched fields in the series editor
+
+Open a series, choose Edit Series, and change only its status. The form now sends only status. A distinct legacy theme and the exact opening text survive. The displayed default color stays a display fallback until someone picks it. An explicit rename still writes both the title and its compatibility theme.
+
+The original form test and the check of the outgoing field list went red before the respective fixes. 31 tests in five suites, ESLint, TypeScript and guarded local build IwkMmfZspdxsRj8k9NnXt passed. Two Chrome scenarios on emulators confirmed the exact command and the status after reload. Independent review checked the pinned baseline and recovery. Evidence is in artifacts/action-chronology-356/series-untouched-metadata-verified.
+
+For authorized production acceptance, verify the deployed revision. On one disposable series with distinct title and theme, change only status and reload. Confirm that the theme and any originally missing color retain their stored values.
