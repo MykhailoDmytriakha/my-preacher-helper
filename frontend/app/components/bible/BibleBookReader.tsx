@@ -42,7 +42,7 @@ import { useReaderTrail, type TrailBack } from './PlaceTrail';
 import { arriveOnTrail, changeTranslationOnTrail, leaveOnTrail, openedForTranslation, ownTrailPlace, stepOnTrail } from './placeTrailStore';
 import { ReaderCommentDialog, useCommentDoors, useCommentHoldsReader, useCommentLimit, useReaderCommenting, useWriteOnVerses } from './ReaderCommentDialog';
 import { arrivalTarget, useChosenVerseInSight, useRevealWritten } from './readerSight';
-import { readingSurface } from './readingSurface';
+import { echoedPosition, readingSurface, SCROLL_ECHO_MS } from './readingSurface';
 import { openedAlone } from './search/foundInBible';
 import { useFoundInReader } from './search/useFoundInReader';
 import { useBookCrossRefs } from './useBookCrossRefs';
@@ -524,10 +524,13 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, dec
   // The verse jumped to is the place until the page moves from where the jump left it: a verse near
   // the end of a book cannot reach the top, and the verse that does is not where the person is.
   // A chapter of a big book not drawn yet is drawn first; `then` runs once the jump is made.
-  const broughtRef = useRef<{ place: Place; scrollY: number } | null>(null);
+  // `earlier` — where this reader put the page before, and where it stood then; `at` — when it put it here; `input` — the person
+  // touched, scrolled a wheel, pressed or typed while the verse held: a report of an earlier position is the browser's echo
+  // only for a moment and without it (`echoedPosition`).
+  const broughtRef = useRef<{ place: Place; scrollY: number; earlier: number[]; input: boolean; at: number } | null>(null);
   // A phone's header folded while reading opens on a jump: the way back is what the person needs then.
   const revealHeader = useRevealShellHeader();
-  const jumpTo = useCallback(({ chapter, verse }: Place, then?: () => void) => {
+  const jumpTo = useCallback(({ chapter, verse }: Place, then?: () => void, again = false) => {
     revealHeader();
     showChapter({ chapter }, () => {
       const root = textRef.current;
@@ -544,7 +547,14 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, dec
         && scrollPinnedPageBy(target.getBoundingClientRect().top - readingInsetRef.current);
       if (!movedPinnedPage) target.scrollIntoView({ block: 'start' });
       if (!movedPinnedPage && surface.target === window && surface.top() !== was) pageMoved();
-      broughtRef.current = { place, scrollY: surfaceRef.current.top() };
+      // The verse held, jumped to again by the reader as the text grows (`holdAgain`), keeps what the person already did: a
+      // finger put down before the regrowth, then moved back, was taken for an echo. A jump of the person's own starts afresh,
+      // to the same verse too (Codex review of the echo fix, rounds 1–2).
+      const before = broughtRef.current;
+      broughtRef.current = {
+        place, scrollY: surfaceRef.current.top(), at: performance.now(),
+        earlier: [...(before ? [...before.earlier, before.scrollY] : []), was].slice(-6), input: again && Boolean(before?.input),
+      };
       // Publish the place with its geometry; a native scroll event may arrive after the next paint.
       placeRef.current = place;
       landedPlaceRef.current(place);
@@ -556,6 +566,8 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, dec
       then?.();
     });
   }, [fitRoom, pageMoved, revealHeader, showChapter]);
+  // The reader's own jump again to the verse it holds — the text grew, chapters were drawn, the size or the surface changed.
+  const holdAgain = useCallback((place: Place) => jumpTo(place, undefined, true), [jumpTo]);
 
   // The chapters drawn around the place changed, and the window moved the page by `moved` to keep what
   // stood on the line (`useChapterWindow`). While the verse a jump came to holds and the page stood where
@@ -569,10 +581,10 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, dec
       const brought = broughtRef.current;
       if (!brought || leavingRef.current || Math.abs(moved) < 1) return false;
       if (Math.abs(surfaceRef.current.top() - moved - brought.scrollY) >= 1) return false;
-      jumpTo(brought.place);
+      holdAgain(brought.place);
       return true;
     };
-  }, [jumpTo]);
+  }, [holdAgain]);
 
   // THE VERSE A JUMP CAME TO STAYS AT THE TOP until the person scrolls: what arrives after the jump —
   // the links' chips on every verse above it, a late font, the book's line wrapping — grows the page
@@ -585,7 +597,7 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, dec
     if (!text || typeof ResizeObserver === 'undefined') return undefined;
     const observer = new ResizeObserver(() => {
       const brought = broughtRef.current;
-      if (brought && !leavingRef.current) jumpTo(brought.place);
+      if (brought && !leavingRef.current) holdAgain(brought.place);
     });
     if (readerRef.current) observer.observe(readerRef.current);
     if (textRef.current) observer.observe(textRef.current);
@@ -595,7 +607,7 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, dec
       observer.observe(document.body);
     }
     return () => observer.disconnect();
-  }, [jumpTo, surface, text]);
+  }, [holdAgain, surface, text]);
 
   // THE VERSE A LINK CAME TO: lit at once, then fading back on its own — near the end of a book it
   // cannot be told by where it stands. The light belongs to the arrival, not to the text it was put
@@ -757,8 +769,8 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, dec
     const here = placeRef.current;
     if (!text || !here) return;
     fitRoom();
-    jumpTo(here);
-  }, [fitRoom, jumpTo, surface, text]);
+    holdAgain(here);
+  }, [fitRoom, holdAgain, surface, text]);
 
   // Remember where the person is ("Continue" on the list, Back to this entry, the way back from
   // another book) and keep the chapter button on the chapter. The place is read on every scroll (a
@@ -802,6 +814,14 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, dec
     const note = () => {
       // Leaving, or a jump waiting for its chapter: the page is not where the person reads.
       if (leavingRef.current || jumping() || !canReadPosition()) return;
+      // A position a jump set before, reported again with no input from the person, is the browser's echo: taken for a
+      // scroll, it let the verse go before the text grew over it on an iPad (`echoedPosition`).
+      // Looked at again once the moment has passed: a page still away was moved by the person or on their behalf.
+      const brought = broughtRef.current;
+      if (brought && echoedPosition(surface.top(), brought)) {
+        window.setTimeout(() => notePlaceRef.current(), SCROLL_ECHO_MS);
+        return;
+      }
       // Moved from where a jump left the page: from here the place is what the top shows.
       if (broughtRef.current && Math.abs(surface.top() - broughtRef.current.scrollY) >= 1) {
         broughtRef.current = null;
@@ -830,7 +850,14 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, dec
     notePlaceRef.current = note;
     note();
     surface.target.addEventListener('scroll', note, { passive: true });
+    // The person's own input: from it on, a move of the page is theirs (`echoedPosition`).
+    const touched = () => {
+      if (broughtRef.current) broughtRef.current.input = true;
+    };
+    const inputs = ['wheel', 'touchstart', 'touchmove', 'pointerdown', 'keydown'] as const;
+    for (const input of inputs) surface.target.addEventListener(input, touched, { capture: true, passive: true });
     return () => {
+      for (const input of inputs) surface.target.removeEventListener(input, touched, { capture: true });
       surface.target.removeEventListener('scroll', note);
       surface.anchoring(true);
       if (timer !== null) store();
@@ -918,7 +945,7 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, dec
   // A cross reference opened. In this book: a jump that leaves the way back to the verse it was opened
   // from ("← Ис 19:1"). In another: a new history entry, as any other book, whose way back is that
   // verse. Either way the passage is lit on arrival.
-  const presentation = useKeepPlaceOnPresentation(placeRef, jumpTo, jumping, crossRefs.ribbon);
+  const presentation = useKeepPlaceOnPresentation(placeRef, holdAgain, jumping, crossRefs.ribbon);
   keepPlaceRef.current = presentation.restore;
   landedPlaceRef.current = presentation.landed;
 
