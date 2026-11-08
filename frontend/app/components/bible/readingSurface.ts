@@ -71,3 +71,18 @@ export function readingSurface(pane: HTMLElement | null, pageMoved?: () => void)
     },
   };
 }
+
+/** How long after the reader moved the page a report of an earlier position may be the browser's echo (traced at 10 ms). */
+export const SCROLL_ECHO_MS = 1000;
+
+/**
+ * Whether a position the page reports is the browser's echo, not the person (BUG-20261107-ipad-safari-arrival-drifts-under-late-text):
+ * Safari on iPad scrolls apart from the page and, after the reader set a new position, may send one it set before — traced in
+ * the simulator: 5531 set, 5407 reported 10 ms later, 5531 again 22 ms after. A hold the reader keeps (`scrollY` — where it put
+ * the page, `at` — when; `earlier` — where it put it before, and where the page stood then) takes such a report for no scroll,
+ * for a moment only (`SCROLL_ECHO_MS`) and only while the person has given no input (`input` — a touch, wheel, press or key):
+ * after it, a move back is the person's or the browser's on their behalf (find in page, Home).
+ */
+export function echoedPosition(top: number, hold: { scrollY: number; earlier: readonly number[]; input: boolean; at: number }, now = performance.now()): boolean {
+  return !hold.input && now - hold.at < SCROLL_ECHO_MS && Math.abs(top - hold.scrollY) >= 1 && hold.earlier.some((y) => Math.abs(top - y) < 1);
+}

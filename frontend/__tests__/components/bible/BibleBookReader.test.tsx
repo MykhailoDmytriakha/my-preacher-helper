@@ -1059,6 +1059,102 @@ describe('BibleBookReader', () => {
       expect(document.documentElement.style.overflowAnchor).toBe('');
     });
 
+    // BUG-20261107-ipad-safari-arrival-drifts-under-late-text: Safari on iPad reported a position the reader had set before, just
+    // after it set a new one, and the verse was let go before the text grew over it. That echo keeps the verse; the person's
+    // own move — after a key, a touch, a wheel or a press — lets it go, even back to where the page stood.
+    it('keeps the verse through an echo of an earlier position, and lets it go at the person\'s own move', async () => {
+      const landing = jest.fn(function (this: HTMLElement) { Object.defineProperty(window, 'scrollY', { value: 500, configurable: true }); });
+      Element.prototype.scrollIntoView = landing;
+      try {
+        render(<BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={{ chapter: 3, verse: 1 }} onOpenBook={jest.fn()} />);
+        await screen.findByText('Третья глава');
+        expect(landing).toHaveBeenCalled();
+        expect(document.documentElement.style.overflowAnchor).toBe('none');
+        // Where the page stood before the jump, reported again with no input: the browser's echo.
+        Object.defineProperty(window, 'scrollY', { value: 0, configurable: true });
+        act(() => { window.dispatchEvent(new Event('scroll')); });
+        expect(document.documentElement.style.overflowAnchor).toBe('none');
+        // The same move after a key (Home) is the person's.
+        act(() => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home' })); });
+        act(() => { window.dispatchEvent(new Event('scroll')); });
+        expect(document.documentElement.style.overflowAnchor).toBe('');
+      } finally {
+        Element.prototype.scrollIntoView = scrollIntoView;
+        Object.defineProperty(window, 'scrollY', { value: 0, configurable: true });
+      }
+    });
+
+    // Codex review of the echo fix: a page left at the earlier position is moved by the person or on their behalf (find in
+    // page scrolls with no input on the page) — looked at again after the moment, the verse is let go.
+    it('lets the verse go when the page stays at the echoed position after the moment has passed', async () => {
+      const landing = jest.fn(function (this: HTMLElement) { Object.defineProperty(window, 'scrollY', { value: 500, configurable: true }); });
+      Element.prototype.scrollIntoView = landing;
+      try {
+        render(<BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={{ chapter: 3, verse: 1 }} onOpenBook={jest.fn()} />);
+        await screen.findByText('Третья глава');
+        Object.defineProperty(window, 'scrollY', { value: 0, configurable: true });
+        act(() => { window.dispatchEvent(new Event('scroll')); });
+        expect(document.documentElement.style.overflowAnchor).toBe('none');
+        await waitFor(() => expect(document.documentElement.style.overflowAnchor).toBe(''), { timeout: 2500 });
+      } finally {
+        Element.prototype.scrollIntoView = scrollIntoView;
+        Object.defineProperty(window, 'scrollY', { value: 0, configurable: true });
+      }
+    });
+
+    // Codex review of the echo fix: a finger put down before the text grew keeps counting when the verse is jumped to again.
+    it('keeps the person\'s touch across a jump made again as the text grows', async () => {
+      const grown: Array<() => void> = [];
+      const RealObserver = globalThis.ResizeObserver;
+      globalThis.ResizeObserver = class {
+        constructor(callback: ResizeObserverCallback) { grown.push(() => callback([], this as unknown as ResizeObserver)); }
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      } as unknown as typeof ResizeObserver;
+      const landing = jest.fn(function (this: HTMLElement) { Object.defineProperty(window, 'scrollY', { value: 500, configurable: true }); });
+      Element.prototype.scrollIntoView = landing;
+      try {
+        render(<BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={{ chapter: 3, verse: 1 }} onOpenBook={jest.fn()} />);
+        await screen.findByText('Третья глава');
+        act(() => { window.dispatchEvent(new Event('touchstart')); });
+        const jumps = landing.mock.calls.length;
+        act(() => grown.forEach((grow) => grow()));
+        expect(landing.mock.calls.length).toBeGreaterThan(jumps);
+        Object.defineProperty(window, 'scrollY', { value: 0, configurable: true });
+        act(() => { window.dispatchEvent(new Event('scroll')); });
+        expect(document.documentElement.style.overflowAnchor).toBe('');
+      } finally {
+        globalThis.ResizeObserver = RealObserver;
+        Element.prototype.scrollIntoView = scrollIntoView;
+        Object.defineProperty(window, 'scrollY', { value: 0, configurable: true });
+      }
+    });
+
+    // Codex review of the echo fix, round 2: the person choosing the verse held again is a new jump, not the reader's own —
+    // a touch before it does not make the browser's echo after it the person's.
+    it('starts afresh at the person\'s own jump to the verse held, so an echo after it keeps the verse', async () => {
+      const positions = [500, 620];
+      const landing = jest.fn(function (this: HTMLElement) { Object.defineProperty(window, 'scrollY', { value: positions[Math.min(landing.mock.calls.length - 1, 1)], configurable: true }); });
+      Element.prototype.scrollIntoView = landing;
+      try {
+        render(<BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={{ chapter: 3, verse: 1 }} onOpenBook={jest.fn()} />);
+        await screen.findByText('Третья глава');
+        act(() => { window.dispatchEvent(new Event('touchstart')); });
+        fireEvent.click(readerPlaceButton()!);
+        fireEvent.click(within(screen.getByRole('dialog', { name: 'bible.chooseChapter' })).getByText('3'));
+        fireEvent.click(within(screen.getByRole('dialog', { name: 'bible.chooseVerse' })).getByText('1'));
+        await waitFor(() => expect(window.scrollY).toBe(620));
+        Object.defineProperty(window, 'scrollY', { value: 500, configurable: true });
+        act(() => { window.dispatchEvent(new Event('scroll')); });
+        expect(document.documentElement.style.overflowAnchor).toBe('none');
+        expect(readerPlaceButton()).toHaveTextContent('3:1');
+      } finally {
+        Element.prototype.scrollIntoView = scrollIntoView;
+        Object.defineProperty(window, 'scrollY', { value: 0, configurable: true });
+      }
+    });
+
     it('is jumped to again until the person scrolls, and then left where the person put it', async () => {
       render(<BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={{ chapter: 3, verse: 1 }} onOpenBook={jest.fn()} />);
       await screen.findByText('Третья глава');
