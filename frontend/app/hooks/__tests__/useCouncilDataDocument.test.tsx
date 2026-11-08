@@ -50,6 +50,13 @@ describe('useCouncilDataDocument', () => {
     expect(next).not.toHaveProperty('id');
   });
 
+  it.each(['title', 'date'] as const)('marks a change to the council %s for timed autosave', async field => {
+    const { result, update } = setup();
+    await act(async () => { await result.current.updateCouncil('council-1',
+      current => ({ ...current, [field]: field === 'date' ? '2099-04-17' : 'Renamed' }), field); });
+    expect(update).toHaveBeenCalledWith(expect.any(Function), { action: 'council-' + field });
+  });
+
   it('captures an existing destination through the same whole-action facade as a new council', async () => {
     const carryCouncilTopicToExisting = jest.fn().mockResolvedValue(undefined);
     const { result, update, commit } = setup(stored(), { carryCouncilTopicToExisting });

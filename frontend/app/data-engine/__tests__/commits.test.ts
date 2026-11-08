@@ -313,6 +313,34 @@ describe('Durable commit requests', () => {
     expect(last.groupMeetingFieldActions?.location).toMatchObject({ before: 'Side room', after: 'Library', predecessorOperationId: first.id });
   });
 
+  it.each([true, false])('retains council field observations through restart (clock available: %s)', async hasClock => {
+    const opening: ResourceSnapshot = { resource: { collection: 'councils', id: 'council' },
+      metadata: { protocol: 1, generation: 'council', revision: 1, deleted: false },
+      value: { userId: 'owner', title: 'Opening', date: '2099-04-10', status: 'preparing',
+        topics: [], createdAt: 'now', updatedAt: 'now' } };
+    const titleTime = hasClock ? { earliestMs: 1_800_000_000_010, latestMs: 1_800_000_000_015 } : null;
+    const dateTime = hasClock ? { earliestMs: 1_800_000_000_050, latestMs: 1_800_000_000_055 } : null;
+    const s = setup({ opening });
+    const { queue } = s.makeQueue();
+    const session = new DataSession(opening);
+    const renamed = { ...opening.value, title: 'Renamed' };
+    session.edit(renamed, undefined, { field: 'title', time: titleTime });
+    const { date: _old, ...cleared } = renamed as typeof renamed & { date?: string };
+    session.edit(cleared, undefined, { field: 'date', time: dateTime });
+    const restored = DataSession.restore(JSON.parse(JSON.stringify(session.checkpoint())));
+    const request = (await queue.save('council', restored.checkpoint()))!;
+    expect(request).toMatchObject({
+      councilTitleAction: { before: 'Opening', after: 'Renamed', time: titleTime },
+      councilDateAction: { before: { exists: true, value: '2099-04-10' }, after: { exists: false }, time: dateTime },
+    });
+    await s.makeQueue().queue.drain(true);
+    expect(s.transport.send).toHaveBeenCalledWith(expect.objectContaining({
+      councilTitleAction: { before: 'Opening', after: 'Renamed', observedRevision: 1, time: titleTime },
+      councilDateAction: { observedRevision: 1, time: dateTime },
+    }));
+    expect(s.server().value).not.toHaveProperty('date');
+  });
+
   it('keeps exact series title and color predecessors through an unrelated status Save', async () => {
     const opening: ResourceSnapshot = {
       resource: { collection: 'series', id: 'series' },

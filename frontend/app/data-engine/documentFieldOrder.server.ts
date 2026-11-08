@@ -16,7 +16,7 @@ export const DOCUMENT_TITLE_HISTORY = '_titleHistory';
 export const GROUP_STATUS_HISTORY = '_statusHistory';
 export const SERMON_VERSE_HISTORY = '_verseHistory';
 export const SERMON_CHURCH_HISTORY = '_churchHistory';
-export const SERIES_METADATA_HISTORY = '_metadataHistory';
+export const DOCUMENT_METADATA_HISTORY = '_metadataHistory';
 type FieldProof = { value: FieldValue; revision: number; time: ActionTime | null; operationId?: string };
 type DocumentFieldOrder = {
   command: DataCommand;
@@ -26,7 +26,7 @@ type DocumentFieldOrder = {
   uncertain?: ConflictDetail[];
 };
 
-const usesDigest = (target: DocumentFieldTarget) => target.field === 'verse' || target.field === 'church' || target.action === 'seriesFieldActions';
+const usesDigest = (target: DocumentFieldTarget) => target.field === 'verse' || target.field === 'church' || target.field === 'date' || target.action === 'seriesFieldActions';
 const fieldDigest = (value: FieldValue, target: DocumentFieldTarget) => createHash('sha256')
   .update(target.field === 'verse' ? String(value.value) : commandFingerprint(value)).digest('base64url');
 

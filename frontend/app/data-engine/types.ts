@@ -68,6 +68,8 @@ export type DataCommand = CommandBase & (
       seriesFieldActions?: SeriesFieldStamps;
       groupTitleAction?: DocumentFieldAction;
       groupStatusAction?: DocumentFieldAction;
+      councilTitleAction?: DocumentFieldObservation;
+      councilDateAction?: DocumentFieldStamp;
       /** Exact plan cells observed before an explicit outline removal. */
       observedPlanTextRemoval?: Record<string, string>;
       /** Exact orphaned text explicitly cleared while its point was absent. */

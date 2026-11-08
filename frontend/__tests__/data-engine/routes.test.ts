@@ -16,7 +16,7 @@ import { GET as churchHistory } from '@/api/data-engine/documents/[collection]/[
 import { GET as verseHistory } from '@/api/data-engine/documents/[collection]/[id]/verse-history/route';
 import { GET as titleHistory } from '@/api/data-engine/documents/[collection]/[id]/title-history/route';
 import { ENGINE_OWNED_COLLECTIONS } from '@/data-engine/engineOwnedCollections';
-import { assertDataEngineEnabled, DataEngineServerError, listBibleMarkHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listSermonChurchHistory, listSermonTitleHistory, listSermonVerseHistory, listSeriesMetadataHistory, listServiceOrderTitleHistory, processCommand, readCollectionChanges, readCommandBody, readDocument } from '@/data-engine/server';
+import { assertDataEngineEnabled, DataEngineServerError, listBibleMarkHistory, listCouncilMetadataHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listSermonChurchHistory, listSermonTitleHistory, listSermonVerseHistory, listSeriesMetadataHistory, listServiceOrderTitleHistory, processCommand, readCollectionChanges, readCommandBody, readDocument } from '@/data-engine/server';
 import { __resetStoreAvailabilityForTests } from '@/services/storeAvailability.server';
 
 jest.mock('@/config/firebaseAdminConfig', () => ({ adminDb: {} }));
@@ -39,6 +39,7 @@ jest.mock('@/data-engine/server', () => ({
   listSermonVerseHistory: jest.fn(),
   listSermonChurchHistory: jest.fn(),
   listSeriesMetadataHistory: jest.fn(),
+  listCouncilMetadataHistory: jest.fn(),
   listGroupTitleHistory: jest.fn(),
   listGroupStatusHistory: jest.fn(),
   readCollectionChanges: jest.fn(),
@@ -303,7 +304,17 @@ describe('DataEngine HTTP routes', () => {
     expect((await seriesHistory(input, { params: Promise.resolve({ collection: 'groups', id: 'series-id' }) })).status).toBe(400);
   });
 
-  it.each(['groups', 'series'])('calibrates on the existing authenticated %s document read', async collection => {
+  it('serves council metadata history only for its owner and generation with no-store', async () => {
+    const input = request('http://localhost/api/data-engine/documents/councils/council-id/metadata-history?generation=g1');
+    const page = { owner: 'verified-owner', councilId: 'council-id', generation: 'g1', entries: [], nextCursor: null };
+    jest.mocked(listCouncilMetadataHistory).mockResolvedValue(page);
+    const response = await seriesHistory(input, { params: Promise.resolve({ collection: 'councils', id: 'council-id' }) });
+    expect(response.status).toBe(200);
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(listCouncilMetadataHistory).toHaveBeenCalledWith('verified-owner', 'council-id', 'g1', undefined);
+  });
+
+  it.each(['groups', 'series', 'councils'])('calibrates on the existing authenticated %s document read', async collection => {
     const resource = { collection, id: 'group' };
     const input = request('http://localhost/api/data-engine/documents/' + collection + '/group');
     input.headers.set('x-engine-action-clock', 'group-challenge');

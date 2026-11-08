@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 
+import { DocumentMetadataHistory } from '@/components/ui/DocumentMetadataHistory';
 import FormDialog, { FormActions } from '@/components/ui/FormDialog';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { useDataEngine, useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
@@ -10,8 +11,8 @@ import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
 import { useTranslation } from '@locales/useTranslation';
 
 import SeriesFormFields, { missingSeriesField, seriesFormPatch, seriesFormValues, type SeriesFormValues } from './SeriesFormFields';
-import { SeriesMetadataHistory } from './SeriesMetadataHistory';
 
+import type { SeriesTimedField } from '@/data-engine/seriesFieldAction';
 import type { DocumentData } from '@/data-engine/types';
 import type { Series } from '@/models/models';
 
@@ -70,8 +71,12 @@ export function EngineEditSeriesModal({ seriesId, onClose }: { seriesId: string;
       <fieldset disabled={loading || !form.active || form.busy}>
         <SeriesFormFields values={values} onChange={change} colorPickerTitle={t('workspaces.series.editSeries')} />
       </fieldset>
-      {owner && generation && <SeriesMetadataHistory key={JSON.stringify([owner, seriesId, generation])}
-        owner={owner} generation={generation} seriesId={seriesId} current={form.data}
+      {owner && generation && <DocumentMetadataHistory<SeriesTimedField> key={JSON.stringify([owner, seriesId, generation])}
+        owner={owner} generation={generation} collection="series" id={seriesId} current={form.data}
+        prefix="workspaces.series.history" nullable="color"
+        labels={{ title: 'workspaces.series.form.title', bookOrTopic: 'workspaces.series.form.bookOrTopic',
+          status: 'workspaces.series.form.status', color: 'workspaces.series.form.color' }}
+        describeValue={(field, value) => field === 'status' ? t('workspaces.series.form.statuses.' + value) : value}
         disabled={!form.active || !form.durable || form.busy}
         onRestore={(field, value) => form.update(current => {
           const next = { ...current };

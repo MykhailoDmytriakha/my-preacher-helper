@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { isCollectionServed } from '@/data-engine/activation';
-import { DataEngineServerError, listBibleMarkHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listSermonChurchHistory, listSermonTitleHistory, listSermonVerseHistory, listSeriesMetadataHistory, listServiceOrderTitleHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
+import { DataEngineServerError, listBibleMarkHistory, listCouncilMetadataHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listSermonChurchHistory, listSermonTitleHistory, listSermonVerseHistory, listSeriesMetadataHistory, listServiceOrderTitleHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
 import { collectionHeadId, HEADS_COLLECTION, sequenceId } from '@/data-engine/serverFeed';
 import { DataSession } from '@/data-engine/session';
 import type { DataCommand, FieldValue, ResourceSnapshot } from '@/data-engine/types';
@@ -1466,6 +1466,96 @@ describe('transactional DataEngine server', () => {
         expect(history()).toHaveLength(1);
       }
     });
+
+  describe('council metadata chronology', () => {
+    const resource = { collection: 'councils', id: 'timed-council' };
+    const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] };
+    const date = '2099-04-10T00:00:00.000Z';
+    const title = 'Opening council';
+    const topics = [{ id: 'section', title: 'Keep the section', kind: 'info', questions: [], options: [], discussed: true }];
+    const seed = () => processCommand(base.owner, { ...base, operationId: 'council-seed', kind: 'create', generation: null,
+      value: { userId: base.owner, title, date, status: 'preparing', topics,
+        createdAt: '2026-11-08T00:00:00.000Z', updatedAt: '2026-11-08T00:00:00.000Z' } });
+    const day = (value: string | null) => value === null ? { exists: false } : { exists: true, value };
+    const change = (operationId: string, nextTitle: string, nextDate: string | null, offset: number) => {
+      const time = { earliestMs: 1_800_000_000_000 + offset, latestMs: 1_800_000_000_005 + offset };
+      return { ...base, operationId, kind: 'update', generation: 'council-seed',
+        changes: [{ path: ['title'], before: day(title), after: day(nextTitle) },
+          { path: ['date'], before: day(date), after: day(nextDate) }],
+        councilTitleAction: { before: title, after: nextTitle, observedRevision: 1, time },
+        councilDateAction: { observedRevision: 1, time } };
+    };
+
+    it.each([
+      { offset: 20, nextDate: '2099-04-27', expectedTitle: 'Desk council', expectedDate: '2099-04-20' },
+      { offset: 80, nextDate: '2099-04-27', expectedTitle: 'Phone council', expectedDate: '2099-04-27' },
+      { offset: 80, nextDate: null, expectedTitle: 'Phone council', expectedDate: undefined },
+    ])('orders name and date from separate autosave observations ($offset / $nextDate)', async scenario => {
+      expect((await seed()).kind).toBe('acknowledged');
+      expect((await processCommand(base.owner, change('council-desk', 'Desk council', '2099-04-20', 40))).kind).toBe('acknowledged');
+      const request = change('council-phone', 'Phone council', scenario.nextDate, scenario.offset);
+      const result = await processCommand(base.owner, request);
+      expect(result).toMatchObject({ kind: 'acknowledged', snapshot: { value: { title: scenario.expectedTitle, status: 'preparing', topics } } });
+      expect(documents.get('councils/timed-council')?.date).toBe(scenario.expectedDate);
+      const losingTitle = scenario.offset < 40 ? 'Phone council' : 'Desk council';
+      const losingDate = scenario.offset < 40 ? scenario.nextDate : '2099-04-20';
+      const list = () => listCouncilMetadataHistory(base.owner, resource.id, 'council-seed');
+      expect(await list()).toMatchObject({ entries: [{ fields: [
+        { field: 'title', value: losingTitle, winner: scenario.expectedTitle },
+        { field: 'date', value: losingDate, winner: scenario.expectedDate ?? null },
+      ] }] });
+      await expect(listCouncilMetadataHistory('another-owner', resource.id, 'council-seed')).rejects.toMatchObject({ status: 403 });
+      await expect(listCouncilMetadataHistory(base.owner, resource.id, 'old-generation')).rejects.toMatchObject({ status: 404 });
+      expect(await processCommand(base.owner, request)).toEqual(result);
+      expect((await list()).entries).toHaveLength(1);
+    });
+
+    it('can restore an earlier cleared date without changing the council title or sections', async () => {
+      expect((await seed()).kind).toBe('acknowledged');
+      const desk = change('council-desk', title, null, 40);
+      const phone = change('council-phone', title, '2099-04-27', 80);
+      expect((await processCommand(base.owner, { ...desk, changes: [desk.changes[1]] })).kind).toBe('acknowledged');
+      expect((await processCommand(base.owner, { ...phone, changes: [phone.changes[1]] })).kind).toBe('acknowledged');
+      const history = await listCouncilMetadataHistory(base.owner, resource.id, 'council-seed');
+      expect(history.entries).toMatchObject([{ fields: [{ field: 'date', value: null, winner: '2099-04-27' }] }]);
+      expect(await processCommand(base.owner, { ...change('restore-clear', title, null, 120),
+        changes: [{ path: ['date'], before: day('2099-04-27'), after: day(null) }],
+        councilDateAction: { observedRevision: 3, time: { earliestMs: 1_800_000_000_120, latestMs: 1_800_000_000_125 } },
+      })).toMatchObject({ kind: 'acknowledged', snapshot: { value: { title, topics } } });
+      expect(documents.get('councils/timed-council')).not.toHaveProperty('date');
+    });
+
+    it('asks before replacing a restored name or date when the offline action had no clock', async () => {
+      expect((await seed()).kind).toBe('acknowledged');
+      const deskTitle = 'Desk council', deskDate = '2099-04-20';
+      expect((await processCommand(base.owner, change('council-desk', deskTitle, deskDate, 40))).kind).toBe('acknowledged');
+      const restore = change('council-desk-restore', title, date, 80);
+      expect((await processCommand(base.owner, { ...restore,
+        changes: [{ path: ['title'], before: day(deskTitle), after: day(title) },
+          { path: ['date'], before: day(deskDate), after: day(date) }],
+        councilTitleAction: { ...restore.councilTitleAction, before: deskTitle, observedRevision: 2 },
+        councilDateAction: { ...restore.councilDateAction, observedRevision: 2 },
+      })).kind).toBe('acknowledged');
+      const phone = change('council-phone', 'Offline council', null, 20);
+      expect(await processCommand(base.owner, { ...phone,
+        councilTitleAction: { ...phone.councilTitleAction, time: null },
+        councilDateAction: { ...phone.councilDateAction, time: null },
+      })).toMatchObject({
+        kind: 'conflict', conflicts: [{ path: ['title'] }, { path: ['date'] }],
+        snapshot: { value: { title, date, topics } },
+      });
+      expect((await listCouncilMetadataHistory(base.owner, resource.id, 'council-seed')).entries).toHaveLength(0);
+    });
+
+    it('preserves ordinary choices if the two council action intervals overlap', async () => {
+      expect((await seed()).kind).toBe('acknowledged');
+      expect((await processCommand(base.owner, change('council-desk', 'Desk council', '2099-04-20', 40))).kind).toBe('acknowledged');
+      expect(await processCommand(base.owner, change('council-phone', 'Phone council', '2099-04-27', 43))).toMatchObject({
+        kind: 'conflict', conflicts: [{ path: ['title'] }, { path: ['date'] }],
+        snapshot: { value: { title: 'Desk council', date: '2099-04-20', topics } },
+      });
+    });
+  });
 
   describe('series metadata chronology', () => {
     const resource = { collection: 'series', id: 'timed-series' };

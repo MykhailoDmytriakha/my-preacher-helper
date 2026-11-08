@@ -42,11 +42,12 @@ import MarkdownDisplay from '@/components/MarkdownDisplay';
 import { Chip } from '@/components/ui/Chip';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import DatePickerField from '@/components/ui/DatePickerField';
+import { DocumentMetadataHistory } from '@/components/ui/DocumentMetadataHistory';
 import { LiveTextArea, LiveTextInput } from '@/components/ui/LiveTextInput';
 import { RichMarkdownEditor } from '@/components/ui/RichMarkdownEditor';
 import { DataMembershipStatus } from '@/data-engine/DataMembershipStatus';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
-import { DataDocumentProvider } from '@/data-engine/react.client';
+import { DataDocumentProvider, useDataEngine } from '@/data-engine/react.client';
 import { useConfirm } from '@/hooks/useConfirm';
 import { useCouncilDataDocument } from '@/hooks/useCouncilDataDocument';
 import { useCouncilsRead } from '@/hooks/useCouncilsRead';
@@ -54,10 +55,12 @@ import { useDndKitAccessibility } from '@/hooks/useDragAnnouncements';
 import { useRouteId } from '@/hooks/useRouteId';
 import { actionFailureMessage } from '@/utils/actionFailureMessage';
 import { applyOutcome, councilLanguage, hasProgress, isInfoTopic, newOption, newQuestion, newTopic, outcomeText, preparingCouncils, removeTopicOption, reorderTopics, setTopicKind, topicState } from '@/utils/council';
-import { formatDate, formatDateOnly } from '@/utils/dateFormatter';
+import { formatDate, formatDateForLocale, formatDateOnly } from '@/utils/dateFormatter';
+import { shownDayOf } from '@/utils/dateOnly';
 import { NEUTRAL_CAPTION, CARE_CARD_TONES } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
 
+import type { CouncilTimedField } from '@/data-engine/councilFieldAction';
 import type { CouncilFinishUndo } from '@/hooks/useCouncilDataDocument';
 import type { Council, CouncilTopic } from '@/models/models';
 import '@locales/i18n';
@@ -108,6 +111,7 @@ function EngineCouncilDetailPage({ councilId }: { councilId: string }) {
 
 function EngineCouncilDetailWorkspace({ councilId }: { councilId: string }) {
   const { t } = useTranslation();
+  const { owner } = useDataEngine();
   const document = useCouncilDataDocument(councilId);
   const list = useCouncilsRead();
   /*
@@ -139,12 +143,23 @@ function EngineCouncilDetailWorkspace({ councilId }: { councilId: string }) {
       return undefined;
     }
   };
+  const generation = document.confirmed?.metadata?.generation;
   const source = {
     council: document.council, councils: list.councils, loading: document.loading || list.loading,
     // A copy shown while device storage is silent is for reading only (BUG-20260927-engine-open-hangs-on-silent-device-storage).
     readOnly: document.readOnly,
     error: document.error ?? list.error, refresh: document.refresh,
-    updateCouncil: (id: string, updater: (current: Council) => Council) => { void document.updateCouncil(id, updater).catch(report); },
+    updateCouncil: (id: string, updater: (current: Council) => Council, field?: CouncilTimedField) => {
+      void document.updateCouncil(id, updater, field).catch(report);
+    },
+    history: owner && generation ? { owner, generation, restore: (field: CouncilTimedField, value: string | null) =>
+      document.updateCouncil(councilId, current => {
+        if (field === 'title') return { ...current, title: value ?? current.title };
+        const next = { ...current };
+        if (value) next.date = value;
+        else delete next.date;
+        return next;
+      }, field) } : undefined,
     // Resolves whether the delete is held; a refusal is reported here and the page stays.
     deleteCouncil: (id: string) => document.deleteCouncil(id).then(() => true, (error: unknown) => { report(error); return false; }),
     carryTopicToNext,
@@ -167,7 +182,8 @@ interface CouncilDetailSource {
   loading: boolean;
   error: unknown;
   refresh: () => unknown;
-  updateCouncil: (id: string, updater: (current: Council) => Council) => void;
+  updateCouncil: (id: string, updater: (current: Council) => Council, field?: CouncilTimedField) => void;
+  history?: { owner: string; generation: string; restore: (field: CouncilTimedField, value: string | null) => Promise<void> };
   deleteCouncil: (id: string) => Promise<boolean>;
   finishCouncil: () => Promise<CouncilFinishUndo>;
   carryTopicToNext: (id: string, topic: CouncilTopic, fallbackTitle: string, targetId?: string | 'new') => Promise<Council | undefined>;
@@ -176,7 +192,7 @@ interface CouncilDetailSource {
 }
 
 function CouncilDetailContent({ source, engineCouncilId }: { source: CouncilDetailSource; engineCouncilId?: string }) {
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
   const router = useRouter();
   const { council, councils, loading, error, refresh, updateCouncil, deleteCouncil, carryTopicToNext, readOnly = false } = source;
 
@@ -236,7 +252,7 @@ function CouncilDetailContent({ source, engineCouncilId }: { source: CouncilDeta
   const editable = !held && !readOnly;
   const arranging = editable && reordering;
   const councilsById = Object.fromEntries(councils.map((item) => [item.id, item])) as Record<string, Council | undefined>;
-  const patch = (updater: (current: Council) => Council) => updateCouncil(council.id, updater);
+  const patch = (updater: (current: Council) => Council, field?: CouncilTimedField) => updateCouncil(council.id, updater, field);
   const patchTopic = (topicId: string, updater: TopicUpdater) =>
     patch((current) => ({
       ...current,
@@ -315,7 +331,7 @@ function CouncilDetailContent({ source, engineCouncilId }: { source: CouncilDeta
               <LiveTextInput
                 aria-label={t('council.detail.titleLabel')}
                 value={council.title}
-                onChange={(next) => patch((current) => ({ ...current, title: next }))}
+                onChange={(next) => patch((current) => ({ ...current, title: next }), 'title')}
                 className={`w-full rounded-lg border border-transparent bg-transparent px-1 text-2xl font-extrabold tracking-tight hover:border-gray-200 focus:border-indigo-400 focus:outline-none sm:text-3xl dark:hover:border-gray-700 ${tone.title}`}
                 data-testid="council-title"
               />
@@ -344,7 +360,7 @@ function CouncilDetailContent({ source, engineCouncilId }: { source: CouncilDeta
                         if (nextDate) next.date = nextDate;
                         else delete next.date;
                         return next;
-                      })
+                      }, 'date')
                     }
                     inputClassName="w-40 rounded-lg border border-gray-300 bg-white px-2 py-1 pr-9 text-sm font-normal text-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
                   />
@@ -406,6 +422,14 @@ function CouncilDetailContent({ source, engineCouncilId }: { source: CouncilDeta
             )}
           </div>}
         </div>
+        {source.history && <div className="mt-2 px-1">
+          <DocumentMetadataHistory<CouncilTimedField> key={JSON.stringify([source.history.owner, council.id, source.history.generation])}
+            owner={source.history.owner} generation={source.history.generation} collection="councils" id={council.id}
+            current={{ title: council.title, date: council.date || undefined }} disabled={held || readOnly}
+            prefix="council.history" nullable="date" labels={{ title: 'council.detail.titleLabel', date: 'council.detail.dateLabel' }}
+            describeValue={(field, value) => field === 'date' ? value ? formatDateForLocale(shownDayOf(value), language) : t('council.history.notSet') : value}
+            onRestore={source.history.restore} />
+        </div>}
         {editable && (
           <p className="mt-3 max-w-2xl px-1 text-sm leading-relaxed text-gray-600 dark:text-gray-400">
             {arranging ? t('council.detail.reorderHint') : t('council.detail.conductHint')}

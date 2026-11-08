@@ -23,7 +23,7 @@ import { submittedWorkCheckpoint } from './submittedWork';
 
 import type { DocumentWriteReceipt } from './commitReceipt';
 import type { CommitQueue, CommitRequest } from './commits';
-import type { GroupFieldStamp } from './documentFieldAction';
+import type { AutosaveFieldStamp } from './documentFieldAction';
 import type { RecoverySource } from './recoveryPresence';
 import type { RecoveryOrigin, VersionedRecovery } from './recoverySource';
 import type { DataEngineRuntime, RuntimeEvent } from './runtime';
@@ -248,9 +248,9 @@ export class EditorController {
   }
 
   /** `shown` — the copy the screen showed while typing (`DataSession.edit`). */
-  edit(value: DocumentData | null, shown?: ShownCopy, groupFieldStamp?: GroupFieldStamp): Promise<void> {
+  edit(value: DocumentData | null, shown?: ShownCopy, autosaveStamp?: AutosaveFieldStamp): Promise<void> {
     this.assertCurrent();
-    this.session.edit(value, shown, groupFieldStamp);
+    this.session.edit(value, shown, autosaveStamp);
     this.durable = false;
     this.emit();
     return this.enqueue(() => this.persist());

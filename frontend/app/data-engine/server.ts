@@ -13,7 +13,7 @@ import { isCollectionServed, isLegacyOpen, mayBeRetiredByCascade } from './activ
 import { BIBLE_MARK_HISTORY, BIBLE_MARK_PROOFS, bibleMarkProofVerses, bibleMarkTracking, metadataAfterBibleMarks, orderBibleMarks } from './bibleMarkOrder.server';
 import { existingRowDate, MEETING_DATE_TARGET, PREACH_DATE_TARGET } from './datedRowAction';
 import { metadataAfterDatedRow, orderDatedRow } from './datedRowOrder.server';
-import { metadataAfterDocumentFields, orderDocumentFields, DOCUMENT_TITLE_HISTORY, GROUP_STATUS_HISTORY, SERIES_METADATA_HISTORY, SERMON_CHURCH_HISTORY, SERMON_VERSE_HISTORY } from './documentFieldOrder.server';
+import { metadataAfterDocumentFields, orderDocumentFields, DOCUMENT_TITLE_HISTORY, GROUP_STATUS_HISTORY, DOCUMENT_METADATA_HISTORY, SERMON_CHURCH_HISTORY, SERMON_VERSE_HISTORY } from './documentFieldOrder.server';
 import { equalValues, readField } from './fieldValues';
 import { GROUP_MEETING_FIELD_POLICY, type GroupMeetingFieldHistoryPage } from './groupMeetingFieldAction';
 import { GROUP_MEETING_FIELD_HISTORY, metadataAfterGroupMeetingFields, orderGroupMeetingFields } from './groupMeetingFieldOrder.server';
@@ -30,6 +30,7 @@ import { coversCommittedEffect } from './snapshotFreshness';
 
 import type { AudioExportKey, AudioExportRecord, AudioExportStore, AudioExportTransaction, AudioExportUsage } from './audioExportStore';
 import type { BibleMarkHistoryEntry, BibleMarkHistoryPage } from './bibleMarkStroke';
+import type { CouncilMetadataHistoryPage } from './councilFieldAction';
 import type { DisplacedRowDate, MeetingDateHistoryPage, PreachDateHistoryPage } from './datedRowAction';
 import type { GroupStatusHistoryPage, GroupTitleHistoryPage, DocumentTitleHistoryEntry, SermonChurchHistoryPage, SermonTitleHistoryPage, SermonVerseHistoryPage, ServiceOrderTitleHistoryPage } from './documentFieldAction';
 import type { RowDetailPolicy } from './rowDetailAction';
@@ -424,12 +425,12 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
   persistRowDetailHistory(transaction, command, primarySnapshot, GROUP_MEETING_FIELD_POLICY, meetingOrder);
   persistRowDetailHistory(transaction, command, primarySnapshot, PREACH_DATE_FIELD_POLICY, preachingOrder);
   persistRowDetailHistory(transaction, command, primarySnapshot, PREACH_STATUS_POLICY, statusOrder);
-  const seriesHistory = [];
+  const metadataHistory = [];
   for (const { target, order } of fieldOrder?.fields ?? []) {
     const displaced = order.displaced;
     if (!displaced || !primarySnapshot.value || !equalValues(readField(primarySnapshot.value, [target.field]), displaced.winnerValue)) continue;
-    if (target.action === 'seriesFieldActions') {
-      seriesHistory.push({ field: target.field, value: displaced.value.value ?? null, winner: displaced.winnerValue.value ?? null,
+    if (target.action === 'seriesFieldActions' || target.action === 'councilTitleAction' || target.action === 'councilDateAction') {
+      metadataHistory.push({ field: target.field, value: displaced.value.value ?? null, winner: displaced.winnerValue.value ?? null,
         actionTime: displaced.actionTime, winnerActionTime: displaced.winnerActionTime });
       continue;
     }
@@ -445,10 +446,10 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
       ...evidence, [target.field]: value.value ?? null, [destination.winner]: winnerValue.value ?? null, acceptedAt: new Date().toISOString(),
     });
   }
-  if (seriesHistory.length && primarySnapshot.metadata) {
-    const history = adminDb.collection('series').doc(command.resource.id).collection(SERIES_METADATA_HISTORY);
+  if (metadataHistory.length && primarySnapshot.metadata) {
+    const history = adminDb.collection(command.resource.collection).doc(command.resource.id).collection(DOCUMENT_METADATA_HISTORY);
     transaction.set(history.doc(historyEntryId(primarySnapshot, command.operationId)), {
-      fields: seriesHistory, generation: primarySnapshot.metadata.generation, acceptedAt: new Date().toISOString(),
+      fields: metadataHistory, generation: primarySnapshot.metadata.generation, acceptedAt: new Date().toISOString(),
     });
   }
   persistBibleMarkOrder(transaction, command, primarySnapshot, markOrder);
@@ -702,8 +703,14 @@ export async function listSermonChurchHistory(owner: string, sermonId: string, g
 
 export async function listSeriesMetadataHistory(owner: string, seriesId: string, generation: string, cursor?: string): Promise<SeriesMetadataHistoryPage> {
   const resource = { collection: 'series', id: seriesId };
-  const page = await listHistoryEntries<SeriesMetadataHistoryPage['entries'][number]>(owner, resource, SERIES_METADATA_HISTORY, generation, cursor, 'series-gone');
+  const page = await listHistoryEntries<SeriesMetadataHistoryPage['entries'][number]>(owner, resource, DOCUMENT_METADATA_HISTORY, generation, cursor, 'series-gone');
   return { owner, seriesId, generation, ...page };
+}
+
+export async function listCouncilMetadataHistory(owner: string, councilId: string, generation: string, cursor?: string): Promise<CouncilMetadataHistoryPage> {
+  const resource = { collection: 'councils', id: councilId };
+  const page = await listHistoryEntries<CouncilMetadataHistoryPage['entries'][number]>(owner, resource, DOCUMENT_METADATA_HISTORY, generation, cursor, 'council-gone');
+  return { owner, councilId, generation, ...page };
 }
 
 export async function listGroupTitleHistory(owner: string, groupId: string, generation: string, cursor?: string): Promise<GroupTitleHistoryPage> {

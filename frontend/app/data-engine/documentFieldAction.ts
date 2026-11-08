@@ -2,6 +2,7 @@ import { isGroupStatus } from '@/utils/groupDocument';
 
 import { boundedActionTime } from './actionClock';
 import { isSermonChurch } from './churchFieldValue';
+import { COUNCIL_TIMED_FIELDS, type CouncilFieldActions, type CouncilFieldTarget, type CouncilTimedField } from './councilFieldAction';
 import { equalValues, readField } from './fieldValues';
 import { SERIES_FIELD_TARGETS } from './seriesFieldAction';
 import { captureSermonChurchFill } from './sermonChurchFill';
@@ -36,7 +37,7 @@ type TextDocumentFieldTarget = {
   causal?: true;
 };
 
-export type DocumentFieldTarget = TextDocumentFieldTarget | typeof SERMON_CHURCH | SeriesFieldTarget;
+export type DocumentFieldTarget = TextDocumentFieldTarget | typeof SERMON_CHURCH | SeriesFieldTarget | CouncilFieldTarget;
 export type SermonChurchObservation = DocumentFieldObservation<FieldValue>;
 
 export type GroupStatusHistoryPage = {
@@ -60,13 +61,14 @@ export function documentFieldTargets(collection: string): readonly DocumentField
   if (collection === 'serviceOrders') return [SERVICE_ORDER_TITLE];
   if (collection === 'groups') return GROUP_TIMED_FIELDS;
   if (collection === 'series') return SERIES_FIELD_TARGETS;
+  if (collection === 'councils') return COUNCIL_TIMED_FIELDS;
   if (collection === 'sermons') return [SERMON_TITLE, SERMON_VERSE, SERMON_CHURCH];
   return [];
 }
 
 export function acceptsDocumentField(value: FieldValue, target: DocumentFieldTarget): boolean {
   if (target.field === 'church') return isSermonChurch(value);
-  if (!value.exists) return target.action === 'seriesFieldActions' && target.optional === true;
+  if (!value.exists) return 'optional' in target && target.optional === true;
   return target.accepts(value.value);
 }
 
@@ -137,7 +139,7 @@ export function captureServiceOrderTitle(baseline: ResourceSnapshot, value: Docu
 }
 
 type SermonTextTarget = typeof SERMON_TITLE | typeof SERMON_VERSE;
-type CapturedMetadataTarget = SermonTextTarget | typeof SERMON_CHURCH | SeriesFieldTarget;
+type CapturedMetadataTarget = SermonTextTarget | typeof SERMON_CHURCH | SeriesFieldTarget | CouncilFieldTarget;
 
 function knownMetadataFieldPredecessor(baseline: ResourceSnapshot, predecessor: CommitRequest | undefined,
   target: CapturedMetadataTarget, value: string | FieldValue, records: readonly CommitRequest[]): string | undefined {
@@ -147,7 +149,7 @@ function knownMetadataFieldPredecessor(baseline: ResourceSnapshot, predecessor: 
   for (let request: CommitRequest | undefined = predecessor; request && !visited.has(request.id);
     request = requests.get(request.predecessor ?? '')) {
     if (request.owner !== predecessor.owner || !equalValues(request.baseline.resource, baseline.resource)
-      || request.baseline.metadata?.generation !== baseline.metadata?.generation || !equalValues(target.field === 'church' || target.action === 'seriesFieldActions' ? readField(request.value ?? {}, [target.field]) : request.value?.[target.field], value)
+      || request.baseline.metadata?.generation !== baseline.metadata?.generation || !equalValues(target.field === 'church' || target.field === 'date' || target.action === 'seriesFieldActions' ? readField(request.value ?? {}, [target.field]) : request.value?.[target.field], value)
       || ['cancelled', 'refused', 'conflict'].includes(request.state)) break;
     const action = capturedDocumentField(request, target);
     if (action) return equalValues(action.after, value) ? request.id : undefined;
@@ -200,66 +202,97 @@ export function captureDocumentMetadataFields(baseline: ResourceSnapshot, predec
     ...(church && { sermonChurchAction: church }), ...(fill && { sermonChurchFill: fill }) };
 }
 
-export type GroupFieldStamp = { field: GroupTimedField; time: ActionTime };
-export type GroupFieldDraft = { generation: string; action: DocumentFieldAction };
-export type GroupFieldActions = { groupTitleAction?: DocumentFieldAction; groupStatusAction?: DocumentFieldAction };
+export type AutosaveFieldStamp = { field: GroupTimedField | CouncilTimedField; time: ActionTime | null };
+type AutosaveFieldValue = string | FieldValue;
+type AutosaveFieldAction = DocumentFieldObservation<AutosaveFieldValue>;
+export type AutosaveFieldDraft = { generation: string; action: AutosaveFieldAction };
+type GroupFieldActions = { groupTitleAction?: DocumentFieldAction; groupStatusAction?: DocumentFieldAction };
+export type AutosaveFieldActions = GroupFieldActions & CouncilFieldActions;
 type GroupFieldTarget = TextDocumentFieldTarget & { action: keyof GroupFieldActions; draft: 'groupTitleDraft' | 'groupStatusDraft' };
+type AutosaveFieldTarget = GroupFieldTarget | CouncilFieldTarget;
+export type AutosaveFieldDrafts = Partial<Record<AutosaveFieldTarget['draft'], AutosaveFieldDraft>>;
+
+export function autosaveFieldTargets(collection: string): readonly AutosaveFieldTarget[] {
+  if (collection === 'groups') return GROUP_TIMED_FIELDS;
+  if (collection === 'councils') return COUNCIL_TIMED_FIELDS;
+  return [];
+}
+
+function autosaveFieldValue(document: DocumentData | null | undefined, target: AutosaveFieldTarget): AutosaveFieldValue | undefined {
+  if (target.field === 'date') return readField(document ?? {}, [target.field]);
+  const value = document?.[target.field];
+  return typeof value === 'string' ? value : undefined;
+}
+
+function acceptsAutosaveField(value: AutosaveFieldValue | undefined, target: AutosaveFieldTarget): value is AutosaveFieldValue {
+  return value !== undefined && acceptsDocumentField(observedValue(value), target);
+}
 
 /** An autosaved field retains the displayed ancestor across keystrokes and unrelated edits. */
-export function stageGroupField(checkpoint: SessionCheckpoint, value: DocumentData | null, shown: ShownCopy | undefined,
-  target: GroupFieldTarget, stamp: GroupFieldStamp | undefined): GroupFieldDraft | undefined {
-  const oldValue = checkpoint.draft?.[target.field], nextValue = value?.[target.field];
-  if (oldValue === nextValue) return checkpoint[target.draft];
+export function stageAutosaveField(checkpoint: SessionCheckpoint, value: DocumentData | null, shown: ShownCopy | undefined,
+  target: AutosaveFieldTarget, stamp: AutosaveFieldStamp | undefined): AutosaveFieldDraft | undefined {
+  const oldValue = autosaveFieldValue(checkpoint.draft, target), nextValue = autosaveFieldValue(value, target);
+  if (equalValues(oldValue, nextValue)) return checkpoint[target.draft];
   const metadata = checkpoint.confirmed.metadata;
-  const time = stamp?.field === target.field ? boundedActionTime(stamp.time) : undefined;
-  if (!metadata || metadata.deleted || !time || !target.accepts(nextValue)) return undefined;
+  const time = stamp?.field === target.field
+    ? ('causal' in target && target.causal && stamp.time === null ? null : boundedActionTime(stamp.time)) : undefined;
+  if (!metadata || metadata.deleted || time === undefined || !acceptsAutosaveField(nextValue, target)) return undefined;
   const visible = shown?.editGeneration === checkpoint.editGeneration
     && shown.confirmed.metadata?.generation === metadata.generation ? shown : checkpoint;
   const staged = checkpoint[target.draft];
-  const prior = staged?.generation === metadata.generation && staged.action.after === oldValue ? staged.action : undefined;
+  const prior = staged?.generation === metadata.generation && equalValues(staged.action.after, oldValue) ? staged.action : undefined;
   const tip = Object.values(checkpoint.pending).reduce<SessionCheckpoint['pending'][string] | undefined>((latest, item) =>
     !latest || item.generation > latest.generation ? item : latest, undefined);
-  const pending = tip?.value?.[target.field] === oldValue ? tip : undefined;
-  const before = prior && !pending ? prior.before : pending ? oldValue : visible.draft?.[target.field] ?? oldValue;
-  if (!target.accepts(before) || before === nextValue) return undefined;
+  const pending = tip && equalValues(autosaveFieldValue(tip.value, target), oldValue) ? tip : undefined;
+  const before = prior && !pending ? prior.before : pending ? oldValue : autosaveFieldValue(visible.draft ?? checkpoint.draft, target) ?? oldValue;
+  if (!acceptsAutosaveField(before, target) || equalValues(before, nextValue)) return undefined;
   const observedRevision = prior?.observedRevision ?? pending?.[target.action]?.observedRevision ?? visible.confirmed.metadata!.revision;
   return { generation: metadata.generation, action: { before, after: nextValue, observedRevision, time } };
 }
 
-function groupFieldDraftAction(checkpoint: SessionCheckpoint, target: GroupFieldTarget): DocumentFieldAction | undefined {
+function autosaveDraftAction(checkpoint: SessionCheckpoint, target: AutosaveFieldTarget): AutosaveFieldAction | undefined {
   const staged = checkpoint[target.draft];
   const metadata = checkpoint.confirmed.metadata;
-  if (checkpoint.confirmed.resource.collection !== 'groups' || !staged || !metadata || metadata.deleted
-    || staged.generation !== metadata.generation || staged.action.observedRevision > metadata.revision
-    || staged.action.after !== checkpoint.draft?.[target.field]) return undefined;
+  if (!staged || !metadata || metadata.deleted || staged.generation !== metadata.generation
+    || staged.action.observedRevision > metadata.revision
+    || !equalValues(staged.action.after, autosaveFieldValue(checkpoint.draft, target))) return undefined;
   return staged.action;
 }
 
-function uncapturedGroupField(checkpoint: SessionCheckpoint, target: GroupFieldTarget): DocumentFieldAction | undefined {
-  const action = groupFieldDraftAction(checkpoint, target);
-  return action && !Object.values(checkpoint.pending).some(request => equalValues(request[target.action] ?? null, action)) ? action : undefined;
+export function sameAutosaveCapture(left: AutosaveFieldAction | undefined, right: AutosaveFieldAction | undefined): boolean {
+  return Boolean(left && right && equalValues(left.before, right.before) && equalValues(left.after, right.after)
+    && equalValues(left.time, right.time) && left.observedRevision === right.observedRevision);
 }
 
-export function uncapturedGroupFields(checkpoint: SessionCheckpoint): GroupFieldActions {
-  return Object.fromEntries(GROUP_TIMED_FIELDS.flatMap(target => {
-    const action = uncapturedGroupField(checkpoint, target);
-    return action ? [[target.action, action]] : [];
+function uncapturedAutosaveField(checkpoint: SessionCheckpoint, target: AutosaveFieldTarget): AutosaveFieldAction | undefined {
+  const action = autosaveDraftAction(checkpoint, target);
+  return action && !Object.values(checkpoint.pending).some(request => sameAutosaveCapture(request[target.action], action)) ? action : undefined;
+}
+
+export function uncapturedAutosaveFields(checkpoint: SessionCheckpoint, baseline: ResourceSnapshot,
+  predecessor: CommitRequest | undefined, records: readonly CommitRequest[]): AutosaveFieldActions {
+  return Object.fromEntries(autosaveFieldTargets(checkpoint.confirmed.resource.collection).flatMap(target => {
+    const action = uncapturedAutosaveField(checkpoint, target);
+    if (!action) return [];
+    const predecessorOperationId = target.action === 'councilTitleAction' || target.action === 'councilDateAction'
+      ? knownMetadataFieldPredecessor(baseline, predecessor, target, action.before, records) : undefined;
+    return [[target.action, { ...action, ...(predecessorOperationId && { predecessorOperationId }) }]];
   }));
 }
 
-export function hasUncapturedGroupField(checkpoint: SessionCheckpoint): boolean {
-  return GROUP_TIMED_FIELDS.some(target => Boolean(uncapturedGroupField(checkpoint, target)));
+export function hasUncapturedAutosaveField(checkpoint: SessionCheckpoint): boolean {
+  return autosaveFieldTargets(checkpoint.confirmed.resource.collection).some(target => Boolean(uncapturedAutosaveField(checkpoint, target)));
 }
 
-export function groupFieldAcknowledgementAncestor(ancestor: DocumentData | null, accepted: ResourceSnapshot,
+export function autosaveAcknowledgementAncestor(ancestor: DocumentData | null, accepted: ResourceSnapshot,
   checkpoint: SessionCheckpoint): DocumentData | null {
   if (!ancestor) return ancestor;
-  return GROUP_TIMED_FIELDS.reduce((before, target) => {
-    const action = groupFieldDraftAction(checkpoint, target);
-    const value = accepted.value?.[target.field];
-    if (!action || action.before !== before[target.field] || accepted.metadata?.generation !== checkpoint[target.draft]?.generation
-      || !target.accepts(value)) return before;
-    return { ...before, [target.field]: value };
+  return autosaveFieldTargets(checkpoint.confirmed.resource.collection).reduce((before, target) => {
+    const action = autosaveDraftAction(checkpoint, target);
+    const value = autosaveFieldValue(accepted.value, target);
+    if (!action || !equalValues(action.before, autosaveFieldValue(before, target))
+      || accepted.metadata?.generation !== checkpoint[target.draft]?.generation || !acceptsAutosaveField(value, target)) return before;
+    return withFieldValue(before, target.field, observedValue(value));
   }, ancestor);
 }
 
@@ -305,7 +338,7 @@ export function withDocumentFieldAction(command: DataCommand, target: DocumentFi
     return { ...command, seriesFieldActions: { ...command.seriesFieldActions,
       [target.field]: { ...stamp, ...(action.openingTheme !== undefined && { openingTheme: action.openingTheme }) } } };
   }
-  if (target.field === 'verse' || target.field === 'church') return { ...command, [target.action]: stamp };
+  if (target.field === 'verse' || target.field === 'church' || target.field === 'date') return { ...command, [target.action]: stamp };
   if (typeof action.before !== 'string' || typeof action.after !== 'string') return command;
   return { ...command, [target.action]: action };
 }

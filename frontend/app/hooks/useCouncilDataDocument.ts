@@ -7,6 +7,7 @@ import { useDataDocument, useDocumentActions, useRecoveryDiscovery } from '@/dat
 import { hydrateCouncil } from '@/services/councils.client';
 import { holdCouncil, reopenCouncil } from '@/utils/council';
 
+import type { CouncilTimedField } from '@/data-engine/councilFieldAction';
 import type { DocumentData } from '@/data-engine/types';
 import type { Council, CouncilTopic } from '@/models/models';
 
@@ -54,14 +55,12 @@ export function useCouncilDataDocument(councilId: string) {
   }, [councilId]);
 
   /** Typing: persisted locally at once, delivered by the shared autosave. */
-  const write = useCallback(async (mutate: (current: Council) => Council) => {
-    await document.update(apply(mutate));
-  }, [document, apply]);
-
-  const updateCouncil = useCallback(async (_id: string, updater: (current: Council) => Council) => {
+  const updateCouncil = useCallback(async (_id: string, updater: (current: Council) => Council, field?: CouncilTimedField) => {
     if (!council) throw missing();
-    await write(updater);
-  }, [council, write]);
+    const change = apply(updater);
+    if (field) await document.update(change, { action: field === 'title' ? 'council-title' : 'council-date' });
+    else await document.update(change);
+  }, [council, document, apply]);
 
   /** Capture before leaving; Undo belongs to the entity, never to the departed screen editor. */
   const finishCouncil = useCallback(async (): Promise<CouncilFinishUndo> => {

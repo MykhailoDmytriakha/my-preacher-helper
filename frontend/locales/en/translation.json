@@ -4322,6 +4322,18 @@
     "dateGone": "date has passed",
     "moreTopics": "{{count}} more",
     "nextCouncilTitle": "Next council",
+    "history": {
+      "heading": "Council history",
+      "loading": "Loading council history…",
+      "unavailable": "Could not load council history.",
+      "restoreFailed": "Could not restore this value.",
+      "empty": "No earlier values.",
+      "kept": "Kept {{value}}",
+      "current": "Current value",
+      "restore": "Use this value",
+      "more": "More values",
+      "notSet": "No date set"
+    },
     "detail": {
       "titleLabel": "Council name",
       "dateLabel": "Council date",
