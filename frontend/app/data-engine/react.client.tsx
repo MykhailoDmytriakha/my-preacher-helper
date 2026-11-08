@@ -16,6 +16,7 @@ import { createBrowserDataEngine, type BrowserDataEngine } from './browser.clien
 import { isCollectionOnEngine, isDataEngineEnabled } from './clientPolicy';
 import { isLiveCollectionDocument as liveCollectionDocument, type CollectionPresentationRow } from './collectionPresentation';
 import { isInactiveEditorError as inactiveEditor } from './controller';
+import { councilTopicConflictCode, councilTopicRefusalCode } from './councilTopicTransition';
 import { isDirectLegacyDocumentIntent, savedDocumentAnswer, type DocumentAnswer } from './documentDelivery';
 import { ACTION_SLOT, editorSlot, isManualChoiceRecoveryIdentity, readManualScopeIdentity, recoveryEditorIdentity } from './editorIdentity';
 import { needsConnection } from './engine';
@@ -28,6 +29,7 @@ import { collectionRecordPresence, documentRecordPresence, UNKNOWN_RECORD_PRESEN
 import { isOnlySubmittedCopy } from './recovery.client';
 import { captureRecoveryChoice as captureChoice, recoveryChoiceFingerprint, type RecoveryChoiceScope } from './recoveryChoice';
 import { validateResourceDocument } from './resourceSchemas';
+import { readCouncilTopicConflict as councilTopicConflict, readSermonConflict as sermonConflict, readServiceStepConflict as serviceStepConflict } from './rowConflictDetails';
 import { deletedUnder, type SessionCheckpoint } from './session';
 import { describeManualSync, describeSync, type SyncStatus } from './status';
 import { shownDeliveryState } from './unanswered';
@@ -46,13 +48,21 @@ import type { MembershipAction } from './membershipIntent';
 import type { MembershipScope, MembershipScopeRecord } from './membershipScope';
 import type { PreachStatusIntent } from './preachStatusAction';
 import type { EditorCommitAction } from './types';
-import type { DocumentData, EngineReadOptions, FailureAddress, FieldValue, JournalEntry, ResourceRef, ResourceSnapshot } from './types';
+import type { CommandResult, ConflictDetail, DocumentData, EngineReadOptions, FailureAddress, FieldValue, JournalEntry, ResourceRef, ResourceSnapshot } from './types';
 import type { AppLocale } from '@/utils/appLocale';
 import type { BookText } from '@/utils/bibleText';
 
 export { isCollectionOnEngine, isDataEngineEnabled } from './clientPolicy';
 /** Stable capture ownership for the public initial-analysis creation flow. */
 export function analysisCreationScope(id: string): string { return initialAnalysisScope(id); }
+
+/** Exact conflict values for presentation, without exposing row matching or mutation. */
+export function readCouncilTopicConflict(checkpoint: SessionCheckpoint) { return councilTopicConflict(checkpoint); }
+export function readServiceStepConflict(checkpoint: SessionCheckpoint) { return serviceStepConflict(checkpoint); }
+export function readSermonConflict(checkpoint: SessionCheckpoint) { return sermonConflict(checkpoint); }
+export function councilTopicReviewCode(result: CommandResult | null | undefined, conflicts: readonly ConflictDetail[]): string | undefined {
+  return councilTopicRefusalCode(result) ?? councilTopicConflictCode(conflicts);
+}
 
 /** Ordinary presentation only; raw collection state remains addressable for delivery and recovery. */
 export function isLiveCollectionDocument<T extends CollectionPresentationRow>(row: T): row is T & { value: DocumentData } {

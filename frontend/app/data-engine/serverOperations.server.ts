@@ -5,9 +5,11 @@ import { normalizeEntitlementWithModelPreferences } from '@/services/userEntitle
 import { formatAccountReadVersion } from '@/utils/accountReadVersion';
 
 import { acknowledgeAudioExport as acknowledge, beginAudioExportBatch as begin } from './audioExport.server';
+import { rowHistoryResponse } from './rowHistoryHttp.server';
 import { createAudioExportStore, readAccountEntitlementSnapshot, recordSharedNoteView as recordView } from './server';
 
 import type { BeginAudioExportInput } from './audioExport.server';
+import type { RowHistory, RowHistoryContext } from './rowHistoryHttp.server';
 
 export { AudioExportError, audioExportFingerprint } from './audioExport.server';
 
@@ -35,4 +37,10 @@ export async function readAccountEntitlement(uid: string) {
     now,
     readVersion: formatAccountReadVersion(readTime),
   };
+}
+
+
+/** Read one specific owner-scoped row history through its existing HTTP contract. */
+export function readDocumentRowHistory(request: Request, context: RowHistoryContext, history: RowHistory): Promise<Response> {
+  return rowHistoryResponse(request, context, history);
 }

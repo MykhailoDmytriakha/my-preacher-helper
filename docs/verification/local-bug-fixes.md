@@ -7606,3 +7606,11 @@ The baseline sent a note slice twice after a fixed-length HTTP 200 body was cut,
 Ten native Chrome scenarios used isolated emulators and a local provider. The interrupted note preserved its manual title and verse, dictation kept its source audio for an explicit retry, and interrupted TTS kept the prepared text and reported the missing fragment. Normal paths and the pre-header retry passed. The evidence counts dispatched requests. Actual provider billing was outside the stand. Evidence is in artifacts/ai-provider-answer-verified.
 
 For authorized production acceptance, confirm the deployed revision. Use a disposable note for one short dictation and sermon creation, and generate one short prepared narration. Check the saved text and download. Compare the attempt trace for any naturally interrupted successful provider response. Keep deliberate interruptions on the isolated stand.
+
+## BUG-20261108-engine-history-crosses-public-boundary · Restore the Data Engine boundary
+
+The full baseline suite reported 16 forbidden direct imports across the five council and service history routes and the comparison UI. The routes now call one fixed server operation with the same URLs, owner checks, generation and cursor validation, and no-store responses. The comparison screens take exact choices from semantic React facade selectors and keep their own formatting. The gate's access rules and debt inventory remain intact.
+
+589 related tests in 20 suites passed, including the architecture gate and the five route contracts. TypeScript, scoped ESLint with zero errors, guarded build TOxi5B8aoYuw_CiALgnR0, and independent review passed. Eleven native Chrome scenarios on isolated emulators covered the five histories, restoration, unknown timing and the three sermon comparison outcomes. Evidence is in artifacts/engine-public-boundary-verified.
+
+For authorized production acceptance, confirm the deployed revision. Open the history of one disposable council section and service step, restore an earlier value, and reload. Confirm the comparison of an existing sermon conflict if a disposable one is available. Keep simulated timing and rejection in local tests.

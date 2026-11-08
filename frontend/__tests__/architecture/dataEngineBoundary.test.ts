@@ -148,7 +148,7 @@ describe('DataEngine SDK boundary', () => {
       if (ts.isExportDeclaration(node) && node.exportClause && ts.isNamedExports(node.exportClause)) names.push(...node.exportClause.elements.map(item => item.name.text));
       if (ts.isFunctionDeclaration(node) && node.modifiers?.some(modifier => modifier.kind === ts.SyntaxKind.ExportKeyword)) names.push(node.name!.text);
     }
-    expect(names.sort()).toEqual(['AudioExportError', 'acknowledgeAudioExport', 'audioExportFingerprint', 'beginAudioExportBatch', 'readAccountEntitlement', 'recordSharedNoteView']);
+    expect(names.sort()).toEqual(['AudioExportError', 'acknowledgeAudioExport', 'audioExportFingerprint', 'beginAudioExportBatch', 'readAccountEntitlement', 'readDocumentRowHistory', 'recordSharedNoteView']);
     expect(source.statements.some(node => ts.isImportDeclaration(node) && !node.importClause && node.moduleSpecifier.getText(source) === "'server-only'")).toBe(true);
   });
 

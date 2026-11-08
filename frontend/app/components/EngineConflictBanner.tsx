@@ -7,10 +7,7 @@ import { toast } from 'sonner';
 import { OutdatedTabNotice } from '@/components/common/OutdatedTabNotice';
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
 import { FieldComparison } from '@/data-engine/DataSyncStatus';
-import { equalValues, object } from '@/data-engine/fieldValues';
-import { captureRecoveryChoice, councilRefusalHeldOpen, isCollectionOnEngine, isDataEngineEnabled, isOneShotRecord, isRecoveryHeldOpen, useDataEngine, useDocumentActions, useOpenDocumentAnswerScopes, waitsForDecision, type OpenDocumentAnswer, type RecoveryChoiceScope } from '@/data-engine/react.client';
-import { existingRowField } from '@/data-engine/rowFieldAction';
-import { serviceOrderStepField, SERVICE_ORDER_FLAG_TARGET, SERVICE_ORDER_STEP_TITLE_TARGET } from '@/data-engine/serviceOrderStepAction';
+import { captureRecoveryChoice, councilRefusalHeldOpen, isCollectionOnEngine, isDataEngineEnabled, isOneShotRecord, isRecoveryHeldOpen, readServiceStepConflict, useDataEngine, useDocumentActions, useOpenDocumentAnswerScopes, waitsForDecision, type OpenDocumentAnswer, type RecoveryChoiceScope } from '@/data-engine/react.client';
 import { useClipboard } from '@/hooks/useClipboard';
 import { useConfirm, useDiscardQuestion } from '@/hooks/useConfirm';
 import { useShellPathname } from '@/hooks/useShellPathname';
@@ -18,6 +15,7 @@ import { refusalMessage } from '@/utils/actionFailureMessage';
 import { resolveAppLocale } from '@/utils/appLocale';
 import { bibleMarksRecoveryValue } from '@/utils/bibleMarksRecovery';
 import { isBibleId } from '@/utils/bibles';
+import { DOCUMENT_BOOKKEEPING_FIELDS } from '@/utils/documentBookkeeping';
 import { documentScreenHref, isOnDocumentScreen } from '@/utils/documentScreenHref';
 import { outlineRecoveryValue } from '@/utils/outlineRecovery';
 import { formatScriptureReference, type ScriptureRefShape } from '@/utils/scriptureReference';
@@ -29,9 +27,6 @@ import { useTranslation } from '@locales/useTranslation';
 import type { EditorRecord, RecoveryCheckpoint } from '@/data-engine/controller';
 import type { TextComparison } from '@/data-engine/DataSyncStatus';
 import type { DocumentData, JournalEntry, ResourceRef } from '@/data-engine/types';
-
-/** Bookkeeping the person never typed: never shown as "your change". */
-const BOOKKEEPING = new Set(['updatedAt', 'createdAt', 'rev', 'userId', 'isDraft', 'planMode', 'dictationSourceIds', 'recordingSourceIds', '_dataEngine', '_dataEngineOwner']);
 
 /**
  * conflict — another device changed the same field, one draft waits · refused — the server will
@@ -83,29 +78,14 @@ type DisplayValue = (scope: string, field: string, value: unknown, document?: Do
 const isItem = (value: unknown): value is Item => Boolean(value) && typeof value === 'object' && typeof (value as { id?: unknown }).id === 'string';
 function serviceStepComparison(entry: Waiting, t: (key: string) => string): TextComparison | undefined {
   if (entry.resource.collection !== 'serviceOrders' || entry.records.length !== 1) return undefined;
-  const { confirmed, draft, remoteCandidate, conflicts, pending } = entry.records[0].checkpoint;
-  const target = serviceOrderStepField(conflicts[0]?.path);
-  if (!target || !draft || !confirmed.value || !remoteCandidate?.value || conflicts.length !== 1 || Object.keys(pending).length !== 1) return undefined;
-  const { id, field } = target;
-  const compared = (value: DocumentData) => ({
-    ...Object.fromEntries(Object.entries(value).filter(([key]) => !BOOKKEEPING.has(key))),
-    steps: Array.isArray(value.steps) ? value.steps.map(step => object(step)
-      ? { ...step, scriptureRefs: step.scriptureRefs ?? [], flagged: step.id === id && field === 'flagged' ? false : Boolean(step.flagged),
-        ...(step.id === id && field === 'title' && { title: '' }) } : step) : value.steps,
-  });
-  if (!equalValues(compared(confirmed.value), compared(draft))) return undefined;
+  const comparison = readServiceStepConflict(entry.records[0].checkpoint);
+  if (!comparison) return undefined;
+  const { field, mine, stored } = comparison;
   if (field === 'title') {
-    const mine = existingRowField(draft.steps, id, SERVICE_ORDER_STEP_TITLE_TARGET);
-    const stored = existingRowField(remoteCandidate.value.steps, id, SERVICE_ORDER_STEP_TITLE_TARGET);
-    if (mine === undefined || stored === undefined || mine === stored) return undefined;
     const untitled = t('serviceOrders.flagHistory.untitled');
     return { title: t('serviceOrders.stepTitle'), valueKind: 'field', mine: mine || untitled, stored: stored || untitled };
   }
-  const mine = existingRowField(draft.steps, id, SERVICE_ORDER_FLAG_TARGET);
-  const stored = existingRowField(remoteCandidate.value.steps, id, SERVICE_ORDER_FLAG_TARGET);
-  if (mine === undefined || stored === undefined || mine === stored) return undefined;
-  const step = Array.isArray(draft.steps) ? draft.steps.find(item => isItem(item) && item.id === id) : undefined;
-  const title = isItem(step) && typeof step.title === 'string' && step.title.trim() ? step.title : t('serviceOrders.flag');
+  const title = comparison.title ?? t('serviceOrders.flag');
   const words = (flag: boolean) => t(flag ? 'serviceOrders.flagHistory.marked' : 'serviceOrders.flagHistory.unmarked');
   return { title, valueKind: 'field', mine: words(mine), stored: words(stored) };
 }
@@ -119,7 +99,7 @@ function referenceItemText(item: Item, language: string): string {
     && (item.bible === undefined || isBibleId(item.bible))
     && (item.text === undefined || typeof item.text === 'string')
     && REFERENCE_COORDINATES.every(field => item[field] === undefined || (Number.isSafeInteger(item[field]) && Number(item[field]) > 0))
-    && Object.keys(item).every(field => REFERENCE_FIELDS.has(field) || BOOKKEEPING.has(field) || /Ids?$/.test(field));
+    && Object.keys(item).every(field => REFERENCE_FIELDS.has(field) || DOCUMENT_BOOKKEEPING_FIELDS.has(field) || /Ids?$/.test(field));
   if (!supported) return show(item);
   return [formatScriptureReference(item as Item & ScriptureRefShape, { locale: resolveAppLocale(language), style: 'long' }),
     typeof item.text === 'string' ? item.text : ''].filter(text => text.trim()).join('\n');
@@ -133,7 +113,7 @@ const NAMING_FIELDS = ['text', 'title', 'name', 'instanceTitle'];
  */
 function itemWords(item: Item, scope: string, display: DisplayValue, name: (field: string) => string): [string, string][] {
   const words = (field: string, value: unknown): string => {
-    if (field === 'id' || /Ids?$/.test(field) || BOOKKEEPING.has(field)) return '';
+    if (field === 'id' || /Ids?$/.test(field) || DOCUMENT_BOOKKEEPING_FIELDS.has(field)) return '';
     const shown = display(scope, field, value);
     if (typeof value === 'string') return /^\d{4}-\d{2}-\d{2}T/.test(value) ? '' : String(shown).trim();
     if (typeof shown === 'string') return `${name(field)}: ${shown}`;
@@ -173,7 +153,7 @@ const showList = (value: unknown[], base: unknown, scope: string, field: string,
 /** Every field a version changed against its base, as "field: value" — steps, tags and structure included. */
 function changedText(value: DocumentData | null | undefined, base: DocumentData | null | undefined, name: (field: string) => string, scope: string, display: DisplayValue): string {
   if (!value) return '';
-  return Object.keys(value).filter(field => !BOOKKEEPING.has(field) && JSON.stringify(value[field]) !== JSON.stringify(base?.[field]))
+  return Object.keys(value).filter(field => !DOCUMENT_BOOKKEEPING_FIELDS.has(field) && JSON.stringify(value[field]) !== JSON.stringify(base?.[field]))
     .map(field => {
       const shown = Array.isArray(value[field]) ? showList(value[field] as unknown[], base?.[field], scope, field, display, name) : show(display(scope, field, value[field], value));
       return shown ? `${name(field)}: ${shown}` : '';

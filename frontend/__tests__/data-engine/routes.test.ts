@@ -3,6 +3,11 @@ import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.
 import { GET as changes } from '@/api/data-engine/changes/[collection]/route';
 import { GET as list } from '@/api/data-engine/collections/[collection]/route';
 import { POST } from '@/api/data-engine/commands/route';
+import { GET as assemblyHistory } from '@/api/data-engine/documents/[collection]/[id]/assembly-history/route';
+import { GET as topicKindHistory } from '@/api/data-engine/documents/[collection]/[id]/topic-kind-history/route';
+import { GET as topicTitleHistory } from '@/api/data-engine/documents/[collection]/[id]/topic-title-history/route';
+import { GET as stepFlagHistory } from '@/api/data-engine/documents/[collection]/[id]/step-flag-history/route';
+import { GET as stepTitleHistory } from '@/api/data-engine/documents/[collection]/[id]/step-title-history/route';
 import { GET as markHistory } from '@/api/data-engine/documents/[collection]/[id]/mark-history/route';
 import { GET as meetingFieldHistory } from '@/api/data-engine/documents/[collection]/[id]/meeting-field-history/route';
 import { GET as meetingHistory } from '@/api/data-engine/documents/[collection]/[id]/meeting-date-history/route';
@@ -16,6 +21,7 @@ import { GET as churchHistory } from '@/api/data-engine/documents/[collection]/[
 import { GET as verseHistory } from '@/api/data-engine/documents/[collection]/[id]/verse-history/route';
 import { GET as titleHistory } from '@/api/data-engine/documents/[collection]/[id]/title-history/route';
 import { ENGINE_OWNED_COLLECTIONS } from '@/data-engine/engineOwnedCollections';
+import { listCouncilAssemblyHistory, listCouncilTopicKindHistory, listCouncilTopicTitleHistory, listServiceOrderFlagHistory, listServiceOrderStepTitleHistory } from '@/data-engine/server';
 import { assertDataEngineEnabled, DataEngineServerError, listBibleMarkHistory, listCouncilMetadataHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listSermonChurchHistory, listSermonTitleHistory, listSermonVerseHistory, listSeriesMetadataHistory, listServiceOrderTitleHistory, processCommand, readCollectionChanges, readCommandBody, readDocument } from '@/data-engine/server';
 import { __resetStoreAvailabilityForTests } from '@/services/storeAvailability.server';
 
@@ -28,6 +34,11 @@ jest.mock('@/data-engine/server', () => ({
   readDocument: jest.fn(),
   assertDataEngineEnabled: jest.fn(jest.requireActual('@/data-engine/server').assertDataEngineEnabled),
   listBibleMarkHistory: jest.fn(),
+  listCouncilAssemblyHistory: jest.fn(),
+  listCouncilTopicKindHistory: jest.fn(),
+  listCouncilTopicTitleHistory: jest.fn(),
+  listServiceOrderFlagHistory: jest.fn(),
+  listServiceOrderStepTitleHistory: jest.fn(),
   listDocuments: jest.fn(),
   listPreachDateHistory: jest.fn(),
   listPreachDateFieldHistory: jest.fn(),
@@ -66,6 +77,44 @@ beforeEach(() => {
 afterAll(() => {
   if (originalEnabled === undefined) delete process.env.DATA_ENGINE_ENABLED;
   else process.env.DATA_ENGINE_ENABLED = originalEnabled;
+});
+
+describe('Row field history routes', () => {
+  it.each([
+    ['assembly-history', 'councils', assemblyHistory, listCouncilAssemblyHistory],
+    ['topic-kind-history', 'councils', topicKindHistory, listCouncilTopicKindHistory],
+    ['topic-title-history', 'councils', topicTitleHistory, listCouncilTopicTitleHistory],
+    ['step-flag-history', 'serviceOrders', stepFlagHistory, listServiceOrderFlagHistory],
+    ['step-title-history', 'serviceOrders', stepTitleHistory, listServiceOrderStepTitleHistory],
+  ] as const)('reads only the owner-scoped %s for its collection', async (path, collection, handler, reader) => {
+    const context = (name = collection) => ({ params: Promise.resolve({ collection: name, id: 'owned-1' }) });
+    const url = `http://localhost/api/data-engine/documents/${collection}/owned-1/${path}`;
+    const allowed = request(url + '?generation=exact&cursor=page-2');
+    const readHistory = reader as jest.Mock;
+    const document = collection === 'councils' ? { councilId: 'owned-1' } : { orderId: 'owned-1' };
+    const reply = { ...document, owner: 'verified-owner', generation: 'exact', entries: [], nextCursor: null };
+    readHistory.mockResolvedValue(reply);
+
+    const response = await handler(allowed, context());
+    expect(response.status).toBe(200);
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(await response.json()).toEqual(reply);
+    expect(readHistory).toHaveBeenCalledWith('verified-owner', 'owned-1', 'exact', 'page-2');
+
+    readHistory.mockClear();
+    const otherCollection = collection === 'councils' ? 'serviceOrders' : 'councils';
+    for (const invalid of [
+      await handler(allowed, context(otherCollection)),
+      await handler(request(url), context()),
+      await handler(request(url + '?generation=exact&generation=old'), context()),
+      await handler(request(url + '?generation=exact&cursor=one&cursor=two'), context()),
+      await handler(request(url + '?generation=exact&owner=spoofed'), context()),
+    ]) expect(invalid.status).toBe(400);
+
+    jest.mocked(getRequiredAuthenticatedUid).mockResolvedValueOnce(null);
+    expect((await handler(allowed, context())).status).toBe(401);
+    expect(readHistory).not.toHaveBeenCalled();
+  });
 });
 
 describe('DataEngine HTTP routes', () => {

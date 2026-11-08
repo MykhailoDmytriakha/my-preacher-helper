@@ -3,8 +3,7 @@
 import { useCallback, useMemo } from 'react';
 
 import { usePublishShellTitle } from '@/components/navigation/shellTitles';
-import { councilTopicConflictCode, councilTopicRefusalCode } from '@/data-engine/councilTopicTransition';
-import { useDataDocument, useDocumentActions, useRecoveryDiscovery } from '@/data-engine/react.client';
+import { councilTopicReviewCode, useDataDocument, useDocumentActions, useRecoveryDiscovery } from '@/data-engine/react.client';
 import { hydrateCouncil } from '@/services/councils.client';
 import { holdCouncil, reopenCouncil, setTopicKind } from '@/utils/council';
 import { hasRecordedCouncilTopicOutcome } from '@/utils/councilTopicOutcome';
@@ -175,7 +174,9 @@ export function useCouncilDataDocument(councilId: string) {
     recover,
   });
 
-  const topicReview = councilTopicRefusalCode(document.state?.result) ?? councilTopicConflictCode(document.state?.checkpoint.conflicts ?? []);
+  const result = document.state?.result;
+  const conflicts = document.state?.checkpoint.conflicts ?? [];
+  const topicReview = result || conflicts.length ? councilTopicReviewCode(result, conflicts) : undefined;
   return {
     council,
     loading: document.loading,
