@@ -20,7 +20,10 @@ jest.mock('@/hooks/useCouncilsRead', () => ({ useCouncilsRead: () => mockState }
 jest.mock('@/hooks/useCouncilDataDocument', () => ({ useCouncilDataDocument: () => ({
   ...mockState, ...mockCouncil, refresh: mockRefresh, recovery: { choices: [] },
 }) }));
-jest.mock('@/data-engine/react.client', () => ({ DataDocumentProvider: ({ children }: { children: React.ReactNode }) => children }));
+jest.mock('@/data-engine/react.client', () => ({
+  DataDocumentProvider: ({ children }: { children: React.ReactNode }) => children,
+  useDataEngine: () => ({ owner: council.userId }),
+}));
 jest.mock('@/data-engine/DataSyncStatus', () => ({ DataSyncStatus: () => null }));
 jest.mock('@/data-engine/DataCollectionStatus', () => ({ DataCollectionStatus: () => null }));
 jest.mock('@/(pages)/(private)/care/council/EngineCouncilMigration', () => ({ EngineCouncilMigration: () => null }));

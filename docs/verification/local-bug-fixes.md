@@ -7614,3 +7614,11 @@ The full baseline suite reported 16 forbidden direct imports across the five cou
 589 related tests in 20 suites passed, including the architecture gate and the five route contracts. TypeScript, scoped ESLint with zero errors, guarded build TOxi5B8aoYuw_CiALgnR0, and independent review passed. Eleven native Chrome scenarios on isolated emulators covered the five histories, restoration, unknown timing and the three sermon comparison outcomes. Evidence is in artifacts/engine-public-boundary-verified.
 
 For authorized production acceptance, confirm the deployed revision. Open the history of one disposable council section and service step, restore an earlier value, and reload. Confirm the comparison of an existing sermon conflict if a disposable one is available. Keep simulated timing and rejection in local tests.
+
+## BUG-20261108-council-retry-tests-missing-engine · Restore the council test fixture
+
+The council detail suite supplies the owner through its existing Data Engine mock. Four tests that failed at page mount now verify both detail retry outcomes and the read-only transitions out of deletion confirmation and Arrange. 58 related tests, TypeScript and scoped ESLint passed. This change affects the test fixture.
+
+Chrome on isolated emulators exercised a controlled read refusal and recovery on the list at 1280 px and on a council at 390 px. The stored council stayed unchanged and the retries produced no escaping rejection. The visual pass found a separate duplicate detail notice and a list hydration warning during opening. Evidence is in artifacts/council-retry-tests-nov08-verified.
+
+After authorized deployment, confirm the revision and open the list and one disposable council. Keep the injected refusal and read-only fixture in local tests.
