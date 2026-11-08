@@ -1,7 +1,7 @@
 import { boundedActionTime } from './actionClock';
 import { equalValues, object } from './fieldValues';
 import { matchesRowDetailBirth } from './rowDetailAction';
-import { boundedRowId, existingRowField, matchesRowAction } from './rowFieldAction';
+import { boundedRowId, existingRowField, matchesRowAction, proofRevision } from './rowFieldAction';
 
 import type { ActionTime } from './actionClock';
 import type { CommitRequest } from './commits';
@@ -85,4 +85,35 @@ export function pendingRowDetailRebases<Field extends string, Value extends RowV
       && equalValues(policy.scopes?.(current, field)?.get(action.rowId), policy.scopes?.(intended, field)?.get(action.rowId))
       ? [{ action, target }] : [];
   });
+}
+
+export type SeenRowDetail<Value extends RowValue> = { generation: string; observedRevision: number; rowId: string; before: Value; after: Value; time: ActionTime | null };
+
+/** Preserve the exact displayed row and action even if its current value already matches the click. */
+export function captureSeenRowDetail<Field extends string, Value extends RowValue>(baseline: ResourceSnapshot,
+  predecessor: CommitRequest | undefined, draft: DocumentData | null, capture: SeenRowDetail<Value> | undefined, records: readonly CommitRequest[],
+  field: Field, policy: RowDetailPolicy<Field, Value>, actionFor: (request: CommitRequest) => RowDetailObservation<Value> | undefined):
+  RowDetailObservation<Value> | undefined {
+  if (!capture || baseline.resource.collection !== policy.collection || !baseline.metadata || baseline.metadata.deleted
+    || capture.generation !== baseline.metadata.generation || !proofRevision(capture.observedRevision)
+    || capture.observedRevision > baseline.metadata.revision || !boundedRowId(capture.rowId)) return undefined;
+  const { rowId, before, after, observedRevision } = capture;
+  const target = policy.target(field);
+  const time = capture.time === null ? null : boundedActionTime(capture.time);
+  if (time === undefined || !target.accepts(before) || !target.accepts(after) || equalValues(before, after)) return undefined;
+  const ancestor = predecessor ? predecessor.value : baseline.value;
+  const born = existingRowField(ancestor?.[target.field], rowId, policy.birth);
+  if (!born || existingRowField(ancestor?.[target.field], rowId, target) === undefined
+    || existingRowField(draft?.[target.field], rowId, policy.birth) !== born
+    || !equalValues(existingRowField(draft?.[target.field], rowId, target), after)) return undefined;
+  const byId = new Map(records.map(request => [request.id, request]));
+  const predecessorOperationId = knownRowDetailPredecessor(predecessor, byId, baseline, policy, request => {
+    const action = actionFor(request);
+    if (action?.rowId === rowId) return action;
+    const opening = request.predecessor ? byId.get(request.predecessor)?.value : request.baseline.value;
+    return existingRowField(opening?.[target.field], rowId, policy.birth) === undefined
+      && existingRowField(request.value?.[target.field], rowId, policy.birth) === born
+      ? { rowId, rowCreatedAt: born, after: before } : undefined;
+  }, field, rowId, born, before, undefined);
+  return { rowId, rowCreatedAt: born, before, after, observedRevision, time, ...(predecessorOperationId && { predecessorOperationId }) };
 }

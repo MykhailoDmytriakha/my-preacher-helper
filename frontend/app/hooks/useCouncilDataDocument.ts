@@ -71,6 +71,20 @@ export function useCouncilDataDocument(councilId: string) {
     }), { action: { kind: 'council-topic-title', rowId: topicId } });
   }, [council, document, apply]);
 
+  const setAssembly = useCallback(async (topic: CouncilTopic, selected: boolean) => {
+    if (!council) throw missing();
+    const before = Boolean(topic.forAssembly);
+    if (before === selected) return;
+    const metadata = document.confirmed?.metadata;
+    const updater = apply(current => {
+      if (!current.topics.some(item => item.id === topic.id)) throw Object.assign(new Error('The section no longer exists'), { code: 'topic-gone' });
+      return { ...current, topics: current.topics.map(item => item.id === topic.id ? { ...item, forAssembly: selected } : item) };
+    });
+    const flag = metadata && { rowId: topic.id, before, after: selected, generation: metadata.generation,
+      observedRevision: metadata.revision, time: actions.captureActionTime() ?? null };
+    await document.commit(updater, flag ? { kind: 'council-assembly', flag } : undefined);
+  }, [actions, apply, council, document]);
+
   /** Capture before leaving; Undo belongs to the entity, never to the departed screen editor. */
   const finishCouncil = useCallback(async (): Promise<CouncilFinishUndo> => {
     if (!council) throw missing();
@@ -155,6 +169,7 @@ export function useCouncilDataDocument(councilId: string) {
     keepLocal: document.keepLocal,
     updateCouncil,
     renameTopic,
+    setAssembly,
     finishCouncil,
     restoreCouncilLifecycle,
     deleteCouncil,

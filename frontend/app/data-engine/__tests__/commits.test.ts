@@ -657,6 +657,42 @@ describe('Durable commit requests', () => {
     } finally { engine.dispose(); }
   });
 
+  it('replays both opposite council assembly clicks after the queue restarts', async () => {
+    const s = setup();
+    const { queue } = s.makeQueue();
+    const topic = { id: 'opening', title: 'Opening', summary: 'Original words', forAssembly: false, questions: [], options: [] };
+    const opening: ResourceSnapshot = {
+      resource: { collection: 'councils', id: 'council' },
+      value: { userId: 'owner', title: 'Council', status: 'preparing', topics: [topic], createdAt: '2026-11-08', updatedAt: '2026-11-08' },
+      metadata: { protocol: 1, generation: 'council', revision: 1, deleted: false },
+    };
+    const editor = new DataSession(opening);
+    const seen = { rowId: topic.id, generation: 'council', observedRevision: 1 };
+    const firstTime = { earliestMs: 1_800_000_000_020, latestMs: 1_800_000_000_024 };
+    const secondTime = { earliestMs: 1_800_000_000_030, latestMs: 1_800_000_000_034 };
+    editor.edit({ ...opening.value, topics: [{ ...topic, forAssembly: true }] });
+    const first = (await queue.save('council', editor.checkpoint(), { action: { kind: 'council-assembly',
+      flag: { ...seen, before: false, after: true, time: firstTime },
+    } }))!;
+    editor.applyCommit(first);
+    editor.edit({ ...opening.value, topics: [topic] });
+    const second = (await queue.save('council', editor.checkpoint(), { predecessorId: first.id, action: { kind: 'council-assembly',
+      flag: { ...seen, before: true, after: false, time: secondTime },
+    } }))!;
+    const desk = { ...topic, summary: 'Keep the desktop words' };
+    const accepted = { ...opening, value: { ...opening.value, topics: [desk] },
+      metadata: { ...opening.metadata!, revision: 2, operationId: first.id } };
+    s.replace(accepted);
+    jest.mocked(s.transport.send).mockResolvedValueOnce({ kind: 'acknowledged', operationId: first.id, snapshot: accepted });
+    await s.makeQueue().queue.drain(true);
+    expect(s.transport.send).toHaveBeenCalledWith(expect.objectContaining({ operationId: second.id,
+      councilAssemblyActions: { forAssembly: { rowId: topic.id, rowCreatedAt: topic.id, before: true, after: false,
+        observedRevision: 1, time: secondTime, predecessorOperationId: first.id } },
+      changes: [{ path: ['topics'], before: { exists: true, value: [{ ...desk, forAssembly: true }] },
+        after: { exists: true, value: [desk] } }],
+    }));
+  });
+
   it('retains the later saved title of the same council section after an earlier ACK with other words', async () => {
     const s = setup();
     const { queue } = s.makeQueue();

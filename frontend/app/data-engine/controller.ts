@@ -4,6 +4,7 @@ import { isLiveWholeAction, isRetiredActionDependent, orderActionProjections } f
 import { firstBookMarksIntent, isFirstBookMarksDraft } from './bibleMarksCreation';
 import { CaptureContinuations } from './captureContinuations';
 import { assertCommitCapture } from './commits';
+import { councilAssemblyRow } from './councilAssemblyAction';
 import { councilTopicTitleRow, hasCouncilTopic } from './councilTopicTitleAction';
 import { isDocumentDeletion } from './deletionOrdering';
 import { isDirectLegacyDocumentIntent, type DocumentAnswer } from './documentDelivery';
@@ -733,9 +734,10 @@ export class EditorController {
         const checkpoint = expected?.checkpoint;
         const path = checkpoint?.conflicts.length === 1 ? checkpoint.conflicts[0].path : undefined;
         const collection = checkpoint?.confirmed.resource.collection;
-        const comparedRow = collection === 'serviceOrders' ? serviceOrderStepField(path) : collection === 'councils' && councilTopicTitleRow(path);
+        const comparedRow = collection === 'serviceOrders' ? serviceOrderStepField(path)
+          : collection === 'councils' && (councilTopicTitleRow(path) || councilAssemblyRow(path));
         if (expected && (comparedRow || retired.some(request => expected.checkpoint.pending[request.id]
-          && (request.serviceOrderFlagActions || request.serviceOrderStepTitleActions || request.councilTopicTitleActions)))
+          && (request.serviceOrderFlagActions || request.serviceOrderStepTitleActions || request.councilTopicTitleActions || request.councilAssemblyActions)))
           && retired.some(request => !expected.checkpoint.pending[request.id])) {
           throw Object.assign(new Error('Another saved change appeared during the field choice'), { code: 'decision-changed' });
         }
@@ -766,7 +768,11 @@ export class EditorController {
             const step = request.serviceOrderFlagActions?.flagged ?? request.serviceOrderStepTitleActions?.title;
             return step && !hasServiceOrderStep(stored.steps, step.rowId);
           })) throw Object.assign(new Error('The step that was edited is gone'), { code: 'service-order-step-gone' });
-          if (stored && rowRequests.some(request => request.councilTopicTitleActions?.some(title => !hasCouncilTopic(stored.topics, title.rowId)))) {
+          if (stored && rowRequests.some(request => {
+            const flag = request.councilAssemblyActions?.forAssembly;
+            return (flag && !hasCouncilTopic(stored.topics, flag.rowId))
+              || request.councilTopicTitleActions?.some(title => !hasCouncilTopic(stored.topics, title.rowId));
+          })) {
             throw Object.assign(new Error('The section that was edited is gone'), { code: 'topic-gone' });
           }
           const statusActions = ordinary ? ordinary.first.preachStatusActions

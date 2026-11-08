@@ -1340,6 +1340,44 @@ describe('transactional DataEngine server', () => {
   });
 
   it.each([
+    { label: 'phone first', mobileAt: 15, winner: false, kind: 'acknowledged' },
+    { label: 'phone last', mobileAt: 100, winner: true, kind: 'acknowledged' },
+    { label: 'no clock', mobileAt: null, winner: false, kind: 'conflict' },
+  ])('orders the exact assembly flag after the computer clears it: $label', async ({ mobileAt, winner, kind }) => {
+    const resource = { collection: 'councils', id: 'assembly-order' };
+    const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] };
+    const now = '2026-11-08T00:00:00.000Z';
+    const topic = { id: 'opening', title: 'Opening', summary: 'Original words', forAssembly: false, questions: [], options: [] };
+    const other = { ...topic, id: 'other', title: 'Other section', forAssembly: true };
+    const topics = [topic, other];
+    expect((await processCommand(base.owner, { ...base, kind: 'create', operationId: 'seed', generation: null,
+      value: { userId: base.owner, title: 'Council', status: 'preparing', createdAt: now, updatedAt: now, topics },
+    })).kind).toBe('acknowledged');
+    const edit = (operationId: string, before: typeof topics, after: typeof topics, at: number | null, observedRevision: number) => ({
+      ...base, kind: 'update', operationId, generation: 'seed',
+      changes: [{ path: ['topics'], before: { exists: true, value: before }, after: { exists: true, value: after } }],
+      councilAssemblyActions: { forAssembly: { rowId: topic.id, rowCreatedAt: topic.id, before: before[0].forAssembly,
+        after: after[0].forAssembly, observedRevision, time: at === null ? null : { earliestMs: 1_800_000_000_000 + at, latestMs: 1_800_000_000_004 + at } } },
+    });
+    const marked = [{ ...topic, forAssembly: true }, other];
+    const cleared = [{ ...topic, summary: 'Later explanation' }, other];
+    expect((await processCommand(base.owner, edit('desktop-mark', topics, marked, 45, 1))).kind).toBe('acknowledged');
+    expect((await processCommand(base.owner, edit('desktop-clear', marked, cleared, 65, 2))).kind).toBe('acknowledged');
+    const phone = edit('phone', topics, marked, mobileAt, 1);
+    const answer = await processCommand(base.owner, phone);
+    expect(answer).toMatchObject({ kind, snapshot: { value: { topics: [{ ...cleared[0], forAssembly: winner }, other] } } });
+    expect(await processCommand(base.owner, phone)).toEqual(answer);
+    const history = [...documents.entries()].filter(([path]) => path.startsWith('councils/assembly-order/_assemblyHistory/'));
+    if (mobileAt === null) {
+      expect(answer).toMatchObject({ conflicts: [{ path: ['topics', 'id:opening', 'forAssembly'] }] });
+      expect(history).toHaveLength(0);
+    } else {
+      expect(history).toHaveLength(1);
+      expect(history[0][1]).toMatchObject({ fields: [{ rowId: topic.id, field: 'forAssembly', value: !winner, winnerValue: winner }] });
+    }
+  });
+
+  it.each([
     { label: 'phone first', mobileAt: 15, winner: 'Computer section', kind: 'acknowledged' },
     { label: 'phone last', mobileAt: 100, winner: 'Phone section', kind: 'acknowledged' },
     { label: 'no clock', mobileAt: null, winner: 'Computer section', kind: 'conflict' },

@@ -1801,10 +1801,10 @@ export class DataEngine {
       const commit = (updater: (current: DocumentData | null) => DocumentData | null, onCaptured?: (receipt: DocumentWriteReceipt) => void, captureScope?: string, action?: EditorCommitAction) => {
         active();
         const checkpoint = controller.getState().checkpoint;
-        const stepVersion = action?.kind === 'service-order-flag' ? action.flag
+        const rowVersion = action?.kind === 'service-order-flag' || action?.kind === 'council-assembly' ? action.flag
           : action?.kind === 'service-order-step-title' ? action.title : undefined;
-        if (stepVersion && checkpoint.confirmed.metadata?.generation !== stepVersion.generation) {
-          throw Object.assign(new Error('The shown service order changed'), { code: 'decision-changed' });
+        if (rowVersion && checkpoint.confirmed.metadata?.generation !== rowVersion.generation) {
+          throw Object.assign(new Error('The shown record changed'), { code: 'decision-changed' });
         }
         const next = updater(checkpoint.draft);
         let captured = action;

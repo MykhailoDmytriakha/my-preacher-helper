@@ -15,10 +15,10 @@ export type CouncilTopicTitleHistoryPage = {
 export const COUNCIL_TOPIC_TITLE: RowFieldTarget<string> = {
   field: 'topics', leaf: 'title', accepts: (value): value is string => typeof value === 'string',
 };
-const TOPIC_ID: RowFieldTarget<string> = { field: 'topics', leaf: 'id', accepts: boundedRowId };
+export const COUNCIL_TOPIC_ID: RowFieldTarget<string> = { field: 'topics', leaf: 'id', accepts: boundedRowId };
 
 export const COUNCIL_TOPIC_TITLE_POLICY: RowDetailPolicy<'title', string> = {
-  collection: 'councils', fields: ['title'], birth: TOPIC_ID, target: () => COUNCIL_TOPIC_TITLE,
+  collection: 'councils', fields: ['title'], birth: COUNCIL_TOPIC_ID, target: () => COUNCIL_TOPIC_TITLE,
   proofs: 'councilTopicTitleProofs', actions: 'councilTopicTitleActions', history: '_topicTitleHistory',
   repeatedFields: ['title'], allowUnclocked: true,
 };
@@ -30,5 +30,5 @@ export function councilTopicTitleRow(path: readonly string[] | undefined): strin
 }
 
 export function hasCouncilTopic(rows: unknown, id: string): boolean {
-  return existingRowField(rows, id, TOPIC_ID) === id;
+  return existingRowField(rows, id, COUNCIL_TOPIC_ID) === id;
 }

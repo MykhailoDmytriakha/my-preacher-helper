@@ -1015,11 +1015,13 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
       });
     },
     /** Freeze the intended save before any asynchronous draft persistence. */
-    commit: (updater: (current: DocumentData | null) => DocumentData | null, action?: 'bible-mark-stroke' | 'council-lifecycle') => {
-      const time = action && owner ? actionClock.capture(owner) : undefined;
+    commit: (updater: (current: DocumentData | null) => DocumentData | null,
+      action?: 'bible-mark-stroke' | 'council-lifecycle' | Extract<EditorCommitAction, { kind: 'council-assembly' }>) => {
+      const time = typeof action === 'string' && owner ? actionClock.capture(owner) : undefined;
+      const capture = typeof action === 'object' ? action : action === 'council-lifecycle' ? { kind: action, time: time ?? null } as const
+        : time ? { kind: 'bible-mark-stroke', time } as const : undefined;
       cancelScheduledSave();
-      return run(editor => action === 'council-lifecycle' ? editor.commit(updater, { kind: action, time: time ?? null })
-        : time ? editor.commit(updater, { kind: 'bible-mark-stroke', time }) : editor.commit(updater));
+      return run(editor => capture ? editor.commit(updater, capture) : editor.commit(updater));
     },
     actions: current?.actions ?? [],
     carryCouncilTopicToNew: (topicId: string, title: string) => {

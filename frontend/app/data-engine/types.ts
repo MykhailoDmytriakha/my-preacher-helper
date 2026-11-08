@@ -1,5 +1,6 @@
 /** The wire contract is shared by browser and server; it imports no transport. */
 import type { ActionTime } from './actionClock';
+import type { CouncilAssemblyActions, CouncilAssemblyCapture } from './councilAssemblyAction';
 import type { CouncilTopicTitleAction } from './councilTopicTitleAction';
 import type { DatedRowActionEvidence } from './datedRowAction';
 import type { DocumentFieldAction, DocumentFieldObservation, DocumentFieldStamp, PrayerTitleCapture, ServiceOrderTitleCapture } from './documentFieldAction';
@@ -53,6 +54,7 @@ export type EditorCommitAction =
   | { kind: 'service-order-flag'; flag: ServiceOrderFlagCapture }
   | { kind: 'service-order-step-title'; title: ServiceOrderStepTitleCapture }
   | { kind: 'council-lifecycle'; time: ActionTime | null }
+  | { kind: 'council-assembly'; flag: CouncilAssemblyCapture }
   | { kind: 'prayer-title'; title: PrayerTitleCapture }
   | { kind: 'prayer-status'; status: PrayerStatusCapture };
 
@@ -72,6 +74,7 @@ export type DataCommand = CommandBase & (
       serviceOrderFlagActions?: ServiceOrderFlagActions;
       serviceOrderStepTitleActions?: ServiceOrderStepTitleActions;
       councilTopicTitleActions?: CouncilTopicTitleAction[];
+      councilAssemblyActions?: CouncilAssemblyActions;
       prayerTitleAction?: DocumentFieldObservation;
       prayerStatusAction?: DocumentFieldObservation;
       prayerAnsweredAtAction?: DocumentFieldStamp;

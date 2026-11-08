@@ -1,7 +1,7 @@
 import { equalValues, object, readField } from './fieldValues';
 
 import type { ActionTime } from './actionClock';
-import type { ConflictDetail, DocumentData, FieldChange, FieldValue, Json } from './types';
+import type { ConflictDetail, DataCommand, DocumentData, FieldChange, FieldValue, Json, ResourceSnapshot } from './types';
 
 export type RowValue = string | boolean | null | DocumentData;
 export type RowFieldTarget<Value extends RowValue> = {
@@ -98,4 +98,25 @@ export function isCapturedRowConflict<Value extends RowValue>(conflict: Conflict
     && equalValues(conflict.base.exists ? conflict.base.value : missing, action.before)
     && equalValues(conflict.mine.exists ? conflict.mine.value : missing, action.after)
     && (conflict.theirs.exists ? target.accepts(conflict.theirs.value) : target.missing !== undefined);
+}
+
+/** For this one row, a missing optional flag and false display the same unchecked value. */
+export function alignOptionalRowFlag(command: Extract<DataCommand, { kind: 'update' }>, current: ResourceSnapshot,
+  target: RowFieldTarget<boolean>, rowId: string | undefined): DataCommand {
+  const rows = current.value?.[target.field];
+  const leaf = target.leaf;
+  if (target.missing !== false || typeof leaf !== 'string' || !boundedRowId(rowId) || !Array.isArray(rows)
+    || existingRowField(rows, rowId, target) !== false) return command;
+  const stored = rows.find(row => object(row) && row.id === rowId);
+  if (!object(stored)) return command;
+  const exists = readField(stored, [leaf]).exists;
+  const align = (side: FieldValue): FieldValue => {
+    if (!Array.isArray(side.value) || existingRowField(side.value, rowId, target) !== false) return side;
+    return { ...side, value: side.value.map(row => {
+      if (!object(row) || row.id !== rowId || readField(row, [leaf]).exists === exists) return row;
+      return putRowField(row, leaf, exists ? false : null);
+    }) };
+  };
+  return { ...command, changes: command.changes.map(change => isRowChange(change, target)
+    ? { ...change, before: align(change.before), after: align(change.after) } : change) };
 }

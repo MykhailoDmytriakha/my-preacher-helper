@@ -5,37 +5,45 @@ import { useId, useState } from 'react';
 import { useOwnerHistory } from '@/hooks/useOwnerHistory';
 import { useTranslation } from '@locales/useTranslation';
 
+import type { CouncilAssemblyHistoryPage } from '@/data-engine/councilAssemblyAction';
 import type { CouncilTopicTitleHistoryPage } from '@/data-engine/councilTopicTitleAction';
 import type { CouncilTopic } from '@/models/models';
 
-type Entry = CouncilTopicTitleHistoryPage['entries'][number];
+type Page = CouncilTopicTitleHistoryPage | CouncilAssemblyHistoryPage;
+type Entry = Page['entries'][number];
+type HistoryField = { field: 'title'; onRestore: (topic: CouncilTopic, value: string) => Promise<void> }
+  | { field: 'forAssembly'; onRestore: (topic: CouncilTopic, value: boolean) => Promise<void> };
 
-export function CouncilTopicTitleHistory({ owner, generation, councilId, topics, disabled, onRestore }: {
+export function CouncilTopicHistory({ owner, generation, councilId, topics, disabled, ...selected }: {
   owner: string;
   generation: string;
   councilId: string;
   topics: readonly CouncilTopic[];
   disabled: boolean;
-  onRestore: (id: string, title: string) => Promise<void>;
-}) {
+} & HistoryField) {
   const { t } = useTranslation();
   const id = useId();
-  const { open, history, loading, failed, toggle, load } = useOwnerHistory<Entry, CouncilTopicTitleHistoryPage>({
+  const assembly = selected.field === 'forAssembly';
+  const { open, history, loading, failed, toggle, load } = useOwnerHistory<Entry, Page>({
     owner, generation, id: councilId,
-    path: '/api/data-engine/documents/councils/' + encodeURIComponent(councilId) + '/topic-title-history',
+    path: '/api/data-engine/documents/councils/' + encodeURIComponent(councilId) + (assembly ? '/assembly-history' : '/topic-title-history'),
     resourceId: page => page.councilId,
   });
   const [restoring, setRestoring] = useState(false);
   const [restoreFailed, setRestoreFailed] = useState(false);
-  const entries = history?.entries.flatMap(record => record.fields.map(field => ({ field, key: record.id + ':' + field.rowId }))) ?? [];
+  const entries = history?.entries.flatMap(record => record.fields.filter(field => field.field === selected.field).map(field => ({ field, key: record.id + ':' + field.rowId }))) ?? [];
   const byId = new Map(topics.map(topic => [topic.id, topic]));
-  const heading = t('council.topicTitleHistory.title');
-  const words = (title: string) => title || t('council.topicTitleHistory.untitled');
+  const heading = t(assembly ? 'council.assemblyHistory.title' : 'council.topicTitleHistory.title');
+  const words = (value: string | boolean) => typeof value === 'string' ? value || t('council.topicTitleHistory.untitled')
+    : t(value ? 'council.assemblyHistory.marked' : 'council.assemblyHistory.unmarked');
   const button = 'min-h-8 text-xs font-medium text-emerald-700 hover:underline disabled:opacity-50 dark:text-emerald-400';
-  const restore = async (rowId: string, title: string) => {
+  const restore = async (topic: CouncilTopic, value: string | boolean) => {
     setRestoring(true);
     setRestoreFailed(false);
-    try { await onRestore(rowId, title); }
+    try {
+      if (selected.field === 'title' && typeof value === 'string') await selected.onRestore(topic, value);
+      if (selected.field === 'forAssembly' && typeof value === 'boolean') await selected.onRestore(topic, value);
+    }
     catch { setRestoreFailed(true); }
     finally { setRestoring(false); }
   };
@@ -53,8 +61,8 @@ export function CouncilTopicTitleHistory({ owner, generation, councilId, topics,
             <p className="font-medium">{topic ? words(topic.title) : t('council.topicTitleHistory.removed')}</p>
             <p>{t('council.topicTitleHistory.earlier', { value: words(field.value) })}</p>
             <p>{t('council.history.kept', { value: words(field.winnerValue) })}</p>
-            {topic && <button type="button" className={button} disabled={disabled || restoring || topic.title === field.value}
-              onClick={() => void restore(topic.id, field.value)}>{t('council.topicTitleHistory.restore')}</button>}
+            {topic && <button type="button" className={button} disabled={disabled || restoring || (assembly ? Boolean(topic.forAssembly) : topic.title) === field.value}
+              onClick={() => void restore(topic, field.value)}>{t(assembly ? 'council.assemblyHistory.restore' : 'council.topicTitleHistory.restore')}</button>}
           </li>;
         })}
       </ul>}

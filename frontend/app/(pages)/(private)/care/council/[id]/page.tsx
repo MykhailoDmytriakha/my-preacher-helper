@@ -38,8 +38,8 @@ import { ScriptureLinksInWindow } from '@/components/bible/VerseWindow';
 import { showCouncilCarryPrepared, useCouncilFinishAction } from '@/components/council/councilActionNotice';
 import { CouncilOutcomeForm } from '@/components/council/CouncilOutcomeForm';
 import { CouncilOutcomePanel, useOutcomeLine, useRecordedOutcomeLabel, useTopicStateLine } from '@/components/council/CouncilOutcomePanel';
-import { councilTopicTitleComparison } from '@/components/council/councilTopicTitleComparison';
-import { CouncilTopicTitleHistory } from '@/components/council/CouncilTopicTitleHistory';
+import { councilTopicComparison } from '@/components/council/councilTopicComparison';
+import { CouncilTopicHistory } from '@/components/council/CouncilTopicHistory';
 import MarkdownDisplay from '@/components/MarkdownDisplay';
 import { Chip } from '@/components/ui/Chip';
 import ConfirmModal from '@/components/ui/ConfirmModal';
@@ -146,7 +146,7 @@ function EngineCouncilDetailWorkspace({ councilId }: { councilId: string }) {
     }
   };
   const generation = document.confirmed?.metadata?.generation;
-  const comparison = councilTopicTitleComparison(document.checkpoint, t);
+  const comparison = councilTopicComparison(document.checkpoint, t);
   const shownChoice = comparison ? document.checkpoint : undefined;
   const source = {
     council: document.council, councils: list.councils, loading: document.loading || list.loading,
@@ -157,6 +157,7 @@ function EngineCouncilDetailWorkspace({ councilId }: { councilId: string }) {
       void document.updateCouncil(id, updater, field).catch(report);
     },
     renameTopic: (topicId: string, title: string) => document.renameTopic(topicId, title),
+    setAssembly: document.setAssembly,
     history: owner && generation ? { owner, generation, restore: (field: CouncilHistoryField, value: string | null) =>
       field === 'heldAt' ? document.restoreCouncilLifecycle(value) : document.updateCouncil(councilId, current => {
         if (field === 'title') return { ...current, title: value ?? current.title };
@@ -188,7 +189,8 @@ interface CouncilDetailSource {
   error: unknown;
   refresh: () => unknown;
   updateCouncil: (id: string, updater: (current: Council) => Council, field?: CouncilTimedField) => void;
-  renameTopic?: (id: string, title: string) => Promise<void>;
+  renameTopic: (id: string, title: string) => Promise<void>;
+  setAssembly: (topic: CouncilTopic, selected: boolean) => Promise<void>;
   history?: { owner: string; generation: string; restore: (field: CouncilHistoryField, value: string | null) => Promise<void> };
   deleteCouncil: (id: string) => Promise<boolean>;
   finishCouncil: () => Promise<CouncilFinishUndo>;
@@ -443,10 +445,16 @@ function CouncilDetailContent({ source, engineCouncilId }: { source: CouncilDeta
               return value ?? '';
             }}
             onRestore={source.history.restore} />
-          {source.renameTopic && <CouncilTopicTitleHistory
-            key={JSON.stringify([source.history.owner, council.id, source.history.generation, 'topics'])}
+          <CouncilTopicHistory
+            key={JSON.stringify([source.history.owner, council.id, source.history.generation, 'topic-titles'])}
             owner={source.history.owner} generation={source.history.generation} councilId={council.id}
-            topics={council.topics} disabled={readOnly || held || editingTopicId !== null} onRestore={source.renameTopic} />}
+            topics={council.topics} disabled={readOnly || held || editingTopicId !== null}
+            field="title" onRestore={(topic, value) => source.renameTopic(topic.id, value)} />
+          <CouncilTopicHistory
+            key={JSON.stringify([source.history.owner, council.id, source.history.generation, 'assembly'])}
+            owner={source.history.owner} generation={source.history.generation} councilId={council.id}
+            topics={council.topics} disabled={readOnly || held || editingTopicId !== null}
+            field="forAssembly" onRestore={source.setAssembly} />
         </div>}
         {editable && (
           <p className="mt-3 max-w-2xl px-1 text-sm leading-relaxed text-gray-600 dark:text-gray-400">
@@ -515,8 +523,10 @@ function CouncilDetailContent({ source, engineCouncilId }: { source: CouncilDeta
                 onDone={() => setEditingTopicId(null)}
                 onChange={(updater) => patchTopic(topic.id, updater)}
                 onRename={(title) => {
-                  if (source.renameTopic) void source.renameTopic(topic.id, title).catch(error => toast.error(actionFailureMessage(error, t, 'council.save.refused')));
-                  else void patchTopic(topic.id, current => ({ ...current, title }));
+                  void source.renameTopic(topic.id, title).catch(error => toast.error(actionFailureMessage(error, t, 'council.save.refused')));
+                }}
+                onSetAssembly={(selected) => {
+                  void source.setAssembly(topic, selected).catch(error => toast.error(actionFailureMessage(error, t, 'council.save.refused')));
                 }}
                 onRemove={() => removeTopic(topic.id)}
                 carrying={carrying.has(topic.id)}
@@ -594,6 +604,7 @@ function TopicCard({
   onDone,
   onChange,
   onRename,
+  onSetAssembly,
   onRemove,
   onCarryToNext,
   carrying,
@@ -611,6 +622,7 @@ function TopicCard({
   onDone: () => void;
   onChange: (updater: TopicUpdater) => void;
   onRename: (title: string) => void;
+  onSetAssembly: (selected: boolean) => void;
   onRemove: () => void;
   onCarryToNext: (targetId?: string | 'new') => void;
   carrying: boolean;
@@ -665,7 +677,7 @@ function TopicCard({
         <span className={`mt-0.5 w-6 shrink-0 text-sm font-extrabold ${tone.count}`}>{index}</span>
         <div className="min-w-0 flex-1">
           {editing ? (
-            <TopicEditor subjectId={subjectId} topic={topic} onChange={onChange} onRename={onRename} onRemove={onRemove} onDone={onDone} />
+            <TopicEditor subjectId={subjectId} topic={topic} onChange={onChange} onRename={onRename} onSetAssembly={onSetAssembly} onRemove={onRemove} onDone={onDone} />
           ) : (
             <>
               <div className="flex flex-wrap items-center gap-2">
@@ -965,6 +977,7 @@ function TopicEditor({
   topic,
   onChange,
   onRename,
+  onSetAssembly,
   onRemove,
   onDone,
 }: {
@@ -972,6 +985,7 @@ function TopicEditor({
   topic: CouncilTopic;
   onChange: (updater: TopicUpdater) => void;
   onRename: (title: string) => void;
+  onSetAssembly: (selected: boolean) => void;
   onRemove: () => void;
   onDone: () => void;
 }) {
@@ -1193,7 +1207,7 @@ function TopicEditor({
         <input
           type="checkbox"
           checked={Boolean(topic.forAssembly)}
-          onChange={(event) => onChange((current) => ({ ...current, forAssembly: event.target.checked }))}
+          onChange={(event) => onSetAssembly(event.target.checked)}
           className="mt-0.5 h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
         />
         <span>
