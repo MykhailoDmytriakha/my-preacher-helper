@@ -42,6 +42,7 @@ import type { StoredManualScope } from './manualScopes.client';
 import type { MembershipDelivery } from './membershipDelivery';
 import type { MembershipAction } from './membershipIntent';
 import type { MembershipScope, MembershipScopeRecord } from './membershipScope';
+import type { EditorCommitAction } from './types';
 import type { DocumentData, EngineReadOptions, FailureAddress, FieldValue, JournalEntry, ResourceRef, ResourceSnapshot } from './types';
 import type { AppLocale } from '@/utils/appLocale';
 import type { BookText } from '@/utils/bibleText';
@@ -373,6 +374,7 @@ export function useDocumentActions() {
   }, [browser, owner, waitingFor, openFor]);
   return useMemo(() => ({
     ready: Boolean(browser && owner),
+    captureActionTime: () => owner && actionOwner.current === owner ? actionClock.capture(owner) : undefined,
     /** One user action, durably captured for every note or refused before changing any. */
     reshapeStudyAnalysis: async (edits: readonly StudyAnalysisWrite[]): Promise<void> => {
       if (!browser || !owner) throw new Error(ENGINE_NOT_READY);
@@ -395,11 +397,11 @@ export function useDocumentActions() {
     },
     /** A new document under a stable client ID; a retry with the same ID never creates a second one. */
     create: (resource: ResourceRef, value: DocumentData) => withEditor(resource, editor => editor.commit(() => value), true),
-    commit: (resource: ResourceRef, updater: (current: DocumentData | null) => DocumentData | null) =>
-      withEditor(resource, editor => editor.commit(updater)),
+    commit: (resource: ResourceRef, updater: (current: DocumentData | null) => DocumentData | null, action?: EditorCommitAction) =>
+      withEditor(resource, editor => action ? editor.commit(updater, action) : editor.commit(updater)),
     remove: (resource: ResourceRef) => withEditor(resource, editor => editor.remove()),
     /** Resolves at local capture; its persistence promise follows only this complete request. */
-    submit: (resource: ResourceRef, action: DocumentAction, options?: { captureScope?: string }) => withEditor(resource, editor => action.kind === 'delete'
+    submit: (resource: ResourceRef, action: DocumentAction, options?: { captureScope?: string; action?: EditorCommitAction }) => withEditor(resource, editor => action.kind === 'delete'
       ? editor.removeWithReceipt(options)
       : editor.commitWithReceipt(action.kind === 'create' ? () => action.value : action.update, options), action.kind === 'create'),
     /**
@@ -1005,7 +1007,7 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
     commit: (updater: (current: DocumentData | null) => DocumentData | null, action?: 'bible-mark-stroke') => {
       const time = action && owner ? actionClock.capture(owner) : undefined;
       cancelScheduledSave();
-      return run(editor => time ? editor.commit(updater, time) : editor.commit(updater));
+      return run(editor => time ? editor.commit(updater, { kind: 'bible-mark-stroke', time }) : editor.commit(updater));
     },
     actions: current?.actions ?? [],
     carryCouncilTopicToNew: (topicId: string, title: string) => {

@@ -6,8 +6,9 @@ import { POST } from '@/api/data-engine/commands/route';
 import { GET as markHistory } from '@/api/data-engine/documents/[collection]/[id]/mark-history/route';
 import { GET as history } from '@/api/data-engine/documents/[collection]/[id]/preach-date-history/route';
 import { GET as read } from '@/api/data-engine/documents/[collection]/[id]/route';
+import { GET as titleHistory } from '@/api/data-engine/documents/[collection]/[id]/title-history/route';
 import { ENGINE_OWNED_COLLECTIONS } from '@/data-engine/engineOwnedCollections';
-import { assertDataEngineEnabled, DataEngineServerError, listBibleMarkHistory, listDocuments, listPreachDateHistory, processCommand, readCollectionChanges, readCommandBody, readDocument } from '@/data-engine/server';
+import { assertDataEngineEnabled, DataEngineServerError, listBibleMarkHistory, listDocuments, listPreachDateHistory, listServiceOrderTitleHistory, processCommand, readCollectionChanges, readCommandBody, readDocument } from '@/data-engine/server';
 import { __resetStoreAvailabilityForTests } from '@/services/storeAvailability.server';
 
 jest.mock('@/config/firebaseAdminConfig', () => ({ adminDb: {} }));
@@ -21,6 +22,7 @@ jest.mock('@/data-engine/server', () => ({
   listBibleMarkHistory: jest.fn(),
   listDocuments: jest.fn(),
   listPreachDateHistory: jest.fn(),
+  listServiceOrderTitleHistory: jest.fn(),
   readCollectionChanges: jest.fn(),
 }));
 
@@ -162,6 +164,23 @@ describe('DataEngine HTTP routes', () => {
     expect(response.status).toBe(200);
     expect(response.headers.get('cache-control')).toBe('no-store');
     expect(listBibleMarkHistory).toHaveBeenCalledWith('verified-owner', 'book', 'g1', undefined);
+  });
+
+  it('gates service order title history and binds the no-store response to the verified owner', async () => {
+    const context = { params: Promise.resolve({ collection: 'serviceOrders', id: 'order' }) };
+    const input = request('http://localhost/api/data-engine/documents/serviceOrders/order/title-history?generation=g1');
+    jest.mocked(assertDataEngineEnabled).mockImplementationOnce(() => { throw new DataEngineServerError('data-engine-disabled', 503); });
+    expect((await titleHistory(input, context)).status).toBe(503);
+    expect(assertDataEngineEnabled).toHaveBeenLastCalledWith('serviceOrders');
+    expect(listServiceOrderTitleHistory).not.toHaveBeenCalled();
+
+    jest.mocked(listServiceOrderTitleHistory).mockResolvedValue({
+      owner: 'verified-owner', orderId: 'order', generation: 'g1', entries: [], nextCursor: null,
+    });
+    const response = await titleHistory(input, context);
+    expect(response.status).toBe(200);
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(listServiceOrderTitleHistory).toHaveBeenCalledWith('verified-owner', 'order', 'g1', undefined);
   });
 
   it('passes exact resource identifiers and forbids cached document responses', async () => {

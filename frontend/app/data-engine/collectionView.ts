@@ -1,8 +1,10 @@
+import { submittedServiceOrderTitle } from './serviceOrderTitle';
 import { DataSession } from './session';
 import { canReplaceSnapshot } from './snapshotFreshness';
 import { submittedWorkCheckpoint } from './submittedWork';
 
 import type { CommitRequest } from './commits';
+import type { ServiceOrderTitleSeen } from './serviceOrderTitle';
 import type { DocumentData, JournalEntry, ResourceRef, ResourceSnapshot } from './types';
 
 /** Read-only presentation; its value must never be used as an editor's confirmed baseline. */
@@ -16,6 +18,8 @@ export interface CollectionDocumentView {
   creating?: true;
   /** A confirmed ACK that the list has not caught up with yet; never a projected draft. */
   acknowledged?: ResourceSnapshot;
+  /** Exact pending request that supplied the displayed title, never a confirmed snapshot. */
+  submittedTitle?: ServiceOrderTitleSeen;
 }
 
 export function collectionDocumentViews(owner: string, collection: string, snapshots: readonly ResourceSnapshot[], requests: readonly CommitRequest[], journal: readonly JournalEntry[] = []): CollectionDocumentView[] {
@@ -39,7 +43,7 @@ export function collectionDocumentViews(owner: string, collection: string, snaps
       if (!previous || !canReplaceSnapshot(snapshot, previous)) acknowledged.set(snapshot.resource.id, snapshot);
     }
   }
-  const views = new Map([...confirmed].map(([id, snapshot]) => [id, {
+  const views = new Map<string, CollectionDocumentView>([...confirmed].map(([id, snapshot]) => [id, {
     resource: snapshot.resource, value: snapshot.value, pending: false, needsAttention: false, deleting: false,
     ...(acknowledged.has(id) ? { acknowledged: acknowledged.get(id)! } : {}),
   }]));
@@ -59,10 +63,12 @@ export function collectionDocumentViews(owner: string, collection: string, snaps
     }
     const unsettled = related.filter(request => request.baseline.resource.id === id && !['acknowledged', 'cancelled'].includes(request.state));
     const needsAttention = !checkpoint || checkpoint.conflicts.length > 0 || unsettled.some(request => ['conflict', 'refused'].includes(request.state));
+    const submittedTitle = submittedServiceOrderTitle(checkpoint, unsettled, needsAttention);
     // Keep a pending deletion addressable until its acknowledgement; a failed
     // deletion must never remove the only route to its retry/recovery controls.
     views.set(id, { resource, value: checkpoint?.draft ?? confirmed.get(id)?.value ?? checkpoint?.confirmed.value ?? null,
       pending: true, needsAttention, deleting: Boolean(checkpoint && checkpoint.draft === null),
+      ...(submittedTitle && { submittedTitle }),
       ...(acknowledged.has(id) ? { acknowledged: acknowledged.get(id)! } : {}),
       ...(checkpoint && checkpoint.confirmed.value === null && !checkpoint.confirmed.metadata && checkpoint.draft !== null
         ? { creating: true as const } : {}) });

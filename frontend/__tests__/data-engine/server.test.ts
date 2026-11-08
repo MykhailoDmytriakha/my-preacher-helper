@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { isCollectionServed } from '@/data-engine/activation';
-import { DataEngineServerError, listBibleMarkHistory, listDocuments, listPreachDateHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
+import { DataEngineServerError, listBibleMarkHistory, listDocuments, listPreachDateHistory, listServiceOrderTitleHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
 import { collectionHeadId, HEADS_COLLECTION, sequenceId } from '@/data-engine/serverFeed';
 import { DataSession } from '@/data-engine/session';
 import type { DataCommand, ResourceSnapshot } from '@/data-engine/types';
@@ -874,6 +874,73 @@ describe('transactional DataEngine server', () => {
     expect(first.snapshots.map(item => item.resource.id)).toEqual(['a']);
     expect(first.nextCursor).toBe('a');
     expect(await listDocuments('owner-1', 'sermons', { limit: 1, cursor: 'a' })).toEqual({ snapshots: [expect.objectContaining({ resource: { collection: 'sermons', id: 'b' }, value: null })], nextCursor: null, version: 0 });
+  });
+
+  it.each([
+    { arrival: 'earlier', offset: 20, bodyOnly: false, winner: 'Computer title', kind: 'acknowledged', archived: 'Phone title' },
+    { arrival: 'later', offset: 60, bodyOnly: false, winner: 'Phone title', kind: 'acknowledged', archived: 'Computer title' },
+    { arrival: 'overlap', offset: 43, bodyOnly: false, winner: 'Computer title', kind: 'conflict', archived: null },
+    { arrival: 'adjacent step', offset: 20, bodyOnly: true, winner: 'Phone title', kind: 'acknowledged', archived: null },
+  ])('keeps the correct service order title when the queued action was $arrival', async ({ offset, bodyOnly, winner, kind, archived }) => {
+    const order = { collection: 'serviceOrders', id: 'chronology-order' };
+    const base = { protocol: 1, owner: 'owner-1', resource: order, dependsOn: [] };
+    const now = '2026-11-08T00:00:00.000Z';
+    const original = { title: 'Starting title', rank: 100, steps: [{ id: 'open', title: 'Opening', body: 'Original words' }] };
+    expect((await processCommand(base.owner, { ...base, kind: 'create', operationId: 'order-seed', generation: null,
+      value: { userId: base.owner, ...original, createdAt: now, updatedAt: now },
+    })).kind).toBe('acknowledged');
+
+    const rename = (operationId: string, title: string, offsetMs: number) => ({
+      ...base, kind: 'update', operationId, generation: 'order-seed',
+      changes: [{ path: ['title'], before: { exists: true, value: original.title }, after: { exists: true, value: title } }],
+      serviceOrderTitleAction: { before: original.title, after: title, observedRevision: 1,
+        time: { earliestMs: 1_800_000_000_000 + offsetMs, latestMs: 1_800_000_000_010 + offsetMs } },
+    });
+    const computer = bodyOnly ? { ...base, kind: 'update', operationId: 'computer', generation: 'order-seed',
+      changes: [{ path: ['steps'], before: { exists: true, value: original.steps },
+        after: { exists: true, value: [{ ...original.steps[0], body: 'Changed paragraph' }] } }],
+    } : rename('computer', 'Computer title', 40);
+    expect((await processCommand(base.owner, computer)).kind).toBe('acknowledged');
+    const phone = rename('phone', 'Phone title', offset);
+    expect(await processCommand(base.owner, phone)).toMatchObject({
+      kind, snapshot: { value: { title: winner, steps: [{ body: bodyOnly ? 'Changed paragraph' : 'Original words' }] } },
+    });
+    const history = () => [...documents.entries()].filter(([path]) => path.startsWith('serviceOrders/chronology-order/_titleHistory/'));
+    if (archived) {
+      expect(history()).toHaveLength(1);
+      expect(history()[0][1]).toMatchObject({ title: archived, winnerTitle: winner, generation: 'order-seed' });
+      expect(await listServiceOrderTitleHistory(base.owner, order.id, 'order-seed')).toMatchObject({
+        owner: base.owner, orderId: order.id, generation: 'order-seed',
+        entries: [{ title: archived, winnerTitle: winner }],
+      });
+      await expect(listServiceOrderTitleHistory('another-owner', order.id, 'order-seed')).rejects.toMatchObject({ status: 403 });
+      await expect(listServiceOrderTitleHistory(base.owner, order.id, 'older-generation')).rejects.toMatchObject({ status: 404 });
+      expect((await processCommand(base.owner, phone)).kind).toBe('acknowledged');
+      expect(history()).toHaveLength(1);
+    } else expect(history()).toHaveLength(0);
+  });
+
+  it('retains a title conflict when unstamped edits returned the title to its original value', async () => {
+    const resource = { collection: 'serviceOrders', id: 'title-round-trip' };
+    const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] };
+    const now = '2026-11-08T00:00:00.000Z';
+    const initialTitle = 'Original title';
+    const changedTitle = 'Temporary title';
+    expect((await processCommand(base.owner, { ...base, kind: 'create', operationId: 'seed', generation: null,
+      value: { userId: base.owner, title: initialTitle, rank: 100, steps: [], createdAt: now, updatedAt: now },
+    })).kind).toBe('acknowledged');
+    const rename = (operationId: string, before: string, after: string) => ({
+      ...base, kind: 'update', generation: 'seed', operationId,
+      changes: [{ path: ['title'], before: { exists: true, value: before }, after: { exists: true, value: after } }],
+    });
+    expect((await processCommand(base.owner, rename('change', initialTitle, changedTitle))).kind).toBe('acknowledged');
+    expect((await processCommand(base.owner, rename('return', changedTitle, initialTitle))).kind).toBe('acknowledged');
+    const delayed = 'Delayed title';
+    expect(await processCommand(base.owner, { ...rename('delayed', initialTitle, delayed),
+      serviceOrderTitleAction: { before: initialTitle, after: delayed, observedRevision: 1,
+        time: { earliestMs: 1_800_000_000_000, latestMs: 1_800_000_000_010 } },
+    })).toMatchObject({ kind: 'conflict', snapshot: { value: { title: initialTitle } }, conflicts: [{ path: ['title'] }] });
+    expect((await listServiceOrderTitleHistory(base.owner, resource.id, 'seed')).entries).toEqual([]);
   });
 
   it.each([

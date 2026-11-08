@@ -11,15 +11,16 @@ import { AddressedFailures, type AddressedFailure } from './failures';
 import { capturedDateBaseline, capturePreachDateAction, matchesPreachDateChange, type PreachDateActionCapture, type PreachDateActionEvidence } from './preachDateAction';
 import { confirmedExistingDeletion, equalValues, mergeDocumentFields, MAX_RELATION_RESOURCES } from './protocol';
 import { capturePlanTextEvidence, type PlanTextEvidence } from './sermonPlanText';
+import { captureServiceOrderTitle, titleCommandAncestor, withServiceOrderTitleAction } from './serviceOrderTitle';
 import { coversCommittedEffect } from './snapshotFreshness';
 
-import type { ActionTime } from './actionClock';
 import type { CaptureTransferProof, CaptureTransferResult } from './captureTransfer';
 import type { DocumentWriteReceipt } from './commitReceipt';
 import type { EditorRecord } from './controller';
 import type { DataEngineRuntime } from './runtime';
+import type { ServiceOrderTitleAction } from './serviceOrderTitle';
 import type { SessionCheckpoint } from './session';
-import type { CommandResult, DataCommand, DocumentData, EngineMetadata, ResourceRef, ResourceSnapshot } from './types';
+import type { CommandResult, DataCommand, DocumentData, EditorCommitAction, EngineMetadata, ResourceRef, ResourceSnapshot } from './types';
 
 export interface CommitRequest {
   id: string;
@@ -52,6 +53,7 @@ export interface CommitRequest {
   deferPreachDateRebase?: true;
   bibleMarkStroke?: CapturedBibleMarkStroke;
   deferBibleMarkRebase?: true;
+  serviceOrderTitleAction?: ServiceOrderTitleAction;
   /** Earlier locally captured uses of this resource; owned atomically by DELETE capture storage. */
   deleteAfter?: string[];
   revision: number;
@@ -139,6 +141,7 @@ export function assertCommitCapture(current: CommitRequest, incoming: CommitRequ
   if (current.owner !== incoming.owner || current.editorId !== incoming.editorId || current.editGeneration !== incoming.editGeneration
     || current.predecessor !== incoming.predecessor || !equalValues(current.baseline, incoming.baseline)
     || !equalValues(current.planTextEvidence ?? null, incoming.planTextEvidence ?? null)
+    || !equalValues(current.serviceOrderTitleAction ?? null, incoming.serviceOrderTitleAction ?? null)
     || !equalValues(current.bibleMarkStroke ?? null, incoming.bibleMarkStroke ?? null)
     || !equalValues(current.preachDateAction ?? null, incoming.preachDateAction ?? null)
     || !equalValues(current.value, incoming.value) || !equalValues(current.atomic ?? null, incoming.atomic ?? null)
@@ -208,7 +211,7 @@ function ordinaryDeliveryChains(records: readonly CommitRequest[]): DeliveryChai
 
 type CommitSaveOptions = { predecessorId?: string | null; predecessorIds?: readonly string[]; retentionScope?: string;
   preachDateAction?: PreachDateActionCapture;
-  bibleMarkTime?: ActionTime;
+  action?: EditorCommitAction;
   checkpoint?: (saved: CommitRequest) => EditorRecord;
   transfer?: { proof: CaptureTransferProof; sources: readonly CommitRequest[] } };
 
@@ -216,10 +219,14 @@ function pendingBibleMarkRebase(record: CommitRequest): CapturedBibleMarkStroke 
   return record.deferBibleMarkRebase && record.sequence === 0 ? record.bibleMarkStroke : undefined;
 }
 
+function hasTimedAncestor(record: CommitRequest): boolean {
+  return record.sequence === 0 && Boolean(record.serviceOrderTitleAction || pendingBibleMarkRebase(record));
+}
+
 function freezeSaveOptions(options: CommitSaveOptions | undefined): CommitSaveOptions | undefined {
   return options && { ...options, predecessorIds: options.predecessorIds && [...options.predecessorIds],
     transfer: options.transfer && clone(options.transfer), preachDateAction: options.preachDateAction && clone(options.preachDateAction),
-    bibleMarkTime: options.bibleMarkTime && { ...options.bibleMarkTime } };
+    action: options.action && clone(options.action) };
 }
 
 /** Equal parent generations still have an exact order in the durable dependency chain. */
@@ -370,15 +377,18 @@ export class CommitQueue {
       result.retired.forEach(publish);
       return clone(result.request);
     }
-    if (!frozenOptions?.transfer && !intent.dirty && (!predecessor || equalValues(predecessor.value, intent.draft))) return null;
+    if (frozenOptions?.action?.kind !== 'service-order-title' && !frozenOptions?.transfer && !intent.dirty && (!predecessor || equalValues(predecessor.value, intent.draft))) return null;
     if (intent.conflicts.length) throw Object.assign(new Error('Resolve the conflict before saving'), { code: 'resolve-version-first' });
     const baseline = clone(intent.confirmed);
     const planTextEvidence = baseline.resource.collection === 'sermons' ? captureSermonPlan(baseline, intent.draft, predecessor) : undefined;
     const action = capturePreachDateAction(baseline, predecessor, intent.draft, frozenOptions?.preachDateAction);
-    const mark = captureBibleMarkStroke(baseline, predecessor, intent.draft, frozenOptions?.bibleMarkTime);
+    const editorAction = frozenOptions?.action;
+    const mark = captureBibleMarkStroke(baseline, predecessor, intent.draft, editorAction?.kind === 'bible-mark-stroke' ? editorAction.time : undefined);
+    const title = captureServiceOrderTitle(baseline, intent.draft, editorAction?.kind === 'service-order-title' ? editorAction.title : undefined);
     const record: CommitRequest = {
       id: this.options.operationId(), owner, editorId, editGeneration: intent.editGeneration,
       ...(mark && { bibleMarkStroke: mark }),
+      ...(title && { serviceOrderTitleAction: title }),
       ...(action && { preachDateAction: action }),
       ...(frozenOptions?.retentionScope ? { retentionScope: frozenOptions.retentionScope } : {}),
       ...(frozenOptions?.transfer ? { transferredFrom: clone(frozenOptions.transfer.proof) } : {}),
@@ -743,7 +753,7 @@ export class CommitQueue {
       return commit(prepared ?? initialized, prepared !== null);
     }
     if (record.command) return this.advanceCommand(record, owner, generation, trackAnswer);
-    if (!pendingBibleMarkRebase(record) && equalValues(record.working.value, record.intended)) return commit({ ...record, state: 'acknowledged', result: { kind: 'acknowledged', operationId: record.id, snapshot: record.working } });
+    if (!hasTimedAncestor(record) && equalValues(record.working.value, record.intended)) return commit({ ...record, state: 'acknowledged', result: { kind: 'acknowledged', operationId: record.id, snapshot: record.working } });
     const targets = await Promise.all(requiredDomainTargets(record.working, record.intended).map(this.options.readConfirmed));
     if (isFirstBookMarksDraft(record.working, record.intended)) {
       const target = await (this.options.readWriteTarget ?? this.options.readConfirmed)(record.working.resource);
@@ -758,7 +768,7 @@ export class CommitQueue {
   /** A local, single-document update can initialize and prepare from the same durable evidence. */
   private prepareIndependentUpdate(record: CommitRequest, owner: string): CommitRequest | null {
     if (record.state !== 'queued' || record.command || record.deleteAfter?.length
-      || !record.working.value || !record.intended || (!pendingBibleMarkRebase(record) && equalValues(record.working.value, record.intended))) return null;
+      || !record.working.value || !record.intended || (!hasTimedAncestor(record) && equalValues(record.working.value, record.intended))) return null;
     try {
       if (hasExternalIntent(record.working, record.intended)) return null;
       const prepared = this.materialize(record, owner, []);
@@ -776,7 +786,9 @@ export class CommitQueue {
       ? record.planTextEvidence ?? capturePlanTextEvidence({ before: record.baseline.value, after: record.value })
       : undefined;
     const markRebase = pendingBibleMarkRebase(record);
-    const source = markRebase ? restoreBibleMarkAncestor(record.working, markRebase) : record.working;
+    const title = record.sequence === 0 ? record.serviceOrderTitleAction : undefined;
+    const source = title ? titleCommandAncestor(record.working, title)
+      : markRebase ? restoreBibleMarkAncestor(record.working, markRebase) : record.working;
     try { prepared = prepareDomainCommand(owner, operationId, source, record.intended, targets, evidence); }
     catch (error) {
       // The policy names WHY this draft can never be a command (two sections carried in one
@@ -799,7 +811,8 @@ export class CommitQueue {
         command.preachDateAction = action;
       }
     }
-    return { ...record, command: record.sequence === 0 ? withBibleMarkStroke(command, record.bibleMarkStroke) : command, submitted: prepared.submittedValue, state: 'prepared' };
+    const timed = record.sequence === 0 ? withBibleMarkStroke(withServiceOrderTitleAction(command, title), record.bibleMarkStroke) : command;
+    return { ...record, command: timed, submitted: prepared.submittedValue, state: 'prepared' };
   }
 
   private async advanceCommand(record: CommitRequest, owner: string, generation: number, trackAnswer?: TrackCommitAnswer): Promise<boolean> {

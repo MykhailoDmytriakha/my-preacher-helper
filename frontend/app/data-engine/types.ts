@@ -1,6 +1,7 @@
 /** The wire contract is shared by browser and server; it imports no transport. */
 import type { ActionTime } from './actionClock';
 import type { PreachDateActionEvidence } from './preachDateAction';
+import type { ServiceOrderTitleAction, ServiceOrderTitleCapture } from './serviceOrderTitle';
 
 export type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
 export type DocumentData = Record<string, Json>;
@@ -38,6 +39,10 @@ export interface CommandBase {
   dependsOn: string[];
 }
 
+export type EditorCommitAction =
+  | { kind: 'bible-mark-stroke'; time: ActionTime }
+  | { kind: 'service-order-title'; title: ServiceOrderTitleCapture };
+
 export type BibleMarkStrokeStamp = { observedRevision: number; time: ActionTime };
 
 export type DataCommand = CommandBase & (
@@ -46,6 +51,7 @@ export type DataCommand = CommandBase & (
   | { kind: 'update'; changes: FieldChange[];
       preachDateAction?: PreachDateActionEvidence;
       bibleMarkStroke?: BibleMarkStrokeStamp;
+      serviceOrderTitleAction?: ServiceOrderTitleAction;
       /** Exact plan cells observed before an explicit outline removal. */
       observedPlanTextRemoval?: Record<string, string>;
       /** Exact orphaned text explicitly cleared while its point was absent. */

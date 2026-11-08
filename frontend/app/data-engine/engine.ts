@@ -27,12 +27,13 @@ import { getResourcePolicy, equalValues, isValidIdentifier } from './protocol';
 import { documentRecordPresence, type RecordPresence } from './recordPresence';
 import { forkCheckpoint, isPassiveManualContinuation, isRecoverableCheckpoint, reconcileRecoveryRecord, recoveryCheckpointId, validateRecoveryRecord } from './recovery.client';
 import { RecoveryPresence, recoverySources, type RecoveryPresenceKind, type RecoveryPresenceLease, type RecoveryPresencePort } from './recoveryPresence';
+import { validatedTitleCapture } from './serviceOrderTitle';
 import { DataSession } from './session';
 import { canReplaceSnapshot, coversCommittedEffect, storesNewCopy } from './snapshotFreshness';
 import { snapshotBelongsToOwner } from './snapshotIdentity';
 import { redeliveryDelay } from './unanswered';
 
-import type { ActionTime } from './actionClock';
+
 import type { CollectionReader, CollectionState } from './collections';
 import type { DocumentWriteReceipt } from './commitReceipt';
 import type { ManualScopeStore, StoredManualScope } from './manualScopes.client';
@@ -42,6 +43,7 @@ import type { OpenDocumentAnswer } from './openDocumentAnswers';
 import type { PreachDateActionCapture } from './preachDateAction';
 import type { DataEngineRuntime, RuntimeEvent } from './runtime';
 import type { SessionCheckpoint, ShownCopy } from './session';
+import type { EditorCommitAction } from './types';
 import type { CommandResult, DataCommand, DocumentData, EngineMetadata, EngineReadOptions, EngineTransport, FailureAddress, JournalEntry, ResourceRef, ResourceSnapshot } from './types';
 import type { AppLocale } from '@/utils/appLocale';
 import type { BookText } from '@/utils/bibleText';
@@ -107,9 +109,9 @@ export interface ManagedEditor {
   /** `shown` is the copy the screen showed while the person typed (`DataSession.edit`). */
   edit(value: DocumentData | null, shown?: ShownCopy): Promise<void>;
   /** Capture, stage and durably save one invocation without including later typing. */
-  commit(updater: (current: DocumentData | null) => DocumentData | null, bibleMarkTime?: ActionTime): Promise<void>;
+  commit(updater: (current: DocumentData | null) => DocumentData | null, action?: EditorCommitAction): Promise<void>;
   /** Same local capture, with separate exact-request server acceptance for backup cleanup. */
-  commitWithReceipt(updater: (current: DocumentData | null) => DocumentData | null, options?: { captureScope?: string }): Promise<DocumentWriteReceipt>;
+  commitWithReceipt(updater: (current: DocumentData | null) => DocumentData | null, options?: { captureScope?: string; action?: EditorCommitAction }): Promise<DocumentWriteReceipt>;
   removeWithReceipt(options?: { captureScope?: string }): Promise<DocumentWriteReceipt>;
   /** Resolves when the command is durable; delivery continues independently. */
   save(): Promise<void>;
@@ -1792,10 +1794,22 @@ export class DataEngine {
         void pending.finally(() => { if (this.councilCarries.get(key) === pending) this.councilCarries.delete(key); }).catch(() => undefined);
         return pending;
       };
-      const commit = (updater: (current: DocumentData | null) => DocumentData | null, onCaptured?: (receipt: DocumentWriteReceipt) => void, captureScope?: string, bibleMarkTime?: ActionTime) => {
+      const commit = (updater: (current: DocumentData | null) => DocumentData | null, onCaptured?: (receipt: DocumentWriteReceipt) => void, captureScope?: string, action?: EditorCommitAction) => {
         active();
-        const persistence = controller.edit(updater(controller.getState().checkpoint.draft));
-        const saving = controller.save(undefined, undefined, onCaptured, captureScope, bibleMarkTime);
+        const checkpoint = controller.getState().checkpoint;
+        const next = updater(checkpoint.draft);
+        let captured = action;
+        if (action?.kind === 'service-order-title') {
+          const { seen } = action.title;
+          const predecessor = seen.requestId ? this.commitRecords.get(seen.requestId) : undefined;
+          const known = predecessor?.owner === owner && sameResource(predecessor.baseline.resource, frozen)
+            && predecessor.baseline.metadata?.generation === seen.generation && predecessor.value?.title === seen.title
+            && !['conflict', 'refused', 'cancelled'].includes(predecessor.state);
+          const title = validatedTitleCapture(checkpoint.confirmed, checkpoint.draft, next, action.title, known);
+          captured = title ? { kind: 'service-order-title', title } : undefined;
+        }
+        const persistence = controller.edit(next);
+        const saving = controller.save(undefined, undefined, onCaptured, captureScope, captured);
         return Promise.all([persistence, saving]).then(() => { active(); this.backgroundDrain(); this.prepareCommitsInBackground(); active(); });
       };
       const remove = async (onCaptured?: (receipt: DocumentWriteReceipt) => void, captureScope?: string) => {
@@ -1894,8 +1908,8 @@ export class DataEngine {
           return () => { entry.listeners.delete(subscription); };
         },
         edit: (value, shown) => { active(); return controller.edit(value, shown); },
-        commit: (updater, bibleMarkTime) => commit(updater, undefined, undefined, bibleMarkTime),
-        commitWithReceipt: (updater, options) => withReceipt(captured => commit(updater, captured, options?.captureScope)),
+        commit: (updater, action) => commit(updater, undefined, undefined, action),
+        commitWithReceipt: (updater, options) => withReceipt(captured => commit(updater, captured, options?.captureScope, options?.action)),
         removeWithReceipt: options => withReceipt(captured => remove(captured, options?.captureScope)),
         save: async () => { active(); await controller.save(); active(); this.backgroundDrain(); this.prepareCommitsInBackground(); active(); },
         remove: () => remove(),

@@ -20,12 +20,12 @@ import { recoveryChoiceFingerprint } from './recoveryChoice';
 import { DataSession, type SessionCheckpoint, type ShownCopy } from './session';
 import { submittedWorkCheckpoint } from './submittedWork';
 
-import type { ActionTime } from './actionClock';
 import type { DocumentWriteReceipt } from './commitReceipt';
 import type { CommitQueue, CommitRequest } from './commits';
 import type { RecoverySource } from './recoveryPresence';
 import type { RecoveryOrigin, VersionedRecovery } from './recoverySource';
 import type { DataEngineRuntime, RuntimeEvent } from './runtime';
+import type { EditorCommitAction } from './types';
 import type { CommandResult, DataCommand, DocumentData, ResourceRef, ResourceSnapshot } from './types';
 
 const PENDING_DELIVERY_FIRST = 'pending-delivery-first';
@@ -255,9 +255,9 @@ export class EditorController {
   }
 
   save(capturedIntent?: SessionCheckpoint, selection?: readonly ManualPath[], onCaptured?: (receipt: DocumentWriteReceipt) => void, captureScope?: string,
-    bibleMarkTime?: ActionTime): Promise<void> {
+    action?: EditorCommitAction): Promise<void> {
     this.assertCurrent();
-    const strokeTime = bibleMarkTime && { ...bibleMarkTime };
+    const capturedAction = action && JSON.parse(JSON.stringify(action)) as EditorCommitAction;
     // Never freeze a Save against a choice whose durable baseline is still unsettled.
     if (this.choices > 0) return Promise.reject(Object.assign(
       new Error('Finish the current version choice before saving'), { code: PENDING_DELIVERY_FIRST }));
@@ -280,7 +280,7 @@ export class EditorController {
           if (session.applyCommit(request) && !completed.includes(request.id)) completed.push(request.id);
           return { ...record, checkpoint: session.checkpoint(), completedCommits: completed };
         };
-        const options = { ...captureSaveOptions(predecessorIds, captureScope), checkpoint: projectCheckpoint, ...(strokeTime && { bibleMarkTime: strokeTime }) };
+        const options = { ...captureSaveOptions(predecessorIds, captureScope), checkpoint: projectCheckpoint, ...(capturedAction && { action: capturedAction }) };
         const capture = onCaptured ? await this.options.commits.saveWithReceipt(this.options.editorId, captured, options) : null;
         const request = capture ? capture.request : await this.options.commits.save(this.options.editorId, captured, options);
         captureComplete();

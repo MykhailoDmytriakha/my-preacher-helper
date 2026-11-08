@@ -29,6 +29,9 @@ import { useTranslation } from '@locales/useTranslation';
 
 import { ReorderArrows, ServiceOrderFailure } from '../ReorderArrows';
 
+import { ServiceOrderTitleHistory } from './ServiceOrderTitleHistory';
+
+import type { ActionTime } from '@/data-engine/actionClock';
 import type { ServiceOrder, ServiceOrderStep } from '@/models/models';
 import '@locales/i18n';
 
@@ -177,7 +180,7 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
   const { t } = useTranslation();
   const { locale } = useAppLocale();
   const { confirm, confirmDialog } = useConfirm();
-  const { orders, loading, isOnline, updateSteps, openedWith, closedEditing, recheck, orderPresence, renameOrder, deleteOrder } =
+  const { orders, loading, isOnline, updateSteps, openedWith, closedEditing, recheck, orderPresence, renameOrder, captureTitleTime, titleHistory, deleteOrder } =
     useServiceOrders();
   const cachedOrder = orders.find((candidate) => candidate.id === orderId);
   const presence = orderPresence?.(orderId);
@@ -348,7 +351,7 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
      * hook's work — it is the side that serialises the writes, and a baseline kept anywhere else
      * is stale by the time the next one runs.
      */
-    if (isStaleWriteError(error)) return { key: 'serviceOrders.writeConflict' };
+    if (isStaleWriteError(error) || (error && typeof error === 'object' && 'code' in error && error.code === 'stale-write')) return { key: 'serviceOrders.writeConflict' };
     /*
      * "WE DO NOT KNOW" IS ITS OWN ANSWER, and the most dangerous one to dress up as a refusal.
      * A transaction that times out or loses the connection may already have committed; calling
@@ -707,7 +710,7 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
    * tab is closed. Through the same timer it is coalesced, flushed on leaving the field, and
    * caught by the same page-exit flush as everything else.
    */
-  const saveTitle = async (value: string) => {
+  const saveTitle = async (value: string, time?: ActionTime) => {
     const next = value.trim();
     /*
      * A rite with no name at all is the one value worth refusing here — and refusing it SAYS so.
@@ -725,7 +728,7 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
     }
     setFailure(stillUnsaid());
     try {
-      const revision = await renameOrder(orderId, next, session);
+      const revision = await (time ? renameOrder(orderId, next, session, time) : renameOrder(orderId, next, session));
       confirmContent({ title: next, ...(revision == null ? {} : { rev: { ...orderRef.current?.rev, meta: revision } }) });
       forgetRefusal(null, TITLE_KEY);
       // Only if it is still the name that was saved. Clearing it outright threw away a NEWER
@@ -752,6 +755,7 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
    */
   const hasLocalChanges = typed !== null || titleDraft !== null || pending.current.size > 0 || unresolved.current.size > 0 || rearranging;
   // Reading is safe while words are kept here; leaving is offered only after this sitting has no unfinished work.
+  const titleHistorySession = titleHistory?.(orderId);
   const canLeaveReading = Boolean(order) && presence?.kind !== 'absent' && presence?.kind !== 'deleting' && !hasLocalChanges;
   const verseWindow = useVerseWindow({ toBible: canLeaveReading });
   /*
@@ -994,7 +998,8 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
               onChange={(event) => {
                 const next = event.target.value;
                 setTitleDraft(next);
-                schedule(TITLE_KEY, () => saveTitle(next));
+                const time = captureTitleTime?.();
+                schedule(TITLE_KEY, () => saveTitle(next, time));
               }}
               onBlur={() => flush(TITLE_KEY)}
               className="min-w-0 flex-1 rounded-xl border border-gray-300 bg-white px-3 py-2 text-2xl font-extrabold tracking-tight text-gray-900 focus:border-emerald-500 focus:outline-none dark:border-gray-700 dark:bg-gray-900 dark:text-white"
@@ -1017,6 +1022,9 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
             {editing ? t('serviceOrders.done') : t('serviceOrders.edit')}
           </button>
         </div>
+
+        {titleHistorySession && <ServiceOrderTitleHistory key={JSON.stringify([titleHistorySession.owner, orderId, titleHistorySession.generation])}
+          session={titleHistorySession} title={titleDraft ?? order.title} disabled={hasLocalChanges || editing} />}
 
         {order.summary && !editing && (
           <p className="mt-2 text-sm leading-relaxed text-gray-600 dark:text-gray-400">

@@ -159,7 +159,7 @@ describe('Durable commit requests', () => {
     const first = (await queue.save('mark', editor.checkpoint()))!;
     editor.edit({ ...base.value, verses: { v1_1: { m: '0-0-yellow,2-2-orange' } } });
     const time = { earliestMs: 1_800_000_000_020, latestMs: 1_800_000_000_025 };
-    const next = (await queue.save('mark', editor.checkpoint(), { predecessorId: first.id, bibleMarkTime: time }))!;
+    const next = (await queue.save('mark', editor.checkpoint(), { predecessorId: first.id, action: { kind: 'bible-mark-stroke', time } }))!;
     expect(next.bibleMarkStroke).toMatchObject({ observedRevision: 1, time, edits: [{ first: 2, last: 2, before: 'red', after: 'orange' }] });
     const other = { ...base, value: { ...base.value, verses: { v1_1: { m: '0-0-yellow,2-2-blue,5-5-green' } } },
       metadata: { ...base.metadata!, revision: 2, operationId: first.id } };
@@ -172,6 +172,36 @@ describe('Durable commit requests', () => {
         before: { exists: true, value: { v1_1: { m: '0-0-yellow,2-2-red,5-5-green' } } },
         after: { exists: true, value: { v1_1: { m: '0-0-yellow,2-2-orange,5-5-green' } } },
       })]),
+    }));
+  });
+
+  it('replays the next title with the exact local predecessor after its ACK retained a different title', async () => {
+    const s = setup();
+    const { queue } = s.makeQueue();
+    const base: ResourceSnapshot = {
+      resource: { collection: 'serviceOrders', id: 'order' },
+      value: { userId: 'owner', title: 'Original', rank: 100, steps: [], createdAt: '2026-11-08', updatedAt: '2026-11-08' },
+      metadata: { protocol: 1, generation: 'order', revision: 1, deleted: false },
+    };
+    const editor = new DataSession(base);
+    editor.edit({ ...base.value, title: 'First local title' });
+    const first = (await queue.save('order', editor.checkpoint()))!;
+    editor.edit({ ...base.value, title: 'Second local title' });
+    const time = { earliestMs: 1_800_000_000_020, latestMs: 1_800_000_000_025 };
+    const next = (await queue.save('order', editor.checkpoint(), { predecessorId: first.id, action: { kind: 'service-order-title',
+      title: { seen: { title: 'First local title', generation: 'order', revision: 1, requestId: first.id }, time },
+    } }))!;
+    const evidence = { before: 'First local title', after: 'Second local title', observedRevision: 1, time };
+    expect(next.serviceOrderTitleAction).toEqual(evidence);
+
+    const other = { ...base, value: { ...base.value, title: 'Other device title' },
+      metadata: { ...base.metadata!, revision: 2, operationId: first.id } };
+    s.replace(other);
+    jest.mocked(s.transport.send).mockResolvedValueOnce({ kind: 'acknowledged', operationId: first.id, snapshot: other });
+    await s.makeQueue().queue.drain(true);
+    expect(s.transport.send).toHaveBeenCalledWith(expect.objectContaining({ operationId: next.id,
+      serviceOrderTitleAction: evidence,
+      changes: [{ path: ['title'], before: { exists: true, value: evidence.before }, after: { exists: true, value: evidence.after } }],
     }));
   });
 

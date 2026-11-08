@@ -11,8 +11,10 @@ import { needsRenumber, rankForAppend, rankForMove, renumber, sortByRank } from 
 import { nextServiceOrderSeedId } from '@/utils/serviceOrderSeedIdentity';
 import { useTranslation } from '@locales/useTranslation';
 
+import type { ActionTime } from '@/data-engine/actionClock';
 import type { CollectionState } from '@/data-engine/collections';
-import type { DocumentData } from '@/data-engine/types';
+import type { ServiceOrderTitleSeen } from '@/data-engine/serviceOrderTitle';
+import type { DocumentData, EditorCommitAction, ResourceSnapshot } from '@/data-engine/types';
 import type { ServiceOrder, ServiceOrderCatalogKey, ServiceOrderStep } from '@/models/models';
 
 const resource = (id: string) => ({ collection: 'serviceOrders', id });
@@ -23,6 +25,28 @@ const asOrder = (value: DocumentData, id: string) => hydrateServiceOrder(value a
 const rowsOf = (documents: readonly { resource: { id: string }; value: DocumentData | null }[] | undefined) =>
   sortByRank((documents ?? []).flatMap(row => row.value ? [asOrder(row.value, row.resource.id)] : []));
 
+type TitleBaseline = { title: string; revision: number; seen?: ServiceOrderTitleSeen };
+
+function confirmedOrderRows(state: CollectionState | null | undefined, id: string): ResourceSnapshot[] {
+  const acknowledged = state?.documents?.find(row => row.resource.id === id)?.acknowledged;
+  return [acknowledged, state?.snapshots?.find(snapshot => snapshot.resource.id === id)]
+    .filter((snapshot): snapshot is ResourceSnapshot => Boolean(snapshot?.value && snapshot.metadata && !snapshot.metadata.deleted));
+}
+
+function confirmedTitle(state: CollectionState | null | undefined, id: string, shown?: TitleBaseline): ServiceOrderTitleSeen | undefined {
+  const match = confirmedOrderRows(state, id).find(row => typeof row.value?.title === 'string'
+    && (!shown || (row.value.title === shown.title
+      && (asOrder(row.value, id).rev?.meta ?? 0) === shown.revision)));
+  return match && { title: match.value!.title as string, generation: match.metadata!.generation, revision: match.metadata!.revision };
+}
+
+function shownTitle(state: CollectionState | null | undefined, id: string, shown: TitleBaseline): ServiceOrderTitleSeen | undefined {
+  const row = state?.documents?.find(document => document.resource.id === id);
+  const submitted = row?.submittedTitle;
+  return submitted?.title === shown.title && row?.value?.title === shown.title
+    ? submitted : confirmedTitle(state, id, shown);
+}
+
 /**
  * ORDERS OF SERVICE ON THE ENGINE — the interface the list, the rite's own page and the breadcrumb
  * use (useServiceOrders).
@@ -32,24 +56,35 @@ const rowsOf = (documents: readonly { resource: { id: string }; value: DocumentD
  * on top of a write, and every change is laid over the CURRENT document and merged on the server
  * (steps by their id), so a step written on the phone survives a step written on the laptop.
  *
- * Kept from the legacy hook, because the engine cannot know it: a title changed elsewhere since
- * the person started editing refuses the rename with the other title, so the screen can offer it.
+ * A title Save carries the copy shown when editing began. An action with no calibrated
+ * time keeps the existing stale-write check before it can change that copy.
  *
  * Offline, creating a rite and rearranging now work: each is a durable command that is delivered
  * on reconnect. Seeding still needs the server, because only a fresh list says which rites of the
  * standard set are missing.
  */
+export type ServiceOrderTitleHistorySession = {
+  owner: string;
+  orderId: string;
+  generation: string;
+  restore: (title: string) => Promise<void>;
+};
+
 export function useServiceOrdersEngine(userId: string | null | undefined, enabled: boolean) {
   const { t } = useTranslation();
   const isOnline = useOnlineStatus();
   const collection = useDataCollection(enabled && userId ? 'serviceOrders' : null);
   const actions = useDocumentActions();
+  const activeOwner = useRef(userId);
+  activeOwner.current = userId;
   const [seeding, setSeeding] = useState(false);
   const seedPending = useRef<{ owner: string; promise: Promise<ServiceOrder[]> } | null>(null);
   const [savingSteps, setSavingSteps] = useState(0);
   const [moving, setMoving] = useState(false);
   const movePending = useRef(false);
-  const baselines = useRef(new Map<string, { title: string; revision: number }>());
+  const baselines = useRef(new Map<string, TitleBaseline>());
+  const collectionState = useRef(collection.state);
+  collectionState.current = collection.state;
   const queues = useRef(new Map<string, Promise<unknown>>());
 
   const orders = useMemo(() => rowsOf(collection.state?.documents?.filter(isLiveCollectionDocument)), [collection.state?.documents]);
@@ -150,34 +185,63 @@ export function useServiceOrdersEngine(userId: string | null | undefined, enable
       }
     });
 
-  const renameOrder = (id: string, title: string, session: string) =>
+  const renameOrder = (id: string, title: string, session: string, time?: ActionTime) =>
     queued(id, async () => {
       const key = baselineKey(id, session);
       const held = baselines.current.get(key);
       if (title === held?.title) return held.revision;
       let refusal: StaleWriteError | null = null;
       let revision: number | null = null;
-      await actions.commit(resource(id), current => {
+      const seen = held && (held.seen ?? shownTitle(collectionState.current, id, held));
+      const action: EditorCommitAction | undefined = seen && time ? { kind: 'service-order-title', title: { seen, time } } : undefined;
+      const update = (current: DocumentData | null) => {
         refusal = null;
         if (!current) throw notFound();
         const stored = (current.rev as Record<string, number> | undefined)?.[SERVICE_ORDER_META_AGGREGATE] ?? 0;
-        if (held && current.title !== held.title && current.title !== title) {
+        if (!action && held && current.title !== held.title && current.title !== title) {
           refusal = new StaleWriteError(SERVICE_ORDER_META_AGGREGATE, held.revision, stored, { title: current.title });
           return current;
         }
-        // The engine moves the stored counter itself; this is the value it will reach.
-        revision = stored + 1;
+        revision = stored + Number(current.title !== title);
         return { ...current, title, updatedAt: now() };
-      });
+      };
+      const receipt = seen ? await actions.submit(resource(id), { kind: 'update', update }, action ? { action } : undefined) : null;
+      if (!seen) await actions.commit(resource(id), update);
       const refused = refusal as StaleWriteError | null;
       if (refused) {
         const serverTitle = refused.serverValues?.title;
         if (typeof serverTitle === 'string') baselines.current.set(key, { title: serverTitle, revision: refused.actualRevision });
         throw refused;
       }
-      if (held && revision !== null) baselines.current.set(key, { title, revision });
+      if (held && revision !== null) {
+        const shown = { title, revision };
+        const nextSeen = confirmedTitle(collectionState.current, id, shown)
+          ?? (seen && receipt?.requestId ? { ...seen, title, requestId: receipt.requestId } : undefined);
+        baselines.current.set(key, { ...shown, ...(nextSeen && { seen: nextSeen }) });
+      }
       return revision;
     });
+
+  const titleHistory = (id: string): ServiceOrderTitleHistorySession | undefined => {
+    const seen = confirmedTitle(collection.state, id);
+    if (!userId || !seen) return undefined;
+    return {
+      owner: userId, orderId: id, generation: seen.generation,
+      restore: async title => {
+        if (activeOwner.current !== userId) throw new Error('The service order owner changed');
+        const current = confirmedTitle(collectionState.current, id);
+        if (!current || current.generation !== seen.generation) throw notFound();
+        if (current.title === title) return;
+        const time = actions.captureActionTime();
+        const action: EditorCommitAction | undefined = time ? { kind: 'service-order-title', title: { seen: current, time } } : undefined;
+        await actions.commit(resource(id), value => {
+          if (!value) throw notFound();
+          if (value.title !== current.title) throw Object.assign(new Error('The service order title changed'), { code: 'stale-write' });
+          return { ...value, title, updatedAt: now() };
+        }, action);
+      },
+    };
+  };
 
   /**
    * One command per rite whose place changes. Each carries an absolute rank and is durable on its
@@ -227,10 +291,15 @@ export function useServiceOrdersEngine(userId: string | null | undefined, enable
     updateSteps,
     openedWith: (id: string, opening: { title: string; revision: number }, session: string) => {
       const key = baselineKey(id, session);
-      if (!baselines.current.has(key)) baselines.current.set(key, opening);
+      if (!baselines.current.has(key)) {
+        const seen = shownTitle(collectionState.current, id, opening);
+        baselines.current.set(key, { ...opening, ...(seen && { seen }) });
+      }
     },
     closedEditing: (id: string, session: string) => queued(id, async () => { baselines.current.delete(baselineKey(id, session)); }),
     renameOrder,
+    captureTitleTime: actions.captureActionTime,
+    titleHistory,
     savingSteps: savingSteps > 0,
     moveOrder,
     moving,
