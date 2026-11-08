@@ -20,7 +20,7 @@ jest.mock('@/hooks/useTextDictation', () => ({ useTextDictation: () => ({
 jest.mock('@locales/useTranslation', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 
 const stored = { userId: 'u', title: 'Healing', status: 'active', updates: [], createdAt: 'c' };
-const actions = { ready: true, commit: jest.fn(), create: jest.fn(), remove: jest.fn() };
+const actions = { ready: true, captureActionTime: jest.fn(), commit: jest.fn(), create: jest.fn(), remove: jest.fn() };
 const pause = () => new Promise(resolve => setTimeout(resolve, 20));
 function deferred() {
   let resolve!: () => void, reject!: (error: unknown) => void;

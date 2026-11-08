@@ -7630,3 +7630,11 @@ The council detail claims the engine read notice only while its own read alert i
 Native Chrome at 390 px on isolated emulators showed one Retry before and after a controlled HTTP 500. The next click received HTTP 200 and reopened the same record. The stored document remained unchanged and the browser reported no exception or unhandled rejection. The before, refusal and restored screens were visually checked. Evidence is in artifacts/council-duplicate-read-notice-verified.
 
 After authorized deployment, confirm the revision and open a disposable council from the list. Check its heading and saved fields. Keep forced read refusal on the local stand. The list hydration observation remains separate.
+
+## BUG-20261108-prayer-capture-tests-missing-clock · Restore the prayer capture fixture
+
+The prayer capture suite supplies the action clock method through its existing mock, matching the neighboring engine hook suite. Two tests failed when the method was missing and now exercise their original behavior. The answer form waits for local capture, and a duplicate status action waits for the same pending capture. 66 related tests, TypeScript and scoped ESLint passed. The change is confined to the test fixture.
+
+Two native Chrome scenarios on guarded build 9KRTJAzx-7MTvsDtp0oaQ verified the prayer screen across 390 and 1280 px profiles. An answer dialog opened offline could be submitted after reconnect, with the status recorded and earlier prose retained. Editing just the prose updated the list while leaving the later status and the saved answer date in place. Both saved states were inspected visually. The test suite, separately, covers the pending local capture and duplicate invocation. Evidence is in artifacts/prayer-capture-tests-nov08-verified.
+
+After authorized deployment, mark a disposable prayer answered with a short note and reload. Check the status and exact note. Keep controlled disk delays local.
