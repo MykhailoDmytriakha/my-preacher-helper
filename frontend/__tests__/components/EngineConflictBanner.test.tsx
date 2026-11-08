@@ -689,6 +689,49 @@ describe('a failed participant in a council carry', () => {
   beforeEach(() => { process.env[ON_ENGINE] = 'councils'; actions = null; mockPathname = '/settings/user'; });
   afterEach(() => { delete process.env[ON_ENGINE]; });
 
+  it('keeps both later council drafts visible while their shared refusal is decided inline', async () => {
+    const initial = { resource: council, value: councilValue, metadata: { protocol: 1 as const, generation: 'g1', revision: 1, deleted: false } };
+    const h = documentEngineHarness(initial);
+    jest.mocked(createBrowserDataEngine).mockImplementation(h.createBrowser);
+    const transport = jest.mocked(h.transport.send);
+    transport.mockImplementationOnce(async command => ({ kind: 'refused', operationId: command.operationId, code: 'receipt-too-large' }));
+    function CouncilEditor() {
+      const document = useDataDocument(council);
+      return <section aria-label="Council editor">
+        <button type="button" disabled={!document.data} onClick={() => { void document.commit(value => ({ ...value, title: 'Earlier refused title' })); }}>Save earlier title</button>
+        <DataSyncStatus subject={document.recoveryIdentity} status={document.status} error={document.error}
+          onKeepLocal={document.keepLocal} onAcceptRemote={document.acceptRemote} onRetry={document.retry} />
+      </section>;
+    }
+    mockPathname = '/care/council/council-1';
+    const tree = (open: boolean) => <DataEngineProvider>{open && <CouncilEditor />}<EngineConflictBanner pollMs={50} /></DataEngineProvider>;
+    const view = render(tree(true));
+    const save = screen.getByRole('button', { name: 'Save earlier title' });
+    await waitFor(() => expect(save).toBeEnabled());
+    await act(async () => { fireEvent.click(save); await settleEngine(); });
+    await waitFor(() => expect(h.engine.getOpenAnswerScopes()[0]?.councilRefusal).toBeDefined());
+    const [request] = await h.commits.list('owner');
+    const earlier = await h.checkpoints.read('owner', request.editorId);
+    if (!earlier) throw new Error('Missing earlier council checkpoint');
+    expect(earlier.checkpoint.draft?.title).toBe('Earlier refused title');
+    for (const [index, title] of ['First later title', 'Second later title'].entries()) {
+      const { checkpoint } = earlier;
+      await h.checkpoints.create({ ...earlier, editorId: editorIdentity('other-tab', council, 'default', `later-${index}`),
+        checkpoint: { ...checkpoint, draft: { ...checkpoint.draft, title }, editGeneration: checkpoint.editGeneration + 1 } });
+    }
+
+    const drafts = await screen.findByText(/First later title/);
+    expect(drafts).toHaveTextContent('Second later title');
+    expect(screen.getAllByRole('button', { name: 'dataSync.acceptRemote' })).toHaveLength(1);
+    expect(screen.getByRole('region', { name: 'Council editor' })).toContainElement(screen.getByRole('button', { name: 'dataSync.acceptRemote' }));
+    expect(screen.getByRole('button', { name: 'freshness.copyTextAction' })).toBeInTheDocument();
+
+    mockPathname = '/settings/user'; view.rerender(tree(false));
+    await screen.findByRole('link', { name: 'dataSync.openToDecide' });
+    expect(screen.getByRole('button', { name: 'dataSync.acceptRemote' })).toBeInTheDocument();
+    expect(screen.getByText(/First later title/)).toHaveTextContent('Second later title');
+  });
+
   it.each(['source', 'destination'] as const)('does not offer a participant-level choice for the closed %s checkpoint', async participant => {
     const initial = { resource: council, value: councilValue, metadata: { protocol: 1 as const, generation: 'g1', revision: 1, deleted: false } };
     const h = documentEngineHarness(initial);

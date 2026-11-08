@@ -3,7 +3,7 @@ import { waitFor } from '@testing-library/react';
 import { DataEngine } from '../engine';
 import { editorIdentity } from '../editorIdentity';
 import { liveSubmittedWork } from '../liveSubmittedWork';
-import { recoveryHeldOpen } from '../openDocumentAnswers';
+import { councilRefusalHeldOpen, recoveryHeldOpen } from '../openDocumentAnswers';
 import { createIndexedDbCheckpoints } from '../checkpoint.client';
 import { ResourceObserver } from '../observer';
 import { commitProjectionKey } from '../retention.client';
@@ -504,6 +504,14 @@ describe('durable atomic carry into an existing council', () => {
     const newerCopy = { ...record, checkpoint: { ...record.checkpoint, remoteCandidate: newer } };
     expect(recoveryHeldOpen([newerCopy], [open])).toBe(false);
     expect(recoveryHeldOpen([newerCopy], [{ ...open, councilRefusal: { confirmed: target, remoteCandidate: newer } }])).toBe(true);
+    const privateCopy = { ...record, checkpoint: { ...record.checkpoint, draft: { ...draft, title: 'Private later words' } } };
+    const independent = { ...record, checkpoint: { ...record.checkpoint,
+      pending: { ...record.checkpoint.pending, separate: { generation: 2, value: draft } } } };
+    expect(councilRefusalHeldOpen([record, privateCopy], [open])).toBe(true);
+    expect(councilRefusalHeldOpen([record, newerCopy], [open])).toBe(false);
+    expect(councilRefusalHeldOpen([record, independent], [open])).toBe(false);
+    expect(councilRefusalHeldOpen([record, { ...privateCopy, unfinalized: ['separate'] }], [open])).toBe(false);
+    expect(councilRefusalHeldOpen([record, { ...privateCopy, owner: 'other-owner' }], [open])).toBe(false);
   });
 
   it.each(['return', 'reopen'] as const)('shows one decision for the earlier refused title on %s after discarding the carry', async entry => {

@@ -281,6 +281,7 @@
     "deleteRefusedTitle": "The server did not accept the deletion",
     "deleteRefusedBody": "Here is what the record holds now. You can keep it or try deleting again.",
     "retryDelete": "Try deleting again",
+    "retainedCouncilDrafts": "Other council drafts saved on this device",
     "screenDraftBody": "The server did not take a change made on a screen you have since left. To keep yours, open that screen; to drop it, take the server version here. Your text is kept until you choose.",
     "wholeActionDraftBody": "Open the original screen to decide what to do with the whole transfer. Your text is kept until you choose.",
     "openToDecide": "Open and decide",

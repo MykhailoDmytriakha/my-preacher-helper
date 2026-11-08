@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 
 import { OutdatedTabNotice } from '@/components/common/OutdatedTabNotice';
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
-import { captureRecoveryChoice, isCollectionOnEngine, isDataEngineEnabled, isOneShotRecord, isRecoveryHeldOpen, useDataEngine, useDocumentActions, useOpenDocumentAnswerScopes, waitsForDecision, type OpenDocumentAnswer, type RecoveryChoiceScope } from '@/data-engine/react.client';
+import { captureRecoveryChoice, councilRefusalHeldOpen, isCollectionOnEngine, isDataEngineEnabled, isOneShotRecord, isRecoveryHeldOpen, useDataEngine, useDocumentActions, useOpenDocumentAnswerScopes, waitsForDecision, type OpenDocumentAnswer, type RecoveryChoiceScope } from '@/data-engine/react.client';
 import { useClipboard } from '@/hooks/useClipboard';
 import { useConfirm, useDiscardQuestion } from '@/hooks/useConfirm';
 import { useShellPathname } from '@/hooks/useShellPathname';
@@ -42,7 +42,7 @@ type Kind = 'conflict' | 'refused' | 'refusedCreate' | 'deletedThere' | 'deleted
  * well. Otherwise (several chains of requests, between which the engine never picks) no screen can,
  * and the stored version is the one choice, offered here.
  */
-interface Waiting extends RecoveryChoiceScope { resource: ResourceRef; kind: Kind; mine: string[]; theirs: string; screen: boolean; screenValue?: DocumentData | null; decidable?: boolean; formWork?: boolean; actionResolutionRequired?: boolean;
+interface Waiting extends RecoveryChoiceScope { resource: ResourceRef; kind: Kind; mine: string[]; theirs: string; screen: boolean; screenValue?: DocumentData | null; decidable?: boolean; formWork?: boolean; actionResolutionRequired?: boolean; retainedDraftsOnly?: boolean;
   /** The server refused one of its drafts — told apart from `kind`, which says `several` for many drafts, refused or not. */
   refused?: boolean }
 
@@ -147,7 +147,7 @@ function changedText(value: DocumentData | null | undefined, base: DocumentData 
 }
 
 const sameResource = (a: ResourceRef, b: ResourceRef) => a.collection === b.collection && a.id === b.id;
-const sameWaitingChoice = (current: Waiting | null | undefined, target: Waiting) => Boolean(current
+const sameWaitingChoice = (current: Waiting | null | undefined, target: Waiting) => Boolean(current && !current.retainedDraftsOnly && !target.retainedDraftsOnly
   && sameResource(current.resource, target.resource)
   && current.kind === target.kind
   && current.screen === target.screen
@@ -155,11 +155,16 @@ const sameWaitingChoice = (current: Waiting | null | undefined, target: Waiting)
   && current.operationIds.length === target.operationIds.length
   && current.operationIds.every((id, index) => id === target.operationIds[index]));
 
-/** A matching route yields only when its document editors hold all the shown work and words. */
+/** A matching route can own the decision while other draft words remain copyable. */
 function visibleWaiting(candidates: readonly Waiting[] | null | undefined, pathname: string | null | undefined,
   answers: readonly OpenDocumentAnswer[], search: string): Waiting | undefined {
-  return candidates?.find(candidate => !isOnDocumentScreen(pathname, candidate.resource, candidate.screenValue, search)
-    || !isRecoveryHeldOpen(candidate.records, answers));
+  for (const candidate of candidates ?? []) {
+    if (!isOnDocumentScreen(pathname, candidate.resource, candidate.screenValue, search)) return candidate;
+    if (isRecoveryHeldOpen(candidate.records, answers)) continue;
+    return candidate.screen && !candidate.actionResolutionRequired && councilRefusalHeldOpen(candidate.records, answers)
+      ? { ...candidate, retainedDraftsOnly: true } : candidate;
+  }
+  return undefined;
 }
 
 function kindOf(drafts: EditorRecord[], refused: Set<string>): Kind {
@@ -403,6 +408,17 @@ function EngineConflicts({ pollMs, search }: { pollMs: number; search?: string }
   const mine = entry.mine.join('\n\n———\n\n');
   // A refusal on a tab older than the server: the way out is a reload (BUG-20261107-outdated-tab-refusal-unexplained).
   const outdated = <OutdatedTabNotice refused={Boolean(entry.refused) || REFUSAL_KINDS.has(entry.kind)} className="mb-3" />;
+  if (entry.retainedDraftsOnly) {
+    return <>
+      {outdated}
+      {mine && <div role="status" className={NOTICE_BOX}>
+        <p className={NOTICE_TITLE}>{t('dataSync.retainedCouncilDrafts')}</p>
+        <pre className={NOTICE_TEXT}>{mine}</pre>
+        <button type="button" className={`mt-3 ${SECONDARY_BUTTON}`} onClick={() => { void copyToClipboard(mine); }}>{t(COPY_ACTION)}</button>
+      </div>}
+      {discardDialog}{confirmDialog}
+    </>;
+  }
   if (entry.actionResolutionRequired) {
     return <>{outdated}<ScreenDraftNotice entry={entry} mine={mine} busy={busy} onCopy={() => { void copyToClipboard(mine); }} /></>;
   }

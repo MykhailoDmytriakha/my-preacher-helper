@@ -21,7 +21,7 @@ import { needsConnection } from './engine';
 import { LegacyQueryCopies, LegacyQueryMigrationGate } from './LegacyQueryRecovery';
 import { ARCHIVED_COLLECTIONS, isEngineOwnedLegacyMutation, isEngineOwnedLegacyQuery, legacyCacheMayBeOverwritten } from './legacyQueryRecovery.client';
 import { discoverLegacyRecovery as discoverLegacyOriginals, exportLegacyRecovery as exportLegacyOriginal, type LegacyRecoverySource } from './legacyRecovery.client';
-import { recoveryHeldOpen as heldOpen, type OpenDocumentAnswer } from './openDocumentAnswers';
+import { councilRefusalHeldOpen as refusalHeldOpen, recoveryHeldOpen as heldOpen, type OpenDocumentAnswer } from './openDocumentAnswers';
 import { mergeFields } from './protocol';
 import { collectionRecordPresence, documentRecordPresence, UNKNOWN_RECORD_PRESENCE, type RecordPresence } from './recordPresence';
 import { isOnlySubmittedCopy } from './recovery.client';
@@ -66,6 +66,8 @@ export type DocumentAction =
 export type { OpenDocumentAnswer } from './openDocumentAnswers';
 /** Whether the answering document screens hold every shown request and the same words. */
 export function isRecoveryHeldOpen(records: readonly EditorRecord[], answers: readonly OpenDocumentAnswer[]): boolean { return heldOpen(records, answers); }
+/** Whether the open council holds the same refusal while other draft words remain unseen. */
+export function councilRefusalHeldOpen(records: readonly EditorRecord[], answers: readonly OpenDocumentAnswer[]): boolean { return refusalHeldOpen(records, answers); }
 /** Capture shown recovery work through the public engine facade. */
 export function captureRecoveryChoice(records: readonly EditorRecord[]): RecoveryChoiceScope { return captureChoice(records); }
 
