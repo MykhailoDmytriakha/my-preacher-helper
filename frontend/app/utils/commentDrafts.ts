@@ -1,16 +1,24 @@
 import { isValidRecoveryPatch } from '@/data-engine/react.client';
+import { serializeContent } from '@/utils/contentFingerprint';
 import { readDraftAddress } from '@/utils/draftAddress';
 import { compareDraftCopies, draftKey, findDraftCopies, readDraft, type DurableDraftCopy } from '@/utils/durableDraft';
 
 import type { ScriptureReference } from '@/models/models';
 
 export type CommentDraftTarget = { kind: 'new'; reference: ScriptureReference | null } | { kind: 'edit'; id: string };
-export type CommentDraft = { text: string; reference: ScriptureReference | null; title?: string };
+export type CommentDraft = { text: string; reference: ScriptureReference | null; title?: string; paragraph?: boolean };
 export const COMMENT_DRAFT_AGGREGATE = 'comment';
 
 /** Preserve an adopted historical payload's absent empty title for exact retirement. */
-export function commentDraftValue(text: string, reference: ScriptureReference | null, title: string, restoredWithoutTitle: boolean): CommentDraft {
-  return { text, reference, ...(restoredWithoutTitle && title === '' ? {} : { title }) };
+export function commentDraftValue(text: string, reference: ScriptureReference | null, title: string, restoredWithoutTitle: boolean, paragraph?: boolean): CommentDraft {
+  return { text, reference, ...(restoredWithoutTitle && title === '' ? {} : { title }), ...(paragraph === undefined ? {} : { paragraph }) };
+}
+
+/** An older source with no kind can be covered by a save that also supplied one. */
+export function isCommentDraftSaved(copy: CommentDraft, saved: CommentDraft): boolean {
+  const { paragraph: retainedKind, ...retained } = copy;
+  const { paragraph: savedKind, ...accepted } = saved;
+  return (retainedKind === undefined || retainedKind === savedKind) && serializeContent(retained) === serializeContent(accepted);
 }
 
 export type RestoredCommentPlace = { openingId: string; reference: ScriptureReference };
@@ -34,6 +42,7 @@ function validDraft(value: unknown, documentId: string, referenceDefinesDoor = f
   if (!value || typeof value !== 'object') return false;
   const draft = value as CommentDraft;
   if (typeof draft.text !== 'string' || (draft.title !== undefined && typeof draft.title !== 'string')) return false;
+  if (draft.paragraph !== undefined && typeof draft.paragraph !== 'boolean') return false;
   if (draft.reference === null) return !documentId.startsWith('new:');
   if (!isValidRecoveryPatch('studyNotes', { scriptureRefs: [{ ...draft.reference }] })) return false;
   // Exact decoded addresses already identify scoped sources. Only ambiguous old

@@ -1,9 +1,10 @@
 'use client';
 
 import { RectangleStackIcon } from '@heroicons/react/20/solid';
-import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { toast } from 'sonner';
 
+import { paragraphPlaceRefusal, storedCommentLayout } from '@/components/bible/commentParagraphPlacement';
 import { CommentPlaceShown, MovePlaceButton, useCommentPlace } from '@/components/CommentPlaceMove';
 import { CommentIcon, ParagraphIcon } from '@/components/Icons';
 import MarkdownDisplay from '@/components/MarkdownDisplay';
@@ -17,9 +18,11 @@ import { useDraftQuestion, useDurableDraft, useSettleShownDraft } from '@/hooks/
 import { useStudyNotesEngine } from '@/hooks/useStudyNotesEngine';
 import { isStaleWriteError } from '@/services/conflictSafeUpdate.client';
 import { NOTE_AGGREGATE } from '@/services/studies.service';
+import { resolveAppLocale } from '@/utils/appLocale';
 import { newClientId } from '@/utils/clientId';
-import { COMMENT_DRAFT_AGGREGATE, commentDraftDocument, commentDraftReference, commentDraftValue, findCommentDraftCopies, type CommentDraft, type CommentDraftTarget, type RestoredCommentPlace } from '@/utils/commentDrafts';
+import { COMMENT_DRAFT_AGGREGATE, commentDraftDocument, commentDraftReference, commentDraftValue, findCommentDraftCopies, isCommentDraftSaved, type CommentDraft, type CommentDraftTarget, type RestoredCommentPlace } from '@/utils/commentDrafts';
 import { COMMENT_SENTENCES, measureComment } from '@/utils/commentLength';
+import { referenceBibleFor } from '@/utils/scriptureReferenceNumbering';
 import { useTranslation } from '@locales/useTranslation';
 
 import type { ScriptureReference, StudyNote, StudyNoteType } from '@/models/models';
@@ -138,12 +141,13 @@ export function CommentWayBar({ text, paragraph = false }: { text: string; parag
 /** The words on the device still to be answered, or null; words equal to the window's are settled as taken. */
 function useWaitingDraft(
   recovered: CommentDraft | null,
-  shown: { text: string | null; written: string; title: string; placeWaits: boolean },
+  shown: { text: string | null; written: string; title: string; placeWaits: boolean; paragraph?: boolean },
   accept: () => void,
   sourceKey: string | null,
 ): CommentDraft | null {
   const offered = shown.text !== null && typeof recovered?.text === 'string' ? recovered : null;
-  const differs = offered !== null && (offered.text !== shown.written || (offered.title ?? '') !== shown.title || shown.placeWaits);
+  const differs = offered !== null && (offered.text !== shown.written || (offered.title ?? '') !== shown.title
+    || shown.placeWaits || (offered.paragraph !== undefined && offered.paragraph !== shown.paragraph));
   useSettleShownDraft(offered !== null && !differs, accept, sourceKey);
   return differs ? offered : null;
 }
@@ -163,22 +167,32 @@ function useCommentKind(target: CommentTarget, found: StudyNote | undefined, cho
   const kindOf = (note: StudyNote | undefined, acceptedPlace?: ScriptureReference) => note?.paragraph
     ?? (acceptedPlace ? choice?.inferFromReference?.(acceptedPlace) : undefined) ?? choice?.initial ?? false;
   const [asParagraph, setAsParagraph] = useState(() => (target.kind === 'edit' ? kindOf(found) : choice?.initial ?? false));
+  const [restoredKind, setRestoredKind] = useState<boolean | undefined>();
   const opened = useRef<boolean | null>(target.kind === 'edit' && found ? kindOf(found) : null);
   const take = (note: StudyNote, acceptedPlace?: ScriptureReference) => {
     opened.current = kindOf(note, acceptedPlace);
     setAsParagraph(opened.current);
+    setRestoredKind(undefined);
   };
-  // The kind is not kept with the words on the device: a draft is the words, their name and place, and its copy is retired
-  // only by a save that reads exactly as it did. A kind among them broke that between the reader and Studies and for copies
-  // from before the choice (Codex review r3–r4, 2026-11-07); words brought back take the kind the window opened with.
+  const choose = (paragraph: boolean) => {
+    if (paragraph === asParagraph) return;
+    setRestoredKind(undefined);
+    setAsParagraph(paragraph);
+  };
+  const restore = (paragraph: boolean | undefined) => {
+    setRestoredKind(paragraph);
+    if (paragraph !== undefined) setAsParagraph(paragraph);
+  };
   const changed = Boolean(choice) && opened.current !== null && asParagraph !== opened.current;
+  // A restored choice is still an edit on a screen with no kind switch, such as Studies.
+  const pending = restoredKind ?? (choice && (target.kind === 'new' || changed) ? asParagraph : undefined);
   /**
    * The kind as the window shows and saves it, given whether the words have grown into a note: a note has no kind. `offered` —
    * the switch is shown; `heading` — saved as a paragraph; `fields` — what a new one is saved with; `switched` — a written
    * one's kind to write, when changed here; `madeParagraphAt` — the place a comment made a paragraph where it stands is checked
    * at, as one moved there is.
    */
-  const asWritten = (isNote: boolean, standing: ScriptureReference | undefined) => {
+  const asWritten = (isNote: boolean, standing: ScriptureReference | undefined, storedKind: boolean | undefined) => {
     const offered = Boolean(choice) && !isNote;
     const heading = offered && asParagraph;
     return {
@@ -186,12 +200,12 @@ function useCommentKind(target: CommentTarget, found: StudyNote | undefined, cho
       heading,
       titleKey: heading ? 'comment.titleParagraph' : 'comment.title',
       descriptionKey: heading ? 'comment.paragraphDescription' : 'comment.description',
-      fields: offered ? { paragraph: asParagraph } : {},
-      switched: offered && changed ? asParagraph : undefined,
-      madeParagraphAt: offered && changed && asParagraph ? standing ?? null : null,
+      fields: !isNote && pending !== undefined ? { paragraph: pending } : {},
+      switched: !isNote ? pending : undefined,
+      madeParagraphAt: !isNote && pending === true && storedKind !== true ? standing ?? null : null,
     };
   };
-  return { asParagraph, setAsParagraph, take, changed, asWritten };
+  return { asParagraph, choose, restore, take, changed: changed || restoredKind !== undefined, pending, asWritten };
 }
 
 /** «Комментарий | Абзац» at the top of the window: what the comment is in the reader. */
@@ -268,8 +282,8 @@ export function CommentDialog({ target, place, context, bible, placeOf, placePic
    */
   paragraphChoice?: ParagraphChoice;
 }) {
-  const { t } = useTranslation();
-  const { uid, notes, createNote, updateNote, deleteNote } = useStudyNotesEngine(true);
+  const { t, language } = useTranslation();
+  const { uid, notes, commentCollectionReady, createNote, updateNote, deleteNote } = useStudyNotesEngine(true);
   const { confirm, confirmDialog } = useConfirm();
   const { askBeforeDiscard, discardDialog } = useDiscardQuestion();
   const found = target.kind === 'edit' ? notes.find((note) => note.id === target.id) : undefined;
@@ -296,6 +310,7 @@ export function CommentDialog({ target, place, context, bible, placeOf, placePic
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [found, text]);
   const [saving, setSaving] = useState(false);
+  const [placementError, setPlacementError] = useState<string | null>(null);
   // Another device changed the comment since it opened: what it holds now, to keep mine on top of it or take it.
   const [conflict, setConflict] = useState<StoredVersion | null>(null);
   const [restoredWithoutTitle, setRestoredWithoutTitle] = useState(false);
@@ -310,28 +325,40 @@ export function CommentDialog({ target, place, context, bible, placeOf, placePic
   });
   const { keptPlace } = where;
   const written = text ?? '';
+  const standing = opened.current ?? found;
   const initial = opened.current?.content ?? '';
   const initialTitle = opened.current?.title ?? '';
   const [slot] = useState(() => commentDraftDocument(target, Boolean(placePicker)));
   const [writerId] = useState(newClientId);
   // Words the device accepted, or the person threw away: from then on they are the baseline, not the opening words —
   // else a render after the save would make them «unsaved» again and the write on closing would keep them.
-  const settled = useRef<{ text: string; title: string } | null>(null);
-  const kept = useMemo<CommentDraft>(() => commentDraftValue(written, keptPlace, title, restoredWithoutTitle), [written, keptPlace, title, restoredWithoutTitle]);
+  const settled = useRef<CommentDraft | null>(null);
+  const kept = useMemo(() => commentDraftValue(written, keptPlace, title, restoredWithoutTitle, kind.pending),
+    [written, keptPlace, title, restoredWithoutTitle, kind.pending]);
   // The place alone is no unsaved work: the baseline carries the place now chosen.
   const draft = useDurableDraft<CommentDraft>({
     uid, docId: slot, aggregate: COMMENT_DRAFT_AGGREGATE, writerId, findCopies: findCommentDraftCopies, value: kept, enabled: text !== null,
-    confirmedValue: text === null ? null : commentDraftValue(settled.current?.text ?? initial, reference, settled.current?.title ?? initialTitle, restoredWithoutTitle),
+    confirmedValue: text === null ? null : settled.current ?? commentDraftValue(initial, reference, initialTitle, restoredWithoutTitle,
+      target.kind === 'new' ? paragraphChoice?.initial : undefined),
+    isRecoveredDraftSaved: isCommentDraftSaved,
   });
   const settle = () => {
-    settled.current = { text: written, title };
+    settled.current = kept;
     draft.markSaved(kept);
   };
   // Offered only once the comment is in the editor: restored before, its loading would no longer take the opening version.
   const recovered = draft.recovered;
   // A place it was moving to waits too.
   const placeWaits = where.waits(recovered?.reference);
-  const waiting = useWaitingDraft(recovered, { text, written, title, placeWaits }, draft.settleRecovered, draft.recoveredKey);
+  const savedKind = standing?.paragraph;
+  // Compare the proven opening fields in the proposed copy's historical shape, never the words being typed.
+  const verifiedRecovery = useMemo(() => target.kind === 'edit' && recovered
+    ? commentDraftValue(initial, reference, initialTitle, recovered.title === undefined,
+      recovered.paragraph === undefined ? undefined : savedKind)
+    : undefined, [target.kind, recovered, initial, reference, initialTitle, savedKind]);
+  const { settleRecovered } = draft;
+  const settleShown = useCallback(() => settleRecovered(verifiedRecovery), [settleRecovered, verifiedRecovery]);
+  const waiting = useWaitingDraft(recovered, { text, written, title, placeWaits, paragraph: kind.pending ?? savedKind }, settleShown, draft.recoveredKey);
   // Resolve the initial recovery question before writing; other independent copies
   // remain available after this opening's explicit choice without locking it again.
   const { held: deciding, answer: answerDraftQuestion } = useDraftQuestion(JSON.stringify([uid, writerId]), waiting !== null);
@@ -339,6 +366,7 @@ export function CommentDialog({ target, place, context, bible, placeOf, placePic
     if (!waiting) return;
     setText(waiting.text);
     setTitle(waiting.title ?? '');
+    kind.restore(waiting.paragraph);
     setRestoredWithoutTitle(waiting.title === undefined);
     if (!placePicker && target.kind === 'new' && target.reference && waiting.reference) {
       setRestoredPlace({ openingId: target.reference.id, reference: waiting.reference });
@@ -388,17 +416,36 @@ export function CommentDialog({ target, place, context, bible, placeOf, placePic
 
   // As a comment — not a note — it is what the switch says: a heading over its verses or words beside them; the kind goes
   // out where the window offers the choice — a new one's always, a written one's only when switched here.
-  const asWritten = kind.asWritten(isNote, (opened.current ?? found)?.scriptureRefs?.[0]);
+  const asWritten = kind.asWritten(isNote, standing?.scriptureRefs?.[0], standing?.paragraph);
   const save = (event?: React.FormEvent) => {
     event?.preventDefault();
     if (empty || saving || !placed || !named) return;
+    const note = opened.current;
+    const visible = live.current;
+    // Keep mine adopts a new guard immediately. The rendered title can still belong to the earlier opening.
+    const current = (visible?.rev?.[NOTE_AGGREGATE] ?? 0) > (note?.rev?.[NOTE_AGGREGATE] ?? 0) ? visible : note;
+    const writing = kind.asWritten(isNote, current?.scriptureRefs?.[0], current?.paragraph);
     const placing = target.kind === 'new' ? keptPlace : where.moved;
     // The paragraphs' rule is a paragraph's: one saved as a note leaves the reader's paragraphs (Codex review r3).
-    const checked = placing ?? asWritten.madeParagraphAt;
-    const refused = checked && !isNote ? placeRefusal?.(checked, paragraphChoice ? kind.asParagraph : undefined) : null;
-    if (refused) { toast.error(refused); return; }
+    const checked = placing ?? writing.madeParagraphAt;
+    const chosenKind = kind.pending ?? (paragraphChoice ? kind.asParagraph : undefined);
+    let refused: string | null | undefined;
+    if (checked && !isNote) {
+      if (placeRefusal) refused = placeRefusal(checked, chosenKind);
+      else if (chosenKind === true) {
+        const locale = resolveAppLocale(language);
+        const targetBible = checked.bible ?? referenceBibleFor(locale);
+        refused = paragraphPlaceRefusal(checked, targetBible, chosenKind, target.kind === 'edit' ? target.id : undefined,
+          book => commentCollectionReady ? storedCommentLayout(notes, book, targetBible, locale) : null, t, locale);
+      }
+    }
+    if (refused) {
+      if (placeRefusal) toast.error(refused);
+      else setPlacementError(refused);
+      return;
+    }
+    setPlacementError(null);
     const content = written.trim();
-    const note = opened.current;
     if (target.kind === 'edit' && !note) return;
     setConflict(null);
     const type = isNote ? 'note' : 'comment';
@@ -406,11 +453,11 @@ export function CommentDialog({ target, place, context, bible, placeOf, placePic
     const naming = isNote ? { title: title.trim() } : {};
     if (target.kind === 'new') {
       setSaving(true);
-      const created = createNote({ userId: uid ?? '', content, title: naming.title ?? '', scriptureRefs: keptPlace ? [keptPlace] : [], tags: [], type, ...asWritten.fields });
+      const created = createNote({ userId: uid ?? '', content, title: naming.title ?? '', scriptureRefs: keptPlace ? [keptPlace] : [], tags: [], type, ...writing.fields });
       created.acceptance.then(() => saved(created.note.id), failed);
       return;
     }
-    const { updates, baseline } = changesOf({ mine: mine.current ?? note!, guard: note! }, { content, type, ...naming, paragraph: asWritten.switched }, where.write(note?.scriptureRefs ?? []));
+    const { updates, baseline } = changesOf({ mine: mine.current ?? note!, guard: note! }, { content, type, ...naming, paragraph: writing.switched }, where.write(note?.scriptureRefs ?? []));
     // Nothing changed — nothing to write: «Готово» closes, and no revision moves for it.
     if (!Object.keys(updates).length) {
       closeDiscarding();
@@ -501,10 +548,11 @@ export function CommentDialog({ target, place, context, bible, placeOf, placePic
       )}
     >
       <div className="space-y-4">
-        {asWritten.offered ? <CommentKindSwitch paragraph={kind.asParagraph} onChange={kind.setAsParagraph} disabled={saving || deciding} /> : null}
+        {asWritten.offered ? <CommentKindSwitch paragraph={kind.asParagraph} onChange={kind.choose} disabled={saving || deciding} /> : null}
         {/* The words waiting are answered first: they may bring their own place back, so the choice of one waits. */}
         {/* Nor while a save is accepted: a place chosen then would show, and the one sent would be saved (Codex review r3). */}
         {deciding || saving ? null : placePicker?.({ requestClose })}
+        {placementError ? <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm font-medium text-red-800 dark:bg-red-950 dark:text-red-200">{placementError}</p> : null}
         {conflict ? <SaveConflictBanner entityKey="entityComment" onKeepMine={keepMine} onTakeTheirs={takeTheirs} busy={saving} /> : null}
         {waiting ? (
           <UnsavedDraftOffer
@@ -513,6 +561,9 @@ export function CommentDialog({ target, place, context, bible, placeOf, placePic
                 {where.offered(waiting.reference) ? (
                   <p className="mb-1 text-xs font-semibold text-gray-600 dark:text-gray-300">{where.offered(waiting.reference)}</p>
                 ) : null}
+                {waiting.paragraph !== undefined ? <p className="mb-1 text-xs font-semibold text-gray-600 dark:text-gray-300">
+                  {t(waiting.paragraph ? 'comment.kind.paragraph' : 'comment.kind.comment')}
+                </p> : null}
                 <MarkdownDisplay pencil content={waiting.text} className="text-sm text-gray-700 dark:text-gray-200" />
               </>
             )}

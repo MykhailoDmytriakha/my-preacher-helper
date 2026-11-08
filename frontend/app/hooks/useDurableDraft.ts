@@ -39,6 +39,8 @@ export interface UseDurableDraftOptions<T> {
   creationTargetId?: string;
   /** Optional feature mapping for precreate copies of the same actual resource. */
   findCopies?: (uid: string, docId: string, aggregate: string) => DurableDraftCopy<T>[];
+  /** Optional proof that a successful save covers the value of an already-owned recovery source. */
+  isRecoveredDraftSaved?: (source: T, saved: T) => boolean;
   preferredRecoveryKey?: string | null;
   /** Logical editor identity across an optimistic document-id handoff. The draft
    * moves to docId, but recovery is inspected only once for this owner/identity. */
@@ -57,7 +59,7 @@ export interface UseDurableDraftResult<T> {
   recoveries: readonly DurableDraftCopy<T>[];
   selectRecovered: (key: string) => void;
   /** Hide equal shown words; only an equal complete baseline proves them settled. */
-  settleRecovered: () => void;
+  settleRecovered: (verifiedBaseline?: T) => void;
   /** The user took the recovered text — hide the offer, KEEP the stored copy. */
   acceptRecovered: () => void;
   /** The user chose to keep the server version — forget the draft. */
@@ -124,6 +126,7 @@ export function useDurableDraft<T>({
   confirmedValue,
   creationTargetId,
   findCopies = findDraftCopies,
+  isRecoveredDraftSaved,
   preferredRecoveryKey,
   recoveryIdentity = docId,
 }: UseDurableDraftOptions<T>): UseDurableDraftResult<T> {
@@ -161,16 +164,17 @@ export function useDurableDraft<T>({
 
   // Matching words alone do not adopt another physical copy. Only this writer's
   // address and explicitly selected sources can transfer to canonical ownership.
-  const retireKnownCopies = useCallback((value: T, identity: string | null, ownedKeys: readonly string[] = []) => {
+  const retireKnownCopies = useCallback((value: T, identity: string | null, ownedKeys: readonly string[] = [], covers?: (source: T, saved: T) => boolean) => {
     const serialised = serializeContent(value);
     const owned = new Set(ownedKeys);
     const known = recoveryRef.current.identity === identity ? recoveryRef.current.copies.filter(copy => owned.has(copy.key)) : [];
     const adopted = [...adoptedRef.current.values()].filter(entry => entry.identity === identity).map(entry => entry.copy);
     const retired = new Set<string>();
     for (const copy of [...known, ...adopted]) {
-      if (serializeContent(copy.value) !== serialised) continue;
+      if (serializeContent(copy.value) !== serialised && !covers?.(copy.value, value)) continue;
       const { key: sourceKey, sourceRecord, ...expectedCopy } = copy;
-      clearDraftIfMatches(sourceKey, value, sourceRecord ?? expectedCopy);
+      const physical = sourceRecord ?? expectedCopy;
+      clearDraftIfMatches(sourceKey, covers ? physical.value : value, physical);
       const remaining = readDraftsStrict([sourceKey]);
       if (!remaining || remaining.has(sourceKey)) continue;
       retired.add(sourceKey);
@@ -317,16 +321,19 @@ export function useDurableDraft<T>({
   }, []);
 
   /** Hide a shown offer; only a complete baseline match permits settled-copy cleanup. */
-  const settleRecovered = useCallback(() => {
+  const settleRecovered = useCallback((verifiedBaseline?: T) => {
     const copy = selectedRef.current;
     if (!copy) return;
     const identity = recoveryKeyRef.current;
     // Preserve the existing completed-copy cleanup only with the entire baseline,
     // never merely another restored/typed value that happens to have equal words.
-    if (serializeContent(copy.value) === confirmedRef.current) adoptedRef.current.set(copy.key, { identity, copy });
+    const stored = serializeContent(copy.value);
+    const verified = verifiedBaseline !== undefined && stored === serializeContent(verifiedBaseline);
+    if (stored === confirmedRef.current || verified) adoptedRef.current.set(copy.key, { identity, copy });
+    if (verified) retireKnownCopies(verifiedBaseline, identity);
     setRecovery(current => current.identity !== identity ? current : { ...current,
       copies: current.copies.filter(candidate => candidate.key !== copy.key || serializeContent(candidate.value) !== serializeContent(copy.value)) });
-  }, []);
+  }, [retireKnownCopies]);
 
   /** Explicitly adopt this physical source, retaining it until exact retirement. */
   const acceptRecovered = useCallback(() => {
@@ -387,7 +394,7 @@ export function useDurableDraft<T>({
     const currentOpening = recoveryKeyRef.current === recoveryKey;
     if (currentOpening) confirmedRef.current = serializeContent(confirmed);
     const ownKey = currentOpening ? keyRef.current : key;
-    retireKnownCopies(confirmed, recoveryKey, ownKey ? [ownKey] : []);
+    retireKnownCopies(confirmed, recoveryKey, ownKey ? [ownKey] : [], isRecoveredDraftSaved);
     const ours = ourDraftRef.current;
     if (ownKey && ours?.key === ownKey) {
       const record = readDraft<T>(ownKey);
@@ -398,7 +405,7 @@ export function useDurableDraft<T>({
       ours?.key === ownKey && ours.value === serializeContent(confirmed) ? ours.record : undefined);
     // Keep the exact snapshot for a departure retry if removal was refused.
     // A replacement at that address can never satisfy this old snapshot.
-  }, [key, recoveryKey, retireKnownCopies]);
+  }, [key, recoveryKey, retireKnownCopies, isRecoveredDraftSaved]);
 
   return { editedAt: editRef.current.editedAt, recovered, recoveredKey, recoveries, selectRecovered, settleRecovered, acceptRecovered, discardRecovered, markCaptured, markSaved };
 }

@@ -11,7 +11,7 @@ import { SCRIPTURE_USAGE_KINDS, bookUsage, passageCovers, usageDocuments, type B
 import { verseCount } from '@/utils/versification';
 import { useTranslation } from '@locales/useTranslation';
 
-import { isParagraphComment, layParagraphs, type LaidParagraph } from './commentParagraphs';
+import { commentLayoutOf, type BookCommentLayout } from './commentParagraphPlacement';
 import { useMinePrefs } from './minePrefs';
 import { USAGE_KIND_LOOK } from './usageKinds';
 
@@ -33,16 +33,6 @@ export type MineStretch = { kind: ScriptureUsageKind; passage: Passage };
 
 
 type CollectionState = ReturnType<typeof useDataCollection>['state'];
-
-export interface BookCommentLayout { laid: readonly LaidParagraph[]; bodyOf(id: string): string }
-/** One projection owns paragraph layout and its displayed words in every book. */
-function commentLayoutOf(entries: readonly BookUsageEntry[]): BookCommentLayout {
-  return {
-    laid: layParagraphs(entries.filter(entry => entry.kind === 'comment' && isParagraphComment(entry.passage, entry.paragraph))
-      .map(entry => ({ id: entry.key, owner: entry.id, passage: entry.passage, ...(entry.paragraph !== undefined ? { paragraph: entry.paragraph } : {}) }))).laid,
-    bodyOf: id => entries.find(entry => entry.kind === 'comment' && (entry.key === id || entry.id === id))?.body ?? '',
-  };
-}
 
 /** The person's own documents of a list: the ones being deleted on this device are already gone for them. */
 function owned<T>(state: CollectionState, uid: string | undefined): T[] {

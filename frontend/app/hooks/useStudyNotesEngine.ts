@@ -137,6 +137,7 @@ export function useStudyNotesEngine(enabled: boolean) {
     notes,
     noteDelivery,
     notePresence: collection.presence,
+    commentCollectionReady: collection.state?.complete === true && !collection.error && !collection.readOnly,
     confirmedDictationSources,
     confirmedCreationIds,
     loading: isAuthLoading || (Boolean(uid) && collection.loading),

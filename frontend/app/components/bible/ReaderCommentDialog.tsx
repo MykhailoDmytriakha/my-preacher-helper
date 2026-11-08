@@ -11,8 +11,9 @@ import { newClientId } from '@/utils/clientId';
 import { passagesIn, samePassage, withStoredBible } from '@/utils/scriptureReferenceNumbering';
 import { useTranslation } from '@locales/useTranslation';
 
-import { fitCommentPassage, isParagraph, isParagraphComment, paragraphRefusal, spanOf, versePosition, type LaidParagraph, type PassageFitSaid } from './commentParagraphs';
-import { passageLabel, type BookCommentLayout, type MinePlace } from './useBookUsage';
+import { paragraphName, paragraphPlaceRefusal, sayFit, type BookCommentLayout } from './commentParagraphPlacement';
+import { fitCommentPassage, isParagraph, paragraphRefusal, versePosition, type LaidParagraph } from './commentParagraphs';
+import { passageLabel, type MinePlace } from './useBookUsage';
 import { PassagePickBar } from './verseCopy/PassagePickBar';
 
 import type { RibbonChapterComment } from './BookRibbon';
@@ -116,18 +117,8 @@ export function ReaderCommentDialog(props: {
   const editing = commenting?.kind === 'edit' ? commenting.id : undefined;
   // Every projected piece follows the destination book's same rule — the paragraphs' rule, a paragraph's alone: a comment
   // on several verses crosses nothing (the owner, 2026-11-06). Never chosen, the kind is read from the length as before.
-  const placeRefusal = (reference: ScriptureReference, paragraph?: boolean) => {
-    const pieces = passagesIn(reference, bible).filter((piece) => isParagraphComment(piece, paragraph));
-    if (!pieces.length) return null;
-    const target = paragraphsForBook(reference.book);
-    if (!target) return t('comment.pick.unavailable');
-    const others = target.laid.filter(paragraph => paragraph.owner !== editing);
-    for (const piece of pieces) {
-      const refusal = paragraphRefusal(spanOf(piece)!, others);
-      if (refusal) return sayFit(refusal, id => paragraphName(target.bodyOf(id)), t);
-    }
-    return null;
-  };
+  const placeRefusal = (reference: ScriptureReference, paragraph?: boolean) =>
+    paragraphPlaceRefusal(reference, bible, paragraph, editing, paragraphsForBook, t);
   return (
     <>
       {copy.purpose === 'comment' && text ? (
@@ -201,17 +192,6 @@ function OpenReaderCommentDialog({ commenting, text, bookId, bible, locale, pass
     },
   } : undefined;
   return <CommentDialog target={target} place={place} context={context} bible={bible} placeOf={placeOf} onClose={onClose} onSaved={onSaved} returnFocusTo={returnFocusTo} openingPlace={opening ? place : undefined} away={away} onChooseVerses={onVerses ? onChooseVerses : undefined} versesRefusal={versesRefusal} placeRefusal={placeRefusal} paragraphChoice={paragraphChoice} />;
-}
-
-/** What the reader says when the verses chosen for a comment come out other than pressed, or a place may not be saved. */
-function sayFit(said: PassageFitSaid, nameOf: (id: string) => string, t: (key: string, options?: Record<string, unknown>) => string): string {
-  return said.why === 'deep' ? t('comment.pick.deep') : t(`comment.pick.${said.why}`, { title: nameOf(said.with) });
-}
-
-/** A paragraph named by its comment's first words, as far as a toast holds. */
-function paragraphName(body: string): string {
-  const words = body.replace(/[#*_>`~[\]]/g, '').replace(/\s+/g, ' ').trim();
-  return words.length > 40 ? `${words.slice(0, 39).trimEnd()}…` : words;
 }
 
 /**
