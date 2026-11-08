@@ -7622,3 +7622,11 @@ The council detail suite supplies the owner through its existing Data Engine moc
 Chrome on isolated emulators exercised a controlled read refusal and recovery on the list at 1280 px and on a council at 390 px. The stored council stayed unchanged and the retries produced no escaping rejection. The visual pass found a separate duplicate detail notice and a list hydration warning during opening. Evidence is in artifacts/council-retry-tests-nov08-verified.
 
 After authorized deployment, confirm the revision and open the list and one disposable council. Keep the injected refusal and read-only fixture in local tests.
+
+## BUG-20261108-council-detail-duplicate-read-retry · Keep one read retry in the council detail
+
+The council detail claims the engine read notice only while its own read alert is visible. The common record-read mechanism keeps separate write refusals and recovery actions. The regression failed on the extra engine alert and passed after the fix. Two controls preserve a separate refusal and the engine read alert when the page has no read panel. All 136 related tests, TypeScript and guarded build 9KRTJAzx-7MTvsDtp0oaQ passed. Scoped ESLint reported zero errors and four existing warnings.
+
+Native Chrome at 390 px on isolated emulators showed one Retry before and after a controlled HTTP 500. The next click received HTTP 200 and reopened the same record. The stored document remained unchanged and the browser reported no exception or unhandled rejection. The before, refusal and restored screens were visually checked. Evidence is in artifacts/council-duplicate-read-notice-verified.
+
+After authorized deployment, confirm the revision and open a disposable council from the list. Check its heading and saved fields. Keep forced read refusal on the local stand. The list hydration observation remains separate.

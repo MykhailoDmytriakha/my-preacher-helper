@@ -35,6 +35,7 @@ import { toast } from 'sonner';
 import { ReorderArrows } from '@/(pages)/(private)/care/orders/ReorderArrows';
 import { ScriptureText, ScriptureWrittenIn } from '@/components/bible/ScriptureLinks';
 import { ScriptureLinksInWindow } from '@/components/bible/VerseWindow';
+import { RecordReadSummary } from '@/components/common/recordReadSummary';
 import { showCouncilCarryPrepared, useCouncilFinishAction } from '@/components/council/councilActionNotice';
 import { CouncilOutcomeForm } from '@/components/council/CouncilOutcomeForm';
 import { CouncilOutcomePanel, useOutcomeLine, useRecordedOutcomeLabel, useTopicStateLine } from '@/components/council/CouncilOutcomePanel';
@@ -149,11 +150,13 @@ function EngineCouncilDetailWorkspace({ councilId }: { councilId: string }) {
   const generation = document.confirmed?.metadata?.generation;
   const comparison = councilTopicComparison(document.checkpoint, t);
   const shownChoice = comparison ? document.checkpoint : undefined;
+  const loading = document.loading || list.loading;
+  const readFailed = !document.council && !loading && list.councils.length === 0 && Boolean(document.error ?? list.error);
   const source = {
-    council: document.council, councils: list.councils, loading: document.loading || list.loading,
+    council: document.council, councils: list.councils, loading, readFailed,
     // A copy shown while device storage is silent is for reading only (BUG-20260927-engine-open-hangs-on-silent-device-storage).
     readOnly: document.readOnly,
-    error: document.error ?? list.error, refresh: document.refresh,
+    refresh: document.refresh,
     updateCouncil: (id: string, updater: (current: Council) => Council, field?: CouncilTimedField) => {
       void document.updateCouncil(id, updater, field).catch(report);
     },
@@ -174,10 +177,12 @@ function EngineCouncilDetailWorkspace({ councilId }: { councilId: string }) {
     finishCouncil: document.finishCouncil,
   };
   return <>
-    <DataSyncStatus subject={document.recoveryIdentity} status={document.status} error={document.error} errorWords={document.errorWords} className="mb-4"
-      comparison={comparison} onRetry={() => document.refresh()} onKeepLocal={() => document.keepLocal(shownChoice)} onAcceptRemote={() => document.acceptRemote(shownChoice)}
-      recoveryChoices={recovery.choices} onRecover={recovery.recover}
-      recoveryLoading={recovery.loading} recoveryError={recovery.error} onDiscardRecovery={recovery.discard} />
+    <RecordReadSummary notice={readFailed ? { subject: document.recoveryIdentity, words: document.errorWords } : undefined}>
+      <DataSyncStatus subject={document.recoveryIdentity} status={document.status} error={document.error} errorWords={document.errorWords} className="mb-4"
+        comparison={comparison} onRetry={() => document.refresh()} onKeepLocal={() => document.keepLocal(shownChoice)} onAcceptRemote={() => document.acceptRemote(shownChoice)}
+        recoveryChoices={recovery.choices} onRecover={recovery.recover}
+        recoveryLoading={recovery.loading} recoveryError={recovery.error} onDiscardRecovery={recovery.discard} />
+    </RecordReadSummary>
     {document.actions?.map(action => <DataMembershipStatus key={action.id} action={{ durable: true, phase: 'submitted',
       error: null, delivery: action.delivery, retry: document.refresh, discard: () => document.discardAction(action.id) }} />)}
     <CouncilDetailContent source={source} engineCouncilId={councilId} />
@@ -188,7 +193,7 @@ interface CouncilDetailSource {
   council: Council | null | undefined;
   councils: Council[];
   loading: boolean;
-  error: unknown;
+  readFailed: boolean;
   refresh: () => unknown;
   updateCouncil: (id: string, updater: (current: Council) => Council, field?: CouncilTimedField) => void;
   renameTopic: (id: string, title: string) => Promise<void>;
@@ -205,7 +210,7 @@ interface CouncilDetailSource {
 function CouncilDetailContent({ source, engineCouncilId }: { source: CouncilDetailSource; engineCouncilId?: string }) {
   const { t, language } = useTranslation();
   const router = useRouter();
-  const { council, councils, loading, error, refresh, updateCouncil, deleteCouncil, carryTopicToNext, readOnly = false } = source;
+  const { council, councils, loading, readFailed, refresh, updateCouncil, deleteCouncil, carryTopicToNext, readOnly = false } = source;
 
   const { finish: finishCouncil, finishing } = useCouncilFinishAction(t, source.finishCouncil);
 
@@ -242,7 +247,7 @@ function CouncilDetailContent({ source, engineCouncilId }: { source: CouncilDeta
         <BackToList />
         {loading ? (
           <div className="mt-8 h-24 animate-pulse rounded-2xl bg-gray-100 dark:bg-gray-800" />
-        ) : error && councils.length === 0 ? (
+        ) : readFailed ? (
           <section className="mt-8 rounded-2xl border border-amber-200 bg-amber-50/60 p-4 dark:border-amber-900/60 dark:bg-amber-950/30" role="alert">
             <p className="text-sm text-amber-900 dark:text-amber-200">{t('council.readFailed')}</p>
             <button type="button" onClick={async () => {
