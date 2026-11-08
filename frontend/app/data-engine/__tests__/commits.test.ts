@@ -434,6 +434,55 @@ describe('Durable commit requests', () => {
     }));
   });
 
+  it('pins a prayer status shown by an exact queued reactivation before the modal opens', async () => {
+    const date = '2026-10-03T10:00:00.000Z';
+    const opening: ResourceSnapshot = { resource: { collection: 'prayerRequests', id: 'prayer' },
+      metadata: { protocol: 1, generation: 'prayer', revision: 1, deleted: false },
+      value: { userId: 'owner', title: 'Keep this prayer', status: 'answered', answeredAt: date,
+        updates: [], createdAt: 'now', updatedAt: 'now' } };
+    const time = { earliestMs: 1_800_000_000_010, latestMs: 1_800_000_000_015 };
+    const s = setup({ opening }), queue = s.makeQueue().queue;
+    const editor = await s.makeEngine().openEditor(opening.resource, 'prayer');
+    await editor.commit(current => ({ ...current, status: 'active' }),
+      { kind: 'prayer-status', status: { fields: ['status'], time } });
+    const [request] = await queue.list();
+    const [shown] = collectionDocumentViews('owner', 'prayerRequests', [opening], [request]);
+    expect(shown.submittedPrayerStatus).toMatchObject({
+      generation: 'prayer', revision: 1, status: 'active', answeredAt: { exists: true, value: date },
+      submitted: { status: { requestId: request.id, revision: 1 } },
+    });
+  });
+
+  it('keeps a later prayer reactivation after its queued answer loses the status', async () => {
+    const opening: ResourceSnapshot = {
+      resource: { collection: 'prayerRequests', id: 'prayer' },
+      metadata: { protocol: 1, generation: 'prayer', revision: 1, deleted: false },
+      value: { userId: 'owner', title: 'Keep this prayer', status: 'active', answerText: 'Keep these words',
+        updates: [], createdAt: 'now', updatedAt: 'now' },
+    };
+    const time = (offset: number) => ({ earliestMs: 1_800_000_000_000 + offset, latestMs: 1_800_000_000_005 + offset });
+    const date = '2026-11-08T11:00:00.000Z', s = setup({ opening }), queue = s.makeQueue().queue;
+    const editor = await s.makeEngine().openEditor(opening.resource, 'prayer');
+    await editor.commit(current => ({ ...current, status: 'answered', answeredAt: date }),
+      { kind: 'prayer-status', status: { fields: ['status', 'answeredAt'], time: time(20) } });
+    const first = (await queue.list())[0];
+    expect(first.prayerAnsweredAtAction).toMatchObject({ before: { exists: false }, after: { exists: true, value: date }, time: time(20) });
+    await editor.commit(current => ({ ...current, status: 'active' }),
+      { kind: 'prayer-status', status: { fields: ['status'], time: time(80) } });
+    const second = (await queue.list()).find(record => record.id !== first.id)!;
+    expect(second.prayerStatusAction).toEqual({ before: 'answered', after: 'active', observedRevision: 1,
+      predecessorOperationId: first.id, time: time(80) });
+    const accepted = { ...opening, value: { ...opening.value, status: 'not_answered', answeredAt: date },
+      metadata: { ...opening.metadata!, revision: 3, operationId: 'another-mark' } };
+    s.replace(accepted);
+    jest.mocked(s.transport.send).mockResolvedValueOnce({ kind: 'acknowledged', operationId: first.id, snapshot: accepted });
+    await s.makeQueue().queue.drain(true);
+    expect(s.transport.send).toHaveBeenCalledWith(expect.objectContaining({
+      operationId: second.id, prayerStatusAction: second.prayerStatusAction,
+      changes: [{ path: ['status'], before: { exists: true, value: 'answered' }, after: { exists: true, value: 'active' } }],
+    }));
+  });
+
   it('keeps exact series title and color predecessors through an unrelated status Save', async () => {
     const opening: ResourceSnapshot = {
       resource: { collection: 'series', id: 'series' },

@@ -10,7 +10,7 @@ import { CommitQueue, type CommitRequest, type CommitStore } from './commits';
 import { EditorController, InactiveEditorError, type CheckpointRecoveryStore, type CheckpointStore, type EditorRecord, type EditorState, type RecoveryCheckpoint } from './controller';
 import { captureCouncilCarry, pinCouncilDestination } from './councilCarry';
 import { canReplaceDocumentIntent, isDirectLegacyDocumentIntent, requiresWholeActionResolution, savedDocumentAnswer } from './documentDelivery';
-import { capturePrayerTitle, matchesPrayerTitleRequest, validatedTitleCapture } from './documentFieldAction';
+import { capturePrayerTitle, matchesPrayerStatusOpening, matchesPrayerTitleRequest, validatedTitleCapture } from './documentFieldAction';
 import { ACTION_SLOT, areDifferentTabManualParents, editorSlot, isManualChoiceRecoveryIdentity, manualScopeIdentity, readManualScopeIdentity } from './editorIdentity';
 import { AddressedFailures, eachFailure, PausedReadFailure } from './failures';
 import { collectionHeadRef } from './feed';
@@ -1819,6 +1819,12 @@ export class DataEngine {
               throw Object.assign(new Error('The prayer title changed'), { code: 'prayer-title-basis-changed' });
             }
             captured = undefined;
+          }
+        }
+        if (action?.kind === 'prayer-status') {
+          if (next === checkpoint.draft) captured = undefined;
+          else if (action.status.opening && !matchesPrayerStatusOpening(checkpoint.confirmed, action.status.opening)) {
+            throw Object.assign(new Error('The prayer status opening changed'), { code: 'prayer-status-basis-changed' });
           }
         }
         const lifecycle = captured?.kind === 'council-lifecycle' ? { field: 'heldAt' as const, time: captured.time } : undefined;

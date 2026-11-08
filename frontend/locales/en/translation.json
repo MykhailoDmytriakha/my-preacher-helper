@@ -4228,6 +4228,19 @@
       "skip": "Mark without note",
       "submit": "Save"
     },
+    "history": {
+      "heading": "Prayer status history",
+      "loading": "Loading status history…",
+      "unavailable": "Status history is unavailable.",
+      "restoreFailed": "This value could not be restored.",
+      "empty": "No earlier values.",
+      "kept": "Kept {{value}}",
+      "current": "Current value",
+      "restore": "Use this value",
+      "more": "More values",
+      "notSet": "No answer date",
+      "status": "Prayer status"
+    },
     "answerText": {
       "label": "How God answered",
       "edit": "Edit answer",

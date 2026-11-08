@@ -3,6 +3,7 @@ import type { ActionTime } from './actionClock';
 import type { DatedRowActionEvidence } from './datedRowAction';
 import type { DocumentFieldAction, DocumentFieldObservation, DocumentFieldStamp, PrayerTitleCapture, ServiceOrderTitleCapture } from './documentFieldAction';
 import type { GroupMeetingFieldActions } from './groupMeetingFieldAction';
+import type { PrayerStatusCapture } from './prayerStatusAction';
 import type { PreachDateFieldActions } from './preachDateFieldAction';
 import type { PreachStatusAction } from './preachStatusAction';
 import type { SeriesFieldStamps } from './seriesFieldAction';
@@ -48,7 +49,8 @@ export type EditorCommitAction =
   | { kind: 'bible-mark-stroke'; time: ActionTime }
   | { kind: 'service-order-title'; title: ServiceOrderTitleCapture }
   | { kind: 'council-lifecycle'; time: ActionTime | null }
-  | { kind: 'prayer-title'; title: PrayerTitleCapture };
+  | { kind: 'prayer-title'; title: PrayerTitleCapture }
+  | { kind: 'prayer-status'; status: PrayerStatusCapture };
 
 export type BibleMarkStrokeStamp = { observedRevision: number; time: ActionTime };
 
@@ -64,6 +66,8 @@ export type DataCommand = CommandBase & (
       bibleMarkStroke?: BibleMarkStrokeStamp;
       serviceOrderTitleAction?: DocumentFieldAction;
       prayerTitleAction?: DocumentFieldObservation;
+      prayerStatusAction?: DocumentFieldObservation;
+      prayerAnsweredAtAction?: DocumentFieldStamp;
       sermonTitleAction?: DocumentFieldObservation;
       sermonVerseAction?: DocumentFieldStamp;
       sermonChurchAction?: DocumentFieldStamp;

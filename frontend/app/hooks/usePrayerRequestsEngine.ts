@@ -7,10 +7,12 @@ import { usePersistedConflict } from '@/hooks/usePersistedConflict';
 import { StaleWriteError, isStaleWriteError } from '@/services/conflictSafeUpdate.client';
 import { PRAYER_CORE_AGGREGATE, PRAYER_STATUS_AGGREGATE } from '@/services/prayerRequests.client';
 import { newClientId } from '@/utils/clientId';
+import { isPrayerStatus } from '@/utils/prayerStatus';
 import { validPrayerCoreConflict, validPrayerStatusConflict } from '@/utils/refusedDraftPayloads';
 import { useTranslation } from '@locales/useTranslation';
 
 import type { PrayerTitleSeen } from '@/data-engine/documentFieldAction';
+import type { PrayerStatusField, PrayerStatusOpening } from '@/data-engine/prayerStatusAction';
 import type { DocumentData, EditorCommitAction } from '@/data-engine/types';
 import type { PrayerRequest, PrayerStatus } from '@/models/models';
 
@@ -22,7 +24,7 @@ type SaveConflictPayload = { id: string; updates: Partial<PrayerRequest>; cleare
 function persistedPrayerPatch(payload: SaveConflictPayload): DocumentData {
   return { ...payload.updates, ...Object.fromEntries((payload.cleared ?? []).map(field => [field, undefined])) } as DocumentData;
 }
-type StatusConflictPayload = { id: string; status: PrayerStatus; answerText?: string };
+type StatusConflictPayload = { id: string; status: PrayerStatus; answerText?: string; answerOnly?: true };
 
 const resource = (id: string) => ({ collection: 'prayerRequests', id });
 const now = () => new Date().toISOString();
@@ -96,19 +98,32 @@ export function usePrayerRequestsEngine(userId: string | null | undefined, activ
     return metadata ? { title: prayer.title, generation: metadata.generation, revision: metadata.revision } : undefined;
   };
 
+  const observeStatus = (prayer: PrayerRequest): PrayerStatusOpening | undefined => {
+    const id = prayer.id;
+    const row = collection.state?.documents?.find(candidate => candidate.resource.id === id);
+    const submitted = row?.submittedPrayerStatus;
+    if (submitted?.status === prayer.status && submitted.answeredAt.value === prayer.answeredAt) return submitted;
+    const observed = [row?.acknowledged, collection.state?.snapshots?.find(row => row.resource.id === id)].find(row =>
+      row?.value?.status === prayer.status && row.value.answeredAt === prayer.answeredAt && row.metadata && !row.metadata.deleted);
+    const metadata = observed?.metadata;
+    return metadata ? { generation: metadata.generation, revision: metadata.revision, status: prayer.status,
+      answeredAt: prayer.answeredAt === undefined ? { exists: false } : { exists: true, value: prayer.answeredAt } } : undefined;
+  };
+
   /** One edit that honours an optional per-field baseline; resolves to the refusal, if any. */
   const guardedEdit = useCallback(async (id: string, aggregate: string, patch: DocumentData,
-    baseline?: Record<string, unknown> | null, action?: Extract<EditorCommitAction, { kind: 'prayer-title' }>): Promise<StaleWriteError | null> => {
+    baseline?: Record<string, unknown> | null, action?: Extract<EditorCommitAction, { kind: 'prayer-title' | 'prayer-status' }>): Promise<StaleWriteError | null> => {
     let refusal: StaleWriteError | null = null;
-    let staleTitle: StaleWriteError | null = null;
+    let staleField: StaleWriteError | null = null;
+    const timedField = action?.kind === 'prayer-title' ? 'title' : action?.status.opening ? 'status' : undefined;
     const update = (current: DocumentData | null) => {
       if (!current) throw new Error('The prayer was deleted');
       const revision = (current.rev as Record<string, number> | undefined)?.[aggregate] ?? 0;
       const changedElsewhere = baseline ? Object.keys(baseline).filter(field =>
         !same(current[field], baseline[field]) && !same(current[field], patch[field])) : [];
-      const guarded = action ? changedElsewhere.filter(field => field !== 'title') : changedElsewhere;
-      if (action) {
-        staleTitle = new StaleWriteError(aggregate, revision, revision, { title: current.title ?? null });
+      const guarded = timedField ? changedElsewhere.filter(field => field !== timedField) : changedElsewhere;
+      if (timedField) {
+        staleField = new StaleWriteError(aggregate, revision, revision, { [timedField]: current[timedField] ?? null });
       }
       if (guarded.length) {
         refusal = new StaleWriteError(aggregate, revision, revision,
@@ -121,7 +136,8 @@ export function usePrayerRequestsEngine(userId: string | null | undefined, activ
       if (action) await actions.commit(resource(id), update, action);
       else await actions.commit(resource(id), update);
     } catch (error) {
-      if (staleTitle && error && typeof error === 'object' && 'code' in error && error.code === 'prayer-title-basis-changed') return staleTitle;
+      if (staleField && error && typeof error === 'object' && 'code' in error
+        && (error.code === 'prayer-title-basis-changed' || error.code === 'prayer-status-basis-changed')) return staleField;
       throw error;
     }
     return refusal;
@@ -158,20 +174,46 @@ export function usePrayerRequestsEngine(userId: string | null | undefined, activ
     });
   };
 
-  const statusPatch = (status: PrayerStatus, answerText?: string): DocumentData => {
-    const at = now();
-    return { status, ...(answerText !== undefined ? { answerText } : {}), ...(status === 'answered' ? { answeredAt: at } : {}) } as DocumentData;
-  };
+  const statusPatch = (status: PrayerStatus, answerText?: string, at = now()): DocumentData =>
+    ({ status, ...(answerText !== undefined ? { answerText } : {}), ...(status === 'answered' ? { answeredAt: at } : {}) });
+
+  const fieldsForStatus = (status: PrayerStatus): PrayerStatusField[] =>
+    status === 'answered' ? ['status', 'answeredAt'] : ['status'];
+
+  const statusAction = (fields: readonly PrayerStatusField[], opening?: PrayerStatusOpening) => ({
+    kind: 'prayer-status' as const,
+    status: { time: actions.captureActionTime() ?? null, fields, ...(opening && { opening }) },
+  });
 
   const setStatus = (id: string, status: PrayerStatus, answerText?: string, _expectedRevision?: number | null,
-    expectedBaseline?: Record<string, unknown> | null): Promise<void> =>
-    once(`prayer:status:${id}:${status}:${answerText ?? ''}`, async () => {
+    expectedBaseline?: Record<string, unknown> | null, opening?: PrayerStatusOpening): Promise<void> => {
+    const answerOnly = status === 'answered' && expectedBaseline?.status === 'answered';
+    if (answerOnly && (answerText === undefined || same(answerText, expectedBaseline.answerText))) return Promise.resolve();
+    const patch = answerOnly ? { answerText: answerText! } : statusPatch(status, answerText);
+    const visible = !expectedBaseline ? prayerRequests.find(prayer => prayer.id === id) : undefined;
+    const action = answerOnly ? undefined : statusAction(fieldsForStatus(status), opening ?? (visible ? observeStatus(visible) : undefined));
+    const baseline = expectedBaseline && Object.fromEntries(Object.entries(expectedBaseline).filter(([field]) => Object.hasOwn(patch, field)));
+    return once(`prayer:status:${id}:${status}:${answerText ?? ''}`, async () => {
       const held = statusConflictRef.current;
-      const captured = held?.payload.id === id && held.payload.status === status && held.payload.answerText === answerText ? held : null;
-      const refusal = await guardedEdit(id, PRAYER_STATUS_AGGREGATE, statusPatch(status, answerText), expectedBaseline);
-      if (refusal) { setStatusConflict({ payload: { id, status, answerText }, actualRevision: refusal.actualRevision }, id); throw refusal; }
+      const captured = held?.payload.id === id && held.payload.status === status && held.payload.answerText === answerText
+        && Boolean(held.payload.answerOnly) === answerOnly ? held : null;
+      const refusal = await guardedEdit(id, PRAYER_STATUS_AGGREGATE, patch, baseline, action);
+      if (refusal) {
+        setStatusConflict({ payload: { id, status, answerText, ...(answerOnly && { answerOnly: true }) },
+          actualRevision: refusal.actualRevision }, id);
+        throw refusal;
+      }
       if (captured) setStatusConflict(null, id, captured);
     });
+  };
+
+  const restoreStatusField = async (id: string, field: PrayerStatusField, value: string | null, opening: PrayerStatusOpening) => {
+    const patch = field === 'answeredAt' ? { answeredAt: value ?? undefined }
+      : isPrayerStatus(value) ? { status: value } : null;
+    if (!patch) throw new Error('Invalid prayer status history');
+    const refusal = await guardedEdit(id, PRAYER_STATUS_AGGREGATE, patch as unknown as DocumentData, null, statusAction([field], opening));
+    if (refusal) throw refusal;
+  };
 
   const resolve = async (run: () => Promise<StaleWriteError | null>, clear: () => void) => {
     if (resolvingConflict) return;
@@ -194,6 +236,8 @@ export function usePrayerRequestsEngine(userId: string | null | undefined, activ
     },
     updatePrayer,
     observeTitle,
+    observeStatus,
+    restoreStatusField,
     setStatus,
     saveConflict,
     saveConflictChoices,
@@ -218,8 +262,14 @@ export function usePrayerRequestsEngine(userId: string | null | undefined, activ
       }
     },
     statusConflict,
-    keepMineOnStatusConflict: () => statusConflict ? resolve(() => guardedEdit(statusConflict.payload.id, PRAYER_STATUS_AGGREGATE,
-      statusPatch(statusConflict.payload.status, statusConflict.payload.answerText), null), () => setStatusConflict(null, statusConflict.payload.id, statusConflict)) : Promise.resolve(),
+    keepMineOnStatusConflict: () => {
+      if (!statusConflict) return Promise.resolve();
+      const { id, status, answerText, answerOnly } = statusConflict.payload;
+      const patch = answerOnly ? { answerText: answerText! } : statusPatch(status, answerText);
+      const action = answerOnly ? undefined : statusAction(fieldsForStatus(status));
+      return resolve(() => guardedEdit(id, PRAYER_STATUS_AGGREGATE, patch, null, action),
+        () => setStatusConflict(null, id, statusConflict));
+    },
     takeTheirsOnStatusConflict: async () => {
       const held = statusConflictRef.current;
       if (!held || resolvingConflict) return;

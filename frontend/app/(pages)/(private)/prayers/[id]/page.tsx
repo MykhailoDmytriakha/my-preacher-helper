@@ -25,16 +25,18 @@ import { RecordUnavailable } from '@/components/RecordUnavailable';
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
 import { Chip } from '@/components/ui/Chip';
 import { DocumentFieldHistory } from '@/components/ui/DocumentFieldHistory';
+import { DocumentMetadataHistory } from '@/components/ui/DocumentMetadataHistory';
 import UnreadableConflictDrafts from '@/components/UnreadableConflictDrafts';
 import { useAppLocale } from '@/hooks/useAppLocale';
 import { usePrayerDetail } from '@/hooks/usePrayerDetail';
 import { usePrayerRequests } from '@/hooks/usePrayerRequests';
 import { useRouteId } from '@/hooks/useRouteId';
 import { useWayInOnce } from '@/hooks/useWayInOnce';
-import { PrayerStatus } from '@/models/models';
+import { PrayerRequest, PrayerStatus } from '@/models/models';
 import { useAuth } from '@/providers/AuthProvider';
 import { PRAYER_CORE_AGGREGATE, PRAYER_STATUS_AGGREGATE } from '@/services/prayerRequests.client';
 import { formatDay, formatDayTime, textLanguage } from '@/utils/appLocale';
+import { formatDateTimeForLocale } from '@/utils/dateFormatter';
 import {
   announceIfPersisted,
   awaitWriteOperation,
@@ -44,13 +46,14 @@ import { NEUTRAL_CAPTION } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
 
 import type { PrayerTitleSeen } from '@/data-engine/documentFieldAction';
+import type { PrayerStatusField, PrayerStatusOpening } from '@/data-engine/prayerStatusAction';
 
 import '@locales/i18n';
 
 const PRAYER_FOCUS_TYPES = new Set(['title', 'description', 'answer', 'tags']);
 
 export default function PrayerDetailPage() {
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
   const { dateLocale } = useAppLocale();
   const id = useRouteId();
   const router = useRouter();
@@ -61,6 +64,8 @@ export default function PrayerDetailPage() {
     loading,
     updatePrayer,
     observeTitle,
+    observeStatus,
+    restoreStatusField,
     deletePrayer,
     addUpdate,
     setStatus,
@@ -102,7 +107,7 @@ export default function PrayerDetailPage() {
   const [editBaseContent, setEditBaseContent] = useState<Record<string, unknown> | null>(null);
   const [editTitleSeen, setEditTitleSeen] = useState<PrayerTitleSeen>();
   const [showAddUpdate, setShowAddUpdate] = useState(false);
-  const [showMarkAnswered, setShowMarkAnswered] = useState(false);
+  const [answerOpening, setAnswerOpening] = useState<{ prayer: PrayerRequest; status?: PrayerStatusOpening } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const sortedUpdates = useMemo(
@@ -218,9 +223,11 @@ export default function PrayerDetailPage() {
     return addUpdate(prayer.id, text);
   };
 
+  const openAnswer = () => setAnswerOpening({ prayer, status: observeStatus(prayer) });
+
   const handleSetStatus = (status: PrayerStatus) => {
     if (status === 'answered') {
-      setShowMarkAnswered(true);
+      openAnswer();
       return skippedWrite();
     }
     const submission = setStatus(prayer.id, status);
@@ -232,21 +239,16 @@ export default function PrayerDetailPage() {
   };
 
   const handleMarkAnswered = (answerText?: string) => {
-    // The answer is human text, so state the revision it was built from: two
-    // devices answering the same prayer must not overwrite each other in silence.
-    return setStatus(
-      prayer.id,
-      'answered',
-      answerText,
-      prayer.rev?.[PRAYER_STATUS_AGGREGATE] ?? 0,
-      {
-        status: prayer.status,
-        answerText: prayer.answerText ?? null,
-      }
-    );
+    if (!answerOpening) return skippedWrite();
+    const { prayer: opening, status } = answerOpening;
+    // The answer stays anchored to the text that was visible when the modal opened.
+    return setStatus(opening.id, 'answered', answerText, opening.rev?.[PRAYER_STATUS_AGGREGATE] ?? 0,
+      { status: opening.status, answerText: opening.answerText ?? null }, ...(status ? [status] : []));
   };
 
   const titleHistory = observeTitle(prayer);
+  const statusHistory = observeStatus(prayer);
+  const historyGeneration = statusHistory?.generation ?? titleHistory?.generation;
   const isActive = prayer.status === 'active';
 
   // A reference in the prayer opens its verse in a window, as in a note or a group (case 2026-10-12-block-diagram, L8);
@@ -427,7 +429,7 @@ export default function PrayerDetailPage() {
               </h2>
             </div>
             <button
-              onClick={() => setShowMarkAnswered(true)}
+              onClick={openAnswer}
               className="text-xs text-green-600 dark:text-green-400 hover:text-green-800 dark:hover:text-green-200 transition-colors"
             >
               {prayer.answerText ? t('prayer.answerText.edit') : t('prayer.answerText.add')}
@@ -446,11 +448,26 @@ export default function PrayerDetailPage() {
       )}
 
       {user?.uid && titleHistory && <DocumentFieldHistory
-        key={JSON.stringify([user.uid, prayer.id, titleHistory.generation])}
+        key={JSON.stringify(['title', user.uid, prayer.id, titleHistory.generation])}
         current={prayer.title} disabled={resolvingConflict || Boolean(saveConflict)}
         session={{ owner: user.uid, prayerId: prayer.id, generation: titleHistory.generation,
           restore: (title: string) => updatePrayer(prayer.id, { title }, prayer.rev?.[PRAYER_CORE_AGGREGATE] ?? 0,
             { title: prayer.title }, titleHistory) }} />}
+
+      {user?.uid && historyGeneration && <DocumentMetadataHistory<PrayerStatusField>
+        key={JSON.stringify(['status', user.uid, prayer.id, historyGeneration])}
+        owner={user.uid} collection="prayerRequests" id={prayer.id} generation={historyGeneration}
+        current={{ status: prayer.status, answeredAt: prayer.answeredAt }}
+        disabled={() => !statusHistory || resolvingConflict || Boolean(statusConflict)}
+        prefix="prayer.history" nullable={['answeredAt']}
+        labels={{ status: 'prayer.history.status', answeredAt: 'prayer.detail.answeredOn' }}
+        describeValue={(field, value) => {
+          if (value === null) return t('prayer.history.notSet');
+          return field === 'status' ? t(`prayer.status.${value}`) : formatDateTimeForLocale(value, language);
+        }}
+        onRestore={async (field, value) => {
+          if (statusHistory) await restoreStatusField(prayer.id, field, value, statusHistory);
+        }} />}
 
       {/* Updates timeline */}
       <div className="space-y-3">
@@ -503,9 +520,10 @@ export default function PrayerDetailPage() {
           onSubmit={handleAddUpdate}
         />
       )}
-      {showMarkAnswered && (
+      {answerOpening && (
         <MarkAnsweredModal
-          onClose={() => setShowMarkAnswered(false)}
+          answerToEdit={answerOpening.prayer.status === 'answered' ? { text: answerOpening.prayer.answerText } : undefined}
+          onClose={() => setAnswerOpening(null)}
           onSubmit={handleMarkAnswered}
         />
       )}

@@ -17,7 +17,7 @@ jest.mock('@/data-engine/react.client', () => ({
 const stored = { userId: 'u', title: 'Healing', description: 'Phone text', status: 'active', updates: [], createdAt: 'c', updatedAt: 'u', rev: { core: 2 } };
 let current: Record<string, unknown> = stored;
 const actions = {
-  ready: true, create: jest.fn().mockResolvedValue(undefined), remove: jest.fn().mockResolvedValue(undefined),
+  ready: true, captureActionTime: jest.fn(), create: jest.fn().mockResolvedValue(undefined), remove: jest.fn().mockResolvedValue(undefined),
   commit: jest.fn(async (_resource: unknown, updater: (value: Record<string, unknown>) => Record<string, unknown>) => { current = updater(current); }),
 };
 
@@ -155,6 +155,38 @@ describe('prayers on the engine', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(window.localStorage.length).toBeGreaterThan(0);
     expect(latest.saveConflict).toBeNull();
+  });
+
+  it('edits an existing answer without reopening a reactivated prayer or replacing the historical date', async () => {
+    const old = '2026-10-03T10:00:00.000Z';
+    current = { ...stored, status: 'active', answeredAt: old, answerText: 'Opening answer' };
+    const { result } = render();
+    await act(async () => { await result.current.setStatus('p1', 'answered', 'Edited answer', 1,
+      { status: 'answered', answerText: 'Opening answer' },
+      { status: 'answered', answeredAt: { exists: true, value: old }, generation: 'prayer', revision: 1 }); });
+    expect(current).toMatchObject({ status: 'active', answeredAt: old, answerText: 'Edited answer' });
+  });
+
+  it('keeps an explicit edit to an existing answer text-only after a refusal and reload', async () => {
+    const old = '2026-10-03T10:00:00.000Z';
+    current = { ...stored, status: 'not_answered', answeredAt: old, answerText: 'Desktop answer' };
+    const first = render();
+    await act(async () => { await first.result.current.setStatus('p1', 'answered', 'Phone answer', 1,
+      { status: 'answered', answerText: 'Opening answer' }).catch(() => undefined); });
+    expect(first.result.current.statusConflict).not.toBeNull();
+    first.unmount();
+    const second = render();
+    await act(async () => { await second.result.current.keepMineOnStatusConflict(); });
+    expect(current).toMatchObject({ status: 'not_answered', answeredAt: old, answerText: 'Phone answer' });
+  });
+
+  it('marks an answer without replacing a newer note that was not authored by this action', async () => {
+    current = { ...stored, answerText: 'New words from the desktop' };
+    const { result } = render();
+    await act(async () => { await result.current.setStatus('p1', 'answered', undefined, 0, { status: 'active', answerText: 'Old words' }); });
+    expect(current).toMatchObject({ status: 'answered', answerText: 'New words from the desktop', answeredAt: expect.any(String) });
+    expect(actions.commit).toHaveBeenCalledWith({ collection: 'prayerRequests', id: 'p1' }, expect.any(Function),
+      { kind: 'prayer-status', status: { fields: ['status', 'answeredAt'], time: null } });
   });
 
   it('adds an update, answers the prayer and creates a new one through engine actions', async () => {

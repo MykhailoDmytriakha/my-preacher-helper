@@ -37,6 +37,19 @@ describe('MarkAnsweredModal', () => {
     });
   });
 
+  it('prefills an existing answer and offers only to save the text', async () => {
+    const onClose = jest.fn();
+    const onSubmit = jest.fn(() => persistedWrite(Promise.resolve()));
+    render(<MarkAnsweredModal answerToEdit={{ text: 'Opening words' }} onClose={onClose} onSubmit={onSubmit} />);
+    const input = screen.getByPlaceholderText('Share the answer');
+    expect(input).toHaveValue('Opening words');
+    expect(screen.queryByRole('button', { name: 'Skip' })).not.toBeInTheDocument();
+    fireEvent.change(input, { target: { value: 'Edited words' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save Answer' }));
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(onSubmit).toHaveBeenCalledWith('Edited words');
+  });
+
   it('submits the trimmed answer text and enters the saving state', async () => {
     const onClose = jest.fn();
     let resolveSubmit: (() => void) | undefined;

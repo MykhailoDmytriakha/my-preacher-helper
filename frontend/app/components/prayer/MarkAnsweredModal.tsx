@@ -15,11 +15,13 @@ import { useTranslation } from '@locales/useTranslation';
 interface Props {
   onClose: () => void;
   onSubmit: (answerText?: string) => WriteOperation;
+  answerToEdit?: { text?: string };
 }
 
-export default function MarkAnsweredModal({ onClose, onSubmit }: Props) {
+export default function MarkAnsweredModal({ onClose, onSubmit, answerToEdit }: Props) {
   const { t } = useTranslation();
-  const [answerText, setAnswerText] = useState('');
+  const [answerText, setAnswerText] = useState(answerToEdit?.text ?? '');
+  const title = answerToEdit ? t(answerToEdit.text ? 'prayer.answerText.edit' : 'prayer.answerText.add') : t('prayer.markAnswered.title');
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
 
@@ -33,7 +35,7 @@ export default function MarkAnsweredModal({ onClose, onSubmit }: Props) {
         // The hook reports capture failure; the engine owns later refusal.
         () => undefined
       );
-      if (acceptance) announceIfPersisted(acceptance, () => toast.success(t('prayer.toast.statusChanged')));
+      if (acceptance) announceIfPersisted(acceptance, () => toast.success(t(answerToEdit ? 'prayer.toast.updated' : 'prayer.toast.statusChanged')));
       onClose();
     } catch (errorValue) {
       // A refusal belongs to the open editor: keep the answer exactly where it was
@@ -60,17 +62,17 @@ export default function MarkAnsweredModal({ onClose, onSubmit }: Props) {
   if (typeof document === 'undefined') return null;
 
   return (
-    <FormDialog title={<span className="flex items-center gap-2"><CheckCircleIcon className="h-6 w-6 shrink-0 text-emerald-500" />{t('prayer.markAnswered.title')}</span>}
-      eyebrow={t('navigation.prayer')} description={t('prayer.markAnswered.subtitle')} tone="emerald" size="compact" onClose={() => { if (!savingRef.current) onClose(); }} closeDisabled={saving} dismissOnBackdrop>
+    <FormDialog title={<span className="flex items-center gap-2"><CheckCircleIcon className="h-6 w-6 shrink-0 text-emerald-500" />{title}</span>}
+      eyebrow={t('navigation.prayer')} description={answerToEdit ? undefined : t('prayer.markAnswered.subtitle')} tone="emerald" size="compact" onClose={() => { if (!savingRef.current) onClose(); }} closeDisabled={saving} dismissOnBackdrop>
       <div className="mt-6 space-y-5">
         <TextareaAutosize disabled={saving} value={answerText} onChange={event => setAnswerText(event.target.value)}
           placeholder={t('prayer.markAnswered.placeholder')} aria-label={t('prayer.markAnswered.placeholder')}
           className={FORM_INPUT_CLASS} minRows={3} autoFocus />
         <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
-          <button type="button" onClick={() => handleSubmit(undefined)} disabled={saving}
+          {!answerToEdit && <button type="button" onClick={() => handleSubmit(undefined)} disabled={saving}
             className="rounded-xl border border-gray-200 px-4 py-3 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800">
             {t('prayer.markAnswered.skip')}
-          </button>
+          </button>}
           <button type="button" onClick={() => handleSubmit(answerText)} disabled={saving || !answerText.trim()}
             className={`${EMERALD_ACTION} rounded-xl px-5 py-3 text-sm font-semibold shadow-sm disabled:cursor-not-allowed disabled:opacity-60`}>
             {saving ? '...' : t('prayer.markAnswered.submit')}

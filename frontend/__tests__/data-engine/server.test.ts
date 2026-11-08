@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { isCollectionServed } from '@/data-engine/activation';
-import { DataEngineServerError, listBibleMarkHistory, listCouncilMetadataHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listPrayerTitleHistory, listSermonChurchHistory, listSermonTitleHistory, listSermonVerseHistory, listSeriesMetadataHistory, listServiceOrderTitleHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
+import { DataEngineServerError, listBibleMarkHistory, listCouncilMetadataHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listPrayerStatusHistory, listPrayerTitleHistory, listSermonChurchHistory, listSermonTitleHistory, listSermonVerseHistory, listSeriesMetadataHistory, listServiceOrderTitleHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
 import { collectionHeadId, HEADS_COLLECTION, sequenceId } from '@/data-engine/serverFeed';
 import { DataSession } from '@/data-engine/session';
 import type { DataCommand, FieldValue, ResourceSnapshot } from '@/data-engine/types';
@@ -1661,6 +1661,76 @@ describe('transactional DataEngine server', () => {
       const phone = change('phone-rename', 'Phone prayer', 20);
       expect(await processCommand(owner, { ...phone, prayerTitleAction: { ...phone.prayerTitleAction, time: null } }))
         .toMatchObject({ kind: 'conflict', conflicts: [{ path: ['title'] }], snapshot: { value: { title, description, updates } } });
+    });
+  });
+
+  describe('prayer status chronology', () => {
+    const owner = 'owner-1';
+    const resource = { collection: 'prayerRequests', id: 'prayer-status' };
+    const base = { protocol: 1, owner, resource, dependsOn: [] };
+    const title = 'Prayer with an earlier answer';
+    const answerText = 'Keep this earlier answer exactly.';
+    const historicalAt = '2026-10-03T09:00:00.000Z', deskAt = '2026-11-08T08:00:00.000Z', phoneAt = '2026-11-08T10:00:00.000Z';
+    const seed = () => processCommand(owner, { ...base, operationId: 'status-seed', kind: 'create', generation: null,
+      value: { userId: owner, title, answerText, answeredAt: historicalAt, status: 'active', updates: [],
+        createdAt: '2026-10-01T00:00:00.000Z', updatedAt: '2026-11-08T00:00:00.000Z' } });
+    const field = (value: string) => ({ exists: true, value });
+    const change = (operationId: string, status: 'answered' | 'not_answered', offset: number, answeredAt?: string) => {
+      const time = { earliestMs: 1_800_000_000_000 + offset, latestMs: 1_800_000_000_005 + offset };
+      return { ...base, operationId, kind: 'update', generation: 'status-seed',
+        changes: [{ path: ['status'], before: field('active'), after: field(status) },
+          ...(answeredAt ? [{ path: ['answeredAt'], before: field(historicalAt), after: field(answeredAt) }] : [])],
+        prayerStatusAction: { before: 'active', after: status, observedRevision: 1, time },
+        ...(answeredAt && { prayerAnsweredAtAction: { observedRevision: 1, time } }) };
+    };
+
+    it.each([20, 80])('orders opposing marks while keeping written words and answer history (%s)', async offset => {
+      expect((await seed()).kind).toBe('acknowledged');
+      expect((await processCommand(owner, change('desk-mark', 'not_answered', 40))).kind).toBe('acknowledged');
+      expect(await processCommand(owner, change('phone-mark', 'answered', offset, phoneAt))).toMatchObject({
+        kind: 'acknowledged', snapshot: { value: { title, answerText, answeredAt: phoneAt,
+          status: offset < 40 ? 'not_answered' : 'answered' } },
+      });
+      const winner = offset < 40 ? 'not_answered' : 'answered';
+      const earlier = offset < 40 ? 'answered' : 'not_answered';
+      expect(await listPrayerStatusHistory(owner, resource.id, 'status-seed')).toMatchObject({
+        entries: [{ fields: [{ field: 'status', value: earlier, winner }] }],
+      });
+      await expect(listPrayerStatusHistory('another-owner', resource.id, 'status-seed')).rejects.toMatchObject({ status: 403 });
+      await expect(listPrayerStatusHistory(owner, resource.id, 'other-generation')).rejects.toMatchObject({ status: 404 });
+      const restore = change('restore-status', earlier, 120);
+      expect(await processCommand(owner, { ...restore,
+        changes: [{ path: ['status'], before: field(winner), after: field(earlier) }],
+        prayerStatusAction: { ...restore.prayerStatusAction, before: winner, observedRevision: 3 },
+      })).toMatchObject({ kind: 'acknowledged', snapshot: { value: { title, answerText, answeredAt: phoneAt, status: earlier } } });
+    });
+
+    it.each([20, 80])('orders the answer date when two marks choose the same status (%s)', async offset => {
+      expect((await seed()).kind).toBe('acknowledged');
+      expect((await processCommand(owner, change('desk-answer', 'answered', 40, deskAt))).kind).toBe('acknowledged');
+      const command = change('phone-answer', 'answered', offset, phoneAt);
+      const result = await processCommand(owner, command);
+      expect(result).toMatchObject({
+        kind: 'acknowledged', snapshot: { value: { title, answerText, status: 'answered', answeredAt: offset < 40 ? deskAt : phoneAt } },
+      });
+      expect(await processCommand(owner, command)).toEqual(result);
+      expect(await listPrayerStatusHistory(owner, resource.id, 'status-seed')).toMatchObject({
+        entries: [{ fields: [{ field: 'answeredAt', value: offset < 40 ? phoneAt : deskAt, winner: offset < 40 ? deskAt : phoneAt }] }],
+      });
+    });
+
+    it('retains the manual choice for distinct words even when the status and date can be ordered', async () => {
+      expect((await seed()).kind).toBe('acknowledged');
+      const answer = (id: string, text: string, offset: number, date: string) => {
+        const mark = change(id, 'answered', offset, date);
+        return { ...mark, changes: [...mark.changes, { path: ['answerText'], before: field(answerText), after: field(text) }] };
+      };
+      expect((await processCommand(owner, answer('desk-words', 'Computer answer', 40, deskAt))).kind).toBe('acknowledged');
+      expect(await processCommand(owner, answer('phone-words', 'Phone answer', 80, phoneAt))).toMatchObject({
+        kind: 'conflict', conflicts: [{ path: ['answerText'] }],
+        snapshot: { value: { title, status: 'answered', answerText: 'Computer answer', answeredAt: deskAt } },
+      });
+      expect((await listPrayerStatusHistory(owner, resource.id, 'status-seed')).entries).toHaveLength(0);
     });
   });
 

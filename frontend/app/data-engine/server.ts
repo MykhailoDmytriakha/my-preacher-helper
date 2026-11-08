@@ -33,6 +33,7 @@ import type { BibleMarkHistoryEntry, BibleMarkHistoryPage } from './bibleMarkStr
 import type { CouncilMetadataHistoryPage } from './councilFieldAction';
 import type { DisplacedRowDate, MeetingDateHistoryPage, PreachDateHistoryPage } from './datedRowAction';
 import type { GroupStatusHistoryPage, GroupTitleHistoryPage, DocumentTitleHistoryEntry, SermonChurchHistoryPage, PrayerTitleHistoryPage, SermonTitleHistoryPage, SermonVerseHistoryPage, ServiceOrderTitleHistoryPage } from './documentFieldAction';
+import type { PrayerStatusHistoryPage } from './prayerStatusAction';
 import type { RowDetailPolicy } from './rowDetailAction';
 import type { RowValue } from './rowFieldAction';
 import type { SeriesMetadataHistoryPage } from './seriesFieldAction';
@@ -429,7 +430,8 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
   for (const { target, order } of fieldOrder?.fields ?? []) {
     const displaced = order.displaced;
     if (!displaced || !primarySnapshot.value || !equalValues(readField(primarySnapshot.value, [target.field]), displaced.winnerValue)) continue;
-    if (target.action === 'seriesFieldActions' || target.action === 'councilTitleAction' || target.action === 'councilDateAction' || target.action === 'councilLifecycleAction') {
+    if (target.action === 'seriesFieldActions' || target.action === 'councilTitleAction' || target.action === 'councilDateAction' || target.action === 'councilLifecycleAction'
+      || target.action === 'prayerStatusAction' || target.action === 'prayerAnsweredAtAction') {
       metadataHistory.push({ field: target.field, value: displaced.value.value ?? null, winner: displaced.winnerValue.value ?? null,
         actionTime: displaced.actionTime, winnerActionTime: displaced.winnerActionTime });
       continue;
@@ -717,6 +719,12 @@ export async function listCouncilMetadataHistory(owner: string, councilId: strin
   const resource = { collection: 'councils', id: councilId };
   const page = await listHistoryEntries<CouncilMetadataHistoryPage['entries'][number]>(owner, resource, DOCUMENT_METADATA_HISTORY, generation, cursor, 'council-gone');
   return { owner, councilId, generation, ...page };
+}
+
+export async function listPrayerStatusHistory(owner: string, prayerId: string, generation: string, cursor?: string): Promise<PrayerStatusHistoryPage> {
+  const resource = { collection: 'prayerRequests', id: prayerId };
+  const page = await listHistoryEntries<PrayerStatusHistoryPage['entries'][number]>(owner, resource, DOCUMENT_METADATA_HISTORY, generation, cursor, 'prayer-gone');
+  return { owner, prayerId, generation, ...page };
 }
 
 export async function listGroupTitleHistory(owner: string, groupId: string, generation: string, cursor?: string): Promise<GroupTitleHistoryPage> {

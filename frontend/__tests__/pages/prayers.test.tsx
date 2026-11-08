@@ -63,7 +63,7 @@ jest.mock('@/hooks/usePrayerRequests', () => ({
   // The ARGUMENTS matter: the second one addresses the durable slot a refusal is
   // stored in, and dropping it here would hide the whole class of "the refused text
   // is on disk but nothing on screen can reach it" defects.
-  usePrayerRequests: (...args: unknown[]) => ({ observeTitle: () => undefined, ...mockUsePrayerRequests(...args) }),
+  usePrayerRequests: (...args: unknown[]) => ({ observeTitle: () => undefined, observeStatus: () => undefined, ...mockUsePrayerRequests(...args) }),
 }));
 
 jest.mock('@/components/prayer/PrayerRequestCard', () => {

@@ -58,6 +58,7 @@ export function validPrayerStatusConflict(value: unknown, documentId: string): b
   if (!conflict?.validRevision) return false;
   const { payload } = conflict;
   if (!identityMatches(payload.id, documentId)) return false;
+  if (payload.answerOnly !== undefined && (payload.answerOnly !== true || payload.status !== 'answered' || typeof payload.answerText !== 'string')) return false;
   const patch: RecordValue = { status: payload.status };
   if (payload.answerText !== undefined) patch.answerText = payload.answerText;
   return validResourceUpdate('prayerRequests', patch);

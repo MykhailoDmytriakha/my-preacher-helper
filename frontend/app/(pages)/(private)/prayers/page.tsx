@@ -52,6 +52,7 @@ import { NEUTRAL_CAPTION } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
 
 import type { PrayerTitleSeen } from '@/data-engine/documentFieldAction';
+import type { PrayerStatusOpening } from '@/data-engine/prayerStatusAction';
 
 import '@locales/i18n';
 
@@ -92,6 +93,7 @@ export default function PrayerPage() {
    * guard would then approve exactly the overwrite it exists to refuse.
    */
   const [markingAnswered, setMarkingAnswered] = useState<PrayerRequest | null>(null);
+  const [markingStatusOpening, setMarkingStatusOpening] = useState<PrayerStatusOpening>();
   /**
    * WHICH prayer a refusal belongs to — and it must OUTLIVE the modal.
    *
@@ -122,6 +124,7 @@ export default function PrayerPage() {
     createPrayer,
     updatePrayer,
     observeTitle,
+    observeStatus,
     deletePrayer,
     addUpdate,
     setStatus,
@@ -309,7 +312,9 @@ export default function PrayerPage() {
     if (status === 'answered') {
       // Marking a prayer answered asks a question first; nothing is written until the
       // person answers it. Saying `in-flight` here claimed a duplicate write existed.
-      setMarkingAnswered(prayerRequests.find((candidate) => candidate.id === id) ?? null);
+      const prayer = prayerRequests.find(candidate => candidate.id === id);
+      setMarkingAnswered(prayer ?? null);
+      setMarkingStatusOpening(prayer ? observeStatus(prayer) : undefined);
       return skippedWrite('awaiting-confirmation');
     }
 
@@ -330,7 +335,8 @@ export default function PrayerPage() {
       'answered',
       answerText,
       markingAnswered.rev?.[PRAYER_STATUS_AGGREGATE] ?? 0,
-      { status: markingAnswered.status, answerText: markingAnswered.answerText ?? null }
+      { status: markingAnswered.status, answerText: markingAnswered.answerText ?? null },
+      ...(markingStatusOpening ? [markingStatusOpening] : [])
     );
   };
 

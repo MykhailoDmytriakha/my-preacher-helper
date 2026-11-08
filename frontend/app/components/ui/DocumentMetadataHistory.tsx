@@ -7,13 +7,13 @@ import { useTranslation } from '@locales/useTranslation';
 
 type HistoryField<Field extends string> = { field: Field; value: string | null; winner: string | null };
 type MetadataHistoryPage<Field extends string> = {
-  owner: string; generation: string; seriesId?: string; councilId?: string; nextCursor: string | null;
+  owner: string; generation: string; seriesId?: string; councilId?: string; prayerId?: string; nextCursor: string | null;
   entries: { id: string; fields: HistoryField<Field>[] }[];
 };
 
 export function DocumentMetadataHistory<Field extends string>({ owner, collection, id, generation, current, disabled,
   labels, prefix, nullable, describeValue, onRestore }: {
-  owner: string; collection: 'series' | 'councils'; id: string; generation: string;
+  owner: string; collection: 'series' | 'councils' | 'prayerRequests'; id: string; generation: string;
   current: Partial<Record<Field, unknown>> | null; disabled: (field: Field) => boolean; labels: Record<Field, string>;
   prefix: string; nullable: readonly Field[]; describeValue: (field: Field, value: string | null) => string;
   onRestore: (field: Field, value: string | null) => Promise<void>;
@@ -25,7 +25,7 @@ export function DocumentMetadataHistory<Field extends string>({ owner, collectio
   const { open, history, loading, failed, load, toggle } = useOwnerHistory<MetadataHistoryPage<Field>['entries'][number], MetadataHistoryPage<Field>>({
     owner, generation, id,
     path: '/api/data-engine/documents/' + collection + '/' + encodeURIComponent(id) + '/metadata-history',
-    resourceId: page => collection === 'series' ? page.seriesId : page.councilId,
+    resourceId: page => collection === 'series' ? page.seriesId : collection === 'councils' ? page.councilId : page.prayerId,
   });
   const restore = async (entry: HistoryField<Field>) => {
     setRestoring(true);
