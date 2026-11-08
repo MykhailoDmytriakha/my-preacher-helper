@@ -10,6 +10,7 @@ const mockHandleFetch = jest.fn();
 const mockHandleInstall = jest.fn();
 const mockHandleActivate = jest.fn();
 const mockHandleCache = jest.fn();
+const mockPrefetch = jest.fn<Promise<Response>, [unknown]>();
 const mockMatchPrecache = jest.fn(async (url: string) => new Response(`precached ${url}`, { headers: { 'content-type': 'text/html; charset=utf-8' } }));
 const mockManifest = [{ url: '/~offline', revision: 'worker-test' }];
 let mockOfflineHarness: ReturnType<typeof createOfflinePageStorageHarness>;
@@ -22,10 +23,26 @@ let mockOptions: {
   fallbacks: { entries: { url: string; matcher: (args: { request: { destination: string } }) => boolean }[] };
 };
 
-jest.mock('@serwist/next/worker', () => ({ defaultCache: [] }));
+jest.mock('@serwist/next/worker', () => {
+  const { NetworkFirst } = jest.requireMock('serwist');
+  const PAGES_CACHE_NAME = { rscPrefetch: 'pages-rsc-prefetch' };
+  return {
+    PAGES_CACHE_NAME,
+    defaultCache: [{
+      matcher: ({ request, url }: { request: Request; url: URL }) =>
+        url.origin === 'https://my-preacher-helper.com' && !url.pathname.startsWith('/api/')
+        && request.headers.get('RSC') === '1' && request.headers.get('Next-Router-Prefetch') === '1',
+      handler: new NetworkFirst({ cacheName: PAGES_CACHE_NAME.rscPrefetch }),
+    }],
+  };
+});
 jest.mock('serwist', () => ({
   CacheFirst: jest.fn().mockImplementation(function (this: { options: unknown }, options: unknown) {
     this.options = options;
+  }),
+  NetworkFirst: jest.fn().mockImplementation(function (this: { cacheName: string; handle: typeof mockPrefetch }, options: { cacheName: string }) {
+    this.cacheName = options.cacheName;
+    this.handle = mockPrefetch;
   }),
   NetworkOnly: jest.fn(),
   Serwist: jest.fn().mockImplementation((options) => {
@@ -162,6 +179,70 @@ describe('service worker transport boundary', () => {
     mockListeners.get('message')!(shared);
     expect(shared.waitUntil).not.toHaveBeenCalled();
     fetchSpy.mockRestore();
+  });
+
+  function prefetchPage(path: string): Promise<Response> {
+    const url = new URL(`https://my-preacher-helper.com${path}?_rsc=offline-shell`);
+    const request = new Request(url, { headers: { RSC: '1', 'Next-Router-Prefetch': '1' } });
+    const options = { request, url, event: { waitUntil: jest.fn() } };
+    const handler = mockOptions.runtimeCaching.find(rule => rule.matcher(options))?.handler;
+    if (typeof handler === 'function') return handler(options);
+    return (handler as { handle: (args: typeof options) => Promise<Response> }).handle(options);
+  }
+
+  async function retainPrefetchFixture() {
+    const url = 'https://my-preacher-helper.com/sermons/warm-prefetch';
+    const fetchSpy = jest.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('saved root Flight', {
+      headers: { 'content-type': 'text/x-component' },
+    }));
+    try {
+      const seen = { waitUntil: jest.fn(), data: { type: 'offline-page-seen', url } };
+      mockListeners.get('message')!(seen);
+      await seen.waitUntil.mock.calls[0][0];
+      expect(mockOfflineHarness.payload(url)).toBeDefined();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  }
+
+  it('answers a failed automatic prefetch for a seen route from the saved Flight payload', async () => {
+    await retainPrefetchFixture();
+    const fetchSpy = jest.spyOn(globalThis, 'fetch');
+    try {
+      mockPrefetch.mockRejectedValueOnce(new Error('prefetch network and cache unavailable'));
+
+      const answer = await prefetchPage('/sermons/warm-prefetch');
+
+      expect(answer.headers.get('content-type')).toBe('text/x-component');
+      expect(await answer.text()).toBe('saved root Flight');
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it('preserves successful, refused, and unseen automatic prefetch outcomes', async () => {
+    await retainPrefetchFixture();
+    const fresh = new Response('exact prefetch', { headers: { 'content-type': 'text/x-component' } });
+    const refused = new Response('refused', { status: 403 });
+    mockPrefetch.mockResolvedValueOnce(fresh).mockResolvedValueOnce(refused).mockRejectedValueOnce(new Error('no saved answer'));
+    await expect(prefetchPage('/sermons/warm-prefetch')).resolves.toBe(fresh);
+    await expect(prefetchPage('/sermons/warm-prefetch')).resolves.toBe(refused);
+    await expect(prefetchPage('/sermons/never-seen')).rejects.toThrow('no saved answer');
+    expect(mockOfflineHarness.entries().some(entry => entry.address.endsWith('/sermons/never-seen'))).toBe(false);
+  });
+
+  it('uses the saved page when an automatic prefetch stalls past the navigation deadline', async () => {
+    await retainPrefetchFixture();
+    mockPrefetch.mockImplementationOnce(() => new Promise<Response>(() => undefined));
+    jest.useFakeTimers();
+    try {
+      const answer = prefetchPage('/sermons/warm-prefetch').then(response => response.text());
+      await jest.advanceTimersByTimeAsync(4000);
+      await expect(answer).resolves.toBe('saved root Flight');
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('keeps the Bible text in its own cache, answered first, before the default rules', async () => {

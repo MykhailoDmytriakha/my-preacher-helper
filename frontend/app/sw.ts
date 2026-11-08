@@ -1,5 +1,5 @@
-import { defaultCache } from "@serwist/next/worker";
-import { CacheFirst, NetworkOnly, Serwist } from "serwist";
+import { defaultCache, PAGES_CACHE_NAME } from "@serwist/next/worker";
+import { CacheFirst, NetworkFirst, NetworkOnly, Serwist } from "serwist";
 
 import { BIBLE_CROSSREFS_CACHE, isBibleCrossRefsPath, isCrossRefsShaped } from "./utils/bibleCrossRefsCache";
 import { BIBLE_TEXT_CACHE, isBibleTextAnswer, isBibleTextPath, isBookShaped } from "./utils/bibleTextCache";
@@ -123,7 +123,21 @@ const runtimeCaching: RuntimeCaching[] = [
       { deadlineMs: NAVIGATION_DEADLINE_MS },
     ),
   },
-  ...defaultCache,
+  ...defaultCache.map<RuntimeCaching>(rule => {
+    const prefetch = rule.handler;
+    if (!(prefetch instanceof NetworkFirst) || prefetch.cacheName !== PAGES_CACHE_NAME.rscPrefetch) return rule;
+    // Next can use a link's prefetch as its navigation without another Flight request.
+    // Preserve Serwist's normal prefetch result and let a seen page cover a failure or deadline.
+    return {
+      ...rule,
+      handler: options => {
+        const preferred = prefetch.handle(options);
+        return isRememberedPage(options.url, self.origin)
+          ? offlineNavigation.respond(options.request, preferred)
+          : preferred;
+      },
+    };
+  }),
 ];
 
 const serwist = new Serwist({

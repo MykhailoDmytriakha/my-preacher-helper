@@ -361,8 +361,8 @@ export function createOfflineRscNavigation({ fetchFn, caches, storage, warmTimeo
     return outcome === 'skipped' ? 'failed' : outcome;
   }
 
-  function respond(request: Request): Promise<Response> {
-    return answerWithinDeadline(fetchFn(request), () => cacheWorkWithin(async signal => {
+  function respond(request: Request, preferredResponse = fetchFn(request)): Promise<Response> {
+    return answerWithinDeadline(preferredResponse, () => cacheWorkWithin(async signal => {
       await ready();
       const payload = await (await pages()).read(offlineRscKey(new URL(request.url)), signal);
       if (!payload) return undefined;
