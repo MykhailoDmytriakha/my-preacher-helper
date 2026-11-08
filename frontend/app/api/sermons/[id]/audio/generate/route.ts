@@ -11,6 +11,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { isFunctionCatalogTarget } from '@/api/clients/ai/functionCatalog';
+import { providerStartedAnswer } from '@/api/clients/ai/providerAnswerError';
 import { resolveUserTtsTarget } from '@/api/clients/ai/tierPolicy';
 import { generateChunkAudio } from '@/api/clients/tts.client';
 import { usageCapResponse } from '@/api/errors/usageCapResponse';
@@ -212,7 +213,7 @@ async function generateChunkAudioWithRetry(
             return await invoke();
         } catch (error) {
             lastError = error;
-            if (isUsageCapReachedError(error) || error instanceof AudioExportError) break;
+            if (isUsageCapReachedError(error) || error instanceof AudioExportError || providerStartedAnswer(error)) break;
             if (attempt === TTS_CHUNK_ATTEMPTS) break;
             console.warn(`[TTS] Chunk attempt ${attempt}/${TTS_CHUNK_ATTEMPTS} failed; retrying...`, error);
             await new Promise(resolve => setTimeout(resolve, TTS_CHUNK_RETRY_BACKOFF_MS));

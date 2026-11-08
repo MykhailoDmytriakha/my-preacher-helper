@@ -8,6 +8,7 @@ import { ReadableStream } from 'node:stream/web';
 import { audioExportFirestore } from '../../../../../../test-utils/audioExportFirestore';
 import { TextDecoder, TextEncoder } from 'util';
 
+import { ProviderAnswerError } from '@/api/clients/ai/providerAnswerError';
 import { resolveUserTtsTarget } from '@/api/clients/ai/tierPolicy';
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { generateChunkAudio, splitTextEvenly, splitTextIntoChunks } from '@/api/clients/tts.client';
@@ -1123,6 +1124,21 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
       String(text).startsWith('Introduction'))).toHaveLength(2);
     expect(consumeAudioSeconds).not.toHaveBeenCalled();
     expect(consumeAiUsage).not.toHaveBeenCalled();
+  });
+
+  it('does not generate a second copy of a chunk after its successful response breaks', async () => {
+    (generateChunkAudio as jest.Mock)
+      .mockRejectedValue(new ProviderAnswerError(new Error('socket hang up')));
+
+    const response = await POST(
+      createRequest({ userId: 'user-1', voice: 'onyx', sections: 'all', offset: 0, limit: 1 }) as never,
+      { params: Promise.resolve({ id: 'sermon-1' }) },
+    );
+    const events = await readStreamEvents(response.body as ReadableStream<Uint8Array>);
+
+    expect(generateChunkAudio).toHaveBeenCalledTimes(1);
+    expect(events).toContainEqual(expect.objectContaining({ type: 'error', code: 'tts-chunk-failed', chunks: [1] }));
+    expect(consumeAudioSeconds).not.toHaveBeenCalled();
   });
 
   it('refuses an unadmitted continuation before TTS', async () => {

@@ -30,17 +30,28 @@ class MockUsageCapReachedError extends Error {
   readonly code = 'USAGE_CAP_REACHED';
 }
 
+function mockSdkParse(parse: jest.Mock) {
+  return (...args: unknown[]) => {
+    const result = parse(...args);
+    if (result?.asResponse) return result;
+    const completion = Promise.resolve(result);
+    return Object.assign(completion, {
+      asResponse: () => completion.then(() => ({ status: 200 })),
+    });
+  };
+}
+
 jest.mock('openai', () => ({
   __esModule: true,
   default: jest.fn().mockImplementation((options?: { baseURL?: string }) => ({
     beta: {
       chat: {
         completions: {
-          parse: options?.baseURL?.includes('generativelanguage.googleapis.com')
+          parse: mockSdkParse(options?.baseURL?.includes('generativelanguage.googleapis.com')
             ? geminiParseMock
             : options?.baseURL?.includes('openrouter.ai')
               ? openRouterParseMock
-              : openaiParseMock,
+              : openaiParseMock),
         },
       },
     },
@@ -64,6 +75,7 @@ jest.mock('@/api/clients/openAIHelpers', () => ({
 
 jest.mock('@/api/clients/promptBuilder', () => ({
   buildSimplePromptBlueprint,
+  detectDominantLanguage: () => 'English',
 }));
 
 jest.mock('@/services/userEntitlement.server', () => ({
@@ -817,6 +829,51 @@ describe('structuredOutput client', () => {
       expect(result.success).toBe(false);
       expect(geminiParseMock).toHaveBeenCalledTimes(1);
     });
+  });
+
+  it('does not send another note cut after a successful response stalls in its body', async () => {
+    const cutAnswer = { choices: [{ message: { parsed: {
+      keyPassage: '', sections: [{ heading: 'a', claims: [{ text: 'x', scripture: '' }] }],
+    } } }] };
+    geminiParseMock.mockImplementationOnce((_params: unknown, options: { signal: AbortSignal }) => Object.assign(
+      new Promise((_resolve, reject) => {
+        options.signal.addEventListener('abort', () => reject(new Error('Body read aborted')));
+      }),
+      { asResponse: async () => ({ status: 200 }) },
+    )).mockResolvedValueOnce(cutAnswer);
+    jest.useFakeTimers();
+    try {
+      const { cutStudyNoteIntoScratch } = await import('@/api/clients/studyNoteCut.structured');
+      const cut = cutStudyNoteIntoScratch({ content: 'A saved note to cut', userId: 'free-user', budgetMs: 50_000 });
+      await jest.advanceTimersByTimeAsync(31_000);
+      const result = await cut;
+      expect(geminiParseMock).toHaveBeenCalledTimes(1);
+      expect(result).toMatchObject({ success: false, timedOut: true });
+      expect(mockConsumeAiUsage).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('does not switch models after a successful response breaks while being read', async () => {
+    mockGetUserEntitlementServerSide.mockResolvedValue({
+      paidTier: 'tier3',
+      preferredText: { providerId: 'openrouter', modelId: 'qwen/qwen3.7-plus' },
+    });
+    openRouterParseMock.mockImplementationOnce(() => Object.assign(
+      Promise.reject(Object.assign(new Error('socket hang up'), { code: 'ECONNRESET' })),
+      { asResponse: async () => ({ status: 200 }) },
+    )).mockResolvedValueOnce({ choices: [{ message: { parsed: { answer: 'fallback' } } }] });
+
+    const { callWithStructuredOutput } = await import('@/api/clients/structuredOutput');
+    const result = await callWithStructuredOutput('System prompt', 'User prompt', schema, {
+      formatName: 'test-format',
+      userId: 'paid-user',
+    });
+
+    expect(openRouterParseMock).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({ success: false, error: { message: 'socket hang up' } });
+    expect(mockConsumeAiUsage).not.toHaveBeenCalled();
   });
 
   it('stops after one attempt on a terminal provider failure', async () => {

@@ -1,5 +1,7 @@
 import { createTranscription } from '@clients/openAI.client';
 
+import { providerStartedAnswer } from './ai/providerAnswerError';
+
 export const RETRYABLE_TRANSCRIPTION_ERROR =
   'Temporary transcription connection issue. The recording looked valid, but the transcription service connection failed. Please try again.';
 
@@ -171,12 +173,22 @@ export function classifyTranscriptionError(error: unknown): TranscriptionErrorKi
 }
 
 export function isRetryableTranscriptionError(error: unknown): boolean {
-  return RETRYABLE_KINDS.has(classifyTranscriptionError(error));
+  return !providerStartedAnswer(error) && RETRYABLE_KINDS.has(classifyTranscriptionError(error));
 }
 
 export function mapTranscriptionError(transcriptionError: unknown): TranscriptionErrorResponse | null {
   if (!(transcriptionError instanceof Error)) {
     return null;
+  }
+
+  if (providerStartedAnswer(transcriptionError)) {
+    return {
+      status: 502,
+      error: 'The transcription service started answering, but its reply was interrupted.',
+      retryable: false,
+      phase: 'transcribe_audio',
+      kind: 'server',
+    };
   }
 
   const kind = classifyTranscriptionError(transcriptionError);

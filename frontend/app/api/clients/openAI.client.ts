@@ -26,6 +26,7 @@ import { notePlanTargetNodes, type NotePlanResult } from '@/utils/notePlan';
 import { replacePlanReferenceParagraphs } from '@/utils/planReferenceRevision';
 import { normalizeSubPointId } from "@/utils/subPoints";
 
+import { providerStartedAnswer, readProviderAnswer } from "./ai/providerAnswerError";
 import { extractSermonContent, formatDuration, logger, extractSectionContent } from "./openAIHelpers";
 import { buildPromptBlueprint, buildSimplePromptBlueprint, detectDominantLanguage } from "./promptBuilder";
 import {
@@ -236,10 +237,12 @@ export async function createTranscription(file: File | Blob, userId?: string): P
     let lastError: unknown;
     for (let index = 0; index < models.length; index += 1) {
       const model = models[index];
+      const controller = new AbortController();
+      const deadline = setTimeout(() => controller.abort(), requestTimeoutMs);
       try {
         const result = await withOpenAILogging<OpenAI.Audio.Transcription>(
           // Per-request timeout + no SDK retries, scoped to transcription ONLY.
-          () => openai.audio.transcriptions.create(
+          () => readProviderAnswer(openai.audio.transcriptions.create(
             {
               file: fileToSend,
               model,
@@ -247,8 +250,12 @@ export async function createTranscription(file: File | Blob, userId?: string): P
             {
               timeout: requestTimeoutMs,
               maxRetries: 0,
+              // The SDK's own timeout stops at headers. This signal also bounds the body.
+              signal: controller.signal,
             }
-          ),
+          ), answer => {
+            if (typeof answer?.text !== 'string') throw new Error('The transcription response did not include text');
+          }),
           'Transcription',
           {
             model,
@@ -260,11 +267,14 @@ export async function createTranscription(file: File | Blob, userId?: string): P
         console.log(`✅ Transcription successful: ${result.text.substring(0, 100)}${result.text.length > 100 ? '...' : ''}`);
         return result.text;
       } catch (error) {
-        lastError = error;
+        if (providerStartedAnswer(error)) throw error;
+        lastError = controller.signal.aborted ? new Error('Transcription request timed out', { cause: error }) : error;
         const fallbackModel = models[index + 1];
         if (fallbackModel) {
           console.warn(`[Transcription] Model ${model} failed; retrying with catalog default ${fallbackModel}`, error);
         }
+      } finally {
+        clearTimeout(deadline);
       }
     }
     throw lastError instanceof Error ? lastError : new Error('Transcription failed');

@@ -2,6 +2,8 @@ import 'openai/shims/node';
 
 import OpenAI from 'openai';
 
+import { providerStartedAnswer } from './providerAnswerError';
+
 import type { ProviderId } from './providerId';
 
 /** Disposition consumed by the Phase 3 structured-output fallback runner. */
@@ -76,6 +78,8 @@ function isNetworkOrTimeout(text: string): boolean {
 }
 
 function classifyError(error: unknown): ErrorDisposition {
+  if (providerStartedAnswer(error)) return 'terminal';
+
   const text = collectErrorText(error);
   const status = getStatus(error);
 

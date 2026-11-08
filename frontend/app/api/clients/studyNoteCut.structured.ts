@@ -17,6 +17,7 @@ import { isUsageCapReachedError } from '@/services/usageLimits';
 import { stoppedAtDeadline } from '@/utils/aiTimeFailure';
 import { expectedScratchCountCorridor } from '@/utils/noteCutCorridor';
 
+import { providerStartedAnswer } from './ai/providerAnswerError';
 import { logger } from './openAIHelpers';
 import { buildSimplePromptBlueprint, detectDominantLanguage } from './promptBuilder';
 import { callWithStructuredOutput, type StructuredOutputResult } from './structuredOutput';
@@ -144,7 +145,7 @@ export function normalizeCutSections(sections: CutNoteSection[]): CutNoteSection
  * a rejected key is terminal: trying again would burn the person's minute for nothing.
  */
 function isWorthRetrying(error: Error | null): boolean {
-  if (!error) return false;
+  if (!error || providerStartedAnswer(error)) return false;
   const text = `${error.message} ${(error as { status?: unknown }).status ?? ''}`.toLowerCase();
   return (
     /\b(429|500|502|503|504)\b/.test(text) ||
@@ -210,7 +211,8 @@ export async function cutStudyNoteIntoScratch(input: CutStudyNoteInput): Promise
      * the shared fallback chain does not retry a target — it only moves to the next one,
      * and an ordinary tier has exactly one.
      *
-     * A failed attempt costs no quota: usage is consumed only on a successful call.
+     * Usage in the app settles only on a valid answer. If the provider had started its
+     * response, its own cost is unknown, so this loop stops even on a read timeout.
      */
     const deadline = Date.now() + (input.budgetMs ?? DEFAULT_BUDGET_MS);
     const generate = async (settleParsedResult?: SettleParsedAiResult): Promise<StructuredOutputResult<CutNoteResponse>> => {

@@ -15,6 +15,7 @@ import { isUsageCapReachedError } from '@/services/usageLimits';
 import { addSermonThought } from '@/utils/sermonThoughtEdits';
 import { validateAudioDuration } from '@/utils/server/audioServerUtils';
 import { sanitizeAvailableThoughtTags, stripStructureTags } from '@/utils/thoughtTagSanitizer';
+import { transcriptionResponseInit } from '@/utils/transcriptionResponse';
 import { createApiPerformanceTracker } from '@clients/apiPerformanceTelemetry';
 import { getCustomTags } from '@clients/firestore.client';
 import { generateThoughtStructured } from '@clients/thought.structured';
@@ -180,7 +181,7 @@ async function handleAutoPost(request: Request, uid: string) {
       httpStatus: status,
       errorMessage,
     });
-    return NextResponse.json({ error: errorMessage, ...extra }, { status });
+    return NextResponse.json({ error: errorMessage, ...extra }, transcriptionResponseInit(status, extra?.retryable));
   };
 
   try {

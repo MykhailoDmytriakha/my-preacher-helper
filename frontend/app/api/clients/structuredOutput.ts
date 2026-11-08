@@ -20,6 +20,7 @@ import { isUsageCapReachedError } from "@/services/usageLimits";
 import { withinDeadline } from "@/utils/withinDeadline";
 
 import { providerAdapters } from "./ai/providerAdapters";
+import { readProviderAnswer } from "./ai/providerAnswerError";
 import { resolveStructuredTargets, type ModelTarget, type Workload } from "./ai/routing";
 import {
   buildStructuredTelemetryOpenRecord,
@@ -115,9 +116,11 @@ async function executeStructuredTarget<T extends z.ZodType>(
 
   // Callers without transport overrides keep the exact previous call shape — no second
   // argument at all — so nothing else in the app changes behaviour because of this option.
-  return requestOptions
+  const completion = requestOptions
     ? client.beta.chat.completions.parse(params, requestOptions)
     : client.beta.chat.completions.parse(params);
+
+  return readProviderAnswer(completion);
 }
 
 /** A signal that ends with the chain's deadline: for the attempt in flight, its answer's body included. */

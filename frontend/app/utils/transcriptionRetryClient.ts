@@ -3,6 +3,8 @@ import { logFailureOnce, type FailureWords } from '@/utils/actionFailureMessage'
 import { ranOutOfTime } from '@/utils/aiTimeFailure';
 import { apiClient } from '@/utils/apiClient';
 
+import { TRANSCRIPTION_RETRY_HEADER } from './transcriptionResponse';
+
 
 const rethrowUsageCapReached = (error: unknown): void => {
   if (isUsageCapReachedError(error)) throw error;
@@ -232,7 +234,8 @@ export async function transcribeAudioWithRetry(
     }
     attempts.push({ kind, status: response.status, message });
 
-    const serverAllowsRetry = data?.retryable ?? RETRYABLE_KINDS.has(kind);
+    const serverAllowsRetry = response.headers?.get(TRANSCRIPTION_RETRY_HEADER) !== 'false'
+      && (data?.retryable ?? RETRYABLE_KINDS.has(kind));
     const willRetry = serverAllowsRetry && !isLast;
     options.onAttemptFailed?.({ attempt: attempt + 1, kind, willRetry });
     if (!willRetry) break;

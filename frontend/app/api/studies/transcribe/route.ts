@@ -7,6 +7,7 @@ import { usageCapResponse } from '@/api/errors/usageCapResponse';
 import { StoreUnavailableError, storeUnavailableResponse, withStore } from '@/services/storeAvailability.server';
 import { isUsageCapReachedError } from '@/services/usageLimits';
 import { validateAudioDuration } from '@/utils/server/audioServerUtils';
+import { transcriptionResponseInit } from '@/utils/transcriptionResponse';
 import { createApiPerformanceTracker } from '@clients/apiPerformanceTelemetry';
 import { polishTranscription } from '@clients/polishTranscription.structured';
 import {
@@ -50,7 +51,7 @@ export async function POST(request: Request) {
         });
         return NextResponse.json(
             { success: false, error: errorMessage, ...extra },
-            { status }
+            transcriptionResponseInit(status, extra?.retryable)
         );
     };
 

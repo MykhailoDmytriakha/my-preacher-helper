@@ -67,6 +67,27 @@ describe('tts client', () => {
     expect(result.durationSeconds).toBe(2);
   });
 
+  it('marks an interrupted successful speech response for both providers', async () => {
+    const cause = new Error('body cut');
+    mockSpeechCreate.mockResolvedValueOnce({ arrayBuffer: async () => { throw cause; } });
+    global.fetch = jest.fn().mockResolvedValueOnce({ ok: true, json: async () => { throw cause; } });
+
+    for (const provider of ['openai', 'google'] as const) {
+      await expect(generateChunkAudio('saved words', { provider, voice: 'onyx', model: 'fixture' }))
+        .rejects.toMatchObject({ name: 'ProviderAnswerError', cause });
+    }
+  });
+
+  it('marks successful speech responses that contain no audio', async () => {
+    mockSpeechCreate.mockResolvedValueOnce({ arrayBuffer: async () => new ArrayBuffer(0) });
+    global.fetch = jest.fn().mockResolvedValueOnce({ ok: true, json: async () => ({ candidates: [] }) });
+
+    for (const provider of ['openai', 'google'] as const) {
+      await expect(generateChunkAudio('saved words', { provider, voice: 'onyx', model: 'fixture' }))
+        .rejects.toMatchObject({ name: 'ProviderAnswerError' });
+    }
+  });
+
   it('passes through explicit response format', async () => {
     mockSpeechCreate.mockResolvedValueOnce(createSpeechResponse('mp3-audio'));
 

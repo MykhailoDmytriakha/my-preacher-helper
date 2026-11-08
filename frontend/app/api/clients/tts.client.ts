@@ -11,6 +11,8 @@ import OpenAI from 'openai';
 
 import { MAX_CHUNK_SIZE } from '@/types/audioGeneration.types';
 
+import { readStartedProviderAnswer } from './ai/providerAnswerError';
+
 import type {
     TTSGenerationOptions,
     TTSChunkResult,
@@ -74,7 +76,11 @@ export async function generateChunkAudio(
     });
 
     // Convert response to Blob (mime must match the requested format)
-    const arrayBuffer = await response.arrayBuffer();
+    const arrayBuffer = await readStartedProviderAnswer(async () => {
+        const audio = await response.arrayBuffer();
+        if (!audio.byteLength) throw new Error('OpenAI TTS response did not include audio data');
+        return audio;
+    });
     const mimeType = (options.format || 'wav') === 'mp3' ? 'audio/mpeg' : 'audio/wav';
     const audioBlob = new Blob([arrayBuffer], { type: mimeType });
 
@@ -129,18 +135,16 @@ async function generateGeminiChunkAudio(
         throw new Error(`Google TTS failed (${response.status}): ${errorText || response.statusText}`);
     }
 
-    const payload = await response.json();
-    const part = payload?.candidates?.[0]?.content?.parts?.find(
-        (candidatePart: { inlineData?: { data?: string }; inline_data?: { data?: string } }) =>
-            candidatePart.inlineData?.data || candidatePart.inline_data?.data
-    );
-    const base64Audio = part?.inlineData?.data || part?.inline_data?.data;
-
-    if (!base64Audio) {
-        throw new Error('Google TTS response did not include audio data');
-    }
-
-    const pcmBuffer = Buffer.from(base64Audio, 'base64');
+    const pcmBuffer = await readStartedProviderAnswer(async () => {
+        const payload = await response.json();
+        const part = payload?.candidates?.[0]?.content?.parts?.find(
+            (candidatePart: { inlineData?: { data?: string }; inline_data?: { data?: string } }) =>
+                candidatePart.inlineData?.data || candidatePart.inline_data?.data
+        );
+        const audio = Buffer.from(part?.inlineData?.data || part?.inline_data?.data || '', 'base64');
+        if (!audio.byteLength) throw new Error('Google TTS response did not include audio data');
+        return audio;
+    });
     const audioBlob = pcm16ToWavBlob(pcmBuffer);
 
     return {

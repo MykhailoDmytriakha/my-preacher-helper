@@ -94,6 +94,16 @@ describe('transcribeAudioWithRetry', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 
+  it('does not resubmit audio when the terminal response body is interrupted', async () => {
+    const fetchImpl = jest.fn().mockResolvedValueOnce({
+      ...bodylessResponse(502), headers: { get: (name: string) => name === 'x-transcription-retry' ? 'false' : null },
+    }).mockResolvedValueOnce(jsonResponse(200, { success: true, polishedText: 'duplicate' }));
+
+    await expect(transcribeAudioWithRetry(blob, { endpoint: '/api/studies/transcribe', fetchImpl, baseDelayMs: 0 }))
+      .rejects.toMatchObject({ kinds: ['server'] });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
   it('does NOT retry a billing failure and surfaces the billing kind', async () => {
     const fetchImpl = jest.fn().mockResolvedValue(
       jsonResponse(429, { success: false, error: 'out of credit', kind: 'billing', retryable: false })

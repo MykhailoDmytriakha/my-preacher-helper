@@ -14,6 +14,7 @@ import {
   generateSermonVerses,
   sortItemsWithAI,
 } from '@clients/openAI.client';
+import { mapTranscriptionError } from '@clients/transcriptionRetry';
 import { Sermon, SermonPoint, ThoughtInStructure } from '@/models/models';
 import * as audioUtils from '@/utils/audioFormatUtils';
 
@@ -29,7 +30,12 @@ jest.mock('openai', () => {
     },
     audio: {
       transcriptions: {
-        create: mockCreateTranscription,
+        create: (...args: unknown[]) => {
+          const result = mockCreateTranscription(...args);
+          if (result?.asResponse) return result;
+          const completion = Promise.resolve(result);
+          return Object.assign(completion, { asResponse: () => completion.then(() => ({ status: 200 })) });
+        },
       },
     },
   }));
@@ -220,6 +226,28 @@ describe('openAI.client additional coverage', () => {
         'gpt-4o-mini-transcribe',
         'gpt-4o-transcribe',
       ]);
+    });
+
+    it('stops automatic transcription retries once the provider starts its answer', async () => {
+      jest.requireMock('@/services/userEntitlement.server').getUserEntitlementServerSide.mockResolvedValue({ paidTier: 'tier1' });
+      mockCreateTranscription.mockImplementationOnce(() => Object.assign(
+        Promise.reject(new Error('socket hang up')),
+        { asResponse: async () => ({ status: 200 }) },
+      )).mockResolvedValueOnce({ text: 'must not ask another model' });
+
+      const failure = await createTranscription(new Blob(['audio'], { type: 'audio/webm' }), 'trusted-user').catch(error => error);
+
+      expect(mockCreateTranscription).toHaveBeenCalledTimes(1);
+      expect(mapTranscriptionError(failure)).toMatchObject({ status: 502, retryable: false, phase: 'transcribe_audio' });
+    });
+
+    it('stops after successful headers when the transcription body lacks text', async () => {
+      jest.requireMock('@/services/userEntitlement.server').getUserEntitlementServerSide.mockResolvedValue({ paidTier: 'tier1' });
+      mockCreateTranscription.mockResolvedValueOnce({}).mockResolvedValueOnce({ text: 'duplicate' });
+
+      await expect(createTranscription(new Blob(['audio'], { type: 'audio/webm' }), 'trusted-user'))
+        .rejects.toThrow('The transcription response did not include text');
+      expect(mockCreateTranscription).toHaveBeenCalledTimes(1);
     });
 
     it('gives a FREE user NO cross-tier fallback (allowance is exactly its default)', async () => {
