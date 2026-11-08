@@ -7379,3 +7379,13 @@ The ordinary group autosave now keeps independent action times and ancestors for
 Two original server regressions went from red to green. 385 related tests passed, including a shared save with opposite title and status winners and closing before autosave with delivery after restart. TypeScript, scoped lint and the local build passed. Four status scenarios and a title compatibility check passed in installed Chrome on local Auth and Firestore emulators. I inspected history and restoration at 390 and 1280 pixels. Evidence is in `artifacts/action-chronology-356/group-status-verified`. The remaining short fields stay in the umbrella issue.
 
 For authorized production acceptance, verify the revision and active worker. Change the same disposable group's status in both orders across two profiles, with the offline profile always delivering last. Restore from Status history, reload and verify status, title and meeting data. Close the profiles.
+
+## BUG-20261016-engine-asks-instead-of-chronology · Group meeting location and audience
+
+In Groups, select an existing group with a meeting. Both orders of editing the same location or audience used to conflict when the offline profile reconnected. Clearing the location later could leave the earlier computer value.
+
+The durable meeting form now captures each short field's action time and exact row identity. Independent devices use proven action order. A preceding local Save is recognized only by the current exact field proof. Unclear timing and replaced meeting rows retain a choice. History restores the displaced value through the same form.
+
+Four original behavior regressions and four review regressions went red to green. 449 related tests, TypeScript, scoped lint and the production-mode local build passed. Six scenarios passed in Chrome at 390 and 1280 pixels with guarded local Auth and Firestore. Both original orders, independent fields, restore after reload, and a stored blank from a previously omitted value were verified. Visual evidence is in `artifacts/action-chronology-356/group-meeting-fields-verified`. The broader chronology audit remains open.
+
+For authorized production acceptance, verify the deployed revision and worker. Use two profiles of one account and one disposable group. Repeat both action orders for each field, with the phone delivering last. Restore through Location and audience history, reload, verify the date and second meeting, and close both profiles.

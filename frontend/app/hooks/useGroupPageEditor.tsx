@@ -65,6 +65,10 @@ export function useGroupPageEditor(groupId: string): GroupPageEditor {
     meetingLocation: first?.location ?? '', setMeetingLocation: meeting.field('location'),
     meetingAudience: first?.audience ?? '', setMeetingAudience: meeting.field('audience'),
     meetingFieldsEnabled: meeting.enabled, meetingHistory,
+    meetingFieldHistory: meetingHistory && first ? {
+      ...meetingHistory, rowCreatedAt: first.createdAt, current: { location: first.location ?? null, audience: first.audience ?? null },
+      restore: meeting.restoreField,
+    } : undefined,
     deleteGroupDetail: data.deleteGroupDetail,
     feedback: <DataSyncStatus subject={manual ? meeting.form.recoveryIdentity : data.document.recoveryIdentity} status={status} error={error} errorWords={meeting.form.error ? meeting.form.errorWords : data.document.errorWords}
       onKeepLocal={manual ? meeting.form.keepLocal : data.keepLocal} onAcceptRemote={manual ? meeting.form.acceptRemote : data.acceptRemote} onRetry={manual ? meeting.form.retry : data.refresh}

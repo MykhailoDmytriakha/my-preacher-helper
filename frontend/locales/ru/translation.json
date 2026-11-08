@@ -3716,6 +3716,16 @@
         "location": "Место",
         "audience": "Аудитория",
         "notes": "Заметки",
+        "fieldHistory": "История места и аудитории",
+        "historyUnset": "Не задано",
+        "historyBlank": "Очищено",
+        "historyLoading": "Загружаем историю встречи…",
+        "historyUnavailable": "История встречи недоступна.",
+        "historyRestoreFailed": "Не удалось восстановить поле встречи.",
+        "historyEmpty": "У этой встречи пока нет прежних значений.",
+        "historyKept": "Тогда сохранилось: {{value}}.",
+        "historyRestore": "Восстановить · {{field}}",
+        "historyMore": "Загрузить более ранние значения",
         "datePlaceholder": "Дата не указана"
       },
       "status": {

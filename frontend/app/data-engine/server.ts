@@ -14,8 +14,11 @@ import { BIBLE_MARK_HISTORY, BIBLE_MARK_PROOFS, bibleMarkProofVerses, bibleMarkT
 import { existingRowDate, MEETING_DATE_TARGET, PREACH_DATE_TARGET } from './datedRowAction';
 import { metadataAfterDatedRow, orderDatedRow } from './datedRowOrder.server';
 import { metadataAfterDocumentFields, orderDocumentFields, DOCUMENT_TITLE_HISTORY, GROUP_STATUS_HISTORY } from './documentFieldOrder.server';
+import { MEETING_ROW_BIRTH, meetingFieldTarget, type GroupMeetingFieldHistoryPage } from './groupMeetingFieldAction';
+import { GROUP_MEETING_FIELD_HISTORY, metadataAfterGroupMeetingFields, orderGroupMeetingFields } from './groupMeetingFieldOrder.server';
 import { advanceResourceSnapshot, commandFingerprint, getResourcePolicy, isValidIdentifier, TOMBSTONE_OWNER_FIELD, validateCommand } from './protocol';
 import { validateResourceDocument } from './resourceSchemas';
+import { existingRowField } from './rowFieldAction';
 import { assembleChangePage, collectionHeadId, HEADS_COLLECTION, parseChangePointer, planFeedWrites, readHeadVersion, sequenceId } from './serverFeed';
 import { planDataCommand } from './serverRelations';
 import { coversCommittedEffect } from './snapshotFreshness';
@@ -353,13 +356,14 @@ function persistBibleMarkOrder(transaction: Transaction, command: DataCommand, s
   }
 }
 
-async function persistAcceptedCommand(transaction: Transaction, { owner, command, snapshot: primarySnapshot, effects, rawDocuments, dateOrder, markOrder, fieldOrder }: {
+async function persistAcceptedCommand(transaction: Transaction, { owner, command, snapshot: primarySnapshot, effects, rawDocuments, dateOrder, meetingOrder, markOrder, fieldOrder }: {
   owner: string;
   command: DataCommand;
   snapshot: ResourceSnapshot;
   effects: ResourceSnapshot[];
   rawDocuments: ReadonlyMap<string, Record<string, unknown> | undefined>;
   dateOrder?: ReturnType<typeof orderDatedRow>;
+  meetingOrder?: ReturnType<typeof orderGroupMeetingFields>;
   markOrder?: ReturnType<typeof orderBibleMarks>;
   fieldOrder?: ReturnType<typeof orderDocumentFields>;
 }) {
@@ -373,9 +377,10 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
       : preserveStoredTypes(raw, snapshot.value) as Record<string, unknown>;
     const primary = key === primaryKey;
     const dated = metadataAfterDatedRow(snapshot, raw, primary ? command : undefined, primary ? dateOrder : undefined);
+    const meeting = metadataAfterGroupMeetingFields({ ...snapshot, metadata: dated }, raw, primary ? meetingOrder : undefined);
     const metadata = snapshot.resource.collection === 'bibleMarks'
       ? metadataAfterBibleMarks(snapshot, raw?._dataEngine, primary ? markOrder : undefined)
-      : metadataAfterDocumentFields({ ...snapshot, metadata: dated }, raw?._dataEngine, primary ? fieldOrder : undefined);
+      : metadataAfterDocumentFields({ ...snapshot, metadata: meeting }, raw?._dataEngine, primary ? fieldOrder : undefined);
     transaction.set(adminDb.collection(snapshot.resource.collection).doc(snapshot.resource.id), { ...value, _dataEngine: metadata });
   }
   const displaced = dateOrder?.displaced;
@@ -383,6 +388,15 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
   if (displaced && target && existingRowDate(primarySnapshot.value?.[target.field], displaced.rowId, target) === displaced.winnerDate) {
     const history = adminDb.collection(command.resource.collection).doc(command.resource.id).collection(target.history);
     transaction.set(history.doc(historyEntryId(primarySnapshot, command.operationId)), { ...displaced, acceptedAt: new Date().toISOString() });
+  }
+  const meetingFields = meetingOrder?.displaced.filter(entry => existingRowField(
+    primarySnapshot.value?.meetingDates, entry.rowId, meetingFieldTarget(entry.field),
+  ) === entry.winnerValue && existingRowField(primarySnapshot.value?.meetingDates, entry.rowId, MEETING_ROW_BIRTH) === entry.rowCreatedAt);
+  if (meetingFields?.length) {
+    const history = adminDb.collection(command.resource.collection).doc(command.resource.id).collection(GROUP_MEETING_FIELD_HISTORY);
+    transaction.set(history.doc(historyEntryId(primarySnapshot, command.operationId)), {
+      generation: primarySnapshot.metadata!.generation, fields: meetingFields, acceptedAt: new Date().toISOString(),
+    });
   }
   for (const { target, order } of fieldOrder?.fields ?? []) {
     const displaced = order.displaced;
@@ -437,6 +451,7 @@ export async function processCommand(owner: string, input: unknown): Promise<Com
     let result: CommandResult;
     let effects: ResourceSnapshot[] = [];
     let dateOrder: ReturnType<typeof orderDatedRow> | undefined;
+    let meetingOrder: ReturnType<typeof orderGroupMeetingFields> | undefined;
     let markOrder: ReturnType<typeof orderBibleMarks> | undefined;
     let fieldOrder: ReturnType<typeof orderDocumentFields> | undefined;
     const rawDocuments = new Map<string, Record<string, unknown> | undefined>([[resourceKey(command.resource), raw]]);
@@ -446,7 +461,8 @@ export async function processCommand(owner: string, input: unknown): Promise<Com
       const current = snapshotFromRaw(command.resource, raw);
       const serverMs = stored.readTime?.toMillis();
       dateOrder = orderDatedRow(command, current, raw?._dataEngine, serverMs);
-      markOrder = await planBibleMarkOrder(transaction, documentRef, dateOrder.command, current, raw?._dataEngine, serverMs);
+      meetingOrder = orderGroupMeetingFields(dateOrder.command, current, raw?._dataEngine, serverMs);
+      markOrder = await planBibleMarkOrder(transaction, documentRef, meetingOrder.command, current, raw?._dataEngine, serverMs);
       fieldOrder = orderDocumentFields(markOrder.command, current, raw?._dataEngine, serverMs);
       const planned = await planDataCommand(fieldOrder.command, current, {
         get: async resource => {
@@ -486,7 +502,7 @@ export async function processCommand(owner: string, input: unknown): Promise<Com
           return matches;
         },
       });
-      const plan = retainUncertainChronology(planned, command, current, [...(dateOrder.uncertain ?? []), ...(markOrder.uncertain ?? []), ...(fieldOrder.uncertain ?? [])]);
+      const plan = retainUncertainChronology(planned, command, current, [...(dateOrder.uncertain ?? []), ...meetingOrder.uncertain, ...(markOrder.uncertain ?? []), ...(fieldOrder.uncertain ?? [])]);
       const acceptedAt = new Date().toISOString();
       // The planner exposes writes only for acknowledged commands.
       effects = plan.writes.map(effect => stampAcceptedResource(snapshotFromRaw(effect.resource, rawDocuments.get(resourceKey(effect.resource))), effect, acceptedAt));
@@ -514,7 +530,7 @@ export async function processCommand(owner: string, input: unknown): Promise<Com
       deletedTag = raw.name;
     }
     if (result.kind === 'acknowledged') {
-      await persistAcceptedCommand(transaction, { owner, command, snapshot: result.snapshot, effects, rawDocuments, dateOrder, markOrder, fieldOrder });
+      await persistAcceptedCommand(transaction, { owner, command, snapshot: result.snapshot, effects, rawDocuments, dateOrder, meetingOrder, markOrder, fieldOrder });
     }
     // A blocked receipt fixes the identity but may advance after its dependencies acknowledge.
     transaction.set(commandReceiptRef, serializeReceipt(receipt));
@@ -582,6 +598,12 @@ export async function listMeetingDateHistory(owner: string, groupId: string, gen
   const page = await listHistoryEntries<DisplacedRowDate & { id: string; acceptedAt: string }>(
     owner, resource, MEETING_DATE_TARGET.history, generation, cursor, 'group-gone',
   );
+  return { owner, groupId, generation, ...page };
+}
+
+export async function listGroupMeetingFieldHistory(owner: string, groupId: string, generation: string, cursor?: string): Promise<GroupMeetingFieldHistoryPage> {
+  const resource = { collection: 'groups', id: groupId };
+  const page = await listHistoryEntries<GroupMeetingFieldHistoryPage['entries'][number]>(owner, resource, GROUP_MEETING_FIELD_HISTORY, generation, cursor, 'group-gone');
   return { owner, groupId, generation, ...page };
 }
 

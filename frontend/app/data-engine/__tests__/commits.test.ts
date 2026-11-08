@@ -206,6 +206,67 @@ describe('Durable commit requests', () => {
     }));
   });
 
+  it('carries both meeting field times and exact ancestors across a predecessor ACK', async () => {
+    const s = setup();
+    const { queue } = s.makeQueue();
+    const meeting = { id: 'meeting', date: '2026-12-13', createdAt: '2026-11-08', location: 'Hall' };
+    const base: ResourceSnapshot = {
+      resource: { collection: 'groups', id: 'group' },
+      value: { userId: 'owner', title: 'Group', status: 'draft', templates: [], flow: [], meetingDates: [meeting] },
+      metadata: { protocol: 1, generation: 'group', revision: 1, deleted: false },
+    };
+    const editor = new DataSession(base);
+    editor.edit({ ...base.value, meetingDates: [{ ...meeting, location: 'Side room' }] });
+    const earlier = { earliestMs: 1_800_000_000_011, latestMs: 1_800_000_000_023 };
+    const first = (await queue.save('meeting', editor.checkpoint(), { groupMeetingFieldCaptures: {
+      location: { rowId: meeting.id, rowCreatedAt: meeting.createdAt, after: 'Side room', time: earlier },
+    } }))!;
+    editor.edit({ ...base.value, meetingDates: [{ ...meeting, location: '', audience: 'All' }] });
+    const location = { earliestMs: 1_800_000_000_020, latestMs: 1_800_000_000_025 };
+    const audience = { earliestMs: 1_800_000_000_050, latestMs: 1_800_000_000_055 };
+    const next = (await queue.save('meeting', editor.checkpoint(), { predecessorId: first.id, groupMeetingFieldCaptures: {
+      location: { rowId: meeting.id, rowCreatedAt: meeting.createdAt, after: '', time: location },
+      audience: { rowId: meeting.id, rowCreatedAt: meeting.createdAt, after: 'All', time: audience },
+    } }))!;
+    const ack = { ...base, value: { ...base.value, meetingDates: [{ ...meeting, date: '', location: '', audience: 'Youth' }] },
+      metadata: { ...base.metadata!, revision: 2, operationId: first.id } };
+    s.replace(ack);
+    jest.mocked(s.transport.send).mockResolvedValueOnce({ kind: 'acknowledged', operationId: first.id, snapshot: ack });
+    await s.makeQueue().queue.drain(true);
+    expect(s.transport.send).toHaveBeenCalledWith(expect.objectContaining({ operationId: next.id, groupMeetingFieldActions: {
+      location: { rowId: meeting.id, rowCreatedAt: meeting.createdAt, before: 'Side room', after: '', predecessorOperationId: first.id, observedRevision: 1, time: location },
+      audience: { rowId: meeting.id, rowCreatedAt: meeting.createdAt, before: null, after: 'All', observedRevision: 1, time: audience },
+    }, changes: [{ path: ['meetingDates'], before: { exists: true, value: [{ ...meeting, date: '', location: 'Side room' }] },
+      after: { exists: true, value: [{ ...meeting, date: '', location: '', audience: 'All' }] } }] }));
+  });
+
+  it('keeps an exact meeting field predecessor across an intervening save to another field', async () => {
+    const s = setup();
+    const { queue } = s.makeQueue();
+    const meeting = { id: 'meeting', date: '', createdAt: '2026-11-08', location: 'Hall' };
+    const base: ResourceSnapshot = {
+      resource: { collection: 'groups', id: 'group' },
+      value: { userId: 'owner', title: 'Group', status: 'draft', templates: [], flow: [], meetingDates: [meeting] },
+      metadata: { protocol: 1, generation: 'group', revision: 1, deleted: false },
+    };
+    const editor = new DataSession(base);
+    const capture = (after: string, at: number) => ({
+      rowId: meeting.id, rowCreatedAt: meeting.createdAt, after,
+      time: { earliestMs: 1_800_000_000_000 + at, latestMs: 1_800_000_000_010 + at },
+    });
+    editor.edit({ ...base.value, meetingDates: [{ ...meeting, location: 'Side room' }] });
+    const first = (await queue.save('meeting', editor.checkpoint(), { groupMeetingFieldCaptures: { location: capture('Side room', 10) } }))!;
+    editor.edit({ ...base.value, meetingDates: [{ ...meeting, location: 'Side room', audience: 'Leaders' }] });
+    const middle = (await queue.save('meeting', editor.checkpoint(), {
+      predecessorId: first.id, groupMeetingFieldCaptures: { audience: capture('Leaders', 12) },
+    }))!;
+    editor.edit({ ...base.value, meetingDates: [{ ...meeting, location: 'Library', audience: 'Leaders' }] });
+    const last = (await queue.save('meeting', editor.checkpoint(), {
+      predecessorId: middle.id, groupMeetingFieldCaptures: { location: capture('Library', 15) },
+    }))!;
+    expect(last.groupMeetingFieldActions?.location).toMatchObject({ before: 'Side room', after: 'Library', predecessorOperationId: first.id });
+  });
+
   it('carries each group title through the durable queue and preserves its exact ancestor across an earlier ACK', async () => {
     const s = setup();
     const { queue } = s.makeQueue();

@@ -38,6 +38,7 @@ import FlowEditor from '@/components/groups/FlowEditor';
 import FlowFooter from '@/components/groups/FlowFooter';
 import FlowItemRow from '@/components/groups/FlowItemRow';
 import { GroupReadOnlyContent } from '@/components/groups/GroupReadOnlyContent';
+import { MeetingFieldHistory } from '@/components/groups/MeetingFieldHistory';
 import { RecordUnavailable } from '@/components/RecordUnavailable';
 import { SeriesMembershipDialog } from '@/components/series/SeriesMembershipDialog';
 import { GroupDetailSkeletonCards } from '@/components/skeletons/GroupDetailSkeleton';
@@ -100,7 +101,7 @@ function GroupDetailView({ editor }: { editor: GroupPageEditor }) {
   const { group, loading, title, setTitle, description, setDescription, status, setStatus,
     templates, setTemplates, flow, setFlow, meetingDate, setMeetingDate, meetingLocation, setMeetingLocation,
     meetingAudience, setMeetingAudience, deleteGroupDetail, feedback,
-    meetingFieldsEnabled, meetingHistory, titleHistory, statusHistory } = editor;
+    meetingFieldsEnabled, meetingHistory, meetingFieldHistory, titleHistory, statusHistory } = editor;
   const [selectedFlowItemId, setSelectedFlowItemId] = useState<string | null>(null);
   const { confirm, confirmDialog } = useConfirm();
   const [deletingGroup, setDeletingGroup] = useState(false);
@@ -458,6 +459,11 @@ function GroupDetailView({ editor }: { editor: GroupPageEditor }) {
               owner={meetingHistory.owner} collection="groups" id={group.id} generation={meetingHistory.generation}
               disabled={meetingHistory.disabled} liveDates={new Map([[meetingHistory.rowId, meetingHistory.date]])}
               onRestore={meetingHistory.restore} />}
+            {meetingFieldHistory && <MeetingFieldHistory
+              key={JSON.stringify([meetingFieldHistory.owner, group.id, meetingFieldHistory.generation, meetingFieldHistory.rowId, meetingFieldHistory.rowCreatedAt])}
+              owner={meetingFieldHistory.owner} id={group.id} generation={meetingFieldHistory.generation} rowId={meetingFieldHistory.rowId}
+              rowCreatedAt={meetingFieldHistory.rowCreatedAt} disabled={meetingFieldHistory.disabled} current={meetingFieldHistory.current}
+              onRestore={meetingFieldHistory.restore} />}
           </div>
         </div>
       </header>

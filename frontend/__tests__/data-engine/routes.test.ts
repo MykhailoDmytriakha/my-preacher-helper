@@ -4,13 +4,14 @@ import { GET as changes } from '@/api/data-engine/changes/[collection]/route';
 import { GET as list } from '@/api/data-engine/collections/[collection]/route';
 import { POST } from '@/api/data-engine/commands/route';
 import { GET as markHistory } from '@/api/data-engine/documents/[collection]/[id]/mark-history/route';
+import { GET as meetingFieldHistory } from '@/api/data-engine/documents/[collection]/[id]/meeting-field-history/route';
 import { GET as meetingHistory } from '@/api/data-engine/documents/[collection]/[id]/meeting-date-history/route';
 import { GET as history } from '@/api/data-engine/documents/[collection]/[id]/preach-date-history/route';
 import { GET as read } from '@/api/data-engine/documents/[collection]/[id]/route';
 import { GET as statusHistory } from '@/api/data-engine/documents/[collection]/[id]/status-history/route';
 import { GET as titleHistory } from '@/api/data-engine/documents/[collection]/[id]/title-history/route';
 import { ENGINE_OWNED_COLLECTIONS } from '@/data-engine/engineOwnedCollections';
-import { assertDataEngineEnabled, DataEngineServerError, listBibleMarkHistory, listDocuments, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listPreachDateHistory, listServiceOrderTitleHistory, processCommand, readCollectionChanges, readCommandBody, readDocument } from '@/data-engine/server';
+import { assertDataEngineEnabled, DataEngineServerError, listBibleMarkHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listPreachDateHistory, listServiceOrderTitleHistory, processCommand, readCollectionChanges, readCommandBody, readDocument } from '@/data-engine/server';
 import { __resetStoreAvailabilityForTests } from '@/services/storeAvailability.server';
 
 jest.mock('@/config/firebaseAdminConfig', () => ({ adminDb: {} }));
@@ -25,6 +26,7 @@ jest.mock('@/data-engine/server', () => ({
   listDocuments: jest.fn(),
   listPreachDateHistory: jest.fn(),
   listMeetingDateHistory: jest.fn(),
+  listGroupMeetingFieldHistory: jest.fn(),
   listServiceOrderTitleHistory: jest.fn(),
   listGroupTitleHistory: jest.fn(),
   listGroupStatusHistory: jest.fn(),
@@ -198,6 +200,17 @@ describe('DataEngine HTTP routes', () => {
     const wrong = await statusHistory(input, { params: Promise.resolve({ collection: 'series', id: 'group' }) });
     expect(wrong.status).toBe(400);
     expect(listGroupStatusHistory).toHaveBeenCalledTimes(1);
+  });
+
+  it('reads meeting field history for the authenticated group owner with no-store', async () => {
+    const input = request('http://localhost/api/data-engine/documents/groups/group/meeting-field-history?generation=g1');
+    jest.mocked(listGroupMeetingFieldHistory).mockResolvedValue({ owner: 'verified-owner', groupId: 'group', generation: 'g1', entries: [], nextCursor: null });
+    const response = await meetingFieldHistory(input, { params: Promise.resolve({ collection: 'groups', id: 'group' }) });
+    expect(response.status).toBe(200);
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(listGroupMeetingFieldHistory).toHaveBeenCalledWith('verified-owner', 'group', 'g1', undefined);
+    expect((await meetingFieldHistory(input, { params: Promise.resolve({ collection: 'sermons', id: 'group' }) })).status).toBe(400);
+    expect(listGroupMeetingFieldHistory).toHaveBeenCalledTimes(1);
   });
 
   it('reads group title history for only the verified owner and returns no-store', async () => {

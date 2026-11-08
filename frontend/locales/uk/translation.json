@@ -3716,6 +3716,16 @@
         "location": "Місце",
         "audience": "Аудиторія",
         "notes": "Нотатки",
+        "fieldHistory": "Історія місця та аудиторії",
+        "historyUnset": "Не задано",
+        "historyBlank": "Очищено",
+        "historyLoading": "Завантажуємо історію зустрічі…",
+        "historyUnavailable": "Історія зустрічі недоступна.",
+        "historyRestoreFailed": "Не вдалося відновити поле зустрічі.",
+        "historyEmpty": "Ця зустріч поки не має попередніх значень.",
+        "historyKept": "Тоді збереглося: {{value}}.",
+        "historyRestore": "Відновити · {{field}}",
+        "historyMore": "Завантажити попередні значення",
         "datePlaceholder": "Дата не вказана"
       },
       "status": {

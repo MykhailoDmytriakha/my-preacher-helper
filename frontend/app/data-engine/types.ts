@@ -2,6 +2,7 @@
 import type { ActionTime } from './actionClock';
 import type { DatedRowActionEvidence } from './datedRowAction';
 import type { DocumentFieldAction, ServiceOrderTitleCapture } from './documentFieldAction';
+import type { GroupMeetingFieldActions } from './groupMeetingFieldAction';
 
 export type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
 export type DocumentData = Record<string, Json>;
@@ -51,6 +52,7 @@ export type DataCommand = CommandBase & (
   | { kind: 'update'; changes: FieldChange[];
       preachDateAction?: DatedRowActionEvidence;
       meetingDateAction?: DatedRowActionEvidence;
+      groupMeetingFieldActions?: GroupMeetingFieldActions;
       bibleMarkStroke?: BibleMarkStrokeStamp;
       serviceOrderTitleAction?: DocumentFieldAction;
       groupTitleAction?: DocumentFieldAction;

@@ -8,6 +8,10 @@ export function groupMeetingDay(value: string): string | null {
   return isDateOnlyKey(day) ? day : null;
 }
 
+/** Only short details participate in automatic chronology and history. */
+export const isOrderedMeetingFieldValue = (value: unknown): value is string | null =>
+  value === null || (typeof value === 'string' && value.length <= 1024);
+
 /** An empty date means an undated meeting; unfinished typing is not a scheduled day. */
 export const isReadyGroupMeetingDate = (date: string) => date.trim() === '' || isDateOnlyKey(date.trim());
 

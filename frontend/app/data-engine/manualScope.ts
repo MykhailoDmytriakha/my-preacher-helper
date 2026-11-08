@@ -1,5 +1,6 @@
 import { CaptureContinuations } from './captureContinuations';
 import { datedRowTarget } from './datedRowAction';
+import { stageMeetingFieldCaptures } from './groupMeetingFieldAction';
 import { retireLocalWrite, type LocalWriteHandoff } from './localWriteback';
 import { equalValues, getResourcePolicy, isValidIdentifier } from './protocol';
 import { recoverySources, type RecoverySource } from './recoveryPresence';
@@ -9,6 +10,7 @@ import { canReplaceSnapshot } from './snapshotFreshness';
 
 import type { CommitRequest } from './commits';
 import type { DatedRowActionCapture } from './datedRowAction';
+import type { GroupMeetingFieldCaptures, GroupMeetingFieldInput } from './groupMeetingFieldAction';
 import type { SessionCheckpoint } from './session';
 import type { DocumentData, FieldValue, Json, ResourceRef, ResourceSnapshot } from './types';
 
@@ -39,6 +41,7 @@ export interface ManualScopeRecord {
   predecessor: ManualSavedIntent | null;
   stage: FieldValue[];
   savedSelection: FieldValue[];
+  groupMeetingFieldCaptures?: GroupMeetingFieldCaptures;
   /** Immutable per opening; older saved records may lack this evidence. */
   openingSelection?: FieldValue[];
   /** Bounds canonical Save identities belonging to this opening, including retired capture returns. */
@@ -51,7 +54,7 @@ export interface ManualScopeRecord {
   /** Only a Save captured by this recovered scope may settle its sources after ACK. */
   recoverySavedRequestId?: string;
 }
-export type ManualSaveOptions = { predecessorId?: string | null; preachDateAction?: DatedRowActionCapture; meetingDateAction?: DatedRowActionCapture };
+export type ManualSaveOptions = { predecessorId?: string | null; preachDateAction?: DatedRowActionCapture; meetingDateAction?: DatedRowActionCapture; groupMeetingFieldCaptures?: GroupMeetingFieldCaptures };
 export type ManualSave = (scopeId: string, captured: SessionCheckpoint, options: ManualSaveOptions) => Promise<ManualSavedIntent>;
 export interface ManualScopePort {
   capture(): ManualCapture;
@@ -167,13 +170,16 @@ export class ManualScope {
     return { capturing: this.captures.capturing, ...(choiceRequired ? { choiceRequired: true as const } : {}), ...(this.captures.failed ? { captureFailed: true } : {}), record: copy(this.record), openingValue: opening ? project(basis, this.record.selection, opening) : null, value: this.value(), dirty: !equalValues(this.record.stage, this.record.savedSelection), durable: this.durable };
   }
 
-  update(updater: (current: DocumentData) => DocumentData): Promise<void> {
+  update(updater: (current: DocumentData) => DocumentData, meetingFieldInput?: GroupMeetingFieldInput): Promise<void> {
     this.assertActive();
     const current = this.value();
     const next = copy(updater(copy(current)));
     const stage = this.record.selection.map(path => readSelection(next, path));
     const selectedOnly = project(current, this.record.selection, stage);
     if (!equalValues(next, selectedOnly)) throw new Error('Manual update changed an unselected field');
+    if (this.record.resource.collection === 'groups') {
+      this.record.groupMeetingFieldCaptures = stageMeetingFieldCaptures(this.record.groupMeetingFieldCaptures, current, selectedOnly, meetingFieldInput);
+    }
     this.record.stage = stage;
     this.record.generation += 1;
     return this.persist();
@@ -225,7 +231,11 @@ export class ManualScope {
       const value = project(predecessor?.value ?? baseline.value!, captured.selection, captured.stage);
       const checkpoint: SessionCheckpoint = { confirmed: baseline, draft: value, dirty: true, editGeneration: captured.generation,
         remoteCandidate: null, conflicts: [], pending: {} };
-      const request = await (admitted ?? this.options.port.save)(captured.scopeId, checkpoint, { predecessorId: predecessor?.id ?? null, ...(dateTarget && dateAction && { [dateTarget.evidence]: dateAction }) });
+      const request = await (admitted ?? this.options.port.save)(captured.scopeId, checkpoint, {
+        predecessorId: predecessor?.id ?? null,
+        ...(dateTarget && dateAction && { [dateTarget.evidence]: dateAction }),
+        ...(captured.groupMeetingFieldCaptures && { groupMeetingFieldCaptures: captured.groupMeetingFieldCaptures }),
+      });
       if (!admitted) this.assertCurrent();
       validateIntent(request, this.options);
       if (!equalValues(request.value, value) || request.predecessorId !== (predecessor?.id ?? null)) throw new Error('Manual save identity mismatch');
@@ -234,6 +244,7 @@ export class ManualScope {
       if (captured.recoveryOrigins?.length) this.record.recoverySavedRequestId = request.id;
       this.record.savedSelection = copy(captured.stage);
       this.record.savedGeneration = captured.generation;
+      if (this.record.generation === captured.generation) delete this.record.groupMeetingFieldCaptures;
       captureComplete();
       // The receipt is local evidence even after UI authority ends; later words stay separate.
       await (admitted ? this.writeLocal() : this.write());
@@ -266,6 +277,7 @@ export class ManualScope {
     return this.enqueuePersistence(async () => {
       this.captures.retire(captures);
       this.record.stage = copy(this.record.savedSelection);
+      delete this.record.groupMeetingFieldCaptures;
       await this.writeLocal();
     });
   }

@@ -4,9 +4,10 @@ import { useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
 import { useAutoSave } from '@/hooks/useAutoSave';
 import { fillRequiredFieldError } from '@/utils/actionFailureMessage';
 import { newClientId } from '@/utils/clientId';
-import { editFirstGroupMeeting, groupMeetingDay, isReadyGroupMeetingDate } from '@/utils/groupMeeting';
+import { editFirstGroupMeeting, groupMeetingDay, isOrderedMeetingFieldValue, isReadyGroupMeetingDate } from '@/utils/groupMeeting';
 
 import type { DatedRowActionCapture } from '@/data-engine/datedRowAction';
+import type { GroupMeetingField } from '@/data-engine/groupMeetingFieldAction';
 import type { DocumentData } from '@/data-engine/types';
 import type { GroupMeetingDate } from '@/models/models';
 import type { Dispatch, SetStateAction } from 'react';
@@ -68,6 +69,7 @@ export function useGroupMeetingEditor(groupId: string, stored: GroupMeetingDate[
   const field = (key: 'date' | 'location' | 'audience'): Dispatch<SetStateAction<string>> => next => {
     const identity = { id: newClientId(), createdAt: new Date().toISOString() };
     if (!form.active || needsRefresh) return;
+    const input = key !== 'date' && first ? form.captureMeetingField(key, first.id) : undefined;
     let ready = false;
     void form.update(current => {
       const previous = meetings(current), value = previous[0]?.[key] ?? '';
@@ -78,7 +80,7 @@ export function useGroupMeetingEditor(groupId: string, stored: GroupMeetingDate[
         dateAction.current = { scope: form.recoveryIdentity, action };
       }
       return { ...current, meetingDates: edited } as unknown as DocumentData;
-    }).catch(() => undefined);
+    }, input).catch(() => undefined);
     if (ready) debouncedSave();
     else debouncedSave.cancel();
   };
@@ -92,5 +94,19 @@ export function useGroupMeetingEditor(groupId: string, stored: GroupMeetingDate[
       return { ...current, meetingDates: [{ ...rows[0], date: chosen }, ...rows.slice(1)] } as unknown as DocumentData;
     }, action);
   };
-  return { form, recovery, first, field, restoreDate, loading: !opened || loading, enabled: active && !needsRefresh };
+  const restoreField = async (rowId: string, rowCreatedAt: string, key: GroupMeetingField, value: string | null) => {
+    if (!form.active || form.dirty || pending || needsRefresh || (key !== 'location' && key !== 'audience')
+      || !isOrderedMeetingFieldValue(value)) throw new Error('The meeting field is not ready');
+    const action = form.captureMeetingField(key, rowId);
+    await form.save(current => {
+      const normalized = normalize(current);
+      const rows = meetings(normalized);
+      if (rows[0]?.id !== rowId || rows[0].createdAt !== rowCreatedAt) throw new Error('The meeting changed');
+      const restored = { ...rows[0] };
+      if (value === null) delete restored[key];
+      else restored[key] = value;
+      return { ...normalized, meetingDates: [restored, ...rows.slice(1)] } as unknown as DocumentData;
+    }, action);
+  };
+  return { form, recovery, first, field, restoreDate, restoreField, loading: !opened || loading, enabled: active && !needsRefresh };
 }

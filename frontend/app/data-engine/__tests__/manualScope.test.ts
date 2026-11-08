@@ -9,18 +9,40 @@ const resource = { collection: 'sermons', id: 'sermon' };
 const snapshot = (title = 'A', scratch = 'scratch0', revision = 1): ResourceSnapshot => ({ resource, value: { userId: 'owner', title, verse: '', date: '2026-09-12', thoughts: [], scratch: [{ id: 's', text: scratch, createdAt: '2026-09-12' }] }, metadata: { protocol: 1, generation: 'g', revision, deleted: false } });
 const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 const saved = (id: string, value: DocumentData, predecessorId: string | null = null): ManualSavedIntent => ({ id, owner: 'owner', resource, value: clone(value), predecessorId });
-function fixture(selection: readonly ManualPath[] = [['title']]) {
+function fixture(selection: readonly ManualPath[] = [['title']], base = snapshot()) {
   let current = true;
   let disk: ManualScopeRecord | undefined;
-  const captured: ManualCapture = { checkpoint: new DataSession(snapshot()).checkpoint(), provenance: [], requests: [] };
+  const captured: ManualCapture = { checkpoint: new DataSession(base).checkpoint(), provenance: [], requests: [] };
   const persist = jest.fn(async (record: ManualScopeRecord) => { disk = clone(record); });
-  const save = jest.fn<ReturnType<ManualScopePort['save']>, Parameters<ManualScopePort['save']>>(async (_scope, checkpoint, options) => saved(`request-${checkpoint.editGeneration}`, checkpoint.draft!, options.predecessorId ?? null));
-  const options = { owner: 'owner', resource, scopeId: 'scope', selection, port: { capture: () => captured, isCurrent: () => current, persist, save } };
+  const save = jest.fn<ReturnType<ManualScopePort['save']>, Parameters<ManualScopePort['save']>>(async (_scope, checkpoint, options) => ({ ...saved(`request-${checkpoint.editGeneration}`, checkpoint.draft!, options.predecessorId ?? null), resource: base.resource }));
+  const options = { owner: 'owner', resource: base.resource, scopeId: 'scope', selection, port: { capture: () => captured, isCurrent: () => current, persist, save } };
   return { options, captured, persist, save, disk: () => disk!, changeOwner: () => { current = false; } };
 }
 const deferred = <T,>() => { let resolve!: (value: T) => void; const promise = new Promise<T>(done => { resolve = done; }); return { promise, resolve }; };
 
 describe('manual form scope', () => {
+  it('restores both meeting action times from disk without sending until Save', async () => {
+    const meeting = { id: 'meeting', date: '', location: 'Hall', createdAt: '2026-11-08' };
+    const base: ResourceSnapshot = {
+      resource: { collection: 'groups', id: 'group' },
+      value: { userId: 'owner', title: 'Group', status: 'draft', templates: [], flow: [], meetingDates: [meeting] },
+      metadata: { protocol: 1, generation: 'g', revision: 1, deleted: false },
+    };
+    const test = fixture([['meetingDates']], base);
+    const scope = ManualScope.begin(test.options);
+    const location = { earliestMs: 1_800_000_000_020, latestMs: 1_800_000_000_025 };
+    const audience = { earliestMs: 1_800_000_000_050, latestMs: 1_800_000_000_055 };
+    await scope.update(value => ({ ...value, meetingDates: [{ ...meeting, location: '' }] }), { field: 'location', rowId: meeting.id, time: location });
+    await scope.update(value => ({ ...value, meetingDates: [{ ...meeting, location: '', audience: 'All' }] }), { field: 'audience', rowId: meeting.id, time: audience });
+    const restored = ManualScope.restore(test.options, test.disk());
+    expect(test.save).not.toHaveBeenCalled();
+    await restored.save();
+    expect(test.save.mock.calls[0][2]).toMatchObject({ groupMeetingFieldCaptures: {
+      location: { rowId: meeting.id, time: location, after: '' },
+      audience: { rowId: meeting.id, time: audience, after: 'All' },
+    } });
+  });
+
   it('pins pristine A at open; remote C before first typing cannot become the Save baseline', async () => {
     const test = fixture();
     const scope = ManualScope.begin(test.options);

@@ -3661,6 +3661,16 @@
         "location": "Location",
         "audience": "Audience",
         "notes": "Notes",
+        "fieldHistory": "Location and audience history",
+        "historyUnset": "Not set",
+        "historyBlank": "Blank",
+        "historyLoading": "Loading meeting history…",
+        "historyUnavailable": "Meeting history is unavailable.",
+        "historyRestoreFailed": "Could not restore the meeting field.",
+        "historyEmpty": "No earlier values for this meeting.",
+        "historyKept": "Value kept at the time: {{value}}.",
+        "historyRestore": "Restore {{field}}",
+        "historyMore": "Load earlier values",
         "datePlaceholder": "No date"
       },
       "status": {

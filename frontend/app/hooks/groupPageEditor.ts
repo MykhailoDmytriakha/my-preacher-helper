@@ -1,4 +1,5 @@
 import type { RecordReadNotice } from '@/components/common/recordReadSummary';
+import type { GroupMeetingField } from '@/data-engine/groupMeetingFieldAction';
 import type { RecordPresence } from '@/data-engine/recordPresence';
 import type { Group } from '@/models/models';
 import type { Dispatch, ReactNode, SetStateAction } from 'react';
@@ -34,6 +35,9 @@ export interface GroupPageEditor {
   meetingFieldsEnabled: boolean;
   meetingHistory?: { owner: string; generation: string; rowId: string; date: string; disabled: boolean;
     restore: (rowId: string, date: string) => Promise<void> };
+  meetingFieldHistory?: { owner: string; generation: string; rowId: string; rowCreatedAt: string; disabled: boolean;
+    current: Record<GroupMeetingField, string | null>;
+    restore: (rowId: string, rowCreatedAt: string, field: GroupMeetingField, value: string | null) => Promise<void> };
   deleteGroupDetail: () => void | Promise<void>;
   feedback: ReactNode;
 }

@@ -38,6 +38,7 @@ import type { CollectionReader, CollectionState } from './collections';
 import type { DocumentWriteReceipt } from './commitReceipt';
 import type { DatedRowActionCapture } from './datedRowAction';
 import type { GroupFieldStamp } from './documentFieldAction';
+import type { GroupMeetingFieldInput } from './groupMeetingFieldAction';
 import type { ManualScopeStore, StoredManualScope } from './manualScopes.client';
 import type { MembershipScopeStore } from './membershipScopes.client';
 import type { Observation, ResourceObserver } from './observer';
@@ -85,9 +86,9 @@ export interface ManagedManualForm {
   subscribe(listener: () => void): () => void;
   begin(): Promise<void>;
   follow(): Promise<void>;
-  update(updater: (value: DocumentData) => DocumentData): Promise<void>;
+  update(updater: (value: DocumentData) => DocumentData, meetingFieldInput?: GroupMeetingFieldInput): Promise<void>;
   propose(producer: (source: DocumentData) => Promise<DocumentData>, signal?: AbortSignal): Promise<void>;
-  save(updater?: (value: DocumentData) => DocumentData, action?: DatedRowActionCapture): Promise<void>;
+  save(updater?: (value: DocumentData) => DocumentData, action?: DatedRowActionCapture | GroupMeetingFieldInput): Promise<void>;
   cancel(): Promise<void>;
   retry(): Promise<void>;
   resolve(choice: 'local' | 'remote', options?: { discardStage?: boolean; expectedComparison?: ManualComparison; updater?: (current: DocumentData) => DocumentData }): Promise<void>;
@@ -2302,7 +2303,7 @@ export class DataEngine {
       subscribe: listener => { active(); listeners.add(listener); return () => { listeners.delete(listener); }; },
       begin: () => start(),
       follow: () => execute(() => requireScope().follow(capture())),
-      update: updater => execute(() => requireScope().update(updater)),
+      update: (updater, meetingFieldInput) => execute(() => requireScope().update(updater, meetingFieldInput)),
       propose: (producer, signal) => execute(() => requireScope().propose(async source => {
         const proposed = await producer(source); active(); return proposed;
       }, signal)),
@@ -2311,8 +2312,13 @@ export class DataEngine {
           throw Object.assign(new Error('Resolve the failed delivery with Keep local or Accept remote before saving'), { code: 'resolve-version-first' });
         }
         const scope = requireScope();
-        if (updater) { const staged = scope.update(updater); const saving = scope.save(action); await Promise.all([staged, saving]); }
-        else await scope.save(action);
+        const fieldInput = action && 'field' in action ? action : undefined;
+        const dateInput = action && 'field' in action ? undefined : action;
+        if (updater) {
+          const staged = scope.update(updater, fieldInput);
+          const saving = scope.save(dateInput);
+          await Promise.all([staged, saving]);
+        } else await scope.save(dateInput);
         if (!scope.getState().dirty) await scope.cancel();
       }),
       cancel: () => execute(async () => {

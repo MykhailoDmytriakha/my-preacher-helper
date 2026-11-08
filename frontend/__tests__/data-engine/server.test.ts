@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { isCollectionServed } from '@/data-engine/activation';
-import { DataEngineServerError, listBibleMarkHistory, listDocuments, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listPreachDateHistory, listServiceOrderTitleHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
+import { DataEngineServerError, listBibleMarkHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listPreachDateHistory, listServiceOrderTitleHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
 import { collectionHeadId, HEADS_COLLECTION, sequenceId } from '@/data-engine/serverFeed';
 import { DataSession } from '@/data-engine/session';
 import type { DataCommand, ResourceSnapshot } from '@/data-engine/types';
@@ -919,6 +919,111 @@ describe('transactional DataEngine server', () => {
       await expect(listMeetingDateHistory(base.owner, resource.id, 'old-generation')).rejects.toMatchObject({ status: 404 });
     }
     if (kind === 'conflict') expect(answer).toMatchObject({ conflicts: [{ path: ['meetingDates', 'id:first-meeting', 'date'] }] });
+  });
+
+  it.each([
+    { field: 'location', offset: 20, initial: 'Main room', desk: 'Side room', phone: '', winner: 'Side room', kind: 'acknowledged' },
+    { field: 'location', offset: 60, initial: 'Main room', desk: 'Side room', phone: '', winner: '', kind: 'acknowledged' },
+    { field: 'audience', offset: 20, initial: undefined, desk: 'Leaders', phone: 'All', winner: 'Leaders', kind: 'acknowledged' },
+    { field: 'audience', offset: 60, initial: undefined, desk: 'Leaders', phone: 'All', winner: 'All', kind: 'acknowledged' },
+    { field: 'location', offset: 45, initial: 'Main room', desk: 'Side room', phone: '', winner: 'Side room', kind: 'conflict' },
+  ] as const)('orders the exact meeting $field at offset $offset', async ({ field, offset, initial, desk, phone, winner, kind }) => {
+    const resource = { collection: 'groups', id: 'group-meeting-field' };
+    const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] };
+    const now = '2026-11-08T00:00:00.000Z';
+    const first = { id: 'first-meeting', date: '2026-12-13', createdAt: now,
+      ...(field === 'location' ? { location: initial, audience: 'Leaders' } : { location: 'Main room' }) };
+    const second = { id: 'second-meeting', date: '2027-01-03', location: 'Annex', createdAt: now };
+    const value = { userId: base.owner, title: 'Group', status: 'draft', flow: [], templates: [],
+      meetingDates: [first, second], createdAt: now, updatedAt: now };
+    expect((await processCommand(base.owner, { ...base, kind: 'create', operationId: 'seed', generation: null, value })).kind).toBe('acknowledged');
+    const change = (operationId: string, after: string, at: number, changeSecond: boolean) => ({
+      ...base, kind: 'update', operationId, generation: 'seed',
+      changes: [{ path: ['meetingDates'], before: { exists: true, value: value.meetingDates }, after: {
+        exists: true, value: [{ ...first, [field]: after }, changeSecond ? { ...second, location: 'Library' } : second],
+      } }],
+      groupMeetingFieldActions: { [field]: { rowId: first.id, rowCreatedAt: first.createdAt, before: initial ?? null, after, observedRevision: 1,
+        time: { earliestMs: 1_800_000_000_000 + at, latestMs: 1_800_000_000_010 + at } } },
+    });
+    expect((await processCommand(base.owner, change('computer', desk, 40, true))).kind).toBe('acknowledged');
+    const result = await processCommand(base.owner, change('phone', phone, offset, false));
+    expect(result).toMatchObject({ kind, snapshot: { value: {
+      title: 'Group', meetingDates: [{ ...first, [field]: winner }, { ...second, location: 'Library' }],
+    } } });
+    if (kind === 'conflict') expect(result).toMatchObject({ conflicts: [{ path: ['meetingDates', 'id:first-meeting', field] }] });
+  });
+
+  it('orders both meeting fields independently in the same update and archives each displaced value once', async () => {
+    const resource = { collection: 'groups', id: 'group-meeting-fields' };
+    const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] };
+    const now = '2026-11-08T00:00:00.000Z';
+    const first = { id: 'first-meeting', date: '2026-12-13', location: 'Main room', audience: 'Leaders', createdAt: now };
+    const value = { userId: base.owner, title: 'Group', status: 'draft', flow: [], templates: [],
+      meetingDates: [first], createdAt: now, updatedAt: now };
+    expect((await processCommand(base.owner, { ...base, kind: 'create', operationId: 'seed', generation: null, value })).kind).toBe('acknowledged');
+    const change = (operationId: string, location: string, audience: string, locationAt: number, audienceAt: number) => {
+      const stamp = (before: string, after: string, at: number) => ({ rowId: first.id, rowCreatedAt: first.createdAt, before, after, observedRevision: 1,
+        time: { earliestMs: 1_800_000_000_000 + at, latestMs: 1_800_000_000_005 + at } });
+      return { ...base, kind: 'update', operationId, generation: 'seed',
+        changes: [{ path: ['meetingDates'], before: { exists: true, value: [first] }, after: { exists: true, value: [{ ...first, location, audience }] } }],
+        groupMeetingFieldActions: { location: stamp(first.location, location, locationAt), audience: stamp(first.audience, audience, audienceAt) } };
+    };
+    expect((await processCommand(base.owner, change('desk', 'Side room', 'Youth', 40, 45))).kind).toBe('acknowledged');
+    const phone = change('phone', '', 'All', 65, 20);
+    const result = await processCommand(base.owner, phone);
+    expect(result).toMatchObject({ kind: 'acknowledged', snapshot: { value: { meetingDates: [{ ...first, location: '', audience: 'Youth' }] } } });
+    expect(await processCommand(base.owner, phone)).toEqual(result);
+    expect(await listGroupMeetingFieldHistory(base.owner, resource.id, 'seed')).toMatchObject({ entries: [{ fields: [
+      { field: 'location', value: 'Side room', winnerValue: '', rowId: first.id },
+      { field: 'audience', value: 'All', winnerValue: 'Youth', rowId: first.id },
+    ] }] });
+    await expect(listGroupMeetingFieldHistory('another-owner', resource.id, 'seed')).rejects.toMatchObject({ status: 403 });
+    await expect(listGroupMeetingFieldHistory(base.owner, resource.id, 'old-generation')).rejects.toMatchObject({ status: 404 });
+  });
+
+  it.each(['known predecessor', 'unrelated overlapping action', 'same-value predecessor without order', 'replacement meeting'])('protects meeting text ancestry: %s', async (scenario) => {
+    const resource = { collection: 'groups', id: 'group-meeting-ancestry' };
+    const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] };
+    const now = '2026-11-08T00:00:00.000Z';
+    const first = { id: 'meeting', date: '', location: 'Hall', createdAt: now };
+    const value = { userId: base.owner, title: 'Group', status: 'draft', flow: [], templates: [],
+      meetingDates: [first], createdAt: now, updatedAt: now };
+    expect((await processCommand(base.owner, { ...base, kind: 'create', operationId: 'seed', generation: null, value })).kind).toBe('acknowledged');
+    const update = (operationId: string, before: typeof first[], after: typeof first[]) => ({
+      ...base, kind: 'update', operationId, generation: 'seed',
+      changes: [{ path: ['meetingDates'], before: { exists: true, value: before }, after: { exists: true, value: after } }],
+    });
+    const action = (before: typeof first, after: string, at: number, observedRevision: number, predecessorOperationId?: string) => ({
+      rowId: first.id, rowCreatedAt: before.createdAt, before: before.location, after, observedRevision,
+      time: { earliestMs: 1_800_000_000_000 + at, latestMs: 1_800_000_000_010 + at },
+      ...(predecessorOperationId && { predecessorOperationId }),
+    });
+    const replace = scenario === 'replacement meeting';
+    const previous = replace ? { ...first, createdAt: '2026-11-08T00:00:30.000Z' } : first;
+    if (replace) {
+      expect((await processCommand(base.owner, update('remove', [first], []))).kind).toBe('acknowledged');
+      expect((await processCommand(base.owner, update('recreate', [], [previous]))).kind).toBe('acknowledged');
+    }
+    const accepted = { ...previous, location: 'Side room' };
+    if (scenario === 'same-value predecessor without order') {
+      expect((await processCommand(base.owner, { ...update('competing-edit', [first], [accepted]),
+        groupMeetingFieldActions: { location: action(first, accepted.location, 31, 1) },
+      })).kind).toBe('acknowledged');
+    }
+    expect((await processCommand(base.owner, { ...update('first-edit', [previous], [accepted]),
+      groupMeetingFieldActions: { location: action(previous, accepted.location, 30, replace ? 3 : 1) },
+    })).kind).toBe('acknowledged');
+    const observed = replace ? first : { ...first, location: accepted.location };
+    const next = await processCommand(base.owner, { ...update('later-edit', [observed], [{ ...observed, location: 'Library' }]),
+      groupMeetingFieldActions: { location: action(observed, 'Library', replace ? 60 : 35, 1,
+        ['known predecessor', 'same-value predecessor without order'].includes(scenario) ? 'first-edit' : undefined) },
+    });
+    if (scenario === 'known predecessor') {
+      expect(next).toMatchObject({ kind: 'acknowledged', snapshot: { value: { meetingDates: [{ ...first, location: 'Library' }] } } });
+      expect((await listGroupMeetingFieldHistory(base.owner, resource.id, 'seed')).entries).toEqual([]);
+    } else {
+      expect(next).toMatchObject({ kind: 'conflict', snapshot: { value: { meetingDates: [accepted] } } });
+    }
   });
 
   it('keeps a choice when unstamped meeting edits return to the old date', async () => {

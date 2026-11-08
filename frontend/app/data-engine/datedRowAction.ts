@@ -1,7 +1,9 @@
 import { groupMeetingDay } from '@/utils/groupMeeting';
 
 import { isActionTime, type ActionTime } from './actionClock';
+import { existingRowField, isCapturedRowConflict, isRowChange, matchesRowAction, replaceExistingRowField } from './rowFieldAction';
 
+import type { RowFieldEvidence, RowFieldTarget } from './rowFieldAction';
 import type { DocumentData, FieldChange, FieldValue, Json, ResourceSnapshot } from './types';
 
 export type DisplacedRowDate = {
@@ -16,25 +18,24 @@ export type MeetingDateHistoryPage = {
 };
 
 export type DatedRowActionCapture = { rowId: string; time: ActionTime; after?: string };
-export type DatedRowActionEvidence = DatedRowActionCapture & { before: string; after: string; observedRevision: number };
+export type DatedRowActionEvidence = RowFieldEvidence<string>;
 
 type DateField = 'preachDates' | 'meetingDates';
 type DateEvidenceField = 'preachDateAction' | 'meetingDateAction';
 type DateProofField = 'preachDateActions' | 'meetingDateActions';
 
-export type DatedRowTarget = {
-  field: DateField; evidence: DateEvidenceField; proofs: DateProofField; history: string;
-  isDate(value: unknown): value is string;
+export type DatedRowTarget = RowFieldTarget<string> & {
+  field: DateField; leaf: 'date'; evidence: DateEvidenceField; proofs: DateProofField; history: string;
 };
 
 export const PREACH_DATE_TARGET: DatedRowTarget = {
   field: 'preachDates', evidence: 'preachDateAction', proofs: 'preachDateActions', history: '_preachDateHistory',
-  isDate: (value): value is string => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value),
+  leaf: 'date', accepts: (value): value is string => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value),
 };
 
 export const MEETING_DATE_TARGET: DatedRowTarget = {
   field: 'meetingDates', evidence: 'meetingDateAction', proofs: 'meetingDateActions', history: '_meetingDateHistory',
-  isDate: (value): value is string => typeof value === 'string' && value.length <= 128 && (value === '' || groupMeetingDay(value) !== null),
+  leaf: 'date', accepts: (value): value is string => typeof value === 'string' && value.length <= 128 && (value === '' || groupMeetingDay(value) !== null),
 };
 
 export function datedRowTarget(collection: string): DatedRowTarget | undefined {
@@ -43,11 +44,7 @@ export function datedRowTarget(collection: string): DatedRowTarget | undefined {
 }
 
 export function existingRowDate(rows: Json | undefined, rowId: string, target: DatedRowTarget): string | undefined {
-  if (!Array.isArray(rows)) return undefined;
-  const matches = rows.filter(row => row && typeof row === 'object' && !Array.isArray(row) && row.id === rowId);
-  const row = matches.length === 1 ? matches[0] : undefined;
-  if (!row || typeof row !== 'object' || Array.isArray(row) || !target.isDate(row.date)) return undefined;
-  return row.date;
+  return existingRowField(rows, rowId, target);
 }
 
 export function captureDatedRowAction(baseline: ResourceSnapshot, predecessor: { value: DocumentData | null } | undefined,
@@ -63,28 +60,20 @@ export function captureDatedRowAction(baseline: ResourceSnapshot, predecessor: {
 }
 
 export function replaceExistingDate(rows: Json | undefined, rowId: string, date: string, target: DatedRowTarget): Json | undefined {
-  if (!Array.isArray(rows) || existingRowDate(rows, rowId, target) === undefined) return rows;
-  return rows.map(row => row && typeof row === 'object' && !Array.isArray(row) && row.id === rowId ? { ...row, date } : row);
+  return replaceExistingRowField(rows, rowId, date, target);
 }
 
 export function isDateChange(change: FieldChange, target: DatedRowTarget): boolean {
-  return change.path.length === 1 && change.path[0] === target.field;
+  return isRowChange(change, target);
 }
 
 export function matchesDatedRowChange(changes: FieldChange[], evidence: DatedRowActionEvidence, target: DatedRowTarget): boolean {
-  const change = changes.find(item => isDateChange(item, target));
-  return Boolean(change?.before.exists && change.after.exists
-    && existingRowDate(change.before.value, evidence.rowId, target) === evidence.before
-    && existingRowDate(change.after.value, evidence.rowId, target) === evidence.after);
+  return matchesRowAction(changes, evidence, target);
 }
 
 export function isCapturedDateConflict(conflict: { path: string[]; base: FieldValue; mine: FieldValue; theirs: FieldValue },
   action: DatedRowActionEvidence, target: DatedRowTarget): boolean {
-  return conflict.path.length === 3 && conflict.path[0] === target.field
-    && conflict.path[1] === `id:${action.rowId}` && conflict.path[2] === 'date'
-    && conflict.base.exists && conflict.base.value === action.before
-    && conflict.mine.exists && conflict.mine.value === action.after
-    && conflict.theirs.exists && target.isDate(conflict.theirs.value);
+  return isCapturedRowConflict(conflict, action, target);
 }
 
 export function capturedDateBaseline(changes: FieldChange[], action: DatedRowActionEvidence, target: DatedRowTarget): FieldChange[] {

@@ -4,14 +4,11 @@ import { format } from 'date-fns';
 import { useId, useState } from 'react';
 
 import { useAppLocale } from '@/hooks/useAppLocale';
-import { requestOwnerJson } from '@/services/ownerHttpTransport.client';
+import { useOwnerHistory } from '@/hooks/useOwnerHistory';
 import { parseDateOnlyAsLocalDate, shownDayOf } from '@/utils/dateOnly';
 import { useTranslation } from '@locales/useTranslation';
 
 import type { MeetingDateHistoryPage, PreachDateHistoryPage } from '@/data-engine/datedRowAction';
-
-const unavailable = 'Date history unavailable';
-const messages = { failed: unavailable, unavailable, timedOut: unavailable };
 
 type DatedRowHistoryPage = PreachDateHistoryPage | MeetingDateHistoryPage;
 
@@ -27,30 +24,15 @@ export function DatedRowHistory({ owner, collection, id, generation, liveDates, 
   const { t } = useTranslation();
   const { dateLocale } = useAppLocale();
   const panelId = useId();
-  const [open, setOpen] = useState(false);
-  const [history, setHistory] = useState<DatedRowHistoryPage | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [failed, setFailed] = useState(false);
+  const endpoint = collection === 'groups' ? 'meeting-date-history' : 'preach-date-history';
+  const { open, history, loading, failed, toggle, load } = useOwnerHistory<DatedRowHistoryPage['entries'][number], DatedRowHistoryPage>({
+    owner, generation, id,
+    path: '/api/data-engine/documents/' + collection + '/' + encodeURIComponent(id) + '/' + endpoint,
+    resourceId: value => collection === 'groups' && 'groupId' in value ? value.groupId
+      : collection === 'sermons' && 'sermonId' in value ? value.sermonId : undefined,
+  });
   const [restoring, setRestoring] = useState(false);
   const [restoreFailed, setRestoreFailed] = useState(false);
-  const load = async (cursor?: string) => {
-    setLoading(true);
-    setFailed(false);
-    if (!cursor) setHistory(null);
-    try {
-      const params = new URLSearchParams({ generation, ...(cursor && { cursor }) });
-      const endpoint = collection === 'groups' ? 'meeting-date-history' : 'preach-date-history';
-      const { value } = await requestOwnerJson<DatedRowHistoryPage>(
-        `/api/data-engine/documents/${collection}/${encodeURIComponent(id)}/${endpoint}?${params}`,
-        { expectedOwner: owner, answerStatuses: [], messages },
-      );
-      const resourceId = collection === 'groups' && 'groupId' in value ? value.groupId
-        : collection === 'sermons' && 'sermonId' in value ? value.sermonId : undefined;
-      if (value.owner !== owner || resourceId !== id || value.generation !== generation || !Array.isArray(value.entries)) throw new Error(messages.failed);
-      setHistory(previous => ({ ...value, entries: [...(cursor ? previous?.entries ?? [] : []), ...value.entries] }));
-    } catch { setFailed(true); }
-    finally { setLoading(false); }
-  };
   const restore = async (rowId: string, date: string) => {
     setRestoring(true);
     setRestoreFailed(false);
@@ -66,7 +48,7 @@ export function DatedRowHistory({ owner, collection, id, generation, liveDates, 
   return <div className="space-y-2">
     <button type="button" aria-expanded={open} aria-controls={panelId}
       className="text-xs font-medium text-blue-600 hover:text-blue-500 dark:text-blue-400 disabled:opacity-50"
-      disabled={disabled || loading} onClick={() => { setOpen(!open); if (!open) void load(); }}>
+      disabled={disabled || loading} onClick={toggle}>
       {t('calendar.earlierDates')}
     </button>
     {open && <section id={panelId} aria-label={t('calendar.earlierDates')} className="space-y-2 text-sm">
