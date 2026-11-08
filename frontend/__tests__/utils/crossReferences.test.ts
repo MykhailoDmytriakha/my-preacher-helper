@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { bibleCrossRefsBase, isCrossRefsShaped } from '@/utils/bibleCrossRefsCache';
+import { BIBLE_CROSSREFS_CACHE, bibleCrossRefsBase, isCrossRefsShaped } from '@/utils/bibleCrossRefsCache';
 import { getBookIds } from '@/utils/bibleBooks';
 import {
   countCrossReferences,
@@ -166,6 +166,79 @@ describe('cross references', () => {
     it('refuses a failed answer', async () => {
       const fetchFn = jest.fn(() => answer(null, false));
       await expect(loadCrossRefs('Jude', fetchFn as unknown as typeof fetch)).rejects.toThrow('404');
+    });
+  });
+
+  describe('the device copy of a cross-reference set', () => {
+    const set = setOf('Jude', {});
+    const url = crossRefsUrl('Jude');
+    const responseOf = (value: CrossRefsBook) => new Response(JSON.stringify(value), {
+      headers: { 'content-type': 'application/json' },
+    });
+    const online = () => Promise.resolve(responseOf(set));
+    let original: PropertyDescriptor | undefined;
+
+    beforeEach(() => {
+      forgetLoadedCrossRefs();
+      original = Object.getOwnPropertyDescriptor(globalThis, 'caches');
+    });
+
+    afterEach(() => {
+      if (original) Object.defineProperty(globalThis, 'caches', original);
+      else Reflect.deleteProperty(globalThis, 'caches');
+    });
+
+    function useCache(cache: { match: jest.Mock; put: jest.Mock; delete?: jest.Mock }) {
+      const open = jest.fn().mockResolvedValue(cache);
+      Object.defineProperty(globalThis, 'caches', { configurable: true, value: { open } });
+      return open;
+    }
+
+    it('waits for the first visible set to be saved and can read it offline after reload', async () => {
+      let kept: Response | undefined;
+      let release = () => {};
+      let writing = () => {};
+      const delay = new Promise<void>((resolve) => { release = resolve; });
+      const began = new Promise<void>((resolve) => { writing = resolve; });
+      const open = useCache({
+        match: jest.fn(async () => kept?.clone()),
+        put: jest.fn(async (_url: string, response: Response) => {
+          writing();
+          await delay;
+          kept = response;
+        }),
+      });
+      const loading = loadCrossRefs('Jude', online);
+      try {
+        await expect(Promise.race([began.then(() => 'writing'), loading.then(() => 'visible')])).resolves.toBe('writing');
+        expect(kept).toBeUndefined();
+        expect(open).toHaveBeenCalledWith(BIBLE_CROSSREFS_CACHE);
+      } finally {
+        release();
+      }
+      await expect(loading).resolves.toEqual(set);
+      forgetLoadedCrossRefs();
+      const offline = jest.fn().mockRejectedValue(new TypeError('Offline'));
+      await expect(loadCrossRefs('Jude', offline)).resolves.toEqual(set);
+      expect(offline).not.toHaveBeenCalled();
+    });
+
+    it('discards a cached set for the wrong book and stores the right one', async () => {
+      const discard = jest.fn().mockResolvedValue(true);
+      const put = jest.fn().mockResolvedValue(undefined);
+      useCache({
+        match: jest.fn().mockResolvedValue(responseOf(setOf('Ruth', {}))),
+        put,
+        delete: discard,
+      });
+      await expect(loadCrossRefs('Jude', online)).resolves.toEqual(set);
+      expect(discard).toHaveBeenCalledWith(url);
+      expect(put).toHaveBeenCalledWith(url, expect.any(Response));
+    });
+
+    it('still shows links when device storage refuses a write', async () => {
+      useCache({ match: jest.fn().mockResolvedValue(undefined), put: jest.fn().mockRejectedValue(new Error('Quota')) });
+      await expect(loadCrossRefs('Jude', online)).resolves.toEqual(set);
     });
   });
 

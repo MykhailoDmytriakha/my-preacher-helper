@@ -1,5 +1,5 @@
 import { getBookIds, getLocalizedAbbrev } from '@/utils/bibleBooks';
-import { bibleCrossRefsBase, isCrossRefsShaped, NUMBERS_PER_LINK } from '@/utils/bibleCrossRefsCache';
+import { BIBLE_CROSSREFS_CACHE, bibleCrossRefsBase, isCrossRefsShaped, NUMBERS_PER_LINK } from '@/utils/bibleCrossRefsCache';
 import { bookSlug } from '@/utils/bibleText';
 import { placesIn, verseCount, type VersePlace } from '@/utils/versification';
 
@@ -41,20 +41,42 @@ export const isMainReference = (reference: CrossReference): boolean => reference
 
 const loaded = new Map<string, Promise<CrossRefsBook>>();
 
-/**
- * A book's links, fetched once per visit. The service worker keeps the file on the device, so the
- * second visit reads it without the network. A failed or wrong answer is not remembered: the next
- * ask tries again.
- */
+const isBookSet = (data: unknown, bookId: string): data is CrossRefsBook =>
+  isCrossRefsShaped(data) && data.id === bookId;
+
+async function readBookSet(bookId: string, fetchFn: typeof fetch): Promise<CrossRefsBook> {
+  const url = crossRefsUrl(bookId);
+  let cache: Cache | undefined;
+  try {
+    if (typeof caches !== 'undefined') cache = await caches.open(BIBLE_CROSSREFS_CACHE);
+    const kept = await cache?.match(url);
+    if (kept) {
+      const data: unknown = await kept.json().catch(() => undefined);
+      if (kept.ok && isBookSet(data, bookId)) return data;
+      await cache?.delete(url);
+    }
+  } catch {
+    // Storage may be unavailable even while the book is reachable on the network.
+  }
+
+  const response = await fetchFn(url);
+  if (!response.ok) throw new Error(`Cross references of ${bookId}: ${response.status}`);
+  const data: unknown = await (cache ? response.clone() : response).json();
+  if (!isBookSet(data, bookId)) throw new Error(`Cross references of ${bookId}: not the book's set`);
+  try {
+    // Make the first visible set durable even when the worker is still writing or has no control.
+    await cache?.put(url, response);
+  } catch {
+    // A refused write should still let the reader see the links online.
+  }
+  return data;
+}
+
+/** Share a book's device or network read while the page lives. A failed read can be tried again. */
 export function loadCrossRefs(bookId: string, fetchFn: typeof fetch = fetch): Promise<CrossRefsBook> {
   const known = loaded.get(bookId);
   if (known) return known;
-  const pending = fetchFn(crossRefsUrl(bookId))
-    .then((response) => (response.ok ? response.json() : Promise.reject(new Error(`Cross references of ${bookId}: ${response.status}`))))
-    .then((data: unknown) => {
-      if (!isCrossRefsShaped(data) || data.id !== bookId) throw new Error(`Cross references of ${bookId}: not the book's set`);
-      return data;
-    });
+  const pending = readBookSet(bookId, fetchFn);
   loaded.set(bookId, pending);
   pending.catch(() => loaded.delete(bookId));
   return pending;
