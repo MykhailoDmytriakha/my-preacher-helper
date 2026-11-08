@@ -4,9 +4,9 @@ import { z } from "zod";
 import { requireAdminEmail } from "@/api/admin/adminAuth";
 import {
   captureTelemetryText,
-} from "@/api/clients/aiTelemetry";
+} from "@/api/clients/aiTelemetry.server";
 
-import type { TelemetryQualityReview } from "@/api/clients/aiTelemetry";
+import type { TelemetryQualityReview } from "@/api/clients/aiTelemetry.server";
 
 export const TELEMETRY_COLLECTION = process.env.AI_TELEMETRY_COLLECTION || "ai_prompt_telemetry";
 

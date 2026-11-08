@@ -62,6 +62,30 @@ describe('sermon.structured', () => {
     expect(timeout).toBeGreaterThan(9_000);
   });
 
+  it('returns the same outline identities when it recovers the same compose operation', async () => {
+    const sermon = {
+      ...baseSermon,
+      scratch: [{ id: 'n1', text: 'A note', createdAt: '2026-07-04T00:00:00.000Z' }],
+    } as Sermon;
+    const recovery = {
+      operationId: 'compose-test-operation',
+      run: jest.fn().mockResolvedValue({
+        success: true,
+        data: { placements: [{ noteKey: 'n1', text: 'Heading', section: 'main', targetKind: 'new_point', targetKey: '' }], unplaced: [] },
+        error: null,
+        refusal: null,
+      }),
+    };
+    const request = () => composePlanFromScratchStructured(sermon, undefined, sermon.userId, undefined, recovery);
+
+    const first = await request();
+    const second = await request();
+
+    expect(first.success).toBe(true);
+    expect(second.outline).toEqual(first.outline);
+    expect(mockStructuredCall).not.toHaveBeenCalled();
+  });
+
   it('returns structured insights on success', async () => {
     mockStructuredCall.mockResolvedValue({
       success: true,

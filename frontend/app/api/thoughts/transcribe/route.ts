@@ -110,7 +110,7 @@ export async function POST(request: Request) {
       import('@/services/usageLimits.server'),
     ]);
     const now = new Date();
-    const entitlement = await withStore(() => getUserEntitlementServerSide(uid));
+    const entitlement = await withStore(() => getUserEntitlementServerSide(uid, { reconcileTextReceipts: true }));
     const usageAdmission = createUsageAdmission(
       uid,
       entitlement,

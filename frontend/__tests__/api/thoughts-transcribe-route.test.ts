@@ -163,7 +163,7 @@ describe('Thoughts transcribe route', () => {
       'user-1',
       expect.objectContaining({ userId: 'user-1' })
     );
-    expect(mockGetUserEntitlementServerSide).toHaveBeenCalledWith('user-1');
+    expect(mockGetUserEntitlementServerSide).toHaveBeenCalledWith('user-1', { reconcileTextReceipts: true });
     expect(mockConsumeTranscriptionSeconds).toHaveBeenCalledWith(
       'user-1',
       11,
@@ -188,7 +188,7 @@ describe('Thoughts transcribe route', () => {
 
     expect(response.status).toBe(200);
     expect(mockVerifyIdToken).toHaveBeenCalledWith('valid-token');
-    expect(mockGetUserEntitlementServerSide).toHaveBeenCalledWith('user-1');
+    expect(mockGetUserEntitlementServerSide).toHaveBeenCalledWith('user-1', { reconcileTextReceipts: true });
     expect(mockCreateUsageAdmission).toHaveBeenCalledWith(
       'user-1',
       { paidTier: 'free' },

@@ -33,7 +33,7 @@ const mockGetUid = getRequiredAuthenticatedUid as jest.Mock;
 const mockGetNote = studiesRepository.getNote as jest.Mock;
 const mockCut = cutStudyNoteIntoScratch as jest.Mock;
 
-const request = (body: unknown = {}) => ({ json: jest.fn().mockResolvedValue(body) }) as unknown as Request;
+const request = (body: unknown = {}, headers = new Headers()) => ({ headers, json: jest.fn().mockResolvedValue(body) }) as unknown as Request;
 const params = (id: string) => ({ params: Promise.resolve({ id }) });
 
 const ownNote = {
@@ -169,6 +169,22 @@ describe('POST /api/studies/notes/:id/cut', () => {
         scriptureRefs: ['1 Chronicles 4:9-10'],
       })
     );
+  });
+
+  it('uses the same scratch identities and capture order when a completed slice is replayed', async () => {
+    mockCut.mockResolvedValue({ ...goodCut(), completedAtMs: Date.parse('2026-11-07T23:00:00.000Z') });
+    const headers = new Headers({ 'X-AI-Operation-Id': 'cut-attempt-1' });
+
+    const first = await POST(request({}, headers), params('note-1'));
+    const second = await POST(request({}, headers), params('note-1'));
+    const initial = await first.json();
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    expect(await second.json()).toEqual(initial);
+    expect(initial.notes.map((note: { createdAt: string }) => note.createdAt)).toEqual([
+      '2026-11-07T23:00:00.000Z', '2026-11-07T23:00:00.001Z',
+    ]);
   });
 
   it.each(['**stars**', '`**stars**`'])('preserves a literal heading in a grounded source: %s', async heading => {

@@ -19,8 +19,9 @@ Every text AI call goes through `callWithStructuredOutput` in `frontend/app/api/
 
 ## Telemetry
 
-- `frontend/app/api/clients/aiTelemetry.ts` writes Firestore `ai_prompt_telemetry` (`AI_TELEMETRY_COLLECTION`), only when `FIREBASE_SERVICE_ACCOUNT` is set and never under `NODE_ENV=test`.
-- One record, two states: `openStructuredTelemetryEvent` writes `phase: "started"` before the provider call and is awaited on purpose, so a killed function still leaves its input; `emitStructuredTelemetryEvent` settles the same record fire-and-forget. Both swallow their own errors — telemetry never changes the AI result. A record stuck in `started` is a call that never returned.
+- The structured client builds telemetry records. The server-only AI operations facade writes them through the canonical Firestore adapter when a service account is configured and the environment is outside tests.
+- The opening and its outcome share one ID. A late opening cannot overwrite a persisted outcome. When the opening exhausts its budget, the client reserves time inside the same deadline for the terminal write and does not dispatch the provider. Ordinary outcome logging remains asynchronous.
+- A remaining started record means the terminal write did not persist. It can indicate a lost provider call, a terminated process, or a late opening whose terminal write independently failed. Inspect the request trace before inferring that the provider was called.
 
 ## When it goes wrong
 

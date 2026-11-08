@@ -1,3 +1,4 @@
+import { AiResultPendingError } from '@/api/errors/aiResultRecovery.server';
 import { adminAuth } from '@/config/firebaseAdminConfig';
 import { __resetStoreAvailabilityForTests } from '@/services/storeAvailability.server';
 import { composePlanFromScratch } from '@clients/openAI.client';
@@ -118,7 +119,7 @@ describe('compose-plan-from-scratch route', () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(composePlanFromScratch).toHaveBeenCalledWith(sermon, sermon.outline, 'user-1', expect.any(Number));
+    expect(composePlanFromScratch).toHaveBeenCalledWith(sermon, sermon.outline, 'user-1', expect.any(Number), expect.objectContaining({ run: expect.any(Function) }));
     expect(body).toEqual({ outline });
   });
 
@@ -219,9 +220,21 @@ describe('compose-plan-from-scratch route', () => {
       }),
       sermon.outline,
       'user-1',
-      expect.any(Number)
+      expect.any(Number),
+      expect.objectContaining({ run: expect.any(Function) }),
     );
     expect(body).toEqual({ outline });
+  });
+
+  it('keeps a recoverable result distinct from an ordinary model timeout', async () => {
+    (adminAuth.verifyIdToken as jest.Mock).mockResolvedValueOnce({ uid: 'user-1' });
+    (sermonsRepository.fetchSermonById as jest.Mock).mockResolvedValueOnce({ userId: 'user-1' });
+    (composePlanFromScratch as jest.Mock).mockRejectedValueOnce(new AiResultPendingError());
+
+    const response = await postWithToken('valid-token');
+
+    expect(response.status).toBe(504);
+    expect(await response.json()).toMatchObject({ code: 'ai-result-pending' });
   });
 
   const ownedSermon = {
@@ -268,7 +281,7 @@ describe('compose-plan-from-scratch route', () => {
     const response = await postWithToken('valid-token');
 
     expect(response.status).toBe(200);
-    expect(composePlanFromScratch).toHaveBeenCalledWith(ownedSermon, ownedSermon.outline, 'user-1', expect.any(Number));
+    expect(composePlanFromScratch).toHaveBeenCalledWith(ownedSermon, ownedSermon.outline, 'user-1', expect.any(Number), expect.objectContaining({ run: expect.any(Function) }));
   });
 
   it('rejects an empty selection rather than answering 200 with an untouched outline', async () => {
@@ -340,7 +353,7 @@ describe('pinned proposal generation source', () => {
       scratch: [note, { id: 'new', text: 'Unrelated', createdAt: 'later' }] });
     (composePlanFromScratch as jest.Mock).mockResolvedValue({ success: true, outline, unplacedScratchNoteIds: [] });
     const response = await postWithToken('valid', { existingOutline: outline, scratchNoteIds: ['n1'], expectedSource: source });
-    expect(response.status).toBe(200); expect(composePlanFromScratch).toHaveBeenCalledWith(expect.objectContaining({ scratch: [note] }), outline, 'owner', expect.any(Number));
+    expect(response.status).toBe(200); expect(composePlanFromScratch).toHaveBeenCalledWith(expect.objectContaining({ scratch: [note] }), outline, 'owner', expect.any(Number), expect.objectContaining({ run: expect.any(Function) }));
   });
   it('rejects malformed source assertions instead of falling back to current server data', async () => {
     (sermonsRepository.fetchSermonById as jest.Mock).mockResolvedValue({ userId: 'owner', scratch: [note] });

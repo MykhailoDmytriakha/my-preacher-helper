@@ -163,7 +163,7 @@ async function prepareSpeechChunks(
     sermon: Sermon, sectionsToProcess: SectionKey[], provider: 'google' | 'openai', useRawText: boolean, uid: string,
 ): Promise<{ chunks: AudioChunk[]; originalLength: number; optimizedLength: number }> {
     const segments: GenerationSegment[] = buildGenerationSegments(sermon, sectionsToProcess);
-    const usageAdmission = useRawText ? undefined : createUsageAdmission(uid, await getUserEntitlementServerSide(uid), ['ai'], new Date());
+    const usageAdmission = useRawText ? undefined : createUsageAdmission(uid, await getUserEntitlementServerSide(uid, { reconcileTextReceipts: true }), ['ai'], new Date());
 
     // 3. Sequential Generation Loop with Context
 

@@ -1,5 +1,8 @@
 import { z } from 'zod';
 
+import { AiResultPendingError } from '@/api/errors/aiResultRecovery.server';
+import { recoverableAiResult } from '@/services/recoverableAiResult.server';
+
 const openaiParseMock = jest.fn();
 const geminiParseMock = jest.fn();
 const openRouterParseMock = jest.fn();
@@ -18,6 +21,8 @@ const zodResponseFormat = jest.fn(() => ({ mocked: true }));
 const mockGetUserEntitlementServerSide = jest.fn();
 const mockAssertAiUsageAvailable = jest.fn();
 const mockConsumeAiUsage = jest.fn();
+const mockAiResultReceipt = jest.fn();
+jest.mock('@/data-engine/aiOperations.server', () => ({ aiResultReceipt: mockAiResultReceipt }));
 const mockIsUsageAdmitted = jest.fn();
 const mockGetAiModelDefaults = jest.fn();
 
@@ -46,7 +51,8 @@ jest.mock('openai/helpers/zod', () => ({
   zodResponseFormat,
 }));
 
-jest.mock('@/api/clients/aiTelemetry', () => ({
+jest.mock('@/api/clients/aiTelemetry.server', () => ({
+  ...jest.requireActual('@/api/clients/aiTelemetry.server'),
   emitStructuredTelemetryEvent,
   openStructuredTelemetryEvent,
 }));
@@ -101,7 +107,7 @@ describe('structuredOutput client', () => {
       systemPrompt: 'SYS',
       userMessage: 'USR',
     });
-    openStructuredTelemetryEvent.mockResolvedValue('evt-open-1');
+    openStructuredTelemetryEvent.mockResolvedValue(undefined);
     mockGetUserEntitlementServerSide.mockResolvedValue({ paidTier: 'free' });
     mockConsumeAiUsage.mockResolvedValue(undefined);
     mockIsUsageAdmitted.mockReturnValue(false);
@@ -206,32 +212,13 @@ describe('structuredOutput client', () => {
         provider: 'OPENAI',
         model: 'gpt-test',
         formatName: 'test-format',
-        promptBlueprint: expect.objectContaining({ promptName: 'test' }),
+        promptName: 'test',
       })
     );
 
     // Выход дописывает ТУ ЖЕ карточку, а не создаёт вторую.
     expect(emitStructuredTelemetryEvent).toHaveBeenCalledWith(
-      expect.objectContaining({ eventId: 'evt-open-1', status: 'success' })
-    );
-  });
-
-  it('still calls the provider when the turnstile stamp could not be written', async () => {
-    openStructuredTelemetryEvent.mockResolvedValueOnce(null);
-    openaiParseMock.mockResolvedValueOnce({
-      choices: [{ message: { parsed: { answer: 'ok' }, content: 'raw' } }],
-    });
-
-    const mod = await import('@/api/clients/structuredOutput');
-    const result = await mod.callWithStructuredOutput('System prompt', 'User prompt', schema, {
-      formatName: 'test-format',
-    });
-
-    // Измерение не имеет права ломать работу человека.
-    expect(result.success).toBe(true);
-    expect(openaiParseMock).toHaveBeenCalledTimes(1);
-    expect(emitStructuredTelemetryEvent).toHaveBeenCalledWith(
-      expect.objectContaining({ eventId: null, status: 'success' })
+      expect.objectContaining({ opening: openStructuredTelemetryEvent.mock.calls[0][0], status: 'success' })
     );
   });
 
@@ -246,7 +233,7 @@ describe('structuredOutput client', () => {
     expect(result.success).toBe(false);
     // Живая, известная ошибка не должна оставлять карточку висеть в `started`.
     expect(emitStructuredTelemetryEvent).toHaveBeenCalledWith(
-      expect.objectContaining({ eventId: 'evt-open-1', status: 'error' })
+      expect.objectContaining({ opening: openStructuredTelemetryEvent.mock.calls[0][0], status: 'error' })
     );
   });
 
@@ -380,6 +367,7 @@ describe('structuredOutput client', () => {
     expect(mockGetUserEntitlementServerSide).toHaveBeenCalledTimes(1);
     expect(mockGetUserEntitlementServerSide).toHaveBeenCalledWith('free-user', {
       includeTextPreference: true,
+      reconcileTextReceipts: true,
     });
     expect(geminiParseMock).toHaveBeenCalledTimes(1);
     expect(geminiParseMock).toHaveBeenCalledWith(expect.objectContaining({ model: 'gemini-3.1-flash-lite-preview' }));
@@ -566,7 +554,7 @@ describe('structuredOutput client', () => {
 
     it('sends no request with only half a second of the deadline left', async () => {
       // Preparation ends inside the deadline, but with no real time left for an answer.
-      openStructuredTelemetryEvent.mockImplementation(async () => { clock += 44_500; return 'evt-open-1'; });
+      openStructuredTelemetryEvent.mockImplementation(async () => { clock += 44_500; });
 
       const mod = await import('@/api/clients/structuredOutput');
       const result = await mod.callWithStructuredOutput('System prompt', 'User prompt', schema, {
@@ -606,6 +594,108 @@ describe('structuredOutput client', () => {
       expect(result.success).toBe(false);
       expect(openRouterParseMock).not.toHaveBeenCalled();
       expect(String(result.error?.message)).toMatch(/timed out/);
+    });
+
+    it.each([false, true])('responds by the deadline when the telemetry opening stalls (terminal write stalls: %s)', async (stallTerminal) => {
+      let finishOpening!: () => void;
+      openStructuredTelemetryEvent.mockReturnValueOnce(new Promise<void>((resolve) => {
+        finishOpening = resolve;
+      }));
+
+      jest.useFakeTimers({ doNotFake: ['performance'] });
+      const startedAt = Date.now();
+      now.mockImplementation(() => Date.now() - startedAt);
+      let finishTerminal: (() => void) | undefined;
+      if (stallTerminal) {
+        emitStructuredTelemetryEvent.mockReturnValueOnce(new Promise<void>((resolve) => {
+          finishTerminal = resolve;
+        }));
+      }
+      const mod = await import('@/api/clients/structuredOutput');
+      let settled = false;
+      const call = mod.callWithStructuredOutput('System prompt', 'User prompt', schema, {
+        formatName: 'test-format',
+        userId: 'paid-user',
+        requestOptions: { timeout: 45_000, maxRetries: 0 },
+      }).finally(() => { settled = true; });
+
+      try {
+        await jest.advanceTimersByTimeAsync(0);
+        expect(openStructuredTelemetryEvent).toHaveBeenCalledTimes(1);
+        await jest.advanceTimersByTimeAsync(44_000);
+        expect(emitStructuredTelemetryEvent).toHaveBeenCalledTimes(1);
+        expect(settled).toBe(!stallTerminal);
+        await jest.advanceTimersByTimeAsync(1_000);
+        expect(openRouterParseMock).not.toHaveBeenCalled();
+        expect(settled).toBe(true);
+        const result = await call;
+        expect(result.success).toBe(false);
+        expect(result.error?.message).toMatch(/timed out/);
+        expect(emitStructuredTelemetryEvent).toHaveBeenCalledTimes(1);
+        expect(emitStructuredTelemetryEvent).toHaveBeenCalledWith(expect.objectContaining({
+          opening: openStructuredTelemetryEvent.mock.calls[0][0],
+          status: 'error',
+        }));
+      } finally {
+        finishOpening();
+        finishTerminal?.();
+        await call;
+        jest.useRealTimers();
+      }
+    });
+
+    it('returns a bounded pending answer and recovers the ready result after the usage transaction stalls', async () => {
+      jest.useFakeTimers({ doNotFake: ['performance'] });
+      const startedAt = Date.now();
+      now.mockImplementation(() => Date.now() - startedAt);
+      const mod = await import('@/api/clients/structuredOutput');
+      let finishConsumption!: (record: { value: unknown; completedAtMs: number }) => void;
+      const settledRecord = { value: { answer: 'fallback' }, completedAtMs: startedAt + 44_000 };
+      const save = jest.fn().mockResolvedValue(undefined);
+      const fail = jest.fn().mockResolvedValue(undefined);
+      const claim = jest.fn()
+        .mockResolvedValueOnce({ state: 'claimed', save, fail })
+        .mockResolvedValueOnce({ state: 'ready' });
+      const settle = jest.fn()
+        .mockReturnValueOnce(new Promise(resolve => { finishConsumption = resolve; }))
+        .mockResolvedValueOnce(settledRecord);
+      mockAiResultReceipt.mockReturnValue({ claim, settle });
+      openRouterParseMock.mockImplementationOnce(() => new Promise(resolve => setTimeout(() => resolve(answer), 44_000)));
+
+      const run = (deadline: number) => recoverableAiResult({
+        ownerId: 'paid-user', operationId: 'test-operation-1', fingerprint: 'source', deadline,
+      }).run(value => schema.parse(value), settleParsedResult =>
+        mod.callWithStructuredOutput('System prompt', 'User prompt', schema, {
+          formatName: 'test-format',
+          userId: 'paid-user',
+          requestOptions: { timeout: 45_000, maxRetries: 0 },
+          settleParsedResult,
+        }));
+      let finished = false;
+      const original = run(56_000).catch(error => error).finally(() => { finished = true; });
+
+      try {
+        await jest.advanceTimersByTimeAsync(44_000);
+        expect(save).toHaveBeenCalledWith(settledRecord.value);
+        expect(settle).toHaveBeenCalledTimes(1);
+        expect(finished).toBe(false);
+
+        await jest.advanceTimersByTimeAsync(12_000);
+        expect(finished).toBe(true);
+        expect(await original).toBeInstanceOf(AiResultPendingError);
+
+        await expect(run(57_000)).resolves.toMatchObject({
+          success: true, data: settledRecord.value, completedAtMs: settledRecord.completedAtMs,
+        });
+        expect(openRouterParseMock).toHaveBeenCalledTimes(1);
+        expect(save).toHaveBeenCalledTimes(1);
+        expect(fail).not.toHaveBeenCalled();
+        expect(mockConsumeAiUsage).not.toHaveBeenCalled();
+      } finally {
+        finishConsumption(settledRecord);
+        await original;
+        jest.useRealTimers();
+      }
     });
 
     it('cuts an answer whose body is still being read when the deadline runs out, and says it timed out', async () => {

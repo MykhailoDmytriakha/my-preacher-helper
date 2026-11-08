@@ -311,12 +311,15 @@ describe('CreateSermonFromNoteModal', () => {
 
   it('a failed create keeps the atoms, does not pay for a second cut, and retries under the SAME id', async () => {
     const user = userEvent.setup();
+    const acknowledge = jest.fn();
+    mockCut.mockResolvedValueOnce({ ...cutAnswer, acknowledge });
     mockCreate.mockRejectedValueOnce(new Error('network'));
     renderModal();
 
     await user.click(createButton());
     await waitFor(() => expect(screen.getByTestId('create-sermon-step-create')).toHaveAttribute('data-status', 'error'));
     expect(screen.getByTestId('create-sermon-step-create')).toHaveTextContent('studiesWorkspace.createSermon.errors.createFailed');
+    expect(acknowledge).not.toHaveBeenCalled();
 
     await user.click(retryButton());
     await waitFor(() => expect(screen.getByTestId('create-sermon-done')).toBeInTheDocument());
@@ -324,6 +327,7 @@ describe('CreateSermonFromNoteModal', () => {
     expect(mockCreate).toHaveBeenCalledTimes(2);
     expect(mockCreate.mock.calls[1][0].id).toBe(mockCreate.mock.calls[0][0].id);
     expect(mockCreateResources[1]).toEqual(mockCreateResources[0]);
+    expect(acknowledge).toHaveBeenCalledTimes(1);
   });
 
   it('names a usage cap, an empty cut and an over-long note for what they are', async () => {

@@ -17,6 +17,10 @@ The existing `OutboxConflictBanner` alone may read `legacyRecovery.client` to di
 and export old pending writes. This migration-only edge grants no write bypass. The four existing DataEngine HTTP routes
 may import the server adapter. Adding a similarly named route does not grant that
 permission. Application runtime imports from `test-utils` are forbidden.
+Private AI receipts and prompt telemetry use the separate server-only
+AI operations surface. Backend workflows may use its semantic methods from
+server modules. The raw SDK calls stay in the canonical adapter and the
+existing route-only server facade retains its boundary.
 
 Use the engine save/edit lifecycle for mutations. Calling `/api/data-engine/commands`
 with `fetch` bypasses its durable journal just as calling an old document-write route

@@ -23,6 +23,15 @@ A route gets more than Vercel's default 10 seconds only through an entry in `fro
 - The admin page marks its four store-backed calls (users/defaults reads, entitlement/defaults saves) `answersFromStore: true`. Their actual success can clear the shared line; the Auth-only `/api/admin/me` success cannot. Exercise the real `apiClient` and actual save buttons in page tests, rather than calling the availability signal directly. A write with a 503 response may still finish later: to prove that behavior in an emulator, change an actual form value from A to B, hold the owned store, submit, observe the bounded refusal with B retained, resume, and require a separate read-only control to see B before any second save. Re-reading an unchanged A does not prove that new work finished.
 - Work that cannot fit even in parallel is split into several sub-60 s requests. Audio `generate` reads a slice `[offset, offset+limit)` (`resolveBatchWindow`), and the browser drives the batches (`GENERATION_BATCH_SIZE` in `frontend/app/components/audio/StepByStepWizard.tsx`). Inside one request the chunks run in a bounded pool (`TTS_CONCURRENCY`) that writes each result by index, so the order survives concatenation.
 
+
+### Recover a saved text result after the response deadline
+
+- Compose and cut take their clocks once on route entry. Model work gets at most 45 or 50 seconds respectively. A saved result and its charge may settle up to 56 seconds after entry. Opening the receipt spends the same model budget.
+- The browser keeps the AI operation ID until the owner-facing action accepts the result or the server reports a definitive end. A network failure, authentication failure or timeout before reading the receipt keeps the ID. The server binds the ID to the authenticated owner and the actual source. Replaying a ready or settled receipt returns the original output without calling the model again.
+- Write the ready response before accounting. Changing the receipt to settled and increasing the account counter are one transaction. At the next paid admission, reconcile ready receipts for that owner before checking allowance. This runs on paid actions and adds no background poll. The recovery-only header reads an earlier receipt without permitting a new generation.
+- Use the semantic AI operations surface for server workflows. Native Firestore access stays in the canonical adapter. The legacy route-only server-operations facade retains its own boundary.
+- To verify the deadline in a browser, use Auth and Firestore emulators and a local fake model. Hold the account transaction after the model answers. Observe the bounded pending response, release the hold, then retry with the original operation ID. Require the same result and exactly one model call and charge. A result that never reached a durable receiver cannot be recovered after the request process stops.
+
 ## Why
 
 - 2026-05-25: the audio `generate` and `optimize` routes were missing from `vercel.json`. One full TTS chunk takes about 32 s, a serial 6-chunk sermon about 190 s, and the function was killed.

@@ -126,6 +126,12 @@ jest.mock('@/providers/ConnectionProvider', () => ({
   useConnection: () => ({ isMagicAvailable: true, isOnline: true }),
 }));
 
+const mockHasAiResultAttempt = jest.fn();
+jest.mock('@/utils/aiResultAttempt.client', () => ({
+  ...jest.requireActual('@/utils/aiResultAttempt.client'),
+  hasAiResultAttempt: (...args: unknown[]) => mockHasAiResultAttempt(...args),
+}));
+
 const mockUseAiUsage = jest.fn();
 jest.mock('@/hooks/useAiUsage', () => ({ useAiUsage: () => mockUseAiUsage() }));
 
@@ -343,6 +349,7 @@ describe('ScratchPanel', () => {
     jest.clearAllMocks();
     composePlanFromScratchMock().mockReset();
     transcribeThoughtAudioMock().mockReset();
+    mockHasAiResultAttempt.mockReset().mockResolvedValue(false);
     mockUseAiUsage.mockReturnValue(aiUsageStub());
     jest.useRealTimers();
     Object.defineProperty(navigator, 'onLine', {
@@ -944,7 +951,7 @@ describe('ScratchPanel', () => {
     await user.click(screen.getByRole('button', { name: 'scratch.board.compose' }));
 
     await waitFor(() => expect(composePlanFromScratchMock()).toHaveBeenCalledTimes(1));
-    expect(composePlanFromScratchMock()).toHaveBeenCalledWith('sermon-1', existingOutline, ['n2']);
+    expect(composePlanFromScratchMock()).toHaveBeenCalledWith('sermon-1', existingOutline, ['n2'], undefined, { recoverOnly: false });
     expect(await screen.findByText('Composed from pooled note')).toBeInTheDocument();
   });
 
@@ -1090,7 +1097,7 @@ describe('ScratchPanel', () => {
     await openBoard(user);
     await user.click(screen.getByRole('button', { name: 'scratch.board.compose' }));
 
-    expect(composePlanFromScratchMock()).toHaveBeenCalledWith('sermon-1', emptyOutline, ['n1', 'n2']);
+    expect(composePlanFromScratchMock()).toHaveBeenCalledWith('sermon-1', emptyOutline, ['n1', 'n2'], undefined, { recoverOnly: false });
     expect(await screen.findByText('Manual intro point')).toBeInTheDocument();
     expectPlanEditorNoteVisual(document.body, 'Pinned by preacher');
     expect(screen.queryByText('scratch.board.aiBadge')).not.toBeInTheDocument();
@@ -1266,6 +1273,21 @@ describe('ScratchPanel', () => {
     expect(screen.getByRole('button', { name: 'scratch.board.apply' })).toBeDisabled();
   });
 
+  it('allows recovery of an earlier compose at the usage limit without enabling fresh generation', async () => {
+    mockUseAiUsage.mockReturnValue(aiUsageStub({ aiBlocked: true }));
+    mockHasAiResultAttempt.mockResolvedValueOnce(true);
+    const acknowledge = jest.fn();
+    composePlanFromScratchMock().mockResolvedValueOnce({ ...composeOutline(emptyOutline), acknowledge });
+    renderScratchPanel();
+    const button = screen.getByRole('button', { name: 'scratch.board.compose' });
+
+    await waitFor(() => expect(button).toBeEnabled());
+    fireEvent.click(button);
+    await waitFor(() => expect(acknowledge).toHaveBeenCalledTimes(1));
+    expect(composePlanFromScratchMock()).toHaveBeenCalledWith('sermon-1', emptyOutline, ['n1', 'n2'], undefined, { recoverOnly: true });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'scratch.board.compose' })).toBeDisabled());
+  });
+
   it('times out compose, shows an error, and re-enables the button', async () => {
     jest.useFakeTimers();
     composePlanFromScratchMock().mockReturnValueOnce(new Promise(() => undefined));
@@ -1275,7 +1297,13 @@ describe('ScratchPanel', () => {
     expect(screen.getByRole('button', { name: 'scratch.board.composing' })).toBeDisabled();
 
     await act(async () => {
-      await jest.advanceTimersByTimeAsync(55_000);
+      await jest.advanceTimersByTimeAsync(56_000);
+    });
+    expect(screen.getByRole('button', { name: 'scratch.board.composing' })).toBeDisabled();
+    expect(screen.queryByText('scratch.board.composeTimeout')).not.toBeInTheDocument();
+
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(14_000);
     });
 
     expect(screen.getByText('scratch.board.composeTimeout')).toBeInTheDocument();
@@ -1333,7 +1361,7 @@ describe('ScratchPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'scratch.board.compose' }));
 
     await act(async () => {
-      await jest.advanceTimersByTimeAsync(55_000);
+      await jest.advanceTimersByTimeAsync(70_000);
     });
     expect(screen.getByText('scratch.board.composeTimeout')).toBeInTheDocument();
 

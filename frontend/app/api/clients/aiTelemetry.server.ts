@@ -1,5 +1,7 @@
 import { randomUUID, createHash } from "crypto";
 
+import { resolveFirestoreWriteRefusal } from "@/api/errors/firestoreWriteRefusal.server";
+
 import { logger } from "./openAIHelpers";
 import { detectDominantLanguage, PromptBlueprint } from "./promptBuilder";
 
@@ -99,11 +101,7 @@ export interface StructuredTelemetryEventInput {
   formatName: string;
   promptBlueprint: PromptBlueprint;
   logContext?: Record<string, unknown>;
-  /**
-   * Идентификатор записи, открытой на входе. Есть — дописываем ЕЁ (та же карточка,
-   * второй пик). Нет — запись создаётся сразу завершённой, как было до турникета.
-   */
-  eventId?: string | null;
+  opening?: StructuredTelemetryOpening | null;
   latencyMs: number;
   status: StructuredTelemetryStatus;
   refusal?: string | null;
@@ -113,7 +111,6 @@ export interface StructuredTelemetryEventInput {
   errorMessage?: string | null;
 }
 
-const TELEMETRY_COLLECTION = process.env.AI_TELEMETRY_COLLECTION || "ai_prompt_telemetry";
 const MAX_CAPTURED_TEXT = Number(process.env.AI_TELEMETRY_MAX_CAPTURE_CHARS || 20000);
 
 let hasWarnedMissingFirebaseServiceAccount = false;
@@ -188,50 +185,39 @@ function detectOutputLanguage(parsedOutput: unknown): string | null {
   return detectDominantLanguage(outputText);
 }
 
-export function buildStructuredTelemetryEvent(input: StructuredTelemetryEventInput): StructuredTelemetryEvent {
-  const eventId = randomUUID();
-  const correlationId = inferCorrelationId(input.logContext);
-  const systemPrompt = captureTelemetryText(input.promptBlueprint.systemPrompt);
-  const userMessage = captureTelemetryText(input.promptBlueprint.userMessage);
-  const parsedOutput = input.parsedOutput === undefined ? null : captureTelemetryText(toSafeString(input.parsedOutput));
-  const rawMessage = input.rawMessage === undefined ? null : captureTelemetryText(toSafeString(input.rawMessage));
-
+function buildStructuredTelemetryOutcome(input: StructuredTelemetryEventInput) {
   return {
-    eventId,
-    correlationId,
-    timestamp: new Date().toISOString(),
-    startedAt: null,
-    phase: "finished",
-    joinPoint: "callWithStructuredOutput",
+    phase: "finished" as const,
     provider: input.provider,
     model: input.model,
-    formatName: input.formatName,
-    promptName: input.promptBlueprint.promptName,
-    promptVersion: input.promptBlueprint.promptVersion,
-    structured: true,
     latencyMs: Math.round(input.latencyMs),
     status: input.status,
     jsonStructureStatus: input.status,
-    qualityReview: createDefaultTelemetryQualityReview(),
+    usage: input.usage || null,
     language: {
       expected: input.promptBlueprint.expectedLanguage,
       detectedOutput: detectOutputLanguage(input.parsedOutput),
     },
-    usage: input.usage || null,
-    request: {
-      systemPrompt,
-      userMessage,
-      context: input.promptBlueprint.context || input.logContext || null,
-      promptBlocks: input.promptBlueprint.blocks,
-    },
     response: {
       refusal: input.refusal || null,
-      parsedOutput,
-      rawMessage,
+      parsedOutput: input.parsedOutput === undefined ? null : captureTelemetryText(toSafeString(input.parsedOutput)),
+      rawMessage: input.rawMessage === undefined ? null : captureTelemetryText(toSafeString(input.rawMessage)),
       errorMessage: input.errorMessage || null,
     },
   };
 }
+
+export function buildStructuredTelemetryEvent(input: StructuredTelemetryEventInput): StructuredTelemetryEvent {
+  return {
+    ...buildStructuredTelemetryOpenRecord(input),
+    ...buildStructuredTelemetryOutcome(input),
+    startedAt: null,
+  };
+}
+
+type StructuredTelemetryOpening = Omit<
+  StructuredTelemetryEvent, "latencyMs" | "status" | "jsonStructureStatus" | "usage" | "response"
+>;
 
 /**
  * Отметка на входе: всё, что известно до вызова модели. Текст промпта пишется
@@ -240,7 +226,7 @@ export function buildStructuredTelemetryEvent(input: StructuredTelemetryEventInp
  */
 export function buildStructuredTelemetryOpenRecord(
   input: StructuredTelemetryOpenInput
-): Omit<StructuredTelemetryEvent, "latencyMs" | "status" | "jsonStructureStatus" | "usage" | "response"> {
+): StructuredTelemetryOpening {
   const startedAt = new Date().toISOString();
 
   return {
@@ -270,67 +256,43 @@ export function buildStructuredTelemetryOpenRecord(
   };
 }
 
-/**
- * Открывает запись и возвращает её id. `null` означает «отметить вход не удалось» —
- * и тогда вызов всё равно идёт дальше: измерение не имеет права ломать работу
- * человека, а запись просто создастся на выходе, как до турникета.
- */
-export async function openStructuredTelemetryEvent(
-  input: StructuredTelemetryOpenInput
-): Promise<string | null> {
-  if (process.env.NODE_ENV === "test") return null;
-  if (!process.env.FIREBASE_SERVICE_ACCOUNT) {
-    warnMissingServiceAccountOnce();
-    return null;
-  }
-
-  const record = buildStructuredTelemetryOpenRecord(input);
+/** A late opening must never replace a record that already contains the outcome. */
+export async function openStructuredTelemetryEvent(record: StructuredTelemetryOpening): Promise<void> {
+  if (!canPersistStructuredTelemetry()) return;
 
   try {
-    const { adminDb, FieldValue } = await import("@/config/firebaseAdminConfig");
-    await adminDb.collection(TELEMETRY_COLLECTION).doc(record.eventId).set({
-      ...record,
-      createdAt: FieldValue.serverTimestamp(),
-    });
-    return record.eventId;
+    const { createAiPromptTelemetry } = await import("@/data-engine/aiOperations.server");
+    await createAiPromptTelemetry(record.eventId, record);
   } catch (error) {
-    logger.error("StructuredTelemetry", "Failed to open AI telemetry event", error);
-    return null;
+    if (resolveFirestoreWriteRefusal(error)?.code !== "already-exists") {
+      logger.error("StructuredTelemetry", "Failed to open AI telemetry event", error);
+    }
   }
 }
 
-/** Отметка на выходе: дописывается в ту же карточку, не создавая вторую. */
 async function settleStructuredTelemetryEvent(
-  eventId: string,
+  opening: StructuredTelemetryOpening,
   input: StructuredTelemetryEventInput
 ): Promise<void> {
-  const parsedOutput = input.parsedOutput === undefined ? null : captureTelemetryText(toSafeString(input.parsedOutput));
-  const rawMessage = input.rawMessage === undefined ? null : captureTelemetryText(toSafeString(input.rawMessage));
+  const outcome = buildStructuredTelemetryOutcome(input);
+  const settledAt = new Date().toISOString();
 
   try {
-    const { adminDb, FieldValue } = await import("@/config/firebaseAdminConfig");
-    await adminDb.collection(TELEMETRY_COLLECTION).doc(eventId).set(
-      {
-        phase: "finished" satisfies TelemetryPhase,
-        settledAt: new Date().toISOString(),
-        // Провайдер и модель могли поменяться относительно намеренных: сработал fallback.
-        provider: input.provider,
-        model: input.model,
-        latencyMs: Math.round(input.latencyMs),
-        status: input.status,
-        jsonStructureStatus: input.status,
-        usage: input.usage || null,
-        language: { detectedOutput: detectOutputLanguage(input.parsedOutput) },
-        response: {
-          refusal: input.refusal || null,
-          parsedOutput,
-          rawMessage,
-          errorMessage: input.errorMessage || null,
-        },
-        settledAtServer: FieldValue.serverTimestamp(),
-      },
-      { merge: true }
-    );
+    const { createAiPromptTelemetry, settleAiPromptTelemetry } = await import("@/data-engine/aiOperations.server");
+    const settled = { ...outcome, settledAt };
+    try {
+      await settleAiPromptTelemetry(opening.eventId, settled);
+    } catch (error) {
+      if (resolveFirestoreWriteRefusal(error)?.code !== "not-found") throw error;
+      // The opening may still be in flight. Either create the finished record now or
+      // update just the outcome if the opening won in the meantime, preserving reviews.
+      try {
+        await createAiPromptTelemetry(opening.eventId, { ...opening, ...settled }, true);
+      } catch (createError) {
+        if (resolveFirestoreWriteRefusal(createError)?.code !== "already-exists") throw createError;
+        await settleAiPromptTelemetry(opening.eventId, settled);
+      }
+    }
   } catch (error) {
     logger.error("StructuredTelemetry", "Failed to settle AI telemetry event", error);
   }
@@ -345,37 +307,29 @@ function warnMissingServiceAccountOnce(): void {
   hasWarnedMissingFirebaseServiceAccount = true;
 }
 
-async function persistStructuredTelemetryEvent(event: StructuredTelemetryEvent): Promise<void> {
-  if (process.env.NODE_ENV === "test") {
-    return;
-  }
-
+function canPersistStructuredTelemetry(): boolean {
+  if (process.env.NODE_ENV === "test") return false;
   if (!process.env.FIREBASE_SERVICE_ACCOUNT) {
     warnMissingServiceAccountOnce();
-    return;
+    return false;
   }
+  return true;
+}
 
+async function persistStructuredTelemetryEvent(event: StructuredTelemetryEvent): Promise<void> {
   try {
-    const { adminDb, FieldValue } = await import("@/config/firebaseAdminConfig");
-    await adminDb.collection(TELEMETRY_COLLECTION).doc(event.eventId).set({
-      ...event,
-      createdAt: FieldValue.serverTimestamp(),
-    });
+    const { createAiPromptTelemetry } = await import("@/data-engine/aiOperations.server");
+    await createAiPromptTelemetry(event.eventId, event);
   } catch (error) {
     logger.error("StructuredTelemetry", "Failed to persist AI telemetry event", error);
   }
 }
 
-export function emitStructuredTelemetryEvent(input: StructuredTelemetryEventInput): void {
-  if (process.env.NODE_ENV === "test") return;
+export async function emitStructuredTelemetryEvent(input: StructuredTelemetryEventInput): Promise<void> {
+  if (!canPersistStructuredTelemetry()) return;
 
-  // Вход отмечен — дописываем ТУ ЖЕ карточку. Иначе поведение как до турникета:
-  // запись создаётся сразу завершённой.
-  if (input.eventId) {
-    void settleStructuredTelemetryEvent(input.eventId, input);
-    return;
-  }
+  if (input.opening) return settleStructuredTelemetryEvent(input.opening, input);
 
   const event = buildStructuredTelemetryEvent(input);
-  void persistStructuredTelemetryEvent(event);
+  return persistStructuredTelemetryEvent(event);
 }

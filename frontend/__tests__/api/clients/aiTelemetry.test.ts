@@ -1,11 +1,23 @@
+/** @jest-environment node */
+
+jest.mock('server-only', () => ({}), { virtual: true });
+
 import {
   buildStructuredTelemetryEvent,
   buildStructuredTelemetryOpenRecord,
   emitStructuredTelemetryEvent,
-} from "@clients/aiTelemetry";
+  openStructuredTelemetryEvent,
+} from "@clients/aiTelemetry.server";
 import { buildSimplePromptBlueprint } from "@clients/promptBuilder";
 
-describe("aiTelemetry", () => {
+const mockTelemetryDoc = jest.fn();
+
+jest.mock("@/config/firebaseAdminConfig", () => ({
+  adminDb: { collection: () => ({ doc: mockTelemetryDoc }) },
+  FieldValue: { serverTimestamp: () => "server timestamp" },
+}));
+
+describe("aiTelemetry.server", () => {
   it("builds structured telemetry event with prompt metadata and hashes", () => {
     const promptBlueprint = buildSimplePromptBlueprint({
       promptName: "sermon.insights.all",
@@ -144,5 +156,114 @@ describe("aiTelemetry", () => {
     expect(event.language.expected).toBe("ru");
     expect(event.provider).toBe("OPENROUTER");
     expect(event.language.detectedOutput).toBeNull();
+  });
+});
+
+describe("structured telemetry persistence", () => {
+  const promptBlueprint = buildSimplePromptBlueprint({
+    promptName: "test",
+    systemPrompt: "System",
+    userMessage: "Original user text",
+  });
+  const request = { provider: "OPENAI", model: "intended", formatName: "test", promptBlueprint };
+  let documents: Map<string, Record<string, unknown>>;
+  let create: jest.Mock;
+  let update: jest.Mock;
+
+  beforeEach(() => {
+    jest.replaceProperty(process, "env", {
+      ...process.env,
+      NODE_ENV: "production",
+      FIREBASE_SERVICE_ACCOUNT: "mock only",
+    });
+    documents = new Map();
+    create = jest.fn(async (id: string, data: Record<string, unknown>) => {
+      if (documents.has(id)) throw Object.assign(new Error("Already exists"), { code: 6 });
+      documents.set(id, data);
+    });
+    update = jest.fn(async (id: string, data: Record<string, unknown>) => {
+      if (!documents.has(id)) throw Object.assign(new Error("Not found"), { code: 5 });
+      documents.set(id, { ...documents.get(id), ...data });
+    });
+    mockTelemetryDoc.mockImplementation((id: string) => ({
+      create: (data: Record<string, unknown>) => create(id, data),
+      update: (data: Record<string, unknown>) => update(id, data),
+    }));
+  });
+
+  afterEach(() => jest.restoreAllMocks());
+
+  const settle = (opening: ReturnType<typeof buildStructuredTelemetryOpenRecord>) =>
+    emitStructuredTelemetryEvent({
+      ...request,
+      opening,
+      model: "executed",
+      status: "error",
+      latencyMs: 45_000,
+      errorMessage: "timed out",
+    });
+
+  it("creates a complete terminal record if its opening is still in flight", async () => {
+    const opening = buildStructuredTelemetryOpenRecord(request);
+    const persist = create.getMockImplementation()!;
+    let finishOpening!: () => void;
+    create.mockImplementationOnce(async (id, data) => {
+      await new Promise<void>((resolve) => { finishOpening = resolve; });
+      await persist(id, data);
+    });
+    const pendingOpening = openStructuredTelemetryEvent(opening);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    try {
+      await settle(opening);
+      expect(documents.get(opening.eventId)).toMatchObject({
+        eventId: opening.eventId,
+        correlationId: opening.correlationId,
+        timestamp: opening.startedAt,
+        phase: "finished",
+        model: "executed",
+        status: "error",
+        request: { userMessage: { value: "Original user text" } },
+        response: { errorMessage: "timed out" },
+        settledAtServer: "server timestamp",
+      });
+    } finally {
+      finishOpening();
+      await pendingOpening;
+    }
+
+    expect(documents.size).toBe(1);
+    expect(documents.get(opening.eventId)).toMatchObject({ phase: "finished", status: "error" });
+  });
+
+  it("updates only the outcome when the opening arrives between the terminal update and create", async () => {
+    const opening = buildStructuredTelemetryOpenRecord(request);
+    const review = { quality: "good", keepAsExample: true };
+    const persist = create.getMockImplementation()!;
+    create.mockImplementationOnce(async (id, data) => {
+      await persist(id, { ...opening, qualityReview: review });
+      await persist(id, data);
+    });
+
+    await settle(opening);
+
+    expect(documents.size).toBe(1);
+    expect(documents.get(opening.eventId)).toMatchObject({
+      phase: "finished",
+      status: "error",
+      qualityReview: review,
+    });
+    expect(update).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps an opening write failure from failing the caller and can still save the outcome", async () => {
+    const opening = buildStructuredTelemetryOpenRecord(request);
+    create.mockRejectedValueOnce(Object.assign(new Error("Unavailable"), { code: 14 }));
+
+    await expect(openStructuredTelemetryEvent(opening)).resolves.toBeUndefined();
+    await settle(opening);
+
+    expect(documents.size).toBe(1);
+    expect(documents.get(opening.eventId)).toMatchObject({ phase: "finished", status: "error" });
   });
 });

@@ -338,7 +338,7 @@ describe('Thoughts API route additional coverage', () => {
           usageAdmission: expect.objectContaining({ userId: 'user-1' }),
         }
       );
-      expect(entitlementService.getUserEntitlementServerSide).toHaveBeenCalledWith('user-1');
+      expect(entitlementService.getUserEntitlementServerSide).toHaveBeenCalledWith('user-1', { reconcileTextReceipts: true });
       expect(usageLimits.createUsageAdmission).toHaveBeenCalledWith(
         'user-1',
         { paidTier: 'free' },

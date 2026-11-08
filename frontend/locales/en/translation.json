@@ -1989,6 +1989,8 @@
     "failedToSaveOutline": "Failed to save structure",
     "guestSignInFailed": "Guest sign-in error",
     "aiOutOfTime": "No answer arrived in the time allowed. Try again — if it happens again, shorten the text.",
+    "aiResultPending": "The answer is still being processed. Try again in a few seconds.",
+    "aiResultUnavailable": "The earlier answer is no longer available. Try again.",
     "aiOutOfTimeAudio": "No answer about the recording arrived in the time allowed. The thought may still have been saved — check the list before recording again; if it is not there, record a shorter piece."
   },
   "createThought": {

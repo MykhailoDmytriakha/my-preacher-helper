@@ -5,8 +5,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { usageCapResponse } from '@/api/errors/usageCapResponse';
 import { ComposePlanApiRequestSchema, ComposedPlanOutlineSchema } from '@/config/schemas/zod';
+import { AI_RESULT_RESPONSE_BUDGET_MS, aiResultRecoveryForRequest, aiResultRecoveryRefusal } from '@/services/recoverableAiResult.server';
 import { StoreUnavailableError, storeUnavailableResponse, withStore } from '@/services/storeAvailability.server';
 import { isUsageCapReachedError } from '@/services/usageLimits';
+import { AI_RESULT_UNAVAILABLE } from '@/utils/aiResultOperation';
 import { serializeContent } from '@/utils/contentFingerprint';
 import { scratchComposeSource } from '@/utils/scratchComposeSource';
 import { RouteDeadlineError, withinDeadline } from '@/utils/withinDeadline';
@@ -122,17 +124,19 @@ function collectScratchNoteIds(outline: unknown): string[] {
  * Compose returned no outline. When its own deadline under the 60 s wall fired, a 504 with a code
  * lets the screen say "no answer in the time allowed" instead of a generic failure.
  */
-function composeFailure(timedOut: boolean) {
+function composeFailure(timedOut: boolean, operationEnded = false) {
   return timedOut
-    ? jsonNoStore({ error: 'Compose plan timed out', code: 'deadline-exceeded' }, { status: 504 })
+    ? jsonNoStore({ error: 'Compose plan timed out', code: 'deadline-exceeded', ...(operationEnded ? { operationEnded } : {}) }, { status: 504 })
     : jsonNoStore(
-      { error: 'Failed to compose plan from scratch', outline: { introduction: [], main: [], conclusion: [] } },
+      { error: 'Failed to compose plan from scratch', code: AI_RESULT_UNAVAILABLE, outline: { introduction: [], main: [], conclusion: [] } },
       { status: 500 }
     );
 }
 
 /** A refusal the route already has words for: a spent allowance, or its own deadline. */
 function knownRefusal(error: unknown) {
+  const recovery = aiResultRecoveryRefusal(error);
+  if (recovery) return jsonNoStore(recovery.body, { status: recovery.status });
   if (isUsageCapReachedError(error)) return usageCapResponse(error);
   if (error instanceof StoreUnavailableError) return storeUnavailableResponse(error);
   if (error instanceof RouteDeadlineError) return composeFailure(true);
@@ -142,7 +146,8 @@ function knownRefusal(error: unknown) {
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   // The wall is set once, when the request arrives: reading the sermon spends the same seconds the
   // model would get (BUG-20261006-ai-call-outlives-the-wall).
-  const deadline = performance.now() + COMPOSE_PLAN_DEADLINE_MS;
+  const startedAt = performance.now();
+  const deadline = startedAt + COMPOSE_PLAN_DEADLINE_MS;
   // A stalled read before the model is waited for only until the same deadline.
   const beforeDeadline = <T>(read: () => Promise<T>, stage: string) =>
     withinDeadline(read, deadline, () => new RouteDeadlineError(stage));
@@ -189,14 +194,20 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       ? { ...sermon, scratch: scratchForCompose }
       : sermon;
     const knownScratchIds = new Set(scratchForCompose.map((note) => note.id));
+    const { recovery } = aiResultRecoveryForRequest(request, {
+      ownerId: uid,
+      source: ['compose', sermonId, scratchComposeSource(sermonForCompose), existingOutline],
+      deadline: startedAt + AI_RESULT_RESPONSE_BUDGET_MS,
+    });
     const { outline, success, unplacedScratchNoteIds, timedOut } = await composePlanFromScratch(
       sermonForCompose,
       existingOutline,
       uid,
-      deadline
+      deadline,
+      recovery,
     );
 
-    if (!success) return composeFailure(Boolean(timedOut));
+    if (!success) return composeFailure(Boolean(timedOut), true);
 
     const parsedOutline = ComposedPlanOutlineSchema.safeParse(outline);
     if (!parsedOutline.success) {

@@ -12,6 +12,7 @@ export interface BoundaryAccess { file: string; capability: string; line: number
 
 const PUBLIC_ENGINE = new Set(['data-engine/clientPolicy.ts', 'data-engine/react.client.tsx', 'data-engine/browser.client.ts', 'data-engine/DataSyncStatus.tsx', 'data-engine/DataCollectionStatus.tsx', 'data-engine/DataMembershipStatus.tsx']);
 const SERVER_OPERATIONS = 'data-engine/serverOperations.server.ts';
+const AI_OPERATIONS = 'data-engine/aiOperations.server.ts';
 const isServerEntry = (source: string) => /^api\/(?:.+\/)?route\.ts$/.test(source);
 const ENGINE_ROUTES = new Set(['api/data-engine/commands/route.ts', 'api/data-engine/documents/[collection]/[id]/route.ts',
   'api/data-engine/collections/[collection]/route.ts', 'api/data-engine/changes/[collection]/route.ts']);
@@ -80,6 +81,8 @@ function moduleCapability(source: string, target: string, name: string, root: st
   if (destination.startsWith('../test-utils/')) return `test-runtime:${destination}`;
   if (destination.startsWith('data-engine/') && !source.startsWith('data-engine/') && !PUBLIC_ENGINE.has(destination)) {
     if (destination === SERVER_OPERATIONS && isServerEntry(source)) return undefined;
+    // A separate server-only surface exposes AI receipt and telemetry outcomes.
+    if (destination === AI_OPERATIONS && (isServerEntry(source) || source.endsWith('.server.ts'))) return undefined;
     if (source === 'components/OutboxConflictBanner.tsx' && destination === 'data-engine/legacyRecovery.client.ts') return undefined;
     if (destination === 'data-engine/server.ts' && ENGINE_ROUTES.has(source)) return undefined;
     // The same reviewed server writers reach an engine-owned document through the command door.

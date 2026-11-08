@@ -41,6 +41,7 @@ import { callWithStructuredOutput } from "./structuredOutput";
 import { generateThoughtStructured, type GenerateThoughtResult } from "./thought.structured";
 
 import type { PlanContext, PlanStyle } from "./planTypes";
+import type { AiResultRecovery } from "@/services/recoverableAiResult.server";
 
 export type { PlanContext, PlanStyle } from "./planTypes";
 
@@ -1295,9 +1296,10 @@ export async function composePlanFromScratch(
   sermon: Sermon,
   existingOutline?: SermonOutline,
   userId: string = sermon.userId,
-  deadline?: number
+  deadline?: number,
+  recovery?: AiResultRecovery,
 ) {
-  return composePlanFromScratchStructured(sermon, existingOutline, userId, deadline);
+  return composePlanFromScratchStructured(sermon, existingOutline, userId, deadline, recovery);
 }
 
 /**

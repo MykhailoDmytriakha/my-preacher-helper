@@ -10,6 +10,7 @@
  * corridor the note's length justifies (`noteCutCorridor.ts`). The model answers section
  * by section, so the count stays explainable to the person who reads the result.
  */
+import { isAiResultRecoveryError } from '@/api/errors/aiResultRecovery.server';
 import { CutNoteResponseSchema, type CutNoteResponse, type CutNoteSection } from '@/config/schemas/zod';
 import { StoreUnavailableError } from '@/services/storeAvailability.server';
 import { isUsageCapReachedError } from '@/services/usageLimits';
@@ -20,12 +21,15 @@ import { logger } from './openAIHelpers';
 import { buildSimplePromptBlueprint, detectDominantLanguage } from './promptBuilder';
 import { callWithStructuredOutput, type StructuredOutputResult } from './structuredOutput';
 
+import type { AiResultRecovery, RecoverableAiResult, SettleParsedAiResult } from '@/services/recoverableAiResult.server';
+
 export interface CutStudyNoteInput {
   content: string;
   title?: string;
   /** References the author attached to the note, already formatted for reading. */
   scriptureRefs?: string[];
   userId?: string;
+  recovery?: AiResultRecovery;
   /**
    * Which part of the note this call is cutting, when the note is cut in slices. Told to
    * the model so it knows it is reading an excerpt and does not try to open or close the
@@ -41,6 +45,7 @@ export interface CutStudyNoteInput {
 }
 
 export interface CutStudyNoteResult {
+  completedAtMs?: number;
   success: boolean;
   data: CutNoteResponse | null;
   error: string | null;
@@ -208,41 +213,49 @@ export async function cutStudyNoteIntoScratch(input: CutStudyNoteInput): Promise
      * A failed attempt costs no quota: usage is consumed only on a successful call.
      */
     const deadline = Date.now() + (input.budgetMs ?? DEFAULT_BUDGET_MS);
-    let result: StructuredOutputResult<CutNoteResponse> | null = null;
-    let attempt = 0;
-    for (;;) {
-      const remaining = deadline - Date.now();
-      // Asked before every attempt — the first one, and the one after a pause whose timer ran
-      // late: an attempt that cannot finish inside the wall is not started
-      // (BUG-20261006-ai-call-outlives-the-wall).
-      if (remaining - 1_000 < MIN_ATTEMPT_MS) break;
-      attempt += 1;
-      const timeout = Math.min(MAX_ATTEMPT_MS, remaining - 1_000);
-      result = await callWithStructuredOutput(
-        promptBlueprint.systemPrompt,
-        promptBlueprint.userMessage,
-        CutNoteResponseSchema,
-        {
-          formatName: 'cutNote',
-          userId: input.userId,
-          promptBlueprint,
-          logContext: { contentLength: content.length, languageHint, attempt },
-          requestOptions: { timeout, maxRetries: 0 },
+    const generate = async (settleParsedResult?: SettleParsedAiResult): Promise<StructuredOutputResult<CutNoteResponse>> => {
+      let result: StructuredOutputResult<CutNoteResponse> | null = null;
+      let attempt = 0;
+      for (;;) {
+        const remaining = deadline - Date.now();
+        // Asked before every attempt — the first one, and the one after a pause whose timer ran
+        // late: an attempt that cannot finish inside the wall is not started
+        // (BUG-20261006-ai-call-outlives-the-wall).
+        if (remaining - 1_000 < MIN_ATTEMPT_MS) break;
+        attempt += 1;
+        const timeout = Math.min(MAX_ATTEMPT_MS, remaining - 1_000);
+        result = await callWithStructuredOutput(
+          promptBlueprint.systemPrompt,
+          promptBlueprint.userMessage,
+          CutNoteResponseSchema,
+          {
+            formatName: 'cutNote',
+            userId: input.userId,
+            ...(settleParsedResult ? { settleParsedResult } : {}),
+            promptBlueprint,
+            logContext: { contentLength: content.length, languageHint, attempt },
+            requestOptions: { timeout, maxRetries: 0 },
+          }
+        );
+        if (result.data || !isWorthRetrying(result.error)) break;
+        if (deadline - Date.now() < MIN_ATTEMPT_MS + RETRY_BACKOFF_MS) {
+          logger.warn('CutStudyNote', `Transient failure with no budget left to retry: ${result.error?.message}`);
+          break;
         }
-      );
-      if (result.data || !isWorthRetrying(result.error)) break;
-      if (deadline - Date.now() < MIN_ATTEMPT_MS + RETRY_BACKOFF_MS) {
-        logger.warn('CutStudyNote', `Transient failure with no budget left to retry: ${result.error?.message}`);
-        break;
+        logger.warn('CutStudyNote', `Attempt ${attempt} failed transiently, retrying: ${result.error?.message}`);
+        await new Promise((resolve) => setTimeout(resolve, RETRY_BACKOFF_MS));
       }
-      logger.warn('CutStudyNote', `Attempt ${attempt} failed transiently, retrying: ${result.error?.message}`);
-      await new Promise((resolve) => setTimeout(resolve, RETRY_BACKOFF_MS));
-    }
 
-    if (!result) {
+
+      if (result) return result;
       logger.warn('CutStudyNote', 'No time was left to ask the model');
-      return { success: false, data: null, error: 'AI call timed out: no time was left to cut the note', timedOut: true };
-    }
+      return { success: false, data: null, refusal: null, error: new Error('AI call timed out: no time was left to cut the note') };
+    };
+
+    const result: RecoverableAiResult<CutNoteResponse> = input.recovery
+      ? await input.recovery.run(value => CutNoteResponseSchema.parse(value), generate)
+      : await generate();
+
     if (result.refusal) {
       logger.warn('CutStudyNote', `Model refused: ${result.refusal}`);
       return { success: false, data: null, error: `AI refused to cut the note: ${result.refusal}` };
@@ -261,6 +274,7 @@ export async function cutStudyNoteIntoScratch(input: CutStudyNoteInput): Promise
       success: true,
       data: { keyPassage: (result.data.keyPassage ?? '').trim(), sections },
       error: null,
+      ...(result.completedAtMs === undefined ? {} : { completedAtMs: result.completedAtMs }),
     };
   } catch (error) {
     // Usage-cap errors must reach the route untouched: it turns them into a 429 the
@@ -269,7 +283,7 @@ export async function cutStudyNoteIntoScratch(input: CutStudyNoteInput): Promise
       throw error;
     }
     // So must a refused store: the route answers it as 503 "unavailable".
-    if (error instanceof StoreUnavailableError) throw error;
+    if (error instanceof StoreUnavailableError || isAiResultRecoveryError(error)) throw error;
     const message = error instanceof Error ? error.message : 'Unknown error while cutting the note';
     logger.error('CutStudyNote', message);
     return { success: false, data: null, error: message };

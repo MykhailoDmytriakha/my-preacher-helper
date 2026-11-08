@@ -6,8 +6,10 @@ import { NextResponse } from 'next/server';
 
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { usageCapResponse } from '@/api/errors/usageCapResponse';
+import { AI_RESULT_RESPONSE_BUDGET_MS, aiResultRecoveryForRequest, aiResultRecoveryRefusal } from '@/services/recoverableAiResult.server';
 import { StoreUnavailableError, storeUnavailableResponse, withStore } from '@/services/storeAvailability.server';
 import { isUsageCapReachedError } from '@/services/usageLimits';
+import { AI_RESULT_UNAVAILABLE } from '@/utils/aiResultOperation';
 import { requestLanguage } from '@/utils/appLocale';
 import { expectedScratchCountCorridor } from '@/utils/noteCutCorridor';
 import { collectNoteHeadings, groundKeyPassage, MAX_CUT_CHARS, normalizeHeading } from '@/utils/noteCutSource';
@@ -22,9 +24,9 @@ import type { ScratchNote, ScriptureReference } from '@/models/models';
 /**
  * POST /api/studies/notes/:id/cut — cut a study note into atomic scratch notes.
  *
- * READS ONLY. The route answers with scratch notes ready to be written into a sermon
+ * DOES NOT EDIT THE NOTE OR SERMON. The route answers with scratch notes ready to be written into a sermon
  * (ids and timestamps assigned here, origin recorded on each) and a per-section report
- * that explains the count. It writes nothing: the caller decides what to do with the
+ * that explains the count. Apart from settling its AI receipt, the caller decides what to do with the
  * atoms — put them into a sermon being born, or into one that already exists — and
  * a failed cut therefore leaves no half-born document behind.
  *
@@ -189,15 +191,16 @@ async function readSliceWindow(request: Request): Promise<{ offset: number; limi
   return { offset, limit };
 }
 
-const cutTimedOut = () =>
-  NextResponse.json({ success: false, error: 'Cut timed out', code: 'deadline-exceeded' }, { status: 504 });
+const cutTimedOut = (operationEnded = false) =>
+  NextResponse.json({ success: false, error: 'Cut timed out', code: 'deadline-exceeded', ...(operationEnded ? { operationEnded } : {}) }, { status: 504 });
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   // The wall is 60s; the model gets what is left after the note is loaded, minus a margin
   // for grounding the answer and writing the response. Set once, when the request arrives: a
   // stalled read before the model is waited for only until the same moment
   // (BUG-20261006-ai-call-outlives-the-wall).
-  const modelDeadline = performance.now() + MODEL_BUDGET_MS;
+  const startedAt = performance.now();
+  const modelDeadline = startedAt + MODEL_BUDGET_MS;
   const beforeDeadline = <T>(read: () => Promise<T>, stage: string) =>
     withinDeadline(read, modelDeadline, () => new RouteDeadlineError(stage));
   try {
@@ -217,11 +220,18 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     const sliceContent = sectionsText(slice);
     const isPartial = slice.length < allSections.length;
+    const scriptureRefs = (note.scriptureRefs ?? []).map(formatRefForPrompt);
+    const { operationId, recovery } = aiResultRecoveryForRequest(request, {
+      ownerId: uid,
+      source: ['cut', id, content, note.title, scriptureRefs, offset, limit],
+      deadline: startedAt + AI_RESULT_RESPONSE_BUDGET_MS,
+    });
     const result = await cutStudyNoteIntoScratch({
       content: sliceContent,
       title: note.title,
-      scriptureRefs: (note.scriptureRefs ?? []).map(formatRefForPrompt),
+      scriptureRefs,
       userId: uid,
+      recovery,
       slice: isPartial
         ? { from: slice[0].index + 1, to: slice[slice.length - 1].index + 1, total: allSections.length }
         : undefined,
@@ -232,15 +242,15 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (!result.success || !result.data) {
       console.error('Studies cut route: cut failed', result.error);
       // Its own deadline fired: a 504 with a code lets the dialog say "no answer in the time allowed".
-      if (result.timedOut) return cutTimedOut();
-      return NextResponse.json({ success: false, error: result.error ?? 'Failed to cut the note' }, { status: 500 });
+      if (result.timedOut) return cutTimedOut(true);
+      return NextResponse.json({ success: false, code: AI_RESULT_UNAVAILABLE, error: result.error ?? 'Failed to cut the note' }, { status: 500 });
     }
 
     const knownHeadings = collectNoteHeadings(content);
     // Slices are cut in reading order, seconds apart, so a later slice always carries later
     // timestamps: the scratch board orders by `createdAt`, and the argument of the note has
     // to survive being cut in several requests.
-    const bornAt = Date.now();
+    const bornAt = result.completedAtMs ?? Date.now();
     const notes: ScratchNote[] = [];
     const sections: CutNoteSectionReport[] = [];
     for (const section of result.data.sections) {
@@ -248,7 +258,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       sections.push({ heading, count: section.claims.length });
       for (const claim of section.claims) {
         notes.push({
-          id: randomUUID(),
+          id: result.completedAtMs === undefined ? randomUUID() : `cut-${operationId}-${notes.length}`,
           text: atomText(claim.text, claim.scripture),
           // One millisecond apart, in reading order: the board and the composer order
           // scratch by time and break ties by id, and a random id would scramble the
@@ -282,6 +292,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     };
     return NextResponse.json(body);
   } catch (error) {
+    const recovery = aiResultRecoveryRefusal(error);
+    if (recovery) return NextResponse.json({ success: false, ...recovery.body }, { status: recovery.status });
     if (isUsageCapReachedError(error)) return usageCapResponse(error);
     if (error instanceof StoreUnavailableError) return storeUnavailableResponse(error);
     if (error instanceof RouteDeadlineError) return cutTimedOut();

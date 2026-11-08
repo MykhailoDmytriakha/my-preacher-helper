@@ -6,11 +6,12 @@ import {
 } from '@/config/schemas/zod';
 import { SermonOutline } from '@/models/models';
 import { auth } from '@/services/firebaseAuth.service';
+import { aiResultErrorCode, beginAiResultAttempt } from '@/utils/aiResultAttempt.client';
+import { SCRATCH_COMPOSE_REQUEST_TIMEOUT_MS } from '@/utils/aiResultOperation';
 import { withStatus } from '@/utils/aiTimeFailure';
 import { apiClient } from '@/utils/apiClient';
 import { isKnownOffline } from '@/utils/connectivity';
-
-const SCRATCH_COMPOSE_TIMEOUT_MS = 55_000;
+import { scratchComposeRequest } from '@/utils/scratchComposeSource';
 
 function collectReturnedScratchIds(outline: ComposedPlanOutline): string[] {
   return [
@@ -24,6 +25,7 @@ function collectReturnedScratchIds(outline: ComposedPlanOutline): string[] {
 }
 
 export interface ComposePlanResult {
+  acknowledge: () => void;
   outline: ComposedPlanOutline;
   /** Ids of notes the model did not place; they landed in the outline as their own points. */
   unplacedScratchNoteIds: string[];
@@ -33,7 +35,8 @@ export async function composePlanFromScratch(
   sermonId: string,
   existingOutline: SermonOutline | undefined,
   knownScratchNoteIds: Iterable<string>,
-  expectedSource?: ComposePlanExpectedSource
+  expectedSource?: ComposePlanExpectedSource,
+  options?: { recoverOnly?: boolean },
 ): Promise<ComposePlanResult> {
   if (isKnownOffline()) {
     throw new Error('Scratch compose is unavailable offline');
@@ -46,16 +49,19 @@ export async function composePlanFromScratch(
 
   const token = await currentUser.getIdToken();
   const scratchNoteIds = Array.from(knownScratchNoteIds);
-  const response = await apiClient(`/api/sermons/${sermonId}/compose-plan-from-scratch`, {
+  const { path, body } = scratchComposeRequest(sermonId, existingOutline, scratchNoteIds, expectedSource);
+  const attempt = await beginAiResultAttempt(currentUser.uid, path, body, options);
+  const response = await attempt.request(() => apiClient(path, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
+      ...attempt.headers,
     },
-    body: JSON.stringify({ existingOutline, scratchNoteIds, ...(expectedSource ? { expectedSource } : {}) }),
+    body,
     category: 'ai',
-    timeout: SCRATCH_COMPOSE_TIMEOUT_MS,
-  });
+    timeout: SCRATCH_COMPOSE_REQUEST_TIMEOUT_MS,
+  }));
 
   let data: unknown = null;
   try {
@@ -64,12 +70,15 @@ export async function composePlanFromScratch(
     data = null;
   }
 
+  attempt.assertOwner();
   if (!response.ok) {
+    attempt.refused(response.status, data);
     const message =
       data && typeof data === 'object' && 'error' in data
         ? String((data as { error?: unknown }).error)
         : response.statusText;
-    throw withStatus(new Error(message || `Compose failed with status ${response.status}`), response.status);
+    const error = withStatus(new Error(message || `Compose failed with status ${response.status}`), response.status);
+    throw Object.assign(error, { code: aiResultErrorCode(data) });
   }
 
   const parsed = ComposePlanApiResponseSchema.safeParse(data);
@@ -86,6 +95,7 @@ export async function composePlanFromScratch(
   }
 
   return {
+    acknowledge: attempt.acknowledge,
     outline: parsed.data.outline,
     // Notes the model skipped. They ARE in the outline, each as its own point — but the
     // preacher deserves to know his thought was placed by fallback, not by judgement.

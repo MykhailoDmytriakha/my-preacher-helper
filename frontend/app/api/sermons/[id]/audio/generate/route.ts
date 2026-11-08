@@ -315,7 +315,7 @@ export async function POST(
         const sections: string | string[] = body.sections ?? 'all'; // 'all' | section key | array of keys
 
         const usageNow = new Date();
-        const entitlement = await getUserEntitlementServerSide(uid, { includeModelPreferences: true });
+        const entitlement = await getUserEntitlementServerSide(uid, { includeModelPreferences: true, reconcileTextReceipts: true });
         const resolvedTarget = await resolveUserTtsTarget(
             entitlement,
             entitlement.preferredTts,

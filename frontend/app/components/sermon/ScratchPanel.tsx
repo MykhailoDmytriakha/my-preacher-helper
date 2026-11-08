@@ -19,14 +19,17 @@ import AudioRecorderPortalBridge from "@/components/sermon/AudioRecorderPortalBr
 import ConfirmModal from "@/components/ui/ConfirmModal";
 import { showUndoNotice } from "@/components/ui/showUndoNotice";
 import { useAiUsage } from "@/hooks/useAiUsage";
+import { usePendingAiResultAttempt } from "@/hooks/usePendingAiResultAttempt";
 import { useTextDictation } from '@/hooks/useTextDictation';
 import { composePlanFromScratch } from "@/services/scratch.service";
 import { transcribeThoughtAudio } from "@/services/thought.service";
 import { refusalMessage, saidError, sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
+import { aiResultFailureKey, SCRATCH_COMPOSE_UI_TIMEOUT_MS } from '@/utils/aiResultOperation';
 import { ranOutOfTime } from "@/utils/aiTimeFailure";
 import { buildRecordingFilename, downloadBlobToDevice } from "@/utils/audioFormatUtils";
 import { isBrowserOffline, isKnownOffline } from '@/utils/connectivity';
 import { SECTION_KEYS, type SectionKey } from '@/utils/outlineDnd';
+import { scratchComposeRequest } from '@/utils/scratchComposeSource';
 import { outlinePointGridClass } from "@/utils/structureBoardLayout";
 import { getSectionLabel } from "@lib/sections";
 import { useTranslation } from "@locales/useTranslation";
@@ -72,7 +75,6 @@ interface ScratchPanelProps {
   isReadOnly?: boolean;
 }
 
-const COMPOSE_TIMEOUT_MS = 55_000;
 const APPLY_SETTLE_TIMEOUT_MS = 8_000;
 const SCRATCH_TOAST_OPTIONS = { position: "bottom-right" as const };
 /** Enough of the note to recognise which one is about to go, without a wall of text. */
@@ -226,9 +228,14 @@ export default function ScratchPanel({
   const placementCount = Object.keys(placements).length;
   const hasPlacements = placementCount > 0;
 
+  const pooledNoteIds = pooledNotes.map(note => note.id);
+  const { canRecover, recheck: recheckComposeRecovery } = usePendingAiResultAttempt(
+    aiBlocked, scratchComposeRequest(sermonId, currentOutline, pooledNoteIds),
+  );
+  const cannotStartCompose = aiBlocked && !canRecover;
   const canCompose =
     pooledNotes.length > 0 &&
-    !aiBlocked &&
+    !cannotStartCompose &&
     !isScratchWritePending &&
     !isComposing &&
     !isApplying &&
@@ -562,13 +569,15 @@ export default function ScratchPanel({
       setIsComposing(false);
       setComposeError({ key: "scratch.board.composeTimeout" });
       toast.error(t("scratch.board.composeTimeout"));
-    }, COMPOSE_TIMEOUT_MS);
+    }, SCRATCH_COMPOSE_UI_TIMEOUT_MS);
 
     try {
-      const { outline: outlineFromScratch, unplacedScratchNoteIds } = await composePlanFromScratch(
+      const { outline: outlineFromScratch, unplacedScratchNoteIds, acknowledge } = await composePlanFromScratch(
         sermonId,
         currentOutline,
-        pooledNotes.map((note) => note.id)
+        pooledNoteIds,
+        undefined,
+        { recoverOnly: aiBlocked },
       );
 
       if (!isLatestRequest()) {
@@ -581,6 +590,7 @@ export default function ScratchPanel({
       }
 
       setComposedOutline(outlineFromScratch);
+      acknowledge?.();
       setComposeNoticeKey(getComposeNoticeKey(outlineFromScratch));
       setComposeUnplacedCount(unplacedScratchNoteIds.length);
       setComposeError(null);
@@ -593,9 +603,11 @@ export default function ScratchPanel({
         (error instanceof Error &&
           (error.name === "FetchTimeoutError" || error.message.toLowerCase().includes("timed out")));
       const isOffline = isKnownOffline();
+      const recoveryKey = aiResultFailureKey(error);
       // Kept as words and said when shown (BUG-20261006-screen-error-kept-as-translated-sentence).
       const words: FailureWords = isOffline
         ? { key: "scratch.board.composeOffline" }
+        : recoveryKey ? { key: recoveryKey }
         : isTimeout
         ? { key: "scratch.board.composeTimeout" }
         : error instanceof Error && error.message
@@ -605,6 +617,7 @@ export default function ScratchPanel({
       toast.error(sayFailure(words, t));
     } finally {
       window.clearTimeout(timeoutId);
+      recheckComposeRecovery();
       if (isLatestRequest()) {
         setIsComposing(false);
       }
@@ -684,7 +697,7 @@ export default function ScratchPanel({
     }
   };
 
-  const composeDisabledKey = getComposeDisabledKey(isScratchWritePending, aiBlocked, pooledNotes.length);
+  const composeDisabledKey = getComposeDisabledKey(isScratchWritePending, cannotStartCompose, pooledNotes.length);
   const composeDisabledTitle = composeDisabledKey ? t(composeDisabledKey) : undefined;
 
   const hasApplicableOutlineChanges = Boolean(cleanProposedOutline) || hasPlacements;

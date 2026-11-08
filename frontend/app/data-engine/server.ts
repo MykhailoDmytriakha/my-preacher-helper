@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 
 import { FieldPath, Filter } from 'firebase-admin/firestore';
 
-import { adminDb } from '@/config/firebaseAdminConfig';
+import { adminDb, FieldValue } from '@/config/firebaseAdminConfig';
 import { aiModelDefaultsDocument } from '@/services/aiModelDefaults.server';
 import { storeRetryHeaders } from '@/services/storeAvailability.server';
 import { userEntitlementDocument } from '@/services/userEntitlement.server';
@@ -15,9 +15,11 @@ import { assembleChangePage, collectionHeadId, HEADS_COLLECTION, parseChangePoin
 import { planDataCommand } from './serverRelations';
 import { coversCommittedEffect } from './snapshotFreshness';
 
+
 import type { AudioExportKey, AudioExportRecord, AudioExportStore, AudioExportTransaction, AudioExportUsage } from './audioExportStore';
 import type { FeedWrite } from './serverFeed';
 import type { CollectionChanges, CollectionPage, CommandReceipt, CommandResult, DataCommand, DocumentData, EngineMetadata, Json, ResourceRef, ResourceSnapshot } from './types';
+import type { AiResultReceiptStore, ReceiptRecord } from '@/services/aiResultReceipt.server';
 import type { Firestore, Transaction } from 'firebase-admin/firestore';
 
 export const MAX_COMMAND_BYTES = 1024 * 1024;
@@ -639,4 +641,51 @@ function assertOperationalUsage(usage: AudioExportUsage): void {
         !Number.isFinite(usage[key as keyof AudioExportUsage]) || Number(usage[key as keyof AudioExportUsage]) < 0)) {
     throw new DataEngineServerError(INVALID_ARGUMENT, 400);
   }
+}
+
+
+/** Private operational receipts are not person-edit documents or feed entries. */
+export function createAiResultReceiptStore(uid: string, database: Firestore = adminDb): AiResultReceiptStore {
+  checkOwner(uid);
+  const user = database.collection('users').doc(uid);
+  const receipts = user.collection('aiResultReceipts');
+  const data = (snapshot: { data(): unknown }) => snapshot.data() as ReceiptRecord | undefined;
+
+  return {
+    read: async id => data(await receipts.doc(id).get()),
+    async create(id, record) {
+      const receipt = receipts.doc(id);
+      const { writeTime } = await receipt.create(record);
+      return async patch => { await receipt.update(patch, { lastUpdateTime: writeTime }); };
+    },
+    transaction: run => database.runTransaction(transaction => run({
+      read: async id => data(await transaction.get(receipts.doc(id))),
+      readReady: async limit => {
+        const result = await transaction.get(receipts.where('state', '==', 'ready').limit(limit));
+        return result.docs.map(doc => ({ id: doc.id, record: doc.data() as ReceiptRecord }));
+      },
+      readUsage: async () => (await transaction.get(user)).data()?.usage,
+      writeUsage: usage => {
+        assertOperationalUsage(usage);
+        transaction.set(user, { usage }, { merge: true });
+      },
+      writeReceipt: (id, patch) => { transaction.update(receipts.doc(id), patch); },
+    })),
+  };
+}
+
+function aiPromptTelemetryRecord(eventId: string) {
+  return adminDb.collection(process.env.AI_TELEMETRY_COLLECTION || 'ai_prompt_telemetry').doc(eventId);
+}
+
+export async function createAiPromptTelemetryRecord(eventId: string, fields: object, terminal = false): Promise<void> {
+  await aiPromptTelemetryRecord(eventId).create({
+    ...fields,
+    createdAt: FieldValue.serverTimestamp(),
+    ...(terminal ? { settledAtServer: FieldValue.serverTimestamp() } : {}),
+  });
+}
+
+export async function updateAiPromptTelemetryOutcome(eventId: string, fields: object): Promise<void> {
+  await aiPromptTelemetryRecord(eventId).update({ ...fields, settledAtServer: FieldValue.serverTimestamp() });
 }

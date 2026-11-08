@@ -21,16 +21,23 @@ import { withinDeadline } from "@/utils/withinDeadline";
 
 import { providerAdapters } from "./ai/providerAdapters";
 import { resolveStructuredTargets, type ModelTarget, type Workload } from "./ai/routing";
-import { emitStructuredTelemetryEvent, openStructuredTelemetryEvent, TokenUsage } from "./aiTelemetry";
+import {
+  buildStructuredTelemetryOpenRecord,
+  emitStructuredTelemetryEvent,
+  openStructuredTelemetryEvent,
+  type TokenUsage,
+} from "./aiTelemetry.server";
 import { logger, formatDuration } from "./openAIHelpers";
 import { buildSimplePromptBlueprint, PromptBlueprint } from "./promptBuilder";
 
 import type { ErrorDisposition } from "./ai/providerAdapters";
+import type { SettleParsedAiResult } from '@/services/recoverableAiResult.server';
 import type { UsageAdmission } from '@/services/usageLimits.server';
 import type OpenAI from "openai";
 
 const isDebugMode = process.env.DEBUG_MODE === 'true';
 const DEFAULT_STRUCTURED_WORKLOAD: Workload = 'structured.default';
+const MAX_TELEMETRY_SETTLEMENT_MARGIN_MS = 1_000;
 
 /**
  * Result type for structured output calls.
@@ -67,6 +74,8 @@ export interface StructuredOutputOptions {
   userId?: string;
   /** Request-scoped admission created by the owning route for a composite action. */
   usageAdmission?: UsageAdmission;
+  /** The owning operation records and settles a valid model response for recovery. */
+  settleParsedResult?: SettleParsedAiResult;
   /**
    * Per-request transport overrides. The SDK defaults are `maxRetries: 2` and a 10-minute
    * timeout — both longer than the 60s serverless wall, so a stalled provider takes the
@@ -308,14 +317,14 @@ export async function callWithStructuredOutput<T extends z.ZodType>(
   // Counted from here: reading the plan and the opening telemetry spend the same deadline as the models.
   const chainDeadline = ownChainDeadline(options.requestOptions);
   const chainAbort = abortAtDeadline(chainDeadline);
-  // Объявлено вне try: ветка ошибки обязана дописать ТУ ЖЕ карточку, а не создать
-  // вторую. Остаётся null, если падение случилось раньше отметки входа.
-  let telemetryEventId: string | null = null;
+  // Allocate the same record for opening and settlement before waiting on the store.
+  let telemetryOpening: ReturnType<typeof buildStructuredTelemetryOpenRecord> | null = null;
   let intendedTarget: ModelTarget | null = null;
+  let telemetryOpeningPending = false;
 
   try {
     let targets: [ModelTarget, ...ModelTarget[]] = [legacyTarget];
-    let consumeSuccessfulAiCall: (() => Promise<void>) | undefined;
+    let consumeSuccessfulAiCall = options.settleParsedResult;
     if (options.userId) {
       const [
         { getUserEntitlementServerSide },
@@ -328,13 +337,15 @@ export async function callWithStructuredOutput<T extends z.ZodType>(
       ]);
       const now = new Date();
       const userId = options.userId;
+      const alreadyAdmitted = isUsageAdmitted(options.usageAdmission, userId, 'ai');
       // The plan is often the request's first store read (analysing an unsaved note): bounded like
       // every first read, so an exhausted database answers "unavailable" in seconds instead of
       // holding the request to the wall (BUG-20261019-routes-hang-when-store-refuses).
       const entitlement = await withinChainDeadline(() => withStore(() => getUserEntitlementServerSide(userId, {
         includeTextPreference: true,
+        reconcileTextReceipts: !alreadyAdmitted,
       })), chainDeadline, 'while reading the plan');
-      if (!isUsageAdmitted(options.usageAdmission, options.userId, 'ai')) {
+      if (!alreadyAdmitted) {
         assertAiUsageAvailable(entitlement, now);
       }
       targets = await withinChainDeadline(() => resolveUserTextTargets(entitlement, {
@@ -342,23 +353,26 @@ export async function callWithStructuredOutput<T extends z.ZodType>(
         providerId: entitlement.preferredText?.providerId ?? entitlement.preferredProviderId,
         modelId: entitlement.preferredText?.modelId ?? entitlement.preferredModelId,
       }, now), chainDeadline, 'while choosing the models');
-      consumeSuccessfulAiCall = () => consumeAiUsage(options.userId as string, now);
+      consumeSuccessfulAiCall ??= () => consumeAiUsage(userId, now);
     }
 
-    // Турникет, отметка на ВХОДЕ: пишется до вызова модели, поэтому уцелеет,
-    // даже если функцию убьёт потолок maxDuration. Запись, оставшаяся в состоянии
-    // `started`, и есть тот вызов, который не вернулся. Ждём её намеренно —
-    // fire-and-forget не успел бы отправиться из умирающего процесса.
     intendedTarget = targets[0];
-    // Counted in the deadline but not cut by it: a raced opening that lands late would leave a record
-    // stuck at `started` beside the error one (BUG-20261006-ai-call-outlives-the-wall).
-    telemetryEventId = await openStructuredTelemetryEvent({
+    const opening = buildStructuredTelemetryOpenRecord({
       provider: intendedTarget.providerId.toUpperCase(),
       model: intendedTarget.modelId,
       formatName,
       promptBlueprint,
       logContext,
     });
+    telemetryOpening = opening;
+    telemetryOpeningPending = true;
+    // Leave time inside the same deadline to record a timed-out opening.
+    const openingDeadline = chainDeadline === null ? null : chainDeadline - Math.min(
+      MAX_TELEMETRY_SETTLEMENT_MARGIN_MS,
+      Math.max(0, (chainDeadline - performance.now()) / 4),
+    );
+    await withinChainDeadline(() => openStructuredTelemetryEvent(opening), openingDeadline, 'while opening telemetry');
+    telemetryOpeningPending = false;
 
     const completion = await runWithFallback(
       targets,
@@ -419,13 +433,13 @@ export async function callWithStructuredOutput<T extends z.ZodType>(
       logger.warn(operationName, `Model refused to respond after ${formattedDuration}`, {
         refusal: message.refusal
       });
-      emitStructuredTelemetryEvent({
+      void emitStructuredTelemetryEvent({
         provider,
         model,
         formatName,
         promptBlueprint,
         logContext,
-        eventId: telemetryEventId,
+        opening: telemetryOpening,
         latencyMs: durationMs,
         status: "refusal",
         refusal: message.refusal,
@@ -446,13 +460,13 @@ export async function callWithStructuredOutput<T extends z.ZodType>(
 
     if (!parsed) {
       logger.error(operationName, `No parsed data in response after ${formattedDuration}`);
-      emitStructuredTelemetryEvent({
+      void emitStructuredTelemetryEvent({
         provider,
         model,
         formatName,
         promptBlueprint,
         logContext,
-        eventId: telemetryEventId,
+        opening: telemetryOpening,
         latencyMs: durationMs,
         status: "invalid_response",
         rawMessage: message?.content || null,
@@ -468,20 +482,20 @@ export async function callWithStructuredOutput<T extends z.ZodType>(
       };
     }
 
-    await consumeSuccessfulAiCall?.();
+    await consumeSuccessfulAiCall?.(parsed);
 
     logger.success(operationName, `Completed in ${formattedDuration}`);
 
     if (isDebugMode) {
       logger.debug(operationName, "Parsed response", parsed);
     }
-    emitStructuredTelemetryEvent({
+    void emitStructuredTelemetryEvent({
       provider,
       model,
       formatName,
       promptBlueprint,
       logContext,
-      eventId: telemetryEventId,
+      opening: telemetryOpening,
       latencyMs: durationMs,
       status: "success",
       parsedOutput: parsed,
@@ -511,17 +525,22 @@ export async function callWithStructuredOutput<T extends z.ZodType>(
     // перестало бы отличаться от «упал с ответом».
     const failedTarget = executionState.target ?? intendedTarget;
     if (failedTarget) {
-      emitStructuredTelemetryEvent({
+      const settlement = emitStructuredTelemetryEvent({
         provider: failedTarget.providerId.toUpperCase(),
         model: failedTarget.modelId,
         formatName,
         promptBlueprint,
         logContext,
-        eventId: telemetryEventId,
+        opening: telemetryOpening,
         latencyMs: durationMs,
         status: "error",
         errorMessage: error instanceof Error ? error.message : String(error),
       });
+      if (telemetryOpeningPending) {
+        // A late entry can be visible even though no provider started. Wait for its
+        // terminal stamp only as long as the existing deadline allows.
+        await withinChainDeadline(() => settlement, chainDeadline, 'while settling telemetry').catch(() => undefined);
+      }
     }
 
     return {

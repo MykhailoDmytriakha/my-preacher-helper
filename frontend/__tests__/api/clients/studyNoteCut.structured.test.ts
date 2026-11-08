@@ -117,6 +117,29 @@ describe('cutStudyNoteIntoScratch', () => {
     expect(result.timedOut).toBe(true);
   });
 
+  it('spends the time opening the receipt inside the original model budget', async () => {
+    let clock = 0;
+    const date = jest.spyOn(Date, 'now').mockImplementation(() => clock);
+    try {
+      mockCall.mockResolvedValue({ data: { keyPassage: '', sections: [] } });
+      const result = await cutStudyNoteIntoScratch({
+        content: NOTE,
+        budgetMs: 50_000,
+        recovery: {
+          operationId: 'cut-test-operation',
+          async run(_parse, generate) {
+            clock = 51_000;
+            return generate(async () => undefined);
+          },
+        },
+      });
+      expect(mockCall).not.toHaveBeenCalled();
+      expect(result).toMatchObject({ success: false, timedOut: true });
+    } finally {
+      date.mockRestore();
+    }
+  });
+
   it('checks the budget again after the pause, when the pause ran late', async () => {
     let clock = 0;
     const realNow = Date.now;

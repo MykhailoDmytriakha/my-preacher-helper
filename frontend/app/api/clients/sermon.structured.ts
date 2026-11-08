@@ -48,6 +48,7 @@ import { buildPromptBlueprint, buildSimplePromptBlueprint } from "./promptBuilde
 import { callWithStructuredOutput } from "./structuredOutput";
 
 import type { PlanContext, PlanStyle } from "./planTypes";
+import type { AiResultRecovery, SettleParsedAiResult } from "@/services/recoverableAiResult.server";
 
 const isDebugMode = process.env.DEBUG_MODE === 'true';
 type ComposeSectionKey = 'introduction' | 'main' | 'conclusion';
@@ -445,12 +446,9 @@ function compactScratchText(text: string) {
     return compacted || text.trim();
 }
 
-function composePointId() {
-    return `op-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
-}
-
-function composeSubPointId() {
-    return `sp-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+function composeItemId(kind: 'op' | 'sp', operationId: string | undefined, index: number) {
+    const suffix = operationId ? `${operationId}-${index}` : `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+    return `${kind}-${suffix}`;
 }
 
 function cloneSubPoint(subPoint: SubPoint) {
@@ -514,6 +512,7 @@ function addScratchAsSubPoint(
     outline: ComposedPlanOutline,
     targetPointId: string,
     scratchNote: ScratchNote,
+    id: string,
     headingText: string
 ) {
     for (const section of COMPOSE_SECTION_KEYS) {
@@ -525,7 +524,7 @@ function addScratchAsSubPoint(
                 subPoints: [
                     ...existingSubPoints,
                     {
-                        id: composeSubPointId(),
+                        id,
                         scratchNoteId: scratchNote.id,
                         text: compactScratchText(headingText || scratchNote.text),
                         // The preacher's raw phrase comes from OUR copy of the note, never
@@ -545,10 +544,11 @@ function addScratchAsNewPoint(
     outline: ComposedPlanOutline,
     section: ComposeSectionKey,
     scratchNote: ScratchNote,
+    id: string,
     headingText?: string
 ) {
     outline[section].push({
-        id: composePointId(),
+        id,
         scratchNoteId: scratchNote.id,
         text: compactScratchText(headingText || scratchNote.text),
         note: scratchNote.text,
@@ -577,13 +577,16 @@ function normalizeKeyedComposePlan(
     response: ComposePlanResponse,
     orderedScratch: ScratchNote[],
     existingEntries: Array<{ section: ComposeSectionKey; point: OutlinePoint }>,
-    existingOutline?: SermonOutline
+    existingOutline?: SermonOutline,
+    operationId?: string,
 ): KeyedComposeResult {
     const scratchByKey = new Map(orderedScratch.map((note, index) => [scratchNoteKey(index), note]));
     const pointIdByKey = new Map(existingEntries.map(({ point }, index) => [outlinePointKey(index), point.id]));
     const consumedScratchIds = new Set<string>();
     const unknownNoteKeys: string[] = [];
     const normalized = normalizeExistingOutline(existingOutline);
+    let nextIndex = 0;
+    const nextId = (kind: 'op' | 'sp') => composeItemId(kind, operationId, nextIndex++);
 
     response.placements.forEach((placement) => {
         const scratchNote = scratchByKey.get(placement.noteKey);
@@ -602,12 +605,13 @@ function normalizeKeyedComposePlan(
         const targetLocation = targetPointId ? findPointLocation(normalized, targetPointId) : null;
 
         if (targetLocation && (!forcedSection || forcedSection === targetLocation.section)) {
-            addScratchAsSubPoint(normalized, targetLocation.point.id, scratchNote, placement.text);
+            addScratchAsSubPoint(normalized, targetLocation.point.id, scratchNote, nextId('sp'), placement.text);
         } else {
             addScratchAsNewPoint(
                 normalized,
                 forcedSection ?? targetLocation?.section ?? placement.section,
                 scratchNote,
+                nextId('op'),
                 placement.text
             );
         }
@@ -620,7 +624,7 @@ function normalizeKeyedComposePlan(
     orderedScratch.forEach((scratchNote) => {
         if (consumedScratchIds.has(scratchNote.id)) return;
         unplacedScratchNoteIds.push(scratchNote.id);
-        addScratchAsNewPoint(normalized, scratchNote.section ?? inferSectionFromCue(scratchNote.text), scratchNote);
+        addScratchAsNewPoint(normalized, scratchNote.section ?? inferSectionFromCue(scratchNote.text), scratchNote, nextId('op'));
     });
 
     return { outline: normalized, unplacedScratchNoteIds, unknownNoteKeys };
@@ -639,7 +643,8 @@ export async function composePlanFromScratchStructured(
      * The route's deadline on the `performance.now()` clock: the model gets what is LEFT of it, not
      * a fresh 45 s after the route has already spent time reading (BUG-20261006-ai-call-outlives-the-wall).
      */
-    deadline: number = performance.now() + COMPOSE_PLAN_DEADLINE_MS
+    deadline: number = performance.now() + COMPOSE_PLAN_DEADLINE_MS,
+    recovery?: AiResultRecovery,
 ): Promise<{ outline: ComposedPlanOutline; success: boolean; unplacedScratchNoteIds: string[]; timedOut?: boolean }> {
     const scratch = sermon.scratch ?? [];
     const outlineToAugment = existingOutline ?? sermon.outline;
@@ -724,13 +729,14 @@ Arrange every note. Return keys and headings only.`;
         ],
     });
 
-    const result = await callWithStructuredOutput(
+    const generate = (settleParsedResult?: SettleParsedAiResult) => callWithStructuredOutput(
         promptBlueprint.systemPrompt,
         promptBlueprint.userMessage,
         ComposePlanResponseSchema,
         {
             formatName: "compose_plan_from_scratch",
             userId,
+            ...(settleParsedResult ? { settleParsedResult } : {}),
             promptBlueprint,
             // Our own deadline sits UNDER the 60s Vercel wall, and the SDK is told not to
             // retry silently (its default is 2 hidden retries with a 10-minute timeout).
@@ -748,6 +754,10 @@ Arrange every note. Return keys and headings only.`;
         }
     );
 
+    const result = recovery
+        ? await recovery.run(value => ComposePlanResponseSchema.parse(value), generate)
+        : await generate();
+
     if (!result.success || !result.data) {
         console.error("ERROR: Failed to compose plan from scratch:", result.error || result.refusal);
         // Our own deadline is what fired: the route says so with a 504, and the screen can say
@@ -760,7 +770,8 @@ Arrange every note. Return keys and headings only.`;
         result.data,
         orderedScratch,
         existingEntries,
-        outlineToAugment
+        outlineToAugment,
+        recovery?.operationId,
     );
 
     // Both are reported, never fatal: an invented key costs only itself, and a skipped note

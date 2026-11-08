@@ -1,6 +1,7 @@
 import { providerIds } from '@/api/clients/ai/providerId';
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { TIER_VALUES } from '@/models/models';
+import { withStore } from '@/services/storeAvailability.server';
 
 import type { ProviderId } from '@/api/clients/ai/providerId';
 import type { Tier, UserEntitlement, UserSettings } from '@/models/models';
@@ -148,18 +149,27 @@ export function resolveEffectiveTier(
 export function getUserEntitlementServerSide(uid: string): Promise<UserEntitlement>;
 export function getUserEntitlementServerSide(
   uid: string,
-  options: { includeTextPreference: true }
+  options: { includeTextPreference: true; reconcileTextReceipts?: boolean }
 ): Promise<UserEntitlementWithTextPreference>;
 export function getUserEntitlementServerSide(
   uid: string,
-  options: { includeModelPreferences: true }
+  options: { includeModelPreferences: true; reconcileTextReceipts?: boolean }
 ): Promise<UserEntitlementWithModelPreferences>;
+export function getUserEntitlementServerSide(
+  uid: string,
+  options: { reconcileTextReceipts: true }
+): Promise<UserEntitlement>;
 export async function getUserEntitlementServerSide(
   uid: string,
-  options?: { includeTextPreference?: boolean; includeModelPreferences?: boolean }
+  options?: { includeTextPreference?: boolean; includeModelPreferences?: boolean; reconcileTextReceipts?: boolean }
 ): Promise<UserEntitlementWithModelPreferences> {
   const now = new Date();
-  const snapshot = await userEntitlementDocument(uid).get();
+  const document = userEntitlementDocument(uid);
+  if (options?.reconcileTextReceipts) {
+    const { reconcileReadyAiResultReceipts } = await import('@/data-engine/aiOperations.server');
+    await withStore(() => reconcileReadyAiResultReceipts(uid, now), { write: true });
+  }
+  const snapshot = await document.get();
   const data = snapshot.exists ? snapshot.data() : undefined;
   return options?.includeTextPreference || options?.includeModelPreferences
     ? normalizeEntitlementWithModelPreferences(data, now)

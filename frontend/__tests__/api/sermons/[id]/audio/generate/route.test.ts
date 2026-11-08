@@ -594,7 +594,7 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
     expect(audioChunkEvents.length).toBeGreaterThan(10);
     expect(events.some(event => String(event.status || '').includes('Downloading audio...'))).toBe(true);
 
-    expect(getUserEntitlementServerSide).toHaveBeenCalledWith('user-1', { includeModelPreferences: true });
+    expect(getUserEntitlementServerSide).toHaveBeenCalledWith('user-1', { includeModelPreferences: true, reconcileTextReceipts: true });
     expect(resolveUserTtsTarget).toHaveBeenCalledWith(
       { paidTier: 'tier2' },
       undefined,

@@ -152,6 +152,35 @@ describe('DataEngine SDK boundary', () => {
     expect(source.statements.some(node => ts.isImportDeclaration(node) && !node.importClause && node.moduleSpecifier.getText(source) === "'server-only'")).toBe(true);
   });
 
+  it('keeps AI storage operations available to server workflows only', () => {
+    const facade = 'data-engine/aiOperations.server.ts';
+    const server = 'services/__aiWorkflow.server.ts';
+    const client = 'components/__aiWorkflow.tsx';
+    const sources = {
+      [path.join(root, facade)]: `import 'server-only'; export function settleAiPromptTelemetry() {}`,
+      [path.join(root, server)]: `import { settleAiPromptTelemetry } from '@/data-engine/aiOperations.server'; void settleAiPromptTelemetry();`,
+      [path.join(root, client)]: `import { settleAiPromptTelemetry } from '@/data-engine/aiOperations.server'; void settleAiPromptTelemetry();`,
+    };
+    const options: ts.CompilerOptions = {
+      module: ts.ModuleKind.CommonJS, moduleResolution: ts.ModuleResolutionKind.NodeJs,
+      target: ts.ScriptTarget.ES2022, skipLibCheck: true, baseUrl: frontend, paths: { '@/*': ['app/*'] },
+    };
+    const accesses = runtimeAccesses(virtualProgram(sources, options), Object.keys(sources), root);
+    expect(accesses.some(item => item.file === server)).toBe(false);
+    expect(accesses).toEqual(expect.arrayContaining([
+      expect.objectContaining({ file: client, capability: 'engine-internal:data-engine/aiOperations.server.ts' }),
+    ]));
+
+    const actual = fs.readFileSync(path.join(root, facade), 'utf8');
+    const facadeSource = ts.createSourceFile(facade, actual, ts.ScriptTarget.ES2022, true);
+    expect(actual).toContain("import 'server-only';");
+    expect(facadeSource.statements.some(ts.isExportDeclaration)).toBe(false);
+    const publicNames = facadeSource.statements.filter(ts.isFunctionDeclaration)
+      .filter(node => node.modifiers?.some(modifier => modifier.kind === ts.SyntaxKind.ExportKeyword))
+      .map(node => node.name?.text).sort();
+    expect(publicNames).toEqual(['aiResultReceipt', 'createAiPromptTelemetry', 'reconcileReadyAiResultReceipts', 'settleAiPromptTelemetry']);
+  }, 30_000);
+
   it('limits the semantic server operation facade to route entry points and blocks API client wrappers', () => {
     const sources = {
       [path.join(root, 'data-engine/serverOperations.server.ts')]: `import 'server-only'; export const beginAudioExportBatch = () => undefined; export { adminDb as hiddenDatabase } from '@/config/firebaseAdminConfig'; export { createAudioExportStore as hiddenStore } from '@/data-engine/server';`,

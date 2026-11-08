@@ -60,14 +60,14 @@ function manualPlace() {
   fireEvent.change(screen.getByRole('combobox', { name: 'scratch.card.placeInto: Source note' }), { target: { value: JSON.stringify({ pointId: 'main' }) } });
 }
 async function generate() {
-  jest.mocked(composePlanFromScratch).mockResolvedValue({ outline: proposed, unplacedScratchNoteIds: [] });
+  jest.mocked(composePlanFromScratch).mockResolvedValue({ outline: proposed, unplacedScratchNoteIds: [], acknowledge: jest.fn() });
   fireEvent.click(screen.getByRole('button', { name: 'scratch.board.compose' })); await ready('Generated heading'); await settle();
 }
 it('pins generator input and keeps its outline and consumed notes staged until Apply', async () => {
   const { harness, view } = setup(); await ready(); await generate();
   expect(composePlanFromScratch).toHaveBeenCalledWith('sermon', original.value!.outline, ['note'], {
     title: 'Sermon', verse: 'Romans 1', scratch: [{ id: 'note', text: 'Source note', createdAt: '2026-09-22', section: null }],
-  });
+  }, { recoverOnly: false });
   expect(harness.transport.send).not.toHaveBeenCalled();
   expect(screen.getByTestId('projection')).not.toHaveTextContent('Generated heading');
   expect(screen.getByTestId('projection')).toHaveTextContent('Source note');
@@ -120,7 +120,7 @@ it('does not stage a late AI response after closing the form', async () => {
   fireEvent.click(screen.getByRole('button', { name: 'scratch.board.compose' }));
   await waitFor(() => expect(composePlanFromScratch).toHaveBeenCalled());
   fireEvent.click(screen.getByRole('button', { name: 'common.close' }));
-  await act(async () => { resolve({ outline: proposed, unplacedScratchNoteIds: [] }); await settleEngine(); });
+  await act(async () => { resolve({ outline: proposed, unplacedScratchNoteIds: [], acknowledge: jest.fn() }); await settleEngine(); });
   view.unmount(); const restored = render(<Workspace />); await ready(); await settle();
   expect(screen.queryByDisplayValue('Generated heading')).not.toBeInTheDocument();
   expect(screen.queryByRole('option', { name: 'Sermon' })).not.toBeInTheDocument();

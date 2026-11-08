@@ -5,9 +5,10 @@ import { useState } from 'react';
 import OutlineBoard from '@/components/plan-editor/OutlineBoard';
 import Select from '@/components/ui/Select';
 import { useAiUsage } from '@/hooks/useAiUsage';
+import { usePendingAiResultAttempt } from '@/hooks/usePendingAiResultAttempt';
 import { composePlanFromScratch } from '@/services/scratch.service';
 import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
-import { scratchComposeSource } from '@/utils/scratchComposeSource';
+import { scratchComposeRequest, scratchComposeSource } from '@/utils/scratchComposeSource';
 import { replaceSermonOutline } from '@/utils/sermonThoughtEdits';
 import { useTranslation } from '@locales/useTranslation';
 
@@ -31,6 +32,9 @@ export function ScratchProposalBoard({ sermonId, sermon, form, readOnly, valid, 
   // What the proposal left out, said when shown so a language switch re-says it.
   const [notice, setNotice] = useState<{ unplaced: number } | null>(null);
   const notes = sermon.scratch ?? [];
+  const { canRecover, recheck: recheckComposeRecovery } = usePendingAiResultAttempt(aiBlocked,
+    scratchComposeRequest(sermonId, sermon.outline, notes.map(note => note.id), scratchComposeSource(sermon)));
+  const cannotStartCompose = aiBlocked && !canRecover;
   const targets = sections.flatMap(section => (sermon.outline?.[section] ?? []).flatMap(point => [
     { label: point.text, value: JSON.stringify({ pointId: point.id }) },
     ...(point.subPoints ?? []).map(sub => ({ label: `${point.text} / ${sub.text}`, value: JSON.stringify({ pointId: point.id, subPointId: sub.id }) })),
@@ -46,22 +50,26 @@ export function ScratchProposalBoard({ sermonId, sermon, form, readOnly, valid, 
     }).catch(() => undefined);
   };
   const compose = async () => {
-    if (readOnly || !valid || !form.durable || aiBlocked || !notes.length) return;
+    if (readOnly || !valid || !form.durable || cannotStartCompose || !notes.length) return;
     setNotice(null);
     try {
       let unplaced = 0;
+      let acknowledge: (() => void) | undefined;
       await form.propose(async current => {
         const source = current as unknown as Sermon;
         const result = await composePlanFromScratch(sermonId, source.outline,
-          (source.scratch ?? []).map(note => note.id), scratchComposeSource(source));
+          (source.scratch ?? []).map(note => note.id), scratchComposeSource(source), { recoverOnly: aiBlocked });
+        acknowledge = result.acknowledge;
         unplaced = result.unplacedScratchNoteIds.length;
         const consumed = collectComposedScratchNoteIds(result.outline);
         return json({ ...replaceSermonOutline(source, stripScratchMetadata(result.outline)),
           scratch: (source.scratch ?? []).filter(note => !consumed.has(note.id)) });
       });
+      acknowledge?.();
       setNotice({ unplaced });
       void refresh().catch(() => undefined);
     } catch { /* The engine retains the prior stage and exposes the failure. */ }
+    finally { recheckComposeRecovery(); }
   };
   return <div className="space-y-4">
     <p className="text-sm text-gray-600 dark:text-gray-300">{t('scratch.board.proposalHelp')}</p>
@@ -73,7 +81,7 @@ export function ScratchProposalBoard({ sermonId, sermon, form, readOnly, valid, 
       scratch={{ pool: notes, notesById: new Map(notes.map(note => [note.id, note])), placements: {}, onPlace: place,
         onMove: (id, target) => place(id, target), poolEmptyLabel: t('scratch.board.poolEmpty'),
         poolHeader: <button type="button" onClick={() => { void compose(); }}
-          disabled={readOnly || !valid || !form.durable || aiBlocked || !notes.length}
+          disabled={readOnly || !valid || !form.durable || cannotStartCompose || !notes.length}
           className="rounded-lg bg-violet-600 px-3 py-2 text-sm text-white disabled:opacity-50">{t('scratch.board.compose')}</button>,
         renderNote: (note, handle, options) => <div className="space-y-2 rounded-lg border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-800">
           <span {...handle} className="cursor-grab text-sm" aria-label={t('common.dragToReorder')}>⠿</span>

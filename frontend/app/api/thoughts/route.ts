@@ -263,7 +263,7 @@ async function handleAutoPost(request: Request, uid: string) {
       import('@/services/usageLimits.server'),
     ]);
     const usageNow = new Date();
-    const entitlement = await getUserEntitlementServerSide(uid);
+    const entitlement = await getUserEntitlementServerSide(uid, { reconcileTextReceipts: true });
     const usageAdmission = createUsageAdmission(
       uid,
       entitlement,

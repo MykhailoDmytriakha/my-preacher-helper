@@ -4,8 +4,10 @@ import { getClientDb } from '@/config/firebaseClientDb';
 import { ScratchNote, StudyNote } from '@/models/models';
 import { readOwnerList } from '@/services/ownerListRead.client';
 import { parseUsageCapError, type UsageCapReachedError } from '@/services/usageLimits';
+import { aiResultErrorCode, beginAiResultAttempt } from '@/utils/aiResultAttempt.client';
 import { apiClient } from '@/utils/apiClient';
 import { getAuthenticatedRequestHeaders } from '@/utils/authenticatedRequest';
+import { resolveOwnerUid } from '@/utils/queryKeys';
 import { verseEndChapter } from '@/utils/scriptureReferenceNumbering';
 import { isStudyNoteDraft } from '@/utils/studyNoteDraft';
 
@@ -104,6 +106,7 @@ export async function getStudyNotes(userId: string, filters: NoteFilters = {}): 
 }
 
 export interface CutStudyNoteResponse {
+  acknowledge: () => void;
   noteId: string;
   keyPassage: string;
   sections: Array<{ heading: string; count: number }>;
@@ -168,7 +171,7 @@ export class CutStudyNoteError extends Error {
   readonly status: number;
   readonly usageCap: UsageCapReachedError | null;
 
-  constructor(message: string, status: number, usageCap: UsageCapReachedError | null = null) {
+  constructor(message: string, status: number, usageCap: UsageCapReachedError | null = null, readonly code?: string) {
     super(message);
     this.name = 'CutStudyNoteError';
     this.status = status;
@@ -179,33 +182,39 @@ export class CutStudyNoteError extends Error {
 /**
  * Cut a saved study note into atomic scratch notes. Server-side and online-only: the
  * model reads the STORED note, so unsaved edits in the editor are not part of the cut.
- * Nothing is written by this call; the caller puts the atoms where they belong.
+ * The caller puts the atoms where they belong after the server accounts for the AI call.
  */
 export async function cutStudyNoteIntoScratch(
   noteId: string,
   slice?: { offset: number; limit: number }
 ): Promise<CutStudyNoteResponse> {
-  const authHeaders = await getAuthenticatedRequestHeaders();
-  const response = await apiClient(`/api/studies/notes/${noteId}/cut`, {
+  const ownerId = resolveOwnerUid();
+  const authHeaders = await getAuthenticatedRequestHeaders(ownerId ?? null);
+  const path = `/api/studies/notes/${noteId}/cut`;
+  // No slice means the whole note, which is what a short note gets anyway.
+  const requestBody = JSON.stringify(slice ?? {});
+  const attempt = await beginAiResultAttempt(ownerId, path, requestBody);
+  const response = await attempt.request(() => apiClient(path, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...authHeaders },
+    headers: { 'Content-Type': 'application/json', ...authHeaders, ...attempt.headers },
     category: 'ai',
-    // No slice means the whole note, which is what a short note gets anyway.
-    body: JSON.stringify(slice ?? {}),
-  });
+    body: requestBody,
+  }));
   let payload: unknown = null;
   try {
     payload = await response.json();
   } catch {
     payload = null;
   }
+  attempt.assertOwner();
   if (!response.ok) {
+    attempt.refused(response.status, payload);
     const usageCap = response.status === 429 ? parseUsageCapError(payload) : null;
     const message =
       payload && typeof payload === 'object' && typeof (payload as { error?: unknown }).error === 'string'
         ? (payload as { error: string }).error
         : `Failed to cut the study note (${response.status})`;
-    throw new CutStudyNoteError(message, response.status, usageCap);
+    throw new CutStudyNoteError(message, response.status, usageCap, aiResultErrorCode(payload));
   }
   const body = payload as Partial<CutStudyNoteResponse> | null;
   if (!body || !Array.isArray(body.notes)) {
@@ -227,6 +236,7 @@ export async function cutStudyNoteIntoScratch(
     throw new CutStudyNoteError('The cut answered without usable scratch notes', 422);
   }
   return {
+    acknowledge: attempt.acknowledge,
     noteId: typeof body.noteId === 'string' && body.noteId ? body.noteId : noteId,
     keyPassage: typeof body.keyPassage === 'string' ? body.keyPassage : '',
     sections: Array.isArray(body.sections) ? body.sections : [],

@@ -1,3 +1,4 @@
+import { aiResultFailureKey } from '@/utils/aiResultOperation';
 import { ranOutOfTime } from '@/utils/aiTimeFailure';
 import { failureCode, isTechnicalFailure, TECHNICAL_FAILURE } from '@/utils/failureCode';
 
@@ -100,6 +101,8 @@ function classifiedFailureWords(error: unknown, fallbackKey: string, read: boole
   const said = SAID.has(code) ? sayOf(error) : null;
   if (said) return said;
   if (error instanceof Error && SAID.has(code) && error.message) return { said: error.message };
+  const recoveryKey = aiResultFailureKey(error);
+  if (recoveryKey) return { key: recoveryKey };
   // An AI call cut by the 60 s ceiling or the client's clock (`ranOutOfTime`): "HTTP 504" is not words.
   if (ranOutOfTime(error)) return { key: 'errors.aiOutOfTime' };
   const known = KNOWN.get(code);
@@ -122,7 +125,7 @@ export function refusalWords(error: unknown, fallbackKey: string): FailureWords 
     if (isTechnicalFailure(error)) logFailureOnce(error);
     return { key: fallbackKey };
   }
-  if (error instanceof Error && error.message && !SAID.has(code) && !KNOWN.has(code) && !ranOutOfTime(error)) return { said: error.message };
+  if (error instanceof Error && error.message && !SAID.has(code) && !KNOWN.has(code) && !aiResultFailureKey(error) && !ranOutOfTime(error)) return { said: error.message };
   return classifiedFailureWords(error, fallbackKey, false);
 }
 
