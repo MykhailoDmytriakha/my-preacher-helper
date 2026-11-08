@@ -1,0 +1,56 @@
+# The whole Jest suite, on every push to main and every pull request (case 2026-09-29-github-actions-test-gate).
+#
+# The suite is cut into four parts, each on its own runner (a public repository's runners are free: 4 vCPU,
+# 16 GB), and one closing job, «Tests», says whether all four passed. That job is the check Vercel's
+# Deployment Checks wait for before a production build goes onto the domain, so a red test keeps the site on
+# the version before it, as when the suite ran inside the Vercel build.
+#
+# No cancelling of an older run by a newer push: a run cancelled for a docs-only commit (which Vercel does not
+# build) would leave the code commit before it waiting for its check for good, and the site behind.
+#
+# Environment: the tests read no secrets. Locally next/jest loads .env.local, on Vercel the project's
+# variables; here there are none, and frontend/jest.setup.js clears the switches that change a code path.
+
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  jest:
+    name: Jest ${{ matrix.shard }}/4
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          # The Node the Vercel build runs on.
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      # The same run as the Vercel build's test:build, one quarter of the suites per runner.
+      - run: npx cross-env NODE_ENV=test JEST_SHOW_LOGS=false jest --ci --passWithNoTests --maxWorkers=3 --shard=${{ matrix.shard }}/4 --reporters=./scripts/failure-only-jest-reporter.js --reporters=summary
+
+  tests:
+    name: Tests
+    needs: jest
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: All four parts passed
+        run: test "${{ needs.jest.result }}" = "success"
