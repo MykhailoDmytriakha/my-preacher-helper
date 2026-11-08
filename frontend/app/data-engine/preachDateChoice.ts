@@ -31,9 +31,15 @@ function clearedPreachDays(basis: ResourceSnapshot, draft: DocumentData | null):
   }));
 }
 
-export function hasClearedPreachDay(basis: ResourceSnapshot, draft: DocumentData | null): boolean {
-  return clearedPreachDays(basis, draft).size > 0;
+function datedRows(value: Json | undefined): Map<string, DocumentData> {
+  const rows = new Map<string, DocumentData>();
+  if (Array.isArray(value)) {
+    for (const item of value) if (object(item) && typeof item.id === 'string') rows.set(item.id, item);
+  }
+  return rows;
 }
+
+const retainedEdits = () => Object.assign(new Error('The preaching date changed and has edits to recover'), { code: 'preach-date-edits-retained' });
 
 /** A status edit or day clear cannot recreate a row deleted on the other device. */
 export function chooseLocalPreachDateEdits(basis: ResourceSnapshot, draft: DocumentData | null, stored: ResourceSnapshot,
@@ -41,16 +47,23 @@ export function chooseLocalPreachDateEdits(basis: ResourceSnapshot, draft: Docum
   if (!basis.value || !draft || !stored.value || basis.resource.collection !== 'sermons') return undefined;
   const clears = clearedPreachDays(basis, draft);
   const statuses = new Map((actions ?? []).map(action => [action.rowId, action.rowCreatedAt]));
-  if (!clears.size && !statuses.size) return undefined;
   const accepted = stored.value;
-  const births = existingRowFields(accepted.preachDates, PREACH_ROW_BIRTH);
   const sameGeneration = stored.metadata?.generation === basis.metadata?.generation;
+  const previousRows = datedRows(basis.value.preachDates);
+  const storedRows = datedRows(accepted.preachDates);
+  for (const [id, local] of datedRows(draft.preachDates)) {
+    const previous = previousRows.get(id), current = storedRows.get(id);
+    if (previous && local.createdAt === previous.createdAt && !equalValues(local.notes, previous.notes)
+      && (!sameGeneration || !current || current.createdAt !== previous.createdAt)) throw retainedEdits();
+  }
+  if (!clears.size && !statuses.size) return undefined;
+  const births = existingRowFields(accepted.preachDates, PREACH_ROW_BIRTH);
   const stale = new Set([...clears, ...statuses].filter(([id, birth]) => !sameGeneration || births.get(id) !== birth).map(([id]) => id));
   for (const id of stale) {
     const authored = rowDetails(draft.preachDates, id, statuses.has(id), clears.has(id));
     if (authored && !equalValues(authored, rowDetails(basis.value.preachDates, id, statuses.has(id), clears.has(id)))) {
       // Throw before retiring the request so the person's other edits stay recoverable.
-      throw Object.assign(new Error('The preaching date changed and has edits to recover'), { code: 'preach-date-edits-retained' });
+      throw retainedEdits();
     }
   }
   const dropStale = (document: DocumentData): DocumentData => Array.isArray(document.preachDates) && stale.size

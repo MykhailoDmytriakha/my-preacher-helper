@@ -29,6 +29,7 @@ export interface SaveConflictBannerProps {
   pendingText?: string;
   /** Context-specific words when the compared versions are already visible. */
   description?: string;
+  keepMineLabel?: string;
   takeTheirsLabel?: string;
   /**
    * Save it anyway, on top of the newer version. The caller must re-state the
@@ -49,7 +50,7 @@ export interface SaveConflictBannerProps {
 export function SaveConflictBanner({
   entityKey = 'entityRecord',
   pendingText,
-  description, takeTheirsLabel,
+  description, keepMineLabel, takeTheirsLabel,
   onKeepMine,
   onTakeTheirs,
   busy = false,
@@ -73,14 +74,14 @@ export function SaveConflictBanner({
             {description ?? t('freshness.conflictDescription', { entity })}
           </p>
         </div>
-        <div className="flex shrink-0 gap-2">
+        <div className="flex flex-wrap gap-2">
           <button
             type="button"
             onClick={onKeepMine}
             disabled={busy}
             className="rounded-lg bg-rose-600 px-3 py-1.5 font-medium text-white transition-colors hover:bg-rose-700 disabled:opacity-60"
           >
-            {t('freshness.conflictKeepMine')}
+            {keepMineLabel ?? t('freshness.conflictKeepMine')}
           </button>
           <button
             type="button"

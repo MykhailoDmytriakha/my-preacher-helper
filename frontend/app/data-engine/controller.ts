@@ -18,6 +18,7 @@ import { chooseLocalPreachDateEdits } from './preachDateChoice';
 import { confirmedExistingDeletion, equalValues, mergeDocumentFields, mergeFields } from './protocol';
 import { isRecoverableCheckpoint } from './recovery.client';
 import { recoveryChoiceFingerprint } from './recoveryChoice';
+import { keepUncontestedSermonFields } from './sermonFieldChoice';
 import { DataSession, type SessionCheckpoint, type ShownCopy } from './session';
 import { submittedWorkCheckpoint } from './submittedWork';
 
@@ -726,6 +727,7 @@ export class EditorController {
     const decidingEditor = ordinary || selected ? '' : this.options.editorId;
     await this.options.commits!.cancelWithCheckpoint(decidingEditor, ids, retired => {
         this.assertCurrent();
+        this.assertRecoveryChoice(expected);
         if (ordinary) {
           if (ordinary.scope.length > 1) this.assertRecoveryChoice(shown);
           assertOrdinaryAnswerScope(ordinary, retired);
@@ -760,7 +762,15 @@ export class EditorController {
               merged.value.exists ? merged.value.value as DocumentData : null, mergeFields));
           }
         } else {
-          session.acceptRemote(decided === source ? remoteChoice?.draft : undefined);
+          const atChoice = decided === source ? remoteChoice?.draft : undefined;
+          const retained = !selection && keepUncontestedSermonFields(decided.confirmed,
+            atChoice === undefined ? decided.draft : atChoice, decided.remoteCandidate, decided.conflicts);
+          session.acceptRemote(atChoice);
+          if (retained) {
+            const accepted = session.checkpoint();
+            const merged = mergeDocumentFields(accepted.confirmed.value, accepted.draft, retained);
+            if (merged.value.exists) session.edit(merged.value.value as DocumentData);
+          }
           if (remoteChoice?.refused && !decided.remoteCandidate) {
             session.dropRefused(decided === source ? remoteChoice.draft : decided.draft);
           }

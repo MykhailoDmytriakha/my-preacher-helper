@@ -2,8 +2,9 @@ import { orderCommitRequests } from './commits';
 import { manualChoiceRecoveryIdentity } from './editorIdentity';
 import { chooseLocalPlacement } from './localPlacementChoice';
 import { projectManualSelection, type ManualPath } from './manualScope';
-import { chooseLocalPreachDateEdits, hasClearedPreachDay } from './preachDateChoice';
+import { chooseLocalPreachDateEdits } from './preachDateChoice';
 import { equalValues, mergeDocumentFields, mergeFields } from './protocol';
+import { keepUncontestedSermonFields } from './sermonFieldChoice';
 import { canReplaceSnapshot } from './snapshotFreshness';
 
 import type { CommitRequest } from './commits';
@@ -79,16 +80,18 @@ export function projectExactManualChoice(record: EditorRecord, decision: ExactMa
     throw Object.assign(new Error('Remote document was deleted; use a new copy to preserve this draft'), { code: 'use-new-copy' });
   }
   const { request, stored } = decision;
-  const hasDateEdits = decision.choice === 'local'
-    && (request.preachStatusActions?.length || hasClearedPreachDay(request.baseline, request.value));
+  let draft = stored.value;
   const prepared = request.initialized && request.command;
-  const reviewed = hasDateEdits && prepared
-    ? replaySavedChoiceDelta(stored.resource, request.value, decision.value, request.intended)
-    : decision.value;
-  const dateEdits = hasDateEdits ? chooseLocalPreachDateEdits(prepared ? request.working : request.baseline, reviewed, stored, request.preachStatusActions) : undefined;
-  const draft = decision.choice === 'local'
-    ? projectManualSelection(decision.stored.value!, dateEdits ?? decision.value, decision.selection)
-    : decision.stored.value;
+  const basis = prepared ? request.working : request.baseline;
+  const reviewed = prepared ? replaySavedChoiceDelta(stored.resource, request.value, decision.value, request.intended) : decision.value;
+  if (decision.choice === 'local') {
+    const dateEdits = chooseLocalPreachDateEdits(basis, reviewed, stored, request.preachStatusActions);
+    const rebased = replaySavedChoiceDelta(stored.resource, basis.value, reviewed, stored.value);
+    draft = projectManualSelection(stored.value!, dateEdits ?? rebased ?? stored.value!, decision.selection);
+  } else if (request.result?.kind === 'conflict') {
+    const retained = keepUncontestedSermonFields(basis, reviewed, stored, request.result.conflicts);
+    if (retained) draft = projectManualSelection(stored.value!, retained, decision.selection);
+  }
   const decided = { ...record, checkpoint: afterChoice(decision.stored, draft, checkpoint.editGeneration + 1),
     completedCommits: [...new Set([...(record.completedCommits ?? []), ...ids])] };
   return [decided, ...projectSavedChoiceDependents(record.owner, decision.request, decision.stored, draft, retired,

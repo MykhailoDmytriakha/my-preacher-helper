@@ -28,6 +28,7 @@ import { getResourcePolicy, equalValues, isValidIdentifier } from './protocol';
 import { documentRecordPresence, type RecordPresence } from './recordPresence';
 import { forkCheckpoint, isPassiveManualContinuation, isRecoverableCheckpoint, reconcileRecoveryRecord, recoveryCheckpointId, validateRecoveryRecord } from './recovery.client';
 import { RecoveryPresence, recoverySources, type RecoveryPresenceKind, type RecoveryPresenceLease, type RecoveryPresencePort } from './recoveryPresence';
+import { comparableSermonField } from './sermonFieldChoice';
 import { DataSession } from './session';
 import { canReplaceSnapshot, coversCommittedEffect, storesNewCopy } from './snapshotFreshness';
 import { snapshotBelongsToOwner } from './snapshotIdentity';
@@ -120,8 +121,8 @@ export interface ManagedEditor {
   save(): Promise<void>;
   /** Persist and queue deletion; refuses unresolved pending operations before changing the draft. */
   remove(): Promise<void>;
-  acceptRemote(expected?: EditorRecord): Promise<void>;
-  keepLocal(expected?: EditorRecord): Promise<void>;
+  acceptRemote(expected?: EditorRecord, compared?: SessionCheckpoint): Promise<void>;
+  keepLocal(expected?: EditorRecord, compared?: SessionCheckpoint): Promise<void>;
   dispose(): void;
   /**
    * Leave the editor. With `flush`, a draft that could be saved — typed inside the autosave
@@ -1850,10 +1851,13 @@ export class DataEngine {
         if (!receipt) throw new Error('Write capture did not return its receipt');
         return receipt;
       };
-      const choose = async (choice: 'local' | 'remote', expected?: EditorRecord) => {
+      const choose = async (choice: 'local' | 'remote', expected?: EditorRecord, compared?: SessionCheckpoint) => {
         active();
         if (loadingBranchAnswer) throw Object.assign(new Error('Read the current version before choosing'), { code: 'fresh-read-required' });
-        await this.resolveEditorChoice(entry, owner, generation, choice, expected);
+        if (compared && !equalValues(controller.getState().checkpoint, compared)) {
+          throw Object.assign(new Error('The shown field comparison changed'), { code: 'decision-changed' });
+        }
+        await this.resolveEditorChoice(entry, owner, generation, choice, compared ? controller.captureRecoveryChoice() : expected);
         active();
       };
       const managed: ManagedEditor = {
@@ -1933,8 +1937,8 @@ export class DataEngine {
         removeWithReceipt: options => withReceipt(captured => remove(captured, options?.captureScope)),
         save: async () => { active(); await controller.save(); active(); this.backgroundDrain(); this.prepareCommitsInBackground(); active(); },
         remove: () => remove(),
-        acceptRemote: expected => choose('remote', expected),
-        keepLocal: expected => choose('local', expected),
+        acceptRemote: (expected, compared) => choose('remote', expected, compared),
+        keepLocal: (expected, compared) => choose('local', expected, compared),
         dispose: () => {
           this.close(entry);
           if (this.editors.get(editorId) === entry) this.editors.delete(editorId);
@@ -2062,8 +2066,14 @@ export class DataEngine {
     }).map(item => ({ item, scope: item.scope! }));
     let failure: unknown;
     try {
-      if (choice === 'remote') await controller.acceptRemote(undefined, expected);
-      else {
+      if (choice === 'remote') {
+        await controller.acceptRemote(undefined, expected);
+        if (checkpoint.confirmed.resource.collection === 'sermons' && checkpoint.conflicts.length === 1
+          && comparableSermonField(checkpoint.conflicts[0].path) && controller.getState().checkpoint.dirty) {
+          await controller.save(); this.assertCurrent(owner, generation);
+          this.prepareCommitsInBackground(); this.backgroundDrain();
+        }
+      } else {
         await controller.keepLocal(undefined, undefined, expected);
         // The explicit document choice owns its replacement; field stages keep their later words.
         if (affected.length) {
@@ -2265,7 +2275,7 @@ export class DataEngine {
             || current.record.generation !== shown.record.generation || !equalValues(current.value, shown.value)) throw Object.assign(new Error('The shown saved copy changed'), { code: 'decision-changed' });
         });
         active();
-        if (choice === 'local') {
+        if (choice === 'local' || controller.getState().checkpoint.dirty) {
           await controller.save(undefined, selection); active();
           this.prepareCommitsInBackground(); this.backgroundDrain();
         }

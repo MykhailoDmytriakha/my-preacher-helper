@@ -28,7 +28,7 @@ import { collectionRecordPresence, documentRecordPresence, UNKNOWN_RECORD_PRESEN
 import { isOnlySubmittedCopy } from './recovery.client';
 import { captureRecoveryChoice as captureChoice, recoveryChoiceFingerprint, type RecoveryChoiceScope } from './recoveryChoice';
 import { validateResourceDocument } from './resourceSchemas';
-import { deletedUnder } from './session';
+import { deletedUnder, type SessionCheckpoint } from './session';
 import { describeManualSync, describeSync, type SyncStatus } from './status';
 import { shownDeliveryState } from './unanswered';
 import { useRecoveryDiscovery as useDiscovery, type RecoveryDiscoveryOptions } from './useRecoveryDiscovery';
@@ -1031,8 +1031,8 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
     save,
     remove: () => { cancelScheduledSave(); return run(editor => editor.remove()); },
     // After a refusal this also drops the refused change (EditorController.acceptRemote).
-    acceptRemote: () => run(editor => editor.acceptRemote()),
-    keepLocal: () => run(editor => editor.keepLocal()),
+    acceptRemote: (compared?: SessionCheckpoint) => run(editor => editor.acceptRemote(undefined, compared)),
+    keepLocal: (compared?: SessionCheckpoint) => run(editor => editor.keepLocal(undefined, compared)),
     /*
      * The draft search owns what it finds and how it fails (`useRecoveryDiscovery` says it): its
      * failure is not the document's, and its success does not clear the document's own failure

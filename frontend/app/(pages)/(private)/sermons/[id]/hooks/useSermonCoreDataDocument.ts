@@ -1,6 +1,8 @@
 import { manualFormDecision } from '@/components/common/manualTextBinding';
 import { usePublishShellTitle } from '@/components/navigation/shellTitles';
+import { sermonConflictComparison } from '@/components/sermon/sermonConflictComparison';
 import { useDataDocument, useDataEngine, useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
+import { useTranslation } from '@locales/useTranslation';
 
 import { useSermonPreparationFields } from './useSermonPreparationFields';
 
@@ -29,6 +31,7 @@ function patchFields(current: DocumentData, patch: Record<string, unknown>, nest
 /** Core and preparation operations share the same durable document contract as scratch. */
 export function useSermonCoreDataDocument(sermonId: string | null) {
   const { owner } = useDataEngine();
+  const { t, language } = useTranslation();
   const document = useDataDocument(sermonId ? { collection: 'sermons', id: sermonId } : null, { slot: 'core' });
   usePublishShellTitle('sermons', sermonId, document.data);
   const titleForm = useDataForm(sermonId ? { collection: 'sermons', id: sermonId } : null, 'title', [['title']]);
@@ -116,11 +119,14 @@ export function useSermonCoreDataDocument(sermonId: string | null) {
       mine: String(comparison.mine[slot] ?? ''), stored: String(comparison.stored.value?.[slot] ?? '') } : undefined);
   };
   const fieldDecision = recoveredDecision('title') ?? recoveredDecision('verse') ?? preparationFields.decision;
+  const checkpoint = !fieldDecision && document.status?.phase === 'conflict' ? document.state?.checkpoint : undefined;
+  const comparison = checkpoint && sermonConflictComparison(checkpoint, t, language);
   return {
     ...document,
     ...(fieldDecision ? { syncSubject: fieldDecision.subject, status: fieldDecision.status, error: fieldDecision.error,
       errorWords: undefined, keepLocal: fieldDecision.keepLocal, acceptRemote: fieldDecision.acceptRemote, retry: fieldDecision.retry } : {}),
-    syncComparison: fieldDecision?.comparison,
+    ...(comparison && { keepLocal: () => document.keepLocal(checkpoint), acceptRemote: () => document.acceptRemote(checkpoint) }),
+    syncComparison: fieldDecision?.comparison ?? comparison,
     headerRecovery: recoveryReady ? { recoveryChoices: recovery.choices, recoveryLoading: recovery.loading,
       recoveryError: recovery.error, onRecover: recovery.recover, onDiscardRecovery: recovery.discard } : undefined,
     titleForm, verseForm,

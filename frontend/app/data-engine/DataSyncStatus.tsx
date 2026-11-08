@@ -31,7 +31,14 @@ export interface RecoveryChoice {
   /** Closes over the exact listed copy; only its engine owns removal authority. */
   discard?: () => Promise<void>;
 }
-export interface TextComparison { identity?: string; mine: string; stored: string; title?: string }
+export interface TextComparison {
+  identity?: string;
+  mine: string;
+  stored: string;
+  title?: string;
+  valueKind?: 'field' | 'removed-row';
+  scopedChoice?: true;
+}
 export interface DataSyncStatusProps {
   comparison?: TextComparison;
   /**
@@ -50,6 +57,8 @@ export interface DataSyncStatusProps {
   onRetry?: () => void | Promise<void>;
   /** Drafts found by `useRecoveryDiscovery`, which looks by itself; nothing to ask for. */
   recoveryChoices?: readonly RecoveryChoice[];
+  /** A caller can identify the one listed copy that owns the displayed conflict. */
+  reviewRecoveryId?: string;
   onRecover?: (id: string) => void | Promise<void>;
   onDiscardRecovery?: (action: () => Promise<void>) => Promise<void>;
   recoveryLoading?: boolean;
@@ -62,10 +71,12 @@ export interface DataSyncStatusProps {
 
 function FieldComparison({ comparison }: { comparison: TextComparison }) {
   const { t } = useTranslation();
+  const localLabel = comparison.valueKind ? 'yourVersion' : 'yourFieldVersion';
+  const storedLabel = comparison.valueKind ? 'storedVersion' : 'storedFieldVersion';
   return <div className="space-y-2 rounded-md border border-rose-200 bg-rose-50/60 p-3 dark:border-rose-800 dark:bg-rose-950/20">
     {comparison.title && <p className="font-medium">{comparison.title}</p>}
     <div className="grid gap-3 sm:grid-cols-2">
-      {([['yourFieldVersion', comparison.mine], ['storedFieldVersion', comparison.stored]] as const).map(([key, value]) =>
+      {([[localLabel, comparison.mine], [storedLabel, comparison.stored]] as const).map(([key, value]) =>
         <div key={key} className="min-w-0"><p className="mb-1 font-medium">{t(`dataSync.${key}`)}</p>
           <p tabIndex={0} aria-label={t(`dataSync.${key}`)} className="max-h-48 overflow-y-auto whitespace-pre-wrap break-words">{value}</p>
         </div>)}
@@ -77,7 +88,7 @@ function FieldComparison({ comparison }: { comparison: TextComparison }) {
 const GONE = Symbol('gone');
 
 /** Present the engine's decisions; conflict detection and merge policy stay in the engine. */
-export function DataSyncStatus({ subject, status, error, errorWords, onKeepLocal, onAcceptRemote, onRetry, recoveryChoices = [], onRecover, onDiscardRecovery, recoveryLoading = false, recoveryError, title, comparison, className = '' }: DataSyncStatusProps) {
+export function DataSyncStatus({ subject, status, error, errorWords, onKeepLocal, onAcceptRemote, onRetry, recoveryChoices = [], reviewRecoveryId, onRecover, onDiscardRecovery, recoveryLoading = false, recoveryError, title, comparison, className = '' }: DataSyncStatusProps) {
   const { t } = useTranslation();
   const outlet = useSyncOutlet(subject);
   const sayNotice = useFailureNotice();
@@ -124,7 +135,8 @@ export function DataSyncStatus({ subject, status, error, errorWords, onKeepLocal
     || (errorWords && recordReadSummary.words === errorWords)));
   const unconfirmedCopy = useLasting(Boolean(status && status.freshness !== 'server')) && !serverNoticeShown;
   const readTrouble = useLasting(Boolean(status?.readFailed)) && !serverNoticeShown && !claimedRead;
-  const selected = recoveryChoices.find(choice => choice.id === selectedId);
+  const review = recoveryChoices.length === 1 && recoveryChoices[0].id === reviewRecoveryId ? recoveryChoices[0] : undefined;
+  const selected = review ?? recoveryChoices.find(choice => choice.id === selectedId);
   const selectedCopy = useRef(selected);
   useLayoutEffect(() => {
     selectedCopy.current = selected;
@@ -158,9 +170,14 @@ export function DataSyncStatus({ subject, status, error, errorWords, onKeepLocal
   const keepChecked = (callback: () => void | Promise<void>) => {
     const form = rootRef.current?.closest('form');
     if (form && !form.noValidate && !form.reportValidity()) return;
-    run(callback);
+    run(() => {
+      if (currentSubject.current === subject && currentComparison.current === comparisonIdentity) return callback();
+    });
   };
   const accept = status?.canAcceptRemote && onAcceptRemote;
+  const chooseStored = (callback: () => void | Promise<void>) => askBeforeDiscard(true, callback,
+    () => currentSubject.current === subject && currentComparison.current === comparisonIdentity,
+    comparison?.scopedChoice ? 'dataSync.confirmStoredField' : comparison?.valueKind === 'removed-row' ? 'common.discardChanges' : undefined);
   const conflictBanner = !deleting && status?.phase === 'conflict' && keep && accept;
   const repeatDeletion = () => {
     if (!keep) return;
@@ -188,7 +205,8 @@ export function DataSyncStatus({ subject, status, error, errorWords, onKeepLocal
     {title && <p className="font-medium">{title}</p>}
     {comparison && <FieldComparison comparison={comparison} />}
     {conflictBanner ? <SaveConflictBanner description={comparison ? t('dataSync.fieldVersionChanged') : undefined}
-      takeTheirsLabel={comparison ? t('dataSync.useStoredVersion') : undefined} onKeepMine={() => keepChecked(keep)} onTakeTheirs={() => run(() => askBeforeDiscard(true, accept, () => currentSubject.current === subject && currentComparison.current === comparisonIdentity))} busy={busy} /> : status && (pendingDeletion || showPhase || showFreshness || readTrouble) && <div role="status" aria-live="polite" className="text-gray-600 dark:text-gray-300">
+      keepMineLabel={comparison?.valueKind ? t(comparison.valueKind === 'removed-row' ? 'dataSync.keepDraft' : 'dataSync.useLocalVersion') : undefined}
+      takeTheirsLabel={comparison ? t('dataSync.useStoredVersion') : undefined} onKeepMine={() => keepChecked(keep)} onTakeTheirs={() => run(() => chooseStored(accept))} busy={busy} /> : status && (pendingDeletion || showPhase || showFreshness || readTrouble) && <div role="status" aria-live="polite" className="text-gray-600 dark:text-gray-300">
       {pendingDeletion && <p>{t('recordAvailability.deleting')}</p>}
       {showPhase && !pendingDeletion && <p>{t(deleting ? (status.phase === 'refused' ? 'dataSync.deleteRefusedTitle' : 'dataSync.deleteConflictTitle') : trouble ? `dataSync.phase.${status.phase}` : 'dataSync.unfinishedWork')}</p>}
       {showPhase && deleting && <p>{t(status.phase === 'refused' ? 'dataSync.deleteRefusedBody' : 'dataSync.deleteConflictBody')}</p>}
@@ -200,21 +218,21 @@ export function DataSyncStatus({ subject, status, error, errorWords, onKeepLocal
     {failure && <p role="alert" className="text-rose-700 dark:text-rose-300">{failure}</p>}
     {((!conflictBanner && (keep || accept)) || showRetry) && <div className="flex flex-wrap gap-2">
       {!conflictBanner && keep && <button type="button" className={buttonClass} disabled={busy} onClick={deleting ? repeatDeletion : () => keepChecked(keep)}>{t(deleting ? (status?.phase === 'refused' ? 'dataSync.retryDelete' : 'dataSync.deleteAnyway') : 'dataSync.keepLocal')}</button>}
-      {!conflictBanner && accept && <button type="button" className={buttonClass} disabled={busy} onClick={() => run(deleting ? accept : () => askBeforeDiscard(true, accept, () => currentSubject.current === subject && currentComparison.current === comparisonIdentity))}>{t(deleting ? 'dataSync.keepRecord' : 'dataSync.acceptRemote')}</button>}
+      {!conflictBanner && accept && <button type="button" className={buttonClass} disabled={busy} onClick={() => run(deleting ? accept : () => chooseStored(accept))}>{t(deleting ? 'dataSync.keepRecord' : 'dataSync.acceptRemote')}</button>}
       {showRetry && onRetry && <button type="button" className={buttonClass} disabled={busy} onClick={() => run(onRetry)}>{t('dataSync.retry')}</button>}
     </div>}
     {recoveryError && <p role="alert" className="text-rose-700 dark:text-rose-300">{recoveryError}</p>}
     {recoveryChoices.length > 0 && <div className="space-y-2 rounded-lg border border-gray-300 p-3 dark:border-gray-600">
-      <label className="block"><span>{t('dataSync.recoveryLabel')}</span>
+      {!review && <label className="block"><span>{t('dataSync.recoveryLabel')}</span>
         <select className="mt-1 block w-full rounded border border-gray-300 bg-transparent px-2 py-1 dark:border-gray-600" value={selected?.id ?? ''} disabled={busy || recoveryLoading} onChange={event => setSelectedId(event.target.value)}>
           <option value="">{t('dataSync.chooseRecovery')}</option>
           {recoveryChoices.map(choice => <option key={choice.id} value={choice.id}>{choice.title}</option>)}
         </select>
-      </label>
+      </label>}
       {selected?.preview && <p className="max-h-24 overflow-auto whitespace-pre-wrap break-words text-gray-600 dark:text-gray-300">{selected.preview}</p>}
       <p className="text-xs text-gray-500 dark:text-gray-400">{t('dataSync.recoveryHint')}</p>
       <div className="flex flex-wrap gap-2">
-        {onRecover && <button type="button" className={buttonClass} disabled={!selected || busy || recoveryLoading} onClick={() => { if (selected) run(() => onRecover(selected.id)); }}>{t('dataSync.recover')}</button>}
+        {onRecover && <button type="button" className={buttonClass} disabled={!selected || busy || recoveryLoading} onClick={() => { if (selected) run(() => onRecover(selected.id)); }}>{t(review ? 'dataSync.reviewSavedChange' : 'dataSync.recover')}</button>}
         {selected?.discard && onDiscardRecovery && <button type="button" className={buttonClass} disabled={busy || recoveryLoading}
           onClick={() => run(() => askBeforeDiscard(true, () => onDiscardRecovery(selected.discard!),
             () => currentSubject.current === subject && selectedCopy.current === selected))}>{t('dataSync.discardRecovery')}</button>}

@@ -1,10 +1,12 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { useState } from 'react';
 
 import { EngineEditSermonModal } from '@/components/sermon/EngineEditSermonModal';
+import { SERMON_METADATA_SELECTION } from '@/components/sermon/sermonMetadataForm';
 import { actionClock } from '@/data-engine/actionClock.client';
 import { createBrowserDataEngine } from '@/data-engine/browser.client';
-import { DataEngineProvider } from '@/data-engine/react.client';
+import { editorIdentity } from '@/data-engine/editorIdentity';
+import { DataDocumentProvider, DataEngineProvider } from '@/data-engine/react.client';
 import { settleEngine } from '../../test-utils/documentEngineHarness';
 import { membershipEngineHarness } from '../../test-utils/membershipEngineHarness';
 import type { ResourceSnapshot } from '@/data-engine/types';
@@ -190,4 +192,41 @@ it('cancels typed metadata and planned dates without submitting or offering canc
   expect(screen.getByLabelText('Planned date')).toHaveValue('2099-10-03');
   expect(screen.queryByRole('button', { name: 'dataSync.recover' })).not.toBeInTheDocument();
   expect(await harness.commits.list('owner')).toEqual([]); expect(harness.transport.send).not.toHaveBeenCalled(); view.unmount();
+});
+
+it.each(['local', 'stored'])('offers direct review after a fresh opening and keeps the %s scripture version', async choice => {
+  const harness = membershipEngineHarness([original]);
+  const browser = harness.createBrowser();
+  const mine = 'Romans 8:1 — My later preparation note';
+  const stored = 'Ephesians 2:8 — A kept explanation';
+  browser.engine.setOwner('owner');
+  browser.engine.setOnline(false);
+  try {
+    const source = await browser.engine.openEditor(resource, editorIdentity('original-tab', resource, 'sermon', 'source'));
+    const form = source.form('sermon-metadata', SERMON_METADATA_SELECTION);
+    await form.begin();
+    await form.save(value => ({ ...value, verse: mine, ...(choice === 'stored' ? { title: 'New title on this device' } : {}) }));
+    harness.replace({ ...original, metadata: { ...original.metadata!, revision: 2 },
+      value: { ...original.value!, verse: stored, title: choice === 'local' ? 'New title on the other device' : original.value!.title } });
+    browser.engine.setOnline(true);
+    await browser.engine.retry();
+    await waitFor(() => expect(source.getState().result?.kind).toBe('conflict'));
+  } finally { browser.dispose(); }
+
+  jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
+  render(<DataEngineProvider><DataDocumentProvider resource={resource} options={{ slot: 'sermon', readOnlyCopy: true }}>
+    <EngineEditSermonModal sermonId="sermon" onClose={jest.fn()} />
+  </DataDocumentProvider></DataEngineProvider>);
+
+  expect(await screen.findByDisplayValue(mine)).toBeInTheDocument();
+  fireEvent.click(await screen.findByRole('button', { name: 'dataSync.reviewSavedChange' }));
+  const comparison = await screen.findByRole('region', { name: 'dataSync.versionComparison' });
+  expect(within(comparison).getByText(mine)).toBeVisible();
+  expect(within(comparison).getByText(stored)).toBeVisible();
+  fireEvent.click(within(comparison).getByRole('button', { name: choice === 'local' ? 'freshness.conflictKeepMine' : 'dataSync.useStoredVersion' }));
+  if (choice === 'stored') fireEvent.click(await screen.findByRole('button', { name: 'dataSync.confirmStoredField.confirm' }));
+  await waitFor(() => expect(harness.read(resource).value).toMatchObject({
+    title: choice === 'local' ? 'New title on the other device' : 'New title on this device',
+    verse: choice === 'local' ? mine : stored, preachDates: originalDates,
+  }));
 });

@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 
+import { PREACH_DATE_SELECTION } from '@/components/calendar/preachDateForm';
 import { createBrowserDataEngine } from '@/data-engine/browser.client';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { editorIdentity } from '@/data-engine/editorIdentity';
@@ -116,4 +117,80 @@ it('still offers an ordinary unsent sermon draft without changes in Scratch', as
     <SermonPageStandIn />
   </DataDocumentProvider></DataEngineProvider>);
   await screen.findByRole('option', { name: 'Earlier sermon' });
+});
+
+
+it.each(['local', 'stored', 'newer-stored'])('shows both preaching days and keeps the %s day without losing a note', async choice => {
+  const date = { id: 'first', date: '2026-12-13', createdAt: '2026-11-08T00:00:00.000Z',
+    status: 'planned', church: { id: 'chapel', name: 'Chapel' }, notes: 'Original note' };
+  const other = { ...date, id: 'other', date: '2027-01-03' };
+  const harness = documentEngineHarness({ resource, metadata: { protocol: 1, generation: 'g', revision: 1, deleted: false },
+    value: { userId: 'owner', title: 'Sermon', preachDates: [date, other], scratch: [] } });
+  jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
+  render(<DataEngineProvider><DataDocumentProvider resource={resource} options={{ slot: 'sermon', readOnlyCopy: true }}>
+    <SermonPageStandIn />
+  </DataDocumentProvider></DataEngineProvider>);
+  await waitFor(() => expect(core?.titleForm.recoveryReady).toBe(true));
+  const form = core!.getManualForm('preach-date:edit:first', PREACH_DATE_SELECTION);
+  await act(async () => { await form.begin(); });
+  const localNote = choice !== 'local' ? 'New note on this device' : date.notes;
+  const storedNote = choice === 'local' ? 'New note from the other device' : date.notes;
+  harness.silentRemote({ preachDates: [{ ...date, date: '2026-12-27', notes: storedNote }, other] });
+  await act(async () => {
+    await form.save(current => ({ ...current, preachDates: [{ ...date, date: '2026-12-20', notes: localNote }, other] }));
+    await settleEngine();
+  });
+
+  const comparison = await screen.findByRole('region', { name: 'dataSync.versionComparison' });
+  expect(comparison).toHaveTextContent('Dec 20, 2026');
+  expect(comparison).toHaveTextContent('Dec 27, 2026');
+  expect(comparison).not.toHaveTextContent('Jan 3, 2027');
+  fireEvent.click(screen.getByRole('button', { name: choice === 'local' ? 'dataSync.useLocalVersion' : 'dataSync.useStoredVersion' }));
+  if (choice === 'newer-stored') {
+    await screen.findByRole('button', { name: 'dataSync.confirmStoredField.confirm' });
+    await act(async () => { await harness.remote({ preachDates: [{ ...date, date: '2027-01-05' }, other] }); });
+    await waitFor(() => expect(core!.remote?.value?.preachDates).toContainEqual(expect.objectContaining({ date: '2027-01-05' })));
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'dataSync.confirmStoredField.confirm' })).not.toBeInTheDocument());
+    expect(screen.getByRole('region', { name: 'dataSync.versionComparison' })).toHaveTextContent('Jan 5, 2027');
+    expect(harness.server.value?.preachDates).toContainEqual(expect.objectContaining({ date: '2027-01-05', notes: 'Original note' }));
+    expect(core!.state?.checkpoint.draft?.preachDates).toContainEqual(expect.objectContaining({ date: '2026-12-20', notes: localNote }));
+    return;
+  }
+  if (choice === 'stored') fireEvent.click(await screen.findByRole('button', { name: 'dataSync.confirmStoredField.confirm' }));
+  await waitFor(() => expect(harness.server.value?.preachDates).toEqual([
+    { ...date, date: choice === 'local' ? '2026-12-20' : '2026-12-27', notes: choice === 'local' ? storedNote : localNote }, other,
+  ]));
+});
+
+
+it.each([false, true])('shows the draft note when its preaching date was deleted (also marked as preached: %s)', async mark => {
+  const date = { id: 'first', date: '2026-12-13', createdAt: '2026-11-08T00:00:00.000Z',
+    status: 'planned', church: { id: 'chapel', name: 'Chapel' }, notes: 'Old note' };
+  const other = { ...date, id: 'other', date: '2027-01-03' };
+  const harness = documentEngineHarness({ resource, metadata: { protocol: 1, generation: 'g', revision: 1, deleted: false },
+    value: { userId: 'owner', title: 'Sermon', preachDates: [date, other], isPreached: false, scratch: [] } });
+  jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
+  render(<DataEngineProvider><DataDocumentProvider resource={resource} options={{ slot: 'sermon', readOnlyCopy: true }}>
+    <SermonPageStandIn />
+  </DataDocumentProvider></DataEngineProvider>);
+  await waitFor(() => expect(core?.titleForm.recoveryReady).toBe(true));
+  const form = core!.getManualForm(mark ? 'preach-date:mark:first' : 'preach-date:edit:first', PREACH_DATE_SELECTION);
+  await act(async () => { await form.begin(); });
+  harness.silentRemote({ preachDates: [other] });
+  const note = 'My note on the deleted preaching date.';
+  await act(async () => {
+    await form.save(current => ({ ...current, isPreached: mark,
+      preachDates: [{ ...date, notes: note, status: mark ? 'preached' : date.status }, other] }),
+    mark ? { preachStatus: { status: 'preached', rowId: date.id, time: null } } : undefined);
+    await settleEngine();
+  });
+
+  const comparison = await screen.findByRole('region', { name: 'dataSync.versionComparison' });
+  expect(comparison).toHaveTextContent(note);
+  expect(comparison).toHaveTextContent('calendar.preachingDateRemoved');
+  expect(comparison).not.toHaveTextContent('Jan 3, 2027');
+  fireEvent.click(screen.getByRole('button', { name: 'dataSync.keepDraft' }));
+  await screen.findByText('dataSync.failure.preachDateEditsRetained');
+  expect(harness.server.value?.preachDates).toEqual([other]);
+  expect(core!.state?.checkpoint.draft?.preachDates).toContainEqual(expect.objectContaining({ id: date.id, notes: note }));
 });

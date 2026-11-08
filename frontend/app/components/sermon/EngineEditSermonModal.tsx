@@ -14,6 +14,7 @@ import SermonFormDialog from './SermonFormDialog';
 import { SERMON_METADATA_SELECTION, sermonMetadataDateId, sermonMetadataForSave, sermonMetadataPatch } from './sermonMetadataForm';
 
 import type { SermonFormValues } from './SermonFormDialog';
+import type { TextComparison } from '@/data-engine/DataSyncStatus';
 import type { Church, Sermon } from '@/models/models';
 
 /** The form pins its own fields; list props and later remote reads cannot change its ancestor. */
@@ -56,6 +57,14 @@ export function EngineEditSermonModal({ sermonId, onClose }: { sermonId: string;
   };
   const generation = form.openingGeneration;
   const historyDisabled = saving || form.busy || !form.active || form.status?.phase === 'deleted';
+  const reviewRecoveryId = form.status?.phase === 'conflict' && !form.dirty && !form.exactChoice && form.borrowedRecoveryIds?.length === 1
+    ? form.borrowedRecoveryIds[0] : undefined;
+  const versions = form.comparison;
+  const mine = versions?.mine.verse;
+  const stored = versions?.stored.value?.verse;
+  const comparison: TextComparison | undefined = versions?.conflictPaths.length === 1 && versions.conflictPaths[0].length === 1
+    && versions.conflictPaths[0][0] === 'verse' && typeof mine === 'string' && typeof stored === 'string' && mine !== stored
+    ? { identity: versions.identity, title: t('addSermon.verseLabel'), mine, stored, scopedChoice: form.exactChoice ? true : undefined } : undefined;
   const cancel = async () => { await form.cancel(); await series.cancel(); onClose(); };
   return <SermonFormDialog heading={t('editSermon.editSermon')}
     values={{ title: value?.title ?? '', verse: value?.verse ?? '', church: value?.church as Church | undefined,
@@ -76,11 +85,11 @@ export function EngineEditSermonModal({ sermonId, onClose }: { sermonId: string;
       current={value?.church ?? null} disabled={historyDisabled}
       session={{ owner, generation, sermonId, field: 'church', restore: church => form.update(current =>
         sermonMetadataPatch(current, { church: church ?? undefined }, plannedId, newDate.createdAt, unspecifiedChurch, openingRow)) }} />}
-    seriesStatus={<div className="space-y-3 p-4 empty:hidden">
-      <DataSyncStatus subject={form.recoveryIdentity} status={form.status} error={form.error} errorWords={form.errorWords} onRetry={form.retry}
+    formStatus={<DataSyncStatus comparison={comparison} subject={form.recoveryIdentity} status={form.status} error={form.error} errorWords={form.errorWords} onRetry={form.retry}
         onKeepLocal={form.keepLocal} onAcceptRemote={form.acceptRemote}
-        recoveryChoices={recovery.choices} recoveryLoading={recovery.loading} recoveryError={recovery.error}
-        onRecover={recovery.recover} onDiscardRecovery={recovery.discard} />
+        recoveryChoices={recovery.choices} reviewRecoveryId={reviewRecoveryId} recoveryLoading={recovery.loading} recoveryError={recovery.error}
+        onRecover={recovery.recover} onDiscardRecovery={recovery.discard} />}
+    seriesStatus={<div className="space-y-3 p-4 empty:hidden">
       <DataMembershipStatus action={{ ...series.action, retry: series.retry }} />
     </div>} />;
 }

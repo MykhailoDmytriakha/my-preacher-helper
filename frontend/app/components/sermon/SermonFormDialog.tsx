@@ -71,6 +71,7 @@ interface SermonFormDialogProps {
    */
   seriesLoading?: boolean;
   seriesDisabled?: boolean;
+  formStatus?: React.ReactNode;
   seriesStatus?: React.ReactNode;
   titleHistory?: React.ReactNode;
   verseHistory?: React.ReactNode;
@@ -102,6 +103,7 @@ export default function SermonFormDialog({
   seriesOptions,
   seriesLoading = false,
   seriesDisabled = false,
+  formStatus,
   seriesStatus,
   titleHistory,
   verseHistory,
@@ -208,6 +210,7 @@ export default function SermonFormDialog({
         </div>
       )}
 
+      {formStatus}
       <section>
         <h3 className={GROUP_TITLE}>{t('addSermon.groupSermon')}</h3>
         <div className={GROUP_CARD}>
