@@ -3,8 +3,7 @@ import { createHash } from 'node:crypto';
 import { isStandaloneScriptureReference } from '@/utils/bibleLink';
 
 import { boundedActionTime, compareActionTime } from './actionClock';
-import { isSermonChurch } from './churchFieldValue';
-import { documentFieldChange, documentFieldTargets } from './documentFieldAction';
+import { acceptsDocumentField, documentFieldChange, documentFieldTargets } from './documentFieldAction';
 import { commandFingerprint, equalValues, object, readField } from './fieldValues';
 import { proofRevision } from './rowFieldAction';
 import { rebaseSermonChurchFill } from './sermonChurchFill';
@@ -17,6 +16,7 @@ export const DOCUMENT_TITLE_HISTORY = '_titleHistory';
 export const GROUP_STATUS_HISTORY = '_statusHistory';
 export const SERMON_VERSE_HISTORY = '_verseHistory';
 export const SERMON_CHURCH_HISTORY = '_churchHistory';
+export const SERIES_METADATA_HISTORY = '_metadataHistory';
 type FieldProof = { value: FieldValue; revision: number; time: ActionTime | null; operationId?: string };
 type DocumentFieldOrder = {
   command: DataCommand;
@@ -26,20 +26,16 @@ type DocumentFieldOrder = {
   uncertain?: ConflictDetail[];
 };
 
-const usesDigest = (target: DocumentFieldTarget) => target.field === 'verse' || target.field === 'church';
+const usesDigest = (target: DocumentFieldTarget) => target.field === 'verse' || target.field === 'church' || target.action === 'seriesFieldActions';
 const fieldDigest = (value: FieldValue, target: DocumentFieldTarget) => createHash('sha256')
   .update(target.field === 'verse' ? String(value.value) : commandFingerprint(value)).digest('base64url');
-
-function accepts(value: FieldValue, target: DocumentFieldTarget): boolean {
-  return target.field === 'church' ? isSermonChurch(value) : value.exists && target.accepts(value.value);
-}
 
 function previousField(raw: unknown, current: ResourceSnapshot, target: DocumentFieldTarget): FieldProof | undefined {
   const proof = object(raw) ? raw[target.proof] : undefined;
   if (!object(proof)) return undefined;
   if (!current.value) return undefined;
   const value = readField(current.value, [target.field]);
-  if (!accepts(value, target) || !proofRevision(proof.revision) || proof.revision > (current.metadata?.revision ?? 0)
+  if (!acceptsDocumentField(value, target) || !proofRevision(proof.revision) || proof.revision > (current.metadata?.revision ?? 0)
     || (usesDigest(target) ? proof.digest !== fieldDigest(value, target) : proof[target.field] !== value.value)) return undefined;
   const time = proof.time === null ? null : boundedActionTime(proof.time);
   return time !== undefined ? { value, revision: proof.revision, time,
@@ -47,9 +43,9 @@ function previousField(raw: unknown, current: ResourceSnapshot, target: Document
 }
 
 function readAction(command: Extract<DataCommand, { kind: 'update' }>, change: FieldChange, revision: number, serverMs: number, target: DocumentFieldTarget): DocumentFieldObservation<FieldValue> | undefined {
-  const action: unknown = command[target.action];
+  const action: unknown = target.action === 'seriesFieldActions' ? command.seriesFieldActions?.[target.field] : command[target.action];
   const { before, after } = change;
-  if (!object(action) || !accepts(before, target) || !accepts(after, target) || equalValues(before, after)
+  if (!object(action) || !acceptsDocumentField(before, target) || !acceptsDocumentField(after, target) || equalValues(before, after)
     || (!usesDigest(target) && (before.value !== action.before || after.value !== action.after))
     || !proofRevision(action.observedRevision) || action.observedRevision > revision) return undefined;
   const time = target.causal && action.time === null ? null : boundedActionTime(action.time);
@@ -94,7 +90,7 @@ function orderDocumentField(command: DataCommand, current: ResourceSnapshot, raw
   const change = documentFieldChange(command.changes, target);
   if (!change || !current.metadata || current.metadata.deleted || command.generation !== current.metadata.generation) return { command };
   const stored = current.value && readField(current.value, [target.field]);
-  if (!stored || !accepts(stored, target)) return { command, stamp: null };
+  if (!stored || !acceptsDocumentField(stored, target)) return { command, stamp: null };
   const action = readAction(command, change, current.metadata.revision, serverMs, target);
   if (!action) return { command, stamp: null };
   const previous = previousField(raw, current, target);
@@ -122,10 +118,29 @@ function resolvePlannedChurchFill(original: DataCommand, ordered: DataCommand, c
   return { ...ordered, changes: ordered.changes.map(change => change === dates ? { ...dates, after: { exists: true, value: rows } } : change) };
 }
 
+function resolveSeriesTitleMirror(original: DataCommand, order: DocumentFieldOrder, current: ResourceSnapshot): DataCommand {
+  const ordered = order.command;
+  if (!order.displaced || original.kind !== 'update' || ordered.kind !== 'update' || !current.value) return ordered;
+  const requested = original.changes.find(change => change.path[0] === 'title');
+  const mirror = original.changes.find(change => change.path[0] === 'theme');
+  const openingTheme = original.seriesFieldActions?.title?.openingTheme;
+  const after = requested?.after;
+  if (!after?.exists || typeof after.value !== 'string') return ordered;
+  if (mirror ? !equalValues(mirror.after, after) : openingTheme !== after.value) return ordered;
+  const stored = readField(current.value, ['theme']);
+  // A distinct legacy theme remains an ordinary conflict, even if the title has a proven order.
+  if (!equalValues(stored, readField(current.value, ['title']))) return ordered;
+  const resolved = { path: ['theme'], before: stored, after: order.displaced.winnerValue };
+  const changes = mirror ? ordered.changes.map(change => change.path[0] === 'theme' ? resolved : change) : [...ordered.changes, resolved];
+  return { ...ordered, changes };
+}
+
 export function orderDocumentFields(command: DataCommand, current: ResourceSnapshot, raw: unknown, serverMs: number) {
   const fields = documentFieldTargets(command.resource.collection).map(target => {
     const order = orderDocumentField(command, current, raw, serverMs, target);
-    command = target.field === 'church' ? resolvePlannedChurchFill(command, order.command, current) : order.command;
+    if (target.field === 'church') command = resolvePlannedChurchFill(command, order.command, current);
+    else if (target.action === 'seriesFieldActions' && target.field === 'title') command = resolveSeriesTitleMirror(command, order, current);
+    else command = order.command;
     return { target, order };
   });
   return { command, fields, uncertain: fields.flatMap(({ order }) => order.uncertain ?? []) };
@@ -137,7 +152,7 @@ export function metadataAfterDocumentFields(snapshot: ResourceSnapshot, raw: Rec
   const proofs = documentFieldTargets(snapshot.resource.collection).flatMap(target => {
     if (!snapshot.value) return [];
     const value = readField(snapshot.value, [target.field]);
-    if (!accepts(value, target)) return [];
+    if (!acceptsDocumentField(value, target)) return [];
     const order = fields?.fields.find(item => item.target === target)?.order;
     const rawMetadata = raw?._dataEngine;
     const previous = order?.previous ?? previousField(rawMetadata, snapshot, target);

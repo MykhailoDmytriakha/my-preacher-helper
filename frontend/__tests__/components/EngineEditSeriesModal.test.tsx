@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 import { EngineEditSeriesModal } from '@/components/series/EngineEditSeriesModal';
+import { actionClock } from '@/data-engine/actionClock.client';
 import { createBrowserDataEngine } from '@/data-engine/browser.client';
 import { DataDocumentProvider, DataEngineProvider, useDataDocument } from '@/data-engine/react.client';
 import { documentEngineHarness, settleEngine } from '../../test-utils/documentEngineHarness';
@@ -11,9 +12,9 @@ jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
 jest.mock('@/components/ui/RichMarkdownEditor', () => ({ RichMarkdownEditor: ({ value, onChange }: { value: string; onChange: (value: string) => void }) =>
   <textarea aria-label="Description" value={value} onChange={event => onChange(event.target.value)} /> }));
 const resource = { collection: 'series', id: 'series' };
-function setup(theme = 'Opening title', description = 'Opening description', bookOrTopic = 'Romans') {
+function setup(theme = 'Opening title', description = 'Opening description', bookOrTopic = 'Romans', hasTitle = true) {
   const harness = documentEngineHarness({ resource, metadata: { protocol: 1, generation: 'g', revision: 1, deleted: false },
-    value: { userId: 'owner', title: 'Opening title', theme, description, bookOrTopic,
+    value: { userId: 'owner', ...(hasTitle && { title: 'Opening title' }), theme, description, bookOrTopic,
       status: 'draft', items: [], sermonIds: [], seriesKind: 'sermon', createdAt: 'now', updatedAt: 'now' } });
   jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
   const onClose = jest.fn();
@@ -75,6 +76,21 @@ it.each([false, true])('keeps a distinct legacy theme when the person changes on
   view.unmount();
 });
 
+it('uses the stored legacy theme when the series has no separate title', async () => {
+  const { harness, onClose, view } = setup('Legacy theme', 'Opening description', 'Romans', false);
+  const title = await screen.findByPlaceholderText('workspaces.series.form.titlePlaceholder');
+  await waitFor(() => expect(title).toBeEnabled());
+  expect(title).toHaveValue('Legacy theme');
+  fireEvent.change(screen.getByRole('combobox'), { target: { value: 'active' } });
+  await act(async () => { await settleEngine(); });
+  fireEvent.click(screen.getByRole('button', { name: 'workspaces.series.actions.saveChanges' }));
+  await waitFor(() => expect(onClose).toHaveBeenCalled());
+  await act(async () => { await harness.engine.retry(); await settleEngine(); });
+  expect(harness.server.value).toMatchObject({ theme: 'Legacy theme', status: 'active' });
+  expect(harness.server.value).not.toHaveProperty('title');
+  view.unmount();
+});
+
 it('saves the displayed default color when the person actually chooses it', async () => {
   const { harness, onClose, view } = setup();
   const title = await screen.findByDisplayValue('Opening title');
@@ -86,6 +102,34 @@ it('saves the displayed default color when the person actually chooses it', asyn
   await act(async () => { await harness.engine.retry(); await settleEngine(); });
   expect(harness.server.value).toMatchObject({ color: '#3B82F6', status: 'draft' });
   view.unmount();
+});
+
+it('captures one explicit Save time for the four short fields and excludes the description', async () => {
+  const time = { earliestMs: 1_800_000_000_000, latestMs: 1_800_000_000_005 };
+  const capture = jest.spyOn(actionClock, 'capture').mockReturnValue(time);
+  const { harness, onClose, view } = setup();
+  try {
+    const title = await screen.findByDisplayValue('Opening title');
+    await waitFor(() => expect(title).toBeEnabled());
+    fireEvent.change(title, { target: { value: 'Revised series' } });
+    fireEvent.change(screen.getByDisplayValue('Romans'), { target: { value: 'John' } });
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'active' } });
+    fireEvent.click(screen.getByRole('button', { name: '#10B981' }));
+    fireEvent.change(screen.getByLabelText('Description'), { target: { value: 'Revised prose' } });
+    await act(async () => { await settleEngine(); });
+    expect(capture).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'workspaces.series.actions.saveChanges' }));
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    await act(async () => { await harness.engine.retry(); await settleEngine(); });
+    expect(capture).toHaveBeenCalledTimes(1);
+    expect(harness.transport.send).toHaveBeenCalledWith(expect.objectContaining({ seriesFieldActions: {
+      title: { observedRevision: 1, time, openingTheme: 'Opening title' }, bookOrTopic: { observedRevision: 1, time },
+      status: { observedRevision: 1, time }, color: { observedRevision: 1, time },
+    } }));
+  } finally {
+    capture.mockRestore();
+    view.unmount();
+  }
 });
 
 it('offers unsent metadata after restart and restores it only by explicit choice', async () => {

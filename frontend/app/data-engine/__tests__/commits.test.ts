@@ -154,12 +154,12 @@ describe('Durable commit requests', () => {
     const baseline = initial();
     const editor = new DataSession(baseline);
     editor.edit({ ...baseline.value, title: 'First local title' });
-    const first = (await queue.save('edit', editor.checkpoint(), { sermonMetadataTime: null }))!;
+    const first = (await queue.save('edit', editor.checkpoint(), { documentMetadataTime: null }))!;
     editor.edit({ ...baseline.value, title: 'First local title', verse: 'John 3:16' });
-    const verse = (await queue.save('edit', editor.checkpoint(), { predecessorId: first.id, sermonMetadataTime: null }))!;
+    const verse = (await queue.save('edit', editor.checkpoint(), { predecessorId: first.id, documentMetadataTime: null }))!;
     expect(verse.sermonTitleAction).toBeUndefined();
     editor.edit({ ...baseline.value, title: String(baseline.value?.title), verse: 'John 3:16' });
-    const second = (await queue.save('edit', editor.checkpoint(), { predecessorId: verse.id, sermonMetadataTime: null }))!;
+    const second = (await queue.save('edit', editor.checkpoint(), { predecessorId: verse.id, documentMetadataTime: null }))!;
     expect(second.sermonTitleAction).toEqual({ before: 'First local title', after: baseline.value?.title, time: null,
       observedRevision: 1, predecessorOperationId: first.id });
     await s.makeQueue().queue.drain(true);
@@ -313,6 +313,34 @@ describe('Durable commit requests', () => {
     expect(last.groupMeetingFieldActions?.location).toMatchObject({ before: 'Side room', after: 'Library', predecessorOperationId: first.id });
   });
 
+  it('keeps exact series title and color predecessors through an unrelated status Save', async () => {
+    const opening: ResourceSnapshot = {
+      resource: { collection: 'series', id: 'series' },
+      metadata: { protocol: 1, generation: 'series', revision: 1, deleted: false },
+      value: { userId: 'owner', title: 'Original', theme: 'Legacy theme', bookOrTopic: 'Romans',
+        status: 'draft', color: '#3B82F6', items: [], sermonIds: [], createdAt: 'now', updatedAt: 'now' },
+    };
+    const { queue } = setup({ opening }).makeQueue();
+    const session = new DataSession(opening);
+    const time = { earliestMs: 1_800_000_000_000, latestMs: 1_800_000_000_005 };
+    const metadata = { documentMetadataTime: time };
+    const renamed = { ...opening.value, title: 'First title', theme: 'First title', color: '#10B981' };
+    session.edit(renamed);
+    const first = (await queue.save('series', session.checkpoint(), metadata))!;
+    session.applyCommit(first);
+    session.edit({ ...renamed, status: 'active' });
+    const middle = (await queue.save('series', session.checkpoint(), { ...metadata, predecessorId: first.id }))!;
+    session.applyCommit(middle);
+    session.edit({ ...renamed, status: 'active', title: 'Last title', theme: 'Last title', color: '#F59E0B' });
+    const last = (await queue.save('series', session.checkpoint(), { ...metadata, predecessorId: middle.id }))!;
+    expect(last.seriesFieldActions).toEqual({
+      title: { before: { exists: true, value: 'First title' }, after: { exists: true, value: 'Last title' },
+        time, observedRevision: 1, predecessorOperationId: first.id, openingTheme: 'First title' },
+      color: { before: { exists: true, value: '#10B981' }, after: { exists: true, value: '#F59E0B' },
+        time, observedRevision: 1, predecessorOperationId: first.id },
+    });
+  });
+
   it('retains the original inferred church on a new date after a preceding ACK observes another church', async () => {
     const church = { id: 'opening', name: 'Opening church', city: 'Opening city' };
     const desk = { id: 'desk', name: 'Desk church', city: 'Desk city' };
@@ -325,7 +353,7 @@ describe('Durable commit requests', () => {
     const first = (await queue.save('sermon', session.checkpoint()))!;
     session.applyCommit(first);
     session.edit({ ...opening.value, title: 'Local title', preachDates: [row] });
-    const second = (await queue.save('sermon', session.checkpoint(), { predecessorId: first.id, sermonMetadataTime: null }))!;
+    const second = (await queue.save('sermon', session.checkpoint(), { predecessorId: first.id, documentMetadataTime: null }))!;
     const ack = { ...opening, value: { ...opening.value, title: 'Local title', church: desk },
       metadata: { ...opening.metadata!, revision: 2, operationId: first.id } };
     const ready = initializeCommit(second, [{ ...first, state: 'acknowledged', result: { kind: 'acknowledged', operationId: first.id, snapshot: ack } }]);

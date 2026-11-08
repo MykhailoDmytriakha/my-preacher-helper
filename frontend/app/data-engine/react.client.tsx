@@ -39,7 +39,7 @@ import type { EditorRecord, EditorState, RecoveryCheckpoint } from './controller
 import type { DatedRowActionCapture } from './datedRowAction';
 import type { ManagedEditor, ManagedManualForm, ManualRecoveryPolicy } from './engine';
 import type { GroupMeetingField, GroupMeetingFieldInput } from './groupMeetingFieldAction';
-import type { ManualFieldInput, ManualPath, ManualSermonMetadataSave } from './manualScope';
+import type { ManualFieldInput, ManualPath, ManualDocumentMetadataSave } from './manualScope';
 import type { StoredManualScope } from './manualScopes.client';
 import type { MembershipDelivery } from './membershipDelivery';
 import type { MembershipAction } from './membershipIntent';
@@ -1290,12 +1290,12 @@ export function useDataForm(resource: ResourceRef | null, slot: string, selectio
       const time = owner && current() && actionClock.capture(owner);
       return time ? { rowId, after, time } : undefined;
     },
-    captureSermonMetadataAction: (date?: { rowId: string; after: string }): ManualSermonMetadataSave => {
+    captureDocumentMetadataAction: (date?: { rowId: string; after: string }): ManualDocumentMetadataSave => {
       const time = owner && current() ? actionClock.capture(owner) : undefined;
-      return { sermonMetadata: { time: time ?? null, ...(date && time && { dateAction: { ...date, time } }) } };
+      return { documentMetadata: { time: time ?? null, ...(date && time && { dateAction: { ...date, time } }) } };
     },
-    save: (updater?: (draft: DocumentData) => DocumentData, action?: { preachDateId: string } | { preachStatus: PreachStatusIntent } | DatedRowActionCapture | GroupMeetingFieldInput | ManualSermonMetadataSave) => {
-      if (!action || 'time' in action || 'sermonMetadata' in action) return run(form => action ? form.save(updater, action) : form.save(updater));
+    save: (updater?: (draft: DocumentData) => DocumentData, action?: { preachDateId: string } | { preachStatus: PreachStatusIntent } | DatedRowActionCapture | GroupMeetingFieldInput | ManualDocumentMetadataSave) => {
+      if (!action || 'time' in action || 'documentMetadata' in action) return run(form => action ? form.save(updater, action) : form.save(updater));
       const time = owner && current() && actionClock.capture(owner);
       if ('preachStatus' in action) return run(form => form.save(updater, { preachStatus: { ...action.preachStatus, time: time || null } }));
       return run(form => time ? form.save(updater, { rowId: action.preachDateId, time }) : form.save(updater));

@@ -6,7 +6,7 @@ import { requestOwnerJson } from '@/services/ownerHttpTransport.client';
 import { newClientId } from '@/utils/clientId';
 import { resolveOwnerUid } from '@/utils/queryKeys';
 
-import { ACTION_CLOCK_HEADER, isClockTime, usesActionClock } from './actionClock';
+import { ACTION_CLOCK_HEADER, isClockTime, readsDocumentActionClock, usesActionClock } from './actionClock';
 import { actionClock } from './actionClock.client';
 import { getResourcePolicy, isValidIdentifier } from './protocol';
 import { coversCommittedEffect } from './snapshotFreshness';
@@ -118,7 +118,7 @@ export function createHttpEngineTransport(clock: Pick<typeof actionClock, 'begin
     async read(owner, resource, options) {
       assertOwner(owner);
       const query = options?.fresh ? new URLSearchParams({ read: newClientId() }).toString() : '';
-      const probe = resource.collection === 'groups' ? clock.begin() : undefined;
+      const probe = readsDocumentActionClock(resource.collection) ? clock.begin() : undefined;
       const { value } = await requestOwnerJson<unknown>(`/api/data-engine/documents/${encodeURIComponent(resource.collection)}/${encodeURIComponent(resource.id)}` + (query ? '?' + query : ''), { method: 'GET', answerStatuses: [], messages,
         ...(probe && { headers: { [ACTION_CLOCK_HEADER]: probe.challenge } }),
       });

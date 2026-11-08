@@ -40,7 +40,7 @@ export function useSermonCoreDataDocument(sermonId: string | null) {
     begin: form.begin, cancel: form.cancel,
     update: value => form.update(current => ({ ...current, [field]: value })),
     save: value => form.save(current => ({ ...current, [field]: value }),
-      form.captureSermonMetadataAction()),
+      form.captureDocumentMetadataAction()),
   });
   // A copy shown while device storage is silent is for reading: the page disables every editor,
   // the recorder first — a dictated thought must never meet a refusal after the fact

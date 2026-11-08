@@ -38,7 +38,7 @@ function setup(value: DocumentData | null = { userId: 'owner', title: 'Original'
   jest.mocked(useDataEngine).mockReturnValue({ owner: 'owner', browser: null, failures: {} });
   jest.mocked(useDataForm).mockImplementation(() => ({
     data: api.data, initialData: api.data, openingGeneration: undefined, openingData: api.data, recoveryIdentity: {}, recoveryReady: true, recoveryVersion: 'test-form', borrowedRecoveryIds: [], exactChoice: false, readOnly: false, active: false, busy: false, loading: false, durable: true, capturing: false, comparison: null, canDiscardStage: false, discardStageAndAcceptRemote: jest.fn(), dirty: false, status: null, error: null,
-    propose: jest.fn(), keepLocal: jest.fn(), acceptRemote: jest.fn(), begin: jest.fn(async () => undefined), follow: jest.fn(async () => undefined), update: jest.fn(), captureSermonMetadataAction: jest.fn(), captureDateAction: jest.fn(), captureMeetingField: jest.fn(), save: jest.fn(), cancel: jest.fn(), retry: jest.fn(), listRecoverable: jest.fn(), recover: jest.fn(), discardRecovery: jest.fn(),
+    propose: jest.fn(), keepLocal: jest.fn(), acceptRemote: jest.fn(), begin: jest.fn(async () => undefined), follow: jest.fn(async () => undefined), update: jest.fn(), captureDocumentMetadataAction: jest.fn(), captureDateAction: jest.fn(), captureMeetingField: jest.fn(), save: jest.fn(), cancel: jest.fn(), retry: jest.fn(), listRecoverable: jest.fn(), recover: jest.fn(), discardRecovery: jest.fn(),
   }));
   return { api, session, defer: (promise: Promise<void>) => { durable = promise; } };
 }
@@ -80,13 +80,13 @@ describe('useSermonCoreDataDocument', () => {
   it.each(['title', 'verse'] as const)('captures the %s action only when saving from the sermon header', async field => {
     setup();
     const { result } = renderHook(() => useSermonCoreDataDocument('sermon'));
-    const capture = { sermonMetadata: { time: { earliestMs: 1_800_000_000_000, latestMs: 1_800_000_000_010 } } };
+    const capture = { documentMetadata: { time: { earliestMs: 1_800_000_000_000, latestMs: 1_800_000_000_010 } } };
     const form = result.current[`${field}Form`], binding = result.current[`${field}Binding`];
-    jest.mocked(form.captureSermonMetadataAction).mockReturnValue(capture);
+    jest.mocked(form.captureDocumentMetadataAction).mockReturnValue(capture);
     await binding.update('New value');
-    expect(form.captureSermonMetadataAction).not.toHaveBeenCalled();
+    expect(form.captureDocumentMetadataAction).not.toHaveBeenCalled();
     await binding.save('New value');
-    expect(form.captureSermonMetadataAction).toHaveBeenCalledTimes(1);
+    expect(form.captureDocumentMetadataAction).toHaveBeenCalledTimes(1);
     expect(form.save).toHaveBeenCalledWith(expect.any(Function), capture);
   });
 

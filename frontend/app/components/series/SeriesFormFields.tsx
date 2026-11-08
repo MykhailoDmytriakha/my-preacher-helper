@@ -23,7 +23,7 @@ export interface SeriesFormValues {
 
 export function seriesFormValues(series?: Series): SeriesFormValues {
   return {
-    title: series?.title ?? '', description: series?.description ?? '', bookOrTopic: series?.bookOrTopic ?? '',
+    title: series?.title?.trim() ? series.title : series?.theme ?? '', description: series?.description ?? '', bookOrTopic: series?.bookOrTopic ?? '',
     color: series?.color || SERIES_COLOR_PRESETS[0], status: series?.status ?? 'draft',
   };
 }

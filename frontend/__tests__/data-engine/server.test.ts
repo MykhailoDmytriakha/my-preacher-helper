@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { isCollectionServed } from '@/data-engine/activation';
-import { DataEngineServerError, listBibleMarkHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listSermonChurchHistory, listSermonTitleHistory, listSermonVerseHistory, listServiceOrderTitleHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
+import { DataEngineServerError, listBibleMarkHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listSermonChurchHistory, listSermonTitleHistory, listSermonVerseHistory, listSeriesMetadataHistory, listServiceOrderTitleHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
 import { collectionHeadId, HEADS_COLLECTION, sequenceId } from '@/data-engine/serverFeed';
 import { DataSession } from '@/data-engine/session';
 import type { DataCommand, FieldValue, ResourceSnapshot } from '@/data-engine/types';
@@ -1466,6 +1466,101 @@ describe('transactional DataEngine server', () => {
         expect(history()).toHaveLength(1);
       }
     });
+
+  describe('series metadata chronology', () => {
+    const resource = { collection: 'series', id: 'timed-series' };
+    const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] };
+    const original = { userId: base.owner, title: 'Opening title', theme: 'Legacy theme', bookOrTopic: 'Opening book',
+      status: 'draft', color: '#3B82F6', description: 'Keep the full description', sermonIds: [], items: [], seriesKind: 'sermon',
+      createdAt: '2026-11-08T00:00:00.000Z', updatedAt: '2026-11-08T00:00:00.000Z' };
+    const desk = { title: 'Desk title', theme: 'Desk title', bookOrTopic: 'Desk book', status: 'active', color: '#10B981' };
+    const phone = { title: 'Phone title', theme: 'Phone title', bookOrTopic: 'Phone book', status: 'completed', color: '#F59E0B' };
+    const edit = (id: string, value: Partial<typeof desk>, offset: number | null) => ({
+      ...base, kind: 'update', operationId: id, generation: 'series-seed',
+      changes: Object.entries(value).map(([key, next]) => ({
+        path: [key], before: { exists: true, value: original[key as keyof typeof desk] }, after: { exists: true, value: next },
+      })),
+      seriesFieldActions: Object.fromEntries(Object.keys(value).filter(field => field !== 'theme').map(field => [field, {
+        observedRevision: 1, time: offset === null ? null : { earliestMs: 1_800_000_000_000 + offset, latestMs: 1_800_000_000_005 + offset },
+      }])),
+    });
+    const seed = () => processCommand(base.owner, { ...base, operationId: 'series-seed', kind: 'create', generation: null, value: original });
+
+    it.each([
+      { offset: 20, winning: desk },
+      { offset: 80, winning: phone },
+    ])('keeps short fields and the title mirror from the last action when delivery is delayed ($offset)', async ({ offset, winning }) => {
+      expect((await seed()).kind).toBe('acknowledged');
+      expect((await processCommand(base.owner, edit('series-desk', desk, 40))).kind).toBe('acknowledged');
+      const command = edit('series-phone', phone, offset);
+      const result = await processCommand(base.owner, command);
+      expect(result).toMatchObject({
+        kind: 'acknowledged', snapshot: { value: { ...winning, description: original.description, items: [], sermonIds: [] } },
+      });
+      const lost = winning === desk ? phone : desk;
+      const expected = (['title', 'bookOrTopic', 'status', 'color'] as const).map(field => ({ field, value: lost[field], winner: winning[field] }));
+      const history = () => listSeriesMetadataHistory(base.owner, resource.id, 'series-seed');
+      expect(await history()).toMatchObject({ entries: [{ fields: expected }] });
+      await expect(listSeriesMetadataHistory('other-owner', resource.id, 'series-seed')).rejects.toMatchObject({ status: 403 });
+      await expect(listSeriesMetadataHistory(base.owner, resource.id, 'old-generation')).rejects.toMatchObject({ status: 404 });
+      expect(await processCommand(base.owner, command)).toEqual(result);
+      expect((await history()).entries).toHaveLength(1);
+    });
+
+    it('orders a later custom CSS color and retains a displaced absence for restoration', async () => {
+      expect((await seed()).kind).toBe('acknowledged');
+      const deskColor = edit('series-desk', { color: desk.color }, 40);
+      expect((await processCommand(base.owner, { ...deskColor, changes: [{
+        path: ['color'], before: { exists: true, value: original.color }, after: { exists: false },
+      }] })).kind).toBe('acknowledged');
+      expect(await processCommand(base.owner, edit('series-phone', { color: 'rebeccapurple' }, 80))).toMatchObject({
+        kind: 'acknowledged', snapshot: { value: { color: 'rebeccapurple' } },
+      });
+      expect(await listSeriesMetadataHistory(base.owner, resource.id, 'series-seed')).toMatchObject({
+        entries: [{ fields: [{ field: 'color', value: null, winner: 'rebeccapurple' }] }],
+      });
+    });
+
+    it('preserves the title mirror when the later rename originally matched the legacy theme', async () => {
+      expect((await seed()).kind).toBe('acknowledged');
+      expect((await processCommand(base.owner, edit('series-desk', { title: desk.title, theme: desk.theme }, 40))).kind).toBe('acknowledged');
+      const rename = edit('series-phone', { title: original.theme }, 80);
+      const time = { earliestMs: 1_800_000_000_080, latestMs: 1_800_000_000_085 };
+      expect(await processCommand(base.owner, { ...rename, seriesFieldActions: {
+        title: { observedRevision: 1, time, openingTheme: original.theme },
+      } })).toMatchObject({ kind: 'acknowledged', snapshot: { value: { title: original.theme, theme: original.theme } } });
+    });
+
+    it('does not order a separate legacy theme edit by the time of a title rename', async () => {
+      expect((await seed()).kind).toBe('acknowledged');
+      expect((await processCommand(base.owner, edit('series-desk', { title: desk.title, theme: desk.theme }, 40))).kind).toBe('acknowledged');
+      expect((await processCommand(base.owner, { ...edit('series-old-theme', { theme: 'Independent legacy theme' }, null),
+        changes: [{ path: ['theme'], before: { exists: true, value: desk.theme }, after: { exists: true, value: 'Independent legacy theme' } }],
+      })).kind).toBe('acknowledged');
+      expect(await processCommand(base.owner, edit('series-phone', { title: phone.title, theme: phone.theme }, 80))).toMatchObject({
+        kind: 'conflict', conflicts: [{ path: ['theme'] }],
+        snapshot: { value: { title: desk.title, theme: 'Independent legacy theme' } },
+      });
+      expect((await listSeriesMetadataHistory(base.owner, resource.id, 'series-seed')).entries).toEqual([]);
+    });
+
+    it.each([45, null])('keeps the original status conflict when the action order is uncertain (%s)', async offset => {
+      expect((await seed()).kind).toBe('acknowledged');
+      const earlier = edit('series-desk', { status: desk.status }, 40);
+      expect((await processCommand(base.owner, earlier)).kind).toBe('acknowledged');
+      expect(await processCommand(base.owner, edit('series-phone', { status: phone.status }, offset))).toMatchObject({
+        kind: 'conflict', snapshot: { value: { status: desk.status, theme: original.theme } }, conflicts: [{ path: ['status'] }],
+      });
+    });
+
+    it('keeps independent metadata edits from different devices', async () => {
+      expect((await seed()).kind).toBe('acknowledged');
+      expect((await processCommand(base.owner, edit('series-desk', { title: desk.title, theme: desk.theme }, 40))).kind).toBe('acknowledged');
+      expect(await processCommand(base.owner, edit('series-phone', { status: phone.status }, 80))).toMatchObject({
+        kind: 'acknowledged', snapshot: { value: { title: desk.title, theme: desk.theme, status: phone.status } },
+      });
+    });
+  });
 
   describe('sermon church chronology', () => {
     const originalChurch = { id: 'opening', name: 'Opening church', city: 'Opening city' };

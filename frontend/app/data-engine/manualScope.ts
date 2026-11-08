@@ -60,8 +60,8 @@ export interface ManualScopeRecord {
   recoverySavedRequestId?: string;
 }
 export type ManualFieldInput = GroupMeetingFieldInput | PreachDateFieldInput;
-export type ManualSermonMetadataSave = { sermonMetadata: { time: ActionTime | null; dateAction?: DatedRowActionCapture } };
-export type ManualSaveOptions = { predecessorId?: string | null; preachDateAction?: DatedRowActionCapture; meetingDateAction?: DatedRowActionCapture; groupMeetingFieldCaptures?: GroupMeetingFieldCaptures; preachDateFieldSave?: PreachDateFieldSave; preachStatusCapture?: PreachStatusCapture; sermonMetadataTime?: ActionTime | null };
+export type ManualDocumentMetadataSave = { documentMetadata: { time: ActionTime | null; dateAction?: DatedRowActionCapture } };
+export type ManualSaveOptions = { predecessorId?: string | null; preachDateAction?: DatedRowActionCapture; meetingDateAction?: DatedRowActionCapture; groupMeetingFieldCaptures?: GroupMeetingFieldCaptures; preachDateFieldSave?: PreachDateFieldSave; preachStatusCapture?: PreachStatusCapture; documentMetadataTime?: ActionTime | null };
 export type ManualSave = (scopeId: string, captured: SessionCheckpoint, options: ManualSaveOptions) => Promise<ManualSavedIntent>;
 export interface ManualScopePort {
   capture(): ManualCapture;
@@ -226,7 +226,7 @@ export class ManualScope {
     const admitted = this.options.port.admitSave?.(captured.scopeId, frozen);
     const dateTarget = datedRowTarget(captured.baseline.resource.collection);
     const dateAction = action && copy(action);
-    const sermonMetadataTime = metadataTime && copy(metadataTime);
+    const documentMetadataTime = metadataTime && copy(metadataTime);
     const dateIndex = captured.selection.findIndex(path => samePath(path, ['preachDates']));
     const openingDates = (captured.openingSelection ?? captured.savedSelection)[dateIndex];
     const preachStatusCapture = status && dateTarget?.evidence === 'preachDateAction' && openingDates?.exists
@@ -255,7 +255,7 @@ export class ManualScope {
         ...(captured.groupMeetingFieldCaptures && { groupMeetingFieldCaptures: captured.groupMeetingFieldCaptures }),
         ...(preachDateFieldSave && { preachDateFieldSave }),
         ...(preachStatusCapture && { preachStatusCapture }),
-        ...(sermonMetadataTime !== undefined && { sermonMetadataTime }),
+        ...(documentMetadataTime !== undefined && { documentMetadataTime }),
       });
       if (!admitted) this.assertCurrent();
       validateIntent(request, this.options);

@@ -8,12 +8,12 @@ import { storeRetryHeaders } from '@/services/storeAvailability.server';
 import { userEntitlementDocument } from '@/services/userEntitlement.server';
 
 import { stampAcceptedResource } from './acceptedResource.server';
-import { ACTION_CLOCK_HEADER, isClockChallenge, usesActionClock } from './actionClock';
+import { ACTION_CLOCK_HEADER, isClockChallenge, readsDocumentActionClock, usesActionClock } from './actionClock';
 import { isCollectionServed, isLegacyOpen, mayBeRetiredByCascade } from './activation';
 import { BIBLE_MARK_HISTORY, BIBLE_MARK_PROOFS, bibleMarkProofVerses, bibleMarkTracking, metadataAfterBibleMarks, orderBibleMarks } from './bibleMarkOrder.server';
 import { existingRowDate, MEETING_DATE_TARGET, PREACH_DATE_TARGET } from './datedRowAction';
 import { metadataAfterDatedRow, orderDatedRow } from './datedRowOrder.server';
-import { metadataAfterDocumentFields, orderDocumentFields, DOCUMENT_TITLE_HISTORY, GROUP_STATUS_HISTORY, SERMON_CHURCH_HISTORY, SERMON_VERSE_HISTORY } from './documentFieldOrder.server';
+import { metadataAfterDocumentFields, orderDocumentFields, DOCUMENT_TITLE_HISTORY, GROUP_STATUS_HISTORY, SERIES_METADATA_HISTORY, SERMON_CHURCH_HISTORY, SERMON_VERSE_HISTORY } from './documentFieldOrder.server';
 import { equalValues, readField } from './fieldValues';
 import { GROUP_MEETING_FIELD_POLICY, type GroupMeetingFieldHistoryPage } from './groupMeetingFieldAction';
 import { GROUP_MEETING_FIELD_HISTORY, metadataAfterGroupMeetingFields, orderGroupMeetingFields } from './groupMeetingFieldOrder.server';
@@ -34,13 +34,15 @@ import type { DisplacedRowDate, MeetingDateHistoryPage, PreachDateHistoryPage } 
 import type { GroupStatusHistoryPage, GroupTitleHistoryPage, DocumentTitleHistoryEntry, SermonChurchHistoryPage, SermonTitleHistoryPage, SermonVerseHistoryPage, ServiceOrderTitleHistoryPage } from './documentFieldAction';
 import type { RowDetailPolicy } from './rowDetailAction';
 import type { RowValue } from './rowFieldAction';
+import type { SeriesMetadataHistoryPage } from './seriesFieldAction';
 import type { FeedWrite } from './serverFeed';
 import type { CollectionChanges, CollectionPage, CommandReceipt, CommandResult, ConflictDetail, DataCommand, DocumentData, EngineMetadata, EngineReadOptions, Json, ResourceRef, ResourceSnapshot } from './types';
 import type { AiResultReceiptStore, ReceiptRecord } from '@/services/aiResultReceipt.server';
 import type { DocumentReference, Firestore, Transaction } from 'firebase-admin/firestore';
 
-export function readActionClockChallenge(collection: string, headers: Headers): string | undefined {
-  if (!usesActionClock(collection)) return undefined;
+export function readActionClockChallenge(collection: string, headers: Headers, document = false): string | undefined {
+  const enabled = document ? readsDocumentActionClock(collection) : usesActionClock(collection);
+  if (!enabled) return undefined;
   const challenge = headers.get(ACTION_CLOCK_HEADER);
   return isClockChallenge(challenge) ? challenge : undefined;
 }
@@ -422,9 +424,15 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
   persistRowDetailHistory(transaction, command, primarySnapshot, GROUP_MEETING_FIELD_POLICY, meetingOrder);
   persistRowDetailHistory(transaction, command, primarySnapshot, PREACH_DATE_FIELD_POLICY, preachingOrder);
   persistRowDetailHistory(transaction, command, primarySnapshot, PREACH_STATUS_POLICY, statusOrder);
+  const seriesHistory = [];
   for (const { target, order } of fieldOrder?.fields ?? []) {
     const displaced = order.displaced;
     if (!displaced || !primarySnapshot.value || !equalValues(readField(primarySnapshot.value, [target.field]), displaced.winnerValue)) continue;
+    if (target.action === 'seriesFieldActions') {
+      seriesHistory.push({ field: target.field, value: displaced.value.value ?? null, winner: displaced.winnerValue.value ?? null,
+        actionTime: displaced.actionTime, winnerActionTime: displaced.winnerActionTime });
+      continue;
+    }
     const destination = {
       title: { collection: DOCUMENT_TITLE_HISTORY, winner: 'winnerTitle' },
       status: { collection: GROUP_STATUS_HISTORY, winner: 'winnerStatus' },
@@ -435,6 +443,12 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
     const { value, winnerValue, ...evidence } = displaced;
     transaction.set(history.doc(historyEntryId(primarySnapshot, command.operationId)), {
       ...evidence, [target.field]: value.value ?? null, [destination.winner]: winnerValue.value ?? null, acceptedAt: new Date().toISOString(),
+    });
+  }
+  if (seriesHistory.length && primarySnapshot.metadata) {
+    const history = adminDb.collection('series').doc(command.resource.id).collection(SERIES_METADATA_HISTORY);
+    transaction.set(history.doc(historyEntryId(primarySnapshot, command.operationId)), {
+      fields: seriesHistory, generation: primarySnapshot.metadata.generation, acceptedAt: new Date().toISOString(),
     });
   }
   persistBibleMarkOrder(transaction, command, primarySnapshot, markOrder);
@@ -593,7 +607,7 @@ export async function readDocument(owner: string, resource: ResourceRef, options
   if (!owns(owner, resource, raw)) throw new DataEngineServerError(PERMISSION_DENIED, 403);
   const snapshot = snapshotFromRaw(resource, raw);
   const challenge = options?.actionClockChallenge;
-  if (challenge && resource.collection === 'groups' && document.readTime) {
+  if (challenge && readsDocumentActionClock(resource.collection) && document.readTime) {
     return { ...snapshot, actionClock: { challenge, serverMs: Math.floor(document.readTime.toMillis()) } };
   }
   return snapshot;
@@ -684,6 +698,12 @@ export async function listSermonChurchHistory(owner: string, sermonId: string, g
   const resource = { collection: 'sermons', id: sermonId };
   const page = await listHistoryEntries<SermonChurchHistoryPage['entries'][number]>(owner, resource, SERMON_CHURCH_HISTORY, generation, cursor, 'sermon-gone');
   return { owner, sermonId, generation, ...page };
+}
+
+export async function listSeriesMetadataHistory(owner: string, seriesId: string, generation: string, cursor?: string): Promise<SeriesMetadataHistoryPage> {
+  const resource = { collection: 'series', id: seriesId };
+  const page = await listHistoryEntries<SeriesMetadataHistoryPage['entries'][number]>(owner, resource, SERIES_METADATA_HISTORY, generation, cursor, 'series-gone');
+  return { owner, seriesId, generation, ...page };
 }
 
 export async function listGroupTitleHistory(owner: string, groupId: string, generation: string, cursor?: string): Promise<GroupTitleHistoryPage> {

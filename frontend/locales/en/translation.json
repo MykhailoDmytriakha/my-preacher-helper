@@ -3515,6 +3515,18 @@
       "sermonsAdded_one": "Sermon added to series",
       "sermonsAdded_other": "{{count}} sermons added to series",
       "sermonsReordered": "Sermons reordered successfully",
+      "history": {
+        "heading": "Series history",
+        "loading": "Loading series history…",
+        "unavailable": "Could not load series history.",
+        "restoreFailed": "Could not restore this value.",
+        "empty": "No earlier values.",
+        "kept": "Kept {{value}}",
+        "current": "Current value",
+        "restore": "Use this value",
+        "more": "More values",
+        "notSet": "Not set"
+      },
       "form": {
         "title": "Series Title",
         "titlePlaceholder": "e.g., Book of Romans",

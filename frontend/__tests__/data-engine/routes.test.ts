@@ -11,11 +11,12 @@ import { GET as detailHistory } from '@/api/data-engine/documents/[collection]/[
 import { GET as history } from '@/api/data-engine/documents/[collection]/[id]/preach-date-history/route';
 import { GET as read } from '@/api/data-engine/documents/[collection]/[id]/route';
 import { GET as statusHistory } from '@/api/data-engine/documents/[collection]/[id]/status-history/route';
+import { GET as seriesHistory } from '@/api/data-engine/documents/[collection]/[id]/metadata-history/route';
 import { GET as churchHistory } from '@/api/data-engine/documents/[collection]/[id]/church-history/route';
 import { GET as verseHistory } from '@/api/data-engine/documents/[collection]/[id]/verse-history/route';
 import { GET as titleHistory } from '@/api/data-engine/documents/[collection]/[id]/title-history/route';
 import { ENGINE_OWNED_COLLECTIONS } from '@/data-engine/engineOwnedCollections';
-import { assertDataEngineEnabled, DataEngineServerError, listBibleMarkHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listSermonChurchHistory, listSermonTitleHistory, listSermonVerseHistory, listServiceOrderTitleHistory, processCommand, readCollectionChanges, readCommandBody, readDocument } from '@/data-engine/server';
+import { assertDataEngineEnabled, DataEngineServerError, listBibleMarkHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listSermonChurchHistory, listSermonTitleHistory, listSermonVerseHistory, listSeriesMetadataHistory, listServiceOrderTitleHistory, processCommand, readCollectionChanges, readCommandBody, readDocument } from '@/data-engine/server';
 import { __resetStoreAvailabilityForTests } from '@/services/storeAvailability.server';
 
 jest.mock('@/config/firebaseAdminConfig', () => ({ adminDb: {} }));
@@ -37,6 +38,7 @@ jest.mock('@/data-engine/server', () => ({
   listSermonTitleHistory: jest.fn(),
   listSermonVerseHistory: jest.fn(),
   listSermonChurchHistory: jest.fn(),
+  listSeriesMetadataHistory: jest.fn(),
   listGroupTitleHistory: jest.fn(),
   listGroupStatusHistory: jest.fn(),
   readCollectionChanges: jest.fn(),
@@ -289,9 +291,21 @@ describe('DataEngine HTTP routes', () => {
     expect((await churchHistory(input, { params: Promise.resolve({ collection: 'groups', id: 'sermon' }) })).status).toBe(400);
   });
 
-  it('calibrates on the existing authenticated group document read', async () => {
-    const resource = { collection: 'groups', id: 'group' };
-    const input = request('http://localhost/api/data-engine/documents/groups/group');
+  it('serves series metadata history with owner, generation and no-store', async () => {
+    const input = request('http://localhost/api/data-engine/documents/series/series-id/metadata-history?generation=g1');
+    const page = { owner: 'verified-owner', seriesId: 'series-id', generation: 'g1', entries: [], nextCursor: null };
+    jest.mocked(listSeriesMetadataHistory).mockResolvedValue(page);
+    const context = { params: Promise.resolve({ collection: 'series', id: 'series-id' }) };
+    const response = await seriesHistory(input, context);
+    expect(response.status).toBe(200);
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(listSeriesMetadataHistory).toHaveBeenCalledWith('verified-owner', 'series-id', 'g1', undefined);
+    expect((await seriesHistory(input, { params: Promise.resolve({ collection: 'groups', id: 'series-id' }) })).status).toBe(400);
+  });
+
+  it.each(['groups', 'series'])('calibrates on the existing authenticated %s document read', async collection => {
+    const resource = { collection, id: 'group' };
+    const input = request('http://localhost/api/data-engine/documents/' + collection + '/group');
     input.headers.set('x-engine-action-clock', 'group-challenge');
     jest.mocked(readDocument).mockResolvedValueOnce({ resource, value: null, metadata: null,
       actionClock: { challenge: 'group-challenge', serverMs: 1_800_000_000_000 } });

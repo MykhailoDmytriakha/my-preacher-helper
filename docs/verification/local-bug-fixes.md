@@ -7467,3 +7467,13 @@ Open a series, choose Edit Series, and change only its status. The form now send
 The original form test and the check of the outgoing field list went red before the respective fixes. 31 tests in five suites, ESLint, TypeScript and guarded local build IwkMmfZspdxsRj8k9NnXt passed. Two Chrome scenarios on emulators confirmed the exact command and the status after reload. Independent review checked the pinned baseline and recovery. Evidence is in artifacts/action-chronology-356/series-untouched-metadata-verified.
 
 For authorized production acceptance, verify the deployed revision. On one disposable series with distinct title and theme, change only status and reload. Confirm that the theme and any originally missing color retain their stored values.
+
+## BUG-20261016-engine-asks-instead-of-chronology · Series metadata
+
+Open a series and choose Edit Series. The exact Save time orders a title, book or topic, status, and color independently. A proven rename updates the compatible title and theme together. A separate legacy theme edit retains its conflict. A series with only a theme can save a status without creating a title. Competing prose remains a manual choice.
+
+Series history opens on demand for the owner and generation. Restoring one field stages that field until Save. The previous color can be a custom value or an absent value. The saved series continues to use the existing membership and ordering commands.
+
+Four regressions went red to green. 495 tests in 12 suites, TypeScript, ESLint with zero errors, and guarded local build Ry0L0T5GRv07T-s_AeQpb passed. Eight Chrome scenarios on emulators covered both delivery orders, single-field and grouped restoration, independent fields, prose, the legacy title mirror, custom color, missing color, and a series with only a theme. Independent review covered the command proof and queue. Evidence is in artifacts/action-chronology-356/series-chronology-verified.
+
+For authorized production acceptance, verify the deployed revision and worker. On one disposable series, save a status offline, change the status on the other device, and reconnect. Open the history, restore a displaced status and reload. Check the description and series items and close both profiles.

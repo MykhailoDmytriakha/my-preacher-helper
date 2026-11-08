@@ -12,7 +12,7 @@ export async function GET(request: Request, context: { params: Promise<{ collect
   try {
     const resource = await context.params;
     assertDataEngineEnabled(resource.collection);
-    const challenge = resource.collection === 'groups' ? readActionClockChallenge(resource.collection, request.headers) : undefined;
+    const challenge = readActionClockChallenge(resource.collection, request.headers, true);
     const snapshot = await withStore(() => challenge ? readDocument(owner, resource, { actionClockChallenge: challenge }) : readDocument(owner, resource), { startedAt });
     return Response.json(snapshot, { headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {
