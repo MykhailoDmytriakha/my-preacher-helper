@@ -4668,6 +4668,72 @@ describe('transactional DataEngine server', () => {
     }
   });
 
+  it.each([
+    { scenario: 'two exact spans', proof: 'second', layer: 'm', kind: 'acknowledged' },
+    { scenario: 'wrong operation on one span', proof: 'first', layer: 'm', kind: 'conflict' },
+    { scenario: 'proof from the other tool', proof: 'second', layer: 'p', kind: 'conflict' },
+  ])('orders a joined Bible mark with $scenario', async ({ proof, layer, kind }) => {
+    const resource = { collection: 'bibleMarks', id: 'owner-1_kjv_philemon' };
+    const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] };
+    const stamp = '2026-11-08T00:00:00.000Z';
+    const verses = (m: string) => ({ v1_1: { m, p: '2-4-gray' }, v1_2: { m: '0-0-yellow' } });
+    const opening = verses('0-0-yellow');
+    const first = verses('0-0-yellow,2-3-red');
+    const both = verses('0-0-yellow,2-4-red');
+    const recolored = verses('0-0-yellow,2-4-blue');
+    expect((await processCommand(base.owner, { ...base, kind: 'create', operationId: 'seed', generation: null,
+      value: { userId: base.owner, bible: 'kjv', book: 'philemon', verses: opening, createdAt: stamp, updatedAt: stamp },
+    })).kind).toBe('acknowledged');
+    const save = (operationId: string, before: typeof opening, after: typeof opening, offset: number,
+      predecessors?: Array<{ verse: string; layer: string; first: number; last: number; operationId: string }>) =>
+      processCommand(base.owner, { ...base, kind: 'update', operationId, generation: 'seed',
+        changes: [{ path: ['verses'], before: { exists: true, value: before }, after: { exists: true, value: after } }],
+        bibleMarkStroke: { observedRevision: 1, time: {
+          earliestMs: 1_800_000_000_000 + offset, latestMs: 1_800_000_000_010 + offset,
+        }, ...(predecessors && { predecessors }) },
+      });
+    expect((await save('first', opening, first, 40)).kind).toBe('acknowledged');
+    expect((await save('second', first, both, 42)).kind).toBe('acknowledged');
+    expect(await save('third', both, recolored, 44, [
+      { verse: 'v1_1', layer: 'm', first: 2, last: 3, operationId: 'first' },
+      { verse: 'v1_1', layer, first: 4, last: 4, operationId: proof },
+    ])).toMatchObject({ kind, snapshot: { value: { verses: kind === 'acknowledged' ? recolored : both } } });
+    expect((await listBibleMarkHistory(base.owner, resource.id, 'seed')).entries).toEqual([]);
+  });
+
+  it('ignores an overlapping Bible mark proof list instead of falling back to the unscoped ID', async () => {
+    const resource = { collection: 'bibleMarks', id: 'owner-1_kjv_philemon' };
+    const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] };
+    const stamp = '2026-11-08T00:00:00.000Z';
+    const initial = { v1_1: { m: '0-0-yellow' } };
+    const first = { v1_1: { m: '0-0-yellow,2-5-red' } };
+    const last = { v1_1: { m: '0-0-yellow,2-5-blue' } };
+    const time = { earliestMs: 1_800_000_000_040, latestMs: 1_800_000_000_050 };
+    expect((await processCommand(base.owner, { ...base, kind: 'create', operationId: 'seed', generation: null,
+      value: { userId: base.owner, bible: 'kjv', book: 'philemon', verses: initial, createdAt: stamp, updatedAt: stamp },
+    })).kind).toBe('acknowledged');
+    const update = (operationId: string, before: typeof initial, after: typeof initial) => ({
+      ...base, kind: 'update', operationId, generation: 'seed',
+      changes: [{ path: ['verses'], before: { exists: true, value: before }, after: { exists: true, value: after } }],
+      bibleMarkStroke: { observedRevision: 1, time },
+    });
+    expect((await processCommand(base.owner, update('first', initial, first))).kind).toBe('acknowledged');
+    const next = update('malformed', first, last);
+    expect(await processCommand(base.owner, { ...next, bibleMarkStroke: { ...next.bibleMarkStroke, predecessorOperationId: 'first',
+      predecessors: [{ verse: 'v1_1', layer: 'm', first: 2, last: 4, operationId: 'first' },
+        { verse: 'v1_1', layer: 'm', first: 4, last: 5, operationId: 'different' }],
+    } })).toMatchObject({ kind: 'conflict', snapshot: { value: { verses: first } } });
+    const unrelated = { v1_1: { m: '0-0-yellow,1-1-green,2-5-red' } };
+    const neighbor = update('neighbor', first, unrelated);
+    expect((await processCommand(base.owner, { ...neighbor, bibleMarkStroke: { ...neighbor.bibleMarkStroke,
+      predecessors: [{ verse: 'v1_1', layer: 'm', first: 3, last: 4, operationId: 'first' }],
+    } })).kind).toBe('acknowledged');
+    const stored = documents.get('bibleMarks/' + resource.id + '/_markProofs/v1_1');
+    expect(stored?.proofs).toEqual(expect.arrayContaining([
+      expect.objectContaining({ layer: 'm', first: 2, last: 5, colour: 'red', operationId: 'first' }),
+    ]));
+  });
+
   it.each(['earlier', 'later'] as const)('carries the %s first stroke through a logical empty ancestor', async order => {
     const book = { collection: 'bibleMarks', id: 'owner-1_kjv_philemon' };
     const base = { protocol: 1, owner: 'owner-1', resource: book, dependsOn: [] };

@@ -4,9 +4,10 @@ import { boundedActionTime } from './actionClock';
 import { equalValues, object } from './fieldValues';
 
 import type { CommitRequest } from './commits';
-import type { BibleMarkStrokeStamp, DataCommand, DocumentData, Json, ResourceSnapshot } from './types';
+import type { BibleMarkPredecessor, BibleMarkStrokeStamp, DataCommand, DocumentData, Json, ResourceSnapshot } from './types';
 import type { VerseMarkLayer } from '@/utils/bibleMarkLayers';
 
+export const MAX_MARK_PREDECESSORS = 512;
 export const MARK_LAYERS: readonly VerseMarkLayer[] = ['m', 'p'];
 export type MarkAddress = { verse: string; layer: VerseMarkLayer };
 export type MarkRange = MarkAddress & { first: number; last: number };
@@ -72,22 +73,106 @@ function markEdits(before: unknown, after: unknown): MarkEdit[] | undefined {
   return edits.sort((left, right) => left.verse.localeCompare(right.verse) || left.layer.localeCompare(right.layer) || left.first - right.first);
 }
 
-export function captureBibleMarkStroke(baseline: ResourceSnapshot, predecessor: Pick<CommitRequest, 'id' | 'value' | 'bibleMarkStroke'> | undefined,
-  after: DocumentData | null, capture: unknown): CapturedBibleMarkStroke | undefined {
+export const markLayerKey = ({ verse, layer }: MarkAddress) => verse + ':' + layer;
+
+export function markRangesByLayer<T extends MarkRange>(ranges: readonly T[]): Map<string, T[]> {
+  const groups = new Map<string, T[]>();
+  for (const range of ranges) {
+    const key = markLayerKey(range);
+    const group = groups.get(key);
+    if (group) group.push(range);
+    else groups.set(key, [range]);
+  }
+  return groups;
+}
+
+const covers = (range: MarkRange, first: number, last: number) => range.first <= first && last <= range.last;
+const edges = (ranges: readonly MarkRange[]) => ranges.flatMap(range => [range.first, range.last + 1]);
+
+function traceMarkLayer(pending: MarkEdit[], authored: readonly MarkEdit[], shown: DocumentData, opening: DocumentData | undefined,
+  operationId: string, proven: BibleMarkPredecessor[]): MarkEdit[] {
+  const { verse, layer } = pending[0], address = { verse, layer };
+  const spans = readVerseLayerSpans(layer, [readMarkLayer(shown, address), opening && readMarkLayer(opening, address)],
+    [...edges(pending), ...edges(authored)]);
+  const unresolved: MarkEdit[] = [];
+  if (!spans) return unresolved;
+  for (const { first, last, colours: [seen, before] } of spans) {
+    const edit = pending.find(range => covers(range, first, last));
+    if (!edit || edit.before !== (seen ?? null)) continue;
+    const local = authored.find(range => covers(range, first, last));
+    if (local) {
+      if (local.after === edit.before && (!opening || local.before === (before ?? null))) proven.push({ ...address, first, last, operationId });
+    } else if (opening && before === seen) {
+      unresolved.push({ ...edit, first, last });
+    }
+  }
+  return unresolved;
+}
+
+function markStrokeLineage(edits: MarkEdit[], predecessor: CommitRequest, records: readonly CommitRequest[], baseline: ResourceSnapshot):
+  Pick<BibleMarkStrokeStamp, 'predecessorOperationId' | 'predecessors'> {
+  if (edits.length > MAX_MARK_PREDECESSORS) return {};
+  const chain = new Map(records.map(request => [request.id, request]));
+  const pending = markRangesByLayer(edits);
+  const proven: BibleMarkPredecessor[] = [];
+  let request: CommitRequest | undefined = predecessor;
+  while (request && pending.size && chain.delete(request.id)) {
+    const saved = request.baseline, shown = request.value?.verses;
+    if (request.owner !== predecessor.owner || saved.resource.collection !== baseline.resource.collection
+      || saved.resource.id !== baseline.resource.id || saved.metadata?.generation !== baseline.metadata?.generation
+      || request.state === 'cancelled' || request.state === 'refused' || request.state === 'conflict' || !object(shown)) break;
+    const previous: CommitRequest | undefined = chain.get(request.predecessor ?? '');
+    const ancestor = previous?.value?.verses;
+    const authored = markRangesByLayer(request.bibleMarkStroke?.edits ?? []);
+    let unproven = 0;
+    for (const [key, ranges] of pending) {
+      const rest = traceMarkLayer(ranges, authored.get(key) ?? [], shown, object(ancestor) ? ancestor : undefined, request.id, proven);
+      if (rest.length) pending.set(key, rest);
+      else pending.delete(key);
+      unproven += rest.length;
+    }
+    if (unproven + proven.length > MAX_MARK_PREDECESSORS) return {};
+    request = previous;
+  }
+  return compactMarkLineage(edits, proven);
+}
+
+function compactMarkLineage(edits: MarkEdit[], proven: BibleMarkPredecessor[]):
+  Pick<BibleMarkStrokeStamp, 'predecessorOperationId' | 'predecessors'> {
+  if (!proven.length) return {};
+  proven.sort((left, right) => markLayerKey(left).localeCompare(markLayerKey(right)) || left.first - right.first);
+  const joined: BibleMarkPredecessor[] = [];
+  for (const span of proven) {
+    const previous = joined.at(-1);
+    if (previous && markLayerKey(previous) === markLayerKey(span) && previous.last + 1 === span.first
+      && previous.operationId === span.operationId) previous.last = span.last;
+    else joined.push(span);
+  }
+  const { operationId } = joined[0];
+  // A single ID can still be read by older servers when it covers every change in this stroke.
+  const complete = joined.every(span => span.operationId === operationId)
+    && edits.every(edit => joined.some(span => markLayerKey(span) === markLayerKey(edit) && covers(span, edit.first, edit.last)));
+  return complete ? { predecessorOperationId: operationId } : { predecessors: joined };
+}
+
+export function captureBibleMarkStroke(baseline: ResourceSnapshot, predecessor: CommitRequest | undefined,
+  after: DocumentData | null, capture: unknown, records: readonly CommitRequest[]): CapturedBibleMarkStroke | undefined {
   if (baseline.resource.collection !== 'bibleMarks' || !after || baseline.metadata?.deleted) return undefined;
   const time = boundedActionTime(capture);
   if (!time) return undefined;
   const before = predecessor ? predecessor.value : baseline.value;
   const edits = markEdits(before?.verses ?? {}, after.verses);
-  return edits?.length ? { time, edits, observedRevision: baseline.metadata?.revision ?? 0,
-    ...(predecessor?.bibleMarkStroke && { predecessorOperationId: predecessor.id }) } : undefined;
+  if (!edits?.length) return undefined;
+  const lineage = predecessor && markStrokeLineage(edits, predecessor, records, baseline);
+  return { time, edits, observedRevision: baseline.metadata?.revision ?? 0, ...lineage };
 }
 
 export function withBibleMarkStroke(command: DataCommand, stroke?: CapturedBibleMarkStroke): DataCommand {
   if (!stroke || command.resource.collection !== 'bibleMarks' || (command.kind !== 'create' && command.kind !== 'update')) return command;
   if (!equalValues(commandMarkEdits(command), stroke.edits)) return command;
-  const { time, observedRevision, predecessorOperationId } = stroke;
-  return { ...command, bibleMarkStroke: { time, observedRevision, ...(predecessorOperationId && { predecessorOperationId }) } };
+  const { time, observedRevision, predecessorOperationId, predecessors } = stroke;
+  return { ...command, bibleMarkStroke: { time, observedRevision,
+    ...(predecessorOperationId && { predecessorOperationId }), ...(predecessors && { predecessors }) } };
 }
 
 function commandMarkEdits(command: MarkCommand): MarkEdit[] | undefined {
@@ -101,17 +186,10 @@ function commandMarkEdits(command: MarkCommand): MarkEdit[] | undefined {
 function projectMarkRanges<T extends MarkRange>(target: DocumentData, ranges: readonly T[], source: (range: T, colour: string | undefined) => string | undefined,
   from?: DocumentData): DocumentData | undefined {
   const result = { ...target };
-  const groups = new Map<string, T[]>();
-  for (const range of ranges) {
-    const key = range.verse + ':' + range.layer;
-    const group = groups.get(key);
-    if (group) group.push(range);
-    else groups.set(key, [range]);
-  }
-  for (const edits of groups.values()) {
+  for (const edits of markRangesByLayer(ranges).values()) {
     const address = edits[0];
     const values = [readMarkLayer(target, address), from && readMarkLayer(from, address)];
-    const spans = readVerseLayerSpans(address.layer, values, edits.flatMap(edit => [edit.first, edit.last + 1]));
+    const spans = readVerseLayerSpans(address.layer, values, edges(edits));
     if (!spans) return undefined;
     const runs: [number, number, string][] = [];
     for (const { first, last, colours: [original, other] } of spans) {

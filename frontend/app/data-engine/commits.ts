@@ -578,7 +578,7 @@ export class CommitQueue {
     const planTextEvidence = baseline.resource.collection === 'sermons' ? captureSermonPlan(baseline, intent.draft, predecessor) : undefined;
     const dateTarget = datedRowTarget(baseline.resource.collection);
     const action = dateTarget && captureDatedRowAction(baseline, predecessor, intent.draft, frozenOptions?.[dateTarget.evidence], records);
-    const mark = captureBibleMarkStroke(baseline, predecessor, intent.draft, editorAction?.kind === 'bible-mark-stroke' ? editorAction.time : undefined);
+    const mark = captureBibleMarkStroke(baseline, predecessor, intent.draft, editorAction?.kind === 'bible-mark-stroke' ? editorAction.time : undefined, records);
     const title = captureServiceOrderTitle(baseline, intent.draft, editorAction?.kind === 'service-order-title' ? editorAction.title : undefined);
     const stepActions = captureServiceOrderStep(baseline, predecessor, intent.draft, step, records);
     const councilAssemblyActions = captureCouncilAssembly(baseline, predecessor, intent.draft, assembly, records);

@@ -419,6 +419,51 @@ describe('Durable commit requests', () => {
     }));
   });
 
+  it.each(['different word', 'different layer', 'two writers in one run', 'unstamped return'] as const)(
+    'sends the actual predecessor of each Bible mark span through a %s', async scenario => {
+    const base: ResourceSnapshot = {
+      resource: { collection: 'bibleMarks', id: 'owner_kjv_philemon' },
+      value: { userId: 'owner', bible: 'kjv', book: 'philemon', verses: { v1_1: { m: '0-0-yellow' } } },
+      metadata: { protocol: 1, generation: 'book', revision: 1, deleted: false },
+    };
+    const s = setup({ opening: base });
+    const { queue } = s.makeQueue();
+    const editor = new DataSession(base);
+    const time = { earliestMs: 1_800_000_000_020, latestMs: 1_800_000_000_025 };
+    const mark = async (layer: string, predecessorId: string | null, pencil?: string, timed = true) => {
+      editor.edit({ ...base.value, verses: { v1_1: { m: '0-0-yellow,' + layer, ...(pencil && { p: pencil }) } } });
+      return (await queue.save('mark', editor.checkpoint(), {
+        predecessorId, ...(timed && { action: { kind: 'bible-mark-stroke', time } }),
+      }))!;
+    };
+    const joined = scenario === 'two writers in one run';
+    const first = await mark(joined ? '2-3-red' : '2-2-red', null);
+    let middle;
+    let last;
+    if (joined) {
+      middle = await mark('2-4-red', first.id);
+      last = await mark('2-4-blue', middle.id);
+    } else if (scenario === 'different layer') {
+      middle = await mark('2-2-red', first.id, '2-2-gray');
+      last = await mark('2-2-blue', middle.id, '2-2-gray');
+    } else if (scenario === 'unstamped return') {
+      middle = await mark('2-2-green', first.id, undefined, false);
+      const returned = await mark('2-2-red', middle.id, undefined, false);
+      last = await mark('2-2-blue', returned.id);
+    } else {
+      middle = await mark('2-2-red,3-3-green', first.id);
+      last = await mark('2-2-blue,3-3-green', middle.id);
+    }
+    await s.makeQueue().queue.drain(true);
+    const wire = jest.mocked(s.transport.send).mock.calls.find(([command]) => command.operationId === last.id)?.[0];
+    const evidence = scenario === 'unstamped return' ? {} : joined ? {
+      predecessors: [{ verse: 'v1_1', layer: 'm', first: 2, last: 3, operationId: first.id },
+        { verse: 'v1_1', layer: 'm', first: 4, last: 4, operationId: middle!.id }],
+    } : { predecessorOperationId: first.id };
+    expect(wire).toMatchObject({ kind: 'update', bibleMarkStroke: { observedRevision: 1, time, ...evidence } });
+    expect(wire && 'bibleMarkStroke' in wire ? wire.bibleMarkStroke : undefined).toEqual({ observedRevision: 1, time, ...evidence });
+  });
+
   it.each([
     { collection: 'groups', field: 'meetingDates', evidence: 'meetingDateAction', initialDay: '2026-12-13' },
     { collection: 'sermons', field: 'preachDates', evidence: 'preachDateAction', initialDay: '2026-12-13' },

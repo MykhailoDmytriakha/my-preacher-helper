@@ -1,12 +1,12 @@
 import { encodeVerseLayer, isMarkColor, isPencilColor, readVerseLayerSpans } from '@/utils/bibleMarkLayers';
 
 import { boundedActionTime, compareActionTime } from './actionClock';
-import { isVerseMarkKey, MARK_LAYERS, readMarkLayer, writeMarkLayer, type DisplacedMark, type MarkAddress, type MarkRange } from './bibleMarkStroke';
+import { isVerseMarkKey, MARK_LAYERS, MAX_MARK_PREDECESSORS, markLayerKey, markRangesByLayer, readMarkLayer, writeMarkLayer, type DisplacedMark, type MarkAddress, type MarkRange } from './bibleMarkStroke';
 import { equalValues, object } from './fieldValues';
 import { isValidIdentifier } from './protocol';
 
 import type { ActionTime } from './actionClock';
-import type { BibleMarkStrokeStamp, ConflictDetail, DataCommand, DocumentData, FieldValue, Json, ResourceSnapshot } from './types';
+import type { BibleMarkPredecessor, BibleMarkStrokeStamp, ConflictDetail, DataCommand, DocumentData, FieldValue, Json, ResourceSnapshot } from './types';
 
 const MAX_STROKE_VERSES = 64;
 const MAX_VERSE_PROOFS = 512;
@@ -73,14 +73,34 @@ export function bibleMarkProofVerses(command: DataCommand): string[] | null {
   return verses.length > MAX_STROKE_VERSES ? null : verses;
 }
 
+function readPredecessors(value: unknown): BibleMarkPredecessor[] | undefined {
+  if (!Array.isArray(value) || value.length > MAX_MARK_PREDECESSORS) return undefined;
+  const result: BibleMarkPredecessor[] = [];
+  for (const span of value) {
+    if (!object(span) || typeof span.verse !== 'string' || !isVerseMarkKey(span.verse) || (span.layer !== 'm' && span.layer !== 'p')
+      || !isRevision(span.first, 0) || !isRevision(span.last, span.first) || !isValidIdentifier(span.operationId)) return undefined;
+    const { verse, layer, first, last, operationId } = span;
+    result.push({ verse, layer, first, last, operationId });
+  }
+  for (const spans of markRangesByLayer(result).values()) {
+    spans.sort((left, right) => left.first - right.first);
+    if (spans.some((span, index) => index > 0 && spans[index - 1].last >= span.first)) return undefined;
+  }
+  return result;
+}
+
 function readStroke(input: unknown, revision: number, serverMs: number): BibleMarkStrokeStamp | undefined {
   if (!object(input) || !isRevision(input.observedRevision, 0) || input.observedRevision > revision || !Number.isFinite(serverMs)) return undefined;
   const time = boundedActionTime(input.time);
-  return time && time.earliestMs <= serverMs + 5 ? { observedRevision: input.observedRevision, time,
-    ...(isValidIdentifier(input.predecessorOperationId) && { predecessorOperationId: input.predecessorOperationId }) } : undefined;
+  if (!time || time.earliestMs > serverMs + 5) return undefined;
+  const predecessors = readPredecessors(input.predecessors);
+  const predecessorOperationId = input.predecessors === undefined && isValidIdentifier(input.predecessorOperationId)
+    ? input.predecessorOperationId : undefined;
+  return { observedRevision: input.observedRevision, time,
+    ...(predecessorOperationId && { predecessorOperationId }), ...(predecessors && { predecessors }) };
 }
 
-function decideSpan(range: MarkRange, colours: [Colour, Colour, Colour], previous: Proof | undefined, clock: StrokeClock): SpanDecision {
+function decideSpan(range: MarkRange, colours: [Colour, Colour, Colour], previous: Proof | undefined, clock: StrokeClock, predecessorOperationId?: string): SpanDecision {
   const [base, mine, stored] = colours;
   if (mine === base) return { previous };
   const { stroke, revision, floor } = clock;
@@ -92,7 +112,7 @@ function decideSpan(range: MarkRange, colours: [Colour, Colour, Colour], previou
     return mine !== stored && tracked ? { stamp: stroke.time } : {};
   }
   if (previous.revision <= stroke.observedRevision) return mine !== stored ? { stamp: stroke.time } : { previous };
-  if (base === stored && stroke.predecessorOperationId && previous.operationId === stroke.predecessorOperationId) {
+  if (base === stored && predecessorOperationId && previous.operationId === predecessorOperationId) {
     return { stamp: stroke.time };
   }
   return decideUnobservedSpan(range, colours, previous, stroke.time);
@@ -118,8 +138,17 @@ function acceptedSpanProof(range: MarkRange, mine: Colour, decision: SpanDecisio
   return decision.previous && { ...decision.previous, first: range.first, last: range.last };
 }
 
-function processLayer(address: MarkAddress, values: [unknown, unknown, unknown], proofs: Proof[], clock: StrokeClock): LayerResult | null {
-  const spans = readVerseLayerSpans(address.layer, values, proofs.flatMap(proof => [proof.first, proof.last + 1]));
+function appendSpanProof(proofs: Proof[], proof: Proof): void {
+  const previous = proofs.at(-1);
+  if (previous && previous.last + 1 === proof.first && previous.colour === proof.colour
+    && previous.revision === proof.revision && previous.operationId === proof.operationId && equalValues(previous.time, proof.time)) {
+    previous.last = proof.last;
+  } else proofs.push(proof);
+}
+
+function processLayer(address: MarkAddress, values: [unknown, unknown, unknown], proofs: Proof[], predecessors: BibleMarkPredecessor[],
+  clock: StrokeClock): LayerResult | null {
+  const spans = readVerseLayerSpans(address.layer, values, [...proofs, ...predecessors].flatMap(range => [range.first, range.last + 1]));
   if (!spans) return null;
   const before: [number, number, string][] = [], after: [number, number, string][] = [];
   const kept: Proof[] = [], displaced: DisplacedMark[] = [];
@@ -128,14 +157,15 @@ function processLayer(address: MarkAddress, values: [unknown, unknown, unknown],
     const range = { ...address, first, last };
     const [base, mine, stored] = colours;
     const prior = proofs.find(proof => proof.first <= first && last <= proof.last && proof.colour === (stored ?? null));
-    const decision = decideSpan(range, [base, mine, stored], prior, clock);
+    const predecessor = predecessors.find(span => span.first <= first && last <= span.last)?.operationId ?? clock.stroke?.predecessorOperationId;
+    const decision = decideSpan(range, [base, mine, stored], prior, clock, predecessor);
     uncertain ||= decision.uncertain === true;
     const foldedBase = decision.fold ? stored : base;
     const foldedMine = decision.fold === 'stored' ? stored : mine;
     if (foldedBase !== undefined) before.push([first, last, foldedBase]);
     if (foldedMine !== undefined) after.push([first, last, foldedMine]);
     const proof = acceptedSpanProof(range, foldedMine, decision, clock);
-    if (proof) kept.push(proof);
+    if (proof) appendSpanProof(kept, proof);
     if (decision.displaced) displaced.push(decision.displaced);
   }
   return { before: encodeVerseLayer(before), after: encodeVerseLayer(after), folded: displaced.length > 0, uncertain, proofs: kept, displaced };
@@ -147,13 +177,8 @@ function field(value: Json | undefined): FieldValue {
 
 function reconcileLayers(before: DocumentData, after: DocumentData, stored: DocumentData, proofs: Proof[], verses: readonly string[],
   clock: StrokeClock) {
-  const byLayer = new Map<string, Proof[]>();
-  for (const proof of proofs) {
-    const key = proof.verse + ':' + proof.layer;
-    const existing = byLayer.get(key);
-    if (existing) existing.push(proof);
-    else byLayer.set(key, [proof]);
-  }
+  const byLayer = markRangesByLayer(proofs);
+  const lineage = markRangesByLayer(clock.stroke?.predecessors ?? []);
   const nextProofs: Proof[] = [], displaced: DisplacedMark[] = [], uncertain: ConflictDetail[] = [];
   const foldedBefore = { ...before }, foldedAfter = { ...after };
   const validVerses = verses.filter(verse => [before[verse], after[verse], stored[verse]].every(row => row === undefined || object(row)));
@@ -161,13 +186,14 @@ function reconcileLayers(before: DocumentData, after: DocumentData, stored: Docu
   for (const address of addresses) {
     const { verse, layer } = address;
     const baseline = readMarkLayer(before, address), mine = readMarkLayer(after, address);
-    const prior = byLayer.get(verse + ':' + layer) ?? [];
+    const key = markLayerKey(address);
+    const prior = byLayer.get(key) ?? [];
     if (equalValues(baseline, mine)) {
       nextProofs.push(...prior);
       continue;
     }
     const theirs = readMarkLayer(stored, address);
-    const result = processLayer(address, [baseline, mine, theirs], prior, clock);
+    const result = processLayer(address, [baseline, mine, theirs], prior, lineage.get(key) ?? [], clock);
     if (!result) continue;
     nextProofs.push(...result.proofs);
     displaced.push(...result.displaced);

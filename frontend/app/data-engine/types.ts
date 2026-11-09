@@ -1,6 +1,7 @@
 /** The wire contract is shared by browser and server; it imports no transport. */
 import type { AccountPreferenceField, AccountPreferenceStamps } from './accountPreference';
 import type { ActionTime } from './actionClock';
+import type { MarkRange } from './bibleMarkStroke';
 import type { CommentKindCapture, CommentKindStamp } from './commentKindAction';
 import type { CouncilAssemblyActions, CouncilAssemblyCapture } from './councilAssemblyAction';
 import type { CouncilOutcomeWire } from './councilOutcomeAction';
@@ -169,7 +170,10 @@ export type ServiceOrderStepPlacementCapture = {
   placement: ServiceOrderStepPlacement;
 };
 
-export type BibleMarkStrokeStamp = { observedRevision: number; time: ActionTime; predecessorOperationId?: string };
+export type BibleMarkPredecessor = MarkRange & { operationId: string };
+export type BibleMarkStrokeStamp = {
+  observedRevision: number; time: ActionTime; predecessorOperationId?: string; predecessors?: BibleMarkPredecessor[];
+};
 
 export type DataCommand = CommandBase & (
   | { kind: 'create'; value: DocumentData; bibleMarkStroke?: BibleMarkStrokeStamp }
