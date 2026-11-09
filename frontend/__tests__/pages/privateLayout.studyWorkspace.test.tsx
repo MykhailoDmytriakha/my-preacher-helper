@@ -15,15 +15,17 @@ jest.mock('@/data-engine/react.client', () => ({
   ...jest.requireActual('@/data-engine/react.client'),
     DataEngineWorkspace: ({ children }: { children: ReactNode }) => <div data-testid="data-engine-workspace">{children}</div>,
 }));
+jest.mock('@/components/bible/analysis/AnalysisReshapeRecovery', () => ({ AnalysisReshapeRecovery: () => <div data-testid="analysis-recovery" /> }));
+jest.mock('@/providers/UserSettingsProvider', () => ({ UserSettingsProvider: ({ children }: { children: ReactNode }) => children, UserSettingsSyncStatus: () => <div data-testid="settings-recovery" /> }));
 jest.mock('@/components/series/SeriesMembershipRecovery', () => ({ SeriesMembershipRecovery: () => <div data-testid="membership-recovery" /> }));
 jest.mock('@/components/ProtectedRoute', () => ({ children }: { children: ReactNode }) => children);
-jest.mock('@/components/navigation/DashboardNav', () => () => <nav>Navigation</nav>);
+jest.mock('@/components/navigation/DashboardNav', () => ({ syncNotices }: { syncNotices?: ReactNode }) => <nav>Navigation{syncNotices}</nav>);
 jest.mock('@/components/navigation/Breadcrumbs', () => () => <div>Breadcrumbs</div>);
 jest.mock('@/components/navigation/DevQuickNav', () => () => null);
 jest.mock('@/components/navigation/PageGestures', () => ({ children, enabled: _enabled, ...attributes }: { children: ReactNode; enabled?: boolean }) => <div data-page-gesture="idle" {...attributes}>{children}</div>);
 jest.mock('@/components/GuestBanner', () => ({ GuestBanner: () => <div>Guest notice</div> }));
 jest.mock('@/components/OutboxConflictBanner', () => ({ OutboxConflictBanner: () => <div>Unsent changes</div> }));
-jest.mock('@/components/EngineConflictBanner', () => ({ EngineConflictBanner: () => null }));
+jest.mock('@/components/EngineConflictBanner', () => ({ EngineConflictBanner: () => <div data-testid="engine-conflicts" /> }));
 jest.mock('@/components/OutboxDrain', () => ({ OutboxDrain: () => <div data-testid="outbox-drain" /> }));
 
 describe('bounded study workspace routing', () => {
@@ -73,5 +75,24 @@ describe('bounded study workspace routing', () => {
         expect(workspace).toContainElement(screen.getByText('Preaching content'));
         expect(workspace).toContainElement(screen.getByTestId('outbox-drain'));
         expect(workspace).toContainElement(screen.getByTestId('membership-recovery'));
+    });
+});
+
+describe('Bible sync notice placement', () => {
+    it.each(['/bible', '/bible/'])('places current sync recovery in the pinned header at %s', pathname => {
+        render(<PrivateChrome pathname={pathname} search="book=john&at=3:16">Bible reader</PrivateChrome>);
+        const header = screen.getByRole('navigation');
+        expect(header).toContainElement(screen.getByTestId('engine-conflicts'));
+        expect(header).toContainElement(screen.getByText('Unsent changes'));
+        expect(header).toContainElement(screen.getByTestId('membership-recovery'));
+        expect(header).toContainElement(screen.getByTestId('analysis-recovery'));
+        expect(header).toContainElement(screen.getByTestId('settings-recovery'));
+        expect(header).not.toContainElement(screen.getByText('Bible reader'));
+    });
+
+    it('leaves sync recovery in the normal notice area on other pages', () => {
+        render(<PrivateChrome pathname="/settings" search="">Settings</PrivateChrome>);
+        expect(screen.getByTestId('engine-conflicts')).toBeInTheDocument();
+        expect(screen.getByRole('navigation')).not.toContainElement(screen.getByTestId('engine-conflicts'));
     });
 });

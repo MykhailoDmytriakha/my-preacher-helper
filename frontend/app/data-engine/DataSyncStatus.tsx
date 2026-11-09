@@ -6,6 +6,7 @@ import { createPortal } from 'react-dom';
 
 import { OutdatedTabNotice } from '@/components/common/OutdatedTabNotice';
 import { useRecordReadSummary } from '@/components/common/recordReadSummary';
+import { SyncNotice } from '@/components/common/SyncNoticeDock';
 import { useSyncOutlet } from '@/components/common/syncOutlet';
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
 import { useConfirm, useDiscardQuestion } from '@/hooks/useConfirm';
@@ -67,6 +68,8 @@ export interface DataSyncStatusProps {
   recoveryError?: string | null;
   /** Names what this status is about when it stands apart from its screen (e.g. the settings). */
   title?: string;
+  /** A real status in the workspace’s shared save-notice disclosure. */
+  workspaceNotice?: boolean;
   className?: string;
 }
 
@@ -90,7 +93,7 @@ export function FieldComparison({ comparison }: { comparison: TextComparison }) 
 const GONE = Symbol('gone');
 
 /** Present the engine's decisions; conflict detection and merge policy stay in the engine. */
-export function DataSyncStatus({ subject, status, error, errorWords, onKeepLocal, onAcceptRemote, onRetry, recoveryChoices = [], reviewRecoveryId, onRecover, onDiscardRecovery, recoveryLoading = false, recoveryError, title, comparison, className = '' }: DataSyncStatusProps) {
+export function DataSyncStatus({ subject, status, error, errorWords, onKeepLocal, onAcceptRemote, onRetry, recoveryChoices = [], reviewRecoveryId, onRecover, onDiscardRecovery, recoveryLoading = false, recoveryError, title, comparison, workspaceNotice = false, className = '' }: DataSyncStatusProps) {
   const { t } = useTranslation();
   const outlet = useSyncOutlet(subject);
   const sayNotice = useFailureNotice();
@@ -243,5 +246,6 @@ export function DataSyncStatus({ subject, status, error, errorWords, onKeepLocal
   </div>
   {discardDialog}{deleteDialog}
   </>;
-  return outlet ? createPortal(content, outlet) : content;
+  const shown = workspaceNotice ? <SyncNotice>{content}</SyncNotice> : content;
+  return outlet ? createPortal(shown, outlet) : shown;
 }

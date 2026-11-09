@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { toast } from 'sonner';
 
+import { SyncNotice } from '@/components/common/SyncNoticeDock';
 import FormDialog from '@/components/ui/FormDialog';
 import { PageSpinner } from '@/components/ui/PageSpinner';
 import { useClipboard } from '@/hooks/useClipboard';
@@ -350,7 +351,9 @@ export function LegacyQueryCopies({ owner }: { owner: string }) {
   };
 
   if (!current) return null;
-  if (!current.copies.length) return current.failed ? <p role="alert" className="mb-3 text-sm text-rose-700 dark:text-rose-300">{t(ACTION_FAILED)}</p> : null;
+  if (!current.copies.length) return current.failed
+    ? <SyncNotice><p role="alert" className="mb-3 text-sm text-rose-700 dark:text-rose-300">{t(ACTION_FAILED)}</p></SyncNotice>
+    : null;
   const count = current.copies.length;
   // What still waits: every change not accepted, and a copy that only an explicit removal settles.
   const left = current.copies.reduce((sum, copy) => {
@@ -384,7 +387,7 @@ export function LegacyQueryCopies({ owner }: { owner: string }) {
     </div>
   );
   return (
-    <>
+    <SyncNotice>
       {current.failed && <p role="alert" className="mb-2 text-sm text-rose-700 dark:text-rose-300">{t(ACTION_FAILED)}</p>}
       <button type="button" onClick={() => setOpen(true)}
         className="mb-3 flex min-h-[44px] w-full items-center gap-3 rounded-xl border border-orange-200 bg-orange-50 px-4 text-left text-sm text-orange-900 transition-colors hover:bg-orange-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 dark:border-orange-500/30 dark:bg-orange-500/10 dark:text-orange-100 dark:hover:bg-orange-500/20">
@@ -414,7 +417,7 @@ export function LegacyQueryCopies({ owner }: { owner: string }) {
           ))}
         </FormDialog>
       )}
-    </>
+    </SyncNotice>
   );
 }
 

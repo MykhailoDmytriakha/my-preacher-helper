@@ -3,6 +3,7 @@
 import { ReactNode, useRef } from 'react';
 
 import { AnalysisReshapeRecovery } from '@/components/bible/analysis/AnalysisReshapeRecovery';
+import { SyncNoticeDock } from '@/components/common/SyncNoticeDock';
 import { DeviceStorageNotice } from '@/components/DeviceStorageNotice';
 import { TechnicalDetailsDialog } from '@/components/diagnostics/TechnicalDetailsButton';
 import { DraftStorageNotice } from '@/components/DraftStorageNotice';
@@ -46,6 +47,7 @@ export function PrivateWorkspace({ children }: { children: ReactNode }) {
  * window knows which page was opened.
  */
 export function PrivateChrome({ pathname, search, children }: { pathname: string; search: string; children: ReactNode }) {
+  const bibleReader = pathname === '/bible' || pathname === '/bible/';
   const isStudyDetail = /^\/studies\/(?!share-links(?:\/|$))[^/]+\/?$/.test(pathname);
   const contentRef = useRef<HTMLElement | null>(null);
   useWorkspacePanes(contentRef, 'study', isStudyDetail);
@@ -55,6 +57,8 @@ export function PrivateChrome({ pathname, search, children }: { pathname: string
       new URLSearchParams(search).get('planView') === 'preaching'
   );
 
+  const syncNotices = <><OutboxConflictBanner /><EngineConflictBanner search={search} /></>;
+  const recovery = <><SeriesMembershipRecovery /><AnalysisReshapeRecovery /><UserSettingsSyncStatus /></>;
   return (
     // The page root itself moves under a swipe or a pull, so the gestures render it.
     <PageGestures data-study-workspace={isStudyDetail ? '' : undefined} className="min-h-screen bg-white dark:bg-gray-900">
@@ -65,15 +69,11 @@ export function PrivateChrome({ pathname, search, children }: { pathname: string
       <OutboxDrain />
       {!isPreachingPlan && (
         <>
-          <DashboardNav />
+          <DashboardNav syncNotices={bibleReader ? <SyncNoticeDock>{syncNotices}{recovery}</SyncNoticeDock> : undefined} />
           <GuestBanner />
           <div className="mx-auto w-full px-4 sm:px-6 lg:px-8">
-            {/* An offline edit the server refused on replay. App-wide: the refusal
-                surfaces on reconnect, when the person may be on another screen.
-                Inside the existing gutter — its own container leaked into pages. */}
-            <OutboxConflictBanner />
-            {/* The same door for engine writes the server refused after this device kept them. */}
-            <EngineConflictBanner search={search} />
+            {/* Long Bible books expose the same recovery controls from the pinned header. */}
+            {!bibleReader && syncNotices}
             {/* Device storage that stopped answering: records are copies for reading until it does. */}
             <DeviceStorageNotice />
             <DraftStorageNotice />
@@ -81,7 +81,7 @@ export function PrivateChrome({ pathname, search, children }: { pathname: string
           </div>
         </>
       )}
-      <div className="mx-auto w-full px-4 sm:px-6 lg:px-8"><SeriesMembershipRecovery /><AnalysisReshapeRecovery /><UserSettingsSyncStatus /></div>
+      {!bibleReader && <div className="mx-auto w-full px-4 sm:px-6 lg:px-8">{recovery}</div>}
       <main
         ref={contentRef}
         id="main-content"

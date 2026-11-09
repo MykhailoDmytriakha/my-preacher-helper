@@ -221,6 +221,7 @@
     "partlyHidden": "Besides the changes above, this copy differs in ways no line can show ({{fields}}). If the app has everything you need, remove the copy — its raw data is below."
   },
   "dataSync": {
+    "readerNotices": "Save notices",
     "versionComparison": "Compare field versions",
     "fieldVersionChanged": "This field has another version saved from your other device. Compare the versions above and choose which to keep.",
     "useStoredVersion": "Use saved version",

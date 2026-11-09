@@ -5,6 +5,7 @@ import { doc } from 'firebase/firestore';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
+import { SyncNotice } from '@/components/common/SyncNoticeDock';
 import { OUTBOX_CHANGED_EVENT } from '@/components/OutboxDrain';
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
 import { getClientDb } from '@/config/firebaseClientDb';
@@ -97,14 +98,14 @@ function LegacyConflictBanner() {
     if (stuck === 0) return null;
     // Nothing was refused, but something is still waiting to be sent.
     return (
-      <div>
+      <SyncNotice><div>
         <p
           role="status"
           className="mb-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200"
         >
           {t('freshness.queuedPending', { count: stuck })}
         </p>
-      </div>
+      </div></SyncNotice>
     );
   }
 
@@ -215,7 +216,7 @@ function LegacyConflictBanner() {
    */
   if (entry.targetMissing) {
     return (
-      <div>
+      <SyncNotice><div>
         {discardDialog}
         <div
           role="alert"
@@ -247,7 +248,7 @@ function LegacyConflictBanner() {
             </button>
           </div>
         </div>
-      </div>
+      </div></SyncNotice>
     );
   }
 
@@ -283,7 +284,7 @@ function LegacyConflictBanner() {
   // NO container classes of its own: the layout already provides the page gutter,
   // and adding `mx-auto/px-*` here leaked a page-level container into every screen.
   return (
-    <div>
+    <SyncNotice><div>
       {discardDialog}
       <SaveConflictBanner
         entityKey="entityRecord"
@@ -323,7 +324,7 @@ function LegacyConflictBanner() {
           {t('freshness.copyTextAction')}
         </button>
       </div>
-    </div>
+    </div></SyncNotice>
   );
 }
 
@@ -378,7 +379,8 @@ function LegacyRecoveryBanner({ owner }: { owner: string }) {
       if (url) URL.revokeObjectURL(url);
     }
   };
-  return <>
+  if (!error && sources.length === 0) return null;
+  return <SyncNotice>
     {error && <p role="alert">{t('legacyRecovery.actionFailed')}</p>}
     {sources.map(source => <section key={source.id} role="alert" className="mb-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm dark:border-amber-500/40 dark:bg-amber-500/10">
       <p className="font-medium">{t(source.status === 'migration-required' ? 'legacyRecovery.title' : 'legacyRecovery.blockedTitle')}</p>
@@ -393,5 +395,5 @@ function LegacyRecoveryBanner({ owner }: { owner: string }) {
         <button type="button" onClick={() => download(source)} className="rounded-lg border border-amber-300 px-3 py-1.5">{t('legacyRecovery.export')}</button>
       </div>
     </section>)}
-  </>;
+  </SyncNotice>;
 }

@@ -1,10 +1,11 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { toast } from 'sonner';
 
 import { OutdatedTabNotice } from '@/components/common/OutdatedTabNotice';
+import { SyncNotice } from '@/components/common/SyncNoticeDock';
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
 import { FieldComparison } from '@/data-engine/DataSyncStatus';
 import { captureRecoveryChoice, councilRefusalHeldOpen, isCollectionOnEngine, isDataEngineEnabled, isOneShotRecord, isRecoveryHeldOpen, readCommentKindComparison, readDocumentTagComparison, readPlanTemplateNameConflict, readStudyNoteTypeComparison, readServiceStepConflict, readTagColorConflict, useDataEngine, useDocumentActions, useOpenDocumentAnswerScopes, waitsForDecision, type OpenDocumentAnswer, type RecoveryChoiceScope } from '@/data-engine/react.client';
@@ -454,32 +455,25 @@ function EngineConflicts({ pollMs, search }: { pollMs: number; search?: string }
   const mine = entry.mine.join('\n\n———\n\n');
   // A refusal on a tab older than the server: the way out is a reload (BUG-20261107-outdated-tab-refusal-unexplained).
   const outdated = <OutdatedTabNotice refused={Boolean(entry.refused) || REFUSAL_KINDS.has(entry.kind)} className="mb-3" />;
+  const notice = (body: ReactNode) => <><SyncNotice>{outdated}{body}</SyncNotice>{discardDialog}{confirmDialog}</>;
   if (entry.retainedDraftsOnly) {
-    return <>
-      {outdated}
-      {mine && <div role="status" className={NOTICE_BOX}>
+    return notice(mine && <div role="status" className={NOTICE_BOX}>
         <p className={NOTICE_TITLE}>{t('dataSync.retainedCouncilDrafts')}</p>
         <pre className={NOTICE_TEXT}>{mine}</pre>
         <button type="button" className={`mt-3 ${SECONDARY_BUTTON}`} onClick={() => { void copyToClipboard(mine); }}>{t(COPY_ACTION)}</button>
-      </div>}
-      {discardDialog}{confirmDialog}
-    </>;
+      </div>);
   }
   if (entry.actionResolutionRequired) {
-    return <>{outdated}<ScreenDraftNotice entry={entry} mine={mine} busy={busy} onCopy={() => { void copyToClipboard(mine); }} /></>;
+    return notice(<ScreenDraftNotice entry={entry} mine={mine} busy={busy} onCopy={() => { void copyToClipboard(mine); }} />);
   }
   if (entry.screen) {
-    return <>
-      {outdated}
-      {entry.decidable
-        ? <ScreenDraftNotice entry={entry} mine={mine} busy={busy} onCopy={() => { void copyToClipboard(mine); }} onTakeStored={() => { void askBeforeSettling(entry, 'theirs'); }} />
-        : <UndecidableScreenDrafts entry={entry} mine={mine} busy={busy} onCopy={() => { void copyToClipboard(mine); }} onTakeStored={() => { void askBeforeSettling(entry, 'theirs'); }} />}
-      {discardDialog}{confirmDialog}
-    </>;
+    return notice(entry.decidable
+      ? <ScreenDraftNotice entry={entry} mine={mine} busy={busy} onCopy={() => { void copyToClipboard(mine); }} onTakeStored={() => { void askBeforeSettling(entry, 'theirs'); }} />
+      : <UndecidableScreenDrafts entry={entry} mine={mine} busy={busy} onCopy={() => { void copyToClipboard(mine); }} onTakeStored={() => { void askBeforeSettling(entry, 'theirs'); }} />);
   }
   if (entry.kind === 'conflict') {
     const comparison = fieldComparison(entry, t);
-    return (
+    return notice(
       <>
         {comparison && <section aria-label={t('dataSync.versionComparison')} className="mb-3"><FieldComparison comparison={comparison} /></section>}
         <SaveConflictBanner
@@ -493,7 +487,6 @@ function EngineConflicts({ pollMs, search }: { pollMs: number; search?: string }
           busy={busy}
           className="mb-3"
         />
-        {discardDialog}{confirmDialog}
       </>
     );
   }
@@ -509,9 +502,7 @@ function EngineConflicts({ pollMs, search }: { pollMs: number; search?: string }
   const [title, body] = heading[entry.kind];
   const deletion = entry.kind === 'deletedHere' || entry.kind === 'refusedDelete';
   const shown = deletion ? entry.theirs : mine;
-  return (
-    <>
-    {outdated}
+  return notice(
     <div role="alert" className={NOTICE_BOX}>
       <p className={NOTICE_TITLE}>{title}</p>
       {body && <p className={NOTICE_BODY}>{body}</p>}
@@ -536,8 +527,6 @@ function EngineConflicts({ pollMs, search }: { pollMs: number; search?: string }
         )}
       </div>
     </div>
-    {discardDialog}{confirmDialog}
-    </>
   );
 }
 

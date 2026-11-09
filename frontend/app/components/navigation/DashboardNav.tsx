@@ -3,7 +3,7 @@
 import { BookOpenIcon, ChatBubbleLeftEllipsisIcon } from '@heroicons/react/24/solid';
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import "@locales/i18n";
 
@@ -73,7 +73,7 @@ const getSermonIdFromPathname = (pathname: string | null | undefined) => {
   return match?.[1] ?? null;
 };
 
-export default function DashboardNav() {
+export default function DashboardNav({ syncNotices }: { syncNotices?: ReactNode } = {}) {
   const { t } = useTranslation();
   const { user, handleLogout } = useAuth();
   const {
@@ -395,7 +395,7 @@ export default function DashboardNav() {
     // The indicators that exist, in the phone's own row or in a page's open header.
     const indicators = <>{usageGrace && <UsageGraceIndicator model={usageGrace} placement="mobile" />}<AppUpdateButton /><OfflineIndicator /></>;
     return (
-    <nav className="sticky top-0 z-40 border-b border-gray-200/80 bg-white/95 shadow-sm backdrop-blur dark:border-gray-700/70 dark:bg-gray-950/95">
+    <nav className="sticky top-0 z-40 [&:has(>[data-sync-notice-open])]:z-[60] border-b border-gray-200/80 bg-white/95 shadow-sm backdrop-blur dark:border-gray-700/70 dark:bg-gray-950/95">
       <div className={`relative w-full px-4 sm:px-6 lg:px-8 ${modeToggle ? 'lg:grid lg:h-16 lg:grid-cols-[max-content_minmax(0,1fr)_max-content] lg:items-center lg:gap-4' : ''}`}>
         {/* Desktop Layout */}
         <div className={modeToggle ? 'hidden lg:contents' : 'hidden lg:flex h-16 items-center gap-4 relative'}>
@@ -589,6 +589,8 @@ export default function DashboardNav() {
           </div>
         )}
       </div>
+
+      {syncNotices}
 
       {/* Mobile menu */}
       <MobileMenu

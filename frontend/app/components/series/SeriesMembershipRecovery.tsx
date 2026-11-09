@@ -3,6 +3,7 @@
 import dynamic from 'next/dynamic';
 import { useState } from 'react';
 
+import { SyncNotice } from '@/components/common/SyncNoticeDock';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { useDataMembership, useRecoveryDiscovery } from '@/data-engine/react.client';
 import { useTranslation } from '@locales/useTranslation';
@@ -34,11 +35,11 @@ export function SeriesMembershipRecovery() {
       setSelected({ identity: actions.recoveryIdentity, id });
     } });
   return <>
-    {!id && (recovery.choices.length > 0 || recovery.error) && <section className="mb-4 space-y-2 rounded-lg border border-amber-200 p-3 dark:border-amber-700">
+    {!id && (recovery.choices.length > 0 || recovery.error) && <SyncNotice><section className="mb-4 space-y-2 rounded-lg border border-amber-200 p-3 dark:border-amber-700">
       <h2 className="font-semibold">{t('workspaces.series.membershipRecovery')}</h2>
       <DataSyncStatus subject={actions.recoveryIdentity} status={null} recoveryChoices={recovery.choices} recoveryLoading={recovery.loading}
         recoveryError={recovery.error} onRecover={recovery.recover} onDiscardRecovery={recovery.discard} />
-    </section>}
+    </section></SyncNotice>}
     {id && <SeriesMembershipDialog key={id} mode="recover" recoveryId={id} seriesId="" onClose={() => setSelected(null)} />}
   </>;
 }
