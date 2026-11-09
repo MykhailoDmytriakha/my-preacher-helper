@@ -2,13 +2,13 @@
 import type { ActionTime } from './actionClock';
 import type { CouncilAssemblyActions, CouncilAssemblyCapture } from './councilAssemblyAction';
 import type { CouncilTopicKindActions, CouncilTopicKindCapture } from './councilTopicKindAction';
-import type { CouncilTopicTitleAction } from './councilTopicTitleAction';
 import type { DatedRowActionEvidence } from './datedRowAction';
 import type { DocumentFieldAction, DocumentFieldObservation, DocumentFieldStamp, PlanTemplateNameCapture, PrayerTitleCapture, StudyNoteTitleCapture, ServiceOrderTitleCapture, TagColorCapture } from './documentFieldAction';
 import type { GroupMeetingFieldActions } from './groupMeetingFieldAction';
 import type { PrayerStatusCapture } from './prayerStatusAction';
 import type { PreachDateFieldActions } from './preachDateFieldAction';
 import type { PreachStatusAction } from './preachStatusAction';
+import type { RowTitleActions } from './rowTitleAutosave';
 import type { SeriesFieldStamps } from './seriesFieldAction';
 import type { SermonChurchFill } from './sermonChurchFill';
 import type { ServiceOrderFlagActions, ServiceOrderFlagCapture, ServiceOrderStepTitleActions, ServiceOrderStepTitleCapture } from './serviceOrderStepAction';
@@ -78,7 +78,6 @@ export type DataCommand = CommandBase & (
       serviceOrderTitleAction?: DocumentFieldAction;
       serviceOrderFlagActions?: ServiceOrderFlagActions;
       serviceOrderStepTitleActions?: ServiceOrderStepTitleActions;
-      councilTopicTitleActions?: CouncilTopicTitleAction[];
       councilAssemblyActions?: CouncilAssemblyActions;
       councilTopicKindActions?: CouncilTopicKindActions;
       prayerTitleAction?: DocumentFieldObservation;
@@ -100,7 +99,7 @@ export type DataCommand = CommandBase & (
       /** Exact plan cells observed before an explicit outline removal. */
       observedPlanTextRemoval?: Record<string, string>;
       /** Exact orphaned text explicitly cleared while its point was absent. */
-      observedPlanTextDiscard?: Record<string, string> }
+      observedPlanTextDiscard?: Record<string, string> } & RowTitleActions
   | { kind: 'delete'; baseline: DocumentData }
   | { kind: 'relation'; relation: 'material-notes'; beforeNoteIds: string[]; afterNoteIds: string[];
       targets: Array<{ id: string; generation: string | null }> }

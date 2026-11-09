@@ -1,9 +1,11 @@
 'use client';
 
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
+import { readGroupFlowTitleConflict } from '@/data-engine/react.client';
 import { useGroupDataDocument } from '@/hooks/useGroupDataDocument';
 import { useGroupMeetingEditor } from '@/hooks/useGroupMeetingEditor';
 import { hydrateGroup, isGroupStatus } from '@/utils/groupDocument';
+import { useTranslation } from '@locales/useTranslation';
 
 import type { GroupPageEditor } from './groupPageEditor';
 import type { Group } from '@/models/models';
@@ -15,6 +17,7 @@ const nextValue = <T,>(next: SetStateAction<T>, previous: T): T =>
 /** Domain fields use the shared document; the meeting keeps incomplete dates in a durable form. */
 export function useGroupPageEditor(groupId: string): GroupPageEditor {
   const data = useGroupDataDocument(groupId);
+  const { t } = useTranslation();
   const group = data.group;
   // The public facade records failures for DataSyncStatus; a React event cannot await them.
   const change = (mutate: (current: Group) => Group) => { void data.update(mutate).catch(() => undefined); };
@@ -43,6 +46,21 @@ export function useGroupPageEditor(groupId: string): GroupPageEditor {
     owner, generation, groupId,
     disabled: Boolean(data.document.readOnly || data.status?.phase === 'conflict' || data.status?.phase === 'refused'),
   } : undefined;
+  const renameBlock: GroupPageEditor['renameBlock'] = (block, title) => data.update(current => {
+    if (!current.templates.some(row => row.id === block.id && row.createdAt === block.createdAt)) {
+      throw Object.assign(new Error('The block that was shown changed'), { code: 'decision-changed' });
+    }
+    return { ...current, templates: current.templates.map(row => row.id === block.id
+      ? { ...row, title, updatedAt: new Date().toISOString() } : row) };
+  }, { action: { kind: 'group-block-title', rowId: block.id } });
+  const renameStep: GroupPageEditor['renameStep'] = (step, title) => data.update(current => {
+    if (!current.flow.some(row => row.id === step.id && row.templateId === step.templateId)) {
+      throw Object.assign(new Error('The step that was shown changed'), { code: 'decision-changed' });
+    }
+    return { ...current, flow: current.flow.map(row => row.id === step.id ? { ...row, instanceTitle: title || undefined } : row) };
+  }, { action: { kind: 'group-step-title', rowId: step.id } });
+  const checkpoint = data.document.state?.checkpoint;
+  const comparison = checkpoint && readGroupFlowTitleConflict(checkpoint);
   const titleHistory = historyScope && { ...historyScope, restore: editTitle };
   const statusHistory = historyScope && { ...historyScope, field: 'status' as const, restore: async (next: string) => {
     if (!isGroupStatus(next)) throw new Error('Invalid group status');
@@ -61,6 +79,7 @@ export function useGroupPageEditor(groupId: string): GroupPageEditor {
     group, retainedGroup, loading: data.loading || Boolean(group && meeting.loading), title: group?.title ?? '', setTitle: next => { void editTitle(next).catch(() => undefined); }, titleHistory,
     description: group?.description ?? '', setDescription: next => change(current => ({ ...current, description: nextValue(next, current.description ?? '') })),
     status: group?.status ?? 'draft', setStatus: next => { void editStatus(next).catch(() => undefined); }, statusHistory, templates: group?.templates ?? [], setTemplates: field('templates'),
+    renameBlock, renameStep, flowTitleScope: historyScope,
     flow: group?.flow ?? [], setFlow: field('flow'), meetingDate: first?.date ?? '', setMeetingDate: meeting.field('date'),
     meetingLocation: first?.location ?? '', setMeetingLocation: meeting.field('location'),
     meetingAudience: first?.audience ?? '', setMeetingAudience: meeting.field('audience'),
@@ -70,8 +89,15 @@ export function useGroupPageEditor(groupId: string): GroupPageEditor {
       restore: meeting.restoreField,
     } : undefined,
     deleteGroupDetail: data.deleteGroupDetail,
-    feedback: <DataSyncStatus subject={manual ? meeting.form.recoveryIdentity : data.document.recoveryIdentity} status={status} error={error} errorWords={meeting.form.error ? meeting.form.errorWords : data.document.errorWords}
-      onKeepLocal={manual ? meeting.form.keepLocal : data.keepLocal} onAcceptRemote={manual ? meeting.form.acceptRemote : data.acceptRemote} onRetry={manual ? meeting.form.retry : data.refresh}
+    feedback: <DataSyncStatus comparison={!manual && comparison ? {
+      identity: comparison.identity,
+      title: t(comparison.field === 'block' ? 'groupFlow.editor.blockTitleLabel' : 'groupFlow.editor.stepTitleLabel'),
+      mine: comparison.mine || t(comparison.field === 'block' ? 'common.untitled' : 'groupFlow.editor.useBlockName'),
+      stored: comparison.stored || t(comparison.field === 'block' ? 'common.untitled' : 'groupFlow.editor.useBlockName'),
+      valueKind: 'field', scopedChoice: true,
+    } : undefined} subject={manual ? meeting.form.recoveryIdentity : data.document.recoveryIdentity} status={status} error={error} errorWords={meeting.form.error ? meeting.form.errorWords : data.document.errorWords}
+      onKeepLocal={manual ? meeting.form.keepLocal : () => data.keepLocal(comparison ? checkpoint : undefined)}
+      onAcceptRemote={manual ? meeting.form.acceptRemote : () => data.acceptRemote(comparison ? checkpoint : undefined)} onRetry={manual ? meeting.form.retry : data.refresh}
       recoveryChoices={choices} onRecover={id => id.startsWith('meeting:') ? meeting.recovery.recover(id.slice(8)) : recovery.recover(id.slice(9))}
       recoveryLoading={recovery.loading || meeting.recovery.loading} recoveryError={recovery.error || meeting.recovery.error}
       onDiscardRecovery={action => {

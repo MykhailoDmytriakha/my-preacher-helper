@@ -170,7 +170,7 @@ export function metadataAfterRowDetails<Field extends string, Value extends RowV
     const unordered = new Set(plans.map(plan => plan.sameValueWithoutOrder));
     const updated = [...current].flatMap(([rowId, value]): Proof[] => {
       const born = births.get(rowId);
-      if (value === undefined || !born || !boundedRowId(rowId) || !metadata.operationId) return [];
+      if (value === undefined || born === undefined || !boundedRowId(rowId) || !metadata.operationId) return [];
       const scope = currentScopes?.get(rowId);
       const stamp = stamps.get(rowId);
       const time = stamp?.rowCreatedAt === born && equalValues(stamp.after, value) ? stamp.time : null;
@@ -184,7 +184,7 @@ export function metadataAfterRowDetails<Field extends string, Value extends RowV
     const newRows = new Set(updated.map(proof => proof.rowId));
     const retained = [...updated, ...stored.values.filter(proof => {
       const value = current.get(proof.rowId), born = births.get(proof.rowId);
-      return value !== undefined && born && !newRows.has(proof.rowId)
+      return value !== undefined && born !== undefined && !newRows.has(proof.rowId)
         && proof.digest === digest(born, value, currentScopes?.get(proof.rowId));
     })];
     const floor = retained.slice(MAX_PROOFS).reduce((revision, proof) => Math.max(revision, proof.revision), stored.floor);

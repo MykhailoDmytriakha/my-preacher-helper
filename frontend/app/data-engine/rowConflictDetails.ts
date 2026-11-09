@@ -4,6 +4,7 @@ import { COUNCIL_ASSEMBLY, councilAssemblyRow } from './councilAssemblyAction';
 import { COUNCIL_TOPIC_KIND, councilTopicKindRow } from './councilTopicKindAction';
 import { COUNCIL_TOPIC_TITLE, councilTopicTitleRow } from './councilTopicTitleAction';
 import { equalValues, object } from './fieldValues';
+import { GROUP_BLOCK_TITLE_POLICY, GROUP_STEP_TITLE_POLICY } from './groupFlowTitleAction';
 import { existingRowField, replaceExistingRowField } from './rowFieldAction';
 import { readSermonConflictField } from './sermonFieldChoice';
 import { SERVICE_ORDER_FLAG_TARGET, SERVICE_ORDER_STEP_TITLE_TARGET, serviceOrderStepField } from './serviceOrderStepAction';
@@ -66,6 +67,36 @@ export function readPlanTemplateNameConflict(checkpoint: SessionCheckpoint) {
 
 export function readTagColorConflict(checkpoint: SessionCheckpoint) {
   return readExactTextConflict(checkpoint, 'tags', 'color');
+}
+
+export function readGroupFlowTitleConflict(checkpoint: SessionCheckpoint) {
+  const { confirmed, draft, conflicts, remoteCandidate, pending } = checkpoint;
+  if (confirmed.resource.collection !== 'groups' || !confirmed.value || !draft
+    || conflicts.length !== 1 || Object.keys(pending).length !== 1
+    || !remoteCandidate?.value || remoteCandidate.metadata?.generation !== confirmed.metadata?.generation) return undefined;
+  const { path } = conflicts[0];
+  const isBlock = path[0] === 'templates';
+  const policy = isBlock ? GROUP_BLOCK_TITLE_POLICY : GROUP_STEP_TITLE_POLICY;
+  const target = policy.target('title');
+  if (path.length !== 3 || path[0] !== target.field || !path[1].startsWith('id:') || path[2] !== target.leaf) return undefined;
+  const id = path[1].slice(3);
+  const birth = existingRowField(confirmed.value[target.field], id, policy.birth);
+  const before = existingRowField(confirmed.value[target.field], id, target);
+  const mine = existingRowField(draft[target.field], id, target);
+  const stored = existingRowField(remoteCandidate.value[target.field], id, target);
+  if (birth === undefined || before === undefined || mine === undefined || stored === undefined || mine === stored
+    || existingRowField(draft[target.field], id, policy.birth) !== birth
+    || existingRowField(remoteCandidate.value[target.field], id, policy.birth) !== birth) return undefined;
+  const compared = (value: DocumentData) => {
+    const rows = replaceExistingRowField(value[target.field], id, before, target);
+    const normalized = isBlock && Array.isArray(rows) ? rows.map(row => object(row) && row.id === id
+      ? Object.fromEntries(Object.entries(row).filter(([key]) => key !== 'updatedAt')) : row) : rows;
+    return { ...Object.fromEntries(Object.entries(value).filter(([key]) => !DOCUMENT_BOOKKEEPING_FIELDS.has(key))),
+      [target.field]: normalized };
+  };
+  if (!equalValues(compared(confirmed.value), compared(draft))) return undefined;
+  return { field: isBlock ? 'block' as const : 'step' as const, mine, stored,
+    identity: JSON.stringify([checkpoint.editGeneration, remoteCandidate.metadata?.generation, remoteCandidate.metadata?.revision, path, mine, stored]) };
 }
 
 export function readServiceStepConflict(checkpoint: SessionCheckpoint) {

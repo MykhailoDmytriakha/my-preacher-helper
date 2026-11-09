@@ -1,7 +1,7 @@
 import type { RecordReadNotice } from '@/components/common/recordReadSummary';
 import type { GroupMeetingField } from '@/data-engine/groupMeetingFieldAction';
 import type { RecordPresence } from '@/data-engine/recordPresence';
-import type { Group } from '@/models/models';
+import type { Group, GroupBlockTemplate, GroupFlowItem } from '@/models/models';
 import type { Dispatch, ReactNode, SetStateAction } from 'react';
 
 /** What the group page draws and edits; every change is persisted by the data engine (useGroupPageEditor). */
@@ -24,6 +24,9 @@ export interface GroupPageEditor {
   statusHistory?: NonNullable<GroupPageEditor['titleHistory']> & { field: 'status' };
   templates: Group['templates'];
   setTemplates: Dispatch<SetStateAction<Group['templates']>>;
+  flowTitleScope?: { owner: string; generation: string; groupId: string; disabled: boolean };
+  renameBlock: (block: Pick<GroupBlockTemplate, 'id' | 'createdAt'>, title: string) => Promise<void>;
+  renameStep: (step: Pick<GroupFlowItem, 'id' | 'templateId'>, title: string | null) => Promise<void>;
   flow: Group['flow'];
   setFlow: Dispatch<SetStateAction<Group['flow']>>;
   meetingDate: string;

@@ -36,7 +36,7 @@ export function replacedRowDetail<Value extends RowValue>(current: ResourceSnaps
   target: RowFieldTarget<Value>, birth: RowFieldTarget<string>): ConflictDetail | undefined {
   const rows = current.value?.[target.field];
   const born = existingRowField(rows, action.rowId, birth);
-  if (!born || born === action.rowCreatedAt) return undefined;
+  if (born === undefined || born === action.rowCreatedAt) return undefined;
   const value = existingRowField(rows, action.rowId, target);
   if (equalValues(value, action.after)) return undefined;
   return rowDetailConflict(action, target, value);

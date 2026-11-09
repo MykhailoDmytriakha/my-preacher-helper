@@ -830,6 +830,69 @@ describe('Durable commit requests', () => {
     }));
   });
 
+  it('preserves a separately staged step clear after an earlier group title reaches an intervening ACK', async () => {
+    const s = setup();
+    const { queue } = s.makeQueue();
+    const block = { id: 'block', type: 'custom', title: 'Block name', content: 'Words', status: 'draft', createdAt: 'now', updatedAt: 'now' };
+    const step = { id: 'step', templateId: block.id, order: 1 };
+    const opening: ResourceSnapshot = {
+      resource: { collection: 'groups', id: 'group' },
+      value: { userId: 'owner', title: 'Group', status: 'draft', templates: [block], flow: [step], createdAt: 'now', updatedAt: 'now' },
+      metadata: { protocol: 1, generation: 'group', revision: 1, deleted: false },
+    };
+    const editor = new DataSession(opening);
+    const firstTime = { earliestMs: 1_800_000_000_020, latestMs: 1_800_000_000_024 };
+    const nextTime = { earliestMs: 1_800_000_000_030, latestMs: 1_800_000_000_034 };
+    editor.edit({ ...opening.value, flow: [{ ...step, instanceTitle: 'First' }] }, undefined,
+      { field: 'group-step-title', rowId: step.id, time: firstTime });
+    const first = (await queue.save('group', editor.checkpoint()))!;
+    editor.applyCommit(first);
+    editor.edit({ ...opening.value, flow: [step] }, undefined,
+      { field: 'group-step-title', rowId: step.id, time: nextTime });
+    const second = (await queue.save('group', editor.checkpoint(), { predecessorId: first.id }))!;
+    const expected = { rowId: step.id, rowCreatedAt: block.id, before: 'First', after: null, time: nextTime,
+      observedRevision: 1, predecessorOperationId: first.id };
+    expect(second.groupStepTitleActions).toEqual([expected]);
+    const desk = { ...step, instanceTitle: 'Remote title', durationMin: 15 };
+    const accepted = { ...opening, value: { ...opening.value, flow: [desk] },
+      metadata: { ...opening.metadata!, revision: 2, operationId: first.id } };
+    s.replace(accepted);
+    jest.mocked(s.transport.send).mockResolvedValueOnce({ kind: 'acknowledged', operationId: first.id, snapshot: accepted });
+    await s.makeQueue().queue.drain(true);
+    expect(s.transport.send).toHaveBeenCalledWith(expect.objectContaining({ operationId: second.id,
+      groupStepTitleActions: [expected], changes: [{ path: ['flow'],
+        before: { exists: true, value: [{ ...desk, instanceTitle: 'First' }] },
+        after: { exists: true, value: [{ ...step, durationMin: 15 }] },
+      }],
+    }));
+  });
+
+  it('cannot recreate a removed group block by keeping its offline title', async () => {
+    const block = { id: 'block', type: 'custom', title: 'Original', content: 'Words', status: 'draft', createdAt: 'now', updatedAt: 'now' };
+    const step = { id: 'step', templateId: block.id, order: 1 };
+    const opening: ResourceSnapshot = {
+      resource: { collection: 'groups', id: 'group' },
+      value: { userId: 'owner', title: 'Group', status: 'draft', templates: [block], flow: [step], createdAt: 'now', updatedAt: 'now' },
+      metadata: { protocol: 1, generation: 'group', revision: 1, deleted: false },
+    };
+    const s = setup({ opening, nativeChoice: true });
+    const engine = s.makeEngine(), editor = await engine.openEditor(opening.resource, 'page');
+    try {
+      const renamed = { ...block, title: 'Offline name' };
+      await editor.edit({ ...opening.value, templates: [renamed] }, undefined, { field: 'group-block-title', rowId: block.id, time: null });
+      await editor.save();
+      s.replace({ ...opening, value: { ...opening.value, templates: [], flow: [] }, metadata: { ...opening.metadata!, revision: 2 } });
+      engine.setOnline(true); await engine.retry(); await settle();
+      expect(editor.getState().result?.kind).toBe('conflict');
+      await expect(editor.keepLocal()).rejects.toMatchObject({ code: 'decision-changed' });
+      expect(editor.getState().checkpoint.draft?.templates).toEqual([renamed]);
+      expect(s.server().value?.templates).toEqual([]);
+      await editor.acceptRemote();
+      expect(editor.getState().checkpoint.draft?.templates).toEqual([]);
+      expect(s.transport.send).toHaveBeenCalledTimes(1);
+    } finally { engine.dispose(); }
+  });
+
   it('does not recreate a removed council section when keeping a rejected title', async () => {
     const topic = { id: 'opening', title: 'Opening', summary: 'Original words', questions: [], options: [] };
     const opening: ResourceSnapshot = {

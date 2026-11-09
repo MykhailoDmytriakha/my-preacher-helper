@@ -18,6 +18,7 @@ import { existingRowDate, MEETING_DATE_TARGET, PREACH_DATE_TARGET } from './date
 import { metadataAfterDatedRow, orderDatedRow } from './datedRowOrder.server';
 import { metadataAfterDocumentFields, orderDocumentFields, DOCUMENT_TITLE_HISTORY, GROUP_STATUS_HISTORY, DOCUMENT_METADATA_HISTORY, SERMON_CHURCH_HISTORY, SERMON_VERSE_HISTORY } from './documentFieldOrder.server';
 import { equalValues, readField } from './fieldValues';
+import { GROUP_BLOCK_TITLE_POLICY, GROUP_STEP_TITLE_POLICY, type GroupFlowTitleHistoryPage } from './groupFlowTitleAction';
 import { GROUP_MEETING_FIELD_POLICY, type GroupMeetingFieldHistoryPage } from './groupMeetingFieldAction';
 import { GROUP_MEETING_FIELD_HISTORY, metadataAfterGroupMeetingFields, orderGroupMeetingFields } from './groupMeetingFieldOrder.server';
 import { PREACH_DATE_FIELD_POLICY, type PreachDateField, type PreachDateFieldHistoryPage } from './preachDateFieldAction';
@@ -390,7 +391,13 @@ function persistRowDetailHistory<Field extends string, Value extends RowValue>(t
   });
 }
 
-async function persistAcceptedCommand(transaction: Transaction, { owner, command, snapshot: primarySnapshot, effects, rawDocuments, dateOrder, meetingOrder, preachingOrder, statusOrder, serviceFlagOrder, serviceStepTitleOrder, councilTopicTitleOrder, councilAssemblyOrder, councilTopicKindOrder, markOrder, fieldOrder }: {
+function orderGroupFlowTitles(command: DataCommand, current: ResourceSnapshot, metadata: unknown, serverMs: number) {
+  const block = orderRowDetails(command, current, metadata, serverMs, GROUP_BLOCK_TITLE_POLICY);
+  const step = orderRowDetails(block.command, current, metadata, serverMs, GROUP_STEP_TITLE_POLICY);
+  return { block, step };
+}
+
+async function persistAcceptedCommand(transaction: Transaction, { owner, command, snapshot: primarySnapshot, effects, rawDocuments, dateOrder, meetingOrder, groupFlowTitleOrder, preachingOrder, statusOrder, serviceFlagOrder, serviceStepTitleOrder, councilTopicTitleOrder, councilAssemblyOrder, councilTopicKindOrder, markOrder, fieldOrder }: {
   owner: string;
   command: DataCommand;
   snapshot: ResourceSnapshot;
@@ -398,6 +405,7 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
   rawDocuments: ReadonlyMap<string, Record<string, unknown> | undefined>;
   dateOrder?: ReturnType<typeof orderDatedRow>;
   meetingOrder?: ReturnType<typeof orderGroupMeetingFields>;
+  groupFlowTitleOrder?: ReturnType<typeof orderGroupFlowTitles>;
   preachingOrder?: RowDetailOrder<PreachDateField, RowValue>;
   statusOrder?: RowDetailOrder<'status', PreachStatusValue>;
   serviceFlagOrder?: RowDetailOrder<'flagged', boolean>;
@@ -419,7 +427,9 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
     const primary = key === primaryKey;
     const dated = metadataAfterDatedRow(snapshot, raw, primary ? command : undefined, primary ? dateOrder : undefined);
     const meeting = metadataAfterGroupMeetingFields({ ...snapshot, metadata: dated }, raw, primary ? meetingOrder : undefined);
-    const preaching = metadataAfterRowDetails({ ...snapshot, metadata: meeting }, raw, PREACH_DATE_FIELD_POLICY, primary ? preachingOrder : undefined);
+    const blockTitle = metadataAfterRowDetails({ ...snapshot, metadata: meeting }, raw, GROUP_BLOCK_TITLE_POLICY, primary ? groupFlowTitleOrder?.block : undefined);
+    const groupStepTitle = metadataAfterRowDetails({ ...snapshot, metadata: blockTitle }, raw, GROUP_STEP_TITLE_POLICY, primary ? groupFlowTitleOrder?.step : undefined);
+    const preaching = metadataAfterRowDetails({ ...snapshot, metadata: groupStepTitle }, raw, PREACH_DATE_FIELD_POLICY, primary ? preachingOrder : undefined);
     const status = metadataAfterRowDetails({ ...snapshot, metadata: preaching }, raw, PREACH_STATUS_POLICY, primary ? statusOrder : undefined);
     const flag = metadataAfterRowDetails({ ...snapshot, metadata: status }, raw, SERVICE_ORDER_FLAG_POLICY, primary ? serviceFlagOrder : undefined);
     const stepTitle = metadataAfterRowDetails({ ...snapshot, metadata: flag }, raw, SERVICE_ORDER_STEP_TITLE_POLICY, primary ? serviceStepTitleOrder : undefined);
@@ -438,6 +448,8 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
     transaction.set(history.doc(historyEntryId(primarySnapshot, command.operationId)), { ...displaced, acceptedAt: new Date().toISOString() });
   }
   persistRowDetailHistory(transaction, command, primarySnapshot, GROUP_MEETING_FIELD_POLICY, meetingOrder);
+  persistRowDetailHistory(transaction, command, primarySnapshot, GROUP_BLOCK_TITLE_POLICY, groupFlowTitleOrder?.block);
+  persistRowDetailHistory(transaction, command, primarySnapshot, GROUP_STEP_TITLE_POLICY, groupFlowTitleOrder?.step);
   persistRowDetailHistory(transaction, command, primarySnapshot, PREACH_DATE_FIELD_POLICY, preachingOrder);
   persistRowDetailHistory(transaction, command, primarySnapshot, PREACH_STATUS_POLICY, statusOrder);
   persistRowDetailHistory(transaction, command, primarySnapshot, SERVICE_ORDER_FLAG_POLICY, serviceFlagOrder);
@@ -519,6 +531,7 @@ export async function processCommand(owner: string, input: unknown): Promise<Com
     let effects: ResourceSnapshot[] = [];
     let dateOrder: ReturnType<typeof orderDatedRow> | undefined;
     let meetingOrder: ReturnType<typeof orderGroupMeetingFields> | undefined;
+    let groupFlowTitleOrder: ReturnType<typeof orderGroupFlowTitles> | undefined;
     let preachingOrder: RowDetailOrder<PreachDateField, RowValue> | undefined;
     let statusOrder: RowDetailOrder<'status', PreachStatusValue> | undefined;
     let serviceFlagOrder: RowDetailOrder<'flagged', boolean> | undefined;
@@ -536,7 +549,8 @@ export async function processCommand(owner: string, input: unknown): Promise<Com
       const serverMs = stored.readTime?.toMillis();
       dateOrder = orderDatedRow(command, current, raw?._dataEngine, serverMs);
       meetingOrder = orderGroupMeetingFields(dateOrder.command, current, raw?._dataEngine, serverMs);
-      preachingOrder = orderRowDetails(meetingOrder.command, current, raw?._dataEngine, serverMs, PREACH_DATE_FIELD_POLICY);
+      groupFlowTitleOrder = orderGroupFlowTitles(meetingOrder.command, current, raw?._dataEngine, serverMs);
+      preachingOrder = orderRowDetails(groupFlowTitleOrder.step.command, current, raw?._dataEngine, serverMs, PREACH_DATE_FIELD_POLICY);
       const statusCommand = alignPreachStatusCommand(preachingOrder.command, current);
       statusOrder = orderRowDetails(statusCommand, current, raw?._dataEngine, serverMs, PREACH_STATUS_POLICY);
       serviceFlagOrder = orderRowDetails(statusOrder.command, current, raw?._dataEngine, serverMs, SERVICE_ORDER_FLAG_POLICY);
@@ -585,7 +599,7 @@ export async function processCommand(owner: string, input: unknown): Promise<Com
           return matches;
         },
       });
-      const plan = retainUncertainChronology(planned, command, current, [...(dateOrder.uncertain ?? []), ...meetingOrder.uncertain, ...preachingOrder.uncertain, ...statusOrder.uncertain, ...serviceFlagOrder.uncertain, ...serviceStepTitleOrder.uncertain, ...councilTopicTitleOrder.uncertain, ...councilAssemblyOrder.uncertain, ...councilTopicKindOrder.uncertain, ...(markOrder.uncertain ?? []), ...(fieldOrder.uncertain ?? [])]);
+      const plan = retainUncertainChronology(planned, command, current, [...(dateOrder.uncertain ?? []), ...meetingOrder.uncertain, ...groupFlowTitleOrder.block.uncertain, ...groupFlowTitleOrder.step.uncertain, ...preachingOrder.uncertain, ...statusOrder.uncertain, ...serviceFlagOrder.uncertain, ...serviceStepTitleOrder.uncertain, ...councilTopicTitleOrder.uncertain, ...councilAssemblyOrder.uncertain, ...councilTopicKindOrder.uncertain, ...(markOrder.uncertain ?? []), ...(fieldOrder.uncertain ?? [])]);
       const acceptedAt = new Date().toISOString();
       // The planner exposes writes only for acknowledged commands.
       effects = plan.writes.map(effect => stampAcceptedResource(snapshotFromRaw(effect.resource, rawDocuments.get(resourceKey(effect.resource))), effect, acceptedAt));
@@ -613,7 +627,7 @@ export async function processCommand(owner: string, input: unknown): Promise<Com
       deletedTag = raw.name;
     }
     if (result.kind === 'acknowledged') {
-      await persistAcceptedCommand(transaction, { owner, command, snapshot: result.snapshot, effects, rawDocuments, dateOrder, meetingOrder, preachingOrder, statusOrder, serviceFlagOrder, serviceStepTitleOrder, councilTopicTitleOrder, councilAssemblyOrder, councilTopicKindOrder, markOrder, fieldOrder });
+      await persistAcceptedCommand(transaction, { owner, command, snapshot: result.snapshot, effects, rawDocuments, dateOrder, meetingOrder, groupFlowTitleOrder, preachingOrder, statusOrder, serviceFlagOrder, serviceStepTitleOrder, councilTopicTitleOrder, councilAssemblyOrder, councilTopicKindOrder, markOrder, fieldOrder });
     }
     // A blocked receipt fixes the identity but may advance after its dependencies acknowledge.
     transaction.set(commandReceiptRef, serializeReceipt(receipt));
@@ -716,6 +730,14 @@ export async function listServiceOrderFlagHistory(owner: string, orderId: string
     owner, resource, SERVICE_ORDER_FLAG_POLICY.history, generation, cursor, 'service-order-gone',
   );
   return { owner, orderId, generation, ...page };
+}
+
+export async function listGroupFlowTitleHistory(owner: string, groupId: string, generation: string,
+  cursor: string | undefined, field: 'block' | 'step'): Promise<GroupFlowTitleHistoryPage> {
+  const resource = { collection: 'groups', id: groupId };
+  const history = field === 'block' ? GROUP_BLOCK_TITLE_POLICY.history : GROUP_STEP_TITLE_POLICY.history;
+  const page = await listHistoryEntries<GroupFlowTitleHistoryPage['entries'][number]>(owner, resource, history, generation, cursor, 'group-gone');
+  return { owner, groupId, generation, ...page };
 }
 
 export async function listServiceOrderStepTitleHistory(owner: string, orderId: string, generation: string, cursor?: string): Promise<ServiceOrderStepTitleHistoryPage> {

@@ -43,6 +43,8 @@ const mockTemplate: GroupBlockTemplate = {
 describe('FlowEditor', () => {
     const onUpdateTemplate = jest.fn();
     const onUpdateFlowItem = jest.fn();
+    const onRenameBlock = jest.fn().mockResolvedValue(undefined);
+    const onRenameStep = jest.fn().mockResolvedValue(undefined);
     const onClose = jest.fn();
 
     const defaultProps = {
@@ -50,6 +52,8 @@ describe('FlowEditor', () => {
         template: mockTemplate,
         onUpdateTemplate,
         onUpdateFlowItem,
+        onRenameBlock,
+        onRenameStep,
         onClose,
     };
 
@@ -98,7 +102,7 @@ describe('FlowEditor', () => {
         render(<FlowEditor {...defaultProps} />);
         const input = screen.getByDisplayValue('Test Block');
         fireEvent.change(input, { target: { value: 'New Title' } });
-        expect(onUpdateTemplate).toHaveBeenCalledWith({ title: 'New Title' });
+        expect(onRenameBlock).toHaveBeenCalledWith('New Title');
     });
 
     it('updates content', () => {
@@ -123,7 +127,7 @@ describe('FlowEditor', () => {
         // We can finding by label 'Step title'.
         const input = screen.getByLabelText('Step title');
         fireEvent.change(input, { target: { value: 'My Step' } });
-        expect(onUpdateFlowItem).toHaveBeenCalledWith({ instanceTitle: 'My Step' });
+        expect(onRenameStep).toHaveBeenCalledWith('My Step');
     });
 
     it('updates notes', () => {
@@ -157,6 +161,8 @@ describe('FlowEditor', () => {
                 template={mockTemplate}
                 onUpdateTemplate={onUpdateTemplate}
                 onUpdateFlowItem={onUpdateFlowItem}
+                onRenameBlock={onRenameBlock}
+                onRenameStep={onRenameStep}
                 onClose={onClose}
             />
         );

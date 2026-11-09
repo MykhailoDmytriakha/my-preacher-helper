@@ -1514,6 +1514,80 @@ describe('transactional DataEngine server', () => {
   });
 
   it.each([
+    { label: 'phone first', phoneAt: 15, winner: 'Computer block', kind: 'acknowledged' },
+    { label: 'phone last', phoneAt: 100, winner: 'Phone block', kind: 'acknowledged' },
+    { label: 'unknown order', phoneAt: null, winner: 'Computer block', kind: 'conflict' },
+    { label: 'legacy empty creation date', phoneAt: 100, winner: 'Phone block', kind: 'acknowledged', birth: '' },
+  ])('orders one group block title and preserves its separate text: $label', async ({ phoneAt, winner, kind, birth }) => {
+    const resource = { collection: 'groups', id: 'block-title-order' };
+    const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] };
+    const now = '2026-11-08T00:00:00.000Z';
+    const block = { id: 'opening', type: 'custom', title: 'Opening', content: 'Original words', status: 'draft', createdAt: birth ?? now, updatedAt: now };
+    const other = { ...block, id: 'other', title: 'Other block' };
+    const templates = [block, other];
+    const flow = [{ id: 'step', templateId: block.id, order: 1 }, { id: 'other-step', templateId: other.id, order: 2 }];
+    expect((await processCommand(base.owner, { ...base, kind: 'create', operationId: 'seed', generation: null,
+      value: { userId: base.owner, title: 'Group', status: 'draft', createdAt: now, updatedAt: now, templates, flow },
+    })).kind).toBe('acknowledged');
+    const edit = (operationId: string, after: typeof templates, at: number | null) => ({
+      ...base, kind: 'update', operationId, generation: 'seed',
+      changes: [{ path: ['templates'], before: { exists: true, value: templates }, after: { exists: true, value: after } }],
+      groupBlockTitleActions: [{ rowId: block.id, rowCreatedAt: block.createdAt, before: block.title,
+        after: after[0].title, observedRevision: 1,
+        time: at === null ? null : { earliestMs: 1_800_000_000_000 + at, latestMs: 1_800_000_000_004 + at } }],
+    });
+    const computer = [{ ...block, title: 'Computer block', content: 'Keep these later words' }, other];
+    expect((await processCommand(base.owner, edit('computer', computer, 65))).kind).toBe('acknowledged');
+    const phone = edit('phone', [{ ...block, title: 'Phone block' }, other], phoneAt);
+    const answer = await processCommand(base.owner, phone);
+    expect(answer).toMatchObject({ kind, snapshot: { value: { title: 'Group', flow, templates: [{ ...computer[0], title: winner }, other] } } });
+    expect(await processCommand(base.owner, phone)).toEqual(answer);
+    const history = [...documents.entries()].filter(([path]) => path.startsWith('groups/block-title-order/_blockTitleHistory/'));
+    if (phoneAt === null) {
+      expect(answer).toMatchObject({ conflicts: [{ path: ['templates', 'id:opening', 'title'] }] });
+      expect(history).toHaveLength(0);
+    } else {
+      expect(history).toHaveLength(1);
+      expect(history[0][1]).toMatchObject({ fields: [{ rowId: block.id, field: 'title',
+        value: winner === 'Computer block' ? 'Phone block' : 'Computer block', winnerValue: winner }] });
+    }
+  });
+
+  it.each([
+    { label: 'earlier name', phoneAt: 15, phoneTitle: 'Phone step', expected: 'Computer step', kind: 'acknowledged' },
+    { label: 'later name', phoneAt: 100, phoneTitle: 'Phone step', expected: 'Phone step', kind: 'acknowledged' },
+    { label: 'later clear', phoneAt: 100, phoneTitle: null, expected: undefined, kind: 'acknowledged' },
+    { label: 'unknown clear', phoneAt: null, phoneTitle: null, expected: 'Computer step', kind: 'conflict' },
+  ])('orders a group step title separately from the block title: $label', async ({ phoneAt, phoneTitle, expected, kind }) => {
+    const resource = { collection: 'groups', id: 'step-title-order' };
+    const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] };
+    const now = '2026-11-08T00:00:00.000Z';
+    const block = { id: 'block', type: 'custom', title: 'Block name', content: 'Keep words', status: 'draft', createdAt: now, updatedAt: now };
+    const step = { id: 'step', templateId: block.id, order: 1 };
+    const other = { ...step, id: 'other', order: 2 };
+    const opening = { ...step, instanceTitle: 'Original step' };
+    const flow = [opening, other];
+    expect((await processCommand(base.owner, { ...base, kind: 'create', operationId: 'seed', generation: null,
+      value: { userId: base.owner, title: 'Group', status: 'draft', createdAt: now, updatedAt: now, templates: [block], flow },
+    })).kind).toBe('acknowledged');
+    const edit = (operationId: string, after: typeof step & { instanceTitle?: string; durationMin?: number }, title: string | null, at: number | null) => ({
+      ...base, kind: 'update', operationId, generation: 'seed',
+      changes: [{ path: ['flow'], before: { exists: true, value: flow }, after: { exists: true, value: [after, other] } }],
+      groupStepTitleActions: [{ rowId: step.id, rowCreatedAt: step.templateId, before: opening.instanceTitle,
+        after: title, observedRevision: 1,
+        time: at === null ? null : { earliestMs: 1_800_000_000_000 + at, latestMs: 1_800_000_000_004 + at } }],
+    });
+    const computer = { ...step, instanceTitle: 'Computer step', durationMin: 15 };
+    expect((await processCommand(base.owner, edit('computer', computer, computer.instanceTitle, 65))).kind).toBe('acknowledged');
+    const phone = edit('phone', phoneTitle === null ? step : { ...step, instanceTitle: phoneTitle }, phoneTitle, phoneAt);
+    const answer = await processCommand(base.owner, phone);
+    const final = { ...step, durationMin: 15, ...(expected !== undefined && { instanceTitle: expected }) };
+    expect(answer).toMatchObject({ kind, snapshot: { value: { templates: [block], flow: [final, other] } } });
+    if ('snapshot' in answer) expect((answer.snapshot.value?.flow as Array<Record<string, unknown>>)[0]).toEqual(final);
+    if (phoneAt === null) expect(answer).toMatchObject({ conflicts: [{ path: ['flow', 'id:step', 'instanceTitle'] }] });
+  });
+
+  it.each([
     { label: 'earlier', mobileAt: 15, title: 'Computer opening', kind: 'acknowledged' },
     { label: 'later', mobileAt: 100, title: 'Phone opening', kind: 'acknowledged' },
     { label: 'unclocked', mobileAt: null, title: 'Computer opening', kind: 'conflict' },

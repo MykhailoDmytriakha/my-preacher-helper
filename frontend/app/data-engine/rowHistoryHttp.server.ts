@@ -9,12 +9,17 @@ import {
   listCouncilAssemblyHistory,
   listCouncilTopicKindHistory,
   listCouncilTopicTitleHistory,
+  listGroupFlowTitleHistory,
   listServiceOrderFlagHistory,
   listServiceOrderStepTitleHistory,
   serverErrorResponse,
 } from './server';
 
 const histories = {
+  groupBlockTitle: { collection: 'groups', list: (owner: string, id: string, generation: string, cursor?: string) =>
+    listGroupFlowTitleHistory(owner, id, generation, cursor, 'block') },
+  groupStepTitle: { collection: 'groups', list: (owner: string, id: string, generation: string, cursor?: string) =>
+    listGroupFlowTitleHistory(owner, id, generation, cursor, 'step') },
   assembly: { collection: 'councils', list: listCouncilAssemblyHistory },
   topicKind: { collection: 'councils', list: listCouncilTopicKindHistory },
   topicTitle: { collection: 'councils', list: listCouncilTopicTitleHistory },

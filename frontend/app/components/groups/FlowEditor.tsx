@@ -11,6 +11,10 @@ import { useTranslation } from '@locales/useTranslation';
 import { LiveTextInput, LiveTextArea } from '../ui/LiveTextInput';
 import { RichMarkdownEditor } from '../ui/RichMarkdownEditor';
 
+import { GroupFlowTitleHistory } from './GroupFlowTitleHistory';
+
+import type { GroupPageEditor } from '@/hooks/groupPageEditor';
+
 const STATUS_OPTIONS: Array<{ value: GroupBlockStatus; labelKey: string; fallback: string; color: string }> = [
     { value: 'empty', labelKey: 'groupFlow.status.empty', fallback: 'Empty', color: 'bg-gray-300' },
     { value: 'draft', labelKey: 'groupFlow.status.draft', fallback: 'Draft', color: 'bg-amber-400' },
@@ -21,6 +25,9 @@ interface FlowEditorProps {
     flowItem: GroupFlowItem;
     template: GroupBlockTemplate;
     onUpdateTemplate: (updates: Partial<GroupBlockTemplate>) => void;
+    titleScope?: GroupPageEditor['flowTitleScope'];
+    onRenameBlock: (title: string) => Promise<void>;
+    onRenameStep: (title: string | null) => Promise<void>;
     onUpdateFlowItem: (updates: Partial<GroupFlowItem>) => void;
     onClose: () => void;
 }
@@ -29,6 +36,9 @@ export default function FlowEditor({
     flowItem,
     template,
     onUpdateTemplate,
+    titleScope,
+    onRenameBlock,
+    onRenameStep,
     onUpdateFlowItem,
     onClose,
 }: FlowEditorProps) {
@@ -100,9 +110,12 @@ export default function FlowEditor({
                         <LiveTextInput
                             id="block-title"
                             value={template.title}
-                            onChange={(value) => onUpdateTemplate({ title: value })}
+                            onChange={(value) => { void onRenameBlock(value).catch(() => undefined); }}
                             className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-semibold text-gray-800 transition focus:border-blue-500 focus:ring-1 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 xl:rounded-lg xl:px-3 xl:py-2"
                         />
+                        {titleScope && <GroupFlowTitleHistory key={JSON.stringify([titleScope.generation, template.id, template.createdAt])}
+                            scope={titleScope} field="block" rowId={template.id} rowCreatedAt={template.createdAt} current={template.title}
+                            onRestore={value => onRenameBlock(value ?? '')} />}
                     </div>
 
                     {/* Content */}
@@ -128,12 +141,13 @@ export default function FlowEditor({
                         <LiveTextInput
                             id="step-title"
                             value={flowItem.instanceTitle || ''}
-                            onChange={(value) =>
-                                onUpdateFlowItem({ instanceTitle: value || undefined })
-                            }
+                            onChange={(value) => { void onRenameStep(value || null).catch(() => undefined); }}
                             className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-700 transition focus:border-blue-500 focus:ring-1 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 xl:rounded-lg xl:px-3 xl:py-2"
                             placeholder={template.title}
                         />
+                        {titleScope && <GroupFlowTitleHistory key={JSON.stringify([titleScope.generation, flowItem.id, flowItem.templateId])}
+                            scope={titleScope} field="step" rowId={flowItem.id} rowCreatedAt={flowItem.templateId}
+                            current={flowItem.instanceTitle ?? null} onRestore={onRenameStep} />}
                     </div>
 
                     {/* Duration */}

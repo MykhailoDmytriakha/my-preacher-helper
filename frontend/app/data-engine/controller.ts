@@ -6,7 +6,7 @@ import { CaptureContinuations } from './captureContinuations';
 import { assertCommitCapture } from './commits';
 import { councilAssemblyRow } from './councilAssemblyAction';
 import { councilTopicKindRow } from './councilTopicKindAction';
-import { councilTopicTitleRow, hasCouncilTopic } from './councilTopicTitleAction';
+import { hasCouncilTopic } from './councilTopicTitleAction';
 import { assertCouncilTopicChoice } from './councilTopicTransition';
 import { isDocumentDeletion } from './deletionOrdering';
 import { isDirectLegacyDocumentIntent, type DocumentAnswer } from './documentDelivery';
@@ -22,6 +22,7 @@ import { chooseLocalPreachDateEdits } from './preachDateChoice';
 import { confirmedExistingDeletion, equalValues, mergeDocumentFields, mergeFields } from './protocol';
 import { isRecoverableCheckpoint } from './recovery.client';
 import { recoveryChoiceFingerprint } from './recoveryChoice';
+import { hasRowTitleCaptures, isRowTitlePath, missingRowTitleTarget } from './rowTitleAutosave';
 import { keepUncontestedSermonFields } from './sermonFieldChoice';
 import { hasServiceOrderStep, serviceOrderStepField } from './serviceOrderStepAction';
 import { DataSession, type SessionCheckpoint, type ShownCopy } from './session';
@@ -737,11 +738,11 @@ export class EditorController {
         const checkpoint = expected?.checkpoint;
         const path = checkpoint?.conflicts.length === 1 ? checkpoint.conflicts[0].path : undefined;
         const collection = checkpoint?.confirmed.resource.collection;
-        const comparedField = collection === 'serviceOrders' ? serviceOrderStepField(path)
-          : collection === 'councils' ? councilTopicTitleRow(path) || councilAssemblyRow(path) || councilTopicKindRow(path)
-            : path?.length === 1 && (collection === 'planTemplates' && path[0] === 'name' || collection === 'tags' && path[0] === 'color');
+        const comparedField = isRowTitlePath(path, collection ?? '') || (collection === 'serviceOrders' ? serviceOrderStepField(path)
+          : collection === 'councils' ? councilAssemblyRow(path) || councilTopicKindRow(path)
+            : path?.length === 1 && (collection === 'planTemplates' && path[0] === 'name' || collection === 'tags' && path[0] === 'color'));
         if (expected && (comparedField || retired.some(request => expected.checkpoint.pending[request.id]
-          && (request.serviceOrderFlagActions || request.serviceOrderStepTitleActions || request.councilTopicTitleActions
+          && (request.serviceOrderFlagActions || request.serviceOrderStepTitleActions || hasRowTitleCaptures(request)
             || request.councilAssemblyActions || request.councilTopicKindActions || request.planTemplateNameAction || request.tagColorAction)))
           && retired.some(request => !expected.checkpoint.pending[request.id])) {
           throw Object.assign(new Error('Another saved change appeared during the field choice'), { code: 'decision-changed' });
@@ -777,9 +778,12 @@ export class EditorController {
           if (stored && rowRequests.some(request => {
             const selected = request.councilAssemblyActions?.forAssembly ?? request.councilTopicKindActions?.kind;
             return (selected && !hasCouncilTopic(stored.topics, selected.rowId))
-              || request.councilTopicTitleActions?.some(title => !hasCouncilTopic(stored.topics, title.rowId));
+              || (request.baseline.resource.collection === 'councils' && missingRowTitleTarget(stored, request));
           })) {
             throw Object.assign(new Error('The section that was edited is gone'), { code: 'topic-gone' });
+          }
+          if (stored && rowRequests.some(request => request.baseline.resource.collection === 'groups' && missingRowTitleTarget(stored, request))) {
+            throw Object.assign(new Error('The block or step that was edited is gone'), { code: 'decision-changed' });
           }
           const statusActions = ordinary ? ordinary.first.preachStatusActions
             : retired.flatMap(request => request.cancelledByChoice && source!.pending[request.id] ? request.preachStatusActions ?? [] : []);
