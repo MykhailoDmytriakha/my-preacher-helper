@@ -5022,6 +5022,29 @@ describe('share capability receipt replay', () => {
   const active = () => [...documents.entries()].filter(([path, value]) => path.startsWith('studyNoteShareLinks/') && value.ownerId === owner && !(value._dataEngine as { deleted?: boolean } | undefined)?.deleted);
   beforeEach(() => { documents.set(notePath, { userId: owner, content: 'Keep the authored note' }); });
 
+  it('accepts the production client share command without a marker when the note was never revoked', async () => {
+    const legacy: DataCommand = { protocol: 1, owner, operationId: 'old-client-create',
+      resource: { collection: 'studyNoteShareLinks', id: 'old-client' }, generation: null, dependsOn: [],
+      kind: 'relation', relation: 'share-link-create', note: { id: 'share-note', generation: null }, authorLanguage: 'en',
+    };
+    const result = await processCommand(owner, legacy);
+    expect(result).toMatchObject({ kind: 'acknowledged', snapshot: { value: { ownerId: owner, noteId: 'share-note', token: expect.any(String) } } });
+    expect(await processCommand(owner, legacy)).toEqual(result);
+    expect(active()).toHaveLength(1);
+  });
+
+  it('keeps a production client without a marker from reopening access to a revoked note', async () => {
+    const first = createLink('first');
+    expect((await processCommand(owner, first)).kind).toBe('acknowledged');
+    const revocation = revokeLink('first', first.operationId);
+    expect((await processCommand(owner, revocation)).kind).toBe('acknowledged');
+    expect(await processCommand(owner, { protocol: 1, owner, operationId: 'old-client-after-revoke',
+      resource: { collection: 'studyNoteShareLinks', id: 'old-client' }, generation: null, dependsOn: [],
+      kind: 'relation', relation: 'share-link-create', note: { id: 'share-note', generation: revocation.operationId }, authorLanguage: 'en',
+    })).toMatchObject({ kind: 'refused', code: 'share-link-review-required' });
+    expect(active()).toEqual([]);
+  });
+
   it('replays the original creation after revocation without issuing any new capability', async () => {
     const first = createLink('first');
     const before = structuredClone(documents.get(notePath));

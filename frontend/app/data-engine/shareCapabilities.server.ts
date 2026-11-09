@@ -33,9 +33,9 @@ export async function planShareCapability(command: ShareCapabilityCommand, prima
 
   if (primary.value || primary.metadata) ports.refuse('resource-already-exists');
   const note = await ports.readLiveNote(command.note.id);
-  // A command captured before this protocol has no access observation. Only a new,
-  // explicit creation may reopen access. Receipt replays never reach this branch.
-  if (command.note.shareRevocation !== (note.metadata?.shareRevocation ?? null)) ports.refuse('share-link-review-required');
+  // Older clients omit the observation. They can share a never-revoked note;
+  // reopening access requires the exact marker of the latest revocation.
+  if ((command.note.shareRevocation ?? null) !== (note.metadata?.shareRevocation ?? null)) ports.refuse('share-link-review-required');
   if (command.note.generation !== (note.metadata?.generation ?? null)) ports.refuse('generation-mismatch');
   const active = (await ports.listLinks(command.note.id)).filter(link => link.value && !link.metadata?.deleted);
   if (active.length > 1) ports.refuse('ambiguous-share-links');
