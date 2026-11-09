@@ -563,6 +563,15 @@
       "colorPencilMeaning": "Coloured pencil — the same meaning, as a line",
       "eraser": "Eraser",
       "notKept": "The mark was not kept. Try again.",
+      "conflictDescription": "The marks for this book differ between your devices. Choose which marks to keep.",
+      "conflictKeepMine": "Keep my marks",
+      "conflictUseSaved": "Use saved marks",
+      "conflictDiscard": {
+        "title": "Use the saved marks?",
+        "description": "The unsaved mark changes for this book on this device will be discarded.",
+        "confirm": "Use saved marks",
+        "keep": "Go back"
+      },
       "decideFirst": "First choose which version of the marks to keep — above the text.",
       "wait": "The marks cannot be kept this moment — the device’s storage is not answering. Wait a few seconds.",
       "elsewhereSign": "Marks on verse {{verse}} in another translation",

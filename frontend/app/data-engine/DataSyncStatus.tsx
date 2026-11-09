@@ -9,7 +9,7 @@ import { useRecordReadSummary } from '@/components/common/recordReadSummary';
 import { SyncNotice } from '@/components/common/SyncNoticeDock';
 import { useSyncOutlet } from '@/components/common/syncOutlet';
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
-import { useConfirm, useDiscardQuestion } from '@/hooks/useConfirm';
+import { useConfirm, useDiscardQuestion, type DiscardQuestionKey } from '@/hooks/useConfirm';
 import { useFailureNotice } from '@/hooks/useFailureNotice';
 import { useLasting } from '@/hooks/useLasting';
 import { useServerUnavailableNotice } from '@/hooks/useServerUnavailableNotice';
@@ -40,10 +40,11 @@ export interface TextComparison {
   description?: string;
   valueKind?: 'field' | 'removed-row';
   scopedChoice?: true;
-  actions?: { local: string; stored: string; confirmStored?: 'dataSync.confirmStoredPointRemoval' | 'common.discardChanges' };
+  actions?: { local: string; stored: string; confirmStored?: DiscardQuestionKey };
 }
 export interface DataSyncStatusProps {
   comparison?: TextComparison;
+  conflictCopy?: Pick<TextComparison, 'identity' | 'description' | 'actions'>;
   /**
    * What this status speaks about: the hook's `recoveryIdentity`, or any value that changes exactly
    * when the block starts speaking about something else. Screens pass fresh callbacks on every
@@ -93,12 +94,13 @@ export function FieldComparison({ comparison }: { comparison: TextComparison }) 
 const GONE = Symbol('gone');
 
 /** Present the engine's decisions; conflict detection and merge policy stay in the engine. */
-export function DataSyncStatus({ subject, status, error, errorWords, onKeepLocal, onAcceptRemote, onRetry, recoveryChoices = [], reviewRecoveryId, onRecover, onDiscardRecovery, recoveryLoading = false, recoveryError, title, comparison, workspaceNotice = false, className = '' }: DataSyncStatusProps) {
+export function DataSyncStatus({ subject, status, error, errorWords, onKeepLocal, onAcceptRemote, onRetry, recoveryChoices = [], reviewRecoveryId, onRecover, onDiscardRecovery, recoveryLoading = false, recoveryError, title, comparison, conflictCopy, workspaceNotice = false, className = '' }: DataSyncStatusProps) {
   const { t } = useTranslation();
   const outlet = useSyncOutlet(subject);
   const sayNotice = useFailureNotice();
   const { askBeforeDiscard, discardDialog, withdraw } = useDiscardQuestion('text');
-  const comparisonIdentity = comparison?.identity;
+  const conflictPresentation = comparison ?? conflictCopy;
+  const comparisonIdentity = conflictPresentation?.identity;
   const currentComparison = useRef(comparisonIdentity);
   useLayoutEffect(() => {
     currentComparison.current = comparisonIdentity;
@@ -182,7 +184,7 @@ export function DataSyncStatus({ subject, status, error, errorWords, onKeepLocal
   const accept = status?.canAcceptRemote && onAcceptRemote;
   const chooseStored = (callback: () => void | Promise<void>) => askBeforeDiscard(true, callback,
     () => currentSubject.current === subject && currentComparison.current === comparisonIdentity,
-    comparison?.actions?.confirmStored ?? (comparison?.scopedChoice ? 'dataSync.confirmStoredField' : comparison?.valueKind === 'removed-row' ? 'common.discardChanges' : undefined));
+    conflictPresentation?.actions?.confirmStored ?? (comparison?.scopedChoice ? 'dataSync.confirmStoredField' : comparison?.valueKind === 'removed-row' ? 'common.discardChanges' : undefined));
   const conflictBanner = !deleting && status?.phase === 'conflict' && keep && accept;
   const repeatDeletion = () => {
     if (!keep) return;
@@ -209,9 +211,9 @@ export function DataSyncStatus({ subject, status, error, errorWords, onKeepLocal
   <div ref={rootRef} className={`space-y-3 text-sm ${className}`} {...(comparison ? { role: 'region', 'aria-label': t('dataSync.versionComparison') } : title ? { role: 'region', 'aria-label': title } : {})}>
     {title && <p className="font-medium">{title}</p>}
     {comparison && <FieldComparison comparison={comparison} />}
-    {conflictBanner ? <SaveConflictBanner description={comparison?.description ?? (comparison ? t('dataSync.fieldVersionChanged') : undefined)}
-      keepMineLabel={comparison?.actions?.local ?? (comparison?.valueKind ? t(comparison.valueKind === 'removed-row' ? 'dataSync.keepDraft' : 'dataSync.useLocalVersion') : undefined)}
-      takeTheirsLabel={comparison?.actions?.stored ?? (comparison ? t('dataSync.useStoredVersion') : undefined)} onKeepMine={() => keepChecked(keep)} onTakeTheirs={() => run(() => chooseStored(accept))} busy={busy} /> : status && (pendingDeletion || showPhase || showFreshness || readTrouble) && <div role="status" aria-live="polite" className="text-gray-600 dark:text-gray-300">
+    {conflictBanner ? <SaveConflictBanner description={conflictPresentation?.description ?? (comparison ? t('dataSync.fieldVersionChanged') : undefined)}
+      keepMineLabel={conflictPresentation?.actions?.local ?? (comparison?.valueKind ? t(comparison.valueKind === 'removed-row' ? 'dataSync.keepDraft' : 'dataSync.useLocalVersion') : undefined)}
+      takeTheirsLabel={conflictPresentation?.actions?.stored ?? (comparison ? t('dataSync.useStoredVersion') : undefined)} onKeepMine={() => keepChecked(keep)} onTakeTheirs={() => run(() => chooseStored(accept))} busy={busy} /> : status && (pendingDeletion || showPhase || showFreshness || readTrouble) && <div role="status" aria-live="polite" className="text-gray-600 dark:text-gray-300">
       {pendingDeletion && <p>{t('recordAvailability.deleting')}</p>}
       {showPhase && !pendingDeletion && <p>{t(deleting ? (status.phase === 'refused' ? 'dataSync.deleteRefusedTitle' : 'dataSync.deleteConflictTitle') : trouble ? `dataSync.phase.${status.phase}` : 'dataSync.unfinishedWork')}</p>}
       {showPhase && deleting && <p>{t(status.phase === 'refused' ? 'dataSync.deleteRefusedBody' : 'dataSync.deleteConflictBody')}</p>}

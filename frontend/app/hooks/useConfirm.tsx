@@ -102,13 +102,15 @@ export function useConfirm(): {
   return { confirm, confirmDialog, withdraw };
 }
 
+export type DiscardQuestionKey = 'common.discardChanges' | 'dataSync.confirmStoredField' | 'dataSync.confirmStoredPointRemoval' | 'bible.marks.conflictDiscard';
+
 /**
  * CANCEL THAT THROWS AWAY WHAT THE PERSON CHANGED ASKS FIRST; with nothing changed it just closes.
  * A form's Cancel discards its draft, while its close button and Escape keep it for later — so
  * Cancel was the one click that lost dictated text for good (BUG-20261003-one-click-delete-other-screens).
  */
 export function useDiscardQuestion(kind: 'changes' | 'text' = 'changes'): {
-  askBeforeDiscard: (unsaved: boolean, discard: () => void | Promise<void>, isCurrent?: () => boolean, question?: 'common.discardChanges' | 'dataSync.confirmStoredField' | 'dataSync.confirmStoredPointRemoval') => Promise<void>;
+  askBeforeDiscard: (unsaved: boolean, discard: () => void | Promise<void>, isCurrent?: () => boolean, question?: DiscardQuestionKey) => Promise<void>;
   discardDialog: React.ReactElement;
   withdraw: () => void;
 } {
@@ -117,7 +119,7 @@ export function useDiscardQuestion(kind: 'changes' | 'text' = 'changes'): {
     unsaved: boolean,
     discard: () => void | Promise<void>,
     isCurrent: () => boolean = () => true,
-    question?: 'common.discardChanges' | 'dataSync.confirmStoredField' | 'dataSync.confirmStoredPointRemoval',
+    question?: DiscardQuestionKey,
   ) => {
     if (!isCurrent()) return;
     const words = question ?? (kind === 'text' ? 'common.discardText' : 'common.discardChanges');

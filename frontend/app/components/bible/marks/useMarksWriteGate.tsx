@@ -6,9 +6,11 @@ import { toast } from 'sonner';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { useTranslation } from '@locales/useTranslation';
 
+import { describeMarkConflict } from './markConflict';
 import { MarkHistory } from './MarkHistory';
 
 import type { BookMarksStore } from './markStore';
+import type { TextComparison } from '@/data-engine/DataSyncStatus';
 import type { BookText } from '@/utils/bibleText';
 
 /** The phases of the book's form that wait for the person's choice: no stroke is kept until it is made. */
@@ -36,12 +38,22 @@ export function useMarksWriteGate({ writable, sync, history }: Pick<BookMarksSto
     toast(t(decisionRef.current ? 'bible.marks.decideFirst' : 'bible.marks.wait'));
   }, [t]);
   // Refused strokes say so themselves (a toast); the status shows only what waits for a choice.
-  const status = useMemo<ReactNode>(() => (sync ? (
-    <DataSyncStatus subject={sync.recoveryIdentity} status={sync.status} error={sync.state ? null : sync.error} errorWords={sync.errorWords} className={statusClassName}
-      onRetry={() => sync.retry()}
-      onKeepLocal={() => { setDeciding(true); return sync.keepLocal().finally(() => setDeciding(false)); }}
-      onAcceptRemote={() => { setDeciding(true); return sync.acceptRemote().finally(() => setDeciding(false)); }} />
-  ) : null), [statusClassName, sync]);
+  const status = useMemo<ReactNode>(() => {
+    if (!sync) return null;
+    const checkpoint = sync.status?.phase === 'conflict' ? sync.state?.checkpoint : undefined;
+    const difference = checkpoint ? describeMarkConflict(checkpoint.conflicts, text, t) : null;
+    const conflictCopy = sync.status?.phase === 'conflict' ? {
+      identity: checkpoint && JSON.stringify([checkpoint.editGeneration, checkpoint.remoteCandidate?.metadata?.generation,
+        checkpoint.remoteCandidate?.metadata?.revision, checkpoint.conflicts]),
+      description: t('bible.marks.conflictDescription'),
+      actions: { local: t('bible.marks.conflictKeepMine'), stored: t('bible.marks.conflictUseSaved'), confirmStored: 'bible.marks.conflictDiscard' as const },
+    } : undefined;
+    const comparison: TextComparison | undefined = difference && conflictCopy ? { ...conflictCopy, ...difference, valueKind: 'field' } : undefined;
+    return <DataSyncStatus subject={sync.recoveryIdentity} status={sync.status} error={sync.state ? null : sync.error} errorWords={sync.errorWords} className={statusClassName}
+      comparison={comparison} conflictCopy={conflictCopy} onRetry={() => sync.retry()}
+      onKeepLocal={() => { setDeciding(true); return sync.keepLocal(checkpoint).finally(() => setDeciding(false)); }}
+      onAcceptRemote={() => { setDeciding(true); return sync.acceptRemote(checkpoint).finally(() => setDeciding(false)); }} />;
+  }, [statusClassName, sync, t, text]);
   return { writableRef, sayWhy, status: <>{status}{history && <MarkHistory key={JSON.stringify([history.owner, history.bookId, history.generation])}
     session={history} text={text} disabled={!writable || deciding} />}</> };
 }

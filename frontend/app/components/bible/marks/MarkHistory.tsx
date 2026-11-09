@@ -3,8 +3,9 @@
 import { useId, useState } from 'react';
 
 import { requestOwnerJson } from '@/services/ownerHttpTransport.client';
-import { verseWords } from '@/utils/bibleText';
 import { useTranslation } from '@locales/useTranslation';
+
+import { markLocation, markName } from './markPresentation';
 
 import type { MarkHistorySession } from './markStore';
 import type { BibleMarkHistoryPage, DisplacedMark } from '@/data-engine/bibleMarkStroke';
@@ -12,13 +13,6 @@ import type { BookText } from '@/utils/bibleText';
 
 const unavailable = 'Mark history unavailable';
 const messages = { failed: unavailable, unavailable, timedOut: unavailable };
-
-function locationOf(mark: DisplacedMark, text: BookText | null): { verse: string; words: string } {
-  const [chapter, verse] = mark.verse.slice(1).split('_').map(Number);
-  const raw = text?.chapters[chapter - 1]?.[verse - 1];
-  const words = raw ? verseWords(raw).split(/\s+/).filter(Boolean).slice(mark.first, mark.last + 1).join(' ') : '';
-  return { verse: chapter + ':' + verse, words };
-}
 
 export function MarkHistory({ session, text, disabled }: { session: MarkHistorySession; text: BookText | null; disabled: boolean }) {
   const { t } = useTranslation();
@@ -50,9 +44,6 @@ export function MarkHistory({ session, text, disabled }: { session: MarkHistoryS
     } catch { setError('restore'); }
     finally { setRestoring(undefined); }
   };
-  const markName = (colour: string | null) => colour === null ? t('bible.marks.historyErased')
-    : colour === 'gray' ? t('bible.marks.plainPencil') : t(`bible.marks.meaning.${colour}`);
-
   return <div className="mb-2 text-sm">
     <button type="button" aria-expanded={open} aria-controls={panel} disabled={loading}
       className="min-h-8 text-xs font-medium text-blue-700 hover:underline dark:text-blue-400"
@@ -64,12 +55,12 @@ export function MarkHistory({ session, text, disabled }: { session: MarkHistoryS
       {page && page.entries.length > 0 && <ul className="space-y-2">
         {page.entries.flatMap(entry => entry.marks.map((mark, index) => {
           const id = entry.id + ':' + index;
-          const { verse, words } = locationOf(mark, text);
+          const { verse, words } = markLocation(mark.verse, mark.first, mark.last, text);
           const applied = session.isApplied(mark);
           return <li key={id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-200 px-3 py-2 dark:border-gray-700">
             <div>
               <p className="font-medium">{words ? verse + ' · ' + words : verse}</p>
-              <p>{t('bible.marks.historyEntry', { earlier: markName(mark.colour), kept: markName(mark.winnerColour) })}</p>
+              <p>{t('bible.marks.historyEntry', { earlier: markName(t, mark.colour), kept: markName(t, mark.winnerColour) })}</p>
             </div>
             <button type="button" disabled={disabled || Boolean(restoring) || applied}
               className="min-h-8 text-xs font-medium text-blue-700 hover:underline disabled:opacity-50 dark:text-blue-400"
