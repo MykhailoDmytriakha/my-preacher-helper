@@ -231,19 +231,24 @@ export function replaceOrderedDocumentField(changes: FieldChange[], target: Docu
 
 /** An exact pending field change may be the shown basis for the next local change. */
 function submittedTextField(checkpoint: SessionCheckpoint, requests: readonly CommitRequest[],
-  target: TextDocumentFieldTarget, walkPredecessors: boolean): (TextFieldBasis & { value: string }) | undefined {
+  target: TextDocumentFieldTarget, allowUntimedBasis = false): (TextFieldBasis & { value: string }) | undefined {
   const shown = checkpoint.draft?.[target.field];
   if (!isShortDocumentTitle(shown, target)) return undefined;
   const tip = Object.keys(checkpoint.pending).at(-1);
   const byId = new Map(requests.map(request => [request.id, request]));
   let request = tip && byId.get(tip);
   // An unrelated queued save must not replace the exact action supplying the field.
-  if (walkPredecessors) {
-    const visited = new Set<string>();
-    while (request && request.value?.[target.field] === shown && !capturedDocumentField(request, target) && !visited.has(request.id)) {
-      visited.add(request.id);
-      request = request.predecessor ? byId.get(request.predecessor) : undefined;
+  const visited = new Set<string>();
+  while (request && request.value?.[target.field] === shown && !capturedDocumentField(request, target) && !visited.has(request.id)) {
+    visited.add(request.id);
+    const earlier = request.predecessor ? byId.get(request.predecessor) : undefined;
+    if (allowUntimedBasis && earlier?.value?.[target.field] !== shown) {
+      // An acknowledged ancestor may already be out of the pending chain. Use the
+      // confirmed title instead of treating an unrelated surviving save as its author.
+      if (!earlier && checkpoint.confirmed.value?.[target.field] === shown) return undefined;
+      break;
     }
+    request = earlier;
   }
   const basis = request ? request.baseline.metadata : null;
   if (!request || request.value?.[target.field] !== shown || !basis || basis.deleted || basis.generation !== checkpoint.confirmed.metadata?.generation) return undefined;
@@ -259,7 +264,7 @@ export function submittedDocumentTitle(checkpoint: SessionCheckpoint | null, req
   needsAttention: boolean): DocumentTitleSeen | undefined {
   if (!checkpoint || needsAttention) return undefined;
   const target = TITLE_TARGETS[checkpoint.confirmed.resource.collection];
-  const shown = target && submittedTextField(checkpoint, requests, target, target !== SERVICE_ORDER_TITLE);
+  const shown = target && submittedTextField(checkpoint, requests, target, target === SERVICE_ORDER_TITLE);
   if (!shown) return undefined;
   const { value, ...basis } = shown;
   return { ...basis, title: value };
@@ -268,7 +273,7 @@ export function submittedDocumentTitle(checkpoint: SessionCheckpoint | null, req
 export function submittedStudyNoteType(checkpoint: SessionCheckpoint | null, requests: readonly CommitRequest[],
   needsAttention: boolean): StudyNoteTypeSeen | undefined {
   if (!checkpoint || needsAttention || checkpoint.confirmed.resource.collection !== 'studyNotes') return undefined;
-  const shown = submittedTextField(checkpoint, requests, STUDY_NOTE_TYPE, true);
+  const shown = submittedTextField(checkpoint, requests, STUDY_NOTE_TYPE);
   if (!shown || !isOrdinaryStudyNoteType(shown.value)) return undefined;
   const { value, ...basis } = shown;
   return { ...basis, type: value };
@@ -277,7 +282,7 @@ export function submittedStudyNoteType(checkpoint: SessionCheckpoint | null, req
 export function submittedTagColor(checkpoint: SessionCheckpoint | null, requests: readonly CommitRequest[],
   needsAttention: boolean): TagColorSeen | undefined {
   if (!checkpoint || needsAttention || checkpoint.confirmed.resource.collection !== 'tags' || checkpoint.draft?.required !== false) return undefined;
-  const shown = submittedTextField(checkpoint, requests, TAG_COLOR, true);
+  const shown = submittedTextField(checkpoint, requests, TAG_COLOR);
   if (!shown) return undefined;
   const { value, ...basis } = shown;
   return { ...basis, color: value };

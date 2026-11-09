@@ -34,6 +34,32 @@ it('keeps remote siblings accepted by an ancestor while showing the later submit
   const second: CommitRequest = { ...request('b'), predecessor: 'a' };
   expect(views([first, second])[0].value).toMatchObject({ title: 'b', description: 'Remote sibling' });
 });
+it.each(['timed', 'untimed', 'already acknowledged'] as const)('uses the correct service-title basis through an intervening step edit: %s', scenario => {
+  const order = { collection: 'serviceOrders', id: 'order' };
+  const initial: ResourceSnapshot = { ...snapshot(), resource: order, value: { userId: 'owner', title: 'Opening', rank: 100,
+    steps: [{ id: 'step', title: 'Step', body: 'Opening words' }] } };
+  const renamed = { ...initial.value, title: 'First title' };
+  const stepsEdited = { ...renamed, steps: [{ id: 'step', title: 'Step', body: 'Interleaved words' }] };
+  const first: CommitRequest = { ...request('first-title'), baseline: initial, working: initial, value: renamed, intended: renamed,
+    ...(scenario !== 'untimed' && { serviceOrderTitleAction: { before: 'Opening', after: 'First title', observedRevision: 1,
+      time: { earliestMs: 1_800_000_000_000, latestMs: 1_800_000_000_010 } } }),
+  };
+  const second: CommitRequest = { ...request('step-edit'), baseline: initial, working: initial, value: stepsEdited, intended: stepsEdited,
+    predecessor: first.id };
+  const accepted: ResourceSnapshot = { ...initial, value: renamed, metadata: { ...initial.metadata!, revision: 2, operationId: first.id } };
+  const acknowledged: CommitRequest = { ...first, state: 'acknowledged', result: {
+    kind: 'acknowledged', operationId: first.id, snapshot: accepted,
+  } };
+  const [view] = collectionDocumentViews('owner', 'serviceOrders', [initial], [scenario === 'already acknowledged' ? acknowledged : first, second]);
+  expect(view).toMatchObject({ value: stepsEdited, needsAttention: false });
+  if (scenario === 'already acknowledged') {
+    expect(view.acknowledged).toEqual(accepted);
+    expect(view.submittedTitle).toBeUndefined();
+  } else {
+    expect(view.submittedTitle).toEqual({ title: 'First title', revision: 1, generation: 'gen', requestId: first.id });
+  }
+});
+
 it('keeps pending and refused deletions addressable until confirmed', () => {
   const deletion: CommitRequest = { ...request(), value: null, intended: null };
   expect(views([deletion])[0]).toMatchObject({ value: { title: 'Confirmed' }, pending: true, deleting: true });
