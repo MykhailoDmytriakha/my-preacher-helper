@@ -4174,6 +4174,7 @@
       "title": "Редактор блока",
       "stepTitleLabel": "Заголовок шага",
       "stepTitlePlaceholder": "Например, Вступление",
+      "blockStatusHistory": "История статусов блока",
       "blockNameHistory": "История названий блока",
       "stepNameHistory": "История названий шага",
       "useBlockName": "Использовать название блока",

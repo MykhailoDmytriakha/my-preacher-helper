@@ -25,10 +25,10 @@ export const GROUP_STEP_TITLE_POLICY: RowDetailPolicy<'title', string | null> = 
   repeatedFields: ['title'], allowUnclocked: true,
 };
 
-export type GroupFlowTitleHistoryPage = {
+export type GroupFlowHistoryPage = {
   owner: string;
   groupId: string;
   generation: string;
   nextCursor: string | null;
-  entries: Array<{ id: string; acceptedAt: string; fields: RowDetailHistoryEntry<'title', string | null>[] }>;
+  entries: Array<{ id: string; acceptedAt: string; fields: RowDetailHistoryEntry<'title' | 'status', string | null>[] }>;
 };

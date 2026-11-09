@@ -54,9 +54,10 @@ import { useGroupPageEditor } from '@/hooks/useGroupPageEditor';
 import { useRouteId } from '@/hooks/useRouteId';
 import { useSeries } from '@/hooks/useSeries';
 import { stickyTopBelowNav, useStickyOffsets, useWindowFittedPanel } from '@/hooks/useStickyOffsets';
-import { GroupBlockStatus, GroupBlockTemplate, GroupBlockTemplateType, GroupFlowItem } from '@/models/models';
+import { GroupBlockTemplate, GroupBlockTemplateType, GroupFlowItem } from '@/models/models';
 import { useAuth } from '@/providers/AuthProvider';
 import { groupLanguage } from '@/utils/documentLanguage';
+import { GROUP_BLOCK_STATUSES } from '@/utils/groupDocument';
 import {
   createFlowItem,
   createTemplate,
@@ -70,7 +71,6 @@ import { useTranslation } from '@locales/useTranslation';
 
 import type { GroupPageEditor } from '@/hooks/groupPageEditor';
 
-const STATUS_CYCLE: GroupBlockStatus[] = ['empty', 'draft', 'filled'];
 
 export default function GroupDetailPage() {
   const id = useRouteId();
@@ -237,15 +237,10 @@ function GroupDetailView({ editor }: { editor: GroupPageEditor }) {
     setSelectedFlowItemId((selectedId) => selectedId === captured.flowItemId ? null : selectedId);
   };
 
-  const cycleStatus = (templateId: string) => {
-    setTemplates((prev) =>
-      prev.map((template) => {
-        if (template.id !== templateId) return template;
-        const currentIndex = STATUS_CYCLE.indexOf(template.status);
-        const nextStatus = STATUS_CYCLE[(currentIndex + 1) % STATUS_CYCLE.length];
-        return { ...template, status: nextStatus, updatedAt: new Date().toISOString() };
-      })
-    );
+  const cycleStatus = (template: GroupBlockTemplate) => {
+    const next = GROUP_BLOCK_STATUSES[(GROUP_BLOCK_STATUSES.indexOf(template.status) + 1) % GROUP_BLOCK_STATUSES.length];
+    void editor.setBlockStatus(template, next)
+      .catch(() => undefined);
   };
 
   const updateFlowItem = (itemId: string, updates: Partial<GroupFlowItem>) => {
@@ -533,7 +528,7 @@ function GroupDetailView({ editor }: { editor: GroupPageEditor }) {
                           onSelect={() => setSelectedFlowItemId(
                             selectedFlowItemId === flowItem.id ? null : flowItem.id
                           )}
-                          onStatusCycle={() => cycleStatus(template.id)}
+                          onStatusCycle={() => cycleStatus(template)}
                           onMoveUp={() => { setFlow((prev) => moveFlowItem(prev, flowItem.id, 'up')); }}
                           onMoveDown={() => { setFlow((prev) => moveFlowItem(prev, flowItem.id, 'down')); }}
                           onDuplicate={() => { setFlow((prev) => duplicateFlowItem(prev, flowItem.id)); }}
@@ -566,6 +561,7 @@ function GroupDetailView({ editor }: { editor: GroupPageEditor }) {
                 onUpdateTemplate={(updates) => updateTemplate(selectedTemplate.id, updates)}
                 titleScope={editor.flowTitleScope}
                 onRenameBlock={title => editor.renameBlock(selectedTemplate, title)}
+                onSetStatus={status => editor.setBlockStatus(selectedTemplate, status)}
                 onRenameStep={title => editor.renameStep(selectedFlowItem, title)}
                 onUpdateFlowItem={(updates) => updateFlowItem(selectedFlowItem.id, updates)}
                 onClose={() => setSelectedFlowItemId(null)}

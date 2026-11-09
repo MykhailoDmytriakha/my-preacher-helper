@@ -4,6 +4,7 @@ import { COUNCIL_ASSEMBLY, councilAssemblyRow } from './councilAssemblyAction';
 import { COUNCIL_TOPIC_KIND, councilTopicKindRow } from './councilTopicKindAction';
 import { COUNCIL_TOPIC_TITLE, councilTopicTitleRow } from './councilTopicTitleAction';
 import { equalValues, object } from './fieldValues';
+import { GROUP_BLOCK_STATUS_POLICY } from './groupBlockStatusAction';
 import { GROUP_BLOCK_TITLE_POLICY, GROUP_STEP_TITLE_POLICY } from './groupFlowTitleAction';
 import { existingRowField, replaceExistingRowField } from './rowFieldAction';
 import { readSermonConflictField } from './sermonFieldChoice';
@@ -69,15 +70,17 @@ export function readTagColorConflict(checkpoint: SessionCheckpoint) {
   return readExactTextConflict(checkpoint, 'tags', 'color');
 }
 
-export function readGroupFlowTitleConflict(checkpoint: SessionCheckpoint) {
+export function readGroupFlowFieldConflict(checkpoint: SessionCheckpoint) {
   const { confirmed, draft, conflicts, remoteCandidate, pending } = checkpoint;
   if (confirmed.resource.collection !== 'groups' || !confirmed.value || !draft
     || conflicts.length !== 1 || Object.keys(pending).length !== 1
     || !remoteCandidate?.value || remoteCandidate.metadata?.generation !== confirmed.metadata?.generation) return undefined;
   const { path } = conflicts[0];
   const isBlock = path[0] === 'templates';
-  const policy = isBlock ? GROUP_BLOCK_TITLE_POLICY : GROUP_STEP_TITLE_POLICY;
-  const target = policy.target('title');
+  const field: 'block' | 'step' | 'status' = !isBlock ? 'step' : path[2] === 'status' ? 'status' : 'block';
+  const policy = { block: GROUP_BLOCK_TITLE_POLICY, step: GROUP_STEP_TITLE_POLICY, status: GROUP_BLOCK_STATUS_POLICY }[field];
+  const target = field === 'status' ? GROUP_BLOCK_STATUS_POLICY.target('status')
+    : (isBlock ? GROUP_BLOCK_TITLE_POLICY : GROUP_STEP_TITLE_POLICY).target('title');
   if (path.length !== 3 || path[0] !== target.field || !path[1].startsWith('id:') || path[2] !== target.leaf) return undefined;
   const id = path[1].slice(3);
   const birth = existingRowField(confirmed.value[target.field], id, policy.birth);
@@ -95,7 +98,7 @@ export function readGroupFlowTitleConflict(checkpoint: SessionCheckpoint) {
       [target.field]: normalized };
   };
   if (!equalValues(compared(confirmed.value), compared(draft))) return undefined;
-  return { field: isBlock ? 'block' as const : 'step' as const, mine, stored,
+  return { field, mine, stored,
     identity: JSON.stringify([checkpoint.editGeneration, remoteCandidate.metadata?.generation, remoteCandidate.metadata?.revision, path, mine, stored]) };
 }
 

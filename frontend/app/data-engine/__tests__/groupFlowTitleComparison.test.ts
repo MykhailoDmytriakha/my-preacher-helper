@@ -1,4 +1,4 @@
-import { readGroupFlowTitleConflict } from '../rowConflictDetails';
+import { readGroupFlowFieldConflict } from '../rowConflictDetails';
 import { DataSession } from '../session';
 
 import type { ResourceSnapshot } from '../types';
@@ -19,9 +19,9 @@ describe('group flow title comparison', () => {
       value: { ...value, templates: [{ ...template, title: 'Latest stored', updatedAt: 'stored' }] } };
     checkpoint.conflicts = [{ path: ['templates', 'id:block', 'title'], base: { exists: true, value: template.title },
       mine: { exists: true, value: 'Old local' }, theirs: { exists: true, value: 'Old stored' } }];
-    expect(readGroupFlowTitleConflict(checkpoint)).toMatchObject({ field: 'block', mine: 'Latest local', stored: 'Latest stored' });
+    expect(readGroupFlowFieldConflict(checkpoint)).toMatchObject({ field: 'block', mine: 'Latest local', stored: 'Latest stored' });
     checkpoint.draft.templates = [{ ...template, title: 'Latest local', content: 'New local words', updatedAt: 'local' }];
-    expect(readGroupFlowTitleConflict(checkpoint)).toBeUndefined();
+    expect(readGroupFlowFieldConflict(checkpoint)).toBeUndefined();
   });
 
   it('keeps an explicit step clear visible and declines a replacement row', () => {
@@ -33,8 +33,8 @@ describe('group flow title comparison', () => {
       value: { ...value, flow: [{ ...step, instanceTitle: 'Stored step' }] } };
     checkpoint.conflicts = [{ path: ['flow', 'id:step', 'instanceTitle'], base: { exists: true, value: step.instanceTitle },
       mine: { exists: false }, theirs: { exists: true, value: 'Stored step' } }];
-    expect(readGroupFlowTitleConflict(checkpoint)).toMatchObject({ field: 'step', mine: null, stored: 'Stored step' });
+    expect(readGroupFlowFieldConflict(checkpoint)).toMatchObject({ field: 'step', mine: null, stored: 'Stored step' });
     checkpoint.remoteCandidate.value!.flow = [{ ...step, templateId: 'other-block' }];
-    expect(readGroupFlowTitleConflict(checkpoint)).toBeUndefined();
+    expect(readGroupFlowFieldConflict(checkpoint)).toBeUndefined();
   });
 });

@@ -6,12 +6,13 @@ import { useId } from 'react';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useModalLayer } from '@/hooks/useModalLayer';
 import { GroupBlockStatus, GroupBlockTemplate, GroupFlowItem } from '@/models/models';
+import { isGroupBlockStatus } from '@/utils/groupDocument';
 import { useTranslation } from '@locales/useTranslation';
 
 import { LiveTextInput, LiveTextArea } from '../ui/LiveTextInput';
 import { RichMarkdownEditor } from '../ui/RichMarkdownEditor';
 
-import { GroupFlowTitleHistory } from './GroupFlowTitleHistory';
+import { GroupFlowFieldHistory } from './GroupFlowFieldHistory';
 
 import type { GroupPageEditor } from '@/hooks/groupPageEditor';
 
@@ -27,6 +28,7 @@ interface FlowEditorProps {
     onUpdateTemplate: (updates: Partial<GroupBlockTemplate>) => void;
     titleScope?: GroupPageEditor['flowTitleScope'];
     onRenameBlock: (title: string) => Promise<void>;
+    onSetStatus: (status: GroupBlockStatus) => Promise<void>;
     onRenameStep: (title: string | null) => Promise<void>;
     onUpdateFlowItem: (updates: Partial<GroupFlowItem>) => void;
     onClose: () => void;
@@ -38,6 +40,7 @@ export default function FlowEditor({
     onUpdateTemplate,
     titleScope,
     onRenameBlock,
+    onSetStatus,
     onRenameStep,
     onUpdateFlowItem,
     onClose,
@@ -89,7 +92,8 @@ export default function FlowEditor({
                                 <button
                                     key={option.value}
                                     type="button"
-                                    onClick={() => onUpdateTemplate({ status: option.value })}
+                                    aria-pressed={template.status === option.value}
+                                    onClick={() => { void onSetStatus(option.value).catch(() => undefined); }}
                                     className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition xl:rounded-lg xl:px-3 xl:py-1.5 xl:text-xs ${template.status === option.value
                                         ? 'bg-gray-100 text-gray-900 ring-1 ring-gray-300 dark:bg-gray-700 dark:text-gray-100 dark:ring-gray-600'
                                         : 'text-gray-500 hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-gray-800'
@@ -102,6 +106,10 @@ export default function FlowEditor({
                         </div>
                     </div>
 
+                    {titleScope && <GroupFlowFieldHistory key={JSON.stringify([titleScope.generation, template.id, template.createdAt])}
+                        scope={titleScope} field="status" rowId={template.id} rowCreatedAt={template.createdAt}
+                        current={template.status} onRestore={value => isGroupBlockStatus(value) ? onSetStatus(value) : Promise.reject(new Error('Invalid block status'))} />}
+
                     {/* Title */}
                     <div>
                         <label htmlFor="block-title" className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
@@ -113,7 +121,7 @@ export default function FlowEditor({
                             onChange={(value) => { void onRenameBlock(value).catch(() => undefined); }}
                             className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-semibold text-gray-800 transition focus:border-blue-500 focus:ring-1 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 xl:rounded-lg xl:px-3 xl:py-2"
                         />
-                        {titleScope && <GroupFlowTitleHistory key={JSON.stringify([titleScope.generation, template.id, template.createdAt])}
+                        {titleScope && <GroupFlowFieldHistory key={JSON.stringify([titleScope.generation, template.id, template.createdAt])}
                             scope={titleScope} field="block" rowId={template.id} rowCreatedAt={template.createdAt} current={template.title}
                             onRestore={value => onRenameBlock(value ?? '')} />}
                     </div>
@@ -145,7 +153,7 @@ export default function FlowEditor({
                             className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-700 transition focus:border-blue-500 focus:ring-1 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 xl:rounded-lg xl:px-3 xl:py-2"
                             placeholder={template.title}
                         />
-                        {titleScope && <GroupFlowTitleHistory key={JSON.stringify([titleScope.generation, flowItem.id, flowItem.templateId])}
+                        {titleScope && <GroupFlowFieldHistory key={JSON.stringify([titleScope.generation, flowItem.id, flowItem.templateId])}
                             scope={titleScope} field="step" rowId={flowItem.id} rowCreatedAt={flowItem.templateId}
                             current={flowItem.instanceTitle ?? null} onRestore={onRenameStep} />}
                     </div>

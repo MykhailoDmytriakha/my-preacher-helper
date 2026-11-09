@@ -1514,6 +1514,46 @@ describe('transactional DataEngine server', () => {
   });
 
   it.each([
+    { label: 'phone first', at: 15, winner: 'filled', kind: 'acknowledged' },
+    { label: 'phone last', at: 100, winner: 'empty', kind: 'acknowledged' },
+    { label: 'unknown order', at: null, winner: 'filled', kind: 'conflict' },
+    { label: 'later explicit return', at: 100, winner: 'draft', kind: 'acknowledged', phoneStatus: 'draft' },
+  ])('orders one group block status without replacing its separate text: $label', async ({ at, winner, kind, phoneStatus = 'empty' }) => {
+    const resource = { collection: 'groups', id: 'block-status-order' };
+    const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] };
+    const now = '2026-11-08T00:00:00.000Z';
+    const block = { id: 'opening', type: 'custom', title: 'Opening', content: 'Original words', status: 'draft', createdAt: now, updatedAt: now };
+    const other = { ...block, id: 'other', title: 'Other block' };
+    const templates = [block, other];
+    const flow = [{ id: 'step', templateId: block.id, order: 1 }, { id: 'other-step', templateId: other.id, order: 2 }];
+    expect((await processCommand(base.owner, { ...base, kind: 'create', operationId: 'seed', generation: null,
+      value: { userId: base.owner, title: 'Group', status: 'draft', createdAt: now, updatedAt: now, templates, flow },
+    })).kind).toBe('acknowledged');
+    const edit = (operationId: string, next: typeof block, time: number | null) => ({
+      ...base, kind: 'update', operationId, generation: 'seed',
+      changes: [{ path: ['templates'], before: { exists: true, value: templates }, after: { exists: true, value: [next, other] } }],
+      groupBlockStatusActions: [{ rowId: block.id, rowCreatedAt: block.createdAt, before: block.status,
+        after: next.status, observedRevision: 1,
+        time: time === null ? null : { earliestMs: 1_800_000_000_000 + time, latestMs: 1_800_000_000_004 + time } }],
+    });
+    const computer = { ...block, status: 'filled', content: 'Keep these later words' };
+    expect((await processCommand(base.owner, edit('computer', computer, 65))).kind).toBe('acknowledged');
+    const phone = edit('phone', { ...block, status: phoneStatus }, at);
+    const answer = await processCommand(base.owner, phone);
+    expect(answer).toMatchObject({ kind, snapshot: { value: { title: 'Group', flow, templates: [{ ...computer, status: winner }, other] } } });
+    expect(await processCommand(base.owner, phone)).toEqual(answer);
+    const history = [...documents.entries()].filter(([path]) => path.startsWith('groups/block-status-order/_blockStatusHistory/'));
+    if (at === null) {
+      expect(answer).toMatchObject({ conflicts: [{ path: ['templates', 'id:opening', 'status'] }] });
+      expect(history).toHaveLength(0);
+    } else {
+      expect(history).toHaveLength(1);
+      expect(history[0][1]).toMatchObject({ fields: [{ rowId: block.id, field: 'status',
+        value: winner === 'filled' ? phoneStatus : 'filled', winnerValue: winner }] });
+    }
+  });
+
+  it.each([
     { label: 'phone first', phoneAt: 15, winner: 'Computer block', kind: 'acknowledged' },
     { label: 'phone last', phoneAt: 100, winner: 'Phone block', kind: 'acknowledged' },
     { label: 'unknown order', phoneAt: null, winner: 'Computer block', kind: 'conflict' },

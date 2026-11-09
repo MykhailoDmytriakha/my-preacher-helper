@@ -7,6 +7,26 @@ import type { ResourceSnapshot } from '../types';
 const snap = (content = 'base', revision = 1): ResourceSnapshot => ({ resource: { collection: 'studyNotes', id: 'one' }, value: { content }, metadata: { protocol: 1, generation: 'g1', revision, deleted: false } });
 
 describe('DataSession', () => {
+  it('keeps a deliberately reselected block status without replacing remote text or a different block', () => {
+    const block = { id: 'block', status: 'draft', createdAt: 'born', title: 'Name', content: 'Original words' };
+    const other = { ...block, id: 'other' };
+    const base = { ...snap(), resource: { collection: 'groups', id: 'group' }, value: { templates: [block, other] } };
+    const storedBlock = { ...block, status: 'filled', content: 'Latest remote words' };
+    const storedOther = { ...other, status: 'empty' };
+    const candidate = { ...base, metadata: { ...base.metadata!, revision: 2 }, value: { templates: [storedBlock, storedOther] } };
+    const editor = new DataSession(base);
+    editor.registerCommit('status-save', 1, base.value);
+    editor.accept({ kind: 'conflict', operationId: 'status-save', snapshot: candidate, conflicts: [{
+      path: ['templates', 'id:block', 'status'], base: { exists: true, value: 'draft' },
+      mine: { exists: true, value: 'draft' }, theirs: { exists: true, value: 'filled' },
+    }] });
+    editor.release('status-save');
+    editor.keepLocal();
+    expect(editor.checkpoint()).toMatchObject({ confirmed: candidate, dirty: true,
+      draft: { templates: [{ ...storedBlock, status: 'draft' }, storedOther] },
+    });
+  });
+
   it.each(['kept', 'deleted', 'replaced', 'deleted with notes', 'replaced with notes'] as const)('keeps status intent only for the same date through local and recovered choices when the row is %s', scenario => {
     const birth = '2026-11-08T00:00:00.000Z';
     const row = { id: 'date', createdAt: birth, date: '2026-12-13', status: 'planned', notes: 'Base notes' };

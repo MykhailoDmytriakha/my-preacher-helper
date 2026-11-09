@@ -14,7 +14,7 @@ import { isCapturedPreachDateFieldConflict, preachDateRebaseChoices, retainAutho
 import { alignImplicitPreachStatuses, isCapturedPreachStatusConflict, replacedPreachStatusRows, retainPreachStatusIntent } from './preachStatusAction';
 import { equalValues, mergeDocumentFields, MAX_RELATION_RESOURCES } from './protocol';
 import { isCapturedRowConflict } from './rowFieldAction';
-import { isCapturedRowTitleConflict } from './rowTitleAutosave';
+import { isCapturedAutosaveRowFieldConflict } from './rowFieldAutosave';
 import { rebaseSermonChurchFill } from './sermonChurchFill';
 import { SERVICE_ORDER_FLAG_TARGET, SERVICE_ORDER_STEP_TITLE_TARGET } from './serviceOrderStepAction';
 import { coversCommittedEffect } from './snapshotFreshness';
@@ -103,7 +103,7 @@ export function initializeCommit(record: CommitRequest, records: readonly Commit
       || (stepTitle && isCapturedRowConflict(conflict, stepTitle, SERVICE_ORDER_STEP_TITLE_TARGET))
       || (assembly && isCapturedRowConflict(conflict, assembly, COUNCIL_ASSEMBLY))
       || (topicKind && isCapturedRowConflict(conflict, topicKind, COUNCIL_TOPIC_KIND))
-      || isCapturedRowTitleConflict(conflict, record)
+      || isCapturedAutosaveRowFieldConflict(conflict, record)
       || GROUP_MEETING_FIELDS.some(field => {
         const meeting = record.groupMeetingFieldActions?.[field];
         return meeting && isCapturedRowConflict(conflict, meeting, meetingFieldTarget(field));

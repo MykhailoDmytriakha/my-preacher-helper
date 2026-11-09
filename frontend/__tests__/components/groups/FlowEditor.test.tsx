@@ -43,6 +43,7 @@ const mockTemplate: GroupBlockTemplate = {
 describe('FlowEditor', () => {
     const onUpdateTemplate = jest.fn();
     const onUpdateFlowItem = jest.fn();
+    const onSetStatus = jest.fn().mockResolvedValue(undefined);
     const onRenameBlock = jest.fn().mockResolvedValue(undefined);
     const onRenameStep = jest.fn().mockResolvedValue(undefined);
     const onClose = jest.fn();
@@ -52,6 +53,7 @@ describe('FlowEditor', () => {
         template: mockTemplate,
         onUpdateTemplate,
         onUpdateFlowItem,
+        onSetStatus,
         onRenameBlock,
         onRenameStep,
         onClose,
@@ -144,7 +146,7 @@ describe('FlowEditor', () => {
         // Options: Empty, Draft, Filled.
         const filledBtn = screen.getByText('Filled');
         fireEvent.click(filledBtn);
-        expect(onUpdateTemplate).toHaveBeenCalledWith({ status: 'filled' });
+        expect(onSetStatus).toHaveBeenCalledWith('filled');
     });
 
     it('calls onClose', () => {
@@ -161,6 +163,7 @@ describe('FlowEditor', () => {
                 template={mockTemplate}
                 onUpdateTemplate={onUpdateTemplate}
                 onUpdateFlowItem={onUpdateFlowItem}
+                onSetStatus={onSetStatus}
                 onRenameBlock={onRenameBlock}
                 onRenameStep={onRenameStep}
                 onClose={onClose}

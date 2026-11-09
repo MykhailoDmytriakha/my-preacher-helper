@@ -29,7 +29,7 @@ import { collectionRecordPresence, documentRecordPresence, UNKNOWN_RECORD_PRESEN
 import { isOnlySubmittedCopy } from './recovery.client';
 import { captureRecoveryChoice as captureChoice, recoveryChoiceFingerprint, type RecoveryChoiceScope } from './recoveryChoice';
 import { validateResourceDocument } from './resourceSchemas';
-import { readCouncilTopicConflict as councilTopicConflict, readGroupFlowTitleConflict as groupFlowTitleConflict, readPlanTemplateNameConflict as planTemplateNameConflict, readSermonConflict as sermonConflict, readServiceStepConflict as serviceStepConflict, readTagColorConflict as tagColorConflict } from './rowConflictDetails';
+import { readCouncilTopicConflict as councilTopicConflict, readGroupFlowFieldConflict as groupFlowFieldConflict, readPlanTemplateNameConflict as planTemplateNameConflict, readSermonConflict as sermonConflict, readServiceStepConflict as serviceStepConflict, readTagColorConflict as tagColorConflict } from './rowConflictDetails';
 import { deletedUnder, type SessionCheckpoint } from './session';
 import { describeManualSync, describeSync, type SyncStatus } from './status';
 import { shownDeliveryState } from './unanswered';
@@ -47,6 +47,7 @@ import type { MembershipDelivery } from './membershipDelivery';
 import type { MembershipAction } from './membershipIntent';
 import type { MembershipScope, MembershipScopeRecord } from './membershipScope';
 import type { PreachStatusIntent } from './preachStatusAction';
+import type { RowFieldActionKind } from './rowFieldAutosave';
 import type { EditorCommitAction } from './types';
 import type { CommandResult, ConflictDetail, DocumentData, EngineReadOptions, FailureAddress, FieldValue, JournalEntry, ResourceRef, ResourceSnapshot } from './types';
 import type { AppLocale } from '@/utils/appLocale';
@@ -58,7 +59,7 @@ export function analysisCreationScope(id: string): string { return initialAnalys
 
 /** Exact conflict values for presentation, without exposing row matching or mutation. */
 export function readCouncilTopicConflict(checkpoint: SessionCheckpoint) { return councilTopicConflict(checkpoint); }
-export function readGroupFlowTitleConflict(checkpoint: SessionCheckpoint) { return groupFlowTitleConflict(checkpoint); }
+export function readGroupFlowFieldConflict(checkpoint: SessionCheckpoint) { return groupFlowFieldConflict(checkpoint); }
 export function readServiceStepConflict(checkpoint: SessionCheckpoint) { return serviceStepConflict(checkpoint); }
 export function readPlanTemplateNameConflict(checkpoint: SessionCheckpoint) { return planTemplateNameConflict(checkpoint); }
 export function readTagColorConflict(checkpoint: SessionCheckpoint) { return tagColorConflict(checkpoint); }
@@ -701,7 +702,7 @@ export function useDataMembership() {
 /** A feature may present its own expected question; storage and lifecycle failures still surface. */
 export interface DocumentUpdateOptions {
   handlesRefusal?: (failure: unknown) => boolean;
-  action?: 'group-title' | 'group-status' | 'council-title' | 'council-date' | { kind: 'council-topic-title' | 'group-block-title' | 'group-step-title'; rowId: string };
+  action?: 'group-title' | 'group-status' | 'council-title' | 'council-date' | { kind: RowFieldActionKind; rowId: string };
 }
 
 interface DocumentOptions {

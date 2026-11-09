@@ -4174,6 +4174,7 @@
       "title": "Редактор блоку",
       "stepTitleLabel": "Заголовок кроку",
       "stepTitlePlaceholder": "Наприклад, Вступ",
+      "blockStatusHistory": "Історія статусів блоку",
       "blockNameHistory": "Історія назв блоку",
       "stepNameHistory": "Історія назв кроку",
       "useBlockName": "Використати назву блоку",

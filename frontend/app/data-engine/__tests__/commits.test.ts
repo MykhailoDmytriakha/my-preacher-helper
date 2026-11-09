@@ -867,6 +867,31 @@ describe('Durable commit requests', () => {
     }));
   });
 
+  it('captures a return to the opening block status before the autosave debounce expires', async () => {
+    const block = { id: 'block', type: 'custom', title: 'Name', content: 'Words', status: 'draft', createdAt: 'now', updatedAt: 'now' };
+    const opening: ResourceSnapshot = {
+      resource: { collection: 'groups', id: 'group' },
+      value: { userId: 'owner', title: 'Group', status: 'draft', templates: [block], flow: [], createdAt: 'now', updatedAt: 'now' },
+      metadata: { protocol: 1, generation: 'group', revision: 1, deleted: false },
+    };
+    const s = setup({ opening });
+    const { queue } = s.makeQueue();
+    const editor = new DataSession(opening);
+    const time = { earliestMs: 1_800_000_000_030, latestMs: 1_800_000_000_034 };
+    editor.edit({ ...opening.value, templates: [{ ...block, status: 'empty' }] }, undefined,
+      { field: 'group-block-status', rowId: block.id, time: { earliestMs: 1_800_000_000_020, latestMs: 1_800_000_000_024 } });
+    editor.edit(opening.value, undefined, { field: 'group-block-status', rowId: block.id, time });
+    const record = await queue.save('group', editor.checkpoint());
+    const action = { rowId: block.id, rowCreatedAt: block.createdAt, before: 'draft', after: 'draft', observedRevision: 1, time };
+    expect(record?.groupBlockStatusActions).toEqual([action]);
+    await s.makeQueue().queue.drain(true);
+    expect(s.transport.send).toHaveBeenCalledWith(expect.objectContaining({ operationId: record!.id,
+      groupBlockStatusActions: [action], changes: [{ path: ['templates'],
+        before: { exists: true, value: [block] }, after: { exists: true, value: [block] },
+      }],
+    }));
+  });
+
   it('cannot recreate a removed group block by keeping its offline title', async () => {
     const block = { id: 'block', type: 'custom', title: 'Original', content: 'Words', status: 'draft', createdAt: 'now', updatedAt: 'now' };
     const step = { id: 'step', templateId: block.id, order: 1 };

@@ -8,7 +8,7 @@ import type { GroupMeetingFieldActions } from './groupMeetingFieldAction';
 import type { PrayerStatusCapture } from './prayerStatusAction';
 import type { PreachDateFieldActions } from './preachDateFieldAction';
 import type { PreachStatusAction } from './preachStatusAction';
-import type { RowTitleActions } from './rowTitleAutosave';
+import type { AutosaveRowFieldActions } from './rowFieldAutosave';
 import type { SeriesFieldStamps } from './seriesFieldAction';
 import type { SermonChurchFill } from './sermonChurchFill';
 import type { ServiceOrderFlagActions, ServiceOrderFlagCapture, ServiceOrderStepTitleActions, ServiceOrderStepTitleCapture } from './serviceOrderStepAction';
@@ -99,7 +99,7 @@ export type DataCommand = CommandBase & (
       /** Exact plan cells observed before an explicit outline removal. */
       observedPlanTextRemoval?: Record<string, string>;
       /** Exact orphaned text explicitly cleared while its point was absent. */
-      observedPlanTextDiscard?: Record<string, string> } & RowTitleActions
+      observedPlanTextDiscard?: Record<string, string> } & AutosaveRowFieldActions
   | { kind: 'delete'; baseline: DocumentData }
   | { kind: 'relation'; relation: 'material-notes'; beforeNoteIds: string[]; afterNoteIds: string[];
       targets: Array<{ id: string; generation: string | null }> }

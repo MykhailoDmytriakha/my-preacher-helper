@@ -18,7 +18,7 @@ import { capturePreachStatusActions, matchingPreachStatusActions, pendingPreachS
 import { confirmedExistingDeletion, equalValues, mergeDocumentFields, MAX_RELATION_RESOURCES } from './protocol';
 import { matchingRowDetailActions, pendingRowDetailRebases } from './rowDetailCapture';
 import { existingRowField, replaceExistingRowField } from './rowFieldAction';
-import { captureRowTitles, matchingRowTitles, pendingRowTitleRebases, sameRowTitleCaptures } from './rowTitleAutosave';
+import { captureRowFields, matchingRowFields, pendingAutosaveRowFieldRebases, sameAutosaveRowFieldCaptures } from './rowFieldAutosave';
 import { capturePlanTextEvidence, type PlanTextEvidence } from './sermonPlanText';
 import { captureServiceOrderStep, matchesServiceOrderStep, SERVICE_ORDER_FLAG_POLICY, SERVICE_ORDER_FLAG_TARGET, SERVICE_ORDER_STEP_TITLE_POLICY, SERVICE_ORDER_STEP_TITLE_TARGET, type ServiceOrderFlagActions, type ServiceOrderStepTitleActions } from './serviceOrderStepAction';
 import { coversCommittedEffect } from './snapshotFreshness';
@@ -32,14 +32,14 @@ import type { GroupMeetingFieldActions, GroupMeetingFieldCaptures } from './grou
 import type { PrayerStatusObservations } from './prayerStatusAction';
 import type { PreachDateFieldActions, PreachDateFieldSave } from './preachDateFieldAction';
 import type { PreachStatusAction, PreachStatusCapture } from './preachStatusAction';
-import type { RowTitleActions } from './rowTitleAutosave';
+import type { AutosaveRowFieldActions } from './rowFieldAutosave';
 import type { DataEngineRuntime } from './runtime';
 import type { SeriesFieldObservations } from './seriesFieldAction';
 import type { SermonChurchFill } from './sermonChurchFill';
 import type { SessionCheckpoint } from './session';
 import type { CommandResult, DataCommand, DocumentData, EditorCommitAction, EngineMetadata, FieldValue, ResourceRef, ResourceSnapshot } from './types';
 
-export interface CommitRequest extends CouncilFieldActions, PrayerStatusObservations, RowTitleActions {
+export interface CommitRequest extends CouncilFieldActions, PrayerStatusObservations, AutosaveRowFieldActions {
   id: string;
   atomic?: AtomicCommitIdentity;
   /** A durable stage owns capture before it can persist the resulting request IDs. */
@@ -180,7 +180,7 @@ export function assertCommitCapture(current: CommitRequest, incoming: CommitRequ
     || !equalValues(current.serviceOrderTitleAction ?? null, incoming.serviceOrderTitleAction ?? null)
     || !equalValues(current.serviceOrderFlagActions ?? null, incoming.serviceOrderFlagActions ?? null)
     || !equalValues(current.serviceOrderStepTitleActions ?? null, incoming.serviceOrderStepTitleActions ?? null)
-    || !sameRowTitleCaptures(current, incoming)
+    || !sameAutosaveRowFieldCaptures(current, incoming)
     || !equalValues(current.councilAssemblyActions ?? null, incoming.councilAssemblyActions ?? null)
     || !equalValues(current.councilTopicKindActions ?? null, incoming.councilTopicKindActions ?? null)
     || !equalValues(current.prayerTitleAction ?? null, incoming.prayerTitleAction ?? null)
@@ -301,7 +301,7 @@ function pendingRowFields(record: CommitRequest) {
     ...pendingRowDetailRebases(record, record.serviceOrderStepTitleActions, SERVICE_ORDER_STEP_TITLE_POLICY),
     ...pendingRowDetailRebases(record, record.councilAssemblyActions, COUNCIL_ASSEMBLY_POLICY),
     ...pendingRowDetailRebases(record, record.councilTopicKindActions, COUNCIL_TOPIC_KIND_POLICY),
-    ...pendingRowTitleRebases(record),
+    ...pendingAutosaveRowFieldRebases(record),
   ];
 }
 
@@ -505,7 +505,7 @@ export class CommitQueue {
       editorAction?.kind === 'prayer-status' ? editorAction.status : undefined, records, owner);
     const metadataFields = captureDocumentMetadataFields(baseline, predecessor, intent.draft, frozenOptions?.documentMetadataTime, records);
     const autosaveFields = uncapturedAutosaveFields(intent, baseline, predecessor, records);
-    const rowTitles = captureRowTitles(intent, baseline, predecessor, records);
+    const rowFields = captureRowFields(intent, baseline, predecessor, records);
     const groupMeetingFieldActions = captureMeetingFieldActions(baseline, predecessor, intent.draft, frozenOptions?.groupMeetingFieldCaptures, records);
     const preachDateFieldActions = capturePreachDateFields(baseline, predecessor, intent.draft, frozenOptions?.preachDateFieldSave, records);
     const preachStatusActions = capturePreachStatusActions(baseline, predecessor, intent.draft, frozenOptions?.preachStatusCapture, records);
@@ -523,7 +523,7 @@ export class CommitQueue {
       ...prayerStatus,
       ...metadataFields,
       ...autosaveFields,
-      ...rowTitles,
+      ...rowFields,
       ...(groupMeetingFieldActions && { groupMeetingFieldActions }),
       ...(preachDateFieldActions && { preachDateFieldActions }),
       ...(preachStatusActions && { preachStatusActions }),
@@ -938,7 +938,8 @@ export class CommitQueue {
       const rows = replaceExistingDate(source.value.meetingDates, meeting.rowId, meeting.before, MEETING_DATE_TARGET);
       if (rows !== undefined) source = { ...source, value: { ...source.value, meetingDates: rows } };
     }
-    for (const { action, target } of pendingRowFields(record)) {
+    const rowFields = pendingRowFields(record);
+    for (const { action, target } of rowFields) {
       if (!source.value) break;
       if (target === SERVICE_ORDER_FLAG_TARGET && existingRowField(source.value[target.field], action.rowId, target) === action.before) continue;
       const rows = replaceExistingRowField(source.value[target.field], action.rowId, action.before, target);
@@ -946,7 +947,9 @@ export class CommitQueue {
     }
     const status = pendingPreachStatusActions(record);
     if (source.value && status.length) source = { ...source, value: replacePreachStatuses(source.value, status, 'before') };
-    try { prepared = prepareDomainCommand(owner, operationId, source, record.intended, targets, evidence, Boolean(status.length)); }
+    const retainedRoots = rowFields.filter(({ action }) => equalValues(action.before, action.after)).map(({ target }) => target.field);
+    if (status.length) retainedRoots.push('preachDates');
+    try { prepared = prepareDomainCommand(owner, operationId, source, record.intended, targets, evidence, retainedRoots); }
     catch (error) {
       // The policy names WHY this draft can never be a command (two sections carried in one
       // save, a destination that was deleted, a derived field). Left as a throw, the request
@@ -979,7 +982,7 @@ export class CommitQueue {
       if (flags && matchesServiceOrderStep(command.changes, SERVICE_ORDER_FLAG_TARGET, flags.flagged)) command.serviceOrderFlagActions = flags;
       const stepTitles = record.serviceOrderStepTitleActions;
       if (stepTitles && matchesServiceOrderStep(command.changes, SERVICE_ORDER_STEP_TITLE_TARGET, stepTitles.title)) command.serviceOrderStepTitleActions = stepTitles;
-      Object.assign(command, matchingRowTitles(command.changes, record, command.resource.collection));
+      Object.assign(command, matchingRowFields(command.changes, record, command.resource.collection));
       const assembly = matchingCouncilAssembly(command.changes, record.councilAssemblyActions);
       if (assembly) command.councilAssemblyActions = assembly;
       const topicKind = matchingCouncilTopicKind(command.changes, record.councilTopicKindActions);

@@ -428,7 +428,7 @@ export function captureDocumentMetadataFields(baseline: ResourceSnapshot, predec
 }
 
 export type AutosaveFieldStamp = { field: GroupTimedField | CouncilFieldTarget['field']; time: ActionTime | null }
-  | import('./rowTitleAutosave').RowTitleStamp;
+  | import('./rowFieldAutosave').RowFieldStamp;
 type AutosaveFieldValue = string | FieldValue;
 type AutosaveFieldAction = DocumentFieldObservation<AutosaveFieldValue>;
 export type AutosaveFieldDraft = { generation: string; action: AutosaveFieldAction };
