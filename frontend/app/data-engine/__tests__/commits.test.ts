@@ -193,6 +193,46 @@ describe('Durable commit requests', () => {
     }));
   });
 
+  it.each(['delete', 'assign'])('keeps a chained %s after an earlier ACK brings a changed thought location', async kind => {
+    const date = '2026-11-08T00:00:00.000Z';
+    const opening = { id: 'opening', text: 'Opening', subPoints: [{ id: 'old', text: 'Old', position: 0 }] };
+    const destination = { id: 'destination', text: 'Destination', subPoints: [{ id: 'next', text: 'Next', position: 0 }] };
+    const thought = { id: 'thought', text: 'Keep these words', tags: ['main'], date, outlinePointId: 'opening', subPointId: 'old' };
+    const moved = { ...thought, outlinePointId: 'destination', subPointId: 'next' };
+    const detached = { ...thought, outlinePointId: null, subPointId: null };
+    const outline = { introduction: [], main: [opening, destination], conclusion: [] };
+    const trimmed = { ...outline, main: [destination] };
+    const baseline = initial();
+    Object.assign(baseline.value!, { verse: 'John 3:16', date, thoughts: [thought], outline });
+    const s = setup({ opening: baseline });
+    const { queue } = s.makeQueue();
+    const editor = new DataSession(baseline);
+    const titleSave = { ...baseline.value!, title: 'Edited title' };
+    editor.edit(titleSave);
+    const first = (await queue.save('edit', editor.checkpoint()))!;
+    if (kind === 'delete') editor.edit({ ...titleSave, outline: trimmed, thoughts: [detached] });
+    else editor.edit({ ...titleSave, thoughts: [moved] }, undefined, {
+      field: 'thought-placement', rowId: thought.id, time: { earliestMs: 1_800_000_000_020, latestMs: 1_800_000_000_030 },
+    });
+    const second = (await queue.save('edit', editor.checkpoint(), { predecessorId: first.id }))!;
+    const other = { ...baseline, value: { ...titleSave, outline: kind === 'delete' ? outline : trimmed,
+      thoughts: [kind === 'delete' ? moved : detached] },
+    metadata: { ...baseline.metadata!, revision: 2, operationId: first.id } };
+    s.replace(other);
+    jest.mocked(s.transport.send).mockResolvedValueOnce({ kind: 'acknowledged', operationId: first.id, snapshot: other });
+    await queue.drain(true);
+    if (kind === 'delete') {
+      expect(s.transport.send).toHaveBeenCalledWith(expect.objectContaining({ operationId: second.id,
+        changes: expect.arrayContaining([expect.objectContaining({ path: ['outline'] })]) }));
+      expect(s.server().value).toMatchObject({ outline: trimmed, thoughts: [moved] });
+    } else {
+      expect(s.transport.send).toHaveBeenCalledWith(expect.objectContaining({ operationId: second.id,
+        thoughtPlacementActions: [expect.objectContaining({
+          before: { outlinePointId: 'opening', subPointId: 'old' }, after: { outlinePointId: 'destination', subPointId: 'next' },
+        })] }));
+    }
+  });
+
   it('preserves the authored Bible word through queue restart and replays the exact ancestor after a different predecessor ACK', async () => {
     const s = setup();
     const { queue } = s.makeQueue();

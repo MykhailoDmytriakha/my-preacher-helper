@@ -8,7 +8,7 @@ import { matchesRowDetailBirth } from './rowDetailAction';
 import { knownRowDetailPredecessor, pendingRowDetailRebases } from './rowDetailCapture';
 import { boundedRowId, existingRowField, existingRowFields, isCapturedRowConflict, matchesRowAction, replaceExistingRowField, rowConflictPath } from './rowFieldAction';
 import { THOUGHT_LOCK_POLICY } from './thoughtLockAction';
-import { THOUGHT_PLACEMENT_POLICY } from './thoughtPlacementAction';
+import { isThoughtLocation, isThoughtPlacementPart, THOUGHT_PLACEMENT_POLICY } from './thoughtPlacementAction';
 
 import type { ActionTime } from './actionClock';
 import type { CommitRequest } from './commits';
@@ -217,9 +217,17 @@ export function pendingAutosaveRowFieldRebases(record: CommitRequest) {
     (record[target.action] ?? []).flatMap(action => pendingRowDetailRebases(record, { [target.field]: action }, target.policy)));
 }
 
+function capturedPlacementPart(conflict: ConflictDetail, action: Action): boolean {
+  const key = conflict.path[2];
+  if (!isThoughtPlacementPart(conflict.path, action.rowId) || (key !== 'outlinePointId' && key !== 'subPointId')
+    || !isThoughtLocation(action.before) || !isThoughtLocation(action.after)) return false;
+  return equalValues(conflict.base.value ?? null, action.before[key]) && equalValues(conflict.mine.value ?? null, action.after[key]);
+}
+
 export function isCapturedAutosaveRowFieldConflict(conflict: ConflictDetail, record: CommitRequest): boolean {
   return targetsFor(record.baseline.resource.collection).some(target => record[target.action]?.some(action =>
-    isCapturedRowConflict(conflict, action, target.policy.target(target.field))));
+    isCapturedRowConflict(conflict, action, target.policy.target(target.field))
+    || (target.stamp === 'thought-placement' && capturedPlacementPart(conflict, action))));
 }
 
 export function isAutosaveRowFieldPath(path: readonly string[] | undefined, collection: string): boolean {

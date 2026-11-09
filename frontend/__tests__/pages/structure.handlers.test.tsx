@@ -210,10 +210,8 @@ jest.mock('@/components/Column', () => {
         main: [],
         conclusion: [],
       });
-      props.onOutlinePointDeleted?.('op-1', props.id);
-      if (autoTriggerSubPointDelete) {
-        props.onSubPointDeleted?.('op-1', 'sp-1', props.id);
-      }
+      if (autoTriggerSubPointDelete) props.onSubPointDeleted?.('op-1', 'sp-1', props.id);
+      else props.onOutlinePointDeleted?.('op-1', props.id);
       void props.onAddOutlinePoint?.(props.id, 0, 'Inserted point');
       if (autoTriggerPointLock && !clickedPointLock.current) {
         clickedPointLock.current = true;
@@ -328,7 +326,7 @@ describe('StructurePage handlers', () => {
       expect(updateSermonOutline).toHaveBeenCalled();
       expect(updateStructure).toHaveBeenCalled();
       expect(getExportContent).toHaveBeenCalled();
-      expect(debouncedSaveThoughtSpy).toHaveBeenCalled();
+      expect(debouncedSaveThoughtSpy).not.toHaveBeenCalled();
     });
   });
 
@@ -547,18 +545,10 @@ describe('StructurePage handlers', () => {
     render(<StructurePage />);
 
     await waitFor(() => {
-      expect(debouncedSaveThoughtSpy).toHaveBeenCalledWith(
-        'sermon-1',
-        expect.objectContaining({
-          id: 't1',
-          outlinePointId: null,
-          subPointId: null,
-        }),
-        // The opening value travels too: only the plan links change here, so the
-        // thought's TEXT must not be re-sent from this screen's snapshot.
-        expect.objectContaining({ id: 't1' }),
-      );
+      expect(sermonState.thoughts[0]).toMatchObject({ id: 't1', text: 'Intro', outlinePointId: undefined, subPointId: null });
+      expect(containersState.introduction[0]).toMatchObject({ id: 't1', outlinePointId: undefined, subPointId: null });
     });
+    expect(debouncedSaveThoughtSpy).not.toHaveBeenCalled();
   });
 
   it('clears sub-point ids when a sub-point is deleted', async () => {
@@ -615,15 +605,10 @@ describe('StructurePage handlers', () => {
     render(<StructurePage />);
 
     await waitFor(() => {
-      expect(debouncedSaveThoughtSpy).toHaveBeenCalledWith(
-        'sermon-1',
-        expect.objectContaining({
-          id: 't1',
-          subPointId: null,
-        }),
-        expect.objectContaining({ id: 't1' }),
-      );
+      expect(sermonState.thoughts[0]).toMatchObject({ id: 't1', text: 'Intro', outlinePointId: 'op-1', subPointId: null });
+      expect(containersState.introduction[0]).toMatchObject({ id: 't1', outlinePointId: 'op-1', subPointId: null });
     });
+    expect(debouncedSaveThoughtSpy).not.toHaveBeenCalled();
   });
 
   it('submits the point locks in one write and leaves the displayed copy intact on failure', async () => {

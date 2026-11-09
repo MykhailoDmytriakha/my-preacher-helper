@@ -17,7 +17,7 @@ export function isThoughtLocation(value: unknown): value is ThoughtLocation {
     && isLocationId(value.subPointId) && (value.outlinePointId !== null || value.subPointId === null);
 }
 
-function readLocation(row: DocumentData): ThoughtLocation | undefined {
+export function readThoughtLocation(row: DocumentData): ThoughtLocation | undefined {
   const value = { outlinePointId: row.outlinePointId ?? null, subPointId: row.subPointId ?? null };
   return isThoughtLocation(value) ? value : undefined;
 }
@@ -27,7 +27,7 @@ const locationKeys = ['outlinePointId', 'subPointId'] as const;
 const LOCATION: RowFieldTarget<ThoughtLocation> = {
   field: 'thoughts', leaf: 'outlineLocation', accepts: isThoughtLocation,
   projection: {
-    read: readLocation,
+    read: readThoughtLocation,
     write: (row, value) => {
       const next = { ...row };
       for (const key of locationKeys) if ((row[key] ?? null) !== value[key]) next[key] = value[key];

@@ -3620,3 +3620,157 @@ it.each([
   await expect(listThoughtPlacementHistory('another-owner', resource.id, generation)).rejects.toMatchObject({ status: 403 });
   await expect(listThoughtPlacementHistory(create.owner, resource.id, 'other-generation')).rejects.toMatchObject({ status: 404 });
 });
+
+
+describe('deleting an outline node while a thought is linked to it', () => {
+  function fixture(wholePoint: boolean) {
+    const generation = 'outline-removal-seed';
+    const date = '2026-11-08T00:00:00.000Z';
+    const owner = 'owner-1';
+    const original = { outlinePointId: 'opening', subPointId: 'old-sub' };
+    const repaired = { outlinePointId: wholePoint ? null : 'opening', subPointId: null };
+    const destination = { outlinePointId: 'destination', subPointId: 'next-sub' };
+    const first = { id: 'one', date, text: 'Original words', tags: ['main'], ...original };
+    const neighbor = { id: 'two', date, text: 'Independent words', tags: ['main'], outlinePointId: 'opening' };
+    const initial = [first, neighbor];
+    const repairedRows = [{ ...first, ...repaired }, wholePoint ? { ...neighbor, ...repaired } : neighbor];
+    const movedRows = [{ ...first, ...destination, text: 'New independent words' }, neighbor];
+    const opening = { id: 'opening', text: 'Opening point', subPoints: [{ id: 'old-sub', text: 'Old subpoint', position: 0 }] };
+    const other = { id: 'destination', text: 'Destination point', subPoints: [{ id: 'next-sub', text: 'Next subpoint', position: 0 }] };
+    const alternate = { id: 'alternate', text: 'Alternate point' };
+    const outline = { introduction: [], main: [opening, other, alternate], conclusion: [] };
+    const nextOutline = { ...outline, main: wholePoint ? [other, alternate] : [{ ...opening, subPoints: [] }, other, alternate] };
+    const board = { introduction: [], main: ['one', 'two'], conclusion: [], ambiguous: [] };
+    const create = { protocol: 1, kind: 'create', operationId: generation, owner, resource, generation: null, dependsOn: [],
+      value: { userId: owner, title: 'Sermon', verse: 'John 1:1', date, thoughts: initial, outline, structure: board, thoughtsBySection: board } };
+    const update = { protocol: 1, kind: 'update', owner, resource, generation, dependsOn: [] };
+    const change = (field: string, before: unknown, after: unknown) => ({
+      path: [field], before: { exists: true, value: before }, after: { exists: true, value: after },
+    });
+    const time = (at: number) => ({ earliestMs: 1_800_000_000_000 + at, latestMs: 1_800_000_000_004 + at });
+    const remove = { ...update, operationId: 'remove-outline-node',
+      changes: [change('outline', outline, nextOutline), change('thoughts', initial, repairedRows)] };
+    const legacyBoardRemove = { ...remove,
+      changes: [change('outline', outline, nextOutline), change('thoughts', repairedRows, repairedRows)],
+      thoughtPlacementActions: repairedRows.slice(0, wholePoint ? 2 : 1).map(row => ({
+        rowId: row.id, rowCreatedAt: date, before: repaired, after: repaired, observedRevision: 1, time: time(85),
+      })),
+    };
+    const move = { ...update, operationId: 'move-thought', changes: [change('thoughts', initial, movedRows)],
+      thoughtPlacementActions: [{ rowId: first.id, rowCreatedAt: date, before: original, after: destination, observedRevision: 1, time: time(15) }],
+    };
+    return { owner, create, remove, legacyBoardRemove, move, nextOutline, repairedRows, outline, initial, change, time,
+      expected: [movedRows[0], repairedRows[1]] };
+  }
+
+  it.each([false, true])('applies a deletion with the repaired location already shown on both command sides (%s is whole point)', async wholePoint => {
+    const f = fixture(wholePoint);
+    expect(await processCommand(f.owner, f.create)).toMatchObject({ kind: 'acknowledged' });
+    expect(await processCommand(f.owner, f.legacyBoardRemove)).toMatchObject({
+      kind: 'acknowledged', snapshot: { value: { outline: f.nextOutline, thoughts: f.repairedRows } },
+    });
+  });
+
+  it.each([
+    { wholePoint: false, outlineFirst: true }, { wholePoint: false, outlineFirst: false },
+    { wholePoint: true, outlineFirst: true }, { wholePoint: true, outlineFirst: false },
+  ])('composes an automatic repair and a separate explicit move ($wholePoint whole point, $outlineFirst outline first)', async ({ wholePoint, outlineFirst }) => {
+    const f = fixture(wholePoint);
+    expect(await processCommand(f.owner, f.create)).toMatchObject({ kind: 'acknowledged' });
+    expect(await processCommand(f.owner, outlineFirst ? f.remove : f.move)).toMatchObject({ kind: 'acknowledged' });
+    expect(await processCommand(f.owner, outlineFirst ? f.move : f.remove)).toMatchObject({
+      kind: 'acknowledged', snapshot: { value: { outline: f.nextOutline, thoughts: f.expected } },
+    });
+  });
+
+  it('keeps the latest deliberate assignment proof even after its point was deleted', async () => {
+    const f = fixture(true);
+    const later = { ...f.move, operationId: 'later-explicit-assignment',
+      thoughtPlacementActions: f.move.thoughtPlacementActions.map(action => ({ ...action, time: f.time(85) })) };
+    expect(await processCommand(f.owner, f.create)).toMatchObject({ kind: 'acknowledged' });
+    expect(await processCommand(f.owner, later)).toMatchObject({ kind: 'acknowledged' });
+    const saved = (await readDocument(f.owner, resource)).value!;
+    const detached = { ...f.expected[0], outlinePointId: null, subPointId: null };
+    const after = { ...f.outline, main: f.outline.main.filter(point => point.id !== 'destination') };
+    const removeChosen = { ...f.remove, operationId: 'delete-later-destination', changes: [
+      f.change('outline', f.outline, after), f.change('thoughts', saved.thoughts, [detached, f.initial[1]]),
+    ] };
+    expect(await processCommand(f.owner, removeChosen)).toMatchObject({ kind: 'acknowledged' });
+    const earlier = { ...f.move, operationId: 'delayed-earlier-assignment',
+      changes: [f.change('thoughts', f.initial, [{ ...f.initial[0], outlinePointId: 'alternate', subPointId: null }, f.initial[1]])],
+      thoughtPlacementActions: f.move.thoughtPlacementActions.map(action => ({ ...action, after: { outlinePointId: 'alternate', subPointId: null } })),
+    };
+    expect(await processCommand(f.owner, earlier)).toMatchObject({ kind: 'acknowledged',
+      snapshot: { value: { outline: after, thoughts: [detached, f.initial[1]] } } });
+  });
+
+  it('does not treat a deliberate clear as an automatic repair when the outline is later edited', async () => {
+    const f = fixture(true);
+    const cleared = { ...f.initial[0], outlinePointId: null, subPointId: null };
+    const clear = { ...f.move, operationId: 'later-explicit-clear',
+      changes: [f.change('thoughts', f.initial, [cleared, f.initial[1]])],
+      thoughtPlacementActions: f.move.thoughtPlacementActions.map(action => ({
+        ...action, after: { outlinePointId: null, subPointId: null }, time: f.time(85),
+      })),
+    };
+    expect(await processCommand(f.owner, f.create)).toMatchObject({ kind: 'acknowledged' });
+    expect(await processCommand(f.owner, clear)).toMatchObject({ kind: 'acknowledged' });
+    expect(await processCommand(f.owner, f.remove)).toMatchObject({ kind: 'acknowledged' });
+    expect(await processCommand(f.owner, f.move)).toMatchObject({ kind: 'acknowledged',
+      snapshot: { value: { outline: f.nextOutline, thoughts: [{ ...cleared, text: 'New independent words' }, f.repairedRows[1]] } } });
+  });
+
+  it('repairs a linked thought added after the plan was opened without deleting it', async () => {
+    const f = fixture(false);
+    const added = { ...f.initial[0], id: 'added', text: 'Written after the plan opened' };
+    expect(await processCommand(f.owner, f.create)).toMatchObject({ kind: 'acknowledged' });
+    const addition = { ...f.move, operationId: 'add-thought', thoughtPlacementActions: [],
+      changes: [f.change('thoughts', f.initial, [...f.initial, added])] };
+    expect(await processCommand(f.owner, addition)).toMatchObject({ kind: 'acknowledged' });
+    expect(await processCommand(f.owner, f.remove)).toMatchObject({ kind: 'acknowledged',
+      snapshot: { value: { outline: f.nextOutline, thoughts: [...f.repairedRows, { ...added, subPointId: null }] } } });
+  });
+
+
+  it('preserves a moved thought when a legacy deletion cannot prove the duplicated stamp was explicit', async () => {
+    const f = fixture(true);
+    expect(await processCommand(f.owner, f.create)).toMatchObject({ kind: 'acknowledged' });
+    expect(await processCommand(f.owner, f.move)).toMatchObject({ kind: 'acknowledged' });
+    expect(await processCommand(f.owner, f.legacyBoardRemove)).toMatchObject({ kind: 'conflict',
+      snapshot: { value: { outline: f.outline, thoughts: [f.expected[0], f.initial[1]] } },
+    });
+  });
+
+  it('checks a legacy cleanup stamp even when the same node was already deleted elsewhere', async () => {
+    const f = fixture(true);
+    expect(await processCommand(f.owner, f.create)).toMatchObject({ kind: 'acknowledged' });
+    expect(await processCommand(f.owner, f.move)).toMatchObject({ kind: 'acknowledged' });
+    expect(await processCommand(f.owner, f.remove)).toMatchObject({ kind: 'acknowledged' });
+    expect(await processCommand(f.owner, { ...f.legacyBoardRemove, operationId: 'repeat-old-delete' })).toMatchObject({
+      kind: 'conflict', snapshot: { value: { outline: f.nextOutline, thoughts: f.expected } },
+    });
+  });
+
+  it('keeps a thought deleted elsewhere deleted while accepting the outline removal', async () => {
+    const f = fixture(true);
+    expect(await processCommand(f.owner, f.create)).toMatchObject({ kind: 'acknowledged' });
+    const deletion = { ...f.move, operationId: 'remove-linked-thought', thoughtPlacementActions: [], changes: [
+      f.change('thoughts', f.initial, [f.initial[1]]),
+      ...['structure', 'thoughtsBySection'].map(field =>
+        f.change(field, f.create.value.structure, { ...f.create.value.structure, main: ['two'] })),
+    ] };
+    expect(await processCommand(f.owner, deletion)).toMatchObject({ kind: 'acknowledged' });
+    expect(await processCommand(f.owner, f.remove)).toMatchObject({
+      kind: 'acknowledged', snapshot: { value: { outline: f.nextOutline, thoughts: [f.repairedRows[1]] } },
+    });
+  });
+
+  it('ignores malformed placement evidence without blocking the automatic repair', async () => {
+    const f = fixture(false);
+    expect(await processCommand(f.owner, f.create)).toMatchObject({ kind: 'acknowledged' });
+    expect(await processCommand(f.owner, { ...f.remove, thoughtPlacementActions: [null] })).toMatchObject({
+      kind: 'acknowledged', snapshot: { value: { outline: f.nextOutline, thoughts: f.repairedRows } },
+    });
+  });
+
+});

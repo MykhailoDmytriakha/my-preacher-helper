@@ -451,7 +451,7 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
     const assembly = metadataAfterRowDetails({ ...snapshot, metadata: topicTitle }, raw, COUNCIL_ASSEMBLY_POLICY, primary ? councilAssemblyOrder : undefined);
     const topicKind = metadataAfterRowDetails({ ...snapshot, metadata: assembly }, raw, COUNCIL_TOPIC_KIND_POLICY, primary ? councilTopicKindOrder : undefined);
     const thoughtLock = metadataAfterRowDetails({ ...snapshot, metadata: topicKind }, raw, THOUGHT_LOCK_POLICY, primary ? thoughtLockOrder : undefined);
-    const thoughtPlacement = metadataAfterRowDetails({ ...snapshot, metadata: thoughtLock }, raw, THOUGHT_PLACEMENT_POLICY, primary ? thoughtPlacementOrder : undefined);
+    const thoughtPlacement = metadataAfterRowDetails({ ...snapshot, metadata: thoughtLock }, raw, THOUGHT_PLACEMENT_POLICY, primary ? thoughtPlacementOrder : undefined, primary ? thoughtPlacementOrder?.repairs : undefined);
     const metadata = snapshot.resource.collection === 'bibleMarks'
       ? metadataAfterBibleMarks(snapshot, raw?._dataEngine, primary ? markOrder : undefined)
       : metadataAfterDocumentFields({ ...snapshot, metadata: thoughtPlacement }, raw, primary ? fieldOrder : undefined);

@@ -626,14 +626,6 @@ function StructureBoard({ sermonId, engine, holdingRef, syncStatus, thoughtHisto
         containersRef.current = nextContainers;
         return nextContainers;
       });
-
-      // 3. Update backend for each thought
-      thoughtsToUpdate.forEach(thought => {
-        // Only the plan link changes here — state `thought` as the opening value so
-        // the write does not also re-send this screen's copy of the thought's text.
-        debouncedSaveThought(sermon.id, { ...thought, outlinePointId: null, subPointId: null }, thought);
-      });
-
     } catch (error) {
       console.error('Error updating thoughts after outline point deletion:', error);
       toast.error(t(TRANSLATION_KEYS.ERRORS.SAVE_OUTLINE_ERROR, { defaultValue: 'Error updating thoughts' }));
@@ -670,10 +662,6 @@ function StructureBoard({ sermonId, engine, holdingRef, syncStatus, thoughtHisto
         }
         containersRef.current = nextContainers;
         return nextContainers;
-      });
-
-      thoughtsToUpdate.forEach((thought) => {
-        debouncedSaveThought(sermon.id, { ...thought, subPointId: null }, thought);
       });
     } catch (error) {
       console.error('Error updating thoughts after sub-point deletion:', error);

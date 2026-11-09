@@ -10,6 +10,7 @@ import { datedRowTarget, isCapturedDateConflict } from './datedRowAction';
 import { pendingDocumentFieldAncestor } from './documentFieldAction';
 import { prepareAtomicDomainCommand } from './domainPolicy';
 import { GROUP_MEETING_FIELDS, meetingFieldTarget, replacedMeetingField } from './groupMeetingFieldAction';
+import { mergeOutlineAfterAcknowledgement } from './outlinePlacementRepair';
 import { isCapturedPreachDateFieldConflict, preachDateRebaseChoices, retainAuthoredChurch } from './preachDateFieldAction';
 import { alignImplicitPreachStatuses, isCapturedPreachStatusConflict, replacedPreachStatusRows, retainPreachStatusIntent } from './preachStatusAction';
 import { equalValues, mergeDocumentFields, MAX_RELATION_RESOURCES } from './protocol';
@@ -78,7 +79,13 @@ export function initializeCommit(record: CommitRequest, records: readonly Commit
     const dates = sameGeneration ? alignImplicitPreachStatuses(ancestor?.preachDates, authoredDates,
       snapshot.value?.preachDates, record.preachStatusActions) : undefined;
     const authored = record.value && dates !== undefined && dates !== record.value.preachDates ? { ...record.value, preachDates: dates } : record.value;
-    const rebased = mergeDocumentFields(ancestor, authored, snapshot.value);
+    const outline = sameGeneration && ancestor && authored && record.baseline.resource.collection === 'sermons'
+      && !equalValues(ancestor.outline, authored.outline) ? mergeOutlineAfterAcknowledgement({
+        protocol: 1, kind: 'update', owner: record.owner, resource: record.baseline.resource, operationId: record.id,
+        generation: record.baseline.metadata?.generation ?? null, dependsOn: [],
+        thoughtPlacementActions: record.thoughtPlacementActions,
+      }, ancestor, authored, snapshot) : undefined;
+    const rebased = outline ?? mergeDocumentFields(ancestor, authored, snapshot.value);
     const target = datedRowTarget(record.baseline.resource.collection);
     const action = target && record[target.evidence];
     const isDateConflict = (conflict: typeof rebased.conflicts[number]) => target && action && isCapturedDateConflict(conflict, action, target);
