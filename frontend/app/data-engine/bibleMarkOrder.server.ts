@@ -3,6 +3,7 @@ import { encodeVerseLayer, isMarkColor, isPencilColor, readVerseLayerSpans } fro
 import { boundedActionTime, compareActionTime } from './actionClock';
 import { isVerseMarkKey, MARK_LAYERS, readMarkLayer, writeMarkLayer, type DisplacedMark, type MarkAddress, type MarkRange } from './bibleMarkStroke';
 import { equalValues, object } from './fieldValues';
+import { isValidIdentifier } from './protocol';
 
 import type { ActionTime } from './actionClock';
 import type { BibleMarkStrokeStamp, ConflictDetail, DataCommand, DocumentData, FieldValue, Json, ResourceSnapshot } from './types';
@@ -13,7 +14,7 @@ const MAX_DISPLACED_SPANS = 128;
 export const BIBLE_MARK_HISTORY = '_markHistory';
 export const BIBLE_MARK_PROOFS = '_markProofs';
 
-type Proof = MarkRange & { colour: string | null; time: ActionTime | null; revision: number };
+type Proof = MarkRange & { colour: string | null; time: ActionTime | null; revision: number; operationId?: string };
 type MarkOrder = {
   command: DataCommand;
   proofWrites?: Map<string, Proof[]>;
@@ -24,7 +25,7 @@ type MarkOrder = {
 type StrokeFields = { before: unknown; after: unknown; change?: Extract<DataCommand, { kind: 'update' }>['changes'][number] };
 type Colour = string | undefined;
 type MarkTracking = { floor: number; reset: boolean };
-type StrokeClock = MarkTracking & { stroke?: BibleMarkStrokeStamp; revision: number };
+type StrokeClock = MarkTracking & { stroke?: BibleMarkStrokeStamp; revision: number; operationId: string };
 type SpanDecision = { previous?: Proof; stamp?: ActionTime | null; uncertain?: true; fold?: 'incoming' | 'stored'; displaced?: DisplacedMark };
 type LayerResult = { before: Colour; after: Colour; folded: boolean; uncertain: boolean; proofs: Proof[]; displaced: DisplacedMark[] };
 
@@ -43,7 +44,8 @@ function readProofs(verse: string, raw: unknown, current: ResourceSnapshot, floo
     if (value.colour !== null && !validColour(value.colour)) return [];
     const time = value.time === null ? null : boundedActionTime(value.time);
     return time !== undefined ? [{ verse, layer: value.layer, first: value.first, last: value.last,
-      colour: value.colour as string | null, time, revision: value.revision }] : [];
+      colour: value.colour as string | null, time, revision: value.revision,
+      ...(isValidIdentifier(value.operationId) && { operationId: value.operationId }) }] : [];
   });
 }
 
@@ -74,7 +76,8 @@ export function bibleMarkProofVerses(command: DataCommand): string[] | null {
 function readStroke(input: unknown, revision: number, serverMs: number): BibleMarkStrokeStamp | undefined {
   if (!object(input) || !isRevision(input.observedRevision, 0) || input.observedRevision > revision || !Number.isFinite(serverMs)) return undefined;
   const time = boundedActionTime(input.time);
-  return time && time.earliestMs <= serverMs + 5 ? { observedRevision: input.observedRevision, time } : undefined;
+  return time && time.earliestMs <= serverMs + 5 ? { observedRevision: input.observedRevision, time,
+    ...(isValidIdentifier(input.predecessorOperationId) && { predecessorOperationId: input.predecessorOperationId }) } : undefined;
 }
 
 function decideSpan(range: MarkRange, colours: [Colour, Colour, Colour], previous: Proof | undefined, clock: StrokeClock): SpanDecision {
@@ -89,6 +92,9 @@ function decideSpan(range: MarkRange, colours: [Colour, Colour, Colour], previou
     return mine !== stored && tracked ? { stamp: stroke.time } : {};
   }
   if (previous.revision <= stroke.observedRevision) return mine !== stored ? { stamp: stroke.time } : { previous };
+  if (base === stored && stroke.predecessorOperationId && previous.operationId === stroke.predecessorOperationId) {
+    return { stamp: stroke.time };
+  }
   return decideUnobservedSpan(range, colours, previous, stroke.time);
 }
 
@@ -106,8 +112,9 @@ function decideUnobservedSpan(range: MarkRange, [base, mine, stored]: [Colour, C
   };
 }
 
-function acceptedSpanProof(range: MarkRange, mine: Colour, decision: SpanDecision, revision: number): Proof | undefined {
-  if (decision.stamp !== undefined) return { ...range, colour: mine ?? null, time: decision.stamp, revision };
+function acceptedSpanProof(range: MarkRange, mine: Colour, decision: SpanDecision, clock: StrokeClock): Proof | undefined {
+  if (decision.stamp !== undefined) return { ...range, colour: mine ?? null, time: decision.stamp,
+    revision: clock.revision + 1, ...(decision.stamp && { operationId: clock.operationId }) };
   return decision.previous && { ...decision.previous, first: range.first, last: range.last };
 }
 
@@ -127,7 +134,7 @@ function processLayer(address: MarkAddress, values: [unknown, unknown, unknown],
     const foldedMine = decision.fold === 'stored' ? stored : mine;
     if (foldedBase !== undefined) before.push([first, last, foldedBase]);
     if (foldedMine !== undefined) after.push([first, last, foldedMine]);
-    const proof = acceptedSpanProof(range, foldedMine, decision, clock.revision + 1);
+    const proof = acceptedSpanProof(range, foldedMine, decision, clock);
     if (proof) kept.push(proof);
     if (decision.displaced) displaced.push(decision.displaced);
   }
@@ -196,7 +203,7 @@ export function orderBibleMarks(command: DataCommand, current: ResourceSnapshot,
   const revision = current.metadata?.revision ?? 0;
   const stroke = readStroke(command.bibleMarkStroke, revision, serverMs);
   const proofs = verses.flatMap(verse => readProofs(verse, savedProofs.get(verse), current, tracking.floor || 1));
-  const { nextProofs, displaced, uncertain, foldedBefore, foldedAfter } = reconcileLayers(before, after, stored, proofs, verses, { ...tracking, stroke, revision });
+  const { nextProofs, displaced, uncertain, foldedBefore, foldedAfter } = reconcileLayers(before, after, stored, proofs, verses, { ...tracking, stroke, revision, operationId: command.operationId });
   if (uncertain.length) return { command, uncertain };
   const proofWrites = planProofWrites(verses, proofs, nextProofs);
   if (!proofWrites || displaced.length > MAX_DISPLACED_SPANS) return { command, resetProofs: true };

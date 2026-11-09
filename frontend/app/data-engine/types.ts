@@ -169,7 +169,7 @@ export type ServiceOrderStepPlacementCapture = {
   placement: ServiceOrderStepPlacement;
 };
 
-export type BibleMarkStrokeStamp = { observedRevision: number; time: ActionTime };
+export type BibleMarkStrokeStamp = { observedRevision: number; time: ActionTime; predecessorOperationId?: string };
 
 export type DataCommand = CommandBase & (
   | { kind: 'create'; value: DocumentData; bibleMarkStroke?: BibleMarkStrokeStamp }

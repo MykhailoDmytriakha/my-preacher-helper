@@ -119,7 +119,7 @@ export type SermonPreparationConfirmationHistoryPage = {
 };
 
 const shortTitle = (value: unknown): value is string => typeof value === 'string' && value.length <= 1024;
-const SERVICE_ORDER_TITLE: TextDocumentFieldTarget = { field: 'title', action: 'serviceOrderTitleAction', proof: 'serviceOrderTitle',
+const SERVICE_ORDER_TITLE: TextDocumentFieldTarget = { field: 'title', action: 'serviceOrderTitleAction', proof: 'serviceOrderTitle', causal: true,
   accepts: (value): value is string => shortTitle(value) && value.trim().length > 0 };
 const PRAYER_TITLE = { field: 'title', action: 'prayerTitleAction', proof: 'prayerTitle', causal: true,
   accepts: (value: unknown): value is string => shortTitle(value) && value.trim().length > 0,
@@ -139,8 +139,8 @@ const PLAN_TEMPLATE_NAME = { field: 'name', action: 'planTemplateNameAction', pr
 const TAG_COLOR = { field: 'color', action: 'tagColorAction', proof: 'tagColor',
   accepts: (value): value is string => typeof value === 'string', causal: true,
 } as const satisfies TextDocumentFieldTarget;
-const GROUP_TITLE = { field: 'title', action: 'groupTitleAction', proof: 'groupTitle', accepts: shortTitle, draft: 'groupTitleDraft' } as const satisfies GroupFieldTarget;
-const GROUP_STATUS = { field: 'status', action: 'groupStatusAction', proof: 'groupStatus', accepts: isGroupStatus, draft: 'groupStatusDraft' } as const satisfies GroupFieldTarget;
+const GROUP_TITLE = { field: 'title', action: 'groupTitleAction', proof: 'groupTitle', causal: true, accepts: shortTitle, draft: 'groupTitleDraft' } as const satisfies GroupFieldTarget;
+const GROUP_STATUS = { field: 'status', action: 'groupStatusAction', proof: 'groupStatus', causal: true, accepts: isGroupStatus, draft: 'groupStatusDraft' } as const satisfies GroupFieldTarget;
 export const GROUP_TIMED_FIELDS = [GROUP_TITLE, GROUP_STATUS] as const;
 const COUNCIL_FIELDS = [...COUNCIL_TIMED_FIELDS, COUNCIL_LIFECYCLE];
 
@@ -311,7 +311,8 @@ export function validatedTitleCapture(confirmed: ResourceSnapshot, draft: Docume
   if (confirmed.resource.collection === 'serviceOrders' && !confirmed.metadata?.deleted && seen.generation === confirmed.metadata?.generation
     && Number.isSafeInteger(seen.revision) && seen.revision > 0 && seen.revision <= confirmed.metadata.revision
     && (!seen.requestId || knownPredecessor || confirmed.value?.title === seen.title) && isShortDocumentTitle(seen.title, SERVICE_ORDER_TITLE) && isShortDocumentTitle(title, SERVICE_ORDER_TITLE) && time) {
-    return { seen: { ...seen }, time };
+    return { seen: { title: seen.title, generation: seen.generation, revision: seen.revision,
+      ...(knownPredecessor && seen.requestId && { requestId: seen.requestId }) }, time };
   }
   // Without the shown ancestor, the normal writer may only use the title it actually sees.
   if (seen.generation !== confirmed.metadata?.generation || draft?.title !== seen.title) throw Object.assign(new Error('The service order title changed'), { code: 'stale-write' });
@@ -323,7 +324,8 @@ export function captureServiceOrderTitle(baseline: ResourceSnapshot, value: Docu
   if (!capture || baseline.resource.collection !== 'serviceOrders' || baseline.metadata?.generation !== capture.seen.generation) return undefined;
   const after = value?.title;
   if (!isShortDocumentTitle(after, SERVICE_ORDER_TITLE) || after === capture.seen.title) return undefined;
-  return { before: capture.seen.title, after, observedRevision: capture.seen.revision, time: capture.time };
+  return { before: capture.seen.title, after, observedRevision: capture.seen.revision, time: capture.time,
+    ...(capture.seen.requestId && { predecessorOperationId: capture.seen.requestId }) };
 }
 
 function captureRequiredText(baseline: ResourceSnapshot, value: DocumentData | null,
@@ -410,7 +412,7 @@ export function captureStudyNoteType(baseline: ResourceSnapshot, value: Document
 }
 
 type SermonTextTarget = typeof SERMON_TITLE | typeof SERMON_VERSE;
-type CapturedMetadataTarget = typeof SERMON_PLAN_MODE | SermonTextTarget | typeof SERMON_CHURCH | typeof SERMON_GOAL_TYPE | PreparationConfirmationTarget | SeriesFieldTarget | CouncilFieldTarget | PrayerStatusTarget | AccountPreferenceTarget;
+type CapturedMetadataTarget = typeof SERMON_PLAN_MODE | SermonTextTarget | typeof SERMON_CHURCH | typeof SERMON_GOAL_TYPE | PreparationConfirmationTarget | SeriesFieldTarget | CouncilFieldTarget | GroupFieldTarget | PrayerStatusTarget | AccountPreferenceTarget;
 
 function knownMetadataFieldPredecessor(baseline: ResourceSnapshot, predecessor: CommitRequest | undefined,
   target: CapturedMetadataTarget, value: string | FieldValue, records: readonly CommitRequest[]): string | undefined {
@@ -671,7 +673,7 @@ export function uncapturedAutosaveFields(checkpoint: SessionCheckpoint, baseline
   return Object.fromEntries(autosaveFieldTargets(checkpoint.confirmed.resource.collection).flatMap(target => {
     const action = uncapturedAutosaveField(checkpoint, target);
     if (!action) return [];
-    const predecessorOperationId = target.action === 'councilTitleAction' || target.action === 'councilDateAction' || target.action === 'councilLifecycleAction'
+    const predecessorOperationId = target.causal
       ? knownMetadataFieldPredecessor(baseline, predecessor, target, action.before, records) : undefined;
     return [[target.action, { ...action, ...(predecessorOperationId && { predecessorOperationId }) }]];
   }));

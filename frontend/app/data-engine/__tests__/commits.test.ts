@@ -398,7 +398,9 @@ describe('Durable commit requests', () => {
     };
     const editor = new DataSession(base);
     editor.edit({ ...base.value, verses: { v1_1: { m: '0-0-yellow,2-2-red' } } });
-    const first = (await queue.save('mark', editor.checkpoint()))!;
+    const first = (await queue.save('mark', editor.checkpoint(), { action: { kind: 'bible-mark-stroke',
+      time: { earliestMs: 1_800_000_000_018, latestMs: 1_800_000_000_023 },
+    } }))!;
     editor.edit({ ...base.value, verses: { v1_1: { m: '0-0-yellow,2-2-orange' } } });
     const time = { earliestMs: 1_800_000_000_020, latestMs: 1_800_000_000_025 };
     const next = (await queue.save('mark', editor.checkpoint(), { predecessorId: first.id, action: { kind: 'bible-mark-stroke', time } }))!;
@@ -409,7 +411,7 @@ describe('Durable commit requests', () => {
     jest.mocked(s.transport.send).mockResolvedValueOnce({ kind: 'acknowledged', operationId: first.id, snapshot: other });
     await s.makeQueue().queue.drain(true);
     expect(s.transport.send).toHaveBeenCalledWith(expect.objectContaining({ operationId: next.id,
-      bibleMarkStroke: { observedRevision: 1, time },
+      bibleMarkStroke: { observedRevision: 1, time, predecessorOperationId: first.id },
       changes: expect.arrayContaining([expect.objectContaining({ path: ['verses'],
         before: { exists: true, value: { v1_1: { m: '0-0-yellow,2-2-red,5-5-green' } } },
         after: { exists: true, value: { v1_1: { m: '0-0-yellow,2-2-orange,5-5-green' } } },
@@ -879,7 +881,7 @@ describe('Durable commit requests', () => {
     restored.applyCommit({ ...first, state: 'acknowledged', result: { kind: 'acknowledged', operationId: first.id, snapshot: desk } });
     expect(restored.getState()).toMatchObject({ draft: { title: 'Last phone title', description: 'Desk notes', status: 'active' }, conflicts: [] });
     const next = (await queue.save('group', restored.checkpoint(), { predecessorId: first.id }))!;
-    const action = { before: 'First phone title', after: 'Last phone title', observedRevision: 1, time: lastTime };
+    const action = { before: 'First phone title', after: 'Last phone title', observedRevision: 1, time: lastTime, predecessorOperationId: first.id };
     expect(next.groupTitleAction).toEqual(action);
     s.replace(desk);
     jest.mocked(s.transport.send).mockResolvedValueOnce({ kind: 'acknowledged', operationId: first.id, snapshot: desk });
@@ -1371,7 +1373,7 @@ describe('Durable commit requests', () => {
     const next = (await queue.save('order', editor.checkpoint(), { predecessorId: first.id, action: { kind: 'service-order-title',
       title: { seen: { title: 'First local title', generation: 'order', revision: 1, requestId: first.id }, time },
     } }))!;
-    const evidence = { before: 'First local title', after: 'Second local title', observedRevision: 1, time };
+    const evidence = { before: 'First local title', after: 'Second local title', observedRevision: 1, time, predecessorOperationId: first.id };
     expect(next.serviceOrderTitleAction).toEqual(evidence);
 
     const other = { ...base, value: { ...base.value, title: 'Other device title' },

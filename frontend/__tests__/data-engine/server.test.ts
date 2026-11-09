@@ -4422,6 +4422,40 @@ describe('transactional DataEngine server', () => {
     expect((await listServiceOrderTitleHistory(base.owner, resource.id, 'seed')).entries).toEqual([]);
   });
 
+  describe.each([
+    { collection: 'groups', field: 'title', action: 'groupTitleAction', before: 'Original', first: 'First', second: 'Second' },
+    { collection: 'groups', field: 'status', action: 'groupStatusAction', before: 'draft', first: 'active', second: 'completed' },
+    { collection: 'serviceOrders', field: 'title', action: 'serviceOrderTitleAction', before: 'Original', first: 'First', second: 'Second' },
+    { collection: 'bibleMarks', field: 'verses', action: 'bibleMarkStroke',
+      before: { v1_1: { m: '0-0-yellow' } }, first: { v1_1: { m: '0-0-blue' } }, second: { v1_1: { m: '0-0-red' } } },
+  ])('overlapping clock estimates for $collection/$field', ({ collection, field, action, before, first, second }) => {
+    it.each(['exact predecessor', 'different predecessor'] as const)('orders saves only with the %s', async scenario => {
+      const owner = 'owner-1';
+      const resource = { collection, id: collection === 'bibleMarks' ? owner + '_kjv_philemon' : 'successive-saves' };
+      const base = { protocol: 1, owner, resource, dependsOn: [] };
+      const now = '2026-11-08T00:00:00.000Z';
+      const fields = collection === 'groups' ? { title: 'Original', description: '', status: 'draft', templates: [], flow: [], meetingDates: [] }
+        : collection === 'serviceOrders' ? { title: 'Original', rank: 100, steps: [] } : { bible: 'kjv', book: 'philemon' };
+      expect((await processCommand(owner, { ...base, kind: 'create', operationId: 'seed', generation: null,
+        value: { userId: owner, ...fields, [field]: before, createdAt: now, updatedAt: now },
+      })).kind).toBe('acknowledged');
+      const save = (operationId: string, opening: Json, value: Json, offset: number, predecessorOperationId?: string) => processCommand(owner, {
+        ...base, kind: 'update', operationId, generation: 'seed',
+        changes: [{ path: [field], before: { exists: true, value: opening }, after: { exists: true, value } }],
+        [action]: { ...(field !== 'verses' && { before: opening, after: value }), observedRevision: 1,
+          time: { earliestMs: 1_800_000_000_000 + offset, latestMs: 1_800_000_000_010 + offset },
+          ...(predecessorOperationId && { predecessorOperationId }) },
+      });
+      expect((await save('first', before, first, 40)).kind).toBe('acknowledged');
+      const exact = scenario === 'exact predecessor';
+      expect(await save('second', first, second, 45, exact ? 'first' : 'unrelated')).toMatchObject({
+        kind: exact ? 'acknowledged' : 'conflict',
+        snapshot: { value: { [field]: exact ? second : first } },
+      });
+      expect([...documents.keys()].filter(path => path.includes('History/'))).toHaveLength(0);
+    });
+  });
+
   it.each([
     { arrival: 'earlier', delayedOffset: 10, word: 2, winner: '0-0-yellow,2-2-blue' },
     { arrival: 'later', delayedOffset: 70, word: 2, winner: '0-0-yellow,2-2-red' },

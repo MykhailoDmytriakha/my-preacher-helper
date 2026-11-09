@@ -3,6 +3,7 @@ import { encodeVerseLayer, readVerseLayerSpans } from '@/utils/bibleMarkLayers';
 import { boundedActionTime } from './actionClock';
 import { equalValues, object } from './fieldValues';
 
+import type { CommitRequest } from './commits';
 import type { BibleMarkStrokeStamp, DataCommand, DocumentData, Json, ResourceSnapshot } from './types';
 import type { VerseMarkLayer } from '@/utils/bibleMarkLayers';
 
@@ -71,20 +72,22 @@ function markEdits(before: unknown, after: unknown): MarkEdit[] | undefined {
   return edits.sort((left, right) => left.verse.localeCompare(right.verse) || left.layer.localeCompare(right.layer) || left.first - right.first);
 }
 
-export function captureBibleMarkStroke(baseline: ResourceSnapshot, predecessor: { value: DocumentData | null } | undefined,
+export function captureBibleMarkStroke(baseline: ResourceSnapshot, predecessor: Pick<CommitRequest, 'id' | 'value' | 'bibleMarkStroke'> | undefined,
   after: DocumentData | null, capture: unknown): CapturedBibleMarkStroke | undefined {
   if (baseline.resource.collection !== 'bibleMarks' || !after || baseline.metadata?.deleted) return undefined;
   const time = boundedActionTime(capture);
   if (!time) return undefined;
   const before = predecessor ? predecessor.value : baseline.value;
   const edits = markEdits(before?.verses ?? {}, after.verses);
-  return edits?.length ? { time, edits, observedRevision: baseline.metadata?.revision ?? 0 } : undefined;
+  return edits?.length ? { time, edits, observedRevision: baseline.metadata?.revision ?? 0,
+    ...(predecessor?.bibleMarkStroke && { predecessorOperationId: predecessor.id }) } : undefined;
 }
 
 export function withBibleMarkStroke(command: DataCommand, stroke?: CapturedBibleMarkStroke): DataCommand {
   if (!stroke || command.resource.collection !== 'bibleMarks' || (command.kind !== 'create' && command.kind !== 'update')) return command;
   if (!equalValues(commandMarkEdits(command), stroke.edits)) return command;
-  return { ...command, bibleMarkStroke: { time: stroke.time, observedRevision: stroke.observedRevision } };
+  const { time, observedRevision, predecessorOperationId } = stroke;
+  return { ...command, bibleMarkStroke: { time, observedRevision, ...(predecessorOperationId && { predecessorOperationId }) } };
 }
 
 function commandMarkEdits(command: MarkCommand): MarkEdit[] | undefined {
