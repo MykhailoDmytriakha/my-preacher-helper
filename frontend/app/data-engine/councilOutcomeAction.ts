@@ -52,16 +52,15 @@ export function mergeIndependentOutcomes(before: CouncilOutcome, mine: CouncilOu
   return { acceptedOptionId, decision, discussed: Boolean(acceptedOptionId || decision), resolution: null };
 }
 
-/** Ordering competing options must not also order independently written decision text. */
+/** Compare each part with the opening. Chronology breaks ties only when both copies changed that part. */
 function mergeOrderedOutcomes(before: CouncilOutcome, mine: CouncilOutcome, stored: CouncilOutcome, incomingWins: boolean): CouncilOutcome | undefined {
-  if (before.resolution || mine.resolution || stored.resolution || mine.decision === stored.decision) return undefined;
-  if (mine.acceptedOptionId === before.acceptedOptionId || stored.acceptedOptionId === before.acceptedOptionId
-    || mine.acceptedOptionId === stored.acceptedOptionId) return undefined;
-  const decision = mine.decision === before.decision ? stored.decision
-    : stored.decision === before.decision ? mine.decision : undefined;
-  if (decision === undefined) return undefined;
-  const winner = incomingWins ? mine : stored;
-  return { ...winner, decision, discussed: winner.discussed || Boolean(decision) };
+  if (before.resolution || mine.resolution || stored.resolution) return undefined;
+  function merge<Field extends keyof Omit<CouncilOutcome, 'resolution'>>(field: Field): CouncilOutcome[Field] {
+    if (mine[field] === before[field]) return stored[field];
+    if (stored[field] === before[field]) return mine[field];
+    return (incomingWins ? mine : stored)[field];
+  }
+  return { acceptedOptionId: merge('acceptedOptionId'), decision: merge('decision'), discussed: merge('discussed'), resolution: null };
 }
 
 export function councilOutcomeRow(path: readonly string[] | undefined): string | undefined {

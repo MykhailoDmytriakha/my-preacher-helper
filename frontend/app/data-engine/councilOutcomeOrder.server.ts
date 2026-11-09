@@ -56,5 +56,6 @@ export function orderCouncilOutcome(command: DataCommand, current: ResourceSnaps
     });
     return { ...change, after: { ...change.after, value } };
   });
-  return { ...order, command: { ...order.command, changes } };
+  return { ...order, command: { ...order.command, changes },
+    displaced: order.displaced.filter(({ value, winnerValue }) => !equalValues(value, winnerValue)) };
 }
