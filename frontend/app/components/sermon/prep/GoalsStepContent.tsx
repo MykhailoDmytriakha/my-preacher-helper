@@ -20,6 +20,7 @@ interface GoalsStepContentProps {
   christConnection?: PreparationTextBinding;
   goalStatement?: PreparationTextBinding;
   goalType?: PreparationTextBinding;
+  goalTypeHistory?: React.ReactNode;
 }
 
 const GoalsStepContent: React.FC<GoalsStepContentProps> = ({
@@ -27,6 +28,7 @@ const GoalsStepContent: React.FC<GoalsStepContentProps> = ({
   christConnection,
   goalStatement,
   goalType,
+  goalTypeHistory,
 }) => {
   const { t } = useTranslation();
 
@@ -198,6 +200,7 @@ const GoalsStepContent: React.FC<GoalsStepContentProps> = ({
               <option value="exhortative">{t('wizard.steps.goals.goal.types.exhortative')}</option>
             </PreparationSelect>}
           </div>
+          {goalTypeHistory && <div className="sm:col-span-2 sm:col-start-2">{goalTypeHistory}</div>}
         </div>
         {goalStatement && <PreparationTextarea binding={goalStatement} placeholder={t('wizard.steps.goals.goal.placeholder')} />}
         <div className={`mt-2 p-2 rounded border text-xs ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder}`}>

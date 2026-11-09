@@ -91,6 +91,7 @@ export type DataCommand = CommandBase & (
       sermonTitleAction?: DocumentFieldObservation;
       sermonVerseAction?: DocumentFieldStamp;
       sermonChurchAction?: DocumentFieldStamp;
+      sermonGoalTypeAction?: DocumentFieldStamp;
       sermonChurchFill?: SermonChurchFill;
       seriesFieldActions?: SeriesFieldStamps;
       groupTitleAction?: DocumentFieldAction;

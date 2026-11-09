@@ -6,6 +6,7 @@ import { adminDb, FieldValue } from '@/config/firebaseAdminConfig';
 import { aiModelDefaultsDocument } from '@/services/aiModelDefaults.server';
 import { storeRetryHeaders } from '@/services/storeAvailability.server';
 import { userEntitlementDocument } from '@/services/userEntitlement.server';
+import { isSermonGoalType } from '@/utils/preparationFieldValues';
 
 import { stampAcceptedResource } from './acceptedResource.server';
 import { ACTION_CLOCK_HEADER, isClockChallenge, readsDocumentActionClock, usesActionClock } from './actionClock';
@@ -16,7 +17,8 @@ import { alignCouncilTopicKind, COUNCIL_TOPIC_KIND_POLICY, type CouncilTopicKind
 import { COUNCIL_TOPIC_TITLE_POLICY, type CouncilTopicTitleHistoryPage } from './councilTopicTitleAction';
 import { existingRowDate, MEETING_DATE_TARGET, PREACH_DATE_TARGET } from './datedRowAction';
 import { metadataAfterDatedRow, orderDatedRow } from './datedRowOrder.server';
-import { metadataAfterDocumentFields, orderDocumentFields, DOCUMENT_TITLE_HISTORY, GROUP_STATUS_HISTORY, DOCUMENT_METADATA_HISTORY, SERMON_CHURCH_HISTORY, SERMON_VERSE_HISTORY } from './documentFieldOrder.server';
+import { documentFieldPath } from './documentFieldAction';
+import { metadataAfterDocumentFields, orderDocumentFields, DOCUMENT_TITLE_HISTORY, GROUP_STATUS_HISTORY, DOCUMENT_METADATA_HISTORY, SERMON_CHURCH_HISTORY, SERMON_GOAL_TYPE_HISTORY, SERMON_VERSE_HISTORY } from './documentFieldOrder.server';
 import { equalValues, readField } from './fieldValues';
 import { GROUP_BLOCK_STATUS_POLICY } from './groupBlockStatusAction';
 import { GROUP_BLOCK_TITLE_POLICY, GROUP_STEP_TITLE_POLICY, type GroupFlowHistoryPage } from './groupFlowTitleAction';
@@ -43,7 +45,7 @@ import type { AudioExportKey, AudioExportRecord, AudioExportStore, AudioExportTr
 import type { BibleMarkHistoryEntry, BibleMarkHistoryPage } from './bibleMarkStroke';
 import type { CouncilMetadataHistoryPage } from './councilFieldAction';
 import type { DisplacedRowDate, MeetingDateHistoryPage, PreachDateHistoryPage } from './datedRowAction';
-import type { GroupStatusHistoryPage, GroupTitleHistoryPage, DocumentTitleHistoryEntry, PlanTemplateNameHistoryPage, SermonChurchHistoryPage, PrayerTitleHistoryPage, SermonTitleHistoryPage, SermonVerseHistoryPage, ServiceOrderTitleHistoryPage, StudyNoteTitleHistoryPage, TagColorHistoryPage } from './documentFieldAction';
+import type { GroupStatusHistoryPage, GroupTitleHistoryPage, DocumentTitleHistoryEntry, PlanTemplateNameHistoryPage, SermonChurchHistoryPage, SermonGoalTypeHistoryPage, PrayerTitleHistoryPage, SermonTitleHistoryPage, SermonVerseHistoryPage, ServiceOrderTitleHistoryPage, StudyNoteTitleHistoryPage, TagColorHistoryPage } from './documentFieldAction';
 import type { PrayerStatusHistoryPage } from './prayerStatusAction';
 import type { RowDetailPolicy } from './rowDetailAction';
 import type { RowValue } from './rowFieldAction';
@@ -481,7 +483,7 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
   const metadataHistory = [];
   for (const { target, order } of fieldOrder?.fields ?? []) {
     const displaced = order.displaced;
-    if (!displaced || !primarySnapshot.value || !equalValues(readField(primarySnapshot.value, [target.field]), displaced.winnerValue)) continue;
+    if (!displaced || !primarySnapshot.value || !equalValues(readField(primarySnapshot.value, documentFieldPath(target)), displaced.winnerValue)) continue;
     if (target.field === 'color' || target.action === 'seriesFieldActions' || target.action === 'councilTitleAction' || target.action === 'councilDateAction' || target.action === 'councilLifecycleAction'
       || target.action === 'prayerStatusAction' || target.action === 'prayerAnsweredAtAction') {
       metadataHistory.push({ field: target.field, value: displaced.value.value ?? null, winner: displaced.winnerValue.value ?? null,
@@ -494,6 +496,7 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
       status: { collection: GROUP_STATUS_HISTORY, winner: 'winnerStatus' },
       verse: { collection: SERMON_VERSE_HISTORY, winner: 'winnerVerse' },
       church: { collection: SERMON_CHURCH_HISTORY, winner: 'winnerChurch' },
+      type: { collection: SERMON_GOAL_TYPE_HISTORY, winner: 'winnerType' },
     }[field];
     const history = adminDb.collection(command.resource.collection).doc(command.resource.id).collection(destination.collection);
     const { value, winnerValue, ...evidence } = displaced;
@@ -843,6 +846,12 @@ export async function listSermonVerseHistory(owner: string, sermonId: string, ge
   const resource = { collection: 'sermons', id: sermonId };
   const page = await listHistoryEntries<SermonVerseHistoryPage['entries'][number]>(owner, resource, SERMON_VERSE_HISTORY, generation, cursor, 'sermon-gone');
   return { owner, sermonId, generation, ...page };
+}
+
+export async function listSermonGoalTypeHistory(owner: string, sermonId: string, generation: string, cursor?: string): Promise<SermonGoalTypeHistoryPage> {
+  const resource = { collection: 'sermons', id: sermonId };
+  const page = await listHistoryEntries<SermonGoalTypeHistoryPage['entries'][number]>(owner, resource, SERMON_GOAL_TYPE_HISTORY, generation, cursor, 'sermon-gone');
+  return { owner, sermonId, generation, ...page, entries: page.entries.filter(entry => isSermonGoalType(entry.type) && isSermonGoalType(entry.winnerType)) };
 }
 
 export async function listSermonChurchHistory(owner: string, sermonId: string, generation: string, cursor?: string): Promise<SermonChurchHistoryPage> {

@@ -1,4 +1,9 @@
 import type { Json } from '@/data-engine/types';
+import type { Preparation } from '@/models/models';
+
+export type SermonGoalType = NonNullable<NonNullable<Preparation['preachingGoal']>['type']>;
+export const isSermonGoalType = (value: unknown): value is SermonGoalType =>
+  value === 'informative' || value === 'proclamation' || value === 'didactic' || value === 'exhortative';
 
 /** Raw field views and explicit-save normalization; no storage or delivery ownership. */
 export interface PreparationValue<T> {

@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { isCollectionServed } from '@/data-engine/activation';
-import { DataEngineServerError, listBibleMarkHistory, listCouncilMetadataHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listPlanTemplateNameHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listPrayerStatusHistory, listPrayerTitleHistory, listSermonChurchHistory, listSermonTitleHistory, listSermonVerseHistory, listSeriesMetadataHistory, listServiceOrderFlagHistory, listServiceOrderStepTitleHistory, listServiceOrderTitleHistory, listStudyNoteTitleHistory, listTagColorHistory, listThoughtLockHistory, listThoughtPlacementHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
+import { DataEngineServerError, listBibleMarkHistory, listCouncilMetadataHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listPlanTemplateNameHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listPrayerStatusHistory, listPrayerTitleHistory, listSermonChurchHistory, listSermonGoalTypeHistory, listSermonTitleHistory, listSermonVerseHistory, listSeriesMetadataHistory, listServiceOrderFlagHistory, listServiceOrderStepTitleHistory, listServiceOrderTitleHistory, listStudyNoteTitleHistory, listTagColorHistory, listThoughtLockHistory, listThoughtPlacementHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
 import { collectionHeadId, HEADS_COLLECTION, sequenceId } from '@/data-engine/serverFeed';
 import { DataSession } from '@/data-engine/session';
 import type { DataCommand, FieldValue, ResourceSnapshot } from '@/data-engine/types';
@@ -2444,6 +2444,76 @@ describe('transactional DataEngine server', () => {
       expect(await processCommand(base.owner, edit('series-phone', { status: phone.status }, 80))).toMatchObject({
         kind: 'acknowledged', snapshot: { value: { title: desk.title, theme: desk.theme, status: phone.status } },
       });
+    });
+  });
+
+  describe('sermon preparation goal type chronology', () => {
+    const opening = { preachingGoal: { type: 'informative', statement: 'Keep this goal sentence' } };
+    const preparation = (type: string, statement = opening.preachingGoal.statement) => ({
+      ...opening, preachingGoal: { type, statement },
+    });
+    function savePreparation(operationId: string, after: typeof opening, offset?: number) {
+      return {
+        ...update(operationId, 'prep-goal-seed'),
+        changes: [{ path: ['preparation'], before: { exists: true, value: opening }, after: { exists: true, value: after } }],
+        ...(offset === undefined ? {} : {
+          sermonGoalTypeAction: { observedRevision: 1, time: { earliestMs: 1_800_000_000_000 + offset, latestMs: 1_800_000_000_005 + offset } },
+        }),
+      };
+    }
+    async function seed() {
+      const command = create('prep-goal-seed') as Extract<DataCommand, { kind: 'create' }>;
+      expect(await processCommand(command.owner, { ...command, value: { ...command.value, preparation: opening } }))
+        .toMatchObject({ kind: 'acknowledged' });
+      return command.owner;
+    }
+
+    it.each([
+      { phoneAt: 20, winner: 'exhortative' },
+      { phoneAt: 80, winner: 'didactic' },
+    ])('keeps the known later choice when the offline choice was saved at $phoneAt', async ({ phoneAt, winner }) => {
+      const owner = await seed();
+      expect(await processCommand(owner, savePreparation('desk', preparation('exhortative'), 40)))
+        .toMatchObject({ kind: 'acknowledged' });
+      const phone = savePreparation('phone', preparation('didactic'), phoneAt);
+      const result = await processCommand(owner, phone);
+      expect(result).toMatchObject({ kind: 'acknowledged', snapshot: { value: { preparation: preparation(winner) } } });
+      const history = () => listSermonGoalTypeHistory(owner, resource.id, 'prep-goal-seed');
+      const previous = winner === 'didactic' ? 'exhortative' : 'didactic';
+      expect(await history()).toMatchObject({ entries: [{ type: previous, winnerType: winner }], nextCursor: null });
+      expect(await processCommand(owner, phone)).toEqual(result);
+      expect((await history()).entries).toHaveLength(1);
+    });
+
+    it('retains the clock across a separate sentence save and keeps that sentence', async () => {
+      const owner = await seed();
+      const first = preparation('exhortative');
+      const words = 'A later independently edited goal sentence';
+      expect(await processCommand(owner, savePreparation('desk', first, 40))).toMatchObject({ kind: 'acknowledged' });
+      const sentence = savePreparation('sentence', preparation('exhortative', words));
+      sentence.changes[0].before.value = first;
+      expect(await processCommand(owner, sentence)).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(owner, savePreparation('phone', preparation('didactic'), 80)))
+        .toMatchObject({ kind: 'acknowledged', snapshot: { value: { preparation: preparation('didactic', words) } } });
+      await expect(listSermonGoalTypeHistory('another-owner', resource.id, 'prep-goal-seed')).rejects.toMatchObject({ status: 403 });
+      await expect(listSermonGoalTypeHistory(owner, resource.id, 'old-generation')).rejects.toMatchObject({ status: 404 });
+    });
+
+    it('keeps the ordinary conflict when the order cannot be proven', async () => {
+      const owner = await seed();
+      expect(await processCommand(owner, savePreparation('desk', preparation('exhortative'), 40)))
+        .toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(owner, savePreparation('phone', preparation('didactic')))).toMatchObject({
+        kind: 'conflict', conflicts: [{ path: ['preparation', 'preachingGoal', 'type'] }],
+      });
+    });
+
+    it('merges the separate goal sentence with the selected type', async () => {
+      const owner = await seed();
+      expect(await processCommand(owner, savePreparation('desk', preparation('informative', 'A separately edited sentence'))))
+        .toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(owner, savePreparation('phone', preparation('didactic'), 20)))
+        .toMatchObject({ kind: 'acknowledged', snapshot: { value: { preparation: preparation('didactic', 'A separately edited sentence') } } });
     });
   });
 

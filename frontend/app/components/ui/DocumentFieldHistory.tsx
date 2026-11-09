@@ -6,15 +6,15 @@ import { requestOwnerJson } from '@/services/ownerHttpTransport.client';
 import { storedFieldValue } from '@/utils/storedFieldValue';
 import { useTranslation } from '@locales/useTranslation';
 
-import type { GroupStatusHistoryPage, GroupTitleHistoryPage, PlanTemplateNameHistoryPage, PrayerTitleHistoryPage, SermonChurchHistoryPage, SermonTitleHistoryPage, SermonVerseHistoryPage, ServiceOrderTitleHistoryPage, StudyNoteTitleHistoryPage } from '@/data-engine/documentFieldAction';
+import type { GroupStatusHistoryPage, GroupTitleHistoryPage, PlanTemplateNameHistoryPage, PrayerTitleHistoryPage, SermonChurchHistoryPage, SermonGoalTypeHistoryPage, SermonTitleHistoryPage, SermonVerseHistoryPage, ServiceOrderTitleHistoryPage, StudyNoteTitleHistoryPage } from '@/data-engine/documentFieldAction';
 import type { Church } from '@/models/models';
 
-type DocumentHistoryPage = PlanTemplateNameHistoryPage | StudyNoteTitleHistoryPage | ServiceOrderTitleHistoryPage | PrayerTitleHistoryPage | GroupTitleHistoryPage | GroupStatusHistoryPage | SermonTitleHistoryPage | SermonVerseHistoryPage | SermonChurchHistoryPage;
+type DocumentHistoryPage = PlanTemplateNameHistoryPage | StudyNoteTitleHistoryPage | ServiceOrderTitleHistoryPage | PrayerTitleHistoryPage | GroupTitleHistoryPage | GroupStatusHistoryPage | SermonTitleHistoryPage | SermonVerseHistoryPage | SermonChurchHistoryPage | SermonGoalTypeHistoryPage;
 type HistoryValue = string | Church | null;
 type HistoryEntry = { id: string; value: HistoryValue; winner: HistoryValue };
 type HistoryPage = { entries: HistoryEntry[]; nextCursor: string | null };
 type HistorySession = { owner: string; generation: string } & (
-  (({ orderId: string } | { templateId: string } | { noteId: string } | { prayerId: string } | { groupId: string; field?: 'status' } | { sermonId: string; field?: 'verse' }) & { restore: (value: string) => Promise<void> })
+  (({ orderId: string } | { templateId: string } | { noteId: string } | { prayerId: string } | { groupId: string; field?: 'status' } | { sermonId: string; field?: 'verse' | 'goal-type' }) & { restore: (value: string) => Promise<void> })
   | { sermonId: string; field: 'church'; restore: (value: Church | null) => Promise<void> }
 );
 
@@ -41,6 +41,11 @@ const historyLabels = {
     heading: 'common.churchHistory', loading: 'common.churchHistoryLoading', unavailable: 'common.churchHistoryUnavailable',
     failed: 'common.churchHistoryRestoreFailed', empty: 'common.churchHistoryEmpty', kept: 'common.churchHistoryKept',
     current: 'common.churchHistoryCurrent', restore: 'common.churchHistoryRestore', more: 'common.churchHistoryMore',
+  },
+  'goal-type': {
+    heading: 'common.goalTypeHistory', loading: 'common.goalTypeHistoryLoading', unavailable: 'common.goalTypeHistoryUnavailable',
+    failed: 'common.goalTypeHistoryRestoreFailed', empty: 'common.goalTypeHistoryEmpty', kept: 'common.goalTypeHistoryKept',
+    current: 'common.goalTypeHistoryCurrent', restore: 'common.goalTypeHistoryRestore', more: 'common.goalTypeHistoryMore',
   },
   verse: {
     heading: 'common.verseHistory', loading: 'common.verseHistoryLoading', unavailable: 'common.verseHistoryUnavailable',
@@ -69,6 +74,7 @@ export function DocumentFieldHistory({ session, current, disabled }: { session: 
   const heading = t(labels.heading);
   const format = (value: HistoryValue) => {
     if (typeof value !== 'string') return value ? [value.name, value.city].filter(Boolean).join(', ') : t(field === 'title' ? 'common.untitled' : 'calendar.unspecifiedChurch');
+    if (field === 'goal-type') return String(storedFieldValue(t, 'sermons.preparation.preachingGoal', 'type', value));
     return field === 'status' ? String(storedFieldValue(t, 'groups', 'status', value)) : value || t('common.untitled');
   };
   const isCurrent = (value: HistoryValue) => 'noteId' in session
@@ -94,7 +100,8 @@ export function DocumentFieldHistory({ session, current, disabled }: { session: 
       const entries = value.entries.map(entry => 'status' in entry
         ? { id: entry.id, value: entry.status, winner: entry.winnerStatus }
         : 'verse' in entry ? { id: entry.id, value: entry.verse, winner: entry.winnerVerse }
-          : 'church' in entry ? { id: entry.id, value: entry.church, winner: entry.winnerChurch }
+          : 'type' in entry ? { id: entry.id, value: entry.type, winner: entry.winnerType }
+            : 'church' in entry ? { id: entry.id, value: entry.church, winner: entry.winnerChurch }
             : { id: entry.id, value: entry.title, winner: entry.winnerTitle });
       setPage(previous => ({ nextCursor: value.nextCursor, entries: [...(cursor ? previous?.entries ?? [] : []), ...entries] }));
     } catch { setError('load'); }

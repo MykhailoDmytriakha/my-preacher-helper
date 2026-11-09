@@ -86,6 +86,7 @@ export interface CommitRequest extends CouncilFieldActions, PrayerStatusObservat
   sermonTitleAction?: DocumentFieldObservation;
   sermonVerseAction?: DocumentFieldObservation;
   sermonChurchAction?: SermonChurchObservation;
+  sermonGoalTypeAction?: DocumentFieldObservation<FieldValue>;
   sermonChurchFill?: SermonChurchFill;
   seriesFieldActions?: SeriesFieldObservations;
   groupTitleAction?: DocumentFieldAction;
@@ -192,6 +193,7 @@ export function assertCommitCapture(current: CommitRequest, incoming: CommitRequ
     || !equalValues(current.sermonTitleAction ?? null, incoming.sermonTitleAction ?? null)
     || !equalValues(current.sermonVerseAction ?? null, incoming.sermonVerseAction ?? null)
     || !equalValues(current.sermonChurchAction ?? null, incoming.sermonChurchAction ?? null)
+    || !equalValues(current.sermonGoalTypeAction ?? null, incoming.sermonGoalTypeAction ?? null)
     || !equalValues(current.sermonChurchFill ?? null, incoming.sermonChurchFill ?? null)
     || !equalValues(current.seriesFieldActions ?? null, incoming.seriesFieldActions ?? null)
     || !equalValues(current.groupTitleAction ?? null, incoming.groupTitleAction ?? null)
@@ -307,7 +309,7 @@ function pendingRowFields(record: CommitRequest) {
 }
 
 function hasTimedAncestor(record: CommitRequest): boolean {
-  return record.sequence === 0 && Boolean(record.serviceOrderTitleAction || record.prayerTitleAction || record.planTemplateNameAction || record.tagColorAction || record.studyNoteTitleAction || record.prayerStatusAction || record.prayerAnsweredAtAction || record.sermonTitleAction || record.sermonVerseAction || record.sermonChurchAction || record.seriesFieldActions || record.groupTitleAction || record.groupStatusAction || record.councilTitleAction || record.councilDateAction || record.councilLifecycleAction || pendingBibleMarkRebase(record) || pendingMeetingDateRebase(record) || pendingRowFields(record).length || pendingPreachStatusActions(record).length);
+  return record.sequence === 0 && Boolean(record.serviceOrderTitleAction || record.prayerTitleAction || record.planTemplateNameAction || record.tagColorAction || record.studyNoteTitleAction || record.prayerStatusAction || record.prayerAnsweredAtAction || record.sermonTitleAction || record.sermonVerseAction || record.sermonChurchAction || record.sermonGoalTypeAction || record.seriesFieldActions || record.groupTitleAction || record.groupStatusAction || record.councilTitleAction || record.councilDateAction || record.councilLifecycleAction || pendingBibleMarkRebase(record) || pendingMeetingDateRebase(record) || pendingRowFields(record).length || pendingPreachStatusActions(record).length);
 }
 
 function freezeSaveOptions(options: CommitSaveOptions | undefined): CommitSaveOptions | undefined {
@@ -930,7 +932,7 @@ export class CommitQueue {
     let source = record.working;
     for (const target of fields) {
       const action = capturedDocumentField(record, target);
-      if (action) source = documentFieldCommandAncestor(source, action, target.field);
+      if (action) source = documentFieldCommandAncestor(source, action, target);
     }
     if (markRebase) source = restoreBibleMarkAncestor(source, markRebase);
     // Even when the previous ACK already shows the intended date, the server

@@ -75,6 +75,20 @@ async function finish(view: { unmount(): void }) { view.unmount(); await act(set
 const contextIdea = (h: ReturnType<typeof documentEngineHarness>) =>
   (h.server.value?.preparation as typeof initial.preparation).mainIdea.contextIdea;
 
+it('carries the selected passage and its observed revision from the Preparation Save', async () => {
+  const t = await setup({ section: 'textContext' });
+  try {
+    fireEvent.change(t.input, { target: { value: 'John 4:1' } });
+    expect(t.h.transport.send).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTitle('actions.save'));
+    await waitFor(() => expect(t.h.transport.send).toHaveBeenCalledWith(expect.objectContaining({
+      sermonVerseAction: expect.objectContaining({ observedRevision: 1 }),
+      changes: expect.arrayContaining([{ path: ['verse'], before: { exists: true, value: 'John 3:16' },
+        after: { exists: true, value: 'John 4:1' } }]),
+    })));
+  } finally { await finish(t.view); }
+});
+
 it('keeps the later saved field until an earlier unsent draft is explicitly compared with it', async () => {
   const t = await setup();
   try {

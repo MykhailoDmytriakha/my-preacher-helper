@@ -1,9 +1,10 @@
 import { isGroupStatus } from '@/utils/groupDocument';
+import { isSermonGoalType, type SermonGoalType } from '@/utils/preparationFieldValues';
 
 import { boundedActionTime } from './actionClock';
 import { isSermonChurch } from './churchFieldValue';
 import { COUNCIL_LIFECYCLE, COUNCIL_TIMED_FIELDS, councilLifecycleValue, matchesCouncilLifecycle, withCouncilLifecycle, type CouncilFieldActions, type CouncilFieldTarget } from './councilFieldAction';
-import { equalValues, readField } from './fieldValues';
+import { equalValues, object, readField, writeField } from './fieldValues';
 import { PRAYER_STATUS_FIELDS } from './prayerStatusAction';
 import { SERIES_FIELD_TARGETS } from './seriesFieldAction';
 import { captureSermonChurchFill } from './sermonChurchFill';
@@ -53,7 +54,7 @@ type TextDocumentFieldTarget = {
   optional?: true;
 };
 
-export type DocumentFieldTarget = TextDocumentFieldTarget | typeof SERMON_CHURCH | SeriesFieldTarget | CouncilFieldTarget | PrayerStatusTarget;
+export type DocumentFieldTarget = TextDocumentFieldTarget | typeof SERMON_CHURCH | typeof SERMON_GOAL_TYPE | SeriesFieldTarget | CouncilFieldTarget | PrayerStatusTarget;
 export type SermonChurchObservation = DocumentFieldObservation<FieldValue>;
 
 export type GroupStatusHistoryPage = {
@@ -62,6 +63,14 @@ export type GroupStatusHistoryPage = {
 };
 
 const SERMON_CHURCH = { field: 'church', action: 'sermonChurchAction', proof: 'sermonChurch', causal: true } as const;
+
+const SERMON_GOAL_TYPE = { field: 'type', path: ['preparation', 'preachingGoal', 'type'],
+  action: 'sermonGoalTypeAction', proof: 'sermonGoalType', causal: true, optional: true, accepts: isSermonGoalType } as const;
+
+export type SermonGoalTypeHistoryPage = {
+  owner: string; sermonId: string; generation: string; nextCursor: string | null;
+  entries: { id: string; type: SermonGoalType; winnerType: SermonGoalType }[];
+};
 
 const shortTitle = (value: unknown): value is string => typeof value === 'string' && value.length <= 1024;
 const SERVICE_ORDER_TITLE: TextDocumentFieldTarget = { field: 'title', action: 'serviceOrderTitleAction', proof: 'serviceOrderTitle',
@@ -94,7 +103,7 @@ export function documentFieldTargets(collection: string): readonly DocumentField
   if (collection === 'series') return SERIES_FIELD_TARGETS;
   if (collection === 'prayerRequests') return [PRAYER_TITLE, ...PRAYER_STATUS_FIELDS];
   if (collection === 'councils') return COUNCIL_FIELDS;
-  if (collection === 'sermons') return [SERMON_TITLE, SERMON_VERSE, SERMON_CHURCH];
+  if (collection === 'sermons') return [SERMON_TITLE, SERMON_VERSE, SERMON_CHURCH, SERMON_GOAL_TYPE];
   return [];
 }
 
@@ -143,8 +152,27 @@ export type GroupTitleHistoryPage = {
   owner: string; groupId: string; generation: string; entries: DocumentTitleHistoryEntry[]; nextCursor: string | null;
 };
 
+export function documentFieldPath(target: DocumentFieldTarget): readonly string[] {
+  return 'path' in target ? target.path : [target.field];
+}
+
 export function documentFieldChange(changes: readonly FieldChange[], target: DocumentFieldTarget): FieldChange | undefined {
-  return changes.find(change => change.path.length === 1 && change.path[0] === target.field);
+  const path = documentFieldPath(target);
+  const root = changes.find(change => change.path.length === 1 && change.path[0] === path[0]);
+  if (!root || path.length === 1) return root;
+  const read = (field: FieldValue) => readField(object(field.value) ? field.value : {}, path.slice(1));
+  const before = read(root.before), after = read(root.after);
+  return equalValues(before, after) ? undefined : { path: [...path], before, after };
+}
+
+export function replaceOrderedDocumentField(changes: FieldChange[], target: DocumentFieldTarget, before: FieldValue, after: FieldValue): FieldChange[] {
+  const path = documentFieldPath(target);
+  const update = (root: FieldValue, leaf: FieldValue): FieldValue => path.length === 1 ? leaf
+    : !root.exists && !leaf.exists ? root
+      : { exists: true, value: writeField(object(root.value) ? root.value : {}, path.slice(1), leaf) };
+  return changes.map(change => change.path.length === 1 && change.path[0] === path[0] ? {
+    ...change, before: update(change.before, before), after: update(change.after, after),
+  } : change);
 }
 
 /** An exact pending field change may be the shown basis for the next local change. */
@@ -300,7 +328,7 @@ export function captureStudyNoteTitle(baseline: ResourceSnapshot, value: Documen
 }
 
 type SermonTextTarget = typeof SERMON_TITLE | typeof SERMON_VERSE;
-type CapturedMetadataTarget = SermonTextTarget | typeof SERMON_CHURCH | SeriesFieldTarget | CouncilFieldTarget | PrayerStatusTarget;
+type CapturedMetadataTarget = SermonTextTarget | typeof SERMON_CHURCH | typeof SERMON_GOAL_TYPE | SeriesFieldTarget | CouncilFieldTarget | PrayerStatusTarget;
 
 function knownMetadataFieldPredecessor(baseline: ResourceSnapshot, predecessor: CommitRequest | undefined,
   target: CapturedMetadataTarget, value: string | FieldValue, records: readonly CommitRequest[]): string | undefined {
@@ -311,7 +339,7 @@ function knownMetadataFieldPredecessor(baseline: ResourceSnapshot, predecessor: 
     request = requests.get(request.predecessor ?? '')) {
     if (request.owner !== predecessor.owner || !equalValues(request.baseline.resource, baseline.resource)
       || request.baseline.metadata?.generation !== baseline.metadata?.generation || !equalValues(target.field === 'heldAt' ? councilLifecycleValue(request.value)
-        : target.field === 'church' || target.field === 'date' || target.field === 'answeredAt' || target.action === 'seriesFieldActions' ? readField(request.value ?? {}, [target.field]) : request.value?.[target.field], value)
+        : target.field === 'church' || target.field === 'date' || target.field === 'answeredAt' || target.action === 'seriesFieldActions' || 'path' in target ? readField(request.value ?? {}, documentFieldPath(target)) : request.value?.[target.field], value)
       || ['cancelled', 'refused', 'conflict'].includes(request.state)) break;
     const action = capturedDocumentField(request, target);
     if (action) return equalValues(action.after, value) ? request.id : undefined;
@@ -391,11 +419,11 @@ function captureSermonField(baseline: ResourceSnapshot, predecessor: CommitReque
 }
 
 function captureStoredMetadataField(baseline: ResourceSnapshot, predecessor: CommitRequest | undefined, draft: DocumentData | null,
-  target: typeof SERMON_CHURCH | SeriesFieldTarget, time: ActionTime | null, records: readonly CommitRequest[]): DocumentFieldObservation<FieldValue> | undefined {
+  target: typeof SERMON_CHURCH | typeof SERMON_GOAL_TYPE | SeriesFieldTarget, time: ActionTime | null, records: readonly CommitRequest[]): DocumentFieldObservation<FieldValue> | undefined {
   if (!draft) return undefined;
   const original = (predecessor ? predecessor.value : baseline.value) ?? {};
-  const before = readField(original, [target.field]);
-  const after = readField(draft, [target.field]);
+  const before = readField(original, documentFieldPath(target));
+  const after = readField(draft, documentFieldPath(target));
   if (!acceptsDocumentField(before, target) || !acceptsDocumentField(after, target) || equalValues(before, after)) return undefined;
   const predecessorOperationId = knownMetadataFieldPredecessor(baseline, predecessor, target, before, records);
   return { before, after, time, observedRevision: baseline.metadata!.revision, ...(predecessorOperationId && { predecessorOperationId }) };
@@ -421,10 +449,11 @@ export function captureDocumentMetadataFields(baseline: ResourceSnapshot, predec
   const title = captureSermonField(baseline, predecessor, draft, SERMON_TITLE, time, records);
   const verse = captureSermonField(baseline, predecessor, draft, SERMON_VERSE, time, records);
   const church = captureStoredMetadataField(baseline, predecessor, draft, SERMON_CHURCH, time, records);
+  const goalType = captureStoredMetadataField(baseline, predecessor, draft, SERMON_GOAL_TYPE, time, records);
   const opening = (predecessor ? predecessor.value : baseline.value)?.preachDates;
   const fill = draft && captureSermonChurchFill(opening, draft.preachDates, readField(draft, ['church']));
   return { ...(title && { sermonTitleAction: title }), ...(verse && { sermonVerseAction: verse }),
-    ...(church && { sermonChurchAction: church }), ...(fill && { sermonChurchFill: fill }) };
+    ...(church && { sermonChurchAction: church }), ...(goalType?.after.exists && { sermonGoalTypeAction: goalType }), ...(fill && { sermonChurchFill: fill }) };
 }
 
 export type AutosaveFieldStamp = { field: GroupTimedField | CouncilFieldTarget['field']; time: ActionTime | null }
@@ -524,20 +553,16 @@ export function autosaveAcknowledgementAncestor(ancestor: DocumentData | null, a
 }
 
 function withDocumentFieldValue(value: DocumentData, field: string, selected: FieldValue): DocumentData {
-  if (field === 'heldAt') return withCouncilLifecycle(value, selected);
-  const next = { ...value };
-  if (selected.exists) next[field] = selected.value!;
-  else delete next[field];
-  return next;
+  return field === 'heldAt' ? withCouncilLifecycle(value, selected) : writeField(value, [field], selected);
 }
 
 export function pendingDocumentFieldAncestor(record: CommitRequest, before: DocumentData | null, accepted: ResourceSnapshot): DocumentData | null {
   if (!before || !accepted.value || accepted.metadata?.generation !== record.baseline.metadata?.generation) return before;
   return documentFieldTargets(record.baseline.resource.collection).reduce((value, target) => {
     if (!capturedDocumentField(record, target)) return value;
-    const stored = target.field === 'heldAt' ? councilLifecycleValue(accepted.value) : readField(accepted.value!, [target.field]);
+    const stored = target.field === 'heldAt' ? councilLifecycleValue(accepted.value) : readField(accepted.value!, documentFieldPath(target));
     if (!stored || !acceptsDocumentField(stored, target)) return value;
-    const rebased = withDocumentFieldValue(value, target.field, stored);
+    const rebased = 'path' in target ? writeField(value, target.path, stored) : withDocumentFieldValue(value, target.field, stored);
     if (target.action !== 'seriesFieldActions' || target.field !== 'title' || record.value?.title !== record.value?.theme) return rebased;
     const mirror = readField(accepted.value!, ['theme']);
     return equalValues(mirror, stored) ? withDocumentFieldValue(rebased, 'theme', mirror) : rebased;
@@ -550,10 +575,11 @@ function observedValue(value: string | FieldValue): FieldValue {
   return typeof value === 'string' ? { exists: true, value } : value;
 }
 
-export function documentFieldCommandAncestor(working: ResourceSnapshot, action: StoredObservation, field: DocumentFieldTarget['field']): ResourceSnapshot {
+export function documentFieldCommandAncestor(working: ResourceSnapshot, action: StoredObservation, target: DocumentFieldTarget): ResourceSnapshot {
   if (!working.value || working.metadata?.deleted) return working;
-  const value = withDocumentFieldValue(working.value, field, observedValue(action.before));
-  return { ...working, value: field === 'title' && action.openingTheme !== undefined ? { ...value, theme: action.openingTheme } : value };
+  const selected = observedValue(action.before);
+  const value = 'path' in target ? writeField(working.value, target.path, selected) : withDocumentFieldValue(working.value, target.field, selected);
+  return { ...working, value: target.field === 'title' && action.openingTheme !== undefined ? { ...value, theme: action.openingTheme } : value };
 }
 
 export function withDocumentFieldAction(command: DataCommand, target: DocumentFieldTarget, action?: StoredObservation): DataCommand {
@@ -567,7 +593,7 @@ export function withDocumentFieldAction(command: DataCommand, target: DocumentFi
       [target.field]: { ...stamp, ...(action.openingTheme !== undefined && { openingTheme: action.openingTheme }) } } };
   }
   if (target.field === 'heldAt' && !matchesCouncilLifecycle(command.changes, change)) return command;
-  if (target.field === 'verse' || target.field === 'church' || target.field === 'date' || target.field === 'heldAt' || target.field === 'answeredAt') return { ...command, [target.action]: stamp };
+  if ('path' in target || target.field === 'verse' || target.field === 'church' || target.field === 'date' || target.field === 'heldAt' || target.field === 'answeredAt') return { ...command, [target.action]: stamp };
   if (target.action === 'studyNoteTitleAction' || target.action === 'planTemplateNameAction' || target.action === 'tagColorAction') return { ...command, [target.action]: stamp };
   if (typeof action.before !== 'string' || typeof action.after !== 'string') return command;
   return { ...command, [target.action]: action };

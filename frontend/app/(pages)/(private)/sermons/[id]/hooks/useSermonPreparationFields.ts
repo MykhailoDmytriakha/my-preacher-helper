@@ -1,8 +1,10 @@
 import { usePreparationField, usePreparationTextField } from '@/hooks/usePreparationTextField';
-import { preparationPlan, preparationWords, trimmedPreparationText } from '@/utils/preparationFieldValues';
+import { isSermonGoalType, preparationPlan, preparationWords, trimmedPreparationText } from '@/utils/preparationFieldValues';
 import { useTranslation } from '@locales/useTranslation';
 
 import type { ResourceRef } from '@/data-engine/types';
+
+const captureMetadataTime = { captureMetadataTime: true } as const;
 
 /** The preparation's 25 independently staged fields share the page's canonical document. */
 export function useSermonPreparationFields(prepResource: ResourceRef | null) {
@@ -25,14 +27,14 @@ export function useSermonPreparationFields(prepResource: ResourceRef | null) {
   const thesisSermonInOneSentence = usePreparationTextField(prepResource, ['preparation', 'thesis', 'sermonInOneSentence'], 'wizard.steps.thesis.oneSentence.sermonLabel');
   const authorIntentField = usePreparationTextField(prepResource, ['preparation', 'authorIntent'], 'wizard.steps.exegeticalPlan.authorIntent.title');
   const modernTranslationField = usePreparationTextField(prepResource, ['preparation', 'homileticPlan', 'modernTranslation'], 'wizard.steps.homileticPlan.fields.modernTranslation.label', value => value.trim().length > 0);
-  const contextVerse = usePreparationField(prepResource, ['verse'], 'wizard.steps.textContext.passageInput.label', { ...trimmedPreparationText, valid: value => value.trim().length > 0 });
+  const contextVerse = usePreparationField(prepResource, ['verse'], 'wizard.steps.textContext.passageInput.label', { ...trimmedPreparationText, valid: value => value.trim().length > 0 }, captureMetadataTime);
   const passageSummary = usePreparationField(prepResource, ['preparation', 'textContext', 'passageSummary'], 'wizard.steps.textContext.passageSummary.title', trimmedPreparationText);
   const contextNotes = usePreparationTextField(prepResource, ['preparation', 'textContext', 'contextNotes'], 'wizard.steps.textContext.actions.findContext');
   const repeatedWords = usePreparationField(prepResource, ['preparation', 'textContext', 'repeatedWords'], 'wizard.steps.textContext.actions.findRepeatedWords', preparationWords);
-  const goalType = usePreparationField(prepResource, ['preparation', 'preachingGoal', 'type'], 'wizard.steps.goals.goal.typeLabel', {
-    ...trimmedPreparationText, valid: value => ['informative', 'proclamation', 'didactic', 'exhortative'].includes(value),
+  const goalType = usePreparationField<string>(prepResource, ['preparation', 'preachingGoal', 'type'], 'wizard.steps.goals.goal.typeLabel', {
+    ...trimmedPreparationText, valid: isSermonGoalType,
     describe: value => t(value ? `wizard.steps.goals.goal.types.${value}` : 'wizard.steps.goals.goal.typePlaceholder'),
-  });
+  }, captureMetadataTime);
   const updatedPlan = usePreparationField(prepResource, ['preparation', 'homileticPlan', 'updatedPlan'], 'wizard.steps.homileticPlan.fields.updatedPlan.label', preparationPlan);
   const sermonPlan = usePreparationField(prepResource, ['preparation', 'homileticPlan', 'sermonPlan'], 'wizard.steps.homileticPlan.fields.sermonPlan.label', preparationPlan);
   const decision = mainIdeaContext.decision ?? mainIdeaText.decision ?? mainIdeaArgumentation.decision

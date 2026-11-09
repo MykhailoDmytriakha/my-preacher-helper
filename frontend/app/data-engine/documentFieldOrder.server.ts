@@ -4,7 +4,7 @@ import { isStandaloneScriptureReference } from '@/utils/bibleLink';
 
 import { boundedActionTime, compareActionTime } from './actionClock';
 import { councilLifecycleValue, councilStatusOf, matchesCouncilLifecycle } from './councilFieldAction';
-import { acceptsDocumentField, documentFieldChange, documentFieldTargets, hasStudyNoteTitle } from './documentFieldAction';
+import { acceptsDocumentField, documentFieldChange, documentFieldPath, documentFieldTargets, hasStudyNoteTitle, replaceOrderedDocumentField } from './documentFieldAction';
 import { commandFingerprint, equalValues, object, readField } from './fieldValues';
 import { proofRevision } from './rowFieldAction';
 import { rebaseSermonChurchFill } from './sermonChurchFill';
@@ -16,6 +16,7 @@ import type { ConflictDetail, DataCommand, DocumentData, FieldChange, FieldValue
 export const DOCUMENT_TITLE_HISTORY = '_titleHistory';
 export const GROUP_STATUS_HISTORY = '_statusHistory';
 export const SERMON_VERSE_HISTORY = '_verseHistory';
+export const SERMON_GOAL_TYPE_HISTORY = '_goalTypeHistory';
 export const SERMON_CHURCH_HISTORY = '_churchHistory';
 export const DOCUMENT_METADATA_HISTORY = '_metadataHistory';
 type FieldProof = { value: FieldValue; revision: number; time: ActionTime | null; operationId?: string };
@@ -27,7 +28,7 @@ type DocumentFieldOrder = {
   uncertain?: ConflictDetail[];
 };
 
-const usesDigest = (target: DocumentFieldTarget) => target.field === 'color' || target.field === 'verse' || target.field === 'church' || target.field === 'date' || target.field === 'heldAt' || target.field === 'answeredAt' || target.action === 'seriesFieldActions' || target.action === 'studyNoteTitleAction' || target.action === 'planTemplateNameAction';
+const usesDigest = (target: DocumentFieldTarget) => 'path' in target || target.field === 'color' || target.field === 'verse' || target.field === 'church' || target.field === 'date' || target.field === 'heldAt' || target.field === 'answeredAt' || target.action === 'seriesFieldActions' || target.action === 'studyNoteTitleAction' || target.action === 'planTemplateNameAction';
 const fieldDigest = (value: FieldValue, target: DocumentFieldTarget) => createHash('sha256')
   .update(target.field === 'verse' ? String(value.value) : commandFingerprint(value)).digest('base64url');
 
@@ -35,7 +36,7 @@ function previousField(raw: unknown, current: ResourceSnapshot, target: Document
   const proof = object(raw) ? raw[target.proof] : undefined;
   if (!object(proof)) return undefined;
   if (!current.value) return undefined;
-  const value = target.field === 'heldAt' ? councilLifecycleValue(current.value) : readField(current.value, [target.field]);
+  const value = target.field === 'heldAt' ? councilLifecycleValue(current.value) : readField(current.value, documentFieldPath(target));
   if (!value || !acceptsDocumentField(value, target) || !proofRevision(proof.revision) || proof.revision > (current.metadata?.revision ?? 0)
     || (usesDigest(target) ? proof.digest !== fieldDigest(value, target) : proof[target.field] !== value.value)) return undefined;
   const time = proof.time === null ? null : boundedActionTime(proof.time);
@@ -46,7 +47,7 @@ function previousField(raw: unknown, current: ResourceSnapshot, target: Document
 function readAction(command: Extract<DataCommand, { kind: 'update' }>, change: FieldChange, revision: number, serverMs: number, target: DocumentFieldTarget): DocumentFieldObservation<FieldValue> | undefined {
   const action: unknown = target.action === 'seriesFieldActions' ? command.seriesFieldActions?.[target.field] : command[target.action];
   const { before, after } = change;
-  if (!object(action) || !acceptsDocumentField(before, target) || !acceptsDocumentField(after, target) || equalValues(before, after)
+  if (!object(action) || ('path' in target && !after.exists) || !acceptsDocumentField(before, target) || !acceptsDocumentField(after, target) || equalValues(before, after)
     || (target.field === 'heldAt' && !matchesCouncilLifecycle(command.changes, change))
     || (!usesDigest(target) && (before.value !== action.before || after.value !== action.after))
     || !proofRevision(action.observedRevision) || action.observedRevision > revision) return undefined;
@@ -70,9 +71,7 @@ function decideUnobservedField(command: Extract<DataCommand, { kind: 'update' }>
     return { command, uncertain };
   }
   const incomingWins = order > 0;
-  const changes = command.changes.map(field => field === change
-    ? { ...field, before: value, after: incomingWins ? field.after : value }
-    : field);
+  const changes = replaceOrderedDocumentField(command.changes, target, value, incomingWins ? change.after : value);
   return {
     command: { ...command, changes },
     ...(incomingWins ? { stamp: action.time } : { previous }),
@@ -93,7 +92,7 @@ function orderDocumentField(command: DataCommand, current: ResourceSnapshot, raw
   if (target.action === 'tagColorAction' && current.value?.required !== false) return { command };
   const change = documentFieldChange(command.changes, target);
   if (!change || !current.metadata || current.metadata.deleted || command.generation !== current.metadata.generation) return { command };
-  const stored = target.field === 'heldAt' ? councilLifecycleValue(current.value) : current.value && readField(current.value, [target.field]);
+  const stored = target.field === 'heldAt' ? councilLifecycleValue(current.value) : current.value && readField(current.value, documentFieldPath(target));
   if (!stored || !acceptsDocumentField(stored, target)) return { command, stamp: null };
   const action = readAction(command, change, current.metadata.revision, serverMs, target);
   if (!action) return { command, stamp: null };
@@ -166,12 +165,12 @@ export function metadataAfterDocumentFields(snapshot: ResourceSnapshot, raw: Rec
   if (!metadata) return metadata;
   const proofs = documentFieldTargets(snapshot.resource.collection).flatMap(target => {
     if (!snapshot.value) return [];
-    const value = target.field === 'heldAt' ? councilLifecycleValue(snapshot.value) : readField(snapshot.value, [target.field]);
+    const value = target.field === 'heldAt' ? councilLifecycleValue(snapshot.value) : readField(snapshot.value, documentFieldPath(target));
     if (!value || !acceptsDocumentField(value, target)) return [];
     const order = fields?.fields.find(item => item.target === target)?.order;
     const rawMetadata = raw?._dataEngine;
     const previous = order?.previous ?? previousField(rawMetadata, snapshot, target);
-    const changed = target.causal && !equalValues(readField((raw ?? {}) as DocumentData, [target.field]), value);
+    const changed = target.causal && !equalValues(readField((raw ?? {}) as DocumentData, documentFieldPath(target)), value);
     // The first unrelated write to an older sermon, including a secondary effect,
     // observes the same field at the original revision.
     const revision = target.causal && !changed && order?.stamp === undefined && object(rawMetadata)

@@ -39,7 +39,7 @@ export function usePreparationTextField(resource: ResourceRef | null, path: read
 
 /** The manual scope owns the raw stage and ancestry; normalization happens only at an explicit choice. */
 export function usePreparationField<T>(resource: ResourceRef | null, path: readonly string[], captionKey: string | undefined,
-  codec: PreparationValue<T>): PreparationFieldBinding<T> & { edit(updater: (current: T) => T): Promise<void> } {
+  codec: PreparationValue<T>, options?: { captureMetadataTime: true }): PreparationFieldBinding<T> & { edit(updater: (current: T) => T): Promise<void> } {
   const { owner } = useDataEngine();
   const { t } = useTranslation();
   const document = useDataDocument(resource, { autoSave: false });
@@ -83,6 +83,6 @@ export function usePreparationField<T>(resource: ResourceRef | null, path: reado
     comparison,
     begin: form.begin, cancel: form.cancel, retry: form.retry, recovery,
     edit, update: next => edit(() => next),
-    save: next => codec.valid && !codec.valid(next) ? Promise.reject(new Error('The field value is not valid for saving')) : form.save(current => withValue(current, path, codec.save(next))),
+    save: next => codec.valid && !codec.valid(next) ? Promise.reject(new Error('The field value is not valid for saving')) : form.save(current => withValue(current, path, codec.save(next)), options && form.captureDocumentMetadataAction()),
   };
 }

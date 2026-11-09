@@ -31,6 +31,7 @@ import SermonOutline from "@/components/sermon/SermonOutline";
 import StructureStats from "@/components/sermon/StructureStats";
 import { SermonDetailSkeleton } from "@/components/skeletons/SermonDetailSkeleton";
 import { EngineThoughtModal } from '@/components/thought/EngineThoughtModal';
+import { DocumentFieldHistory } from '@/components/ui/DocumentFieldHistory';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { DataDocumentProvider } from '@/data-engine/react.client';
 import { useAiUsage } from '@/hooks/useAiUsage';
@@ -590,6 +591,12 @@ function SermonPageContent({ id }: { id: string }) {
           christConnection={core.goalFields.christConnection}
           goalStatement={core.goalFields.statement}
           goalType={core.goalFields.type}
+          goalTypeHistory={user?.uid && id && core.confirmed?.metadata?.generation && <DocumentFieldHistory
+            key={JSON.stringify([user.uid, id, core.confirmed.metadata.generation])}
+            session={{ owner: user.uid, sermonId: id, generation: core.confirmed.metadata.generation, field: 'goal-type', restore: core.goalFields.type.save }}
+            current={core.goalFields.type.value}
+            disabled={isReadOnly || !core.goalFields.type.ready || core.goalFields.type.dirty || core.goalFields.type.busy || Boolean(core.goalFields.type.decision)}
+          />}
         />
       ),
       thesis: (
