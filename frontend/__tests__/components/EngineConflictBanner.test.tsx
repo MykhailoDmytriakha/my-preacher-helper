@@ -24,11 +24,11 @@ const ON_ENGINE = 'NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS';
 const resource = { collection: 'studyNotes', id: 'note-1' };
 const stored = { userId: 'owner', title: 'Grace', content: 'Opening text', scriptureRefs: [], tags: [], isDraft: true, type: 'note',
   createdAt: '2026-09-01T00:00:00.000Z', updatedAt: '2026-09-01T00:00:00.000Z' };
-const confirmTextAction = async (label: string) => {
+const confirmTextAction = async (label: string, confirmation = 'common.discardText.confirm') => {
   fireEvent.click(screen.getByText(label));
   await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument());
   await act(async () => {
-    fireEvent.click(screen.getByRole('button', { name: 'common.discardText.confirm' }));
+    fireEvent.click(screen.getByRole('button', { name: confirmation }));
     for (let index = 0; index < 20; index += 1) await Promise.resolve();
   });
   await act(async () => { await settleEngine(); await settleEngine(); });
@@ -60,6 +60,34 @@ function setup(pollMs = 50) {
   render(<DataEngineProvider><Actions /><EngineConflictBanner pollMs={pollMs} /></DataEngineProvider>);
   return harness;
 }
+
+it('shows both names when a single template rename needs a decision', async () => {
+  process.env[ON_ENGINE] = 'planTemplates';
+  actions = null;
+  const template = { collection: 'planTemplates', id: 'template-1' };
+  const structure = { introduction: [], main: [{ id: 'keep', text: 'Keep this point' }], conclusion: [] };
+  const h = documentEngineHarness({ resource: template,
+    value: { userId: 'owner', name: 'Opening template', structure, createdAt: '2026-11-08', updatedAt: '2026-11-08' },
+    metadata: { protocol: 1, generation: 'g1', revision: 1, deleted: false } });
+  jest.mocked(createBrowserDataEngine).mockImplementation(h.createBrowser);
+  try {
+    render(<DataEngineProvider><Actions /><EngineConflictBanner pollMs={50} /></DataEngineProvider>);
+    await waitFor(() => expect(actions?.ready).toBe(true));
+    h.silentRemote({ name: 'Saved template name' });
+    await act(async () => {
+      await actions!.commit(template, current => ({ ...current!, name: 'My template name' }));
+      await settleEngine();
+    });
+    await screen.findByText('freshness.conflictTitle');
+    expect(screen.getByRole('region', { name: 'dataSync.versionComparison' })).toBeInTheDocument();
+    expect(screen.getByLabelText('dataSync.yourVersion')).toHaveTextContent('My template name');
+    expect(screen.getByLabelText('dataSync.storedVersion')).toHaveTextContent('Saved template name');
+    await confirmTextAction('dataSync.useStoredVersion', 'dataSync.confirmStoredField.confirm');
+    expect(h.server.value).toMatchObject({ name: 'Saved template name', structure });
+  } finally {
+    delete process.env[ON_ENGINE];
+  }
+});
 
 describe('a late conflict on a document no screen has open', () => {
   beforeEach(() => { process.env[ON_ENGINE] = 'studyNotes'; actions = null; });

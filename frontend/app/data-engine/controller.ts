@@ -737,10 +737,12 @@ export class EditorController {
         const checkpoint = expected?.checkpoint;
         const path = checkpoint?.conflicts.length === 1 ? checkpoint.conflicts[0].path : undefined;
         const collection = checkpoint?.confirmed.resource.collection;
-        const comparedRow = collection === 'serviceOrders' ? serviceOrderStepField(path)
-          : collection === 'councils' && (councilTopicTitleRow(path) || councilAssemblyRow(path) || councilTopicKindRow(path));
-        if (expected && (comparedRow || retired.some(request => expected.checkpoint.pending[request.id]
-          && (request.serviceOrderFlagActions || request.serviceOrderStepTitleActions || request.councilTopicTitleActions || request.councilAssemblyActions || request.councilTopicKindActions)))
+        const comparedField = collection === 'serviceOrders' ? serviceOrderStepField(path)
+          : collection === 'councils' ? councilTopicTitleRow(path) || councilAssemblyRow(path) || councilTopicKindRow(path)
+            : collection === 'planTemplates' && path?.length === 1 && path[0] === 'name';
+        if (expected && (comparedField || retired.some(request => expected.checkpoint.pending[request.id]
+          && (request.serviceOrderFlagActions || request.serviceOrderStepTitleActions || request.councilTopicTitleActions
+            || request.councilAssemblyActions || request.councilTopicKindActions || request.planTemplateNameAction)))
           && retired.some(request => !expected.checkpoint.pending[request.id])) {
           throw Object.assign(new Error('Another saved change appeared during the field choice'), { code: 'decision-changed' });
         }

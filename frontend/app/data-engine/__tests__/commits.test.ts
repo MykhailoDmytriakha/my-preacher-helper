@@ -657,6 +657,34 @@ describe('Durable commit requests', () => {
     } finally { engine.dispose(); }
   });
 
+  it('keeps an unseen dependent structure save when reviewing a template name', async () => {
+    const structure = { introduction: [], main: [], conclusion: [] };
+    const opening: ResourceSnapshot = {
+      resource: { collection: 'planTemplates', id: 'template' },
+      value: { userId: 'owner', name: 'Opening name', structure, createdAt: '2026-11-08', updatedAt: '2026-11-08' },
+      metadata: { protocol: 1, generation: 'template', revision: 1, deleted: false },
+    };
+    const s = setup({ opening, nativeChoice: true });
+    const engine = s.makeEngine(), editor = await engine.openEditor(opening.resource, 'page');
+    try {
+      const renamed = { ...opening.value!, name: 'My name' };
+      await editor.commit(() => renamed);
+      const { queue } = s.makeQueue();
+      const [root] = await queue.list();
+      const child = new DataSession(opening);
+      child.edit({ ...renamed, structure: { ...structure, main: [{ id: 'later', text: 'Unseen later point' }] } });
+      await queue.save('other-editor', child.checkpoint(), { predecessorId: root.id });
+      s.replace({ ...opening, value: { ...opening.value!, name: 'Stored name' }, metadata: { ...opening.metadata!, revision: 2 } });
+      engine.setOnline(true); await engine.retry(); await settle();
+      expect(editor.getState().checkpoint.conflicts[0]?.path).toEqual(['name']);
+      const reviewed = await s.checkpoints.read('owner', 'page');
+      expect(Object.keys(reviewed!.checkpoint.pending)).toEqual([root.id]);
+      await expect(editor.acceptRemote(reviewed)).rejects.toMatchObject({ code: 'decision-changed' });
+      expect((await queue.list()).map(request => request.state)).toEqual(['conflict', 'queued']);
+      expect(s.server().value).toMatchObject({ name: 'Stored name', structure });
+    } finally { engine.dispose(); }
+  });
+
   it.each(['postponed', 'dropped'])('keeps the authored section kind when a preceding ACK brings a different kind and %s', async resolution => {
     const s = setup();
     const { queue } = s.makeQueue();

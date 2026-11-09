@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
 import TemplateOutlineEditor, { type TemplateOutlineEditorHandle } from '@/components/settings/TemplateOutlineEditor';
 import ConfirmModal from '@/components/ui/ConfirmModal';
+import { DocumentFieldHistory } from '@/components/ui/DocumentFieldHistory';
 import UnreadableConflictDrafts from '@/components/UnreadableConflictDrafts';
 import { useDiscardQuestion } from '@/hooks/useConfirm';
 import { usePersistedConflict } from '@/hooks/usePersistedConflict';
@@ -20,12 +21,15 @@ import { validTemplateConflict } from '@/utils/refusedDraftPayloads';
 import { NEUTRAL_CAPTION } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
 
+import type { DocumentTitleSeen } from '@/data-engine/documentFieldAction';
 import type { PlanTemplate, SermonOutline } from '@/models/models';
 
 interface PlanTemplatesSectionProps {
   user: User | null;
   requestedTemplateId?: string | null;
 }
+
+type TemplateNameOpening = { id: string; owner: string; name: string; revision: number; seen?: DocumentTitleSeen };
 
 const STRUCTURE_SAVE_ERROR = 'planTemplates.saveStructureError';
 
@@ -36,7 +40,7 @@ const countPoints = (outline?: SermonOutline): number =>
 
 const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user, requestedTemplateId }) => {
   const { t } = useTranslation();
-  const { templates, loading, createTemplate, updateTemplate, deleteTemplate, refresh } =
+  const { templates, loading, createTemplate, updateTemplate, deleteTemplate, refresh, observeName, captureActionTime } =
     usePlanTemplates(user?.uid);
 
 
@@ -68,7 +72,7 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user, reque
   const [newName, setNewName] = useState('');
   const [creating, setCreating] = useState(false);
   const creatingRef = useRef(false);
-  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renaming, setRenaming] = useState<TemplateNameOpening | null>(null);
   const [renameText, setRenameText] = useState('');
   const [renamingPending, setRenamingPending] = useState(false);
   const renamingPendingRef = useRef(false);
@@ -96,7 +100,7 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user, reque
   // These temporary actions belong to the identity that opened them. Capture
   // remains locked until its own promise settles; no new owner can replay them.
   useEffect(() => {
-    setRenamingId(null);
+    setRenaming(null);
     setRenameText('');
     setPendingDeleteTpl(null);
   }, [user?.uid]);
@@ -181,18 +185,27 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user, reque
     return true;
   };
 
+  const submitName = (opening: TemplateNameOpening, name: string) => {
+    if (opening.owner !== userIdRef.current) return Promise.reject(new Error('The template editor changed'));
+    const seen = opening.seen;
+    return seen
+      ? updateTemplate(opening.id, { name }, opening.revision, { seen, time: captureActionTime?.() ?? null })
+      : updateTemplate(opening.id, { name }, opening.revision);
+  };
+
   const handleRename = async (tpl: PlanTemplate) => {
     const ownerId = user?.uid;
-    if (!ownerId || renamingPendingRef.current) return;
+    const opening = renaming;
+    if (!ownerId || !opening || opening.owner !== ownerId || opening.id !== tpl.id || renamingPendingRef.current) return;
     const selectedAtStart = { id: conflictTemplateIdRef.current, record: conflictRef.current };
     const name = renameText.trim();
-    if (!name || name === tpl.name) { setRenamingId(null); return; }
+    if (!name || name === opening.name) { setRenaming(null); return; }
     renamingPendingRef.current = true;
     setRenamingPending(true);
     const reportFailure = (error: unknown) => {
       if (userIdRef.current !== ownerId) return;
       if (offerConflictChoice(tpl, error, { name }, name, selectedAtStart)) {
-        setRenamingId(current => current === tpl.id ? null : current);
+        setRenaming(current => current === opening ? null : current);
         return;
       }
       console.error('Error renaming plan template:', error);
@@ -200,10 +213,10 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user, reque
     };
     try {
       await awaitWriteOperation(
-        updateTemplate(tpl.id, { name }, tpl.rev?.[PLAN_TEMPLATE_AGGREGATE] ?? 0),
+        submitName(opening, name),
         reportFailure
       );
-      if (userIdRef.current === ownerId) setRenamingId(current => current === tpl.id ? null : current);
+      if (userIdRef.current === ownerId) setRenaming(current => current === opening ? null : current);
     } catch (error) {
       reportFailure(error);
     } finally {
@@ -383,6 +396,9 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user, reque
         <ul className="space-y-2">
           {templates.map((tpl) => {
             const isExpanded = expandedId === tpl.id;
+            const seen = observeName?.(tpl.id, tpl.name);
+            const opening = user?.uid ? { id: tpl.id, owner: user.uid, name: tpl.name,
+              revision: tpl.rev?.[PLAN_TEMPLATE_AGGREGATE] ?? 0, seen } : null;
             return (
               <li key={tpl.id} className="rounded-lg border border-gray-200 dark:border-gray-700">
                 <div className="flex items-center gap-2 p-3">
@@ -395,7 +411,7 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user, reque
                     <ChevronDownIcon className={`h-4 w-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
                   </button>
 
-                  {renamingId === tpl.id ? (
+                  {renaming?.id === tpl.id && renaming.owner === user?.uid ? (
                     <div className="flex-1 flex items-center gap-1">
                       <input
                         type="text"
@@ -404,7 +420,7 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user, reque
                         onChange={(e) => setRenameText(e.target.value)}
                         onKeyDown={(e) => {
                           if (e.key === 'Enter') handleRename(tpl);
-                          if (e.key === 'Escape' && !renamingPendingRef.current) setRenamingId(null);
+                          if (e.key === 'Escape' && !renamingPendingRef.current) setRenaming(null);
                         }}
                         className="flex-1 p-1.5 text-sm bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                         autoFocus
@@ -412,7 +428,7 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user, reque
                       <button aria-label={t('common.save')} disabled={renamingPending || transitioning || deleting} aria-busy={renamingPending} onClick={() => handleRename(tpl)} className="p-1 text-green-600 hover:text-green-800">
                         <CheckIcon className="h-5 w-5" />
                       </button>
-                      <button aria-label={t('common.cancel')} disabled={renamingPending || transitioning || deleting} onClick={() => { if (!renamingPendingRef.current) setRenamingId(null); }} className="p-1 text-red-600 hover:text-red-800">
+                      <button aria-label={t('common.cancel')} disabled={renamingPending || transitioning || deleting} onClick={() => { if (!renamingPendingRef.current) setRenaming(null); }} className="p-1 text-red-600 hover:text-red-800">
                         <XMarkIcon className="h-5 w-5" />
                       </button>
                     </div>
@@ -426,7 +442,7 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user, reque
                         aria-label={t('common.edit')}
                         disabled={renamingPending || transitioning || deleting}
                         onClick={() => {
-                          setRenamingId(tpl.id);
+                          setRenaming(opening);
                           setRenameText(tpl.name);
                         }}
                         className="p-1 text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400"
@@ -445,6 +461,12 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user, reque
                   )}
                 </div>
 
+                {opening && seen && <div className="px-3 pb-2">
+                  <DocumentFieldHistory key={JSON.stringify([opening.owner, tpl.id, seen.generation])}
+                    current={tpl.name} disabled={Boolean(seen.requestId || renaming || renamingPending || transitioning || deleting)}
+                    session={{ owner: opening.owner, templateId: tpl.id, generation: seen.generation,
+                      restore: (value: string) => submitName(opening, value) }} />
+                </div>}
                 {isExpanded && (
                   <div className="border-t border-gray-200 dark:border-gray-700 p-3">
                     <TemplateOutlineEditor key={`${user?.uid}:${tpl.id}`} ref={inlineEditor}

@@ -28,6 +28,7 @@ export type StudyNoteTitleHistoryPage = {
   owner: string; noteId: string; generation: string; nextCursor: string | null;
   entries: (Omit<DocumentTitleHistoryEntry, 'title' | 'winnerTitle'> & { title: string | null; winnerTitle: string | null })[];
 };
+export type PlanTemplateNameCapture = { time: ActionTime | null; seen: DocumentTitleSeen };
 export type PrayerTitleSeen = DocumentTitleSeen;
 export type PrayerTitleCapture = { time: ActionTime | null; seen: PrayerTitleSeen };
 export type DisplacedDocumentTitle = {
@@ -41,9 +42,9 @@ export type ServiceOrderTitleHistoryPage = {
 export type GroupTimedField = 'title' | 'status';
 
 type TextDocumentFieldTarget = {
-  field: GroupTimedField | 'verse';
-  action: 'studyNoteTitleAction' | 'serviceOrderTitleAction' | 'prayerTitleAction' | 'sermonTitleAction' | 'sermonVerseAction' | 'groupTitleAction' | 'groupStatusAction';
-  proof: 'studyNoteTitle' | 'serviceOrderTitle' | 'prayerTitle' | 'sermonTitle' | 'sermonVerse' | 'groupTitle' | 'groupStatus';
+  field: GroupTimedField | 'verse' | 'name';
+  action: 'studyNoteTitleAction' | 'planTemplateNameAction' | 'serviceOrderTitleAction' | 'prayerTitleAction' | 'sermonTitleAction' | 'sermonVerseAction' | 'groupTitleAction' | 'groupStatusAction';
+  proof: 'studyNoteTitle' | 'planTemplateName' | 'serviceOrderTitle' | 'prayerTitle' | 'sermonTitle' | 'sermonVerse' | 'groupTitle' | 'groupStatus';
   accepts: (value: unknown) => value is string;
   causal?: true;
   optional?: true;
@@ -70,6 +71,9 @@ const SERMON_VERSE = { field: 'verse', action: 'sermonVerseAction', proof: 'serm
   accepts: (value): value is string => typeof value === 'string' } as const satisfies TextDocumentFieldTarget;
 const STUDY_NOTE_TITLE = { field: 'title', action: 'studyNoteTitleAction', proof: 'studyNoteTitle',
   accepts: (value): value is string => typeof value === 'string', causal: true, optional: true } as const satisfies TextDocumentFieldTarget;
+const PLAN_TEMPLATE_NAME = { field: 'name', action: 'planTemplateNameAction', proof: 'planTemplateName',
+  accepts: (value): value is string => typeof value === 'string' && value.length > 0, causal: true,
+} as const satisfies TextDocumentFieldTarget;
 const GROUP_TITLE = { field: 'title', action: 'groupTitleAction', proof: 'groupTitle', accepts: shortTitle, draft: 'groupTitleDraft' } as const satisfies GroupFieldTarget;
 const GROUP_STATUS = { field: 'status', action: 'groupStatusAction', proof: 'groupStatus', accepts: isGroupStatus, draft: 'groupStatusDraft' } as const satisfies GroupFieldTarget;
 export const GROUP_TIMED_FIELDS = [GROUP_TITLE, GROUP_STATUS] as const;
@@ -78,6 +82,7 @@ const COUNCIL_FIELDS = [...COUNCIL_TIMED_FIELDS, COUNCIL_LIFECYCLE];
 export function documentFieldTargets(collection: string): readonly DocumentFieldTarget[] {
   if (collection === 'serviceOrders') return [SERVICE_ORDER_TITLE];
   if (collection === 'studyNotes') return [STUDY_NOTE_TITLE];
+  if (collection === 'planTemplates') return [PLAN_TEMPLATE_NAME];
   if (collection === 'groups') return GROUP_TIMED_FIELDS;
   if (collection === 'series') return SERIES_FIELD_TARGETS;
   if (collection === 'prayerRequests') return [PRAYER_TITLE, ...PRAYER_STATUS_FIELDS];
@@ -99,6 +104,10 @@ export function capturedDocumentField(record: CommitRequest, target: DocumentFie
 function isShortDocumentTitle(value: unknown, target: TextDocumentFieldTarget): value is string {
   return target.accepts(value);
 }
+
+export type PlanTemplateNameHistoryPage = {
+  owner: string; templateId: string; generation: string; entries: DocumentTitleHistoryEntry[]; nextCursor: string | null;
+};
 
 export type PrayerTitleHistoryPage = {
   owner: string; prayerId: string; generation: string; entries: DocumentTitleHistoryEntry[]; nextCursor: string | null;
@@ -132,30 +141,41 @@ export function submittedDocumentTitle(checkpoint: SessionCheckpoint | null, req
   if (!checkpoint || needsAttention) return undefined;
   const { collection } = checkpoint.confirmed.resource;
   const target = collection === 'serviceOrders' ? SERVICE_ORDER_TITLE : collection === 'prayerRequests' ? PRAYER_TITLE
-    : collection === 'studyNotes' ? STUDY_NOTE_TITLE : null;
-  const shown = checkpoint.draft?.title;
-  if (!target || !isShortDocumentTitle(shown, target)) return undefined;
+    : collection === 'studyNotes' ? STUDY_NOTE_TITLE : collection === 'planTemplates' ? PLAN_TEMPLATE_NAME : null;
+  if (!target) return undefined;
+  const shown = checkpoint.draft?.[target.field];
+  if (!isShortDocumentTitle(shown, target)) return undefined;
   const tip = Object.keys(checkpoint.pending).at(-1);
   const byId = new Map(requests.map(request => [request.id, request]));
   let request = tip && byId.get(tip);
   // An unrelated queued save must not replace the exact local rename supplying this title.
-  if (collection === 'prayerRequests' || collection === 'studyNotes') {
+  if (collection === 'prayerRequests' || collection === 'studyNotes' || collection === 'planTemplates') {
     const visited = new Set<string>();
-    while (request && request.value?.title === shown && !capturedDocumentField(request, target) && !visited.has(request.id)) {
+    while (request && request.value?.[target.field] === shown && !capturedDocumentField(request, target) && !visited.has(request.id)) {
       visited.add(request.id);
       request = request.predecessor ? byId.get(request.predecessor) : undefined;
     }
   }
   const basis = request ? request.baseline.metadata : null;
-  if (!request || request.value?.title !== shown || !basis || basis.deleted || basis.generation !== checkpoint.confirmed.metadata?.generation) return undefined;
+  if (!request || request.value?.[target.field] !== shown || !basis || basis.deleted || basis.generation !== checkpoint.confirmed.metadata?.generation) return undefined;
   const action = capturedDocumentField(request, target);
   return { title: shown, generation: basis.generation, revision: action?.observedRevision ?? basis.revision, requestId: request.id };
 }
 
+function matchesTextTitleRequest(request: CommitRequest | undefined, owner: string, resource: ResourceRef, seen: DocumentTitleSeen,
+  target: TextDocumentFieldTarget): boolean {
+  const action = request && capturedDocumentField(request, target);
+  return Boolean(request && action && request.id === seen.requestId && request.owner === owner && equalValues(request.baseline.resource, resource)
+    && request.baseline.metadata?.generation === seen.generation && action.after === seen.title
+    && action.observedRevision === seen.revision && !['conflict', 'refused', 'cancelled'].includes(request.state));
+}
+
 export function matchesPrayerTitleRequest(request: CommitRequest | undefined, owner: string, resource: ResourceRef, seen: PrayerTitleSeen): boolean {
-  return Boolean(request && request.id === seen.requestId && request.owner === owner && equalValues(request.baseline.resource, resource)
-    && request.baseline.metadata?.generation === seen.generation && request.prayerTitleAction?.after === seen.title
-    && request.prayerTitleAction.observedRevision === seen.revision && !['conflict', 'refused', 'cancelled'].includes(request.state));
+  return matchesTextTitleRequest(request, owner, resource, seen, PRAYER_TITLE);
+}
+
+export function matchesPlanTemplateNameRequest(request: CommitRequest | undefined, owner: string, resource: ResourceRef, seen: DocumentTitleSeen): boolean {
+  return matchesTextTitleRequest(request, owner, resource, seen, PLAN_TEMPLATE_NAME);
 }
 
 export function validatedTitleCapture(confirmed: ResourceSnapshot, draft: DocumentData | null, next: DocumentData | null,
@@ -181,18 +201,30 @@ export function captureServiceOrderTitle(baseline: ResourceSnapshot, value: Docu
   return { before: capture.seen.title, after, observedRevision: capture.seen.revision, time: capture.time };
 }
 
-export function capturePrayerTitle(baseline: ResourceSnapshot, value: DocumentData | null,
-  capture?: PrayerTitleCapture, knownPredecessor = false): DocumentFieldObservation | undefined {
-  if (!capture || baseline.resource.collection !== 'prayerRequests' || baseline.metadata?.deleted
-    || baseline.metadata?.generation !== capture.seen.generation || capture.seen.revision > baseline.metadata.revision
-    || !Number.isSafeInteger(capture.seen.revision) || capture.seen.revision < 1
-    || (capture.seen.requestId && !knownPredecessor && baseline.value?.title !== capture.seen.title)) return undefined;
+function captureRequiredTitle(baseline: ResourceSnapshot, value: DocumentData | null,
+  capture: { time: ActionTime | null; seen: DocumentTitleSeen } | undefined, knownPredecessor: boolean,
+  target: TextDocumentFieldTarget): DocumentFieldObservation | undefined {
+  if (!capture || baseline.metadata?.deleted || baseline.metadata?.generation !== capture.seen.generation
+    || capture.seen.revision > baseline.metadata.revision || !Number.isSafeInteger(capture.seen.revision) || capture.seen.revision < 1
+    || (capture.seen.requestId && !knownPredecessor && baseline.value?.[target.field] !== capture.seen.title)) return undefined;
   const { seen } = capture;
   const time = capture.time === null ? null : boundedActionTime(capture.time);
-  const after = value?.title;
-  if (time === undefined || !PRAYER_TITLE.accepts(seen.title) || !PRAYER_TITLE.accepts(after) || after === seen.title) return undefined;
+  const after = value?.[target.field];
+  if (time === undefined || !target.accepts(seen.title) || !target.accepts(after) || after === seen.title) return undefined;
   return { before: seen.title, after, observedRevision: seen.revision, time,
     ...(knownPredecessor && seen.requestId && { predecessorOperationId: seen.requestId }) };
+}
+
+export function capturePrayerTitle(baseline: ResourceSnapshot, value: DocumentData | null,
+  capture?: PrayerTitleCapture, knownPredecessor = false): DocumentFieldObservation | undefined {
+  return baseline.resource.collection === 'prayerRequests'
+    ? captureRequiredTitle(baseline, value, capture, knownPredecessor, PRAYER_TITLE) : undefined;
+}
+
+export function capturePlanTemplateName(baseline: ResourceSnapshot, value: DocumentData | null,
+  capture?: PlanTemplateNameCapture, knownPredecessor = false): DocumentFieldObservation | undefined {
+  return baseline.resource.collection === 'planTemplates'
+    ? captureRequiredTitle(baseline, value, capture, knownPredecessor, PLAN_TEMPLATE_NAME) : undefined;
 }
 
 export function matchesStudyNoteTitleRequest(request: CommitRequest | undefined, owner: string, resource: ResourceRef, seen: StudyNoteTitleSeen): boolean {
@@ -496,7 +528,7 @@ export function withDocumentFieldAction(command: DataCommand, target: DocumentFi
   }
   if (target.field === 'heldAt' && !matchesCouncilLifecycle(command.changes, change)) return command;
   if (target.field === 'verse' || target.field === 'church' || target.field === 'date' || target.field === 'heldAt' || target.field === 'answeredAt') return { ...command, [target.action]: stamp };
-  if (target.action === 'studyNoteTitleAction') return { ...command, studyNoteTitleAction: stamp };
+  if (target.action === 'studyNoteTitleAction' || target.action === 'planTemplateNameAction') return { ...command, [target.action]: stamp };
   if (typeof action.before !== 'string' || typeof action.after !== 'string') return command;
   return { ...command, [target.action]: action };
 }

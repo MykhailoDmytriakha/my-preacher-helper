@@ -7690,3 +7690,13 @@ On guarded build aznVkKJX4UfBkSuP4Q9Bd, Chrome at 390 and 1024 px and a local st
 Holding only the body for 800 ms yielded 4 early disconnects among 5 held requests on immediate reload. Waiting an extra second let all five first-wave responses finish, but three in the second wave stopped on reload. With both waves settled before reload, all 9 held requests completed and no worker fetch failed. The analysis, exact saved line cut, revision and control note passed on all five runs. Visual review covered the old and new widths. 110 focused tests passed. The original nine historical requests lack this identity and remain open. Evidence is in artifacts/worker-background-proxy-nov08.
 
 After authorized deployment, use one disposable analysis tab to resize, reload once, verify the saved cut and open the next section. Keep forced timing local.
+
+## BUG-20261016-engine-asks-instead-of-chronology · Structure template name
+
+In Settings → Structure templates, the pencil pins the name and version shown. Save uses the action clock and the engine's shared field ordering. The later known name wins. Title history restores the earlier name. An uncertain name-only conflict shows both exact names. Choosing from that comparison preserves a dependent structure save that appeared after the review.
+
+Both original device orders conflicted. Two server timing cases, the missing exact comparison and the unsafe cancellation of a later structure save went red to green. A settings test verifies that the revision at pencil open survives changes in the background. 811 tests in 23 related suites, eight translation checks, TypeScript, guarded build sSgxOZ8PM5ziFgDyva8uw and independent review passed. Scoped ESLint reported zero errors and 23 warnings.
+
+Six native Chrome scenarios on isolated emulators at 390 and 1280 px covered both action orders, history restore and reload, independent structure edits, successive offline renames, return to the original name and the actual saved-version choice when timing was unknown. The screens were visually checked. Evidence is in artifacts/plan-template-name-verified. Other short fields remain in the chronology audit.
+
+After authorized deployment, confirm the revision. Open Settings → Structure templates and use a disposable template in two owned profiles. Test both name orders with the phone offline, then restore an older name and reload. Confirm the existing outline. Close both profiles and keep forced timing and cancellation on the local stand.

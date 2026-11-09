@@ -4,7 +4,7 @@ import type { CouncilAssemblyActions, CouncilAssemblyCapture } from './councilAs
 import type { CouncilTopicKindActions, CouncilTopicKindCapture } from './councilTopicKindAction';
 import type { CouncilTopicTitleAction } from './councilTopicTitleAction';
 import type { DatedRowActionEvidence } from './datedRowAction';
-import type { DocumentFieldAction, DocumentFieldObservation, DocumentFieldStamp, PrayerTitleCapture, StudyNoteTitleCapture, ServiceOrderTitleCapture } from './documentFieldAction';
+import type { DocumentFieldAction, DocumentFieldObservation, DocumentFieldStamp, PlanTemplateNameCapture, PrayerTitleCapture, StudyNoteTitleCapture, ServiceOrderTitleCapture } from './documentFieldAction';
 import type { GroupMeetingFieldActions } from './groupMeetingFieldAction';
 import type { PrayerStatusCapture } from './prayerStatusAction';
 import type { PreachDateFieldActions } from './preachDateFieldAction';
@@ -59,6 +59,7 @@ export type EditorCommitAction =
   | { kind: 'council-topic-kind'; topicKind: CouncilTopicKindCapture }
   | { kind: 'prayer-title'; title: PrayerTitleCapture }
   | { kind: 'study-note-title'; title: StudyNoteTitleCapture }
+  | { kind: 'plan-template-name'; name: PlanTemplateNameCapture }
   | { kind: 'prayer-status'; status: PrayerStatusCapture };
 
 export type BibleMarkStrokeStamp = { observedRevision: number; time: ActionTime };
@@ -81,6 +82,7 @@ export type DataCommand = CommandBase & (
       councilTopicKindActions?: CouncilTopicKindActions;
       prayerTitleAction?: DocumentFieldObservation;
       studyNoteTitleAction?: DocumentFieldStamp;
+      planTemplateNameAction?: DocumentFieldStamp;
       prayerStatusAction?: DocumentFieldObservation;
       prayerAnsweredAtAction?: DocumentFieldStamp;
       sermonTitleAction?: DocumentFieldObservation;

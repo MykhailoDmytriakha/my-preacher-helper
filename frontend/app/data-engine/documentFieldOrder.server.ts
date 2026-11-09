@@ -27,7 +27,7 @@ type DocumentFieldOrder = {
   uncertain?: ConflictDetail[];
 };
 
-const usesDigest = (target: DocumentFieldTarget) => target.field === 'verse' || target.field === 'church' || target.field === 'date' || target.field === 'heldAt' || target.field === 'answeredAt' || target.action === 'seriesFieldActions' || target.action === 'studyNoteTitleAction';
+const usesDigest = (target: DocumentFieldTarget) => target.field === 'verse' || target.field === 'church' || target.field === 'date' || target.field === 'heldAt' || target.field === 'answeredAt' || target.action === 'seriesFieldActions' || target.action === 'studyNoteTitleAction' || target.action === 'planTemplateNameAction';
 const fieldDigest = (value: FieldValue, target: DocumentFieldTarget) => createHash('sha256')
   .update(target.field === 'verse' ? String(value.value) : commandFingerprint(value)).digest('base64url');
 

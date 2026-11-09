@@ -47,6 +47,19 @@ export function readCouncilTopicConflict(checkpoint: SessionCheckpoint) {
   }
 }
 
+export function readPlanTemplateNameConflict(checkpoint: SessionCheckpoint) {
+  const { confirmed, draft, remoteCandidate, conflicts, pending } = checkpoint;
+  const path = conflicts[0]?.path;
+  const mine = draft?.name, stored = remoteCandidate?.value?.name;
+  if (confirmed.resource.collection !== 'planTemplates' || !confirmed.value || !draft
+    || conflicts.length !== 1 || path?.length !== 1 || path[0] !== 'name' || Object.keys(pending).length !== 1
+    || typeof mine !== 'string' || typeof stored !== 'string' || mine === stored
+    || remoteCandidate?.metadata?.generation !== confirmed.metadata?.generation) return undefined;
+  const otherFields = (value: DocumentData) =>
+    Object.fromEntries(Object.entries(value).filter(([key]) => key !== 'name' && !DOCUMENT_BOOKKEEPING_FIELDS.has(key)));
+  return equalValues(otherFields(confirmed.value), otherFields(draft)) ? { mine, stored } : undefined;
+}
+
 export function readServiceStepConflict(checkpoint: SessionCheckpoint) {
   const { confirmed, draft, remoteCandidate, conflicts, pending } = checkpoint;
   const target = serviceOrderStepField(conflicts[0]?.path);

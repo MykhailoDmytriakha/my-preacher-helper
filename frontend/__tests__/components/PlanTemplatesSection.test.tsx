@@ -80,6 +80,20 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('PlanTemplatesSection', () => {
+  it('keeps the revision shown when opening the name editor', async () => {
+    mockTemplates = [{ ...tpl('t1', 'Alpha'), rev: { [PLAN_TEMPLATE_AGGREGATE]: 1 } }];
+    mockUpdate.mockImplementation(() => persistedWrite(Promise.resolve(undefined)));
+    const view = render(<PlanTemplatesSection user={user} />);
+    fireEvent.click(screen.getByLabelText('common.edit'));
+    fireEvent.change(screen.getByDisplayValue('Alpha'), { target: { value: 'My new name' } });
+
+    mockTemplates = [{ ...tpl('t1', 'Other saved name'), rev: { [PLAN_TEMPLATE_AGGREGATE]: 2 } }];
+    view.rerender(<PlanTemplatesSection user={user} />);
+    await act(async () => { fireEvent.click(screen.getByLabelText('common.save')); });
+    expect(mockUpdate).toHaveBeenCalledWith('t1', { name: 'My new name' }, 1);
+  });
+
+
   it('keeps the other quota-only choice visible after resolving one refusal', async () => {
     mockTemplates = [tpl('t1', 'Alpha')];
     mockUpdate.mockImplementation(() => persistedWrite(Promise.resolve(undefined)));

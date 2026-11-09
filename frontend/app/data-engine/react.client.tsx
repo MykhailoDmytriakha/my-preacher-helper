@@ -29,7 +29,7 @@ import { collectionRecordPresence, documentRecordPresence, UNKNOWN_RECORD_PRESEN
 import { isOnlySubmittedCopy } from './recovery.client';
 import { captureRecoveryChoice as captureChoice, recoveryChoiceFingerprint, type RecoveryChoiceScope } from './recoveryChoice';
 import { validateResourceDocument } from './resourceSchemas';
-import { readCouncilTopicConflict as councilTopicConflict, readSermonConflict as sermonConflict, readServiceStepConflict as serviceStepConflict } from './rowConflictDetails';
+import { readCouncilTopicConflict as councilTopicConflict, readPlanTemplateNameConflict as planTemplateNameConflict, readSermonConflict as sermonConflict, readServiceStepConflict as serviceStepConflict } from './rowConflictDetails';
 import { deletedUnder, type SessionCheckpoint } from './session';
 import { describeManualSync, describeSync, type SyncStatus } from './status';
 import { shownDeliveryState } from './unanswered';
@@ -59,6 +59,7 @@ export function analysisCreationScope(id: string): string { return initialAnalys
 /** Exact conflict values for presentation, without exposing row matching or mutation. */
 export function readCouncilTopicConflict(checkpoint: SessionCheckpoint) { return councilTopicConflict(checkpoint); }
 export function readServiceStepConflict(checkpoint: SessionCheckpoint) { return serviceStepConflict(checkpoint); }
+export function readPlanTemplateNameConflict(checkpoint: SessionCheckpoint) { return planTemplateNameConflict(checkpoint); }
 export function readSermonConflict(checkpoint: SessionCheckpoint) { return sermonConflict(checkpoint); }
 export function councilTopicReviewCode(result: CommandResult | null | undefined, conflicts: readonly ConflictDetail[]): string | undefined {
   return councilTopicRefusalCode(result) ?? councilTopicConflictCode(conflicts);

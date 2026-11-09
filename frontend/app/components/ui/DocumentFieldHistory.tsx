@@ -6,15 +6,15 @@ import { requestOwnerJson } from '@/services/ownerHttpTransport.client';
 import { storedFieldValue } from '@/utils/storedFieldValue';
 import { useTranslation } from '@locales/useTranslation';
 
-import type { GroupStatusHistoryPage, GroupTitleHistoryPage, PrayerTitleHistoryPage, SermonChurchHistoryPage, SermonTitleHistoryPage, SermonVerseHistoryPage, ServiceOrderTitleHistoryPage, StudyNoteTitleHistoryPage } from '@/data-engine/documentFieldAction';
+import type { GroupStatusHistoryPage, GroupTitleHistoryPage, PlanTemplateNameHistoryPage, PrayerTitleHistoryPage, SermonChurchHistoryPage, SermonTitleHistoryPage, SermonVerseHistoryPage, ServiceOrderTitleHistoryPage, StudyNoteTitleHistoryPage } from '@/data-engine/documentFieldAction';
 import type { Church } from '@/models/models';
 
-type DocumentHistoryPage = StudyNoteTitleHistoryPage | ServiceOrderTitleHistoryPage | PrayerTitleHistoryPage | GroupTitleHistoryPage | GroupStatusHistoryPage | SermonTitleHistoryPage | SermonVerseHistoryPage | SermonChurchHistoryPage;
+type DocumentHistoryPage = PlanTemplateNameHistoryPage | StudyNoteTitleHistoryPage | ServiceOrderTitleHistoryPage | PrayerTitleHistoryPage | GroupTitleHistoryPage | GroupStatusHistoryPage | SermonTitleHistoryPage | SermonVerseHistoryPage | SermonChurchHistoryPage;
 type HistoryValue = string | Church | null;
 type HistoryEntry = { id: string; value: HistoryValue; winner: HistoryValue };
 type HistoryPage = { entries: HistoryEntry[]; nextCursor: string | null };
 type HistorySession = { owner: string; generation: string } & (
-  (({ orderId: string } | { noteId: string } | { prayerId: string } | { groupId: string; field?: 'status' } | { sermonId: string; field?: 'verse' }) & { restore: (value: string) => Promise<void> })
+  (({ orderId: string } | { templateId: string } | { noteId: string } | { prayerId: string } | { groupId: string; field?: 'status' } | { sermonId: string; field?: 'verse' }) & { restore: (value: string) => Promise<void> })
   | { sermonId: string; field: 'church'; restore: (value: Church | null) => Promise<void> }
 );
 
@@ -60,7 +60,9 @@ export function DocumentFieldHistory({ session, current, disabled }: { session: 
         ? { collection: 'prayerRequests', resourceId: session.prayerId, key: 'prayerId' }
         : 'noteId' in session
           ? { collection: 'studyNotes', resourceId: session.noteId, key: 'noteId' }
-          : { collection: 'serviceOrders', resourceId: session.orderId, key: 'orderId' };
+          : 'templateId' in session
+            ? { collection: 'planTemplates', resourceId: session.templateId, key: 'templateId' }
+            : { collection: 'serviceOrders', resourceId: session.orderId, key: 'orderId' };
   const field = ('field' in session && session.field) || 'title';
   const labels = historyLabels[field];
   const endpoint = field + '-history';

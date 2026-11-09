@@ -7,7 +7,7 @@ import { toast } from 'sonner';
 import { OutdatedTabNotice } from '@/components/common/OutdatedTabNotice';
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
 import { FieldComparison } from '@/data-engine/DataSyncStatus';
-import { captureRecoveryChoice, councilRefusalHeldOpen, isCollectionOnEngine, isDataEngineEnabled, isOneShotRecord, isRecoveryHeldOpen, readServiceStepConflict, useDataEngine, useDocumentActions, useOpenDocumentAnswerScopes, waitsForDecision, type OpenDocumentAnswer, type RecoveryChoiceScope } from '@/data-engine/react.client';
+import { captureRecoveryChoice, councilRefusalHeldOpen, isCollectionOnEngine, isDataEngineEnabled, isOneShotRecord, isRecoveryHeldOpen, readPlanTemplateNameConflict, readServiceStepConflict, useDataEngine, useDocumentActions, useOpenDocumentAnswerScopes, waitsForDecision, type OpenDocumentAnswer, type RecoveryChoiceScope } from '@/data-engine/react.client';
 import { useClipboard } from '@/hooks/useClipboard';
 import { useConfirm, useDiscardQuestion } from '@/hooks/useConfirm';
 import { useShellPathname } from '@/hooks/useShellPathname';
@@ -76,8 +76,13 @@ const show = (value: unknown): string => {
 type Item = Record<string, unknown> & { id: string };
 type DisplayValue = (scope: string, field: string, value: unknown, document?: DocumentData) => unknown;
 const isItem = (value: unknown): value is Item => Boolean(value) && typeof value === 'object' && typeof (value as { id?: unknown }).id === 'string';
-function serviceStepComparison(entry: Waiting, t: (key: string) => string): TextComparison | undefined {
-  if (entry.resource.collection !== 'serviceOrders' || entry.records.length !== 1) return undefined;
+function fieldComparison(entry: Waiting, t: (key: string) => string): TextComparison | undefined {
+  if (entry.records.length !== 1) return undefined;
+  if (entry.resource.collection === 'planTemplates') {
+    const comparison = readPlanTemplateNameConflict(entry.records[0].checkpoint);
+    return comparison && { ...comparison, title: fieldLabel(t, 'name'), valueKind: 'field' };
+  }
+  if (entry.resource.collection !== 'serviceOrders') return undefined;
   const comparison = readServiceStepConflict(entry.records[0].checkpoint);
   if (!comparison) return undefined;
   const { field, mine, stored } = comparison;
@@ -447,7 +452,7 @@ function EngineConflicts({ pollMs, search }: { pollMs: number; search?: string }
     </>;
   }
   if (entry.kind === 'conflict') {
-    const comparison = serviceStepComparison(entry, t);
+    const comparison = fieldComparison(entry, t);
     return (
       <>
         {comparison && <section aria-label={t('dataSync.versionComparison')} className="mb-3"><FieldComparison comparison={comparison} /></section>}

@@ -10,7 +10,7 @@ import { CommitQueue, type CommitRequest, type CommitStore } from './commits';
 import { EditorController, InactiveEditorError, type CheckpointRecoveryStore, type CheckpointStore, type EditorRecord, type EditorState, type RecoveryCheckpoint } from './controller';
 import { captureCouncilCarry, pinCouncilDestination } from './councilCarry';
 import { canReplaceDocumentIntent, isDirectLegacyDocumentIntent, requiresWholeActionResolution, savedDocumentAnswer } from './documentDelivery';
-import { capturePrayerTitle, captureStudyNoteTitle, matchesPrayerStatusOpening, matchesPrayerTitleRequest, matchesStudyNoteTitleRequest, studyNoteTitleValue, validatedTitleCapture } from './documentFieldAction';
+import { capturePlanTemplateName, capturePrayerTitle, captureStudyNoteTitle, matchesPlanTemplateNameRequest, matchesPrayerStatusOpening, matchesPrayerTitleRequest, matchesStudyNoteTitleRequest, studyNoteTitleValue, validatedTitleCapture } from './documentFieldAction';
 import { ACTION_SLOT, areDifferentTabManualParents, editorSlot, isManualChoiceRecoveryIdentity, manualScopeIdentity, readManualScopeIdentity } from './editorIdentity';
 import { AddressedFailures, eachFailure, PausedReadFailure } from './failures';
 import { collectionHeadRef } from './feed';
@@ -1823,6 +1823,16 @@ export class DataEngine {
           if (!capturePrayerTitle(checkpoint.confirmed, next === checkpoint.draft ? null : next, action.title, known)) {
             if (next !== checkpoint.draft && (checkpoint.confirmed.metadata?.generation !== seen.generation || checkpoint.draft?.title !== seen.title)) {
               throw Object.assign(new Error('The prayer title changed'), { code: 'prayer-title-basis-changed' });
+            }
+            captured = undefined;
+          }
+        }
+        if (action?.kind === 'plan-template-name') {
+          const { seen } = action.name;
+          const known = Boolean(seen.requestId && matchesPlanTemplateNameRequest(this.commitRecords.get(seen.requestId), owner, frozen, seen));
+          if (!capturePlanTemplateName(checkpoint.confirmed, next === checkpoint.draft ? null : next, action.name, known)) {
+            if (next !== checkpoint.draft && (checkpoint.confirmed.metadata?.generation !== seen.generation || checkpoint.draft?.name !== seen.title)) {
+              throw Object.assign(new Error('The template name changed'), { code: 'plan-template-name-basis-changed' });
             }
             captured = undefined;
           }

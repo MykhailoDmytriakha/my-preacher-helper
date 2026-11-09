@@ -36,7 +36,7 @@ import type { AudioExportKey, AudioExportRecord, AudioExportStore, AudioExportTr
 import type { BibleMarkHistoryEntry, BibleMarkHistoryPage } from './bibleMarkStroke';
 import type { CouncilMetadataHistoryPage } from './councilFieldAction';
 import type { DisplacedRowDate, MeetingDateHistoryPage, PreachDateHistoryPage } from './datedRowAction';
-import type { GroupStatusHistoryPage, GroupTitleHistoryPage, DocumentTitleHistoryEntry, SermonChurchHistoryPage, PrayerTitleHistoryPage, SermonTitleHistoryPage, SermonVerseHistoryPage, ServiceOrderTitleHistoryPage, StudyNoteTitleHistoryPage } from './documentFieldAction';
+import type { GroupStatusHistoryPage, GroupTitleHistoryPage, DocumentTitleHistoryEntry, PlanTemplateNameHistoryPage, SermonChurchHistoryPage, PrayerTitleHistoryPage, SermonTitleHistoryPage, SermonVerseHistoryPage, ServiceOrderTitleHistoryPage, StudyNoteTitleHistoryPage } from './documentFieldAction';
 import type { PrayerStatusHistoryPage } from './prayerStatusAction';
 import type { RowDetailPolicy } from './rowDetailAction';
 import type { RowValue } from './rowFieldAction';
@@ -455,16 +455,17 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
         actionTime: displaced.actionTime, winnerActionTime: displaced.winnerActionTime });
       continue;
     }
+    const field = target.field === 'name' ? 'title' : target.field;
     const destination = {
       title: { collection: DOCUMENT_TITLE_HISTORY, winner: 'winnerTitle' },
       status: { collection: GROUP_STATUS_HISTORY, winner: 'winnerStatus' },
       verse: { collection: SERMON_VERSE_HISTORY, winner: 'winnerVerse' },
       church: { collection: SERMON_CHURCH_HISTORY, winner: 'winnerChurch' },
-    }[target.field];
+    }[field];
     const history = adminDb.collection(command.resource.collection).doc(command.resource.id).collection(destination.collection);
     const { value, winnerValue, ...evidence } = displaced;
     transaction.set(history.doc(historyEntryId(primarySnapshot, command.operationId)), {
-      ...evidence, [target.field]: value.value ?? null, [destination.winner]: winnerValue.value ?? null, acceptedAt: new Date().toISOString(),
+      ...evidence, [field]: value.value ?? null, [destination.winner]: winnerValue.value ?? null, acceptedAt: new Date().toISOString(),
     });
   }
   if (metadataHistory.length && primarySnapshot.metadata) {
@@ -753,6 +754,12 @@ export async function listServiceOrderTitleHistory(owner: string, orderId: strin
   const resource = { collection: 'serviceOrders', id: orderId };
   const page = await listHistoryEntries<DocumentTitleHistoryEntry>(owner, resource, DOCUMENT_TITLE_HISTORY, generation, cursor, 'service-order-gone');
   return { owner, orderId, generation, ...page };
+}
+
+export async function listPlanTemplateNameHistory(owner: string, templateId: string, generation: string, cursor?: string): Promise<PlanTemplateNameHistoryPage> {
+  const resource = { collection: 'planTemplates', id: templateId };
+  const page = await listHistoryEntries<DocumentTitleHistoryEntry>(owner, resource, DOCUMENT_TITLE_HISTORY, generation, cursor, 'template-gone');
+  return { owner, templateId, generation, ...page };
 }
 
 export async function listStudyNoteTitleHistory(owner: string, noteId: string, generation: string, cursor?: string): Promise<StudyNoteTitleHistoryPage> {

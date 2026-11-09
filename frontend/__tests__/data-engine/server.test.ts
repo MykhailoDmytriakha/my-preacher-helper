@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { isCollectionServed } from '@/data-engine/activation';
-import { DataEngineServerError, listBibleMarkHistory, listCouncilMetadataHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listPrayerStatusHistory, listPrayerTitleHistory, listSermonChurchHistory, listSermonTitleHistory, listSermonVerseHistory, listSeriesMetadataHistory, listServiceOrderFlagHistory, listServiceOrderStepTitleHistory, listServiceOrderTitleHistory, listStudyNoteTitleHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
+import { DataEngineServerError, listBibleMarkHistory, listCouncilMetadataHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listPlanTemplateNameHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listPrayerStatusHistory, listPrayerTitleHistory, listSermonChurchHistory, listSermonTitleHistory, listSermonVerseHistory, listSeriesMetadataHistory, listServiceOrderFlagHistory, listServiceOrderStepTitleHistory, listServiceOrderTitleHistory, listStudyNoteTitleHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
 import { collectionHeadId, HEADS_COLLECTION, sequenceId } from '@/data-engine/serverFeed';
 import { DataSession } from '@/data-engine/session';
 import type { DataCommand, FieldValue, ResourceSnapshot } from '@/data-engine/types';
@@ -1891,6 +1891,58 @@ describe('transactional DataEngine server', () => {
       });
       expect(documents.get('councils/lifecycle-council')).not.toHaveProperty('heldAt');
       expect((await listCouncilMetadataHistory(owner, resource.id, 'council-create')).entries).toHaveLength(0);
+    });
+  });
+
+  describe('plan template name chronology', () => {
+    const owner = 'owner-1';
+    const resource = { collection: 'planTemplates', id: 'timed-plan-template' };
+    const base = { protocol: 1, owner, resource, dependsOn: [] };
+    const name = 'Opening template name';
+    const desk = 'Computer template name';
+    const phone = 'Phone template name';
+    const structure = { introduction: [{ id: 'first', text: 'Keep the first point' }], main: [], conclusion: [] };
+    const field = <T,>(value: T) => ({ exists: true, value });
+    const seed = () => processCommand(owner, { ...base, operationId: 'template-create', kind: 'create', generation: null,
+      value: { userId: owner, name, structure, createdAt: '2026-11-08', updatedAt: '2026-11-08' } });
+    const rename = (operationId: string, nextName: string, offset: number | null) => ({
+      ...base, operationId, kind: 'update', generation: 'template-create',
+      changes: [{ path: ['name'], before: field(name), after: field(nextName) }],
+      planTemplateNameAction: { observedRevision: 1,
+        time: offset === null ? null : { earliestMs: 1_800_000_000_000 + offset, latestMs: 1_800_000_000_005 + offset } },
+    });
+
+    it.each([[20, desk], [80, phone]] as const)('orders a delayed rename and keeps the outline (%s)', async (offset, winner) => {
+      expect((await seed()).kind).toBe('acknowledged');
+      expect((await processCommand(owner, rename('desk-name', desk, 40))).kind).toBe('acknowledged');
+      const delayed = rename('phone-name', phone, offset);
+      const reply = await processCommand(owner, delayed);
+      expect(reply).toMatchObject({ kind: 'acknowledged', snapshot: { value: { name: winner, structure } } });
+      expect(await processCommand(owner, delayed)).toEqual(reply);
+      expect(await listPlanTemplateNameHistory(owner, resource.id, 'template-create')).toMatchObject({
+        templateId: resource.id, entries: [{ title: winner === desk ? phone : desk, winnerTitle: winner }],
+      });
+      await expect(listPlanTemplateNameHistory('other-owner', resource.id, 'template-create')).rejects.toMatchObject({ status: 403 });
+      await expect(listPlanTemplateNameHistory(owner, resource.id, 'wrong-generation')).rejects.toMatchObject({ status: 404 });
+    });
+
+    it.each([null, 43])('keeps a comparison when rename timing is uncertain (%s)', async offset => {
+      expect((await seed()).kind).toBe('acknowledged');
+      expect((await processCommand(owner, rename('desk-name', desk, 40))).kind).toBe('acknowledged');
+      expect(await processCommand(owner, rename('phone-name', phone, offset))).toMatchObject({
+        kind: 'conflict', conflicts: [{ path: ['name'] }], snapshot: { value: { name: desk, structure } },
+      });
+    });
+
+    it('saves an offline rename alongside a separately edited outline', async () => {
+      expect((await seed()).kind).toBe('acknowledged');
+      const next = { ...structure, main: [{ id: 'second', text: 'Keep the new point' }] };
+      expect((await processCommand(owner, { ...base, operationId: 'outline-edit', kind: 'update', generation: 'template-create',
+        changes: [{ path: ['structure'], before: field(structure), after: field(next) }],
+      })).kind).toBe('acknowledged');
+      expect(await processCommand(owner, rename('phone-name', phone, 80))).toMatchObject({
+        kind: 'acknowledged', snapshot: { value: { name: phone, structure: next } },
+      });
     });
   });
 
