@@ -63,7 +63,7 @@ type TextDocumentFieldTarget = {
   optional?: true;
 };
 
-export type DocumentFieldTarget = TextDocumentFieldTarget | typeof SERMON_CHURCH | typeof SERMON_GOAL_TYPE | PreparationConfirmationTarget | SeriesFieldTarget | CouncilFieldTarget | PrayerStatusTarget;
+export type DocumentFieldTarget = TextDocumentFieldTarget | typeof COMMENT_KIND | typeof SERMON_CHURCH | typeof SERMON_GOAL_TYPE | PreparationConfirmationTarget | SeriesFieldTarget | CouncilFieldTarget | PrayerStatusTarget;
 export type SermonChurchObservation = DocumentFieldObservation<FieldValue>;
 
 export type GroupStatusHistoryPage = {
@@ -114,6 +114,8 @@ const SERMON_VERSE = { field: 'verse', action: 'sermonVerseAction', proof: 'serm
   accepts: (value): value is string => typeof value === 'string' } as const satisfies TextDocumentFieldTarget;
 const STUDY_NOTE_TYPE = { field: 'type', action: 'studyNoteTypeAction', proof: 'studyNoteType',
   accepts: isOrdinaryStudyNoteType, causal: true, optional: true } as const satisfies TextDocumentFieldTarget;
+const COMMENT_KIND = { field: 'paragraph', action: 'commentKindAction', proof: 'commentKind',
+  accepts: (value: unknown): value is boolean => typeof value === 'boolean', causal: true, optional: true } as const;
 const STUDY_NOTE_TITLE = { field: 'title', action: 'studyNoteTitleAction', proof: 'studyNoteTitle',
   accepts: (value): value is string => typeof value === 'string', causal: true, optional: true } as const satisfies TextDocumentFieldTarget;
 const PLAN_TEMPLATE_NAME = { field: 'name', action: 'planTemplateNameAction', proof: 'planTemplateName',
@@ -129,7 +131,7 @@ const COUNCIL_FIELDS = [...COUNCIL_TIMED_FIELDS, COUNCIL_LIFECYCLE];
 
 export function documentFieldTargets(collection: string): readonly DocumentFieldTarget[] {
   if (collection === 'serviceOrders') return [SERVICE_ORDER_TITLE];
-  if (collection === 'studyNotes') return [STUDY_NOTE_TITLE, STUDY_NOTE_TYPE];
+  if (collection === 'studyNotes') return [STUDY_NOTE_TITLE, STUDY_NOTE_TYPE, COMMENT_KIND];
   if (collection === 'planTemplates') return [PLAN_TEMPLATE_NAME];
   if (collection === 'tags') return [TAG_COLOR];
   if (collection === 'groups') return GROUP_TIMED_FIELDS;
@@ -642,7 +644,7 @@ export function pendingDocumentFieldAncestor(record: CommitRequest, before: Docu
   }, before);
 }
 
-type StoredObservation = DocumentFieldObservation<string | FieldValue> & { openingTheme?: string };
+type StoredObservation = DocumentFieldObservation<string | FieldValue> & { openingTheme?: string; reference?: FieldValue };
 
 function observedValue(value: string | FieldValue): FieldValue {
   return typeof value === 'string' ? { exists: true, value } : value;
@@ -667,6 +669,9 @@ export function withDocumentFieldAction(command: DataCommand, target: DocumentFi
   }
   if (target.action === 'sermonPreparationCheckActions') {
     return { ...command, sermonPreparationCheckActions: { ...command.sermonPreparationCheckActions, [target.field]: stamp } };
+  }
+  if (target.action === 'commentKindAction') {
+    return action.reference ? { ...command, commentKindAction: { ...stamp, reference: action.reference } } : command;
   }
   if (target.field === 'heldAt' && !matchesCouncilLifecycle(command.changes, change)) return command;
   if ('path' in target || target.field === 'verse' || target.field === 'church' || target.field === 'date' || target.field === 'heldAt' || target.field === 'answeredAt') return { ...command, [target.action]: stamp };

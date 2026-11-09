@@ -1,3 +1,4 @@
+import { submittedCommentKind, type CommentKindSeen } from './commentKindAction';
 import { submittedDocumentTitle, submittedPrayerStatus, submittedStudyNoteType, submittedTagColor } from './documentFieldAction';
 import { submittedPrayerTagBasis } from './documentTagCapture';
 import { DataSession } from './session';
@@ -24,6 +25,7 @@ export interface CollectionDocumentView {
   /** Exact pending request that supplied the displayed title, never a confirmed snapshot. */
   submittedTitle?: DocumentTitleSeen;
   submittedNoteType?: StudyNoteTypeSeen;
+  submittedCommentKind?: CommentKindSeen;
   submittedColor?: TagColorSeen;
   submittedPrayerStatus?: PrayerStatusOpening;
   submittedPrayerTagBasis?: DocumentTagOpening;
@@ -71,6 +73,7 @@ export function collectionDocumentViews(owner: string, collection: string, snaps
     const unsettled = related.filter(request => request.baseline.resource.id === id && !['acknowledged', 'cancelled'].includes(request.state));
     const needsAttention = !checkpoint || checkpoint.conflicts.length > 0 || unsettled.some(request => ['conflict', 'refused'].includes(request.state));
     const submittedTitle = submittedDocumentTitle(checkpoint, unsettled, needsAttention);
+    const commentKind = !needsAttention && collection === 'studyNotes' && submittedCommentKind(checkpoint, unsettled);
     const submittedNoteType = submittedStudyNoteType(checkpoint, unsettled, needsAttention);
     const prayerStatus = submittedPrayerStatus(checkpoint, unsettled, needsAttention);
     const prayerTagBasis = !needsAttention && submittedPrayerTagBasis(checkpoint, unsettled);
@@ -81,6 +84,7 @@ export function collectionDocumentViews(owner: string, collection: string, snaps
       pending: true, needsAttention, deleting: Boolean(checkpoint && checkpoint.draft === null),
       ...(submittedTitle && { submittedTitle }),
       ...(submittedNoteType && { submittedNoteType }),
+      ...(commentKind && { submittedCommentKind: commentKind }),
       ...(submittedColor && { submittedColor }),
       ...(prayerStatus && { submittedPrayerStatus: prayerStatus }),
       ...(prayerTagBasis && { submittedPrayerTagBasis: prayerTagBasis }),

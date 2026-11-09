@@ -32,6 +32,7 @@ const CHOICES: Record<string, Record<string, string>> = {
 /** A display-only copy. Paths include the collection so equal words in unrelated fields stay text. */
 export function storedFieldValue(t: Translate, scope: string, field: string, value: unknown): unknown {
   const visit = (current: unknown, path: string): unknown => {
+    if (path === 'studyNotes.paragraph') return t(current === true ? 'comment.kind.paragraph' : current === false ? 'comment.kind.comment' : 'comment.automaticKind');
     if (path === 'groups.flow.durationMin') {
       if (typeof current === 'number' && Number.isFinite(current) && current >= 0) return `${current} ${t('groupFlow.minutesShort')}`;
       if (current === null) return t('legacyRecovery.absent');

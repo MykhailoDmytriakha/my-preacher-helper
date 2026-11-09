@@ -33,6 +33,7 @@ const NAMED_FIELDS = new Set([
 export const fieldLabel = (t: (key: string) => string, field: string): string => {
   if (field === 'durationMin') return t('legacyRecovery.field.duration');
   if (field === 'flagged') return t('serviceOrders.flag');
+  if (field === 'paragraph') return t('comment.kind.label');
   if (field === 'forAssembly') return t('council.topic.forAssembly');
   if (field === 'instanceTitle') return t('groupFlow.editor.stepTitleLabel');
   if (field === 'instanceNotes') return t('groupFlow.editor.notesLabel');

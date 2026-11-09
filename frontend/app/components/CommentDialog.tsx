@@ -9,6 +9,7 @@ import { CommentPlaceShown, MovePlaceButton, useCommentPlace } from '@/component
 import { CommentIcon, ParagraphIcon } from '@/components/Icons';
 import MarkdownDisplay from '@/components/MarkdownDisplay';
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
+import { DocumentFieldHistory } from '@/components/ui/DocumentFieldHistory';
 import FormDialog, { FormActions } from '@/components/ui/FormDialog';
 import FormField, { FORM_INPUT_CLASS } from '@/components/ui/FormField';
 import { RichMarkdownEditor } from '@/components/ui/RichMarkdownEditor';
@@ -284,7 +285,7 @@ export function CommentDialog({ target, place, context, bible, placeOf, placePic
   paragraphChoice?: ParagraphChoice;
 }) {
   const { t, language } = useTranslation();
-  const { uid, notes, commentCollectionReady, createNote, updateNote, deleteNote } = useStudyNotesEngine(true);
+  const { uid, notes, commentCollectionReady, createNote, updateNote, deleteNote, observeCommentKind, captureActionTime } = useStudyNotesEngine(true);
   const { confirm, confirmDialog } = useConfirm();
   const { askBeforeDiscard, discardDialog } = useDiscardQuestion();
   const found = target.kind === 'edit' ? notes.find((note) => note.id === target.id) : undefined;
@@ -293,6 +294,8 @@ export function CommentDialog({ target, place, context, bible, placeOf, placePic
   live.current = found;
   // The comment as the window opened it: the revision guard compares a save with this, not with the list now.
   const opened = useRef<StudyNote | undefined>(found);
+  const [openingKind] = useState(() => found && observeCommentKind?.(found));
+  const kindBasis = useRef(openingKind);
   // Where this window's edits began: the version it opened with, or the other device's once that was taken.
   const mine = useRef<StudyNote | undefined>(found);
   const [text, setText] = useState<string | null>(target.kind === 'edit' ? found?.content ?? null : '');
@@ -303,6 +306,7 @@ export function CommentDialog({ target, place, context, bible, placeOf, placePic
   useEffect(() => {
     if (text !== null || !found) return;
     opened.current = found;
+    kindBasis.current = observeCommentKind?.(found);
     mine.current = found;
     setText(found.content);
     setTitle(found.title ?? '');
@@ -413,6 +417,7 @@ export function CommentDialog({ target, place, context, bible, placeOf, placePic
       ...(found.scriptureRefs ? { scriptureRefs: found.scriptureRefs } : {}),
       rev: { ...(opened.current.rev ?? {}), [NOTE_AGGREGATE]: found.revision },
     };
+    kindBasis.current = observeCommentKind?.(opened.current);
   };
 
   // As a comment — not a note — it is what the switch says: a heading over its verses or words beside them; the kind goes
@@ -421,6 +426,7 @@ export function CommentDialog({ target, place, context, bible, placeOf, placePic
   const save = (event?: React.FormEvent) => {
     event?.preventDefault();
     if (empty || saving || !placed || !named) return;
+    const actionTime = target.kind === 'edit' && kind.pending !== undefined ? captureActionTime?.() ?? null : null;
     const note = opened.current;
     const visible = live.current;
     // Keep mine adopts a new guard immediately. The rendered title can still belong to the earlier opening.
@@ -466,7 +472,12 @@ export function CommentDialog({ target, place, context, bible, placeOf, placePic
     }
     setSaving(true);
     const { id } = target;
-    updateNote({ id, updates, expectedRevision: note?.rev?.[NOTE_AGGREGATE] ?? null, expectedBaseline: baseline }).acceptance.then(() => saved(id), failed);
+    const switchedKind = typeof updates.paragraph === 'boolean';
+    const seen = switchedKind ? kindBasis.current : undefined;
+    updateNote({ id, updates, expectedRevision: note?.rev?.[NOTE_AGGREGATE] ?? null,
+      expectedBaseline: switchedKind ? { ...baseline, scriptureRefs: note?.scriptureRefs } : baseline,
+      ...(seen && { commentKindCapture: { seen, time: actionTime } }),
+    }).acceptance.then(() => saved(id), failed);
   };
   const saved = (id: string) => {
     settle();
@@ -550,6 +561,11 @@ export function CommentDialog({ target, place, context, bible, placeOf, placePic
     >
       <div className="space-y-4">
         {asWritten.offered ? <CommentKindSwitch paragraph={kind.asParagraph} onChange={kind.choose} disabled={saving || deciding} /> : null}
+        {asWritten.offered && target.kind === 'edit' && uid && kindBasis.current &&
+          <DocumentFieldHistory key={JSON.stringify([uid, target.id, kindBasis.current.generation])}
+            session={{ owner: uid, noteId: target.id, generation: kindBasis.current.generation, field: 'comment-kind',
+              restore: async paragraph => { kind.choose(paragraph); } }}
+            current={kind.asParagraph} disabled={saving || deciding} />}
         {/* The words waiting are answered first: they may bring their own place back, so the choice of one waits. */}
         {/* Nor while a save is accepted: a place chosen then would show, and the one sent would be saved (Codex review r3). */}
         {deciding || saving ? null : placePicker?.({ requestClose })}

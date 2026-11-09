@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { isCollectionServed } from '@/data-engine/activation';
-import { DataEngineServerError, listBibleMarkHistory, listExegeticalPointHistory, listCouncilMetadataHistory, listDocumentTagHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listPlanTemplateNameHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listPrayerStatusHistory, listPrayerTitleHistory, listSermonChurchHistory, listSermonGoalTypeHistory, listSermonPreparationConfirmationHistory, listSermonTitleHistory, listSermonVerseHistory, listSeriesMembershipHistory, listSeriesMetadataHistory, listServiceOrderFlagHistory, listServiceOrderStepTitleHistory, listServiceOrderTitleHistory, listStudyNoteTitleHistory, listTagColorHistory, listThoughtLockHistory, listThoughtPlacementHistory, listThoughtTagHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
+import { DataEngineServerError, listBibleMarkHistory, listCommentKindHistory, listExegeticalPointHistory, listCouncilMetadataHistory, listDocumentTagHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listPlanTemplateNameHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listPrayerStatusHistory, listPrayerTitleHistory, listSermonChurchHistory, listSermonGoalTypeHistory, listSermonPreparationConfirmationHistory, listSermonTitleHistory, listSermonVerseHistory, listSeriesMembershipHistory, listSeriesMetadataHistory, listServiceOrderFlagHistory, listServiceOrderStepTitleHistory, listServiceOrderTitleHistory, listStudyNoteTitleHistory, listTagColorHistory, listThoughtLockHistory, listThoughtPlacementHistory, listThoughtTagHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
 import { collectionHeadId, HEADS_COLLECTION, sequenceId } from '@/data-engine/serverFeed';
 import { DataSession } from '@/data-engine/session';
 import type { DataCommand, FieldValue, ResourceSnapshot } from '@/data-engine/types';
@@ -1578,6 +1578,53 @@ describe('transactional DataEngine server', () => {
       expect(history[0][1]).toMatchObject({ fields: [{ rowId: topic.id, field: 'kind',
         value: winner === 'decision' ? 'info' : 'decision', winnerValue: winner }] });
     }
+  });
+
+  it.each([
+    { label: 'earlier phone', phoneAt: 15, winner: false, legacy: false, moved: false },
+    { label: 'later phone', phoneAt: 90, winner: true, legacy: false, moved: false },
+    { label: 'unknown order', phoneAt: null, winner: false, legacy: false, moved: false },
+    { label: 'legacy comment', phoneAt: 15, winner: false, legacy: true, moved: false },
+    { label: 'changed passage', phoneAt: 90, winner: false, legacy: false, moved: true },
+    { label: 'older move checked for a different kind', phoneAt: 15, winner: false, legacy: false, moved: false, phoneMoves: true },
+  ])('orders the explicit comment kind only at its reviewed place: $label', async ({ phoneAt, winner, legacy, moved, phoneMoves }) => {
+    const resource = { collection: 'studyNotes', id: 'comment-kind-order' };
+    const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] };
+    const now = '2026-11-09T00:00:00.000Z';
+    const place = { id: 'place', bible: 'kjv', book: 'John', chapter: 3, fromVerse: 16 };
+    const refs = [place], relocated = [{ ...place, fromVerse: 17 }];
+    const comment = { userId: base.owner, title: '', content: 'Original words', type: 'comment',
+      scriptureRefs: refs, tags: [], isDraft: false, createdAt: now, updatedAt: now };
+    const ordinary = { exists: true, value: false }, paragraph = { exists: true, value: true };
+    const opening = legacy ? { exists: false } : ordinary;
+    expect((await processCommand(base.owner, { ...base, kind: 'create', generation: null, operationId: 'seed',
+      value: { ...comment, ...(!legacy && { paragraph: false }) } })).kind).toBe('acknowledged');
+    const edit = (operationId: string, before: typeof opening, after: typeof ordinary, at: number | null, observedRevision: number) => ({
+      ...base, kind: 'update', generation: 'seed', operationId, changes: [{ path: ['paragraph'], before, after }],
+      commentKindAction: { observedRevision, reference: { exists: true, value: refs },
+        time: at === null ? null : { earliestMs: 1_800_000_000_000 + at, latestMs: 1_800_000_000_004 + at } },
+    });
+    expect((await processCommand(base.owner, edit('computer-paragraph', opening, paragraph, 40, 1))).kind).toBe('acknowledged');
+    const back = edit('computer-comment', paragraph, ordinary, 60, 2);
+    expect((await processCommand(base.owner, { ...back, changes: [...back.changes,
+      { path: ['content'], before: { exists: true, value: comment.content }, after: { exists: true, value: 'Independent words' } },
+    ] })).kind).toBe('acknowledged');
+    if (moved) expect((await processCommand(base.owner, { ...base, kind: 'update', generation: 'seed', operationId: 'relocate',
+      changes: [{ path: ['scriptureRefs'], before: { exists: true, value: refs }, after: { exists: true, value: relocated } }],
+    })).kind).toBe('acknowledged');
+    const selection = edit('phone', opening, paragraph, phoneAt, 1);
+    const phone = phoneMoves ? { ...selection, changes: [...selection.changes,
+      { path: ['scriptureRefs'], before: { exists: true, value: refs }, after: { exists: true, value: relocated } },
+    ] } : selection;
+    const result = await processCommand(base.owner, phone);
+    expect(result.kind).toBe(moved ? 'refused' : phoneAt === null || phoneMoves ? 'conflict' : 'acknowledged');
+    if (moved) expect(result).toMatchObject({ code: 'comment-kind-place-changed' });
+    expect((await readDocument(base.owner, resource)).value).toMatchObject({ type: 'comment', paragraph: winner,
+      content: 'Independent words', scriptureRefs: moved ? relocated : refs });
+    expect(await processCommand(base.owner, phone)).toEqual(result);
+    const history = await listCommentKindHistory(base.owner, resource.id, 'seed');
+    expect(history.entries).toEqual(result.kind === 'acknowledged'
+      ? [expect.objectContaining({ paragraph: !winner, winnerParagraph: winner })] : []);
   });
 
   it.each([

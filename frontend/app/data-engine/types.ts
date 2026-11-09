@@ -1,5 +1,6 @@
 /** The wire contract is shared by browser and server; it imports no transport. */
 import type { ActionTime } from './actionClock';
+import type { CommentKindCapture, CommentKindStamp } from './commentKindAction';
 import type { CouncilAssemblyActions, CouncilAssemblyCapture } from './councilAssemblyAction';
 import type { CouncilOutcomeWire } from './councilOutcomeAction';
 import type { CouncilTopicKindActions, CouncilTopicKindCapture } from './councilTopicKindAction';
@@ -73,6 +74,7 @@ export type EditorCommitAction =
   | { kind: 'prayer-title'; title: PrayerTitleCapture; tagMembership?: readonly DocumentTagIntent[] }
   | { kind: 'study-note-title'; title: StudyNoteTitleCapture; type?: StudyNoteTypeCapture; tagMembership?: readonly DocumentTagIntent[] }
   | { kind: 'study-note-type'; type: StudyNoteTypeCapture; tagMembership?: readonly DocumentTagIntent[] }
+  | { kind: 'comment-kind'; commentKind: CommentKindCapture }
   | { kind: 'document-tags'; tagMembership: readonly DocumentTagIntent[] }
   | { kind: 'plan-template-name'; name: PlanTemplateNameCapture }
   | { kind: 'tag-color'; color: TagColorCapture }
@@ -99,6 +101,7 @@ export type DataCommand = CommandBase & (
       prayerTitleAction?: DocumentFieldObservation;
       studyNoteTitleAction?: DocumentFieldStamp;
       studyNoteTypeAction?: DocumentFieldStamp;
+      commentKindAction?: CommentKindStamp;
       planTemplateNameAction?: DocumentFieldStamp;
       tagColorAction?: DocumentFieldStamp;
       prayerStatusAction?: DocumentFieldObservation;

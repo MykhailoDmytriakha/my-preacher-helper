@@ -6,6 +6,7 @@ import { withStore } from '@/services/storeAvailability.server';
 import {
   assertDataEngineEnabled,
   DataEngineServerError,
+  listCommentKindHistory,
   listCouncilAssemblyHistory,
   listCouncilOutcomeHistory,
   listCouncilTopicKindHistory,
@@ -48,6 +49,7 @@ const histories = {
   thoughtTag: { collection: 'sermons', list: listThoughtTagHistory },
   prayerTag: { collection: 'prayerRequests', list: (owner: string, id: string, generation: string, cursor?: string) =>
     listDocumentTagHistory(owner, 'prayerRequests', id, generation, cursor) },
+  commentKind: { collection: 'studyNotes', list: listCommentKindHistory },
   noteType: { collection: 'studyNotes', list: listStudyNoteTypeHistory },
   noteTag: { collection: 'studyNotes', list: (owner: string, id: string, generation: string, cursor?: string) =>
     listDocumentTagHistory(owner, 'studyNotes', id, generation, cursor) },

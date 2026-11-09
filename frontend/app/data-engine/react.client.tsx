@@ -15,6 +15,7 @@ import { analysisCreationScope as initialAnalysisScope } from './analysisCreatio
 import { createBrowserDataEngine, type BrowserDataEngine } from './browser.client';
 import { isCollectionOnEngine, isDataEngineEnabled } from './clientPolicy';
 import { isLiveCollectionDocument as liveCollectionDocument, type CollectionPresentationRow } from './collectionPresentation';
+import { commentKindChoiceOpening, readCommentKindComparison as commentKindComparison } from './commentKindChoice';
 import { isInactiveEditorError as inactiveEditor } from './controller';
 import { councilTopicConflictCode, councilTopicRefusalCode } from './councilTopicTransition';
 import { isDirectLegacyDocumentIntent, savedDocumentAnswer, type DocumentAnswer } from './documentDelivery';
@@ -66,6 +67,7 @@ export { isCollectionOnEngine, isDataEngineEnabled } from './clientPolicy';
 export function analysisCreationScope(id: string): string { return initialAnalysisScope(id); }
 
 /** Exact conflict values for presentation, without exposing row matching or mutation. */
+export function readCommentKindComparison(checkpoint: SessionCheckpoint) { return commentKindComparison(checkpoint); }
 export function readStudyNoteTypeComparison(checkpoint: SessionCheckpoint) { return studyNoteTypeComparison(checkpoint); }
 export function readCouncilTopicConflict(checkpoint: SessionCheckpoint) { return councilTopicConflict(checkpoint); }
 export function readGroupFlowFieldConflict(checkpoint: SessionCheckpoint) { return groupFlowFieldConflict(checkpoint); }
@@ -477,10 +479,18 @@ export function useDocumentActions() {
       for (const { record } of waiting) {
         const editor = await openFor(resource, record.editorId);
         try {
-          if (choice === 'mine') { await editor.keepLocal(scope ? shown(record) : undefined); await editor.save(); continue; }
+          if (choice === 'mine') {
+            const seen = commentKindChoiceOpening(record.checkpoint);
+            if (seen === null) throw Object.assign(new Error('The comment passage changed'), { code: 'comment-kind-place-changed' });
+            const time = seen ? actionClock.capture(owner) ?? null : null;
+            await editor.keepLocal(scope ? shown(record) : undefined);
+            if (seen) await editor.commit(value => value, { kind: 'comment-kind', commentKind: { time, seen } });
+            else await editor.save();
+            continue;
+          }
           await editor.acceptRemote(scope ? shown(record) : undefined);
           const { checkpoint } = editor.getState();
-          if (checkpoint.dirty && exactField && (documentTagComparison(record.checkpoint) || studyNoteTypeComparison(record.checkpoint))) await editor.save();
+          if (checkpoint.dirty && exactField && (documentTagComparison(record.checkpoint) || studyNoteTypeComparison(record.checkpoint) || commentKindComparison(record.checkpoint))) await editor.save();
           else if (checkpoint.dirty) await editor.edit(checkpoint.confirmed.value);
         } finally { editor.close({ flush: false }); }
       }

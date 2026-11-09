@@ -117,6 +117,37 @@ it('shows both names when a single template rename needs a decision', async () =
   }
 });
 
+it.each([false, true])('anchors a manual comment-kind choice even when it includes a move (%s)', async moveAfterReview => {
+  process.env[ON_ENGINE] = 'studyNotes';
+  actions = null;
+  const original = { id: 'place', bible: 'kjv', book: 'John', chapter: 3, fromVerse: 16 };
+  const movedHere = { ...original, fromVerse: 17 }, movedElsewhere = { ...original, fromVerse: 18 };
+  const note = { ...stored, type: 'comment', title: '', isDraft: false, scriptureRefs: [original] };
+  const h = documentEngineHarness({ resource, value: note, metadata: { protocol: 1, generation: 'g1', revision: 1, deleted: false } });
+  jest.mocked(createBrowserDataEngine).mockImplementation(h.createBrowser);
+  try {
+    render(<DataEngineProvider><Actions /><EngineConflictBanner pollMs={50} /></DataEngineProvider>);
+    await waitFor(() => expect(actions?.ready).toBe(true));
+    h.silentRemote({ paragraph: false, content: 'Words from the phone' });
+    await act(async () => {
+      await actions!.commit(resource, current => ({ ...current!, paragraph: true, scriptureRefs: [movedHere], content: 'Words from the computer' }));
+      await settleEngine();
+    });
+    await waitForRemoteCandidate(h, 'Words from the phone');
+    const keep = await screen.findByRole('button', { name: 'freshness.conflictKeepMine' });
+    if (moveAfterReview) h.silentRemote({ scriptureRefs: [movedElsewhere] });
+    await act(async () => { fireEvent.click(keep); await settleEngine(); await settleEngine(); });
+    await waitFor(() => expect(jest.mocked(h.transport.send).mock.calls.at(-1)?.[0]).toMatchObject({
+      commentKindAction: { observedRevision: 2, reference: { exists: true, value: [original] } },
+    }));
+    expect(h.server.value).toMatchObject(moveAfterReview
+      ? { paragraph: false, scriptureRefs: [movedElsewhere], content: 'Words from the phone' }
+      : { paragraph: true, scriptureRefs: [movedHere], content: 'Words from the computer' });
+  } finally {
+    delete process.env[ON_ENGINE];
+  }
+});
+
 describe('a late conflict on a document no screen has open', () => {
   beforeEach(() => { process.env[ON_ENGINE] = 'studyNotes'; actions = null; });
   afterEach(() => { delete process.env[ON_ENGINE]; });

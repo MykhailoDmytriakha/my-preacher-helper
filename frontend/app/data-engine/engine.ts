@@ -6,6 +6,7 @@ import { captureAnalysisReshape, type StudyAnalysisWrite } from './analysisResha
 import { ANALYSIS_RESHAPE_FIELDS, sameAnalysisFrame } from './analysisReshapeFields';
 import { closedCopySettlement } from './checkpointStorage.client';
 import { collectionDocumentViews } from './collectionView';
+import { captureCommentKind, matchesCommentKindPlace, matchesCommentKindRequest } from './commentKindAction';
 import { CommitQueue, type CommitRequest, type CommitStore } from './commits';
 import { EditorController, InactiveEditorError, type CheckpointRecoveryStore, type CheckpointStore, type EditorRecord, type EditorState, type RecoveryCheckpoint } from './controller';
 import { captureCouncilCarry, pinCouncilDestination } from './councilCarry';
@@ -1959,6 +1960,20 @@ export class DataEngine {
           captured = title ? { kind: 'study-note-title', title, type, tagMembership }
             : type ? { kind: 'study-note-type', type, tagMembership }
               : edited && tagMembership?.length ? { kind: 'document-tags', tagMembership } : undefined;
+        }
+        if (action?.kind === 'comment-kind') {
+          const { seen } = action.commentKind;
+          const known = Boolean(seen.requestId && matchesCommentKindRequest(this.commitRecords.get(seen.requestId), owner, frozen, seen));
+          const resolving = next === checkpoint.draft;
+          const anchored = matchesCommentKindPlace(checkpoint.draft, seen.reference)
+            || (resolving && matchesCommentKindPlace(checkpoint.confirmed.value, seen.reference));
+          if (!anchored) throw Object.assign(new Error('The comment passage changed'), { code: 'comment-kind-place-changed' });
+          if (!captureCommentKind(checkpoint.confirmed, next, action.commentKind, known)) {
+            if (!resolving || next?.paragraph !== checkpoint.confirmed.value?.paragraph) {
+              throw Object.assign(new Error('The comment kind changed'), { code: 'comment-kind-basis-changed' });
+            }
+            captured = undefined;
+          }
         }
         if (action?.kind === 'prayer-status') {
           if (next === checkpoint.draft) captured = undefined;

@@ -5,6 +5,7 @@ import { isServiceOrderCatalogKey, isServiceOrderSeedTarget, serviceOrderSeedCyc
 
 import { boundedActionTime } from './actionClock';
 import { ANALYSIS_RESHAPE_FIELDS, ANALYSIS_RESHAPE_FRAME, hasMatchingAnalysisPositionBasis, keepAnalysisPositionFrame, lacksAnalysisFrameProof } from './analysisReshapeFields';
+import { matchesCommentKindPlace } from './commentKindAction';
 import { councilTopicConflictCode, councilTopicTransitionRefusal, mergeCouncilTopicHistory, replaceCouncilOutcomeConflicts, retainCouncilTopicFrame } from './councilTopicTransition';
 import { equalValues, object, own, readField } from './fieldValues';
 import { mergeIdentityTree } from './identityTreeMerge';
@@ -770,6 +771,8 @@ export function applyCommand(command: DataCommand, current: ResourceSnapshot): C
   } else {
     if (!current.value) return { kind: 'deleted', operationId: command.operationId, snapshot: current };
     value = clone(current.value);
+    if (command.kind === 'update' && command.resource.collection === 'studyNotes' && command.commentKindAction
+      && !matchesCommentKindPlace(current.value, command.commentKindAction.reference)) return refused('comment-kind-place-changed');
     if (command.kind === 'update' && command.resource.collection === 'studyNotes'
       && lacksAnalysisFrameProof(value, command.changes)) {
       // Older persisted commands lack the original passage. Keep their raw intent for

@@ -6,16 +6,18 @@ import { requestOwnerJson } from '@/services/ownerHttpTransport.client';
 import { storedFieldValue } from '@/utils/storedFieldValue';
 import { useTranslation } from '@locales/useTranslation';
 
+import type { CommentKindHistoryPage } from '@/data-engine/commentKindAction';
 import type { GroupStatusHistoryPage, GroupTitleHistoryPage, PlanTemplateNameHistoryPage, PrayerTitleHistoryPage, SermonChurchHistoryPage, SermonGoalTypeHistoryPage, SermonPreparationConfirmationHistoryPage, SermonTitleHistoryPage, SermonVerseHistoryPage, ServiceOrderTitleHistoryPage, StudyNoteTitleHistoryPage, StudyNoteTypeHistoryPage } from '@/data-engine/documentFieldAction';
 import type { Church } from '@/models/models';
 import type { PreparationConfirmation } from '@/utils/preparationFieldValues';
 
-type DocumentHistoryPage = PlanTemplateNameHistoryPage | StudyNoteTitleHistoryPage | StudyNoteTypeHistoryPage | ServiceOrderTitleHistoryPage | PrayerTitleHistoryPage | GroupTitleHistoryPage | GroupStatusHistoryPage | SermonTitleHistoryPage | SermonVerseHistoryPage | SermonChurchHistoryPage | SermonGoalTypeHistoryPage | SermonPreparationConfirmationHistoryPage;
+type DocumentHistoryPage = CommentKindHistoryPage | PlanTemplateNameHistoryPage | StudyNoteTitleHistoryPage | StudyNoteTypeHistoryPage | ServiceOrderTitleHistoryPage | PrayerTitleHistoryPage | GroupTitleHistoryPage | GroupStatusHistoryPage | SermonTitleHistoryPage | SermonVerseHistoryPage | SermonChurchHistoryPage | SermonGoalTypeHistoryPage | SermonPreparationConfirmationHistoryPage;
 type HistoryValue = string | Church | boolean | null;
 type HistoryEntry = { id: string; value: HistoryValue; winner: HistoryValue };
 type HistoryPage = { entries: HistoryEntry[]; nextCursor: string | null };
 type HistorySession = { owner: string; generation: string } & (
   (({ orderId: string } | { templateId: string } | { noteId: string; field?: 'type' } | { prayerId: string } | { groupId: string; field?: 'status' } | { sermonId: string; field?: 'verse' | 'goal-type' }) & { restore: (value: string) => Promise<void> })
+  | { noteId: string; field: 'comment-kind'; restore: (value: boolean) => Promise<void> }
   | { sermonId: string; field: 'church'; restore: (value: Church | null) => Promise<void> }
   | { sermonId: string; field: 'preparation-confirmation'; confirmation: PreparationConfirmation; restore: (value: boolean) => Promise<void> }
 );
@@ -38,6 +40,11 @@ const historyLabels = {
     heading: 'studiesWorkspace.typeHistory.title', loading: 'studiesWorkspace.typeHistory.loading', unavailable: 'studiesWorkspace.typeHistory.unavailable',
     failed: 'studiesWorkspace.typeHistory.failed', empty: 'studiesWorkspace.typeHistory.empty', kept: 'studiesWorkspace.typeHistory.kept',
     current: 'studiesWorkspace.typeHistory.current', restore: 'studiesWorkspace.typeHistory.restore', more: 'studiesWorkspace.typeHistory.more',
+  },
+  'comment-kind': {
+    heading: 'comment.kindHistory.title', loading: 'studiesWorkspace.typeHistory.loading', unavailable: 'studiesWorkspace.typeHistory.unavailable',
+    failed: 'studiesWorkspace.typeHistory.failed', empty: 'studiesWorkspace.typeHistory.empty', kept: 'studiesWorkspace.typeHistory.kept',
+    current: 'studiesWorkspace.typeHistory.current', restore: 'comment.kindHistory.select', more: 'studiesWorkspace.typeHistory.more',
   },
   status: {
     heading: 'common.statusHistory', loading: 'common.statusHistoryLoading', unavailable: 'common.statusHistoryUnavailable',
@@ -85,6 +92,7 @@ export function DocumentFieldHistory({ session, current, disabled }: { session: 
   const endpoint = field + '-history';
   const heading = t(labels.heading);
   const format = (value: HistoryValue) => {
+    if (field === 'comment-kind' && typeof value === 'boolean') return t(value ? 'comment.kind.paragraph' : 'comment.kind.comment');
     if (typeof value === 'boolean') return t(value ? 'common.confirmationChecked' : 'common.confirmationUnchecked');
     if (typeof value !== 'string') return value ? [value.name, value.city].filter(Boolean).join(', ') : t(field === 'title' ? 'common.untitled' : 'calendar.unspecifiedChurch');
     if (field === 'type') return String(storedFieldValue(t, 'studyNotes', 'type', value));
@@ -119,6 +127,7 @@ export function DocumentFieldHistory({ session, current, disabled }: { session: 
         }
         if ('status' in entry) return [{ id: entry.id, value: entry.status, winner: entry.winnerStatus }];
         if ('verse' in entry) return [{ id: entry.id, value: entry.verse, winner: entry.winnerVerse }];
+        if ('paragraph' in entry) return [{ id: entry.id, value: entry.paragraph, winner: entry.winnerParagraph }];
         if ('type' in entry) return [{ id: entry.id, value: entry.type, winner: entry.winnerType }];
         if ('church' in entry) return [{ id: entry.id, value: entry.church, winner: entry.winnerChurch }];
         return [{ id: entry.id, value: entry.title, winner: entry.winnerTitle }];
@@ -131,7 +140,7 @@ export function DocumentFieldHistory({ session, current, disabled }: { session: 
     setRestoring(true);
     setError(undefined);
     try {
-      if ('confirmation' in session) {
+      if ('confirmation' in session || ('field' in session && session.field === 'comment-kind')) {
         if (typeof next === 'boolean') await session.restore(next);
       } else if ('field' in session && session.field === 'church') {
         if (next === null || typeof next === 'object') await session.restore(next);

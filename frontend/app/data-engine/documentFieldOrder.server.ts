@@ -4,6 +4,7 @@ import { isStandaloneScriptureReference } from '@/utils/bibleLink';
 import { isOrdinaryStudyNote } from '@/utils/studyNoteType';
 
 import { boundedActionTime, compareActionTime } from './actionClock';
+import { matchesCommentKindPlace } from './commentKindAction';
 import { councilLifecycleValue, councilStatusOf, matchesCouncilLifecycle } from './councilFieldAction';
 import { acceptsDocumentField, documentFieldChange, documentFieldPath, documentFieldTargets, replaceOrderedDocumentField } from './documentFieldAction';
 import { commandFingerprint, equalValues, object, readField } from './fieldValues';
@@ -14,6 +15,7 @@ import type { ActionTime } from './actionClock';
 import type { DocumentFieldObservation, DocumentFieldTarget } from './documentFieldAction';
 import type { ConflictDetail, DataCommand, DocumentData, FieldChange, FieldValue, ResourceSnapshot } from './types';
 
+export const COMMENT_KIND_HISTORY = '_commentKindHistory';
 export const STUDY_NOTE_TYPE_HISTORY = '_noteTypeHistory';
 export const DOCUMENT_TITLE_HISTORY = '_titleHistory';
 export const GROUP_STATUS_HISTORY = '_statusHistory';
@@ -30,7 +32,7 @@ type DocumentFieldOrder = {
   uncertain?: ConflictDetail[];
 };
 
-const usesDigest = (target: DocumentFieldTarget) => 'path' in target || target.field === 'color' || target.field === 'verse' || target.field === 'church' || target.field === 'date' || target.field === 'heldAt' || target.field === 'answeredAt' || target.action === 'seriesFieldActions' || target.action === 'studyNoteTitleAction' || target.action === 'studyNoteTypeAction' || target.action === 'planTemplateNameAction';
+const usesDigest = (target: DocumentFieldTarget) => 'path' in target || target.field === 'color' || target.field === 'verse' || target.field === 'church' || target.field === 'date' || target.field === 'heldAt' || target.field === 'answeredAt' || target.action === 'seriesFieldActions' || target.action === 'studyNoteTitleAction' || target.action === 'studyNoteTypeAction' || target.action === 'commentKindAction' || target.action === 'planTemplateNameAction';
 const fieldDigest = (value: FieldValue, target: DocumentFieldTarget) => createHash('sha256')
   .update(target.field === 'verse' ? String(value.value) : commandFingerprint(value)).digest('base64url');
 
@@ -92,6 +94,8 @@ function orderDocumentField(command: DataCommand, current: ResourceSnapshot, raw
   target: DocumentFieldTarget): DocumentFieldOrder {
   if (command.kind !== 'update') return { command };
   if ((target.action === 'studyNoteTitleAction' || target.action === 'studyNoteTypeAction') && !isOrdinaryStudyNote(current.value)) return { command };
+  if (target.action === 'commentKindAction' && (!command.commentKindAction
+    || !matchesCommentKindPlace(current.value, command.commentKindAction.reference))) return { command };
   if (target.action === 'tagColorAction' && current.value?.required !== false) return { command };
   const change = documentFieldChange(command.changes, target);
   if (!change || !current.metadata || current.metadata.deleted || command.generation !== current.metadata.generation) return { command };
@@ -105,7 +109,13 @@ function orderDocumentField(command: DataCommand, current: ResourceSnapshot, raw
     if (action.predecessorOperationId && previous.operationId === action.predecessorOperationId && equalValues(previous.value, action.before)) {
       return { command, stamp: action.time };
     }
-    return decideUnobservedField(command, change, action, previous, target);
+    const order = decideUnobservedField(command, change, action, previous, target);
+    if (target.action === 'commentKindAction' && order.displaced && !equalValues(order.displaced.winnerValue, change.after)
+      && command.changes.some(item => item.path[0] === 'scriptureRefs' && !equalValues(item.before, item.after))) {
+      // A move was checked for the chosen kind. Keep both changes together when that kind loses.
+      return { command, uncertain: [{ path: change.path, base: change.before, mine: change.after, theirs: stored }] };
+    }
+    return order;
   }
   if (equalValues(action.after, stored)) return { command, previous };
   return { command, stamp: previous || action.observedRevision === current.metadata.revision ? action.time : null };
@@ -167,13 +177,16 @@ export function metadataAfterDocumentFields(snapshot: ResourceSnapshot, raw: Rec
   const metadata = snapshot.metadata;
   if (!metadata) return metadata;
   const proofs = documentFieldTargets(snapshot.resource.collection).flatMap(target => {
-    if (!snapshot.value) return [];
+    if (!snapshot.value || (target.action === 'commentKindAction' && snapshot.value.type !== 'comment')) return [];
     const value = target.field === 'heldAt' ? councilLifecycleValue(snapshot.value) : readField(snapshot.value, documentFieldPath(target));
     if (!value || !acceptsDocumentField(value, target)) return [];
-    const order = fields?.fields.find(item => item.target === target)?.order;
+    const referenceChanged = target.action === 'commentKindAction' && raw?.type === 'comment'
+      && !matchesCommentKindPlace(raw as DocumentData, readField(snapshot.value, ['scriptureRefs']));
+    // Moving a comment ends the passage-specific ordering proof.
+    const order = referenceChanged ? undefined : fields?.fields.find(item => item.target === target)?.order;
     const rawMetadata = raw?._dataEngine;
-    const previous = order?.previous ?? previousField(rawMetadata, snapshot, target);
-    const changed = target.causal && !equalValues(readField((raw ?? {}) as DocumentData, documentFieldPath(target)), value);
+    const previous = referenceChanged ? undefined : order?.previous ?? previousField(rawMetadata, snapshot, target);
+    const changed = target.causal && (referenceChanged || !equalValues(readField((raw ?? {}) as DocumentData, documentFieldPath(target)), value));
     // The first unrelated write to an older sermon, including a secondary effect,
     // observes the same field at the original revision.
     const revision = target.causal && !changed && order?.stamp === undefined && object(rawMetadata)

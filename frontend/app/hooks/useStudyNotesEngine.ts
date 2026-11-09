@@ -14,6 +14,7 @@ import { isOrdinaryStudyNote, isOrdinaryStudyNoteType } from '@/utils/studyNoteT
 import { useTranslation } from '@locales/useTranslation';
 
 
+import type { CommentKindCapture, CommentKindSeen } from '@/data-engine/commentKindAction';
 import type { OrdinaryStudyNoteType, StudyNoteTitleCapture, StudyNoteTitleSeen, StudyNoteTypeCapture, StudyNoteTypeSeen } from '@/data-engine/documentFieldAction';
 import type { DocumentTagBasis, DocumentTagIntent } from '@/data-engine/documentTagCapture';
 import type { DocumentData, ResourceSnapshot } from '@/data-engine/types';
@@ -86,6 +87,7 @@ type NoteUpdate = {
   expectedBaseline?: Record<string, unknown> | null;
   titleCapture?: StudyNoteTitleCapture;
   typeCapture?: StudyNoteTypeCapture;
+  commentKindCapture?: CommentKindCapture;
   tagMembership?: readonly DocumentTagIntent[];
 };
 
@@ -161,6 +163,25 @@ export function useStudyNotesEngine(enabled: boolean) {
       ...(observed?.value?.type === undefined && { missing: true }) } : undefined;
   };
 
+  const observeCommentKind = (note: StudyNote): CommentKindSeen | undefined => {
+    if (note.type !== 'comment') return undefined;
+    const row = collection.state?.documents?.find(item => item.resource.id === note.id);
+    if (row?.needsAttention) return undefined;
+    const references = storedReferences(note.scriptureRefs);
+    const pending = row?.submittedCommentKind;
+    if (pending && pending.kind.value === note.paragraph && same(pending.reference.value, references)) return pending;
+    const revision = note.rev?.[NOTE_AGGREGATE];
+    const observed = [row?.acknowledged, collection.state?.snapshots?.find(item => item.resource.id === note.id)].find(snapshot =>
+      snapshot?.value?.type === 'comment' && snapshot.value.paragraph === note.paragraph
+        && same(snapshot.value.scriptureRefs, references) && snapshot.metadata && !snapshot.metadata.deleted
+        && (revision === undefined || snapshot.metadata.revision === revision));
+    const metadata = observed?.metadata;
+    return observed?.value && metadata ? { generation: metadata.generation, revision: metadata.revision,
+      kind: note.paragraph === undefined ? { exists: false } : { exists: true, value: note.paragraph },
+      reference: observed.value.scriptureRefs === undefined ? { exists: false } : { exists: true, value: observed.value.scriptureRefs },
+    } : undefined;
+  };
+
   const observeTagBasis = (id: string, opening: string[]): DocumentTagBasis | undefined => {
     const basis = readTagOpening(collection.state, id, opening);
     return basis && { generation: basis.generation, revision: basis.revision };
@@ -174,6 +195,7 @@ export function useStudyNotesEngine(enabled: boolean) {
     noteDelivery,
     observeTitle,
     observeType,
+    observeCommentKind,
     observeTagBasis,
     captureActionTime: actions.captureActionTime,
     notePresence: collection.presence,
@@ -214,7 +236,7 @@ export function useStudyNotesEngine(enabled: boolean) {
       })));
     },
     updating: updating > 0,
-    updateNote: ({ id, updates, expectedRevision, expectedBaseline, captureScope, titleCapture, typeCapture, tagMembership }: NoteUpdate): StudyNoteSubmission & { result: Promise<SavedNote> } => {
+    updateNote: ({ id, updates, expectedRevision, expectedBaseline, captureScope, titleCapture, typeCapture, commentKindCapture, tagMembership }: NoteUpdate): StudyNoteSubmission & { result: Promise<SavedNote> } => {
       if (!uid) {
         const refused = refusal();
         const result = refused.acceptance.then(() => undefined as never) as Promise<SavedNote>;
@@ -235,7 +257,10 @@ export function useStudyNotesEngine(enabled: boolean) {
         && typeof patch.title === 'string' ? titleCapture : undefined;
       const type = typeCapture && expectedBaseline && (expectedBaseline.type === typeCapture.seen.type || typeCapture.seen.requestId)
         && isOrdinaryStudyNoteType(patch.type) ? typeCapture : undefined;
-      const action = title ? { kind: 'study-note-title' as const, title, type, tagMembership: timedTags }
+      const kind = commentKindCapture && typeof patch.paragraph === 'boolean' && expectedBaseline
+        && commentKindCapture.seen.kind.value === expectedBaseline.paragraph ? commentKindCapture : undefined;
+      const action = kind ? { kind: 'comment-kind' as const, commentKind: kind }
+        : title ? { kind: 'study-note-title' as const, title, type, tagMembership: timedTags }
         : type ? { kind: 'study-note-type' as const, type, tagMembership: timedTags }
           : timedTags ? { kind: 'document-tags' as const, tagMembership: timedTags } : undefined;
       const submission = once(`study-note:update:${id}:${JSON.stringify(patch)}`, async () => {
@@ -263,17 +288,21 @@ export function useStudyNotesEngine(enabled: boolean) {
             const storedAs = (field: string, value: unknown) => (field === 'scriptureRefs'
               ? same(current.scriptureRefs ?? [], value)
               : same(storedField(field), value));
+            const commentKindSave = typeof patch.paragraph === 'boolean' && baselineRefs !== undefined;
+            const placeChanged = commentKindSave && (current.type !== 'comment' || !storedAs('scriptureRefs', readSource ?? baselineRefs));
             const compared = expectedBaseline ? Object.keys(patch).filter(field => field !== 'dictationSourceIds' && field !== 'recordingSourceIds' && field in expectedBaseline) : [];
             const changedElsewhere = compared.filter(field => expectedBaseline && !(field === 'tags' && timedTags)
               && !storedAs(field, field === 'scriptureRefs' ? readSource ?? baselineRefs : expectedBaseline[field])
               && !storedAs(field, patch[field]));
-            if (changedElsewhere.length) {
+            if (placeChanged || changedElsewhere.length) {
               // A refusal reports every compared field so the editor can adopt the complete server version.
               const stale = new StaleWriteError(NOTE_AGGREGATE, expectedRevision ?? stored, stored,
-                Object.fromEntries(compared.map(field => [field, field === 'type' ? storedField(field) : current[field] ?? null])));
+                Object.fromEntries([...new Set([...compared, ...(commentKindSave ? ['type', 'scriptureRefs'] : [])])]
+                  .map(field => [field, field === 'type' ? storedField(field) : current[field] ?? null])));
               const ordered = (field: string) => field === 'title' ? Boolean(title && (title.time || title.seen.requestId))
-                : field === 'type' && isOrdinaryStudyNote(current) && Boolean(type && (type.time || type.seen.requestId));
-              if (!changedElsewhere.every(ordered)) throw stale;
+                : field === 'paragraph' ? Boolean(kind && (kind.time || kind.seen.requestId))
+                  : field === 'type' && isOrdinaryStudyNote(current) && Boolean(type && (type.time || type.seen.requestId));
+              if (placeChanged || !changedElsewhere.every(ordered)) throw stale;
               staleTimedField = stale;
             }
             const receipts: DocumentData = {};
@@ -294,7 +323,7 @@ export function useStudyNotesEngine(enabled: boolean) {
           } }, captureScope || action ? { ...(captureScope && { captureScope }), ...(action && { action }) } : undefined);
         } catch (error) {
           if (staleTimedField && error && typeof error === 'object' && 'code' in error
-            && (error.code === 'study-note-title-basis-changed' || error.code === 'study-note-type-basis-changed')) throw staleTimedField;
+            && (error.code === 'study-note-title-basis-changed' || error.code === 'study-note-type-basis-changed' || error.code === 'comment-kind-basis-changed')) throw staleTimedField;
           throw error;
         } finally {
           setUpdating(count => count - 1);

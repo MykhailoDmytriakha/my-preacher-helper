@@ -3,6 +3,7 @@ import { failureCode } from '@/utils/failureCode';
 import { isLiveWholeAction, isRetiredActionDependent, orderActionProjections } from './atomicCommits';
 import { firstBookMarksIntent, isFirstBookMarksDraft } from './bibleMarksCreation';
 import { CaptureContinuations } from './captureContinuations';
+import { keepUncontestedCommentFields } from './commentKindChoice';
 import { assertCommitCapture } from './commits';
 import { councilAssemblyRow } from './councilAssemblyAction';
 import { councilTopicKindRow } from './councilTopicKindAction';
@@ -809,7 +810,8 @@ export class EditorController {
           const local = atChoice === undefined ? decided.draft : atChoice;
           const retained = !selection && (keepUncontestedSermonFields(decided.confirmed, local, decided.remoteCandidate, decided.conflicts)
             ?? keepUncontestedDocumentTagFields(decided.confirmed, local, decided.remoteCandidate, decided.conflicts)
-            ?? keepUncontestedStudyNoteFields(decided.confirmed, local, decided.remoteCandidate, decided.conflicts));
+            ?? keepUncontestedStudyNoteFields(decided.confirmed, local, decided.remoteCandidate, decided.conflicts)
+            ?? keepUncontestedCommentFields(decided.confirmed, local, decided.remoteCandidate, decided.conflicts));
           session.acceptRemote(atChoice);
           if (retained) {
             const accepted = session.checkpoint();

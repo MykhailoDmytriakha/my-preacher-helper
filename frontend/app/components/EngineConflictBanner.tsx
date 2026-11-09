@@ -7,7 +7,7 @@ import { toast } from 'sonner';
 import { OutdatedTabNotice } from '@/components/common/OutdatedTabNotice';
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
 import { FieldComparison } from '@/data-engine/DataSyncStatus';
-import { captureRecoveryChoice, councilRefusalHeldOpen, isCollectionOnEngine, isDataEngineEnabled, isOneShotRecord, isRecoveryHeldOpen, readDocumentTagComparison, readPlanTemplateNameConflict, readStudyNoteTypeComparison, readServiceStepConflict, readTagColorConflict, useDataEngine, useDocumentActions, useOpenDocumentAnswerScopes, waitsForDecision, type OpenDocumentAnswer, type RecoveryChoiceScope } from '@/data-engine/react.client';
+import { captureRecoveryChoice, councilRefusalHeldOpen, isCollectionOnEngine, isDataEngineEnabled, isOneShotRecord, isRecoveryHeldOpen, readCommentKindComparison, readDocumentTagComparison, readPlanTemplateNameConflict, readStudyNoteTypeComparison, readServiceStepConflict, readTagColorConflict, useDataEngine, useDocumentActions, useOpenDocumentAnswerScopes, waitsForDecision, type OpenDocumentAnswer, type RecoveryChoiceScope } from '@/data-engine/react.client';
 import { useClipboard } from '@/hooks/useClipboard';
 import { useConfirm, useDiscardQuestion } from '@/hooks/useConfirm';
 import { useShellPathname } from '@/hooks/useShellPathname';
@@ -44,7 +44,7 @@ type Kind = 'conflict' | 'refused' | 'refusedCreate' | 'deletedThere' | 'deleted
  */
 interface Waiting extends RecoveryChoiceScope { resource: ResourceRef; kind: Kind; mine: string[]; theirs: string; screen: boolean; screenValue?: DocumentData | null; decidable?: boolean; formWork?: boolean; actionResolutionRequired?: boolean; retainedDraftsOnly?: boolean;
   /** The server refused one of its drafts — told apart from `kind`, which says `several` for many drafts, refused or not. */
-  refused?: boolean }
+  refused?: boolean; commentKindPlaceChanged?: boolean }
 
 /** The look both notices share: one for a change decided here, one for a screen's draft decided there. */
 const REFUSED_TITLE = 'dataSync.phase.refused';
@@ -79,6 +79,11 @@ const isItem = (value: unknown): value is Item => Boolean(value) && typeof value
 function fieldComparison(entry: Waiting, t: (key: string) => string): TextComparison | undefined {
   if (entry.records.length !== 1) return undefined;
   if (entry.resource.collection === 'studyNotes') {
+    const kind = readCommentKindComparison(entry.records[0].checkpoint);
+    if (kind) {
+      const name = (value: boolean | undefined) => t(value === undefined ? 'comment.automaticKind' : value ? 'comment.kind.paragraph' : 'comment.kind.comment');
+      return { identity: kind.identity, title: t('comment.kind.label'), valueKind: 'field', mine: name(kind.mine), stored: name(kind.stored) };
+    }
     const comparison = readStudyNoteTypeComparison(entry.records[0].checkpoint);
     if (comparison) return { identity: comparison.identity, title: fieldLabel(t, 'type'), valueKind: 'field',
       mine: t('studiesWorkspace.type.' + comparison.mine), stored: t('studiesWorkspace.type.' + comparison.stored) };
@@ -233,6 +238,8 @@ function kindOf(drafts: EditorRecord[], refused: Set<string>): Kind {
 function waitingDocuments(records: readonly RecoveryCheckpoint[], journal: readonly JournalEntry[], name: (field: string) => string, display: DisplayValue): Waiting[] {
   const refused = new Set(journal.filter(entry => entry.state === 'refused').map(entry => entry.command.operationId));
   for (const { record, answer } of records) if (answer === 'refused') Object.keys(record.checkpoint.pending).forEach(id => refused.add(id));
+  const movedCommentKinds = new Set(journal.flatMap(entry => entry.result?.kind === 'refused' && entry.result.code === 'comment-kind-place-changed'
+    ? [entry.command.operationId] : []));
   const answered = new Set(journal.filter(entry => entry.state === 'refused' || entry.state === 'conflict').map(entry => entry.command.operationId));
   // A screen is listed for an answered saved request, including a local policy refusal.
   // A conflict in an unsent screen draft has no submitted request to settle here.
@@ -254,6 +261,7 @@ function waitingDocuments(records: readonly RecoveryCheckpoint[], journal: reado
       const sameScreen = screenValues.every(value => documentScreenHref(resource, value) === documentScreenHref(resource, screenValue));
       documents.push({ resource, kind: kindOf(drafts.map(draft => draft.record), refused), screen, screenValue: sameScreen ? screenValue : null,
         refused: drafts.some(({ record: draft }) => Object.keys(draft.checkpoint.pending).some(id => refused.has(id))),
+        commentKindPlaceChanged: scope.operationIds.some(id => movedCommentKinds.has(id)),
         actionResolutionRequired: drafts.some(draft => draft.actionResolutionRequired),
         mine: [...new Set(drafts.map(({ record: draft }) => changedText(draft.checkpoint.draft, draft.checkpoint.confirmed.value, name, resource.collection, display)).filter(Boolean))],
         theirs: changedText(checkpoint.remoteCandidate?.value ?? checkpoint.confirmed.value, null, name, resource.collection, display),
@@ -491,7 +499,7 @@ function EngineConflicts({ pollMs, search }: { pollMs: number; search?: string }
   }
 
   const heading: Record<Exclude<Kind, 'conflict'>, [string, string | null]> = {
-    refused: [t(REFUSED_TITLE), null],
+    refused: [t(REFUSED_TITLE), entry.commentKindPlaceChanged ? t('comment.kindPlaceChanged') : null],
     refusedCreate: [t(REFUSED_TITLE), null],
     deletedThere: [t('freshness.deletedElsewhereTitle'), t('freshness.deletedElsewhereBody')],
     deletedHere: [t('dataSync.deleteConflictTitle'), t('dataSync.deleteConflictBody')],

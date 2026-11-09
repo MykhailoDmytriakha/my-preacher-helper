@@ -20,7 +20,7 @@ import { COUNCIL_TOPIC_TITLE_POLICY, type CouncilTopicTitleHistoryPage } from '.
 import { existingRowDate, MEETING_DATE_TARGET, PREACH_DATE_TARGET } from './datedRowAction';
 import { metadataAfterDatedRow, orderDatedRow } from './datedRowOrder.server';
 import { documentFieldPath } from './documentFieldAction';
-import { metadataAfterDocumentFields, orderDocumentFields, DOCUMENT_TITLE_HISTORY, GROUP_STATUS_HISTORY, DOCUMENT_METADATA_HISTORY, SERMON_CHURCH_HISTORY, SERMON_GOAL_TYPE_HISTORY, SERMON_VERSE_HISTORY, STUDY_NOTE_TYPE_HISTORY } from './documentFieldOrder.server';
+import { metadataAfterDocumentFields, orderDocumentFields, DOCUMENT_TITLE_HISTORY, GROUP_STATUS_HISTORY, DOCUMENT_METADATA_HISTORY, SERMON_CHURCH_HISTORY, SERMON_GOAL_TYPE_HISTORY, SERMON_VERSE_HISTORY, STUDY_NOTE_TYPE_HISTORY, COMMENT_KIND_HISTORY } from './documentFieldOrder.server';
 import { DOCUMENT_TAG_HISTORY, documentTagCollection, tagField, tagMembership, type DocumentTagHistoryPage } from './documentTagMembership';
 import { metadataAfterDocumentTags, orderDocumentTags } from './documentTagOrder.server';
 import { exegeticalPointConflictId } from './exegeticalPointAction';
@@ -53,6 +53,7 @@ import { metadataAfterThoughtTags, orderThoughtTags } from './thoughtTagOrder.se
 
 import type { AudioExportKey, AudioExportRecord, AudioExportStore, AudioExportTransaction, AudioExportUsage } from './audioExportStore';
 import type { BibleMarkHistoryEntry, BibleMarkHistoryPage } from './bibleMarkStroke';
+import type { CommentKindHistoryPage } from './commentKindAction';
 import type { CouncilMetadataHistoryPage } from './councilFieldAction';
 import type { DisplacedRowDate, MeetingDateHistoryPage, PreachDateHistoryPage } from './datedRowAction';
 import type { GroupStatusHistoryPage, GroupTitleHistoryPage, DocumentTitleHistoryEntry, PlanTemplateNameHistoryPage, SermonChurchHistoryPage, SermonGoalTypeHistoryPage, SermonPreparationConfirmationHistoryPage, PrayerTitleHistoryPage, SermonTitleHistoryPage, SermonVerseHistoryPage, ServiceOrderTitleHistoryPage, StudyNoteTitleHistoryPage, StudyNoteTypeHistoryPage, TagColorHistoryPage } from './documentFieldAction';
@@ -632,6 +633,7 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
       status: { collection: GROUP_STATUS_HISTORY, winner: 'winnerStatus' },
       verse: { collection: SERMON_VERSE_HISTORY, winner: 'winnerVerse' },
       church: { collection: SERMON_CHURCH_HISTORY, winner: 'winnerChurch' },
+      paragraph: { collection: COMMENT_KIND_HISTORY, winner: 'winnerParagraph' },
       type: { collection: target.action === 'studyNoteTypeAction' ? STUDY_NOTE_TYPE_HISTORY : SERMON_GOAL_TYPE_HISTORY, winner: 'winnerType' },
     }[field];
     const history = adminDb.collection(command.resource.collection).doc(command.resource.id).collection(destination.collection);
@@ -1034,6 +1036,13 @@ export async function listPlanTemplateNameHistory(owner: string, templateId: str
   const resource = { collection: 'planTemplates', id: templateId };
   const page = await listHistoryEntries<DocumentTitleHistoryEntry>(owner, resource, DOCUMENT_TITLE_HISTORY, generation, cursor, 'template-gone');
   return { owner, templateId, generation, ...page };
+}
+
+export async function listCommentKindHistory(owner: string, noteId: string, generation: string, cursor?: string): Promise<CommentKindHistoryPage> {
+  const resource = { collection: 'studyNotes', id: noteId };
+  const page = await listHistoryEntries<CommentKindHistoryPage['entries'][number]>(owner, resource, COMMENT_KIND_HISTORY, generation, cursor, 'note-gone');
+  return { owner, noteId, generation, ...page, entries: page.entries.filter(entry => typeof entry.paragraph === 'boolean'
+    && typeof entry.winnerParagraph === 'boolean') };
 }
 
 export async function listStudyNoteTypeHistory(owner: string, noteId: string, generation: string, cursor?: string): Promise<StudyNoteTypeHistoryPage> {

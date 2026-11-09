@@ -396,10 +396,10 @@ describe('CommentDialog', () => {
     const { unmount } = render(<CommentDialog target={{ kind: 'edit', id: 'c1' }} place="Ис 40:31" onClose={jest.fn()} paragraphChoice={{ initial: false }} />);
     await userEvent.click(screen.getByRole('button', { name: 'comment.kind.paragraph' }));
     await userEvent.click(screen.getByRole('button', { name: 'common.done' }));
-    expect(mockEngine.updateNote).toHaveBeenLastCalledWith(expect.objectContaining({ updates: { paragraph: true }, expectedBaseline: { paragraph: undefined } }));
+    expect(mockEngine.updateNote).toHaveBeenLastCalledWith(expect.objectContaining({ updates: { paragraph: true }, expectedBaseline: { paragraph: undefined, scriptureRefs: [reference] } }));
     await userEvent.click(await screen.findByRole('button', { name: 'freshness.conflictKeepMine' }));
     await waitFor(() => expect(mockEngine.updateNote).toHaveBeenCalledTimes(2));
-    expect(mockEngine.updateNote).toHaveBeenLastCalledWith(expect.objectContaining({ updates: { paragraph: true }, expectedRevision: 6, expectedBaseline: { paragraph: false } }));
+    expect(mockEngine.updateNote).toHaveBeenLastCalledWith(expect.objectContaining({ updates: { paragraph: true }, expectedRevision: 6, expectedBaseline: { paragraph: false, scriptureRefs: [reference] } }));
     unmount();
 
     mockEngine.updateNote.mockReset().mockImplementationOnce(refused).mockImplementation(() => ({ ...accepted(), result: Promise.resolve({}) }) as never);
@@ -485,7 +485,7 @@ describe('CommentDialog', () => {
     await userEvent.click(within(await screen.findByRole('status')).getByRole('button', { name: 'unsavedDraft.restore' }));
     expect(screen.getByRole('button', { name: kindName })).toHaveAttribute('aria-pressed', 'true');
     await userEvent.click(screen.getByRole('button', { name: 'common.done' }));
-    expect(mockEngine.updateNote).toHaveBeenCalledWith(expect.objectContaining({ updates: { paragraph }, expectedBaseline: { paragraph: !paragraph } }));
+    expect(mockEngine.updateNote).toHaveBeenCalledWith(expect.objectContaining({ updates: { paragraph }, expectedBaseline: { paragraph: !paragraph, scriptureRefs: [reference] } }));
     await waitFor(() => expect(keptDrafts()).toEqual([]));
   });
 
