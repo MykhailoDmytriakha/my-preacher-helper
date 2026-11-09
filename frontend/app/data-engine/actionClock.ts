@@ -5,7 +5,7 @@ export function usesActionClock(collection: string): boolean {
 }
 
 export function readsDocumentActionClock(collection: string): boolean {
-  return collection === 'groups' || collection === 'series' || collection === 'councils' || collection === 'prayerRequests' || collection === 'studyNotes' || collection === 'planTemplates' || collection === 'tags';
+  return collection === 'sermons' || collection === 'groups' || collection === 'series' || collection === 'councils' || collection === 'prayerRequests' || collection === 'studyNotes' || collection === 'planTemplates' || collection === 'tags';
 }
 
 export type ActionTime = { earliestMs: number; latestMs: number };

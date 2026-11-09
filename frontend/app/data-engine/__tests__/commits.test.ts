@@ -918,6 +918,65 @@ describe('Durable commit requests', () => {
     }));
   });
 
+  it('keeps a single group lock capture for two thoughts across a queue restart', async () => {
+    const one = { id: 'one', date: '2026-11-08', text: 'One', tags: [] };
+    const two = { ...one, id: 'two', text: 'Two', isLocked: true };
+    const other = { ...one, id: 'other', text: 'Other' };
+    const opening: ResourceSnapshot = {
+      resource: { collection: 'sermons', id: 'sermon' },
+      value: { userId: 'owner', title: 'Sermon', verse: 'John 1:1', date: one.date, thoughts: [one, two, other] },
+      metadata: { protocol: 1, generation: 'sermon', revision: 1, deleted: false },
+    };
+    const s = setup({ opening });
+    const editor = new DataSession(opening);
+    const time = { earliestMs: 1_800_000_000_030, latestMs: 1_800_000_000_034 };
+    const locked = { ...one, isLocked: true };
+    editor.edit({ ...opening.value, thoughts: [locked, two, other] }, undefined,
+      { field: 'thought-lock', rowIds: [one.id, two.id], time });
+    const record = await s.makeQueue().queue.save('page', editor.checkpoint());
+    const actions = [
+      { rowId: one.id, rowCreatedAt: one.date, before: false, after: true, observedRevision: 1, time },
+      { rowId: two.id, rowCreatedAt: two.date, before: true, after: true, observedRevision: 1, time },
+    ];
+    expect(record?.thoughtLockActions).toEqual(actions);
+    await s.makeQueue().queue.drain(true);
+    expect(s.transport.send).toHaveBeenCalledWith(expect.objectContaining({ operationId: record!.id, thoughtLockActions: actions,
+      changes: [{ path: ['thoughts'], before: { exists: true, value: [{ ...one, isLocked: false }, two, other] }, after: { exists: true, value: [locked, two, other] } }],
+    }));
+  });
+
+  it.each(['deleted', 'replaced'])('does not restore a %s thought when keeping its rejected offline lock', async mode => {
+    const thought = { id: 'one', date: '2026-11-08', text: 'Old text', tags: [], isLocked: false };
+    const opening: ResourceSnapshot = {
+      resource: { collection: 'sermons', id: 'sermon' },
+      value: { userId: 'owner', title: 'Sermon', verse: 'John 1:1', date: thought.date, thoughts: [thought] },
+      metadata: { protocol: 1, generation: 'sermon', revision: 1, deleted: false },
+    };
+    const s = setup({ opening, nativeChoice: true });
+    const engine = s.makeEngine(), editor = await engine.openEditor(opening.resource, 'page');
+    try {
+      const locked = { ...thought, isLocked: true };
+      await editor.edit({ ...opening.value, thoughts: [locked] }, undefined, { field: 'thought-lock', rowIds: [thought.id], time: null });
+      await editor.save();
+      const stored = mode === 'deleted' ? [] : [{ ...thought, date: '2026-11-09', text: 'Replacement' }];
+      s.replace({ ...opening, value: { ...opening.value, thoughts: stored }, metadata: { ...opening.metadata!, revision: 2 } });
+      if (mode === 'replaced') jest.mocked(s.transport.send).mockResolvedValueOnce({
+        kind: 'conflict', operationId: Object.keys(editor.getState().checkpoint.pending)[0], snapshot: s.server(),
+        conflicts: [{ path: ['thoughts', 'id:one', 'isLocked'], base: { exists: true, value: false },
+          mine: { exists: true, value: true }, theirs: { exists: true, value: false } }],
+      });
+      engine.setOnline(true); await engine.retry(); await settle();
+      expect(editor.getState().result?.kind).toBe('conflict');
+      await expect(editor.keepLocal()).rejects.toMatchObject({ code: 'decision-changed' });
+      expect(editor.getState().checkpoint.draft?.thoughts).toEqual([locked]);
+      expect(s.server().value?.thoughts).toEqual(stored);
+      if (mode === 'deleted') {
+        await editor.acceptRemote();
+        expect(editor.getState().checkpoint.draft?.thoughts).toEqual(stored);
+      }
+    } finally { engine.dispose(); }
+  });
+
   it('cannot recreate a removed group block by keeping its offline title', async () => {
     const block = { id: 'block', type: 'custom', title: 'Original', content: 'Words', status: 'draft', createdAt: 'now', updatedAt: 'now' };
     const step = { id: 'step', templateId: block.id, order: 1 };

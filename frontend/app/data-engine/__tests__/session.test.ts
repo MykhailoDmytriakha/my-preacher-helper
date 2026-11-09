@@ -1,5 +1,6 @@
 import { projectExactManualChoice } from '../manualChoice';
 import { applyCommand, validateCommand } from '../protocol';
+import { keepUncontestedSermonFields } from '../sermonFieldChoice';
 import { DataSession } from '../session';
 import type { CommitRequest } from '../commits';
 import type { PreachStatusAction } from '../preachStatusAction';
@@ -7,6 +8,41 @@ import type { ResourceSnapshot } from '../types';
 const snap = (content = 'base', revision = 1): ResourceSnapshot => ({ resource: { collection: 'studyNotes', id: 'one' }, value: { content }, metadata: { protocol: 1, generation: 'g1', revision, deleted: false } });
 
 describe('DataSession', () => {
+  it('keeps a reselected unlocked thought after an uncertain conflict without replacing its remote words', () => {
+    const thought = { id: 'one', date: '2026-11-08', tags: [], text: 'Original words' };
+    const neighbor = { ...thought, id: 'neighbor', isLocked: true };
+    const base = { ...snap(), resource: { collection: 'sermons', id: 'sermon' }, value: { thoughts: [thought, neighbor] } };
+    const saved = { ...thought, text: 'Later words', isLocked: true };
+    const candidate = { ...base, metadata: { ...base.metadata!, revision: 2 }, value: { thoughts: [saved, neighbor] } };
+    const editor = new DataSession(base);
+    editor.registerCommit('lock-save', 1, base.value);
+    editor.accept({ kind: 'conflict', operationId: 'lock-save', snapshot: candidate, conflicts: [{
+      path: ['thoughts', 'id:one', 'isLocked'], base: { exists: true, value: false },
+      mine: { exists: true, value: false }, theirs: { exists: true, value: true },
+    }] });
+    editor.release('lock-save');
+    editor.keepLocal();
+    expect(editor.checkpoint()).toMatchObject({
+      confirmed: candidate, dirty: true, draft: { thoughts: [{ ...saved, isLocked: false }, neighbor] },
+    });
+  });
+
+  it('accepts an omitted saved lock exactly and preserves independent thought edits', () => {
+    const thought = { id: 'one', date: '2026-11-08', tags: [], text: 'Original words' };
+    const neighbor = { ...thought, id: 'neighbor' };
+    const base = { ...snap(), resource: { collection: 'sermons', id: 'sermon' }, value: { thoughts: [thought, neighbor] } };
+    const saved = { ...thought, text: 'Later words' };
+    const candidate = { ...base, metadata: { ...base.metadata!, revision: 2 }, value: { thoughts: [saved, neighbor] } };
+    const conflicts = [{ path: ['thoughts', 'id:one', 'isLocked'], base: { exists: true, value: false },
+      mine: { exists: true, value: true }, theirs: { exists: true, value: false } }];
+    const locked = { ...thought, isLocked: true };
+    expect(keepUncontestedSermonFields(base, { thoughts: [locked, neighbor] }, candidate, conflicts)).toEqual(candidate.value);
+    const otherEdit = { ...neighbor, isLocked: true };
+    expect(keepUncontestedSermonFields(base, { thoughts: [locked, otherEdit] }, candidate, conflicts)).toEqual({
+      thoughts: [saved, otherEdit],
+    });
+  });
+
   it('keeps a deliberately reselected empty duration without replacing the remote step title', () => {
     const step = { id: 'step', templateId: 'template', order: 1, durationMin: null, instanceTitle: 'Old title' };
     const base = { ...snap(), resource: { collection: 'groups', id: 'group' }, value: { flow: [step] } };

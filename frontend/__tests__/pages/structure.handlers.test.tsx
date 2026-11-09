@@ -5,8 +5,8 @@ import '@testing-library/jest-dom';
 import StructurePage from '@/(pages)/(private)/sermons/[id]/structure/page';
 import { useSermonStructureData } from '@/hooks/useSermonStructureData';
 import { getExportContent } from '@/utils/exportContent';
-import { changedFields } from '@/utils/changedFields';
 import { mergeOutline } from '@/utils/mergeOutline';
+import type { DocumentData } from '@/data-engine/types';
 import { toast } from 'sonner';
 import { createMockSermon, createMockThought, createMockItem, createMockSermonPoint } from '@test-utils/structure-test-utils';
 
@@ -14,6 +14,7 @@ jest.mock('@/hooks/useSermonStructureData');
 const mockEngineWriter = {
   updateStructure: jest.fn().mockResolvedValue({}),
   updateThought: jest.fn(async (_id: string, thought: unknown) => thought),
+  setThoughtLocks: jest.fn<Promise<void>, [readonly { id: string; date: string }[], boolean]>().mockResolvedValue(undefined),
   deleteThought: jest.fn().mockResolvedValue(undefined),
   createManualThought: jest.fn(async (_id: string, thought: unknown) => thought),
   updateSermonOutline: jest.fn().mockResolvedValue(null),
@@ -23,6 +24,7 @@ jest.mock('@/data-engine/react.client', () => ({
   ...jest.requireActual('@/data-engine/react.client'),
   DataDocumentProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   useDataEngine: () => ({ owner: 'user-1', browser: null, error: null }),
+  useOpenDocumentAnswerScopes: () => [],
 }));
 jest.mock('@/data-engine/DataSyncStatus', () => ({ DataSyncStatus: () => <div data-testid="engine-sync-status" /> }));
 jest.mock('@/(pages)/(private)/sermons/[id]/structure/useEngineStructureWriter', () => ({
@@ -36,6 +38,7 @@ jest.mock('@/(pages)/(private)/sermons/[id]/structure/useEngineStructureWriter',
 // Every write the page makes goes through the engine writer; these are its recording functions.
 const updateStructure = mockEngineWriter.updateStructure;
 const updateThought = mockEngineWriter.updateThought;
+const setThoughtLocks = mockEngineWriter.setThoughtLocks;
 const deleteThought = mockEngineWriter.deleteThought;
 const updateSermonOutline = mockEngineWriter.updateSermonOutline;
 jest.mock('@/utils/exportContent', () => ({
@@ -191,6 +194,7 @@ jest.mock('@/components/ui/ConfirmModal', () => ({
 
 jest.mock('@/components/Column', () => {
   const MockColumn = (props: any) => {
+    const clickedPointLock = React.useRef(false);
     React.useEffect(() => {
       addOutlinePointHandler = props.onAddOutlinePoint;
       if (suppressAutomaticColumnHandlers) return;
@@ -211,7 +215,8 @@ jest.mock('@/components/Column', () => {
         props.onSubPointDeleted?.('op-1', 'sp-1', props.id);
       }
       void props.onAddOutlinePoint?.(props.id, 0, 'Inserted point');
-      if (autoTriggerPointLock) {
+      if (autoTriggerPointLock && !clickedPointLock.current) {
+        clickedPointLock.current = true;
         void props.onTogglePointLock?.('op-1', true);
       }
       if (autoTriggerThoughtLock) {
@@ -319,7 +324,7 @@ describe('StructurePage handlers', () => {
     await waitFor(() => {
       expect(pushSpy).toHaveBeenCalled();
       expect(deleteThought).toHaveBeenCalled();
-      expect(updateThought).toHaveBeenCalled();
+      expect(setThoughtLocks).toHaveBeenCalled();
       expect(updateSermonOutline).toHaveBeenCalled();
       expect(updateStructure).toHaveBeenCalled();
       expect(getExportContent).toHaveBeenCalled();
@@ -426,13 +431,8 @@ describe('StructurePage handlers', () => {
     render(<StructurePage />);
 
     await waitFor(() => {
-      // The baseline is part of the contract, not decoration: it is what narrows the
-      // write down to `isLocked` instead of the whole thought.
-      expect(updateThought).toHaveBeenCalledWith(
-        'sermon-1',
-        expect.objectContaining({ id: 't1', isLocked: true }),
-        expect.objectContaining({ id: 't1', isLocked: false }),
-      );
+      expect(setThoughtLocks).toHaveBeenCalledWith([expect.objectContaining({ id: 't1', date: sermon.thoughts[0].date })], true);
+      expect(updateThought).not.toHaveBeenCalledWith('sermon-1', expect.objectContaining({ isLocked: true }), expect.anything());
     });
 
     // A lock write is offline-first (`queued`): the server may still refuse it, so
@@ -461,8 +461,8 @@ describe('StructurePage handlers', () => {
     });
     try {
       render(<StructurePage />);
-      await waitFor(() => expect(mockEngineWriter.updateThought).toHaveBeenCalledWith(
-        'sermon-1', expect.objectContaining({ id: 't1', isLocked: true }), expect.objectContaining({ id: 't1', isLocked: false })));
+      await waitFor(() => expect(setThoughtLocks).toHaveBeenCalledWith(
+        [expect.objectContaining({ id: 't1', date: sermon.thoughts[0].date })], true));
       const engineSource = (useSermonStructureData as jest.Mock).mock.calls.at(-1)![1];
       expect(engineSource.sermon).toEqual(expect.objectContaining({ id: 'sermon-1', userId: 'user-1' }));
       expect(screen.getByTestId('engine-sync-status')).toBeInTheDocument();
@@ -471,89 +471,28 @@ describe('StructurePage handlers', () => {
     }
   });
 
-  /**
-   * LOCKING A THOUGHT MUST NOT REVERT ITS TEXT.
-   *
-   * The lock toggle sends `{ ...thought, isLocked }`, where `thought` is this
-   * screen's copy. The writer claims every field it is handed as changed unless it
-   * is told what the screen STARTED from, so a tab that has been open since morning
-   * republishes its stale text on top of an afternoon rewrite — and the person only
-   * pressed a padlock.
-   *
-   * The assertion is about what SURVIVED in the stored thought, not about the
-   * arguments of the call: a call-shape assertion stays green while the field diff
-   * is broken, which is exactly what the neighbouring test above cannot catch.
-   */
-  it('keeps a text rewritten on another device when a thought is locked here', async () => {
-    autoTriggerPointLock = false;
-    autoTriggerThoughtLock = true;
-
-    /** Stands in for the stored document — rewritten on the phone since this load. */
-    let storedThought = createMockThought({
-      id: 't1',
-      text: 'Rewritten on the phone',
-      tags: ['Introduction'],
-      outlinePointId: 'op-1',
-      isLocked: false,
+  it('locks only the displayed thought identities and keeps current text, placement, and independent locks', async () => {
+    const date = '2026-11-08T00:00:00.000Z';
+    const first = createMockThought({ id: 't1', date, text: 'Rewritten on the phone' });
+    const second = createMockThought({ id: 't2', date, text: 'Another thought', isLocked: true });
+    const third = createMockThought({ id: 't3', date, text: 'Untouched thought', isLocked: false });
+    const structure = { introduction: ['t1', 't2'], main: ['t3'], conclusion: [], ambiguous: [] };
+    let document = createMockSermon({ userId: 'user-1', thoughts: [first, second, third], structure });
+    const update = jest.fn(async (updater: (value: DocumentData | null) => DocumentData | null) => {
+      document = updater(document as unknown as DocumentData) as unknown as typeof document;
     });
+    const { createEngineStructureWriter } = jest.requireActual<typeof import('@/(pages)/(private)/sermons/[id]/structure/useEngineStructureWriter')>(
+      '@/(pages)/(private)/sermons/[id]/structure/useEngineStructureWriter');
+    const writer = createEngineStructureWriter({ update }, 'user-1');
 
-    (updateThought as jest.Mock).mockImplementation(
-      async (_sermonId: string, updated: typeof storedThought, base?: typeof storedThought | null) => {
-        // Exactly what the engine writer does: with no base every field
-        // handed over is claimed as changed.
-        const intent = base ? changedFields(base, updated) : updated;
-        storedThought = { ...storedThought, ...intent };
-        return storedThought;
-      }
-    );
+    await writer.setThoughtLocks([{ id: first.id, date }, { id: second.id, date }], true);
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(update).toHaveBeenCalledWith(expect.any(Function), { action: { kind: 'thought-lock', rowIds: ['t1', 't2'] } });
+    expect(document.thoughts).toEqual([{ ...first, isLocked: true }, second, third]);
+    expect(document.structure).toEqual(structure);
 
-    const sermon = createMockSermon({
-      id: 'sermon-1',
-      thoughts: [
-        createMockThought({
-          id: 't1',
-          // What this screen still shows: the wording from before the phone edit.
-          text: 'This morning text',
-          tags: ['Introduction'],
-          outlinePointId: 'op-1',
-          isLocked: false,
-        }),
-      ],
-      structure: { introduction: ['t1'], main: [], conclusion: [], ambiguous: [] },
-      outline: {
-        introduction: [createMockSermonPoint({ id: 'op-1', text: 'Point 1' })],
-        main: [],
-        conclusion: [],
-      },
-    });
-
-    (useSermonStructureData as jest.Mock).mockReturnValue({
-      sermon,
-      setSermon: jest.fn(),
-      containers: {
-        introduction: [createMockItem({ id: 't1', content: 'This morning text', outlinePointId: 'op-1', isLocked: false })],
-        main: [],
-        conclusion: [],
-        ambiguous: [],
-      },
-      setContainers: jest.fn(),
-      outlinePoints: sermon.outline,
-      requiredTagColors: { introduction: '#000', main: '#000', conclusion: '#000' },
-      allowedTags: [],
-      loading: false,
-      error: null,
-      isAmbiguousVisible: true,
-      setIsAmbiguousVisible: jest.fn(),
-      syncFromEngine: jest.fn(),
-      retry: jest.fn(),
-    });
-
-    render(<StructurePage />);
-
-    // The lock landed...
-    await waitFor(() => expect(storedThought.isLocked).toBe(true));
-    // ...and the words written on the other device are still there.
-    expect(storedThought.text).toBe('Rewritten on the phone');
+    await expect(writer.setThoughtLocks([{ id: 't1', date: 'replaced' }, { id: 't3', date }], true)).rejects.toThrow();
+    expect(document.thoughts).toEqual([{ ...first, isLocked: true }, second, third]);
   });
 
   it('clears sub-point ids when an outline point is deleted', async () => {
@@ -687,164 +626,31 @@ describe('StructurePage handlers', () => {
     });
   });
 
-  it('rolls back optimistic point locking when one persistence request fails', async () => {
-    let sermonState = createMockSermon({
-      id: 'sermon-1',
-      thoughts: [
-        createMockThought({ id: 't1', text: 'Intro 1', tags: ['Introduction'], outlinePointId: 'op-1', isLocked: false }),
-        createMockThought({ id: 't2', text: 'Intro 2', tags: ['Introduction'], outlinePointId: 'op-1', isLocked: false }),
-      ],
-      structure: {
-        introduction: ['t1', 't2'],
-        main: [],
-        conclusion: [],
-        ambiguous: [],
-      },
-      outline: {
-        introduction: [createMockSermonPoint({ id: 'op-1', text: 'Point 1' })],
-        main: [],
-        conclusion: [],
-      },
-    });
-
-    let containersState: Record<string, any[]> = {
-      introduction: [
-        createMockItem({ id: 't1', content: 'Intro 1', outlinePointId: 'op-1', isLocked: false }),
-        createMockItem({ id: 't2', content: 'Intro 2', outlinePointId: 'op-1', isLocked: false }),
-      ],
-      main: [],
-      conclusion: [],
-      ambiguous: [],
-    };
-    const originalSermon = sermonState;
-    const originalContainers = containersState;
-
-    const setSermon = jest.fn((updater: any) => {
-      sermonState = typeof updater === 'function' ? updater(sermonState) : updater;
-    });
-    const setContainers = jest.fn((updater: any) => {
-      containersState = typeof updater === 'function' ? updater(containersState) : updater;
-    });
-
-    (updateThought as jest.Mock)
-      .mockResolvedValueOnce({})
-      .mockRejectedValueOnce(new Error('lock failed'))
-      .mockResolvedValueOnce({});
-
-    (useSermonStructureData as jest.Mock).mockReturnValue({
-      sermon: sermonState,
-      setSermon,
-      containers: containersState,
-      setContainers,
-      outlinePoints: sermonState.outline,
-      requiredTagColors: { introduction: '#000', main: '#000', conclusion: '#000' },
-      allowedTags: [],
-      loading: false,
-      error: null,
-      isAmbiguousVisible: true,
-      setIsAmbiguousVisible: jest.fn(),
-      syncFromEngine: jest.fn(),
-      retry: jest.fn(),
-    });
-
-    render(<StructurePage />);
-
-    await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith('Failed to save thought.');
-    });
-
-    // Each write states its baseline, so lock and rollback both carry `isLocked`
-    // alone and never the rest of this screen's copy of the thought.
-    expect(updateThought).toHaveBeenCalledWith(
-      'sermon-1',
-      expect.objectContaining({ id: 't1', isLocked: true }),
-      expect.objectContaining({ id: 't1', isLocked: false }),
-    );
-    expect(updateThought).toHaveBeenCalledWith(
-      'sermon-1',
-      expect.objectContaining({ id: 't2', isLocked: true }),
-      expect.objectContaining({ id: 't2', isLocked: false }),
-    );
-    expect(updateThought).toHaveBeenCalledWith(
-      'sermon-1',
-      expect.objectContaining({ id: 't1', isLocked: false }),
-      expect.objectContaining({ id: 't1', isLocked: true }),
-    );
-    expect(setSermon).toHaveBeenCalledWith(originalSermon);
-    expect(setContainers).toHaveBeenCalledWith(originalContainers);
-  });
-
-  it('stores an unlocked rollback for a legacy thought without an isLocked field', async () => {
-    const firstThought = createMockThought({
-      id: 't1',
-      text: 'Legacy thought 1',
-      tags: ['Introduction'],
-      outlinePointId: 'op-1',
-    });
-    const secondThought = createMockThought({
-      id: 't2',
-      text: 'Legacy thought 2',
-      tags: ['Introduction'],
-      outlinePointId: 'op-1',
-    });
-    let storedThoughts = {
-      t1: { ...firstThought },
-      t2: { ...secondThought },
-    };
-
-    (updateThought as jest.Mock).mockImplementation(
-      async (_sermonId: string, next: typeof firstThought, base?: typeof firstThought | null) => {
-        if (next.id === 't2' && next.isLocked === true) {
-          throw new Error('lock failed');
-        }
-        const intent = changedFields(base, next);
-        storedThoughts = {
-          ...storedThoughts,
-          [next.id]: { ...storedThoughts[next.id as keyof typeof storedThoughts], ...intent },
-        };
-        return storedThoughts[next.id as keyof typeof storedThoughts];
-      }
-    );
-
+  it('submits the point locks in one write and leaves the displayed copy intact on failure', async () => {
+    const date = '2026-11-08T00:00:00.000Z';
+    const first = createMockThought({ id: 't1', date, text: 'Intro 1', outlinePointId: 'op-1' });
+    const second = createMockThought({ id: 't2', date, text: 'Intro 2', outlinePointId: 'op-1', isLocked: true });
     const sermon = createMockSermon({
-      id: 'sermon-1',
-      thoughts: [firstThought, secondThought],
+      id: 'sermon-1', thoughts: [first, second],
       structure: { introduction: ['t1', 't2'], main: [], conclusion: [], ambiguous: [] },
-      outline: {
-        introduction: [createMockSermonPoint({ id: 'op-1', text: 'Point 1' })],
-        main: [],
-        conclusion: [],
-      },
+      outline: { introduction: [createMockSermonPoint({ id: 'op-1', text: 'Point 1' })], main: [], conclusion: [] },
     });
-
+    const containers = { introduction: [createMockItem({ id: 't1' }), createMockItem({ id: 't2', isLocked: true })],
+      main: [], conclusion: [], ambiguous: [] };
+    setThoughtLocks.mockRejectedValueOnce(new Error('lock failed'));
     (useSermonStructureData as jest.Mock).mockReturnValue({
-      sermon,
-      setSermon: jest.fn(),
-      containers: {
-        introduction: [
-          createMockItem({ id: 't1', content: firstThought.text, outlinePointId: 'op-1' }),
-          createMockItem({ id: 't2', content: secondThought.text, outlinePointId: 'op-1' }),
-        ],
-        main: [],
-        conclusion: [],
-        ambiguous: [],
-      },
-      setContainers: jest.fn(),
-      outlinePoints: sermon.outline,
-      requiredTagColors: { introduction: '#000', main: '#000', conclusion: '#000' },
-      allowedTags: [],
-      loading: false,
-      error: null,
-      isAmbiguousVisible: true,
-      setIsAmbiguousVisible: jest.fn(),
-      syncFromEngine: jest.fn(),
-      retry: jest.fn(),
+      sermon, containers, outlinePoints: sermon.outline, setSermon: jest.fn(), setContainers: jest.fn(),
+      requiredTagColors: { introduction: '#000', main: '#000', conclusion: '#000' }, allowedTags: [],
+      loading: false, error: null, isAmbiguousVisible: true, setIsAmbiguousVisible: jest.fn(),
+      syncFromEngine: jest.fn(), retry: jest.fn(),
     });
 
     render(<StructurePage />);
 
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Failed to save thought.'));
-    expect(storedThoughts.t1.isLocked).toBe(false);
+    expect(setThoughtLocks.mock.calls[0]).toEqual([[first, second], true]);
+    expect(setThoughtLocks).toHaveBeenCalledTimes(1);
+    expect(sermon.thoughts.map(thought => Boolean(thought.isLocked))).toEqual([false, true]);
   });
 
   it('toggles vertical layout and persists preference when not in focus mode', async () => {

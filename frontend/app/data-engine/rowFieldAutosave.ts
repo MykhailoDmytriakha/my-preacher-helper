@@ -7,6 +7,7 @@ import { GROUP_STEP_DURATION_POLICY } from './groupStepDurationAction';
 import { matchesRowDetailBirth } from './rowDetailAction';
 import { knownRowDetailPredecessor, pendingRowDetailRebases } from './rowDetailCapture';
 import { boundedRowId, existingRowField, existingRowFields, isCapturedRowConflict, matchesRowAction, replaceExistingRowField, rowConflictPath } from './rowFieldAction';
+import { THOUGHT_LOCK_POLICY } from './thoughtLockAction';
 
 import type { ActionTime } from './actionClock';
 import type { CommitRequest } from './commits';
@@ -14,13 +15,15 @@ import type { RowDetailObservation, RowDetailPolicy } from './rowDetailAction';
 import type { SessionCheckpoint, ShownCopy } from './session';
 import type { ConflictDetail, DocumentData, FieldChange, ResourceSnapshot } from './types';
 
-type Value = string | number | null;
+type Value = string | number | boolean | null;
 type Action = RowDetailObservation<Value>;
 type Draft = { generation: string; action: Action };
-type DraftKey = 'councilTopicTitleDrafts' | 'groupBlockTitleDrafts' | 'groupStepTitleDrafts' | 'groupBlockStatusDrafts' | 'groupStepDurationDrafts';
-type ActionKey = 'councilTopicTitleActions' | 'groupBlockTitleActions' | 'groupStepTitleActions' | 'groupBlockStatusActions' | 'groupStepDurationActions';
-export type RowFieldActionKind = 'council-topic-title' | 'group-block-title' | 'group-step-title' | 'group-block-status' | 'group-step-duration';
-export type RowFieldStamp = { field: RowFieldActionKind; rowId: string; time: ActionTime | null };
+type DraftKey = 'councilTopicTitleDrafts' | 'groupBlockTitleDrafts' | 'groupStepTitleDrafts' | 'groupBlockStatusDrafts' | 'groupStepDurationDrafts' | 'thoughtLockDrafts';
+type ActionKey = 'councilTopicTitleActions' | 'groupBlockTitleActions' | 'groupStepTitleActions' | 'groupBlockStatusActions' | 'groupStepDurationActions' | 'thoughtLockActions';
+export type RowFieldActionKind = 'council-topic-title' | 'group-block-title' | 'group-step-title' | 'group-block-status' | 'group-step-duration' | 'thought-lock';
+export type RowFieldStamp = { field: RowFieldActionKind; time: ActionTime | null } & (
+  { rowId: string } | { rowIds: readonly string[] }
+);
 export type RowFieldDrafts = Partial<Record<DraftKey, Record<string, Draft>>>;
 export type AutosaveRowFieldActions = Partial<Record<ActionKey, Action[]>>;
 
@@ -42,6 +45,7 @@ const TARGETS: readonly Target[] = [
   autosaveTarget(GROUP_STEP_TITLE_POLICY, 'title', 'group-step-title', 'groupStepTitleDrafts', 'groupStepTitleActions'),
   autosaveTarget(GROUP_BLOCK_STATUS_POLICY, 'status', 'group-block-status', 'groupBlockStatusDrafts', 'groupBlockStatusActions'),
   autosaveTarget(GROUP_STEP_DURATION_POLICY, 'durationMin', 'group-step-duration', 'groupStepDurationDrafts', 'groupStepDurationActions'),
+  autosaveTarget(THOUGHT_LOCK_POLICY, 'isLocked', 'thought-lock', 'thoughtLockDrafts', 'thoughtLockActions'),
 ];
 
 const targetsFor = (collection: string) => TARGETS.filter(target => target.policy.collection === collection);
@@ -63,26 +67,36 @@ function validDrafts(checkpoint: SessionCheckpoint, value: DocumentData | null, 
     && birthAt(value, action.rowId, target) === action.rowCreatedAt);
 }
 
+function observeRowEdit(checkpoint: SessionCheckpoint, value: DocumentData | null, visible: ShownCopy,
+  target: Target, rowId: string, time: ActionTime | null, prior?: Action): Action | undefined {
+  if (!boundedRowId(rowId)) return;
+  const old = fieldAt(checkpoint.draft, rowId, target), after = fieldAt(value, rowId, target);
+  const rowCreatedAt = birthAt(checkpoint.draft, rowId, target);
+  if (old === undefined || after === undefined || (old === after && !target.keepReselection)
+    || rowCreatedAt === undefined || birthAt(value, rowId, target) !== rowCreatedAt
+    || (visible.draft && birthAt(visible.draft, rowId, target) !== rowCreatedAt)) return;
+  const typing = prior && !isCaptured(checkpoint, prior, target);
+  const shownValue = fieldAt(visible.draft, rowId, target);
+  const before = typing ? prior.before : shownValue === undefined ? old : shownValue;
+  const observedRevision = prior?.observedRevision ?? visible.confirmed.metadata!.revision;
+  if (before !== after || target.keepReselection) return { rowId, rowCreatedAt, before, after, time, observedRevision };
+}
+
 function stageField(checkpoint: SessionCheckpoint, value: DocumentData | null, shown: ShownCopy | undefined,
   stamp: RowFieldStamp | undefined, target: Target): Draft[] {
   const staged = validDrafts(checkpoint, value, target);
   const metadata = checkpoint.confirmed.metadata;
-  if (!metadata || metadata.deleted || stamp?.field !== target.stamp || !boundedRowId(stamp.rowId)) return staged;
-  const { rowId } = stamp;
-  const old = fieldAt(checkpoint.draft, rowId, target), after = fieldAt(value, rowId, target);
+  if (!metadata || metadata.deleted || stamp?.field !== target.stamp) return staged;
   const time = stamp.time === null ? null : boundedActionTime(stamp.time);
-  const rowCreatedAt = birthAt(checkpoint.draft, rowId, target);
-  if (time === undefined || old === undefined || after === undefined || (old === after && !target.keepReselection)
-    || rowCreatedAt === undefined || birthAt(value, rowId, target) !== rowCreatedAt) return staged;
-  const prior = validDrafts(checkpoint, checkpoint.draft, target).find(item => item.action.rowId === rowId)?.action;
-  const typing = prior && !isCaptured(checkpoint, prior, target);
+  if (time === undefined) return staged;
+  const rowIds = 'rowIds' in stamp ? stamp.rowIds : [stamp.rowId];
+  const priorById = new Map(validDrafts(checkpoint, checkpoint.draft, target).map(item => [item.action.rowId, item.action]));
   const visible = shown?.editGeneration === checkpoint.editGeneration
     && shown.confirmed.metadata?.generation === metadata.generation ? shown : checkpoint;
-  if (visible.draft && birthAt(visible.draft, rowId, target) !== rowCreatedAt) return staged;
-  const shownValue = fieldAt(visible.draft, rowId, target);
-  const before = typing ? prior.before : shownValue === undefined ? old : shownValue;
-  const observedRevision = prior?.observedRevision ?? visible.confirmed.metadata!.revision;
-  if (before !== after || target.keepReselection) staged.push({ generation: metadata.generation, action: { rowId, rowCreatedAt, before, after, time, observedRevision } });
+  for (const rowId of rowIds) {
+    const action = observeRowEdit(checkpoint, value, visible, target, rowId, time, priorById.get(rowId));
+    if (action) staged.push({ generation: metadata.generation, action });
+  }
   return staged;
 }
 

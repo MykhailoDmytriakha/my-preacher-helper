@@ -17,6 +17,11 @@ import type { Sermon, SermonOutline, Thought, ThoughtsBySection } from '@/models
 import type { ThoughtFieldPatch } from '@/utils/sermonThoughtEdits';
 
 type SermonDocument = ReturnType<typeof useDataDocument>;
+export type ShownThoughtIdentity = Pick<Thought, 'id' | 'date'>;
+
+interface EngineStructureWriter extends StructureWriter {
+  setThoughtLocks(thoughts: readonly ShownThoughtIdentity[], isLocked: boolean): Promise<void>;
+}
 
 const THOUGHT_FIELDS: (keyof ThoughtFieldPatch)[] = ['text', 'tags', 'date', 'outlinePointId', 'subPointId', 'position', 'isLocked', 'keyFragments'];
 const asSermon = (value: DocumentData): Sermon => ({ ...value, thoughts: (value.thoughts ?? []) } as unknown as Sermon);
@@ -63,7 +68,7 @@ export function editEngineSermon<T>(document: Pick<SermonDocument, 'update'>, ow
 }
 
 export function createEngineStructureWriter(document: Pick<SermonDocument, 'update'>, owner: string | null,
-  onOutlineConflict?: (outline: SermonOutline, base: SermonOutline | null, stored: SermonOutline | null) => void): StructureWriter {
+  onOutlineConflict?: (outline: SermonOutline, base: SermonOutline | null, stored: SermonOutline | null) => void): EngineStructureWriter {
   const edit = <T,>(apply: (current: Sermon) => { next: Sermon; result: T }) => editEngineSermon(document, owner, apply);
   return {
     updateStructure: (_sermonId, structure, baseStructure, options) => edit(current => {
@@ -80,6 +85,17 @@ export function createEngineStructureWriter(document: Pick<SermonDocument, 'upda
       const next = applyThoughtUpdate(current, thought, baseThought);
       return { next, result: next.thoughts.find(item => item.id === thought.id) ?? thought };
     }),
+    setThoughtLocks: (shown, isLocked) => {
+      const selected = new Map(shown.map(thought => [thought.id, thought.date]));
+      return editEngineSermon(document, owner, current => {
+        const matching = current.thoughts.filter(thought => selected.has(thought.id) && selected.get(thought.id) === thought.date);
+        if (matching.length !== selected.size) throw unavailable();
+        const ids = new Set(matching.map(thought => thought.id));
+        const thoughts = current.thoughts.map(thought => ids.has(thought.id) && Boolean(thought.isLocked) !== isLocked
+          ? { ...thought, isLocked } : thought);
+        return { next: { ...current, thoughts }, result: undefined };
+      }, { action: { kind: 'thought-lock', rowIds: [...selected.keys()] } });
+    },
     deleteThought: (_sermonId, thought) => edit(current => ({ next: deleteSermonThought(current, thought.id), result: undefined })),
     createManualThought: (_sermonId, thought, section) => edit(current => ({ next: addSermonThought(current, thought, section), result: thought })),
     updateSermonOutline: async (_sermonId, outline, baseOutline, onCollision, inputSequence) => {

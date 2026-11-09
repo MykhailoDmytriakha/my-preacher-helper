@@ -785,6 +785,9 @@ export class EditorController {
           if (stored && rowRequests.some(request => request.baseline.resource.collection === 'groups' && missingAutosaveRowFieldTarget(stored, request))) {
             throw Object.assign(new Error('The block or step that was edited is gone'), { code: 'decision-changed' });
           }
+          if (stored && rowRequests.some(request => request.baseline.resource.collection === 'sermons' && missingAutosaveRowFieldTarget(stored, request))) {
+            throw Object.assign(new Error('The thought that was edited is gone'), { code: 'decision-changed' });
+          }
           const statusActions = ordinary ? ordinary.first.preachStatusActions
             : retired.flatMap(request => request.cancelledByChoice && source!.pending[request.id] ? request.preachStatusActions ?? [] : []);
           session.keepLocal(statusActions);

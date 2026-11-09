@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { isCollectionServed } from '@/data-engine/activation';
-import { DataEngineServerError, listBibleMarkHistory, listCouncilMetadataHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listPlanTemplateNameHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listPrayerStatusHistory, listPrayerTitleHistory, listSermonChurchHistory, listSermonTitleHistory, listSermonVerseHistory, listSeriesMetadataHistory, listServiceOrderFlagHistory, listServiceOrderStepTitleHistory, listServiceOrderTitleHistory, listStudyNoteTitleHistory, listTagColorHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
+import { DataEngineServerError, listBibleMarkHistory, listCouncilMetadataHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listPlanTemplateNameHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listPrayerStatusHistory, listPrayerTitleHistory, listSermonChurchHistory, listSermonTitleHistory, listSermonVerseHistory, listSeriesMetadataHistory, listServiceOrderFlagHistory, listServiceOrderStepTitleHistory, listServiceOrderTitleHistory, listStudyNoteTitleHistory, listTagColorHistory, listThoughtLockHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
 import { collectionHeadId, HEADS_COLLECTION, sequenceId } from '@/data-engine/serverFeed';
 import { DataSession } from '@/data-engine/session';
 import type { DataCommand, FieldValue, ResourceSnapshot } from '@/data-engine/types';
@@ -3488,4 +3488,50 @@ describe('public share-link view counter projection', () => {
     expect([...documents.entries()]).toEqual(before);
   });
 
+});
+
+it.each([
+  { label: 'earlier offline lock', initiallyLocked: false, both: false, offlineAt: 15, expected: false },
+  { label: 'earlier offline unlock', initiallyLocked: true, both: false, offlineAt: 15, expected: true },
+  { label: 'earlier offline lock for two thoughts', initiallyLocked: false, both: true, offlineAt: 15, expected: false },
+  { label: 'later offline lock', initiallyLocked: false, both: false, offlineAt: 110, expected: true },
+])('keeps the latest deliberate thought lock action: $label', async ({ initiallyLocked, both, offlineAt, expected }) => {
+  const generation = 'thought-lock-seed';
+  const date = '2026-11-08T00:00:00.000Z';
+  const selected = both ? ['one', 'two'] : ['one'];
+  const initial = ['one', 'two', 'other'].map(id => ({
+    id, date, tags: [], text: 'Original ' + id, isLocked: id === 'other' ? false : initiallyLocked,
+  }));
+  const create = {
+    protocol: 1, kind: 'create', operationId: generation, owner: 'owner-1', resource, generation: null, dependsOn: [],
+    value: { userId: 'owner-1', title: 'Sermon', verse: 'John 1:1', date, thoughts: initial },
+  };
+  expect((await processCommand(create.owner, create)).kind).toBe('acknowledged');
+  const withLock = (rows: typeof initial, isLocked: boolean) =>
+    rows.map(row => selected.includes(row.id) ? { ...row, isLocked } : row);
+  const change = (operationId: string, before: typeof initial, after: typeof initial, at: number, observedRevision: number) => ({
+    ...create, kind: 'update', operationId, generation,
+    changes: [{ path: ['thoughts'], before: { exists: true, value: before }, after: { exists: true, value: after } }],
+    thoughtLockActions: before.flatMap((row, index) => selected.includes(row.id) ? [{
+      rowId: row.id, rowCreatedAt: row.date, before: row.isLocked, after: after[index].isLocked, observedRevision,
+      time: { earliestMs: 1_800_000_000_000 + at, latestMs: 1_800_000_000_004 + at },
+    }] : []),
+  });
+  const desktop = withLock(initial, !initiallyLocked).map(row =>
+    row.id === 'one' ? { ...row, text: 'Independent desktop edit' } : row);
+  expect((await processCommand(create.owner, change('desktop-first', initial, desktop, 55, 1))).kind).toBe('acknowledged');
+  const desktopLast = withLock(desktop, initiallyLocked);
+  expect((await processCommand(create.owner, change('desktop-last', desktop, desktopLast, 85, 2))).kind).toBe('acknowledged');
+  const delayed = change('offline-delayed', initial, withLock(initial, !initiallyLocked), offlineAt, 1);
+  const answer = await processCommand(create.owner, delayed);
+  expect(answer).toMatchObject({ kind: 'acknowledged', snapshot: { value: { thoughts: withLock(desktopLast, expected) } } });
+  expect(await processCommand(create.owner, delayed)).toEqual(answer);
+  expect(await readDocument(create.owner, resource)).toMatchObject({ value: { thoughts: withLock(desktopLast, expected) } });
+  const history = await listThoughtLockHistory(create.owner, resource.id, generation);
+  expect(history.entries).toHaveLength(1);
+  expect(history.entries[0].fields).toEqual(selected.map(rowId => expect.objectContaining({
+    field: 'isLocked', rowId, rowCreatedAt: date, value: !expected, winnerValue: expected,
+  })));
+  await expect(listThoughtLockHistory('another-owner', resource.id, generation)).rejects.toMatchObject({ status: 403 });
+  await expect(listThoughtLockHistory(create.owner, resource.id, 'other-generation')).rejects.toMatchObject({ status: 404 });
 });

@@ -6,12 +6,12 @@ import { councilTopicConflictCode, rejectCouncilTopicChoice } from './councilTop
 import { autosaveAcknowledgementAncestor, autosaveFieldTargets, hasUncapturedAutosaveField, sameAutosaveCapture, stageAutosaveField } from './documentFieldAction';
 import { prepareDomainCommand } from './domainPolicy';
 import { ACTION_SLOT, editorSlot } from './editorIdentity';
-import { keepReselectedGroupFlowFields } from './groupFlowChoice';
 import { chooseLocalPlacement } from './localPlacementChoice';
 import { projectManualSelection } from './manualScope';
 import { chooseLocalPreachDateEdits } from './preachDateChoice';
 import { equalValues, mergeDocumentFields, mergeFields } from './protocol';
 import { acknowledgeRowFields, clearRowFieldDrafts, hasUncapturedAutosaveRowField, registerRowFields, rowFieldAckAncestor, stageRowFields } from './rowFieldAutosave';
+import { keepReselectedRowFields } from './rowReselectionChoice';
 import { canReplaceSnapshot } from './snapshotFreshness';
 
 import type { CommitRequest } from './commits';
@@ -94,7 +94,7 @@ export class DataSession {
       if (draft) this.state[target.draft] = draft;
       else delete this.state[target.draft];
     }
-    stageRowFields(this.state, value, shown, autosaveStamp && 'rowId' in autosaveStamp ? autosaveStamp : undefined);
+    stageRowFields(this.state, value, shown, autosaveStamp && ('rowId' in autosaveStamp || 'rowIds' in autosaveStamp) ? autosaveStamp : undefined);
     this.state.draft = copy(value);
     this.state.editGeneration += 1;
     this.state.dirty = !equalValues(value, this.state.confirmed.value) || hasUncapturedAutosaveField(this.state) || hasUncapturedAutosaveRowField(this.state);
@@ -360,9 +360,8 @@ export class DataSession {
         this.state.confirmed.value, this.state.draft, candidate.value,
         merged.value.exists ? merged.value.value as DocumentData : null, mergeFields);
       const statusChoice = chooseLocalPreachDateEdits(this.state.confirmed, this.state.draft, candidate, preachStatuses);
-      const resolved = this.state.confirmed.resource.collection === 'groups'
-        ? keepReselectedGroupFlowFields(this.state.confirmed.value, this.state.draft, candidate.value, chosen, this.state.conflicts)
-        : statusChoice ?? chosen;
+      const resolved = keepReselectedRowFields(this.state.confirmed.resource.collection, this.state.confirmed.value,
+        this.state.draft, candidate.value, statusChoice ?? chosen, this.state.conflicts);
       const council = this.state.confirmed.resource.collection === 'councils';
       const lifecycle = council ? councilLifecycleValue(this.state.draft) : undefined;
       const openingLifecycle = council ? councilLifecycleValue(this.state.confirmed.value) : undefined;

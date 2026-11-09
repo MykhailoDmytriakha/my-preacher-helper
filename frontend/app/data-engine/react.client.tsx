@@ -29,7 +29,7 @@ import { collectionRecordPresence, documentRecordPresence, UNKNOWN_RECORD_PRESEN
 import { isOnlySubmittedCopy } from './recovery.client';
 import { captureRecoveryChoice as captureChoice, recoveryChoiceFingerprint, type RecoveryChoiceScope } from './recoveryChoice';
 import { validateResourceDocument } from './resourceSchemas';
-import { readCouncilTopicConflict as councilTopicConflict, readGroupFlowFieldConflict as groupFlowFieldConflict, readPlanTemplateNameConflict as planTemplateNameConflict, readSermonConflict as sermonConflict, readServiceStepConflict as serviceStepConflict, readTagColorConflict as tagColorConflict } from './rowConflictDetails';
+import { readCouncilTopicConflict as councilTopicConflict, readGroupFlowFieldConflict as groupFlowFieldConflict, readPlanTemplateNameConflict as planTemplateNameConflict, readSermonConflict as sermonConflict, readServiceStepConflict as serviceStepConflict, readTagColorConflict as tagColorConflict, readThoughtLockComparison as thoughtLockComparison } from './rowConflictDetails';
 import { deletedUnder, type SessionCheckpoint } from './session';
 import { describeManualSync, describeSync, type SyncStatus } from './status';
 import { shownDeliveryState } from './unanswered';
@@ -64,6 +64,7 @@ export function readServiceStepConflict(checkpoint: SessionCheckpoint) { return 
 export function readPlanTemplateNameConflict(checkpoint: SessionCheckpoint) { return planTemplateNameConflict(checkpoint); }
 export function readTagColorConflict(checkpoint: SessionCheckpoint) { return tagColorConflict(checkpoint); }
 export function readSermonConflict(checkpoint: SessionCheckpoint) { return sermonConflict(checkpoint); }
+export function readThoughtLockComparison(checkpoint: SessionCheckpoint) { return thoughtLockComparison(checkpoint); }
 export function councilTopicReviewCode(result: CommandResult | null | undefined, conflicts: readonly ConflictDetail[]): string | undefined {
   return councilTopicRefusalCode(result) ?? councilTopicConflictCode(conflicts);
 }
@@ -702,7 +703,8 @@ export function useDataMembership() {
 /** A feature may present its own expected question; storage and lifecycle failures still surface. */
 export interface DocumentUpdateOptions {
   handlesRefusal?: (failure: unknown) => boolean;
-  action?: 'group-title' | 'group-status' | 'council-title' | 'council-date' | { kind: RowFieldActionKind; rowId: string };
+  action?: 'group-title' | 'group-status' | 'council-title' | 'council-date'
+    | { kind: RowFieldActionKind; rowId: string } | { kind: 'thought-lock'; rowIds: readonly string[] };
 }
 
 interface DocumentOptions {
@@ -1021,7 +1023,10 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
         }
         // An expected question changed no draft and must not cancel an earlier save.
         cancelScheduledSave();
-        if (owner && typeof action === 'object') return editor.edit(next, shown, { field: action.kind, rowId: action.rowId, time: time ?? null });
+        if (owner && typeof action === 'object') {
+          const rows = 'rowIds' in action ? { rowIds: action.rowIds } : { rowId: action.rowId };
+          return editor.edit(next, shown, { field: action.kind, ...rows, time: time ?? null });
+        }
         return time || observeWithoutClock ? editor.edit(next, shown, { field, time: time ?? null }) : editor.edit(next, shown);
       }).then(() => { if (refused) throw refused.error; }, error => {
         // A question already established for the departed owner must still reach its backup.

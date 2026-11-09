@@ -37,6 +37,7 @@ jest.mock('@/data-engine/react.client', () => ({
   isCollectionOnEngine: () => true,
   DataDocumentProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   useDataEngine: () => ({ owner: 'user-1' }),
+  useOpenDocumentAnswerScopes: () => [],
   useDataDocument: () => ({
     data: mockSermon, confirmed: mockSermon, remote: null, state: null, status: null,
     loading: false, readOnly: mockReadOnly, copySource: mockReadOnly ? 'server' : null,

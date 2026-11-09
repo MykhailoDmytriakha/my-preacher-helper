@@ -18,7 +18,7 @@ import { StructurePageSkeleton } from "@/components/skeletons/StructurePageSkele
 import { SortableItemPreview } from "@/components/SortableItem";
 import { EngineThoughtModal } from '@/components/thought/EngineThoughtModal';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
-import { DataDocumentProvider, useDataEngine } from '@/data-engine/react.client';
+import { DataDocumentProvider, PHASES_TAKING_CHANGES, readThoughtLockComparison, useDataEngine, useOpenDocumentAnswerScopes, useRecoveryDiscovery } from '@/data-engine/react.client';
 import { useAiUsage } from "@/hooks/useAiUsage";
 import { useConfirm } from '@/hooks/useConfirm';
 import { useDndKitAccessibility } from '@/hooks/useDragAnnouncements';
@@ -26,15 +26,12 @@ import { useRouteId } from "@/hooks/useRouteId";
 import { useSermonStructureData, type StructureEngineSource } from "@/hooks/useSermonStructureData";
 import { Item, Sermon, SermonPoint, Thought, SermonOutline } from "@/models/models";
 import "@locales/i18n";
-import { isOfflineQueuedError } from "@/services/conflictSafeUpdate.client";
 import { newClientId } from "@/utils/clientId";
 import { sermonLanguage } from '@/utils/documentLanguage';
 import { getExportContent } from "@/utils/exportContent";
 import { outlinePointText } from '@/utils/outlineDnd';
 import {
   awaitWriteOperation,
-  skippedWrite,
-  type WriteOperation,
 } from "@/utils/recoverableWrite";
 import { normalizeVisualSectionKey } from '@/utils/sermonVisualOrder';
 import { normalizeStructureTag } from "@/utils/tagUtils";
@@ -53,7 +50,8 @@ import { useOutlineStats } from "./hooks/useOutlineStats";
 import { usePersistence } from "./hooks/usePersistence";
 import { useSermonActions } from "./hooks/useSermonActions";
 import { useStructureDnd } from "./hooks/useStructureDnd";
-import { useEngineStructureWriter } from "./useEngineStructureWriter";
+import { ThoughtLockHistory } from "./ThoughtLockHistory";
+import { useEngineStructureWriter, type ShownThoughtIdentity } from "./useEngineStructureWriter";
 import { createStructureCollisionDetection } from "./utils/collision";
 import { boardLayoutClass, showLayoutToggle } from "./utils/sectionLayout";
 import { findOutlinePoint } from "./utils/structure";
@@ -109,12 +107,49 @@ function StructurePageContent() {
  */
 function EngineStructureBoard({ sermonId }: { sermonId: string }) {
   const { owner } = useDataEngine();
+  const { t } = useTranslation();
   const outline = useEngineStructureWriter(sermonId, owner);
   const { document } = outline;
   const holdingRef = useRef(false);
+  const generation = document.confirmed?.metadata?.generation;
   const sermon = useMemo(() => document.data
     ? ({ ...document.data, id: sermonId, thoughts: document.data.thoughts ?? [] } as unknown as Sermon)
     : null, [document.data, sermonId]);
+  const checkpoint = document.state?.checkpoint;
+  const answers = useOpenDocumentAnswerScopes();
+  const [operationId] = Object.keys(checkpoint?.pending ?? {});
+  const owned = answers.filter(answer => answer.owner === owner && answer.resource.collection === 'sermons'
+    && answer.resource.id === sermonId && answer.operationIds.includes(operationId));
+  // A document choice keeps queued descendants. A field choice is valid only for one shown Save.
+  const conflict = checkpoint && owned.length && owned.every(answer => answer.operationIds.length === 1 && !answer.laterSaves?.length)
+    ? readThoughtLockComparison(checkpoint) : undefined;
+  const lockText = (locked: boolean) => t(locked ? 'structure.locked' : 'structure.unlocked');
+  const canRecover = Boolean(owner && document.state?.durable && !document.readOnly && document.status?.phase === 'saved');
+  const recovery = useRecoveryDiscovery({
+    identity: document.recoveryIdentity,
+    enabled: canRecover,
+    version: JSON.stringify([generation, document.confirmed?.metadata?.revision, document.status?.phase]),
+    list: async () => (await document.listRecoverable({ manualChoiceCopies: 'only' })).map(source => {
+      const { draft, confirmed } = source.record.checkpoint;
+      const value = draft as unknown as Sermon | null;
+      const base = (source.record.retainedManualChoice?.base ?? confirmed.value) as unknown as Sermon | null;
+      const original = new Map(base?.thoughts?.map(thought => [thought.id, thought]));
+      const locks = value?.thoughts?.flatMap(thought => {
+        const before = original.get(thought.id);
+        return before && before.date === thought.date && Boolean(before.isLocked) !== Boolean(thought.isLocked)
+          ? [thought.text + ' · ' + lockText(Boolean(thought.isLocked))] : [];
+      });
+      const preview = locks?.length ? [t('structure.thoughtLockState'), ...locks].join('\n') : undefined;
+      return { id: source.id, title: value?.title ?? base?.title ?? sermonId, preview,
+        discard: () => document.discardRecovery(source) };
+    }),
+    recover: document.recover,
+  });
+  const comparison = conflict ? {
+    identity: conflict.identity, title: t('structure.thoughtLockState'), valueKind: 'field' as const, scopedChoice: true as const,
+    mine: conflict.locks.map(lock => lock.text + ' · ' + lockText(lock.mine)).join('\n'),
+    stored: conflict.locks.map(lock => lock.text + ' · ' + lockText(lock.stored)).join('\n'),
+  } : undefined;
   const engine = useMemo<StructureEngineSource>(() => ({
     sermon, loading: document.loading, error: document.error, durable: document.state?.durable, isHolding: () => holdingRef.current,
     retry: () => { void document.retry().catch(() => undefined); },
@@ -124,17 +159,26 @@ function EngineStructureBoard({ sermonId }: { sermonId: string }) {
   // the other one fresh, as the swap did.
   return <OutlineWriteRecovery key={`${owner}:${sermonId}`} owner={owner} sermonId={sermonId} {...outline}>
     <StructureBoard key={document.readOnly ? 'copy' : 'editor'} sermonId={sermonId} engine={engine} holdingRef={holdingRef} readOnly={document.readOnly}
+      setThoughtLocks={outline.writer.setThoughtLocks}
+      lockHistory={owner && generation && sermon && !document.readOnly && <ThoughtLockHistory key={generation}
+        owner={owner} sermonId={sermonId} generation={generation} thoughts={sermon.thoughts}
+        disabled={!document.state?.durable || !PHASES_TAKING_CHANGES.has(document.status?.phase ?? '')} onRestore={outline.writer.setThoughtLocks} />}
       syncStatus={document.readOnly ? null : <DataSyncStatus
         subject={document.recoveryIdentity} status={document.status} error={document.error} errorWords={document.errorWords} onRetry={document.retry}
-        onKeepLocal={document.keepLocal} onAcceptRemote={document.acceptRemote} />} />
+        comparison={comparison} onKeepLocal={() => document.keepLocal(comparison ? checkpoint : undefined)}
+        onAcceptRemote={() => document.acceptRemote(comparison ? checkpoint : undefined)}
+        recoveryChoices={canRecover ? recovery.choices : []} recoveryLoading={recovery.loading}
+        recoveryError={canRecover ? recovery.error : null} onRecover={recovery.recover} onDiscardRecovery={recovery.discard} />} />
   </OutlineWriteRecovery>;
 }
 
-function StructureBoard({ sermonId, engine, holdingRef, syncStatus, readOnly = false }: {
+function StructureBoard({ sermonId, engine, holdingRef, syncStatus, lockHistory, setThoughtLocks, readOnly = false }: {
   sermonId: string;
   engine: StructureEngineSource;
   holdingRef: React.MutableRefObject<boolean>;
   syncStatus?: React.ReactNode;
+  lockHistory?: React.ReactNode;
+  setThoughtLocks: (thoughts: readonly ShownThoughtIdentity[], isLocked: boolean) => Promise<void>;
   /** A copy for reading (device storage silent): see `StructureReadOnlyBoard`. */
   readOnly?: boolean;
 }) {
@@ -528,140 +572,21 @@ function StructureBoard({ sermonId, engine, holdingRef, syncStatus, readOnly = f
     });
   };
 
-  const applyThoughtLockState = useCallback((thoughtIds: string[], isLocked: boolean) => {
-    if (thoughtIds.length === 0) return;
-    const thoughtIdSet = new Set(thoughtIds);
-
-    setSermon((prevSermon) => {
-      if (!prevSermon) return null;
-      return {
-        ...prevSermon,
-        thoughts: prevSermon.thoughts.map((thought) => (
-          thoughtIdSet.has(thought.id)
-            ? { ...thought, isLocked }
-            : thought
-        )),
-      };
+  const submitThoughtLocks = useCallback((select: (thought: Thought) => boolean, isLocked: boolean): void => {
+    const selected = sermon?.thoughts.filter(select);
+    if (!selected?.length) return;
+    void setThoughtLocks(selected, isLocked).catch(() => {
+      toast.error(t("errors.failedToSaveThought", { defaultValue: "Failed to save thought." }));
     });
-
-    setContainers((prevContainers) => {
-      const nextContainers = Object.fromEntries(
-        Object.entries(prevContainers).map(([key, columnItems]) => [
-          key,
-          columnItems.map((item) => (
-            thoughtIdSet.has(item.id)
-              ? { ...item, isLocked }
-              : item
-          )),
-        ]),
-      ) as Record<string, Item[]>;
-
-      containersRef.current = nextContainers;
-      return nextContainers;
-    });
-  }, [setContainers, setSermon]);
-
-  const restoreLockSnapshot = useCallback((previousSermon: Sermon, previousContainers: Record<string, Item[]>) => {
-    setSermon(previousSermon);
-    setContainers(previousContainers);
-    containersRef.current = previousContainers;
-  }, [setContainers, setSermon]);
-
-  const commitThoughtLockChange = useCallback(({
-    thoughtIds,
-    isLocked,
-    errorMessage,
-  }: {
-    thoughtIds: string[];
-    isLocked: boolean;
-    errorMessage: string;
-  }): WriteOperation => {
-    if (!sermon || thoughtIds.length === 0) return skippedWrite();
-
-    const thoughtsToUpdate = sermon.thoughts.filter((thought) => (
-      thoughtIds.includes(thought.id) && Boolean(thought.isLocked) !== isLocked
-    ));
-
-    if (thoughtsToUpdate.length === 0) return skippedWrite();
-
-    const previousSermon = sermon;
-    const previousContainers = containers;
-
-    applyThoughtLockState(thoughtsToUpdate.map((thought) => thought.id), isLocked);
-
-    const persistence = (async () => {
-      const results = await Promise.allSettled(
-        // The thought itself is the baseline, so the write states only `isLocked`.
-        // Without it every field of this screen's copy is claimed as changed, and a
-        // padlock pressed on a tab open since morning republishes its stale text over
-        // a rewrite made on another device.
-        thoughtsToUpdate.map((thought) => structureWriter.updateThought(sermon.id, { ...thought, isLocked }, thought)),
-      );
-
-      const failed = results.find(
-        (result): result is PromiseRejectedResult =>
-          result.status === "rejected" && !isOfflineQueuedError(result.reason),
-      );
-      if (!failed) return;
-
-      const successfulRollbacks = thoughtsToUpdate.filter((_, index) => results[index]?.status === "fulfilled");
-      if (successfulRollbacks.length > 0) {
-        await Promise.allSettled(
-          // Legacy thoughts omit `isLocked`, but omission means unlocked. Materialize
-          // that value here or the diff has no lock key and the server stays locked
-          // while the optimistic rollback falsely shows an unlocked card.
-          successfulRollbacks.map((thought) => structureWriter.updateThought(
-            sermon.id,
-            { ...thought, isLocked: Boolean(thought.isLocked) },
-            { ...thought, isLocked },
-          )),
-        );
-      }
-
-      throw failed.reason;
-    })();
-
-    // Keep the actual engine capture promise; an optimistic lock is no server receipt.
-    let failureReported = false;
-    const handleFailure = () => {
-      if (failureReported) return;
-      failureReported = true;
-      restoreLockSnapshot(previousSermon, previousContainers);
-      toast.error(errorMessage);
-    };
-    void persistence.catch(handleFailure);
-    return persistence;
-  }, [applyThoughtLockState, containers, restoreLockSnapshot, sermon, structureWriter]);
-
-  const handleToggleThoughtLock = useCallback((thoughtId: string, isLocked: boolean): WriteOperation => {
-    return commitThoughtLockChange({
-      thoughtIds: [thoughtId],
-      isLocked,
-      errorMessage: t("errors.failedToSaveThought", { defaultValue: "Failed to save thought." }),
-    });
-  }, [commitThoughtLockChange, t]);
-
-  const handleTogglePointLock = useCallback((outlinePointId: string, isLocked: boolean): WriteOperation => {
-    if (!sermon) return skippedWrite();
-
-    const thoughtIds = sermon.thoughts
-      .filter((thought) => thought.outlinePointId === outlinePointId)
-      .map((thought) => thought.id);
-
-    return commitThoughtLockChange({
-      thoughtIds,
-      isLocked,
-      errorMessage: t("errors.failedToSaveThought", { defaultValue: "Failed to save thought." }),
-    });
-  }, [commitThoughtLockChange, sermon, t]);
+  }, [sermon, setThoughtLocks, t]);
 
   const submitThoughtLockToggle = useCallback((thoughtId: string, isLocked: boolean): void => {
-    void handleToggleThoughtLock(thoughtId, isLocked);
-  }, [handleToggleThoughtLock]);
+    submitThoughtLocks(thought => thought.id === thoughtId, isLocked);
+  }, [submitThoughtLocks]);
 
   const submitPointLockToggle = useCallback((outlinePointId: string, isLocked: boolean): void => {
-    void handleTogglePointLock(outlinePointId, isLocked);
-  }, [handleTogglePointLock]);
+    submitThoughtLocks(thought => thought.outlinePointId === outlinePointId, isLocked);
+  }, [submitThoughtLocks]);
 
   const handleOutlinePointDeleted = (pointId: string, sectionId: string) => {
     if (!sermon) return;
@@ -917,6 +842,7 @@ function StructureBoard({ sermonId, engine, holdingRef, syncStatus, readOnly = f
           </div>
         </div>
 
+        {lockHistory}
         {readOnly ? <StructureReadOnlyBoard
           containers={containers}
           outlinePoints={outlinePoints}

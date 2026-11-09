@@ -12,6 +12,7 @@ import {
   listGroupFlowHistory,
   listServiceOrderFlagHistory,
   listServiceOrderStepTitleHistory,
+  listThoughtLockHistory,
   serverErrorResponse,
 } from './server';
 
@@ -29,6 +30,7 @@ const histories = {
   topicTitle: { collection: 'councils', list: listCouncilTopicTitleHistory },
   stepFlag: { collection: 'serviceOrders', list: listServiceOrderFlagHistory },
   stepTitle: { collection: 'serviceOrders', list: listServiceOrderStepTitleHistory },
+  thoughtLock: { collection: 'sermons', list: listThoughtLockHistory },
 } as const;
 
 export type RowHistory = keyof typeof histories;

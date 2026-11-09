@@ -10,6 +10,7 @@ import { GROUP_STEP_DURATION_POLICY } from './groupStepDurationAction';
 import { existingRowField, replaceExistingRowField } from './rowFieldAction';
 import { readSermonConflictField } from './sermonFieldChoice';
 import { SERVICE_ORDER_FLAG_TARGET, SERVICE_ORDER_STEP_TITLE_TARGET, serviceOrderStepField } from './serviceOrderStepAction';
+import { readThoughtLockConflict, thoughtLockConflictId } from './thoughtLockAction';
 
 import type { RowFieldTarget, RowValue } from './rowFieldAction';
 import type { SessionCheckpoint } from './session';
@@ -155,4 +156,20 @@ export function readSermonConflict(checkpoint: SessionCheckpoint) {
     && (!object(base.value) || mine.value.notes !== base.value.notes)) {
     return { kind: 'removedDate' as const, identity, date: mine.value.date, notes: mine.value.notes };
   }
+}
+
+export function readThoughtLockComparison(checkpoint: SessionCheckpoint) {
+  const { confirmed, draft, remoteCandidate, conflicts, pending } = checkpoint;
+  const base = confirmed.value, stored = remoteCandidate?.value;
+  if (confirmed.resource.collection !== 'sermons' || !base || !draft || !stored || !conflicts.length
+    || confirmed.metadata?.generation !== remoteCandidate?.metadata?.generation || Object.keys(pending).length !== 1) return undefined;
+  const locks = conflicts.flatMap(({ path }) => {
+    const id = thoughtLockConflictId(path);
+    if (!id) return [];
+    const lock = readThoughtLockConflict(id, base, draft, stored);
+    const row = Array.isArray(draft.thoughts) && draft.thoughts.find(value => object(value) && value.id === id);
+    return lock && object(row) && typeof row.text === 'string' ? [{ text: row.text, ...lock }] : [];
+  });
+  if (locks.length !== conflicts.length) return undefined;
+  return { locks, identity: JSON.stringify([checkpoint.editGeneration, remoteCandidate?.metadata?.revision, locks]) };
 }
