@@ -404,6 +404,101 @@ describe('creating a note keeps the durable draft at all times', () => {
 
 });
 
+describe('timed study note title autosaves', () => {
+  const opening = { title: payload.title, generation: 'note-generation', revision: 1 };
+  const time = { earliestMs: 1_800_000_000_010, latestMs: 1_800_000_000_015 };
+  const setup = (updateNote: jest.Mock) => ({
+    ...payload, noteId: 'n1', isNew: false, isInitialized: true, updateNote,
+    createNote: jest.fn(), uid: 'u1', setCreatedNoteId: jest.fn(), t: ((key: string) => key) as never,
+    baselineRef: { current: payload as NoteDraftPayload | null }, revisionRef: { current: 1 as number | null },
+    deliberateOverwriteRef: { current: false }, resaveNonce: 0, saveBlocked: false, onConflict: jest.fn(), onSaved: jest.fn(),
+    titleEditRef: { current: { owner: 'u1', id: 'n1', value: 'Phone title', capture: { seen: opening, time } } },
+  });
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
+
+  it('acknowledges the winning title while the next paragraph stays a body-only edit', async () => {
+    let finish!: () => void;
+    const persistence = new Promise<void>(resolve => { finish = resolve; });
+    const saved = { ...payload, title: 'Computer title', revision: 2 } as StudyNote & { revision: number };
+    const updateNote = jest.fn(() => ({
+      ...queuedMutation('first-title', persistence), result: persistence.then(() => saved),
+      capture: Promise.resolve({ kind: 'submitted', requestId: 'first-title', persistence }),
+    }));
+    const options = setup(updateNote);
+    const view = renderHook(({ title, content }) => useNoteAutoSave({ ...options, title, content }),
+      { initialProps: { title: 'Phone title', content: payload.content } });
+    await act(async () => jest.advanceTimersByTime(1600));
+    expect(updateNote).toHaveBeenCalledTimes(1);
+    view.rerender({ title: 'Phone title', content: 'New paragraph' });
+    await act(async () => { finish(); await persistence; });
+    expect(options.onSaved).toHaveBeenCalledWith({ ...payload, title: 'Computer title' }, 'Phone title');
+    expect(options.baselineRef.current).toEqual({ ...payload, title: 'Computer title' });
+    view.rerender({ title: 'Computer title', content: 'New paragraph' });
+    await act(async () => jest.advanceTimersByTime(1600));
+    expect(updateNote).toHaveBeenLastCalledWith(expect.objectContaining({ updates: { content: 'New paragraph' } }));
+  });
+
+  it('takes the canonical title from a body acknowledgement queued before the title resolved', async () => {
+    let finishTitle!: () => void, finishBody!: () => void;
+    const titlePersistence = new Promise<void>(resolve => { finishTitle = resolve; });
+    const bodyPersistence = new Promise<void>(resolve => { finishBody = resolve; });
+    const accepted = { ...payload, title: 'Computer title', revision: 2 } as StudyNote & { revision: number };
+    const updateNote = jest.fn()
+      .mockImplementationOnce(() => ({
+        ...queuedMutation('first-title', titlePersistence), result: titlePersistence.then(() => accepted),
+        capture: Promise.resolve({ kind: 'submitted', requestId: 'first-title', persistence: titlePersistence }),
+      }))
+      .mockImplementationOnce(() => ({
+        ...queuedMutation('later-body', bodyPersistence), result: bodyPersistence.then(() => ({ ...accepted, content: 'New paragraph', revision: 3 })),
+      }));
+    const options = setup(updateNote);
+    const view = renderHook(({ title, content }) => useNoteAutoSave({ ...options, title, content }),
+      { initialProps: { title: 'Phone title', content: payload.content } });
+    await act(async () => jest.advanceTimersByTime(1600));
+    view.rerender({ title: 'Phone title', content: 'New paragraph' });
+    await act(async () => jest.advanceTimersByTime(1600));
+    expect(updateNote).toHaveBeenCalledTimes(2);
+    expect(updateNote).toHaveBeenLastCalledWith(expect.objectContaining({ updates: { content: 'New paragraph' } }));
+    await act(async () => { finishTitle(); await titlePersistence; });
+    view.rerender({ title: 'Computer title', content: 'New paragraph' });
+    await act(async () => { finishBody(); await bodyPersistence; });
+    expect(options.onSaved).toHaveBeenLastCalledWith({ ...payload, title: 'Computer title', content: 'New paragraph' }, 'Phone title');
+    expect(options.baselineRef.current).toEqual({ ...payload, title: 'Computer title', content: 'New paragraph' });
+  });
+
+  it('keeps an exact later return to the value the server already shows', async () => {
+    const never = new Promise<void>(() => undefined);
+    const updateNote = jest.fn(() => ({ ...queuedMutation('return-title', never), result: never }));
+    const options = setup(updateNote);
+    const titleCapture = { time, seen: { ...opening, title: 'Phone title', requestId: 'first-title' } };
+    const titleEditRef = { current: { owner: 'u1', id: 'n1', value: payload.title, capture: titleCapture } };
+    renderHook(() => useNoteAutoSave({ ...options, titleEditRef }));
+    await act(async () => jest.advanceTimersByTime(1600));
+    expect(updateNote).toHaveBeenCalledWith(expect.objectContaining({ updates: { title: payload.title }, titleCapture }));
+  });
+
+  it('carries an edit made during local capture as an exact successor', async () => {
+    let captured!: (receipt: { kind: 'submitted'; requestId: string }) => void;
+    const capture = new Promise<{ kind: 'submitted'; requestId: string }>(resolve => { captured = resolve; });
+    const never = new Promise<void>(() => undefined);
+    const updateNote = jest.fn(() => ({ ...queuedMutation('first-title', never), result: never }));
+    updateNote.mockImplementationOnce(() => ({ ...queuedMutation('first-title', never), result: never, capture }));
+    const options = setup(updateNote);
+    const view = renderHook(({ title }) => useNoteAutoSave({ ...options, title }), { initialProps: { title: 'Phone title' } });
+    await act(async () => jest.advanceTimersByTime(1600));
+    const later = { ...options.titleEditRef.current, value: 'Later title', capture: { seen: opening, time: { earliestMs: time.latestMs, latestMs: time.latestMs + 5 } } };
+    options.titleEditRef.current = later;
+    view.rerender({ title: later.value });
+    await act(async () => { captured({ kind: 'submitted', requestId: 'first-title' }); await capture; });
+    await act(async () => jest.advanceTimersByTime(1600));
+    expect(updateNote).toHaveBeenLastCalledWith(expect.objectContaining({
+      updates: { title: later.value },
+      titleCapture: { time: later.capture.time, seen: { ...opening, title: 'Phone title', requestId: 'first-title' } },
+    }));
+  });
+});
+
 /**
  * THE TEXT LEAVES WHEN IT MATTERS, NOT WHEN A TIMER SAYS SO (BUG-20261006-hidden-tab-holds-last-edit).
  *

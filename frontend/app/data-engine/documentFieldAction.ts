@@ -22,6 +22,12 @@ export type DocumentFieldAction = DocumentFieldObservation & { time: ActionTime 
 export type DocumentTitleSeen = { title: string; generation: string; revision: number; requestId?: string };
 export type ServiceOrderTitleSeen = DocumentTitleSeen;
 export type ServiceOrderTitleCapture = { time: ActionTime; seen: ServiceOrderTitleSeen };
+export type StudyNoteTitleSeen = DocumentTitleSeen & { missing?: true };
+export type StudyNoteTitleCapture = { time: ActionTime | null; seen: StudyNoteTitleSeen };
+export type StudyNoteTitleHistoryPage = {
+  owner: string; noteId: string; generation: string; nextCursor: string | null;
+  entries: (Omit<DocumentTitleHistoryEntry, 'title' | 'winnerTitle'> & { title: string | null; winnerTitle: string | null })[];
+};
 export type PrayerTitleSeen = DocumentTitleSeen;
 export type PrayerTitleCapture = { time: ActionTime | null; seen: PrayerTitleSeen };
 export type DisplacedDocumentTitle = {
@@ -36,10 +42,11 @@ export type GroupTimedField = 'title' | 'status';
 
 type TextDocumentFieldTarget = {
   field: GroupTimedField | 'verse';
-  action: 'serviceOrderTitleAction' | 'prayerTitleAction' | 'sermonTitleAction' | 'sermonVerseAction' | 'groupTitleAction' | 'groupStatusAction';
-  proof: 'serviceOrderTitle' | 'prayerTitle' | 'sermonTitle' | 'sermonVerse' | 'groupTitle' | 'groupStatus';
+  action: 'studyNoteTitleAction' | 'serviceOrderTitleAction' | 'prayerTitleAction' | 'sermonTitleAction' | 'sermonVerseAction' | 'groupTitleAction' | 'groupStatusAction';
+  proof: 'studyNoteTitle' | 'serviceOrderTitle' | 'prayerTitle' | 'sermonTitle' | 'sermonVerse' | 'groupTitle' | 'groupStatus';
   accepts: (value: unknown) => value is string;
   causal?: true;
+  optional?: true;
 };
 
 export type DocumentFieldTarget = TextDocumentFieldTarget | typeof SERMON_CHURCH | SeriesFieldTarget | CouncilFieldTarget | PrayerStatusTarget;
@@ -61,6 +68,8 @@ const PRAYER_TITLE = { field: 'title', action: 'prayerTitleAction', proof: 'pray
 const SERMON_TITLE = { field: 'title', action: 'sermonTitleAction', proof: 'sermonTitle', accepts: shortTitle, causal: true } as const satisfies TextDocumentFieldTarget;
 const SERMON_VERSE = { field: 'verse', action: 'sermonVerseAction', proof: 'sermonVerse', causal: true,
   accepts: (value): value is string => typeof value === 'string' } as const satisfies TextDocumentFieldTarget;
+const STUDY_NOTE_TITLE = { field: 'title', action: 'studyNoteTitleAction', proof: 'studyNoteTitle',
+  accepts: (value): value is string => typeof value === 'string', causal: true, optional: true } as const satisfies TextDocumentFieldTarget;
 const GROUP_TITLE = { field: 'title', action: 'groupTitleAction', proof: 'groupTitle', accepts: shortTitle, draft: 'groupTitleDraft' } as const satisfies GroupFieldTarget;
 const GROUP_STATUS = { field: 'status', action: 'groupStatusAction', proof: 'groupStatus', accepts: isGroupStatus, draft: 'groupStatusDraft' } as const satisfies GroupFieldTarget;
 export const GROUP_TIMED_FIELDS = [GROUP_TITLE, GROUP_STATUS] as const;
@@ -68,6 +77,7 @@ const COUNCIL_FIELDS = [...COUNCIL_TIMED_FIELDS, COUNCIL_LIFECYCLE];
 
 export function documentFieldTargets(collection: string): readonly DocumentFieldTarget[] {
   if (collection === 'serviceOrders') return [SERVICE_ORDER_TITLE];
+  if (collection === 'studyNotes') return [STUDY_NOTE_TITLE];
   if (collection === 'groups') return GROUP_TIMED_FIELDS;
   if (collection === 'series') return SERIES_FIELD_TARGETS;
   if (collection === 'prayerRequests') return [PRAYER_TITLE, ...PRAYER_STATUS_FIELDS];
@@ -121,23 +131,24 @@ export function submittedDocumentTitle(checkpoint: SessionCheckpoint | null, req
   needsAttention: boolean): DocumentTitleSeen | undefined {
   if (!checkpoint || needsAttention) return undefined;
   const { collection } = checkpoint.confirmed.resource;
-  const target = collection === 'serviceOrders' ? SERVICE_ORDER_TITLE : collection === 'prayerRequests' ? PRAYER_TITLE : null;
+  const target = collection === 'serviceOrders' ? SERVICE_ORDER_TITLE : collection === 'prayerRequests' ? PRAYER_TITLE
+    : collection === 'studyNotes' ? STUDY_NOTE_TITLE : null;
   const shown = checkpoint.draft?.title;
   if (!target || !isShortDocumentTitle(shown, target)) return undefined;
   const tip = Object.keys(checkpoint.pending).at(-1);
   const byId = new Map(requests.map(request => [request.id, request]));
   let request = tip && byId.get(tip);
   // An unrelated queued save must not replace the exact local rename supplying this title.
-  if (collection === 'prayerRequests') {
+  if (collection === 'prayerRequests' || collection === 'studyNotes') {
     const visited = new Set<string>();
-    while (request && request.value?.title === shown && !request.prayerTitleAction && !visited.has(request.id)) {
+    while (request && request.value?.title === shown && !capturedDocumentField(request, target) && !visited.has(request.id)) {
       visited.add(request.id);
       request = request.predecessor ? byId.get(request.predecessor) : undefined;
     }
   }
   const basis = request ? request.baseline.metadata : null;
   if (!request || request.value?.title !== shown || !basis || basis.deleted || basis.generation !== checkpoint.confirmed.metadata?.generation) return undefined;
-  const action = request.serviceOrderTitleAction ?? request.prayerTitleAction;
+  const action = capturedDocumentField(request, target);
   return { title: shown, generation: basis.generation, revision: action?.observedRevision ?? basis.revision, requestId: request.id };
 }
 
@@ -181,6 +192,38 @@ export function capturePrayerTitle(baseline: ResourceSnapshot, value: DocumentDa
   const after = value?.title;
   if (time === undefined || !PRAYER_TITLE.accepts(seen.title) || !PRAYER_TITLE.accepts(after) || after === seen.title) return undefined;
   return { before: seen.title, after, observedRevision: seen.revision, time,
+    ...(knownPredecessor && seen.requestId && { predecessorOperationId: seen.requestId }) };
+}
+
+export function matchesStudyNoteTitleRequest(request: CommitRequest | undefined, owner: string, resource: ResourceRef, seen: StudyNoteTitleSeen): boolean {
+  const action = request?.studyNoteTitleAction;
+  return Boolean(request && action && request.id === seen.requestId && request.owner === owner && equalValues(request.baseline.resource, resource)
+    && request.baseline.metadata?.generation === seen.generation && equalValues(action.after, studyNoteTitleValue(seen))
+    && action.observedRevision === seen.revision && !['conflict', 'refused', 'cancelled'].includes(request.state));
+}
+
+export function studyNoteTitleValue(seen: StudyNoteTitleSeen): FieldValue {
+  return seen.missing ? { exists: false } : { exists: true, value: seen.title };
+}
+
+export function hasStudyNoteTitle(value: DocumentData | null): boolean {
+  return Boolean(value && (value.type === undefined || value.type === 'note' || value.type === 'question'));
+}
+
+export function captureStudyNoteTitle(baseline: ResourceSnapshot, value: DocumentData | null,
+  capture?: StudyNoteTitleCapture, knownPredecessor = false): DocumentFieldObservation<FieldValue> | undefined {
+  if (!capture || !value || !hasStudyNoteTitle(value) || !hasStudyNoteTitle(baseline.value)
+    || baseline.resource.collection !== 'studyNotes' || !baseline.metadata || baseline.metadata.deleted) return undefined;
+  const { seen } = capture;
+  const before = studyNoteTitleValue(seen);
+  const after = readField(value, ['title']);
+  if (baseline.metadata.generation !== seen.generation || !Number.isSafeInteger(seen.revision)
+    || seen.revision < 1 || seen.revision > baseline.metadata.revision
+    || (seen.requestId && !knownPredecessor && !equalValues(readField(baseline.value ?? {}, ['title']), before))
+    || !acceptsDocumentField(before, STUDY_NOTE_TITLE) || !after.exists || !acceptsDocumentField(after, STUDY_NOTE_TITLE) || equalValues(before, after)) return undefined;
+  const time = capture.time === null ? null : boundedActionTime(capture.time);
+  if (time === undefined) return undefined;
+  return { before, after, observedRevision: seen.revision, time,
     ...(knownPredecessor && seen.requestId && { predecessorOperationId: seen.requestId }) };
 }
 
@@ -453,6 +496,7 @@ export function withDocumentFieldAction(command: DataCommand, target: DocumentFi
   }
   if (target.field === 'heldAt' && !matchesCouncilLifecycle(command.changes, change)) return command;
   if (target.field === 'verse' || target.field === 'church' || target.field === 'date' || target.field === 'heldAt' || target.field === 'answeredAt') return { ...command, [target.action]: stamp };
+  if (target.action === 'studyNoteTitleAction') return { ...command, studyNoteTitleAction: stamp };
   if (typeof action.before !== 'string' || typeof action.after !== 'string') return command;
   return { ...command, [target.action]: action };
 }

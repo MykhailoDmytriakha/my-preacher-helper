@@ -918,6 +918,83 @@ describe('StudyNoteEditorPage Pagination', () => {
         } finally { jest.clearAllTimers(); jest.useRealTimers(); }
     });
 
+    it('keeps an explicit return to the opening title while a different local title is queued', async () => {
+        jest.useFakeTimers();
+        const original = mockNotes.find(note => note.id === 'note-1')!;
+        const firstTitle = 'Title saved on the offline device';
+        const opening = { title: original.title!, generation: 'generation', revision: 1 };
+        const time = { earliestMs: 100, latestMs: 110 };
+        let projected = original;
+        const persistence = new Promise<void>(() => undefined);
+        const updateNote = jest.fn(({ updates }: { updates: Partial<StudyNote> }) => {
+            projected = { ...original, ...updates };
+            return { acceptance: Promise.resolve({ kind: 'queued', receipt: 'local-title' }), persistence, result: persistence,
+                capture: Promise.resolve({ kind: 'submitted', requestId: 'local-title', persistence }) };
+        });
+        (useStudyNotes as jest.Mock).mockImplementation(() => ({
+            uid: 'user-1', notes: [projected], loading: false, createNote: jest.fn(), updateNote, deleteNote: jest.fn(),
+            noteDelivery: new Map([[original.id, { pending: projected !== original, needsAttention: false }]]),
+            observeTitle: (_id: string, value: string) => value === firstTitle
+                ? { ...opening, title: firstTitle, requestId: 'local-title' } : opening,
+            captureActionTime: () => time,
+        }));
+        try {
+            render(<StudyNoteEditorPage />);
+            fireEvent.click(screen.getByTitle('common.edit'));
+            const field = screen.getByPlaceholderText('studiesWorkspace.titlePlaceholder');
+            fireEvent.change(field, { target: { value: firstTitle } });
+            await act(async () => { await jest.advanceTimersByTimeAsync(1600); });
+            expect(updateNote).toHaveBeenCalledTimes(1);
+
+            fireEvent.change(field, { target: { value: original.title } });
+            expect(field).toHaveValue(original.title);
+            await act(async () => { await jest.advanceTimersByTimeAsync(1600); });
+            expect(updateNote).toHaveBeenCalledTimes(2);
+            expect(updateNote).toHaveBeenLastCalledWith(expect.objectContaining({
+                updates: { title: original.title },
+                titleCapture: { time, seen: { ...opening, title: firstTitle, requestId: 'local-title' } },
+            }));
+        } finally { jest.clearAllTimers(); jest.useRealTimers(); }
+    });
+
+    it('follows a later server title when a body acknowledgement already brought the typed title', async () => {
+        jest.useFakeTimers();
+        const original = mockNotes.find(note => note.id === 'note-1')!;
+        const opening = { title: original.title!, generation: 'generation', revision: 1 };
+        const newBody = 'A paragraph queued while online';
+        const typedTitle = 'The same title as the incoming acknowledgement';
+        let projected = original;
+        let finish!: () => void;
+        const persistence = new Promise<void>(resolve => { finish = resolve; });
+        const updateNote = jest.fn(() => ({
+            acceptance: Promise.resolve({ kind: 'queued', receipt: 'local-body' }), persistence,
+            result: persistence.then(() => ({ ...original, title: typedTitle, content: newBody, revision: 2 })),
+        }));
+        (useStudyNotes as jest.Mock).mockImplementation(() => ({
+            uid: 'user-1', notes: [projected], loading: false, createNote: jest.fn(), updateNote, deleteNote: jest.fn(),
+            noteDelivery: acceptedNoteDelivery(), observeTitle: () => opening,
+            captureActionTime: () => ({ earliestMs: 100, latestMs: 110 }),
+        }));
+        try {
+            const view = render(<StudyNoteEditorPage />);
+            fireEvent.click(screen.getByTitle('common.edit'));
+            fireEvent.change(screen.getByTestId('rich-markdown-editor'), { target: { value: newBody } });
+            await act(async () => { await jest.advanceTimersByTimeAsync(1600); });
+            expect(updateNote).toHaveBeenCalledTimes(1);
+
+            const field = screen.getByPlaceholderText('studiesWorkspace.titlePlaceholder');
+            fireEvent.change(field, { target: { value: typedTitle } });
+            projected = { ...original, title: typedTitle, content: newBody };
+            await act(async () => { finish(); await persistence; });
+            expect(field).toHaveValue(typedTitle);
+
+            projected = { ...projected, title: 'A later server title' };
+            view.rerender(<StudyNoteEditorPage />);
+            expect(field).toHaveValue('A later server title');
+            expect(updateNote).toHaveBeenCalledTimes(1);
+        } finally { jest.clearAllTimers(); jest.useRealTimers(); }
+    });
+
     it('drops the "saved" tick as soon as the text differs from what the server has', async () => {
         /**
          * Found in the browser, not by a test: the green "Saved" stayed up while newer

@@ -18,6 +18,7 @@ import { SaveConflictBanner } from '@/components/SaveConflictBanner';
 import { NoteDetailSkeleton } from '@/components/skeletons/NoteDetailSkeleton';
 import { AiBusyComet } from '@/components/ui/AiBusyComet';
 import { Chip } from '@/components/ui/Chip';
+import { DocumentFieldHistory } from '@/components/ui/DocumentFieldHistory';
 import { FoldableMarkdown } from '@/components/ui/FoldableMarkdown';
 import { RichMarkdownEditor } from '@/components/ui/RichMarkdownEditor';
 import { useActiveSection } from '@/hooks/useActiveSection';
@@ -76,7 +77,7 @@ import { NoteDraftRecovery } from './NoteDraftRecovery';
 import { NoteMobileSheet } from './NoteMobileSheet';
 import { NoteSidePanel } from './NoteSidePanel';
 import { RetainedNoteDraft } from './RetainedNoteDraft';
-import { useNoteAutoSave } from './useNoteAutoSave';
+import { useNoteAutoSave, type NoteTitleEdit } from './useNoteAutoSave';
 import { useNoteScrollIsolation } from './useNoteScrollIsolation';
 import { useNoteScrollPosition } from './useNoteScrollPosition';
 
@@ -719,7 +720,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
     const routeId = useRouteId();
     const [createdNoteId, setCreatedNoteId] = useState<string | null>(null);
     const [draftWriterId] = useState(newClientId);
-    const { uid, notes, noteDelivery, notePresence, refetch, confirmedDictationSources, confirmedCreationIds, createNote, updateNote, deleteNote, loading: notesLoading } = useStudyNotes();
+    const { uid, notes, noteDelivery, notePresence, refetch, confirmedDictationSources, confirmedCreationIds, createNote, updateNote, deleteNote, observeTitle, captureActionTime, loading: notesLoading } = useStudyNotes();
     const { creationId, recordingContextId, creationTargetId, noteId, isNew, draftDocId } = useNewStudyNoteDraft({
         uid, routeId, createdNoteId, openingDraftId, openingRecoveryKey, notes, confirmedCreationIds,
     });
@@ -728,7 +729,12 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
     const { isCopied, copyToClipboard } = useClipboard({ successDuration: 1500 });
 
     // Local state for the editor
-    const [title, setTitle] = useState('');
+    const [title, setTitleState] = useState('');
+    const titleEditRef = useRef<NoteTitleEdit | null>(null);
+    const setTitle = useCallback((value: string) => {
+        titleEditRef.current = null;
+        setTitleState(value);
+    }, []);
     const [content, setContent] = useState('');
     const [dictationSourceIds, setDictationSourceIds] = useState<string[]>([]);
     const [recordingSourceIds, setRecordingSourceIds] = useState<string[]>([]);
@@ -823,6 +829,16 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
     }
 
     const baselineRef = useRef<NoteDraftPayload | null>(null);
+    const changeTitle = (value: string) => {
+        const opening = baselineRef.current?.title;
+        const previous = titleEditRef.current;
+        const ordinary = !isNew && (type === 'note' || type === 'question');
+        const retainedOpening = previous?.id === noteId && previous.owner === uid && previous.capture.seen.title === opening
+            ? previous.capture.seen : undefined;
+        const seen = ordinary && opening !== undefined ? retainedOpening ?? observeTitle?.(noteId, opening) : undefined;
+        titleEditRef.current = uid && seen ? { owner: uid, id: noteId, value, capture: { seen, time: captureActionTime?.() ?? null } } : null;
+        setTitleState(value);
+    };
     // The next save goes without the typing pause — set by text the app inserts whole.
     const saveAtOnceRef = useRef(false);
     const baselineNoteIdRef = useRef<string | null>(null);
@@ -887,7 +903,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         draftWriterId,
         draftEditedAt,
         noteId, isNew, isInitialized, existingNote, title, content, tags, scriptureRefs, type, dictationSourceIds, recordingSourceIds,
-        updateNote, createNote, uid, setCreatedNoteId, t, baselineRef,
+        updateNote, createNote, uid, setCreatedNoteId, t, baselineRef, titleEditRef,
         revisionRef: serverRevisionRef,
         deliberateOverwriteRef,
         resaveNonce,
@@ -895,7 +911,11 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         saveBlocked: saveConflict || unavailable || draftHeld,
         onConflict: () => setSaveConflict(true),
         onCaptured: markCaptured,
-        onSaved: (saved) => {
+        onSaved: (saved, replacedTitle) => {
+            const pendingTitle = titleEditRef.current;
+            if (replacedTitle !== undefined && (pendingTitle?.id !== noteId || pendingTitle.owner !== uid)) {
+                setTitleState(current => current === replacedTitle ? saved.title : current);
+            }
             markSaved(saved);
             // This text IS the server's now, so the tick may come back.
             setConfirmedDraft(saved);
@@ -940,12 +960,15 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         setConfirmedDraft(rowPayload);
         markSaved(rowPayload);
         serverRevisionRef.current = existingNote?.rev?.[NOTE_AGGREGATE] ?? serverRevisionRef.current;
-    }, [rowPayload, existingNote, markSaved]);
+    }, [rowPayload, existingNote, markSaved, setTitle]);
     useEffect(() => {
         if (isNew || !isInitialized || !rowPayload || !confirmedDraft) return;
         if (editorIsDirty || isSaving || saveConflict || sameNoteDraft(rowPayload, confirmedDraft)) return;
+        const edit = titleEditRef.current;
+        // Returning to the confirmed words still edits the title that this device just queued.
+        if (edit?.capture.seen.requestId && edit.owner === uid && edit.id === noteId && edit.value === title && edit.capture.seen.title !== title) return;
         adoptRow();
-    }, [isNew, isInitialized, rowPayload, confirmedDraft, editorIsDirty, isSaving, saveConflict, adoptRow]);
+    }, [isNew, isInitialized, rowPayload, confirmedDraft, editorIsDirty, isSaving, saveConflict, uid, noteId, title, adoptRow]);
 
     const applyRecovered = useCallback(() => {
         if (!unsavedRecovery) return;
@@ -961,7 +984,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         // copy at all.
         acceptRecovered();
         answerDraftQuestion();
-    }, [unsavedRecovery, acceptRecovered, answerDraftQuestion]);
+    }, [unsavedRecovery, acceptRecovered, answerDraftQuestion, setTitle]);
 
     const isWideViewport = useWideViewport();
     // Remembered per device: hiding the panel is a deliberate choice about how you read,
@@ -1357,6 +1380,8 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         </>
     );
 
+    const titleHistory = !isNew && !unavailable && (type === 'note' || type === 'question') && existingNote
+        ? observeTitle?.(noteId, existingNote.title || '') : undefined;
     const renderHeader = () => (
             <EditorHeader
                 handleBack={handleBack} t={t} isEditing={isEditing} filteredNotes={filteredNotes}
@@ -1368,7 +1393,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
                 roomy={roomyHeader} collapsed={headerCollapsed} sectionLabel={sectionLabel}
                 onOpenSheet={propertiesInSheet ? openSheet : undefined}
                 editHeld={draftHeld}
-                title={commentView.title} setTitle={setTitle} searchQuery={searchQuery} justSaved={justSaved}
+                title={commentView.title} setTitle={changeTitle} searchQuery={searchQuery} justSaved={justSaved}
                 aiMenu={
                     <NoteAiMenu
                         // Every target picked inside this menu belongs to THIS button.
@@ -1412,6 +1437,14 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         <div data-note-workspace data-page-loading={!isInitialized && !unsavedRecovery ? '' : undefined} className="bg-white dark:bg-gray-900 flex flex-col -m-4 md:-m-6 lg:-m-8 relative">
             {/* HEADER TRAY */}
             {renderHeader()}
+            {uid && titleHistory && <DocumentFieldHistory key={JSON.stringify([uid, noteId, titleHistory.generation])}
+                current={title} disabled={editorIsDirty || !noteIsAccepted || draftHeld || saveConflict}
+                session={{ owner: uid, noteId, generation: titleHistory.generation, restore: (value: string) => {
+                    setIsEditing(true);
+                    saveAtOnceRef.current = true;
+                    changeTitle(value);
+                    return Promise.resolve();
+                } }} />}
             {/* Erased from its own page: the page goes too, as a deleted note's does — replace, so Back does not reopen it. */}
             <NoteCommentWindow open={commentWindow.open} note={existingNote} locale={bibleLocale} onClose={commentWindow.close} onErased={() => router.replace('/studies')} />
 

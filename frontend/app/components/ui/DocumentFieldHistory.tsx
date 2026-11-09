@@ -6,15 +6,15 @@ import { requestOwnerJson } from '@/services/ownerHttpTransport.client';
 import { storedFieldValue } from '@/utils/storedFieldValue';
 import { useTranslation } from '@locales/useTranslation';
 
-import type { GroupStatusHistoryPage, GroupTitleHistoryPage, PrayerTitleHistoryPage, SermonChurchHistoryPage, SermonTitleHistoryPage, SermonVerseHistoryPage, ServiceOrderTitleHistoryPage } from '@/data-engine/documentFieldAction';
+import type { GroupStatusHistoryPage, GroupTitleHistoryPage, PrayerTitleHistoryPage, SermonChurchHistoryPage, SermonTitleHistoryPage, SermonVerseHistoryPage, ServiceOrderTitleHistoryPage, StudyNoteTitleHistoryPage } from '@/data-engine/documentFieldAction';
 import type { Church } from '@/models/models';
 
-type DocumentHistoryPage = ServiceOrderTitleHistoryPage | PrayerTitleHistoryPage | GroupTitleHistoryPage | GroupStatusHistoryPage | SermonTitleHistoryPage | SermonVerseHistoryPage | SermonChurchHistoryPage;
+type DocumentHistoryPage = StudyNoteTitleHistoryPage | ServiceOrderTitleHistoryPage | PrayerTitleHistoryPage | GroupTitleHistoryPage | GroupStatusHistoryPage | SermonTitleHistoryPage | SermonVerseHistoryPage | SermonChurchHistoryPage;
 type HistoryValue = string | Church | null;
 type HistoryEntry = { id: string; value: HistoryValue; winner: HistoryValue };
 type HistoryPage = { entries: HistoryEntry[]; nextCursor: string | null };
 type HistorySession = { owner: string; generation: string } & (
-  (({ orderId: string } | { prayerId: string } | { groupId: string; field?: 'status' } | { sermonId: string; field?: 'verse' }) & { restore: (value: string) => Promise<void> })
+  (({ orderId: string } | { noteId: string } | { prayerId: string } | { groupId: string; field?: 'status' } | { sermonId: string; field?: 'verse' }) & { restore: (value: string) => Promise<void> })
   | { sermonId: string; field: 'church'; restore: (value: Church | null) => Promise<void> }
 );
 
@@ -58,15 +58,19 @@ export function DocumentFieldHistory({ session, current, disabled }: { session: 
       ? { collection: 'sermons', resourceId: session.sermonId, key: 'sermonId' }
       : 'prayerId' in session
         ? { collection: 'prayerRequests', resourceId: session.prayerId, key: 'prayerId' }
-        : { collection: 'serviceOrders', resourceId: session.orderId, key: 'orderId' };
+        : 'noteId' in session
+          ? { collection: 'studyNotes', resourceId: session.noteId, key: 'noteId' }
+          : { collection: 'serviceOrders', resourceId: session.orderId, key: 'orderId' };
   const field = ('field' in session && session.field) || 'title';
   const labels = historyLabels[field];
   const endpoint = field + '-history';
   const heading = t(labels.heading);
   const format = (value: HistoryValue) => {
-    if (typeof value !== 'string') return value ? [value.name, value.city].filter(Boolean).join(', ') : t('calendar.unspecifiedChurch');
+    if (typeof value !== 'string') return value ? [value.name, value.city].filter(Boolean).join(', ') : t(field === 'title' ? 'common.untitled' : 'calendar.unspecifiedChurch');
     return field === 'status' ? String(storedFieldValue(t, 'groups', 'status', value)) : value || t('common.untitled');
   };
+  const isCurrent = (value: HistoryValue) => 'noteId' in session
+    ? (current ?? '') === (value ?? '') : sameHistoryValue(current, value);
   const panel = useId();
   const [open, setOpen] = useState(false);
   const [page, setPage] = useState<HistoryPage | null>(null);
@@ -101,6 +105,7 @@ export function DocumentFieldHistory({ session, current, disabled }: { session: 
       if ('field' in session && session.field === 'church') {
         if (typeof next !== 'string') await session.restore(next);
       } else if (typeof next === 'string') await session.restore(next);
+      else if (next === null && 'noteId' in session) await session.restore('');
     }
     catch { setError('restore'); }
     finally { setRestoring(false); }
@@ -120,9 +125,9 @@ export function DocumentFieldHistory({ session, current, disabled }: { session: 
             <p className="font-medium">{format(entry.value)}</p>
             <p>{t(labels.kept, { title: format(entry.winner) })}</p>
           </div>
-          <button type="button" disabled={disabled || restoring || sameHistoryValue(current, entry.value)}
+          <button type="button" disabled={disabled || restoring || isCurrent(entry.value)}
             className="min-h-8 text-xs font-medium text-emerald-700 hover:underline disabled:opacity-50 dark:text-emerald-400"
-            onClick={() => void restore(entry.value)}>{sameHistoryValue(current, entry.value) ? t(labels.current)
+            onClick={() => void restore(entry.value)}>{isCurrent(entry.value) ? t(labels.current)
               : t(labels.restore)}</button>
         </li>)}
       </ul>}

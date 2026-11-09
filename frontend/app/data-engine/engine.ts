@@ -10,7 +10,7 @@ import { CommitQueue, type CommitRequest, type CommitStore } from './commits';
 import { EditorController, InactiveEditorError, type CheckpointRecoveryStore, type CheckpointStore, type EditorRecord, type EditorState, type RecoveryCheckpoint } from './controller';
 import { captureCouncilCarry, pinCouncilDestination } from './councilCarry';
 import { canReplaceDocumentIntent, isDirectLegacyDocumentIntent, requiresWholeActionResolution, savedDocumentAnswer } from './documentDelivery';
-import { capturePrayerTitle, matchesPrayerStatusOpening, matchesPrayerTitleRequest, validatedTitleCapture } from './documentFieldAction';
+import { capturePrayerTitle, captureStudyNoteTitle, matchesPrayerStatusOpening, matchesPrayerTitleRequest, matchesStudyNoteTitleRequest, studyNoteTitleValue, validatedTitleCapture } from './documentFieldAction';
 import { ACTION_SLOT, areDifferentTabManualParents, editorSlot, isManualChoiceRecoveryIdentity, manualScopeIdentity, readManualScopeIdentity } from './editorIdentity';
 import { AddressedFailures, eachFailure, PausedReadFailure } from './failures';
 import { collectionHeadRef } from './feed';
@@ -24,7 +24,7 @@ import { captureMembershipPins } from './membershipCapture';
 import { describeActionDelivery, describeMembershipDelivery, type MembershipDelivery } from './membershipDelivery';
 import { CREATION_SCOPE_PREFIX, MembershipScope, type MembershipScopeRecord } from './membershipScope';
 import { hasBranchedOrdinaryAnswer, manualOrdinaryChoiceSources, ordinaryAnswerChoice, ordinaryAnswerCoverage, ordinaryStoredChoice, requireDocumentChoiceForBranch, reviewOrdinaryAnswerChoice, type ManualChoiceSources } from './ordinaryAnswerChoice';
-import { getResourcePolicy, equalValues, isValidIdentifier } from './protocol';
+import { getResourcePolicy, equalValues, isValidIdentifier, readField } from './protocol';
 import { documentRecordPresence, type RecordPresence } from './recordPresence';
 import { forkCheckpoint, isPassiveManualContinuation, isRecoverableCheckpoint, reconcileRecoveryRecord, recoveryCheckpointId, validateRecoveryRecord } from './recovery.client';
 import { RecoveryPresence, recoverySources, type RecoveryPresenceKind, type RecoveryPresenceLease, type RecoveryPresencePort } from './recoveryPresence';
@@ -1823,6 +1823,17 @@ export class DataEngine {
           if (!capturePrayerTitle(checkpoint.confirmed, next === checkpoint.draft ? null : next, action.title, known)) {
             if (next !== checkpoint.draft && (checkpoint.confirmed.metadata?.generation !== seen.generation || checkpoint.draft?.title !== seen.title)) {
               throw Object.assign(new Error('The prayer title changed'), { code: 'prayer-title-basis-changed' });
+            }
+            captured = undefined;
+          }
+        }
+        if (action?.kind === 'study-note-title') {
+          const { seen } = action.title;
+          const known = Boolean(seen.requestId && matchesStudyNoteTitleRequest(this.commitRecords.get(seen.requestId), owner, frozen, seen));
+          if (!captureStudyNoteTitle(checkpoint.confirmed, next === checkpoint.draft ? null : next, action.title, known)) {
+            if (next !== checkpoint.draft && (checkpoint.confirmed.metadata?.generation !== seen.generation
+              || !equalValues(readField(checkpoint.draft ?? {}, ['title']), studyNoteTitleValue(seen)))) {
+              throw Object.assign(new Error('The study note title changed'), { code: 'study-note-title-basis-changed' });
             }
             captured = undefined;
           }

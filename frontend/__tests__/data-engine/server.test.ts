@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { isCollectionServed } from '@/data-engine/activation';
-import { DataEngineServerError, listBibleMarkHistory, listCouncilMetadataHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listPrayerStatusHistory, listPrayerTitleHistory, listSermonChurchHistory, listSermonTitleHistory, listSermonVerseHistory, listSeriesMetadataHistory, listServiceOrderFlagHistory, listServiceOrderStepTitleHistory, listServiceOrderTitleHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
+import { DataEngineServerError, listBibleMarkHistory, listCouncilMetadataHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listPrayerStatusHistory, listPrayerTitleHistory, listSermonChurchHistory, listSermonTitleHistory, listSermonVerseHistory, listSeriesMetadataHistory, listServiceOrderFlagHistory, listServiceOrderStepTitleHistory, listServiceOrderTitleHistory, listStudyNoteTitleHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
 import { collectionHeadId, HEADS_COLLECTION, sequenceId } from '@/data-engine/serverFeed';
 import { DataSession } from '@/data-engine/session';
 import type { DataCommand, FieldValue, ResourceSnapshot } from '@/data-engine/types';
@@ -1894,6 +1894,85 @@ describe('transactional DataEngine server', () => {
     });
   });
 
+  describe('study note title chronology', () => {
+    const owner = 'owner-1';
+    const resource = { collection: 'studyNotes', id: 'timed-study-note' };
+    const base = { protocol: 1, owner, resource, dependsOn: [] };
+    const title = 'Opening note title';
+    const content = 'Retain the original paragraph.';
+    const desk = 'Computer title';
+    const phone = 'Phone title';
+    const field = (value: string) => ({ exists: true, value });
+    const seed = () => processCommand(owner, { ...base, operationId: 'note-create', kind: 'create', generation: null,
+      value: { userId: owner, title, content, type: 'note', tags: [], scriptureRefs: [], materialIds: [], isDraft: true,
+        createdAt: '2026-11-08T00:00:00.000Z', updatedAt: '2026-11-08T00:00:00.000Z' } });
+    const rename = (operationId: string, nextTitle: string, offset: number | null) => ({
+      ...base, operationId, kind: 'update', generation: 'note-create',
+      changes: [{ path: ['title'], before: field(title), after: field(nextTitle) }],
+      studyNoteTitleAction: { before: field(title), after: field(nextTitle), observedRevision: 1,
+        time: offset === null ? null : { earliestMs: 1_800_000_000_000 + offset, latestMs: 1_800_000_000_005 + offset } },
+    });
+
+    it.each([[20, desk], [80, phone]] as const)('orders a delayed title while retaining note prose (%s)', async (offset, winner) => {
+      expect((await seed()).kind).toBe('acknowledged');
+      expect((await processCommand(owner, rename('desk-title', desk, 40))).kind).toBe('acknowledged');
+      const command = rename('phone-title', phone, offset);
+      const reply = await processCommand(owner, command);
+      expect(reply).toMatchObject({ kind: 'acknowledged', snapshot: { value: { title: winner, content } } });
+      expect(await processCommand(owner, command)).toEqual(reply);
+      expect(await listStudyNoteTitleHistory(owner, resource.id, 'note-create')).toMatchObject({
+        entries: [{ title: winner === desk ? phone : desk, winnerTitle: winner }],
+      });
+      await expect(listStudyNoteTitleHistory('other-owner', resource.id, 'note-create')).rejects.toMatchObject({ status: 403 });
+      await expect(listStudyNoteTitleHistory(owner, resource.id, 'wrong-generation')).rejects.toMatchObject({ status: 404 });
+    });
+
+    it('orders clearing a long title without changing the existing input contract', async () => {
+      expect((await seed()).kind).toBe('acknowledged');
+      const longTitle = 'A'.repeat(2048);
+      expect((await processCommand(owner, rename('desk-long', longTitle, 40))).kind).toBe('acknowledged');
+      expect(await processCommand(owner, rename('phone-clear', '', 80))).toMatchObject({
+        kind: 'acknowledged', snapshot: { value: { title: '', content } },
+      });
+      expect(await listStudyNoteTitleHistory(owner, resource.id, 'note-create')).toMatchObject({
+        entries: [{ title: longTitle, winnerTitle: '' }],
+      });
+    });
+
+    it('orders the title of a legacy note whose original title field was absent', async () => {
+      expect((await processCommand(owner, { ...base, operationId: 'note-create', kind: 'create', generation: null,
+        value: { userId: owner, content, type: 'note', tags: [], scriptureRefs: [], materialIds: [], isDraft: true,
+          createdAt: '2026-11-08T00:00:00.000Z', updatedAt: '2026-11-08T00:00:00.000Z' },
+      })).kind).toBe('acknowledged');
+      const firstTitle = (operationId: string, next: string, at: number) => ({
+        ...rename(operationId, next, at), changes: [{ path: ['title'], before: { exists: false }, after: field(next) }],
+      });
+      expect((await processCommand(owner, firstTitle('desk-title', desk, 40))).kind).toBe('acknowledged');
+      expect(await processCommand(owner, firstTitle('phone-title', phone, 80))).toMatchObject({
+        kind: 'acknowledged', snapshot: { value: { title: phone, content } },
+      });
+    });
+
+    it.each([null, 43])('keeps a title choice when the order is unknown (%s)', async offset => {
+      expect((await seed()).kind).toBe('acknowledged');
+      expect((await processCommand(owner, rename('desk-title', desk, 40))).kind).toBe('acknowledged');
+      expect(await processCommand(owner, rename('phone-title', phone, offset))).toMatchObject({
+        kind: 'conflict', conflicts: [{ path: ['title'] }], snapshot: { value: { title: desk, content } },
+      });
+    });
+
+    it('combines a title with independent new prose without dropping either', async () => {
+      expect((await seed()).kind).toBe('acknowledged');
+      const nextContent = 'Retain the new paragraph.';
+      expect((await processCommand(owner, { ...base, operationId: 'desk-prose', kind: 'update', generation: 'note-create',
+        changes: [{ path: ['content'], before: field(content), after: field(nextContent) }],
+      })).kind).toBe('acknowledged');
+      expect(await processCommand(owner, rename('phone-title', phone, 20))).toMatchObject({
+        kind: 'acknowledged', snapshot: { value: { title: phone, content: nextContent } },
+      });
+    });
+  });
+
   describe('prayer title chronology', () => {
     const owner = 'owner-1';
     const resource = { collection: 'prayerRequests', id: 'timed-prayer' };
@@ -2720,7 +2799,9 @@ describe('transactional DataEngine server', () => {
       snapshots: [], actionClock: { challenge: 'fresh', serverMs: 1_800_000_000_123 },
     });
     expect(await listDocuments('owner-1', 'sermons')).not.toHaveProperty('actionClock');
-    expect(await listDocuments('owner-1', 'studyNotes', { actionClockChallenge: 'fresh' })).not.toHaveProperty('actionClock');
+    expect(await listDocuments('owner-1', 'studyNotes', { actionClockChallenge: 'fresh' })).toMatchObject({
+      actionClock: { challenge: 'fresh', serverMs: 1_800_000_000_123 },
+    });
   });
 
   it('writes a tombstone no legacy owner query can match, and still owns, replays and lists it', async () => {

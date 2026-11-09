@@ -12,6 +12,7 @@ import { withNoteReferenceBibles } from '@/utils/scriptureReferenceNumbering';
 import { isStudyNoteDraft } from '@/utils/studyNoteDraft';
 import { useTranslation } from '@locales/useTranslation';
 
+import type { StudyNoteTitleCapture, StudyNoteTitleSeen } from '@/data-engine/documentFieldAction';
 import type { DocumentData, ResourceSnapshot } from '@/data-engine/types';
 import type { StudyNote } from '@/models/models';
 import type { BookText } from '@/utils/bibleText';
@@ -80,6 +81,7 @@ type NoteUpdate = {
   captureScope?: string;
   expectedRevision?: number | null;
   expectedBaseline?: Record<string, unknown> | null;
+  titleCapture?: StudyNoteTitleCapture;
 };
 
 /**
@@ -130,12 +132,26 @@ export function useStudyNotesEngine(enabled: boolean) {
     () => new Set((collection.state?.snapshots ?? []).filter(snapshot => Boolean(snapshot.metadata))
       .map(snapshot => snapshot.resource.id)), [collection.state?.snapshots]);
 
+  const observeTitle = (id: string, title: string): StudyNoteTitleSeen | undefined => {
+    const row = collection.state?.documents?.find(item => item.resource.id === id);
+    if (row?.needsAttention) return undefined;
+    if (row?.value?.title === title && row.submittedTitle?.title === title) return row.submittedTitle;
+    const observed = [row?.acknowledged, collection.state?.snapshots?.find(item => item.resource.id === id)].find(snapshot =>
+      snapshot?.value && (snapshot.value.title ?? '') === title && snapshot.value.title !== null
+        && snapshot.metadata && !snapshot.metadata.deleted);
+    const metadata = observed?.metadata;
+    return metadata ? { title, generation: metadata.generation, revision: metadata.revision,
+      ...(observed?.value?.title === undefined && { missing: true }) } : undefined;
+  };
+
   const refusal = () => refusedWrite('unauthenticated', 'No signed-in user for this write', t('writeRecovery.refused'));
 
   return {
     uid,
     notes,
     noteDelivery,
+    observeTitle,
+    captureActionTime: actions.captureActionTime,
     notePresence: collection.presence,
     commentCollectionReady: collection.state?.complete === true && !collection.error && !collection.readOnly,
     confirmedDictationSources,
@@ -174,7 +190,7 @@ export function useStudyNotesEngine(enabled: boolean) {
       })));
     },
     updating: updating > 0,
-    updateNote: ({ id, updates, expectedRevision, expectedBaseline, captureScope }: NoteUpdate): StudyNoteSubmission & { result: Promise<SavedNote> } => {
+    updateNote: ({ id, updates, expectedRevision, expectedBaseline, captureScope, titleCapture }: NoteUpdate): StudyNoteSubmission & { result: Promise<SavedNote> } => {
       if (!uid) {
         const refused = refusal();
         const result = refused.acceptance.then(() => undefined as never) as Promise<SavedNote>;
@@ -182,8 +198,12 @@ export function useStudyNotesEngine(enabled: boolean) {
         return { ...refused, result };
       }
       const patch = Object.fromEntries(EDITABLE.filter(field => updates[field] !== undefined).map(field => [field, updates[field]]));
+      const action = titleCapture && expectedBaseline && (expectedBaseline.title === titleCapture.seen.title || titleCapture.seen.requestId)
+        && typeof patch.title === 'string'
+        ? { kind: 'study-note-title' as const, title: titleCapture } : undefined;
       const submission = once(`study-note:update:${id}:${JSON.stringify(patch)}`, async () => {
         setUpdating(count => count + 1);
+        let staleTitle: StaleWriteError | undefined;
         try {
           return await actions.submit(resource(id), { kind: 'update', update: current => {
             if (!current) throw new Error('Study note not found');
@@ -200,7 +220,8 @@ export function useStudyNotesEngine(enabled: boolean) {
             const readSource = storedReferences(baselineRefs);
             // A note stored without a type is a note — compared and reported as one, as every screen reads it: else an
             // editor that adopted the reported type would be refused again on the same revision (Codex review, 2026-10-28).
-            const storedField = (field: string) => (field === 'type' ? read.type ?? 'note' : read[field]);
+            const storedField = (field: string) => (field === 'type' ? read.type ?? 'note'
+              : field === 'title' && action?.title.seen.missing && current.title === undefined ? '' : read[field]);
             // "Already what I write" is judged on the stored list too, never on a reading of it.
             const storedAs = (field: string, value: unknown) => (field === 'scriptureRefs'
               ? same(current.scriptureRefs ?? [], value)
@@ -211,8 +232,10 @@ export function useStudyNotesEngine(enabled: boolean) {
               && !storedAs(field, patch[field]));
             if (changedElsewhere.length) {
               // A refusal reports every compared field so the editor can adopt the complete server version.
-              throw new StaleWriteError(NOTE_AGGREGATE, expectedRevision ?? stored, stored,
+              const stale = new StaleWriteError(NOTE_AGGREGATE, expectedRevision ?? stored, stored,
                 Object.fromEntries(compared.map(field => [field, field === 'type' ? storedField(field) : current[field] ?? null])));
+              if (!action || (!action.title.time && !action.title.seen.requestId) || changedElsewhere.some(field => field !== 'title')) throw stale;
+              staleTitle = stale;
             }
             const receipts: DocumentData = {};
             for (const field of ['dictationSourceIds', 'recordingSourceIds'] as const) {
@@ -221,7 +244,10 @@ export function useStudyNotesEngine(enabled: boolean) {
             const merged: DocumentData = { ...current, ...(deepCleanUndefined(patch) as DocumentData), ...receipts, updatedAt: now() };
             const next: DocumentData = { ...merged, isDraft: isDraft(merged as unknown as StudyNote) };
             return next;
-          } }, captureScope ? { captureScope } : undefined);
+          } }, captureScope || action ? { ...(captureScope && { captureScope }), ...(action && { action }) } : undefined);
+        } catch (error) {
+          if (staleTitle && error && typeof error === 'object' && 'code' in error && error.code === 'study-note-title-basis-changed') throw staleTitle;
+          throw error;
         } finally {
           setUpdating(count => count - 1);
         }

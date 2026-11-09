@@ -36,7 +36,7 @@ import type { AudioExportKey, AudioExportRecord, AudioExportStore, AudioExportTr
 import type { BibleMarkHistoryEntry, BibleMarkHistoryPage } from './bibleMarkStroke';
 import type { CouncilMetadataHistoryPage } from './councilFieldAction';
 import type { DisplacedRowDate, MeetingDateHistoryPage, PreachDateHistoryPage } from './datedRowAction';
-import type { GroupStatusHistoryPage, GroupTitleHistoryPage, DocumentTitleHistoryEntry, SermonChurchHistoryPage, PrayerTitleHistoryPage, SermonTitleHistoryPage, SermonVerseHistoryPage, ServiceOrderTitleHistoryPage } from './documentFieldAction';
+import type { GroupStatusHistoryPage, GroupTitleHistoryPage, DocumentTitleHistoryEntry, SermonChurchHistoryPage, PrayerTitleHistoryPage, SermonTitleHistoryPage, SermonVerseHistoryPage, ServiceOrderTitleHistoryPage, StudyNoteTitleHistoryPage } from './documentFieldAction';
 import type { PrayerStatusHistoryPage } from './prayerStatusAction';
 import type { RowDetailPolicy } from './rowDetailAction';
 import type { RowValue } from './rowFieldAction';
@@ -753,6 +753,12 @@ export async function listServiceOrderTitleHistory(owner: string, orderId: strin
   const resource = { collection: 'serviceOrders', id: orderId };
   const page = await listHistoryEntries<DocumentTitleHistoryEntry>(owner, resource, DOCUMENT_TITLE_HISTORY, generation, cursor, 'service-order-gone');
   return { owner, orderId, generation, ...page };
+}
+
+export async function listStudyNoteTitleHistory(owner: string, noteId: string, generation: string, cursor?: string): Promise<StudyNoteTitleHistoryPage> {
+  const resource = { collection: 'studyNotes', id: noteId };
+  const page = await listHistoryEntries<StudyNoteTitleHistoryPage['entries'][number]>(owner, resource, DOCUMENT_TITLE_HISTORY, generation, cursor, 'note-gone');
+  return { owner, noteId, generation, ...page };
 }
 
 export async function listPrayerTitleHistory(owner: string, prayerId: string, generation: string, cursor?: string): Promise<PrayerTitleHistoryPage> {

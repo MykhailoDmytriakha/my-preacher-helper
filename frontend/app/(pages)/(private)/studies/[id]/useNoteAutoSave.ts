@@ -20,10 +20,29 @@ import { noteRecordingMetadata } from '@/utils/studyNoteRecordings';
 import { useTranslation } from '@locales/useTranslation';
 
 import type { NoteDraftPayload } from './noteDraft';
+import type { StudyNoteTitleCapture } from '@/data-engine/documentFieldAction';
 import type { StudyNoteSubmission } from '@/hooks/useStudyNotesEngine';
 import type { ScriptureReference, StudyNote, StudyNoteType } from '@/models/models';
 
 const EMPTY_SOURCE_IDS: string[] = [];
+export type NoteTitleEdit = { owner: string; id: string; value: string; capture: StudyNoteTitleCapture };
+
+function advanceTitleEdit(ref: React.MutableRefObject<NoteTitleEdit | null>, submitted: NoteTitleEdit, requestId: string) {
+    const pending = ref.current;
+    if (pending === submitted) {
+        ref.current = null;
+        return;
+    }
+    const opening = submitted.capture.seen;
+    const seen = pending?.capture.seen;
+    if (!pending || pending.owner !== submitted.owner || pending.id !== submitted.id || !seen
+        || seen.generation !== opening.generation || seen.revision !== opening.revision || seen.title !== opening.title
+        || seen.missing !== opening.missing || seen.requestId !== opening.requestId) return;
+    // The next input arrived while this exact local title was being captured.
+    ref.current = { ...pending, capture: { ...pending.capture, seen: {
+        title: submitted.value, generation: opening.generation, revision: opening.revision, requestId,
+    } } };
+}
 
 /** A returned canonical request owns the full payload; server/audio proof stays separate. */
 function afterCanonicalCapture(submission: StudyNoteSubmission, payload: NoteDraftPayload, targetId: string,
@@ -38,7 +57,7 @@ function afterCanonicalCapture(submission: StudyNoteSubmission, payload: NoteDra
 }
 
 export function useNoteAutoSave({
-    noteId, isNew, creationId, draftDocId = 'new', draftWriterId, draftEditedAt, isInitialized, title, content, tags, scriptureRefs, type, updateNote, createNote, uid, setCreatedNoteId, baselineRef, revisionRef, deliberateOverwriteRef, resaveNonce, saveBlocked, onConflict, onSaved, onCaptured, saveAtOnceRef, captureRecordingHandoff, dictationSourceIds = EMPTY_SOURCE_IDS, recordingSourceIds = EMPTY_SOURCE_IDS
+    noteId, isNew, creationId, draftDocId = 'new', draftWriterId, draftEditedAt, isInitialized, title, content, tags, scriptureRefs, type, updateNote, createNote, uid, setCreatedNoteId, baselineRef, revisionRef, deliberateOverwriteRef, resaveNonce, saveBlocked, onConflict, onSaved, onCaptured, saveAtOnceRef, captureRecordingHandoff, titleEditRef, dictationSourceIds = EMPTY_SOURCE_IDS, recordingSourceIds = EMPTY_SOURCE_IDS
 }: {
     dictationSourceIds?: string[];
     recordingSourceIds?: string[];
@@ -49,12 +68,14 @@ export function useNoteAutoSave({
     draftWriterId?: string;
     /** Original content-change time; an immediate backup must not invent another edit. */
     draftEditedAt?: number;
+    titleEditRef?: React.MutableRefObject<NoteTitleEdit | null>;
     noteId: string; isNew: boolean; isInitialized: boolean; existingNote?: StudyNote; title: string;
     content: string; tags: string[]; scriptureRefs: ScriptureReference[]; type: StudyNoteType;
     updateNote: (args: {
         id: string;
         updates: Partial<StudyNote>;
         captureScope?: string;
+        titleCapture?: StudyNoteTitleCapture;
         expectedRevision?: number | null;
         expectedBaseline?: Record<string, unknown> | null;
     }) => StudyNoteSubmission & { result: Promise<StudyNote & { revision?: number }> };
@@ -83,7 +104,7 @@ export function useNoteAutoSave({
      * Called ONLY after the server accepted exactly this payload. Canonical local
      * capture can already own its backup, but never confirms server status.
      */
-    onSaved?: (saved: NoteDraftPayload) => void;
+    onSaved?: (saved: NoteDraftPayload, replacedTitle?: string) => void;
     /** Called only after an exact canonical request durably owns these words. */
     onCaptured?: (captured: NoteDraftPayload, targetId: string, editedAt?: number) => void;
     /** Capture source IDs at submission time; later dictation belongs to a later save. */
@@ -228,6 +249,14 @@ export function useNoteAutoSave({
             ...noteRecordingMetadata(dictationSourceIds, recordingSourceIds),
         };
         const updates: Partial<StudyNote> = changedFields(baselineRef.current, payload);
+        const wasDeliberate = deliberateOverwriteRef.current;
+        const titleEdit = titleEditRef?.current;
+        const seen = titleEdit?.capture.seen;
+        const titleCapture = !wasDeliberate && titleEdit && titleEdit.owner === uid && titleEdit.id === noteId && titleEdit.value === title
+            && seen && (seen.requestId ? seen.title !== title : updates.title !== undefined && seen.title === baselineRef.current?.title)
+            ? titleEdit.capture : undefined;
+        // Returning to an already accepted string can still be a new, exact action after a local predecessor.
+        if (titleCapture) updates.title = title;
 
         if (Object.keys(updates).length === 0) return;
 
@@ -246,13 +275,13 @@ export function useNoteAutoSave({
         // Clear it before this write so `queued` cannot fall back to a stale Saved
         // indicator after the spinner ends.
         setLastSaved(null);
-        const wasDeliberate = deliberateOverwriteRef.current;
         try {
             const recording = captureRecordingHandoff?.();
             const captureScope = prepareNoteDraftCapture(uid, noteId, submittedPayload, draftWriterId, draftEditedAt);
             const submission = updateNote({
                 id: noteId,
                 captureScope,
+                ...(titleCapture && { titleCapture }),
                 updates,
                 expectedRevision: revisionRef.current,
                 // WHAT THIS TEXT WAS BUILT FROM. Not a fresh read: the service used
@@ -269,6 +298,22 @@ export function useNoteAutoSave({
                     ? null
                     : (baselineRef.current as unknown as Record<string, unknown>),
             });
+            if (titleCapture && titleEdit && titleEditRef && submission.capture) {
+                void submission.capture.then(receipt => {
+                    if (receipt.kind === 'submitted' && receipt.requestId) advanceTitleEdit(titleEditRef, titleEdit, receipt.requestId);
+                }).catch(() => undefined);
+            }
+            const acknowledge = (saved: StudyNote | undefined) => {
+                const acceptedTitle = saved ? saved.title ?? '' : submittedPayload.title;
+                if (acceptedTitle === submittedPayload.title) {
+                    onSaved?.(submittedPayload);
+                    return;
+                }
+                if (baselineRef.current?.title === submittedPayload.title) {
+                    baselineRef.current = { ...baselineRef.current, title: acceptedTitle };
+                }
+                onSaved?.({ ...submittedPayload, title: acceptedTitle }, submittedPayload.title);
+            };
             afterCanonicalCapture(submission, submittedPayload, noteId, onCaptured, draftEditedAt);
             void submission.persistence.then(() => recording?.accepted()).catch(() => undefined);
             // useStudyNotes' update recovery descriptor reports a late refusal while this screen is mounted.
@@ -296,7 +341,7 @@ export function useNoteAutoSave({
                             if (saved.revision < (revisionRef.current ?? 0)) return;
                             revisionRef.current = saved.revision;
                         }
-                        onSaved?.(submittedPayload);
+                        acknowledge(saved);
                         setLastSaved(new Date());
                     }).catch(() => undefined);
                 }
@@ -313,7 +358,7 @@ export function useNoteAutoSave({
             // are no longer "changed by the user" and must not be re-sent.
             baselineRef.current = submittedPayload;
             if (wasDeliberate) deliberateOverwriteRef.current = false;
-            onSaved?.(submittedPayload);
+            acknowledge(saved);
             announceIfPersisted(acceptance, () => setLastSaved(new Date()));
         } catch (e) {
             if (isStaleWriteError(e)) {
@@ -338,7 +383,7 @@ export function useNoteAutoSave({
             inFlightRef.current = false;
             setIsSaving(false);
         }
-    }, [uid, draftWriterId, draftEditedAt, noteId, isNew, isInitialized, isSaving, saveBlocked, saveNewNote, title, content, tags, scriptureRefs, type, dictationSourceIds, recordingSourceIds, updateNote, baselineRef, revisionRef, deliberateOverwriteRef, onConflict, onSaved, onCaptured, atOnceRef, captureRecordingHandoff]);
+    }, [uid, draftWriterId, draftEditedAt, noteId, isNew, isInitialized, isSaving, saveBlocked, saveNewNote, title, content, tags, scriptureRefs, type, dictationSourceIds, recordingSourceIds, updateNote, baselineRef, revisionRef, deliberateOverwriteRef, titleEditRef, onConflict, onSaved, onCaptured, atOnceRef, captureRecordingHandoff]);
 
     useEffect(() => {
         if (!isInitialized) return;
