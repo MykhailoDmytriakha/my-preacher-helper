@@ -239,6 +239,29 @@ describe('relation scope with unrelated owner documents', () => {
       });
     });
 
+    it.each(['tracked', 'legacy', 'stale head'] as const)('removes a %s sermon from its series with the expected read cost', async tracking => {
+      for (let index = 0; index < 305; index++) putSeries(`unrelated-${index}`);
+      const headPath = 'sermons/g/_seriesMembershipOrder/head';
+      const assigned = await processCommand(owner, alpha(earlier));
+      if (assigned.kind !== 'acknowledged') throw new Error('Fixture series assignment failed');
+      const opening = assigned.snapshot.metadata!;
+      if (tracking === 'legacy') documents.delete(headPath);
+      if (tracking === 'stale head') documents.set(headPath, { ...documents.get(headPath)!,
+        location: { id: 'beta', generation: null, revision: 0, label: 'Other series' },
+      });
+      const readsBefore = documentReadUnits;
+      expect(await processCommand(owner, { ...alpha(later), operationId: 'remove-one-member', generation: opening.generation,
+        edits: [{ resource: seriesA, generation: opening.generation, beforeItems: [sermon], afterItems: [],
+          membership: { time: later, observedRevision: opening.revision, removed: membership(later).added, added: [] } }],
+      })).toMatchObject({ kind: 'acknowledged', snapshot: { value: { items: [], sermonIds: [] } } });
+      const reads = documentReadUnits - readsBefore;
+      if (tracking === 'tracked') expect(reads).toBe(5);
+      else expect(reads).toBeGreaterThanOrEqual(305);
+      expect(documents.get(headPath)).toMatchObject({ location: null, operationId: 'remove-one-member' });
+      expect(documents.get('sermons/g')?.title).toBe('Keep sermon words');
+      expect(documents.get('series/beta')?.items).toEqual([unrelated]);
+    });
+
     it('applies a later removal to the actual current series and keeps an older assignment from restoring it', async () => {
       const initial = await processCommand(owner, alpha(earlier));
       expect(initial.kind).toBe('acknowledged');

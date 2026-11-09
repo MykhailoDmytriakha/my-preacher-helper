@@ -89,6 +89,18 @@ function matchingHead(raw: unknown, owner: string, member: ResourceSnapshot, cur
     ...(catalogVersion !== undefined && { catalogVersion }), ...(head.applied === true && { applied: true }) };
 }
 
+/** Use the head as a locator only when it belongs to this live member. */
+export function indexedSeriesMembership(raw: unknown, owner: string, member: ResourceSnapshot): MembershipLocation | null | undefined {
+  if (typeof raw !== 'object' || raw === null) return undefined;
+  const { location } = raw as Partial<SeriesMembershipHead>;
+  if (location !== null && (!location || !isValidIdentifier(location.id)
+    || (location.generation !== null && !isValidIdentifier(location.generation))
+    || !Number.isSafeInteger(location.revision) || location.revision < 0 || typeof location.label !== 'string')) return undefined;
+  const head = matchingHead(raw, owner, member, location);
+  // An older Clear could write a null head without checking for legacy duplicates.
+  return head && (location || head.applied || head.time) ? location : undefined;
+}
+
 /** A single series tombstone records its removal without per-member writes. */
 export async function reconcileDeletedSeriesMembership(raw: unknown, owner: string, current: MembershipLocation | null,
   readDeletion: (location: MembershipLocation) => Promise<number | undefined>): Promise<unknown> {
