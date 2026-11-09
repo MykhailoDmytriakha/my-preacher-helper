@@ -84,6 +84,14 @@ function orderField<Field extends string, Value extends RowValue>(command: Updat
   const { values, floor } = readProofs(raw, policy.proofs, field);
   const key = digest(action.rowCreatedAt, value, scope);
   const previous = values.find(proof => proof.rowId === action.rowId && proof.revision <= revision && proof.digest === key);
+  const combined = policy.mergeIndependently?.(action.before, action.after, value);
+  if (combined !== undefined) {
+    if (!action.time || !previous?.time) return { command };
+    // Both edits are required for this value. The interval contains the later of the two actions.
+    const time = { earliestMs: Math.max(action.time.earliestMs, previous.time.earliestMs),
+      latestMs: Math.max(action.time.latestMs, previous.time.latestMs) };
+    return { command, stamp: { ...action, after: combined, time } };
+  }
   const sameIntent = equalValues(action.before, action.after);
   const unobserved = previous && previous.revision > action.observedRevision;
   const openingDigest = previous?.repairs && digest(action.rowCreatedAt, action.before, scope);

@@ -2,6 +2,7 @@ import { DOCUMENT_BOOKKEEPING_FIELDS } from '@/utils/documentBookkeeping';
 import { preparationConfirmationField } from '@/utils/preparationFieldValues';
 
 import { COUNCIL_ASSEMBLY, councilAssemblyRow } from './councilAssemblyAction';
+import { COUNCIL_OUTCOME, councilOutcomeRow } from './councilOutcomeAction';
 import { COUNCIL_TOPIC_KIND, councilTopicKindRow } from './councilTopicKindAction';
 import { COUNCIL_TOPIC_TITLE, councilTopicTitleRow } from './councilTopicTitleAction';
 import { exegeticalPlan, exegeticalPointConflictId, readExegeticalPointChoice } from './exegeticalPointAction';
@@ -20,7 +21,7 @@ import type { RowFieldTarget, RowValue } from './rowFieldAction';
 import type { SessionCheckpoint } from './session';
 import type { DocumentData } from './types';
 
-function compareTopicField<Value extends RowValue>(checkpoint: SessionCheckpoint, id: string, target: RowFieldTarget<Value>) {
+function compareTopicField<Value extends RowValue>(checkpoint: SessionCheckpoint, id: string, target: RowFieldTarget<Value>, includeOutcomeHistory = false) {
   const { confirmed, draft, remoteCandidate } = checkpoint;
   if (!draft || !confirmed.value || !remoteCandidate?.value) return undefined;
   const before = existingRowField(confirmed.value.topics, id, target);
@@ -29,8 +30,16 @@ function compareTopicField<Value extends RowValue>(checkpoint: SessionCheckpoint
   if (before === undefined || mine === undefined || stored === undefined || equalValues(mine, stored)) return undefined;
   const { updatedAt: _local, ...local } = draft;
   const { updatedAt: _base, ...base } = confirmed.value;
-  if (!equalValues({ ...local, topics: replaceExistingRowField(local.topics, id, before, target) },
-    { ...base, topics: replaceExistingRowField(base.topics, id, before, target) })) return undefined;
+  const withoutComparedFields = (topics: DocumentData['topics']) => {
+    const rows = replaceExistingRowField(topics, id, before, target);
+    if (!includeOutcomeHistory || !Array.isArray(rows)) return rows;
+    return rows.map(row => {
+      if (!object(row) || row.id !== id) return row;
+      const { changes: _changes, ...rest } = row;
+      return rest;
+    });
+  };
+  if (!equalValues({ ...local, topics: withoutComparedFields(local.topics) }, { ...base, topics: withoutComparedFields(base.topics) })) return undefined;
   return { mine, stored,
     identity: JSON.stringify([checkpoint.editGeneration, remoteCandidate.metadata?.generation, remoteCandidate.metadata?.revision, id, target.leaf, mine, stored]) };
 }
@@ -38,6 +47,11 @@ function compareTopicField<Value extends RowValue>(checkpoint: SessionCheckpoint
 export function readCouncilTopicConflict(checkpoint: SessionCheckpoint) {
   if (checkpoint.conflicts.length !== 1 || Object.keys(checkpoint.pending).length !== 1) return undefined;
   const path = checkpoint.conflicts[0].path;
+  const outcome = councilOutcomeRow(path);
+  if (outcome) {
+    const comparison = compareTopicField(checkpoint, outcome, COUNCIL_OUTCOME, true);
+    return comparison && { field: 'outcome' as const, rowId: outcome, ...comparison };
+  }
   const title = councilTopicTitleRow(path);
   if (title) {
     const comparison = compareTopicField(checkpoint, title, COUNCIL_TOPIC_TITLE);

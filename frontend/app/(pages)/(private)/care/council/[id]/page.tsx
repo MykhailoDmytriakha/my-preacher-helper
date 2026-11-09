@@ -65,8 +65,10 @@ import { NEUTRAL_CAPTION, CARE_CARD_TONES } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
 
 import type { CouncilHistoryField, CouncilTimedField } from '@/data-engine/councilFieldAction';
+import type { CouncilOutcome } from '@/data-engine/councilOutcomeAction';
 import type { CouncilFinishUndo } from '@/hooks/useCouncilDataDocument';
 import type { Council, CouncilTopic } from '@/models/models';
+import type { TopicOutcome } from '@/utils/council';
 import '@locales/i18n';
 
 /**
@@ -148,7 +150,7 @@ function EngineCouncilDetailWorkspace({ councilId }: { councilId: string }) {
     }
   };
   const generation = document.confirmed?.metadata?.generation;
-  const comparison = councilTopicComparison(document.checkpoint, t);
+  const comparison = councilTopicComparison(document.checkpoint, t, document.council?.topics);
   const shownChoice = comparison ? document.checkpoint : undefined;
   const loading = document.loading || list.loading;
   const readFailed = !document.council && !loading && list.councils.length === 0 && Boolean(document.error ?? list.error);
@@ -160,7 +162,11 @@ function EngineCouncilDetailWorkspace({ councilId }: { councilId: string }) {
     updateCouncil: (id: string, updater: (current: Council) => Council, field?: CouncilTimedField) => {
       void document.updateCouncil(id, updater, field).catch(report);
     },
+    recordTopicOutcome: (topicId: string, outcome: TopicOutcome, trackChanges: boolean) => {
+      void document.recordTopicOutcome(topicId, outcome, trackChanges).catch(report);
+    },
     renameTopic: (topicId: string, title: string) => document.renameTopic(topicId, title),
+    restoreTopicOutcome: document.restoreTopicOutcome,
     setAssembly: document.setAssembly,
     changeTopicKind: document.changeTopicKind,
     history: owner && generation ? { owner, generation, restore: (field: CouncilHistoryField, value: string | null) =>
@@ -196,6 +202,8 @@ interface CouncilDetailSource {
   readFailed: boolean;
   refresh: () => unknown;
   updateCouncil: (id: string, updater: (current: Council) => Council, field?: CouncilTimedField) => void;
+  recordTopicOutcome: (id: string, outcome: TopicOutcome, trackChanges: boolean) => void;
+  restoreTopicOutcome: (topic: CouncilTopic, outcome: CouncilOutcome) => Promise<void>;
   renameTopic: (id: string, title: string) => Promise<void>;
   setAssembly: (topic: CouncilTopic, selected: boolean) => Promise<void>;
   changeTopicKind: (topic: CouncilTopic, kind: 'decision' | 'info') => Promise<void>;
@@ -468,6 +476,11 @@ function CouncilDetailContent({ source, engineCouncilId }: { source: CouncilDeta
             owner={source.history.owner} generation={source.history.generation} councilId={council.id}
             topics={council.topics} disabled={readOnly || held || editingTopicId !== null}
             field="kind" onRestore={source.changeTopicKind} />
+          <CouncilTopicHistory
+            key={JSON.stringify([source.history.owner, council.id, source.history.generation, 'topic-outcomes'])}
+            owner={source.history.owner} generation={source.history.generation} councilId={council.id}
+            topics={council.topics} disabled={readOnly || editingTopicId !== null}
+            field="outcome" onRestore={source.restoreTopicOutcome} />
         </div>}
         {editable && (
           <p className="mt-3 max-w-2xl px-1 text-sm leading-relaxed text-gray-600 dark:text-gray-400">
@@ -535,6 +548,7 @@ function CouncilDetailContent({ source, engineCouncilId }: { source: CouncilDeta
                 onEdit={() => setEditingTopicId(topic.id)}
                 onDone={() => setEditingTopicId(null)}
                 onChange={(updater) => patchTopic(topic.id, updater)}
+                onOutcome={(outcome, trackChanges) => source.recordTopicOutcome(topic.id, outcome, trackChanges)}
                 onRename={(title) => {
                   void source.renameTopic(topic.id, title).catch(error => toast.error(actionFailureMessage(error, t, 'council.save.refused')));
                 }}
@@ -618,6 +632,7 @@ function TopicCard({
   onEdit,
   onDone,
   onChange,
+  onOutcome,
   onRename,
   onSetAssembly,
   onChangeKind,
@@ -637,6 +652,7 @@ function TopicCard({
   onEdit: () => void;
   onDone: () => void;
   onChange: (updater: TopicUpdater) => void;
+  onOutcome: (outcome: TopicOutcome, trackChanges: boolean) => void;
   onRename: (title: string) => void;
   onSetAssembly: (selected: boolean) => void;
   onChangeKind: (kind: 'decision' | 'info') => Promise<void>;
@@ -828,9 +844,7 @@ function TopicCard({
                     <div className="mt-3 border-t border-indigo-200/80 pt-3 dark:border-indigo-900/50">
                       <CouncilOutcomePanel
                         topic={topic}
-                        onWrite={(next) =>
-                          onChange((current) => applyOutcome(current, next, { at: new Date().toISOString(), trackChanges: false }))
-                        }
+                        onWrite={(next) => onOutcome(next, false)}
                       />
                     </div>
                   )}
@@ -845,9 +859,7 @@ function TopicCard({
                     <div className="space-y-2">
                       <CouncilOutcomePanel
                         topic={topic}
-                        onWrite={(next) =>
-                          onChange((current) => applyOutcome(current, next, { at: new Date().toISOString(), trackChanges: true }))
-                        }
+                        onWrite={(next) => onOutcome(next, true)}
                       />
                       <button type="button" onClick={() => setEditingOutcome(false)} className={buttonQuiet}>
                         {t('council.topic.done')}

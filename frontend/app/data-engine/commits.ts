@@ -1048,7 +1048,12 @@ export class CommitQueue {
       const membership = documentTagChange(command.changes);
       const matched = membership && documentTagCommandActions(membership, documentTags);
       if (matched?.length) command.tagMembershipActions = matched;
-      Object.assign(command, matchingRowFields(command.changes, record, command.resource.collection));
+      const { councilOutcomeActions, ...rowFields } = matchingRowFields(command.changes, record, command.resource.collection);
+      Object.assign(command, rowFields);
+      if (councilOutcomeActions) {
+        // The two topic arrays already carry the exact words used to validate this proof.
+        command.councilOutcomeActions = councilOutcomeActions.map(({ before: _before, after: _after, ...proof }) => proof);
+      }
       const assembly = matchingCouncilAssembly(command.changes, record.councilAssemblyActions);
       if (assembly) command.councilAssemblyActions = assembly;
       const topicKind = matchingCouncilTopicKind(command.changes, record.councilTopicKindActions);

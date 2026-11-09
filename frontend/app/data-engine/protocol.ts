@@ -5,7 +5,7 @@ import { isServiceOrderCatalogKey, isServiceOrderSeedTarget, serviceOrderSeedCyc
 
 import { boundedActionTime } from './actionClock';
 import { ANALYSIS_RESHAPE_FIELDS, ANALYSIS_RESHAPE_FRAME, hasMatchingAnalysisPositionBasis, keepAnalysisPositionFrame, lacksAnalysisFrameProof } from './analysisReshapeFields';
-import { councilTopicConflictCode, councilTopicTransitionRefusal, retainCouncilTopicFrame } from './councilTopicTransition';
+import { councilTopicConflictCode, councilTopicTransitionRefusal, mergeCouncilTopicHistory, replaceCouncilOutcomeConflicts, retainCouncilTopicFrame } from './councilTopicTransition';
 import { equalValues, object, own, readField } from './fieldValues';
 import { mergeIdentityTree } from './identityTreeMerge';
 import { relationMirrorFields } from './relationMirrors';
@@ -588,15 +588,19 @@ function mergeObjects(base: DocumentData, mine: DocumentData, theirs: DocumentDa
     // A complete document can prove matching word origins; bare analysis values cannot.
     const samePosition = path.length === 0 && key === 'analysis' && hasMatchingAnalysisPositionBasis(base, mine, theirs)
       && object(base.analysis) && object(mine.analysis) && object(theirs.analysis);
+    const outcomeHistory = key === 'changes' ? mergeCouncilTopicHistory(base, mine, theirs, path) : undefined;
+    if (outcomeHistory?.exists) {
+      result[key] = outcomeHistory.value as Json;
+      continue;
+    }
     const merged = samePosition
       ? mergeObjects(base.analysis as DocumentData, mine.analysis as DocumentData, theirs.analysis as DocumentData, [key])
       : mergeFields(readField(base, [key]), readField(mine, [key]), readField(theirs, [key]), [...path, key]);
     if (merged.value.exists) result[key] = merged.value.value as Json;
     conflicts.push(...merged.conflicts);
   }
-  const topicConflict = retainCouncilTopicFrame(base, mine, theirs, result, path);
-  if (topicConflict) conflicts.push(topicConflict);
-  return { value: { exists: true, value: result }, conflicts };
+  const topicConflict = retainCouncilTopicFrame(base, mine, theirs, result, path, conflicts);
+  return { value: { exists: true, value: result }, conflicts: topicConflict ? replaceCouncilOutcomeConflicts(conflicts, topicConflict) : conflicts };
 }
 
 function mergeArrays(base: Json[], mine: Json[], theirs: Json[], path: string[]): ReturnType<typeof mergeFields> | null {

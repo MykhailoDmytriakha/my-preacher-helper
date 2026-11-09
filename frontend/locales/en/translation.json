@@ -4509,6 +4509,12 @@
       "unmarked": "Not marked for the meeting",
       "restore": "Restore meeting mark"
     },
+    "outcomeHistory": {
+      "title": "Outcome history",
+      "restore": "Restore outcome",
+      "unavailableOption": "Unavailable option",
+      "emptyOutcome": "No outcome"
+    },
     "topicKindHistory": {
       "title": "Section type history",
       "restore": "Restore section type"
@@ -4564,6 +4570,7 @@
       "kind": "Section type",
       "kindDecision": "Decision",
       "kindInfo": "Announcement",
+      "optionGone": "That option was removed. Review the saved topic before choosing a different outcome.",
       "clearOutcomeFirst": "This section has an outcome. Clear it under Edit outcome before changing the section type.",
       "kindChanged": "The section type changed on another device. Review the saved type before applying this outcome.",
       "kindHint": "A decision waits for an outcome at the council. An announcement — context, news, a report — is marked as said.",

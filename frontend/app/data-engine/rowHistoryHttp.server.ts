@@ -7,6 +7,7 @@ import {
   assertDataEngineEnabled,
   DataEngineServerError,
   listCouncilAssemblyHistory,
+  listCouncilOutcomeHistory,
   listCouncilTopicKindHistory,
   listCouncilTopicTitleHistory,
   listDocumentTagHistory,
@@ -33,6 +34,7 @@ const histories = {
   groupStepTitle: { collection: 'groups', list: (owner: string, id: string, generation: string, cursor?: string) =>
     listGroupFlowHistory(owner, id, generation, cursor, 'step') },
   assembly: { collection: 'councils', list: listCouncilAssemblyHistory },
+  topicOutcome: { collection: 'councils', list: listCouncilOutcomeHistory },
   topicKind: { collection: 'councils', list: listCouncilTopicKindHistory },
   topicTitle: { collection: 'councils', list: listCouncilTopicTitleHistory },
   stepFlag: { collection: 'serviceOrders', list: listServiceOrderFlagHistory },

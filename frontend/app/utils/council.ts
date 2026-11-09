@@ -1,6 +1,6 @@
 import { textLanguage, type AppLocale } from '@/utils/appLocale';
 import { newClientId } from '@/utils/clientId';
-import { hasRecordedCouncilTopicOutcome } from '@/utils/councilTopicOutcome';
+import { councilDecisionText, councilOutcomeLogText, hasRecordedCouncilTopicOutcome } from '@/utils/councilTopicOutcome';
 
 import type {
   Council,
@@ -166,10 +166,7 @@ export function topicState(topic: CouncilTopic): TopicState {
 
 /** The line a person reads as "what was decided": the accepted option, the typed decision, or both. */
 export function outcomeText(topic: CouncilTopic): string {
-  const accepted = topic.options.find((option) => option.id === topic.acceptedOptionId)?.text;
-  const decision = topic.decision?.trim();
-  if (accepted && decision) return `${accepted} — ${decision}`;
-  return accepted ?? decision ?? '';
+  return councilDecisionText(topic);
 }
 
 /**
@@ -221,10 +218,8 @@ export function applyOutcome(
 
   // What the record reads for a section: its decision, or what happened instead — including
   // "told" for a section that is only said, so a later change of that is history too.
-  const label = (item: CouncilTopic) =>
-    outcomeText(item) || item.resolution || (isInfoTopic(item) && item.discussed ? 'told' : '');
-  const before = label(topic);
-  const after = label(next);
+  const before = councilOutcomeLogText(topic);
+  const after = councilOutcomeLogText(next);
   if (before === after) return next;
   return { ...next, changes: [...(topic.changes ?? []), { at: options.at, from: before, to: after }] };
 }

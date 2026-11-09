@@ -4,6 +4,7 @@ import { GET as changes } from '@/api/data-engine/changes/[collection]/route';
 import { GET as list } from '@/api/data-engine/collections/[collection]/route';
 import { POST } from '@/api/data-engine/commands/route';
 import { GET as assemblyHistory } from '@/api/data-engine/documents/[collection]/[id]/assembly-history/route';
+import { GET as topicOutcomeHistory } from '@/api/data-engine/documents/[collection]/[id]/topic-outcome-history/route';
 import { GET as topicKindHistory } from '@/api/data-engine/documents/[collection]/[id]/topic-kind-history/route';
 import { GET as topicTitleHistory } from '@/api/data-engine/documents/[collection]/[id]/topic-title-history/route';
 import { GET as stepFlagHistory } from '@/api/data-engine/documents/[collection]/[id]/step-flag-history/route';
@@ -22,7 +23,7 @@ import { GET as churchHistory } from '@/api/data-engine/documents/[collection]/[
 import { GET as verseHistory } from '@/api/data-engine/documents/[collection]/[id]/verse-history/route';
 import { GET as titleHistory } from '@/api/data-engine/documents/[collection]/[id]/title-history/route';
 import { ENGINE_OWNED_COLLECTIONS } from '@/data-engine/engineOwnedCollections';
-import { listCouncilAssemblyHistory, listCouncilTopicKindHistory, listCouncilTopicTitleHistory, listServiceOrderFlagHistory, listServiceOrderStepTitleHistory } from '@/data-engine/server';
+import { listCouncilAssemblyHistory, listCouncilOutcomeHistory, listCouncilTopicKindHistory, listCouncilTopicTitleHistory, listServiceOrderFlagHistory, listServiceOrderStepTitleHistory } from '@/data-engine/server';
 import { assertDataEngineEnabled, DataEngineServerError, listBibleMarkHistory, listCouncilMetadataHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listSermonChurchHistory, listSermonTitleHistory, listSermonVerseHistory, listSeriesMembershipHistory, listSeriesMetadataHistory, listServiceOrderTitleHistory, processCommand, readCollectionChanges, readCommandBody, readDocument } from '@/data-engine/server';
 import { __resetStoreAvailabilityForTests } from '@/services/storeAvailability.server';
 
@@ -37,6 +38,7 @@ jest.mock('@/data-engine/server', () => ({
   listBibleMarkHistory: jest.fn(),
   listCouncilAssemblyHistory: jest.fn(),
   listCouncilTopicKindHistory: jest.fn(),
+  listCouncilOutcomeHistory: jest.fn(),
   listCouncilTopicTitleHistory: jest.fn(),
   listServiceOrderFlagHistory: jest.fn(),
   listServiceOrderStepTitleHistory: jest.fn(),
@@ -84,6 +86,7 @@ afterAll(() => {
 describe('Row field history routes', () => {
   it.each([
     ['assembly-history', 'councils', assemblyHistory, listCouncilAssemblyHistory],
+    ['topic-outcome-history', 'councils', topicOutcomeHistory, listCouncilOutcomeHistory],
     ['topic-kind-history', 'councils', topicKindHistory, listCouncilTopicKindHistory],
     ['topic-title-history', 'councils', topicTitleHistory, listCouncilTopicTitleHistory],
     ['step-flag-history', 'serviceOrders', stepFlagHistory, listServiceOrderFlagHistory],

@@ -5,10 +5,11 @@ import { useCallback, useMemo } from 'react';
 import { usePublishShellTitle } from '@/components/navigation/shellTitles';
 import { councilTopicReviewCode, useDataDocument, useDocumentActions, useRecoveryDiscovery } from '@/data-engine/react.client';
 import { hydrateCouncil } from '@/services/councils.client';
-import { holdCouncil, reopenCouncil, setTopicKind } from '@/utils/council';
+import { applyOutcome, holdCouncil, reopenCouncil, setTopicKind, type TopicOutcome } from '@/utils/council';
 import { hasRecordedCouncilTopicOutcome } from '@/utils/councilTopicOutcome';
 
 import type { CouncilTimedField } from '@/data-engine/councilFieldAction';
+import type { CouncilOutcome } from '@/data-engine/councilOutcomeAction';
 import type { DocumentData } from '@/data-engine/types';
 import type { Council, CouncilTopic } from '@/models/models';
 
@@ -63,6 +64,23 @@ export function useCouncilDataDocument(councilId: string) {
     if (field) await document.update(change, { action: field === 'title' ? 'council-title' : 'council-date' });
     else await document.update(change);
   }, [council, document, apply]);
+
+  const recordTopicOutcome = useCallback(async (topicId: string, outcome: TopicOutcome, trackChanges: boolean, expectedKind?: 'decision' | 'info') => {
+    const at = new Date().toISOString();
+    await document.update(apply(current => {
+      const topic = current.topics.find(item => item.id === topicId);
+      if (!topic) throw Object.assign(new Error('The section no longer exists'), { code: 'topic-gone' });
+      if ((expectedKind && (topic.kind ?? 'decision') !== expectedKind)
+        || (outcome.acceptedOptionId && !topic.options.some(option => option.id === outcome.acceptedOptionId))) throw missing();
+      return { ...current, topics: current.topics.map(topic =>
+        topic.id === topicId ? applyOutcome(topic, outcome, { at, trackChanges }) : topic) };
+    }, at), { action: { kind: 'council-topic-outcome', rowId: topicId } });
+  }, [apply, document]);
+
+  const restoreTopicOutcome = useCallback((topic: CouncilTopic, outcome: CouncilOutcome) =>
+    recordTopicOutcome(topic.id, { told: outcome.discussed, acceptedOptionId: outcome.acceptedOptionId ?? '',
+      decision: outcome.decision ?? '', resolution: outcome.resolution }, council?.status === 'held', topic.kind ?? 'decision'),
+  [council?.status, recordTopicOutcome]);
 
   const renameTopic = useCallback(async (topicId: string, title: string) => {
     if (!council) throw missing();
@@ -177,6 +195,8 @@ export function useCouncilDataDocument(councilId: string) {
   const result = document.state?.result;
   const conflicts = document.state?.checkpoint.conflicts ?? [];
   const topicReview = result || conflicts.length ? councilTopicReviewCode(result, conflicts) : undefined;
+  const topicReviewWords = topicReview === 'council-option-gone' ? 'council.topic.optionGone'
+    : topicReview === 'council-topic-outcome-first' ? 'council.topic.clearOutcomeFirst' : 'council.topic.kindChanged';
   return {
     council,
     loading: document.loading,
@@ -184,7 +204,7 @@ export function useCouncilDataDocument(councilId: string) {
     readOnly: document.readOnly || deleting,
     error: document.error,
     errorWords: topicReview
-      ? { key: topicReview === 'council-topic-outcome-first' ? 'council.topic.clearOutcomeFirst' : 'council.topic.kindChanged' }
+      ? { key: topicReviewWords }
       : document.errorWords,
     status: document.status,
     /** What the sync block speaks about (DataSyncStatus `subject`). */
@@ -196,6 +216,8 @@ export function useCouncilDataDocument(councilId: string) {
     acceptRemote: document.acceptRemote,
     keepLocal: document.keepLocal,
     updateCouncil,
+    recordTopicOutcome,
+    restoreTopicOutcome,
     renameTopic,
     setAssembly,
     changeTopicKind,

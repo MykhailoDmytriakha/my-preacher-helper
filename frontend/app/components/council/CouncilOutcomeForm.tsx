@@ -60,7 +60,7 @@ export function CouncilOutcomeForm({ councilId, topicId, onClose }: {
     <div className="flex gap-2">
       <button type="button" className="rounded-full bg-indigo-700 px-4 py-2 text-sm font-bold text-white disabled:opacity-50"
         disabled={loading || !form.active || form.busy || !form.status?.canSave}
-        onClick={() => close(form.save)}>{t('council.topic.saveOutcome')}</button>
+        onClick={() => close(() => form.save(undefined, form.captureDocumentMetadataAction()))}>{t('council.topic.saveOutcome')}</button>
       <button type="button" className="rounded-full border border-gray-300 px-4 py-2 text-sm disabled:opacity-50"
         disabled={loading || form.busy} onClick={() => form.active ? close(form.cancel) : onClose()}>{t('council.cancel')}</button>
     </div>

@@ -1,6 +1,7 @@
 /** The wire contract is shared by browser and server; it imports no transport. */
 import type { ActionTime } from './actionClock';
 import type { CouncilAssemblyActions, CouncilAssemblyCapture } from './councilAssemblyAction';
+import type { CouncilOutcomeWire } from './councilOutcomeAction';
 import type { CouncilTopicKindActions, CouncilTopicKindCapture } from './councilTopicKindAction';
 import type { DatedRowActionEvidence } from './datedRowAction';
 import type { DocumentFieldAction, DocumentFieldObservation, DocumentFieldStamp, PlanTemplateNameCapture, PrayerTitleCapture, StudyNoteTitleCapture, ServiceOrderTitleCapture, TagColorCapture } from './documentFieldAction';
@@ -93,6 +94,7 @@ export type DataCommand = CommandBase & (
       serviceOrderStepTitleActions?: ServiceOrderStepTitleActions;
       councilAssemblyActions?: CouncilAssemblyActions;
       councilTopicKindActions?: CouncilTopicKindActions;
+      councilOutcomeActions?: CouncilOutcomeWire[];
       prayerTitleAction?: DocumentFieldObservation;
       studyNoteTitleAction?: DocumentFieldStamp;
       planTemplateNameAction?: DocumentFieldStamp;
@@ -117,7 +119,7 @@ export type DataCommand = CommandBase & (
       /** Exact plan cells observed before an explicit outline removal. */
       observedPlanTextRemoval?: Record<string, string>;
       /** Exact orphaned text explicitly cleared while its point was absent. */
-      observedPlanTextDiscard?: Record<string, string> } & AutosaveRowFieldActions
+      observedPlanTextDiscard?: Record<string, string> } & Omit<AutosaveRowFieldActions, 'councilOutcomeActions'>
   | { kind: 'delete'; baseline: DocumentData }
   | { kind: 'relation'; relation: 'material-notes'; beforeNoteIds: string[]; afterNoteIds: string[];
       targets: Array<{ id: string; generation: string | null }> }

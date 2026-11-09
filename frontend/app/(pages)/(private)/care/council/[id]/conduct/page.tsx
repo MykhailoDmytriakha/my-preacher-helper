@@ -9,6 +9,7 @@ import { ScriptureText, ScriptureWrittenIn } from '@/components/bible/ScriptureL
 import { ScriptureLinksInWindow } from '@/components/bible/VerseWindow';
 import { useCouncilFinishAction } from '@/components/council/councilActionNotice';
 import { CouncilOutcomePanel, useOutcomeLine } from '@/components/council/CouncilOutcomePanel';
+import { councilTopicComparison } from '@/components/council/councilTopicComparison';
 import FloatingTextScaleControls from '@/components/FloatingTextScaleControls';
 import MarkdownDisplay from '@/components/MarkdownDisplay';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
@@ -17,7 +18,6 @@ import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useRouteId } from '@/hooks/useRouteId';
 import { actionFailureMessage } from '@/utils/actionFailureMessage';
 import {
-  applyOutcome,
   councilProgress,
   councilLanguage,
   firstOpenTopicIndex,
@@ -62,15 +62,17 @@ function EngineCouncilConductPage({ councilId }: { councilId: string }) {
   // Conducting is the worst place to lose a decision quietly: a refusal is said out loud here too.
   const report = (error: unknown) => { toast.error(actionFailureMessage(error, t, 'council.save.refused')); };
   const { recovery } = document;
+  const comparison = councilTopicComparison(document.checkpoint, t, document.council?.topics);
+  const shownChoice = comparison ? document.checkpoint : undefined;
 
   return <>
     <DataSyncStatus subject={document.recoveryIdentity} status={document.status} error={document.error} errorWords={document.errorWords} className="mb-4"
-      onRetry={() => document.refresh()} onKeepLocal={() => document.keepLocal()} onAcceptRemote={() => document.acceptRemote()}
+      comparison={comparison} onRetry={() => document.refresh()} onKeepLocal={() => document.keepLocal(shownChoice)} onAcceptRemote={() => document.acceptRemote(shownChoice)}
       recoveryChoices={recovery.choices} onRecover={recovery.recover}
       recoveryLoading={recovery.loading} recoveryError={recovery.error} onDiscardRecovery={recovery.discard} />
     <CouncilConductContent councilId={councilId} source={{
       council: document.council, loading: document.loading,
-      updateCouncil: (id: string, updater: (current: Council) => Council) => { void document.updateCouncil(id, updater).catch(report); },
+      recordTopicOutcome: (id: string, outcome: TopicOutcome) => { void document.recordTopicOutcome(id, outcome, false).catch(report); },
       finishCouncil: document.finishCouncil,
       readOnly: document.readOnly,
     }} />
@@ -80,7 +82,7 @@ function EngineCouncilConductPage({ councilId }: { councilId: string }) {
 interface CouncilConductSource {
   council: Council | null | undefined;
   loading: boolean;
-  updateCouncil: (id: string, updater: (current: Council) => Council) => void;
+  recordTopicOutcome: (id: string, outcome: TopicOutcome) => void;
   finishCouncil: () => Promise<CouncilFinishUndo>;
   /**
    * A copy shown while device storage is silent (BUG-20260927-engine-open-hangs-on-silent-device-storage):
@@ -93,7 +95,7 @@ interface CouncilConductSource {
 function CouncilConductContent({ councilId, source }: { councilId: string; source: CouncilConductSource }) {
   const { t } = useTranslation();
   const router = useRouter();
-  const { council, loading, updateCouncil, readOnly = false } = source;
+  const { council, loading, recordTopicOutcome, readOnly = false } = source;
   const { finish, finishing, showHeld } = useCouncilFinishAction(t, source.finishCouncil, {
     held: council?.status === 'held',
     onCaptured: () => router.push(`/care/council/${councilId}`),
@@ -149,14 +151,6 @@ function CouncilConductContent({ councilId, source }: { councilId: string; sourc
   const topic = topics[index];
   const progress = councilProgress(council);
   const isLast = index === topics.length - 1;
-
-  const write = (topicId: string, outcome: TopicOutcome) =>
-    updateCouncil(council.id, (current) => ({
-      ...current,
-      topics: current.topics.map((item) =>
-        item.id === topicId ? applyOutcome(item, outcome, { at: new Date().toISOString(), trackChanges: false }) : item
-      ),
-    }));
 
   const goTo = (next: number) => {
     setChosenIndex(Math.max(0, Math.min(next, topics.length - 1)));
@@ -305,7 +299,7 @@ function CouncilConductContent({ councilId, source }: { councilId: string; sourc
                   {readOnly ? (
                     outcomeLine(topic, outcomeText(topic)) && <p className="text-lg text-indigo-700 dark:text-indigo-300">{outcomeLine(topic, outcomeText(topic))}</p>
                   ) : (
-                    <CouncilOutcomePanel key={topic.id} topic={topic} onWrite={(outcome) => write(topic.id, outcome)} size="lg" />
+                    <CouncilOutcomePanel key={topic.id} topic={topic} onWrite={(outcome) => recordTopicOutcome(topic.id, outcome)} size="lg" />
                   )}
                 </section>
               </div>

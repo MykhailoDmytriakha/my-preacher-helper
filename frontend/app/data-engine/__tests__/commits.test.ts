@@ -97,6 +97,30 @@ describe('Durable commit requests', () => {
   beforeEach(() => jest.useFakeTimers());
   afterEach(() => { jest.clearAllTimers(); jest.useRealTimers(); });
 
+  it('sends a council outcome within the existing byte limit without duplicating long written decisions', async () => {
+    const at = '2026-11-09T00:00:00.000Z';
+    const text = 'a'.repeat(360_000);
+    const other = 'b'.repeat(360_000);
+    const topic = { id: 'topic', title: 'Outcome', kind: 'decision', questions: [], options: [], discussed: true, decision: text };
+    const baseline: ResourceSnapshot = {
+      resource: { collection: 'councils', id: 'council' },
+      metadata: { protocol: 1, generation: 'g', revision: 1, deleted: false },
+      value: { userId: 'owner', title: 'Council', status: 'held', heldAt: at, createdAt: at, updatedAt: at, topics: [topic] },
+    };
+    const s = setup({ opening: baseline });
+    const { queue } = s.makeQueue();
+    const editor = new DataSession(baseline);
+    const time = { earliestMs: 1_800_000_000_000, latestMs: 1_800_000_000_010 };
+    editor.edit({ ...baseline.value, topics: [{ ...topic, decision: other }] });
+    const saved = await queue.save('outcome-form', editor.checkpoint(), { documentMetadataTime: time });
+    expect(saved?.councilOutcomeActions?.[0].after).toMatchObject({ decision: other });
+    await queue.drain(true);
+    const command = jest.mocked(s.transport.send).mock.calls[0][0];
+    expect(Buffer.byteLength(JSON.stringify(command))).toBeLessThan(1024 * 1024);
+    expect(command).toMatchObject({ councilOutcomeActions: [{ rowId: topic.id, rowCreatedAt: topic.id, observedRevision: 1, time }] });
+    expect(s.server().value?.topics).toEqual([{ ...topic, decision: other }]);
+  });
+
   it('retains the date action through an offline queue restart and only attaches it to an exact existing date change', async () => {
     const s = setup();
     const { queue } = s.makeQueue();

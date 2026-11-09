@@ -123,3 +123,9 @@ These compatibility paths are not templates for new features.
 - 2026-07-25: a listener compared the server with a query cache that had already refreshed while the editor still showed its open-time text; reduced selectors, hidden unknown states and a destructive "load newer" turned the safety banner into silence or data loss. Freshness is a proof about what the person is actually seeing.
 
 See also: `.howto/write-a-document-field.md` · `.howto/update-react-query-cache.md` · `.howto/use-data-engine-in-a-screen.md`
+
+## A council topic outcome
+
+The selected option, written decision, deferred or dropped status, and announcement mark form one outcome. Capture it at the ordinary button action or the held council's Save. Keep the topic type and ID in scope. The server reads the exact words and selected option from the existing command arrays and uses the row detail clock for a competing outcome. Compatible edits to the option and written words can merge. Distinct independently written decisions still need an explicit choice. Derive the decision mark from the merged result.
+
+Use Outcome history for a displaced outcome. Keep the ordinary held council's change log for outcomes that actually took effect. Restore through the shared council writer and require the original topic type and a still available option.

@@ -24,6 +24,7 @@ export type RowDetailPolicy<Field extends string, Value extends RowValue> = {
   validAfter?: (field: Field, value: Value) => boolean;
   history: string;
   scopes?: (rows: unknown, field: Field) => ReadonlyMap<string, RowValue | undefined> | undefined;
+  mergeIndependently?: (before: Value, after: Value, current: Value) => Value | undefined;
   needsChoice?: (field: Field, before: Value, after: Value, current: Value) => boolean;
 };
 

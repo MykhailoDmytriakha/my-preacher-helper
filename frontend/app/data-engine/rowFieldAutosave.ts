@@ -1,4 +1,5 @@
 import { boundedActionTime } from './actionClock';
+import { COUNCIL_OUTCOME_POLICY } from './councilOutcomeAction';
 import { COUNCIL_TOPIC_TITLE_POLICY } from './councilTopicTitleAction';
 import { equalValues } from './fieldValues';
 import { GROUP_BLOCK_STATUS_POLICY } from './groupBlockStatusAction';
@@ -19,9 +20,9 @@ import type { ConflictDetail, DocumentData, FieldChange, ResourceSnapshot } from
 type Value = string | number | boolean | null | DocumentData;
 type Action = RowDetailObservation<Value>;
 type Draft = { generation: string; action: Action };
-type DraftKey = 'councilTopicTitleDrafts' | 'groupBlockTitleDrafts' | 'groupStepTitleDrafts' | 'groupBlockStatusDrafts' | 'groupStepDurationDrafts' | 'thoughtLockDrafts' | 'thoughtPlacementDrafts';
-type ActionKey = 'councilTopicTitleActions' | 'groupBlockTitleActions' | 'groupStepTitleActions' | 'groupBlockStatusActions' | 'groupStepDurationActions' | 'thoughtLockActions' | 'thoughtPlacementActions';
-export type RowFieldActionKind = 'council-topic-title' | 'group-block-title' | 'group-step-title' | 'group-block-status' | 'group-step-duration' | 'thought-lock' | 'thought-placement';
+type DraftKey = 'councilOutcomeDrafts' | 'councilTopicTitleDrafts' | 'groupBlockTitleDrafts' | 'groupStepTitleDrafts' | 'groupBlockStatusDrafts' | 'groupStepDurationDrafts' | 'thoughtLockDrafts' | 'thoughtPlacementDrafts';
+type ActionKey = 'councilOutcomeActions' | 'councilTopicTitleActions' | 'groupBlockTitleActions' | 'groupStepTitleActions' | 'groupBlockStatusActions' | 'groupStepDurationActions' | 'thoughtLockActions' | 'thoughtPlacementActions';
+export type RowFieldActionKind = 'council-topic-outcome' | 'council-topic-title' | 'group-block-title' | 'group-step-title' | 'group-block-status' | 'group-step-duration' | 'thought-lock' | 'thought-placement';
 export type RowFieldStamp = { field: RowFieldActionKind; time: ActionTime | null } & (
   { rowId: string } | { rowIds: readonly string[] }
 );
@@ -41,6 +42,7 @@ function autosaveTarget<Field extends string, Item extends Value>(policy: RowDet
 }
 
 const TARGETS: readonly Target[] = [
+  autosaveTarget(COUNCIL_OUTCOME_POLICY, 'outcome', 'council-topic-outcome', 'councilOutcomeDrafts', 'councilOutcomeActions'),
   autosaveTarget(COUNCIL_TOPIC_TITLE_POLICY, 'title', 'council-topic-title', 'councilTopicTitleDrafts', 'councilTopicTitleActions'),
   autosaveTarget(GROUP_BLOCK_TITLE_POLICY, 'title', 'group-block-title', 'groupBlockTitleDrafts', 'groupBlockTitleActions'),
   autosaveTarget(GROUP_STEP_TITLE_POLICY, 'title', 'group-step-title', 'groupStepTitleDrafts', 'groupStepTitleActions'),
@@ -120,9 +122,9 @@ export function hasUncapturedAutosaveRowField(checkpoint: SessionCheckpoint): bo
 
 function manualRowActions(checkpoint: SessionCheckpoint, baseline: ResourceSnapshot, opening: DocumentData | null,
   target: Target, captured: ActionTime | null | undefined, thoughtPlacementIds?: readonly string[]): Action[] {
-  const duration = target.stamp === 'group-step-duration';
+  const selectedByForm = target.stamp === 'group-step-duration' || target.stamp === 'council-topic-outcome';
   const placement = target.stamp === 'thought-placement' ? thoughtPlacementIds?.filter(boundedRowId) : undefined;
-  if ((!duration && !placement?.length) || captured === undefined || !baseline.metadata || baseline.metadata.deleted) return [];
+  if ((!selectedByForm && !placement?.length) || captured === undefined || !baseline.metadata || baseline.metadata.deleted) return [];
   const time = captured === null ? null : boundedActionTime(captured);
   if (time === undefined) return [];
   const field = target.policy.target(target.field);
