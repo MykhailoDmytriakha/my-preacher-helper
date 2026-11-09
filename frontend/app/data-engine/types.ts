@@ -4,6 +4,7 @@ import type { CouncilAssemblyActions, CouncilAssemblyCapture } from './councilAs
 import type { CouncilTopicKindActions, CouncilTopicKindCapture } from './councilTopicKindAction';
 import type { DatedRowActionEvidence } from './datedRowAction';
 import type { DocumentFieldAction, DocumentFieldObservation, DocumentFieldStamp, PlanTemplateNameCapture, PrayerTitleCapture, StudyNoteTitleCapture, ServiceOrderTitleCapture, TagColorCapture } from './documentFieldAction';
+import type { DocumentTagIntent } from './documentTagCapture';
 import type { ExegeticalPointStamp } from './exegeticalPointAction';
 import type { ExegeticalPointEdit } from './exegeticalPointCapture';
 import type { GroupMeetingFieldActions } from './groupMeetingFieldAction';
@@ -15,6 +16,7 @@ import type { SeriesFieldStamps } from './seriesFieldAction';
 import type { SermonChurchFill } from './sermonChurchFill';
 import type { ServiceOrderFlagActions, ServiceOrderFlagCapture, ServiceOrderStepTitleActions, ServiceOrderStepTitleCapture } from './serviceOrderStepAction';
 import type { ShownCopy } from './session';
+import type { TagMembershipAction } from './tagMembershipOrder';
 import type { ThoughtTagAction } from './thoughtTagAction';
 import type { PreparationConfirmation } from '@/utils/preparationFieldValues';
 
@@ -66,7 +68,8 @@ export type EditorCommitAction =
   | { kind: 'council-assembly'; flag: CouncilAssemblyCapture }
   | { kind: 'council-topic-kind'; topicKind: CouncilTopicKindCapture }
   | { kind: 'prayer-title'; title: PrayerTitleCapture }
-  | { kind: 'study-note-title'; title: StudyNoteTitleCapture }
+  | { kind: 'study-note-title'; title: StudyNoteTitleCapture; tagMembership?: readonly DocumentTagIntent[] }
+  | { kind: 'document-tags'; tagMembership: readonly DocumentTagIntent[] }
   | { kind: 'plan-template-name'; name: PlanTemplateNameCapture }
   | { kind: 'tag-color'; color: TagColorCapture }
   | { kind: 'prayer-status'; status: PrayerStatusCapture };
@@ -102,6 +105,7 @@ export type DataCommand = CommandBase & (
       sermonChurchFill?: SermonChurchFill;
       exegeticalPlanActions?: ExegeticalPointStamp[];
       thoughtTagActions?: ThoughtTagAction[];
+      tagMembershipActions?: TagMembershipAction[];
       seriesFieldActions?: SeriesFieldStamps;
       groupTitleAction?: DocumentFieldAction;
       groupStatusAction?: DocumentFieldAction;

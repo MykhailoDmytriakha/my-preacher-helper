@@ -21,6 +21,7 @@ import { Chip } from '@/components/ui/Chip';
 import { DocumentFieldHistory } from '@/components/ui/DocumentFieldHistory';
 import { FoldableMarkdown } from '@/components/ui/FoldableMarkdown';
 import { RichMarkdownEditor } from '@/components/ui/RichMarkdownEditor';
+import { TagHistory } from '@/components/ui/TagHistory';
 import { useActiveSection } from '@/hooks/useActiveSection';
 import { useAiUsage } from '@/hooks/useAiUsage';
 import { useAppLocale } from '@/hooks/useAppLocale';
@@ -77,11 +78,13 @@ import { NoteDraftRecovery } from './NoteDraftRecovery';
 import { NoteMobileSheet } from './NoteMobileSheet';
 import { NoteSidePanel } from './NoteSidePanel';
 import { RetainedNoteDraft } from './RetainedNoteDraft';
-import { useNoteAutoSave, type NoteTitleEdit } from './useNoteAutoSave';
+import { rebaseNoteTags, useNoteAutoSave, type NoteTagEdit, type NoteTitleEdit, type SubmittedNoteTag } from './useNoteAutoSave';
 import { useNoteScrollIsolation } from './useNoteScrollIsolation';
 import { useNoteScrollPosition } from './useNoteScrollPosition';
 
 import type { SheetReference } from '@/components/bible/VerseSheet';
+import type { DocumentTagBasis } from '@/data-engine/documentTagCapture';
+import type { DocumentTagHistoryPage } from '@/data-engine/documentTagMembership';
 import type { AppLocale } from '@/utils/appLocale';
 
 const AI_USAGE_EXHAUSTED_KEY = 'settings.usage.aiUsageExhausted';
@@ -720,7 +723,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
     const routeId = useRouteId();
     const [createdNoteId, setCreatedNoteId] = useState<string | null>(null);
     const [draftWriterId] = useState(newClientId);
-    const { uid, notes, noteDelivery, notePresence, refetch, confirmedDictationSources, confirmedCreationIds, createNote, updateNote, deleteNote, observeTitle, captureActionTime, loading: notesLoading } = useStudyNotes();
+    const { uid, notes, noteDelivery, notePresence, refetch, confirmedDictationSources, confirmedCreationIds, createNote, updateNote, deleteNote, observeTitle, observeTagBasis, captureActionTime, loading: notesLoading } = useStudyNotes();
     const { creationId, recordingContextId, creationTargetId, noteId, isNew, draftDocId } = useNewStudyNoteDraft({
         uid, routeId, createdNoteId, openingDraftId, openingRecoveryKey, notes, confirmedCreationIds,
     });
@@ -739,7 +742,15 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
     const [dictationSourceIds, setDictationSourceIds] = useState<string[]>([]);
     const [recordingSourceIds, setRecordingSourceIds] = useState<string[]>([]);
     const linkedRecordingSourceIds = useMemo(() => [...new Set([...recordingSourceIds, ...dictationSourceIds])], [recordingSourceIds, dictationSourceIds]);
-    const [tags, setTags] = useState<string[]>([]);
+    const [tags, setTagState] = useState<string[]>([]);
+    const tagEditsRef = useRef(new Map<string, NoteTagEdit>());
+    const submittedTagsRef = useRef(new Map<string, SubmittedNoteTag>());
+    const shownTagBasis = useRef<{ owner: string; id: string; basis: DocumentTagBasis } | null>(null);
+    const setTags = useCallback((next: string[] | ((current: string[]) => string[])) => {
+        tagEditsRef.current.clear();
+        submittedTagsRef.current.clear();
+        setTagState(next);
+    }, []);
     const [scriptureRefs, setScriptureRefs] = useState<ScriptureReference[]>([]);
     const [type, setType] = useState<StudyNoteType>('note');
     // What the person asked for; the page writes only once nothing waits for an answer (`isEditing` below).
@@ -829,6 +840,10 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
     }
 
     const baselineRef = useRef<NoteDraftPayload | null>(null);
+    const rememberShownTags = useCallback((shown: string[]) => {
+        const basis = !isNew && uid ? observeTagBasis?.(noteId, shown) : undefined;
+        if (uid && basis) shownTagBasis.current = { owner: uid, id: noteId, basis };
+    }, [uid, noteId, isNew, observeTagBasis]);
     const changeTitle = (value: string) => {
         const opening = baselineRef.current?.title;
         const previous = titleEditRef.current;
@@ -853,7 +868,10 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         // Assigning an optimistic id does not confirm text typed during create.
         const adoptingCreatedId = baselineNoteIdRef.current === 'new' && createdNoteId === noteId;
         baselineNoteIdRef.current = noteId;
-        if (!adoptingCreatedId) baselineRef.current = { title, content, tags, scriptureRefs, type, ...noteRecordingMetadata(dictationSourceIds, recordingSourceIds) };
+        if (!adoptingCreatedId) {
+            baselineRef.current = { title, content, tags, scriptureRefs, type, ...noteRecordingMetadata(dictationSourceIds, recordingSourceIds) };
+            rememberShownTags(tags);
+        }
     }
     useEffect(() => {
         if (isInitialized && !createdNoteId) setConfirmedDraft(baselineRef.current);
@@ -903,7 +921,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         draftWriterId,
         draftEditedAt,
         noteId, isNew, isInitialized, existingNote, title, content, tags, scriptureRefs, type, dictationSourceIds, recordingSourceIds,
-        updateNote, createNote, uid, setCreatedNoteId, t, baselineRef, titleEditRef,
+        updateNote, createNote, uid, setCreatedNoteId, t, baselineRef, titleEditRef, tagEditsRef, submittedTagsRef,
         revisionRef: serverRevisionRef,
         deliberateOverwriteRef,
         resaveNonce,
@@ -911,11 +929,13 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         saveBlocked: saveConflict || unavailable || draftHeld,
         onConflict: () => setSaveConflict(true),
         onCaptured: markCaptured,
-        onSaved: (saved, replacedTitle) => {
+        onSaved: (saved, replacedTitle, replacedTags) => {
             const pendingTitle = titleEditRef.current;
             if (replacedTitle !== undefined && (pendingTitle?.id !== noteId || pendingTitle.owner !== uid)) {
                 setTitleState(current => current === replacedTitle ? saved.title : current);
             }
+            rememberShownTags(saved.tags);
+            if (replacedTags) setTagState(current => rebaseNoteTags(replacedTags, current, saved.tags));
             markSaved(saved);
             // This text IS the server's now, so the tick may come back.
             setConfirmedDraft(saved);
@@ -952,6 +972,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         setTitle(rowPayload.title);
         setContent(rowPayload.content);
         setTags(rowPayload.tags);
+        rememberShownTags(rowPayload.tags);
         setScriptureRefs(rowPayload.scriptureRefs);
         setType(rowPayload.type);
         setDictationSourceIds(rowPayload.dictationSourceIds ?? []);
@@ -960,15 +981,19 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         setConfirmedDraft(rowPayload);
         markSaved(rowPayload);
         serverRevisionRef.current = existingNote?.rev?.[NOTE_AGGREGATE] ?? serverRevisionRef.current;
-    }, [rowPayload, existingNote, markSaved, setTitle]);
+    }, [rowPayload, existingNote, markSaved, setTitle, setTags, rememberShownTags]);
     useEffect(() => {
         if (isNew || !isInitialized || !rowPayload || !confirmedDraft) return;
-        if (editorIsDirty || isSaving || saveConflict || sameNoteDraft(rowPayload, confirmedDraft)) return;
+        const submitted = baselineRef.current;
+        const hasUnsubmittedEdits = submitted !== null && !sameNoteDraft(submitted, draftPayload);
+        const pendingTags = [...tagEditsRef.current.values()].some(edit => edit.owner === uid && edit.id === noteId
+            && edit.before !== edit.present && edit.predecessorRequestId);
+        if (editorIsDirty || hasUnsubmittedEdits || pendingTags || isSaving || saveConflict || sameNoteDraft(rowPayload, confirmedDraft)) return;
         const edit = titleEditRef.current;
         // Returning to the confirmed words still edits the title that this device just queued.
         if (edit?.capture.seen.requestId && edit.owner === uid && edit.id === noteId && edit.value === title && edit.capture.seen.title !== title) return;
         adoptRow();
-    }, [isNew, isInitialized, rowPayload, confirmedDraft, editorIsDirty, isSaving, saveConflict, uid, noteId, title, adoptRow]);
+    }, [isNew, isInitialized, rowPayload, confirmedDraft, draftPayload, editorIsDirty, isSaving, saveConflict, uid, noteId, title, adoptRow]);
 
     const applyRecovered = useCallback(() => {
         if (!unsavedRecovery) return;
@@ -1139,16 +1164,30 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         );
     }, [bibleLocale, content, copyToClipboard, existingNote, noteId, scriptureRefs, tags, title, type, uid]);
 
+    const setTagMembership = (tag: string, present: boolean) => {
+        const shown = tags.includes(tag);
+        if (shown === present) return;
+        const pending = tagEditsRef.current.get(tag);
+        const previous = submittedTagsRef.current.get(tag);
+        const opening = shownTagBasis.current;
+        const ownPending = pending?.id === noteId && pending.owner === uid ? pending : undefined;
+        const ownPrevious = previous?.id === noteId && previous.owner === uid && previous.present === shown ? previous : undefined;
+        const basis = ownPending?.basis ?? ownPrevious?.basis
+            ?? (opening?.id === noteId && opening.owner === uid ? opening.basis : undefined);
+        if (uid && basis && tag.length <= 256) {
+            const predecessorRequestId = ownPending?.predecessorRequestId ?? ownPrevious?.requestId;
+            tagEditsRef.current.set(tag, { owner: uid, id: noteId, before: ownPending?.before ?? shown, present,
+                basis, time: captureActionTime?.() ?? null, ...(predecessorRequestId && { predecessorRequestId }) });
+        } else tagEditsRef.current.delete(tag);
+        setTagState(present ? [...tags, tag] : tags.filter(item => item !== tag));
+    };
     const addTag = () => {
         const value = tagInput.trim();
         if (!value) return;
-        setTags((prev) => Array.from(new Set([...prev, value])));
+        setTagMembership(value, true);
         setTagInput('');
     };
-
-    const toggleTag = (tag: string) => {
-        setTags((prev) => prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]);
-    };
+    const toggleTag = (tag: string) => setTagMembership(tag, !tags.includes(tag));
 
     const commentView = commentPageView(type, title, scriptureRefs, bibleLocale);
 
@@ -1257,6 +1296,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
     );
     const scriptureRefsBlock = renderScriptureRefs();
 
+    const tagHistory = uid && !isNew && !unavailable && existingNote ? observeTagBasis?.(noteId, tags) : undefined;
     const tagsBlock = commentView.tags(
         <>
                     {/* Tags */}
@@ -1319,6 +1359,16 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
                                 </button>
                             </div>
                         )}
+                        {uid && tagHistory && <TagHistory<DocumentTagHistoryPage['entries'][number], DocumentTagHistoryPage>
+                            key={JSON.stringify([uid, noteId, tagHistory.generation])} owner={uid} id={noteId} tags={tags}
+                            generation={tagHistory.generation} disabled={editorIsDirty || !noteIsAccepted || draftHeld || saveConflict || isSaving}
+                            identify={page => page.documentId} path={'/api/data-engine/documents/studyNotes/' + encodeURIComponent(noteId) + '/note-tag-history'}
+                            select={entries => entries.flatMap(entry => entry.tags.map(tag => ({ id: entry.id, ...tag })))}
+                            onRestore={async (tag, present) => {
+                                setIsEditing(true);
+                                saveAtOnceRef.current = true;
+                                setTagMembership(tag, present);
+                            }} />}
                     </div>
         </>
     );

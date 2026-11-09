@@ -90,6 +90,7 @@ const baseUseStudyNotesValue = (): ReturnType<typeof useStudyNotes> => ({
   notes: [],
   noteDelivery: new Map(),
   observeTitle: jest.fn(),
+  observeTagBasis: jest.fn(),
   captureActionTime: jest.fn(),
   notePresence: () => ({ kind: 'unknown', source: null, snapshot: null }),
   confirmedDictationSources: new Map(),

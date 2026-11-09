@@ -9,6 +9,8 @@ import { capturedDateBaseline, captureDatedRowAction, datedRowTarget, existingRo
 import { captureDeleteOrder, deleteOrderReady, replayDeleteOrder } from './deletionOrdering';
 import { captureDocumentMetadataFields, capturePreparationConfirmation, type PreparationConfirmationObservations, capturedDocumentField, capturePlanTemplateName, capturePrayerStatusFields, capturePrayerTitle, captureServiceOrderTitle, captureStudyNoteTitle, captureTagColor, documentFieldCommandAncestor, documentFieldTargets, matchesPlanTemplateNameRequest, matchesPrayerTitleRequest, matchesStudyNoteTitleRequest, matchesTagColorRequest, uncapturedAutosaveFields, withDocumentFieldAction } from './documentFieldAction';
 import { commandReferenceResources, documentReferenceResources, referenceReadiness } from './documentReferences';
+import { captureDocumentTags, pendingDocumentTags, restoreDocumentTagAncestor } from './documentTagCapture';
+import { documentTagChange, matchesDocumentTag } from './documentTagMembership';
 import { prepareDomainCommand, requiredDomainTargets } from './domainPolicy';
 import { areDifferentTabManualParents, readManualScopeIdentity } from './editorIdentity';
 import { captureExegeticalPointActions, matchingExegeticalPointActions, restoreExegeticalQueueBasis, type ExegeticalQueueBasis } from './exegeticalPointCapture';
@@ -40,6 +42,7 @@ import type { DataEngineRuntime } from './runtime';
 import type { SeriesFieldObservations } from './seriesFieldAction';
 import type { SermonChurchFill } from './sermonChurchFill';
 import type { SessionCheckpoint } from './session';
+import type { TagMembershipAction } from './tagMembershipOrder';
 import type { ThoughtTagAction } from './thoughtTagAction';
 import type { CommandResult, DataCommand, DocumentData, EditorCommitAction, EngineMetadata, FieldValue, ResourceRef, ResourceSnapshot } from './types';
 
@@ -94,6 +97,7 @@ export interface CommitRequest extends CouncilFieldActions, PrayerStatusObservat
   sermonPreparationCheckActions?: PreparationConfirmationObservations;
   exegeticalPlanActions?: ExegeticalPointStamp[];
   thoughtTagActions?: ThoughtTagAction[];
+  tagMembershipActions?: TagMembershipAction[];
   exegeticalQueueBasis?: ExegeticalQueueBasis;
   sermonChurchFill?: SermonChurchFill;
   seriesFieldActions?: SeriesFieldObservations;
@@ -203,6 +207,7 @@ export function assertCommitCapture(current: CommitRequest, incoming: CommitRequ
     || !equalValues(current.sermonChurchAction ?? null, incoming.sermonChurchAction ?? null)
     || !equalValues(current.sermonGoalTypeAction ?? null, incoming.sermonGoalTypeAction ?? null)
     || !equalValues(current.thoughtTagActions ?? null, incoming.thoughtTagActions ?? null)
+    || !equalValues(current.tagMembershipActions ?? null, incoming.tagMembershipActions ?? null)
     || !equalValues(current.exegeticalPlanActions ?? null, incoming.exegeticalPlanActions ?? null)
     || !equalValues(current.sermonPreparationCheckActions ?? null, incoming.sermonPreparationCheckActions ?? null)
     || !equalValues(current.sermonChurchFill ?? null, incoming.sermonChurchFill ?? null)
@@ -322,7 +327,7 @@ function pendingRowFields(record: CommitRequest) {
 }
 
 function hasTimedAncestor(record: CommitRequest): boolean {
-  return record.sequence === 0 && Boolean(record.serviceOrderTitleAction || record.prayerTitleAction || record.planTemplateNameAction || record.tagColorAction || record.studyNoteTitleAction || record.prayerStatusAction || record.prayerAnsweredAtAction || record.sermonTitleAction || record.sermonVerseAction || record.sermonChurchAction || record.sermonGoalTypeAction || record.sermonPreparationCheckActions || record.exegeticalPlanActions?.length || record.seriesFieldActions || record.groupTitleAction || record.groupStatusAction || record.councilTitleAction || record.councilDateAction || record.councilLifecycleAction || pendingBibleMarkRebase(record) || pendingMeetingDateRebase(record) || pendingRowFields(record).length || pendingPreachStatusActions(record).length);
+  return record.sequence === 0 && Boolean(record.serviceOrderTitleAction || record.prayerTitleAction || record.planTemplateNameAction || record.tagColorAction || record.studyNoteTitleAction || record.prayerStatusAction || record.prayerAnsweredAtAction || record.sermonTitleAction || record.sermonVerseAction || record.sermonChurchAction || record.sermonGoalTypeAction || record.sermonPreparationCheckActions || record.exegeticalPlanActions?.length || record.seriesFieldActions || record.groupTitleAction || record.groupStatusAction || record.councilTitleAction || record.councilDateAction || record.councilLifecycleAction || pendingBibleMarkRebase(record) || pendingMeetingDateRebase(record) || pendingDocumentTags(record).length || pendingRowFields(record).length || pendingPreachStatusActions(record).length);
 }
 
 function freezeSaveOptions(options: CommitSaveOptions | undefined): CommitSaveOptions | undefined {
@@ -489,7 +494,7 @@ export class CommitQueue {
       : editorAction?.kind === 'service-order-step-title' ? { field: 'title' as const, change: editorAction.title } : undefined;
     const assembly = editorAction?.kind === 'council-assembly' ? editorAction.flag : undefined;
     const topicKind = editorAction?.kind === 'council-topic-kind' ? editorAction.topicKind : undefined;
-    if (!step && !assembly && !topicKind && editorAction?.kind !== 'service-order-title' && editorAction?.kind !== 'prayer-title' && editorAction?.kind !== 'study-note-title' && editorAction?.kind !== 'plan-template-name' && editorAction?.kind !== 'tag-color' && editorAction?.kind !== 'prayer-status'
+    if (!step && !assembly && !topicKind && editorAction?.kind !== 'service-order-title' && editorAction?.kind !== 'prayer-title' && editorAction?.kind !== 'study-note-title' && editorAction?.kind !== 'document-tags' && editorAction?.kind !== 'plan-template-name' && editorAction?.kind !== 'tag-color' && editorAction?.kind !== 'prayer-status'
       && !frozenOptions?.transfer && !intent.dirty && (!predecessor || equalValues(predecessor.value, intent.draft))) return null;
     if (intent.conflicts.length) throw Object.assign(new Error('Resolve the conflict before saving'), { code: 'resolve-version-first' });
     const baseline = clone(intent.confirmed);
@@ -509,6 +514,8 @@ export class CommitQueue {
     const noteRequestId = noteCapture?.seen.requestId;
     const noteTitle = captureStudyNoteTitle(baseline, intent.draft, noteCapture, Boolean(noteCapture && noteRequestId
       && matchesStudyNoteTitleRequest(records.find(record => record.id === noteRequestId), owner, baseline.resource, noteCapture.seen)));
+    const tagMembership = editorAction && 'tagMembership' in editorAction ? editorAction.tagMembership : undefined;
+    const tagMembershipActions = captureDocumentTags(baseline, predecessor, intent.draft, tagMembership, records);
     const templateCapture = editorAction?.kind === 'plan-template-name' ? editorAction.name : undefined;
     const templateRequestId = templateCapture?.seen.requestId;
     const templateName = capturePlanTemplateName(baseline, intent.draft, templateCapture, Boolean(templateCapture && templateRequestId
@@ -547,6 +554,7 @@ export class CommitQueue {
       ...autosaveFields,
       ...rowFields,
       ...(thoughtTagActions && { thoughtTagActions }),
+      ...(tagMembershipActions && { tagMembershipActions }),
       ...(groupMeetingFieldActions && { groupMeetingFieldActions }),
       ...(preachDateFieldActions && { preachDateFieldActions }),
       ...(preachStatusActions && { preachStatusActions }),
@@ -962,6 +970,8 @@ export class CommitQueue {
       const rows = replaceExistingDate(source.value.meetingDates, meeting.rowId, meeting.before, MEETING_DATE_TARGET);
       if (rows !== undefined) source = { ...source, value: { ...source.value, meetingDates: rows } };
     }
+    const documentTags = pendingDocumentTags(record);
+    source = restoreDocumentTagAncestor(source, documentTags);
     const rowFields = pendingRowFields(record);
     for (const { action, target } of rowFields) {
       if (!source.value) break;
@@ -1010,6 +1020,9 @@ export class CommitQueue {
       if (exegeticalActions) command.exegeticalPlanActions = exegeticalActions;
       const tags = record.thoughtTagActions?.filter(action => matchesThoughtTag(command.changes, action));
       if (tags?.length) command.thoughtTagActions = tags;
+      const membership = documentTagChange(command.changes);
+      const matched = membership && documentTags.filter(action => matchesDocumentTag(membership, action));
+      if (matched?.length) command.tagMembershipActions = matched;
       Object.assign(command, matchingRowFields(command.changes, record, command.resource.collection));
       const assembly = matchingCouncilAssembly(command.changes, record.councilAssemblyActions);
       if (assembly) command.councilAssemblyActions = assembly;

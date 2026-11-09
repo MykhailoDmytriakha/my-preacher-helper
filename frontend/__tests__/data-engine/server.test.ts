@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { isCollectionServed } from '@/data-engine/activation';
-import { DataEngineServerError, listBibleMarkHistory, listExegeticalPointHistory, listCouncilMetadataHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listPlanTemplateNameHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listPrayerStatusHistory, listPrayerTitleHistory, listSermonChurchHistory, listSermonGoalTypeHistory, listSermonPreparationConfirmationHistory, listSermonTitleHistory, listSermonVerseHistory, listSeriesMetadataHistory, listServiceOrderFlagHistory, listServiceOrderStepTitleHistory, listServiceOrderTitleHistory, listStudyNoteTitleHistory, listTagColorHistory, listThoughtLockHistory, listThoughtPlacementHistory, listThoughtTagHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
+import { DataEngineServerError, listBibleMarkHistory, listExegeticalPointHistory, listCouncilMetadataHistory, listDocumentTagHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listPlanTemplateNameHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listPrayerStatusHistory, listPrayerTitleHistory, listSermonChurchHistory, listSermonGoalTypeHistory, listSermonPreparationConfirmationHistory, listSermonTitleHistory, listSermonVerseHistory, listSeriesMetadataHistory, listServiceOrderFlagHistory, listServiceOrderStepTitleHistory, listServiceOrderTitleHistory, listStudyNoteTitleHistory, listTagColorHistory, listThoughtLockHistory, listThoughtPlacementHistory, listThoughtTagHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
 import { collectionHeadId, HEADS_COLLECTION, sequenceId } from '@/data-engine/serverFeed';
 import { DataSession } from '@/data-engine/session';
 import type { DataCommand, FieldValue, ResourceSnapshot } from '@/data-engine/types';
@@ -2148,6 +2148,83 @@ describe('transactional DataEngine server', () => {
       })).kind).toBe('acknowledged');
       expect(await processCommand(owner, rename('phone-name', phone, 80))).toMatchObject({
         kind: 'acknowledged', snapshot: { value: { name: phone, structure: next } },
+      });
+    });
+  });
+
+  describe('study note tag membership chronology', () => {
+    const owner = 'owner-1';
+    const resource = { collection: 'studyNotes', id: 'timed-note-tag' };
+    const base = { protocol: 1, owner, resource, dependsOn: [] };
+    const tag = 'Alpha tag', independent = 'Independent tag';
+    const words = 'The original note words';
+    const value = (tags: string[]) => ({ exists: true, value: tags });
+    const seed = (tags: string[]) => processCommand(owner, { ...base, operationId: 'tag-note-generation', kind: 'create', generation: null,
+      value: { userId: owner, title: 'Note with tags', content: words, type: 'note', tags, scriptureRefs: [], materialIds: [], isDraft: true,
+        createdAt: '2026-11-08T00:00:00.000Z', updatedAt: '2026-11-08T00:00:00.000Z' } });
+    const tagEdit = (operationId: string, name: string, before: boolean, after: boolean, offset: number | null, predecessorOperationId?: string) => ({
+      ...base, operationId, kind: 'update', generation: 'tag-note-generation', dependsOn: predecessorOperationId ? [predecessorOperationId] : [],
+      changes: [{ path: ['tags'], before: value(before ? [name] : []), after: value(after ? [name] : []) }],
+      tagMembershipActions: [{ tag: name, before, after, observedRevision: 1,
+        time: offset === null ? null : { earliestMs: 1_800_000_000_000 + offset, latestMs: 1_800_000_000_005 + offset },
+        ...(predecessorOperationId && { predecessorOperationId }) }],
+    });
+
+    it.each([
+      { opening: false, deskAt: 80, winner: true },
+      { opening: true, deskAt: 80, winner: false },
+      { opening: false, deskAt: 30, winner: false },
+      { opening: true, deskAt: 30, winner: true },
+    ])('uses action time for tag membership $opening with the connected edit at $deskAt', async ({ opening, deskAt, winner }) => {
+      expect((await seed(opening ? [tag] : [])).kind).toBe('acknowledged');
+      expect((await processCommand(owner, tagEdit('desk', tag, opening, !opening, deskAt))).kind).toBe('acknowledged');
+      expect((await processCommand(owner, tagEdit('phone-first', tag, opening, !opening, 15))).kind).toBe('acknowledged');
+      await expect(processCommand(owner, tagEdit('phone-second', tag, !opening, opening, 50, 'phone-first'))).resolves.toMatchObject({
+        kind: 'acknowledged', snapshot: { value: { tags: winner ? [tag] : [], content: words } },
+      });
+    });
+
+    it('keeps displaced tag decisions visible only to the current document owner and generation', async () => {
+      expect((await seed([])).kind).toBe('acknowledged');
+      await processCommand(owner, tagEdit('desk', tag, false, true, 80));
+      await processCommand(owner, tagEdit('phone-first', tag, false, true, 15));
+      await processCommand(owner, tagEdit('phone-second', tag, true, false, 50, 'phone-first'));
+      await expect(listDocumentTagHistory(owner, resource.collection, resource.id, 'tag-note-generation')).resolves.toMatchObject({
+        documentId: resource.id, entries: [{ tags: [{ tag, value: false, winnerValue: true }] }],
+      });
+      await expect(listDocumentTagHistory('other-owner', resource.collection, resource.id, 'tag-note-generation')).rejects.toMatchObject({ status: 403 });
+      await expect(listDocumentTagHistory(owner, resource.collection, resource.id, 'replaced')).rejects.toMatchObject({ status: 404 });
+    });
+
+    it('keeps an exact tag choice when the connected decision is unclocked', async () => {
+      expect((await seed([])).kind).toBe('acknowledged');
+      expect((await processCommand(owner, tagEdit('desk', tag, false, true, null))).kind).toBe('acknowledged');
+      expect((await processCommand(owner, tagEdit('phone-first', tag, false, true, 15))).kind).toBe('acknowledged');
+      await expect(processCommand(owner, tagEdit('phone-second', tag, true, false, 50, 'phone-first'))).resolves.toMatchObject({
+        kind: 'conflict', conflicts: [{ path: ['tags', 'string:' + tag] }], snapshot: { value: { tags: [tag], content: words } },
+      });
+    });
+
+    it('merges independent additions to a legacy note without a stored tag list', async () => {
+      expect((await seed([])).kind).toBe('acknowledged');
+      const key = 'studyNotes/timed-note-tag';
+      const { tags: _tags, ...legacy } = documents.get(key)!;
+      documents.set(key, legacy);
+      const add = (id: string, name: string, offset: number) => ({
+        ...tagEdit(id, name, false, true, offset),
+        changes: [{ path: ['tags'], before: { exists: false }, after: value([name]) }],
+      });
+      expect((await processCommand(owner, add('desk', independent, 80))).kind).toBe('acknowledged');
+      await expect(processCommand(owner, add('phone-first', tag, 15))).resolves.toMatchObject({
+        kind: 'acknowledged', snapshot: { value: { tags: [independent, tag], content: words } },
+      });
+    });
+
+    it('merges two different ordinary tags', async () => {
+      expect((await seed([])).kind).toBe('acknowledged');
+      expect((await processCommand(owner, tagEdit('desk', independent, false, true, 80))).kind).toBe('acknowledged');
+      await expect(processCommand(owner, tagEdit('phone-first', tag, false, true, 15))).resolves.toMatchObject({
+        kind: 'acknowledged', snapshot: { value: { tags: [independent, tag], content: words } },
       });
     });
   });

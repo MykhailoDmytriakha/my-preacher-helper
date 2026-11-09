@@ -9,6 +9,7 @@ import {
   listCouncilAssemblyHistory,
   listCouncilTopicKindHistory,
   listCouncilTopicTitleHistory,
+  listDocumentTagHistory,
   listGroupFlowHistory,
   listExegeticalPointHistory,
   listSermonGoalTypeHistory,
@@ -41,6 +42,8 @@ const histories = {
   thoughtLock: { collection: 'sermons', list: listThoughtLockHistory },
   thoughtPlacement: { collection: 'sermons', list: listThoughtPlacementHistory },
   thoughtTag: { collection: 'sermons', list: listThoughtTagHistory },
+  noteTag: { collection: 'studyNotes', list: (owner: string, id: string, generation: string, cursor?: string) =>
+    listDocumentTagHistory(owner, 'studyNotes', id, generation, cursor) },
 } as const;
 
 export type RowHistory = keyof typeof histories;

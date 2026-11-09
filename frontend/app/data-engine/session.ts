@@ -4,6 +4,7 @@ import { firstBookMarksIntent } from './bibleMarksCreation';
 import { councilLifecycleValue, withCouncilLifecycle } from './councilFieldAction';
 import { councilTopicConflictCode, rejectCouncilTopicChoice } from './councilTopicTransition';
 import { autosaveAcknowledgementAncestor, autosaveFieldTargets, hasUncapturedAutosaveField, sameAutosaveCapture, stageAutosaveField } from './documentFieldAction';
+import { keepExactLocalDocumentTags } from './documentTagChoice';
 import { prepareDomainCommand } from './domainPolicy';
 import { ACTION_SLOT, editorSlot } from './editorIdentity';
 import { exegeticalPointConflictId } from './exegeticalPointAction';
@@ -370,8 +371,9 @@ export class DataSession {
         merged.value.exists ? merged.value.value as DocumentData : null, mergeFields,
         localThoughtPlacementChoices(this.state.conflicts, this.state.confirmed.value, this.state.draft, candidate.value));
       const statusChoice = chooseLocalPreachDateEdits(this.state.confirmed, this.state.draft, candidate, preachStatuses);
+      const exactTags = keepExactLocalDocumentTags(this.state, statusChoice ?? chosen);
       const resolved = keepReselectedRowFields(this.state.confirmed.resource.collection, this.state.confirmed.value,
-        this.state.draft, candidate.value, statusChoice ?? chosen, this.state.conflicts);
+        this.state.draft, candidate.value, exactTags, this.state.conflicts);
       const council = this.state.confirmed.resource.collection === 'councils';
       const lifecycle = council ? councilLifecycleValue(this.state.draft) : undefined;
       const openingLifecycle = council ? councilLifecycleValue(this.state.confirmed.value) : undefined;

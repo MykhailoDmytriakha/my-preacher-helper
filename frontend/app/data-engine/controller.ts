@@ -10,6 +10,7 @@ import { hasCouncilTopic } from './councilTopicTitleAction';
 import { assertCouncilTopicChoice } from './councilTopicTransition';
 import { isDocumentDeletion } from './deletionOrdering';
 import { isDirectLegacyDocumentIntent, type DocumentAnswer } from './documentDelivery';
+import { keepUncontestedDocumentTagFields } from './documentTagChoice';
 import { requiredDomainTargets } from './domainPolicy';
 import { areDifferentTabManualParents, editorSlot, readManualScopeIdentity } from './editorIdentity';
 import { liveSubmittedWork, sameLiveAtomicProof } from './liveSubmittedWork';
@@ -804,8 +805,9 @@ export class EditorController {
           }
         } else {
           const atChoice = decided === source ? remoteChoice?.draft : undefined;
-          const retained = !selection && keepUncontestedSermonFields(decided.confirmed,
-            atChoice === undefined ? decided.draft : atChoice, decided.remoteCandidate, decided.conflicts);
+          const local = atChoice === undefined ? decided.draft : atChoice;
+          const retained = !selection && (keepUncontestedSermonFields(decided.confirmed, local, decided.remoteCandidate, decided.conflicts)
+            ?? keepUncontestedDocumentTagFields(decided.confirmed, local, decided.remoteCandidate, decided.conflicts));
           session.acceptRemote(atChoice);
           if (retained) {
             const accepted = session.checkpoint();

@@ -1,19 +1,20 @@
-import { boundedActionTime, compareActionTime } from './actionClock';
+import { boundedActionTime } from './actionClock';
 import { object } from './fieldValues';
 import { isValidIdentifier } from './protocol';
 import { matchesRowDetailBirth, rowDetailConflict } from './rowDetailAction';
 import { boundedRowId, existingRowField, proofRevision } from './rowFieldAction';
 import { orderConcurrentRowField, readRowObservation } from './rowFieldOrder.server';
-import { MAX_THOUGHT_TAG_PROOFS, ordinaryThoughtTag, THOUGHT_TAG_BIRTH, thoughtTagTarget } from './thoughtTagAction';
+import { decideTagMembership, MAX_TAG_MEMBERSHIP_PROOFS } from './tagMembershipOrder';
+import { ordinaryThoughtTag, THOUGHT_TAG_BIRTH, thoughtTagTarget } from './thoughtTagAction';
 
-import type { ActionTime } from './actionClock';
 import type { RowDetailHistoryEntry } from './rowDetailAction';
+import type { TagMembershipProof } from './tagMembershipOrder';
 import type { ThoughtTagAction } from './thoughtTagAction';
 import type { ConflictDetail, DataCommand, ResourceSnapshot } from './types';
 
 type Update = Extract<DataCommand, { kind: 'update' }>;
 type Subject = { rowId: string; rowCreatedAt: string; tag: string };
-type Proof = Subject & { present: boolean; revision: number; operationId: string; time: ActionTime | null; causal: boolean };
+type Proof = Subject & TagMembershipProof;
 type Pending = Omit<Proof, 'revision' | 'operationId'>;
 type History = RowDetailHistoryEntry<string, boolean>;
 
@@ -22,7 +23,7 @@ const key = ({ rowId, rowCreatedAt, tag }: Subject) => JSON.stringify([rowId, ro
 function readProofs(raw: unknown, generation: string) {
   const stored = object(raw) && raw.generation === generation ? raw.thoughtTagProofs : undefined;
   const floor = object(stored) && proofRevision(stored.floor) ? stored.floor : 0;
-  const entries = object(stored) && Array.isArray(stored.entries) ? stored.entries.slice(0, MAX_THOUGHT_TAG_PROOFS) : [];
+  const entries = object(stored) && Array.isArray(stored.entries) ? stored.entries.slice(0, MAX_TAG_MEMBERSHIP_PROOFS) : [];
   const proofs = entries.flatMap((item): Proof[] => {
     if (!object(item) || !boundedRowId(item.rowId) || !THOUGHT_TAG_BIRTH.accepts(item.rowCreatedAt)
       || !ordinaryThoughtTag(item.tag) || typeof item.present !== 'boolean' || !proofRevision(item.revision)
@@ -35,7 +36,7 @@ function readProofs(raw: unknown, generation: string) {
 }
 
 function readActions(command: Update, revision: number, serverMs: number) {
-  if (!Array.isArray(command.thoughtTagActions) || command.thoughtTagActions.length > MAX_THOUGHT_TAG_PROOFS) return [];
+  if (!Array.isArray(command.thoughtTagActions) || command.thoughtTagActions.length > MAX_TAG_MEMBERSHIP_PROOFS) return [];
   const actions = new Map<string, ThoughtTagAction | undefined>();
   for (const item of command.thoughtTagActions) {
     if (!object(item) || !ordinaryThoughtTag(item.tag) || !THOUGHT_TAG_BIRTH.accepts(item.rowCreatedAt)) continue;
@@ -70,30 +71,15 @@ export function orderThoughtTags(command: DataCommand, current: ResourceSnapshot
       if (stored !== action.after) uncertain.push(rowDetailConflict(action, target, stored));
       continue;
     }
-    const candidate = indexed.get(key(action));
-    const previous = candidate?.present === stored && candidate.revision <= metadata.revision ? candidate : undefined;
-    const unobserved = previous && previous.revision > action.observedRevision;
-    const causal = unobserved && previous.causal && previous.operationId === action.predecessorOperationId && stored === action.before;
-    if (!unobserved || causal) {
-      const missingProof = !previous && action.observedRevision < Math.min(floor, metadata.revision);
-      if (missingProof && stored !== action.after) uncertain.push(rowDetailConflict(action, target, stored));
-      else if (stored === action.before) stamps.push(pending(action));
-      continue;
+    const decision = decideTagMembership(action, stored, indexed.get(key(action)), metadata.revision, floor);
+    if (decision.kind === 'uncertain') uncertain.push(rowDetailConflict(action, target, stored));
+    if (decision.kind === 'stamp') stamps.push(pending(action, decision.time, decision.causal));
+    if (decision.kind === 'ordered') {
+      const ordered = orderConcurrentRowField(orderedCommand, { ...action, time: decision.incomingTime }, target, { value: stored, time: decision.storedTime });
+      orderedCommand = ordered.command;
+      if (ordered.displaced) displaced.push({ ...ordered.displaced, field: action.tag, rowCreatedAt: action.rowCreatedAt });
+      if (decision.incomingWins) stamps.push(pending(action));
     }
-    const timing = action.time && previous.time ? compareActionTime(action.time, previous.time) : 0;
-    if (stored === action.after) {
-      if (timing > 0) stamps.push(pending(action));
-      else if (!timing) stamps.push(pending(action, null, false));
-      continue;
-    }
-    if (!timing || !action.time) {
-      uncertain.push(rowDetailConflict(action, target, stored));
-      continue;
-    }
-    const ordered = orderConcurrentRowField(orderedCommand, { ...action, time: action.time }, target, { value: stored, time: previous.time });
-    orderedCommand = ordered.command;
-    if (ordered.displaced) displaced.push({ ...ordered.displaced, field: action.tag, rowCreatedAt: action.rowCreatedAt });
-    if (timing > 0) stamps.push(pending(action));
   }
   return { command: orderedCommand, uncertain, displaced, stamps };
 }
@@ -137,6 +123,6 @@ export function metadataAfterThoughtTags(snapshot: ResourceSnapshot, raw: Record
     if (live?.date === proof.rowCreatedAt && live.tags.has(proof.tag) === proof.present && !recorded.has(key(proof))) recorded.set(key(proof), proof);
   }
   const retained = [...recorded.values()];
-  const floor = retained.slice(MAX_THOUGHT_TAG_PROOFS).reduce((value, item) => Math.max(value, item.revision), stored.floor);
-  return retained.length || floor ? { ...metadata, thoughtTagProofs: { entries: retained.slice(0, MAX_THOUGHT_TAG_PROOFS), floor } } : metadata;
+  const floor = retained.slice(MAX_TAG_MEMBERSHIP_PROOFS).reduce((value, item) => Math.max(value, item.revision), stored.floor);
+  return retained.length || floor ? { ...metadata, thoughtTagProofs: { entries: retained.slice(0, MAX_TAG_MEMBERSHIP_PROOFS), floor } } : metadata;
 }

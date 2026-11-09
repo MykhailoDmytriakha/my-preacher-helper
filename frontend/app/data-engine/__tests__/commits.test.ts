@@ -1,6 +1,7 @@
 import { initializeCommit } from '../atomicCommits';
 import { collectionDocumentViews } from '../collectionView';
 import { CommitQueue, createMemoryCommitStore } from '../commits';
+import { captureDocumentTags } from '../documentTagCapture';
 import { createIndexedDbCheckpoints } from '../checkpoint.client';
 import { createIndexedDbCommitStore } from '../commits.client';
 import { installStorageHarness } from './storageHarness';
@@ -447,6 +448,47 @@ describe('Durable commit requests', () => {
       operationId: request.id, prayerTitleAction: evidence,
       changes: [{ path: ['title'], before: { exists: true, value: 'Opening prayer' }, after: { exists: true, value: 'Phone prayer' } }],
     }));
+  });
+
+  it('delivers an explicit note tag removal after the earlier acknowledgement already removed it', async () => {
+    const opening: ResourceSnapshot = {
+      resource: { collection: 'studyNotes', id: 'note' },
+      metadata: { protocol: 1, generation: 'note', revision: 1, deleted: false },
+      value: { userId: 'owner', title: 'Note', content: 'Keep the words', type: 'note', tags: [], scriptureRefs: [], isDraft: true, materialIds: [] },
+    };
+    const time = (offset: number) => ({ earliestMs: 1_800_000_000_000 + offset, latestMs: 1_800_000_000_005 + offset });
+    const tag = 'Alpha', basis = { generation: 'note', revision: 1 };
+    const s = setup({ opening }), queue = s.makeQueue().queue;
+    const editor = await s.makeEngine().openEditor(opening.resource, 'note');
+    await editor.commit(current => ({ ...current, tags: [tag] }), {
+      kind: 'document-tags', tagMembership: [{ ...basis, tag, before: false, after: true, time: time(20) }],
+    });
+    const first = (await queue.list())[0];
+    const accepted = { ...opening, metadata: { ...opening.metadata!, revision: 3, operationId: 'desktop-remove' } };
+    s.replace(accepted);
+    jest.mocked(s.transport.send).mockResolvedValueOnce({ kind: 'acknowledged', operationId: first.id, snapshot: accepted });
+    await queue.drain(true);
+    await editor.commit(current => ({ ...current, tags: [] }), { kind: 'document-tags',
+      tagMembership: [{ ...basis, tag, before: true, after: false, time: time(80), predecessorRequestId: first.id }],
+    });
+    const second = (await queue.list()).find(request => request.id !== first.id)!;
+    expect(second.tagMembershipActions).toEqual([{ tag, before: true, after: false, time: time(80), observedRevision: 1, predecessorOperationId: first.id }]);
+    await s.makeQueue().queue.drain(true);
+    expect(s.transport.send).toHaveBeenCalledWith(expect.objectContaining({ operationId: second.id,
+      tagMembershipActions: second.tagMembershipActions,
+      changes: [{ path: ['tags'], before: { exists: true, value: [tag] }, after: { exists: true, value: [] } }],
+    }));
+  });
+
+  it('retains the displayed note tag predecessor after the acknowledged request is collected', () => {
+    const baseline: ResourceSnapshot = {
+      resource: { collection: 'studyNotes', id: 'note' },
+      metadata: { protocol: 1, generation: 'note', revision: 4, deleted: false },
+      value: { tags: [] },
+    };
+    expect(captureDocumentTags(baseline, undefined, baseline.value, [
+      { generation: 'note', revision: 1, tag: 'Alpha', before: true, after: false, time: null, predecessorRequestId: 'retired-capture' },
+    ], [])).toEqual([{ tag: 'Alpha', before: true, after: false, observedRevision: 1, time: null, predecessorOperationId: 'retired-capture' }]);
   });
 
   it('observes a submitted prayer title and sends the next exact rename after an earlier one loses', async () => {

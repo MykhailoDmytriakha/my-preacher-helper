@@ -1806,6 +1806,10 @@ export class DataEngine {
         if (rowVersion && checkpoint.confirmed.metadata?.generation !== rowVersion.generation) {
           throw Object.assign(new Error('The shown record changed'), { code: 'decision-changed' });
         }
+        const tagMembership = action && 'tagMembership' in action ? action.tagMembership : undefined;
+        if (tagMembership?.some(intent => intent.generation !== checkpoint.confirmed.metadata?.generation)) {
+          throw Object.assign(new Error('The shown note changed'), { code: 'decision-changed' });
+        }
         const next = updater(checkpoint.draft);
         let captured = action;
         if (action?.kind === 'service-order-title') {
@@ -1855,7 +1859,7 @@ export class DataEngine {
               || !equalValues(readField(checkpoint.draft ?? {}, ['title']), studyNoteTitleValue(seen)))) {
               throw Object.assign(new Error('The study note title changed'), { code: 'study-note-title-basis-changed' });
             }
-            captured = undefined;
+            captured = action.tagMembership?.length ? { kind: 'document-tags', tagMembership: action.tagMembership } : undefined;
           }
         }
         if (action?.kind === 'prayer-status') {

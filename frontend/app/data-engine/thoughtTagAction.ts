@@ -5,6 +5,7 @@ import { equalValues, object } from './fieldValues';
 import { matchesRowDetailBirth } from './rowDetailAction';
 import { knownRowDetailPredecessor } from './rowDetailCapture';
 import { boundedRowId, existingRowField, matchesRowAction, replaceExistingRowField } from './rowFieldAction';
+import { MAX_TAG_MEMBERSHIP_PROOFS } from './tagMembershipOrder';
 
 import type { ActionTime } from './actionClock';
 import type { CommitRequest } from './commits';
@@ -14,7 +15,6 @@ import type { ConflictDetail, DocumentData, FieldChange, ResourceSnapshot } from
 
 export type ThoughtTagAction = RowDetailObservation<boolean> & { tag: string };
 export const THOUGHT_TAG_HISTORY = '_thoughtTagHistory';
-export const MAX_THOUGHT_TAG_PROOFS = 64;
 
 export type ThoughtTagHistoryPage = {
   owner: string; sermonId: string; generation: string; nextCursor: string | null;
@@ -103,7 +103,7 @@ export function captureThoughtTagActions(baseline: ResourceSnapshot, predecessor
   if (rowCreatedAt === undefined || existingRowField(draft?.thoughts, rowId, THOUGHT_TAG_BIRTH) !== rowCreatedAt || !previous || !next) return undefined;
   const before = new Set(previous), after = new Set(next);
   const changed = [...new Set([...previous, ...next])].filter(tag => ordinaryThoughtTag(tag) && before.has(tag) !== after.has(tag));
-  if (!changed.length || changed.length > MAX_THOUGHT_TAG_PROOFS) return undefined;
+  if (!changed.length || changed.length > MAX_TAG_MEMBERSHIP_PROOFS) return undefined;
   const requests = new Map(records.map(request => [request.id, request]));
   return changed.map(tag => {
     const present = before.has(tag);

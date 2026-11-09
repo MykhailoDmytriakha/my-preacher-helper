@@ -7,7 +7,7 @@ import { toast } from 'sonner';
 import { OutdatedTabNotice } from '@/components/common/OutdatedTabNotice';
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
 import { FieldComparison } from '@/data-engine/DataSyncStatus';
-import { captureRecoveryChoice, councilRefusalHeldOpen, isCollectionOnEngine, isDataEngineEnabled, isOneShotRecord, isRecoveryHeldOpen, readPlanTemplateNameConflict, readServiceStepConflict, readTagColorConflict, useDataEngine, useDocumentActions, useOpenDocumentAnswerScopes, waitsForDecision, type OpenDocumentAnswer, type RecoveryChoiceScope } from '@/data-engine/react.client';
+import { captureRecoveryChoice, councilRefusalHeldOpen, isCollectionOnEngine, isDataEngineEnabled, isOneShotRecord, isRecoveryHeldOpen, readDocumentTagComparison, readPlanTemplateNameConflict, readServiceStepConflict, readTagColorConflict, useDataEngine, useDocumentActions, useOpenDocumentAnswerScopes, waitsForDecision, type OpenDocumentAnswer, type RecoveryChoiceScope } from '@/data-engine/react.client';
 import { useClipboard } from '@/hooks/useClipboard';
 import { useConfirm, useDiscardQuestion } from '@/hooks/useConfirm';
 import { useShellPathname } from '@/hooks/useShellPathname';
@@ -78,6 +78,14 @@ type DisplayValue = (scope: string, field: string, value: unknown, document?: Do
 const isItem = (value: unknown): value is Item => Boolean(value) && typeof value === 'object' && typeof (value as { id?: unknown }).id === 'string';
 function fieldComparison(entry: Waiting, t: (key: string) => string): TextComparison | undefined {
   if (entry.records.length !== 1) return undefined;
+  if (entry.resource.collection === 'studyNotes') {
+    const comparison = readDocumentTagComparison(entry.records[0].checkpoint);
+    if (!comparison) return undefined;
+    const show = (side: 'mine' | 'stored') => comparison.choices.map(choice =>
+      choice.tag + ' · ' + t(choice[side] ? 'thought.tagHistory.added' : 'thought.tagHistory.removed')).join('\n');
+    return { identity: comparison.identity, title: t('studiesWorkspace.tagComparison'),
+      valueKind: 'field', mine: show('mine'), stored: show('stored') };
+  }
   if (entry.resource.collection === 'planTemplates') {
     const comparison = readPlanTemplateNameConflict(entry.records[0].checkpoint);
     return comparison && { ...comparison, title: fieldLabel(t, 'name'), valueKind: 'field' };

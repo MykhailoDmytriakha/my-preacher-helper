@@ -957,6 +957,140 @@ describe('StudyNoteEditorPage Pagination', () => {
         } finally { jest.clearAllTimers(); jest.useRealTimers(); }
     });
 
+    it.each([false, true])('saves a return to the opening tag membership while the opposite edit is queued (%s)', async initiallyPresent => {
+        jest.useFakeTimers();
+        const tag = 'QA Alpha';
+        const original = { ...mockNotes.find(note => note.id === 'note-1')!, tags: initiallyPresent ? [tag] : [] };
+        let projected = original;
+        let submission = 0;
+        const basis = { generation: 'generation', revision: 1 };
+        const firstTime = { earliestMs: 100, latestMs: 110 };
+        const secondTime = { earliestMs: 200, latestMs: 210 };
+        const captureActionTime = jest.fn().mockReturnValueOnce(firstTime).mockReturnValueOnce(secondTime);
+        const persistence = new Promise<void>(() => undefined);
+        const updateNote = jest.fn(({ updates }: { updates: Partial<StudyNote> }) => {
+            const id = 'local-tag-' + (++submission);
+            projected = { ...projected, ...updates };
+            return { acceptance: Promise.resolve({ kind: 'queued', receipt: id }), persistence, result: persistence,
+                capture: Promise.resolve({ kind: 'submitted', requestId: id, persistence }) };
+        });
+        (useStudyNotes as jest.Mock).mockImplementation(() => ({
+            uid: 'user-1', notes: [projected], loading: false, createNote: jest.fn(), updateNote, deleteNote: jest.fn(),
+            observeTagBasis: () => basis, captureActionTime,
+            noteDelivery: new Map([[original.id, { pending: projected !== original, needsAttention: false }]]),
+        }));
+        const editTag = (present: boolean) => {
+            if (present) {
+                const input = screen.getByPlaceholderText('studiesWorkspace.addTag');
+                fireEvent.change(input, { target: { value: tag } });
+                fireEvent.keyDown(input, { key: 'Enter' });
+            } else {
+                fireEvent.click(screen.getByRole('button', { name: 'studiesWorkspace.removeTag' }));
+            }
+        };
+        try {
+            render(<StudyNoteEditorPage />);
+            fireEvent.click(screen.getByTitle('common.edit'));
+            editTag(!initiallyPresent);
+            await act(async () => { await jest.advanceTimersByTimeAsync(1600); });
+            expect(updateNote).toHaveBeenCalledTimes(1);
+            expect(updateNote).toHaveBeenLastCalledWith(expect.objectContaining({
+                updates: { tags: initiallyPresent ? [] : [tag] },
+                tagMembership: [{ ...basis, tag, before: initiallyPresent, after: !initiallyPresent, time: firstTime }],
+            }));
+
+            editTag(initiallyPresent);
+            await act(async () => { await jest.advanceTimersByTimeAsync(1600); });
+            expect(updateNote).toHaveBeenCalledTimes(2);
+            expect(updateNote).toHaveBeenLastCalledWith(expect.objectContaining({
+                updates: { tags: original.tags },
+                tagMembership: [{ ...basis, tag, before: !initiallyPresent, after: initiallyPresent, time: secondTime, predecessorRequestId: 'local-tag-1' }],
+            }));
+        } finally { jest.clearAllTimers(); jest.useRealTimers(); }
+    });
+
+    it('keeps an independent acknowledged tag while another local tag is still being edited', async () => {
+        jest.useFakeTimers();
+        const original = { ...mockNotes.find(note => note.id === 'note-1')!, tags: [] };
+        const first = 'QA first', next = 'QA next', independent = 'QA independent';
+        let projected: StudyNote = original;
+        let finish!: () => void;
+        const persistence = new Promise<void>(resolve => { finish = resolve; });
+        const captureActionTime = () => ({ earliestMs: 100, latestMs: 110 });
+        const updateNote = jest.fn(({ updates }: { updates: Partial<StudyNote> }) => {
+            projected = { ...projected, ...updates };
+            return { acceptance: Promise.resolve({ kind: 'queued', receipt: 'first-tag' }), persistence,
+                result: persistence.then(() => ({ ...original, tags: [first, independent], revision: 2 })),
+                capture: Promise.resolve({ kind: 'submitted', requestId: 'first-tag', persistence }) };
+        });
+        (useStudyNotes as jest.Mock).mockImplementation(() => ({
+            uid: 'user-1', notes: [projected], loading: false, createNote: jest.fn(), updateNote, deleteNote: jest.fn(),
+            observeTagBasis: () => ({ generation: 'generation', revision: 1 }), captureActionTime,
+            noteDelivery: new Map([[original.id, { pending: true, needsAttention: false }]]),
+        }));
+        const add = (tag: string) => {
+            const input = screen.getByPlaceholderText('studiesWorkspace.addTag');
+            fireEvent.change(input, { target: { value: tag } });
+            fireEvent.keyDown(input, { key: 'Enter' });
+        };
+        try {
+            render(<StudyNoteEditorPage />);
+            fireEvent.click(screen.getByTitle('common.edit'));
+            add(first);
+            await act(async () => { await jest.advanceTimersByTimeAsync(1600); });
+            expect(updateNote).toHaveBeenCalledTimes(1);
+
+            add(next);
+            await act(async () => { finish(); await persistence; });
+            expect(screen.getByText(independent)).toBeInTheDocument();
+            await act(async () => { await jest.advanceTimersByTimeAsync(1600); });
+            expect(updateNote).toHaveBeenCalledTimes(2);
+            expect(updateNote).toHaveBeenLastCalledWith(expect.objectContaining({
+                updates: { tags: [first, independent, next] },
+                tagMembership: [expect.objectContaining({ tag: next, before: false, after: true })],
+            }));
+        } finally { jest.clearAllTimers(); jest.useRealTimers(); }
+    });
+
+    it('sends the later explicit tag removal even when an earlier acknowledgement already removed that tag', async () => {
+        jest.useFakeTimers();
+        const tag = 'QA selected';
+        const original = { ...mockNotes.find(note => note.id === 'note-1')!, tags: [] };
+        const basis = { generation: 'generation', revision: 1 };
+        let projected: StudyNote = original;
+        let finish!: () => void;
+        const persistence = new Promise<void>(resolve => { finish = resolve; });
+        const time = { earliestMs: 200, latestMs: 210 };
+        const updateNote = jest.fn(({ updates }: { updates: Partial<StudyNote> }) => {
+            projected = { ...projected, ...updates };
+            return { acceptance: Promise.resolve({ kind: 'queued', receipt: 'earlier-tag' }), persistence,
+                result: persistence.then(() => ({ ...original, tags: [], revision: 2 })),
+                capture: Promise.resolve({ kind: 'submitted', requestId: 'earlier-tag', persistence }) };
+        });
+        (useStudyNotes as jest.Mock).mockImplementation(() => ({
+            uid: 'user-1', notes: [projected], loading: false, createNote: jest.fn(), updateNote, deleteNote: jest.fn(),
+            observeTagBasis: () => basis, captureActionTime: () => time,
+            noteDelivery: new Map([[original.id, { pending: true, needsAttention: false }]]),
+        }));
+        try {
+            render(<StudyNoteEditorPage />);
+            fireEvent.click(screen.getByTitle('common.edit'));
+            const input = screen.getByPlaceholderText('studiesWorkspace.addTag');
+            fireEvent.change(input, { target: { value: tag } });
+            fireEvent.keyDown(input, { key: 'Enter' });
+            await act(async () => { await jest.advanceTimersByTimeAsync(1600); });
+            expect(updateNote).toHaveBeenCalledTimes(1);
+
+            fireEvent.click(screen.getByRole('button', { name: 'studiesWorkspace.removeTag' }));
+            await act(async () => { finish(); await persistence; });
+            await act(async () => { await jest.advanceTimersByTimeAsync(1600); });
+            expect(updateNote).toHaveBeenCalledTimes(2);
+            expect(updateNote).toHaveBeenLastCalledWith(expect.objectContaining({
+                updates: { tags: [] }, tagMembership: [expect.objectContaining({ ...basis, tag, before: true, after: false, time })],
+            }));
+        } finally { jest.clearAllTimers(); jest.useRealTimers(); }
+    });
+
     it('follows a later server title when a body acknowledgement already brought the typed title', async () => {
         jest.useFakeTimers();
         const original = mockNotes.find(note => note.id === 'note-1')!;

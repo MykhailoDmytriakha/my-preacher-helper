@@ -19,6 +19,8 @@ import { existingRowDate, MEETING_DATE_TARGET, PREACH_DATE_TARGET } from './date
 import { metadataAfterDatedRow, orderDatedRow } from './datedRowOrder.server';
 import { documentFieldPath } from './documentFieldAction';
 import { metadataAfterDocumentFields, orderDocumentFields, DOCUMENT_TITLE_HISTORY, GROUP_STATUS_HISTORY, DOCUMENT_METADATA_HISTORY, SERMON_CHURCH_HISTORY, SERMON_GOAL_TYPE_HISTORY, SERMON_VERSE_HISTORY } from './documentFieldOrder.server';
+import { DOCUMENT_TAG_HISTORY, documentTagCollection, tagField, tagMembership, type DocumentTagHistoryPage } from './documentTagMembership';
+import { metadataAfterDocumentTags, orderDocumentTags } from './documentTagOrder.server';
 import { exegeticalPointConflictId } from './exegeticalPointAction';
 import { EXEGETICAL_POINT_HISTORY, metadataAfterExegeticalPoints, orderExegeticalPoints, retainedExegeticalPointHistory } from './exegeticalPointOrder.server';
 import { equalValues, readField } from './fieldValues';
@@ -415,7 +417,7 @@ function orderGroupFlowFields(command: DataCommand, current: ResourceSnapshot, m
   return { block, step, blockStatus, duration: { ...duration, command: alignGroupStepDurationRepresentation(duration.command, current) } };
 }
 
-async function persistAcceptedCommand(transaction: Transaction, { owner, command, snapshot: primarySnapshot, effects, rawDocuments, dateOrder, meetingOrder, groupFlowOrder, preachingOrder, statusOrder, serviceFlagOrder, serviceStepTitleOrder, councilTopicTitleOrder, councilAssemblyOrder, councilTopicKindOrder, thoughtLockOrder, thoughtPlacementOrder, markOrder, fieldOrder, exegeticalOrder, thoughtTagOrder }: {
+async function persistAcceptedCommand(transaction: Transaction, { owner, command, snapshot: primarySnapshot, effects, rawDocuments, dateOrder, meetingOrder, groupFlowOrder, preachingOrder, statusOrder, serviceFlagOrder, serviceStepTitleOrder, councilTopicTitleOrder, councilAssemblyOrder, councilTopicKindOrder, thoughtLockOrder, thoughtPlacementOrder, markOrder, fieldOrder, exegeticalOrder, thoughtTagOrder, documentTagOrder }: {
   owner: string;
   command: DataCommand;
   snapshot: ResourceSnapshot;
@@ -437,6 +439,7 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
   fieldOrder?: ReturnType<typeof orderDocumentFields>;
   exegeticalOrder?: ReturnType<typeof orderExegeticalPoints>;
   thoughtTagOrder?: ReturnType<typeof orderThoughtTags>;
+  documentTagOrder?: ReturnType<typeof orderDocumentTags>;
 }) {
   const feedWrites = await prepareFeedWrites(transaction, owner, command.operationId, effects);
   const primaryKey = resourceKey(command.resource);
@@ -467,7 +470,8 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
       : metadataAfterDocumentFields({ ...snapshot, metadata: thoughtPlacement }, raw, primary ? fieldOrder : undefined);
     const exegetical = metadataAfterExegeticalPoints({ ...snapshot, metadata }, raw?._dataEngine, primary ? exegeticalOrder : undefined);
     const tags = metadataAfterThoughtTags({ ...snapshot, metadata: exegetical }, raw, primary ? thoughtTagOrder : undefined);
-    transaction.set(adminDb.collection(snapshot.resource.collection).doc(snapshot.resource.id), { ...value, _dataEngine: metadataAfterOutlineMoves({ ...snapshot, metadata: tags }, raw) });
+    const documentTags = metadataAfterDocumentTags({ ...snapshot, metadata: tags }, raw, primary ? documentTagOrder : undefined);
+    transaction.set(adminDb.collection(snapshot.resource.collection).doc(snapshot.resource.id), { ...value, _dataEngine: metadataAfterOutlineMoves({ ...snapshot, metadata: documentTags }, raw) });
   }
   const tagHistory = thoughtTagOrder?.displaced.filter(entry =>
     existingRowField(primarySnapshot.value?.thoughts, entry.rowId, THOUGHT_TAG_BIRTH) === entry.rowCreatedAt
@@ -475,6 +479,14 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
   if (tagHistory?.length && primarySnapshot.metadata) {
     const history = adminDb.collection(command.resource.collection).doc(command.resource.id).collection(THOUGHT_TAG_HISTORY);
     transaction.set(history.doc(historyEntryId(primarySnapshot, command.operationId)), { generation: primarySnapshot.metadata.generation, fields: tagHistory });
+  }
+  const documentTagHistory = documentTagOrder?.displaced.filter(entry =>
+    tagMembership(tagField(primarySnapshot.value), entry.tag) === entry.winnerValue);
+  if (documentTagHistory?.length && primarySnapshot.metadata && primarySnapshot.value) {
+    const history = adminDb.collection(command.resource.collection).doc(command.resource.id).collection(DOCUMENT_TAG_HISTORY);
+    transaction.set(history.doc(historyEntryId(primarySnapshot, command.operationId)), {
+      generation: primarySnapshot.metadata.generation, tags: documentTagHistory,
+    });
   }
   const pointHistory = retainedExegeticalPointHistory(primarySnapshot, exegeticalOrder);
   if (pointHistory) {
@@ -590,6 +602,7 @@ export async function processCommand(owner: string, input: unknown): Promise<Com
     let fieldOrder: ReturnType<typeof orderDocumentFields> | undefined;
     let exegeticalOrder: ReturnType<typeof orderExegeticalPoints> | undefined;
     let thoughtTagOrder: ReturnType<typeof orderThoughtTags> | undefined;
+    let documentTagOrder: ReturnType<typeof orderDocumentTags> | undefined;
     const rawDocuments = new Map<string, Record<string, unknown> | undefined>([[resourceKey(command.resource), raw]]);
     if (blocked.length) {
       result = { kind: 'blocked', operationId: command.operationId, dependencies: blocked };
@@ -611,7 +624,8 @@ export async function processCommand(owner: string, input: unknown): Promise<Com
       thoughtLockOrder = orderRowDetails(aligned, current, raw?._dataEngine, serverMs, THOUGHT_LOCK_POLICY);
       thoughtPlacementOrder = orderThoughtPlacement(alignThoughtLockRepresentation(thoughtLockOrder.command, current), current, raw?._dataEngine, serverMs);
       thoughtTagOrder = orderThoughtTags(thoughtPlacementOrder.command, current, raw?._dataEngine, serverMs);
-      markOrder = await planBibleMarkOrder(transaction, documentRef, thoughtTagOrder.command, current, raw?._dataEngine, serverMs);
+      documentTagOrder = orderDocumentTags(thoughtTagOrder.command, current, raw?._dataEngine, serverMs);
+      markOrder = await planBibleMarkOrder(transaction, documentRef, documentTagOrder.command, current, raw?._dataEngine, serverMs);
       fieldOrder = orderDocumentFields(markOrder.command, current, raw?._dataEngine, serverMs);
       exegeticalOrder = orderExegeticalPoints(fieldOrder.command, current, raw?._dataEngine, serverMs);
       const planned = await planDataCommand(exegeticalOrder.command, current, {
@@ -652,7 +666,7 @@ export async function processCommand(owner: string, input: unknown): Promise<Com
           return matches;
         },
       });
-      const plan = retainUncertainChronology(planned, command, current, [...(dateOrder.uncertain ?? []), ...meetingOrder.uncertain, ...groupFlowOrder.block.uncertain, ...groupFlowOrder.step.uncertain, ...groupFlowOrder.blockStatus.uncertain, ...groupFlowOrder.duration.uncertain, ...preachingOrder.uncertain, ...statusOrder.uncertain, ...serviceFlagOrder.uncertain, ...serviceStepTitleOrder.uncertain, ...councilTopicTitleOrder.uncertain, ...councilAssemblyOrder.uncertain, ...councilTopicKindOrder.uncertain, ...thoughtLockOrder.uncertain, ...thoughtPlacementOrder.uncertain, ...(markOrder.uncertain ?? []), ...(fieldOrder.uncertain ?? []), ...exegeticalOrder.uncertain, ...thoughtTagOrder.uncertain]);
+      const plan = retainUncertainChronology(planned, command, current, [...(dateOrder.uncertain ?? []), ...meetingOrder.uncertain, ...groupFlowOrder.block.uncertain, ...groupFlowOrder.step.uncertain, ...groupFlowOrder.blockStatus.uncertain, ...groupFlowOrder.duration.uncertain, ...preachingOrder.uncertain, ...statusOrder.uncertain, ...serviceFlagOrder.uncertain, ...serviceStepTitleOrder.uncertain, ...councilTopicTitleOrder.uncertain, ...councilAssemblyOrder.uncertain, ...councilTopicKindOrder.uncertain, ...thoughtLockOrder.uncertain, ...thoughtPlacementOrder.uncertain, ...(markOrder.uncertain ?? []), ...(fieldOrder.uncertain ?? []), ...exegeticalOrder.uncertain, ...thoughtTagOrder.uncertain, ...documentTagOrder.uncertain]);
       const acceptedAt = new Date().toISOString();
       // The planner exposes writes only for acknowledged commands.
       effects = plan.writes.map(effect => stampAcceptedResource(snapshotFromRaw(effect.resource, rawDocuments.get(resourceKey(effect.resource))), effect, acceptedAt));
@@ -680,7 +694,7 @@ export async function processCommand(owner: string, input: unknown): Promise<Com
       deletedTag = raw.name;
     }
     if (result.kind === 'acknowledged') {
-      await persistAcceptedCommand(transaction, { owner, command, snapshot: result.snapshot, effects, rawDocuments, dateOrder, meetingOrder, groupFlowOrder, preachingOrder, statusOrder, serviceFlagOrder, serviceStepTitleOrder, councilTopicTitleOrder, councilAssemblyOrder, councilTopicKindOrder, thoughtLockOrder, thoughtPlacementOrder, markOrder, fieldOrder, exegeticalOrder, thoughtTagOrder });
+      await persistAcceptedCommand(transaction, { owner, command, snapshot: result.snapshot, effects, rawDocuments, dateOrder, meetingOrder, groupFlowOrder, preachingOrder, statusOrder, serviceFlagOrder, serviceStepTitleOrder, councilTopicTitleOrder, councilAssemblyOrder, councilTopicKindOrder, thoughtLockOrder, thoughtPlacementOrder, markOrder, fieldOrder, exegeticalOrder, thoughtTagOrder, documentTagOrder });
     }
     const comparison = exegeticalOrder?.comparison;
     if (comparison && result.kind === 'conflict'
@@ -787,6 +801,14 @@ export async function listThoughtPlacementHistory(owner: string, sermonId: strin
   const resource = { collection: 'sermons', id: sermonId };
   const page = await listHistoryEntries<ThoughtPlacementHistoryPage['entries'][number]>(owner, resource, THOUGHT_PLACEMENT_POLICY.history, generation, cursor, 'sermon-gone');
   return { owner, sermonId, generation, ...page };
+}
+
+export async function listDocumentTagHistory(owner: string, collection: string, documentId: string, generation: string,
+  cursor?: string): Promise<DocumentTagHistoryPage> {
+  if (!documentTagCollection(collection)) throw new DataEngineServerError('invalid-argument', 400);
+  const page = await listHistoryEntries<DocumentTagHistoryPage['entries'][number]>(owner, { collection, id: documentId },
+    DOCUMENT_TAG_HISTORY, generation, cursor, 'note-gone');
+  return { owner, documentId, generation, ...page };
 }
 
 export async function listThoughtTagHistory(owner: string, sermonId: string, generation: string, cursor?: string): Promise<ThoughtTagHistoryPage> {

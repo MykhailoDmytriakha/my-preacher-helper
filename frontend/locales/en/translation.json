@@ -3865,6 +3865,7 @@
     }
   },
   "studiesWorkspace": {
+    "tagComparison": "Tag on this note",
     "unassignedAudio": {
       "title": "Saved recordings without a note",
       "description": "These recordings are saved on this device, but their note is unknown.",

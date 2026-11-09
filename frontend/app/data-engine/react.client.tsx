@@ -18,6 +18,7 @@ import { isLiveCollectionDocument as liveCollectionDocument, type CollectionPres
 import { isInactiveEditorError as inactiveEditor } from './controller';
 import { councilTopicConflictCode, councilTopicRefusalCode } from './councilTopicTransition';
 import { isDirectLegacyDocumentIntent, savedDocumentAnswer, type DocumentAnswer } from './documentDelivery';
+import { readDocumentTagComparison as documentTagComparison } from './documentTagChoice';
 import { ACTION_SLOT, editorSlot, isManualChoiceRecoveryIdentity, readManualScopeIdentity, recoveryEditorIdentity } from './editorIdentity';
 import { needsConnection } from './engine';
 import { restoreExegeticalPoint as restorePointVersion } from './exegeticalPointAction';
@@ -71,6 +72,7 @@ export function restoreExegeticalPoint(...args: Parameters<typeof restorePointVe
 export function readSermonConflict(checkpoint: SessionCheckpoint) { return sermonConflict(checkpoint); }
 export function readThoughtLockComparison(checkpoint: SessionCheckpoint) { return thoughtLockComparison(checkpoint); }
 export function readThoughtPlacementComparison(checkpoint: SessionCheckpoint) { return thoughtPlacementComparison(checkpoint); }
+export function readDocumentTagComparison(checkpoint: SessionCheckpoint) { return documentTagComparison(checkpoint); }
 export function readThoughtTagComparison(checkpoint: SessionCheckpoint) { return thoughtTagComparison(checkpoint); }
 export function restoreThoughtTag(...args: Parameters<typeof restoreTagState>) { return restoreTagState(...args); }
 export function councilTopicReviewCode(result: CommandResult | null | undefined, conflicts: readonly ConflictDetail[]): string | undefined {
@@ -471,7 +473,8 @@ export function useDocumentActions() {
           if (choice === 'mine') { await editor.keepLocal(scope ? shown(record) : undefined); await editor.save(); continue; }
           await editor.acceptRemote(scope ? shown(record) : undefined);
           const { checkpoint } = editor.getState();
-          if (checkpoint.dirty) await editor.edit(checkpoint.confirmed.value);
+          if (checkpoint.dirty && exactField && documentTagComparison(record.checkpoint)) await editor.save();
+          else if (checkpoint.dirty) await editor.edit(checkpoint.confirmed.value);
         } finally { editor.close({ flush: false }); }
       }
       return taken + waiting.length;
