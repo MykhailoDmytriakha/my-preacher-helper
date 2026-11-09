@@ -155,6 +155,46 @@ describe('DataEngine composition', () => {
     } finally { s.engine.dispose(); }
   });
 
+  it.each([
+    { scenario: 'another point move and a text save', unproven: false },
+    { scenario: 'an untracked point move', unproven: true },
+  ])('finds the preceding outline move only through proven order transitions: $scenario', async ({ unproven }) => {
+    const s = setup({ online: false, nativeChoice: true });
+    try {
+      const resource = { collection: 'sermons', id: 'interleaved-outline' };
+      const key = keyOf('owner', resource);
+      const outline: SermonOutline = { introduction: [], main: [
+        { id: 'point', text: 'Opening' }, { id: 'other', text: 'Neighbor' }, { id: 'anchor', text: 'Remaining' },
+      ], conclusion: [] };
+      const baseline: ResourceSnapshot = {
+        resource, value: { userId: 'owner', title: 'Sermon', verse: 'John 1:1', date: '2026-11-09',
+          thoughts: [], outline: outline as unknown as DocumentData },
+        metadata: { protocol: 1, generation: 'generation', revision: 1, deleted: false },
+      };
+      s.server.set(key, baseline);
+      s.cache.set(key, baseline);
+      const editor = await s.engine.openEditor(resource, 'outline-writer');
+      const drag = (before: SermonOutline, after: SermonOutline, pointId: string) =>
+        editor.commit(value => ({ ...value, outline: after as unknown as DocumentData }), { kind: 'outline-point-placement',
+          move: { generation: 'generation', before: outlinePointOrder(before), after: outlinePointOrder(after),
+            placement: { pointId, opening: outlinePointGap(before, pointId)!, destination: outlinePointGap(after, pointId)!,
+              observedRevision: 1, time: null } },
+        });
+      const first = movePoint(outline, 'point', 'introduction', 0);
+      await drag(outline, first, 'point');
+      const middle = movePoint(first, 'other', 'conclusion', 0);
+      if (!unproven) await drag(first, middle, 'other');
+      const words = { ...middle, main: [{ ...middle.main[0], text: 'Updated words' }] };
+      await editor.edit({ ...baseline.value!, outline: words as unknown as DocumentData });
+      await editor.save();
+      await drag(words, movePoint(words, 'point', 'main', 1), 'point');
+      const records = await s.commits.list('owner');
+      expect(records.map(record => record.outlinePointPlacement?.placement.pointId)).toEqual(unproven
+        ? ['point', undefined, 'point'] : ['point', 'other', undefined, 'point']);
+      expect(records.at(-1)?.outlinePointPlacement?.placement.predecessorOperationId).toBe(unproven ? undefined : records[0].id);
+    } finally { s.engine.dispose(); }
+  });
+
   it.each([{ ordinaryCount: 1, intervening: false }, { ordinaryCount: 2, intervening: false }, { ordinaryCount: 2, intervening: true }])
   ('moves a legacy outline after $ordinaryCount own revisions if uninterrupted (intervening: $intervening)', async ({ ordinaryCount, intervening }) => {
     const s = setup({ online: false, nativeChoice: true });

@@ -413,11 +413,21 @@ function outlineMovePredecessor(records: readonly CommitRequest[], predecessor: 
   move: OutlinePointPlacementCapture): string | undefined {
   if (!predecessor) return undefined;
   const chain = new Map(records.map(record => [record.id, record]));
+  const { owner, baseline } = predecessor;
+  let shown = move.before;
   let record: CommitRequest | undefined = predecessor;
   while (record && chain.delete(record.id)) {
-    if (!hasOutlinePointOrder(record.value?.outline, move.before)) return undefined;
-    if (record.outlinePointPlacement?.placement.pointId === move.placement.pointId
-      && record.outlinePointPlacement.generation === move.generation) return record.id;
+    if (record.owner !== owner || !resourceMatches(record.baseline.resource, baseline.resource)
+      || record.baseline.metadata?.generation !== baseline.metadata?.generation
+      || record.state === 'cancelled' || record.state === 'conflict' || record.state === 'refused'
+      || !hasOutlinePointOrder(record.value?.outline, shown)) return undefined;
+    const previousMove = record.outlinePointPlacement;
+    if (previousMove) {
+      if (previousMove.generation !== move.generation || !hasOutlinePointOrder(previousMove.after, shown)) return undefined;
+      if (previousMove.placement.pointId === move.placement.pointId) return record.id;
+      // Rewind the exact move of the other point before inspecting earlier saves.
+      shown = previousMove.before;
+    }
     record = record.predecessor ? chain.get(record.predecessor) : undefined;
   }
 }
