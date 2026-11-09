@@ -1,3 +1,5 @@
+import { COUNCIL_OUTCOME_FIELDS, isCouncilOutcome, readCouncilOutcome, type CouncilOutcome } from '@/utils/councilTopicOutcome';
+
 import { COUNCIL_TOPIC_ID } from './councilTopicTitleAction';
 import { equalValues, object } from './fieldValues';
 
@@ -5,29 +7,10 @@ import type { RowDetailHistoryEntry, RowDetailObservation, RowDetailPolicy } fro
 import type { RowFieldTarget, RowValue } from './rowFieldAction';
 import type { DocumentData } from './types';
 
-export type CouncilOutcome = {
-  discussed: boolean;
-  acceptedOptionId: string | null;
-  decision: string | null;
-  resolution: 'postponed' | 'dropped' | null;
-};
+export { COUNCIL_OUTCOME_FIELDS, isCouncilOutcome, readCouncilOutcome };
+export type { CouncilOutcome };
 
 export type CouncilOutcomeWire = Omit<RowDetailObservation<CouncilOutcome>, 'before' | 'after'>;
-
-export const COUNCIL_OUTCOME_FIELDS = ['discussed', 'acceptedOptionId', 'decision', 'resolution'] as const;
-const textOrEmpty = (value: unknown): value is string | null => value === null || (typeof value === 'string' && value.length > 0);
-const resolution = (value: unknown): value is CouncilOutcome['resolution'] => value === null || value === 'postponed' || value === 'dropped';
-
-export function isCouncilOutcome(value: unknown): value is CouncilOutcome {
-  return object(value) && Object.keys(value).length === COUNCIL_OUTCOME_FIELDS.length
-    && typeof value.discussed === 'boolean' && textOrEmpty(value.acceptedOptionId) && textOrEmpty(value.decision) && resolution(value.resolution);
-}
-
-export function readCouncilOutcome(topic: DocumentData): CouncilOutcome | undefined {
-  const value = { discussed: topic.discussed === true, acceptedOptionId: topic.acceptedOptionId || null,
-    decision: topic.decision || null, resolution: topic.resolution ?? null };
-  return isCouncilOutcome(value) ? value : undefined;
-}
 
 export function incompatibleCouncilOutcome(value: CouncilOutcome): boolean {
   return Boolean(value.resolution && (value.discussed || value.acceptedOptionId || value.decision));

@@ -2,10 +2,8 @@
 
 import { useId, useState } from 'react';
 
-import { isCouncilOutcome, readCouncilOutcome } from '@/data-engine/councilOutcomeAction';
-import { equalValues } from '@/data-engine/fieldValues';
 import { useOwnerHistory } from '@/hooks/useOwnerHistory';
-import { hasRecordedCouncilTopicOutcome } from '@/utils/councilTopicOutcome';
+import { hasRecordedCouncilTopicOutcome, isCouncilOutcome, readCouncilOutcome, sameCouncilOutcome } from '@/utils/councilTopicOutcome';
 import { useTranslation } from '@locales/useTranslation';
 
 import { councilOutcomeWords } from './councilOutcomeWords';
@@ -57,11 +55,12 @@ export function CouncilTopicHistory({ owner, generation, councilId, topics, disa
     return typeof value === 'string' ? topicName(value)
       : t(value ? 'council.assemblyHistory.marked' : 'council.assemblyHistory.unmarked');
   };
-  const current = (topic: CouncilTopic) => selected.field === 'outcome' ? readCouncilOutcome({
-    discussed: topic.discussed ?? false, acceptedOptionId: topic.acceptedOptionId ?? null,
-    decision: topic.decision ?? null, resolution: topic.resolution ?? null,
-  }) : selected.field === 'kind' ? topic.kind ?? 'decision'
+  const current = (topic: CouncilTopic) => selected.field === 'outcome' ? readCouncilOutcome(topic) : selected.field === 'kind' ? topic.kind ?? 'decision'
     : selected.field === 'forAssembly' ? Boolean(topic.forAssembly) : topic.title;
+  const isCurrent = (topic: CouncilTopic, value: string | boolean | CouncilOutcome) => {
+    const shown = current(topic);
+    return shown === value || (isCouncilOutcome(shown) && isCouncilOutcome(value) && sameCouncilOutcome(shown, value));
+  };
   const button = 'min-h-8 text-xs font-medium text-emerald-700 hover:underline disabled:opacity-50 dark:text-emerald-400';
   const restore = async (topic: CouncilTopic, value: string | boolean | CouncilOutcome) => {
     setRestoring(true);
@@ -90,7 +89,7 @@ export function CouncilTopicHistory({ owner, generation, councilId, topics, disa
             <p>{t('council.topicTitleHistory.earlier', { value: words(field.value, topic) })}</p>
             <p>{t('council.history.kept', { value: words(field.winnerValue, topic) })}</p>
             {topic && <button type="button" className={button}
-              disabled={disabled || restoring || equalValues(current(topic), field.value)
+              disabled={disabled || restoring || isCurrent(topic, field.value)
                 || (field.field === 'outcome' && (field.scope !== (topic.kind ?? 'decision')
                   || Boolean(field.value.acceptedOptionId && !topic.options.some(option => option.id === (field.value as CouncilOutcome).acceptedOptionId)))) || (selected.field === 'kind' && hasRecordedCouncilTopicOutcome(topic))}
               onClick={() => void restore(topic, field.value)}>{t(config.restore)}</button>}
