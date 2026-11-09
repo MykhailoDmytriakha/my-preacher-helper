@@ -67,6 +67,7 @@ export type EditorCommitAction =
   | { kind: 'sermon-preparation-check'; field: PreparationConfirmation; time: ActionTime | null }
   | { kind: 'thought-placement'; rowId: string; time: ActionTime | null; shown?: ShownCopy }
   | { kind: 'service-order-placement'; move: ServiceOrderPlacementCapture }
+  | { kind: 'service-order-step-placement'; move: ServiceOrderStepPlacementCapture }
   | { kind: 'service-order-title'; title: ServiceOrderTitleCapture }
   | { kind: 'service-order-flag'; flag: ServiceOrderFlagCapture }
   | { kind: 'service-order-step-title'; title: ServiceOrderStepTitleCapture }
@@ -82,6 +83,15 @@ export type EditorCommitAction =
   | { kind: 'tag-color'; color: TagColorCapture }
   | { kind: 'prayer-status'; status: PrayerStatusCapture };
 
+export type ServiceOrderStepGap = { previous: string | null; next: string | null };
+export type ServiceOrderStepPlacement = {
+  stepId: string;
+  opening: ServiceOrderStepGap;
+  destination: ServiceOrderStepGap;
+  observedRevision: number;
+  time: ActionTime | null;
+  predecessorOperationId?: string;
+};
 export type ServiceOrderPlacementAnchor = { id: string; generation: string | null };
 export type ServiceOrderPlacementGap = { previous: ServiceOrderPlacementAnchor | null; next: ServiceOrderPlacementAnchor | null };
 export type ServiceOrderPlacement = {
@@ -97,6 +107,7 @@ export type LabeledServiceOrderPlacement = {
   next: (ServiceOrderPlacementAnchor & { title?: string }) | null;
 };
 export type ServiceOrderPlacementComparison = {
+  step?: { id: string; title?: string };
   mine: LabeledServiceOrderPlacement;
   saved: LabeledServiceOrderPlacement | null;
   available: boolean;
@@ -105,7 +116,14 @@ export type ServiceOrderPlacementHistoryPage = {
   owner: string;
   orderId: string;
   generation: string;
-  entries: { id: string; earlier: LabeledServiceOrderPlacement; kept: LabeledServiceOrderPlacement; acceptedAt: string }[];
+  entries: {
+    id: string;
+    earlier: LabeledServiceOrderPlacement;
+    kept: LabeledServiceOrderPlacement;
+    acceptedAt: string;
+    stepId?: string;
+    stepTitle?: string;
+  }[];
   nextCursor: string | null;
 };
 
@@ -115,6 +133,12 @@ export type ServiceOrderPlacementCapture = {
   rank: number;
   afterRequests?: string[];
   placement: ServiceOrderPlacement;
+};
+
+export type ServiceOrderStepPlacementCapture = {
+  generation: string | null;
+  shownIds: string[];
+  placement: ServiceOrderStepPlacement;
 };
 
 export type BibleMarkStrokeStamp = { observedRevision: number; time: ActionTime };
@@ -149,6 +173,7 @@ export type DataCommand = CommandBase & (
       sermonGoalTypeAction?: DocumentFieldStamp;
       sermonPlanModeAction?: SermonPlanModeStamp;
       serviceOrderPlacement?: ServiceOrderPlacement;
+      serviceOrderStepPlacement?: ServiceOrderStepPlacement;
       sermonPreparationCheckActions?: Partial<Record<PreparationConfirmation, DocumentFieldStamp>>;
       sermonChurchFill?: SermonChurchFill;
       exegeticalPlanActions?: ExegeticalPointStamp[];

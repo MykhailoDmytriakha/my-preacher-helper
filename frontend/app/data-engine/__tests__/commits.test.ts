@@ -5,6 +5,7 @@ import { captureDocumentTags, makeDocumentTagIntents } from '../documentTagCaptu
 import { createIndexedDbCheckpoints } from '../checkpoint.client';
 import { createIndexedDbCommitStore } from '../commits.client';
 import { installStorageHarness } from './storageHarness';
+import { ACTION_SLOT, editorIdentity } from '../editorIdentity';
 import { DataEngine } from '../engine';
 import { ResourceObserver } from '../observer';
 import { applyCommand } from '../protocol';
@@ -149,6 +150,56 @@ describe('Durable commit requests', () => {
     expect(s.transport.send).toHaveBeenCalledWith(expect.objectContaining({
       kind: 'update', changes: [{ path: ['rank'], before, after: before }], serviceOrderPlacement: placement,
     }));
+  });
+
+  it.each(['mine', 'saved'])('resolves a one-shot service step position to %s without rewriting words', async choice => {
+    const alpha = { id: 'alpha', title: 'Alpha', body: 'Words before the independent edit' };
+    const beta = { id: 'beta', title: 'Beta', body: 'Move this step', flagged: true };
+    const gamma = { id: 'gamma', title: 'Gamma', scriptureRefs: ['John 1:1'] };
+    const edited = { ...alpha, body: 'Independent words accepted on the other device' };
+    const resource = { collection: 'serviceOrders', id: 'service' };
+    const at = '2026-11-09T00:00:00.000Z';
+    const opening: ResourceSnapshot = { ...initial(), resource, value: {
+      userId: 'owner', title: 'Sunday', rank: 1000, steps: [alpha, beta, gamma], createdAt: at, updatedAt: at,
+    } };
+    const s = setup({ opening, nativeChoice: true });
+    jest.mocked(s.transport.send).mockImplementation(async command => {
+      const stored = s.server();
+      const { result } = await planDataCommand(command, stored, {
+        get: async () => stored, list: async () => [stored],
+      });
+      if (result.kind === 'acknowledged') s.replace(result.snapshot);
+      return result;
+    });
+    const engine = s.makeEngine();
+    const editorId = editorIdentity('tab', resource, ACTION_SLOT, 'opening');
+    const editor = await engine.openEditor(resource, editorId);
+    try {
+      await editor.commit(value => ({ ...value, steps: [alpha, gamma, beta] }), { kind: 'service-order-step-placement',
+        move: { generation: 'g', shownIds: ['alpha', 'beta', 'gamma'], placement: {
+          stepId: 'beta', opening: { previous: 'alpha', next: 'gamma' }, destination: { previous: 'gamma', next: null },
+          observedRevision: 1, time: null,
+        } },
+      });
+      s.replace({ ...opening, value: { ...opening.value, steps: [beta, edited, gamma] },
+        metadata: { ...opening.metadata!, revision: 2 } });
+      engine.setOnline(true); await engine.retry(); await settle();
+      expect(editor.getState().result).toMatchObject({ kind: 'conflict', serviceOrderPlacementComparison: { step: { id: 'beta' } } });
+      if (choice === 'mine') {
+        await editor.keepLocal(undefined, undefined, null);
+        await editor.save();
+        await engine.retry(); await settle();
+        expect(s.transport.send).toHaveBeenLastCalledWith(expect.objectContaining({
+          serviceOrderStepPlacement: { stepId: 'beta', observedRevision: 2, time: null,
+            opening: { previous: null, next: 'alpha' }, destination: { previous: 'gamma', next: null } },
+        }));
+        expect(s.server().value?.steps).toEqual([edited, gamma, beta]);
+      } else {
+        await editor.acceptRemote();
+        expect(s.transport.send).toHaveBeenCalledTimes(1);
+        expect(editor.getState().checkpoint).toMatchObject({ dirty: false, conflicts: [], draft: { steps: [beta, edited, gamma] } });
+      }
+    } finally { engine.dispose(); }
   });
 
   it('sends a deliberate same-mode choice with the time pinned before another plan save', async () => {

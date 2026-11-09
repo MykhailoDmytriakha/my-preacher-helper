@@ -7,6 +7,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 
 import { ScriptureLinks, ScriptureText, WrittenInMark } from '@/components/bible/ScriptureLinks';
 import { useVerseWindow } from '@/components/bible/VerseWindow';
+import { ServiceOrderPlacementHistory } from '@/components/care/ServiceOrderPlacementHistory';
 import { ServiceOrderStepHistory } from '@/components/care/ServiceOrderStepHistory';
 import { RecordUnavailable } from '@/components/RecordUnavailable';
 import { Chip } from '@/components/ui/Chip';
@@ -27,6 +28,7 @@ import { namesAPlace, referenceFromTyped, writtenInFor } from '@/utils/bibleLink
 import { newClientId } from '@/utils/clientId';
 import { serviceOrderLanguage } from '@/utils/documentLanguage';
 import { selectServiceOrderContent } from '@/utils/serviceOrderFreshness';
+import { projectServiceOrderStep } from '@/utils/serviceOrderStepPlacement';
 import { EMERALD_ACTION, NEUTRAL_CAPTION, CARE_CARD_TONES } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
 
@@ -35,6 +37,7 @@ import { ReorderArrows, ServiceOrderFailure } from '../ReorderArrows';
 
 import type { ActionTime } from '@/data-engine/actionClock';
 import type { ServiceOrderStepCapture, ServiceOrderStepTitleCapture, ServiceOrderStepVersion } from '@/data-engine/serviceOrderStepAction';
+import type { LabeledServiceOrderPlacement } from '@/data-engine/types';
 import type { ServiceOrder, ServiceOrderStep } from '@/models/models';
 import '@locales/i18n';
 
@@ -184,7 +187,7 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
   const { t } = useTranslation();
   const { locale } = useAppLocale();
   const { confirm, confirmDialog } = useConfirm();
-  const { orders, loading, isOnline, updateSteps, stepVersion, openedWith, closedEditing, recheck, orderPresence, renameOrder, captureTitleTime, titleHistory, deleteOrder } =
+  const { orders, loading, isOnline, updateSteps, stepVersion, captureStepPlacement, openedWith, closedEditing, recheck, orderPresence, renameOrder, captureTitleTime, titleHistory, deleteOrder } =
     useServiceOrders();
   const cachedOrder = orders.find((candidate) => candidate.id === orderId);
   const presence = orderPresence?.(orderId);
@@ -624,7 +627,8 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
     const sentSteps = typedRef.current;
     try {
       const committed = await (options?.step ? updateSteps(orderId, mutate, options.step) : updateSteps(orderId, mutate));
-      if (committed) confirmContent({ steps: selectServiceOrderContent({ steps: committed }).steps });
+      const movingStep = options?.step?.field === 'placement';
+      if (committed && !movingStep) confirmContent({ steps: selectServiceOrderContent({ steps: committed }).steps });
       /*
        * AN ANSWER IS ONLY WORTH ADOPTING IF THE EDITOR HAS NOT MOVED ON.
        *
@@ -650,7 +654,7 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
        * text the server had held all along. It settles nothing about a FIELD: that a step exists
        * is no proof that the paragraph refused inside it ever arrived.
        */
-      if (committed) {
+      if (committed && !movingStep) {
         committed.forEach((step) => {
           forgetRefusal(step.id, EXISTENCE);
           /*
@@ -670,7 +674,7 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
       }
       // Whatever is still unsaved keeps the page talking about it; nothing left, nothing said.
       setFailure(stillUnsaid());
-      if (!committed) return;
+      if (!committed && !movingStep) return;
       /*
        * Adopted only if nothing newer was typed while this write was in the air. Two fields in a
        * row is an ordinary thing to do: the first write commits what it knew, and taking its
@@ -700,7 +704,7 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
        * these steps, and a screen pinned to a local copy would stop showing anything that
        * happened elsewhere for as long as the tab stayed open.
        */
-      typedRef.current = committed;
+      if (committed) typedRef.current = committed;
       setTyped(null);
     } catch (error) {
       setFailure(settleFailure(error, options));
@@ -867,13 +871,32 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
 
   const moveStep = (stepId: string, toIndex: number) => {
     const from = liveSteps.findIndex((step) => step.id === stepId);
+    const after = reposition(liveSteps, stepId, toIndex);
+    if (!after || from === toIndex) return;
+    const change = captureStepPlacement?.(orderId, stepId, liveSteps, after, shownStepVersion());
     return write(
       (steps) => {
         if (!steps.some((step) => step.id === stepId)) throw new StepGoneError();
-        return reposition(steps, stepId, toIndex);
+        return change ? projectServiceOrderStep(steps, stepId, change.placement.destination) ?? null
+          : reposition(steps, stepId, toIndex);
       },
-      { undo: (steps) => reposition(steps, stepId, from), dropOnGone: stepId }
+      {
+        undo: (steps) => reposition(steps, stepId, from),
+        dropOnGone: stepId,
+        ...(change && { step: { field: 'placement', change } }),
+      }
     );
+  };
+
+  const restoreStepPlacement = async (gap: LabeledServiceOrderPlacement, stepId: string) => {
+    const current = typedRef.current;
+    const version = shownStepVersion();
+    if ([gap.previous, gap.next].some(anchor => anchor && anchor.generation !== version?.generation)) throw new StepGoneError();
+    const projected = projectServiceOrderStep(current, stepId, {
+      previous: gap.previous?.id ?? null, next: gap.next?.id ?? null,
+    });
+    if (!projected) throw new StepGoneError();
+    await moveStep(stepId, projected.findIndex(step => step.id === stepId));
   };
 
   /**
@@ -1050,6 +1073,9 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
         {titleHistorySession && <DocumentFieldHistory key={JSON.stringify([titleHistorySession.owner, orderId, titleHistorySession.generation])}
           session={titleHistorySession} current={titleDraft ?? order.title} disabled={hasLocalChanges || editing} />}
         {titleHistorySession && <>
+          <ServiceOrderPlacementHistory
+            key={JSON.stringify([titleHistorySession.owner, orderId, titleHistorySession.generation, 'position'])}
+            step session={{ ...titleHistorySession, restore: restoreStepPlacement }} disabled={hasLocalChanges || editing} />
           <ServiceOrderStepHistory
             key={JSON.stringify([titleHistorySession.owner, orderId, titleHistorySession.generation, 'flagged'])}
             owner={titleHistorySession.owner} orderId={orderId} generation={titleHistorySession.generation}

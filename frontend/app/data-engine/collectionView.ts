@@ -9,7 +9,7 @@ import type { CommitRequest } from './commits';
 import type { DocumentTitleSeen, StudyNoteTypeSeen, TagColorSeen } from './documentFieldAction';
 import type { DocumentTagOpening } from './documentTagCapture';
 import type { PrayerStatusOpening } from './prayerStatusAction';
-import type { DocumentData, JournalEntry, ResourceRef, ResourceSnapshot, ServiceOrderPlacementCapture } from './types';
+import type { DocumentData, JournalEntry, ResourceRef, ResourceSnapshot, ServiceOrderPlacementCapture, ServiceOrderStepPlacementCapture } from './types';
 
 /** Read-only presentation; its value must never be used as an editor's confirmed baseline. */
 export interface CollectionDocumentView {
@@ -25,6 +25,7 @@ export interface CollectionDocumentView {
   /** Exact pending request that supplied the displayed title, never a confirmed snapshot. */
   submittedTitle?: DocumentTitleSeen;
   submittedServiceOrderPlacement?: { requestId: string; move: ServiceOrderPlacementCapture; index: number };
+  submittedServiceOrderStepPlacements?: { requestId: string; move: ServiceOrderStepPlacementCapture }[];
   submittedNoteType?: StudyNoteTypeSeen;
   submittedCommentKind?: CommentKindSeen;
   submittedColor?: TagColorSeen;
@@ -78,6 +79,9 @@ export function collectionDocumentViews(owner: string, collection: string, snaps
       ? unsettled.findLast(request => request.serviceOrderPlacement && request.state !== 'cancelled') : undefined;
     const submittedServiceOrderPlacement = placement?.serviceOrderPlacement
       ? { requestId: placement.id, move: placement.serviceOrderPlacement, index: related.indexOf(placement) } : undefined;
+    const submittedServiceOrderStepPlacements = collection === 'serviceOrders' && !needsAttention
+      ? unsettled.flatMap(request => request.serviceOrderStepPlacement ? [{ requestId: request.id, move: request.serviceOrderStepPlacement }] : [])
+      : [];
     const commentKind = !needsAttention && collection === 'studyNotes' && submittedCommentKind(checkpoint, unsettled);
     const submittedNoteType = submittedStudyNoteType(checkpoint, unsettled, needsAttention);
     const prayerStatus = submittedPrayerStatus(checkpoint, unsettled, needsAttention);
@@ -89,6 +93,7 @@ export function collectionDocumentViews(owner: string, collection: string, snaps
       pending: true, needsAttention, deleting: Boolean(checkpoint && checkpoint.draft === null),
       ...(submittedTitle && { submittedTitle }),
       ...(submittedServiceOrderPlacement && { submittedServiceOrderPlacement }),
+      ...(submittedServiceOrderStepPlacements.length > 0 && { submittedServiceOrderStepPlacements }),
       ...(submittedNoteType && { submittedNoteType }),
       ...(commentKind && { submittedCommentKind: commentKind }),
       ...(submittedColor && { submittedColor }),

@@ -4864,6 +4864,8 @@
     "stepTitle": "What happens",
     "addStep": "Add a step",
     "removeStep": "Remove step",
+    "stepPosition": "Step position",
+    "stepPlacementHistory": "Step position history",
     "stepTitleHistory": {
       "title": "Step title history",
       "loading": "Loading step title history…",

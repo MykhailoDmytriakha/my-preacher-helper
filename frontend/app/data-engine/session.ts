@@ -25,7 +25,7 @@ import type { CommitRequest } from './commits';
 import type { AutosaveFieldActions, AutosaveFieldDrafts, AutosaveFieldStamp } from './documentFieldAction';
 import type { PreachStatusAction } from './preachStatusAction';
 import type { AutosaveRowFieldActions, RowFieldDrafts } from './rowFieldAutosave';
-import type { CommandResult, ConflictDetail, DataCommand, DocumentData, ResourceSnapshot, ServiceOrderPlacementCapture, ServiceOrderPlacementComparison } from './types';
+import type { CommandResult, ConflictDetail, DataCommand, DocumentData, ResourceSnapshot, ServiceOrderPlacementCapture, ServiceOrderPlacementComparison, ServiceOrderStepPlacementCapture } from './types';
 
 export interface SessionCheckpoint extends AutosaveFieldDrafts, RowFieldDrafts {
   confirmed: ResourceSnapshot;
@@ -37,6 +37,7 @@ export interface SessionCheckpoint extends AutosaveFieldDrafts, RowFieldDrafts {
   conflicts: ConflictDetail[];
   serviceOrderPlacementComparison?: ServiceOrderPlacementComparison;
   serviceOrderPlacementRetry?: ServiceOrderPlacementCapture;
+  serviceOrderStepPlacementRetry?: ServiceOrderStepPlacementCapture;
   pending: Record<string, { generation: number; value: DocumentData | null; operations?: string[]; borrowedManualScope?: string } & AutosaveFieldActions & AutosaveRowFieldActions>;
 }
 
@@ -170,6 +171,9 @@ export class DataSession {
     }
     if (request.serviceOrderPlacement && equalValues(request.serviceOrderPlacement, this.state.serviceOrderPlacementRetry)) {
       delete this.state.serviceOrderPlacementRetry;
+    }
+    if (request.serviceOrderStepPlacement && equalValues(request.serviceOrderStepPlacement, this.state.serviceOrderStepPlacementRetry)) {
+      delete this.state.serviceOrderStepPlacementRetry;
     }
     this.registerCommit(request.id, request.editGeneration, request.value, request.atomic?.id ?? request.command?.operationId, request);
     if (request.result && ['acknowledged', 'conflict', 'refused'].includes(request.state)) this.accept(request.result, request.atomic?.kind === 'analysis-reshape');
@@ -413,8 +417,16 @@ export class DataSession {
     this.state.dirty = true;
   }
 
+  stageServiceOrderStepPlacementRetry(move: ServiceOrderStepPlacementCapture, steps: DocumentData[]): void {
+    if (!this.state.draft) throw new Error('The service order is unavailable');
+    this.edit({ ...this.state.draft, steps });
+    this.state.serviceOrderStepPlacementRetry = copy(move);
+    this.state.dirty = true;
+  }
+
   private clearAutosaveFieldDrafts(): void {
     delete this.state.serviceOrderPlacementComparison;
+    delete this.state.serviceOrderStepPlacementRetry;
     delete this.state.serviceOrderPlacementRetry;
     delete this.state.exegeticalPointDrafts;
     clearRowFieldDrafts(this.state);

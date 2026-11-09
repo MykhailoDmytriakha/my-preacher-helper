@@ -83,9 +83,11 @@ function fieldComparison(entry: Waiting, t: (key: string) => string): TextCompar
   if (entry.records.length !== 1) return undefined;
   const placement = entry.records[0].checkpoint.serviceOrderPlacementComparison;
   if (entry.resource.collection === 'serviceOrders' && placement) {
-    return { title: t('serviceOrders.placementHistory.position'), valueKind: 'field',
+    const label = t(placement.step ? 'serviceOrders.stepPosition' : 'serviceOrders.placementHistory.position');
+    return { title: placement.step?.title ? `${label} · ${placement.step.title}` : label, valueKind: 'field',
       mine: serviceOrderPlacementWords(placement.mine, t),
-      stored: placement.saved ? serviceOrderPlacementWords(placement.saved, t) : t('dataSync.storedVersion') };
+      stored: placement.saved ? serviceOrderPlacementWords(placement.saved, t)
+        : t(placement.step ? 'serviceOrders.placementHistory.positionUnavailable' : 'dataSync.storedVersion') };
   }
   if (entry.resource.collection === 'sermons') return planModeComparison(entry.records[0].checkpoint, t);
   if (entry.resource.collection === 'studyNotes') {

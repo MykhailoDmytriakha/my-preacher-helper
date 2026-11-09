@@ -33,6 +33,7 @@ const serviceOrderAnchor = z.object({
 });
 const serviceOrderGap = z.object({ previous: serviceOrderAnchor.nullable(), next: serviceOrderAnchor.nullable() });
 const serviceOrderPlacementComparison = z.object({
+  step: z.object({ id: z.string().refine(isValidIdentifier), title: z.string().optional() }).optional(),
   mine: serviceOrderGap, saved: serviceOrderGap.nullable(), available: z.boolean(),
 });
 const resultSchema: z.ZodType<CommandResult> = z.discriminatedUnion('kind', [

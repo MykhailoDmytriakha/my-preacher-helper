@@ -4951,6 +4951,8 @@
     "stepTitle": "Що відбувається",
     "addStep": "Додати крок",
     "removeStep": "Прибрати крок",
+    "stepPosition": "Місце кроку",
+    "stepPlacementHistory": "Історія місць кроків",
     "stepTitleHistory": {
       "title": "Історія назв кроків",
       "loading": "Завантажуємо історію назв…",

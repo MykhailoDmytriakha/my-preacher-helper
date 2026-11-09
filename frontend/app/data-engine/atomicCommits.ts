@@ -1,4 +1,5 @@
 import { explicitPreachedFlag } from '@/utils/preachDateStatus';
+import { projectServiceOrderStep } from '@/utils/serviceOrderStepPlacement';
 
 import { sameAnalysisFrame } from './analysisReshapeFields';
 import { rebaseBibleMarkAncestor } from './bibleMarkStroke';
@@ -21,6 +22,7 @@ import { isCapturedRowConflict } from './rowFieldAction';
 import { isCapturedAutosaveRowFieldConflict, retainQueuedThoughtPlacements } from './rowFieldAutosave';
 import { rebaseSermonChurchFill } from './sermonChurchFill';
 import { SERVICE_ORDER_FLAG_TARGET, SERVICE_ORDER_STEP_TITLE_TARGET } from './serviceOrderStepAction';
+import { placementSteps } from './serviceOrderStepPlacement';
 import { coversCommittedEffect } from './snapshotFreshness';
 
 import type { CommitRequest, CommitStore, TrackCommitAnswer } from './commits';
@@ -65,6 +67,16 @@ export function initializeCommit(record: CommitRequest, records: readonly Commit
       }
       return { ...record, initialized: true, working: snapshot,
         intended: { ...snapshot.value, rank: record.serviceOrderPlacement.rank } };
+    }
+    if (record.serviceOrderStepPlacement && snapshot.value) {
+      const move = record.serviceOrderStepPlacement;
+      if (move.generation !== null && snapshot.metadata?.generation !== move.generation) {
+        return { ...record, initialized: true, state: 'refused', result: { kind: 'refused', operationId: record.id, code: 'generation-mismatch' } };
+      }
+      const steps = placementSteps(snapshot.value.steps);
+      const projected = steps && projectServiceOrderStep(steps, move.placement.stepId, move.placement.destination);
+      return { ...record, initialized: true, working: snapshot,
+        intended: projected ? { ...snapshot.value, steps: projected } : snapshot.value };
     }
     if (record.seriesMembership && record.value && predecessor.value && snapshot.value) {
       if (record.baseline.metadata && snapshot.metadata?.generation !== record.baseline.metadata.generation) {

@@ -6,12 +6,15 @@ import type { CommitRequest } from './commits';
 import type { RowDetailHistoryEntry, RowDetailObservation, RowDetailPolicy } from './rowDetailAction';
 import type { SeenRowDetail } from './rowDetailCapture';
 import type { RowFieldTarget } from './rowFieldAction';
-import type { DataCommand, DocumentData, FieldChange, ResourceSnapshot } from './types';
+import type { DataCommand, DocumentData, FieldChange, ResourceSnapshot, ServiceOrderStepPlacementCapture } from './types';
 
 export type ServiceOrderStepVersion = { generation: string; observedRevision: number };
 export type ServiceOrderFlagCapture = SeenRowDetail<boolean>;
 export type ServiceOrderStepTitleCapture = SeenRowDetail<string>;
-export type ServiceOrderStepCapture = { field: 'flagged'; change: ServiceOrderFlagCapture } | { field: 'title'; change: ServiceOrderStepTitleCapture };
+export type ServiceOrderStepCapture =
+  | { field: 'flagged'; change: ServiceOrderFlagCapture }
+  | { field: 'title'; change: ServiceOrderStepTitleCapture }
+  | { field: 'placement'; change: ServiceOrderStepPlacementCapture };
 type FlagAction = RowDetailObservation<boolean>;
 export type ServiceOrderFlagActions = { flagged: FlagAction };
 export type ServiceOrderStepTitleActions = { title: RowDetailObservation<string> };

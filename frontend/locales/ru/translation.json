@@ -4951,6 +4951,8 @@
     "stepTitle": "Что происходит",
     "addStep": "Добавить шаг",
     "removeStep": "Убрать шаг",
+    "stepPosition": "Место шага",
+    "stepPlacementHistory": "История мест шагов",
     "stepTitleHistory": {
       "title": "История названий шагов",
       "loading": "Загружаем историю названий…",

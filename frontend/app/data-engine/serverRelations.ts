@@ -13,6 +13,7 @@ import { relationMirrorFields } from './relationMirrors';
 import { validateResourceDocument } from './resourceSchemas';
 import { memberResource, membershipKey, mergeOrderedSeriesItems, readSeriesMembershipMoves, reconcileDeletedSeriesMembership, resolveSeriesMembership, seriesLocation, type MembershipLocation, type SeriesMembershipMove, type SeriesMembershipPlacement, type SeriesMembershipWrite } from './seriesMembershipOrder.server';
 import { planServiceOrderPlacement, type ServiceOrderPlacementWrite } from './serviceOrderPlacement.server';
+import { planServiceOrderStepPlacement, type ServiceOrderStepPlacementWrite } from './serviceOrderStepPlacement.server';
 import { planShareCapability, type ShareCapabilityCommand } from './shareCapabilities.server';
 
 import type { SeriesMembershipComparison } from './seriesMembershipHistory';
@@ -33,7 +34,7 @@ export interface RelationReader {
   /** Implementations always add authenticated owner scope; callers cannot choose it. */
   list(collection: string, limit: number, filter?: RelationFilter, select?: (snapshot: ResourceSnapshot) => boolean): Promise<ResourceSnapshot[]>;
 }
-export interface CommandPlan { result: CommandResult; writes: ResourceSnapshot[]; seriesMembershipWrites?: SeriesMembershipWrite[]; serviceOrderPlacement?: ServiceOrderPlacementWrite }
+export interface CommandPlan { result: CommandResult; writes: ResourceSnapshot[]; seriesMembershipWrites?: SeriesMembershipWrite[]; serviceOrderPlacement?: ServiceOrderPlacementWrite; serviceOrderStepPlacement?: ServiceOrderStepPlacementWrite }
 
 class RelationRefusal extends Error {
   constructor(readonly code: string) { super(code); }
@@ -110,6 +111,7 @@ class RelationPlanner {
   private readonly writes = new Map<string, ResourceSnapshot>();
   private readonly seriesMembershipWrites: SeriesMembershipWrite[] = [];
   private serviceOrderPlacement?: ServiceOrderPlacementWrite;
+  private serviceOrderStepPlacement?: ServiceOrderStepPlacementWrite;
 
   constructor(private readonly command: DataCommand, private readonly primary: ResourceSnapshot, private readonly reader: RelationReader) {
     this.cached.set(key(primary.resource), primary);
@@ -167,7 +169,7 @@ class RelationPlanner {
       : advanceResourceSnapshot(original, value, this.command.operationId, Object.keys(patch)));
   }
 
-  private conflict(conflicts: ConflictDetail[]): CommandResult {
+  private conflict(conflicts: ConflictDetail[]): Extract<CommandResult, { kind: 'conflict' }> {
     return { kind: 'conflict', operationId: this.command.operationId, snapshot: this.primary, conflicts };
   }
 
@@ -623,6 +625,18 @@ class RelationPlanner {
 
   private async ordinary(command: Exclude<DataCommand, { kind: 'relation' }>): Promise<CommandResult | undefined> {
     this.guardOrdinary(command);
+    if (command.kind === 'update' && command.serviceOrderStepPlacement && this.primary.value && !this.primary.metadata?.deleted
+      && command.generation === (this.primary.metadata?.generation ?? null)) {
+      const context = this.reader.serviceOrderPlacement;
+      const plan = planServiceOrderStepPlacement(command, this.primary, context?.rawMetadata, context?.serverMs);
+      if ('conflict' in plan) return { ...this.conflict([plan.conflict]), serviceOrderPlacementComparison: plan.comparison };
+      this.stage(this.primary, { steps: plan.steps });
+      if (!this.writes.has(key(this.primary.resource))) {
+        this.writes.set(key(this.primary.resource), advanceResourceSnapshot(this.primary, this.primary.value, command.operationId, []));
+      }
+      this.serviceOrderStepPlacement = plan.write;
+      return;
+    }
     if (command.kind === 'update' && command.serviceOrderPlacement && this.primary.value && !this.primary.metadata?.deleted
       && command.generation === (this.primary.metadata?.generation ?? null)) {
       const context = this.reader.serviceOrderPlacement;
@@ -675,6 +689,7 @@ class RelationPlanner {
     const affected = [...this.writes.values()].filter(value => key(value.resource) !== key(this.primary.resource)).map(value => ({ resource: value.resource, metadata: value.metadata! }));
     return { result: { kind: 'acknowledged', operationId: this.command.operationId, snapshot, ...(affected.length ? { affected } : {}) },
       writes: [...this.writes.values()], ...(this.serviceOrderPlacement && { serviceOrderPlacement: this.serviceOrderPlacement }),
+      ...(this.serviceOrderStepPlacement && { serviceOrderStepPlacement: this.serviceOrderStepPlacement }),
       ...(this.seriesMembershipWrites.length ? { seriesMembershipWrites: this.seriesMembershipWrites } : {}) };
   }
 }

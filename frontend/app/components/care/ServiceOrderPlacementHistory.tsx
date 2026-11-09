@@ -12,25 +12,36 @@ import type { ServiceOrderPlacementHistorySession } from '@/hooks/useServiceOrde
 
 type Page = ServiceOrderPlacementHistoryPage;
 type Entry = Page['entries'][number];
+type Props = { disabled: boolean } & (
+  | { session: ServiceOrderPlacementHistorySession; step?: false }
+  | { step: true; session: Omit<ServiceOrderPlacementHistorySession, 'restore'> & {
+    restore: (gap: Entry['earlier'], stepId: string) => Promise<void>;
+  } }
+);
 
-export function ServiceOrderPlacementHistory({ session, disabled }: { session: ServiceOrderPlacementHistorySession; disabled: boolean }) {
-  const { owner, orderId, generation, restore } = session;
+export function ServiceOrderPlacementHistory(props: Props) {
+  const { session, disabled, step } = props;
+  const { owner, orderId, generation } = session;
   const { t } = useTranslation();
   const panel = useId();
   const [restoring, setRestoring] = useState(false);
   const [restoreFailed, setRestoreFailed] = useState(false);
   const { open, history, loading, failed, toggle, load } = useOwnerHistory<Entry, Page>({
-    owner, generation, id: orderId, path: '/api/data-engine/documents/serviceOrders/' + encodeURIComponent(orderId) + '/placement-history',
+    owner, generation, id: orderId,
+    path: '/api/data-engine/documents/serviceOrders/' + encodeURIComponent(orderId) + (step ? '/step-placement-history' : '/placement-history'),
     resourceId: page => page.orderId,
   });
   const restorePosition = async (entry: Entry) => {
     setRestoring(true);
     setRestoreFailed(false);
-    try { await restore(entry.earlier); }
+    try {
+      if (!props.step) await props.session.restore(entry.earlier);
+      else if (entry.stepId) await props.session.restore(entry.earlier, entry.stepId);
+    }
     catch { setRestoreFailed(true); }
     finally { setRestoring(false); }
   };
-  const heading = t('serviceOrders.placementHistory.title');
+  const heading = t(step ? 'serviceOrders.stepPlacementHistory' : 'serviceOrders.placementHistory.title');
   const button = 'min-h-8 text-xs font-medium text-emerald-700 hover:underline disabled:opacity-50 dark:text-emerald-400';
   return <div className="ml-2 space-y-2">
     <button type="button" aria-expanded={open} aria-controls={panel} className={button} disabled={loading} onClick={toggle}>{heading}</button>
@@ -41,6 +52,7 @@ export function ServiceOrderPlacementHistory({ session, disabled }: { session: S
       {history && !history.entries.length && !history.nextCursor && <p>{t('serviceOrders.placementHistory.empty')}</p>}
       {history?.entries.length ? <ul className="space-y-2">
         {history.entries.map(entry => <li key={entry.id} className="break-words rounded-lg border border-gray-200 px-3 py-2 dark:border-gray-700">
+          {step && entry.stepTitle && <p className="font-medium">{entry.stepTitle}</p>}
           <p className="font-medium">{serviceOrderPlacementWords(entry.earlier, t)}</p>
           <p>{t('serviceOrders.placementHistory.kept', { place: serviceOrderPlacementWords(entry.kept, t) })}</p>
           <button type="button" className={button} disabled={disabled || restoring}

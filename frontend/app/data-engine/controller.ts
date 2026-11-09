@@ -1,4 +1,5 @@
 import { failureCode } from '@/utils/failureCode';
+import { projectServiceOrderStep, stepGap } from '@/utils/serviceOrderStepPlacement';
 
 import { isLiveWholeAction, isRetiredActionDependent, orderActionProjections } from './atomicCommits';
 import { firstBookMarksIntent, isFirstBookMarksDraft } from './bibleMarksCreation';
@@ -28,6 +29,7 @@ import { recoveryChoiceFingerprint } from './recoveryChoice';
 import { hasAutosaveRowFieldCaptures, isAutosaveRowFieldPath, missingAutosaveRowFieldTarget } from './rowFieldAutosave';
 import { keepUncontestedSermonFields } from './sermonFieldChoice';
 import { hasServiceOrderStep, serviceOrderStepField } from './serviceOrderStepAction';
+import { placementSteps } from './serviceOrderStepPlacement';
 import { DataSession, type SessionCheckpoint, type ShownCopy } from './session';
 import { keepUncontestedStudyNoteFields } from './studyNoteTypeChoice';
 import { submittedWorkCheckpoint } from './submittedWork';
@@ -769,7 +771,35 @@ export class EditorController {
         const session = DataSession.restore(decided);
         const completed = new Set(record.completedCommits ?? []);
         for (const id of Object.keys(source.pending)) { session.release(id); completed.add(id); }
-        if (choice === 'local') {
+        const stepRequest = ordinary ? ordinary.first : retired.find(request => request.cancelledByChoice
+          && source!.pending[request.id] && request.serviceOrderStepPlacement);
+        const selectedStepMove = stepRequest?.serviceOrderStepPlacement;
+        const stepAnswer = stepRequest?.result;
+        if (stepRequest && selectedStepMove && stepAnswer?.kind === 'conflict') {
+          const comparison = stepAnswer.serviceOrderPlacementComparison;
+          const proposed = source.pending[stepRequest.id]?.value;
+          if (!equalValues(proposed, decided.draft) || (comparison?.step?.id !== selectedStepMove.placement.stepId)) {
+            throw Object.assign(new Error('Other changes need review'), { code: 'other-changes-first' });
+          }
+          session.acceptRemote();
+          if (choice === 'local') {
+            const accepted = session.checkpoint().confirmed;
+            const generation = accepted.metadata?.generation ?? null;
+            requireFreshGeneration(stepAnswer, stepRequest.command?.generation ?? selectedStepMove.generation, accepted);
+            const { stepId, destination } = selectedStepMove.placement;
+            const steps = placementSteps(accepted.value?.steps);
+            const opening = steps && stepGap(steps, stepId);
+            const projected = steps && projectServiceOrderStep(steps, stepId, destination);
+            const reviewed = comparison?.saved && { previous: comparison.saved.previous?.id ?? null, next: comparison.saved.next?.id ?? null };
+            if (!comparison?.available || !steps || !opening || !projected || !equalValues(opening, reviewed)) {
+              throw Object.assign(new Error('The proposed position is unavailable or has changed'), { code: 'decision-changed' });
+            }
+            const actualDestination = stepGap(projected, stepId)!;
+            session.stageServiceOrderStepPlacementRetry({ generation, shownIds: steps.map(step => step.id), placement: {
+              stepId, opening, destination: actualDestination, observedRevision: accepted.metadata?.revision ?? 0, time: choiceTime ?? null,
+            } }, projected);
+          }
+        } else if (choice === 'local') {
           if (ordinary) {
             const rejected = ordinary.first.command ? ordinary.first.command.generation : decided.confirmed.metadata?.generation;
             requireFreshGeneration(ordinary.answer, rejected, decided.remoteCandidate);

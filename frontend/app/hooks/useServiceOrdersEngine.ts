@@ -9,6 +9,7 @@ import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
 import { buildSeedOrders, SERVICE_ORDER_CATALOG } from '@/utils/serviceOrderCatalog';
 import { rankBetween, rankForAppend, RANK_STEP, sortByRank } from '@/utils/serviceOrderRank';
 import { nextServiceOrderSeedId } from '@/utils/serviceOrderSeedIdentity';
+import { stepGap } from '@/utils/serviceOrderStepPlacement';
 import { useTranslation } from '@locales/useTranslation';
 
 import type { ActionTime } from '@/data-engine/actionClock';
@@ -16,7 +17,7 @@ import type { CollectionState } from '@/data-engine/collections';
 import type { CollectionDocumentView } from '@/data-engine/collectionView';
 import type { ServiceOrderTitleSeen } from '@/data-engine/documentFieldAction';
 import type { ServiceOrderStepCapture, ServiceOrderStepVersion } from '@/data-engine/serviceOrderStepAction';
-import type { DocumentData, EditorCommitAction, ResourceSnapshot, ServiceOrderPlacementGap } from '@/data-engine/types';
+import type { DocumentData, EditorCommitAction, ResourceSnapshot, ServiceOrderPlacementGap, ServiceOrderStepPlacementCapture } from '@/data-engine/types';
 import type { ServiceOrder, ServiceOrderCatalogKey, ServiceOrderStep } from '@/models/models';
 
 const resource = (id: string) => ({ collection: 'serviceOrders', id });
@@ -205,6 +206,26 @@ export function useServiceOrdersEngine(userId: string | null | undefined, enable
     return shown ? { generation: shown.generation, observedRevision: shown.revision } : undefined;
   }, []);
 
+  const captureStepPlacement = (id: string, stepId: string, before: ServiceOrderStep[], after: ServiceOrderStep[],
+    version?: ServiceOrderStepVersion): ServiceOrderStepPlacementCapture | undefined => {
+    const time = actions.captureActionTime() ?? null;
+    const { row, snapshot } = shownOrder(collectionState.current, id);
+    const opening = stepGap(before, stepId), destination = stepGap(after, stepId);
+    if (!opening || !destination || (!version && !snapshot?.value && !row?.creating)) return undefined;
+    // Only a predecessor displayed in this list can establish chronology.
+    const shownIds = before.map(step => step.id);
+    const visible = row?.value && asOrder(row.value, id).steps;
+    const sameOrder = visible && visible.length === shownIds.length && visible.every((step, index) => step.id === shownIds[index]);
+    const generation = version?.generation ?? snapshot?.metadata?.generation ?? null;
+    const predecessor = sameOrder && row.submittedServiceOrderStepPlacements?.findLast(pending =>
+      pending.move.generation === generation && pending.move.placement.stepId === stepId);
+    return { generation, shownIds, placement: {
+      stepId, opening, destination, time,
+      observedRevision: version?.observedRevision ?? snapshot?.metadata?.revision ?? 0,
+      ...(predecessor && { predecessorOperationId: predecessor.requestId }),
+    } };
+  };
+
   const updateSteps = (id: string, mutate: (steps: ServiceOrderStep[]) => ServiceOrderStep[] | null, step?: ServiceOrderStepCapture) =>
     queued(id, async () => {
       setSavingSteps(count => count + 1);
@@ -220,7 +241,8 @@ export function useServiceOrdersEngine(userId: string | null | undefined, enable
           return { ...current, steps: deepCleanUndefined(steps) as unknown as DocumentData[], updatedAt: now() };
         };
         const action: EditorCommitAction | undefined = step?.field === 'flagged' ? { kind: 'service-order-flag', flag: step.change }
-          : step?.field === 'title' ? { kind: 'service-order-step-title', title: step.change } : undefined;
+          : step?.field === 'title' ? { kind: 'service-order-step-title', title: step.change }
+            : step?.field === 'placement' ? { kind: 'service-order-step-placement', move: step.change } : undefined;
         if (action) await actions.commit(resource(id), update, action);
         else await actions.commit(resource(id), update);
         // Assigned inside the commit callback, so the type is stated: TypeScript would narrow it to null.
@@ -363,6 +385,7 @@ export function useServiceOrdersEngine(userId: string | null | undefined, enable
     deleteOrder,
     updateSteps,
     stepVersion,
+    captureStepPlacement,
     openedWith: (id: string, opening: { title: string; revision: number }, session: string) => {
       const key = baselineKey(id, session);
       if (!baselines.current.has(key)) {

@@ -43,6 +43,7 @@ import { assembleChangePage, collectionHeadId, HEADS_COLLECTION, parseChangePoin
 import { planDataCommand } from './serverRelations';
 import { metadataAfterServiceOrderPlacement, SERVICE_ORDER_PLACEMENT_HISTORY, type ServiceOrderPlacementWrite } from './serviceOrderPlacement.server';
 import { alignServiceOrderFlagRepresentation, SERVICE_ORDER_FLAG_POLICY, SERVICE_ORDER_STEP_TITLE_POLICY, type ServiceOrderFlagHistoryPage, type ServiceOrderStepTitleHistoryPage } from './serviceOrderStepAction';
+import { metadataAfterServiceOrderStepPlacement, SERVICE_ORDER_STEP_PLACEMENT_HISTORY, type ServiceOrderStepPlacementWrite } from './serviceOrderStepPlacement.server';
 import { coversCommittedEffect } from './snapshotFreshness';
 import { compactTagConflict, expandTagConflict, isIndexedTagConflict, isSplitTagConflict, readTagConflictParts, splitTagConflictJson, tagReceiptDigest, validTagReceiptPartCount, type IndexedTagConflict, type SplitTagConflict } from './tagConflictReceipt.server';
 import { alignThoughtLockRepresentation, THOUGHT_LOCK_POLICY, type ThoughtLockHistoryPage } from './thoughtLockAction';
@@ -517,7 +518,7 @@ function orderGroupFlowFields(command: DataCommand, current: ResourceSnapshot, m
   return { block, step, blockStatus, duration: { ...duration, command: alignGroupStepDurationRepresentation(duration.command, current) } };
 }
 
-async function persistAcceptedCommand(transaction: Transaction, { owner, command, snapshot: primarySnapshot, effects, rawDocuments, dateOrder, meetingOrder, groupFlowOrder, preachingOrder, statusOrder, serviceFlagOrder, serviceStepTitleOrder, councilTopicTitleOrder, councilAssemblyOrder, councilTopicKindOrder, councilOutcomeOrder, thoughtLockOrder, thoughtPlacementOrder, markOrder, fieldOrder, exegeticalOrder, thoughtTagOrder, documentTagOrder, serviceOrderPlacement, seriesMembershipWrites, cachedSeriesHead }: {
+async function persistAcceptedCommand(transaction: Transaction, { owner, command, snapshot: primarySnapshot, effects, rawDocuments, dateOrder, meetingOrder, groupFlowOrder, preachingOrder, statusOrder, serviceFlagOrder, serviceStepTitleOrder, councilTopicTitleOrder, councilAssemblyOrder, councilTopicKindOrder, councilOutcomeOrder, thoughtLockOrder, thoughtPlacementOrder, markOrder, fieldOrder, exegeticalOrder, thoughtTagOrder, documentTagOrder, serviceOrderPlacement, serviceOrderStepPlacement, seriesMembershipWrites, cachedSeriesHead }: {
   owner: string;
   command: DataCommand;
   snapshot: ResourceSnapshot;
@@ -542,6 +543,7 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
   thoughtTagOrder?: ReturnType<typeof orderThoughtTags>;
   documentTagOrder?: ReturnType<typeof orderDocumentTags>;
   serviceOrderPlacement?: ServiceOrderPlacementWrite;
+  serviceOrderStepPlacement?: ServiceOrderStepPlacementWrite;
   seriesMembershipWrites: readonly SeriesMembershipWrite[];
   cachedSeriesHead?: Promise<DocumentData | undefined>;
 }) {
@@ -577,8 +579,10 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
     const tags = metadataAfterThoughtTags({ ...snapshot, metadata: exegetical }, raw, primary ? thoughtTagOrder : undefined);
     const documentTags = metadataAfterDocumentTags({ ...snapshot, metadata: tags }, raw, primary ? documentTagOrder : undefined);
     const outlineMoves = metadataAfterOutlineMoves({ ...snapshot, metadata: documentTags }, raw);
-    const finalMetadata = metadataAfterServiceOrderPlacement({ ...snapshot, metadata: outlineMoves }, raw,
+    const orderPlacementMetadata = metadataAfterServiceOrderPlacement({ ...snapshot, metadata: outlineMoves }, raw,
       primary ? serviceOrderPlacement : undefined, !primary && Boolean(serviceOrderPlacement));
+    const finalMetadata = metadataAfterServiceOrderStepPlacement({ ...snapshot, metadata: orderPlacementMetadata }, raw,
+      primary ? serviceOrderStepPlacement : undefined);
     const seriesDeletionVersion = snapshot.resource.collection === 'series' && snapshot.value === null
       ? acceptedSeriesCatalogVersion(feedWrites) : undefined;
     transaction.set(adminDb.collection(snapshot.resource.collection).doc(snapshot.resource.id), { ...value,
@@ -588,6 +592,12 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
     const history = adminDb.collection('serviceOrders').doc(primarySnapshot.resource.id).collection(SERVICE_ORDER_PLACEMENT_HISTORY);
     transaction.set(history.doc(historyEntryId(primarySnapshot, command.operationId)), {
       ...serviceOrderPlacement.displaced, generation: primarySnapshot.metadata.generation, acceptedAt: new Date().toISOString(),
+    });
+  }
+  if (serviceOrderStepPlacement?.displaced && primarySnapshot.metadata) {
+    const history = adminDb.collection('serviceOrders').doc(primarySnapshot.resource.id).collection(SERVICE_ORDER_STEP_PLACEMENT_HISTORY);
+    transaction.set(history.doc(historyEntryId(primarySnapshot, command.operationId)), {
+      ...serviceOrderStepPlacement.displaced, generation: primarySnapshot.metadata.generation, acceptedAt: new Date().toISOString(),
     });
   }
   const tagHistory = thoughtTagOrder?.displaced.filter(entry =>
@@ -727,6 +737,7 @@ export async function processCommand(owner: string, input: unknown): Promise<Com
     let thoughtTagOrder: ReturnType<typeof orderThoughtTags> | undefined;
     let documentTagOrder: ReturnType<typeof orderDocumentTags> | undefined;
     let serviceOrderPlacement: ServiceOrderPlacementWrite | undefined;
+    let serviceOrderStepPlacement: ServiceOrderStepPlacementWrite | undefined;
     const rawDocuments = new Map<string, Record<string, unknown> | undefined>([[resourceKey(command.resource), raw]]);
     if (blocked.length) {
       result = { kind: 'blocked', operationId: command.operationId, dependencies: blocked };
@@ -812,6 +823,7 @@ export async function processCommand(owner: string, input: unknown): Promise<Com
       result = withAcceptedCopies(plan.result, effects);
       seriesMembershipWrites = plan.seriesMembershipWrites ?? [];
       serviceOrderPlacement = plan.serviceOrderPlacement;
+      serviceOrderStepPlacement = plan.serviceOrderStepPlacement;
       // Leave headroom below Firestore's transaction request limit; never split a cascade.
       if (effectBytes(effects) > MAX_EFFECT_BYTES) {
         result = refusal('relation-effects-too-large');
@@ -830,7 +842,7 @@ export async function processCommand(owner: string, input: unknown): Promise<Com
       deletedTag = raw.name;
     }
     if (result.kind === 'acknowledged') {
-      await persistAcceptedCommand(transaction, { owner, command, snapshot: result.snapshot, effects, rawDocuments, dateOrder, meetingOrder, groupFlowOrder, preachingOrder, statusOrder, serviceFlagOrder, serviceStepTitleOrder, councilTopicTitleOrder, councilAssemblyOrder, councilTopicKindOrder, councilOutcomeOrder, thoughtLockOrder, thoughtPlacementOrder, markOrder, fieldOrder, exegeticalOrder, thoughtTagOrder, documentTagOrder, serviceOrderPlacement, seriesMembershipWrites, cachedSeriesHead });
+      await persistAcceptedCommand(transaction, { owner, command, snapshot: result.snapshot, effects, rawDocuments, dateOrder, meetingOrder, groupFlowOrder, preachingOrder, statusOrder, serviceFlagOrder, serviceStepTitleOrder, councilTopicTitleOrder, councilAssemblyOrder, councilTopicKindOrder, councilOutcomeOrder, thoughtLockOrder, thoughtPlacementOrder, markOrder, fieldOrder, exegeticalOrder, thoughtTagOrder, documentTagOrder, serviceOrderPlacement, serviceOrderStepPlacement, seriesMembershipWrites, cachedSeriesHead });
     }
     const comparison = exegeticalOrder?.comparison;
     if (comparison && result.kind === 'conflict'
@@ -1044,6 +1056,14 @@ export async function listServiceOrderPlacementHistory(owner: string, orderId: s
   const resource = { collection: 'serviceOrders', id: orderId };
   const page = await listHistoryEntries<ServiceOrderPlacementHistoryPage['entries'][number]>(
     owner, resource, SERVICE_ORDER_PLACEMENT_HISTORY, generation, cursor, 'service-order-gone',
+  );
+  return { owner, orderId, generation, ...page };
+}
+
+export async function listServiceOrderStepPlacementHistory(owner: string, orderId: string, generation: string, cursor?: string): Promise<ServiceOrderPlacementHistoryPage> {
+  const resource = { collection: 'serviceOrders', id: orderId };
+  const page = await listHistoryEntries<ServiceOrderPlacementHistoryPage['entries'][number]>(
+    owner, resource, SERVICE_ORDER_STEP_PLACEMENT_HISTORY, generation, cursor, 'service-order-gone',
   );
   return { owner, orderId, generation, ...page };
 }

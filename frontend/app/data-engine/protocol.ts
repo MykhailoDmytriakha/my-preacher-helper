@@ -2,6 +2,7 @@ import { mergeVerseLayer } from '@/utils/bibleMarkLayers';
 import { getUtf8ByteLength } from '@/utils/feedbackPayload';
 import { explicitPreachedFlag } from '@/utils/preachDateStatus';
 import { isServiceOrderCatalogKey, isServiceOrderSeedTarget, serviceOrderSeedCycle } from '@/utils/serviceOrderSeedIdentity';
+import { stepGap } from '@/utils/serviceOrderStepPlacement';
 
 import { boundedActionTime } from './actionClock';
 import { ANALYSIS_RESHAPE_FIELDS, ANALYSIS_RESHAPE_FRAME, hasMatchingAnalysisPositionBasis, keepAnalysisPositionFrame, lacksAnalysisFrameProof } from './analysisReshapeFields';
@@ -13,13 +14,14 @@ import { relationMirrorFields } from './relationMirrors';
 import { validateResourceDocument } from './resourceSchemas';
 import { preservesSermonLinks, recordedPreachDayConflicts, scratchConsumptionConflicts } from './sermonIntegrity';
 import { preserveUnorderedPlanText, retireObservedPlanText, stalePlanTextDiscards } from './sermonPlanText';
+import { placementSteps } from './serviceOrderStepPlacement';
 
 export { commandFingerprint, equalValues, readField } from './fieldValues';
 export { ANALYSIS_RESHAPE_FIELDS, ANALYSIS_RESHAPE_FRAME } from './analysisReshapeFields';
 
 import type {
   CommandResult, ConflictDetail, DataCommand, DocumentData, FieldChange,
-  FieldValue, Json, ResourceSnapshot, ServiceOrderPlacementGap,
+  FieldValue, Json, ResourceSnapshot, ServiceOrderPlacementGap, ServiceOrderStepGap,
 } from './types';
 
 /**
@@ -161,6 +163,7 @@ function validateUpdate(command: Extract<DataCommand, { kind: 'update' }>, polic
       paths.push(change.path);
     }
     if (command.serviceOrderPlacement !== undefined && !validServiceOrderPlacement(command)) fail('Invalid service order placement');
+    if (command.serviceOrderStepPlacement !== undefined && !validServiceOrderStepPlacement(command)) fail('Invalid service step placement');
     const removal = command.observedPlanTextRemoval;
     if (removal !== undefined && (command.resource.collection !== 'sermons' || !paths.some(path => path[0] === 'outline')
       || !validPlanTextEvidence(removal))) fail('Invalid plan text removal evidence');
@@ -194,6 +197,29 @@ function validServiceOrderPlacement(command: Extract<DataCommand, { kind: 'updat
       || placement.predecessorOperationId === command.operationId))) return false;
   return validServiceOrderPlacementGap(placement.opening, command.resource.id)
     && validServiceOrderPlacementGap(placement.destination, command.resource.id);
+}
+
+export function validServiceOrderStepGap(value: unknown, moved: string): value is ServiceOrderStepGap {
+  if (!object(value) || value.previous === value.next) return false;
+  return [value.previous, value.next].every(id => id === null || (id !== moved && isValidIdentifier(id)));
+}
+
+function validServiceOrderStepPlacement(command: Extract<DataCommand, { kind: 'update' }>): boolean {
+  const move: unknown = command.serviceOrderStepPlacement;
+  const change = command.changes.find(item => item.path[0] === 'steps');
+  if (command.resource.collection !== 'serviceOrders' || command.serviceOrderPlacement
+    || command.changes.some(item => item.path[0] !== 'steps' && item.path[0] !== 'updatedAt')
+    || !change?.before.exists || !change.after.exists || !object(move) || !isValidIdentifier(move.stepId)
+    || typeof move.observedRevision !== 'number' || !Number.isSafeInteger(move.observedRevision) || move.observedRevision < 0
+    || (move.time !== null && !boundedActionTime(move.time))
+    || (move.predecessorOperationId !== undefined && (!isValidIdentifier(move.predecessorOperationId)
+      || move.predecessorOperationId === command.operationId))) return false;
+  const before = placementSteps(change.before.value), after = placementSteps(change.after.value);
+  const id = move.stepId;
+  return Boolean(before && after && validServiceOrderStepGap(move.opening, id) && validServiceOrderStepGap(move.destination, id)
+    && equalValues(move.opening, stepGap(before, id)) && equalValues(move.destination, stepGap(after, id))
+    && equalValues(before.find(step => step.id === id), after.find(step => step.id === id))
+    && equalValues(before.filter(step => step.id !== id), after.filter(step => step.id !== id)));
 }
 
 function validPlanTextEvidence(evidence: unknown): boolean {

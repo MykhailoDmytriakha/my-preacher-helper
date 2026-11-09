@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { isCollectionServed } from '@/data-engine/activation';
-import { DataEngineServerError, listBibleMarkHistory, listCommentKindHistory, listExegeticalPointHistory, listCouncilMetadataHistory, listDocumentTagHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listPlanTemplateNameHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listPrayerStatusHistory, listPrayerTitleHistory, listSermonChurchHistory, listSermonGoalTypeHistory, listSermonPlanModeHistory, listSermonPreparationConfirmationHistory, listSermonTitleHistory, listSermonVerseHistory, listSeriesMembershipHistory, listSeriesMetadataHistory, listServiceOrderFlagHistory, listServiceOrderPlacementHistory, listServiceOrderStepTitleHistory, listServiceOrderTitleHistory, listStudyNoteTitleHistory, listTagColorHistory, listThoughtLockHistory, listThoughtPlacementHistory, listThoughtTagHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
+import { DataEngineServerError, listBibleMarkHistory, listCommentKindHistory, listExegeticalPointHistory, listCouncilMetadataHistory, listDocumentTagHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listPlanTemplateNameHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listPrayerStatusHistory, listPrayerTitleHistory, listSermonChurchHistory, listSermonGoalTypeHistory, listSermonPlanModeHistory, listSermonPreparationConfirmationHistory, listSermonTitleHistory, listSermonVerseHistory, listSeriesMembershipHistory, listSeriesMetadataHistory, listServiceOrderFlagHistory, listServiceOrderPlacementHistory, listServiceOrderStepPlacementHistory, listServiceOrderStepTitleHistory, listServiceOrderTitleHistory, listStudyNoteTitleHistory, listTagColorHistory, listThoughtLockHistory, listThoughtPlacementHistory, listThoughtTagHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
 import { collectionHeadId, HEADS_COLLECTION, sequenceId } from '@/data-engine/serverFeed';
 import { DataSession } from '@/data-engine/session';
 import type { DataCommand, FieldValue, ResourceSnapshot } from '@/data-engine/types';
@@ -3856,6 +3856,186 @@ describe('transactional DataEngine server', () => {
       expect([...documents.keys()].filter(path => path.startsWith('groups/group-title/_titleHistory/'))).toHaveLength(1);
     }
     if (kind === 'conflict') expect(result).toMatchObject({ conflicts: [{ path: ['title'] }] });
+  });
+
+  describe('service step move chronology', () => {
+    const owner = 'owner-1';
+    const resource = { collection: 'serviceOrders', id: 'service-step-position' };
+    const base = { protocol: 1, owner, resource, dependsOn: [] };
+    const generation = 'service-step-position-seed';
+    const steps = [
+      { id: 'alpha', title: 'Alpha', body: 'Keep the opening words', scriptureRefs: ['John 1:1'] },
+      { id: 'beta', title: 'Beta', body: 'Keep the middle words', flagged: true },
+      { id: 'gamma', title: 'Gamma', body: 'Keep the last words' },
+    ];
+    const [alpha, beta, gamma] = steps;
+    const now = '2026-11-09T00:00:00.000Z';
+
+    async function seed() {
+      expect(await processCommand(owner, { ...base, kind: 'create', operationId: generation, generation: null,
+        value: { userId: owner, title: 'Test service', rank: 1000, steps, createdAt: now, updatedAt: now },
+      })).toMatchObject({ kind: 'acknowledged' });
+    }
+
+    function move(id: string, to: 'top' | 'bottom', offset: number | null) {
+      return { ...base, kind: 'update', operationId: id, generation,
+        changes: [{ path: ['steps'], before: { exists: true, value: steps },
+          after: { exists: true, value: to === 'top' ? [beta, alpha, gamma] : [alpha, gamma, beta] } }],
+        serviceOrderStepPlacement: {
+          stepId: 'beta', observedRevision: 1, time: offset === null ? null : {
+            earliestMs: 1_800_000_000_000 + offset, latestMs: 1_800_000_000_005 + offset,
+          },
+          opening: { previous: 'alpha', next: 'gamma' },
+          destination: to === 'top' ? { previous: null, next: 'alpha' } : { previous: 'gamma', next: null },
+        },
+      };
+    }
+
+    it.each([
+      { phoneAt: 20, expected: [beta, alpha, gamma], kind: 'acknowledged' },
+      { phoneAt: 80, expected: [alpha, gamma, beta], kind: 'acknowledged' },
+      { phoneAt: null, expected: [beta, alpha, gamma], kind: 'conflict' },
+    ] as const)('keeps the correct step position for a phone move at $phoneAt', async ({ phoneAt, expected, kind }) => {
+      await seed();
+      expect(await processCommand(owner, move('desktop', 'top', 40))).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(owner, move('phone', 'bottom', phoneAt)))
+        .toMatchObject({ kind, snapshot: { value: { steps: expected } } });
+    });
+
+    it('preserves a separate step edit while applying a move', async () => {
+      await seed();
+      const editedAlpha = { ...alpha, body: 'Independent words saved on the computer' };
+      expect(await processCommand(owner, { ...base, kind: 'update', operationId: 'edit-words', generation,
+        changes: [{ path: ['steps'], before: { exists: true, value: steps }, after: { exists: true, value: [editedAlpha, beta, gamma] } }],
+      })).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(owner, move('phone', 'bottom', 80)))
+        .toMatchObject({ kind: 'acknowledged', snapshot: { value: { steps: [editedAlpha, gamma, beta] } } });
+    });
+
+    it('archives the displaced gap once and scopes its history to the owner and generation', async () => {
+      await seed();
+      await processCommand(owner, move('desktop', 'top', 40));
+      const phone = move('phone', 'bottom', 80);
+      const accepted = await processCommand(owner, phone);
+      expect(await processCommand(owner, phone)).toEqual(accepted);
+      expect(await listServiceOrderStepPlacementHistory(owner, resource.id, generation)).toMatchObject({
+        owner, orderId: resource.id, generation, nextCursor: null, entries: [{
+          stepId: 'beta', stepTitle: 'Beta', earlier: { previous: null, next: { id: 'alpha', title: 'Alpha' } },
+          kept: { previous: { id: 'gamma', title: 'Gamma' }, next: null },
+        }],
+      });
+      expect((await listServiceOrderStepPlacementHistory(owner, resource.id, generation)).entries).toHaveLength(1);
+      await expect(listServiceOrderStepPlacementHistory('another-owner', resource.id, generation)).rejects.toMatchObject({ status: 403 });
+      await expect(listServiceOrderStepPlacementHistory(owner, resource.id, 'old-generation')).rejects.toMatchObject({ status: 404 });
+    });
+
+    it('reviews a legacy reorder using current neighbor names', async () => {
+      await seed();
+      const { changes } = move('old-client', 'top', null);
+      expect(await processCommand(owner, { ...base, kind: 'update', operationId: 'old-client', generation, changes }))
+        .toMatchObject({ kind: 'acknowledged', snapshot: { value: { steps: [beta, alpha, gamma] } } });
+      expect(await processCommand(owner, move('phone', 'bottom', 80))).toMatchObject({
+        kind: 'conflict', conflicts: [{ path: ['steps', 'id:beta', 'position'] }],
+        serviceOrderPlacementComparison: {
+          step: { id: 'beta', title: 'Beta' }, available: true,
+          mine: { previous: { id: 'gamma', title: 'Gamma' }, next: null },
+          saved: { previous: null, next: { id: 'alpha', title: 'Alpha' } },
+        },
+      });
+    });
+
+    it('does not certify a pre-upgrade permutation during an independent words save', async () => {
+      await seed();
+      const key = 'serviceOrders/' + resource.id;
+      const old = documents.get(key)!;
+      documents.set(key, { ...old, steps: [beta, alpha, gamma],
+        _dataEngine: { protocol: 1, generation, revision: 2, deleted: false, operationId: 'legacy-reorder' } });
+      const edited = { ...alpha, body: 'Independent text after upgrade' };
+      expect(await processCommand(owner, { ...base, kind: 'update', operationId: 'upgrade-words', generation,
+        changes: [{ path: ['steps'], before: { exists: true, value: [beta, alpha, gamma] },
+          after: { exists: true, value: [beta, edited, gamma] } }],
+      })).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(owner, move('phone', 'bottom', 80))).toMatchObject({
+        kind: 'conflict', serviceOrderPlacementComparison: { available: true },
+        snapshot: { value: { steps: [beta, edited, gamma] } },
+      });
+    });
+
+    it('accepts a provably later move across a pre-upgrade text-only edit', async () => {
+      await seed();
+      const key = 'serviceOrders/' + resource.id;
+      const old = documents.get(key)!;
+      const edited = { ...alpha, body: 'Words edited before the upgrade' };
+      documents.set(key, { ...old, steps: [edited, beta, gamma],
+        _dataEngine: { protocol: 1, generation, revision: 2, deleted: false, operationId: 'legacy-text' } });
+      const desktop = move('desktop', 'top', 40);
+      expect(await processCommand(owner, { ...desktop, serviceOrderStepPlacement: {
+        ...desktop.serviceOrderStepPlacement, observedRevision: 2,
+      } })).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(owner, move('phone', 'bottom', 80))).toMatchObject({
+        kind: 'acknowledged', snapshot: { value: { steps: [edited, gamma, beta] } },
+      });
+    });
+
+    it.each(['body', 'title', 'anchor'])('returns and replays the position choice with a large %s', async field => {
+      await seed();
+      const key = 'serviceOrders/' + resource.id;
+      const words = 'x'.repeat(550_000);
+      const longAlpha = field === 'anchor' ? { ...alpha, title: words }
+        : field === 'body' ? { ...alpha, body: words } : alpha;
+      const longBeta = field === 'title' ? { ...beta, title: words } : beta;
+      const old = documents.get(key)!;
+      documents.set(key, { ...old, steps: [longAlpha, longBeta, gamma] });
+      const projected = (command: ReturnType<typeof move>) => ({ ...command,
+        changes: command.changes.map(change => ({ ...change,
+          before: { ...change.before, value: change.before.value.map(({ id }) => ({ id })) },
+          after: { ...change.after, value: change.after.value.map(({ id }) => ({ id })) } })),
+      });
+      expect(await processCommand(owner, projected(move('desktop', 'top', 40)))).toMatchObject({ kind: 'acknowledged' });
+      const offline = projected(move('phone', 'bottom', null));
+      const result = await processCommand(owner, offline);
+      expect(result).toMatchObject({ kind: 'conflict', serviceOrderPlacementComparison: { available: true },
+        snapshot: { value: { steps: [longBeta, longAlpha, gamma] } } });
+      expect(await processCommand(owner, offline)).toEqual(result);
+    });
+
+    it.each(['beta', 'gamma'])('does not recreate the removed step or its destination anchor (%s)', async removed => {
+      await seed();
+      const retained = steps.filter(step => step.id !== removed);
+      await processCommand(owner, { ...base, kind: 'update', operationId: 'remove-step', generation,
+        changes: [{ path: ['steps'], before: { exists: true, value: steps }, after: { exists: true, value: retained } }],
+      });
+      expect(await processCommand(owner, move('phone', 'bottom', 80))).toMatchObject({
+        kind: 'conflict', serviceOrderPlacementComparison: { available: false }, snapshot: { value: { steps: retained } },
+      });
+    });
+
+    it('acknowledges an earlier losing move after its old destination was removed', async () => {
+      await seed();
+      await processCommand(owner, move('desktop', 'top', 40));
+      await processCommand(owner, { ...base, kind: 'update', operationId: 'remove-anchor', generation,
+        changes: [{ path: ['steps'], before: { exists: true, value: [beta, alpha, gamma] }, after: { exists: true, value: [beta, alpha] } }],
+      });
+      expect(await processCommand(owner, move('phone', 'bottom', 20))).toMatchObject({
+        kind: 'acknowledged', snapshot: { value: { steps: [beta, alpha] } },
+      });
+    });
+
+    it('follows the exact prior move across a separate write without a clock', async () => {
+      await seed();
+      await processCommand(owner, move('first-move', 'top', null));
+      const edited = { ...alpha, body: 'New opening words' };
+      await processCommand(owner, { ...base, kind: 'update', operationId: 'edit-between', generation,
+        changes: [{ path: ['steps'], before: { exists: true, value: [beta, alpha, gamma] }, after: { exists: true, value: [beta, edited, gamma] } }],
+      });
+      const successor = move('second-move', 'bottom', null);
+      expect(await processCommand(owner, { ...successor,
+        changes: [{ path: ['steps'], before: { exists: true, value: [{ id: 'beta' }, { id: 'alpha' }, { id: 'gamma' }] },
+          after: { exists: true, value: [{ id: 'alpha' }, { id: 'gamma' }, { id: 'beta' }] } }],
+        serviceOrderStepPlacement: { ...successor.serviceOrderStepPlacement,
+          opening: { previous: null, next: 'alpha' }, predecessorOperationId: 'first-move' },
+      })).toMatchObject({ kind: 'acknowledged', snapshot: { value: { steps: [edited, gamma, beta] } } });
+    });
   });
 
   describe('service order move chronology', () => {
