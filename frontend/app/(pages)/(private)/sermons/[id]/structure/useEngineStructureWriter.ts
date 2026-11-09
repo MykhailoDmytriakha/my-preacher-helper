@@ -174,8 +174,10 @@ export function useEngineStructureWriter(sermonId: string, owner: string | null)
   }), [owner, sermonId, document.recoveryIdentity]);
   opening.document = document;
   opening.captureActionTime = captureActionTime;
-  const writeTarget = useMemo<StructureDocument>(() => ({
+  const writeTarget = useMemo<StructureDocument & Pick<SermonDocument, 'commit' | 'captureSermonPlanMode'>>(() => ({
     update: (fn, options) => opening.document.update(fn, options),
+    commit: (fn, action) => opening.document.commit(fn, action),
+    captureSermonPlanMode: () => opening.document.captureSermonPlanMode(),
     captureReview: (selected, fn) => captureAiReview(opening.document, opening.captureActionTime(), selected, fn),
   }), [opening]);
   const writer = useMemo(() => createEngineStructureWriter(writeTarget, owner, recovery.retain),

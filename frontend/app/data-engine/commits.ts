@@ -8,7 +8,7 @@ import { captureCouncilAssembly, COUNCIL_ASSEMBLY_POLICY, matchingCouncilAssembl
 import { captureCouncilTopicKind, COUNCIL_TOPIC_KIND_POLICY, matchingCouncilTopicKind, type CouncilTopicKindActions } from './councilTopicKindAction';
 import { capturedDateBaseline, captureDatedRowAction, datedRowTarget, existingRowDate, matchesDatedRowChange, MEETING_DATE_TARGET, replaceExistingDate, type DatedRowActionCapture, type DatedRowActionEvidence } from './datedRowAction';
 import { captureDeleteOrder, deleteOrderReady, replayDeleteOrder } from './deletionOrdering';
-import { captureDocumentMetadataFields, capturePreparationConfirmation, type PreparationConfirmationObservations, capturedDocumentField, capturePlanTemplateName, capturePrayerStatusFields, capturePrayerTitle, captureServiceOrderTitle, captureStudyNoteTitle, captureStudyNoteType, captureTagColor, documentFieldCommandAncestor, documentFieldTargets, matchesPlanTemplateNameRequest, matchesPrayerTitleRequest, matchesStudyNoteTitleRequest, matchesStudyNoteTypeRequest, matchesTagColorRequest, uncapturedAutosaveFields, withDocumentFieldAction } from './documentFieldAction';
+import { captureDocumentMetadataFields, capturePreparationConfirmation, type PreparationConfirmationObservations, capturedDocumentField, capturePlanTemplateName, capturePrayerStatusFields, capturePrayerTitle, captureServiceOrderTitle, captureSermonPlanMode, captureStudyNoteTitle, captureStudyNoteType, captureTagColor, documentFieldCommandAncestor, documentFieldTargets, matchesPlanTemplateNameRequest, matchesPrayerTitleRequest, permitsSermonPlanModePredecessor, matchesStudyNoteTitleRequest, matchesStudyNoteTypeRequest, matchesTagColorRequest, uncapturedAutosaveFields, withDocumentFieldAction } from './documentFieldAction';
 import { commandReferenceResources, documentReferenceResources, referenceReadiness } from './documentReferences';
 import { captureDocumentTags, pendingDocumentTags, restoreDocumentTagAncestor } from './documentTagCapture';
 import { documentTagChange, documentTagCommandActions } from './documentTagMembership';
@@ -33,7 +33,7 @@ import type { CaptureTransferProof, CaptureTransferResult } from './captureTrans
 import type { DocumentWriteReceipt } from './commitReceipt';
 import type { EditorRecord } from './controller';
 import type { CouncilFieldActions } from './councilFieldAction';
-import type { DocumentFieldAction, DocumentFieldObservation, SermonChurchObservation } from './documentFieldAction';
+import type { DocumentFieldAction, DocumentFieldObservation, SermonChurchObservation, SermonPlanModeObservation } from './documentFieldAction';
 import type { ExegeticalPointStamp } from './exegeticalPointAction';
 import type { GroupMeetingFieldActions, GroupMeetingFieldCaptures } from './groupMeetingFieldAction';
 import type { SeriesMembershipCapture } from './membershipIntent';
@@ -103,6 +103,7 @@ export interface CommitRequest extends CouncilFieldActions, PrayerStatusObservat
   sermonVerseAction?: DocumentFieldObservation;
   sermonChurchAction?: SermonChurchObservation;
   sermonGoalTypeAction?: DocumentFieldObservation<FieldValue>;
+  sermonPlanModeAction?: SermonPlanModeObservation;
   sermonPreparationCheckActions?: PreparationConfirmationObservations;
   exegeticalPlanActions?: ExegeticalPointStamp[];
   thoughtTagActions?: ThoughtTagAction[];
@@ -223,6 +224,7 @@ export function assertCommitCapture(current: CommitRequest, incoming: CommitRequ
     || !equalValues(current.sermonVerseAction ?? null, incoming.sermonVerseAction ?? null)
     || !equalValues(current.sermonChurchAction ?? null, incoming.sermonChurchAction ?? null)
     || !equalValues(current.sermonGoalTypeAction ?? null, incoming.sermonGoalTypeAction ?? null)
+    || !equalValues(current.sermonPlanModeAction ?? null, incoming.sermonPlanModeAction ?? null)
     || !equalValues(current.thoughtTagActions ?? null, incoming.thoughtTagActions ?? null)
     || !equalValues(current.tagMembershipActions ?? null, incoming.tagMembershipActions ?? null)
     || !equalValues(current.exegeticalPlanActions ?? null, incoming.exegeticalPlanActions ?? null)
@@ -346,7 +348,7 @@ function pendingRowFields(record: CommitRequest) {
 }
 
 function hasTimedAncestor(record: CommitRequest): boolean {
-  return record.sequence === 0 && Boolean(record.seriesMembership || record.serviceOrderTitleAction || record.prayerTitleAction || record.planTemplateNameAction || record.tagColorAction || record.studyNoteTitleAction || record.studyNoteTypeAction || record.commentKindAction || record.prayerStatusAction || record.prayerAnsweredAtAction || record.sermonTitleAction || record.sermonVerseAction || record.sermonChurchAction || record.sermonGoalTypeAction || record.sermonPreparationCheckActions || record.exegeticalPlanActions?.length || record.seriesFieldActions || record.groupTitleAction || record.groupStatusAction || record.councilTitleAction || record.councilDateAction || record.councilLifecycleAction || pendingBibleMarkRebase(record) || pendingMeetingDateRebase(record) || pendingDocumentTags(record).length || pendingRowFields(record).length || pendingPreachStatusActions(record).length);
+  return record.sequence === 0 && Boolean(record.seriesMembership || record.serviceOrderTitleAction || record.prayerTitleAction || record.planTemplateNameAction || record.tagColorAction || record.studyNoteTitleAction || record.studyNoteTypeAction || record.commentKindAction || record.prayerStatusAction || record.prayerAnsweredAtAction || record.sermonTitleAction || record.sermonVerseAction || record.sermonChurchAction || record.sermonGoalTypeAction || record.sermonPlanModeAction || record.sermonPreparationCheckActions || record.exegeticalPlanActions?.length || record.seriesFieldActions || record.groupTitleAction || record.groupStatusAction || record.councilTitleAction || record.councilDateAction || record.councilLifecycleAction || pendingBibleMarkRebase(record) || pendingMeetingDateRebase(record) || pendingDocumentTags(record).length || pendingRowFields(record).length || pendingPreachStatusActions(record).length);
 }
 
 function freezeSaveOptions(options: CommitSaveOptions | undefined): CommitSaveOptions | undefined {
@@ -514,7 +516,7 @@ export class CommitQueue {
       : editorAction?.kind === 'service-order-step-title' ? { field: 'title' as const, change: editorAction.title } : undefined;
     const assembly = editorAction?.kind === 'council-assembly' ? editorAction.flag : undefined;
     const topicKind = editorAction?.kind === 'council-topic-kind' ? editorAction.topicKind : undefined;
-    if (!step && !assembly && !topicKind && editorAction?.kind !== 'service-order-title' && editorAction?.kind !== 'prayer-title' && editorAction?.kind !== 'study-note-title' && editorAction?.kind !== 'study-note-type' && editorAction?.kind !== 'comment-kind' && editorAction?.kind !== 'document-tags' && editorAction?.kind !== 'plan-template-name' && editorAction?.kind !== 'tag-color' && editorAction?.kind !== 'prayer-status'
+    if (!step && !assembly && !topicKind && editorAction?.kind !== 'service-order-title' && editorAction?.kind !== 'prayer-title' && editorAction?.kind !== 'study-note-title' && editorAction?.kind !== 'study-note-type' && editorAction?.kind !== 'sermon-plan-mode' && editorAction?.kind !== 'comment-kind' && editorAction?.kind !== 'document-tags' && editorAction?.kind !== 'plan-template-name' && editorAction?.kind !== 'tag-color' && editorAction?.kind !== 'prayer-status'
       && !frozenOptions?.transfer && !intent.dirty && (!predecessor || equalValues(predecessor.value, intent.draft))) return null;
     if (intent.conflicts.length) throw Object.assign(new Error('Resolve the conflict before saving'), { code: 'resolve-version-first' });
     const baseline = clone(intent.confirmed);
@@ -538,6 +540,10 @@ export class CommitQueue {
     const noteTypeRequestId = noteTypeCapture?.seen.requestId;
     const noteType = captureStudyNoteType(baseline, intent.draft, noteTypeCapture, Boolean(noteTypeCapture && noteTypeRequestId
       && matchesStudyNoteTypeRequest(records.find(record => record.id === noteTypeRequestId), owner, baseline.resource, noteTypeCapture.seen)));
+    const planModeCapture = editorAction?.kind === 'sermon-plan-mode' ? editorAction.mode : undefined;
+    const planModeRequestId = planModeCapture?.seen.requestId;
+    const planMode = planModeCapture && captureSermonPlanMode(baseline, intent.draft, planModeCapture,
+      permitsSermonPlanModePredecessor(records.find(record => record.id === planModeRequestId), owner, baseline.resource, planModeCapture.seen));
     const kindCapture = editorAction?.kind === 'comment-kind' ? editorAction.commentKind : undefined;
     const kindRequestId = kindCapture?.seen.requestId;
     const commentKind = kindCapture && captureCommentKind(baseline, intent.draft, kindCapture, Boolean(kindRequestId
@@ -574,6 +580,7 @@ export class CommitQueue {
       ...(prayerTitle && { prayerTitleAction: prayerTitle }),
       ...(noteTitle && { studyNoteTitleAction: noteTitle }),
       ...(noteType && { studyNoteTypeAction: noteType }),
+      ...(planMode && { sermonPlanModeAction: planMode }),
       ...(commentKind && { commentKindAction: commentKind }),
       ...(templateName && { planTemplateNameAction: templateName }),
       ...(tagColor && { tagColorAction: tagColor }),
@@ -1019,6 +1026,8 @@ export class CommitQueue {
     if (source.value && status.length) source = { ...source, value: replacePreachStatuses(source.value, status, 'before') };
     const retainedRoots = rowFields.filter(({ action }) => equalValues(action.before, action.after)).map(({ target }) => target.field);
     if (status.length) retainedRoots.push('preachDates');
+    const mode = record.sequence === 0 ? record.sermonPlanModeAction : undefined;
+    if (mode && equalValues(mode.before, mode.after)) retainedRoots.push('planMode');
     try {
       const participant = seriesCommandParticipant(record);
       prepared = participant.captured

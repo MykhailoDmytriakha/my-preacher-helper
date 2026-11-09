@@ -19,8 +19,8 @@ import { alignCouncilTopicKind, COUNCIL_TOPIC_KIND_POLICY, type CouncilTopicKind
 import { COUNCIL_TOPIC_TITLE_POLICY, type CouncilTopicTitleHistoryPage } from './councilTopicTitleAction';
 import { existingRowDate, MEETING_DATE_TARGET, PREACH_DATE_TARGET } from './datedRowAction';
 import { metadataAfterDatedRow, orderDatedRow } from './datedRowOrder.server';
-import { documentFieldPath } from './documentFieldAction';
-import { metadataAfterDocumentFields, orderDocumentFields, DOCUMENT_TITLE_HISTORY, GROUP_STATUS_HISTORY, DOCUMENT_METADATA_HISTORY, SERMON_CHURCH_HISTORY, SERMON_GOAL_TYPE_HISTORY, SERMON_VERSE_HISTORY, STUDY_NOTE_TYPE_HISTORY, COMMENT_KIND_HISTORY } from './documentFieldOrder.server';
+import { documentFieldPath, isSermonPlanMode } from './documentFieldAction';
+import { metadataAfterDocumentFields, orderDocumentFields, DOCUMENT_TITLE_HISTORY, GROUP_STATUS_HISTORY, DOCUMENT_METADATA_HISTORY, SERMON_CHURCH_HISTORY, SERMON_GOAL_TYPE_HISTORY, SERMON_PLAN_MODE_HISTORY, SERMON_VERSE_HISTORY, STUDY_NOTE_TYPE_HISTORY, COMMENT_KIND_HISTORY } from './documentFieldOrder.server';
 import { DOCUMENT_TAG_HISTORY, documentTagCollection, tagField, tagMembership, type DocumentTagHistoryPage } from './documentTagMembership';
 import { metadataAfterDocumentTags, orderDocumentTags } from './documentTagOrder.server';
 import { exegeticalPointConflictId } from './exegeticalPointAction';
@@ -56,7 +56,7 @@ import type { BibleMarkHistoryEntry, BibleMarkHistoryPage } from './bibleMarkStr
 import type { CommentKindHistoryPage } from './commentKindAction';
 import type { CouncilMetadataHistoryPage } from './councilFieldAction';
 import type { DisplacedRowDate, MeetingDateHistoryPage, PreachDateHistoryPage } from './datedRowAction';
-import type { GroupStatusHistoryPage, GroupTitleHistoryPage, DocumentTitleHistoryEntry, PlanTemplateNameHistoryPage, SermonChurchHistoryPage, SermonGoalTypeHistoryPage, SermonPreparationConfirmationHistoryPage, PrayerTitleHistoryPage, SermonTitleHistoryPage, SermonVerseHistoryPage, ServiceOrderTitleHistoryPage, StudyNoteTitleHistoryPage, StudyNoteTypeHistoryPage, TagColorHistoryPage } from './documentFieldAction';
+import type { GroupStatusHistoryPage, GroupTitleHistoryPage, DocumentTitleHistoryEntry, PlanTemplateNameHistoryPage, SermonChurchHistoryPage, SermonGoalTypeHistoryPage, SermonPlanModeHistoryPage, SermonPreparationConfirmationHistoryPage, PrayerTitleHistoryPage, SermonTitleHistoryPage, SermonVerseHistoryPage, ServiceOrderTitleHistoryPage, StudyNoteTitleHistoryPage, StudyNoteTypeHistoryPage, TagColorHistoryPage } from './documentFieldAction';
 import type { ExegeticalPointHistoryPage } from './exegeticalPointAction';
 import type { PrayerStatusHistoryPage } from './prayerStatusAction';
 import type { RowDetailPolicy } from './rowDetailAction';
@@ -634,6 +634,7 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
       verse: { collection: SERMON_VERSE_HISTORY, winner: 'winnerVerse' },
       church: { collection: SERMON_CHURCH_HISTORY, winner: 'winnerChurch' },
       paragraph: { collection: COMMENT_KIND_HISTORY, winner: 'winnerParagraph' },
+      planMode: { collection: SERMON_PLAN_MODE_HISTORY, winner: 'winnerPlanMode' },
       type: { collection: target.action === 'studyNoteTypeAction' ? STUDY_NOTE_TYPE_HISTORY : SERMON_GOAL_TYPE_HISTORY, winner: 'winnerType' },
     }[field];
     const history = adminDb.collection(command.resource.collection).doc(command.resource.id).collection(destination.collection);
@@ -1079,6 +1080,12 @@ export async function listSermonGoalTypeHistory(owner: string, sermonId: string,
   const resource = { collection: 'sermons', id: sermonId };
   const page = await listHistoryEntries<SermonGoalTypeHistoryPage['entries'][number]>(owner, resource, SERMON_GOAL_TYPE_HISTORY, generation, cursor, 'sermon-gone');
   return { owner, sermonId, generation, ...page, entries: page.entries.filter(entry => isSermonGoalType(entry.type) && isSermonGoalType(entry.winnerType)) };
+}
+
+export async function listSermonPlanModeHistory(owner: string, sermonId: string, generation: string, cursor?: string): Promise<SermonPlanModeHistoryPage> {
+  const resource = { collection: 'sermons', id: sermonId };
+  const page = await listHistoryEntries<SermonPlanModeHistoryPage['entries'][number]>(owner, resource, SERMON_PLAN_MODE_HISTORY, generation, cursor, 'sermon-gone');
+  return { owner, sermonId, generation, ...page, entries: page.entries.filter(entry => isSermonPlanMode(entry.planMode) && isSermonPlanMode(entry.winnerPlanMode)) };
 }
 
 export async function listExegeticalPointHistory(owner: string, sermonId: string, generation: string, cursor?: string): Promise<ExegeticalPointHistoryPage> {

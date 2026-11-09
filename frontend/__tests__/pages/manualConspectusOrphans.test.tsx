@@ -11,6 +11,8 @@ const mockSavePlanText = jest.fn().mockResolvedValue(undefined);
 const mockPlanWriter = {
   savePlanText: (...args: unknown[]) => mockSavePlanText(...args),
   savePlanMode: jest.fn().mockResolvedValue(undefined),
+  initializePlanMode: jest.fn().mockResolvedValue(undefined),
+  preparePlanMode: jest.fn(() => async () => undefined),
   updateThought: jest.fn(),
   updateSermonOutline: jest.fn(),
 };

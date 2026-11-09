@@ -16,9 +16,14 @@ import type { PrayerStatusCapture, PrayerStatusObservations, PrayerStatusOpening
 import type { SeriesFieldObservation, SeriesFieldTarget } from './seriesFieldAction';
 import type { SessionCheckpoint, ShownCopy } from './session';
 import type { DataCommand, DocumentData, FieldChange, FieldValue, ResourceRef, ResourceSnapshot } from './types';
-import type { Church, Group } from '@/models/models';
+import type { Church, Group, Sermon } from '@/models/models';
 
 export type DocumentFieldStamp = { observedRevision: number; time: ActionTime | null; predecessorOperationId?: string };
+export type SermonPlanModeStamp = DocumentFieldStamp & { initialize?: true };
+export type SermonPlanMode = NonNullable<Sermon['planMode']>;
+export type SermonPlanModeOpening = TextFieldBasis & { sermonId: string; value: FieldValue };
+export type SermonPlanModeCapture = { time: ActionTime | null; seen: SermonPlanModeOpening; initialize?: true };
+export type SermonPlanModeObservation = DocumentFieldObservation<FieldValue> & { initialize?: true };
 export type DocumentFieldObservation<Value = string> = DocumentFieldStamp & { before: Value; after: Value };
 export type DocumentFieldAction = DocumentFieldObservation & { time: ActionTime };
 type TextFieldBasis = { generation: string; revision: number; requestId?: string };
@@ -63,7 +68,7 @@ type TextDocumentFieldTarget = {
   optional?: true;
 };
 
-export type DocumentFieldTarget = TextDocumentFieldTarget | typeof COMMENT_KIND | typeof SERMON_CHURCH | typeof SERMON_GOAL_TYPE | PreparationConfirmationTarget | SeriesFieldTarget | CouncilFieldTarget | PrayerStatusTarget;
+export type DocumentFieldTarget = TextDocumentFieldTarget | typeof COMMENT_KIND | typeof SERMON_CHURCH | typeof SERMON_GOAL_TYPE | typeof SERMON_PLAN_MODE | PreparationConfirmationTarget | SeriesFieldTarget | CouncilFieldTarget | PrayerStatusTarget;
 export type SermonChurchObservation = DocumentFieldObservation<FieldValue>;
 
 export type GroupStatusHistoryPage = {
@@ -75,6 +80,15 @@ const SERMON_CHURCH = { field: 'church', action: 'sermonChurchAction', proof: 's
 
 const SERMON_GOAL_TYPE = { field: 'type', path: ['preparation', 'preachingGoal', 'type'],
   action: 'sermonGoalTypeAction', proof: 'sermonGoalType', causal: true, optional: true, accepts: isSermonGoalType } as const;
+
+export const isSermonPlanMode = (value: unknown): value is SermonPlanMode => value === 'manual' || value === 'ai' || value === 'note';
+export const SERMON_PLAN_MODE = { field: 'planMode', path: ['planMode'],
+  action: 'sermonPlanModeAction', proof: 'sermonPlanMode', causal: true, optional: true, accepts: isSermonPlanMode } as const;
+
+export type SermonPlanModeHistoryPage = {
+  owner: string; sermonId: string; generation: string; nextCursor: string | null;
+  entries: { id: string; planMode: SermonPlanMode; winnerPlanMode: SermonPlanMode }[];
+};
 
 type PreparationConfirmationTarget = {
   field: PreparationConfirmation;
@@ -138,7 +152,7 @@ export function documentFieldTargets(collection: string): readonly DocumentField
   if (collection === 'series') return SERIES_FIELD_TARGETS;
   if (collection === 'prayerRequests') return [PRAYER_TITLE, ...PRAYER_STATUS_FIELDS];
   if (collection === 'councils') return COUNCIL_FIELDS;
-  if (collection === 'sermons') return [SERMON_TITLE, SERMON_VERSE, SERMON_CHURCH, SERMON_GOAL_TYPE, ...PREPARATION_CONFIRMATION_TARGETS];
+  if (collection === 'sermons') return [SERMON_TITLE, SERMON_VERSE, SERMON_CHURCH, SERMON_GOAL_TYPE, SERMON_PLAN_MODE, ...PREPARATION_CONFIRMATION_TARGETS];
   return [];
 }
 
@@ -393,7 +407,7 @@ export function captureStudyNoteType(baseline: ResourceSnapshot, value: Document
 }
 
 type SermonTextTarget = typeof SERMON_TITLE | typeof SERMON_VERSE;
-type CapturedMetadataTarget = SermonTextTarget | typeof SERMON_CHURCH | typeof SERMON_GOAL_TYPE | PreparationConfirmationTarget | SeriesFieldTarget | CouncilFieldTarget | PrayerStatusTarget;
+type CapturedMetadataTarget = typeof SERMON_PLAN_MODE | SermonTextTarget | typeof SERMON_CHURCH | typeof SERMON_GOAL_TYPE | PreparationConfirmationTarget | SeriesFieldTarget | CouncilFieldTarget | PrayerStatusTarget;
 
 function knownMetadataFieldPredecessor(baseline: ResourceSnapshot, predecessor: CommitRequest | undefined,
   target: CapturedMetadataTarget, value: string | FieldValue, records: readonly CommitRequest[]): string | undefined {
@@ -410,6 +424,46 @@ function knownMetadataFieldPredecessor(baseline: ResourceSnapshot, predecessor: 
     if (action) return equalValues(action.after, value) ? request.id : undefined;
     visited.add(request.id);
   }
+}
+
+export function sermonPlanModeOpening(checkpoint: SessionCheckpoint, requests: readonly CommitRequest[]): SermonPlanModeOpening | undefined {
+  const { confirmed, draft, pending } = checkpoint;
+  const metadata = confirmed.metadata;
+  if (confirmed.resource.collection !== 'sermons' || !draft || !metadata || metadata.deleted) return undefined;
+  const value = readField(draft, SERMON_PLAN_MODE.path);
+  if (!acceptsDocumentField(value, SERMON_PLAN_MODE)) return undefined;
+  const tip = requests.find(request => request.id === Object.keys(pending).at(-1));
+  const requestId = knownMetadataFieldPredecessor(confirmed, tip, SERMON_PLAN_MODE, value, requests);
+  const request = requests.find(candidate => candidate.id === requestId);
+  const action = request?.sermonPlanModeAction;
+  if (!action && !equalValues(value, readField(confirmed.value ?? {}, SERMON_PLAN_MODE.path))) return undefined;
+  return { sermonId: confirmed.resource.id, generation: metadata.generation, revision: action?.observedRevision ?? metadata.revision, value,
+    ...(requestId && { requestId }) };
+}
+
+export function permitsSermonPlanModePredecessor(request: CommitRequest | undefined, owner: string, resource: ResourceRef, seen: SermonPlanModeOpening): boolean {
+  const action = request?.sermonPlanModeAction;
+  // A collected receipt was pinned when the mode was shown. The server still validates its scope and field.
+  if (!seen.requestId || !request) return true;
+  return Boolean(action && request.id === seen.requestId && request.owner === owner
+    && equalValues(request.baseline.resource, resource) && request.baseline.metadata?.generation === seen.generation
+    && action.observedRevision === seen.revision && equalValues(action.after, seen.value)
+    && !['conflict', 'refused', 'cancelled'].includes(request.state));
+}
+
+export function captureSermonPlanMode(baseline: ResourceSnapshot, value: DocumentData | null,
+  capture: SermonPlanModeCapture, permittedPredecessor: boolean): SermonPlanModeObservation | undefined {
+  const { seen, initialize } = capture;
+  const metadata = baseline.metadata;
+  if (baseline.resource.collection !== 'sermons' || baseline.resource.id !== seen.sermonId || !value || !metadata || metadata.deleted
+    || metadata.generation !== seen.generation || !Number.isSafeInteger(seen.revision) || seen.revision < 1 || seen.revision > metadata.revision) return undefined;
+  const before = seen.value;
+  const after = readField(value, SERMON_PLAN_MODE.path);
+  const time = capture.time === null ? null : boundedActionTime(capture.time);
+  if (!acceptsDocumentField(before, SERMON_PLAN_MODE) || !after.exists || !acceptsDocumentField(after, SERMON_PLAN_MODE)
+    || time === undefined || (initialize && (before.exists || time !== null)) || !permittedPredecessor) return undefined;
+  return { before, after, observedRevision: seen.revision, time,
+    ...(seen.requestId && { predecessorOperationId: seen.requestId }), ...(initialize && { initialize }) };
 }
 
 export function submittedPrayerStatus(checkpoint: SessionCheckpoint | null, requests: readonly CommitRequest[],
@@ -644,7 +698,7 @@ export function pendingDocumentFieldAncestor(record: CommitRequest, before: Docu
   }, before);
 }
 
-type StoredObservation = DocumentFieldObservation<string | FieldValue> & { openingTheme?: string; reference?: FieldValue };
+type StoredObservation = DocumentFieldObservation<string | FieldValue> & { openingTheme?: string; reference?: FieldValue; initialize?: true };
 
 function observedValue(value: string | FieldValue): FieldValue {
   return typeof value === 'string' ? { exists: true, value } : value;
@@ -669,6 +723,9 @@ export function withDocumentFieldAction(command: DataCommand, target: DocumentFi
   }
   if (target.action === 'sermonPreparationCheckActions') {
     return { ...command, sermonPreparationCheckActions: { ...command.sermonPreparationCheckActions, [target.field]: stamp } };
+  }
+  if (target.action === 'sermonPlanModeAction') {
+    return { ...command, sermonPlanModeAction: { ...stamp, ...(action.initialize && { initialize: true }) } };
   }
   if (target.action === 'commentKindAction') {
     return action.reference ? { ...command, commentKindAction: { ...stamp, reference: action.reference } } : command;

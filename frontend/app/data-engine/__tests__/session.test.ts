@@ -9,6 +9,26 @@ import type { ResourceSnapshot } from '../types';
 const snap = (content = 'base', revision = 1): ResourceSnapshot => ({ resource: { collection: 'studyNotes', id: 'one' }, value: { content }, metadata: { protocol: 1, generation: 'g1', revision, deleted: false } });
 
 describe('DataSession', () => {
+  it('keeps a deliberately reselected plan mode and words from both devices', () => {
+    const base = { ...snap(), resource: { collection: 'sermons', id: 'sermon' },
+      value: { planMode: 'manual', planText: { start: 'Opening', end: 'Closing' } } };
+    const candidate = { ...base, metadata: { ...base.metadata!, revision: 2 },
+      value: { planMode: 'ai', planText: { start: 'Opening', end: 'New closing' } } };
+    const editor = new DataSession(base);
+    const draft = { ...base.value, planText: { ...base.value.planText, start: 'My opening' } };
+    editor.edit(draft);
+    editor.registerCommit('mode-save', 1, draft);
+    const manual = { exists: true, value: 'manual' };
+    editor.accept({ kind: 'conflict', operationId: 'mode-save', snapshot: candidate, conflicts: [{
+      path: ['planMode'], base: manual, mine: manual, theirs: { exists: true, value: 'ai' },
+    }] });
+    editor.release('mode-save');
+    editor.keepLocal();
+    expect(editor.checkpoint().draft).toEqual({
+      planMode: 'manual', planText: { start: 'My opening', end: 'New closing' },
+    });
+  });
+
   it('keeps a reselected unlocked thought after an uncertain conflict without replacing its remote words', () => {
     const thought = { id: 'one', date: '2026-11-08', tags: [], text: 'Original words' };
     const neighbor = { ...thought, id: 'neighbor', isLocked: true };

@@ -1,8 +1,8 @@
 import { createContext, useContext } from 'react';
 
-import type { SermonOutline, Thought } from '@/models/models';
+import type { Sermon, SermonOutline, Thought } from '@/models/models';
 
-export type PlanMode = 'manual' | 'ai' | 'note';
+export type PlanMode = NonNullable<Sermon['planMode']>;
 export interface PlanTextContext { userId?: string; baselineByNodeId?: Record<string, string | null>; orphaned?: true }
 
 /**
@@ -13,6 +13,8 @@ export interface PlanTextContext { userId?: string; baselineByNodeId?: Record<st
 export interface PlanWriter {
   savePlanText(sermonId: string, changedText: Record<string, string>, removedNodeIds?: string[], context?: PlanTextContext): Promise<void>;
   savePlanMode(sermonId: string, mode: PlanMode): Promise<void>;
+  preparePlanMode(sermonId: string, mode: PlanMode): () => Promise<void>;
+  initializePlanMode(sermonId: string, mode: PlanMode): Promise<void>;
   updateThought(sermonId: string, thought: Thought, baseThought: Thought | null): Promise<Thought>;
   updateSermonOutline(sermonId: string, outline: SermonOutline, baseOutline?: SermonOutline | null,
     onCollision?: 'refuse' | 'preferMine'): Promise<SermonOutline | null>;
@@ -22,7 +24,7 @@ const noWriter = (): Promise<never> => Promise.reject(new Error('No plan writer:
 
 /** Outside its provider a plan screen can be drawn, but every write is refused out loud. */
 export const PlanWriterContext = createContext<PlanWriter>({
-  savePlanText: noWriter, savePlanMode: noWriter, updateThought: noWriter, updateSermonOutline: noWriter,
+  savePlanText: noWriter, savePlanMode: noWriter, preparePlanMode: () => noWriter, initializePlanMode: noWriter, updateThought: noWriter, updateSermonOutline: noWriter,
 });
 
 export function usePlanWriter(): PlanWriter {

@@ -174,7 +174,7 @@ export default function usePlanActions({
       // The first save from this editor records that the plan lives here — see the same note
       // in `useManualConspectus`. Only when nothing is recorded; a deliberate choice stands.
       if (!sermon.planMode) {
-        planWriter.savePlanMode(sermon.id, 'ai')
+        planWriter.initializePlanMode(sermon.id, 'ai')
           .catch((error) => debugLog("Recording the plan editor failed — harmless", { error }));
       }
 

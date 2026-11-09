@@ -19,6 +19,7 @@ import { commentKindChoiceOpening, readCommentKindComparison as commentKindCompa
 import { isInactiveEditorError as inactiveEditor } from './controller';
 import { councilTopicConflictCode, councilTopicRefusalCode } from './councilTopicTransition';
 import { isDirectLegacyDocumentIntent, savedDocumentAnswer, type DocumentAnswer } from './documentDelivery';
+import { isSermonPlanMode as validSermonPlanMode } from './documentFieldAction';
 import { makeDocumentTagIntents, observeDocumentTagBasis, validDocumentTagIntents } from './documentTagCapture';
 import { readDocumentTagComparison as documentTagComparison } from './documentTagChoice';
 import { ACTION_SLOT, editorSlot, isManualChoiceRecoveryIdentity, readManualScopeIdentity, recoveryEditorIdentity } from './editorIdentity';
@@ -34,6 +35,7 @@ import { isOnlySubmittedCopy } from './recovery.client';
 import { captureRecoveryChoice as captureChoice, recoveryChoiceFingerprint, type RecoveryChoiceScope } from './recoveryChoice';
 import { validateResourceDocument } from './resourceSchemas';
 import { readCouncilTopicConflict as councilTopicConflict, readGroupFlowFieldConflict as groupFlowFieldConflict, readPlanTemplateNameConflict as planTemplateNameConflict, readSermonConflict as sermonConflict, readServiceStepConflict as serviceStepConflict, readTagColorConflict as tagColorConflict, readThoughtLockComparison as thoughtLockComparison, readThoughtPlacementComparison as thoughtPlacementComparison, readThoughtTagComparison as thoughtTagComparison } from './rowConflictDetails';
+import { readSermonPlanModeComparison as sermonPlanModeComparison } from './sermonFieldChoice';
 import { deletedUnder, type SessionCheckpoint } from './session';
 import { describeManualSync, describeSync, type SyncStatus } from './status';
 import { readStudyNoteTypeComparison as studyNoteTypeComparison } from './studyNoteTypeChoice';
@@ -63,6 +65,7 @@ import type { AppLocale } from '@/utils/appLocale';
 import type { BookText } from '@/utils/bibleText';
 
 export { isCollectionOnEngine, isDataEngineEnabled } from './clientPolicy';
+export function isSermonPlanMode(value: unknown) { return validSermonPlanMode(value); }
 /** Stable capture ownership for the public initial-analysis creation flow. */
 export function analysisCreationScope(id: string): string { return initialAnalysisScope(id); }
 
@@ -75,6 +78,7 @@ export function readServiceStepConflict(checkpoint: SessionCheckpoint) { return 
 export function readPlanTemplateNameConflict(checkpoint: SessionCheckpoint) { return planTemplateNameConflict(checkpoint); }
 export function readTagColorConflict(checkpoint: SessionCheckpoint) { return tagColorConflict(checkpoint); }
 export function restoreExegeticalPoint(...args: Parameters<typeof restorePointVersion>) { return restorePointVersion(...args); }
+export function readSermonPlanModeComparison(checkpoint: SessionCheckpoint) { return sermonPlanModeComparison(checkpoint); }
 export function readSermonConflict(checkpoint: SessionCheckpoint) { return sermonConflict(checkpoint); }
 export function readThoughtLockComparison(checkpoint: SessionCheckpoint) { return thoughtLockComparison(checkpoint); }
 export function readThoughtPlacementComparison(checkpoint: SessionCheckpoint) { return thoughtPlacementComparison(checkpoint); }
@@ -1086,11 +1090,16 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
         throw refused ? refused.error : error;
       });
     },
+    captureSermonPlanMode: () => {
+      if (!current || !owner || !isCurrent()) throw new Error(EDITOR_CHANGED);
+      const seen = current.editor.getSermonPlanModeOpening?.(current.state.checkpoint);
+      return seen ? { seen, time: actionClock.capture(owner) ?? null } : undefined;
+    },
     /** Freeze the intended save before any asynchronous draft persistence. */
     commit: (updater: (current: DocumentData | null) => DocumentData | null,
       action?: 'bible-mark-stroke' | 'council-lifecycle' | ExegeticalPointEdit | { kind: 'thought-placement'; rowId: string }
         | Pick<Extract<EditorCommitAction, { kind: 'sermon-preparation-check' }>, 'kind' | 'field'>
-        | Extract<EditorCommitAction, { kind: 'council-assembly' | 'council-topic-kind' }>) => {
+        | Extract<EditorCommitAction, { kind: 'council-assembly' | 'council-topic-kind' | 'sermon-plan-mode' }>) => {
       const timed = typeof action === 'string' || action?.kind === 'exegetical-point' || action?.kind === 'thought-placement' || action?.kind === 'sermon-preparation-check';
       const time = owner && timed ? actionClock.capture(owner) : undefined;
       const checkpoint = current?.state.checkpoint;

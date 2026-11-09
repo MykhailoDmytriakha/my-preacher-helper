@@ -2,11 +2,19 @@ import { createEnginePlanWriter } from '@/(pages)/(private)/sermons/[id]/plan/us
 import { isStaleWriteError } from '@/services/conflictSafeUpdate.client';
 import { planTextConflictValues } from '@/services/sermons.client';
 
+import { readField } from '@/data-engine/fieldValues';
+
 import type { DocumentData } from '@/data-engine/types';
 
 function draft(initial: DocumentData) {
   const state = { current: initial as DocumentData | null, edits: 0 };
-  const document = { update: async (updater: (current: DocumentData | null) => DocumentData | null) => { state.edits += 1; state.current = updater(state.current); } };
+  const update = async (updater: (current: DocumentData | null) => DocumentData | null) => {
+    state.edits += 1;
+    state.current = updater(state.current);
+  };
+  const document = { update, commit: update, captureSermonPlanMode: () => ({
+    time: null, seen: { sermonId: 's1', generation: 'g', revision: 1, value: readField(state.current ?? {}, ['planMode']) },
+  }) };
   return { state, writer: createEnginePlanWriter(document, 'owner-1') };
 }
 const sermon = (planText: Record<string, string>) => ({

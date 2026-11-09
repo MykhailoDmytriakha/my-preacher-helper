@@ -248,7 +248,7 @@ export function useManualConspectus({
      * never overruled by merely typing.
      */
     if (!currentSermon.planMode) {
-      planWriter.savePlanMode(currentSermon.id, mode)
+      planWriter.initializePlanMode(currentSermon.id, mode)
         .catch((error) => debugLog("Recording the plan editor failed — harmless", { error }));
     }
 

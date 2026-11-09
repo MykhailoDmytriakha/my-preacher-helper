@@ -24,6 +24,7 @@ function setup(value: ResourceSnapshot = snapshot()) {
     recoveryIdentity: {}, presence: UNKNOWN_RECORD_PRESENCE, readOnly: false, copySource: null, readOnlyReason: null,
     data: value.value, confirmed: value, remote: null, state: null, status: null, loading: false, error: null,
     commit: jest.fn(),
+    captureSermonPlanMode: jest.fn(),
     update: jest.fn(async (mutate: (current: DocumentData | null) => DocumentData | null) => {
       session.edit(mutate(session.checkpoint().draft));
     }), save: jest.fn(async () => undefined), edit: jest.fn(), remove: jest.fn(), retry: jest.fn(),

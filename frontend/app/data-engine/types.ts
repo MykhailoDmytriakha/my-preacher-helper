@@ -5,7 +5,7 @@ import type { CouncilAssemblyActions, CouncilAssemblyCapture } from './councilAs
 import type { CouncilOutcomeWire } from './councilOutcomeAction';
 import type { CouncilTopicKindActions, CouncilTopicKindCapture } from './councilTopicKindAction';
 import type { DatedRowActionEvidence } from './datedRowAction';
-import type { DocumentFieldAction, DocumentFieldObservation, DocumentFieldStamp, PlanTemplateNameCapture, PrayerTitleCapture, StudyNoteTitleCapture, StudyNoteTypeCapture, ServiceOrderTitleCapture, TagColorCapture } from './documentFieldAction';
+import type { DocumentFieldAction, DocumentFieldObservation, DocumentFieldStamp, PlanTemplateNameCapture, PrayerTitleCapture, SermonPlanModeCapture, SermonPlanModeStamp, StudyNoteTitleCapture, StudyNoteTypeCapture, ServiceOrderTitleCapture, TagColorCapture } from './documentFieldAction';
 import type { DocumentTagIntent } from './documentTagCapture';
 import type { ExegeticalPointStamp } from './exegeticalPointAction';
 import type { ExegeticalPointEdit } from './exegeticalPointCapture';
@@ -63,6 +63,7 @@ export interface CommandBase {
 export type EditorCommitAction =
   | { kind: 'bible-mark-stroke'; time: ActionTime }
   | (ExegeticalPointEdit & { time: ActionTime | null; shown?: ShownCopy })
+  | { kind: 'sermon-plan-mode'; mode: SermonPlanModeCapture }
   | { kind: 'sermon-preparation-check'; field: PreparationConfirmation; time: ActionTime | null }
   | { kind: 'thought-placement'; rowId: string; time: ActionTime | null; shown?: ShownCopy }
   | { kind: 'service-order-title'; title: ServiceOrderTitleCapture }
@@ -110,6 +111,7 @@ export type DataCommand = CommandBase & (
       sermonVerseAction?: DocumentFieldStamp;
       sermonChurchAction?: DocumentFieldStamp;
       sermonGoalTypeAction?: DocumentFieldStamp;
+      sermonPlanModeAction?: SermonPlanModeStamp;
       sermonPreparationCheckActions?: Partial<Record<PreparationConfirmation, DocumentFieldStamp>>;
       sermonChurchFill?: SermonChurchFill;
       exegeticalPlanActions?: ExegeticalPointStamp[];

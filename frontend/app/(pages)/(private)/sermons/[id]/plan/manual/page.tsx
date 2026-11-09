@@ -11,7 +11,6 @@ import { ProgressSidebar } from "@/components/plan/ProgressSidebar";
 import { RecordUnavailable } from "@/components/RecordUnavailable";
 import { OutlineWriteRecovery } from '@/components/sermon/OutlineWriteRecovery';
 import { SermonDetailSkeleton } from "@/components/skeletons/SermonDetailSkeleton";
-import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { DataDocumentProvider, useDataEngine } from '@/data-engine/react.client';
 import { useDraftQuestion } from "@/hooks/useDurableDraft";
 import { useRouteId } from "@/hooks/useRouteId";
@@ -26,6 +25,7 @@ import { copyFormattedFromElement } from "../copyFormattedFromElement";
 import { mergeOrphans, OrphanedPlanText, orphanedCells } from "../OrphanedPlanText";
 import { PlanDraftRecoveryBar, recoveredCells } from "../PlanDraftRecoveryBar";
 import PlanImmersiveView from "../PlanImmersiveView";
+import { PlanModeHistory, PlanModeStatus } from '../PlanModeStatus';
 import { planNodesForPoint, pointHasContent } from "../planNodes";
 import PlanOverlayPortal from "../PlanOverlayPortal";
 import PlanPageHeader from "../PlanPageHeader";
@@ -279,8 +279,7 @@ function EngineManualConspectusPage({ sermonId }: { sermonId: string }) {
   // included — and as its own tree, so every switch mounts the other one fresh, as the swap did.
   // A copy for reading is still this page, preaching included; DeviceStorageNotice says why it is read-only.
   return <OutlineWriteRecovery key={`${owner}:${sermonId}`} owner={owner} sermonId={sermonId} {...outlineRecovery}><PlanWriterContext.Provider value={writer}>
-    {!document.readOnly && <div className="px-4 pt-4 empty:hidden"><DataSyncStatus subject={document.recoveryIdentity} status={document.status} error={document.error} errorWords={document.errorWords} onRetry={document.retry}
-      onKeepLocal={document.keepLocal} onAcceptRemote={document.acceptRemote} /></div>}
+    <PlanModeStatus document={document} />
     <ManualConspectusContent key={document.readOnly ? 'copy' : 'editor'} source={source} readOnly={document.readOnly} />
   </PlanWriterContext.Provider></OutlineWriteRecovery>;
 }
@@ -496,6 +495,7 @@ function ManualConspectusContent({ source, readOnly: copyReadOnly = false }: { s
           cells first. Editing a cell is typing: the editor shows no links. */}
       <ScriptureLinksInWindow writtenIn={sermonLanguage(sermon)} beforeSwitch={conspectus.saveModified}>
         <PlanPageHeader
+        modeHistory={<PlanModeHistory document={source.document} sermonId={sermonId} />}
           sermon={sermon}
           sermonId={sermonId}
           mode={noteMode ? "note" : "manual"}

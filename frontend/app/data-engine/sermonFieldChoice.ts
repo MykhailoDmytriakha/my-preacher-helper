@@ -1,6 +1,7 @@
 import { preparationConfirmationField } from '@/utils/preparationFieldValues';
 import { applyScopedThoughtPlacement, completeStoredThoughtPlacement } from '@/utils/thoughtOrdering';
 
+import { acceptsDocumentField, SERMON_PLAN_MODE } from './documentFieldAction';
 import { exegeticalPlan, exegeticalPointConflictId, projectExegeticalPoint, readExegeticalPointChoice } from './exegeticalPointAction';
 import { equalValues, object, readField, writeField } from './fieldValues';
 import { mergeDocumentFields } from './protocol';
@@ -8,11 +9,12 @@ import { readThoughtLockConflict, thoughtLockConflictId } from './thoughtLockAct
 import { projectThoughtMoveFields, readThoughtPlacementChoice, thoughtPlacementConflictId } from './thoughtPlacementAction';
 import { readThoughtTagChoice, restoreThoughtTag, thoughtTagIdentity } from './thoughtTagAction';
 
+import type { SessionCheckpoint } from './session';
 import type { ConflictDetail, DocumentData, FieldValue, Json, ResourceSnapshot } from './types';
 import type { Sermon, ThoughtsBySection } from '@/models/models';
 
 export function comparableSermonField(path: readonly string[]): boolean {
-  return (path.length === 1 && path[0] === 'verse')
+  return (path.length === 1 && (path[0] === 'verse' || path[0] === 'planMode'))
     || preparationConfirmationField(path) !== undefined || exegeticalPointConflictId(path) !== undefined
     || (path.length === 3 && path[0] === 'preachDates' && path[1].startsWith('id:') && path[2] === 'date');
 }
@@ -20,6 +22,19 @@ export function comparableSermonField(path: readonly string[]): boolean {
 export function comparableSermonFields(conflicts: readonly ConflictDetail[]): boolean {
   return conflicts.length > 0 && (conflicts.every(({ path }) => thoughtTagIdentity(path))
     || (conflicts.length === 1 && comparableSermonField(conflicts[0].path)));
+}
+
+export function readSermonPlanModeComparison(checkpoint: SessionCheckpoint) {
+  const { confirmed, draft, remoteCandidate, conflicts, editGeneration } = checkpoint;
+  if (confirmed.resource.collection !== 'sermons' || !draft || !remoteCandidate?.value || !confirmed.metadata
+    || confirmed.metadata.generation !== remoteCandidate.metadata?.generation || conflicts.length !== 1
+    || !equalValues(conflicts[0].path, SERMON_PLAN_MODE.path)) return undefined;
+  const mine = readField(draft, SERMON_PLAN_MODE.path);
+  const stored = readField(remoteCandidate.value, SERMON_PLAN_MODE.path);
+  if (!acceptsDocumentField(mine, SERMON_PLAN_MODE) || !acceptsDocumentField(stored, SERMON_PLAN_MODE)
+    || equalValues(mine, stored) || !equalValues(mine, conflicts[0].mine) || !equalValues(stored, conflicts[0].theirs)) return undefined;
+  return { mine, stored, identity: JSON.stringify([editGeneration, remoteCandidate.metadata.generation,
+    remoteCandidate.metadata.revision, mine, stored]) };
 }
 
 const isRow = (value: unknown, key: string) => object(value) && value.id === key.slice(3);
@@ -41,7 +56,7 @@ function withField(data: DocumentData, field: string, selected: FieldValue): Doc
 }
 
 function withSelectedField(data: DocumentData, path: string[], selected: FieldValue): DocumentData | undefined {
-  if (path[0] === 'verse') return withField(data, 'verse', selected);
+  if (path[0] === 'verse' || path[0] === 'planMode') return withField(data, path[0], selected);
   if (preparationConfirmationField(path)) return writeField(data, path, selected);
   const [field, id, leaf] = path;
   const rows = data[field];

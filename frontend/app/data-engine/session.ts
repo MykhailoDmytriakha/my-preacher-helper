@@ -10,12 +10,14 @@ import { prepareDomainCommand } from './domainPolicy';
 import { ACTION_SLOT, editorSlot } from './editorIdentity';
 import { exegeticalPointConflictId } from './exegeticalPointAction';
 import { mergeExegeticalPointChoice, stageExegeticalPoint } from './exegeticalPointCapture';
+import { writeField } from './fieldValues';
 import { chooseLocalPlacement } from './localPlacementChoice';
 import { projectManualSelection } from './manualScope';
 import { chooseLocalPreachDateEdits } from './preachDateChoice';
 import { equalValues, mergeDocumentFields, mergeFields } from './protocol';
 import { acknowledgeRowFields, clearRowFieldDrafts, hasUncapturedAutosaveRowField, registerRowFields, rowFieldAckAncestor, stageRowFields } from './rowFieldAutosave';
 import { keepReselectedRowFields } from './rowReselectionChoice';
+import { readSermonPlanModeComparison } from './sermonFieldChoice';
 import { canReplaceSnapshot } from './snapshotFreshness';
 import { localThoughtPlacementChoices } from './thoughtPlacementAction';
 
@@ -378,8 +380,10 @@ export class DataSession {
         localThoughtPlacementChoices(this.state.conflicts, this.state.confirmed.value, this.state.draft, candidate.value));
       const statusChoice = chooseLocalPreachDateEdits(this.state.confirmed, this.state.draft, candidate, preachStatuses);
       const exactTags = keepExactLocalDocumentTags(this.state, statusChoice ?? chosen);
-      const resolved = keepReselectedRowFields(this.state.confirmed.resource.collection, this.state.confirmed.value,
+      const withRows = keepReselectedRowFields(this.state.confirmed.resource.collection, this.state.confirmed.value,
         this.state.draft, candidate.value, exactTags, this.state.conflicts);
+      const planMode = readSermonPlanModeComparison(this.state);
+      const resolved = withRows && planMode ? writeField(withRows, ['planMode'], planMode.mine) : withRows;
       const council = this.state.confirmed.resource.collection === 'councils';
       const lifecycle = council ? councilLifecycleValue(this.state.draft) : undefined;
       const openingLifecycle = council ? councilLifecycleValue(this.state.confirmed.value) : undefined;

@@ -10,7 +10,6 @@ import { WithoutScriptureLinks } from "@/components/bible/ScriptureLinks";
 import { ScriptureLinksInWindow } from "@/components/bible/VerseWindow";
 import PlanMarkdown from "@/components/plan/PlanMarkdown";
 import { OutlineWriteRecovery } from '@/components/sermon/OutlineWriteRecovery';
-import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { DataDocumentProvider, useDataEngine } from '@/data-engine/react.client';
 import { useAiUsage } from "@/hooks/useAiUsage";
 import { useDraftQuestion } from "@/hooks/useDurableDraft";
@@ -46,6 +45,7 @@ import { mergeOrphans, OrphanedPlanText, orphanedCells } from "./OrphanedPlanTex
 import { PlanDraftRecoveryBar, recoveredCells } from "./PlanDraftRecoveryBar";
 import PlanImmersiveView from "./PlanImmersiveView";
 import PlanMainLayout from "./PlanMainLayout";
+import { PlanModeHistory, PlanModeStatus } from './PlanModeStatus';
 import { buildPlanOutlineLookup, getPointFromLookup, getPointSectionFromLookup } from "./planOutlineLookup";
 import PlanOverlayPortal from "./PlanOverlayPortal";
 import PlanPageHeader from "./PlanPageHeader";
@@ -161,8 +161,7 @@ function EnginePlanPage({ sermonId }: { sermonId: string }) {
   // The address's way in is held here, above the copy and the editor: the copy giving way is not a new arrival.
   const wayIn = useWayInOnce();
   return <OutlineWriteRecovery key={`${owner}:${sermonId}`} owner={owner} sermonId={sermonId} {...outlineRecovery}><PlanWriterContext.Provider value={writer}>
-    {!document.readOnly && <div className="px-4 pt-4 empty:hidden"><DataSyncStatus subject={document.recoveryIdentity} status={document.status} error={document.error} errorWords={document.errorWords} onRetry={document.retry}
-      onKeepLocal={document.keepLocal} onAcceptRemote={document.acceptRemote} /></div>}
+    <PlanModeStatus document={document} />
     <PlanPageContent key={onCopy ? 'copy' : 'editor'} source={source} readOnly={onCopy} wayIn={wayIn} />
   </PlanWriterContext.Provider></OutlineWriteRecovery>;
 }
@@ -1099,6 +1098,7 @@ function PlanPageContent({ source, readOnly = false, wayIn }: { source: SermonSo
           them. Measured live: dismissing one notice only revealed another and shifted the
           whole header by 90px. A header that moves is not a header. */}
       <PlanPageHeader
+        modeHistory={<PlanModeHistory document={source.document} sermonId={sermonId} />}
         sermon={sermon}
         sermonId={sermonId as string}
         mode="ai"

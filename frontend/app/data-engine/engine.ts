@@ -11,7 +11,7 @@ import { CommitQueue, type CommitRequest, type CommitStore } from './commits';
 import { EditorController, InactiveEditorError, type CheckpointRecoveryStore, type CheckpointStore, type EditorRecord, type EditorState, type RecoveryCheckpoint } from './controller';
 import { captureCouncilCarry, pinCouncilDestination } from './councilCarry';
 import { canReplaceDocumentIntent, isDirectLegacyDocumentIntent, requiresWholeActionResolution, savedDocumentAnswer } from './documentDelivery';
-import { capturePlanTemplateName, capturePrayerTitle, captureStudyNoteTitle, captureStudyNoteType, captureTagColor, matchesPlanTemplateNameRequest, matchesPrayerStatusOpening, matchesPrayerTitleRequest, matchesStudyNoteTitleRequest, matchesStudyNoteTypeRequest, matchesTagColorRequest, studyNoteTitleValue, studyNoteTypeValue, validatedTitleCapture } from './documentFieldAction';
+import { capturePlanTemplateName, capturePrayerTitle, captureSermonPlanMode, captureStudyNoteTitle, captureStudyNoteType, captureTagColor, matchesPlanTemplateNameRequest, matchesPrayerStatusOpening, matchesPrayerTitleRequest, permitsSermonPlanModePredecessor, matchesStudyNoteTitleRequest, matchesStudyNoteTypeRequest, matchesTagColorRequest, sermonPlanModeOpening, studyNoteTitleValue, studyNoteTypeValue, validatedTitleCapture } from './documentFieldAction';
 import { ACTION_SLOT, areDifferentTabManualParents, editorSlot, isManualChoiceRecoveryIdentity, manualScopeIdentity, readManualScopeIdentity } from './editorIdentity';
 import { AddressedFailures, eachFailure, PausedReadFailure } from './failures';
 import { collectionHeadRef } from './feed';
@@ -107,6 +107,7 @@ export interface ManagedEditor {
   getObservation(): Observation;
   getPresence(): RecordPresence;
   getDelivery(): JournalEntry[];
+  getSermonPlanModeOpening?(shown: SessionCheckpoint): ReturnType<typeof sermonPlanModeOpening>;
   getActions(): Array<{ id: string; delivery: MembershipDelivery }>;
   carryCouncilTopicToNew(topicId: string, title: string): Promise<ResourceSnapshot>;
   carryCouncilTopicToExisting(topicId: string, destinationId: string): Promise<ResourceSnapshot>;
@@ -1930,6 +1931,15 @@ export class DataEngine {
             captured = undefined;
           }
         }
+        if (action?.kind === 'sermon-plan-mode') {
+          const { seen, initialize } = action.mode;
+          if (initialize && checkpoint.draft?.planMode !== undefined) return Promise.resolve();
+          const predecessor = seen.requestId ? this.commitRecords.get(seen.requestId) : undefined;
+          const permitted = permitsSermonPlanModePredecessor(predecessor, owner, frozen, seen);
+          if (!captureSermonPlanMode(checkpoint.confirmed, next, action.mode, permitted)) {
+            throw Object.assign(new Error('The shown plan mode changed'), { code: 'decision-changed' });
+          }
+        }
         if (action?.kind === 'study-note-title' || action?.kind === 'study-note-type') {
           let title = action.kind === 'study-note-title' ? action.title : undefined;
           let type = action.type;
@@ -2058,6 +2068,10 @@ export class DataEngine {
           return copy(documentRecordPresence(frozen, entry.observation, undefined, accepted));
         },
         getDelivery: () => { active(); return copy(this.editorDelivery(entry, this.pending)); },
+        getSermonPlanModeOpening: shown => {
+          active();
+          return sameResource(shown.confirmed.resource, frozen) ? sermonPlanModeOpening(shown, [...this.commitRecords.values()]) : undefined;
+        },
         getActions: () => {
           active();
           const requests = [...this.commitRecords.values()];

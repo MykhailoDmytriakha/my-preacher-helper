@@ -7,7 +7,7 @@ import { liveNodeIds, readPlanText } from '@/utils/planText';
 
 import { createEngineStructureWriter, editEngineSermon, useEngineStructureWriter } from '../structure/useEngineStructureWriter';
 
-import type { PlanWriter } from './planWriter';
+import type { PlanMode, PlanWriter } from './planWriter';
 import type { StructureWriter } from '@/components/sermon/structureWriter';
 
 
@@ -19,12 +19,29 @@ type SermonDocument = ReturnType<typeof useDataDocument>;
  * another device is reported with its current text, never overwritten. The refusal leaves the
  * draft untouched and surfaces as the StaleWriteError the plan screens already handle.
  */
-export function createEnginePlanWriter(document: Pick<SermonDocument, 'update'>, owner: string | null, outlineWriter?: StructureWriter): PlanWriter {
+export function createEnginePlanWriter(document: Pick<SermonDocument, 'update' | 'commit' | 'captureSermonPlanMode'>, owner: string | null, outlineWriter?: StructureWriter): PlanWriter {
   const structure = outlineWriter ?? createEngineStructureWriter(document, owner);
+  const prepareMode = (sermonId: string, mode: PlanMode, initialize?: true) => {
+    const capture = document.captureSermonPlanMode();
+    return async () => {
+      if (!capture) {
+        if (initialize) return;
+        throw new Error('Sermon editor is unavailable');
+      }
+      if (capture.seen.sermonId !== sermonId) throw new Error('Sermon editor is unavailable');
+      if (initialize && capture.seen.value.exists) return;
+      await document.commit(current => {
+        if (!current || !owner || current.userId !== owner || (current.id !== undefined && current.id !== sermonId)) throw new Error('Sermon editor is unavailable');
+        return { ...current, planMode: mode };
+      }, { kind: 'sermon-plan-mode', mode: initialize ? { ...capture, time: null, initialize } : capture });
+    };
+  };
   return {
     updateThought: structure.updateThought,
     updateSermonOutline: structure.updateSermonOutline,
-    savePlanMode: (_sermonId, mode) => editEngineSermon(document, owner, current => ({ next: { ...current, planMode: mode }, result: undefined })),
+    preparePlanMode: prepareMode,
+    savePlanMode: async (sermonId, mode) => prepareMode(sermonId, mode)(),
+    initializePlanMode: async (sermonId, mode) => prepareMode(sermonId, mode, true)(),
     savePlanText: async (_sermonId, changedText, removedNodeIds = [], context = {}) => {
       const conflicts = await editEngineSermon(document, owner, current => {
         const stored = current.planText ?? {};

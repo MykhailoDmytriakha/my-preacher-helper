@@ -20,6 +20,8 @@ describe('the hand-written plan on the engine', () => {
     const writer: PlanWriter = {
       savePlanText: jest.fn().mockResolvedValue(undefined),
       savePlanMode: jest.fn().mockResolvedValue(undefined),
+      initializePlanMode: jest.fn().mockResolvedValue(undefined),
+      preparePlanMode: jest.fn(() => async () => undefined),
       updateThought: jest.fn(),
       updateSermonOutline: jest.fn(),
     };

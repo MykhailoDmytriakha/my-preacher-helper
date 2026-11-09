@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { isCollectionServed } from '@/data-engine/activation';
-import { DataEngineServerError, listBibleMarkHistory, listCommentKindHistory, listExegeticalPointHistory, listCouncilMetadataHistory, listDocumentTagHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listPlanTemplateNameHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listPrayerStatusHistory, listPrayerTitleHistory, listSermonChurchHistory, listSermonGoalTypeHistory, listSermonPreparationConfirmationHistory, listSermonTitleHistory, listSermonVerseHistory, listSeriesMembershipHistory, listSeriesMetadataHistory, listServiceOrderFlagHistory, listServiceOrderStepTitleHistory, listServiceOrderTitleHistory, listStudyNoteTitleHistory, listTagColorHistory, listThoughtLockHistory, listThoughtPlacementHistory, listThoughtTagHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
+import { DataEngineServerError, listBibleMarkHistory, listCommentKindHistory, listExegeticalPointHistory, listCouncilMetadataHistory, listDocumentTagHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listPlanTemplateNameHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listPrayerStatusHistory, listPrayerTitleHistory, listSermonChurchHistory, listSermonGoalTypeHistory, listSermonPlanModeHistory, listSermonPreparationConfirmationHistory, listSermonTitleHistory, listSermonVerseHistory, listSeriesMembershipHistory, listSeriesMetadataHistory, listServiceOrderFlagHistory, listServiceOrderStepTitleHistory, listServiceOrderTitleHistory, listStudyNoteTitleHistory, listTagColorHistory, listThoughtLockHistory, listThoughtPlacementHistory, listThoughtTagHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
 import { collectionHeadId, HEADS_COLLECTION, sequenceId } from '@/data-engine/serverFeed';
 import { DataSession } from '@/data-engine/session';
 import type { DataCommand, FieldValue, ResourceSnapshot } from '@/data-engine/types';
@@ -3106,6 +3106,74 @@ describe('transactional DataEngine server', () => {
       expect(await processCommand(base.owner, edit('series-phone', { status: phone.status }, 80))).toMatchObject({
         kind: 'acknowledged', snapshot: { value: { title: desk.title, theme: desk.theme, status: phone.status } },
       });
+    });
+  });
+
+  describe('sermon plan mode chronology', () => {
+    const time = (offset: number) => ({ earliestMs: 1_800_000_000_000 + offset, latestMs: 1_800_000_000_005 + offset });
+    const missing = { exists: false };
+    const field = (value: string) => ({ exists: true, value });
+    function select(id: string, before: { exists: boolean; value?: string }, mode: string, at: number | null, initialize?: true) {
+      return { ...update(id, 'plan-mode-seed'), changes: [{ path: ['planMode'], before, after: field(mode) }],
+        sermonPlanModeAction: { observedRevision: 1, time: at === null ? null : time(at), ...(initialize && { initialize }) } };
+    }
+    async function seedMode() {
+      const seed = create('plan-mode-seed') as Extract<DataCommand, { kind: 'create' }>;
+      expect(await processCommand(seed.owner, seed)).toMatchObject({ kind: 'acknowledged' });
+      return seed.owner;
+    }
+
+    it.each([
+      { phoneAt: 20, winner: 'ai', outcome: 'acknowledged' },
+      { phoneAt: 80, winner: 'note', outcome: 'acknowledged' },
+      { phoneAt: null, winner: 'ai', outcome: 'conflict' },
+    ] as const)('keeps the latest explicit plan mode at $phoneAt without changing plan words', async ({ phoneAt, winner, outcome }) => {
+      const seed = create('plan-mode-seed') as Extract<DataCommand, { kind: 'create' }>;
+      const original = {
+        ...seed.value, planMode: 'manual', planText: { 'point-1': 'The saved plan words' },
+        outline: { introduction: [{ id: 'point-1', text: 'Opening' }], main: [], conclusion: [] },
+      };
+      expect(await processCommand(seed.owner, { ...seed, value: original })).toMatchObject({ kind: 'acknowledged' });
+      const switchMode = (id: string, mode: 'ai' | 'note', at: number | null) => ({
+        ...update(id, 'plan-mode-seed'),
+        changes: [{ path: ['planMode'], before: { exists: true, value: 'manual' }, after: { exists: true, value: mode } }],
+        sermonPlanModeAction: { observedRevision: 1, time: at === null ? null : {
+          earliestMs: 1_800_000_000_000 + at, latestMs: 1_800_000_000_005 + at,
+        } },
+      });
+      expect(await processCommand(seed.owner, switchMode('plan-desktop', 'ai', 40))).toMatchObject({ kind: 'acknowledged' });
+      const answer = await processCommand(seed.owner, switchMode('plan-phone', 'note', phoneAt));
+      expect(answer).toMatchObject({ kind: outcome, snapshot: {
+        value: { planMode: winner, planText: original.planText, outline: original.outline },
+      } });
+      if (outcome === 'conflict') expect(answer).toMatchObject({ conflicts: [{ path: ['planMode'] }] });
+      else {
+        const history = await listSermonPlanModeHistory(seed.owner, seed.resource.id, 'plan-mode-seed');
+        expect(history.entries).toEqual([expect.objectContaining({ planMode: winner === 'ai' ? 'note' : 'ai', winnerPlanMode: winner })]);
+        await expect(listSermonPlanModeHistory('another-owner', seed.resource.id, 'plan-mode-seed')).rejects.toMatchObject({ status: 403 });
+        await expect(listSermonPlanModeHistory(seed.owner, seed.resource.id, 'older-generation')).rejects.toMatchObject({ status: 404 });
+      }
+    });
+
+    it.each([false, true])('only uses the automatic default if no explicit mode has arrived (default first: %s)', async defaultFirst => {
+      const owner = await seedMode();
+      const fallback = select('plan-default', missing, 'ai', null, true);
+      const explicit = select('plan-explicit', missing, 'note', 60);
+      expect(await processCommand(owner, defaultFirst ? fallback : explicit)).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(owner, defaultFirst ? explicit : fallback))
+        .toMatchObject({ kind: 'acknowledged', snapshot: { value: { planMode: 'note' } } });
+      const history = await listSermonPlanModeHistory(owner, fallback.resource.id, 'plan-mode-seed');
+      expect(history.entries).toEqual([]);
+    });
+
+    it('records an explicit choice of the same mode as a provisional default', async () => {
+      const owner = await seedMode();
+      await processCommand(owner, select('plan-default', missing, 'note', null, true));
+      const explicit = select('plan-explicit', field('note'), 'note', 60);
+      explicit.sermonPlanModeAction.observedRevision = 2;
+      expect(await processCommand(owner, explicit)).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(owner, select('plan-earlier', missing, 'ai', 20)))
+        .toMatchObject({ kind: 'acknowledged', snapshot: { value: { planMode: 'note' } } });
     });
   });
 

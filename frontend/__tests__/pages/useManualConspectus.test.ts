@@ -33,6 +33,8 @@ const mockToastError = jest.fn();
 const mockPlanWriter: PlanWriter = {
   savePlanText: (...args: Parameters<PlanWriter['savePlanText']>) => mockSavePlanText(...args),
   savePlanMode: jest.fn().mockResolvedValue(undefined),
+  initializePlanMode: jest.fn().mockResolvedValue(undefined),
+  preparePlanMode: jest.fn(() => async () => undefined),
   updateThought: (...args: Parameters<PlanWriter['updateThought']>) => mockUpdateThought(...args),
   updateSermonOutline: (...args: Parameters<PlanWriter['updateSermonOutline']>) => mockUpdateSermonOutline(...args),
 };

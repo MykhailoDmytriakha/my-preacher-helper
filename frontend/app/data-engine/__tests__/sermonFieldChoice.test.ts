@@ -1,5 +1,5 @@
 import { manualComparison } from '../manualComparison';
-import { keepUncontestedSermonFields } from '../sermonFieldChoice';
+import { keepUncontestedSermonFields, readSermonPlanModeComparison } from '../sermonFieldChoice';
 
 import type { CommitRequest } from '../commits';
 import type { ManualScope } from '../manualScope';
@@ -71,4 +71,24 @@ it('keeps independent words and tags when using the saved membership of one thou
   expect(selected?.thoughts).toEqual([{ ...thought, text: 'Edited thought', tags: expect.arrayContaining(['main', 'Alpha', 'Other device', 'Beta']) }]);
   const replacement = { ...stored, value: { userId: 'owner', thoughts: [{ ...thought, date: '2026-11-09T00:00:00.000Z' }] } };
   expect(keepUncontestedSermonFields(basis, draft, replacement, conflicts)).toBeUndefined();
+});
+
+
+it('compares the two plan modes while retaining words independently of the mode choice', () => {
+  const basis: ResourceSnapshot = {
+    resource: { collection: 'sermons', id: 'sermon' },
+    metadata: { protocol: 1, generation: 'original', revision: 1, deleted: false },
+    value: { userId: 'owner', planMode: 'manual', planText: { opening: 'Previous intro', end: 'Previous conclusion' } },
+  };
+  const stored = { ...basis, metadata: { ...basis.metadata!, revision: 3 },
+    value: { ...basis.value!, planMode: 'ai', planText: { opening: 'Previous intro', end: 'Saved conclusion' } } };
+  const draft = { ...basis.value!, planMode: 'note', planText: { opening: 'My edited intro', end: 'Previous conclusion' } };
+  const mine = { exists: true, value: 'note' };
+  const theirs = { exists: true, value: 'ai' };
+  const conflicts = [{ path: ['planMode'], base: { exists: true, value: 'manual' }, mine, theirs }];
+  const checkpoint: SessionCheckpoint = { confirmed: basis, remoteCandidate: stored, draft,
+    conflicts, editGeneration: 1, dirty: true, pending: {} };
+  expect(readSermonPlanModeComparison(checkpoint)).toMatchObject({ mine, stored: theirs });
+  expect(keepUncontestedSermonFields(basis, draft, stored, conflicts)?.planText)
+    .toEqual({ opening: 'My edited intro', end: 'Saved conclusion' });
 });

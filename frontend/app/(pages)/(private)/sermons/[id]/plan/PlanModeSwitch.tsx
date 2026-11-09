@@ -52,13 +52,14 @@ export function PlanModeSwitch({
     if (mode === current || switching || !sermon) return;
     setSwitching(true);
     try {
+      const saveMode = planWriter.preparePlanMode(sermon.id, mode);
       if (beforeSwitch && !await beforeSwitch()) { setSwitching(false); return; }
       /**
        * RECORD FIRST, TRAVEL SECOND. Navigating first would leave the other screen deciding
        * what it is from a sermon that still says the old thing — and on a slow connection the
        * person would arrive, look at the toggle, and see it pointing back where they came from.
        */
-      await planWriter.savePlanMode(sermon.id, mode);
+      await saveMode();
       onSwitched?.(mode);
       router.push(mode === 'note' ? `/sermons/${sermon.id}/plan/manual?source=note` : mode === 'manual' ? `/sermons/${sermon.id}/plan/manual` : `/sermons/${sermon.id}/plan`);
     } catch (error) {

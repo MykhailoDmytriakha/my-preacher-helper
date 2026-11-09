@@ -25,9 +25,12 @@ jest.mock('sonner', () => ({ toast: { error: (...a: unknown[]) => mockToastError
 
 const sermon = { id: 's1', title: 'Град Божий' } as unknown as Sermon;
 const mockSave = jest.fn();
+const mockPrepare = jest.fn((id: string, mode: string) => () => mockSave(id, mode));
 const mockPlanWriter = {
   savePlanText: jest.fn(),
   savePlanMode: (...args: unknown[]) => mockSave(...args),
+  preparePlanMode: mockPrepare,
+  initializePlanMode: jest.fn(),
   updateThought: jest.fn(),
   updateSermonOutline: jest.fn(),
 };
@@ -99,6 +102,19 @@ describe('the plan editor switch', () => {
     await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/sermons/s1/plan'));
     expect(mockSave).toHaveBeenCalledWith('s1', 'ai');
     expect(order).toEqual(['saved', 'navigated']);
+  });
+
+  it('captures the mode choice before waiting for the existing plan text', async () => {
+    let finishSaving!: (saved: boolean) => void;
+    const flush = jest.fn(() => new Promise<boolean>(resolve => { finishSaving = resolve; }));
+    mockPrepare.mockClear();
+    render(<PlanModeSwitch sermon={sermon} current="manual" beforeSwitch={flush} />);
+    fireEvent.click(screen.getByRole('button', { name: 'plan.modeFromThoughts' }));
+    expect(mockPrepare).toHaveBeenCalledWith('s1', 'ai');
+    expect(mockPrepare.mock.invocationCallOrder[0]).toBeLessThan(flush.mock.invocationCallOrder[0]);
+    expect(mockSave).not.toHaveBeenCalled();
+    finishSaving(true);
+    await waitFor(() => expect(mockSave).toHaveBeenCalledWith('s1', 'ai'));
   });
 
   it('opens the hand-written editor when that is chosen', async () => {

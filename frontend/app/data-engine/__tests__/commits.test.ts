@@ -97,6 +97,26 @@ describe('Durable commit requests', () => {
   beforeEach(() => jest.useFakeTimers());
   afterEach(() => { jest.clearAllTimers(); jest.useRealTimers(); });
 
+  it('sends a deliberate same-mode choice with the time pinned before another plan save', async () => {
+    const first = initial();
+    const opening = { ...first, metadata: { ...first.metadata!, revision: 2 },
+      value: { ...first.value!, planMode: 'note', planText: { point: 'Words already accepted' } } };
+    const s = setup({ opening });
+    const { queue } = s.makeQueue();
+    const editor = new DataSession(opening);
+    const time = { earliestMs: 1_800_000_000_040, latestMs: 1_800_000_000_045 };
+    const mode = { exists: true, value: 'note' };
+    const record = await queue.save('plan', editor.checkpoint(), { action: { kind: 'sermon-plan-mode',
+      mode: { time, seen: { sermonId: first.resource.id, generation: 'g', revision: 1, value: mode } } } });
+    expect(record?.sermonPlanModeAction).toMatchObject({ before: mode, after: mode, observedRevision: 1, time });
+    await queue.drain(true);
+    expect(s.transport.send).toHaveBeenCalledWith(expect.objectContaining({
+      kind: 'update', changes: [{ path: ['planMode'], before: mode, after: mode }],
+      sermonPlanModeAction: { observedRevision: 1, time },
+    }));
+    expect(s.server().value?.planText).toEqual(opening.value.planText);
+  });
+
   it('sends a council outcome within the existing byte limit without duplicating long written decisions', async () => {
     const at = '2026-11-09T00:00:00.000Z';
     const text = 'a'.repeat(360_000);

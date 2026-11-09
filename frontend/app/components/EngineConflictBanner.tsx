@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { OutdatedTabNotice } from '@/components/common/OutdatedTabNotice';
 import { SyncNotice } from '@/components/common/SyncNoticeDock';
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
+import { planModeComparison } from '@/components/sermon/planModeComparison';
 import { FieldComparison } from '@/data-engine/DataSyncStatus';
 import { captureRecoveryChoice, councilRefusalHeldOpen, isCollectionOnEngine, isDataEngineEnabled, isOneShotRecord, isRecoveryHeldOpen, readCommentKindComparison, readDocumentTagComparison, readPlanTemplateNameConflict, readStudyNoteTypeComparison, readServiceStepConflict, readTagColorConflict, useDataEngine, useDocumentActions, useOpenDocumentAnswerScopes, waitsForDecision, type OpenDocumentAnswer, type RecoveryChoiceScope } from '@/data-engine/react.client';
 import { useClipboard } from '@/hooks/useClipboard';
@@ -79,6 +80,7 @@ type DisplayValue = (scope: string, field: string, value: unknown, document?: Do
 const isItem = (value: unknown): value is Item => Boolean(value) && typeof value === 'object' && typeof (value as { id?: unknown }).id === 'string';
 function fieldComparison(entry: Waiting, t: (key: string) => string): TextComparison | undefined {
   if (entry.records.length !== 1) return undefined;
+  if (entry.resource.collection === 'sermons') return planModeComparison(entry.records[0].checkpoint, t);
   if (entry.resource.collection === 'studyNotes') {
     const kind = readCommentKindComparison(entry.records[0].checkpoint);
     if (kind) {

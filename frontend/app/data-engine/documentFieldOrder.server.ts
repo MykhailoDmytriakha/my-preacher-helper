@@ -21,12 +21,14 @@ export const DOCUMENT_TITLE_HISTORY = '_titleHistory';
 export const GROUP_STATUS_HISTORY = '_statusHistory';
 export const SERMON_VERSE_HISTORY = '_verseHistory';
 export const SERMON_GOAL_TYPE_HISTORY = '_goalTypeHistory';
+export const SERMON_PLAN_MODE_HISTORY = '_planModeHistory';
 export const SERMON_CHURCH_HISTORY = '_churchHistory';
 export const DOCUMENT_METADATA_HISTORY = '_metadataHistory';
-type FieldProof = { value: FieldValue; revision: number; time: ActionTime | null; operationId?: string };
+type FieldProof = { value: FieldValue; revision: number; time: ActionTime | null; operationId?: string; initialized?: true };
 type DocumentFieldOrder = {
   command: DataCommand;
   stamp?: ActionTime | null;
+  initialized?: true;
   previous?: FieldProof;
   displaced?: { value: FieldValue; winnerValue: FieldValue; generation: string; actionTime: ActionTime; winnerActionTime: ActionTime };
   uncertain?: ConflictDetail[];
@@ -45,14 +47,16 @@ function previousField(raw: unknown, current: ResourceSnapshot, target: Document
     || (usesDigest(target) ? proof.digest !== fieldDigest(value, target) : proof[target.field] !== value.value)) return undefined;
   const time = proof.time === null ? null : boundedActionTime(proof.time);
   return time !== undefined ? { value, revision: proof.revision, time,
-    ...(typeof proof.operationId === 'string' && { operationId: proof.operationId }) } : undefined;
+    ...(typeof proof.operationId === 'string' && { operationId: proof.operationId }),
+    ...(target.action === 'sermonPlanModeAction' && proof.initialized === true && { initialized: true as const }) } : undefined;
 }
 
 function readAction(command: Extract<DataCommand, { kind: 'update' }>, change: FieldChange, revision: number, serverMs: number, target: DocumentFieldTarget): DocumentFieldObservation<FieldValue> | undefined {
   const action: unknown = target.action === 'seriesFieldActions' ? command.seriesFieldActions?.[target.field]
     : target.action === 'sermonPreparationCheckActions' ? command.sermonPreparationCheckActions?.[target.field] : command[target.action];
   const { before, after } = change;
-  if (!object(action) || ('path' in target && !after.exists) || !acceptsDocumentField(before, target) || !acceptsDocumentField(after, target) || equalValues(before, after)
+  if (!object(action) || ('path' in target && !after.exists) || !acceptsDocumentField(before, target) || !acceptsDocumentField(after, target)
+    || (target.action !== 'sermonPlanModeAction' && equalValues(before, after))
     || (target.field === 'heldAt' && !matchesCouncilLifecycle(command.changes, change))
     || (!usesDigest(target) && (before.value !== action.before || after.value !== action.after))
     || !proofRevision(action.observedRevision) || action.observedRevision > revision) return undefined;
@@ -72,7 +76,9 @@ function decideUnobservedField(command: Extract<DataCommand, { kind: 'update' }>
   const order = standalone && time && action.time ? compareActionTime(action.time, time) : 0;
   if (equalValues(action.after, value)) return order > 0 ? { command, stamp: action.time } : order < 0 ? { command, previous } : { command, stamp: null };
   if (!order || !time || !action.time) {
-    const uncertain = equalValues(action.before, value) ? [{ path: change.path, base: change.before, mine: change.after, theirs: change.before }] : undefined;
+    const needsReview = equalValues(action.before, value)
+      || (target.action === 'sermonPlanModeAction' && equalValues(action.before, action.after));
+    const uncertain = needsReview ? [{ path: change.path, base: change.before, mine: change.after, theirs: value }] : undefined;
     return { command, uncertain };
   }
   const incomingWins = order > 0;
@@ -102,8 +108,22 @@ function orderDocumentField(command: DataCommand, current: ResourceSnapshot, raw
   const stored = target.field === 'heldAt' ? councilLifecycleValue(current.value) : current.value && readField(current.value, documentFieldPath(target));
   if (!stored || !acceptsDocumentField(stored, target)) return { command, stamp: null };
   const action = readAction(command, change, current.metadata.revision, serverMs, target);
-  if (!action) return { command, stamp: null };
   const previous = previousField(raw, current, target);
+  if (!action) return target.action === 'sermonPlanModeAction' && equalValues(stored, change.after)
+    ? { command, previous } : { command, stamp: null };
+  if (target.action === 'sermonPlanModeAction') {
+    if (command.sermonPlanModeAction?.initialize === true) {
+      if (change.before.exists || action.time !== null) return { command, stamp: null };
+      if (!stored.exists) return { command, stamp: null, initialized: true };
+      const changes = replaceOrderedDocumentField(command.changes, target, stored, stored);
+      return { command: { ...command, changes }, previous };
+    }
+    if (previous?.initialized) {
+      // A default has no competing intention. Record even a choice of the same value as explicit.
+      const changes = replaceOrderedDocumentField(command.changes, target, stored, change.after);
+      return { command: { ...command, changes }, stamp: action.time };
+    }
+  }
   if (previous && previous.revision > action.observedRevision) {
     // An exact local predecessor is causal even when its action clock was unavailable.
     if (action.predecessorOperationId && previous.operationId === action.predecessorOperationId && equalValues(previous.value, action.before)) {
@@ -117,7 +137,10 @@ function orderDocumentField(command: DataCommand, current: ResourceSnapshot, raw
     }
     return order;
   }
-  if (equalValues(action.after, stored)) return { command, previous };
+  if (equalValues(action.after, stored)) {
+    return target.action === 'sermonPlanModeAction' && equalValues(action.before, action.after)
+      ? { command, stamp: action.time } : { command, previous };
+  }
   return { command, stamp: previous || action.observedRevision === current.metadata.revision ? action.time : null };
 }
 
@@ -194,11 +217,14 @@ export function metadataAfterDocumentFields(snapshot: ResourceSnapshot, raw: Rec
       ? rawMetadata.revision : metadata.revision;
     const proof: FieldProof = order?.stamp === undefined && previous ? previous : {
       value, revision, time: order?.stamp ?? null,
-      ...(changed && metadata.operationId && { operationId: metadata.operationId }),
+      ...((changed || (target.action === 'sermonPlanModeAction' && order?.stamp !== undefined)) && metadata.operationId
+        && { operationId: metadata.operationId }),
+      ...(order?.initialized && { initialized: true as const }),
     };
     const match = usesDigest(target) ? { digest: fieldDigest(proof.value, target) } : { [target.field]: proof.value.value };
     return [[target.proof, { ...match, revision: proof.revision, time: proof.time,
-      ...(target.causal && proof.operationId && { operationId: proof.operationId }) }]] as const;
+      ...(target.causal && proof.operationId && { operationId: proof.operationId }),
+      ...(proof.initialized && { initialized: true as const }) }]] as const;
   });
   return { ...metadata, ...Object.fromEntries(proofs) };
 }

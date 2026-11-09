@@ -95,6 +95,7 @@ export interface PlanPageHeaderProps {
   getPdfContent?: () => Promise<React.ReactNode>;
   /** A copy for reading: switching the editor would store a mode the copy cannot keep. */
   readOnly?: boolean;
+  modeHistory?: React.ReactNode;
 }
 
 export default function PlanPageHeader({
@@ -112,6 +113,7 @@ export default function PlanPageHeader({
   getExportContent,
   getPdfContent,
   readOnly = false,
+  modeHistory,
 }: PlanPageHeaderProps) {
   const sectionMenuRef = useRef<HTMLDivElement>(null);
   // Leaving for the Bible saves the cells being edited first, as switching editors does.
@@ -200,6 +202,7 @@ export default function PlanPageHeader({
           beforeSwitch={beforeSwitch}
           onSwitched={onSwitched}
         />
+        {modeHistory}
       </div>}
 
       <div className="flex flex-wrap items-center gap-3">
