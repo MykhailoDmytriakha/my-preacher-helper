@@ -6,7 +6,7 @@ import { adminDb, FieldValue } from '@/config/firebaseAdminConfig';
 import { aiModelDefaultsDocument } from '@/services/aiModelDefaults.server';
 import { storeRetryHeaders } from '@/services/storeAvailability.server';
 import { userEntitlementDocument } from '@/services/userEntitlement.server';
-import { isSermonGoalType } from '@/utils/preparationFieldValues';
+import { isSermonGoalType, preparationConfirmationPaths } from '@/utils/preparationFieldValues';
 
 import { stampAcceptedResource } from './acceptedResource.server';
 import { ACTION_CLOCK_HEADER, isClockChallenge, readsDocumentActionClock, usesActionClock } from './actionClock';
@@ -45,7 +45,7 @@ import type { AudioExportKey, AudioExportRecord, AudioExportStore, AudioExportTr
 import type { BibleMarkHistoryEntry, BibleMarkHistoryPage } from './bibleMarkStroke';
 import type { CouncilMetadataHistoryPage } from './councilFieldAction';
 import type { DisplacedRowDate, MeetingDateHistoryPage, PreachDateHistoryPage } from './datedRowAction';
-import type { GroupStatusHistoryPage, GroupTitleHistoryPage, DocumentTitleHistoryEntry, PlanTemplateNameHistoryPage, SermonChurchHistoryPage, SermonGoalTypeHistoryPage, PrayerTitleHistoryPage, SermonTitleHistoryPage, SermonVerseHistoryPage, ServiceOrderTitleHistoryPage, StudyNoteTitleHistoryPage, TagColorHistoryPage } from './documentFieldAction';
+import type { GroupStatusHistoryPage, GroupTitleHistoryPage, DocumentTitleHistoryEntry, PlanTemplateNameHistoryPage, SermonChurchHistoryPage, SermonGoalTypeHistoryPage, SermonPreparationConfirmationHistoryPage, PrayerTitleHistoryPage, SermonTitleHistoryPage, SermonVerseHistoryPage, ServiceOrderTitleHistoryPage, StudyNoteTitleHistoryPage, TagColorHistoryPage } from './documentFieldAction';
 import type { PrayerStatusHistoryPage } from './prayerStatusAction';
 import type { RowDetailPolicy } from './rowDetailAction';
 import type { RowValue } from './rowFieldAction';
@@ -485,7 +485,7 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
     const displaced = order.displaced;
     if (!displaced || !primarySnapshot.value || !equalValues(readField(primarySnapshot.value, documentFieldPath(target)), displaced.winnerValue)) continue;
     if (target.field === 'color' || target.action === 'seriesFieldActions' || target.action === 'councilTitleAction' || target.action === 'councilDateAction' || target.action === 'councilLifecycleAction'
-      || target.action === 'prayerStatusAction' || target.action === 'prayerAnsweredAtAction') {
+      || target.action === 'prayerStatusAction' || target.action === 'prayerAnsweredAtAction' || target.action === 'sermonPreparationCheckActions') {
       metadataHistory.push({ field: target.field, value: displaced.value.value ?? null, winner: displaced.winnerValue.value ?? null,
         actionTime: displaced.actionTime, winnerActionTime: displaced.winnerActionTime });
       continue;
@@ -852,6 +852,21 @@ export async function listSermonGoalTypeHistory(owner: string, sermonId: string,
   const resource = { collection: 'sermons', id: sermonId };
   const page = await listHistoryEntries<SermonGoalTypeHistoryPage['entries'][number]>(owner, resource, SERMON_GOAL_TYPE_HISTORY, generation, cursor, 'sermon-gone');
   return { owner, sermonId, generation, ...page, entries: page.entries.filter(entry => isSermonGoalType(entry.type) && isSermonGoalType(entry.winnerType)) };
+}
+
+export async function listSermonPreparationConfirmationHistory(
+  owner: string, sermonId: string, generation: string, cursor?: string,
+): Promise<SermonPreparationConfirmationHistoryPage> {
+  const resource = { collection: 'sermons', id: sermonId };
+  const page = await listHistoryEntries<SermonPreparationConfirmationHistoryPage['entries'][number]>(
+    owner, resource, DOCUMENT_METADATA_HISTORY, generation, cursor, 'sermon-gone',
+  );
+  const entries = page.entries.flatMap(entry => {
+    const fields = Array.isArray(entry.fields) ? entry.fields.filter(item => item && Object.hasOwn(preparationConfirmationPaths, item.field)
+      && typeof item.value === 'boolean' && typeof item.winner === 'boolean') : [];
+    return fields.length ? [{ id: entry.id, fields }] : [];
+  });
+  return { owner, sermonId, generation, ...page, entries };
 }
 
 export async function listSermonChurchHistory(owner: string, sermonId: string, generation: string, cursor?: string): Promise<SermonChurchHistoryPage> {

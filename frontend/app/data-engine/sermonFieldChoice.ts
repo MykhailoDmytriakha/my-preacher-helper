@@ -1,6 +1,7 @@
+import { preparationConfirmationField } from '@/utils/preparationFieldValues';
 import { applyScopedThoughtPlacement, completeStoredThoughtPlacement } from '@/utils/thoughtOrdering';
 
-import { equalValues, object, readField } from './fieldValues';
+import { equalValues, object, readField, writeField } from './fieldValues';
 import { mergeDocumentFields } from './protocol';
 import { readThoughtLockConflict, thoughtLockConflictId } from './thoughtLockAction';
 import { projectThoughtMoveFields, readThoughtPlacementChoice, thoughtPlacementConflictId } from './thoughtPlacementAction';
@@ -10,6 +11,7 @@ import type { Sermon, ThoughtsBySection } from '@/models/models';
 
 export function comparableSermonField(path: readonly string[]): boolean {
   return (path.length === 1 && path[0] === 'verse')
+    || preparationConfirmationField(path) !== undefined
     || (path.length === 3 && path[0] === 'preachDates' && path[1].startsWith('id:') && path[2] === 'date');
 }
 
@@ -33,6 +35,7 @@ function withField(data: DocumentData, field: string, selected: FieldValue): Doc
 
 function withSelectedField(data: DocumentData, path: string[], selected: FieldValue): DocumentData | undefined {
   if (path[0] === 'verse') return withField(data, 'verse', selected);
+  if (preparationConfirmationField(path)) return writeField(data, path, selected);
   const [field, id, leaf] = path;
   const rows = data[field];
   if (!Array.isArray(rows) || !rows.some(value => isRow(value, id))) return undefined;

@@ -13,6 +13,7 @@ interface SpiritualStepContentProps {
   setPrepDraft: (p: Preparation) => void;
   savePreparation: (p: Preparation) => void | Promise<void>;
   formatSuperscriptVerses: (text: string) => string;
+  confirmationHistory?: React.ReactNode;
 }
 
 const SpiritualStepContent: React.FC<SpiritualStepContentProps> = ({
@@ -20,6 +21,7 @@ const SpiritualStepContent: React.FC<SpiritualStepContentProps> = ({
   setPrepDraft,
   savePreparation,
   formatSuperscriptVerses,
+  confirmationHistory,
 }) => {
   const { t } = useTranslation();
   return (
@@ -145,6 +147,7 @@ const SpiritualStepContent: React.FC<SpiritualStepContentProps> = ({
                 {prepDraft?.spiritual?.readAndPrayedConfirmed ? t('wizard.steps.spiritual.prayer.done') : t('wizard.steps.spiritual.prayer.mark')}
               </label>
             </div>
+            {confirmationHistory}
           </div>
         </div>
       </div>

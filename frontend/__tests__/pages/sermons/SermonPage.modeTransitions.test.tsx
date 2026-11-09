@@ -68,6 +68,7 @@ let mockCore: ReturnType<typeof useSermonCoreDataDocument>;
 jest.mock('@/data-engine/react.client', () => ({
   // The real module first: a blanket mock breaks here whenever the module gains an export.
   ...jest.requireActual('@/data-engine/react.client'),
+  useOpenDocumentAnswerScopes: () => [],
   DataDocumentProvider: jest.fn(({ children }: { children: React.ReactNode }) => <div data-testid="document-provider">{children}</div>),
 }));
 // The engine writer itself is exercised in SermonOutline.engineWriter.test.tsx; here only which door the page hands out.
@@ -81,7 +82,7 @@ jest.mock('@/(pages)/(private)/sermons/[id]/hooks/useSermonCoreDataDocument', ()
   useSermonCoreDataDocument: jest.fn(() => mockCore),
 }));
 jest.mock('@/(pages)/(private)/sermons/[id]/hooks/useSermonThoughtsDataDocument', () => ({
-  useSermonThoughtsDataDocument: jest.fn(() => ({ patchThought: jest.fn(async () => undefined), deleteThought: jest.fn(async () => undefined) })),
+  useSermonThoughtsDataDocument: jest.fn(() => ({ setThoughtPlacement: jest.fn(async () => undefined), deleteThought: jest.fn(async () => undefined) })),
 }));
 jest.mock('@/components/thought/EngineThoughtModal', () => ({ EngineThoughtModal: jest.fn(() => <div data-testid="engine-thought-modal" />) }));
 jest.mock('@/(pages)/(private)/sermons/[id]/components/EngineScratchWorkspace', () => ({
@@ -154,7 +155,8 @@ describe('SermonPage mode transitions', () => {
       confirmed: { resource: { collection: 'sermons', id: 'abc' }, value: data, metadata: { protocol: 1, generation: 'g', revision: 2, deleted: false } },
       status: null, error: null, loading: false, isReadOnly: false,
       retry: jest.fn(async () => undefined), patchCore: jest.fn(async () => ({ delivery: 'queued' as const })),
-      patchPreparation: jest.fn(async () => ({ delivery: 'queued' as const })), keepLocal: jest.fn(), acceptRemote: jest.fn(),
+      patchPreparation: jest.fn(async () => ({ delivery: 'queued' as const })),
+      setPreparationConfirmation: jest.fn(async () => undefined), keepLocal: jest.fn(), acceptRemote: jest.fn(),
       titleBinding: { active: false, busy: false, value: data.title, begin: jest.fn(), update: jest.fn(), save: jest.fn(), cancel: jest.fn() },
       verseBinding: { active: false, busy: false, value: data.verse, begin: jest.fn(), update: jest.fn(), save: jest.fn(), cancel: jest.fn() },
       authorIntentField: preparationBinding(''), modernTranslationField: preparationBinding(''),
@@ -298,9 +300,10 @@ searchParamsMock.set('mode', 'prep');
     await spiritual.savePreparation({ textContext: { contextNotes: 'Stale accidental sibling' }, spiritual: { readAndPrayedConfirmed: true } });
     await exegetical.authorIntentField!.save('My intention');
     await text.fields!.verse!.save('Acts 1');
-    expect(mockCore.patchPreparation).toHaveBeenCalledTimes(2);
-    expect(mockCore.patchPreparation).toHaveBeenCalledWith({ textContext: { readWholeBookOnceConfirmed: false } });
-    expect(mockCore.patchPreparation).toHaveBeenCalledWith({ spiritual: { readAndPrayedConfirmed: true } });
+    expect(mockCore.patchPreparation).not.toHaveBeenCalled();
+    expect(mockCore.setPreparationConfirmation).toHaveBeenCalledTimes(2);
+    expect(mockCore.setPreparationConfirmation).toHaveBeenCalledWith('readWholeBookOnceConfirmed', false);
+    expect(mockCore.setPreparationConfirmation).toHaveBeenCalledWith('readAndPrayedConfirmed', true);
     expect(mockCore.textContextFields.passageSummary.save).toHaveBeenCalledWith('My summary');
     expect(mockCore.textContextFields.contextNotes.save).toHaveBeenCalledWith('My context');
     expect(mockCore.textContextFields.repeatedWords.save).toHaveBeenCalledWith('');
@@ -610,7 +613,7 @@ mockCore.data = null; mockCore.loading = false;
     expect(list.isReadOnly).toBe(false);
     const actions = jest.mocked(useSermonThoughtsDataDocument).mock.results.at(-1)!.value;
     await act(async () => { await list.onThoughtOutlinePointChange!(thought, 'point', 'sub'); });
-    expect(actions.patchThought).toHaveBeenCalledWith('thought', { outlinePointId: 'point', subPointId: 'sub' });
+    expect(actions.setThoughtPlacement).toHaveBeenCalledWith(thought, 'point', 'sub');
     await act(async () => { list.onDelete('thought'); });
     expect(actions.deleteThought).toHaveBeenCalledWith('thought');
     act(() => { list.onEditStart(thought, 0); });

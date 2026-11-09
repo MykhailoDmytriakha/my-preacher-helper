@@ -17,9 +17,10 @@ interface TextContextStepContentProps {
   fields?: Partial<Record<TextContextField, PreparationTextBinding>>;
   readWholeBookOnceConfirmed?: boolean;
   onToggleReadWholeBookOnce?: (checked: boolean) => Promise<void> | void;
+  confirmationHistory?: React.ReactNode;
 }
 
-const TextContextStepContent: React.FC<TextContextStepContentProps> = ({ fields = {}, readWholeBookOnceConfirmed = false, onToggleReadWholeBookOnce }) => {
+const TextContextStepContent: React.FC<TextContextStepContentProps> = ({ fields = {}, readWholeBookOnceConfirmed = false, onToggleReadWholeBookOnce, confirmationHistory }) => {
   const { t } = useTranslation();
 
   return (
@@ -67,6 +68,7 @@ const TextContextStepContent: React.FC<TextContextStepContentProps> = ({ fields 
           />
           <span className="text-sm">{t('wizard.steps.textContext.confirmation.readWholeBookOnce')}</span>
         </label>
+        {confirmationHistory}
       </div>
 
       {/* Section 3: Find context */}

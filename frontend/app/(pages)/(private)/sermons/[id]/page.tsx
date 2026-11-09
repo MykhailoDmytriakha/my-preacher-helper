@@ -68,6 +68,7 @@ import { useSermonThoughtsDataDocument } from './hooks/useSermonThoughtsDataDocu
 import { useThoughtPlacementComparison } from './structure/ThoughtLockHistory';
 
 import type { Sermon, Thought, Preparation, BrainstormSuggestion } from "@/models/models";
+import type { PreparationConfirmation } from "@/utils/preparationFieldValues";
 import type { ReactNode } from "react";
 
 export const dynamic = "force-dynamic";
@@ -260,9 +261,6 @@ function SermonPageContent({ id }: { id: string }) {
     }
   }, [modeParam, id]);
 
-  const savePrepField = useCallback(async (field: keyof Preparation, value: unknown, child?: string) => {
-    await core.patchPreparation({ [field]: child ? { [child]: value } : value } as Partial<Preparation>);
-  }, [core]);
   // One answer of the homiletical thesis, keeping the other answers (BUG-20261011-thesis-answers-save-nowhere).
 
   const { allTags } = useTags(sermon?.userId);
@@ -547,20 +545,30 @@ function SermonPageContent({ id }: { id: string }) {
       },
     ];
 
+    const confirmationHistory = (confirmation: PreparationConfirmation, current: boolean) => {
+      const generation = core.confirmed?.metadata?.generation;
+      if (!user?.uid || !id || !generation) return null;
+      return <DocumentFieldHistory key={JSON.stringify([user.uid, id, generation, confirmation])}
+        session={{ owner: user.uid, sermonId: id, generation, field: 'preparation-confirmation', confirmation,
+          restore: checked => core.setPreparationConfirmation(confirmation, checked) }}
+        current={current} disabled={isReadOnly || core.status?.phase === 'conflict'} />;
+    };
     const prepStepContentById: Record<PrepStepId, ReactNode> = {
       spiritual: (
         <SpiritualStepContent
           prepDraft={prepDraft}
           setPrepDraft={() => undefined}
-          savePreparation={next => savePrepField('spiritual', next.spiritual?.readAndPrayedConfirmed, 'readAndPrayedConfirmed')}
+          savePreparation={next => core.setPreparationConfirmation('readAndPrayedConfirmed', Boolean(next.spiritual?.readAndPrayedConfirmed))}
           formatSuperscriptVerses={formatSuperscriptVerses}
+          confirmationHistory={confirmationHistory('readAndPrayedConfirmed', isSpiritualDone)}
         />
       ),
       textContext: (
         <TextContextStepContent
           fields={core.textContextFields}
           readWholeBookOnceConfirmed={Boolean(prepDraft?.textContext?.readWholeBookOnceConfirmed)}
-          onToggleReadWholeBookOnce={(checked) => savePrepField('textContext', checked, 'readWholeBookOnceConfirmed')}
+          onToggleReadWholeBookOnce={(checked) => core.setPreparationConfirmation('readWholeBookOnceConfirmed', checked)}
+          confirmationHistory={confirmationHistory('readWholeBookOnceConfirmed', Boolean(prepDraft?.textContext?.readWholeBookOnceConfirmed))}
         />
       ),
       exegeticalPlan: (

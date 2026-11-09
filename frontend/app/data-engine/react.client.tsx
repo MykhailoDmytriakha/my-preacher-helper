@@ -1037,11 +1037,14 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
     /** Freeze the intended save before any asynchronous draft persistence. */
     commit: (updater: (current: DocumentData | null) => DocumentData | null,
       action?: 'bible-mark-stroke' | 'council-lifecycle' | { kind: 'thought-placement'; rowId: string }
+        | Pick<Extract<EditorCommitAction, { kind: 'sermon-preparation-check' }>, 'kind' | 'field'>
         | Extract<EditorCommitAction, { kind: 'council-assembly' | 'council-topic-kind' }>) => {
-      const time = owner && (typeof action === 'string' || action?.kind === 'thought-placement') ? actionClock.capture(owner) : undefined;
+      const timed = typeof action === 'string' || action?.kind === 'thought-placement' || action?.kind === 'sermon-preparation-check';
+      const time = owner && timed ? actionClock.capture(owner) : undefined;
       const checkpoint = current?.state.checkpoint;
       const shown = checkpoint && { confirmed: checkpoint.confirmed, draft: checkpoint.draft, editGeneration: checkpoint.editGeneration };
-      const capture = typeof action === 'object' ? (action.kind === 'thought-placement' ? { ...action, time: time ?? null, shown } : action)
+      const capture = typeof action === 'object' ? (action.kind === 'thought-placement' ? { ...action, time: time ?? null, shown }
+        : action.kind === 'sermon-preparation-check' ? { ...action, time: time ?? null } : action)
         : action === 'council-lifecycle' ? { kind: action, time: time ?? null } as const
           : time ? { kind: 'bible-mark-stroke', time } as const : undefined;
       cancelScheduledSave();

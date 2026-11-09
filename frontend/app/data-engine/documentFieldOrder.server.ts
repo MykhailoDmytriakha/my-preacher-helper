@@ -45,7 +45,8 @@ function previousField(raw: unknown, current: ResourceSnapshot, target: Document
 }
 
 function readAction(command: Extract<DataCommand, { kind: 'update' }>, change: FieldChange, revision: number, serverMs: number, target: DocumentFieldTarget): DocumentFieldObservation<FieldValue> | undefined {
-  const action: unknown = target.action === 'seriesFieldActions' ? command.seriesFieldActions?.[target.field] : command[target.action];
+  const action: unknown = target.action === 'seriesFieldActions' ? command.seriesFieldActions?.[target.field]
+    : target.action === 'sermonPreparationCheckActions' ? command.sermonPreparationCheckActions?.[target.field] : command[target.action];
   const { before, after } = change;
   if (!object(action) || ('path' in target && !after.exists) || !acceptsDocumentField(before, target) || !acceptsDocumentField(after, target) || equalValues(before, after)
     || (target.field === 'heldAt' && !matchesCouncilLifecycle(command.changes, change))

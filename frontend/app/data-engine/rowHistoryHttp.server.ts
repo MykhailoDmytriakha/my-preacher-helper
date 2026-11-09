@@ -11,6 +11,7 @@ import {
   listCouncilTopicTitleHistory,
   listGroupFlowHistory,
   listSermonGoalTypeHistory,
+  listSermonPreparationConfirmationHistory,
   listServiceOrderFlagHistory,
   listServiceOrderStepTitleHistory,
   listThoughtLockHistory,
@@ -33,6 +34,7 @@ const histories = {
   stepFlag: { collection: 'serviceOrders', list: listServiceOrderFlagHistory },
   stepTitle: { collection: 'serviceOrders', list: listServiceOrderStepTitleHistory },
   goalType: { collection: 'sermons', list: listSermonGoalTypeHistory },
+  preparationConfirmation: { collection: 'sermons', list: listSermonPreparationConfirmationHistory },
   thoughtLock: { collection: 'sermons', list: listThoughtLockHistory },
   thoughtPlacement: { collection: 'sermons', list: listThoughtPlacementHistory },
 } as const;

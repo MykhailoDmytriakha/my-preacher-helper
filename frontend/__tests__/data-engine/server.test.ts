@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { isCollectionServed } from '@/data-engine/activation';
-import { DataEngineServerError, listBibleMarkHistory, listCouncilMetadataHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listPlanTemplateNameHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listPrayerStatusHistory, listPrayerTitleHistory, listSermonChurchHistory, listSermonGoalTypeHistory, listSermonTitleHistory, listSermonVerseHistory, listSeriesMetadataHistory, listServiceOrderFlagHistory, listServiceOrderStepTitleHistory, listServiceOrderTitleHistory, listStudyNoteTitleHistory, listTagColorHistory, listThoughtLockHistory, listThoughtPlacementHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
+import { DataEngineServerError, listBibleMarkHistory, listCouncilMetadataHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listPlanTemplateNameHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listPrayerStatusHistory, listPrayerTitleHistory, listSermonChurchHistory, listSermonGoalTypeHistory, listSermonPreparationConfirmationHistory, listSermonTitleHistory, listSermonVerseHistory, listSeriesMetadataHistory, listServiceOrderFlagHistory, listServiceOrderStepTitleHistory, listServiceOrderTitleHistory, listStudyNoteTitleHistory, listTagColorHistory, listThoughtLockHistory, listThoughtPlacementHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
 import { collectionHeadId, HEADS_COLLECTION, sequenceId } from '@/data-engine/serverFeed';
 import { DataSession } from '@/data-engine/session';
 import type { DataCommand, FieldValue, ResourceSnapshot } from '@/data-engine/types';
@@ -2514,6 +2514,81 @@ describe('transactional DataEngine server', () => {
         .toMatchObject({ kind: 'acknowledged' });
       expect(await processCommand(owner, savePreparation('phone', preparation('didactic'), 20)))
         .toMatchObject({ kind: 'acknowledged', snapshot: { value: { preparation: preparation('didactic', 'A separately edited sentence') } } });
+    });
+  });
+
+  describe('sermon preparation confirmation chronology', () => {
+    const fields = {
+      prayer: { section: 'spiritual', key: 'readAndPrayedConfirmed' },
+      book: { section: 'textContext', key: 'readWholeBookOnceConfirmed' },
+    } as const;
+    const opening = { spiritual: { readAndPrayedConfirmed: false }, textContext: { readWholeBookOnceConfirmed: false },
+      preachingGoal: { type: 'informative', statement: 'Keep these preparation words' } };
+    const preparation = (field: keyof typeof fields, checked: boolean) => {
+      const { section, key } = fields[field];
+      return { ...opening, [section]: { [key]: checked } };
+    };
+    function saveConfirmation(operationId: string, field: keyof typeof fields, before: boolean, after: boolean,
+      offset: number | null, predecessorOperationId?: string) {
+      const time = offset === null ? null : { earliestMs: 1_800_000_000_000 + offset, latestMs: 1_800_000_000_005 + offset };
+      return {
+        ...update(operationId, 'prep-check-seed'),
+        dependsOn: predecessorOperationId ? [predecessorOperationId] : [],
+        changes: [{ path: ['preparation'], before: { exists: true, value: preparation(field, before) },
+          after: { exists: true, value: preparation(field, after) } }],
+        sermonPreparationCheckActions: { [fields[field].key]: {
+          observedRevision: 1, time, ...(predecessorOperationId && { predecessorOperationId }),
+        } },
+      };
+    }
+    async function seed() {
+      const command = create('prep-check-seed') as Extract<DataCommand, { kind: 'create' }>;
+      expect(await processCommand(command.owner, { ...command, value: { ...command.value, preparation: opening } }))
+        .toMatchObject({ kind: 'acknowledged' });
+      return command.owner;
+    }
+
+    it.each([
+      { field: 'prayer', deskAt: 80, winner: true },
+      { field: 'book', deskAt: 80, winner: true },
+      { field: 'prayer', deskAt: 30, winner: false },
+      { field: 'book', deskAt: 30, winner: false },
+    ] as const)('keeps the known last $field choice when two offline actions arrive after the desk action at $deskAt',
+      async ({ field, deskAt, winner }) => {
+        const owner = await seed();
+        expect(await processCommand(owner, saveConfirmation('desk', field, false, true, deskAt))).toMatchObject({ kind: 'acknowledged' });
+        expect(await processCommand(owner, saveConfirmation('phone-on', field, false, true, 15))).toMatchObject({ kind: 'acknowledged' });
+        expect(await processCommand(owner, saveConfirmation('phone-off', field, true, false, 50, 'phone-on')))
+          .toMatchObject({ kind: 'acknowledged', snapshot: { value: { preparation: preparation(field, winner) } } });
+      });
+
+    it('recovers the displaced setting only for its owner and sermon generation', async () => {
+      const owner = await seed();
+      await processCommand(owner, saveConfirmation('desk', 'book', false, true, 80));
+      await processCommand(owner, saveConfirmation('phone-on', 'book', false, true, 15));
+      await processCommand(owner, saveConfirmation('phone-off', 'book', true, false, 50, 'phone-on'));
+      await expect(listSermonPreparationConfirmationHistory(owner, create('prep-check-seed').resource.id, 'prep-check-seed')).resolves.toMatchObject({
+        owner, generation: 'prep-check-seed', entries: [{ fields: [{ field: 'readWholeBookOnceConfirmed', value: false, winner: true }] }],
+      });
+      await expect(listSermonPreparationConfirmationHistory('another-owner', create('prep-check-seed').resource.id, 'prep-check-seed')).rejects.toThrow();
+      await expect(listSermonPreparationConfirmationHistory(owner, create('prep-check-seed').resource.id, 'previous-generation')).rejects.toThrow();
+    });
+
+    it('asks about the exact checkbox if the matching stored value has an unknown action time', async () => {
+      const owner = await seed();
+      expect(await processCommand(owner, saveConfirmation('desk', 'book', false, true, null))).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(owner, saveConfirmation('phone-on', 'book', false, true, 15))).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(owner, saveConfirmation('phone-off', 'book', true, false, 50, 'phone-on')))
+        .toMatchObject({ kind: 'conflict', conflicts: [{ path: ['preparation', 'textContext', 'readWholeBookOnceConfirmed'] }] });
+    });
+
+    it('merges different confirmations without disturbing the sentence', async () => {
+      const owner = await seed();
+      expect(await processCommand(owner, saveConfirmation('desk', 'book', false, true, 45))).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(owner, saveConfirmation('phone-on', 'prayer', false, true, 15)))
+        .toMatchObject({ kind: 'acknowledged', snapshot: { value: { preparation: {
+          ...opening, spiritual: { readAndPrayedConfirmed: true }, textContext: { readWholeBookOnceConfirmed: true },
+        } } } });
     });
   });
 

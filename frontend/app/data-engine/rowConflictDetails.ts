@@ -1,4 +1,5 @@
 import { DOCUMENT_BOOKKEEPING_FIELDS } from '@/utils/documentBookkeeping';
+import { preparationConfirmationField } from '@/utils/preparationFieldValues';
 
 import { COUNCIL_ASSEMBLY, councilAssemblyRow } from './councilAssemblyAction';
 import { COUNCIL_TOPIC_KIND, councilTopicKindRow } from './councilTopicKindAction';
@@ -148,6 +149,10 @@ export function readSermonConflict(checkpoint: SessionCheckpoint) {
   const [field, rowId, property] = path;
   if (path.length === 1 && field === 'verse' && typeof mine.value === 'string' && typeof stored.value === 'string') {
     return { kind: 'verse' as const, identity, mine: mine.value, stored: stored.value };
+  }
+  const confirmation = preparationConfirmationField(path);
+  if (confirmation && (!mine.exists || typeof mine.value === 'boolean') && (!stored.exists || typeof stored.value === 'boolean')) {
+    return { kind: 'preparation-confirmation' as const, identity, field: confirmation, mine: mine.value === true, stored: stored.value === true };
   }
   if (field !== 'preachDates' || !rowId?.startsWith('id:')) return undefined;
   if (path.length === 3 && property === 'date' && readSermonConflictField(remoteCandidate.value, path.slice(0, 2)).exists) {

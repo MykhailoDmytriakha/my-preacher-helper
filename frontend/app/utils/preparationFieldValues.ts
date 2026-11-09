@@ -5,6 +5,18 @@ export type SermonGoalType = NonNullable<NonNullable<Preparation['preachingGoal'
 export const isSermonGoalType = (value: unknown): value is SermonGoalType =>
   value === 'informative' || value === 'proclamation' || value === 'didactic' || value === 'exhortative';
 
+export const preparationConfirmationPaths = {
+  readAndPrayedConfirmed: ['preparation', 'spiritual', 'readAndPrayedConfirmed'],
+  readWholeBookOnceConfirmed: ['preparation', 'textContext', 'readWholeBookOnceConfirmed'],
+} as const;
+export type PreparationConfirmation = keyof typeof preparationConfirmationPaths;
+
+export function preparationConfirmationField(path: readonly string[]): PreparationConfirmation | undefined {
+  const field = path[2] as PreparationConfirmation;
+  if (path.length !== 3 || !Object.hasOwn(preparationConfirmationPaths, field)) return undefined;
+  return preparationConfirmationPaths[field].every((part, index) => part === path[index]) ? field : undefined;
+}
+
 /** Raw field views and explicit-save normalization; no storage or delivery ownership. */
 export interface PreparationValue<T> {
   read(value: Json | undefined): T;

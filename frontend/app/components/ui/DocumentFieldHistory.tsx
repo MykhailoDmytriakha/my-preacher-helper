@@ -6,16 +6,18 @@ import { requestOwnerJson } from '@/services/ownerHttpTransport.client';
 import { storedFieldValue } from '@/utils/storedFieldValue';
 import { useTranslation } from '@locales/useTranslation';
 
-import type { GroupStatusHistoryPage, GroupTitleHistoryPage, PlanTemplateNameHistoryPage, PrayerTitleHistoryPage, SermonChurchHistoryPage, SermonGoalTypeHistoryPage, SermonTitleHistoryPage, SermonVerseHistoryPage, ServiceOrderTitleHistoryPage, StudyNoteTitleHistoryPage } from '@/data-engine/documentFieldAction';
+import type { GroupStatusHistoryPage, GroupTitleHistoryPage, PlanTemplateNameHistoryPage, PrayerTitleHistoryPage, SermonChurchHistoryPage, SermonGoalTypeHistoryPage, SermonPreparationConfirmationHistoryPage, SermonTitleHistoryPage, SermonVerseHistoryPage, ServiceOrderTitleHistoryPage, StudyNoteTitleHistoryPage } from '@/data-engine/documentFieldAction';
 import type { Church } from '@/models/models';
+import type { PreparationConfirmation } from '@/utils/preparationFieldValues';
 
-type DocumentHistoryPage = PlanTemplateNameHistoryPage | StudyNoteTitleHistoryPage | ServiceOrderTitleHistoryPage | PrayerTitleHistoryPage | GroupTitleHistoryPage | GroupStatusHistoryPage | SermonTitleHistoryPage | SermonVerseHistoryPage | SermonChurchHistoryPage | SermonGoalTypeHistoryPage;
-type HistoryValue = string | Church | null;
+type DocumentHistoryPage = PlanTemplateNameHistoryPage | StudyNoteTitleHistoryPage | ServiceOrderTitleHistoryPage | PrayerTitleHistoryPage | GroupTitleHistoryPage | GroupStatusHistoryPage | SermonTitleHistoryPage | SermonVerseHistoryPage | SermonChurchHistoryPage | SermonGoalTypeHistoryPage | SermonPreparationConfirmationHistoryPage;
+type HistoryValue = string | Church | boolean | null;
 type HistoryEntry = { id: string; value: HistoryValue; winner: HistoryValue };
 type HistoryPage = { entries: HistoryEntry[]; nextCursor: string | null };
 type HistorySession = { owner: string; generation: string } & (
   (({ orderId: string } | { templateId: string } | { noteId: string } | { prayerId: string } | { groupId: string; field?: 'status' } | { sermonId: string; field?: 'verse' | 'goal-type' }) & { restore: (value: string) => Promise<void> })
   | { sermonId: string; field: 'church'; restore: (value: Church | null) => Promise<void> }
+  | { sermonId: string; field: 'preparation-confirmation'; confirmation: PreparationConfirmation; restore: (value: boolean) => Promise<void> }
 );
 
 function sameHistoryValue(left: HistoryValue, right: HistoryValue): boolean {
@@ -47,6 +49,11 @@ const historyLabels = {
     failed: 'common.goalTypeHistoryRestoreFailed', empty: 'common.goalTypeHistoryEmpty', kept: 'common.goalTypeHistoryKept',
     current: 'common.goalTypeHistoryCurrent', restore: 'common.goalTypeHistoryRestore', more: 'common.goalTypeHistoryMore',
   },
+  'preparation-confirmation': {
+    heading: 'common.confirmationHistory', loading: 'common.confirmationHistoryLoading', unavailable: 'common.confirmationHistoryUnavailable',
+    failed: 'common.confirmationHistoryRestoreFailed', empty: 'common.confirmationHistoryEmpty', kept: 'common.confirmationHistoryKept',
+    current: 'common.confirmationHistoryCurrent', restore: 'common.confirmationHistoryRestore', more: 'common.confirmationHistoryMore',
+  },
   verse: {
     heading: 'common.verseHistory', loading: 'common.verseHistoryLoading', unavailable: 'common.verseHistoryUnavailable',
     failed: 'common.verseHistoryRestoreFailed', empty: 'common.verseHistoryEmpty', kept: 'common.verseHistoryKept',
@@ -73,6 +80,7 @@ export function DocumentFieldHistory({ session, current, disabled }: { session: 
   const endpoint = field + '-history';
   const heading = t(labels.heading);
   const format = (value: HistoryValue) => {
+    if (typeof value === 'boolean') return t(value ? 'common.confirmationChecked' : 'common.confirmationUnchecked');
     if (typeof value !== 'string') return value ? [value.name, value.city].filter(Boolean).join(', ') : t(field === 'title' ? 'common.untitled' : 'calendar.unspecifiedChurch');
     if (field === 'goal-type') return String(storedFieldValue(t, 'sermons.preparation.preachingGoal', 'type', value));
     return field === 'status' ? String(storedFieldValue(t, 'groups', 'status', value)) : value || t('common.untitled');
@@ -97,12 +105,18 @@ export function DocumentFieldHistory({ session, current, disabled }: { session: 
       );
       const returnedId = Object.hasOwn(value, key) ? Reflect.get(value, key) : undefined;
       if (value.owner !== owner || returnedId !== resourceId || value.generation !== generation || !Array.isArray(value.entries)) throw new Error(unavailable);
-      const entries = value.entries.map(entry => 'status' in entry
-        ? { id: entry.id, value: entry.status, winner: entry.winnerStatus }
-        : 'verse' in entry ? { id: entry.id, value: entry.verse, winner: entry.winnerVerse }
-          : 'type' in entry ? { id: entry.id, value: entry.type, winner: entry.winnerType }
-            : 'church' in entry ? { id: entry.id, value: entry.church, winner: entry.winnerChurch }
-            : { id: entry.id, value: entry.title, winner: entry.winnerTitle });
+      const entries = value.entries.flatMap((entry): HistoryEntry[] => {
+        if ('fields' in entry) {
+          if (!('confirmation' in session)) return [];
+          return entry.fields.filter(item => item.field === session.confirmation)
+            .map(item => ({ id: entry.id, value: item.value, winner: item.winner }));
+        }
+        if ('status' in entry) return [{ id: entry.id, value: entry.status, winner: entry.winnerStatus }];
+        if ('verse' in entry) return [{ id: entry.id, value: entry.verse, winner: entry.winnerVerse }];
+        if ('type' in entry) return [{ id: entry.id, value: entry.type, winner: entry.winnerType }];
+        if ('church' in entry) return [{ id: entry.id, value: entry.church, winner: entry.winnerChurch }];
+        return [{ id: entry.id, value: entry.title, winner: entry.winnerTitle }];
+      });
       setPage(previous => ({ nextCursor: value.nextCursor, entries: [...(cursor ? previous?.entries ?? [] : []), ...entries] }));
     } catch { setError('load'); }
     finally { setLoading(false); }
@@ -111,8 +125,10 @@ export function DocumentFieldHistory({ session, current, disabled }: { session: 
     setRestoring(true);
     setError(undefined);
     try {
-      if ('field' in session && session.field === 'church') {
-        if (typeof next !== 'string') await session.restore(next);
+      if ('confirmation' in session) {
+        if (typeof next === 'boolean') await session.restore(next);
+      } else if ('field' in session && session.field === 'church') {
+        if (next === null || typeof next === 'object') await session.restore(next);
       } else if (typeof next === 'string') await session.restore(next);
       else if (next === null && 'noteId' in session) await session.restore('');
     }
@@ -127,7 +143,7 @@ export function DocumentFieldHistory({ session, current, disabled }: { session: 
       {loading && <p role="status">{t(labels.loading)}</p>}
       {error && <p role="alert">{error === 'load' ? t(labels.unavailable)
         : t(labels.failed)}</p>}
-      {page?.entries.length === 0 && <p>{t(labels.empty)}</p>}
+      {page?.entries.length === 0 && !page.nextCursor && <p>{t(labels.empty)}</p>}
       {page && page.entries.length > 0 && <ul className="space-y-2">
         {page.entries.map(entry => <li key={entry.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-200 px-3 py-2 dark:border-gray-700">
           <div className="min-w-0 break-words">

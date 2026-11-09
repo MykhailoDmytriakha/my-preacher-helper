@@ -2,6 +2,7 @@ import { manualFormDecision } from '@/components/common/manualTextBinding';
 import { usePublishShellTitle } from '@/components/navigation/shellTitles';
 import { sermonConflictComparison } from '@/components/sermon/sermonConflictComparison';
 import { useDataDocument, useDataEngine, useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
+import { preparationConfirmationPaths, type PreparationConfirmation } from '@/utils/preparationFieldValues';
 import { useTranslation } from '@locales/useTranslation';
 
 import { useSermonPreparationFields } from './useSermonPreparationFields';
@@ -55,19 +56,23 @@ export function useSermonCoreDataDocument(sermonId: string | null) {
     if (!current || current.userId !== owner) throw new Error(NOT_EDITABLE);
     return update(current);
   };
-  const commit = async (update: (current: DocumentData) => DocumentData): Promise<QueuedCoreDelivery> => {
+  const commit = async (update: (current: DocumentData) => DocumentData, action?: { kind: 'sermon-preparation-check'; field: PreparationConfirmation }): Promise<QueuedCoreDelivery> => {
     if (isReadOnly) throw new Error(NOT_EDITABLE);
-    await document.commit(owned(update));
+    await document.commit(owned(update), action);
     return { delivery: 'queued' };
   };
   const patchCore = (patch: SermonCorePatch) => commit(current => {
     if (Object.keys(patch).some(key => !coreFields.has(key))) throw new Error('Unsupported sermon core field');
     return patchFields(current, patch);
   });
-  const patchPreparation = (patch: Partial<Preparation>) => commit(current => ({
+  const patchPreparation = (patch: Partial<Preparation>, field?: PreparationConfirmation) => commit(current => ({
     ...current,
     preparation: patchFields((current.preparation ?? {}) as DocumentData, patch, true),
-  }));
+  }), field && { kind: 'sermon-preparation-check', field });
+  const setPreparationConfirmation = async (field: PreparationConfirmation, checked: boolean) => {
+    const [, section] = preparationConfirmationPaths[field];
+    await patchPreparation({ [section]: { [field]: checked } }, field);
+  };
   /**
    * Typing: the change goes into the open document's draft, applied to its newest preparation; the
    * document saves it after a short pause, when the page is hidden and when it is left.
@@ -140,6 +145,7 @@ export function useSermonCoreDataDocument(sermonId: string | null) {
     isReadOnly,
     patchCore,
     patchPreparation,
+    setPreparationConfirmation,
     editPreparation,
   };
 }
