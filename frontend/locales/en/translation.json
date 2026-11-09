@@ -1657,6 +1657,18 @@
     "noRequiredTags": "No required tags",
     "tagName": "Tag Name",
     "tagColor": "Tag Color",
+    "tagColorHistory": {
+      "heading": "Color history",
+      "loading": "Loading color history…",
+      "unavailable": "Could not load color history.",
+      "restoreFailed": "Could not restore this color.",
+      "empty": "No earlier colors.",
+      "kept": "Kept {{value}}",
+      "current": "Current color",
+      "restore": "Use this color",
+      "more": "More colors",
+      "notSet": "No color set"
+    },
     "editColorFor": "Edit Color for",
     "presetColors": "Preset Colors",
     "customColor": "Custom Color",

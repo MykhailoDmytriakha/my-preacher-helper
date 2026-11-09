@@ -9,7 +9,7 @@ import { COUNCIL_TOPIC_TITLE_POLICY } from './councilTopicTitleAction';
 import { captureCouncilTopicTitles, matchingCouncilTopicTitles } from './councilTopicTitleAutosave';
 import { capturedDateBaseline, captureDatedRowAction, datedRowTarget, existingRowDate, matchesDatedRowChange, MEETING_DATE_TARGET, replaceExistingDate, type DatedRowActionCapture, type DatedRowActionEvidence } from './datedRowAction';
 import { captureDeleteOrder, deleteOrderReady, replayDeleteOrder } from './deletionOrdering';
-import { captureDocumentMetadataFields, capturedDocumentField, capturePlanTemplateName, capturePrayerStatusFields, capturePrayerTitle, captureServiceOrderTitle, captureStudyNoteTitle, documentFieldCommandAncestor, documentFieldTargets, matchesPlanTemplateNameRequest, matchesPrayerTitleRequest, matchesStudyNoteTitleRequest, uncapturedAutosaveFields, withDocumentFieldAction } from './documentFieldAction';
+import { captureDocumentMetadataFields, capturedDocumentField, capturePlanTemplateName, capturePrayerStatusFields, capturePrayerTitle, captureServiceOrderTitle, captureStudyNoteTitle, captureTagColor, documentFieldCommandAncestor, documentFieldTargets, matchesPlanTemplateNameRequest, matchesPrayerTitleRequest, matchesStudyNoteTitleRequest, matchesTagColorRequest, uncapturedAutosaveFields, withDocumentFieldAction } from './documentFieldAction';
 import { commandReferenceResources, documentReferenceResources, referenceReadiness } from './documentReferences';
 import { prepareDomainCommand, requiredDomainTargets } from './domainPolicy';
 import { areDifferentTabManualParents, readManualScopeIdentity } from './editorIdentity';
@@ -83,6 +83,7 @@ export interface CommitRequest extends CouncilFieldActions, PrayerStatusObservat
   prayerTitleAction?: DocumentFieldObservation;
   studyNoteTitleAction?: DocumentFieldObservation<FieldValue>;
   planTemplateNameAction?: DocumentFieldObservation;
+  tagColorAction?: DocumentFieldObservation;
   sermonTitleAction?: DocumentFieldObservation;
   sermonVerseAction?: DocumentFieldObservation;
   sermonChurchAction?: SermonChurchObservation;
@@ -186,6 +187,7 @@ export function assertCommitCapture(current: CommitRequest, incoming: CommitRequ
     || !equalValues(current.prayerTitleAction ?? null, incoming.prayerTitleAction ?? null)
     || !equalValues(current.studyNoteTitleAction ?? null, incoming.studyNoteTitleAction ?? null)
     || !equalValues(current.planTemplateNameAction ?? null, incoming.planTemplateNameAction ?? null)
+    || !equalValues(current.tagColorAction ?? null, incoming.tagColorAction ?? null)
     || !equalValues(current.prayerStatusAction ?? null, incoming.prayerStatusAction ?? null)
     || !equalValues(current.prayerAnsweredAtAction ?? null, incoming.prayerAnsweredAtAction ?? null)
     || !equalValues(current.sermonTitleAction ?? null, incoming.sermonTitleAction ?? null)
@@ -305,7 +307,7 @@ function pendingRowFields(record: CommitRequest) {
 }
 
 function hasTimedAncestor(record: CommitRequest): boolean {
-  return record.sequence === 0 && Boolean(record.serviceOrderTitleAction || record.prayerTitleAction || record.planTemplateNameAction || record.studyNoteTitleAction || record.prayerStatusAction || record.prayerAnsweredAtAction || record.sermonTitleAction || record.sermonVerseAction || record.sermonChurchAction || record.seriesFieldActions || record.groupTitleAction || record.groupStatusAction || record.councilTitleAction || record.councilDateAction || record.councilLifecycleAction || pendingBibleMarkRebase(record) || pendingMeetingDateRebase(record) || pendingRowFields(record).length || pendingPreachStatusActions(record).length);
+  return record.sequence === 0 && Boolean(record.serviceOrderTitleAction || record.prayerTitleAction || record.planTemplateNameAction || record.tagColorAction || record.studyNoteTitleAction || record.prayerStatusAction || record.prayerAnsweredAtAction || record.sermonTitleAction || record.sermonVerseAction || record.sermonChurchAction || record.seriesFieldActions || record.groupTitleAction || record.groupStatusAction || record.councilTitleAction || record.councilDateAction || record.councilLifecycleAction || pendingBibleMarkRebase(record) || pendingMeetingDateRebase(record) || pendingRowFields(record).length || pendingPreachStatusActions(record).length);
 }
 
 function freezeSaveOptions(options: CommitSaveOptions | undefined): CommitSaveOptions | undefined {
@@ -472,7 +474,7 @@ export class CommitQueue {
       : editorAction?.kind === 'service-order-step-title' ? { field: 'title' as const, change: editorAction.title } : undefined;
     const assembly = editorAction?.kind === 'council-assembly' ? editorAction.flag : undefined;
     const topicKind = editorAction?.kind === 'council-topic-kind' ? editorAction.topicKind : undefined;
-    if (!step && !assembly && !topicKind && editorAction?.kind !== 'service-order-title' && editorAction?.kind !== 'prayer-title' && editorAction?.kind !== 'study-note-title' && editorAction?.kind !== 'plan-template-name' && editorAction?.kind !== 'prayer-status'
+    if (!step && !assembly && !topicKind && editorAction?.kind !== 'service-order-title' && editorAction?.kind !== 'prayer-title' && editorAction?.kind !== 'study-note-title' && editorAction?.kind !== 'plan-template-name' && editorAction?.kind !== 'tag-color' && editorAction?.kind !== 'prayer-status'
       && !frozenOptions?.transfer && !intent.dirty && (!predecessor || equalValues(predecessor.value, intent.draft))) return null;
     if (intent.conflicts.length) throw Object.assign(new Error('Resolve the conflict before saving'), { code: 'resolve-version-first' });
     const baseline = clone(intent.confirmed);
@@ -496,6 +498,10 @@ export class CommitQueue {
     const templateRequestId = templateCapture?.seen.requestId;
     const templateName = capturePlanTemplateName(baseline, intent.draft, templateCapture, Boolean(templateCapture && templateRequestId
       && matchesPlanTemplateNameRequest(records.find(record => record.id === templateRequestId), owner, baseline.resource, templateCapture.seen)));
+    const colorCapture = editorAction?.kind === 'tag-color' ? editorAction.color : undefined;
+    const colorRequestId = colorCapture?.seen.requestId;
+    const tagColor = captureTagColor(baseline, intent.draft, colorCapture, Boolean(colorCapture && colorRequestId
+      && matchesTagColorRequest(records.find(record => record.id === colorRequestId), owner, baseline.resource, colorCapture.seen)));
     const prayerStatus = capturePrayerStatusFields(baseline, predecessor, intent.draft,
       editorAction?.kind === 'prayer-status' ? editorAction.status : undefined, records, owner);
     const metadataFields = captureDocumentMetadataFields(baseline, predecessor, intent.draft, frozenOptions?.documentMetadataTime, records);
@@ -514,6 +520,7 @@ export class CommitQueue {
       ...(prayerTitle && { prayerTitleAction: prayerTitle }),
       ...(noteTitle && { studyNoteTitleAction: noteTitle }),
       ...(templateName && { planTemplateNameAction: templateName }),
+      ...(tagColor && { tagColorAction: tagColor }),
       ...prayerStatus,
       ...metadataFields,
       ...autosaveFields,

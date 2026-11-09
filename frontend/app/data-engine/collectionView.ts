@@ -1,10 +1,10 @@
-import { submittedDocumentTitle, submittedPrayerStatus } from './documentFieldAction';
+import { submittedDocumentTitle, submittedPrayerStatus, submittedTagColor } from './documentFieldAction';
 import { DataSession } from './session';
 import { canReplaceSnapshot } from './snapshotFreshness';
 import { submittedWorkCheckpoint } from './submittedWork';
 
 import type { CommitRequest } from './commits';
-import type { DocumentTitleSeen } from './documentFieldAction';
+import type { DocumentTitleSeen, TagColorSeen } from './documentFieldAction';
 import type { PrayerStatusOpening } from './prayerStatusAction';
 import type { DocumentData, JournalEntry, ResourceRef, ResourceSnapshot } from './types';
 
@@ -21,6 +21,7 @@ export interface CollectionDocumentView {
   acknowledged?: ResourceSnapshot;
   /** Exact pending request that supplied the displayed title, never a confirmed snapshot. */
   submittedTitle?: DocumentTitleSeen;
+  submittedColor?: TagColorSeen;
   submittedPrayerStatus?: PrayerStatusOpening;
 }
 
@@ -67,11 +68,13 @@ export function collectionDocumentViews(owner: string, collection: string, snaps
     const needsAttention = !checkpoint || checkpoint.conflicts.length > 0 || unsettled.some(request => ['conflict', 'refused'].includes(request.state));
     const submittedTitle = submittedDocumentTitle(checkpoint, unsettled, needsAttention);
     const prayerStatus = submittedPrayerStatus(checkpoint, unsettled, needsAttention);
+    const submittedColor = submittedTagColor(checkpoint, unsettled, needsAttention);
     // Keep a pending deletion addressable until its acknowledgement; a failed
     // deletion must never remove the only route to its retry/recovery controls.
     views.set(id, { resource, value: checkpoint?.draft ?? confirmed.get(id)?.value ?? checkpoint?.confirmed.value ?? null,
       pending: true, needsAttention, deleting: Boolean(checkpoint && checkpoint.draft === null),
       ...(submittedTitle && { submittedTitle }),
+      ...(submittedColor && { submittedColor }),
       ...(prayerStatus && { submittedPrayerStatus: prayerStatus }),
       ...(acknowledged.has(id) ? { acknowledged: acknowledged.get(id)! } : {}),
       ...(checkpoint && checkpoint.confirmed.value === null && !checkpoint.confirmed.metadata && checkpoint.draft !== null

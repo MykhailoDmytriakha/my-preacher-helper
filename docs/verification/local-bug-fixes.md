@@ -7700,3 +7700,13 @@ Both original device orders conflicted. Two server timing cases, the missing exa
 Six native Chrome scenarios on isolated emulators at 390 and 1280 px covered both action orders, history restore and reload, independent structure edits, successive offline renames, return to the original name and the actual saved-version choice when timing was unknown. The screens were visually checked. Evidence is in artifacts/plan-template-name-verified. Other short fields remain in the chronology audit.
 
 After authorized deployment, confirm the revision. Open Settings → Structure templates and use a disposable template in two owned profiles. Test both name orders with the phone offline, then restore an older name and reload. Confirm the existing outline. Close both profiles and keep forced timing and cancellation on the local stand.
+
+## BUG-20261016-engine-asks-instead-of-chronology · Custom tag color
+
+In Settings → Tag Management, the color picker pins the shown color and Save uses the shared action clock. The later known color remains even when an earlier change arrives last. Color history restores the previous value. An uncertain comparison shows both colors and labels an empty value. The writer preserves the current tag name. Deletion remains separate.
+
+Both original device orders conflicted. The timing, stale-name, missing comparison and blank-value regressions went red to green. 849 tests in 25 related suites, eight translation checks, TypeScript, guarded build 7n8QlssKO9PkbZh6ZMC2D, and independent review passed. Scoped ESLint reported zero errors and 23 warnings.
+
+Seven Chrome scenarios on isolated emulators at 390 and 1280 px covered both action orders, history restore and reload, two successive offline changes, return to the original, unknown timing, an empty value and a deleted tag with an explicit discard of the rejected local color. The phone and desktop screens were visually checked. Evidence is in artifacts/tag-color-chronology-verified. Other short fields remain in the chronology audit.
+
+After authorized deployment, confirm the revision. Test both color orders for one disposable tag in two owned profiles with one offline. Restore a color from history, reload and verify the tag name and its uses. Close both profiles and keep forced faults on the emulator.

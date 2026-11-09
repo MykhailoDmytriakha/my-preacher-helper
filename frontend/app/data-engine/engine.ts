@@ -10,7 +10,7 @@ import { CommitQueue, type CommitRequest, type CommitStore } from './commits';
 import { EditorController, InactiveEditorError, type CheckpointRecoveryStore, type CheckpointStore, type EditorRecord, type EditorState, type RecoveryCheckpoint } from './controller';
 import { captureCouncilCarry, pinCouncilDestination } from './councilCarry';
 import { canReplaceDocumentIntent, isDirectLegacyDocumentIntent, requiresWholeActionResolution, savedDocumentAnswer } from './documentDelivery';
-import { capturePlanTemplateName, capturePrayerTitle, captureStudyNoteTitle, matchesPlanTemplateNameRequest, matchesPrayerStatusOpening, matchesPrayerTitleRequest, matchesStudyNoteTitleRequest, studyNoteTitleValue, validatedTitleCapture } from './documentFieldAction';
+import { capturePlanTemplateName, capturePrayerTitle, captureStudyNoteTitle, captureTagColor, matchesPlanTemplateNameRequest, matchesPrayerStatusOpening, matchesPrayerTitleRequest, matchesStudyNoteTitleRequest, matchesTagColorRequest, studyNoteTitleValue, validatedTitleCapture } from './documentFieldAction';
 import { ACTION_SLOT, areDifferentTabManualParents, editorSlot, isManualChoiceRecoveryIdentity, manualScopeIdentity, readManualScopeIdentity } from './editorIdentity';
 import { AddressedFailures, eachFailure, PausedReadFailure } from './failures';
 import { collectionHeadRef } from './feed';
@@ -1833,6 +1833,16 @@ export class DataEngine {
           if (!capturePlanTemplateName(checkpoint.confirmed, next === checkpoint.draft ? null : next, action.name, known)) {
             if (next !== checkpoint.draft && (checkpoint.confirmed.metadata?.generation !== seen.generation || checkpoint.draft?.name !== seen.title)) {
               throw Object.assign(new Error('The template name changed'), { code: 'plan-template-name-basis-changed' });
+            }
+            captured = undefined;
+          }
+        }
+        if (action?.kind === 'tag-color') {
+          const { seen } = action.color;
+          const known = Boolean(seen.requestId && matchesTagColorRequest(this.commitRecords.get(seen.requestId), owner, frozen, seen));
+          if (!captureTagColor(checkpoint.confirmed, next === checkpoint.draft ? null : next, action.color, known)) {
+            if (next !== checkpoint.draft && (checkpoint.confirmed.metadata?.generation !== seen.generation || checkpoint.draft?.color !== seen.color)) {
+              throw Object.assign(new Error('The tag color changed'), { code: 'tag-color-basis-changed' });
             }
             captured = undefined;
           }

@@ -13,6 +13,8 @@ import {
 import { isStructureTag } from '@/utils/structureTags';
 import { useTranslation } from '@locales/useTranslation';
 
+import type { TagColorCapture, TagColorSeen } from '@/data-engine/documentFieldAction';
+import type { DocumentData } from '@/data-engine/types';
 import type { Tag } from '@/models/models';
 
 type TagPayload = {
@@ -45,11 +47,20 @@ export function useTags(userId: string | null | undefined) {
     debugLog('Tags state', { isOnline, userId, customCount: customTags.length, isLoading: engineTags.loading });
   }, [isOnline, userId, customTags.length, engineTags.loading]);
 
+  const observeColor = (id: string, color: string): TagColorSeen | undefined => {
+    const row = engineTags.state?.documents?.find(item => item.resource.id === id);
+    if (row?.needsAttention) return undefined;
+    if (row?.value?.color === color && row.submittedColor?.color === color) return row.submittedColor;
+    const observed = [row?.acknowledged, engineTags.state?.snapshots?.find(item => item.resource.id === id)].find(snapshot =>
+      snapshot?.value?.color === color && snapshot.value.required === false && snapshot.metadata && !snapshot.metadata.deleted);
+    const metadata = observed?.metadata;
+    return metadata ? { color, generation: metadata.generation, revision: metadata.revision } : undefined;
+  };
   const byName = (name: string) => customTags.find(tag => tag.name === name);
   return {
     tags, requiredTags: NO_TAGS, customTags, allTags: customTags,
     loading: Boolean(userId) && engineTags.loading, error: engineTags.error ? new Error(engineTags.error) : null,
-    refreshTags: engineTags.refresh,
+    refreshTags: engineTags.refresh, observeColor, captureActionTime: documentActions.captureActionTime,
     addCustomTag: (tag: Tag): WriteOperation => {
       if (!userId) return refusedWrite('unauthenticated', 'No signed-in user for this write', t('writeRecovery.refused'));
       const id = tag.id || newClientId();
@@ -65,10 +76,14 @@ export function useTags(userId: string | null | undefined) {
       // The engine removes the tag from every sermon's thoughts in the same operation.
       return documentActions.remove({ collection: 'tags', id: existing.id });
     },
-    updateTag: (tag: Tag): WriteOperation => documentActions.commit(
-      { collection: 'tags', id: tag.id }, current => {
+    updateTag: (tag: Tag, capture?: TagColorCapture): WriteOperation => {
+      const resource = { collection: 'tags', id: tag.id };
+      const recolor = (current: DocumentData | null) => {
         if (!current) throw new Error('The tag was deleted');
-        return { ...current, name: tag.name, color: tag.color, updatedAt: new Date().toISOString() };
-      }),
+        return { ...current, color: tag.color, updatedAt: new Date().toISOString() };
+      };
+      return capture ? documentActions.commit(resource, recolor, { kind: 'tag-color', color: capture })
+        : documentActions.commit(resource, recolor);
+    },
   };
 }

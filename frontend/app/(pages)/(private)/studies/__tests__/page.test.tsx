@@ -175,7 +175,7 @@ describe('StudiesPage', () => {
       refreshTags: jest.fn(),
       addCustomTag: jest.fn(),
       removeCustomTag: jest.fn(),
-      updateTag: jest.fn(),
+      updateTag: jest.fn(), observeColor: jest.fn(), captureActionTime: jest.fn(),
     });
   });
 

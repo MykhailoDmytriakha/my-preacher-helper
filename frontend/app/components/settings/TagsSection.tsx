@@ -5,6 +5,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
 import ConfirmModal from '@/components/ui/ConfirmModal';
+import { DocumentMetadataHistory } from '@/components/ui/DocumentMetadataHistory';
 import { useTags } from '@/hooks/useTags';
 import { Tag } from '@/models/models';
 import { sayFailure } from '@/utils/actionFailureMessage';
@@ -17,9 +18,12 @@ import AddTagForm from './AddTagForm';
 import TagList from './TagList';
 
 
+import type { TagColorSeen } from '@/data-engine/documentFieldAction';
+
 const TAG_SAVE_ERROR = 'common.saveError';
 
 type TagSelection = { owner: string; tag: Tag };
+type ColorSelection = TagSelection & { seen?: TagColorSeen };
 type TagAction = { owner: string; kind: 'color' | 'delete' };
 
 interface TagsSectionProps {
@@ -28,11 +32,11 @@ interface TagsSectionProps {
 
 const TagsSection: React.FC<TagsSectionProps> = ({ user }) => {
   const { t } = useTranslation();
-  const [colorSelection, setColorSelection] = useState<TagSelection | null>(null);
+  const [colorSelection, setColorSelection] = useState<ColorSelection | null>(null);
   const [deleteSelection, setDeleteSelection] = useState<TagSelection | null>(null);
   const [pendingAction, setPendingAction] = useState<TagAction | null>(null);
   const pendingActionRef = useRef<TagAction | null>(null);
-  const { tags, addCustomTag, removeCustomTag, updateTag } = useTags(user?.uid);
+  const { tags, addCustomTag, removeCustomTag, updateTag, observeColor, captureActionTime } = useTags(user?.uid);
   const ownerRef = useRef(user?.uid);
   ownerRef.current = user?.uid;
   const customTagsRef = useRef(tags.customTags);
@@ -122,29 +126,51 @@ const TagsSection: React.FC<TagsSectionProps> = ({ user }) => {
 
   const openColorPicker = (tag: Tag) => {
     const owner = user?.uid;
-    if (owner && pendingActionRef.current?.owner !== owner) setColorSelection({ owner, tag });
+    if (owner && pendingActionRef.current?.owner !== owner) setColorSelection({ owner, tag, seen: observeColor?.(tag.id, tag.color) });
   };
 
-  const handleUpdateColor = async (newColor: string) => {
-    const selection = colorSelection;
-    if (!selection || selection.owner !== user?.uid) return;
+  const saveColor = async (selection: ColorSelection, newColor: string) => {
+    if (selection.owner !== ownerRef.current) return false;
     const action = beginAction('color');
-    if (!action) return;
+    if (!action) return false;
     const reportFailure = (error: unknown) => {
       if (ownerRef.current !== action.owner) return;
       console.error('Error updating tag color:', error);
       toast.error(t(TAG_SAVE_ERROR));
     };
     try {
-      await awaitWriteOperation(updateTag({ ...selection.tag, color: newColor }), reportFailure);
-      if (ownerRef.current === action.owner) {
-        setColorSelection(current => current === selection ? null : current);
-      }
+      const tag = { ...selection.tag, color: newColor };
+      const capture = selection.seen && { seen: selection.seen, time: captureActionTime?.() ?? null };
+      await awaitWriteOperation(capture ? updateTag(tag, capture) : updateTag(tag), reportFailure);
+      return ownerRef.current === action.owner;
     } catch (error) {
       reportFailure(error);
+      return false;
     } finally {
       finishAction(action);
     }
+  };
+
+  const handleUpdateColor = async (newColor: string) => {
+    const selection = colorSelection;
+    if (!selection || selection.owner !== user?.uid) return;
+    if (newColor === selection.tag.color || await saveColor(selection, newColor)) {
+      setColorSelection(current => current === selection ? null : current);
+    }
+  };
+
+  const renderColorHistory = (tag: Tag) => {
+    const owner = user?.uid;
+    const seen = observeColor?.(tag.id, tag.color);
+    if (!owner || !seen) return null;
+    return <DocumentMetadataHistory<'color'> key={JSON.stringify([owner, tag.id, seen.generation])}
+      owner={owner} collection="tags" id={tag.id} generation={seen.generation} current={tag}
+      labels={{ color: 'settings.tagColor' }} prefix="settings.tagColorHistory" nullable={[]}
+      describeValue={(_, value) => value || t('settings.tagColorHistory.notSet')}
+      disabled={() => Boolean(seen.requestId || colorSelection || pendingAction?.owner === owner)}
+      onRestore={async (_, value) => {
+        if (value === null || !await saveColor({ owner, tag, seen }, value)) throw new Error('The tag color could not be restored');
+      }} />;
   };
 
   const handleCancelColorUpdate = () => {
@@ -180,6 +206,7 @@ const TagsSection: React.FC<TagsSectionProps> = ({ user }) => {
             tags={tags.customTags}
             editable={true}
             onEditColor={openColorPicker}
+            renderDetails={renderColorHistory}
             onRemoveTag={handleRemoveTag}
           />
         </div>

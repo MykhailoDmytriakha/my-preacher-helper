@@ -10,13 +10,15 @@ interface TagListProps {
   tags: Tag[];
   editable?: boolean;
   onEditColor?: (tag: Tag) => void;
+  renderDetails?: (tag: Tag) => React.ReactNode;
   onRemoveTag?: (tagName: string) => void;
 }
 
 const TagList: React.FC<TagListProps> = ({ 
   tags, 
   editable = false, 
-  onEditColor, 
+  onEditColor,
+  renderDetails,
   onRemoveTag 
 }) => {
   const { t } = useTranslation();
@@ -74,6 +76,7 @@ const TagList: React.FC<TagListProps> = ({
               {tag.translationKey ? t(tag.translationKey) : tag.name}
             </h3>
             <p className="text-xs text-gray-500 dark:text-gray-400 font-mono mt-1">{tag.color}</p>
+            {renderDetails?.(tag)}
           </div>
           
           {editable && onRemoveTag && (

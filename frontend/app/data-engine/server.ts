@@ -36,7 +36,7 @@ import type { AudioExportKey, AudioExportRecord, AudioExportStore, AudioExportTr
 import type { BibleMarkHistoryEntry, BibleMarkHistoryPage } from './bibleMarkStroke';
 import type { CouncilMetadataHistoryPage } from './councilFieldAction';
 import type { DisplacedRowDate, MeetingDateHistoryPage, PreachDateHistoryPage } from './datedRowAction';
-import type { GroupStatusHistoryPage, GroupTitleHistoryPage, DocumentTitleHistoryEntry, PlanTemplateNameHistoryPage, SermonChurchHistoryPage, PrayerTitleHistoryPage, SermonTitleHistoryPage, SermonVerseHistoryPage, ServiceOrderTitleHistoryPage, StudyNoteTitleHistoryPage } from './documentFieldAction';
+import type { GroupStatusHistoryPage, GroupTitleHistoryPage, DocumentTitleHistoryEntry, PlanTemplateNameHistoryPage, SermonChurchHistoryPage, PrayerTitleHistoryPage, SermonTitleHistoryPage, SermonVerseHistoryPage, ServiceOrderTitleHistoryPage, StudyNoteTitleHistoryPage, TagColorHistoryPage } from './documentFieldAction';
 import type { PrayerStatusHistoryPage } from './prayerStatusAction';
 import type { RowDetailPolicy } from './rowDetailAction';
 import type { RowValue } from './rowFieldAction';
@@ -449,7 +449,7 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
   for (const { target, order } of fieldOrder?.fields ?? []) {
     const displaced = order.displaced;
     if (!displaced || !primarySnapshot.value || !equalValues(readField(primarySnapshot.value, [target.field]), displaced.winnerValue)) continue;
-    if (target.action === 'seriesFieldActions' || target.action === 'councilTitleAction' || target.action === 'councilDateAction' || target.action === 'councilLifecycleAction'
+    if (target.field === 'color' || target.action === 'seriesFieldActions' || target.action === 'councilTitleAction' || target.action === 'councilDateAction' || target.action === 'councilLifecycleAction'
       || target.action === 'prayerStatusAction' || target.action === 'prayerAnsweredAtAction') {
       metadataHistory.push({ field: target.field, value: displaced.value.value ?? null, winner: displaced.winnerValue.value ?? null,
         actionTime: displaced.actionTime, winnerActionTime: displaced.winnerActionTime });
@@ -790,6 +790,12 @@ export async function listSermonChurchHistory(owner: string, sermonId: string, g
   const resource = { collection: 'sermons', id: sermonId };
   const page = await listHistoryEntries<SermonChurchHistoryPage['entries'][number]>(owner, resource, SERMON_CHURCH_HISTORY, generation, cursor, 'sermon-gone');
   return { owner, sermonId, generation, ...page };
+}
+
+export async function listTagColorHistory(owner: string, tagId: string, generation: string, cursor?: string): Promise<TagColorHistoryPage> {
+  const resource = { collection: 'tags', id: tagId };
+  const page = await listHistoryEntries<TagColorHistoryPage['entries'][number]>(owner, resource, DOCUMENT_METADATA_HISTORY, generation, cursor, 'tag-gone');
+  return { owner, tagId, generation, ...page };
 }
 
 export async function listSeriesMetadataHistory(owner: string, seriesId: string, generation: string, cursor?: string): Promise<SeriesMetadataHistoryPage> {

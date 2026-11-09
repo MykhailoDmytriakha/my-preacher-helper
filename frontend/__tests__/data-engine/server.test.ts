@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { isCollectionServed } from '@/data-engine/activation';
-import { DataEngineServerError, listBibleMarkHistory, listCouncilMetadataHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listPlanTemplateNameHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listPrayerStatusHistory, listPrayerTitleHistory, listSermonChurchHistory, listSermonTitleHistory, listSermonVerseHistory, listSeriesMetadataHistory, listServiceOrderFlagHistory, listServiceOrderStepTitleHistory, listServiceOrderTitleHistory, listStudyNoteTitleHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
+import { DataEngineServerError, listBibleMarkHistory, listCouncilMetadataHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listPlanTemplateNameHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listPrayerStatusHistory, listPrayerTitleHistory, listSermonChurchHistory, listSermonTitleHistory, listSermonVerseHistory, listSeriesMetadataHistory, listServiceOrderFlagHistory, listServiceOrderStepTitleHistory, listServiceOrderTitleHistory, listStudyNoteTitleHistory, listTagColorHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
 import { collectionHeadId, HEADS_COLLECTION, sequenceId } from '@/data-engine/serverFeed';
 import { DataSession } from '@/data-engine/session';
 import type { DataCommand, FieldValue, ResourceSnapshot } from '@/data-engine/types';
@@ -1891,6 +1891,55 @@ describe('transactional DataEngine server', () => {
       });
       expect(documents.get('councils/lifecycle-council')).not.toHaveProperty('heldAt');
       expect((await listCouncilMetadataHistory(owner, resource.id, 'council-create')).entries).toHaveLength(0);
+    });
+  });
+
+  describe('tag color chronology', () => {
+    const owner = 'owner-1';
+    const resource = { collection: 'tags', id: 'timed-tag' };
+    const base = { protocol: 1, owner, resource, dependsOn: [] };
+    const name = 'Keep the tag name';
+    const color = '#808E9B';
+    const desk = '#54A0FF';
+    const phone = '#FF6B6B';
+    const field = (value: string) => ({ exists: true, value });
+    const seed = () => processCommand(owner, { ...base, operationId: 'tag-create', kind: 'create', generation: null,
+      value: { userId: owner, name, color, required: false, createdAt: '2026-11-08' } });
+    const recolor = (operationId: string, nextColor: string, offset: number | null) => ({
+      ...base, operationId, kind: 'update', generation: 'tag-create',
+      changes: [{ path: ['color'], before: field(color), after: field(nextColor) }],
+      tagColorAction: { observedRevision: 1,
+        time: offset === null ? null : { earliestMs: 1_800_000_000_000 + offset, latestMs: 1_800_000_000_005 + offset } },
+    });
+
+    it.each([[20, desk], [80, phone]] as const)('orders a delayed recolor and preserves tag identity (%s)', async (offset, winner) => {
+      expect((await seed()).kind).toBe('acknowledged');
+      expect((await processCommand(owner, recolor('desk-color', desk, 40))).kind).toBe('acknowledged');
+      const delayed = recolor('phone-color', phone, offset);
+      const reply = await processCommand(owner, delayed);
+      expect(reply).toMatchObject({ kind: 'acknowledged', snapshot: { value: { name, color: winner, required: false } } });
+      expect(await processCommand(owner, delayed)).toEqual(reply);
+      expect(await listTagColorHistory(owner, resource.id, 'tag-create')).toMatchObject({
+        tagId: resource.id, entries: [{ fields: [{ field: 'color', value: winner === desk ? phone : desk, winner }] }],
+      });
+      await expect(listTagColorHistory('other-owner', resource.id, 'tag-create')).rejects.toMatchObject({ status: 403 });
+      await expect(listTagColorHistory(owner, resource.id, 'wrong-generation')).rejects.toMatchObject({ status: 404 });
+    });
+
+    it.each([null, 43])('keeps the saved color when ordering cannot be proven (%s)', async offset => {
+      expect((await seed()).kind).toBe('acknowledged');
+      expect((await processCommand(owner, recolor('desk-color', desk, 40))).kind).toBe('acknowledged');
+      expect(await processCommand(owner, recolor('phone-color', phone, offset))).toMatchObject({
+        kind: 'conflict', conflicts: [{ path: ['color'] }], snapshot: { value: { name, color: desk } },
+      });
+    });
+
+    it('keeps a deleted tag deleted when a recolor later arrives', async () => {
+      expect((await seed()).kind).toBe('acknowledged');
+      expect((await processCommand(owner, { ...base, operationId: 'tag-delete', kind: 'delete', generation: 'tag-create',
+        baseline: { userId: owner, name, color, required: false, createdAt: '2026-11-08' } })).kind).toBe('acknowledged');
+      const reply = await processCommand(owner, recolor('phone-color', phone, 80));
+      expect(reply).toMatchObject({ kind: 'deleted', snapshot: { value: null, metadata: { deleted: true } } });
     });
   });
 

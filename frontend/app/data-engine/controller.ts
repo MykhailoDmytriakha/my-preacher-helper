@@ -739,10 +739,10 @@ export class EditorController {
         const collection = checkpoint?.confirmed.resource.collection;
         const comparedField = collection === 'serviceOrders' ? serviceOrderStepField(path)
           : collection === 'councils' ? councilTopicTitleRow(path) || councilAssemblyRow(path) || councilTopicKindRow(path)
-            : collection === 'planTemplates' && path?.length === 1 && path[0] === 'name';
+            : path?.length === 1 && (collection === 'planTemplates' && path[0] === 'name' || collection === 'tags' && path[0] === 'color');
         if (expected && (comparedField || retired.some(request => expected.checkpoint.pending[request.id]
           && (request.serviceOrderFlagActions || request.serviceOrderStepTitleActions || request.councilTopicTitleActions
-            || request.councilAssemblyActions || request.councilTopicKindActions || request.planTemplateNameAction)))
+            || request.councilAssemblyActions || request.councilTopicKindActions || request.planTemplateNameAction || request.tagColorAction)))
           && retired.some(request => !expected.checkpoint.pending[request.id])) {
           throw Object.assign(new Error('Another saved change appeared during the field choice'), { code: 'decision-changed' });
         }

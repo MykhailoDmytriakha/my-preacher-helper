@@ -44,6 +44,9 @@ describe('custom tags on the engine', () => {
     await act(async () => { await awaitWriteOperation(result.current.updateTag({ id: 't1', userId: 'u', name: 'Hope', color: '#444', required: false }), jest.fn()); });
     const recolor = actions.commit.mock.calls[0][1] as (current: Record<string, unknown>) => Record<string, unknown>;
     expect(recolor({ userId: 'u', name: 'Hope', color: '#111', required: false })).toEqual(expect.objectContaining({ color: '#444', required: false }));
+    expect(recolor({ userId: 'u', name: 'Saved tag name', color: '#111', required: false })).toEqual(
+      expect.objectContaining({ name: 'Saved tag name', color: '#444', required: false }),
+    );
     await act(async () => { await awaitWriteOperation(result.current.removeCustomTag('Hope'), jest.fn()); });
     expect(actions.remove).toHaveBeenCalledWith({ collection: 'tags', id: 't1' });
   });

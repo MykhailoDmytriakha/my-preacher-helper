@@ -61,6 +61,34 @@ function setup(pollMs = 50) {
   return harness;
 }
 
+it.each([['#54A0FF', '#54A0FF'], ['', 'settings.tagColorHistory.notSet']])(
+  'compares both exact colors when one recolor needs a decision (%s)', async (storedColor, displayed) => {
+  process.env[ON_ENGINE] = 'tags';
+  actions = null;
+  const tag = { collection: 'tags', id: 'tag-1' };
+  const h = documentEngineHarness({ resource: tag,
+    value: { userId: 'owner', name: 'Hope', color: '#808E9B', required: false },
+    metadata: { protocol: 1, generation: 'g1', revision: 1, deleted: false } });
+  jest.mocked(createBrowserDataEngine).mockImplementation(h.createBrowser);
+  try {
+    render(<DataEngineProvider><Actions /><EngineConflictBanner pollMs={50} /></DataEngineProvider>);
+    await waitFor(() => expect(actions?.ready).toBe(true));
+    h.silentRemote({ color: storedColor });
+    await act(async () => {
+      await actions!.commit(tag, current => ({ ...current!, color: '#FF6B6B' }));
+      await settleEngine();
+    });
+    await screen.findByText('freshness.conflictTitle');
+    expect(screen.getByRole('region', { name: 'dataSync.versionComparison' })).toBeInTheDocument();
+    expect(screen.getByLabelText('dataSync.yourVersion')).toHaveTextContent('#FF6B6B');
+    expect(screen.getByLabelText('dataSync.storedVersion')).toHaveTextContent(displayed);
+    await confirmTextAction('dataSync.useStoredVersion', 'dataSync.confirmStoredField.confirm');
+    expect(h.server.value).toMatchObject({ name: 'Hope', color: storedColor, required: false });
+  } finally {
+    delete process.env[ON_ENGINE];
+  }
+});
+
 it('shows both names when a single template rename needs a decision', async () => {
   process.env[ON_ENGINE] = 'planTemplates';
   actions = null;

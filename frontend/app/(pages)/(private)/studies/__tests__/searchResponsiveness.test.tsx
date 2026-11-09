@@ -140,7 +140,7 @@ describe('StudiesPage search responsiveness', () => {
     mockUseStudyNoteShareLinks.mockReturnValue(baseUseStudyNoteShareLinksValue());
     mockUseTags.mockReturnValue({
       tags: { requiredTags: [], customTags: [] }, requiredTags: [], customTags: [], allTags: [],
-      loading: false, error: null, refreshTags: jest.fn(), addCustomTag: jest.fn(), removeCustomTag: jest.fn(), updateTag: jest.fn(),
+      loading: false, error: null, refreshTags: jest.fn(), addCustomTag: jest.fn(), removeCustomTag: jest.fn(), updateTag: jest.fn(), observeColor: jest.fn(), captureActionTime: jest.fn(),
     });
   });
 

@@ -7,7 +7,7 @@ import { toast } from 'sonner';
 import { OutdatedTabNotice } from '@/components/common/OutdatedTabNotice';
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
 import { FieldComparison } from '@/data-engine/DataSyncStatus';
-import { captureRecoveryChoice, councilRefusalHeldOpen, isCollectionOnEngine, isDataEngineEnabled, isOneShotRecord, isRecoveryHeldOpen, readPlanTemplateNameConflict, readServiceStepConflict, useDataEngine, useDocumentActions, useOpenDocumentAnswerScopes, waitsForDecision, type OpenDocumentAnswer, type RecoveryChoiceScope } from '@/data-engine/react.client';
+import { captureRecoveryChoice, councilRefusalHeldOpen, isCollectionOnEngine, isDataEngineEnabled, isOneShotRecord, isRecoveryHeldOpen, readPlanTemplateNameConflict, readServiceStepConflict, readTagColorConflict, useDataEngine, useDocumentActions, useOpenDocumentAnswerScopes, waitsForDecision, type OpenDocumentAnswer, type RecoveryChoiceScope } from '@/data-engine/react.client';
 import { useClipboard } from '@/hooks/useClipboard';
 import { useConfirm, useDiscardQuestion } from '@/hooks/useConfirm';
 import { useShellPathname } from '@/hooks/useShellPathname';
@@ -81,6 +81,11 @@ function fieldComparison(entry: Waiting, t: (key: string) => string): TextCompar
   if (entry.resource.collection === 'planTemplates') {
     const comparison = readPlanTemplateNameConflict(entry.records[0].checkpoint);
     return comparison && { ...comparison, title: fieldLabel(t, 'name'), valueKind: 'field' };
+  }
+  if (entry.resource.collection === 'tags') {
+    const comparison = readTagColorConflict(entry.records[0].checkpoint);
+    const unset = t('settings.tagColorHistory.notSet');
+    return comparison && { title: fieldLabel(t, 'color'), valueKind: 'field', mine: comparison.mine || unset, stored: comparison.stored || unset };
   }
   if (entry.resource.collection !== 'serviceOrders') return undefined;
   const comparison = readServiceStepConflict(entry.records[0].checkpoint);
