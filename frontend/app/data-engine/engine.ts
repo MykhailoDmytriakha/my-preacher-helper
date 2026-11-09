@@ -1808,10 +1808,10 @@ export class DataEngine {
         }
         const tagMembership = action && 'tagMembership' in action ? action.tagMembership : undefined;
         if (tagMembership?.some(intent => intent.generation !== checkpoint.confirmed.metadata?.generation)) {
-          throw Object.assign(new Error('The shown note changed'), { code: 'decision-changed' });
+          throw Object.assign(new Error('The shown record changed'), { code: 'decision-changed' });
         }
         const next = updater(checkpoint.draft);
-        let captured = action;
+        let captured = next === checkpoint.draft && action?.kind === 'document-tags' ? undefined : action;
         if (action?.kind === 'service-order-title') {
           const { seen } = action.title;
           const predecessor = seen.requestId ? this.commitRecords.get(seen.requestId) : undefined;
@@ -1828,7 +1828,7 @@ export class DataEngine {
             if (next !== checkpoint.draft && (checkpoint.confirmed.metadata?.generation !== seen.generation || checkpoint.draft?.title !== seen.title)) {
               throw Object.assign(new Error('The prayer title changed'), { code: 'prayer-title-basis-changed' });
             }
-            captured = undefined;
+            captured = next !== checkpoint.draft && action.tagMembership?.length ? { kind: 'document-tags', tagMembership: action.tagMembership } : undefined;
           }
         }
         if (action?.kind === 'plan-template-name') {
@@ -1859,7 +1859,7 @@ export class DataEngine {
               || !equalValues(readField(checkpoint.draft ?? {}, ['title']), studyNoteTitleValue(seen)))) {
               throw Object.assign(new Error('The study note title changed'), { code: 'study-note-title-basis-changed' });
             }
-            captured = action.tagMembership?.length ? { kind: 'document-tags', tagMembership: action.tagMembership } : undefined;
+            captured = next !== checkpoint.draft && action.tagMembership?.length ? { kind: 'document-tags', tagMembership: action.tagMembership } : undefined;
           }
         }
         if (action?.kind === 'prayer-status') {

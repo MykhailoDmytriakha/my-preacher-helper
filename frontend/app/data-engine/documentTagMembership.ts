@@ -1,4 +1,5 @@
-import { readField } from './fieldValues';
+import { equalValues, readField, writeField } from './fieldValues';
+import { mergeFields } from './protocol';
 
 import type { TagMembershipAction } from './tagMembershipOrder';
 import type { DocumentData, FieldChange, FieldValue } from './types';
@@ -21,7 +22,7 @@ export type DocumentTagHistoryPage = {
   nextCursor: string | null;
 };
 
-export const documentTagCollection = (collection: string) => collection === 'studyNotes';
+export const documentTagCollection = (collection: string) => collection === 'studyNotes' || collection === 'prayerRequests';
 export const supportedDocumentTag = (tag: unknown): tag is string =>
   typeof tag === 'string' && tag.trim().length > 0 && tag.length <= 256;
 
@@ -58,4 +59,27 @@ export function documentTagConflictName(path: readonly string[]): string | undef
   if (path.length !== 2 || path[0] !== DOCUMENT_TAG_FIELD || !path[1].startsWith('string:')) return undefined;
   const tag = path[1].slice(7);
   return supportedDocumentTag(tag) ? tag : undefined;
+}
+
+/** Prayer forms omit their empty tag list. Three-way membership merge still sees an empty list. */
+export function mergeOptionalPrayerTags(collection: string, before: FieldValue, after: FieldValue, stored: FieldValue): FieldValue | undefined {
+  if (collection !== 'prayerRequests' || (before.exists && after.exists && stored.exists)) return undefined;
+  const lists = [before, after, stored].map(field => tagList(field.exists ? field.value : undefined));
+  if (!lists.every((list): list is string[] => list !== undefined)) return undefined;
+  const [basis, mine, theirs] = lists.map(value => ({ exists: true, value }));
+  const merged = mergeFields(basis, mine, theirs, [DOCUMENT_TAG_FIELD]);
+  if (merged.conflicts.length) return undefined;
+  return Array.isArray(merged.value.value) && !merged.value.value.length && (!after.exists || !stored.exists)
+    ? { exists: false } : merged.value;
+}
+
+export function rebaseOptionalPrayerTags(collection: string, base: DocumentData | null, draft: DocumentData | null, stored: DocumentData | null,
+  merged: ReturnType<typeof mergeFields>): ReturnType<typeof mergeFields> {
+  if (collection !== 'prayerRequests' || !base || !draft || !stored || !merged.value.exists || !merged.value.value) return merged;
+  const before = tagField(base), after = tagField(draft);
+  if (equalValues(before, after)) return merged;
+  const tags = mergeOptionalPrayerTags(collection, before, after, tagField(stored));
+  if (!tags) return merged;
+  return { value: { exists: true, value: writeField(merged.value.value as DocumentData, [DOCUMENT_TAG_FIELD], tags) },
+    conflicts: merged.conflicts.filter(({ path }) => path[0] !== DOCUMENT_TAG_FIELD) };
 }

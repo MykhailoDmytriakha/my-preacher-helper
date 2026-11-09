@@ -67,7 +67,7 @@ export type EditorCommitAction =
   | { kind: 'council-lifecycle'; time: ActionTime | null }
   | { kind: 'council-assembly'; flag: CouncilAssemblyCapture }
   | { kind: 'council-topic-kind'; topicKind: CouncilTopicKindCapture }
-  | { kind: 'prayer-title'; title: PrayerTitleCapture }
+  | { kind: 'prayer-title'; title: PrayerTitleCapture; tagMembership?: readonly DocumentTagIntent[] }
   | { kind: 'study-note-title'; title: StudyNoteTitleCapture; tagMembership?: readonly DocumentTagIntent[] }
   | { kind: 'document-tags'; tagMembership: readonly DocumentTagIntent[] }
   | { kind: 'plan-template-name'; name: PlanTemplateNameCapture }

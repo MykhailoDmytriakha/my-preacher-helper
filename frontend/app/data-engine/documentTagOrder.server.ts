@@ -1,5 +1,5 @@
 import { boundedActionTime } from './actionClock';
-import { changeTagMembership, documentTagChange, documentTagCollection, documentTagConflictPath, matchesDocumentTag, supportedDocumentTag, tagField, tagList, tagMembership } from './documentTagMembership';
+import { changeTagMembership, documentTagChange, documentTagCollection, documentTagConflictPath, matchesDocumentTag, mergeOptionalPrayerTags, supportedDocumentTag, tagField, tagList, tagMembership } from './documentTagMembership';
 import { object } from './fieldValues';
 import { isValidIdentifier } from './protocol';
 import { proofRevision, rowConflictValue } from './rowFieldAction';
@@ -55,7 +55,7 @@ export function orderDocumentTags(command: DataCommand, current: ResourceSnapsho
   let { before, after } = change;
   // Legacy notes can omit tags. On a real addition, an existing saved list
   // and the incoming list share an empty ancestor for membership merging.
-  if (!before.exists && currentTags.exists && after.exists && tagList(currentTags.value) && tagList(after.value)) {
+  if (command.resource.collection === 'studyNotes' && !before.exists && currentTags.exists && after.exists && tagList(currentTags.value) && tagList(after.value)) {
     before = { exists: true, value: [] };
   }
   for (const action of readActions(command.tagMembershipActions, change, metadata.revision, serverMs)) {
@@ -75,6 +75,8 @@ export function orderDocumentTags(command: DataCommand, current: ResourceSnapsho
         actionTime: incomingWins ? storedTime : incomingTime, winnerActionTime: incomingWins ? incomingTime : storedTime });
     }
   }
+  const prayerTags = mergeOptionalPrayerTags(command.resource.collection, before, after, currentTags);
+  if (prayerTags) { before = currentTags; after = prayerTags; }
   if (before !== change.before || after !== change.after) {
     result.command = { ...command, changes: command.changes.map(item => item === change ? { ...change, before, after } : item) };
   }

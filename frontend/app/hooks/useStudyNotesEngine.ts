@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 
-import { isLiveCollectionDocument, useDataCollection, useDocumentActions, type DocumentWriteReceipt } from '@/data-engine/react.client';
+import { isLiveCollectionDocument, readTagOpening, useDataCollection, useDocumentActions, type DocumentWriteReceipt } from '@/data-engine/react.client';
 import { useResolvedUid } from '@/hooks/useResolvedUid';
 import { StaleWriteError } from '@/services/conflictSafeUpdate.client';
 import { NOTE_AGGREGATE } from '@/services/studies.service';
@@ -147,11 +147,8 @@ export function useStudyNotesEngine(enabled: boolean) {
   };
 
   const observeTagBasis = (id: string, opening: string[]): DocumentTagBasis | undefined => {
-    const row = collection.state?.documents?.find(item => item.resource.id === id);
-    if (!row?.value || row.needsAttention || !same(row.value.tags ?? [], opening)) return undefined;
-    const snapshot = row.acknowledged ?? collection.state?.snapshots?.find(item => item.resource.id === id);
-    const metadata = snapshot?.metadata;
-    return metadata && !metadata.deleted ? { generation: metadata.generation, revision: metadata.revision } : undefined;
+    const basis = readTagOpening(collection.state, id, opening);
+    return basis && { generation: basis.generation, revision: basis.revision };
   };
 
   const refusal = () => refusedWrite('unauthenticated', 'No signed-in user for this write', t('writeRecovery.refused'));

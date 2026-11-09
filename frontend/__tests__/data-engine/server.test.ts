@@ -2308,6 +2308,57 @@ describe('transactional DataEngine server', () => {
     });
   });
 
+  describe('prayer tag membership chronology', () => {
+    const owner = 'owner-1';
+    const resource = { collection: 'prayerRequests', id: 'timed-prayer-tag' };
+    const base = { protocol: 1, owner, resource, dependsOn: [] };
+    const tag = 'Alpha tag', independent = 'Independent tag', description = 'The prayer description remains';
+    const update = { id: 'one', text: 'Keep the prayer update', createdAt: '2026-11-08T00:00:00.000Z' };
+    const value = (tags: string[]) => ({ exists: true, value: tags });
+    const seed = (tags: string[]) => processCommand(owner, { ...base, operationId: 'prayer-tag-generation', kind: 'create', generation: null,
+      value: { userId: owner, title: 'Prayer with tags', description, tags, status: 'active', updates: [update],
+        createdAt: '2026-11-08T00:00:00.000Z', updatedAt: '2026-11-08T00:00:00.000Z' } });
+    const tagEdit = (operationId: string, name: string, before: boolean, after: boolean, offset: number | null, predecessorOperationId?: string) => ({
+      ...base, operationId, kind: 'update', generation: 'prayer-tag-generation', dependsOn: predecessorOperationId ? [predecessorOperationId] : [],
+      changes: [{ path: ['tags'], before: before ? value([name]) : value([]), after: after ? value([name]) : { exists: false } }],
+      tagMembershipActions: [{ tag: name, before, after, observedRevision: 1,
+        time: offset === null ? null : { earliestMs: 1_800_000_000_000 + offset, latestMs: 1_800_000_000_005 + offset },
+        ...(predecessorOperationId && { predecessorOperationId }) }],
+    });
+
+    it.each([
+      { startsPresent: false, deskAt: 80, winner: true },
+      { startsPresent: true, deskAt: 80, winner: false },
+      { startsPresent: false, deskAt: 30, winner: false },
+      { startsPresent: true, deskAt: 30, winner: true },
+    ])('uses the later known tag choice when the starting membership is $startsPresent and the computer acts at $deskAt',
+      async ({ startsPresent, deskAt, winner }) => {
+        expect((await seed(startsPresent ? [tag] : [])).kind).toBe('acknowledged');
+        expect((await processCommand(owner, tagEdit('desk', tag, startsPresent, !startsPresent, deskAt))).kind).toBe('acknowledged');
+        expect((await processCommand(owner, tagEdit('phone-first', tag, startsPresent, !startsPresent, 15))).kind).toBe('acknowledged');
+        const reply = await processCommand(owner, tagEdit('phone-second', tag, !startsPresent, startsPresent, 50, 'phone-first'));
+        expect(reply).toMatchObject({ kind: 'acknowledged', snapshot: { value: { description, updates: [update], status: 'active' } } });
+        expect(reply.kind === 'acknowledged' && (reply.snapshot.value?.tags ?? [])).toEqual(winner ? [tag] : []);
+      });
+
+    it('keeps an exact prayer tag choice when the clock cannot establish order', async () => {
+      expect((await seed([])).kind).toBe('acknowledged');
+      await processCommand(owner, tagEdit('desk', tag, false, true, null));
+      await processCommand(owner, tagEdit('phone-first', tag, false, true, 15));
+      await expect(processCommand(owner, tagEdit('phone-second', tag, true, false, 50, 'phone-first'))).resolves.toMatchObject({
+        kind: 'conflict', conflicts: [{ path: ['tags', 'string:' + tag] }], snapshot: { value: { tags: [tag], description } },
+      });
+    });
+
+    it('still merges independent prayer tags', async () => {
+      expect((await seed([])).kind).toBe('acknowledged');
+      await processCommand(owner, tagEdit('desk', independent, false, true, 80));
+      await expect(processCommand(owner, tagEdit('phone-first', tag, false, true, 15))).resolves.toMatchObject({
+        kind: 'acknowledged', snapshot: { value: { tags: [independent, tag], description } },
+      });
+    });
+  });
+
   describe('prayer title chronology', () => {
     const owner = 'owner-1';
     const resource = { collection: 'prayerRequests', id: 'timed-prayer' };

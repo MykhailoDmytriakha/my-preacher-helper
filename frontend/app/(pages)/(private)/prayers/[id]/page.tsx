@@ -26,6 +26,7 @@ import { SaveConflictBanner } from '@/components/SaveConflictBanner';
 import { Chip } from '@/components/ui/Chip';
 import { DocumentFieldHistory } from '@/components/ui/DocumentFieldHistory';
 import { DocumentMetadataHistory } from '@/components/ui/DocumentMetadataHistory';
+import { TagHistory } from '@/components/ui/TagHistory';
 import UnreadableConflictDrafts from '@/components/UnreadableConflictDrafts';
 import { useAppLocale } from '@/hooks/useAppLocale';
 import { usePrayerDetail } from '@/hooks/usePrayerDetail';
@@ -46,6 +47,8 @@ import { NEUTRAL_CAPTION } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
 
 import type { PrayerTitleSeen } from '@/data-engine/documentFieldAction';
+import type { DocumentTagOpening } from '@/data-engine/documentTagCapture';
+import type { DocumentTagHistoryPage } from '@/data-engine/documentTagMembership';
 import type { PrayerStatusField, PrayerStatusOpening } from '@/data-engine/prayerStatusAction';
 
 import '@locales/i18n';
@@ -64,6 +67,7 @@ export default function PrayerDetailPage() {
     loading,
     updatePrayer,
     observeTitle,
+    observeTagBasis,
     observeStatus,
     restoreStatusField,
     deletePrayer,
@@ -106,6 +110,7 @@ export default function PrayerDetailPage() {
    */
   const [editBaseContent, setEditBaseContent] = useState<Record<string, unknown> | null>(null);
   const [editTitleSeen, setEditTitleSeen] = useState<PrayerTitleSeen>();
+  const [editTagBasis, setEditTagBasis] = useState<DocumentTagOpening>();
   const [showAddUpdate, setShowAddUpdate] = useState(false);
   const [answerOpening, setAnswerOpening] = useState<{ prayer: PrayerRequest; status?: PrayerStatusOpening } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -200,7 +205,8 @@ export default function PrayerDetailPage() {
       payload,
       editBaseRevision ?? prayer.rev?.[PRAYER_CORE_AGGREGATE] ?? 0,
       editBaseContent,
-      ...(editTitleSeen ? [editTitleSeen] : [])
+      editTitleSeen,
+      editTagBasis
     );
   };
 
@@ -247,6 +253,7 @@ export default function PrayerDetailPage() {
   };
 
   const titleHistory = observeTitle(prayer);
+  const tagHistory = observeTagBasis(prayer);
   const statusHistory = observeStatus(prayer);
   const historyGeneration = statusHistory?.generation ?? titleHistory?.generation;
   const isActive = prayer.status === 'active';
@@ -387,6 +394,7 @@ export default function PrayerDetailPage() {
               onClick={() => {
                 setEditBaseRevision(prayer.rev?.[PRAYER_CORE_AGGREGATE] ?? 0);
                 setEditTitleSeen(observeTitle(prayer));
+                setEditTagBasis(observeTagBasis(prayer));
                 setEditBaseContent({
                   title: prayer.title,
                   description: prayer.description ?? null,
@@ -447,6 +455,17 @@ export default function PrayerDetailPage() {
         </div>
       )}
 
+      {user?.uid && tagHistory && <TagHistory<DocumentTagHistoryPage['entries'][number], DocumentTagHistoryPage>
+        key={JSON.stringify(['tags', user.uid, prayer.id, tagHistory.generation])} owner={user.uid} id={prayer.id}
+        generation={tagHistory.generation} tags={prayer.tags ?? []} disabled={resolvingConflict || Boolean(saveConflict)}
+        identify={page => page.documentId} path={'/api/data-engine/documents/prayerRequests/' + encodeURIComponent(prayer.id) + '/prayer-tag-history'}
+        select={entries => entries.flatMap(entry => entry.tags.map(tag => ({ id: entry.id, ...tag })))}
+        onRestore={(tag, present) => {
+          const opening = prayer.tags ?? [];
+          const tags = present ? [...opening, tag] : opening.filter(value => value !== tag);
+          return updatePrayer(prayer.id, { tags: tags.length ? tags : undefined }, prayer.rev?.[PRAYER_CORE_AGGREGATE] ?? 0,
+            { tags: opening }, undefined, tagHistory);
+        }} />}
       {user?.uid && titleHistory && <DocumentFieldHistory
         key={JSON.stringify(['title', user.uid, prayer.id, titleHistory.generation])}
         current={prayer.title} disabled={resolvingConflict || Boolean(saveConflict)}

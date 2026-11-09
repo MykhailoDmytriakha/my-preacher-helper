@@ -42,6 +42,8 @@ const histories = {
   thoughtLock: { collection: 'sermons', list: listThoughtLockHistory },
   thoughtPlacement: { collection: 'sermons', list: listThoughtPlacementHistory },
   thoughtTag: { collection: 'sermons', list: listThoughtTagHistory },
+  prayerTag: { collection: 'prayerRequests', list: (owner: string, id: string, generation: string, cursor?: string) =>
+    listDocumentTagHistory(owner, 'prayerRequests', id, generation, cursor) },
   noteTag: { collection: 'studyNotes', list: (owner: string, id: string, generation: string, cursor?: string) =>
     listDocumentTagHistory(owner, 'studyNotes', id, generation, cursor) },
 } as const;

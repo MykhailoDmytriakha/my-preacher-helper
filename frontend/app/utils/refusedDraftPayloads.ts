@@ -1,4 +1,4 @@
-import { isValidRecoveryPatch } from '@/data-engine/react.client';
+import { isValidRecoveryPatch, validTagIntents } from '@/data-engine/react.client';
 
 import type { DocumentData } from '@/data-engine/types';
 
@@ -50,6 +50,7 @@ export function validPrayerCoreConflict(value: unknown, documentId: string): boo
     && isPlainObject(payload.updates)
     && (payload.cleared === undefined || (Array.isArray(payload.cleared)
       && payload.cleared.every(field => field === 'description' || field === 'tags')))
+    && (payload.tagMembership === undefined || validTagIntents(payload.tagMembership, payload.updates.tags))
     && validResourceUpdate('prayerRequests', payload.updates);
 }
 

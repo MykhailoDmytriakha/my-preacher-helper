@@ -49,7 +49,7 @@ jest.mock('@/providers/AuthProvider', () => ({
 }));
 
 jest.mock('@/hooks/usePrayerRequests', () => ({
-  usePrayerRequests: () => ({ observeTitle: () => undefined, observeStatus: () => undefined, ...mockUsePrayerRequests() }),
+  usePrayerRequests: () => ({ observeTitle: () => undefined, observeTagBasis: () => ({ generation: 'prayer', revision: 1 }), observeStatus: () => undefined, ...mockUsePrayerRequests() }),
 }));
 
 jest.mock('@/hooks/usePrayerDetail', () => ({
@@ -361,7 +361,9 @@ describe('PrayerDetailPage', () => {
         // Fourth argument = the VALUES the form opened with. Frozen at open, like
         // the revision: a value read at save time would agree with the server by
         // construction, and the check would protect nothing.
-        { title: 'Pray for family', description: 'Need wisdom', tags: ['family', 'hope'] }
+        { title: 'Pray for family', description: 'Need wisdom', tags: ['family', 'hope'] },
+        undefined,
+        { generation: 'prayer', revision: 1 }
       );
       expect(addUpdate).toHaveBeenCalledWith('p1', 'Fresh note');
       expect(setStatus).toHaveBeenCalledWith('p1', 'not_answered');

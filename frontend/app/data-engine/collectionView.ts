@@ -1,10 +1,12 @@
 import { submittedDocumentTitle, submittedPrayerStatus, submittedTagColor } from './documentFieldAction';
+import { submittedPrayerTagBasis } from './documentTagCapture';
 import { DataSession } from './session';
 import { canReplaceSnapshot } from './snapshotFreshness';
 import { submittedWorkCheckpoint } from './submittedWork';
 
 import type { CommitRequest } from './commits';
 import type { DocumentTitleSeen, TagColorSeen } from './documentFieldAction';
+import type { DocumentTagOpening } from './documentTagCapture';
 import type { PrayerStatusOpening } from './prayerStatusAction';
 import type { DocumentData, JournalEntry, ResourceRef, ResourceSnapshot } from './types';
 
@@ -23,6 +25,7 @@ export interface CollectionDocumentView {
   submittedTitle?: DocumentTitleSeen;
   submittedColor?: TagColorSeen;
   submittedPrayerStatus?: PrayerStatusOpening;
+  submittedPrayerTagBasis?: DocumentTagOpening;
 }
 
 export function collectionDocumentViews(owner: string, collection: string, snapshots: readonly ResourceSnapshot[], requests: readonly CommitRequest[], journal: readonly JournalEntry[] = []): CollectionDocumentView[] {
@@ -68,6 +71,7 @@ export function collectionDocumentViews(owner: string, collection: string, snaps
     const needsAttention = !checkpoint || checkpoint.conflicts.length > 0 || unsettled.some(request => ['conflict', 'refused'].includes(request.state));
     const submittedTitle = submittedDocumentTitle(checkpoint, unsettled, needsAttention);
     const prayerStatus = submittedPrayerStatus(checkpoint, unsettled, needsAttention);
+    const prayerTagBasis = !needsAttention && submittedPrayerTagBasis(checkpoint, unsettled);
     const submittedColor = submittedTagColor(checkpoint, unsettled, needsAttention);
     // Keep a pending deletion addressable until its acknowledgement; a failed
     // deletion must never remove the only route to its retry/recovery controls.
@@ -76,6 +80,7 @@ export function collectionDocumentViews(owner: string, collection: string, snaps
       ...(submittedTitle && { submittedTitle }),
       ...(submittedColor && { submittedColor }),
       ...(prayerStatus && { submittedPrayerStatus: prayerStatus }),
+      ...(prayerTagBasis && { submittedPrayerTagBasis: prayerTagBasis }),
       ...(acknowledged.has(id) ? { acknowledged: acknowledged.get(id)! } : {}),
       ...(checkpoint && checkpoint.confirmed.value === null && !checkpoint.confirmed.metadata && checkpoint.draft !== null
         ? { creating: true as const } : {}) });

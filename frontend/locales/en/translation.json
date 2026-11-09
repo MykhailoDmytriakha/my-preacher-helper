@@ -4251,6 +4251,7 @@
     }
   },
   "prayer": {
+    "tagComparison": "Tag on this prayer",
     "backToCare": "Back to heart matters",
     "notFound": "Prayer request not found",
     "back": "Back",

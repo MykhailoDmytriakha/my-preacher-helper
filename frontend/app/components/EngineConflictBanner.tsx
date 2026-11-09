@@ -78,12 +78,12 @@ type DisplayValue = (scope: string, field: string, value: unknown, document?: Do
 const isItem = (value: unknown): value is Item => Boolean(value) && typeof value === 'object' && typeof (value as { id?: unknown }).id === 'string';
 function fieldComparison(entry: Waiting, t: (key: string) => string): TextComparison | undefined {
   if (entry.records.length !== 1) return undefined;
-  if (entry.resource.collection === 'studyNotes') {
+  if (entry.resource.collection === 'studyNotes' || entry.resource.collection === 'prayerRequests') {
     const comparison = readDocumentTagComparison(entry.records[0].checkpoint);
     if (!comparison) return undefined;
     const show = (side: 'mine' | 'stored') => comparison.choices.map(choice =>
       choice.tag + ' · ' + t(choice[side] ? 'thought.tagHistory.added' : 'thought.tagHistory.removed')).join('\n');
-    return { identity: comparison.identity, title: t('studiesWorkspace.tagComparison'),
+    return { identity: comparison.identity, title: t(entry.resource.collection === 'studyNotes' ? 'studiesWorkspace.tagComparison' : 'prayer.tagComparison'),
       valueKind: 'field', mine: show('mine'), stored: show('stored') };
   }
   if (entry.resource.collection === 'planTemplates') {

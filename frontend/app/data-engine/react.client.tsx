@@ -18,6 +18,7 @@ import { isLiveCollectionDocument as liveCollectionDocument, type CollectionPres
 import { isInactiveEditorError as inactiveEditor } from './controller';
 import { councilTopicConflictCode, councilTopicRefusalCode } from './councilTopicTransition';
 import { isDirectLegacyDocumentIntent, savedDocumentAnswer, type DocumentAnswer } from './documentDelivery';
+import { makeDocumentTagIntents, observeDocumentTagBasis, validDocumentTagIntents } from './documentTagCapture';
 import { readDocumentTagComparison as documentTagComparison } from './documentTagChoice';
 import { ACTION_SLOT, editorSlot, isManualChoiceRecoveryIdentity, readManualScopeIdentity, recoveryEditorIdentity } from './editorIdentity';
 import { needsConnection } from './engine';
@@ -72,6 +73,9 @@ export function restoreExegeticalPoint(...args: Parameters<typeof restorePointVe
 export function readSermonConflict(checkpoint: SessionCheckpoint) { return sermonConflict(checkpoint); }
 export function readThoughtLockComparison(checkpoint: SessionCheckpoint) { return thoughtLockComparison(checkpoint); }
 export function readThoughtPlacementComparison(checkpoint: SessionCheckpoint) { return thoughtPlacementComparison(checkpoint); }
+export function readTagOpening(...args: Parameters<typeof observeDocumentTagBasis>) { return observeDocumentTagBasis(...args); }
+export function captureTagIntents(...args: Parameters<typeof makeDocumentTagIntents>) { return makeDocumentTagIntents(...args); }
+export function validTagIntents(...args: Parameters<typeof validDocumentTagIntents>) { return validDocumentTagIntents(...args); }
 export function readDocumentTagComparison(checkpoint: SessionCheckpoint) { return documentTagComparison(checkpoint); }
 export function readThoughtTagComparison(checkpoint: SessionCheckpoint) { return thoughtTagComparison(checkpoint); }
 export function restoreThoughtTag(...args: Parameters<typeof restoreTagState>) { return restoreTagState(...args); }

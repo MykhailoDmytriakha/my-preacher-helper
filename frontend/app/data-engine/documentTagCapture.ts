@@ -1,15 +1,71 @@
 import { boundedActionTime } from './actionClock';
-import { changeTagMembership, documentTagCollection, DOCUMENT_TAG_FIELD, supportedDocumentTag, tagField, tagMembership } from './documentTagMembership';
+import { changeTagMembership, documentTagCollection, DOCUMENT_TAG_FIELD, supportedDocumentTag, tagField, tagList, tagMembership } from './documentTagMembership';
+import { equalValues, object } from './fieldValues';
 import { isValidIdentifier } from './protocol';
 import { proofRevision } from './rowFieldAction';
 import { MAX_TAG_MEMBERSHIP_PROOFS } from './tagMembershipOrder';
 
+import type { ActionTime } from './actionClock';
+import type { CollectionState } from './collections';
 import type { CommitRequest } from './commits';
+import type { SessionCheckpoint } from './session';
 import type { TagMembershipAction } from './tagMembershipOrder';
 import type { DocumentData, ResourceSnapshot } from './types';
 
 export type DocumentTagBasis = { generation: string; revision: number };
 export type DocumentTagIntent = Omit<TagMembershipAction, 'predecessorOperationId' | 'observedRevision'> & DocumentTagBasis & { predecessorRequestId?: string };
+
+type DisplayedTagRequest = { tag: string; requestId: string; revision: number };
+export type DocumentTagOpening = DocumentTagBasis & { predecessors?: readonly DisplayedTagRequest[] };
+
+export function submittedPrayerTagBasis(checkpoint: SessionCheckpoint | null, requests: readonly CommitRequest[]): DocumentTagOpening | undefined {
+  const metadata = checkpoint?.confirmed.metadata;
+  if (!checkpoint?.draft || checkpoint.confirmed.resource.collection !== 'prayerRequests' || !metadata || metadata.deleted) return undefined;
+  const shown = tagField(checkpoint.draft);
+  const pending = new Map(requests.map(request => [request.id, request]));
+  const predecessors = new Map<string, DisplayedTagRequest>();
+  for (const id of Object.keys(checkpoint.pending).reverse()) {
+    const request = pending.get(id);
+    if (request?.baseline.metadata?.generation !== metadata.generation) continue;
+    for (const action of request.tagMembershipActions ?? []) {
+      if (!predecessors.has(action.tag) && tagMembership(shown, action.tag) === action.after) {
+        predecessors.set(action.tag, { tag: action.tag, requestId: request.id, revision: action.observedRevision });
+      }
+    }
+  }
+  return { generation: metadata.generation, revision: metadata.revision, predecessors: [...predecessors.values()] };
+}
+
+export function observeDocumentTagBasis(state: CollectionState | null | undefined, id: string, opening: readonly string[]): DocumentTagOpening | undefined {
+  const row = state?.documents?.find(item => item.resource.id === id);
+  if (!row?.value || row.needsAttention || !equalValues(tagList(row.value.tags), opening)) return undefined;
+  if (row.submittedPrayerTagBasis) return row.submittedPrayerTagBasis;
+  const metadata = (row.acknowledged ?? state?.snapshots.find(item => item.resource.id === id))?.metadata;
+  return metadata && !metadata.deleted ? { generation: metadata.generation, revision: metadata.revision } : undefined;
+}
+
+export function makeDocumentTagIntents(opening: unknown, requested: unknown, basis: DocumentTagOpening,
+  time: ActionTime | null): DocumentTagIntent[] | undefined {
+  const before = tagList(opening), after = tagList(requested);
+  if (!before || !after) return undefined;
+  const changes = [...new Set([...before, ...after])].filter(tag => before.includes(tag) !== after.includes(tag));
+  if (!changes.length || changes.length > MAX_TAG_MEMBERSHIP_PROOFS || !changes.every(supportedDocumentTag)) return undefined;
+  return changes.map(tag => {
+    const prior = basis.predecessors?.find(item => item.tag === tag);
+    return { tag, before: before.includes(tag), after: after.includes(tag), time,
+      generation: basis.generation, revision: prior?.revision ?? basis.revision, ...(prior && { predecessorRequestId: prior.requestId }) };
+  });
+}
+
+export function validDocumentTagIntents(raw: unknown, requested: unknown): boolean {
+  const tags = tagList(requested);
+  return tags !== undefined && Array.isArray(raw) && raw.length > 0 && raw.length <= MAX_TAG_MEMBERSHIP_PROOFS
+    && raw.every(intent => object(intent) && supportedDocumentTag(intent.tag) && typeof intent.before === 'boolean' && typeof intent.after === 'boolean'
+      && intent.before !== intent.after && tags.includes(intent.tag) === intent.after && isValidIdentifier(intent.generation) && proofRevision(intent.revision)
+      && (intent.time === null || boundedActionTime(intent.time) !== undefined)
+      && (intent.predecessorRequestId === undefined || isValidIdentifier(intent.predecessorRequestId)))
+    && new Set(raw.map(intent => intent.tag)).size === raw.length;
+}
 
 function knownPredecessor(tag: string, before: boolean, predecessor: CommitRequest | undefined, byId: Map<string, CommitRequest>,
   baseline: ResourceSnapshot) {

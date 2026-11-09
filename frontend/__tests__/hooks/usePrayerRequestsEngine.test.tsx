@@ -14,6 +14,10 @@ jest.mock('@/data-engine/react.client', () => ({
   useDocumentActions: jest.fn(),
 }));
 
+import type { DocumentTagBasis } from '@/data-engine/documentTagCapture';
+import type { PrayerTitleSeen } from '@/data-engine/documentFieldAction';
+import type { PrayerRequest } from '@/models/models';
+
 const stored = { userId: 'u', title: 'Healing', description: 'Phone text', status: 'active', updates: [], createdAt: 'c', updatedAt: 'u', rev: { core: 2 } };
 let current: Record<string, unknown> = stored;
 const actions = {
@@ -70,6 +74,48 @@ describe('prayers on the engine', () => {
       1, { title: 'Opening title', description: 'Phone text', tags: [] }); });
     expect(current).toMatchObject({ title: 'Healing', description: 'New description' });
     expect(result.current.saveConflict).toBeNull();
+  });
+
+  it('adds the first tag to a prayer whose stored tags field is absent', async () => {
+    const { result } = render();
+    await act(async () => {
+      await result.current.updatePrayer('p1', { tags: ['First tag'] }, 2, { tags: [] }).catch(() => undefined);
+    });
+    expect(current).toMatchObject({ tags: ['First tag'], description: 'Phone text', title: 'Healing' });
+    expect(result.current.saveConflict).toBeNull();
+  });
+
+  it.each([
+    { opening: [], local: ['Local tag'], storedTags: ['Independent tag'], expected: ['Independent tag', 'Local tag'] },
+    { opening: ['Opening tag'], local: undefined, storedTags: ['Opening tag', 'Independent tag'], expected: ['Independent tag'] },
+  ])('keeps the independent tag when a form saves its own membership ($opening)', async ({ opening, local, storedTags, expected }) => {
+    current = { ...stored, tags: storedTags };
+    const { result } = render();
+    const submit: (id: string, changes: Partial<PrayerRequest>, revision: number, baseline: Record<string, unknown>,
+      seenTitle?: PrayerTitleSeen, seenTags?: DocumentTagBasis) => Promise<void> = result.current.updatePrayer;
+    await act(async () => {
+      await submit('p1', { tags: local }, 1, { tags: opening }, undefined, { generation: 'prayer', revision: 1 }).catch(() => undefined);
+    });
+    expect(current).toMatchObject({ tags: expected, description: 'Phone text' });
+    expect(result.current.saveConflict).toBeNull();
+  });
+
+  it('recovers a refused description without removing the tags added elsewhere', async () => {
+    current = { ...stored, tags: ['Opening tag', 'Independent tag'] };
+    const first = render();
+    await act(async () => {
+      await first.result.current.updatePrayer('p1', { description: 'Laptop text', tags: undefined }, 1,
+        { description: 'Opening text', tags: ['Opening tag'] }, undefined, { generation: 'prayer', revision: 1 })
+        .catch(() => undefined);
+    });
+    expect(current).toMatchObject({ description: 'Phone text', tags: ['Opening tag', 'Independent tag'] });
+    expect(first.result.current.saveConflict).not.toBeNull();
+    first.unmount();
+    current = { ...current, tags: ['Opening tag', 'Independent tag', 'Tag added after refusal'] };
+    const recovered = render();
+    await act(async () => { await recovered.result.current.keepMineOnConflict(); });
+    expect(current).toMatchObject({ description: 'Laptop text', tags: ['Independent tag', 'Tag added after refusal'] });
+    expect(recovered.result.current.saveConflict).toBeNull();
   });
 
   it.each(['description', 'tags'] as const)('keeps an explicit %s clear through a refused save and reload', async field => {

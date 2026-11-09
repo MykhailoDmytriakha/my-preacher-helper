@@ -5,6 +5,7 @@ import { councilLifecycleValue, withCouncilLifecycle } from './councilFieldActio
 import { councilTopicConflictCode, rejectCouncilTopicChoice } from './councilTopicTransition';
 import { autosaveAcknowledgementAncestor, autosaveFieldTargets, hasUncapturedAutosaveField, sameAutosaveCapture, stageAutosaveField } from './documentFieldAction';
 import { keepExactLocalDocumentTags } from './documentTagChoice';
+import { rebaseOptionalPrayerTags } from './documentTagMembership';
 import { prepareDomainCommand } from './domainPolicy';
 import { ACTION_SLOT, editorSlot } from './editorIdentity';
 import { exegeticalPointConflictId } from './exegeticalPointAction';
@@ -263,7 +264,9 @@ export class DataSession {
       pending.generation > submitted.generation && (id === acceptedOperation || pending.operations?.includes(acceptedOperation)))?.[1];
     const ancestor = newerSubmitted ? newerSubmitted.value : submitted.value;
     const fieldAncestor = autosaveAcknowledgementAncestor(ancestor, accepted, this.state);
-    const rebased = mergeDocumentFields(rowFieldAckAncestor(fieldAncestor, accepted, this.state), this.state.draft, accepted.value);
+    const acceptedAncestor = rowFieldAckAncestor(fieldAncestor, accepted, this.state);
+    const rebased = rebaseOptionalPrayerTags(accepted.resource.collection, acceptedAncestor, this.state.draft, accepted.value,
+      mergeDocumentFields(acceptedAncestor, this.state.draft, accepted.value));
     if (wholeAnalysisFrame) keepAnalysisReshapeFrame(ancestor, this.state.draft, accepted.value, rebased);
     this.state.confirmed = copy(accepted);
     this.state.draft = rebased.value.exists ? copy(rebased.value.value as DocumentData) : null;
@@ -364,7 +367,10 @@ export class DataSession {
       const marks = firstBookMarksIntent(this.state.confirmed, this.state.draft, candidate);
       const pointIds = this.state.conflicts.flatMap(({ path }) => exegeticalPointConflictId(path) ?? []);
       const point = mergeExegeticalPointChoice(this.state.confirmed.value, this.state.draft, candidate.value, pointIds);
-      const merged = point?.rebased ?? mergeDocumentFields(marks?.baseline ?? this.state.confirmed.value, marks?.value ?? this.state.draft, candidate.value);
+      const basis = marks?.baseline ?? this.state.confirmed.value;
+      const draft = marks?.value ?? this.state.draft;
+      const merged = point?.rebased ?? rebaseOptionalPrayerTags(candidate.resource.collection, basis, draft, candidate.value,
+        mergeDocumentFields(basis, draft, candidate.value));
       rejectCouncilTopicChoice(councilTopicConflictCode(merged.conflicts));
       const chosen = chooseLocalPlacement(this.state.confirmed.resource.collection,
         this.state.confirmed.value, this.state.draft, candidate.value,

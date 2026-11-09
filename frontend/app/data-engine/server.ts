@@ -807,7 +807,7 @@ export async function listDocumentTagHistory(owner: string, collection: string, 
   cursor?: string): Promise<DocumentTagHistoryPage> {
   if (!documentTagCollection(collection)) throw new DataEngineServerError('invalid-argument', 400);
   const page = await listHistoryEntries<DocumentTagHistoryPage['entries'][number]>(owner, { collection, id: documentId },
-    DOCUMENT_TAG_HISTORY, generation, cursor, 'note-gone');
+    DOCUMENT_TAG_HISTORY, generation, cursor, collection === 'prayerRequests' ? 'prayer-gone' : 'note-gone');
   return { owner, documentId, generation, ...page };
 }
 

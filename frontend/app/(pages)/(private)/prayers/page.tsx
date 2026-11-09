@@ -52,6 +52,7 @@ import { NEUTRAL_CAPTION } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
 
 import type { PrayerTitleSeen } from '@/data-engine/documentFieldAction';
+import type { DocumentTagOpening } from '@/data-engine/documentTagCapture';
 import type { PrayerStatusOpening } from '@/data-engine/prayerStatusAction';
 
 import '@locales/i18n';
@@ -85,6 +86,7 @@ export default function PrayerPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [editingPrayer, setEditingPrayer] = useState<PrayerRequest | null>(null);
   const [editingTitleSeen, setEditingTitleSeen] = useState<PrayerTitleSeen>();
+  const [editingTagBasis, setEditingTagBasis] = useState<DocumentTagOpening>();
   const [addingUpdateForId, setAddingUpdateForId] = useState<string | null>(null);
   /**
    * The prayer being answered, SNAPSHOT at the moment the modal opened — not just
@@ -124,6 +126,7 @@ export default function PrayerPage() {
     createPrayer,
     updatePrayer,
     observeTitle,
+    observeTagBasis,
     observeStatus,
     deletePrayer,
     addUpdate,
@@ -299,7 +302,8 @@ export default function PrayerPage() {
         description: editingPrayer.description ?? null,
         tags: editingPrayer.tags ?? [],
       },
-      ...(editingTitleSeen ? [editingTitleSeen] : [])
+      editingTitleSeen,
+      editingTagBasis
     );
   };
 
@@ -779,7 +783,7 @@ export default function PrayerPage() {
               onSetStatus={handleSetStatus}
               onDelete={handleDelete}
               onAddUpdate={(id) => setAddingUpdateForId(id)}
-              onEdit={(selectedPrayer) => { setEditingTitleSeen(observeTitle(selectedPrayer)); setEditingPrayer(selectedPrayer); }}
+              onEdit={(selectedPrayer) => { setEditingTitleSeen(observeTitle(selectedPrayer)); setEditingTagBasis(observeTagBasis(selectedPrayer)); setEditingPrayer(selectedPrayer); }}
             />
           ))}
         </div>

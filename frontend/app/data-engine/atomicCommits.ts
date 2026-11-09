@@ -8,6 +8,7 @@ import { COUNCIL_TOPIC_KIND } from './councilTopicKindAction';
 import { councilTopicConflictCode, councilTopicTransitionRefusal } from './councilTopicTransition';
 import { datedRowTarget, isCapturedDateConflict } from './datedRowAction';
 import { pendingDocumentFieldAncestor } from './documentFieldAction';
+import { rebaseOptionalPrayerTags } from './documentTagMembership';
 import { prepareAtomicDomainCommand } from './domainPolicy';
 import { rebaseQueuedExegeticalPoint } from './exegeticalPointCapture';
 import { GROUP_MEETING_FIELDS, meetingFieldTarget, replacedMeetingField } from './groupMeetingFieldAction';
@@ -86,7 +87,8 @@ export function initializeCommit(record: CommitRequest, records: readonly Commit
         generation: record.baseline.metadata?.generation ?? null, dependsOn: [],
         thoughtPlacementActions: record.thoughtPlacementActions,
       }, ancestor, authored, snapshot) : undefined;
-    const ordinary = outline ?? mergeDocumentFields(ancestor, authored, snapshot.value);
+    const ordinary = outline ?? rebaseOptionalPrayerTags(record.baseline.resource.collection, ancestor, authored, snapshot.value,
+      mergeDocumentFields(ancestor, authored, snapshot.value));
     const exegetical = !outline && sameGeneration && ordinary.conflicts.some(({ path }) =>
       path.length === 2 && path[0] === 'preparation' && path[1] === 'exegeticalPlan')
       ? rebaseQueuedExegeticalPoint(ancestor, authored, snapshot.value, record.exegeticalPlanActions) : undefined;
