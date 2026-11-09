@@ -11,7 +11,7 @@ const changesTopic = (change: FieldChange) => change.path.length === 1 && change
 const topicAt = (topics: Json | undefined, id: string) => Array.isArray(topics)
   ? topics.find((topic): topic is DocumentData => object(topic) && topic.id === id) : undefined;
 
-function adjustedLog(opening: DocumentData, incoming: DocumentData, stored: DocumentData, won: boolean): Json | undefined {
+function adjustedLog(opening: DocumentData, incoming: DocumentData, stored: DocumentData, winner: DocumentData): Json | undefined {
   const before = opening.changes;
   const existing = Array.isArray(before) ? before : [];
   const written = incoming.changes;
@@ -20,8 +20,8 @@ function adjustedLog(opening: DocumentData, incoming: DocumentData, stored: Docu
   const entry = written.at(-1);
   if (!object(entry) || entry.from !== councilOutcomeLogText(opening) || entry.to !== councilOutcomeLogText(incoming)
     || typeof entry.at !== 'string') return written;
-  if (!won) return before;
-  return [...existing, { ...entry, from: councilOutcomeLogText(stored) }];
+  if (equalValues(readCouncilOutcome(winner), readCouncilOutcome(stored))) return before;
+  return [...existing, { ...entry, from: councilOutcomeLogText(stored), to: councilOutcomeLogText(winner) }];
 }
 
 export function orderCouncilOutcome(command: DataCommand, current: ResourceSnapshot, raw: unknown, serverMs: number) {
@@ -49,7 +49,7 @@ export function orderCouncilOutcome(command: DataCommand, current: ResourceSnaps
       const incoming = topicAt(original.after.value, row.id);
       const stored = topicAt(current.value?.topics, row.id);
       if (!opening || !incoming || !stored) return row;
-      const history = adjustedLog(opening, incoming, stored, equalValues(readCouncilOutcome(incoming), choice.winnerValue));
+      const history = adjustedLog(opening, incoming, stored, row);
       if (history !== undefined) return { ...row, changes: history };
       const { changes: _changes, ...outcome } = row;
       return outcome;

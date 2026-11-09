@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { isCollectionServed } from '@/data-engine/activation';
-import { DataEngineServerError, listAccountPreferenceHistory, listBibleMarkHistory, listCommentKindHistory, listExegeticalPointHistory, listCouncilMetadataHistory, listDocumentTagHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listOutlinePointPlacementHistory, listPlanTemplateNameHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listPrayerStatusHistory, listPrayerTitleHistory, listSermonChurchHistory, listSermonGoalTypeHistory, listSermonPlanModeHistory, listSermonPreparationConfirmationHistory, listSermonTitleHistory, listSermonVerseHistory, listSeriesMembershipHistory, listSeriesMetadataHistory, listServiceOrderFlagHistory, listServiceOrderPlacementHistory, listServiceOrderStepPlacementHistory, listServiceOrderStepTitleHistory, listServiceOrderTitleHistory, listStudyNoteTitleHistory, listTagColorHistory, listThoughtLockHistory, listThoughtPlacementHistory, listThoughtTagHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
+import { DataEngineServerError, listAccountPreferenceHistory, listBibleMarkHistory, listCommentKindHistory, listExegeticalPointHistory, listCouncilMetadataHistory, listCouncilOutcomeHistory, listDocumentTagHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listOutlinePointPlacementHistory, listPlanTemplateNameHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listPrayerStatusHistory, listPrayerTitleHistory, listSermonChurchHistory, listSermonGoalTypeHistory, listSermonPlanModeHistory, listSermonPreparationConfirmationHistory, listSermonTitleHistory, listSermonVerseHistory, listSeriesMembershipHistory, listSeriesMetadataHistory, listServiceOrderFlagHistory, listServiceOrderPlacementHistory, listServiceOrderStepPlacementHistory, listServiceOrderStepTitleHistory, listServiceOrderTitleHistory, listStudyNoteTitleHistory, listTagColorHistory, listThoughtLockHistory, listThoughtPlacementHistory, listThoughtTagHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
 import { collectionHeadId, HEADS_COLLECTION, sequenceId } from '@/data-engine/serverFeed';
 import { DataSession } from '@/data-engine/session';
 import { outlinePointGap } from '@/utils/outlineDnd';
@@ -1729,6 +1729,37 @@ describe('transactional DataEngine server', () => {
     expect((await processCommand(base.owner, edit('write', written, 80))).kind).toBe('acknowledged');
     expect((await processCommand(base.owner, edit('clear-option', section, 40))).kind).toBe('acknowledged');
     expect((await readDocument(base.owner, resource)).value?.topics).toEqual([{ ...section, decision: text, discussed: true }]);
+  });
+
+  it.each([true, false])('keeps independently written council words when both devices select an option (option arrives last: %s)', async optionLast => {
+    const resource = { collection: 'councils', id: 'independent-outcome-options' };
+    const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] };
+    const now = '2026-11-09T00:00:00.000Z';
+    const opening = { id: 'section', title: 'Section', kind: 'decision', questions: [],
+      options: [{ id: 'a', text: 'First' }, { id: 'b', text: 'Second' }] };
+    const text = 'Keep the independently written decision';
+    const optionA = { ...opening, discussed: true, acceptedOptionId: 'a' };
+    const words = { ...optionA, decision: text };
+    const optionB = { ...opening, discussed: true, acceptedOptionId: 'b' };
+    const edit = (operationId: string, before: typeof opening, after: typeof opening, at: number) => ({
+      ...base, kind: 'update', operationId, generation: 'seed',
+      changes: [{ path: ['topics'], before: { exists: true, value: [before] }, after: { exists: true, value: [after] } }],
+      councilOutcomeActions: [{ rowId: opening.id, rowCreatedAt: opening.id, observedRevision: before === opening ? 1 : 2,
+        time: { earliestMs: 1_800_000_000_000 + at, latestMs: 1_800_000_000_004 + at } }],
+    });
+    expect((await processCommand(base.owner, { ...base, kind: 'create', operationId: 'seed', generation: null,
+      value: { userId: base.owner, title: 'Council', status: 'preparing', createdAt: now, updatedAt: now, topics: [opening] },
+    })).kind).toBe('acknowledged');
+    const phone = optionLast ? [edit('option-a', opening, optionA, 20), edit('write', optionA, words, 50)]
+      : [edit('phone-both', opening, words, 50)];
+    const laptop = edit('option-b', opening, optionB, 90);
+    for (const command of optionLast ? [...phone, laptop] : [laptop, ...phone]) {
+      expect((await processCommand(base.owner, command)).kind).toBe('acknowledged');
+    }
+    const expected = { ...optionB, decision: text };
+    expect((await readDocument(base.owner, resource)).value?.topics).toEqual([expected]);
+    const history = await listCouncilOutcomeHistory(base.owner, resource.id, 'seed');
+    expect(history.entries).toMatchObject([{ fields: [{ winnerValue: { acceptedOptionId: 'b', decision: text } }] }]);
   });
 
   it.each(['removed-option', 'compatible-proof', 'distinct-words'])('preserves the complete council outcome contract: %s', async scenario => {

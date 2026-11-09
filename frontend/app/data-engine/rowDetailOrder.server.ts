@@ -130,19 +130,25 @@ function orderField<Field extends string, Value extends RowValue>(command: Updat
   const timed = { ...action, time: action.time };
   if (unobserved) {
     if (followsPredecessor) return { command, stamp: timed };
-    return orderUnobservedRowDetail(command, timed, field, target, value, previous, scope, policy.atomicChoice);
+    return orderUnobservedRowDetail(command, timed, field, target, value, previous, scope, policy);
   }
   return { command, ...((sameIntent || !equalValues(value, action.after)) && (previous || action.observedRevision === revision) ? { stamp: timed } : {}) };
 }
 
 function orderUnobservedRowDetail<Field extends string, Value extends RowValue>(command: Update, action: RowDetailAction<Value>,
-  field: Field, target: RowFieldTarget<Value>, value: Value, previous: Proof, scope?: RowValue, atomicChoice?: true): FieldPlan<Field, Value> {
-  const ordered = orderConcurrentRowField(command, action, target, { value, time: previous.time });
-  if (ordered.displaced) return { command: ordered.command, displaced: { ...ordered.displaced, field, rowCreatedAt: action.rowCreatedAt, ...(scope != null && { scope }) },
-    ...(ordered.chronology > 0 ? { stamp: action } : {}) };
+  field: Field, target: RowFieldTarget<Value>, value: Value, previous: Proof, scope: RowValue | undefined,
+  policy: RowDetailPolicy<Field, Value>): FieldPlan<Field, Value> {
+  const ordered = orderConcurrentRowField(command, action, target, { value, time: previous.time }, policy.mergeOrdered);
+  if (ordered.displaced) {
+    const { winnerValue, winnerActionTime } = ordered.displaced;
+    const stamp = ordered.chronology > 0 || !equalValues(winnerValue, value)
+      ? { ...action, after: winnerValue, time: winnerActionTime } : undefined;
+    return { command: ordered.command, displaced: { ...ordered.displaced, field, rowCreatedAt: action.rowCreatedAt, ...(scope != null && { scope }) },
+      ...(stamp && { stamp }) };
+  }
   if (ordered.chronology > 0) return { command, stamp: action };
   if (!ordered.chronology && equalValues(value, action.after)) return { command, sameValueWithoutOrder: action.rowId };
-  if (!ordered.chronology && (atomicChoice || equalValues(action.before, action.after))) return { command, uncertain: rowDetailConflict(action, target, value) };
+  if (!ordered.chronology && (policy.atomicChoice || equalValues(action.before, action.after))) return { command, uncertain: rowDetailConflict(action, target, value) };
   if (!ordered.chronology && equalValues(value, action.before)) return { command, uncertain: uncertainRowChange(action, target) };
   return { command };
 }

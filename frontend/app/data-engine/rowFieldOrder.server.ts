@@ -31,20 +31,23 @@ export function uncertainRowChange<Value extends RowValue>(action: RowFieldObser
 
 /** Rewrite only the ordered leaf. The normal keyed-array merge still owns all neighboring edits. */
 export function orderConcurrentRowField<Value extends RowValue>(command: Update, action: RowFieldEvidence<Value>,
-  target: RowFieldTarget<Value>, stored: { value: Value; time: ActionTime | null }): {
+  target: RowFieldTarget<Value>, stored: { value: Value; time: ActionTime | null }, mergeOrdered?:
+    (before: Value, after: Value, current: Value, incomingWins: boolean) => Value | undefined): {
     command: Update; chronology: number; displaced?: DisplacedRowField<Value>;
   } {
   const chronology = stored.time ? compareActionTime(action.time, stored.time) : 0;
   if (!stored.time || !chronology || equalValues(stored.value, action.after)) return { command, chronology };
   const incomingWins = chronology > 0;
+  const winnerValue = mergeOrdered?.(action.before, action.after, stored.value, incomingWins) ?? (incomingWins ? action.after : stored.value);
   const changes = command.changes.map(change => isRowChange(change, target) ? {
     ...change,
     before: { ...change.before, value: replaceExistingRowField(change.before.value, action.rowId, stored.value, target) },
-    after: incomingWins ? change.after : { ...change.after, value: replaceExistingRowField(change.after.value, action.rowId, stored.value, target) },
+    after: equalValues(action.after, winnerValue) ? change.after
+      : { ...change.after, value: replaceExistingRowField(change.after.value, action.rowId, winnerValue, target) },
   } : change);
   return { command: { ...command, changes }, chronology, displaced: {
     rowId: action.rowId, generation: command.generation!,
-    value: incomingWins ? stored.value : action.after, winnerValue: incomingWins ? action.after : stored.value,
+    value: incomingWins ? stored.value : action.after, winnerValue,
     actionTime: incomingWins ? stored.time : action.time, winnerActionTime: incomingWins ? action.time : stored.time,
   } };
 }

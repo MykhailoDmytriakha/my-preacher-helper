@@ -52,6 +52,18 @@ export function mergeIndependentOutcomes(before: CouncilOutcome, mine: CouncilOu
   return { acceptedOptionId, decision, discussed: Boolean(acceptedOptionId || decision), resolution: null };
 }
 
+/** Ordering competing options must not also order independently written decision text. */
+function mergeOrderedOutcomes(before: CouncilOutcome, mine: CouncilOutcome, stored: CouncilOutcome, incomingWins: boolean): CouncilOutcome | undefined {
+  if (before.resolution || mine.resolution || stored.resolution || mine.decision === stored.decision) return undefined;
+  if (mine.acceptedOptionId === before.acceptedOptionId || stored.acceptedOptionId === before.acceptedOptionId
+    || mine.acceptedOptionId === stored.acceptedOptionId) return undefined;
+  const decision = mine.decision === before.decision ? stored.decision
+    : stored.decision === before.decision ? mine.decision : undefined;
+  if (decision === undefined) return undefined;
+  const winner = incomingWins ? mine : stored;
+  return { ...winner, decision, discussed: winner.discussed || Boolean(decision) };
+}
+
 export function councilOutcomeRow(path: readonly string[] | undefined): string | undefined {
   if (path?.length === 3 && path[0] === COUNCIL_OUTCOME.field && path[1].startsWith('id:') && path[2] === COUNCIL_OUTCOME.leaf) {
     return path[1].slice(3);
@@ -62,7 +74,7 @@ export const COUNCIL_OUTCOME_POLICY: RowDetailPolicy<'outcome', CouncilOutcome> 
   collection: 'councils', fields: ['outcome'], birth: COUNCIL_TOPIC_ID, target: () => COUNCIL_OUTCOME,
   proofs: 'councilOutcomeProofs', actions: 'councilOutcomeActions', history: '_topicOutcomeHistory',
   repeatedFields: ['outcome'], allowUnclocked: true, atomicChoice: true, scopes: topicKinds,
-  mergeIndependently: mergeIndependentOutcomes,
+  mergeIndependently: mergeIndependentOutcomes, mergeOrdered: mergeOrderedOutcomes,
   validAfter: (_, value) => !incompatibleCouncilOutcome(value),
   needsChoice: (_, before, after, stored) => Boolean(after.decision && stored.decision
     && after.decision !== before.decision && stored.decision !== before.decision && !equalValues(after, stored)),
