@@ -10,9 +10,11 @@ import React from 'react';
 
 import '@testing-library/jest-dom';
 import ManualConspectusPage from '@/(pages)/(private)/sermons/[id]/plan/manual/page';
+import { DataSession } from '@/data-engine/session';
 import { draftKey, findDraftCopies } from '@/utils/durableDraft';
 import AiPlanPage from '@/(pages)/(private)/sermons/[id]/plan/page';
 
+import type { DocumentData } from '@/data-engine/types';
 import type { Sermon } from '@/models/models';
 
 /**
@@ -28,11 +30,19 @@ import type { Sermon } from '@/models/models';
  */
 
 const writes: string[] = [];
-let mockSermon: Record<string, unknown> | null = null;
+let mockSermon: DocumentData | null = null;
 let mockReadOnly = true;
 let mockDurable = false;
 beforeEach(() => { mockDurable = false; });
 let mockSearchParams = new URLSearchParams();
+
+function mockDurableCheckpoint() {
+  return new DataSession({
+    resource: { collection: 'sermons', id: 'sermon-1' },
+    value: mockSermon,
+    metadata: { protocol: 1, generation: 'sermon-generation', revision: 1, deleted: false },
+  }).checkpoint();
+}
 
 const refuse = (name: string) => jest.fn(() => {
   writes.push(name);
@@ -46,7 +56,7 @@ jest.mock('@/data-engine/react.client', () => ({
   useDataEngine: () => ({ owner: 'user-1' }),
   useDataDocument: () => ({
     data: mockSermon, confirmed: mockReadOnly ? null : mockSermon, remote: null, status: null,
-    state: mockDurable ? { durable: true, checkpoint: { confirmed: { resource: { collection: 'sermons', id: 'sermon-1' } }, draft: mockSermon } } : null,
+    state: mockDurable ? { durable: true, checkpoint: mockDurableCheckpoint() } : null,
     loading: false, readOnly: mockReadOnly, copySource: mockReadOnly ? 'server' : null,
     readOnlyReason: null, error: null,
     edit: refuse('edit'), update: refuse('update'), commit: refuse('commit'), save: refuse('save'),
@@ -116,7 +126,7 @@ const sermonFixture = (overrides: Partial<Sermon> = {}) => ({
   },
   planText: { p1: 'Warriors, marksmen, craftsmen', p2: 'He called on God', sp1: 'Bless me indeed', p3: 'Ask' },
   ...overrides,
-}) as unknown as Record<string, unknown>;
+}) as unknown as DocumentData;
 
 const renderPage = (page: React.ReactElement) => render(
   <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>{page}</QueryClientProvider>
