@@ -34,12 +34,19 @@ function setup() {
   let stored = JSON.parse(JSON.stringify(initial)) as unknown as DocumentData;
   let draft = stored;
   let capture: Promise<void> | undefined;
-  const writer = createEngineStructureWriter({ update: async updater => {
-    const next = updater(draft)!;
-    draft = next;
-    if (capture) await capture;
-    stored = next;
-  } }, 'owner');
+  let writes = 0;
+  const writer = createEngineStructureWriter({
+    update: async updater => {
+      writes += 1;
+      draft = stored = updater(draft)!;
+    },
+    captureReview: async (_selected, updater) => {
+      writes += 1;
+      const privateStage = updater(draft)!;
+      if (capture) await capture;
+      draft = stored = privateStage;
+    },
+  }, 'owner');
   const hook = renderHook(() => {
     const [containers, setContainers] = useState<Record<string, Item[]>>({ introduction: [], main: items, conclusion: [], ambiguous: [] });
     const review = useAiSortingDiff({ containers, setContainers, outlinePoints: initial.outline!, sermon: initial, sermonId: initial.id,
@@ -49,6 +56,12 @@ function setup() {
     return { ...review, containers };
   }, { wrapper: ({ children }) => <StructureWriterContext.Provider value={writer}>{children}</StructureWriterContext.Provider> });
   return { ...hook, order: () => (stored.structure as unknown as ThoughtsBySection).main,
+    writes: () => writes,
+    location: (id: string) => (stored.thoughts as unknown as Sermon['thoughts']).find(thought => thought.id === id)?.subPointId,
+    receivePlacement: (id: string, subPointId: string) => {
+      stored = { ...stored, thoughts: (stored.thoughts as DocumentData[]).map(row => row.id === id ? { ...row, subPointId } : row) };
+      draft = stored;
+    },
     hold: (promise: Promise<void>) => { capture = promise; }, words: () => (stored.thoughts as unknown as Sermon['thoughts']).map(t => t.text) };
 }
 
@@ -75,6 +88,20 @@ describe('one AI review decision at the actual structure writer', () => {
     await act(async () => { await hook.result.current.handleRevertItem('a', 'main'); });
     expect(hook.order()).toEqual(ids);
     expect(Object.keys(hook.result.current.highlightedItems).sort()).toEqual(['b', 'c', 'd']);
+  });
+
+  it.each(['one suggestion', 'all suggestions'])('dismisses %s without writing over a separately saved placement', async mode => {
+    const hook = setup();
+    jest.mocked(sortItemsWithAI).mockResolvedValue(items.map(item => item.id === 'a' ? { ...item, subPointId: 'proposal' } : item));
+    await act(async () => { await hook.result.current.handleAiSort({ columnId: 'main', outlinePointId: 'point' }); });
+    expect(hook.result.current.highlightedItems.a?.type).toBe('assigned');
+    hook.receivePlacement('a', 'manual');
+    await act(async () => {
+      if (mode === 'one suggestion') await hook.result.current.handleRevertItem('a', 'main');
+      else await hook.result.current.handleRevertAll('main');
+    });
+    expect(hook.result.current.highlightedItems.a).toBeUndefined();
+    expect({ writes: hook.writes(), savedSubpoint: hook.location('a') }).toEqual({ writes: 0, savedSubpoint: 'manual' });
   });
 
   it('keeps the chosen review available while device capture is held', async () => {

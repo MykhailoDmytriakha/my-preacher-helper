@@ -15,6 +15,8 @@ import type { StructureSectionId } from '@/utils/structureTags';
 /** A placement action names its own thoughts; omitted scope means an explicit whole-board action. */
 export interface StructureWriteOptions {
   thoughtIds?: readonly string[];
+  /** An AI preview becomes a durable write only when its selected placement is captured. */
+  captureReview?: true;
   /** Assignment and order are captured as one action through the same document update. */
   thoughtUpdates?: readonly { thought: Thought; baseThought: Thought | null }[];
 }

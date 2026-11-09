@@ -1325,7 +1325,7 @@ export function useDataForm(resource: ResourceRef | null, slot: string, selectio
     },
     captureDocumentMetadataAction: (target?: { rowId: string; after: string } | { thoughtPlacementId: string }): ManualDocumentMetadataSave => {
       const time = owner && current() ? actionClock.capture(owner) : undefined;
-      const placement = target && 'thoughtPlacementId' in target ? target : undefined;
+      const placement = target && 'thoughtPlacementId' in target ? { thoughtPlacementIds: [target.thoughtPlacementId] } : undefined;
       const date = target && 'rowId' in target ? target : undefined;
       return { documentMetadata: { time: time ?? null, ...placement, ...(date && time && { dateAction: { ...date, time } }) } };
     },

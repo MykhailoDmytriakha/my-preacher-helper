@@ -90,7 +90,7 @@ export interface ManagedManualForm {
   follow(): Promise<void>;
   update(updater: (value: DocumentData) => DocumentData, fieldInput?: ManualFieldInput): Promise<void>;
   propose(producer: (source: DocumentData) => Promise<DocumentData>, signal?: AbortSignal): Promise<void>;
-  save(updater?: (value: DocumentData) => DocumentData, action?: DatedRowActionCapture | GroupMeetingFieldInput | { preachStatus: PreachStatusSave } | ManualDocumentMetadataSave): Promise<void>;
+  save(updater?: (value: DocumentData) => DocumentData, action?: DatedRowActionCapture | GroupMeetingFieldInput | { preachStatus: PreachStatusSave } | ManualDocumentMetadataSave, onCaptured?: () => void): Promise<void>;
   cancel(): Promise<void>;
   retry(): Promise<void>;
   resolve(choice: 'local' | 'remote', options?: { discardStage?: boolean; expectedComparison?: ManualComparison; updater?: (current: DocumentData) => DocumentData }): Promise<void>;
@@ -2237,24 +2237,28 @@ export class DataEngine {
           admitSave: (scopeId: string, checkpoint: SessionCheckpoint) => {
             active();
             const frozen = copy(checkpoint), admitted = this.commits.admitSave(scopeId, frozen);
-            return async (submittedScope: string, submitted: SessionCheckpoint, options: ManualSaveOptions) => {
+            return async (submittedScope: string, submitted: SessionCheckpoint, options: ManualSaveOptions, onCaptured?: () => void) => {
               if (submittedScope !== scopeId || !equalValues(submitted, frozen)) throw new Error('Admitted manual Save changed its words');
               const request = await admitted(options);
               if (!request?.value) throw new Error('Manual Save did not create an intent');
+              onCaptured?.();
               if (this.current(owner, generation)) {
-                if (!parent.closed) await parent.controller!.adoptManualCommit(request, selection);
-                this.prepareCommitsInBackground(); this.backgroundDrain();
+                try { if (!parent.closed) await parent.controller!.adoptManualCommit(request, selection); }
+                finally {
+                  if (this.current(owner, generation)) { this.prepareCommitsInBackground(); this.backgroundDrain(); }
+                }
               }
               return intent(request);
             };
           },
-          save: async (scopeId: string, checkpoint: import('./session').SessionCheckpoint, options: ManualSaveOptions) => {
+          save: async (scopeId: string, checkpoint: import('./session').SessionCheckpoint, options: ManualSaveOptions, onCaptured?: () => void) => {
             // Save was invoked while the form was active. Its captured intent belongs to the
             // owner even if navigation closes the page before earlier local writes finish.
             this.assertCurrent(owner, generation);
             const request = await this.commits.save(scopeId, checkpoint, options);
             this.assertCurrent(owner, generation);
             if (!request || !request.value) throw new Error('Manual Save did not create an intent');
+            onCaptured?.();
             if (!parent.closed) await parent.controller!.adoptManualCommit(request, selection);
             this.assertCurrent(owner, generation);
             this.prepareCommitsInBackground(); this.backgroundDrain();
@@ -2372,7 +2376,7 @@ export class DataEngine {
       propose: (producer, signal) => execute(() => requireScope().propose(async source => {
         const proposed = await producer(source); active(); return proposed;
       }, signal)),
-      save: (updater, action) => execute(async () => {
+      save: (updater, action, onCaptured) => execute(async () => {
         if (hasFailedDelivery()) {
           throw Object.assign(new Error('Resolve the failed delivery with Keep local or Accept remote before saving'), { code: 'resolve-version-first' });
         }
@@ -2384,9 +2388,9 @@ export class DataEngine {
           : action && 'rowId' in action && !('field' in action) ? action : undefined);
         if (updater) {
           const staged = scope.update(updater, fieldInput);
-          const saving = scope.save(dateInput, status, metadata?.time, metadata?.thoughtPlacementId);
+          const saving = scope.save(dateInput, status, metadata?.time, metadata?.thoughtPlacementIds, onCaptured);
           await Promise.all([staged, saving]);
-        } else await scope.save(dateInput, status, metadata?.time, metadata?.thoughtPlacementId);
+        } else await scope.save(dateInput, status, metadata?.time, metadata?.thoughtPlacementIds, onCaptured);
         if (!scope.getState().dirty) await scope.cancel();
       }),
       cancel: () => execute(async () => {

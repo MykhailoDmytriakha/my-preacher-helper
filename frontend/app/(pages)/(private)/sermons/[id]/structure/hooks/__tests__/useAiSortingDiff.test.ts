@@ -555,9 +555,7 @@ describe('useAiSortingDiff', () => {
       expect(Object.keys(hook.result.current.highlightedItems).length).toBeGreaterThan(0);
       expect(hook.result.current.preSortState).not.toBeNull();
 
-      const failedThoughtCapture = deferred<typeof mockSermon.thoughts[number]>();
       const failedStructureCapture = deferred<unknown>();
-      mockUpdateThought.mockReturnValueOnce(failedThoughtCapture.promise);
       mockUpdateStructure.mockReturnValueOnce(failedStructureCapture.promise);
 
       let firstOperation!: ReturnType<typeof hook.result.current.handleKeepAll>;
@@ -573,7 +571,7 @@ describe('useAiSortingDiff', () => {
         await nextMacrotask();
       });
 
-      expect(mockUpdateThought).toHaveBeenCalledTimes(1);
+      expect(mockUpdateThought).not.toHaveBeenCalled();
       expect(mockUpdateStructure).toHaveBeenCalledTimes(1);
       expect(firstFinished).toBe(false);
       expect(hook.result.current.isDiffModeActive).toBe(true);
@@ -590,8 +588,7 @@ describe('useAiSortingDiff', () => {
 
       const refusal = Object.assign(new Error('Local capture refused'), { code: 'capture-refused' });
       await act(async () => {
-        failedThoughtCapture.reject(refusal);
-        failedStructureCapture.resolve(undefined);
+        failedStructureCapture.reject(refusal);
         await expect(firstWaiting).rejects.toMatchObject({ code: 'capture-refused' });
       });
 
@@ -599,9 +596,7 @@ describe('useAiSortingDiff', () => {
       expect(Object.keys(hook.result.current.highlightedItems).length).toBeGreaterThan(0);
       expect(hook.result.current.preSortState).not.toBeNull();
 
-      const retryThoughtCapture = deferred<typeof mockSermon.thoughts[number]>();
       const retryStructureCapture = deferred<unknown>();
-      mockUpdateThought.mockReturnValueOnce(retryThoughtCapture.promise);
       mockUpdateStructure.mockReturnValueOnce(retryStructureCapture.promise);
       let retryOperation!: ReturnType<typeof hook.result.current.handleKeepAll>;
       act(() => {
@@ -610,7 +605,6 @@ describe('useAiSortingDiff', () => {
       const retryWaiting = awaitWriteOperation(retryOperation, () => undefined);
 
       await act(async () => {
-        retryThoughtCapture.resolve(mockSermon.thoughts[0]);
         retryStructureCapture.resolve(undefined);
         await retryWaiting;
       });
@@ -624,7 +618,7 @@ describe('useAiSortingDiff', () => {
       });
       const changedItems = [{ ...mockContainers.introduction[0], outlinePointId: 'intro-1' }];
       mockSortItemsWithAI.mockResolvedValueOnce(changedItems);
-      mockUpdateThought.mockRejectedValueOnce(refusal);
+      mockUpdateStructure.mockRejectedValueOnce(refusal);
 
       const hook = renderHook(() => {
         const [containers, setContainers] = React.useState<Record<string, Item[]>>(mockContainers);
@@ -649,7 +643,7 @@ describe('useAiSortingDiff', () => {
       expect(mockToast.error).toHaveBeenCalledWith(expect.anything());
     });
 
-    it('filters local thoughts out of AI sort requests and persists keep/revert outline changes', async () => {
+    it('filters local thoughts out of AI sort requests and captures accepted placement only', async () => {
       const localContainers: Record<string, Item[]> = {
         ...mockContainers,
         introduction: [
@@ -695,23 +689,15 @@ describe('useAiSortingDiff', () => {
         await awaitWriteOperation(keepOperation, () => undefined);
       });
 
-      expect(mockUpdateThought).toHaveBeenCalledWith(
-        'sermon-1',
-        expect.objectContaining({
-          id: 'thought-1',
-          outlinePointId: 'intro-1',
-        }),
-        // Sorting changes only where a thought sits, so it must ALSO state the
-        // thought as this screen holds it — then the text is not written at all and
-        // a rewrite made on another device survives.
-        expect.objectContaining({ id: 'thought-1' })
-      );
+      expect(mockUpdateThought).not.toHaveBeenCalled();
       expect(mockUpdateStructure).toHaveBeenCalledWith(
         'sermon-1',
-        // A local-only thought has no durable document yet and must never be
-        // placed into persisted structure ahead of its create submission.
         expect.objectContaining({ introduction: ['thought-1'] }),
         mockSermon.structure,
+        expect.objectContaining({ captureReview: true, thoughtIds: ['thought-1'], thoughtUpdates: [{
+          thought: expect.objectContaining({ id: 'thought-1', outlinePointId: 'intro-1' }),
+          baseThought: expect.objectContaining({ id: 'thought-1' }),
+        }] }),
       );
       expect(mockToast.success).toHaveBeenCalled();
 
@@ -739,15 +725,8 @@ describe('useAiSortingDiff', () => {
 
       await act(async () => { await awaitWriteOperation(revertHook.result.current.handleRevertItem('thought-1', 'introduction'), () => undefined); });
 
-      expect(mockUpdateStructure).toHaveBeenLastCalledWith(
-        'sermon-1', expect.any(Object), mockSermon.structure, expect.objectContaining({
-          thoughtIds: ['thought-1'],
-          thoughtUpdates: [expect.objectContaining({
-            thought: expect.objectContaining({ id: 'thought-1', outlinePointId: null, subPointId: null }),
-            baseThought: expect.objectContaining({ id: 'thought-1', outlinePointId: 'intro-1' }),
-          })],
-        }),
-      );
+      expect(mockUpdateStructure).toHaveBeenCalledTimes(1);
+      expect(mockUpdateThought).not.toHaveBeenCalled();
       expect(revertSaveThought).not.toHaveBeenCalled();
       expect(revertSaveStructure).not.toHaveBeenCalled();
     });

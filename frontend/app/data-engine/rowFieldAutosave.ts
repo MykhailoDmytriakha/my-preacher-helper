@@ -119,16 +119,16 @@ export function hasUncapturedAutosaveRowField(checkpoint: SessionCheckpoint): bo
 }
 
 function manualRowActions(checkpoint: SessionCheckpoint, baseline: ResourceSnapshot, opening: DocumentData | null,
-  target: Target, captured: ActionTime | null | undefined, thoughtPlacementId?: string): Action[] {
+  target: Target, captured: ActionTime | null | undefined, thoughtPlacementIds?: readonly string[]): Action[] {
   const duration = target.stamp === 'group-step-duration';
-  const placement = target.stamp === 'thought-placement' && boundedRowId(thoughtPlacementId);
-  if ((!duration && !placement) || captured === undefined || !baseline.metadata || baseline.metadata.deleted) return [];
+  const placement = target.stamp === 'thought-placement' ? thoughtPlacementIds?.filter(boundedRowId) : undefined;
+  if ((!duration && !placement?.length) || captured === undefined || !baseline.metadata || baseline.metadata.deleted) return [];
   const time = captured === null ? null : boundedActionTime(captured);
   if (time === undefined) return [];
   const field = target.policy.target(target.field);
   const shown = existingRowFields(opening?.[field.field], field);
   const next = existingRowFields(checkpoint.draft?.[field.field], field);
-  const candidates = placement ? [[thoughtPlacementId, shown.get(thoughtPlacementId)] as const] : [...shown];
+  const candidates = placement ? [...new Set(placement)].map(id => [id, shown.get(id)] as const) : [...shown];
   return candidates.flatMap(([rowId, before]) => {
     const after = next.get(rowId), rowCreatedAt = birthAt(opening, rowId, target);
     return boundedRowId(rowId) && before !== undefined && after !== undefined && !equalValues(before, after)
@@ -138,12 +138,12 @@ function manualRowActions(checkpoint: SessionCheckpoint, baseline: ResourceSnaps
 }
 
 export function captureRowFields(checkpoint: SessionCheckpoint, baseline: ResourceSnapshot,
-  predecessor: CommitRequest | undefined, records: readonly CommitRequest[], manualTime?: ActionTime | null, thoughtPlacementId?: string): AutosaveRowFieldActions {
+  predecessor: CommitRequest | undefined, records: readonly CommitRequest[], manualTime?: ActionTime | null, thoughtPlacementIds?: readonly string[]): AutosaveRowFieldActions {
   const byId = new Map(records.map(record => [record.id, record]));
   const opening = predecessor ? predecessor.value : baseline.value;
   const result: AutosaveRowFieldActions = {};
   for (const target of targetsFor(baseline.resource.collection)) {
-    const actions = [...uncaptured(checkpoint, target), ...manualRowActions(checkpoint, baseline, opening, target, manualTime, thoughtPlacementId)].filter(action => birthAt(opening, action.rowId, target) === action.rowCreatedAt)
+    const actions = [...uncaptured(checkpoint, target), ...manualRowActions(checkpoint, baseline, opening, target, manualTime, thoughtPlacementIds)].filter(action => birthAt(opening, action.rowId, target) === action.rowCreatedAt)
       .map(action => {
         const predecessorOperationId = knownRowDetailPredecessor(predecessor, byId, baseline, target.policy, request => {
           const captured = request[target.action]?.find(item => item.rowId === action.rowId);

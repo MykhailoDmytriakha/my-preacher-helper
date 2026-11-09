@@ -16,6 +16,7 @@ import {
 import { skippedWrite, type WriteOperation } from "@/utils/recoverableWrite";
 import { useTranslation } from '@locales/useTranslation';
 
+import { AiReviewCaptureFailure } from '../captureAiReview';
 import { advanceReviewBaseline, capturedReviewChanges, reflectCapturedReviewChanges } from "../utils/aiReviewPlacement";
 import { buildStructureFromContainers, isLocalThoughtId } from "../utils/structure";
 
@@ -40,33 +41,17 @@ interface UseAiSortingDiffProps {
 }
 
 // Helper function to collect thought updates from highlighted items
-const collectThoughtUpdates = (
-  highlightedItems: Record<string, { type: 'assigned' | 'moved' }>,
-  containers: Record<string, Item[]>,
-  sermon: Sermon | null
-): Array<{id: string, outlinePointId?: string, subPointId?: string | null}> => {
-  const thoughtUpdates: Array<{id: string, outlinePointId?: string, subPointId?: string | null}> = [];
-
-  for (const itemId of Object.keys(highlightedItems)) {
-    for (const items of Object.values(containers)) {
-      if (!Array.isArray(items)) continue;
-
-      const item = items.find(i => i.id === itemId);
-      if (item && sermon) {
-        const thought = sermon.thoughts.find((t: Thought) => t.id === itemId);
-        if (thought && (thought.outlinePointId !== item.outlinePointId || (thought.subPointId ?? null) !== (item.subPointId ?? null))) {
-          thoughtUpdates.push({
-            id: itemId,
-            outlinePointId: item.outlinePointId ?? undefined,
-            subPointId: item.subPointId ?? null,
-          });
-        }
-      }
-    }
-  }
-
-  return thoughtUpdates;
-};
+function collectThoughtUpdates(ids: readonly string[], containers: Record<string, Item[]>, sermon: Sermon) {
+  const items = new Map(Object.values(containers).flat().map(item => [item.id, item]));
+  return ids.flatMap(id => {
+    const item = items.get(id);
+    const thought = sermon.thoughts.find(candidate => candidate.id === id);
+    return item && thought ? [{
+      thought: { ...thought, outlinePointId: item.outlinePointId ?? null, subPointId: item.subPointId ?? null },
+      baseThought: thought,
+    }] : [];
+  });
+}
 
 // Helper function to create new structure from containers
 const createStructureFromContainers = (containers: Record<string, Item[]>): ThoughtsBySection => {
@@ -298,7 +283,7 @@ export const useAiSortingDiff = ({
   const [isSorting, setIsSorting] = useState(false);
   const [sortingTarget, setSortingTarget] = useState<AiSortTarget | null>(null);
   // A capture belongs to this owner/document, even if its promise outlives the screen.
-  const applying = useMemo(() => ({ sermonId, owner: sermon?.userId, pending: null as Promise<void> | null }), [sermonId, sermon?.userId]);
+  const applying = useMemo(() => ({ sermonId, owner: sermon?.userId, pending: null as Promise<void> | null, discard: undefined as (() => Promise<void>) | undefined }), [sermonId, sermon?.userId]);
   const currentApplying = useRef<typeof applying | null>(applying);
   currentApplying.current = applying;
   useEffect(() => {
@@ -450,11 +435,16 @@ export const useAiSortingDiff = ({
   const captureReviewDecision = useCallback((write: () => Promise<unknown>, captured: () => void): WriteOperation => {
     if (applying.pending) return applying.pending;
     setPendingSort(applying);
-    const persistence = Promise.resolve().then(write).catch(error => {
-      if (!isOfflineQueuedError(error)) throw error;
-    }).then(() => {
+    const persistence = (async () => {
+      if (applying.discard) {
+        await applying.discard();
+        applying.discard = undefined;
+      }
+      try { await write(); }
+      catch (error) { if (!isOfflineQueuedError(error)) throw error; }
       if (currentApplying.current === applying) captured();
-    }).catch(error => {
+    })().catch(error => {
+      if (error instanceof AiReviewCaptureFailure) applying.discard = error.discard;
       if (currentApplying.current === applying) toast.error(t('errors.failedToSaveStructure'));
       throw error;
     }).finally(() => {
@@ -473,6 +463,7 @@ export const useAiSortingDiff = ({
     if (!item || !thought || !sermonId || !(itemId in highlightedItems)) return skippedWrite();
     return captureReviewDecision(() => writer.updateStructure(sermonId, createStructureFromContainers(containers), sermon?.structure, {
       thoughtIds: [itemId],
+      captureReview: true,
       thoughtUpdates: [{ thought: { ...thought, outlinePointId: item.outlinePointId ?? null, subPointId: item.subPointId ?? null }, baseThought: thought }],
     }), () => handlePlacementCaptured(itemId, containers));
   }, [applying, containers, sermon, sermonId, highlightedItems, captureReviewDecision, writer, handlePlacementCaptured]);
@@ -487,82 +478,46 @@ export const useAiSortingDiff = ({
     const revertedItems = containers[columnId].filter(candidate => candidate.id !== itemId);
     revertedItems.splice(Math.min(originalItems.indexOf(originalItem), revertedItems.length), 0, originalItem);
     const revertedBoard = { ...containers, [columnId]: revertedItems };
-    return captureReviewDecision(() => writer.updateStructure(sermonId, createStructureFromContainers(revertedBoard), sermon?.structure, {
-      thoughtIds: [itemId],
-      thoughtUpdates: [{
-        thought: { ...thought, outlinePointId: originalItem.outlinePointId ?? null, subPointId: originalItem.subPointId ?? null },
-        baseThought: { ...thought, outlinePointId: item.outlinePointId ?? null, subPointId: item.subPointId ?? null },
-      }],
-    }), () => {
+    const dismiss = () => {
       setContainers(revertedBoard);
       handlePlacementCaptured(itemId, revertedBoard);
-    });
-  }, [applying, preSortState, containers, sermon, sermonId, highlightedItems, captureReviewDecision, writer, setContainers, handlePlacementCaptured]);
+    };
+    if (applying.discard) return captureReviewDecision(async () => undefined, dismiss);
+    dismiss();
+    return Promise.resolve();
+  }, [applying, preSortState, containers, sermon, sermonId, highlightedItems, captureReviewDecision, setContainers, handlePlacementCaptured]);
 
-  // Review closes only after all of this decision's actual device captures finish.
+  const finishReview = useCallback(() => {
+    setHighlightedItems({});
+    setIsDiffModeActive(false);
+    setPreSortState(null);
+  }, []);
+
   const handleKeepAll = useCallback((): WriteOperation => {
     if (applying.pending) return applying.pending;
-    if (Object.keys(highlightedItems).length === 0 || !sermon || !sermonId) return skippedWrite();
-
-    setPendingSort(applying);
-    const persistence = Promise.resolve().then(async () => {
-      const thoughtRequests = collectThoughtUpdates(highlightedItems, containers, sermon).map(update => {
-        const thought = sermon.thoughts.find(candidate => candidate.id === update.id);
-        return thought ? writer.updateThought(sermonId, {
-          ...thought, outlinePointId: update.outlinePointId, subPointId: update.subPointId ?? null,
-        }, thought) : Promise.resolve();
-      });
-      const results = await Promise.allSettled([
-        ...thoughtRequests,
-        writer.updateStructure(sermonId, createStructureFromContainers(containers), sermon.structure),
-      ]);
-      const refused = results.find((result): result is PromiseRejectedResult =>
-        result.status === 'rejected' && !isOfflineQueuedError(result.reason));
-      if (refused) throw refused.reason;
-      if (currentApplying.current !== applying) return;
-      setHighlightedItems({});
-      setIsDiffModeActive(false);
-      setPreSortState(null);
-      // This confirms the review decision after local capture, never server delivery.
+    const thoughtIds = Object.keys(highlightedItems);
+    if (!thoughtIds.length || !sermon || !sermonId) return skippedWrite();
+    const thoughtUpdates = collectThoughtUpdates(thoughtIds, containers, sermon);
+    return captureReviewDecision(() => writer.updateStructure(sermonId, createStructureFromContainers(containers), sermon.structure, {
+      thoughtIds, thoughtUpdates, captureReview: true,
+    }), () => {
+      finishReview();
       toast.success(t('structure.aiSortChangesAccepted', { defaultValue: 'All AI suggestions accepted.' }));
-    }).catch(error => {
-      // The proposal and its decision controls stay usable for a deliberate retry.
-      if (currentApplying.current === applying) toast.error(t('errors.failedToSaveStructure'));
-      throw error;
-    }).finally(() => {
-      applying.pending = null;
-      if (currentApplying.current === applying) setPendingSort(null);
     });
-    applying.pending = persistence;
-    // Button callbacks may ignore the returned promise; the engine still reports refusal.
-    void persistence.catch(() => undefined);
-    return persistence;
-  }, [applying, writer, highlightedItems, containers, sermon, sermonId, t]);
+  }, [applying, captureReviewDecision, writer, highlightedItems, containers, sermon, sermonId, finishReview, t]);
 
   const handleRevertAll = useCallback((columnId: string): WriteOperation => {
     if (applying.pending) return applying.pending;
     if (!preSortState?.[columnId] || !sermon || !sermonId) return skippedWrite();
-    const revertedBoard = { ...containers, [columnId]: preSortState[columnId] };
-    const thoughtIds = Object.keys(highlightedItems);
-    const thoughtUpdates = thoughtIds.flatMap(id => {
-      const original = preSortState[columnId].find(item => item.id === id);
-      const preview = containers[columnId]?.find(item => item.id === id);
-      const thought = sermon.thoughts.find(item => item.id === id);
-      return original && preview && thought ? [{
-        thought: { ...thought, outlinePointId: original.outlinePointId ?? null, subPointId: original.subPointId ?? null },
-        baseThought: { ...thought, outlinePointId: preview.outlinePointId ?? null, subPointId: preview.subPointId ?? null },
-      }] : [];
-    });
-    return captureReviewDecision(() => writer.updateStructure(sermonId, createStructureFromContainers(revertedBoard), sermon.structure, {
-      thoughtIds, thoughtUpdates,
-    }), () => {
-      setContainers(revertedBoard);
-      setHighlightedItems({});
-      setIsDiffModeActive(false);
-      setPreSortState(null);
+    const dismiss = () => {
+      setContainers({ ...containers, [columnId]: preSortState[columnId] });
+      finishReview();
       toast.info(t('structure.aiSortChangesReverted', { defaultValue: 'All AI suggestions reverted.' }));
-    });
-  }, [applying, preSortState, sermon, sermonId, containers, highlightedItems, captureReviewDecision, writer, setContainers, t]);
+    };
+    if (applying.discard) return captureReviewDecision(async () => undefined, dismiss);
+    dismiss();
+    return Promise.resolve();
+  }, [applying, preSortState, sermon, sermonId, containers, captureReviewDecision, setContainers, finishReview, t]);
 
   return {
     // State

@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 
 import { usePublishShellTitle } from '@/components/navigation/shellTitles';
 import { useOutlineConflict } from '@/components/plan-editor/useOutlineConflict';
-import { useDataDocument, type DocumentUpdateOptions } from '@/data-engine/react.client';
+import { useDataDocument, useDocumentActions, type DocumentUpdateOptions } from '@/data-engine/react.client';
 import { isOutlineCollisionError, OutlineCollisionError } from '@/services/sermons.client';
 import { changedFields } from '@/utils/changedFields';
 import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
@@ -12,6 +12,8 @@ import { addSermonThought, deleteSermonThought, patchSermonThought, replaceSermo
 import { resolveThoughtOutlineLocation } from '@/utils/subPoints';
 import { applyScopedThoughtPlacement, completeStoredThoughtPlacement } from '@/utils/thoughtOrdering';
 
+import { captureAiReview } from './captureAiReview';
+
 import type { StructureWriter } from '@/components/sermon/structureWriter';
 import type { ThoughtLocation } from '@/data-engine/thoughtPlacementAction';
 import type { DocumentData } from '@/data-engine/types';
@@ -19,6 +21,10 @@ import type { Sermon, SermonOutline, Thought, ThoughtsBySection } from '@/models
 import type { ThoughtFieldPatch } from '@/utils/sermonThoughtEdits';
 
 type SermonDocument = ReturnType<typeof useDataDocument>;
+type DocumentUpdater = Parameters<SermonDocument['update']>[0];
+type StructureDocument = Pick<SermonDocument, 'update'> & {
+  captureReview?: (selected: readonly string[], updater: DocumentUpdater) => Promise<void>;
+};
 export type ShownThoughtIdentity = Pick<Thought, 'id' | 'date'>;
 
 interface EngineStructureWriter extends StructureWriter {
@@ -34,9 +40,15 @@ const unavailable = () => new Error('The sermon is not available for editing');
 const changesLocation = (before: Thought | null, after: Thought) => before !== null
   && ((before.outlinePointId ?? null) !== (after.outlinePointId ?? null) || (before.subPointId ?? null) !== (after.subPointId ?? null));
 
-const applyThoughtUpdate = (current: Sermon, thought: Thought, baseThought: Thought | null): Sermon => {
+const applyThoughtUpdate = (current: Sermon, thought: Thought, baseThought: Thought | null, fromReview?: true): Sermon => {
   const placement = changesLocation(baseThought, thought);
-  if (placement && !current.thoughts.some(item => item.id === thought.id && item.date === baseThought?.date)) throw unavailable();
+  if (placement || fromReview) {
+    const live = current.thoughts.find(item => item.id === thought.id && item.date === baseThought?.date);
+    if (!live) throw unavailable();
+    if (fromReview && changesLocation(baseThought, live)) {
+      throw Object.assign(new Error('The reviewed thought location changed'), { code: 'decision-changed' });
+    }
+  }
   const changed = changedFields(baseThought, thought) as Record<string, unknown>;
   const patch = Object.fromEntries(THOUGHT_FIELDS.filter(key => key in changed).map(key => [key, changed[key] ?? null])) as ThoughtFieldPatch;
   if (placement) {
@@ -79,21 +91,30 @@ export function editEngineSermon<T>(document: Pick<SermonDocument, 'update'>, ow
   }, options).then(() => result as T);
 }
 
-export function createEngineStructureWriter(document: Pick<SermonDocument, 'update'>, owner: string | null,
+export function createEngineStructureWriter(document: StructureDocument, owner: string | null,
   onOutlineConflict?: (outline: SermonOutline, base: SermonOutline | null, stored: SermonOutline | null) => void): EngineStructureWriter {
   const edit = <T,>(apply: (current: Sermon) => { next: Sermon; result: T }, rowIds?: string[]) =>
     editEngineSermon(document, owner, apply, rowIds?.length ? { action: { kind: 'thought-placement', rowIds } } : undefined);
   return {
-    updateStructure: (_sermonId, structure, baseStructure, options) => edit(current => {
-      const edited = (options?.thoughtUpdates ?? []).reduce((next, update) => applyThoughtUpdate(next, update.thought, update.baseThought), current);
-      // Fill legacy omissions while preserving every existing unselected placement.
-      const stored = options?.thoughtIds ? completeStoredThoughtPlacement(edited) : edited.structure ?? edited.thoughtsBySection;
-      const intended = options?.thoughtIds
-        ? applyScopedThoughtPlacement(stored, structure, options.thoughtIds)
-        : mergeSections(structure, stored, baseStructure ?? null);
-      const merged = placeExisting(intended, edited.thoughts);
-      return { next: { ...edited, structure: merged, thoughtsBySection: merged }, result: merged };
-    }, options?.thoughtUpdates?.filter(({ baseThought, thought }) => changesLocation(baseThought, thought)).map(({ thought }) => thought.id)),
+    updateStructure: (_sermonId, structure, baseStructure, options) => {
+      const apply = (current: Sermon) => {
+        const edited = (options?.thoughtUpdates ?? []).reduce((next, update) => applyThoughtUpdate(next, update.thought, update.baseThought, options?.captureReview), current);
+        // Fill legacy omissions while preserving every existing unselected placement.
+        const stored = options?.thoughtIds ? completeStoredThoughtPlacement(edited) : edited.structure ?? edited.thoughtsBySection;
+        const intended = options?.thoughtIds
+          ? applyScopedThoughtPlacement(stored, structure, options.thoughtIds)
+          : mergeSections(structure, stored, baseStructure ?? null);
+        const merged = placeExisting(intended, edited.thoughts);
+        return { next: { ...edited, structure: merged, thoughtsBySection: merged }, result: merged };
+      };
+      if (options?.captureReview) {
+        const selected = options.thoughtIds;
+        if (!selected?.length || !document.captureReview) return Promise.reject(unavailable());
+        return editEngineSermon({ update: fn => document.captureReview!(selected, fn) }, owner, apply);
+      }
+      const assigned = options?.thoughtUpdates?.filter(({ baseThought, thought }) => changesLocation(baseThought, thought)).map(({ thought }) => thought.id);
+      return edit(apply, assigned);
+    },
     updateThought: (_sermonId, thought, baseThought) => edit(current => {
       const next = applyThoughtUpdate(current, thought, baseThought);
       return { next, result: next.thoughts.find(item => item.id === thought.id) ?? thought };
@@ -143,16 +164,19 @@ export function createEngineStructureWriter(document: Pick<SermonDocument, 'upda
 /** The engine writer for one open sermon; must render inside that sermon's DataDocumentProvider. */
 export function useEngineStructureWriter(sermonId: string, owner: string | null) {
   const document = useDataDocument({ collection: 'sermons', id: sermonId });
+  const { captureActionTime } = useDocumentActions();
   const recovery = useOutlineConflict(owner ?? '', sermonId);
   usePublishShellTitle('sermons', sermonId, document.data);
   // Follow the latest document state only within this opening. On recovery, the old
   // target keeps its old facade, which rejects writes after that opening has retired.
   const opening = useMemo(() => ({
-    owner, sermonId, identity: document.recoveryIdentity, document: null as SermonDocument | null,
+    owner, sermonId, identity: document.recoveryIdentity, document, captureActionTime,
   }), [owner, sermonId, document.recoveryIdentity]);
   opening.document = document;
-  const writeTarget = useMemo<Pick<SermonDocument, 'update'>>(() => ({
-    update: (fn, options) => opening.document!.update(fn, options),
+  opening.captureActionTime = captureActionTime;
+  const writeTarget = useMemo<StructureDocument>(() => ({
+    update: (fn, options) => opening.document.update(fn, options),
+    captureReview: (selected, fn) => captureAiReview(opening.document, opening.captureActionTime(), selected, fn),
   }), [opening]);
   const writer = useMemo(() => createEngineStructureWriter(writeTarget, owner, recovery.retain),
     [writeTarget, owner, recovery.retain]);

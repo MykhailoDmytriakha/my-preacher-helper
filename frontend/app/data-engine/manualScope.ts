@@ -60,9 +60,9 @@ export interface ManualScopeRecord {
   recoverySavedRequestId?: string;
 }
 export type ManualFieldInput = GroupMeetingFieldInput | PreachDateFieldInput;
-export type ManualDocumentMetadataSave = { documentMetadata: { time: ActionTime | null; dateAction?: DatedRowActionCapture; thoughtPlacementId?: string } };
-export type ManualSaveOptions = { predecessorId?: string | null; preachDateAction?: DatedRowActionCapture; meetingDateAction?: DatedRowActionCapture; groupMeetingFieldCaptures?: GroupMeetingFieldCaptures; preachDateFieldSave?: PreachDateFieldSave; preachStatusCapture?: PreachStatusCapture; documentMetadataTime?: ActionTime | null; thoughtPlacementId?: string };
-export type ManualSave = (scopeId: string, captured: SessionCheckpoint, options: ManualSaveOptions) => Promise<ManualSavedIntent>;
+export type ManualDocumentMetadataSave = { documentMetadata: { time: ActionTime | null; dateAction?: DatedRowActionCapture; thoughtPlacementIds?: readonly string[] } };
+export type ManualSaveOptions = { predecessorId?: string | null; preachDateAction?: DatedRowActionCapture; meetingDateAction?: DatedRowActionCapture; groupMeetingFieldCaptures?: GroupMeetingFieldCaptures; preachDateFieldSave?: PreachDateFieldSave; preachStatusCapture?: PreachStatusCapture; documentMetadataTime?: ActionTime | null; thoughtPlacementIds?: readonly string[] };
+export type ManualSave = (scopeId: string, captured: SessionCheckpoint, options: ManualSaveOptions, onCaptured?: () => void) => Promise<ManualSavedIntent>;
 export interface ManualScopePort {
   capture(): ManualCapture;
   isCurrent(): boolean;
@@ -213,7 +213,7 @@ export class ManualScope {
     await this.update(() => proposed);
   }
 
-  save(action?: DatedRowActionCapture, status?: PreachStatusSave, metadataTime?: ActionTime | null, thoughtPlacementId?: string): Promise<{ delivery: 'queued'; requestId: string } | null> {
+  save(action?: DatedRowActionCapture, status?: PreachStatusSave, metadataTime?: ActionTime | null, thoughtPlacementIds?: readonly string[], onCaptured?: () => void): Promise<{ delivery: 'queued'; requestId: string } | null> {
     this.assertActive();
     if (this.getState().choiceRequired) throw Object.assign(new Error('Choose which field words to keep before saving'), { code: 'resolve-version-first' });
     const captured = copy(this.record);
@@ -227,8 +227,11 @@ export class ManualScope {
     const dateTarget = datedRowTarget(captured.baseline.resource.collection);
     const dateAction = action && copy(action);
     const documentMetadataTime = metadataTime && copy(metadataTime);
-    const placementRow = thoughtPlacementId && captured.selection.some(path => samePath(path, ['thoughts', { id: thoughtPlacementId }]))
-      ? thoughtPlacementId : undefined;
+    const placementRows = thoughtPlacementIds?.filter(id => {
+      const row = ['thoughts', { id }] as const;
+      const selected = (path: ManualPath) => captured.selection.some(item => samePath(item, path));
+      return selected(row) || (selected([...row, 'outlinePointId']) && selected([...row, 'subPointId']));
+    });
     const dateIndex = captured.selection.findIndex(path => samePath(path, ['preachDates']));
     const openingDates = (captured.openingSelection ?? captured.savedSelection)[dateIndex];
     const preachStatusCapture = status && dateTarget?.evidence === 'preachDateAction' && openingDates?.exists
@@ -240,6 +243,7 @@ export class ManualScope {
     const saving = this.enqueuePersistence(this.captures.register(async captureComplete => {
       if (!admitted) this.assertCurrent();
       if (this.record.savedGeneration === captured.generation && this.record.predecessor) {
+        onCaptured?.();
         captureComplete();
         await (admitted ? this.writeLocal() : this.write());
         return { delivery: 'queued' as const, requestId: this.record.predecessor.id };
@@ -251,15 +255,18 @@ export class ManualScope {
       const value = project(predecessor?.value ?? baseline.value!, captured.selection, captured.stage);
       const checkpoint: SessionCheckpoint = { confirmed: baseline, draft: value, dirty: true, editGeneration: captured.generation,
         remoteCandidate: null, conflicts: [], pending: {} };
-      const request = await (admitted ?? this.options.port.save)(captured.scopeId, checkpoint, {
+      const options: ManualSaveOptions = {
         predecessorId: predecessor?.id ?? null,
         ...(dateTarget && dateAction && { [dateTarget.evidence]: dateAction }),
         ...(captured.groupMeetingFieldCaptures && { groupMeetingFieldCaptures: captured.groupMeetingFieldCaptures }),
         ...(preachDateFieldSave && { preachDateFieldSave }),
         ...(preachStatusCapture && { preachStatusCapture }),
         ...(documentMetadataTime !== undefined && { documentMetadataTime }),
-        ...(placementRow && { thoughtPlacementId: placementRow }),
-      });
+        ...(placementRows?.length && { thoughtPlacementIds: placementRows }),
+      };
+      const submit = admitted ?? this.options.port.save;
+      const request = onCaptured ? await submit(captured.scopeId, checkpoint, options, onCaptured)
+        : await submit(captured.scopeId, checkpoint, options);
       if (!admitted) this.assertCurrent();
       validateIntent(request, this.options);
       if (!equalValues(request.value, value) || request.predecessorId !== (predecessor?.id ?? null)) throw new Error('Manual save identity mismatch');
