@@ -3,7 +3,7 @@
 import { XMarkIcon } from '@heroicons/react/20/solid';
 import React from 'react';
 
-import { buildChipClasses, type ChipSize, type ChipTone, type ChipWeight } from '@/utils/chipClasses';
+import { buildChipClasses, CHIP_WRAPPED_LABEL_CLASSES, type ChipSize, type ChipTone, type ChipWeight } from '@/utils/chipClasses';
 import { CHIP_TONES } from '@/utils/themeColors';
 
 export type { ChipSize, ChipTone, ChipWeight };
@@ -27,6 +27,8 @@ export interface ChipProps {
   weight?: ChipWeight;
   /** Drawn as picked out of a set: a heavier plate plus a ring. */
   selected?: boolean;
+  /** Let user-authored labels wrap, including a single word wider than the row. */
+  wrapLabel?: boolean;
   /**
    * Makes the whole chip activatable — keyboard included. The event is handed over so a
    * chip sitting inside a link or a card row can stop the click from reaching its parent.
@@ -81,6 +83,7 @@ export function Chip({
   size = 'md',
   weight = 'medium',
   selected = false,
+  wrapLabel = false,
   onClick,
   onRemove,
   removeLabel,
@@ -96,7 +99,7 @@ export function Chip({
   const showRemove = Boolean(onRemove) && !disabled;
 
   const classes = [
-    buildChipClasses({ tone, size, weight, selected, interactive }),
+    buildChipClasses({ tone, size, weight, selected, interactive, wrapLabel }),
     disabled ? 'cursor-not-allowed opacity-50' : '',
     className,
   ]
@@ -142,7 +145,7 @@ export function Chip({
         single child, so a chip built from several spans (a label plus a date, say) would
         run them together and every caller would have to re-add a margin by hand.
       */}
-      <span className="inline-flex min-w-0 items-center gap-1.5">{children}</span>
+      <span className={wrapLabel ? CHIP_WRAPPED_LABEL_CLASSES : 'inline-flex min-w-0 items-center gap-1.5'}>{children}</span>
       {showRemove && (
         <button
           type="button"
@@ -150,7 +153,7 @@ export function Chip({
             event.stopPropagation();
             onRemove?.();
           }}
-          className={`ml-0.5 rounded-full p-0.5 transition-colors ${CHIP_TONES[tone].remove}`}
+          className={`ml-0.5 shrink-0 rounded-full p-0.5 transition-colors ${CHIP_TONES[tone].remove}`}
           aria-label={removeLabel}
         >
           <XMarkIcon className={REMOVE_ICON_CLASSES[size]} />

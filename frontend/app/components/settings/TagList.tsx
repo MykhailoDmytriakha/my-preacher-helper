@@ -71,8 +71,8 @@ const TagList: React.FC<TagListProps> = ({
             )}
           </div>
           
-          <div className="flex-1">
-            <h3 className="text-gray-800 dark:text-gray-200 font-medium">
+          <div className="min-w-0 flex-1">
+            <h3 className="text-gray-800 dark:text-gray-200 font-medium [overflow-wrap:anywhere]">
               {tag.translationKey ? t(tag.translationKey) : tag.name}
             </h3>
             <p className="text-xs text-gray-500 dark:text-gray-400 font-mono mt-1">{tag.color}</p>
@@ -82,7 +82,7 @@ const TagList: React.FC<TagListProps> = ({
           {editable && onRemoveTag && (
             <button
               onClick={() => onRemoveTag(tag.name)}
-              className="ml-auto text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 
+              className="ml-auto shrink-0 text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300
                        p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
               title={deleteTitle}
               aria-label={`${t('settings.deleteTag')} ${tag.name}`}

@@ -17,7 +17,9 @@ export type ChipWeight = 'medium' | 'bold';
  * makes any of those three choices. Nothing here may conflict with a caller's `className`.
  */
 export const CHIP_SHAPE_CLASSES =
-  'inline-flex min-w-0 items-center rounded-full transition-all duration-150';
+  'inline-flex min-w-0 items-center transition-all duration-150';
+
+export const CHIP_WRAPPED_LABEL_CLASSES = 'min-w-0 [overflow-wrap:anywhere]';
 
 export const CHIP_SIZE_CLASSES: Record<ChipSize, string> = {
   /**
@@ -51,6 +53,7 @@ export interface ChipClassOptions {
   tone?: ChipTone;
   size?: ChipSize;
   weight?: ChipWeight;
+  wrapLabel?: boolean;
   selected?: boolean;
   /** Adds the hover plate and the pointer. Leave off for a label nobody can press. */
   interactive?: boolean;
@@ -72,6 +75,7 @@ export function buildChipClasses({
   tone = 'neutral',
   size = 'md',
   weight = 'medium',
+  wrapLabel = false,
   selected = false,
   interactive = false,
 }: ChipClassOptions = {}): string {
@@ -82,6 +86,7 @@ export function buildChipClasses({
 
   return [
     CHIP_SHAPE_CLASSES,
+    wrapLabel ? 'max-w-full rounded-xl' : 'rounded-full',
     CHIP_SIZE_CLASSES[size],
     CHIP_WEIGHT_CLASSES[weight],
     stateClasses,

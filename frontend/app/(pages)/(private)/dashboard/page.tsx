@@ -698,7 +698,7 @@ function RecentStudiesPanel({ studies, readState }: { studies: StudyItem[]; read
                     </Chip>
                   ))}
                   {study.tags.map((tag, index) => (
-                    <Chip key={`tag-${tag}-${index}`} tone={study.tone} size="sm">
+                    <Chip key={`tag-${tag}-${index}`} tone={study.tone} size="sm" wrapLabel>
                       {tag}
                     </Chip>
                   ))}

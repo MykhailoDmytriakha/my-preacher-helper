@@ -81,7 +81,7 @@ export const getTagStyle = (tag: string, color?: string, size: ChipSize = 'sm') 
   const structureTagStatus = isStructureTag(tag);
 
   // `custom` contributes no plate of its own — the colour is appended just below.
-  let className = buildChipClasses({ tone: 'custom', size });
+  let className = buildChipClasses({ tone: 'custom', size, wrapLabel: true });
 
   // Enhanced styling for structure tags
   if (structureTagStatus) {

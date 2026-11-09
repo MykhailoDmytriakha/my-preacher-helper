@@ -25,7 +25,7 @@ export function RetainedNoteDraft({ draft }: { draft: NoteDraftPayload }) {
     <p className="text-sm text-gray-600 dark:text-gray-300">{t('recordAvailability.keptCopyHelp')}</p>
     {draft.title && <h3 className="text-xl font-bold break-words">{draft.title}</h3>}
     {draft.content && <FoldableMarkdown content={draft.content} />}
-    <div className="flex flex-wrap gap-2">{draft.tags.map(tag => <Chip key={tag} tone="emerald">{tag}</Chip>)}</div>
+    <div className="flex flex-wrap gap-2">{draft.tags.map(tag => <Chip key={tag} tone="emerald" wrapLabel>{tag}</Chip>)}</div>
     <div className="flex flex-wrap gap-2">{draft.scriptureRefs.map(ref => <ScriptureRefBadge key={ref.id} reference={ref} />)}</div>
     <button type="button" onClick={() => { void copy(); }} className="rounded-lg border px-3 py-2">{t(isCopied ? 'common.copied' : 'common.copy')}</button>
   </section>;

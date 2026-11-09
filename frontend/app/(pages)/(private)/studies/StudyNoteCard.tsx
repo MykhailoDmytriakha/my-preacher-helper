@@ -393,7 +393,7 @@ export default function StudyNoteCard({
                               </div>
                               <div className="flex flex-wrap gap-2">
                                 {matchingTags.map((tag) => (
-                                  <Chip key={tag} tone="emerald" size="sm" icon={<span className="opacity-60">#</span>}>
+                                  <Chip key={tag} tone="emerald" size="sm" wrapLabel icon={<span className="opacity-60">#</span>}>
                                     <HighlightedText text={tag} searchQuery={searchQuery} />
                                   </Chip>
                                 ))}
@@ -558,7 +558,7 @@ export default function StudyNoteCard({
               </div>
               <div className="flex flex-wrap gap-2">
                 {note.tags.map((tag) => (
-                  <Chip key={tag} tone="emerald">
+                  <Chip key={tag} tone="emerald" wrapLabel>
                     {searchQuery ? (
                       <HighlightedText text={tag} searchQuery={searchQuery} />
                     ) : (

@@ -21,11 +21,11 @@ export function ThoughtTagsField({ tags, allowedTags, availableTags, onAddTag, o
     const label = translationKey ? t(translationKey) : tag.name;
     const appearance = getTagStyle(tag.name, tag.color);
     const icon = getStructureIcon(tag.name);
-    return <Chip key={key} tone="custom" size="sm" selected={selected} disabled={disabled} onClick={onClick}
+    return <Chip key={key} tone="custom" size="sm" wrapLabel selected={selected} disabled={disabled} onClick={onClick}
       className={appearance.className} style={appearance.style}
       ariaLabel={t(selected ? 'thought.removeTagAria' : 'thought.addTagAria', { tag: label })}
-      icon={icon ? <span aria-hidden="true" className={icon.className} dangerouslySetInnerHTML={{ __html: icon.svg }} /> : undefined}>
-      {label}{selected && <span aria-hidden="true">×</span>}
+      icon={icon ? <span aria-hidden="true" className={`shrink-0 ${icon.className}`} dangerouslySetInnerHTML={{ __html: icon.svg }} /> : undefined}>
+      {label}{selected && <span aria-hidden="true" className="ml-1.5">×</span>}
     </Chip>;
   };
   return <div className="mb-4">

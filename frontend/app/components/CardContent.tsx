@@ -44,7 +44,7 @@ export default function CardContent({ item, className = "", locationContext }: C
           )}
 
           {hasTags && (
-            <div className="flex flex-wrap justify-end gap-1">
+            <div className="flex min-w-0 max-w-full flex-wrap justify-end gap-1">
               {item.requiredTags?.map((tag) => {
                 const canonical = normalizeStructureTag(tag);
                 if (!canonical) return null;
@@ -79,13 +79,9 @@ export default function CardContent({ item, className = "", locationContext }: C
 
                 const { className, style } = getTagStyle(tag.name, tag.color);
                 return (
-                  <span
-                    key={`custom-${tag.name}`}
-                    style={style}
-                    className={`text-xs ${className}`}
-                  >
+                  <Chip key={`custom-${tag.name}`} tone="custom" size="sm" wrapLabel className={className} style={style}>
                     {displayName}
-                  </span>
+                  </Chip>
                 );
               })}
             </div>

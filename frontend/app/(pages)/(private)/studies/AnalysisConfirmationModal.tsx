@@ -201,12 +201,12 @@ export default function AnalysisConfirmationModal({
                                 </div>
                                 <div className="flex flex-wrap gap-1.5 mt-2">
                                     {keptTags.map((tag, idx) => (
-                                        <Chip key={`kept-${idx}`} tone="neutral" size="sm">
+                                        <Chip key={`kept-${idx}`} tone="neutral" size="sm" wrapLabel>
                                             {tag}
                                         </Chip>
                                     ))}
                                     {addedTags.map((tag, idx) => (
-                                        <Chip key={`added-${idx}`} tone="emerald" size="sm" icon={<span className="opacity-60">+</span>}>
+                                        <Chip key={`added-${idx}`} tone="emerald" size="sm" wrapLabel icon={<span className="opacity-60">+</span>}>
                                             {tag}
                                         </Chip>
                                     ))}

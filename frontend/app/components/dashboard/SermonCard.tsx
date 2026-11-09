@@ -173,19 +173,11 @@ function SermonCardSnippets({ sermonId, searchQuery, searchSnippets }: SermonCar
                 const { className, style } = getTagStyle(tag);
                 const iconInfo = getStructureIcon(tag);
                 return (
-                  <span
-                    key={tag}
-                    style={style}
-                    className={`${className} text-xs px-2 py-0.5`}
+                  <Chip key={tag} tone="custom" size="sm" wrapLabel className={className} style={style}
+                    icon={iconInfo && <span className={`shrink-0 ${iconInfo.className}`} dangerouslySetInnerHTML={{ __html: iconInfo.svg }} />}
                   >
-                    {iconInfo && (
-                      <span
-                        className={iconInfo.className}
-                        dangerouslySetInnerHTML={{ __html: iconInfo.svg }}
-                      />
-                    )}
                     <HighlightedText text={tag} searchQuery={searchQuery} />
-                  </span>
+                  </Chip>
                 );
               })}
             </div>

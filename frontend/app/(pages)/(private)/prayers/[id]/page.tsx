@@ -306,7 +306,7 @@ export default function PrayerDetailPage() {
       {/* Prayer card */}
       <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-5 space-y-4">
         <div className="flex items-start justify-between gap-3">
-          <div className="flex-1 space-y-2">
+          <div className="min-w-0 flex-1 space-y-2">
             <PrayerStatusBadge status={prayer.status} />
             <p
               id="prayer-focus-title"
@@ -325,7 +325,7 @@ export default function PrayerDetailPage() {
             {prayer.tags && prayer.tags.length > 0 && (
               <div id="prayer-focus-tags" className="flex flex-wrap gap-1 rounded-md transition-shadow">
                 {prayer.tags.map((tag) => (
-                  <Chip key={tag} tone="neutral" size="sm">
+                  <Chip key={tag} tone="neutral" size="sm" wrapLabel>
                     <HighlightedText text={tag} searchQuery={highlightQuery} />
                   </Chip>
                 ))}

@@ -8,6 +8,7 @@ import "@locales/i18n";
 // Utils imports
 import MarkdownDisplay from '@components/MarkdownDisplay';
 import { useTranslation } from '@locales/useTranslation';
+import { CHIP_WRAPPED_LABEL_CLASSES } from "@utils/chipClasses";
 import { formatDate } from "@utils/dateFormatter";
 import { isStructureTag, getStructureIcon, getTagStyle, normalizeStructureTag, getCanonicalTagForSection } from "@utils/tagUtils";
 
@@ -275,7 +276,7 @@ const ThoughtHeader = memo(({
 }) => {
   return (
     <div className="flex items-start justify-between gap-x-4 mb-3">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+      <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2">
         <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">
           {formatDate(thought.date)}
         </span>
@@ -300,7 +301,7 @@ const TagsDisplay = memo(({ tags, allowedTags, compact = false }: TagsDisplayPro
   const { t } = useTranslation();
 
   return (
-    <div className="flex flex-wrap gap-1.5 overflow-x-hidden" role="list" aria-label={t('structure.tags')}>
+    <div className="flex min-w-0 max-w-full flex-wrap gap-1.5 overflow-x-hidden" role="list" aria-label={t('structure.tags')}>
       {tags.map((tag) => {
         const tagInfo = allowedTags.find(t => t.name === tag);
         let displayName = tag;
@@ -332,7 +333,7 @@ const TagsDisplay = memo(({ tags, allowedTags, compact = false }: TagsDisplayPro
             {iconInfo && (
               <span className={`${iconInfo.className} mr-1`} dangerouslySetInnerHTML={{ __html: iconInfo.svg }} />
             )}
-            {tagInfo?.translationKey ? t(tagInfo.translationKey) : displayName}
+            <span className={CHIP_WRAPPED_LABEL_CLASSES}>{tagInfo?.translationKey ? t(tagInfo.translationKey) : displayName}</span>
           </span>
         );
       })}

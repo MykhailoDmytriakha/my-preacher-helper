@@ -92,9 +92,9 @@ export default function PrayerRequestCard({
           <div className="flex items-center gap-2 flex-wrap mb-1">
             <PrayerStatusBadge status={prayer.status} />
             {prayer.tags && prayer.tags.length > 0 && (
-              <div className="flex gap-1 flex-wrap">
+              <div className="flex min-w-0 max-w-full flex-wrap gap-1">
                 {prayer.tags.map((tag) => (
-                  <Chip key={tag} tone="neutral" size="sm">
+                  <Chip key={tag} tone="neutral" size="sm" wrapLabel>
                     <HighlightedText text={tag} searchQuery={searchQuery} />
                   </Chip>
                 ))}

@@ -147,6 +147,7 @@ export default function TagCatalogModal({
                     key={tag}
                     tone={selected ? 'emerald' : 'neutral'}
                     selected={selected}
+                    wrapLabel
                     onClick={() => onToggleTag(tag)}
                     icon={selected ? <CheckIcon className="h-3.5 w-3.5" /> : undefined}
                   >
@@ -188,7 +189,7 @@ export default function TagCatalogModal({
           {selectedTags.length > 0 && (
             <div className="mt-3 flex flex-wrap gap-1.5">
               {selectedTags.map((tag) => (
-                <Chip key={tag} tone="emerald" size="sm">
+                <Chip key={tag} tone="emerald" size="sm" wrapLabel>
                   {tag}
                 </Chip>
               ))}

@@ -1333,6 +1333,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
                                     <Chip
                                         key={tag}
                                         tone="emerald"
+                                        wrapLabel
                                         onRemove={isEditing ? () => toggleTag(tag) : undefined}
                                         removeLabel={t('studiesWorkspace.removeTag', { tag })}
                                     >
