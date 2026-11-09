@@ -51,6 +51,42 @@ describe('First offline Bible marks book', () => {
     } finally { engine.dispose(); }
   });
 
+  it.each([
+    { storedBook: '2 Corinthians', accepted: true },
+    { storedBook: '2-corinthians', accepted: true },
+    { storedBook: '2 CORINTHIANS', accepted: true },
+    { storedBook: '1-corinthians', accepted: false },
+  ])('uses the canonical marks identity for first offline strokes: $storedBook', async ({ storedBook, accepted }) => {
+    const resource = { collection: 'bibleMarks', id: 'owner_kjv_2-corinthians' };
+    const remote: ResourceSnapshot = {
+      resource,
+      value: { ...fields, bible: 'kjv', book: storedBook, verses: { v4_6: { m: '0-3-yellow,5-8-blue', p: '4-4-gray' } } },
+      metadata: { protocol: 1, generation: 'existing-book', revision: 1, deleted: false },
+    };
+    const harness = documentEngineHarness(remote, { cached: false });
+    const engine = harness.createBrowser().engine;
+    engine.setOnline(false);
+    engine.setOwner('owner');
+    const editor = await engine.createEditor(resource, 'offline-book-label');
+    try {
+      await editor.commit(() => ({ ...fields, bible: 'kjv', book: '2 Corinthians', verses: { v4_6: { m: '11-11-red' } } }));
+      await editor.commit(value => ({ ...value, verses: { v4_6: { m: '11-11-red,14-14-red' } } }));
+      expect(harness.transport.send).not.toHaveBeenCalled();
+      engine.setOnline(true);
+      await engine.retry();
+      await settleEngine();
+      if (accepted) {
+        expect(harness.server.value).toMatchObject({ book: storedBook,
+          verses: { v4_6: { m: '0-3-yellow,5-8-blue,11-11-red,14-14-red', p: '4-4-gray' } } });
+        expect(harness.transport.send).toHaveBeenCalledTimes(2);
+      } else {
+        expect(harness.server.value).toEqual(remote.value);
+        expect(editor.getState().result).toMatchObject({ kind: 'refused', code: 'invalid-document' });
+        expect(harness.transport.send).not.toHaveBeenCalled();
+      }
+    } finally { engine.dispose(); }
+  });
+
   it('asks about the same layer and KeepMine retains the other verse and layer', async () => {
     const remote = { v26_3: { p: '0-1-blue' }, v26_4: { m: '0-0-green', p: '0-1-gray' } };
     const local = { v26_4: { m: '0-0-red' } };
