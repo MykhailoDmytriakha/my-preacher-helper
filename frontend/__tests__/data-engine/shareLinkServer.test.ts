@@ -68,11 +68,20 @@ describe('server-owned share capability planning', () => {
     expect(link('later').value).toBeNull();
   });
 
-  it('retains a legacy pending creation without treating missing evidence as current access', async () => {
-    const modern = create('legacy');
-    if (modern.kind !== 'relation' || modern.relation !== 'share-link-create') throw new Error('Expected create');
-    delete modern.note.shareRevocation;
-    expect(await execute(modern)).toMatchObject({ result: { kind: 'refused', code: 'share-link-review-required' }, writes: [] });
+  it('accepts a legacy create without a marker only until the note has been revoked', async () => {
+    const legacy = create('legacy');
+    if (legacy.kind !== 'relation' || legacy.relation !== 'share-link-create') throw new Error('Expected create');
+    delete legacy.note.shareRevocation;
+    const opened = await execute(legacy);
+    expect(opened.result).toMatchObject({ kind: 'acknowledged', snapshot: { value: { token: expect.any(String) } } });
+
+    expect((await execute(revoke(link('legacy')))).result.kind).toBe('acknowledged');
+    const stale = { ...legacy, operationId: 'old-client-after-revoke', resource: absent('second').resource };
+    expect(await execute(stale)).toEqual({
+      result: { kind: 'refused', operationId: stale.operationId, code: 'share-link-review-required' }, writes: [],
+    });
+    expect(link('legacy').value).toBeNull();
+    expect(link('second')).toBeUndefined();
   });
 
   it('permits revoking an owned legacy link even when its note now belongs to another owner', async () => {
