@@ -3,6 +3,7 @@
 import { useId, useState } from 'react';
 
 import { requestOwnerJson } from '@/services/ownerHttpTransport.client';
+import { editHistoryShown } from '@/utils/editHistory';
 import { storedFieldValue } from '@/utils/storedFieldValue';
 import { useTranslation } from '@locales/useTranslation';
 
@@ -157,6 +158,7 @@ export function DocumentFieldHistory({ session, current, disabled }: { session: 
     catch { setError('restore'); }
     finally { setRestoring(false); }
   };
+  if (!editHistoryShown()) return null;
   return <div className={collection === "groups" ? "text-sm" : "mt-3 text-sm"}>
     <button type="button" aria-expanded={open} aria-controls={panel} disabled={loading}
       className="min-h-8 text-xs font-medium text-emerald-700 hover:underline dark:text-emerald-400"

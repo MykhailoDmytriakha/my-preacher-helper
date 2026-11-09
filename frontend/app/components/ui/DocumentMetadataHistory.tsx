@@ -3,6 +3,7 @@
 import { useId, useState } from 'react';
 
 import { useOwnerHistory } from '@/hooks/useOwnerHistory';
+import { editHistoryShown } from '@/utils/editHistory';
 import { useTranslation } from '@locales/useTranslation';
 
 type HistoryField<Field extends string, Value> = { field: Field; value: Value; winner: Value };
@@ -41,6 +42,7 @@ export function DocumentMetadataHistory<Field extends string, Value = string | n
     const label = labels[field.field];
     return label ? [{ ...field, id: entry.id, label }] : [];
   })) ?? [];
+  if (!editHistoryShown()) return null;
   return <div className="space-y-2 text-sm">
     <button type="button" className="min-h-8 font-medium text-blue-700 hover:underline dark:text-blue-400"
       aria-expanded={open} aria-controls={panel} disabled={loading} onClick={toggle}>{heading}</button>

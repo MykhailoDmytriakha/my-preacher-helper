@@ -4,6 +4,7 @@ import { useId, useState } from 'react';
 
 import { readThoughtPlacementComparison, useOpenDocumentAnswerScopes } from '@/data-engine/react.client';
 import { useOwnerHistory } from '@/hooks/useOwnerHistory';
+import { editHistoryShown } from '@/utils/editHistory';
 import { resolveThoughtOutlineLocation } from '@/utils/subPoints';
 import { useTranslation } from '@locales/useTranslation';
 
@@ -52,6 +53,7 @@ function ThoughtActionHistory<Value>({ owner, sermonId, generation, thoughts, di
     finally { setRestoring(false); }
   };
 
+  if (!editHistoryShown()) return null;
   return <div className="mb-3">
     <button type="button" className={control} aria-expanded={open} aria-controls={id} onClick={toggle}>{heading}</button>
     {open && <section id={id} aria-label={heading} className="space-y-2 text-sm">

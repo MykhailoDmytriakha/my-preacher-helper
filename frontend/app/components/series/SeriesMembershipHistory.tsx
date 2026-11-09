@@ -3,6 +3,7 @@
 import { useId, useState } from 'react';
 
 import { useOwnerHistory } from '@/hooks/useOwnerHistory';
+import { editHistoryShown } from '@/utils/editHistory';
 import { useTranslation } from '@locales/useTranslation';
 
 import type { MembershipRef } from '@/data-engine/membershipIntent';
@@ -38,6 +39,7 @@ export function SeriesMembershipHistory({ owner, member, generation, action, cur
   };
   const label = (selection: SeriesHistorySelection | null) => selection ? selection.label || t('common.unknown') : t('addSermon.noSeriesOption');
   const heading = t(prefix + 'heading');
+  if (!editHistoryShown()) return null;
   return <div className="space-y-2 text-sm">
     <button type="button" aria-expanded={open} aria-controls={panel} disabled={loading}
       className="min-h-8 font-medium text-blue-700 hover:underline dark:text-blue-400" onClick={toggle}>{heading}</button>

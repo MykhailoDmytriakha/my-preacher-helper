@@ -4,6 +4,7 @@ import { useId, useState } from 'react';
 
 import { useOwnerHistory } from '@/hooks/useOwnerHistory';
 import { hasRecordedCouncilTopicOutcome, isCouncilOutcome, readCouncilOutcome, sameCouncilOutcome } from '@/utils/councilTopicOutcome';
+import { editHistoryShown } from '@/utils/editHistory';
 import { useTranslation } from '@locales/useTranslation';
 
 import { councilOutcomeWords } from './councilOutcomeWords';
@@ -74,6 +75,7 @@ export function CouncilTopicHistory({ owner, generation, councilId, topics, disa
     catch { setRestoreFailed(true); }
     finally { setRestoring(false); }
   };
+  if (!editHistoryShown()) return null;
   return <div className="space-y-2">
     <button type="button" aria-expanded={open} aria-controls={id} className={button} onClick={toggle} disabled={loading}>{heading}</button>
     {open && <section id={id} aria-label={heading} className="space-y-2 text-sm">

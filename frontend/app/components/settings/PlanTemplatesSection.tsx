@@ -461,7 +461,7 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user, reque
                   )}
                 </div>
 
-                {opening && seen && <div className="px-3 pb-2">
+                {opening && seen && <div className="px-3 pb-2 empty:hidden">
                   <DocumentFieldHistory key={JSON.stringify([opening.owner, tpl.id, seen.generation])}
                     current={tpl.name} disabled={Boolean(seen.requestId || renaming || renamingPending || transitioning || deleting)}
                     session={{ owner: opening.owner, templateId: tpl.id, generation: seen.generation,

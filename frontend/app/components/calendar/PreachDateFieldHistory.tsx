@@ -7,6 +7,7 @@ import { useAppLocale } from '@/hooks/useAppLocale';
 import { useOwnerHistory } from '@/hooks/useOwnerHistory';
 import { serializeContent } from '@/utils/contentFingerprint';
 import { parseDateOnlyAsLocalDate } from '@/utils/dateOnly';
+import { editHistoryShown } from '@/utils/editHistory';
 import { useTranslation } from '@locales/useTranslation';
 
 import { canRestorePreachDateField, canRestorePreachStatus } from './preachDateForm';
@@ -51,6 +52,7 @@ export function PreachDateFieldHistory({ owner, sermonId, generation, dates, dis
     if (typeof value !== 'object') return String(value) || t('calendar.preachDetailBlank');
     return [value.name, value.city].filter(part => typeof part === 'string' && part).join(' · ');
   };
+  if (!editHistoryShown()) return null;
   return <div>
     <button type="button" className={link} disabled={loading} aria-expanded={open} aria-controls={panel} onClick={toggle}>{heading}</button>
     {open && <section id={panel} aria-label={heading} className="space-y-2 text-sm">

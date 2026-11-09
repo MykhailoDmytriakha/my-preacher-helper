@@ -8,6 +8,9 @@ import { membershipEngineHarness } from '../../test-utils/membershipEngineHarnes
 import { settleEngine } from '../../test-utils/documentEngineHarness';
 import type { ResourceSnapshot } from '@/data-engine/types';
 
+// Edit history is hidden in the app since 2026-11-09 (utils/editHistory.ts); this file keeps its restore path tested
+// for the day history gets its designed place back.
+jest.mock('@/utils/editHistory', () => ({ editHistoryShown: () => true }));
 jest.mock('@/providers/AuthProvider', () => ({ useAuth: () => ({ user: { uid: 'owner' } }) }));
 jest.mock('@/services/ownerHttpTransport.client', () => ({ requestOwnerJson: jest.fn() }));
 jest.mock('@/data-engine/browser.client', () => ({ createBrowserDataEngine: jest.fn() }));

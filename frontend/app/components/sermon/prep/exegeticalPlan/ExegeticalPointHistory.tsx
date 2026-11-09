@@ -3,6 +3,7 @@
 import { useId, useState } from 'react';
 
 import { useOwnerHistory } from '@/hooks/useOwnerHistory';
+import { editHistoryShown } from '@/utils/editHistory';
 import { useTranslation } from '@locales/useTranslation';
 
 import type { ExegeticalPointHistoryEntry, ExegeticalPointHistoryPage, ExegeticalPointVersion } from '@/data-engine/exegeticalPointAction';
@@ -30,6 +31,7 @@ export function ExegeticalPointHistory({ owner, sermonId, generation, disabled, 
   const heading = t('dataSync.exegeticalHistory.heading');
   const describe = (version: ExegeticalPointVersion | null) => version
     ? String(version.point.title || t('common.untitled')) : t('dataSync.exegeticalPointRemoved');
+  if (!editHistoryShown()) return null;
   return <div className="space-y-2 text-sm">
     <button type="button" className="min-h-8 font-medium text-emerald-700 hover:underline dark:text-emerald-400"
       aria-expanded={open} aria-controls={panel} disabled={loading} onClick={toggle}>{heading}</button>

@@ -6,6 +6,7 @@ import { useId, useState } from 'react';
 import { useAppLocale } from '@/hooks/useAppLocale';
 import { useOwnerHistory } from '@/hooks/useOwnerHistory';
 import { parseDateOnlyAsLocalDate, shownDayOf } from '@/utils/dateOnly';
+import { editHistoryShown } from '@/utils/editHistory';
 import { useTranslation } from '@locales/useTranslation';
 
 import type { MeetingDateHistoryPage, PreachDateHistoryPage } from '@/data-engine/datedRowAction';
@@ -46,6 +47,7 @@ export function DatedRowHistory({ owner, collection, id, generation, liveDates, 
     const value = parseDateOnlyAsLocalDate(shownDayOf(date));
     return value ? format(value, 'PP', { locale: dateLocale }) : date;
   };
+  if (!editHistoryShown()) return null;
   return <div className="space-y-2">
     <button type="button" aria-expanded={open} aria-controls={panelId}
       className="text-xs font-medium text-blue-600 hover:text-blue-500 dark:text-blue-400 disabled:opacity-50"

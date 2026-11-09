@@ -446,7 +446,8 @@ function CouncilDetailContent({ source, engineCouncilId }: { source: CouncilDeta
             )}
           </div>}
         </div>
-        {source.history && <div className="mt-2 px-1">
+        {/* Holds only history buttons; empty while they are switched off (utils/editHistory.ts). */}
+        {source.history && <div className="mt-2 px-1 empty:hidden">
           <DocumentMetadataHistory<CouncilHistoryField> key={JSON.stringify([source.history.owner, council.id, source.history.generation])}
             owner={source.history.owner} generation={source.history.generation} collection="councils" id={council.id}
             current={{ title: council.title, date: council.date || undefined, heldAt: council.heldAt }}

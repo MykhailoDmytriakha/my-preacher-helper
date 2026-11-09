@@ -3,6 +3,7 @@
 import { useId, useState } from 'react';
 
 import { useOwnerHistory } from '@/hooks/useOwnerHistory';
+import { editHistoryShown } from '@/utils/editHistory';
 import { useTranslation } from '@locales/useTranslation';
 
 import type { ServiceOrderStepHistoryPage } from '@/data-engine/serviceOrderStepAction';
@@ -46,6 +47,7 @@ export function ServiceOrderStepHistory({ owner, orderId, generation, steps, dis
   };
   const heading = t(titleField ? 'serviceOrders.stepTitleHistory.title' : 'serviceOrders.flagHistory.title');
   const button = 'min-h-8 text-xs font-medium text-emerald-700 hover:underline disabled:opacity-50 dark:text-emerald-400';
+  if (!editHistoryShown()) return null;
   return <div className="space-y-2">
     <button type="button" aria-expanded={open} aria-controls={panel} className={button} disabled={loading} onClick={toggle}>{heading}</button>
     {open && <section id={panel} aria-label={heading} className="space-y-2 text-sm">

@@ -3,6 +3,7 @@
 import { useId, useState } from 'react';
 
 import { useOwnerHistory } from '@/hooks/useOwnerHistory';
+import { editHistoryShown } from '@/utils/editHistory';
 import { useTranslation } from '@locales/useTranslation';
 
 import { groupFlowFieldText } from './groupFlowComparison';
@@ -49,6 +50,7 @@ export function GroupFlowFieldHistory({ scope, field, rowId, rowCreatedAt, curre
     finally { setRestoring(false); }
   };
 
+  if (!editHistoryShown()) return null;
   return <div className="mt-1 space-y-2">
     <button type="button" aria-expanded={open} aria-controls={id} className={button} onClick={toggle} disabled={loading}>{heading}</button>
     {open && <section id={id} aria-label={heading} className="space-y-2 text-sm">

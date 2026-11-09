@@ -3,6 +3,7 @@
 import { useId, useState } from 'react';
 
 import { requestOwnerJson } from '@/services/ownerHttpTransport.client';
+import { editHistoryShown } from '@/utils/editHistory';
 import { useTranslation } from '@locales/useTranslation';
 
 import { markLocation, markName } from './markPresentation';
@@ -44,6 +45,7 @@ export function MarkHistory({ session, text, disabled }: { session: MarkHistoryS
     } catch { setError('restore'); }
     finally { setRestoring(undefined); }
   };
+  if (!editHistoryShown()) return null;
   return <div className="mb-2 text-sm">
     <button type="button" aria-expanded={open} aria-controls={panel} disabled={loading}
       className="min-h-8 text-xs font-medium text-blue-700 hover:underline dark:text-blue-400"

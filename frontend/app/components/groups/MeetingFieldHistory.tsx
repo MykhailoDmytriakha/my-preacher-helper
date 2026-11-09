@@ -3,6 +3,7 @@
 import { useId, useState } from 'react';
 
 import { useOwnerHistory } from '@/hooks/useOwnerHistory';
+import { editHistoryShown } from '@/utils/editHistory';
 import { useTranslation } from '@locales/useTranslation';
 
 import type { GroupMeetingField, GroupMeetingFieldHistoryEntry, GroupMeetingFieldHistoryPage } from '@/data-engine/groupMeetingFieldAction';
@@ -41,6 +42,7 @@ export function MeetingFieldHistory({ owner, id, generation, rowId, rowCreatedAt
   const heading = t('workspaces.groups.meetings.fieldHistory');
   const entries = history?.entries.flatMap(record => record.fields.filter(entry => entry.rowId === rowId && entry.rowCreatedAt === rowCreatedAt)
     .map(entry => ({ id: record.id + ':' + entry.field, entry }))) ?? [];
+  if (!editHistoryShown()) return null;
   return <div className="space-y-2">
     <button type="button" aria-expanded={open} aria-controls={panel} className={button} disabled={loading} onClick={toggle}>{heading}</button>
     {open && <section id={panel} aria-label={heading} className="space-y-2 text-sm">

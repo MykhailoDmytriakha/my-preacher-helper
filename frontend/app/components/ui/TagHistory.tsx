@@ -3,6 +3,7 @@
 import { useId, useState } from 'react';
 
 import { useOwnerHistory } from '@/hooks/useOwnerHistory';
+import { editHistoryShown } from '@/utils/editHistory';
 import { useTranslation } from '@locales/useTranslation';
 
 const control = 'min-h-8 text-sm text-indigo-700 hover:underline disabled:opacity-50 dark:text-indigo-300';
@@ -32,6 +33,7 @@ export function TagHistory<Row, Page extends HistoryPage<Row>>({ owner, id: reso
     catch { setRestoreFailed(true); }
     finally { setRestoring(false); }
   };
+  if (!editHistoryShown()) return null;
   return <div>
     <button type="button" className={control} aria-expanded={open} aria-controls={id} onClick={toggle}>{t('thought.tagHistory.heading')}</button>
     {open && <section id={id} aria-label={t('thought.tagHistory.heading')} className="space-y-2 text-sm">

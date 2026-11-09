@@ -3,6 +3,7 @@
 import { useId, useState } from 'react';
 
 import { useOwnerHistory } from '@/hooks/useOwnerHistory';
+import { editHistoryShown } from '@/utils/editHistory';
 import { useTranslation } from '@locales/useTranslation';
 
 import { serviceOrderPlacementWords } from './serviceOrderPlacementWords';
@@ -43,6 +44,7 @@ export function ServiceOrderPlacementHistory(props: Props) {
   };
   const heading = t(step ? 'serviceOrders.stepPlacementHistory' : 'serviceOrders.placementHistory.title');
   const button = 'min-h-8 text-xs font-medium text-emerald-700 hover:underline disabled:opacity-50 dark:text-emerald-400';
+  if (!editHistoryShown()) return null;
   return <div className="ml-2 space-y-2">
     <button type="button" aria-expanded={open} aria-controls={panel} className={button} disabled={loading} onClick={toggle}>{heading}</button>
     {open && <section id={panel} aria-label={heading} className="space-y-2 text-sm">

@@ -3,6 +3,7 @@
 import { useId, useState } from 'react';
 
 import { useOwnerHistory } from '@/hooks/useOwnerHistory';
+import { editHistoryShown } from '@/utils/editHistory';
 import { outlinePointText, projectOutlinePoint } from '@/utils/outlineDnd';
 import { useTranslation } from '@locales/useTranslation';
 
@@ -36,6 +37,7 @@ export function OutlinePointPlacementHistory({ owner, sermonId, generation, outl
     finally { setRestoring(false); }
   };
   const heading = t(PREFIX + 'history');
+  if (!editHistoryShown()) return null;
   return <div className="mb-2 text-sm">
     <button type="button" aria-expanded={open} aria-controls={panel} className={BUTTON} disabled={loading} onClick={toggle}>{heading}</button>
     {open && <section id={panel} aria-label={heading} className="space-y-2">
