@@ -217,6 +217,22 @@ export function pendingAutosaveRowFieldRebases(record: CommitRequest) {
     (record[target.action] ?? []).flatMap(action => pendingRowDetailRebases(record, { [target.field]: action }, target.policy)));
 }
 
+/** Keep the observed pair whole until the server can compare it with the accepted outline. */
+export function retainQueuedThoughtPlacements(merged: DocumentData | null, opening: DocumentData | null, draft: DocumentData | null,
+  stored: DocumentData | null, captured: CommitRequest['thoughtPlacementActions']): DocumentData | null {
+  if (!merged || !opening || !draft || !stored || !captured?.length) return merged;
+  const { birth } = THOUGHT_PLACEMENT_POLICY;
+  const target = THOUGHT_PLACEMENT_POLICY.target(THOUGHT_PLACEMENT_POLICY.fields[0]);
+  let rows = merged.thoughts;
+  for (const action of captured) {
+    if (!isThoughtLocation(action.after) || !equalValues(existingRowField(opening.thoughts, action.rowId, target), action.before)
+      || !equalValues(existingRowField(draft.thoughts, action.rowId, target), action.after)
+      || ![opening.thoughts, draft.thoughts, stored.thoughts, rows].every(value => existingRowField(value, action.rowId, birth) === action.rowCreatedAt)) continue;
+    rows = replaceExistingRowField(rows, action.rowId, action.after, target) ?? rows;
+  }
+  return rows === merged.thoughts ? merged : { ...merged, thoughts: rows };
+}
+
 function capturedPlacementPart(conflict: ConflictDetail, action: Action): boolean {
   const key = conflict.path[2];
   if (!isThoughtPlacementPart(conflict.path, action.rowId) || (key !== 'outlinePointId' && key !== 'subPointId')

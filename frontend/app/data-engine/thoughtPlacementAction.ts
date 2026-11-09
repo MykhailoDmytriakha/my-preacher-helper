@@ -22,6 +22,34 @@ export function readThoughtLocation(row: DocumentData): ThoughtLocation | undefi
   return isThoughtLocation(value) ? value : undefined;
 }
 
+const outlineSections = ['introduction', 'main', 'conclusion'] as const;
+const outlineRows = (value: unknown): DocumentData[] => Array.isArray(value) ? value.filter(object) : [];
+
+export type ThoughtOutlineDestination = { section: typeof outlineSections[number]; location: ThoughtLocation };
+
+/** The node ID survives moves, promotions and demotions. Legacy duplicates have no unique target. */
+export function thoughtOutlineDestinations(outline: unknown): Map<string, ThoughtOutlineDestination | null> {
+  const result = new Map<string, ThoughtOutlineDestination | null>();
+  if (!object(outline)) return result;
+  const add = (id: string, destination: ThoughtOutlineDestination) => result.set(id, result.has(id) ? null : destination);
+  for (const section of outlineSections) {
+    for (const point of outlineRows(outline[section])) {
+      const pointId = point.id;
+      if (typeof pointId !== 'string') continue;
+      add(pointId, { section, location: { outlinePointId: pointId, subPointId: null } });
+      for (const sub of outlineRows(point.subPoints)) {
+        if (typeof sub.id === 'string') add(sub.id, { section, location: { outlinePointId: pointId, subPointId: sub.id } });
+      }
+    }
+  }
+  return result;
+}
+
+function resolveThoughtOutlineDestination(outline: unknown, location: ThoughtLocation) {
+  const id = location.subPointId ?? location.outlinePointId;
+  return id ? thoughtOutlineDestinations(outline).get(id) : undefined;
+}
+
 const locationKeys = ['outlinePointId', 'subPointId'] as const;
 
 const LOCATION: RowFieldTarget<ThoughtLocation> = {
@@ -66,9 +94,14 @@ export function readThoughtPlacementChoice(conflict: ConflictDetail, base: Docum
   const theirs = existingRowField(stored.thoughts, id, target('outlineLocation'));
   if (!opening || !mine || !theirs || equalValues(mine, theirs)) return;
   if (![conflict.base, conflict.mine, conflict.theirs].every(field => field.exists)
-    || !equalValues(opening, conflict.base.value) || !equalValues(mine, conflict.mine.value)
-    || !equalValues(theirs, conflict.theirs.value)) return;
-  return { id, mine, stored: theirs };
+    || !equalValues(opening, conflict.base.value) || !equalValues(theirs, conflict.theirs.value)) return;
+  const reported = conflict.mine.value;
+  if (equalValues(mine, reported)) return { id, mine, stored: theirs };
+  const original = resolveThoughtOutlineDestination(draft.outline, mine);
+  const current = resolveThoughtOutlineDestination(stored.outline, mine);
+  if (original && equalValues(original.location, mine) && current && equalValues(current.location, reported)) {
+    return { id, mine: current.location, stored: theirs, mineUsesStoredOutline: true as const };
+  }
 }
 
 export function localThoughtPlacementChoices(conflicts: readonly ConflictDetail[], base: DocumentData | null,

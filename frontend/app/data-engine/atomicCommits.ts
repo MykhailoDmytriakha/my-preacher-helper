@@ -15,7 +15,7 @@ import { isCapturedPreachDateFieldConflict, preachDateRebaseChoices, retainAutho
 import { alignImplicitPreachStatuses, isCapturedPreachStatusConflict, replacedPreachStatusRows, retainPreachStatusIntent } from './preachStatusAction';
 import { equalValues, mergeDocumentFields, MAX_RELATION_RESOURCES } from './protocol';
 import { isCapturedRowConflict } from './rowFieldAction';
-import { isCapturedAutosaveRowFieldConflict } from './rowFieldAutosave';
+import { isCapturedAutosaveRowFieldConflict, retainQueuedThoughtPlacements } from './rowFieldAutosave';
 import { rebaseSermonChurchFill } from './sermonChurchFill';
 import { SERVICE_ORDER_FLAG_TARGET, SERVICE_ORDER_STEP_TITLE_TARGET } from './serviceOrderStepAction';
 import { coversCommittedEffect } from './snapshotFreshness';
@@ -89,7 +89,8 @@ export function initializeCommit(record: CommitRequest, records: readonly Commit
     const target = datedRowTarget(record.baseline.resource.collection);
     const action = target && record[target.evidence];
     const isDateConflict = (conflict: typeof rebased.conflicts[number]) => target && action && isCapturedDateConflict(conflict, action, target);
-    const merged = rebased.value.exists ? rebased.value.value as DocumentData : null;
+    const combined = rebased.value.exists ? rebased.value.value as DocumentData : null;
+    const merged = sameGeneration ? retainQueuedThoughtPlacements(combined, ancestor, authored, snapshot.value, record.thoughtPlacementActions) : combined;
     if (sameGeneration && record.baseline.resource.collection === 'councils' && !equalValues(predecessor.value?.topics, record.value?.topics)) {
       const code = councilTopicConflictCode(rebased.conflicts)
         ?? councilTopicTransitionRefusal(predecessor.value?.topics, record.value?.topics, snapshot.value?.topics, merged?.topics);

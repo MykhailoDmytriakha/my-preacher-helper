@@ -3659,7 +3659,7 @@ describe('deleting an outline node while a thought is linked to it', () => {
     const move = { ...update, operationId: 'move-thought', changes: [change('thoughts', initial, movedRows)],
       thoughtPlacementActions: [{ rowId: first.id, rowCreatedAt: date, before: original, after: destination, observedRevision: 1, time: time(15) }],
     };
-    return { owner, create, remove, legacyBoardRemove, move, nextOutline, repairedRows, outline, initial, change, time,
+    return { owner, create, remove, legacyBoardRemove, move, nextOutline, repairedRows, outline, opening, initial, change, time,
       expected: [movedRows[0], repairedRows[1]] };
   }
 
@@ -3763,6 +3763,100 @@ describe('deleting an outline node while a thought is linked to it', () => {
     expect(await processCommand(f.owner, f.remove)).toMatchObject({
       kind: 'acknowledged', snapshot: { value: { outline: f.nextOutline, thoughts: [f.repairedRows[1]] } },
     });
+  });
+
+
+  describe('moving a plan node while another device assigns a thought', () => {
+    const boardFields = ['structure', 'thoughtsBySection'] as const;
+    function movingFixture(selectMovedNode: boolean, moveAcrossSections: boolean) {
+      const f = fixture(true);
+      const [opening, destination, alternate] = f.outline.main;
+      const [sourceSub] = f.opening.subPoints;
+      const oldTarget = { outlinePointId: opening.id, subPointId: sourceSub.id };
+      const source = selectMovedNode ? f.move.thoughtPlacementActions[0].after : oldTarget;
+      const target = selectMovedNode ? oldTarget : f.move.thoughtPlacementActions[0].after;
+      const initial = [{ ...f.initial[0], ...source, tags: ['topic', 'main'] }, f.initial[1]];
+      const main = moveAcrossSections ? [destination, alternate] : [
+        { ...opening, subPoints: [] }, destination, { ...alternate, subPoints: [sourceSub] },
+      ];
+      const nextOutline = { ...f.outline, introduction: moveAcrossSections ? [opening] : [], main };
+      const board = f.create.value.structure;
+      const neighborMoved = { ...board, introduction: ['two'], main: ['one'] };
+      const bothMoved = { ...board, introduction: ['one', 'two'], main: [] };
+      const repairedBoard = moveAcrossSections ? (selectMovedNode ? neighborMoved : bothMoved) : board;
+      const neighbor = moveAcrossSections ? { ...initial[1], tags: ['intro'] } : initial[1];
+      const repairedRows = [selectMovedNode ? initial[0] : {
+        ...initial[0], ...(moveAcrossSections ? { tags: ['topic', 'intro'] } : { outlinePointId: alternate.id }),
+      }, neighbor];
+      const assignedRows = [{ ...initial[0], ...target, text: 'New independent words' }, initial[1]];
+      const assignedBoard = { ...board, main: ['two', 'one'] };
+      const outlineSave = { ...f.remove, operationId: 'move-plan-node', changes: [
+        f.change('outline', f.outline, nextOutline), f.change('thoughts', initial, repairedRows),
+        ...boardFields.map(field => f.change(field, board, repairedBoard)),
+      ] };
+      const thoughtSave = { ...f.move, changes: [f.change('thoughts', initial, assignedRows),
+        ...boardFields.map(field => f.change(field, board, assignedBoard))],
+        thoughtPlacementActions: [{ ...f.move.thoughtPlacementActions[0], before: source, after: target }],
+      };
+      const expectedPoint = selectMovedNode && !moveAcrossSections ? alternate.id : target.outlinePointId;
+      const expectedTag = selectMovedNode && moveAcrossSections ? 'intro' : 'main';
+      const expected = [{ ...assignedRows[0], outlinePointId: expectedPoint, tags: ['topic', expectedTag] }, neighbor];
+      const expectedBoard = moveAcrossSections ? (expectedTag === 'intro' ? bothMoved : neighborMoved) : assignedBoard;
+      return { ...f, create: { ...f.create, value: { ...f.create.value, thoughts: initial } }, outlineSave, thoughtSave, nextOutline, expected, expectedBoard };
+    }
+
+    it('preserves linked neighbors when the device adds legacy board aliases after the outline move', async () => {
+      const f = movingFixture(true, true);
+      const { structure: _structure, thoughtsBySection: _thoughtsBySection, ...value } = f.create.value;
+      const fromAbsent = (change: (typeof f.outlineSave.changes)[number]) =>
+        boardFields.some(field => change.path[0] === field) ? { ...change, before: { exists: false } } : change;
+      expect(await processCommand(f.owner, { ...f.create, value })).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(f.owner, { ...f.outlineSave, changes: f.outlineSave.changes.map(fromAbsent) })).toMatchObject({ kind: 'acknowledged' });
+      const result = await processCommand(f.owner, { ...f.thoughtSave, changes: f.thoughtSave.changes.map(fromAbsent) });
+      expect(result).toMatchObject({ kind: 'acknowledged', snapshot: { value: {
+        outline: f.nextOutline, thoughts: f.expected,
+        structure: { introduction: expect.arrayContaining(['one', 'two']), main: [] },
+        thoughtsBySection: { introduction: expect.arrayContaining(['one', 'two']), main: [] },
+      } } });
+    });
+
+    it('keeps rejecting a mismatched parent even after a real move of the selected subpoint', async () => {
+      const f = movingFixture(true, false);
+      const malformed = { outlinePointId: 'destination', subPointId: 'old-sub' };
+      const initial = f.create.value.thoughts;
+      const next = [{ ...initial[0], ...malformed }, initial[1]];
+      expect(await processCommand(f.owner, f.create)).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(f.owner, f.outlineSave)).toMatchObject({ kind: 'acknowledged' });
+      const result = await processCommand(f.owner, { ...f.thoughtSave,
+        changes: [f.change('thoughts', initial, next)],
+        thoughtPlacementActions: [{ ...f.thoughtSave.thoughtPlacementActions[0], after: malformed }],
+      });
+      expect(result).toMatchObject({ kind: 'refused', code: 'invalid-document' });
+    });
+
+    it.each([
+      { selectMovedNode: false, moveAcrossSections: true, outlineFirst: false },
+      { selectMovedNode: false, moveAcrossSections: true, outlineFirst: true },
+      { selectMovedNode: true, moveAcrossSections: true, outlineFirst: true },
+      { selectMovedNode: true, moveAcrossSections: false, outlineFirst: true },
+      { selectMovedNode: false, moveAcrossSections: false, outlineFirst: true },
+    ])('keeps the thought in the section of the chosen live node ($selectMovedNode moved target, $moveAcrossSections cross section, $outlineFirst outline first)',
+      async ({ selectMovedNode, moveAcrossSections, outlineFirst }) => {
+        const f = movingFixture(selectMovedNode, moveAcrossSections);
+        const [first, second] = outlineFirst ? [f.outlineSave, f.thoughtSave] : [f.thoughtSave, f.outlineSave];
+        expect(await processCommand(f.owner, f.create)).toMatchObject({ kind: 'acknowledged' });
+        expect(await processCommand(f.owner, first)).toMatchObject({ kind: 'acknowledged' });
+        const result = await processCommand(f.owner, second);
+        expect(result).toMatchObject({
+          kind: 'acknowledged', snapshot: { value: { outline: f.nextOutline, thoughts: f.expected } },
+        });
+        for (const field of boardFields) {
+          const value = (result as { snapshot: ResourceSnapshot }).snapshot.value?.[field];
+          const board = Object.fromEntries(Object.entries(value ?? {}).map(([section, ids]) => [section, Array.isArray(ids) ? [...ids].sort() : ids]));
+          const expected = Object.fromEntries(Object.entries(f.expectedBoard).map(([section, ids]) => [section, [...ids].sort()]));
+          expect(board).toEqual(expected);
+        }
+      });
   });
 
   it('ignores malformed placement evidence without blocking the automatic repair', async () => {

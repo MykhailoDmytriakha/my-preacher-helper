@@ -1,4 +1,6 @@
+import { findPointSection } from '@/utils/outlineDnd';
 import { replaceSermonOutline } from '@/utils/sermonThoughtEdits';
+import { normalizeStructureTag } from '@/utils/structureTags';
 import { applyScopedThoughtPlacement, completeStoredThoughtPlacement, removeThoughtIdFromStructure } from '@/utils/thoughtOrdering';
 
 import { equalValues, object, readField } from './fieldValues';
@@ -35,6 +37,23 @@ function canonicalRepair(document: DocumentData, after: DocumentData): DocumentD
 function changedLinks(before: Row, after: Row): Repair | undefined {
   const opening = readThoughtLocation(before), repaired = readThoughtLocation(after);
   return opening && repaired && !equalValues(opening, repaired) ? { before: opening, after: repaired } : undefined;
+}
+
+function structureTags(row: Row) {
+  return (row.tags as string[]).map(normalizeStructureTag).filter(Boolean);
+}
+
+function changedPlacement(before: Row, after: Row, oldOutline: DocumentData, newOutline: DocumentData): boolean {
+  if (changedLinks(before, after)) return true;
+  if (typeof before.outlinePointId !== 'string') return false;
+  return findPointSection(oldOutline as unknown as SermonOutline, before.outlinePointId)
+    !== findPointSection(newOutline as unknown as SermonOutline, before.outlinePointId);
+}
+
+function matchesAutomaticPlacement(opening: Row, proposed: Row, repaired: Row, before: DocumentData, after: DocumentData): boolean {
+  return equalValues(readThoughtLocation(proposed), readThoughtLocation(repaired)) &&
+    (Boolean(changedLinks(opening, repaired))
+      || (changedPlacement(opening, repaired, before, after) && equalValues(structureTags(proposed), structureTags(repaired))));
 }
 
 function authoredActions(command: Update) {
@@ -108,6 +127,7 @@ export function prepareOutlinePlacementRepair(command: DataCommand, current: Res
   const merged = mergeFields(outline.before, outline.after, readField(live, ['outline']), ['outline']);
   if (merged.conflicts.length || !outlineValue(merged.value.value)) return unchanged;
 
+  const openingOutline = outline.before.value, proposedOutline = outline.after.value, mergedOutline = merged.value.value;
   const openingRows = thoughtRows(thought?.before.value) ? thought.before.value : [];
   const proposedRows = thoughtRows(thought?.after.value) ? thought.after.value : [];
   const localAfter = byId(proposedRows);
@@ -126,7 +146,7 @@ export function prepareOutlinePlacementRepair(command: DataCommand, current: Res
     const action = actions.get(row.id);
     const authored = opening && proposed && changedLinks(opening, proposed);
     const localRepair = opening && canonicalLocal.get(row.id);
-    const automatic = authored && localRepair && equalValues(authored.after, readThoughtLocation(localRepair)) && !action;
+    const automatic = opening && proposed && localRepair && !action && matchesAutomaticPlacement(opening, proposed, localRepair, openingOutline, proposedOutline);
     const projected = changedLinks(row, materialized);
     const legacyDuplicate = action && equalValues(action.before, action.after) && projected && equalValues(projected.after, action.after);
     if (action && !legacyDuplicate && equalValues(action.before, action.after) && isThoughtLocation(action.after)
@@ -139,7 +159,7 @@ export function prepareOutlinePlacementRepair(command: DataCommand, current: Res
       }
     }
     if ((authored && !automatic) || (action && !legacyDuplicate)) continue;
-    if (!automatic && !projected) continue;
+    if (!automatic && !changedPlacement(row, materialized, live.outline, mergedOutline)) continue;
     if (legacyDuplicate) duplicateStamps.add(row.id);
     const effect = automatic && opening && localRepair ? { before: opening, after: localRepair } : { before: row, after: materialized };
     projections.set(row.id, { before: row, after: materialized, effect });
@@ -150,8 +170,7 @@ export function prepareOutlinePlacementRepair(command: DataCommand, current: Res
   const deleted = openingRows.flatMap(opening => {
     if (liveAfter.has(opening.id) || actions.has(opening.id)) return [];
     const proposed = localAfter.get(opening.id), projected = canonicalLocal.get(opening.id);
-    if (!proposed || !projected || proposed.date !== opening.date || !changedLinks(opening, projected)
-      || !equalValues(readThoughtLocation(proposed), readThoughtLocation(projected))) return [];
+    if (!proposed || !projected || proposed.date !== opening.date || !matchesAutomaticPlacement(opening, proposed, projected, openingOutline, proposedOutline)) return [];
     projections.set(opening.id, { before: opening, after: opening, effect: { before: opening, after: projected } });
     return [opening.id];
   });

@@ -5,6 +5,7 @@ import { object } from './fieldValues';
 import { prepareOutlinePlacementRepair } from './outlinePlacementRepair';
 import { orderRowDetails } from './rowDetailOrder.server';
 import { replaceExistingRowField } from './rowFieldAction';
+import { repairThoughtDestinations } from './thoughtDestinationRepair.server';
 import { alignThoughtPlacementRepresentation, isThoughtLocation, projectThoughtMoveFields, THOUGHT_PLACEMENT_POLICY, thoughtPlacementConflictId } from './thoughtPlacementAction';
 
 import type { ConflictDetail, DataCommand, DocumentData, FieldChange, FieldValue, Json, ResourceSnapshot } from './types';
@@ -86,7 +87,8 @@ function withoutDisputedLocations(command: DataCommand, conflicts: readonly Conf
 /** Move-related board order follows the winning assignment, while other rows and words still merge normally. */
 export function orderThoughtPlacement(command: DataCommand, current: ResourceSnapshot, raw: unknown, serverMs: number) {
   const { command: prepared, repairs, uncertain } = prepareOutlinePlacementRepair(command, current);
-  const rowOrder = orderRowDetails(prepared, current, raw, serverMs, THOUGHT_PLACEMENT_POLICY);
+  const positioned = repairThoughtDestinations(prepared, current, raw, serverMs);
+  const rowOrder = orderRowDetails(positioned, current, raw, serverMs, THOUGHT_PLACEMENT_POLICY);
   const order = { ...rowOrder, uncertain: [...rowOrder.uncertain, ...uncertain] };
   const normalized = alignThoughtPlacementRepresentation(withoutDisputedLocations(order.command, order.uncertain), current);
   const decisions = (order.fields.get('outlineLocation') ?? []).flatMap(({ displaced, stamp, uncertain, rebasedRepair }): Decision[] => {
@@ -95,13 +97,13 @@ export function orderThoughtPlacement(command: DataCommand, current: ResourceSna
     const disputed = uncertain && thoughtPlacementConflictId(uncertain.path);
     return disputed ? [{ rowId: disputed, incomingWins: false }] : [];
   });
-  if (normalized.kind !== 'update' || command.kind !== 'update' || !current.value || !decisions.length) return { ...order, command: normalized, repairs };
+  if (normalized.kind !== 'update' || positioned.kind !== 'update' || !current.value || !decisions.length) return { ...order, command: normalized, repairs };
   const live = current.value;
-  const opening = command.changes.find(change => change.path.length === 1 && change.path[0] === 'thoughts');
+  const opening = positioned.changes.find(change => change.path.length === 1 && change.path[0] === 'thoughts');
   const changes = normalized.changes.map(change => {
     if (change.path.length !== 1) return change;
     if (change.path[0] === 'thoughts' && opening) return alignThoughtMove(opening, change, live, decisions);
-    if (change.path[0] === 'structure' || change.path[0] === 'thoughtsBySection') return alignBoardMove(change, live, decisions, command);
+    if (change.path[0] === 'structure' || change.path[0] === 'thoughtsBySection') return alignBoardMove(change, live, decisions, positioned);
     return change;
   });
   return { ...order, command: { ...normalized, changes }, repairs };

@@ -23,6 +23,7 @@ import { GROUP_BLOCK_TITLE_POLICY, GROUP_STEP_TITLE_POLICY, type GroupFlowHistor
 import { GROUP_MEETING_FIELD_POLICY, type GroupMeetingFieldHistoryPage } from './groupMeetingFieldAction';
 import { GROUP_MEETING_FIELD_HISTORY, metadataAfterGroupMeetingFields, orderGroupMeetingFields } from './groupMeetingFieldOrder.server';
 import { alignGroupStepDurationRepresentation, GROUP_STEP_DURATION_POLICY } from './groupStepDurationAction';
+import { metadataAfterOutlineMoves } from './outlineMoveProof.server';
 import { PREACH_DATE_FIELD_POLICY, type PreachDateField, type PreachDateFieldHistoryPage } from './preachDateFieldAction';
 import { alignPreachStatusCommand, PREACH_STATUS_POLICY, type PreachStatusHistoryPage, type PreachStatusValue } from './preachStatusAction';
 import { advanceResourceSnapshot, commandFingerprint, getResourcePolicy, isValidIdentifier, TOMBSTONE_OWNER_FIELD, validateCommand } from './protocol';
@@ -455,7 +456,7 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
     const metadata = snapshot.resource.collection === 'bibleMarks'
       ? metadataAfterBibleMarks(snapshot, raw?._dataEngine, primary ? markOrder : undefined)
       : metadataAfterDocumentFields({ ...snapshot, metadata: thoughtPlacement }, raw, primary ? fieldOrder : undefined);
-    transaction.set(adminDb.collection(snapshot.resource.collection).doc(snapshot.resource.id), { ...value, _dataEngine: metadata });
+    transaction.set(adminDb.collection(snapshot.resource.collection).doc(snapshot.resource.id), { ...value, _dataEngine: metadataAfterOutlineMoves({ ...snapshot, metadata }, raw) });
   }
   const displaced = dateOrder?.displaced;
   const target = dateOrder?.target;

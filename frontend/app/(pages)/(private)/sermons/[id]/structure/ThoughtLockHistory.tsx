@@ -126,6 +126,6 @@ export function useThoughtPlacementComparison(checkpoint: Parameters<typeof read
     thoughtLocationLabel(outline, location, t('structure.unassigned'), t('structure.thoughtPlacementUnavailable'));
   const stored = checkpoint.remoteCandidate?.value?.outline as unknown as SermonOutline | undefined;
   return { identity: placement.identity, title: t('structure.thoughtPlacementTitle'), valueKind: 'field' as const, scopedChoice: true as const,
-    mine: placement.locations.map(value => value.text + ' · ' + label(sermon.outline, value.mine)).join('\n'),
+    mine: placement.locations.map(value => value.text + ' · ' + label(value.mineUsesStoredOutline ? stored : sermon.outline, value.mine)).join('\n'),
     stored: placement.locations.map(value => value.text + ' · ' + label(stored, value.stored)).join('\n') };
 }
