@@ -17,6 +17,7 @@ import AudioRecorderPortalBridge from '@/components/sermon/AudioRecorderPortalBr
 import ClassicThoughtsPanel from '@/components/sermon/ClassicThoughtsPanel';
 import KnowledgeSection from "@/components/sermon/KnowledgeSection";
 import { LegacyPreparationRecovery } from '@/components/sermon/LegacyPreparationRecovery';
+import { ExegeticalPointHistory } from '@/components/sermon/prep/exegeticalPlan/ExegeticalPointHistory';
 import ExegeticalPlanStepContent from '@/components/sermon/prep/ExegeticalPlanStepContent';
 import GoalsStepContent from '@/components/sermon/prep/GoalsStepContent';
 import HomileticPlanStepContent from '@/components/sermon/prep/HomileticPlanStepContent';
@@ -577,11 +578,16 @@ function SermonPageContent({ id }: { id: string }) {
           subject={JSON.stringify([sermon?.userId, id])}
           value={prepDraft?.exegeticalPlan || []}
           // Each plan edit goes straight into the document, which saves and merges it.
-          onEdit={(edit) => core.editPreparation(prep => ({ ...prep, exegeticalPlan: edit(prep.exegeticalPlan ?? []) }))}
-          onCommitRemoval={(edit) => core.editPreparation(prep => ({ ...prep, exegeticalPlan: edit(prep.exegeticalPlan ?? []) }), 'commit')}
+          onEdit={(edit, nodeId) => core.editPreparation(prep => ({ ...prep, exegeticalPlan: edit(prep.exegeticalPlan ?? []) }), 'draft', nodeId)}
+          onCommitRemoval={(edit, nodeId) => core.editPreparation(prep => ({ ...prep, exegeticalPlan: edit(prep.exegeticalPlan ?? []) }), 'commit', nodeId)}
           onRetryRemoval={core.save}
           saving={savingPrep}
           authorIntentField={core.authorIntentField}
+          pointHistory={user?.uid && id && core.confirmed?.metadata?.generation && <ExegeticalPointHistory
+            key={JSON.stringify([user.uid, id, core.confirmed.metadata.generation])}
+            owner={user.uid} sermonId={id} generation={core.confirmed.metadata.generation}
+            disabled={isReadOnly || core.status?.phase === 'conflict'} onRestore={core.restorePoint}
+          />}
           sermonId={sermon?.id}
           sourceNoteIds={sermon?.sourceNoteIds}
         />

@@ -1865,8 +1865,10 @@ export class DataEngine {
           }
         }
         const stamp = captured?.kind === 'council-lifecycle' ? { field: 'heldAt' as const, time: captured.time }
-          : captured?.kind === 'thought-placement' ? { field: 'thought-placement' as const, rowId: captured.rowId, time: captured.time } : undefined;
-        const persistence = controller.edit(next, captured?.kind === 'thought-placement' ? captured.shown : undefined, stamp);
+          : captured?.kind === 'thought-placement' ? { field: 'thought-placement' as const, rowId: captured.rowId, time: captured.time }
+            : captured?.kind === 'exegetical-point' ? { field: 'exegetical-point' as const, nodeId: captured.nodeId, intent: captured.intent, time: captured.time }
+              : undefined;
+        const persistence = controller.edit(next, captured?.kind === 'thought-placement' || captured?.kind === 'exegetical-point' ? captured.shown : undefined, stamp);
         const saving = controller.save(undefined, undefined, onCaptured, captureScope, stamp ? undefined : captured);
         return Promise.all([persistence, saving]).then(() => { active(); this.backgroundDrain(); this.prepareCommitsInBackground(); active(); });
       };

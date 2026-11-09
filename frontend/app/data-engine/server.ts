@@ -19,6 +19,8 @@ import { existingRowDate, MEETING_DATE_TARGET, PREACH_DATE_TARGET } from './date
 import { metadataAfterDatedRow, orderDatedRow } from './datedRowOrder.server';
 import { documentFieldPath } from './documentFieldAction';
 import { metadataAfterDocumentFields, orderDocumentFields, DOCUMENT_TITLE_HISTORY, GROUP_STATUS_HISTORY, DOCUMENT_METADATA_HISTORY, SERMON_CHURCH_HISTORY, SERMON_GOAL_TYPE_HISTORY, SERMON_VERSE_HISTORY } from './documentFieldOrder.server';
+import { exegeticalPointConflictId } from './exegeticalPointAction';
+import { EXEGETICAL_POINT_HISTORY, metadataAfterExegeticalPoints, orderExegeticalPoints, retainedExegeticalPointHistory } from './exegeticalPointOrder.server';
 import { equalValues, readField } from './fieldValues';
 import { GROUP_BLOCK_STATUS_POLICY } from './groupBlockStatusAction';
 import { GROUP_BLOCK_TITLE_POLICY, GROUP_STEP_TITLE_POLICY, type GroupFlowHistoryPage } from './groupFlowTitleAction';
@@ -46,6 +48,7 @@ import type { BibleMarkHistoryEntry, BibleMarkHistoryPage } from './bibleMarkStr
 import type { CouncilMetadataHistoryPage } from './councilFieldAction';
 import type { DisplacedRowDate, MeetingDateHistoryPage, PreachDateHistoryPage } from './datedRowAction';
 import type { GroupStatusHistoryPage, GroupTitleHistoryPage, DocumentTitleHistoryEntry, PlanTemplateNameHistoryPage, SermonChurchHistoryPage, SermonGoalTypeHistoryPage, SermonPreparationConfirmationHistoryPage, PrayerTitleHistoryPage, SermonTitleHistoryPage, SermonVerseHistoryPage, ServiceOrderTitleHistoryPage, StudyNoteTitleHistoryPage, TagColorHistoryPage } from './documentFieldAction';
+import type { ExegeticalPointHistoryPage } from './exegeticalPointAction';
 import type { PrayerStatusHistoryPage } from './prayerStatusAction';
 import type { RowDetailPolicy } from './rowDetailAction';
 import type { RowValue } from './rowFieldAction';
@@ -410,7 +413,7 @@ function orderGroupFlowFields(command: DataCommand, current: ResourceSnapshot, m
   return { block, step, blockStatus, duration: { ...duration, command: alignGroupStepDurationRepresentation(duration.command, current) } };
 }
 
-async function persistAcceptedCommand(transaction: Transaction, { owner, command, snapshot: primarySnapshot, effects, rawDocuments, dateOrder, meetingOrder, groupFlowOrder, preachingOrder, statusOrder, serviceFlagOrder, serviceStepTitleOrder, councilTopicTitleOrder, councilAssemblyOrder, councilTopicKindOrder, thoughtLockOrder, thoughtPlacementOrder, markOrder, fieldOrder }: {
+async function persistAcceptedCommand(transaction: Transaction, { owner, command, snapshot: primarySnapshot, effects, rawDocuments, dateOrder, meetingOrder, groupFlowOrder, preachingOrder, statusOrder, serviceFlagOrder, serviceStepTitleOrder, councilTopicTitleOrder, councilAssemblyOrder, councilTopicKindOrder, thoughtLockOrder, thoughtPlacementOrder, markOrder, fieldOrder, exegeticalOrder }: {
   owner: string;
   command: DataCommand;
   snapshot: ResourceSnapshot;
@@ -430,6 +433,7 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
   thoughtPlacementOrder?: ReturnType<typeof orderThoughtPlacement>;
   markOrder?: ReturnType<typeof orderBibleMarks>;
   fieldOrder?: ReturnType<typeof orderDocumentFields>;
+  exegeticalOrder?: ReturnType<typeof orderExegeticalPoints>;
 }) {
   const feedWrites = await prepareFeedWrites(transaction, owner, command.operationId, effects);
   const primaryKey = resourceKey(command.resource);
@@ -458,7 +462,13 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
     const metadata = snapshot.resource.collection === 'bibleMarks'
       ? metadataAfterBibleMarks(snapshot, raw?._dataEngine, primary ? markOrder : undefined)
       : metadataAfterDocumentFields({ ...snapshot, metadata: thoughtPlacement }, raw, primary ? fieldOrder : undefined);
-    transaction.set(adminDb.collection(snapshot.resource.collection).doc(snapshot.resource.id), { ...value, _dataEngine: metadataAfterOutlineMoves({ ...snapshot, metadata }, raw) });
+    const exegetical = metadataAfterExegeticalPoints({ ...snapshot, metadata }, raw?._dataEngine, primary ? exegeticalOrder : undefined);
+    transaction.set(adminDb.collection(snapshot.resource.collection).doc(snapshot.resource.id), { ...value, _dataEngine: metadataAfterOutlineMoves({ ...snapshot, metadata: exegetical }, raw) });
+  }
+  const pointHistory = retainedExegeticalPointHistory(primarySnapshot, exegeticalOrder);
+  if (pointHistory) {
+    const history = adminDb.collection(command.resource.collection).doc(command.resource.id).collection(EXEGETICAL_POINT_HISTORY);
+    transaction.set(history.doc(historyEntryId(primarySnapshot, command.operationId)), { ...pointHistory, generation: primarySnapshot.metadata!.generation });
   }
   const displaced = dateOrder?.displaced;
   const target = dateOrder?.target;
@@ -567,6 +577,7 @@ export async function processCommand(owner: string, input: unknown): Promise<Com
     let thoughtPlacementOrder: ReturnType<typeof orderThoughtPlacement> | undefined;
     let markOrder: ReturnType<typeof orderBibleMarks> | undefined;
     let fieldOrder: ReturnType<typeof orderDocumentFields> | undefined;
+    let exegeticalOrder: ReturnType<typeof orderExegeticalPoints> | undefined;
     const rawDocuments = new Map<string, Record<string, unknown> | undefined>([[resourceKey(command.resource), raw]]);
     if (blocked.length) {
       result = { kind: 'blocked', operationId: command.operationId, dependencies: blocked };
@@ -589,7 +600,8 @@ export async function processCommand(owner: string, input: unknown): Promise<Com
       thoughtPlacementOrder = orderThoughtPlacement(alignThoughtLockRepresentation(thoughtLockOrder.command, current), current, raw?._dataEngine, serverMs);
       markOrder = await planBibleMarkOrder(transaction, documentRef, thoughtPlacementOrder.command, current, raw?._dataEngine, serverMs);
       fieldOrder = orderDocumentFields(markOrder.command, current, raw?._dataEngine, serverMs);
-      const planned = await planDataCommand(fieldOrder.command, current, {
+      exegeticalOrder = orderExegeticalPoints(fieldOrder.command, current, raw?._dataEngine, serverMs);
+      const planned = await planDataCommand(exegeticalOrder.command, current, {
         get: async resource => {
           resourcePolicy(resource);
           const document = await transaction.get(adminDb.collection(resource.collection).doc(resource.id));
@@ -627,7 +639,7 @@ export async function processCommand(owner: string, input: unknown): Promise<Com
           return matches;
         },
       });
-      const plan = retainUncertainChronology(planned, command, current, [...(dateOrder.uncertain ?? []), ...meetingOrder.uncertain, ...groupFlowOrder.block.uncertain, ...groupFlowOrder.step.uncertain, ...groupFlowOrder.blockStatus.uncertain, ...groupFlowOrder.duration.uncertain, ...preachingOrder.uncertain, ...statusOrder.uncertain, ...serviceFlagOrder.uncertain, ...serviceStepTitleOrder.uncertain, ...councilTopicTitleOrder.uncertain, ...councilAssemblyOrder.uncertain, ...councilTopicKindOrder.uncertain, ...thoughtLockOrder.uncertain, ...thoughtPlacementOrder.uncertain, ...(markOrder.uncertain ?? []), ...(fieldOrder.uncertain ?? [])]);
+      const plan = retainUncertainChronology(planned, command, current, [...(dateOrder.uncertain ?? []), ...meetingOrder.uncertain, ...groupFlowOrder.block.uncertain, ...groupFlowOrder.step.uncertain, ...groupFlowOrder.blockStatus.uncertain, ...groupFlowOrder.duration.uncertain, ...preachingOrder.uncertain, ...statusOrder.uncertain, ...serviceFlagOrder.uncertain, ...serviceStepTitleOrder.uncertain, ...councilTopicTitleOrder.uncertain, ...councilAssemblyOrder.uncertain, ...councilTopicKindOrder.uncertain, ...thoughtLockOrder.uncertain, ...thoughtPlacementOrder.uncertain, ...(markOrder.uncertain ?? []), ...(fieldOrder.uncertain ?? []), ...exegeticalOrder.uncertain]);
       const acceptedAt = new Date().toISOString();
       // The planner exposes writes only for acknowledged commands.
       effects = plan.writes.map(effect => stampAcceptedResource(snapshotFromRaw(effect.resource, rawDocuments.get(resourceKey(effect.resource))), effect, acceptedAt));
@@ -655,7 +667,13 @@ export async function processCommand(owner: string, input: unknown): Promise<Com
       deletedTag = raw.name;
     }
     if (result.kind === 'acknowledged') {
-      await persistAcceptedCommand(transaction, { owner, command, snapshot: result.snapshot, effects, rawDocuments, dateOrder, meetingOrder, groupFlowOrder, preachingOrder, statusOrder, serviceFlagOrder, serviceStepTitleOrder, councilTopicTitleOrder, councilAssemblyOrder, councilTopicKindOrder, thoughtLockOrder, thoughtPlacementOrder, markOrder, fieldOrder });
+      await persistAcceptedCommand(transaction, { owner, command, snapshot: result.snapshot, effects, rawDocuments, dateOrder, meetingOrder, groupFlowOrder, preachingOrder, statusOrder, serviceFlagOrder, serviceStepTitleOrder, councilTopicTitleOrder, councilAssemblyOrder, councilTopicKindOrder, thoughtLockOrder, thoughtPlacementOrder, markOrder, fieldOrder, exegeticalOrder });
+    }
+    const comparison = exegeticalOrder?.comparison;
+    if (comparison && result.kind === 'conflict'
+      && result.conflicts.some(({ path }) => exegeticalPointConflictId(path) === comparison.nodeId)) {
+      const history = documentRef.collection(EXEGETICAL_POINT_HISTORY);
+      transaction.set(history.doc(historyEntryId(result.snapshot, command.operationId)), { ...comparison, generation: result.snapshot.metadata!.generation });
     }
     // A blocked receipt fixes the identity but may advance after its dependencies acknowledge.
     transaction.set(commandReceiptRef, serializeReceipt(receipt));
@@ -852,6 +870,15 @@ export async function listSermonGoalTypeHistory(owner: string, sermonId: string,
   const resource = { collection: 'sermons', id: sermonId };
   const page = await listHistoryEntries<SermonGoalTypeHistoryPage['entries'][number]>(owner, resource, SERMON_GOAL_TYPE_HISTORY, generation, cursor, 'sermon-gone');
   return { owner, sermonId, generation, ...page, entries: page.entries.filter(entry => isSermonGoalType(entry.type) && isSermonGoalType(entry.winnerType)) };
+}
+
+export async function listExegeticalPointHistory(owner: string, sermonId: string, generation: string, cursor?: string): Promise<ExegeticalPointHistoryPage> {
+  const resource = { collection: 'sermons', id: sermonId };
+  const page = await listHistoryEntries<ExegeticalPointHistoryPage['entries'][number]>(
+    owner, resource, EXEGETICAL_POINT_HISTORY, generation, cursor, 'sermon-gone',
+  );
+  const entries = page.entries.map(({ id, nodeId, value, winner, origin }) => ({ id, nodeId, value, winner, ...(origin === 'comparison' && { origin }) }));
+  return { owner, sermonId, generation, ...page, entries };
 }
 
 export async function listSermonPreparationConfirmationHistory(

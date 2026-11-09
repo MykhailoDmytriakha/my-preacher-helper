@@ -226,6 +226,29 @@
     "useStoredVersion": "Use saved version",
     "yourVersion": "Your version",
     "storedVersion": "Saved version",
+    "exegeticalHistory": {
+      "comparison": "Text preserved from a comparison",
+      "heading": "Point history",
+      "loading": "Loading point history…",
+      "unavailable": "Point history is unavailable.",
+      "restoreFailed": "The point could not be restored. Check whether it changed.",
+      "empty": "No earlier changes to plan points.",
+      "kept": "Kept: {{title}}",
+      "restore": "Restore point text",
+      "restoreRemoval": "Restore removal"
+    },
+    "exegeticalPointTitle": "Exegetical plan point",
+    "exegeticalPointMultipleConflicts": "There are also other conflicting changes. This choice applies to all of them.",
+    "exegeticalPointRemoved": "Point removed",
+    "exegeticalPointRemove": "Remove point",
+    "exegeticalPointKeepMine": "Keep my point",
+    "exegeticalPointKeepSaved": "Keep saved point",
+    "confirmStoredPointRemoval": {
+      "title": "Remove this point?",
+      "description": "The saved version removes this point. Your other changes are kept.",
+      "confirm": "Remove point",
+      "keep": "Keep reviewing"
+    },
     "confirmStoredField": {
       "title": "Use the saved version?",
       "description": "The saved version replaces the field shown here. Your other changes are kept.",

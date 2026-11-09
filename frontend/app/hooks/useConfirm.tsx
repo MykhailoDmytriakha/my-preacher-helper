@@ -108,7 +108,7 @@ export function useConfirm(): {
  * Cancel was the one click that lost dictated text for good (BUG-20261003-one-click-delete-other-screens).
  */
 export function useDiscardQuestion(kind: 'changes' | 'text' = 'changes'): {
-  askBeforeDiscard: (unsaved: boolean, discard: () => void | Promise<void>, isCurrent?: () => boolean, question?: 'common.discardChanges' | 'dataSync.confirmStoredField') => Promise<void>;
+  askBeforeDiscard: (unsaved: boolean, discard: () => void | Promise<void>, isCurrent?: () => boolean, question?: 'common.discardChanges' | 'dataSync.confirmStoredField' | 'dataSync.confirmStoredPointRemoval') => Promise<void>;
   discardDialog: React.ReactElement;
   withdraw: () => void;
 } {
@@ -117,7 +117,7 @@ export function useDiscardQuestion(kind: 'changes' | 'text' = 'changes'): {
     unsaved: boolean,
     discard: () => void | Promise<void>,
     isCurrent: () => boolean = () => true,
-    question?: 'common.discardChanges' | 'dataSync.confirmStoredField',
+    question?: 'common.discardChanges' | 'dataSync.confirmStoredField' | 'dataSync.confirmStoredPointRemoval',
   ) => {
     if (!isCurrent()) return;
     const words = question ?? (kind === 'text' ? 'common.discardText' : 'common.discardChanges');

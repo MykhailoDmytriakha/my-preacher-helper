@@ -54,6 +54,7 @@ const ExegeticalPlanModule: React.FC<ExegeticalPlanModuleProps> = ({
   onSave,
   saving,
   authorIntentField,
+  pointHistory,
   sermonId,
   sourceNoteIds
 }) => {
@@ -92,10 +93,11 @@ const ExegeticalPlanModule: React.FC<ExegeticalPlanModuleProps> = ({
    */
   const showsBlank = !(value && value.length > 0);
   const tree = onEdit ? (showsBlank ? blankPlan : value) : draftTree;
-  const apply = useCallback((edit: PlanEdit): Promise<void> | void => {
+  const apply = useCallback((edit: PlanEdit, titleNodeId?: string): Promise<void> | void => {
     if (!onEdit) { setDraftTree(edit); return; }
     // The blank line joins the plan only through an action on it, i.e. while the screen shows it.
-    const outcome = onEdit(nodes => edit(nodes.length === 0 && showsBlank ? blankPlan : nodes));
+    const update: PlanEdit = nodes => edit(nodes.length === 0 && showsBlank ? blankPlan : nodes);
+    const outcome = titleNodeId ? onEdit(update, titleNodeId) : onEdit(update);
     // A refusal is shown by the document's own status; the title field also lets go of the words.
     if (outcome instanceof Promise) outcome.catch(() => undefined);
     return outcome;
@@ -122,7 +124,7 @@ const ExegeticalPlanModule: React.FC<ExegeticalPlanModuleProps> = ({
     const place = findPlace(tree, id);
     return apply(nodes => findPlace(nodes, id) || !place
       ? setNodeTitle(nodes, id, title)
-      : insertNode(nodes, place, { id, title, children: [] }));
+      : insertNode(nodes, place, { id, title, children: [] }), id);
   }, [onEdit, apply, tree]);
 
   const handleAddMainPoint = useCallback(() => {
@@ -174,7 +176,7 @@ const ExegeticalPlanModule: React.FC<ExegeticalPlanModuleProps> = ({
           }
           applied = true;
           return cut(nodes);
-        });
+        }, node.id);
       }
       setDeletion(current => current?.question === question ? null : current);
     } catch (error) {
@@ -299,6 +301,7 @@ const ExegeticalPlanModule: React.FC<ExegeticalPlanModuleProps> = ({
           autoSaveEnabled={autoSaveEnabled}
           onToggleAutoSave={() => setAutoSaveEnabled(v => !v)}
         />
+        {pointHistory}
       </div>
 
       <div className="border-t border-gray-200 dark:border-gray-700 pt-4">

@@ -230,6 +230,29 @@
     "useStoredVersion": "Взять сохранённую версию",
     "yourVersion": "Ваша версия",
     "storedVersion": "Сохранённая версия",
+    "exegeticalHistory": {
+      "comparison": "Текст сохранён из сравнения",
+      "heading": "История пунктов",
+      "loading": "Загружаем историю пунктов…",
+      "unavailable": "История пунктов недоступна.",
+      "restoreFailed": "Не удалось восстановить пункт. Проверьте, не изменился ли он.",
+      "empty": "В истории пока нет предыдущих версий пунктов.",
+      "kept": "Сохранено: {{title}}",
+      "restore": "Восстановить текст пункта",
+      "restoreRemoval": "Восстановить удаление"
+    },
+    "exegeticalPointTitle": "Пункт экзегетического плана",
+    "exegeticalPointMultipleConflicts": "Есть и другие конфликтующие правки. Этот выбор применяется ко всем конфликтам.",
+    "exegeticalPointRemoved": "Пункт удалён",
+    "exegeticalPointRemove": "Удалить пункт",
+    "exegeticalPointKeepMine": "Оставить мой пункт",
+    "exegeticalPointKeepSaved": "Оставить сохранённый пункт",
+    "confirmStoredPointRemoval": {
+      "title": "Удалить этот пункт?",
+      "description": "В сохранённой версии этот пункт удалён. Остальные изменения сохранятся.",
+      "confirm": "Удалить пункт",
+      "keep": "Продолжить сравнение"
+    },
     "confirmStoredField": {
       "title": "Использовать сохранённую версию?",
       "description": "Сохранённая версия заменит показанное поле. Остальные изменения сохранятся.",

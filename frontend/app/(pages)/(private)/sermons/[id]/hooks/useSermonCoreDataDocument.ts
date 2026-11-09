@@ -1,13 +1,14 @@
 import { manualFormDecision } from '@/components/common/manualTextBinding';
 import { usePublishShellTitle } from '@/components/navigation/shellTitles';
 import { sermonConflictComparison } from '@/components/sermon/sermonConflictComparison';
-import { useDataDocument, useDataEngine, useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
+import { restoreExegeticalPoint, useDataDocument, useDataEngine, useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
 import { preparationConfirmationPaths, type PreparationConfirmation } from '@/utils/preparationFieldValues';
 import { useTranslation } from '@locales/useTranslation';
 
 import { useSermonPreparationFields } from './useSermonPreparationFields';
 
 import type { ManualTextBinding } from '@/components/common/manualTextBinding';
+import type { ExegeticalPointHistoryEntry } from '@/data-engine/exegeticalPointAction';
 import type { DocumentData, Json } from '@/data-engine/types';
 import type { Preparation, Sermon } from '@/models/models';
 
@@ -77,13 +78,21 @@ export function useSermonCoreDataDocument(sermonId: string | null) {
    * Typing: the change goes into the open document's draft, applied to its newest preparation; the
    * document saves it after a short pause, when the page is hidden and when it is left.
    */
-  const editPreparation = (edit: (current: Preparation) => Preparation, delivery: 'draft' | 'commit' = 'draft') => {
+  const editPreparation = (edit: (current: Preparation) => Preparation, delivery: 'draft' | 'commit' = 'draft', nodeId?: string) => {
     if (isReadOnly) return Promise.reject(new Error(NOT_EDITABLE));
     const update = owned(current => ({
       ...current,
       preparation: edit((current.preparation ?? {}) as Preparation) as DocumentData,
     }));
-    return delivery === 'commit' ? document.commit(update) : document.update(update);
+    if (delivery === 'commit') {
+      return nodeId ? document.commit(update, { kind: 'exegetical-point', nodeId, intent: 'remove' }) : document.commit(update);
+    }
+    return nodeId ? document.update(update, { action: { kind: 'exegetical-point', nodeId, intent: 'title' } }) : document.update(update);
+  };
+  const restorePoint = async (entry: ExegeticalPointHistoryEntry) => {
+    if (isReadOnly || document.status?.phase === 'conflict') throw new Error(NOT_EDITABLE);
+    const update = owned(current => restoreExegeticalPoint(current, document.data, entry));
+    await document.commit(update, { kind: 'exegetical-point', nodeId: entry.nodeId, intent: entry.value ? 'title' : 'remove' });
   };
   const headerForms = { title: titleForm, verse: verseForm };
   const borrowed = [...(titleForm.borrowedRecoveryIds ?? []), ...(verseForm.borrowedRecoveryIds ?? [])];
@@ -147,5 +156,6 @@ export function useSermonCoreDataDocument(sermonId: string | null) {
     patchPreparation,
     setPreparationConfirmation,
     editPreparation,
+    restorePoint,
   };
 }

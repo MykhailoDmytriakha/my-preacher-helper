@@ -36,8 +36,10 @@ export interface TextComparison {
   mine: string;
   stored: string;
   title?: string;
+  description?: string;
   valueKind?: 'field' | 'removed-row';
   scopedChoice?: true;
+  actions?: { local: string; stored: string; confirmStored?: 'dataSync.confirmStoredPointRemoval' | 'common.discardChanges' };
 }
 export interface DataSyncStatusProps {
   comparison?: TextComparison;
@@ -177,7 +179,7 @@ export function DataSyncStatus({ subject, status, error, errorWords, onKeepLocal
   const accept = status?.canAcceptRemote && onAcceptRemote;
   const chooseStored = (callback: () => void | Promise<void>) => askBeforeDiscard(true, callback,
     () => currentSubject.current === subject && currentComparison.current === comparisonIdentity,
-    comparison?.scopedChoice ? 'dataSync.confirmStoredField' : comparison?.valueKind === 'removed-row' ? 'common.discardChanges' : undefined);
+    comparison?.actions?.confirmStored ?? (comparison?.scopedChoice ? 'dataSync.confirmStoredField' : comparison?.valueKind === 'removed-row' ? 'common.discardChanges' : undefined));
   const conflictBanner = !deleting && status?.phase === 'conflict' && keep && accept;
   const repeatDeletion = () => {
     if (!keep) return;
@@ -204,9 +206,9 @@ export function DataSyncStatus({ subject, status, error, errorWords, onKeepLocal
   <div ref={rootRef} className={`space-y-3 text-sm ${className}`} {...(comparison ? { role: 'region', 'aria-label': t('dataSync.versionComparison') } : title ? { role: 'region', 'aria-label': title } : {})}>
     {title && <p className="font-medium">{title}</p>}
     {comparison && <FieldComparison comparison={comparison} />}
-    {conflictBanner ? <SaveConflictBanner description={comparison ? t('dataSync.fieldVersionChanged') : undefined}
-      keepMineLabel={comparison?.valueKind ? t(comparison.valueKind === 'removed-row' ? 'dataSync.keepDraft' : 'dataSync.useLocalVersion') : undefined}
-      takeTheirsLabel={comparison ? t('dataSync.useStoredVersion') : undefined} onKeepMine={() => keepChecked(keep)} onTakeTheirs={() => run(() => chooseStored(accept))} busy={busy} /> : status && (pendingDeletion || showPhase || showFreshness || readTrouble) && <div role="status" aria-live="polite" className="text-gray-600 dark:text-gray-300">
+    {conflictBanner ? <SaveConflictBanner description={comparison?.description ?? (comparison ? t('dataSync.fieldVersionChanged') : undefined)}
+      keepMineLabel={comparison?.actions?.local ?? (comparison?.valueKind ? t(comparison.valueKind === 'removed-row' ? 'dataSync.keepDraft' : 'dataSync.useLocalVersion') : undefined)}
+      takeTheirsLabel={comparison?.actions?.stored ?? (comparison ? t('dataSync.useStoredVersion') : undefined)} onKeepMine={() => keepChecked(keep)} onTakeTheirs={() => run(() => chooseStored(accept))} busy={busy} /> : status && (pendingDeletion || showPhase || showFreshness || readTrouble) && <div role="status" aria-live="polite" className="text-gray-600 dark:text-gray-300">
       {pendingDeletion && <p>{t('recordAvailability.deleting')}</p>}
       {showPhase && !pendingDeletion && <p>{t(deleting ? (status.phase === 'refused' ? 'dataSync.deleteRefusedTitle' : 'dataSync.deleteConflictTitle') : trouble ? `dataSync.phase.${status.phase}` : 'dataSync.unfinishedWork')}</p>}
       {showPhase && deleting && <p>{t(status.phase === 'refused' ? 'dataSync.deleteRefusedBody' : 'dataSync.deleteConflictBody')}</p>}

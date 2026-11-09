@@ -1,5 +1,6 @@
 import type { PreparationTextBinding } from '@/components/common/manualTextBinding';
 import type { ExegeticalPlanNode } from '@/models/models';
+import type { ReactNode } from 'react';
 
 /** One change of the plan, applied to the newest plan the document holds. */
 export type PlanEdit = (nodes: ExegeticalPlanNode[]) => ExegeticalPlanNode[];
@@ -12,14 +13,15 @@ export interface ExegeticalPlanModuleProps {
    * The plan lives in an open document (the data engine): each edit goes into it at once and the
    * document saves it. Given this, the module keeps no draft and ignores `onSave` / `saving`.
    */
-  onEdit?: (edit: PlanEdit) => Promise<void> | void;
+  onEdit?: (edit: PlanEdit, titleNodeId?: string) => Promise<void> | void;
   /** An explicit deletion joins the durable queue immediately. */
-  onCommitRemoval?: (edit: PlanEdit) => Promise<void>;
+  onCommitRemoval?: (edit: PlanEdit, nodeId: string) => Promise<void>;
   /** Retry the existing draft and request without applying the removal twice. */
   onRetryRemoval?: () => Promise<void>;
   onSave?: (nodes: ExegeticalPlanNode[]) => Promise<void> | void;
   saving?: boolean;
   authorIntentField?: PreparationTextBinding;
+  pointHistory?: ReactNode;
   /** The sermon whose prep this is, and the notes it was made from: its analysis stands as the block diagram. */
   sermonId?: string;
   sourceNoteIds?: string[];

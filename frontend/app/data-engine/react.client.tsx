@@ -20,6 +20,7 @@ import { councilTopicConflictCode, councilTopicRefusalCode } from './councilTopi
 import { isDirectLegacyDocumentIntent, savedDocumentAnswer, type DocumentAnswer } from './documentDelivery';
 import { ACTION_SLOT, editorSlot, isManualChoiceRecoveryIdentity, readManualScopeIdentity, recoveryEditorIdentity } from './editorIdentity';
 import { needsConnection } from './engine';
+import { restoreExegeticalPoint as restorePointVersion } from './exegeticalPointAction';
 import { LegacyQueryCopies, LegacyQueryMigrationGate } from './LegacyQueryRecovery';
 import { ARCHIVED_COLLECTIONS, isEngineOwnedLegacyMutation, isEngineOwnedLegacyQuery, legacyCacheMayBeOverwritten } from './legacyQueryRecovery.client';
 import { discoverLegacyRecovery as discoverLegacyOriginals, exportLegacyRecovery as exportLegacyOriginal, type LegacyRecoverySource } from './legacyRecovery.client';
@@ -35,11 +36,13 @@ import { describeManualSync, describeSync, type SyncStatus } from './status';
 import { shownDeliveryState } from './unanswered';
 import { useRecoveryDiscovery as useDiscovery, type RecoveryDiscoveryOptions } from './useRecoveryDiscovery';
 
+
 import type { StudyAnalysisWrite } from './analysisReshape';
 import type { CollectionState } from './collections';
 import type { EditorRecord, EditorState, RecoveryCheckpoint } from './controller';
 import type { DatedRowActionCapture } from './datedRowAction';
 import type { ManagedEditor, ManagedManualForm, ManualRecoveryPolicy } from './engine';
+import type { ExegeticalPointEdit } from './exegeticalPointCapture';
 import type { GroupMeetingField, GroupMeetingFieldInput } from './groupMeetingFieldAction';
 import type { ManualFieldInput, ManualPath, ManualDocumentMetadataSave } from './manualScope';
 import type { StoredManualScope } from './manualScopes.client';
@@ -63,6 +66,7 @@ export function readGroupFlowFieldConflict(checkpoint: SessionCheckpoint) { retu
 export function readServiceStepConflict(checkpoint: SessionCheckpoint) { return serviceStepConflict(checkpoint); }
 export function readPlanTemplateNameConflict(checkpoint: SessionCheckpoint) { return planTemplateNameConflict(checkpoint); }
 export function readTagColorConflict(checkpoint: SessionCheckpoint) { return tagColorConflict(checkpoint); }
+export function restoreExegeticalPoint(...args: Parameters<typeof restorePointVersion>) { return restorePointVersion(...args); }
 export function readSermonConflict(checkpoint: SessionCheckpoint) { return sermonConflict(checkpoint); }
 export function readThoughtLockComparison(checkpoint: SessionCheckpoint) { return thoughtLockComparison(checkpoint); }
 export function readThoughtPlacementComparison(checkpoint: SessionCheckpoint) { return thoughtPlacementComparison(checkpoint); }
@@ -705,7 +709,7 @@ export function useDataMembership() {
 export interface DocumentUpdateOptions {
   handlesRefusal?: (failure: unknown) => boolean;
   action?: 'group-title' | 'group-status' | 'council-title' | 'council-date'
-    | { kind: RowFieldActionKind; rowId: string } | { kind: 'thought-lock' | 'thought-placement'; rowIds: readonly string[] };
+    | ExegeticalPointEdit | { kind: RowFieldActionKind; rowId: string } | { kind: 'thought-lock' | 'thought-placement'; rowIds: readonly string[] };
 }
 
 interface DocumentOptions {
@@ -1025,6 +1029,9 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
         // An expected question changed no draft and must not cancel an earlier save.
         cancelScheduledSave();
         if (owner && typeof action === 'object') {
+          if (action.kind === 'exegetical-point') {
+            return editor.edit(next, shown, { field: action.kind, nodeId: action.nodeId, intent: action.intent, time: time ?? null });
+          }
           const rows = 'rowIds' in action ? { rowIds: action.rowIds } : { rowId: action.rowId };
           return editor.edit(next, shown, { field: action.kind, ...rows, time: time ?? null });
         }
@@ -1036,14 +1043,14 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
     },
     /** Freeze the intended save before any asynchronous draft persistence. */
     commit: (updater: (current: DocumentData | null) => DocumentData | null,
-      action?: 'bible-mark-stroke' | 'council-lifecycle' | { kind: 'thought-placement'; rowId: string }
+      action?: 'bible-mark-stroke' | 'council-lifecycle' | ExegeticalPointEdit | { kind: 'thought-placement'; rowId: string }
         | Pick<Extract<EditorCommitAction, { kind: 'sermon-preparation-check' }>, 'kind' | 'field'>
         | Extract<EditorCommitAction, { kind: 'council-assembly' | 'council-topic-kind' }>) => {
-      const timed = typeof action === 'string' || action?.kind === 'thought-placement' || action?.kind === 'sermon-preparation-check';
+      const timed = typeof action === 'string' || action?.kind === 'exegetical-point' || action?.kind === 'thought-placement' || action?.kind === 'sermon-preparation-check';
       const time = owner && timed ? actionClock.capture(owner) : undefined;
       const checkpoint = current?.state.checkpoint;
       const shown = checkpoint && { confirmed: checkpoint.confirmed, draft: checkpoint.draft, editGeneration: checkpoint.editGeneration };
-      const capture = typeof action === 'object' ? (action.kind === 'thought-placement' ? { ...action, time: time ?? null, shown }
+      const capture = typeof action === 'object' ? (action.kind === 'thought-placement' || action.kind === 'exegetical-point' ? { ...action, time: time ?? null, shown }
         : action.kind === 'sermon-preparation-check' ? { ...action, time: time ?? null } : action)
         : action === 'council-lifecycle' ? { kind: action, time: time ?? null } as const
           : time ? { kind: 'bible-mark-stroke', time } as const : undefined;

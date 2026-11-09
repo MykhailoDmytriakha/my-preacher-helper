@@ -9,6 +9,7 @@ import { councilTopicConflictCode, councilTopicTransitionRefusal } from './counc
 import { datedRowTarget, isCapturedDateConflict } from './datedRowAction';
 import { pendingDocumentFieldAncestor } from './documentFieldAction';
 import { prepareAtomicDomainCommand } from './domainPolicy';
+import { rebaseQueuedExegeticalPoint } from './exegeticalPointCapture';
 import { GROUP_MEETING_FIELDS, meetingFieldTarget, replacedMeetingField } from './groupMeetingFieldAction';
 import { mergeOutlineAfterAcknowledgement } from './outlinePlacementRepair';
 import { isCapturedPreachDateFieldConflict, preachDateRebaseChoices, retainAuthoredChurch } from './preachDateFieldAction';
@@ -85,7 +86,11 @@ export function initializeCommit(record: CommitRequest, records: readonly Commit
         generation: record.baseline.metadata?.generation ?? null, dependsOn: [],
         thoughtPlacementActions: record.thoughtPlacementActions,
       }, ancestor, authored, snapshot) : undefined;
-    const rebased = outline ?? mergeDocumentFields(ancestor, authored, snapshot.value);
+    const ordinary = outline ?? mergeDocumentFields(ancestor, authored, snapshot.value);
+    const exegetical = !outline && sameGeneration && ordinary.conflicts.some(({ path }) =>
+      path.length === 2 && path[0] === 'preparation' && path[1] === 'exegeticalPlan')
+      ? rebaseQueuedExegeticalPoint(ancestor, authored, snapshot.value, record.exegeticalPlanActions) : undefined;
+    const rebased = exegetical?.rebased ?? ordinary;
     const target = datedRowTarget(record.baseline.resource.collection);
     const action = target && record[target.evidence];
     const isDateConflict = (conflict: typeof rebased.conflicts[number]) => target && action && isCapturedDateConflict(conflict, action, target);
@@ -121,6 +126,7 @@ export function initializeCommit(record: CommitRequest, records: readonly Commit
     // The preceding ACK can carry another device's date. Send the original ancestor
     // for this exact leaf so the server can order it or keep the ordinary choice.
     return { ...record, initialized: true, working: snapshot, intended: intended && flag !== undefined ? { ...intended, isPreached: flag } : intended,
+      ...(exegetical && { exegeticalQueueBasis: exegetical.basis }),
       ...(deferDate && { deferPreachDateRebase: true }), ...(markAncestor && { deferBibleMarkRebase: true }) };
   }
   return { ...record, initialized: true };

@@ -56,6 +56,22 @@ const aggregatePreparationUpdate = (base: DocumentData, next: DocumentData, oper
   }],
 });
 describe('exegetical plan identity merge through public engine surfaces', () => {
+  it('puts a kept point back beside its original sibling after reviewing its deletion', () => {
+    const point = node('Point', 'Original words'), neighbor = node('Neighbor', 'Independent words');
+    const edited = node('Point', 'My later words');
+    const base = sermon([point, neighbor]), local = sermon([edited, neighbor]);
+    const stored = snapshot(sermon([neighbor]), 2);
+    const session = new DataSession(snapshot(base));
+    session.edit(local);
+    const submitted = session.prepare('point-edit', owner)!;
+    session.accept({ kind: 'conflict', operationId: submitted.operationId, snapshot: stored,
+      conflicts: [{ path: ['preparation', 'exegeticalPlan', 'id:Point'], base: { exists: true, value: point },
+        mine: { exists: true, value: edited }, theirs: { exists: false } }] });
+    session.release(submitted.operationId);
+    session.keepLocal();
+    expect(planOf(session.getState().draft)).toEqual([edited, neighbor]);
+  });
+
   it('merges an aggregate preparation update with an independent remote point title', () => {
     const base = sermon([node('Parent', 'Parent', [node('Anchor'), node('Moving', 'Opening words')])]);
     const local = sermon([node('Parent', 'Parent', [node('Anchor')]), node('Moving', 'Opening words')]);

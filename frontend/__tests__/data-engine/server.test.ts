@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { isCollectionServed } from '@/data-engine/activation';
-import { DataEngineServerError, listBibleMarkHistory, listCouncilMetadataHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listPlanTemplateNameHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listPrayerStatusHistory, listPrayerTitleHistory, listSermonChurchHistory, listSermonGoalTypeHistory, listSermonPreparationConfirmationHistory, listSermonTitleHistory, listSermonVerseHistory, listSeriesMetadataHistory, listServiceOrderFlagHistory, listServiceOrderStepTitleHistory, listServiceOrderTitleHistory, listStudyNoteTitleHistory, listTagColorHistory, listThoughtLockHistory, listThoughtPlacementHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
+import { DataEngineServerError, listBibleMarkHistory, listExegeticalPointHistory, listCouncilMetadataHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listPlanTemplateNameHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listPrayerStatusHistory, listPrayerTitleHistory, listSermonChurchHistory, listSermonGoalTypeHistory, listSermonPreparationConfirmationHistory, listSermonTitleHistory, listSermonVerseHistory, listSeriesMetadataHistory, listServiceOrderFlagHistory, listServiceOrderStepTitleHistory, listServiceOrderTitleHistory, listStudyNoteTitleHistory, listTagColorHistory, listThoughtLockHistory, listThoughtPlacementHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
 import { collectionHeadId, HEADS_COLLECTION, sequenceId } from '@/data-engine/serverFeed';
 import { DataSession } from '@/data-engine/session';
 import type { DataCommand, FieldValue, ResourceSnapshot } from '@/data-engine/types';
@@ -2514,6 +2514,132 @@ describe('transactional DataEngine server', () => {
         .toMatchObject({ kind: 'acknowledged' });
       expect(await processCommand(owner, savePreparation('phone', preparation('didactic'), 20)))
         .toMatchObject({ kind: 'acknowledged', snapshot: { value: { preparation: preparation('didactic', 'A separately edited sentence') } } });
+    });
+  });
+
+  describe('exegetical plan point removal and title chronology', () => {
+    const point = { id: 'point', title: 'Original point' };
+    const edited = { ...point, title: 'Revised point' };
+    const neighbor = { id: 'neighbor', title: 'Independent point' };
+    const revisedNeighbor = { ...neighbor, title: 'Revised independent point' };
+    const preparation = (exegeticalPlan: typeof point[]) => ({ exegeticalPlan, authorIntent: 'Keep the author’s intent' });
+    const opening = preparation([point, neighbor]);
+
+    async function seed() {
+      const command = create('exegetical-chronology-seed') as Extract<DataCommand, { kind: 'create' }>;
+      expect(await processCommand(command.owner, { ...command, value: { ...command.value, preparation: opening } }))
+        .toMatchObject({ kind: 'acknowledged' });
+      return command.owner;
+    }
+
+    function savePoint(kind: 'remove' | 'title' | 'sibling', offset: number | null) {
+      const time = offset === null ? null : { earliestMs: 1_800_000_000_000 + offset, latestMs: 1_800_000_000_005 + offset };
+      const nodes = kind === 'remove' ? [neighbor] : kind === 'sibling' ? [point, revisedNeighbor] : [edited, neighbor];
+      return {
+        ...update('exegetical-' + kind, 'exegetical-chronology-seed'),
+        changes: [{
+          path: ['preparation'], before: { exists: true, value: opening },
+          after: { exists: true, value: preparation(nodes) },
+        }],
+        exegeticalPlanActions: [{ nodeId: kind === 'sibling' ? neighbor.id : point.id,
+          kind: kind === 'remove' ? 'remove' : 'title', observedRevision: 1, time }],
+      };
+    }
+
+    it.each([
+      { first: 'remove', second: 'title', firstAt: 25, secondAt: 80, expected: [edited, neighbor] },
+      { first: 'title', second: 'remove', firstAt: 80, secondAt: 25, expected: [edited, neighbor] },
+      { first: 'title', second: 'remove', firstAt: 25, secondAt: 80, expected: [neighbor] },
+      { first: 'remove', second: 'title', firstAt: 80, secondAt: 25, expected: [neighbor] },
+    ] as const)('keeps the later point intent when $first at $firstAt is delivered before $second at $secondAt',
+      async ({ first, second, firstAt, secondAt, expected }) => {
+        const owner = await seed();
+        expect(await processCommand(owner, savePoint(first, firstAt))).toMatchObject({ kind: 'acknowledged' });
+        expect(await processCommand(owner, savePoint(second, secondAt))).toMatchObject({
+          kind: 'acknowledged', snapshot: { value: { preparation: preparation([...expected]) } },
+        });
+      });
+
+    it('keeps a later explicit return to the opening title over an older delayed removal', async () => {
+      const owner = await seed();
+      expect(await processCommand(owner, savePoint('title', 40))).toMatchObject({ kind: 'acknowledged' });
+      const returnToOpening = savePoint('title', 80);
+      expect(await processCommand(owner, {
+        ...returnToOpening, operationId: 'exegetical-title-return',
+        changes: [{ path: ['preparation'], before: { exists: true, value: preparation([edited, neighbor]) },
+          after: { exists: true, value: opening } }],
+        exegeticalPlanActions: [{ ...returnToOpening.exegeticalPlanActions[0], observedRevision: 2 }],
+      })).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(owner, savePoint('remove', 25))).toMatchObject({
+        kind: 'acknowledged', snapshot: { value: { preparation: opening } },
+      });
+    });
+
+    it('accepts removal of the exact point title saved by its own preceding request without a clock', async () => {
+      const owner = await seed();
+      expect(await processCommand(owner, savePoint('title', null))).toMatchObject({ kind: 'acknowledged' });
+      const remove = savePoint('remove', null);
+      expect(await processCommand(owner, {
+        ...remove, dependsOn: ['exegetical-title'],
+        changes: [{ path: ['preparation'], before: { exists: true, value: preparation([edited, neighbor]) },
+          after: { exists: true, value: preparation([neighbor]) } }],
+        exegeticalPlanActions: [{ ...remove.exegeticalPlanActions[0], predecessorOperationId: 'exegetical-title' }],
+      })).toMatchObject({ kind: 'acknowledged', snapshot: { value: { preparation: preparation([neighbor]) } } });
+    });
+
+    it('stores the displaced words for the same owner and generation when an older edit arrives after removal', async () => {
+      const owner = await seed();
+      await processCommand(owner, savePoint('remove', 80));
+      await processCommand(owner, savePoint('title', 25));
+      await expect(listExegeticalPointHistory(owner, resource.id, 'exegetical-chronology-seed')).resolves.toMatchObject({
+        owner, generation: 'exegetical-chronology-seed',
+        entries: [{ nodeId: point.id, value: { point: edited, ancestors: [] }, winner: null }],
+      });
+      await expect(listExegeticalPointHistory('other-owner', resource.id, 'exegetical-chronology-seed')).rejects.toThrow();
+      await expect(listExegeticalPointHistory(owner, resource.id, 'previous-generation')).rejects.toThrow();
+    });
+
+    it('compares only the affected point when the order of an edit and a removal is unknown', async () => {
+      const owner = await seed();
+      expect(await processCommand(owner, savePoint('title', 80))).toMatchObject({ kind: 'acknowledged' });
+      const remove = savePoint('remove', null);
+      expect(await processCommand(owner, remove)).toMatchObject({
+        kind: 'conflict', conflicts: [{ path: ['preparation', 'exegeticalPlan', 'id:point'] }],
+      });
+      const reviewedRemoval = { ...update('exegetical-reviewed-removal', 'exegetical-chronology-seed'),
+        changes: [{ path: ['preparation'], before: { exists: true, value: preparation([edited, neighbor]) },
+          after: { exists: true, value: preparation([neighbor]) } }] };
+      expect(await processCommand(owner, reviewedRemoval)).toMatchObject({ kind: 'acknowledged' });
+      await expect(listExegeticalPointHistory(owner, resource.id, 'exegetical-chronology-seed')).resolves.toMatchObject({
+        entries: [{ nodeId: point.id, value: { point: edited }, origin: 'comparison' }],
+      });
+    });
+
+    it('preserves the point text even when the same command has another conflicting field', async () => {
+      const owner = await seed();
+      const withSermonTitle = (kind: 'title' | 'remove', title: string) => {
+        const command = savePoint(kind, null);
+        return { ...command, changes: [...command.changes, { path: ['title'], before: { exists: true, value: 'First' },
+          after: { exists: true, value: title } }] };
+      };
+      expect(await processCommand(owner, withSermonTitle('title', 'Desk sermon title'))).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(owner, withSermonTitle('remove', 'Phone sermon title'))).toMatchObject({
+        kind: 'conflict', conflicts: expect.arrayContaining([
+          expect.objectContaining({ path: ['preparation', 'exegeticalPlan', 'id:point'] }),
+          expect.objectContaining({ path: ['title'] }),
+        ]),
+      });
+      await expect(listExegeticalPointHistory(owner, resource.id, 'exegetical-chronology-seed')).resolves.toMatchObject({
+        entries: [{ nodeId: point.id, value: { point: edited }, origin: 'comparison' }],
+      });
+    });
+
+    it('merges a point removal and an independent sibling title edit', async () => {
+      const owner = await seed();
+      expect(await processCommand(owner, savePoint('sibling', 80))).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(owner, savePoint('remove', 25))).toMatchObject({
+        kind: 'acknowledged', snapshot: { value: { preparation: preparation([revisedNeighbor]) } },
+      });
     });
   });
 

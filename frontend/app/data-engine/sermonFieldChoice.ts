@@ -1,6 +1,7 @@
 import { preparationConfirmationField } from '@/utils/preparationFieldValues';
 import { applyScopedThoughtPlacement, completeStoredThoughtPlacement } from '@/utils/thoughtOrdering';
 
+import { exegeticalPlan, exegeticalPointConflictId, projectExegeticalPoint, readExegeticalPointChoice } from './exegeticalPointAction';
 import { equalValues, object, readField, writeField } from './fieldValues';
 import { mergeDocumentFields } from './protocol';
 import { readThoughtLockConflict, thoughtLockConflictId } from './thoughtLockAction';
@@ -11,7 +12,7 @@ import type { Sermon, ThoughtsBySection } from '@/models/models';
 
 export function comparableSermonField(path: readonly string[]): boolean {
   return (path.length === 1 && path[0] === 'verse')
-    || preparationConfirmationField(path) !== undefined
+    || preparationConfirmationField(path) !== undefined || exegeticalPointConflictId(path) !== undefined
     || (path.length === 3 && path[0] === 'preachDates' && path[1].startsWith('id:') && path[2] === 'date');
 }
 
@@ -105,7 +106,18 @@ export function keepUncontestedSermonFields(basis: ResourceSnapshot, draft: Docu
   } else {
     const path = conflicts[0].path;
     if (path[0] === 'preachDates' && !readSermonConflictField(stored.value, path.slice(0, 2)).exists) throw changed();
-    corrected = withSelectedField(draft, path, readSermonConflictField(stored.value, path));
+    const pointId = exegeticalPointConflictId(path);
+    if (pointId) {
+      const before = exegeticalPlan(basis.value.preparation), local = exegeticalPlan(draft.preparation), remote = exegeticalPlan(stored.value.preparation);
+      if (!before || !local || !remote) throw changed();
+      const choice = readExegeticalPointChoice(before, local, remote, pointId);
+      if (!choice) throw changed();
+      const projected = projectExegeticalPoint(draft.preparation, local, pointId, choice.before.ancestors, choice.saved);
+      if (!projected) throw changed();
+      corrected = writeField(draft, ['preparation'], projected);
+    } else {
+      corrected = withSelectedField(draft, path, readSermonConflictField(stored.value, path));
+    }
   }
   if (!corrected) throw changed();
   const merged = mergeDocumentFields(opening, withField(corrected, 'updatedAt', readField(stored.value, ['updatedAt'])), stored.value);

@@ -19,7 +19,7 @@ interface TreeIndex {
 type ChosenEntry = Pick<Entry, 'fields' | 'parent' | 'listedChildren'>;
 
 /** A node's identity spans the whole tree; attachment objects are not tree points. */
-function indexTree(nodes: Json[], children: string): TreeIndex | null {
+export function indexTree(nodes: Json[], children: string): TreeIndex | null {
   const tree: TreeIndex = { entries: new Map(), orders: new Map() };
   const pending: { nodes: Json[]; parent: string | null }[] = [{ nodes, parent: null }];
   while (pending.length) {
@@ -46,7 +46,7 @@ function indexTree(nodes: Json[], children: string): TreeIndex | null {
 const fieldsOf = (entry: Entry | undefined): FieldValue => entry
   ? { exists: true, value: entry.fields } : { exists: false };
 
-function relativeOrderChanged(id: string, base: TreeIndex, side: TreeIndex, home: string | null): boolean {
+export function relativeOrderChanged(id: string, base: TreeIndex, side: TreeIndex, home: string | null): boolean {
   const before = base.orders.get(home) ?? [], after = side.orders.get(home) ?? [];
   const from = before.indexOf(id), to = after.indexOf(id);
   return from >= 0 && to >= 0 && before.some((other, at) => after.includes(other)

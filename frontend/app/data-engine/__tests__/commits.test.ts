@@ -576,6 +576,32 @@ describe('Durable commit requests', () => {
       intended: { title: 'Local title', church: desk, preachDates: [row] } });
   });
 
+  it('sends an offline point removal for chronology after the preceding ACK brings a different point title', async () => {
+    const point = { id: 'point', title: 'Opening point' };
+    const neighbor = { id: 'neighbor', title: 'Opening neighbor' };
+    const edited = { ...point, title: 'Desk title' };
+    const editedNeighbor = { ...neighbor, title: 'Desk neighbor' };
+    const basis = initial();
+    const preparation = { exegeticalPlan: [point, neighbor], authorIntent: 'Keep these words' };
+    const opening = { ...basis, value: { ...basis.value, preparation } };
+    const { queue } = setup({ opening }).makeQueue();
+    const session = new DataSession(opening);
+    session.edit({ ...opening.value, title: 'Local sermon title' });
+    const first = (await queue.save('sermon', session.checkpoint()))!;
+    session.applyCommit(first);
+    const time = { earliestMs: 1_800_000_000_020, latestMs: 1_800_000_000_025 };
+    session.edit({ ...first.value, preparation: { ...preparation, exegeticalPlan: [neighbor] } },
+      undefined, { field: 'exegetical-point', nodeId: point.id, intent: 'remove', time });
+    const second = (await queue.save('sermon', session.checkpoint(), { predecessorId: first.id }))!;
+    expect(second.exegeticalPlanActions).toEqual([{ nodeId: point.id, kind: 'remove', observedRevision: 1, time }]);
+    const ack = { ...opening, value: { ...first.value, preparation: { ...preparation, exegeticalPlan: [edited, editedNeighbor] } },
+      metadata: { ...opening.metadata!, revision: 3, operationId: first.id } };
+    const ready = initializeCommit(second, [{ ...first, state: 'acknowledged', result: { kind: 'acknowledged', operationId: first.id, snapshot: ack } }]);
+    expect(ready).toMatchObject({ state: 'queued', working: { value: { preparation: { ...preparation, exegeticalPlan: [edited, editedNeighbor] } } },
+      exegeticalQueueBasis: { nodeId: point.id, version: { point } },
+      intended: { title: 'Local sermon title', preparation: { ...preparation, exegeticalPlan: [editedNeighbor] } } });
+  });
+
   it('never stamps an inferred church as a choice when only the city was edited', async () => {
     const s = setup();
     const { queue } = s.makeQueue();

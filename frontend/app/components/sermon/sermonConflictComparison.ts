@@ -20,6 +20,20 @@ export function sermonConflictComparison(checkpoint: SessionCheckpoint, t: TFunc
     return { identity, valueKind: 'field', title: fieldLabel(t, comparison.field),
       mine: format(comparison.mine), stored: format(comparison.stored), scopedChoice: true };
   }
+  if (kind === 'exegetical-point') {
+    const removed = t('dataSync.exegeticalPointRemoved');
+    const versions = { identity, valueKind: 'field' as const, title: t('dataSync.exegeticalPointTitle'),
+      mine: comparison.mine ?? removed, stored: comparison.stored ?? removed };
+    if (!comparison.scoped) {
+      return { ...versions, description: t('dataSync.exegeticalPointMultipleConflicts'),
+        actions: { local: t('dataSync.useLocalVersion'), stored: t('dataSync.useStoredVersion'), confirmStored: 'common.discardChanges' } };
+    }
+    return { ...versions, scopedChoice: true, actions: {
+        local: t(comparison.mine === null ? 'dataSync.exegeticalPointRemove' : 'dataSync.exegeticalPointKeepMine'),
+        stored: t(comparison.stored === null ? 'dataSync.exegeticalPointRemove' : 'dataSync.exegeticalPointKeepSaved'),
+        ...(comparison.stored === null && { confirmStored: 'dataSync.confirmStoredPointRemoval' }),
+      } };
+  }
   const date = (value: Json | undefined) => {
     if (typeof value !== 'string' || !value) return t('calendar.dateNotSet');
     const day = shownDayOf(value);

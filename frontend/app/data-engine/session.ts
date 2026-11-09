@@ -6,6 +6,8 @@ import { councilTopicConflictCode, rejectCouncilTopicChoice } from './councilTop
 import { autosaveAcknowledgementAncestor, autosaveFieldTargets, hasUncapturedAutosaveField, sameAutosaveCapture, stageAutosaveField } from './documentFieldAction';
 import { prepareDomainCommand } from './domainPolicy';
 import { ACTION_SLOT, editorSlot } from './editorIdentity';
+import { exegeticalPointConflictId } from './exegeticalPointAction';
+import { mergeExegeticalPointChoice, stageExegeticalPoint } from './exegeticalPointCapture';
 import { chooseLocalPlacement } from './localPlacementChoice';
 import { projectManualSelection } from './manualScope';
 import { chooseLocalPreachDateEdits } from './preachDateChoice';
@@ -27,6 +29,7 @@ export interface SessionCheckpoint extends AutosaveFieldDrafts, RowFieldDrafts {
   dirty: boolean;
   editGeneration: number;
   remoteCandidate: ResourceSnapshot | null;
+  exegeticalPointDrafts?: ReturnType<typeof stageExegeticalPoint>;
   conflicts: ConflictDetail[];
   pending: Record<string, { generation: number; value: DocumentData | null; operations?: string[]; borrowedManualScope?: string } & AutosaveFieldActions & AutosaveRowFieldActions>;
 }
@@ -96,6 +99,9 @@ export class DataSession {
       else delete this.state[target.draft];
     }
     stageRowFields(this.state, value, shown, autosaveStamp && ('rowId' in autosaveStamp || 'rowIds' in autosaveStamp) ? autosaveStamp : undefined);
+    const planActions = stageExegeticalPoint(this.state, value, shown, autosaveStamp?.field === 'exegetical-point' ? autosaveStamp : undefined);
+    if (planActions) this.state.exegeticalPointDrafts = planActions;
+    else delete this.state.exegeticalPointDrafts;
     this.state.draft = copy(value);
     this.state.editGeneration += 1;
     this.state.dirty = !equalValues(value, this.state.confirmed.value) || hasUncapturedAutosaveField(this.state) || hasUncapturedAutosaveRowField(this.state);
@@ -355,7 +361,9 @@ export class DataSession {
     }
     if (candidate) {
       const marks = firstBookMarksIntent(this.state.confirmed, this.state.draft, candidate);
-      const merged = mergeDocumentFields(marks?.baseline ?? this.state.confirmed.value, marks?.value ?? this.state.draft, candidate.value);
+      const pointIds = this.state.conflicts.flatMap(({ path }) => exegeticalPointConflictId(path) ?? []);
+      const point = mergeExegeticalPointChoice(this.state.confirmed.value, this.state.draft, candidate.value, pointIds);
+      const merged = point?.rebased ?? mergeDocumentFields(marks?.baseline ?? this.state.confirmed.value, marks?.value ?? this.state.draft, candidate.value);
       rejectCouncilTopicChoice(councilTopicConflictCode(merged.conflicts));
       const chosen = chooseLocalPlacement(this.state.confirmed.resource.collection,
         this.state.confirmed.value, this.state.draft, candidate.value,
@@ -380,6 +388,7 @@ export class DataSession {
   }
 
   private clearAutosaveFieldDrafts(): void {
+    delete this.state.exegeticalPointDrafts;
     clearRowFieldDrafts(this.state);
     for (const target of autosaveFieldTargets(this.state.confirmed.resource.collection)) delete this.state[target.draft];
   }

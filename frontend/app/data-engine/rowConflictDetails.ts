@@ -4,6 +4,7 @@ import { preparationConfirmationField } from '@/utils/preparationFieldValues';
 import { COUNCIL_ASSEMBLY, councilAssemblyRow } from './councilAssemblyAction';
 import { COUNCIL_TOPIC_KIND, councilTopicKindRow } from './councilTopicKindAction';
 import { COUNCIL_TOPIC_TITLE, councilTopicTitleRow } from './councilTopicTitleAction';
+import { exegeticalPlan, exegeticalPointConflictId, readExegeticalPointChoice } from './exegeticalPointAction';
 import { equalValues, object } from './fieldValues';
 import { GROUP_BLOCK_STATUS_POLICY } from './groupBlockStatusAction';
 import { GROUP_BLOCK_TITLE_POLICY, GROUP_STEP_TITLE_POLICY } from './groupFlowTitleAction';
@@ -140,7 +141,21 @@ export function readServiceStepConflict(checkpoint: SessionCheckpoint) {
 
 export function readSermonConflict(checkpoint: SessionCheckpoint) {
   const { conflicts, draft, remoteCandidate } = checkpoint;
-  if (conflicts.length !== 1 || !draft || !remoteCandidate?.value) return undefined;
+  if (!conflicts.length || !draft || !remoteCandidate?.value) return undefined;
+  const pointConflict = conflicts.find(({ path }) => exegeticalPointConflictId(path));
+  const pointId = pointConflict && exegeticalPointConflictId(pointConflict.path);
+  if (pointId) {
+    const opening = exegeticalPlan(checkpoint.confirmed.value?.preparation);
+    const local = exegeticalPlan(draft.preparation), saved = exegeticalPlan(remoteCandidate.value.preparation);
+    if (!opening || !local || !saved || checkpoint.confirmed.metadata?.generation !== remoteCandidate.metadata?.generation) return undefined;
+    const choice = readExegeticalPointChoice(opening, local, saved, pointId);
+    if (!choice) return undefined;
+    const mine = choice.mine?.point.title as string | undefined;
+    const stored = choice.saved?.point.title as string | undefined;
+    const identity = JSON.stringify([pointConflict!.path, mine, stored, remoteCandidate.metadata, checkpoint.editGeneration]);
+    return { kind: 'exegetical-point' as const, identity, mine: mine ?? null, stored: stored ?? null, scoped: conflicts.length === 1 };
+  }
+  if (conflicts.length !== 1) return undefined;
   const { path, base } = conflicts[0];
   const mine = readSermonConflictField(draft, path);
   const stored = readSermonConflictField(remoteCandidate.value, path);
