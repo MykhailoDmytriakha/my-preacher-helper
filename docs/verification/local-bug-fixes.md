@@ -7935,3 +7935,11 @@ Rebuilt the exact parent `7d2456f2` of the existing fix `ff6548e9`. The original
 The current branch `601f63b9`, build `UgG-pCBjyg_BfiyJlMXmy`, passed at 1680 and 1280 px with local Auth and Firestore. No gap occurred on the three tested lines. Both the dot and arrows passed hit tests. A trusted press moved the first line from 8 to 34 px of padding. The save and Undo acknowledged at revisions 2 and 3, and reload kept the original words, passage and structure. All 11 analysis editor tests passed. Before and after screenshots and reports are in the local Elephant case at `artifacts/analysis-reach-20261107`.
 
 The existing acceptance request on the owner's computer stays in the tracker. In an authorized production check, open a disposable analysis at Romans 1:19–20, choose Edit and move from the first word left toward the dot and arrows. Confirm a down step and Undo, and check the original position after reopening. Close the test page afterwards.
+
+## BUG-20261109-analysis-arrow-hint-clipped · Desktop analysis arrow hints
+
+The level arrows use the existing viewport correction for CSS tooltips on hover and focus, with the same delay and click behavior. The shared calculation and placement were extracted separately in `d5635e78` with the export tooltip tests passing.
+
+In the old Chrome build at 1280 and 1680 px the Russian down hint started 16.77 px outside the viewport. In the fixed build `SO8dvSZC7k9CVL5e-cMtR`, the fully visible down and up hints began 12.23 px inside it at both sizes. A real down click followed by Undo acknowledged both changes and kept the original analysis after reload. The focused regression went red to green, 23 related tests passed, TypeScript and scoped ESLint passed, and the final guarded build and both visual runs passed. Evidence is in the local Elephant case at `artifacts/analysis-arrow-hint-20261109`.
+
+After authorized deployment, confirm the deployed version, open a disposable Romans 1:19–20 analysis in Edit and hold the pointer on the first row's down arrow for a second. The full hint should be readable at the left edge. Use the arrow, inspect the up hint and undo the step before closing the page.

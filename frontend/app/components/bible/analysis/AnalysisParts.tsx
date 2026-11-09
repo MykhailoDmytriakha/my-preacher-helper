@@ -1,6 +1,7 @@
 'use client';
 
 import { ArrowLeftIcon, ArrowUturnLeftIcon, ChevronLeftIcon, ChevronRightIcon, PencilSquareIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { useRef, type Ref } from 'react';
 
 
 import { BibleIcon } from '@/components/bible/BibleIcon';
@@ -8,6 +9,7 @@ import { AnalysisIcon } from '@/components/Icons';
 import Switch from '@/components/ui/Switch';
 import { withModifier } from '@/utils/keyboardModifier';
 import { PLACE_DOOR_TONES } from '@/utils/themeColors';
+import { placeTooltipLabel } from '@/utils/tooltipPlacement';
 import { useTranslation } from '@locales/useTranslation';
 
 import { ANALYSIS_LINE_HEIGHT, ANALYSIS_LINE_PADDING, type AnalysisLineSpacing } from './analysisGeometry';
@@ -158,9 +160,9 @@ const STEP_OFF = 'rounded-full bg-white text-gray-300 shadow-[inset_0_0_0_1px_#e
  * comes after a full second — 500 ms was «слишком рано» — and goes at once. A CSS label, not `Tooltip`: these are
  * buttons that act, and `Tooltip` pins itself on a click (.howto/show-a-tooltip.md).
  */
-function HoverLabel({ text, from = 'middle' }: { text: string; from?: 'middle' | 'left' }) {
+function HoverLabel({ text, from = 'middle', labelRef }: { text: string; from?: 'middle' | 'left'; labelRef?: Ref<HTMLSpanElement> }) {
   return (
-    <span aria-hidden="true" className={`pointer-events-none absolute bottom-[calc(100%+6px)] z-20 ${from === 'middle' ? 'left-1/2 -translate-x-1/2' : '-left-1'} whitespace-nowrap rounded-md bg-gray-900 px-2 py-1 font-sans text-xs font-semibold text-white opacity-0 transition-opacity duration-150 invisible group-hover/tip:visible group-hover/tip:opacity-100 group-hover/tip:delay-1000 group-focus-visible/tip:visible group-focus-visible/tip:opacity-100 dark:bg-gray-700`}>
+    <span ref={labelRef} aria-hidden="true" style={{ translate: 'var(--tooltip-shift, 0px) 0' }} className={`pointer-events-none absolute bottom-[calc(100%+6px)] z-20 ${from === 'middle' ? 'left-1/2 -translate-x-1/2' : '-left-1'} whitespace-nowrap rounded-md bg-gray-900 px-2 py-1 font-sans text-xs font-semibold text-white opacity-0 transition-opacity duration-150 invisible group-hover/tip:visible group-hover/tip:opacity-100 group-hover/tip:delay-1000 group-focus-visible/tip:visible group-focus-visible/tip:opacity-100 dark:bg-gray-700`}>
       {text}
     </span>
   );
@@ -205,11 +207,14 @@ function StepButton({ side, onPress }: { side: 'up' | 'down'; onPress: (() => vo
   const { t } = useTranslation();
   const label = t(side === 'up' ? 'analysis.level.up' : 'analysis.level.down');
   const Icon = side === 'up' ? ChevronLeftIcon : ChevronRightIcon;
+  const hint = useRef<HTMLSpanElement>(null);
+  const placeHint = () => { if (hint.current) placeTooltipLabel(hint.current); };
   return (
     <button type="button" aria-label={label} disabled={!onPress} onClick={(event) => { event.stopPropagation(); onPress?.(); }}
+      onMouseEnter={placeHint} onFocus={placeHint}
       className={`group/tip relative inline-flex h-6 w-6 items-center justify-center border-[3px] border-transparent bg-clip-padding ${onPress ? `${STEP_LOOK} hover:bg-indigo-100 dark:hover:bg-indigo-950` : STEP_OFF}`}>
       <Icon className="h-3 w-3" strokeWidth={2.6} aria-hidden="true" />
-      {onPress ? <HoverLabel text={label} /> : null}
+      {onPress ? <HoverLabel text={label} labelRef={hint} /> : null}
     </button>
   );
 }

@@ -141,6 +141,25 @@ describe('cutting and gluing the lines of an analysis', () => {
     });
   });
 
+  it('keeps the line arrow hint inside the viewport on hover and focus', () => {
+    renderEditor(true);
+    const first = document.querySelector<HTMLElement>('[data-line="0"]')!;
+    const down = within(first).getByRole('button', { name: 'analysis.level.down' });
+    const hint = within(down).getByText('analysis.level.down');
+    const viewportWidth = document.documentElement.clientWidth || window.innerWidth;
+    const box = jest.spyOn(hint, 'getBoundingClientRect').mockReturnValue({ left: -16, right: 104, width: 120 } as DOMRect);
+    try {
+      fireEvent.mouseEnter(down);
+      expect(hint.style.getPropertyValue('--tooltip-shift')).toBe('28px');
+
+      box.mockReturnValue({ left: viewportWidth - 110, right: viewportWidth + 10, width: 120 } as DOMRect);
+      fireEvent.focus(down);
+      expect(hint.style.getPropertyValue('--tooltip-shift')).toBe('-22px');
+    } finally {
+      box.mockRestore();
+    }
+  });
+
   it('still lights a part up at a press on its word in «Просмотр», changing nothing', () => {
     renderEditor(false);
     fireEvent.click(word(4));
