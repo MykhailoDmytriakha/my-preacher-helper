@@ -236,7 +236,8 @@
       "empty": "No earlier changes to plan points.",
       "kept": "Kept: {{title}}",
       "restore": "Restore point text",
-      "restoreRemoval": "Restore removal"
+      "restoreRemoval": "Restore removal",
+      "more": "Show earlier changes"
     },
     "exegeticalPointTitle": "Exegetical plan point",
     "exegeticalPointMultipleConflicts": "There are also other conflicting changes. This choice applies to all of them.",
