@@ -1,10 +1,11 @@
 import { createHash } from 'node:crypto';
 
 import { isStandaloneScriptureReference } from '@/utils/bibleLink';
+import { isOrdinaryStudyNote } from '@/utils/studyNoteType';
 
 import { boundedActionTime, compareActionTime } from './actionClock';
 import { councilLifecycleValue, councilStatusOf, matchesCouncilLifecycle } from './councilFieldAction';
-import { acceptsDocumentField, documentFieldChange, documentFieldPath, documentFieldTargets, hasStudyNoteTitle, replaceOrderedDocumentField } from './documentFieldAction';
+import { acceptsDocumentField, documentFieldChange, documentFieldPath, documentFieldTargets, replaceOrderedDocumentField } from './documentFieldAction';
 import { commandFingerprint, equalValues, object, readField } from './fieldValues';
 import { proofRevision } from './rowFieldAction';
 import { rebaseSermonChurchFill } from './sermonChurchFill';
@@ -13,6 +14,7 @@ import type { ActionTime } from './actionClock';
 import type { DocumentFieldObservation, DocumentFieldTarget } from './documentFieldAction';
 import type { ConflictDetail, DataCommand, DocumentData, FieldChange, FieldValue, ResourceSnapshot } from './types';
 
+export const STUDY_NOTE_TYPE_HISTORY = '_noteTypeHistory';
 export const DOCUMENT_TITLE_HISTORY = '_titleHistory';
 export const GROUP_STATUS_HISTORY = '_statusHistory';
 export const SERMON_VERSE_HISTORY = '_verseHistory';
@@ -28,7 +30,7 @@ type DocumentFieldOrder = {
   uncertain?: ConflictDetail[];
 };
 
-const usesDigest = (target: DocumentFieldTarget) => 'path' in target || target.field === 'color' || target.field === 'verse' || target.field === 'church' || target.field === 'date' || target.field === 'heldAt' || target.field === 'answeredAt' || target.action === 'seriesFieldActions' || target.action === 'studyNoteTitleAction' || target.action === 'planTemplateNameAction';
+const usesDigest = (target: DocumentFieldTarget) => 'path' in target || target.field === 'color' || target.field === 'verse' || target.field === 'church' || target.field === 'date' || target.field === 'heldAt' || target.field === 'answeredAt' || target.action === 'seriesFieldActions' || target.action === 'studyNoteTitleAction' || target.action === 'studyNoteTypeAction' || target.action === 'planTemplateNameAction';
 const fieldDigest = (value: FieldValue, target: DocumentFieldTarget) => createHash('sha256')
   .update(target.field === 'verse' ? String(value.value) : commandFingerprint(value)).digest('base64url');
 
@@ -89,7 +91,7 @@ function decideUnobservedField(command: Extract<DataCommand, { kind: 'update' }>
 function orderDocumentField(command: DataCommand, current: ResourceSnapshot, raw: unknown, serverMs: number,
   target: DocumentFieldTarget): DocumentFieldOrder {
   if (command.kind !== 'update') return { command };
-  if (target.action === 'studyNoteTitleAction' && !hasStudyNoteTitle(current.value)) return { command };
+  if ((target.action === 'studyNoteTitleAction' || target.action === 'studyNoteTypeAction') && !isOrdinaryStudyNote(current.value)) return { command };
   if (target.action === 'tagColorAction' && current.value?.required !== false) return { command };
   const change = documentFieldChange(command.changes, target);
   if (!change || !current.metadata || current.metadata.deleted || command.generation !== current.metadata.generation) return { command };

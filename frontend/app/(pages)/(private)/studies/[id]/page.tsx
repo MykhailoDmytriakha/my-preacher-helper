@@ -58,6 +58,7 @@ import { sameScriptureReference, withNoteReferenceBibles } from '@/utils/scriptu
 import { isRecordingOnlyNoteDraft } from '@/utils/studyNoteAudioRecovery';
 import { noteRecordingMetadata } from '@/utils/studyNoteRecordings';
 import { inStudyNoteTab, STUDY_NOTE_TABS, type StudyNoteTab } from '@/utils/studyNoteTabs';
+import { isOrdinaryStudyNoteType } from '@/utils/studyNoteType';
 import { formatStudyNoteForCopy, studyNoteOwnName } from '@/utils/studyNoteUtils';
 import { NEUTRAL_CAPTION } from '@/utils/themeColors';
 import { isTypingIn } from '@/utils/typingTarget';
@@ -78,7 +79,7 @@ import { NoteDraftRecovery } from './NoteDraftRecovery';
 import { NoteMobileSheet } from './NoteMobileSheet';
 import { NoteSidePanel } from './NoteSidePanel';
 import { RetainedNoteDraft } from './RetainedNoteDraft';
-import { rebaseNoteTags, useNoteAutoSave, type NoteTagEdit, type NoteTitleEdit, type SubmittedNoteTag } from './useNoteAutoSave';
+import { rebaseNoteTags, useNoteAutoSave, type NoteTagEdit, type NoteTitleEdit, type NoteTypeEdit, type SubmittedNoteTag, type SubmittedNoteType } from './useNoteAutoSave';
 import { useNoteScrollIsolation } from './useNoteScrollIsolation';
 import { useNoteScrollPosition } from './useNoteScrollPosition';
 
@@ -604,6 +605,7 @@ function EditorHeaderTypeControl({
                         the pencil's grey (2026-10-28). A comment is not chosen here: it is written and edited in its window. */}
                     <button
                         type="button"
+                        aria-pressed={type === 'note'}
                         onClick={() => setType('note')}
                         className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${type === 'note' ? 'bg-emerald-100 text-emerald-900 dark:bg-emerald-900/40 dark:text-emerald-100' : IDLE_TYPE}`}
                     >
@@ -611,6 +613,7 @@ function EditorHeaderTypeControl({
                     </button>
                     <button
                         type="button"
+                        aria-pressed={type === 'question'}
                         onClick={() => setType('question')}
                         className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${type === 'question' ? 'bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-100' : IDLE_TYPE}`}
                     >
@@ -723,7 +726,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
     const routeId = useRouteId();
     const [createdNoteId, setCreatedNoteId] = useState<string | null>(null);
     const [draftWriterId] = useState(newClientId);
-    const { uid, notes, noteDelivery, notePresence, refetch, confirmedDictationSources, confirmedCreationIds, createNote, updateNote, deleteNote, observeTitle, observeTagBasis, captureActionTime, loading: notesLoading } = useStudyNotes();
+    const { uid, notes, noteDelivery, notePresence, refetch, confirmedDictationSources, confirmedCreationIds, createNote, updateNote, deleteNote, observeTitle, observeType, observeTagBasis, captureActionTime, loading: notesLoading } = useStudyNotes();
     const { creationId, recordingContextId, creationTargetId, noteId, isNew, draftDocId } = useNewStudyNoteDraft({
         uid, routeId, createdNoteId, openingDraftId, openingRecoveryKey, notes, confirmedCreationIds,
     });
@@ -752,7 +755,14 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         setTagState(next);
     }, []);
     const [scriptureRefs, setScriptureRefs] = useState<ScriptureReference[]>([]);
-    const [type, setType] = useState<StudyNoteType>('note');
+    const [type, setTypeState] = useState<StudyNoteType>('note');
+    const typeEditRef = useRef<NoteTypeEdit | null>(null);
+    const submittedTypeRef = useRef<SubmittedNoteType | null>(null);
+    const setType = useCallback((value: StudyNoteType) => {
+        typeEditRef.current = null;
+        submittedTypeRef.current = null;
+        setTypeState(value);
+    }, []);
     // What the person asked for; the page writes only once nothing waits for an answer (`isEditing` below).
     const [editingWanted, setIsEditing] = useState(isNew);
 
@@ -856,6 +866,21 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
     };
     // The next save goes without the typing pause — set by text the app inserts whole.
     const saveAtOnceRef = useRef(false);
+    const changeType = (value: StudyNoteType) => {
+        if (value === type) return;
+        const opening = baselineRef.current?.type;
+        const previous = typeEditRef.current;
+        const submitted = submittedTypeRef.current;
+        const shownSubmission = submitted?.id === noteId && submitted.owner === uid && submitted.seen.type === type ? submitted.seen : undefined;
+        const retainedOpening = previous?.id === noteId && previous.owner === uid && previous.capture.seen.type === opening
+            ? previous.capture.seen : undefined;
+        const seen = !isNew && isOrdinaryStudyNoteType(type) && isOrdinaryStudyNoteType(opening) && isOrdinaryStudyNoteType(value)
+            ? shownSubmission ?? retainedOpening ?? observeType?.(noteId, opening) : undefined;
+        typeEditRef.current = uid && seen && isOrdinaryStudyNoteType(value)
+            ? { owner: uid, id: noteId, value, capture: { seen, time: captureActionTime?.() ?? null } } : null;
+        if (seen) saveAtOnceRef.current = true;
+        setTypeState(value);
+    };
     const baselineNoteIdRef = useRef<string | null>(null);
     /**
      * The same baseline as `baselineRef`, but as STATE. A ref cannot drive what the screen
@@ -921,7 +946,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         draftWriterId,
         draftEditedAt,
         noteId, isNew, isInitialized, existingNote, title, content, tags, scriptureRefs, type, dictationSourceIds, recordingSourceIds,
-        updateNote, createNote, uid, setCreatedNoteId, t, baselineRef, titleEditRef, tagEditsRef, submittedTagsRef,
+        updateNote, createNote, uid, setCreatedNoteId, t, baselineRef, titleEditRef, typeEditRef, submittedTypeRef, tagEditsRef, submittedTagsRef,
         revisionRef: serverRevisionRef,
         deliberateOverwriteRef,
         resaveNonce,
@@ -929,10 +954,14 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         saveBlocked: saveConflict || unavailable || draftHeld,
         onConflict: () => setSaveConflict(true),
         onCaptured: markCaptured,
-        onSaved: (saved, replacedTitle, replacedTags) => {
+        onSaved: (saved, replacedTitle, replacedTags, replacedType) => {
             const pendingTitle = titleEditRef.current;
             if (replacedTitle !== undefined && (pendingTitle?.id !== noteId || pendingTitle.owner !== uid)) {
                 setTitleState(current => current === replacedTitle ? saved.title : current);
+            }
+            const pendingType = typeEditRef.current;
+            if (replacedType !== undefined && (pendingType?.id !== noteId || pendingType.owner !== uid)) {
+                setTypeState(current => current === replacedType ? saved.type : current);
             }
             rememberShownTags(saved.tags);
             if (replacedTags) setTagState(current => rebaseNoteTags(replacedTags, current, saved.tags));
@@ -981,7 +1010,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         setConfirmedDraft(rowPayload);
         markSaved(rowPayload);
         serverRevisionRef.current = existingNote?.rev?.[NOTE_AGGREGATE] ?? serverRevisionRef.current;
-    }, [rowPayload, existingNote, markSaved, setTitle, setTags, rememberShownTags]);
+    }, [rowPayload, existingNote, markSaved, setTitle, setTags, setType, rememberShownTags]);
     useEffect(() => {
         if (isNew || !isInitialized || !rowPayload || !confirmedDraft) return;
         const submitted = baselineRef.current;
@@ -992,8 +1021,10 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         const edit = titleEditRef.current;
         // Returning to the confirmed words still edits the title that this device just queued.
         if (edit?.capture.seen.requestId && edit.owner === uid && edit.id === noteId && edit.value === title && edit.capture.seen.title !== title) return;
+        const typeEdit = typeEditRef.current;
+        if (typeEdit?.capture.seen.requestId && typeEdit.owner === uid && typeEdit.id === noteId && typeEdit.value === type && typeEdit.capture.seen.type !== type) return;
         adoptRow();
-    }, [isNew, isInitialized, rowPayload, confirmedDraft, draftPayload, editorIsDirty, isSaving, saveConflict, uid, noteId, title, adoptRow]);
+    }, [isNew, isInitialized, rowPayload, confirmedDraft, draftPayload, editorIsDirty, isSaving, saveConflict, uid, noteId, title, type, adoptRow]);
 
     const applyRecovered = useCallback(() => {
         if (!unsavedRecovery) return;
@@ -1433,11 +1464,13 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
 
     const titleHistory = !isNew && !unavailable && (type === 'note' || type === 'question') && existingNote
         ? observeTitle?.(noteId, existingNote.title || '') : undefined;
+    const typeHistory = !isNew && !unavailable && existingNote && isOrdinaryStudyNoteType(type)
+        ? observeType?.(noteId, type) : undefined;
     const renderHeader = () => (
             <EditorHeader
                 handleBack={handleBack} t={t} isEditing={isEditing} filteredNotes={filteredNotes}
                 prevNoteId={prevNoteId} nextNoteId={nextNoteId} router={router} searchParams={searchParams}
-                currentIndex={currentIndex} type={type} setType={setType} isSaving={isSaving} saveError={saveError}
+                currentIndex={currentIndex} type={type} setType={changeType} isSaving={isSaving} saveError={saveError}
                 lastSaved={lastSaved} hasUnsavedEdits={editorIsDirty || !noteIsAccepted} setIsEditing={commentWindow.setIsEditing} handleDelete={handleDelete}
                 handleCopy={handleCopy} isCopied={isCopied}
                 headerRef={setHeaderRef} stickyTop={scrollLayout.headerTop}
@@ -1495,6 +1528,13 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
                     saveAtOnceRef.current = true;
                     changeTitle(value);
                     return Promise.resolve();
+                } }} />}
+            {uid && typeHistory && <DocumentFieldHistory key={JSON.stringify([uid, noteId, typeHistory.generation, 'type'])}
+                current={type} disabled={editorIsDirty || !noteIsAccepted || draftHeld || saveConflict}
+                session={{ owner: uid, noteId, generation: typeHistory.generation, field: 'type', restore: async value => {
+                    if (!isOrdinaryStudyNoteType(value)) return;
+                    setIsEditing(true);
+                    changeType(value);
                 } }} />}
             {/* Erased from its own page: the page goes too, as a deleted note's does — replace, so Back does not reopen it. */}
             <NoteCommentWindow open={commentWindow.open} note={existingNote} locale={bibleLocale} onClose={commentWindow.close} onErased={() => router.replace('/studies')} />

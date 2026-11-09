@@ -3904,6 +3904,17 @@
       "questions": "Questions",
       "analyses": "Analyses"
     },
+    "typeHistory": {
+      "title": "Type history",
+      "loading": "Loading type history…",
+      "unavailable": "Type history is unavailable.",
+      "failed": "Could not restore this type.",
+      "empty": "No earlier types.",
+      "kept": "Kept: {{title}}",
+      "current": "Current type",
+      "restore": "Restore type",
+      "more": "Show more types"
+    },
     "type": {
       "note": "Note",
       "question": "Question",

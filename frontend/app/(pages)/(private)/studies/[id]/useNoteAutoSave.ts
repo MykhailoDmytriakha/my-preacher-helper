@@ -20,13 +20,15 @@ import { noteRecordingMetadata } from '@/utils/studyNoteRecordings';
 import { useTranslation } from '@locales/useTranslation';
 
 import type { NoteDraftPayload } from './noteDraft';
-import type { StudyNoteTitleCapture } from '@/data-engine/documentFieldAction';
+import type { OrdinaryStudyNoteType, StudyNoteTitleCapture, StudyNoteTypeCapture, StudyNoteTypeSeen } from '@/data-engine/documentFieldAction';
 import type { DocumentTagBasis, DocumentTagIntent } from '@/data-engine/documentTagCapture';
 import type { StudyNoteSubmission } from '@/hooks/useStudyNotesEngine';
 import type { ScriptureReference, StudyNote, StudyNoteType } from '@/models/models';
 
 const EMPTY_SOURCE_IDS: string[] = [];
 export type NoteTitleEdit = { owner: string; id: string; value: string; capture: StudyNoteTitleCapture };
+export type SubmittedNoteType = { owner: string; id: string; seen: StudyNoteTypeSeen };
+export type NoteTypeEdit = { owner: string; id: string; value: OrdinaryStudyNoteType; capture: StudyNoteTypeCapture };
 
 export type NoteTagEdit = {
     owner: string; id: string; before: boolean; present: boolean; basis: DocumentTagBasis; time: DocumentTagIntent['time'];
@@ -44,21 +46,21 @@ export function rebaseNoteTags(submitted: readonly string[], current: readonly s
     return [...kept, ...[...local].filter(tag => !before.has(tag) && !seen.has(tag))];
 }
 
-function advanceTitleEdit(ref: React.MutableRefObject<NoteTitleEdit | null>, submitted: NoteTitleEdit, requestId: string) {
+function advanceNoteFieldEdit<Edit extends NoteTitleEdit | NoteTypeEdit>(ref: React.MutableRefObject<Edit | null>,
+    submitted: Edit, next: (pending: Edit) => Edit) {
     const pending = ref.current;
     if (pending === submitted) {
         ref.current = null;
         return;
     }
-    const opening = submitted.capture.seen;
-    const seen = pending?.capture.seen;
-    if (!pending || pending.owner !== submitted.owner || pending.id !== submitted.id || !seen
-        || seen.generation !== opening.generation || seen.revision !== opening.revision || seen.title !== opening.title
-        || seen.missing !== opening.missing || seen.requestId !== opening.requestId) return;
-    // The next input arrived while this exact local title was being captured.
-    ref.current = { ...pending, capture: { ...pending.capture, seen: {
-        title: submitted.value, generation: opening.generation, revision: opening.revision, requestId,
-    } } };
+    if (!pending || pending.owner !== submitted.owner || pending.id !== submitted.id) return;
+    const current = pending.capture.seen, opening = submitted.capture.seen;
+    const value = (seen: typeof current) => 'title' in seen ? seen.title : seen.type;
+    if (current.generation === opening.generation && current.revision === opening.revision && value(current) === value(opening)
+        && current.requestId === opening.requestId && current.missing === opening.missing) {
+        // A later input arrived during this exact field's local capture.
+        ref.current = next(pending);
+    }
 }
 
 /** A returned canonical request owns the full payload; server/audio proof stays separate. */
@@ -74,7 +76,7 @@ function afterCanonicalCapture(submission: StudyNoteSubmission, payload: NoteDra
 }
 
 export function useNoteAutoSave({
-    noteId, isNew, creationId, draftDocId = 'new', draftWriterId, draftEditedAt, isInitialized, title, content, tags, scriptureRefs, type, updateNote, createNote, uid, setCreatedNoteId, baselineRef, revisionRef, deliberateOverwriteRef, resaveNonce, saveBlocked, onConflict, onSaved, onCaptured, saveAtOnceRef, captureRecordingHandoff, titleEditRef, tagEditsRef, submittedTagsRef, dictationSourceIds = EMPTY_SOURCE_IDS, recordingSourceIds = EMPTY_SOURCE_IDS
+    noteId, isNew, creationId, draftDocId = 'new', draftWriterId, draftEditedAt, isInitialized, title, content, tags, scriptureRefs, type, updateNote, createNote, uid, setCreatedNoteId, baselineRef, revisionRef, deliberateOverwriteRef, resaveNonce, saveBlocked, onConflict, onSaved, onCaptured, saveAtOnceRef, captureRecordingHandoff, titleEditRef, typeEditRef, submittedTypeRef, tagEditsRef, submittedTagsRef, dictationSourceIds = EMPTY_SOURCE_IDS, recordingSourceIds = EMPTY_SOURCE_IDS
 }: {
     dictationSourceIds?: string[];
     recordingSourceIds?: string[];
@@ -86,6 +88,8 @@ export function useNoteAutoSave({
     /** Original content-change time; an immediate backup must not invent another edit. */
     draftEditedAt?: number;
     titleEditRef?: React.MutableRefObject<NoteTitleEdit | null>;
+    typeEditRef?: React.MutableRefObject<NoteTypeEdit | null>;
+    submittedTypeRef?: React.MutableRefObject<SubmittedNoteType | null>;
     tagEditsRef?: React.MutableRefObject<Map<string, NoteTagEdit>>;
     submittedTagsRef?: React.MutableRefObject<Map<string, SubmittedNoteTag>>;
     noteId: string; isNew: boolean; isInitialized: boolean; existingNote?: StudyNote; title: string;
@@ -95,6 +99,7 @@ export function useNoteAutoSave({
         updates: Partial<StudyNote>;
         captureScope?: string;
         titleCapture?: StudyNoteTitleCapture;
+        typeCapture?: StudyNoteTypeCapture;
         tagMembership?: readonly DocumentTagIntent[];
         expectedRevision?: number | null;
         expectedBaseline?: Record<string, unknown> | null;
@@ -124,7 +129,7 @@ export function useNoteAutoSave({
      * Called ONLY after the server accepted exactly this payload. Canonical local
      * capture can already own its backup, but never confirms server status.
      */
-    onSaved?: (saved: NoteDraftPayload, replacedTitle?: string, replacedTags?: string[]) => void;
+    onSaved?: (saved: NoteDraftPayload, replacedTitle?: string, replacedTags?: string[], replacedType?: StudyNoteType) => void;
     /** Called only after an exact canonical request durably owns these words. */
     onCaptured?: (captured: NoteDraftPayload, targetId: string, editedAt?: number) => void;
     /** Capture source IDs at submission time; later dictation belongs to a later save. */
@@ -278,6 +283,13 @@ export function useNoteAutoSave({
         // Returning to an already accepted string can still be a new, exact action after a local predecessor.
         if (titleCapture) updates.title = title;
 
+        const typeEdit = typeEditRef?.current;
+        const openingType = typeEdit?.capture.seen;
+        const typeCapture = !wasDeliberate && typeEdit && typeEdit.owner === uid && typeEdit.id === noteId && typeEdit.value === type
+            && openingType && (openingType.requestId ? openingType.type !== type : updates.type !== undefined && openingType.type === baselineRef.current?.type)
+            ? typeEdit.capture : undefined;
+        if (typeCapture) updates.type = type;
+
         const openingTags = baselineRef.current?.tags;
         const tagEdits = !wasDeliberate && openingTags && tagEditsRef
             ? [...tagEditsRef.current].filter(([tag, edit]) => edit.owner === uid && edit.id === noteId && edit.before !== edit.present
@@ -312,6 +324,7 @@ export function useNoteAutoSave({
                 id: noteId,
                 captureScope,
                 ...(titleCapture && { titleCapture }),
+                ...(typeCapture && { typeCapture }),
                 ...(tagMembership.length && { tagMembership }),
                 updates,
                 expectedRevision: revisionRef.current,
@@ -331,7 +344,23 @@ export function useNoteAutoSave({
             });
             if (titleCapture && titleEdit && titleEditRef && submission.capture) {
                 void submission.capture.then(receipt => {
-                    if (receipt.kind === 'submitted' && receipt.requestId) advanceTitleEdit(titleEditRef, titleEdit, receipt.requestId);
+                    if (receipt.kind !== 'submitted' || !receipt.requestId) return;
+                    const { generation, revision } = titleEdit.capture.seen;
+                    const requestId = receipt.requestId;
+                    advanceNoteFieldEdit(titleEditRef, titleEdit, pending => ({ ...pending, capture: {
+                        ...pending.capture, seen: { title: titleEdit.value, generation, revision, requestId },
+                    } }));
+                }).catch(() => undefined);
+            }
+            let submittedTypeRequestId: string | undefined;
+            if (typeCapture && typeEdit && typeEditRef && submission.capture) {
+                void submission.capture.then(receipt => {
+                    if (receipt.kind !== 'submitted' || !receipt.requestId) return;
+                    const { generation, revision } = typeEdit.capture.seen;
+                    submittedTypeRequestId = receipt.requestId;
+                    const seen: StudyNoteTypeSeen = { type: typeEdit.value, generation, revision, requestId: submittedTypeRequestId };
+                    if (submittedTypeRef) submittedTypeRef.current = { owner: typeEdit.owner, id: typeEdit.id, seen };
+                    advanceNoteFieldEdit(typeEditRef, typeEdit, pending => ({ ...pending, capture: { ...pending.capture, seen } }));
                 }).catch(() => undefined);
             }
             if (tagEdits.length && tagEditsRef && submission.capture) {
@@ -347,16 +376,24 @@ export function useNoteAutoSave({
                 }).catch(() => undefined);
             }
             const acknowledge = (saved: StudyNote | undefined) => {
+                if (submittedTypeRequestId && submittedTypeRef?.current?.seen.requestId === submittedTypeRequestId) submittedTypeRef.current = null;
                 const acceptedTitle = saved ? saved.title ?? '' : submittedPayload.title;
+                const acceptedType = saved ? saved.type ?? 'note' : submittedPayload.type;
+                const replacedType = acceptedType !== submittedPayload.type ? submittedPayload.type : undefined;
                 const acceptedTags = saved?.tags ?? submittedPayload.tags;
                 const replacedTitle = acceptedTitle !== submittedPayload.title ? submittedPayload.title : undefined;
                 const replacedTags = !sameNoteTags(acceptedTags, submittedPayload.tags) ? submittedPayload.tags : undefined;
                 const basis = baselineRef.current;
                 if (basis) {
                     if (replacedTitle !== undefined && basis.title === replacedTitle) baselineRef.current = { ...basis, title: acceptedTitle };
+                    if (replacedType !== undefined && basis.type === replacedType) baselineRef.current = { ...baselineRef.current!, type: acceptedType };
                     if (replacedTags) baselineRef.current = { ...baselineRef.current!, tags: rebaseNoteTags(replacedTags, basis.tags, acceptedTags) };
                 }
-                onSaved?.({ ...submittedPayload, title: acceptedTitle, tags: acceptedTags }, replacedTitle, replacedTags);
+                const acceptedPayload = { ...submittedPayload, title: acceptedTitle, tags: acceptedTags, type: acceptedType };
+                if (replacedType !== undefined) onSaved?.(acceptedPayload, replacedTitle, replacedTags, replacedType);
+                else if (replacedTags) onSaved?.(acceptedPayload, replacedTitle, replacedTags);
+                else if (replacedTitle !== undefined) onSaved?.(acceptedPayload, replacedTitle);
+                else onSaved?.(acceptedPayload);
             };
             afterCanonicalCapture(submission, submittedPayload, noteId, onCaptured, draftEditedAt);
             void submission.persistence.then(() => recording?.accepted()).catch(() => undefined);
@@ -427,7 +464,7 @@ export function useNoteAutoSave({
             inFlightRef.current = false;
             setIsSaving(false);
         }
-    }, [uid, draftWriterId, draftEditedAt, noteId, isNew, isInitialized, isSaving, saveBlocked, saveNewNote, title, content, tags, scriptureRefs, type, dictationSourceIds, recordingSourceIds, updateNote, baselineRef, revisionRef, deliberateOverwriteRef, titleEditRef, tagEditsRef, submittedTagsRef, onConflict, onSaved, onCaptured, atOnceRef, captureRecordingHandoff]);
+    }, [uid, draftWriterId, draftEditedAt, noteId, isNew, isInitialized, isSaving, saveBlocked, saveNewNote, title, content, tags, scriptureRefs, type, dictationSourceIds, recordingSourceIds, updateNote, baselineRef, revisionRef, deliberateOverwriteRef, titleEditRef, typeEditRef, submittedTypeRef, tagEditsRef, submittedTagsRef, onConflict, onSaved, onCaptured, atOnceRef, captureRecordingHandoff]);
 
     useEffect(() => {
         if (!isInitialized) return;

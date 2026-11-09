@@ -7,7 +7,7 @@ import { captureCouncilAssembly, COUNCIL_ASSEMBLY_POLICY, matchingCouncilAssembl
 import { captureCouncilTopicKind, COUNCIL_TOPIC_KIND_POLICY, matchingCouncilTopicKind, type CouncilTopicKindActions } from './councilTopicKindAction';
 import { capturedDateBaseline, captureDatedRowAction, datedRowTarget, existingRowDate, matchesDatedRowChange, MEETING_DATE_TARGET, replaceExistingDate, type DatedRowActionCapture, type DatedRowActionEvidence } from './datedRowAction';
 import { captureDeleteOrder, deleteOrderReady, replayDeleteOrder } from './deletionOrdering';
-import { captureDocumentMetadataFields, capturePreparationConfirmation, type PreparationConfirmationObservations, capturedDocumentField, capturePlanTemplateName, capturePrayerStatusFields, capturePrayerTitle, captureServiceOrderTitle, captureStudyNoteTitle, captureTagColor, documentFieldCommandAncestor, documentFieldTargets, matchesPlanTemplateNameRequest, matchesPrayerTitleRequest, matchesStudyNoteTitleRequest, matchesTagColorRequest, uncapturedAutosaveFields, withDocumentFieldAction } from './documentFieldAction';
+import { captureDocumentMetadataFields, capturePreparationConfirmation, type PreparationConfirmationObservations, capturedDocumentField, capturePlanTemplateName, capturePrayerStatusFields, capturePrayerTitle, captureServiceOrderTitle, captureStudyNoteTitle, captureStudyNoteType, captureTagColor, documentFieldCommandAncestor, documentFieldTargets, matchesPlanTemplateNameRequest, matchesPrayerTitleRequest, matchesStudyNoteTitleRequest, matchesStudyNoteTypeRequest, matchesTagColorRequest, uncapturedAutosaveFields, withDocumentFieldAction } from './documentFieldAction';
 import { commandReferenceResources, documentReferenceResources, referenceReadiness } from './documentReferences';
 import { captureDocumentTags, pendingDocumentTags, restoreDocumentTagAncestor } from './documentTagCapture';
 import { documentTagChange, documentTagCommandActions } from './documentTagMembership';
@@ -94,6 +94,7 @@ export interface CommitRequest extends CouncilFieldActions, PrayerStatusObservat
   serviceOrderStepTitleActions?: ServiceOrderStepTitleActions;
   prayerTitleAction?: DocumentFieldObservation;
   studyNoteTitleAction?: DocumentFieldObservation<FieldValue>;
+  studyNoteTypeAction?: DocumentFieldObservation<FieldValue>;
   planTemplateNameAction?: DocumentFieldObservation;
   tagColorAction?: DocumentFieldObservation;
   sermonTitleAction?: DocumentFieldObservation;
@@ -209,6 +210,7 @@ export function assertCommitCapture(current: CommitRequest, incoming: CommitRequ
     || !equalValues(current.councilAssemblyActions ?? null, incoming.councilAssemblyActions ?? null)
     || !equalValues(current.councilTopicKindActions ?? null, incoming.councilTopicKindActions ?? null)
     || !equalValues(current.prayerTitleAction ?? null, incoming.prayerTitleAction ?? null)
+    || !equalValues(current.studyNoteTypeAction ?? null, incoming.studyNoteTypeAction ?? null)
     || !equalValues(current.studyNoteTitleAction ?? null, incoming.studyNoteTitleAction ?? null)
     || !equalValues(current.planTemplateNameAction ?? null, incoming.planTemplateNameAction ?? null)
     || !equalValues(current.tagColorAction ?? null, incoming.tagColorAction ?? null)
@@ -341,7 +343,7 @@ function pendingRowFields(record: CommitRequest) {
 }
 
 function hasTimedAncestor(record: CommitRequest): boolean {
-  return record.sequence === 0 && Boolean(record.seriesMembership || record.serviceOrderTitleAction || record.prayerTitleAction || record.planTemplateNameAction || record.tagColorAction || record.studyNoteTitleAction || record.prayerStatusAction || record.prayerAnsweredAtAction || record.sermonTitleAction || record.sermonVerseAction || record.sermonChurchAction || record.sermonGoalTypeAction || record.sermonPreparationCheckActions || record.exegeticalPlanActions?.length || record.seriesFieldActions || record.groupTitleAction || record.groupStatusAction || record.councilTitleAction || record.councilDateAction || record.councilLifecycleAction || pendingBibleMarkRebase(record) || pendingMeetingDateRebase(record) || pendingDocumentTags(record).length || pendingRowFields(record).length || pendingPreachStatusActions(record).length);
+  return record.sequence === 0 && Boolean(record.seriesMembership || record.serviceOrderTitleAction || record.prayerTitleAction || record.planTemplateNameAction || record.tagColorAction || record.studyNoteTitleAction || record.studyNoteTypeAction || record.prayerStatusAction || record.prayerAnsweredAtAction || record.sermonTitleAction || record.sermonVerseAction || record.sermonChurchAction || record.sermonGoalTypeAction || record.sermonPreparationCheckActions || record.exegeticalPlanActions?.length || record.seriesFieldActions || record.groupTitleAction || record.groupStatusAction || record.councilTitleAction || record.councilDateAction || record.councilLifecycleAction || pendingBibleMarkRebase(record) || pendingMeetingDateRebase(record) || pendingDocumentTags(record).length || pendingRowFields(record).length || pendingPreachStatusActions(record).length);
 }
 
 function freezeSaveOptions(options: CommitSaveOptions | undefined): CommitSaveOptions | undefined {
@@ -509,7 +511,7 @@ export class CommitQueue {
       : editorAction?.kind === 'service-order-step-title' ? { field: 'title' as const, change: editorAction.title } : undefined;
     const assembly = editorAction?.kind === 'council-assembly' ? editorAction.flag : undefined;
     const topicKind = editorAction?.kind === 'council-topic-kind' ? editorAction.topicKind : undefined;
-    if (!step && !assembly && !topicKind && editorAction?.kind !== 'service-order-title' && editorAction?.kind !== 'prayer-title' && editorAction?.kind !== 'study-note-title' && editorAction?.kind !== 'document-tags' && editorAction?.kind !== 'plan-template-name' && editorAction?.kind !== 'tag-color' && editorAction?.kind !== 'prayer-status'
+    if (!step && !assembly && !topicKind && editorAction?.kind !== 'service-order-title' && editorAction?.kind !== 'prayer-title' && editorAction?.kind !== 'study-note-title' && editorAction?.kind !== 'study-note-type' && editorAction?.kind !== 'document-tags' && editorAction?.kind !== 'plan-template-name' && editorAction?.kind !== 'tag-color' && editorAction?.kind !== 'prayer-status'
       && !frozenOptions?.transfer && !intent.dirty && (!predecessor || equalValues(predecessor.value, intent.draft))) return null;
     if (intent.conflicts.length) throw Object.assign(new Error('Resolve the conflict before saving'), { code: 'resolve-version-first' });
     const baseline = clone(intent.confirmed);
@@ -529,6 +531,10 @@ export class CommitQueue {
     const noteRequestId = noteCapture?.seen.requestId;
     const noteTitle = captureStudyNoteTitle(baseline, intent.draft, noteCapture, Boolean(noteCapture && noteRequestId
       && matchesStudyNoteTitleRequest(records.find(record => record.id === noteRequestId), owner, baseline.resource, noteCapture.seen)));
+    const noteTypeCapture = editorAction?.kind === 'study-note-title' || editorAction?.kind === 'study-note-type' ? editorAction.type : undefined;
+    const noteTypeRequestId = noteTypeCapture?.seen.requestId;
+    const noteType = captureStudyNoteType(baseline, intent.draft, noteTypeCapture, Boolean(noteTypeCapture && noteTypeRequestId
+      && matchesStudyNoteTypeRequest(records.find(record => record.id === noteTypeRequestId), owner, baseline.resource, noteTypeCapture.seen)));
     const tagMembership = editorAction && 'tagMembership' in editorAction ? editorAction.tagMembership : undefined;
     const tagMembershipActions = captureDocumentTags(baseline, predecessor, intent.draft, tagMembership, records);
     const templateCapture = editorAction?.kind === 'plan-template-name' ? editorAction.name : undefined;
@@ -560,6 +566,7 @@ export class CommitQueue {
       ...(councilTopicKindActions && { councilTopicKindActions }),
       ...(prayerTitle && { prayerTitleAction: prayerTitle }),
       ...(noteTitle && { studyNoteTitleAction: noteTitle }),
+      ...(noteType && { studyNoteTypeAction: noteType }),
       ...(templateName && { planTemplateNameAction: templateName }),
       ...(tagColor && { tagColorAction: tagColor }),
       ...prayerStatus,

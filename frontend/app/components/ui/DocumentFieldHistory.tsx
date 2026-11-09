@@ -6,16 +6,16 @@ import { requestOwnerJson } from '@/services/ownerHttpTransport.client';
 import { storedFieldValue } from '@/utils/storedFieldValue';
 import { useTranslation } from '@locales/useTranslation';
 
-import type { GroupStatusHistoryPage, GroupTitleHistoryPage, PlanTemplateNameHistoryPage, PrayerTitleHistoryPage, SermonChurchHistoryPage, SermonGoalTypeHistoryPage, SermonPreparationConfirmationHistoryPage, SermonTitleHistoryPage, SermonVerseHistoryPage, ServiceOrderTitleHistoryPage, StudyNoteTitleHistoryPage } from '@/data-engine/documentFieldAction';
+import type { GroupStatusHistoryPage, GroupTitleHistoryPage, PlanTemplateNameHistoryPage, PrayerTitleHistoryPage, SermonChurchHistoryPage, SermonGoalTypeHistoryPage, SermonPreparationConfirmationHistoryPage, SermonTitleHistoryPage, SermonVerseHistoryPage, ServiceOrderTitleHistoryPage, StudyNoteTitleHistoryPage, StudyNoteTypeHistoryPage } from '@/data-engine/documentFieldAction';
 import type { Church } from '@/models/models';
 import type { PreparationConfirmation } from '@/utils/preparationFieldValues';
 
-type DocumentHistoryPage = PlanTemplateNameHistoryPage | StudyNoteTitleHistoryPage | ServiceOrderTitleHistoryPage | PrayerTitleHistoryPage | GroupTitleHistoryPage | GroupStatusHistoryPage | SermonTitleHistoryPage | SermonVerseHistoryPage | SermonChurchHistoryPage | SermonGoalTypeHistoryPage | SermonPreparationConfirmationHistoryPage;
+type DocumentHistoryPage = PlanTemplateNameHistoryPage | StudyNoteTitleHistoryPage | StudyNoteTypeHistoryPage | ServiceOrderTitleHistoryPage | PrayerTitleHistoryPage | GroupTitleHistoryPage | GroupStatusHistoryPage | SermonTitleHistoryPage | SermonVerseHistoryPage | SermonChurchHistoryPage | SermonGoalTypeHistoryPage | SermonPreparationConfirmationHistoryPage;
 type HistoryValue = string | Church | boolean | null;
 type HistoryEntry = { id: string; value: HistoryValue; winner: HistoryValue };
 type HistoryPage = { entries: HistoryEntry[]; nextCursor: string | null };
 type HistorySession = { owner: string; generation: string } & (
-  (({ orderId: string } | { templateId: string } | { noteId: string } | { prayerId: string } | { groupId: string; field?: 'status' } | { sermonId: string; field?: 'verse' | 'goal-type' }) & { restore: (value: string) => Promise<void> })
+  (({ orderId: string } | { templateId: string } | { noteId: string; field?: 'type' } | { prayerId: string } | { groupId: string; field?: 'status' } | { sermonId: string; field?: 'verse' | 'goal-type' }) & { restore: (value: string) => Promise<void> })
   | { sermonId: string; field: 'church'; restore: (value: Church | null) => Promise<void> }
   | { sermonId: string; field: 'preparation-confirmation'; confirmation: PreparationConfirmation; restore: (value: boolean) => Promise<void> }
 );
@@ -33,6 +33,11 @@ const historyLabels = {
     heading: 'common.titleHistory', loading: 'common.titleHistoryLoading', unavailable: 'common.titleHistoryUnavailable',
     failed: 'common.titleHistoryRestoreFailed', empty: 'common.titleHistoryEmpty', kept: 'common.titleHistoryKept',
     current: 'common.titleHistoryCurrent', restore: 'common.titleHistoryRestore', more: 'common.titleHistoryMore',
+  },
+  type: {
+    heading: 'studiesWorkspace.typeHistory.title', loading: 'studiesWorkspace.typeHistory.loading', unavailable: 'studiesWorkspace.typeHistory.unavailable',
+    failed: 'studiesWorkspace.typeHistory.failed', empty: 'studiesWorkspace.typeHistory.empty', kept: 'studiesWorkspace.typeHistory.kept',
+    current: 'studiesWorkspace.typeHistory.current', restore: 'studiesWorkspace.typeHistory.restore', more: 'studiesWorkspace.typeHistory.more',
   },
   status: {
     heading: 'common.statusHistory', loading: 'common.statusHistoryLoading', unavailable: 'common.statusHistoryUnavailable',
@@ -82,6 +87,7 @@ export function DocumentFieldHistory({ session, current, disabled }: { session: 
   const format = (value: HistoryValue) => {
     if (typeof value === 'boolean') return t(value ? 'common.confirmationChecked' : 'common.confirmationUnchecked');
     if (typeof value !== 'string') return value ? [value.name, value.city].filter(Boolean).join(', ') : t(field === 'title' ? 'common.untitled' : 'calendar.unspecifiedChurch');
+    if (field === 'type') return String(storedFieldValue(t, 'studyNotes', 'type', value));
     if (field === 'goal-type') return String(storedFieldValue(t, 'sermons.preparation.preachingGoal', 'type', value));
     return field === 'status' ? String(storedFieldValue(t, 'groups', 'status', value)) : value || t('common.untitled');
   };

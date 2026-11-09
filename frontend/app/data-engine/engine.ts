@@ -10,7 +10,7 @@ import { CommitQueue, type CommitRequest, type CommitStore } from './commits';
 import { EditorController, InactiveEditorError, type CheckpointRecoveryStore, type CheckpointStore, type EditorRecord, type EditorState, type RecoveryCheckpoint } from './controller';
 import { captureCouncilCarry, pinCouncilDestination } from './councilCarry';
 import { canReplaceDocumentIntent, isDirectLegacyDocumentIntent, requiresWholeActionResolution, savedDocumentAnswer } from './documentDelivery';
-import { capturePlanTemplateName, capturePrayerTitle, captureStudyNoteTitle, captureTagColor, matchesPlanTemplateNameRequest, matchesPrayerStatusOpening, matchesPrayerTitleRequest, matchesStudyNoteTitleRequest, matchesTagColorRequest, studyNoteTitleValue, validatedTitleCapture } from './documentFieldAction';
+import { capturePlanTemplateName, capturePrayerTitle, captureStudyNoteTitle, captureStudyNoteType, captureTagColor, matchesPlanTemplateNameRequest, matchesPrayerStatusOpening, matchesPrayerTitleRequest, matchesStudyNoteTitleRequest, matchesStudyNoteTypeRequest, matchesTagColorRequest, studyNoteTitleValue, studyNoteTypeValue, validatedTitleCapture } from './documentFieldAction';
 import { ACTION_SLOT, areDifferentTabManualParents, editorSlot, isManualChoiceRecoveryIdentity, manualScopeIdentity, readManualScopeIdentity } from './editorIdentity';
 import { AddressedFailures, eachFailure, PausedReadFailure } from './failures';
 import { collectionHeadRef } from './feed';
@@ -1929,16 +1929,36 @@ export class DataEngine {
             captured = undefined;
           }
         }
-        if (action?.kind === 'study-note-title') {
-          const { seen } = action.title;
-          const known = Boolean(seen.requestId && matchesStudyNoteTitleRequest(this.commitRecords.get(seen.requestId), owner, frozen, seen));
-          if (!captureStudyNoteTitle(checkpoint.confirmed, next === checkpoint.draft ? null : next, action.title, known)) {
-            if (next !== checkpoint.draft && (checkpoint.confirmed.metadata?.generation !== seen.generation
-              || !equalValues(readField(checkpoint.draft ?? {}, ['title']), studyNoteTitleValue(seen)))) {
-              throw Object.assign(new Error('The study note title changed'), { code: 'study-note-title-basis-changed' });
+        if (action?.kind === 'study-note-title' || action?.kind === 'study-note-type') {
+          let title = action.kind === 'study-note-title' ? action.title : undefined;
+          let type = action.type;
+          const edited = next !== checkpoint.draft ? next : null;
+          if (title) {
+            const { seen } = title;
+            const known = Boolean(seen.requestId && matchesStudyNoteTitleRequest(this.commitRecords.get(seen.requestId), owner, frozen, seen));
+            if (!captureStudyNoteTitle(checkpoint.confirmed, edited, title, known)) {
+              if (edited && (checkpoint.confirmed.metadata?.generation !== seen.generation
+                || !equalValues(readField(checkpoint.draft ?? {}, ['title']), studyNoteTitleValue(seen)))) {
+                throw Object.assign(new Error('The study note title changed'), { code: 'study-note-title-basis-changed' });
+              }
+              title = undefined;
             }
-            captured = next !== checkpoint.draft && action.tagMembership?.length ? { kind: 'document-tags', tagMembership: action.tagMembership } : undefined;
           }
+          if (type) {
+            const { seen } = type;
+            const known = Boolean(seen.requestId && matchesStudyNoteTypeRequest(this.commitRecords.get(seen.requestId), owner, frozen, seen));
+            if (!captureStudyNoteType(checkpoint.confirmed, edited, type, known)) {
+              if (edited && (checkpoint.confirmed.metadata?.generation !== seen.generation
+                || !equalValues(readField(checkpoint.draft ?? {}, ['type']), studyNoteTypeValue(seen)))) {
+                throw Object.assign(new Error('The study note type changed'), { code: 'study-note-type-basis-changed' });
+              }
+              type = undefined;
+            }
+          }
+          const tagMembership = action.tagMembership;
+          captured = title ? { kind: 'study-note-title', title, type, tagMembership }
+            : type ? { kind: 'study-note-type', type, tagMembership }
+              : edited && tagMembership?.length ? { kind: 'document-tags', tagMembership } : undefined;
         }
         if (action?.kind === 'prayer-status') {
           if (next === checkpoint.draft) captured = undefined;

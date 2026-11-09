@@ -10,9 +10,11 @@ import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
 import { refusedWrite, skippedWrite, type WriteAcceptance, type WriteSubmission } from '@/utils/recoverableWrite';
 import { withNoteReferenceBibles } from '@/utils/scriptureReferenceNumbering';
 import { isStudyNoteDraft } from '@/utils/studyNoteDraft';
+import { isOrdinaryStudyNote, isOrdinaryStudyNoteType } from '@/utils/studyNoteType';
 import { useTranslation } from '@locales/useTranslation';
 
-import type { StudyNoteTitleCapture, StudyNoteTitleSeen } from '@/data-engine/documentFieldAction';
+
+import type { OrdinaryStudyNoteType, StudyNoteTitleCapture, StudyNoteTitleSeen, StudyNoteTypeCapture, StudyNoteTypeSeen } from '@/data-engine/documentFieldAction';
 import type { DocumentTagBasis, DocumentTagIntent } from '@/data-engine/documentTagCapture';
 import type { DocumentData, ResourceSnapshot } from '@/data-engine/types';
 import type { StudyNote } from '@/models/models';
@@ -83,6 +85,7 @@ type NoteUpdate = {
   expectedRevision?: number | null;
   expectedBaseline?: Record<string, unknown> | null;
   titleCapture?: StudyNoteTitleCapture;
+  typeCapture?: StudyNoteTypeCapture;
   tagMembership?: readonly DocumentTagIntent[];
 };
 
@@ -146,6 +149,18 @@ export function useStudyNotesEngine(enabled: boolean) {
       ...(observed?.value?.title === undefined && { missing: true }) } : undefined;
   };
 
+  const observeType = (id: string, type: OrdinaryStudyNoteType): StudyNoteTypeSeen | undefined => {
+    const row = collection.state?.documents?.find(item => item.resource.id === id);
+    if (row?.needsAttention) return undefined;
+    if (row?.value?.type === type && row.submittedNoteType?.type === type) return row.submittedNoteType;
+    const observed = [row?.acknowledged, collection.state?.snapshots?.find(item => item.resource.id === id)].find(snapshot =>
+      snapshot?.value && (snapshot.value.type ?? 'note') === type && isOrdinaryStudyNote(snapshot.value)
+        && snapshot.metadata && !snapshot.metadata.deleted);
+    const metadata = observed?.metadata;
+    return metadata ? { type, generation: metadata.generation, revision: metadata.revision,
+      ...(observed?.value?.type === undefined && { missing: true }) } : undefined;
+  };
+
   const observeTagBasis = (id: string, opening: string[]): DocumentTagBasis | undefined => {
     const basis = readTagOpening(collection.state, id, opening);
     return basis && { generation: basis.generation, revision: basis.revision };
@@ -158,6 +173,7 @@ export function useStudyNotesEngine(enabled: boolean) {
     notes,
     noteDelivery,
     observeTitle,
+    observeType,
     observeTagBasis,
     captureActionTime: actions.captureActionTime,
     notePresence: collection.presence,
@@ -198,7 +214,7 @@ export function useStudyNotesEngine(enabled: boolean) {
       })));
     },
     updating: updating > 0,
-    updateNote: ({ id, updates, expectedRevision, expectedBaseline, captureScope, titleCapture, tagMembership }: NoteUpdate): StudyNoteSubmission & { result: Promise<SavedNote> } => {
+    updateNote: ({ id, updates, expectedRevision, expectedBaseline, captureScope, titleCapture, typeCapture, tagMembership }: NoteUpdate): StudyNoteSubmission & { result: Promise<SavedNote> } => {
       if (!uid) {
         const refused = refusal();
         const result = refused.acceptance.then(() => undefined as never) as Promise<SavedNote>;
@@ -217,11 +233,14 @@ export function useStudyNotesEngine(enabled: boolean) {
         ? tagMembership : undefined;
       const title = titleCapture && expectedBaseline && (expectedBaseline.title === titleCapture.seen.title || titleCapture.seen.requestId)
         && typeof patch.title === 'string' ? titleCapture : undefined;
-      const action = title ? { kind: 'study-note-title' as const, title, ...(timedTags && { tagMembership: timedTags }) }
-        : timedTags ? { kind: 'document-tags' as const, tagMembership: timedTags } : undefined;
+      const type = typeCapture && expectedBaseline && (expectedBaseline.type === typeCapture.seen.type || typeCapture.seen.requestId)
+        && isOrdinaryStudyNoteType(patch.type) ? typeCapture : undefined;
+      const action = title ? { kind: 'study-note-title' as const, title, type, tagMembership: timedTags }
+        : type ? { kind: 'study-note-type' as const, type, tagMembership: timedTags }
+          : timedTags ? { kind: 'document-tags' as const, tagMembership: timedTags } : undefined;
       const submission = once(`study-note:update:${id}:${JSON.stringify(patch)}`, async () => {
         setUpdating(count => count + 1);
-        let staleTitle: StaleWriteError | undefined;
+        let staleTimedField: StaleWriteError | undefined;
         try {
           return await actions.submit(resource(id), { kind: 'update', update: current => {
             if (!current) throw new Error('Study note not found');
@@ -252,8 +271,10 @@ export function useStudyNotesEngine(enabled: boolean) {
               // A refusal reports every compared field so the editor can adopt the complete server version.
               const stale = new StaleWriteError(NOTE_AGGREGATE, expectedRevision ?? stored, stored,
                 Object.fromEntries(compared.map(field => [field, field === 'type' ? storedField(field) : current[field] ?? null])));
-              if (!title || (!title.time && !title.seen.requestId) || changedElsewhere.some(field => field !== 'title')) throw stale;
-              staleTitle = stale;
+              const ordered = (field: string) => field === 'title' ? Boolean(title && (title.time || title.seen.requestId))
+                : field === 'type' && isOrdinaryStudyNote(current) && Boolean(type && (type.time || type.seen.requestId));
+              if (!changedElsewhere.every(ordered)) throw stale;
+              staleTimedField = stale;
             }
             const receipts: DocumentData = {};
             for (const field of ['dictationSourceIds', 'recordingSourceIds'] as const) {
@@ -272,7 +293,8 @@ export function useStudyNotesEngine(enabled: boolean) {
             return next;
           } }, captureScope || action ? { ...(captureScope && { captureScope }), ...(action && { action }) } : undefined);
         } catch (error) {
-          if (staleTitle && error && typeof error === 'object' && 'code' in error && error.code === 'study-note-title-basis-changed') throw staleTitle;
+          if (staleTimedField && error && typeof error === 'object' && 'code' in error
+            && (error.code === 'study-note-title-basis-changed' || error.code === 'study-note-type-basis-changed')) throw staleTimedField;
           throw error;
         } finally {
           setUpdating(count => count - 1);

@@ -21,9 +21,10 @@ import { GET as membershipHistory } from '@/api/data-engine/documents/[collectio
 import { GET as seriesHistory } from '@/api/data-engine/documents/[collection]/[id]/metadata-history/route';
 import { GET as churchHistory } from '@/api/data-engine/documents/[collection]/[id]/church-history/route';
 import { GET as verseHistory } from '@/api/data-engine/documents/[collection]/[id]/verse-history/route';
+import { GET as noteTypeHistory } from '@/api/data-engine/documents/[collection]/[id]/type-history/route';
 import { GET as titleHistory } from '@/api/data-engine/documents/[collection]/[id]/title-history/route';
 import { ENGINE_OWNED_COLLECTIONS } from '@/data-engine/engineOwnedCollections';
-import { listCouncilAssemblyHistory, listCouncilOutcomeHistory, listCouncilTopicKindHistory, listCouncilTopicTitleHistory, listServiceOrderFlagHistory, listServiceOrderStepTitleHistory } from '@/data-engine/server';
+import { listCouncilAssemblyHistory, listCouncilOutcomeHistory, listCouncilTopicKindHistory, listCouncilTopicTitleHistory, listStudyNoteTypeHistory, listServiceOrderFlagHistory, listServiceOrderStepTitleHistory } from '@/data-engine/server';
 import { assertDataEngineEnabled, DataEngineServerError, listBibleMarkHistory, listCouncilMetadataHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listSermonChurchHistory, listSermonTitleHistory, listSermonVerseHistory, listSeriesMembershipHistory, listSeriesMetadataHistory, listServiceOrderTitleHistory, processCommand, readCollectionChanges, readCommandBody, readDocument } from '@/data-engine/server';
 import { __resetStoreAvailabilityForTests } from '@/services/storeAvailability.server';
 
@@ -39,6 +40,7 @@ jest.mock('@/data-engine/server', () => ({
   listCouncilAssemblyHistory: jest.fn(),
   listCouncilTopicKindHistory: jest.fn(),
   listCouncilOutcomeHistory: jest.fn(),
+  listStudyNoteTypeHistory: jest.fn(),
   listCouncilTopicTitleHistory: jest.fn(),
   listServiceOrderFlagHistory: jest.fn(),
   listServiceOrderStepTitleHistory: jest.fn(),
@@ -86,6 +88,7 @@ afterAll(() => {
 describe('Row field history routes', () => {
   it.each([
     ['assembly-history', 'councils', assemblyHistory, listCouncilAssemblyHistory],
+    ['type-history', 'studyNotes', noteTypeHistory, listStudyNoteTypeHistory],
     ['topic-outcome-history', 'councils', topicOutcomeHistory, listCouncilOutcomeHistory],
     ['topic-kind-history', 'councils', topicKindHistory, listCouncilTopicKindHistory],
     ['topic-title-history', 'councils', topicTitleHistory, listCouncilTopicTitleHistory],

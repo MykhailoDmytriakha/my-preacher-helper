@@ -129,3 +129,7 @@ See also: `.howto/write-a-document-field.md` · `.howto/update-react-query-cache
 The selected option, written decision, deferred or dropped status, and announcement mark form one outcome. Capture it at the ordinary button action or the held council's Save. Keep the topic type and ID in scope. The server reads the exact words and selected option from the existing command arrays and uses the row detail clock for a competing outcome. Compatible edits to the option and written words can merge. Distinct independently written decisions still need an explicit choice. Derive the decision mark from the merged result.
 
 Use Outcome history for a displaced outcome. Keep the ordinary held council's change log for outcomes that actually took effect. Restore through the shared council writer and require the original topic type and a still available option.
+
+## An ordinary study note type
+
+Capture the Note or Question button against the type the editor showed, including a missing stored type displayed as Note. A submitted type receipt stays available for a second click until its exact acknowledgement arrives. Store the clock on the type separately from title, words and tags. When comparing only the type, accepting the stored value must still submit the local words that merge independently. Restore a displaced type through the same editor action.

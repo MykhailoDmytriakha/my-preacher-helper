@@ -18,6 +18,7 @@ import {
   listSeriesMembershipHistory,
   listServiceOrderFlagHistory,
   listServiceOrderStepTitleHistory,
+  listStudyNoteTypeHistory,
   listThoughtLockHistory,
   listThoughtPlacementHistory,
   listThoughtTagHistory,
@@ -47,6 +48,7 @@ const histories = {
   thoughtTag: { collection: 'sermons', list: listThoughtTagHistory },
   prayerTag: { collection: 'prayerRequests', list: (owner: string, id: string, generation: string, cursor?: string) =>
     listDocumentTagHistory(owner, 'prayerRequests', id, generation, cursor) },
+  noteType: { collection: 'studyNotes', list: listStudyNoteTypeHistory },
   noteTag: { collection: 'studyNotes', list: (owner: string, id: string, generation: string, cursor?: string) =>
     listDocumentTagHistory(owner, 'studyNotes', id, generation, cursor) },
 } as const;

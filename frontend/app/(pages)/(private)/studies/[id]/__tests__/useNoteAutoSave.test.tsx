@@ -417,6 +417,31 @@ describe('timed study note title autosaves', () => {
   beforeEach(() => jest.useFakeTimers());
   afterEach(() => jest.useRealTimers());
 
+  it('keeps the submitted note type available between capture and acknowledgement', async () => {
+    let finish!: () => void;
+    const persistence = new Promise<void>(resolve => { finish = resolve; });
+    const saved = { ...payload, revision: 2 } as StudyNote & { revision: number };
+    const updateNote = jest.fn(() => ({
+      ...queuedMutation('first-type', persistence), result: persistence.then(() => saved),
+      capture: Promise.resolve({ kind: 'submitted', requestId: 'first-type', persistence }),
+    }));
+    const options = setup(updateNote);
+    const seen = { type: 'note' as const, generation: opening.generation, revision: opening.revision };
+    const typeEditRef: { current: import('../useNoteAutoSave').NoteTypeEdit | null } = {
+      current: { owner: 'u1', id: 'n1', value: 'question', capture: { seen, time } },
+    };
+    const submittedTypeRef: { current: import('../useNoteAutoSave').SubmittedNoteType | null } = { current: null };
+    renderHook(() => useNoteAutoSave({ ...options, type: 'question', typeEditRef, submittedTypeRef }));
+    await act(async () => jest.advanceTimersByTime(1600));
+    expect(updateNote).toHaveBeenCalledWith(expect.objectContaining({ updates: { type: 'question' }, typeCapture: { seen, time } }));
+    expect(typeEditRef.current).toBeNull();
+    expect(submittedTypeRef.current).toEqual({ owner: 'u1', id: 'n1', seen: { ...seen, type: 'question', requestId: 'first-type' } });
+    await act(async () => { finish(); await persistence; });
+    expect(submittedTypeRef.current).toBeNull();
+    expect(options.onSaved).toHaveBeenLastCalledWith(payload, undefined, undefined, 'question');
+    expect(options.baselineRef.current?.type).toBe('note');
+  });
+
   it('acknowledges the winning title while the next paragraph stays a body-only edit', async () => {
     let finish!: () => void;
     const persistence = new Promise<void>(resolve => { finish = resolve; });

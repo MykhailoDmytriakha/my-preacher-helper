@@ -35,6 +35,7 @@ import { validateResourceDocument } from './resourceSchemas';
 import { readCouncilTopicConflict as councilTopicConflict, readGroupFlowFieldConflict as groupFlowFieldConflict, readPlanTemplateNameConflict as planTemplateNameConflict, readSermonConflict as sermonConflict, readServiceStepConflict as serviceStepConflict, readTagColorConflict as tagColorConflict, readThoughtLockComparison as thoughtLockComparison, readThoughtPlacementComparison as thoughtPlacementComparison, readThoughtTagComparison as thoughtTagComparison } from './rowConflictDetails';
 import { deletedUnder, type SessionCheckpoint } from './session';
 import { describeManualSync, describeSync, type SyncStatus } from './status';
+import { readStudyNoteTypeComparison as studyNoteTypeComparison } from './studyNoteTypeChoice';
 import { restoreThoughtTag as restoreTagState } from './thoughtTagAction';
 import { shownDeliveryState } from './unanswered';
 import { useRecoveryDiscovery as useDiscovery, type RecoveryDiscoveryOptions } from './useRecoveryDiscovery';
@@ -65,6 +66,7 @@ export { isCollectionOnEngine, isDataEngineEnabled } from './clientPolicy';
 export function analysisCreationScope(id: string): string { return initialAnalysisScope(id); }
 
 /** Exact conflict values for presentation, without exposing row matching or mutation. */
+export function readStudyNoteTypeComparison(checkpoint: SessionCheckpoint) { return studyNoteTypeComparison(checkpoint); }
 export function readCouncilTopicConflict(checkpoint: SessionCheckpoint) { return councilTopicConflict(checkpoint); }
 export function readGroupFlowFieldConflict(checkpoint: SessionCheckpoint) { return groupFlowFieldConflict(checkpoint); }
 export function readServiceStepConflict(checkpoint: SessionCheckpoint) { return serviceStepConflict(checkpoint); }
@@ -478,7 +480,7 @@ export function useDocumentActions() {
           if (choice === 'mine') { await editor.keepLocal(scope ? shown(record) : undefined); await editor.save(); continue; }
           await editor.acceptRemote(scope ? shown(record) : undefined);
           const { checkpoint } = editor.getState();
-          if (checkpoint.dirty && exactField && documentTagComparison(record.checkpoint)) await editor.save();
+          if (checkpoint.dirty && exactField && (documentTagComparison(record.checkpoint) || studyNoteTypeComparison(record.checkpoint))) await editor.save();
           else if (checkpoint.dirty) await editor.edit(checkpoint.confirmed.value);
         } finally { editor.close({ flush: false }); }
       }

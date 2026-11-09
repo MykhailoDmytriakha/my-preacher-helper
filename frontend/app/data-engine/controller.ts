@@ -27,6 +27,7 @@ import { hasAutosaveRowFieldCaptures, isAutosaveRowFieldPath, missingAutosaveRow
 import { keepUncontestedSermonFields } from './sermonFieldChoice';
 import { hasServiceOrderStep, serviceOrderStepField } from './serviceOrderStepAction';
 import { DataSession, type SessionCheckpoint, type ShownCopy } from './session';
+import { keepUncontestedStudyNoteFields } from './studyNoteTypeChoice';
 import { submittedWorkCheckpoint } from './submittedWork';
 import { changedThoughtTagTarget } from './thoughtTagAction';
 
@@ -742,10 +743,10 @@ export class EditorController {
         const collection = checkpoint?.confirmed.resource.collection;
         const comparedField = isAutosaveRowFieldPath(path, collection ?? '') || (collection === 'serviceOrders' ? serviceOrderStepField(path)
           : collection === 'councils' ? councilAssemblyRow(path) || councilTopicKindRow(path)
-            : path?.length === 1 && (collection === 'planTemplates' && path[0] === 'name' || collection === 'tags' && path[0] === 'color'));
+            : path?.length === 1 && (collection === 'planTemplates' && path[0] === 'name' || collection === 'tags' && path[0] === 'color' || collection === 'studyNotes' && path[0] === 'type'));
         if (expected && (comparedField || retired.some(request => expected.checkpoint.pending[request.id]
           && (request.serviceOrderFlagActions || request.serviceOrderStepTitleActions || hasAutosaveRowFieldCaptures(request)
-            || request.councilAssemblyActions || request.councilTopicKindActions || request.planTemplateNameAction || request.tagColorAction)))
+            || request.councilAssemblyActions || request.councilTopicKindActions || request.planTemplateNameAction || request.tagColorAction || request.studyNoteTypeAction)))
           && retired.some(request => !expected.checkpoint.pending[request.id])) {
           throw Object.assign(new Error('Another saved change appeared during the field choice'), { code: 'decision-changed' });
         }
@@ -807,7 +808,8 @@ export class EditorController {
           const atChoice = decided === source ? remoteChoice?.draft : undefined;
           const local = atChoice === undefined ? decided.draft : atChoice;
           const retained = !selection && (keepUncontestedSermonFields(decided.confirmed, local, decided.remoteCandidate, decided.conflicts)
-            ?? keepUncontestedDocumentTagFields(decided.confirmed, local, decided.remoteCandidate, decided.conflicts));
+            ?? keepUncontestedDocumentTagFields(decided.confirmed, local, decided.remoteCandidate, decided.conflicts)
+            ?? keepUncontestedStudyNoteFields(decided.confirmed, local, decided.remoteCandidate, decided.conflicts));
           session.acceptRemote(atChoice);
           if (retained) {
             const accepted = session.checkpoint();

@@ -7,7 +7,7 @@ import { toast } from 'sonner';
 import { OutdatedTabNotice } from '@/components/common/OutdatedTabNotice';
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
 import { FieldComparison } from '@/data-engine/DataSyncStatus';
-import { captureRecoveryChoice, councilRefusalHeldOpen, isCollectionOnEngine, isDataEngineEnabled, isOneShotRecord, isRecoveryHeldOpen, readDocumentTagComparison, readPlanTemplateNameConflict, readServiceStepConflict, readTagColorConflict, useDataEngine, useDocumentActions, useOpenDocumentAnswerScopes, waitsForDecision, type OpenDocumentAnswer, type RecoveryChoiceScope } from '@/data-engine/react.client';
+import { captureRecoveryChoice, councilRefusalHeldOpen, isCollectionOnEngine, isDataEngineEnabled, isOneShotRecord, isRecoveryHeldOpen, readDocumentTagComparison, readPlanTemplateNameConflict, readStudyNoteTypeComparison, readServiceStepConflict, readTagColorConflict, useDataEngine, useDocumentActions, useOpenDocumentAnswerScopes, waitsForDecision, type OpenDocumentAnswer, type RecoveryChoiceScope } from '@/data-engine/react.client';
 import { useClipboard } from '@/hooks/useClipboard';
 import { useConfirm, useDiscardQuestion } from '@/hooks/useConfirm';
 import { useShellPathname } from '@/hooks/useShellPathname';
@@ -78,6 +78,11 @@ type DisplayValue = (scope: string, field: string, value: unknown, document?: Do
 const isItem = (value: unknown): value is Item => Boolean(value) && typeof value === 'object' && typeof (value as { id?: unknown }).id === 'string';
 function fieldComparison(entry: Waiting, t: (key: string) => string): TextComparison | undefined {
   if (entry.records.length !== 1) return undefined;
+  if (entry.resource.collection === 'studyNotes') {
+    const comparison = readStudyNoteTypeComparison(entry.records[0].checkpoint);
+    if (comparison) return { identity: comparison.identity, title: fieldLabel(t, 'type'), valueKind: 'field',
+      mine: t('studiesWorkspace.type.' + comparison.mine), stored: t('studiesWorkspace.type.' + comparison.stored) };
+  }
   if (entry.resource.collection === 'studyNotes' || entry.resource.collection === 'prayerRequests') {
     const comparison = readDocumentTagComparison(entry.records[0].checkpoint);
     if (!comparison) return undefined;

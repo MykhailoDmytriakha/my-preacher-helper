@@ -1581,6 +1581,36 @@ describe('transactional DataEngine server', () => {
   });
 
   it.each([
+    { label: 'earlier phone', phoneAt: 15, winner: 'note', legacy: false },
+    { label: 'later phone', phoneAt: 90, winner: 'question', legacy: false },
+    { label: 'unknown order', phoneAt: null, winner: 'note', legacy: false },
+    { label: 'ordinary legacy note', phoneAt: 15, winner: 'note', legacy: true },
+  ])('orders ordinary note type without changing its words: $label', async ({ phoneAt, winner, legacy }) => {
+    const resource = { collection: 'studyNotes', id: 'type-order' };
+    const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] };
+    const now = '2026-11-09T00:00:00.000Z';
+    const note = { userId: base.owner, title: 'Note title', content: 'Original words', tags: ['Keep'], scriptureRefs: [], isDraft: true, createdAt: now, updatedAt: now };
+    const absent = { exists: false }, plain = { exists: true, value: 'note' }, question = { exists: true, value: 'question' };
+    const opening = legacy ? absent : plain;
+    expect((await processCommand(base.owner, { ...base, kind: 'create', generation: null, operationId: 'seed',
+      value: { ...note, ...(!legacy && { type: 'note' }) } })).kind).toBe('acknowledged');
+    const edit = (operationId: string, before: typeof opening, after: typeof plain, at: number | null, observedRevision: number) => ({
+      ...base, kind: 'update', generation: 'seed', operationId, changes: [{ path: ['type'], before, after }],
+      studyNoteTypeAction: { observedRevision, time: at === null ? null : { earliestMs: 1_800_000_000_000 + at, latestMs: 1_800_000_000_004 + at } },
+    });
+    expect((await processCommand(base.owner, edit('computer-question', opening, question, 40, 1))).kind).toBe('acknowledged');
+    const returnToNote = edit('computer-note', question, plain, 60, 2);
+    expect((await processCommand(base.owner, { ...returnToNote, changes: [...returnToNote.changes,
+      { path: ['content'], before: { exists: true, value: note.content }, after: { exists: true, value: 'Independent words' } },
+    ] })).kind).toBe('acknowledged');
+    const phone = edit('phone', opening, question, phoneAt, 1);
+    const result = await processCommand(base.owner, phone);
+    expect(result.kind).toBe(phoneAt === null ? 'conflict' : 'acknowledged');
+    expect((await readDocument(base.owner, resource)).value).toMatchObject({ title: note.title, type: winner, content: 'Independent words', tags: note.tags });
+    expect(await processCommand(base.owner, phone)).toEqual(result);
+  });
+
+  it.each([
     { label: 'earlier phone', phoneAt: 15, winner: 'postponed', held: false },
     { label: 'later phone', phoneAt: 90, winner: 'plan', held: false },
     { label: 'earlier phone in held council', phoneAt: 15, winner: 'postponed', held: true },

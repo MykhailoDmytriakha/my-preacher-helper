@@ -1,11 +1,11 @@
-import { submittedDocumentTitle, submittedPrayerStatus, submittedTagColor } from './documentFieldAction';
+import { submittedDocumentTitle, submittedPrayerStatus, submittedStudyNoteType, submittedTagColor } from './documentFieldAction';
 import { submittedPrayerTagBasis } from './documentTagCapture';
 import { DataSession } from './session';
 import { canReplaceSnapshot } from './snapshotFreshness';
 import { submittedWorkCheckpoint } from './submittedWork';
 
 import type { CommitRequest } from './commits';
-import type { DocumentTitleSeen, TagColorSeen } from './documentFieldAction';
+import type { DocumentTitleSeen, StudyNoteTypeSeen, TagColorSeen } from './documentFieldAction';
 import type { DocumentTagOpening } from './documentTagCapture';
 import type { PrayerStatusOpening } from './prayerStatusAction';
 import type { DocumentData, JournalEntry, ResourceRef, ResourceSnapshot } from './types';
@@ -23,6 +23,7 @@ export interface CollectionDocumentView {
   acknowledged?: ResourceSnapshot;
   /** Exact pending request that supplied the displayed title, never a confirmed snapshot. */
   submittedTitle?: DocumentTitleSeen;
+  submittedNoteType?: StudyNoteTypeSeen;
   submittedColor?: TagColorSeen;
   submittedPrayerStatus?: PrayerStatusOpening;
   submittedPrayerTagBasis?: DocumentTagOpening;
@@ -70,6 +71,7 @@ export function collectionDocumentViews(owner: string, collection: string, snaps
     const unsettled = related.filter(request => request.baseline.resource.id === id && !['acknowledged', 'cancelled'].includes(request.state));
     const needsAttention = !checkpoint || checkpoint.conflicts.length > 0 || unsettled.some(request => ['conflict', 'refused'].includes(request.state));
     const submittedTitle = submittedDocumentTitle(checkpoint, unsettled, needsAttention);
+    const submittedNoteType = submittedStudyNoteType(checkpoint, unsettled, needsAttention);
     const prayerStatus = submittedPrayerStatus(checkpoint, unsettled, needsAttention);
     const prayerTagBasis = !needsAttention && submittedPrayerTagBasis(checkpoint, unsettled);
     const submittedColor = submittedTagColor(checkpoint, unsettled, needsAttention);
@@ -78,6 +80,7 @@ export function collectionDocumentViews(owner: string, collection: string, snaps
     views.set(id, { resource, value: checkpoint?.draft ?? confirmed.get(id)?.value ?? checkpoint?.confirmed.value ?? null,
       pending: true, needsAttention, deleting: Boolean(checkpoint && checkpoint.draft === null),
       ...(submittedTitle && { submittedTitle }),
+      ...(submittedNoteType && { submittedNoteType }),
       ...(submittedColor && { submittedColor }),
       ...(prayerStatus && { submittedPrayerStatus: prayerStatus }),
       ...(prayerTagBasis && { submittedPrayerTagBasis: prayerTagBasis }),

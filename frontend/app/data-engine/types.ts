@@ -4,7 +4,7 @@ import type { CouncilAssemblyActions, CouncilAssemblyCapture } from './councilAs
 import type { CouncilOutcomeWire } from './councilOutcomeAction';
 import type { CouncilTopicKindActions, CouncilTopicKindCapture } from './councilTopicKindAction';
 import type { DatedRowActionEvidence } from './datedRowAction';
-import type { DocumentFieldAction, DocumentFieldObservation, DocumentFieldStamp, PlanTemplateNameCapture, PrayerTitleCapture, StudyNoteTitleCapture, ServiceOrderTitleCapture, TagColorCapture } from './documentFieldAction';
+import type { DocumentFieldAction, DocumentFieldObservation, DocumentFieldStamp, PlanTemplateNameCapture, PrayerTitleCapture, StudyNoteTitleCapture, StudyNoteTypeCapture, ServiceOrderTitleCapture, TagColorCapture } from './documentFieldAction';
 import type { DocumentTagIntent } from './documentTagCapture';
 import type { ExegeticalPointStamp } from './exegeticalPointAction';
 import type { ExegeticalPointEdit } from './exegeticalPointCapture';
@@ -71,7 +71,8 @@ export type EditorCommitAction =
   | { kind: 'council-assembly'; flag: CouncilAssemblyCapture }
   | { kind: 'council-topic-kind'; topicKind: CouncilTopicKindCapture }
   | { kind: 'prayer-title'; title: PrayerTitleCapture; tagMembership?: readonly DocumentTagIntent[] }
-  | { kind: 'study-note-title'; title: StudyNoteTitleCapture; tagMembership?: readonly DocumentTagIntent[] }
+  | { kind: 'study-note-title'; title: StudyNoteTitleCapture; type?: StudyNoteTypeCapture; tagMembership?: readonly DocumentTagIntent[] }
+  | { kind: 'study-note-type'; type: StudyNoteTypeCapture; tagMembership?: readonly DocumentTagIntent[] }
   | { kind: 'document-tags'; tagMembership: readonly DocumentTagIntent[] }
   | { kind: 'plan-template-name'; name: PlanTemplateNameCapture }
   | { kind: 'tag-color'; color: TagColorCapture }
@@ -97,6 +98,7 @@ export type DataCommand = CommandBase & (
       councilOutcomeActions?: CouncilOutcomeWire[];
       prayerTitleAction?: DocumentFieldObservation;
       studyNoteTitleAction?: DocumentFieldStamp;
+      studyNoteTypeAction?: DocumentFieldStamp;
       planTemplateNameAction?: DocumentFieldStamp;
       tagColorAction?: DocumentFieldStamp;
       prayerStatusAction?: DocumentFieldObservation;
