@@ -27,6 +27,7 @@ import { keepUncontestedSermonFields } from './sermonFieldChoice';
 import { hasServiceOrderStep, serviceOrderStepField } from './serviceOrderStepAction';
 import { DataSession, type SessionCheckpoint, type ShownCopy } from './session';
 import { submittedWorkCheckpoint } from './submittedWork';
+import { changedThoughtTagTarget } from './thoughtTagAction';
 
 import type { DocumentWriteReceipt } from './commitReceipt';
 import type { CommitQueue, CommitRequest } from './commits';
@@ -785,7 +786,8 @@ export class EditorController {
           if (stored && rowRequests.some(request => request.baseline.resource.collection === 'groups' && missingAutosaveRowFieldTarget(stored, request))) {
             throw Object.assign(new Error('The block or step that was edited is gone'), { code: 'decision-changed' });
           }
-          if (stored && rowRequests.some(request => request.baseline.resource.collection === 'sermons' && missingAutosaveRowFieldTarget(stored, request))) {
+          if (stored && rowRequests.some(request => request.baseline.resource.collection === 'sermons'
+            && (missingAutosaveRowFieldTarget(stored, request) || changedThoughtTagTarget(stored, request)))) {
             throw Object.assign(new Error('The thought that was edited is gone'), { code: 'decision-changed' });
           }
           const statusActions = ordinary ? ordinary.first.preachStatusActions

@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { isCollectionServed } from '@/data-engine/activation';
-import { DataEngineServerError, listBibleMarkHistory, listExegeticalPointHistory, listCouncilMetadataHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listPlanTemplateNameHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listPrayerStatusHistory, listPrayerTitleHistory, listSermonChurchHistory, listSermonGoalTypeHistory, listSermonPreparationConfirmationHistory, listSermonTitleHistory, listSermonVerseHistory, listSeriesMetadataHistory, listServiceOrderFlagHistory, listServiceOrderStepTitleHistory, listServiceOrderTitleHistory, listStudyNoteTitleHistory, listTagColorHistory, listThoughtLockHistory, listThoughtPlacementHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
+import { DataEngineServerError, listBibleMarkHistory, listExegeticalPointHistory, listCouncilMetadataHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listPlanTemplateNameHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listPrayerStatusHistory, listPrayerTitleHistory, listSermonChurchHistory, listSermonGoalTypeHistory, listSermonPreparationConfirmationHistory, listSermonTitleHistory, listSermonVerseHistory, listSeriesMetadataHistory, listServiceOrderFlagHistory, listServiceOrderStepTitleHistory, listServiceOrderTitleHistory, listStudyNoteTitleHistory, listTagColorHistory, listThoughtLockHistory, listThoughtPlacementHistory, listThoughtTagHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
 import { collectionHeadId, HEADS_COLLECTION, sequenceId } from '@/data-engine/serverFeed';
 import { DataSession } from '@/data-engine/session';
 import type { DataCommand, FieldValue, ResourceSnapshot } from '@/data-engine/types';
@@ -2639,6 +2639,90 @@ describe('transactional DataEngine server', () => {
       expect(await processCommand(owner, savePoint('sibling', 80))).toMatchObject({ kind: 'acknowledged' });
       expect(await processCommand(owner, savePoint('remove', 25))).toMatchObject({
         kind: 'acknowledged', snapshot: { value: { preparation: preparation([revisedNeighbor]) } },
+      });
+    });
+  });
+
+  describe('ordinary thought tag membership chronology', () => {
+    const date = '2026-11-08T00:00:00.000Z';
+    const alpha = 'Alpha tag', beta = 'Beta tag';
+    const words = 'The original thought stays';
+    const thought = (tags: string[]) => ({ id: 'tagged', date, text: words, tags: ['main', ...tags] });
+    const neighbor = { id: 'neighbor', date, text: 'The independent thought stays', tags: ['main'] };
+
+    async function seed(present = false) {
+      const command = create('thought-tag-seed') as Extract<DataCommand, { kind: 'create' }>;
+      expect(await processCommand(command.owner, { ...command, value: { ...command.value, thoughts: [thought(present ? [alpha] : []), neighbor] } }))
+        .toMatchObject({ kind: 'acknowledged' });
+      return command.owner;
+    }
+
+    function saveTag(operationId: string, tag: string, before: boolean, after: boolean, offset: number | null,
+      predecessorOperationId?: string) {
+      const time = offset === null ? null : { earliestMs: 1_800_000_000_000 + offset, latestMs: 1_800_000_000_005 + offset };
+      return {
+        ...update(operationId, 'thought-tag-seed'),
+        dependsOn: predecessorOperationId ? [predecessorOperationId] : [],
+        changes: [{ path: ['thoughts'], before: { exists: true, value: [thought(before ? [tag] : []), neighbor] },
+          after: { exists: true, value: [thought(after ? [tag] : []), neighbor] } }],
+        thoughtTagActions: [{ rowId: 'tagged', rowCreatedAt: date, tag, before, after, observedRevision: 1, time,
+          ...(predecessorOperationId && { predecessorOperationId }) }],
+      };
+    }
+
+    it.each([
+      { startsPresent: false, deskAt: 80, winner: true },
+      { startsPresent: true, deskAt: 80, winner: false },
+      { startsPresent: false, deskAt: 30, winner: false },
+      { startsPresent: true, deskAt: 30, winner: true },
+    ])('uses the later same-tag choice when the starting membership is $startsPresent and the desk acts at $deskAt',
+      async ({ startsPresent, deskAt, winner }) => {
+        const owner = await seed(startsPresent);
+        expect(await processCommand(owner, saveTag('desk', alpha, startsPresent, !startsPresent, deskAt))).toMatchObject({ kind: 'acknowledged' });
+        expect(await processCommand(owner, saveTag('phone-first', alpha, startsPresent, !startsPresent, 15))).toMatchObject({ kind: 'acknowledged' });
+        expect(await processCommand(owner, saveTag('phone-second', alpha, !startsPresent, startsPresent, 50, 'phone-first')))
+          .toMatchObject({ kind: 'acknowledged', snapshot: { value: { thoughts: [thought(winner ? [alpha] : []), neighbor] } } });
+      });
+
+    it('stores the displaced membership under its thought and tag for the owner only', async () => {
+      const owner = await seed();
+      await processCommand(owner, saveTag('desk', alpha, false, true, 80));
+      await processCommand(owner, saveTag('phone-first', alpha, false, true, 15));
+      await processCommand(owner, saveTag('phone-second', alpha, true, false, 50, 'phone-first'));
+      await expect(listThoughtTagHistory(owner, 'sermon-1', 'thought-tag-seed')).resolves.toMatchObject({
+        owner, generation: 'thought-tag-seed', entries: [{ fields: [{ rowId: 'tagged', rowCreatedAt: date,
+          field: alpha, value: false, winnerValue: true }] }],
+      });
+      await expect(listThoughtTagHistory('another-owner', 'sermon-1', 'thought-tag-seed')).rejects.toMatchObject({ status: 403 });
+      await expect(listThoughtTagHistory(owner, 'sermon-1', 'other-generation')).rejects.toMatchObject({ status: 404 });
+    });
+
+    it('does not let a replaced thought inherit the old tag action', async () => {
+      const owner = await seed();
+      const base = update('replacement', 'thought-tag-seed');
+      const replaced = { ...thought([]), date: '2026-11-09T00:00:00.000Z' };
+      expect(await processCommand(owner, { ...base, changes: [{ path: ['thoughts'],
+        before: { exists: true, value: [thought([]), neighbor] }, after: { exists: true, value: [replaced, neighbor] },
+      }] })).toMatchObject({ kind: 'acknowledged' });
+      await expect(processCommand(owner, saveTag('phone-old', alpha, false, true, 50))).resolves.toMatchObject({
+        kind: 'conflict', snapshot: { value: { thoughts: [replaced, neighbor] } },
+      });
+    });
+
+    it('keeps the exact tag choice available when its competing saved action has no reliable time', async () => {
+      const owner = await seed();
+      expect(await processCommand(owner, saveTag('desk', alpha, false, true, null))).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(owner, saveTag('phone-first', alpha, false, true, 15))).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(owner, saveTag('phone-second', alpha, true, false, 50, 'phone-first'))).toMatchObject({
+        kind: 'conflict', conflicts: [{ path: ['thoughts', 'id:tagged', 'tags', 'string:' + alpha] }],
+      });
+    });
+
+    it('merges different ordinary tags and keeps the same thought text and section', async () => {
+      const owner = await seed();
+      expect(await processCommand(owner, saveTag('desk', beta, false, true, 80))).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(owner, saveTag('phone-first', alpha, false, true, 15))).toMatchObject({
+        kind: 'acknowledged', snapshot: { value: { thoughts: [thought([beta, alpha]), neighbor] } },
       });
     });
   });

@@ -14,6 +14,7 @@ import { readSermonConflictField } from './sermonFieldChoice';
 import { SERVICE_ORDER_FLAG_TARGET, SERVICE_ORDER_STEP_TITLE_TARGET, serviceOrderStepField } from './serviceOrderStepAction';
 import { readThoughtLockConflict, thoughtLockConflictId } from './thoughtLockAction';
 import { readThoughtPlacementChoice } from './thoughtPlacementAction';
+import { readThoughtTagChoice } from './thoughtTagAction';
 
 import type { RowFieldTarget, RowValue } from './rowFieldAction';
 import type { SessionCheckpoint } from './session';
@@ -208,4 +209,15 @@ export function readThoughtPlacementComparison(checkpoint: SessionCheckpoint) {
   });
   if (locations.length !== conflicts.length) return;
   return { locations, identity: JSON.stringify([checkpoint.editGeneration, remoteCandidate?.metadata?.revision, locations]) };
+}
+
+
+export function readThoughtTagComparison(checkpoint: SessionCheckpoint) {
+  const { confirmed, draft, remoteCandidate, conflicts, pending } = checkpoint;
+  const base = confirmed.value, stored = remoteCandidate?.value;
+  if (confirmed.resource.collection !== 'sermons' || !base || !draft || !stored || !conflicts.length
+    || confirmed.metadata?.generation !== remoteCandidate?.metadata?.generation || Object.keys(pending).length !== 1) return undefined;
+  const tags = conflicts.flatMap(conflict => readThoughtTagChoice(conflict, base, draft, stored) ?? []);
+  if (tags.length !== conflicts.length) return undefined;
+  return { tags, identity: JSON.stringify([checkpoint.editGeneration, remoteCandidate?.metadata?.revision, tags]) };
 }

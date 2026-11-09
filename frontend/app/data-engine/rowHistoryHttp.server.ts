@@ -17,6 +17,7 @@ import {
   listServiceOrderStepTitleHistory,
   listThoughtLockHistory,
   listThoughtPlacementHistory,
+  listThoughtTagHistory,
   serverErrorResponse,
 } from './server';
 
@@ -39,6 +40,7 @@ const histories = {
   preparationConfirmation: { collection: 'sermons', list: listSermonPreparationConfirmationHistory },
   thoughtLock: { collection: 'sermons', list: listThoughtLockHistory },
   thoughtPlacement: { collection: 'sermons', list: listThoughtPlacementHistory },
+  thoughtTag: { collection: 'sermons', list: listThoughtTagHistory },
 } as const;
 
 export type RowHistory = keyof typeof histories;

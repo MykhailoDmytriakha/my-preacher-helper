@@ -7,6 +7,7 @@ import { equalValues, mergeDocumentFields, mergeFields } from './protocol';
 import { keepUncontestedSermonFields } from './sermonFieldChoice';
 import { canReplaceSnapshot } from './snapshotFreshness';
 import { localThoughtPlacementChoices } from './thoughtPlacementAction';
+import { changedThoughtTagTarget } from './thoughtTagAction';
 
 import type { CommitRequest } from './commits';
 import type { EditorRecord } from './controller';
@@ -86,6 +87,9 @@ export function projectExactManualChoice(record: EditorRecord, decision: ExactMa
   const basis = prepared ? request.working : request.baseline;
   const reviewed = prepared ? replaySavedChoiceDelta(stored.resource, request.value, decision.value, request.intended) : decision.value;
   if (decision.choice === 'local') {
+    if (stored.value && changedThoughtTagTarget(stored.value, request)) {
+      throw Object.assign(new Error('The thought that was edited is gone'), { code: 'decision-changed' });
+    }
     const dateEdits = chooseLocalPreachDateEdits(basis, reviewed, stored, request.preachStatusActions);
     const explicit = request.result?.kind === 'conflict'
       ? localThoughtPlacementChoices(request.result.conflicts, basis.value, reviewed, stored.value) : undefined;

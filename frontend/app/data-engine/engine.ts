@@ -28,7 +28,7 @@ import { getResourcePolicy, equalValues, isValidIdentifier, readField } from './
 import { documentRecordPresence, type RecordPresence } from './recordPresence';
 import { forkCheckpoint, isPassiveManualContinuation, isRecoverableCheckpoint, reconcileRecoveryRecord, recoveryCheckpointId, validateRecoveryRecord } from './recovery.client';
 import { RecoveryPresence, recoverySources, type RecoveryPresenceKind, type RecoveryPresenceLease, type RecoveryPresencePort } from './recoveryPresence';
-import { comparableSermonField } from './sermonFieldChoice';
+import { comparableSermonFields } from './sermonFieldChoice';
 import { DataSession } from './session';
 import { canReplaceSnapshot, coversCommittedEffect, storesNewCopy } from './snapshotFreshness';
 import { snapshotBelongsToOwner } from './snapshotIdentity';
@@ -2107,8 +2107,7 @@ export class DataEngine {
     try {
       if (choice === 'remote') {
         await controller.acceptRemote(undefined, expected);
-        if (checkpoint.confirmed.resource.collection === 'sermons' && checkpoint.conflicts.length === 1
-          && comparableSermonField(checkpoint.conflicts[0].path) && controller.getState().checkpoint.dirty) {
+        if (checkpoint.confirmed.resource.collection === 'sermons' && comparableSermonFields(checkpoint.conflicts) && controller.getState().checkpoint.dirty) {
           await controller.save(); this.assertCurrent(owner, generation);
           this.prepareCommitsInBackground(); this.backgroundDrain();
         }
@@ -2390,9 +2389,9 @@ export class DataEngine {
           : action && 'rowId' in action && !('field' in action) ? action : undefined);
         if (updater) {
           const staged = scope.update(updater, fieldInput);
-          const saving = scope.save(dateInput, status, metadata?.time, metadata?.thoughtPlacementIds, onCaptured);
+          const saving = scope.save(dateInput, status, metadata?.time, metadata, onCaptured);
           await Promise.all([staged, saving]);
-        } else await scope.save(dateInput, status, metadata?.time, metadata?.thoughtPlacementIds, onCaptured);
+        } else await scope.save(dateInput, status, metadata?.time, metadata, onCaptured);
         if (!scope.getState().dirty) await scope.cancel();
       }),
       cancel: () => execute(async () => {

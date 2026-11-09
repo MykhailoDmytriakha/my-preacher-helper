@@ -15,6 +15,7 @@ import type { SeriesFieldStamps } from './seriesFieldAction';
 import type { SermonChurchFill } from './sermonChurchFill';
 import type { ServiceOrderFlagActions, ServiceOrderFlagCapture, ServiceOrderStepTitleActions, ServiceOrderStepTitleCapture } from './serviceOrderStepAction';
 import type { ShownCopy } from './session';
+import type { ThoughtTagAction } from './thoughtTagAction';
 import type { PreparationConfirmation } from '@/utils/preparationFieldValues';
 
 export type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
@@ -100,6 +101,7 @@ export type DataCommand = CommandBase & (
       sermonPreparationCheckActions?: Partial<Record<PreparationConfirmation, DocumentFieldStamp>>;
       sermonChurchFill?: SermonChurchFill;
       exegeticalPlanActions?: ExegeticalPointStamp[];
+      thoughtTagActions?: ThoughtTagAction[];
       seriesFieldActions?: SeriesFieldStamps;
       groupTitleAction?: DocumentFieldAction;
       groupStatusAction?: DocumentFieldAction;

@@ -6,6 +6,7 @@ import { equalValues, object, readField, writeField } from './fieldValues';
 import { mergeDocumentFields } from './protocol';
 import { readThoughtLockConflict, thoughtLockConflictId } from './thoughtLockAction';
 import { projectThoughtMoveFields, readThoughtPlacementChoice, thoughtPlacementConflictId } from './thoughtPlacementAction';
+import { readThoughtTagChoice, restoreThoughtTag, thoughtTagIdentity } from './thoughtTagAction';
 
 import type { ConflictDetail, DocumentData, FieldValue, Json, ResourceSnapshot } from './types';
 import type { Sermon, ThoughtsBySection } from '@/models/models';
@@ -14,6 +15,11 @@ export function comparableSermonField(path: readonly string[]): boolean {
   return (path.length === 1 && path[0] === 'verse')
     || preparationConfirmationField(path) !== undefined || exegeticalPointConflictId(path) !== undefined
     || (path.length === 3 && path[0] === 'preachDates' && path[1].startsWith('id:') && path[2] === 'date');
+}
+
+export function comparableSermonFields(conflicts: readonly ConflictDetail[]): boolean {
+  return conflicts.length > 0 && (conflicts.every(({ path }) => thoughtTagIdentity(path))
+    || (conflicts.length === 1 && comparableSermonField(conflicts[0].path)));
 }
 
 const isRow = (value: unknown, key: string) => object(value) && value.id === key.slice(3);
@@ -87,7 +93,7 @@ export function keepUncontestedSermonFields(basis: ResourceSnapshot, draft: Docu
   const lockIds = conflicts.flatMap(({ path }) => thoughtLockConflictId(path) ?? []);
   const locksOnly = lockIds.length === conflicts.length;
   const placementsOnly = conflicts.every(({ path }) => thoughtPlacementConflictId(path));
-  if (!locksOnly && !placementsOnly && (conflicts.length !== 1 || !comparableSermonField(conflicts[0].path))) return undefined;
+  if (!locksOnly && !placementsOnly && !comparableSermonFields(conflicts)) return undefined;
   const changed = () => Object.assign(new Error('The shown field comparison changed'), { code: 'decision-changed' });
   if (!basis.value || !draft || !stored?.value || basis.metadata?.generation !== stored.metadata?.generation) throw changed();
   let opening = basis.value;
@@ -102,6 +108,14 @@ export function keepUncontestedSermonFields(basis: ResourceSnapshot, draft: Docu
       if (!corrected || !readThoughtLockConflict(id, basis.value, draft, stored.value)) throw changed();
       const path = ['thoughts', 'id:' + id, 'isLocked'];
       corrected = withSelectedField(corrected, path, readSermonConflictField(stored.value, path));
+    }
+  } else if (conflicts.every(({ path }) => thoughtTagIdentity(path))) {
+    corrected = draft;
+    for (const conflict of conflicts) {
+      const tag = readThoughtTagChoice(conflict, basis.value, draft, stored.value);
+      // A replacement thought is a document choice, outside the exact tag comparison.
+      if (!tag) return undefined;
+      corrected = restoreThoughtTag(corrected, tag.rowId, tag.date, tag.tag, tag.mine, tag.stored);
     }
   } else {
     const path = conflicts[0].path;

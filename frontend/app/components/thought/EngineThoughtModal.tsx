@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
-import { useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
+import { restoreThoughtTag, useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
 import { useDiscardQuestion } from '@/hooks/useConfirm';
 import { useScrollLock } from '@/hooks/useScrollLock';
 import { useTextDictation } from '@/hooks/useTextDictation';
@@ -20,6 +20,7 @@ import FormDialog, { FormActions } from '../ui/FormDialog';
 import { RichMarkdownEditor } from '../ui/RichMarkdownEditor';
 
 import { ThoughtOutlineField } from './ThoughtOutlineField';
+import { ThoughtTagHistory } from './ThoughtTagHistory';
 import { ThoughtTagsField } from './ThoughtTagsField';
 import { ThoughtTextHeader } from './ThoughtTextHeader';
 
@@ -115,15 +116,24 @@ export function EngineThoughtModal({ sermonId, thoughtId, boardSection, initialO
     const original = (form.initialData as unknown as Sermon | null)?.thoughts.find(item => item.id === shown.id);
     const locationChanged = original && ((original.outlinePointId ?? null) !== (shown.outlinePointId ?? null)
       || (original.subPointId ?? null) !== (shown.subPointId ?? null));
-    const placement = thoughtId && locationChanged ? form.captureDocumentMetadataAction({ thoughtPlacementId: thoughtId }) : undefined;
+    const metadata = thoughtId ? form.captureDocumentMetadataAction({
+      thoughtTagId: thoughtId, ...(locationChanged && { thoughtPlacementId: thoughtId }),
+    }) : undefined;
     try {
       const trim = (current: DocumentData) => json(patchSermonThought(current as unknown as Sermon, shown.id, { text: shown.text.trim() }));
-      if (placement) await form.save(trim, placement);
+      if (metadata) await form.save(trim, metadata);
       else await form.save(trim);
       await dictation.accept().catch(() => undefined);
       onClose();
     }
     catch { /* The shared form retains the draft and exposes the failure. */ }
+  };
+  const restoreTag = async (tag: string, present: boolean) => {
+    if (!thoughtId || !thought || readOnly || isBusy || !form.durable || form.dirty
+      || !form.status || form.status.phase === 'conflict') throw new Error('The thought is not available for editing');
+    const metadata = form.captureDocumentMetadataAction({ thoughtTagId: thoughtId });
+    await form.save(current => restoreThoughtTag(current, thoughtId, thought.date, tag, thought.tags.includes(tag), present), metadata);
+    onClose();
   };
   const cancel = async () => {
     if (isBusy) return;
@@ -167,6 +177,10 @@ export function EngineThoughtModal({ sermonId, thoughtId, boardSection, initialO
       <ThoughtTagsField tags={tags} allowedTags={allowedTags} availableTags={availableTags} disabled={readOnly}
         onAddTag={tag => change({ tags: [...shown.tags, tag] })}
         onRemoveTag={index => change({ tags: shown.tags.filter((_, i) => i !== visibleTags[index]?.index) })} />
+      {thoughtId && thought && sermon?.userId && form.openingGeneration && <ThoughtTagHistory
+        key={JSON.stringify([sermon.userId, sermonId, form.openingGeneration, thoughtId, thought.date])}
+        owner={sermon.userId} sermonId={sermonId} generation={form.openingGeneration} thought={thought}
+        disabled={readOnly || isBusy || !form.durable || form.dirty || form.status?.phase === 'conflict'} onRestore={restoreTag} />}
       <div className="space-y-3">
         <ThoughtTextHeader dictation={dictation} saving={form.busy} readOnly={readOnly} />
         {readOnly ? <pre className="whitespace-pre-wrap font-sans">{shown.text}</pre>

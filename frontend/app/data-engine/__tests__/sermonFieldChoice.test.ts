@@ -50,3 +50,25 @@ it('keeps an answered scripture comparison visible when the saved text returned 
     conflictPaths: [['verse']], mine: value, stored,
   });
 });
+
+
+it('keeps independent words and tags when using the saved membership of one thought tag', () => {
+  const date = '2026-11-08T00:00:00.000Z';
+  const thought = { id: 'one', date, text: 'Opening thought', tags: ['main', 'Alpha'] };
+  const basis: ResourceSnapshot = {
+    resource: { collection: 'sermons', id: 'sermon' },
+    metadata: { protocol: 1, generation: 'original', revision: 1, deleted: false },
+    value: { userId: 'owner', thoughts: [thought] },
+  };
+  const stored = { ...basis, metadata: { ...basis.metadata!, revision: 3 },
+    value: { userId: 'owner', thoughts: [{ ...thought, tags: ['main', 'Alpha', 'Other device'] }] } };
+  const draft = { userId: 'owner', thoughts: [{ ...thought, text: 'Edited thought', tags: ['main', 'Beta'] }] };
+  const conflicts = [{
+    path: ['thoughts', 'id:one', 'tags', 'string:Alpha'], base: { exists: true, value: true },
+    mine: { exists: true, value: false }, theirs: { exists: true, value: true },
+  }];
+  const selected = keepUncontestedSermonFields(basis, draft, stored, conflicts);
+  expect(selected?.thoughts).toEqual([{ ...thought, text: 'Edited thought', tags: expect.arrayContaining(['main', 'Alpha', 'Other device', 'Beta']) }]);
+  const replacement = { ...stored, value: { userId: 'owner', thoughts: [{ ...thought, date: '2026-11-09T00:00:00.000Z' }] } };
+  expect(keepUncontestedSermonFields(basis, draft, replacement, conflicts)).toBeUndefined();
+});

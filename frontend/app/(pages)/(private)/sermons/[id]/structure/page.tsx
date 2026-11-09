@@ -17,6 +17,7 @@ import { useStructureWriter } from "@/components/sermon/structureWriter";
 import { StructurePageSkeleton } from "@/components/skeletons/StructurePageSkeleton";
 import { SortableItemPreview } from "@/components/SortableItem";
 import { EngineThoughtModal } from '@/components/thought/EngineThoughtModal';
+import { useThoughtTagComparison } from '@/components/thought/useThoughtTagComparison';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { DataDocumentProvider, PHASES_TAKING_CHANGES, readThoughtLockComparison, useDataEngine, useOpenDocumentAnswerScopes, useRecoveryDiscovery } from '@/data-engine/react.client';
 import { useAiUsage } from "@/hooks/useAiUsage";
@@ -146,11 +147,12 @@ function EngineStructureBoard({ sermonId }: { sermonId: string }) {
     recover: document.recover,
   });
   const placementComparison = useThoughtPlacementComparison(checkpoint, owner, sermon);
+  const tagComparison = useThoughtTagComparison(checkpoint, owner, sermonId);
   const comparison = conflict ? {
     identity: conflict.identity, title: t('structure.thoughtLockState'), valueKind: 'field' as const, scopedChoice: true as const,
     mine: conflict.locks.map(lock => lock.text + ' · ' + lockText(lock.mine)).join('\n'),
     stored: conflict.locks.map(lock => lock.text + ' · ' + lockText(lock.stored)).join('\n'),
-  } : placementComparison;
+  } : placementComparison ?? tagComparison;
   const canChangeThoughtHistory = document.state?.durable && PHASES_TAKING_CHANGES.has(document.status?.phase ?? '');
   const engine = useMemo<StructureEngineSource>(() => ({
     sermon, loading: document.loading, error: document.error, durable: document.state?.durable, isHolding: () => holdingRef.current,

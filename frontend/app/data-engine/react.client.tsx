@@ -30,9 +30,10 @@ import { collectionRecordPresence, documentRecordPresence, UNKNOWN_RECORD_PRESEN
 import { isOnlySubmittedCopy } from './recovery.client';
 import { captureRecoveryChoice as captureChoice, recoveryChoiceFingerprint, type RecoveryChoiceScope } from './recoveryChoice';
 import { validateResourceDocument } from './resourceSchemas';
-import { readCouncilTopicConflict as councilTopicConflict, readGroupFlowFieldConflict as groupFlowFieldConflict, readPlanTemplateNameConflict as planTemplateNameConflict, readSermonConflict as sermonConflict, readServiceStepConflict as serviceStepConflict, readTagColorConflict as tagColorConflict, readThoughtLockComparison as thoughtLockComparison, readThoughtPlacementComparison as thoughtPlacementComparison } from './rowConflictDetails';
+import { readCouncilTopicConflict as councilTopicConflict, readGroupFlowFieldConflict as groupFlowFieldConflict, readPlanTemplateNameConflict as planTemplateNameConflict, readSermonConflict as sermonConflict, readServiceStepConflict as serviceStepConflict, readTagColorConflict as tagColorConflict, readThoughtLockComparison as thoughtLockComparison, readThoughtPlacementComparison as thoughtPlacementComparison, readThoughtTagComparison as thoughtTagComparison } from './rowConflictDetails';
 import { deletedUnder, type SessionCheckpoint } from './session';
 import { describeManualSync, describeSync, type SyncStatus } from './status';
+import { restoreThoughtTag as restoreTagState } from './thoughtTagAction';
 import { shownDeliveryState } from './unanswered';
 import { useRecoveryDiscovery as useDiscovery, type RecoveryDiscoveryOptions } from './useRecoveryDiscovery';
 
@@ -70,6 +71,8 @@ export function restoreExegeticalPoint(...args: Parameters<typeof restorePointVe
 export function readSermonConflict(checkpoint: SessionCheckpoint) { return sermonConflict(checkpoint); }
 export function readThoughtLockComparison(checkpoint: SessionCheckpoint) { return thoughtLockComparison(checkpoint); }
 export function readThoughtPlacementComparison(checkpoint: SessionCheckpoint) { return thoughtPlacementComparison(checkpoint); }
+export function readThoughtTagComparison(checkpoint: SessionCheckpoint) { return thoughtTagComparison(checkpoint); }
+export function restoreThoughtTag(...args: Parameters<typeof restoreTagState>) { return restoreTagState(...args); }
 export function councilTopicReviewCode(result: CommandResult | null | undefined, conflicts: readonly ConflictDetail[]): string | undefined {
   return councilTopicRefusalCode(result) ?? councilTopicConflictCode(conflicts);
 }
@@ -1333,11 +1336,14 @@ export function useDataForm(resource: ResourceRef | null, slot: string, selectio
       const time = owner && current() && actionClock.capture(owner);
       return time ? { rowId, after, time } : undefined;
     },
-    captureDocumentMetadataAction: (target?: { rowId: string; after: string } | { thoughtPlacementId: string }): ManualDocumentMetadataSave => {
+    captureDocumentMetadataAction: (target?: { rowId: string; after: string } | { thoughtPlacementId?: string; thoughtTagId?: string }): ManualDocumentMetadataSave => {
       const time = owner && current() ? actionClock.capture(owner) : undefined;
-      const placement = target && 'thoughtPlacementId' in target ? { thoughtPlacementIds: [target.thoughtPlacementId] } : undefined;
       const date = target && 'rowId' in target ? target : undefined;
-      return { documentMetadata: { time: time ?? null, ...placement, ...(date && time && { dateAction: { ...date, time } }) } };
+      const thought = target && !('rowId' in target) ? target : undefined;
+      return { documentMetadata: { time: time ?? null,
+        ...(thought?.thoughtPlacementId && { thoughtPlacementIds: [thought.thoughtPlacementId] }),
+        ...(thought?.thoughtTagId && { thoughtTagId: thought.thoughtTagId }),
+        ...(date && time && { dateAction: { ...date, time } }) } };
     },
     save: (updater?: (draft: DocumentData) => DocumentData, action?: { preachDateId: string } | { preachStatus: PreachStatusIntent } | DatedRowActionCapture | GroupMeetingFieldInput | ManualDocumentMetadataSave) => {
       if (!action || 'time' in action || 'documentMetadata' in action) return run(form => action ? form.save(updater, action) : form.save(updater));

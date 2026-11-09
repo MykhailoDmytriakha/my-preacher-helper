@@ -2067,6 +2067,20 @@
     "offlineDisabled": "Manual thought creation is not available offline"
   },
   "thought": {
+    "tagHistory": {
+      "heading": "Tag history",
+      "loading": "Loading tag history…",
+      "unavailable": "Tag history is unavailable.",
+      "empty": "No earlier tag actions were kept.",
+      "kept": "Tag state kept at the time: {{title}}.",
+      "restore": "Restore tag state",
+      "current": "Current tag state",
+      "restoreFailed": "The tag state could not be restored.",
+      "more": "More tag actions",
+      "added": "Added",
+      "removed": "Removed",
+      "comparison": "Tag on this thought"
+    },
     "editorLabel": "Thought",
     "addTagAria": "Add tag {{tag}}",
     "removeTagAria": "Remove tag {{tag}}",

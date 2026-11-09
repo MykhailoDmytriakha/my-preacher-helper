@@ -23,6 +23,7 @@ import { captureRowFields, matchingRowFields, pendingAutosaveRowFieldRebases, sa
 import { capturePlanTextEvidence, type PlanTextEvidence } from './sermonPlanText';
 import { captureServiceOrderStep, matchesServiceOrderStep, SERVICE_ORDER_FLAG_POLICY, SERVICE_ORDER_FLAG_TARGET, SERVICE_ORDER_STEP_TITLE_POLICY, SERVICE_ORDER_STEP_TITLE_TARGET, type ServiceOrderFlagActions, type ServiceOrderStepTitleActions } from './serviceOrderStepAction';
 import { coversCommittedEffect } from './snapshotFreshness';
+import { captureThoughtTagActions, matchesThoughtTag, pendingThoughtTagRebases } from './thoughtTagAction';
 
 import type { CaptureTransferProof, CaptureTransferResult } from './captureTransfer';
 import type { DocumentWriteReceipt } from './commitReceipt';
@@ -39,6 +40,7 @@ import type { DataEngineRuntime } from './runtime';
 import type { SeriesFieldObservations } from './seriesFieldAction';
 import type { SermonChurchFill } from './sermonChurchFill';
 import type { SessionCheckpoint } from './session';
+import type { ThoughtTagAction } from './thoughtTagAction';
 import type { CommandResult, DataCommand, DocumentData, EditorCommitAction, EngineMetadata, FieldValue, ResourceRef, ResourceSnapshot } from './types';
 
 export interface CommitRequest extends CouncilFieldActions, PrayerStatusObservations, AutosaveRowFieldActions {
@@ -91,6 +93,7 @@ export interface CommitRequest extends CouncilFieldActions, PrayerStatusObservat
   sermonGoalTypeAction?: DocumentFieldObservation<FieldValue>;
   sermonPreparationCheckActions?: PreparationConfirmationObservations;
   exegeticalPlanActions?: ExegeticalPointStamp[];
+  thoughtTagActions?: ThoughtTagAction[];
   exegeticalQueueBasis?: ExegeticalQueueBasis;
   sermonChurchFill?: SermonChurchFill;
   seriesFieldActions?: SeriesFieldObservations;
@@ -199,6 +202,7 @@ export function assertCommitCapture(current: CommitRequest, incoming: CommitRequ
     || !equalValues(current.sermonVerseAction ?? null, incoming.sermonVerseAction ?? null)
     || !equalValues(current.sermonChurchAction ?? null, incoming.sermonChurchAction ?? null)
     || !equalValues(current.sermonGoalTypeAction ?? null, incoming.sermonGoalTypeAction ?? null)
+    || !equalValues(current.thoughtTagActions ?? null, incoming.thoughtTagActions ?? null)
     || !equalValues(current.exegeticalPlanActions ?? null, incoming.exegeticalPlanActions ?? null)
     || !equalValues(current.sermonPreparationCheckActions ?? null, incoming.sermonPreparationCheckActions ?? null)
     || !equalValues(current.sermonChurchFill ?? null, incoming.sermonChurchFill ?? null)
@@ -287,6 +291,7 @@ type CommitSaveOptions = { predecessorId?: string | null; predecessorIds?: reado
   preachStatusCapture?: PreachStatusCapture;
   documentMetadataTime?: import('./actionClock').ActionTime | null;
   thoughtPlacementIds?: readonly string[];
+  thoughtTagId?: string;
   action?: EditorCommitAction;
   checkpoint?: (saved: CommitRequest) => EditorRecord;
   transfer?: { proof: CaptureTransferProof; sources: readonly CommitRequest[] } };
@@ -312,6 +317,7 @@ function pendingRowFields(record: CommitRequest) {
     ...pendingRowDetailRebases(record, record.councilAssemblyActions, COUNCIL_ASSEMBLY_POLICY),
     ...pendingRowDetailRebases(record, record.councilTopicKindActions, COUNCIL_TOPIC_KIND_POLICY),
     ...pendingAutosaveRowFieldRebases(record),
+    ...pendingThoughtTagRebases(record),
   ];
 }
 
@@ -519,6 +525,7 @@ export class CommitQueue {
     const exegeticalPlanActions = captureExegeticalPointActions(intent, baseline, predecessor, records);
     const autosaveFields = uncapturedAutosaveFields(intent, baseline, predecessor, records);
     const rowFields = captureRowFields(intent, baseline, predecessor, records, frozenOptions?.documentMetadataTime, frozenOptions?.thoughtPlacementIds);
+    const thoughtTagActions = captureThoughtTagActions(baseline, predecessor, intent.draft, frozenOptions?.thoughtTagId, frozenOptions?.documentMetadataTime, records);
     const groupMeetingFieldActions = captureMeetingFieldActions(baseline, predecessor, intent.draft, frozenOptions?.groupMeetingFieldCaptures, records);
     const preachDateFieldActions = capturePreachDateFields(baseline, predecessor, intent.draft, frozenOptions?.preachDateFieldSave, records);
     const preachStatusActions = capturePreachStatusActions(baseline, predecessor, intent.draft, frozenOptions?.preachStatusCapture, records);
@@ -539,6 +546,7 @@ export class CommitQueue {
       ...(exegeticalPlanActions && { exegeticalPlanActions }),
       ...autosaveFields,
       ...rowFields,
+      ...(thoughtTagActions && { thoughtTagActions }),
       ...(groupMeetingFieldActions && { groupMeetingFieldActions }),
       ...(preachDateFieldActions && { preachDateFieldActions }),
       ...(preachStatusActions && { preachStatusActions }),
@@ -1000,6 +1008,8 @@ export class CommitQueue {
       if (stepTitles && matchesServiceOrderStep(command.changes, SERVICE_ORDER_STEP_TITLE_TARGET, stepTitles.title)) command.serviceOrderStepTitleActions = stepTitles;
       const exegeticalActions = matchingExegeticalPointActions(command.changes, record.exegeticalPlanActions);
       if (exegeticalActions) command.exegeticalPlanActions = exegeticalActions;
+      const tags = record.thoughtTagActions?.filter(action => matchesThoughtTag(command.changes, action));
+      if (tags?.length) command.thoughtTagActions = tags;
       Object.assign(command, matchingRowFields(command.changes, record, command.resource.collection));
       const assembly = matchingCouncilAssembly(command.changes, record.councilAssemblyActions);
       if (assembly) command.councilAssemblyActions = assembly;

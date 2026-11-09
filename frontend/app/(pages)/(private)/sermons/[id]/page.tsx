@@ -32,6 +32,7 @@ import SermonOutline from "@/components/sermon/SermonOutline";
 import StructureStats from "@/components/sermon/StructureStats";
 import { SermonDetailSkeleton } from "@/components/skeletons/SermonDetailSkeleton";
 import { EngineThoughtModal } from '@/components/thought/EngineThoughtModal';
+import { useThoughtTagComparison } from '@/components/thought/useThoughtTagComparison';
 import { DocumentFieldHistory } from '@/components/ui/DocumentFieldHistory';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { DataDocumentProvider } from '@/data-engine/react.client';
@@ -223,6 +224,8 @@ function SermonPageContent({ id }: { id: string }) {
   const awaitingFirstAnswer = core.loading;
   const { user } = useAuth();
   const thoughtPlacementComparison = useThoughtPlacementComparison(thoughtCheckpoint, user?.uid ?? null, sermon);
+  const thoughtTagComparison = useThoughtTagComparison(thoughtCheckpoint, user?.uid ?? null, id);
+  const thoughtComparison = thoughtPlacementComparison ?? thoughtTagComparison;
   const { series } = useSeries(user?.uid || null);
   /**
    * THE ONE RECORDER THAT ASKED NOTHING AT ALL.
@@ -693,8 +696,8 @@ function SermonPageContent({ id }: { id: string }) {
         titleForm: core.titleBinding, verseForm: core.verseBinding, recovery: core.headerRecovery,
         keepLocal: core.keepLocal, acceptRemote: core.acceptRemote, retry: core.retry,
       }} />
-      {thoughtPlacementComparison && <DataSyncStatus subject={engineThoughts.recoveryIdentity} status={engineThoughts.status}
-        error={engineThoughts.error} errorWords={engineThoughts.errorWords} comparison={thoughtPlacementComparison} onRetry={engineThoughts.retry}
+      {thoughtComparison && <DataSyncStatus subject={engineThoughts.recoveryIdentity} status={engineThoughts.status}
+        error={engineThoughts.error} errorWords={engineThoughts.errorWords} comparison={thoughtComparison} onRetry={engineThoughts.retry}
         onKeepLocal={() => engineThoughts.keepLocal(thoughtCheckpoint)} onAcceptRemote={() => engineThoughts.acceptRemote(thoughtCheckpoint)} />}
       <LegacyPreparationRecovery owner={user?.uid ?? null} confirmed={core.confirmed} />
       <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
