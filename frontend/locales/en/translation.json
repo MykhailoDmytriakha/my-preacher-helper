@@ -5093,7 +5093,7 @@
       "miss": "Release the arrow on a word of another line — the one the piece belongs to.",
       "dropped": "Tie removed: “{{part}}” now hangs on the line above it — “{{holder}}”.",
       "droppedTop": "Tie removed: “{{part}}” hangs on nothing — it is the main thought.",
-      "has": "This line already has a tie. To move it, first remove it — the × in the middle of its arrow.",
+      "has": "This line already has a tie. To tie it to another word, first press the × next to its arrow.",
       "turned": "“{{part}}” belongs to the word “{{word}}”, and “{{lifted}}” took its place."
     },
     "untie": "Remove the tie",
