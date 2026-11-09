@@ -1,7 +1,9 @@
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 
 import * as glob from 'glob';
+import * as ts from 'typescript';
 
 // Types for better type safety
 interface TranslationData {
@@ -47,68 +49,47 @@ function flattenTranslationKeys(obj: TranslationData, prefix = ''): Set<string> 
   return keys;
 }
 
-/**
- * Extracts translation keys from TypeScript/TSX files
- * Looks for patterns like t('key'), t("key"), t(`key`)
- */
+/** Collect only complete values that can be read from the expression itself. */
+function staticStrings(expression: ts.Expression): string[] {
+  if (ts.isStringLiteralLike(expression)) return [expression.text];
+  if (ts.isParenthesizedExpression(expression) || ts.isAsExpression(expression) ||
+      ts.isSatisfiesExpression(expression) || ts.isTypeAssertionExpression(expression) ||
+      ts.isNonNullExpression(expression)) {
+    return staticStrings(expression.expression);
+  }
+  if (ts.isConditionalExpression(expression)) {
+    return [...staticStrings(expression.whenTrue), ...staticStrings(expression.whenFalse)];
+  }
+  if (ts.isBinaryExpression(expression) && expression.operatorToken.kind === ts.SyntaxKind.PlusToken) {
+    const suffixes = staticStrings(expression.right);
+    return staticStrings(expression.left).flatMap(prefix => suffixes.map(suffix => prefix + suffix));
+  }
+  return [];
+}
+
+/** Read translation arguments as expressions so a prefix or comment is never counted as a key. */
 function extractTranslationKeysFromFile(filePath: string): Set<string> {
   const keys = new Set<string>();
-  
   try {
-    const content = fs.readFileSync(filePath, 'utf-8');
-    
-    // More specific regex patterns to match t() function calls
-    const patterns = [
-      /\bt\s*\(\s*['"`]([a-zA-Z][a-zA-Z0-9._-]*?)['"`]/g,  // t('key') - must start with letter
-      /\bt\s*\(\s*['"`]([a-zA-Z][a-zA-Z0-9._-]*?)['"`]\s*,/g,  // t('key', options) - must start with letter
-      /\bt\s*\(\s*['"`]([a-zA-Z][a-zA-Z0-9._-]*?)['"`]\s*\)/g,  // t('key') with closing paren
-    ];
-    
-    patterns.forEach(pattern => {
-      let match;
-      while ((match = pattern.exec(content)) !== null) {
-        const key = match[1];
-        // Filter out obviously invalid keys
-        if (key && 
-            key.length > 2 && // Must be at least 3 characters
-            !key.includes('${') && 
-            !key.includes('{{') && 
-            !key.startsWith('$') &&
-            !key.includes('\n') &&
-            !key.includes('\\') &&
-            !/^[A-Z_]+$/.test(key) && // Not all caps (likely constants)
-            !key.includes(' ') && // No spaces
-            key.includes('.') && // Must contain at least one dot (namespace.key)
-            key.split('.').length >= 2 && // At least two parts
-            !/^\d/.test(key) && // Not starting with number
-            !/[<>()[\]{}]/.test(key) && // No HTML/code syntax
-            key !== 'user-agent' && // Filter out specific false positives
-            key !== 'outlinePointId' &&
-            key !== 'sermonId' &&
-            key !== 'userId' &&
-            key !== 'tagName' &&
-            key !== 'section' &&
-            key !== 'markdown' &&
-            key !== 'manual' &&
-            key !== 'audio' &&
-            key !== 'button' &&
-            key !== 'textarea' &&
-            key !== 'div' &&
-            key !== 'h2' &&
-            !key.startsWith('@') && // No imports
-            !key.startsWith('./') && // No relative paths
-            !key.includes('/') && // No paths
-            !key.endsWith('.service') && // No service files
-            !/Error\s/.test(key) // No error messages
-        ) {
-          keys.add(key);
+    const source = ts.createSourceFile(filePath, fs.readFileSync(filePath, 'utf-8'), ts.ScriptTarget.Latest);
+    const visit = (node: ts.Node) => {
+      if (ts.isCallExpression(node) && node.arguments.length) {
+        const callee = node.expression;
+        const name = ts.isPropertyAccessExpression(callee) ? callee.name : callee;
+        if (ts.isIdentifier(name) && name.text === 't') {
+          for (const key of staticStrings(node.arguments[0])) {
+            if (key.length > 2 && key.includes('.') && /^[a-zA-Z][a-zA-Z0-9._-]+$/.test(key) && !key.endsWith('.service')) {
+              keys.add(key);
+            }
+          }
         }
       }
-    });
+      ts.forEachChild(node, visit);
+    };
+    visit(source);
   } catch (error) {
     console.warn(`Warning: Could not read file ${filePath}:`, error);
   }
-  
   return keys;
 }
 
@@ -231,6 +212,47 @@ function analyzeTranslationCoverage(projectRoot: string, localesDir: string): Te
     allLocaleKeys
   };
 }
+
+describe('translation call key extraction', () => {
+  const fromSource = (source: string) => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'translation-calls-'));
+    try {
+      const fixture = path.join(directory, 'fixture.tsx');
+      fs.writeFileSync(fixture, source);
+      return extractTranslationKeysFromFile(fixture);
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  };
+
+  it('ignores partial strings in calls whose full key is unknown', () => {
+    expect(fromSource([
+      "t('groupFlow.status.' + value)",
+      "t('studiesWorkspace.type.' + comparison.mine)",
+      "t('status.prefix' + suffix)",
+      't(`groupFlow.status.${row.status}`)',
+      '// t("comment.fakeKey")',
+    ].join('\n'))).toEqual(new Set());
+  });
+
+  it('keeps complete keys from direct and statically enumerable calls', () => {
+    expect(fromSource([
+      "t('point.history.more', { count: 1 })",
+      'translator.t(`point.history.loading`)',
+      't(("point.history.empty") /* show the empty state */)',
+      "t(restoring ? 'point.history.pending' : 'point.history.restore')",
+      "t('point.history.' + (ready ? 'ready' : 'notReady'))",
+    ].join('\n'))).toEqual(new Set([
+      'point.history.more',
+      'point.history.loading',
+      'point.history.empty',
+      'point.history.pending',
+      'point.history.restore',
+      'point.history.ready',
+      'point.history.notReady',
+    ]));
+  });
+});
 
 describe('Translation Key Coverage', () => {
   const projectRoot = path.resolve(__dirname, '../../'); // Navigate to frontend root
