@@ -3,8 +3,9 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useLayoutEffect, useRef, useSyncExternalStore, type ReactNode } from 'react';
 
+import { accountPreferenceLabels, accountPreferenceWords } from '@/components/settings/accountPreferenceWords';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
-import { useDataDocument, useRecoveryDiscovery } from '@/data-engine/react.client';
+import { readAccountPreferenceComparison, readingPreferenceFields, useDataDocument, useRecoveryDiscovery } from '@/data-engine/react.client';
 import { UserSettingsEngineContext, useSettingsEngine } from '@/hooks/userSettingsEngineContext';
 import { useAuth } from '@/providers/AuthProvider';
 import { setLanguageCookie } from '@/services/userSettings.service';
@@ -67,13 +68,14 @@ export function ReadingSettingsSync() {
   useEffect(() => { commit.current = document.commit; });
   useEffect(() => {
     if (!writable) { setAccountWriter(null); return undefined; }
-    setAccountWriter(async (part: AccountPart, change: object, shown: object) => {
+    setAccountWriter(async (part: AccountPart, change: object, opening: object) => {
+      const fields = readingPreferenceFields(part, Object.keys(change));
       await commit.current((current) => {
         const reading = isRecord(current?.reading) ? current.reading : {};
         // The account's newest copy of the part wins over what the device showed; only the changed fields replace it.
         const held = isRecord(reading[part]) ? reading[part] : null;
-        return { ...(current ?? {}), reading: { ...reading, [part]: { ...(held ?? shown), ...change } } } as typeof current;
-      });
+        return { ...(current ?? {}), reading: { ...reading, [part]: { ...(held ?? opening), ...change } } } as typeof current;
+      }, { kind: 'account-preference', fields });
     });
     return () => setAccountWriter(null);
   }, [writable]);
@@ -109,6 +111,12 @@ function EngineSettingsStatus() {
   const { document } = useSettingsEngine()!;
   const { t } = useTranslation();
   const title = t('settings.title');
+  const shown = document.state?.checkpoint;
+  const preference = shown && readAccountPreferenceComparison(shown);
+  const comparison = preference && {
+    identity: preference.identity, title: t(accountPreferenceLabels[preference.field]),
+    mine: accountPreferenceWords(preference.field, preference.mine, t), stored: accountPreferenceWords(preference.field, preference.stored, t), valueKind: 'field' as const, scopedChoice: true as const,
+  };
   const recovery = useRecoveryDiscovery({
     identity: document.recoveryIdentity, enabled: !document.loading && document.status !== null,
     version: JSON.stringify([document.status?.phase, document.confirmed?.metadata?.revision]),
@@ -121,8 +129,9 @@ function EngineSettingsStatus() {
   // Whether there is anything to say is the status's own rule (isSyncTrouble); it names the settings only then.
   // A copy for reading is not a failure: DeviceStorageNotice already says why above every page, and a
   // retry cannot wake the device storage — passed as an error it stood there as a dead button.
-  return <DataSyncStatus workspaceNotice subject={document.recoveryIdentity} title={title} className="my-3" status={document.status} error={document.error} errorWords={document.errorWords}
-    onRetry={document.retry} onKeepLocal={document.keepLocal} onAcceptRemote={document.acceptRemote}
+  return <DataSyncStatus workspaceNotice comparison={comparison} subject={document.recoveryIdentity} title={title} className="my-3" status={document.status} error={document.error} errorWords={document.errorWords}
+    onRetry={document.retry} onKeepLocal={() => document.keepLocal(preference ? shown : undefined)}
+    onAcceptRemote={() => document.acceptRemote(preference ? shown : undefined)}
     recoveryChoices={recovery.choices} recoveryLoading={recovery.loading} recoveryError={recovery.error}
     onRecover={recovery.recover} onDiscardRecovery={recovery.discard} />;
 }

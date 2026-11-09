@@ -4,12 +4,14 @@ import { MicrophoneIcon, PencilSquareIcon, SpeakerWaveIcon } from '@heroicons/re
 import React, { useState } from 'react';
 
 import { aiFunctionIds, getFunctionCatalog } from '@/api/clients/ai/functionCatalog';
+import { AccountPreferenceHistory } from '@/components/settings/AccountPreferenceHistory';
 import { isCollectionOnEngine } from '@/data-engine/clientPolicy';
 import { useUserEntitlement } from '@/hooks/useUserEntitlement';
 import { useUserSettings } from '@/hooks/useUserSettings';
 import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { isConnectionFailure } from '@/utils/connectionFailure';
 import { awaitSettingsWrite } from '@/utils/settingsWrite';
+import { modelPreferenceField, sameModelPreference } from '@/utils/userModelPreference';
 import { useTranslation } from '@locales/useTranslation';
 
 import type { AiFunctionId, FunctionCatalogEntry } from '@/api/clients/ai/functionCatalog';
@@ -19,22 +21,11 @@ interface ModelSelectorProps {
   user: User | null;
 }
 
-const preferenceField: Record<AiFunctionId, 'preferredTranscription' | 'preferredText' | 'preferredTts'> = {
-  text: 'preferredText',
-  transcription: 'preferredTranscription',
-  tts: 'preferredTts',
-};
-
 const functionIcon: Record<AiFunctionId, React.ComponentType<React.SVGProps<SVGSVGElement>>> = {
   text: PencilSquareIcon,
   transcription: MicrophoneIcon,
   tts: SpeakerWaveIcon,
 };
-
-const sameTarget = (
-  left: { providerId: string; modelId: string } | undefined,
-  right: Pick<FunctionCatalogEntry, 'providerId' | 'modelId'>
-): boolean => left?.providerId === right.providerId && left.modelId === right.modelId;
 
 function ProviderLabel({ providerId }: { providerId: FunctionCatalogEntry['providerId'] }) {
   const { t } = useTranslation();
@@ -95,20 +86,20 @@ export default function ModelSelector({ user }: ModelSelectorProps) {
   const isFree = entitlement.effectiveTier === 'free';
   const currentSelection = (fn: AiFunctionId) => {
     const entry = entitlement.functions[fn];
-    const draft = isCollectionOnEngine('users') ? settings?.[preferenceField[fn]] : undefined;
-    return !isFree && draft && entry?.available.some(model => sameTarget(draft, model)) ? draft : entry?.current;
+    const draft = isCollectionOnEngine('users') ? settings?.[modelPreferenceField[fn]] : undefined;
+    return !isFree && draft && entry?.available.some(model => sameModelPreference(draft, model)) ? draft : entry?.current;
   };
   const handleSelect = async (fn: AiFunctionId, model: FunctionCatalogEntry) => {
     const functionEntitlement = entitlement.functions[fn];
     if (!functionEntitlement) return;
     const current = currentSelection(fn);
-    if (isFree || entitlementError || sameTarget(current, model) || updatingFunctionModelPreference) return;
+    if (isFree || entitlementError || sameModelPreference(current, model) || updatingFunctionModelPreference) return;
 
     setSaveError(null);
     try {
       await awaitSettingsWrite(
         updateFunctionModelPreference({
-          [preferenceField[fn]]: { providerId: model.providerId, modelId: model.modelId },
+          [modelPreferenceField[fn]]: { providerId: model.providerId, modelId: model.modelId },
         }),
         // useUserSettings' function-model recovery descriptor reports a late refusal while this screen is mounted.
         () => undefined
@@ -146,8 +137,8 @@ export default function ModelSelector({ user }: ModelSelectorProps) {
               <p className="mt-0.5 text-xs text-slate-600 dark:text-slate-400">{t(`settings.modelSelector.functions.${fn}.description`)}</p>
               <div className="mt-2 overflow-hidden rounded-xl border border-slate-200 dark:border-slate-700">
                 {getFunctionCatalog(fn).map((model, index) => {
-                  const selected = sameTarget(current, model);
-                  const selectable = allowed.some((entry) => sameTarget(entry, model));
+                  const selected = sameModelPreference(current, model);
+                  const selectable = allowed.some((entry) => sameModelPreference(entry, model));
                   const locked = !selectable;
                   const disabled = locked || entitlementError || updatingFunctionModelPreference;
                   const inputId = `model-${fn}-${model.providerId}-${model.modelId}`;
@@ -173,6 +164,12 @@ export default function ModelSelector({ user }: ModelSelectorProps) {
       </div>
 
       {isFree && <p className="mt-4 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-900/50 dark:text-slate-300">{t('settings.modelSelector.freeHint')}</p>}
+      <AccountPreferenceHistory modelAvailable={(field, value) => {
+        if (isFree || entitlementError) return false;
+        const fn = aiFunctionIds.find(candidate => modelPreferenceField[candidate] === field);
+        return Boolean(fn && entitlement.functions[fn] && (value === null
+          || entitlement.functions[fn].available.some(model => sameModelPreference(value, model))));
+      }} />
       {saveError && <p className="mt-3 text-sm text-red-600 dark:text-red-400" role="alert">{sayFailure(saveError, t)}</p>}
     </section>
   );

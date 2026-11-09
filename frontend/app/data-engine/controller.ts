@@ -1,6 +1,7 @@
 import { failureCode } from '@/utils/failureCode';
 import { projectServiceOrderStep, stepGap } from '@/utils/serviceOrderStepPlacement';
 
+import { readAccountPreferenceComparison } from './accountPreference';
 import { isLiveWholeAction, isRetiredActionDependent, orderActionProjections } from './atomicCommits';
 import { firstBookMarksIntent, isFirstBookMarksDraft } from './bibleMarksCreation';
 import { CaptureContinuations } from './captureContinuations';
@@ -768,6 +769,7 @@ export class EditorController {
         this.assertChoiceAuthority(source);
         this.assertManualResolution(selection, source);
         const decided = ordinary ? ordinaryChoiceCheckpoint(ordinary, source) : source;
+        const preference = !selection && !correction ? readAccountPreferenceComparison(decided) : undefined;
         const session = DataSession.restore(decided);
         const completed = new Set(record.completedCommits ?? []);
         for (const id of Object.keys(source.pending)) { session.release(id); completed.add(id); }
@@ -828,6 +830,7 @@ export class EditorController {
           const statusActions = ordinary ? ordinary.first.preachStatusActions
             : retired.flatMap(request => request.cancelledByChoice && source!.pending[request.id] ? request.preachStatusActions ?? [] : []);
           session.keepLocal(statusActions);
+          if (preference) session.stageAccountPreferenceRetry(preference.field, choiceTime ?? null);
           const selectedMove = ordinary && ordinary.first.serviceOrderPlacement;
           if (selectedMove) {
             const answer = ordinary && ordinary.first.result;
@@ -853,11 +856,12 @@ export class EditorController {
         } else {
           const atChoice = decided === source ? remoteChoice?.draft : undefined;
           const local = atChoice === undefined ? decided.draft : atChoice;
-          const retainedPlacement = !selection && decided.serviceOrderPlacementComparison && local && decided.confirmed.value && decided.remoteCandidate?.value
+          const chosenPath = preference?.path ?? (!selection && decided.serviceOrderPlacementComparison ? ['rank'] : undefined);
+          const retainedFields = chosenPath && local && decided.confirmed.value && decided.remoteCandidate?.value
             ? mergeDocumentFields(decided.confirmed.value,
-              writeField(local, ['rank'], readField(decided.confirmed.value, ['rank'])), decided.remoteCandidate.value) : undefined;
-          if (retainedPlacement?.conflicts.length) throw Object.assign(new Error('Other changes need review'), { code: 'decision-changed' });
-          const retained = !selection && ((retainedPlacement?.value.exists ? retainedPlacement.value.value as DocumentData : undefined)
+              writeField(local, chosenPath, readField(decided.confirmed.value, chosenPath)), decided.remoteCandidate.value) : undefined;
+          if (retainedFields?.conflicts.length) throw Object.assign(new Error('Other changes need review'), { code: 'decision-changed' });
+          const retained = !selection && ((retainedFields?.value.exists ? retainedFields.value.value as DocumentData : undefined)
             ?? keepUncontestedSermonFields(decided.confirmed, local, decided.remoteCandidate, decided.conflicts)
             ?? keepUncontestedDocumentTagFields(decided.confirmed, local, decided.remoteCandidate, decided.conflicts)
             ?? keepUncontestedStudyNoteFields(decided.confirmed, local, decided.remoteCandidate, decided.conflicts)

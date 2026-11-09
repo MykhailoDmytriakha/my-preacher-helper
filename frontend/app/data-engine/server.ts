@@ -53,6 +53,7 @@ import { THOUGHT_TAG_BIRTH, THOUGHT_TAG_HISTORY, thoughtTagTarget, type ThoughtT
 import { metadataAfterThoughtTags, orderThoughtTags } from './thoughtTagOrder.server';
 
 
+import type { AccountPreferenceHistoryPage } from './accountPreference';
 import type { AudioExportKey, AudioExportRecord, AudioExportStore, AudioExportTransaction, AudioExportUsage } from './audioExportStore';
 import type { BibleMarkHistoryEntry, BibleMarkHistoryPage } from './bibleMarkStroke';
 import type { CommentKindHistoryPage } from './commentKindAction';
@@ -642,7 +643,7 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
     const displaced = order.displaced;
     if (!displaced || !primarySnapshot.value || !equalValues(readField(primarySnapshot.value, documentFieldPath(target)), displaced.winnerValue)) continue;
     if (target.field === 'color' || target.action === 'seriesFieldActions' || target.action === 'councilTitleAction' || target.action === 'councilDateAction' || target.action === 'councilLifecycleAction'
-      || target.action === 'prayerStatusAction' || target.action === 'prayerAnsweredAtAction' || target.action === 'sermonPreparationCheckActions') {
+      || target.action === 'prayerStatusAction' || target.action === 'prayerAnsweredAtAction' || target.action === 'sermonPreparationCheckActions' || target.action === 'accountPreferenceActions') {
       metadataHistory.push({ field: target.field, value: displaced.value.value ?? null, winner: displaced.winnerValue.value ?? null,
         actionTime: displaced.actionTime, winnerActionTime: displaced.winnerActionTime });
       continue;
@@ -1157,6 +1158,14 @@ export async function listSermonChurchHistory(owner: string, sermonId: string, g
   const resource = { collection: 'sermons', id: sermonId };
   const page = await listHistoryEntries<SermonChurchHistoryPage['entries'][number]>(owner, resource, SERMON_CHURCH_HISTORY, generation, cursor, 'sermon-gone');
   return { owner, sermonId, generation, ...page };
+}
+
+export async function listAccountPreferenceHistory(owner: string, userId: string, generation: string, cursor?: string): Promise<AccountPreferenceHistoryPage> {
+  const resource = { collection: 'users', id: userId };
+  const page = await listHistoryEntries<AccountPreferenceHistoryPage['entries'][number]>(
+    owner, resource, DOCUMENT_METADATA_HISTORY, generation, cursor, 'account-settings-gone',
+  );
+  return { owner, userId, generation, ...page };
 }
 
 export async function listTagColorHistory(owner: string, tagId: string, generation: string, cursor?: string): Promise<TagColorHistoryPage> {

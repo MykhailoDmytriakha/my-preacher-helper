@@ -3,10 +3,10 @@ import { createHash } from 'node:crypto';
 
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { isCollectionServed } from '@/data-engine/activation';
-import { DataEngineServerError, listBibleMarkHistory, listCommentKindHistory, listExegeticalPointHistory, listCouncilMetadataHistory, listDocumentTagHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listPlanTemplateNameHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listPrayerStatusHistory, listPrayerTitleHistory, listSermonChurchHistory, listSermonGoalTypeHistory, listSermonPlanModeHistory, listSermonPreparationConfirmationHistory, listSermonTitleHistory, listSermonVerseHistory, listSeriesMembershipHistory, listSeriesMetadataHistory, listServiceOrderFlagHistory, listServiceOrderPlacementHistory, listServiceOrderStepPlacementHistory, listServiceOrderStepTitleHistory, listServiceOrderTitleHistory, listStudyNoteTitleHistory, listTagColorHistory, listThoughtLockHistory, listThoughtPlacementHistory, listThoughtTagHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
+import { DataEngineServerError, listAccountPreferenceHistory, listBibleMarkHistory, listCommentKindHistory, listExegeticalPointHistory, listCouncilMetadataHistory, listDocumentTagHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listPlanTemplateNameHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listPrayerStatusHistory, listPrayerTitleHistory, listSermonChurchHistory, listSermonGoalTypeHistory, listSermonPlanModeHistory, listSermonPreparationConfirmationHistory, listSermonTitleHistory, listSermonVerseHistory, listSeriesMembershipHistory, listSeriesMetadataHistory, listServiceOrderFlagHistory, listServiceOrderPlacementHistory, listServiceOrderStepPlacementHistory, listServiceOrderStepTitleHistory, listServiceOrderTitleHistory, listStudyNoteTitleHistory, listTagColorHistory, listThoughtLockHistory, listThoughtPlacementHistory, listThoughtTagHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
 import { collectionHeadId, HEADS_COLLECTION, sequenceId } from '@/data-engine/serverFeed';
 import { DataSession } from '@/data-engine/session';
-import type { DataCommand, FieldValue, ResourceSnapshot } from '@/data-engine/types';
+import type { DataCommand, FieldValue, Json, ResourceSnapshot } from '@/data-engine/types';
 
 jest.mock('@/data-engine/activation', () => ({ ...jest.requireActual('@/data-engine/activation'), isCollectionServed: jest.fn(() => true) }));
 
@@ -3856,6 +3856,118 @@ describe('transactional DataEngine server', () => {
       expect([...documents.keys()].filter(path => path.startsWith('groups/group-title/_titleHistory/'))).toHaveLength(1);
     }
     if (kind === 'conflict') expect(result).toMatchObject({ conflicts: [{ path: ['title'] }] });
+  });
+
+  describe('account preference action order', () => {
+    const owner = 'owner-1';
+    const resource = { collection: 'users', id: owner };
+    const generation = 'settings-seed';
+    const base = { protocol: 1, owner, resource, dependsOn: [] };
+    const preferences = [
+      { field: 'firstDayOfWeek', original: 'monday', changed: 'sunday' },
+      { field: 'showAppVersion', original: false, changed: true },
+      { field: 'enableAudioGeneration', original: false, changed: true },
+      { field: 'language', original: 'en', changed: 'ru' },
+      { field: 'preferredText', original: { providerId: 'openai', modelId: 'model-a' }, changed: { providerId: 'gemini', modelId: 'model-b' } },
+      { field: 'preferredTranscription', original: { providerId: 'openai', modelId: 'model-a' }, changed: { providerId: 'openai', modelId: 'model-b' } },
+      { field: 'preferredTts', original: { providerId: 'openai', modelId: 'model-a' }, changed: { providerId: 'openai', modelId: 'model-b' } },
+    ] as const;
+
+    async function seed() {
+      const value = Object.fromEntries(preferences.map(({ field, original }) => [field, original]));
+      expect(await processCommand(owner, { ...base, kind: 'create', generation: null, operationId: generation, value }))
+        .toMatchObject({ kind: 'acknowledged' });
+    }
+
+    function choose(operationId: string, field: string, before: Json, after: Json, observedRevision: number, offset: number | null) {
+      return { ...base, kind: 'update', generation, operationId,
+        changes: [{ path: [field], before: { exists: true, value: before }, after: { exists: true, value: after } }],
+        accountPreferenceActions: { [field]: { observedRevision, time: offset === null ? null : {
+          earliestMs: 1_800_000_000_000 + offset, latestMs: 1_800_000_000_005 + offset,
+        } } },
+      };
+    }
+
+    it.each(preferences)('keeps the newer deliberate return to the opening $field', async ({ field, original, changed }) => {
+      await seed();
+      expect(await processCommand(owner, choose('desktop-change', field, original, changed, 1, 40)))
+        .toMatchObject({ kind: 'acknowledged', snapshot: { value: { [field]: changed } } });
+      expect(await processCommand(owner, choose('desktop-return', field, changed, original, 2, 60)))
+        .toMatchObject({ kind: 'acknowledged', snapshot: { value: { [field]: original } } });
+      expect(await processCommand(owner, choose('phone-earlier', field, original, changed, 1, 20)))
+        .toMatchObject({ kind: 'acknowledged', snapshot: { value: { [field]: original } } });
+    });
+
+    it('reviews the complete model when concurrent changes target different members of the selection', async () => {
+      await seed();
+      const old = { providerId: 'openai', modelId: 'model-a' };
+      const saved = { providerId: 'openai', modelId: 'model-b' };
+      const mine = { providerId: 'gemini', modelId: 'model-a' };
+      await processCommand(owner, choose('desktop-model', 'preferredText', old, saved, 1, 40));
+      expect(await processCommand(owner, choose('unknown-model', 'preferredText', old, mine, 1, null)))
+        .toMatchObject({ kind: 'conflict', conflicts: [{ path: ['preferredText'], mine: { value: mine }, theirs: { value: saved } }],
+          snapshot: { value: { preferredText: saved } } });
+    });
+
+    it('applies the later choice and preserves an independent preference', async () => {
+      await seed();
+      await processCommand(owner, choose('desktop-sunday', 'firstDayOfWeek', 'monday', 'sunday', 1, 40));
+      await processCommand(owner, choose('desktop-monday', 'firstDayOfWeek', 'sunday', 'monday', 2, 60));
+      await processCommand(owner, choose('desktop-audio', 'enableAudioGeneration', false, true, 3, 65));
+      expect(await processCommand(owner, choose('phone-later', 'firstDayOfWeek', 'monday', 'sunday', 1, 80)))
+        .toMatchObject({ kind: 'acknowledged', snapshot: { value: { firstDayOfWeek: 'sunday', enableAudioGeneration: true } } });
+    });
+
+    it.each([20, 80, null])('settles a reader switch with action time %s while preserving a sibling', async time => {
+      await seed();
+      const before = { crossReferences: { show: true, inWindow: false } };
+      const off = { crossReferences: { show: false, inWindow: false } };
+      const online = { crossReferences: { show: true, inWindow: true } };
+      const readingCommand = (operationId: string, old: Json, next: Json, revision: number, offset: number | null) => {
+        const command = choose(operationId, 'reading', old, next, revision, offset);
+        return { ...command, accountPreferenceActions: {
+          'reading.crossReferences.show': command.accountPreferenceActions.reading,
+        } };
+      };
+      await processCommand(owner, { ...base, kind: 'update', generation, operationId: 'seed-reading',
+        changes: [{ path: ['reading'], before: { exists: false }, after: { exists: true, value: before } }] });
+      await processCommand(owner, readingCommand('reader-desktop-off', before, off, 2, 40));
+      await processCommand(owner, readingCommand('reader-desktop-on', off, online, 3, 60));
+      const answer = await processCommand(owner, readingCommand('reader-phone', before, off, 2, time));
+      if (time === null) {
+        expect(answer).toMatchObject({ kind: 'conflict', conflicts: [{ path: ['reading', 'crossReferences', 'show'] }],
+          snapshot: { value: { reading: online } } });
+      } else {
+        expect(answer).toMatchObject({ kind: 'acknowledged',
+          snapshot: { value: { reading: { crossReferences: { show: time === 20, inWindow: true } } } } });
+      }
+    });
+
+    it('keeps the displaced choice once in owner- and generation-bound history', async () => {
+      await seed();
+      await processCommand(owner, choose('desktop-sunday', 'firstDayOfWeek', 'monday', 'sunday', 1, 40));
+      await processCommand(owner, choose('desktop-monday', 'firstDayOfWeek', 'sunday', 'monday', 2, 60));
+      const phone = choose('phone-earlier', 'firstDayOfWeek', 'monday', 'sunday', 1, 20);
+      const result = await processCommand(owner, phone);
+      expect(await processCommand(owner, phone)).toEqual(result);
+      const history = await listAccountPreferenceHistory(owner, resource.id, generation);
+      expect(history.entries).toHaveLength(1);
+      expect(history.entries[0].fields).toEqual([expect.objectContaining({
+        field: 'firstDayOfWeek', value: 'sunday', winner: 'monday',
+      })]);
+      await expect(listAccountPreferenceHistory('another-owner', resource.id, generation)).rejects.toMatchObject({ status: 403 });
+      await expect(listAccountPreferenceHistory(owner, resource.id, 'old-generation')).rejects.toMatchObject({ status: 404 });
+    });
+
+    it('reviews the exact preference when an earlier-looking delivery has no action clock', async () => {
+      await seed();
+      await processCommand(owner, choose('desktop-sunday', 'firstDayOfWeek', 'monday', 'sunday', 1, 40));
+      await processCommand(owner, choose('desktop-monday', 'firstDayOfWeek', 'sunday', 'monday', 2, 60));
+      expect(await processCommand(owner, choose('unknown', 'firstDayOfWeek', 'monday', 'sunday', 1, null)))
+        .toMatchObject({ kind: 'conflict', conflicts: [{ path: ['firstDayOfWeek'],
+          mine: { exists: true, value: 'sunday' }, theirs: { exists: true, value: 'monday' } }],
+          snapshot: { value: { firstDayOfWeek: 'monday' } } });
+    });
   });
 
   describe('service step move chronology', () => {

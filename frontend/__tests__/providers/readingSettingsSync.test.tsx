@@ -44,7 +44,9 @@ describe('the reader\'s settings and the account', () => {
     const document = documentOf(stored);
     render(sync(document));
     await act(async () => { saveTrailPrefs({ history: 100, recent: 10 }, 'settings'); });
-    expect(document.commit).toHaveBeenCalled();
+    expect(document.commit).toHaveBeenCalledWith(expect.any(Function), {
+      kind: 'account-preference', fields: ['reading.trail.history', 'reading.trail.recent'],
+    });
     expect(stored).toEqual(expect.objectContaining({ language: 'ru', reading: { trail: expect.objectContaining({ history: 100, recent: 10 }) } }));
   });
 
@@ -56,11 +58,18 @@ describe('the reader\'s settings and the account', () => {
     expect(prefs.result.current).toEqual(expect.objectContaining({ history: 100, recent: 10, shown: true }));
   });
 
-  it('keeps the account\'s other parts when it writes the trail\'s', async () => {
+  it('keeps the account\'s other parts and writes only the chosen field in a missing part', async () => {
     stored = { language: 'ru', reading: { mine: { show: false, comments: 'badge' } } };
     render(sync(documentOf(stored)));
     await act(async () => { saveTrailPrefs({ history: 50 }, 'settings'); });
-    expect(stored.reading).toEqual({ mine: { show: false, comments: 'badge' }, trail: expect.objectContaining({ history: 50 }) });
+    expect(stored.reading).toEqual({ mine: { show: false, comments: 'badge' }, trail: { history: 50 } });
+  });
+
+  it('keeps a previously saved device preference when the first account change arrives before migration', async () => {
+    window.localStorage.setItem(TRAIL_KEY, JSON.stringify({ history: 100, recent: 10, shown: false, verseStart: false, __savedAt: 1 }));
+    render(sync(documentOf(stored)));
+    await act(async () => { saveTrailPrefs({ shown: true }, 'reader'); });
+    expect(stored.reading).toEqual({ trail: { history: 100, recent: 10, shown: true, verseStart: false } });
   });
 
   // Codex r1: a toggle built on the device's older copy sent its old numbers over the account's newer ones.
@@ -85,7 +94,7 @@ describe('the reader\'s settings and the account', () => {
     const answered = documentOf(stored, { freshness: 'server' });
     view.rerender(sync(answered));
     await act(async () => { jest.advanceTimersByTime(MOVE_UP_AFTER_MS); });
-    expect(answered.commit).toHaveBeenCalled();
+    expect(answered.commit).toHaveBeenCalledWith(expect.any(Function), { kind: 'account-preference', fields: [] });
     expect(stored.reading).toEqual({ trail: expect.objectContaining({ history: 100, recent: 10 }) });
   });
 

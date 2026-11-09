@@ -21,6 +21,8 @@ import { readSermonPlanModeComparison } from './sermonFieldChoice';
 import { canReplaceSnapshot } from './snapshotFreshness';
 import { localThoughtPlacementChoices } from './thoughtPlacementAction';
 
+import type { AccountPreferenceField } from './accountPreference';
+import type { ActionTime } from './actionClock';
 import type { CommitRequest } from './commits';
 import type { AutosaveFieldActions, AutosaveFieldDrafts, AutosaveFieldStamp } from './documentFieldAction';
 import type { PreachStatusAction } from './preachStatusAction';
@@ -38,6 +40,7 @@ export interface SessionCheckpoint extends AutosaveFieldDrafts, RowFieldDrafts {
   serviceOrderPlacementComparison?: ServiceOrderPlacementComparison;
   serviceOrderPlacementRetry?: ServiceOrderPlacementCapture;
   serviceOrderStepPlacementRetry?: ServiceOrderStepPlacementCapture;
+  accountPreferenceRetry?: { field: AccountPreferenceField; time: ActionTime | null };
   pending: Record<string, { generation: number; value: DocumentData | null; operations?: string[]; borrowedManualScope?: string } & AutosaveFieldActions & AutosaveRowFieldActions>;
 }
 
@@ -174,6 +177,11 @@ export class DataSession {
     }
     if (request.serviceOrderStepPlacement && equalValues(request.serviceOrderStepPlacement, this.state.serviceOrderStepPlacementRetry)) {
       delete this.state.serviceOrderStepPlacementRetry;
+    }
+    const preferenceRetry = this.state.accountPreferenceRetry;
+    if (preferenceRetry && request.accountPreferenceActions?.[preferenceRetry.field]
+      && equalValues(request.accountPreferenceActions[preferenceRetry.field]?.time, preferenceRetry.time)) {
+      delete this.state.accountPreferenceRetry;
     }
     this.registerCommit(request.id, request.editGeneration, request.value, request.atomic?.id ?? request.command?.operationId, request);
     if (request.result && ['acknowledged', 'conflict', 'refused'].includes(request.state)) this.accept(request.result, request.atomic?.kind === 'analysis-reshape');
@@ -424,7 +432,12 @@ export class DataSession {
     this.state.dirty = true;
   }
 
+  stageAccountPreferenceRetry(field: AccountPreferenceField, time: ActionTime | null): void {
+    this.state.accountPreferenceRetry = { field, time };
+  }
+
   private clearAutosaveFieldDrafts(): void {
+    delete this.state.accountPreferenceRetry;
     delete this.state.serviceOrderPlacementComparison;
     delete this.state.serviceOrderStepPlacementRetry;
     delete this.state.serviceOrderPlacementRetry;

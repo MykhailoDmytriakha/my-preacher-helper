@@ -1,5 +1,6 @@
 import { isConnectionFailure } from '@/utils/connectionFailure';
 
+import { readAccountPreferenceComparison } from './accountPreference';
 import { analysisCreationScope } from './analysisCreation';
 import { ANALYSIS_CREATION_TRANSFER_PREFIX, analysisCreationReview, captureAnalysisCreation } from './analysisCreationCapture';
 import { captureAnalysisReshape, type StudyAnalysisWrite } from './analysisReshape';
@@ -2235,6 +2236,7 @@ export class DataEngine {
     const checkpoint = controller.getState().checkpoint;
     const about = copy(checkpoint.confirmed.resource);
     const pending = checkpoint.pending;
+    const preference = readAccountPreferenceComparison(checkpoint);
     const affected = [...this.manualForms.values()].filter(item => {
       if (item.parent !== parent || !item.scope) return false;
       const state = item.scope.getState();
@@ -2244,14 +2246,15 @@ export class DataEngine {
     try {
       if (choice === 'remote') {
         await controller.acceptRemote(undefined, expected);
-        if (checkpoint.confirmed.resource.collection === 'sermons' && comparableSermonFields(checkpoint.conflicts) && controller.getState().checkpoint.dirty) {
+        if ((preference || (checkpoint.confirmed.resource.collection === 'sermons' && comparableSermonFields(checkpoint.conflicts)))
+          && controller.getState().checkpoint.dirty) {
           await controller.save(); this.assertCurrent(owner, generation);
           this.prepareCommitsInBackground(); this.backgroundDrain();
         }
       } else {
         await controller.keepLocal(undefined, undefined, expected, choiceTime);
         // The explicit document choice owns its replacement; field stages keep their later words.
-        if (affected.length) {
+        if (affected.length || (preference && controller.getState().checkpoint.accountPreferenceRetry)) {
           await controller.save(); this.assertCurrent(owner, generation);
           this.prepareCommitsInBackground(); this.backgroundDrain();
         }

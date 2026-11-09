@@ -10,6 +10,7 @@ import { LIST_STORAGE, OPENING_STORAGE, getDeviceStorageHealth, isStorageSilent,
 import { connectDraftCaptureRecovery } from '@/utils/draftCaptureRecovery.client';
 import { useTranslation } from '@locales/useTranslation';
 
+import { accountPreferenceValues as preferenceValues, readAccountPreferenceComparison as accountPreferenceComparison, readingPreferenceFields as readingFields, writeAccountPreference as writePreference } from './accountPreference';
 import { actionClock } from './actionClock.client';
 import { analysisCreationScope as initialAnalysisScope } from './analysisCreation';
 import { createBrowserDataEngine, type BrowserDataEngine } from './browser.client';
@@ -78,6 +79,10 @@ export function readServiceStepConflict(checkpoint: SessionCheckpoint) { return 
 export function readPlanTemplateNameConflict(checkpoint: SessionCheckpoint) { return planTemplateNameConflict(checkpoint); }
 export function readTagColorConflict(checkpoint: SessionCheckpoint) { return tagColorConflict(checkpoint); }
 export function restoreExegeticalPoint(...args: Parameters<typeof restorePointVersion>) { return restorePointVersion(...args); }
+export const accountPreferenceValues = preferenceValues;
+export const readingPreferenceFields = readingFields;
+export const writeAccountPreference = writePreference;
+export function readAccountPreferenceComparison(checkpoint: SessionCheckpoint) { return accountPreferenceComparison(checkpoint); }
 export function readSermonPlanModeComparison(checkpoint: SessionCheckpoint) { return sermonPlanModeComparison(checkpoint); }
 export function readSermonConflict(checkpoint: SessionCheckpoint) { return sermonConflict(checkpoint); }
 export function readThoughtLockComparison(checkpoint: SessionCheckpoint) { return thoughtLockComparison(checkpoint); }
@@ -1101,15 +1106,17 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
     commit: (updater: (current: DocumentData | null) => DocumentData | null,
       action?: 'bible-mark-stroke' | 'council-lifecycle' | ExegeticalPointEdit | { kind: 'thought-placement'; rowId: string }
         | Pick<Extract<EditorCommitAction, { kind: 'sermon-preparation-check' }>, 'kind' | 'field'>
+        | Pick<Extract<EditorCommitAction, { kind: 'account-preference' }>, 'kind' | 'fields'>
         | Extract<EditorCommitAction, { kind: 'council-assembly' | 'council-topic-kind' | 'sermon-plan-mode' }>) => {
-      const timed = typeof action === 'string' || action?.kind === 'exegetical-point' || action?.kind === 'thought-placement' || action?.kind === 'sermon-preparation-check';
+      const timed = typeof action === 'string' || action?.kind === 'exegetical-point' || action?.kind === 'thought-placement' || action?.kind === 'sermon-preparation-check' || action?.kind === 'account-preference';
       const time = owner && timed ? actionClock.capture(owner) : undefined;
       const checkpoint = current?.state.checkpoint;
       const shown = checkpoint && { confirmed: checkpoint.confirmed, draft: checkpoint.draft, editGeneration: checkpoint.editGeneration };
       const capture = typeof action === 'object' ? (action.kind === 'thought-placement' || action.kind === 'exegetical-point' ? { ...action, time: time ?? null, shown }
-        : action.kind === 'sermon-preparation-check' ? { ...action, time: time ?? null } : action)
+        : action.kind === 'sermon-preparation-check' || action.kind === 'account-preference' ? { ...action, time: time ?? null } : action)
         : action === 'council-lifecycle' ? { kind: action, time: time ?? null } as const
-          : time ? { kind: 'bible-mark-stroke', time } as const : undefined;
+          : time ? { kind: 'bible-mark-stroke', time } as const
+            : !action && collection === 'users' && owner ? { kind: 'account-preference', time: actionClock.capture(owner) ?? null } as const : undefined;
       cancelScheduledSave();
       return run(editor => capture ? editor.commit(updater, capture) : editor.commit(updater));
     },
@@ -1127,7 +1134,10 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
     remove: () => { cancelScheduledSave(); return run(editor => editor.remove()); },
     // After a refusal this also drops the refused change (EditorController.acceptRemote).
     acceptRemote: (compared?: SessionCheckpoint) => run(editor => editor.acceptRemote(undefined, compared)),
-    keepLocal: (compared?: SessionCheckpoint) => run(editor => editor.keepLocal(undefined, compared)),
+    keepLocal: (compared?: SessionCheckpoint) => {
+      const time = owner && compared && accountPreferenceComparison(compared) ? actionClock.capture(owner) ?? null : undefined;
+      return run(editor => editor.keepLocal(undefined, compared, time));
+    },
     /*
      * The draft search owns what it finds and how it fails (`useRecoveryDiscovery` says it): its
      * failure is not the document's, and its success does not clear the document's own failure

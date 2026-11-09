@@ -38,10 +38,10 @@ export type AccountPart = keyof ReadingSettings;
 type Reading = Partial<Record<AccountPart, unknown>> | null;
 
 /**
- * How a part is written: `change` — the fields the person changed — laid on the editor's copy of the part, or, while the
- * account has none, on `shown` (what this device shows). A device's earlier choice goes up as no change over what it shows.
+ * The changed fields are laid on the editor's current part. A missing part can inherit an actual earlier device copy.
+ * Defaults shown by a control are not written as competing account choices.
  */
-export type AccountWriter = (part: AccountPart, change: object, shown: object) => Promise<void>;
+export type AccountWriter = (part: AccountPart, change: object, opening: object) => Promise<void>;
 
 /** `unavailable` — the part cannot be changed now; nothing changed. */
 export type AccountChoiceSaved = DeviceChoiceSaved | 'unavailable';
@@ -262,9 +262,8 @@ export function accountChoice<T extends object>({ part, key, parse, fallback, on
       if (bridges === 0) return device.save(change);
       const writer = writerNow, owner = ownerNow;
       if (!writer || !owner || !partWritable(part)) return 'unavailable';
-      // The ground of an absent part: what is shown — the person's own changes on their way included (another account's or
-      // a refused one never are: the editor's new copy takes them off, see `changed`).
-      const before = shown;
+      // Preserve a real earlier device choice when this account has no part. The view still supplies defaults locally.
+      const before = holds(reading, part) ? shown : earlier() ?? {};
       pending = pending && pending.owner === owner
         ? { owner, change: { ...pending.change, ...change }, count: pending.count + 1, part: partNow() }
         : { owner, change, count: 1, part: partNow() };

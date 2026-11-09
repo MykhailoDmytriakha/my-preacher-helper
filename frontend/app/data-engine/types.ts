@@ -1,4 +1,5 @@
 /** The wire contract is shared by browser and server; it imports no transport. */
+import type { AccountPreferenceField, AccountPreferenceStamps } from './accountPreference';
 import type { ActionTime } from './actionClock';
 import type { CommentKindCapture, CommentKindStamp } from './commentKindAction';
 import type { CouncilAssemblyActions, CouncilAssemblyCapture } from './councilAssemblyAction';
@@ -64,6 +65,7 @@ export type EditorCommitAction =
   | { kind: 'bible-mark-stroke'; time: ActionTime }
   | (ExegeticalPointEdit & { time: ActionTime | null; shown?: ShownCopy })
   | { kind: 'sermon-plan-mode'; mode: SermonPlanModeCapture }
+  | { kind: 'account-preference'; time: ActionTime | null; fields?: readonly AccountPreferenceField[] }
   | { kind: 'sermon-preparation-check'; field: PreparationConfirmation; time: ActionTime | null }
   | { kind: 'thought-placement'; rowId: string; time: ActionTime | null; shown?: ShownCopy }
   | { kind: 'service-order-placement'; move: ServiceOrderPlacementCapture }
@@ -172,6 +174,7 @@ export type DataCommand = CommandBase & (
       sermonChurchAction?: DocumentFieldStamp;
       sermonGoalTypeAction?: DocumentFieldStamp;
       sermonPlanModeAction?: SermonPlanModeStamp;
+      accountPreferenceActions?: AccountPreferenceStamps;
       serviceOrderPlacement?: ServiceOrderPlacement;
       serviceOrderStepPlacement?: ServiceOrderStepPlacement;
       sermonPreparationCheckActions?: Partial<Record<PreparationConfirmation, DocumentFieldStamp>>;

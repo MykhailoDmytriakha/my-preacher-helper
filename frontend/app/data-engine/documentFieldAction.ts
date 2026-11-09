@@ -2,6 +2,7 @@ import { isGroupStatus } from '@/utils/groupDocument';
 import { isSermonGoalType, preparationConfirmationPaths, type PreparationConfirmation, type SermonGoalType } from '@/utils/preparationFieldValues';
 import { isOrdinaryStudyNote, isOrdinaryStudyNoteType, type OrdinaryStudyNoteType } from '@/utils/studyNoteType';
 
+import { ACCOUNT_PREFERENCE_TARGETS, type AccountPreferenceField, type AccountPreferenceTarget } from './accountPreference';
 import { boundedActionTime } from './actionClock';
 import { isSermonChurch } from './churchFieldValue';
 import { COUNCIL_LIFECYCLE, COUNCIL_TIMED_FIELDS, councilLifecycleValue, matchesCouncilLifecycle, withCouncilLifecycle, type CouncilFieldActions, type CouncilFieldTarget } from './councilFieldAction';
@@ -68,7 +69,7 @@ type TextDocumentFieldTarget = {
   optional?: true;
 };
 
-export type DocumentFieldTarget = TextDocumentFieldTarget | typeof COMMENT_KIND | typeof SERMON_CHURCH | typeof SERMON_GOAL_TYPE | typeof SERMON_PLAN_MODE | PreparationConfirmationTarget | SeriesFieldTarget | CouncilFieldTarget | PrayerStatusTarget;
+export type DocumentFieldTarget = TextDocumentFieldTarget | typeof COMMENT_KIND | typeof SERMON_CHURCH | typeof SERMON_GOAL_TYPE | typeof SERMON_PLAN_MODE | PreparationConfirmationTarget | SeriesFieldTarget | CouncilFieldTarget | PrayerStatusTarget | AccountPreferenceTarget;
 export type SermonChurchObservation = DocumentFieldObservation<FieldValue>;
 
 export type GroupStatusHistoryPage = {
@@ -144,6 +145,7 @@ export const GROUP_TIMED_FIELDS = [GROUP_TITLE, GROUP_STATUS] as const;
 const COUNCIL_FIELDS = [...COUNCIL_TIMED_FIELDS, COUNCIL_LIFECYCLE];
 
 export function documentFieldTargets(collection: string): readonly DocumentFieldTarget[] {
+  if (collection === 'users') return ACCOUNT_PREFERENCE_TARGETS;
   if (collection === 'serviceOrders') return [SERVICE_ORDER_TITLE];
   if (collection === 'studyNotes') return [STUDY_NOTE_TITLE, STUDY_NOTE_TYPE, COMMENT_KIND];
   if (collection === 'planTemplates') return [PLAN_TEMPLATE_NAME];
@@ -163,6 +165,7 @@ export function acceptsDocumentField(value: FieldValue, target: DocumentFieldTar
 }
 
 export function capturedDocumentField(record: CommitRequest, target: DocumentFieldTarget) {
+  if (target.action === 'accountPreferenceActions') return record.accountPreferenceActions?.[target.field];
   if (target.action === 'seriesFieldActions') return record.seriesFieldActions?.[target.field];
   if (target.action === 'sermonPreparationCheckActions') return record.sermonPreparationCheckActions?.[target.field];
   return record[target.action];
@@ -407,7 +410,7 @@ export function captureStudyNoteType(baseline: ResourceSnapshot, value: Document
 }
 
 type SermonTextTarget = typeof SERMON_TITLE | typeof SERMON_VERSE;
-type CapturedMetadataTarget = typeof SERMON_PLAN_MODE | SermonTextTarget | typeof SERMON_CHURCH | typeof SERMON_GOAL_TYPE | PreparationConfirmationTarget | SeriesFieldTarget | CouncilFieldTarget | PrayerStatusTarget;
+type CapturedMetadataTarget = typeof SERMON_PLAN_MODE | SermonTextTarget | typeof SERMON_CHURCH | typeof SERMON_GOAL_TYPE | PreparationConfirmationTarget | SeriesFieldTarget | CouncilFieldTarget | PrayerStatusTarget | AccountPreferenceTarget;
 
 function knownMetadataFieldPredecessor(baseline: ResourceSnapshot, predecessor: CommitRequest | undefined,
   target: CapturedMetadataTarget, value: string | FieldValue, records: readonly CommitRequest[]): string | undefined {
@@ -538,7 +541,7 @@ function captureSermonField(baseline: ResourceSnapshot, predecessor: CommitReque
 }
 
 function captureStoredMetadataField(baseline: ResourceSnapshot, predecessor: CommitRequest | undefined, draft: DocumentData | null,
-  target: typeof SERMON_CHURCH | typeof SERMON_GOAL_TYPE | PreparationConfirmationTarget | SeriesFieldTarget, time: ActionTime | null, records: readonly CommitRequest[]): DocumentFieldObservation<FieldValue> | undefined {
+  target: typeof SERMON_CHURCH | typeof SERMON_GOAL_TYPE | PreparationConfirmationTarget | SeriesFieldTarget | AccountPreferenceTarget, time: ActionTime | null, records: readonly CommitRequest[]): DocumentFieldObservation<FieldValue> | undefined {
   if (!draft) return undefined;
   const original = (predecessor ? predecessor.value : baseline.value) ?? {};
   const before = readField(original, documentFieldPath(target));
@@ -560,10 +563,19 @@ export function capturePreparationConfirmation(baseline: ResourceSnapshot, prede
 
 /** Selected fields share the time of one explicit Save and retain their own ancestors. */
 export function captureDocumentMetadataFields(baseline: ResourceSnapshot, predecessor: CommitRequest | undefined,
-  draft: DocumentData | null, captured: ActionTime | null | undefined, records: readonly CommitRequest[]) {
+  draft: DocumentData | null, captured: ActionTime | null | undefined, records: readonly CommitRequest[],
+  preferenceFields?: readonly AccountPreferenceField[]) {
   if (captured === undefined || !baseline.metadata || baseline.metadata.deleted) return {};
   const time = captured === null ? null : boundedActionTime(captured);
   if (time === undefined) return {};
+  if (baseline.resource.collection === 'users') {
+    const actions = ACCOUNT_PREFERENCE_TARGETS.flatMap(target => {
+      if (preferenceFields ? !preferenceFields.includes(target.field) : target.path[0] === 'reading') return [];
+      const action = captureStoredMetadataField(baseline, predecessor, draft, target, time, records);
+      return action ? [[target.field, action] as const] : [];
+    });
+    return actions.length ? { accountPreferenceActions: Object.fromEntries(actions) } : {};
+  }
   if (baseline.resource.collection === 'series') {
     const actions = SERIES_FIELD_TARGETS.flatMap(target => {
       const action: SeriesFieldObservation | undefined = captureStoredMetadataField(baseline, predecessor, draft, target, time, records);
@@ -717,6 +729,9 @@ export function withDocumentFieldAction(command: DataCommand, target: DocumentFi
   if (!change || !equalValues(change.before, observedValue(action.before)) || !equalValues(change.after, observedValue(action.after))) return command;
   const { observedRevision, time, predecessorOperationId } = action;
   const stamp = { observedRevision, time, ...(predecessorOperationId && { predecessorOperationId }) };
+  if (target.action === 'accountPreferenceActions') {
+    return { ...command, accountPreferenceActions: { ...command.accountPreferenceActions, [target.field]: stamp } };
+  }
   if (target.action === 'seriesFieldActions') {
     return { ...command, seriesFieldActions: { ...command.seriesFieldActions,
       [target.field]: { ...stamp, ...(action.openingTheme !== undefined && { openingTheme: action.openingTheme }) } } };

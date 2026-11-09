@@ -82,7 +82,7 @@ describe('a choice kept in the account', () => {
     editorHolds(null);
     expect(store.read()).toEqual(DEFAULTS);
     store.save({ on: true });
-    expect(writerB).toHaveBeenLastCalledWith('trail', { on: true }, DEFAULTS);
+    expect(writerB).toHaveBeenLastCalledWith('trail', { on: true }, {});
     finish();
     await flush();
   });
@@ -232,7 +232,7 @@ describe('a choice kept in the account', () => {
     editorHolds(null);
     expect(store.read()).toEqual(DEFAULTS);
     store.save({ size: 50 });
-    expect(writer).toHaveBeenLastCalledWith('trail', { size: 50 }, DEFAULTS);
+    expect(writer).toHaveBeenLastCalledWith('trail', { size: 50 }, {});
     await flush();
   });
 
@@ -357,7 +357,7 @@ describe('a choice kept in the account', () => {
     editorHolds(null);
     expect(store.read()).toEqual(DEFAULTS);
     store.save({ on: true });
-    expect(writer).toHaveBeenLastCalledWith('trail', { on: true }, DEFAULTS);
+    expect(writer).toHaveBeenLastCalledWith('trail', { on: true }, {});
   });
 
   // Codex r6: superseded while storage refused the mark, nothing wrote it later — the record itself goes.

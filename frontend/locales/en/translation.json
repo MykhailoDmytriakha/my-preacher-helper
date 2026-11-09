@@ -1598,6 +1598,26 @@
       "copy": "Copy",
       "copied": "Copied"
     },
+    "preferenceHistory": {
+      "analysisHelp": "Analysis help",
+      "shortHelp": "Short help",
+      "fullHelp": "Full help",
+      "english": "English",
+      "russian": "Русский",
+      "ukrainian": "Українська",
+      "heading": "Settings history",
+      "loading": "Loading settings history…",
+      "unavailable": "Settings history is unavailable.",
+      "restoreFailed": "Could not restore the setting.",
+      "empty": "No earlier choices were displaced.",
+      "kept": "Kept {{value}}",
+      "current": "Current choice",
+      "restore": "Restore choice",
+      "more": "Load earlier choices",
+      "default": "Default",
+      "on": "On",
+      "off": "Off"
+    },
     "firstDayOfWeek": {
       "title": "First day of week",
       "description": "Choose how calendars are arranged across the app.",

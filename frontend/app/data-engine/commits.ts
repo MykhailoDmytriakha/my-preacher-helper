@@ -32,6 +32,7 @@ import { captureServiceOrderStep, matchesServiceOrderStep, SERVICE_ORDER_FLAG_PO
 import { coversCommittedEffect } from './snapshotFreshness';
 import { captureThoughtTagActions, pendingThoughtTagRebases, thoughtTagCommandActions } from './thoughtTagAction';
 
+import type { AccountPreferenceObservations } from './accountPreference';
 import type { CaptureTransferProof, CaptureTransferResult } from './captureTransfer';
 import type { DocumentWriteReceipt } from './commitReceipt';
 import type { EditorRecord } from './controller';
@@ -109,6 +110,7 @@ export interface CommitRequest extends CouncilFieldActions, PrayerStatusObservat
   sermonChurchAction?: SermonChurchObservation;
   sermonGoalTypeAction?: DocumentFieldObservation<FieldValue>;
   sermonPlanModeAction?: SermonPlanModeObservation;
+  accountPreferenceActions?: AccountPreferenceObservations;
   sermonPreparationCheckActions?: PreparationConfirmationObservations;
   exegeticalPlanActions?: ExegeticalPointStamp[];
   thoughtTagActions?: ThoughtTagAction[];
@@ -232,6 +234,7 @@ export function assertCommitCapture(current: CommitRequest, incoming: CommitRequ
     || !equalValues(current.sermonPlanModeAction ?? null, incoming.sermonPlanModeAction ?? null)
     || !equalValues(current.serviceOrderPlacement ?? null, incoming.serviceOrderPlacement ?? null)
     || !equalValues(current.serviceOrderStepPlacement ?? null, incoming.serviceOrderStepPlacement ?? null)
+    || !equalValues(current.accountPreferenceActions ?? null, incoming.accountPreferenceActions ?? null)
     || !equalValues(current.thoughtTagActions ?? null, incoming.thoughtTagActions ?? null)
     || !equalValues(current.tagMembershipActions ?? null, incoming.tagMembershipActions ?? null)
     || !equalValues(current.exegeticalPlanActions ?? null, incoming.exegeticalPlanActions ?? null)
@@ -355,7 +358,7 @@ function pendingRowFields(record: CommitRequest) {
 }
 
 function hasTimedAncestor(record: CommitRequest): boolean {
-  return record.sequence === 0 && Boolean(record.seriesMembership || record.serviceOrderPlacement || record.serviceOrderStepPlacement || record.serviceOrderTitleAction || record.prayerTitleAction || record.planTemplateNameAction || record.tagColorAction || record.studyNoteTitleAction || record.studyNoteTypeAction || record.commentKindAction || record.prayerStatusAction || record.prayerAnsweredAtAction || record.sermonTitleAction || record.sermonVerseAction || record.sermonChurchAction || record.sermonGoalTypeAction || record.sermonPlanModeAction || record.sermonPreparationCheckActions || record.exegeticalPlanActions?.length || record.seriesFieldActions || record.groupTitleAction || record.groupStatusAction || record.councilTitleAction || record.councilDateAction || record.councilLifecycleAction || pendingBibleMarkRebase(record) || pendingMeetingDateRebase(record) || pendingDocumentTags(record).length || pendingRowFields(record).length || pendingPreachStatusActions(record).length);
+  return record.sequence === 0 && Boolean(record.seriesMembership || record.serviceOrderPlacement || record.serviceOrderStepPlacement || record.serviceOrderTitleAction || record.prayerTitleAction || record.planTemplateNameAction || record.tagColorAction || record.studyNoteTitleAction || record.studyNoteTypeAction || record.commentKindAction || record.prayerStatusAction || record.prayerAnsweredAtAction || record.sermonTitleAction || record.sermonVerseAction || record.sermonChurchAction || record.sermonGoalTypeAction || record.sermonPlanModeAction || record.accountPreferenceActions || record.sermonPreparationCheckActions || record.exegeticalPlanActions?.length || record.seriesFieldActions || record.groupTitleAction || record.groupStatusAction || record.councilTitleAction || record.councilDateAction || record.councilLifecycleAction || pendingBibleMarkRebase(record) || pendingMeetingDateRebase(record) || pendingDocumentTags(record).length || pendingRowFields(record).length || pendingPreachStatusActions(record).length);
 }
 
 function freezeSaveOptions(options: CommitSaveOptions | undefined): CommitSaveOptions | undefined {
@@ -518,7 +521,10 @@ export class CommitQueue {
       result.retired.forEach(publish);
       return clone(result.request);
     }
-    const editorAction = frozenOptions?.action ?? (intent.serviceOrderPlacementRetry
+    const accountRetry = intent.accountPreferenceRetry;
+    const editorAction = frozenOptions?.action ?? (accountRetry
+      ? { kind: 'account-preference', fields: [accountRetry.field], time: accountRetry.time } as const
+      : intent.serviceOrderPlacementRetry
       ? { kind: 'service-order-placement', move: intent.serviceOrderPlacementRetry } as const
       : intent.serviceOrderStepPlacementRetry
         ? { kind: 'service-order-step-placement', move: intent.serviceOrderStepPlacementRetry } as const : undefined);
@@ -577,7 +583,9 @@ export class CommitQueue {
       editorAction?.kind === 'prayer-status' ? editorAction.status : undefined, records, owner);
     const preparationChecks = editorAction?.kind === 'sermon-preparation-check'
       ? capturePreparationConfirmation(baseline, predecessor, intent.draft, editorAction, records) : undefined;
-    const metadataFields = captureDocumentMetadataFields(baseline, predecessor, intent.draft, frozenOptions?.documentMetadataTime, records);
+    const metadataTime = editorAction?.kind === 'account-preference' ? editorAction.time : frozenOptions?.documentMetadataTime;
+    const metadataFields = captureDocumentMetadataFields(baseline, predecessor, intent.draft, metadataTime, records,
+      editorAction?.kind === 'account-preference' ? editorAction.fields : undefined);
     const exegeticalPlanActions = captureExegeticalPointActions(intent, baseline, predecessor, records);
     const autosaveFields = uncapturedAutosaveFields(intent, baseline, predecessor, records);
     const rowFields = captureRowFields(intent, baseline, predecessor, records, frozenOptions?.documentMetadataTime, frozenOptions?.thoughtPlacementIds);
