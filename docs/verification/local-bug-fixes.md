@@ -7710,3 +7710,11 @@ Both original device orders conflicted. The timing, stale-name, missing comparis
 Seven Chrome scenarios on isolated emulators at 390 and 1280 px covered both action orders, history restore and reload, two successive offline changes, return to the original, unknown timing, an empty value and a deleted tag with an explicit discard of the rejected local color. The phone and desktop screens were visually checked. Evidence is in artifacts/tag-color-chronology-verified. Other short fields remain in the chronology audit.
 
 After authorized deployment, confirm the revision. Test both color orders for one disposable tag in two owned profiles with one offline. Restore a color from history, reload and verify the tag name and its uses. Close both profiles and keep forced faults on the emulator.
+
+## BUG-20261016-engine-asks-instead-of-chronology · Independent group-block title and content
+
+In Groups → selected group → block in the meeting plan, an offline title change collided with an online content change through the block's automatic updatedAt. The shared merge now retains the accepted metadata when both stamps changed. The rule is scoped to an existing group block. Authored title conflicts and a deleted block retain their normal protection.
+
+The regression failed on the metadata path and passed after the fix. 185 related tests, TypeScript and the production build passed. ESLint reported two existing warnings and no errors. In native Chrome against local Auth and Firestore emulators, the two edits merged and both appeared after reload. The other block and the flow order were unchanged. A second Chrome run confirmed that two names for the same block still require a choice. Evidence is in artifacts/action-chronology-356/group-block-metadata-verified.
+
+For authorized production acceptance, verify the deployed revision and active worker. Use a disposable group with two blocks. Rename the first block from the offline profile and edit only its content from the online profile. Reconnect the offline profile, reload, and verify that both changes survived and the second block and flow order stayed intact.

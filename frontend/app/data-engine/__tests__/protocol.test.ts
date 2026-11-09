@@ -120,6 +120,28 @@ describe('DataEngine command protocol', () => {
     expect(result.conflicts.map(conflict => conflict.path)).toEqual([['updatedAt']]);
   });
 
+  it('saves independent edits to a group block without conflicting on its recency metadata', () => {
+    const resource = { collection: 'groups', id: 'group' };
+    const block = { id: 'block', type: 'custom', title: 'Original', content: 'Initial text', status: 'draft',
+      createdAt: '2026-11-08T15:00:00.000Z', updatedAt: '2026-11-08T15:00:00.000Z' };
+    const other = { ...block, id: 'other' };
+    const before = { userId: 'owner', title: 'Group', status: 'draft', templates: [block, other], flow: [] };
+    const mine = { ...before, templates: [{ ...block, title: 'Renamed', updatedAt: '2026-11-08T16:00:00.000Z' }, other] };
+    const theirs = { ...before, templates: [{ ...block, content: 'Edited text', updatedAt: '2026-11-08T16:02:00.000Z' }, other] };
+    const combined = [{ ...theirs.templates[0], title: 'Renamed' }, other];
+    expect(mergeDocumentFields(before, mine, theirs)).toMatchObject({
+      value: field({ ...theirs, templates: combined }), conflicts: [],
+    });
+    expect(applyCommand({ ...update(before, mine), resource }, { resource, value: theirs, metadata: null }))
+      .toMatchObject({ kind: 'acknowledged', snapshot: { value: { templates: combined } } });
+    const changedTitle = { ...theirs, templates: [{ ...theirs.templates[0], title: 'Other title' }, other] };
+    expect(mergeDocumentFields(before, mine, changedTitle).conflicts.map(conflict => conflict.path))
+      .toEqual([['templates', 'id:block', 'title']]);
+    const deleted = { ...theirs, templates: [other] };
+    expect(applyCommand({ ...update(before, mine), resource }, { resource, value: deleted, metadata: null }))
+      .toMatchObject({ kind: 'conflict', snapshot: { value: { templates: [other] } } });
+  });
+
   it('keeps nested authored updatedAt fields subject to normal conflict checks', () => {
     const result = mergeFields(field({ custom: { updatedAt: 'base' } }), field({ custom: { updatedAt: 'mine' } }), field({ custom: { updatedAt: 'theirs' } }));
     expect(result.conflicts.map(conflict => conflict.path)).toEqual([['custom', 'updatedAt']]);

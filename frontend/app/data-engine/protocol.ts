@@ -396,6 +396,9 @@ export function mergeFields(base: FieldValue, mine: FieldValue, theirs: FieldVal
 } {
   if (equalValues(mine, base)) return { value: theirs, conflicts: [] };
   if (equalValues(theirs, base) || equalValues(mine, theirs)) return { value: mine, conflicts: [] };
+  // Group block editors refresh this stamp for any edit. It must not veto independent authored fields.
+  if (path.length === 3 && path[0] === 'templates' && path[1].startsWith('id:') && path[2] === 'updatedAt'
+    && base.exists && mine.exists && theirs.exists) return { value: theirs, conflicts: [] };
   const marks = verseMarksAt(path);
   if (marks) return mergeVerseMarks(marks, base, mine, theirs, path);
   if (mergedWhole(path, base.value, mine.value, theirs.value)) return { value: mine, conflicts: [{ path, base, mine, theirs }] };
