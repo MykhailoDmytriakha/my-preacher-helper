@@ -17,3 +17,17 @@ export function clampTooltipCentre(
     viewportWidth - padding - tooltipWidth / 2
   );
 }
+
+/** How far to slide a tooltip centred on its trigger so it keeps the shared edge padding; 0 when it fits. */
+export function tooltipShift(rect: { left: number; right: number }, viewportWidth: number): number {
+  const centre = (rect.left + rect.right) / 2;
+  return clampTooltipCentre(centre, rect.right - rect.left, viewportWidth) - centre;
+}
+
+export function placeTooltipLabel(tip: HTMLElement): void {
+  tip.style.setProperty('--tooltip-shift', '0px');
+  const rect = tip.getBoundingClientRect();
+  if (!rect.width) return;
+  const shift = tooltipShift(rect, document.documentElement.clientWidth || window.innerWidth);
+  if (shift) tip.style.setProperty('--tooltip-shift', `${Math.round(shift)}px`);
+}

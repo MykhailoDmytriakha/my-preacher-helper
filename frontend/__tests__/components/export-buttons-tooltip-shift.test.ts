@@ -1,4 +1,4 @@
-import { tooltipShift } from '@/components/export-buttons/tooltipShift';
+import { tooltipShift } from '@/utils/tooltipPlacement';
 import { clampTooltipCentre } from '@/utils/tooltipPlacement';
 
 describe('tooltip placement', () => {
