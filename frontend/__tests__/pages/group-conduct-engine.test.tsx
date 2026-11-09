@@ -61,6 +61,7 @@ it('shows the shared duration conflict once while the conduct form keeps its pri
     try {
       const start = await screen.findByRole('button', { name: /conduct.preflight.startButton/ });
       expect(await screen.findByRole('button', { name: 'freshness.conflictKeepMine' })).toBeVisible();
+      expect(screen.queryByRole('region', { name: 'dataSync.versionComparison' })).not.toBeInTheDocument();
       const duration = screen.getByDisplayValue('20');
       await waitFor(() => expect(duration).toBeEnabled());
       expect(start).toBeDisabled();
@@ -142,6 +143,11 @@ it('keeps duration typing unsent and conflicts against the pinned opening value 
   await act(async () => { await harness.engine.retry(); await settleEngine(); });
   expect(await screen.findByText('freshness.conflictTitle')).toBeInTheDocument();
   expect(harness.server.value?.flow).toEqual(flow(20));
+  expect(harness.transport.send).toHaveBeenCalledWith(expect.objectContaining({
+    groupStepDurationActions: [expect.objectContaining({
+      rowId: 'block', rowCreatedAt: 'template', before: 5, after: 7, observedRevision: 1, time: null,
+    })],
+  }));
   view.unmount();
 });
 it('offers an unfinished setup after restart without sending it automatically', async () => {

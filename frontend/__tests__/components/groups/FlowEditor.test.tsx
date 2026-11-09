@@ -43,6 +43,7 @@ const mockTemplate: GroupBlockTemplate = {
 describe('FlowEditor', () => {
     const onUpdateTemplate = jest.fn();
     const onUpdateFlowItem = jest.fn();
+    const onSetDuration = jest.fn().mockResolvedValue(undefined);
     const onSetStatus = jest.fn().mockResolvedValue(undefined);
     const onRenameBlock = jest.fn().mockResolvedValue(undefined);
     const onRenameStep = jest.fn().mockResolvedValue(undefined);
@@ -53,6 +54,7 @@ describe('FlowEditor', () => {
         template: mockTemplate,
         onUpdateTemplate,
         onUpdateFlowItem,
+        onSetDuration,
         onSetStatus,
         onRenameBlock,
         onRenameStep,
@@ -118,7 +120,7 @@ describe('FlowEditor', () => {
         render(<FlowEditor {...defaultProps} />);
         const input = screen.getByDisplayValue('15');
         fireEvent.change(input, { target: { value: '20' } });
-        expect(onUpdateFlowItem).toHaveBeenCalledWith({ durationMin: 20 });
+        expect(onSetDuration).toHaveBeenCalledWith(20);
     });
 
     it('updates step title', () => {
@@ -163,6 +165,7 @@ describe('FlowEditor', () => {
                 template={mockTemplate}
                 onUpdateTemplate={onUpdateTemplate}
                 onUpdateFlowItem={onUpdateFlowItem}
+                onSetDuration={onSetDuration}
                 onSetStatus={onSetStatus}
                 onRenameBlock={onRenameBlock}
                 onRenameStep={onRenameStep}

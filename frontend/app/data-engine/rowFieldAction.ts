@@ -3,11 +3,12 @@ import { equalValues, object, readField } from './fieldValues';
 import type { ActionTime } from './actionClock';
 import type { ConflictDetail, DataCommand, DocumentData, FieldChange, FieldValue, Json, ResourceSnapshot } from './types';
 
-export type RowValue = string | boolean | null | DocumentData;
+export type RowValue = string | number | boolean | null | DocumentData;
 export type RowFieldTarget<Value extends RowValue> = {
   field: string;
   leaf: string | readonly [string, string];
   missing?: Value;
+  storeNull?: true;
   accepts(value: unknown): value is Value;
 };
 
@@ -40,19 +41,19 @@ const leafPath = (leaf: RowFieldTarget<RowValue>['leaf']): string[] => typeof le
 function readRowField<Value extends RowValue>(row: DocumentData, target: RowFieldTarget<Value>): Value | undefined {
   if (typeof target.leaf !== 'string' && !object(row[target.leaf[0]])) return undefined;
   const { exists, value } = readField(row, leafPath(target.leaf));
-  return exists ? (value !== null && target.accepts(value) ? value : undefined) : target.missing;
+  return exists ? ((value !== null || target.storeNull) && target.accepts(value) ? value : undefined) : target.missing;
 }
 
-function putRowField(row: DocumentData, leaf: RowFieldTarget<RowValue>['leaf'], value: RowValue): DocumentData {
+function putRowField(row: DocumentData, leaf: RowFieldTarget<RowValue>['leaf'], value: RowValue, keepNull = false): DocumentData {
   if (typeof leaf === 'string') {
     const edited = { ...row };
-    if (value === null) delete edited[leaf];
+    if (value === null && !keepNull) delete edited[leaf];
     else edited[leaf] = value;
     return edited;
   }
   const [parent, child] = leaf;
   const parentValue = row[parent];
-  return object(parentValue) ? { ...row, [parent]: putRowField(parentValue, child, value) } : row;
+  return object(parentValue) ? { ...row, [parent]: putRowField(parentValue, child, value, keepNull) } : row;
 }
 
 export function existingRowFields<Value extends RowValue>(rows: unknown, target: RowFieldTarget<Value>): Map<string, Value | undefined> {
@@ -73,7 +74,7 @@ export function replaceExistingRowField<Value extends RowValue>(rows: Json | und
   if (!Array.isArray(rows) || existingRowField(rows, rowId, target) === undefined) return rows;
   return rows.map(row => {
     if (!object(row) || row.id !== rowId) return row;
-    return putRowField(row, target.leaf, value);
+    return putRowField(row, target.leaf, value, target.storeNull);
   });
 }
 
@@ -115,7 +116,7 @@ export function alignOptionalRowField<Value extends RowValue>(command: Extract<D
     if (!Array.isArray(side.value) || !equalValues(existingRowField(side.value, rowId, target), missing)) return side;
     return { ...side, value: side.value.map(row => {
       if (!object(row) || row.id !== rowId || readField(row, [leaf]).exists === exists) return row;
-      return putRowField(row, leaf, exists ? missing : null);
+      return putRowField(row, leaf, exists ? missing : null, exists && target.storeNull);
     }) };
   };
   return { ...command, changes: command.changes.map(change => isRowChange(change, target)

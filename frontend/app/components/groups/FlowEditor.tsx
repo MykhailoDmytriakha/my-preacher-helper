@@ -29,6 +29,7 @@ interface FlowEditorProps {
     titleScope?: GroupPageEditor['flowTitleScope'];
     onRenameBlock: (title: string) => Promise<void>;
     onSetStatus: (status: GroupBlockStatus) => Promise<void>;
+    onSetDuration: (duration: number | null) => Promise<void>;
     onRenameStep: (title: string | null) => Promise<void>;
     onUpdateFlowItem: (updates: Partial<GroupFlowItem>) => void;
     onClose: () => void;
@@ -41,6 +42,7 @@ export default function FlowEditor({
     titleScope,
     onRenameBlock,
     onSetStatus,
+    onSetDuration,
     onRenameStep,
     onUpdateFlowItem,
     onClose,
@@ -123,7 +125,7 @@ export default function FlowEditor({
                         />
                         {titleScope && <GroupFlowFieldHistory key={JSON.stringify([titleScope.generation, template.id, template.createdAt])}
                             scope={titleScope} field="block" rowId={template.id} rowCreatedAt={template.createdAt} current={template.title}
-                            onRestore={value => onRenameBlock(value ?? '')} />}
+                            onRestore={value => onRenameBlock(typeof value === 'string' ? value : '')} />}
                     </div>
 
                     {/* Content */}
@@ -155,7 +157,7 @@ export default function FlowEditor({
                         />
                         {titleScope && <GroupFlowFieldHistory key={JSON.stringify([titleScope.generation, flowItem.id, flowItem.templateId])}
                             scope={titleScope} field="step" rowId={flowItem.id} rowCreatedAt={flowItem.templateId}
-                            current={flowItem.instanceTitle ?? null} onRestore={onRenameStep} />}
+                            current={flowItem.instanceTitle ?? null} onRestore={value => onRenameStep(typeof value === 'string' ? value : null)} />}
                     </div>
 
                     {/* Duration */}
@@ -168,13 +170,19 @@ export default function FlowEditor({
                             type="number"
                             min={1}
                             value={flowItem.durationMin ?? ''}
-                            onChange={(event) =>
-                                onUpdateFlowItem({ durationMin: event.target.value ? Number(event.target.value) : null })
-                            }
+                            onChange={(event) => {
+                                const duration = event.target.value ? Number(event.target.value) : null;
+                                void onSetDuration(duration).catch(() => undefined);
+                            }}
                             className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-700 transition focus:border-blue-500 focus:ring-1 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 xl:rounded-lg xl:px-3 xl:py-2"
                             placeholder="—"
                         />
                     </div>
+
+                    {titleScope && <GroupFlowFieldHistory key={JSON.stringify([titleScope.generation, flowItem.id, flowItem.templateId])}
+                        scope={titleScope} field="duration" rowId={flowItem.id} rowCreatedAt={flowItem.templateId}
+                        current={flowItem.durationMin ?? null} onRestore={value => value === null || typeof value === 'number'
+                            ? onSetDuration(value) : Promise.reject(new Error('Invalid step duration'))} />}
 
                     {/* Notes */}
                     <div>

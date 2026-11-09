@@ -7,6 +7,24 @@ import type { ResourceSnapshot } from '../types';
 const snap = (content = 'base', revision = 1): ResourceSnapshot => ({ resource: { collection: 'studyNotes', id: 'one' }, value: { content }, metadata: { protocol: 1, generation: 'g1', revision, deleted: false } });
 
 describe('DataSession', () => {
+  it('keeps a deliberately reselected empty duration without replacing the remote step title', () => {
+    const step = { id: 'step', templateId: 'template', order: 1, durationMin: null, instanceTitle: 'Old title' };
+    const base = { ...snap(), resource: { collection: 'groups', id: 'group' }, value: { flow: [step] } };
+    const storedStep = { ...step, durationMin: 40, instanceTitle: 'New title' };
+    const candidate = { ...base, metadata: { ...base.metadata!, revision: 2 }, value: { flow: [storedStep] } };
+    const editor = new DataSession(base);
+    editor.registerCommit('duration-save', 1, base.value);
+    editor.accept({ kind: 'conflict', operationId: 'duration-save', snapshot: candidate, conflicts: [{
+      path: ['flow', 'id:step', 'durationMin'], base: { exists: false }, mine: { exists: false },
+      theirs: { exists: true, value: 40 },
+    }] });
+    editor.release('duration-save');
+    editor.keepLocal();
+    expect(editor.checkpoint()).toMatchObject({ confirmed: candidate, dirty: true,
+      draft: { flow: [{ ...storedStep, durationMin: null }] },
+    });
+  });
+
   it('keeps a deliberately reselected block status without replacing remote text or a different block', () => {
     const block = { id: 'block', status: 'draft', createdAt: 'born', title: 'Name', content: 'Original words' };
     const other = { ...block, id: 'other' };

@@ -6,6 +6,7 @@ import { useCallback, useMemo, useState } from 'react';
 import ConductBlock from '@/components/groups/conduct/ConductBlock';
 import ConductOverview from '@/components/groups/conduct/ConductOverview';
 import ConductPreflight from '@/components/groups/conduct/ConductPreflight';
+import { useGroupFlowComparison } from '@/components/groups/groupFlowComparison';
 import { RecordUnavailable } from '@/components/RecordUnavailable';
 import { GroupDetailSkeletonCards } from '@/components/skeletons/GroupDetailSkeleton';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
@@ -33,9 +34,12 @@ export default function ConductPage() {
   </DataDocumentProvider>;
 }
 function EngineConductPage({ groupId }: { groupId: string }) {
+  const { t } = useTranslation();
   const document = useGroupDataDocument(groupId);
-  const { form, flow, updateDuration, recovery } = useGroupConductForm(groupId, (Boolean(document.document.confirmed?.value) || document.document.presence.kind === 'creating')
+  const { form, flow, updateDuration, saveDurations, recovery } = useGroupConductForm(groupId, (Boolean(document.document.confirmed?.value) || document.document.presence.kind === 'creating')
     && document.document.presence.kind !== 'absent' && document.document.presence.kind !== 'deleting');
+  const checkpoint = document.document.state?.checkpoint;
+  const comparison = useGroupFlowComparison(checkpoint, t);
   /*
    * A COPY FOR READING STILL RUNS THE MEETING. Only the setup writes — the durations, saved on
    * Start — and the meeting itself lives in this page: steps, timers, the overview. So while the
@@ -51,8 +55,9 @@ function EngineConductPage({ groupId }: { groupId: string }) {
   const formFeedback = form.mirrorsDocumentConflict ? { status: null }
     : { status: form.status, error: form.error, errorWords: form.errorWords };
   const feedback = <div className="shrink-0 px-5 py-2 empty:hidden">
-    <DataSyncStatus subject={document.document.recoveryIdentity} status={document.status} error={document.error} errorWords={document.errorWords} onRetry={document.refresh}
-      onAcceptRemote={document.acceptRemote} onKeepLocal={document.keepLocal} />
+    <DataSyncStatus comparison={comparison} subject={document.document.recoveryIdentity} status={document.status} error={document.error} errorWords={document.errorWords} onRetry={document.refresh}
+      onAcceptRemote={() => document.acceptRemote(comparison ? checkpoint : undefined)}
+      onKeepLocal={() => document.keepLocal(comparison ? checkpoint : undefined)} />
     {form.active && <DataSyncStatus subject={form.recoveryIdentity} {...formFeedback} onRetry={form.retry}
       onKeepLocal={form.keepLocal} onAcceptRemote={form.acceptRemote}
       recoveryChoices={recovery.choices} onRecover={recovery.recover}
@@ -60,7 +65,7 @@ function EngineConductPage({ groupId }: { groupId: string }) {
   </div>;
   return <ConductView groupId={groupId} group={document.group ? { ...document.group, flow } : null}
     readNotice={{ subject: document.document.recoveryIdentity, relatedSubjects: [form.recoveryIdentity], words: document.document.errorWords }} presence={document.document.presence} onRetry={document.refresh}
-    loading={document.loading || form.loading} saveFlow={() => form.save()}
+    loading={document.loading || form.loading} saveFlow={saveDurations}
     updateDuration={(id, duration) => { void updateDuration(id, duration).catch(() => undefined); }}
     setupDisabled={form.loading || !form.active || form.busy || form.status?.phase === 'deleted'}
     startDisabled={form.documentChoiceRequired} feedback={feedback} />;

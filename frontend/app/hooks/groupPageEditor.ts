@@ -27,6 +27,7 @@ export interface GroupPageEditor {
   flowTitleScope?: { owner: string; generation: string; groupId: string; disabled: boolean };
   setBlockStatus: (block: Pick<GroupBlockTemplate, 'id' | 'createdAt'>, status: GroupBlockStatus) => Promise<void>;
   renameBlock: (block: Pick<GroupBlockTemplate, 'id' | 'createdAt'>, title: string) => Promise<void>;
+  setStepDuration: (step: Pick<GroupFlowItem, 'id' | 'templateId'>, durationMin: number | null) => Promise<void>;
   renameStep: (step: Pick<GroupFlowItem, 'id' | 'templateId'>, title: string | null) => Promise<void>;
   flow: Group['flow'];
   setFlow: Dispatch<SetStateAction<Group['flow']>>;

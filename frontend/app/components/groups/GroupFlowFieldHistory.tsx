@@ -5,6 +5,8 @@ import { useId, useState } from 'react';
 import { useOwnerHistory } from '@/hooks/useOwnerHistory';
 import { useTranslation } from '@locales/useTranslation';
 
+import { groupFlowFieldText } from './groupFlowComparison';
+
 import type { GroupFlowHistoryPage } from '@/data-engine/groupFlowTitleAction';
 import type { GroupPageEditor } from '@/hooks/groupPageEditor';
 
@@ -12,31 +14,34 @@ type Entry = GroupFlowHistoryPage['entries'][number];
 
 export function GroupFlowFieldHistory({ scope, field, rowId, rowCreatedAt, current, onRestore }: {
   scope: NonNullable<GroupPageEditor['flowTitleScope']>;
-  field: 'block' | 'step' | 'status';
+  field: 'block' | 'step' | 'status' | 'duration';
   rowId: string;
   rowCreatedAt: string;
-  current: string | null;
-  onRestore: (value: string | null) => Promise<void>;
+  current: string | number | null;
+  onRestore: (value: string | number | null) => Promise<void>;
 }) {
   const { t } = useTranslation();
   const id = useId();
   const { groupId, owner, generation, disabled } = scope;
+  const route = { block: 'group-block-title', step: 'group-step-title', status: 'group-block-status', duration: 'group-step-duration' }[field];
   const { open, history, loading, failed, toggle, load } = useOwnerHistory<Entry, GroupFlowHistoryPage>({
     owner, generation, id: groupId, resourceId: page => page.groupId,
     path: '/api/data-engine/documents/groups/' + encodeURIComponent(groupId)
-      + (field === 'status' ? '/group-block-status-history' : '/group-' + field + '-title-history'),
+      + '/' + route + '-history',
   });
   const [restoring, setRestoring] = useState(false);
   const [restoreFailed, setRestoreFailed] = useState(false);
   const entries = history?.entries.flatMap(entry => entry.fields
     .filter(item => item.rowId === rowId && item.rowCreatedAt === rowCreatedAt)
     .map(item => ({ id: entry.id, item }))) ?? [];
-  const heading = t({ block: 'groupFlow.editor.blockNameHistory', step: 'groupFlow.editor.stepNameHistory', status: 'groupFlow.editor.blockStatusHistory' }[field]);
-  const words = (value: string | null) => field === 'status' ? t('groupFlow.status.' + value)
-    : value || t(field === 'block' ? 'common.untitled' : 'groupFlow.editor.useBlockName');
-  const message = (suffix: string) => 'common.' + (field === 'status' ? 'statusHistory' : 'titleHistory') + suffix;
+  const heading = t({ block: 'groupFlow.editor.blockNameHistory', step: 'groupFlow.editor.stepNameHistory',
+    status: 'groupFlow.editor.blockStatusHistory', duration: 'groupFlow.editor.durationHistory' }[field]);
+  const words = (value: string | number | null) => groupFlowFieldText(t, field, value);
+  const message = (suffix: string) => ({
+    block: 'common.titleHistory', step: 'common.titleHistory', status: 'common.statusHistory', duration: 'groupFlow.editor.durationHistory',
+  }[field] + suffix);
   const button = 'min-h-8 text-xs font-medium text-emerald-700 hover:underline disabled:opacity-50 dark:text-emerald-400';
-  const restore = async (value: string | null) => {
+  const restore = async (value: string | number | null) => {
     setRestoring(true);
     setRestoreFailed(false);
     try { await onRestore(value); }

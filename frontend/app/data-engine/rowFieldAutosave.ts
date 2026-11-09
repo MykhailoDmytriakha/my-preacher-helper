@@ -3,9 +3,10 @@ import { COUNCIL_TOPIC_TITLE_POLICY } from './councilTopicTitleAction';
 import { equalValues } from './fieldValues';
 import { GROUP_BLOCK_STATUS_POLICY } from './groupBlockStatusAction';
 import { GROUP_BLOCK_TITLE_POLICY, GROUP_STEP_TITLE_POLICY } from './groupFlowTitleAction';
+import { GROUP_STEP_DURATION_POLICY } from './groupStepDurationAction';
 import { matchesRowDetailBirth } from './rowDetailAction';
 import { knownRowDetailPredecessor, pendingRowDetailRebases } from './rowDetailCapture';
-import { boundedRowId, existingRowField, isCapturedRowConflict, matchesRowAction, replaceExistingRowField, rowConflictPath } from './rowFieldAction';
+import { boundedRowId, existingRowField, existingRowFields, isCapturedRowConflict, matchesRowAction, replaceExistingRowField, rowConflictPath } from './rowFieldAction';
 
 import type { ActionTime } from './actionClock';
 import type { CommitRequest } from './commits';
@@ -13,12 +14,12 @@ import type { RowDetailObservation, RowDetailPolicy } from './rowDetailAction';
 import type { SessionCheckpoint, ShownCopy } from './session';
 import type { ConflictDetail, DocumentData, FieldChange, ResourceSnapshot } from './types';
 
-type Value = string | null;
+type Value = string | number | null;
 type Action = RowDetailObservation<Value>;
 type Draft = { generation: string; action: Action };
-type DraftKey = 'councilTopicTitleDrafts' | 'groupBlockTitleDrafts' | 'groupStepTitleDrafts' | 'groupBlockStatusDrafts';
-type ActionKey = 'councilTopicTitleActions' | 'groupBlockTitleActions' | 'groupStepTitleActions' | 'groupBlockStatusActions';
-export type RowFieldActionKind = 'council-topic-title' | 'group-block-title' | 'group-step-title' | 'group-block-status';
+type DraftKey = 'councilTopicTitleDrafts' | 'groupBlockTitleDrafts' | 'groupStepTitleDrafts' | 'groupBlockStatusDrafts' | 'groupStepDurationDrafts';
+type ActionKey = 'councilTopicTitleActions' | 'groupBlockTitleActions' | 'groupStepTitleActions' | 'groupBlockStatusActions' | 'groupStepDurationActions';
+export type RowFieldActionKind = 'council-topic-title' | 'group-block-title' | 'group-step-title' | 'group-block-status' | 'group-step-duration';
 export type RowFieldStamp = { field: RowFieldActionKind; rowId: string; time: ActionTime | null };
 export type RowFieldDrafts = Partial<Record<DraftKey, Record<string, Draft>>>;
 export type AutosaveRowFieldActions = Partial<Record<ActionKey, Action[]>>;
@@ -40,6 +41,7 @@ const TARGETS: readonly Target[] = [
   autosaveTarget(GROUP_BLOCK_TITLE_POLICY, 'title', 'group-block-title', 'groupBlockTitleDrafts', 'groupBlockTitleActions'),
   autosaveTarget(GROUP_STEP_TITLE_POLICY, 'title', 'group-step-title', 'groupStepTitleDrafts', 'groupStepTitleActions'),
   autosaveTarget(GROUP_BLOCK_STATUS_POLICY, 'status', 'group-block-status', 'groupBlockStatusDrafts', 'groupBlockStatusActions'),
+  autosaveTarget(GROUP_STEP_DURATION_POLICY, 'durationMin', 'group-step-duration', 'groupStepDurationDrafts', 'groupStepDurationActions'),
 ];
 
 const targetsFor = (collection: string) => TARGETS.filter(target => target.policy.collection === collection);
@@ -100,13 +102,29 @@ export function hasUncapturedAutosaveRowField(checkpoint: SessionCheckpoint): bo
   return targetsFor(checkpoint.confirmed.resource.collection).some(target => uncaptured(checkpoint, target).length > 0);
 }
 
+function manualDurationActions(checkpoint: SessionCheckpoint, baseline: ResourceSnapshot, opening: DocumentData | null,
+  target: Target, captured: ActionTime | null | undefined): Action[] {
+  if (target.stamp !== 'group-step-duration' || captured === undefined || !baseline.metadata || baseline.metadata.deleted) return [];
+  const time = captured === null ? null : boundedActionTime(captured);
+  if (time === undefined) return [];
+  const field = target.policy.target(target.field);
+  const shown = existingRowFields(opening?.[field.field], field);
+  const next = existingRowFields(checkpoint.draft?.[field.field], field);
+  return [...shown].flatMap(([rowId, before]) => {
+    const after = next.get(rowId), rowCreatedAt = birthAt(opening, rowId, target);
+    return boundedRowId(rowId) && before !== undefined && after !== undefined && before !== after
+      && rowCreatedAt !== undefined && birthAt(checkpoint.draft, rowId, target) === rowCreatedAt
+      ? [{ rowId, rowCreatedAt, before, after, time, observedRevision: baseline.metadata!.revision }] : [];
+  });
+}
+
 export function captureRowFields(checkpoint: SessionCheckpoint, baseline: ResourceSnapshot,
-  predecessor: CommitRequest | undefined, records: readonly CommitRequest[]): AutosaveRowFieldActions {
+  predecessor: CommitRequest | undefined, records: readonly CommitRequest[], manualTime?: ActionTime | null): AutosaveRowFieldActions {
   const byId = new Map(records.map(record => [record.id, record]));
   const opening = predecessor ? predecessor.value : baseline.value;
   const result: AutosaveRowFieldActions = {};
   for (const target of targetsFor(baseline.resource.collection)) {
-    const actions = uncaptured(checkpoint, target).filter(action => birthAt(opening, action.rowId, target) === action.rowCreatedAt)
+    const actions = [...uncaptured(checkpoint, target), ...manualDurationActions(checkpoint, baseline, opening, target, manualTime)].filter(action => birthAt(opening, action.rowId, target) === action.rowCreatedAt)
       .map(action => {
         const predecessorOperationId = knownRowDetailPredecessor(predecessor, byId, baseline, target.policy, request => {
           const captured = request[target.action]?.find(item => item.rowId === action.rowId);

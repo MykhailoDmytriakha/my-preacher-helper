@@ -563,6 +563,7 @@ function GroupDetailView({ editor }: { editor: GroupPageEditor }) {
                 onRenameBlock={title => editor.renameBlock(selectedTemplate, title)}
                 onSetStatus={status => editor.setBlockStatus(selectedTemplate, status)}
                 onRenameStep={title => editor.renameStep(selectedFlowItem, title)}
+                onSetDuration={duration => editor.setStepDuration(selectedFlowItem, duration)}
                 onUpdateFlowItem={(updates) => updateFlowItem(selectedFlowItem.id, updates)}
                 onClose={() => setSelectedFlowItemId(null)}
               />

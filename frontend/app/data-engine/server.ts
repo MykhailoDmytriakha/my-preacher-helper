@@ -22,6 +22,7 @@ import { GROUP_BLOCK_STATUS_POLICY } from './groupBlockStatusAction';
 import { GROUP_BLOCK_TITLE_POLICY, GROUP_STEP_TITLE_POLICY, type GroupFlowHistoryPage } from './groupFlowTitleAction';
 import { GROUP_MEETING_FIELD_POLICY, type GroupMeetingFieldHistoryPage } from './groupMeetingFieldAction';
 import { GROUP_MEETING_FIELD_HISTORY, metadataAfterGroupMeetingFields, orderGroupMeetingFields } from './groupMeetingFieldOrder.server';
+import { alignGroupStepDurationRepresentation, GROUP_STEP_DURATION_POLICY } from './groupStepDurationAction';
 import { PREACH_DATE_FIELD_POLICY, type PreachDateField, type PreachDateFieldHistoryPage } from './preachDateFieldAction';
 import { alignPreachStatusCommand, PREACH_STATUS_POLICY, type PreachStatusHistoryPage, type PreachStatusValue } from './preachStatusAction';
 import { advanceResourceSnapshot, commandFingerprint, getResourcePolicy, isValidIdentifier, TOMBSTONE_OWNER_FIELD, validateCommand } from './protocol';
@@ -396,7 +397,8 @@ function orderGroupFlowFields(command: DataCommand, current: ResourceSnapshot, m
   const block = orderRowDetails(command, current, metadata, serverMs, GROUP_BLOCK_TITLE_POLICY);
   const step = orderRowDetails(block.command, current, metadata, serverMs, GROUP_STEP_TITLE_POLICY);
   const blockStatus = orderRowDetails(step.command, current, metadata, serverMs, GROUP_BLOCK_STATUS_POLICY);
-  return { block, step, blockStatus };
+  const duration = orderRowDetails(blockStatus.command, current, metadata, serverMs, GROUP_STEP_DURATION_POLICY);
+  return { block, step, blockStatus, duration: { ...duration, command: alignGroupStepDurationRepresentation(duration.command, current) } };
 }
 
 async function persistAcceptedCommand(transaction: Transaction, { owner, command, snapshot: primarySnapshot, effects, rawDocuments, dateOrder, meetingOrder, groupFlowOrder, preachingOrder, statusOrder, serviceFlagOrder, serviceStepTitleOrder, councilTopicTitleOrder, councilAssemblyOrder, councilTopicKindOrder, markOrder, fieldOrder }: {
@@ -432,7 +434,8 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
     const blockTitle = metadataAfterRowDetails({ ...snapshot, metadata: meeting }, raw, GROUP_BLOCK_TITLE_POLICY, primary ? groupFlowOrder?.block : undefined);
     const groupStepTitle = metadataAfterRowDetails({ ...snapshot, metadata: blockTitle }, raw, GROUP_STEP_TITLE_POLICY, primary ? groupFlowOrder?.step : undefined);
     const groupBlockStatus = metadataAfterRowDetails({ ...snapshot, metadata: groupStepTitle }, raw, GROUP_BLOCK_STATUS_POLICY, primary ? groupFlowOrder?.blockStatus : undefined);
-    const preaching = metadataAfterRowDetails({ ...snapshot, metadata: groupBlockStatus }, raw, PREACH_DATE_FIELD_POLICY, primary ? preachingOrder : undefined);
+    const groupStepDuration = metadataAfterRowDetails({ ...snapshot, metadata: groupBlockStatus }, raw, GROUP_STEP_DURATION_POLICY, primary ? groupFlowOrder?.duration : undefined);
+    const preaching = metadataAfterRowDetails({ ...snapshot, metadata: groupStepDuration }, raw, PREACH_DATE_FIELD_POLICY, primary ? preachingOrder : undefined);
     const status = metadataAfterRowDetails({ ...snapshot, metadata: preaching }, raw, PREACH_STATUS_POLICY, primary ? statusOrder : undefined);
     const flag = metadataAfterRowDetails({ ...snapshot, metadata: status }, raw, SERVICE_ORDER_FLAG_POLICY, primary ? serviceFlagOrder : undefined);
     const stepTitle = metadataAfterRowDetails({ ...snapshot, metadata: flag }, raw, SERVICE_ORDER_STEP_TITLE_POLICY, primary ? serviceStepTitleOrder : undefined);
@@ -454,6 +457,7 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
   persistRowDetailHistory(transaction, command, primarySnapshot, GROUP_BLOCK_TITLE_POLICY, groupFlowOrder?.block);
   persistRowDetailHistory(transaction, command, primarySnapshot, GROUP_STEP_TITLE_POLICY, groupFlowOrder?.step);
   persistRowDetailHistory(transaction, command, primarySnapshot, GROUP_BLOCK_STATUS_POLICY, groupFlowOrder?.blockStatus);
+  persistRowDetailHistory(transaction, command, primarySnapshot, GROUP_STEP_DURATION_POLICY, groupFlowOrder?.duration);
   persistRowDetailHistory(transaction, command, primarySnapshot, PREACH_DATE_FIELD_POLICY, preachingOrder);
   persistRowDetailHistory(transaction, command, primarySnapshot, PREACH_STATUS_POLICY, statusOrder);
   persistRowDetailHistory(transaction, command, primarySnapshot, SERVICE_ORDER_FLAG_POLICY, serviceFlagOrder);
@@ -554,7 +558,7 @@ export async function processCommand(owner: string, input: unknown): Promise<Com
       dateOrder = orderDatedRow(command, current, raw?._dataEngine, serverMs);
       meetingOrder = orderGroupMeetingFields(dateOrder.command, current, raw?._dataEngine, serverMs);
       groupFlowOrder = orderGroupFlowFields(meetingOrder.command, current, raw?._dataEngine, serverMs);
-      preachingOrder = orderRowDetails(groupFlowOrder.blockStatus.command, current, raw?._dataEngine, serverMs, PREACH_DATE_FIELD_POLICY);
+      preachingOrder = orderRowDetails(groupFlowOrder.duration.command, current, raw?._dataEngine, serverMs, PREACH_DATE_FIELD_POLICY);
       const statusCommand = alignPreachStatusCommand(preachingOrder.command, current);
       statusOrder = orderRowDetails(statusCommand, current, raw?._dataEngine, serverMs, PREACH_STATUS_POLICY);
       serviceFlagOrder = orderRowDetails(statusOrder.command, current, raw?._dataEngine, serverMs, SERVICE_ORDER_FLAG_POLICY);
@@ -603,7 +607,7 @@ export async function processCommand(owner: string, input: unknown): Promise<Com
           return matches;
         },
       });
-      const plan = retainUncertainChronology(planned, command, current, [...(dateOrder.uncertain ?? []), ...meetingOrder.uncertain, ...groupFlowOrder.block.uncertain, ...groupFlowOrder.step.uncertain, ...groupFlowOrder.blockStatus.uncertain, ...preachingOrder.uncertain, ...statusOrder.uncertain, ...serviceFlagOrder.uncertain, ...serviceStepTitleOrder.uncertain, ...councilTopicTitleOrder.uncertain, ...councilAssemblyOrder.uncertain, ...councilTopicKindOrder.uncertain, ...(markOrder.uncertain ?? []), ...(fieldOrder.uncertain ?? [])]);
+      const plan = retainUncertainChronology(planned, command, current, [...(dateOrder.uncertain ?? []), ...meetingOrder.uncertain, ...groupFlowOrder.block.uncertain, ...groupFlowOrder.step.uncertain, ...groupFlowOrder.blockStatus.uncertain, ...groupFlowOrder.duration.uncertain, ...preachingOrder.uncertain, ...statusOrder.uncertain, ...serviceFlagOrder.uncertain, ...serviceStepTitleOrder.uncertain, ...councilTopicTitleOrder.uncertain, ...councilAssemblyOrder.uncertain, ...councilTopicKindOrder.uncertain, ...(markOrder.uncertain ?? []), ...(fieldOrder.uncertain ?? [])]);
       const acceptedAt = new Date().toISOString();
       // The planner exposes writes only for acknowledged commands.
       effects = plan.writes.map(effect => stampAcceptedResource(snapshotFromRaw(effect.resource, rawDocuments.get(resourceKey(effect.resource))), effect, acceptedAt));
@@ -737,9 +741,9 @@ export async function listServiceOrderFlagHistory(owner: string, orderId: string
 }
 
 export async function listGroupFlowHistory(owner: string, groupId: string, generation: string,
-  cursor: string | undefined, field: 'block' | 'step' | 'status'): Promise<GroupFlowHistoryPage> {
+  cursor: string | undefined, field: 'block' | 'step' | 'status' | 'duration'): Promise<GroupFlowHistoryPage> {
   const resource = { collection: 'groups', id: groupId };
-  const policy = { block: GROUP_BLOCK_TITLE_POLICY, step: GROUP_STEP_TITLE_POLICY, status: GROUP_BLOCK_STATUS_POLICY }[field];
+  const policy = { block: GROUP_BLOCK_TITLE_POLICY, step: GROUP_STEP_TITLE_POLICY, status: GROUP_BLOCK_STATUS_POLICY, duration: GROUP_STEP_DURATION_POLICY }[field];
   const page = await listHistoryEntries<GroupFlowHistoryPage['entries'][number]>(owner, resource, policy.history, generation, cursor, 'group-gone');
   return { owner, groupId, generation, ...page };
 }

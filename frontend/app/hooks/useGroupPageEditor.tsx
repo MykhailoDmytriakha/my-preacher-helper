@@ -1,14 +1,14 @@
 'use client';
 
+import { useGroupFlowComparison } from '@/components/groups/groupFlowComparison';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
-import { readGroupFlowFieldConflict } from '@/data-engine/react.client';
 import { useGroupDataDocument } from '@/hooks/useGroupDataDocument';
 import { useGroupMeetingEditor } from '@/hooks/useGroupMeetingEditor';
 import { hydrateGroup, isGroupStatus } from '@/utils/groupDocument';
 import { useTranslation } from '@locales/useTranslation';
 
 import type { GroupPageEditor } from './groupPageEditor';
-import type { Group, GroupBlockTemplate } from '@/models/models';
+import type { Group, GroupBlockTemplate, GroupFlowItem } from '@/models/models';
 import type { Dispatch, SetStateAction } from 'react';
 
 const nextValue = <T,>(next: SetStateAction<T>, previous: T): T =>
@@ -58,17 +58,19 @@ export function useGroupPageEditor(groupId: string): GroupPageEditor {
   const renameBlock: GroupPageEditor['renameBlock'] = (block, title) => editBlock(block, 'group-block-title', row => ({ ...row, title }));
   const setBlockStatus: GroupPageEditor['setBlockStatus'] = (block, status) =>
     editBlock(block, 'group-block-status', row => ({ ...row, status }));
-  const renameStep: GroupPageEditor['renameStep'] = (step, title) => data.update(current => {
+  const editStep = (step: Pick<GroupFlowItem, 'id' | 'templateId'>, kind: 'group-step-title' | 'group-step-duration',
+    mutate: (row: GroupFlowItem) => GroupFlowItem) => data.update(current => {
     if (!current.flow.some(row => row.id === step.id && row.templateId === step.templateId)) {
       throw Object.assign(new Error('The step that was shown changed'), { code: 'decision-changed' });
     }
-    return { ...current, flow: current.flow.map(row => row.id === step.id ? { ...row, instanceTitle: title || undefined } : row) };
-  }, { action: { kind: 'group-step-title', rowId: step.id } });
+    return { ...current, flow: current.flow.map(row => row.id === step.id ? mutate(row) : row) };
+  }, { action: { kind, rowId: step.id } });
+  const renameStep: GroupPageEditor['renameStep'] = (step, title) =>
+    editStep(step, 'group-step-title', row => ({ ...row, instanceTitle: title || undefined }));
+  const setStepDuration: GroupPageEditor['setStepDuration'] = (step, durationMin) =>
+    editStep(step, 'group-step-duration', row => ({ ...row, durationMin }));
   const checkpoint = data.document.state?.checkpoint;
-  const comparison = checkpoint && readGroupFlowFieldConflict(checkpoint);
-  const comparisonLabel = { block: 'groupFlow.editor.blockTitleLabel', step: 'groupFlow.editor.stepTitleLabel', status: 'groupFlow.editor.statusLabel' };
-  const comparisonText = (field: keyof typeof comparisonLabel, value: string | null) => field === 'status' ? t('groupFlow.status.' + value)
-    : value || t(field === 'block' ? 'common.untitled' : 'groupFlow.editor.useBlockName');
+  const comparison = useGroupFlowComparison(manual ? undefined : checkpoint, t);
   const titleHistory = historyScope && { ...historyScope, restore: editTitle };
   const statusHistory = historyScope && { ...historyScope, field: 'status' as const, restore: async (next: string) => {
     if (!isGroupStatus(next)) throw new Error('Invalid group status');
@@ -87,7 +89,7 @@ export function useGroupPageEditor(groupId: string): GroupPageEditor {
     group, retainedGroup, loading: data.loading || Boolean(group && meeting.loading), title: group?.title ?? '', setTitle: next => { void editTitle(next).catch(() => undefined); }, titleHistory,
     description: group?.description ?? '', setDescription: next => change(current => ({ ...current, description: nextValue(next, current.description ?? '') })),
     status: group?.status ?? 'draft', setStatus: next => { void editStatus(next).catch(() => undefined); }, statusHistory, templates: group?.templates ?? [], setTemplates: field('templates'),
-    renameBlock, renameStep, setBlockStatus, flowTitleScope: historyScope,
+    renameBlock, renameStep, setBlockStatus, setStepDuration, flowTitleScope: historyScope,
     flow: group?.flow ?? [], setFlow: field('flow'), meetingDate: first?.date ?? '', setMeetingDate: meeting.field('date'),
     meetingLocation: first?.location ?? '', setMeetingLocation: meeting.field('location'),
     meetingAudience: first?.audience ?? '', setMeetingAudience: meeting.field('audience'),
@@ -97,13 +99,7 @@ export function useGroupPageEditor(groupId: string): GroupPageEditor {
       restore: meeting.restoreField,
     } : undefined,
     deleteGroupDetail: data.deleteGroupDetail,
-    feedback: <DataSyncStatus comparison={!manual && comparison ? {
-      identity: comparison.identity,
-      title: t(comparisonLabel[comparison.field]),
-      mine: comparisonText(comparison.field, comparison.mine),
-      stored: comparisonText(comparison.field, comparison.stored),
-      valueKind: 'field', scopedChoice: true,
-    } : undefined} subject={manual ? meeting.form.recoveryIdentity : data.document.recoveryIdentity} status={status} error={error} errorWords={meeting.form.error ? meeting.form.errorWords : data.document.errorWords}
+    feedback: <DataSyncStatus comparison={comparison || undefined} subject={manual ? meeting.form.recoveryIdentity : data.document.recoveryIdentity} status={status} error={error} errorWords={meeting.form.error ? meeting.form.errorWords : data.document.errorWords}
       onKeepLocal={manual ? meeting.form.keepLocal : () => data.keepLocal(comparison ? checkpoint : undefined)}
       onAcceptRemote={manual ? meeting.form.acceptRemote : () => data.acceptRemote(comparison ? checkpoint : undefined)} onRetry={manual ? meeting.form.retry : data.refresh}
       recoveryChoices={choices} onRecover={id => id.startsWith('meeting:') ? meeting.recovery.recover(id.slice(8)) : recovery.recover(id.slice(9))}

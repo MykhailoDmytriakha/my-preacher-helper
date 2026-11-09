@@ -30,5 +30,5 @@ export function useGroupConductForm(groupId: string, available = true) {
     if (!flow(current).some(item => item.id === id)) throw Object.assign(new Error('The meeting block no longer exists'), { code: 'part-gone' });
     return { ...current, flow: flow(current).map(item => item.id === id ? { ...item, durationMin } : item) } as unknown as DocumentData;
   });
-  return { form, flow: flow(form.data), updateDuration, recovery };
+  return { form, flow: flow(form.data), updateDuration, saveDurations: () => form.save(undefined, form.captureDocumentMetadataAction()), recovery };
 }

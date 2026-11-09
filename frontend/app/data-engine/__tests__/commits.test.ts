@@ -867,6 +867,32 @@ describe('Durable commit requests', () => {
     }));
   });
 
+  it('keeps an explicit duration clear that returns to the opening value before autosave', async () => {
+    const block = { id: 'block', type: 'custom', title: 'Name', content: 'Words', status: 'draft', createdAt: 'now', updatedAt: 'now' };
+    const step = { id: 'step', templateId: block.id, order: 1, durationMin: null };
+    const opening: ResourceSnapshot = {
+      resource: { collection: 'groups', id: 'group' },
+      value: { userId: 'owner', title: 'Group', status: 'draft', templates: [block], flow: [step], createdAt: 'now', updatedAt: 'now' },
+      metadata: { protocol: 1, generation: 'group', revision: 1, deleted: false },
+    };
+    const s = setup({ opening });
+    const { queue } = s.makeQueue();
+    const editor = new DataSession(opening);
+    const time = { earliestMs: 1_800_000_000_030, latestMs: 1_800_000_000_034 };
+    editor.edit({ ...opening.value, flow: [{ ...step, durationMin: 24 }] }, undefined,
+      { field: 'group-step-duration', rowId: step.id, time: { earliestMs: 1_800_000_000_020, latestMs: 1_800_000_000_024 } });
+    editor.edit(opening.value, undefined, { field: 'group-step-duration', rowId: step.id, time });
+    const record = await queue.save('group', editor.checkpoint());
+    const action = { rowId: step.id, rowCreatedAt: block.id, before: null, after: null, observedRevision: 1, time };
+    expect(record?.groupStepDurationActions).toEqual([action]);
+    await s.makeQueue().queue.drain(true);
+    expect(s.transport.send).toHaveBeenCalledWith(expect.objectContaining({ operationId: record!.id,
+      groupStepDurationActions: [action], changes: [{ path: ['flow'],
+        before: { exists: true, value: [step] }, after: { exists: true, value: [step] },
+      }],
+    }));
+  });
+
   it('captures a return to the opening block status before the autosave debounce expires', async () => {
     const block = { id: 'block', type: 'custom', title: 'Name', content: 'Words', status: 'draft', createdAt: 'now', updatedAt: 'now' };
     const opening: ResourceSnapshot = {

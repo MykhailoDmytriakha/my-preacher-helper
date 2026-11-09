@@ -16,6 +16,8 @@ import {
 } from './server';
 
 const histories = {
+  groupStepDuration: { collection: 'groups', list: (owner: string, id: string, generation: string, cursor?: string) =>
+    listGroupFlowHistory(owner, id, generation, cursor, 'duration') },
   groupBlockStatus: { collection: 'groups', list: (owner: string, id: string, generation: string, cursor?: string) =>
     listGroupFlowHistory(owner, id, generation, cursor, 'status') },
   groupBlockTitle: { collection: 'groups', list: (owner: string, id: string, generation: string, cursor?: string) =>

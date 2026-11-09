@@ -1628,6 +1628,49 @@ describe('transactional DataEngine server', () => {
   });
 
   it.each([
+    { label: 'earlier number', at: 15, phoneMinutes: 24, expected: 40, kind: 'acknowledged' },
+    { label: 'later number', at: 100, phoneMinutes: 24, expected: 24, kind: 'acknowledged' },
+    { label: 'later clear', at: 100, phoneMinutes: null, expected: null, kind: 'acknowledged' },
+    { label: 'explicit return to the opening duration', at: 100, phoneMinutes: 15, expected: 15, kind: 'acknowledged' },
+    { label: 'unknown clear', at: null, phoneMinutes: null, expected: 40, kind: 'conflict' },
+    { label: 'later zero over a missing legacy duration', at: 100, phoneMinutes: 0, expected: 0, kind: 'acknowledged', legacyMissing: true },
+  ])('orders one group step duration while keeping adjacent work: $label', async ({ at, phoneMinutes, expected, kind, legacyMissing }) => {
+    const resource = { collection: 'groups', id: 'step-duration-order' };
+    const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] };
+    const now = '2026-11-08T00:00:00.000Z';
+    const block = { id: 'block', type: 'custom', title: 'Block name', content: 'Keep words', status: 'draft', createdAt: now, updatedAt: now };
+    const step = { id: 'step', templateId: block.id, order: 1, durationMin: 15 };
+    const other = { ...step, id: 'other', order: 2, durationMin: 7 };
+    const flow = [step, other];
+    expect((await processCommand(base.owner, { ...base, kind: 'create', operationId: 'seed', generation: null,
+      value: { userId: base.owner, title: 'Group', status: 'draft', createdAt: now, updatedAt: now, templates: [block], flow },
+    })).kind).toBe('acknowledged');
+    const edit = (operationId: string, after: Omit<typeof step, 'durationMin'> & { durationMin?: number | null; instanceTitle?: string }, time: number | null) => ({
+      ...base, kind: 'update', operationId, generation: 'seed',
+      changes: [{ path: ['flow'], before: { exists: true, value: flow }, after: { exists: true, value: [after, other] } }],
+      groupStepDurationActions: [{ rowId: step.id, rowCreatedAt: step.templateId, before: step.durationMin,
+        after: after.durationMin ?? null, observedRevision: 1,
+        time: time === null ? null : { earliestMs: 1_800_000_000_000 + time, latestMs: 1_800_000_000_004 + time } }],
+    });
+    const { durationMin: _duration, ...stepWithoutDuration } = step;
+    const computer = { ...stepWithoutDuration, ...(!legacyMissing && { durationMin: 40 }), instanceTitle: 'Keep this label' };
+    expect((await processCommand(base.owner, edit('computer', computer, 65))).kind).toBe('acknowledged');
+    const phone = edit('phone', { ...step, durationMin: phoneMinutes }, at);
+    const answer = await processCommand(base.owner, phone);
+    expect(answer).toMatchObject({ kind, snapshot: { value: { templates: [block], flow: [{ ...computer, durationMin: expected }, other] } } });
+    expect(await processCommand(base.owner, phone)).toEqual(answer);
+    const history = [...documents.entries()].filter(([path]) => path.startsWith('groups/step-duration-order/_stepDurationHistory/'));
+    if (at === null) {
+      expect(answer).toMatchObject({ conflicts: [{ path: ['flow', 'id:step', 'durationMin'] }] });
+      expect(history).toHaveLength(0);
+    } else {
+      expect(history).toHaveLength(1);
+      expect(history[0][1]).toMatchObject({ fields: [{ rowId: step.id, field: 'durationMin',
+        value: expected === 40 ? phoneMinutes : computer.durationMin ?? null, winnerValue: expected }] });
+    }
+  });
+
+  it.each([
     { label: 'earlier', mobileAt: 15, title: 'Computer opening', kind: 'acknowledged' },
     { label: 'later', mobileAt: 100, title: 'Phone opening', kind: 'acknowledged' },
     { label: 'unclocked', mobileAt: null, title: 'Computer opening', kind: 'conflict' },

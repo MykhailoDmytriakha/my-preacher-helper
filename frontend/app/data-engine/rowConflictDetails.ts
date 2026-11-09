@@ -6,6 +6,7 @@ import { COUNCIL_TOPIC_TITLE, councilTopicTitleRow } from './councilTopicTitleAc
 import { equalValues, object } from './fieldValues';
 import { GROUP_BLOCK_STATUS_POLICY } from './groupBlockStatusAction';
 import { GROUP_BLOCK_TITLE_POLICY, GROUP_STEP_TITLE_POLICY } from './groupFlowTitleAction';
+import { GROUP_STEP_DURATION_POLICY } from './groupStepDurationAction';
 import { existingRowField, replaceExistingRowField } from './rowFieldAction';
 import { readSermonConflictField } from './sermonFieldChoice';
 import { SERVICE_ORDER_FLAG_TARGET, SERVICE_ORDER_STEP_TITLE_TARGET, serviceOrderStepField } from './serviceOrderStepAction';
@@ -77,19 +78,24 @@ export function readGroupFlowFieldConflict(checkpoint: SessionCheckpoint) {
     || !remoteCandidate?.value || remoteCandidate.metadata?.generation !== confirmed.metadata?.generation) return undefined;
   const { path } = conflicts[0];
   const isBlock = path[0] === 'templates';
-  const field: 'block' | 'step' | 'status' = !isBlock ? 'step' : path[2] === 'status' ? 'status' : 'block';
-  const policy = { block: GROUP_BLOCK_TITLE_POLICY, step: GROUP_STEP_TITLE_POLICY, status: GROUP_BLOCK_STATUS_POLICY }[field];
-  const target = field === 'status' ? GROUP_BLOCK_STATUS_POLICY.target('status')
-    : (isBlock ? GROUP_BLOCK_TITLE_POLICY : GROUP_STEP_TITLE_POLICY).target('title');
+  const field: 'block' | 'step' | 'status' | 'duration' = isBlock ? (path[2] === 'status' ? 'status' : 'block')
+    : (path[2] === 'durationMin' ? 'duration' : 'step');
+  const targets = {
+    block: { birth: GROUP_BLOCK_TITLE_POLICY.birth, target: GROUP_BLOCK_TITLE_POLICY.target('title') },
+    step: { birth: GROUP_STEP_TITLE_POLICY.birth, target: GROUP_STEP_TITLE_POLICY.target('title') },
+    status: { birth: GROUP_BLOCK_STATUS_POLICY.birth, target: GROUP_BLOCK_STATUS_POLICY.target('status') },
+    duration: { birth: GROUP_STEP_DURATION_POLICY.birth, target: GROUP_STEP_DURATION_POLICY.target('durationMin') },
+  };
+  const { birth: birthTarget, target }: { birth: RowFieldTarget<string>; target: RowFieldTarget<string | number | null> } = targets[field];
   if (path.length !== 3 || path[0] !== target.field || !path[1].startsWith('id:') || path[2] !== target.leaf) return undefined;
   const id = path[1].slice(3);
-  const birth = existingRowField(confirmed.value[target.field], id, policy.birth);
+  const birth = existingRowField(confirmed.value[target.field], id, birthTarget);
   const before = existingRowField(confirmed.value[target.field], id, target);
   const mine = existingRowField(draft[target.field], id, target);
   const stored = existingRowField(remoteCandidate.value[target.field], id, target);
   if (birth === undefined || before === undefined || mine === undefined || stored === undefined || mine === stored
-    || existingRowField(draft[target.field], id, policy.birth) !== birth
-    || existingRowField(remoteCandidate.value[target.field], id, policy.birth) !== birth) return undefined;
+    || existingRowField(draft[target.field], id, birthTarget) !== birth
+    || existingRowField(remoteCandidate.value[target.field], id, birthTarget) !== birth) return undefined;
   const compared = (value: DocumentData) => {
     const rows = replaceExistingRowField(value[target.field], id, before, target);
     const normalized = isBlock && Array.isArray(rows) ? rows.map(row => object(row) && row.id === id

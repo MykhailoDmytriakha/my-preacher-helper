@@ -6,7 +6,7 @@ import { councilTopicConflictCode, rejectCouncilTopicChoice } from './councilTop
 import { autosaveAcknowledgementAncestor, autosaveFieldTargets, hasUncapturedAutosaveField, sameAutosaveCapture, stageAutosaveField } from './documentFieldAction';
 import { prepareDomainCommand } from './domainPolicy';
 import { ACTION_SLOT, editorSlot } from './editorIdentity';
-import { keepReselectedBlockStatuses } from './groupBlockStatusAction';
+import { keepReselectedGroupFlowFields } from './groupFlowChoice';
 import { chooseLocalPlacement } from './localPlacementChoice';
 import { projectManualSelection } from './manualScope';
 import { chooseLocalPreachDateEdits } from './preachDateChoice';
@@ -361,7 +361,7 @@ export class DataSession {
         merged.value.exists ? merged.value.value as DocumentData : null, mergeFields);
       const statusChoice = chooseLocalPreachDateEdits(this.state.confirmed, this.state.draft, candidate, preachStatuses);
       const resolved = this.state.confirmed.resource.collection === 'groups'
-        ? keepReselectedBlockStatuses(this.state.confirmed.value, this.state.draft, candidate.value, chosen, this.state.conflicts)
+        ? keepReselectedGroupFlowFields(this.state.confirmed.value, this.state.draft, candidate.value, chosen, this.state.conflicts)
         : statusChoice ?? chosen;
       const council = this.state.confirmed.resource.collection === 'councils';
       const lifecycle = council ? councilLifecycleValue(this.state.draft) : undefined;
