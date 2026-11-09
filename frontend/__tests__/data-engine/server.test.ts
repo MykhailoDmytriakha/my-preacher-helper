@@ -361,6 +361,45 @@ describe('relation scope with unrelated owner documents', () => {
       expect(documents.get('series/beta')?.items).toEqual(alreadyInBeta);
     });
 
+    it.each([true, false])('reconciles a legacy retained destination before trusting the head (third membership: %s)', async thirdMembership => {
+      for (let index = 0; index < 105; index++) putSeries(`unrelated-${index}`);
+      const alreadyInBeta = [unrelated, { ...sermon, position: 2 }];
+      putSeries('alpha', [sermon]);
+      putSeries('beta', alreadyInBeta);
+      putSeries('gamma', thirdMembership ? [sermon] : []);
+      const legacy = { ...beta(earlier), operationId: 'legacy-retains-beta', edits: [
+        { resource: seriesB, generation: null, beforeItems: alreadyInBeta, afterItems: alreadyInBeta },
+        { resource: seriesA, generation: null, beforeItems: [sermon], afterItems: [] },
+      ] };
+      expect((await processCommand(owner, legacy)).kind).toBe('acknowledged');
+      const headPath = 'sermons/g/_seriesMembershipOrder/head';
+      expect(documents.get(headPath)).toMatchObject({ location: { id: 'beta' }, time: null });
+      expect(documents.get(headPath)).not.toHaveProperty('catalogVerified');
+      const before = documentReadUnits;
+      const ordered = await processCommand(owner, { ...beta(later), operationId: 'ordered-removal', generation: legacy.operationId,
+        edits: [{ resource: seriesB, generation: legacy.operationId, beforeItems: alreadyInBeta, afterItems: [unrelated],
+          membership: { time: later, observedRevision: 1, added: [], removed: membership(later).added } }],
+      });
+      if (thirdMembership) {
+        expect(ordered).toMatchObject({ kind: 'refused', code: 'membership-already-assigned' });
+        expect(documents.get('series/beta')?.items).toEqual(alreadyInBeta);
+        expect(documents.get('series/gamma')?.items).toEqual([sermon]);
+        expect(documents.get(headPath)).toMatchObject({ location: { id: 'beta' } });
+        return;
+      }
+      expect(ordered).toMatchObject({ kind: 'acknowledged' });
+      expect(documentReadUnits - before).toBeGreaterThanOrEqual(105);
+      expect(documents.get(headPath)).toMatchObject({ location: null, catalogVerified: true });
+      const verified = documentReadUnits;
+      const gamma = { collection: 'series', id: 'gamma' };
+      expect((await processCommand(owner, { ...alpha(later), operationId: 'assign-after-reconciliation', resource: gamma,
+        edits: [{ ...alpha(later).edits[0], resource: gamma, membership: { ...membership(later), time: null,
+          observedCatalogVersion: documents.get(`${HEADS_COLLECTION}/${collectionHeadId(owner, 'series')}`)!.version as number } }],
+      })).kind).toBe('acknowledged');
+      expect(documentReadUnits - verified).toBe(5);
+      expect(documents.get('series/gamma')?.items).toEqual([sermon]);
+    });
+
     it('retains the old guard when the actions have no provable order', async () => {
       expect(await processCommand(owner, beta(earlier))).toMatchObject({ kind: 'acknowledged' });
       const refusal = await processCommand(owner, alpha(earlier));

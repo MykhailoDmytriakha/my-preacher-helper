@@ -22,6 +22,7 @@ export type SeriesMembershipHead = {
   time: ActionTime | null;
   operationId: string;
   catalogVersion?: number;
+  catalogVerified?: true;
   applied?: true;
 };
 export type SeriesMembershipWrite = {
@@ -86,7 +87,8 @@ function matchingHead(raw: unknown, owner: string, member: ResourceSnapshot, cur
   if (time === undefined) return undefined;
   const catalogVersion = Number.isSafeInteger(head.catalogVersion) ? head.catalogVersion : undefined;
   return { owner, memberGeneration: head.memberGeneration ?? null, location: head.location, operationId: head.operationId, time,
-    ...(catalogVersion !== undefined && { catalogVersion }), ...(head.applied === true && { applied: true }) };
+    ...(catalogVersion !== undefined && { catalogVersion }), ...(head.catalogVerified === true && { catalogVerified: true }),
+    ...(head.applied === true && { applied: true }) };
 }
 
 /** Use the head as a locator only when it belongs to this live member. */
@@ -97,8 +99,9 @@ export function indexedSeriesMembership(raw: unknown, owner: string, member: Res
     || (location.generation !== null && !isValidIdentifier(location.generation))
     || !Number.isSafeInteger(location.revision) || location.revision < 0 || typeof location.label !== 'string')) return undefined;
   const head = matchingHead(raw, owner, member, location);
-  // An older Clear could write a null head without checking for legacy duplicates.
-  return head && (location || head.applied || head.time) ? location : undefined;
+  // Older removals may point to a retained series without checking for other copies.
+  // Timed or applied historical decisions went through the ordered catalog check.
+  return head && (head.catalogVerified || head.applied || head.time) ? location : undefined;
 }
 
 /** A single series tombstone records its removal without per-member writes. */
@@ -132,9 +135,11 @@ export function resolveSeriesMembership(move: SeriesMembershipMove, owner: strin
   const memberRef = member.resource;
   if (!causal && !order) {
     if (!sameLocation(current, desired)) return null;
-    if (!previousTime) return { incoming: false };
+    if (!previousTime) return { incoming: false, ...(previous && !previous.catalogVerified && {
+      write: { member: memberRef, head: { ...previous, catalogVerified: true } },
+    }) };
     const { applied: _unprovedApplication, ...sameAssignment } = previous!;
-    return { incoming: false, write: { member: memberRef, head: { ...sameAssignment, time: null } } };
+    return { incoming: false, write: { member: memberRef, head: { ...sameAssignment, time: null, catalogVerified: true } } };
   }
   const incoming = Boolean(causal || order > 0);
   const displaced = !causal && time && previousTime && !sameLocation(current, desired)
@@ -142,7 +147,7 @@ export function resolveSeriesMembership(move: SeriesMembershipMove, owner: strin
       actionTime: incoming ? previousTime : time, winnerTime: incoming ? time : previousTime }
     : undefined;
   const head: SeriesMembershipHead | undefined = incoming ? {
-    owner, memberGeneration: member.metadata?.generation ?? null, location: desired, time, operationId,
+    owner, memberGeneration: member.metadata?.generation ?? null, location: desired, time, operationId, catalogVerified: true,
     ...(!sameLocation(current, desired) && { applied: true }),
   } : undefined;
   return { incoming, ...(head || displaced ? { write: { member: memberRef, ...(head && { head }), ...(displaced && { displaced }) } } : {}) };

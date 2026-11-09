@@ -245,13 +245,13 @@ class RelationPlanner {
         assigned.set(identity, snapshot);
       }
     }
-    for (const [identity, member] of added) this.recordUnclockedMembership(member, assigned.get(identity));
+    for (const [identity, member] of added) this.recordUnclockedMembership(member, assigned.get(identity), true);
   }
 
-  private recordUnclockedMembership(member: ResourceRef, destination?: ResourceSnapshot): void {
+  private recordUnclockedMembership(member: ResourceRef, destination: ResourceSnapshot | undefined, catalogVerified = false): void {
     this.seriesMembershipWrites.push({ member, head: {
       owner: this.command.owner, memberGeneration: null, time: null, operationId: this.command.operationId,
-      location: destination ? seriesLocation(destination) : null,
+      location: destination ? seriesLocation(destination) : null, ...(catalogVerified && { catalogVerified: true }),
     } });
   }
 
