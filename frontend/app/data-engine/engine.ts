@@ -1864,9 +1864,10 @@ export class DataEngine {
             throw Object.assign(new Error('The prayer status opening changed'), { code: 'prayer-status-basis-changed' });
           }
         }
-        const lifecycle = captured?.kind === 'council-lifecycle' ? { field: 'heldAt' as const, time: captured.time } : undefined;
-        const persistence = controller.edit(next, undefined, lifecycle);
-        const saving = controller.save(undefined, undefined, onCaptured, captureScope, lifecycle ? undefined : captured);
+        const stamp = captured?.kind === 'council-lifecycle' ? { field: 'heldAt' as const, time: captured.time }
+          : captured?.kind === 'thought-placement' ? { field: 'thought-placement' as const, rowId: captured.rowId, time: captured.time } : undefined;
+        const persistence = controller.edit(next, captured?.kind === 'thought-placement' ? captured.shown : undefined, stamp);
+        const saving = controller.save(undefined, undefined, onCaptured, captureScope, stamp ? undefined : captured);
         return Promise.all([persistence, saving]).then(() => { active(); this.backgroundDrain(); this.prepareCommitsInBackground(); active(); });
       };
       const remove = async (onCaptured?: (receipt: DocumentWriteReceipt) => void, captureScope?: string) => {
@@ -2383,9 +2384,9 @@ export class DataEngine {
           : action && 'rowId' in action && !('field' in action) ? action : undefined);
         if (updater) {
           const staged = scope.update(updater, fieldInput);
-          const saving = scope.save(dateInput, status, metadata?.time);
+          const saving = scope.save(dateInput, status, metadata?.time, metadata?.thoughtPlacementId);
           await Promise.all([staged, saving]);
-        } else await scope.save(dateInput, status, metadata?.time);
+        } else await scope.save(dateInput, status, metadata?.time, metadata?.thoughtPlacementId);
         if (!scope.getState().dirty) await scope.cancel();
       }),
       cancel: () => execute(async () => {

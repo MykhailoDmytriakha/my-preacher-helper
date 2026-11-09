@@ -1,5 +1,6 @@
 import { projectExactManualChoice } from '../manualChoice';
 import { applyCommand, validateCommand } from '../protocol';
+import { readThoughtPlacementComparison } from '../rowConflictDetails';
 import { keepUncontestedSermonFields } from '../sermonFieldChoice';
 import { DataSession } from '../session';
 import type { CommitRequest } from '../commits';
@@ -40,6 +41,39 @@ describe('DataSession', () => {
     const otherEdit = { ...neighbor, isLocked: true };
     expect(keepUncontestedSermonFields(base, { thoughts: [locked, otherEdit] }, candidate, conflicts)).toEqual({
       thoughts: [saved, otherEdit],
+    });
+  });
+
+  it('offers complete thought destinations and retains independent words whichever side is chosen', () => {
+    const location = (outlinePointId: string, subPointId: string | null) => ({ outlinePointId, subPointId });
+    const opening = location('first', 'first-sub');
+    const saved = location('last', null);
+    const thought = { id: 'one', date: '2026-11-08', tags: [], text: 'Opening words', ...opening };
+    const outline = { introduction: [{ id: 'first', text: 'First', subPoints: [{ id: 'first-sub', text: 'Sub', position: 0 }] }],
+      main: [], conclusion: [{ id: 'last', text: 'Last' }] };
+    const initialBoard = { introduction: ['one'], main: [], conclusion: [], ambiguous: [] };
+    const savedBoard = { introduction: [], main: [], conclusion: ['one'], ambiguous: [] };
+    const base = { ...snap(), resource: { collection: 'sermons', id: 'sermon' },
+      value: { thoughts: [thought], outline, structure: initialBoard, thoughtsBySection: initialBoard } };
+    const candidate = { ...base, metadata: { ...base.metadata!, revision: 2 },
+      value: { ...base.value, thoughts: [{ ...thought, ...saved }], structure: savedBoard, thoughtsBySection: savedBoard } };
+    const draft = { ...base.value, thoughts: [{ ...thought, text: 'Independent new words' }] };
+    const conflicts = [{ path: ['thoughts', 'id:one', 'outlineLocation'], base: { exists: true, value: opening },
+      mine: { exists: true, value: opening }, theirs: { exists: true, value: saved } }];
+    const editor = new DataSession(base);
+    editor.edit(draft);
+    editor.registerCommit('placement-save', 1, draft);
+    editor.accept({ kind: 'conflict', operationId: 'placement-save', snapshot: candidate, conflicts });
+    expect(readThoughtPlacementComparison(editor.checkpoint())).toMatchObject({
+      locations: [{ id: 'one', mine: opening, stored: saved }],
+    });
+    editor.release('placement-save');
+    editor.keepLocal();
+    expect(editor.checkpoint()).toMatchObject({ dirty: true, draft: {
+      ...draft, thoughts: [{ ...thought, text: 'Independent new words' }],
+    } });
+    expect(keepUncontestedSermonFields(base, draft, candidate, conflicts)).toEqual({
+      ...candidate.value, thoughts: [{ ...thought, ...saved, text: 'Independent new words' }],
     });
   });
 

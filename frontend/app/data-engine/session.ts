@@ -13,6 +13,7 @@ import { equalValues, mergeDocumentFields, mergeFields } from './protocol';
 import { acknowledgeRowFields, clearRowFieldDrafts, hasUncapturedAutosaveRowField, registerRowFields, rowFieldAckAncestor, stageRowFields } from './rowFieldAutosave';
 import { keepReselectedRowFields } from './rowReselectionChoice';
 import { canReplaceSnapshot } from './snapshotFreshness';
+import { localThoughtPlacementChoices } from './thoughtPlacementAction';
 
 import type { CommitRequest } from './commits';
 import type { AutosaveFieldActions, AutosaveFieldDrafts, AutosaveFieldStamp } from './documentFieldAction';
@@ -358,7 +359,8 @@ export class DataSession {
       rejectCouncilTopicChoice(councilTopicConflictCode(merged.conflicts));
       const chosen = chooseLocalPlacement(this.state.confirmed.resource.collection,
         this.state.confirmed.value, this.state.draft, candidate.value,
-        merged.value.exists ? merged.value.value as DocumentData : null, mergeFields);
+        merged.value.exists ? merged.value.value as DocumentData : null, mergeFields,
+        localThoughtPlacementChoices(this.state.conflicts, this.state.confirmed.value, this.state.draft, candidate.value));
       const statusChoice = chooseLocalPreachDateEdits(this.state.confirmed, this.state.draft, candidate, preachStatuses);
       const resolved = keepReselectedRowFields(this.state.confirmed.resource.collection, this.state.confirmed.value,
         this.state.draft, candidate.value, statusChoice ?? chosen, this.state.conflicts);

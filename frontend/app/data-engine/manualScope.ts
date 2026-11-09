@@ -60,8 +60,8 @@ export interface ManualScopeRecord {
   recoverySavedRequestId?: string;
 }
 export type ManualFieldInput = GroupMeetingFieldInput | PreachDateFieldInput;
-export type ManualDocumentMetadataSave = { documentMetadata: { time: ActionTime | null; dateAction?: DatedRowActionCapture } };
-export type ManualSaveOptions = { predecessorId?: string | null; preachDateAction?: DatedRowActionCapture; meetingDateAction?: DatedRowActionCapture; groupMeetingFieldCaptures?: GroupMeetingFieldCaptures; preachDateFieldSave?: PreachDateFieldSave; preachStatusCapture?: PreachStatusCapture; documentMetadataTime?: ActionTime | null };
+export type ManualDocumentMetadataSave = { documentMetadata: { time: ActionTime | null; dateAction?: DatedRowActionCapture; thoughtPlacementId?: string } };
+export type ManualSaveOptions = { predecessorId?: string | null; preachDateAction?: DatedRowActionCapture; meetingDateAction?: DatedRowActionCapture; groupMeetingFieldCaptures?: GroupMeetingFieldCaptures; preachDateFieldSave?: PreachDateFieldSave; preachStatusCapture?: PreachStatusCapture; documentMetadataTime?: ActionTime | null; thoughtPlacementId?: string };
 export type ManualSave = (scopeId: string, captured: SessionCheckpoint, options: ManualSaveOptions) => Promise<ManualSavedIntent>;
 export interface ManualScopePort {
   capture(): ManualCapture;
@@ -213,7 +213,7 @@ export class ManualScope {
     await this.update(() => proposed);
   }
 
-  save(action?: DatedRowActionCapture, status?: PreachStatusSave, metadataTime?: ActionTime | null): Promise<{ delivery: 'queued'; requestId: string } | null> {
+  save(action?: DatedRowActionCapture, status?: PreachStatusSave, metadataTime?: ActionTime | null, thoughtPlacementId?: string): Promise<{ delivery: 'queued'; requestId: string } | null> {
     this.assertActive();
     if (this.getState().choiceRequired) throw Object.assign(new Error('Choose which field words to keep before saving'), { code: 'resolve-version-first' });
     const captured = copy(this.record);
@@ -227,6 +227,8 @@ export class ManualScope {
     const dateTarget = datedRowTarget(captured.baseline.resource.collection);
     const dateAction = action && copy(action);
     const documentMetadataTime = metadataTime && copy(metadataTime);
+    const placementRow = thoughtPlacementId && captured.selection.some(path => samePath(path, ['thoughts', { id: thoughtPlacementId }]))
+      ? thoughtPlacementId : undefined;
     const dateIndex = captured.selection.findIndex(path => samePath(path, ['preachDates']));
     const openingDates = (captured.openingSelection ?? captured.savedSelection)[dateIndex];
     const preachStatusCapture = status && dateTarget?.evidence === 'preachDateAction' && openingDates?.exists
@@ -256,6 +258,7 @@ export class ManualScope {
         ...(preachDateFieldSave && { preachDateFieldSave }),
         ...(preachStatusCapture && { preachStatusCapture }),
         ...(documentMetadataTime !== undefined && { documentMetadataTime }),
+        ...(placementRow && { thoughtPlacementId: placementRow }),
       });
       if (!admitted) this.assertCurrent();
       validateIntent(request, this.options);

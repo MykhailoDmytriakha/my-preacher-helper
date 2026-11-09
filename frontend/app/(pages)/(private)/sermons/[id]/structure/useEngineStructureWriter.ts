@@ -9,9 +9,11 @@ import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
 import { mergeOutline } from '@/utils/mergeOutline';
 import { mergeSections } from '@/utils/mergeSections';
 import { addSermonThought, deleteSermonThought, patchSermonThought, replaceSermonOutline } from '@/utils/sermonThoughtEdits';
+import { resolveThoughtOutlineLocation } from '@/utils/subPoints';
 import { applyScopedThoughtPlacement, completeStoredThoughtPlacement } from '@/utils/thoughtOrdering';
 
 import type { StructureWriter } from '@/components/sermon/structureWriter';
+import type { ThoughtLocation } from '@/data-engine/thoughtPlacementAction';
 import type { DocumentData } from '@/data-engine/types';
 import type { Sermon, SermonOutline, Thought, ThoughtsBySection } from '@/models/models';
 import type { ThoughtFieldPatch } from '@/utils/sermonThoughtEdits';
@@ -20,6 +22,7 @@ type SermonDocument = ReturnType<typeof useDataDocument>;
 export type ShownThoughtIdentity = Pick<Thought, 'id' | 'date'>;
 
 interface EngineStructureWriter extends StructureWriter {
+  setThoughtPlacement(thought: ShownThoughtIdentity, location: ThoughtLocation): Promise<void>;
   setThoughtLocks(thoughts: readonly ShownThoughtIdentity[], isLocked: boolean): Promise<void>;
 }
 
@@ -28,9 +31,18 @@ const asSermon = (value: DocumentData): Sermon => ({ ...value, thoughts: (value.
 const asDocument = (sermon: Sermon): DocumentData => deepCleanUndefined(sermon) as unknown as DocumentData;
 const unavailable = () => new Error('The sermon is not available for editing');
 
+const changesLocation = (before: Thought | null, after: Thought) => before !== null
+  && ((before.outlinePointId ?? null) !== (after.outlinePointId ?? null) || (before.subPointId ?? null) !== (after.subPointId ?? null));
+
 const applyThoughtUpdate = (current: Sermon, thought: Thought, baseThought: Thought | null): Sermon => {
+  const placement = changesLocation(baseThought, thought);
+  if (placement && !current.thoughts.some(item => item.id === thought.id && item.date === baseThought?.date)) throw unavailable();
   const changed = changedFields(baseThought, thought) as Record<string, unknown>;
   const patch = Object.fromEntries(THOUGHT_FIELDS.filter(key => key in changed).map(key => [key, changed[key] ?? null])) as ThoughtFieldPatch;
+  if (placement) {
+    patch.outlinePointId = thought.outlinePointId ?? null;
+    patch.subPointId = thought.subPointId ?? null;
+  }
   return Object.keys(patch).length ? patchSermonThought(current, thought.id, patch) : current;
 };
 
@@ -69,7 +81,8 @@ export function editEngineSermon<T>(document: Pick<SermonDocument, 'update'>, ow
 
 export function createEngineStructureWriter(document: Pick<SermonDocument, 'update'>, owner: string | null,
   onOutlineConflict?: (outline: SermonOutline, base: SermonOutline | null, stored: SermonOutline | null) => void): EngineStructureWriter {
-  const edit = <T,>(apply: (current: Sermon) => { next: Sermon; result: T }) => editEngineSermon(document, owner, apply);
+  const edit = <T,>(apply: (current: Sermon) => { next: Sermon; result: T }, rowIds?: string[]) =>
+    editEngineSermon(document, owner, apply, rowIds?.length ? { action: { kind: 'thought-placement', rowIds } } : undefined);
   return {
     updateStructure: (_sermonId, structure, baseStructure, options) => edit(current => {
       const edited = (options?.thoughtUpdates ?? []).reduce((next, update) => applyThoughtUpdate(next, update.thought, update.baseThought), current);
@@ -80,11 +93,17 @@ export function createEngineStructureWriter(document: Pick<SermonDocument, 'upda
         : mergeSections(structure, stored, baseStructure ?? null);
       const merged = placeExisting(intended, edited.thoughts);
       return { next: { ...edited, structure: merged, thoughtsBySection: merged }, result: merged };
-    }),
+    }, options?.thoughtUpdates?.filter(({ baseThought, thought }) => changesLocation(baseThought, thought)).map(({ thought }) => thought.id)),
     updateThought: (_sermonId, thought, baseThought) => edit(current => {
       const next = applyThoughtUpdate(current, thought, baseThought);
       return { next, result: next.thoughts.find(item => item.id === thought.id) ?? thought };
-    }),
+    }, changesLocation(baseThought, thought) ? [thought.id] : undefined),
+    setThoughtPlacement: (shown, location) => edit(current => {
+      const point = resolveThoughtOutlineLocation(current.outline, location.outlinePointId, location.subPointId);
+      if (!current.thoughts.some(thought => thought.id === shown.id && thought.date === shown.date)
+        || (location.outlinePointId && !point) || (location.subPointId && !point?.subPoint)) throw unavailable();
+      return { next: patchSermonThought(current, shown.id, location), result: undefined };
+    }, [shown.id]),
     setThoughtLocks: (shown, isLocked) => {
       const selected = new Map(shown.map(thought => [thought.id, thought.date]));
       return editEngineSermon(document, owner, current => {

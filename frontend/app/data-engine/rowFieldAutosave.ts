@@ -8,6 +8,7 @@ import { matchesRowDetailBirth } from './rowDetailAction';
 import { knownRowDetailPredecessor, pendingRowDetailRebases } from './rowDetailCapture';
 import { boundedRowId, existingRowField, existingRowFields, isCapturedRowConflict, matchesRowAction, replaceExistingRowField, rowConflictPath } from './rowFieldAction';
 import { THOUGHT_LOCK_POLICY } from './thoughtLockAction';
+import { THOUGHT_PLACEMENT_POLICY } from './thoughtPlacementAction';
 
 import type { ActionTime } from './actionClock';
 import type { CommitRequest } from './commits';
@@ -15,12 +16,12 @@ import type { RowDetailObservation, RowDetailPolicy } from './rowDetailAction';
 import type { SessionCheckpoint, ShownCopy } from './session';
 import type { ConflictDetail, DocumentData, FieldChange, ResourceSnapshot } from './types';
 
-type Value = string | number | boolean | null;
+type Value = string | number | boolean | null | DocumentData;
 type Action = RowDetailObservation<Value>;
 type Draft = { generation: string; action: Action };
-type DraftKey = 'councilTopicTitleDrafts' | 'groupBlockTitleDrafts' | 'groupStepTitleDrafts' | 'groupBlockStatusDrafts' | 'groupStepDurationDrafts' | 'thoughtLockDrafts';
-type ActionKey = 'councilTopicTitleActions' | 'groupBlockTitleActions' | 'groupStepTitleActions' | 'groupBlockStatusActions' | 'groupStepDurationActions' | 'thoughtLockActions';
-export type RowFieldActionKind = 'council-topic-title' | 'group-block-title' | 'group-step-title' | 'group-block-status' | 'group-step-duration' | 'thought-lock';
+type DraftKey = 'councilTopicTitleDrafts' | 'groupBlockTitleDrafts' | 'groupStepTitleDrafts' | 'groupBlockStatusDrafts' | 'groupStepDurationDrafts' | 'thoughtLockDrafts' | 'thoughtPlacementDrafts';
+type ActionKey = 'councilTopicTitleActions' | 'groupBlockTitleActions' | 'groupStepTitleActions' | 'groupBlockStatusActions' | 'groupStepDurationActions' | 'thoughtLockActions' | 'thoughtPlacementActions';
+export type RowFieldActionKind = 'council-topic-title' | 'group-block-title' | 'group-step-title' | 'group-block-status' | 'group-step-duration' | 'thought-lock' | 'thought-placement';
 export type RowFieldStamp = { field: RowFieldActionKind; time: ActionTime | null } & (
   { rowId: string } | { rowIds: readonly string[] }
 );
@@ -46,6 +47,7 @@ const TARGETS: readonly Target[] = [
   autosaveTarget(GROUP_BLOCK_STATUS_POLICY, 'status', 'group-block-status', 'groupBlockStatusDrafts', 'groupBlockStatusActions'),
   autosaveTarget(GROUP_STEP_DURATION_POLICY, 'durationMin', 'group-step-duration', 'groupStepDurationDrafts', 'groupStepDurationActions'),
   autosaveTarget(THOUGHT_LOCK_POLICY, 'isLocked', 'thought-lock', 'thoughtLockDrafts', 'thoughtLockActions'),
+  autosaveTarget(THOUGHT_PLACEMENT_POLICY, 'outlineLocation', 'thought-placement', 'thoughtPlacementDrafts', 'thoughtPlacementActions'),
 ];
 
 const targetsFor = (collection: string) => TARGETS.filter(target => target.policy.collection === collection);
@@ -54,7 +56,7 @@ const fieldAt = (value: DocumentData | null | undefined, id: string, target: Tar
 const birthAt = (value: DocumentData | null | undefined, id: string, target: Target) =>
   existingRowField(value?.[target.policy.birth.field], id, target.policy.birth);
 const sameCapture = (first: Action, second: Action) => first.rowId === second.rowId
-  && first.rowCreatedAt === second.rowCreatedAt && first.before === second.before && first.after === second.after
+  && first.rowCreatedAt === second.rowCreatedAt && equalValues(first.before, second.before) && equalValues(first.after, second.after)
   && first.observedRevision === second.observedRevision && equalValues(first.time, second.time);
 const isCaptured = (checkpoint: SessionCheckpoint, action: Action, target: Target) => Object.values(checkpoint.pending)
   .some(request => request[target.action]?.some(captured => sameCapture(action, captured)));
@@ -63,7 +65,7 @@ function validDrafts(checkpoint: SessionCheckpoint, value: DocumentData | null, 
   const metadata = checkpoint.confirmed.metadata;
   if (!metadata || metadata.deleted) return [];
   return Object.values(checkpoint[target.draft] ?? {}).filter(({ generation, action }) => generation === metadata.generation
-    && action.observedRevision <= metadata.revision && fieldAt(value, action.rowId, target) === action.after
+    && action.observedRevision <= metadata.revision && equalValues(fieldAt(value, action.rowId, target), action.after)
     && birthAt(value, action.rowId, target) === action.rowCreatedAt);
 }
 
@@ -72,14 +74,14 @@ function observeRowEdit(checkpoint: SessionCheckpoint, value: DocumentData | nul
   if (!boundedRowId(rowId)) return;
   const old = fieldAt(checkpoint.draft, rowId, target), after = fieldAt(value, rowId, target);
   const rowCreatedAt = birthAt(checkpoint.draft, rowId, target);
-  if (old === undefined || after === undefined || (old === after && !target.keepReselection)
+  if (old === undefined || after === undefined || (equalValues(old, after) && !target.keepReselection)
     || rowCreatedAt === undefined || birthAt(value, rowId, target) !== rowCreatedAt
     || (visible.draft && birthAt(visible.draft, rowId, target) !== rowCreatedAt)) return;
   const typing = prior && !isCaptured(checkpoint, prior, target);
   const shownValue = fieldAt(visible.draft, rowId, target);
   const before = typing ? prior.before : shownValue === undefined ? old : shownValue;
   const observedRevision = prior?.observedRevision ?? visible.confirmed.metadata!.revision;
-  if (before !== after || target.keepReselection) return { rowId, rowCreatedAt, before, after, time, observedRevision };
+  if (!equalValues(before, after) || target.keepReselection) return { rowId, rowCreatedAt, before, after, time, observedRevision };
 }
 
 function stageField(checkpoint: SessionCheckpoint, value: DocumentData | null, shown: ShownCopy | undefined,
@@ -116,35 +118,38 @@ export function hasUncapturedAutosaveRowField(checkpoint: SessionCheckpoint): bo
   return targetsFor(checkpoint.confirmed.resource.collection).some(target => uncaptured(checkpoint, target).length > 0);
 }
 
-function manualDurationActions(checkpoint: SessionCheckpoint, baseline: ResourceSnapshot, opening: DocumentData | null,
-  target: Target, captured: ActionTime | null | undefined): Action[] {
-  if (target.stamp !== 'group-step-duration' || captured === undefined || !baseline.metadata || baseline.metadata.deleted) return [];
+function manualRowActions(checkpoint: SessionCheckpoint, baseline: ResourceSnapshot, opening: DocumentData | null,
+  target: Target, captured: ActionTime | null | undefined, thoughtPlacementId?: string): Action[] {
+  const duration = target.stamp === 'group-step-duration';
+  const placement = target.stamp === 'thought-placement' && boundedRowId(thoughtPlacementId);
+  if ((!duration && !placement) || captured === undefined || !baseline.metadata || baseline.metadata.deleted) return [];
   const time = captured === null ? null : boundedActionTime(captured);
   if (time === undefined) return [];
   const field = target.policy.target(target.field);
   const shown = existingRowFields(opening?.[field.field], field);
   const next = existingRowFields(checkpoint.draft?.[field.field], field);
-  return [...shown].flatMap(([rowId, before]) => {
+  const candidates = placement ? [[thoughtPlacementId, shown.get(thoughtPlacementId)] as const] : [...shown];
+  return candidates.flatMap(([rowId, before]) => {
     const after = next.get(rowId), rowCreatedAt = birthAt(opening, rowId, target);
-    return boundedRowId(rowId) && before !== undefined && after !== undefined && before !== after
+    return boundedRowId(rowId) && before !== undefined && after !== undefined && !equalValues(before, after)
       && rowCreatedAt !== undefined && birthAt(checkpoint.draft, rowId, target) === rowCreatedAt
       ? [{ rowId, rowCreatedAt, before, after, time, observedRevision: baseline.metadata!.revision }] : [];
   });
 }
 
 export function captureRowFields(checkpoint: SessionCheckpoint, baseline: ResourceSnapshot,
-  predecessor: CommitRequest | undefined, records: readonly CommitRequest[], manualTime?: ActionTime | null): AutosaveRowFieldActions {
+  predecessor: CommitRequest | undefined, records: readonly CommitRequest[], manualTime?: ActionTime | null, thoughtPlacementId?: string): AutosaveRowFieldActions {
   const byId = new Map(records.map(record => [record.id, record]));
   const opening = predecessor ? predecessor.value : baseline.value;
   const result: AutosaveRowFieldActions = {};
   for (const target of targetsFor(baseline.resource.collection)) {
-    const actions = [...uncaptured(checkpoint, target), ...manualDurationActions(checkpoint, baseline, opening, target, manualTime)].filter(action => birthAt(opening, action.rowId, target) === action.rowCreatedAt)
+    const actions = [...uncaptured(checkpoint, target), ...manualRowActions(checkpoint, baseline, opening, target, manualTime, thoughtPlacementId)].filter(action => birthAt(opening, action.rowId, target) === action.rowCreatedAt)
       .map(action => {
         const predecessorOperationId = knownRowDetailPredecessor(predecessor, byId, baseline, target.policy, request => {
           const captured = request[target.action]?.find(item => item.rowId === action.rowId);
           if (captured) return captured;
           const parent = request.predecessor ? byId.get(request.predecessor)?.value : request.baseline.value;
-          if (birthAt(parent, action.rowId, target) === undefined && fieldAt(request.value, action.rowId, target) === action.before) {
+          if (birthAt(parent, action.rowId, target) === undefined && equalValues(fieldAt(request.value, action.rowId, target), action.before)) {
             return { rowId: action.rowId, rowCreatedAt: action.rowCreatedAt, after: action.before };
           }
         }, target.field, action.rowId, action.rowCreatedAt, action.before, undefined);
@@ -193,7 +198,7 @@ export function rowFieldAckAncestor(ancestor: DocumentData | null, accepted: Res
     let rows = rebased[field];
     for (const { action } of validDrafts(checkpoint, checkpoint.draft, target)) {
       const stored = fieldAt(accepted.value, action.rowId, target);
-      if (stored !== undefined && fieldAt(ancestor, action.rowId, target) === action.before
+      if (stored !== undefined && equalValues(fieldAt(ancestor, action.rowId, target), action.before)
         && birthAt(accepted.value, action.rowId, target) === action.rowCreatedAt) {
         rows = replaceExistingRowField(rows, action.rowId, stored, target.policy.target(target.field)) ?? rows;
       }

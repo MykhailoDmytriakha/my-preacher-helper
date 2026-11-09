@@ -6,6 +6,7 @@ import { chooseLocalPreachDateEdits } from './preachDateChoice';
 import { equalValues, mergeDocumentFields, mergeFields } from './protocol';
 import { keepUncontestedSermonFields } from './sermonFieldChoice';
 import { canReplaceSnapshot } from './snapshotFreshness';
+import { localThoughtPlacementChoices } from './thoughtPlacementAction';
 
 import type { CommitRequest } from './commits';
 import type { EditorRecord } from './controller';
@@ -86,7 +87,9 @@ export function projectExactManualChoice(record: EditorRecord, decision: ExactMa
   const reviewed = prepared ? replaySavedChoiceDelta(stored.resource, request.value, decision.value, request.intended) : decision.value;
   if (decision.choice === 'local') {
     const dateEdits = chooseLocalPreachDateEdits(basis, reviewed, stored, request.preachStatusActions);
-    const rebased = replaySavedChoiceDelta(stored.resource, basis.value, reviewed, stored.value);
+    const explicit = request.result?.kind === 'conflict'
+      ? localThoughtPlacementChoices(request.result.conflicts, basis.value, reviewed, stored.value) : undefined;
+    const rebased = replaySavedChoiceDelta(stored.resource, basis.value, reviewed, stored.value, explicit);
     draft = projectManualSelection(stored.value!, dateEdits ?? rebased ?? stored.value!, decision.selection);
   } else if (request.result?.kind === 'conflict') {
     const retained = keepUncontestedSermonFields(basis, reviewed, stored, request.result.conflicts);
@@ -100,10 +103,10 @@ export function projectExactManualChoice(record: EditorRecord, decision: ExactMa
 
 /** Replay a captured delta without treating the entire captured document as a new edit. */
 export function replaySavedChoiceDelta(resource: ResourceSnapshot['resource'], base: DocumentData | null,
-  value: DocumentData | null, target: DocumentData | null): DocumentData | null {
+  value: DocumentData | null, target: DocumentData | null, explicit?: ReadonlySet<string>): DocumentData | null {
   const merged = mergeDocumentFields(base, value, target);
   return chooseLocalPlacement(resource.collection, base, value, target,
-    merged.value.exists ? merged.value.value as DocumentData : null, mergeFields);
+    merged.value.exists ? merged.value.value as DocumentData : null, mergeFields, explicit);
 }
 
 /** A choice retires blocked request identities while retaining each later branch's own delta. */

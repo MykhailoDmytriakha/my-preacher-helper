@@ -18,6 +18,7 @@ export type RowDetailPolicy<Field extends string, Value extends RowValue> = {
   actions: string;
   repeatedFields?: readonly Field[];
   allowUnclocked?: boolean;
+  atomicChoice?: true;
   causalScopeEntry?: boolean;
   allowUnchanged?: (field: Field, value: Value) => boolean;
   validAfter?: (field: Field, value: Value) => boolean;

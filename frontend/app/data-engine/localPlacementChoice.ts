@@ -47,11 +47,11 @@ function selectPlacementTags(chosen: DocumentData, source: DocumentData): void {
 interface ThoughtChoice { value: DocumentData; side: DocumentData; local: boolean }
 
 /** Select only positional intent; independently merged words stay in the existing candidate. */
-function thoughtChoices(base: DocumentData, mine: DocumentData, theirs: DocumentData, candidate: DocumentData): ThoughtChoice[] {
+function thoughtChoices(base: DocumentData, mine: DocumentData, theirs: DocumentData, candidate: DocumentData, explicit?: ReadonlySet<string>): ThoughtChoice[] {
   const b = thoughts(base), m = thoughts(mine), t = thoughts(theirs);
   return rows(candidate.thoughts).map(value => {
     const id = String(value.id), here = m.get(id), there = t.get(id);
-    const localChange = Boolean(here && placementChanged(base, mine, b.get(id), here));
+    const localChange = Boolean(here && (explicit?.has(id) || placementChanged(base, mine, b.get(id), here)));
     const local = Boolean(here && (!there || localChange));
     const source = local ? here : there ?? here;
     const positionChanged = local ? localChange : Boolean(there && placementChanged(base, theirs, b.get(id), there));
@@ -104,7 +104,7 @@ function placeThoughts(base: DocumentData, mine: DocumentData, theirs: DocumentD
 
 /** Explicit choice only: the unchanged server merge and integrity checks still own every retry. */
 export function chooseLocalPlacement(collection: string, base: DocumentData | null, mine: DocumentData | null,
-  theirs: DocumentData | null, merged: DocumentData | null, merge: MergeFields): DocumentData | null {
+  theirs: DocumentData | null, merged: DocumentData | null, merge: MergeFields, explicit?: ReadonlySet<string>): DocumentData | null {
   if (!base || !mine || !theirs || !merged) return merged;
   if (collection === 'planTemplates' && object(mine.structure)) {
     return { ...merged, structure: chooseOutlineChanges(base.structure as unknown as SermonOutline,
@@ -112,7 +112,7 @@ export function chooseLocalPlacement(collection: string, base: DocumentData | nu
       { retainLocalPaths: true }) as unknown as Json };
   }
   if (collection !== 'sermons' || !Array.isArray(mine.thoughts)) return merged;
-  const candidate = copy(merged), choices = thoughtChoices(base, mine, theirs, candidate);
+  const candidate = copy(merged), choices = thoughtChoices(base, mine, theirs, candidate, explicit);
   const outline = chooseSermonOutline(base, mine, theirs, choices, merge);
   if (outline) candidate.outline = outline as unknown as Json;
   placeThoughts(base, mine, theirs, candidate, choices, outline);

@@ -11,6 +11,7 @@ import { existingRowField, replaceExistingRowField } from './rowFieldAction';
 import { readSermonConflictField } from './sermonFieldChoice';
 import { SERVICE_ORDER_FLAG_TARGET, SERVICE_ORDER_STEP_TITLE_TARGET, serviceOrderStepField } from './serviceOrderStepAction';
 import { readThoughtLockConflict, thoughtLockConflictId } from './thoughtLockAction';
+import { readThoughtPlacementChoice } from './thoughtPlacementAction';
 
 import type { RowFieldTarget, RowValue } from './rowFieldAction';
 import type { SessionCheckpoint } from './session';
@@ -172,4 +173,19 @@ export function readThoughtLockComparison(checkpoint: SessionCheckpoint) {
   });
   if (locks.length !== conflicts.length) return undefined;
   return { locks, identity: JSON.stringify([checkpoint.editGeneration, remoteCandidate?.metadata?.revision, locks]) };
+}
+
+
+export function readThoughtPlacementComparison(checkpoint: SessionCheckpoint) {
+  const { confirmed, draft, remoteCandidate, conflicts, pending } = checkpoint;
+  const base = confirmed.value, stored = remoteCandidate?.value;
+  if (confirmed.resource.collection !== 'sermons' || !base || !draft || !stored || !conflicts.length
+    || confirmed.metadata?.generation !== remoteCandidate?.metadata?.generation || Object.keys(pending).length !== 1) return;
+  const locations = conflicts.flatMap(conflict => {
+    const placement = readThoughtPlacementChoice(conflict, base, draft, stored);
+    const row = placement && Array.isArray(draft.thoughts) && draft.thoughts.find(value => object(value) && value.id === placement.id);
+    return placement && object(row) && typeof row.text === 'string' ? [{ text: row.text, ...placement }] : [];
+  });
+  if (locations.length !== conflicts.length) return;
+  return { locations, identity: JSON.stringify([checkpoint.editGeneration, remoteCandidate?.metadata?.revision, locations]) };
 }

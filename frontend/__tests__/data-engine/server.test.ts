@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { isCollectionServed } from '@/data-engine/activation';
-import { DataEngineServerError, listBibleMarkHistory, listCouncilMetadataHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listPlanTemplateNameHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listPrayerStatusHistory, listPrayerTitleHistory, listSermonChurchHistory, listSermonTitleHistory, listSermonVerseHistory, listSeriesMetadataHistory, listServiceOrderFlagHistory, listServiceOrderStepTitleHistory, listServiceOrderTitleHistory, listStudyNoteTitleHistory, listTagColorHistory, listThoughtLockHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
+import { DataEngineServerError, listBibleMarkHistory, listCouncilMetadataHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listPlanTemplateNameHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listPrayerStatusHistory, listPrayerTitleHistory, listSermonChurchHistory, listSermonTitleHistory, listSermonVerseHistory, listSeriesMetadataHistory, listServiceOrderFlagHistory, listServiceOrderStepTitleHistory, listServiceOrderTitleHistory, listStudyNoteTitleHistory, listTagColorHistory, listThoughtLockHistory, listThoughtPlacementHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
 import { collectionHeadId, HEADS_COLLECTION, sequenceId } from '@/data-engine/serverFeed';
 import { DataSession } from '@/data-engine/session';
 import type { DataCommand, FieldValue, ResourceSnapshot } from '@/data-engine/types';
@@ -3534,4 +3534,89 @@ it.each([
   })));
   await expect(listThoughtLockHistory('another-owner', resource.id, generation)).rejects.toMatchObject({ status: 403 });
   await expect(listThoughtLockHistory(create.owner, resource.id, 'other-generation')).rejects.toMatchObject({ status: 404 });
+});
+
+it.each([
+  { label: 'earlier offline move', offlineAt: 15, desktop: 'right', phone: 'left', winner: 'right', kind: 'acknowledged' },
+  { label: 'later offline move', offlineAt: 110, desktop: 'left', phone: 'right', winner: 'right', kind: 'acknowledged' },
+  { label: 'later return to the opening assignment', offlineAt: 15, desktop: 'right', phone: 'left', winner: 'opening', kind: 'acknowledged', returnToOpening: true },
+  { label: 'two subpoints of the same destination', offlineAt: 110, desktop: 'left', phone: 'leftOther', winner: 'leftOther', kind: 'acknowledged' },
+  { label: 'unknown order cannot form an invalid combination', offlineAt: null, desktop: 'sameParent', phone: 'otherParent', winner: 'sameParent', kind: 'conflict', parentOnly: true },
+  { label: 'legacy move without a timing proof', offlineAt: 110, desktop: 'sameParent', phone: 'otherParent', winner: 'sameParent', kind: 'conflict', parentOnly: true, legacy: true },
+  { label: 'unknown cross-section move has one comparison', offlineAt: null, desktop: 'left', phone: 'right', winner: 'left', kind: 'conflict', cross: true },
+  { label: 'legacy board keeps a second move in the same Save', offlineAt: 110, desktop: 'left', phone: 'right', winner: 'right', kind: 'acknowledged', cross: true, legacyBoard: true },
+  { label: 'unknown action order', offlineAt: null, desktop: 'left', phone: 'right', winner: 'left', kind: 'conflict' },
+] as const)('orders the exact thought point and subpoint together: $label', async scenario => {
+  const generation = 'thought-location-seed';
+  const date = '2026-11-08T00:00:00.000Z';
+  const locations: Record<'opening' | 'left' | 'leftOther' | 'right' | 'sameParent' | 'otherParent', { outlinePointId: string; subPointId: string | null }> = {
+    opening: { outlinePointId: 'start', subPointId: 'sub-start' },
+    left: { outlinePointId: 'left', subPointId: 'sub-left' },
+    leftOther: { outlinePointId: 'left', subPointId: 'sub-left-other' },
+    right: { outlinePointId: 'right', subPointId: 'sub-right' },
+    sameParent: { outlinePointId: 'start', subPointId: 'sub-start' },
+    otherParent: { outlinePointId: 'right', subPointId: null },
+  };
+  const thought = { id: 'one', date, tags: ['main'], text: 'Original thought', ...('parentOnly' in scenario ? { outlinePointId: 'start', subPointId: null } : locations.opening) };
+  const neighbor = { id: 'two', date, tags: ['main'], text: 'Independent thought', ...locations.opening };
+  const start = { id: 'start', text: 'Start', subPoints: [{ id: 'sub-start', text: 'Start child', position: 0 }] };
+  const left = { id: 'left', text: 'Left', subPoints: [{ id: 'sub-left', text: 'Left child', position: 0 }, { id: 'sub-left-other', text: 'Other child', position: 1 }] };
+  const right = { id: 'right', text: 'Right', subPoints: [{ id: 'sub-right', text: 'Right child', position: 0 }] };
+  const cross = 'cross' in scenario;
+  const outline = cross ? { introduction: [left], main: [start], conclusion: [right] }
+    : { introduction: [], main: [start, left, right], conclusion: [] };
+  const board = (...rows: typeof thought[]) => ({
+    introduction: rows.filter(row => cross && row.outlinePointId === 'left').map(row => row.id),
+    main: rows.filter(row => !cross || row.outlinePointId === 'start').map(row => row.id),
+    conclusion: rows.filter(row => cross && row.outlinePointId === 'right').map(row => row.id), ambiguous: [],
+  });
+  const structure = board(thought, neighbor);
+  const legacyBoard = 'legacyBoard' in scenario;
+  const create = {
+    protocol: 1, kind: 'create', operationId: generation, owner: 'owner-1', resource, generation: null, dependsOn: [],
+    value: { userId: 'owner-1', title: 'Sermon', verse: 'John 1:1', date, thoughts: [thought, neighbor], outline, ...(!legacyBoard && { structure, thoughtsBySection: structure }) },
+  };
+  expect(await processCommand(create.owner, create)).toMatchObject({ kind: 'acknowledged' });
+  const pick = (row: typeof thought) => ({ outlinePointId: row.outlinePointId, subPointId: row.subPointId });
+  const change = (operationId: string, before: typeof thought, after: typeof thought, at: number | null,
+    observedRevision: number, changedNeighbor = neighbor) => ({
+    ...create, kind: 'update', operationId, generation,
+    changes: [{ path: ['thoughts'], before: { exists: true, value: [before, neighbor] },
+      after: { exists: true, value: [after, changedNeighbor] } },
+    ...cross ? ['structure', 'thoughtsBySection'].map(key => ({
+      path: [key], before: legacyBoard && observedRevision === 1 ? { exists: false } : { exists: true, value: board(before, neighbor) },
+      after: { exists: true, value: board(after, changedNeighbor) },
+    })) : []],
+    thoughtPlacementActions: [{ rowId: thought.id, rowCreatedAt: date, before: pick(before), after: pick(after), observedRevision,
+      time: at === null ? null : { earliestMs: 1_800_000_000_000 + at, latestMs: 1_800_000_000_004 + at } }],
+  });
+  let desktop = { ...thought, ...locations[scenario.desktop], text: 'Independent text edited on desktop' };
+  const desktopCommand = change('desktop-first', thought, desktop, 55, 1);
+  expect((await processCommand(create.owner, 'legacy' in scenario ? { ...desktopCommand, thoughtPlacementActions: [] } : desktopCommand)).kind).toBe('acknowledged');
+  if ('returnToOpening' in scenario) {
+    const restored = { ...desktop, ...locations.opening };
+    expect((await processCommand(create.owner, change('desktop-last', desktop, restored, 85, 2))).kind).toBe('acknowledged');
+    desktop = restored;
+  }
+  const finalNeighbor = legacyBoard ? { ...neighbor, ...locations.left } : neighbor;
+  const delayed = change('offline-delayed', thought, { ...thought, ...locations[scenario.phone] }, scenario.offlineAt, 1, finalNeighbor);
+  const answer = await processCommand(create.owner, delayed);
+  const wanted = { ...desktop, ...locations[scenario.winner] };
+  expect(answer).toMatchObject({ kind: scenario.kind, snapshot: { value: { thoughts: [wanted, finalNeighbor] } } });
+  if (scenario.kind === 'conflict') expect(answer).toMatchObject({ conflicts: [{
+    path: ['thoughts', 'id:one', 'outlineLocation'], base: { exists: true, value: pick(thought) },
+    mine: { exists: true, value: locations[scenario.phone] }, theirs: { exists: true, value: locations[scenario.winner] },
+  }] });
+  expect(await processCommand(create.owner, delayed)).toEqual(answer);
+  const finalBoard = board(wanted, finalNeighbor);
+  expect(await readDocument(create.owner, resource)).toMatchObject({ value: {
+    thoughts: [wanted, finalNeighbor], outline, structure: finalBoard, thoughtsBySection: finalBoard,
+  } });
+  const history = await listThoughtPlacementHistory(create.owner, resource.id, generation);
+  if (scenario.kind === 'conflict') expect(history.entries).toEqual([]);
+  else expect(history.entries).toMatchObject([{ fields: [{
+    field: 'outlineLocation', rowId: thought.id, rowCreatedAt: date, winnerValue: locations[scenario.winner],
+  }] }]);
+  await expect(listThoughtPlacementHistory('another-owner', resource.id, generation)).rejects.toMatchObject({ status: 403 });
+  await expect(listThoughtPlacementHistory(create.owner, resource.id, 'other-generation')).rejects.toMatchObject({ status: 404 });
 });

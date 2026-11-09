@@ -112,7 +112,17 @@ export function EngineThoughtModal({ sermonId, thoughtId, boardSection, initialO
     recover: form.recover });
   const save = async () => {
     if (isBusy || dictation.error || readOnly || !form.durable || !form.dirty || !form.status?.canSave || !shown.text.trim()) return;
-    try { await form.save(current => json(patchSermonThought(current as unknown as Sermon, shown.id, { text: shown.text.trim() }))); await dictation.accept().catch(() => undefined); onClose(); }
+    const original = (form.initialData as unknown as Sermon | null)?.thoughts.find(item => item.id === shown.id);
+    const locationChanged = original && ((original.outlinePointId ?? null) !== (shown.outlinePointId ?? null)
+      || (original.subPointId ?? null) !== (shown.subPointId ?? null));
+    const placement = thoughtId && locationChanged ? form.captureDocumentMetadataAction({ thoughtPlacementId: thoughtId }) : undefined;
+    try {
+      const trim = (current: DocumentData) => json(patchSermonThought(current as unknown as Sermon, shown.id, { text: shown.text.trim() }));
+      if (placement) await form.save(trim, placement);
+      else await form.save(trim);
+      await dictation.accept().catch(() => undefined);
+      onClose();
+    }
     catch { /* The shared form retains the draft and exposes the failure. */ }
   };
   const cancel = async () => {

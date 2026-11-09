@@ -9,6 +9,10 @@ export type RowFieldTarget<Value extends RowValue> = {
   leaf: string | readonly [string, string];
   missing?: Value;
   storeNull?: true;
+  projection?: {
+    read(row: DocumentData): Value | undefined;
+    write(row: DocumentData, value: Value): DocumentData;
+  };
   accepts(value: unknown): value is Value;
 };
 
@@ -39,6 +43,7 @@ export const proofRevision = (value: unknown): value is number => typeof value =
 const leafPath = (leaf: RowFieldTarget<RowValue>['leaf']): string[] => typeof leaf === 'string' ? [leaf] : [...leaf];
 
 function readRowField<Value extends RowValue>(row: DocumentData, target: RowFieldTarget<Value>): Value | undefined {
+  if (target.projection) return target.projection.read(row);
   if (typeof target.leaf !== 'string' && !object(row[target.leaf[0]])) return undefined;
   const { exists, value } = readField(row, leafPath(target.leaf));
   return exists ? ((value !== null || target.storeNull) && target.accepts(value) ? value : undefined) : target.missing;
@@ -74,7 +79,7 @@ export function replaceExistingRowField<Value extends RowValue>(rows: Json | und
   if (!Array.isArray(rows) || existingRowField(rows, rowId, target) === undefined) return rows;
   return rows.map(row => {
     if (!object(row) || row.id !== rowId) return row;
-    return putRowField(row, target.leaf, value, target.storeNull);
+    return target.projection ? target.projection.write(row, value) : putRowField(row, target.leaf, value, target.storeNull);
   });
 }
 

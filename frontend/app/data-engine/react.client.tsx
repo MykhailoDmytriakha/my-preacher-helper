@@ -29,7 +29,7 @@ import { collectionRecordPresence, documentRecordPresence, UNKNOWN_RECORD_PRESEN
 import { isOnlySubmittedCopy } from './recovery.client';
 import { captureRecoveryChoice as captureChoice, recoveryChoiceFingerprint, type RecoveryChoiceScope } from './recoveryChoice';
 import { validateResourceDocument } from './resourceSchemas';
-import { readCouncilTopicConflict as councilTopicConflict, readGroupFlowFieldConflict as groupFlowFieldConflict, readPlanTemplateNameConflict as planTemplateNameConflict, readSermonConflict as sermonConflict, readServiceStepConflict as serviceStepConflict, readTagColorConflict as tagColorConflict, readThoughtLockComparison as thoughtLockComparison } from './rowConflictDetails';
+import { readCouncilTopicConflict as councilTopicConflict, readGroupFlowFieldConflict as groupFlowFieldConflict, readPlanTemplateNameConflict as planTemplateNameConflict, readSermonConflict as sermonConflict, readServiceStepConflict as serviceStepConflict, readTagColorConflict as tagColorConflict, readThoughtLockComparison as thoughtLockComparison, readThoughtPlacementComparison as thoughtPlacementComparison } from './rowConflictDetails';
 import { deletedUnder, type SessionCheckpoint } from './session';
 import { describeManualSync, describeSync, type SyncStatus } from './status';
 import { shownDeliveryState } from './unanswered';
@@ -65,6 +65,7 @@ export function readPlanTemplateNameConflict(checkpoint: SessionCheckpoint) { re
 export function readTagColorConflict(checkpoint: SessionCheckpoint) { return tagColorConflict(checkpoint); }
 export function readSermonConflict(checkpoint: SessionCheckpoint) { return sermonConflict(checkpoint); }
 export function readThoughtLockComparison(checkpoint: SessionCheckpoint) { return thoughtLockComparison(checkpoint); }
+export function readThoughtPlacementComparison(checkpoint: SessionCheckpoint) { return thoughtPlacementComparison(checkpoint); }
 export function councilTopicReviewCode(result: CommandResult | null | undefined, conflicts: readonly ConflictDetail[]): string | undefined {
   return councilTopicRefusalCode(result) ?? councilTopicConflictCode(conflicts);
 }
@@ -704,7 +705,7 @@ export function useDataMembership() {
 export interface DocumentUpdateOptions {
   handlesRefusal?: (failure: unknown) => boolean;
   action?: 'group-title' | 'group-status' | 'council-title' | 'council-date'
-    | { kind: RowFieldActionKind; rowId: string } | { kind: 'thought-lock'; rowIds: readonly string[] };
+    | { kind: RowFieldActionKind; rowId: string } | { kind: 'thought-lock' | 'thought-placement'; rowIds: readonly string[] };
 }
 
 interface DocumentOptions {
@@ -1035,10 +1036,14 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
     },
     /** Freeze the intended save before any asynchronous draft persistence. */
     commit: (updater: (current: DocumentData | null) => DocumentData | null,
-      action?: 'bible-mark-stroke' | 'council-lifecycle' | Extract<EditorCommitAction, { kind: 'council-assembly' | 'council-topic-kind' }>) => {
-      const time = typeof action === 'string' && owner ? actionClock.capture(owner) : undefined;
-      const capture = typeof action === 'object' ? action : action === 'council-lifecycle' ? { kind: action, time: time ?? null } as const
-        : time ? { kind: 'bible-mark-stroke', time } as const : undefined;
+      action?: 'bible-mark-stroke' | 'council-lifecycle' | { kind: 'thought-placement'; rowId: string }
+        | Extract<EditorCommitAction, { kind: 'council-assembly' | 'council-topic-kind' }>) => {
+      const time = owner && (typeof action === 'string' || action?.kind === 'thought-placement') ? actionClock.capture(owner) : undefined;
+      const checkpoint = current?.state.checkpoint;
+      const shown = checkpoint && { confirmed: checkpoint.confirmed, draft: checkpoint.draft, editGeneration: checkpoint.editGeneration };
+      const capture = typeof action === 'object' ? (action.kind === 'thought-placement' ? { ...action, time: time ?? null, shown } : action)
+        : action === 'council-lifecycle' ? { kind: action, time: time ?? null } as const
+          : time ? { kind: 'bible-mark-stroke', time } as const : undefined;
       cancelScheduledSave();
       return run(editor => capture ? editor.commit(updater, capture) : editor.commit(updater));
     },
@@ -1318,9 +1323,11 @@ export function useDataForm(resource: ResourceRef | null, slot: string, selectio
       const time = owner && current() && actionClock.capture(owner);
       return time ? { rowId, after, time } : undefined;
     },
-    captureDocumentMetadataAction: (date?: { rowId: string; after: string }): ManualDocumentMetadataSave => {
+    captureDocumentMetadataAction: (target?: { rowId: string; after: string } | { thoughtPlacementId: string }): ManualDocumentMetadataSave => {
       const time = owner && current() ? actionClock.capture(owner) : undefined;
-      return { documentMetadata: { time: time ?? null, ...(date && time && { dateAction: { ...date, time } }) } };
+      const placement = target && 'thoughtPlacementId' in target ? target : undefined;
+      const date = target && 'rowId' in target ? target : undefined;
+      return { documentMetadata: { time: time ?? null, ...placement, ...(date && time && { dateAction: { ...date, time } }) } };
     },
     save: (updater?: (draft: DocumentData) => DocumentData, action?: { preachDateId: string } | { preachStatus: PreachStatusIntent } | DatedRowActionCapture | GroupMeetingFieldInput | ManualDocumentMetadataSave) => {
       if (!action || 'time' in action || 'documentMetadata' in action) return run(form => action ? form.save(updater, action) : form.save(updater));

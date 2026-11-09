@@ -64,6 +64,7 @@ import { EngineScratchWorkspace } from './components/EngineScratchWorkspace';
 import { EngineStructureWriterProvider } from './components/EngineStructureWriterProvider';
 import { useSermonCoreDataDocument } from './hooks/useSermonCoreDataDocument';
 import { useSermonThoughtsDataDocument } from './hooks/useSermonThoughtsDataDocument';
+import { useThoughtPlacementComparison } from './structure/ThoughtLockHistory';
 
 import type { Sermon, Thought, Preparation, BrainstormSuggestion } from "@/models/models";
 import type { ReactNode } from "react";
@@ -212,11 +213,13 @@ export default function SermonPage() {
 function SermonPageContent({ id }: { id: string }) {
   const core = useSermonCoreDataDocument(id);
   const engineThoughts = useSermonThoughtsDataDocument(id);
+  const thoughtCheckpoint = engineThoughts.state?.checkpoint;
   const isOnline = useOnlineStatus();
   const sermon = useMemo(() => core.data ? ({ ...core.data, id, thoughts: core.data.thoughts ?? [] } as unknown as Sermon) : null, [core.data, id]);
   const loading = core.loading;
   const awaitingFirstAnswer = core.loading;
   const { user } = useAuth();
+  const thoughtPlacementComparison = useThoughtPlacementComparison(thoughtCheckpoint, user?.uid ?? null, sermon);
   const { series } = useSeries(user?.uid || null);
   /**
    * THE ONE RECORDER THAT ASKED NOTHING AT ALL.
@@ -463,7 +466,7 @@ function SermonPageContent({ id }: { id: string }) {
       onDelete={id => { void engineThoughts.deleteThought(id).catch(() => undefined); }}
       onEditStart={handleEditThoughtStart}
       onThoughtOutlinePointChange={async (thought, outlinePointId, subPointId) => {
-        await engineThoughts.patchThought(thought.id, { outlinePointId, subPointId: subPointId ?? null }).catch(() => undefined);
+        await engineThoughts.setThoughtPlacement(thought, outlinePointId ?? null, subPointId ?? null).catch(() => undefined);
       }}
       isReadOnly={isReadOnly}
       sermon={sermon}
@@ -669,6 +672,9 @@ function SermonPageContent({ id }: { id: string }) {
         titleForm: core.titleBinding, verseForm: core.verseBinding, recovery: core.headerRecovery,
         keepLocal: core.keepLocal, acceptRemote: core.acceptRemote, retry: core.retry,
       }} />
+      {thoughtPlacementComparison && <DataSyncStatus subject={engineThoughts.recoveryIdentity} status={engineThoughts.status}
+        error={engineThoughts.error} errorWords={engineThoughts.errorWords} comparison={thoughtPlacementComparison} onRetry={engineThoughts.retry}
+        onKeepLocal={() => engineThoughts.keepLocal(thoughtCheckpoint)} onAcceptRemote={() => engineThoughts.acceptRemote(thoughtCheckpoint)} />}
       <LegacyPreparationRecovery owner={user?.uid ?? null} confirmed={core.confirmed} />
       <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
         <EnginePreachDateList sermonId={sermon.id} showDocumentStatus={false} />

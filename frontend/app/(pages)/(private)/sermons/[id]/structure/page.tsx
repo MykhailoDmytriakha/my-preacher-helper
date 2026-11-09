@@ -50,7 +50,7 @@ import { useOutlineStats } from "./hooks/useOutlineStats";
 import { usePersistence } from "./hooks/usePersistence";
 import { useSermonActions } from "./hooks/useSermonActions";
 import { useStructureDnd } from "./hooks/useStructureDnd";
-import { ThoughtLockHistory } from "./ThoughtLockHistory";
+import { ThoughtLockHistory, ThoughtPlacementHistory, useThoughtPlacementComparison } from "./ThoughtLockHistory";
 import { useEngineStructureWriter, type ShownThoughtIdentity } from "./useEngineStructureWriter";
 import { createStructureCollisionDetection } from "./utils/collision";
 import { boardLayoutClass, showLayoutToggle } from "./utils/sectionLayout";
@@ -145,11 +145,13 @@ function EngineStructureBoard({ sermonId }: { sermonId: string }) {
     }),
     recover: document.recover,
   });
+  const placementComparison = useThoughtPlacementComparison(checkpoint, owner, sermon);
   const comparison = conflict ? {
     identity: conflict.identity, title: t('structure.thoughtLockState'), valueKind: 'field' as const, scopedChoice: true as const,
     mine: conflict.locks.map(lock => lock.text + ' · ' + lockText(lock.mine)).join('\n'),
     stored: conflict.locks.map(lock => lock.text + ' · ' + lockText(lock.stored)).join('\n'),
-  } : undefined;
+  } : placementComparison;
+  const canChangeThoughtHistory = document.state?.durable && PHASES_TAKING_CHANGES.has(document.status?.phase ?? '');
   const engine = useMemo<StructureEngineSource>(() => ({
     sermon, loading: document.loading, error: document.error, durable: document.state?.durable, isHolding: () => holdingRef.current,
     retry: () => { void document.retry().catch(() => undefined); },
@@ -160,9 +162,12 @@ function EngineStructureBoard({ sermonId }: { sermonId: string }) {
   return <OutlineWriteRecovery key={`${owner}:${sermonId}`} owner={owner} sermonId={sermonId} {...outline}>
     <StructureBoard key={document.readOnly ? 'copy' : 'editor'} sermonId={sermonId} engine={engine} holdingRef={holdingRef} readOnly={document.readOnly}
       setThoughtLocks={outline.writer.setThoughtLocks}
-      lockHistory={owner && generation && sermon && !document.readOnly && <ThoughtLockHistory key={generation}
-        owner={owner} sermonId={sermonId} generation={generation} thoughts={sermon.thoughts}
-        disabled={!document.state?.durable || !PHASES_TAKING_CHANGES.has(document.status?.phase ?? '')} onRestore={outline.writer.setThoughtLocks} />}
+      thoughtHistory={owner && generation && sermon && !document.readOnly && <>
+        <ThoughtLockHistory key={'lock:' + generation} owner={owner} sermonId={sermonId} generation={generation} thoughts={sermon.thoughts}
+          disabled={!canChangeThoughtHistory} onRestore={outline.writer.setThoughtLocks} />
+        <ThoughtPlacementHistory key={'placement:' + generation} owner={owner} sermonId={sermonId} generation={generation} thoughts={sermon.thoughts}
+          disabled={!canChangeThoughtHistory} outline={sermon.outline} onRestore={outline.writer.setThoughtPlacement} />
+      </>}
       syncStatus={document.readOnly ? null : <DataSyncStatus
         subject={document.recoveryIdentity} status={document.status} error={document.error} errorWords={document.errorWords} onRetry={document.retry}
         comparison={comparison} onKeepLocal={() => document.keepLocal(comparison ? checkpoint : undefined)}
@@ -172,12 +177,12 @@ function EngineStructureBoard({ sermonId }: { sermonId: string }) {
   </OutlineWriteRecovery>;
 }
 
-function StructureBoard({ sermonId, engine, holdingRef, syncStatus, lockHistory, setThoughtLocks, readOnly = false }: {
+function StructureBoard({ sermonId, engine, holdingRef, syncStatus, thoughtHistory, setThoughtLocks, readOnly = false }: {
   sermonId: string;
   engine: StructureEngineSource;
   holdingRef: React.MutableRefObject<boolean>;
   syncStatus?: React.ReactNode;
-  lockHistory?: React.ReactNode;
+  thoughtHistory?: React.ReactNode;
   setThoughtLocks: (thoughts: readonly ShownThoughtIdentity[], isLocked: boolean) => Promise<void>;
   /** A copy for reading (device storage silent): see `StructureReadOnlyBoard`. */
   readOnly?: boolean;
@@ -842,7 +847,7 @@ function StructureBoard({ sermonId, engine, holdingRef, syncStatus, lockHistory,
           </div>
         </div>
 
-        {lockHistory}
+        {thoughtHistory}
         {readOnly ? <StructureReadOnlyBoard
           containers={containers}
           outlinePoints={outlinePoints}
