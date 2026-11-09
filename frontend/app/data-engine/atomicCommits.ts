@@ -1,4 +1,6 @@
+import { projectOutlinePoint } from '@/utils/outlineDnd';
 import { explicitPreachedFlag } from '@/utils/preachDateStatus';
+import { replaceSermonOutline } from '@/utils/sermonThoughtEdits';
 import { projectServiceOrderStep } from '@/utils/serviceOrderStepPlacement';
 
 import { sameAnalysisFrame } from './analysisReshapeFields';
@@ -28,6 +30,7 @@ import { coversCommittedEffect } from './snapshotFreshness';
 import type { CommitRequest, CommitStore, TrackCommitAnswer } from './commits';
 import type { DataEngineRuntime } from './runtime';
 import type { CommandResult, DocumentData, EngineMetadata, JournalEntry, ResourceRef, ResourceSnapshot } from './types';
+import type { Sermon } from '@/models/models';
 
 export interface AtomicCommitIdentity { id: string; participants: string[]; kind?: 'create-member' | 'council-carry' | 'analysis-reshape' }
 const sameResource = (a: ResourceRef, b: ResourceRef) => a.collection === b.collection && a.id === b.id;
@@ -56,11 +59,27 @@ export function orderActionProjections(requests: readonly CommitRequest[]): read
 }
 
 /** The same predecessor rebase is used for ordinary and atomic saved intent. */
+/** Carry the legacy marker across consecutive acknowledgements from this editor. */
+function legacyOutlineObservedRevision(record: CommitRequest, predecessor: CommitRequest, snapshot: ResourceSnapshot): number | undefined {
+  const head = snapshot.metadata, answer = predecessor.result;
+  const effect = answer?.kind === 'acknowledged' ? answer.committed ?? answer.snapshot.metadata : null;
+  if (record.baseline.resource.collection !== 'sermons' || !record.baseline.value || record.baseline.metadata !== null
+    || predecessor.editorId !== record.editorId || predecessor.owner !== record.owner
+    || !equalValues(predecessor.baseline.resource, record.baseline.resource)
+    || !head || effect?.generation !== head.generation || effect.revision !== head.revision
+    || effect.operationId !== (predecessor.command?.operationId ?? predecessor.id)) return undefined;
+  if (head.revision === 1) return predecessor.baseline.value && !predecessor.baseline.metadata ? 1 : undefined;
+  if (predecessor.outlinePointPlacementLegacyRevision === head.revision - 1
+    && predecessor.working.metadata?.generation === head.generation) return head.revision;
+}
+
 export function initializeCommit(record: CommitRequest, records: readonly CommitRequest[]): CommitRequest | null {
   const predecessor = record.predecessor && records.find(candidate => candidate.id === record.predecessor);
   if (record.predecessor && (!predecessor || predecessor.state !== 'acknowledged')) return null;
   if (predecessor && predecessor.result?.kind === 'acknowledged') {
     const snapshot = predecessor.result.snapshot;
+    const legacyRevision = legacyOutlineObservedRevision(record, predecessor, snapshot);
+    const legacyLineage = legacyRevision ? { outlinePointPlacementLegacyRevision: legacyRevision } : {};
     if (record.serviceOrderPlacement && snapshot.value) {
       if ((snapshot.metadata?.generation ?? null) !== record.serviceOrderPlacement.generation) {
         return { ...record, initialized: true, state: 'refused', result: { kind: 'refused', operationId: record.id, code: 'generation-mismatch' } };
@@ -77,6 +96,16 @@ export function initializeCommit(record: CommitRequest, records: readonly Commit
       const projected = steps && projectServiceOrderStep(steps, move.placement.stepId, move.placement.destination);
       return { ...record, initialized: true, working: snapshot,
         intended: projected ? { ...snapshot.value, steps: projected } : snapshot.value };
+    }
+    if (record.outlinePointPlacement && snapshot.value) {
+      const move = record.outlinePointPlacement;
+      if (move.generation !== null && snapshot.metadata?.generation !== move.generation) {
+        return { ...record, initialized: true, state: 'refused', result: { kind: 'refused', operationId: record.id, code: 'generation-mismatch' } };
+      }
+      const sermon = snapshot.value as unknown as Sermon;
+      const outline = sermon.outline && projectOutlinePoint(sermon.outline, move.placement.pointId, move.placement.destination);
+      return { ...record, initialized: true, working: snapshot, ...legacyLineage,
+        intended: outline ? replaceSermonOutline(sermon, outline) as unknown as DocumentData : snapshot.value };
     }
     if (record.seriesMembership && record.value && predecessor.value && snapshot.value) {
       if (record.baseline.metadata && snapshot.metadata?.generation !== record.baseline.metadata.generation) {
@@ -160,7 +189,8 @@ export function initializeCommit(record: CommitRequest, records: readonly Commit
     if (rebased.conflicts.length && !canOrder) return { ...record, initialized: true, state: 'conflict', result: { kind: 'conflict', operationId: record.id, snapshot, conflicts: rebased.conflicts } };
     // The preceding ACK can carry another device's date. Send the original ancestor
     // for this exact leaf so the server can order it or keep the ordinary choice.
-    return { ...record, initialized: true, working: snapshot, intended: intended && flag !== undefined ? { ...intended, isPreached: flag } : intended,
+    return { ...record, initialized: true, working: snapshot, ...legacyLineage,
+      intended: intended && flag !== undefined ? { ...intended, isPreached: flag } : intended,
       ...(exegetical && { exegeticalQueueBasis: exegetical.basis }),
       ...(deferDate && { deferPreachDateRebase: true }), ...(markAncestor && { deferBibleMarkRebase: true }) };
   }

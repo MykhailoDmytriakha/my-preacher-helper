@@ -7,10 +7,11 @@ import { toast } from 'sonner';
 import { serviceOrderPlacementWords } from '@/components/care/serviceOrderPlacementWords';
 import { OutdatedTabNotice } from '@/components/common/OutdatedTabNotice';
 import { SyncNotice } from '@/components/common/SyncNoticeDock';
+import { outlinePointConflictComparison } from '@/components/plan-editor/outlinePointPlacementWords';
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
 import { planModeComparison } from '@/components/sermon/planModeComparison';
 import { FieldComparison } from '@/data-engine/DataSyncStatus';
-import { captureRecoveryChoice, councilRefusalHeldOpen, isCollectionOnEngine, isDataEngineEnabled, isOneShotRecord, isRecoveryHeldOpen, readCommentKindComparison, readDocumentTagComparison, readPlanTemplateNameConflict, readStudyNoteTypeComparison, readServiceStepConflict, readTagColorConflict, useDataEngine, useDocumentActions, useOpenDocumentAnswerScopes, waitsForDecision, type OpenDocumentAnswer, type RecoveryChoiceScope } from '@/data-engine/react.client';
+import { captureRecoveryChoice, councilRefusalHeldOpen, isCollectionOnEngine, isDataEngineEnabled, isOneShotRecord, isRecoveryHeldOpen, readCommentKindComparison, readDocumentTagComparison, readOutlinePointPlacementComparison, readPlanTemplateNameConflict, readStudyNoteTypeComparison, readServiceStepConflict, readTagColorConflict, useDataEngine, useDocumentActions, useOpenDocumentAnswerScopes, waitsForDecision, type OpenDocumentAnswer, type RecoveryChoiceScope } from '@/data-engine/react.client';
 import { useClipboard } from '@/hooks/useClipboard';
 import { useConfirm, useDiscardQuestion } from '@/hooks/useConfirm';
 import { useShellPathname } from '@/hooks/useShellPathname';
@@ -89,7 +90,10 @@ function fieldComparison(entry: Waiting, t: (key: string) => string): TextCompar
       stored: placement.saved ? serviceOrderPlacementWords(placement.saved, t)
         : t(placement.step ? 'serviceOrders.placementHistory.positionUnavailable' : 'dataSync.storedVersion') };
   }
-  if (entry.resource.collection === 'sermons') return planModeComparison(entry.records[0].checkpoint, t);
+  if (entry.resource.collection === 'sermons') {
+    const checkpoint = entry.records[0].checkpoint;
+    return outlinePointConflictComparison(checkpoint, t) ?? planModeComparison(checkpoint, t);
+  }
   if (entry.resource.collection === 'studyNotes') {
     const kind = readCommentKindComparison(entry.records[0].checkpoint);
     if (kind) {
@@ -484,6 +488,8 @@ function EngineConflicts({ pollMs, search }: { pollMs: number; search?: string }
   }
   if (entry.kind === 'conflict') {
     const comparison = fieldComparison(entry, t);
+    const checkpoint = entry.records[0].checkpoint;
+    const placement = checkpoint.serviceOrderPlacementComparison || readOutlinePointPlacementComparison(checkpoint);
     return notice(
       <>
         {comparison && <section aria-label={t('dataSync.versionComparison')} className="mb-3"><FieldComparison comparison={comparison} /></section>}
@@ -493,8 +499,8 @@ function EngineConflicts({ pollMs, search }: { pollMs: number; search?: string }
           description={comparison ? t('dataSync.fieldVersionChanged') : undefined}
           keepMineLabel={comparison ? t('dataSync.useLocalVersion') : undefined}
           takeTheirsLabel={comparison ? t('dataSync.useStoredVersion') : undefined}
-          keepMineDisabled={entry.records[0].checkpoint.serviceOrderPlacementComparison?.available === false}
-          onKeepMine={() => { void settle('mine', browser, entry, Boolean(entry.records[0].checkpoint.serviceOrderPlacementComparison)); }}
+          keepMineDisabled={placement?.available === false}
+          onKeepMine={() => { void settle('mine', browser, entry, Boolean(placement)); }}
           onTakeTheirs={() => { void askBeforeSettling(entry, 'theirs', Boolean(comparison)); }}
           busy={busy}
           className="mb-3"

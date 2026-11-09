@@ -2564,6 +2564,21 @@
     "attachmentAlt": "Attachment {{number}}"
   },
   "planEditor": {
+    "pointPlacement": {
+      "position": "Point position",
+      "history": "Point position history",
+      "loading": "Loading earlier positions…",
+      "readFailed": "Could not load earlier positions.",
+      "empty": "No earlier positions were saved.",
+      "restoreFailed": "Could not restore this position.",
+      "before": "{{section}} · before {{point}}",
+      "after": "{{section}} · after {{point}}",
+      "unavailable": "Position unavailable",
+      "kept": "Kept {{place}}",
+      "restore": "Restore position",
+      "current": "Current position",
+      "more": "More earlier positions"
+    },
     "wholeStructureDescription": "For this saved edit, choose between two complete structures. Review the saved structure before replacing it with yours.",
     "useWholeLocalStructure": "Use my entire structure",
     "reviewCurrentStructure": "Review saved structure",

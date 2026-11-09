@@ -40,6 +40,7 @@ export interface TextComparison {
   description?: string;
   valueKind?: 'field' | 'removed-row';
   scopedChoice?: true;
+  keepMineDisabled?: boolean;
   actions?: { local: string; stored: string; confirmStored?: DiscardQuestionKey };
 }
 export interface DataSyncStatusProps {
@@ -213,6 +214,7 @@ export function DataSyncStatus({ subject, status, error, errorWords, onKeepLocal
     {comparison && <FieldComparison comparison={comparison} />}
     {conflictBanner ? <SaveConflictBanner description={conflictPresentation?.description ?? (comparison ? t('dataSync.fieldVersionChanged') : undefined)}
       keepMineLabel={conflictPresentation?.actions?.local ?? (comparison?.valueKind ? t(comparison.valueKind === 'removed-row' ? 'dataSync.keepDraft' : 'dataSync.useLocalVersion') : undefined)}
+      keepMineDisabled={comparison?.keepMineDisabled}
       takeTheirsLabel={conflictPresentation?.actions?.stored ?? (comparison ? t('dataSync.useStoredVersion') : undefined)} onKeepMine={() => keepChecked(keep)} onTakeTheirs={() => run(() => chooseStored(accept))} busy={busy} /> : status && (pendingDeletion || showPhase || showFreshness || readTrouble) && <div role="status" aria-live="polite" className="text-gray-600 dark:text-gray-300">
       {pendingDeletion && <p>{t('recordAvailability.deleting')}</p>}
       {showPhase && !pendingDeletion && <p>{t(deleting ? (status.phase === 'refused' ? 'dataSync.deleteRefusedTitle' : 'dataSync.deleteConflictTitle') : trouble ? `dataSync.phase.${status.phase}` : 'dataSync.unfinishedWork')}</p>}

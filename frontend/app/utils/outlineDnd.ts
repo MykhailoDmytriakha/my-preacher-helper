@@ -18,6 +18,9 @@ import type { OutlinePoint, SermonOutline, SubPoint } from '@/models/models';
 
 export type SectionKey = 'introduction' | 'main' | 'conclusion';
 
+export type OutlinePointGap = { section: SectionKey; previous: string | null; next: string | null };
+export type OutlinePointOrder = Record<SectionKey, { id: string }[]>;
+
 export const SECTION_KEYS: SectionKey[] = ['introduction', 'main', 'conclusion'];
 
 const listOf = (outline: SermonOutline, section: SectionKey): OutlinePoint[] =>
@@ -120,6 +123,45 @@ export function movePoint(
   const toList = [...listOf(outline, toSection)];
   toList.splice(Math.max(0, Math.min(toIndex, toList.length)), 0, moved);
   return withList(withList(outline, fromSection, fromList), toSection, toList);
+}
+
+/** A move needs the displayed order, with no copy of the words. */
+export function outlinePointOrder(outline: SermonOutline): OutlinePointOrder {
+  const ids = (section: SectionKey) => listOf(outline, section).map(({ id }) => ({ id }));
+  return { introduction: ids('introduction'), main: ids('main'), conclusion: ids('conclusion') };
+}
+
+/** Whether an observed document shows the same point order, ignoring the words. */
+export function hasOutlinePointOrder(value: unknown, expected: OutlinePointOrder): boolean {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+  const outline = value as Partial<Record<SectionKey, unknown>>;
+  return SECTION_KEYS.every(section => {
+    const points = outline[section] ?? [];
+    return Array.isArray(points) && points.length === expected[section].length && points.every((point, index) =>
+      point !== null && typeof point === 'object' && 'id' in point && point.id === expected[section][index].id);
+  });
+}
+
+/** The section and adjacent points visible when the person placed this point. */
+export function outlinePointGap(outline: Partial<Record<SectionKey, readonly { id: string }[]>>, pointId: string): OutlinePointGap | undefined {
+  const section = SECTION_KEYS.find(key => outline[key]?.some(point => point.id === pointId));
+  if (!section) return undefined;
+  const points = outline[section] ?? [];
+  const index = points.findIndex(point => point.id === pointId);
+  return { section, previous: points[index - 1]?.id ?? null, next: points[index + 1]?.id ?? null };
+}
+
+/** Project a deliberate placement onto the current outline without rewriting other points. */
+export function projectOutlinePoint(outline: SermonOutline, pointId: string, gap: OutlinePointGap): SermonOutline | undefined {
+  const opening = findPointSection(outline, pointId);
+  if (!opening || gap.previous === pointId || gap.next === pointId) return undefined;
+  const points = listOf(outline, gap.section);
+  const previous = gap.previous === null ? -1 : points.findIndex(point => point.id === gap.previous);
+  const next = gap.next === null ? points.length : points.findIndex(point => point.id === gap.next);
+  if ((gap.previous !== null && previous < 0) || next < 0 || previous >= next) return undefined;
+  const current = points.findIndex(point => point.id === pointId);
+  if (current > previous && current < next) return outline;
+  return movePoint(outline, pointId, gap.section, gap.next === null ? previous + 1 : next);
 }
 
 /**

@@ -1,3 +1,4 @@
+import { outlinePointConflictComparison } from '@/components/plan-editor/outlinePointPlacementWords';
 import { planModeComparison } from '@/components/sermon/planModeComparison';
 import { DocumentFieldHistory } from '@/components/ui/DocumentFieldHistory';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
@@ -14,7 +15,7 @@ export function PlanModeStatus({ document }: { document: SermonDocument }) {
   const { t } = useTranslation();
   if (document.readOnly) return null;
   const checkpoint = document.state?.checkpoint;
-  const comparison = checkpoint && planModeComparison(checkpoint, t);
+  const comparison = checkpoint && (outlinePointConflictComparison(checkpoint, t) ?? planModeComparison(checkpoint, t));
   return <div className="px-4 pt-4 empty:hidden"><DataSyncStatus subject={document.recoveryIdentity}
     status={document.status} error={document.error} errorWords={document.errorWords} onRetry={document.retry}
     comparison={comparison} onKeepLocal={() => document.keepLocal(comparison ? checkpoint : undefined)}

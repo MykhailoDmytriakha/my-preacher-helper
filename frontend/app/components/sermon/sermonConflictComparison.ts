@@ -1,3 +1,4 @@
+import { outlinePointConflictComparison } from '@/components/plan-editor/outlinePointPlacementWords';
 import { readSermonConflict } from '@/data-engine/react.client';
 import { formatDateForLocale } from '@/utils/dateFormatter';
 import { isDateOnlyKey, shownDayOf } from '@/utils/dateOnly';
@@ -9,6 +10,8 @@ import type { Json } from '@/data-engine/types';
 import type { TFunction } from 'i18next';
 
 export function sermonConflictComparison(checkpoint: SessionCheckpoint, t: TFunction, language: string): TextComparison | undefined {
+  const placement = outlinePointConflictComparison(checkpoint, t);
+  if (placement) return placement;
   const comparison = readSermonConflict(checkpoint);
   if (!comparison) return undefined;
   const { identity, kind } = comparison;

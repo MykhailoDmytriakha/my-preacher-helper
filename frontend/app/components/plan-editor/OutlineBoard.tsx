@@ -25,6 +25,7 @@ import {
   noteSubContainerId,
 } from '@/utils/boardDnd';
 import { newClientId } from '@/utils/clientId';
+import { findPointSection } from '@/utils/outlineDnd';
 import { outlinePointGridClass, structureSubPointInsetClass } from '@/utils/structureBoardLayout';
 import { sortSubPointsByPosition, subPointDeletionNeedsConfirm } from '@/utils/subPoints';
 import { capitalizeFirstLetter, normalizeCapitalizedTitle } from '@/utils/textNormalization';
@@ -103,6 +104,7 @@ const toOutline = (outline: Record<SectionKey, OutlinePoint[]>): SermonOutline =
 interface OutlineBoardProps {
   value: SermonOutline;
   onChange: (next: SermonOutline) => void;
+  onPointMove?: (next: SermonOutline, pointId: string) => void;
   isReadOnly?: boolean;
   /** Optional: count of thoughts attached to a sub-point, for the delete warning. */
   getSubPointThoughtCount?: (subPointId: string) => number;
@@ -143,6 +145,7 @@ interface OutlineBoardProps {
 const OutlineBoard: React.FC<OutlineBoardProps> = ({
   value,
   onChange,
+  onPointMove,
   isReadOnly = false,
   getSubPointThoughtCount,
   getPointThoughtCount,
@@ -402,7 +405,9 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
     if (!transition) return;
     const { next, movedPointTo, placementChanges, subPointMove } = transition;
 
-    onChange(next);
+    const remainsAPoint = subject.kind === 'point' && findPointSection(next, subject.id);
+    if (remainsAPoint && onPointMove) onPointMove(next, subject.id);
+    else onChange(next);
     // Re-file the notes whose address the move invalidated (pure remap above).
     placementChanges.forEach(({ noteId, placement }) => scratch?.onPlace(noteId, placement));
 

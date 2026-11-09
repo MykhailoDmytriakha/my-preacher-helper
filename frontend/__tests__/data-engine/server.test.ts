@@ -3,10 +3,13 @@ import { createHash } from 'node:crypto';
 
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { isCollectionServed } from '@/data-engine/activation';
-import { DataEngineServerError, listAccountPreferenceHistory, listBibleMarkHistory, listCommentKindHistory, listExegeticalPointHistory, listCouncilMetadataHistory, listDocumentTagHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listPlanTemplateNameHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listPrayerStatusHistory, listPrayerTitleHistory, listSermonChurchHistory, listSermonGoalTypeHistory, listSermonPlanModeHistory, listSermonPreparationConfirmationHistory, listSermonTitleHistory, listSermonVerseHistory, listSeriesMembershipHistory, listSeriesMetadataHistory, listServiceOrderFlagHistory, listServiceOrderPlacementHistory, listServiceOrderStepPlacementHistory, listServiceOrderStepTitleHistory, listServiceOrderTitleHistory, listStudyNoteTitleHistory, listTagColorHistory, listThoughtLockHistory, listThoughtPlacementHistory, listThoughtTagHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
+import { DataEngineServerError, listAccountPreferenceHistory, listBibleMarkHistory, listCommentKindHistory, listExegeticalPointHistory, listCouncilMetadataHistory, listDocumentTagHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listOutlinePointPlacementHistory, listPlanTemplateNameHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listPrayerStatusHistory, listPrayerTitleHistory, listSermonChurchHistory, listSermonGoalTypeHistory, listSermonPlanModeHistory, listSermonPreparationConfirmationHistory, listSermonTitleHistory, listSermonVerseHistory, listSeriesMembershipHistory, listSeriesMetadataHistory, listServiceOrderFlagHistory, listServiceOrderPlacementHistory, listServiceOrderStepPlacementHistory, listServiceOrderStepTitleHistory, listServiceOrderTitleHistory, listStudyNoteTitleHistory, listTagColorHistory, listThoughtLockHistory, listThoughtPlacementHistory, listThoughtTagHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
 import { collectionHeadId, HEADS_COLLECTION, sequenceId } from '@/data-engine/serverFeed';
 import { DataSession } from '@/data-engine/session';
+import { outlinePointGap } from '@/utils/outlineDnd';
+
 import type { DataCommand, FieldValue, Json, ResourceSnapshot } from '@/data-engine/types';
+import type { SermonOutline } from '@/models/models';
 
 jest.mock('@/data-engine/activation', () => ({ ...jest.requireActual('@/data-engine/activation'), isCollectionServed: jest.fn(() => true) }));
 
@@ -5354,6 +5357,108 @@ describe('deleting an outline node while a thought is linked to it', () => {
     });
   });
 
+
+  describe('two deliberate moves of the same sermon outline point', () => {
+    function moves(acrossSections: boolean) {
+      const f = fixture(true);
+      const [point, second, third] = f.outline.main;
+      const phone = acrossSections
+        ? { ...f.outline, introduction: [point], main: [second, third] }
+        : { ...f.outline, main: [second, point, third] };
+      const desktop = acrossSections
+        ? { ...f.outline, conclusion: [point], main: [second, third] }
+        : { ...f.outline, main: [second, third, point] };
+      const ids = (outline: SermonOutline) => ({
+        introduction: outline.introduction.map(({ id }) => ({ id })),
+        main: outline.main.map(({ id }) => ({ id })),
+        conclusion: outline.conclusion.map(({ id }) => ({ id })),
+      });
+      const action = (operationId: string, to: SermonOutline, at: number | null) => ({
+        ...f.remove, operationId, changes: [f.change('outline', ids(f.outline), ids(to))],
+        outlinePointPlacement: { pointId: point.id, opening: outlinePointGap(f.outline, point.id)!,
+          destination: outlinePointGap(to, point.id)!, observedRevision: 1, time: at === null ? null : f.time(at) },
+      });
+      return { f, point, phone, desktop, action };
+    }
+
+    it.each([
+      { phoneLater: false, acrossSections: false },
+      { phoneLater: true, acrossSections: false },
+      { phoneLater: false, acrossSections: true },
+      { phoneLater: true, acrossSections: true },
+    ])('keeps the later move (phone later $phoneLater, across sections $acrossSections)', async ({ phoneLater, acrossSections }) => {
+      const { f, phone, desktop, action } = moves(acrossSections);
+      const early = phoneLater ? desktop : phone, late = phoneLater ? phone : desktop;
+      expect(await processCommand(f.owner, f.create)).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(f.owner, action('desktop-outline-move', desktop, phoneLater ? 20 : 100)))
+        .toMatchObject({ kind: 'acknowledged' });
+      const phoneCommand = action('phone-outline-move', phone, phoneLater ? 100 : 20);
+      expect(await processCommand(f.owner, phoneCommand)).toMatchObject({ kind: 'acknowledged', snapshot: { value: { outline: late } } });
+      const stored = await readDocument(f.owner, resource);
+      const section = acrossSections ? (phoneLater ? 'introduction' : 'conclusion') : 'main';
+      expect(stored?.value).toMatchObject({
+        outline: late,
+        thoughts: f.initial.map(thought => ({ ...thought, tags: [section === 'introduction' ? 'intro' : section] })),
+        structure: { [section]: ['one', 'two'] },
+        thoughtsBySection: { [section]: ['one', 'two'] },
+      });
+      const history = await listOutlinePointPlacementHistory(f.owner, resource.id, f.create.operationId);
+      expect(history.entries).toMatchObject([{
+        pointId: f.opening.id, earlier: outlinePointGap(early, f.opening.id), kept: outlinePointGap(late, f.opening.id),
+      }]);
+      await expect(listOutlinePointPlacementHistory('another-owner', resource.id, f.create.operationId))
+        .rejects.toMatchObject({ status: 403 });
+      await expect(listOutlinePointPlacementHistory(f.owner, resource.id, 'different-generation'))
+        .rejects.toMatchObject({ status: 404 });
+      expect(await processCommand(f.owner, phoneCommand)).toMatchObject({ kind: 'acknowledged', snapshot: { metadata: { revision: 3 } } });
+    });
+
+    it('offers two placements when the phone clock is unknown and changes no saved words', async () => {
+      const { f, point, phone, desktop, action } = moves(true);
+      await processCommand(f.owner, f.create);
+      await processCommand(f.owner, action('desktop-outline-move', desktop, 20));
+      const before = await readDocument(f.owner, resource);
+      expect(await processCommand(f.owner, action('unclocked-outline-move', phone, null))).toMatchObject({
+        kind: 'conflict',
+        conflicts: [{ path: ['outline', 'id:' + point.id, 'position'],
+          mine: { value: { section: 'introduction' } }, theirs: { value: { section: 'conclusion' } } }],
+      });
+      expect(await readDocument(f.owner, resource)).toEqual(before);
+    });
+
+    it.each([false, true])('keeps uncertainty after a same-position action (unknown clock: %s)', async unknown => {
+      const { f, phone, desktop, action } = moves(true);
+      const first = action('first-to-introduction', phone, 20);
+      const same = action('second-to-introduction', phone, null);
+      const later = action('maybe-later-to-conclusion', desktop, 45);
+      first.outlinePointPlacement.time = { earliestMs: f.time(20).earliestMs, latestMs: f.time(40).earliestMs };
+      if (!unknown) same.outlinePointPlacement.time = { earliestMs: f.time(35).earliestMs, latestMs: f.time(70).earliestMs };
+      await processCommand(f.owner, f.create);
+      expect(await processCommand(f.owner, first)).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(f.owner, same)).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(f.owner, later)).toMatchObject({ kind: 'conflict' });
+      expect((await readDocument(f.owner, resource))?.value?.outline).toEqual(phone);
+    });
+
+    it('does not apply an older gesture to a deleted point restored with the same ID', async () => {
+      const { f, phone, action } = moves(true);
+      await processCommand(f.owner, f.create);
+      expect(await processCommand(f.owner, f.remove)).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(f.owner, { ...f.remove, operationId: 'restore-deleted-outline-point',
+        changes: [f.change('outline', f.nextOutline, f.outline)] })).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(f.owner, action('pending-move-from-before-delete', phone, 20))).toMatchObject({ kind: 'conflict' });
+      expect((await readDocument(f.owner, resource))?.value?.outline).toEqual(f.outline);
+    });
+
+    it('cannot disguise a second move as an exact change to one point', async () => {
+      const { f, phone, action } = moves(true);
+      await processCommand(f.owner, f.create);
+      const command = action('two-outline-moves', phone, 20);
+      const after = command.changes[0].after.value as { main: { id: string }[] };
+      after.main.reverse();
+      expect(await processCommand(f.owner, command)).toMatchObject({ kind: 'refused', code: 'invalid-argument' });
+    });
+  });
 
   describe('moving a plan node while another device assigns a thought', () => {
     const boardFields = ['structure', 'thoughtsBySection'] as const;

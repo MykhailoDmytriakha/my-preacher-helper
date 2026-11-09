@@ -21,6 +21,7 @@ import { writeFailureTranslationKey } from '@/utils/writeRecovery';
 import { getSectionLabel } from '@lib/sections';
 import { useTranslation } from '@locales/useTranslation';
 
+import type { OutlinePointMove } from '@/components/sermon/structureWriter';
 import type { Sermon, SermonOutline, SermonPoint, SubPoint } from '@/models/models';
 
 interface SermonOutlineProps {
@@ -81,6 +82,7 @@ const SermonOutlineEditor: React.FC<SermonOutlineProps> = ({
   const { confirm, confirmDialog } = useConfirm();
   const writer = useStructureWriter();
   const outlineCapture = useMemo(() => new OutlineCapture(writer, sermon.id, 'preferMine'), [writer, sermon.id]);
+  const placementVersion = useRef(writer.outlinePlacementVersion?.());
   const parentOutlineRef = useRef<SermonOutline | null>(sermon.outline ?? null);
   useLayoutEffect(() => {
     parentOutlineRef.current = sermon.outline ?? null;
@@ -149,6 +151,7 @@ const SermonOutlineEditor: React.FC<SermonOutlineProps> = ({
     if (settledGenerationRef.current !== saveGenerationRef.current) return;
     setSectionPoints(mapOutline(sermon.outline));
     baseOutlineRef.current = sermon.outline ?? null;
+    placementVersion.current = writer.outlinePlacementVersion?.();
     if (saveGenerationRef.current === 0) {
       setExpandedSections(previous => {
         const next = expandedOutline(sermon.outline);
@@ -156,7 +159,7 @@ const SermonOutlineEditor: React.FC<SermonOutlineProps> = ({
         return next;
       });
     }
-  }, [sermon.outline, editingPointId, addingNewToSection]);
+  }, [sermon.outline, editingPointId, addingNewToSection, writer]);
 
   const mountedRef = useRef(true);
   useEffect(() => {
@@ -210,7 +213,7 @@ const SermonOutlineEditor: React.FC<SermonOutlineProps> = ({
   };
 
   // Local ownership begins with the accepted edit; the engine schedules delivery.
-  const directlySaveOutlineChanges = (pointsToSave: Record<SectionType, SermonPoint[]>) => {
+  const directlySaveOutlineChanges = (pointsToSave: Record<SectionType, SermonPoint[]>, pointMove?: OutlinePointMove) => {
     if (isReadOnly) return;
     saveGenerationRef.current += 1;
     const generationAtRequest = saveGenerationRef.current;
@@ -220,7 +223,7 @@ const SermonOutlineEditor: React.FC<SermonOutlineProps> = ({
       conclusion: pointsToSave.conclusion,
     };
     setError(null);
-    outlineCapture.schedule({ outline: outlineToSave, base: baseOutlineRef.current, begin: () => ({
+    outlineCapture.schedule({ outline: outlineToSave, base: baseOutlineRef.current, pointMove, begin: () => ({
       stored: (saved, sameView) => {
         if (!mountedRef.current || generationAtRequest !== saveGenerationRef.current) return;
         const visible = sameView ? saved : parentOutlineRef.current;
@@ -353,7 +356,10 @@ const SermonOutlineEditor: React.FC<SermonOutlineProps> = ({
     }
 
     setSectionPoints(updatedPoints);
-    directlySaveOutlineChanges(updatedPoints);
+    const version = placementVersion.current;
+    const before = { introduction: sectionPoints.introduction, main: sectionPoints.mainPart, conclusion: sectionPoints.conclusion };
+    const moved = sourceSection !== destSection || source.index !== destination.index;
+    directlySaveOutlineChanges(updatedPoints, moved && version ? { pointId: result.draggableId, before, version } : undefined);
   };
 
   // --- Sub-point operations ---

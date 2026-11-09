@@ -32,6 +32,7 @@ import { GROUP_MEETING_FIELD_POLICY, type GroupMeetingFieldHistoryPage } from '.
 import { GROUP_MEETING_FIELD_HISTORY, metadataAfterGroupMeetingFields, orderGroupMeetingFields } from './groupMeetingFieldOrder.server';
 import { alignGroupStepDurationRepresentation, GROUP_STEP_DURATION_POLICY } from './groupStepDurationAction';
 import { metadataAfterOutlineMoves } from './outlineMoveProof.server';
+import { metadataAfterOutlinePointPlacement, OUTLINE_POINT_PLACEMENT_HISTORY, type OutlinePointPlacementWrite } from './outlinePointPlacement.server';
 import { PREACH_DATE_FIELD_POLICY, type PreachDateField, type PreachDateFieldHistoryPage } from './preachDateFieldAction';
 import { alignPreachStatusCommand, PREACH_STATUS_POLICY, type PreachStatusHistoryPage, type PreachStatusValue } from './preachStatusAction';
 import { advanceResourceSnapshot, commandFingerprint, getResourcePolicy, isValidIdentifier, TOMBSTONE_OWNER_FIELD, validateCommand } from './protocol';
@@ -67,6 +68,7 @@ import type { RowValue } from './rowFieldAction';
 import type { SeriesMetadataHistoryPage } from './seriesFieldAction';
 import type { SeriesMembershipHistoryEntry, SeriesMembershipHistoryPage } from './seriesMembershipHistory';
 import type { FeedWrite } from './serverFeed';
+import type { OutlinePointPlacementHistoryPage } from './types';
 import type { ServiceOrderPlacementHistoryPage, CollectionChanges, CollectionPage, CommandReceipt, CommandResult, ConflictDetail, DataCommand, DocumentData, EngineMetadata, EngineReadOptions, Json, ResourceRef, ResourceSnapshot } from './types';
 import type { AiResultReceiptStore, ReceiptRecord } from '@/services/aiResultReceipt.server';
 import type { DocumentReference, Firestore, Transaction } from 'firebase-admin/firestore';
@@ -519,7 +521,7 @@ function orderGroupFlowFields(command: DataCommand, current: ResourceSnapshot, m
   return { block, step, blockStatus, duration: { ...duration, command: alignGroupStepDurationRepresentation(duration.command, current) } };
 }
 
-async function persistAcceptedCommand(transaction: Transaction, { owner, command, snapshot: primarySnapshot, effects, rawDocuments, dateOrder, meetingOrder, groupFlowOrder, preachingOrder, statusOrder, serviceFlagOrder, serviceStepTitleOrder, councilTopicTitleOrder, councilAssemblyOrder, councilTopicKindOrder, councilOutcomeOrder, thoughtLockOrder, thoughtPlacementOrder, markOrder, fieldOrder, exegeticalOrder, thoughtTagOrder, documentTagOrder, serviceOrderPlacement, serviceOrderStepPlacement, seriesMembershipWrites, cachedSeriesHead }: {
+async function persistAcceptedCommand(transaction: Transaction, { owner, command, snapshot: primarySnapshot, effects, rawDocuments, dateOrder, meetingOrder, groupFlowOrder, preachingOrder, statusOrder, serviceFlagOrder, serviceStepTitleOrder, councilTopicTitleOrder, councilAssemblyOrder, councilTopicKindOrder, councilOutcomeOrder, thoughtLockOrder, thoughtPlacementOrder, markOrder, fieldOrder, exegeticalOrder, thoughtTagOrder, documentTagOrder, serviceOrderPlacement, serviceOrderStepPlacement, outlinePointPlacement, seriesMembershipWrites, cachedSeriesHead }: {
   owner: string;
   command: DataCommand;
   snapshot: ResourceSnapshot;
@@ -545,6 +547,7 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
   documentTagOrder?: ReturnType<typeof orderDocumentTags>;
   serviceOrderPlacement?: ServiceOrderPlacementWrite;
   serviceOrderStepPlacement?: ServiceOrderStepPlacementWrite;
+  outlinePointPlacement?: OutlinePointPlacementWrite;
   seriesMembershipWrites: readonly SeriesMembershipWrite[];
   cachedSeriesHead?: Promise<DocumentData | undefined>;
 }) {
@@ -580,7 +583,8 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
     const tags = metadataAfterThoughtTags({ ...snapshot, metadata: exegetical }, raw, primary ? thoughtTagOrder : undefined);
     const documentTags = metadataAfterDocumentTags({ ...snapshot, metadata: tags }, raw, primary ? documentTagOrder : undefined);
     const outlineMoves = metadataAfterOutlineMoves({ ...snapshot, metadata: documentTags }, raw);
-    const orderPlacementMetadata = metadataAfterServiceOrderPlacement({ ...snapshot, metadata: outlineMoves }, raw,
+    const outlinePointPlacementMetadata = metadataAfterOutlinePointPlacement({ ...snapshot, metadata: outlineMoves }, raw, primary ? outlinePointPlacement : undefined);
+    const orderPlacementMetadata = metadataAfterServiceOrderPlacement({ ...snapshot, metadata: outlinePointPlacementMetadata }, raw,
       primary ? serviceOrderPlacement : undefined, !primary && Boolean(serviceOrderPlacement));
     const finalMetadata = metadataAfterServiceOrderStepPlacement({ ...snapshot, metadata: orderPlacementMetadata }, raw,
       primary ? serviceOrderStepPlacement : undefined);
@@ -599,6 +603,12 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
     const history = adminDb.collection('serviceOrders').doc(primarySnapshot.resource.id).collection(SERVICE_ORDER_STEP_PLACEMENT_HISTORY);
     transaction.set(history.doc(historyEntryId(primarySnapshot, command.operationId)), {
       ...serviceOrderStepPlacement.displaced, generation: primarySnapshot.metadata.generation, acceptedAt: new Date().toISOString(),
+    });
+  }
+  if (outlinePointPlacement?.displaced && primarySnapshot.metadata) {
+    const history = adminDb.collection('sermons').doc(primarySnapshot.resource.id).collection(OUTLINE_POINT_PLACEMENT_HISTORY);
+    transaction.set(history.doc(historyEntryId(primarySnapshot, command.operationId)), {
+      ...outlinePointPlacement.displaced, generation: primarySnapshot.metadata.generation, acceptedAt: new Date().toISOString(),
     });
   }
   const tagHistory = thoughtTagOrder?.displaced.filter(entry =>
@@ -739,6 +749,7 @@ export async function processCommand(owner: string, input: unknown): Promise<Com
     let documentTagOrder: ReturnType<typeof orderDocumentTags> | undefined;
     let serviceOrderPlacement: ServiceOrderPlacementWrite | undefined;
     let serviceOrderStepPlacement: ServiceOrderStepPlacementWrite | undefined;
+    let outlinePointPlacement: OutlinePointPlacementWrite | undefined;
     const rawDocuments = new Map<string, Record<string, unknown> | undefined>([[resourceKey(command.resource), raw]]);
     if (blocked.length) {
       result = { kind: 'blocked', operationId: command.operationId, dependencies: blocked };
@@ -825,6 +836,7 @@ export async function processCommand(owner: string, input: unknown): Promise<Com
       seriesMembershipWrites = plan.seriesMembershipWrites ?? [];
       serviceOrderPlacement = plan.serviceOrderPlacement;
       serviceOrderStepPlacement = plan.serviceOrderStepPlacement;
+      outlinePointPlacement = plan.outlinePointPlacement;
       // Leave headroom below Firestore's transaction request limit; never split a cascade.
       if (effectBytes(effects) > MAX_EFFECT_BYTES) {
         result = refusal('relation-effects-too-large');
@@ -843,7 +855,7 @@ export async function processCommand(owner: string, input: unknown): Promise<Com
       deletedTag = raw.name;
     }
     if (result.kind === 'acknowledged') {
-      await persistAcceptedCommand(transaction, { owner, command, snapshot: result.snapshot, effects, rawDocuments, dateOrder, meetingOrder, groupFlowOrder, preachingOrder, statusOrder, serviceFlagOrder, serviceStepTitleOrder, councilTopicTitleOrder, councilAssemblyOrder, councilTopicKindOrder, councilOutcomeOrder, thoughtLockOrder, thoughtPlacementOrder, markOrder, fieldOrder, exegeticalOrder, thoughtTagOrder, documentTagOrder, serviceOrderPlacement, serviceOrderStepPlacement, seriesMembershipWrites, cachedSeriesHead });
+      await persistAcceptedCommand(transaction, { owner, command, snapshot: result.snapshot, effects, rawDocuments, dateOrder, meetingOrder, groupFlowOrder, preachingOrder, statusOrder, serviceFlagOrder, serviceStepTitleOrder, councilTopicTitleOrder, councilAssemblyOrder, councilTopicKindOrder, councilOutcomeOrder, thoughtLockOrder, thoughtPlacementOrder, markOrder, fieldOrder, exegeticalOrder, thoughtTagOrder, documentTagOrder, serviceOrderPlacement, serviceOrderStepPlacement, outlinePointPlacement, seriesMembershipWrites, cachedSeriesHead });
     }
     const comparison = exegeticalOrder?.comparison;
     if (comparison && result.kind === 'conflict'
@@ -1122,6 +1134,13 @@ export async function listSermonGoalTypeHistory(owner: string, sermonId: string,
   const resource = { collection: 'sermons', id: sermonId };
   const page = await listHistoryEntries<SermonGoalTypeHistoryPage['entries'][number]>(owner, resource, SERMON_GOAL_TYPE_HISTORY, generation, cursor, 'sermon-gone');
   return { owner, sermonId, generation, ...page, entries: page.entries.filter(entry => isSermonGoalType(entry.type) && isSermonGoalType(entry.winnerType)) };
+}
+
+export async function listOutlinePointPlacementHistory(owner: string, sermonId: string, generation: string, cursor?: string): Promise<OutlinePointPlacementHistoryPage> {
+  const page = await listHistoryEntries<OutlinePointPlacementHistoryPage['entries'][number]>(
+    owner, { collection: 'sermons', id: sermonId }, OUTLINE_POINT_PLACEMENT_HISTORY, generation, cursor, 'sermon-gone',
+  );
+  return { owner, sermonId, generation, ...page };
 }
 
 export async function listSermonPlanModeHistory(owner: string, sermonId: string, generation: string, cursor?: string): Promise<SermonPlanModeHistoryPage> {

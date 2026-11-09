@@ -12,6 +12,7 @@ import { ScriptureText } from '@/components/bible/ScriptureLinks';
 import { ScriptureLinksInWindow } from '@/components/bible/VerseWindow';
 import Column from "@/components/Column";
 import { TechnicalDetailsButton } from '@/components/diagnostics/TechnicalDetailsButton';
+import { outlinePointConflictComparison } from '@/components/plan-editor/outlinePointPlacementWords';
 import { OutlineWriteRecovery } from '@/components/sermon/OutlineWriteRecovery';
 import { useStructureWriter } from "@/components/sermon/structureWriter";
 import { StructurePageSkeleton } from "@/components/skeletons/StructurePageSkeleton";
@@ -152,7 +153,7 @@ function EngineStructureBoard({ sermonId }: { sermonId: string }) {
     identity: conflict.identity, title: t('structure.thoughtLockState'), valueKind: 'field' as const, scopedChoice: true as const,
     mine: conflict.locks.map(lock => lock.text + ' · ' + lockText(lock.mine)).join('\n'),
     stored: conflict.locks.map(lock => lock.text + ' · ' + lockText(lock.stored)).join('\n'),
-  } : placementComparison ?? tagComparison;
+  } : placementComparison ?? tagComparison ?? (checkpoint && outlinePointConflictComparison(checkpoint, t));
   const canChangeThoughtHistory = document.state?.durable && PHASES_TAKING_CHANGES.has(document.status?.phase ?? '');
   const engine = useMemo<StructureEngineSource>(() => ({
     sermon, loading: document.loading, error: document.error, durable: document.state?.durable, isHolding: () => holdingRef.current,

@@ -6,6 +6,8 @@ import {
   nestPointUnderPoint,
   nestPointUnderPointAt,
   outdentSubPoint,
+  outlinePointGap,
+  projectOutlinePoint,
 } from '@/utils/outlineDnd';
 
 import type { SermonOutline } from '@/models/models';
@@ -59,6 +61,39 @@ describe('outlineDnd', () => {
     it('leaves the outline alone when the point does not exist', () => {
       const before = outline();
       expect(movePoint(before, 'ghost', 'main', 0)).toBe(before);
+    });
+  });
+
+  describe('a saved point placement', () => {
+    it('applies the chosen gap while preserving independently edited words and children', () => {
+      const opening = outline();
+      const selected = movePoint(opening, 'p2', 'main', 1);
+      const gap = outlinePointGap(selected, 'p2')!;
+      expect(gap).toEqual({ section: 'main', previous: 'p4', next: null });
+      const written = { ...opening.introduction[1], text: 'Later words' };
+      const latest = { ...opening, introduction: [opening.introduction[0], written, opening.introduction[2]] };
+      const next = projectOutlinePoint(latest, 'p2', gap)!;
+      expect(next.introduction.map(point => point.id)).toEqual(['p1', 'p3']);
+      expect(next.main).toEqual([latest.main[0], written]);
+      expect(next.main[1]).toBe(written);
+    });
+
+    it('preserves an independent insertion inside the chosen gap', () => {
+      const opening = outline();
+      const selected = movePoint(opening, 'p3', 'introduction', 1);
+      const gap = outlinePointGap(selected, 'p3')!;
+      const inserted = { id: 'new', text: 'Independent point' };
+      const latest = { ...opening, introduction: [opening.introduction[0], inserted, ...opening.introduction.slice(1)] };
+      const projected = projectOutlinePoint(latest, 'p3', gap)!;
+      expect(projected.introduction.map(point => point.id)).toEqual(['p1', 'new', 'p3', 'p2']);
+      expect(projectOutlinePoint(projected, 'p3', gap)).toBe(projected);
+    });
+
+    it('does not revive a nested point or guess after a named anchor disappears', () => {
+      const opening = outline();
+      const nested = nestPointUnderPoint(opening, 'p2', 'p4');
+      expect(projectOutlinePoint(nested, 'p2', { section: 'main', previous: 'p4', next: null })).toBeUndefined();
+      expect(projectOutlinePoint(opening, 'p2', { section: 'main', previous: 'missing', next: null })).toBeUndefined();
     });
   });
 

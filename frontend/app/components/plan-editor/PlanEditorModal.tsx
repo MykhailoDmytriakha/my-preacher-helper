@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 
 import OutlineBoard from '@/components/plan-editor/OutlineBoard';
 import { useOutlineConflictForEditor } from '@/components/plan-editor/OutlineConflictScope';
+import { OutlinePointPlacementHistory } from '@/components/plan-editor/OutlinePointPlacementHistory';
 import SavedDraftCopyPicker from '@/components/SavedDraftCopyPicker';
 import { useStructureWriter } from '@/components/sermon/structureWriter';
 import UnreadableConflictDrafts from '@/components/UnreadableConflictDrafts';
@@ -20,6 +21,7 @@ import { newClientId } from '@/utils/clientId';
 import { keyboardReaches } from '@/utils/modalLayerRegistry';
 import { OutlineCapture } from '@/utils/outlineCapture';
 import { chooseOutlineLocalChanges, OutlineChoiceReviewRequiredError } from '@/utils/outlineChoice';
+import { outlinePointGap, projectOutlinePoint } from '@/utils/outlineDnd';
 import { awaitWriteOperation } from '@/utils/recoverableWrite';
 import { EMERALD_ACTION } from '@/utils/themeColors';
 import { isTypingIn } from '@/utils/typingTarget';
@@ -36,10 +38,17 @@ const CANCEL_KEY = 'common.cancel';
 // Bounded undo/redo history ("a few steps", no unbounded growth). One entry per
 // completed action (add/delete/edit/move point, apply template, clear).
 const MAX_HISTORY = 30;
-const capPush = (stack: SermonOutline[], item: SermonOutline): SermonOutline[] => {
+type OutlineHistoryEntry = { outline: SermonOutline; pointId?: string };
+const capPush = (stack: OutlineHistoryEntry[], item: OutlineHistoryEntry): OutlineHistoryEntry[] => {
   const next = [...stack, item];
   return next.length > MAX_HISTORY ? next.slice(next.length - MAX_HISTORY) : next;
 };
+
+function historyOutline(current: SermonOutline, entry: OutlineHistoryEntry): SermonOutline | undefined {
+  if (!entry.pointId) return entry.outline;
+  const gap = outlinePointGap(entry.outline, entry.pointId);
+  return gap && projectOutlinePoint(current, entry.pointId, gap);
+}
 
 const fromSermon = (outline?: SermonOutline | null): SermonOutline => ({
   introduction: outline?.introduction ?? [],
@@ -142,8 +151,8 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
   const { templates, createTemplate } = usePlanTemplates(sermon.userId);
 
   const [outline, setOutline] = useState<SermonOutline>(emptyOutline);
-  const [undoStack, setUndoStack] = useState<SermonOutline[]>([]);
-  const [redoStack, setRedoStack] = useState<SermonOutline[]>([]);
+  const [undoStack, setUndoStack] = useState<OutlineHistoryEntry[]>([]);
+  const [redoStack, setRedoStack] = useState<OutlineHistoryEntry[]>([]);
   const [templatesMenuOpen, setTemplatesMenuOpen] = useState(false);
   const [pendingApply, setPendingApply] = useState<SermonOutline | null>(null);
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
@@ -163,6 +172,7 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
   const savingTemplateRef = useRef(false);
 
   const saveQueue = useMemo(() => new OutlineCapture(writer, sermon.id), [writer, sermon.id]);
+  const placementVersion = useRef<ReturnType<NonNullable<typeof writer.outlinePlacementVersion>>>(undefined);
   const sessionRef = useRef(0);
   const menuRef = useRef<HTMLDivElement>(null);
   const templatesPanelRef = useRef<HTMLDivElement>(null);
@@ -216,6 +226,7 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
     const recovered=saved?.outline ?? fromSermon(sermon.outline);
     setOutline(recovered);
     outlineRef.current=recovered;
+    placementVersion.current = writer.outlinePlacementVersion?.();
     baseOutlineRef.current=saved && Object.prototype.hasOwnProperty.call(saved,'baseOutline')
       ? saved.baseOutline ?? null : fromSermon(sermon.outline);
     generationRef.current+=1;
@@ -260,7 +271,7 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
   const generationRef = useRef(0);
 
   const persist = useCallback(
-    (next: SermonOutline, options?: { force?: boolean }) => {
+    (next: SermonOutline, options?: { force?: boolean; pointMove?: { pointId: string; before: SermonOutline } }) => {
       if (isReadOnly || !sermon.id || !conflictReady) return;
       const pending = getConflict();
       if (pending && pending.payload.resolution !== 'local' && !options?.force) {
@@ -270,9 +281,10 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
       if (pending?.payload.resolution === 'local') editConflict(next);
       const generationAtRequest = generationRef.current;
       const sessionAtRequest = sessionRef.current;
-      saveQueue.schedule({
+      return saveQueue.schedule({
         outline: next,
         base: baseOutlineRef.current,
+        ...(options?.pointMove && placementVersion.current && { pointMove: { ...options.pointMove, version: placementVersion.current } }),
         begin: () => {
           const waiting = getConflict();
           return {
@@ -315,35 +327,39 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
   // values (not functional updaters) so no side-effects run inside a setState
   // updater — safe under StrictMode's double-invoke.
   const handleChange = useCallback(
-    (next: SermonOutline) => {
-      setUndoStack((s) => capPush(s, outline));
+    (next: SermonOutline, movedPointId?: string) => {
+      setUndoStack((s) => capPush(s, { outline, pointId: movedPointId }));
       setRedoStack([]);
       generationRef.current += 1;
       setOutline(next);
-      persist(next);
+      return persist(next, movedPointId ? { pointMove: { pointId: movedPointId, before: outline } } : undefined);
     },
     [outline, persist]
   );
 
   const undo = useCallback(() => {
     if (undoStack.length === 0) return;
-    const previous = undoStack[undoStack.length - 1];
+    const entry = undoStack[undoStack.length - 1];
+    const previous = historyOutline(outline, entry);
+    if (!previous) { toast.error(t('planEditor.pointPlacement.restoreFailed')); return; }
     setUndoStack(undoStack.slice(0, -1));
-    setRedoStack((r) => capPush(r, outline));
+    setRedoStack((r) => capPush(r, { outline, pointId: entry.pointId }));
     generationRef.current += 1;
     setOutline(previous);
-    persist(previous);
-  }, [undoStack, outline, persist]);
+    persist(previous, entry.pointId ? { pointMove: { pointId: entry.pointId, before: outline } } : undefined);
+  }, [undoStack, outline, persist, t]);
 
   const redo = useCallback(() => {
     if (redoStack.length === 0) return;
-    const nextOutline = redoStack[redoStack.length - 1];
+    const entry = redoStack[redoStack.length - 1];
+    const next = historyOutline(outline, entry);
+    if (!next) { toast.error(t('planEditor.pointPlacement.restoreFailed')); return; }
     setRedoStack(redoStack.slice(0, -1));
-    setUndoStack((s) => capPush(s, outline));
+    setUndoStack((s) => capPush(s, { outline, pointId: entry.pointId }));
     generationRef.current += 1;
-    setOutline(nextOutline);
-    persist(nextOutline);
-  }, [redoStack, outline, persist]);
+    setOutline(next);
+    persist(next, entry.pointId ? { pointMove: { pointId: entry.pointId, before: outline } } : undefined);
+  }, [redoStack, outline, persist, t]);
 
   const clearPlan = () => {
     setClearConfirmOpen(false);
@@ -659,6 +675,11 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
         )}
 
         <div className="flex-1 overflow-y-auto p-3 sm:p-4">
+          {placementVersion.current?.generation && !isReadOnly && <OutlinePointPlacementHistory
+            key={placementVersion.current.generation} owner={sermon.userId} sermonId={sermon.id}
+            generation={placementVersion.current.generation} outline={outline}
+            disabled={!conflictReady || Boolean(collision || unreviewedRefusal)}
+            restore={async (next, pointId) => handleChange(next, pointId)} />}
           {collision && needsWholeChoice && wholeReviewOpen && (
             <section aria-label={t('planEditor.currentStructure')} className="mb-5 rounded-xl border border-slate-300 p-3 dark:border-gray-600">
               <h3 className="mb-3 font-semibold text-slate-800 dark:text-gray-100">{t('planEditor.currentStructure')}</h3>
@@ -669,6 +690,7 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
           <OutlineBoard
             value={outline}
             onChange={handleChange}
+            onPointMove={handleChange}
             isReadOnly={isReadOnly || !conflictReady}
             showNotes
             getSubPointThoughtCount={getSubPointThoughtCount}

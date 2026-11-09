@@ -23,6 +23,7 @@ import type { ServiceOrderFlagActions, ServiceOrderFlagCapture, ServiceOrderStep
 import type { ShownCopy } from './session';
 import type { TagMembershipAction, TagMembershipWire } from './tagMembershipOrder';
 import type { ThoughtTagAction } from './thoughtTagAction';
+import type { OutlinePointGap, OutlinePointOrder } from '@/utils/outlineDnd';
 import type { PreparationConfirmation } from '@/utils/preparationFieldValues';
 
 export type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
@@ -70,6 +71,7 @@ export type EditorCommitAction =
   | { kind: 'thought-placement'; rowId: string; time: ActionTime | null; shown?: ShownCopy }
   | { kind: 'service-order-placement'; move: ServiceOrderPlacementCapture }
   | { kind: 'service-order-step-placement'; move: ServiceOrderStepPlacementCapture }
+  | { kind: 'outline-point-placement'; move: OutlinePointPlacementCapture }
   | { kind: 'service-order-title'; title: ServiceOrderTitleCapture }
   | { kind: 'service-order-flag'; flag: ServiceOrderFlagCapture }
   | { kind: 'service-order-step-title'; title: ServiceOrderStepTitleCapture }
@@ -84,6 +86,30 @@ export type EditorCommitAction =
   | { kind: 'plan-template-name'; name: PlanTemplateNameCapture }
   | { kind: 'tag-color'; color: TagColorCapture }
   | { kind: 'prayer-status'; status: PrayerStatusCapture };
+
+export type OutlinePointPlacement = {
+  pointId: string;
+  opening: OutlinePointGap;
+  destination: OutlinePointGap;
+  observedRevision: number;
+  time: ActionTime | null;
+  predecessorOperationId?: string;
+};
+
+export type OutlinePointPlacementCapture = {
+  generation: string | null;
+  before: OutlinePointOrder;
+  after: OutlinePointOrder;
+  placement: OutlinePointPlacement;
+};
+
+export type OutlinePointPlacementHistoryPage = {
+  owner: string;
+  sermonId: string;
+  generation: string;
+  entries: { id: string; pointId: string; earlier: OutlinePointGap; kept: OutlinePointGap; acceptedAt: string }[];
+  nextCursor: string | null;
+};
 
 export type ServiceOrderStepGap = { previous: string | null; next: string | null };
 export type ServiceOrderStepPlacement = {
@@ -177,6 +203,7 @@ export type DataCommand = CommandBase & (
       accountPreferenceActions?: AccountPreferenceStamps;
       serviceOrderPlacement?: ServiceOrderPlacement;
       serviceOrderStepPlacement?: ServiceOrderStepPlacement;
+      outlinePointPlacement?: OutlinePointPlacement;
       sermonPreparationCheckActions?: Partial<Record<PreparationConfirmation, DocumentFieldStamp>>;
       sermonChurchFill?: SermonChurchFill;
       exegeticalPlanActions?: ExegeticalPointStamp[];

@@ -21,14 +21,18 @@ export interface StructureWriteOptions {
   thoughtUpdates?: readonly { thought: Thought; baseThought: Thought | null }[];
 }
 
+export interface OutlinePlacementVersion { generation: string | null; observedRevision: number }
+export interface OutlinePointMove { pointId: string; before: SermonOutline; version: OutlinePlacementVersion }
+
 export interface StructureWriter {
+  outlinePlacementVersion?(shown?: SermonOutline): OutlinePlacementVersion | undefined;
   updateStructure(sermonId: string, structure: ThoughtsBySection, baseStructure?: ThoughtsBySection | null, options?: StructureWriteOptions): Promise<unknown>;
   updateThought(sermonId: string, thought: Thought, baseThought: Thought | null): Promise<Thought>;
   deleteThought(sermonId: string, thought: Thought): Promise<void>;
   /** `section`: the column it was added in, where it is placed whatever its tags. */
   createManualThought(sermonId: string, thought: Thought, section?: StructureSectionId): Promise<Thought>;
   updateSermonOutline(sermonId: string, outline: SermonOutline, baseOutline?: SermonOutline | null,
-    onCollision?: 'refuse' | 'preferMine', inputSequence?: OutlineInputSequence): Promise<SermonOutline | null>;
+    onCollision?: 'refuse' | 'preferMine', inputSequence?: OutlineInputSequence, pointMove?: OutlinePointMove): Promise<SermonOutline | null>;
 }
 
 const noWriter = (): Promise<never> => Promise.reject(new Error('No structure writer: render inside the engine StructureWriterContext.Provider'));

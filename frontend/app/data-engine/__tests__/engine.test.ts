@@ -1,3 +1,5 @@
+import { movePoint, outlinePointGap, outlinePointOrder, projectOutlinePoint } from '@/utils/outlineDnd';
+
 import { DataEngine, canReplaceSnapshot, type SnapshotStore } from '../engine';
 import { createMemoryCommitStore } from '../commits';
 import { createIndexedDbCommitStore } from '../commits.client';
@@ -5,6 +7,7 @@ import { createIndexedDbCheckpoints } from '../checkpoint.client';
 import { installStorageHarness } from './storageHarness';
 import { AddressedFailures } from '../failures';
 import { ResourceObserver, type SnapshotEvent } from '../observer';
+import { readOutlinePointPlacementComparison } from '../outlinePointPlacement';
 import { applyCommand } from '../protocol';
 import { DataEngineRuntime } from '../runtime';
 import { DataSession } from '../session';
@@ -14,7 +17,8 @@ import { redeliveryDelay } from '../unanswered';
 
 import type { ManualScopeStore, ManualStorageRecord } from '../manualScopes.client';
 import type { CheckpointStore, EditorRecord } from '../controller';
-import type { EngineTransport, JournalEntry, JournalStore, ResourceRef, ResourceSnapshot } from '../types';
+import type { SermonOutline } from '@/models/models';
+import type { DocumentData, EngineTransport, JournalEntry, JournalStore, ResourceRef, ResourceSnapshot } from '../types';
 
 jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
 
@@ -35,7 +39,7 @@ const deferred = <T,>() => {
 };
 
 function setup({ cached = true, online = true, nativeChoice = false } = {}) {
-  if (nativeChoice) installStorageHarness();
+  const storage = nativeChoice ? installStorageHarness() : undefined;
   let sequence = 0;
   const records = new Map<string, EditorRecord>();
   const entries = new Map<string, JournalEntry>();
@@ -84,12 +88,199 @@ function setup({ cached = true, online = true, nativeChoice = false } = {}) {
   const engine = new DataEngine({ runtime, observer, transport, checkpoints, snapshots, commits, manualScopes, operationId: () => `operation-${++sequence}`, onError });
   engine.setOnline(online); engine.setOwner('owner');
   const next = (snapshot: ResourceSnapshot, source: 'server' | 'cache' = 'server') => callbacks[callbacks.length - 1].next({ snapshot, source });
-  return { engine, observer, runtime, transport, journal, entries, checkpoints, records, snapshots, cache, server, source, callbacks, next, onError, commits, manualScopes, manualRows };
+  return { engine, observer, runtime, transport, journal, entries, checkpoints, records, snapshots, cache, server, source, callbacks, next, onError, commits, manualScopes, manualRows, storage };
 }
 
 describe('DataEngine composition', () => {
   beforeEach(() => { jest.useFakeTimers(); });
   afterEach(() => { jest.clearAllTimers(); jest.useRealTimers(); });
+
+  it.each(['open', 'close', 'retry'])('durably queues unsaved point words before two rapid exact outline moves (%s)', async mode => {
+    const s = setup({ online: false, nativeChoice: true });
+    try {
+      const resource = { collection: 'sermons', id: 'qa-outline-rapid-moves' };
+      const point = { id: 'point', text: 'Opening words' };
+      const outline: SermonOutline = { introduction: [], main: [point], conclusion: [] };
+      const baseline: ResourceSnapshot = {
+        resource, value: { userId: 'owner', title: 'Sermon', verse: 'John 1:1', date: '2026-11-09',
+          thoughts: [], outline: outline as unknown as DocumentData },
+        metadata: { protocol: 1, generation: 'sermon-generation', revision: 1, deleted: false },
+      };
+      s.server.set(keyOf('owner', resource), baseline);
+      s.cache.set(keyOf('owner', resource), baseline);
+      const editor = await s.engine.openEditor(resource, 'outline-writer');
+      const written = { ...outline, main: [{ ...point, text: 'Words written just before the drag' }] };
+      const first = movePoint(written, point.id, 'introduction', 0);
+      const second = movePoint(first, point.id, 'conclusion', 0);
+      await editor.edit({ ...baseline.value!, outline: written as unknown as DocumentData });
+      const move = (before: SermonOutline, after: SermonOutline, at: number) =>
+        editor.commit(value => ({ ...value, outline: after as unknown as DocumentData }), { kind: 'outline-point-placement',
+          move: { generation: 'sermon-generation', before: outlinePointOrder(before), after: outlinePointOrder(after),
+            placement: { pointId: point.id, opening: outlinePointGap(before, point.id)!, destination: outlinePointGap(after, point.id)!,
+              observedRevision: 1, time: { earliestMs: at, latestMs: at + 1 } } },
+        });
+      let held = false;
+      if (mode === 'close') s.storage!.holdCompletionAfterCommit = (rows, mode) => {
+        if (held || mode !== 'readwrite') return false;
+        held = [...rows.values()].some(row => {
+          const saved = row as { id?: string; editorId?: string; editGeneration?: number };
+          return saved?.id !== undefined && saved.editorId === 'outline-writer' && saved.editGeneration === 1;
+        });
+        return held;
+      };
+      if (mode === 'retry') s.storage!.writeFailure = true;
+      const saves = Promise.allSettled([move(written, first, 100), move(first, second, 200)]);
+      if (mode === 'close') {
+        await drainMicrotasks();
+        expect(held).toBe(true);
+        editor.close({ flush: true });
+        s.storage!.finishCompletion();
+      }
+      const settled = await saves;
+      if (mode === 'open') expect(settled.map(result => result.status)).toEqual(['fulfilled', 'fulfilled']);
+      if (mode === 'retry') {
+        expect(settled.map(result => result.status)).toEqual(['rejected', 'rejected']);
+        expect(await s.commits.list('owner')).toEqual([]);
+        s.storage!.writeFailure = false;
+      }
+      await s.engine.retry(resource);
+      const records = await s.commits.list('owner');
+      expect(records).toHaveLength(3);
+      expect(records[0]).toMatchObject({ predecessor: null, value: { outline: written } });
+      expect(records[0].outlinePointPlacement).toBeUndefined();
+      expect(records[1]).toMatchObject({ predecessor: records[0].id, value: { outline: first },
+        outlinePointPlacement: { placement: { time: { earliestMs: 100 } } } });
+      expect(records[2]).toMatchObject({ predecessor: records[1].id, value: { outline: second },
+        outlinePointPlacement: { placement: { predecessorOperationId: records[1].id, time: { earliestMs: 200 } } } });
+    } finally { s.engine.dispose(); }
+  });
+
+  it.each([{ ordinaryCount: 1, intervening: false }, { ordinaryCount: 2, intervening: false }, { ordinaryCount: 2, intervening: true }])
+  ('moves a legacy outline after $ordinaryCount own revisions if uninterrupted (intervening: $intervening)', async ({ ordinaryCount, intervening }) => {
+    const s = setup({ online: false, nativeChoice: true });
+    try {
+      const resource = { collection: 'sermons', id: 'qa-legacy-outline' };
+      const key = keyOf('owner', resource);
+      const outline: SermonOutline = { introduction: [], main: [{ id: 'point', text: 'Opening words' }], conclusion: [] };
+      const written: SermonOutline = { ...outline, main: [{ id: 'point', text: 'Saved words' }] };
+      const placed = movePoint(written, 'point', 'introduction', 0);
+      const baseline: ResourceSnapshot = { resource, value: { userId: 'owner', title: 'Legacy sermon', verse: 'John 1:1',
+        date: '2026-11-09', thoughts: [], outline: outline as unknown as DocumentData }, metadata: null };
+      s.server.set(key, baseline);
+      s.cache.set(key, baseline);
+      const editor = await s.engine.openEditor(resource, 'legacy-outline');
+      if (ordinaryCount > 1) {
+        const first = { ...outline, main: [{ id: 'point', text: 'First edit' }] };
+        await editor.edit({ ...baseline.value!, outline: first as unknown as DocumentData });
+        await editor.save();
+      }
+      await editor.edit({ ...baseline.value!, outline: written as unknown as DocumentData });
+      await editor.commit(current => ({ ...current, outline: placed as unknown as DocumentData }), { kind: 'outline-point-placement',
+        move: { generation: null, before: outlinePointOrder(written), after: outlinePointOrder(placed),
+          placement: { pointId: 'point', opening: outlinePointGap(written, 'point')!, destination: outlinePointGap(placed, 'point')!,
+            observedRevision: 0, time: null } },
+      });
+      let ordinary = 0;
+      jest.mocked(s.transport.send).mockImplementation(async command => {
+        const plan = await planDataCommand(command, s.server.get(key)!, {
+          get: async () => s.server.get(key)!, list: async () => [],
+        });
+        for (const snapshot of plan.writes) s.server.set(key, snapshot);
+        if (intervening && command.kind === 'update' && !command.outlinePointPlacement && ++ordinary === 1
+          && plan.result.kind === 'acknowledged') {
+          const accepted = plan.result.snapshot;
+          s.server.set(key, { ...accepted, value: { ...accepted.value!, title: 'Independent title' },
+            metadata: { ...accepted.metadata!, revision: 2, operationId: 'other-device' } });
+        }
+        return plan.result;
+      });
+      s.engine.setOnline(true); await s.engine.retry(resource); await drainMicrotasks();
+      expect(s.transport.send).toHaveBeenCalledTimes(ordinaryCount + 1);
+      expect(jest.mocked(s.transport.send).mock.calls.at(-1)?.[0]).toMatchObject({
+        outlinePointPlacement: { observedRevision: intervening ? 0 : ordinaryCount },
+      });
+      if (intervening) {
+        expect((await s.commits.list('owner')).at(-1)?.state).toBe('conflict');
+        expect(s.server.get(key)?.value).toMatchObject({ title: 'Independent title', outline: written });
+      } else {
+        expect((await s.commits.list('owner')).every(record => record.state === 'acknowledged')).toBe(true);
+        expect(s.server.get(key)?.value?.outline).toEqual(placed);
+      }
+    } finally { s.engine.dispose(); }
+  });
+
+  it.each(['local', 'remote', 'newer-remote'] as const)('keeps an independently saved verse when choosing the %s point position', async choice => {
+    const s = setup({ online: false, nativeChoice: true });
+    try {
+      const resource = { collection: 'sermons', id: 'qa-outline-choice-rebase' };
+      const key = keyOf('owner', resource);
+      const point = { id: 'point', text: 'Keep these words' };
+      const outline: SermonOutline = { introduction: [], main: [point], conclusion: [] };
+      const phone = movePoint(outline, point.id, 'introduction', 0);
+      const desktop = movePoint(outline, point.id, 'conclusion', 0);
+      const baseline: ResourceSnapshot = {
+        resource, value: { userId: 'owner', title: 'Sermon', verse: 'John 1:1', date: '2026-11-09',
+          thoughts: [], outline: outline as unknown as DocumentData },
+        metadata: { protocol: 1, generation: 'sermon-generation', revision: 1, deleted: false },
+      };
+      s.server.set(key, baseline);
+      s.cache.set(key, baseline);
+      const editor = await s.engine.openEditor(resource, 'outline-choice');
+      await editor.edit({ ...baseline.value!, title: 'Independent local title' });
+      await editor.commit(value => ({ ...value, outline: phone as unknown as DocumentData }), { kind: 'outline-point-placement',
+        move: { generation: 'sermon-generation', before: outlinePointOrder(outline), after: outlinePointOrder(phone),
+          placement: { pointId: point.id, opening: outlinePointGap(outline, point.id)!, destination: outlinePointGap(phone, point.id)!,
+            observedRevision: 1, time: null } },
+      });
+      s.server.set(key, { ...baseline, value: { ...baseline.value!, verse: 'Luke 1:1', outline: desktop as unknown as DocumentData },
+        metadata: { ...baseline.metadata!, revision: 2, operationId: 'desktop-operation' } });
+      let firstMove = true;
+      jest.mocked(s.transport.send).mockImplementation(async command => {
+        const stored = s.server.get(key)!;
+        if (command.kind !== 'update' || !command.outlinePointPlacement) {
+          const result = applyCommand(command, stored);
+          if (result.kind === 'acknowledged') s.server.set(key, result.snapshot);
+          return result;
+        }
+        const move = command.outlinePointPlacement;
+        if (firstMove) {
+          firstMove = false;
+          return { kind: 'conflict', operationId: command.operationId, snapshot: stored,
+            conflicts: [{ path: ['outline', 'id:' + point.id, 'position'],
+              base: { exists: true, value: move.opening }, mine: { exists: true, value: move.destination },
+              theirs: { exists: true, value: outlinePointGap(desktop, point.id)! } }] };
+        }
+        const positioned = projectOutlinePoint(stored.value?.outline as unknown as SermonOutline, point.id, move.destination)!;
+        const snapshot = { ...stored, value: { ...stored.value!, outline: positioned as unknown as DocumentData },
+          metadata: { ...stored.metadata!, revision: stored.metadata!.revision + 1, operationId: command.operationId } };
+        s.server.set(key, snapshot);
+        return { kind: 'acknowledged', operationId: command.operationId, snapshot };
+      });
+      s.engine.setOnline(true); await s.engine.retry(resource); await drainMicrotasks();
+      if (choice === 'newer-remote') {
+        const stored = s.server.get(key)!;
+        const refreshed = { ...stored, value: { ...stored.value!, outline: outline as unknown as DocumentData },
+          metadata: { ...stored.metadata!, revision: stored.metadata!.revision + 1, operationId: 'desktop-later' } };
+        s.server.set(key, refreshed);
+        s.next(refreshed);
+        await drainMicrotasks();
+      }
+      const checkpoint = editor.getState().checkpoint;
+      expect(checkpoint.draft?.verse).toBe('Luke 1:1');
+      expect(checkpoint.conflicts).toMatchObject([{ path: ['outline', 'id:' + point.id, 'position'] }]);
+      expect(readOutlinePointPlacementComparison(checkpoint)?.saved?.section).toBe(choice === 'newer-remote' ? 'main' : 'conclusion');
+      if (choice === 'local') {
+        const time = { earliestMs: 1000, latestMs: 1001 };
+        await editor.keepLocal(undefined, checkpoint, time);
+        await s.engine.retry(resource);
+        expect(jest.mocked(s.transport.send).mock.calls.at(-1)?.[0]).toMatchObject({ outlinePointPlacement: { time } });
+      } else await editor.acceptRemote(undefined, checkpoint);
+      await s.engine.retry(resource); await drainMicrotasks();
+      expect(editor.getState().checkpoint.conflicts).toEqual([]);
+      expect(s.server.get(key)?.value).toMatchObject({ title: 'Independent local title', verse: 'Luke 1:1',
+        outline: choice === 'local' ? phone : choice === 'newer-remote' ? outline : desktop });
+    } finally { s.engine.dispose(); }
+  });
 
   it.each(['studyMaterials', 'series'].flatMap(collection => ['local', 'remote'].map(choice => [collection, choice])))
     ('resolves acknowledged %s relation rebase with the %s choice without losing membership', async (collection, choice) => {

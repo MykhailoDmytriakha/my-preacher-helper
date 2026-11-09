@@ -13,6 +13,7 @@ import { mergeExegeticalPointChoice, stageExegeticalPoint } from './exegeticalPo
 import { writeField } from './fieldValues';
 import { chooseLocalPlacement } from './localPlacementChoice';
 import { projectManualSelection } from './manualScope';
+import { alignPendingOutlinePointPlacements } from './outlinePointPlacement';
 import { chooseLocalPreachDateEdits } from './preachDateChoice';
 import { equalValues, mergeDocumentFields, mergeFields } from './protocol';
 import { acknowledgeRowFields, clearRowFieldDrafts, hasUncapturedAutosaveRowField, registerRowFields, rowFieldAckAncestor, stageRowFields } from './rowFieldAutosave';
@@ -27,7 +28,7 @@ import type { CommitRequest } from './commits';
 import type { AutosaveFieldActions, AutosaveFieldDrafts, AutosaveFieldStamp } from './documentFieldAction';
 import type { PreachStatusAction } from './preachStatusAction';
 import type { AutosaveRowFieldActions, RowFieldDrafts } from './rowFieldAutosave';
-import type { CommandResult, ConflictDetail, DataCommand, DocumentData, ResourceSnapshot, ServiceOrderPlacementCapture, ServiceOrderPlacementComparison, ServiceOrderStepPlacementCapture } from './types';
+import type { CommandResult, ConflictDetail, DataCommand, DocumentData, ResourceSnapshot, OutlinePointPlacementCapture, ServiceOrderPlacementCapture, ServiceOrderPlacementComparison, ServiceOrderStepPlacementCapture } from './types';
 
 export interface SessionCheckpoint extends AutosaveFieldDrafts, RowFieldDrafts {
   confirmed: ResourceSnapshot;
@@ -40,8 +41,9 @@ export interface SessionCheckpoint extends AutosaveFieldDrafts, RowFieldDrafts {
   serviceOrderPlacementComparison?: ServiceOrderPlacementComparison;
   serviceOrderPlacementRetry?: ServiceOrderPlacementCapture;
   serviceOrderStepPlacementRetry?: ServiceOrderStepPlacementCapture;
+  outlinePointPlacementRetry?: OutlinePointPlacementCapture;
   accountPreferenceRetry?: { field: AccountPreferenceField; time: ActionTime | null };
-  pending: Record<string, { generation: number; value: DocumentData | null; operations?: string[]; borrowedManualScope?: string } & AutosaveFieldActions & AutosaveRowFieldActions>;
+  pending: Record<string, { generation: number; value: DocumentData | null; operations?: string[]; borrowedManualScope?: string; outlinePointPlacement?: OutlinePointPlacementCapture } & AutosaveFieldActions & AutosaveRowFieldActions>;
 }
 
 const copy = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
@@ -118,7 +120,7 @@ export class DataSession {
   }
 
   /** A durable save request owns its captured value, independently of later typing. */
-  registerCommit(operationId: string, generation: number, value: DocumentData | null, preparedId?: string, autosaveActions?: AutosaveFieldActions & AutosaveRowFieldActions): void {
+  registerCommit(operationId: string, generation: number, value: DocumentData | null, preparedId?: string, autosaveActions?: AutosaveFieldActions & AutosaveRowFieldActions & Pick<CommitRequest, 'outlinePointPlacement'>): void {
     if (!this.state.pending[operationId]) this.state.pending[operationId] = { generation, value: copy(value) };
     const pending = this.state.pending[operationId];
     for (const target of autosaveFieldTargets(this.state.confirmed.resource.collection)) {
@@ -126,6 +128,7 @@ export class DataSession {
       if (action) Object.assign(pending, { [target.action]: copy(action) });
     }
     registerRowFields(pending, autosaveActions, this.state.confirmed.resource.collection);
+    if (autosaveActions?.outlinePointPlacement) pending.outlinePointPlacement = copy(autosaveActions.outlinePointPlacement);
     if (preparedId && preparedId !== operationId && !pending.operations?.includes(preparedId)) pending.operations = [...(pending.operations ?? []), preparedId];
   }
 
@@ -177,6 +180,9 @@ export class DataSession {
     }
     if (request.serviceOrderStepPlacement && equalValues(request.serviceOrderStepPlacement, this.state.serviceOrderStepPlacementRetry)) {
       delete this.state.serviceOrderStepPlacementRetry;
+    }
+    if (request.outlinePointPlacement && equalValues(request.outlinePointPlacement, this.state.outlinePointPlacementRetry)) {
+      delete this.state.outlinePointPlacementRetry;
     }
     const preferenceRetry = this.state.accountPreferenceRetry;
     if (preferenceRetry && request.accountPreferenceActions?.[preferenceRetry.field]
@@ -286,8 +292,13 @@ export class DataSession {
     const ancestor = newerSubmitted ? newerSubmitted.value : submitted.value;
     const fieldAncestor = autosaveAcknowledgementAncestor(ancestor, accepted, this.state);
     const acceptedAncestor = rowFieldAckAncestor(fieldAncestor, accepted, this.state);
-    const rebased = rebaseOptionalPrayerTags(accepted.resource.collection, acceptedAncestor, this.state.draft, accepted.value,
-      mergeDocumentFields(acceptedAncestor, this.state.draft, accepted.value));
+    const horizon = newerSubmitted ? newerSubmitted.generation : submitted.generation;
+    const outlineMoves = Object.values(this.state.pending).filter(pending => pending.generation > horizon)
+      .sort((a, b) => a.generation - b.generation).flatMap(pending => pending.outlinePointPlacement
+        && pending.outlinePointPlacement.generation === (accepted.metadata?.generation ?? null) ? [pending.outlinePointPlacement] : []);
+    const incoming = alignPendingOutlinePointPlacements(accepted.value, this.state.draft, outlineMoves);
+    const rebased = rebaseOptionalPrayerTags(accepted.resource.collection, acceptedAncestor, this.state.draft, incoming,
+      mergeDocumentFields(acceptedAncestor, this.state.draft, incoming));
     if (wholeAnalysisFrame) keepAnalysisReshapeFrame(ancestor, this.state.draft, accepted.value, rebased);
     this.state.confirmed = copy(accepted);
     this.state.draft = rebased.value.exists ? copy(rebased.value.value as DocumentData) : null;
@@ -432,6 +443,12 @@ export class DataSession {
     this.state.dirty = true;
   }
 
+  stageOutlinePointPlacementRetry(move: OutlinePointPlacementCapture, draft: DocumentData): void {
+    this.edit(draft);
+    this.state.outlinePointPlacementRetry = copy(move);
+    this.state.dirty = true;
+  }
+
   stageAccountPreferenceRetry(field: AccountPreferenceField, time: ActionTime | null): void {
     this.state.accountPreferenceRetry = { field, time };
   }
@@ -441,6 +458,7 @@ export class DataSession {
     delete this.state.serviceOrderPlacementComparison;
     delete this.state.serviceOrderStepPlacementRetry;
     delete this.state.serviceOrderPlacementRetry;
+    delete this.state.outlinePointPlacementRetry;
     delete this.state.exegeticalPointDrafts;
     clearRowFieldDrafts(this.state);
     for (const target of autosaveFieldTargets(this.state.confirmed.resource.collection)) delete this.state[target.draft];

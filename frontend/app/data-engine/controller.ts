@@ -23,6 +23,7 @@ import { projectExactManualChoice, type ExactManualChoice } from './manualChoice
 import { sameManualSources } from './manualReturnSources';
 import { projectManualSelection, type ManualPath } from './manualScope';
 import { assertOrdinaryAnswerScope, ordinaryChoiceCheckpoint, projectOrdinaryChoiceDependents, requireDocumentChoiceForBranch, reviewOrdinaryAnswerChoice, type ManualChoiceSources } from './ordinaryAnswerChoice';
+import { readOutlinePointPlacementComparison, retryOutlinePointPlacement } from './outlinePointPlacement';
 import { chooseLocalPreachDateEdits } from './preachDateChoice';
 import { confirmedExistingDeletion, equalValues, mergeDocumentFields, mergeFields } from './protocol';
 import { isRecoverableCheckpoint } from './recovery.client';
@@ -747,11 +748,11 @@ export class EditorController {
         const checkpoint = expected?.checkpoint;
         const path = checkpoint?.conflicts.length === 1 ? checkpoint.conflicts[0].path : undefined;
         const collection = checkpoint?.confirmed.resource.collection;
-        const comparedField = Boolean(checkpoint?.serviceOrderPlacementComparison) || isAutosaveRowFieldPath(path, collection ?? '') || (collection === 'serviceOrders' ? serviceOrderStepField(path)
+        const comparedField = Boolean(checkpoint?.serviceOrderPlacementComparison || (checkpoint && readOutlinePointPlacementComparison(checkpoint))) || isAutosaveRowFieldPath(path, collection ?? '') || (collection === 'serviceOrders' ? serviceOrderStepField(path)
           : collection === 'councils' ? councilAssemblyRow(path) || councilTopicKindRow(path)
             : path?.length === 1 && (collection === 'planTemplates' && path[0] === 'name' || collection === 'tags' && path[0] === 'color' || collection === 'studyNotes' && path[0] === 'type'));
         if (expected && (comparedField || retired.some(request => expected.checkpoint.pending[request.id]
-          && (request.serviceOrderFlagActions || request.serviceOrderStepTitleActions || hasAutosaveRowFieldCaptures(request)
+          && (request.serviceOrderFlagActions || request.serviceOrderStepTitleActions || request.outlinePointPlacement || hasAutosaveRowFieldCaptures(request)
             || request.councilAssemblyActions || request.councilTopicKindActions || request.planTemplateNameAction || request.tagColorAction || request.studyNoteTypeAction)))
           && retired.some(request => !expected.checkpoint.pending[request.id])) {
           throw Object.assign(new Error('Another saved change appeared during the field choice'), { code: 'decision-changed' });
@@ -777,7 +778,26 @@ export class EditorController {
           && source!.pending[request.id] && request.serviceOrderStepPlacement);
         const selectedStepMove = stepRequest?.serviceOrderStepPlacement;
         const stepAnswer = stepRequest?.result;
-        if (stepRequest && selectedStepMove && stepAnswer?.kind === 'conflict') {
+        const outlineRequest = ordinary ? ordinary.first : retired.find(request => request.cancelledByChoice
+          && source!.pending[request.id] && request.outlinePointPlacement);
+        const outlineMove = outlineRequest?.outlinePointPlacement;
+        const outlineChoice = outlineMove && readOutlinePointPlacementComparison(decided);
+        if (outlineRequest && outlineMove && outlineRequest.result?.kind === 'conflict' && outlineChoice) {
+          const submitted = source.pending[outlineRequest.id]?.value;
+          const rebased = outlineRequest.initialized ? outlineRequest.intended : outlineRequest.value;
+          if (!equalValues(submitted, decided.draft) && !equalValues(rebased, decided.draft)) {
+            throw Object.assign(new Error('Other changes need review'), { code: 'other-changes-first' });
+          }
+          session.acceptRemote();
+          if (choice === 'local') {
+            const accepted = session.checkpoint().confirmed;
+            requireFreshGeneration(outlineRequest.result, outlineRequest.command?.generation ?? outlineMove.generation, accepted);
+            const retry = outlineChoice.available && retryOutlinePointPlacement(accepted, outlineChoice.pointId,
+              outlineChoice.mine, outlineChoice.saved, choiceTime ?? null);
+            if (!retry) throw Object.assign(new Error('The proposed position is unavailable or has changed'), { code: 'decision-changed' });
+            session.stageOutlinePointPlacementRetry(retry.move, retry.draft);
+          }
+        } else if (stepRequest && selectedStepMove && stepAnswer?.kind === 'conflict') {
           const comparison = stepAnswer.serviceOrderPlacementComparison;
           const proposed = source.pending[stepRequest.id]?.value;
           if (!equalValues(proposed, decided.draft) || (comparison?.step?.id !== selectedStepMove.placement.stepId)) {

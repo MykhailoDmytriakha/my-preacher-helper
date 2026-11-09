@@ -8,21 +8,26 @@ import { changedFields } from '@/utils/changedFields';
 import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
 import { mergeOutline } from '@/utils/mergeOutline';
 import { mergeSections } from '@/utils/mergeSections';
+import { hasOutlinePointOrder, outlinePointGap, outlinePointOrder, projectOutlinePoint } from '@/utils/outlineDnd';
 import { addSermonThought, deleteSermonThought, patchSermonThought, replaceSermonOutline } from '@/utils/sermonThoughtEdits';
 import { resolveThoughtOutlineLocation } from '@/utils/subPoints';
 import { applyScopedThoughtPlacement, completeStoredThoughtPlacement } from '@/utils/thoughtOrdering';
 
 import { captureAiReview } from './captureAiReview';
 
-import type { StructureWriter } from '@/components/sermon/structureWriter';
+import type { OutlinePlacementVersion, StructureWriter } from '@/components/sermon/structureWriter';
+import type { ActionTime } from '@/data-engine/actionClock';
 import type { ThoughtLocation } from '@/data-engine/thoughtPlacementAction';
-import type { DocumentData } from '@/data-engine/types';
+import type { DocumentData, OutlinePointPlacementCapture } from '@/data-engine/types';
 import type { Sermon, SermonOutline, Thought, ThoughtsBySection } from '@/models/models';
 import type { ThoughtFieldPatch } from '@/utils/sermonThoughtEdits';
 
 type SermonDocument = ReturnType<typeof useDataDocument>;
 type DocumentUpdater = Parameters<SermonDocument['update']>[0];
 type StructureDocument = Pick<SermonDocument, 'update'> & {
+  outlinePlacementVersion?: (shown?: SermonOutline) => OutlinePlacementVersion | undefined;
+  commitOutlineMove?: (updater: DocumentUpdater, move: OutlinePointPlacementCapture) => Promise<void>;
+  captureActionTime?: () => ActionTime | undefined;
   captureReview?: (selected: readonly string[], updater: DocumentUpdater) => Promise<void>;
 };
 export type ShownThoughtIdentity = Pick<Thought, 'id' | 'date'>;
@@ -138,7 +143,29 @@ export function createEngineStructureWriter(document: StructureDocument, owner: 
     },
     deleteThought: (_sermonId, thought) => edit(current => ({ next: deleteSermonThought(current, thought.id), result: undefined })),
     createManualThought: (_sermonId, thought, section) => edit(current => ({ next: addSermonThought(current, thought, section), result: thought })),
-    updateSermonOutline: async (_sermonId, outline, baseOutline, onCollision, inputSequence) => {
+    outlinePlacementVersion: document.outlinePlacementVersion,
+    updateSermonOutline: async (_sermonId, outline, baseOutline, onCollision, inputSequence, pointMove) => {
+      if (pointMove && document.commitOutlineMove) {
+        const { pointId, before } = pointMove;
+        const observed = document.outlinePlacementVersion?.(before);
+        const version = observed && observed.generation === pointMove.version.generation ? observed : pointMove.version;
+        const opening = outlinePointGap(before, pointId), destination = outlinePointGap(outline, pointId);
+        if (!opening || !destination) throw unavailable();
+        const move: OutlinePointPlacementCapture = {
+          generation: version.generation, before: outlinePointOrder(before), after: outlinePointOrder(outline),
+          placement: { pointId, opening, destination, observedRevision: version.observedRevision,
+            time: document.captureActionTime?.() ?? null },
+        };
+        return editEngineSermon({ update: fn => document.commitOutlineMove!(fn, move) }, owner, current => {
+          const apply = () => {
+            const positioned = current.outline && projectOutlinePoint(current.outline, pointId, destination);
+            if (!positioned) throw Object.assign(unavailable(), { code: 'decision-changed' });
+            const next = replaceSermonOutline(current, positioned);
+            return { next, result: positioned };
+          };
+          return inputSequence ? inputSequence.apply(baseOutline ?? null, outline, apply) : apply();
+        });
+      }
       try {
         return await editEngineSermon(document, owner, current => {
           const apply = (base: SermonOutline | null) => {
@@ -178,6 +205,14 @@ export function useEngineStructureWriter(sermonId: string, owner: string | null)
     update: (fn, options) => opening.document.update(fn, options),
     commit: (fn, action) => opening.document.commit(fn, action),
     captureSermonPlanMode: () => opening.document.captureSermonPlanMode(),
+    outlinePlacementVersion: shown => {
+      const snapshot = opening.document.confirmed;
+      if (shown && !hasOutlinePointOrder(snapshot?.value?.outline, outlinePointOrder(shown))) return undefined;
+      return snapshot?.value ? { generation: snapshot.metadata?.generation ?? null,
+        observedRevision: snapshot.metadata?.revision ?? 0 } : undefined;
+    },
+    captureActionTime: () => opening.captureActionTime(),
+    commitOutlineMove: (fn, move) => opening.document.commit(fn, { kind: 'outline-point-placement', move }),
     captureReview: (selected, fn) => captureAiReview(opening.document, opening.captureActionTime(), selected, fn),
   }), [opening]);
   const writer = useMemo(() => createEngineStructureWriter(writeTarget, owner, recovery.retain),

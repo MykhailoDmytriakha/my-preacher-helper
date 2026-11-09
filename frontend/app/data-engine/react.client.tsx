@@ -30,6 +30,7 @@ import { LegacyQueryCopies, LegacyQueryMigrationGate } from './LegacyQueryRecove
 import { ARCHIVED_COLLECTIONS, isEngineOwnedLegacyMutation, isEngineOwnedLegacyQuery, legacyCacheMayBeOverwritten } from './legacyQueryRecovery.client';
 import { discoverLegacyRecovery as discoverLegacyOriginals, exportLegacyRecovery as exportLegacyOriginal, type LegacyRecoverySource } from './legacyRecovery.client';
 import { councilRefusalHeldOpen as refusalHeldOpen, recoveryHeldOpen as heldOpen, type OpenDocumentAnswer } from './openDocumentAnswers';
+import { readOutlinePointPlacementComparison as outlinePointPlacementComparison } from './outlinePointPlacement';
 import { mergeFields } from './protocol';
 import { collectionRecordPresence, documentRecordPresence, UNKNOWN_RECORD_PRESENCE, type RecordPresence } from './recordPresence';
 import { isOnlySubmittedCopy } from './recovery.client';
@@ -75,6 +76,7 @@ export function readCommentKindComparison(checkpoint: SessionCheckpoint) { retur
 export function readStudyNoteTypeComparison(checkpoint: SessionCheckpoint) { return studyNoteTypeComparison(checkpoint); }
 export function readCouncilTopicConflict(checkpoint: SessionCheckpoint) { return councilTopicConflict(checkpoint); }
 export function readGroupFlowFieldConflict(checkpoint: SessionCheckpoint) { return groupFlowFieldConflict(checkpoint); }
+export function readOutlinePointPlacementComparison(checkpoint: SessionCheckpoint) { return outlinePointPlacementComparison(checkpoint); }
 export function readServiceStepConflict(checkpoint: SessionCheckpoint) { return serviceStepConflict(checkpoint); }
 export function readPlanTemplateNameConflict(checkpoint: SessionCheckpoint) { return planTemplateNameConflict(checkpoint); }
 export function readTagColorConflict(checkpoint: SessionCheckpoint) { return tagColorConflict(checkpoint); }
@@ -465,7 +467,9 @@ export function useDocumentActions() {
     resolve: async (resource: ResourceRef, choice: 'mine' | 'theirs', scope?: RecoveryChoiceScope, exactField = false): Promise<number> => {
       if (!browser || !owner) throw new Error(ENGINE_NOT_READY);
       // One-shot drafts only: a screen editor's draft of the same document is that screen's to settle.
-      const placementTime = resource.collection === 'serviceOrders' && choice === 'mine'
+      const comparedPlacement = resource.collection === 'sermons' && scope?.records.some(record => record.owner === owner
+        && record.checkpoint.confirmed.resource.id === resource.id && outlinePointPlacementComparison(record.checkpoint));
+      const placementTime = choice === 'mine' && (resource.collection === 'serviceOrders' || comparedPlacement)
         ? actionClock.capture(owner) ?? null : undefined;
       let waiting = (await waitingFor(resource)).filter(({ record }) => isOneShotRecord(record));
       const shown = (record: EditorRecord) => scope?.records.find(expected => expected.owner === owner && expected.editorId === record.editorId
@@ -1107,7 +1111,7 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
       action?: 'bible-mark-stroke' | 'council-lifecycle' | ExegeticalPointEdit | { kind: 'thought-placement'; rowId: string }
         | Pick<Extract<EditorCommitAction, { kind: 'sermon-preparation-check' }>, 'kind' | 'field'>
         | Pick<Extract<EditorCommitAction, { kind: 'account-preference' }>, 'kind' | 'fields'>
-        | Extract<EditorCommitAction, { kind: 'council-assembly' | 'council-topic-kind' | 'sermon-plan-mode' }>) => {
+        | Extract<EditorCommitAction, { kind: 'council-assembly' | 'council-topic-kind' | 'sermon-plan-mode' | 'outline-point-placement' }>) => {
       const timed = typeof action === 'string' || action?.kind === 'exegetical-point' || action?.kind === 'thought-placement' || action?.kind === 'sermon-preparation-check' || action?.kind === 'account-preference';
       const time = owner && timed ? actionClock.capture(owner) : undefined;
       const checkpoint = current?.state.checkpoint;
@@ -1135,7 +1139,8 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
     // After a refusal this also drops the refused change (EditorController.acceptRemote).
     acceptRemote: (compared?: SessionCheckpoint) => run(editor => editor.acceptRemote(undefined, compared)),
     keepLocal: (compared?: SessionCheckpoint) => {
-      const time = owner && compared && accountPreferenceComparison(compared) ? actionClock.capture(owner) ?? null : undefined;
+      const time = owner && compared && (accountPreferenceComparison(compared) || outlinePointPlacementComparison(compared))
+        ? actionClock.capture(owner) ?? null : undefined;
       return run(editor => editor.keepLocal(undefined, compared, time));
     },
     /*

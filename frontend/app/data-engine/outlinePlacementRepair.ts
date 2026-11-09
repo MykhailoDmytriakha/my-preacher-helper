@@ -118,7 +118,7 @@ export function prepareOutlinePlacementRepair(command: DataCommand, current: Res
   const uncertain: ConflictDetail[] = [];
   const unchanged = { command, repairs, uncertain };
   const live = current.value;
-  if (command.kind !== 'update' || command.resource.collection !== 'sermons' || !live || command.generation !== current.metadata?.generation
+  if (command.kind !== 'update' || command.outlinePointPlacement || command.resource.collection !== 'sermons' || !live || command.generation !== current.metadata?.generation
     || !outlineValue(live.outline) || !thoughtRows(live.thoughts)) return unchanged;
   const root = (field: string) => command.changes.find(change => change.path.length === 1 && change.path[0] === field);
   const outline = root('outline'), thought = root('thoughts');

@@ -1,5 +1,6 @@
 import { mergeVerseLayer } from '@/utils/bibleMarkLayers';
 import { getUtf8ByteLength } from '@/utils/feedbackPayload';
+import { outlinePointGap, SECTION_KEYS, type OutlinePointGap } from '@/utils/outlineDnd';
 import { explicitPreachedFlag } from '@/utils/preachDateStatus';
 import { isServiceOrderCatalogKey, isServiceOrderSeedTarget, serviceOrderSeedCycle } from '@/utils/serviceOrderSeedIdentity';
 import { stepGap } from '@/utils/serviceOrderStepPlacement';
@@ -165,6 +166,7 @@ function validateUpdate(command: Extract<DataCommand, { kind: 'update' }>, polic
     }
     if (command.serviceOrderPlacement !== undefined && !validServiceOrderPlacement(command)) fail('Invalid service order placement');
     if (command.serviceOrderStepPlacement !== undefined && !validServiceOrderStepPlacement(command)) fail('Invalid service step placement');
+    if (command.outlinePointPlacement !== undefined && !validOutlinePointPlacement(command)) fail('Invalid outline point placement');
     const removal = command.observedPlanTextRemoval;
     if (removal !== undefined && (command.resource.collection !== 'sermons' || !paths.some(path => path[0] === 'outline')
       || !validPlanTextEvidence(removal))) fail('Invalid plan text removal evidence');
@@ -174,6 +176,38 @@ function validateUpdate(command: Extract<DataCommand, { kind: 'update' }>, polic
       if (command.resource.collection !== 'sermons' || !validPlanTextEvidence(discard) || !object(next)
         || !Object.keys(discard).every(id => own(next, id) && next[id] === '')) fail('Invalid plan text discard evidence');
     }
+}
+
+export function validOutlinePointGap(value: unknown, pointId: string): value is OutlinePointGap {
+  if (!object(value) || Object.keys(value).length !== 3 || !SECTION_KEYS.some(section => section === value.section)) return false;
+  const anchor = (id: unknown) => id === null || (isValidIdentifier(id) && id !== pointId);
+  return anchor(value.previous) && anchor(value.next) && (value.previous === null || value.previous !== value.next);
+}
+
+function validOutlinePointPlacement(command: Extract<DataCommand, { kind: 'update' }>): boolean {
+  const move: unknown = command.outlinePointPlacement;
+  const change = command.changes[0];
+  if (command.resource.collection !== 'sermons' || command.changes.length !== 1 || change.path[0] !== 'outline'
+    || !change.before.exists || !change.after.exists || !object(move) || !isValidIdentifier(move.pointId)
+    || !Number.isSafeInteger(move.observedRevision) || Number(move.observedRevision) < 0
+    || (move.time !== null && !boundedActionTime(move.time))
+    || (move.predecessorOperationId !== undefined && (!isValidIdentifier(move.predecessorOperationId)
+      || !command.dependsOn.includes(move.predecessorOperationId)))
+    || !validOutlinePointGap(move.opening, move.pointId) || !validOutlinePointGap(move.destination, move.pointId)) return false;
+  const id = move.pointId;
+  const compact = (value: unknown) => {
+    if (!object(value) || Object.keys(value).length !== SECTION_KEYS.length) return undefined;
+    const rows = SECTION_KEYS.map(section => value[section]);
+    if (!rows.every(row => Array.isArray(row) && row.every(point => object(point)
+      && Object.keys(point).length === 1 && isValidIdentifier(point.id)))) return undefined;
+    const outline = value as Record<OutlinePointGap['section'], { id: string }[]>;
+    const ids = SECTION_KEYS.flatMap(section => outline[section].map(point => point.id));
+    return new Set(ids).size === ids.length ? outline : undefined;
+  };
+  const before = compact(change.before.value), after = compact(change.after.value);
+  return Boolean(before && after && equalValues(move.opening, outlinePointGap(before, id))
+    && equalValues(move.destination, outlinePointGap(after, id))
+    && SECTION_KEYS.every(section => equalValues(before[section].filter(point => point.id !== id), after[section].filter(point => point.id !== id))));
 }
 
 export function validServiceOrderPlacementGap(value: unknown, movedId: string): value is ServiceOrderPlacementGap {

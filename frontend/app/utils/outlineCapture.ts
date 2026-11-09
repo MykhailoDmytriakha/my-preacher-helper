@@ -1,4 +1,4 @@
-import type { StructureWriter } from '@/components/sermon/structureWriter';
+import type { OutlinePointMove, StructureWriter } from '@/components/sermon/structureWriter';
 import type { SermonOutline } from '@/models/models';
 
 /** Per-screen input ancestry, not a stored draft or evidence of durable capture. */
@@ -13,6 +13,7 @@ interface OutlineHandlers {
 interface OutlineInput {
   outline: SermonOutline;
   base: SermonOutline | null;
+  pointMove?: OutlinePointMove;
   begin: () => OutlineHandlers;
 }
 
@@ -43,13 +44,14 @@ export class OutlineCapture {
     this.viewGeneration += 1;
   }
 
-  schedule(input: OutlineInput): void {
+  schedule(input: OutlineInput): Promise<SermonOutline | null> {
     this.latest = input;
     const handlers = input.begin();
     const viewAtRequest = this.viewGeneration;
     let writing: Promise<SermonOutline | null>;
     try {
-      writing = this.writer.updateSermonOutline(this.id, input.outline, input.base, this.collision, this.sequence);
+      writing = this.writer.updateSermonOutline(this.id, input.outline, input.base, this.collision, this.sequence,
+        ...(input.pointMove ? [input.pointMove] as const : []));
     } catch (error) { writing = Promise.reject(error); }
     const settled = writing.then(stored => {
       if (this.latest === input) handlers.stored(stored ?? input.outline, viewAtRequest === this.viewGeneration);
@@ -58,6 +60,7 @@ export class OutlineCapture {
     });
     this.pending.add(settled);
     void settled.then(() => this.pending.delete(settled), () => this.pending.delete(settled));
+    return writing;
   }
 
   /** Wait for already-started attempts; settlement alone does not mean that they saved. */

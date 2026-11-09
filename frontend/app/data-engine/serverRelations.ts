@@ -1,4 +1,5 @@
 import { deriveSeriesItemsFromSermonIds, deriveSermonIdsFromItems, inferSeriesKind, normalizeSeriesItems } from '@/utils/seriesItems';
+import { replaceSermonOutline } from '@/utils/sermonThoughtEdits';
 import { isServiceOrderCatalogKey } from '@/utils/serviceOrderSeedIdentity';
 import { isStructureTag } from '@/utils/structureTags';
 import { sameStudyAnalysisPassage, studyAnalysisPassageIdentity } from '@/utils/studyAnalysisSource';
@@ -8,7 +9,8 @@ import { ANALYSIS_RESHAPE_FRAME, sameAnalysisFrame } from './analysisReshapeFiel
 import { validCouncilCarry } from './councilCarryContent';
 import { materialNoteIds, seriesMemberResources, sermonSourceReferences } from './documentReferences';
 import { childIdentityIssues } from './legacyChildIdentity';
-import { advanceResourceSnapshot, applyCommand, equalValues, mergeFields, readField, MAX_RELATION_RESOURCES } from './protocol';
+import { planOutlinePointPlacement, type OutlinePointPlacementWrite } from './outlinePointPlacement.server';
+import { advanceResourceSnapshot, applyCommand, diffFields, equalValues, mergeFields, readField, MAX_RELATION_RESOURCES } from './protocol';
 import { relationMirrorFields } from './relationMirrors';
 import { validateResourceDocument } from './resourceSchemas';
 import { memberResource, membershipKey, mergeOrderedSeriesItems, readSeriesMembershipMoves, reconcileDeletedSeriesMembership, resolveSeriesMembership, seriesLocation, type MembershipLocation, type SeriesMembershipMove, type SeriesMembershipPlacement, type SeriesMembershipWrite } from './seriesMembershipOrder.server';
@@ -18,7 +20,7 @@ import { planShareCapability, type ShareCapabilityCommand } from './shareCapabil
 
 import type { SeriesMembershipComparison } from './seriesMembershipHistory';
 import type { CommandResult, ConflictDetail, DataCommand, DocumentData, Json, ResourceRef, ResourceSnapshot } from './types';
-import type { SeriesItem } from '@/models/models';
+import type { SeriesItem, Sermon } from '@/models/models';
 
 export { MAX_RELATION_RESOURCES } from './protocol';
 export interface RelationFilter { field: 'materialIds' | 'seriesId' | 'noteId' | 'catalogKey' | 'type'; operator: '==' | 'array-contains'; value: string }
@@ -34,7 +36,7 @@ export interface RelationReader {
   /** Implementations always add authenticated owner scope; callers cannot choose it. */
   list(collection: string, limit: number, filter?: RelationFilter, select?: (snapshot: ResourceSnapshot) => boolean): Promise<ResourceSnapshot[]>;
 }
-export interface CommandPlan { result: CommandResult; writes: ResourceSnapshot[]; seriesMembershipWrites?: SeriesMembershipWrite[]; serviceOrderPlacement?: ServiceOrderPlacementWrite; serviceOrderStepPlacement?: ServiceOrderStepPlacementWrite }
+export interface CommandPlan { result: CommandResult; writes: ResourceSnapshot[]; seriesMembershipWrites?: SeriesMembershipWrite[]; serviceOrderPlacement?: ServiceOrderPlacementWrite; serviceOrderStepPlacement?: ServiceOrderStepPlacementWrite; outlinePointPlacement?: OutlinePointPlacementWrite }
 
 class RelationRefusal extends Error {
   constructor(readonly code: string) { super(code); }
@@ -112,6 +114,7 @@ class RelationPlanner {
   private readonly seriesMembershipWrites: SeriesMembershipWrite[] = [];
   private serviceOrderPlacement?: ServiceOrderPlacementWrite;
   private serviceOrderStepPlacement?: ServiceOrderStepPlacementWrite;
+  private outlinePointPlacement?: OutlinePointPlacementWrite;
 
   constructor(private readonly command: DataCommand, private readonly primary: ResourceSnapshot, private readonly reader: RelationReader) {
     this.cached.set(key(primary.resource), primary);
@@ -625,6 +628,21 @@ class RelationPlanner {
 
   private async ordinary(command: Exclude<DataCommand, { kind: 'relation' }>): Promise<CommandResult | undefined> {
     this.guardOrdinary(command);
+    if (command.kind === 'update' && command.outlinePointPlacement && this.primary.value && !this.primary.metadata?.deleted
+      && command.generation === (this.primary.metadata?.generation ?? null)) {
+      const context = this.reader.serviceOrderPlacement;
+      const plan = planOutlinePointPlacement(command, this.primary, context?.rawMetadata, context?.serverMs);
+      if ('conflict' in plan) return this.conflict([plan.conflict]);
+      const current = this.primary.value;
+      const next = replaceSermonOutline(current as unknown as Sermon, plan.outline) as unknown as DocumentData;
+      const patch = Object.fromEntries(diffFields(current, next).map(change => [change.path[0], change.after.value])) as DocumentData;
+      this.stage(this.primary, patch);
+      if (!this.writes.has(key(this.primary.resource))) {
+        this.writes.set(key(this.primary.resource), advanceResourceSnapshot(this.primary, current, command.operationId, []));
+      }
+      this.outlinePointPlacement = plan.write;
+      return;
+    }
     if (command.kind === 'update' && command.serviceOrderStepPlacement && this.primary.value && !this.primary.metadata?.deleted
       && command.generation === (this.primary.metadata?.generation ?? null)) {
       const context = this.reader.serviceOrderPlacement;
@@ -690,6 +708,7 @@ class RelationPlanner {
     return { result: { kind: 'acknowledged', operationId: this.command.operationId, snapshot, ...(affected.length ? { affected } : {}) },
       writes: [...this.writes.values()], ...(this.serviceOrderPlacement && { serviceOrderPlacement: this.serviceOrderPlacement }),
       ...(this.serviceOrderStepPlacement && { serviceOrderStepPlacement: this.serviceOrderStepPlacement }),
+      ...(this.outlinePointPlacement && { outlinePointPlacement: this.outlinePointPlacement }),
       ...(this.seriesMembershipWrites.length ? { seriesMembershipWrites: this.seriesMembershipWrites } : {}) };
   }
 }
