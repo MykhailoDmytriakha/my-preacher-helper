@@ -3729,6 +3729,23 @@
       "groupsAdded_one": "Group added to series",
       "groupsAdded_other": "{{count}} groups added to series",
       "membershipAssignment": "Assign items to a series",
+      "membershipHistory": {
+        "comparisonHeading": "Choose which assignment to keep",
+        "proposed": "Your pending choice: {{value}}",
+        "stored": "Saved assignment: {{value}}",
+        "review": "Review my choice",
+        "keep": "Keep saved assignment",
+        "heading": "Series assignment history",
+        "loading": "Loading series history…",
+        "unavailable": "Could not load series history.",
+        "restoreFailed": "Could not select this assignment.",
+        "empty": "There are no displaced assignments.",
+        "kept": "Kept: {{value}}",
+        "formerUnavailable": "This series is no longer available.",
+        "current": "Selected",
+        "restore": "Restore",
+        "more": "Show more"
+      },
       "membershipRecovery": "Unfinished series actions",
       "metadataRecovery": "Unfinished series details"
     },

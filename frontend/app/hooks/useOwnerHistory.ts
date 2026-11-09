@@ -2,13 +2,13 @@ import { useState } from 'react';
 
 import { requestOwnerJson } from '@/services/ownerHttpTransport.client';
 
-type HistoryPage<Entry> = { owner: string; generation: string; entries: Entry[]; nextCursor: string | null };
+type HistoryPage<Entry> = { owner: string; generation: string | null; entries: Entry[]; nextCursor: string | null };
 const unavailable = 'History unavailable';
 const messages = { failed: unavailable, unavailable, timedOut: unavailable };
 
 export function useOwnerHistory<Entry, Page extends HistoryPage<Entry>>({ owner, generation, id, path, resourceId }: {
   owner: string;
-  generation: string;
+  generation?: string | null;
   id: string;
   path: string;
   resourceId: (page: Page) => string | undefined;
@@ -22,9 +22,11 @@ export function useOwnerHistory<Entry, Page extends HistoryPage<Entry>>({ owner,
     setFailed(false);
     if (!cursor) setHistory(null);
     try {
-      const params = new URLSearchParams({ generation, ...(cursor && { cursor }) });
+      const expected = generation === undefined && cursor ? history?.generation : generation;
+      const params = new URLSearchParams({ ...(expected !== undefined && { generation: expected ?? '' }), ...(cursor && { cursor }) });
       const { value } = await requestOwnerJson<Page>(path + '?' + params, { expectedOwner: owner, answerStatuses: [], messages });
-      if (value.owner !== owner || resourceId(value) !== id || value.generation !== generation || !Array.isArray(value.entries)) throw new Error(unavailable);
+      if (value.owner !== owner || resourceId(value) !== id || (expected !== undefined && value.generation !== expected)
+        || !Array.isArray(value.entries)) throw new Error(unavailable);
       setHistory(previous => ({ ...value, entries: [...(cursor ? previous?.entries ?? [] : []), ...value.entries] }));
     } catch { setFailed(true); }
     finally { setLoading(false); }

@@ -32,7 +32,9 @@ function fixture() {
   queue.setOwner('owner');
   const save = jest.fn<ReturnType<MembershipScopePort['save']>, Parameters<MembershipScopePort['save']>>(async captures => {
     if (captures.length > 1) return queue.saveAtomic(captures);
-    const item = captures[0]; const result = await queue.save(item.editorId, item.captured, { predecessorId: item.predecessorId, retentionScope: item.retentionScope });
+    const item = captures[0]; const result = await queue.save(item.editorId, item.captured, {
+      predecessorId: item.predecessorId, retentionScope: item.retentionScope, seriesMembership: item.seriesMembership,
+    });
     return result ? [result] : [];
   });
   const persist = jest.fn((record: MembershipScopeRecord, revision: number | null) => scopes.persist(record, revision));
@@ -276,10 +278,19 @@ describe('membership stage storage', () => {
     const t = fixture(), original = t.begin(); await original.update(move);
     const record = (await t.scopes.read('owner', 'scope'))!;
     const first = MembershipScope.restore(record, t.port), second = MembershipScope.restore(record, t.port);
-    const results = await Promise.allSettled([first.save(), second.save()]);
+    const firstTime = { earliestMs: 1000, latestMs: 1004 };
+    const secondTime = { earliestMs: 2000, latestMs: 2004 };
+    const results = await Promise.allSettled([first.save(firstTime), second.save(secondTime)]);
     const ids = (await t.commits.list('owner')).map(request => request.id);
     expect(ids).toHaveLength(2);
     expect(results).toEqual([{ status: 'fulfilled', value: ids }, { status: 'fulfilled', value: ids }]);
+    expect((await t.scopes.read('owner', 'scope'))?.seriesMembershipTime).toEqual(firstTime);
+    expect(first.getState().record.seriesMembershipTime).toEqual(firstTime);
+    expect(second.getState().record.seriesMembershipTime).toEqual(firstTime);
+    expect((await t.commits.list('owner')).map(request => request.seriesMembership)).toEqual([
+      { time: firstTime, observedRevision: 1, added: [], removed: [ref] },
+      { time: firstTime, observedRevision: 1, added: [ref], removed: [] },
+    ]);
     expect(first.getState().durable).toBe(true);
     expect(second.getState().durable).toBe(true);
     expect(await t.scopes.read('other', 'scope')).toBeUndefined();
@@ -297,11 +308,12 @@ describe('membership stage storage', () => {
       await gate;
       return t.port.persist(next, revision);
     } });
-    const delayed = second.save();
+    const firstTime = { earliestMs: 1000, latestMs: 1004 };
+    const delayed = second.save({ earliestMs: 2000, latestMs: 2004 });
     void delayed.catch(() => undefined);
     let ids: string[];
     try {
-      ids = await first.save();
+      ids = await first.save(firstTime);
       for (const request of await t.commits.list('owner')) {
         await t.commits.compareAndSet(request, { ...request, state: 'acknowledged', result: {
           kind: 'acknowledged', operationId: request.id,
@@ -314,7 +326,7 @@ describe('membership stage storage', () => {
       expect(await t.commits.list('owner')).toEqual([]);
     } finally { release(); }
     await expect(delayed).resolves.toEqual(ids!);
-    expect(second.getState()).toMatchObject({ durable: true, record: { phase: 'submitted', requestIds: ids! } });
+    expect(second.getState()).toMatchObject({ durable: true, record: { phase: 'submitted', requestIds: ids!, seriesMembershipTime: firstTime } });
     expect(t.save).toHaveBeenCalledTimes(1);
   });
 
@@ -576,6 +588,66 @@ describe('DataEngine membership ownership', () => {
     await expect(t.engine.recoverMembership(recovery[0].scopeId)).rejects.toThrow('no longer exists');
     t.engine.dispose();
   });
+  it('keeps the action time and exact removal in a one-series queue row', async () => {
+    const t = engineFixture(), scope = await t.engine.beginMembership();
+    const time = { earliestMs: 1000, latestMs: 1004 };
+    await scope.update({ kind: 'remove', refs: [ref] });
+    const [id] = await scope.save(time);
+    const [request] = await t.commits.list('owner');
+    expect(request).toMatchObject({
+      id, baseline: { resource: { id: 'a' } }, value: { items: [] },
+      seriesMembership: { time, observedRevision: 1, added: [], removed: [ref] },
+    });
+    expect(request.atomic).toBeUndefined();
+    expect(t.send).not.toHaveBeenCalled();
+    t.engine.dispose();
+  });
+
+  it('keeps the observed removal when a Save has no calibrated clock', async () => {
+    const t = engineFixture(), scope = await t.engine.beginMembership();
+    await scope.update({ kind: 'remove', refs: [ref] });
+    await scope.save(null);
+    expect((await t.commits.list('owner'))[0].seriesMembership).toMatchObject({
+      time: null, observedRevision: 1, added: [], removed: [ref],
+    });
+    expect(t.send).not.toHaveBeenCalled();
+    t.engine.dispose();
+  });
+
+  it('includes the pending local Clear when a following Save assigns the member elsewhere without a clock', async () => {
+    const t = engineFixture(), clear = await t.engine.beginMembership();
+    await clear.update({ kind: 'remove', refs: [ref] });
+    const [prior] = await clear.save(null);
+    t.engine.releaseMembership(clear.getState().record.scopeId);
+    const next = await t.engine.beginMembership();
+    await next.update(move);
+    const ids = await next.save(null);
+    expect(ids).toHaveLength(2);
+    expect((await t.commits.list('owner')).find(request => ids.includes(request.id) && request.baseline.resource.id === 'a'))
+      .toMatchObject({ predecessor: prior, seriesMembership: { added: [], removed: [] } });
+    expect(t.send).not.toHaveBeenCalled();
+    t.engine.dispose();
+  });
+
+  it('caches the other series from a one-series acknowledgement before releasing the request', async () => {
+    const t = engineFixture(), scope = await t.engine.beginMembership();
+    await scope.update({ kind: 'remove', refs: [ref] });
+    const [id] = await scope.save({ earliestMs: 1000, latestMs: 1004 });
+    await t.engine.retry();
+    const [request] = await t.commits.list('owner');
+    const accepted = { ...snapshot('a'), value: request.value,
+      metadata: { ...snapshot('a').metadata!, operationId: id, revision: 2 } };
+    const discovered = { ...snapshot('b'), value: { ...snapshot('b').value!, title: 'Current title on the other device' },
+      metadata: { ...snapshot('b').metadata!, operationId: id, revision: 2 } };
+    await t.commits.compareAndSet(request, { ...request, state: 'acknowledged', command: null,
+      result: { kind: 'acknowledged', operationId: id, snapshot: accepted,
+        affected: [{ resource: discovered.resource, metadata: discovered.metadata }], relatedSnapshots: [discovered] } });
+    await t.engine.retry();
+    expect(t.cache.get('b')).toEqual(discovered);
+    expect(t.send).not.toHaveBeenCalled();
+    t.engine.dispose();
+  });
+
   it('discards a proven failed action through its owner and preserves later participant text', async () => {
     const t = engineFixture(), scope = await t.engine.beginMembership(); await scope.update(move); await scope.save();
     const scopeId = scope.getState().record.scopeId;

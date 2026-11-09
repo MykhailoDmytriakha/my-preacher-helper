@@ -10,6 +10,7 @@ import { diffFields, equalValues, readField, validateCommand, MAX_RELATION_RESOU
 import { relationMirrorFields } from './relationMirrors';
 import { capturePlanTextEvidence, withPlanTextEvidence, type PlanTextEvidence } from './sermonPlanText';
 
+import type { SeriesMembershipCapture } from './membershipIntent';
 import type { CommandBase, DataCommand, DocumentData, FieldChange, ResourceRef, ResourceSnapshot } from './types';
 
 export interface DomainPreparation {
@@ -184,18 +185,30 @@ export function prepareDomainCommand(owner: string, operationId: string, confirm
   return { ...prepared, command: copy(validateCommand(command)) };
 }
 
+export interface SeriesCommandParticipant {
+  confirmed: ResourceSnapshot;
+  draft: DocumentData | null;
+  captured?: {
+    membership: SeriesMembershipCapture & { predecessorOperationId?: string };
+    opening: DocumentData;
+    authored: DocumentData;
+  };
+}
+
 /** A move owns membership fields; creating a member also owns its absent document. */
-export function prepareAtomicSeriesCommand(owner: string, operationId: string, participants: readonly { confirmed: ResourceSnapshot; draft: DocumentData | null }[]): DataCommand {
-  if (participants.length < 2 || participants.length > MAX_RELATION_RESOURCES) return failure('A series move requires a bounded participant group');
+export function prepareAtomicSeriesCommand(owner: string, operationId: string, participants: readonly SeriesCommandParticipant[]): DataCommand {
+  if (!participants.length || (participants.length === 1 && !participants[0].captured)
+    || participants.length > MAX_RELATION_RESOURCES) return failure('A series move requires a bounded participant group');
   const creation = participants[0].confirmed.resource.collection !== 'series' ? participants[0] : null;
   if (creation && (participants.length !== 2 || !['sermons', 'groups'].includes(creation.confirmed.resource.collection)
     || creation.confirmed.value || creation.confirmed.metadata || !creation.draft || creation.draft.userId !== owner)) return failure('A new owned member is required');
-  const edits = (creation ? participants.slice(1) : participants).map(({ confirmed, draft }) => {
+  const edits = (creation ? participants.slice(1) : participants).map(({ confirmed, draft, captured }) => {
     if (confirmed.resource.collection !== 'series' || !confirmed.value || confirmed.metadata?.deleted || !draft) return failure('Live series participants are required', REFERENCED_DOCUMENT_DELETED);
     if (confirmed.value.userId !== owner || draft.userId !== owner) return failure('Series belongs to another owner', PERMISSION_DENIED);
     if (diffFields(confirmed.value, draft).some(change => !['items', 'sermonIds', 'seriesKind'].includes(change.path[0]))) return failure('Save ordinary fields separately from a series move', 'atomic-membership-only');
     return { resource: copy(confirmed.resource), generation: confirmed.metadata?.generation ?? null,
-      beforeItems: copy(items(confirmed.value)), afterItems: copy(items(draft, false)) };
+      beforeItems: copy(items(captured?.opening ?? confirmed.value)), afterItems: copy(items(captured?.authored ?? draft, false)),
+      ...(captured && { membership: copy(captured.membership) }) };
   });
   if (creation) return validateCommand({ protocol: 1, owner, operationId, resource: copy(creation.confirmed.resource), generation: null,
     dependsOn: [], kind: 'relation', relation: 'series-member-create', value: copy(creation.draft!), edit: edits[0] });
@@ -206,7 +219,7 @@ export function prepareAtomicSeriesCommand(owner: string, operationId: string, p
 
 /** A click-only council carry uses the same durable participants as a series move. */
 export function prepareAtomicDomainCommand(owner: string, operationId: string,
-  participants: readonly { confirmed: ResourceSnapshot; draft: DocumentData | null }[]): DataCommand {
+  participants: readonly SeriesCommandParticipant[]): DataCommand {
   if (participants[0]?.confirmed.resource.collection === 'studyNotes') {
     if (participants.length < 2 || participants.length > 3) return failure('An analysis reshape requires two or three participants');
     const [source] = participants;

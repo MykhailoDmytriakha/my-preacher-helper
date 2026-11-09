@@ -1,13 +1,15 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 
 import { SeriesMembershipDialog } from '@/components/series/SeriesMembershipDialog';
 import { createBrowserDataEngine } from '@/data-engine/browser.client';
 import { DataEngineProvider } from '@/data-engine/react.client';
+import { requestOwnerJson } from '@/services/ownerHttpTransport.client';
 import { membershipEngineHarness } from '../../test-utils/membershipEngineHarness';
 import { settleEngine } from '../../test-utils/documentEngineHarness';
 import type { ResourceSnapshot } from '@/data-engine/types';
 
 jest.mock('@/providers/AuthProvider', () => ({ useAuth: () => ({ user: { uid: 'owner' } }) }));
+jest.mock('@/services/ownerHttpTransport.client', () => ({ requestOwnerJson: jest.fn() }));
 jest.mock('@/data-engine/browser.client', () => ({ createBrowserDataEngine: jest.fn() }));
 jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
 jest.mock('@/hooks/useGroupsRead', () => ({ useGroupsRead: () => ({ groups: [{ id: 'g', title: 'Meeting' }], loading: false, error: null }) }));
@@ -105,6 +107,85 @@ it('finds a series to move into by its theme or its book, not only its title', a
   fireEvent.change(search, { target: { value: 'grace' } });
   expect(screen.getByRole('radio', { name: 'Autumn' })).toBeInTheDocument();
   expect(screen.queryByRole('radio', { name: 'Winter' })).not.toBeInTheDocument();
+});
+
+it('restores a group assignment through the ordinary form and fences a missing or replaced series', async () => {
+  const harness = membershipEngineHarness([series('a', true), series('b'),
+    { resource: { collection: 'groups', id: 'g' }, metadata: null, value: { userId: 'owner', title: 'Meeting' } }]);
+  jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
+  const current = { id: 'a', generation: 'g-a', label: 'Current A' };
+  jest.mocked(requestOwnerJson).mockResolvedValue({ status: 200, value: {
+    owner: 'owner', collection: 'groups', memberId: 'g', generation: null, nextCursor: null,
+    entries: [
+      { id: 'available', former: { id: 'b', generation: 'g-b', label: 'Former B' }, current },
+      { id: 'replaced', former: { id: 'b', generation: 'old-b', label: 'Old B' }, current },
+      { id: 'deleted', former: { id: 'gone', generation: 'gone', label: 'Gone C' }, current },
+      { id: 'clear', former: null, current },
+    ],
+  } });
+  render(<DataEngineProvider><SeriesMembershipDialog seriesId="a" mode="target" member={{ type: 'group', refId: 'g' }} onClose={jest.fn()} /></DataEngineProvider>);
+  const heading = 'workspaces.series.membershipHistory.heading', restore = 'workspaces.series.membershipHistory.restore';
+  fireEvent.click(await screen.findByRole('button', { name: heading }));
+  const region = await screen.findByRole('region', { name: heading });
+  const buttonFor = (label: string) => within(within(region).getByText(label).closest('li')!).getByRole('button', { name: restore });
+  await within(region).findByText('Former B');
+  expect(buttonFor('Old B')).toBeDisabled();
+  expect(buttonFor('Gone C')).toBeDisabled();
+  fireEvent.click(buttonFor('Former B'));
+  await waitFor(() => expect(screen.getByRole('radio', { name: 'b' })).toBeChecked());
+  expect(harness.transport.send).not.toHaveBeenCalled();
+  await waitFor(() => expect(buttonFor('addSermon.noSeriesOption')).toBeEnabled());
+  fireEvent.click(buttonFor('addSermon.noSeriesOption'));
+  await waitFor(() => expect(screen.getByRole('radio', { name: 'addSermon.noSeriesOption' })).toBeChecked());
+  expect(harness.transport.send).not.toHaveBeenCalled();
+  await waitFor(() => expect(buttonFor('Former B')).toBeEnabled());
+  fireEvent.click(buttonFor('Former B'));
+  await waitFor(() => expect(screen.getByRole('radio', { name: 'b' })).toBeChecked());
+  const save = screen.getByRole('button', { name: 'common.save' });
+  await waitFor(() => expect(save).toBeEnabled());
+  fireEvent.click(save);
+  await waitFor(() => expect(harness.transport.send).toHaveBeenCalledTimes(1));
+});
+
+it('opens the exact disputed assignment as a durable unsent choice before retiring the refused attempt', async () => {
+  const harness = membershipEngineHarness([series('a', true), series('b'), series('c'),
+    { resource: { collection: 'groups', id: 'g' }, metadata: null, value: { userId: 'owner', title: 'Meeting' } }]);
+  jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
+  const compared = [{ ref: { type: 'group' as const, refId: 'g' }, label: 'Meeting',
+    proposed: { id: 'b', generation: 'g-b', label: 'Pending B' }, stored: { id: 'c', generation: 'g-c', label: 'Saved C' } }];
+  jest.mocked(harness.transport.send).mockImplementationOnce(async command => ({
+    kind: 'refused', operationId: command.operationId, code: 'membership-already-assigned', seriesMembershipComparisons: compared,
+  }));
+  const onClose = jest.fn();
+  const memberRef = { type: 'group' as const, refId: 'g' };
+  function Workspace({ recoveryId }: { recoveryId?: string }) {
+    return <DataEngineProvider><SeriesMembershipDialog key={recoveryId ?? 'initial'}
+      seriesId="a" mode={recoveryId ? 'recover' : 'target'} member={memberRef} recoveryId={recoveryId} onClose={onClose} /></DataEngineProvider>;
+  }
+  const view = render(<Workspace />);
+  fireEvent.click(await screen.findByRole('radio', { name: 'b' }));
+  const save = screen.getByRole('button', { name: 'common.save' });
+  await waitFor(() => expect(save).toBeEnabled());
+  harness.replace({ ...series('a'), metadata: { ...series('a').metadata!, revision: 2 } });
+  harness.replace({ ...series('c', true), metadata: { ...series('c').metadata!, revision: 2 } });
+  fireEvent.click(save);
+  await waitFor(() => expect(onClose).toHaveBeenCalled());
+  await waitFor(() => expect(harness.transport.send).toHaveBeenCalledTimes(1));
+  const previous = (await harness.engine.listMembershipRecovery()).find(record => record.phase === 'submitted')!;
+  expect(previous).toBeDefined();
+  view.rerender(<Workspace recoveryId={previous.scopeId} />);
+  const review = await screen.findByRole('button', { name: 'workspaces.series.membershipHistory.review' });
+  expect(screen.getByRole('region', { name: 'workspaces.series.membershipHistory.comparisonHeading' })).toBeInTheDocument();
+  fireEvent.click(review);
+  await waitFor(() => expect(screen.getByRole('radio', { name: 'b' })).toBeChecked());
+  expect(harness.transport.send).toHaveBeenCalledTimes(1);
+  expect(await harness.scopes.completion('owner', previous.scopeId)).toBe('cancelled');
+  const drafts = await harness.engine.listMembershipRecovery();
+  expect(drafts).toEqual([expect.objectContaining({ phase: 'editing', action: { kind: 'assign', refs: [memberRef], targetId: 'b' } })]);
+  fireEvent.click(screen.getByRole('button', { name: 'common.save' }));
+  await waitFor(() => expect(harness.transport.send).toHaveBeenCalledTimes(2));
+  expect(harness.read(series('b').resource).value?.items).toEqual([member]);
+  expect(harness.read(series('c').resource).value?.items).toEqual([]);
 });
 
 // The sermon picker searched title, verse, thought text and tags (matchesSermonQuery) before the

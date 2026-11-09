@@ -50,10 +50,11 @@ import type { GroupMeetingField, GroupMeetingFieldInput } from './groupMeetingFi
 import type { ManualFieldInput, ManualPath, ManualDocumentMetadataSave } from './manualScope';
 import type { StoredManualScope } from './manualScopes.client';
 import type { MembershipDelivery } from './membershipDelivery';
-import type { MembershipAction } from './membershipIntent';
+import type { MembershipAction, MembershipRef } from './membershipIntent';
 import type { MembershipScope, MembershipScopeRecord } from './membershipScope';
 import type { PreachStatusIntent } from './preachStatusAction';
 import type { RowFieldActionKind } from './rowFieldAutosave';
+import type { SeriesHistorySelection, SeriesMembershipComparison } from './seriesMembershipHistory';
 import type { EditorCommitAction } from './types';
 import type { CommandResult, ConflictDetail, DocumentData, EngineReadOptions, FailureAddress, FieldValue, JournalEntry, ResourceRef, ResourceSnapshot } from './types';
 import type { AppLocale } from '@/utils/appLocale';
@@ -611,6 +612,7 @@ export function useDataMembership() {
   const identity = useMemo(() => ({ browser, owner }), [browser, owner]);
   const latest = useRef<object>(identity); latest.current = identity;
   const current = useRef<{ identity: object; scope: MembershipScope; scopeId: string; stop: () => void } | null>(null);
+  const reviewing = useRef<MembershipScope | null>(null);
   const opening = useRef<{ identity: object; promise: Promise<void> } | null>(null);
   const [stored, setStored] = useState<{ identity: object; state: ReturnType<MembershipScope['getState']> } | null>(null);
   const [failure, setFailure] = useState<{ identity: object; words: FailureWords } | null>(null);
@@ -623,7 +625,7 @@ export function useDataMembership() {
   }, [browser, owner, identity]);
   const refresh = useCallback(() => {
     const held = current.current;
-    if (held?.identity !== identity || latest.current !== identity) return;
+    if (held?.identity !== identity || latest.current !== identity || reviewing.current === held.scope) return;
     const version = ++refreshVersion.current;
     setStored({ identity, state: held.scope.getState() });
     void browser!.engine.membershipDelivery(held.scopeId).then(state => {
@@ -706,7 +708,28 @@ export function useDataMembership() {
       await scope.updateCreation(updater(creation.value));
     }),
     update: (action: MembershipAction | null) => run(() => required().update(action)),
-    save: () => run(() => required().save()), cancel: () => run(async () => { await required().cancel(); dismiss(); }),
+    restoreAssignment: (member: MembershipRef, selection: SeriesHistorySelection | null) => run(() => required().restoreAssignment(member, selection)),
+    keepAssignment: (compared: readonly SeriesMembershipComparison[]) => run(async () => {
+      await active().keepMembership(required().getState().record.scopeId, compared);
+      dismiss();
+    }),
+    reviewAssignment: (compared: readonly SeriesMembershipComparison[]) => run(async () => {
+      const engine = active(), previous = required();
+      reviewing.current = previous;
+      try {
+        const scope = await engine.reviewMembership(previous.getState().record.scopeId, compared);
+        if (latest.current !== identity) {
+          engine.releaseMembership(scope.getState().record.scopeId);
+          throw new Error(EDITOR_CHANGED);
+        }
+        current.current?.stop();
+        current.current = { identity, scope, scopeId: scope.getState().record.scopeId, stop: scope.subscribe(refresh) };
+        refresh();
+      } finally {
+        if (reviewing.current === previous) reviewing.current = null;
+      }
+    }),
+    save: () => run(() => required().save((owner && actionClock.capture(owner)) || null)), cancel: () => run(async () => { await required().cancel(); dismiss(); }),
     retry: () => run(() => active().retryMembership(required().getState().record.scopeId)),
     discard: () => run(async () => { await active().discardMembership(required().getState().record.scopeId); dismiss(); }),
     listRecoverable: (options?: { closedOnly?: boolean }) => run(() => active().listMembershipRecovery(options)),

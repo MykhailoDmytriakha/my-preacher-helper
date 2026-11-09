@@ -107,6 +107,25 @@ describe('HTTP engine transport', () => {
     jest.mocked(requestOwnerJson).mockResolvedValue({ status: 409, value: result });
     expect(await createHttpEngineTransport().send(command)).toEqual(result);
   });
+  it('retains an exact series membership comparison through the HTTP refusal', async () => {
+    const resource = { collection: 'series', id: 'alpha' };
+    const ref = { type: 'sermon' as const, refId: 's1' };
+    const assign: DataCommand = { ...command, resource, kind: 'relation', relation: 'series-membership',
+      edits: [{ resource, generation: null, beforeItems: [], afterItems: [{ ...ref, id: 'sermon-s1', position: 1 }],
+        membership: { time: null, observedRevision: 0, added: [ref], removed: [] } }] };
+    const compared = { ref, label: 'Sermon', proposed: { id: 'alpha', generation: null, label: 'Alpha' },
+      stored: { id: 'beta', generation: 'g2', label: 'Beta' } };
+    const result = { kind: 'refused', operationId: 'op', code: 'membership-already-assigned', seriesMembershipComparisons: [compared] };
+    jest.mocked(requestOwnerJson).mockResolvedValue({ status: 409, value: result });
+    const transport = createHttpEngineTransport();
+    expect(await transport.send(assign)).toEqual(result);
+    await expect(transport.send(command)).rejects.toMatchObject({ code: 'data-loss' });
+    jest.mocked(requestOwnerJson).mockResolvedValue({ status: 409, value: {
+      ...result, seriesMembershipComparisons: [{ ...compared, proposed: { ...compared.proposed, id: 'unrelated' } }],
+    } });
+    await expect(transport.send(assign)).rejects.toMatchObject({ code: 'data-loss' });
+  });
+
   it('classifies invalid or mismatched replies and preserves network error codes', async () => {
     const transport = createHttpEngineTransport();
     for (const value of [{}, { kind: 'acknowledged', operationId: 'other', snapshot }, { kind: 'acknowledged', operationId: 'op', snapshot: { ...snapshot, resource: { ...snapshot.resource, id: 'other' } } }]) {

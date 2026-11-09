@@ -8,11 +8,13 @@ import type { DocumentTagIntent } from './documentTagCapture';
 import type { ExegeticalPointStamp } from './exegeticalPointAction';
 import type { ExegeticalPointEdit } from './exegeticalPointCapture';
 import type { GroupMeetingFieldActions } from './groupMeetingFieldAction';
+import type { SeriesMembershipCapture } from './membershipIntent';
 import type { PrayerStatusCapture } from './prayerStatusAction';
 import type { PreachDateFieldActions } from './preachDateFieldAction';
 import type { PreachStatusAction } from './preachStatusAction';
 import type { AutosaveRowFieldActions } from './rowFieldAutosave';
 import type { SeriesFieldStamps } from './seriesFieldAction';
+import type { SeriesMembershipComparison } from './seriesMembershipHistory';
 import type { SermonChurchFill } from './sermonChurchFill';
 import type { ServiceOrderFlagActions, ServiceOrderFlagCapture, ServiceOrderStepTitleActions, ServiceOrderStepTitleCapture } from './serviceOrderStepAction';
 import type { ShownCopy } from './session';
@@ -121,6 +123,7 @@ export type DataCommand = CommandBase & (
       targets: Array<{ id: string; generation: string | null }> }
   | { kind: 'relation'; relation: 'series-membership'; edits: Array<{
       resource: ResourceRef; generation: string | null; beforeItems: DocumentData[]; afterItems: DocumentData[];
+      membership?: SeriesMembershipCapture & { predecessorOperationId?: string };
     }> }
   /** Creating a member in a series is one effect, including when the response is lost. */
   | { kind: 'relation'; relation: 'series-member-create'; value: DocumentData; edit: {
@@ -178,7 +181,7 @@ export type CommandResult =
       relatedSnapshots?: ResourceSnapshot[] }
   | { kind: 'conflict'; operationId: string; snapshot: ResourceSnapshot; conflicts: ConflictDetail[] }
   | { kind: 'deleted'; operationId: string; snapshot: ResourceSnapshot }
-  | { kind: 'refused'; operationId: string; code: string }
+  | { kind: 'refused'; operationId: string; code: string; seriesMembershipComparisons?: SeriesMembershipComparison[] }
   | { kind: 'blocked'; operationId: string; dependencies: string[] };
 
 export interface CommandReceipt {

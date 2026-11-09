@@ -3,12 +3,15 @@ import { shownDeliveryState } from './unanswered';
 
 import type { CommitRequest } from './commits';
 import type { MembershipScopeRecord } from './membershipScope';
+import type { SeriesMembershipComparison } from './seriesMembershipHistory';
 import type { JournalEntry } from './types';
 
 export interface MembershipDelivery {
   phase: 'editing' | 'saving' | 'queued' | 'sending' | 'unknown' | 'blocked' | 'conflict' | 'refused' | 'acknowledged' | 'cancelled' | 'unavailable';
   canDiscard: boolean;
   code: string | null;
+  comparisons?: SeriesMembershipComparison[];
+  canChooseExact?: boolean;
 }
 
 /** Delivery is confirmed only when every durable participant has its own proof. */
@@ -38,5 +41,8 @@ export function describeActionDelivery(owner: string, requestIds: readonly strin
     if (deliveries.some(entry => shownDeliveryState(entry) === next) || complete.some(request => request.state === next)) phase = next;
   }
   const refused = complete.find(request => request.result?.kind === 'refused')?.result;
-  return status(phase, canCancelSavedIntent(chain, entries), refused?.kind === 'refused' ? refused.code : null);
+  const result = status(phase, canCancelSavedIntent(chain, entries), refused?.kind === 'refused' ? refused.code : null);
+  const comparisons = refused?.kind === 'refused' ? refused.seriesMembershipComparisons : undefined;
+  const canChooseExact = result.canDiscard && chain.every(request => requestIds.includes(request.id));
+  return comparisons?.length ? { ...result, comparisons, canChooseExact } : result;
 }

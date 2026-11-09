@@ -73,6 +73,7 @@ interface SermonFormDialogProps {
   seriesDisabled?: boolean;
   formStatus?: React.ReactNode;
   seriesStatus?: React.ReactNode;
+  seriesHistory?: React.ReactNode;
   titleHistory?: React.ReactNode;
   verseHistory?: React.ReactNode;
   churchHistory?: React.ReactNode;
@@ -105,6 +106,7 @@ export default function SermonFormDialog({
   seriesDisabled = false,
   formStatus,
   seriesStatus,
+  seriesHistory,
   titleHistory,
   verseHistory,
   churchHistory,
@@ -336,6 +338,7 @@ export default function SermonFormDialog({
                 ))}
               </Select>
               )}
+              {seriesHistory}
             </div>
           )}
           {seriesStatus}

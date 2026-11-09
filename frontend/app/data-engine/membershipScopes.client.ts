@@ -20,15 +20,20 @@ export interface MembershipScopeStore {
 type ScopeRow = MembershipScopeRecord & { frozenFrom?: number };
 interface ScopeWatermark {
   owner: string; scopeId: string; revision: number; closed: true; outcome?: 'acknowledged' | 'cancelled';
-  save?: { generation: number; requestIds: string[]; frozenFrom?: number };
+  save?: Pick<MembershipScopeRecord, 'generation' | 'requestIds' | 'seriesMembershipTime'> & { frozenFrom?: number };
 }
 const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 const key = (owner: string, id: string): IDBValidKey => [id.startsWith(CREATION_SCOPE_PREFIX) ? 'creation-scope' : 'membership-scope', owner, id];
 const referenceKey = (owner: string, id: string): IDBValidKey => ['reference', owner, 'membership', id];
 const live = (value: ScopeRow | ScopeWatermark): value is ScopeRow => !('closed' in value);
 const stage = ({ frozenFrom: _frozenFrom, ...record }: ScopeRow): MembershipScopeRecord => record;
-const sameSave = (current: ScopeRow, attempted: MembershipScopeRecord): boolean =>
-  equalValues(stage(current), { ...attempted, phase: current.phase, revision: current.revision, requestIds: current.requestIds });
+function sameSave(current: ScopeRow, attempted: MembershipScopeRecord): boolean {
+  // Two copies may press Save on the same editing revision at different times.
+  // The one that freezes storage first owns the time of that shared capture.
+  const { seriesMembershipTime: _currentTime, ...saved } = stage(current);
+  const { seriesMembershipTime: _attemptedTime, ...next } = attempted;
+  return equalValues(saved, { ...next, phase: current.phase, revision: current.revision, requestIds: current.requestIds });
+}
 const changedStage = () => Object.assign(new Error('Membership stage changed in another session'), { code: 'membership-stage-changed' });
 const references = (record: MembershipScopeRecord) => [...new Set([...record.pins.flatMap(pin => pin.predecessor ? [pin.predecessor.id] : []), ...record.requestIds])];
 
@@ -67,7 +72,8 @@ export function createIndexedDbMembershipScopes(): MembershipScopeStore {
             && (editingRevision === undefined || (editingRevision !== null && current.save?.frozenFrom === editingRevision)) ? current.save : undefined;
         if (!saved || saved.generation !== record.generation
           || (record.phase === 'submitted' && !equalValues(saved.requestIds, record.requestIds))) { done(null); return; }
-        done({ revision: current.revision, requestIds: [...saved.requestIds] });
+        done({ revision: current.revision, requestIds: [...saved.requestIds],
+          ...(saved.seriesMembershipTime !== undefined ? { seriesMembershipTime: saved.seriesMembershipTime } : {}) });
       });
     }),
     read: (owner, scopeId) => transaction('readonly', (store, read, done) => read(store.get(key(owner, scopeId)), (value: ScopeRow | ScopeWatermark | undefined) => {
@@ -93,10 +99,12 @@ export function createIndexedDbMembershipScopes(): MembershipScopeStore {
         if (existing && live(existing)) {
           const openingCreationSeries = existing.phase === 'editing' && existing.creation?.seriesOpened === false && frozen.creation?.seriesOpened === true;
           if ((!openingCreationSeries && !equalValues(existing.pins, frozen.pins))
+            || existing.seriesCatalogVersion !== frozen.seriesCatalogVersion
             || !equalValues(existing.creation?.resource, frozen.creation?.resource)
             || (existing.creation?.seriesOpened === true && frozen.creation?.seriesOpened !== true)
             || (existing.phase !== 'editing' && !equalValues(existing.creation, frozen.creation)) || existing.generation > frozen.generation
-            || (existing.phase !== 'editing' && (!equalValues(existing.action, frozen.action) || existing.generation !== frozen.generation))
+            || (existing.phase !== 'editing' && (!equalValues(existing.action, frozen.action) || existing.generation !== frozen.generation
+              || !equalValues(existing.seriesMembershipTime, frozen.seriesMembershipTime)))
             || (existing.phase === 'saving' && !['saving', 'submitted'].includes(frozen.phase))
             || (existing.phase === 'submitted' && (frozen.phase !== 'submitted' || !equalValues(existing.requestIds, frozen.requestIds)))
             || (existing.phase === 'cancelled' && frozen.phase !== 'cancelled')) throw new Error('Frozen membership intent cannot change');
@@ -124,7 +132,8 @@ export function createIndexedDbMembershipScopes(): MembershipScopeStore {
       const finish = (outcome: 'acknowledged' | 'cancelled') => {
         const watermark: ScopeWatermark = { owner, scopeId, revision: record.revision + 1, closed: true, outcome };
         if (outcome === 'acknowledged') watermark.save = { generation: record.generation, requestIds: record.requestIds,
-          ...(value.frozenFrom === undefined ? {} : { frozenFrom: value.frozenFrom }) };
+          ...(value.frozenFrom === undefined ? {} : { frozenFrom: value.frozenFrom }),
+          ...(record.seriesMembershipTime !== undefined ? { seriesMembershipTime: record.seriesMembershipTime } : {}) };
         store.put(watermark, key(owner, scopeId));
         store.delete(referenceKey(owner, scopeId)); collectCommitRows(store, read, owner, () => done(undefined));
       };

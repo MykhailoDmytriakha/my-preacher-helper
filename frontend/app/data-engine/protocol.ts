@@ -3,6 +3,7 @@ import { getUtf8ByteLength } from '@/utils/feedbackPayload';
 import { explicitPreachedFlag } from '@/utils/preachDateStatus';
 import { isServiceOrderCatalogKey, isServiceOrderSeedTarget, serviceOrderSeedCycle } from '@/utils/serviceOrderSeedIdentity';
 
+import { boundedActionTime } from './actionClock';
 import { ANALYSIS_RESHAPE_FIELDS, ANALYSIS_RESHAPE_FRAME, hasMatchingAnalysisPositionBasis, keepAnalysisPositionFrame, lacksAnalysisFrameProof } from './analysisReshapeFields';
 import { councilTopicConflictCode, councilTopicTransitionRefusal, retainCouncilTopicFrame } from './councilTopicTransition';
 import { equalValues, object, own, readField } from './fieldValues';
@@ -275,6 +276,22 @@ function validateAnalysisReshape(command: Extract<DataCommand, { relation: 'anal
     || command.edits[0].generation !== command.generation) fail('Analysis reshape source identity mismatch');
 }
 
+function validSeriesMembershipCapture(value: unknown): boolean {
+  if (!object(value) || (value.time !== null && !boundedActionTime(value.time)) || !Number.isSafeInteger(value.observedRevision)
+    || (value.observedRevision as number) < 0
+    || (value.observedCatalogVersion !== undefined && (!Number.isSafeInteger(value.observedCatalogVersion) || (value.observedCatalogVersion as number) < 0))
+    || (value.predecessorOperationId !== undefined && !isValidIdentifier(value.predecessorOperationId))
+    || !Array.isArray(value.added) || !Array.isArray(value.removed)) return false;
+  const seen = new Set<string>();
+  for (const ref of [...value.added, ...value.removed]) {
+    if (!object(ref) || (ref.type !== 'sermon' && ref.type !== 'group') || !isValidIdentifier(ref.refId)) return false;
+    const identity = `${ref.type}:${ref.refId}`;
+    if (seen.has(identity)) return false;
+    seen.add(identity);
+  }
+  return true;
+}
+
 function validateRelation(command: Extract<DataCommand, { kind: 'relation' }>): void {
   switch (command.relation) {
     case 'service-order-seed': return validateServiceOrderSeed(command);
@@ -317,8 +334,13 @@ function validateRelation(command: Extract<DataCommand, { kind: 'relation' }>): 
       || !isValidIdentifier(edit.resource.id) || !generation(edit.generation)
       || seen.has(edit.resource.id) || !Array.isArray(edit.beforeItems) || !Array.isArray(edit.afterItems)
       || !edit.beforeItems.every(object) || !edit.afterItems.every(object)) fail('Invalid series membership');
+    if (edit.membership !== undefined && !validSeriesMembershipCapture(edit.membership)) fail('Invalid series membership capture');
     seen.add(edit.resource.id);
   }
+  const firstMembership = command.edits[0].membership;
+  if (command.edits.some(({ membership }) => Boolean(membership) !== Boolean(firstMembership)
+    || !equalValues(membership?.time, firstMembership?.time)
+    || membership?.observedCatalogVersion !== firstMembership?.observedCatalogVersion)) fail('Series participants must share a Save and opening catalog');
   if (!equalValues(command.edits[0].resource, command.resource) || command.edits[0].generation !== command.generation) fail('Primary series identity mismatch');
 }
 

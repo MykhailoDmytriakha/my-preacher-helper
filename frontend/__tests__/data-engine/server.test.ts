@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { isCollectionServed } from '@/data-engine/activation';
-import { DataEngineServerError, listBibleMarkHistory, listExegeticalPointHistory, listCouncilMetadataHistory, listDocumentTagHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listPlanTemplateNameHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listPrayerStatusHistory, listPrayerTitleHistory, listSermonChurchHistory, listSermonGoalTypeHistory, listSermonPreparationConfirmationHistory, listSermonTitleHistory, listSermonVerseHistory, listSeriesMetadataHistory, listServiceOrderFlagHistory, listServiceOrderStepTitleHistory, listServiceOrderTitleHistory, listStudyNoteTitleHistory, listTagColorHistory, listThoughtLockHistory, listThoughtPlacementHistory, listThoughtTagHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
+import { DataEngineServerError, listBibleMarkHistory, listExegeticalPointHistory, listCouncilMetadataHistory, listDocumentTagHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listPlanTemplateNameHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listPrayerStatusHistory, listPrayerTitleHistory, listSermonChurchHistory, listSermonGoalTypeHistory, listSermonPreparationConfirmationHistory, listSermonTitleHistory, listSermonVerseHistory, listSeriesMembershipHistory, listSeriesMetadataHistory, listServiceOrderFlagHistory, listServiceOrderStepTitleHistory, listServiceOrderTitleHistory, listStudyNoteTitleHistory, listTagColorHistory, listThoughtLockHistory, listThoughtPlacementHistory, listThoughtTagHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
 import { collectionHeadId, HEADS_COLLECTION, sequenceId } from '@/data-engine/serverFeed';
 import { DataSession } from '@/data-engine/session';
 import type { DataCommand, FieldValue, ResourceSnapshot } from '@/data-engine/types';
@@ -167,6 +167,185 @@ describe('relation scope with unrelated owner documents', () => {
     expect(await processCommand(owner, attach())).toMatchObject({ kind: 'refused', code: 'membership-already-assigned' });
     expect(documents.get('series/z-target')?.items).toEqual([]);
     expect(documents.get('series/z-assigned')?.items).toEqual([member('g', 'group')]);
+  });
+
+  describe('same-owner series assignment chronology', () => {
+    const sermon = member('g');
+    const unrelated = member('keep');
+    const seriesA = { collection: 'series', id: 'alpha' };
+    const seriesB = { collection: 'series', id: 'beta' };
+    const earlier = { earliestMs: 1_799_999_995_000, latestMs: 1_799_999_995_005 };
+    const later = { earliestMs: 1_799_999_998_000, latestMs: 1_799_999_998_005 };
+    const membership = (time: typeof earlier) => ({ time, observedRevision: 0, added: [{ type: 'sermon', refId: 'g' }], removed: [] });
+    const alpha = (time: typeof earlier) => ({
+      ...attach(), operationId: 'phone-save-alpha', resource: seriesA,
+      edits: [{ resource: seriesA, generation: null, beforeItems: [], afterItems: [sermon], membership: membership(time) }],
+    });
+    const beta = (time: typeof earlier) => ({
+      ...attach(), operationId: 'desktop-save-beta', resource: seriesB,
+      edits: [{ resource: seriesB, generation: null, beforeItems: [unrelated],
+        afterItems: [unrelated, { ...sermon, position: 2 }], membership: membership(time) }],
+    });
+
+    beforeEach(() => {
+      documents.set('sermons/g', { userId: owner, title: 'Keep sermon words' });
+      documents.set('sermons/keep', { userId: owner, title: 'Keep the other sermon' });
+      putSeries(seriesA.id);
+      putSeries(seriesB.id, [unrelated]);
+    });
+
+    it.each([
+      { phone: later, desktop: earlier, expectedAlpha: true },
+      { phone: earlier, desktop: later, expectedAlpha: false },
+    ])('keeps the later choice through a delayed phone save and receipt replay ($expectedAlpha)', async ({ phone, desktop, expectedAlpha }) => {
+      expect(await processCommand(owner, beta(desktop))).toMatchObject({ kind: 'acknowledged' });
+      const result = await processCommand(owner, alpha(phone));
+      expect(result).toMatchObject({ kind: 'acknowledged' });
+      expect(documents.get('series/alpha')?.items).toEqual(expectedAlpha ? [sermon] : []);
+      expect(documents.get('series/beta')).toMatchObject({
+        title: 'Keep series', items: expectedAlpha ? [unrelated] : [unrelated, { ...sermon, position: 2 }],
+      });
+      expect(documents.get('sermons/g')?.title).toBe('Keep sermon words');
+      const history = [...documents.entries()].filter(([path]) => path.startsWith('sermons/g/_seriesMembershipHistory/'));
+      expect(history).toHaveLength(1);
+      expect(history[0][1]).toMatchObject({
+        owner, generation: null,
+        former: { id: expectedAlpha ? 'beta' : 'alpha', label: 'Keep series' },
+        current: { id: expectedAlpha ? 'alpha' : 'beta', label: 'Keep series' },
+        actionTime: earlier, winnerTime: later,
+      });
+      expect(await listSeriesMembershipHistory(owner, 'sermons', 'g', null)).toMatchObject({
+        collection: 'sermons', memberId: 'g', generation: null, entries: [{ former: { label: 'Keep series' } }],
+      });
+      await expect(listSeriesMembershipHistory('other-owner', 'sermons', 'g')).rejects.toMatchObject({ status: 403 });
+      const accepted = structuredClone([...documents.entries()]);
+      expect(await processCommand(owner, alpha(phone))).toMatchObject({ kind: 'acknowledged' });
+      expect([...documents.entries()]).toEqual(accepted);
+    });
+
+    it('keeps legacy history through the first member metadata write and rejects a stale generation', async () => {
+      expect(await processCommand(owner, beta(earlier))).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(owner, alpha(later))).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(owner, { protocol: 1, owner, resource: { collection: 'sermons', id: 'g' }, generation: null,
+        operationId: 'member-first-marker', kind: 'update', dependsOn: [],
+        changes: [{ path: ['title'], before: { exists: true, value: 'Keep sermon words' }, after: { exists: true, value: 'New title' } }],
+      })).toMatchObject({ kind: 'acknowledged' });
+      await expect(listSeriesMembershipHistory(owner, 'sermons', 'g', null)).rejects.toMatchObject({ status: 404 });
+      expect(await listSeriesMembershipHistory(owner, 'sermons', 'g', 'member-first-marker')).toMatchObject({
+        generation: 'member-first-marker', entries: [{ former: { id: 'beta' }, current: { id: 'alpha' } }],
+      });
+    });
+
+    it('applies a later removal to the actual current series and keeps an older assignment from restoring it', async () => {
+      const initial = await processCommand(owner, alpha(earlier));
+      expect(initial.kind).toBe('acknowledged');
+      const sourceGeneration = 'phone-save-alpha';
+      const remove = (time: typeof earlier) => ({ resource: seriesA, generation: sourceGeneration, beforeItems: [sermon], afterItems: [],
+        membership: { time, observedRevision: 1, removed: membership(time).added, added: [] } });
+      const move = beta(later);
+      expect(await processCommand(owner, { ...move, edits: [move.edits[0], remove(later)] })).toMatchObject({ kind: 'acknowledged' });
+      const latest = { earliestMs: 1_799_999_999_000, latestMs: 1_799_999_999_005 };
+      expect(await processCommand(owner, { ...alpha(latest), operationId: 'later-unassign', generation: sourceGeneration,
+        edits: [remove(latest)] })).toMatchObject({ kind: 'acknowledged' });
+      expect(documents.get('series/alpha')?.items).toEqual([]);
+      expect(documents.get('series/beta')?.items).toEqual([unrelated]);
+      const gamma = { collection: 'series', id: 'gamma' };
+      putSeries('gamma');
+      expect(await processCommand(owner, { ...alpha(earlier), operationId: 'earlier-gamma', resource: gamma,
+        edits: [{ ...alpha(earlier).edits[0], resource: gamma }] })).toMatchObject({ kind: 'acknowledged' });
+      expect(documents.get('series/gamma')?.items).toEqual([]);
+    });
+
+    it('does not retain a prior timed destination across an untimed move away and back', async () => {
+      expect(await processCommand(owner, beta(earlier))).toMatchObject({ kind: 'acknowledged' });
+      const untimedBeta = { resource: seriesB, generation: 'desktop-save-beta', beforeItems: [unrelated, { ...sermon, position: 2 }], afterItems: [unrelated] };
+      const untimedAlpha = { resource: seriesA, generation: null, beforeItems: [], afterItems: [sermon] };
+      expect(await processCommand(owner, { ...alpha(later), operationId: 'legacy-to-alpha',
+        edits: [untimedAlpha, untimedBeta] })).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(owner, { ...beta(later), operationId: 'legacy-to-beta', generation: 'desktop-save-beta',
+        edits: [{ ...untimedBeta, beforeItems: untimedBeta.afterItems, afterItems: untimedBeta.beforeItems },
+          { ...untimedAlpha, generation: 'legacy-to-alpha', beforeItems: [sermon], afterItems: [] }] })).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(owner, { ...alpha(later), operationId: 'delayed-after-legacy', generation: 'legacy-to-alpha',
+        edits: [{ ...alpha(later).edits[0], generation: 'legacy-to-alpha' }] })).toMatchObject({ kind: 'refused', code: 'membership-already-assigned' });
+      expect(documents.get('series/beta')?.items).toEqual([unrelated, { ...sermon, position: 2 }]);
+    });
+
+    it('accepts an assignment causally following its exact unclocked Clear on another series', async () => {
+      expect(await processCommand(owner, beta(earlier))).toMatchObject({ kind: 'acknowledged' });
+      const betaItems = [unrelated, { ...sermon, position: 2 }];
+      const betaGeneration = 'desktop-save-beta';
+      const clear = { ...beta(later), operationId: 'clear-beta', generation: betaGeneration,
+        edits: [{ resource: seriesB, generation: betaGeneration, beforeItems: betaItems, afterItems: [unrelated],
+          membership: { time: null, observedRevision: 1, added: [], removed: membership(later).added } }] };
+      expect(await processCommand(owner, clear)).toMatchObject({ kind: 'acknowledged' });
+      const next = alpha(later);
+      expect(await processCommand(owner, { ...next, edits: [
+        { ...next.edits[0], membership: { ...next.edits[0].membership, time: null } },
+        { resource: seriesB, generation: betaGeneration, beforeItems: [unrelated], afterItems: [unrelated],
+          membership: { time: null, observedRevision: 1, added: [], removed: [], predecessorOperationId: clear.operationId } },
+      ] })).toMatchObject({ kind: 'acknowledged' });
+      expect(documents.get('series/alpha')?.items).toEqual([sermon]);
+      expect(documents.get('series/beta')?.items).toEqual([unrelated]);
+    });
+
+    it('holds a delayed assignment after an unclocked assign and clear', async () => {
+      const betaOpening = { resource: seriesB, generation: null, beforeItems: [unrelated], afterItems: [unrelated, { ...sermon, position: 2 }] };
+      expect(await processCommand(owner, { ...beta(earlier), edits: [betaOpening] })).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(owner, { ...beta(later), operationId: 'legacy-clear', generation: 'desktop-save-beta',
+        edits: [{ ...betaOpening, generation: 'desktop-save-beta', beforeItems: betaOpening.afterItems, afterItems: [unrelated] }] })).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(owner, alpha(earlier))).toMatchObject({ kind: 'refused', code: 'membership-already-assigned' });
+      expect(documents.get('series/alpha')?.items).toEqual([]);
+      expect(documents.get('series/beta')?.items).toEqual([unrelated]);
+      const command = alpha(later);
+      const version = documents.get(`${HEADS_COLLECTION}/${collectionHeadId(owner, 'series')}`)!.version;
+      expect(await processCommand(owner, { ...command, operationId: 'fresh-alpha',
+        edits: [{ ...command.edits[0], membership: { ...command.edits[0].membership, observedCatalogVersion: version } }],
+      })).toMatchObject({ kind: 'acknowledged' });
+      expect(documents.get('series/alpha')?.items).toEqual([sermon]);
+    });
+
+    it('keeps a stale assignment from reviving membership after a whole series is deleted', async () => {
+      const assigned = await processCommand(owner, beta(earlier));
+      if (assigned.kind !== 'acknowledged') throw new Error('Fixture series assignment failed');
+      const snapshot = assigned.snapshot;
+      expect(await processCommand(owner, { protocol: 1, owner, operationId: 'delete-beta', kind: 'delete',
+        resource: seriesB, generation: snapshot.metadata!.generation, dependsOn: [], baseline: snapshot.value!,
+      })).toMatchObject({ kind: 'acknowledged', snapshot: { value: null } });
+      expect(await processCommand(owner, alpha(earlier))).toMatchObject({ kind: 'refused', code: 'membership-already-assigned' });
+      expect(documents.get('series/alpha')?.items).toEqual([]);
+      const command = alpha(later);
+      const version = documents.get(`${HEADS_COLLECTION}/${collectionHeadId(owner, 'series')}`)!.version;
+      expect(await processCommand(owner, { ...command, operationId: 'alpha-after-delete',
+        edits: [{ ...command.edits[0], membership: { ...command.edits[0].membership, observedCatalogVersion: version } }],
+      })).toMatchObject({ kind: 'acknowledged' });
+      expect(documents.get('series/alpha')?.items).toEqual([sermon]);
+    });
+
+    it('repairs a historical double assignment when the selected series already holds the sermon', async () => {
+      putSeries('alpha', [sermon]);
+      const alreadyInBeta = [unrelated, { ...sermon, position: 2 }];
+      putSeries('beta', alreadyInBeta);
+      expect(await processCommand(owner, { ...beta(later), edits: [
+        { resource: seriesB, generation: null, beforeItems: alreadyInBeta, afterItems: alreadyInBeta,
+          membership: { ...membership(later), added: [] } },
+        { resource: seriesA, generation: null, beforeItems: [sermon], afterItems: [],
+          membership: { ...membership(later), added: [], removed: membership(later).added } },
+      ] })).toMatchObject({ kind: 'acknowledged' });
+      expect(documents.get('series/alpha')?.items).toEqual([]);
+      expect(documents.get('series/beta')?.items).toEqual(alreadyInBeta);
+    });
+
+    it('retains the old guard when the actions have no provable order', async () => {
+      expect(await processCommand(owner, beta(earlier))).toMatchObject({ kind: 'acknowledged' });
+      const refusal = await processCommand(owner, alpha(earlier));
+      expect(refusal).toMatchObject({ kind: 'refused', code: 'membership-already-assigned',
+        seriesMembershipComparisons: [{ ref: { type: 'sermon', refId: 'g' }, label: 'Keep sermon words',
+          proposed: { id: 'alpha', label: 'Keep series' }, stored: { id: 'beta', label: 'Keep series' } }],
+      });
+      expect(await processCommand(owner, alpha(earlier))).toEqual(refusal);
+      expect(documents.get('series/alpha')?.items).toEqual([]);
+      expect(documents.get('series/beta')?.items).toEqual([unrelated, { ...sermon, position: 2 }]);
+    });
   });
 
   it.each([99, 100])('enforces the exact participant boundary for %s related series', async count => {

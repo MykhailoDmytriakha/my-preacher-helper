@@ -12,6 +12,7 @@ import { rebaseOptionalPrayerTags } from './documentTagMembership';
 import { prepareAtomicDomainCommand } from './domainPolicy';
 import { rebaseQueuedExegeticalPoint } from './exegeticalPointCapture';
 import { GROUP_MEETING_FIELDS, meetingFieldTarget, replacedMeetingField } from './groupMeetingFieldAction';
+import { projectCapturedMembership, seriesCommandParticipant } from './membershipIntent';
 import { mergeOutlineAfterAcknowledgement } from './outlinePlacementRepair';
 import { isCapturedPreachDateFieldConflict, preachDateRebaseChoices, retainAuthoredChurch } from './preachDateFieldAction';
 import { alignImplicitPreachStatuses, isCapturedPreachStatusConflict, replacedPreachStatusRows, retainPreachStatusIntent } from './preachStatusAction';
@@ -58,6 +59,19 @@ export function initializeCommit(record: CommitRequest, records: readonly Commit
   if (record.predecessor && (!predecessor || predecessor.state !== 'acknowledged')) return null;
   if (predecessor && predecessor.result?.kind === 'acknowledged') {
     const snapshot = predecessor.result.snapshot;
+    if (record.seriesMembership && record.value && predecessor.value && snapshot.value) {
+      if (record.baseline.metadata && snapshot.metadata?.generation !== record.baseline.metadata.generation) {
+        return { ...record, initialized: true, state: 'refused', result: { kind: 'refused', operationId: record.id, code: 'generation-mismatch' } };
+      }
+      const { items, sermonIds } = predecessor.value;
+      const opening: DocumentData = {};
+      if (items !== undefined) opening.items = items;
+      if (sermonIds !== undefined) opening.sermonIds = sermonIds;
+      const operationId = predecessor.result.committed?.operationId ?? snapshot.metadata?.operationId;
+      return { ...record, initialized: true, working: snapshot, intended: projectCapturedMembership(snapshot.value, record.value, record.seriesMembership),
+        seriesMembershipOpening: opening,
+        ...(operationId && { seriesMembershipPredecessor: operationId }) };
+    }
     if (record.atomic?.kind === 'analysis-reshape' && !sameAnalysisFrame(predecessor.value, snapshot.value)) {
       return { ...record, initialized: true, state: 'refused', result: { kind: 'refused', operationId: record.id, code: 'resolve-version-first' } };
     }
@@ -197,7 +211,7 @@ export async function advanceAtomicCommit(participants: CommitRequest[], records
   if (!primary.command) {
     let command;
     try {
-      command = prepareAtomicDomainCommand(primary.owner, primary.id, participants.map(record => ({ confirmed: record.working, draft: record.intended })));
+      command = prepareAtomicDomainCommand(primary.owner, primary.id, participants.map(seriesCommandParticipant));
     } catch (error) {
       const code = (error as { code?: unknown }).code;
       if (typeof code !== 'string') throw error;
@@ -223,6 +237,11 @@ async function applyAtomicAnswer(participants: CommitRequest[], result: CommandR
     const projected = failureFor(record, result);
     return { ...record, state: projected.kind === 'conflict' ? 'conflict' : 'refused', result: projected };
   }));
+  // A proved series move can discover an old destination in the transaction.
+  // Retain its acknowledgement on the root until the engine caches that effect.
+  const additional = primary.seriesMembership ? result.affected?.filter(effect =>
+    !participants.some(record => sameResource(effect.resource, record.baseline.resource))) : undefined;
+  const related = additional?.length ? result.relatedSnapshots?.filter(snapshot => additional.some(effect => sameResource(effect.resource, snapshot.resource))) : undefined;
   const accepted = await Promise.all(participants.map(async record => {
     const resource = record.baseline.resource;
     const main = sameResource(resource, result.snapshot.resource);
@@ -238,7 +257,8 @@ async function applyAtomicAnswer(participants: CommitRequest[], result: CommandR
     // including fields changed by another device, is the confirmed participant.
     return { ...record, working: snapshot, intended: snapshot.value, command: null, submitted: null,
       sequence: record.sequence + 1, state: 'acknowledged' as const,
-      result: { kind: 'acknowledged' as const, operationId: record.id, snapshot, committed: proof },
+      result: { kind: 'acknowledged' as const, operationId: record.id, snapshot, committed: proof,
+        ...(main && additional?.length && { affected: additional, ...(related?.length && { relatedSnapshots: related }) }) },
       unfinalized: [primary.command!.operationId] };
   }));
   return commit(accepted);

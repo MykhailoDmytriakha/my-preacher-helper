@@ -7,7 +7,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import FormDialog, { FormActions } from '@/components/ui/FormDialog';
 import { DataMembershipStatus } from '@/data-engine/DataMembershipStatus';
-import { useDataMembership } from '@/data-engine/react.client';
+import { useDataEngine, useDataMembership } from '@/data-engine/react.client';
 import { useDashboardSermons } from '@/hooks/useDashboardSermons';
 import { useDndKitAccessibility } from '@/hooks/useDragAnnouncements';
 import { useGroupsRead } from '@/hooks/useGroupsRead';
@@ -16,6 +16,9 @@ import { hydrateSeries } from '@/utils/seriesDocument';
 import { matchesSermonQuery, tokenizeQuery } from '@/utils/sermonSearch';
 import { useTranslation } from '@locales/useTranslation';
 
+import { SeriesMembershipHistory } from './SeriesMembershipHistory';
+
+import type { SeriesMembershipComparison } from '@/data-engine/seriesMembershipHistory';
 import type { Series, SeriesItem } from '@/models/models';
 
 type Member = Pick<SeriesItem, 'type' | 'refId'>;
@@ -31,6 +34,8 @@ export function SeriesMembershipDialog({ seriesId, mode, member, recoveryId, onC
   const { t } = useTranslation();
   const action = useDataMembership(), attempted = useRef<object | null>(null);
   const [saving, setSaving] = useState(false);
+  const [reviewedMember, setReviewedMember] = useState<Member | null>(null);
+  const targetMember = mode === 'target' ? member : reviewedMember;
   const open = async () => {
     if (recoveryId) await action.recover(recoveryId); else await action.begin();
     if (!recoveryId && mode === 'remove' && member) await action.update({ kind: 'remove', refs: [member] });
@@ -61,7 +66,12 @@ export function SeriesMembershipDialog({ seriesId, mode, member, recoveryId, onC
     else await open();
   };
   const cancel = async () => { await action.cancel(); onClose(); };
-  const title = t(dialogTitle(mode, kind));
+  const review = async (compared: readonly SeriesMembershipComparison[]) => {
+    const refs = action.action?.kind === 'assign' || action.action?.kind === 'remove' ? action.action.refs : [];
+    await action.reviewAssignment(compared);
+    if (refs.length === 1) setReviewedMember(refs[0]);
+  };
+  const title = t(dialogTitle(targetMember ? 'target' : mode, kind));
   // A press beside the window, the ✕ and Escape cancel as «Отмена» does: a closed window keeps no draft behind (the owner, 2026-10-31).
   return <FormDialog title={title} eyebrow={series?.title} onClose={() => { void cancel().catch(onClose); }} showCloseButton
     onSubmit={event => { event.preventDefault(); void save(); }}
@@ -70,9 +80,9 @@ export function SeriesMembershipDialog({ seriesId, mode, member, recoveryId, onC
         submitLabel={t('common.save')} saving={saving} submitDisabled={!action.durable || !action.action} unsaved={action.action !== null} />
     ) : undefined}>
     <div className="space-y-4">
-      <DataMembershipStatus action={{ ...action, retry }} onDiscarded={onClose} />
-      {showSelection && mode === 'target' && member && <TargetChoices action={action} member={member} disabled={saving || !editing} />}
-      {showSelection && mode !== 'target' && series && kind === 'assign' && <fieldset disabled={saving || !editing}>
+      <DataMembershipStatus action={{ ...action, retry }} onDiscarded={onClose} onReview={review} onKeep={action.keepAssignment} />
+      {showSelection && targetMember && <TargetChoices action={action} member={targetMember} disabled={saving || !editing} />}
+      {showSelection && !targetMember && mode !== 'target' && series && kind === 'assign' && <fieldset disabled={saving || !editing}>
         {mode !== 'group' && <SermonChoices current={series.items ?? []} selected={selected} onChange={changeSelection} />}
         {(mode === 'group' || mode === 'recover') && <GroupChoices current={series.items ?? []} selected={selected} onChange={changeSelection} />}
       </fieldset>}
@@ -161,6 +171,7 @@ function ReorderRow({ id, index, title, count, disabled, move }: {
 
 function TargetChoices({ action, member, disabled }: { action: ReturnType<typeof useDataMembership>; member: Member; disabled: boolean }) {
   const { t } = useTranslation(), [query, setQuery] = useState('');
+  const { owner } = useDataEngine();
   const rows = action.values.map(row => hydrateSeries({ ...row.value, id: row.id } as unknown as Series));
   const targetId = action.action?.kind === 'assign' ? action.action.targetId : action.action?.kind === 'remove' ? ''
     : rows.find(row => row.items?.some(item => same(item, member)))?.id ?? '';
@@ -172,6 +183,8 @@ function TargetChoices({ action, member, disabled }: { action: ReturnType<typeof
     <div className="max-h-80 space-y-2 overflow-auto">{rows.filter(row => [row.title, row.theme, row.bookOrTopic].join(' ').toLocaleLowerCase().includes(query.toLocaleLowerCase())).map(row =>
       <label key={row.id} className={CHOICE_STYLE}><input type="radio" name="target-series" checked={targetId === row.id} onChange={() => change(row.id)} />
         <span>{row.title || row.theme || t(UNKNOWN_LABEL)}</span></label>)}</div>
+    {owner && <SeriesMembershipHistory key={JSON.stringify([owner, member.type, member.refId])}
+      owner={owner} member={member} action={action} currentSeriesId={targetId} disabled={disabled} />}
   </fieldset>;
 }
 

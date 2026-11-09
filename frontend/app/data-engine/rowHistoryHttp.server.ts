@@ -14,6 +14,7 @@ import {
   listExegeticalPointHistory,
   listSermonGoalTypeHistory,
   listSermonPreparationConfirmationHistory,
+  listSeriesMembershipHistory,
   listServiceOrderFlagHistory,
   listServiceOrderStepTitleHistory,
   listThoughtLockHistory,
@@ -48,7 +49,7 @@ const histories = {
     listDocumentTagHistory(owner, 'studyNotes', id, generation, cursor) },
 } as const;
 
-export type RowHistory = keyof typeof histories;
+export type RowHistory = keyof typeof histories | 'seriesMembership';
 export type RowHistoryContext = { params: Promise<{ collection: string; id: string }> };
 
 export async function rowHistoryResponse(request: Request, context: RowHistoryContext, history: RowHistory): Promise<Response> {
@@ -58,15 +59,20 @@ export async function rowHistoryResponse(request: Request, context: RowHistoryCo
   try {
     const { collection, id } = await context.params;
     const params = new URL(request.url).searchParams;
-    const selected = histories[history];
-    if (collection !== selected.collection || [...params.keys()].some(key => key !== 'generation' && key !== 'cursor')
-      || params.getAll('generation').length !== 1 || params.getAll('cursor').length > 1) {
+    const selected = history === 'seriesMembership' ? null : histories[history];
+    const generations = params.getAll('generation');
+    if ((selected ? collection !== selected.collection : collection !== 'sermons' && collection !== 'groups')
+      || [...params.keys()].some(key => key !== 'generation' && key !== 'cursor')
+      || (selected ? generations.length !== 1 : generations.length > 1) || params.getAll('cursor').length > 1) {
       throw new DataEngineServerError('invalid-argument', 400);
     }
     assertDataEngineEnabled(collection);
-    const generation = params.get('generation')!;
+    const generation = params.get('generation');
     const cursor = params.get('cursor') ?? undefined;
-    const result = await withStore(async () => selected.list(owner, id, generation, cursor), { startedAt });
+    const result = await withStore(async () => selected
+      ? selected.list(owner, id, generation!, cursor)
+      : listSeriesMembershipHistory(owner, collection as 'sermons' | 'groups', id,
+        generation === '' ? null : generation ?? undefined, cursor), { startedAt });
     return Response.json(result, { headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {
     return serverErrorResponse(error);

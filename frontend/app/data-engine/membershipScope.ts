@@ -1,11 +1,13 @@
+import { boundedActionTime, type ActionTime } from './actionClock';
 import { prepareDomainCommand } from './domainPolicy';
 import { retireLocalWrite, type LocalWriteHandoff } from './localWriteback';
-import { projectMembershipAction, type MembershipAction } from './membershipIntent';
+import { captureSeriesMembership, projectMembershipAction, type MembershipAction, type MembershipRef } from './membershipIntent';
 import { equalValues, isValidIdentifier } from './protocol';
 import { validateResourceDocument } from './resourceSchemas';
 
 import type { AtomicCapture } from './commits';
 import type { ManualSavedIntent } from './manualScope';
+import type { SeriesHistorySelection } from './seriesMembershipHistory';
 import type { DocumentData, ResourceRef, ResourceSnapshot } from './types';
 
 export const CREATION_SCOPE_PREFIX = 'creation:';
@@ -15,6 +17,7 @@ export interface MembershipPin {
   baseline: ResourceSnapshot;
   /** Explicit saved provenance, including a creation not yet acknowledged. */
   predecessor: ManualSavedIntent | null;
+  predecessorRemovals?: MembershipRef[];
 }
 export interface MembershipScopeRecord {
   kind: 'membership'; version: 1; owner: string; scopeId: string; revision: number;
@@ -23,9 +26,11 @@ export interface MembershipScopeRecord {
   generation: number;
   phase: 'editing' | 'saving' | 'submitted' | 'cancelled';
   requestIds: string[];
+  seriesMembershipTime?: ActionTime | null;
+  seriesCatalogVersion?: number;
   creation?: MembershipCreation;
 }
-export interface MembershipSaveReceipt { revision: number; requestIds: string[] }
+export interface MembershipSaveReceipt { revision: number; requestIds: string[]; seriesMembershipTime?: ActionTime | null }
 
 export interface MembershipScopePort {
   isCurrent(): boolean;
@@ -46,6 +51,10 @@ export function validateMembershipScope(record: MembershipScopeRecord): void {
     || !['editing', 'saving', 'submitted', 'cancelled'].includes(record.phase) || !Array.isArray(record.pins)
     || new Set(record.pins.map(pin => pin.baseline?.resource.id)).size !== record.pins.length
     || !Array.isArray(record.requestIds) || record.requestIds.some(id => !isValidIdentifier(id)) || new Set(record.requestIds).size !== record.requestIds.length
+    || (record.seriesCatalogVersion !== undefined && (record.creation || !Number.isSafeInteger(record.seriesCatalogVersion) || record.seriesCatalogVersion < 0))
+    || (record.seriesMembershipTime !== undefined && ((record.seriesMembershipTime !== null && !boundedActionTime(record.seriesMembershipTime))
+      || !['saving', 'submitted'].includes(record.phase) || record.creation
+      || (record.action?.kind !== 'assign' && record.action?.kind !== 'remove')))
     || (record.phase !== 'submitted' && record.requestIds.length > 0)) throw new Error('Invalid membership scope');
   for (const pin of record.pins) validatePin(pin, record.owner);
   validateCreation(record);
@@ -72,6 +81,10 @@ function validatePin(pin: MembershipPin, owner: string): void {
   if (!baseline || baseline.resource.collection !== 'series' || !isValidIdentifier(baseline.resource.id) || baseline.metadata?.deleted
     || (!baseline.value && (!predecessor || baseline.metadata))) throw new Error('Membership requires a live series or its saved creation');
   if (baseline.value) validateDocument(baseline.value, owner);
+  if (pin.predecessorRemovals && (!predecessor || !Array.isArray(pin.predecessorRemovals)
+    || pin.predecessorRemovals.some(ref => (ref.type !== 'sermon' && ref.type !== 'group') || !isValidIdentifier(ref.refId)))) {
+    throw new Error('Invalid membership predecessor removals');
+  }
   if (predecessor) {
     if (!isValidIdentifier(predecessor.id) || predecessor.owner !== owner || !equalValues(predecessor.resource, baseline.resource)
       || (predecessor.predecessorId !== null && (!isValidIdentifier(predecessor.predecessorId) || predecessor.predecessorId === predecessor.id))) throw new Error('Invalid membership predecessor');
@@ -99,9 +112,9 @@ export class MembershipScope {
     validateMembershipScope(record); this.record = clone(record); this.revision = restored ? record.revision : null; this.durable = restored;
     this.frozen = restored && (record.phase === 'saving' || record.phase === 'submitted');
   }
-  static begin(owner: string, scopeId: string, pins: readonly MembershipPin[], port: MembershipScopePort): MembershipScope {
+  static begin(owner: string, scopeId: string, pins: readonly MembershipPin[], port: MembershipScopePort, seriesCatalogVersion?: number): MembershipScope {
     const scope = new MembershipScope({ kind: 'membership', version: 1, owner, scopeId, pins: clone([...pins]), revision: 0,
-      action: null, generation: 0, phase: 'editing', requestIds: [] }, port, false);
+      action: null, generation: 0, phase: 'editing', requestIds: [], ...(seriesCatalogVersion !== undefined && { seriesCatalogVersion }) }, port, false);
     scope.assertCurrent(); void scope.enqueue(() => scope.write()).catch(() => undefined); return scope;
   }
   static restore(record: MembershipScopeRecord, port: MembershipScopePort): MembershipScope {
@@ -114,8 +127,19 @@ export class MembershipScope {
   }
   getState() {
     this.assertCurrent();
+    const generations = new Map(this.record.pins.map(pin => [pin.baseline.resource.id, pin.baseline.metadata?.generation ?? null]));
     return { record: clone(this.record), durable: this.durable,
-      values: clone([...projectMembershipAction(this.values(), this.record.action)].map(([id, value]) => ({ id, value }))) };
+      values: clone([...projectMembershipAction(this.values(), this.record.action)].map(([id, value]) => ({ id, value, generation: generations.get(id) ?? null }))) };
+  }
+  restoreAssignment(member: MembershipRef, selection: SeriesHistorySelection | null): Promise<void> {
+    this.assertEditing();
+    if (selection) {
+      const target = this.record.pins.find(pin => pin.baseline.resource.id === selection.id);
+      if (!target || (target.baseline.metadata?.generation ?? null) !== selection.generation) {
+        throw Object.assign(new Error('The series is unavailable in this form'), { code: 'referenced-document-deleted' });
+      }
+    }
+    return this.update(selection ? { kind: 'assign', targetId: selection.id, refs: [member] } : { kind: 'remove', refs: [member] });
   }
   subscribe(listener: () => void): () => void { this.assertCurrent(); this.listeners.add(listener); return () => { this.listeners.delete(listener); }; }
   update(action: MembershipAction | null): Promise<void> {
@@ -150,7 +174,7 @@ export class MembershipScope {
     validateMembershipScope(next); this.record = next;
     this.record.generation += 1; this.durable = false; this.emit(); return this.enqueuePersistence();
   }
-  save(): Promise<string[]> {
+  save(time?: ActionTime | null): Promise<string[]> {
     this.assertCurrent();
     if (this.saving) return this.saving;
     if (this.record.phase === 'submitted') return this.enqueue(() => this.finishSave(async () => {
@@ -160,7 +184,12 @@ export class MembershipScope {
     if (this.record.creation?.requestedSeriesId) throw new Error('Resolve the requested series before saving');
     if (this.record.creation) validateResourceDocument(this.record.creation.resource.collection, this.record.creation.value, { kind: 'create' });
     // Only a local copy that matched its last durable editing row can use that row as proof.
-    if (this.record.phase === 'editing') this.saveFromRevision = this.durable ? this.revision : null;
+    if (this.record.phase === 'editing') {
+      this.saveFromRevision = this.durable ? this.revision : null;
+      if (time !== undefined && !this.record.creation && (this.record.action?.kind === 'assign' || this.record.action?.kind === 'remove')) {
+        this.record.seriesMembershipTime = boundedActionTime(time) ?? null;
+      }
+    }
     // Freeze before any await. No later selection can change an uncertain capture.
     this.record.phase = 'saving'; this.durable = false; this.emit();
     const result = this.enqueue(() => this.finishSave(async () => {
@@ -197,11 +226,18 @@ export class MembershipScope {
     if (!changed && !this.record.creation) return [];
     const membership = this.record.pins.flatMap(pin => {
       const id = pin.baseline.resource.id, draft = next.get(id)!;
+      const opening = ancestor(pin), time = this.record.seriesMembershipTime;
       // Even an already-satisfied target must participate: deleting it remotely
       // cannot allow the action to remove the last surviving source membership.
-      const target = this.record.action?.kind === 'assign' && this.record.action.targetId === id;
-      if (!target && equalValues(ancestor(pin), draft)) return [];
+      const assignment = this.record.action?.kind === 'assign' ? this.record.action : undefined;
+      const target = assignment?.targetId === id;
+      // A Clear can make the source invisible in the new picker. Its own exact
+      // queued receipt still belongs to the following assignment's ancestry.
+      const clearWitness = time !== undefined && assignment && pin.predecessorRemovals?.some(removed =>
+        assignment.refs.some(ref => ref.type === removed.type && ref.refId === removed.refId));
+      if (!target && !clearWitness && equalValues(opening, draft)) return [];
       return [{ editorId: JSON.stringify([this.record.scopeId, 'membership', id]), predecessorId: pin.predecessor?.id ?? null, retentionScope: this.record.scopeId,
+        ...(time !== undefined ? { seriesMembership: captureSeriesMembership(opening, draft, time, pin.baseline.metadata?.revision ?? 0, this.record.seriesCatalogVersion) } : {}),
         captured: { confirmed: clone(pin.baseline), draft: clone(draft), dirty: true, editGeneration: this.record.generation,
           conflicts: [], remoteCandidate: null, pending: {} } }];
     });
@@ -219,7 +255,8 @@ export class MembershipScope {
       this.assertCurrent();
       if (!receipt) throw error;
       this.revision = receipt.revision; this.frozen = true;
-      this.record = { ...this.record, ...receipt, phase: 'submitted' };
+      const { seriesMembershipTime: _discardedTime, ...record } = this.record;
+      this.record = { ...record, ...receipt, phase: 'submitted' };
       this.durable = true;
       this.emit();
     }
@@ -235,8 +272,12 @@ export class MembershipScope {
     const submitted = clone(this.record);
     const stored = await this.port.persist(submitted, this.revision);
     this.revision = stored.revision; this.record.revision = stored.revision;
-    if (stored.phase === 'saving' || stored.phase === 'submitted') this.frozen = true;
-    if (equalValues({ ...submitted, revision: stored.revision }, this.record)) this.durable = true;
+    if (stored.phase === 'saving' || stored.phase === 'submitted') {
+      this.frozen = true;
+      if (stored.seriesMembershipTime !== undefined) this.record.seriesMembershipTime = stored.seriesMembershipTime;
+      else delete this.record.seriesMembershipTime;
+    }
+    if (equalValues(stored, this.record)) this.durable = true;
     this.emit();
   }
   private enqueuePersistence(): Promise<void> {

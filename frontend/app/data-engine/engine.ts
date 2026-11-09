@@ -22,6 +22,7 @@ import { manualReturnSources, markBorrowedManualSources, reopenedManualAnswerSco
 import { ManualScope, recoverManualScopeRecord, reconcileManualCaptures, sameManualSelection, type ManualCapture, type ManualFieldInput, type ManualPath, type ManualSavedIntent, type ManualSaveOptions, type ManualDocumentMetadataSave } from './manualScope';
 import { captureMembershipPins } from './membershipCapture';
 import { describeActionDelivery, describeMembershipDelivery, type MembershipDelivery } from './membershipDelivery';
+import { showsSeriesMembershipComparison } from './membershipIntent';
 import { CREATION_SCOPE_PREFIX, MembershipScope, type MembershipScopeRecord } from './membershipScope';
 import { hasBranchedOrdinaryAnswer, manualOrdinaryChoiceSources, ordinaryAnswerChoice, ordinaryAnswerCoverage, ordinaryStoredChoice, requireDocumentChoiceForBranch, reviewOrdinaryAnswerChoice, type ManualChoiceSources } from './ordinaryAnswerChoice';
 import { getResourcePolicy, equalValues, isValidIdentifier, readField } from './protocol';
@@ -46,6 +47,7 @@ import type { Observation, ResourceObserver } from './observer';
 import type { OpenDocumentAnswer } from './openDocumentAnswers';
 import type { PreachStatusSave } from './preachStatusAction';
 import type { DataEngineRuntime, RuntimeEvent } from './runtime';
+import type { SeriesMembershipComparison } from './seriesMembershipHistory';
 import type { SessionCheckpoint, ShownCopy } from './session';
 import type { EditorCommitAction } from './types';
 import type { CommandResult, DataCommand, DocumentData, EngineMetadata, EngineReadOptions, EngineTransport, FailureAddress, JournalEntry, ResourceRef, ResourceSnapshot } from './types';
@@ -642,12 +644,65 @@ export class DataEngine {
     if (!this.options.membershipScopes) throw new Error('Membership stage storage is not configured');
     const state = await this.collectionReader().read('series');
     const requests = await this.commits.list(); this.assertCurrent(owner, generation);
+    return this.openMembershipScope(owner, generation, state, requests);
+  }
+
+  private async openMembershipScope(owner: string, generation: number, state: CollectionState, requests: CommitRequest[]): Promise<MembershipScope> {
     const scopeId = this.options.operationId();
-    const scope = MembershipScope.begin(owner, scopeId, captureMembershipPins(owner, state, requests), this.membershipPort(owner, generation));
+    const scope = MembershipScope.begin(owner, scopeId, captureMembershipPins(owner, state, requests), this.membershipPort(owner, generation), state.version);
     this.membershipPresence.set(scope, this.recoveryPresence.hold(owner, 'membership', [scopeId]));
     this.membershipForms.set(scopeId, scope);
     try { await scope.settled(); this.assertCurrent(owner, generation); return scope; }
     catch (error) { if (this.membershipForms.get(scopeId) === scope) this.membershipForms.delete(scopeId); this.membershipPresence.get(scope)?.release(); scope.dispose(); throw error; }
+  }
+
+  /** Keeping the shown assignment retires only the exact refused attempt. */
+  async keepMembership(scopeId: string, compared: readonly SeriesMembershipComparison[]): Promise<void> {
+    const owner = this.requireOwner(), generation = this.generation;
+    const delivery = await this.membershipDelivery(scopeId);
+    this.assertCurrent(owner, generation);
+    if (!delivery.canChooseExact || !compared.length || !equalValues(delivery.comparisons, compared)) {
+      throw Object.assign(new Error('The assignment shown has changed'), { code: 'membership-stage-changed' });
+    }
+    await this.discardMembership(scopeId, true);
+  }
+
+  /** Keep the refused action until a reviewed replacement is a durable unsent draft. */
+  async reviewMembership(scopeId: string, compared: readonly SeriesMembershipComparison[]): Promise<MembershipScope> {
+    const owner = this.requireOwner(), generation = this.generation;
+    const record = await this.options.membershipScopes?.read(owner, scopeId); this.assertCurrent(owner, generation);
+    const changed = () => Object.assign(new Error('The assignment shown has changed'), { code: 'membership-stage-changed' });
+    if (!record || record.creation || record.phase !== 'submitted' || !compared.length
+      || (record.action?.kind !== 'assign' && record.action?.kind !== 'remove')) throw changed();
+    const state = await this.collectionReader().refresh('series');
+    const [requests, journal] = await Promise.all([this.commits.list(), this.options.runtime.list()]);
+    this.assertCurrent(owner, generation);
+    const delivery = describeMembershipDelivery(record, requests, journal);
+    if (!state.complete || state.freshness !== 'server' || !delivery.canChooseExact || !equalValues(delivery.comparisons, compared)) throw changed();
+
+    const scope = await this.openMembershipScope(owner, generation, state, requests.filter(request => !record.requestIds.includes(request.id)));
+    let staged = false;
+    try {
+      const opening = scope.getState().values;
+      if (!showsSeriesMembershipComparison(opening, compared)) throw changed();
+      if (record.action.kind === 'assign') {
+        const targetId = record.action.targetId;
+        const captured = record.pins.find(pin => pin.baseline.resource.id === targetId);
+        const target = opening.find(row => row.id === targetId);
+        if (!captured || !target || target.generation !== (captured.baseline.metadata?.generation ?? null)) throw changed();
+      }
+      await scope.update(record.action); staged = true;
+      this.assertCurrent(owner, generation);
+      await this.discardMembership(scopeId, true);
+      this.assertCurrent(owner, generation);
+      return scope;
+    } catch (error) {
+      if (this.current(owner, generation)) {
+        if (!staged) await scope.cancel().catch(() => undefined);
+        this.releaseMembership(scope.getState().record.scopeId);
+      }
+      throw error;
+    }
   }
 
   /** A creation draft exists durably before any optional catalog request. */
@@ -757,7 +812,7 @@ export class DataEngine {
   }
 
   /** An explicit discard is allowed only for a proven failed complete action. */
-  async discardMembership(scopeId: string): Promise<void> {
+  async discardMembership(scopeId: string, onlyThoseRequests = false): Promise<void> {
     const owner = this.requireOwner(), generation = this.generation;
     const store = this.options.membershipScopes;
     const record = await store?.read(owner, scopeId); this.assertCurrent(owner, generation);
@@ -765,7 +820,7 @@ export class DataEngine {
     const requests = await this.commits.list(); this.assertCurrent(owner, generation);
     if (record.requestIds.some(id => !requests.some(request => request.id === id && request.retentionScope === scopeId))) throw new Error('Membership action evidence changed');
     if (!record.requestIds.every(id => requests.some(request => request.id === id && request.state === 'cancelled'))) {
-      await this.commits.cancelAction(record.requestIds); this.assertCurrent(owner, generation);
+      await this.commits.cancelAction(record.requestIds, onlyThoseRequests); this.assertCurrent(owner, generation);
     }
     await Promise.all([...this.editors.values()].map(async entry => {
       if (entry.controller?.needsPersistenceRetry()) await entry.controller.retryPersistence();
@@ -826,7 +881,8 @@ export class DataEngine {
         this.assertCurrent(owner, generation);
         const first = captures[0];
         const saved = captures.length > 1 ? await this.commits.saveAtomic(captures)
-          : [await this.commits.save(first.editorId, first.captured, { predecessorId: first.predecessorId, retentionScope: first.retentionScope })].filter((request): request is CommitRequest => Boolean(request));
+          : [await this.commits.save(first.editorId, first.captured, { predecessorId: first.predecessorId,
+            retentionScope: first.retentionScope, seriesMembership: first.seriesMembership })].filter((request): request is CommitRequest => Boolean(request));
         this.assertCurrent(owner, generation);
         this.prepareCommitsInBackground(); this.backgroundDrain(); return saved;
       },
@@ -1439,7 +1495,10 @@ export class DataEngine {
       if (!canReplaceSnapshot(request.result.snapshot, cached)) return;
     }
     this.assertCurrent(owner, generation);
-    if (!this.options.commits.releaseProjection) return;
+    if (!this.options.commits.releaseProjection) {
+      await this.completeMembershipEffects(request, owner, generation);
+      return;
+    }
     const ids = request.atomic?.participants ?? [request.id];
     const requests = request.atomic ? loaded ?? await (this.options.commits.readByIds?.(owner, ids) ?? this.commits.list()) : [request];
     this.assertCurrent(owner, generation);
@@ -1449,8 +1508,32 @@ export class DataEngine {
       const cached = await about(participant!.result.snapshot.resource, this.persistSnapshot(owner, generation, participant!.result.snapshot)); this.assertCurrent(owner, generation);
       if (!canReplaceSnapshot(participant!.result.snapshot, cached)) return;
     }
+    await this.completeMembershipEffects(participants[0]!, owner, generation);
     // Checkpoints/manual captures retain any proofs still needed for later unsent words.
     await about(request.baseline.resource, this.options.commits.releaseProjection(owner, ids)); this.assertCurrent(owner, generation);
+  }
+
+  private async completeMembershipEffects(request: CommitRequest, owner: string, generation: number): Promise<void> {
+    const result = request.result;
+    if (!request.seriesMembership || result?.kind !== 'acknowledged' || !result.affected?.length) return;
+    const operationId = result.committed?.operationId ?? result.snapshot.metadata?.operationId;
+    for (const effect of result.affected) {
+      if (effect.resource.collection !== 'series' || effect.metadata.operationId !== operationId) throw new Error('Invalid series acknowledgement effect');
+      await this.cacheAcknowledgedEffect(result, effect.resource, effect.metadata, owner, generation);
+    }
+    await this.options.collections?.reloadCached('series');
+    this.assertCurrent(owner, generation);
+  }
+
+  private async cacheAcknowledgedEffect(result: Extract<CommandResult, { kind: 'acknowledged' }>, resource: ResourceRef,
+    proof: EngineMetadata, owner: string, generation: number): Promise<void> {
+    this.assertCurrent(owner, generation);
+    const supplied = [result.snapshot, ...(result.relatedSnapshots ?? [])].find(snapshot => sameResource(snapshot.resource, resource)
+      && coversCommittedEffect(snapshot, resource, proof));
+    const snapshot = supplied ?? await this.readCommittedSnapshot(resource, proof);
+    if (!snapshotBelongsToOwner(owner, snapshot)) throw new Error('Acknowledgement effect owner mismatch');
+    const cached = await this.persistSnapshot(owner, generation, snapshot);
+    if (!coversCommittedEffect(cached, resource, proof)) throw new Error('Acknowledgement effect projection is not covered');
   }
 
   private async completeCapabilityProjections(owner: string, generation: number): Promise<void> {
@@ -1472,12 +1555,7 @@ export class DataEngine {
         if (!['studyNoteShareLinks', 'studyNotes'].includes(effect.resource.collection) || !effect.metadata) {
           throw new Error('Invalid capability acknowledgement');
         }
-        const supplied = [result.snapshot, ...(result.relatedSnapshots ?? [])].find(snapshot => sameResource(snapshot.resource, effect.resource)
-          && coversCommittedEffect(snapshot, effect.resource, effect.metadata!));
-        const snapshot = supplied ?? await this.readCommittedSnapshot(effect.resource, effect.metadata);
-        if (!snapshotBelongsToOwner(owner, snapshot)) throw new Error('Capability acknowledgement owner mismatch');
-        const cached = await this.persistSnapshot(owner, generation, snapshot);
-        if (!coversCommittedEffect(cached, effect.resource, effect.metadata)) throw new Error('Capability acknowledgement projection is not covered');
+        await this.cacheAcknowledgedEffect(result, effect.resource, effect.metadata, owner, generation);
       }
       this.assertCurrent(owner, generation);
       for (const collection of new Set(effects.map(effect => effect.resource.collection))) {

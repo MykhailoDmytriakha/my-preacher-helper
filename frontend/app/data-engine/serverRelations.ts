@@ -11,19 +11,27 @@ import { childIdentityIssues } from './legacyChildIdentity';
 import { advanceResourceSnapshot, applyCommand, equalValues, mergeFields, readField, MAX_RELATION_RESOURCES } from './protocol';
 import { relationMirrorFields } from './relationMirrors';
 import { validateResourceDocument } from './resourceSchemas';
+import { memberResource, membershipKey, mergeOrderedSeriesItems, readSeriesMembershipMoves, reconcileDeletedSeriesMembership, resolveSeriesMembership, seriesLocation, type MembershipLocation, type SeriesMembershipMove, type SeriesMembershipPlacement, type SeriesMembershipWrite } from './seriesMembershipOrder.server';
 import { planShareCapability, type ShareCapabilityCommand } from './shareCapabilities.server';
 
+import type { SeriesMembershipComparison } from './seriesMembershipHistory';
 import type { CommandResult, ConflictDetail, DataCommand, DocumentData, Json, ResourceRef, ResourceSnapshot } from './types';
 import type { SeriesItem } from '@/models/models';
 
 export { MAX_RELATION_RESOURCES } from './protocol';
 export interface RelationFilter { field: 'materialIds' | 'seriesId' | 'noteId' | 'catalogKey' | 'type'; operator: '==' | 'array-contains'; value: string }
 export interface RelationReader {
+  seriesMembershipOrder?: {
+    serverMs: number;
+    catalogVersion(): Promise<number>;
+    read(member: ResourceRef): Promise<unknown>;
+    readDeletion(location: MembershipLocation): Promise<number | undefined>;
+  };
   get(resource: ResourceRef): Promise<ResourceSnapshot>;
   /** Implementations always add authenticated owner scope; callers cannot choose it. */
   list(collection: string, limit: number, filter?: RelationFilter, select?: (snapshot: ResourceSnapshot) => boolean): Promise<ResourceSnapshot[]>;
 }
-export interface CommandPlan { result: CommandResult; writes: ResourceSnapshot[] }
+export interface CommandPlan { result: CommandResult; writes: ResourceSnapshot[]; seriesMembershipWrites?: SeriesMembershipWrite[] }
 
 class RelationRefusal extends Error {
   constructor(readonly code: string) { super(code); }
@@ -98,6 +106,7 @@ function materialHasNote(value: DocumentData, noteId: string): boolean {
 class RelationPlanner {
   private readonly cached = new Map<string, ResourceSnapshot>();
   private readonly writes = new Map<string, ResourceSnapshot>();
+  private readonly seriesMembershipWrites: SeriesMembershipWrite[] = [];
 
   constructor(private readonly command: DataCommand, private readonly primary: ResourceSnapshot, private readonly reader: RelationReader) {
     this.cached.set(key(primary.resource), primary);
@@ -202,37 +211,55 @@ class RelationPlanner {
   }
 
   /** Validate the final transaction view, including documents absent from the client's edits. */
-  private async exclusiveSeriesMembers(added: Set<string>): Promise<void> {
+  private async exclusiveSeriesMembers(added: Map<string, ResourceRef>): Promise<void> {
     if (!added.size) return;
     const series = new Map((await this.list('series', undefined, snapshot => Boolean(snapshot.value && !snapshot.metadata?.deleted
       && currentItems(snapshot.value).some(member => added.has(`${member.type}:${member.refId}`))))).map(snapshot => [key(snapshot.resource), snapshot]));
     for (const snapshot of this.writes.values()) {
       if (snapshot.resource.collection === 'series') series.set(key(snapshot.resource), snapshot);
     }
-    const assigned = new Set<string>();
+    const assigned = new Map<string, ResourceSnapshot>();
     for (const snapshot of series.values()) {
       if (!snapshot.value || snapshot.metadata?.deleted) continue;
       for (const member of currentItems(snapshot.value)) {
         const identity = `${member.type}:${member.refId}`;
         if (!added.has(identity)) continue;
         if (assigned.has(identity)) fail('membership-already-assigned');
-        assigned.add(identity);
+        assigned.set(identity, snapshot);
       }
     }
+    for (const [identity, member] of added) this.recordUnclockedMembership(member, assigned.get(identity));
+  }
+
+  private recordUnclockedMembership(member: ResourceRef, destination?: ResourceSnapshot): void {
+    this.seriesMembershipWrites.push({ member, head: {
+      owner: this.command.owner, memberGeneration: null, time: null, operationId: this.command.operationId,
+      location: destination ? seriesLocation(destination) : null,
+    } });
   }
 
   private async seriesRelation(command: Extract<DataCommand, { relation: 'series-membership' }>): Promise<CommandResult | undefined> {
-    const added = new Set<string>();
+    const order = this.reader.seriesMembershipOrder;
+    if (command.edits[0].membership && order) {
+      const moves = readSeriesMembershipMoves(command.edits, order.serverMs);
+      if (!moves) return fail(INVALID_DOCUMENT);
+      const observed = command.edits[0].membership.observedCatalogVersion;
+      if (observed !== undefined && observed > await order.catalogVersion()) return fail(INVALID_DOCUMENT);
+      if (moves !== 'legacy-repair' && moves.size) return this.orderedSeriesRelation(command, moves, order);
+    }
+    const added = new Map<string, ResourceRef>(), removed = new Map<string, ResourceRef>();
     for (const edit of command.edits) {
       const series = await this.get(edit.resource);
       const value = this.live(series, edit.generation);
       const merged = mergeFields({ exists: true, value: edit.beforeItems }, { exists: true, value: edit.afterItems }, { exists: true, value: currentItems(value) }, ['items']);
       if (merged.conflicts.length) return this.conflict(merged.conflicts.map(item => ({ ...item, path: [edit.resource.id, ...item.path] })));
       const fields = seriesFields(merged.value.value as DocumentData[]);
-      const before = new Set(currentItems(value).map(member => `${member.type}:${member.refId}`));
+      const opening = currentItems(value), before = new Set(opening.map(membershipKey));
+      const after = new Set((fields.items as DocumentData[]).map(membershipKey));
+      for (const member of opening) if (!after.has(membershipKey(member))) removed.set(membershipKey(member), seriesMemberResources([member])[0]);
       for (const member of fields.items as DocumentData[]) {
-        const identity = `${member.type}:${member.refId}`;
-        if (!before.has(identity)) added.add(identity);
+        const identity = membershipKey(member);
+        if (!before.has(identity)) added.set(identity, seriesMemberResources([member])[0]);
       }
       await this.checkSeriesTargets(fields.items as DocumentData[]);
       this.stage(series, fields);
@@ -241,6 +268,77 @@ class RelationPlanner {
       if (!this.writes.has(key(series.resource))) this.writes.set(key(series.resource), advanceResourceSnapshot(series, value, command.operationId, []));
     }
     await this.exclusiveSeriesMembers(added);
+    // A Clear in an older client still advances what a subsequent action must
+    // have observed. Do not scan the whole catalog for an untimed removal.
+    for (const [identity, member] of removed) if (!added.has(identity)) {
+      const retained = [...this.writes.values()].find(snapshot => snapshot.resource.collection === 'series' && snapshot.value
+        && currentItems(snapshot.value).some(item => membershipKey(item) === identity));
+      this.recordUnclockedMembership(member, retained);
+    }
+  }
+
+  private async orderedSeriesRelation(command: Extract<DataCommand, { relation: 'series-membership' }>,
+    moves: Map<string, SeriesMembershipMove>, order: NonNullable<RelationReader['seriesMembershipOrder']>): Promise<CommandResult | undefined> {
+    const edits = new Map(command.edits.map(edit => [edit.resource.id, edit]));
+    const participants = new Map<string, ResourceSnapshot>();
+    for (const edit of edits.values()) {
+      const series = await this.get(edit.resource);
+      this.live(series, edit.generation);
+      if (edit.membership!.observedRevision > (series.metadata?.revision ?? 0)) return fail(INVALID_DOCUMENT);
+      participants.set(series.resource.id, series);
+    }
+    const current = new Map<string, { series: ResourceSnapshot; item: DocumentData; items: DocumentData[] }>();
+    for (const series of await this.list('series', undefined, snapshot => Boolean(snapshot.value && !snapshot.metadata?.deleted
+      && currentItems(snapshot.value).some(item => moves.has(membershipKey(item)))))) {
+      const items = currentItems(this.live(series));
+      for (const item of items) {
+        const identity = membershipKey(item);
+        if (!moves.has(identity)) continue;
+        if (current.has(identity)) return fail('membership-already-assigned');
+        current.set(identity, { series, item, items });
+      }
+    }
+
+    const predecessors = new Set(command.edits.flatMap(({ membership }) => membership?.predecessorOperationId ? [membership.predecessorOperationId] : []));
+    const placements = new Map<string, SeriesMembershipPlacement[]>();
+    const comparisons: SeriesMembershipComparison[] = [];
+    for (const [identity, move] of moves) {
+      const stored = current.get(identity);
+      const intended = move.to && participants.get(move.to.edit.resource.id)!;
+      const member = await this.get(memberResource(move.ref));
+      this.live(member);
+      const location = stored ? seriesLocation(stored.series) : null;
+      const proof = await reconcileDeletedSeriesMembership(await order.read(member.resource), command.owner, location, order.readDeletion);
+      const proposed = intended ? seriesLocation(intended) : null;
+      const decision = resolveSeriesMembership(move, command.owner, command.operationId, member, location, proposed, proof, predecessors);
+      if (!decision) {
+        comparisons.push({ ref: move.ref, label: typeof member.value?.title === 'string' ? member.value.title : '', proposed, stored: location });
+        continue;
+      }
+      if (decision.write) this.seriesMembershipWrites.push(decision.write);
+      if (decision.incoming && stored) participants.set(stored.series.resource.id, stored.series);
+      const keepsStored = stored && (!decision.incoming || stored.series.resource.id === intended?.resource.id);
+      const placement = keepsStored ? { id: stored.series.resource.id, item: stored.item, order: stored.items }
+        : decision.incoming && intended && move.to ? { id: intended.resource.id, item: move.to.item, order: move.to.edit.afterItems } : null;
+      if (placement) {
+        const items = placements.get(placement.id) ?? [];
+        items.push({ identity, item: placement.item, order: placement.order });
+        placements.set(placement.id, items);
+      }
+    }
+
+    if (comparisons.length) return { kind: 'refused', operationId: command.operationId,
+      code: 'membership-already-assigned', seriesMembershipComparisons: comparisons };
+
+    for (const [id, series] of participants) {
+      const value = this.live(series), edit = edits.get(id);
+      const projected = mergeOrderedSeriesItems(currentItems(value), edit, moves, placements.get(id) ?? []);
+      if (projected.conflicts.length) return this.conflict(projected.conflicts.map(conflict => ({ ...conflict, path: [id, ...conflict.path] })));
+      const fields = seriesFields(projected.items);
+      await this.checkSeriesTargets(fields.items as DocumentData[]);
+      this.stage(series, fields);
+      if (edit && !this.writes.has(key(series.resource))) this.writes.set(key(series.resource), advanceResourceSnapshot(series, value, command.operationId, []));
+    }
   }
 
   /**
@@ -508,7 +606,7 @@ class RelationPlanner {
     if (this.primary.resource.collection === 'series' && command.kind === 'create') {
       const members = value.items as DocumentData[];
       await this.checkSeriesTargets(members);
-      await this.exclusiveSeriesMembers(new Set(members.map(member => `${member.type}:${member.refId}`)));
+      await this.exclusiveSeriesMembers(new Map(members.map(member => [membershipKey(member), seriesMemberResources([member])[0]])));
     }
   }
 
@@ -548,7 +646,8 @@ class RelationPlanner {
     await this.uniqueAnalysisWrites();
     const snapshot = this.writes.get(key(this.primary.resource)) ?? this.primary;
     const affected = [...this.writes.values()].filter(value => key(value.resource) !== key(this.primary.resource)).map(value => ({ resource: value.resource, metadata: value.metadata! }));
-    return { result: { kind: 'acknowledged', operationId: this.command.operationId, snapshot, ...(affected.length ? { affected } : {}) }, writes: [...this.writes.values()] };
+    return { result: { kind: 'acknowledged', operationId: this.command.operationId, snapshot, ...(affected.length ? { affected } : {}) },
+      writes: [...this.writes.values()], ...(this.seriesMembershipWrites.length ? { seriesMembershipWrites: this.seriesMembershipWrites } : {}) };
   }
 }
 

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 
+import { SeriesMembershipHistory } from '@/components/series/SeriesMembershipHistory';
 import { useEngineSeriesField } from '@/components/series/useEngineSeriesField';
 import { DocumentFieldHistory } from '@/components/ui/DocumentFieldHistory';
 import { DataMembershipStatus } from '@/data-engine/DataMembershipStatus';
@@ -89,6 +90,9 @@ export function EngineEditSermonModal({ sermonId, onClose }: { sermonId: string;
         onKeepLocal={form.keepLocal} onAcceptRemote={form.acceptRemote}
         recoveryChoices={recovery.choices} reviewRecoveryId={reviewRecoveryId} recoveryLoading={recovery.loading} recoveryError={recovery.error}
         onRecover={recovery.recover} onDiscardRecovery={recovery.discard} />}
+    seriesHistory={owner && form.active && <SeriesMembershipHistory key={JSON.stringify([owner, sermonId, generation])}
+      owner={owner} member={{ type: 'sermon', refId: sermonId }} generation={generation}
+      action={series.action} currentSeriesId={series.seriesId} disabled={historyDisabled || series.disabled} />}
     seriesStatus={<div className="space-y-3 p-4 empty:hidden">
       <DataMembershipStatus action={{ ...series.action, retry: series.retry }} />
     </div>} />;

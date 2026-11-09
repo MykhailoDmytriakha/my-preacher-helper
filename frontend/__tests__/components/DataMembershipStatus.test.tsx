@@ -1,12 +1,14 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 import { DataMembershipStatus } from '@/data-engine/DataMembershipStatus';
-import type { useDataMembership } from '@/data-engine/react.client';
+import type { ComponentProps } from 'react';
 
-type Action = ReturnType<typeof useDataMembership>;
-const action = (patch: Partial<Action> = {}): Action => ({ ready: true, error: null, errorWords: null, values: [], phase: 'submitted', durable: true,
-  action: null, creation: null, beginCreate: jest.fn(), openSeries: jest.fn(), updateCreation: jest.fn(), scopeId: 'scope', recoveryIdentity: {}, recoveryVersion: 0, delivery: { phase: 'unknown', canDiscard: false, code: null },
-  begin: jest.fn(), recover: jest.fn(), dismiss: jest.fn(), update: jest.fn(), save: jest.fn(), cancel: jest.fn(), retry: jest.fn(), discard: jest.fn(), discardRecovery: jest.fn(), listRecoverable: jest.fn(), listRecoveryChoices: jest.fn(), ...patch });
+type Action = ComponentProps<typeof DataMembershipStatus>['action'];
+const action = (patch: Partial<Action> = {}): Action => ({
+  error: null, errorWords: null, phase: 'submitted', durable: true,
+  delivery: { phase: 'unknown', canDiscard: false, code: null },
+  retry: jest.fn(), discard: jest.fn(), ...patch,
+});
 it('offers only retry for uncertain delivery and does not call discard', async () => {
   const state = action(); render(<DataMembershipStatus action={state} />);
   expect(screen.getByRole('status')).toHaveTextContent('dataSync.phase.unknown');
@@ -53,4 +55,26 @@ describe('a refused action on a tab older than the server', () => {
       expect(screen.queryByText('dataSync.outdatedTab.body')).not.toBeInTheDocument();
     }
   });
+});
+
+it('keeps an exact shown assignment without calling the wider discard', async () => {
+  const comparisons = [{ ref: { type: 'sermon' as const, refId: 's' }, label: 'Sermon',
+    proposed: null, stored: { id: 'a', generation: 'g', label: 'Series A' } }];
+  const state = action({ delivery: { phase: 'refused', canDiscard: true, code: 'membership-already-assigned',
+    comparisons, canChooseExact: true } });
+  const keep = jest.fn(async () => undefined);
+  render(<DataMembershipStatus action={state} onKeep={keep} />);
+  fireEvent.click(screen.getByRole('button', { name: 'workspaces.series.membershipHistory.keep' }));
+  await waitFor(() => expect(keep).toHaveBeenCalledWith(comparisons));
+  expect(state.discard).not.toHaveBeenCalled();
+});
+
+it('labels a discard that includes dependent saves as the wider action', () => {
+  const state = action({ delivery: { phase: 'refused', canDiscard: true, code: 'membership-already-assigned',
+    comparisons: [{ ref: { type: 'group', refId: 'g' }, label: 'Group', proposed: null, stored: null }], canChooseExact: false } });
+  render(<DataMembershipStatus action={state} onKeep={jest.fn()} onReview={jest.fn()} />);
+  expect(screen.getByText('dataSync.discardActionHint')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'dataSync.discardAction' })).toBeEnabled();
+  expect(screen.queryByRole('button', { name: 'workspaces.series.membershipHistory.keep' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'workspaces.series.membershipHistory.review' })).not.toBeInTheDocument();
 });

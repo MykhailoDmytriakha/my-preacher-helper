@@ -11,11 +11,12 @@ import { captureDocumentMetadataFields, capturePreparationConfirmation, type Pre
 import { commandReferenceResources, documentReferenceResources, referenceReadiness } from './documentReferences';
 import { captureDocumentTags, pendingDocumentTags, restoreDocumentTagAncestor } from './documentTagCapture';
 import { documentTagChange, documentTagCommandActions } from './documentTagMembership';
-import { prepareDomainCommand, requiredDomainTargets } from './domainPolicy';
+import { prepareAtomicSeriesCommand, prepareDomainCommand, requiredDomainTargets } from './domainPolicy';
 import { areDifferentTabManualParents, readManualScopeIdentity } from './editorIdentity';
 import { captureExegeticalPointActions, matchingExegeticalPointActions, restoreExegeticalQueueBasis, type ExegeticalQueueBasis } from './exegeticalPointCapture';
 import { AddressedFailures, type AddressedFailure } from './failures';
 import { captureMeetingFieldActions, GROUP_MEETING_FIELD_POLICY, matchingMeetingFieldActions } from './groupMeetingFieldAction';
+import { seriesCommandParticipant } from './membershipIntent';
 import { capturePreachDateFields, PREACH_DATE_FIELD_POLICY } from './preachDateFieldAction';
 import { capturePreachStatusActions, matchingPreachStatusActions, pendingPreachStatusActions, replacePreachStatuses } from './preachStatusAction';
 import { confirmedExistingDeletion, equalValues, mergeDocumentFields, MAX_RELATION_RESOURCES } from './protocol';
@@ -34,6 +35,7 @@ import type { CouncilFieldActions } from './councilFieldAction';
 import type { DocumentFieldAction, DocumentFieldObservation, SermonChurchObservation } from './documentFieldAction';
 import type { ExegeticalPointStamp } from './exegeticalPointAction';
 import type { GroupMeetingFieldActions, GroupMeetingFieldCaptures } from './groupMeetingFieldAction';
+import type { SeriesMembershipCapture } from './membershipIntent';
 import type { PrayerStatusObservations } from './prayerStatusAction';
 import type { PreachDateFieldActions, PreachDateFieldSave } from './preachDateFieldAction';
 import type { PreachStatusAction, PreachStatusCapture } from './preachStatusAction';
@@ -49,6 +51,10 @@ import type { CommandResult, DataCommand, DocumentData, EditorCommitAction, Engi
 export interface CommitRequest extends CouncilFieldActions, PrayerStatusObservations, AutosaveRowFieldActions {
   id: string;
   atomic?: AtomicCommitIdentity;
+  seriesMembership?: SeriesMembershipCapture;
+  /** Captured catalog copy when it came from a queued predecessor rather than the baseline. */
+  seriesMembershipOpening?: DocumentData;
+  seriesMembershipPredecessor?: string;
   /** A durable stage owns capture before it can persist the resulting request IDs. */
   retentionScope?: string;
   /** Present only when the native store captured a replacement and retired its sources atomically. */
@@ -182,7 +188,13 @@ export function assertCommitBatch(requests: readonly CommitRequest[]): void {
   }
 }
 
-export interface AtomicCapture { editorId: string; captured: SessionCheckpoint; predecessorId?: string | null; retentionScope?: string }
+export interface AtomicCapture {
+  editorId: string;
+  captured: SessionCheckpoint;
+  predecessorId?: string | null;
+  retentionScope?: string;
+  seriesMembership?: SeriesMembershipCapture;
+}
 
 export interface CommitEvent { request: CommitRequest }
 export type TrackCommitAnswer = (request: CommitRequest, apply: (result: CommandResult) => Promise<boolean>) => void;
@@ -212,6 +224,7 @@ export function assertCommitCapture(current: CommitRequest, incoming: CommitRequ
     || !equalValues(current.sermonPreparationCheckActions ?? null, incoming.sermonPreparationCheckActions ?? null)
     || !equalValues(current.sermonChurchFill ?? null, incoming.sermonChurchFill ?? null)
     || !equalValues(current.seriesFieldActions ?? null, incoming.seriesFieldActions ?? null)
+    || !equalValues(current.seriesMembership ?? null, incoming.seriesMembership ?? null)
     || !equalValues(current.groupTitleAction ?? null, incoming.groupTitleAction ?? null)
     || !equalValues(current.groupStatusAction ?? null, incoming.groupStatusAction ?? null)
     || !equalValues(current.councilTitleAction ?? null, incoming.councilTitleAction ?? null)
@@ -289,6 +302,7 @@ function ordinaryDeliveryChains(records: readonly CommitRequest[]): DeliveryChai
 }
 
 type CommitSaveOptions = { predecessorId?: string | null; predecessorIds?: readonly string[]; retentionScope?: string;
+  seriesMembership?: SeriesMembershipCapture;
   preachDateAction?: DatedRowActionCapture;
   meetingDateAction?: DatedRowActionCapture;
   groupMeetingFieldCaptures?: GroupMeetingFieldCaptures;
@@ -327,11 +341,11 @@ function pendingRowFields(record: CommitRequest) {
 }
 
 function hasTimedAncestor(record: CommitRequest): boolean {
-  return record.sequence === 0 && Boolean(record.serviceOrderTitleAction || record.prayerTitleAction || record.planTemplateNameAction || record.tagColorAction || record.studyNoteTitleAction || record.prayerStatusAction || record.prayerAnsweredAtAction || record.sermonTitleAction || record.sermonVerseAction || record.sermonChurchAction || record.sermonGoalTypeAction || record.sermonPreparationCheckActions || record.exegeticalPlanActions?.length || record.seriesFieldActions || record.groupTitleAction || record.groupStatusAction || record.councilTitleAction || record.councilDateAction || record.councilLifecycleAction || pendingBibleMarkRebase(record) || pendingMeetingDateRebase(record) || pendingDocumentTags(record).length || pendingRowFields(record).length || pendingPreachStatusActions(record).length);
+  return record.sequence === 0 && Boolean(record.seriesMembership || record.serviceOrderTitleAction || record.prayerTitleAction || record.planTemplateNameAction || record.tagColorAction || record.studyNoteTitleAction || record.prayerStatusAction || record.prayerAnsweredAtAction || record.sermonTitleAction || record.sermonVerseAction || record.sermonChurchAction || record.sermonGoalTypeAction || record.sermonPreparationCheckActions || record.exegeticalPlanActions?.length || record.seriesFieldActions || record.groupTitleAction || record.groupStatusAction || record.councilTitleAction || record.councilDateAction || record.councilLifecycleAction || pendingBibleMarkRebase(record) || pendingMeetingDateRebase(record) || pendingDocumentTags(record).length || pendingRowFields(record).length || pendingPreachStatusActions(record).length);
 }
 
 function freezeSaveOptions(options: CommitSaveOptions | undefined): CommitSaveOptions | undefined {
-  return options && { ...options, predecessorIds: options.predecessorIds && [...options.predecessorIds],
+  return options && { ...options, ...(options.seriesMembership && { seriesMembership: clone(options.seriesMembership) }), predecessorIds: options.predecessorIds && [...options.predecessorIds],
     transfer: options.transfer && clone(options.transfer), preachDateAction: options.preachDateAction && clone(options.preachDateAction),
     meetingDateAction: options.meetingDateAction && clone(options.meetingDateAction),
     groupMeetingFieldCaptures: options.groupMeetingFieldCaptures && clone(options.groupMeetingFieldCaptures),
@@ -482,6 +496,7 @@ export class CommitQueue {
     const predecessor = selectSavePredecessor(records, owner, editorId, intent.confirmed.resource, frozenOptions);
     if (existing) {
       if (existing.retentionScope !== frozenOptions?.retentionScope
+        || !equalValues(existing.seriesMembership ?? null, frozenOptions?.seriesMembership ?? null)
         || !equalValues(existing.transferredFrom ?? null, frozenOptions?.transfer?.proof ?? null)) throw new Error('Saved capture retention cannot change');
       if (intent.dirty && !equalValues(existing.value, intent.draft)) throw new Error('Saved generation cannot change its captured intent');
       const result = frozenOptions?.checkpoint ? await capture(existing) : { request: existing, retired: [] };
@@ -560,6 +575,7 @@ export class CommitQueue {
       ...(preachStatusActions && { preachStatusActions }),
       ...(dateTarget && action && { [dateTarget.evidence]: action }),
       ...(frozenOptions?.retentionScope ? { retentionScope: frozenOptions.retentionScope } : {}),
+      ...(frozenOptions?.seriesMembership && { seriesMembership: frozenOptions.seriesMembership }),
       ...(frozenOptions?.transfer ? { transferredFrom: clone(frozenOptions.transfer.proof) } : {}),
       baseline, value: clone(intent.draft), predecessor: predecessor?.id ?? null,
       ...(planTextEvidence ? { planTextEvidence } : {}),
@@ -609,6 +625,7 @@ export class CommitQueue {
         || !equalValues(existing[0]!.atomic.participants, existing.map(record => record!.id))
         || existing.some((record, index) => !equalValues(record!.baseline, frozen[index].captured.confirmed) || !equalValues(record!.value, frozen[index].captured.draft)
           || frozen[index].retentionScope !== record!.retentionScope
+          || !equalValues(frozen[index].seriesMembership ?? null, record!.seriesMembership ?? null)
           || (frozen[index].predecessorId !== undefined && frozen[index].predecessorId !== record!.predecessor))) throw new Error('Saved atomic capture cannot change');
       return clone(existing as CommitRequest[]);
     };
@@ -625,6 +642,7 @@ export class CommitQueue {
       const baseline = item.captured.confirmed;
       return { id: atomic.participants[index], atomic, owner, editorId: item.editorId, editGeneration: item.captured.editGeneration,
         ...(item.retentionScope ? { retentionScope: item.retentionScope } : {}),
+        ...(item.seriesMembership && { seriesMembership: item.seriesMembership }),
         baseline, value: item.captured.draft, predecessor: predecessor?.id ?? null, revision: 0, initialized: false,
         working: baseline, intended: item.captured.draft, command: null, submitted: null, sequence: 0, state: 'queued', result: null, unfinalized: [] };
     });
@@ -724,8 +742,8 @@ export class CommitQueue {
   }
 
   /** Only the action owner may retire a relation and its dependent local work. */
-  cancelAction(requestIds: readonly string[]): Promise<void> {
-    return this.cancelOwned('', requestIds, true);
+  cancelAction(requestIds: readonly string[], onlyThoseRequests = false): Promise<void> {
+    return this.cancelOwned('', requestIds, true, onlyThoseRequests);
   }
 
   /** The deciding owner calls this only after its chosen projection is durable. */
@@ -776,8 +794,11 @@ export class CommitQueue {
       ...(chosen.has(record.id) ? { cancelledByChoice: true } : {}) };
   }
 
-  private async cancelOwned(editorId: string, additionalRequestIds: readonly string[], wholeAction: boolean): Promise<void> {
+  private async cancelOwned(editorId: string, additionalRequestIds: readonly string[], wholeAction: boolean, onlyThoseRequests = false): Promise<void> {
     const { owner, generation, records, chosen } = await this.planCancellation(editorId, additionalRequestIds, wholeAction);
+    if (onlyThoseRequests && records.some(record => !additionalRequestIds.includes(record.id))) {
+      throw Object.assign(new Error('A later Save depends on this assignment'), { code: 'membership-stage-changed' });
+    }
     this.requested = true;
     if (wholeAction) return cancelActionCommits(orderCommitRequests(records), additionalRequestIds, this.atomicContext(owner, generation));
     for (const record of records) {
@@ -983,8 +1004,12 @@ export class CommitQueue {
     if (source.value && status.length) source = { ...source, value: replacePreachStatuses(source.value, status, 'before') };
     const retainedRoots = rowFields.filter(({ action }) => equalValues(action.before, action.after)).map(({ target }) => target.field);
     if (status.length) retainedRoots.push('preachDates');
-    try { prepared = prepareDomainCommand(owner, operationId, source, record.intended, targets, evidence, retainedRoots); }
-    catch (error) {
+    try {
+      const participant = seriesCommandParticipant(record);
+      prepared = participant.captured
+        ? { command: prepareAtomicSeriesCommand(owner, operationId, [participant]), submittedValue: record.intended }
+        : prepareDomainCommand(owner, operationId, source, record.intended, targets, evidence, retainedRoots);
+    } catch (error) {
       // The policy names WHY this draft can never be a command (two sections carried in one
       // save, a destination that was deleted, a derived field). Left as a throw, the request
       // stayed `queued` and was retried for ever, and `cancel` — which needs something terminal —

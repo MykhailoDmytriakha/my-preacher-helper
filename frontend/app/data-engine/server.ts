@@ -36,6 +36,7 @@ import { advanceResourceSnapshot, commandFingerprint, getResourcePolicy, isValid
 import { validateResourceDocument } from './resourceSchemas';
 import { metadataAfterRowDetails, orderRowDetails, type RowDetailOrder } from './rowDetailOrder.server';
 import { existingRowField } from './rowFieldAction';
+import { SERIES_MEMBERSHIP_DELETION, SERIES_MEMBERSHIP_HISTORY, SERIES_MEMBERSHIP_ORDER, seriesLocation, type SeriesMembershipWrite } from './seriesMembershipOrder.server';
 import { assembleChangePage, collectionHeadId, HEADS_COLLECTION, parseChangePointer, planFeedWrites, readHeadVersion, sequenceId } from './serverFeed';
 import { planDataCommand } from './serverRelations';
 import { alignServiceOrderFlagRepresentation, SERVICE_ORDER_FLAG_POLICY, SERVICE_ORDER_STEP_TITLE_POLICY, type ServiceOrderFlagHistoryPage, type ServiceOrderStepTitleHistoryPage } from './serviceOrderStepAction';
@@ -58,6 +59,7 @@ import type { PrayerStatusHistoryPage } from './prayerStatusAction';
 import type { RowDetailPolicy } from './rowDetailAction';
 import type { RowValue } from './rowFieldAction';
 import type { SeriesMetadataHistoryPage } from './seriesFieldAction';
+import type { SeriesMembershipHistoryEntry, SeriesMembershipHistoryPage } from './seriesMembershipHistory';
 import type { FeedWrite } from './serverFeed';
 import type { CollectionChanges, CollectionPage, CommandReceipt, CommandResult, ConflictDetail, DataCommand, DocumentData, EngineMetadata, EngineReadOptions, Json, ResourceRef, ResourceSnapshot } from './types';
 import type { AiResultReceiptStore, ReceiptRecord } from '@/services/aiResultReceipt.server';
@@ -337,9 +339,11 @@ async function previousCommandResult(previous: StoredReceipt | undefined, comman
   return stored.kind === 'blocked' ? undefined : stored;
 }
 
-async function prepareFeedWrites(transaction: Transaction, owner: string, operationId: string, effects: ResourceSnapshot[]): Promise<FeedWrite[]> {
+async function prepareFeedWrites(transaction: Transaction, owner: string, operationId: string, effects: ResourceSnapshot[],
+  cachedSeriesHead?: Promise<DocumentData | undefined>): Promise<FeedWrite[]> {
   const collections = [...new Set(effects.map(effect => effect.resource.collection))];
   const heads = await Promise.all(collections.map(async collection => {
+    if (collection === 'series' && cachedSeriesHead) return [collection, await cachedSeriesHead] as const;
     const head = await transaction.get(adminDb.collection(HEADS_COLLECTION).doc(collectionHeadId(owner, collection)));
     return [collection, head.exists ? head.data() as DocumentData : undefined] as const;
   }));
@@ -471,6 +475,36 @@ function persistRowDetailHistory<Field extends string, Value extends RowValue>(t
   });
 }
 
+function seriesMembershipHeadRef(member: ResourceRef): DocumentReference {
+  return adminDb.collection(member.collection).doc(member.id).collection(SERIES_MEMBERSHIP_ORDER).doc('head');
+}
+
+function acceptedSeriesCatalogVersion(feedWrites: readonly FeedWrite[]): number | undefined {
+  const version = feedWrites.find(write => write.path.length === 2 && write.value.collection === 'series')?.value.version;
+  return typeof version === 'number' ? version : undefined;
+}
+
+function persistSeriesMembershipWrites(transaction: Transaction, owner: string, operationId: string,
+  writes: readonly SeriesMembershipWrite[], effects: readonly ResourceSnapshot[], feedWrites: readonly FeedWrite[]) {
+  const acceptedSeries = new Map(effects.filter(snapshot => snapshot.resource.collection === 'series')
+    .map(snapshot => [snapshot.resource.id, seriesLocation(snapshot)]));
+  const catalogVersion = acceptedSeriesCatalogVersion(feedWrites);
+  const acceptedAt = Date.now();
+  const historyId = `${String(Number.MAX_SAFE_INTEGER - acceptedAt).padStart(16, '0')}-${createHash('sha256').update(operationId).digest('hex')}`;
+  for (const { member, head, displaced } of writes) {
+    if (head) {
+      const location = head.location && (acceptedSeries.get(head.location.id) ?? head.location);
+      transaction.set(seriesMembershipHeadRef(member), { ...head, location, ...(typeof catalogVersion === 'number' && { catalogVersion }) });
+    }
+    if (displaced) {
+      const former = displaced.former?.generation === null ? acceptedSeries.get(displaced.former.id) ?? displaced.former : displaced.former;
+      const current = displaced.current && (acceptedSeries.get(displaced.current.id) ?? displaced.current);
+      transaction.set(adminDb.collection(member.collection).doc(member.id).collection(SERIES_MEMBERSHIP_HISTORY).doc(historyId),
+        { ...displaced, former, current, owner, acceptedAt: new Date(acceptedAt).toISOString() });
+    }
+  }
+}
+
 function orderGroupFlowFields(command: DataCommand, current: ResourceSnapshot, metadata: unknown, serverMs: number) {
   const block = orderRowDetails(command, current, metadata, serverMs, GROUP_BLOCK_TITLE_POLICY);
   const step = orderRowDetails(block.command, current, metadata, serverMs, GROUP_STEP_TITLE_POLICY);
@@ -479,7 +513,7 @@ function orderGroupFlowFields(command: DataCommand, current: ResourceSnapshot, m
   return { block, step, blockStatus, duration: { ...duration, command: alignGroupStepDurationRepresentation(duration.command, current) } };
 }
 
-async function persistAcceptedCommand(transaction: Transaction, { owner, command, snapshot: primarySnapshot, effects, rawDocuments, dateOrder, meetingOrder, groupFlowOrder, preachingOrder, statusOrder, serviceFlagOrder, serviceStepTitleOrder, councilTopicTitleOrder, councilAssemblyOrder, councilTopicKindOrder, thoughtLockOrder, thoughtPlacementOrder, markOrder, fieldOrder, exegeticalOrder, thoughtTagOrder, documentTagOrder }: {
+async function persistAcceptedCommand(transaction: Transaction, { owner, command, snapshot: primarySnapshot, effects, rawDocuments, dateOrder, meetingOrder, groupFlowOrder, preachingOrder, statusOrder, serviceFlagOrder, serviceStepTitleOrder, councilTopicTitleOrder, councilAssemblyOrder, councilTopicKindOrder, thoughtLockOrder, thoughtPlacementOrder, markOrder, fieldOrder, exegeticalOrder, thoughtTagOrder, documentTagOrder, seriesMembershipWrites, cachedSeriesHead }: {
   owner: string;
   command: DataCommand;
   snapshot: ResourceSnapshot;
@@ -502,8 +536,10 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
   exegeticalOrder?: ReturnType<typeof orderExegeticalPoints>;
   thoughtTagOrder?: ReturnType<typeof orderThoughtTags>;
   documentTagOrder?: ReturnType<typeof orderDocumentTags>;
+  seriesMembershipWrites: readonly SeriesMembershipWrite[];
+  cachedSeriesHead?: Promise<DocumentData | undefined>;
 }) {
-  const feedWrites = await prepareFeedWrites(transaction, owner, command.operationId, effects);
+  const feedWrites = await prepareFeedWrites(transaction, owner, command.operationId, effects, cachedSeriesHead);
   const primaryKey = resourceKey(command.resource);
   for (const snapshot of effects) {
     const key = resourceKey(snapshot.resource);
@@ -533,7 +569,11 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
     const exegetical = metadataAfterExegeticalPoints({ ...snapshot, metadata }, raw?._dataEngine, primary ? exegeticalOrder : undefined);
     const tags = metadataAfterThoughtTags({ ...snapshot, metadata: exegetical }, raw, primary ? thoughtTagOrder : undefined);
     const documentTags = metadataAfterDocumentTags({ ...snapshot, metadata: tags }, raw, primary ? documentTagOrder : undefined);
-    transaction.set(adminDb.collection(snapshot.resource.collection).doc(snapshot.resource.id), { ...value, _dataEngine: metadataAfterOutlineMoves({ ...snapshot, metadata: documentTags }, raw) });
+    const finalMetadata = metadataAfterOutlineMoves({ ...snapshot, metadata: documentTags }, raw);
+    const seriesDeletionVersion = snapshot.resource.collection === 'series' && snapshot.value === null
+      ? acceptedSeriesCatalogVersion(feedWrites) : undefined;
+    transaction.set(adminDb.collection(snapshot.resource.collection).doc(snapshot.resource.id), { ...value,
+      _dataEngine: { ...finalMetadata, ...(seriesDeletionVersion !== undefined && { [SERIES_MEMBERSHIP_DELETION]: seriesDeletionVersion }) } });
   }
   const tagHistory = thoughtTagOrder?.displaced.filter(entry =>
     existingRowField(primarySnapshot.value?.thoughts, entry.rowId, THOUGHT_TAG_BIRTH) === entry.rowCreatedAt
@@ -602,6 +642,7 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
     });
   }
   persistBibleMarkOrder(transaction, command, primarySnapshot, markOrder);
+  if (seriesMembershipWrites.length) persistSeriesMembershipWrites(transaction, owner, command.operationId, seriesMembershipWrites, effects, feedWrites);
   persistFeedWrites(transaction, feedWrites);
 }
 
@@ -645,6 +686,10 @@ export async function processCommand(owner: string, input: unknown): Promise<Com
     });
     let result: CommandResult;
     let effects: ResourceSnapshot[] = [];
+    let seriesMembershipWrites: SeriesMembershipWrite[] = [];
+    let cachedSeriesHead: Promise<DocumentData | undefined> | undefined;
+    const readSeriesHead = () => cachedSeriesHead ??= transaction.get(adminDb.collection(HEADS_COLLECTION).doc(collectionHeadId(owner, 'series')))
+      .then(head => head.exists ? head.data() as DocumentData : undefined);
     let dateOrder: ReturnType<typeof orderDatedRow> | undefined;
     let meetingOrder: ReturnType<typeof orderGroupMeetingFields> | undefined;
     let groupFlowOrder: ReturnType<typeof orderGroupFlowFields> | undefined;
@@ -688,6 +733,19 @@ export async function processCommand(owner: string, input: unknown): Promise<Com
       fieldOrder = orderDocumentFields(markOrder.command, current, raw?._dataEngine, serverMs);
       exegeticalOrder = orderExegeticalPoints(fieldOrder.command, current, raw?._dataEngine, serverMs);
       const planned = await planDataCommand(exegeticalOrder.command, current, {
+        ...(serverMs !== undefined && { seriesMembershipOrder: { serverMs,
+          catalogVersion: async () => readHeadVersion(owner, 'series', await readSeriesHead()),
+          read: async member => (await transaction.get(seriesMembershipHeadRef(member))).data(),
+          readDeletion: async ({ id, generation }) => {
+            const document = await transaction.get(adminDb.collection('series').doc(id));
+            const data = document.data();
+            if (!data || !owns(owner, { collection: 'series', id }, data)) return undefined;
+            const metadata = readMetadata(data._dataEngine);
+            if (!metadata?.deleted || (generation !== null && metadata.generation !== generation)) return undefined;
+            const version = (data._dataEngine as DocumentData)[SERIES_MEMBERSHIP_DELETION];
+            return typeof version === 'number' && Number.isSafeInteger(version) ? version : undefined;
+          },
+        } }),
         get: async resource => {
           resourcePolicy(resource);
           const document = await transaction.get(adminDb.collection(resource.collection).doc(resource.id));
@@ -730,6 +788,7 @@ export async function processCommand(owner: string, input: unknown): Promise<Com
       // The planner exposes writes only for acknowledged commands.
       effects = plan.writes.map(effect => stampAcceptedResource(snapshotFromRaw(effect.resource, rawDocuments.get(resourceKey(effect.resource))), effect, acceptedAt));
       result = withAcceptedCopies(plan.result, effects);
+      seriesMembershipWrites = plan.seriesMembershipWrites ?? [];
       // Leave headroom below Firestore's transaction request limit; never split a cascade.
       if (effectBytes(effects) > MAX_EFFECT_BYTES) {
         result = refusal('relation-effects-too-large');
@@ -748,7 +807,7 @@ export async function processCommand(owner: string, input: unknown): Promise<Com
       deletedTag = raw.name;
     }
     if (result.kind === 'acknowledged') {
-      await persistAcceptedCommand(transaction, { owner, command, snapshot: result.snapshot, effects, rawDocuments, dateOrder, meetingOrder, groupFlowOrder, preachingOrder, statusOrder, serviceFlagOrder, serviceStepTitleOrder, councilTopicTitleOrder, councilAssemblyOrder, councilTopicKindOrder, thoughtLockOrder, thoughtPlacementOrder, markOrder, fieldOrder, exegeticalOrder, thoughtTagOrder, documentTagOrder });
+      await persistAcceptedCommand(transaction, { owner, command, snapshot: result.snapshot, effects, rawDocuments, dateOrder, meetingOrder, groupFlowOrder, preachingOrder, statusOrder, serviceFlagOrder, serviceStepTitleOrder, councilTopicTitleOrder, councilAssemblyOrder, councilTopicKindOrder, thoughtLockOrder, thoughtPlacementOrder, markOrder, fieldOrder, exegeticalOrder, thoughtTagOrder, documentTagOrder, seriesMembershipWrites, cachedSeriesHead });
     }
     const comparison = exegeticalOrder?.comparison;
     if (comparison && result.kind === 'conflict'
@@ -789,10 +848,11 @@ export async function readDocument(owner: string, resource: ResourceRef, options
   return snapshot;
 }
 
-async function listHistoryEntries<T extends { id: string }>(owner: string, resource: ResourceRef, subcollection: string,
-  generation: string, cursor: string | undefined, unavailable: string): Promise<{ entries: T[]; nextCursor: string | null }> {
+async function readHistoryEntries<T extends { id: string }>(owner: string, resource: ResourceRef, subcollection: string,
+  generation: string | null | undefined, cursor: string | undefined, unavailable: string, includeLegacy = false) {
   checkOwner(owner);
-  if (!validSegment(resource.id) || !validSegment(generation) || (cursor !== undefined && !/^\d{16}-[0-9a-f]{64}$/.test(cursor))) {
+  if (!validSegment(resource.id) || (typeof generation === 'string' && !validSegment(generation))
+    || (cursor !== undefined && !/^\d{16}-[0-9a-f]{64}$/.test(cursor))) {
     throw new DataEngineServerError(INVALID_ARGUMENT, 400);
   }
   const reference = adminDb.collection(resource.collection).doc(resource.id);
@@ -801,13 +861,34 @@ async function listHistoryEntries<T extends { id: string }>(owner: string, resou
     const raw = document.exists ? document.data() : undefined;
     if (!owns(owner, resource, raw)) throw new DataEngineServerError(PERMISSION_DENIED, 403);
     const snapshot = snapshotFromRaw(resource, raw);
-    if (!snapshot.value || snapshot.metadata?.generation !== generation) throw new DataEngineServerError(unavailable, 404);
+    const actualGeneration = snapshot.metadata?.generation ?? null;
+    if (!snapshot.value || (generation !== undefined && actualGeneration !== generation)) throw new DataEngineServerError(unavailable, 404);
     const pageSize = 20;
-    const query = reference.collection(subcollection).where('generation', '==', generation).orderBy(FieldPath.documentId()).limit(pageSize + 1);
+    const history = reference.collection(subcollection);
+    // A legacy live member can acquire its first marker without changing identity.
+    // A tombstone permanently prevents reusing the member's address.
+    const versions = includeLegacy && actualGeneration !== null
+      ? history.where(Filter.or(Filter.where('generation', '==', actualGeneration), Filter.where('generation', '==', null)))
+      : history.where('generation', '==', actualGeneration);
+    const query = (includeLegacy ? versions.where('owner', '==', owner) : versions).orderBy(FieldPath.documentId()).limit(pageSize + 1);
     const page = await transaction.get(cursor ? query.startAfter(cursor) : query);
     const entries = page.docs.slice(0, pageSize).map(item => ({ ...item.data(), id: item.id }) as T);
-    return { entries, nextCursor: page.docs.length > pageSize ? entries.at(-1)!.id : null };
+    return { generation: actualGeneration, entries, nextCursor: page.docs.length > pageSize ? entries.at(-1)!.id : null };
   });
+}
+
+async function listHistoryEntries<T extends { id: string }>(owner: string, resource: ResourceRef, subcollection: string,
+  generation: string, cursor: string | undefined, unavailable: string): Promise<{ entries: T[]; nextCursor: string | null }> {
+  const { entries, nextCursor } = await readHistoryEntries<T>(owner, resource, subcollection, generation, cursor, unavailable);
+  return { entries, nextCursor };
+}
+
+export async function listSeriesMembershipHistory(owner: string, collection: 'sermons' | 'groups', memberId: string,
+  generation?: string | null, cursor?: string): Promise<SeriesMembershipHistoryPage> {
+  if (collection !== 'sermons' && collection !== 'groups') throw new DataEngineServerError(INVALID_ARGUMENT, 400);
+  const page = await readHistoryEntries<SeriesMembershipHistoryEntry>(owner, { collection, id: memberId }, SERIES_MEMBERSHIP_HISTORY,
+    generation, cursor, 'series-member-gone', true);
+  return { owner, collection, memberId, ...page, entries: page.entries.map(({ id, former, current, acceptedAt }) => ({ id, former, current, acceptedAt })) };
 }
 
 export async function listPreachDateHistory(owner: string, sermonId: string, generation: string, cursor?: string): Promise<PreachDateHistoryPage> {

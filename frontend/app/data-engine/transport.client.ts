@@ -8,10 +8,10 @@ import { resolveOwnerUid } from '@/utils/queryKeys';
 
 import { ACTION_CLOCK_HEADER, isClockTime, readsDocumentActionClock, usesActionClock } from './actionClock';
 import { actionClock } from './actionClock.client';
-import { getResourcePolicy, isValidIdentifier } from './protocol';
+import { getResourcePolicy, isValidIdentifier, MAX_RELATION_RESOURCES } from './protocol';
 import { coversCommittedEffect } from './snapshotFreshness';
 
-import type { CollectionChanges, CollectionPage, CollectionTransport, CommandResult, EngineTransport, Json, ResourceSnapshot } from './types';
+import type { CollectionChanges, CollectionPage, CollectionTransport, CommandResult, DataCommand, EngineTransport, Json, ResourceSnapshot } from './types';
 
 const json: z.ZodType<Json> = z.lazy(() => z.union([z.null(), z.boolean(), z.number().finite(), z.string(), z.array(json), z.record(json)]));
 const resourceSchema = z.object({ collection: z.string(), id: z.string() });
@@ -23,13 +23,19 @@ export const snapshotSchema: z.ZodType<ResourceSnapshot> = z.object({
   value: z.record(json).nullable(),
   metadata: metadataSchema.nullable(),
 }).refine((snapshot) => !snapshot.metadata || (snapshot.metadata.deleted === (snapshot.value === null)), 'Inconsistent deletion metadata');
+const seriesSelection = z.object({ id: z.string().refine(isValidIdentifier), generation: z.string().refine(isValidIdentifier).nullable(), label: z.string() });
+const seriesComparison = z.object({
+  ref: z.object({ type: z.enum(['sermon', 'group']), refId: z.string().refine(isValidIdentifier) }),
+  label: z.string(), proposed: seriesSelection.nullable(), stored: seriesSelection.nullable(),
+});
 const resultSchema: z.ZodType<CommandResult> = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('acknowledged'), operationId: z.string(), snapshot: snapshotSchema, committed: metadataSchema.optional(),
     affected: z.array(z.object({ resource: resourceSchema, metadata: metadataSchema })).max(99).optional(),
     relatedSnapshots: z.array(snapshotSchema).max(99).optional() }),
   z.object({ kind: z.literal('conflict'), operationId: z.string(), snapshot: snapshotSchema, conflicts: z.array(z.object({ path: z.array(z.string()), base: field, mine: field, theirs: field })) }),
   z.object({ kind: z.literal('deleted'), operationId: z.string(), snapshot: snapshotSchema }),
-  z.object({ kind: z.literal('refused'), operationId: z.string(), code: z.string() }),
+  z.object({ kind: z.literal('refused'), operationId: z.string(), code: z.string(),
+    seriesMembershipComparisons: z.array(seriesComparison).min(1).max(MAX_RELATION_RESOURCES).optional() }),
   z.object({ kind: z.literal('blocked'), operationId: z.string(), dependencies: z.array(z.string()) }),
 ]).refine(result => result.kind !== 'acknowledged' || !result.committed || Boolean(
   coversCommittedEffect(result.snapshot, result.snapshot.resource, result.committed)
@@ -94,6 +100,27 @@ function validateRelatedSnapshots(owner: string, result: Extract<CommandResult, 
   catch { throw Object.assign(new Error('Mismatched related acknowledgement owner or resource'), { code: 'data-loss' }); }
 }
 
+function validateSeriesComparisons(command: DataCommand, result: Extract<CommandResult, { kind: 'refused' }>): void {
+  const comparisons = result.seriesMembershipComparisons;
+  if (!comparisons) return;
+  const mismatch = () => Object.assign(new Error('Mismatched series comparison'), { code: 'data-loss' });
+  if (result.code !== 'membership-already-assigned' || command.kind !== 'relation' || command.relation !== 'series-membership') throw mismatch();
+  const intended = new Map<string, { id: string; generation: string | null } | null>();
+  for (const edit of command.edits) {
+    for (const { type, refId } of edit.membership?.removed ?? []) {
+      const key = type + ':' + refId;
+      if (!intended.has(key)) intended.set(key, null);
+    }
+    for (const { type, refId } of edit.membership?.added ?? []) intended.set(type + ':' + refId, { id: edit.resource.id, generation: edit.generation });
+  }
+  for (const { ref, proposed } of comparisons) {
+    const key = ref.type + ':' + ref.refId;
+    const selected = intended.get(key);
+    if (selected === undefined || selected?.id !== proposed?.id || selected?.generation !== proposed?.generation) throw mismatch();
+    intended.delete(key);
+  }
+}
+
 function receiveClock(probe: ReturnType<typeof actionClock.begin> | undefined, owner: string, value: unknown): void {
   if (!probe || !value || typeof value !== 'object' || !('actionClock' in value)) return;
   const echo = value.actionClock;
@@ -113,6 +140,7 @@ export function createHttpEngineTransport(clock: Pick<typeof actionClock, 'begin
         result.snapshot.resource.collection !== command.resource.collection || result.snapshot.resource.id !== command.resource.id
       ))) throw Object.assign(new Error('Mismatched data engine response'), { code: 'data-loss' });
       if (result.kind === 'acknowledged') validateRelatedSnapshots(command.owner, result);
+      if (result.kind === 'refused') validateSeriesComparisons(command, result);
       return result;
     },
     async read(owner, resource, options) {

@@ -16,13 +16,14 @@ import { GET as detailHistory } from '@/api/data-engine/documents/[collection]/[
 import { GET as history } from '@/api/data-engine/documents/[collection]/[id]/preach-date-history/route';
 import { GET as read } from '@/api/data-engine/documents/[collection]/[id]/route';
 import { GET as statusHistory } from '@/api/data-engine/documents/[collection]/[id]/status-history/route';
+import { GET as membershipHistory } from '@/api/data-engine/documents/[collection]/[id]/series-membership-history/route';
 import { GET as seriesHistory } from '@/api/data-engine/documents/[collection]/[id]/metadata-history/route';
 import { GET as churchHistory } from '@/api/data-engine/documents/[collection]/[id]/church-history/route';
 import { GET as verseHistory } from '@/api/data-engine/documents/[collection]/[id]/verse-history/route';
 import { GET as titleHistory } from '@/api/data-engine/documents/[collection]/[id]/title-history/route';
 import { ENGINE_OWNED_COLLECTIONS } from '@/data-engine/engineOwnedCollections';
 import { listCouncilAssemblyHistory, listCouncilTopicKindHistory, listCouncilTopicTitleHistory, listServiceOrderFlagHistory, listServiceOrderStepTitleHistory } from '@/data-engine/server';
-import { assertDataEngineEnabled, DataEngineServerError, listBibleMarkHistory, listCouncilMetadataHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listSermonChurchHistory, listSermonTitleHistory, listSermonVerseHistory, listSeriesMetadataHistory, listServiceOrderTitleHistory, processCommand, readCollectionChanges, readCommandBody, readDocument } from '@/data-engine/server';
+import { assertDataEngineEnabled, DataEngineServerError, listBibleMarkHistory, listCouncilMetadataHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listSermonChurchHistory, listSermonTitleHistory, listSermonVerseHistory, listSeriesMembershipHistory, listSeriesMetadataHistory, listServiceOrderTitleHistory, processCommand, readCollectionChanges, readCommandBody, readDocument } from '@/data-engine/server';
 import { __resetStoreAvailabilityForTests } from '@/services/storeAvailability.server';
 
 jest.mock('@/config/firebaseAdminConfig', () => ({ adminDb: {} }));
@@ -49,6 +50,7 @@ jest.mock('@/data-engine/server', () => ({
   listSermonTitleHistory: jest.fn(),
   listSermonVerseHistory: jest.fn(),
   listSermonChurchHistory: jest.fn(),
+  listSeriesMembershipHistory: jest.fn(),
   listSeriesMetadataHistory: jest.fn(),
   listCouncilMetadataHistory: jest.fn(),
   listGroupTitleHistory: jest.fn(),
@@ -339,6 +341,20 @@ describe('DataEngine HTTP routes', () => {
     await expect(response.json()).resolves.toEqual(page);
     expect(listSermonChurchHistory).toHaveBeenCalledWith('verified-owner', 'sermon', 'g1', undefined);
     expect((await churchHistory(input, { params: Promise.resolve({ collection: 'groups', id: 'sermon' }) })).status).toBe(400);
+  });
+
+  it('serves membership history for an authenticated group or sermon with the optional legacy generation', async () => {
+    const url = 'http://localhost/api/data-engine/documents/groups/member/series-membership-history';
+    const context = { params: Promise.resolve({ collection: 'groups', id: 'member' }) };
+    const page = { owner: 'verified-owner', collection: 'groups' as const, memberId: 'member', generation: null, entries: [], nextCursor: null };
+    jest.mocked(listSeriesMembershipHistory).mockResolvedValue(page);
+    const response = await membershipHistory(request(url + '?generation='), context);
+    expect(response.status).toBe(200);
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    await expect(response.json()).resolves.toEqual(page);
+    expect(listSeriesMembershipHistory).toHaveBeenCalledWith('verified-owner', 'groups', 'member', null, undefined);
+    expect((await membershipHistory(request(url + '?owner=other'), context)).status).toBe(400);
+    expect((await membershipHistory(request(url), { params: Promise.resolve({ collection: 'series', id: 'member' }) })).status).toBe(400);
   });
 
   it('serves series metadata history with owner, generation and no-store', async () => {
