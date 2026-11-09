@@ -40,6 +40,7 @@ import { assembleChangePage, collectionHeadId, HEADS_COLLECTION, parseChangePoin
 import { planDataCommand } from './serverRelations';
 import { alignServiceOrderFlagRepresentation, SERVICE_ORDER_FLAG_POLICY, SERVICE_ORDER_STEP_TITLE_POLICY, type ServiceOrderFlagHistoryPage, type ServiceOrderStepTitleHistoryPage } from './serviceOrderStepAction';
 import { coversCommittedEffect } from './snapshotFreshness';
+import { compactTagConflict, expandTagConflict, isIndexedTagConflict, isSplitTagConflict, readTagConflictParts, splitTagConflictJson, tagReceiptDigest, validTagReceiptPartCount, type IndexedTagConflict, type SplitTagConflict } from './tagConflictReceipt.server';
 import { alignThoughtLockRepresentation, THOUGHT_LOCK_POLICY, type ThoughtLockHistoryPage } from './thoughtLockAction';
 import { isThoughtPlacementPart, THOUGHT_PLACEMENT_POLICY, thoughtPlacementConflictId, type ThoughtPlacementHistoryPage } from './thoughtPlacementAction';
 import { orderThoughtPlacement } from './thoughtPlacementOrder.server';
@@ -200,7 +201,7 @@ interface CompactAcknowledgement {
   committed: EngineMetadata;
   affected?: Acknowledgement['affected'];
 }
-type StoredReceipt = Omit<CommandReceipt, 'result'> & { result: CommandResult | CompactAcknowledgement };
+type StoredReceipt = Omit<CommandReceipt, 'result'> & { result: CommandResult | CompactAcknowledgement | IndexedTagConflict | SplitTagConflict };
 const compact = (result: StoredReceipt['result']): result is CompactAcknowledgement => 'receiptVersion' in result;
 const unavailableReceiptSnapshot = () => new DataEngineServerError('receipt-snapshot-unavailable', 503);
 
@@ -237,19 +238,49 @@ function readReceipt(raw: Record<string, unknown> | undefined): StoredReceipt | 
       || !['acknowledged', 'conflict', 'deleted', 'refused', 'blocked'].includes(String(result.kind))) {
     throw new DataEngineServerError(INVALID_RECEIPT, 409);
   }
-  const parsed = 'receiptVersion' in result ? readCompactAcknowledgement(result as Record<string, unknown>) : result as CommandResult;
+  const parsed = 'receiptVersion' in result ? readCompactAcknowledgement(result as Record<string, unknown>) : result as CommandResult | IndexedTagConflict | SplitTagConflict;
   return { owner: raw.owner as string, operationId: raw.operationId as string, commandHash: raw.commandHash as string, result: parsed };
 }
 
 /** ACK history retains proof of effect, never another full document per autosave. */
-function serializeReceipt(receipt: CommandReceipt) {
+function serializeReceipt(receipt: StoredReceipt) {
   const result = receipt.result;
-  const stored: CommandResult | CompactAcknowledgement = result.kind === 'acknowledged'
+  const stored = result.kind === 'acknowledged' && !compact(result)
     ? { receiptVersion: 2, kind: result.kind, operationId: result.operationId, resource: result.snapshot.resource,
       committed: result.committed ?? result.snapshot.metadata!, ...(result.affected ? { affected: result.affected } : {}) }
     : result;
   // Exact conflict payloads remain JSON strings to avoid nested map depth amplification.
   return { owner: receipt.owner, operationId: receipt.operationId, commandHash: receipt.commandHash, resultJson: JSON.stringify(stored) };
+}
+
+function prepareReceipt(owner: string, command: DataCommand, commandHash: string, result: CommandResult) {
+  const identity = { owner, operationId: command.operationId, commandHash };
+  const fits = (value: ReturnType<typeof serializeReceipt>) =>
+    Object.values(value).reduce((bytes, field) => bytes + Buffer.byteLength(field), 0) <= MAX_RECEIPT_BYTES;
+  const ordinary = serializeReceipt({ ...identity, result });
+  if (fits(ordinary)) return { result, stored: ordinary };
+  // Keep the exact snapshot and choices. A tag reference avoids a second copy of its name.
+  const compacted = result.kind === 'conflict' ? compactTagConflict(result, command) : undefined;
+  if (compacted) {
+    const stored = serializeReceipt({ ...identity, result: compacted });
+    if (fits(stored)) return { result, stored };
+    const parts = splitTagConflictJson(stored.resultJson);
+    if (parts) return { result, parts, stored: serializeReceipt({ ...identity,
+      result: { kind: 'conflict', operationId: command.operationId, tagReceiptParts: parts.length, tagReceiptDigest: tagReceiptDigest(stored.resultJson) },
+    }) };
+  }
+  const refusal: CommandResult = { kind: 'refused', operationId: command.operationId, code: 'receipt-too-large' };
+  return { result: refusal, stored: serializeReceipt({ ...identity, result: refusal }) };
+}
+
+const tagReceiptPartRef = (receipt: DocumentReference, index: number) => receipt.collection('_tagParts').doc(String(index));
+
+async function readTagReceiptParts(transaction: Transaction, receipt: DocumentReference, manifest: SplitTagConflict): Promise<IndexedTagConflict> {
+  if (!validTagReceiptPartCount(manifest.tagReceiptParts)) throw new DataEngineServerError(INVALID_RECEIPT, 409);
+  const parts = await Promise.all(Array.from({ length: manifest.tagReceiptParts }, (_, index) => transaction.get(tagReceiptPartRef(receipt, index))));
+  const result = readTagConflictParts(parts.map(part => part.data()?.json), manifest);
+  if (!result) throw new DataEngineServerError(INVALID_RECEIPT, 409);
+  return result;
 }
 
 function replayAcknowledgement(result: CompactAcknowledgement, resource: ResourceRef, raw: Record<string, unknown> | undefined): Acknowledgement {
@@ -286,8 +317,8 @@ function withAcceptedCopies(result: CommandResult, effects: ResourceSnapshot[]):
   return { ...result, snapshot, committed: snapshot.metadata!, ...(relatedSnapshots.length ? { relatedSnapshots } : {}) };
 }
 
-function previousCommandResult(previous: StoredReceipt | undefined, command: DataCommand, commandHash: string,
-  raw: Record<string, unknown> | undefined): CommandResult | undefined {
+async function previousCommandResult(previous: StoredReceipt | undefined, command: DataCommand, commandHash: string,
+  raw: Record<string, unknown> | undefined, readParts: (manifest: SplitTagConflict) => Promise<IndexedTagConflict>): Promise<CommandResult | undefined> {
   if (!owns(command.owner, command.resource, raw)) {
     if (previous && compact(previous.result)) throw unavailableReceiptSnapshot();
     return { kind: 'refused', operationId: command.operationId, code: PERMISSION_DENIED };
@@ -297,7 +328,13 @@ function previousCommandResult(previous: StoredReceipt | undefined, command: Dat
     return { kind: 'refused', operationId: command.operationId, code: 'operation-id-reused' };
   }
   if (compact(previous.result)) return replayAcknowledgement(previous.result, command.resource, raw);
-  return previous.result.kind === 'blocked' ? undefined : previous.result;
+  const stored = isSplitTagConflict(previous.result) ? await readParts(previous.result) : previous.result;
+  if (isIndexedTagConflict(stored)) {
+    const result = expandTagConflict(stored, command);
+    if (!result) throw new DataEngineServerError(INVALID_RECEIPT, 409);
+    return result;
+  }
+  return stored.kind === 'blocked' ? undefined : stored;
 }
 
 async function prepareFeedWrites(transaction: Transaction, owner: string, operationId: string, effects: ResourceSnapshot[]): Promise<FeedWrite[]> {
@@ -346,6 +383,31 @@ function historyEntryId(snapshot: ResourceSnapshot, operationId: string): string
   const metadata = snapshot.metadata!;
   const hash = createHash('sha256').update(JSON.stringify([metadata.generation, operationId])).digest('hex');
   return `${String(Number.MAX_SAFE_INTEGER - metadata.revision).padStart(16, '0')}-${hash}`;
+}
+
+const TAG_HISTORY_TARGET_BYTES = 768 * 1024;
+
+function persistTagHistory<Entry>(transaction: Transaction, snapshot: ResourceSnapshot, operationId: string,
+  collection: string, field: 'tags' | 'fields', entries: readonly Entry[]) {
+  const { resource, metadata } = snapshot;
+  const generation = metadata!.generation;
+  const history = adminDb.collection(resource.collection).doc(resource.id).collection(collection);
+  let chunk: Entry[] = [], index = 0, bytes = 0;
+  const flush = () => {
+    if (!chunk.length) return;
+    const id = historyEntryId(snapshot, index === 0 ? operationId : JSON.stringify([operationId, index]));
+    transaction.set(history.doc(id), { generation, [field]: chunk });
+    chunk = [];
+    index++;
+    bytes = 0;
+  };
+  for (const entry of entries) {
+    const size = Buffer.byteLength(JSON.stringify(entry)) + 1;
+    if (bytes + size > TAG_HISTORY_TARGET_BYTES) flush();
+    chunk.push(entry);
+    bytes += size;
+  }
+  flush();
 }
 
 function retainUncertainChronology(plan: Awaited<ReturnType<typeof planDataCommand>>, command: DataCommand, current: ResourceSnapshot,
@@ -477,16 +539,12 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
     existingRowField(primarySnapshot.value?.thoughts, entry.rowId, THOUGHT_TAG_BIRTH) === entry.rowCreatedAt
     && existingRowField(primarySnapshot.value?.thoughts, entry.rowId, thoughtTagTarget(entry.field)) === entry.winnerValue);
   if (tagHistory?.length && primarySnapshot.metadata) {
-    const history = adminDb.collection(command.resource.collection).doc(command.resource.id).collection(THOUGHT_TAG_HISTORY);
-    transaction.set(history.doc(historyEntryId(primarySnapshot, command.operationId)), { generation: primarySnapshot.metadata.generation, fields: tagHistory });
+    persistTagHistory(transaction, primarySnapshot, command.operationId, THOUGHT_TAG_HISTORY, 'fields', tagHistory);
   }
   const documentTagHistory = documentTagOrder?.displaced.filter(entry =>
     tagMembership(tagField(primarySnapshot.value), entry.tag) === entry.winnerValue);
   if (documentTagHistory?.length && primarySnapshot.metadata && primarySnapshot.value) {
-    const history = adminDb.collection(command.resource.collection).doc(command.resource.id).collection(DOCUMENT_TAG_HISTORY);
-    transaction.set(history.doc(historyEntryId(primarySnapshot, command.operationId)), {
-      generation: primarySnapshot.metadata.generation, tags: documentTagHistory,
-    });
+    persistTagHistory(transaction, primarySnapshot, command.operationId, DOCUMENT_TAG_HISTORY, 'tags', documentTagHistory);
   }
   const pointHistory = retainedExegeticalPointHistory(primarySnapshot, exegeticalOrder);
   if (pointHistory) {
@@ -576,7 +634,8 @@ export async function processCommand(owner: string, input: unknown): Promise<Com
     const [stored, existingReceipt] = await Promise.all([transaction.get(documentRef), transaction.get(commandReceiptRef)]);
     const raw = stored.exists ? stored.data() : undefined;
     const previous = existingReceipt.exists ? readReceipt(existingReceipt.data()) : undefined;
-    const replay = previousCommandResult(previous, command, commandHash, raw);
+    const replay = await previousCommandResult(previous, command, commandHash, raw,
+      manifest => readTagReceiptParts(transaction, commandReceiptRef, manifest));
     if (replay) return replay.kind === 'acknowledged' ? relatedAcknowledgement(transaction, owner, replay) : replay;
 
     const dependencies = await Promise.all(command.dependsOn.map(id => transaction.get(receiptRef(owner, id))));
@@ -683,13 +742,8 @@ export async function processCommand(owner: string, input: unknown): Promise<Com
         result = refusal('related-collection-not-enabled');
       }
     }
-    let receipt: CommandReceipt = { owner, operationId: command.operationId, commandHash, result };
-    // Receipts are indivisible Firestore documents. Refuse before writing, never truncate recovery data.
-    // Measure stored strings, not a second JSON encoding that would count escapes twice.
-    if (Object.values(serializeReceipt(receipt)).reduce((bytes, value) => bytes + Buffer.byteLength(value), 0) > MAX_RECEIPT_BYTES) {
-      result = refusal('receipt-too-large');
-      receipt = { ...receipt, result };
-    }
+    const receipt = prepareReceipt(owner, command, commandHash, result);
+    result = receipt.result;
     if (result.kind === 'acknowledged' && command.kind === 'delete' && command.resource.collection === 'tags' && typeof raw?.name === 'string') {
       deletedTag = raw.name;
     }
@@ -703,7 +757,8 @@ export async function processCommand(owner: string, input: unknown): Promise<Com
       transaction.set(history.doc(historyEntryId(result.snapshot, command.operationId)), { ...comparison, generation: result.snapshot.metadata!.generation });
     }
     // A blocked receipt fixes the identity but may advance after its dependencies acknowledge.
-    transaction.set(commandReceiptRef, serializeReceipt(receipt));
+    transaction.set(commandReceiptRef, receipt.stored);
+    receipt.parts?.forEach((json, index) => transaction.set(tagReceiptPartRef(commandReceiptRef, index), { json }));
     return result;
   });
   const tag = deletedTag as string | null;

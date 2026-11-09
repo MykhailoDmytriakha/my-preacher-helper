@@ -5,7 +5,7 @@ import { equalValues, object } from './fieldValues';
 import { matchesRowDetailBirth } from './rowDetailAction';
 import { knownRowDetailPredecessor } from './rowDetailCapture';
 import { boundedRowId, existingRowField, isRowChange, matchesRowAction, replaceExistingRowField } from './rowFieldAction';
-import { encodeTagMembershipAction, isTagMembershipName, MAX_TAG_MEMBERSHIP_PROOFS } from './tagMembershipOrder';
+import { encodeTagMembershipAction, isTagMembershipName } from './tagMembershipOrder';
 
 import type { ActionTime } from './actionClock';
 import type { CommitRequest } from './commits';
@@ -103,7 +103,7 @@ export function captureThoughtTagActions(baseline: ResourceSnapshot, predecessor
   if (rowCreatedAt === undefined || existingRowField(draft?.thoughts, rowId, THOUGHT_TAG_BIRTH) !== rowCreatedAt || !previous || !next) return undefined;
   const before = new Set(previous), after = new Set(next);
   const changed = [...new Set([...previous, ...next])].filter(tag => ordinaryThoughtTag(tag) && before.has(tag) !== after.has(tag));
-  if (!changed.length || changed.length > MAX_TAG_MEMBERSHIP_PROOFS) return undefined;
+  if (!changed.length) return undefined;
   const requests = new Map(records.map(request => [request.id, request]));
   return changed.map(tag => {
     const present = before.has(tag);

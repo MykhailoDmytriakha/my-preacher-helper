@@ -23,7 +23,6 @@ type Decision = { kind: 'keep' | 'uncertain' }
   | { kind: 'stamp'; time: ActionTime | null; causal: boolean }
   | { kind: 'ordered'; incomingWins: boolean; incomingTime: ActionTime; storedTime: ActionTime };
 
-export const MAX_TAG_MEMBERSHIP_PROOFS = 64;
 export const MAX_INLINE_TAG_NAME_LENGTH = 256;
 
 export const isTagMembershipName = (tag: unknown): tag is string => typeof tag === 'string' && tag.trim().length > 0;

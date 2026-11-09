@@ -3,8 +3,9 @@ import { changeTagMembership, documentTagChange, documentTagCollection, document
 import { object } from './fieldValues';
 import { isValidIdentifier } from './protocol';
 import { proofRevision, rowConflictValue } from './rowFieldAction';
-import { decideTagMembership, isTagMembershipName, MAX_TAG_MEMBERSHIP_PROOFS, readTagMembershipName } from './tagMembershipOrder';
+import { decideTagMembership, isTagMembershipName, readTagMembershipName } from './tagMembershipOrder';
 import { readTagProofIdentity, tagProofIdentity, tagProofKey } from './tagProofIdentity.server';
+import { readTagProofStorage, retainTagProofStorage } from './tagProofStorage.server';
 
 import type { DocumentTagHistoryEntry } from './documentTagMembership';
 import type { TagMembershipAction, TagMembershipProof } from './tagMembershipOrder';
@@ -17,8 +18,7 @@ type TagOrder = { command: DataCommand; uncertain: ConflictDetail[]; displaced: 
 
 function readProofs(raw: unknown, generation: string) {
   const stored = object(raw) && raw.generation === generation ? raw.tagMembershipProofs : undefined;
-  const floor = object(stored) && proofRevision(stored.floor) ? stored.floor : 0;
-  const entries = object(stored) && Array.isArray(stored.entries) ? stored.entries.slice(0, MAX_TAG_MEMBERSHIP_PROOFS) : [];
+  const { floor, entries } = readTagProofStorage(stored);
   const proofs = new Map<string, Proof>();
   for (const item of entries) {
     if (!object(item) || typeof item.present !== 'boolean' || !proofRevision(item.revision)
@@ -32,7 +32,7 @@ function readProofs(raw: unknown, generation: string) {
 }
 
 function readActions(raw: unknown, change: FieldChange, source: FieldChange, revision: number, serverMs: number): TagMembershipAction[] {
-  if (!Array.isArray(raw) || raw.length > MAX_TAG_MEMBERSHIP_PROOFS) return [];
+  if (!Array.isArray(raw)) return [];
   const actions = new Map<string, TagMembershipAction | undefined>();
   for (const item of raw) {
     if (!object(item) || typeof item.before !== 'boolean' || typeof item.after !== 'boolean'
@@ -110,7 +110,6 @@ export function metadataAfterDocumentTags(snapshot: ResourceSnapshot, raw: Recor
   for (const [key, proof] of stored.proofs) {
     if (!recorded.has(key) && currentKeys.has(key) === proof.present) recorded.set(key, proof);
   }
-  const entries = [...recorded.values()];
-  const floor = entries.slice(MAX_TAG_MEMBERSHIP_PROOFS).reduce((value, item) => Math.max(value, item.revision), stored.floor);
-  return entries.length || floor ? { ...metadata, tagMembershipProofs: { entries: entries.slice(0, MAX_TAG_MEMBERSHIP_PROOFS), floor } } : metadata;
+  const retained = retainTagProofStorage(recorded.values(), stored.floor, value, metadata);
+  return retained ? { ...metadata, tagMembershipProofs: retained } : metadata;
 }

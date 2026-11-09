@@ -22,6 +22,8 @@ For an engine-owned collection, write through the public facade in `frontend/app
 
 For an exact action about a long tag, refer to its index on the original command side where membership is present. The server resolves the original string before testing the transformed membership. A thought also checks the row ID and creation identity. A storage digest bounds retained proof size without changing the displayed tag or history. Keep old literal evidence readable. The ordinary command byte limit still applies.
 
+For a batch of tag edits, the ordinary command byte limit controls admission. Bound retained evidence separately with shared stamps and a storage budget. If the proof expires, keep an exact comparison. Oversized comparison receipts may refer to tags in the hash-verified original command and store the result in authenticated, integrity-checked parts. Split large displaced history into bounded records rather than cutting off the last action.
+
 ## Legacy paths (unconverted collections only)
 
 These compatibility paths are not templates for new features.

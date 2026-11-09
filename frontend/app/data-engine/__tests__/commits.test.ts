@@ -1,7 +1,7 @@
 import { initializeCommit } from '../atomicCommits';
 import { collectionDocumentViews } from '../collectionView';
 import { CommitQueue, createMemoryCommitStore } from '../commits';
-import { captureDocumentTags } from '../documentTagCapture';
+import { captureDocumentTags, makeDocumentTagIntents } from '../documentTagCapture';
 import { createIndexedDbCheckpoints } from '../checkpoint.client';
 import { createIndexedDbCommitStore } from '../commits.client';
 import { installStorageHarness } from './storageHarness';
@@ -499,6 +499,25 @@ describe('Durable commit requests', () => {
     const [sent] = jest.mocked(s.transport.send).mock.calls[0];
     expect(JSON.stringify(sent).length).toBeLessThan(1024 * 1024);
     expect(sent).toMatchObject({ tagMembershipActions: [{ tagIndex: 0, before: false, after: true, observedRevision: 1, time: null }] });
+  });
+
+  it('keeps every prayer-tag action in the durable queue after a Save with more than 64 changes', async () => {
+    const opening: ResourceSnapshot = {
+      resource: { collection: 'prayerRequests', id: 'prayer' },
+      metadata: { protocol: 1, generation: 'prayer', revision: 1, deleted: false },
+      value: { userId: 'owner', title: 'Prayer', description: 'Keep the context', tags: [], status: 'active', updates: [] },
+    };
+    const tags = Array.from({ length: 65 }, (_, index) => 'Tag ' + index);
+    const tagMembership = makeDocumentTagIntents([], tags, { generation: 'prayer', revision: 1 }, null);
+    expect(tagMembership).toHaveLength(65);
+    const s = setup({ opening });
+    const editor = await s.makeEngine().openEditor(opening.resource, 'prayer');
+    await editor.commit(current => ({ ...current, tags }), { kind: 'document-tags', tagMembership: tagMembership! });
+    const restarted = s.makeQueue().queue;
+    const [request] = await restarted.list();
+    expect(request.tagMembershipActions?.map(action => action.tag)).toEqual(tags);
+    await restarted.drain(true);
+    expect(s.transport.send).toHaveBeenCalledWith(expect.objectContaining({ tagMembershipActions: request.tagMembershipActions }));
   });
 
   it('retains the displayed note tag predecessor after the acknowledged request is collected', () => {

@@ -2219,6 +2219,88 @@ describe('transactional DataEngine server', () => {
       expect(result.kind === 'acknowledged' && result.snapshot.value?.tags instanceof Array && result.snapshot.value.tags[0] === name).toBe(true);
     });
 
+    it.each([64, 65, 512])('keeps the later note-tag choice and all siblings in a %s-change batch with the contested tag last', async count => {
+      const tags = [...Array.from({ length: count - 1 }, (_, index) => 'QA Batch ' + index), tag];
+      const desk = tagEdit('desk', tag, false, true, 80);
+      expect((await seed([])).kind).toBe('acknowledged');
+      expect((await processCommand(owner, { ...desk, changes: [{ path: ['tags'], before: value([]), after: value(tags) }],
+        tagMembershipActions: tags.map(name => ({ ...desk.tagMembershipActions[0], tag: name })) })).kind).toBe('acknowledged');
+      expect((await processCommand(owner, tagEdit('phone-first', tag, false, true, 15))).kind).toBe('acknowledged');
+      await expect(processCommand(owner, tagEdit('phone-second', tag, true, false, 50, 'phone-first'))).resolves.toMatchObject({
+        kind: 'acknowledged', snapshot: { value: { tags, content: words } },
+      });
+    });
+
+    it('replays every exact comparison in a large tag conflict receipt', async () => {
+      const names = Array.from({ length: 1500 }, (_, index) => 'Tag ' + index + ' ' + 'x'.repeat(350));
+      expect((await seed(names)).kind).toBe('acknowledged');
+      const updateTags = (operationId: string, before: string[], after: string[]) => ({
+        ...base, operationId, kind: 'update', generation: 'tag-note-generation',
+        changes: [{ path: ['tags'], before: value(before), after: value(after) }],
+      });
+      expect((await processCommand(owner, updateTags('desk-clears', names, []))).kind).toBe('acknowledged');
+      expect((await processCommand(owner, updateTags('desk-restores', [], names))).kind).toBe('acknowledged');
+      const older = { ...updateTags('phone-removes-batch', names, []), tagMembershipActions: names.map((_name, tagIndex) => ({
+        tagIndex, before: true, after: false, observedRevision: 1,
+        time: { earliestMs: 1_800_000_000_050, latestMs: 1_800_000_000_055 },
+      })) };
+      expect(Buffer.byteLength(JSON.stringify(older))).toBeLessThan(MAX_COMMAND_BYTES);
+      const result = await processCommand(owner, older);
+      expect(result.kind).toBe('conflict');
+      if (result.kind !== 'conflict') return;
+      expect(result.conflicts).toHaveLength(names.length);
+      expect(result.conflicts.at(-1)?.path).toEqual(['tags', 'string:' + names.at(-1)]);
+      expect(result.snapshot.value?.tags).toEqual(names);
+      await expect(processCommand(owner, older)).resolves.toEqual(result);
+    });
+
+    it('replays a tag comparison when the full snapshot and compact choices need separate storage', async () => {
+      const names = Array.from({ length: 6000 }, (_, index) => 'N' + index);
+      const body = 'x'.repeat(930_000);
+      const opened = await processCommand(owner, { ...base, operationId: 'tag-note-generation', kind: 'create', generation: null,
+        value: { userId: owner, title: 'A nearly full note', content: body, type: 'note', tags: names, scriptureRefs: [],
+          materialIds: [], isDraft: true, createdAt: '2026-11-08T00:00:00.000Z', updatedAt: '2026-11-08T00:00:00.000Z' },
+      });
+      expect(opened.kind).toBe('acknowledged');
+      const edit = (operationId: string, before: string[], after: string[]) => ({ ...base, operationId, kind: 'update', generation: 'tag-note-generation',
+        changes: [{ path: ['tags'], before: value(before), after: value(after) }] });
+      expect((await processCommand(owner, edit('desk-clears-nearly-full-note', names, []))).kind).toBe('acknowledged');
+      expect((await processCommand(owner, edit('desk-restores-nearly-full-note', [], names))).kind).toBe('acknowledged');
+      const older = { ...edit('phone-clears-nearly-full-note', names, []), tagMembershipActions: names.map((_name, tagIndex) => ({
+        tagIndex, before: true, after: false, observedRevision: 1, time: { earliestMs: 1_800_000_000_050, latestMs: 1_800_000_000_055 },
+      })) };
+      expect(Buffer.byteLength(JSON.stringify(older))).toBeLessThan(MAX_COMMAND_BYTES);
+      const result = await processCommand(owner, older);
+      expect(result.kind).toBe('conflict');
+      if (result.kind !== 'conflict') return;
+      expect(result.conflicts).toHaveLength(names.length);
+      expect(result.snapshot.value?.content === body).toBe(true);
+      await expect(processCommand(owner, older)).resolves.toEqual(result);
+      const storedParts = [...documents.keys()].filter(key => key.includes('/_tagParts/')).sort();
+      expect(storedParts.length).toBeGreaterThan(1);
+      storedParts.forEach((key, index) => documents.set(key, { json: index ? '' : JSON.stringify({
+        kind: 'conflict', operationId: older.operationId, tagPathRefs: true, conflicts: [],
+      }) }));
+      await expect(processCommand(owner, older)).rejects.toMatchObject({ code: 'invalid-stored-receipt', status: 409 });
+    });
+
+    it('retains all displaced names in a large tag history across bounded entries', async () => {
+      const names = ['A', 'B', 'C'].map(prefix => prefix + 'x'.repeat(270_000));
+      expect((await seed([])).kind).toBe('acknowledged');
+      const updateTags = (operationId: string, before: string[], after: string[], adding: boolean, offset: number) => ({
+        ...base, operationId, kind: 'update', generation: 'tag-note-generation',
+        changes: [{ path: ['tags'], before: value(before), after: value(after) }],
+        tagMembershipActions: names.map((_name, tagIndex) => ({ tagIndex, before: !adding, after: adding, observedRevision: 1,
+          time: { earliestMs: 1_800_000_000_000 + offset, latestMs: 1_800_000_000_005 + offset },
+        })),
+      });
+      expect((await processCommand(owner, updateTags('desk-adds-long-tags', [], names, true, 80))).kind).toBe('acknowledged');
+      expect((await processCommand(owner, updateTags('phone-removes-long-tags', names, [], false, 50))).kind).toBe('acknowledged');
+      const history = await listDocumentTagHistory(owner, resource.collection, resource.id, 'tag-note-generation');
+      expect(history.entries.length).toBeGreaterThan(1);
+      expect(history.entries.flatMap(entry => entry.tags.map(action => action.tag)).sort()).toEqual(names);
+    });
+
     it('keeps displaced tag decisions visible only to the current document owner and generation', async () => {
       expect((await seed([])).kind).toBe('acknowledged');
       await processCommand(owner, tagEdit('desk', tag, false, true, 80));
@@ -2392,6 +2474,18 @@ describe('transactional DataEngine server', () => {
       expect((await processCommand(owner, tagEdit('phone-first', name, false, true, 15))).kind).toBe('acknowledged');
       await expect(processCommand(owner, tagEdit('phone-second', name, true, false, 50, 'phone-first'))).resolves.toMatchObject({
         kind: 'acknowledged', snapshot: { value: { tags: [name], description, updates: [update] } },
+      });
+    });
+
+    it.each([64, 65, 512])('keeps the later prayer-tag choice and all siblings in a %s-change batch with the contested tag last', async count => {
+      const tags = [...Array.from({ length: count - 1 }, (_, index) => 'QA Batch ' + index), tag];
+      const desk = tagEdit('desk', tag, false, true, 80);
+      expect((await seed([])).kind).toBe('acknowledged');
+      expect((await processCommand(owner, { ...desk, changes: [{ path: ['tags'], before: value([]), after: value(tags) }],
+        tagMembershipActions: tags.map(name => ({ ...desk.tagMembershipActions[0], tag: name })) })).kind).toBe('acknowledged');
+      expect((await processCommand(owner, tagEdit('phone-first', tag, false, true, 15))).kind).toBe('acknowledged');
+      await expect(processCommand(owner, tagEdit('phone-second', tag, true, false, 50, 'phone-first'))).resolves.toMatchObject({
+        kind: 'acknowledged', snapshot: { value: { tags, description, updates: [update] } },
       });
     });
 
@@ -2882,6 +2976,19 @@ describe('transactional DataEngine server', () => {
       await expect(processCommand(owner, indexedSave('phone-indexed-add', name, false, true, 15))).resolves.toMatchObject({ kind: 'acknowledged' });
       await expect(processCommand(owner, indexedSave('phone-indexed-remove', name, true, false, 50, 'phone-indexed-add'))).resolves.toMatchObject({
         kind: 'acknowledged', snapshot: { value: { thoughts: [thought([name]), neighbor] } },
+      });
+    });
+
+    it.each([64, 65, 512])('keeps the latest ordinary thought tag and its siblings after a %s-change batch with the contested tag last', async count => {
+      const tags = [...Array.from({ length: count - 1 }, (_, index) => 'QA Batch ' + index), alpha];
+      const owner = await seed();
+      const desk = saveTag('desk', alpha, false, true, 80);
+      expect(await processCommand(owner, { ...desk, changes: [{ path: ['thoughts'],
+        before: { exists: true, value: [thought([]), neighbor] }, after: { exists: true, value: [thought(tags), neighbor] } }],
+        thoughtTagActions: tags.map(tag => ({ ...desk.thoughtTagActions[0], tag })) })).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(owner, saveTag('phone-first', alpha, false, true, 15))).toMatchObject({ kind: 'acknowledged' });
+      await expect(processCommand(owner, saveTag('phone-second', alpha, true, false, 50, 'phone-first'))).resolves.toMatchObject({
+        kind: 'acknowledged', snapshot: { value: { thoughts: [thought(tags), neighbor] } },
       });
     });
 

@@ -4,8 +4,9 @@ import { isValidIdentifier } from './protocol';
 import { matchesRowDetailBirth, rowDetailConflict } from './rowDetailAction';
 import { boundedRowId, existingRowField, isRowChange, proofRevision } from './rowFieldAction';
 import { orderConcurrentRowField, readRowObservation } from './rowFieldOrder.server';
-import { decideTagMembership, MAX_TAG_MEMBERSHIP_PROOFS, readTagMembershipName } from './tagMembershipOrder';
+import { decideTagMembership, readTagMembershipName } from './tagMembershipOrder';
 import { readTagProofIdentity, tagProofIdentity, tagProofKey } from './tagProofIdentity.server';
+import { readTagProofStorage, retainTagProofStorage } from './tagProofStorage.server';
 import { ordinaryThoughtTag, THOUGHT_TAG_BIRTH, thoughtTagTarget, thoughtTags } from './thoughtTagAction';
 
 import type { RowDetailHistoryEntry } from './rowDetailAction';
@@ -25,8 +26,7 @@ const key = ({ rowId, rowCreatedAt }: ThoughtRow, identity: string | TagProofIde
 
 function readProofs(raw: unknown, generation: string) {
   const stored = object(raw) && raw.generation === generation ? raw.thoughtTagProofs : undefined;
-  const floor = object(stored) && proofRevision(stored.floor) ? stored.floor : 0;
-  const entries = object(stored) && Array.isArray(stored.entries) ? stored.entries.slice(0, MAX_TAG_MEMBERSHIP_PROOFS) : [];
+  const { floor, entries } = readTagProofStorage(stored);
   const proofs = entries.flatMap((item): Proof[] => {
     if (!object(item) || !boundedRowId(item.rowId) || !THOUGHT_TAG_BIRTH.accepts(item.rowCreatedAt)
       || typeof item.present !== 'boolean' || !proofRevision(item.revision)
@@ -40,7 +40,7 @@ function readProofs(raw: unknown, generation: string) {
 }
 
 function readActions(command: Update, source: Update, revision: number, serverMs: number) {
-  if (!Array.isArray(source.thoughtTagActions) || source.thoughtTagActions.length > MAX_TAG_MEMBERSHIP_PROOFS) return [];
+  if (!Array.isArray(source.thoughtTagActions)) return [];
   // Placement repair can move structural tags inside the array. The wire index names the original side.
   const change = source.changes.find(item => isRowChange(item, THOUGHT_TAG_BIRTH));
   if (!change) return [];
@@ -140,7 +140,6 @@ export function metadataAfterThoughtTags(snapshot: ResourceSnapshot, raw: Record
     const id = key(proof, proof);
     if (keys.has(tagProofKey(proof)) === proof.present && !recorded.has(id)) recorded.set(id, proof);
   }
-  const retained = [...recorded.values()];
-  const floor = retained.slice(MAX_TAG_MEMBERSHIP_PROOFS).reduce((value, item) => Math.max(value, item.revision), stored.floor);
-  return retained.length || floor ? { ...metadata, thoughtTagProofs: { entries: retained.slice(0, MAX_TAG_MEMBERSHIP_PROOFS), floor } } : metadata;
+  const retained = retainTagProofStorage(recorded.values(), stored.floor, snapshot.value, metadata);
+  return retained ? { ...metadata, thoughtTagProofs: retained } : metadata;
 }
