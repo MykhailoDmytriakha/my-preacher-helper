@@ -567,7 +567,7 @@ export class CommitQueue {
     const priorOutlineMove = outlineMove && outlineMovePredecessor(records, predecessor, outlineMove);
     const planTextEvidence = baseline.resource.collection === 'sermons' ? captureSermonPlan(baseline, intent.draft, predecessor) : undefined;
     const dateTarget = datedRowTarget(baseline.resource.collection);
-    const action = dateTarget && captureDatedRowAction(baseline, predecessor, intent.draft, frozenOptions?.[dateTarget.evidence]);
+    const action = dateTarget && captureDatedRowAction(baseline, predecessor, intent.draft, frozenOptions?.[dateTarget.evidence], records);
     const mark = captureBibleMarkStroke(baseline, predecessor, intent.draft, editorAction?.kind === 'bible-mark-stroke' ? editorAction.time : undefined);
     const title = captureServiceOrderTitle(baseline, intent.draft, editorAction?.kind === 'service-order-title' ? editorAction.title : undefined);
     const stepActions = captureServiceOrderStep(baseline, predecessor, intent.draft, step, records);

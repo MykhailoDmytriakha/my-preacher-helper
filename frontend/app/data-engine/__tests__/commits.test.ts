@@ -419,6 +419,43 @@ describe('Durable commit requests', () => {
     }));
   });
 
+  it.each([
+    { collection: 'groups', field: 'meetingDates', evidence: 'meetingDateAction', initialDay: '2026-12-13' },
+    { collection: 'sermons', field: 'preachDates', evidence: 'preachDateAction', initialDay: '2026-12-13' },
+    { collection: 'groups', field: 'meetingDates', evidence: 'meetingDateAction', initialDay: '2026-12-13T00:00:00.000Z' },
+  ] as const)('sends the exact previous date action through a neighboring save in $collection from $initialDay', async spec => {
+    const { collection, field, evidence, initialDay } = spec;
+    const row = { id: 'date', date: initialDay, createdAt: '2026-11-08',
+      ...(collection === 'sermons' ? { status: 'planned', church: { id: 'church', name: 'Church' }, notes: 'Notes' } : { location: 'Main room' }),
+    };
+    const base: ResourceSnapshot = {
+      resource: { collection, id: 'doc' },
+      value: { userId: 'owner', title: 'Opening', [field]: [row] },
+      metadata: { protocol: 1, generation: 'doc', revision: 1, deleted: false },
+    };
+    const s = setup({ opening: base });
+    const { queue } = s.makeQueue();
+    const editor = new DataSession(base);
+    const firstDate = '2026-12-20';
+    const next = { ...base.value, [field]: [{ ...row, date: firstDate }] };
+    const time = { earliestMs: 1_800_000_000_020, latestMs: 1_800_000_000_025 };
+    editor.edit(next);
+    const first = (await queue.save('date', editor.checkpoint(), { [evidence]: { rowId: row.id, after: firstDate, time } }))!;
+    const neighbor = collection === 'sermons' ? { ...row, notes: 'Other words' } : row;
+    const title = collection === 'groups' ? 'Other words' : 'Opening';
+    editor.edit({ ...next, title, [field]: [{ ...neighbor, date: firstDate }] });
+    const middle = (await queue.save('date', editor.checkpoint(), { predecessorId: first.id }))!;
+    editor.edit({ ...next, title, [field]: [{ ...neighbor, date: '' }] });
+    const last = (await queue.save('date', editor.checkpoint(), {
+      predecessorId: middle.id, [evidence]: { rowId: row.id, after: '', time },
+    }))!;
+    await s.makeQueue().queue.drain(true);
+    expect(s.transport.send).toHaveBeenCalledWith(expect.objectContaining({
+      operationId: last.id,
+      [evidence]: { rowId: row.id, before: firstDate, after: '', observedRevision: 1, time, predecessorOperationId: first.id },
+    }));
+  });
+
   it('sends the exact meeting action even if its predecessor ACK already shows the date the person chose', async () => {
     const s = setup();
     const { queue } = s.makeQueue();

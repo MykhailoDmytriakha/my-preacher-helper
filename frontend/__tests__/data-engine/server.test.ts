@@ -1166,6 +1166,39 @@ describe('transactional DataEngine server', () => {
   });
 
   it.each([
+    { scenario: 'the exact previous date edit', intervening: false, predecessor: 'first-date', kind: 'acknowledged' },
+    { scenario: 'a different operation', intervening: false, predecessor: 'different-date', kind: 'conflict' },
+    { scenario: 'a different writer returning to the same date', intervening: true, predecessor: 'first-date', kind: 'conflict' },
+  ])('orders a second queued meeting date with $scenario', async ({ intervening, predecessor, kind }) => {
+    const resource = { collection: 'groups', id: 'queued-meeting' };
+    const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] };
+    const now = '2026-11-08T00:00:00.000Z';
+    const row = { id: 'meeting', date: '2026-12-13', location: 'Main room', audience: 'Leaders', createdAt: now };
+    const first = { ...row, date: '2026-12-20' };
+    const other = { ...row, id: 'follow-up', date: '2027-01-03' };
+    expect((await processCommand(base.owner, { ...base, kind: 'create', operationId: 'seed', generation: null,
+      value: { userId: base.owner, title: 'Group', status: 'draft', flow: [], templates: [], meetingDates: [row, other], createdAt: now, updatedAt: now },
+    })).kind).toBe('acknowledged');
+    const save = (operationId: string, before: typeof row, after: typeof row, revision: number, offset: number, predecessorOperationId?: string) =>
+      processCommand(base.owner, { ...base, kind: 'update', operationId, generation: 'seed',
+        changes: [{ path: ['meetingDates'], before: { exists: true, value: [before, other] }, after: { exists: true, value: [after, other] } }],
+        meetingDateAction: { rowId: row.id, before: before.date, after: after.date, observedRevision: revision,
+          time: { earliestMs: 1_800_000_000_000 + offset, latestMs: 1_800_000_000_010 + offset },
+          ...(predecessorOperationId && { predecessorOperationId }) },
+      });
+    expect((await save('first-date', row, first, 1, 40)).kind).toBe('acknowledged');
+    if (intervening) {
+      expect((await save('different-date', first, row, 2, 42)).kind).toBe('acknowledged');
+      expect((await save('return-date', row, first, 3, 44)).kind).toBe('acknowledged');
+    }
+    const answer = await save('second-date', first, { ...first, date: '' }, 1, 45, predecessor);
+    expect(answer).toMatchObject({ kind, snapshot: { value: {
+      meetingDates: [{ ...first, date: kind === 'acknowledged' ? '' : first.date }, other],
+    } } });
+    expect((await listMeetingDateHistory(base.owner, resource.id, 'seed')).entries).toEqual([]);
+  });
+
+  it.each([
     { field: 'location', offset: 20, initial: 'Main room', desk: 'Side room', phone: '', winner: 'Side room', kind: 'acknowledged' },
     { field: 'location', offset: 60, initial: 'Main room', desk: 'Side room', phone: '', winner: '', kind: 'acknowledged' },
     { field: 'audience', offset: 20, initial: undefined, desk: 'Leaders', phone: 'All', winner: 'Leaders', kind: 'acknowledged' },
@@ -4804,6 +4837,26 @@ describe('transactional DataEngine server', () => {
     expect(await listPreachDateHistory('owner-1', resource.id, 'date-clear-seed')).toMatchObject({
       entries: [{ rowId: row.id, date: earlier, winnerDate: expected }],
     });
+  });
+
+  it('uses a proven local preaching date predecessor even when calibrated times appear reversed', async () => {
+    const row = { id: 'date', date: '2026-12-13', status: 'planned', createdAt: '2026-11-01T00:00:00.000Z',
+      church: { id: 'church', name: 'Church' }, notes: 'Keep my preparation' };
+    const seed = create('queued-preach-date') as Extract<DataCommand, { kind: 'create' }>;
+    expect((await processCommand('owner-1', { ...seed, value: { ...seed.value, preachDates: [row] } })).kind).toBe('acknowledged');
+    const save = (operationId: string, before: string, after: string, offset: number, predecessorOperationId?: string) =>
+      processCommand('owner-1', { ...update(operationId, seed.operationId),
+        changes: [{ path: ['preachDates'], before: { exists: true, value: [{ ...row, date: before }] },
+          after: { exists: true, value: [{ ...row, date: after }] } }],
+        preachDateAction: { rowId: row.id, before, after, observedRevision: 1,
+          time: { earliestMs: 1_800_000_000_000 + offset, latestMs: 1_800_000_000_005 + offset },
+          ...(predecessorOperationId && { predecessorOperationId }) },
+      });
+    expect((await save('first-date', row.date, '2026-12-20', 60)).kind).toBe('acknowledged');
+    expect(await save('second-date', '2026-12-20', '', 40, 'first-date')).toMatchObject({
+      kind: 'acknowledged', snapshot: { value: { preachDates: [{ ...row, date: '' }] } },
+    });
+    expect((await listPreachDateHistory('owner-1', seed.resource.id, seed.operationId)).entries).toEqual([]);
   });
 
   it.each(['clear', 'mark'] as const)('reports the exact day conflict when a %s arrives after the other action', async late => {
