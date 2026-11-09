@@ -404,10 +404,12 @@ export function AnalysisEditor({ opening, text, bookId, bible, locale, marks: le
             {relations.menuNode}
           </div>
         </div>
-        <aside className="hidden w-80 shrink-0 flex-col gap-3 overflow-auto border-l border-gray-200 p-5 text-sm dark:border-gray-800 lg:flex">
-          <AnalysisPanel mode={mode} state={state} selected={selected} short={short} bare={bare} />
-          {sermons ? <div className="mt-3 border-t border-gray-200 pt-4 dark:border-gray-800"><AnalysisSermonsPanel {...sermons} /></div> : null}
-          {message ? <div className={`rounded-xl px-3 py-2 leading-relaxed ${message.warn ? 'bg-rose-50 text-rose-800 dark:bg-rose-950/50 dark:text-rose-200' : 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-200'}`}>{message.text}</div> : null}
+        <aside className="hidden w-80 shrink-0 flex-col gap-3 overflow-hidden border-l border-gray-200 p-5 text-sm dark:border-gray-800 lg:flex">
+          {message ? <div className={`shrink-0 rounded-xl px-3 py-2 leading-relaxed ${message.warn ? 'bg-rose-50 text-rose-800 dark:bg-rose-950/50 dark:text-rose-200' : 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-200'}`}>{message.text}</div> : null}
+          <div className="flex min-h-0 flex-col gap-3 overflow-auto">
+            <AnalysisPanel mode={mode} state={state} selected={selected} short={short} bare={bare} />
+            {sermons ? <div className="mt-3 border-t border-gray-200 pt-4 dark:border-gray-800"><AnalysisSermonsPanel {...sermons} /></div> : null}
+          </div>
         </aside>
       </div>
       {/* Over the text, at the bottom: what the analysis says where no side panel holds it, and a phone's capsule. */}

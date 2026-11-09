@@ -211,14 +211,14 @@ describe('the analysis on a phone', () => {
  * BUG-20261107-analysis-messages-hidden-below-lg: what the analysis says — a tie made or refused — stood only in the side
  * panel, which a phone and an iPad upright do not have; a refused drag said nothing at all.
  */
-describe('what the analysis says, where no side panel is', () => {
+describe('what the analysis says', () => {
   afterEach(() => { jest.useRealTimers(); });
 
-  const dropTheDotOnNothing = () => {
+  const dropTheDotOnNothing = (pointerType = 'touch') => {
     const dot = document.querySelector<HTMLElement>('[data-handle="3"]')!;
-    fireEvent.pointerDown(dot, { pointerType: 'touch', button: 0, clientX: 10, clientY: 10 });
-    fireEvent.pointerMove(dot, { pointerType: 'touch', clientX: 80, clientY: 90 });
-    fireEvent.pointerUp(dot, { pointerType: 'touch', clientX: 80, clientY: 90 });
+    fireEvent.pointerDown(dot, { pointerType, button: 0, clientX: 10, clientY: 10 });
+    fireEvent.pointerMove(dot, { pointerType, clientX: 80, clientY: 90 });
+    fireEvent.pointerUp(dot, { pointerType, clientX: 80, clientY: 90 });
   };
 
   it.each([[390], [820]])('is said over the text at %i px, and goes by itself', (screenWidth) => {
@@ -231,12 +231,22 @@ describe('what the analysis says, where no side panel is', () => {
     expect(screen.queryByText('analysis.tie.miss')).not.toBeInTheDocument();
   });
 
-  it('stays in the side panel on a wide screen, not said twice', () => {
+  it('shows a refused desktop drag above the independently scrollable help', () => {
     width = 1280;
+    current = { ...ANALYSIS, analysis: { ...ANALYSIS.analysis!, links: { 3: 1 }, drawn: [3] } };
     renderEditor(true);
-    dropTheDotOnNothing();
-    expect(screen.getAllByText('analysis.tie.miss')).toHaveLength(1);
-    expect(screen.queryAllByRole('status').filter((status) => status.textContent?.includes('analysis.tie.miss'))).toHaveLength(0);
+    const help = screen.getByTestId('analysis-help-toggle');
+    expect(help).toHaveAttribute('aria-expanded', 'true');
+
+    dropTheDotOnNothing('mouse');
+
+    const warning = screen.getByText('analysis.tie.has');
+    const sidebar = screen.getByRole('complementary');
+    expect(sidebar).toContainElement(warning);
+    expect(sidebar.firstElementChild).toBe(warning);
+    expect(warning.nextElementSibling).toContainElement(help);
+    expect(warning.nextElementSibling).toHaveClass('overflow-auto');
+    expect(commit).not.toHaveBeenCalled();
   });
 });
 
