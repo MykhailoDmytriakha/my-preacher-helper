@@ -1,5 +1,5 @@
-import { analysisLineSpacing, relationArrows, tieArrows, type Box, type Geometry, type Point } from '@/components/bible/analysis/analysisGeometry';
-import { partOf, needsArrow, type AnalysisState, type Relation } from '@/utils/passageAnalysis';
+import { analysisLineSpacing, relationArrows, textMargin, tieArrows, type Box, type Geometry, type Point } from '@/components/bible/analysis/analysisGeometry';
+import { analysisState, needsArrow, partOf, type AnalysisState, type Relation } from '@/utils/passageAnalysis';
 
 /*
  * The owner's 1 John 3:22–24 as on his screenshot of 30.10, with «Все связи» on: ten lines, two level arrows (into
@@ -249,4 +249,29 @@ it('keeps the actual later tie lane free when its target part wraps across two r
   expect(lying(segments(state, laidOut, 12))).toEqual([]);
   expect(onText(segments(state, laidOut, 12), laidOut)).toEqual([]);
   expect(analysisLineSpacing(state, laidOut, 12)).toEqual(analysisLineSpacing(state, on, 12));
+});
+
+describe('the remove button of a tie', () => {
+  it('keeps the full untie button clear of the dot and step buttons without rerouting the tie', () => {
+    const state = analysisState({ bible: 'rst', words: 8, cuts: [4], links: { 0: 4 }, drawn: [0], relations: {} }, 8);
+    const geometry = {
+      words: { '0': { x: 14, y: 5, w: 30, h: 26 }, '4': { x: 40, y: 46, w: 16, h: 18 } },
+      leads: {}, mids: {}, flags: {}, width: 920, height: 90,
+    };
+    const [original] = tieArrows(state, geometry);
+    const controls = [
+      { x: -8, y: 10, w: 16, h: 16 },
+      { x: -57, y: 5, w: 48, h: 24 },
+    ];
+    const measured = { ...geometry, controls };
+    const [arrow] = tieArrows(state, measured);
+    const button = arrow.mid!;
+    const radius = 11;
+
+    expect(arrow.points).toEqual(original.points);
+    expect(controls.every(({ x, y, w, h }) =>
+      button.x + radius <= x || button.x - radius >= x + w ||
+      button.y + radius <= y || button.y - radius >= y + h)).toBe(true);
+    expect(button.x - radius + textMargin([arrow], 20, true)).toBeGreaterThanOrEqual(6);
+  });
 });

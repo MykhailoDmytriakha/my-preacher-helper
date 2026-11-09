@@ -246,7 +246,12 @@ export function AnalysisEditor({ opening, text, bookId, bible, locale, marks: le
     const target = event.target as HTMLElement;
     if (target.closest('[data-untie]')) return;
     const point = at(event.clientX, event.clientY);
-    const near = target.closest('button') ? null : arrowNear(ties, [point.x, point.y]);
+    // Keep the current tie lit along the guide to a displaced ×, even when the pointer moves slowly.
+    if (untieGuide && point.x >= untieGuide.x && point.x <= untieGuide.upright && Math.abs(point.y - untieGuide.y) <= 7) {
+      clearTimeout(leaveArrow.current);
+      return;
+    }
+    const near = target.closest('button,[data-handle]') ? null : arrowNear(ties, [point.x, point.y]);
     if (near !== null) overArrowOn(near);
     else if (overArrow !== null) overArrowOff();
   };
@@ -284,6 +289,9 @@ export function AnalysisEditor({ opening, text, bookId, bible, locale, marks: le
   }, [drag, geometry, mode, overArrow, selected, state]);
   const ties = mode === 'edit' && !drag ? arrows.filter((arrow) => arrow.start !== undefined) : [];
   const untieAt = ties.find((arrow) => arrow.start === overArrow);
+  const untieUpright = untieAt?.points?.[1][0];
+  const untieGuide = untieAt?.mid && untieUpright !== undefined && untieAt.mid.x < untieUpright
+    ? { ...untieAt.mid, upright: untieUpright } : null;
 
   const wordsOf = (start: number): LineWord[] => {
     const end = partEnd(state, start, total);
@@ -364,7 +372,7 @@ export function AnalysisEditor({ opening, text, bookId, bible, locale, marks: le
             margin. A phone keeps no such margin: its arrows are in the capsule and its verse numbers in the line. Either
             grows as far as the ties' uprights need (`textMargin`). */}
         <div className={`min-w-0 flex-1 overflow-auto ${phone ? 'pb-32 pr-4 pt-[calc(5.5rem+env(safe-area-inset-top))]' : 'pb-24 pr-4 pt-10 sm:pr-12'} ${marks.paneClass}`}
-          style={{ paddingLeft: textMargin(arrows, phone ? 20 : 80) }} onScroll={bar.onScroll} onClick={pressBackground} onMouseMove={pointArrows} onMouseLeave={overArrowOff} {...marks.strokeEvents}>
+          style={{ paddingLeft: textMargin(arrows, phone ? 20 : 80, mode === 'edit') }} onScroll={bar.onScroll} onClick={pressBackground} onMouseMove={pointArrows} onMouseLeave={overArrowOff} {...marks.strokeEvents}>
           <AnalysisNotices creation={note} ready={note.ready} changedText={note.changedText} sync={note.sync} refused={note.refused} onSaveAgain={note.saveAgain} notApplied={note.notApplied} />
           {marksStatus}
           <div ref={contentRef} className="relative flow-root">
@@ -387,6 +395,11 @@ export function AnalysisEditor({ opening, text, bookId, bible, locale, marks: le
                 flags={relations.flagsOf(start)} painting={marks.painting} pointed={mode === 'edit' && !marks.painting ? pointed : null}
                 onWord={pressWord} onCut={cutWord} onGlue={glueLine} onHoverWord={relations.pointWord} />
             ))}
+            {untieGuide ? (
+              <svg aria-hidden="true" width={geometry.width} height={geometry.height} className="pointer-events-none absolute left-0 top-0 overflow-visible">
+                <path d={`M ${untieGuide.x} ${untieGuide.y} H ${untieGuide.upright}`} fill="none" stroke={ARROW.lit} strokeWidth={1} />
+              </svg>
+            ) : null}
             {untieAt?.mid ? <UntieMark x={untieAt.mid.x} y={untieAt.mid.y} onPress={() => untie(untieAt.start!)} onEnter={() => overArrowOn(untieAt.start!)} onLeave={overArrowOff} /> : null}
             {relations.menuNode}
           </div>

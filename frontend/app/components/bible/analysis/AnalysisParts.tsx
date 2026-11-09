@@ -12,7 +12,7 @@ import { PLACE_DOOR_TONES } from '@/utils/themeColors';
 import { placeTooltipLabel } from '@/utils/tooltipPlacement';
 import { useTranslation } from '@locales/useTranslation';
 
-import { ANALYSIS_LINE_HEIGHT, ANALYSIS_LINE_PADDING, type AnalysisLineSpacing } from './analysisGeometry';
+import { ANALYSIS_LINE_HEIGHT, ANALYSIS_LINE_PADDING, UNTIE_BUTTON_RADIUS, type AnalysisLineSpacing } from './analysisGeometry';
 
 import type { BibleId } from '@/utils/bibles';
 import type { AnalysisWord, CutLevel } from '@/utils/passageAnalysis';
@@ -232,7 +232,7 @@ const wordMarksShown = (shown: boolean) => (shown ? 'inline-flex' : 'hidden grou
  */
 function StepPair({ steps, left, top, shown }: { steps: LineSteps; left: number; top: number; shown: boolean }) {
   return (
-    <span className={`absolute z-10 flex transition-opacity ${shown ? LINE_SHOWN : LINE_ON_HOVER}`} style={{ left, top }}>
+    <span data-line-actions className={`absolute z-10 flex transition-opacity ${shown ? LINE_SHOWN : LINE_ON_HOVER}`} style={{ left, top }}>
       <StepButton side="up" onPress={steps.up} />
       <StepButton side="down" onPress={steps.down} />
     </span>
@@ -240,7 +240,7 @@ function StepPair({ steps, left, top, shown }: { steps: LineSteps; left: number;
 }
 
 /**
- * The × at the middle of a tie's arrow, while the pointer is on the arrow: the tie goes. Under the pointer it turns red
+ * The × at a tie's arrow, while the pointer is on the arrow: the tie goes. Under the pointer it turns red
  * in both themes — the dark theme's own colours took the place of the hover's (the owner, 2026-10-29) — and its name
  * runs to the right: an arrow's upright stands in the margin, where a name centred over it was cut off at the edge.
  */
@@ -248,8 +248,8 @@ export function UntieMark({ x, y, onPress, onEnter, onLeave }: { x: number; y: n
   const { t } = useTranslation();
   return (
     <button type="button" data-untie aria-label={t('analysis.untie')} onClick={(event) => { event.stopPropagation(); onPress(); }} onMouseEnter={onEnter} onMouseLeave={onLeave}
-      className={`group/tip absolute z-30 -ml-[11px] -mt-[11px] inline-flex h-[22px] w-[22px] items-center justify-center ${UNTIE_LOOK} hover:bg-rose-600 hover:text-white hover:shadow-none dark:hover:bg-rose-600 dark:hover:text-white`}
-      style={{ left: x, top: y }}>
+      className={`group/tip absolute z-30 inline-flex items-center justify-center ${UNTIE_LOOK} hover:bg-rose-600 hover:text-white hover:shadow-none dark:hover:bg-rose-600 dark:hover:text-white`}
+      style={{ left: x - UNTIE_BUTTON_RADIUS, top: y - UNTIE_BUTTON_RADIUS, width: 2 * UNTIE_BUTTON_RADIUS, height: 2 * UNTIE_BUTTON_RADIUS }}>
       <XMarkIcon className="h-3 w-3" strokeWidth={2.6} aria-hidden="true" />
       <HoverLabel text={t('analysis.untie')} from="left" />
     </button>

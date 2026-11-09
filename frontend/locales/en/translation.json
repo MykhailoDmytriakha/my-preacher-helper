@@ -5074,7 +5074,7 @@
       "stepUp": "one level up — beside the line it hung on;",
       "stepDown": "one level down — under the line above on the same level; the first line goes under the next one.",
       "hintTie": "To tie a line: point at it — a dot appears left of its first word. Drag the dot onto the word the line belongs to. Drag it up or down — the arrow always appears, to the line just above too. A line moved by ↳ or the arrows stands a step in, with no arrow. A line has one tie: to move it, first remove it with its ×.",
-      "hintUntie": "To remove a tie: hover over its arrow — a × appears in the middle.",
+      "hintUntie": "To remove a tie, hover over its arrow and click the × that appears.",
       "hintRelation": "A link of meaning: hold any word, a line's first one too, and let go on another word. Both words get a ring in the link's colour, and a flag appears at the end of the line: point at it to draw the arrow; press the flag or a ringed word for direction, colour or removal.",
       "handle": "Drag the dot onto a word to tie the line"
     },

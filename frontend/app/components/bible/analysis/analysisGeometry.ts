@@ -13,7 +13,7 @@ import { holderOf, needsArrow, partEnd, partOf, partStarts, relationHeads, type 
 /** A place in the text; `mid` — for a line's first word, the height of the middle of its small letters. */
 export type Box = { x: number; y: number; w: number; h: number; mid?: number };
 /** `flags` — by a line's first word, the right edge of the flags at its end. */
-export type Geometry = { words: Record<string, Box>; leads: Record<string, Box>; mids: Record<string, Box>; flags: Record<string, number>; width: number; height: number };
+export type Geometry = { words: Record<string, Box>; leads: Record<string, Box>; mids: Record<string, Box>; flags: Record<string, number>; controls?: Box[]; width: number; height: number };
 export type Point = [number, number];
 /** A tie's arrow (`start` — its part, `mid` — where its × stands, `points` — its corners) or the one following a drag. */
 export type Arrow = { key: string; d: string; head: string; lit: boolean; start?: number; mid?: { x: number; y: number }; points?: Point[] };
@@ -21,6 +21,7 @@ export type Arrow = { key: string; d: string; head: string; lit: boolean; start?
 const EMPTY_GEOMETRY: Geometry = { words: {}, leads: {}, mids: {}, flags: {}, width: 0, height: 0 };
 
 const ARROW_CLEARANCE = 4;
+export const UNTIE_BUTTON_RADIUS = 11;
 type VisualRow = { top: number; bottom: number; right: number; words: { word: number; box: Box }[] };
 
 /** One row definition for routing and for stable spacing, including words in wrapped parts. */
@@ -44,16 +45,19 @@ export function useGeometry() {
     if (!root) return;
     const box = root.getBoundingClientRect();
     const scale = root.offsetWidth ? box.width / root.offsetWidth : 1;
-    const read = (attribute: string) => Object.fromEntries(Array.from(root.querySelectorAll<HTMLElement>(`[${attribute}]`)).map((element) => {
+    const readBox = (element: HTMLElement): Box => {
       const rect = element.getBoundingClientRect();
-      return [element.getAttribute(attribute) ?? '', { x: (rect.left - box.left) / scale, y: (rect.top - box.top) / scale, w: rect.width / scale, h: rect.height / scale }];
-    }));
+      return { x: (rect.left - box.left) / scale, y: (rect.top - box.top) / scale, w: rect.width / scale, h: rect.height / scale };
+    };
+    const read = (attribute: string) => Object.fromEntries(Array.from(root.querySelectorAll<HTMLElement>(`[${attribute}]`)).map((element) =>
+      [element.getAttribute(attribute) ?? '', readBox(element)]));
     const flags: Record<string, number> = {};
     root.querySelectorAll<HTMLElement>('[data-flagline]').forEach((element) => {
       const line = element.getAttribute('data-flagline') ?? '';
       flags[line] = Math.max(flags[line] ?? 0, (element.getBoundingClientRect().right - box.left) / scale);
     });
-    const next: Geometry = { words: read('data-word'), leads: read('data-lead'), mids: read('data-mid'), flags, width: root.offsetWidth, height: root.offsetHeight };
+    const controls = Array.from(root.querySelectorAll<HTMLElement>('[data-handle], [data-line-actions]'), readBox);
+    const next: Geometry = { words: read('data-word'), leads: read('data-lead'), mids: read('data-mid'), flags, controls, width: root.offsetWidth, height: root.offsetHeight };
     setGeometry((now) => (JSON.stringify(now) === JSON.stringify(next) ? now : next));
   }, []);
   useLayoutEffect(measure);
@@ -380,6 +384,19 @@ export function analysisLineSpacing(state: AnalysisState, geometry: Geometry, to
   return spacing;
 }
 
+/** The remove button keeps its place on the upright unless a line control needs that space. */
+function untieCenter(mid: { x: number; y: number }, controls: Box[]) {
+  const clearance = UNTIE_BUTTON_RADIUS + 2;
+  const sameHeight = controls.filter(({ y, h }) => mid.y + clearance > y && mid.y - clearance < y + h);
+  let x = mid.x;
+  // Each jump clears at least one control to its left. A step button can sit immediately left of the dot.
+  while (true) {
+    const covered = sameHeight.find((box) => x + clearance > box.x && x - clearance < box.x + box.w);
+    if (!covered) return { x, y: mid.y };
+    x = covered.x - clearance;
+  }
+}
+
 /**
  * The arrows of an analysis's ties, only where the indent does not already say what a part hangs on (`needsArrow`):
  * grouped by the part they enter, each in its lane, its upright left of every line it passes. `lit` — whether a part's
@@ -401,7 +418,8 @@ export function tieArrows(state: AnalysisState, geometry: Geometry, lit: (start:
     lanes.set(side, lane + 1);
     const passed = starts.filter((part) => part > Math.min(start, target) && part < Math.max(start, target));
     const clear = Math.min(Infinity, ...passed.map((part) => fromLine(geometry, part)?.x ?? Infinity));
-    out.push({ key: `a${start}`, start, ...arrowPath(from, to, k, clear, lane), lit: lit(start) });
+    const path = arrowPath(from, to, k, clear, lane);
+    out.push({ key: `a${start}`, start, ...path, mid: untieCenter(path.mid, geometry.controls ?? []), lit: lit(start) });
   }));
   return out;
 }
@@ -412,10 +430,14 @@ const MARGIN_CLEAR = 6;
 /**
  * The left room the text needs: `base` — the screen's own margin (80 px on a wide screen for the arrows ‹ › and a hung verse
  * number; 20 px on a phone, which keeps neither there) — or more, as far as the farthest tie's upright reaches left of the
- * lines, each further tie a lane further (Codex, 07.11: eleven ties to one line ran 3 px past a phone's edge). The arrows'
- * places are inside the text, so the room a margin gives them does not move them: no loop between the two.
+ * lines, each further tie a lane further (Codex, 07.11: eleven ties to one line ran 3 px past a phone's edge). In edit
+ * mode also leave room for each tie's remove button before the mouse arrives, so revealing it never moves the text.
  */
-export function textMargin(arrows: readonly Arrow[], base: number): number {
-  const farthest = Math.min(0, ...arrows.flatMap((arrow) => (arrow.points ?? []).map(([x]) => x)));
+export function textMargin(arrows: readonly Arrow[], base: number, showUntie = false): number {
+  let farthest = 0;
+  for (const arrow of arrows) {
+    for (const [x] of arrow.points ?? []) farthest = Math.min(farthest, x);
+    if (showUntie && arrow.mid) farthest = Math.min(farthest, arrow.mid.x - UNTIE_BUTTON_RADIUS);
+  }
   return Math.max(base, Math.ceil(MARGIN_CLEAR - farthest));
 }
