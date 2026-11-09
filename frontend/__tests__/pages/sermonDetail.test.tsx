@@ -101,11 +101,11 @@ jest.mock('@/components/sermon/KnowledgeSection', () => ({ uiMode }: any) => (
   </div>
 ));
 
-jest.mock('@/components/sermon/ThoughtList', () => ({ onDelete, onEditStart, onThoughtOutlinePointChange }: any) => (
+jest.mock('@/components/sermon/ThoughtList', () => ({ filteredThoughts, onDelete, onEditStart, onThoughtOutlinePointChange }: any) => (
   <div data-testid="thought-list">
     <button onClick={() => onDelete?.('thought-1')}>Mock Delete</button>
     <button onClick={() => onEditStart?.({ id: 'thought-1', text: 'Hello', tags: [] }, 0)}>Mock Edit Start</button>
-    <button onClick={() => onThoughtOutlinePointChange?.({ id: 'thought-1', text: 'Hello', tags: ['introduction'], outlinePointId: 'intro-1' }, 'main-1', null)}>Mock Move</button>
+    <button disabled={!filteredThoughts?.[0]} onClick={() => onThoughtOutlinePointChange?.(filteredThoughts[0], 'main-1', null)}>Mock Move</button>
   </div>
 ));
 
@@ -579,13 +579,21 @@ describe('Sermon Detail Page', () => {
     });
 
     it('moves a thought to another outline point and its new section in the stored sermon', async () => {
-      openSermon(withThought);
+      const shown = { ...thought, tags: ['Fixture topic'] };
+      openSermon({ ...withThought, thoughts: [shown] });
       renderPage();
-      fireEvent.click((await screen.findAllByText('Mock Move'))[0]);
+      const button = (await screen.findAllByText('Mock Move'))[0];
+      await waitFor(() => expect(button).toBeEnabled());
+      fireEvent.click(button);
 
       await waitFor(() => expect((harness.server.value as any).thoughts[0].outlinePointId).toBe('main-1'));
       expect((harness.server.value as any).structure.main).toEqual(['thought-1']);
       expect((harness.server.value as any).structure.introduction).toEqual([]);
+      expect((harness.server.value as any).thoughts[0].tags).toEqual(shown.tags);
+      expect(harness.transport.send).toHaveBeenCalledWith(expect.objectContaining({
+        thoughtPlacementActions: [expect.objectContaining({ rowId: shown.id, rowCreatedAt: shown.date,
+          before: { outlinePointId: 'intro-1', subPointId: null }, after: { outlinePointId: 'main-1', subPointId: null } })],
+      }));
     });
   });
 
