@@ -460,6 +460,8 @@ export function useDocumentActions() {
     resolve: async (resource: ResourceRef, choice: 'mine' | 'theirs', scope?: RecoveryChoiceScope, exactField = false): Promise<number> => {
       if (!browser || !owner) throw new Error(ENGINE_NOT_READY);
       // One-shot drafts only: a screen editor's draft of the same document is that screen's to settle.
+      const placementTime = resource.collection === 'serviceOrders' && choice === 'mine'
+        ? actionClock.capture(owner) ?? null : undefined;
       let waiting = (await waitingFor(resource)).filter(({ record }) => isOneShotRecord(record));
       const shown = (record: EditorRecord) => scope?.records.find(expected => expected.owner === owner && expected.editorId === record.editorId
         && recoveryChoiceFingerprint([expected]) === recoveryChoiceFingerprint([record]));
@@ -487,14 +489,14 @@ export function useDocumentActions() {
             const seen = commentKindChoiceOpening(record.checkpoint);
             if (seen === null) throw Object.assign(new Error('The comment passage changed'), { code: 'comment-kind-place-changed' });
             const time = seen ? actionClock.capture(owner) ?? null : null;
-            await editor.keepLocal(scope ? shown(record) : undefined);
+            await editor.keepLocal(scope ? shown(record) : undefined, undefined, placementTime);
             if (seen) await editor.commit(value => value, { kind: 'comment-kind', commentKind: { time, seen } });
             else await editor.save();
             continue;
           }
           await editor.acceptRemote(scope ? shown(record) : undefined);
           const { checkpoint } = editor.getState();
-          if (checkpoint.dirty && exactField && (documentTagComparison(record.checkpoint) || studyNoteTypeComparison(record.checkpoint) || commentKindComparison(record.checkpoint))) await editor.save();
+          if (checkpoint.dirty && exactField && (documentTagComparison(record.checkpoint) || studyNoteTypeComparison(record.checkpoint) || commentKindComparison(record.checkpoint) || record.checkpoint.serviceOrderPlacementComparison)) await editor.save();
           else if (checkpoint.dirty) await editor.edit(checkpoint.confirmed.value);
         } finally { editor.close({ flush: false }); }
       }

@@ -37,6 +37,7 @@ import { snapshotBelongsToOwner } from './snapshotIdentity';
 import { redeliveryDelay } from './unanswered';
 
 
+import type { ActionTime } from './actionClock';
 import type { CollectionReader, CollectionState } from './collections';
 import type { DocumentWriteReceipt } from './commitReceipt';
 import type { DatedRowActionCapture } from './datedRowAction';
@@ -126,7 +127,7 @@ export interface ManagedEditor {
   /** Persist and queue deletion; refuses unresolved pending operations before changing the draft. */
   remove(): Promise<void>;
   acceptRemote(expected?: EditorRecord, compared?: SessionCheckpoint): Promise<void>;
-  keepLocal(expected?: EditorRecord, compared?: SessionCheckpoint): Promise<void>;
+  keepLocal(expected?: EditorRecord, compared?: SessionCheckpoint, choiceTime?: ActionTime | null): Promise<void>;
   dispose(): void;
   /**
    * Leave the editor. With `flush`, a draft that could be saved — typed inside the autosave
@@ -1892,6 +1893,11 @@ export class DataEngine {
         }
         const next = updater(checkpoint.draft);
         let captured = next === checkpoint.draft && action?.kind === 'document-tags' ? undefined : action;
+        if (action?.kind === 'service-order-placement'
+          && (frozen.collection !== 'serviceOrders' || !next || next.rank !== action.move.rank
+            || (checkpoint.confirmed.metadata?.generation ?? null) !== action.move.generation)) {
+          throw Object.assign(new Error('The shown service order changed'), { code: 'decision-changed' });
+        }
         if (action?.kind === 'service-order-title') {
           const { seen } = action.title;
           const predecessor = seen.requestId ? this.commitRecords.get(seen.requestId) : undefined;
@@ -2017,13 +2023,13 @@ export class DataEngine {
         if (!receipt) throw new Error('Write capture did not return its receipt');
         return receipt;
       };
-      const choose = async (choice: 'local' | 'remote', expected?: EditorRecord, compared?: SessionCheckpoint) => {
+      const choose = async (choice: 'local' | 'remote', expected?: EditorRecord, compared?: SessionCheckpoint, choiceTime?: ActionTime | null) => {
         active();
         if (loadingBranchAnswer) throw Object.assign(new Error('Read the current version before choosing'), { code: 'fresh-read-required' });
         if (compared && !equalValues(controller.getState().checkpoint, compared)) {
           throw Object.assign(new Error('The shown field comparison changed'), { code: 'decision-changed' });
         }
-        await this.resolveEditorChoice(entry, owner, generation, choice, compared ? controller.captureRecoveryChoice() : expected);
+        await this.resolveEditorChoice(entry, owner, generation, choice, compared ? controller.captureRecoveryChoice() : expected, choiceTime);
         active();
       };
       const managed: ManagedEditor = {
@@ -2108,7 +2114,7 @@ export class DataEngine {
         save: async () => { active(); await controller.save(); active(); this.backgroundDrain(); this.prepareCommitsInBackground(); active(); },
         remove: () => remove(),
         acceptRemote: (expected, compared) => choose('remote', expected, compared),
-        keepLocal: (expected, compared) => choose('local', expected, compared),
+        keepLocal: (expected, compared, choiceTime) => choose('local', expected, compared, choiceTime),
         dispose: () => {
           this.close(entry);
           if (this.editors.get(editorId) === entry) this.editors.delete(editorId);
@@ -2224,7 +2230,7 @@ export class DataEngine {
     await controller.observe(snapshot, 'server'); this.assertCurrent(owner, generation);
   }
 
-  private async resolveEditorChoice(parent: EditorEntry, owner: string, generation: number, choice: 'local' | 'remote', expected?: EditorRecord): Promise<void> {
+  private async resolveEditorChoice(parent: EditorEntry, owner: string, generation: number, choice: 'local' | 'remote', expected?: EditorRecord, choiceTime?: ActionTime | null): Promise<void> {
     const controller = parent.controller!;
     const checkpoint = controller.getState().checkpoint;
     const about = copy(checkpoint.confirmed.resource);
@@ -2243,7 +2249,7 @@ export class DataEngine {
           this.prepareCommitsInBackground(); this.backgroundDrain();
         }
       } else {
-        await controller.keepLocal(undefined, undefined, expected);
+        await controller.keepLocal(undefined, undefined, expected, choiceTime);
         // The explicit document choice owns its replacement; field stages keep their later words.
         if (affected.length) {
           await controller.save(); this.assertCurrent(owner, generation);

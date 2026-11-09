@@ -59,6 +59,13 @@ export function initializeCommit(record: CommitRequest, records: readonly Commit
   if (record.predecessor && (!predecessor || predecessor.state !== 'acknowledged')) return null;
   if (predecessor && predecessor.result?.kind === 'acknowledged') {
     const snapshot = predecessor.result.snapshot;
+    if (record.serviceOrderPlacement && snapshot.value) {
+      if ((snapshot.metadata?.generation ?? null) !== record.serviceOrderPlacement.generation) {
+        return { ...record, initialized: true, state: 'refused', result: { kind: 'refused', operationId: record.id, code: 'generation-mismatch' } };
+      }
+      return { ...record, initialized: true, working: snapshot,
+        intended: { ...snapshot.value, rank: record.serviceOrderPlacement.rank } };
+    }
     if (record.seriesMembership && record.value && predecessor.value && snapshot.value) {
       if (record.baseline.metadata && snapshot.metadata?.generation !== record.baseline.metadata.generation) {
         return { ...record, initialized: true, state: 'refused', result: { kind: 'refused', operationId: record.id, code: 'generation-mismatch' } };

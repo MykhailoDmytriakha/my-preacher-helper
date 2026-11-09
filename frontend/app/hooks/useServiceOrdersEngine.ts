@@ -7,15 +7,16 @@ import { SERVICE_ORDER_META_AGGREGATE, SERVICE_ORDER_STEPS_AGGREGATE, hydrateSer
 import { newClientId } from '@/utils/clientId';
 import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
 import { buildSeedOrders, SERVICE_ORDER_CATALOG } from '@/utils/serviceOrderCatalog';
-import { needsRenumber, rankForAppend, rankForMove, renumber, sortByRank } from '@/utils/serviceOrderRank';
+import { rankBetween, rankForAppend, RANK_STEP, sortByRank } from '@/utils/serviceOrderRank';
 import { nextServiceOrderSeedId } from '@/utils/serviceOrderSeedIdentity';
 import { useTranslation } from '@locales/useTranslation';
 
 import type { ActionTime } from '@/data-engine/actionClock';
 import type { CollectionState } from '@/data-engine/collections';
+import type { CollectionDocumentView } from '@/data-engine/collectionView';
 import type { ServiceOrderTitleSeen } from '@/data-engine/documentFieldAction';
 import type { ServiceOrderStepCapture, ServiceOrderStepVersion } from '@/data-engine/serviceOrderStepAction';
-import type { DocumentData, EditorCommitAction, ResourceSnapshot } from '@/data-engine/types';
+import type { DocumentData, EditorCommitAction, ResourceSnapshot, ServiceOrderPlacementGap } from '@/data-engine/types';
 import type { ServiceOrder, ServiceOrderCatalogKey, ServiceOrderStep } from '@/models/models';
 
 const resource = (id: string) => ({ collection: 'serviceOrders', id });
@@ -23,8 +24,33 @@ const now = () => new Date().toISOString();
 const notFound = () => new Error('Service order not found');
 const baselineKey = (id: string, session: string) => `${id}\u0000${session}`;
 const asOrder = (value: DocumentData, id: string) => hydrateServiceOrder(value as unknown as Omit<ServiceOrder, 'id'>, id);
-const rowsOf = (documents: readonly { resource: { id: string }; value: DocumentData | null }[] | undefined) =>
-  sortByRank((documents ?? []).flatMap(row => row.value ? [asOrder(row.value, row.resource.id)] : []));
+function rowsOf(documents: readonly CollectionDocumentView[] | undefined): ServiceOrder[] {
+  const orders = sortByRank((documents ?? []).flatMap(row => row.value ? [asOrder(row.value, row.resource.id)] : []));
+  const moves = (documents ?? []).flatMap(row => row.submittedServiceOrderPlacement
+    ? [{ id: row.resource.id, ...row.submittedServiceOrderPlacement }] : []).sort((left, right) => left.index - right.index);
+  for (const { id, move } of moves) {
+    const from = orders.findIndex(order => order.id === id);
+    const gap = move.placement.destination;
+    const previous = gap.previous ? orders.findIndex(order => order.id === gap.previous?.id) : -1;
+    const next = gap.next ? orders.findIndex(order => order.id === gap.next?.id) : orders.length;
+    if (from < 0 || (gap.previous && previous < 0) || next < 0 || previous >= next || (from > previous && from < next)) continue;
+    const target = gap.next ? next : previous + 1;
+    const [moved] = orders.splice(from, 1);
+    orders.splice(target - Number(from < target), 0, moved);
+  }
+  return orders;
+}
+
+function shownOrder(state: CollectionState | null | undefined, id: string) {
+  const row = state?.documents?.find(document => document.resource.id === id);
+  const snapshot = row?.acknowledged ?? state?.snapshots?.find(item => item.resource.id === id);
+  return { row, snapshot, generation: snapshot?.metadata?.generation ?? null };
+}
+
+function shownGap(orders: readonly ServiceOrder[], index: number, state: CollectionState | null | undefined): ServiceOrderPlacementGap {
+  const anchor = (order: ServiceOrder | undefined) => order ? { id: order.id, generation: shownOrder(state, order.id).generation } : null;
+  return { previous: anchor(orders[index - 1]), next: anchor(orders[index]) };
+}
 
 type TitleBaseline = { title: string; revision: number; seen?: ServiceOrderTitleSeen };
 
@@ -69,6 +95,13 @@ export type ServiceOrderTitleHistorySession = {
   orderId: string;
   generation: string;
   restore: (title: string) => Promise<void>;
+};
+
+export type ServiceOrderPlacementHistorySession = {
+  owner: string;
+  orderId: string;
+  generation: string;
+  restore: (gap: ServiceOrderPlacementGap) => Promise<void>;
 };
 
 export function useServiceOrdersEngine(userId: string | null | undefined, enabled: boolean) {
@@ -255,36 +288,64 @@ export function useServiceOrdersEngine(userId: string | null | undefined, enable
     };
   };
 
-  /**
-   * One command per rite whose place changes. Each carries an absolute rank and is durable on its
-   * own, so a spread interrupted by a lost connection finishes on reconnect instead of staying
-   * half-applied; the list shows the new order at once from this device's submitted work.
-   */
-  const moveOrder = async (id: string, toIndex: number): Promise<void> => {
-    if (movePending.current) return;
+  /** The click or drop owns one durable move; a crowded gap is repaired by its server transaction. */
+  const moveOrder = async (id: string, toIndex: number, restored?: ServiceOrderPlacementGap): Promise<void> => {
+    const from = orders.findIndex(order => order.id === id);
+    if (movePending.current || from < 0 || from === toIndex || toIndex < 0 || toIndex >= orders.length) return;
+    const time = actions.captureActionTime?.() ?? null;
+    const state = collection.state;
+    const shown = shownOrder(state, id);
+    const predecessor = shown.row?.submittedServiceOrderPlacement;
+    const oldRank = shown.row?.value?.rank;
+    const before = oldRank === undefined ? { exists: false } : { exists: true, value: oldRank };
+    const others = orders.filter(order => order.id !== id);
+    const rank = rankBetween(others[toIndex - 1]?.rank ?? null, others[toIndex]?.rank ?? null)
+      ?? (typeof oldRank === 'number' && Number.isFinite(oldRank) ? oldRank : RANK_STEP);
+    const opening = shownGap(others, from, state);
+    const destination = restored ?? shownGap(others, toIndex, state);
+    const neighbors = new Set([opening.previous?.id, opening.next?.id, destination.previous?.id, destination.next?.id]);
+    const afterRequests = (state?.documents ?? []).flatMap(row => {
+      const pending = row.submittedServiceOrderPlacement;
+      if (!pending || row.resource.id === id) return [];
+      const target = pending.move.placement.destination;
+      // A visible move that used this card must run while the card is still at that place.
+      return neighbors.has(row.resource.id) || target.previous?.id === id || target.next?.id === id ? [pending.requestId] : [];
+    });
     movePending.current = true;
     setMoving(true);
     try {
-      const rank = rankForMove(orders, id, toIndex);
-      let writes: { id: string; rank: number }[];
-      if (rank !== null && !needsRenumber(orders)) writes = [{ id, rank }];
-      else {
-        const spread = new Map(renumber(orders).map(entry => [entry.id, entry.rank]));
-        const evened = orders.map(order => ({ ...order, rank: spread.get(order.id) ?? order.rank }));
-        const settled = rankForMove(evened, id, toIndex);
-        if (settled !== null) spread.set(id, settled);
-        writes = [...spread].map(([documentId, value]) => ({ id: documentId, rank: value }));
-      }
-      for (const entry of writes) {
-        await queued(entry.id, () => actions.commit(resource(entry.id), current => {
-          if (!current) throw notFound();
-          return current.rank === entry.rank ? current : { ...current, rank: entry.rank, updatedAt: now() };
-        }));
-      }
+      await queued(id, () => actions.commit(resource(id), current => {
+        if (!current) throw notFound();
+        return { ...current, rank };
+      }, {
+        kind: 'service-order-placement',
+        move: { generation: shown.generation, before, rank, ...(afterRequests.length && { afterRequests }), placement: {
+          observedRevision: predecessor?.move.placement.observedRevision ?? shown.snapshot?.metadata?.revision ?? 0,
+          time, opening, destination, ...(predecessor && { predecessorOperationId: predecessor.requestId }),
+        } },
+      }));
     } finally {
       movePending.current = false;
       setMoving(false);
     }
+  };
+
+  const placementHistory = (id: string): ServiceOrderPlacementHistorySession | undefined => {
+    const generation = shownOrder(collection.state, id).generation;
+    if (!userId || !generation) return undefined;
+    return { owner: userId, orderId: id, generation, restore: async gap => {
+      const state = collectionState.current;
+      if (activeOwner.current !== userId || shownOrder(state, id).generation !== generation) throw notFound();
+      const others = rowsOf(state?.documents?.filter(isLiveCollectionDocument)).filter(order => order.id !== id);
+      const place = (anchor: ServiceOrderPlacementGap['previous'], edge: number) => anchor
+        ? others.findIndex(order => order.id === anchor.id && shownOrder(state, order.id).generation === anchor.generation) : edge;
+      const previous = place(gap.previous, -1), next = place(gap.next, others.length);
+      if ((gap.previous && previous < 0) || next < 0 || previous >= next) throw notFound();
+      await moveOrder(id, gap.next ? next : previous + 1, {
+        previous: gap.previous && { id: gap.previous.id, generation: gap.previous.generation },
+        next: gap.next && { id: gap.next.id, generation: gap.next.generation },
+      });
+    } };
   };
 
   return {
@@ -315,6 +376,7 @@ export function useServiceOrdersEngine(userId: string | null | undefined, enable
     titleHistory,
     savingSteps: savingSteps > 0,
     moveOrder,
+    placementHistory,
     moving,
   };
 }

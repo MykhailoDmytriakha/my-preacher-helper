@@ -43,6 +43,7 @@ import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
 import { CareSectionHeader } from '@/components/care/CareSectionHeader';
+import { ServiceOrderPlacementHistory } from '@/components/care/ServiceOrderPlacementHistory';
 import { Chip } from '@/components/ui/Chip';
 import { useDndKitAccessibility } from '@/hooks/useDragAnnouncements';
 import { useServiceOrders } from '@/hooks/useServiceOrders';
@@ -103,6 +104,7 @@ export default function ServiceOrdersPage() {
     seedStandardSet,
     createCustomOrder,
     moveOrder,
+    placementHistory,
     moving,
     error,
     refresh,
@@ -336,8 +338,9 @@ export default function ServiceOrdersPage() {
           strategy={verticalListSortingStrategy}
         >
         <ul className={`flex flex-col gap-2.5 ${reordering ? 'mt-4' : 'mt-7'}`}>
-          {displayedOrders.map((order, index) => (
-            <li key={order.id}>
+          {displayedOrders.map((order, index) => {
+            const history = reordering ? placementHistory?.(order.id) : undefined;
+            return <li key={order.id}>
               <OrderRow
                 order={order}
                 index={index}
@@ -346,8 +349,9 @@ export default function ServiceOrdersPage() {
                 moving={moveBusy}
                 onMove={move}
               />
-            </li>
-          ))}
+              {history && <ServiceOrderPlacementHistory key={history.generation} session={history} disabled={moveBusy} />}
+            </li>;
+          })}
         </ul>
         </SortableContext>
           <DragOverlay dropAnimation={{ sideEffects: defaultDropAnimationSideEffects({ styles: { active: { opacity: '0' } } }) }}>

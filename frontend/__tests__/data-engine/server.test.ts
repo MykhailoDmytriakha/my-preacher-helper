@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { isCollectionServed } from '@/data-engine/activation';
-import { DataEngineServerError, listBibleMarkHistory, listCommentKindHistory, listExegeticalPointHistory, listCouncilMetadataHistory, listDocumentTagHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listPlanTemplateNameHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listPrayerStatusHistory, listPrayerTitleHistory, listSermonChurchHistory, listSermonGoalTypeHistory, listSermonPlanModeHistory, listSermonPreparationConfirmationHistory, listSermonTitleHistory, listSermonVerseHistory, listSeriesMembershipHistory, listSeriesMetadataHistory, listServiceOrderFlagHistory, listServiceOrderStepTitleHistory, listServiceOrderTitleHistory, listStudyNoteTitleHistory, listTagColorHistory, listThoughtLockHistory, listThoughtPlacementHistory, listThoughtTagHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
+import { DataEngineServerError, listBibleMarkHistory, listCommentKindHistory, listExegeticalPointHistory, listCouncilMetadataHistory, listDocumentTagHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listPlanTemplateNameHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listPrayerStatusHistory, listPrayerTitleHistory, listSermonChurchHistory, listSermonGoalTypeHistory, listSermonPlanModeHistory, listSermonPreparationConfirmationHistory, listSermonTitleHistory, listSermonVerseHistory, listSeriesMembershipHistory, listSeriesMetadataHistory, listServiceOrderFlagHistory, listServiceOrderPlacementHistory, listServiceOrderStepTitleHistory, listServiceOrderTitleHistory, listStudyNoteTitleHistory, listTagColorHistory, listThoughtLockHistory, listThoughtPlacementHistory, listThoughtTagHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
 import { collectionHeadId, HEADS_COLLECTION, sequenceId } from '@/data-engine/serverFeed';
 import { DataSession } from '@/data-engine/session';
 import type { DataCommand, FieldValue, ResourceSnapshot } from '@/data-engine/types';
@@ -3856,6 +3856,177 @@ describe('transactional DataEngine server', () => {
       expect([...documents.keys()].filter(path => path.startsWith('groups/group-title/_titleHistory/'))).toHaveLength(1);
     }
     if (kind === 'conflict') expect(result).toMatchObject({ conflicts: [{ path: ['title'] }] });
+  });
+
+  describe('service order move chronology', () => {
+    const owner = 'owner-1';
+    const resource = (id: string) => ({ collection: 'serviceOrders', id });
+    const anchor = (id: string) => ({ id, generation: 'seed-' + id });
+    const time = (offset: number) => ({
+      earliestMs: 1_800_000_000_000 + offset,
+      latestMs: 1_800_000_000_005 + offset,
+    });
+    const words = [{ id: 'open', title: 'Opening', body: 'Words stay in the service' }];
+    const now = '2026-11-09T00:00:00.000Z';
+
+    async function seedOrder(id: string, rank: number, steps: typeof words = []) {
+      const result = await processCommand(owner, { protocol: 1, owner, resource: resource(id), dependsOn: [],
+        kind: 'create', operationId: 'seed-' + id, generation: null,
+        value: { userId: owner, title: id, rank, steps, createdAt: now, updatedAt: now },
+      });
+      expect(result).toMatchObject({ kind: 'acknowledged' });
+    }
+
+    function move(id: string, where: 'top' | 'bottom', offset: number | null) {
+      return {
+        protocol: 1, owner, resource: resource('beta'), dependsOn: [], kind: 'update',
+        operationId: id, generation: 'seed-beta',
+        changes: [{ path: ['rank'], before: { exists: true, value: 2000 },
+          after: { exists: true, value: where === 'top' ? 0 : 4000 } }],
+        serviceOrderPlacement: {
+          observedRevision: 1, time: offset === null ? null : time(offset),
+          opening: { previous: anchor('alpha'), next: anchor('gamma') },
+          destination: where === 'top' ? { previous: null, next: anchor('alpha') } : { previous: anchor('gamma'), next: null },
+        },
+      };
+    }
+
+    it('refuses malformed move evidence without writing a rank or accepting an unrelated edit', async () => {
+      await seedOrder('beta', 2000, words);
+      const good = move('invalid-move', 'top', 40);
+      const placement = good.serviceOrderPlacement;
+      const bad = [
+        { ...good, serviceOrderPlacement: { ...placement, destination: { previous: null, next: anchor('beta') } } },
+        { ...good, serviceOrderPlacement: { ...placement, destination: { previous: anchor('alpha'), next: anchor('alpha') } } },
+        { ...good, serviceOrderPlacement: { ...placement, time: { earliestMs: 1, latestMs: 1_000_000 } } },
+        { ...good, changes: [...good.changes, { path: ['title'], before: { exists: true, value: 'beta' },
+          after: { exists: true, value: 'Not a move' } }] },
+      ];
+      for (const [index, invalid] of bad.entries()) {
+        expect(await processCommand(owner, { ...invalid, operationId: 'invalid-move-' + index }))
+          .toMatchObject({ kind: 'refused', code: 'invalid-argument' });
+      }
+      expect(await readDocument(owner, resource('beta'))).toMatchObject({ value: { rank: 2000, title: 'beta', steps: words } });
+    });
+
+    it('moves through a compressed gap atomically and preserves the action proof on a renumbered neighbor', async () => {
+      await seedOrder('alpha', 1000);
+      await seedOrder('beta', 2000, words);
+      await seedOrder('delta', 3000);
+      await seedOrder('gamma', 3000);
+      expect(await processCommand(owner, move('desktop', 'top', 40))).toMatchObject({ kind: 'acknowledged' });
+
+      const alphaMove = move('crowded', 'top', 50);
+      const crowded = await processCommand(owner, {
+        ...alphaMove, resource: resource('alpha'), generation: 'seed-alpha',
+        changes: [{ path: ['rank'], before: { exists: true, value: 1000 }, after: { exists: true, value: 1000 } }],
+        serviceOrderPlacement: { ...alphaMove.serviceOrderPlacement,
+          opening: { previous: anchor('beta'), next: anchor('delta') },
+          destination: { previous: anchor('delta'), next: anchor('gamma') },
+        },
+      });
+      expect(crowded).toMatchObject({ kind: 'acknowledged', snapshot: { value: { rank: 3000 } },
+        affected: expect.arrayContaining(['beta', 'delta', 'gamma'].map(id => expect.objectContaining({ resource: resource(id) }))) });
+
+      expect(await processCommand(owner, move('earlier-phone', 'bottom', 20))).toMatchObject({
+        kind: 'acknowledged', snapshot: { value: { rank: 1000, steps: words } },
+      });
+      expect(await processCommand(owner, move('later-phone', 'bottom', 80))).toMatchObject({
+        kind: 'acknowledged', snapshot: { value: { rank: 5000, steps: words } },
+      });
+      const history = await listServiceOrderPlacementHistory(owner, 'beta', 'seed-beta');
+      await expect(listServiceOrderPlacementHistory('another-owner', 'beta', 'seed-beta')).rejects.toMatchObject({ status: 403 });
+      await expect(listServiceOrderPlacementHistory(owner, 'beta', 'older')).rejects.toMatchObject({ status: 404 });
+      expect(history.entries).toEqual(expect.arrayContaining([
+        expect.objectContaining({ earlier: { previous: { ...anchor('gamma'), title: 'gamma' }, next: null } }),
+        expect.objectContaining({ earlier: { previous: null, next: { ...anchor('alpha'), title: 'alpha' } } }),
+      ]));
+    });
+
+    it('uses the current neighbors in comparison and accepts a proven local successor without a clock', async () => {
+      await seedOrder('alpha', 1000);
+      await seedOrder('beta', 2000, words);
+      await seedOrder('gamma', 3000);
+      expect(await processCommand(owner, move('first-beta', 'top', 40))).toMatchObject({ kind: 'acknowledged' });
+      const alphaMove = move('alpha-before-beta', 'top', null);
+      expect(await processCommand(owner, {
+        ...alphaMove, resource: resource('alpha'), generation: 'seed-alpha',
+        changes: [{ path: ['rank'], before: { exists: true, value: 1000 }, after: { exists: true, value: -1000 } }],
+        serviceOrderPlacement: { ...alphaMove.serviceOrderPlacement, opening: { previous: anchor('beta'), next: anchor('gamma') },
+          destination: { previous: null, next: anchor('beta') } },
+      })).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(owner, move('uncalibrated-other-device', 'bottom', null))).toMatchObject({
+        kind: 'conflict', serviceOrderPlacementComparison: { saved: {
+          previous: { ...anchor('alpha'), title: 'alpha' }, next: { ...anchor('gamma'), title: 'gamma' },
+        } },
+      });
+      const successor = move('successor-beta', 'bottom', null);
+      expect(await processCommand(owner, { ...successor, serviceOrderPlacement: {
+        ...successor.serviceOrderPlacement, predecessorOperationId: 'first-beta',
+        opening: { previous: anchor('alpha'), next: anchor('gamma') },
+      } })).toMatchObject({ kind: 'acknowledged', snapshot: { value: { rank: 4000, steps: words } } });
+    });
+
+    it('repairs a crowded gap in a large service list without rewriting distant rows', async () => {
+      await seedOrder('alpha', 1000);
+      await seedOrder('beta', 4000, words);
+      await seedOrder('gamma', 1000);
+      for (let i = 0; i < 101; i += 1) {
+        const id = 'distant-' + String(i).padStart(3, '0');
+        documents.set('serviceOrders/' + id, { userId: owner, title: id, rank: 10000 + i * 100,
+          steps: [], createdAt: now, updatedAt: now,
+          _dataEngine: { protocol: 1, generation: 'seed-' + id, revision: 1, deleted: false } });
+      }
+      const crowded = move('large-list-move', 'top', 40);
+      const result = await processCommand(owner, { ...crowded,
+        changes: [{ path: ['rank'], before: { exists: true, value: 4000 }, after: { exists: true, value: 4000 } }],
+        serviceOrderPlacement: { ...crowded.serviceOrderPlacement,
+          opening: { previous: anchor('gamma'), next: null },
+          destination: { previous: anchor('alpha'), next: anchor('gamma') },
+        },
+      });
+      expect(result).toMatchObject({ kind: 'acknowledged', snapshot: { value: { rank: 1000, steps: words } } });
+      const alpha = await readDocument(owner, resource('alpha'));
+      const gamma = await readDocument(owner, resource('gamma'));
+      expect(alpha.value?.rank).toBeLessThan(1000);
+      expect(gamma.value?.rank).toBeGreaterThan(1000);
+      expect(documents.get('serviceOrders/distant-000')).toMatchObject({ rank: 10000, _dataEngine: { revision: 1 } });
+    });
+
+    it('retains an action for review when a destination anchor disappeared', async () => {
+      await seedOrder('alpha', 1000);
+      await seedOrder('beta', 2000, words);
+      const gamma = await processCommand(owner, { protocol: 1, owner, resource: resource('gamma'), dependsOn: [],
+        kind: 'create', operationId: 'seed-gamma', generation: null,
+        value: { userId: owner, title: 'gamma', rank: 3000, steps: [], createdAt: now, updatedAt: now },
+      });
+      if (gamma.kind !== 'acknowledged') throw new Error('Test anchor unavailable');
+      expect(await processCommand(owner, { protocol: 1, owner, resource: resource('gamma'), dependsOn: [],
+        kind: 'delete', operationId: 'remove-gamma', generation: 'seed-gamma', baseline: gamma.snapshot.value,
+      })).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(owner, move('phone', 'bottom', 80))).toMatchObject({
+        kind: 'conflict', snapshot: { value: { rank: 2000, steps: words } },
+      });
+    });
+
+    it.each([
+      { phoneAt: 20, kind: 'acknowledged', rank: 0 },
+      { phoneAt: 80, kind: 'acknowledged', rank: 4000 },
+      { phoneAt: null, kind: 'conflict', rank: 0 },
+    ] as const)('keeps the correct position for a phone move at $phoneAt', async ({ phoneAt, kind, rank }) => {
+      await seedOrder('alpha', 1000);
+      await seedOrder('beta', 2000, words);
+      await seedOrder('gamma', 3000);
+      expect(await processCommand(owner, move('desktop', 'top', 40))).toMatchObject({ kind: 'acknowledged' });
+      const result = await processCommand(owner, move('phone', 'bottom', phoneAt));
+      expect(result).toMatchObject({ kind, snapshot: { value: { rank, steps: words } } });
+      if (kind === 'conflict') expect(result).toMatchObject({ serviceOrderPlacementComparison: { available: true,
+        mine: { previous: { ...anchor('gamma'), title: 'gamma' }, next: null },
+        saved: { previous: null, next: { ...anchor('alpha'), title: 'alpha' } },
+      } });
+      await expect(readDocument(owner, resource('alpha'))).resolves.toMatchObject({ value: { rank: 1000, steps: [] } });
+      await expect(readDocument(owner, resource('gamma'))).resolves.toMatchObject({ value: { rank: 3000, steps: [] } });
+    });
   });
 
   it.each([

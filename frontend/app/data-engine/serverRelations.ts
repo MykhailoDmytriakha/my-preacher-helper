@@ -12,6 +12,7 @@ import { advanceResourceSnapshot, applyCommand, equalValues, mergeFields, readFi
 import { relationMirrorFields } from './relationMirrors';
 import { validateResourceDocument } from './resourceSchemas';
 import { memberResource, membershipKey, mergeOrderedSeriesItems, readSeriesMembershipMoves, reconcileDeletedSeriesMembership, resolveSeriesMembership, seriesLocation, type MembershipLocation, type SeriesMembershipMove, type SeriesMembershipPlacement, type SeriesMembershipWrite } from './seriesMembershipOrder.server';
+import { planServiceOrderPlacement, type ServiceOrderPlacementWrite } from './serviceOrderPlacement.server';
 import { planShareCapability, type ShareCapabilityCommand } from './shareCapabilities.server';
 
 import type { SeriesMembershipComparison } from './seriesMembershipHistory';
@@ -21,6 +22,7 @@ import type { SeriesItem } from '@/models/models';
 export { MAX_RELATION_RESOURCES } from './protocol';
 export interface RelationFilter { field: 'materialIds' | 'seriesId' | 'noteId' | 'catalogKey' | 'type'; operator: '==' | 'array-contains'; value: string }
 export interface RelationReader {
+  serviceOrderPlacement?: { rawMetadata: unknown; serverMs: number | undefined };
   seriesMembershipOrder?: {
     serverMs: number;
     catalogVersion(): Promise<number>;
@@ -31,7 +33,7 @@ export interface RelationReader {
   /** Implementations always add authenticated owner scope; callers cannot choose it. */
   list(collection: string, limit: number, filter?: RelationFilter, select?: (snapshot: ResourceSnapshot) => boolean): Promise<ResourceSnapshot[]>;
 }
-export interface CommandPlan { result: CommandResult; writes: ResourceSnapshot[]; seriesMembershipWrites?: SeriesMembershipWrite[] }
+export interface CommandPlan { result: CommandResult; writes: ResourceSnapshot[]; seriesMembershipWrites?: SeriesMembershipWrite[]; serviceOrderPlacement?: ServiceOrderPlacementWrite }
 
 class RelationRefusal extends Error {
   constructor(readonly code: string) { super(code); }
@@ -107,6 +109,7 @@ class RelationPlanner {
   private readonly cached = new Map<string, ResourceSnapshot>();
   private readonly writes = new Map<string, ResourceSnapshot>();
   private readonly seriesMembershipWrites: SeriesMembershipWrite[] = [];
+  private serviceOrderPlacement?: ServiceOrderPlacementWrite;
 
   constructor(private readonly command: DataCommand, private readonly primary: ResourceSnapshot, private readonly reader: RelationReader) {
     this.cached.set(key(primary.resource), primary);
@@ -134,6 +137,14 @@ class RelationPlanner {
     const overlap = [...this.cached.values()].filter(snapshot => snapshot.resource.collection === collection).length;
     const values = await this.reader.list(collection, MAX_RELATION_RESOURCES - this.cached.size + overlap + 1, filter, select);
     return values.map(snapshot => this.remember(snapshot));
+  }
+
+  private async serviceOrderPlacementScope(select?: (snapshot: ResourceSnapshot) => boolean) {
+    const rows = await this.reader.list('serviceOrders', MAX_RELATION_RESOURCES + 1, undefined,
+      snapshot => Boolean(snapshot.value && !snapshot.metadata?.deleted && (!select || select(snapshot))));
+    const unseen = new Set(rows.map(row => key(row.resource)).filter(id => !this.cached.has(id)));
+    if (this.cached.size + unseen.size > MAX_RELATION_RESOURCES) return undefined;
+    return rows.map(row => this.remember(row));
   }
 
   private live(snapshot: ResourceSnapshot, generation?: string | null): DocumentData {
@@ -612,6 +623,22 @@ class RelationPlanner {
 
   private async ordinary(command: Exclude<DataCommand, { kind: 'relation' }>): Promise<CommandResult | undefined> {
     this.guardOrdinary(command);
+    if (command.kind === 'update' && command.serviceOrderPlacement && this.primary.value && !this.primary.metadata?.deleted
+      && command.generation === (this.primary.metadata?.generation ?? null)) {
+      const context = this.reader.serviceOrderPlacement;
+      const plan = await planServiceOrderPlacement(command, this.primary, context?.rawMetadata, context?.serverMs, {
+        get: id => this.get({ collection: 'serviceOrders', id }),
+        list: select => this.serviceOrderPlacementScope(select),
+      });
+      if ('conflict' in plan) return { kind: 'conflict', operationId: command.operationId, snapshot: this.primary,
+        conflicts: [plan.conflict], serviceOrderPlacementComparison: plan.comparison };
+      for (const { snapshot, rank } of plan.ranks) this.stage(snapshot, { rank });
+      if (!this.writes.has(key(this.primary.resource))) {
+        this.writes.set(key(this.primary.resource), advanceResourceSnapshot(this.primary, this.primary.value, command.operationId, []));
+      }
+      this.serviceOrderPlacement = plan.write;
+      return;
+    }
     if (command.kind === 'create' && command.resource.collection === 'serviceOrders') await this.uniqueServiceOrder(command.value);
     const effective = command.kind === 'create' && command.resource.collection === 'series'
       ? { ...command, value: { ...command.value, ...seriesFields(currentItems(command.value)) } } : command;
@@ -647,7 +674,8 @@ class RelationPlanner {
     const snapshot = this.writes.get(key(this.primary.resource)) ?? this.primary;
     const affected = [...this.writes.values()].filter(value => key(value.resource) !== key(this.primary.resource)).map(value => ({ resource: value.resource, metadata: value.metadata! }));
     return { result: { kind: 'acknowledged', operationId: this.command.operationId, snapshot, ...(affected.length ? { affected } : {}) },
-      writes: [...this.writes.values()], ...(this.seriesMembershipWrites.length ? { seriesMembershipWrites: this.seriesMembershipWrites } : {}) };
+      writes: [...this.writes.values()], ...(this.serviceOrderPlacement && { serviceOrderPlacement: this.serviceOrderPlacement }),
+      ...(this.seriesMembershipWrites.length ? { seriesMembershipWrites: this.seriesMembershipWrites } : {}) };
   }
 }
 

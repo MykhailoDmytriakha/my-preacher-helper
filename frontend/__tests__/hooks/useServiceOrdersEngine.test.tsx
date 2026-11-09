@@ -40,7 +40,7 @@ const actions = {
     if (!store.has(resource.id)) store.set(resource.id, value);
   }),
   remove: jest.fn(async (resource: { id: string }) => { store.delete(resource.id); }),
-  commit: jest.fn(async (resource: { id: string }, updater: (value: Row | null) => Row | null) => {
+  commit: jest.fn(async (resource: { id: string }, updater: (value: Row | null) => Row | null, _action?: unknown) => {
     const next = updater(store.get(resource.id) ?? null);
     if (next) store.set(resource.id, next);
   }),
@@ -169,7 +169,7 @@ describe('orders of service on the engine', () => {
     });
   });
 
-  it('moves one rite with one write, and spreads a crowded list over every rite even offline', async () => {
+  it('captures one logical move in both an ordinary and a crowded list', async () => {
     ['a', 'b', 'c'].forEach((id, index) => store.set(id, order(id, { rank: (index + 1) * 1000 })));
     const { result, rerender } = render();
     await act(async () => { await result.current.moveOrder('c', 0); });
@@ -181,9 +181,38 @@ describe('orders of service on the engine', () => {
     online = false;
     rerender();
     await act(async () => { await result.current.moveOrder('a', 2); });
-    expect(actions.commit).toHaveBeenCalledTimes(3);
-    const placed = ['a', 'b', 'c'].map(id => ({ id, rank: store.get(id)!.rank as number })).sort((x, y) => x.rank - y.rank);
-    expect(placed.map(entry => entry.id)).toEqual(['b', 'c', 'a']);
+    expect(actions.commit).toHaveBeenCalledTimes(1);
+    expect(actions.commit).toHaveBeenCalledWith({ collection: 'serviceOrders', id: 'a' }, expect.any(Function), {
+      kind: 'service-order-placement',
+      move: { generation: null, before: { exists: true, value: 1 }, rank: 1001,
+        placement: { observedRevision: 0, time: null,
+          opening: { previous: null, next: { id: 'b', generation: null } },
+          destination: { previous: { id: 'c', generation: null }, next: null } },
+      },
+    });
+    expect(store.get('b')?.rank).toBe(1);
+    expect(store.get('c')?.rank).toBe(1);
+  });
+
+  it('waits for an earlier offline move that used the moved order as an anchor', async () => {
+    const storeRows = [
+      ['a', 5000], ['b', 6000], ['c', 3000], ['d', 4000],
+    ] as const;
+    for (const [id, rank] of storeRows) store.set(id, order(id, { rank }));
+    const state = { documents: documents().map(row => row.resource.id !== 'b' ? row : {
+      ...row, submittedServiceOrderPlacement: { requestId: 'move-b', index: 1, move: {
+        generation: null, before: { exists: true, value: 2000 }, rank: 6000,
+        placement: { time: null, observedRevision: 0, opening: { previous: null, next: { id: 'c', generation: null } },
+          destination: { previous: { id: 'a', generation: null }, next: null } },
+      } },
+    }) };
+    jest.mocked(useDocumentActions).mockReturnValue(actions as never);
+    jest.mocked(useDataCollection).mockReturnValue({ state } as never);
+    const { result } = renderHook(() => useServiceOrdersEngine('u', true));
+    expect(result.current.orders.map(item => item.id)).toEqual(['c', 'd', 'a', 'b']);
+    await act(async () => { await result.current.moveOrder('a', 0); });
+    expect(actions.commit).toHaveBeenCalledWith({ collection: 'serviceOrders', id: 'a' }, expect.any(Function),
+      expect.objectContaining({ move: expect.objectContaining({ afterRequests: ['move-b'] }) }));
   });
 
   it('creates a custom rite at the end of the list and deletes through the engine', async () => {

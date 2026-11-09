@@ -25,7 +25,7 @@ import type { CommitRequest } from './commits';
 import type { AutosaveFieldActions, AutosaveFieldDrafts, AutosaveFieldStamp } from './documentFieldAction';
 import type { PreachStatusAction } from './preachStatusAction';
 import type { AutosaveRowFieldActions, RowFieldDrafts } from './rowFieldAutosave';
-import type { CommandResult, ConflictDetail, DataCommand, DocumentData, ResourceSnapshot } from './types';
+import type { CommandResult, ConflictDetail, DataCommand, DocumentData, ResourceSnapshot, ServiceOrderPlacementCapture, ServiceOrderPlacementComparison } from './types';
 
 export interface SessionCheckpoint extends AutosaveFieldDrafts, RowFieldDrafts {
   confirmed: ResourceSnapshot;
@@ -35,6 +35,8 @@ export interface SessionCheckpoint extends AutosaveFieldDrafts, RowFieldDrafts {
   remoteCandidate: ResourceSnapshot | null;
   exegeticalPointDrafts?: ReturnType<typeof stageExegeticalPoint>;
   conflicts: ConflictDetail[];
+  serviceOrderPlacementComparison?: ServiceOrderPlacementComparison;
+  serviceOrderPlacementRetry?: ServiceOrderPlacementCapture;
   pending: Record<string, { generation: number; value: DocumentData | null; operations?: string[]; borrowedManualScope?: string } & AutosaveFieldActions & AutosaveRowFieldActions>;
 }
 
@@ -166,6 +168,9 @@ export class DataSession {
       }
       return true;
     }
+    if (request.serviceOrderPlacement && equalValues(request.serviceOrderPlacement, this.state.serviceOrderPlacementRetry)) {
+      delete this.state.serviceOrderPlacementRetry;
+    }
     this.registerCommit(request.id, request.editGeneration, request.value, request.atomic?.id ?? request.command?.operationId, request);
     if (request.result && ['acknowledged', 'conflict', 'refused'].includes(request.state)) this.accept(request.result, request.atomic?.kind === 'analysis-reshape');
     return request.state === 'acknowledged';
@@ -242,6 +247,8 @@ export class DataSession {
         && canReplaceSnapshot(this.state.remoteCandidate ?? undefined, result.snapshot)) {
         this.state.remoteCandidate = copy(result.snapshot);
         this.state.conflicts = copy(result.conflicts);
+        if (result.serviceOrderPlacementComparison) this.state.serviceOrderPlacementComparison = copy(result.serviceOrderPlacementComparison);
+        else delete this.state.serviceOrderPlacementComparison;
       }
       return;
     }
@@ -399,7 +406,16 @@ export class DataSession {
     this.state.dirty = !equalValues(this.state.draft, this.state.confirmed.value);
   }
 
+  stageServiceOrderPlacementRetry(move: ServiceOrderPlacementCapture): void {
+    if (!this.state.draft) throw new Error('The service order is unavailable');
+    this.edit({ ...this.state.draft, rank: move.rank });
+    this.state.serviceOrderPlacementRetry = copy(move);
+    this.state.dirty = true;
+  }
+
   private clearAutosaveFieldDrafts(): void {
+    delete this.state.serviceOrderPlacementComparison;
+    delete this.state.serviceOrderPlacementRetry;
     delete this.state.exegeticalPointDrafts;
     clearRowFieldDrafts(this.state);
     for (const target of autosaveFieldTargets(this.state.confirmed.resource.collection)) delete this.state[target.draft];

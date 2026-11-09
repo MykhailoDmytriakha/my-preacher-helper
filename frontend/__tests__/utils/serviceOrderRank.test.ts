@@ -43,6 +43,20 @@ describe('service order ranks', () => {
     expect(sorted.map((o) => o.id)).toEqual(['a', 'x']);
   });
 
+  it('keeps every finite rank ahead of unusable ranks and sorts the latter by ID', () => {
+    const sorted = sortByRank([at('z', NaN), at('x', Infinity), at('a', Number.MAX_VALUE)]);
+    expect(sorted.map(order => order.id)).toEqual(['a', 'x', 'z']);
+  });
+
+  it('only returns finite ranks strictly inside the available gap', () => {
+    const limit = Number.MAX_VALUE;
+    const adjacent = limit - 2 ** 971;
+    expect(rankBetween(-limit, limit)).toBe(0);
+    expect(rankBetween(adjacent, limit)).toBeNull();
+    expect(rankBetween(limit, null)).toBeNull();
+    expect(rankBetween(null, -limit)).toBeNull();
+  });
+
   it('appends after the last rank, and starts a list from nothing', () => {
     expect(rankForAppend([])).toBe(RANK_STEP);
     expect(rankForAppend([at('a', 1000), at('b', 2000)])).toBe(2000 + RANK_STEP);

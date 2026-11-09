@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { toast } from 'sonner';
 
+import { serviceOrderPlacementWords } from '@/components/care/serviceOrderPlacementWords';
 import { OutdatedTabNotice } from '@/components/common/OutdatedTabNotice';
 import { SyncNotice } from '@/components/common/SyncNoticeDock';
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
@@ -80,6 +81,12 @@ type DisplayValue = (scope: string, field: string, value: unknown, document?: Do
 const isItem = (value: unknown): value is Item => Boolean(value) && typeof value === 'object' && typeof (value as { id?: unknown }).id === 'string';
 function fieldComparison(entry: Waiting, t: (key: string) => string): TextComparison | undefined {
   if (entry.records.length !== 1) return undefined;
+  const placement = entry.records[0].checkpoint.serviceOrderPlacementComparison;
+  if (entry.resource.collection === 'serviceOrders' && placement) {
+    return { title: t('serviceOrders.placementHistory.position'), valueKind: 'field',
+      mine: serviceOrderPlacementWords(placement.mine, t),
+      stored: placement.saved ? serviceOrderPlacementWords(placement.saved, t) : t('dataSync.storedVersion') };
+  }
   if (entry.resource.collection === 'sermons') return planModeComparison(entry.records[0].checkpoint, t);
   if (entry.resource.collection === 'studyNotes') {
     const kind = readCommentKindComparison(entry.records[0].checkpoint);
@@ -484,7 +491,8 @@ function EngineConflicts({ pollMs, search }: { pollMs: number; search?: string }
           description={comparison ? t('dataSync.fieldVersionChanged') : undefined}
           keepMineLabel={comparison ? t('dataSync.useLocalVersion') : undefined}
           takeTheirsLabel={comparison ? t('dataSync.useStoredVersion') : undefined}
-          onKeepMine={() => { void settle('mine'); }}
+          keepMineDisabled={entry.records[0].checkpoint.serviceOrderPlacementComparison?.available === false}
+          onKeepMine={() => { void settle('mine', browser, entry, Boolean(entry.records[0].checkpoint.serviceOrderPlacementComparison)); }}
           onTakeTheirs={() => { void askBeforeSettling(entry, 'theirs', Boolean(comparison)); }}
           busy={busy}
           className="mb-3"

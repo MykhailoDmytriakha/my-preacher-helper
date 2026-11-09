@@ -44,6 +44,7 @@ const KNOWN = new Map<string, string>([
   ['council-topic-kind-changed', 'council.topic.kindChanged'],
   ['topic-gone', 'council.topicTitleHistory.gone'],
   ['service-order-step-gone', 'serviceOrders.flagHistory.stepGone'],
+  ['service-order-position-needs-review', 'serviceOrders.placementHistory.neighborNeedsReview'],
   ['preach-date-gone', 'dataSync.failure.preachDateGone'],
   ['preach-date-edits-retained', 'dataSync.failure.preachDateEditsRetained'],
   ['fresh-read-required', 'dataSync.failure.freshReadRequired'],

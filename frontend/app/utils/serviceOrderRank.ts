@@ -35,7 +35,7 @@ const isRank = (value: unknown): value is number =>
 
 /** The rank a document sorts by; anything unusable sorts after everything that has one. */
 const rankOf = (order: Pick<ServiceOrder, 'rank'>): number =>
-  isRank(order.rank) ? order.rank : Number.MAX_SAFE_INTEGER;
+  isRank(order.rank) ? order.rank : Number.POSITIVE_INFINITY;
 
 /**
  * The pastor's order, and the SAME order on every device: rank first, then document id — never
@@ -43,8 +43,8 @@ const rankOf = (order: Pick<ServiceOrder, 'rank'>): number =>
  */
 export function sortByRank<T extends Pick<ServiceOrder, 'id' | 'rank'>>(orders: T[]): T[] {
   return [...orders].sort((a, b) => {
-    const difference = rankOf(a) - rankOf(b);
-    if (difference !== 0) return difference;
+    const left = rankOf(a), right = rankOf(b);
+    if (left !== right) return left < right ? -1 : 1;
     return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
   });
 }
@@ -62,11 +62,17 @@ export function rankForAppend(orders: Pick<ServiceOrder, 'id' | 'rank'>[]): numb
  * writing a rank that cannot hold.
  */
 export function rankBetween(before: number | null, after: number | null): number | null {
-  if (before === null && after === null) return RANK_STEP;
-  if (before === null) return (after as number) - RANK_STEP;
-  if (after === null) return before + RANK_STEP;
-  if (after - before < MIN_GAP) return null;
-  return before + (after - before) / 2;
+  if ((before !== null && !isRank(before)) || (after !== null && !isRank(after))) return null;
+  let rank: number;
+  if (before === null) rank = after === null ? RANK_STEP : after - RANK_STEP;
+  else if (after === null) rank = before + RANK_STEP;
+  else {
+    const gap = after - before;
+    if (gap < MIN_GAP) return null;
+    rank = Number.isFinite(gap) ? before + gap / 2 : before / 2 + after / 2;
+  }
+  // Double precision can round the proposed midpoint or edge back to its neighbour.
+  return isRank(rank) && (before === null || rank > before) && (after === null || rank < after) ? rank : null;
 }
 
 /** True when the list can no longer be reordered by midpoints and needs a clean spread. */

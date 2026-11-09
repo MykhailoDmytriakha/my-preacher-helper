@@ -97,6 +97,60 @@ describe('Durable commit requests', () => {
   beforeEach(() => jest.useFakeTimers());
   afterEach(() => { jest.clearAllTimers(); jest.useRealTimers(); });
 
+  it('holds a service move until the observed destination anchor has acknowledged its own move', async () => {
+    const opening: ResourceSnapshot = { ...initial(), resource: { collection: 'serviceOrders', id: 'first' },
+      value: { userId: 'owner', title: 'Service', rank: 1000, steps: [] } };
+    const second = { ...opening, resource: { ...opening.resource, id: 'second' } };
+    const s = setup({ opening });
+    const { queue } = s.makeQueue();
+    let release!: (answer: CommandResult) => void;
+    const ack = new Promise<CommandResult>(resolve => { release = resolve; });
+    jest.mocked(s.transport.send).mockImplementation(command => command.resource.id === 'first' ? ack
+      : Promise.resolve(applyCommand(command, second)));
+    const save = (snapshot: ResourceSnapshot, afterRequests?: string[]) => {
+      const editor = new DataSession(snapshot);
+      editor.edit({ ...snapshot.value, rank: 2000 });
+      return queue.save(snapshot.resource.id, editor.checkpoint(), { action: { kind: 'service-order-placement', move: {
+        before: { exists: true, value: 1000 }, rank: 2000, generation: 'g', afterRequests,
+        placement: { observedRevision: 1, time: null,
+          opening: { previous: null, next: { id: 'neighbor', generation: 'other' } },
+          destination: { previous: { id: 'neighbor', generation: 'other' }, next: null } },
+      } } });
+    };
+    const prerequisite = await save(opening);
+    const dependent = await save(second, [prerequisite!.id]);
+    const draining = queue.drain(true);
+    await settle();
+    expect(s.transport.send).toHaveBeenCalledTimes(1);
+    const firstCommand = jest.mocked(s.transport.send).mock.calls[0][0];
+    expect(firstCommand.resource).toEqual(opening.resource);
+    release(applyCommand(firstCommand, opening));
+    await draining;
+    expect(s.transport.send).toHaveBeenLastCalledWith(expect.objectContaining({
+      operationId: dependent!.id, resource: second.resource, dependsOn: [prerequisite!.id],
+    }));
+  });
+
+  it('keeps a same-rank service placement as one durable move with its exact shown gap', async () => {
+    const opening: ResourceSnapshot = { ...initial(), resource: { collection: 'serviceOrders', id: 'order' },
+      value: { userId: 'owner', title: 'Service', rank: 1000, steps: [] } };
+    const s = setup({ opening });
+    const { queue } = s.makeQueue();
+    const editor = new DataSession(opening);
+    const before = { exists: true, value: 1000 };
+    const placement = { observedRevision: 1, time: null,
+      opening: { previous: null, next: { id: 'neighbor', generation: 'other' } },
+      destination: { previous: { id: 'neighbor', generation: 'other' }, next: null } };
+    await queue.save('service-order', editor.checkpoint(), {
+      action: { kind: 'service-order-placement', move: { before, rank: 1000, generation: 'g', placement } },
+    });
+    await queue.drain(true);
+    expect(s.transport.send).toHaveBeenCalledTimes(1);
+    expect(s.transport.send).toHaveBeenCalledWith(expect.objectContaining({
+      kind: 'update', changes: [{ path: ['rank'], before, after: before }], serviceOrderPlacement: placement,
+    }));
+  });
+
   it('sends a deliberate same-mode choice with the time pinned before another plan save', async () => {
     const first = initial();
     const opening = { ...first, metadata: { ...first.metadata!, revision: 2 },

@@ -28,11 +28,19 @@ const seriesComparison = z.object({
   ref: z.object({ type: z.enum(['sermon', 'group']), refId: z.string().refine(isValidIdentifier) }),
   label: z.string(), proposed: seriesSelection.nullable(), stored: seriesSelection.nullable(),
 });
+const serviceOrderAnchor = z.object({
+  id: z.string().refine(isValidIdentifier), generation: z.string().refine(isValidIdentifier).nullable(), title: z.string().optional(),
+});
+const serviceOrderGap = z.object({ previous: serviceOrderAnchor.nullable(), next: serviceOrderAnchor.nullable() });
+const serviceOrderPlacementComparison = z.object({
+  mine: serviceOrderGap, saved: serviceOrderGap.nullable(), available: z.boolean(),
+});
 const resultSchema: z.ZodType<CommandResult> = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('acknowledged'), operationId: z.string(), snapshot: snapshotSchema, committed: metadataSchema.optional(),
     affected: z.array(z.object({ resource: resourceSchema, metadata: metadataSchema })).max(99).optional(),
     relatedSnapshots: z.array(snapshotSchema).max(99).optional() }),
-  z.object({ kind: z.literal('conflict'), operationId: z.string(), snapshot: snapshotSchema, conflicts: z.array(z.object({ path: z.array(z.string()), base: field, mine: field, theirs: field })) }),
+  z.object({ kind: z.literal('conflict'), operationId: z.string(), snapshot: snapshotSchema, conflicts: z.array(z.object({ path: z.array(z.string()), base: field, mine: field, theirs: field })),
+    serviceOrderPlacementComparison: serviceOrderPlacementComparison.optional() }),
   z.object({ kind: z.literal('deleted'), operationId: z.string(), snapshot: snapshotSchema }),
   z.object({ kind: z.literal('refused'), operationId: z.string(), code: z.string(),
     seriesMembershipComparisons: z.array(seriesComparison).min(1).max(MAX_RELATION_RESOURCES).optional() }),

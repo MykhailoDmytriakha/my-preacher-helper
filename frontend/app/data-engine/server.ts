@@ -41,6 +41,7 @@ import { existingRowField } from './rowFieldAction';
 import { SERIES_MEMBERSHIP_DELETION, SERIES_MEMBERSHIP_HISTORY, SERIES_MEMBERSHIP_ORDER, seriesLocation, type SeriesMembershipWrite } from './seriesMembershipOrder.server';
 import { assembleChangePage, collectionHeadId, HEADS_COLLECTION, parseChangePointer, planFeedWrites, readHeadVersion, sequenceId } from './serverFeed';
 import { planDataCommand } from './serverRelations';
+import { metadataAfterServiceOrderPlacement, SERVICE_ORDER_PLACEMENT_HISTORY, type ServiceOrderPlacementWrite } from './serviceOrderPlacement.server';
 import { alignServiceOrderFlagRepresentation, SERVICE_ORDER_FLAG_POLICY, SERVICE_ORDER_STEP_TITLE_POLICY, type ServiceOrderFlagHistoryPage, type ServiceOrderStepTitleHistoryPage } from './serviceOrderStepAction';
 import { coversCommittedEffect } from './snapshotFreshness';
 import { compactTagConflict, expandTagConflict, isIndexedTagConflict, isSplitTagConflict, readTagConflictParts, splitTagConflictJson, tagReceiptDigest, validTagReceiptPartCount, type IndexedTagConflict, type SplitTagConflict } from './tagConflictReceipt.server';
@@ -64,7 +65,7 @@ import type { RowValue } from './rowFieldAction';
 import type { SeriesMetadataHistoryPage } from './seriesFieldAction';
 import type { SeriesMembershipHistoryEntry, SeriesMembershipHistoryPage } from './seriesMembershipHistory';
 import type { FeedWrite } from './serverFeed';
-import type { CollectionChanges, CollectionPage, CommandReceipt, CommandResult, ConflictDetail, DataCommand, DocumentData, EngineMetadata, EngineReadOptions, Json, ResourceRef, ResourceSnapshot } from './types';
+import type { ServiceOrderPlacementHistoryPage, CollectionChanges, CollectionPage, CommandReceipt, CommandResult, ConflictDetail, DataCommand, DocumentData, EngineMetadata, EngineReadOptions, Json, ResourceRef, ResourceSnapshot } from './types';
 import type { AiResultReceiptStore, ReceiptRecord } from '@/services/aiResultReceipt.server';
 import type { DocumentReference, Firestore, Transaction } from 'firebase-admin/firestore';
 
@@ -516,7 +517,7 @@ function orderGroupFlowFields(command: DataCommand, current: ResourceSnapshot, m
   return { block, step, blockStatus, duration: { ...duration, command: alignGroupStepDurationRepresentation(duration.command, current) } };
 }
 
-async function persistAcceptedCommand(transaction: Transaction, { owner, command, snapshot: primarySnapshot, effects, rawDocuments, dateOrder, meetingOrder, groupFlowOrder, preachingOrder, statusOrder, serviceFlagOrder, serviceStepTitleOrder, councilTopicTitleOrder, councilAssemblyOrder, councilTopicKindOrder, councilOutcomeOrder, thoughtLockOrder, thoughtPlacementOrder, markOrder, fieldOrder, exegeticalOrder, thoughtTagOrder, documentTagOrder, seriesMembershipWrites, cachedSeriesHead }: {
+async function persistAcceptedCommand(transaction: Transaction, { owner, command, snapshot: primarySnapshot, effects, rawDocuments, dateOrder, meetingOrder, groupFlowOrder, preachingOrder, statusOrder, serviceFlagOrder, serviceStepTitleOrder, councilTopicTitleOrder, councilAssemblyOrder, councilTopicKindOrder, councilOutcomeOrder, thoughtLockOrder, thoughtPlacementOrder, markOrder, fieldOrder, exegeticalOrder, thoughtTagOrder, documentTagOrder, serviceOrderPlacement, seriesMembershipWrites, cachedSeriesHead }: {
   owner: string;
   command: DataCommand;
   snapshot: ResourceSnapshot;
@@ -540,6 +541,7 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
   exegeticalOrder?: ReturnType<typeof orderExegeticalPoints>;
   thoughtTagOrder?: ReturnType<typeof orderThoughtTags>;
   documentTagOrder?: ReturnType<typeof orderDocumentTags>;
+  serviceOrderPlacement?: ServiceOrderPlacementWrite;
   seriesMembershipWrites: readonly SeriesMembershipWrite[];
   cachedSeriesHead?: Promise<DocumentData | undefined>;
 }) {
@@ -574,11 +576,19 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
     const exegetical = metadataAfterExegeticalPoints({ ...snapshot, metadata }, raw?._dataEngine, primary ? exegeticalOrder : undefined);
     const tags = metadataAfterThoughtTags({ ...snapshot, metadata: exegetical }, raw, primary ? thoughtTagOrder : undefined);
     const documentTags = metadataAfterDocumentTags({ ...snapshot, metadata: tags }, raw, primary ? documentTagOrder : undefined);
-    const finalMetadata = metadataAfterOutlineMoves({ ...snapshot, metadata: documentTags }, raw);
+    const outlineMoves = metadataAfterOutlineMoves({ ...snapshot, metadata: documentTags }, raw);
+    const finalMetadata = metadataAfterServiceOrderPlacement({ ...snapshot, metadata: outlineMoves }, raw,
+      primary ? serviceOrderPlacement : undefined, !primary && Boolean(serviceOrderPlacement));
     const seriesDeletionVersion = snapshot.resource.collection === 'series' && snapshot.value === null
       ? acceptedSeriesCatalogVersion(feedWrites) : undefined;
     transaction.set(adminDb.collection(snapshot.resource.collection).doc(snapshot.resource.id), { ...value,
       _dataEngine: { ...finalMetadata, ...(seriesDeletionVersion !== undefined && { [SERIES_MEMBERSHIP_DELETION]: seriesDeletionVersion }) } });
+  }
+  if (serviceOrderPlacement?.displaced && primarySnapshot.metadata) {
+    const history = adminDb.collection('serviceOrders').doc(primarySnapshot.resource.id).collection(SERVICE_ORDER_PLACEMENT_HISTORY);
+    transaction.set(history.doc(historyEntryId(primarySnapshot, command.operationId)), {
+      ...serviceOrderPlacement.displaced, generation: primarySnapshot.metadata.generation, acceptedAt: new Date().toISOString(),
+    });
   }
   const tagHistory = thoughtTagOrder?.displaced.filter(entry =>
     existingRowField(primarySnapshot.value?.thoughts, entry.rowId, THOUGHT_TAG_BIRTH) === entry.rowCreatedAt
@@ -716,6 +726,7 @@ export async function processCommand(owner: string, input: unknown): Promise<Com
     let exegeticalOrder: ReturnType<typeof orderExegeticalPoints> | undefined;
     let thoughtTagOrder: ReturnType<typeof orderThoughtTags> | undefined;
     let documentTagOrder: ReturnType<typeof orderDocumentTags> | undefined;
+    let serviceOrderPlacement: ServiceOrderPlacementWrite | undefined;
     const rawDocuments = new Map<string, Record<string, unknown> | undefined>([[resourceKey(command.resource), raw]]);
     if (blocked.length) {
       result = { kind: 'blocked', operationId: command.operationId, dependencies: blocked };
@@ -743,6 +754,7 @@ export async function processCommand(owner: string, input: unknown): Promise<Com
       fieldOrder = orderDocumentFields(markOrder.command, current, raw?._dataEngine, serverMs);
       exegeticalOrder = orderExegeticalPoints(fieldOrder.command, current, raw?._dataEngine, serverMs);
       const planned = await planDataCommand(exegeticalOrder.command, current, {
+        serviceOrderPlacement: { rawMetadata: raw?._dataEngine, serverMs },
         ...(serverMs !== undefined && { seriesMembershipOrder: { serverMs,
           catalogVersion: async () => readHeadVersion(owner, 'series', await readSeriesHead()),
           read: async member => (await transaction.get(seriesMembershipHeadRef(member))).data(),
@@ -799,6 +811,7 @@ export async function processCommand(owner: string, input: unknown): Promise<Com
       effects = plan.writes.map(effect => stampAcceptedResource(snapshotFromRaw(effect.resource, rawDocuments.get(resourceKey(effect.resource))), effect, acceptedAt));
       result = withAcceptedCopies(plan.result, effects);
       seriesMembershipWrites = plan.seriesMembershipWrites ?? [];
+      serviceOrderPlacement = plan.serviceOrderPlacement;
       // Leave headroom below Firestore's transaction request limit; never split a cascade.
       if (effectBytes(effects) > MAX_EFFECT_BYTES) {
         result = refusal('relation-effects-too-large');
@@ -817,7 +830,7 @@ export async function processCommand(owner: string, input: unknown): Promise<Com
       deletedTag = raw.name;
     }
     if (result.kind === 'acknowledged') {
-      await persistAcceptedCommand(transaction, { owner, command, snapshot: result.snapshot, effects, rawDocuments, dateOrder, meetingOrder, groupFlowOrder, preachingOrder, statusOrder, serviceFlagOrder, serviceStepTitleOrder, councilTopicTitleOrder, councilAssemblyOrder, councilTopicKindOrder, councilOutcomeOrder, thoughtLockOrder, thoughtPlacementOrder, markOrder, fieldOrder, exegeticalOrder, thoughtTagOrder, documentTagOrder, seriesMembershipWrites, cachedSeriesHead });
+      await persistAcceptedCommand(transaction, { owner, command, snapshot: result.snapshot, effects, rawDocuments, dateOrder, meetingOrder, groupFlowOrder, preachingOrder, statusOrder, serviceFlagOrder, serviceStepTitleOrder, councilTopicTitleOrder, councilAssemblyOrder, councilTopicKindOrder, councilOutcomeOrder, thoughtLockOrder, thoughtPlacementOrder, markOrder, fieldOrder, exegeticalOrder, thoughtTagOrder, documentTagOrder, serviceOrderPlacement, seriesMembershipWrites, cachedSeriesHead });
     }
     const comparison = exegeticalOrder?.comparison;
     if (comparison && result.kind === 'conflict'
@@ -1025,6 +1038,14 @@ export async function listCouncilTopicTitleHistory(owner: string, councilId: str
     owner, resource, COUNCIL_TOPIC_TITLE_POLICY.history, generation, cursor, 'council-gone',
   );
   return { owner, councilId, generation, ...page };
+}
+
+export async function listServiceOrderPlacementHistory(owner: string, orderId: string, generation: string, cursor?: string): Promise<ServiceOrderPlacementHistoryPage> {
+  const resource = { collection: 'serviceOrders', id: orderId };
+  const page = await listHistoryEntries<ServiceOrderPlacementHistoryPage['entries'][number]>(
+    owner, resource, SERVICE_ORDER_PLACEMENT_HISTORY, generation, cursor, 'service-order-gone',
+  );
+  return { owner, orderId, generation, ...page };
 }
 
 export async function listServiceOrderTitleHistory(owner: string, orderId: string, generation: string, cursor?: string): Promise<ServiceOrderTitleHistoryPage> {

@@ -19,7 +19,7 @@ export { ANALYSIS_RESHAPE_FIELDS, ANALYSIS_RESHAPE_FRAME } from './analysisResha
 
 import type {
   CommandResult, ConflictDetail, DataCommand, DocumentData, FieldChange,
-  FieldValue, Json, ResourceSnapshot,
+  FieldValue, Json, ResourceSnapshot, ServiceOrderPlacementGap,
 } from './types';
 
 /**
@@ -160,6 +160,7 @@ function validateUpdate(command: Extract<DataCommand, { kind: 'update' }>, polic
       if (paths.some(path => prefix(path, change.path) || prefix(change.path, path))) fail('Overlapping field changes');
       paths.push(change.path);
     }
+    if (command.serviceOrderPlacement !== undefined && !validServiceOrderPlacement(command)) fail('Invalid service order placement');
     const removal = command.observedPlanTextRemoval;
     if (removal !== undefined && (command.resource.collection !== 'sermons' || !paths.some(path => path[0] === 'outline')
       || !validPlanTextEvidence(removal))) fail('Invalid plan text removal evidence');
@@ -169,6 +170,30 @@ function validateUpdate(command: Extract<DataCommand, { kind: 'update' }>, polic
       if (command.resource.collection !== 'sermons' || !validPlanTextEvidence(discard) || !object(next)
         || !Object.keys(discard).every(id => own(next, id) && next[id] === '')) fail('Invalid plan text discard evidence');
     }
+}
+
+export function validServiceOrderPlacementGap(value: unknown, movedId: string): value is ServiceOrderPlacementGap {
+  if (!object(value)) return false;
+  const validAnchor = (anchor: unknown) => object(anchor) && isValidIdentifier(anchor.id)
+    && anchor.id !== movedId && (anchor.generation === null || isValidIdentifier(anchor.generation));
+  const { previous, next } = value;
+  if (previous === null) return validAnchor(next);
+  if (next === null) return validAnchor(previous);
+  return object(previous) && object(next) && previous.id !== next.id && validAnchor(previous) && validAnchor(next);
+}
+
+function validServiceOrderPlacement(command: Extract<DataCommand, { kind: 'update' }>): boolean {
+  const placement: unknown = command.serviceOrderPlacement;
+  const rank = command.changes.find(change => change.path[0] === 'rank');
+  if (command.resource.collection !== 'serviceOrders' || !object(placement) || !rank?.after.exists
+    || typeof rank.after.value !== 'number' || !Number.isFinite(rank.after.value)
+    || command.changes.some(change => change.path[0] !== 'rank' && change.path[0] !== 'updatedAt')
+    || typeof placement.observedRevision !== 'number' || !Number.isSafeInteger(placement.observedRevision) || placement.observedRevision < 0
+    || (placement.time !== null && !boundedActionTime(placement.time))
+    || (placement.predecessorOperationId !== undefined && (!isValidIdentifier(placement.predecessorOperationId)
+      || placement.predecessorOperationId === command.operationId))) return false;
+  return validServiceOrderPlacementGap(placement.opening, command.resource.id)
+    && validServiceOrderPlacementGap(placement.destination, command.resource.id);
 }
 
 function validPlanTextEvidence(evidence: unknown): boolean {

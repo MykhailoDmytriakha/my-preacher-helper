@@ -37,6 +37,7 @@ export interface SaveConflictBannerProps {
    * revision and is refused again, and the button promises what it never does.
    */
   onKeepMine: () => void;
+  keepMineDisabled?: boolean;
   /** Discard mine and load what the other device stored. */
   onTakeTheirs: () => void;
   /** A choice is being carried out — keep both buttons from firing twice. */
@@ -52,6 +53,7 @@ export function SaveConflictBanner({
   pendingText,
   description, keepMineLabel, takeTheirsLabel,
   onKeepMine,
+  keepMineDisabled = false,
   onTakeTheirs,
   busy = false,
   className = '',
@@ -78,7 +80,7 @@ export function SaveConflictBanner({
           <button
             type="button"
             onClick={onKeepMine}
-            disabled={busy}
+            disabled={busy || keepMineDisabled}
             className="rounded-lg bg-rose-600 px-3 py-1.5 font-medium text-white transition-colors hover:bg-rose-700 disabled:opacity-60"
           >
             {keepMineLabel ?? t('freshness.conflictKeepMine')}

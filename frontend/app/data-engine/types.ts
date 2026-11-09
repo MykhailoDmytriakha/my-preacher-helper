@@ -66,6 +66,7 @@ export type EditorCommitAction =
   | { kind: 'sermon-plan-mode'; mode: SermonPlanModeCapture }
   | { kind: 'sermon-preparation-check'; field: PreparationConfirmation; time: ActionTime | null }
   | { kind: 'thought-placement'; rowId: string; time: ActionTime | null; shown?: ShownCopy }
+  | { kind: 'service-order-placement'; move: ServiceOrderPlacementCapture }
   | { kind: 'service-order-title'; title: ServiceOrderTitleCapture }
   | { kind: 'service-order-flag'; flag: ServiceOrderFlagCapture }
   | { kind: 'service-order-step-title'; title: ServiceOrderStepTitleCapture }
@@ -80,6 +81,41 @@ export type EditorCommitAction =
   | { kind: 'plan-template-name'; name: PlanTemplateNameCapture }
   | { kind: 'tag-color'; color: TagColorCapture }
   | { kind: 'prayer-status'; status: PrayerStatusCapture };
+
+export type ServiceOrderPlacementAnchor = { id: string; generation: string | null };
+export type ServiceOrderPlacementGap = { previous: ServiceOrderPlacementAnchor | null; next: ServiceOrderPlacementAnchor | null };
+export type ServiceOrderPlacement = {
+  observedRevision: number;
+  time: ActionTime | null;
+  predecessorOperationId?: string;
+  opening: ServiceOrderPlacementGap;
+  destination: ServiceOrderPlacementGap;
+};
+
+export type LabeledServiceOrderPlacement = {
+  previous: (ServiceOrderPlacementAnchor & { title?: string }) | null;
+  next: (ServiceOrderPlacementAnchor & { title?: string }) | null;
+};
+export type ServiceOrderPlacementComparison = {
+  mine: LabeledServiceOrderPlacement;
+  saved: LabeledServiceOrderPlacement | null;
+  available: boolean;
+};
+export type ServiceOrderPlacementHistoryPage = {
+  owner: string;
+  orderId: string;
+  generation: string;
+  entries: { id: string; earlier: LabeledServiceOrderPlacement; kept: LabeledServiceOrderPlacement; acceptedAt: string }[];
+  nextCursor: string | null;
+};
+
+export type ServiceOrderPlacementCapture = {
+  generation: string | null;
+  before: FieldValue;
+  rank: number;
+  afterRequests?: string[];
+  placement: ServiceOrderPlacement;
+};
 
 export type BibleMarkStrokeStamp = { observedRevision: number; time: ActionTime };
 
@@ -112,6 +148,7 @@ export type DataCommand = CommandBase & (
       sermonChurchAction?: DocumentFieldStamp;
       sermonGoalTypeAction?: DocumentFieldStamp;
       sermonPlanModeAction?: SermonPlanModeStamp;
+      serviceOrderPlacement?: ServiceOrderPlacement;
       sermonPreparationCheckActions?: Partial<Record<PreparationConfirmation, DocumentFieldStamp>>;
       sermonChurchFill?: SermonChurchFill;
       exegeticalPlanActions?: ExegeticalPointStamp[];
@@ -188,7 +225,7 @@ export type CommandResult =
       affected?: Array<{ resource: ResourceRef; metadata: EngineMetadata }>;
       /** Current proven copies of secondary effects; never retained in compact ACK history. */
       relatedSnapshots?: ResourceSnapshot[] }
-  | { kind: 'conflict'; operationId: string; snapshot: ResourceSnapshot; conflicts: ConflictDetail[] }
+  | { kind: 'conflict'; operationId: string; snapshot: ResourceSnapshot; conflicts: ConflictDetail[]; serviceOrderPlacementComparison?: ServiceOrderPlacementComparison }
   | { kind: 'deleted'; operationId: string; snapshot: ResourceSnapshot }
   | { kind: 'refused'; operationId: string; code: string; seriesMembershipComparisons?: SeriesMembershipComparison[] }
   | { kind: 'blocked'; operationId: string; dependencies: string[] };

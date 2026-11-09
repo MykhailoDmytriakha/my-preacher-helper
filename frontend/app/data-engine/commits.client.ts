@@ -20,6 +20,9 @@ function retainPredecessor(store: IDBObjectStore, request: CommitRequest): void 
   const references = new Set<string>();
   if (!['cancelled', 'acknowledged'].includes(request.state)) {
     if (request.predecessor && !request.initialized) references.add(request.predecessor);
+    if (!['acknowledged', 'cancelled', 'refused'].includes(request.state)) {
+      request.serviceOrderPlacement?.afterRequests?.forEach(id => references.add(id));
+    }
     for (const id of request.deleteAfter ?? []) references.add(id);
   }
   if (references.size) store.put({ commitReferences: [...references] }, key);

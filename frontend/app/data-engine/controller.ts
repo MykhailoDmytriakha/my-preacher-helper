@@ -14,6 +14,7 @@ import { isDirectLegacyDocumentIntent, type DocumentAnswer } from './documentDel
 import { keepUncontestedDocumentTagFields } from './documentTagChoice';
 import { requiredDomainTargets } from './domainPolicy';
 import { areDifferentTabManualParents, editorSlot, readManualScopeIdentity } from './editorIdentity';
+import { readField, writeField } from './fieldValues';
 import { liveSubmittedWork, sameLiveAtomicProof } from './liveSubmittedWork';
 import { chooseLocalPlacement } from './localPlacementChoice';
 import { projectExactManualChoice, type ExactManualChoice } from './manualChoice';
@@ -32,6 +33,7 @@ import { keepUncontestedStudyNoteFields } from './studyNoteTypeChoice';
 import { submittedWorkCheckpoint } from './submittedWork';
 import { changedThoughtTagTarget } from './thoughtTagAction';
 
+import type { ActionTime } from './actionClock';
 import type { DocumentWriteReceipt } from './commitReceipt';
 import type { CommitQueue, CommitRequest } from './commits';
 import type { AutosaveFieldStamp } from './documentFieldAction';
@@ -410,7 +412,7 @@ export class EditorController {
   }
 
   /** Keep local conflict fields after terminal refusal, without replacing remote siblings. */
-  keepLocal(selection?: readonly ManualPath[], amendment?: { base: DocumentData; value: DocumentData }, expected?: EditorRecord): Promise<void> {
+  keepLocal(selection?: readonly ManualPath[], amendment?: { base: DocumentData; value: DocumentData }, expected?: EditorRecord, choiceTime?: ActionTime | null): Promise<void> {
     const captures = this.pendingCaptures.boundary();
     const correction = amendment ? JSON.parse(JSON.stringify(amendment)) as typeof amendment : undefined;
     return this.enqueueChoice(async () => {
@@ -439,7 +441,7 @@ export class EditorController {
       assertCouncilTopicChoice(this.result);
       requireFreshGeneration(this.result, submittedGeneration, checkpoint.remoteCandidate);
       if (this.options.commits && cancelled.length && !isDirectLegacyDocumentIntent(cancelled, this.prepared?.operationId)) {
-        await this.resolveCommitChoice('local', captures, selection, expected, correction);
+        await this.resolveCommitChoice('local', captures, selection, expected, correction, undefined, choiceTime);
         return;
       }
       // Validate recovery before retiring its only durable terminal receipt.
@@ -726,7 +728,7 @@ export class EditorController {
   private async resolveCommitChoice(choice: 'local' | 'remote', captures: ReadonlySet<object>,
     selection?: readonly ManualPath[], expected?: EditorRecord,
     correction?: { base: DocumentData; value: DocumentData },
-    remoteChoice?: { draft: DocumentData | null; refused: boolean }): Promise<void> {
+    remoteChoice?: { draft: DocumentData | null; refused: boolean }, choiceTime?: ActionTime | null): Promise<void> {
     if (this.prepared) throw Object.assign(new Error('Resolve pending commands before replacing saved intent'), { code: PENDING_DELIVERY_FIRST });
     const cancelled = Object.keys(this.session.checkpoint().pending);
     const selected = expected ? Object.keys(expected.checkpoint.pending) : undefined;
@@ -742,7 +744,7 @@ export class EditorController {
         const checkpoint = expected?.checkpoint;
         const path = checkpoint?.conflicts.length === 1 ? checkpoint.conflicts[0].path : undefined;
         const collection = checkpoint?.confirmed.resource.collection;
-        const comparedField = isAutosaveRowFieldPath(path, collection ?? '') || (collection === 'serviceOrders' ? serviceOrderStepField(path)
+        const comparedField = Boolean(checkpoint?.serviceOrderPlacementComparison) || isAutosaveRowFieldPath(path, collection ?? '') || (collection === 'serviceOrders' ? serviceOrderStepField(path)
           : collection === 'councils' ? councilAssemblyRow(path) || councilTopicKindRow(path)
             : path?.length === 1 && (collection === 'planTemplates' && path[0] === 'name' || collection === 'tags' && path[0] === 'color' || collection === 'studyNotes' && path[0] === 'type'));
         if (expected && (comparedField || retired.some(request => expected.checkpoint.pending[request.id]
@@ -796,6 +798,19 @@ export class EditorController {
           const statusActions = ordinary ? ordinary.first.preachStatusActions
             : retired.flatMap(request => request.cancelledByChoice && source!.pending[request.id] ? request.preachStatusActions ?? [] : []);
           session.keepLocal(statusActions);
+          const selectedMove = ordinary && ordinary.first.serviceOrderPlacement;
+          if (selectedMove) {
+            const answer = ordinary && ordinary.first.result;
+            if (answer?.kind !== 'conflict' || !answer.serviceOrderPlacementComparison?.available) {
+              throw Object.assign(new Error('The proposed position is unavailable'), { code: 'decision-changed' });
+            }
+            const accepted = session.checkpoint().confirmed;
+            const generation = accepted.metadata?.generation ?? null;
+            if (generation !== selectedMove.generation || !accepted.value) throw Object.assign(new Error('The order changed'), { code: 'decision-changed' });
+            const { opening, destination } = selectedMove.placement;
+            session.stageServiceOrderPlacementRetry({ ...selectedMove, before: readField(accepted.value, ['rank']),
+              placement: { opening, destination, observedRevision: accepted.metadata?.revision ?? 0, time: choiceTime ?? null } });
+          }
           if (correction) {
             const current = session.checkpoint();
             const merged = mergeDocumentFields(correction.base, correction.value, current.draft);
@@ -808,7 +823,12 @@ export class EditorController {
         } else {
           const atChoice = decided === source ? remoteChoice?.draft : undefined;
           const local = atChoice === undefined ? decided.draft : atChoice;
-          const retained = !selection && (keepUncontestedSermonFields(decided.confirmed, local, decided.remoteCandidate, decided.conflicts)
+          const retainedPlacement = !selection && decided.serviceOrderPlacementComparison && local && decided.confirmed.value && decided.remoteCandidate?.value
+            ? mergeDocumentFields(decided.confirmed.value,
+              writeField(local, ['rank'], readField(decided.confirmed.value, ['rank'])), decided.remoteCandidate.value) : undefined;
+          if (retainedPlacement?.conflicts.length) throw Object.assign(new Error('Other changes need review'), { code: 'decision-changed' });
+          const retained = !selection && ((retainedPlacement?.value.exists ? retainedPlacement.value.value as DocumentData : undefined)
+            ?? keepUncontestedSermonFields(decided.confirmed, local, decided.remoteCandidate, decided.conflicts)
             ?? keepUncontestedDocumentTagFields(decided.confirmed, local, decided.remoteCandidate, decided.conflicts)
             ?? keepUncontestedStudyNoteFields(decided.confirmed, local, decided.remoteCandidate, decided.conflicts)
             ?? keepUncontestedCommentFields(decided.confirmed, local, decided.remoteCandidate, decided.conflicts));
