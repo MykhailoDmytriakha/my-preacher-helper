@@ -4,8 +4,8 @@ import { boundedActionTime } from './actionClock';
 import { equalValues, object } from './fieldValues';
 import { matchesRowDetailBirth } from './rowDetailAction';
 import { knownRowDetailPredecessor } from './rowDetailCapture';
-import { boundedRowId, existingRowField, matchesRowAction, replaceExistingRowField } from './rowFieldAction';
-import { MAX_TAG_MEMBERSHIP_PROOFS } from './tagMembershipOrder';
+import { boundedRowId, existingRowField, isRowChange, matchesRowAction, replaceExistingRowField } from './rowFieldAction';
+import { encodeTagMembershipAction, isTagMembershipName, MAX_TAG_MEMBERSHIP_PROOFS } from './tagMembershipOrder';
 
 import type { ActionTime } from './actionClock';
 import type { CommitRequest } from './commits';
@@ -22,7 +22,7 @@ export type ThoughtTagHistoryPage = {
 };
 
 export const ordinaryThoughtTag = (tag: unknown): tag is string =>
-  typeof tag === 'string' && tag.trim().length > 0 && tag.length <= 256 && !isStructureTag(tag);
+  isTagMembershipName(tag) && !isStructureTag(tag);
 
 export const THOUGHT_TAG_BIRTH: RowFieldTarget<string> = {
   field: 'thoughts', leaf: 'date', accepts: (date): date is string => typeof date === 'string' && date.length <= 128,
@@ -47,7 +47,7 @@ export function thoughtTagTarget(tag: string): RowFieldTarget<boolean> {
   };
 }
 
-function thoughtTags(rows: unknown, id: string): string[] | undefined {
+export function thoughtTags(rows: unknown, id: string): string[] | undefined {
   if (!Array.isArray(rows)) return undefined;
   const matches = rows.filter(row => object(row) && row.id === id);
   return matches.length === 1 && object(matches[0]) ? strings(matches[0].tags) : undefined;
@@ -116,6 +116,16 @@ export function captureThoughtTagActions(baseline: ResourceSnapshot, predecessor
 
 export function matchesThoughtTag(changes: FieldChange[], action: ThoughtTagAction): boolean {
   return matchesRowDetailBirth(changes, action, THOUGHT_TAG_BIRTH) && matchesRowAction(changes, action, thoughtTagTarget(action.tag));
+}
+
+export function thoughtTagCommandActions(changes: FieldChange[], actions: readonly ThoughtTagAction[] | undefined) {
+  const change = changes.find(item => isRowChange(item, THOUGHT_TAG_BIRTH));
+  if (!change || !actions?.length) return [];
+  return actions.flatMap(action => {
+    if (!matchesThoughtTag(changes, action)) return [];
+    const wire = encodeTagMembershipAction(action, thoughtTags((action.after ? change.after : change.before).value, action.rowId));
+    return wire ? [wire] : [];
+  });
 }
 
 export function pendingThoughtTagRebases(record: CommitRequest) {

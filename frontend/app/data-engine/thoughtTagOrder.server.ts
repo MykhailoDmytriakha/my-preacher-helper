@@ -2,23 +2,26 @@ import { boundedActionTime } from './actionClock';
 import { object } from './fieldValues';
 import { isValidIdentifier } from './protocol';
 import { matchesRowDetailBirth, rowDetailConflict } from './rowDetailAction';
-import { boundedRowId, existingRowField, proofRevision } from './rowFieldAction';
+import { boundedRowId, existingRowField, isRowChange, proofRevision } from './rowFieldAction';
 import { orderConcurrentRowField, readRowObservation } from './rowFieldOrder.server';
-import { decideTagMembership, MAX_TAG_MEMBERSHIP_PROOFS } from './tagMembershipOrder';
-import { ordinaryThoughtTag, THOUGHT_TAG_BIRTH, thoughtTagTarget } from './thoughtTagAction';
+import { decideTagMembership, MAX_TAG_MEMBERSHIP_PROOFS, readTagMembershipName } from './tagMembershipOrder';
+import { readTagProofIdentity, tagProofIdentity, tagProofKey } from './tagProofIdentity.server';
+import { ordinaryThoughtTag, THOUGHT_TAG_BIRTH, thoughtTagTarget, thoughtTags } from './thoughtTagAction';
 
 import type { RowDetailHistoryEntry } from './rowDetailAction';
 import type { TagMembershipProof } from './tagMembershipOrder';
+import type { TagProofIdentity } from './tagProofIdentity.server';
 import type { ThoughtTagAction } from './thoughtTagAction';
 import type { ConflictDetail, DataCommand, ResourceSnapshot } from './types';
 
 type Update = Extract<DataCommand, { kind: 'update' }>;
-type Subject = { rowId: string; rowCreatedAt: string; tag: string };
-type Proof = Subject & TagMembershipProof;
-type Pending = Omit<Proof, 'revision' | 'operationId'>;
+type ThoughtRow = { rowId: string; rowCreatedAt: string };
+type Proof = ThoughtRow & TagProofIdentity & TagMembershipProof;
+type Pending = ThoughtRow & { tag: string } & Omit<TagMembershipProof, 'revision' | 'operationId'>;
 type History = RowDetailHistoryEntry<string, boolean>;
 
-const key = ({ rowId, rowCreatedAt, tag }: Subject) => JSON.stringify([rowId, rowCreatedAt, tag]);
+const key = ({ rowId, rowCreatedAt }: ThoughtRow, identity: string | TagProofIdentity) =>
+  JSON.stringify([rowId, rowCreatedAt, tagProofKey(identity)]);
 
 function readProofs(raw: unknown, generation: string) {
   const stored = object(raw) && raw.generation === generation ? raw.thoughtTagProofs : undefined;
@@ -26,25 +29,31 @@ function readProofs(raw: unknown, generation: string) {
   const entries = object(stored) && Array.isArray(stored.entries) ? stored.entries.slice(0, MAX_TAG_MEMBERSHIP_PROOFS) : [];
   const proofs = entries.flatMap((item): Proof[] => {
     if (!object(item) || !boundedRowId(item.rowId) || !THOUGHT_TAG_BIRTH.accepts(item.rowCreatedAt)
-      || !ordinaryThoughtTag(item.tag) || typeof item.present !== 'boolean' || !proofRevision(item.revision)
+      || typeof item.present !== 'boolean' || !proofRevision(item.revision)
       || !isValidIdentifier(item.operationId)) return [];
+    const identity = readTagProofIdentity(item, ordinaryThoughtTag);
     const time = item.time === null ? null : boundedActionTime(item.time);
-    return time === undefined ? [] : [{ rowId: item.rowId, rowCreatedAt: item.rowCreatedAt, tag: item.tag,
+    return !identity || time === undefined ? [] : [{ rowId: item.rowId, rowCreatedAt: item.rowCreatedAt, ...identity,
       present: item.present, revision: item.revision, operationId: item.operationId, time, causal: item.causal === true }];
   });
   return { floor, proofs };
 }
 
-function readActions(command: Update, revision: number, serverMs: number) {
-  if (!Array.isArray(command.thoughtTagActions) || command.thoughtTagActions.length > MAX_TAG_MEMBERSHIP_PROOFS) return [];
+function readActions(command: Update, source: Update, revision: number, serverMs: number) {
+  if (!Array.isArray(source.thoughtTagActions) || source.thoughtTagActions.length > MAX_TAG_MEMBERSHIP_PROOFS) return [];
+  // Placement repair can move structural tags inside the array. The wire index names the original side.
+  const change = source.changes.find(item => isRowChange(item, THOUGHT_TAG_BIRTH));
+  if (!change) return [];
   const actions = new Map<string, ThoughtTagAction | undefined>();
-  for (const item of command.thoughtTagActions) {
-    if (!object(item) || !ordinaryThoughtTag(item.tag) || !THOUGHT_TAG_BIRTH.accepts(item.rowCreatedAt)) continue;
-    const action = readRowObservation(command, item, thoughtTagTarget(item.tag), serverMs, { allowUnclocked: true });
+  for (const item of source.thoughtTagActions) {
+    if (!object(item) || !boundedRowId(item.rowId) || !THOUGHT_TAG_BIRTH.accepts(item.rowCreatedAt) || typeof item.after !== 'boolean') continue;
+    const tag = readTagMembershipName(item, thoughtTags((item.after ? change.after : change.before).value, item.rowId));
+    if (!ordinaryThoughtTag(tag)) continue;
+    const action = readRowObservation(command, item, thoughtTagTarget(tag), serverMs, { allowUnclocked: true });
     if (!action || action.observedRevision > revision || !matchesRowDetailBirth(command.changes, { ...action, rowCreatedAt: item.rowCreatedAt }, THOUGHT_TAG_BIRTH)) continue;
-    const result = { ...action, tag: item.tag, rowCreatedAt: item.rowCreatedAt,
+    const result = { ...action, tag, rowCreatedAt: item.rowCreatedAt,
       ...(isValidIdentifier(item.predecessorOperationId) && { predecessorOperationId: item.predecessorOperationId }) };
-    const id = key(result);
+    const id = key(result, result.tag);
     actions.set(id, actions.has(id) ? undefined : result);
   }
   return [...actions.values()].filter((action): action is ThoughtTagAction => action !== undefined);
@@ -54,15 +63,15 @@ function pending(action: ThoughtTagAction, time = action.time, causal = true): P
   return { rowId: action.rowId, rowCreatedAt: action.rowCreatedAt, tag: action.tag, present: action.after, time, causal };
 }
 
-export function orderThoughtTags(command: DataCommand, current: ResourceSnapshot, raw: unknown, serverMs: number) {
+export function orderThoughtTags(command: DataCommand, source: DataCommand, current: ResourceSnapshot, raw: unknown, serverMs: number) {
   const uncertain: ConflictDetail[] = [], displaced: History[] = [], stamps: Pending[] = [];
   const metadata = current.metadata;
-  if (command.kind !== 'update' || command.resource.collection !== 'sermons' || !metadata || metadata.deleted
+  if (command.kind !== 'update' || source.kind !== 'update' || command.resource.collection !== 'sermons' || !metadata || metadata.deleted
     || command.generation !== metadata.generation || !current.value) return { command, uncertain, displaced, stamps };
   let orderedCommand: Update = command;
   const { floor, proofs } = readProofs(raw, metadata.generation);
-  const indexed = new Map(proofs.map(proof => [key(proof), proof]));
-  for (const action of readActions(command, metadata.revision, serverMs)) {
+  const indexed = new Map(proofs.map(proof => [key(proof, proof), proof]));
+  for (const action of readActions(command, source, metadata.revision, serverMs)) {
     const target = thoughtTagTarget(action.tag), rows = current.value.thoughts;
     const stored = existingRowField(rows, action.rowId, target);
     const born = existingRowField(rows, action.rowId, THOUGHT_TAG_BIRTH);
@@ -71,7 +80,7 @@ export function orderThoughtTags(command: DataCommand, current: ResourceSnapshot
       if (stored !== action.after) uncertain.push(rowDetailConflict(action, target, stored));
       continue;
     }
-    const decision = decideTagMembership(action, stored, indexed.get(key(action)), metadata.revision, floor);
+    const decision = decideTagMembership(action, stored, indexed.get(key(action, action.tag)), metadata.revision, floor);
     if (decision.kind === 'uncertain') uncertain.push(rowDetailConflict(action, target, stored));
     if (decision.kind === 'stamp') stamps.push(pending(action, decision.time, decision.causal));
     if (decision.kind === 'ordered') {
@@ -102,10 +111,12 @@ export function metadataAfterThoughtTags(snapshot: ResourceSnapshot, raw: Record
   const current = memberships(snapshot.value.thoughts), previous = memberships(raw?.thoughts);
   const stored = readProofs(raw?._dataEngine, metadata.generation);
   const recorded = new Map<string, Proof>();
-  const add = (intent: Pending) => {
+  const keysByRow = new Map<string, Set<string>>();
+  const add = ({ tag, ...intent }: Pending) => {
     const live = current.get(intent.rowId);
-    if (live?.date === intent.rowCreatedAt && live.tags.has(intent.tag) === intent.present) {
-      recorded.set(key(intent), { ...intent, revision: metadata.revision, operationId: metadata.operationId! });
+    if (live?.date === intent.rowCreatedAt && live.tags.has(tag) === intent.present) {
+      const identity = tagProofIdentity(tag);
+      recorded.set(key(intent, identity), { ...intent, ...identity, revision: metadata.revision, operationId: metadata.operationId! });
     }
   };
   order?.stamps.forEach(add);
@@ -115,12 +126,19 @@ export function metadataAfterThoughtTags(snapshot: ResourceSnapshot, raw: Record
     for (const tag of new Set([...before.tags, ...live.tags])) {
       const present = live.tags.has(tag);
       const intent = { rowId, rowCreatedAt: live.date, tag, present, time: null, causal: false };
-      if (present !== before.tags.has(tag) && !recorded.has(key(intent))) add(intent);
+      if (present !== before.tags.has(tag) && !recorded.has(key(intent, tag))) add(intent);
     }
   }
   for (const proof of stored.proofs) {
     const live = current.get(proof.rowId);
-    if (live?.date === proof.rowCreatedAt && live.tags.has(proof.tag) === proof.present && !recorded.has(key(proof))) recorded.set(key(proof), proof);
+    if (live?.date !== proof.rowCreatedAt) continue;
+    let keys = keysByRow.get(proof.rowId);
+    if (!keys) {
+      keys = new Set([...live.tags].map(tagProofKey));
+      keysByRow.set(proof.rowId, keys);
+    }
+    const id = key(proof, proof);
+    if (keys.has(tagProofKey(proof)) === proof.present && !recorded.has(id)) recorded.set(id, proof);
   }
   const retained = [...recorded.values()];
   const floor = retained.slice(MAX_TAG_MEMBERSHIP_PROOFS).reduce((value, item) => Math.max(value, item.revision), stored.floor);

@@ -10,7 +10,7 @@ import { captureDeleteOrder, deleteOrderReady, replayDeleteOrder } from './delet
 import { captureDocumentMetadataFields, capturePreparationConfirmation, type PreparationConfirmationObservations, capturedDocumentField, capturePlanTemplateName, capturePrayerStatusFields, capturePrayerTitle, captureServiceOrderTitle, captureStudyNoteTitle, captureTagColor, documentFieldCommandAncestor, documentFieldTargets, matchesPlanTemplateNameRequest, matchesPrayerTitleRequest, matchesStudyNoteTitleRequest, matchesTagColorRequest, uncapturedAutosaveFields, withDocumentFieldAction } from './documentFieldAction';
 import { commandReferenceResources, documentReferenceResources, referenceReadiness } from './documentReferences';
 import { captureDocumentTags, pendingDocumentTags, restoreDocumentTagAncestor } from './documentTagCapture';
-import { documentTagChange, matchesDocumentTag } from './documentTagMembership';
+import { documentTagChange, documentTagCommandActions } from './documentTagMembership';
 import { prepareDomainCommand, requiredDomainTargets } from './domainPolicy';
 import { areDifferentTabManualParents, readManualScopeIdentity } from './editorIdentity';
 import { captureExegeticalPointActions, matchingExegeticalPointActions, restoreExegeticalQueueBasis, type ExegeticalQueueBasis } from './exegeticalPointCapture';
@@ -25,7 +25,7 @@ import { captureRowFields, matchingRowFields, pendingAutosaveRowFieldRebases, sa
 import { capturePlanTextEvidence, type PlanTextEvidence } from './sermonPlanText';
 import { captureServiceOrderStep, matchesServiceOrderStep, SERVICE_ORDER_FLAG_POLICY, SERVICE_ORDER_FLAG_TARGET, SERVICE_ORDER_STEP_TITLE_POLICY, SERVICE_ORDER_STEP_TITLE_TARGET, type ServiceOrderFlagActions, type ServiceOrderStepTitleActions } from './serviceOrderStepAction';
 import { coversCommittedEffect } from './snapshotFreshness';
-import { captureThoughtTagActions, matchesThoughtTag, pendingThoughtTagRebases } from './thoughtTagAction';
+import { captureThoughtTagActions, pendingThoughtTagRebases, thoughtTagCommandActions } from './thoughtTagAction';
 
 import type { CaptureTransferProof, CaptureTransferResult } from './captureTransfer';
 import type { DocumentWriteReceipt } from './commitReceipt';
@@ -1018,10 +1018,10 @@ export class CommitQueue {
       if (stepTitles && matchesServiceOrderStep(command.changes, SERVICE_ORDER_STEP_TITLE_TARGET, stepTitles.title)) command.serviceOrderStepTitleActions = stepTitles;
       const exegeticalActions = matchingExegeticalPointActions(command.changes, record.exegeticalPlanActions);
       if (exegeticalActions) command.exegeticalPlanActions = exegeticalActions;
-      const tags = record.thoughtTagActions?.filter(action => matchesThoughtTag(command.changes, action));
-      if (tags?.length) command.thoughtTagActions = tags;
+      const tags = thoughtTagCommandActions(command.changes, record.thoughtTagActions);
+      if (tags.length) command.thoughtTagActions = tags;
       const membership = documentTagChange(command.changes);
-      const matched = membership && documentTags.filter(action => matchesDocumentTag(membership, action));
+      const matched = membership && documentTagCommandActions(membership, documentTags);
       if (matched?.length) command.tagMembershipActions = matched;
       Object.assign(command, matchingRowFields(command.changes, record, command.resource.collection));
       const assembly = matchingCouncilAssembly(command.changes, record.councilAssemblyActions);

@@ -1,5 +1,6 @@
 import { equalValues, readField, writeField } from './fieldValues';
 import { mergeFields } from './protocol';
+import { encodeTagMembershipAction, isTagMembershipName } from './tagMembershipOrder';
 
 import type { TagMembershipAction } from './tagMembershipOrder';
 import type { DocumentData, FieldChange, FieldValue } from './types';
@@ -23,8 +24,6 @@ export type DocumentTagHistoryPage = {
 };
 
 export const documentTagCollection = (collection: string) => collection === 'studyNotes' || collection === 'prayerRequests';
-export const supportedDocumentTag = (tag: unknown): tag is string =>
-  typeof tag === 'string' && tag.trim().length > 0 && tag.length <= 256;
 
 export function tagList(value: unknown): string[] | undefined {
   if (value === undefined) return [];
@@ -54,11 +53,19 @@ export function matchesDocumentTag(change: FieldChange, action: Pick<TagMembersh
     && tagMembership(change.after, action.tag) === action.after;
 }
 
+export function documentTagCommandActions(change: FieldChange, actions: readonly TagMembershipAction[]) {
+  return actions.flatMap(action => {
+    if (!matchesDocumentTag(change, action)) return [];
+    const wire = encodeTagMembershipAction(action, tagList((action.after ? change.after : change.before).value));
+    return wire ? [wire] : [];
+  });
+}
+
 export const documentTagConflictPath = (tag: string) => [DOCUMENT_TAG_FIELD, 'string:' + tag];
 export function documentTagConflictName(path: readonly string[]): string | undefined {
   if (path.length !== 2 || path[0] !== DOCUMENT_TAG_FIELD || !path[1].startsWith('string:')) return undefined;
   const tag = path[1].slice(7);
-  return supportedDocumentTag(tag) ? tag : undefined;
+  return isTagMembershipName(tag) ? tag : undefined;
 }
 
 /** Prayer forms omit their empty tag list. Three-way membership merge still sees an empty list. */

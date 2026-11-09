@@ -2184,6 +2184,41 @@ describe('transactional DataEngine server', () => {
       });
     });
 
+    it('orders exact long note tags without duplicating their names in proof metadata', async () => {
+      const prefix = 'Shared prefix ' + 'x'.repeat(4096);
+      const first = prefix + ' A', second = prefix + ' B';
+      expect((await seed([])).kind).toBe('acknowledged');
+      const desk = tagEdit('desk-long', first, false, true, 80);
+      await expect(processCommand(owner, { ...desk, changes: [{ path: ['tags'], before: value([]), after: value([first, second]) }],
+        tagMembershipActions: [...desk.tagMembershipActions, { ...desk.tagMembershipActions[0], tag: second }],
+      })).resolves.toMatchObject({ kind: 'acknowledged' });
+      await processCommand(owner, tagEdit('phone-first', first, false, true, 15));
+      await expect(processCommand(owner, tagEdit('phone-second', first, true, false, 50, 'phone-first'))).resolves.toMatchObject({
+        kind: 'acknowledged', snapshot: { value: { tags: [first, second], content: words } },
+      });
+      expect(JSON.stringify(documents.get('studyNotes/timed-note-tag')?._dataEngine)).not.toContain(prefix);
+      await expect(listDocumentTagHistory(owner, resource.collection, resource.id, 'tag-note-generation')).resolves.toMatchObject({
+        entries: [{ tags: [{ tag: first, value: false, winnerValue: true }] }],
+      });
+    });
+
+    it('orders the indexed name of a long document tag without growing the command', async () => {
+      const name = 'x'.repeat(550 * 1024);
+      const indexedEdit = (...args: Parameters<typeof tagEdit>) => {
+        const command = tagEdit(...args);
+        const [{ tag: _name, ...action }] = command.tagMembershipActions;
+        return { ...command, tagMembershipActions: [{ ...action, tagIndex: 0 }] };
+      };
+      expect((await seed([])).kind).toBe('acknowledged');
+      const desk = indexedEdit('desk-indexed', name, false, true, 80);
+      expect(Buffer.byteLength(JSON.stringify(desk))).toBeLessThan(MAX_COMMAND_BYTES);
+      await expect(processCommand(owner, desk)).resolves.toMatchObject({ kind: 'acknowledged' });
+      await expect(processCommand(owner, indexedEdit('phone-indexed-add', name, false, true, 15))).resolves.toMatchObject({ kind: 'acknowledged' });
+      const result = await processCommand(owner, indexedEdit('phone-indexed-remove', name, true, false, 50, 'phone-indexed-add'));
+      expect(result.kind).toBe('acknowledged');
+      expect(result.kind === 'acknowledged' && result.snapshot.value?.tags instanceof Array && result.snapshot.value.tags[0] === name).toBe(true);
+    });
+
     it('keeps displaced tag decisions visible only to the current document owner and generation', async () => {
       expect((await seed([])).kind).toBe('acknowledged');
       await processCommand(owner, tagEdit('desk', tag, false, true, 80));
@@ -2347,6 +2382,16 @@ describe('transactional DataEngine server', () => {
       await processCommand(owner, tagEdit('phone-first', tag, false, true, 15));
       await expect(processCommand(owner, tagEdit('phone-second', tag, true, false, 50, 'phone-first'))).resolves.toMatchObject({
         kind: 'conflict', conflicts: [{ path: ['tags', 'string:' + tag] }], snapshot: { value: { tags: [tag], description } },
+      });
+    });
+
+    it.each([256, 257])('keeps the later prayer-tag choice when the tag name has %s characters', async length => {
+      const name = 'QA ' + 'x'.repeat(length - 3);
+      expect((await seed([])).kind).toBe('acknowledged');
+      expect((await processCommand(owner, tagEdit('desk', name, false, true, 80))).kind).toBe('acknowledged');
+      expect((await processCommand(owner, tagEdit('phone-first', name, false, true, 15))).kind).toBe('acknowledged');
+      await expect(processCommand(owner, tagEdit('phone-second', name, true, false, 50, 'phone-first'))).resolves.toMatchObject({
+        kind: 'acknowledged', snapshot: { value: { tags: [name], description, updates: [update] } },
       });
     });
 
@@ -2811,6 +2856,34 @@ describe('transactional DataEngine server', () => {
         expect(await processCommand(owner, saveTag('phone-second', alpha, !startsPresent, startsPresent, 50, 'phone-first')))
           .toMatchObject({ kind: 'acknowledged', snapshot: { value: { thoughts: [thought(winner ? [alpha] : []), neighbor] } } });
       });
+
+    it.each([256, 257])('keeps the latest ordinary thought tag and its history for a %s-character name', async length => {
+      const tag = 'QA ' + 'x'.repeat(length - 3);
+      const owner = await seed();
+      expect(await processCommand(owner, saveTag('desk', tag, false, true, 80))).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(owner, saveTag('phone-first', tag, false, true, 15))).toMatchObject({ kind: 'acknowledged' });
+      await expect(processCommand(owner, saveTag('phone-second', tag, true, false, 50, 'phone-first'))).resolves.toMatchObject({
+        kind: 'acknowledged', snapshot: { value: { thoughts: [thought([tag]), neighbor] } },
+      });
+      await expect(listThoughtTagHistory(owner, 'sermon-1', 'thought-tag-seed')).resolves.toMatchObject({
+        entries: [{ fields: [{ rowId: 'tagged', field: tag, value: false, winnerValue: true }] }],
+      });
+    });
+
+    it('orders the indexed name of a long thought tag on the exact thought row', async () => {
+      const name = 'x'.repeat(2048);
+      const owner = await seed();
+      const indexedSave = (...args: Parameters<typeof saveTag>) => {
+        const command = saveTag(...args);
+        const [{ tag: _name, ...action }] = command.thoughtTagActions;
+        return { ...command, thoughtTagActions: [{ ...action, tagIndex: 1 }] };
+      };
+      await expect(processCommand(owner, indexedSave('desk-indexed', name, false, true, 80))).resolves.toMatchObject({ kind: 'acknowledged' });
+      await expect(processCommand(owner, indexedSave('phone-indexed-add', name, false, true, 15))).resolves.toMatchObject({ kind: 'acknowledged' });
+      await expect(processCommand(owner, indexedSave('phone-indexed-remove', name, true, false, 50, 'phone-indexed-add'))).resolves.toMatchObject({
+        kind: 'acknowledged', snapshot: { value: { thoughts: [thought([name]), neighbor] } },
+      });
+    });
 
     it('stores the displaced membership under its thought and tag for the owner only', async () => {
       const owner = await seed();
@@ -4287,6 +4360,31 @@ describe('deleting an outline node while a thought is linked to it', () => {
       const expectedBoard = moveAcrossSections ? (expectedTag === 'intro' ? bothMoved : neighborMoved) : assignedBoard;
       return { ...f, create: { ...f.create, value: { ...f.create.value, thoughts: initial } }, outlineSave, thoughtSave, nextOutline, expected, expectedBoard };
     }
+
+    it('keeps the indexed long tag proof through a repaired thought placement', async () => {
+      const f = movingFixture(true, true);
+      const tag = 'A'.repeat(257);
+      const original = f.thoughtSave.changes[0].after.value as typeof f.expected;
+      const add = [{ ...original[0], tags: [...original[0].tags, tag] }, original[1]];
+      const action = { rowId: original[0].id, rowCreatedAt: original[0].date, tagIndex: add[0].tags.length - 1,
+        before: false, after: true, observedRevision: 1, time: f.time(80) };
+      expect(await processCommand(f.owner, f.create)).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(f.owner, f.outlineSave)).toMatchObject({ kind: 'acknowledged' });
+      const later = await processCommand(f.owner, { ...f.thoughtSave,
+        changes: [f.change('thoughts', f.create.value.thoughts, add), ...f.thoughtSave.changes.slice(1)], thoughtTagActions: [action],
+      });
+      expect(later).toMatchObject({ kind: 'acknowledged', snapshot: { value: { thoughts: [{ tags: ['topic', tag, 'intro'] }, f.expected[1]] } } });
+      const accepted = (later as { snapshot: ResourceSnapshot }).snapshot.value!.thoughts as typeof f.expected;
+      const withoutTag = [{ ...accepted[0], tags: accepted[0].tags.filter(name => name !== tag) }, accepted[1]];
+      const settled = await processCommand(f.owner, { ...f.thoughtSave, operationId: 'older-tag-removal', thoughtPlacementActions: [],
+        changes: [f.change('thoughts', accepted, withoutTag)],
+        thoughtTagActions: [{ ...action, tagIndex: accepted[0].tags.indexOf(tag), before: true, after: false, time: f.time(50) }],
+      });
+      expect(settled.kind).toBe('acknowledged');
+      const final = (settled as { snapshot: ResourceSnapshot }).snapshot.value!.thoughts as typeof accepted;
+      const orderedTags = (rows: typeof accepted) => rows.map(row => ({ ...row, tags: [...row.tags].sort() }));
+      expect(orderedTags(final)).toEqual(orderedTags(accepted));
+    });
 
     it('preserves linked neighbors when the device adds legacy board aliases after the outline move', async () => {
       const f = movingFixture(true, true);

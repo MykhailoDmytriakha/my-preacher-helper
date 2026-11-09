@@ -20,6 +20,8 @@ For an engine-owned collection, write through the public facade in `frontend/app
 
 - A sermon outline removal can retire plan text only for the IDs and words known to that action. Capture this evidence with the pending request before a saved predecessor can be collected. Server acceptance compares the evidence with the current text and the merged outline. A blank canonical cell masks any legacy copy. If delivery order is all that is known, retain the words under the removed ID and surface them for recovery. A recovery discard is a separate exact-text decision and must refuse if the point returns. Proof in `sermonPlanTextDelivery.test.ts` and the plan cases in `sermonIntegrity.test.ts`.
 
+For an exact action about a long tag, refer to its index on the original command side where membership is present. The server resolves the original string before testing the transformed membership. A thought also checks the row ID and creation identity. A storage digest bounds retained proof size without changing the displayed tag or history. Keep old literal evidence readable. The ordinary command byte limit still applies.
+
 ## Legacy paths (unconverted collections only)
 
 These compatibility paths are not templates for new features.

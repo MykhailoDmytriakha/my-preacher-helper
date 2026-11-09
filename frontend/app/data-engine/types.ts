@@ -16,7 +16,7 @@ import type { SeriesFieldStamps } from './seriesFieldAction';
 import type { SermonChurchFill } from './sermonChurchFill';
 import type { ServiceOrderFlagActions, ServiceOrderFlagCapture, ServiceOrderStepTitleActions, ServiceOrderStepTitleCapture } from './serviceOrderStepAction';
 import type { ShownCopy } from './session';
-import type { TagMembershipAction } from './tagMembershipOrder';
+import type { TagMembershipAction, TagMembershipWire } from './tagMembershipOrder';
 import type { ThoughtTagAction } from './thoughtTagAction';
 import type { PreparationConfirmation } from '@/utils/preparationFieldValues';
 
@@ -104,8 +104,8 @@ export type DataCommand = CommandBase & (
       sermonPreparationCheckActions?: Partial<Record<PreparationConfirmation, DocumentFieldStamp>>;
       sermonChurchFill?: SermonChurchFill;
       exegeticalPlanActions?: ExegeticalPointStamp[];
-      thoughtTagActions?: ThoughtTagAction[];
-      tagMembershipActions?: TagMembershipAction[];
+      thoughtTagActions?: TagMembershipWire<ThoughtTagAction>[];
+      tagMembershipActions?: TagMembershipWire<TagMembershipAction>[];
       seriesFieldActions?: SeriesFieldStamps;
       groupTitleAction?: DocumentFieldAction;
       groupStatusAction?: DocumentFieldAction;

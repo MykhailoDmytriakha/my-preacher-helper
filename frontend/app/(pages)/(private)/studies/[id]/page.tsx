@@ -1174,7 +1174,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         const ownPrevious = previous?.id === noteId && previous.owner === uid && previous.present === shown ? previous : undefined;
         const basis = ownPending?.basis ?? ownPrevious?.basis
             ?? (opening?.id === noteId && opening.owner === uid ? opening.basis : undefined);
-        if (uid && basis && tag.length <= 256) {
+        if (uid && basis && tag.trim()) {
             const predecessorRequestId = ownPending?.predecessorRequestId ?? ownPrevious?.requestId;
             tagEditsRef.current.set(tag, { owner: uid, id: noteId, before: ownPending?.before ?? shown, present,
                 basis, time: captureActionTime?.() ?? null, ...(predecessorRequestId && { predecessorRequestId }) });

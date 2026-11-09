@@ -480,6 +480,27 @@ describe('Durable commit requests', () => {
     }));
   });
 
+  it('delivers the indexed name of a long tag without duplicating the authored string', async () => {
+    const opening: ResourceSnapshot = {
+      resource: { collection: 'studyNotes', id: 'note' },
+      metadata: { protocol: 1, generation: 'note', revision: 1, deleted: false },
+      value: { userId: 'owner', title: 'Note', content: 'Keep the words', type: 'note', tags: [], scriptureRefs: [], isDraft: true, materialIds: [] },
+    };
+    const name = 'x'.repeat(550 * 1024);
+    const s = setup({ opening });
+    const editor = await s.makeEngine().openEditor(opening.resource, 'note');
+    await editor.commit(current => ({ ...current, tags: [name] }), { kind: 'document-tags',
+      tagMembership: [{ generation: 'note', revision: 1, tag: name, before: false, after: true, time: null }],
+    });
+    const restarted = s.makeQueue().queue;
+    const [request] = await restarted.list();
+    expect(request.tagMembershipActions?.[0].tag === name).toBe(true);
+    await restarted.drain(true);
+    const [sent] = jest.mocked(s.transport.send).mock.calls[0];
+    expect(JSON.stringify(sent).length).toBeLessThan(1024 * 1024);
+    expect(sent).toMatchObject({ tagMembershipActions: [{ tagIndex: 0, before: false, after: true, observedRevision: 1, time: null }] });
+  });
+
   it('retains the displayed note tag predecessor after the acknowledged request is collected', () => {
     const baseline: ResourceSnapshot = {
       resource: { collection: 'studyNotes', id: 'note' },

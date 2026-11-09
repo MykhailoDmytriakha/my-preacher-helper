@@ -1,9 +1,9 @@
 import { boundedActionTime } from './actionClock';
-import { changeTagMembership, documentTagCollection, DOCUMENT_TAG_FIELD, supportedDocumentTag, tagField, tagList, tagMembership } from './documentTagMembership';
+import { changeTagMembership, documentTagCollection, DOCUMENT_TAG_FIELD, tagField, tagList, tagMembership } from './documentTagMembership';
 import { equalValues, object } from './fieldValues';
 import { isValidIdentifier } from './protocol';
 import { proofRevision } from './rowFieldAction';
-import { MAX_TAG_MEMBERSHIP_PROOFS } from './tagMembershipOrder';
+import { isTagMembershipName, MAX_TAG_MEMBERSHIP_PROOFS } from './tagMembershipOrder';
 
 import type { ActionTime } from './actionClock';
 import type { CollectionState } from './collections';
@@ -49,7 +49,7 @@ export function makeDocumentTagIntents(opening: unknown, requested: unknown, bas
   const before = tagList(opening), after = tagList(requested);
   if (!before || !after) return undefined;
   const changes = [...new Set([...before, ...after])].filter(tag => before.includes(tag) !== after.includes(tag));
-  if (!changes.length || changes.length > MAX_TAG_MEMBERSHIP_PROOFS || !changes.every(supportedDocumentTag)) return undefined;
+  if (!changes.length || changes.length > MAX_TAG_MEMBERSHIP_PROOFS || !changes.every(isTagMembershipName)) return undefined;
   return changes.map(tag => {
     const prior = basis.predecessors?.find(item => item.tag === tag);
     return { tag, before: before.includes(tag), after: after.includes(tag), time,
@@ -60,7 +60,7 @@ export function makeDocumentTagIntents(opening: unknown, requested: unknown, bas
 export function validDocumentTagIntents(raw: unknown, requested: unknown): boolean {
   const tags = tagList(requested);
   return tags !== undefined && Array.isArray(raw) && raw.length > 0 && raw.length <= MAX_TAG_MEMBERSHIP_PROOFS
-    && raw.every(intent => object(intent) && supportedDocumentTag(intent.tag) && typeof intent.before === 'boolean' && typeof intent.after === 'boolean'
+    && raw.every(intent => object(intent) && isTagMembershipName(intent.tag) && typeof intent.before === 'boolean' && typeof intent.after === 'boolean'
       && intent.before !== intent.after && tags.includes(intent.tag) === intent.after && isValidIdentifier(intent.generation) && proofRevision(intent.revision)
       && (intent.time === null || boundedActionTime(intent.time) !== undefined)
       && (intent.predecessorRequestId === undefined || isValidIdentifier(intent.predecessorRequestId)))
@@ -92,7 +92,7 @@ export function captureDocumentTags(baseline: ResourceSnapshot, predecessor: Com
   const tags = tagField(draft);
   const actions = intents.flatMap(({ generation, revision, tag, before, after, time: captured, predecessorRequestId }) => {
     const time = captured === null ? null : boundedActionTime(captured);
-    if (!supportedDocumentTag(tag) || counts.get(tag) !== 1 || generation !== metadata.generation || !proofRevision(revision)
+    if (!isTagMembershipName(tag) || counts.get(tag) !== 1 || generation !== metadata.generation || !proofRevision(revision)
       || revision > metadata.revision || typeof before !== 'boolean' || typeof after !== 'boolean'
       || before === after || tagMembership(tags, tag) !== after || time === undefined) return [];
     const named = predecessorRequestId ? byId.get(predecessorRequestId) : undefined;

@@ -623,8 +623,8 @@ export async function processCommand(owner: string, input: unknown): Promise<Com
       const aligned = alignServiceOrderFlagRepresentation(alignCouncilAssembly(alignCouncilTopicKind(councilTopicKindOrder.command, current), current), current);
       thoughtLockOrder = orderRowDetails(aligned, current, raw?._dataEngine, serverMs, THOUGHT_LOCK_POLICY);
       thoughtPlacementOrder = orderThoughtPlacement(alignThoughtLockRepresentation(thoughtLockOrder.command, current), current, raw?._dataEngine, serverMs);
-      thoughtTagOrder = orderThoughtTags(thoughtPlacementOrder.command, current, raw?._dataEngine, serverMs);
-      documentTagOrder = orderDocumentTags(thoughtTagOrder.command, current, raw?._dataEngine, serverMs);
+      thoughtTagOrder = orderThoughtTags(thoughtPlacementOrder.command, command, current, raw?._dataEngine, serverMs);
+      documentTagOrder = orderDocumentTags(thoughtTagOrder.command, command, current, raw?._dataEngine, serverMs);
       markOrder = await planBibleMarkOrder(transaction, documentRef, documentTagOrder.command, current, raw?._dataEngine, serverMs);
       fieldOrder = orderDocumentFields(markOrder.command, current, raw?._dataEngine, serverMs);
       exegeticalOrder = orderExegeticalPoints(fieldOrder.command, current, raw?._dataEngine, serverMs);
