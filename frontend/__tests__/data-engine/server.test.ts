@@ -1722,13 +1722,55 @@ describe('transactional DataEngine server', () => {
     expect(await processCommand(base.owner, phone)).toEqual(result);
   });
 
+  describe.each(['option round trip', 'text round trip', 'independent action times'] as const)('conservative council outcome: %s', scenario => {
+    it.each([false, true])('preserves the committed outcome and asks about competing changes (reverse: %s)', async reverse => {
+      const resource = { collection: 'councils', id: 'outcome-stale-opening' };
+      const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] };
+      const now = '2026-11-09T00:00:00.000Z';
+      const section = { id: 'section', title: 'Section', kind: 'decision', questions: [],
+        options: [{ id: 'a', text: 'A' }, { id: 'b', text: 'B' }] };
+      const opening = scenario === 'text round trip' ? { ...section, discussed: true, decision: 'X' } : section;
+      const a = { ...section, discussed: true, acceptedOptionId: 'a' };
+      const b = { ...section, discussed: true, acceptedOptionId: 'b' };
+      const words = { ...section, discussed: true, decision: 'X' };
+      const first = scenario === 'text round trip' ? { ...words, decision: 'Y' } : a;
+      const competing = scenario === 'text round trip' ? section : { ...b, decision: 'X' };
+      expect((await processCommand(base.owner, { ...base, kind: 'create', operationId: 'seed', generation: null,
+        value: { userId: base.owner, title: 'Council', status: 'preparing', createdAt: now, updatedAt: now, topics: [opening] },
+      })).kind).toBe('acknowledged');
+      const save = (operationId: string, before: typeof section, after: typeof section, observedRevision: number, offset: number) =>
+        processCommand(base.owner, { ...base, kind: 'update', operationId, generation: 'seed',
+          changes: [{ path: ['topics'], before: { exists: true, value: [before] }, after: { exists: true, value: [after] } }],
+          councilOutcomeActions: [{ rowId: section.id, rowCreatedAt: section.id, observedRevision,
+            time: { earliestMs: 1_800_000_000_000 + offset, latestMs: 1_800_000_000_004 + offset } }],
+        });
+      const conflict = { kind: 'conflict', conflicts: [{ path: ['topics', 'id:section', 'outcome'] }] };
+      if (scenario === 'independent action times') {
+        expect((await save('first-option', opening, a, 1, 10)).kind).toBe('acknowledged');
+        const editText = () => save('words', opening, words, 1, 30);
+        const editOption = () => save('other-option', opening, b, 1, 20);
+        for (const edit of reverse ? [editOption, editText] : [editText, editOption]) expect(await edit()).toMatchObject(conflict);
+        expect((await readDocument(base.owner, resource)).value?.topics).toEqual([a]);
+      } else if (reverse) {
+        expect((await save('competing', opening, competing, 1, 50)).kind).toBe('acknowledged');
+        expect(await save('first-phone', opening, first, 1, 20)).toMatchObject(conflict);
+        expect((await readDocument(base.owner, resource)).value?.topics).toEqual([competing]);
+      } else {
+        expect((await save('first-phone', opening, first, 1, 20)).kind).toBe('acknowledged');
+        expect((await save('back-to-opening', first, opening, 2, 90)).kind).toBe('acknowledged');
+        expect(await save('competing', opening, competing, 1, 50)).toMatchObject(conflict);
+        expect((await readDocument(base.owner, resource)).value?.topics).toEqual([opening]);
+      }
+    });
+  });
+
   it.each([
-    { label: 'earlier phone', phoneAt: 15, winner: 'postponed', held: false },
-    { label: 'later phone', phoneAt: 90, winner: 'plan', held: false },
-    { label: 'earlier phone in held council', phoneAt: 15, winner: 'postponed', held: true },
-    { label: 'later phone in held council', phoneAt: 90, winner: 'plan', held: true },
-    { label: 'no clock', phoneAt: null, winner: 'postponed', held: false },
-  ])('orders the complete topic outcome: $label', async ({ phoneAt, winner, held }) => {
+    { label: 'earlier phone', phoneAt: 15, held: false },
+    { label: 'later phone', phoneAt: 90, held: false },
+    { label: 'earlier phone in held council', phoneAt: 15, held: true },
+    { label: 'later phone in held council', phoneAt: 90, held: true },
+    { label: 'no clock', phoneAt: null, held: false },
+  ])('asks about the complete outcome instead of ordering it: $label', async ({ phoneAt, held }) => {
     const resource = { collection: 'councils', id: 'timed-topic-outcome' };
     const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] };
     const now = '2026-11-09T00:00:00.000Z';
@@ -1754,24 +1796,15 @@ describe('transactional DataEngine server', () => {
     expect((await processCommand(base.owner, edit('desktop', [deferred, laterTitle], 50))).kind).toBe('acknowledged');
     const phone = edit('phone', [decided, other], phoneAt);
     const result = await processCommand(base.owner, phone);
-    expect(result.kind).toBe(phoneAt === null ? 'conflict' : 'acknowledged');
-    const stored = (await readDocument(base.owner, resource)).value?.topics as Array<Record<string, unknown>>;
-    expect(stored[1]).toEqual(laterTitle);
-    expect(stored[0].acceptedOptionId).toBe(winner === 'plan' ? 'plan' : undefined);
-    expect(stored[0].resolution).toBe(winner === 'postponed' ? 'postponed' : undefined);
-    expect(stored[0].discussed).toBe(winner === 'plan' ? true : undefined);
-    const history = [...documents.entries()].filter(([path]) => path.startsWith('councils/timed-topic-outcome/_topicOutcomeHistory/'));
-    expect(history).toHaveLength(phoneAt === null ? 0 : 1);
-    if (history.length) expect(history[0][1]).toMatchObject({ fields: [{ rowId: opening.id,
-      value: winner === 'plan' ? storedOutcome : draftOutcome, winnerValue: winner === 'plan' ? draftOutcome : storedOutcome,
+    expect(result).toMatchObject({ kind: 'conflict', conflicts: [{ path: ['topics', 'id:section', 'outcome'],
+      base: { value: empty }, mine: { value: draftOutcome }, theirs: { value: storedOutcome },
     }] });
-    if (held) expect(stored[0].changes).toEqual(winner === 'plan'
-      ? [...deferred.changes!, { ...decided.changes![0], from: 'postponed' }]
-      : deferred.changes);
+    expect((await readDocument(base.owner, resource)).value?.topics).toEqual([deferred, laterTitle]);
+    expect((await listCouncilOutcomeHistory(base.owner, resource.id, 'seed')).entries).toEqual([]);
     expect(await processCommand(base.owner, phone)).toEqual(result);
   });
 
-  it('keeps the decision handled when one device removes the option and another writes independent words', async () => {
+  it('asks before removing an option when another device wrote independent words', async () => {
     const resource = { collection: 'councils', id: 'independent-outcome-clear' };
     const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] };
     const now = '2026-11-09T00:00:00.000Z';
@@ -1789,8 +1822,10 @@ describe('transactional DataEngine server', () => {
         time: { earliestMs: 1_800_000_000_000 + at, latestMs: 1_800_000_000_004 + at } }],
     });
     expect((await processCommand(base.owner, edit('write', written, 80))).kind).toBe('acknowledged');
-    expect((await processCommand(base.owner, edit('clear-option', section, 40))).kind).toBe('acknowledged');
-    expect((await readDocument(base.owner, resource)).value?.topics).toEqual([{ ...section, decision: text, discussed: true }]);
+    expect(await processCommand(base.owner, edit('clear-option', section, 40))).toMatchObject({
+      kind: 'conflict', conflicts: [{ path: ['topics', 'id:section', 'outcome'] }],
+    });
+    expect((await readDocument(base.owner, resource)).value?.topics).toEqual([written]);
   });
 
   it.each([
@@ -1798,7 +1833,7 @@ describe('transactional DataEngine server', () => {
     { optionLast: false, laterOption: 'a' },
     { optionLast: true, laterOption: 'b' },
     { optionLast: false, laterOption: 'b' },
-  ])('keeps independently written council words (later option: $laterOption, option arrives last: $optionLast)', async ({ optionLast, laterOption }) => {
+  ])('asks before replacing independently written council words (later option: $laterOption, option arrives last: $optionLast)', async ({ optionLast, laterOption }) => {
     const resource = { collection: 'councils', id: 'independent-outcome-options' };
     const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] };
     const now = '2026-11-09T00:00:00.000Z';
@@ -1820,17 +1855,16 @@ describe('transactional DataEngine server', () => {
     const phone = optionLast ? [edit('option-a', opening, optionA, 20), edit('write', optionA, words, 50)]
       : [edit('phone-both', opening, words, 50)];
     const laptop = edit('later-option', opening, laterSelection, 90);
-    for (const command of optionLast ? [...phone, laptop] : [laptop, ...phone]) {
-      expect((await processCommand(base.owner, command)).kind).toBe('acknowledged');
-    }
-    const expected = { ...laterSelection, decision: text };
-    expect((await readDocument(base.owner, resource)).value?.topics).toEqual([expected]);
-    const history = await listCouncilOutcomeHistory(base.owner, resource.id, 'seed');
-    if (laterOption === 'b') expect(history.entries).toMatchObject([{ fields: [{ winnerValue: { acceptedOptionId: laterOption, decision: text } }] }]);
-    else expect(history.entries).toEqual([]);
+    for (const command of optionLast ? phone : [laptop]) expect((await processCommand(base.owner, command)).kind).toBe('acknowledged');
+    const delayed = optionLast ? laptop : phone[0];
+    expect(await processCommand(base.owner, delayed)).toMatchObject({ kind: 'conflict',
+      conflicts: [{ path: ['topics', 'id:section', 'outcome'] }],
+    });
+    expect((await readDocument(base.owner, resource)).value?.topics).toEqual([optionLast ? words : laterSelection]);
+    expect((await listCouncilOutcomeHistory(base.owner, resource.id, 'seed')).entries).toEqual([]);
   });
 
-  it.each(['removed-option', 'compatible-proof', 'distinct-words'])('preserves the complete council outcome contract: %s', async scenario => {
+  it.each(['removed-option', 'reviewed-outcome', 'distinct-words'])('preserves the complete council outcome contract: %s', async scenario => {
     const resource = { collection: 'councils', id: 'outcome-contract' };
     const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] };
     const now = '2026-11-09T00:00:00.000Z';
@@ -1841,10 +1875,10 @@ describe('transactional DataEngine server', () => {
     expect((await processCommand(base.owner, { ...base, kind: 'create', operationId: 'seed', generation: null,
       value: { userId: base.owner, title: 'Council', status: 'preparing', createdAt: now, updatedAt: now, topics: [topic] },
     })).kind).toBe('acknowledged');
-    const edit = (operationId: string, after: typeof topic, at?: number) => ({
+    const edit = (operationId: string, after: typeof topic, at?: number, before = topic, observedRevision = 1) => ({
       ...base, kind: 'update', operationId, generation: 'seed',
-      changes: [{ path: ['topics'], before: { exists: true, value: [topic] }, after: { exists: true, value: [after] } }],
-      ...(at !== undefined && { councilOutcomeActions: [{ rowId: topic.id, rowCreatedAt: topic.id, observedRevision: 1,
+      changes: [{ path: ['topics'], before: { exists: true, value: [before] }, after: { exists: true, value: [after] } }],
+      ...(at !== undefined && { councilOutcomeActions: [{ rowId: topic.id, rowCreatedAt: topic.id, observedRevision,
         time: { earliestMs: 1_800_000_000_000 + at, latestMs: 1_800_000_000_004 + at } }] }),
     });
     if (scenario === 'removed-option') {
@@ -1864,13 +1898,50 @@ describe('transactional DataEngine server', () => {
       });
       return;
     }
-    expect((await processCommand(base.owner, edit('select', option, 40))).kind).toBe('acknowledged');
-    const combined = { ...words, acceptedOptionId: 'plan' };
-    expect((await readDocument(base.owner, resource)).value?.topics).toEqual([combined]);
-    expect((await processCommand(base.owner, edit('early-deferral', deferred, 20))).kind).toBe('acknowledged');
-    expect((await readDocument(base.owner, resource)).value?.topics).toEqual([combined]);
-    expect((await processCommand(base.owner, edit('late-deferral', deferred, 100))).kind).toBe('acknowledged');
+    const pending = edit('select', option, 40);
+    expect(await processCommand(base.owner, pending)).toMatchObject({ kind: 'conflict',
+      conflicts: [{ path: ['topics', 'id:section', 'outcome'] }],
+    });
+    expect((await readDocument(base.owner, resource)).value?.topics).toEqual([words]);
+    expect((await processCommand(base.owner, edit('reviewed-deferral', deferred, 100, words, 2))).kind).toBe('acknowledged');
     expect((await readDocument(base.owner, resource)).value?.topics).toEqual([deferred]);
+  });
+
+  it.each(['neighboring change', 'exact predecessor', 'legacy without a stamp', 'evicted proof'] as const)('checks an outcome basis independently of time: %s', async scenario => {
+    const resource = { collection: 'councils', id: 'outcome-basis' };
+    const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] };
+    const now = '2026-11-09T00:00:00.000Z';
+    const topic = { id: 'section', title: 'Section', kind: 'decision', questions: [], options: [{ id: 'a', text: 'A' }] };
+    const neighbor = { ...topic, id: 'neighbor', title: 'Neighbor' };
+    const selected = { ...topic, discussed: true, acceptedOptionId: 'a' };
+    const words = { ...selected, decision: 'X' };
+    const reviewed = { ...topic, discussed: true, decision: 'X' };
+    expect((await processCommand(base.owner, { ...base, kind: 'create', operationId: 'seed', generation: null,
+      value: { userId: base.owner, title: 'Council', status: 'preparing', createdAt: now, updatedAt: now, topics: [topic, neighbor] },
+    })).kind).toBe('acknowledged');
+    const edit = (operationId: string, before: typeof topic[], after: typeof topic[], stamp?: { predecessorOperationId?: string }) =>
+      processCommand(base.owner, { ...base, kind: 'update', operationId, generation: 'seed',
+        changes: [{ path: ['topics'], before: { exists: true, value: before }, after: { exists: true, value: after } }],
+        ...(stamp && { councilOutcomeActions: [{ rowId: topic.id, rowCreatedAt: topic.id, observedRevision: 1, time: null, ...stamp }] }),
+      });
+    const other = { ...neighbor, title: 'New neighboring title' };
+    const first = scenario === 'neighboring change' || scenario === 'evicted proof' ? [topic, other]
+      : scenario === 'exact predecessor' ? [selected, neighbor] : [reviewed, neighbor];
+    expect((await edit('first', [topic, neighbor], first, {})).kind).toBe('acknowledged');
+    if (scenario === 'evicted proof') {
+      const raw = documents.get('councils/outcome-basis')!;
+      const meta = raw._dataEngine as Raw;
+      raw._dataEngine = { ...meta, councilOutcomeProofs: { outcome: { floor: 2, proofs: [] } } };
+    }
+    const follows = scenario === 'exact predecessor';
+    const result = await edit('second', [follows ? selected : topic, neighbor], [follows ? words : selected, neighbor],
+      scenario === 'legacy without a stamp' ? undefined : follows ? { predecessorOperationId: 'first' } : {});
+    if (scenario === 'legacy without a stamp' || scenario === 'evicted proof') {
+      expect(result).toMatchObject({ kind: 'conflict', conflicts: [{ path: ['topics', 'id:section', 'outcome'] }] });
+      expect((await readDocument(base.owner, resource)).value?.topics).toEqual(first);
+    } else {
+      expect(result).toMatchObject({ kind: 'acknowledged', snapshot: { value: { topics: follows ? [words, neighbor] : [selected, other] } } });
+    }
   });
 
   it.each(['decision', 'info'])('keeps incompatible %s outcomes distinct when order is unknown', async kind => {

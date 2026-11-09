@@ -645,7 +645,6 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
   persistRowDetailHistory(transaction, command, primarySnapshot, COUNCIL_TOPIC_TITLE_POLICY, councilTopicTitleOrder);
   persistRowDetailHistory(transaction, command, primarySnapshot, COUNCIL_ASSEMBLY_POLICY, councilAssemblyOrder);
   persistRowDetailHistory(transaction, command, primarySnapshot, COUNCIL_TOPIC_KIND_POLICY, councilTopicKindOrder);
-  persistRowDetailHistory(transaction, command, primarySnapshot, COUNCIL_OUTCOME_POLICY, councilOutcomeOrder);
   persistRowDetailHistory(transaction, command, primarySnapshot, THOUGHT_LOCK_POLICY, thoughtLockOrder);
   persistRowDetailHistory(transaction, command, primarySnapshot, THOUGHT_PLACEMENT_POLICY, thoughtPlacementOrder);
   const metadataHistory = [];

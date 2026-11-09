@@ -19,13 +19,12 @@ export type RowDetailPolicy<Field extends string, Value extends RowValue> = {
   repeatedFields?: readonly Field[];
   allowUnclocked?: boolean;
   atomicChoice?: true;
+  requireObserved?: true;
   causalScopeEntry?: boolean;
   allowUnchanged?: (field: Field, value: Value) => boolean;
   validAfter?: (field: Field, value: Value) => boolean;
   history: string;
   scopes?: (rows: unknown, field: Field) => ReadonlyMap<string, RowValue | undefined> | undefined;
-  mergeIndependently?: (before: Value, after: Value, current: Value) => Value | undefined;
-  mergeOrdered?: (before: Value, after: Value, current: Value, incomingWins: boolean) => Value | undefined;
   needsChoice?: (field: Field, before: Value, after: Value, current: Value) => boolean;
 };
 

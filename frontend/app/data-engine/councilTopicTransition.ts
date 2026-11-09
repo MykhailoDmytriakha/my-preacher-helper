@@ -1,6 +1,6 @@
 import { hasRecordedCouncilTopicOutcome, recordedCouncilTopicOutcome } from '@/utils/councilTopicOutcome';
 
-import { COUNCIL_OUTCOME, COUNCIL_OUTCOME_FIELDS, councilOutcomeRow, incompatibleCouncilOutcome, mergeIndependentOutcomes, readCouncilOutcome } from './councilOutcomeAction';
+import { COUNCIL_OUTCOME, COUNCIL_OUTCOME_FIELDS, councilOutcomeRow, incompatibleCouncilOutcome, readCouncilOutcome } from './councilOutcomeAction';
 import { equalValues, object } from './fieldValues';
 
 import type { CommandResult, ConflictDetail, DocumentData, FieldValue, Json } from './types';
@@ -53,11 +53,9 @@ export function retainCouncilTopicFrame(base: DocumentData, mine: DocumentData, 
   if (path.length !== 2 || path[0] !== 'topics' || !path[1].startsWith('id:')
     || !Array.isArray(base.questions) || !Array.isArray(base.options)) return undefined;
   const opening = readCouncilOutcome(base), local = readCouncilOutcome(mine), stored = readCouncilOutcome(theirs);
-  if (opening && local && stored && [base, mine, theirs, value].every(topic => kind(topic) === 'decision')) {
-    const combined = mergeIndependentOutcomes(opening, local, stored);
-    if (combined?.discussed) value.discussed = true;
-    else if (combined) delete value.discussed;
-  }
+  const competing = opening && local && stored && kind(base) === kind(mine) && kind(base) === kind(theirs)
+    && !equalValues(opening, local) && !equalValues(opening, stored) && !equalValues(local, stored);
+  if (competing) retainFields(value, mine, COUNCIL_OUTCOME_FIELDS);
   const code = councilTopicRowRefusal(base, mine, theirs, value);
   if (code && code !== 'invalid-council-topic-outcome') {
     retainFields(value, mine, frameFields);
@@ -66,7 +64,7 @@ export function retainCouncilTopicFrame(base: DocumentData, mine: DocumentData, 
   }
   if (!opening || !local || !stored || incompatibleCouncilOutcome(local) || incompatibleCouncilOutcome(stored)) return undefined;
   if (kind(base) !== kind(mine) || kind(base) !== kind(theirs)
-    || (code !== 'invalid-council-topic-outcome' && !conflicts.some(conflict => isCouncilOutcomePart(conflict.path, path)))) return undefined;
+    || (!competing && code !== 'invalid-council-topic-outcome' && !conflicts.some(conflict => isCouncilOutcomePart(conflict.path, path)))) return undefined;
   retainFields(value, mine, COUNCIL_OUTCOME_FIELDS);
   return { path: [...path, COUNCIL_OUTCOME.leaf as string], base: { exists: true, value: opening },
     mine: { exists: true, value: local }, theirs: { exists: true, value: stored } };

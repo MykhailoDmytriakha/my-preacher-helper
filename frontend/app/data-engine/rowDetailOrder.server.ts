@@ -84,16 +84,18 @@ function orderField<Field extends string, Value extends RowValue>(command: Updat
   const { values, floor } = readProofs(raw, policy.proofs, field);
   const key = digest(action.rowCreatedAt, value, scope);
   const previous = values.find(proof => proof.rowId === action.rowId && proof.revision <= revision && proof.digest === key);
-  const combined = policy.mergeIndependently?.(action.before, action.after, value);
-  if (combined !== undefined) {
-    if (!action.time || !previous?.time) return { command };
-    // Both edits are required for this value. The interval contains the later of the two actions.
-    const time = { earliestMs: Math.max(action.time.earliestMs, previous.time.earliestMs),
-      latestMs: Math.max(action.time.latestMs, previous.time.latestMs) };
-    return { command, stamp: { ...action, after: combined, time } };
-  }
-  const sameIntent = equalValues(action.before, action.after);
   const unobserved = previous && previous.revision > action.observedRevision;
+  const proofEvicted = !previous && action.observedRevision < Math.min(floor, revision);
+  const matchesOpening = equalValues(value, action.before);
+  const followsPredecessor = unobserved && (previous.time || (policy.allowUnclocked && previous.causal)) && matchesOpening
+    && previous.operationId === submitted.predecessorOperationId;
+  if (policy.requireObserved) {
+    // The row revision still detects a competing write that returned to the opening value.
+    return proofEvicted || !matchesOpening || (unobserved && !followsPredecessor)
+      ? { command, uncertain: rowDetailConflict(action, target, value) } : { command };
+  }
+
+  const sameIntent = equalValues(action.before, action.after);
   const openingDigest = previous?.repairs && digest(action.rowCreatedAt, action.before, scope);
   const throughRepair = openingDigest && previous?.repairs?.some(repair =>
     repair.digest === openingDigest && repair.revision > action.observedRevision && repair.revision <= revision);
@@ -111,15 +113,12 @@ function orderField<Field extends string, Value extends RowValue>(command: Updat
   if (policy.atomicChoice && !unobserved && !equalValues(value, action.before) && !equalValues(value, action.after)) {
     return { command, uncertain: rowDetailConflict(action, target, value) };
   }
-  const proofEvicted = !previous && action.observedRevision < Math.min(floor, revision);
   if (proofEvicted && equalValues(value, action.before) && !equalValues(value, action.after)) {
     return { command, uncertain: uncertainRowChange(action, target) };
   }
   if (sameIntent && !unobserved && !equalValues(value, action.after)) {
     return { command, uncertain: rowDetailConflict(action, target, value) };
   }
-  const followsPredecessor = unobserved && (previous.time || (policy.allowUnclocked && previous.causal)) && equalValues(value, action.before)
-    && previous.operationId === submitted.predecessorOperationId;
   if (!action.time) {
     if (followsPredecessor) return { command, ...(sameIntent && { sameValueWithoutOrder: action.rowId }) };
     if ((unobserved || proofEvicted) && !equalValues(value, action.after)) {
@@ -130,25 +129,19 @@ function orderField<Field extends string, Value extends RowValue>(command: Updat
   const timed = { ...action, time: action.time };
   if (unobserved) {
     if (followsPredecessor) return { command, stamp: timed };
-    return orderUnobservedRowDetail(command, timed, field, target, value, previous, scope, policy);
+    return orderUnobservedRowDetail(command, timed, field, target, value, previous, scope, policy.atomicChoice);
   }
   return { command, ...((sameIntent || !equalValues(value, action.after)) && (previous || action.observedRevision === revision) ? { stamp: timed } : {}) };
 }
 
 function orderUnobservedRowDetail<Field extends string, Value extends RowValue>(command: Update, action: RowDetailAction<Value>,
-  field: Field, target: RowFieldTarget<Value>, value: Value, previous: Proof, scope: RowValue | undefined,
-  policy: RowDetailPolicy<Field, Value>): FieldPlan<Field, Value> {
-  const ordered = orderConcurrentRowField(command, action, target, { value, time: previous.time }, policy.mergeOrdered);
-  if (ordered.displaced) {
-    const { winnerValue, winnerActionTime } = ordered.displaced;
-    const stamp = ordered.chronology > 0 || !equalValues(winnerValue, value)
-      ? { ...action, after: winnerValue, time: winnerActionTime } : undefined;
-    return { command: ordered.command, displaced: { ...ordered.displaced, field, rowCreatedAt: action.rowCreatedAt, ...(scope != null && { scope }) },
-      ...(stamp && { stamp }) };
-  }
+  field: Field, target: RowFieldTarget<Value>, value: Value, previous: Proof, scope?: RowValue, atomicChoice?: true): FieldPlan<Field, Value> {
+  const ordered = orderConcurrentRowField(command, action, target, { value, time: previous.time });
+  if (ordered.displaced) return { command: ordered.command, displaced: { ...ordered.displaced, field, rowCreatedAt: action.rowCreatedAt, ...(scope != null && { scope }) },
+    ...(ordered.chronology > 0 ? { stamp: action } : {}) };
   if (ordered.chronology > 0) return { command, stamp: action };
   if (!ordered.chronology && equalValues(value, action.after)) return { command, sameValueWithoutOrder: action.rowId };
-  if (!ordered.chronology && (policy.atomicChoice || equalValues(action.before, action.after))) return { command, uncertain: rowDetailConflict(action, target, value) };
+  if (!ordered.chronology && (atomicChoice || equalValues(action.before, action.after))) return { command, uncertain: rowDetailConflict(action, target, value) };
   if (!ordered.chronology && equalValues(value, action.before)) return { command, uncertain: uncertainRowChange(action, target) };
   return { command };
 }
