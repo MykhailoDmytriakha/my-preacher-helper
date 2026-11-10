@@ -1,6 +1,8 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 
 import BiblePage from '@/(pages)/(private)/bible/page';
+import { marksDocumentId } from '@/utils/bibleMarksIdentity';
+import { documentScreenHref } from '@/utils/documentScreenHref';
 
 const mockChangeBible = jest.fn();
 let mockParams: URLSearchParams;
@@ -10,7 +12,10 @@ jest.mock('@locales/useTranslation', () => ({ useTranslation: () => ({ t: (key: 
 jest.mock('@locales/i18n', () => ({}));
 jest.mock('@/components/bible/BibleBookList', () => ({ BibleBookList: () => null }));
 jest.mock('@/components/bible/BibleBookReader', () => ({
-  BibleBookReader: ({ onChangeBible }: { onChangeBible: (bible: string) => void }) => <button onClick={() => onChangeBible('kjv')}>Choose KJV</button>,
+  BibleBookReader: ({ onChangeBible, decideMarksOnArrival }: { onChangeBible: (bible: string) => void; decideMarksOnArrival?: boolean }) => <>
+    {decideMarksOnArrival && <button>Review marks</button>}
+    <button onClick={() => onChangeBible('kjv')}>Choose KJV</button>
+  </>,
 }));
 
 beforeEach(() => { mockChangeBible.mockClear(); jest.useFakeTimers(); });
@@ -42,4 +47,15 @@ it('publishes the manual choice to Next while preserving custom entry state', ()
   expect(arrival![0]).not.toHaveProperty('_N');
   expect(arrival![0]).toMatchObject({ bibleEntry: 'visit', custom: 'kept' });
   expect(mockChangeBible).toHaveBeenCalledWith('kjv');
+});
+
+it('keeps the recovery arrival for the Bible marks review link', () => {
+  const value = { userId: 'reader', bible: 'rst' as const, book: 'Ruth' };
+  const resource = { collection: 'bibleMarks' as const, id: marksDocumentId(value.userId, value.bible, value.book) };
+  const href = documentScreenHref(resource, value);
+  expect(href).not.toBeNull();
+  mockParams = new URL(href!, window.location.origin).searchParams;
+  window.history.replaceState(null, '', href);
+  render(<BiblePage />);
+  expect(screen.getByRole('button', { name: 'Review marks' })).toBeVisible();
 });

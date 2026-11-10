@@ -134,13 +134,14 @@ export default function BiblePage() {
   }
 
   // A new Bible is a new reader: it opens the book in it at the place the last one wrote down.
+  // Marks recovery links name a book and its translation. Passage links may also choose a translation.
   return (
     <BibleBookReader
       key={`${bookId}:${bible}`}
       bookId={bookId}
       bible={bible}
       initialPlace={place}
-      decideMarksOnArrival={isBibleId(requestedBible) && requestedBible === bible}
+      decideMarksOnArrival={!place && isBibleId(requestedBible) && requestedBible === bible}
       initialBible={isBibleId(placeBible) ? placeBible : bible}
       passageEnd={passageEnd?.verse}
       passageEndChapter={passageEnd?.chapter}

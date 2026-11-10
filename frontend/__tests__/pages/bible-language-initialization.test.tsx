@@ -2,6 +2,7 @@ import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import BiblePage from '@/(pages)/(private)/bible/page';
+import { analysisPassageHref } from '@/components/bible/analysis/analysisAddress';
 
 import kjvPsalms from '../../public/bible-text/kjv/v1/psalms.json';
 import rstPsalms from '../../public/bible-text/rst/v1/psalms.json';
@@ -97,6 +98,20 @@ describe('Bible address before the reader language is known', () => {
     view.rerender(<BiblePage />);
     await waitFor(() => expect(place()).toHaveTextContent('22:1'));
     await expectSelectedBibleLanguage('ru');
+  });
+
+  it('lands at the verse in the translation chosen by the analysis passage link', async () => {
+    mockLanguage = 'ru';
+    window.localStorage.setItem('bible:translation', 'rst');
+    const href = analysisPassageHref({
+      scriptureRefs: [{ id: 'passage', book: 'Psalms', chapter: 23, fromVerse: 4, bible: 'kjv' }],
+    }, { locale: 'ru', from: '/studies?tab=analyses' });
+    expect(href).not.toBeNull();
+    window.history.replaceState(null, '', href);
+    render(<BiblePage />);
+    await waitFor(() => expect(place()).toHaveTextContent('23:4'));
+    expect(Element.prototype.scrollIntoView).toHaveBeenCalled();
+    await expectSelectedBibleLanguage('en');
   });
 
   it.each(['explicit numbering', 'saved Bible', 'known language'])('preserves %s while the profile arrives', async mode => {

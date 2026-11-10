@@ -8696,3 +8696,29 @@ After authorized deployment, confirm the released revision. In one authorized te
 |---|---|---|---|---|
 | 1 | The reading-window title used different numbering from its text | Yes | `frontend/__tests__/components/bible/VerseSheet.test.tsx` and `frontend/app/(pages)/(private)/studies/__tests__/scriptureLinks.test.tsx`, with the adjacent window and card suites | Chrome at 390 and 1280 px, both Bibles, the original Care path, navigation, and a 390 px cached offline reopen |
 | 2 | The note tab separately labeled the same current passage | Yes | `frontend/__tests__/components/bible/ScripturePreviewSheet.test.tsx` red-to-green regression | Chrome from a disposable note at 390 and 1280 px, with both the heading and tab visible |
+
+## BUG-20261110-analysis-bible-door-loses-verse · Open the analysis passage in the Bible
+
+In Chrome at 390 × 844, Studies → Analyses → John 3:17 → More → In the Bible passed `at=3:17`, the KJV translation and the return address to the reader. On local build `HOFdQMdihV4n4O_s1BQEC` from `51580c8e`, the first visible label was John 1:1 and the text stood at the start of the book. The ordinary Ruth 1:2 address opened at 1:2 on the same build. The separate historical Jest flake remains in BUGS.md after an unreproduced recheck.
+
+The Bible page gave the marks recovery flag to every visit with an explicit reading translation. That flag suppresses the normal initial passage restoration. A valid verse now takes the ordinary reader path. The canonical marks recovery link names only the book and translation, so it still requests the review. The analysis and marks address generators use the same page online and through the cached shell. The server does not decide the landing place.
+
+The new integration test uses the actual analysis address builder and Bible page. It received 1:1 where it expected KJV Psalms 23:4 on the original code. It now observes the target and selected translation. The real marks link is covered by the page address test, with the existing reader recovery suite verifying the disclosure and scroll to a pending decision. All 77 focused tests passed. Full Jest passed 14,843 tests in 1,189 suites, with 17 tests and three suites skipped. TypeScript and the production build passed. Full source ESLint reported zero errors and 200 project warnings. Independent source review confirmed the address producers, preserved recovery and the handling of explicit and legacy numbering.
+
+Installed Chrome on final build `ZoQFXkuhiROeATmmLRTTA` opened the exact John 3:17 KJV passage on both 390 and 1280 px. The header named 3:17 and the words of the verse were highlighted. Both widths kept their place on reload and returned to the same analysis in View mode using the reader button. On 390 px, the already visited address also reloaded at John 3:17 with Chrome offline and the service worker controlling the page. I inspected the destination, return and offline screenshots. The successful scenarios recorded zero page errors and 5xx responses. Only local synthetic fixtures were used, and all owned browsers and listeners closed. The earlier narrow run reached the correct return URL but expected the full verse as one analysis segment. The first wide run reused a passage the fixture already occupied. Both attempts are retained with the qualifying runs in `artifacts/analysis-bible-door-verse-20261110/`.
+
+### Mechanism coverage
+
+| Surface | Result | Evidence |
+|---|---|---|
+| Studies analysis door and canonical analysis passage address | Fixed through the Bible page | An address carrying a valid verse runs normal arrival, including a separately selected reading translation. |
+| Marks recovery link and ordinary verse links | Covered by controls | The real book-only recovery address requests the decision. Ordinary Ruth 1:2 continues to land at its verse. |
+| Server and offline shell | Shared page behavior | The client interprets the same address through the same reader on both paths. |
+
+### Local result
+
+| # | Problem | Fixed | Regression coverage | Browser |
+|---|---|---|---|---|
+| 1 | The Bible opened a translation-specific analysis at the beginning of the book | Yes | `frontend/__tests__/pages/bible-language-initialization.test.tsx` red to green and `frontend/__tests__/components/bible/biblePageAddress.test.tsx` recovery control | Chrome at 390 and 1280 px, passage and highlight, reload, return to the same analysis, and a cached offline reload at 390 px |
+
+After authorized deployment, confirm the released revision. Open a test analysis for a verse beyond the start of its book in Studies. Use “In the Bible”, under More on a phone. Check the verse and translation, reload, and use the reader's Analysis button to return to the same analysis. Reserve creation of recovery conflicts for the local emulator. Production verification is pending.
