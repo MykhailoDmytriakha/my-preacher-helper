@@ -68,9 +68,7 @@ export default function WordForOccasionSituationPage() {
   const back = () => (canGoBackToPage() ? router.back() : router.push('/care/word'));
   const labelOf = (place: Place) => formatScriptureReference(place, { locale, style: 'short' });
   const known = new Set([...(occasion?.places ?? []), ...own.places.map((place) => place.ref)].map(ownPlaceKey));
-  // Removing is asked first: a place he added by hand is his own work, and a stray press must not take it.
-  // A refusal is said, never swallowed: a place still on its way (added offline a moment ago) cannot be
-  // removed yet, and a silent "removed" that comes back later is worse than the honest "not yet".
+  // Confirm removing a place he added by hand. The engine owns the removal through delivery.
   const removeOwn = async (place: OwnPlace, label: string) => {
     if (!(await confirm({ title: { key: 'careWord.own.removeTitle', values: { place: label } }, description: { key: 'careWord.own.removeDescription' }, confirmText: { key: 'careWord.own.removeConfirm' } }))) return;
     await own.remove(place).catch(() => { toast.error(t('careWord.own.removeFailed', { place: label })); });

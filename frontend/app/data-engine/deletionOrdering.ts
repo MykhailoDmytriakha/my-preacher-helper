@@ -1,7 +1,9 @@
 import { commandReferenceResources, documentReferenceResources } from './documentReferences';
 import { requiredDomainTargets } from './domainPolicy';
+import { coversCommittedEffect } from './snapshotFreshness';
 
 import type { CommitRequest } from './commits';
+import type { SessionCheckpoint } from './session';
 import type { ResourceRef } from './types';
 
 const terminal = (request: CommitRequest) => ['acknowledged', 'conflict', 'refused', 'cancelled'].includes(request.state);
@@ -10,6 +12,37 @@ const sameResource = (a: ResourceRef, b: ResourceRef) => a.collection === b.coll
 export function isDocumentDeletion(request: CommitRequest): boolean {
   return !request.atomic && request.baseline.value !== null && request.value === null
     && (!request.command || request.command.kind === 'delete');
+}
+
+/** A first creation already captured by the owner of the locally displayed place. */
+export function pendingOccasionPlaceCreation(checkpoint: SessionCheckpoint) {
+  const { confirmed, pending } = checkpoint;
+  if (confirmed.resource.collection !== 'occasionPlaces' || confirmed.value !== null || confirmed.metadata !== null) return null;
+  const entries = Object.entries(pending);
+  return entries.length === 1 && entries[0][1].value !== null ? entries[0] : null;
+}
+
+/** Durable shape of a removal captured before its place's first creation was confirmed. */
+export function isOccasionPlaceRemovalAfterCreation(request: CommitRequest): boolean {
+  const { baseline } = request;
+  return baseline.resource.collection === 'occasionPlaces' && request.predecessor !== null
+    && request.value === null && !request.atomic && baseline.value === null && baseline.metadata === null;
+}
+
+/** Before initialization, require the original creation to prove the removal's lineage. */
+export function followsOccasionPlaceCreation(request: CommitRequest, predecessor: CommitRequest): boolean {
+  return isOccasionPlaceRemovalAfterCreation(request) && request.predecessor === predecessor.id && request.owner === predecessor.owner
+    && sameResource(request.baseline.resource, predecessor.baseline.resource) && predecessor.predecessor === null && !predecessor.atomic
+    && predecessor.baseline.value === null && predecessor.baseline.metadata === null && predecessor.value !== null;
+}
+
+/** A replay can carry a newer snapshot of the same place, with the exact create in its receipt. */
+export function provesOccasionPlaceCreation(request: CommitRequest): boolean {
+  const answer = request.result;
+  if (answer?.kind !== 'acknowledged') return false;
+  const proof = answer.committed ?? answer.snapshot.metadata;
+  return Boolean(proof && proof.generation === request.id && proof.operationId === request.id
+    && proof.revision === 1 && !proof.deleted && coversCommittedEffect(answer.snapshot, request.baseline.resource, proof));
 }
 
 /** Called inside capture storage: every observed request was saved before this deletion. */

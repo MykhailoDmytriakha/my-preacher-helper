@@ -4812,7 +4812,7 @@
       "removeDescription": "The place leaves your places in this topic. The Gideons' places stay.",
       "removeConfirm": "Remove",
       "loading": "Loading your places…",
-      "removeFailed": "Could not remove {{place}}. If you added it just now without a connection, wait until it is saved and try again."
+      "removeFailed": "Could not remove {{place}}. Try again."
     },
     "topics": {
       "abortion": "Abortion",

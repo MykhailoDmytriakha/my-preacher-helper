@@ -68,6 +68,23 @@ it('keeps pending and refused deletions addressable until confirmed', () => {
   expect(views([{ ...deletion, state: 'acknowledged', result: { kind: 'acknowledged', operationId: 'save', snapshot: tombstone } }])[0])
     .toMatchObject({ value: null, pending: false, deleting: false });
 });
+it('keeps an independently listed place visible after the acknowledged create has been compacted', () => {
+  const target = { collection: 'occasionPlaces', id: 'own-place' };
+  const absent = { resource: target, value: null, metadata: null };
+  const created: ResourceSnapshot = { resource: target, value: { userId: 'owner', occasionId: 'original-topic' },
+    metadata: { protocol: 1, generation: 'local-create', revision: 1, deleted: false, operationId: 'local-create' } };
+  const independent: ResourceSnapshot = { resource: target, value: { userId: 'owner', occasionId: 'another-topic' },
+    metadata: { protocol: 1, generation: 'independent-create', revision: 1, deleted: false, operationId: 'independent-create' } };
+  const removal: CommitRequest = { ...request('remove'), predecessor: 'local-create', initialized: true,
+    baseline: absent, working: created, value: null, intended: null, deleteAfter: [] };
+  expect(collectionDocumentViews('owner', target.collection, [independent], [removal])[0])
+    .toMatchObject({ value: independent.value, pending: true, needsAttention: false, deleting: false });
+  expect(collectionDocumentViews('owner', target.collection, [created], [removal])[0])
+    .toMatchObject({ pending: true, needsAttention: false, deleting: true });
+  expect(collectionDocumentViews('owner', target.collection, [created], [{ ...removal, baseline: created }])[0])
+    .toMatchObject({ pending: true, needsAttention: false, deleting: true });
+});
+
 it('preserves refused edits and exposes competing branches without inventing a winner', () => {
   expect(views([{ ...request(), state: 'refused' }])[0]).toMatchObject({ value: { title: 'save' }, needsAttention: true });
   expect(views([request('a'), request('b')])[0]).toMatchObject({ value: { title: 'Confirmed' }, pending: true, needsAttention: true });

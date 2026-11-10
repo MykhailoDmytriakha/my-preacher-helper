@@ -1,5 +1,6 @@
 import { submittedCommentKind, type CommentKindSeen } from './commentKindAction';
 import { submittedCommentPlace, type CommentPlaceSeen } from './commentPlaceAction';
+import { followsOccasionPlaceCreation, isOccasionPlaceRemovalAfterCreation } from './deletionOrdering';
 import { submittedDocumentTitle, submittedPrayerStatus, submittedStudyNoteType, submittedTagColor } from './documentFieldAction';
 import { submittedPrayerTagBasis } from './documentTagCapture';
 import { DataSession } from './session';
@@ -90,10 +91,14 @@ export function collectionDocumentViews(owner: string, collection: string, snaps
     const prayerStatus = submittedPrayerStatus(checkpoint, unsettled, needsAttention);
     const prayerTagBasis = !needsAttention && submittedPrayerTagBasis(checkpoint, unsettled);
     const submittedColor = submittedTagColor(checkpoint, unsettled, needsAttention);
-    // Keep a pending deletion addressable until its acknowledgement; a failed
-    // deletion must never remove the only route to its retry/recovery controls.
-    views.set(id, { resource, value: checkpoint?.draft ?? confirmed.get(id)?.value ?? checkpoint?.confirmed.value ?? null,
-      pending: true, needsAttention, deleting: Boolean(checkpoint && checkpoint.draft === null),
+    // An initialized removal retains its creation ID even after the queue compacts that creation.
+    const placeRemoval = collection === 'occasionPlaces' ? unsettled.find(request => isOccasionPlaceRemovalAfterCreation(request)
+      && (request.initialized || related.some(prior => followsOccasionPlaceCreation(request, prior)))) : undefined;
+    const saved = confirmed.get(id);
+    const showSavedPlace = placeRemoval && (needsAttention || (saved?.value && saved.metadata?.generation !== placeRemoval.predecessor));
+    // Keep a pending deletion addressable until its acknowledgement.
+    views.set(id, { resource, value: showSavedPlace ? saved?.value ?? null : checkpoint?.draft ?? saved?.value ?? checkpoint?.confirmed.value ?? null,
+      pending: true, needsAttention, deleting: Boolean(!showSavedPlace && checkpoint && checkpoint.draft === null),
       ...(submittedTitle && { submittedTitle }),
       ...(submittedServiceOrderPlacement && { submittedServiceOrderPlacement }),
       ...(submittedServiceOrderStepPlacements.length > 0 && { submittedServiceOrderStepPlacements }),
