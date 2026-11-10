@@ -70,6 +70,8 @@ const preparation = object({
   preachingGoal: object({ type: z.enum(['informative', 'proclamation', 'didactic', 'exhortative']).optional(), statement: text.optional() }).optional(),
   homileticPlan: object({ modernTranslation: text.optional(), updatedPlan: children(object({ id, title: text })).optional(), sermonPlan: children(object({ id, title: text })).optional() }).optional(),
 });
+// A place in the numbering of the Bible it was written in (`bible`), as `ScriptureRefShape` keeps it.
+const placeRef = object({ bible: z.enum(['kjv', 'rst', 'ubio']), book: id, chapter: number.int().positive(), fromVerse: number.int().positive().optional(), toVerse: number.int().positive().optional(), endChapter: number.int().positive().optional() });
 const scripture = object({ id, book: id, chapter: number.int().positive().optional(), toChapter: number.int().positive().optional(), endChapter: number.int().positive().optional(), toVerseChapter: number.int().positive().optional(), fromVerse: number.int().positive().optional(), toVerse: number.int().positive().optional(), text: text.optional() });
 const seriesItem = object({ id, type: z.enum(['sermon', 'group']), refId: id, position: number, plannedDate: text.optional(), completedAt: text.optional() });
 const block = object({ id, type: z.enum(['announcement', 'topic', 'scripture', 'questions', 'explanation', 'notes', 'prayer', 'custom']), title: text, summary: text.optional(), content: text, scriptureRefs: strings.optional(), questions: strings.optional(), status: z.enum(['empty', 'draft', 'filled']), createdAt: text, updatedAt: text });
@@ -128,6 +130,7 @@ const shapes: Record<string, z.ZodRawShape> = {
   // A run is one string "first-last-colour": Firestore keeps no array inside an array (`encodeBookMarks`).
   bibleMarks: { ...owner, ...timestamps, bible: id, book: id, verses: z.record(text, object({ m: markRuns.optional(), p: markRuns.optional() })) },
   tags: { ...owner, name: id, color: text, required: boolean, createdAt: text.optional(), updatedAt: text.optional() },
+  occasionPlaces: { ...owner, ...timestamps, occasionId: id, ref: placeRef },
   users: { lastSeenAt: text.optional(), language: text.optional(), email: text.optional(), displayName: text.optional(), firstDayOfWeek: z.enum(['sunday', 'monday']).optional(), enablePrepMode: boolean.optional(), enableAudioGeneration: boolean.optional(), enableStructurePreview: boolean.optional(), enableGroups: boolean.optional(), showAppVersion: boolean.optional(), reading: reading.optional(), preferredProviderId: z.enum(providerIds).optional(), preferredModelId: id.optional(), preferredTranscription: preference.optional(), preferredText: preference.optional(), preferredTts: preference.optional(), createdAt: text.optional(), updatedAt: text.optional() },
 };
 

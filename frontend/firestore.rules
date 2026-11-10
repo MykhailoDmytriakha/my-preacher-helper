@@ -53,7 +53,7 @@ service cloud.firestore {
     // Deploy order: these rules FIRST, then the server's DATA_ENGINE_CLOSED_COLLECTIONS. Roll back
     // in reverse: reopen the server (mixed mode, sweeps) first, then empty this list.
     function closedToBrowserWrites(name) {
-      return name in ['councils', 'groups', 'series', 'sermons', 'tags', 'prayerRequests', 'serviceOrders', 'studyNotes', 'studyMaterials', 'planTemplates', 'bibleMarks', 'studyNoteShareLinks', 'users'];
+      return name in ['councils', 'groups', 'series', 'sermons', 'tags', 'prayerRequests', 'serviceOrders', 'studyNotes', 'studyMaterials', 'planTemplates', 'bibleMarks', 'studyNoteShareLinks', 'users', 'occasionPlaces'];
     }
 
     // ---- Revision protocol (PREPARED, NOT ARMED — see the checklist) ----
@@ -179,6 +179,11 @@ service cloud.firestore {
       allow delete: if ownsExisting('userId') && legacyExisting() && !closedToBrowserWrites('bibleMarks');
       allow create:       if ownsIncoming('userId') && legacyIncoming() && !closedToBrowserWrites('bibleMarks');
       allow update:       if ownsExisting('userId') && ownsIncoming('userId') && legacyExisting() && legacyIncoming() && !closedToBrowserWrites('bibleMarks');
+    }
+    // The pastor's own places in a topic of the word for the occasion — one document per place; only the engine writes them.
+    match /occasionPlaces/{id} {
+      allow read: if ownsExisting('userId');
+      allow write: if false;
     }
     match /prayerCategories/{id} {
       allow read: if ownsExisting('userId');

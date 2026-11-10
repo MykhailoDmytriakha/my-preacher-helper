@@ -76,7 +76,7 @@ let memory: DiagnosticEvent[] = [];
 const ROUTE_SEGMENTS = new Set([
   'admin', 'bible', 'calendar', 'care', 'conduct', 'council', 'dashboard', 'groups', 'limits', 'manual', 'new',
   'notes', 'orders', 'plan', 'prayers', 'series', 'sermons', 'settings', 'share', 'share-links',
-  'structure', 'studies', 'tags', 'templates', 'user',
+  'structure', 'studies', 'tags', 'templates', 'user', 'word',
 ]);
 
 function routeParts(path: string): string[] {

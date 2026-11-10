@@ -1,0 +1,6561 @@
+{
+ "sources": [
+  {
+   "id": "au-gideons-pdf-special-helps",
+   "country": "Australia",
+   "title": "Special Helps That Appear in Gideon Placed Bibles (ESV, © 2013)",
+   "url": "https://www.gideons.org.au/wp-content/uploads/420_Special_Helps.pdf"
+  },
+  {
+   "id": "au-gideons-web",
+   "country": "Australia",
+   "title": "Help from the Bible — Bible Verses in Times of Need",
+   "url": "https://www.gideons.org.au/?p=7637"
+  },
+  {
+   "id": "ie-gideons-help-in-time-of-need",
+   "country": "Ireland",
+   "title": "Gideon Bible helps — Help in Time of Need",
+   "url": "https://www.gideons.ie/read%20the%20bible/helps.html"
+  },
+  {
+   "id": "ie-gideons-life-problems",
+   "country": "Ireland",
+   "title": "Gideon Bible helps — Teachings About Life's Problems",
+   "url": "https://www.gideons.ie/read%20the%20bible/teachings%20about%20some%20of%20life's%20problems.html"
+  },
+  {
+   "id": "ie-gideons-virtues",
+   "country": "Ireland",
+   "title": "Gideon Bible helps — Christian Virtues and Character",
+   "url": "https://www.gideons.ie/read%20the%20bible/christian%20virtues%20and%20character.html"
+  },
+  {
+   "id": "ie-gideons-where-to-find-help",
+   "country": "Ireland",
+   "title": "Gideon Bible helps — Where to Find Help (When…)",
+   "url": "https://www.gideons.ie/read%20the%20bible/where%20to%20find%20help.html"
+  },
+  {
+   "id": "ru-gideons-nt",
+   "country": "Russia / CIS (Russian-language edition)",
+   "title": "Новый Завет и Псалтирь — «Эти строки Писания помогут вам, когда...»",
+   "url": "https://archive.org/details/B-001-032-121-ALL"
+  },
+  {
+   "id": "uk-gnfe-web",
+   "country": "United Kingdom",
+   "title": "How the Bible Helps Us (Bible Helps A–Z index of life situations)",
+   "url": "https://goodnewsuk.com/the-bible/how-the-bible-helps"
+  },
+  {
+   "id": "us-gideons-web-esv",
+   "country": "United States",
+   "title": "Bible Verses in Times of Need (ESV tab)",
+   "url": "https://gideons.org/read-the-bible#bibleverses"
+  },
+  {
+   "id": "us-gideons-web-kjv",
+   "country": "United States",
+   "title": "Bible Verses in Times of Need (KJV tab)",
+   "url": "https://gideons.org/read-the-bible#bibleverses"
+  }
+ ],
+ "occasions": [
+  {
+   "id": "abortion",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Psalms",
+     "chapter": 127,
+     "fromVerse": 3,
+     "toVerse": 5,
+     "sources": 2
+    },
+    {
+     "book": "Psalms",
+     "chapter": 139,
+     "fromVerse": 13,
+     "toVerse": 16,
+     "sources": 2
+    }
+   ]
+  },
+  {
+   "id": "abundantLife",
+   "kind": "virtue",
+   "places": [
+    {
+     "book": "John",
+     "chapter": 10,
+     "fromVerse": 10,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "addiction",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Proverbs",
+     "chapter": 14,
+     "fromVerse": 12,
+     "sources": 2
+    },
+    {
+     "book": "John",
+     "chapter": 8,
+     "fromVerse": 34,
+     "toVerse": 36,
+     "sources": 4
+    },
+    {
+     "book": "James",
+     "chapter": 1,
+     "fromVerse": 13,
+     "toVerse": 15,
+     "sources": 3
+    }
+   ]
+  },
+  {
+   "id": "adultery",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Matthew",
+     "chapter": 5,
+     "fromVerse": 27,
+     "toVerse": 32,
+     "sources": 4
+    },
+    {
+     "book": "1 Corinthians",
+     "chapter": 6,
+     "fromVerse": 9,
+     "toVerse": 11,
+     "sources": 1
+    },
+    {
+     "book": "1 Corinthians",
+     "chapter": 6,
+     "fromVerse": 18,
+     "sources": 3
+    }
+   ]
+  },
+  {
+   "id": "adversity",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Matthew",
+     "chapter": 10,
+     "fromVerse": 16,
+     "toVerse": 39,
+     "sources": 2
+    },
+    {
+     "book": "Romans",
+     "chapter": 5,
+     "fromVerse": 3,
+     "toVerse": 4,
+     "sources": 1
+    },
+    {
+     "book": "Philippians",
+     "chapter": 4,
+     "fromVerse": 4,
+     "toVerse": 7,
+     "sources": 4
+    },
+    {
+     "book": "James",
+     "chapter": 1,
+     "fromVerse": 2,
+     "toVerse": 5,
+     "sources": 2
+    },
+    {
+     "book": "1 Peter",
+     "chapter": 1,
+     "fromVerse": 3,
+     "toVerse": 9,
+     "sources": 4
+    }
+   ]
+  },
+  {
+   "id": "afraid",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Psalms",
+     "chapter": 18,
+     "fromVerse": 2,
+     "sources": 1
+    },
+    {
+     "book": "Psalms",
+     "chapter": 31,
+     "fromVerse": 24,
+     "sources": 3
+    },
+    {
+     "book": "Psalms",
+     "chapter": 34,
+     "fromVerse": 4,
+     "sources": 2
+    },
+    {
+     "book": "Psalms",
+     "chapter": 91,
+     "fromVerse": 9,
+     "toVerse": 10,
+     "sources": 3
+    },
+    {
+     "book": "Psalms",
+     "chapter": 121,
+     "fromVerse": 1,
+     "toVerse": 2,
+     "sources": 2
+    },
+    {
+     "book": "Matthew",
+     "chapter": 10,
+     "fromVerse": 28,
+     "sources": 2
+    },
+    {
+     "book": "Luke",
+     "chapter": 12,
+     "fromVerse": 5,
+     "sources": 1
+    },
+    {
+     "book": "Ephesians",
+     "chapter": 6,
+     "fromVerse": 10,
+     "toVerse": 18,
+     "sources": 1
+    },
+    {
+     "book": "2 Timothy",
+     "chapter": 1,
+     "fromVerse": 7,
+     "sources": 5
+    },
+    {
+     "book": "Hebrews",
+     "chapter": 13,
+     "fromVerse": 5,
+     "toVerse": 6,
+     "sources": 3
+    }
+   ]
+  },
+  {
+   "id": "afraidOfCircumstances",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Psalms",
+     "chapter": 139,
+     "fromVerse": 8,
+     "toVerse": 10,
+     "sources": 1
+    },
+    {
+     "book": "Isaiah",
+     "chapter": 41,
+     "fromVerse": 10,
+     "sources": 1
+    },
+    {
+     "book": "Isaiah",
+     "chapter": 41,
+     "fromVerse": 13,
+     "sources": 1
+    },
+    {
+     "book": "Mark",
+     "chapter": 4,
+     "fromVerse": 35,
+     "toVerse": 41,
+     "sources": 1
+    },
+    {
+     "book": "Romans",
+     "chapter": 8,
+     "fromVerse": 28,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "afraidOfPeople",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Psalms",
+     "chapter": 27,
+     "fromVerse": 1,
+     "toVerse": 3,
+     "sources": 1
+    },
+    {
+     "book": "Psalms",
+     "chapter": 56,
+     "fromVerse": 9,
+     "toVerse": 11,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "afraidOfPersecution",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Matthew",
+     "chapter": 5,
+     "fromVerse": 11,
+     "toVerse": 12,
+     "sources": 1
+    },
+    {
+     "book": "Hebrews",
+     "chapter": 13,
+     "fromVerse": 6,
+     "toVerse": 8,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "afraidOfTheFuture",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Psalms",
+     "chapter": 23,
+     "sources": 1
+    },
+    {
+     "book": "Psalms",
+     "chapter": 55,
+     "fromVerse": 22,
+     "sources": 1
+    },
+    {
+     "book": "Matthew",
+     "chapter": 6,
+     "fromVerse": 25,
+     "toVerse": 34,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "allAreSinners",
+   "kind": "teaching",
+   "places": [
+    {
+     "book": "Isaiah",
+     "chapter": 64,
+     "fromVerse": 6,
+     "sources": 1
+    },
+    {
+     "book": "Romans",
+     "chapter": 3,
+     "fromVerse": 10,
+     "sources": 1
+    },
+    {
+     "book": "Romans",
+     "chapter": 3,
+     "fromVerse": 23,
+     "sources": 1
+    },
+    {
+     "book": "James",
+     "chapter": 4,
+     "fromVerse": 17,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "anger",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Matthew",
+     "chapter": 5,
+     "fromVerse": 22,
+     "toVerse": 24,
+     "sources": 1
+    },
+    {
+     "book": "Ephesians",
+     "chapter": 4,
+     "fromVerse": 25,
+     "toVerse": 26,
+     "sources": 1
+    },
+    {
+     "book": "1 Timothy",
+     "chapter": 2,
+     "fromVerse": 8,
+     "sources": 1
+    },
+    {
+     "book": "James",
+     "chapter": 1,
+     "fromVerse": 19,
+     "toVerse": 21,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "angryWithPeople",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Ephesians",
+     "chapter": 4,
+     "fromVerse": 29,
+     "toVerse": 32,
+     "sources": 1
+    },
+    {
+     "book": "Colossians",
+     "chapter": 3,
+     "fromVerse": 12,
+     "toVerse": 14,
+     "sources": 1
+    },
+    {
+     "book": "James",
+     "chapter": 1,
+     "fromVerse": 19,
+     "toVerse": 20,
+     "sources": 1
+    },
+    {
+     "book": "1 John",
+     "chapter": 2,
+     "fromVerse": 9,
+     "toVerse": 11,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "anxious",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Psalms",
+     "chapter": 46,
+     "sources": 3
+    },
+    {
+     "book": "Psalms",
+     "chapter": 46,
+     "fromVerse": 1,
+     "sources": 1
+    },
+    {
+     "book": "Proverbs",
+     "chapter": 12,
+     "fromVerse": 25,
+     "sources": 2
+    },
+    {
+     "book": "Isaiah",
+     "chapter": 43,
+     "fromVerse": 1,
+     "toVerse": 3,
+     "sources": 1
+    },
+    {
+     "book": "Nahum",
+     "chapter": 1,
+     "fromVerse": 7,
+     "sources": 1
+    },
+    {
+     "book": "Matthew",
+     "chapter": 6,
+     "fromVerse": 19,
+     "toVerse": 34,
+     "sources": 6
+    },
+    {
+     "book": "Philippians",
+     "chapter": 4,
+     "fromVerse": 6,
+     "toVerse": 7,
+     "sources": 4
+    },
+    {
+     "book": "1 Peter",
+     "chapter": 5,
+     "fromVerse": 6,
+     "toVerse": 7,
+     "sources": 2
+    }
+   ]
+  },
+  {
+   "id": "apathetic",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "John",
+     "chapter": 3,
+     "fromVerse": 17,
+     "toVerse": 18,
+     "sources": 1
+    },
+    {
+     "book": "John",
+     "chapter": 3,
+     "fromVerse": 35,
+     "toVerse": 36,
+     "sources": 1
+    },
+    {
+     "book": "Romans",
+     "chapter": 3,
+     "fromVerse": 22,
+     "toVerse": 24,
+     "sources": 1
+    },
+    {
+     "book": "Romans",
+     "chapter": 6,
+     "fromVerse": 23,
+     "sources": 1
+    },
+    {
+     "book": "Galatians",
+     "chapter": 5,
+     "fromVerse": 19,
+     "toVerse": 21,
+     "sources": 1
+    },
+    {
+     "book": "Hebrews",
+     "chapter": 10,
+     "fromVerse": 26,
+     "toVerse": 31,
+     "sources": 1
+    },
+    {
+     "book": "Revelation",
+     "chapter": 3,
+     "fromVerse": 15,
+     "toVerse": 18,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "assurance",
+   "kind": "teaching",
+   "places": [
+    {
+     "book": "John",
+     "chapter": 10,
+     "fromVerse": 28,
+     "toVerse": 29,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "awayFromGod",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Psalms",
+     "chapter": 51,
+     "sources": 2
+    },
+    {
+     "book": "Psalms",
+     "chapter": 51,
+     "fromVerse": 1,
+     "sources": 3
+    },
+    {
+     "book": "Psalms",
+     "chapter": 51,
+     "fromVerse": 10,
+     "sources": 3
+    },
+    {
+     "book": "Psalms",
+     "chapter": 145,
+     "fromVerse": 17,
+     "toVerse": 20,
+     "sources": 1
+    },
+    {
+     "book": "Acts",
+     "chapter": 17,
+     "fromVerse": 22,
+     "toVerse": 28,
+     "sources": 1
+    },
+    {
+     "book": "James",
+     "chapter": 4,
+     "fromVerse": 7,
+     "toVerse": 10,
+     "sources": 1
+    },
+    {
+     "book": "1 John",
+     "chapter": 1,
+     "fromVerse": 4,
+     "toVerse": 10,
+     "sources": 5
+    }
+   ]
+  },
+  {
+   "id": "awayFromHome",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Psalms",
+     "chapter": 91,
+     "sources": 1
+    },
+    {
+     "book": "Psalms",
+     "chapter": 121,
+     "sources": 1
+    },
+    {
+     "book": "Proverbs",
+     "chapter": 3,
+     "fromVerse": 1,
+     "toVerse": 7,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "beingInsulted",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Proverbs",
+     "chapter": 12,
+     "fromVerse": 16,
+     "sources": 1
+    },
+    {
+     "book": "Romans",
+     "chapter": 15,
+     "fromVerse": 3,
+     "toVerse": 4,
+     "sources": 1
+    },
+    {
+     "book": "1 Peter",
+     "chapter": 2,
+     "fromVerse": 23,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "beingJealous",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Matthew",
+     "chapter": 6,
+     "fromVerse": 33,
+     "sources": 1
+    },
+    {
+     "book": "1 Timothy",
+     "chapter": 6,
+     "fromVerse": 6,
+     "toVerse": 10,
+     "sources": 1
+    },
+    {
+     "book": "1 John",
+     "chapter": 2,
+     "fromVerse": 15,
+     "toVerse": 17,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "beingMadeRedundant",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Proverbs",
+     "chapter": 16,
+     "fromVerse": 3,
+     "sources": 1
+    },
+    {
+     "book": "Proverbs",
+     "chapter": 16,
+     "fromVerse": 9,
+     "sources": 1
+    },
+    {
+     "book": "Isaiah",
+     "chapter": 48,
+     "fromVerse": 17,
+     "sources": 1
+    },
+    {
+     "book": "Jeremiah",
+     "chapter": 29,
+     "fromVerse": 11,
+     "sources": 1
+    },
+    {
+     "book": "Philippians",
+     "chapter": 4,
+     "fromVerse": 11,
+     "toVerse": 13,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "beingResentful",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Proverbs",
+     "chapter": 3,
+     "fromVerse": 11,
+     "toVerse": 12,
+     "sources": 1
+    },
+    {
+     "book": "Proverbs",
+     "chapter": 16,
+     "fromVerse": 3,
+     "sources": 1
+    },
+    {
+     "book": "Isaiah",
+     "chapter": 46,
+     "fromVerse": 4,
+     "sources": 1
+    },
+    {
+     "book": "Matthew",
+     "chapter": 6,
+     "fromVerse": 25,
+     "toVerse": 34,
+     "sources": 1
+    },
+    {
+     "book": "Philippians",
+     "chapter": 4,
+     "fromVerse": 12,
+     "sources": 1
+    },
+    {
+     "book": "2 Timothy",
+     "chapter": 2,
+     "fromVerse": 22,
+     "toVerse": 24,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "beingSceptical",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Luke",
+     "chapter": 24,
+     "fromVerse": 36,
+     "toVerse": 49,
+     "sources": 1
+    },
+    {
+     "book": "John",
+     "chapter": 6,
+     "fromVerse": 35,
+     "toVerse": 40,
+     "sources": 1
+    },
+    {
+     "book": "John",
+     "chapter": 10,
+     "fromVerse": 25,
+     "toVerse": 30,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "beingThreatened",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Psalms",
+     "chapter": 27,
+     "fromVerse": 1,
+     "sources": 1
+    },
+    {
+     "book": "Proverbs",
+     "chapter": 18,
+     "fromVerse": 10,
+     "sources": 1
+    },
+    {
+     "book": "Mark",
+     "chapter": 4,
+     "fromVerse": 35,
+     "toVerse": 41,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "beingTroubled",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Psalms",
+     "chapter": 9,
+     "fromVerse": 9,
+     "toVerse": 10,
+     "sources": 1
+    },
+    {
+     "book": "Romans",
+     "chapter": 8,
+     "fromVerse": 28,
+     "toVerse": 39,
+     "sources": 1
+    },
+    {
+     "book": "2 Corinthians",
+     "chapter": 1,
+     "fromVerse": 3,
+     "toVerse": 4,
+     "sources": 1
+    },
+    {
+     "book": "2 Corinthians",
+     "chapter": 4,
+     "fromVerse": 8,
+     "toVerse": 9,
+     "sources": 1
+    },
+    {
+     "book": "2 Corinthians",
+     "chapter": 4,
+     "fromVerse": 16,
+     "toVerse": 18,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "bereaved",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Matthew",
+     "chapter": 5,
+     "fromVerse": 4,
+     "sources": 2
+    },
+    {
+     "book": "John",
+     "chapter": 3,
+     "fromVerse": 15,
+     "toVerse": 16,
+     "sources": 1
+    },
+    {
+     "book": "John",
+     "chapter": 14,
+     "fromVerse": 1,
+     "toVerse": 4,
+     "sources": 1
+    },
+    {
+     "book": "Romans",
+     "chapter": 8,
+     "fromVerse": 38,
+     "toVerse": 39,
+     "sources": 1
+    },
+    {
+     "book": "2 Corinthians",
+     "chapter": 1,
+     "fromVerse": 3,
+     "toVerse": 4,
+     "sources": 2
+    },
+    {
+     "book": "1 Thessalonians",
+     "chapter": 4,
+     "fromVerse": 13,
+     "toVerse": 18,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "bitter",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Matthew",
+     "chapter": 5,
+     "fromVerse": 9,
+     "sources": 1
+    },
+    {
+     "book": "Matthew",
+     "chapter": 6,
+     "fromVerse": 14,
+     "toVerse": 15,
+     "sources": 1
+    },
+    {
+     "book": "Matthew",
+     "chapter": 7,
+     "fromVerse": 1,
+     "toVerse": 5,
+     "sources": 1
+    },
+    {
+     "book": "1 Corinthians",
+     "chapter": 13,
+     "sources": 2
+    },
+    {
+     "book": "1 Corinthians",
+     "chapter": 13,
+     "fromVerse": 4,
+     "toVerse": 8,
+     "sources": 1
+    },
+    {
+     "book": "Ephesians",
+     "chapter": 4,
+     "fromVerse": 31,
+     "toVerse": 32,
+     "sources": 2
+    },
+    {
+     "book": "Hebrews",
+     "chapter": 12,
+     "fromVerse": 14,
+     "toVerse": 15,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "blamingGod",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "2 Samuel",
+     "chapter": 22,
+     "fromVerse": 31,
+     "sources": 1
+    },
+    {
+     "book": "Job",
+     "chapter": 22,
+     "fromVerse": 21,
+     "sources": 1
+    },
+    {
+     "book": "Proverbs",
+     "chapter": 19,
+     "fromVerse": 3,
+     "sources": 1
+    },
+    {
+     "book": "Jeremiah",
+     "chapter": 29,
+     "fromVerse": 11,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "brokenHearted",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Psalms",
+     "chapter": 34,
+     "fromVerse": 17,
+     "toVerse": 18,
+     "sources": 1
+    },
+    {
+     "book": "Psalms",
+     "chapter": 147,
+     "fromVerse": 3,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "bullied",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Joshua",
+     "chapter": 1,
+     "fromVerse": 9,
+     "sources": 1
+    },
+    {
+     "book": "Psalms",
+     "chapter": 37,
+     "fromVerse": 1,
+     "sources": 1
+    },
+    {
+     "book": "Psalms",
+     "chapter": 37,
+     "fromVerse": 7,
+     "toVerse": 9,
+     "sources": 1
+    },
+    {
+     "book": "Psalms",
+     "chapter": 91,
+     "fromVerse": 9,
+     "toVerse": 16,
+     "sources": 1
+    },
+    {
+     "book": "Matthew",
+     "chapter": 5,
+     "fromVerse": 38,
+     "toVerse": 48,
+     "sources": 1
+    },
+    {
+     "book": "Matthew",
+     "chapter": 7,
+     "fromVerse": 12,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "callingToGod",
+   "kind": "teaching",
+   "places": [
+    {
+     "book": "Psalms",
+     "chapter": 51,
+     "fromVerse": 1,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "cheated",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Psalms",
+     "chapter": 118,
+     "fromVerse": 8,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "cheating",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Romans",
+     "chapter": 13,
+     "fromVerse": 7,
+     "toVerse": 9,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "choosingACareer",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Psalms",
+     "chapter": 37,
+     "fromVerse": 3,
+     "toVerse": 7,
+     "sources": 1
+    },
+    {
+     "book": "Proverbs",
+     "chapter": 16,
+     "fromVerse": 3,
+     "sources": 1
+    },
+    {
+     "book": "Proverbs",
+     "chapter": 16,
+     "fromVerse": 9,
+     "sources": 1
+    },
+    {
+     "book": "Romans",
+     "chapter": 12,
+     "fromVerse": 1,
+     "toVerse": 2,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "christ",
+   "kind": "teaching",
+   "places": [
+    {
+     "book": "Matthew",
+     "chapter": 24,
+     "fromVerse": 30,
+     "sources": 1
+    },
+    {
+     "book": "John",
+     "chapter": 6,
+     "fromVerse": 38,
+     "sources": 1
+    },
+    {
+     "book": "John",
+     "chapter": 10,
+     "fromVerse": 30,
+     "sources": 1
+    },
+    {
+     "book": "John",
+     "chapter": 14,
+     "fromVerse": 3,
+     "sources": 1
+    },
+    {
+     "book": "John",
+     "chapter": 14,
+     "fromVerse": 9,
+     "sources": 1
+    },
+    {
+     "book": "John",
+     "chapter": 16,
+     "fromVerse": 28,
+     "sources": 1
+    },
+    {
+     "book": "1 Corinthians",
+     "chapter": 15,
+     "fromVerse": 20,
+     "toVerse": 21,
+     "sources": 1
+    },
+    {
+     "book": "1 Thessalonians",
+     "chapter": 4,
+     "fromVerse": 16,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "christHisPerson",
+   "kind": "teaching",
+   "places": [
+    {
+     "book": "John",
+     "chapter": 6,
+     "fromVerse": 38,
+     "sources": 1
+    },
+    {
+     "book": "John",
+     "chapter": 10,
+     "fromVerse": 30,
+     "sources": 1
+    },
+    {
+     "book": "John",
+     "chapter": 14,
+     "fromVerse": 3,
+     "sources": 1
+    },
+    {
+     "book": "John",
+     "chapter": 14,
+     "fromVerse": 9,
+     "sources": 1
+    },
+    {
+     "book": "John",
+     "chapter": 16,
+     "fromVerse": 28,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "christHisResurrection",
+   "kind": "teaching",
+   "places": [
+    {
+     "book": "1 Corinthians",
+     "chapter": 15,
+     "fromVerse": 20,
+     "toVerse": 21,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "christHisReturn",
+   "kind": "teaching",
+   "places": [
+    {
+     "book": "Matthew",
+     "chapter": 24,
+     "fromVerse": 30,
+     "sources": 1
+    },
+    {
+     "book": "1 Thessalonians",
+     "chapter": 4,
+     "fromVerse": 16,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "christianConduct",
+   "kind": "teaching",
+   "places": [
+    {
+     "book": "Matthew",
+     "chapter": 22,
+     "fromVerse": 15,
+     "toVerse": 22,
+     "sources": 1
+    },
+    {
+     "book": "Romans",
+     "chapter": 12,
+     "fromVerse": 17,
+     "endChapter": 13,
+     "toVerse": 14,
+     "sources": 1
+    },
+    {
+     "book": "Titus",
+     "chapter": 3,
+     "fromVerse": 1,
+     "toVerse": 8,
+     "sources": 1
+    },
+    {
+     "book": "1 Peter",
+     "chapter": 2,
+     "fromVerse": 13,
+     "toVerse": 17,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "christsBirth",
+   "kind": "teaching",
+   "places": [
+    {
+     "book": "Matthew",
+     "chapter": 1,
+     "fromVerse": 21,
+     "sources": 2
+    },
+    {
+     "book": "Luke",
+     "chapter": 2,
+     "fromVerse": 10,
+     "toVerse": 11,
+     "sources": 2
+    }
+   ]
+  },
+  {
+   "id": "christsPurpose",
+   "kind": "teaching",
+   "places": [
+    {
+     "book": "John",
+     "chapter": 10,
+     "fromVerse": 10,
+     "sources": 2
+    },
+    {
+     "book": "1 Peter",
+     "chapter": 3,
+     "fromVerse": 18,
+     "sources": 2
+    }
+   ]
+  },
+  {
+   "id": "citizenship",
+   "kind": "virtue",
+   "places": [
+    {
+     "book": "Romans",
+     "chapter": 13,
+     "fromVerse": 1,
+     "toVerse": 7,
+     "sources": 1
+    },
+    {
+     "book": "Titus",
+     "chapter": 3,
+     "fromVerse": 1,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "cleanliness",
+   "kind": "virtue",
+   "places": [
+    {
+     "book": "2 Corinthians",
+     "chapter": 7,
+     "fromVerse": 1,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "commitment",
+   "kind": "virtue",
+   "places": [
+    {
+     "book": "Romans",
+     "chapter": 12,
+     "fromVerse": 9,
+     "toVerse": 17,
+     "sources": 1
+    },
+    {
+     "book": "1 Timothy",
+     "chapter": 4,
+     "fromVerse": 11,
+     "toVerse": 16,
+     "sources": 1
+    },
+    {
+     "book": "Hebrews",
+     "chapter": 6,
+     "fromVerse": 10,
+     "toVerse": 12,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "complacent",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "John",
+     "chapter": 3,
+     "fromVerse": 17,
+     "toVerse": 18,
+     "sources": 1
+    },
+    {
+     "book": "John",
+     "chapter": 3,
+     "fromVerse": 35,
+     "toVerse": 36,
+     "sources": 1
+    },
+    {
+     "book": "Romans",
+     "chapter": 3,
+     "fromVerse": 22,
+     "toVerse": 24,
+     "sources": 1
+    },
+    {
+     "book": "Romans",
+     "chapter": 6,
+     "fromVerse": 23,
+     "sources": 1
+    },
+    {
+     "book": "Revelation",
+     "chapter": 3,
+     "fromVerse": 15,
+     "toVerse": 18,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "conceit",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Luke",
+     "chapter": 18,
+     "fromVerse": 9,
+     "toVerse": 14,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "confession",
+   "kind": "teaching",
+   "places": [
+    {
+     "book": "1 John",
+     "chapter": 1,
+     "fromVerse": 9,
+     "sources": 2
+    }
+   ]
+  },
+  {
+   "id": "conflictOrTemptation",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "2 Timothy",
+     "chapter": 2,
+     "fromVerse": 22,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "consecration",
+   "kind": "virtue",
+   "places": [
+    {
+     "book": "Romans",
+     "chapter": 12,
+     "fromVerse": 1,
+     "toVerse": 2,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "contentment",
+   "kind": "virtue",
+   "places": [
+    {
+     "book": "Colossians",
+     "chapter": 3,
+     "fromVerse": 15,
+     "toVerse": 17,
+     "sources": 1
+    },
+    {
+     "book": "1 Thessalonians",
+     "chapter": 5,
+     "fromVerse": 16,
+     "toVerse": 18,
+     "sources": 1
+    },
+    {
+     "book": "1 Timothy",
+     "chapter": 6,
+     "fromVerse": 6,
+     "toVerse": 10,
+     "sources": 2
+    },
+    {
+     "book": "2 Timothy",
+     "chapter": 2,
+     "fromVerse": 23,
+     "toVerse": 26,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "conversation",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Ephesians",
+     "chapter": 4,
+     "fromVerse": 22,
+     "toVerse": 30,
+     "sources": 1
+    },
+    {
+     "book": "Colossians",
+     "chapter": 4,
+     "fromVerse": 5,
+     "toVerse": 6,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "copingWithDeath",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "John",
+     "chapter": 3,
+     "fromVerse": 15,
+     "toVerse": 16,
+     "sources": 1
+    },
+    {
+     "book": "John",
+     "chapter": 14,
+     "fromVerse": 1,
+     "toVerse": 4,
+     "sources": 1
+    },
+    {
+     "book": "Romans",
+     "chapter": 8,
+     "fromVerse": 38,
+     "toVerse": 39,
+     "sources": 1
+    },
+    {
+     "book": "1 Thessalonians",
+     "chapter": 4,
+     "fromVerse": 13,
+     "toVerse": 18,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "courage",
+   "kind": "virtue",
+   "places": [
+    {
+     "book": "Psalms",
+     "chapter": 27,
+     "fromVerse": 14,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "covetousness",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Mark",
+     "chapter": 7,
+     "fromVerse": 21,
+     "toVerse": 23,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "crime",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Matthew",
+     "chapter": 15,
+     "fromVerse": 17,
+     "toVerse": 20,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "critical",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Matthew",
+     "chapter": 6,
+     "fromVerse": 14,
+     "toVerse": 15,
+     "sources": 1
+    },
+    {
+     "book": "Matthew",
+     "chapter": 7,
+     "fromVerse": 1,
+     "toVerse": 5,
+     "sources": 2
+    },
+    {
+     "book": "1 Corinthians",
+     "chapter": 13,
+     "sources": 2
+    },
+    {
+     "book": "Ephesians",
+     "chapter": 4,
+     "fromVerse": 32,
+     "sources": 1
+    },
+    {
+     "book": "Hebrews",
+     "chapter": 12,
+     "fromVerse": 14,
+     "toVerse": 15,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "criticism",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Matthew",
+     "chapter": 7,
+     "fromVerse": 1,
+     "toVerse": 5,
+     "sources": 1
+    },
+    {
+     "book": "Romans",
+     "chapter": 2,
+     "fromVerse": 1,
+     "toVerse": 4,
+     "sources": 1
+    },
+    {
+     "book": "Romans",
+     "chapter": 14,
+     "fromVerse": 4,
+     "toVerse": 13,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "curiousAboutGod",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "John",
+     "chapter": 1,
+     "fromVerse": 1,
+     "toVerse": 4,
+     "sources": 2
+    },
+    {
+     "book": "John",
+     "chapter": 14,
+     "fromVerse": 6,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "danger",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Psalms",
+     "chapter": 27,
+     "fromVerse": 1,
+     "sources": 1
+    },
+    {
+     "book": "Proverbs",
+     "chapter": 18,
+     "fromVerse": 10,
+     "sources": 1
+    },
+    {
+     "book": "Mark",
+     "chapter": 4,
+     "fromVerse": 35,
+     "toVerse": 41,
+     "sources": 1
+    },
+    {
+     "book": "1 Peter",
+     "chapter": 3,
+     "fromVerse": 13,
+     "toVerse": 17,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "death",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "John",
+     "chapter": 11,
+     "fromVerse": 25,
+     "toVerse": 27,
+     "sources": 3
+    },
+    {
+     "book": "Romans",
+     "chapter": 6,
+     "fromVerse": 23,
+     "sources": 1
+    },
+    {
+     "book": "Romans",
+     "chapter": 14,
+     "fromVerse": 7,
+     "toVerse": 9,
+     "sources": 1
+    },
+    {
+     "book": "1 Corinthians",
+     "chapter": 15,
+     "fromVerse": 55,
+     "toVerse": 58,
+     "sources": 1
+    },
+    {
+     "book": "Philippians",
+     "chapter": 1,
+     "fromVerse": 21,
+     "sources": 1
+    },
+    {
+     "book": "1 Thessalonians",
+     "chapter": 4,
+     "fromVerse": 13,
+     "toVerse": 18,
+     "sources": 2
+    },
+    {
+     "book": "Hebrews",
+     "chapter": 9,
+     "fromVerse": 27,
+     "sources": 1
+    },
+    {
+     "book": "Revelation",
+     "chapter": 21,
+     "fromVerse": 4,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "deathPhysical",
+   "kind": "teaching",
+   "places": [
+    {
+     "book": "Hebrews",
+     "chapter": 9,
+     "fromVerse": 27,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "deathSpiritual",
+   "kind": "teaching",
+   "places": [
+    {
+     "book": "Ezekiel",
+     "chapter": 18,
+     "fromVerse": 20,
+     "sources": 1
+    },
+    {
+     "book": "Revelation",
+     "chapter": 21,
+     "fromVerse": 8,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "deceit",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Matthew",
+     "chapter": 23,
+     "fromVerse": 27,
+     "toVerse": 28,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "depravity",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "John",
+     "chapter": 3,
+     "fromVerse": 19,
+     "toVerse": 21,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "depressed",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Psalms",
+     "chapter": 34,
+     "sources": 1
+    },
+    {
+     "book": "Psalms",
+     "chapter": 34,
+     "fromVerse": 4,
+     "sources": 3
+    },
+    {
+     "book": "Psalms",
+     "chapter": 40,
+     "fromVerse": 1,
+     "toVerse": 2,
+     "sources": 2
+    },
+    {
+     "book": "Psalms",
+     "chapter": 43,
+     "fromVerse": 5,
+     "sources": 3
+    },
+    {
+     "book": "Psalms",
+     "chapter": 91,
+     "sources": 1
+    },
+    {
+     "book": "Psalms",
+     "chapter": 118,
+     "fromVerse": 5,
+     "toVerse": 6,
+     "sources": 1
+    },
+    {
+     "book": "Luke",
+     "chapter": 8,
+     "fromVerse": 22,
+     "toVerse": 25,
+     "sources": 1
+    },
+    {
+     "book": "1 Peter",
+     "chapter": 5,
+     "fromVerse": 7,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "desperate",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Psalms",
+     "chapter": 55,
+     "fromVerse": 22,
+     "sources": 1
+    },
+    {
+     "book": "Psalms",
+     "chapter": 61,
+     "fromVerse": 1,
+     "toVerse": 3,
+     "sources": 1
+    },
+    {
+     "book": "Psalms",
+     "chapter": 62,
+     "fromVerse": 5,
+     "toVerse": 8,
+     "sources": 1
+    },
+    {
+     "book": "Psalms",
+     "chapter": 121,
+     "fromVerse": 1,
+     "toVerse": 2,
+     "sources": 1
+    },
+    {
+     "book": "Romans",
+     "chapter": 8,
+     "fromVerse": 38,
+     "toVerse": 39,
+     "sources": 1
+    },
+    {
+     "book": "2 Corinthians",
+     "chapter": 1,
+     "fromVerse": 8,
+     "toVerse": 11,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "diligence",
+   "kind": "virtue",
+   "places": [
+    {
+     "book": "Romans",
+     "chapter": 12,
+     "fromVerse": 11,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "disasterThreatens",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Psalms",
+     "chapter": 55,
+     "fromVerse": 16,
+     "toVerse": 17,
+     "sources": 1
+    },
+    {
+     "book": "Psalms",
+     "chapter": 55,
+     "fromVerse": 22,
+     "sources": 1
+    },
+    {
+     "book": "Psalms",
+     "chapter": 91,
+     "sources": 2
+    },
+    {
+     "book": "Psalms",
+     "chapter": 91,
+     "fromVerse": 1,
+     "toVerse": 2,
+     "sources": 1
+    },
+    {
+     "book": "Psalms",
+     "chapter": 118,
+     "fromVerse": 5,
+     "toVerse": 6,
+     "sources": 3
+    },
+    {
+     "book": "Luke",
+     "chapter": 8,
+     "fromVerse": 22,
+     "toVerse": 25,
+     "sources": 2
+    }
+   ]
+  },
+  {
+   "id": "discipleship",
+   "kind": "teaching",
+   "places": [
+    {
+     "book": "John",
+     "chapter": 15,
+     "fromVerse": 1,
+     "toVerse": 8,
+     "sources": 1
+    },
+    {
+     "book": "Acts",
+     "chapter": 11,
+     "fromVerse": 19,
+     "toVerse": 26,
+     "sources": 1
+    },
+    {
+     "book": "1 Peter",
+     "chapter": 2,
+     "fromVerse": 21,
+     "toVerse": 25,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "discouraged",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Psalms",
+     "chapter": 23,
+     "sources": 3
+    },
+    {
+     "book": "Psalms",
+     "chapter": 42,
+     "fromVerse": 6,
+     "toVerse": 11,
+     "sources": 2
+    },
+    {
+     "book": "Psalms",
+     "chapter": 55,
+     "fromVerse": 22,
+     "sources": 2
+    },
+    {
+     "book": "Matthew",
+     "chapter": 5,
+     "fromVerse": 11,
+     "toVerse": 12,
+     "sources": 2
+    },
+    {
+     "book": "2 Corinthians",
+     "chapter": 4,
+     "fromVerse": 8,
+     "toVerse": 18,
+     "sources": 3
+    },
+    {
+     "book": "Philippians",
+     "chapter": 4,
+     "fromVerse": 4,
+     "toVerse": 7,
+     "sources": 3
+    }
+   ]
+  },
+  {
+   "id": "dishonesty",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Romans",
+     "chapter": 13,
+     "fromVerse": 7,
+     "toVerse": 8,
+     "sources": 1
+    },
+    {
+     "book": "Hebrews",
+     "chapter": 4,
+     "fromVerse": 13,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "distressed",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Psalms",
+     "chapter": 9,
+     "fromVerse": 9,
+     "toVerse": 10,
+     "sources": 1
+    },
+    {
+     "book": "Romans",
+     "chapter": 8,
+     "fromVerse": 28,
+     "toVerse": 39,
+     "sources": 1
+    },
+    {
+     "book": "2 Corinthians",
+     "chapter": 1,
+     "fromVerse": 3,
+     "toVerse": 4,
+     "sources": 1
+    },
+    {
+     "book": "2 Corinthians",
+     "chapter": 4,
+     "fromVerse": 8,
+     "toVerse": 9,
+     "sources": 1
+    },
+    {
+     "book": "2 Corinthians",
+     "chapter": 4,
+     "fromVerse": 16,
+     "toVerse": 18,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "divorce",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Malachi",
+     "chapter": 2,
+     "fromVerse": 15,
+     "toVerse": 16,
+     "sources": 1
+    },
+    {
+     "book": "Mark",
+     "chapter": 10,
+     "fromVerse": 1,
+     "toVerse": 12,
+     "sources": 2
+    },
+    {
+     "book": "Romans",
+     "chapter": 7,
+     "fromVerse": 1,
+     "toVerse": 3,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "doubting",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Psalms",
+     "chapter": 19,
+     "fromVerse": 1,
+     "toVerse": 4,
+     "sources": 1
+    },
+    {
+     "book": "Matthew",
+     "chapter": 8,
+     "fromVerse": 26,
+     "sources": 2
+    },
+    {
+     "book": "Matthew",
+     "chapter": 14,
+     "fromVerse": 28,
+     "toVerse": 31,
+     "sources": 1
+    },
+    {
+     "book": "Mark",
+     "chapter": 9,
+     "fromVerse": 17,
+     "toVerse": 24,
+     "sources": 1
+    },
+    {
+     "book": "John",
+     "chapter": 1,
+     "fromVerse": 1,
+     "toVerse": 4,
+     "sources": 1
+    },
+    {
+     "book": "John",
+     "chapter": 4,
+     "fromVerse": 50,
+     "sources": 1
+    },
+    {
+     "book": "John",
+     "chapter": 14,
+     "fromVerse": 6,
+     "sources": 1
+    },
+    {
+     "book": "John",
+     "chapter": 20,
+     "fromVerse": 24,
+     "toVerse": 31,
+     "sources": 1
+    },
+    {
+     "book": "Romans",
+     "chapter": 1,
+     "fromVerse": 20,
+     "sources": 1
+    },
+    {
+     "book": "1 Corinthians",
+     "chapter": 1,
+     "fromVerse": 18,
+     "toVerse": 25,
+     "sources": 1
+    },
+    {
+     "book": "Colossians",
+     "chapter": 1,
+     "fromVerse": 15,
+     "toVerse": 17,
+     "sources": 1
+    },
+    {
+     "book": "Hebrews",
+     "chapter": 11,
+     "sources": 2
+    }
+   ]
+  },
+  {
+   "id": "drugAbuse",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Proverbs",
+     "chapter": 14,
+     "fromVerse": 12,
+     "sources": 1
+    },
+    {
+     "book": "Romans",
+     "chapter": 13,
+     "fromVerse": 13,
+     "toVerse": 14,
+     "sources": 1
+    },
+    {
+     "book": "2 Peter",
+     "chapter": 2,
+     "fromVerse": 19,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "drunkenness",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Proverbs",
+     "chapter": 20,
+     "fromVerse": 1,
+     "sources": 1
+    },
+    {
+     "book": "Proverbs",
+     "chapter": 25,
+     "fromVerse": 28,
+     "sources": 1
+    },
+    {
+     "book": "Luke",
+     "chapter": 21,
+     "fromVerse": 34,
+     "toVerse": 36,
+     "sources": 2
+    },
+    {
+     "book": "Romans",
+     "chapter": 13,
+     "fromVerse": 13,
+     "sources": 1
+    },
+    {
+     "book": "1 Corinthians",
+     "chapter": 10,
+     "fromVerse": 12,
+     "toVerse": 13,
+     "sources": 1
+    },
+    {
+     "book": "1 Corinthians",
+     "chapter": 10,
+     "fromVerse": 31,
+     "sources": 1
+    },
+    {
+     "book": "Ephesians",
+     "chapter": 5,
+     "fromVerse": 18,
+     "sources": 2
+    },
+    {
+     "book": "1 Thessalonians",
+     "chapter": 5,
+     "fromVerse": 6,
+     "toVerse": 8,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "duty",
+   "kind": "virtue",
+   "places": [
+    {
+     "book": "Luke",
+     "chapter": 20,
+     "fromVerse": 21,
+     "toVerse": 25,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "endurance",
+   "kind": "virtue",
+   "places": [
+    {
+     "book": "Luke",
+     "chapter": 21,
+     "fromVerse": 9,
+     "toVerse": 10,
+     "sources": 1
+    },
+    {
+     "book": "2 Timothy",
+     "chapter": 2,
+     "fromVerse": 3,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "enemies",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Matthew",
+     "chapter": 5,
+     "fromVerse": 10,
+     "toVerse": 12,
+     "sources": 1
+    },
+    {
+     "book": "Matthew",
+     "chapter": 5,
+     "fromVerse": 43,
+     "toVerse": 48,
+     "sources": 2
+    },
+    {
+     "book": "Luke",
+     "chapter": 1,
+     "fromVerse": 68,
+     "toVerse": 75,
+     "sources": 1
+    },
+    {
+     "book": "Luke",
+     "chapter": 6,
+     "fromVerse": 27,
+     "toVerse": 28,
+     "sources": 2
+    },
+    {
+     "book": "Romans",
+     "chapter": 12,
+     "fromVerse": 17,
+     "toVerse": 21,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "envy",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Galatians",
+     "chapter": 5,
+     "fromVerse": 22,
+     "toVerse": 26,
+     "sources": 1
+    },
+    {
+     "book": "Philippians",
+     "chapter": 4,
+     "fromVerse": 12,
+     "toVerse": 13,
+     "sources": 1
+    },
+    {
+     "book": "James",
+     "chapter": 3,
+     "fromVerse": 13,
+     "toVerse": 16,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "eternalLife",
+   "kind": "teaching",
+   "places": [
+    {
+     "book": "John",
+     "chapter": 5,
+     "fromVerse": 24,
+     "sources": 1
+    },
+    {
+     "book": "1 John",
+     "chapter": 5,
+     "fromVerse": 11,
+     "toVerse": 13,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "excuses",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Luke",
+     "chapter": 14,
+     "fromVerse": 15,
+     "toVerse": 24,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "extravagance",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "1 Timothy",
+     "chapter": 6,
+     "fromVerse": 7,
+     "toVerse": 12,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "facingACrisis",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Psalms",
+     "chapter": 121,
+     "sources": 2
+    },
+    {
+     "book": "Matthew",
+     "chapter": 6,
+     "fromVerse": 25,
+     "toVerse": 34,
+     "sources": 2
+    },
+    {
+     "book": "Hebrews",
+     "chapter": 4,
+     "fromVerse": 16,
+     "sources": 2
+    }
+   ]
+  },
+  {
+   "id": "facingDeath",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Psalms",
+     "chapter": 23,
+     "fromVerse": 4,
+     "sources": 1
+    },
+    {
+     "book": "John",
+     "chapter": 3,
+     "fromVerse": 16,
+     "sources": 1
+    },
+    {
+     "book": "John",
+     "chapter": 14,
+     "fromVerse": 1,
+     "toVerse": 3,
+     "sources": 1
+    },
+    {
+     "book": "2 Timothy",
+     "chapter": 4,
+     "fromVerse": 6,
+     "toVerse": 8,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "failure",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Psalms",
+     "chapter": 73,
+     "fromVerse": 26,
+     "sources": 1
+    },
+    {
+     "book": "Romans",
+     "chapter": 8,
+     "fromVerse": 31,
+     "toVerse": 39,
+     "sources": 5
+    },
+    {
+     "book": "Hebrews",
+     "chapter": 4,
+     "fromVerse": 14,
+     "toVerse": 16,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "faith",
+   "kind": "teaching",
+   "places": [
+    {
+     "book": "Matthew",
+     "chapter": 8,
+     "fromVerse": 5,
+     "toVerse": 13,
+     "sources": 1
+    },
+    {
+     "book": "Matthew",
+     "chapter": 9,
+     "fromVerse": 18,
+     "toVerse": 31,
+     "sources": 1
+    },
+    {
+     "book": "Mark",
+     "chapter": 11,
+     "fromVerse": 22,
+     "toVerse": 24,
+     "sources": 1
+    },
+    {
+     "book": "John",
+     "chapter": 14,
+     "fromVerse": 12,
+     "toVerse": 14,
+     "sources": 1
+    },
+    {
+     "book": "Romans",
+     "chapter": 5,
+     "fromVerse": 1,
+     "toVerse": 2,
+     "sources": 1
+    },
+    {
+     "book": "Romans",
+     "chapter": 10,
+     "fromVerse": 17,
+     "sources": 2
+    },
+    {
+     "book": "Hebrews",
+     "chapter": 11,
+     "fromVerse": 1,
+     "endChapter": 12,
+     "toVerse": 2,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "faithFails",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Psalms",
+     "chapter": 42,
+     "fromVerse": 5,
+     "sources": 2
+    },
+    {
+     "book": "Matthew",
+     "chapter": 8,
+     "fromVerse": 5,
+     "toVerse": 13,
+     "sources": 1
+    },
+    {
+     "book": "Luke",
+     "chapter": 12,
+     "fromVerse": 22,
+     "toVerse": 31,
+     "sources": 1
+    },
+    {
+     "book": "John",
+     "chapter": 14,
+     "fromVerse": 13,
+     "toVerse": 14,
+     "sources": 1
+    },
+    {
+     "book": "Hebrews",
+     "chapter": 11,
+     "sources": 3
+    }
+   ]
+  },
+  {
+   "id": "faithfulness",
+   "kind": "virtue",
+   "places": [
+    {
+     "book": "Matthew",
+     "chapter": 23,
+     "sources": 1
+    },
+    {
+     "book": "Luke",
+     "chapter": 19,
+     "fromVerse": 12,
+     "toVerse": 26,
+     "sources": 1
+    },
+    {
+     "book": "1 Corinthians",
+     "chapter": 3,
+     "fromVerse": 10,
+     "toVerse": 15,
+     "sources": 1
+    },
+    {
+     "book": "1 Corinthians",
+     "chapter": 4,
+     "fromVerse": 1,
+     "toVerse": 5,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "falseConfidence",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Matthew",
+     "chapter": 7,
+     "fromVerse": 24,
+     "toVerse": 27,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "faultfinding",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Matthew",
+     "chapter": 7,
+     "fromVerse": 1,
+     "toVerse": 5,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "fellowship",
+   "kind": "teaching",
+   "places": [
+    {
+     "book": "Acts",
+     "chapter": 2,
+     "fromVerse": 42,
+     "toVerse": 47,
+     "sources": 1
+    },
+    {
+     "book": "Romans",
+     "chapter": 12,
+     "fromVerse": 9,
+     "toVerse": 16,
+     "sources": 1
+    },
+    {
+     "book": "1 Corinthians",
+     "chapter": 11,
+     "fromVerse": 17,
+     "toVerse": 34,
+     "sources": 1
+    },
+    {
+     "book": "1 John",
+     "chapter": 1,
+     "fromVerse": 5,
+     "toVerse": 7,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "flesh",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Romans",
+     "chapter": 13,
+     "fromVerse": 14,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "forgiveness",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Isaiah",
+     "chapter": 53,
+     "fromVerse": 4,
+     "toVerse": 11,
+     "sources": 1
+    },
+    {
+     "book": "Matthew",
+     "chapter": 18,
+     "fromVerse": 21,
+     "toVerse": 35,
+     "sources": 1
+    },
+    {
+     "book": "Mark",
+     "chapter": 11,
+     "fromVerse": 23,
+     "sources": 1
+    },
+    {
+     "book": "Mark",
+     "chapter": 11,
+     "fromVerse": 26,
+     "sources": 1
+    },
+    {
+     "book": "John",
+     "chapter": 3,
+     "fromVerse": 16,
+     "toVerse": 18,
+     "sources": 3
+    },
+    {
+     "book": "Acts",
+     "chapter": 13,
+     "fromVerse": 26,
+     "toVerse": 39,
+     "sources": 1
+    },
+    {
+     "book": "Ephesians",
+     "chapter": 4,
+     "fromVerse": 31,
+     "toVerse": 32,
+     "sources": 2
+    },
+    {
+     "book": "Colossians",
+     "chapter": 3,
+     "fromVerse": 12,
+     "toVerse": 13,
+     "sources": 1
+    },
+    {
+     "book": "1 John",
+     "chapter": 1,
+     "fromVerse": 8,
+     "toVerse": 9,
+     "sources": 4
+    }
+   ]
+  },
+  {
+   "id": "freedom",
+   "kind": "virtue",
+   "places": [
+    {
+     "book": "John",
+     "chapter": 8,
+     "fromVerse": 31,
+     "toVerse": 36,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "friendsFail",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Deuteronomy",
+     "chapter": 33,
+     "fromVerse": 27,
+     "sources": 1
+    },
+    {
+     "book": "Psalms",
+     "chapter": 34,
+     "fromVerse": 18,
+     "toVerse": 19,
+     "sources": 1
+    },
+    {
+     "book": "Psalms",
+     "chapter": 41,
+     "fromVerse": 9,
+     "toVerse": 13,
+     "sources": 2
+    },
+    {
+     "book": "Proverbs",
+     "chapter": 18,
+     "fromVerse": 24,
+     "sources": 3
+    },
+    {
+     "book": "Luke",
+     "chapter": 17,
+     "fromVerse": 3,
+     "toVerse": 4,
+     "sources": 6
+    },
+    {
+     "book": "Romans",
+     "chapter": 12,
+     "fromVerse": 14,
+     "sources": 1
+    },
+    {
+     "book": "Romans",
+     "chapter": 12,
+     "fromVerse": 17,
+     "sources": 2
+    },
+    {
+     "book": "Romans",
+     "chapter": 12,
+     "fromVerse": 19,
+     "sources": 2
+    },
+    {
+     "book": "Romans",
+     "chapter": 12,
+     "fromVerse": 21,
+     "sources": 2
+    },
+    {
+     "book": "2 Timothy",
+     "chapter": 4,
+     "fromVerse": 16,
+     "toVerse": 18,
+     "sources": 4
+    }
+   ]
+  },
+  {
+   "id": "friendship",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "John",
+     "chapter": 15,
+     "fromVerse": 12,
+     "toVerse": 17,
+     "sources": 1
+    },
+    {
+     "book": "James",
+     "chapter": 4,
+     "fromVerse": 4,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "fruitfulness",
+   "kind": "virtue",
+   "places": [
+    {
+     "book": "John",
+     "chapter": 15,
+     "fromVerse": 1,
+     "toVerse": 8,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "future",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Matthew",
+     "chapter": 6,
+     "fromVerse": 25,
+     "toVerse": 34,
+     "sources": 3
+    },
+    {
+     "book": "James",
+     "chapter": 4,
+     "fromVerse": 13,
+     "toVerse": 15,
+     "sources": 3
+    }
+   ]
+  },
+  {
+   "id": "gambling",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Matthew",
+     "chapter": 16,
+     "fromVerse": 26,
+     "sources": 1
+    },
+    {
+     "book": "1 Timothy",
+     "chapter": 6,
+     "fromVerse": 10,
+     "sources": 1
+    },
+    {
+     "book": "Hebrews",
+     "chapter": 13,
+     "fromVerse": 5,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "generosity",
+   "kind": "virtue",
+   "places": [
+    {
+     "book": "Acts",
+     "chapter": 4,
+     "fromVerse": 32,
+     "toVerse": 37,
+     "sources": 1
+    },
+    {
+     "book": "Acts",
+     "chapter": 20,
+     "fromVerse": 32,
+     "toVerse": 35,
+     "sources": 1
+    },
+    {
+     "book": "2 Corinthians",
+     "chapter": 9,
+     "fromVerse": 6,
+     "toVerse": 15,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "god",
+   "kind": "teaching",
+   "places": [
+    {
+     "book": "Exodus",
+     "chapter": 34,
+     "fromVerse": 6,
+     "toVerse": 7,
+     "sources": 2
+    },
+    {
+     "book": "Romans",
+     "chapter": 5,
+     "fromVerse": 8,
+     "sources": 1
+    },
+    {
+     "book": "2 Peter",
+     "chapter": 3,
+     "fromVerse": 9,
+     "sources": 2
+    }
+   ]
+  },
+  {
+   "id": "godLovesYou",
+   "kind": "teaching",
+   "places": [
+    {
+     "book": "John",
+     "chapter": 3,
+     "fromVerse": 16,
+     "sources": 1
+    },
+    {
+     "book": "Romans",
+     "chapter": 5,
+     "fromVerse": 8,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "godliness",
+   "kind": "virtue",
+   "places": [
+    {
+     "book": "Titus",
+     "chapter": 2,
+     "fromVerse": 11,
+     "toVerse": 14,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "godsInvitationToYou",
+   "kind": "teaching",
+   "places": [
+    {
+     "book": "Isaiah",
+     "chapter": 1,
+     "fromVerse": 18,
+     "sources": 1
+    },
+    {
+     "book": "Matthew",
+     "chapter": 11,
+     "fromVerse": 28,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "godsLove",
+   "kind": "teaching",
+   "places": [
+    {
+     "book": "John",
+     "chapter": 3,
+     "fromVerse": 16,
+     "sources": 1
+    },
+    {
+     "book": "Romans",
+     "chapter": 5,
+     "fromVerse": 8,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "godsPromises",
+   "kind": "teaching",
+   "places": [
+    {
+     "book": "John",
+     "chapter": 5,
+     "fromVerse": 24,
+     "sources": 1
+    },
+    {
+     "book": "John",
+     "chapter": 10,
+     "fromVerse": 27,
+     "toVerse": 28,
+     "sources": 1
+    },
+    {
+     "book": "John",
+     "chapter": 20,
+     "fromVerse": 31,
+     "sources": 1
+    },
+    {
+     "book": "1 John",
+     "chapter": 5,
+     "fromVerse": 13,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "godsRemedyForYourSin",
+   "kind": "teaching",
+   "places": [
+    {
+     "book": "Romans",
+     "chapter": 6,
+     "fromVerse": 23,
+     "sources": 1
+    },
+    {
+     "book": "Romans",
+     "chapter": 10,
+     "fromVerse": 13,
+     "sources": 1
+    },
+    {
+     "book": "1 Corinthians",
+     "chapter": 15,
+     "fromVerse": 3,
+     "toVerse": 4,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "godsSon",
+   "kind": "teaching",
+   "places": [
+    {
+     "book": "Proverbs",
+     "chapter": 30,
+     "fromVerse": 4,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "gossip",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Psalms",
+     "chapter": 19,
+     "fromVerse": 14,
+     "sources": 1
+    },
+    {
+     "book": "Psalms",
+     "chapter": 101,
+     "fromVerse": 5,
+     "sources": 1
+    },
+    {
+     "book": "Matthew",
+     "chapter": 12,
+     "fromVerse": 36,
+     "sources": 1
+    },
+    {
+     "book": "Ephesians",
+     "chapter": 4,
+     "fromVerse": 29,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "gratitude",
+   "kind": "virtue",
+   "places": [
+    {
+     "book": "Luke",
+     "chapter": 17,
+     "fromVerse": 11,
+     "toVerse": 19,
+     "sources": 1
+    },
+    {
+     "book": "Colossians",
+     "chapter": 3,
+     "fromVerse": 15,
+     "toVerse": 17,
+     "sources": 1
+    },
+    {
+     "book": "1 Thessalonians",
+     "chapter": 5,
+     "fromVerse": 18,
+     "sources": 1
+    },
+    {
+     "book": "Hebrews",
+     "chapter": 12,
+     "fromVerse": 28,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "greed",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Proverbs",
+     "chapter": 15,
+     "fromVerse": 27,
+     "sources": 1
+    },
+    {
+     "book": "Mark",
+     "chapter": 8,
+     "fromVerse": 36,
+     "sources": 1
+    },
+    {
+     "book": "Luke",
+     "chapter": 12,
+     "fromVerse": 15,
+     "toVerse": 31,
+     "sources": 2
+    },
+    {
+     "book": "Luke",
+     "chapter": 12,
+     "fromVerse": 34,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "guidanceInPrayer",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Psalms",
+     "chapter": 4,
+     "sources": 2
+    },
+    {
+     "book": "Psalms",
+     "chapter": 42,
+     "sources": 2
+    },
+    {
+     "book": "Luke",
+     "chapter": 11,
+     "fromVerse": 1,
+     "toVerse": 13,
+     "sources": 2
+    },
+    {
+     "book": "John",
+     "chapter": 17,
+     "sources": 2
+    },
+    {
+     "book": "1 John",
+     "chapter": 5,
+     "fromVerse": 14,
+     "toVerse": 15,
+     "sources": 2
+    }
+   ]
+  },
+  {
+   "id": "guilt",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Psalms",
+     "chapter": 32,
+     "fromVerse": 5,
+     "sources": 1
+    },
+    {
+     "book": "Psalms",
+     "chapter": 51,
+     "fromVerse": 10,
+     "toVerse": 14,
+     "sources": 1
+    },
+    {
+     "book": "Psalms",
+     "chapter": 103,
+     "fromVerse": 12,
+     "sources": 1
+    },
+    {
+     "book": "Proverbs",
+     "chapter": 28,
+     "fromVerse": 13,
+     "sources": 2
+    },
+    {
+     "book": "Isaiah",
+     "chapter": 1,
+     "fromVerse": 18,
+     "sources": 1
+    },
+    {
+     "book": "Hebrews",
+     "chapter": 10,
+     "fromVerse": 17,
+     "sources": 1
+    },
+    {
+     "book": "1 John",
+     "chapter": 1,
+     "fromVerse": 7,
+     "toVerse": 9,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "happiness",
+   "kind": "virtue",
+   "places": [
+    {
+     "book": "Matthew",
+     "chapter": 5,
+     "fromVerse": 3,
+     "toVerse": 12,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "hatred",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Matthew",
+     "chapter": 5,
+     "fromVerse": 43,
+     "toVerse": 48,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "heaven",
+   "kind": "teaching",
+   "places": [
+    {
+     "book": "1 Peter",
+     "chapter": 1,
+     "fromVerse": 3,
+     "toVerse": 4,
+     "sources": 1
+    },
+    {
+     "book": "Revelation",
+     "chapter": 21,
+     "fromVerse": 4,
+     "toVerse": 5,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "hell",
+   "kind": "teaching",
+   "places": [
+    {
+     "book": "Luke",
+     "chapter": 16,
+     "fromVerse": 22,
+     "toVerse": 24,
+     "sources": 1
+    },
+    {
+     "book": "2 Thessalonians",
+     "chapter": 1,
+     "fromVerse": 7,
+     "toVerse": 9,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "holiness",
+   "kind": "virtue",
+   "places": [
+    {
+     "book": "1 Peter",
+     "chapter": 1,
+     "fromVerse": 13,
+     "toVerse": 16,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "honesty",
+   "kind": "virtue",
+   "places": [
+    {
+     "book": "2 Corinthians",
+     "chapter": 8,
+     "fromVerse": 21,
+     "sources": 1
+    },
+    {
+     "book": "Ephesians",
+     "chapter": 4,
+     "fromVerse": 25,
+     "toVerse": 28,
+     "sources": 1
+    },
+    {
+     "book": "1 John",
+     "chapter": 1,
+     "fromVerse": 5,
+     "toVerse": 7,
+     "sources": 1
+    },
+    {
+     "book": "1 John",
+     "chapter": 3,
+     "fromVerse": 18,
+     "toVerse": 20,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "honor",
+   "kind": "virtue",
+   "places": [
+    {
+     "book": "1 Peter",
+     "chapter": 2,
+     "fromVerse": 17,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "honouringParents",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Matthew",
+     "chapter": 15,
+     "fromVerse": 4,
+     "sources": 1
+    },
+    {
+     "book": "Ephesians",
+     "chapter": 6,
+     "fromVerse": 1,
+     "toVerse": 3,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "hope",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Psalms",
+     "chapter": 31,
+     "fromVerse": 24,
+     "sources": 1
+    },
+    {
+     "book": "1 Peter",
+     "chapter": 1,
+     "fromVerse": 13,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "hopelessness",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Psalms",
+     "chapter": 46,
+     "fromVerse": 1,
+     "toVerse": 4,
+     "sources": 1
+    },
+    {
+     "book": "Hebrews",
+     "chapter": 10,
+     "fromVerse": 23,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "humility",
+   "kind": "virtue",
+   "places": [
+    {
+     "book": "Matthew",
+     "chapter": 18,
+     "fromVerse": 2,
+     "toVerse": 5,
+     "sources": 1
+    },
+    {
+     "book": "Luke",
+     "chapter": 18,
+     "fromVerse": 9,
+     "toVerse": 14,
+     "sources": 1
+    },
+    {
+     "book": "Luke",
+     "chapter": 22,
+     "fromVerse": 24,
+     "toVerse": 27,
+     "sources": 1
+    },
+    {
+     "book": "John",
+     "chapter": 13,
+     "fromVerse": 2,
+     "toVerse": 17,
+     "sources": 1
+    },
+    {
+     "book": "Philippians",
+     "chapter": 2,
+     "fromVerse": 3,
+     "toVerse": 11,
+     "sources": 2
+    }
+   ]
+  },
+  {
+   "id": "hurt",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Psalms",
+     "chapter": 27,
+     "fromVerse": 13,
+     "toVerse": 14,
+     "sources": 1
+    },
+    {
+     "book": "Hebrews",
+     "chapter": 12,
+     "fromVerse": 2,
+     "toVerse": 3,
+     "sources": 1
+    },
+    {
+     "book": "1 Peter",
+     "chapter": 5,
+     "fromVerse": 7,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "inadequate",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Isaiah",
+     "chapter": 40,
+     "fromVerse": 28,
+     "toVerse": 31,
+     "sources": 1
+    },
+    {
+     "book": "1 Corinthians",
+     "chapter": 1,
+     "fromVerse": 20,
+     "toVerse": 31,
+     "sources": 1
+    },
+    {
+     "book": "2 Corinthians",
+     "chapter": 12,
+     "fromVerse": 9,
+     "toVerse": 10,
+     "sources": 1
+    },
+    {
+     "book": "Philippians",
+     "chapter": 4,
+     "fromVerse": 12,
+     "toVerse": 13,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "insecurity",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Psalms",
+     "chapter": 27,
+     "fromVerse": 1,
+     "sources": 1
+    },
+    {
+     "book": "John",
+     "chapter": 10,
+     "fromVerse": 27,
+     "toVerse": 28,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "intemperance",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Proverbs",
+     "chapter": 20,
+     "fromVerse": 1,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "intimidated",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Joshua",
+     "chapter": 1,
+     "fromVerse": 9,
+     "sources": 1
+    },
+    {
+     "book": "Psalms",
+     "chapter": 3,
+     "fromVerse": 1,
+     "toVerse": 3,
+     "sources": 1
+    },
+    {
+     "book": "Psalms",
+     "chapter": 71,
+     "fromVerse": 1,
+     "toVerse": 3,
+     "sources": 1
+    },
+    {
+     "book": "Proverbs",
+     "chapter": 29,
+     "fromVerse": 25,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "itself",
+   "kind": "teaching",
+   "places": [
+    {
+     "book": "2 Timothy",
+     "chapter": 3,
+     "fromVerse": 16,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "jealousy",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Luke",
+     "chapter": 15,
+     "fromVerse": 25,
+     "toVerse": 32,
+     "sources": 1
+    },
+    {
+     "book": "Galatians",
+     "chapter": 5,
+     "fromVerse": 19,
+     "toVerse": 26,
+     "sources": 1
+    },
+    {
+     "book": "James",
+     "chapter": 3,
+     "fromVerse": 13,
+     "toVerse": 18,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "joy",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Psalms",
+     "chapter": 51,
+     "fromVerse": 12,
+     "sources": 1
+    },
+    {
+     "book": "Luke",
+     "chapter": 10,
+     "fromVerse": 20,
+     "sources": 1
+    },
+    {
+     "book": "John",
+     "chapter": 15,
+     "fromVerse": 11,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "judgement",
+   "kind": "teaching",
+   "places": [
+    {
+     "book": "John",
+     "chapter": 5,
+     "fromVerse": 22,
+     "sources": 1
+    },
+    {
+     "book": "Hebrews",
+     "chapter": 9,
+     "fromVerse": 27,
+     "toVerse": 28,
+     "sources": 1
+    },
+    {
+     "book": "Revelation",
+     "chapter": 20,
+     "fromVerse": 11,
+     "toVerse": 15,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "judging",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Matthew",
+     "chapter": 7,
+     "fromVerse": 1,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "kindness",
+   "kind": "virtue",
+   "places": [
+    {
+     "book": "Colossians",
+     "chapter": 3,
+     "fromVerse": 12,
+     "toVerse": 13,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "labour",
+   "kind": "virtue",
+   "places": [
+    {
+     "book": "John",
+     "chapter": 9,
+     "fromVerse": 4,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "laziness",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Proverbs",
+     "chapter": 6,
+     "fromVerse": 6,
+     "toVerse": 11,
+     "sources": 1
+    },
+    {
+     "book": "Proverbs",
+     "chapter": 13,
+     "fromVerse": 4,
+     "sources": 1
+    },
+    {
+     "book": "Proverbs",
+     "chapter": 20,
+     "fromVerse": 4,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "leavingHome",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Psalms",
+     "chapter": 121,
+     "sources": 3
+    },
+    {
+     "book": "Matthew",
+     "chapter": 10,
+     "fromVerse": 16,
+     "toVerse": 20,
+     "sources": 3
+    }
+   ]
+  },
+  {
+   "id": "life",
+   "kind": "teaching",
+   "places": [
+    {
+     "book": "John",
+     "chapter": 10,
+     "fromVerse": 10,
+     "sources": 1
+    },
+    {
+     "book": "1 John",
+     "chapter": 5,
+     "fromVerse": 12,
+     "sources": 2
+    }
+   ]
+  },
+  {
+   "id": "lipService",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Matthew",
+     "chapter": 7,
+     "fromVerse": 21,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "lonely",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Deuteronomy",
+     "chapter": 31,
+     "fromVerse": 6,
+     "sources": 1
+    },
+    {
+     "book": "Deuteronomy",
+     "chapter": 31,
+     "fromVerse": 8,
+     "sources": 1
+    },
+    {
+     "book": "Psalms",
+     "chapter": 23,
+     "sources": 4
+    },
+    {
+     "book": "Psalms",
+     "chapter": 23,
+     "fromVerse": 1,
+     "toVerse": 6,
+     "sources": 1
+    },
+    {
+     "book": "Psalms",
+     "chapter": 27,
+     "fromVerse": 10,
+     "sources": 1
+    },
+    {
+     "book": "Isaiah",
+     "chapter": 41,
+     "fromVerse": 10,
+     "sources": 1
+    },
+    {
+     "book": "Hebrews",
+     "chapter": 13,
+     "fromVerse": 5,
+     "toVerse": 6,
+     "sources": 6
+    },
+    {
+     "book": "1 Peter",
+     "chapter": 5,
+     "fromVerse": 6,
+     "toVerse": 7,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "lookingForAJob",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Proverbs",
+     "chapter": 16,
+     "fromVerse": 3,
+     "sources": 1
+    },
+    {
+     "book": "Proverbs",
+     "chapter": 16,
+     "fromVerse": 9,
+     "sources": 1
+    },
+    {
+     "book": "Isaiah",
+     "chapter": 48,
+     "fromVerse": 17,
+     "sources": 1
+    },
+    {
+     "book": "Jeremiah",
+     "chapter": 29,
+     "fromVerse": 11,
+     "sources": 1
+    },
+    {
+     "book": "Philippians",
+     "chapter": 4,
+     "fromVerse": 11,
+     "toVerse": 13,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "lost",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Psalms",
+     "chapter": 107,
+     "fromVerse": 4,
+     "toVerse": 9,
+     "sources": 1
+    },
+    {
+     "book": "Luke",
+     "chapter": 15,
+     "fromVerse": 11,
+     "toVerse": 24,
+     "sources": 1
+    },
+    {
+     "book": "Luke",
+     "chapter": 19,
+     "fromVerse": 10,
+     "sources": 1
+    },
+    {
+     "book": "Hebrews",
+     "chapter": 13,
+     "fromVerse": 5,
+     "toVerse": 6,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "love",
+   "kind": "virtue",
+   "places": [
+    {
+     "book": "Luke",
+     "chapter": 10,
+     "fromVerse": 27,
+     "sources": 1
+    },
+    {
+     "book": "1 Corinthians",
+     "chapter": 13,
+     "sources": 1
+    },
+    {
+     "book": "1 Corinthians",
+     "chapter": 13,
+     "fromVerse": 1,
+     "toVerse": 8,
+     "sources": 1
+    },
+    {
+     "book": "1 John",
+     "chapter": 4,
+     "fromVerse": 7,
+     "toVerse": 12,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "lust",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Mark",
+     "chapter": 4,
+     "fromVerse": 18,
+     "toVerse": 19,
+     "sources": 1
+    },
+    {
+     "book": "James",
+     "chapter": 1,
+     "fromVerse": 14,
+     "toVerse": 17,
+     "sources": 1
+    },
+    {
+     "book": "1 John",
+     "chapter": 2,
+     "fromVerse": 15,
+     "toVerse": 17,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "lying",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Proverbs",
+     "chapter": 6,
+     "fromVerse": 16,
+     "toVerse": 19,
+     "sources": 1
+    },
+    {
+     "book": "Proverbs",
+     "chapter": 12,
+     "fromVerse": 19,
+     "sources": 1
+    },
+    {
+     "book": "Proverbs",
+     "chapter": 14,
+     "fromVerse": 5,
+     "sources": 1
+    },
+    {
+     "book": "Proverbs",
+     "chapter": 19,
+     "fromVerse": 9,
+     "sources": 1
+    },
+    {
+     "book": "Ephesians",
+     "chapter": 4,
+     "fromVerse": 22,
+     "toVerse": 25,
+     "sources": 2
+    },
+    {
+     "book": "Revelation",
+     "chapter": 21,
+     "fromVerse": 8,
+     "sources": 2
+    }
+   ]
+  },
+  {
+   "id": "mankind",
+   "kind": "teaching",
+   "places": [
+    {
+     "book": "Genesis",
+     "chapter": 1,
+     "fromVerse": 27,
+     "sources": 2
+    },
+    {
+     "book": "Joshua",
+     "chapter": 22,
+     "fromVerse": 5,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "marriage",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Matthew",
+     "chapter": 19,
+     "fromVerse": 4,
+     "toVerse": 6,
+     "sources": 1
+    },
+    {
+     "book": "Mark",
+     "chapter": 10,
+     "fromVerse": 2,
+     "toVerse": 12,
+     "sources": 1
+    },
+    {
+     "book": "1 Corinthians",
+     "chapter": 7,
+     "fromVerse": 1,
+     "toVerse": 16,
+     "sources": 1
+    },
+    {
+     "book": "Ephesians",
+     "chapter": 5,
+     "fromVerse": 21,
+     "toVerse": 33,
+     "sources": 1
+    },
+    {
+     "book": "Hebrews",
+     "chapter": 13,
+     "fromVerse": 4,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "needingComfort",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Psalms",
+     "chapter": 32,
+     "fromVerse": 8,
+     "toVerse": 10,
+     "sources": 1
+    },
+    {
+     "book": "Psalms",
+     "chapter": 34,
+     "fromVerse": 18,
+     "toVerse": 19,
+     "sources": 1
+    },
+    {
+     "book": "Proverbs",
+     "chapter": 3,
+     "fromVerse": 5,
+     "toVerse": 6,
+     "sources": 1
+    },
+    {
+     "book": "2 Corinthians",
+     "chapter": 1,
+     "fromVerse": 3,
+     "toVerse": 4,
+     "sources": 2
+    }
+   ]
+  },
+  {
+   "id": "needingGodsProtection",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Psalms",
+     "chapter": 27,
+     "fromVerse": 1,
+     "toVerse": 6,
+     "sources": 2
+    },
+    {
+     "book": "Psalms",
+     "chapter": 91,
+     "sources": 3
+    },
+    {
+     "book": "Psalms",
+     "chapter": 121,
+     "sources": 1
+    },
+    {
+     "book": "Philippians",
+     "chapter": 4,
+     "fromVerse": 19,
+     "sources": 2
+    }
+   ]
+  },
+  {
+   "id": "needingGuidance",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Psalms",
+     "chapter": 32,
+     "fromVerse": 8,
+     "sources": 3
+    },
+    {
+     "book": "Psalms",
+     "chapter": 37,
+     "fromVerse": 5,
+     "sources": 1
+    },
+    {
+     "book": "Proverbs",
+     "chapter": 3,
+     "fromVerse": 5,
+     "toVerse": 6,
+     "sources": 2
+    },
+    {
+     "book": "Romans",
+     "chapter": 12,
+     "fromVerse": 1,
+     "toVerse": 2,
+     "sources": 1
+    },
+    {
+     "book": "James",
+     "chapter": 1,
+     "fromVerse": 5,
+     "toVerse": 8,
+     "sources": 3
+    }
+   ]
+  },
+  {
+   "id": "needingPeace",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Isaiah",
+     "chapter": 26,
+     "fromVerse": 3,
+     "toVerse": 4,
+     "sources": 2
+    },
+    {
+     "book": "John",
+     "chapter": 14,
+     "fromVerse": 1,
+     "toVerse": 4,
+     "sources": 5
+    },
+    {
+     "book": "John",
+     "chapter": 14,
+     "fromVerse": 27,
+     "sources": 5
+    },
+    {
+     "book": "John",
+     "chapter": 16,
+     "fromVerse": 33,
+     "sources": 3
+    },
+    {
+     "book": "Romans",
+     "chapter": 5,
+     "fromVerse": 1,
+     "toVerse": 5,
+     "sources": 4
+    },
+    {
+     "book": "Philippians",
+     "chapter": 4,
+     "fromVerse": 4,
+     "toVerse": 9,
+     "sources": 5
+    }
+   ]
+  },
+  {
+   "id": "needingRulesForLiving",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Romans",
+     "chapter": 12,
+     "sources": 2
+    }
+   ]
+  },
+  {
+   "id": "obedience",
+   "kind": "virtue",
+   "places": [
+    {
+     "book": "Matthew",
+     "chapter": 7,
+     "fromVerse": 24,
+     "toVerse": 29,
+     "sources": 1
+    },
+    {
+     "book": "Matthew",
+     "chapter": 12,
+     "fromVerse": 50,
+     "sources": 1
+    },
+    {
+     "book": "Luke",
+     "chapter": 10,
+     "fromVerse": 27,
+     "sources": 1
+    },
+    {
+     "book": "John",
+     "chapter": 15,
+     "fromVerse": 10,
+     "toVerse": 17,
+     "sources": 1
+    },
+    {
+     "book": "Acts",
+     "chapter": 5,
+     "fromVerse": 28,
+     "toVerse": 32,
+     "sources": 1
+    },
+    {
+     "book": "1 Corinthians",
+     "chapter": 13,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "obeyGod",
+   "kind": "teaching",
+   "places": [
+    {
+     "book": "Deuteronomy",
+     "chapter": 6,
+     "fromVerse": 5,
+     "toVerse": 7,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "oldAge",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Luke",
+     "chapter": 2,
+     "fromVerse": 25,
+     "toVerse": 38,
+     "sources": 1
+    },
+    {
+     "book": "Romans",
+     "chapter": 4,
+     "fromVerse": 18,
+     "toVerse": 22,
+     "sources": 1
+    },
+    {
+     "book": "Titus",
+     "chapter": 2,
+     "fromVerse": 1,
+     "toVerse": 6,
+     "sources": 1
+    },
+    {
+     "book": "1 Peter",
+     "chapter": 3,
+     "fromVerse": 10,
+     "toVerse": 12,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "ourThoughts",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Psalms",
+     "chapter": 139,
+     "fromVerse": 23,
+     "toVerse": 24,
+     "sources": 1
+    },
+    {
+     "book": "Matthew",
+     "chapter": 15,
+     "fromVerse": 16,
+     "toVerse": 20,
+     "sources": 1
+    },
+    {
+     "book": "Philippians",
+     "chapter": 4,
+     "fromVerse": 8,
+     "sources": 1
+    },
+    {
+     "book": "Hebrews",
+     "chapter": 3,
+     "fromVerse": 1,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "overcome",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Psalms",
+     "chapter": 6,
+     "sources": 2
+    },
+    {
+     "book": "Romans",
+     "chapter": 8,
+     "fromVerse": 31,
+     "toVerse": 39,
+     "sources": 2
+    },
+    {
+     "book": "1 John",
+     "chapter": 1,
+     "fromVerse": 4,
+     "toVerse": 9,
+     "sources": 2
+    }
+   ]
+  },
+  {
+   "id": "overcoming",
+   "kind": "virtue",
+   "places": [
+    {
+     "book": "John",
+     "chapter": 16,
+     "fromVerse": 33,
+     "sources": 1
+    },
+    {
+     "book": "Revelation",
+     "chapter": 3,
+     "fromVerse": 12,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "pain",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Psalms",
+     "chapter": 38,
+     "sources": 1
+    },
+    {
+     "book": "Psalms",
+     "chapter": 103,
+     "fromVerse": 1,
+     "toVerse": 5,
+     "sources": 3
+    },
+    {
+     "book": "Romans",
+     "chapter": 8,
+     "fromVerse": 28,
+     "sources": 1
+    },
+    {
+     "book": "Romans",
+     "chapter": 8,
+     "fromVerse": 38,
+     "toVerse": 39,
+     "sources": 1
+    },
+    {
+     "book": "2 Corinthians",
+     "chapter": 12,
+     "fromVerse": 9,
+     "toVerse": 10,
+     "sources": 5
+    },
+    {
+     "book": "James",
+     "chapter": 5,
+     "fromVerse": 14,
+     "toVerse": 16,
+     "sources": 5
+    },
+    {
+     "book": "1 Peter",
+     "chapter": 4,
+     "fromVerse": 12,
+     "toVerse": 13,
+     "sources": 1
+    },
+    {
+     "book": "1 Peter",
+     "chapter": 4,
+     "fromVerse": 19,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "patience",
+   "kind": "virtue",
+   "places": [
+    {
+     "book": "Colossians",
+     "chapter": 1,
+     "fromVerse": 9,
+     "toVerse": 14,
+     "sources": 1
+    },
+    {
+     "book": "2 Timothy",
+     "chapter": 3,
+     "fromVerse": 10,
+     "toVerse": 13,
+     "sources": 1
+    },
+    {
+     "book": "Hebrews",
+     "chapter": 10,
+     "fromVerse": 36,
+     "sources": 1
+    },
+    {
+     "book": "James",
+     "chapter": 5,
+     "fromVerse": 7,
+     "toVerse": 11,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "peacefulness",
+   "kind": "virtue",
+   "places": [
+    {
+     "book": "John",
+     "chapter": 14,
+     "fromVerse": 27,
+     "sources": 1
+    },
+    {
+     "book": "Romans",
+     "chapter": 12,
+     "fromVerse": 18,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "peerPressure",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Psalms",
+     "chapter": 1,
+     "fromVerse": 1,
+     "toVerse": 2,
+     "sources": 2
+    },
+    {
+     "book": "Proverbs",
+     "chapter": 1,
+     "fromVerse": 10,
+     "toVerse": 15,
+     "sources": 2
+    },
+    {
+     "book": "Proverbs",
+     "chapter": 3,
+     "fromVerse": 5,
+     "toVerse": 8,
+     "sources": 1
+    },
+    {
+     "book": "1 Corinthians",
+     "chapter": 15,
+     "fromVerse": 33,
+     "sources": 2
+    },
+    {
+     "book": "2 Corinthians",
+     "chapter": 10,
+     "fromVerse": 12,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "permissiveness",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Psalms",
+     "chapter": 51,
+     "fromVerse": 10,
+     "sources": 1
+    },
+    {
+     "book": "Psalms",
+     "chapter": 66,
+     "fromVerse": 18,
+     "sources": 1
+    },
+    {
+     "book": "Romans",
+     "chapter": 6,
+     "fromVerse": 1,
+     "toVerse": 2,
+     "sources": 1
+    },
+    {
+     "book": "Romans",
+     "chapter": 6,
+     "fromVerse": 11,
+     "toVerse": 14,
+     "sources": 1
+    },
+    {
+     "book": "1 Corinthians",
+     "chapter": 6,
+     "fromVerse": 9,
+     "toVerse": 20,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "perseverance",
+   "kind": "virtue",
+   "places": [
+    {
+     "book": "Mark",
+     "chapter": 13,
+     "fromVerse": 5,
+     "toVerse": 13,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "prayer",
+   "kind": "teaching",
+   "places": [
+    {
+     "book": "Matthew",
+     "chapter": 6,
+     "fromVerse": 6,
+     "toVerse": 7,
+     "sources": 1
+    },
+    {
+     "book": "Matthew",
+     "chapter": 26,
+     "fromVerse": 38,
+     "toVerse": 41,
+     "sources": 1
+    },
+    {
+     "book": "Luke",
+     "chapter": 11,
+     "fromVerse": 1,
+     "toVerse": 3,
+     "sources": 1
+    },
+    {
+     "book": "Luke",
+     "chapter": 18,
+     "fromVerse": 1,
+     "toVerse": 8,
+     "sources": 1
+    },
+    {
+     "book": "John",
+     "chapter": 14,
+     "fromVerse": 13,
+     "toVerse": 14,
+     "sources": 1
+    },
+    {
+     "book": "Ephesians",
+     "chapter": 6,
+     "fromVerse": 18,
+     "sources": 2
+    }
+   ]
+  },
+  {
+   "id": "praying",
+   "kind": "teaching",
+   "places": [
+    {
+     "book": "Psalms",
+     "chapter": 66,
+     "fromVerse": 16,
+     "toVerse": 20,
+     "sources": 1
+    },
+    {
+     "book": "Luke",
+     "chapter": 11,
+     "fromVerse": 1,
+     "toVerse": 13,
+     "sources": 1
+    },
+    {
+     "book": "John",
+     "chapter": 14,
+     "fromVerse": 12,
+     "toVerse": 14,
+     "sources": 1
+    },
+    {
+     "book": "1 John",
+     "chapter": 5,
+     "fromVerse": 14,
+     "toVerse": 15,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "pregnancy",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Psalms",
+     "chapter": 139,
+     "fromVerse": 13,
+     "toVerse": 16,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "pride",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "1 John",
+     "chapter": 2,
+     "fromVerse": 15,
+     "toVerse": 17,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "priorities",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Matthew",
+     "chapter": 6,
+     "fromVerse": 33,
+     "sources": 1
+    },
+    {
+     "book": "Luke",
+     "chapter": 12,
+     "fromVerse": 13,
+     "toVerse": 21,
+     "sources": 1
+    },
+    {
+     "book": "Luke",
+     "chapter": 14,
+     "fromVerse": 15,
+     "toVerse": 24,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "protected",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Psalms",
+     "chapter": 18,
+     "fromVerse": 1,
+     "toVerse": 3,
+     "sources": 2
+    },
+    {
+     "book": "Psalms",
+     "chapter": 34,
+     "fromVerse": 7,
+     "sources": 2
+    }
+   ]
+  },
+  {
+   "id": "pureThinking",
+   "kind": "virtue",
+   "places": [
+    {
+     "book": "Philippians",
+     "chapter": 4,
+     "fromVerse": 8,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "purity",
+   "kind": "virtue",
+   "places": [
+    {
+     "book": "Matthew",
+     "chapter": 5,
+     "fromVerse": 27,
+     "toVerse": 32,
+     "sources": 1
+    },
+    {
+     "book": "2 Timothy",
+     "chapter": 2,
+     "fromVerse": 20,
+     "toVerse": 24,
+     "sources": 2
+    },
+    {
+     "book": "Titus",
+     "chapter": 1,
+     "fromVerse": 15,
+     "toVerse": 16,
+     "sources": 1
+    },
+    {
+     "book": "1 John",
+     "chapter": 3,
+     "fromVerse": 1,
+     "toVerse": 3,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "purpose",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Ecclesiastes",
+     "chapter": 12,
+     "fromVerse": 13,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "read",
+   "kind": "teaching",
+   "places": [
+    {
+     "book": "Deuteronomy",
+     "chapter": 6,
+     "fromVerse": 5,
+     "toVerse": 7,
+     "sources": 1
+    },
+    {
+     "book": "Joshua",
+     "chapter": 1,
+     "fromVerse": 8,
+     "sources": 1
+    },
+    {
+     "book": "Romans",
+     "chapter": 15,
+     "fromVerse": 4,
+     "sources": 1
+    },
+    {
+     "book": "2 Timothy",
+     "chapter": 2,
+     "fromVerse": 15,
+     "sources": 1
+    },
+    {
+     "book": "2 Timothy",
+     "chapter": 3,
+     "fromVerse": 16,
+     "toVerse": 17,
+     "sources": 1
+    },
+    {
+     "book": "1 John",
+     "chapter": 5,
+     "fromVerse": 13,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "readingTheBible",
+   "kind": "virtue",
+   "places": [
+    {
+     "book": "Psalms",
+     "chapter": 1,
+     "sources": 1
+    },
+    {
+     "book": "Psalms",
+     "chapter": 119,
+     "fromVerse": 97,
+     "sources": 1
+    },
+    {
+     "book": "John",
+     "chapter": 5,
+     "fromVerse": 39,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "receivingChrist",
+   "kind": "teaching",
+   "places": [
+    {
+     "book": "Mark",
+     "chapter": 1,
+     "fromVerse": 15,
+     "sources": 1
+    },
+    {
+     "book": "John",
+     "chapter": 1,
+     "fromVerse": 11,
+     "toVerse": 12,
+     "sources": 1
+    },
+    {
+     "book": "Romans",
+     "chapter": 10,
+     "fromVerse": 9,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "relationships",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Proverbs",
+     "chapter": 13,
+     "fromVerse": 20,
+     "sources": 3
+    },
+    {
+     "book": "Proverbs",
+     "chapter": 17,
+     "fromVerse": 17,
+     "sources": 1
+    },
+    {
+     "book": "Proverbs",
+     "chapter": 18,
+     "fromVerse": 24,
+     "sources": 3
+    },
+    {
+     "book": "1 Corinthians",
+     "chapter": 15,
+     "fromVerse": 33,
+     "sources": 3
+    }
+   ]
+  },
+  {
+   "id": "repentance",
+   "kind": "teaching",
+   "places": [
+    {
+     "book": "Psalms",
+     "chapter": 51,
+     "fromVerse": 4,
+     "sources": 1
+    },
+    {
+     "book": "Luke",
+     "chapter": 18,
+     "fromVerse": 13,
+     "sources": 1
+    },
+    {
+     "book": "Acts",
+     "chapter": 3,
+     "fromVerse": 19,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "resolution",
+   "kind": "virtue",
+   "places": [
+    {
+     "book": "Psalms",
+     "chapter": 89,
+     "fromVerse": 7,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "respondingToGod",
+   "kind": "teaching",
+   "places": [
+    {
+     "book": "James",
+     "chapter": 4,
+     "fromVerse": 7,
+     "toVerse": 8,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "revenge",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Matthew",
+     "chapter": 5,
+     "fromVerse": 43,
+     "toVerse": 48,
+     "sources": 2
+    },
+    {
+     "book": "Romans",
+     "chapter": 12,
+     "fromVerse": 17,
+     "toVerse": 21,
+     "sources": 2
+    },
+    {
+     "book": "1 Thessalonians",
+     "chapter": 5,
+     "fromVerse": 15,
+     "sources": 2
+    }
+   ]
+  },
+  {
+   "id": "riches",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Matthew",
+     "chapter": 6,
+     "fromVerse": 24,
+     "sources": 1
+    },
+    {
+     "book": "Matthew",
+     "chapter": 6,
+     "fromVerse": 33,
+     "sources": 1
+    },
+    {
+     "book": "Mark",
+     "chapter": 10,
+     "fromVerse": 17,
+     "toVerse": 31,
+     "sources": 1
+    },
+    {
+     "book": "1 Timothy",
+     "chapter": 6,
+     "fromVerse": 6,
+     "toVerse": 12,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "righteousness",
+   "kind": "virtue",
+   "places": [
+    {
+     "book": "Matthew",
+     "chapter": 5,
+     "fromVerse": 6,
+     "sources": 1
+    },
+    {
+     "book": "Matthew",
+     "chapter": 6,
+     "fromVerse": 33,
+     "sources": 1
+    },
+    {
+     "book": "Romans",
+     "chapter": 1,
+     "fromVerse": 16,
+     "toVerse": 18,
+     "sources": 1
+    },
+    {
+     "book": "Romans",
+     "chapter": 3,
+     "fromVerse": 10,
+     "toVerse": 31,
+     "sources": 1
+    },
+    {
+     "book": "Romans",
+     "chapter": 5,
+     "fromVerse": 1,
+     "toVerse": 21,
+     "sources": 1
+    },
+    {
+     "book": "Romans",
+     "chapter": 6,
+     "fromVerse": 11,
+     "toVerse": 23,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "salvation",
+   "kind": "teaching",
+   "places": [
+    {
+     "book": "John",
+     "chapter": 14,
+     "fromVerse": 6,
+     "sources": 1
+    },
+    {
+     "book": "Acts",
+     "chapter": 16,
+     "fromVerse": 31,
+     "sources": 1
+    },
+    {
+     "book": "Romans",
+     "chapter": 10,
+     "fromVerse": 9,
+     "toVerse": 11,
+     "sources": 3
+    },
+    {
+     "book": "Ephesians",
+     "chapter": 2,
+     "fromVerse": 4,
+     "toVerse": 9,
+     "sources": 1
+    },
+    {
+     "book": "Titus",
+     "chapter": 2,
+     "fromVerse": 11,
+     "toVerse": 14,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "security",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "John",
+     "chapter": 10,
+     "fromVerse": 28,
+     "toVerse": 29,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "selfExaltation",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Luke",
+     "chapter": 14,
+     "fromVerse": 11,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "selfRighteousness",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Luke",
+     "chapter": 18,
+     "fromVerse": 9,
+     "toVerse": 14,
+     "sources": 3
+    },
+    {
+     "book": "Romans",
+     "chapter": 3,
+     "fromVerse": 9,
+     "toVerse": 12,
+     "sources": 1
+    },
+    {
+     "book": "Romans",
+     "chapter": 3,
+     "fromVerse": 21,
+     "toVerse": 24,
+     "sources": 1
+    },
+    {
+     "book": "Ephesians",
+     "chapter": 2,
+     "fromVerse": 8,
+     "toVerse": 9,
+     "sources": 1
+    },
+    {
+     "book": "Titus",
+     "chapter": 3,
+     "fromVerse": 3,
+     "toVerse": 7,
+     "sources": 1
+    },
+    {
+     "book": "1 Peter",
+     "chapter": 5,
+     "fromVerse": 5,
+     "toVerse": 6,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "sex",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Matthew",
+     "chapter": 5,
+     "fromVerse": 27,
+     "toVerse": 28,
+     "sources": 1
+    },
+    {
+     "book": "Mark",
+     "chapter": 10,
+     "fromVerse": 6,
+     "toVerse": 7,
+     "sources": 1
+    },
+    {
+     "book": "1 Corinthians",
+     "chapter": 6,
+     "fromVerse": 18,
+     "toVerse": 20,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "sexualImmorality",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "1 Corinthians",
+     "chapter": 6,
+     "fromVerse": 9,
+     "toVerse": 10,
+     "sources": 1
+    },
+    {
+     "book": "Galatians",
+     "chapter": 5,
+     "fromVerse": 19,
+     "toVerse": 24,
+     "sources": 1
+    },
+    {
+     "book": "1 Thessalonians",
+     "chapter": 4,
+     "fromVerse": 1,
+     "toVerse": 8,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "sick",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Psalms",
+     "chapter": 38,
+     "sources": 2
+    },
+    {
+     "book": "Psalms",
+     "chapter": 103,
+     "fromVerse": 1,
+     "toVerse": 5,
+     "sources": 3
+    },
+    {
+     "book": "Matthew",
+     "chapter": 26,
+     "fromVerse": 39,
+     "sources": 1
+    },
+    {
+     "book": "Romans",
+     "chapter": 5,
+     "fromVerse": 3,
+     "toVerse": 5,
+     "sources": 1
+    },
+    {
+     "book": "Romans",
+     "chapter": 8,
+     "fromVerse": 28,
+     "sources": 1
+    },
+    {
+     "book": "Romans",
+     "chapter": 8,
+     "fromVerse": 38,
+     "toVerse": 39,
+     "sources": 1
+    },
+    {
+     "book": "2 Corinthians",
+     "chapter": 12,
+     "fromVerse": 9,
+     "toVerse": 10,
+     "sources": 6
+    },
+    {
+     "book": "James",
+     "chapter": 5,
+     "fromVerse": 14,
+     "toVerse": 16,
+     "sources": 5
+    },
+    {
+     "book": "1 Peter",
+     "chapter": 4,
+     "fromVerse": 12,
+     "toVerse": 13,
+     "sources": 2
+    },
+    {
+     "book": "1 Peter",
+     "chapter": 4,
+     "fromVerse": 19,
+     "sources": 2
+    }
+   ]
+  },
+  {
+   "id": "sin",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Psalms",
+     "chapter": 25,
+     "fromVerse": 4,
+     "toVerse": 11,
+     "sources": 1
+    },
+    {
+     "book": "Psalms",
+     "chapter": 51,
+     "sources": 1
+    },
+    {
+     "book": "Isaiah",
+     "chapter": 59,
+     "fromVerse": 2,
+     "sources": 1
+    },
+    {
+     "book": "John",
+     "chapter": 8,
+     "fromVerse": 34,
+     "toVerse": 36,
+     "sources": 2
+    },
+    {
+     "book": "Romans",
+     "chapter": 3,
+     "fromVerse": 22,
+     "toVerse": 23,
+     "sources": 2
+    },
+    {
+     "book": "Romans",
+     "chapter": 6,
+     "fromVerse": 23,
+     "sources": 1
+    },
+    {
+     "book": "1 John",
+     "chapter": 1,
+     "fromVerse": 5,
+     "toVerse": 10,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "sincerity",
+   "kind": "virtue",
+   "places": [
+    {
+     "book": "Philippians",
+     "chapter": 1,
+     "fromVerse": 9,
+     "toVerse": 10,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "sleeplessness",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Psalms",
+     "chapter": 4,
+     "fromVerse": 8,
+     "sources": 1
+    },
+    {
+     "book": "Proverbs",
+     "chapter": 3,
+     "fromVerse": 21,
+     "toVerse": 26,
+     "sources": 1
+    },
+    {
+     "book": "Matthew",
+     "chapter": 11,
+     "fromVerse": 28,
+     "toVerse": 30,
+     "sources": 1
+    },
+    {
+     "book": "1 Peter",
+     "chapter": 5,
+     "fromVerse": 6,
+     "toVerse": 7,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "sorrowful",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Psalms",
+     "chapter": 23,
+     "sources": 1
+    },
+    {
+     "book": "Psalms",
+     "chapter": 34,
+     "fromVerse": 18,
+     "sources": 1
+    },
+    {
+     "book": "Psalms",
+     "chapter": 51,
+     "sources": 2
+    },
+    {
+     "book": "Psalms",
+     "chapter": 147,
+     "fromVerse": 3,
+     "sources": 1
+    },
+    {
+     "book": "Matthew",
+     "chapter": 5,
+     "fromVerse": 4,
+     "sources": 2
+    },
+    {
+     "book": "John",
+     "chapter": 14,
+     "sources": 3
+    },
+    {
+     "book": "Romans",
+     "chapter": 8,
+     "fromVerse": 26,
+     "toVerse": 28,
+     "sources": 1
+    },
+    {
+     "book": "2 Corinthians",
+     "chapter": 1,
+     "fromVerse": 3,
+     "toVerse": 5,
+     "sources": 3
+    },
+    {
+     "book": "1 Thessalonians",
+     "chapter": 4,
+     "fromVerse": 13,
+     "toVerse": 18,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "steadfastness",
+   "kind": "virtue",
+   "places": [
+    {
+     "book": "Luke",
+     "chapter": 9,
+     "fromVerse": 23,
+     "sources": 1
+    },
+    {
+     "book": "1 Corinthians",
+     "chapter": 15,
+     "fromVerse": 57,
+     "toVerse": 58,
+     "sources": 2
+    },
+    {
+     "book": "Ephesians",
+     "chapter": 6,
+     "fromVerse": 10,
+     "toVerse": 18,
+     "sources": 1
+    },
+    {
+     "book": "1 Peter",
+     "chapter": 5,
+     "fromVerse": 8,
+     "toVerse": 10,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "stealing",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Exodus",
+     "chapter": 20,
+     "fromVerse": 15,
+     "sources": 1
+    },
+    {
+     "book": "Proverbs",
+     "chapter": 29,
+     "fromVerse": 24,
+     "sources": 1
+    },
+    {
+     "book": "Romans",
+     "chapter": 13,
+     "fromVerse": 8,
+     "toVerse": 10,
+     "sources": 1
+    },
+    {
+     "book": "Ephesians",
+     "chapter": 4,
+     "fromVerse": 28,
+     "sources": 2
+    },
+    {
+     "book": "Hebrews",
+     "chapter": 13,
+     "fromVerse": 5,
+     "sources": 1
+    },
+    {
+     "book": "1 Peter",
+     "chapter": 4,
+     "fromVerse": 15,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "stewardship",
+   "kind": "virtue",
+   "places": [
+    {
+     "book": "1 Corinthians",
+     "chapter": 4,
+     "fromVerse": 2,
+     "sources": 1
+    },
+    {
+     "book": "2 Corinthians",
+     "chapter": 9,
+     "fromVerse": 6,
+     "toVerse": 7,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "stress",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Psalms",
+     "chapter": 27,
+     "fromVerse": 5,
+     "sources": 2
+    },
+    {
+     "book": "Psalms",
+     "chapter": 30,
+     "fromVerse": 5,
+     "sources": 2
+    },
+    {
+     "book": "Psalms",
+     "chapter": 37,
+     "fromVerse": 7,
+     "toVerse": 8,
+     "sources": 2
+    },
+    {
+     "book": "Isaiah",
+     "chapter": 40,
+     "fromVerse": 31,
+     "sources": 1
+    },
+    {
+     "book": "Matthew",
+     "chapter": 6,
+     "fromVerse": 25,
+     "toVerse": 27,
+     "sources": 1
+    },
+    {
+     "book": "Matthew",
+     "chapter": 6,
+     "fromVerse": 34,
+     "sources": 1
+    },
+    {
+     "book": "Matthew",
+     "chapter": 11,
+     "fromVerse": 28,
+     "toVerse": 29,
+     "sources": 2
+    },
+    {
+     "book": "John",
+     "chapter": 14,
+     "fromVerse": 1,
+     "sources": 1
+    },
+    {
+     "book": "John",
+     "chapter": 14,
+     "fromVerse": 27,
+     "sources": 1
+    },
+    {
+     "book": "Philippians",
+     "chapter": 4,
+     "fromVerse": 11,
+     "toVerse": 13,
+     "sources": 1
+    },
+    {
+     "book": "1 Peter",
+     "chapter": 5,
+     "fromVerse": 7,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "submission",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "1 Peter",
+     "chapter": 2,
+     "fromVerse": 13,
+     "toVerse": 17,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "suffering",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "2 Corinthians",
+     "chapter": 12,
+     "fromVerse": 8,
+     "toVerse": 10,
+     "sources": 1
+    },
+    {
+     "book": "Hebrews",
+     "chapter": 12,
+     "fromVerse": 3,
+     "toVerse": 13,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "suicide",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Psalms",
+     "chapter": 31,
+     "fromVerse": 9,
+     "toVerse": 10,
+     "sources": 1
+    },
+    {
+     "book": "Psalms",
+     "chapter": 31,
+     "fromVerse": 14,
+     "toVerse": 16,
+     "sources": 1
+    },
+    {
+     "book": "Psalms",
+     "chapter": 34,
+     "fromVerse": 6,
+     "sources": 1
+    },
+    {
+     "book": "Psalms",
+     "chapter": 116,
+     "fromVerse": 3,
+     "toVerse": 5,
+     "sources": 1
+    },
+    {
+     "book": "Psalms",
+     "chapter": 143,
+     "fromVerse": 7,
+     "toVerse": 11,
+     "sources": 1
+    },
+    {
+     "book": "1 Corinthians",
+     "chapter": 6,
+     "fromVerse": 19,
+     "toVerse": 20,
+     "sources": 1
+    },
+    {
+     "book": "1 Corinthians",
+     "chapter": 10,
+     "fromVerse": 13,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "swearing",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Ephesians",
+     "chapter": 4,
+     "fromVerse": 29,
+     "sources": 1
+    },
+    {
+     "book": "Colossians",
+     "chapter": 3,
+     "fromVerse": 8,
+     "sources": 2
+    }
+   ]
+  },
+  {
+   "id": "sympathy",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Romans",
+     "chapter": 15,
+     "fromVerse": 1,
+     "sources": 1
+    },
+    {
+     "book": "Hebrews",
+     "chapter": 13,
+     "fromVerse": 3,
+     "sources": 1
+    },
+    {
+     "book": "James",
+     "chapter": 1,
+     "fromVerse": 27,
+     "sources": 1
+    },
+    {
+     "book": "1 Peter",
+     "chapter": 3,
+     "fromVerse": 8,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "temperance",
+   "kind": "virtue",
+   "places": [
+    {
+     "book": "1 Thessalonians",
+     "chapter": 5,
+     "fromVerse": 6,
+     "toVerse": 8,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "tempted",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Psalms",
+     "chapter": 1,
+     "sources": 2
+    },
+    {
+     "book": "Psalms",
+     "chapter": 119,
+     "fromVerse": 11,
+     "sources": 1
+    },
+    {
+     "book": "Psalms",
+     "chapter": 139,
+     "fromVerse": 23,
+     "toVerse": 24,
+     "sources": 2
+    },
+    {
+     "book": "Proverbs",
+     "chapter": 1,
+     "fromVerse": 10,
+     "toVerse": 15,
+     "sources": 1
+    },
+    {
+     "book": "Matthew",
+     "chapter": 26,
+     "fromVerse": 41,
+     "sources": 2
+    },
+    {
+     "book": "1 Corinthians",
+     "chapter": 10,
+     "fromVerse": 6,
+     "toVerse": 14,
+     "sources": 6
+    },
+    {
+     "book": "1 Corinthians",
+     "chapter": 15,
+     "fromVerse": 33,
+     "sources": 1
+    },
+    {
+     "book": "Philippians",
+     "chapter": 4,
+     "fromVerse": 8,
+     "sources": 2
+    },
+    {
+     "book": "2 Timothy",
+     "chapter": 2,
+     "fromVerse": 22,
+     "sources": 2
+    },
+    {
+     "book": "James",
+     "chapter": 1,
+     "fromVerse": 12,
+     "toVerse": 16,
+     "sources": 3
+    },
+    {
+     "book": "James",
+     "chapter": 4,
+     "fromVerse": 7,
+     "sources": 3
+    },
+    {
+     "book": "2 Peter",
+     "chapter": 2,
+     "fromVerse": 9,
+     "sources": 2
+    },
+    {
+     "book": "2 Peter",
+     "chapter": 3,
+     "fromVerse": 17,
+     "sources": 2
+    }
+   ]
+  },
+  {
+   "id": "thankful",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Psalms",
+     "chapter": 100,
+     "sources": 3
+    },
+    {
+     "book": "2 Corinthians",
+     "chapter": 9,
+     "fromVerse": 10,
+     "toVerse": 12,
+     "sources": 1
+    },
+    {
+     "book": "2 Corinthians",
+     "chapter": 9,
+     "fromVerse": 15,
+     "sources": 1
+    },
+    {
+     "book": "Colossians",
+     "chapter": 2,
+     "fromVerse": 6,
+     "toVerse": 7,
+     "sources": 1
+    },
+    {
+     "book": "Colossians",
+     "chapter": 3,
+     "fromVerse": 15,
+     "sources": 1
+    },
+    {
+     "book": "1 Thessalonians",
+     "chapter": 5,
+     "fromVerse": 18,
+     "sources": 2
+    },
+    {
+     "book": "Hebrews",
+     "chapter": 13,
+     "fromVerse": 15,
+     "sources": 2
+    }
+   ]
+  },
+  {
+   "id": "theBible",
+   "kind": "teaching",
+   "places": [
+    {
+     "book": "2 Timothy",
+     "chapter": 3,
+     "fromVerse": 16,
+     "toVerse": 17,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "theDevil",
+   "kind": "teaching",
+   "places": [
+    {
+     "book": "1 Peter",
+     "chapter": 5,
+     "fromVerse": 8,
+     "toVerse": 9,
+     "sources": 2
+    }
+   ]
+  },
+  {
+   "id": "theHolySpirit",
+   "kind": "teaching",
+   "places": [
+    {
+     "book": "John",
+     "chapter": 14,
+     "fromVerse": 16,
+     "toVerse": 18,
+     "sources": 2
+    }
+   ]
+  },
+  {
+   "id": "theJudgement",
+   "kind": "teaching",
+   "places": [
+    {
+     "book": "Leviticus",
+     "chapter": 5,
+     "fromVerse": 17,
+     "sources": 1
+    },
+    {
+     "book": "Romans",
+     "chapter": 14,
+     "fromVerse": 12,
+     "sources": 2
+    },
+    {
+     "book": "Revelation",
+     "chapter": 20,
+     "fromVerse": 12,
+     "sources": 2
+    }
+   ]
+  },
+  {
+   "id": "traveling",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Psalms",
+     "chapter": 121,
+     "sources": 2
+    }
+   ]
+  },
+  {
+   "id": "tribulation",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "John",
+     "chapter": 16,
+     "fromVerse": 33,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "trouble",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Psalms",
+     "chapter": 16,
+     "sources": 2
+    },
+    {
+     "book": "Psalms",
+     "chapter": 20,
+     "fromVerse": 1,
+     "toVerse": 2,
+     "sources": 1
+    },
+    {
+     "book": "Psalms",
+     "chapter": 23,
+     "sources": 1
+    },
+    {
+     "book": "Psalms",
+     "chapter": 31,
+     "sources": 2
+    },
+    {
+     "book": "Psalms",
+     "chapter": 71,
+     "fromVerse": 1,
+     "toVerse": 3,
+     "sources": 1
+    },
+    {
+     "book": "John",
+     "chapter": 14,
+     "fromVerse": 1,
+     "toVerse": 4,
+     "sources": 2
+    },
+    {
+     "book": "Hebrews",
+     "chapter": 7,
+     "fromVerse": 25,
+     "sources": 2
+    }
+   ]
+  },
+  {
+   "id": "trust",
+   "kind": "virtue",
+   "places": [
+    {
+     "book": "Psalms",
+     "chapter": 37,
+     "fromVerse": 3,
+     "toVerse": 5,
+     "sources": 1
+    },
+    {
+     "book": "Proverbs",
+     "chapter": 3,
+     "fromVerse": 5,
+     "toVerse": 6,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "truth",
+   "kind": "virtue",
+   "places": [
+    {
+     "book": "John",
+     "chapter": 14,
+     "fromVerse": 6,
+     "sources": 1
+    },
+    {
+     "book": "John",
+     "chapter": 17,
+     "fromVerse": 17,
+     "sources": 1
+    },
+    {
+     "book": "Ephesians",
+     "chapter": 4,
+     "fromVerse": 14,
+     "toVerse": 15,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "unemployed",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Proverbs",
+     "chapter": 16,
+     "fromVerse": 3,
+     "sources": 1
+    },
+    {
+     "book": "Proverbs",
+     "chapter": 16,
+     "fromVerse": 9,
+     "sources": 1
+    },
+    {
+     "book": "Isaiah",
+     "chapter": 48,
+     "fromVerse": 17,
+     "sources": 1
+    },
+    {
+     "book": "Jeremiah",
+     "chapter": 29,
+     "fromVerse": 11,
+     "sources": 1
+    },
+    {
+     "book": "Philippians",
+     "chapter": 4,
+     "fromVerse": 11,
+     "toVerse": 13,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "unwanted",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Psalms",
+     "chapter": 107,
+     "fromVerse": 4,
+     "toVerse": 9,
+     "sources": 1
+    },
+    {
+     "book": "Luke",
+     "chapter": 15,
+     "fromVerse": 11,
+     "toVerse": 24,
+     "sources": 1
+    },
+    {
+     "book": "Luke",
+     "chapter": 19,
+     "fromVerse": 10,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "victory",
+   "kind": "virtue",
+   "places": [
+    {
+     "book": "1 Corinthians",
+     "chapter": 15,
+     "fromVerse": 57,
+     "sources": 1
+    },
+    {
+     "book": "1 John",
+     "chapter": 5,
+     "fromVerse": 4,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "watchfulness",
+   "kind": "virtue",
+   "places": [
+    {
+     "book": "Mark",
+     "chapter": 13,
+     "fromVerse": 34,
+     "toVerse": 37,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "weary",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Psalms",
+     "chapter": 23,
+     "fromVerse": 1,
+     "toVerse": 6,
+     "sources": 1
+    },
+    {
+     "book": "Psalms",
+     "chapter": 90,
+     "sources": 2
+    },
+    {
+     "book": "Isaiah",
+     "chapter": 40,
+     "fromVerse": 28,
+     "toVerse": 31,
+     "sources": 1
+    },
+    {
+     "book": "Matthew",
+     "chapter": 11,
+     "fromVerse": 28,
+     "toVerse": 30,
+     "sources": 5
+    },
+    {
+     "book": "1 Corinthians",
+     "chapter": 15,
+     "fromVerse": 58,
+     "sources": 3
+    },
+    {
+     "book": "2 Corinthians",
+     "chapter": 4,
+     "fromVerse": 16,
+     "toVerse": 18,
+     "sources": 1
+    },
+    {
+     "book": "Galatians",
+     "chapter": 6,
+     "fromVerse": 9,
+     "toVerse": 10,
+     "sources": 3
+    },
+    {
+     "book": "Philippians",
+     "chapter": 4,
+     "fromVerse": 13,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "whatGodDoesForYou",
+   "kind": "teaching",
+   "places": [
+    {
+     "book": "Psalms",
+     "chapter": 23,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "wisdom",
+   "kind": "virtue",
+   "places": [
+    {
+     "book": "Proverbs",
+     "chapter": 8,
+     "fromVerse": 11,
+     "sources": 2
+    },
+    {
+     "book": "James",
+     "chapter": 1,
+     "fromVerse": 5,
+     "sources": 2
+    }
+   ]
+  },
+  {
+   "id": "witnessing",
+   "kind": "teaching",
+   "places": [
+    {
+     "book": "Matthew",
+     "chapter": 10,
+     "fromVerse": 32,
+     "toVerse": 33,
+     "sources": 1
+    },
+    {
+     "book": "Acts",
+     "chapter": 1,
+     "fromVerse": 8,
+     "sources": 1
+    },
+    {
+     "book": "Romans",
+     "chapter": 10,
+     "fromVerse": 8,
+     "toVerse": 10,
+     "sources": 1
+    },
+    {
+     "book": "1 Peter",
+     "chapter": 3,
+     "fromVerse": 15,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "worldliness",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "1 John",
+     "chapter": 2,
+     "fromVerse": 15,
+     "toVerse": 17,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "worried",
+   "kind": "situation",
+   "places": [
+    {
+     "book": "Psalms",
+     "chapter": 46,
+     "sources": 1
+    },
+    {
+     "book": "Isaiah",
+     "chapter": 43,
+     "fromVerse": 1,
+     "toVerse": 3,
+     "sources": 1
+    },
+    {
+     "book": "Nahum",
+     "chapter": 1,
+     "fromVerse": 7,
+     "sources": 1
+    },
+    {
+     "book": "Matthew",
+     "chapter": 6,
+     "fromVerse": 19,
+     "toVerse": 34,
+     "sources": 3
+    },
+    {
+     "book": "Philippians",
+     "chapter": 4,
+     "fromVerse": 6,
+     "toVerse": 7,
+     "sources": 2
+    },
+    {
+     "book": "1 Peter",
+     "chapter": 5,
+     "fromVerse": 6,
+     "toVerse": 7,
+     "sources": 3
+    }
+   ]
+  },
+  {
+   "id": "worship",
+   "kind": "virtue",
+   "places": [
+    {
+     "book": "John",
+     "chapter": 4,
+     "fromVerse": 23,
+     "toVerse": 24,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "yourResponse",
+   "kind": "teaching",
+   "places": [
+    {
+     "book": "Isaiah",
+     "chapter": 55,
+     "fromVerse": 6,
+     "sources": 1
+    },
+    {
+     "book": "1 John",
+     "chapter": 1,
+     "fromVerse": 9,
+     "sources": 1
+    },
+    {
+     "book": "Revelation",
+     "chapter": 3,
+     "fromVerse": 20,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "yourSin",
+   "kind": "teaching",
+   "places": [
+    {
+     "book": "Isaiah",
+     "chapter": 59,
+     "fromVerse": 2,
+     "sources": 1
+    },
+    {
+     "book": "Romans",
+     "chapter": 3,
+     "fromVerse": 22,
+     "toVerse": 23,
+     "sources": 1
+    },
+    {
+     "book": "James",
+     "chapter": 4,
+     "fromVerse": 17,
+     "sources": 1
+    }
+   ]
+  },
+  {
+   "id": "zeal",
+   "kind": "virtue",
+   "places": [
+    {
+     "book": "John",
+     "chapter": 2,
+     "fromVerse": 13,
+     "toVerse": 17,
+     "sources": 1
+    },
+    {
+     "book": "John",
+     "chapter": 6,
+     "fromVerse": 27,
+     "sources": 1
+    }
+   ]
+  }
+ ]
+}

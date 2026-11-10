@@ -66,6 +66,8 @@ const LAZY_ROUTES: Record<Exclude<OfflineShellRoute, 'dashboard'>, OfflineRoute>
   council: { Component: lazy(() => import('@/(pages)/(private)/care/council/[id]/page')) },
   councilConduct: { Component: lazy(() => import('@/(pages)/(private)/care/council/[id]/conduct/page')) },
   order: { Component: lazy(() => import('@/(pages)/(private)/care/orders/[id]/page')) },
+  words: { Component: lazy(() => import('@/(pages)/(private)/care/word/page')) },
+  word: { Component: lazy(() => import('@/(pages)/(private)/care/word/[id]/page')) },
   groupConduct: { Component: lazy(() => import('@/(pages)/(private)/groups/[id]/conduct/page')) },
   prayer: { Component: lazy(() => import('@/(pages)/(private)/prayers/[id]/page')) },
   sermon: { Component: lazy(() => import('@/(pages)/(private)/sermons/[id]/page')) },

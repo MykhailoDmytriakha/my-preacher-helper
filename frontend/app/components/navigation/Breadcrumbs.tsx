@@ -10,6 +10,7 @@ import { useSermonRead } from '@/hooks/useSermonRead';
 import { useServiceOrders } from '@/hooks/useServiceOrders';
 import { useShellPathname } from '@/hooks/useShellPathname';
 import { debugLog } from '@/utils/debugMode';
+import { occasionById, occasionNameKey } from '@/utils/wordForOccasion';
 import { useTranslation } from '@locales/useTranslation';
 import '@locales/i18n';
 
@@ -122,6 +123,11 @@ const segmentLabels: Record<string, SegmentConfig> = {
     defaultLabel: "Brothers' council",
     href: '/care/council'
   },
+  word: {
+    labelKey: 'care.sections.word.title',
+    defaultLabel: 'A word for the case',
+    href: '/care/word'
+  },
   prayers: {
     // The room's own name, not the section's: inside the plane this crumb sits next to
     // "Heart", and two words meaning the same thing side by side say nothing.
@@ -172,6 +178,12 @@ const detailParents: Record<string, SegmentConfig> = {
   council: {
     labelKey: 'council.title',
     defaultLabel: 'Council'
+  },
+  // A situation of the word for the occasion is named by the app; the section's name stands in
+  // only for an address the index does not hold.
+  word: {
+    labelKey: 'care.sections.word.title',
+    defaultLabel: 'A word for the case'
   }
 };
 
@@ -201,6 +213,7 @@ type BuildSegmentCrumbParams = {
   prayer: PrayerData;
   serviceOrder: { title: string } | undefined;
   councilTitle: string | null;
+  occasionTitle: string | null;
 };
 
 type DetailLabelContext = {
@@ -210,6 +223,7 @@ type DetailLabelContext = {
   prayer: PrayerData;
   serviceOrder: { title: string } | undefined;
   councilTitle: string | null;
+  occasionTitle: string | null;
 };
 
 type DetailLabelResolver = (context: DetailLabelContext) => string | null;
@@ -221,6 +235,7 @@ const detailLabelResolvers: Record<string, DetailLabelResolver> = {
   prayers: ({ prayer }) => prayer?.title || null,
   orders: ({ serviceOrder }) => serviceOrder?.title || null,
   council: ({ councilTitle }) => councilTitle,
+  word: ({ occasionTitle }) => occasionTitle,
 };
 
 const buildCrumb = (label: string, isLast: boolean, currentPath: string, hrefOverride?: string) => ({
@@ -259,6 +274,7 @@ const buildSegmentCrumb = ({
   prayer,
   serviceOrder,
   councilTitle,
+  occasionTitle,
 }: BuildSegmentCrumbParams): BreadcrumbItem => {
   const config = segmentLabels[segment];
   if (config) {
@@ -271,7 +287,7 @@ const buildSegmentCrumb = ({
   }
 
   if (parent) {
-    const detailLabel = resolveDetailLabel(parent, t, { sermon, series, groupTitle, prayer, serviceOrder, councilTitle });
+    const detailLabel = resolveDetailLabel(parent, t, { sermon, series, groupTitle, prayer, serviceOrder, councilTitle, occasionTitle });
     if (detailLabel) {
       return buildCrumb(detailLabel, isLast, currentPath);
     }
@@ -365,6 +381,12 @@ export default function Breadcrumbs({ forceShow = false }: { forceShow?: boolean
   }, [pathname]);
   const councilTitle = useShellTitle('councils', councilId);
 
+  const occasionTitle = useMemo(() => {
+    const segments = pathname.split('/').filter(Boolean);
+    const id = segments[0] === 'care' && segments[1] === 'word' ? segments[2] : undefined;
+    return id && occasionById(id) ? t(occasionNameKey(id)) : null;
+  }, [pathname, t]);
+
   const items = useMemo<BreadcrumbItem[]>(() => {
     if (shouldHide) {
       return [];
@@ -437,7 +459,7 @@ export default function Breadcrumbs({ forceShow = false }: { forceShow?: boolean
 
       const isLast = index === segments.length - 1;
       const parent = segments[index - 1];
-      crumbs.push(buildSegmentCrumb({ segment, parent, currentPath, isLast, t, sermon, series, groupTitle, prayer, serviceOrder, councilTitle }));
+      crumbs.push(buildSegmentCrumb({ segment, parent, currentPath, isLast, t, sermon, series, groupTitle, prayer, serviceOrder, councilTitle, occasionTitle }));
     });
 
     /**
@@ -501,7 +523,7 @@ export default function Breadcrumbs({ forceShow = false }: { forceShow?: boolean
     });
 
     return crumbs.length > 1 ? crumbs : [];
-  }, [pathname, searchParams, sermon, sermonId, series, groupTitle, groupId, prayer, serviceOrder, councilTitle, shouldHide, t]);
+  }, [pathname, searchParams, sermon, sermonId, series, groupTitle, groupId, prayer, serviceOrder, councilTitle, occasionTitle, shouldHide, t]);
 
   if (shouldHide) {
     return null;

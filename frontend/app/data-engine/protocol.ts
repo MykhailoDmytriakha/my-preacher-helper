@@ -59,6 +59,8 @@ const fields: Record<string, readonly string[]> = {
   // Marks in the Bible text: one document per person, Bible and book (`utils/bibleMarks.ts`).
   bibleMarks: ['bible', 'book', 'verses'],
   tags: ['name', 'color', 'required'],
+  // A place the pastor added to a topic of the word for the occasion (`/care/word`): one document per place, made and removed, never edited.
+  occasionPlaces: ['occasionId', 'ref'],
   // 'enablePrepMode' and 'enableStructurePreview' — retired beta switches (2026-10-31): nothing writes them now, but a command
   // an older version queued on a device is still delivered, or the settings commands queued after it would stay stuck behind it.
   users: ['lastSeenAt', 'language', 'email', 'displayName', 'firstDayOfWeek', 'enablePrepMode', 'enableAudioGeneration',

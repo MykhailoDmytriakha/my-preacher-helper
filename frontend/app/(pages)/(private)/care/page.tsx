@@ -103,7 +103,7 @@ const CARDS: CareCard[] = [
     sections: [
       { key: 'rites', icon: ScrollText, href: '/care/orders' },
       { key: 'crisis', icon: ExclamationTriangleIcon },
-      { key: 'word', icon: BookOpenIcon },
+      { key: 'word', icon: BookOpenIcon, href: '/care/word' },
       { key: 'projects', icon: BriefcaseIcon },
     ],
   },
