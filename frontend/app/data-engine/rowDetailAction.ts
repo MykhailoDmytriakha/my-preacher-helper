@@ -17,6 +17,8 @@ export type RowDetailPolicy<Field extends string, Value extends RowValue> = {
   proofs: string;
   actions: string;
   repeatedFields?: readonly Field[];
+  acceptsRowId?: (value: unknown) => value is string;
+  proofRowId?: (rowId: string) => string;
   allowUnclocked?: boolean;
   atomicChoice?: true;
   requireObserved?: true;

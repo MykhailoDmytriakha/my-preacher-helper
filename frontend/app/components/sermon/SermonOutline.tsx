@@ -23,6 +23,7 @@ import { useTranslation } from '@locales/useTranslation';
 
 import type { OutlinePointMove } from '@/components/sermon/structureWriter';
 import type { Sermon, SermonOutline, SermonPoint, SubPoint } from '@/models/models';
+import type { OutlineTitleOpening, OutlineTitleVersion } from '@/utils/sermonNoteText';
 
 interface SermonOutlineProps {
   sermon: Sermon;
@@ -120,7 +121,7 @@ const SermonOutlineEditor: React.FC<SermonOutlineProps> = ({
   }, []);
 
   // --- All useRef hooks after useState ---
-  const openingTitle = useRef("");
+  const openingTitle = useRef<OutlineTitleOpening | null>(null);
   /**
    * The plan THIS VIEW LOADED WITH — the base its saves merge against.
    *
@@ -229,7 +230,7 @@ const SermonOutlineEditor: React.FC<SermonOutlineProps> = ({
   };
 
   // Local ownership begins with the accepted edit; the engine schedules delivery.
-  const directlySaveOutlineChanges = (pointsToSave: Record<SectionType, SermonPoint[]>, pointMove?: OutlinePointMove) => {
+  const directlySaveOutlineChanges = (pointsToSave: Record<SectionType, SermonPoint[]>, pointMove?: OutlinePointMove, titleOpening?: OutlineTitleOpening) => {
     if (isReadOnly) return;
     saveGenerationRef.current += 1;
     const generationAtRequest = saveGenerationRef.current;
@@ -239,7 +240,7 @@ const SermonOutlineEditor: React.FC<SermonOutlineProps> = ({
       conclusion: pointsToSave.conclusion,
     };
     setError(null);
-    outlineCapture.schedule({ outline: outlineToSave, base: baseOutlineRef.current, pointMove, begin: () => ({
+    outlineCapture.schedule({ outline: outlineToSave, base: baseOutlineRef.current, pointMove, titleOpening, begin: () => ({
       stored: (saved, sameView) => {
         if (!mountedRef.current || generationAtRequest !== saveGenerationRef.current) return;
         const parent = parentOutlineRef.current;
@@ -287,7 +288,9 @@ const SermonOutlineEditor: React.FC<SermonOutlineProps> = ({
   const handleStartEdit = (point: SermonPoint) => {
     if (isReadOnly) return;
     const title = capitalizeFirstLetter(point.text);
-    openingTitle.current = title;
+    const opening: OutlineTitleOpening = { target: { kind: 'point', id: point.id }, text: point.text };
+    const version = writer.outlineTitleVersion?.(opening);
+    openingTitle.current = version ? { ...opening, version } : opening;
     setEditingPointId(point.id);
     setEditingText(title);
     setAddingNewToSection(null); // Ensure add mode is off
@@ -300,7 +303,8 @@ const SermonOutlineEditor: React.FC<SermonOutlineProps> = ({
 
   const handleSaveEdit = () => {
     if (isReadOnly) return;
-    const textToSave = changedCapitalizedTitle(editingText, openingTitle.current);
+    const opening = openingTitle.current;
+    const textToSave = changedCapitalizedTitle(editingText, capitalizeFirstLetter(opening?.text ?? ''));
     if (!editingPointId || !textToSave) {
       handleCancelEdit();
       return;
@@ -315,7 +319,7 @@ const SermonOutlineEditor: React.FC<SermonOutlineProps> = ({
 
     setSectionPoints(updatedPoints);
     handleCancelEdit(); // Exit edit mode
-    directlySaveOutlineChanges(updatedPoints);
+    directlySaveOutlineChanges(updatedPoints, undefined, opening ?? undefined);
   };
 
   const handleDeletePoint = async (pointToDelete: SermonPoint) => {
@@ -394,7 +398,7 @@ const SermonOutlineEditor: React.FC<SermonOutlineProps> = ({
     directlySaveOutlineChanges(updatedPoints);
   };
 
-  const handleEditSubPoint = (outlinePointId: string, subPointId: string, newText: string) => {
+  const handleEditSubPoint = (outlinePointId: string, subPointId: string, newText: string, openingText: string, version?: OutlineTitleVersion) => {
     const textToSave = normalizeCapitalizedTitle(newText);
     if (isReadOnly || !textToSave) return;
     const updatedPoints = Object.entries(sectionPoints).reduce((acc, [section, points]) => {
@@ -405,7 +409,8 @@ const SermonOutlineEditor: React.FC<SermonOutlineProps> = ({
       return acc;
     }, {} as Record<SectionType, SermonPoint[]>);
     setSectionPoints(updatedPoints);
-    directlySaveOutlineChanges(updatedPoints);
+    directlySaveOutlineChanges(updatedPoints, undefined, { target: { kind: 'subpoint', id: subPointId }, text: openingText,
+      ...(version && { version }) });
   };
 
   const handleDeleteSubPoint = (outlinePointId: string, subPointId: string) => {

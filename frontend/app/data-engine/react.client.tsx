@@ -850,7 +850,8 @@ export function projectCapturedGroupStep(...args: Parameters<typeof projectGroup
 export interface DocumentUpdateOptions {
   handlesRefusal?: (failure: unknown) => boolean;
   action?: 'group-title' | 'group-status' | 'council-title' | 'council-date'
-    | ExegeticalPointEdit | { kind: RowFieldActionKind; rowId: string } | { kind: 'thought-lock' | 'thought-placement'; rowIds: readonly string[] };
+    | ExegeticalPointEdit | { kind: RowFieldActionKind; rowId: string } | { kind: 'thought-lock' | 'thought-placement'; rowIds: readonly string[] }
+    | { kind: 'outline-title'; opening: OutlineTitleOpening };
 }
 
 interface DocumentOptions {
@@ -1173,6 +1174,9 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
           if (action.kind === 'exegetical-point') {
             return editor.edit(next, shown, { field: action.kind, nodeId: action.nodeId, intent: action.intent, time: time ?? null });
           }
+          if ('opening' in action) {
+            return editor.edit(next, shown, { field: action.kind, rowId: action.opening.target.id, titleOpening: action.opening, time: time ?? null });
+          }
           const rows = 'rowIds' in action ? { rowIds: action.rowIds } : { rowId: action.rowId };
           return editor.edit(next, shown, { field: action.kind, ...rows, time: time ?? null });
         }
@@ -1184,10 +1188,13 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
     },
     captureTemplateTitle: (opening: OutlineTitleOpening) => {
       const shown = current?.state.checkpoint;
-      return (title: string) => run(editor => {
-        if (!shown) throw new Error(EDITOR_CHANGED);
-        return editor.editTemplateTitle(shown, opening, title);
-      });
+      return (title: string) => {
+        const time = owner ? actionClock.capture(owner) ?? null : null;
+        return run(editor => {
+          if (!shown) throw new Error(EDITOR_CHANGED);
+          return editor.editTemplateTitle(shown, opening, title, time);
+        });
+      };
     },
     captureSermonNoteText: (target: SermonNoteTarget, text: string | undefined) => {
       const checkpoint = current?.state.checkpoint;
@@ -1250,7 +1257,7 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
     // After a refusal this also drops the refused change (EditorController.acceptRemote).
     acceptRemote: (compared?: SessionCheckpoint) => run(editor => editor.acceptRemote(undefined, compared)),
     keepLocal: (compared?: SessionCheckpoint) => {
-      const time = owner && compared && (accountPreferenceComparison(compared) || outlinePointPlacementComparison(compared)
+      const time = owner && compared && (accountPreferenceComparison(compared) || outlinePointPlacementComparison(compared) || readOutlineTitleComparison(compared)
         || (['groups', 'councils'].includes(compared.confirmed.resource.collection) && compared.serviceOrderPlacementComparison))
         ? actionClock.capture(owner) ?? null : undefined;
       return run(editor => editor.keepLocal(undefined, compared, time));

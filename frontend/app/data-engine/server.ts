@@ -42,6 +42,8 @@ import { homileticComparisonList, homileticHistoryCollection, homileticLists, ho
 import { boundHomileticMetadata, homileticTitleSnapshot, metadataAfterHomileticPlans, orderHomileticPlans } from './homileticPlanOrder.server';
 import { metadataAfterOutlineMoves } from './outlineMoveProof.server';
 import { metadataAfterOutlinePointPlacement, OUTLINE_POINT_PLACEMENT_HISTORY, type OutlinePointPlacementWrite } from './outlinePointPlacement.server';
+import { OUTLINE_TITLE_HISTORY, OUTLINE_TITLE_QUEUED, OUTLINE_TITLE_REVIEW, OUTLINE_TITLE_SETTLED, outlineTitlePolicy, type OutlineTitleCollection, type OutlineTitleHistoryPage } from './outlineTitleAction';
+import { boundOutlineTitleMetadata, orderOutlineTitles, outlineTitleProofPolicy } from './outlineTitleOrder.server';
 import { PREACH_DATE_FIELD_POLICY, type PreachDateField, type PreachDateFieldHistoryPage, type PreachDateFieldValue } from './preachDateFieldAction';
 import { alignPreachStatusCommand, PREACH_STATUS_POLICY, type PreachStatusHistoryPage, type PreachStatusValue } from './preachStatusAction';
 import { advanceResourceSnapshot, commandFingerprint, getResourcePolicy, isValidIdentifier, TOMBSTONE_OWNER_FIELD, validateCommand } from './protocol';
@@ -484,7 +486,7 @@ function retainUncertainChronology(plan: Awaited<ReturnType<typeof planDataComma
       for (const child of uncertain) if (contains(item, child)) conflicts.delete(JSON.stringify(child.path));
       const path = JSON.stringify(item.path);
       const existing = conflicts.get(path);
-      if (!existing || (!isAuthoredListComparison(existing.code) && !homileticComparisonList(existing))) conflicts.set(path, item);
+      if (!existing || (!isAuthoredListComparison(existing.code) && existing.code !== OUTLINE_TITLE_REVIEW && existing.code !== OUTLINE_TITLE_SETTLED && existing.code !== OUTLINE_TITLE_QUEUED && !homileticComparisonList(existing))) conflicts.set(path, item);
     }
   }
   return { result: { kind: 'conflict', operationId: command.operationId, snapshot: current, conflicts: [...conflicts.values()] }, writes: [] };
@@ -603,7 +605,7 @@ function orderGroupFlowFields(command: DataCommand, current: ResourceSnapshot, m
   return { block, step, blockStatus, duration: { ...duration, command: alignGroupStepDurationRepresentation(duration.command, current) } };
 }
 
-async function persistAcceptedCommand(transaction: Transaction, { owner, command, snapshot: primarySnapshot, effects, rawDocuments, listOrder, dateOrder, meetingOrder, groupFlowOrder, preachingOrder, statusOrder, serviceFlagOrder, serviceStepTitleOrder, serviceStepScriptureOrder, councilTopicTitleOrder, councilAssemblyOrder, councilTopicKindOrder, councilOutcomeOrder, thoughtLockOrder, thoughtPlacementOrder, markOrder, fieldOrder, exegeticalOrder, homileticOrder, thoughtTagOrder, documentTagOrder, sourceNoteOrder, serviceOrderPlacement, serviceOrderStepPlacement, groupFlowStepPlacement, councilTopicPlacement, outlinePointPlacement, seriesItemPlacement, seriesMembershipWrites, cachedSeriesHead }: {
+async function persistAcceptedCommand(transaction: Transaction, { owner, command, snapshot: primarySnapshot, effects, rawDocuments, listOrder, dateOrder, meetingOrder, groupFlowOrder, preachingOrder, statusOrder, serviceFlagOrder, serviceStepTitleOrder, serviceStepScriptureOrder, councilTopicTitleOrder, councilAssemblyOrder, councilTopicKindOrder, councilOutcomeOrder, thoughtLockOrder, thoughtPlacementOrder, markOrder, fieldOrder, exegeticalOrder, homileticOrder, outlineTitleOrder, thoughtTagOrder, documentTagOrder, sourceNoteOrder, serviceOrderPlacement, serviceOrderStepPlacement, groupFlowStepPlacement, councilTopicPlacement, outlinePointPlacement, seriesItemPlacement, seriesMembershipWrites, cachedSeriesHead }: {
   owner: string;
   command: DataCommand;
   snapshot: ResourceSnapshot;
@@ -628,6 +630,7 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
   fieldOrder?: ReturnType<typeof orderDocumentFields>;
   exegeticalOrder?: ReturnType<typeof orderExegeticalPoints>;
   homileticOrder?: ReturnType<typeof orderHomileticPlans>;
+  outlineTitleOrder?: ReturnType<typeof orderOutlineTitles>;
   thoughtTagOrder?: ReturnType<typeof orderThoughtTags>;
   documentTagOrder?: ReturnType<typeof orderDocumentTags>;
   sourceNoteOrder?: ReturnType<typeof orderSourceNoteLinks>;
@@ -672,7 +675,9 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
       : metadataAfterDocumentFields({ ...snapshot, metadata: thoughtPlacement }, raw, primary ? fieldOrder : undefined);
     const exegetical = metadataAfterExegeticalPoints({ ...snapshot, metadata }, raw?._dataEngine, primary ? exegeticalOrder : undefined);
     const homiletic = metadataAfterHomileticPlans({ ...snapshot, metadata: exegetical }, raw, primary ? homileticOrder : undefined);
-    const tags = metadataAfterThoughtTags({ ...snapshot, metadata: homiletic }, raw, primary ? thoughtTagOrder : undefined);
+    const titlePolicy = outlineTitleProofPolicy(snapshot.resource.collection);
+    const titles = titlePolicy ? metadataAfterRowDetails({ ...snapshot, metadata: homiletic }, raw, titlePolicy, primary ? outlineTitleOrder : undefined) : homiletic;
+    const tags = metadataAfterThoughtTags({ ...snapshot, metadata: titles }, raw, primary ? thoughtTagOrder : undefined);
     const documentTags = metadataAfterDocumentTags({ ...snapshot, metadata: tags }, raw, primary ? documentTagOrder : undefined);
     const sourceNotes = metadataAfterSourceNoteLinks({ ...snapshot, metadata: documentTags }, raw, primary ? sourceNoteOrder : undefined);
     const outlineMoves = metadataAfterOutlineMoves({ ...snapshot, metadata: sourceNotes }, raw);
@@ -696,7 +701,7 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
       ? acceptedSeriesCatalogVersion(feedWrites) : undefined;
     const bounded = snapshot.resource.collection === 'sermons' ? boundHomileticMetadata(value, listMetadata) : listMetadata;
     transaction.set(adminDb.collection(snapshot.resource.collection).doc(snapshot.resource.id), { ...value,
-      _dataEngine: { ...bounded, ...(seriesDeletionVersion !== undefined && { [SERIES_MEMBERSHIP_DELETION]: seriesDeletionVersion }) } });
+      _dataEngine: { ...boundOutlineTitleMetadata(value, bounded), ...(seriesDeletionVersion !== undefined && { [SERIES_MEMBERSHIP_DELETION]: seriesDeletionVersion }) } });
   }
   for (const [index, addition] of (listOrder?.discarded ?? []).entries()) {
     const collection = command.resource.collection === 'serviceOrders' ? SERVICE_ORDER_STEP_SCRIPTURE_POLICY.history : DOCUMENT_METADATA_HISTORY;
@@ -768,6 +773,7 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
     transaction.set(history.doc(historyEntryId(primarySnapshot, command.operationId)), { ...displaced, acceptedAt: new Date().toISOString() });
   }
   persistHomileticHistory(transaction, command, primarySnapshot, homileticOrder);
+  if (outlineTitleOrder) persistRowDetailHistory(transaction, command, primarySnapshot, outlineTitleOrder.policy, outlineTitleOrder);
   persistRowDetailHistory(transaction, command, primarySnapshot, GROUP_MEETING_FIELD_POLICY, meetingOrder);
   persistRowDetailHistory(transaction, command, primarySnapshot, GROUP_BLOCK_TITLE_POLICY, groupFlowOrder?.block);
   persistRowDetailHistory(transaction, command, primarySnapshot, GROUP_STEP_TITLE_POLICY, groupFlowOrder?.step);
@@ -941,6 +947,7 @@ export async function processCommand(owner: string, input: unknown, tagCleanup?:
     let fieldOrder: ReturnType<typeof orderDocumentFields> | undefined;
     let exegeticalOrder: ReturnType<typeof orderExegeticalPoints> | undefined;
     let homileticOrder: ReturnType<typeof orderHomileticPlans> | undefined;
+    let outlineTitleOrder: ReturnType<typeof orderOutlineTitles>;
     let thoughtTagOrder: ReturnType<typeof orderThoughtTags> | undefined;
     let documentTagOrder: ReturnType<typeof orderDocumentTags> | undefined;
     let sourceNoteOrder: ReturnType<typeof orderSourceNoteLinks> | undefined;
@@ -983,7 +990,8 @@ export async function processCommand(owner: string, input: unknown, tagCleanup?:
       fieldOrder = orderDocumentFields(markOrder.command, current, raw?._dataEngine, serverMs, listOrder.resolved.has(''));
       exegeticalOrder = orderExegeticalPoints(fieldOrder.command, current, raw?._dataEngine, serverMs);
       homileticOrder = orderHomileticPlans(exegeticalOrder.command, current, raw?._dataEngine, serverMs);
-      const planned = await planDataCommand(homileticOrder.command, current, {
+      outlineTitleOrder = orderOutlineTitles(homileticOrder.command, current, raw?._dataEngine, serverMs);
+      const planned = await planDataCommand(outlineTitleOrder?.command ?? homileticOrder.command, current, {
         serviceOrderPlacement: { rawMetadata: raw?._dataEngine, serverMs },
         seriesPlacementMetadata: resource => rawDocuments.get(resourceKey(resource))?._dataEngine,
         ...(serverMs !== undefined && { seriesMembershipOrder: { serverMs,
@@ -1010,9 +1018,9 @@ export async function processCommand(owner: string, input: unknown, tagCleanup?:
         list: relationListFor(owner, transaction, rawDocuments),
       });
       const uncertain = [...(dateOrder.uncertain ?? []), ...meetingOrder.uncertain, ...groupFlowOrder.block.uncertain, ...groupFlowOrder.step.uncertain, ...groupFlowOrder.blockStatus.uncertain, ...groupFlowOrder.duration.uncertain, ...preachingOrder.uncertain, ...statusOrder.uncertain, ...serviceFlagOrder.uncertain, ...serviceStepTitleOrder.uncertain, ...serviceStepScriptureOrder.uncertain, ...councilTopicTitleOrder.uncertain, ...councilAssemblyOrder.uncertain, ...councilTopicKindOrder.uncertain, ...councilOutcomeOrder.uncertain, ...thoughtLockOrder.uncertain, ...thoughtPlacementOrder.uncertain, ...(markOrder.uncertain ?? []), ...(fieldOrder.uncertain ?? []), ...exegeticalOrder.uncertain, ...thoughtTagOrder.uncertain, ...documentTagOrder.uncertain, ...sourceNoteOrder.uncertain, ...listOrder.uncertain];
-      uncertain.push(...homileticOrder.uncertain);
+      uncertain.push(...homileticOrder.uncertain, ...(outlineTitleOrder?.uncertain ?? []));
       const blockedByComparison = planned.result.kind === 'conflict' || uncertain.length > 0;
-      const plan = retainUncertainChronology(planned, command, current, blockedByComparison ? [...uncertain, ...listOrder.rejectedChoices, ...homileticOrder.settled] : uncertain);
+      const plan = retainUncertainChronology(planned, command, current, blockedByComparison ? [...uncertain, ...listOrder.rejectedChoices, ...homileticOrder.settled, ...(outlineTitleOrder?.settled ?? [])] : uncertain);
       const acceptedAt = new Date().toISOString();
       // The planner exposes writes only for acknowledged commands.
       effects = plan.writes.map(effect => stampAcceptedResource(snapshotFromRaw(effect.resource, rawDocuments.get(resourceKey(effect.resource))), effect, acceptedAt));
@@ -1041,12 +1049,13 @@ export async function processCommand(owner: string, input: unknown, tagCleanup?:
     result = receipt.result;
     if (result.kind === 'acknowledged') deletedTag = detachedTagName ?? null;
     if (result.kind === 'acknowledged') {
-      await persistAcceptedCommand(transaction, { owner, command, snapshot: result.snapshot, effects, rawDocuments, listOrder, dateOrder, meetingOrder, groupFlowOrder, preachingOrder, statusOrder, serviceFlagOrder, serviceStepTitleOrder, serviceStepScriptureOrder, councilTopicTitleOrder, councilAssemblyOrder, councilTopicKindOrder, councilOutcomeOrder, thoughtLockOrder, thoughtPlacementOrder, markOrder, fieldOrder, exegeticalOrder, homileticOrder, thoughtTagOrder, documentTagOrder, sourceNoteOrder, serviceOrderPlacement, serviceOrderStepPlacement, groupFlowStepPlacement, councilTopicPlacement, outlinePointPlacement, seriesItemPlacement, seriesMembershipWrites, cachedSeriesHead });
+      await persistAcceptedCommand(transaction, { owner, command, snapshot: result.snapshot, effects, rawDocuments, listOrder, dateOrder, meetingOrder, groupFlowOrder, preachingOrder, statusOrder, serviceFlagOrder, serviceStepTitleOrder, serviceStepScriptureOrder, councilTopicTitleOrder, councilAssemblyOrder, councilTopicKindOrder, councilOutcomeOrder, thoughtLockOrder, thoughtPlacementOrder, markOrder, fieldOrder, exegeticalOrder, homileticOrder, outlineTitleOrder, thoughtTagOrder, documentTagOrder, sourceNoteOrder, serviceOrderPlacement, serviceOrderStepPlacement, groupFlowStepPlacement, councilTopicPlacement, outlinePointPlacement, seriesItemPlacement, seriesMembershipWrites, cachedSeriesHead });
     }
     if (result.kind === 'conflict') {
       // Keep a proven earlier value even if another field blocks the command. Mark a result that
       // still depends on the comparison separately from one already visible in the document.
       persistHomileticHistory(transaction, command, result.snapshot, homileticOrder, true);
+      if (outlineTitleOrder) persistRowDetailHistory(transaction, command, result.snapshot, outlineTitleOrder.policy, outlineTitleOrder);
     }
     const comparison = exegeticalOrder?.comparison;
     if (comparison && result.kind === 'conflict'
@@ -1358,6 +1367,15 @@ export async function listSermonGoalTypeHistory(owner: string, sermonId: string,
   const resource = { collection: 'sermons', id: sermonId };
   const page = await listHistoryEntries<SermonGoalTypeHistoryPage['entries'][number]>(owner, resource, SERMON_GOAL_TYPE_HISTORY, generation, cursor, 'sermon-gone');
   return { owner, sermonId, generation, ...page, entries: page.entries.filter(entry => isSermonGoalType(entry.type) && isSermonGoalType(entry.winnerType)) };
+}
+
+export async function listOutlineTitleHistory(owner: string, collection: OutlineTitleCollection, id: string, generation: string,
+  cursor?: string): Promise<OutlineTitleHistoryPage> {
+  if (!outlineTitlePolicy(collection)) throw new DataEngineServerError(INVALID_ARGUMENT, 400);
+  const page = await listHistoryEntries<OutlineTitleHistoryPage['entries'][number]>(
+    owner, { collection, id }, OUTLINE_TITLE_HISTORY, generation, cursor, collection === 'sermons' ? 'sermon-gone' : 'template-gone',
+  );
+  return { owner, id, generation, ...page };
 }
 
 export async function listOutlinePointPlacementHistory(owner: string, sermonId: string, generation: string, cursor?: string): Promise<OutlinePointPlacementHistoryPage> {

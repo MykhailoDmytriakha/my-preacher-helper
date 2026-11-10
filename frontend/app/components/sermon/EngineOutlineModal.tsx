@@ -45,7 +45,7 @@ export function EngineOutlineModal({ sermonId, onClose, withScratch = false }: {
       }).join('\n').slice(0, 500), discard: () => form.discardRecovery(source) })), recover: form.recover });
   const save = async () => {
     if (readOnly || !valid || !form.dirty || !form.durable || !form.status?.canSave) return;
-    try { await form.save(); onClose(); } catch { /* The shared form retains and reports the failure. */ }
+    try { await form.save(undefined, form.captureDocumentMetadataAction()); onClose(); } catch { /* The shared form retains and reports the failure. */ }
   };
   return <FormDialog title={t('planEditor.title')} size="wide" onClose={() => { void form.cancel().then(onClose).catch(() => undefined); }} unsaved={form.dirty} dismissOnBackdrop showCloseButton
     onSubmit={event => { event.preventDefault(); void save(); }}
@@ -54,7 +54,7 @@ export function EngineOutlineModal({ sermonId, onClose, withScratch = false }: {
         submitDisabled={readOnly || !valid || !form.dirty || !form.durable || !form.status?.canSave} />}>
     <div className="space-y-4">
       <DataSyncStatus subject={form.recoveryIdentity} status={form.status} error={form.error} errorWords={form.errorWords} onRetry={form.retry}
-        onKeepLocal={valid ? form.keepLocal : undefined} onAcceptRemote={form.acceptRemote}
+        onKeepLocal={valid ? () => form.keepLocal(undefined, form.captureDocumentMetadataAction()) : undefined} onAcceptRemote={form.acceptRemote}
         recoveryChoices={recovery.choices} recoveryLoading={recovery.loading} recoveryError={recovery.error}
         onRecover={recovery.recover} onDiscardRecovery={recovery.discard} />
       {withScratch && sermon ? <ScratchProposalBoard sermonId={sermonId} sermon={sermon} form={form} readOnly={readOnly}

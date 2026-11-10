@@ -6,6 +6,8 @@ import { equalValues } from './fieldValues';
 import { GROUP_BLOCK_STATUS_POLICY } from './groupBlockStatusAction';
 import { GROUP_BLOCK_TITLE_POLICY, GROUP_STEP_TITLE_POLICY } from './groupFlowTitleAction';
 import { GROUP_STEP_DURATION_POLICY } from './groupStepDurationAction';
+import { outlinePlacementField } from './outlinePlacementResource';
+import { outlineTitleId, outlineTitlePath, outlineTitlePolicy, OUTLINE_TITLE_QUEUED, OUTLINE_TITLE_SETTLED } from './outlineTitleAction';
 import { matchesRowDetailBirth } from './rowDetailAction';
 import { knownRowDetailPredecessor, pendingRowDetailRebases } from './rowDetailCapture';
 import { boundedRowId, existingRowField, existingRowFields, isCapturedRowConflict, matchesRowAction, replaceExistingRowField, rowConflictPath } from './rowFieldAction';
@@ -17,28 +19,30 @@ import type { CommitRequest } from './commits';
 import type { RowDetailObservation, RowDetailPolicy } from './rowDetailAction';
 import type { SessionCheckpoint, ShownCopy } from './session';
 import type { ConflictDetail, DocumentData, FieldChange, ResourceSnapshot } from './types';
+import type { OutlineTitleOpening } from '@/utils/sermonNoteText';
+
 
 type Value = string | number | boolean | null | DocumentData;
 type Action = RowDetailObservation<Value>;
 type Draft = { generation: string; action: Action; reviewed?: true };
-type DraftKey = 'councilOutcomeDrafts' | 'councilTopicTitleDrafts' | 'groupBlockTitleDrafts' | 'groupStepTitleDrafts' | 'groupBlockStatusDrafts' | 'groupStepDurationDrafts' | 'thoughtLockDrafts' | 'thoughtPlacementDrafts';
-type ActionKey = 'councilOutcomeActions' | 'councilTopicTitleActions' | 'groupBlockTitleActions' | 'groupStepTitleActions' | 'groupBlockStatusActions' | 'groupStepDurationActions' | 'thoughtLockActions' | 'thoughtPlacementActions';
-export type RowFieldActionKind = 'council-topic-outcome' | 'council-topic-title' | 'group-block-title' | 'group-step-title' | 'group-block-status' | 'group-step-duration' | 'thought-lock' | 'thought-placement';
+type DraftKey = 'councilOutcomeDrafts' | 'councilTopicTitleDrafts' | 'groupBlockTitleDrafts' | 'groupStepTitleDrafts' | 'groupBlockStatusDrafts' | 'groupStepDurationDrafts' | 'thoughtLockDrafts' | 'thoughtPlacementDrafts' | 'outlineTitleDrafts';
+type ActionKey = 'councilOutcomeActions' | 'councilTopicTitleActions' | 'groupBlockTitleActions' | 'groupStepTitleActions' | 'groupBlockStatusActions' | 'groupStepDurationActions' | 'thoughtLockActions' | 'thoughtPlacementActions' | 'outlineTitleActions';
+export type RowFieldActionKind = 'council-topic-outcome' | 'council-topic-title' | 'group-block-title' | 'group-step-title' | 'group-block-status' | 'group-step-duration' | 'thought-lock' | 'thought-placement' | 'outline-title';
 export type RowFieldStamp = { field: RowFieldActionKind; time: ActionTime | null } & (
-  { rowId: string } | { rowIds: readonly string[] }
+  { rowId: string; titleOpening?: OutlineTitleOpening } | { rowIds: readonly string[] }
 );
 export type RowFieldDrafts = Partial<Record<DraftKey, Record<string, Draft>>>;
 export type AutosaveRowFieldActions = Partial<Record<ActionKey, Action[]>>;
 
 type Target = {
   stamp: RowFieldActionKind; draft: DraftKey; action: ActionKey; field: string; keepReselection: boolean;
-  policy: Pick<RowDetailPolicy<string, Value>, 'collection' | 'fields' | 'birth' | 'target' | 'proofs' | 'actions' | 'history'>;
+  policy: Pick<RowDetailPolicy<string, Value>, 'collection' | 'fields' | 'birth' | 'target' | 'acceptsRowId' | 'proofs' | 'actions' | 'history'>;
 };
 
 function autosaveTarget<Field extends string, Item extends Value>(policy: RowDetailPolicy<Field, Item>, field: Field,
   stamp: RowFieldActionKind, draft: DraftKey, action: ActionKey): Target {
-  const { collection, birth, proofs, actions, history } = policy;
-  return { stamp, draft, action, field, keepReselection: Boolean(policy.allowUnchanged), policy: { collection, birth, proofs, actions, history,
+  const { collection, birth, proofs, actions, history, acceptsRowId } = policy;
+  return { stamp, draft, action, field, keepReselection: Boolean(policy.allowUnchanged), policy: { collection, birth, proofs, actions, history, acceptsRowId,
     fields: [field], target: () => policy.target(field) } };
 }
 
@@ -51,6 +55,8 @@ const TARGETS: readonly Target[] = [
   autosaveTarget(GROUP_STEP_DURATION_POLICY, 'durationMin', 'group-step-duration', 'groupStepDurationDrafts', 'groupStepDurationActions'),
   autosaveTarget(THOUGHT_LOCK_POLICY, 'isLocked', 'thought-lock', 'thoughtLockDrafts', 'thoughtLockActions'),
   autosaveTarget(THOUGHT_PLACEMENT_POLICY, 'outlineLocation', 'thought-placement', 'thoughtPlacementDrafts', 'thoughtPlacementActions'),
+  ...['sermons', 'planTemplates'].map(collection => autosaveTarget(outlineTitlePolicy(collection)!, 'text', 'outline-title',
+    'outlineTitleDrafts', 'outlineTitleActions')),
 ];
 
 const targetsFor = (collection: string) => TARGETS.filter(target => target.policy.collection === collection);
@@ -73,17 +79,17 @@ function validDrafts(checkpoint: SessionCheckpoint, value: DocumentData | null, 
 }
 
 function observeRowEdit(checkpoint: SessionCheckpoint, value: DocumentData | null, visible: ShownCopy,
-  target: Target, rowId: string, time: ActionTime | null, prior?: Action): Action | undefined {
-  if (!boundedRowId(rowId)) return;
+  target: Target, rowId: string, time: ActionTime | null, prior?: Action, opening?: OutlineTitleOpening): Action | undefined {
+  if (!(target.policy.acceptsRowId ?? boundedRowId)(rowId)) return;
   const old = fieldAt(checkpoint.draft, rowId, target), after = fieldAt(value, rowId, target);
   const rowCreatedAt = birthAt(checkpoint.draft, rowId, target);
   if (old === undefined || after === undefined || (equalValues(old, after) && !target.keepReselection)
     || rowCreatedAt === undefined || birthAt(value, rowId, target) !== rowCreatedAt
-    || (visible.draft && birthAt(visible.draft, rowId, target) !== rowCreatedAt)) return;
+    || (!opening && visible.draft && birthAt(visible.draft, rowId, target) !== rowCreatedAt)) return;
   const typing = prior && !isCaptured(checkpoint, prior, target);
   const shownValue = fieldAt(visible.draft, rowId, target);
-  const before = typing ? prior.before : shownValue === undefined ? old : shownValue;
-  const observedRevision = prior?.observedRevision ?? visible.confirmed.metadata!.revision;
+  const before = typing ? prior.before : opening?.text ?? (shownValue === undefined ? old : shownValue);
+  const observedRevision = prior?.observedRevision ?? opening?.version?.observedRevision ?? visible.confirmed.metadata!.revision;
   if (!equalValues(before, after) || target.keepReselection) return { rowId, rowCreatedAt, before, after, time, observedRevision };
 }
 
@@ -106,12 +112,14 @@ function stageField(checkpoint: SessionCheckpoint, value: DocumentData | null, s
   if (!metadata || metadata.deleted || stamp?.field !== target.stamp) return staged;
   const time = stamp.time === null ? null : boundedActionTime(stamp.time);
   if (time === undefined) return staged;
+  const opening = target.stamp === 'outline-title' && 'titleOpening' in stamp ? stamp.titleOpening : undefined;
+  if (opening && (opening.version?.generation !== metadata.generation || opening.version.observedRevision > metadata.revision)) return staged;
   const rowIds = 'rowIds' in stamp ? stamp.rowIds : [stamp.rowId];
   const priorById = new Map(validDrafts(checkpoint, checkpoint.draft, target).map(item => [item.action.rowId, item.action]));
   const visible = shown?.editGeneration === checkpoint.editGeneration
     && shown.confirmed.metadata?.generation === metadata.generation ? shown : checkpoint;
   for (const rowId of rowIds) {
-    const action = observeRowEdit(checkpoint, value, visible, target, rowId, time, priorById.get(rowId));
+    const action = observeRowEdit(checkpoint, value, visible, target, rowId, time, priorById.get(rowId), opening);
     if (action) staged.push({ generation: metadata.generation, action });
   }
   return staged;
@@ -145,6 +153,49 @@ export function stageReviewedCouncilTopics(checkpoint: SessionCheckpoint, confli
   if (stamps.length) checkpoint.councilOutcomeDrafts = { ...checkpoint.councilOutcomeDrafts, ...Object.fromEntries(stamps) };
 }
 
+/** A title choice sees the exact saved revision, even when it contains a repeated title. */
+export function stageReviewedOutlineTitles(checkpoint: SessionCheckpoint, conflicts: readonly ConflictDetail[], time: ActionTime | null): void {
+  const { confirmed, draft } = checkpoint;
+  const metadata = confirmed.metadata;
+  if (!metadata || metadata.deleted || !draft) return;
+  const collection = confirmed.resource.collection;
+  const target = targetsFor(collection).find(item => item.stamp === 'outline-title');
+  if (!target) return;
+  for (const { path } of conflicts) {
+    const rowId = outlineTitleId(path, collection);
+    if (!rowId) continue;
+    const before = fieldAt(confirmed.value, rowId, target), after = fieldAt(draft, rowId, target);
+    const rowCreatedAt = birthAt(confirmed.value, rowId, target);
+    if (typeof before !== 'string' || typeof after !== 'string' || before === after || rowCreatedAt === undefined
+      || birthAt(draft, rowId, target) !== rowCreatedAt) continue;
+    checkpoint.outlineTitleDrafts = { ...checkpoint.outlineTitleDrafts,
+      [rowId]: { generation: metadata.generation, action: { rowId, rowCreatedAt, before, after, observedRevision: metadata.revision, time } } };
+  }
+}
+
+/** Preserve independent title actions and queued winners through a choice about a different field. */
+export function carryOutlineTitleActions(source: SessionCheckpoint, checkpoint: SessionCheckpoint): void {
+  const { confirmed, draft } = checkpoint;
+  const metadata = confirmed.metadata;
+  const collection = confirmed.resource.collection;
+  const target = targetsFor(collection).find(item => item.stamp === 'outline-title');
+  if (!target || !metadata || metadata.deleted || source.confirmed.metadata?.generation !== metadata.generation) return;
+  const staged = Object.values(source.outlineTitleDrafts ?? {}).filter(({ generation, action }) =>
+    generation === metadata.generation && action.observedRevision <= metadata.revision
+    && fieldAt(draft, action.rowId, target) === action.after && fieldAt(confirmed.value, action.rowId, target) !== action.after
+    && birthAt(confirmed.value, action.rowId, target) === action.rowCreatedAt && birthAt(draft, action.rowId, target) === action.rowCreatedAt);
+  if (staged.length) checkpoint.outlineTitleDrafts = { ...checkpoint.outlineTitleDrafts,
+    ...Object.fromEntries(staged.map(item => [item.action.rowId, item])) };
+  for (const { path, code, mine } of source.conflicts) {
+    const rowId = code === OUTLINE_TITLE_QUEUED && outlineTitleId(path, collection);
+    if (!rowId || checkpoint.outlineTitleDrafts?.[rowId] || fieldAt(draft, rowId, target) !== mine.value || fieldAt(confirmed.value, rowId, target) === mine.value) continue;
+    const actions = [source.outlineTitleDrafts?.[rowId]?.action, ...Object.values(source.pending).flatMap(value => value.outlineTitleActions ?? [])];
+    const action = actions.find(candidate => candidate?.rowId === rowId && candidate.after === mine.value
+      && candidate.observedRevision <= metadata.revision && birthAt(confirmed.value, rowId, target) === candidate.rowCreatedAt);
+    if (action) checkpoint.outlineTitleDrafts = { ...checkpoint.outlineTitleDrafts, [rowId]: { generation: metadata.generation, action } };
+  }
+}
+
 function uncaptured(checkpoint: SessionCheckpoint, target: Target) {
   return validDrafts(checkpoint, checkpoint.draft, target).map(draft => draft.action).filter(action => !isCaptured(checkpoint, action, target));
 }
@@ -155,7 +206,7 @@ export function hasUncapturedAutosaveRowField(checkpoint: SessionCheckpoint): bo
 
 function manualRowActions(checkpoint: SessionCheckpoint, baseline: ResourceSnapshot, opening: DocumentData | null,
   target: Target, captured: ActionTime | null | undefined, thoughtPlacementIds?: readonly string[]): Action[] {
-  const selectedByForm = target.stamp === 'group-step-duration' || target.stamp === 'council-topic-outcome';
+  const selectedByForm = target.stamp === 'group-step-duration' || target.stamp === 'council-topic-outcome' || target.stamp === 'outline-title';
   const placement = target.stamp === 'thought-placement' ? thoughtPlacementIds?.filter(boundedRowId) : undefined;
   if ((!selectedByForm && !placement?.length) || captured === undefined || !baseline.metadata || baseline.metadata.deleted) return [];
   const time = captured === null ? null : boundedActionTime(captured);
@@ -166,7 +217,7 @@ function manualRowActions(checkpoint: SessionCheckpoint, baseline: ResourceSnaps
   const candidates = placement ? [...new Set(placement)].map(id => [id, shown.get(id)] as const) : [...shown];
   return candidates.flatMap(([rowId, before]) => {
     const after = next.get(rowId), rowCreatedAt = birthAt(opening, rowId, target);
-    return boundedRowId(rowId) && before !== undefined && after !== undefined && !equalValues(before, after)
+    return (target.policy.acceptsRowId ?? boundedRowId)(rowId) && before !== undefined && after !== undefined && !equalValues(before, after)
       && rowCreatedAt !== undefined && birthAt(checkpoint.draft, rowId, target) === rowCreatedAt
       ? [{ rowId, rowCreatedAt, before, after, time, observedRevision: baseline.metadata!.revision }] : [];
   });
@@ -178,7 +229,11 @@ export function captureRowFields(checkpoint: SessionCheckpoint, baseline: Resour
   const opening = predecessor ? predecessor.value : baseline.value;
   const result: AutosaveRowFieldActions = {};
   for (const target of targetsFor(baseline.resource.collection)) {
-    const actions = [...uncaptured(checkpoint, target), ...manualRowActions(checkpoint, baseline, opening, target, manualTime, thoughtPlacementIds)].filter(action => birthAt(opening, action.rowId, target) === action.rowCreatedAt)
+    const autosaved = uncaptured(checkpoint, target);
+    const manual = manualRowActions(checkpoint, baseline, opening, target, manualTime, thoughtPlacementIds);
+    const autosavedIds = new Set(autosaved.map(action => action.rowId));
+    const actions = [...autosaved, ...manual.filter(action => !autosavedIds.has(action.rowId))]
+      .filter(action => birthAt(opening, action.rowId, target) === action.rowCreatedAt)
       .map(action => {
         const outcome = target.action === 'councilOutcomeActions';
         const policy: RowDetailPolicy<string, Value> = outcome
@@ -241,8 +296,10 @@ export function carryRowFieldDrafts(source: SessionCheckpoint, target: SessionCh
   for (const field of targetsFor(target.confirmed.resource.collection)) {
     if (!source[field.draft]) continue;
     target[field.draft] = source[field.draft];
+    const outline = field.stamp === 'outline-title' ? outlinePlacementField(field.policy.collection) : undefined;
     const valid = validDrafts(target, target.draft, field)
-      .filter(({ action }) => keep(rowConflictPath(action.rowId, field.policy.target(field.field))));
+      .filter(({ action }) => keep((outline && outlineTitlePath(outline, action.rowId, target.draft?.[outline]))
+        || rowConflictPath(action.rowId, field.policy.target(field.field))));
     if (valid.length) target[field.draft] = Object.fromEntries(valid.map(item => [item.action.rowId, item]));
     else delete target[field.draft];
   }
@@ -304,12 +361,15 @@ function capturedPlacementPart(conflict: ConflictDetail, action: Action): boolea
 }
 
 export function isCapturedAutosaveRowFieldConflict(conflict: ConflictDetail, record: CommitRequest): boolean {
-  return targetsFor(record.baseline.resource.collection).some(target => record[target.action]?.some(action =>
-    isCapturedRowConflict(conflict, action, target.policy.target(target.field))
+  const collection = record.baseline.resource.collection;
+  return targetsFor(collection).some(target => record[target.action]?.some(action =>
+    isCapturedRowConflict(target.stamp === 'outline-title' && outlineTitleId(conflict.path, collection) === action.rowId
+      ? { ...conflict, path: rowConflictPath(action.rowId, target.policy.target(target.field)) } : conflict, action, target.policy.target(target.field))
     || (target.stamp === 'thought-placement' && capturedPlacementPart(conflict, action))));
 }
 
 export function isAutosaveRowFieldPath(path: readonly string[] | undefined, collection: string): boolean {
+  if (path && outlineTitleId(path, collection)) return true;
   const id = path?.[1]?.startsWith('id:') ? path[1].slice(3) : undefined;
   return boundedRowId(id) && targetsFor(collection).some(target => equalValues(path, rowConflictPath(id, target.policy.target(target.field))));
 }
@@ -318,7 +378,10 @@ export function hasAutosaveRowFieldCaptures(record: CommitRequest): boolean {
   return targetsFor(record.baseline.resource.collection).some(({ action }) => Boolean(record[action]?.length));
 }
 
-export function missingAutosaveRowFieldTarget(stored: DocumentData, record: CommitRequest): boolean {
-  return targetsFor(record.baseline.resource.collection).some(target => record[target.action]?.some(action =>
-    birthAt(stored, action.rowId, target) !== action.rowCreatedAt));
+export function missingAutosaveRowFieldTarget(stored: DocumentData, record: CommitRequest, conflicts: readonly ConflictDetail[] = []): boolean {
+  const collection = record.baseline.resource.collection;
+  const resolved = new Set(conflicts.flatMap(({ code, path }) =>
+    code === OUTLINE_TITLE_SETTLED || code === OUTLINE_TITLE_QUEUED ? outlineTitleId(path, collection) ?? [] : []));
+  return targetsFor(collection).some(target => record[target.action]?.some(action =>
+    (target.stamp !== 'outline-title' || !resolved.has(action.rowId)) && birthAt(stored, action.rowId, target) !== action.rowCreatedAt));
 }

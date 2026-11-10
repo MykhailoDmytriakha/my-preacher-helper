@@ -1,6 +1,7 @@
 import { findPointSection, findSubPointParent } from '@/utils/outlineDnd';
 import { outlineTitleConflictTarget, outlineTitleField, withOutlineTitleText, type OutlineTitleOpening } from '@/utils/sermonNoteText';
 
+import { OUTLINE_TITLE_QUEUED, OUTLINE_TITLE_SETTLED } from './outlineTitleAction';
 import { mergeDocumentFields } from './protocol';
 
 import type { SessionCheckpoint } from './session';
@@ -72,35 +73,87 @@ export function templateTitleEdit(state: SessionCheckpoint, shown: SessionCheckp
   return { draft: updated, stored, conflicts, conflictingTitle: Boolean(conflict) };
 }
 
-export function readOutlineTitleComparison({ confirmed, draft, remoteCandidate, conflicts, editGeneration }: SessionCheckpoint) {
-  if (conflicts.length !== 1 || !draft || !remoteCandidate?.value || !sameGeneration(confirmed, remoteCandidate)) return undefined;
-  const { path, mine: conflictMine } = conflicts[0];
+export const unresolvedOutlineTitleConflicts = (conflicts: readonly ConflictDetail[]) =>
+  conflicts.filter(({ code }) => code !== OUTLINE_TITLE_SETTLED && code !== OUTLINE_TITLE_QUEUED);
+
+/** Keep resolved leaves out of the comparison. A queued winner still carries its original action. */
+export function outlineTitleChoiceFrames(basis: ResourceSnapshot, draft: DocumentData | null, stored: ResourceSnapshot,
+  conflicts: readonly ConflictDetail[]) {
+  const frames = { basis: basis.value, draft, removed: [] as string[][] };
+  if (!draft || !sameGeneration(basis, stored)) return frames;
+  const field = basis.resource.collection === 'planTemplates' ? 'structure' : 'outline';
+  const initialLocal = outlineOf(draft, field), initialOpening = outlineOf(basis.value, field);
+  const live = outlineOf(stored.value, field);
+  if (!initialLocal || !live || !initialOpening) return frames;
+  let local = initialLocal;
+  let opening = initialOpening;
+  for (const { path, code, mine } of conflicts) {
+    if ((code !== OUTLINE_TITLE_SETTLED && code !== OUTLINE_TITLE_QUEUED) || path[0] !== field) continue;
+    const target = outlineTitleConflictTarget(path);
+    if (!target) continue;
+    const saved = outlineTitleField(live, target, field)?.text;
+    const original = outlineTitleField(opening, target, field);
+    if (saved === undefined && original) frames.removed.push(original.path.slice(0, -1));
+    if (outlineTitleField(local, target, field)?.text !== mine.value) continue;
+    if (code === OUTLINE_TITLE_QUEUED && saved !== undefined) {
+      const aligned = withOutlineTitleText(opening, target, saved);
+      if (aligned && aligned !== opening) {
+        opening = aligned;
+        frames.basis = { ...frames.basis, [field]: opening as unknown as Json };
+      }
+    } else {
+      // An action already superseded by a saved title stays retired when that title changes again.
+      const title = saved ?? original?.text;
+      const retired = title === undefined ? undefined : withOutlineTitleText(local, target, title);
+      if (retired && retired !== local) {
+        local = retired;
+        frames.draft = { ...frames.draft, [field]: local as unknown as Json };
+      }
+    }
+  }
+  return frames;
+}
+
+export function readOutlineTitleComparison({ confirmed, draft, remoteCandidate, conflicts: allConflicts, editGeneration }: SessionCheckpoint) {
+  const conflicts = unresolvedOutlineTitleConflicts(allConflicts);
+  if (!conflicts.length || !draft || !remoteCandidate?.value || !sameGeneration(confirmed, remoteCandidate)) return undefined;
   const field = confirmed.resource.collection === 'planTemplates' ? 'structure' : 'outline';
-  if (path[0] !== field) return undefined;
-  const target = outlineTitleConflictTarget(path);
-  if (!target) return undefined;
-  const local = outlineTitleField(outlineOf(draft, field), target, field);
-  const saved = outlineTitleField(outlineOf(remoteCandidate.value, field), target, field);
-  if (!local || conflictMine.value !== local.text || saved?.text === local.text) return undefined;
-  return { mine: local.text, stored: saved?.text,
-    identity: JSON.stringify([path, local.text, saved?.text, remoteCandidate.metadata, editGeneration]) };
+  const proposed = outlineOf(draft, field), storedOutline = outlineOf(remoteCandidate.value, field);
+  const compared: { path: string[]; mine: string; stored: string | undefined }[] = [];
+  for (const { path, mine } of conflicts) {
+    const target = path[0] === field && outlineTitleConflictTarget(path);
+    if (!target) return undefined;
+    const local = outlineTitleField(proposed, target, field);
+    const saved = outlineTitleField(storedOutline, target, field);
+    if (!local || mine.value !== local.text || saved?.text === local.text) return undefined;
+    compared.push({ path, mine: local.text, stored: saved?.text });
+  }
+  const removed = compared.some(entry => entry.stored === undefined);
+  const numbered = (side: 'mine' | 'stored') => compared.map((entry, index) => (index + 1) + '. ' + (entry[side] ?? '—')).join('\n');
+  return { mine: compared.length === 1 ? compared[0].mine : numbered('mine'),
+    stored: compared.length === 1 ? compared[0].stored : numbered('stored'), removed,
+    identity: JSON.stringify([compared, remoteCandidate.metadata, editGeneration]) };
 }
 
 /** Retire only a compared title when taking the stored version. */
 export function keepUncontestedOutlineTitle(basis: ResourceSnapshot, draft: DocumentData | null, stored: ResourceSnapshot | null,
-  conflicts: readonly ConflictDetail[]): DocumentData | undefined {
-  if (conflicts.length !== 1 || !draft || !stored?.value || !sameGeneration(basis, stored)) return undefined;
+  allConflicts: readonly ConflictDetail[]): DocumentData | undefined {
+  const conflicts = unresolvedOutlineTitleConflicts(allConflicts);
+  if (!conflicts.length || !draft || !stored?.value || !sameGeneration(basis, stored)) return undefined;
+  const decided = outlineTitleChoiceFrames(basis, draft, stored, allConflicts);
   const field = basis.resource.collection === 'planTemplates' ? 'structure' : 'outline';
-  const { path } = conflicts[0];
-  if (path[0] !== field) return undefined;
-  const target = outlineTitleConflictTarget(path);
-  const local = outlineOf(draft, field);
-  if (!target || !local) return undefined;
-  const before = outlineTitleField(outlineOf(basis.value, field), target, field);
-  if (!before) return undefined;
-  const reverted = withOutlineTitleText(local, target, before.text);
-  if (!reverted) return undefined;
-  const merged = mergeDocumentFields(basis.value, { ...draft, [field]: reverted as unknown as Json }, stored.value);
+  const opening = outlineOf(basis.value, field);
+  let local = outlineOf(decided.draft, field);
+  if (!local || !opening) return undefined;
+  for (const { path } of conflicts) {
+    const target = path[0] === field && outlineTitleConflictTarget(path);
+    const before = target && outlineTitleField(opening, target, field);
+    if (!target || !before) return undefined;
+    const reverted = withOutlineTitleText(local, target, before.text);
+    if (!reverted) return undefined;
+    local = reverted;
+  }
+  const merged = mergeDocumentFields(decided.basis, { ...decided.draft, [field]: local as unknown as Json }, stored.value);
   if (merged.conflicts.length) {
     throw Object.assign(new Error('Other changes need review'), { code: 'other-changes-first' });
   }

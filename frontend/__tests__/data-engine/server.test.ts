@@ -3,12 +3,13 @@ import { createHash } from 'node:crypto';
 
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { isCollectionServed } from '@/data-engine/activation';
-import { DataEngineServerError, listAccountPreferenceHistory, listBibleMarkHistory, listCommentKindHistory, listExegeticalPointHistory, listCouncilMetadataHistory, listCouncilOutcomeHistory, listDocumentTagHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listHomileticPlanHistory, listMeetingDateHistory, listOutlinePointPlacementHistory, listPlanTemplateNameHistory, listPlanTemplatePointPlacementHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listPrayerStatusHistory, listPrayerTitleHistory, listSermonChurchHistory, listSermonGoalTypeHistory, listSermonPlanModeHistory, listSermonPreparationConfirmationHistory, listSermonSourceNoteLinkHistory, listSermonTitleHistory, listSermonVerseHistory, listSeriesMembershipHistory, listSeriesMetadataHistory, listServiceOrderFlagHistory, listServiceOrderPlacementHistory, listServiceOrderStepPlacementHistory, listServiceOrderStepTitleHistory, listServiceOrderTitleHistory, listStudyNoteTitleHistory, listTagColorHistory, listThoughtLockHistory, listThoughtPlacementHistory, listThoughtTagHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
+import { DataEngineServerError, listAccountPreferenceHistory, listBibleMarkHistory, listCommentKindHistory, listExegeticalPointHistory, listCouncilMetadataHistory, listCouncilOutcomeHistory, listDocumentTagHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listHomileticPlanHistory, listMeetingDateHistory, listOutlinePointPlacementHistory, listOutlineTitleHistory, listPlanTemplateNameHistory, listPlanTemplatePointPlacementHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listPrayerStatusHistory, listPrayerTitleHistory, listSermonChurchHistory, listSermonGoalTypeHistory, listSermonPlanModeHistory, listSermonPreparationConfirmationHistory, listSermonSourceNoteLinkHistory, listSermonTitleHistory, listSermonVerseHistory, listSeriesMembershipHistory, listSeriesMetadataHistory, listServiceOrderFlagHistory, listServiceOrderPlacementHistory, listServiceOrderStepPlacementHistory, listServiceOrderStepTitleHistory, listServiceOrderTitleHistory, listStudyNoteTitleHistory, listTagColorHistory, listThoughtLockHistory, listThoughtPlacementHistory, listThoughtTagHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
 import { collectionHeadId, HEADS_COLLECTION, sequenceId } from '@/data-engine/serverFeed';
 import { replaySeriesReorder, type SeriesReorderStep } from '@/data-engine/seriesReorder';
 import { readSermonConflict } from '@/data-engine/rowConflictDetails';
 import { keepUncontestedSermonFields } from '@/data-engine/sermonFieldChoice';
 import { DataSession } from '@/data-engine/session';
+import { keepUncontestedOutlineTitle, readOutlineTitleComparison } from '@/data-engine/outlineTitleEdit';
 import { outlinePointGap, outlinePointOrder } from '@/utils/outlineDnd';
 import { stepGap } from '@/utils/serviceOrderStepPlacement';
 
@@ -4688,6 +4689,240 @@ describe('transactional DataEngine server', () => {
       expect(await processCommand(owner, save('desktop', field, thesis(field, 'steps'), 40))).toMatchObject({ kind: 'acknowledged' });
       expect(await processCommand(owner, save('phone', field, thesis(field, 'promises'), null)))
         .toMatchObject({ kind: 'conflict', conflicts: [{ path: ['preparation', 'thesis', field] }] });
+    });
+  });
+
+  describe.each([['sermons', 'outline'], ['planTemplates', 'structure']] as const)('title returns in %s', (collection, field) => {
+    async function seed(kind: 'point' | 'subpoint', rowId: string = kind) {
+      const resource = { collection, id: 'outline-title-return' };
+      const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] };
+      const now = '2026-11-10T00:00:00.000Z';
+      const outline = (words: string) => ({ introduction: [], main: [
+        { id: kind === 'point' ? rowId : 'point', text: kind === 'point' ? words : 'Independent parent', note: 'Preserved reminder',
+          subPoints: [{ id: kind === 'subpoint' ? rowId : 'subpoint', text: kind === 'subpoint' ? words : 'Independent subpoint', position: 1 }] },
+        { id: 'neighbor', text: 'Independent point' },
+      ], conclusion: [] });
+      const opening = outline('Original title'), later = outline('Later desktop title'), offline = outline('Earlier offline title');
+      const common = { userId: base.owner, createdAt: now, updatedAt: now, [field]: opening };
+      const value = collection === 'sermons'
+        ? { ...common, title: 'Sermon', verse: 'John 3:16', date: now, thoughts: [] }
+        : { ...common, name: 'Template' };
+      expect(await processCommand(base.owner, { ...base, kind: 'create', operationId: 'seed', generation: null, value }))
+        .toMatchObject({ kind: 'acknowledged' });
+      const stamp = (offset: number | null) => offset === null ? null
+        : { earliestMs: 1_800_000_000_000 + offset, latestMs: 1_800_000_000_005 + offset };
+      const words = (value: typeof opening) => {
+        const point = value.main.find(row => row.id === (kind === 'point' ? rowId : 'point'))!;
+        return kind === 'point' ? point.text : point.subPoints![0].text;
+      };
+      const save = (operationId: string, before: typeof opening, after: typeof opening,
+        observation?: { offset: number | null; revision: number }) =>
+        processCommand(base.owner, { ...base, kind: 'update', operationId, generation: 'seed',
+          changes: [{ path: [field], before: { exists: true, value: before }, after: { exists: true, value: after } }],
+          ...(observation && { outlineTitleActions: [{ rowId, rowCreatedAt: rowId, before: words(before), after: words(after),
+            observedRevision: observation.revision, time: stamp(observation.offset) }] }),
+        });
+      const path = kind === 'point' ? [field, 'main', 'id:' + rowId, 'text']
+        : [field, 'main', 'id:point', 'subPoints', 'id:' + rowId, 'text'];
+      return { owner: base.owner, resource, opening, later, offline, save, path };
+    }
+
+    it.each(['point', 'subpoint'] as const)('retains the later explicit return of the %s title after a delayed legacy save', async kind => {
+      const { owner, resource, opening, later, offline, save, path } = await seed(kind);
+      expect(await save('later-desktop-change', opening, later)).toMatchObject({ kind: 'acknowledged' });
+      expect(await save('later-desktop-return', later, opening)).toMatchObject({ kind: 'acknowledged' });
+      const reply = await save('earlier-delayed-title', opening, offline);
+      expect((await readDocument(owner, resource)).value?.[field]).toEqual(opening);
+      expect(reply).toMatchObject({ kind: 'conflict', conflicts: [{ path, code: 'outline-title-review' }] });
+    });
+
+    it.each([false, true])('does not offer a proven earlier title again when another title needs a choice (advancing server: %s)', async advancing => {
+      const { owner, resource, opening, later, offline, save } = await seed('point');
+      const baseline = await readDocument(owner, resource);
+      expect(await save('desktop-change', opening, later, { offset: 60, revision: 1 })).toMatchObject({ kind: 'acknowledged' });
+      const changed = (outline: typeof opening, text: string) => ({
+        ...outline, main: outline.main.map(row => row.id === 'neighbor' ? { ...row, text } : row),
+      });
+      const desktop = changed(later, 'Later desktop neighbor');
+      expect(await save('desktop-neighbor', later, desktop)).toMatchObject({ kind: 'acknowledged' });
+      const combined = changed(offline, 'Earlier phone neighbor');
+      const action = { rowId: 'point', rowCreatedAt: 'point', before: 'Original title', after: 'Earlier offline title',
+        observedRevision: 1, time: { earliestMs: 1_800_000_000_010, latestMs: 1_800_000_000_015 } };
+      const value = { ...baseline.value, [field]: combined as unknown as Json };
+      const delayed = await processCommand(owner, { ...update('phone-together', 'seed'), resource,
+        changes: [{ path: [field], before: { exists: true, value: opening }, after: { exists: true, value: combined } }],
+        outlineTitleActions: [action],
+      });
+      expect(delayed.kind).toBe('conflict');
+      const session = new DataSession(baseline);
+      session.edit(value);
+      session.registerCommit(delayed.operationId, 1, value);
+      session.accept(delayed);
+      session.release(delayed.operationId);
+      const next = advancing ? { ...later, main: later.main.map(row => row.id === 'point' ? { ...row, text: 'Newest desktop title' } : row) } : later;
+      if (advancing) {
+        const current = changed(next, 'Later desktop neighbor');
+        expect(await save('desktop-newest', desktop, current, { offset: 90, revision: 3 })).toMatchObject({ kind: 'acknowledged' });
+        session.observe(await readDocument(owner, resource), { source: 'server' });
+      }
+      session.keepLocal();
+      expect(session.checkpoint().draft?.[field]).toEqual(changed(next, 'Earlier phone neighbor'));
+      const history = await listOutlineTitleHistory(owner, collection, resource.id, 'seed');
+      expect(history.entries).toEqual([expect.objectContaining({ fields: [expect.objectContaining({
+        rowId: 'point', value: 'Earlier offline title', winnerValue: 'Later desktop title',
+      })] })]);
+    });
+
+    it.each([{ order: 'older', extra: 'none' }, { order: 'newer', extra: 'none' }, { order: 'older', extra: 'note' },
+      { order: 'older', extra: 'later title' }])
+      ('keeps a resolved $order title removed while choosing another title (extra: $extra)', async ({ order, extra }) => {
+      const { owner, resource, opening, later, offline, save } = await seed('point');
+      const baseline = await readDocument(owner, resource);
+      expect(await save('desktop-change', opening, later, { offset: 50, revision: 1 })).toMatchObject({ kind: 'acknowledged' });
+      const desktop = { ...later, main: later.main.map(row => row.id === 'neighbor' ? { ...row, text: 'Saved neighbor' } : row) };
+      expect(await save('desktop-neighbor', later, desktop)).toMatchObject({ kind: 'acknowledged' });
+      const added = { id: 'additional', text: 'Independent addition' };
+      const combined = { ...offline, main: [...offline.main.map(row =>
+        row.id === 'neighbor' ? { ...row, text: 'My neighbor' }
+          : row.subPoints && extra === 'note' ? { ...row, note: 'My separate reminder on the removed point' } : row), added] };
+      const at = 1_800_000_000_000 + (order === 'older' ? 15 : 90);
+      const sent = await processCommand(owner, { ...update('phone-together', 'seed'), resource,
+        changes: [{ path: [field], before: { exists: true, value: opening }, after: { exists: true, value: combined } }],
+        outlineTitleActions: [{ rowId: 'point', rowCreatedAt: 'point', before: 'Original title', after: 'Earlier offline title',
+          observedRevision: 1, time: { earliestMs: at, latestMs: at + 5 } }],
+      });
+      if (sent.kind !== 'conflict') throw new Error('The neighbor should need a comparison');
+      const session = new DataSession(baseline);
+      const value = { ...baseline.value, [field]: combined as unknown as Json };
+      session.edit(value);
+      session.registerCommit(sent.operationId, 1, value);
+      session.accept(sent);
+      session.release(sent.operationId);
+      const current = extra === 'later title' ? { ...combined, main: combined.main.map(row =>
+        row.id === 'point' ? { ...row, text: 'An additional title typed while reviewing' } : row) } : combined;
+      if (current !== combined) session.edit({ ...baseline.value, [field]: current as unknown as Json });
+      const removed = { ...desktop, main: desktop.main.filter(row => row.id !== 'point') };
+      expect(await save('remove-point', desktop, removed)).toMatchObject({ kind: 'acknowledged' });
+      session.observe(await readDocument(owner, resource), { source: 'server' });
+      if (extra !== 'none') {
+        expect(() => session.keepLocal()).toThrow('The removed point contains other changes');
+        expect(session.checkpoint().draft?.[field]).toEqual(current);
+      } else {
+        session.keepLocal();
+        expect(session.checkpoint().draft?.[field]).toEqual({ ...removed, main: [{ id: 'neighbor', text: 'My neighbor' }, added] });
+      }
+    });
+
+    it('retains a proven later title when choosing the saved version of another title', async () => {
+      const { owner, resource, opening, later, offline, save } = await seed('point');
+      const baseline = await readDocument(owner, resource);
+      expect(await save('desktop-change', opening, later, { offset: 30, revision: 1 })).toMatchObject({ kind: 'acknowledged' });
+      const changed = (outline: typeof opening, text: string) => ({
+        ...outline, main: outline.main.map(row => row.id === 'neighbor' ? { ...row, text } : row),
+      });
+      const desktop = changed(later, 'Saved neighbor');
+      expect(await save('desktop-neighbor', later, desktop)).toMatchObject({ kind: 'acknowledged' });
+      const local = changed(offline, 'Unordered phone neighbor');
+      const action = { rowId: 'point', rowCreatedAt: 'point', before: 'Original title', after: 'Earlier offline title',
+        observedRevision: 1, time: { earliestMs: 1_800_000_000_085, latestMs: 1_800_000_000_090 } };
+      const command = await processCommand(owner, { ...update('phone-together', 'seed'), resource,
+        changes: [{ path: [field], before: { exists: true, value: opening }, after: { exists: true, value: local } }],
+        outlineTitleActions: [action],
+      });
+      if (command.kind !== 'conflict') throw new Error('The neighbor should need a comparison');
+      const value = { ...baseline.value, [field]: local as unknown as Json };
+      const retained = keepUncontestedOutlineTitle(baseline, value, command.snapshot, command.conflicts);
+      expect(retained?.[field]).toEqual(changed(offline, 'Saved neighbor'));
+      const session = new DataSession(baseline);
+      session.edit(value);
+      session.registerCommit(command.operationId, 1, value, undefined, { outlineTitleActions: [action] });
+      session.accept(command);
+      const compared = session.checkpoint();
+      session.release(command.operationId);
+      session.acceptRemote();
+      session.edit(retained!);
+      session.retainOutlineTitleActions(compared);
+      expect(session.checkpoint().outlineTitleDrafts?.point.action).toEqual(action);
+    });
+
+    it('keeps an independent reminder when both compared titles are replaced by the saved ones', async () => {
+      const { owner, resource, opening } = await seed('point');
+      const baseline = await readDocument(owner, resource);
+      const withTitles = (prefix: string) => ({ ...opening, main: opening.main.map(row => ({ ...row, text: prefix + ' ' + row.id })) });
+      const updateTitles = (operationId: string, after: typeof opening) => processCommand(owner, { ...update(operationId, 'seed'), resource,
+        changes: [{ path: [field], before: { exists: true, value: opening }, after: { exists: true, value: after } }] });
+      const saved = withTitles('Saved');
+      expect(await updateTitles('desktop', saved)).toMatchObject({ kind: 'acknowledged' });
+      const local = withTitles('Mine');
+      local.main = local.main.map(row => row.subPoints ? { ...row, note: 'Unrelated private reminder' } : row);
+      const value = { ...baseline.value, [field]: local as unknown as Json };
+      const refused = await updateTitles('phone', local);
+      expect(refused.kind).toBe('conflict');
+      const session = new DataSession(baseline);
+      session.edit(value);
+      session.registerCommit(refused.operationId, 1, value);
+      session.accept(refused);
+      const checkpoint = session.checkpoint();
+      expect(readOutlineTitleComparison(checkpoint)).toMatchObject({
+        mine: expect.stringContaining('Mine neighbor'), stored: expect.stringContaining('Saved point'), removed: false,
+      });
+      const retained = keepUncontestedOutlineTitle(baseline, value, checkpoint.remoteCandidate, checkpoint.conflicts);
+      expect(retained?.[field]).toEqual({ ...saved, main: saved.main.map(row =>
+        row.subPoints ? { ...row, note: 'Unrelated private reminder' } : row) });
+    });
+
+    it.each([129, 2_000])('protects an existing outline ID of %i characters', async length => {
+      const { owner, resource, opening, later, offline, save, path } = await seed('point', 'p'.repeat(length));
+      expect(await save('desktop-change', opening, later, { offset: 30, revision: 1 })).toMatchObject({ kind: 'acknowledged' });
+      expect(await save('desktop-return', later, opening, { offset: 80, revision: 2 })).toMatchObject({ kind: 'acknowledged' });
+      expect(await save('old-timed', opening, offline, { offset: 15, revision: 1 })).toMatchObject({ kind: 'acknowledged' });
+      expect(await save('old-legacy', opening, offline)).toMatchObject({ kind: 'conflict', conflicts: [{ path }] });
+      expect((await readDocument(owner, resource)).value?.[field]).toEqual(opening);
+    });
+
+    it.each([null, 80])('protects a coalesced return against a legacy delivery when time is %s', async offset => {
+      const { owner, resource, opening, offline, save, path } = await seed('point');
+      expect(await save('coalesced-return', opening, opening, { offset, revision: 1 })).toMatchObject({ kind: 'acknowledged' });
+      expect(await save('old-legacy', opening, offline)).toMatchObject({ kind: 'conflict', conflicts: [{ path }] });
+      expect((await readDocument(owner, resource)).value?.[field]).toEqual(opening);
+    });
+
+    describe.each(['point', 'subpoint'] as const)('%s title chronology', kind => {
+      it.each([
+        { order: 'earlier', offset: 50 },
+        { order: 'later', offset: 95 },
+        { order: 'overlapping', offset: 79 },
+        { order: 'unknown', offset: null },
+      ])('retains the right title and neighboring content when the delayed action is $order', async ({ order, offset }) => {
+        const { owner, resource, opening, later, offline, save, path } = await seed(kind);
+        expect(await save('desktop-change', opening, later, { offset: 30, revision: 1 })).toMatchObject({ kind: 'acknowledged' });
+        const returned = { ...opening, main: [...opening.main].reverse().map(row =>
+          row.subPoints ? { ...row, note: 'Updated desktop reminder' } : row) };
+        expect(await save('desktop-return', later, returned, { offset: 80, revision: 2 })).toMatchObject({ kind: 'acknowledged' });
+        const delayed = await save('phone-delayed', opening, offline, { offset, revision: 1 });
+        const disputed = order === 'unknown' || order === 'overlapping';
+        if (disputed) {
+          expect(delayed).toMatchObject({ kind: 'conflict', conflicts: [{ path, code: 'outline-title-review',
+            mine: { value: 'Earlier offline title' }, theirs: { value: 'Original title' } }] });
+        } else {
+          expect(delayed.kind).toBe('acknowledged');
+        }
+        const expected = order === 'later'
+          ? { ...returned, main: [returned.main[0], { ...offline.main[0], note: 'Updated desktop reminder' }] }
+          : returned;
+        expect((await readDocument(owner, resource)).value?.[field]).toEqual(expected);
+        const history = await listOutlineTitleHistory(owner, collection, resource.id, 'seed');
+        expect(history.entries).toEqual(disputed ? [] : [expect.objectContaining({ fields: [expect.objectContaining({
+          field: 'text', rowId: kind, value: order === 'later' ? 'Original title' : 'Earlier offline title',
+          winnerValue: order === 'later' ? 'Earlier offline title' : 'Original title',
+        })] })]);
+      });
+
+      it('does not expose title history outside the owner and generation', async () => {
+        const { owner, resource } = await seed(kind);
+        await expect(listOutlineTitleHistory('another-owner', collection, resource.id, 'seed')).rejects.toMatchObject({ status: 403 });
+        await expect(listOutlineTitleHistory(owner, collection, resource.id, 'other-generation')).rejects.toMatchObject({ status: 404 });
+      });
     });
   });
 

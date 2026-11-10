@@ -18,7 +18,7 @@ import { mapColumnIdToSectionType } from "./utils";
 
 import type { SectionType, Translate } from "./types";
 import type { SermonOutline, SermonPoint, SubPoint } from "@/models/models";
-import type { OutlineTitleOpening } from "@/utils/sermonNoteText";
+import type { OutlineTitleOpening, OutlineTitleVersion } from "@/utils/sermonNoteText";
 
 const SAVE_OUTLINE_ERROR_KEY = "errors.saveOutlineError";
 
@@ -220,11 +220,11 @@ export function useColumnOutlineState({
       return;
     }
 
-    titleDraft.handoff(handleSaveEditDirect(editingPointId, textToSave, openingTitle.current));
+    titleDraft.handoff(handleSaveEditDirect(editingPointId, textToSave, openingTitle.current, titleDraft.opening()?.version));
     closeEdit();
   };
 
-  const handleSaveEditDirect = (pointId: string, newText: string, openingText?: string) => {
+  const handleSaveEditDirect = (pointId: string, newText: string, openingText?: string, version?: OutlineTitleVersion) => {
     const textToSave = normalizeCapitalizedTitle(newText);
     if (!textToSave) return;
 
@@ -234,7 +234,7 @@ export function useColumnOutlineState({
 
     if (openingText === undefined) setLocalSermonPoints(updatedPoints);
     return triggerSaveOutline(updatedPoints, openingText === undefined ? undefined : {
-      target: { kind: 'point', id: pointId }, text: openingText,
+      target: { kind: 'point', id: pointId }, text: openingText, ...(version && { version }),
     });
   };
 
@@ -385,7 +385,7 @@ export function useColumnOutlineState({
     triggerSaveOutline(updatedPoints);
   };
 
-  const handleEditSubPoint = (outlinePointId: string, subPointId: string, newText: string, openingText?: string) => {
+  const handleEditSubPoint = (outlinePointId: string, subPointId: string, newText: string, openingText?: string, version?: OutlineTitleVersion) => {
     const textToSave = normalizeCapitalizedTitle(newText);
     if (!textToSave) return;
 
@@ -401,7 +401,7 @@ export function useColumnOutlineState({
 
     if (openingText === undefined) setLocalSermonPoints(updatedPoints);
     return triggerSaveOutline(updatedPoints, openingText === undefined ? undefined : {
-      target: { kind: 'subpoint', id: subPointId }, text: openingText,
+      target: { kind: 'subpoint', id: subPointId }, text: openingText, ...(version && { version }),
     });
   };
 

@@ -19,10 +19,10 @@ import { carryAnchoredDraftChronology, groupPlacementMergeFrame, mergeEditsAfter
 import { chooseLocalPlacement } from './localPlacementChoice';
 import { projectManualSelection } from './manualScope';
 import { alignPendingOutlinePointPlacements, sameOutlinePointGesture } from './outlinePointPlacement';
-import { readOutlineTitleComparison, templateTitleEdit } from './outlineTitleEdit';
+import { outlineTitleChoiceFrames, readOutlineTitleComparison, templateTitleEdit, unresolvedOutlineTitleConflicts } from './outlineTitleEdit';
 import { chooseLocalPreachDateEdits } from './preachDateChoice';
 import { equalValues, mergeDocumentFields, mergeFields } from './protocol';
-import { acknowledgeRowFields, clearRowFieldDrafts, hasUncapturedAutosaveRowField, registerRowFields, rowFieldAckAncestor, stageReviewedCouncilTopics, stageRowFields } from './rowFieldAutosave';
+import { acknowledgeRowFields, carryOutlineTitleActions, clearRowFieldDrafts, hasUncapturedAutosaveRowField, registerRowFields, rowFieldAckAncestor, stageReviewedCouncilTopics, stageReviewedOutlineTitles, stageRowFields } from './rowFieldAutosave';
 import { keepReselectedRowFields } from './rowReselectionChoice';
 import { readSermonPlanModeComparison } from './sermonFieldChoice';
 import { canReplaceSnapshot } from './snapshotFreshness';
@@ -132,9 +132,11 @@ export class DataSession {
     this.state.dirty = !equalValues(value, this.state.confirmed.value) || hasUncapturedAutosaveField(this.state) || hasUncapturedAutosaveRowField(this.state);
   }
 
-  editTemplateTitle(shown: SessionCheckpoint, opening: OutlineTitleOpening, title: string): void {
+  editTemplateTitle(shown: SessionCheckpoint, opening: OutlineTitleOpening, title: string, time: ActionTime | null = null): void {
     const { draft, stored, conflicts, conflictingTitle } = templateTitleEdit(this.state, shown, opening, title);
-    this.edit(draft);
+    const metadata = shown.confirmed.metadata;
+    const version = metadata && !metadata.deleted ? { generation: metadata.generation, observedRevision: metadata.revision } : undefined;
+    this.edit(draft, shown, { field: 'outline-title', rowId: opening.target.id, time, titleOpening: { ...opening, version } });
     this.state.conflicts = conflicts;
     if (conflictingTitle) {
       this.state.remoteCandidate = copy(stored);
@@ -472,14 +474,15 @@ export class DataSession {
   }
 
   /** Explicit conflict choice: keep edited fields and retain untouched remote siblings. */
-  keepLocal(preachStatuses?: readonly PreachStatusAction[]): void {
+  keepLocal(preachStatuses?: readonly PreachStatusAction[], choiceTime: ActionTime | null = null, choiceSource?: SessionCheckpoint): void {
     if (Object.keys(this.state.pending).length) throw Object.assign(new Error('Resolve pending commands before keeping local data'), { code: 'pending-delivery-first' });
     rejectCouncilTopicChoice(councilTopicConflictCode(this.state.conflicts));
     const title = readOutlineTitleComparison(this.state);
-    if (title && title.stored === undefined) {
+    if (title?.removed) {
       throw Object.assign(new Error('The compared point was removed'), { code: 'decision-changed' });
     }
     const candidate = this.state.remoteCandidate;
+    const titleSource = choiceSource ?? { ...this.state };
     const placementFields = candidate && ['groups', 'councils'].includes(candidate.resource.collection) ? this.checkpoint() : undefined;
     if (candidate?.value === null || candidate?.metadata?.deleted || this.state.confirmed.metadata?.deleted) {
       throw Object.assign(new Error('Remote document was deleted; use a new copy to preserve this draft'), { code: 'use-new-copy' });
@@ -488,13 +491,18 @@ export class DataSession {
       const marks = firstBookMarksIntent(this.state.confirmed, this.state.draft, candidate);
       const pointIds = this.state.conflicts.flatMap(({ path }) => exegeticalPointConflictId(path) ?? []);
       const point = mergeExegeticalPointChoice(this.state.confirmed.value, this.state.draft, candidate.value, pointIds);
-      const basis = marks?.baseline ?? this.state.confirmed.value;
-      const draft = marks?.value ?? this.state.draft;
+      const outline = outlineTitleChoiceFrames(this.state.confirmed, this.state.draft, candidate, this.state.conflicts);
+      const basis = marks?.baseline ?? outline.basis;
+      const draft = marks?.value ?? outline.draft;
       const merged = point?.rebased ?? rebaseOptionalPrayerTags(candidate.resource.collection, basis, draft, candidate.value,
         mergeDocumentFields(basis, draft, candidate.value));
       rejectCouncilTopicChoice(councilTopicConflictCode(merged.conflicts));
+      if (merged.conflicts.some(({ path }) => outline.removed.some(removed =>
+        path.slice(0, Math.min(path.length, removed.length)).every((part, index) => part === removed[index])))) {
+        throw Object.assign(new Error('The removed point contains other changes that need review'), { code: 'other-changes-first' });
+      }
       const chosen = chooseLocalPlacement(this.state.confirmed.resource.collection,
-        this.state.confirmed.value, this.state.draft, candidate.value,
+        outline.basis, outline.draft, candidate.value,
         merged.value.exists ? merged.value.value as DocumentData : null, mergeFields,
         localThoughtPlacementChoices(this.state.conflicts, this.state.confirmed.value, this.state.draft, candidate.value));
       const statusChoice = chooseLocalPreachDateEdits(this.state.confirmed, this.state.draft, candidate, preachStatuses);
@@ -518,11 +526,19 @@ export class DataSession {
     }
     this.clearAutosaveFieldDrafts();
     if (placementFields) carryAnchoredDraftChronology(placementFields, this.state, this.state.conflicts);
-    if (candidate) stageReviewedCouncilTopics(this.state, this.state.conflicts);
+    if (candidate) {
+      this.retainOutlineTitleActions(titleSource);
+      stageReviewedCouncilTopics(this.state, this.state.conflicts);
+      stageReviewedOutlineTitles(this.state, unresolvedOutlineTitleConflicts(this.state.conflicts), choiceTime);
+    }
     this.state.remoteCandidate = null;
     this.state.conflicts = [];
     this.state.editGeneration += 1;
     this.state.dirty = !equalValues(this.state.draft, this.state.confirmed.value);
+  }
+
+  retainOutlineTitleActions(source: SessionCheckpoint): void {
+    carryOutlineTitleActions(source, this.state);
   }
 
   stageServiceOrderPlacementRetry(move: ServiceOrderPlacementCapture): void {

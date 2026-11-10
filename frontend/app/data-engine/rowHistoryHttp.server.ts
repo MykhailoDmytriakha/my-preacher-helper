@@ -18,6 +18,7 @@ import {
   listHomileticPlanHistory,
   listExegeticalPointHistory,
   listOutlinePointPlacementHistory,
+  listOutlineTitleHistory,
   listPlanTemplatePointPlacementHistory,
   listSermonGoalTypeHistory,
   listSermonPlanModeHistory,
@@ -60,6 +61,8 @@ const histories = {
   sourceNoteLink: { collection: 'sermons', list: listSermonSourceNoteLinkHistory },
   planMode: { collection: 'sermons', list: listSermonPlanModeHistory },
   outlinePointPlacement: { collection: 'sermons', list: listOutlinePointPlacementHistory },
+  outlineTitle: { collection: 'sermons', list: (owner: string, id: string, generation: string, cursor?: string) =>
+    listOutlineTitleHistory(owner, 'sermons', id, generation, cursor) },
   exegeticalPoint: { collection: 'sermons', list: listExegeticalPointHistory },
   homileticUpdatedPlan: { collection: 'sermons', list: (owner: string, id: string, generation: string, cursor?: string) =>
     listHomileticPlanHistory(owner, id, generation, cursor, 'updatedPlan') },
@@ -79,6 +82,9 @@ const histories = {
 
 const templatePointHistory = { collection: 'planTemplates', list: listPlanTemplatePointPlacementHistory } as const;
 
+const templateTitleHistory = { collection: 'planTemplates', list: (owner: string, id: string, generation: string, cursor?: string) =>
+  listOutlineTitleHistory(owner, 'planTemplates', id, generation, cursor) } as const;
+
 export type RowHistory = keyof typeof histories | 'seriesMembership';
 export type RowHistoryContext = { params: Promise<{ collection: string; id: string }> };
 
@@ -90,7 +96,8 @@ export async function rowHistoryResponse(request: Request, context: RowHistoryCo
     const { collection, id } = await context.params;
     const params = new URL(request.url).searchParams;
     const selected = history === 'seriesMembership' ? null
-      : history === 'outlinePointPlacement' && collection === templatePointHistory.collection ? templatePointHistory : histories[history];
+      : history === 'outlinePointPlacement' && collection === templatePointHistory.collection ? templatePointHistory
+        : history === 'outlineTitle' && collection === templateTitleHistory.collection ? templateTitleHistory : histories[history];
     const generations = params.getAll('generation');
     if ((selected ? collection !== selected.collection : collection !== 'sermons' && collection !== 'groups')
       || [...params.keys()].some(key => key !== 'generation' && key !== 'cursor')

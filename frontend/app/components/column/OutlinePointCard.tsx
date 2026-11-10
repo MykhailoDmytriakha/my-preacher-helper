@@ -24,9 +24,11 @@ import { SubPointList } from './SubPointList';
 import { PointThoughtLane } from './ThoughtLanes';
 import { getPlaceholderColors, getPointLockToggleLabel, getSectionIconClasses, isPointAudioSection, openPointEditor } from './utils';
 
+
 import type { OnAudioThoughtCreated, ThoughtItemRenderer, Translate } from './types';
 import type { Item, SermonPoint, SubPoint } from '@/models/models';
 import type { FailureWords } from '@/utils/actionFailureMessage';
+import type { OutlineTitleVersion } from '@/utils/sermonNoteText';
 
 // Component for rendering outline point placeholder with thoughts
 export const OutlinePointCard: React.FC<{
@@ -58,10 +60,10 @@ export const OutlinePointCard: React.FC<{
   onEditPoint?: (point: SermonPoint) => void;
   onDeletePoint?: (pointId: string) => void;
   // For inline edit in normal mode
-  onSaveEdit?: (pointId: string, newText: string, openingText: string) => Promise<unknown> | void;
+  onSaveEdit?: (pointId: string, newText: string, openingText: string, version?: OutlineTitleVersion) => Promise<unknown> | void;
   // Sub-point operations
   onAddSubPoint?: (outlinePointId: string, text: string) => void;
-  onEditSubPoint?: (outlinePointId: string, subPointId: string, newText: string, openingText: string) => void;
+  onEditSubPoint?: (outlinePointId: string, subPointId: string, newText: string, openingText: string, version?: OutlineTitleVersion) => void;
   onSetPointNote?: (pointId: string, note?: string) => void;
   onSetSubPointNote?: (pointId: string, subPointId: string, note?: string) => void;
   onDeleteSubPoint?: (outlinePointId: string, subPointId: string) => void;
@@ -178,7 +180,10 @@ export const OutlinePointCard: React.FC<{
 
   const handleLocalSave = () => {
     const textToSave = changedCapitalizedTitle(localEditText, openingTitle.current);
-    if (textToSave) titleDraft.handoff(onSaveEdit?.(point.id, textToSave, openingTitle.current));
+    if (textToSave) {
+      const version = titleDraft.opening()?.version;
+      titleDraft.handoff(onSaveEdit?.(point.id, textToSave, openingTitle.current, ...(version ? [version] : [])));
+    }
     closeLocalEdit();
   };
 

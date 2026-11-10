@@ -6,6 +6,7 @@ import OutlineBoard from '@/components/plan-editor/OutlineBoard';
 import { outlinePointConflictComparison, outlinePointPlacementWords } from '@/components/plan-editor/outlinePointPlacementWords';
 import { outlineTitleComparison } from '@/components/plan-editor/outlineTitleComparison';
 import { OutlineTitleDraftNotices } from '@/components/plan-editor/OutlineTitleDrafts';
+import { OutlineTitleHistory } from '@/components/plan-editor/OutlineTitleHistory';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { captureOutlinePointPlacement, projectResourceOutlinePoint, useDataDocument, useDocumentActions, useRecoveryDiscovery } from '@/data-engine/react.client';
 import { outlinePointText } from '@/utils/outlineDnd';
@@ -61,6 +62,9 @@ const TemplateOutlineEditor = forwardRef<TemplateOutlineEditorHandle, { template
     const checkpoint = document.state?.checkpoint;
     const comparison = checkpoint && (outlinePointConflictComparison(checkpoint, t) ?? outlineTitleComparison(checkpoint, t));
     const compared = comparison ? checkpoint : undefined;
+    const generation = document.confirmed?.metadata?.generation;
+    const owner = document.confirmed?.value?.userId;
+    const outline = document.data?.structure as unknown as SermonOutline | undefined;
     const movePoint = (after: SermonOutline, pointId: string) => {
       const before = document.data?.structure as unknown as SermonOutline | undefined;
       if (!before) return;
@@ -81,6 +85,10 @@ const TemplateOutlineEditor = forwardRef<TemplateOutlineEditorHandle, { template
         recoveryLoading={recovery.loading} recoveryError={recovery.error} onRecover={recovery.recover}
         onDiscardRecovery={recovery.discard} />
       <OutlineTitleDraftNotices />
+      {generation && typeof owner === 'string' && outline && <OutlineTitleHistory key={generation}
+        owner={owner} collection="planTemplates" id={templateId} generation={generation} outline={outline}
+        disabled={disabled || document.readOnly || Boolean(comparison)}
+        restore={(opening, title) => document.captureTemplateTitle(opening)(title)} />}
       {document.loading && !document.data ? <p className={`text-sm ${NEUTRAL_CAPTION}`}>{t('settings.loading')}</p>
         : document.data && <OutlineBoard value={document.data.structure as unknown as SermonOutline}
           isReadOnly={disabled || document.readOnly} onPointMove={movePoint} captureTitleEdit={document.captureTemplateTitle} className={`${outlinePointGridClass} gap-3`}

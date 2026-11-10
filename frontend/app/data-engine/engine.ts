@@ -130,7 +130,7 @@ export interface ManagedEditor {
   subscribe(listener: () => void): () => void;
   /** `shown` is the copy the screen showed while the person typed (`DataSession.edit`). */
   edit(value: DocumentData | null, shown?: ShownCopy, autosaveStamp?: AutosaveFieldStamp): Promise<void>;
-  editTemplateTitle(shown: SessionCheckpoint, opening: OutlineTitleOpening, title: string): Promise<void>;
+  editTemplateTitle(shown: SessionCheckpoint, opening: OutlineTitleOpening, title: string, time?: ActionTime | null): Promise<void>;
   /** Capture, stage and durably save one invocation without including later typing. */
   commit(updater: (current: DocumentData | null) => DocumentData | null, action?: EditorCommitAction): Promise<void>;
   /** Same local capture, with separate exact-request server acceptance for backup cleanup. */
@@ -2211,7 +2211,7 @@ export class DataEngine {
           return () => { entry.listeners.delete(subscription); };
         },
         edit: (value, shown, autosaveStamp) => { active(); return controller.edit(value, shown, autosaveStamp); },
-        editTemplateTitle: (shown, opening, title) => { active(); return controller.editTemplateTitle(shown, opening, title); },
+        editTemplateTitle: (shown, opening, title, time) => { active(); return controller.editTemplateTitle(shown, opening, title, time); },
         commit: (updater, action) => commit(updater, undefined, undefined, action),
         commitWithReceipt: (updater, options) => withReceipt(captured => commit(updater, captured, options?.captureScope, options?.action)),
         removeWithReceipt: options => withReceipt(captured => remove(captured, options?.captureScope)),

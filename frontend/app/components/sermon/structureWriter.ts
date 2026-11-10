@@ -2,7 +2,7 @@ import { createContext, useContext } from 'react';
 
 import type { SermonOutline, Thought, ThoughtsBySection } from '@/models/models';
 import type { OutlineInputSequence } from '@/utils/outlineCapture';
-import type { CaptureOutlineNote } from '@/utils/sermonNoteText';
+import type { CaptureOutlineNote, OutlineTitleOpening, OutlineTitleVersion } from '@/utils/sermonNoteText';
 import type { StructureSectionId } from '@/utils/structureTags';
 
 /**
@@ -27,6 +27,7 @@ export interface OutlinePointMove { pointId: string; before: SermonOutline; vers
 
 export interface StructureWriter {
   captureNoteEdit?: CaptureOutlineNote;
+  outlineTitleVersion?(opening: OutlineTitleOpening): OutlineTitleVersion | undefined;
   outlinePlacementVersion?(shown?: SermonOutline): OutlinePlacementVersion | undefined;
   updateStructure(sermonId: string, structure: ThoughtsBySection, baseStructure?: ThoughtsBySection | null, options?: StructureWriteOptions): Promise<unknown>;
   updateThought(sermonId: string, thought: Thought, baseThought: Thought | null): Promise<Thought>;

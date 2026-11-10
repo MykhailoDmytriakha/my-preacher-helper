@@ -21,13 +21,15 @@ import { sortSubPointsByPosition, subPointDeletionNeedsConfirm } from "@/utils/s
 import { capitalizeFirstLetter, changedCapitalizedTitle, normalizeCapitalizedTitle } from "@/utils/textNormalization";
 
 import type { SubPoint } from "@/models/models";
+import type { OutlineTitleVersion } from '@/utils/sermonNoteText';
+
 
 interface SubPointListProps {
   subPoints: SubPoint[];
   outlinePointId: string;
   isPointLocked: boolean;
   onAdd: (outlinePointId: string, text: string) => void;
-  onEdit: (outlinePointId: string, subPointId: string, newText: string, openingText: string) => Promise<unknown> | void;
+  onEdit: (outlinePointId: string, subPointId: string, newText: string, openingText: string, version?: OutlineTitleVersion) => Promise<unknown> | void;
   onTitleDraftChange?: (outlinePointId: string, active: boolean) => void;
   onDelete: (outlinePointId: string, subPointId: string) => void;
   onReorder?: (outlinePointId: string, sourceIndex: number, destinationIndex: number) => void;
@@ -153,7 +155,10 @@ export const SubPointList: React.FC<SubPointListProps> = ({
 
   const handleEditSave = () => {
     const textToSave = changedCapitalizedTitle(editText, openingTitle.current);
-    if (editingId && textToSave) titleDraft.handoff(onEdit(outlinePointId, editingId, textToSave, openingTitle.current));
+    if (editingId && textToSave) {
+      const version = titleDraft.opening()?.version;
+      titleDraft.handoff(onEdit(outlinePointId, editingId, textToSave, openingTitle.current, ...(version ? [version] : [])));
+    }
     setEditingId(null);
     setEditText("");
   };

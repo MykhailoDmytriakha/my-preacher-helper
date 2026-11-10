@@ -7,5 +7,5 @@ export function outlineTitleComparison(checkpoint: SessionCheckpoint, t: (key: s
   const title = readOutlineTitleComparison(checkpoint);
   if (!title) return undefined;
   return { identity: title.identity, title: t('legacyRecovery.field.title'), valueKind: 'field', scopedChoice: true,
-    mine: title.mine, stored: title.stored ?? t('dataSync.exegeticalPointRemoved'), keepMineDisabled: title.stored === undefined };
+    mine: title.mine, stored: title.stored ?? t('dataSync.exegeticalPointRemoved'), keepMineDisabled: title.removed };
 }

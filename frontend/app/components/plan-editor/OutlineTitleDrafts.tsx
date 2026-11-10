@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type PropsWithChildren } from 'react';
 
+import { useStructureWriter } from '@/components/sermon/structureWriter';
 import { useClipboard } from '@/hooks/useClipboard';
 import { isOutlineCollisionError } from '@/services/sermons.client';
 import { newClientId } from '@/utils/clientId';
@@ -147,6 +148,8 @@ export function OutlineTitleDraftNotices() {
 /** The field stays private until Enter. If it is removed, the document still owns its copy. */
 export function useOutlineTitleDraft(visibleTargetId: string | null) {
   const actions = useContext(TitleDraftActions);
+  const writer = useStructureWriter();
+  const observed = useRef<OutlineTitleOpening | undefined>(undefined);
   const field = useRef<{ key: string; opening: OutlineTitleOpening; displayed: string; copy?: DraftCopy } | null>(null);
   useLayoutEffect(() => {
     const open = field.current;
@@ -156,8 +159,11 @@ export function useOutlineTitleDraft(visibleTargetId: string | null) {
   }, [actions, visibleTargetId]);
   return {
     open: (opening: OutlineTitleOpening, displayed: string) => {
+      const version = writer.outlineTitleVersion?.(opening);
+      observed.current = version ? { ...opening, version } : opening;
       if (actions) field.current = { key: actions.keyFor(newClientId()), opening, displayed };
     },
+    opening: () => observed.current,
     change: (text: string) => {
       const open = field.current;
       if (!actions || !open) return;

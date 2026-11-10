@@ -11,6 +11,7 @@ import { ListReadFeedback } from '@/components/ListReadFeedback';
 import OutlineBoard from '@/components/plan-editor/OutlineBoard';
 import { useOutlineConflictForEditor } from '@/components/plan-editor/OutlineConflictScope';
 import { OutlinePointPlacementHistory } from '@/components/plan-editor/OutlinePointPlacementHistory';
+import { OutlineTitleHistory } from '@/components/plan-editor/OutlineTitleHistory';
 import SavedDraftCopyPicker from '@/components/SavedDraftCopyPicker';
 import { useStructureWriter } from '@/components/sermon/structureWriter';
 import UnreadableConflictDrafts from '@/components/UnreadableConflictDrafts';
@@ -26,14 +27,14 @@ import { OutlineCapture } from '@/utils/outlineCapture';
 import { chooseOutlineLocalChanges, OutlineChoiceReviewRequiredError, readOutlineTextChoice } from '@/utils/outlineChoice';
 import { outlinePointGap, projectOutlinePoint } from '@/utils/outlineDnd';
 import { awaitWriteOperation } from '@/utils/recoverableWrite';
-import { readOutlineNoteText, withOutlineNoteText } from '@/utils/sermonNoteText';
+import { withOutlineTitleText, readOutlineNoteText, withOutlineNoteText } from '@/utils/sermonNoteText';
 import { EMERALD_ACTION } from '@/utils/themeColors';
 import { isTypingIn } from '@/utils/typingTarget';
 import { writeFailureTranslationKey } from '@/utils/writeRecovery';
 import { useTranslation } from '@locales/useTranslation';
 
 import type { OutlinePoint, Sermon, SermonOutline, SubPoint } from '@/models/models';
-import type { OutlineNoteOpening } from '@/utils/sermonNoteText';
+import type { OutlineNoteOpening, OutlineTitleOpening } from '@/utils/sermonNoteText';
 
 const emptyOutline = (): SermonOutline => ({ introduction: [], main: [], conclusion: [] });
 type OutlineSectionKey = keyof SermonOutline;
@@ -280,7 +281,7 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
   const generationRef = useRef(0);
 
   const persist = useCallback(
-    (next: SermonOutline, options?: { force?: boolean; pointMove?: { pointId: string; before: SermonOutline }; noteOpening?: OutlineNoteOpening }) => {
+    (next: SermonOutline, options?: { force?: boolean; pointMove?: { pointId: string; before: SermonOutline }; noteOpening?: OutlineNoteOpening; titleOpening?: OutlineTitleOpening }) => {
       if (isReadOnly || !sermon.id || !conflictReady) return;
       const pending = getConflict();
       if (pending && pending.payload.resolution !== 'local' && !options?.force) {
@@ -294,6 +295,7 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
         outline: next,
         base: baseOutlineRef.current,
         noteOpening: options?.noteOpening,
+        titleOpening: options?.titleOpening,
         titleChoice: pending?.payload.titleChoice,
         ...(options?.pointMove && placementVersion.current && { pointMove: { ...options.pointMove, version: placementVersion.current } }),
         begin: () => {
@@ -346,12 +348,12 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
   // values (not functional updaters) so no side-effects run inside a setState
   // updater — safe under StrictMode's double-invoke.
   const handleChange = useCallback(
-    (next: SermonOutline, movedPointId?: string, noteOpening?: OutlineNoteOpening) => {
+    (next: SermonOutline, movedPointId?: string, noteOpening?: OutlineNoteOpening, titleOpening?: OutlineTitleOpening) => {
       setUndoStack((s) => capPush(s, { outline, pointId: movedPointId }));
       setRedoStack([]);
       generationRef.current += 1;
       setOutline(next);
-      return persist(next, { noteOpening, ...(movedPointId && { pointMove: { pointId: movedPointId, before: outline } }) });
+      return persist(next, { noteOpening, titleOpening, ...(movedPointId && { pointMove: { pointId: movedPointId, before: outline } }) });
     },
     [outline, persist]
   );
@@ -711,6 +713,15 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
             generation={placementVersion.current.generation} outline={outline}
             disabled={!conflictReady || Boolean(collision || unreviewedRefusal)}
             restore={async (next, pointId) => handleChange(next, pointId)} />}
+          {placementVersion.current?.generation && !isReadOnly && <OutlineTitleHistory
+            key={'titles:' + placementVersion.current.generation} owner={sermon.userId} collection="sermons" id={sermon.id}
+            generation={placementVersion.current.generation} outline={outline}
+            disabled={!conflictReady || Boolean(collision || unreviewedRefusal)}
+            restore={async (opening, title) => {
+              const next = withOutlineTitleText(outline, opening.target, title);
+              if (!next) throw new Error('The point is no longer available');
+              await handleChange(next, undefined, undefined, { ...opening, version: writer.outlineTitleVersion?.(opening) });
+            }} />}
           {collision && needsWholeChoice && wholeReviewOpen && (
             <section aria-label={t('planEditor.currentStructure')} className="mb-5 rounded-xl border border-slate-300 p-3 dark:border-gray-600">
               <h3 className="mb-3 font-semibold text-slate-800 dark:text-gray-100">{t('planEditor.currentStructure')}</h3>
@@ -722,6 +733,7 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
             value={outline}
             onChange={handleChange}
             onPointMove={handleChange}
+            onTitleChange={(next, opening) => handleChange(next, undefined, undefined, opening)}
             onNoteChange={(next, opening) => handleChange(next, undefined, opening)?.then(() => undefined, error => {
               // The modal's durable outline comparison now owns this proposal.
               if (!isOutlineCollisionError(error)) throw error;

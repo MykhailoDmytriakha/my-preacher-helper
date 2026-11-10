@@ -106,6 +106,7 @@ const toOutline = (outline: Record<SectionKey, OutlinePoint[]>): SermonOutline =
 interface OutlineBoardProps {
   value: SermonOutline;
   onChange: (next: SermonOutline) => void;
+  onTitleChange?: (next: SermonOutline, opening: OutlineTitleOpening) => void;
   onNoteChange?: (next: SermonOutline, opening: OutlineNoteOpening) => void | Promise<void>;
   captureTitleEdit?: (opening: OutlineTitleOpening) => (title: string) => Promise<void>;
   onPointMove?: (next: SermonOutline, pointId: string) => void;
@@ -151,6 +152,7 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
   onChange,
   onPointMove,
   onNoteChange,
+  onTitleChange,
   captureTitleEdit,
   isReadOnly = false,
   getSubPointThoughtCount,
@@ -256,8 +258,11 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
     subPointId: string;
   } | null>(null);
 
-  const emit = (next: Record<SectionKey, OutlinePoint[]>) =>
-    onChange(toOutline(next));
+  const emit = (next: Record<SectionKey, OutlinePoint[]>, opening?: OutlineTitleOpening) => {
+    const outline = toOutline(next);
+    if (opening && onTitleChange) onTitleChange(outline, opening);
+    else onChange(outline);
+  };
 
   const addPoint = (section: SectionKey) => {
     if (isReadOnly) return;
@@ -301,7 +306,7 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
     }, {} as Record<SectionKey, OutlinePoint[]>);
     setEditingPointId(null);
     setEditingText('');
-    emit(next);
+    emit(next, pointDraft.opening());
   };
 
   // Two-step delete via a custom in-board confirm overlay (no window.confirm — it
@@ -325,12 +330,12 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
     onPointDeleted?.(target.id);
   };
 
-  const mutatePoint = (outlinePointId: string, fn: (p: OutlinePoint) => OutlinePoint) => {
+  const mutatePoint = (outlinePointId: string, fn: (p: OutlinePoint) => OutlinePoint, opening?: OutlineTitleOpening) => {
     const next = SECTIONS.reduce((acc, s) => {
       acc[s.key] = points[s.key].map((p) => (p.id === outlinePointId ? fn(p) : p));
       return acc;
     }, {} as Record<SectionKey, OutlinePoint[]>);
-    emit(next);
+    emit(next, opening);
   };
 
   const addSubPoint = (outlinePointId: string, text: string) => {
@@ -343,13 +348,13 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
     });
   };
 
-  const editSubPoint = (outlinePointId: string, subPointId: string, newText: string) => {
+  const editSubPoint = (outlinePointId: string, subPointId: string, newText: string, opening?: OutlineTitleOpening) => {
     const value2 = normalizeCapitalizedTitle(newText);
     if (isReadOnly || !value2) return;
     mutatePoint(outlinePointId, (p) => ({
       ...p,
       subPoints: (p.subPoints ?? []).map((sp) => (sp.id === subPointId ? { ...sp, text: value2 } : sp)),
-    }));
+    }), opening);
   };
 
   const deleteSubPoint = (outlinePointId: string, subPointId: string) => {
@@ -405,7 +410,7 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
         setEditingSubPointId(null);
         setEditingSubPointText('');
       })) return;
-      editSubPoint(outlinePointId, subPointId, value2);
+      editSubPoint(outlinePointId, subPointId, value2, subPointDraft.opening());
     }
     setEditingSubPointId(null);
     setEditingSubPointText('');

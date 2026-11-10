@@ -28,6 +28,7 @@ import type { ThoughtFieldPatch } from '@/utils/sermonThoughtEdits';
 type SermonDocument = ReturnType<typeof useDataDocument>;
 type DocumentUpdater = Parameters<SermonDocument['update']>[0];
 type StructureDocument = Pick<SermonDocument, 'update'> & Partial<Pick<SermonDocument, 'captureSermonNoteText'>> & {
+  outlineTitleVersion?: StructureWriter['outlineTitleVersion'];
   outlinePlacementVersion?: (shown?: SermonOutline) => OutlinePlacementVersion | undefined;
   commitOutlineMove?: (updater: DocumentUpdater, move: OutlinePointPlacementCapture) => Promise<void>;
   captureActionTime?: () => ActionTime | undefined;
@@ -180,6 +181,7 @@ export function createEngineStructureWriter(document: StructureDocument, owner: 
     },
     deleteThought: (_sermonId, thought) => edit(current => ({ next: deleteSermonThought(current, thought.id), result: undefined })),
     createManualThought: (_sermonId, thought, section) => edit(current => ({ next: addSermonThought(current, thought, section), result: thought })),
+    outlineTitleVersion: document.outlineTitleVersion,
     outlinePlacementVersion: document.outlinePlacementVersion,
     captureNoteEdit: captureSermonNoteText,
     updateSermonOutline: async (_sermonId, outline, baseOutline, onCollision, inputSequence, pointMove) => {
@@ -204,6 +206,7 @@ export function createEngineStructureWriter(document: StructureDocument, owner: 
           return inputSequence ? inputSequence.apply(baseOutline ?? null, outline, apply) : apply();
         });
       }
+      const titleOpening = inputSequence?.titleOpening;
       try {
         return await editEngineSermon(document, owner, current => {
           const apply = (base: SermonOutline | null) => {
@@ -241,7 +244,7 @@ export function createEngineStructureWriter(document: StructureDocument, owner: 
             return { next, result: next.outline ?? null };
           };
           return inputSequence ? inputSequence.apply(baseOutline ?? null, outline, apply) : apply(baseOutline ?? null);
-        }, { handlesRefusal: isOutlineCollisionError });
+        }, { handlesRefusal: isOutlineCollisionError, ...(titleOpening && { action: { kind: 'outline-title', opening: titleOpening } }) });
       } catch (error) {
         // Modal editors already own their durable comparison. Older automatic callers used
         // preferMine to suppress it; retain every refused input before their UI callbacks settle.
@@ -276,6 +279,12 @@ export function useEngineStructureWriter(sermonId: string, owner: string | null)
     commit: (fn, action) => opening.document.commit(fn, action),
     captureSermonPlanMode: () => opening.document.captureSermonPlanMode(),
     captureSermonNoteText: (target, text) => opening.document.captureSermonNoteText(target, text),
+    outlineTitleVersion: ({ target, text }) => {
+      const { confirmed, data } = opening.document;
+      const metadata = confirmed?.metadata;
+      if (!metadata || metadata.deleted || readOutlineTitleText((data?.outline as unknown as SermonOutline | undefined) ?? null, target) !== text) return undefined;
+      return { generation: metadata.generation, observedRevision: metadata.revision };
+    },
     outlinePlacementVersion: shown => {
       const snapshot = opening.document.confirmed;
       if (shown && !hasOutlinePointOrder(snapshot?.value?.outline, outlinePointOrder(shown))) return undefined;

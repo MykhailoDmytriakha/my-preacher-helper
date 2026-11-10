@@ -289,10 +289,10 @@ export class EditorController {
     return this.enqueue(() => this.persist());
   }
 
-  editTemplateTitle(shown: SessionCheckpoint, opening: OutlineTitleOpening, title: string): Promise<void> {
+  editTemplateTitle(shown: SessionCheckpoint, opening: OutlineTitleOpening, title: string, time: ActionTime | null = null): Promise<void> {
     this.assertCurrent();
     // Close captures the current session while an earlier disk write can still be pending.
-    this.session.editTemplateTitle(shown, opening, title);
+    this.session.editTemplateTitle(shown, opening, title, time);
     this.durable = false;
     this.emit();
     return this.enqueue(() => this.persist());
@@ -439,6 +439,7 @@ export class EditorController {
         const accepted = this.session.checkpoint();
         const merged = mergeDocumentFields(accepted.confirmed.value, accepted.draft, retained);
         if (merged.value.exists) this.session.edit(merged.value.value as DocumentData);
+        this.session.retainOutlineTitleActions(before);
       }
       if (refusedWork) this.session.dropRefused(atChoice);
       this.result = null;
@@ -483,7 +484,7 @@ export class EditorController {
       // Validate recovery before retiring its only durable terminal receipt.
       const preview = DataSession.restore(checkpoint);
       if (this.prepared) preview.release(this.prepared.operationId);
-      preview.keepLocal();
+      preview.keepLocal(undefined, choiceTime);
       if (this.prepared) {
         await this.options.runtime.discard(this.prepared.operationId);
         this.assertCurrent();
@@ -493,7 +494,7 @@ export class EditorController {
       this.assertManualResolution(selection);
       // Typing can arrive during journal retirement, so resolve the current session, not preview.
       this.pendingCaptures.retire(captures);
-      this.session.keepLocal();
+      this.session.keepLocal(undefined, choiceTime);
       if (correction) {
         // The explicit choice includes staged corrections, while untouched remote siblings survive.
         const current = this.session.checkpoint();
@@ -956,12 +957,12 @@ export class EditorController {
             throw Object.assign(new Error('The block or step that was edited is gone'), { code: 'decision-changed' });
           }
           if (stored && rowRequests.some(request => request.baseline.resource.collection === 'sermons'
-            && (missingAutosaveRowFieldTarget(stored, request) || changedThoughtTagTarget(stored, request)))) {
-            throw Object.assign(new Error('The thought that was edited is gone'), { code: 'decision-changed' });
+            && (missingAutosaveRowFieldTarget(stored, request, decided.conflicts) || changedThoughtTagTarget(stored, request)))) {
+            throw Object.assign(new Error('The edited item is gone'), { code: 'decision-changed' });
           }
           const statusActions = ordinary ? ordinary.first.preachStatusActions
             : retired.flatMap(request => request.cancelledByChoice && source!.pending[request.id] ? request.preachStatusActions ?? [] : []);
-          session.keepLocal(statusActions);
+          session.keepLocal(statusActions, choiceTime, decided);
           if (preference) session.stageAccountPreferenceRetry(preference.field, choiceTime ?? null);
           const selectedMove = ordinary && ordinary.first.serviceOrderPlacement;
           if (selectedMove) {
@@ -1006,6 +1007,7 @@ export class EditorController {
             const accepted = session.checkpoint();
             const merged = mergeDocumentFields(accepted.confirmed.value, accepted.draft, retained);
             if (merged.value.exists) session.edit(merged.value.value as DocumentData);
+            session.retainOutlineTitleActions(decided);
           }
           if (remoteChoice?.refused && !decided.remoteCandidate) {
             session.dropRefused(decided === source ? remoteChoice.draft : decided.draft);

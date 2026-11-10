@@ -11,6 +11,7 @@ import { ResourceObserver } from '../observer';
 import { applyCommand } from '../protocol';
 import { DataEngineRuntime } from '../runtime';
 import { DataSession } from '../session';
+import { missingAutosaveRowFieldTarget } from '../rowFieldAutosave';
 import { describeSync } from '../status';
 import { reconcileRecoveryRecord, recoveryCheckpointId, selectRecoverableCheckpoints } from '../recovery.client';
 import { planDataCommand } from '../serverRelations';
@@ -1458,6 +1459,72 @@ describe('Durable commit requests', () => {
       changes: [{ path: ['topics'], before: { exists: true, value: [{ ...desk, forAssembly: true }] },
         after: { exists: true, value: [desk] } }],
     }));
+  });
+
+  it.each(['sermons', 'planTemplates'] as const)('carries a coalesced outline title return through the durable %s command', async collection => {
+    const root = collection === 'sermons' ? 'outline' : 'structure';
+    const outline = (text: string) => ({ introduction: [], main: [{ id: 'point', text, note: 'Keep the reminder' }], conclusion: [] });
+    const resource = { collection, id: 'outline-title' };
+    const opening = { ...initial(), resource, value: { ...initial().value, [root]: outline('Original') } };
+    const editor = new DataSession(opening);
+    const s = setup({ opening });
+    const { queue } = s.makeQueue();
+    const version = { generation: 'g', observedRevision: 1 };
+    const target = { kind: 'point', id: 'point' } as const;
+    const firstTime = { earliestMs: 1_800_000_000_020, latestMs: 1_800_000_000_024 };
+    const nextTime = { earliestMs: 1_800_000_000_030, latestMs: 1_800_000_000_034 };
+    editor.edit({ ...opening.value, [root]: outline('Changed') }, editor.checkpoint(),
+      { field: 'outline-title', rowId: target.id, time: firstTime, titleOpening: { target, text: 'Original', version } });
+    editor.edit(opening.value, editor.checkpoint(),
+      { field: 'outline-title', rowId: target.id, time: nextTime, titleOpening: { target, text: 'Changed', version } });
+    const captured = (await queue.save(resource.id, editor.checkpoint()))!;
+    const action = { rowId: 'point', rowCreatedAt: 'point', before: 'Original', after: 'Original', time: nextTime, observedRevision: 1 };
+    expect(captured.outlineTitleActions).toEqual([action]);
+    await s.makeQueue().queue.drain(true);
+    expect(s.transport.send).toHaveBeenCalledWith(expect.objectContaining({ operationId: captured.id, outlineTitleActions: [action],
+      changes: [{ path: [root], before: { exists: true, value: outline('Original') }, after: { exists: true, value: outline('Original') } }],
+    }));
+  });
+
+  it.each(['outline-title-settled', 'outline-title-queued'])('ignores removal of an already decided title (%s) while checking the one being compared', async code => {
+    const outline = (point: string, neighbor: string) => ({ introduction: [], main: [{ id: 'point', text: point },
+      { id: 'neighbor', text: neighbor }], conclusion: [] });
+    const opening = { ...initial(), value: { ...initial().value, outline: outline('Original', 'Neighbor') } };
+    const { queue } = setup({ opening }).makeQueue();
+    const editor = new DataSession(opening);
+    const draft = { ...opening.value, outline: outline('My title', 'My neighbor') };
+    editor.edit(draft, undefined, { field: 'outline-title', rowIds: ['point', 'neighbor'], time: null });
+    const captured = (await queue.save(opening.resource.id, editor.checkpoint()))!;
+    const withoutPoint = { ...opening.value, outline: { ...draft.outline, main: draft.outline.main.slice(1) } };
+    const review = { path: ['outline', 'main', 'id:point', 'text'], code,
+      base: { exists: true, value: 'Original' }, mine: { exists: true, value: 'My title' }, theirs: { exists: true, value: 'Saved' } };
+    expect(missingAutosaveRowFieldTarget(withoutPoint, captured)).toBe(true);
+    expect(missingAutosaveRowFieldTarget(withoutPoint, captured, [review])).toBe(false);
+    expect(missingAutosaveRowFieldTarget({ ...withoutPoint, outline: { ...withoutPoint.outline, main: [] } }, captured, [review])).toBe(true);
+  });
+
+  it('uses the exact stored revision when the person keeps a compared template title', async () => {
+    const outline = (text: string, note: string) => ({ introduction: [], main: [{ id: 'point', text, note }], conclusion: [] });
+    const resource = { collection: 'planTemplates', id: 'outline-title-choice' };
+    const opening = { ...initial(), resource, value: { ...initial().value, structure: outline('Original', 'First reminder') } };
+    const remote = { ...opening, metadata: { ...opening.metadata!, revision: 3 },
+      value: { ...opening.value, structure: outline('Original', 'Later reminder') } };
+    const editor = new DataSession(opening);
+    const { queue } = setup({ opening }).makeQueue();
+    const words = { ...opening.value, structure: outline('My title', 'First reminder') };
+    editor.edit(words);
+    editor.registerCommit('delayed', 1, words);
+    editor.accept({ kind: 'conflict', operationId: 'delayed', snapshot: remote,
+      conflicts: [{ path: ['structure', 'main', 'id:point', 'text'], code: 'outline-title-review',
+        base: { exists: true, value: 'Original' }, mine: { exists: true, value: 'My title' }, theirs: { exists: true, value: 'Original' } }],
+    });
+    editor.release('delayed');
+    const time = { earliestMs: 1_800_000_000_095, latestMs: 1_800_000_000_099 };
+    editor.keepLocal(undefined, time);
+    expect(editor.checkpoint().draft?.structure).toEqual(outline('My title', 'Later reminder'));
+    const retry = await queue.save(resource.id, editor.checkpoint());
+    expect(retry?.outlineTitleActions).toEqual([{ rowId: 'point', rowCreatedAt: 'point', before: 'Original', after: 'My title',
+      time, observedRevision: 3 }]);
   });
 
   it('retains the later saved title of the same council section after an earlier ACK with other words', async () => {

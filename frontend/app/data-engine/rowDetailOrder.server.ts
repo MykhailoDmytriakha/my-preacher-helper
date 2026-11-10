@@ -61,9 +61,12 @@ function matchingProof(values: Proof[], rowId: string, born: string, value: RowV
   return values.find(proof => proof.rowId === rowId && proof.revision <= revision && proof.digest === key);
 }
 
-export function readRowDetailProof(raw: unknown, policy: { proofs: string }, field: string,
+type ProofIdentity = Pick<RowDetailPolicy<string, RowValue>, 'proofs' | 'proofRowId'>;
+const proofRowId = (policy: ProofIdentity, rowId: string) => policy.proofRowId?.(rowId) ?? rowId;
+
+export function readRowDetailProof(raw: unknown, policy: ProofIdentity, field: string,
   rowId: string, born: string, value: RowValue, scope: RowValue | undefined, revision: number) {
-  return matchingProof(readProofs(raw, policy.proofs, field).values, rowId, born, value, scope, revision);
+  return matchingProof(readProofs(raw, policy.proofs, field).values, proofRowId(policy, rowId), born, value, scope, revision);
 }
 
 export function rowDetailPreviousValues(raw: unknown, policy: { proofs: string }, field: string,
@@ -83,10 +86,10 @@ export function continuousRowDetailFrame(proof: Proof | undefined): boolean {
   return Boolean(proof && previous && !previous.includes(proof.digest));
 }
 
-export function needsLegacyRowDetailOpeningReview(raw: unknown, policy: { proofs: string }, field: string,
+export function needsLegacyRowDetailOpeningReview(raw: unknown, policy: ProofIdentity, field: string,
   rowId: string, born: string, value: RowValue, revision: number): boolean {
   const { values, floor } = readProofs(raw, policy.proofs, field);
-  const proof = matchingProof(values, rowId, born, value, undefined, revision);
+  const proof = matchingProof(values, proofRowId(policy, rowId), born, value, undefined, revision);
   // An evicted creation proof alone cannot hide a change back to the opening.
   return proof ? !continuousRowDetailFrame(proof) : floor > 1;
 }
@@ -104,6 +107,7 @@ function orderField<Field extends string, Value extends RowValue>(command: Updat
   const target = policy.target(field);
   const evidence = readRowObservation(command, submitted, target, serverMs, {
     allowUnclocked: policy.allowUnclocked,
+    acceptsRowId: policy.acceptsRowId,
     allowUnchanged: after => Boolean(policy.allowUnchanged?.(field, after)),
   });
   const revision = current.metadata!.revision;
@@ -131,7 +135,7 @@ function orderField<Field extends string, Value extends RowValue>(command: Updat
     return { command, uncertain: rowDetailConflict(action, target, value) };
   }
   const { values, floor } = readProofs(raw, policy.proofs, field);
-  const previous = matchingProof(values, action.rowId, action.rowCreatedAt, value, scope, revision);
+  const previous = matchingProof(values, proofRowId(policy, action.rowId), action.rowCreatedAt, value, scope, revision);
   const unobserved = previous && previous.revision > action.observedRevision;
   const proofEvicted = !previous && action.observedRevision < Math.min(floor, revision);
   const matchesOpening = equalValues(value, action.before);
@@ -202,7 +206,7 @@ function submissions<Field extends string, Value extends RowValue>(command: Upda
     if (!Array.isArray(raw)) return [];
     const byId = new Map<string, unknown>();
     for (const action of raw) {
-      if (!object(action) || !boundedRowId(action.rowId)) continue;
+      if (!object(action) || !(policy.acceptsRowId ?? boundedRowId)(action.rowId)) continue;
       // Ambiguous intent for one row is never evidence of its chronology.
       byId.set(action.rowId, byId.has(action.rowId) ? undefined : action);
     }
@@ -250,9 +254,11 @@ export function metadataAfterRowDetails<Field extends string, Value extends RowV
     const plans = order?.fields.get(field) ?? [];
     const stamps = new Map(plans.flatMap(plan => plan.stamp ? [[plan.stamp.rowId, plan.stamp] as const] : []));
     const unordered = new Set(plans.map(plan => plan.sameValueWithoutOrder));
+    const proofIds = policy.proofRowId && new Map([...current.keys()].map(rowId => [proofRowId(policy, rowId), rowId]));
     const updated = [...current].flatMap(([rowId, value]): Proof[] => {
       const born = births.get(rowId);
-      if (value === undefined || born === undefined || !boundedRowId(rowId) || !metadata.operationId) return [];
+      const proofId = proofRowId(policy, rowId);
+      if (value === undefined || born === undefined || !boundedRowId(proofId) || !metadata.operationId) return [];
       const scope = currentScopes?.get(rowId);
       const stamp = stamps.get(rowId);
       const time = stamp?.rowCreatedAt === born && equalValues(stamp.after, value) ? stamp.time : null;
@@ -261,11 +267,11 @@ export function metadataAfterRowDetails<Field extends string, Value extends RowV
       if (repair && !time && previousBirths.get(rowId) === born && equalValues(previous.get(rowId), repair.before)
         && equalValues(repair.after, value)) {
         const source = digest(born, repair.before, previousScopes?.get(rowId));
-        const prior = stored.values.find(proof => proof.rowId === rowId && proof.digest === source && proof.revision < metadata.revision);
+        const prior = stored.values.find(proof => proof.rowId === proofId && proof.digest === source && proof.revision < metadata.revision);
         const repairs = [{ digest: source, revision: metadata.revision }, ...(prior?.repairs ?? []).filter(item => item.digest !== source)]
           .slice(0, MAX_REPAIR_SOURCES);
         return [{
-          rowId, digest: digest(born, value, scope), revision: prior?.revision ?? metadata.revision - 1,
+          rowId: proofId, digest: digest(born, value, scope), revision: prior?.revision ?? metadata.revision - 1,
           operationId: prior?.operationId ?? metadata.operationId, time: prior?.time ?? null,
           ...(prior?.causal && { causal: true }), repairs,
         }];
@@ -277,21 +283,24 @@ export function metadataAfterRowDetails<Field extends string, Value extends RowV
       const oldValue = previousBirths.get(rowId) === born ? previous.get(rowId) : undefined;
       const remembersOpenings = policy.requireObserved || policy.rememberOpenings;
       const prior = remembersOpenings && oldValue !== undefined
-        ? matchingProof(stored.values, rowId, born, oldValue, oldScope, metadata.revision - 1) : undefined;
+        ? matchingProof(stored.values, proofId, born, oldValue, oldScope, metadata.revision - 1) : undefined;
       // A type change can make a new scoped proof without advancing the outcome itself.
       const valueRevision = policy.requireObserved ? (changed ? metadata.revision : prior?.valueRevision ?? prior?.revision ?? metadata.revision) : undefined;
       const hasOpening = policy.rememberOpenings ? previousBirths.get(rowId) === born : oldValue !== undefined;
-      const priorFrames = remembersOpenings ? nextPriorFrames(prior, hasOpening, changed || scopeChanged) : undefined;
+      const reselected = Boolean(policy.allowUnchanged?.(field, value))
+        && (Boolean(stamp && equalValues(stamp.before, stamp.after)) || unordered.has(rowId));
+      const priorFrames = remembersOpenings ? nextPriorFrames(prior, hasOpening, changed || scopeChanged || reselected) : undefined;
       const bound = policy.requireObserved && queueDigest && (changed || scopeChanged);
-      return [{ rowId, digest: digest(born, value, scope), revision: metadata.revision, time, operationId: metadata.operationId,
+      return [{ rowId: proofId, digest: digest(born, value, scope), revision: metadata.revision, time, operationId: metadata.operationId,
         ...(valueRevision && { valueRevision }), ...(priorFrames && { priorFrames }), ...(bound && { queueDigest }),
-        ...(policy.allowUnclocked && (changed || enteredScope || bound) && { causal: true as const }) }];
+        ...(policy.allowUnclocked && (changed || enteredScope || bound || (policy.rememberOpenings && reselected)) && { causal: true as const }) }];
     });
     const newRows = new Set(updated.map(proof => proof.rowId));
     const retained = [...updated, ...stored.values.filter(proof => {
-      const value = current.get(proof.rowId), born = births.get(proof.rowId);
+      const rowId = proofIds?.get(proof.rowId) ?? proof.rowId;
+      const value = current.get(rowId), born = births.get(rowId);
       return value !== undefined && born !== undefined && !newRows.has(proof.rowId)
-        && proof.digest === digest(born, value, currentScopes?.get(proof.rowId));
+        && proof.digest === digest(born, value, currentScopes?.get(rowId));
     })];
     const floor = retained.slice(MAX_PROOFS).reduce((revision, proof) => Math.max(revision, proof.revision), stored.floor);
     return retained.length || floor ? [[field, { proofs: retained.slice(0, MAX_PROOFS), floor }]] : [];
