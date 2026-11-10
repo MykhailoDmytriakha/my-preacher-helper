@@ -47,6 +47,8 @@ A first visible page can load before worker control. Runtime interception then m
 
 See also: `.howto/fix-stuck-dev-server.md` · `.howto/read-while-offline.md` · `.howto/raise-route-time-limit.md`
 
+When an already active worker falls back to the network for a missing precached application script, `utils/precacheScriptRecovery.ts` checks that a successful same-origin JavaScript body finishes. A body failure permits one cache-bypassing GET of the same resource. That retry has eight seconds for the headers and body together. The original response still has the browser's usual network timing. Cache hits, installation, other resource types and HTTP refusals follow their usual routes. Reproduce a partial HTTP 200 with an owned local proxy and delete only the target entry in a disposable profile. A healthy retry opens the same document without a second navigation.
+
 ## Verify bounded documents and pending code
 
 Use a fresh disposable browser context against a compiled production build and verify its actual controller and precached `/~offline` build ID. Warm a supported page, then hold the exact current HTML request without breaking assets/API; `/settings` redirects to a section such as `/settings/user`, so assert `page.url()` before holding or reloading. A new document and its saved body must appear around3s while the server response is still held. Release and reload normally too. A new tab/direct address is a separate case; do not count the previous document still visible during a stalled reload as success.

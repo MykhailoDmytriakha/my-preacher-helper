@@ -6,6 +6,7 @@ import { BIBLE_TEXT_CACHE, isBibleTextAnswer, isBibleTextPath, isBookShaped } fr
 import { createOfflinePageStorage } from "./utils/offlinePageStorage";
 import { NAVIGATION_DEADLINE_MS, OFFLINE_PAGE_SEEN, OFFLINE_RSC_MAX_ENTRIES, answerWithinDeadline, createOfflineRscNavigation, isRememberedPage, isRscNavigation } from "./utils/offlineRscNavigation";
 import { resolveOfflineShellRoute } from "./utils/offlineShellRoutes";
+import { createPrecacheScriptRecovery } from "./utils/precacheScriptRecovery";
 
 import type { PrecacheEntry, RuntimeCaching, SerwistGlobalConfig } from "serwist";
 
@@ -142,6 +143,7 @@ const runtimeCaching: RuntimeCaching[] = [
 
 const serwist = new Serwist({
   precacheEntries: offlineManifest,
+  precacheOptions: { plugins: [createPrecacheScriptRecovery(self.origin)] },
   skipWaiting: true,
   clientsClaim: true,
   navigationPreload: true,

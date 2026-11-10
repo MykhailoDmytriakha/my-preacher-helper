@@ -1,6 +1,6 @@
 /** @jest-environment node */
 import { webcrypto } from 'node:crypto';
-import { Response as PlatformResponse } from 'undici';
+import { Request as PlatformRequest, Response as PlatformResponse } from 'undici';
 
 import type { createOfflinePageStorageHarness } from '../test-utils/offlinePageStorageHarness';
 
@@ -19,6 +19,9 @@ let mockOptions: {
   skipWaiting: boolean;
   clientsClaim: boolean;
   navigationPreload: boolean;
+  precacheOptions?: { plugins?: { fetchDidSucceed?: (args: {
+    request: Request; response: Response; event: { type: string }
+  }) => Promise<Response> | Response }[] };
   runtimeCaching: { matcher: (args: { url: URL; request?: { mode?: string; url?: string; headers?: Headers } }) => boolean; handler?: unknown }[];
   fallbacks: { entries: { url: string; matcher: (args: { request: { destination: string } }) => boolean }[] };
 };
@@ -108,6 +111,115 @@ describe('service worker transport boundary', () => {
 
   afterAll(() => {
     Reflect.deleteProperty(globalThis, 'self');
+  });
+
+  describe('network fallback for a missing precached script', () => {
+    const scriptUrl = 'https://my-preacher-helper.com/_next/static/chunks/6684-version.js';
+    const javascriptHeaders = { 'content-type': 'application/javascript; charset=utf-8' };
+    const originalRequest = globalThis.Request;
+    const scriptResponse = (body: ConstructorParameters<typeof PlatformResponse>[0], status = 200) =>
+      new PlatformResponse(body, { status, headers: javascriptHeaders }) as unknown as Response;
+
+    beforeEach(() => { globalThis.Request = PlatformRequest as unknown as typeof Request; });
+    afterEach(() => { globalThis.Request = originalRequest; });
+
+    function networkPrecacheAnswer(request: Request, response: Response, type = 'fetch'): Promise<Response> {
+      const hook = mockOptions.precacheOptions?.plugins?.find(plugin => plugin.fetchDidSucceed)?.fetchDidSucceed;
+      return Promise.resolve(hook ? hook({ request, response, event: { type } }) : response);
+    }
+
+    function interruptedScript(message = 'Connection ended during the script'): Response {
+      return scriptResponse(new ReadableStream<Uint8Array>({
+        start: controller => controller.error(new Error(message)),
+      }));
+    }
+
+    it('recovers a truncated app script response on a precache miss', async () => {
+      const complete = scriptResponse('completed module');
+      const fetchSpy = jest.spyOn(globalThis, 'fetch').mockResolvedValue(complete);
+      try {
+        const response = await networkPrecacheAnswer(new Request(scriptUrl), interruptedScript());
+
+        expect(await response.text()).toBe('completed module');
+        expect(fetchSpy).toHaveBeenCalledTimes(1);
+        expect(fetchSpy.mock.calls[0][0]).toMatchObject({ url: scriptUrl, method: 'GET', cache: 'reload' });
+      } finally {
+        fetchSpy.mockRestore();
+      }
+    });
+
+    it('returns a complete script unchanged and does not repeat the request', async () => {
+      const complete = scriptResponse('complete');
+      const fetchSpy = jest.spyOn(globalThis, 'fetch');
+      try {
+        const response = await networkPrecacheAnswer(new Request(scriptUrl), complete);
+
+        expect(response).toBe(complete);
+        expect(await response.text()).toBe('complete');
+        expect(fetchSpy).not.toHaveBeenCalled();
+      } finally {
+        fetchSpy.mockRestore();
+      }
+    });
+
+    it('tries no third request when the replacement body also breaks', async () => {
+      const fetchSpy = jest.spyOn(globalThis, 'fetch').mockResolvedValue(interruptedScript('The retry also ended'));
+      try {
+        await expect(networkPrecacheAnswer(new Request(scriptUrl), interruptedScript())).rejects.toThrow('The retry also ended');
+        expect(fetchSpy).toHaveBeenCalledTimes(1);
+      } finally {
+        fetchSpy.mockRestore();
+      }
+    });
+
+    it('does not start the retry if the script request was cancelled', async () => {
+      const controller = new AbortController();
+      controller.abort();
+      const fetchSpy = jest.spyOn(globalThis, 'fetch');
+      try {
+        await expect(networkPrecacheAnswer(new Request(scriptUrl, { signal: controller.signal }), interruptedScript())).rejects.toThrow();
+        expect(fetchSpy).not.toHaveBeenCalled();
+      } finally {
+        fetchSpy.mockRestore();
+      }
+    });
+
+    it.each(['headers', 'body'] as const)('bounds a retry whose %s never arrive', async (phase) => {
+      jest.useFakeTimers();
+      const fetchSpy = jest.spyOn(globalThis, 'fetch').mockImplementation(async input => {
+        if (phase === 'headers') return new Promise<Response>(() => undefined);
+        const { signal } = input as Request;
+        return scriptResponse(new ReadableStream<Uint8Array>({
+          start: controller => signal.addEventListener('abort', () => controller.error(signal.reason), { once: true }),
+        }));
+      });
+      try {
+        const waiting = networkPrecacheAnswer(new Request(scriptUrl), interruptedScript());
+        const result = expect(waiting).rejects.toThrow('Timed out reading the application script retry');
+        await jest.advanceTimersByTimeAsync(8_000);
+        await result;
+        expect(fetchSpy).toHaveBeenCalledTimes(1);
+        expect((fetchSpy.mock.calls[0][0] as Request).signal.aborted).toBe(true);
+      } finally {
+        fetchSpy.mockRestore();
+        jest.useRealTimers();
+      }
+    });
+
+    it('leaves install, external scripts, API reads and HTTP refusals on their original paths', async () => {
+      const fetchSpy = jest.spyOn(globalThis, 'fetch');
+      try {
+        const refused = scriptResponse(null, 404);
+        const interrupted = interruptedScript();
+        await expect(networkPrecacheAnswer(new Request(scriptUrl), interrupted, 'install')).resolves.toBe(interrupted);
+        await expect(networkPrecacheAnswer(new Request('https://example.com/_next/static/chunks/app.js'), interrupted)).resolves.toBe(interrupted);
+        await expect(networkPrecacheAnswer(new Request('https://my-preacher-helper.com/api/script.js'), interrupted)).resolves.toBe(interrupted);
+        await expect(networkPrecacheAnswer(new Request(scriptUrl), refused)).resolves.toBe(refused);
+        expect(fetchSpy).not.toHaveBeenCalled();
+      } finally {
+        fetchSpy.mockRestore();
+      }
+    });
   });
 
   it.each(['GET', 'POST'])('leaves Firestore %s requests to the browser without a cached response', (method) => {
