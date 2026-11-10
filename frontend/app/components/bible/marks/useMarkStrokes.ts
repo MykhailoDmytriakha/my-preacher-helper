@@ -7,6 +7,7 @@ import { wordAtPoint } from './verseWordDom';
 
 import type { MarksChange } from './markStore';
 import type { MarkPainter } from './useMarkHighlights';
+import type { HoldStillAt } from '@/hooks/useLongPress';
 
 /*
  * A STROKE OVER THE WORDS — the gesture of the marks (the owner, 2026-10-16): a tool in hand, a press
@@ -28,8 +29,7 @@ import type { MarkPainter } from './useMarkHighlights';
  * a style changed on the whole text restyles every word of the book, and the iPad's Psalms took half
  * a second a tap when the tool's cursor and touch handling were switched on the text (2026-10-16).
  */
-/** `travelled` — the stroke has reached another word at some moment: back on its first, it is still a stroke. */
-type Stroke = { pointerId: number; input: string; at: number; start: WordAt; last: WordAt; travelled: boolean; kind: StrokeKind; erase: boolean; base: BookMarks };
+type Stroke = { pointerId: number; input: string; at: number; start: WordAt; last: WordAt; holdAt?: HoldStillAt; kind: StrokeKind; erase: boolean; base: BookMarks };
 const VERSE_ROW = '[data-verse]';
 
 type StrokeOptions = {
@@ -53,12 +53,10 @@ const sameWord = (a: WordAt, b: WordAt) => a.verse === b.verse && a.index === b.
 const PRESSABLE = 'button, a, [role="button"], input, textarea, select';
 
 /**
- * A Pencil held still on its first word becomes a verse's hold (`VerseHoldSurface`): `takeForHold(pointerId)` drops the
- * stroke that press began — its word shown again as the marks hold it, nothing saved — and says `true`; a stroke that has
- * reached another word at any moment is a stroke, and another pointer's stroke going on is no time for a hold: `false`.
- * No stroke at all: `true`.
+ * A verse hold can temporarily hide its own Pencil stroke. The stroke keeps its pointer until lift,
+ * so it can continue if the pen moves beyond the shared hold limit. Another pointer keeps its stroke.
  */
-export type TakeForHold = (pointerId: number) => boolean;
+export type TakeForHold = (pointerId: number, stillHeldAt: HoldStillAt) => false | (() => boolean);
 
 export function useMarkStrokes({ rootRef, ready, order, save, armed, begin, painter, enabled }: StrokeOptions): TakeForHold {
   const live = useRef({ order, save, armed, begin, painter });
@@ -67,7 +65,7 @@ export function useMarkStrokes({ rootRef, ready, order, save, armed, begin, pain
   });
   // The row wearing the mouse's crosshair; put down as soon as the tool is.
   const aimed = useRef<HTMLElement | null>(null);
-  const holdRef = useRef<TakeForHold>(() => true);
+  const holdRef = useRef<TakeForHold>(() => () => true);
   useEffect(() => {
     if (armed) return;
     aimed.current?.style.removeProperty('cursor');
@@ -85,11 +83,14 @@ export function useMarkStrokes({ rootRef, ready, order, save, armed, begin, pain
     const reach = (x: number, y: number) => {
       const { order: currentOrder } = live.current;
       if (!stroke || !currentOrder) return;
+      const holding = stroke.holdAt?.({ clientX: x, clientY: y });
       const word = wordAtPoint(root, x, y);
-      if (!word || sameWord(word, stroke.last)) return;
-      stroke.last = word;
-      if (!sameWord(word, stroke.start)) stroke.travelled = true;
-      live.current.painter.draw(applyStroke(stroke.base, currentOrder, stroke.start, word, stroke.kind, stroke.erase));
+      const reachedWord = word && !sameWord(word, stroke.last);
+      if (reachedWord) stroke.last = word;
+      if (holding || (!reachedWord && holding !== false)) return;
+      // Draw again when leaving a hold, even on the same word, because its preview was hidden.
+      stroke.holdAt = undefined;
+      live.current.painter.draw(applyStroke(stroke.base, currentOrder, stroke.start, stroke.last, stroke.kind, stroke.erase));
     };
     const step = () => {
       frame = null;
@@ -117,7 +118,7 @@ export function useMarkStrokes({ rootRef, ready, order, save, armed, begin, pain
       // From what the page shows: strokes let go a moment ago, not yet back from their save, included.
       const kept = paint.shown();
       const erase = strokeErases(kept, word, kind);
-      stroke = { pointerId: event.pointerId, input: event.pointerType, at: Date.now(), start: word, last: word, travelled: false, kind, erase, base: kept };
+      stroke = { pointerId: event.pointerId, input: event.pointerType, at: Date.now(), start: word, last: word, kind, erase, base: kept };
       try {
         root.setPointerCapture(event.pointerId);
       } catch {
@@ -151,6 +152,11 @@ export function useMarkStrokes({ rootRef, ready, order, save, armed, begin, pain
       frame = null;
       const waiting = point;
       point = null;
+      if (stroke.holdAt?.(event)) {
+        recordDiagnostic('mark', { source: stroke.input, result: 'held', elapsedMs: Date.now() - stroke.at });
+        stroke = null;
+        return;
+      }
       if (waiting) reach(waiting.x, waiting.y);
       reach(event.clientX, event.clientY);
       const { order: currentOrder, save: keep, painter: paint } = live.current;
@@ -183,26 +189,15 @@ export function useMarkStrokes({ rootRef, ready, order, save, armed, begin, pain
 
     const onLeave = () => aim(null);
 
-    holdRef.current = (pointerId) => {
-      if (!stroke) return true;
-      // Another pointer's stroke is going on (a finger painting while the Pencil rests): no hold over it.
-      if (stroke.pointerId !== pointerId) return false;
-      // A move still waiting for its frame counts first: the stroke may have left its word already.
-      if (frame !== null) window.cancelAnimationFrame(frame);
-      frame = null;
-      const waiting = point;
-      point = null;
-      if (waiting) reach(waiting.x, waiting.y);
-      if (stroke.travelled) return false;
-      recordDiagnostic('mark', { source: stroke.input, result: 'held', elapsedMs: Date.now() - stroke.at });
-      stroke = null;
-      try {
-        root.releasePointerCapture(pointerId);
-      } catch {
-        // The pointer is gone already.
+    holdRef.current = (pointerId, stillHeldAt) => {
+      // Check again on lift: a Pencil pressed outside a word may have no stroke of its own.
+      const ownsStroke = () => !stroke || stroke.pointerId === pointerId;
+      if (!ownsStroke()) return false;
+      if (stroke) {
+        stroke.holdAt = stillHeldAt;
+        live.current.painter.release(null);
       }
-      live.current.painter.release(null);
-      return true;
+      return ownsStroke;
     };
 
     root.addEventListener('pointerdown', onDown);
@@ -223,8 +218,8 @@ export function useMarkStrokes({ rootRef, ready, order, save, armed, begin, pain
       aim(null);
       if (frame !== null) window.cancelAnimationFrame(frame);
       if (stroke) live.current.painter.release(null);
-      holdRef.current = () => true;
+      holdRef.current = () => () => true;
     };
   }, [enabled, ready, rootRef]);
-  return useCallback<TakeForHold>((pointerId) => holdRef.current(pointerId), []);
+  return useCallback<TakeForHold>((pointerId, stillHeldAt) => holdRef.current(pointerId, stillHeldAt), []);
 }

@@ -8,6 +8,7 @@ import { recordDiagnostic } from '@/utils/appDiagnostics';
 import { verseOfRow, verseRowAt, type VerseAt } from './selectedVerses';
 
 import type { VerseCopy } from './useVerseCopy';
+import type { TakeForHold } from '../marks/useMarkStrokes';
 
 type Press = VerseAt & { x: number; y: number; touch: boolean; row: HTMLElement };
 type PenPress = { pointerId: number; startedAt: number };
@@ -30,14 +31,13 @@ const onControl = (target: EventTarget | null) => target instanceof Element && B
  *
  * An Apple Pencil paints, and its hold is the verse's like a finger's (the owner, 2026-11-02: «ручкой выделить нельзя»): held
  * still on a verse for the hold's time — a tool in hand or not — the stroke it began is dropped and the menu opens on the lift
- * (`onPenHold`, asked the moment the time runs, so a lift right after finds it decided); a stroke that reached another word stays
- * a stroke.
+ * (`onPenHold` reserves its own stroke when the time runs). Moving beyond the hold limit before lift leaves it a stroke.
  */
 export function VerseHoldSurface({ copy, articleRef, className, gestureIgnore, penSurface, onPenHold, children }: {
   copy: VerseCopy;
   articleRef: RefObject<HTMLElement | null>;
-  /** The Pencil's press `pointerId` held still: `true` when its stroke gave way (`useReaderMarks().penHold`). */
-  onPenHold?: (pointerId: number) => boolean;
+  /** Offers the Pencil a hold that can be confirmed on lift. */
+  onPenHold?: TakeForHold;
   className: string;
   gestureIgnore?: '';
   penSurface?: '';
@@ -54,7 +54,10 @@ export function VerseHoldSurface({ copy, articleRef, className, gestureIgnore, p
   /** The click being judged while choosing several: the verse it is on and whether Shift was held. */
   const clickRef = useRef<{ at: VerseAt; shift: boolean } | null>(null);
   const { state, handlers } = useLongPress({
-    onArm: () => penPress.current === null || (onPenHold?.(penPress.current.pointerId) ?? true),
+    onArm: (stillHeldAt) => {
+      const pen = penPress.current;
+      if (pen) return onPenHold?.(pen.pointerId, stillHeldAt);
+    },
     onRefused: (reason, driftPx) => {
       const pen = penPress.current;
       if (pen) penRefusal.current = {
@@ -76,7 +79,8 @@ export function VerseHoldSurface({ copy, articleRef, className, gestureIgnore, p
     // mouse's right button and the keyboard's.
     onLongPress: () => {
       const press = pressRef.current;
-      if (!press || !copy.enabled) return;
+      const pen = penPress.current !== null;
+      if (!press || (!copy.enabled && (!pen || !onPenHold))) return;
       if (copy.picking) copy.rangeTo(press);
       else copy.startPicking(press, press.touch);
     },
@@ -230,7 +234,7 @@ export function VerseHoldSurface({ copy, articleRef, className, gestureIgnore, p
       className={`${className} ${copy.picking ? 'select-none' : ''}`}
       onPointerDown={onPointerDown}
       onPointerMove={handlers.onPointerMove}
-      onPointerUp={(event) => { release(event); handlers.onPointerUp?.(event); }}
+      onPointerUp={(event) => { handlers.onPointerUp?.(event); release(event); }}
       onPointerLeave={(event) => { release(event); handlers.onPointerLeave?.(event); }}
       onPointerCancel={(event) => { release(event); handlers.onPointerCancel?.(event); }}
       onClick={onClick}

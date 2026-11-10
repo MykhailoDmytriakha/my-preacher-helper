@@ -12,6 +12,12 @@ const CLICK_AFTER_HOLD_MS = 400;
 /** idle · holding (pressed, the time not yet run) · armed (held long enough: lifting does the long action). */
 export type LongPressState = 'idle' | 'holding' | 'armed';
 
+type PointerPoint = Pick<PointerEvent<HTMLElement>, 'clientX' | 'clientY'>;
+export type HoldStillAt = (point: PointerPoint) => boolean;
+
+const distanceFrom = (from: { x: number; y: number }, point: PointerPoint) =>
+  Math.hypot(point.clientX - from.x, point.clientY - from.y);
+
 type LongPressHandlers = {
   onClick: (event: MouseEvent<HTMLElement>) => void;
   onPointerDown?: (event: PointerEvent<HTMLElement>) => void;
@@ -36,10 +42,11 @@ export function useLongPress({ onPress, onLongPress, onArm, onRefused }: {
   onPress: () => void;
   onLongPress?: () => void;
   /**
-   * Called the moment the hold's time has run, before anything draws it: `false` gives the hold up (the press was something
-   * else by then — a Pencil's stroke that reached another word). Synchronous, so a lift right after it finds the hold decided.
+   * Called when the hold's time has run. Return false if a different gesture owns the pointer.
+   * A native handler can use stillHeldAt before React receives the lift. A returned function
+   * can confirm the same gesture still owns the input when the hold ends.
    */
-  onArm?: () => boolean | void;
+  onArm?: (stillHeldAt: HoldStillAt) => boolean | void | (() => boolean);
   /** The gate that gave up the hold and the farthest observed displacement up to that point. */
   onRefused?: (reason: 'movement' | 'arm', driftPx: number) => void;
 }): { state: LongPressState; handlers: LongPressHandlers } {
@@ -49,6 +56,7 @@ export function useLongPress({ onPress, onLongPress, onArm, onRefused }: {
   const timer = useRef<number | null>(null);
   const origin = useRef<{ x: number; y: number; driftPx: number } | null>(null);
   const armed = useRef(false);
+  const confirm = useRef<(() => boolean) | null>(null);
   /** The press was given up — moved away or left the button: the click that may follow it does nothing. */
   const abandoned = useRef(false);
   const heldUntil = useRef(0);
@@ -65,8 +73,22 @@ export function useLongPress({ onPress, onLongPress, onArm, onRefused }: {
     stopTimer();
     origin.current = null;
     armed.current = false;
+    confirm.current = null;
     pointer.current = null;
     setState('idle');
+  };
+  const refuse = (reason: 'movement' | 'arm') => {
+    checks.current.onRefused?.(reason, origin.current?.driftPx ?? 0);
+    abandoned.current = true;
+    reset();
+  };
+  const movedBeyondHold = (point: PointerPoint) => {
+    const from = origin.current;
+    if (!from) return false;
+    from.driftPx = Math.max(from.driftPx, distanceFrom(from, point));
+    if (from.driftPx <= MOVE_TOLERANCE_PX) return false;
+    refuse('movement');
+    return true;
   };
   useEffect(() => stopTimer, []);
 
@@ -93,35 +115,39 @@ export function useLongPress({ onPress, onLongPress, onArm, onRefused }: {
         heldUntil.current = 0;
         stopTimer();
         armed.current = false;
+        confirm.current = null;
         abandoned.current = false;
-        origin.current = { x: event.clientX, y: event.clientY, driftPx: 0 };
+        const from = { x: event.clientX, y: event.clientY, driftPx: 0 };
+        origin.current = from;
         pointer.current = event.pointerId;
         setState('holding');
         timer.current = window.setTimeout(() => {
           timer.current = null;
-          if (checks.current.onArm?.() === false) {
-            checks.current.onRefused?.('arm', origin.current?.driftPx ?? 0);
-            abandoned.current = true;
-            reset();
+          const stillHeldAt: HoldStillAt = (point) => armed.current && origin.current === from
+            && distanceFrom(from, point) <= MOVE_TOLERANCE_PX;
+          const result = checks.current.onArm?.(stillHeldAt);
+          if (result === false) {
+            refuse('arm');
             return;
           }
+          confirm.current = typeof result === 'function' ? result : null;
           armed.current = true;
           setState('armed');
         }, LONG_PRESS_MS);
       },
       onPointerMove: (event) => {
         if (stranger(event)) return;
-        const from = origin.current;
-        if (!from) return;
-        const driftPx = Math.hypot(event.clientX - from.x, event.clientY - from.y);
-        from.driftPx = Math.max(from.driftPx, driftPx);
-        if (driftPx <= MOVE_TOLERANCE_PX) return;
-        checks.current.onRefused?.('movement', from.driftPx);
-        abandoned.current = true;
-        reset();
+        movedBeyondHold(event);
       },
       onPointerUp: (event) => {
         if (stranger(event)) return;
+        if (armed.current && confirm.current) {
+          if (event && movedBeyondHold(event)) return;
+          if (!confirm.current()) {
+            refuse('arm');
+            return;
+          }
+        }
         const held = armed.current;
         reset();
         if (!held) return;

@@ -1,7 +1,11 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { useRef } from 'react';
 
 import { useReaderMarks } from '@/components/bible/marks/useReaderMarks';
+import { VerseCopyBar } from '@/components/bible/verseCopy/VerseCopyBar';
+import { VerseHoldSurface } from '@/components/bible/verseCopy/VerseHoldSurface';
+import { useVerseCopy } from '@/components/bible/verseCopy/useVerseCopy';
+import { LONG_PRESS_MS } from '@/hooks/useLongPress';
 
 import type { BookText } from '@/utils/bibleText';
 
@@ -9,6 +13,10 @@ jest.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string, options?: { meaning?: string }) => (options?.meaning ? `${key}:${options.meaning}` : key) }),
 }));
 jest.mock('@/providers/AuthProvider', () => ({ useAuth: () => ({ user: { uid: 'alice' } }) }));
+jest.mock('@/components/bible/marks/verseWordDom', () => ({
+  ...jest.requireActual('@/components/bible/marks/verseWordDom'),
+  wordAtPoint: () => null,
+}));
 jest.mock('@/components/bible/marks/markStore', () => ({
   ...jest.requireActual('@/components/bible/marks/markStore'),
   useBookMarks: () => ({ marks: {}, save: jest.fn(), ready: true, writable: true, others: [], sync: null }),
@@ -67,4 +75,44 @@ describe('the text where marks can be made', () => {
       Reflect.deleteProperty(window, 'visualViewport');
     }
   });
+});
+
+it.each(['tool', 'color'])('keeps a new %s selection made after the Pencil armed', (change) => {
+  function ReaderWithHold() {
+    const textRef = useRef<HTMLElement | null>(null);
+    const marks = useReaderMarks({ textRef, text, ready: true, bible: 'kjv', bookId: 'Genesis' });
+    const copy = useVerseCopy({ textRef, text, bible: 'kjv', bookId: 'Genesis', enabled: !marks.toolInHand });
+    return (
+      <>
+        {marks.tools}
+        <VerseHoldSurface copy={copy} articleRef={textRef} className="" onPenHold={marks.penHold}>
+          <p data-verse="1:1"><span data-verse-text="">In the beginning</span></p>
+        </VerseHoldSurface>
+        <VerseCopyBar copy={copy} wide />
+      </>
+    );
+  }
+
+  jest.useFakeTimers();
+  try {
+    render(<ReaderWithHold />);
+    const words = screen.getByText('In the beginning');
+    const pencil = (type: string) => {
+      const event = new MouseEvent(type, { bubbles: true, clientX: 40, clientY: 40 });
+      Object.defineProperties(event, { pointerType: { value: 'pen' }, pointerId: { value: 1 } });
+      fireEvent(words, event);
+    };
+    const marker = screen.getByRole('button', { name: /bible\.marks\.marker/ });
+    if (change === 'color') fireEvent.click(marker);
+    pencil('pointerdown');
+    act(() => { jest.advanceTimersByTime(LONG_PRESS_MS + 30); });
+    const choice = change === 'tool' ? marker : screen.getByRole('button', { name: 'bible.marks.meaning.blue' });
+    fireEvent.click(choice);
+    pencil('pointerup');
+    expect(marker).toHaveAttribute('aria-pressed', 'true');
+    expect(choice).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByRole('region')).not.toBeInTheDocument();
+  } finally {
+    jest.useRealTimers();
+  }
 });

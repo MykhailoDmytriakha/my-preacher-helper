@@ -13,7 +13,7 @@ import { useMarkTool } from './markTool';
 import { MarkToolbar } from './MarkToolbar';
 import { MARK_SWATCH, PENCIL_SWATCH } from './MarkToolIcons';
 import { marksSupported, useMarkHighlights } from './useMarkHighlights';
-import { useMarkStrokes } from './useMarkStrokes';
+import { useMarkStrokes, type TakeForHold } from './useMarkStrokes';
 import { useMarksWriteGate } from './useMarksWriteGate';
 
 import type { AnalysisMarks } from '../analysis/useAnalysisMarks';
@@ -41,11 +41,8 @@ type ReaderMarks = {
   gestureIgnore: '' | undefined;
   /** A tool is in hand: a press on the text paints, and is nothing else's (a verse's menu waits). */
   toolInHand: boolean;
-  /**
-   * A Pencil held still on a verse becomes the verse's hold (the owner, 2026-11-02): its stroke is dropped, nothing saved, and a
-   * tool in hand is put away — the person turned from painting to the verse. `false`: the stroke reached another word, it stays one.
-   */
-  penHold: (pointerId: number) => boolean;
+  /** Reserves a Pencil stroke and puts the tool away only on a confirmed hold. */
+  penHold: TakeForHold;
   /** A text the Apple Pencil writes on: a Pencil there never starts the page's swipe back. */
   penSurface: '' | undefined;
   /**
@@ -159,11 +156,19 @@ export function useReaderMarks({ textRef, text, ready, bible, bookId, drawn, onM
   const entries = useMemo(() => (openAt ? versesElsewhere(elsewhere, `${openAt.chapter}:${openAt.verse}`) : []), [elsewhere, openAt]);
 
   const { inHand, putAway } = tool;
-  const penHold = useCallback((pointerId: number) => {
-    const taken = takeForHold(pointerId);
-    if (taken && inHand) putAway();
-    return taken;
-  }, [inHand, putAway, takeForHold]);
+  // The stroke callback follows the tool and its colours, even while the same palette is open.
+  const currentTool = useRef({ inHand, beginStroke });
+  currentTool.current = { inHand, beginStroke };
+  const penHold = useCallback<TakeForHold>((pointerId, stillHeldAt) => {
+    const toolAtArm = currentTool.current;
+    const ownsStroke = takeForHold(pointerId, stillHeldAt);
+    if (!ownsStroke) return false;
+    return () => {
+      if (!ownsStroke() || currentTool.current.beginStroke !== toolAtArm.beginStroke) return false;
+      if (toolAtArm.inHand) putAway();
+      return true;
+    };
+  }, [putAway, takeForHold]);
   const showTools = marking && Boolean(text);
   const armed = marking && tool.inHand !== null;
   return {
