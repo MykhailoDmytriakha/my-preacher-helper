@@ -32,7 +32,7 @@ describe('useCalendarPrayers', () => {
   });
 
   it("borrows the journal's own list for the signed-in person and translates it", () => {
-    mockUsePrayerRequests.mockReturnValue({ prayerRequests: [answered], loading: false, error: null } as any);
+    mockUsePrayerRequests.mockReturnValue({ prayerRequests: [answered], loading: false, complete: true, checking: false, error: null } as any);
 
     const { result } = renderHook(() => useCalendarPrayers());
 
@@ -46,10 +46,10 @@ describe('useCalendarPrayers', () => {
 
   it("reports the journal's loading and error as its own", () => {
     const error = new Error('offline');
-    mockUsePrayerRequests.mockReturnValue({ prayerRequests: [], loading: true, error } as any);
+    mockUsePrayerRequests.mockReturnValue({ prayerRequests: [], loading: true, complete: false, checking: true, error } as any);
 
     const { result } = renderHook(() => useCalendarPrayers());
 
-    expect(result.current).toEqual({ entries: [], isLoading: true, error });
+    expect(result.current).toEqual({ entries: [], isLoading: true, complete: false, checking: true, error });
   });
 });

@@ -41,11 +41,11 @@ const pending: Sermon = { id: 'old-sermon', title: 'Preached long ago', verse: '
 
 beforeEach(() => {
     jest.mocked(useCalendarSermons).mockReturnValue({ sermons: [pending], sermonsByDate: {}, pendingSermons: [pending],
-    isLoading: false, error: null, refetch: jest.fn() } as never);
-  jest.mocked(useCalendarGroups).mockReturnValue({ groups: [], isLoading: false, error: null, refetch: jest.fn() } as never);
-  jest.mocked(useCalendarCouncils).mockReturnValue({ entries: [], isLoading: false, error: null });
-  jest.mocked(useCalendarNotes).mockReturnValue({ entries: [], isLoading: false, error: null });
-  jest.mocked(useCalendarPrayers).mockReturnValue({ entries: [], isLoading: false, error: null });
+    isLoading: false, complete: true, checking: false, error: null, refetch: jest.fn() } as never);
+  jest.mocked(useCalendarGroups).mockReturnValue({ groups: [], isLoading: false, complete: true, checking: false, error: null, refetch: jest.fn() } as never);
+  jest.mocked(useCalendarCouncils).mockReturnValue({ entries: [], isLoading: false, complete: true, checking: false, error: null });
+  jest.mocked(useCalendarNotes).mockReturnValue({ entries: [], isLoading: false, complete: true, checking: false, error: null });
+  jest.mocked(useCalendarPrayers).mockReturnValue({ entries: [], isLoading: false, complete: true, checking: false, error: null });
   jest.mocked(useSeries).mockReturnValue({ series: [], loading: false, error: null } as never);
 });
 

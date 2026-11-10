@@ -82,6 +82,8 @@ export function useCalendarSermons(startDate?: Date, endDate?: Date) {
         sermonsByDate,
         pendingSermons,
         isLoading,
+        complete: engine.complete,
+        checking: engine.state?.checking === true,
         error,
         refetch,
     };

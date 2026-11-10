@@ -51,29 +51,29 @@ export default function CalendarPage() {
     const toggleKind = (kind: CalendarKind) =>
         setShown((current) => ({ ...current, [kind]: !current[kind] }));
 
-    // We fetch a wide range for the calendar, or just let the hook handle it
-    // For now, let's fetch everything the hook provides
-    const { sermons, pendingSermons, isLoading, error } = useCalendarSermons();
-    const {
-        groups,
-        isLoading: groupsLoading,
-        error: groupsError,
-    } = useCalendarGroups();
-    const { entries: councilCalendarEntries, isLoading: councilsLoading, error: councilsError } = useCalendarCouncils();
-    const { entries: noteCalendarEntries, isLoading: notesLoading, error: notesError } = useCalendarNotes();
-    const { entries: prayerCalendarEntries, isLoading: prayersLoading, error: prayersError } = useCalendarPrayers();
-    const sourcesLoading = isLoading || groupsLoading || councilsLoading || notesLoading || prayersLoading;
-    const sources: Record<CalendarKind, ListReadSource> = {
-        sermon: { loading: isLoading, error },
-        group: { loading: groupsLoading, error: groupsError },
-        council: { loading: councilsLoading, error: councilsError },
-        note: { loading: notesLoading, error: notesError },
-        prayer: { loading: prayersLoading, error: prayersError },
+    const sources = {
+        sermon: useCalendarSermons(),
+        group: useCalendarGroups(),
+        council: useCalendarCouncils(),
+        note: useCalendarNotes(),
+        prayer: useCalendarPrayers(),
     };
-    const calendarRead = listReadState(...Object.values(sources));
-    const visibleRead = listReadState(...CALENDAR_KINDS.filter(kind => shown[kind]).map(kind => sources[kind]));
-    const readyKinds = CALENDAR_KINDS.filter(kind => listReadState(sources[kind]) === 'ready');
-    const sermonsReady = listReadState(sources.sermon) === 'ready';
+    const { sermons, pendingSermons } = sources.sermon;
+    const { groups } = sources.group;
+    const { entries: councilCalendarEntries } = sources.council;
+    const { entries: noteCalendarEntries } = sources.note;
+    const { entries: prayerCalendarEntries } = sources.prayer;
+
+    const readSource = (kind: CalendarKind): ListReadSource => {
+        const { isLoading, complete, checking, error } = sources[kind];
+        return { loading: isLoading || (!complete && checking), error };
+    };
+    const calendarRead = listReadState(...CALENDAR_KINDS.map(readSource));
+    const visibleKinds = CALENDAR_KINDS.filter(kind => shown[kind]);
+    const waitingForVisibleSource = visibleKinds.some(kind => readSource(kind).loading);
+    const readyKinds = CALENDAR_KINDS.filter(kind => sources[kind].complete && listReadState(readSource(kind)) === 'ready');
+    const canDescribeVisible = visibleKinds.every(kind => readyKinds.includes(kind));
+    const sermonsReady = readyKinds.includes('sermon');
 
     // Fetch series data for series color indicators
     const { series: allSeries } = useSeries(user?.uid || null);
@@ -101,6 +101,7 @@ export default function CalendarPage() {
     const entriesThisMonth = useMemo(() => entriesInMonth(visibleEntries, selectedMonth), [visibleEntries, selectedMonth]);
     const dayKinds = useMemo(() => kindsByDate(visibleEntries), [visibleEntries]);
     const monthCounts = useMemo(() => countByKind(entriesThisMonth), [entriesThisMonth]);
+    const summaryKinds = readyKinds.filter(kind => kind !== 'sermon' && monthCounts[kind] > 0);
 
     /** Kept for the analytics view and the month summary, which count preach dates, not entries. */
     const normalizedSermonsByDate = useMemo(
@@ -191,7 +192,7 @@ export default function CalendarPage() {
             />
             <ListReadFeedback state={calendarRead} />
 
-            {!sourcesLoading && sermonsReady && (
+            {sermonsReady && (
                 <LegacyDataWarning
                     pendingSermons={pendingSermons}
                     onAddDate={handleAddDate}
@@ -201,22 +202,18 @@ export default function CalendarPage() {
             {view === 'month' ? (
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                     <div className="lg:col-span-1">
-                        {sourcesLoading ? (
-                            <div className="h-[400px] bg-white dark:bg-gray-800 rounded-xl animate-pulse border border-gray-200 dark:border-gray-700" />
-                        ) : (
-                            <PreachCalendar
-                                kindsByDate={dayKinds}
-                                selectedDate={selectedDate}
-                                onDateSelect={setSelectedDate}
-                                currentMonth={currentMonth}
-                                onMonthChange={handleMonthChange}
-                                shown={shown}
-                                onToggleKind={toggleKind}
-                            />
-                        )}
+                        <PreachCalendar
+                            kindsByDate={dayKinds}
+                            selectedDate={selectedDate}
+                            onDateSelect={setSelectedDate}
+                            currentMonth={currentMonth}
+                            onMonthChange={handleMonthChange}
+                            shown={shown}
+                            onToggleKind={toggleKind}
+                        />
 
                         {/* Analytics Mini-Summary could go here */}
-                        {!sourcesLoading && readyKinds.length > 0 && (
+                        {(sermonsReady || summaryKinds.length > 0) && (
                             <div className="mt-6 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-100 dark:border-blue-800/50">
                                 <h3 className="text-sm font-semibold text-blue-800 dark:text-blue-300 mb-2">
                                     {t('calendar.analytics.quickSummary')}
@@ -251,7 +248,7 @@ export default function CalendarPage() {
                                       kind wears everywhere else on this page — so a new kind gets its row
                                       without a block written by hand.
                                     */}
-                                    {readyKinds.filter((kind) => kind !== 'sermon' && monthCounts[kind] > 0).map((kind) => (
+                                    {summaryKinds.map((kind) => (
                                         <div key={kind} className="flex justify-between text-xs" data-testid={`calendar-summary-${kind}`}>
                                             <span className={CALENDAR_KIND_STYLE[kind].legendLabel}>
                                                 {t(CALENDAR_KIND_STYLE[kind].legendKey)}
@@ -267,7 +264,7 @@ export default function CalendarPage() {
                     </div>
 
                     <div className="lg:col-span-2">
-                        {sourcesLoading ? (
+                        {waitingForVisibleSource && entriesThisMonth.length === 0 ? (
                             <div className="space-y-4">
                                 {[1, 2].map(i => (
                                     <div key={i} className="h-32 bg-white dark:bg-gray-800 rounded-xl animate-pulse border border-gray-200 dark:border-gray-700" />
@@ -275,21 +272,21 @@ export default function CalendarPage() {
                             </div>
                         ) : (
                             <DateEventList month={currentMonth} entries={entriesThisMonth} series={allSeries}
-                                canDescribe={visibleRead === 'ready'} knownCountKinds={readyKinds} />
+                                canDescribe={canDescribeVisible} knownCountKinds={readyKinds} />
                         )}
                     </div>
                 </div>
             ) : view === 'agenda' ? (
                 <div className="space-y-4">
                     <CalendarKindFilters shown={shown} onToggleKind={toggleKind} />
-                    {sourcesLoading ? (
+                    {waitingForVisibleSource && visibleEntries.length === 0 ? (
                         <div className="space-y-4">
                             {[1, 2].map((row) => (
                                 <div key={row} className="h-24 animate-pulse rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800" />
                             ))}
                         </div>
                     ) : (
-                        <AgendaView entries={visibleEntries} series={allSeries} canDescribe={visibleRead === 'ready'} />
+                        <AgendaView entries={visibleEntries} series={allSeries} canDescribe={canDescribeVisible} />
                     )}
                 </div>
             ) : (

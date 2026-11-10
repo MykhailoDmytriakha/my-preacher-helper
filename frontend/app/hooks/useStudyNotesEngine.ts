@@ -206,6 +206,7 @@ export function useStudyNotesEngine(enabled: boolean) {
     /** The list is being asked of the server: a note made on another device may still be on its way into it — even into a
      *  list once read whole, whose newer changes are what is being asked (Codex, 30.10). */
     checking: Boolean(collection.state?.checking),
+    complete: collection.state?.complete === true,
     error: collection.error ? new Error(collection.error) : null,
     refetch: async () => { await collection.refresh(); },
     recoverAnalysisCreation: async (id: string): Promise<StudyNote | null> => {

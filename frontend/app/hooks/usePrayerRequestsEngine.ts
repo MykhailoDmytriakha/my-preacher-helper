@@ -246,6 +246,8 @@ export function usePrayerRequestsEngine(userId: string | null | undefined, activ
   return {
     prayerRequests,
     loading: Boolean(userId) && collection.loading,
+    complete: collection.state?.complete === true,
+    checking: collection.state?.checking === true,
     error: collection.error ? new Error(collection.error) : null,
     refreshPrayers: async () => { await collection.refresh(); },
     createPrayer: (payload: CreatePrayerPayload): Promise<void> & { prayerId: string } => {

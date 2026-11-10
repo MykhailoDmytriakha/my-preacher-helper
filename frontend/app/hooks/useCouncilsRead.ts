@@ -7,6 +7,8 @@ import type { Council } from '@/models/models';
 export interface CouncilsRead {
   councils: Council[];
   loading: boolean;
+  complete: boolean;
+  checking: boolean;
   error: unknown;
   refresh: () => unknown;
 }
@@ -18,5 +20,6 @@ export interface CouncilsRead {
  */
 export function useCouncilsRead(): CouncilsRead {
   const engine = useCouncilsDataCollection();
-  return { councils: engine.councils, loading: engine.loading, error: engine.error, refresh: engine.refresh };
+  return { councils: engine.councils, loading: engine.loading, complete: engine.complete,
+    checking: engine.state?.checking === true, error: engine.error, refresh: engine.refresh };
 }

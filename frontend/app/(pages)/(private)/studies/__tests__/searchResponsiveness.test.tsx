@@ -96,6 +96,7 @@ const baseUseStudyNotesValue = (): ReturnType<typeof useStudyNotes> => ({
   confirmedDictationSources: new Map(),
   confirmedCreationIds: new Set(),
   commentCollectionReady: true,
+  complete: true,
   loading: false,
   checking: false,
   error: null,

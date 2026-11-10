@@ -4,7 +4,7 @@ import { useMemo } from 'react';
 
 import { useAppLocale } from '@/hooks/useAppLocale';
 import { useStudyNotes } from '@/hooks/useStudyNotes';
-import { noteEntries, type CalendarEntry } from '@/utils/calendarEntries';
+import { noteEntries } from '@/utils/calendarEntries';
 import { useTranslation } from '@locales/useTranslation';
 
 /**
@@ -15,15 +15,11 @@ import { useTranslation } from '@locales/useTranslation';
  * the councils have. The one thing the translation cannot know is what to call a note with no
  * name, and that word comes from the language, not from the data.
  */
-export function useCalendarNotes(): {
-  entries: CalendarEntry[];
-  isLoading: boolean;
-  error: unknown;
-} {
+export function useCalendarNotes() {
   const { t } = useTranslation();
-  const { notes, loading, error } = useStudyNotes();
+  const { notes, loading, complete, checking, error } = useStudyNotes();
   const { locale } = useAppLocale();
   const untitled = t('dashboardHome.sections.studies.untitled');
   const entries = useMemo(() => noteEntries(notes, { untitled, locale }), [notes, untitled, locale]);
-  return { entries, isLoading: loading, error };
+  return { entries, isLoading: loading, complete, checking, error };
 }

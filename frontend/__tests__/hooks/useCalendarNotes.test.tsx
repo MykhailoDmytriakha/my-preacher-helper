@@ -26,7 +26,7 @@ const nameless = {
 
 describe('useCalendarNotes', () => {
   it("translates the section's own notes into calendar entries, naming a nameless one in the app's words", () => {
-    mockUseStudyNotes.mockReturnValue({ notes: [nameless], loading: false, error: null } as any);
+    mockUseStudyNotes.mockReturnValue({ notes: [nameless], loading: false, complete: true, checking: false, error: null } as any);
 
     const { result } = renderHook(() => useCalendarNotes());
 
@@ -42,11 +42,11 @@ describe('useCalendarNotes', () => {
     expect(result.current.error).toBeNull();
   });
 
-  it("reports the section's loading as its own, so the month is not drawn half-empty", () => {
-    mockUseStudyNotes.mockReturnValue({ notes: [], loading: true, error: null } as any);
+  it("reports the section's loading as its own, so the calendar distinguishes partial results from a complete list", () => {
+    mockUseStudyNotes.mockReturnValue({ notes: [], loading: true, complete: false, checking: true, error: null } as any);
 
     const { result } = renderHook(() => useCalendarNotes());
 
-    expect(result.current).toEqual({ entries: [], isLoading: true, error: null });
+    expect(result.current).toEqual({ entries: [], isLoading: true, complete: false, checking: true, error: null });
   });
 });

@@ -74,9 +74,9 @@ jest.mock('@/components/calendar/PreachCalendar', () => {
 });
 
 jest.mock('@/components/calendar/DateEventList', () => {
-  return function MockDateEventList({ month, entries, series }: any) {
+  return function MockDateEventList({ month, entries, series, canDescribe }: any) {
     return (
-      <div data-testid="date-event-list" data-kinds={entries.map((entry: any) => entry.kind).sort().join(',')}>
+      <div data-testid="date-event-list" data-kinds={entries.map((entry: any) => entry.kind).sort().join(',')} data-can-describe={canDescribe}>
         Month: {month.toISOString().split('T')[0]}
         Sermons: {entries.filter((entry: any) => entry.kind === 'sermon').length}
         Series: {series?.length || 0}
@@ -96,9 +96,9 @@ jest.mock('@/components/calendar/LegacyDataWarning', () => {
 });
 
 jest.mock('@/components/calendar/AgendaView', () => {
-  return function MockAgendaView({ entries, series }: any) {
+  return function MockAgendaView({ entries, series, canDescribe }: any) {
     return (
-      <div data-testid="agenda-view" data-kinds={entries.map((entry: any) => entry.kind).sort().join(',')}>
+      <div data-testid="agenda-view" data-kinds={entries.map((entry: any) => entry.kind).sort().join(',')} data-can-describe={canDescribe}>
         Agenda: {entries.length} entries, {series?.length || 0} series
       </div>
     );
@@ -212,16 +212,16 @@ describe('CalendarPage', () => {
     mockUseCalendarGroups.mockReturnValue({
       groups: [],
       isLoading: false,
-      error: null,
+      complete: true, checking: false, error: null,
       refetch: jest.fn(),
     } as any);
     mockUseCalendarCouncils.mockReturnValue({
       entries: [],
       isLoading: false,
-      error: null,
+      complete: true, checking: false, error: null,
     });
-    mockUseCalendarNotes.mockReturnValue({ entries: [], isLoading: false, error: null });
-    mockUseCalendarPrayers.mockReturnValue({ entries: [], isLoading: false, error: null });
+    mockUseCalendarNotes.mockReturnValue({ entries: [], isLoading: false, complete: true, checking: false, error: null });
+    mockUseCalendarPrayers.mockReturnValue({ entries: [], isLoading: false, complete: true, checking: false, error: null });
   });
 
   it('renders calendar header and components', () => {
@@ -234,7 +234,7 @@ describe('CalendarPage', () => {
       },
       pendingSermons: [],
       isLoading: false,
-      error: null,
+      complete: true, checking: false, error: null,
       refetch: jest.fn(),
     });
 
@@ -273,7 +273,7 @@ describe('CalendarPage', () => {
       },
       pendingSermons: [],
       isLoading: false,
-      error: null,
+      complete: true, checking: false, error: null,
       refetch: jest.fn(),
     });
 
@@ -318,7 +318,7 @@ describe('CalendarPage', () => {
       },
       pendingSermons: [],
       isLoading: false,
-      error: null,
+      complete: true, checking: false, error: null,
       refetch: jest.fn(),
     });
 
@@ -346,7 +346,7 @@ describe('CalendarPage', () => {
       },
       pendingSermons: [mockSermonWithoutDates],
       isLoading: false,
-      error: null,
+      complete: true, checking: false, error: null,
       refetch: jest.fn(),
     });
 
@@ -376,7 +376,7 @@ describe('CalendarPage', () => {
       },
       pendingSermons: [], // Empty array
       isLoading: false,
-      error: null,
+      complete: true, checking: false, error: null,
       refetch: jest.fn(),
     });
 
@@ -427,7 +427,7 @@ describe('CalendarPage', () => {
       },
       pendingSermons: [],
       isLoading: false,
-      error: null,
+      complete: true, checking: false, error: null,
       refetch: jest.fn(),
     });
 
@@ -465,7 +465,7 @@ describe('CalendarPage', () => {
       },
       pendingSermons: [],
       isLoading: false,
-      error: null,
+      complete: true, checking: false, error: null,
       refetch: jest.fn(),
     });
 
@@ -496,7 +496,7 @@ describe('CalendarPage', () => {
       sermonsByDate: {},
       pendingSermons: [],
       isLoading: true,
-      error: null,
+      complete: false, checking: true, error: null,
       refetch: jest.fn(),
     });
 
@@ -519,7 +519,7 @@ describe('CalendarPage', () => {
       sermonsByDate: {},
       pendingSermons: [],
       isLoading: false,
-      error: 'Test error',
+      complete: false, checking: false, error: 'Test error',
       refetch: jest.fn(),
     });
 
@@ -548,7 +548,7 @@ describe('CalendarPage', () => {
       },
       pendingSermons: [],
       isLoading: false,
-      error: null,
+      complete: true, checking: false, error: null,
       refetch: jest.fn(),
     });
 
@@ -568,7 +568,7 @@ describe('CalendarPage', () => {
       },
       pendingSermons: [mockSermonWithoutDates],
       isLoading: false,
-      error: null,
+      complete: true, checking: false, error: null,
       refetch: jest.fn(),
     });
 
@@ -589,13 +589,13 @@ describe('CalendarPage', () => {
         sermonsByDate: {},
         pendingSermons: [],
         isLoading: false,
-        error: null,
+        complete: true, checking: false, error: null,
         refetch: jest.fn(),
       } as any);
 
     it('marks the day of a council and names its kind, not a group', () => {
       sermonsOnly();
-      mockUseCalendarCouncils.mockReturnValue({ entries: [mockCouncilEntry], isLoading: false, error: null });
+      mockUseCalendarCouncils.mockReturnValue({ entries: [mockCouncilEntry], isLoading: false, complete: true, checking: false, error: null });
 
       render(<CalendarPage />);
 
@@ -605,7 +605,7 @@ describe('CalendarPage', () => {
     it('puts the council among the events of its day', () => {
       jest.useFakeTimers().setSystemTime(new Date('2024-01-15T12:00:00Z'));
       sermonsOnly();
-      mockUseCalendarCouncils.mockReturnValue({ entries: [mockCouncilEntry], isLoading: false, error: null });
+      mockUseCalendarCouncils.mockReturnValue({ entries: [mockCouncilEntry], isLoading: false, complete: true, checking: false, error: null });
 
       render(<CalendarPage />);
 
@@ -615,7 +615,7 @@ describe('CalendarPage', () => {
     it('takes the councils off the calendar when the person switches them off', () => {
       jest.useFakeTimers().setSystemTime(new Date('2024-01-15T12:00:00Z'));
       sermonsOnly();
-      mockUseCalendarCouncils.mockReturnValue({ entries: [mockCouncilEntry], isLoading: false, error: null });
+      mockUseCalendarCouncils.mockReturnValue({ entries: [mockCouncilEntry], isLoading: false, complete: true, checking: false, error: null });
 
       render(<CalendarPage />);
       fireEvent.click(screen.getByTestId('turn-off-councils'));
@@ -624,13 +624,18 @@ describe('CalendarPage', () => {
       expect(screen.getByTestId('date-event-list')).toHaveAttribute('data-kinds', 'sermon');
     });
 
-    it('waits for the councils before drawing the month', () => {
+    it('shows known events while councils load and keeps the month filters usable', () => {
+      jest.useFakeTimers().setSystemTime(new Date('2024-01-15T12:00:00Z'));
       sermonsOnly();
-      mockUseCalendarCouncils.mockReturnValue({ entries: [], isLoading: true, error: null });
+      mockUseCalendarCouncils.mockReturnValue({ entries: [], isLoading: true, complete: false, checking: true, error: null });
 
       render(<CalendarPage />);
 
-      expect(screen.queryByTestId('preach-calendar')).not.toBeInTheDocument();
+      expect(screen.getByTestId('preach-calendar')).toHaveAttribute('data-kinds', '2024-01-15:sermon');
+      expect(screen.getByTestId('date-event-list')).toHaveAttribute('data-kinds', 'sermon');
+      expect(screen.getByTestId('date-event-list')).toHaveAttribute('data-can-describe', 'false');
+      fireEvent.click(screen.getByTestId('turn-off-councils'));
+      expect(screen.getByTestId('date-event-list')).toHaveAttribute('data-can-describe', 'true');
     });
 
     it('explains a calendar source refusal in translated words', () => {
@@ -639,10 +644,10 @@ describe('CalendarPage', () => {
         sermonsByDate: {},
         pendingSermons: [],
         isLoading: false,
-        error: null,
+        complete: true, checking: false, error: null,
         refetch: jest.fn(),
       } as any);
-      mockUseCalendarCouncils.mockReturnValue({ entries: [], isLoading: false, error: new Error('nope') });
+      mockUseCalendarCouncils.mockReturnValue({ entries: [], isLoading: false, complete: false, checking: false, error: new Error('nope') });
 
       render(<CalendarPage />);
 
@@ -651,7 +656,7 @@ describe('CalendarPage', () => {
 
     it('carries the same entries into the agenda, with the switches visible there too', () => {
       sermonsOnly();
-      mockUseCalendarCouncils.mockReturnValue({ entries: [mockCouncilEntry], isLoading: false, error: null });
+      mockUseCalendarCouncils.mockReturnValue({ entries: [mockCouncilEntry], isLoading: false, complete: true, checking: false, error: null });
 
       render(<CalendarPage />);
       fireEvent.click(screen.getByText('Agenda'));
@@ -661,7 +666,7 @@ describe('CalendarPage', () => {
 
     it('keeps the calendar standing when one source fails but others answered', () => {
       sermonsOnly();
-      mockUseCalendarCouncils.mockReturnValue({ entries: [], isLoading: false, error: new Error('read failed') });
+      mockUseCalendarCouncils.mockReturnValue({ entries: [], isLoading: false, complete: false, checking: false, error: new Error('read failed') });
 
       render(<CalendarPage />);
 
@@ -681,7 +686,7 @@ describe('CalendarPage', () => {
         sermonsByDate: {},
         pendingSermons: [],
         isLoading: false,
-        error: null,
+        complete: true, checking: false, error: null,
         refetch: jest.fn(),
       } as any);
       mockUseSeries.mockReturnValue({ series: [], loading: false, error: null } as any);
@@ -689,8 +694,8 @@ describe('CalendarPage', () => {
 
     it('marks the day of a note and of a prayer with their own kinds', () => {
       sermonsOnly();
-      mockUseCalendarNotes.mockReturnValue({ entries: [mockNoteEntry], isLoading: false, error: null });
-      mockUseCalendarPrayers.mockReturnValue({ entries: [mockPrayerEntry], isLoading: false, error: null });
+      mockUseCalendarNotes.mockReturnValue({ entries: [mockNoteEntry], isLoading: false, complete: true, checking: false, error: null });
+      mockUseCalendarPrayers.mockReturnValue({ entries: [mockPrayerEntry], isLoading: false, complete: true, checking: false, error: null });
 
       render(<CalendarPage />);
 
@@ -700,8 +705,8 @@ describe('CalendarPage', () => {
     it('puts them among the events of their day and counts them in the month summary', () => {
       jest.useFakeTimers().setSystemTime(new Date('2024-01-15T12:00:00Z'));
       sermonsOnly();
-      mockUseCalendarNotes.mockReturnValue({ entries: [mockNoteEntry], isLoading: false, error: null });
-      mockUseCalendarPrayers.mockReturnValue({ entries: [mockPrayerEntry], isLoading: false, error: null });
+      mockUseCalendarNotes.mockReturnValue({ entries: [mockNoteEntry], isLoading: false, complete: true, checking: false, error: null });
+      mockUseCalendarPrayers.mockReturnValue({ entries: [mockPrayerEntry], isLoading: false, complete: true, checking: false, error: null });
 
       render(<CalendarPage />);
 
@@ -710,18 +715,72 @@ describe('CalendarPage', () => {
       expect(screen.getByTestId('calendar-summary-prayer')).toHaveTextContent('1');
     });
 
-    it('waits for the notes and the prayers before drawing the month', () => {
+    it('shows available rows in Month and List and adds notes when they arrive', () => {
+      jest.useFakeTimers().setSystemTime(new Date('2024-01-15T12:00:00Z'));
       sermonsOnly();
-      mockUseCalendarNotes.mockReturnValue({ entries: [], isLoading: true, error: null });
+      mockUseCalendarNotes.mockReturnValue({ entries: [], isLoading: true, complete: false, checking: true, error: null });
+      mockUseCalendarPrayers.mockReturnValue({ entries: [mockPrayerEntry], isLoading: false, complete: true, checking: false, error: null });
+
+      const { rerender } = render(<CalendarPage />);
+
+      expect(screen.getByText('common.loading')).toBeInTheDocument();
+      expect(screen.getByTestId('date-event-list')).toHaveAttribute('data-kinds', 'prayer,sermon');
+      fireEvent.click(screen.getByRole('button', { name: 'Agenda' }));
+      expect(screen.getByTestId('agenda-view')).toHaveAttribute('data-kinds', 'prayer,sermon');
+      expect(screen.getByTestId('agenda-view')).toHaveAttribute('data-can-describe', 'false');
+      mockUseCalendarNotes.mockReturnValue({ entries: [mockNoteEntry], isLoading: false, complete: true, checking: false, error: null });
+      rerender(<CalendarPage />);
+      expect(screen.getByTestId('agenda-view')).toHaveAttribute('data-kinds', 'note,prayer,sermon');
+      expect(screen.getByTestId('agenda-view')).toHaveAttribute('data-can-describe', 'true');
+      expect(screen.queryByText('common.loading')).not.toBeInTheDocument();
+    });
+
+    it('shows a confirmed count without claiming a total for a pending source', () => {
+      jest.useFakeTimers().setSystemTime(new Date('2024-01-15T12:00:00Z'));
+      sermonsOnly();
+      mockUseCalendarSermons.mockReturnValue({ ...mockUseCalendarSermons(), isLoading: true, complete: false, checking: true });
+      mockUseCalendarNotes.mockReturnValue({ entries: [mockNoteEntry], isLoading: false, complete: true, checking: false, error: null });
+      mockUseCalendarPrayers.mockReturnValue({ entries: [mockPrayerEntry], isLoading: true, complete: false, checking: true, error: null });
 
       render(<CalendarPage />);
 
-      expect(screen.queryByTestId('preach-calendar')).not.toBeInTheDocument();
+      expect(screen.getByTestId('calendar-summary-note')).toHaveTextContent('1');
+      expect(screen.queryByTestId('calendar-summary-prayer')).not.toBeInTheDocument();
+      expect(screen.queryByText('Total Preachings')).not.toBeInTheDocument();
+    });
+
+    it('shows a page of notes without announcing a count or an empty month until the collection is complete', () => {
+      jest.useFakeTimers().setSystemTime(new Date('2024-01-15T12:00:00Z'));
+      sermonsOnly();
+      mockUseCalendarNotes.mockReturnValue({ entries: [mockNoteEntry], isLoading: false, complete: false, checking: true, error: null });
+
+      const { rerender } = render(<CalendarPage />);
+
+      expect(screen.getByTestId('date-event-list')).toHaveAttribute('data-kinds', 'note,sermon');
+      expect(screen.queryByTestId('calendar-summary-note')).not.toBeInTheDocument();
+      expect(screen.getByTestId('date-event-list')).toHaveAttribute('data-can-describe', 'false');
+      expect(screen.getByText('common.loading')).toBeInTheDocument();
+
+      mockUseCalendarNotes.mockReturnValue({ entries: [mockNoteEntry], isLoading: false, complete: true, checking: false, error: null });
+      rerender(<CalendarPage />);
+      expect(screen.getByTestId('calendar-summary-note')).toHaveTextContent('1');
+      expect(screen.getByTestId('date-event-list')).toHaveAttribute('data-can-describe', 'true');
+    });
+
+    it('does not claim a filtered calendar is empty from an incomplete offline collection', () => {
+      sermonsOnly();
+      mockUseCalendarNotes.mockReturnValue({ entries: [], isLoading: false, complete: false, checking: false, error: null });
+
+      render(<CalendarPage />);
+      fireEvent.click(screen.getByRole('button', { name: 'Agenda' }));
+
+      expect(screen.getByTestId('agenda-view')).toHaveAttribute('data-can-describe', 'false');
+      expect(screen.queryByText('common.loading')).not.toBeInTheDocument();
     });
 
     it('keeps the calendar when the prayers refused but the rest answered', () => {
       sermonsOnly();
-      mockUseCalendarPrayers.mockReturnValue({ entries: [], isLoading: false, error: new Error('offline') });
+      mockUseCalendarPrayers.mockReturnValue({ entries: [], isLoading: false, complete: false, checking: false, error: new Error('offline') });
 
       render(<CalendarPage />);
 
@@ -730,9 +789,9 @@ describe('CalendarPage', () => {
   });
 
   it('does not summarize failed sermons as zero while another calendar source has an entry', () => {
-    mockUseCalendarSermons.mockReturnValue({ sermons: [], pendingSermons: [], sermonsByDate: {}, isLoading: false, error: new Error('Store unavailable'), refetch: jest.fn() } as any);
+    mockUseCalendarSermons.mockReturnValue({ sermons: [], pendingSermons: [], sermonsByDate: {}, isLoading: false, complete: false, checking: false, error: new Error('Store unavailable'), refetch: jest.fn() } as any);
     mockUseSeries.mockReturnValue({ series: [], loading: false, error: null } as any);
-    mockUseCalendarNotes.mockReturnValue({ entries: [{ ...mockNoteEntry, date: getTodayDateOnlyKey() }], isLoading: false, error: null });
+    mockUseCalendarNotes.mockReturnValue({ entries: [{ ...mockNoteEntry, date: getTodayDateOnlyKey() }], isLoading: false, complete: true, checking: false, error: null });
     render(<CalendarPage />);
     expect(screen.getByTestId('date-event-list')).toHaveAttribute('data-kinds', 'note');
     expect(screen.queryByText('Total Preachings')).not.toBeInTheDocument();
@@ -740,7 +799,7 @@ describe('CalendarPage', () => {
   });
 
   it('uses translated read failure words instead of claiming an entirely unread calendar is empty', () => {
-    mockUseCalendarSermons.mockReturnValue({ sermons: [], pendingSermons: [], sermonsByDate: {}, isLoading: false, error: new Error('Store unavailable'), refetch: jest.fn() } as any);
+    mockUseCalendarSermons.mockReturnValue({ sermons: [], pendingSermons: [], sermonsByDate: {}, isLoading: false, complete: false, checking: false, error: new Error('Store unavailable'), refetch: jest.fn() } as any);
     mockUseSeries.mockReturnValue({ series: [], loading: false, error: null } as any);
     render(<CalendarPage />);
     expect(screen.queryByText('Error loading calendar')).not.toBeInTheDocument();

@@ -17,6 +17,7 @@ export function useCalendarGroups(startDate?: Date, endDate?: Date) {
       const day = groupMeetingDay(meeting.date);
       return Boolean(day && (!startStr || day >= startStr) && (!endStr || day <= endStr));
     })),
-    isLoading: engine.loading, error: engine.error, refetch: engine.refreshGroups,
+    isLoading: engine.loading, complete: engine.complete, checking: engine.state?.checking === true,
+    error: engine.error, refetch: engine.refreshGroups,
   };
 }

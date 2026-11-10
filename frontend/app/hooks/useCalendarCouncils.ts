@@ -3,7 +3,7 @@
 import { useMemo } from 'react';
 
 import { useCouncilsRead } from '@/hooks/useCouncilsRead';
-import { councilEntries, type CalendarEntry } from '@/utils/calendarEntries';
+import { councilEntries } from '@/utils/calendarEntries';
 
 /**
  * THE COUNCILS, AS THE CALENDAR NEEDS THEM.
@@ -13,12 +13,8 @@ import { councilEntries, type CalendarEntry } from '@/utils/calendarEntries';
  * A council renamed on the council page therefore changes in the calendar at once, with nothing
  * to refetch and nothing to keep in step.
  */
-export function useCalendarCouncils(): {
-  entries: CalendarEntry[];
-  isLoading: boolean;
-  error: unknown;
-} {
-  const { councils, loading, error } = useCouncilsRead();
+export function useCalendarCouncils() {
+  const { councils, loading, complete, checking, error } = useCouncilsRead();
   const entries = useMemo(() => councilEntries(councils), [councils]);
-  return { entries, isLoading: loading, error };
+  return { entries, isLoading: loading, complete, checking, error };
 }
