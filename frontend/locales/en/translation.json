@@ -2158,6 +2158,11 @@
     "noSubPoint": "Directly under structure point"
   },
   "structure": {
+    "unsubmittedTitle": {
+      "heading": "Unsubmitted outline title",
+      "body": "This text was typed on this device and has no confirmed save. You can copy it.",
+      "discard": "Discard this draft"
+    },
     "title": "Sermon Composition:",
     "entries": "entries",
     "entries_one": "entry",

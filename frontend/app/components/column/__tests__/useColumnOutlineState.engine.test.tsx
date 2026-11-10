@@ -172,8 +172,8 @@ describe("the structure board column on the data engine", () => {
     const { result } = renderHook(() => useColumnOutlineState({ id: "main", sermonId: "sermon-1", initialSermonPoints: points, t }),
       { wrapper: ({ children }) => <StructureWriterContext.Provider value={writer}>{children}</StructureWriterContext.Provider> });
 
-    act(() => result.current.handleSaveEditDirect("point-1", "First real change", "First point"));
-    act(() => result.current.handleSaveEditDirect("point-1", "Second real change", "First point"));
+    act(() => { void result.current.handleSaveEditDirect("point-1", "First real change", "First point"); });
+    act(() => { void result.current.handleSaveEditDirect("point-1", "Second real change", "First point"); });
     await act(async () => { await answerAll(); });
 
     expect(outlineOf(state).main[0].text).toBe("Second real change");

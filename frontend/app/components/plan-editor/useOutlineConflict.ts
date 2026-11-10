@@ -43,7 +43,12 @@ export function useOutlineConflict(owner: string, id: string) {
     // Keep a departed refusal in its original owner/document namespace; the storage hook
     // guards view publication, so an old outcome cannot alter the new current editor.
     const next={payload:{outline,baseOutline:base,serverOutline},actualRevision:0};
-    setRecord(next,id,undefined,{preserveSelection:(holds.current.get(identity)??0)>0});
+    let durable = false;
+    setRecord(next,id,undefined,{
+      preserveSelection:(holds.current.get(identity)??0)>0,
+      onDurablyStored: () => { durable = true; },
+    });
+    return durable;
   },[id,setRecord,identity]);
   const edit=useCallback((outline:SermonOutline) => {
     const previous=get();

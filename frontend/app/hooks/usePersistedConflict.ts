@@ -21,6 +21,8 @@ export interface PersistedConflictCopy<T> {
 
 export interface PersistedConflictWriteOptions {
   preserveSelection?: boolean;
+  /** A physically stored copy that this editor can recover. */
+  onDurablyStored?: () => void;
 }
 
 export interface PersistedConflictChoices<T> {
@@ -155,6 +157,7 @@ export function usePersistedConflict<T>(uid: string | null | undefined, docId: s
       const preferred = nextConflictSelection(previousKey, expected ? matching?.key : undefined,
         key, options?.preserveSelection === true);
       refresh(documentId, preferred, false, false, options?.preserveSelection === true);
+      if (landed && options?.onDurablyStored && session.validate(copy.value, documentId)) options.onDurablyStored();
       return;
     }
     if (!matching) return;

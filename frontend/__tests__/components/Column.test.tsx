@@ -304,6 +304,7 @@ import { act, cleanup, render as rtlRender, screen, fireEvent, waitFor, within }
 import React from 'react';
 import { toast } from 'sonner';
 
+import { OutlineTitleDraftNotices, OutlineTitleDraftScope } from '@/components/plan-editor/OutlineTitleDrafts';
 import { StructureWriterContext, type StructureWriter } from '@/components/sermon/structureWriter';
 import { Item, type SermonOutline } from '@/models/models';
 import { generateSermonPointsForSection } from '@/services/outline.service';
@@ -1108,6 +1109,77 @@ describe('Column Component', () => {
         ],
         { afterEachScenario: cleanup }
       );
+    });
+
+    it.each(['point', 'subpoint'])('keeps an unsubmitted %s title accessible after the saved row is removed', async target => {
+      const onOutlineUpdate = jest.fn();
+      const point = { id: 'point', text: 'Opening point', subPoints: [{ id: 'sub', text: 'Opening subpoint', position: 1 }] };
+      const neighbor = { id: 'neighbor', text: 'Neighbor before removal' };
+      const props = { id: 'main', title: 'Main', sermonId: 'sermon-1', items: [], onOutlineUpdate };
+      const board = (outlinePoints: SermonOutline['main']) =>
+        <OutlineTitleDraftScope owner="owner" resource={`sermon-title-removal-${target}`}>
+          <OutlineTitleDraftNotices />
+          <Column {...props} outlinePoints={outlinePoints} />
+        </OutlineTitleDraftScope>;
+      const view = render(board([point, neighbor]));
+      if (target === 'point') {
+        fireEvent.click(screen.getByRole('heading', { name: point.text }));
+      } else {
+        const labels = screen.getAllByTitle(point.subPoints[0].text);
+        const editableLabel = labels.find(label => label.classList.contains('cursor-text'));
+        expect(editableLabel).toBeVisible();
+        fireEvent.doubleClick(editableLabel!);
+      }
+      const draft = 'These words were typed before the saved removal';
+      const opening = target === 'point' ? point.text : point.subPoints[0].text;
+      fireEvent.change(screen.getByDisplayValue(opening), { target: { value: draft } });
+      expect(screen.getByDisplayValue(draft)).toBeVisible();
+
+      const remaining = { ...neighbor, text: 'Neighbor saved with removal' };
+      const stored = target === 'point' ? [remaining] : [{ ...point, subPoints: [] }, remaining];
+      view.rerender(board(stored));
+
+      expect((await screen.findAllByText(remaining.text)).some(element => element.isConnected)).toBe(true);
+      expect(screen.queryByRole('heading', { name: draft })).not.toBeInTheDocument();
+      expect(screen.queryByDisplayValue(draft) ?? screen.queryByText(draft, { exact: true })).toBeVisible();
+      expect(onOutlineUpdate).not.toHaveBeenCalled();
+      view.unmount();
+      render(board(stored));
+      expect(await screen.findByDisplayValue(draft)).toHaveAttribute('readonly');
+    });
+
+    it('isolates a detached title by owner and document, and discards only after confirmation', async () => {
+      const point = { id: 'point', text: 'Initial title' };
+      const other = { id: 'other', text: 'Another point' };
+      const board = (owner: string, resource: string, points: SermonOutline['main']) =>
+        <OutlineTitleDraftScope owner={owner} resource={resource}>
+          <OutlineTitleDraftNotices />
+          <Column id="main" title="Main" items={[]} outlinePoints={points} />
+        </OutlineTitleDraftScope>;
+      const view = render(board('outline-owner', 'untouched-sermon', [point]));
+      fireEvent.click(screen.getByRole('heading', { name: point.text }));
+      view.rerender(board('outline-owner', 'untouched-sermon', [other]));
+      await screen.findByRole('heading', { name: other.text });
+      expect(screen.queryByRole('region', { name: 'structure.unsubmittedTitle.heading' })).not.toBeInTheDocument();
+      view.rerender(board('outline-owner', 'first-sermon', [point]));
+      fireEvent.click(await screen.findByRole('heading', { name: point.text }));
+      const draft = 'Title from the first owner and sermon';
+      fireEvent.change(screen.getByDisplayValue(point.text), { target: { value: draft } });
+
+      view.rerender(board('another-owner', 'first-sermon', [other]));
+      expect(screen.queryByDisplayValue(draft)).not.toBeInTheDocument();
+      view.rerender(board('outline-owner', 'second-sermon', [other]));
+      expect(screen.queryByDisplayValue(draft)).not.toBeInTheDocument();
+      view.rerender(board('outline-owner', 'first-sermon', [other]));
+      const recovered = await screen.findByDisplayValue(draft);
+      const notice = screen.getByRole('region', { name: 'structure.unsubmittedTitle.heading' });
+      fireEvent.click(within(notice).getByRole('button', { name: 'structure.unsubmittedTitle.discard' }));
+      expect(recovered).toBeVisible();
+      fireEvent.click(within(notice).getByRole('button', { name: 'unsavedDraft.discard' }));
+      expect(recovered).not.toBeInTheDocument();
+      view.unmount();
+      render(board('outline-owner', 'first-sermon', [other]));
+      expect(screen.queryByDisplayValue(draft)).not.toBeInTheDocument();
     });
 
     it('allows adding a subpoint from the structure outline surface', async () => {

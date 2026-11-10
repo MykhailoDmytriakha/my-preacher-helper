@@ -9,6 +9,7 @@ import { ScriptureText } from '@/components/bible/ScriptureLinks';
 import { FlatRecorderButton } from '@/components/FlatRecorderButton';
 import { FocusRecorderButton } from '@/components/FocusRecorderButton';
 import { LockToggleButton } from '@/components/LockToggleButton';
+import { useOutlineTitleDraft } from '@/components/plan-editor/OutlineTitleDrafts';
 import PointNote from '@/components/PointNote';
 import { useStructureWriter } from '@/components/sermon/structureWriter';
 import { OutlinePointGuidanceTooltip } from '@/components/SermonGuidanceTooltips';
@@ -57,7 +58,7 @@ export const OutlinePointCard: React.FC<{
   onEditPoint?: (point: SermonPoint) => void;
   onDeletePoint?: (pointId: string) => void;
   // For inline edit in normal mode
-  onSaveEdit?: (pointId: string, newText: string, openingText: string) => void;
+  onSaveEdit?: (pointId: string, newText: string, openingText: string) => Promise<unknown> | void;
   // Sub-point operations
   onAddSubPoint?: (outlinePointId: string, text: string) => void;
   onEditSubPoint?: (outlinePointId: string, subPointId: string, newText: string, openingText: string) => void;
@@ -157,6 +158,7 @@ export const OutlinePointCard: React.FC<{
   const [localEditText, setLocalEditText] = React.useState(point.text);
   const openingTitle = React.useRef(point.text);
   const localEditRef = React.useRef<HTMLInputElement>(null);
+  const titleDraft = useOutlineTitleDraft(isEditingLocally && !isFocusMode ? point.id : null);
   React.useEffect(() => {
     if (isEditingLocally && localEditRef.current) {
       localEditRef.current.focus();
@@ -164,15 +166,20 @@ export const OutlinePointCard: React.FC<{
     }
   }, [isEditingLocally]);
 
-  const handleLocalCancel = () => {
+  const closeLocalEdit = () => {
     setIsEditingLocally(false);
     setLocalEditText(point.text);
   };
 
+  const handleLocalCancel = () => {
+    titleDraft.cancel();
+    closeLocalEdit();
+  };
+
   const handleLocalSave = () => {
     const textToSave = changedCapitalizedTitle(localEditText, openingTitle.current);
-    if (textToSave) onSaveEdit?.(point.id, textToSave, openingTitle.current);
-    handleLocalCancel();
+    if (textToSave) titleDraft.handoff(onSaveEdit?.(point.id, textToSave, openingTitle.current));
+    closeLocalEdit();
   };
 
   const pointLockToggleLabel = getPointLockToggleLabel(isPointLocked, t);
@@ -257,7 +264,10 @@ export const OutlinePointCard: React.FC<{
           ref={localEditRef}
           type="text"
           value={localEditText}
-          onChange={(e) => setLocalEditText(capitalizeFirstLetter(e.target.value))}
+          onChange={event => {
+            titleDraft.change(event.target.value);
+            setLocalEditText(capitalizeFirstLetter(event.target.value));
+          }}
           onKeyDown={(e) => { if (e.key === 'Enter') handleLocalSave(); if (e.key === 'Escape') handleLocalCancel(); }}
           className="flex-1 px-2 py-0.5 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded border border-gray-300 dark:border-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-400 min-w-0"
         />
@@ -295,6 +305,7 @@ export const OutlinePointCard: React.FC<{
             isFocusMode,
             setLocalEditText: text => {
               openingTitle.current = text;
+              titleDraft.open({ target: { kind: 'point', id: point.id }, text: point.text }, text);
               setLocalEditText(text);
             },
             setIsEditingLocally,

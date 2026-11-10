@@ -14,6 +14,7 @@ import { PlusIcon, PencilIcon, CheckIcon, XMarkIcon, TrashIcon, Bars2Icon } from
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { ScriptureText } from '@/components/bible/ScriptureLinks';
+import { useOutlineTitleDraft } from "@/components/plan-editor/OutlineTitleDrafts";
 import PointNote from "@/components/PointNote";
 import { usePangeaAnnouncements } from '@/hooks/useDragAnnouncements';
 import { sortSubPointsByPosition, subPointDeletionNeedsConfirm } from "@/utils/subPoints";
@@ -26,7 +27,7 @@ interface SubPointListProps {
   outlinePointId: string;
   isPointLocked: boolean;
   onAdd: (outlinePointId: string, text: string) => void;
-  onEdit: (outlinePointId: string, subPointId: string, newText: string, openingText: string) => void;
+  onEdit: (outlinePointId: string, subPointId: string, newText: string, openingText: string) => Promise<unknown> | void;
   onTitleDraftChange?: (outlinePointId: string, active: boolean) => void;
   onDelete: (outlinePointId: string, subPointId: string) => void;
   onReorder?: (outlinePointId: string, sourceIndex: number, destinationIndex: number) => void;
@@ -116,6 +117,7 @@ export const SubPointList: React.FC<SubPointListProps> = ({
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const addInputRef = useRef<HTMLInputElement>(null);
   const editInputRef = useRef<HTMLInputElement>(null);
+  const titleDraft = useOutlineTitleDraft(!hideList && subPoints.some(point => point.id === editingId) ? editingId : null);
 
   const hasTitleDraft = isAdding || editingId !== null;
   useLayoutEffect(() => {
@@ -151,7 +153,13 @@ export const SubPointList: React.FC<SubPointListProps> = ({
 
   const handleEditSave = () => {
     const textToSave = changedCapitalizedTitle(editText, openingTitle.current);
-    if (editingId && textToSave) onEdit(outlinePointId, editingId, textToSave, openingTitle.current);
+    if (editingId && textToSave) titleDraft.handoff(onEdit(outlinePointId, editingId, textToSave, openingTitle.current));
+    setEditingId(null);
+    setEditText("");
+  };
+
+  const cancelEdit = () => {
+    titleDraft.cancel();
     setEditingId(null);
     setEditText("");
   };
@@ -159,6 +167,7 @@ export const SubPointList: React.FC<SubPointListProps> = ({
   const startEditingSubPoint = (sp: SubPoint) => {
     if (isPointLocked) return;
     openingTitle.current = sp.text;
+    titleDraft.open({ target: { kind: 'subpoint', id: sp.id }, text: sp.text }, sp.text);
     setEditingId(sp.id);
     setEditText(sp.text);
   };
@@ -253,17 +262,20 @@ export const SubPointList: React.FC<SubPointListProps> = ({
                   ref={editingId === sp.id ? editInputRef : undefined}
                   type="text"
                   value={editText}
-                  onChange={(e) => setEditText(capitalizeFirstLetter(e.target.value))}
+                  onChange={event => {
+                    titleDraft.change(event.target.value);
+                    setEditText(capitalizeFirstLetter(event.target.value));
+                  }}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") handleEditSave();
-                    if (e.key === "Escape") { setEditingId(null); setEditText(""); }
+                    if (e.key === "Escape") cancelEdit();
                   }}
                   className={styles.inputClass}
                 />
                 <button type="button" onClick={handleEditSave} className={styles.saveBtnClass} aria-label={t(COMMON_SAVE_KEY)}>
                   <CheckIcon className={SMALL_ACTION_ICON_CLASS} />
                 </button>
-                <button type="button" onClick={() => { setEditingId(null); setEditText(""); }} className={styles.cancelBtnClass} aria-label={t(COMMON_CANCEL_KEY)}>
+                <button type="button" onClick={cancelEdit} className={styles.cancelBtnClass} aria-label={t(COMMON_CANCEL_KEY)}>
                   <XMarkIcon className={SMALL_ACTION_ICON_CLASS} />
                 </button>
               </div>

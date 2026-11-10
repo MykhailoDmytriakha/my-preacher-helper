@@ -16,6 +16,9 @@ import {
 import { readOwnerList } from '@/services/ownerListRead.client';
 import { listOutbox } from '@/services/writeOutbox.client';
 import { hydrateSermon, sortSermons } from '@/utils/sermonDocument';
+
+import type { OutlineTitleOpening } from '@/utils/sermonNoteText';
+
 export { hydrateSermon } from '@/utils/sermonDocument';
 
 // Sermon READS + own-doc WRITES (update fields, structure, outline, thoughts[],
@@ -65,6 +68,7 @@ const SERMON_OUTLINE_AGGREGATE = 'outline';
  */
 export class OutlineCollisionError extends Error {
   readonly isStaleWrite = true;
+  retainedTitle?: OutlineTitleOpening;
   readonly aggregate = SERMON_OUTLINE_AGGREGATE;
   constructor(
     readonly collisions: string[],

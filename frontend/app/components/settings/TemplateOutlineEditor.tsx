@@ -5,8 +5,9 @@ import { forwardRef, useImperativeHandle, useRef } from 'react';
 import OutlineBoard from '@/components/plan-editor/OutlineBoard';
 import { outlinePointConflictComparison, outlinePointPlacementWords } from '@/components/plan-editor/outlinePointPlacementWords';
 import { outlineTitleComparison } from '@/components/plan-editor/outlineTitleComparison';
+import { OutlineTitleDraftNotices, OutlineTitleDraftScope } from '@/components/plan-editor/OutlineTitleDrafts';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
-import { captureOutlinePointPlacement, projectResourceOutlinePoint, useDataDocument, useDocumentActions, useRecoveryDiscovery } from '@/data-engine/react.client';
+import { captureOutlinePointPlacement, projectResourceOutlinePoint, useDataDocument, useDataEngine, useDocumentActions, useRecoveryDiscovery } from '@/data-engine/react.client';
 import { outlinePointText } from '@/utils/outlineDnd';
 import { outlinePointGridClass } from '@/utils/structureBoardLayout';
 import { NEUTRAL_CAPTION } from '@/utils/themeColors';
@@ -25,6 +26,7 @@ const TemplateOutlineEditor = forwardRef<TemplateOutlineEditorHandle, { template
   function TemplateOutlineEditor({ templateId, disabled }, ref) {
     const { t } = useTranslation();
     const actions = useDocumentActions();
+    const { owner } = useDataEngine();
     const document = useDataDocument({ collection: 'planTemplates', id: templateId },
       { slot: 'template-structure', autoSaveDelayMs: 400, readOnlyCopy: true });
     const latest = useRef(document);
@@ -72,18 +74,21 @@ const TemplateOutlineEditor = forwardRef<TemplateOutlineEditorHandle, { template
         return next;
       }, { kind: 'outline-point-placement', move }).catch(() => undefined);
     };
-    return <fieldset disabled={disabled} className="min-w-0 space-y-3">
-      <DataSyncStatus subject={document.recoveryIdentity} status={document.status} error={document.error} errorWords={document.errorWords}
-        comparison={comparison} onRetry={document.retry}
-        onKeepLocal={async () => { await document.keepLocal(compared); await document.save(); }}
-        onAcceptRemote={() => document.acceptRemote(compared)} recoveryChoices={recovery.choices}
-        recoveryLoading={recovery.loading} recoveryError={recovery.error} onRecover={recovery.recover}
-        onDiscardRecovery={recovery.discard} />
-      {document.loading && !document.data ? <p className={`text-sm ${NEUTRAL_CAPTION}`}>{t('settings.loading')}</p>
-        : document.data && <OutlineBoard value={document.data.structure as unknown as SermonOutline}
-          isReadOnly={disabled || document.readOnly} onPointMove={movePoint} captureTitleEdit={document.captureTemplateTitle} className={`${outlinePointGridClass} gap-3`}
-          onChange={structure => { void document.update(current => current ? { ...current, structure: structure as never } : current).catch(() => undefined); }} />}
-    </fieldset>;
+    return <OutlineTitleDraftScope owner={owner} resource={JSON.stringify(['planTemplates', templateId])}>
+      <fieldset disabled={disabled} className="min-w-0 space-y-3">
+        <DataSyncStatus subject={document.recoveryIdentity} status={document.status} error={document.error} errorWords={document.errorWords}
+          comparison={comparison} onRetry={document.retry}
+          onKeepLocal={async () => { await document.keepLocal(compared); await document.save(); }}
+          onAcceptRemote={() => document.acceptRemote(compared)} recoveryChoices={recovery.choices}
+          recoveryLoading={recovery.loading} recoveryError={recovery.error} onRecover={recovery.recover}
+          onDiscardRecovery={recovery.discard} />
+        <OutlineTitleDraftNotices />
+        {document.loading && !document.data ? <p className={`text-sm ${NEUTRAL_CAPTION}`}>{t('settings.loading')}</p>
+          : document.data && <OutlineBoard value={document.data.structure as unknown as SermonOutline}
+            isReadOnly={disabled || document.readOnly} onPointMove={movePoint} captureTitleEdit={document.captureTemplateTitle} className={`${outlinePointGridClass} gap-3`}
+            onChange={structure => { void document.update(current => current ? { ...current, structure: structure as never } : current).catch(() => undefined); }} />}
+      </fieldset>
+    </OutlineTitleDraftScope>;
   }
 );
 

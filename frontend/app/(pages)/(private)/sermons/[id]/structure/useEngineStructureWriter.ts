@@ -133,7 +133,7 @@ function mergeOpenOutlineTitle(opening: OutlineTitleOpening, proposed: SermonOut
 }
 
 export function createEngineStructureWriter(document: StructureDocument, owner: string | null,
-  onOutlineConflict?: (outline: SermonOutline, base: SermonOutline | null, stored: SermonOutline | null) => void): EngineStructureWriter {
+  onOutlineConflict?: (outline: SermonOutline, base: SermonOutline | null, stored: SermonOutline | null) => boolean | void): EngineStructureWriter {
   const edit = <T,>(apply: (current: Sermon) => { next: Sermon; result: T }, rowIds?: string[]) =>
     editEngineSermon(document, owner, apply, rowIds?.length ? { action: { kind: 'thought-placement', rowIds } } : undefined);
   const { captureSermonNoteText } = document;
@@ -246,7 +246,11 @@ export function createEngineStructureWriter(document: StructureDocument, owner: 
         // Modal editors already own their durable comparison. Older automatic callers used
         // preferMine to suppress it; retain every refused input before their UI callbacks settle.
         if (onCollision === 'preferMine' && isOutlineCollisionError(error)) {
-          onOutlineConflict?.(error.comparison?.local ?? outline, error.baseline ? error.baseline.outline : baseOutline ?? null, error.serverOutline);
+          const local = error.comparison?.local ?? outline;
+          const retained = onOutlineConflict?.(local, error.baseline ? error.baseline.outline : baseOutline ?? null, error.serverOutline);
+          const target = inputSequence?.titleOpening?.target;
+          const text = target && readOutlineTitleText(local, target);
+          if (retained && target && text !== undefined) error.retainedTitle = { target, text };
         }
         throw error;
       }

@@ -3,6 +3,7 @@ import { type DropResult } from "@hello-pangea/dnd";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
+import { useOutlineTitleDraft } from "@/components/plan-editor/OutlineTitleDrafts";
 import { useStructureWriter } from "@/components/sermon/structureWriter";
 import { isInactiveEditorError } from "@/data-engine/react.client";
 import {
@@ -90,6 +91,7 @@ export function useColumnOutlineState({
   const addInputRef = useRef<HTMLInputElement>(null);
   const insertInputRef = useRef<HTMLInputElement>(null);
 
+  const titleDraft = useOutlineTitleDraft(localSermonPoints.some(point => point.id === editingPointId) ? editingPointId : null);
   const pointToDeleteDetail = localSermonPoints.find((point) => point.id === deletePointId);
 
   // The exact base object stays stable until this view adopts a parent or a returned section.
@@ -134,7 +136,7 @@ export function useColumnOutlineState({
       return;
     }
     const intended = sectionOutline(field, updatedPoints);
-    captureOwner.capture.schedule({ outline: intended, base: baseOutlineRef.current, titleOpening, begin: () => ({
+    return captureOwner.capture.schedule({ outline: intended, base: baseOutlineRef.current, titleOpening, begin: () => ({
       stored: (saved, sameView) => {
         if (!captureOwner.active || !sameView) return;
         const committedPoints = saved[field];
@@ -156,6 +158,7 @@ export function useColumnOutlineState({
   };
 
   const setCapitalizedEditingText = (value: string) => {
+    titleDraft.change(value);
     setEditingText(capitalizeFirstLetter(value));
   };
 
@@ -193,14 +196,21 @@ export function useColumnOutlineState({
 
   const handleStartEdit = (point: SermonPoint) => {
     openingTitle.current = point.text;
+    const displayed = capitalizeFirstLetter(point.text);
+    titleDraft.open({ target: { kind: 'point', id: point.id }, text: point.text }, displayed);
     setEditingPointId(point.id);
-    setEditingText(capitalizeFirstLetter(point.text));
+    setEditingText(displayed);
     setAddingNewPoint(false);
   };
 
-  const handleCancelEdit = () => {
+  const closeEdit = () => {
     setEditingPointId(null);
     setEditingText("");
+  };
+
+  const handleCancelEdit = () => {
+    titleDraft.cancel();
+    closeEdit();
   };
 
   const handleSaveEdit = () => {
@@ -210,8 +220,8 @@ export function useColumnOutlineState({
       return;
     }
 
-    handleSaveEditDirect(editingPointId, textToSave, openingTitle.current);
-    handleCancelEdit();
+    titleDraft.handoff(handleSaveEditDirect(editingPointId, textToSave, openingTitle.current));
+    closeEdit();
   };
 
   const handleSaveEditDirect = (pointId: string, newText: string, openingText?: string) => {
@@ -223,7 +233,7 @@ export function useColumnOutlineState({
     );
 
     if (openingText === undefined) setLocalSermonPoints(updatedPoints);
-    triggerSaveOutline(updatedPoints, openingText === undefined ? undefined : {
+    return triggerSaveOutline(updatedPoints, openingText === undefined ? undefined : {
       target: { kind: 'point', id: pointId }, text: openingText,
     });
   };
@@ -390,7 +400,7 @@ export function useColumnOutlineState({
     });
 
     if (openingText === undefined) setLocalSermonPoints(updatedPoints);
-    triggerSaveOutline(updatedPoints, openingText === undefined ? undefined : {
+    return triggerSaveOutline(updatedPoints, openingText === undefined ? undefined : {
       target: { kind: 'subpoint', id: subPointId }, text: openingText,
     });
   };

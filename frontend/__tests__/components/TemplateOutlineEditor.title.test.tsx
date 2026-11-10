@@ -17,6 +17,8 @@ const point = { id: 'point', text: 'Point opening', subPoints: [child] };
 const neighbor = { id: 'neighbor', text: 'Independent text' };
 const outline = { introduction: [], main: [point, neighbor], conclusion: [] };
 
+beforeEach(() => localStorage.clear());
+
 it.each([
   { target: 'point', choice: 'local' },
   { target: 'subpoint', choice: 'stored' },
@@ -72,6 +74,31 @@ it.each([
     await waitFor(() => expect(h.server.value?.structure).toEqual({
       ...stored, main: [expected, { ...neighbor, text: 'Independent local edit' }],
     }));
+  } finally { view.unmount(); await act(settleEngine); }
+});
+
+it.each(['point', 'subpoint'])('keeps an unsubmitted template %s title accessible after the saved row is removed', async target => {
+  const templateResource = { ...resource, id: `removal-${target}` };
+  const h = documentEngineHarness({ resource: templateResource, metadata: { protocol: 1, generation: 'template-generation', revision: 3, deleted: false },
+    value: { userId: 'u1', name: 'Template', structure: outline, createdAt, updatedAt: createdAt } });
+  jest.mocked(createBrowserDataEngine).mockImplementation(h.createBrowser);
+  const view = render(<DataEngineProvider><TemplateOutlineEditor templateId={templateResource.id} disabled={false} /></DataEngineProvider>);
+  try {
+    const opening = target === 'point' ? point.text : child.text;
+    fireEvent.doubleClick(await screen.findByText(opening));
+    const draft = 'Words typed before the template row was removed';
+    fireEvent.change(screen.getByDisplayValue(opening), { target: { value: draft } });
+    expect(screen.getByDisplayValue(draft)).toBeVisible();
+
+    const remaining = { ...neighbor, text: 'Neighbor saved with the deletion' };
+    const stored = { ...outline, main: target === 'point' ? [remaining] : [{ ...point, subPoints: [] }, remaining] };
+    await act(async () => h.remote({ structure: stored }));
+
+    expect(await screen.findByText(remaining.text)).toBeVisible();
+    expect(screen.queryByText(opening, { exact: true })).not.toBeInTheDocument();
+    expect(h.server.value?.structure).toEqual(stored);
+    expect(h.transport.send).not.toHaveBeenCalled();
+    expect(screen.queryByDisplayValue(draft) ?? screen.queryByText(draft, { exact: true })).toBeVisible();
   } finally { view.unmount(); await act(settleEngine); }
 });
 

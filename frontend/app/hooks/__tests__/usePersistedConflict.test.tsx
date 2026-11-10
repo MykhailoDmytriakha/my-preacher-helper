@@ -12,6 +12,14 @@ import { draftKey, findDraftCopies, readDraft, saveDraft } from '@/utils/durable
  * prevent, just moved one step later.
  */
 describe('usePersistedConflict', () => {
+  it.each([true, false])('signals a durable handoff only for a readable copy (readable: %s)', readable => {
+    const validate = () => readable;
+    const { result } = renderHook(() => usePersistedConflict<{ title: string }>('u1', 'doc-1', 'meta', validate));
+    const onDurablyStored = jest.fn();
+    act(() => result.current[1]({ payload: { title: 'Local title' }, actualRevision: 0 }, undefined, undefined, { onDurablyStored }));
+    expect(onDurablyStored).toHaveBeenCalledTimes(readable ? 1 : 0);
+  });
+
   it('resolves the selected original key when a missing entry reappears with equal bytes', () => {
     const value = { payload: { title: 'Equal retained words' }, actualRevision: 1 };
     const original = draftKey('u1', 'doc-1', 'conflict:meta');

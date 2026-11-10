@@ -37,6 +37,7 @@ import { useTranslation } from '@locales/useTranslation';
 import { DraggableCard, DropZone } from './BoardDragPrimitives';
 import { dragIdFor, parseDragId, intoPointDropId, gapDropId, subGapDropId, sectionDropId, resolveOutlineDrop, describeDropPlace } from './outlineBoardModel';
 import { indexScratchNotes } from './outlineBoardNotes';
+import { useOutlineTitleDraft } from './OutlineTitleDrafts';
 import planActions from './PlanRowActions.module.css';
 import { ScratchNotePool, ScratchNoteStrip, SCRATCH_DROP_OVER_CLASS } from './ScratchNoteLayer';
 import { useOutlineBoardDrag } from './useOutlineBoardDrag';
@@ -232,13 +233,20 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
   const [editingSubPointText, setEditingSubPointText] = useState('');
   const openingSubPointTitle = useRef('');
   const titleEdits = useRef<Partial<Record<'point' | 'subpoint', (title: string) => Promise<void>>>>({});
+  const pointDraft = useOutlineTitleDraft(!editingDirectly && editingPointId && SECTIONS.some(section =>
+    points[section.key].some(point => point.id === editingPointId)) ? editingPointId : null);
+  const subPointDraft = useOutlineTitleDraft(!editingDirectly && editingSubPointId && SECTIONS.some(section =>
+    points[section.key].some(point => !collapsedPoints[point.id] && point.subPoints?.some(sub => sub.id === editingSubPointId)))
+    ? editingSubPointId : null);
   const titleDrafts = useRef({ point: editingText, subpoint: editingSubPointText });
   titleDrafts.current = { point: editingText, subpoint: editingSubPointText };
   const submitCapturedTitle = (kind: 'point' | 'subpoint', title: string, close: () => void) => {
     const capture = titleEdits.current[kind];
     if (!capture) return false;
     const draft = titleDrafts.current[kind];
-    void capture(title).then(() => {
+    const writing = capture(title);
+    (kind === 'point' ? pointDraft : subPointDraft).handoff(writing);
+    void writing.then(() => {
       if (titleEdits.current[kind] === capture && titleDrafts.current[kind] === draft) close();
     }, () => { /* The document reports a failed capture. Keep the input open. */ });
     return true;
@@ -268,6 +276,7 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
     if (isReadOnly) return;
     const title = capitalizeFirstLetter(point.text);
     openingPointTitle.current = title;
+    pointDraft.open({ target: { kind: 'point', id: point.id }, text: point.text }, title);
     titleEdits.current.point = captureTitleEdit?.({ target: { kind: 'point', id: point.id }, text: point.text });
     setEditingPointId(point.id);
     setEditingText(title);
@@ -380,6 +389,7 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
     if (isReadOnly) return;
     const title = capitalizeFirstLetter(sp.text);
     openingSubPointTitle.current = title;
+    subPointDraft.open({ target: { kind: 'subpoint', id: sp.id }, text: sp.text }, title);
     titleEdits.current.subpoint = captureTitleEdit?.({ target: { kind: 'subpoint', id: sp.id }, text: sp.text });
     setEditingSubPointId(sp.id);
     setEditingSubPointText(title);
@@ -573,11 +583,15 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
           <input
             type="text"
             value={editingSubPointText}
-            onChange={(e) => setEditingSubPointText(capitalizeFirstLetter(e.target.value))}
+            onChange={event => {
+              subPointDraft.change(event.target.value);
+              setEditingSubPointText(capitalizeFirstLetter(event.target.value));
+            }}
             onKeyDown={(e) => {
               if (e.key === 'Enter') saveSubPointEdit(point.id, sp.id);
               if (e.key === 'Escape') {
                 e.stopPropagation(); // answered here: the window around the board stays open
+                subPointDraft.cancel();
                 setEditingSubPointId(null);
                 setEditingSubPointText('');
               }
@@ -594,6 +608,7 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
           </button>
           <button type="button"
             onClick={() => {
+              subPointDraft.cancel();
               setEditingSubPointId(null);
               setEditingSubPointText('');
             }}
@@ -930,11 +945,15 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
                               <input
                                 type="text"
                                 value={editingText}
-                                onChange={(e) => setEditingText(capitalizeFirstLetter(e.target.value))}
+                                onChange={event => {
+                                  pointDraft.change(event.target.value);
+                                  setEditingText(capitalizeFirstLetter(event.target.value));
+                                }}
                                 onKeyDown={(e) => {
                                   if (e.key === 'Enter') saveEdit();
                                   if (e.key === 'Escape') {
                                     e.stopPropagation(); // answered here: the window around the board stays open
+                                    pointDraft.cancel();
                                     setEditingPointId(null);
                                     setEditingText('');
                                   }
@@ -949,6 +968,7 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
                               <button type="button"
                                 aria-label={t(CANCEL_KEY)}
                                 onClick={() => {
+                                  pointDraft.cancel();
                                   setEditingPointId(null);
                                   setEditingText('');
                                 }}
