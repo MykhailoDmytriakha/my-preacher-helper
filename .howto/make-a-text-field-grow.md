@@ -11,6 +11,7 @@ Free-form text — a note, a thought, a description — is a `TextareaAutosize` 
 - Form fields in a dialog: `minRows` + `maxRows` — `SermonFormDialog` title 1–4 rows and verse 3–10 rows, `CreateGroupModal`, `SeriesFormFields`.
 - Uncapped fields keep `resize-none overflow-hidden`: a native scrollbar that appears during a viewport resize narrows the wrapped text and makes the measured height wrong.
 - Decide the Enter contract on purpose and keep it: scratch capture submits only by its button (Enter is a new line, Escape collapses the form); `PointNote` saves on Enter and on blur, Shift+Enter is a new line, Escape cancels.
+- For a field that saves on Enter or blur, pin the text it opened with. Compare the draft with that opening to decide whether the person edited it. If the saved value refreshes while an untouched field is open, closing the field reveals the new text without a write.
 - Inside a modal, let `FormDialog` with a `footer` keep the head and the buttons fixed while the middle band scrolls, so a growing field never pushes the buttons off screen (`.howto/open-a-modal.md`).
 - Do not hand-roll the height: `frontend/app/components/common/EditableVerse.tsx` still measures `scrollHeight` against a guessed 20 px line height — the library does this correctly.
 - Check in a real browser: open, type several lines, delete back (the field must shrink), resize the window, press Escape, and confirm the save contract still holds.

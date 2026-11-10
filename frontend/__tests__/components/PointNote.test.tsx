@@ -45,6 +45,46 @@ describe('PointNote editing', () => {
     expect(onChange).toHaveBeenCalledWith('Short note');
   });
 
+  it.each([
+    { action: 'Enter', opening: 'Original note' },
+    { action: 'blur', opening: 'Original note' },
+    { action: 'Enter', opening: undefined },
+    { action: 'blur', opening: undefined },
+  ])('leaves the newer note alone on $action from an untouched opening ($opening)', ({ action, opening }) => {
+    const onChange = jest.fn();
+    const { rerender } = render(<PointNote note={opening} onChange={onChange} />);
+    fireEvent.click(opening ? screen.getByText(opening) : screen.getByRole('button', { name: 'planEditor.note.label' }));
+    expect(screen.getByRole('textbox')).toHaveValue(opening ?? '');
+    rerender(<PointNote note="Newer saved note" onChange={onChange} />);
+    const field = screen.getByRole('textbox');
+    if (action === 'Enter') fireEvent.keyDown(field, { key: 'Enter' });
+    else fireEvent.blur(field);
+    expect(screen.getByText('Newer saved note')).toBeInTheDocument();
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('saves words the user actually entered even if the underlying note updates', () => {
+    const onChange = jest.fn();
+    const { rerender } = render(<PointNote note="Original note" onChange={onChange} />);
+    fireEvent.click(screen.getByText('Original note'));
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Words typed here' } });
+    rerender(<PointNote note="Newer saved note" onChange={onChange} />);
+    fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Enter' });
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenCalledWith('Words typed here');
+  });
+
+  it('still clears a note when the user removes its text', () => {
+    const onChange = jest.fn();
+    render(<PointNote note="Original note" onChange={onChange} />);
+    fireEvent.click(screen.getByText('Original note'));
+    const field = screen.getByRole('textbox');
+    fireEvent.change(field, { target: { value: '' } });
+    fireEvent.keyDown(field, { key: 'Enter' });
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenCalledWith(undefined);
+  });
+
   it('cancels an expanded draft with Escape without persisting it', () => {
     const onChange = jest.fn();
     render(<PointNote note="Original note" onChange={onChange} />);

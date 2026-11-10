@@ -93,6 +93,7 @@ const PointNote: React.FC<PointNoteProps> = ({
   const clearButtonRef = useRef<HTMLButtonElement>(null);
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState('');
+  const openingText = useRef<string | undefined>(undefined);
   // Distinguishes a real blur-save from an Escape-cancel (Escape also blurs the field).
   const blurSaveRef = useRef(true);
 
@@ -110,15 +111,15 @@ const PointNote: React.FC<PointNoteProps> = ({
   const startEdit = () => {
     if (isReadOnly) return;
     blurSaveRef.current = true;
+    openingText.current = note?.trim() || undefined;
     setText(note ?? '');
     setEditing(true);
   };
 
   const commit = () => {
     const next = text.trim() || undefined;
-    // Skip the persist/toast when nothing actually changed (e.g. opened the field
-    // and clicked away, or edited back to the original) — no spurious write.
-    if (next !== note) onChange(next);
+    // The saved note can refresh while this field still displays the opening text.
+    if (next !== openingText.current && next !== note) onChange(next);
     setEditing(false);
   };
 
