@@ -8165,6 +8165,8 @@ Native Chrome on the existing guarded build `zDeYXOw3iRiCfhbHeYFqF` used local A
 
 After authorized integration, confirm the GitHub Actions test gate for the revision. A normal browser check may use either plan with a Scripture reference and return via the Bible reader's Plan button. There is no test fixture running in production.
 
+On 2026-11-10, merge `ea17e1be` was confirmed to have restored the exact tracker entry removed in `809a9781`. The two corrected test files on `a52d0c07` matched `809a9781`. The archived red run reproduced the reported NotFoundError with the original teardown. On the current commit, the three related suites passed 62 tests and the full Jest run passed 14,843. Chrome on build `ZoQFXkuhiROeATmmLRTTA` passed four scenarios at 390 and 1280 px. Both editors opened 1 Chronicles 4:9–10, closed the window with Escape, opened the Bible and returned to the same editor. Screenshots were inspected and the isolated stand was closed. Evidence is in `artifacts/plan-header-teardown-recheck-20261110/`. The stale tracker entry was removed again.
+
 ## BUG-20261109-group-flow-step-move-order · Keep the intended position of a group meeting step
 
 Groups → open a group → Group Flow → Move Up / Move Down or drag. The old editor sent a replacement array. A delayed phone move could undo a later return to the original spot, and a later phone move could receive a conflict for the whole list. The original native Chrome runs on `dcdbde33` reproduced both outcomes at 390 and 1280 px. Two screen tests failed because the former save did not identify the step or its placement.

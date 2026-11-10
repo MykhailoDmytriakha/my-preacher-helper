@@ -17,6 +17,7 @@ Use the feature worktree. A main-to-feature intake does not publish the feature 
 - Update tests to reach the actual new control while retaining their outcome assertions. A phone text popover is not a modal: a pinned-page regression must open an actual modal such as the translation picker. The reader test shell owns the shared visible place-control lookup.
 - An integration/type/selector error is not a causal product RED. A newly discovered product bug needs its own causal regression and actual browser-before proof before changing product behavior.
 - A before-only native baseline with known REDs may use the canonical production builder directly, with its purpose recorded as broken-before evidence. It is not an accepted build. Final acceptance still requires the official full-test build and all applicable gates.
+- Reconcile `BUGS.md` by issue ID against both parents and the verification record. Keep a local closure when the merge retains its fix and the proof covers the same symptom. Preserve later reports and recheck a closure if the merge changes the proven behavior.
 - Inspect both working and staged diffs. `git diff --check` can pass while the index still contains an earlier conflict resolution; stage the reviewed final paths and also run `git diff --cached --check`.
 
 ## Validate and finish
