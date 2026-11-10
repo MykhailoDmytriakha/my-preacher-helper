@@ -211,6 +211,7 @@ export function useSermonStructureData(t: TFunction, engine: StructureEngineSour
   }, []);
 
   const engineSermon = engine.sermon;
+  const engineLoading = Boolean(engine.loading);
   const engineRef = useRef(engine);
   engineRef.current = engine;
   const appliedEngineSermonRef = useRef<Sermon | null>(null);
@@ -244,13 +245,13 @@ export function useSermonStructureData(t: TFunction, engine: StructureEngineSour
 
   useEffect(() => {
     if (!engineSermon) {
-      setLoading(Boolean(engineRef.current.loading));
+      setLoading(engineLoading);
       return;
     }
     if (engineRef.current.isHolding()) { engineBoardPendingRef.current = true; return; }
     if (appliedEngineSermonRef.current !== engineSermon) applyEngineSermon(engineSermon, allTags);
     else applyCatalogue(allTags);
-  }, [engineSermon, allTags, applyEngineSermon, applyCatalogue]);
+  }, [engineSermon, engineLoading, allTags, applyEngineSermon, applyCatalogue]);
 
   /** Apply the latest source after a drag/review, retaining local edits for tag-only changes. */
   const syncFromEngine = useCallback(() => {

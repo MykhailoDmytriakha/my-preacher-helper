@@ -12,7 +12,7 @@ import { ScriptureText } from '@/components/bible/ScriptureLinks';
 import { ScriptureLinksInWindow } from '@/components/bible/VerseWindow';
 import Column from "@/components/Column";
 import { TechnicalDetailsButton } from '@/components/diagnostics/TechnicalDetailsButton';
-import { OutlineTitleDraftNotices, OutlineTitleDraftScope } from "@/components/plan-editor/OutlineTitleDrafts";
+import { OutlineTitleDraftNotices, outlineTitleDraftResource, OutlineTitleDraftScope } from "@/components/plan-editor/OutlineTitleDrafts";
 import { OutlineWriteRecovery } from '@/components/sermon/OutlineWriteRecovery';
 import { sermonConflictComparison } from '@/components/sermon/sermonConflictComparison';
 import { useStructureWriter } from "@/components/sermon/structureWriter";
@@ -164,7 +164,8 @@ function EngineStructureBoard({ sermonId }: { sermonId: string }) {
   // It is its own tree, standing exactly where the separate reader stood, so every switch mounts
   // the other one fresh, as the swap did.
   return <OutlineWriteRecovery key={`${owner}:${sermonId}`} owner={owner} sermonId={sermonId} {...outline}>
-    <OutlineTitleDraftScope owner={owner} resource={JSON.stringify(['sermons', sermonId])}>
+    <OutlineTitleDraftScope owner={owner} resource={outlineTitleDraftResource('sermons', sermonId)}>
+      <div className="mx-4 mb-4 empty:hidden"><OutlineTitleDraftNotices /></div>
       <StructureBoard key={document.readOnly ? 'copy' : 'editor'} sermonId={sermonId} engine={engine} holdingRef={holdingRef} readOnly={document.readOnly}
         setThoughtLocks={outline.writer.setThoughtLocks}
         thoughtHistory={owner && generation && sermon && !document.readOnly && <>
@@ -173,12 +174,12 @@ function EngineStructureBoard({ sermonId }: { sermonId: string }) {
           <ThoughtPlacementHistory key={'placement:' + generation} owner={owner} sermonId={sermonId} generation={generation} thoughts={sermon.thoughts}
             disabled={!canChangeThoughtHistory} outline={sermon.outline} onRestore={outline.writer.setThoughtPlacement} />
         </>}
-        syncStatus={<><OutlineTitleDraftNotices />{!document.readOnly && <DataSyncStatus
+        syncStatus={document.readOnly ? null : <DataSyncStatus
           subject={document.recoveryIdentity} status={document.status} error={document.error} errorWords={document.errorWords} onRetry={document.retry}
           comparison={comparison} onKeepLocal={() => document.keepLocal(comparison ? checkpoint : undefined)}
           onAcceptRemote={() => document.acceptRemote(comparison ? checkpoint : undefined)}
           recoveryChoices={canRecover ? recovery.choices : []} recoveryLoading={recovery.loading}
-          recoveryError={canRecover ? recovery.error : null} onRecover={recovery.recover} onDiscardRecovery={recovery.discard} />}</>} />
+          recoveryError={canRecover ? recovery.error : null} onRecover={recovery.recover} onDiscardRecovery={recovery.discard} />} />
     </OutlineTitleDraftScope>
   </OutlineWriteRecovery>;
 }

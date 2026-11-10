@@ -6,7 +6,7 @@ import { useClipboard } from '@/hooks/useClipboard';
 import { isOutlineCollisionError } from '@/services/sermons.client';
 import { newClientId } from '@/utils/clientId';
 import { serializeContent } from '@/utils/contentFingerprint';
-import { clearDraftIfMatches, draftKey, findDraftCopies, nextDraftEditTime, readDraft, saveDraft, type DurableDraft } from '@/utils/durableDraft';
+import { clearDraftIfMatches, draftKey, findDraftCopies, findDraftDocIds, nextDraftEditTime, readDraft, saveDraft, type DurableDraft } from '@/utils/durableDraft';
 import { changedCapitalizedTitle, normalizeCapitalizedTitle } from '@/utils/textNormalization';
 import { useTranslation } from '@locales/useTranslation';
 
@@ -27,29 +27,48 @@ const HEADING = 'structure.unsubmittedTitle.heading';
 const TitleDraftActions = createContext<DraftActions | null>(null);
 const DetachedTitles = createContext<readonly DraftCopy[]>([]);
 
-type DraftScopeProps = PropsWithChildren<{ owner: string | null; resource: string }>;
+type DraftScopeProps = PropsWithChildren<{ owner: string | null; resource: string; discover?: boolean; onPresenceChange?: (present: boolean) => void }>;
+
+export const outlineTitleDraftResource = (collection: string, id: string) => JSON.stringify([collection, id]);
+
+export function listOutlineTitleDraftIds(owner: string, collection: string): string[] {
+  return findDraftDocIds(owner, AGGREGATE).flatMap(address => {
+    try {
+      const parts: unknown = JSON.parse(address);
+      return Array.isArray(parts) && parts.length === 2 && parts[0] === collection && typeof parts[1] === 'string' ? [parts[1]] : [];
+    } catch { return []; }
+  });
+}
 
 export function OutlineTitleDraftScope(props: DraftScopeProps) {
   return <DraftScope key={JSON.stringify([props.owner, props.resource])} {...props} />;
 }
 
-function DraftScope({ owner, resource, children }: DraftScopeProps) {
+function DraftScope({ owner, resource, discover = true, onPresenceChange, children }: DraftScopeProps) {
   const copies = useRef(new Map<string, DraftCopy>());
   const [detached, setDetached] = useState<readonly DraftCopy[]>([]);
   const attached = useRef(new Set<string>());
+  const notifyPresence = useRef(onPresenceChange);
+  notifyPresence.current = onPresenceChange;
+  const hadCopies = useRef(false);
   const publish = useCallback(() => {
+    const hasCopies = copies.current.size > 0;
+    if (hadCopies.current !== hasCopies) {
+      hadCopies.current = hasCopies;
+      notifyPresence.current?.(hasCopies);
+    }
     const visible = [...copies.current.values()].filter(copy => !attached.current.has(copy.key));
     setDetached(previous => previous.length === visible.length && previous.every((copy, index) => copy === visible[index])
       ? previous : visible);
   }, []);
   useEffect(() => {
-    if (!owner) return;
+    if (!owner || !discover) return;
     for (const { key, value, sourceRecord } of findDraftCopies<DraftValue>(owner, resource, AGGREGATE)) {
       if (typeof value?.text !== 'string' || !value.text || copies.current.has(key)) continue;
       copies.current.set(key, { key, value, stored: sourceRecord as DurableDraft<DraftValue> });
     }
     publish();
-  }, [owner, resource, publish]);
+  }, [owner, resource, publish, discover]);
   const actions = useMemo<DraftActions>(() => ({
     keyFor: openingId => owner ? draftKey(owner, resource, AGGREGATE, openingId) : openingId,
     remember: (key, value) => {

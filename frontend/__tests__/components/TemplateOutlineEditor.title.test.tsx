@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { useState } from 'react';
 
+import { outlineTitleDraftResource, OutlineTitleDraftScope } from '@/components/plan-editor/OutlineTitleDrafts';
 import TemplateOutlineEditor from '@/components/settings/TemplateOutlineEditor';
 import { createBrowserDataEngine } from '@/data-engine/browser.client';
 import { DataEngineProvider, useDocumentActions } from '@/data-engine/react.client';
@@ -19,6 +20,13 @@ const outline = { introduction: [], main: [point, neighbor], conclusion: [] };
 
 beforeEach(() => localStorage.clear());
 
+function TestTemplateOutlineEditor({ templateId, disabled }: { templateId: string; disabled: boolean }) {
+  return <OutlineTitleDraftScope owner="u1" resource={outlineTitleDraftResource('planTemplates', templateId)}>
+    <TemplateOutlineEditor templateId={templateId} disabled={disabled} />
+  </OutlineTitleDraftScope>;
+}
+
+
 it.each([
   { target: 'point', choice: 'local' },
   { target: 'subpoint', choice: 'stored' },
@@ -26,7 +34,7 @@ it.each([
   const h = documentEngineHarness({ resource, metadata: { protocol: 1, generation: 'template-generation', revision: 3, deleted: false },
     value: { userId: 'u1', name: 'Template', structure: outline, createdAt, updatedAt: createdAt } });
   jest.mocked(createBrowserDataEngine).mockImplementation(h.createBrowser);
-  const view = render(<DataEngineProvider><TemplateOutlineEditor templateId={resource.id} disabled={false} /></DataEngineProvider>);
+  const view = render(<DataEngineProvider><TestTemplateOutlineEditor templateId={resource.id} disabled={false} /></DataEngineProvider>);
   try {
     const opening = target === 'point' ? point.text : child.text;
     fireEvent.doubleClick(await screen.findByText(opening));
@@ -82,7 +90,7 @@ it.each(['point', 'subpoint'])('keeps an unsubmitted template %s title accessibl
   const h = documentEngineHarness({ resource: templateResource, metadata: { protocol: 1, generation: 'template-generation', revision: 3, deleted: false },
     value: { userId: 'u1', name: 'Template', structure: outline, createdAt, updatedAt: createdAt } });
   jest.mocked(createBrowserDataEngine).mockImplementation(h.createBrowser);
-  const view = render(<DataEngineProvider><TemplateOutlineEditor templateId={templateResource.id} disabled={false} /></DataEngineProvider>);
+  const view = render(<DataEngineProvider><TestTemplateOutlineEditor templateId={templateResource.id} disabled={false} /></DataEngineProvider>);
   try {
     const opening = target === 'point' ? point.text : child.text;
     fireEvent.doubleClick(await screen.findByText(opening));
@@ -106,7 +114,7 @@ it.each(['point', 'subpoint'])('lets a new offline %s be renamed before the serv
   const h = documentEngineHarness({ resource, metadata: { protocol: 1, generation: 'template-generation', revision: 3, deleted: false },
     value: { userId: 'u1', name: 'Template', structure: outline, createdAt, updatedAt: createdAt } });
   jest.mocked(createBrowserDataEngine).mockImplementation(h.createBrowser);
-  const view = render(<DataEngineProvider><TemplateOutlineEditor templateId={resource.id} disabled={false} /></DataEngineProvider>);
+  const view = render(<DataEngineProvider><TestTemplateOutlineEditor templateId={resource.id} disabled={false} /></DataEngineProvider>);
   try {
     await screen.findByText(point.text);
     await act(async () => { h.engine.setOnline(false); await settleEngine(); });
@@ -135,7 +143,7 @@ it('hands over the title before leaving even while another checkpoint is being w
   const h = documentEngineHarness({ resource, metadata: { protocol: 1, generation: 'template-generation', revision: 3, deleted: false },
     value: { userId: 'u1', name: 'Template', structure: initial, createdAt, updatedAt: createdAt } });
   jest.mocked(createBrowserDataEngine).mockImplementation(h.createBrowser);
-  const view = render(<DataEngineProvider><TemplateOutlineEditor templateId={resource.id} disabled={false} /></DataEngineProvider>);
+  const view = render(<DataEngineProvider><TestTemplateOutlineEditor templateId={resource.id} disabled={false} /></DataEngineProvider>);
   let writing = false;
   const release = () => { h.storage.holdCompletionAfterCommit = undefined; h.storage.finishCompletion(); };
   try {
@@ -169,7 +177,7 @@ it('hands over the title before leaving even while another checkpoint is being w
 function NewTemplate() {
   const [created, setCreated] = useState(false);
   const actions = useDocumentActions();
-  return created ? <TemplateOutlineEditor templateId={resource.id} disabled={false} />
+  return created ? <TestTemplateOutlineEditor templateId={resource.id} disabled={false} />
     : <button type="button" disabled={!actions.ready} onClick={() => {
       void actions.create(resource, { userId: 'u1', name: 'Created on this device',
         structure: { introduction: [], main: [], conclusion: [] }, createdAt, updatedAt: createdAt }).then(() => setCreated(true));

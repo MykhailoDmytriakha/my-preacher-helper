@@ -21,11 +21,12 @@ const mockUpdate = jest.fn(() => persistedWrite(Promise.resolve(undefined)));
 const mockDelete = jest.fn(() => persistedWrite(Promise.resolve(undefined)));
 const mockRefresh = jest.fn().mockResolvedValue({ isError: false });
 let mockTemplates: PlanTemplate[] = [];
+let mockLoading = false;
 
 jest.mock('@/hooks/usePlanTemplates', () => ({
   usePlanTemplates: () => ({
     templates: mockTemplates,
-    loading: false,
+    loading: mockLoading,
     createTemplate: mockCreate,
     updateTemplate: mockUpdate,
     deleteTemplate: mockDelete,
@@ -76,10 +77,24 @@ beforeEach(() => {
   jest.clearAllMocks();
   localStorage.clear();
   mockTemplates = [];
+  mockLoading = false;
 });
 afterEach(cleanup);
 
 describe('PlanTemplatesSection', () => {
+  it('offers the local title while the template list is still loading', async () => {
+    mockLoading = true;
+    const text = 'Retained title while waiting for the list';
+    saveDraft(draftKey('u1', JSON.stringify(['planTemplates', 't1']), 'outline-title', 'opening'),
+      { target: { kind: 'point', id: 'point' }, text });
+    const view = render(<PlanTemplatesSection user={user} />);
+    expect(screen.getByText('settings.loading')).toBeVisible();
+    expect(await screen.findByDisplayValue(text)).toHaveAttribute('readonly');
+    view.rerender(<PlanTemplatesSection user={{ uid: 'u2' } as User} />);
+    expect(screen.queryByDisplayValue(text)).not.toBeInTheDocument();
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
   it('keeps the revision shown when opening the name editor', async () => {
     mockTemplates = [{ ...tpl('t1', 'Alpha'), rev: { [PLAN_TEMPLATE_AGGREGATE]: 1 } }];
     mockUpdate.mockImplementation(() => persistedWrite(Promise.resolve(undefined)));

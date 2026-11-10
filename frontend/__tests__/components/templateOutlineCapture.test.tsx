@@ -3,6 +3,7 @@ import React from 'react';
 
 import { EngineConflictBanner } from '@/components/EngineConflictBanner';
 import { documentScreenHref, isOnDocumentScreen } from '@/utils/documentScreenHref';
+import { readDraftAddress } from '@/utils/draftAddress';
 import PlanTemplatesSection from '@/components/settings/PlanTemplatesSection';
 import { createBrowserDataEngine } from '@/data-engine/browser.client';
 import { DataEngineProvider } from '@/data-engine/react.client';
@@ -47,6 +48,48 @@ beforeEach(() => { jest.clearAllMocks(); localStorage.clear(); mockOwner = 'owne
 afterEach(() => { delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS; });
 
 describe('inline template capture and folding', () => {
+  it('keeps an unsubmitted title available when its entire template leaves the list', async () => {
+    const { harness, view } = await setup();
+    try {
+      const text = 'Typed before the entire template disappeared';
+      fireEvent.doubleClick(screen.getByText('Retained point'));
+      fireEvent.change(screen.getByDisplayValue('Retained point'), { target: { value: text } });
+      expect(screen.getByDisplayValue(text)).toBeVisible();
+      harness.silentRemoteDelete();
+      await act(async () => { await harness.engine.refreshCollection('planTemplates'); await settleEngine(); });
+      await waitFor(() => expect(screen.queryByText('Alpha')).not.toBeInTheDocument());
+      expect(screen.getByDisplayValue(text)).toHaveAttribute('readonly');
+      view.unmount(); await act(settleEngine);
+      const reopened = render(<DataEngineProvider><PlanTemplatesSection user={{ uid: 'owner' } as User} /></DataEngineProvider>);
+      try {
+        expect(await screen.findByDisplayValue(text)).toHaveAttribute('readonly');
+        expect(screen.queryByText('Alpha')).not.toBeInTheDocument();
+        expect(harness.transport.send).not.toHaveBeenCalled();
+      } finally { reopened.unmount(); await act(settleEngine); }
+    } finally { view.unmount(); await act(settleEngine); }
+  });
+
+  it('holds a memory-only title after its editor was folded and the template disappears', async () => {
+    const { harness, view } = await setup();
+    const setItem = Storage.prototype.setItem;
+    const storage = jest.spyOn(Storage.prototype, 'setItem').mockImplementation(function (this: Storage, key, value) {
+      if (readDraftAddress(key)?.aggregate === 'outline-title') throw new DOMException('Test storage refusal', 'QuotaExceededError');
+      setItem.call(this, key, value);
+    });
+    try {
+      const text = 'Words only available in memory';
+      fireEvent.doubleClick(screen.getByText('Retained point'));
+      fireEvent.change(screen.getByDisplayValue('Retained point'), { target: { value: text } });
+      fireEvent.click(screen.getByLabelText('common.collapse'));
+      await waitFor(() => expect(screen.getByLabelText('common.expand')).toBeEnabled());
+      harness.silentRemoteDelete();
+      await act(async () => { await harness.engine.refreshCollection('planTemplates'); await settleEngine(); });
+      await waitFor(() => expect(screen.queryByText('Alpha')).not.toBeInTheDocument());
+      expect(screen.getByDisplayValue(text)).toHaveAttribute('readonly');
+      expect(harness.transport.send).not.toHaveBeenCalled();
+    } finally { storage.mockRestore(); view.unmount(); await act(settleEngine); }
+  });
+
   it('routes a retained template draft to its exact outline editor', () => {
     expect(documentScreenHref(resource)).toBe('/settings/templates?template=tpl');
     expect(isOnDocumentScreen('/settings/templates', resource)).toBe(true);

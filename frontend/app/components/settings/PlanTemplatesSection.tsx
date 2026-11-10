@@ -2,9 +2,10 @@
 
 import { CheckIcon, ChevronDownIcon, PencilIcon, PlusIcon, TrashIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { User } from 'firebase/auth';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
+import { listOutlineTitleDraftIds, OutlineTitleDraftNotices, outlineTitleDraftResource, OutlineTitleDraftScope } from '@/components/plan-editor/OutlineTitleDrafts';
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
 import TemplateOutlineEditor, { type TemplateOutlineEditorHandle } from '@/components/settings/TemplateOutlineEditor';
 import ConfirmModal from '@/components/ui/ConfirmModal';
@@ -78,6 +79,31 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user, reque
   const renamingPendingRef = useRef(false);
   const [expanded, setExpanded] = useState<{ owner: string; id: string } | null>(null);
   const expandedId = expanded?.owner === user?.uid ? expanded?.id ?? null : null;
+  const owner = user?.uid ?? null;
+  const userIdRef = useRef(owner);
+  userIdRef.current = owner;
+  const [storedTitles, setStoredTitles] = useState<{ owner: string; ids: string[] } | null>(null);
+  const [retainedTitles, setRetainedTitles] = useState<{ owner: string; ids: string[] } | null>(null);
+  useEffect(() => {
+    const ids = owner ? listOutlineTitleDraftIds(owner, 'planTemplates') : [];
+    setStoredTitles(previous => {
+      if (!owner) return null;
+      return previous?.owner === owner && previous.ids.length === ids.length && previous.ids.every((id, index) => id === ids[index])
+        ? previous : { owner, ids };
+    });
+  }, [owner, templates, retainedTitles]);
+  const reportTitlePresence = useCallback((id: string, present: boolean) => {
+    if (!owner || userIdRef.current !== owner) return;
+    setRetainedTitles(previous => {
+      const ids = previous?.owner === owner ? previous.ids : [];
+      if (ids.includes(id) === present) return previous;
+      return { owner, ids: present ? [...ids, id] : ids.filter(saved => saved !== id) };
+    });
+  }, [owner]);
+  const templatesById = new Map(templates.map(template => [template.id, template]));
+  const savedIds = storedTitles?.owner === owner ? storedTitles?.ids ?? [] : [];
+  const retainedIds = retainedTitles?.owner === owner ? retainedTitles?.ids ?? [] : [];
+  const rowIds = [...new Set([...templatesById.keys(), ...savedIds, ...retainedIds, ...(expandedId ? [expandedId] : [])])];
   const expandedIdRef = useRef(expandedId);
   expandedIdRef.current = expandedId;
   const inlineEditor = useRef<TemplateOutlineEditorHandle | null>(null);
@@ -92,8 +118,6 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user, reque
   conflictRef.current = conflict;
   const conflictTemplateIdRef = useRef(conflictTemplateId);
   conflictTemplateIdRef.current = conflictTemplateId;
-  const userIdRef = useRef(user?.uid ?? null);
-  userIdRef.current = user?.uid ?? null;
 
   useEffect(() => { withdraw(); }, [user?.uid, conflictTemplateId, withdraw]);
 
@@ -388,19 +412,23 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user, reque
         </button>
       </div>
 
-      {loading ? (
-        <p className={`text-sm ${NEUTRAL_CAPTION}`}>{t('settings.loading')}</p>
-      ) : templates.length === 0 ? (
-        <p className={`text-sm ${NEUTRAL_CAPTION}`}>{t('planTemplates.empty')}</p>
-      ) : (
-        <ul className="space-y-2">
-          {templates.map((tpl) => {
+      {loading && <p className={`text-sm ${NEUTRAL_CAPTION}`}>{t('settings.loading')}</p>}
+      {!loading && !templates.length && <p className={`text-sm ${NEUTRAL_CAPTION}`}>{t('planTemplates.empty')}</p>}
+      <ul className="space-y-2 empty:hidden">
+          {rowIds.map(id => {
+            const tpl = templatesById.get(id);
+            const resource = outlineTitleDraftResource('planTemplates', id);
+            const onPresenceChange = (present: boolean) => reportTitlePresence(id, present);
+            if (!tpl) return <OutlineTitleDraftScope key={id} owner={owner} resource={resource} onPresenceChange={onPresenceChange}>
+              <li className="mt-3 empty:hidden"><OutlineTitleDraftNotices /></li>
+            </OutlineTitleDraftScope>;
             const isExpanded = expandedId === tpl.id;
             const seen = observeName?.(tpl.id, tpl.name);
             const opening = user?.uid ? { id: tpl.id, owner: user.uid, name: tpl.name,
               revision: tpl.rev?.[PLAN_TEMPLATE_AGGREGATE] ?? 0, seen } : null;
             return (
-              <li key={tpl.id} className="rounded-lg border border-gray-200 dark:border-gray-700">
+              <OutlineTitleDraftScope key={tpl.id} owner={owner} resource={resource} discover={isExpanded} onPresenceChange={onPresenceChange}>
+              <li className="rounded-lg border border-gray-200 dark:border-gray-700">
                 <div className="flex items-center gap-2 p-3">
                   <button
                     onClick={() => { void selectTemplate(isExpanded ? null : tpl.id); }}
@@ -474,10 +502,10 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user, reque
                   </div>
                 )}
               </li>
+              </OutlineTitleDraftScope>
             );
           })}
-        </ul>
-      )}
+      </ul>
 
       <ConfirmModal
         isOpen={!!pendingDeleteTpl}

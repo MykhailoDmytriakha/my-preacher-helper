@@ -10,6 +10,7 @@ import React from 'react';
 
 import '@testing-library/jest-dom';
 import StructurePage from '@/(pages)/(private)/sermons/[id]/structure/page';
+import { draftKey, saveDraft } from '@/utils/durableDraft';
 
 /**
  * THE STRUCTURE BOARD WHILE DEVICE STORAGE IS SILENT (BUG-20261002-sermon-read-only-copy-bare-page).
@@ -26,6 +27,7 @@ import StructurePage from '@/(pages)/(private)/sermons/[id]/structure/page';
 const writes: string[] = [];
 let mockSermon: Record<string, unknown> | null = null;
 let mockReadOnly = true;
+let mockLoading = false;
 
 const refuse = (name: string) => jest.fn(() => {
   writes.push(name);
@@ -40,7 +42,7 @@ jest.mock('@/data-engine/react.client', () => ({
   useOpenDocumentAnswerScopes: () => [],
   useDataDocument: () => ({
     data: mockSermon, confirmed: mockSermon, remote: null, state: null, status: null,
-    loading: false, readOnly: mockReadOnly, copySource: mockReadOnly ? 'server' : null,
+    loading: mockLoading, readOnly: mockReadOnly, copySource: mockReadOnly ? 'server' : null,
     readOnlyReason: null, error: null,
     edit: refuse('edit'), update: refuse('update'), commit: refuse('commit'), save: refuse('save'),
     remove: refuse('remove'), acceptRemote: jest.fn(), keepLocal: jest.fn(), retry: jest.fn().mockResolvedValue(undefined),
@@ -87,8 +89,32 @@ describe('the structure board on a copy for reading', () => {
   beforeEach(() => {
     writes.length = 0;
     mockReadOnly = true;
+    mockLoading = false;
     mockSermon = sermonFixture();
     window.localStorage.clear();
+  });
+
+  it('leaves the skeleton when a cold read finishes without a sermon', async () => {
+    mockSermon = null;
+    mockLoading = true;
+    const client = new QueryClient();
+    const page = <QueryClientProvider client={client}><StructurePage /></QueryClientProvider>;
+    const view = render(page);
+    expect(screen.queryByText('structure.sermonNotFound')).not.toBeInTheDocument();
+    mockLoading = false;
+    view.rerender(<QueryClientProvider client={client}><StructurePage /></QueryClientProvider>);
+    expect(await screen.findByText('structure.sermonNotFound')).toBeVisible();
+  });
+
+  it('offers the typed title on a cold opening without a live sermon', async () => {
+    mockSermon = null;
+    const text = 'Words still on this device';
+    saveDraft(draftKey('user-1', JSON.stringify(['sermons', 'sermon-1']), 'outline-title', 'opening'),
+      { target: { kind: 'point', id: 'p1' }, text });
+    renderPage();
+    expect(await screen.findByText('structure.sermonNotFound')).toBeVisible();
+    expect(screen.getByDisplayValue(text)).toHaveAttribute('readonly');
+    expect(writes).toEqual([]);
   });
 
   it('keeps its page: every point, sub-point, note and thought in its own column', async () => {
