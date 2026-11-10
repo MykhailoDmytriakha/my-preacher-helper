@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 
 import { manualFormDecision } from '@/components/common/manualTextBinding';
-import { useDataDocument, useDataEngine, useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
+import { useDataDocument, useDataEngine, useDataForm, useRecoveryDiscovery, type HomileticMoveInput } from '@/data-engine/react.client';
 import { useTranslation } from '@locales/useTranslation';
 
 import type { PreparationFieldBinding, PreparationTextBinding } from '@/components/common/manualTextBinding';
@@ -41,7 +41,7 @@ export function usePreparationTextField(resource: ResourceRef | null, path: read
 
 /** The manual scope owns the raw stage and ancestry; normalization happens only at an explicit choice. */
 export function usePreparationField<T>(resource: ResourceRef | null, path: readonly string[], captionKey: string | undefined,
-  codec: PreparationValue<T>, options?: { captureMetadataTime: true }): PreparationFieldBinding<T> & { edit(updater: (current: T) => T): Promise<void> } {
+  codec: PreparationValue<T>, options?: { captureMetadataTime: true }): PreparationFieldBinding<T> & { edit(updater: (current: T) => T, fieldInput?: HomileticMoveInput): Promise<void> } {
   const { owner } = useDataEngine();
   const { t } = useTranslation();
   const document = useDataDocument(resource, { autoSave: false });
@@ -62,25 +62,28 @@ export function usePreparationField<T>(resource: ResourceRef | null, path: reado
       preview: source.record.stage[0]?.exists ? codec.describe(codec.read(source.record.stage[0].value)) : '',
       discard: () => form.discardRecovery(source) })),
     recover: form.recover });
+  const encode = (next: T) => codec.save(next, codec.read(valueAt(form.initialData, path)));
   const comparison = form.comparison ? { identity: form.comparison.identity, mine: codec.describe(codec.read(valueAt(form.comparison.mine, path))),
-    stored: codec.describe(codec.read(valueAt(form.comparison.stored.value, path))), title: captionKey ? t(captionKey) : undefined } : undefined;
+    stored: codec.describe(codec.read(valueAt(form.comparison.remotePreview ?? form.comparison.stored.value, path))), title: captionKey ? t(captionKey) : undefined } : undefined;
   const selected = codec.read(value);
+  const generation = document.confirmed?.metadata?.generation;
   const canSave = !codec.valid || codec.valid(selected);
   const decision = manualFormDecision(form, comparison);
   if (decision) decision.keepLocal = () => form.keepLocal(
-    current => withValue(current, path, codec.save(codec.read(valueAt(current, path)))),
+    current => withValue(current, path, encode(codec.read(valueAt(current, path)))),
     options && form.captureDocumentMetadataAction(),
   );
-  if (decision?.status && !canSave) decision.status = { ...decision.status, canKeepLocal: false };
-  const edit = (updater: (current: T) => T) => form.update(current => {
+  if (decision?.status && (!canSave || form.comparison?.canKeepLocal === false)) decision.status = { ...decision.status, canKeepLocal: false };
+  const edit = (updater: (current: T) => T, fieldInput?: HomileticMoveInput) => form.update(current => {
     const next = updater(codec.read(valueAt(current, path)));
     const opening = valueAt(form.initialData, path);
     const stage = JSON.stringify(next) === JSON.stringify(codec.read(opening)) ? opening : next as Json;
     return withValue(current, path, stage);
-  });
+  }, fieldInput);
   return {
     canSave, canBegin: !loading && !busy && !error && !readOnly && Boolean(data),
     subject: JSON.stringify([owner, resource, path]),
+    ...(owner && resource && generation && { documentIdentity: { owner, id: resource.id, generation } }),
     ready: form.active && !form.loading && !form.readOnly && !stalePristine,
     active: form.active, value: selected, busy: form.busy, dirty: form.dirty,
     error: form.localError ?? null,
@@ -88,6 +91,6 @@ export function usePreparationField<T>(resource: ResourceRef | null, path: reado
     comparison,
     begin: form.begin, cancel: form.cancel, retry: form.retry, recovery,
     edit, update: next => edit(() => next),
-    save: next => codec.valid && !codec.valid(next) ? Promise.reject(new Error('The field value is not valid for saving')) : form.save(current => withValue(current, path, codec.save(next)), options && form.captureDocumentMetadataAction()),
+    save: next => codec.valid && !codec.valid(next) ? Promise.reject(new Error('The field value is not valid for saving')) : form.save(current => withValue(current, path, encode(next)), options && form.captureDocumentMetadataAction()),
   };
 }

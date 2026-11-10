@@ -13,6 +13,7 @@ import type { DocumentTagIntent } from './documentTagCapture';
 import type { ExegeticalPointStamp } from './exegeticalPointAction';
 import type { ExegeticalPointEdit } from './exegeticalPointCapture';
 import type { GroupMeetingFieldActions } from './groupMeetingFieldAction';
+import type { HomileticList, HomileticMoveActions, HomileticPositionReviews, HomileticTitleActions } from './homileticPlan';
 import type { SeriesMembershipCapture } from './membershipIntent';
 import type { PrayerStatusCapture } from './prayerStatusAction';
 import type { PreachDateFieldActions } from './preachDateFieldAction';
@@ -72,7 +73,7 @@ export type EditorCommitAction =
   | (ExegeticalPointEdit & { time: ActionTime | null; shown?: ShownCopy })
   | { kind: 'sermon-plan-mode'; mode: SermonPlanModeCapture }
   | { kind: 'account-preference'; time: ActionTime | null; fields?: readonly AccountPreferenceField[] }
-  | { kind: 'document-metadata'; time: ActionTime | null }
+  | { kind: 'document-metadata'; time: ActionTime | null; homileticPositionReview?: HomileticList }
   | { kind: 'sermon-preparation-check'; field: PreparationConfirmation; time: ActionTime | null }
   | { kind: 'thought-placement'; rowId: string; time: ActionTime | null; shown?: ShownCopy }
   | { kind: 'service-order-placement'; move: ServiceOrderPlacementCapture }
@@ -251,6 +252,9 @@ export type DataCommand = CommandBase & (
       sermonPreparationCheckActions?: Partial<Record<PreparationConfirmation, DocumentFieldStamp>>;
       sermonChurchFill?: SermonChurchFill;
       exegeticalPlanActions?: ExegeticalPointStamp[];
+      homileticTitleActions?: HomileticTitleActions;
+      homileticMoveActions?: HomileticMoveActions;
+      homileticPositionReviews?: HomileticPositionReviews;
       thoughtTagActions?: TagMembershipWire<ThoughtTagAction>[];
       tagMembershipActions?: TagMembershipWire<TagMembershipAction>[];
       sourceNoteLinkAction?: SourceNoteLinkAction;

@@ -9,6 +9,7 @@ import { autosaveFieldTargets } from './documentFieldAction';
 import { manualChoiceRecoveryIdentity } from './editorIdentity';
 import { writeField } from './fieldValues';
 import { captureGroupStepPlacement, carryAnchoredDraftChronology, groupPlacementSteps, mergeEditsAfterAnchoredPlacement, mergeGroupFlowRebase, projectGroupStepOnDocument } from './groupStepPlacement';
+import { projectHomileticReview, reviewedHomileticList } from './homileticPlanChoice';
 import { chooseLocalPlacement } from './localPlacementChoice';
 import { projectManualSelection, type ManualPath } from './manualScope';
 import { projectResourceOutlinePoint } from './outlinePointPlacement';
@@ -57,8 +58,9 @@ export function exactManualRequest(stage: ManualStage | undefined, checkpoint: S
     const pending = checkpoint.pending[id];
     if (pending && request.value && ['conflict', 'refused'].includes(request.state)) {
       const recovered = record.recoverySources?.some(source => source.id === request.editorId);
-      const markedList = request.result?.kind === 'conflict' && request.result.conflicts.some(({ code, path }) =>
-        isAuthoredListComparison(code) && record.selection.some(selected => equalValues(selected, path)));
+      const markedList = request.result?.kind === 'conflict' && (request.result.conflicts.some(({ code, path }) =>
+        isAuthoredListComparison(code) && record.selection.some(selected => equalValues(selected, path)))
+        || reviewedHomileticList(request.result.conflicts, record.selection));
       if (recovered || (record.scopeId === request.editorId && (markedList || hasLaterScope(request, requests)))) return request;
     }
     id = request.predecessor ?? undefined;
@@ -102,7 +104,13 @@ export function projectExactManualChoice(record: EditorRecord, decision: ExactMa
   const prepared = request.initialized && request.command;
   const basis = prepared ? request.working : request.baseline;
   const reviewed = prepared ? replaySavedChoiceDelta(stored.resource, request.value, decision.value, request.intended) : decision.value;
-  if (decision.choice === 'local') {
+  const homiletic = request.result?.kind === 'conflict' && reviewedHomileticList(request.result.conflicts, decision.selection);
+  if (homiletic && stored.value && request.result?.kind === 'conflict') {
+    const chosen = projectHomileticReview(basis.value, reviewed, stored.value, request.result.snapshot.value,
+      homiletic, request.result.conflicts, decision.choice, prepared ? request.intended : request.value);
+    if (!chosen) throw Object.assign(new Error('The Homiletic plan comparison changed'), { code: 'decision-changed' });
+    draft = projectManualSelection(stored.value, chosen, decision.selection);
+  } else if (decision.choice === 'local') {
     if (stored.value && changedThoughtTagTarget(stored.value, request)) {
       throw Object.assign(new Error('The thought that was edited is gone'), { code: 'decision-changed' });
     }

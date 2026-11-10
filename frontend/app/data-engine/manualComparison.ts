@@ -1,6 +1,7 @@
 import { keepReviewedAuthoredLists } from './authoredListChoice';
 import { AUTHORED_LIST_PROJECTION, isAuthoredListComparison } from './authoredStringList';
-import { exactManualWords } from './manualChoice';
+import { projectHomileticReview, reviewedHomileticList } from './homileticPlanChoice';
+import { exactManualWords, replaySavedChoiceDelta } from './manualChoice';
 import { sameManualSelection } from './manualScope';
 import { equalValues, mergeDocumentFields } from './protocol';
 import { canReplaceSnapshot } from './snapshotFreshness';
@@ -10,7 +11,7 @@ import type { ManualScope } from './manualScope';
 import type { SessionCheckpoint } from './session';
 import type { ConflictDetail, DocumentData, ResourceSnapshot } from './types';
 
-export interface ManualComparison { identity: string; requestId: string; conflictPaths: readonly (readonly string[])[]; mine: DocumentData; stored: ResourceSnapshot }
+export interface ManualComparison { identity: string; requestId: string; conflictPaths: readonly (readonly string[])[]; mine: DocumentData; stored: ResourceSnapshot; remotePreview?: DocumentData; canKeepLocal?: false }
 
 function exactSermonVerse(request: CommitRequest, conflicts: readonly ConflictDetail[], mine: DocumentData, stored: ResourceSnapshot,
   selection: ReturnType<ManualScope['getState']>['record']['selection']): boolean {
@@ -38,6 +39,17 @@ export function manualComparison(form: ReturnType<ManualScope['getState']>, pare
       const authored = exact ? exactManualWords(form, exact) : form.value;
       const mine = keepReviewedAuthoredLists(stored.resource.collection, authored,
         conflicts.filter(item => item.code === AUTHORED_LIST_PROJECTION)) ?? authored;
+      const homiletic = reviewedHomileticList(conflicts, form.record.selection);
+      if (homiletic) {
+        const prepared = request.initialized && request.command;
+        const basis = prepared ? request.working : request.baseline;
+        const proposed = prepared ? replaySavedChoiceDelta(stored.resource, request.value, authored, request.intended) : authored;
+        const local = projectHomileticReview(basis.value, proposed, stored.value, request.result.snapshot.value, homiletic, conflicts, 'local', prepared ? request.intended : request.value);
+        const remote = projectHomileticReview(basis.value, proposed, stored.value, request.result.snapshot.value, homiletic, conflicts, 'remote');
+        return { identity: JSON.stringify([form.record.scopeId, request.id, form.record.stage, stored]), requestId: request.id,
+          conflictPaths: conflicts.map(conflict => conflict.path), mine: local ?? authored, stored: JSON.parse(JSON.stringify(stored)) as ResourceSnapshot,
+          ...(remote && { remotePreview: remote }), ...(!local && { canKeepLocal: false as const }) };
+      }
       const exactVerse = exact && exactSermonVerse(request, conflicts, mine, stored, form.record.selection);
       const changed = form.record.selection.some(path => !sameManualSelection(request.baseline.value, request.value, path)
         && !sameManualSelection(request.baseline.value, stored.value, path) && !sameManualSelection(request.value, stored.value, path));

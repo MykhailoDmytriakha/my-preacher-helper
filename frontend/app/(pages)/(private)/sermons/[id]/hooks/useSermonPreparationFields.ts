@@ -35,8 +35,8 @@ export function useSermonPreparationFields(prepResource: ResourceRef | null) {
     ...trimmedPreparationText, valid: isSermonGoalType,
     describe: value => t(value ? `wizard.steps.goals.goal.types.${value}` : 'wizard.steps.goals.goal.typePlaceholder'),
   }, captureMetadataTime);
-  const updatedPlan = usePreparationField(prepResource, ['preparation', 'homileticPlan', 'updatedPlan'], 'wizard.steps.homileticPlan.fields.updatedPlan.label', preparationPlan);
-  const sermonPlan = usePreparationField(prepResource, ['preparation', 'homileticPlan', 'sermonPlan'], 'wizard.steps.homileticPlan.fields.sermonPlan.label', preparationPlan);
+  const updatedPlan = usePreparationField(prepResource, ['preparation', 'homileticPlan', 'updatedPlan'], 'wizard.steps.homileticPlan.fields.updatedPlan.label', preparationPlan, captureMetadataTime);
+  const sermonPlan = usePreparationField(prepResource, ['preparation', 'homileticPlan', 'sermonPlan'], 'wizard.steps.homileticPlan.fields.sermonPlan.label', preparationPlan, captureMetadataTime);
   const decision = mainIdeaContext.decision ?? mainIdeaText.decision ?? mainIdeaArgumentation.decision
     ?? timelessTruth.decision ?? christConnection.decision ?? goalStatement.decision
     ?? thesisExegetical.decision

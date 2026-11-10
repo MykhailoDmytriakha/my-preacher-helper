@@ -232,6 +232,9 @@
     "useStoredVersion": "Взяти збережену версію",
     "yourVersion": "Ваша версія",
     "storedVersion": "Збережена версія",
+    "homileticHistory": {
+      "comparison": "Попередню версію збережено під час порівняння"
+    },
     "exegeticalHistory": {
       "comparison": "Текст збережено з порівняння",
       "heading": "Історія пунктів",

@@ -20,7 +20,7 @@ export function preparationConfirmationField(path: readonly string[]): Preparati
 /** Raw field views and explicit-save normalization; no storage or delivery ownership. */
 export interface PreparationValue<T> {
   read(value: Json | undefined): T;
-  save(value: T): Json;
+  save(value: T, opening?: T): Json;
   describe(value: T): string;
   valid?(value: T): boolean;
 }
@@ -36,7 +36,10 @@ export const preparationWords: PreparationValue<string> = {
 };
 export const preparationPlan: PreparationValue<PreparationPlanItem[]> = {
   read: value => Array.isArray(value) ? value as PreparationPlanItem[] : [],
-  save: value => value.map(item => ({ id: item.id, title: item.title.trim() })) as Json,
+  save: (value, opening) => {
+    const original = new Map(opening?.map(row => [row.id, row.title]));
+    return value.map(row => original.get(row.id) === row.title ? row : { ...row, title: row.title.trim() }) as Json;
+  },
   describe: value => value.map((item, index) => `${index + 1}. ${item.title}`).join('\n'),
   valid: value => value.every(item => item.title.trim().length > 0),
 };

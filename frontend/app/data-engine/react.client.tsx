@@ -77,6 +77,8 @@ import type { CommandResult, ConflictDetail, DocumentData, EngineReadOptions, Fa
 import type { AppLocale } from '@/utils/appLocale';
 import type { BookText } from '@/utils/bibleText';
 
+export type { HomileticMoveInput } from './homileticPlan';
+
 export { isCollectionOnEngine, isDataEngineEnabled } from './clientPolicy';
 export function isSermonPlanMode(value: unknown) { return validSermonPlanMode(value); }
 /** Stable capture ownership for the public initial-analysis creation flow. */

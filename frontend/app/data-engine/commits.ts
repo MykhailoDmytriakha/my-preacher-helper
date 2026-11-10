@@ -27,6 +27,7 @@ import { AddressedFailures, type AddressedFailure } from './failures';
 import { writeField } from './fieldValues';
 import { captureMeetingFieldActions, GROUP_MEETING_FIELD_POLICY, matchingMeetingFieldActions } from './groupMeetingFieldAction';
 import { groupStepPlacementPredecessor, groupStepWitness, projectGroupStepOnDocument } from './groupStepPlacement';
+import { captureHomileticMoves, captureHomileticTitles, matchingHomileticMoves, matchingHomileticPositionReviews, matchingHomileticTitles, restoreHomileticOpenings } from './homileticPlanCapture';
 import { seriesCommandParticipant } from './membershipIntent';
 import { outlinePlacementField } from './outlinePlacementResource';
 import { projectResourceOutlinePoint, sameOutlinePointGesture } from './outlinePointPlacement';
@@ -51,6 +52,7 @@ import type { CouncilFieldActions } from './councilFieldAction';
 import type { DocumentFieldAction, DocumentFieldObservation, SermonChurchObservation, SermonPlanModeObservation, SermonThesisObservations } from './documentFieldAction';
 import type { ExegeticalPointStamp } from './exegeticalPointAction';
 import type { GroupMeetingFieldActions, GroupMeetingFieldCaptures } from './groupMeetingFieldAction';
+import type { HomileticMoveActions, HomileticMoveGesture, HomileticPositionReviews, HomileticTitleActions } from './homileticPlan';
 import type { SeriesMembershipCapture } from './membershipIntent';
 import type { PrayerStatusObservations } from './prayerStatusAction';
 import type { PreachDateFieldActions, PreachDateFieldSave } from './preachDateFieldAction';
@@ -140,6 +142,9 @@ export interface CommitRequest extends CouncilFieldActions, PrayerStatusObservat
   accountPreferenceActions?: AccountPreferenceObservations;
   sermonPreparationCheckActions?: PreparationConfirmationObservations;
   exegeticalPlanActions?: ExegeticalPointStamp[];
+  homileticTitleActions?: HomileticTitleActions;
+  homileticMoveActions?: HomileticMoveActions;
+  homileticPositionReviews?: HomileticPositionReviews;
   thoughtTagActions?: ThoughtTagAction[];
   tagMembershipActions?: TagMembershipAction[];
   sourceNoteLink?: SourceNoteLinkCapture;
@@ -278,6 +283,9 @@ export function assertCommitCapture(current: CommitRequest, incoming: CommitRequ
     || !equalValues(current.sourceNoteLink ?? null, incoming.sourceNoteLink ?? null)
     || !equalValues(current.sermonNoteText ?? null, incoming.sermonNoteText ?? null)
     || !equalValues(current.exegeticalPlanActions ?? null, incoming.exegeticalPlanActions ?? null)
+    || !equalValues(current.homileticTitleActions ?? null, incoming.homileticTitleActions ?? null)
+    || !equalValues(current.homileticMoveActions ?? null, incoming.homileticMoveActions ?? null)
+    || !equalValues(current.homileticPositionReviews ?? null, incoming.homileticPositionReviews ?? null)
     || !equalValues(current.sermonPreparationCheckActions ?? null, incoming.sermonPreparationCheckActions ?? null)
     || !equalValues(current.sermonChurchFill ?? null, incoming.sermonChurchFill ?? null)
     || !equalValues(current.seriesFieldActions ?? null, incoming.seriesFieldActions ?? null)
@@ -366,6 +374,7 @@ type CommitSaveOptions = { predecessorId?: string | null; predecessorIds?: reado
   preachDateFieldSave?: PreachDateFieldSave;
   preachStatusCapture?: PreachStatusCapture;
   documentMetadataTime?: import('./actionClock').ActionTime | null;
+  homileticMoves?: readonly HomileticMoveGesture[];
   thoughtPlacementIds?: readonly string[];
   thoughtTagId?: string;
   action?: EditorCommitAction;
@@ -399,7 +408,7 @@ function pendingRowFields(record: CommitRequest) {
 }
 
 function hasTimedAncestor(record: CommitRequest): boolean {
-  return record.sequence === 0 && Boolean(record.sourceNoteLink || record.seriesMembership || record.serviceOrderPlacement || record.serviceOrderStepPlacement || record.outlinePointPlacement || record.groupFlowStepPlacement || record.councilTopicPlacement || record.serviceOrderTitleAction || record.prayerTitleAction || record.planTemplateNameAction || record.tagColorAction || record.studyNoteTitleAction || record.studyNoteTypeAction || record.commentKindAction || record.commentPlaceAction || record.prayerStatusAction || record.prayerAnsweredAtAction || record.sermonTitleAction || record.sermonVerseAction || record.sermonChurchAction || record.sermonGoalTypeAction || record.sermonThesisFieldActions || record.sermonRepeatedWordsAction || record.sermonPlanModeAction || record.accountPreferenceActions || record.sermonPreparationCheckActions || record.exegeticalPlanActions?.length || record.seriesFieldActions || record.groupTitleAction || record.groupStatusAction || record.councilTitleAction || record.councilDateAction || record.councilLifecycleAction || pendingBibleMarkRebase(record) || pendingMeetingDateRebase(record) || pendingDocumentTags(record).length || pendingRowFields(record).length || pendingPreachStatusActions(record).length);
+  return record.sequence === 0 && Boolean(record.sourceNoteLink || record.seriesMembership || record.serviceOrderPlacement || record.serviceOrderStepPlacement || record.outlinePointPlacement || record.groupFlowStepPlacement || record.councilTopicPlacement || record.serviceOrderTitleAction || record.prayerTitleAction || record.planTemplateNameAction || record.tagColorAction || record.studyNoteTitleAction || record.studyNoteTypeAction || record.commentKindAction || record.commentPlaceAction || record.prayerStatusAction || record.prayerAnsweredAtAction || record.sermonTitleAction || record.sermonVerseAction || record.sermonChurchAction || record.sermonGoalTypeAction || record.sermonThesisFieldActions || record.sermonRepeatedWordsAction || record.sermonPlanModeAction || record.accountPreferenceActions || record.sermonPreparationCheckActions || record.exegeticalPlanActions?.length || record.homileticTitleActions || record.homileticMoveActions || record.seriesFieldActions || record.groupTitleAction || record.groupStatusAction || record.councilTitleAction || record.councilDateAction || record.councilLifecycleAction || pendingBibleMarkRebase(record) || pendingMeetingDateRebase(record) || pendingDocumentTags(record).length || pendingRowFields(record).length || pendingPreachStatusActions(record).length);
 }
 
 function freezeSaveOptions(options: CommitSaveOptions | undefined): CommitSaveOptions | undefined {
@@ -410,6 +419,7 @@ function freezeSaveOptions(options: CommitSaveOptions | undefined): CommitSaveOp
     preachDateFieldSave: options.preachDateFieldSave && clone(options.preachDateFieldSave),
     preachStatusCapture: options.preachStatusCapture && clone(options.preachStatusCapture),
     documentMetadataTime: options.documentMetadataTime && clone(options.documentMetadataTime),
+    homileticMoves: options.homileticMoves && clone(options.homileticMoves),
     action: options.action && clone(options.action) };
 }
 
@@ -727,6 +737,10 @@ export class CommitQueue {
     const metadataFields = captureDocumentMetadataFields(baseline, predecessor, intent.draft, metadataTime, records,
       editorAction?.kind === 'account-preference' ? editorAction.fields : undefined);
     const exegeticalPlanActions = captureExegeticalPointActions(intent, baseline, predecessor, records);
+    const homileticTitleActions = captureHomileticTitles(baseline, predecessor, intent.draft, metadataTime, records);
+    const homileticMoveActions = captureHomileticMoves(baseline, predecessor, intent.draft, frozenOptions?.homileticMoves, metadataTime, records);
+    const homileticPositionReviews = editorAction?.kind === 'document-metadata' && editorAction.homileticPositionReview && baseline.metadata
+      ? { [editorAction.homileticPositionReview]: baseline.metadata.revision } : undefined;
     const autosaveFields = groupMove || councilMove ? {} : uncapturedAutosaveFields(intent, baseline, predecessor, records);
     const rowFields = groupMove || councilMove ? {}
       : captureRowFields(intent, baseline, predecessor, records, frozenOptions?.documentMetadataTime, frozenOptions?.thoughtPlacementIds);
@@ -772,6 +786,9 @@ export class CommitQueue {
       ...metadataFields,
       ...(preparationChecks && { sermonPreparationCheckActions: preparationChecks }),
       ...(exegeticalPlanActions && { exegeticalPlanActions }),
+      ...(homileticTitleActions && { homileticTitleActions }),
+      ...(homileticMoveActions && { homileticMoveActions }),
+      ...(homileticPositionReviews && { homileticPositionReviews }),
       ...autosaveFields,
       ...rowFields,
       ...(thoughtTagActions && { thoughtTagActions }),
@@ -1281,6 +1298,7 @@ export class CommitQueue {
     }
     if (markRebase) source = restoreBibleMarkAncestor(source, markRebase);
     if (record.sequence === 0 && record.exegeticalQueueBasis) source = restoreExegeticalQueueBasis(source, record.exegeticalQueueBasis);
+    source = restoreHomileticOpenings(source, record);
     // Even when the previous ACK already shows the intended date, the server
     // still needs this action's exact ancestor and time to arbitrate later deliveries.
     if (meeting && source.value) {
@@ -1362,6 +1380,12 @@ export class CommitQueue {
       }
       const exegeticalActions = matchingExegeticalPointActions(command.changes, record.exegeticalPlanActions);
       if (exegeticalActions) command.exegeticalPlanActions = exegeticalActions;
+      const homileticTitles = matchingHomileticTitles(command.changes, record.homileticTitleActions);
+      if (homileticTitles) command.homileticTitleActions = homileticTitles;
+      const homileticMoves = matchingHomileticMoves(command.changes, record.homileticMoveActions);
+      if (homileticMoves) command.homileticMoveActions = homileticMoves;
+      const homileticReviews = matchingHomileticPositionReviews(command.changes, record);
+      if (homileticReviews) command.homileticPositionReviews = homileticReviews;
       const tags = thoughtTagCommandActions(command.changes, record.thoughtTagActions);
       if (tags.length) command.thoughtTagActions = tags;
       const membership = documentTagChange(command.changes);

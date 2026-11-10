@@ -15,6 +15,7 @@ import {
   listDocumentTagHistory,
   listGroupFlowHistory,
   listGroupStepPlacementHistory,
+  listHomileticPlanHistory,
   listExegeticalPointHistory,
   listOutlinePointPlacementHistory,
   listPlanTemplatePointPlacementHistory,
@@ -60,6 +61,10 @@ const histories = {
   planMode: { collection: 'sermons', list: listSermonPlanModeHistory },
   outlinePointPlacement: { collection: 'sermons', list: listOutlinePointPlacementHistory },
   exegeticalPoint: { collection: 'sermons', list: listExegeticalPointHistory },
+  homileticUpdatedPlan: { collection: 'sermons', list: (owner: string, id: string, generation: string, cursor?: string) =>
+    listHomileticPlanHistory(owner, id, generation, cursor, 'updatedPlan') },
+  homileticSermonPlan: { collection: 'sermons', list: (owner: string, id: string, generation: string, cursor?: string) =>
+    listHomileticPlanHistory(owner, id, generation, cursor, 'sermonPlan') },
   preparationConfirmation: { collection: 'sermons', list: listSermonPreparationConfirmationHistory },
   thoughtLock: { collection: 'sermons', list: listThoughtLockHistory },
   thoughtPlacement: { collection: 'sermons', list: listThoughtPlacementHistory },

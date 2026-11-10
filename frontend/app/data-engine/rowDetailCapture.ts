@@ -16,12 +16,13 @@ export type RowDetailCaptures<Field extends string, Value extends RowValue> = Pa
 export function knownRowDetailPredecessor<Field extends string, Value extends RowValue>(predecessor: CommitRequest | undefined,
   requests: ReadonlyMap<string, CommitRequest>, baseline: ResourceSnapshot, policy: RowDetailPolicy<Field, Value>,
   actionFor: (request: CommitRequest) => Pick<RowDetailObservation<Value>, 'rowId' | 'rowCreatedAt' | 'after'> | undefined,
-  field: Field, rowId: string, rowCreatedAt: string, value: Value, scope: RowValue | undefined): string | undefined {
+  field: Field, rowId: string, rowCreatedAt: string, value: Value, scope: RowValue | undefined,
+  rowsAt: (value: CommitRequest['value']) => unknown = draft => draft?.[policy.target(field).field]): string | undefined {
   const visited = new Set<string>();
   const target = policy.target(field);
   for (let request = predecessor; request && !visited.has(request.id); request = requests.get(request.predecessor ?? '')) {
     const saved = request.baseline;
-    const rows = request.value?.[target.field];
+    const rows = rowsAt(request.value);
     if (saved.resource.collection !== baseline.resource.collection || saved.resource.id !== baseline.resource.id
       || saved.metadata?.generation !== baseline.metadata?.generation || request.state === 'cancelled' || request.state === 'refused'
       || existingRowField(rows, rowId, policy.birth) !== rowCreatedAt || !equalValues(existingRowField(rows, rowId, target), value)

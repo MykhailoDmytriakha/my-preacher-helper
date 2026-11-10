@@ -1178,6 +1178,36 @@ describe('Durable commit requests', () => {
     }));
   });
 
+  it('delivers a queued Homiletic return even when the preceding ACK already has its order', async () => {
+    const points = [{ id: 'a', title: 'A' }, { id: 'b', title: 'B' }, { id: 'c', title: 'C' }];
+    const moved = [points[1], points[0], points[2]];
+    const preparation = (updatedPlan: typeof points) => ({ homileticPlan: { updatedPlan, modernTranslation: 'Unrelated words' } });
+    const base = { ...initial(), value: { ...initial().value, preparation: preparation(points) } };
+    const s = setup({ opening: base });
+    const { queue } = s.makeQueue();
+    const editor = new DataSession(base);
+    const opening = { previous: null, next: 'b' }, destination = { previous: 'b', next: 'c' };
+    const time = { earliestMs: 1_800_000_000_060, latestMs: 1_800_000_000_064 };
+    editor.edit({ ...base.value, preparation: preparation(moved) });
+    const first = (await queue.save('plan', editor.checkpoint(), { documentMetadataTime: null,
+      homileticMoves: [{ list: 'updatedPlan', rowId: 'a', opening, destination }],
+    }))!;
+    editor.applyCommit(first);
+    editor.edit({ ...base.value, preparation: preparation(points) });
+    const second = (await queue.save('plan', editor.checkpoint(), { predecessorId: first.id, documentMetadataTime: time,
+      homileticMoves: [{ list: 'updatedPlan', rowId: 'a', opening: destination, destination: opening }],
+    }))!;
+    const alreadyReturned = { ...base, metadata: { ...base.metadata!, revision: 4, operationId: first.id } };
+    s.replace(alreadyReturned);
+    jest.mocked(s.transport.send).mockResolvedValueOnce({ kind: 'acknowledged', operationId: first.id, snapshot: alreadyReturned });
+    await queue.drain(true);
+    expect(s.transport.send).toHaveBeenCalledTimes(2);
+    expect(s.transport.send).toHaveBeenLastCalledWith(expect.objectContaining({ operationId: second.id,
+      homileticMoveActions: { updatedPlan: [expect.objectContaining({ stepId: 'a', opening: destination, destination: opening, time })] },
+      changes: [{ path: ['preparation'], before: { exists: true, value: preparation(moved) }, after: { exists: true, value: preparation(points) } }],
+    }));
+  });
+
   it('sends the exact service step Scripture predecessor through an intervening body save', async () => {
     const opening = { id: 'reading', title: 'Reading', scriptureRefs: ['John 3:16'], body: 'Original words' };
     const base: ResourceSnapshot = {

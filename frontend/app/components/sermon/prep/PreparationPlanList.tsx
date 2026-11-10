@@ -5,13 +5,15 @@ import { usePreparationFieldOpening } from '@/hooks/usePreparationFieldOpening';
 import { UI_COLORS } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
 
+import { HomileticPlanHistory } from './HomileticPlanHistory';
 import { PreparationFieldActions, PreparationFieldStatus } from './PreparationTextarea';
 
 import type { PreparationFieldBinding } from '@/components/common/manualTextBinding';
+import type { HomileticMoveInput } from '@/data-engine/react.client';
 import type { PreparationPlanItem } from '@/utils/preparationFieldValues';
 
 export type PreparationPlanBinding = PreparationFieldBinding<PreparationPlanItem[]> & {
-  edit(updater: (current: PreparationPlanItem[]) => PreparationPlanItem[]): Promise<void>;
+  edit(updater: (current: PreparationPlanItem[]) => PreparationPlanItem[], fieldInput?: HomileticMoveInput): Promise<void>;
 };
 const genId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
@@ -19,14 +21,14 @@ export function PreparationPlanList({ binding, kind }: { binding?: PreparationPl
   usePreparationFieldOpening(binding);
   const { t } = useTranslation();
   const prefix = `wizard.steps.homileticPlan.fields.${kind}`;
-  const edit = (updater: (current: PreparationPlanItem[]) => PreparationPlanItem[]) => {
-    if (binding) void binding.edit(updater).catch(() => undefined);
+  const edit = (updater: (current: PreparationPlanItem[]) => PreparationPlanItem[], fieldInput?: HomileticMoveInput) => {
+    if (binding) void binding.edit(updater, fieldInput).catch(() => undefined);
   };
   const move = (id: string, direction: number) => edit(current => {
     const index = current.findIndex(item => item.id === id), target = index + direction;
     if (index < 0 || target < 0 || target >= current.length) return current;
     const next = [...current]; [next[index], next[target]] = [next[target], next[index]]; return next;
-  });
+  }, { homileticMove: { list: kind, rowId: id } });
   return <fieldset className={`min-w-0 p-3 rounded-md border ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder}`} disabled={!binding?.ready}>
     <div className="flex items-center justify-between mb-2">
       <label className="text-xs font-medium">{t(`${prefix}.label`)}</label>
@@ -46,6 +48,9 @@ export function PreparationPlanList({ binding, kind }: { binding?: PreparationPl
             className={`inline-flex items-center justify-center px-2 py-1 rounded-md text-xs border ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder}`}><Icon className="w-4 h-4" /></button>)}
       </li>)}
     </ul>
-    {binding && <><PreparationFieldActions binding={binding} value={binding.value} /><PreparationFieldStatus binding={binding} /></>}
+    {binding && <><PreparationFieldActions binding={binding} value={binding.value} /><PreparationFieldStatus binding={binding} />
+      {binding.documentIdentity && <HomileticPlanHistory key={JSON.stringify(binding.documentIdentity)}
+        identity={binding.documentIdentity} list={kind} binding={binding} />}
+    </>}
   </fieldset>;
 }

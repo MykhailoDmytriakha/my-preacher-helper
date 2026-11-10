@@ -3,13 +3,14 @@ import { createHash } from 'node:crypto';
 
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { isCollectionServed } from '@/data-engine/activation';
-import { DataEngineServerError, listAccountPreferenceHistory, listBibleMarkHistory, listCommentKindHistory, listExegeticalPointHistory, listCouncilMetadataHistory, listCouncilOutcomeHistory, listDocumentTagHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listMeetingDateHistory, listOutlinePointPlacementHistory, listPlanTemplateNameHistory, listPlanTemplatePointPlacementHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listPrayerStatusHistory, listPrayerTitleHistory, listSermonChurchHistory, listSermonGoalTypeHistory, listSermonPlanModeHistory, listSermonPreparationConfirmationHistory, listSermonSourceNoteLinkHistory, listSermonTitleHistory, listSermonVerseHistory, listSeriesMembershipHistory, listSeriesMetadataHistory, listServiceOrderFlagHistory, listServiceOrderPlacementHistory, listServiceOrderStepPlacementHistory, listServiceOrderStepTitleHistory, listServiceOrderTitleHistory, listStudyNoteTitleHistory, listTagColorHistory, listThoughtLockHistory, listThoughtPlacementHistory, listThoughtTagHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
+import { DataEngineServerError, listAccountPreferenceHistory, listBibleMarkHistory, listCommentKindHistory, listExegeticalPointHistory, listCouncilMetadataHistory, listCouncilOutcomeHistory, listDocumentTagHistory, listDocuments, listGroupMeetingFieldHistory, listGroupStatusHistory, listGroupTitleHistory, listHomileticPlanHistory, listMeetingDateHistory, listOutlinePointPlacementHistory, listPlanTemplateNameHistory, listPlanTemplatePointPlacementHistory, listPreachDateFieldHistory, listPreachDateHistory, listPreachStatusHistory, listPrayerStatusHistory, listPrayerTitleHistory, listSermonChurchHistory, listSermonGoalTypeHistory, listSermonPlanModeHistory, listSermonPreparationConfirmationHistory, listSermonSourceNoteLinkHistory, listSermonTitleHistory, listSermonVerseHistory, listSeriesMembershipHistory, listSeriesMetadataHistory, listServiceOrderFlagHistory, listServiceOrderPlacementHistory, listServiceOrderStepPlacementHistory, listServiceOrderStepTitleHistory, listServiceOrderTitleHistory, listStudyNoteTitleHistory, listTagColorHistory, listThoughtLockHistory, listThoughtPlacementHistory, listThoughtTagHistory, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, recordSharedNoteView, serverErrorResponse } from '@/data-engine/server';
 import { collectionHeadId, HEADS_COLLECTION, sequenceId } from '@/data-engine/serverFeed';
 import { replaySeriesReorder, type SeriesReorderStep } from '@/data-engine/seriesReorder';
 import { readSermonConflict } from '@/data-engine/rowConflictDetails';
 import { keepUncontestedSermonFields } from '@/data-engine/sermonFieldChoice';
 import { DataSession } from '@/data-engine/session';
 import { outlinePointGap, outlinePointOrder } from '@/utils/outlineDnd';
+import { stepGap } from '@/utils/serviceOrderStepPlacement';
 
 import type { DataCommand, FieldValue, Json, ResourceSnapshot } from '@/data-engine/types';
 import type { SermonOutline } from '@/models/models';
@@ -4688,6 +4689,234 @@ describe('transactional DataEngine server', () => {
       expect(await processCommand(owner, save('phone', field, thesis(field, 'promises'), null)))
         .toMatchObject({ kind: 'conflict', conflicts: [{ path: ['preparation', 'thesis', field] }] });
     });
+  });
+
+  it('leaves room for ordinary writes in a large sermon and treats compacted homiletic proof as unknown', async () => {
+    const resource = { collection: 'sermons', id: 'large-homiletic-plan' };
+    const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] };
+    const now = '2026-11-10T00:00:00.000Z';
+    const a = { id: 'a', title: 'A' }, b = { id: 'b', title: 'B' }, c = { id: 'c', title: 'C' };
+    const opening = [a, b, c], moved = [b, a, c];
+    const preparation = (rows: typeof opening) => ({ homileticPlan: { updatedPlan: rows } });
+    const bulk = 'x'.repeat(989_000);
+    expect(await processCommand(base.owner, { ...base, kind: 'create', operationId: 'seed', generation: null,
+      value: { userId: base.owner, title: 'Large sermon', verse: 'John 3:16', thoughts: [], date: now, createdAt: now, updatedAt: now,
+        preparation: preparation(opening), planText: { main: bulk } },
+    })).toMatchObject({ kind: 'acknowledged' });
+    const save = (operationId: string, before: typeof opening, after: typeof opening, observedRevision: number) =>
+      processCommand(base.owner, { ...base, kind: 'update', operationId, generation: 'seed',
+        changes: [{ path: ['preparation'], before: { exists: true, value: preparation(before) }, after: { exists: true, value: preparation(after) } }],
+        homileticMoveActions: { updatedPlan: [{ stepId: 'a', queueId: operationId,
+          opening: stepGap(before, 'a')!, destination: stepGap(after, 'a')!, observedRevision, time: null }] },
+      });
+    expect(await save('current-move', opening, moved, 1)).toMatchObject({ kind: 'acknowledged' });
+    expect(documents.get('sermons/' + resource.id)?._dataEngine).toMatchObject({
+      'homiletic-updatedPlan-placement': { floor: 2, moves: [], births: [] },
+      'homiletic-updatedPlan-order': { order: { floor: 2, proofs: [] } },
+    });
+    expect(await save('delayed-move', moved, opening, 1)).toMatchObject({ kind: 'conflict' });
+    expect((await readDocument(base.owner, resource)).value).toMatchObject({ preparation: preparation(moved), planText: { main: bulk } });
+  });
+
+  describe.each(['updatedPlan', 'sermonPlan'] as const)('a delayed save in homiletic %s', field => {
+    it.each(['title return', 'position return', 'position return with evicted history', 'independent point titles', 'competing point titles',
+      'earlier stamped title', 'later stamped title', 'earlier stamped position', 'later stamped position',
+      'earlier stamped opposite-arrow position', 'later stamped opposite-arrow position'] as const)(
+      'retains the intended points for %s', async scenario => {
+        const resource = { collection: 'sermons', id: 'homiletic-point-return' };
+        const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] };
+        const now = '2026-11-10T00:00:00.000Z';
+        const otherField = field === 'updatedPlan' ? 'sermonPlan' : 'updatedPlan';
+        const opening = [{ id: 'a', title: 'Opening A' }, { id: 'b', title: 'Opening B' }, { id: 'c', title: 'Opening C' }];
+        const title = (id: string, words: string) => opening.map(row => row.id === id ? { ...row, title: words } : row);
+        const moved = [opening[1], opening[0], opening[2]];
+        const independent = [{ id: 'sibling', title: 'Other plan' }];
+        const preparation = (rows: typeof opening) => ({ homileticPlan: {
+          modernTranslation: 'Independent translation', [otherField]: independent, [field]: rows,
+        } });
+        expect(await processCommand(base.owner, { ...base, kind: 'create', operationId: 'seed', generation: null,
+          value: { userId: base.owner, title: 'Homiletic plan', verse: 'John 3:16', thoughts: [], date: now, createdAt: now, updatedAt: now,
+            preparation: preparation(opening) },
+        })).toMatchObject({ kind: 'acknowledged' });
+        const stamped = scenario.includes('stamped');
+        const position = scenario.includes('position');
+        const save = (operationId: string, before: typeof opening, after: typeof opening, observedRevision: number, offset: number) => {
+          const time = { earliestMs: 1_800_000_000_000 + offset, latestMs: 1_800_000_000_004 + offset };
+          const stepId = operationId === 'offline-phone' && scenario.includes('opposite-arrow') ? 'b' : 'a';
+          const action = position ? { homileticMoveActions: { [field]: [{ stepId, queueId: operationId.startsWith('desktop') ? 'desktop' : 'phone',
+            opening: stepGap(before, stepId)!, destination: stepGap(after, stepId)!, observedRevision, time }] } }
+            : { homileticTitleActions: { [field]: [{ rowId: 'a', rowCreatedAt: 'a', before: before.find(row => row.id === 'a')!.title,
+              after: after.find(row => row.id === 'a')!.title, observedRevision, time }] } };
+          return processCommand(base.owner, {
+          ...base, kind: 'update', operationId, generation: 'seed',
+          changes: [{ path: ['preparation'], before: { exists: true, value: preparation(before) },
+            after: { exists: true, value: preparation(after) } }],
+            ...(stamped && action),
+          });
+        };
+        const separate = scenario === 'independent point titles';
+        const overflow = scenario.includes('evicted history');
+        const returns = scenario.includes('return') || stamped;
+        const phoneLater = scenario.startsWith('later');
+        const desktop = position ? moved : title(separate ? 'b' : 'a', 'Later desktop words');
+        const phone = position ? moved : title('a', 'Earlier phone words');
+        expect(await save('desktop-first', opening, desktop, 1, 38)).toMatchObject({ kind: 'acknowledged' });
+        if (returns) expect(await save('desktop-return', desktop, opening, 2, 66)).toMatchObject({ kind: 'acknowledged' });
+        const expanded = [...opening, { id: 'extra', title: 'Independent addition' }];
+        if (overflow) {
+          expect(await save('independent-addition', opening, expanded, 3, 80)).toMatchObject({ kind: 'acknowledged' });
+          // Older frames are intentionally absent after the bounded layout history overflows.
+          const raw = documents.get('sermons/' + resource.id)!;
+          const layout = (raw._dataEngine as Raw)['homiletic-' + field + '-order'] as { order: { proofs: Raw[] } };
+          expect(layout.order.proofs[0].priorFrames).toBeDefined();
+          delete layout.order.proofs[0].priorFrames;
+        }
+        const reply = await save('offline-phone', opening, phone, 1, phoneLater ? 95 : 15);
+        const expected = separate ? [phone[0], desktop[1], opening[2]] : overflow ? expanded : phoneLater ? phone : returns ? opening : desktop;
+        expect((await readDocument(base.owner, resource)).value?.preparation).toEqual(preparation(expected));
+        expect(reply.kind).toBe(separate || stamped ? 'acknowledged' : 'conflict');
+        if (stamped) {
+          const history = await listHomileticPlanHistory(base.owner, resource.id, 'seed', undefined, field);
+          const rowId = scenario.includes('opposite-arrow') ? 'b' : 'a';
+          const change = position ? { kind: 'position', rowId }
+            : { kind: 'title', rowId, earlier: phoneLater ? 'Opening A' : 'Earlier phone words',
+              kept: phoneLater ? 'Earlier phone words' : 'Opening A' };
+          expect(history).toMatchObject({ owner: base.owner, sermonId: resource.id, generation: 'seed', list: field,
+            entries: [{ changes: [change] }], nextCursor: null });
+          expect((await listHomileticPlanHistory(base.owner, resource.id, 'seed', undefined, otherField)).entries).toEqual([]);
+          await expect(listHomileticPlanHistory('other-owner', resource.id, 'seed', undefined, field)).rejects.toMatchObject({ status: 403 });
+          await expect(listHomileticPlanHistory(base.owner, resource.id, 'wrong-generation', undefined, field)).rejects.toMatchObject({ status: 404 });
+        }
+      },
+    );
+    it('checks the layout revision of a reviewed move, even after a newer move returns the same order', async () => {
+      const resource = { collection: 'sermons', id: 'reviewed-homiletic-position' };
+      const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] };
+      const now = '2026-11-10T00:00:00.000Z';
+      const a = { id: 'a', title: 'A' }, b = { id: 'b', title: 'B' }, c = { id: 'c', title: 'C' };
+      const opening = [a, b, c], swapped = [b, a, c];
+      const preparation = (rows: typeof opening) => ({ homileticPlan: { [field]: rows } });
+      expect(await processCommand(base.owner, { ...base, kind: 'create', operationId: 'seed', generation: null,
+        value: { userId: base.owner, title: 'Homiletic plan', verse: 'John 3:16', thoughts: [], date: now, createdAt: now, updatedAt: now,
+          preparation: preparation(opening) },
+      })).toMatchObject({ kind: 'acknowledged' });
+      function save(operationId: string, before: typeof opening, after: typeof opening, revision?: number) {
+        return processCommand(base.owner, { ...base, kind: 'update', operationId, generation: 'seed',
+          changes: [{ path: ['preparation'], before: { exists: true, value: preparation(before) }, after: { exists: true, value: preparation(after) } }],
+          ...(revision !== undefined && { homileticPositionReviews: { [field]: revision } }),
+        });
+      }
+      expect(await save('newer-change', opening, swapped)).toMatchObject({ kind: 'acknowledged' });
+      expect(await save('newer-return', swapped, opening)).toMatchObject({ kind: 'acknowledged' });
+      const stale = await save('old-choice', opening, swapped, 1);
+      expect(stale).toMatchObject({ kind: 'conflict', snapshot: { metadata: { revision: 3 }, value: { preparation: preparation(opening) } },
+        conflicts: [{ path: ['preparation', 'homileticPlan', field], code: 'homiletic-position-review' }] });
+      const retitled = [a, b, { ...c, title: 'C changed independently' }];
+      expect(await save('title-only', opening, retitled)).toMatchObject({ kind: 'acknowledged' });
+      const accepted = await save('fresh-choice', opening, swapped, 3);
+      expect(accepted).toMatchObject({ kind: 'acknowledged', snapshot: { metadata: { revision: 5 },
+        value: { preparation: preparation([b, a, retitled[2]]) } } });
+      expect(await save('fresh-choice', opening, swapped, 3)).toEqual(accepted);
+    });
+
+    it.each(['an older move to the same place', 'an older move across another moved point', 'a move across a point just inserted on another device'] as const)(
+      'preserves a later crossing after %s', async scenario => {
+      const resource = { collection: 'sermons', id: 'homiletic-crossing-reaffirmation' };
+      const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] };
+      const now = '2026-11-10T00:00:00.000Z';
+      const a = { id: 'a', title: 'A' }, b = { id: 'b', title: 'B' }, c = { id: 'c', title: 'C' };
+      const d = { id: 'd', title: 'D' };
+      const samePlace = scenario === 'an older move to the same place';
+      const newlyInserted = scenario === 'a move across a point just inserted on another device';
+      const opening = samePlace || newlyInserted ? [a, b, c] : [d, a, b, c];
+      const preparation = (rows: typeof opening) => ({ homileticPlan: { [field]: rows } });
+      expect(await processCommand(base.owner, { ...base, kind: 'create', operationId: 'seed', generation: null,
+        value: { userId: base.owner, title: 'Homiletic plan', verse: 'John 3:16', thoughts: [], date: now, createdAt: now, updatedAt: now,
+          preparation: preparation(opening) },
+      })).toMatchObject({ kind: 'acknowledged' });
+      function save(operationId: string, stepId: string, before: typeof opening, after: typeof opening, revision: number, offset: number) {
+        return processCommand(base.owner, { ...base, kind: 'update', operationId, generation: 'seed',
+          changes: [{ path: ['preparation'], before: { exists: true, value: preparation(before) }, after: { exists: true, value: preparation(after) } }],
+          homileticMoveActions: { [field]: [{ stepId, queueId: operationId.startsWith('desktop') ? 'desktop' : 'phone',
+            opening: stepGap(before, stepId)!, destination: stepGap(after, stepId)!, observedRevision: revision,
+            time: { earliestMs: 1_800_000_000_000 + offset, latestMs: 1_800_000_000_004 + offset } }] },
+        });
+      }
+      if (newlyInserted) {
+        const saved = [a, d, b, c];
+        expect(await processCommand(base.owner, { ...base, kind: 'update', operationId: 'desktop-add', generation: 'seed',
+          changes: [{ path: ['preparation'], before: { exists: true, value: preparation(opening) },
+            after: { exists: true, value: preparation(saved) } }],
+        })).toMatchObject({ kind: 'acknowledged' });
+        expect(await save('phone-old', 'a', opening, [b, a, c], 1, 15)).toMatchObject({ kind: 'conflict',
+          conflicts: [{ path: ['preparation', 'homileticPlan', field], code: 'homiletic-position-review' }] });
+        expect((await readDocument(base.owner, resource)).value?.preparation).toEqual(preparation(saved));
+      } else if (samePlace) {
+        const swapped = [b, a, c];
+        expect(await save('desktop-first', 'a', opening, swapped, 1, 20)).toMatchObject({ kind: 'acknowledged' });
+        expect(await save('desktop-back', 'a', swapped, opening, 2, 50)).toMatchObject({ kind: 'acknowledged' });
+        expect(await save('desktop-last', 'a', opening, swapped, 3, 66)).toMatchObject({ kind: 'acknowledged' });
+        expect(await save('phone-same', 'b', opening, swapped, 1, 15)).toMatchObject({ kind: 'acknowledged' });
+        expect(await save('phone-undo', 'b', swapped, opening, 2, 40)).toMatchObject({ kind: 'acknowledged' });
+        expect((await readDocument(base.owner, resource)).value?.preparation).toEqual(preparation(swapped));
+      } else {
+        const saved = [a, d, b, c];
+        expect(await save('desktop-last', 'd', opening, saved, 1, 66)).toMatchObject({ kind: 'acknowledged' });
+        expect(await save('phone-old', 'a', opening, [d, b, a, c], 1, 15)).toMatchObject({ kind: 'acknowledged' });
+        expect((await readDocument(base.owner, resource)).value?.preparation).toEqual(preparation(saved));
+      }
+    });
+
+    it.each(['later saved order', 'later saved title', 'later incoming order', 'later incoming title'] as const)(
+      'keeps the %s in the comparison for an independent change', async scenario => {
+      const resource = { collection: 'sermons', id: 'mixed-homiletic-choice' };
+      const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] };
+      const now = '2026-11-10T00:00:00.000Z';
+      const path = ['preparation', 'homileticPlan', field];
+      const a = { id: 'a', title: 'Opening A' }, b = { id: 'b', title: 'Opening B' }, c = { id: 'c', title: 'Opening C' };
+      const opening = [a, b, c];
+      const preparation = (rows: typeof opening) => ({ homileticPlan: { [field]: rows } });
+      expect(await processCommand(base.owner, { ...base, kind: 'create', operationId: 'seed', generation: null,
+        value: { userId: base.owner, title: 'Homiletic plan', verse: 'John 3:16', thoughts: [], date: now, createdAt: now, updatedAt: now,
+          preparation: preparation(opening) },
+      })).toMatchObject({ kind: 'acknowledged' });
+      const orderedPosition = scenario.endsWith('order');
+      const incomingWins = scenario.includes('incoming');
+      function save(operationId: string, before: typeof opening, after: typeof opening, revision: number, offset: number, desktop: boolean) {
+        const time = { earliestMs: 1_800_000_000_000 + offset, latestMs: 1_800_000_000_004 + offset };
+        const from = before.find(row => row.id === 'c')!.title, to = after.find(row => row.id === 'c')!.title;
+        const move = { stepId: 'a', queueId: desktop ? 'desktop' : 'phone',
+          opening: stepGap(before, 'a')!, destination: stepGap(after, 'a')!, observedRevision: revision, time: orderedPosition ? time : null };
+        return processCommand(base.owner, { ...base, kind: 'update', operationId, generation: 'seed',
+          changes: [{ path: ['preparation'], before: { exists: true, value: preparation(before) }, after: { exists: true, value: preparation(after) } }],
+          homileticMoveActions: { [field]: [move] },
+          homileticTitleActions: { [field]: [{ rowId: 'c', rowCreatedAt: 'c', before: from, after: to, observedRevision: revision,
+            time: orderedPosition ? null : time }] },
+        });
+      }
+      const desktopTitle = { ...c, title: 'Saved C' };
+      const desktop = [b, a, desktopTitle];
+      const returned = [a, b, desktopTitle];
+      expect(await save('desktop-first', opening, desktop, 1, 40, true)).toMatchObject({ kind: 'acknowledged' });
+      expect(await save('desktop-return', desktop, returned, 2, 65, true)).toMatchObject({ kind: 'acknowledged' });
+      const incoming = [b, a, { ...c, title: 'Offline C' }];
+      const result = await save('offline-phone', opening, incoming, 1, incomingWins ? 95 : 10, false);
+      const titlePath = [...path, 'id:c', 'title'];
+      const projected = orderedPosition
+        ? { path, code: 'homiletic-position-projection', mine: { exists: true, value: incomingWins ? desktop : returned } }
+        : { path: titlePath, code: 'homiletic-title-projection', mine: { exists: true, value: incomingWins ? 'Offline C' : 'Saved C' } };
+      const uncertain = orderedPosition
+        ? { path: titlePath, code: 'homiletic-title-review' }
+        : { path, code: 'homiletic-position-review' };
+      expect(result).toMatchObject({ kind: 'conflict',
+        conflicts: expect.arrayContaining([expect.objectContaining(projected), expect.objectContaining(uncertain)]) });
+      expect((await readDocument(base.owner, resource)).value?.preparation).toEqual(preparation(returned));
+      const history = await listHomileticPlanHistory(base.owner, resource.id, 'seed', undefined, field);
+      const change = orderedPosition ? { kind: 'position', rowId: 'a' }
+        : { kind: 'title', rowId: 'c', earlier: incomingWins ? 'Saved C' : 'Offline C', kept: incomingWins ? 'Offline C' : 'Saved C' };
+      expect(history.entries).toMatchObject([{ changes: [{ ...change, ...(incomingWins && { origin: 'comparison' }) }] }]);
+    });
+
   });
 
   describe('exegetical plan point removal and title chronology', () => {

@@ -1,3 +1,4 @@
+import { documentProofHeadroom } from './documentProofBudget.server';
 import { object } from './fieldValues';
 import { proofRevision } from './rowFieldAction';
 
@@ -8,8 +9,6 @@ import type { DocumentData, EngineMetadata } from './types';
 // The old count is only a storage format choice. The command envelope owns wire admission.
 const LEGACY_ENTRY_COUNT = 64;
 const MAX_PROOF_BYTES = 256 * 1024;
-// Leave room for Firestore's native representation and other engine metadata.
-const DOCUMENT_PROOF_CEILING = 960 * 1024;
 
 type RowScope = { rowId: string; rowCreatedAt: string };
 type Member = TagProofIdentity & Pick<TagMembershipProof, 'present'>;
@@ -40,7 +39,7 @@ const jsonBytes = (value: unknown) => Buffer.byteLength(JSON.stringify(value));
 export function retainTagProofStorage(entries: Iterable<Entry>, floor: number, value: DocumentData, metadata: EngineMetadata) {
   const recent = [...entries].sort((left, right) => right.revision - left.revision);
   if (!recent.length) return floor ? { floor, entries: [] } : undefined;
-  const available = Math.min(MAX_PROOF_BYTES, DOCUMENT_PROOF_CEILING - jsonBytes({ ...value, _dataEngine: metadata }));
+  const available = Math.min(MAX_PROOF_BYTES, documentProofHeadroom(value, metadata));
   const legacy = { floor, entries: recent };
   if (recent.length <= LEGACY_ENTRY_COUNT && jsonBytes(legacy) <= available) return legacy;
 

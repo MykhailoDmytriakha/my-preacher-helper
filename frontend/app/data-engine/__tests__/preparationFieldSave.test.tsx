@@ -11,6 +11,8 @@ import GoalsStepContent from '@/components/sermon/prep/GoalsStepContent';
 import type { PreparationTextBinding } from '@/components/common/manualTextBinding';
 import MainIdeaStepContent from '@/components/sermon/prep/MainIdeaStepContent';
 import { useAuth } from '@/providers/AuthProvider';
+import { requestOwnerJson } from '@/services/ownerHttpTransport.client';
+import { editHistoryShown } from '@/utils/editHistory';
 import { documentEngineHarness, settleEngine } from '@test-utils/documentEngineHarness';
 
 import { createBrowserDataEngine } from '../browser.client';
@@ -26,6 +28,10 @@ jest.mock('../manualScopes.client', () => {
   return { ...actual, createIndexedDbManualScopes: jest.fn(actual.createIndexedDbManualScopes) };
 });
 jest.mock('@/providers/AuthProvider', () => ({ useAuth: jest.fn() }));
+jest.mock('@/services/ownerHttpTransport.client', () => ({
+  ...jest.requireActual('@/services/ownerHttpTransport.client'), requestOwnerJson: jest.fn(),
+}));
+jest.mock('@/utils/editHistory', () => ({ editHistoryShown: jest.fn(() => false) }));
 jest.mock('../browser.client', () => ({ createBrowserDataEngine: jest.fn() }));
 jest.mock('@/components/navigation/shellTitles', () => ({ usePublishShellTitle: jest.fn() }));
 jest.mock('@locales/useTranslation', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
@@ -550,6 +556,153 @@ it.each(['updatedPlan', 'sermonPlan'] as const)('does not silently overwrite lat
   } finally { await finish(t.view); }
 });
 
+
+it.each(['updatedPlan', 'sermonPlan'] as const)('captures the moved and edited rows of %s in one offline Save', async list => {
+  const points = [{ id: 'a', title: 'Opening A' }, { id: 'b', title: '  Keep B as stored  ' }, { id: 'c', title: 'Opening C' }];
+  const t = await setup({ section: 'homileticPlan', initialValue: { ...initial,
+    preparation: { homileticPlan: { modernTranslation: 'Other text', [list]: points } } } });
+  try {
+    const label = 'wizard.steps.homileticPlan.fields.' + list;
+    const input = (await screen.findAllByLabelText(label + '.itemLabel'))[0];
+    await waitFor(() => expect(input).toBeEnabled());
+    t.h.engine.setOnline(false);
+    fireEvent.change(input, { target: { value: '  My new A  ' } });
+    const row = input.closest('li')!;
+    fireEvent.click(within(row).getByRole('button', { name: label + '.moveDown' }));
+    fireEvent.click(within(row.closest('fieldset')!).getByTitle('actions.save'));
+    await waitFor(async () => {
+      const requests = await t.h.commits.list('owner');
+      expect(requests[0]?.homileticMoveActions?.[list]).toEqual([expect.objectContaining({ stepId: 'a', observedRevision: 1,
+        opening: { previous: null, next: 'b' }, destination: { previous: 'b', next: 'c' } })]);
+      expect(requests[0]?.homileticTitleActions?.[list]).toEqual([expect.objectContaining({ rowId: 'a', before: 'Opening A', after: 'My new A', observedRevision: 1 })]);
+    });
+    expect(t.h.transport.send).not.toHaveBeenCalled();
+    await act(async () => { t.h.engine.setOnline(true); await t.h.engine.retry(); await settleEngine(); });
+    await waitFor(() => expect(t.h.transport.send).toHaveBeenCalledWith(expect.objectContaining({
+      homileticTitleActions: { [list]: [expect.objectContaining({ rowId: 'a' })] },
+      homileticMoveActions: { [list]: [expect.objectContaining({ stepId: 'a' })] },
+    })));
+    expect(selectedValue(t.h.server.value, ['preparation', 'homileticPlan', list])).toEqual([
+      points[1], { ...points[0], title: 'My new A' }, points[2],
+    ]);
+  } finally { await finish(t.view); }
+});
+
+it.each([['updatedPlan', 'local'], ['updatedPlan', 'remote'], ['sermonPlan', 'local'], ['sermonPlan', 'remote']] as const)(
+  'keeps independent rows when choosing the %s %s placement', async (list, choice) => {
+    const points = [{ id: 'a', title: 'Opening A' }, { id: 'b', title: 'Opening B' },
+      { id: 'c', title: 'Opening C' }, { id: 'd', title: 'Opening D' }];
+    const other = [{ id: 'other', title: 'Other plan' }];
+    const otherList = list === 'updatedPlan' ? 'sermonPlan' : 'updatedPlan';
+    const preparation = (rows: typeof points) => ({ homileticPlan: { [list]: rows, [otherList]: other, modernTranslation: 'Separate words' } });
+    const t = await setup({ section: 'homileticPlan', withStatus: true, initialValue: { ...initial, preparation: preparation(points) } });
+    try {
+      const prefix = 'wizard.steps.homileticPlan.fields.' + list;
+      const inputs = await screen.findAllByLabelText(prefix + '.itemLabel');
+      await waitFor(() => expect(inputs[0]).toBeEnabled());
+      const fieldset = inputs[0].closest('fieldset')!;
+      t.h.engine.setOnline(false);
+      fireEvent.change(inputs[1], { target: { value: 'Local B' } });
+      fireEvent.click(within(inputs[0].closest('li')!).getByRole('button', { name: prefix + '.moveDown' }));
+      fireEvent.click(within(inputs[3].closest('li')!).getByRole('button', { name: prefix + '.moveUp' }));
+      fireEvent.click(within(fieldset).getByTitle('actions.save'));
+      await waitFor(async () => expect((await t.h.commits.list('owner')).some(request => request.homileticMoveActions?.[list]?.length === 2)).toBe(true));
+      const live = [points[0], points[1], { ...points[2], title: 'Saved C' }, points[3]];
+      t.h.silentRemote({ preparation: preparation(live) });
+      jest.mocked(t.h.transport.send).mockImplementationOnce(async command => ({ kind: 'conflict', operationId: command.operationId, snapshot: t.h.server,
+        conflicts: [{ path: ['preparation', 'homileticPlan', list], code: 'homiletic-position-review',
+          base: { exists: true, value: points }, mine: { exists: true, value: [live[1], live[0], live[3], live[2]] },
+          theirs: { exists: true, value: [live[0], live[1], live[3], live[2]] } }],
+      }));
+      await act(async () => { t.h.engine.setOnline(true); await t.h.engine.retry(); await settleEngine(); });
+      const comparison = await screen.findByRole('region', { name: 'dataSync.versionComparison' });
+      expect(comparison).toHaveTextContent('Local B');
+      expect(comparison).toHaveTextContent('Saved C');
+      if (choice === 'local') fireEvent.click(screen.getByRole('button', { name: 'freshness.conflictKeepMine' }));
+      else {
+        fireEvent.click(screen.getByRole('button', { name: 'dataSync.useStoredVersion' }));
+        fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'common.discardText.confirm' }));
+      }
+      const changed = { ...points[1], title: 'Local B' };
+      const expected = choice === 'local' ? [changed, live[0], live[3], live[2]] : [live[0], changed, live[3], live[2]];
+      await waitFor(() => expect(t.h.server.value?.preparation).toEqual(preparation(expected)));
+      expect(t.h.transport.send).toHaveBeenLastCalledWith(expect.objectContaining({ homileticPositionReviews: { [list]: 2 } }));
+      await waitFor(() => expect(screen.queryByRole('region', { name: 'dataSync.versionComparison' })).not.toBeInTheDocument());
+    } finally { await finish(t.view); }
+  },
+);
+
+it('keeps the additional arrow pressed while an exact position comparison is open', async () => {
+  const list = 'updatedPlan';
+  const a = { id: 'a', title: 'A' }, b = { id: 'b', title: 'B' }, c = { id: 'c', title: 'C' };
+  const preparation = (rows: typeof a[]) => ({ homileticPlan: { [list]: rows } });
+  const t = await setup({ section: 'homileticPlan', withStatus: true, initialValue: { ...initial, preparation: preparation([a, b, c]) } });
+  try {
+    const prefix = 'wizard.steps.homileticPlan.fields.' + list;
+    const pointA = () => screen.getByDisplayValue('A');
+    const down = () => within(pointA().closest('li')!).getByRole('button', { name: prefix + '.moveDown' });
+    await waitFor(() => expect(pointA()).toBeEnabled());
+    t.h.engine.setOnline(false);
+    fireEvent.click(down());
+    fireEvent.click(within(pointA().closest('fieldset')!).getByTitle('actions.save'));
+    await waitFor(async () => expect((await t.h.commits.list('owner')).some(request => request.homileticMoveActions?.[list]?.length === 1)).toBe(true));
+    const newerC = { ...c, title: 'Independent C' };
+    const live = [a, b, newerC];
+    t.h.silentRemote({ preparation: preparation(live) });
+    jest.mocked(t.h.transport.send).mockImplementationOnce(async command => ({ kind: 'conflict', operationId: command.operationId, snapshot: t.h.server,
+      conflicts: [{ path: ['preparation', 'homileticPlan', list], code: 'homiletic-position-review',
+        base: { exists: true, value: [a, b, c] }, mine: { exists: true, value: [b, a, newerC] },
+        theirs: { exists: true, value: live } }],
+    }));
+    await act(async () => { t.h.engine.setOnline(true); await t.h.engine.retry(); await settleEngine(); });
+    await screen.findByRole('region', { name: 'dataSync.versionComparison' });
+    await waitFor(() => expect(down()).toBeEnabled());
+    fireEvent.click(down());
+    await waitFor(() => expect(screen.getAllByLabelText<HTMLInputElement>(prefix + '.itemLabel').map(input => input.value).at(-1)).toBe('A'));
+    const comparison = screen.getByRole('region', { name: 'dataSync.versionComparison' });
+    await waitFor(() => expect(comparison).toHaveTextContent(/B.*Independent C.*A/));
+    fireEvent.click(await screen.findByRole('button', { name: 'freshness.conflictKeepMine' }));
+    await waitFor(() => expect(t.h.server.value?.preparation).toEqual(preparation([b, newerC, a])));
+    expect(t.h.transport.send).toHaveBeenLastCalledWith(expect.objectContaining({ homileticPositionReviews: { [list]: 2 } }));
+  } finally { await finish(t.view); }
+});
+
+it.each(['title', 'position'] as const)('stages a historic %s in the existing plan form before Save', async kind => {
+  const list = 'updatedPlan';
+  const a = { id: 'a', title: 'Saved A' }, b = { id: 'b', title: 'Unchanged B' }, c = { id: 'c', title: 'Unchanged C' };
+  const original = [a, b, c];
+  const other = [{ id: 'other', title: 'Other plan' }];
+  const preparation = (rows: typeof original) => ({ homileticPlan: { updatedPlan: rows, sermonPlan: other, modernTranslation: 'Separate words' } });
+  jest.mocked(editHistoryShown).mockReturnValue(true);
+  jest.mocked(requestOwnerJson).mockResolvedValueOnce({ status: 200, value: {
+    owner: 'owner', sermonId: resource.id, generation: 'original', list, nextCursor: null, entries: [{ id: 'one', changes: [
+      kind === 'title' ? { kind, rowId: 'a', earlier: 'Earlier A', kept: a.title }
+        : { kind, rowId: 'a', title: a.title, earlier: { previous: { id: 'b', title: b.title }, next: { id: 'c', title: c.title } },
+          kept: { previous: null, next: { id: 'b', title: b.title } } },
+    ] }],
+  } });
+  const t = await setup({ section: 'homileticPlan', initialValue: { ...initial, preparation: preparation(original) } });
+  try {
+    const selector = 'wizard.steps.homileticPlan.fields.' + list + '.itemLabel';
+    const first = (await screen.findAllByLabelText(selector))[0];
+    await waitFor(() => expect(first).toBeEnabled());
+    const fieldset = within(first.closest('fieldset')!);
+    fireEvent.click(fieldset.getByRole('button', { name: 'dataSync.exegeticalHistory.heading' }));
+    const restore = kind === 'title' ? 'dataSync.exegeticalHistory.restore' : 'serviceOrders.placementHistory.restore';
+    fireEvent.click(await fieldset.findByRole('button', { name: restore }));
+    const expected = kind === 'title' ? [{ ...a, title: 'Earlier A' }, b, c] : [b, a, c];
+    await waitFor(() => expect(fieldset.getAllByLabelText<HTMLInputElement>(selector).map(input => input.value)).toEqual(expected.map(row => row.title)));
+    expect(t.h.transport.send).not.toHaveBeenCalled();
+    fireEvent.click(fieldset.getByTitle('actions.save'));
+    await waitFor(() => expect(t.h.server.value?.preparation).toEqual(preparation(expected)));
+    expect(t.h.transport.send).toHaveBeenLastCalledWith(expect.objectContaining(kind === 'title'
+      ? { homileticTitleActions: { updatedPlan: [expect.objectContaining({ rowId: 'a', after: 'Earlier A' })] } }
+      : { homileticMoveActions: { updatedPlan: [expect.objectContaining({ stepId: 'a', destination: { previous: 'b', next: 'c' } })] } }));
+    expect(requestOwnerJson).toHaveBeenCalledWith(
+      '/api/data-engine/documents/sermons/' + resource.id + '/homiletic-updated-plan-history?generation=original',
+      expect.objectContaining({ expectedOwner: 'owner' }));
+  } finally { jest.mocked(editHistoryShown).mockReturnValue(false); await finish(t.view); }
+});
 
 const normalizedCases = [
   { section: 'textContext', placeholder: 'wizard.steps.textContext.passageInput.placeholder', path: ['verse'], raw: '  Romans 8:14  ', expected: 'Romans 8:14' },

@@ -20,6 +20,7 @@ export interface ManualTextBinding extends ManualValueBinding<string> {
 /** An always-visible preparation control opens its canonical form before accepting input. */
 export interface PreparationFieldBinding<T> extends ManualValueBinding<T> {
   subject: string;
+  documentIdentity?: { owner: string; id: string; generation: string };
   ready: boolean;
   dirty: boolean;
   canSave?: boolean;

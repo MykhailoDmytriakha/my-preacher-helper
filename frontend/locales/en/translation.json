@@ -228,6 +228,9 @@
     "useStoredVersion": "Use saved version",
     "yourVersion": "Your version",
     "storedVersion": "Saved version",
+    "homileticHistory": {
+      "comparison": "Earlier version preserved during comparison"
+    },
     "exegeticalHistory": {
       "comparison": "Text preserved from a comparison",
       "heading": "Point history",

@@ -1,6 +1,7 @@
 import { CaptureContinuations } from './captureContinuations';
 import { datedRowTarget } from './datedRowAction';
 import { stageMeetingFieldCaptures } from './groupMeetingFieldAction';
+import { MAX_HOMILETIC_MOVES, stageHomileticMove } from './homileticPlanMoves';
 import { retireLocalWrite, type LocalWriteHandoff } from './localWriteback';
 import { stagePreachDateField } from './preachDateFieldAction';
 import { capturePreachStatusOpening, type PreachStatusCapture, type PreachStatusSave } from './preachStatusAction';
@@ -14,6 +15,7 @@ import type { ActionTime } from './actionClock';
 import type { CommitRequest } from './commits';
 import type { DatedRowActionCapture } from './datedRowAction';
 import type { GroupMeetingFieldCaptures, GroupMeetingFieldInput } from './groupMeetingFieldAction';
+import type { HomileticMoveGesture, HomileticMoveInput } from './homileticPlan';
 import type { PreachDateFieldDraft, PreachDateFieldInput, PreachDateFieldSave } from './preachDateFieldAction';
 import type { SessionCheckpoint } from './session';
 import type { DocumentData, FieldValue, Json, ResourceRef, ResourceSnapshot } from './types';
@@ -47,6 +49,7 @@ export interface ManualScopeRecord {
   savedSelection: FieldValue[];
   groupMeetingFieldCaptures?: GroupMeetingFieldCaptures;
   preachDateFieldDraft?: PreachDateFieldDraft;
+  homileticMoves?: HomileticMoveGesture[];
   /** Immutable per opening; older saved records may lack this evidence. */
   openingSelection?: FieldValue[];
   /** Bounds canonical Save identities belonging to this opening, including retired capture returns. */
@@ -59,10 +62,10 @@ export interface ManualScopeRecord {
   /** Only a Save captured by this recovered scope may settle its sources after ACK. */
   recoverySavedRequestId?: string;
 }
-export type ManualFieldInput = GroupMeetingFieldInput | PreachDateFieldInput;
+export type ManualFieldInput = GroupMeetingFieldInput | PreachDateFieldInput | HomileticMoveInput;
 type ManualThoughtMetadata = { thoughtPlacementIds?: readonly string[]; thoughtTagId?: string };
 export type ManualDocumentMetadataSave = { documentMetadata: ManualThoughtMetadata & { time: ActionTime | null; dateAction?: DatedRowActionCapture } };
-export type ManualSaveOptions = ManualThoughtMetadata & { predecessorId?: string | null; preachDateAction?: DatedRowActionCapture; meetingDateAction?: DatedRowActionCapture; groupMeetingFieldCaptures?: GroupMeetingFieldCaptures; preachDateFieldSave?: PreachDateFieldSave; preachStatusCapture?: PreachStatusCapture; documentMetadataTime?: ActionTime | null };
+export type ManualSaveOptions = ManualThoughtMetadata & { predecessorId?: string | null; preachDateAction?: DatedRowActionCapture; meetingDateAction?: DatedRowActionCapture; groupMeetingFieldCaptures?: GroupMeetingFieldCaptures; preachDateFieldSave?: PreachDateFieldSave; preachStatusCapture?: PreachStatusCapture; documentMetadataTime?: ActionTime | null; homileticMoves?: readonly HomileticMoveGesture[] };
 export type ManualSave = (scopeId: string, captured: SessionCheckpoint, options: ManualSaveOptions, onCaptured?: () => void) => Promise<ManualSavedIntent>;
 export interface ManualScopePort {
   capture(): ManualCapture;
@@ -191,6 +194,10 @@ export class ManualScope {
     if (this.record.resource.collection === 'sermons' && fieldInput && 'detail' in fieldInput) {
       this.record.preachDateFieldDraft = stagePreachDateField(this.record.preachDateFieldDraft, fieldInput, current, selectedOnly);
     }
+    if (this.record.resource.collection === 'sermons' && fieldInput && 'homileticMove' in fieldInput) {
+      const gesture = stageHomileticMove(current, selectedOnly, fieldInput.homileticMove);
+      if (gesture) this.record.homileticMoves = [...(this.record.homileticMoves ?? []), gesture].slice(-MAX_HOMILETIC_MOVES);
+    }
     this.record.stage = stage;
     this.record.generation += 1;
     return this.persist();
@@ -262,6 +269,7 @@ export class ManualScope {
         predecessorId: predecessor?.id ?? null,
         ...(dateTarget && dateAction && { [dateTarget.evidence]: dateAction }),
         ...(captured.groupMeetingFieldCaptures && { groupMeetingFieldCaptures: captured.groupMeetingFieldCaptures }),
+        ...(captured.homileticMoves?.length && { homileticMoves: captured.homileticMoves }),
         ...(preachDateFieldSave && { preachDateFieldSave }),
         ...(preachStatusCapture && { preachStatusCapture }),
         ...(documentMetadataTime !== undefined && { documentMetadataTime }),
@@ -279,7 +287,12 @@ export class ManualScope {
       if (captured.recoveryOrigins?.length) this.record.recoverySavedRequestId = request.id;
       this.record.savedSelection = copy(captured.stage);
       this.record.savedGeneration = captured.generation;
+      const moves = captured.homileticMoves;
+      if (moves && equalValues(this.record.homileticMoves?.slice(0, moves.length), moves)) {
+        this.record.homileticMoves = this.record.homileticMoves!.slice(moves.length);
+      }
       if (this.record.generation === captured.generation) {
+        delete this.record.homileticMoves;
         delete this.record.groupMeetingFieldCaptures;
         delete this.record.preachDateFieldDraft;
       }
@@ -315,6 +328,7 @@ export class ManualScope {
     return this.enqueuePersistence(async () => {
       this.captures.retire(captures);
       this.record.stage = copy(this.record.savedSelection);
+      delete this.record.homileticMoves;
       delete this.record.groupMeetingFieldCaptures;
       delete this.record.preachDateFieldDraft;
       await this.writeLocal();

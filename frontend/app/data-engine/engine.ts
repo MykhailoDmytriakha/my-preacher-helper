@@ -18,6 +18,8 @@ import { capturePlanTemplateName, capturePrayerTitle, captureSermonPlanMode, cap
 import { ACTION_SLOT, areDifferentTabManualParents, editorSlot, isManualChoiceRecoveryIdentity, manualScopeIdentity, readManualScopeIdentity } from './editorIdentity';
 import { AddressedFailures, eachFailure, PausedReadFailure } from './failures';
 import { collectionHeadRef } from './feed';
+import { HOMILETIC_POSITION_PROJECTION, HOMILETIC_POSITION_REVIEW } from './homileticPlan';
+import { reviewedHomileticList } from './homileticPlanChoice';
 import { submittedEditorCheckpoint } from './liveSubmittedWork';
 import { LocalWriteback, type LocalWriteHandoff } from './localWriteback';
 import { exactManualRequest, exactManualWords, recoverManualChoiceCopy } from './manualChoice';
@@ -2586,7 +2588,13 @@ export class DataEngine {
         });
         active();
         if (choice === 'local' || controller.getState().checkpoint.dirty) {
-          await controller.save(undefined, selection, undefined, undefined, action); active();
+          const positionReview = request.result?.kind === 'conflict' ? reviewedHomileticList(
+            request.result.conflicts.filter(conflict => conflict.code === HOMILETIC_POSITION_REVIEW || conflict.code === HOMILETIC_POSITION_PROJECTION), selection) : undefined;
+          const checkedAction: EditorCommitAction | undefined = positionReview ? {
+            kind: 'document-metadata', time: action?.kind === 'document-metadata' ? action.time : null,
+            homileticPositionReview: positionReview,
+          } : action;
+          await controller.save(undefined, selection, undefined, undefined, checkedAction); active();
           this.prepareCommitsInBackground(); this.backgroundDrain();
         }
         const latest = scope.getState();
