@@ -11,6 +11,7 @@ import { ACTION_SLOT, editorSlot } from './editorIdentity';
 import { exegeticalPointConflictId } from './exegeticalPointAction';
 import { mergeExegeticalPointChoice, stageExegeticalPoint } from './exegeticalPointCapture';
 import { writeField } from './fieldValues';
+import { carryGroupDraftChronology, groupPlacementMergeFrame, mergeGroupEditsAfterPlacement, mergeGroupFlowRebase, restoreGroupPlacementOrder } from './groupStepPlacement';
 import { chooseLocalPlacement } from './localPlacementChoice';
 import { projectManualSelection } from './manualScope';
 import { alignPendingOutlinePointPlacements } from './outlinePointPlacement';
@@ -28,7 +29,7 @@ import type { CommitRequest } from './commits';
 import type { AutosaveFieldActions, AutosaveFieldDrafts, AutosaveFieldStamp } from './documentFieldAction';
 import type { PreachStatusAction } from './preachStatusAction';
 import type { AutosaveRowFieldActions, RowFieldDrafts } from './rowFieldAutosave';
-import type { CommandResult, ConflictDetail, DataCommand, DocumentData, ResourceSnapshot, OutlinePointPlacementCapture, ServiceOrderPlacementCapture, ServiceOrderPlacementComparison, ServiceOrderStepPlacementCapture } from './types';
+import type { CommandResult, ConflictDetail, DataCommand, DocumentData, ResourceSnapshot, GroupFlowStepPlacementCapture, OutlinePointPlacementCapture, ServiceOrderPlacementCapture, ServiceOrderPlacementComparison, ServiceOrderStepPlacementCapture } from './types';
 
 export interface SessionCheckpoint extends AutosaveFieldDrafts, RowFieldDrafts {
   confirmed: ResourceSnapshot;
@@ -42,8 +43,9 @@ export interface SessionCheckpoint extends AutosaveFieldDrafts, RowFieldDrafts {
   serviceOrderPlacementRetry?: ServiceOrderPlacementCapture;
   serviceOrderStepPlacementRetry?: ServiceOrderStepPlacementCapture;
   outlinePointPlacementRetry?: OutlinePointPlacementCapture;
+  groupFlowStepPlacementRetry?: GroupFlowStepPlacementCapture;
   accountPreferenceRetry?: { field: AccountPreferenceField; time: ActionTime | null };
-  pending: Record<string, { generation: number; value: DocumentData | null; operations?: string[]; borrowedManualScope?: string; outlinePointPlacement?: OutlinePointPlacementCapture } & AutosaveFieldActions & AutosaveRowFieldActions>;
+  pending: Record<string, { generation: number; value: DocumentData | null; operations?: string[]; borrowedManualScope?: string; outlinePointPlacement?: OutlinePointPlacementCapture; groupFlowStepPlacement?: GroupFlowStepPlacementCapture } & AutosaveFieldActions & AutosaveRowFieldActions>;
 }
 
 const copy = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
@@ -120,7 +122,7 @@ export class DataSession {
   }
 
   /** A durable save request owns its captured value, independently of later typing. */
-  registerCommit(operationId: string, generation: number, value: DocumentData | null, preparedId?: string, autosaveActions?: AutosaveFieldActions & AutosaveRowFieldActions & Pick<CommitRequest, 'outlinePointPlacement'>): void {
+  registerCommit(operationId: string, generation: number, value: DocumentData | null, preparedId?: string, autosaveActions?: AutosaveFieldActions & AutosaveRowFieldActions & Pick<CommitRequest, 'outlinePointPlacement' | 'groupFlowStepPlacement'>): void {
     if (!this.state.pending[operationId]) this.state.pending[operationId] = { generation, value: copy(value) };
     const pending = this.state.pending[operationId];
     for (const target of autosaveFieldTargets(this.state.confirmed.resource.collection)) {
@@ -129,6 +131,7 @@ export class DataSession {
     }
     registerRowFields(pending, autosaveActions, this.state.confirmed.resource.collection);
     if (autosaveActions?.outlinePointPlacement) pending.outlinePointPlacement = copy(autosaveActions.outlinePointPlacement);
+    if (autosaveActions?.groupFlowStepPlacement) pending.groupFlowStepPlacement = copy(autosaveActions.groupFlowStepPlacement);
     if (preparedId && preparedId !== operationId && !pending.operations?.includes(preparedId)) pending.operations = [...(pending.operations ?? []), preparedId];
   }
 
@@ -184,12 +187,23 @@ export class DataSession {
     if (request.outlinePointPlacement && equalValues(request.outlinePointPlacement, this.state.outlinePointPlacementRetry)) {
       delete this.state.outlinePointPlacementRetry;
     }
+    const groupRetry = this.state.groupFlowStepPlacementRetry;
+    if (groupRetry && request.groupFlowStepPlacement && equalValues(groupRetry.before, request.groupFlowStepPlacement.before)
+      && equalValues(groupRetry.after, request.groupFlowStepPlacement.after)
+      && equalValues(groupRetry.placement.time, request.groupFlowStepPlacement.placement.time)) {
+      delete this.state.groupFlowStepPlacementRetry;
+    }
     const preferenceRetry = this.state.accountPreferenceRetry;
     if (preferenceRetry && request.accountPreferenceActions?.[preferenceRetry.field]
       && equalValues(request.accountPreferenceActions[preferenceRetry.field]?.time, preferenceRetry.time)) {
       delete this.state.accountPreferenceRetry;
     }
+    const newGroupMove = request.groupFlowStepPlacement && !this.state.pending[request.id];
     this.registerCommit(request.id, request.editGeneration, request.value, request.atomic?.id ?? request.command?.operationId, request);
+    if (newGroupMove && this.state.editGeneration === request.editGeneration && !equalValues(this.state.draft, request.value)) {
+      // The exact move took only the position. Save the additional typing in its own generation.
+      this.state.editGeneration += 1;
+    }
     if (request.result && ['acknowledged', 'conflict', 'refused'].includes(request.state)) this.accept(request.result, request.atomic?.kind === 'analysis-reshape');
     return request.state === 'acknowledged';
   }
@@ -297,11 +311,19 @@ export class DataSession {
       .sort((a, b) => a.generation - b.generation).flatMap(pending => pending.outlinePointPlacement
         && pending.outlinePointPlacement.generation === (accepted.metadata?.generation ?? null) ? [pending.outlinePointPlacement] : []);
     const incoming = alignPendingOutlinePointPlacements(accepted.value, this.state.draft, outlineMoves);
-    const rebased = rebaseOptionalPrayerTags(accepted.resource.collection, acceptedAncestor, this.state.draft, incoming,
-      mergeDocumentFields(acceptedAncestor, this.state.draft, incoming));
+    const groupMoves = Object.values(this.state.pending).filter(pending => pending.generation > horizon)
+      .sort((a, b) => a.generation - b.generation).flatMap(pending => pending.groupFlowStepPlacement
+        && pending.groupFlowStepPlacement.generation === (accepted.metadata?.generation ?? null) ? [pending.groupFlowStepPlacement] : []);
+    const rebased = groupMoves.length
+      ? mergeDocumentFields(groupPlacementMergeFrame(acceptedAncestor, groupMoves), groupPlacementMergeFrame(this.state.draft, []),
+        groupPlacementMergeFrame(incoming, groupMoves))
+      : accepted.resource.collection === 'groups' ? mergeGroupFlowRebase(acceptedAncestor, this.state.draft, incoming)
+        : rebaseOptionalPrayerTags(accepted.resource.collection, acceptedAncestor, this.state.draft, incoming,
+          mergeDocumentFields(acceptedAncestor, this.state.draft, incoming));
     if (wholeAnalysisFrame) keepAnalysisReshapeFrame(ancestor, this.state.draft, accepted.value, rebased);
     this.state.confirmed = copy(accepted);
-    this.state.draft = rebased.value.exists ? copy(rebased.value.value as DocumentData) : null;
+    const nextDraft = rebased.value.exists ? rebased.value.value as DocumentData : null;
+    this.state.draft = copy(groupMoves.length ? restoreGroupPlacementOrder(nextDraft) : nextDraft);
     this.state.conflicts = copy(rebased.conflicts);
     this.state.remoteCandidate = rebased.conflicts.length ? copy(accepted) : null;
     this.state.dirty = !equalValues(this.state.draft, accepted.value) || hasUncapturedAutosaveField(this.state) || hasUncapturedAutosaveRowField(this.state);
@@ -392,6 +414,7 @@ export class DataSession {
     if (Object.keys(this.state.pending).length) throw Object.assign(new Error('Resolve pending commands before keeping local data'), { code: 'pending-delivery-first' });
     rejectCouncilTopicChoice(councilTopicConflictCode(this.state.conflicts));
     const candidate = this.state.remoteCandidate;
+    const groupFields = candidate?.resource.collection === 'groups' ? this.checkpoint() : undefined;
     if (candidate?.value === null || candidate?.metadata?.deleted || this.state.confirmed.metadata?.deleted) {
       throw Object.assign(new Error('Remote document was deleted; use a new copy to preserve this draft'), { code: 'use-new-copy' });
     }
@@ -423,6 +446,7 @@ export class DataSession {
         ? withCouncilLifecycle(resolved, lifecycle) : resolved);
     }
     this.clearAutosaveFieldDrafts();
+    if (groupFields) carryGroupDraftChronology(groupFields, this.state, this.state.conflicts);
     if (candidate) stageReviewedCouncilTopics(this.state, this.state.conflicts);
     this.state.remoteCandidate = null;
     this.state.conflicts = [];
@@ -450,6 +474,23 @@ export class DataSession {
     this.state.dirty = true;
   }
 
+  retainGroupPlacementChoiceEdits(source: SessionCheckpoint, base: DocumentData, draft: DocumentData): boolean {
+    const accepted = this.state.confirmed;
+    if (source.confirmed.metadata?.generation !== accepted.metadata?.generation) return false;
+    const merged = mergeGroupEditsAfterPlacement(source, base, draft, this.state);
+    if (merged.conflicts.length || !merged.value.exists) return false;
+    this.edit(merged.value.value as DocumentData);
+    carryGroupDraftChronology(source, this.state);
+    this.state.dirty ||= hasUncapturedAutosaveField(this.state) || hasUncapturedAutosaveRowField(this.state);
+    return true;
+  }
+
+  stageGroupStepPlacementRetry(move: GroupFlowStepPlacementCapture, draft: DocumentData): void {
+    this.edit(draft);
+    this.state.groupFlowStepPlacementRetry = copy(move);
+    this.state.dirty = true;
+  }
+
   stageAccountPreferenceRetry(field: AccountPreferenceField, time: ActionTime | null): void {
     this.state.accountPreferenceRetry = { field, time };
   }
@@ -460,6 +501,7 @@ export class DataSession {
     delete this.state.serviceOrderStepPlacementRetry;
     delete this.state.serviceOrderPlacementRetry;
     delete this.state.outlinePointPlacementRetry;
+    delete this.state.groupFlowStepPlacementRetry;
     delete this.state.exegeticalPointDrafts;
     clearRowFieldDrafts(this.state);
     for (const target of autosaveFieldTargets(this.state.confirmed.resource.collection)) delete this.state[target.draft];

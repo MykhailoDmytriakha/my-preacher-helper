@@ -166,6 +166,7 @@ function validateUpdate(command: Extract<DataCommand, { kind: 'update' }>, polic
     }
     if (command.serviceOrderPlacement !== undefined && !validServiceOrderPlacement(command)) fail('Invalid service order placement');
     if (command.serviceOrderStepPlacement !== undefined && !validServiceOrderStepPlacement(command)) fail('Invalid service step placement');
+    if (command.groupFlowStepPlacement !== undefined && !validGroupStepPlacement(command)) fail('Invalid group step placement');
     if (command.outlinePointPlacement !== undefined && !validOutlinePointPlacement(command)) fail('Invalid outline point placement');
     const removal = command.observedPlanTextRemoval;
     if (removal !== undefined && (command.resource.collection !== 'sermons' || !paths.some(path => path[0] === 'outline')
@@ -255,6 +256,30 @@ function validServiceOrderStepPlacement(command: Extract<DataCommand, { kind: 'u
     && equalValues(move.opening, stepGap(before, id)) && equalValues(move.destination, stepGap(after, id))
     && equalValues(before.find(step => step.id === id), after.find(step => step.id === id))
     && equalValues(before.filter(step => step.id !== id), after.filter(step => step.id !== id)));
+}
+
+function validGroupStepPlacement(command: Extract<DataCommand, { kind: 'update' }>): boolean {
+  const move: unknown = command.groupFlowStepPlacement;
+  const [change] = command.changes;
+  if (command.resource.collection !== 'groups' || command.changes.length !== 1 || change.path[0] !== 'flow'
+    || !change.before.exists || !change.after.exists || !object(move)
+    || !isValidIdentifier(move.stepId) || !isValidIdentifier(move.queueId)
+    || typeof move.observedRevision !== 'number' || !Number.isSafeInteger(move.observedRevision) || move.observedRevision < 0
+    || (move.time !== null && !boundedActionTime(move.time))
+    || (move.predecessorOperationId !== undefined && (!isValidIdentifier(move.predecessorOperationId)
+      || !command.dependsOn.includes(move.predecessorOperationId)))
+    || !validServiceOrderStepGap(move.opening, move.stepId) || !validServiceOrderStepGap(move.destination, move.stepId)
+    || equalValues(move.opening, move.destination)) return false;
+  const compact = (value: unknown) => {
+    const steps = placementSteps(value);
+    return steps?.every(step => Object.keys(step).length === 2 && isValidIdentifier(step.id)
+      && isValidIdentifier(step.templateId)) ? steps : undefined;
+  };
+  const before = compact(change.before.value), after = compact(change.after.value);
+  return Boolean(before && after && equalValues(move.opening, stepGap(before, move.stepId))
+    && equalValues(move.destination, stepGap(after, move.stepId))
+    && equalValues(before.find(step => step.id === move.stepId), after.find(step => step.id === move.stepId))
+    && equalValues(before.filter(step => step.id !== move.stepId), after.filter(step => step.id !== move.stepId)));
 }
 
 function validPlanTextEvidence(evidence: unknown): boolean {

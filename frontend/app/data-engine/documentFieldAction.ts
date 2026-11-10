@@ -654,6 +654,15 @@ export function stageAutosaveField(checkpoint: SessionCheckpoint, value: Documen
   return { generation: metadata.generation, action: { before, after: nextValue, observedRevision, time } };
 }
 
+export function carryAutosaveFieldDrafts(source: SessionCheckpoint, target: SessionCheckpoint,
+  keep: (path: readonly string[]) => boolean): void {
+  for (const field of autosaveFieldTargets(target.confirmed.resource.collection)) {
+    if (!source[field.draft] || !keep([field.field])) continue;
+    target[field.draft] = source[field.draft];
+    if (!autosaveDraftAction(target, field)) delete target[field.draft];
+  }
+}
+
 function autosaveDraftAction(checkpoint: SessionCheckpoint, target: AutosaveFieldTarget): AutosaveFieldAction | undefined {
   const staged = checkpoint[target.draft];
   const metadata = checkpoint.confirmed.metadata;

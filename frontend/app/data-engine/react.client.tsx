@@ -26,6 +26,7 @@ import { readDocumentTagComparison as documentTagComparison } from './documentTa
 import { ACTION_SLOT, editorSlot, isManualChoiceRecoveryIdentity, readManualScopeIdentity, recoveryEditorIdentity } from './editorIdentity';
 import { needsConnection } from './engine';
 import { restoreExegeticalPoint as restorePointVersion } from './exegeticalPointAction';
+import { captureGroupStepPlacement as captureGroupPlacement, projectCapturedGroupStep as projectGroupPlacement } from './groupStepPlacement';
 import { LegacyQueryCopies, LegacyQueryMigrationGate } from './LegacyQueryRecovery';
 import { ARCHIVED_COLLECTIONS, isEngineOwnedLegacyMutation, isEngineOwnedLegacyQuery, legacyCacheMayBeOverwritten } from './legacyQueryRecovery.client';
 import { discoverLegacyRecovery as discoverLegacyOriginals, exportLegacyRecovery as exportLegacyOriginal, type LegacyRecoverySource } from './legacyRecovery.client';
@@ -766,6 +767,9 @@ export function useDataMembership() {
 }
 
 /** A feature may present its own expected question; storage and lifecycle failures still surface. */
+export function captureGroupStepPlacement(...args: Parameters<typeof captureGroupPlacement>) { return captureGroupPlacement(...args); }
+export function projectCapturedGroupStep(...args: Parameters<typeof projectGroupPlacement>) { return projectGroupPlacement(...args); }
+
 export interface DocumentUpdateOptions {
   handlesRefusal?: (failure: unknown) => boolean;
   action?: 'group-title' | 'group-status' | 'council-title' | 'council-date'
@@ -1111,13 +1115,14 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
       action?: 'bible-mark-stroke' | 'council-lifecycle' | ExegeticalPointEdit | { kind: 'thought-placement'; rowId: string }
         | Pick<Extract<EditorCommitAction, { kind: 'sermon-preparation-check' }>, 'kind' | 'field'>
         | Pick<Extract<EditorCommitAction, { kind: 'account-preference' }>, 'kind' | 'fields'>
-        | Extract<EditorCommitAction, { kind: 'council-assembly' | 'council-topic-kind' | 'sermon-plan-mode' | 'outline-point-placement' }>) => {
-      const timed = typeof action === 'string' || action?.kind === 'exegetical-point' || action?.kind === 'thought-placement' || action?.kind === 'sermon-preparation-check' || action?.kind === 'account-preference';
+        | Extract<EditorCommitAction, { kind: 'council-assembly' | 'council-topic-kind' | 'sermon-plan-mode' | 'outline-point-placement' | 'group-flow-step-placement' }>) => {
+      const timed = typeof action === 'string' || action?.kind === 'exegetical-point' || action?.kind === 'thought-placement' || action?.kind === 'sermon-preparation-check' || action?.kind === 'account-preference' || action?.kind === 'group-flow-step-placement';
       const time = owner && timed ? actionClock.capture(owner) : undefined;
       const checkpoint = current?.state.checkpoint;
       const shown = checkpoint && { confirmed: checkpoint.confirmed, draft: checkpoint.draft, editGeneration: checkpoint.editGeneration };
       const capture = typeof action === 'object' ? (action.kind === 'thought-placement' || action.kind === 'exegetical-point' ? { ...action, time: time ?? null, shown }
-        : action.kind === 'sermon-preparation-check' || action.kind === 'account-preference' ? { ...action, time: time ?? null } : action)
+        : action.kind === 'sermon-preparation-check' || action.kind === 'account-preference' ? { ...action, time: time ?? null }
+          : action.kind === 'group-flow-step-placement' ? { ...action, move: { ...action.move, placement: { ...action.move.placement, time: time ?? null } } } : action)
         : action === 'council-lifecycle' ? { kind: action, time: time ?? null } as const
           : time ? { kind: 'bible-mark-stroke', time } as const
             : !action && collection === 'users' && owner ? { kind: 'account-preference', time: actionClock.capture(owner) ?? null } as const : undefined;
@@ -1139,7 +1144,8 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
     // After a refusal this also drops the refused change (EditorController.acceptRemote).
     acceptRemote: (compared?: SessionCheckpoint) => run(editor => editor.acceptRemote(undefined, compared)),
     keepLocal: (compared?: SessionCheckpoint) => {
-      const time = owner && compared && (accountPreferenceComparison(compared) || outlinePointPlacementComparison(compared))
+      const time = owner && compared && (accountPreferenceComparison(compared) || outlinePointPlacementComparison(compared)
+        || (compared.confirmed.resource.collection === 'groups' && compared.serviceOrderPlacementComparison))
         ? actionClock.capture(owner) ?? null : undefined;
       return run(editor => editor.keepLocal(undefined, compared, time));
     },

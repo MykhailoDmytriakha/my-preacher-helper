@@ -1,5 +1,6 @@
 import { orderCommitRequests } from './commits';
 import { manualChoiceRecoveryIdentity } from './editorIdentity';
+import { captureGroupStepPlacement, carryGroupDraftChronology, mergeGroupEditsAfterPlacement, mergeGroupFlowRebase, projectGroupStepOnDocument } from './groupStepPlacement';
 import { chooseLocalPlacement } from './localPlacementChoice';
 import { projectManualSelection, type ManualPath } from './manualScope';
 import { chooseLocalPreachDateEdits } from './preachDateChoice';
@@ -13,7 +14,7 @@ import type { CommitRequest } from './commits';
 import type { EditorRecord } from './controller';
 import type { ManualScope } from './manualScope';
 import type { SessionCheckpoint } from './session';
-import type { DocumentData, ResourceSnapshot } from './types';
+import type { DocumentData, GroupFlowStepPlacementCapture, ResourceSnapshot } from './types';
 
 type ManualStage = ReturnType<ManualScope['getState']>;
 const unanswered = (request: CommitRequest) => !['acknowledged', 'cancelled'].includes(request.state);
@@ -108,9 +109,27 @@ export function projectExactManualChoice(record: EditorRecord, decision: ExactMa
 /** Replay a captured delta without treating the entire captured document as a new edit. */
 export function replaySavedChoiceDelta(resource: ResourceSnapshot['resource'], base: DocumentData | null,
   value: DocumentData | null, target: DocumentData | null, explicit?: ReadonlySet<string>): DocumentData | null {
-  const merged = mergeDocumentFields(base, value, target);
+  const merged = resource.collection === 'groups' ? mergeGroupFlowRebase(base, value, target) : mergeDocumentFields(base, value, target);
   return chooseLocalPlacement(resource.collection, base, value, target,
     merged.value.exists ? merged.value.value as DocumentData : null, mergeFields, explicit);
+}
+
+export function retainedChoiceDraft(owner: string, chosenId: string, draftId: string, stored: ResourceSnapshot,
+  base: DocumentData | null, value: DocumentData | null, decidingEditorId?: string,
+  groupStepPlacement?: GroupFlowStepPlacementCapture): EditorRecord {
+  return {
+    owner, editorId: manualChoiceRecoveryIdentity(chosenId, draftId), prepared: null, unfinalized: [],
+    retainedManualChoice: { base, ...(decidingEditorId && { decidingEditorId }), ...(groupStepPlacement && { groupStepPlacement }) },
+    checkpoint: { ...afterChoice(stored, value, 1), dirty: true },
+  };
+}
+
+export function retainedGroupPlacementDraft(owner: string, editorId: string, requestId: string, phase: 'unqueued' | 'during-choice',
+  source: SessionCheckpoint, accepted: ResourceSnapshot, base: DocumentData, draft: DocumentData): EditorRecord {
+  const record = retainedChoiceDraft(owner, requestId, JSON.stringify([phase, editorId]), accepted, base, draft, editorId);
+  record.retainedManualChoice!.groupFieldsGeneration = source.confirmed.metadata?.generation ?? null;
+  carryGroupDraftChronology(source, record.checkpoint);
+  return record;
 }
 
 /** A choice retires blocked request identities while retaining each later branch's own delta. */
@@ -122,19 +141,28 @@ export function projectSavedChoiceDependents(owner: string, chosen: CommitReques
   const projected = new Map<string, DocumentData | null>([[chosen.id, draft]]);
   const editors = new Map<string, string>();
   const retained = new Set<string>();
-  const retain = (id: string, value: DocumentData | null): EditorRecord => ({
-    owner, editorId: manualChoiceRecoveryIdentity(chosen.id, id), prepared: null, unfinalized: [],
-    retainedManualChoice: { base: draft, ...(decidingEditorId ? { decidingEditorId } : {}) },
-    checkpoint: { ...afterChoice(stored, value, 1), dirty: true },
-  });
+  const retain = (id: string, value: DocumentData | null, base = draft,
+    groupStepPlacement?: GroupFlowStepPlacementCapture) =>
+    retainedChoiceDraft(owner, chosen.id, id, stored, base, value, decidingEditorId, groupStepPlacement);
+  const separateGroupSaves = stored.resource.collection === 'groups'
+    && retired.some(request => request.retainedAfterChoice && request.groupFlowStepPlacement);
   const later = orderCommitRequests([...retired]).flatMap(request => {
     if (!request.retainedAfterChoice || !request.predecessor) return [];
     const ancestor = byId.get(request.predecessor);
     if (!ancestor || !projected.has(ancestor.id)) throw new Error('The later Save lost its reviewed ancestor');
     const basis = projected.get(ancestor.id)!;
     const formOwned = formRequests?.has(request.id);
+    const move = !formOwned && request.groupFlowStepPlacement;
+    if (move) {
+      const placed = projectGroupStepOnDocument(basis, move);
+      projected.set(request.id, placed);
+      // Each exact move remains its own authored action even if a removed anchor
+      // prevents projection. The original copy stays readable and cannot be replayed as an array.
+      return [retain(request.id, placed === basis ? request.value : placed, basis, move)];
+    }
     const laterDraft = formOwned ? basis : replaySavedChoiceDelta(stored.resource, ancestor.value, request.value, basis);
     projected.set(request.id, laterDraft);
+    if (separateGroupSaves && !formOwned) return equalValues(laterDraft, basis) ? [] : [retain(request.id, laterDraft, basis)];
     const editor = formOwned ? editors.get(ancestor.id) : request.id;
     if (editor) editors.set(request.id, editor);
     if (!editor || predecessors.has(request.id) || retained.has(editor) || equalValues(draft, laterDraft)) return [];
@@ -156,6 +184,35 @@ export function recoverManualChoiceCopy(record: EditorRecord, known?: ResourceSn
   if (!retained) return record;
   const original = record.checkpoint.confirmed;
   const confirmed = known && canReplaceSnapshot(original, known) ? known : original;
+  const move = retained.groupStepPlacement;
+  if (move) {
+    const unavailable = () => Object.assign(new Error('The retained step position is unavailable'), { code: 'decision-changed' });
+    const generation = confirmed.metadata?.generation ?? null;
+    if (confirmed.resource.collection !== 'groups' || (move.generation !== null && generation !== move.generation)) throw unavailable();
+    const draft = projectGroupStepOnDocument(confirmed.value, move);
+    if (!draft || draft === confirmed.value) throw unavailable();
+    const checkpoint = afterChoice(confirmed, draft, record.checkpoint.editGeneration);
+    // A versionless draft may enter the first engine generation for review.
+    // Keeping revision zero lets the server ask before changing the now-versioned list.
+    const retry = captureGroupStepPlacement(confirmed.value?.flow, draft.flow, move.placement.stepId, generation,
+      move.placement.observedRevision, move.placement.time);
+    if (retry) checkpoint.groupFlowStepPlacementRetry = retry;
+    return { ...record, checkpoint };
+  }
+  if (retained.groupFieldsGeneration !== undefined && retained.base && record.checkpoint.draft) {
+    const generation = confirmed.metadata?.generation ?? null;
+    if (!confirmed.value || confirmed.metadata?.deleted || generation !== retained.groupFieldsGeneration) {
+      throw Object.assign(new Error('The retained group is no longer available'), { code: 'decision-changed' });
+    }
+    const checkpoint = afterChoice(confirmed, confirmed.value, record.checkpoint.editGeneration);
+    const merged = mergeGroupEditsAfterPlacement(record.checkpoint, retained.base, record.checkpoint.draft, checkpoint);
+    checkpoint.draft = merged.value.exists ? merged.value.value as DocumentData : null;
+    checkpoint.dirty = !equalValues(checkpoint.draft, confirmed.value);
+    checkpoint.conflicts = merged.conflicts;
+    if (merged.conflicts.length) checkpoint.remoteCandidate = confirmed;
+    carryGroupDraftChronology(record.checkpoint, checkpoint);
+    return { ...record, checkpoint };
+  }
   const draft = replaySavedChoiceDelta(confirmed.resource, retained.base, record.checkpoint.draft, confirmed.value);
   return { ...record, checkpoint: afterChoice(confirmed, draft, record.checkpoint.editGeneration) };
 }

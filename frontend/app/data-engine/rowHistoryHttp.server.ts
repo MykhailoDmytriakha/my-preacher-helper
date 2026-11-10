@@ -13,6 +13,7 @@ import {
   listCouncilTopicTitleHistory,
   listDocumentTagHistory,
   listGroupFlowHistory,
+  listGroupStepPlacementHistory,
   listExegeticalPointHistory,
   listOutlinePointPlacementHistory,
   listSermonGoalTypeHistory,
@@ -31,6 +32,7 @@ import {
 } from './server';
 
 const histories = {
+  groupStepPlacement: { collection: 'groups', list: listGroupStepPlacementHistory },
   groupStepDuration: { collection: 'groups', list: (owner: string, id: string, generation: string, cursor?: string) =>
     listGroupFlowHistory(owner, id, generation, cursor, 'duration') },
   groupBlockStatus: { collection: 'groups', list: (owner: string, id: string, generation: string, cursor?: string) =>

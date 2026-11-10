@@ -2,6 +2,7 @@ import { newClientId } from '@/utils/clientId';
 import { hasOutlinePointOrder } from '@/utils/outlineDnd';
 import { projectServiceOrderStep } from '@/utils/serviceOrderStepPlacement';
 
+
 import { advanceAtomicCommit, atomicParticipants, cancellationScope, cancelActionCommits, canCancelSavedIntent, initializeCommit, orderActionProjections, type AtomicCommitIdentity } from './atomicCommits';
 import { isFirstBookMarksDraft } from './bibleMarksCreation';
 import { captureBibleMarkStroke, restoreBibleMarkAncestor, withBibleMarkStroke, type CapturedBibleMarkStroke } from './bibleMarkStroke';
@@ -22,6 +23,7 @@ import { captureExegeticalPointActions, matchingExegeticalPointActions, restoreE
 import { AddressedFailures, type AddressedFailure } from './failures';
 import { writeField } from './fieldValues';
 import { captureMeetingFieldActions, GROUP_MEETING_FIELD_POLICY, matchingMeetingFieldActions } from './groupMeetingFieldAction';
+import { groupStepPlacementPredecessor, groupStepWitness, projectGroupStepOnDocument } from './groupStepPlacement';
 import { seriesCommandParticipant } from './membershipIntent';
 import { capturePreachDateFields, PREACH_DATE_FIELD_POLICY } from './preachDateFieldAction';
 import { capturePreachStatusActions, matchingPreachStatusActions, pendingPreachStatusActions, replacePreachStatuses } from './preachStatusAction';
@@ -53,7 +55,7 @@ import type { SermonChurchFill } from './sermonChurchFill';
 import type { SessionCheckpoint } from './session';
 import type { TagMembershipAction } from './tagMembershipOrder';
 import type { ThoughtTagAction } from './thoughtTagAction';
-import type { CommandResult, DataCommand, DocumentData, EditorCommitAction, EngineMetadata, FieldValue, OutlinePointPlacementCapture, ResourceRef, ResourceSnapshot, ServiceOrderPlacementCapture, ServiceOrderStepPlacementCapture } from './types';
+import type { CommandResult, DataCommand, DocumentData, EditorCommitAction, EngineMetadata, FieldValue, GroupFlowStepPlacementCapture, OutlinePointPlacementCapture, ResourceRef, ResourceSnapshot, ServiceOrderPlacementCapture, ServiceOrderStepPlacementCapture } from './types';
 
 export interface CommitRequest extends CouncilFieldActions, PrayerStatusObservations, AutosaveRowFieldActions {
   id: string;
@@ -97,6 +99,8 @@ export interface CommitRequest extends CouncilFieldActions, PrayerStatusObservat
   serviceOrderPlacement?: ServiceOrderPlacementCapture;
   serviceOrderStepPlacement?: ServiceOrderStepPlacementCapture;
   outlinePointPlacement?: OutlinePointPlacementCapture;
+  groupFlowStepPlacement?: GroupFlowStepPlacementCapture;
+  groupFlowPlacementLegacyRevision?: number;
   outlinePointPlacementLegacyRevision?: number;
   serviceOrderTitleAction?: DocumentFieldAction;
   serviceOrderFlagActions?: ServiceOrderFlagActions;
@@ -240,6 +244,7 @@ export function assertCommitCapture(current: CommitRequest, incoming: CommitRequ
     || !equalValues(current.serviceOrderPlacement ?? null, incoming.serviceOrderPlacement ?? null)
     || !equalValues(current.serviceOrderStepPlacement ?? null, incoming.serviceOrderStepPlacement ?? null)
     || !equalValues(current.outlinePointPlacement ?? null, incoming.outlinePointPlacement ?? null)
+    || !equalValues(current.groupFlowStepPlacement ?? null, incoming.groupFlowStepPlacement ?? null)
     || !equalValues(current.accountPreferenceActions ?? null, incoming.accountPreferenceActions ?? null)
     || !equalValues(current.thoughtTagActions ?? null, incoming.thoughtTagActions ?? null)
     || !equalValues(current.tagMembershipActions ?? null, incoming.tagMembershipActions ?? null)
@@ -364,7 +369,7 @@ function pendingRowFields(record: CommitRequest) {
 }
 
 function hasTimedAncestor(record: CommitRequest): boolean {
-  return record.sequence === 0 && Boolean(record.seriesMembership || record.serviceOrderPlacement || record.serviceOrderStepPlacement || record.outlinePointPlacement || record.serviceOrderTitleAction || record.prayerTitleAction || record.planTemplateNameAction || record.tagColorAction || record.studyNoteTitleAction || record.studyNoteTypeAction || record.commentKindAction || record.prayerStatusAction || record.prayerAnsweredAtAction || record.sermonTitleAction || record.sermonVerseAction || record.sermonChurchAction || record.sermonGoalTypeAction || record.sermonPlanModeAction || record.accountPreferenceActions || record.sermonPreparationCheckActions || record.exegeticalPlanActions?.length || record.seriesFieldActions || record.groupTitleAction || record.groupStatusAction || record.councilTitleAction || record.councilDateAction || record.councilLifecycleAction || pendingBibleMarkRebase(record) || pendingMeetingDateRebase(record) || pendingDocumentTags(record).length || pendingRowFields(record).length || pendingPreachStatusActions(record).length);
+  return record.sequence === 0 && Boolean(record.seriesMembership || record.serviceOrderPlacement || record.serviceOrderStepPlacement || record.outlinePointPlacement || record.groupFlowStepPlacement || record.serviceOrderTitleAction || record.prayerTitleAction || record.planTemplateNameAction || record.tagColorAction || record.studyNoteTitleAction || record.studyNoteTypeAction || record.commentKindAction || record.prayerStatusAction || record.prayerAnsweredAtAction || record.sermonTitleAction || record.sermonVerseAction || record.sermonChurchAction || record.sermonGoalTypeAction || record.sermonPlanModeAction || record.accountPreferenceActions || record.sermonPreparationCheckActions || record.exegeticalPlanActions?.length || record.seriesFieldActions || record.groupTitleAction || record.groupStatusAction || record.councilTitleAction || record.councilDateAction || record.councilLifecycleAction || pendingBibleMarkRebase(record) || pendingMeetingDateRebase(record) || pendingDocumentTags(record).length || pendingRowFields(record).length || pendingPreachStatusActions(record).length);
 }
 
 function freezeSaveOptions(options: CommitSaveOptions | undefined): CommitSaveOptions | undefined {
@@ -544,7 +549,11 @@ export class CommitQueue {
       if (existing.retentionScope !== frozenOptions?.retentionScope
         || !equalValues(existing.seriesMembership ?? null, frozenOptions?.seriesMembership ?? null)
         || !equalValues(existing.transferredFrom ?? null, frozenOptions?.transfer?.proof ?? null)) throw new Error('Saved capture retention cannot change');
-      if (intent.dirty && !equalValues(existing.value, intent.draft)) throw new Error('Saved generation cannot change its captured intent');
+      const sameGroupPlacement = existing.groupFlowStepPlacement
+        && equalValues(groupStepWitness(intent.draft?.flow), existing.groupFlowStepPlacement.after);
+      if (intent.dirty && !equalValues(existing.value, intent.draft) && !sameGroupPlacement) {
+        throw new Error('Saved generation cannot change its captured intent');
+      }
       const result = frozenOptions?.checkpoint ? await capture(existing) : { request: existing, retired: [] };
       check();
       result.retired.forEach(publish);
@@ -557,12 +566,13 @@ export class CommitQueue {
       ? { kind: 'service-order-placement', move: intent.serviceOrderPlacementRetry } as const
       : intent.serviceOrderStepPlacementRetry
         ? { kind: 'service-order-step-placement', move: intent.serviceOrderStepPlacementRetry } as const
-        : intent.outlinePointPlacementRetry ? { kind: 'outline-point-placement', move: intent.outlinePointPlacementRetry } as const : undefined);
+        : intent.outlinePointPlacementRetry ? { kind: 'outline-point-placement', move: intent.outlinePointPlacementRetry } as const
+          : intent.groupFlowStepPlacementRetry ? { kind: 'group-flow-step-placement', move: intent.groupFlowStepPlacementRetry } as const : undefined);
     const step = editorAction?.kind === 'service-order-flag' ? { field: 'flagged' as const, change: editorAction.flag }
       : editorAction?.kind === 'service-order-step-title' ? { field: 'title' as const, change: editorAction.title } : undefined;
     const assembly = editorAction?.kind === 'council-assembly' ? editorAction.flag : undefined;
     const topicKind = editorAction?.kind === 'council-topic-kind' ? editorAction.topicKind : undefined;
-    if (!step && !assembly && !topicKind && editorAction?.kind !== 'service-order-title' && editorAction?.kind !== 'service-order-placement' && editorAction?.kind !== 'service-order-step-placement' && editorAction?.kind !== 'outline-point-placement' && editorAction?.kind !== 'prayer-title' && editorAction?.kind !== 'study-note-title' && editorAction?.kind !== 'study-note-type' && editorAction?.kind !== 'sermon-plan-mode' && editorAction?.kind !== 'comment-kind' && editorAction?.kind !== 'document-tags' && editorAction?.kind !== 'plan-template-name' && editorAction?.kind !== 'tag-color' && editorAction?.kind !== 'prayer-status'
+    if (!step && !assembly && !topicKind && editorAction?.kind !== 'service-order-title' && editorAction?.kind !== 'service-order-placement' && editorAction?.kind !== 'service-order-step-placement' && editorAction?.kind !== 'outline-point-placement' && editorAction?.kind !== 'group-flow-step-placement' && editorAction?.kind !== 'prayer-title' && editorAction?.kind !== 'study-note-title' && editorAction?.kind !== 'study-note-type' && editorAction?.kind !== 'sermon-plan-mode' && editorAction?.kind !== 'comment-kind' && editorAction?.kind !== 'document-tags' && editorAction?.kind !== 'plan-template-name' && editorAction?.kind !== 'tag-color' && editorAction?.kind !== 'prayer-status'
       && !frozenOptions?.transfer && !intent.dirty && (!predecessor || equalValues(predecessor.value, intent.draft))) return null;
     if (intent.conflicts.length) throw Object.assign(new Error('Resolve the conflict before saving'), { code: 'resolve-version-first' });
     const baseline = clone(intent.confirmed);
@@ -577,6 +587,14 @@ export class CommitQueue {
       throw Object.assign(new Error('The sermon shown when moving the point has changed'), { code: 'generation-mismatch' });
     }
     const priorOutlineMove = outlineMove && outlineMovePredecessor(records, predecessor, outlineMove);
+    const groupMove = editorAction?.kind === 'group-flow-step-placement' ? editorAction.move : undefined;
+    if (groupMove && (baseline.resource.collection !== 'groups'
+      || (baseline.metadata?.generation ?? null) !== groupMove.generation)) {
+      throw Object.assign(new Error('The group shown when moving the step has changed'), { code: 'generation-mismatch' });
+    }
+    const earlierGroupMove = groupMove && groupStepPlacementPredecessor(records, predecessor, groupMove);
+    const earlierGroupQueue = earlierGroupMove && sharesEditorOpening(earlierGroupMove.editorId, editorId)
+      ? earlierGroupMove.groupFlowStepPlacement?.placement.queueId : undefined;
     const planTextEvidence = baseline.resource.collection === 'sermons' ? captureSermonPlan(baseline, intent.draft, predecessor) : undefined;
     const dateTarget = datedRowTarget(baseline.resource.collection);
     const action = dateTarget && captureDatedRowAction(baseline, predecessor, intent.draft, frozenOptions?.[dateTarget.evidence], records);
@@ -623,12 +641,14 @@ export class CommitQueue {
     const metadataFields = captureDocumentMetadataFields(baseline, predecessor, intent.draft, metadataTime, records,
       editorAction?.kind === 'account-preference' ? editorAction.fields : undefined);
     const exegeticalPlanActions = captureExegeticalPointActions(intent, baseline, predecessor, records);
-    const autosaveFields = uncapturedAutosaveFields(intent, baseline, predecessor, records);
-    const rowFields = captureRowFields(intent, baseline, predecessor, records, frozenOptions?.documentMetadataTime, frozenOptions?.thoughtPlacementIds);
+    const autosaveFields = groupMove ? {} : uncapturedAutosaveFields(intent, baseline, predecessor, records);
+    const rowFields = groupMove ? {}
+      : captureRowFields(intent, baseline, predecessor, records, frozenOptions?.documentMetadataTime, frozenOptions?.thoughtPlacementIds);
     const thoughtTagActions = captureThoughtTagActions(baseline, predecessor, intent.draft, frozenOptions?.thoughtTagId, frozenOptions?.documentMetadataTime, records);
     const groupMeetingFieldActions = captureMeetingFieldActions(baseline, predecessor, intent.draft, frozenOptions?.groupMeetingFieldCaptures, records);
     const preachDateFieldActions = capturePreachDateFields(baseline, predecessor, intent.draft, frozenOptions?.preachDateFieldSave, records);
     const preachStatusActions = capturePreachStatusActions(baseline, predecessor, intent.draft, frozenOptions?.preachStatusCapture, records);
+    const value = groupMove ? projectGroupStepOnDocument(predecessor?.value ?? baseline.value, groupMove) : intent.draft;
     const record: CommitRequest = {
       id: this.options.operationId(), owner, editorId, editGeneration: intent.editGeneration,
       ...(baseline.resource.collection === 'councils' && {
@@ -641,6 +661,10 @@ export class CommitQueue {
       ...(editorAction?.kind === 'service-order-step-placement' && { serviceOrderStepPlacement: editorAction.move }),
       ...(outlineMove && { outlinePointPlacement: { ...outlineMove, placement: { ...outlineMove.placement,
         ...(priorOutlineMove && { predecessorOperationId: priorOutlineMove }),
+      } } }),
+      ...(groupMove && { groupFlowStepPlacement: { ...groupMove, placement: { ...groupMove.placement,
+        queueId: earlierGroupQueue || newClientId(),
+        ...(earlierGroupQueue && earlierGroupMove && { predecessorOperationId: earlierGroupMove.id }),
       } } }),
       ...stepActions,
       ...(councilAssemblyActions && { councilAssemblyActions }),
@@ -667,9 +691,9 @@ export class CommitQueue {
       ...(frozenOptions?.retentionScope ? { retentionScope: frozenOptions.retentionScope } : {}),
       ...(frozenOptions?.seriesMembership && { seriesMembership: frozenOptions.seriesMembership }),
       ...(frozenOptions?.transfer ? { transferredFrom: clone(frozenOptions.transfer.proof) } : {}),
-      baseline, value: clone(intent.draft), predecessor: predecessor?.id ?? null,
+      baseline, value: clone(value), predecessor: predecessor?.id ?? null,
       ...(planTextEvidence ? { planTextEvidence } : {}),
-      revision: 0, initialized: false, working: baseline, intended: clone(intent.draft),
+      revision: 0, initialized: false, working: baseline, intended: clone(value),
       command: null, submitted: null, sequence: 0, state: 'queued', result: null, unfinalized: [],
     };
     const result = await capture(record);
@@ -1093,6 +1117,21 @@ export class CommitQueue {
         generation: record.working.metadata?.generation ?? null, dependsOn: [],
         changes: [{ path: ['steps'], before: { exists: true, value: before }, after: { exists: true, value: after } }],
         serviceOrderStepPlacement: stepMove.placement,
+      };
+      return { ...record, command, submitted: record.intended, state: 'prepared' };
+    }
+    const groupMove = record.sequence === 0 ? record.groupFlowStepPlacement : undefined;
+    if (groupMove && record.working.value && groupMove.placement.queueId) {
+      const { predecessorOperationId, queueId } = groupMove.placement;
+      const legacyRevision = groupMove.generation === null && groupMove.placement.observedRevision === 0
+        && equalValues(groupStepWitness(record.working.value.flow), groupMove.before) ? record.groupFlowPlacementLegacyRevision : undefined;
+      const command: DataCommand = {
+        protocol: 1, kind: 'update', operationId, owner, resource: record.working.resource,
+        generation: record.working.metadata?.generation ?? null, dependsOn: predecessorOperationId ? [predecessorOperationId] : [],
+        changes: [{ path: ['flow'], before: { exists: true, value: groupMove.before },
+          after: { exists: true, value: groupMove.after } }],
+        groupFlowStepPlacement: { ...groupMove.placement, queueId,
+          ...(legacyRevision && { observedRevision: legacyRevision }) },
       };
       return { ...record, command, submitted: record.intended, state: 'prepared' };
     }

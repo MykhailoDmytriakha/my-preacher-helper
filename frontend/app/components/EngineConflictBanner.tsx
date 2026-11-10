@@ -83,7 +83,7 @@ const isItem = (value: unknown): value is Item => Boolean(value) && typeof value
 function fieldComparison(entry: Waiting, t: (key: string) => string): TextComparison | undefined {
   if (entry.records.length !== 1) return undefined;
   const placement = entry.records[0].checkpoint.serviceOrderPlacementComparison;
-  if (entry.resource.collection === 'serviceOrders' && placement) {
+  if ((entry.resource.collection === 'serviceOrders' || entry.resource.collection === 'groups') && placement) {
     const label = t(placement.step ? 'serviceOrders.stepPosition' : 'serviceOrders.placementHistory.position');
     return { title: placement.step?.title ? `${label} · ${placement.step.title}` : label, valueKind: 'field',
       mine: serviceOrderPlacementWords(placement.mine, t),

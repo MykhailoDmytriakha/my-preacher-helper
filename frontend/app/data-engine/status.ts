@@ -133,7 +133,8 @@ export function describeSync(state: EditorState, observation: Observation, deliv
     canAcceptRemote: !state.actionResolutionRequired && (foreign
       || (phase === 'conflict' && Boolean(candidate) && state.savedIntentReplaceable === true)
       || (phase === 'refused' && !state.manualWork)) && settled,
-    canKeepLocal: !councilTopicRefusalCode(state.result) && !councilTopicConflictCode(checkpoint.conflicts) && !state.actionResolutionRequired && settled && !deletedCandidate && (foreign || phase === 'conflict' || phase === 'refused'),
+    canKeepLocal: !(state.result?.kind === 'refused' && state.result.code === 'group-step-placement-needs-review')
+      && !councilTopicRefusalCode(state.result) && !councilTopicConflictCode(checkpoint.conflicts) && !state.actionResolutionRequired && settled && !deletedCandidate && (foreign || phase === 'conflict' || phase === 'refused'),
   };
 }
 

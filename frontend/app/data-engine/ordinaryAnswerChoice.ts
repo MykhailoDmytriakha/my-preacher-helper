@@ -160,6 +160,14 @@ export function assertOrdinaryAnswerScope(choice: OrdinaryAnswerChoice, retired:
   }
 }
 
+/** A pure placement may answer before the next autosave captured independently typed fields. */
+export function groupPlacementChoiceTail(source: SessionCheckpoint, requestId: string) {
+  const captured = source.pending[requestId];
+  const value = source.draft;
+  if (!captured?.value || !value || captured.generation >= source.editGeneration || equalValues(captured.value, value)) return undefined;
+  return { base: captured.value, value };
+}
+
 /** An editor holding the suffix can choose its answered Save without submitting the later draft. */
 export function ordinaryChoiceCheckpoint(choice: OrdinaryAnswerChoice, source: SessionCheckpoint): SessionCheckpoint {
   const { first, scope } = choice;
@@ -170,7 +178,8 @@ export function ordinaryChoiceCheckpoint(choice: OrdinaryAnswerChoice, source: S
   const latest = scope.filter(request => source.pending[request.id]).at(-1);
   if (scope.length === 1 || !latest) return source;
   const path = new Set(lineage(new Map(scope.map(request => [request.id, request])), latest));
-  if (Object.keys(source.pending).some(id => !path.has(id)) || !hasOnlyCapturedWords(source, latest)) {
+  const separateGroupTail = first.groupFlowStepPlacement && groupPlacementChoiceTail(source, latest.id);
+  if (Object.keys(source.pending).some(id => !path.has(id)) || (!hasOnlyCapturedWords(source, latest) && !separateGroupTail)) {
     throw Object.assign(new Error('Save or resolve other document changes before choosing'), { code: 'other-changes-first' });
   }
   if (latest.id === first.id) return source;

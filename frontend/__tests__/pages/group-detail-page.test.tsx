@@ -6,6 +6,8 @@ import { useSeries } from '@/hooks/useSeries';
 import { useAuth } from '@/providers/AuthProvider';
 import { createBrowserDataEngine } from '@/data-engine/browser.client';
 import { editorIdentity } from '@/data-engine/editorIdentity';
+import { applyCommand } from '@/data-engine/protocol';
+import { planDataCommand } from '@/data-engine/serverRelations';
 import { DataEngineProvider } from '@/data-engine/react.client';
 import { membershipEngineHarness } from '../../test-utils/membershipEngineHarness';
 import { documentEngineHarness, settleEngine } from '../../test-utils/documentEngineHarness';
@@ -211,7 +213,11 @@ describe('GroupDetailPage', () => {
     const harness = documentEngineHarness(
       { resource: { collection: 'groups', id: 'group-1' },
         metadata: { protocol: 1, generation: 'group-generation', revision: 1, deleted: false }, value },
-      { cached },
+      { cached, apply: async (command, current) => command.kind === 'update' && command.groupFlowStepPlacement
+        ? (await planDataCommand(command, current, {
+          get: async resource => ({ resource, metadata: null, value: null }), list: async () => [],
+        })).result
+        : applyCommand(command, current) },
     );
     jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
     const view = render(<DataEngineProvider><GroupDetailPage /></DataEngineProvider>);
@@ -477,7 +483,7 @@ describe('GroupDetailPage', () => {
     expect(panel.style.getPropertyValue('--flow-editor-max-h')).toBe('671px');
   });
 
-  it('stores the new flow order after a drag-end reorder', async () => {
+  it.each(['drag', 'menu'])('keeps the identity and both places of an offline group move through %s', async (input) => {
     const templates = [
       { id: 'tpl-1', type: 'topic', title: 'Main topic', content: 'Discussion content', status: 'filled',
         scriptureRefs: [], questions: [], createdAt: 'x', updatedAt: 'x' },
@@ -492,10 +498,27 @@ describe('GroupDetailPage', () => {
     await screen.findByDisplayValue('Family Group');
     expect((harness.server.value as any).flow.map((item: any) => item.id)).toEqual(['flow-1', 'flow-2']);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Trigger drag end' }));
+    act(() => harness.engine.setOnline(false));
+    if (input === 'drag') {
+      fireEvent.click(screen.getByRole('button', { name: 'Trigger drag end' }));
+    } else {
+      fireEvent.click(screen.getAllByRole('button', { name: 'More options' })[0]);
+      fireEvent.click(screen.getByRole('button', { name: 'Move down' }));
+    }
+    await act(async () => { await settleEngine(); });
+    expect(harness.transport.send).not.toHaveBeenCalled();
+    act(() => harness.engine.setOnline(true));
 
     const stored = await delivered();
     expect(stored.flow.map((item: any) => [item.id, item.order])).toEqual([['flow-2', 1], ['flow-1', 2]]);
+    expect(harness.transport.send).toHaveBeenCalledWith(expect.objectContaining({
+      groupFlowStepPlacement: expect.objectContaining({
+        stepId: 'flow-1',
+        opening: { previous: null, next: 'flow-2' },
+        destination: { previous: 'flow-2', next: null },
+        observedRevision: 1,
+      }),
+    }));
   });
 
   it('stores a meeting date when there is no existing date', async () => {

@@ -11,7 +11,9 @@ import type { ActionTime } from './actionClock';
 import type { ConflictDetail, DataCommand, DocumentData, LabeledServiceOrderPlacement, ResourceSnapshot, ServiceOrderPlacementComparison, ServiceOrderStepGap, ServiceOrderStepPlacement } from './types';
 
 type Update = Extract<DataCommand, { kind: 'update' }>;
-type Proof = { stepId: string; revision: number; operationId: string; destination: ServiceOrderStepGap; time: ActionTime | null };
+export type StepPlacementProof = { stepId: string; revision: number; operationId: string | null;
+  destination: ServiceOrderStepGap; time: ActionTime | null; queueDigest?: string };
+type Proof = StepPlacementProof;
 type Proofs = { legacyRevision: number; legacyStepOrder?: string; unprovenRevision: number; moves: Proof[] };
 type Displaced = {
   stepId: string; stepTitle?: string; earlier: LabeledServiceOrderPlacement; kept: LabeledServiceOrderPlacement;
@@ -20,14 +22,17 @@ type Displaced = {
 export type StepPlacementWrite = { proof?: Omit<Proof, 'revision'>; displaced?: Displaced };
 type Plan = { steps: DocumentData[]; write: StepPlacementWrite } | { conflict: ConflictDetail; comparison: ServiceOrderPlacementComparison };
 
-type Step = NonNullable<ReturnType<typeof placementSteps>>[number];
-export type StepPlacementTarget = {
+export type PlacementStep = NonNullable<ReturnType<typeof placementSteps>>[number];
+export type StepPlacementTarget<Step extends PlacementStep = PlacementStep> = {
   collection: string;
   field: string;
   proofKey: string;
   read: (value: unknown) => Step[] | undefined;
   project: (rows: Step[], id: string, destination: ServiceOrderStepGap) => Step[] | undefined;
   title: (value: DocumentData, step: Step) => unknown;
+  lineage?: (raw: unknown, current: ResourceSnapshot, rows: Step[], opening: PlacementStep[], move: ServiceOrderStepPlacement) => {
+    trusted: boolean; available: boolean; previous?: StepPlacementProof; queueDigest?: string;
+  };
 };
 
 function placementProofs(raw: unknown, current: ResourceSnapshot, proofKey: string): Proofs | undefined {
@@ -68,7 +73,7 @@ function labelGap(gap: ServiceOrderStepGap, current: ResourceSnapshot, titleFor:
   return { previous: label(gap.previous), next: label(gap.next) };
 }
 
-export function planStepPlacement(target: StepPlacementTarget, move: ServiceOrderStepPlacement, command: Update,
+export function planStepPlacement<Step extends PlacementStep>(target: StepPlacementTarget<Step>, move: ServiceOrderStepPlacement, command: Update,
   current: ResourceSnapshot, raw: unknown, serverMs: number | undefined): Plan {
   const change = command.changes.find(item => item.path[0] === target.field)!;
   const stored = readField(current.value!, [target.field]);
@@ -88,17 +93,22 @@ export function planStepPlacement(target: StepPlacementTarget, move: ServiceOrde
   if (!steps || !opening || !saved || move.observedRevision > (current.metadata?.revision ?? 0)) return unavailable;
   const review = () => ({ ...unavailable, comparison: { ...unavailable.comparison,
     available: Boolean(target.project(steps, move.stepId, move.destination)) } });
-  const state = placementProofs(raw, current, target.proofKey);
-  const previous = state?.moves.find(proof => proof.stepId === move.stepId);
+  const lineage = target.lineage?.(raw, current, steps, opening, move);
+  if (lineage && !lineage.available) return unavailable;
+  if (lineage && !lineage.trusted) return review();
+  const state = lineage ? undefined : placementProofs(raw, current, target.proofKey);
+  const previous = lineage ? lineage.previous : state?.moves.find(proof => proof.stepId === move.stepId);
   const measured = boundedActionTime(move.time);
   const time = measured && serverMs !== undefined && measured.earliestMs <= serverMs + 5 ? measured : null;
-  const proof = { stepId: move.stepId, operationId: command.operationId, destination: move.destination, time };
-  const follows = previous && previous.operationId === move.predecessorOperationId;
+  const proof = { stepId: move.stepId, operationId: command.operationId, destination: move.destination, time,
+    ...(lineage?.queueDigest && { queueDigest: lineage.queueDigest }) };
+  const follows = previous && previous.operationId === move.predecessorOperationId
+    && (!lineage || Boolean(lineage.queueDigest && lineage.queueDigest === previous.queueDigest));
   const unprovenRevision = state?.unprovenRevision ?? 0;
   if (unprovenRevision > move.observedRevision && !(follows && previous.revision > unprovenRevision)) return review();
   // An unrelated first write cannot certify a permutation made by a pre-upgrade client.
   const olderThanLegacy = state && move.observedRevision < state.legacyRevision && !(follows && previous.revision > state.legacyRevision);
-  if ((!state || (olderThanLegacy && (!state.legacyStepOrder || orderedStepDigest(opening) !== state.legacyStepOrder)))
+  if (!lineage && (!state || (olderThanLegacy && (!state.legacyStepOrder || orderedStepDigest(opening) !== state.legacyStepOrder)))
     && retainedStepOrderChanged(opening, steps)) return review();
   if (!previous || previous.revision <= move.observedRevision || follows) {
     const projected = target.project(steps, move.stepId, move.destination);
@@ -106,7 +116,17 @@ export function planStepPlacement(target: StepPlacementTarget, move: ServiceOrde
   }
   const samePlace = equalValues(previous.destination, move.destination);
   const order = time && previous.time ? compareActionTime(time, previous.time) : 0;
-  if (!samePlace && !order) return review();
+  if (!order) {
+    if (!samePlace) return review();
+    if (lineage) {
+      // The same destination does not prove which of these two gestures was last.
+      const latest = time && previous.time ? {
+        earliestMs: Math.max(time.earliestMs, previous.time.earliestMs),
+        latestMs: Math.max(time.latestMs, previous.time.latestMs),
+      } : null;
+      return { steps, write: { proof: { stepId: move.stepId, destination: move.destination, operationId: null, time: latest } } };
+    }
+  }
   let displaced: Displaced | undefined;
   if (!samePlace && time && previous.time) {
     displaced = { stepId: move.stepId, ...(stepTitle !== undefined && { stepTitle }),
@@ -119,7 +139,7 @@ export function planStepPlacement(target: StepPlacementTarget, move: ServiceOrde
   return { steps: projected, write: { ...(order >= 0 && { proof }), ...(displaced && { displaced }) } };
 }
 
-export function metadataAfterStepPlacement(target: StepPlacementTarget, snapshot: ResourceSnapshot,
+export function metadataAfterStepPlacement<Step extends PlacementStep>(target: StepPlacementTarget<Step>, snapshot: ResourceSnapshot,
   raw: Record<string, unknown> | undefined, write?: StepPlacementWrite) {
   const { metadata, resource, value } = snapshot;
   if (!metadata || resource.collection !== target.collection || !value) return metadata;

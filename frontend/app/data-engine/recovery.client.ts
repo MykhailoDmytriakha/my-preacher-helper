@@ -16,18 +16,40 @@ import type { ConflictDetail, FieldValue, ResourceRef } from './types';
 
 const id = z.string().refine(isValidIdentifier);
 const fieldSchema = z.discriminatedUnion('exists', [z.object({ exists: z.literal(false) }), z.object({ exists: z.literal(true), value: z.unknown() })]);
+const groupPlacementWitness = z.array(z.object({ id, templateId: id }));
+const groupPlacementGap = z.object({ previous: id.nullable(), next: id.nullable() });
+const groupPlacementCapture = z.object({
+  generation: id.nullable(), before: groupPlacementWitness, after: groupPlacementWitness,
+  placement: z.object({ stepId: id, opening: groupPlacementGap, destination: groupPlacementGap,
+    observedRevision: z.number().int().safe().nonnegative(), time: z.object({
+      earliestMs: z.number().finite(), latestMs: z.number().finite(),
+    }).nullable(), predecessorOperationId: id.optional(), queueId: id.optional() }),
+});
+const actionTime = z.object({ earliestMs: z.number().finite(), latestMs: z.number().finite() })
+  .refine(time => time.earliestMs <= time.latestMs).nullable();
+const observedRevision = z.number().int().safe().nonnegative();
+const groupFieldDraft = z.object({ generation: id, action: z.object({ before: z.string(), after: z.string(), observedRevision, time: actionTime }) });
+const groupRowValue = z.union([z.string(), z.number().finite(), z.null()]);
+const groupRowDrafts = z.record(id, z.object({ generation: id, action: z.object({
+  rowId: id, rowCreatedAt: z.string().min(1), before: groupRowValue, after: groupRowValue, observedRevision, time: actionTime,
+}) }));
 const recordSchema = z.object({
   owner: id, editorId: z.string().min(1), prepared: z.unknown().nullable(), unfinalized: z.array(id).default([]),
   completedCommits: z.array(id).optional(),
   recoveryVersion: z.string().min(1).optional(),
-  retainedManualChoice: z.object({ base: z.unknown(), decidingEditorId: z.string().min(1).optional() }).optional(),
+  retainedManualChoice: z.object({ base: z.unknown(), decidingEditorId: z.string().min(1).optional(),
+    groupStepPlacement: groupPlacementCapture.optional(), groupFieldsGeneration: id.nullable().optional() }).optional(),
   recoveryOrigins: z.array(z.object({ id: z.string().min(1), version: z.string().min(1) })).optional(),
   recoverySources: z.array(z.object({ id: z.string().min(1) })).optional(),
   checkpoint: z.object({
     confirmed: snapshotSchema, draft: z.unknown(), dirty: z.boolean(), editGeneration: z.number().int().safe().nonnegative(),
     remoteCandidate: snapshotSchema.nullable(),
     conflicts: z.array(z.object({ path: z.array(z.string()), base: fieldSchema, mine: fieldSchema, theirs: fieldSchema })).default([]),
-    pending: z.record(id, z.object({ generation: z.number().int().safe().nonnegative(), value: z.unknown(), operations: z.array(id).optional(), borrowedManualScope: z.string().refine(value => readManualScopeIdentity(value) !== null).optional() })),
+    groupFlowStepPlacementRetry: groupPlacementCapture.optional(),
+    groupTitleDraft: groupFieldDraft.optional(), groupStatusDraft: groupFieldDraft.optional(),
+    groupBlockTitleDrafts: groupRowDrafts.optional(), groupBlockStatusDrafts: groupRowDrafts.optional(),
+    groupStepTitleDrafts: groupRowDrafts.optional(), groupStepDurationDrafts: groupRowDrafts.optional(),
+    pending: z.record(id, z.object({ groupFlowStepPlacement: groupPlacementCapture.optional(), generation: z.number().int().safe().nonnegative(), value: z.unknown(), operations: z.array(id).optional(), borrowedManualScope: z.string().refine(value => readManualScopeIdentity(value) !== null).optional() })),
   }),
 });
 const sameResource = (a: ResourceRef, b: ResourceRef) => a.collection === b.collection && a.id === b.id;
@@ -49,6 +71,11 @@ export function validateRecoveryRecord(value: unknown, owner: string, editorId: 
   const ref = record.checkpoint.confirmed.resource;
   if (record.owner !== owner || record.editorId !== editorId || (resource && !sameResource(resource, ref))
     || (record.checkpoint.remoteCandidate && !sameResource(ref, record.checkpoint.remoteCandidate.resource))) throw new Error('Checkpoint identity mismatch');
+  if (ref.collection !== 'groups' && (record.retainedManualChoice?.groupStepPlacement
+    || record.retainedManualChoice?.groupFieldsGeneration !== undefined || record.checkpoint.groupFlowStepPlacementRetry
+    || record.checkpoint.groupTitleDraft || record.checkpoint.groupStatusDraft || record.checkpoint.groupBlockTitleDrafts
+    || record.checkpoint.groupBlockStatusDrafts || record.checkpoint.groupStepTitleDrafts || record.checkpoint.groupStepDurationDrafts
+    || Object.values(record.checkpoint.pending).some(intent => intent.groupFlowStepPlacement))) throw new Error('Group placement checkpoint identity mismatch');
   const document = (data: unknown) => snapshotSchema.parse({ resource: ref, value: data, metadata: null }).value;
   const policy = getResourcePolicy(ref.collection);
   const ownedDocument = (data: unknown, createIntent = false) => {

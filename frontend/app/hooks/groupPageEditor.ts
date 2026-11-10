@@ -31,6 +31,7 @@ export interface GroupPageEditor {
   renameStep: (step: Pick<GroupFlowItem, 'id' | 'templateId'>, title: string | null) => Promise<void>;
   flow: Group['flow'];
   setFlow: Dispatch<SetStateAction<Group['flow']>>;
+  moveStep: (stepId: string, transform: (shown: Group['flow']) => Group['flow']) => Promise<void>;
   meetingDate: string;
   setMeetingDate: Dispatch<SetStateAction<string>>;
   meetingLocation: string;

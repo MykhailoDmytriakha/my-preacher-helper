@@ -3,7 +3,7 @@
 import { useCallback, useMemo } from 'react';
 
 import { usePublishShellTitle } from '@/components/navigation/shellTitles';
-import { useDataDocument, useRecoveryDiscovery } from '@/data-engine/react.client';
+import { captureGroupStepPlacement, projectCapturedGroupStep, useDataDocument, useRecoveryDiscovery } from '@/data-engine/react.client';
 import { newClientId } from '@/utils/clientId';
 import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
 import { hydrateGroup, normalizeStoredGroupFlow } from '@/utils/groupDocument';
@@ -34,6 +34,18 @@ export function useGroupDataDocument(groupId: string) {
     };
     await (options ? document.update(change, options) : document.update(change));
   }, [document, groupId]);
+  const moveStep = (stepId: string, transform: (shown: Group['flow']) => Group['flow']) => {
+    const opening = document.state?.checkpoint;
+    if (!group || !opening?.draft) return Promise.resolve();
+    const move = captureGroupStepPlacement(group.flow, transform(group.flow), stepId,
+      opening.confirmed.metadata?.generation ?? null, opening.confirmed.metadata?.revision ?? 0, null);
+    if (!move) return Promise.resolve();
+    return document.commit(current => {
+      const flow = projectCapturedGroupStep(current?.flow, move);
+      if (!current || !flow) throw Object.assign(new Error('The shown group flow changed'), { code: 'decision-changed' });
+      return { ...current, flow };
+    }, { kind: 'group-flow-step-placement', move });
+  };
   const updateGroupDetail = useCallback((patch: Partial<Group>) => update(current => ({ ...current, ...patch })), [update]);
   const addMeetingDate = useCallback(async (input: Omit<GroupMeetingDate, 'id' | 'createdAt'> & { id?: string }) => {
     const meeting: GroupMeetingDate = { ...input, id: input.id ?? newClientId(), createdAt: new Date().toISOString() };
@@ -61,7 +73,7 @@ export function useGroupDataDocument(groupId: string) {
     enabled: !document.loading && document.status !== null,
     version: JSON.stringify([document.status?.phase, document.confirmed?.metadata?.revision]),
     list: listRecoverable, recover: document.recover });
-  return { group, document, update, updateGroupDetail, addMeetingDate, updateMeetingDate, removeMeetingDate,
+  return { group, document, update, moveStep, updateGroupDetail, addMeetingDate, updateMeetingDate, removeMeetingDate,
     deleteGroupDetail: document.remove, loading: document.loading, error: document.error, errorWords: document.errorWords, status: document.status,
     recovery, refresh: document.retry, acceptRemote: document.acceptRemote, keepLocal: document.keepLocal };
 }

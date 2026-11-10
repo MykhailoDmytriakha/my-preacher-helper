@@ -1,3 +1,4 @@
+import { serviceOrderPlacementWords } from '@/components/care/serviceOrderPlacementWords';
 import { readGroupFlowFieldConflict, useOpenDocumentAnswerScopes } from '@/data-engine/react.client';
 import { storedFieldValue } from '@/utils/storedFieldValue';
 
@@ -11,7 +12,7 @@ const fields = {
   duration: 'groupFlow.editor.durationLabel',
 };
 
-type Translate = (key: string) => string;
+type Translate = (key: string, values?: Record<string, string>) => string;
 
 export function groupFlowFieldText(t: Translate, field: keyof typeof fields, value: string | number | null): string {
   if (field === 'duration') return String(storedFieldValue(t, 'groups.flow', 'durationMin', value));
@@ -21,6 +22,15 @@ export function groupFlowFieldText(t: Translate, field: keyof typeof fields, val
 
 export function useGroupFlowComparison(checkpoint: SessionCheckpoint | undefined, t: Translate): TextComparison | undefined {
   const answers = useOpenDocumentAnswerScopes();
+  const placement = checkpoint?.serviceOrderPlacementComparison;
+  if (placement?.step && checkpoint?.confirmed.resource.collection === 'groups') {
+    const label = t('serviceOrders.stepPosition');
+    return { identity: JSON.stringify([checkpoint.remoteCandidate?.metadata?.revision, placement]),
+      title: placement.step.title ? label + ' · ' + placement.step.title : label,
+      mine: serviceOrderPlacementWords(placement.mine, t),
+      stored: placement.saved ? serviceOrderPlacementWords(placement.saved, t) : t('serviceOrders.placementHistory.positionUnavailable'),
+      valueKind: 'field', scopedChoice: true, keepMineDisabled: !placement.available };
+  }
   const comparison = checkpoint && readGroupFlowFieldConflict(checkpoint);
   if (!checkpoint || !comparison) return undefined;
   const { resource, value } = checkpoint.confirmed;

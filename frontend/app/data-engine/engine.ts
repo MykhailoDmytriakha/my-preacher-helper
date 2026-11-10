@@ -1882,7 +1882,7 @@ export class DataEngine {
         void pending.finally(() => { if (this.councilCarries.get(key) === pending) this.councilCarries.delete(key); }).catch(() => undefined);
         return pending;
       };
-      const outlineSaves = new Map<number, ClosingSaveIntent[]>();
+      const placementSaves = new Map<number, ClosingSaveIntent[]>();
       const commit = (updater: (current: DocumentData | null) => DocumentData | null, onCaptured?: (receipt: DocumentWriteReceipt) => void, captureScope?: string, action?: EditorCommitAction) => {
         active();
         const checkpoint = controller.getState().checkpoint;
@@ -1894,6 +1894,10 @@ export class DataEngine {
         const tagMembership = action && 'tagMembership' in action ? action.tagMembership : undefined;
         if (tagMembership?.some(intent => intent.generation !== checkpoint.confirmed.metadata?.generation)) {
           throw Object.assign(new Error('The shown record changed'), { code: 'decision-changed' });
+        }
+        if (action?.kind === 'group-flow-step-placement' && (frozen.collection !== 'groups'
+          || (checkpoint.confirmed.metadata?.generation ?? null) !== action.move.generation)) {
+          throw Object.assign(new Error('The shown group changed'), { code: 'decision-changed' });
         }
         const next = updater(checkpoint.draft);
         let captured = next === checkpoint.draft && action?.kind === 'document-tags' ? undefined : action;
@@ -2008,15 +2012,15 @@ export class DataEngine {
         // The exact move owns only the position. Queue this opening draft first
         // so any unsaved words or independent fields keep their own durable Save.
         // CaptureContinuations retries earlier attempts before the exact Save.
-        const move = captured?.kind === 'outline-point-placement' ? captured : undefined;
+        const move = captured?.kind === 'outline-point-placement' || captured?.kind === 'group-flow-step-placement' ? captured : undefined;
         if (move) void controller.save(checkpoint).catch(() => undefined);
         const persistence = controller.edit(next, captured?.kind === 'thought-placement' || captured?.kind === 'exegetical-point' ? captured.shown : undefined, stamp);
         const stagedMove = move && controller.getState().checkpoint;
         const saving = controller.save(stagedMove, undefined, onCaptured, captureScope, stamp ? undefined : captured);
         if (move && stagedMove) {
           const edit = stagedMove.editGeneration;
-          outlineSaves.set(edit, [{ checkpoint }, { checkpoint: stagedMove, action: move }]);
-          void saving.then(() => { outlineSaves.delete(edit); }, () => undefined);
+          placementSaves.set(edit, [{ checkpoint }, { checkpoint: stagedMove, action: move }]);
+          void saving.then(() => { placementSaves.delete(edit); }, () => undefined);
         }
         return Promise.all([persistence, saving]).then(() => { active(); this.backgroundDrain(); this.prepareCommitsInBackground(); active(); });
       };
@@ -2138,11 +2142,11 @@ export class DataEngine {
           if (entry.closed) return;
           const current = this.current(owner, generation);
           const leaving = flush && current ? this.leavingIntent(controller) : null;
-          const moves = flush && current ? [...outlineSaves.values()].flat() : [];
+          const moves = flush && current ? [...placementSaves.values()].flat() : [];
           // Register before closing. The local handoff outlives the controller and gates only
           // another opening of this resource, even if no checkpoint discovery has to read the queue.
           const saving = moves.length
-            ? this.keepClosingOutlineSaves(owner, generation, editorId, controller.settled(), moves, leaving?.checkpoint)
+            ? this.keepClosingPlacementSaves(owner, generation, editorId, controller.settled(), moves, leaving?.checkpoint)
             : leaving ? this.keepClosingSave(owner, generation, editorId, leaving.checkpoint, leaving.predecessorId) : undefined;
           // With no request taking the last words along, retain the unwritten checkpoint.
           const unwritten = current && !leaving ? this.unwrittenRecord(controller) : null;
@@ -2185,7 +2189,7 @@ export class DataEngine {
     return pending;
   }
 
-  private keepClosingOutlineSaves(owner: string, generation: number, editorId: string, settled: Promise<void>,
+  private keepClosingPlacementSaves(owner: string, generation: number, editorId: string, settled: Promise<void>,
     moves: readonly ClosingSaveIntent[], trailing?: SessionCheckpoint): Promise<void> {
     const intents = new Map<number, ClosingSaveIntent>();
     for (const intent of moves) {
@@ -2295,7 +2299,7 @@ export class DataEngine {
         await controller.keepLocal(undefined, undefined, expected, choiceTime);
         // The explicit document choice owns its replacement; field stages keep their later words.
         const resolved = controller.getState().checkpoint;
-        if (affected.length || (preference && resolved.accountPreferenceRetry) || resolved.outlinePointPlacementRetry) {
+        if (affected.length || (preference && resolved.accountPreferenceRetry) || resolved.outlinePointPlacementRetry || resolved.groupFlowStepPlacementRetry) {
           await controller.save(); this.assertCurrent(owner, generation);
           this.prepareCommitsInBackground(); this.backgroundDrain();
         }

@@ -227,6 +227,18 @@ export function acknowledgeRowFields(checkpoint: SessionCheckpoint, captured: Au
   }
 }
 
+export function carryRowFieldDrafts(source: SessionCheckpoint, target: SessionCheckpoint,
+  keep: (path: readonly string[]) => boolean): void {
+  for (const field of targetsFor(target.confirmed.resource.collection)) {
+    if (!source[field.draft]) continue;
+    target[field.draft] = source[field.draft];
+    const valid = validDrafts(target, target.draft, field)
+      .filter(({ action }) => keep(rowConflictPath(action.rowId, field.policy.target(field.field))));
+    if (valid.length) target[field.draft] = Object.fromEntries(valid.map(item => [item.action.rowId, item]));
+    else delete target[field.draft];
+  }
+}
+
 export function clearRowFieldDrafts(checkpoint: SessionCheckpoint): void {
   for (const { draft } of targetsFor(checkpoint.confirmed.resource.collection)) delete checkpoint[draft];
 }

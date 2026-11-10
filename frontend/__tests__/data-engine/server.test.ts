@@ -4239,6 +4239,116 @@ describe('transactional DataEngine server', () => {
     });
   });
 
+  describe('group meeting step placement chronology', () => {
+    const owner = 'owner-1';
+    const resource = { collection: 'groups', id: 'group-step-placement' };
+    const base = { protocol: 1, owner, resource, dependsOn: [] };
+    const generation = 'group-step-placement-seed';
+    const date = '2026-11-09T00:00:00.000Z';
+    const initial = ['a', 'b', 'c', 'd'];
+    const up = ['b', 'a', 'c', 'd'];
+    const down = ['a', 'c', 'b', 'd'];
+    const templates = initial.map(id => ({ id: 'template-' + id, type: 'custom', title: 'Step ' + id,
+      content: 'Keep the text for ' + id, status: 'filled', createdAt: date, updatedAt: date }));
+    const witness = (order: string[]) => order.map(id => ({ id, templateId: 'template-' + id }));
+    const flow = (order: string[]) => witness(order).map((row, index) => ({ ...row, order: index + 1, durationMin: 12 }));
+    const gap = (order: string[]) => {
+      const index = order.indexOf('b');
+      return { previous: order[index - 1] ?? null, next: order[index + 1] ?? null };
+    };
+    const clock = (start: number, end = start + 4) => ({ earliestMs: 1_800_000_000_000 + start, latestMs: 1_800_000_000_000 + end });
+
+    async function seed() {
+      expect(await processCommand(owner, { ...base, kind: 'create', operationId: generation, generation: null,
+        value: { userId: owner, title: 'Group', status: 'active', templates, flow: flow(initial), createdAt: date, updatedAt: date },
+      })).toMatchObject({ kind: 'acknowledged' });
+    }
+
+    function move(operationId: string, before: string[], after: string[], observedRevision: number,
+      time: ReturnType<typeof clock> | null, queueId = operationId, predecessorOperationId?: string) {
+      return { ...base, kind: 'update', operationId, generation,
+        dependsOn: predecessorOperationId ? [predecessorOperationId] : [],
+        changes: [{ path: ['flow'], before: { exists: true, value: witness(before) }, after: { exists: true, value: witness(after) } }],
+        groupFlowStepPlacement: { stepId: 'b', queueId, observedRevision, time, opening: gap(before), destination: gap(after),
+          ...(predecessorOperationId && { predecessorOperationId }) },
+      };
+    }
+
+    it('keeps a later return to the opening position when the old move arrives last', async () => {
+      await seed();
+      await processCommand(owner, move('desk-down', initial, down, 1, clock(40)));
+      await processCommand(owner, move('desk-back', down, initial, 2, clock(70)));
+      const stale = move('phone-old', initial, up, 1, clock(15));
+      const result = await processCommand(owner, stale);
+      expect(result).toMatchObject({ kind: 'acknowledged', snapshot: { value: { flow: flow(initial), templates } } });
+      expect(await processCommand(owner, stale)).toEqual(result);
+      const history = [...documents.entries()].filter(([path]) => path.startsWith('groups/group-step-placement/_groupStepPlacementHistory/'));
+      expect(history).toHaveLength(1);
+      expect(history[0][1]).toMatchObject({ stepId: 'b', earlier: { previous: null, next: { id: 'a' } },
+        kept: { previous: { id: 'a' }, next: { id: 'c' } } });
+    });
+
+    it('does not let a pre-upgrade queued array undo a proven return', async () => {
+      await seed();
+      await processCommand(owner, move('desk-down', initial, down, 1, clock(40)));
+      await processCommand(owner, move('desk-back', down, initial, 2, clock(70)));
+      await processCommand(owner, { ...base, kind: 'update', operationId: 'legacy-old', generation,
+        changes: [{ path: ['flow'], before: { exists: true, value: flow(initial) }, after: { exists: true, value: flow(up) } }] });
+      expect(documents.get('groups/group-step-placement')?.flow).toEqual(flow(initial));
+    });
+
+    it('applies the later move without discarding a duration saved on the other device', async () => {
+      await seed();
+      await processCommand(owner, move('desk', initial, down, 1, clock(20)));
+      const stored = flow(down);
+      const edited = stored.map(step => step.id === 'b' ? { ...step, durationMin: 35 } : step);
+      await processCommand(owner, { ...base, kind: 'update', operationId: 'duration', generation,
+        changes: [{ path: ['flow'], before: { exists: true, value: stored }, after: { exists: true, value: edited } }] });
+      const result = await processCommand(owner, move('phone', initial, up, 1, clock(80)));
+      expect(result).toMatchObject({ kind: 'acknowledged', snapshot: { value: { templates,
+        flow: flow(up).map(step => step.id === 'b' ? { ...step, durationMin: 35 } : step) } } });
+    });
+
+    it('shows the exact positions when the action times cannot be ordered', async () => {
+      await seed();
+      await processCommand(owner, move('desk', initial, down, 1, clock(20)));
+      expect(await processCommand(owner, move('phone', initial, up, 1, null))).toMatchObject({
+        kind: 'conflict', conflicts: [{ path: ['flow', 'id:b', 'position'] }],
+        serviceOrderPlacementComparison: { available: true, step: { id: 'b', title: 'Step b' },
+          mine: { previous: null, next: { id: 'a', title: 'Step a' } },
+          saved: { previous: { id: 'c', title: 'Step c' }, next: { id: 'd', title: 'Step d' } } },
+      });
+    });
+
+    it('does not narrow overlapping proof for the same destination', async () => {
+      await seed();
+      await processCommand(owner, move('first', initial, up, 1, clock(10, 30)));
+      await processCommand(owner, move('same-place', initial, up, 1, clock(20, 25)));
+      expect(await processCommand(owner, move('third', initial, down, 1, clock(26, 27))))
+        .toMatchObject({ kind: 'conflict', snapshot: { value: { flow: flow(up) } } });
+    });
+
+    it('does not let a different editor claim an overlapping predecessor', async () => {
+      await seed();
+      await processCommand(owner, move('first', initial, up, 1, clock(15, 45), 'own-queue'));
+      expect(await processCommand(owner, move('other', up, down, 1, clock(20, 35), 'other-queue', 'first')))
+        .toMatchObject({ kind: 'conflict' });
+      expect(await processCommand(owner, move('own-second', up, down, 1, clock(20, 35), 'own-queue', 'first')))
+        .toMatchObject({ kind: 'acknowledged', snapshot: { value: { flow: flow(down) } } });
+    });
+
+    it('does not move a step relative to a deleted and recreated anchor', async () => {
+      await seed();
+      const without = flow(initial.filter(id => id !== 'a'));
+      await processCommand(owner, { ...base, kind: 'update', operationId: 'remove-anchor', generation,
+        changes: [{ path: ['flow'], before: { exists: true, value: flow(initial) }, after: { exists: true, value: without } }] });
+      await processCommand(owner, { ...base, kind: 'update', operationId: 'restore-anchor', generation,
+        changes: [{ path: ['flow'], before: { exists: true, value: without }, after: { exists: true, value: flow(initial) } }] });
+      expect(await processCommand(owner, move('phone', initial, up, 1, clock(85))))
+        .toMatchObject({ kind: 'conflict', serviceOrderPlacementComparison: { available: false }, snapshot: { value: { flow: flow(initial) } } });
+    });
+  });
+
   describe('service step move chronology', () => {
     const owner = 'owner-1';
     const resource = { collection: 'serviceOrders', id: 'service-step-position' };

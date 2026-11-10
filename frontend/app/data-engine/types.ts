@@ -73,6 +73,7 @@ export type EditorCommitAction =
   | { kind: 'service-order-placement'; move: ServiceOrderPlacementCapture }
   | { kind: 'service-order-step-placement'; move: ServiceOrderStepPlacementCapture }
   | { kind: 'outline-point-placement'; move: OutlinePointPlacementCapture }
+  | { kind: 'group-flow-step-placement'; move: GroupFlowStepPlacementCapture }
   | { kind: 'service-order-title'; title: ServiceOrderTitleCapture }
   | { kind: 'service-order-flag'; flag: ServiceOrderFlagCapture }
   | { kind: 'service-order-step-title'; title: ServiceOrderStepTitleCapture }
@@ -121,6 +122,14 @@ export type ServiceOrderStepPlacement = {
   time: ActionTime | null;
   predecessorOperationId?: string;
 };
+export type GroupFlowStepPlacement = ServiceOrderStepPlacement & { queueId: string };
+export type GroupFlowStepPlacementCapture = {
+  generation: string | null;
+  before: { id: string; templateId: string }[];
+  after: { id: string; templateId: string }[];
+  placement: ServiceOrderStepPlacement & { queueId?: string };
+};
+
 export type ServiceOrderPlacementAnchor = { id: string; generation: string | null };
 export type ServiceOrderPlacementGap = { previous: ServiceOrderPlacementAnchor | null; next: ServiceOrderPlacementAnchor | null };
 export type ServiceOrderPlacement = {
@@ -155,6 +164,8 @@ export type ServiceOrderPlacementHistoryPage = {
   }[];
   nextCursor: string | null;
 };
+
+export type GroupFlowStepPlacementHistoryPage = Omit<ServiceOrderPlacementHistoryPage, 'orderId'> & { groupId: string };
 
 export type ServiceOrderPlacementCapture = {
   generation: string | null;
@@ -208,6 +219,7 @@ export type DataCommand = CommandBase & (
       accountPreferenceActions?: AccountPreferenceStamps;
       serviceOrderPlacement?: ServiceOrderPlacement;
       serviceOrderStepPlacement?: ServiceOrderStepPlacement;
+      groupFlowStepPlacement?: GroupFlowStepPlacement;
       outlinePointPlacement?: OutlinePointPlacement;
       sermonPreparationCheckActions?: Partial<Record<PreparationConfirmation, DocumentFieldStamp>>;
       sermonChurchFill?: SermonChurchFill;

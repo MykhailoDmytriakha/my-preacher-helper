@@ -99,7 +99,7 @@ function GroupDetailView({ editor }: { editor: GroupPageEditor }) {
   const fitEditorToWindow = useWindowFittedPanel(editorTop, '--flow-editor-max-h');
   const { user } = useAuth();
   const { group, loading, title, setTitle, description, setDescription, status, setStatus,
-    templates, setTemplates, flow, setFlow, meetingDate, setMeetingDate, meetingLocation, setMeetingLocation,
+    templates, setTemplates, flow, setFlow, moveStep, meetingDate, setMeetingDate, meetingLocation, setMeetingLocation,
     meetingAudience, setMeetingAudience, deleteGroupDetail, feedback,
     meetingFieldsEnabled, meetingHistory, meetingFieldHistory, titleHistory, statusHistory } = editor;
   const [selectedFlowItemId, setSelectedFlowItemId] = useState<string | null>(null);
@@ -139,14 +139,15 @@ function GroupDetailView({ editor }: { editor: GroupPageEditor }) {
     const { active, over } = event;
 
     if (over && active.id !== over.id) {
-      setFlow((items) => {
+      void moveStep(String(active.id), (items) => {
         const oldIndex = items.findIndex((item) => item.id === active.id);
         const newIndex = items.findIndex((item) => item.id === over.id);
 
+        if (oldIndex < 0 || newIndex < 0) return items;
         const newFlow = arrayMove(items, oldIndex, newIndex);
         const reindexed = newFlow.map((item, idx) => ({ ...item, order: idx + 1 }));
         return normalizeFlow(reindexed);
-      });
+      }).catch(() => undefined);
     }
   };
 
@@ -529,8 +530,8 @@ function GroupDetailView({ editor }: { editor: GroupPageEditor }) {
                             selectedFlowItemId === flowItem.id ? null : flowItem.id
                           )}
                           onStatusCycle={() => cycleStatus(template)}
-                          onMoveUp={() => { setFlow((prev) => moveFlowItem(prev, flowItem.id, 'up')); }}
-                          onMoveDown={() => { setFlow((prev) => moveFlowItem(prev, flowItem.id, 'down')); }}
+                          onMoveUp={() => { void moveStep(flowItem.id, prev => moveFlowItem(prev, flowItem.id, 'up')).catch(() => undefined); }}
+                          onMoveDown={() => { void moveStep(flowItem.id, prev => moveFlowItem(prev, flowItem.id, 'down')).catch(() => undefined); }}
                           onDuplicate={() => { setFlow((prev) => duplicateFlowItem(prev, flowItem.id)); }}
                           onDelete={() => removeFlowBlock(flowItem.id)}
                         />

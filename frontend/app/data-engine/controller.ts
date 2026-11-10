@@ -17,12 +17,13 @@ import { keepUncontestedDocumentTagFields } from './documentTagChoice';
 import { requiredDomainTargets } from './domainPolicy';
 import { areDifferentTabManualParents, editorSlot, readManualScopeIdentity } from './editorIdentity';
 import { readField, writeField } from './fieldValues';
+import { retryGroupStepPlacement } from './groupStepPlacement';
 import { liveSubmittedWork, sameLiveAtomicProof } from './liveSubmittedWork';
 import { chooseLocalPlacement } from './localPlacementChoice';
-import { projectExactManualChoice, type ExactManualChoice } from './manualChoice';
+import { projectExactManualChoice, retainedGroupPlacementDraft, type ExactManualChoice } from './manualChoice';
 import { sameManualSources } from './manualReturnSources';
 import { projectManualSelection, type ManualPath } from './manualScope';
-import { assertOrdinaryAnswerScope, ordinaryChoiceCheckpoint, projectOrdinaryChoiceDependents, requireDocumentChoiceForBranch, reviewOrdinaryAnswerChoice, type ManualChoiceSources } from './ordinaryAnswerChoice';
+import { assertOrdinaryAnswerScope, groupPlacementChoiceTail, ordinaryChoiceCheckpoint, projectOrdinaryChoiceDependents, requireDocumentChoiceForBranch, reviewOrdinaryAnswerChoice, type ManualChoiceSources } from './ordinaryAnswerChoice';
 import { readOutlinePointPlacementComparison, retryOutlinePointPlacement } from './outlinePointPlacement';
 import { chooseLocalPreachDateEdits } from './preachDateChoice';
 import { confirmedExistingDeletion, equalValues, mergeDocumentFields, mergeFields } from './protocol';
@@ -44,7 +45,7 @@ import type { AutosaveFieldStamp } from './documentFieldAction';
 import type { RecoverySource } from './recoveryPresence';
 import type { RecoveryOrigin, VersionedRecovery } from './recoverySource';
 import type { DataEngineRuntime, RuntimeEvent } from './runtime';
-import type { EditorCommitAction } from './types';
+import type { EditorCommitAction, GroupFlowStepPlacementCapture } from './types';
 import type { CommandResult, DataCommand, DocumentData, ResourceRef, ResourceSnapshot } from './types';
 
 const PENDING_DELIVERY_FIRST = 'pending-delivery-first';
@@ -76,7 +77,7 @@ export interface EditorRecord extends VersionedRecovery {
   completedCommits?: string[];
   recoverySources?: RecoverySource[];
   /** Basis of the retained changes, separate from the last accepted server snapshot. */
-  retainedManualChoice?: { base: DocumentData | null; decidingEditorId?: string };
+  retainedManualChoice?: { base: DocumentData | null; decidingEditorId?: string; groupStepPlacement?: GroupFlowStepPlacementCapture; groupFieldsGeneration?: string | null };
 }
 
 export interface CheckpointStore {
@@ -737,9 +738,10 @@ export class EditorController {
     const cancelled = Object.keys(this.session.checkpoint().pending);
     const selected = expected ? Object.keys(expected.checkpoint.pending) : undefined;
     const shown = this.record();
-    const ordinary = !selection && !correction && await this.ordinaryAnswerFor(cancelled);
+    const ordinary = !selection && !correction ? await this.ordinaryAnswerFor(cancelled) : undefined;
     let source: SessionCheckpoint | undefined;
     let projected: EditorRecord | undefined;
+    let groupChoice: string | undefined;
     const ids = ordinary ? [ordinary.first.id] : selected ?? cancelled;
     const decidingEditor = ordinary || selected ? '' : this.options.editorId;
     await this.options.commits!.cancelWithCheckpoint(decidingEditor, ids, retired => {
@@ -752,7 +754,7 @@ export class EditorController {
           : collection === 'councils' ? councilAssemblyRow(path) || councilTopicKindRow(path)
             : path?.length === 1 && (collection === 'planTemplates' && path[0] === 'name' || collection === 'tags' && path[0] === 'color' || collection === 'studyNotes' && path[0] === 'type'));
         if (expected && (comparedField || retired.some(request => expected.checkpoint.pending[request.id]
-          && (request.serviceOrderFlagActions || request.serviceOrderStepTitleActions || request.outlinePointPlacement || hasAutosaveRowFieldCaptures(request)
+          && (request.serviceOrderFlagActions || request.serviceOrderStepTitleActions || request.outlinePointPlacement || request.groupFlowStepPlacement || hasAutosaveRowFieldCaptures(request)
             || request.councilAssemblyActions || request.councilTopicKindActions || request.planTemplateNameAction || request.tagColorAction || request.studyNoteTypeAction)))
           && retired.some(request => !expected.checkpoint.pending[request.id])) {
           throw Object.assign(new Error('Another saved change appeared during the field choice'), { code: 'decision-changed' });
@@ -782,7 +784,37 @@ export class EditorController {
           && source!.pending[request.id] && request.outlinePointPlacement);
         const outlineMove = outlineRequest?.outlinePointPlacement;
         const outlineChoice = outlineMove && readOutlinePointPlacementComparison(decided);
-        if (outlineRequest && outlineMove && outlineRequest.result?.kind === 'conflict' && outlineChoice) {
+        const groupRequest = ordinary ? ordinary.first : retired.find(request => request.cancelledByChoice
+          && source!.pending[request.id] && request.groupFlowStepPlacement);
+        const groupMove = groupRequest?.groupFlowStepPlacement;
+        let retainedGroupTail: EditorRecord | undefined;
+        if (groupRequest && groupMove && groupRequest.result?.kind === 'conflict') {
+          groupChoice = groupRequest.id;
+          const answer = groupRequest.result;
+          const comparison = answer.serviceOrderPlacementComparison;
+          const proposed = source.pending[groupRequest.id]?.value;
+          const tailRequest = ordinary?.scope.filter(request => source!.pending[request.id]).at(-1)?.id
+            ?? (Object.keys(source.pending).length === 1 ? groupRequest.id : undefined);
+          const tail = tailRequest && groupPlacementChoiceTail(source, tailRequest);
+          if (comparison?.step?.id !== groupMove.placement.stepId
+            || (!tail && !equalValues(proposed, decided.draft) && !equalValues(groupRequest.intended, decided.draft))) {
+            throw Object.assign(new Error('Other changes need review'), { code: 'other-changes-first' });
+          }
+          session.acceptRemote();
+          if (choice === 'local') {
+            const accepted = session.checkpoint().confirmed;
+            requireFreshGeneration(answer, groupRequest.command?.generation ?? groupMove.generation, accepted);
+            const saved = comparison.saved;
+            const retry = comparison.available && saved && retryGroupStepPlacement(accepted, groupMove,
+              { previous: saved.previous?.id ?? null, next: saved.next?.id ?? null }, choiceTime ?? null);
+            if (!retry) throw Object.assign(new Error('The proposed position is unavailable or has changed'), { code: 'decision-changed' });
+            if (retry.capture) session.stageGroupStepPlacementRetry(retry.capture, retry.draft);
+          }
+          if (tail && !session.retainGroupPlacementChoiceEdits(source, tail.base, tail.value)) {
+            retainedGroupTail = retainedGroupPlacementDraft(record.owner, record.editorId, groupRequest.id, 'unqueued',
+              source, session.checkpoint().confirmed, tail.base, tail.value);
+          }
+        } else if (outlineRequest && outlineMove && outlineRequest.result?.kind === 'conflict' && outlineChoice) {
           const submitted = source.pending[outlineRequest.id]?.value;
           const rebased = outlineRequest.initialized ? outlineRequest.intended : outlineRequest.value;
           if (!equalValues(submitted, decided.draft) && !equalValues(rebased, decided.draft)) {
@@ -897,15 +929,15 @@ export class EditorController {
           }
         }
         projected = { ...record, checkpoint: session.checkpoint(), completedCommits: [...completed] };
-        if (!ordinary) return projected;
+        if (!ordinary) return retainedGroupTail ? { editorRecords: [projected, retainedGroupTail], manualRecoveries: [] } : projected;
         const { confirmed, draft } = projected.checkpoint;
         const recovery = projectOrdinaryChoiceDependents(record.owner, ordinary, confirmed, draft,
           retired, choice === 'local' ? record.editorId : undefined);
-        return { ...recovery, editorRecords: [projected, ...recovery.editorRecords] };
+        return { ...recovery, editorRecords: [projected, ...recovery.editorRecords, ...retainedGroupTail ? [retainedGroupTail] : []] };
       }, ordinary ? { roots: [ordinary.first] }
         : selection ? { assertScope: requests => requireDocumentChoiceForBranch(cancelled, requests) } : undefined);
     if (!source || !projected) throw new Error('Choice checkpoint projection was not captured');
-    await this.applyChoiceProjection(source, projected, captures);
+    await this.applyChoiceProjection(source, projected, captures, groupChoice);
     await this.options.commits!.finishCancellation(ordinary ? '' : this.options.editorId, ordinary ? ids : cancelled);
   }
 
@@ -924,18 +956,24 @@ export class EditorController {
     return ordinary[0];
   }
 
-  private async applyChoiceProjection(source: SessionCheckpoint, projected: EditorRecord, captures: ReadonlySet<object>): Promise<void> {
+  private async applyChoiceProjection(source: SessionCheckpoint, projected: EditorRecord, captures: ReadonlySet<object>,
+    groupChoice?: string): Promise<void> {
     this.assertCurrent();
     const current = this.session.checkpoint();
     const laterTyping = current.editGeneration !== source.editGeneration;
-    this.session = DataSession.restore(projected.checkpoint);
-    if (laterTyping) {
+    const session = DataSession.restore(projected.checkpoint);
+    if (laterTyping && groupChoice && source.draft && current.draft) {
+      if (!session.retainGroupPlacementChoiceEdits(current, source.draft, current.draft)) {
+        await this.retainTypingDuringGroupChoice(groupChoice, source.draft, current, projected.checkpoint.confirmed);
+      }
+    } else if (laterTyping) {
       const merged = mergeDocumentFields(source.draft, current.draft, projected.checkpoint.draft);
-      this.session.edit(chooseLocalPlacement(current.confirmed.resource.collection,
+      session.edit(chooseLocalPlacement(current.confirmed.resource.collection,
         source.draft, current.draft, projected.checkpoint.draft,
         merged.value.exists ? merged.value.value as DocumentData : null, mergeFields));
-      this.session.retainCouncilTopicReview(merged.conflicts);
+      session.retainCouncilTopicReview(merged.conflicts);
     }
+    this.session = session;
     this.completedCommits = projected.completedCommits ?? [];
     this.pendingCaptures.retire(captures);
     this.result = null;
@@ -946,6 +984,22 @@ export class EditorController {
     this.errorCode = null;
     this.emit();
     if (laterTyping) await this.persist();
+  }
+
+  private async retainTypingDuringGroupChoice(requestId: string, base: DocumentData, source: SessionCheckpoint,
+    accepted: ResourceSnapshot): Promise<void> {
+    // Leave the mounted copy intact until all typing, including input during storage, is on disk.
+    let authored = source;
+    while (authored.draft) {
+      const copy = retainedGroupPlacementDraft(this.options.owner, this.options.editorId, requestId, 'during-choice',
+        authored, accepted, base, authored.draft);
+      await this.options.store.put(copy);
+      this.assertCurrent();
+      const latest = this.session.checkpoint();
+      if (latest.editGeneration === authored.editGeneration) return;
+      authored = latest;
+    }
+    throw Object.assign(new Error('Another document action arrived during the group position choice'), { code: PENDING_DELIVERY_FIRST });
   }
 
   resolveExactManualChoice(decision: ExactManualChoice, recheck: () => void): Promise<void> {
