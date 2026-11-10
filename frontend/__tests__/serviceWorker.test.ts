@@ -73,8 +73,10 @@ describe('service worker transport boundary', () => {
       acceptAddress: address => {
         try {
           const url = new URL(address);
-          return url.origin === 'https://my-preacher-helper.com' && /^\/sermons\/[a-zA-Z0-9-]+$/.test(url.pathname)
-            && !url.search && !url.hash;
+          return url.origin === 'https://my-preacher-helper.com' && !url.hash
+            && (((['/', '/admin'].includes(url.pathname) || /^\/sermons\/[a-zA-Z0-9-]+$/.test(url.pathname)) && !url.search)
+              || (/^\/sermons\/warm-document\/plan(?:\/manual)?$/.test(url.pathname)
+                && ['', '?planView=preaching'].includes(url.search)));
         } catch { return false; }
       },
     });
@@ -302,8 +304,7 @@ describe('service worker transport boundary', () => {
     return (handler as { handle: (args: typeof options) => Promise<Response> }).handle(options);
   }
 
-  async function retainPrefetchFixture() {
-    const url = 'https://my-preacher-helper.com/sermons/warm-prefetch';
+  async function retainPrefetchFixture(url = 'https://my-preacher-helper.com/sermons/warm-prefetch') {
     const fetchSpy = jest.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('saved root Flight', {
       headers: { 'content-type': 'text/x-component' },
     }));
@@ -481,6 +482,84 @@ describe('service worker transport boundary', () => {
         } finally { globalThis.fetch = original; jest.useRealTimers(); }
       }
     );
+
+    function navigateDocument(href: string, network: Promise<Response>) {
+      const url = new URL(href);
+      const rule = mockOptions.runtimeCaching.find(candidate => candidate.matcher(opened(href)))!;
+      const handler = rule.handler as (args: { request: Request; event: unknown; url: URL }) => Promise<Response>;
+      return handler({ request: new Request(href), event: { preloadResponse: network }, url });
+    }
+
+    it.each(['/sermons/warm-document/plan/manual?planView=preaching', '/sermons/warm-document/plan?planView=preaching'])(
+      'opens a known local document promptly when the network stalls at %s', async path => {
+        const href = new URL(path, START).href;
+        await retainPrefetchFixture(href);
+        jest.useFakeTimers();
+        try {
+          let finished = false;
+          const response = navigateDocument(href, new Promise<Response>(() => undefined)).then(result => {
+            finished = true;
+            return result;
+          });
+          await jest.advanceTimersByTimeAsync(1_000);
+          const finishedPromptly = finished;
+          await jest.advanceTimersByTimeAsync(2_001);
+          expect(await (await response).text()).toBe('precached /~offline');
+          expect(finishedPromptly).toBe(true);
+        } finally { jest.useRealTimers(); }
+      },
+    );
+
+    async function expectOrdinaryDocumentWait(href: string) {
+      let finished = false;
+      const response = navigateDocument(href, new Promise<Response>(() => undefined)).then(result => {
+        finished = true;
+        return result;
+      });
+      await jest.advanceTimersByTimeAsync(1_000);
+      expect(finished).toBe(false);
+      await jest.advanceTimersByTimeAsync(2_001);
+      expect(await (await response).text()).toBe('precached /~offline');
+    }
+
+    it('keeps the ordinary wait for an address that was never saved in this form', async () => {
+      jest.useFakeTimers();
+      try {
+        await expectOrdinaryDocumentWait(new URL('/sermons/warm-document/plan/manual?planView=preaching&view=other', START).href);
+      } finally { jest.useRealTimers(); }
+    });
+
+    it.each(['/', '/admin', '/sermons/warm-document', '/sermons/warm-document/plan/manual'])(
+      'keeps the ordinary server wait for %s even after a visit', async path => {
+      const href = new URL(path, START).href;
+      await retainPrefetchFixture(href);
+      jest.useFakeTimers();
+      try { await expectOrdinaryDocumentWait(href); }
+      finally { jest.useRealTimers(); }
+    });
+
+    it('falls back on the ordinary deadline if the saved-page catalog goes silent', async () => {
+      const href = new URL('/sermons/warm-document/plan/manual?planView=preaching', START).href;
+      await retainPrefetchFixture(href);
+      const gate = mockOfflineHarness.holdNextRead('catalog');
+      jest.useFakeTimers();
+      try {
+        await expectOrdinaryDocumentWait(href);
+        await gate.started;
+      } finally {
+        gate.release();
+        jest.useRealTimers();
+      }
+    });
+
+    it('delivers a timely explicit server response even when the private page is saved', async () => {
+      const href = new URL('/sermons/warm-document/plan/manual?planView=preaching', START).href;
+      await retainPrefetchFixture(href);
+      const refusal = new Response('Forbidden', { status: 403 });
+      const fresh = new Response('Fresh document');
+      await expect(navigateDocument(href, Promise.resolve(refusal))).resolves.toBe(refusal);
+      await expect(navigateDocument(href, Promise.resolve(fresh))).resolves.toBe(fresh);
+    });
 
     it('applies only to supported shell pages opened as same-origin documents', () => {
       const rule = startRule();

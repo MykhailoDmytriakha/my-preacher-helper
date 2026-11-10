@@ -40,3 +40,10 @@ export function resolveOfflineShellRoute(pathname: string): OfflineShellRoute | 
   }
   return null;
 }
+
+/** Only the already viewed, read-only preaching routes may use the shorter HTML wait. */
+export function isPreachingShellDocument(url: URL): boolean {
+  const route = resolveOfflineShellRoute(url.pathname);
+  return (route === 'sermonPlan' || route === 'sermonManualPlan')
+    && url.searchParams.get('planView') === 'preaching';
+}

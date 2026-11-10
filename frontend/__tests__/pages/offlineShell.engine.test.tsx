@@ -1,7 +1,8 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { useParams } from 'next/navigation';
 
 import { createBrowserDataEngine } from '@/data-engine/browser.client';
+import { reportServerReachable, reportServerUnreachable } from '@/utils/connectivity';
 import OfflineShell from '@/~offline/page';
 
 import { membershipEngineHarness } from '../../test-utils/membershipEngineHarness';
@@ -11,6 +12,13 @@ let mockAuth: { user: { uid: string } | null; loading: boolean } = { user: { uid
 jest.mock('@/providers/AuthProvider', () => ({
   ...jest.requireActual('@/providers/AuthProvider'),
   useAuth: () => mockAuth,
+}));
+const mockReplace = jest.fn();
+jest.mock('next/navigation', () => ({
+  usePathname: jest.fn().mockReturnValue('/'),
+  useParams: jest.fn().mockReturnValue({}),
+  useSearchParams: () => new URLSearchParams(),
+  useRouter: () => ({ replace: mockReplace, push: jest.fn(), refresh: jest.fn(), back: jest.fn() }),
 }));
 jest.mock('@/data-engine/browser.client', () => ({ createBrowserDataEngine: jest.fn() }));
 jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
@@ -27,7 +35,7 @@ jest.mock('@/(pages)/(private)/dashboard/page', () => {
   };
 });
 
-beforeEach(() => { jest.mocked(useParams).mockReturnValue({}); });
+beforeEach(() => { jest.mocked(useParams).mockReturnValue({}); mockReplace.mockClear(); });
 jest.mock('@/(pages)/(private)/care/page', () => () => <p>Care overview probe</p>);
 jest.mock('@/(pages)/(private)/care/council/page', () => () => <p>Councils list probe</p>);
 jest.mock('@/(pages)/(private)/care/orders/page', () => () => <p>Orders list probe</p>);
@@ -113,6 +121,33 @@ describe('offline shell', () => {
       } finally { view.unmount(); }
     }
   );
+
+  it.each([true, false])('returns a signed-out preaching view to sign-in once online (initially online: %s)', async online => {
+    const network = jest.spyOn(window.navigator, 'onLine', 'get').mockReturnValue(online);
+    if (online) reportServerReachable(); else reportServerUnreachable();
+    mockAuth = { user: null, loading: true };
+    window.history.replaceState(null, '', '/sermons/private/plan/manual?planView=preaching');
+    const view = render(<TestProviders><OfflineShell /></TestProviders>);
+    try {
+      expect(mockReplace).not.toHaveBeenCalled();
+      mockAuth = { user: null, loading: false };
+      view.rerender(<TestProviders><OfflineShell /></TestProviders>);
+      if (!online) {
+        expect(mockReplace).not.toHaveBeenCalled();
+        expect(await screen.findByRole('button', { name: 'buttons.retry' })).toBeInTheDocument();
+        network.mockReturnValue(true);
+        fireEvent(window, new Event('online'));
+        expect(mockReplace).not.toHaveBeenCalled();
+        network.mockReturnValue(false);
+        reportServerReachable();
+      }
+      expect(mockReplace).toHaveBeenCalledWith('/');
+    } finally {
+      view.unmount();
+      network.mockRestore();
+      reportServerReachable();
+    }
+  });
 
   // BUG-20261004-weak-network-delays-offline-navigation: the worker now opens the shell at the start of the
   // app on a weak signal too, and someone signed out must not get the private dashboard instead of the login.

@@ -1,5 +1,6 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
 import {
   Component,
   Suspense,
@@ -13,7 +14,8 @@ import {
 import DashboardPage from '@/(pages)/(private)/dashboard/page';
 import { PrivateChrome, PrivateWorkspace } from '@/components/PrivateWorkspace';
 import { useAuth } from '@/providers/AuthProvider';
-import { resolveOfflineShellRoute, type OfflineShellRoute } from '@/utils/offlineShellRoutes';
+import { getConnectivityStatus, subscribeToConnectivity } from '@/utils/connectivity';
+import { isPreachingShellDocument, resolveOfflineShellRoute, type OfflineShellRoute } from '@/utils/offlineShellRoutes';
 import { useTranslation } from '@locales/useTranslation';
 
 // Route-agnostic offline app-shell. The service worker serves this precached
@@ -143,10 +145,20 @@ export default function OfflineShell() {
   // Keep the build-time and first client render identical until the real address is read.
   const [requestedPath, setRequestedPath] = useState<string | null>(null);
   const { user, loading } = useAuth();
+  const router = useRouter();
 
   useEffect(() => {
     setRequestedPath(window.location.pathname);
   }, []);
+
+  useEffect(() => {
+    if (loading || user || !isPreachingShellDocument(new URL(window.location.href))) return;
+    // An online preaching fallback keeps the sign-in behavior of the private layout.
+    const openSignIn = () => { if (getConnectivityStatus()) router.replace('/'); };
+    const unsubscribe = subscribeToConnectivity(openSignIn);
+    openSignIn();
+    return unsubscribe;
+  }, [loading, user, router]);
 
   if (requestedPath === null) {
     return <GenericOfflineCard requestedPath="" pending />;

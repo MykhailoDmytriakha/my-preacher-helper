@@ -4,8 +4,8 @@ import { CacheFirst, NetworkFirst, NetworkOnly, Serwist } from "serwist";
 import { BIBLE_CROSSREFS_CACHE, isBibleCrossRefsPath, isCrossRefsShaped } from "./utils/bibleCrossRefsCache";
 import { BIBLE_TEXT_CACHE, isBibleTextAnswer, isBibleTextPath, isBookShaped } from "./utils/bibleTextCache";
 import { createOfflinePageStorage } from "./utils/offlinePageStorage";
-import { NAVIGATION_DEADLINE_MS, OFFLINE_PAGE_SEEN, OFFLINE_RSC_MAX_ENTRIES, answerWithinDeadline, createOfflineRscNavigation, isRememberedPage, isRscNavigation } from "./utils/offlineRscNavigation";
-import { resolveOfflineShellRoute } from "./utils/offlineShellRoutes";
+import { NAVIGATION_DEADLINE_MS, OFFLINE_PAGE_SEEN, OFFLINE_RSC_MAX_ENTRIES, WARM_DOCUMENT_DEADLINE_MS, answerWithinDeadline, createOfflineRscNavigation, isRememberedPage, isRscNavigation } from "./utils/offlineRscNavigation";
+import { isPreachingShellDocument, resolveOfflineShellRoute } from "./utils/offlineShellRoutes";
 import { createPrecacheScriptRecovery } from "./utils/precacheScriptRecovery";
 
 import type { PrecacheEntry, RuntimeCaching, SerwistGlobalConfig } from "serwist";
@@ -117,10 +117,16 @@ const runtimeCaching: RuntimeCaching[] = [
   },
   {
     matcher: ({ request, url }) => request?.mode === "navigate" && url.origin === self.origin && resolveOfflineShellRoute(url.pathname) !== null,
-    handler: ({ request, event }) => answerWithinDeadline(
+    handler: ({ request, event, url }) => answerWithinDeadline(
       // A refused navigation preload is no answer: the network is asked directly, as Serwist does.
       Promise.resolve((event as FetchEvent).preloadResponse).catch(() => undefined).then(preloaded => preloaded ?? fetch(request)),
-      () => serwist.matchPrecache("/~offline"),
+      async () => {
+        const [response, warm] = await Promise.all([
+          serwist.matchPrecache("/~offline"),
+          isPreachingShellDocument(url) && offlineNavigation.hasWarmPage(url),
+        ]);
+        return response ? { response, deadlineMs: warm ? WARM_DOCUMENT_DEADLINE_MS : undefined } : undefined;
+      },
       { deadlineMs: NAVIGATION_DEADLINE_MS },
     ),
   },

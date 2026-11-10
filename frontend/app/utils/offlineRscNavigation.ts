@@ -133,6 +133,8 @@ const WARM_TIMEOUT_MS = 20_000;
 const STORAGE_TIMEOUT_MS = 10_000;
 /** How long a navigation to what this device already holds waits for the network before its kept copy answers. */
 export const NAVIGATION_DEADLINE_MS = 3_000;
+export const WARM_DOCUMENT_DEADLINE_MS = 500;
+const WARM_DOCUMENT_LOOKUP_MS = 100;
 /** How long after the network's first answer a copy found in storage still counts. */
 const STORAGE_GRACE_MS = 300;
 
@@ -149,6 +151,8 @@ function withinMs<T>(read: Promise<T>, ms: number): Promise<T> {
   return Promise.race([read, silence]).finally(() => clearTimeout(timer));
 }
 
+type KeptNavigation = { response: Response; deadlineMs?: number };
+
 /**
  * WHAT THIS DEVICE ALREADY HOLDS DOES NOT WAIT FOR A WEAK SIGNAL
  * (BUG-20261004-weak-network-delays-offline-navigation). Offline a request fails at once and the kept
@@ -164,7 +168,7 @@ function withinMs<T>(read: Promise<T>, ms: number): Promise<T> {
  * Used for client-side navigations (their kept payload) and the start of the app (the precached offline
  * shell, `sw.ts`).
  */
-export async function answerWithinDeadline(network: Promise<Response>, kept: () => Promise<Response | undefined>,
+export async function answerWithinDeadline(network: Promise<Response>, kept: () => Promise<KeptNavigation | undefined>,
   { deadlineMs, storageTimeoutMs = STORAGE_TIMEOUT_MS, replaceable = () => true }:
   { deadlineMs: number; storageTimeoutMs?: number; replaceable?: (answer: Response) => boolean }): Promise<Response> {
   const started = performance.now();
@@ -187,7 +191,7 @@ export async function answerWithinDeadline(network: Promise<Response>, kept: () 
   // What is left of the deadline: a copy found after it answers at once, unless the network is whole by then.
   let timer: ReturnType<typeof setTimeout> | undefined;
   const late = new Promise<'late'>(resolve => {
-    timer = setTimeout(() => resolve('late'), Math.max(0, deadlineMs - (performance.now() - started)));
+    timer = setTimeout(() => resolve('late'), Math.max(0, (copy.deadlineMs ?? deadlineMs) - (performance.now() - started)));
   });
   const first = await Promise.race([whole, late]).catch(() => 'failed' as const).finally(() => clearTimeout(timer));
   if (first !== 'late' && first !== 'failed') return first;
@@ -196,7 +200,7 @@ export async function answerWithinDeadline(network: Promise<Response>, kept: () 
   abandoned = true;
   void reading?.cancel().catch(() => undefined);
   void network.then(answer => answer.body?.cancel()).catch(() => undefined);
-  return copy;
+  return copy.response;
 }
 
 /** Whole cache work is cancellable; document writes use their separate, non-cancellable contract. */
@@ -361,6 +365,15 @@ export function createOfflineRscNavigation({ fetchFn, caches, storage, warmTimeo
     return outcome === 'skipped' ? 'failed' : outcome;
   }
 
+  /** A warm catalog entry belongs to this manifest and was committed with its payload. */
+  function hasWarmPage(url: URL): Promise<boolean> {
+    const address = offlineRscKey(url);
+    return cacheWorkWithin(async signal => {
+      const entries = await (await pages()).entries(signal);
+      return entries.some(entry => entry.warm && entry.address === address);
+    }, Math.min(WARM_DOCUMENT_LOOKUP_MS, storageTimeoutMs), false).catch(() => false);
+  }
+
   function respond(request: Request, preferredResponse = fetchFn(request)): Promise<Response> {
     return answerWithinDeadline(preferredResponse, () => cacheWorkWithin(async signal => {
       await ready();
@@ -369,7 +382,7 @@ export function createOfflineRscNavigation({ fetchFn, caches, storage, warmTimeo
       const response = new Response([204, 205].includes(payload.status) ? null : payload.body, {
         headers: payload.headers, status: payload.status, statusText: payload.statusText,
       });
-      return isFlightPayload(response) ? response : undefined;
+      return isFlightPayload(response) ? { response } : undefined;
     }, storageTimeoutMs, undefined), { deadlineMs: navigationDeadlineMs, storageTimeoutMs, replaceable: isFlightPayload });
   }
 
@@ -393,5 +406,5 @@ export function createOfflineRscNavigation({ fetchFn, caches, storage, warmTimeo
       }
     }, warmTimeoutMs, undefined).catch(() => undefined).finally(() => { rewarming = undefined; });
   }
-  return { respond, remember, retire, rewarm };
+  return { respond, remember, retire, rewarm, hasWarmPage };
 }
