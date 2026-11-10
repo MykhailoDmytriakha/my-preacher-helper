@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SERMON_PLAN_AGGREGATE } from "@/services/sermons.client";
 import { newClientId } from "@/utils/clientId";
 import { readDraftAddress } from "@/utils/draftAddress";
-import { clearDraftIfMatches, draftKey, listDraftKeys, readDraft, readDraftsStrict, saveDraft } from "@/utils/durableDraft";
+import { clearDraftIfMatches, draftKey, listDraftKeys, readDraft, readDraftsStrict, saveDraft, type DurableDraft } from "@/utils/durableDraft";
 
 import { durablePlanCells, type DurablePlanState } from "./planDraftCheckpoint";
 
@@ -19,9 +19,17 @@ export interface PlanTextDraft {
   selectCopy: (nodeId: string, key: string) => void;
   accept: () => void;
   discard: () => void;
+  markCellAuthored: (nodeId: string, text: string) => void;
+  holdCellAlternative: (nodeId: string, text: string) => ((keep: boolean) => void) | undefined;
   orphaned: PlanOrphanCell[];
   forget: (cells: PlanOrphanCell[]) => void;
 }
+
+type AdoptedCell = Omit<PlanDraftCopy, 'sourceRecord'> & {
+  sourceRecord?: DurableDraft<string>;
+  seen: boolean;
+  handoff?: { authoredAt: number; shown: string | undefined; interrupted: boolean };
+};
 
 const WRITE_DELAY_MS = 250;
 const cellAggregate = (nodeId: string) => `${SERMON_PLAN_AGGREGATE}:${nodeId}`;
@@ -57,7 +65,8 @@ export default function usePlanTextDraft({
     owner: uid, documentId: sermonId, writerId: newClientId(), enabled: false,
     typed: new Set<string>(), ours: {} as Record<string, string>, owed: {} as Record<string, string>,
     cells: {} as Record<string, string>,
-    content: {} as Record<string, string>, durableCells: null as Record<string, string> | null, adopted: new Map<string, PlanDraftCopy & { seen: boolean }>(),
+    authoring: 0, authored: new Map<string, { text: string; order: number }>(),
+    content: {} as Record<string, string>, durableCells: null as Record<string, string> | null, adopted: new Map<string, AdoptedCell>(),
   }), [uid, sermonId]);
   session.enabled = Boolean(uid && sermonId) && !frozen;
   Object.entries(modifiedNodeIds).forEach(([id, dirty]) => { if (dirty) session.typed.add(id); });
@@ -76,7 +85,20 @@ export default function usePlanTextDraft({
   session.cells = unconfirmed;
   session.content = contentByNodeId;
   session.durableCells = useMemo(() => durablePlanCells(durableState, uid, sermonId), [durableState, uid, sermonId]);
-  session.adopted.forEach(copy => { if (unconfirmed[copy.id] === copy.text) copy.seen = true; });
+  session.adopted.forEach(copy => {
+    const typed = unconfirmed[copy.id];
+    const { handoff } = copy;
+    const authored = session.authored.get(copy.id);
+    const shown = contentByNodeId[copy.id];
+    const continues = handoff && authored && authored.order >= handoff.authoredAt && authored.text === shown;
+    if (handoff && shown !== handoff.shown) {
+      handoff.shown = shown;
+      // A generated or observed replacement ends this authoring chain. An edit
+      // made afterwards may continue that replacement instead of the chosen copy.
+      if (!continues) handoff.interrupted = true;
+    }
+    if (typed === copy.text || (typed !== undefined && typed === shown && continues && !handoff.interrupted)) copy.seen = true;
+  });
 
   const persist = useCallback(() => {
     const { owner, documentId, writerId, cells, ours, owed } = session;
@@ -87,14 +109,20 @@ export default function usePlanTextDraft({
       if (saveDraft(key, text)) { ours[id] = text; delete owed[id]; }
       else owed[id] = text;
     });
-    // A restored copy first becomes an actual dirty/queued value. It can retire
-    // only when that same payload settles through the existing durable write path.
     session.adopted.forEach((copy, key) => {
-      if (copy.seen && !(copy.id in cells) && session.content[copy.id] === copy.text && session.durableCells?.[copy.id] === copy.text) {
-        clearDraftIfMatches(key, copy.text, copy.sourceRecord);
-        const remaining = readDraftsStrict([key]);
-        if (remaining && !remaining.has(key)) session.adopted.delete(key);
-      }
+      if (!copy.seen) return;
+      const current = session.content[copy.id];
+      const saved = current !== undefined && !(copy.id in cells) && session.durableCells?.[copy.id] === current;
+      // A selected alternative may be followed by authored words. A late generator
+      // can replace a working cell, so only a proven author edit at a durable checkpoint
+      // can retire its source.
+      const authored = session.authored.get(copy.id);
+      const handoff = copy.handoff;
+      const transferred = handoff && !handoff.interrupted && authored && authored.order >= handoff.authoredAt && authored.text === current;
+      if (!saved || (current !== copy.text && !transferred)) return;
+      clearDraftIfMatches(key, copy.text, copy.sourceRecord);
+      const remaining = readDraftsStrict([key]);
+      if (remaining && !remaining.has(key)) session.adopted.delete(key);
     });
     // Only this opening's exact copies retire when its edit settles.
     [ours, owed].forEach(known => Object.keys(known).forEach(id => {
@@ -136,6 +164,29 @@ export default function usePlanTextDraft({
   const recovered = useMemo(() => selected.length ? Object.fromEntries(selected.map(copy => [copy.id, copy.text])) : null, [selected]);
   const selectionRef = useRef({ session, selected });
   selectionRef.current = { session, selected };
+  const markCellAuthored = useCallback((id: string, text: string) => {
+    session.authored.set(id, { text, order: ++session.authoring });
+  }, [session]);
+  const holdCellAlternative = useCallback((id: string, text: string) => {
+    const { owner, documentId } = session;
+    if (!session.enabled || !owner || !documentId || selectionRef.current.session !== session) return;
+    const key = cellKey(owner, documentId, id, newClientId());
+    const saved = saveDraft(key, text);
+    const sourceRecord = saved ? readDraft<string>(key) ?? undefined : undefined;
+    return (keep: boolean) => {
+      if (!session.enabled || selectionRef.current.session !== session) return;
+      if (!keep) {
+        clearDraftIfMatches(key, text, sourceRecord);
+      } else {
+        const authored = session.authored.get(id);
+        const authoredAt = authored?.text === text ? authored.order : session.authoring + 1;
+        session.adopted.set(key, {
+          id, key, text, sourceRecord, seen: false,
+          handoff: { authoredAt, shown: session.content[id], interrupted: false },
+        });
+      }
+    };
+  }, [session]);
   const selectCopy = useCallback((nodeId: string, key: string) => {
     setFound(previous => previous?.session === session && previous.copies.some(copy => copy.id === nodeId && copy.key === key)
       ? { ...previous, selected: { ...previous.selected, [nodeId]: key } } : previous);
@@ -168,6 +219,6 @@ export default function usePlanTextDraft({
     });
     setFound(previous => previous?.session === session ? { ...previous, copies: previous.copies.filter(copy => !forgotten.has(copy.key)) } : previous);
   }, [session]);
-  return useMemo(() => ({ recovered, copies, selectedCopies: selected, selectCopy, accept, discard, orphaned, forget }),
-    [accept, copies, discard, forget, orphaned, recovered, selectCopy, selected]);
+  return useMemo(() => ({ recovered, copies, selectedCopies: selected, selectCopy, accept, discard, markCellAuthored, holdCellAlternative, orphaned, forget }),
+    [accept, copies, discard, forget, holdCellAlternative, markCellAuthored, orphaned, recovered, selectCopy, selected]);
 }

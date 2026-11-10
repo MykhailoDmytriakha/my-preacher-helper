@@ -25,7 +25,8 @@ const STATUS_OPTIONS: Array<{ value: GroupBlockStatus; labelKey: string; fallbac
 interface FlowEditorProps {
     flowItem: GroupFlowItem;
     template: GroupBlockTemplate;
-    onUpdateTemplate: (updates: Partial<GroupBlockTemplate>) => void;
+    onUpdateTemplate: (updates: Partial<GroupBlockTemplate>) => void | Promise<void>;
+    onHoldContent?: (content: string) => ReturnType<GroupPageEditor['holdBlockContent']>;
     titleScope?: GroupPageEditor['flowTitleScope'];
     onRenameBlock: (title: string) => Promise<void>;
     onSetStatus: (status: GroupBlockStatus) => Promise<void>;
@@ -39,6 +40,7 @@ export default function FlowEditor({
     flowItem,
     template,
     onUpdateTemplate,
+    onHoldContent,
     titleScope,
     onRenameBlock,
     onSetStatus,
@@ -134,8 +136,10 @@ export default function FlowEditor({
                             {t('groupFlow.editor.contentLabel', { defaultValue: 'Content' })}
                         </label>
                         <RichMarkdownEditor
+                            key={JSON.stringify([template.id, template.createdAt])}
                             value={template.content}
                             onChange={(content) => onUpdateTemplate({ content })}
+                            onHoldText={onHoldContent}
                             placeholder={t('groupFlow.editor.contentPlaceholder', {
                                 defaultValue: 'Brief guidelines, key verses, or questions...',
                             })}

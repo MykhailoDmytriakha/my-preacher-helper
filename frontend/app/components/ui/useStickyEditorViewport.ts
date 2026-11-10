@@ -1,6 +1,6 @@
 'use client';
 
-import { useLayoutEffect, useState } from 'react';
+import { useLayoutEffect, useMemo, useState } from 'react';
 
 import type { EditorProps } from '@tiptap/pm/view';
 
@@ -25,9 +25,9 @@ export function useStickyEditorViewport(stickyTop?: number) {
     const top = stickyTop === undefined ? undefined : Math.max(0, stickyTop + height);
     // Explicit undefined clears prior options: ProseMirror setProps merges keys.
     // Other edges retain the native threshold (0) and margin (5).
-    const scrollProps: Pick<EditorProps, 'scrollThreshold' | 'scrollMargin'> = {
+    const scrollProps = useMemo<Pick<EditorProps, 'scrollThreshold' | 'scrollMargin'>>(() => ({
         scrollThreshold: top === undefined ? undefined : { top, right: 0, bottom: 0, left: 0 },
         scrollMargin: top === undefined ? undefined : { top: top + 5, right: 5, bottom: 5, left: 5 },
-    };
+    }), [top]);
     return { toolbarRef: stickyTop === undefined ? undefined : toolbarRef, scrollProps };
 }

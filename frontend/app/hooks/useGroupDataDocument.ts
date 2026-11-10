@@ -10,7 +10,14 @@ import { hydrateGroup, normalizeStoredGroupFlow } from '@/utils/groupDocument';
 
 import type { DocumentUpdateOptions } from '@/data-engine/react.client';
 import type { DocumentData } from '@/data-engine/types';
-import type { Group, GroupMeetingDate } from '@/models/models';
+import type { Group, GroupBlockTemplate, GroupMeetingDate } from '@/models/models';
+
+function patchGroupBlockContent(templates: GroupBlockTemplate[], block: Pick<GroupBlockTemplate, 'id' | 'createdAt'>, content: string, updatedAt?: string) {
+  if (!templates?.some(row => row.id === block.id && row.createdAt === block.createdAt)) {
+    throw Object.assign(new Error('The block that was shown changed'), { code: 'decision-changed' });
+  }
+  return templates.map(row => row.id === block.id ? { ...row, content, ...(updatedAt ? { updatedAt } : {}) } : row);
+}
 
 /** Domain shape only: ancestry, persistence, delivery, conflict and deletion live in DataEngine. */
 export function useGroupDataDocument(groupId: string) {
@@ -36,6 +43,13 @@ export function useGroupDataDocument(groupId: string) {
     const change = changeGroup(mutate);
     await (options ? document.update(change, options) : document.update(change));
   }, [document, changeGroup]);
+  const setBlockContent = (block: Pick<GroupBlockTemplate, 'id' | 'createdAt'>, content: string) =>
+    update(current => ({ ...current, templates: patchGroupBlockContent(current.templates, block, content, new Date().toISOString()) }));
+  const holdBlockContent = (block: Pick<GroupBlockTemplate, 'id' | 'createdAt'>, content: string) =>
+    document.holdDraftAlternative(confirmed => ({
+      ...confirmed,
+      templates: patchGroupBlockContent(confirmed.templates as unknown as GroupBlockTemplate[], block, content) as unknown as DocumentData['templates'],
+    }));
   const saveFlowPlan = (mutate: (current: Group) => Group) => document.commit(changeGroup(mutate));
   const moveStep = (stepId: string, transform: (shown: Group['flow']) => Group['flow']) => {
     const opening = document.state?.checkpoint;
@@ -76,7 +90,7 @@ export function useGroupDataDocument(groupId: string) {
     enabled: !document.loading && document.status !== null,
     version: JSON.stringify([document.status?.phase, document.confirmed?.metadata?.revision]),
     list: listRecoverable, recover: document.recover });
-  return { group, document, update, saveFlowPlan, moveStep, updateGroupDetail, addMeetingDate, updateMeetingDate, removeMeetingDate,
+  return { group, document, update, setBlockContent, holdBlockContent, saveFlowPlan, moveStep, updateGroupDetail, addMeetingDate, updateMeetingDate, removeMeetingDate,
     deleteGroupDetail: document.remove, loading: document.loading, error: document.error, errorWords: document.errorWords, status: document.status,
     recovery, refresh: document.retry, acceptRemote: document.acceptRemote, keepLocal: document.keepLocal };
 }

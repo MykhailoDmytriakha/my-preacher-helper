@@ -911,7 +911,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
         [title, content, tags, scriptureRefs, type, dictationSourceIds, recordingSourceIds]
     );
 
-    const { recovered, recoveredKey, recoveries, selectRecovered, settleRecovered, acceptRecovered, discardRecovered, markCaptured, markSaved, editedAt: draftEditedAt } = useDurableDraft<NoteDraftPayload>({
+    const { recovered, recoveredKey, recoveries, selectRecovered, settleRecovered, acceptRecovered, discardRecovered, holdAlternative, markCaptured, markSaved, editedAt: draftEditedAt } = useDurableDraft<NoteDraftPayload>({
         uid,
         docId: draftDocId,
         writerId: draftWriterId,
@@ -1573,6 +1573,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
                             <RichMarkdownEditor
                                 value={content}
                                 onChange={setContent}
+                                onHoldText={typed => holdAlternative({ ...draftPayload, content: typed })}
                                 placeholder={t('studiesWorkspace.contentPlaceholder')}
                                 minHeight="300px"
                                 stickyToolbarTop={scrollLayout.toolbarTop}

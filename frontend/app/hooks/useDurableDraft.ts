@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+import { newClientId } from '@/utils/clientId';
 import { serializeContent } from '@/utils/contentFingerprint';
 import {
   clearDraftIfMatches,
@@ -18,6 +19,17 @@ import {
 
 /** How long to coalesce keystrokes before touching storage. */
 const WRITE_DELAY_MS = 250;
+
+interface DraftHandoff {
+  key: string;
+  editedAt: number;
+}
+
+interface AdoptedDraft<T> {
+  identity: string | null;
+  copy: DurableDraftCopy<T>;
+  selectedAt?: DraftHandoff;
+}
 
 export interface UseDurableDraftOptions<T> {
   /** Draft owner. Null disables the hook (no uid = no safe key to write under). */
@@ -66,6 +78,8 @@ export interface UseDurableDraftResult<T> {
   discardRecovered: () => void;
   /** Transfer this exact payload to a durably captured canonical request. */
   markCaptured: (captured: T, targetDocId: string, editedAt?: number) => void;
+  /** Hold independently confirmed words until an explicit comparison choice. */
+  holdAlternative: (value: T) => ((keep: boolean) => void) | undefined;
   /** Call after the server accepted `confirmed`; retires that draft only. */
   markSaved: (confirmed: T) => void;
 }
@@ -155,7 +169,7 @@ export function useDurableDraft<T>({
   recoveryRef.current = recovery;
   const recoveryKeyRef = useRef(recoveryKey);
   recoveryKeyRef.current = recoveryKey;
-  const adoptedRef = useRef(new Map<string, { identity: string | null; copy: DurableDraftCopy<T> }>());
+  const adoptedRef = useRef(new Map<string, AdoptedDraft<T>>());
   const inspectedKeyRef = useRef<string | null>(null);
 
   const selectRecovered = useCallback((target: string) => {
@@ -164,17 +178,27 @@ export function useDurableDraft<T>({
 
   // Matching words alone do not adopt another physical copy. Only this writer's
   // address and explicitly selected sources can transfer to canonical ownership.
-  const retireKnownCopies = useCallback((value: T, identity: string | null, ownedKeys: readonly string[] = [], covers?: (source: T, saved: T) => boolean) => {
+  const retireKnownCopies = useCallback((
+    value: T,
+    identity: string | null,
+    ownedKeys: readonly string[] = [],
+    covers?: (source: T, saved: T) => boolean,
+    handoff?: DraftHandoff & { only?: boolean },
+  ) => {
     const serialised = serializeContent(value);
     const owned = new Set(ownedKeys);
     const known = recoveryRef.current.identity === identity ? recoveryRef.current.copies.filter(copy => owned.has(copy.key)) : [];
-    const adopted = [...adoptedRef.current.values()].filter(entry => entry.identity === identity).map(entry => entry.copy);
+    const adopted = [...adoptedRef.current.values()].filter(entry => entry.identity === identity);
+    const transferred = new Set(adopted.filter(({ selectedAt }) =>
+      handoff && selectedAt && selectedAt.key === handoff.key && handoff.editedAt > selectedAt.editedAt,
+    ).map(({ copy }) => copy.key));
     const retired = new Set<string>();
-    for (const copy of [...known, ...adopted]) {
-      if (serializeContent(copy.value) !== serialised && !covers?.(copy.value, value)) continue;
+    for (const copy of [...known, ...adopted.map(entry => entry.copy)]) {
+      const moved = transferred.has(copy.key);
+      if (!moved && (handoff?.only || (serializeContent(copy.value) !== serialised && !covers?.(copy.value, value)))) continue;
       const { key: sourceKey, sourceRecord, ...expectedCopy } = copy;
       const physical = sourceRecord ?? expectedCopy;
-      clearDraftIfMatches(sourceKey, covers ? physical.value : value, physical);
+      clearDraftIfMatches(sourceKey, moved || covers ? physical.value : value, physical);
       const remaining = readDraftsStrict([sourceKey]);
       if (!remaining || remaining.has(sourceKey)) continue;
       retired.add(sourceKey);
@@ -255,7 +279,7 @@ export function useDurableDraft<T>({
       // person returned to the baseline before this writer's first debounce.
       const identity = recoveryKeyRef.current;
       for (const entry of [...adoptedRef.current.values()]) {
-        if (entry.identity === identity) retireKnownCopies(entry.copy.value, identity);
+        if (entry.identity === identity && !entry.selectedAt) retireKnownCopies(entry.copy.value, identity);
       }
       return;
     }
@@ -263,6 +287,7 @@ export function useDurableDraft<T>({
       const record = readDraft<T>(targetKey);
       if (record?.editedAt === editedAt && serializeContent(record.value) === serialised) {
         ourDraftRef.current = { key: targetKey, value: serialised, record };
+        if (adoptedRef.current.size) retireKnownCopies(next, recoveryKeyRef.current, [], undefined, { key: targetKey, editedAt, only: true });
       }
     }
   }, [creationTargetId, retireKnownCopies]);
@@ -361,6 +386,27 @@ export function useDurableDraft<T>({
       copies: current.copies.filter(copy => copy.key !== rejected.key || serializeContent(copy.value) !== serializeContent(rejected.value)) });
   }, []);
 
+  const holdAlternative = useCallback((alternative: T) => {
+    if (!uid || !docId) return;
+    const sourceKey = draftKey(uid, docId, aggregate, newClientId());
+    const identity = recoveryKey;
+    const saved = saveDraft(sourceKey, alternative, creationTargetId, false, nextDraftEditTime(editRef.current.editedAt));
+    const record = saved ? readDraft<T>(sourceKey) : null;
+    return (keep: boolean) => {
+      if (!keep) {
+        clearDraftIfMatches(sourceKey, alternative, record ?? undefined);
+      } else if (record && keyRef.current && identity === recoveryKeyRef.current) {
+        // Keep the physical source until this writer has durably taken over. It may already
+        // contain later keystrokes when its first capture happens.
+        adoptedRef.current.set(sourceKey, {
+          identity,
+          copy: { ...record, key: sourceKey, sourceRecord: record },
+          selectedAt: { key: keyRef.current, editedAt: editRef.current.editedAt },
+        });
+      }
+    };
+  }, [uid, docId, aggregate, recoveryKey, creationTargetId]);
+
   const markCaptured = useCallback((captured: T, targetDocId: string, capturedEditedAt?: number) => {
     if (!uid || !targetDocId) return;
     // A late callback for an earlier A cannot capture A typed again after B.
@@ -376,7 +422,9 @@ export function useDurableDraft<T>({
     const ownsSource = sourceKey && readDraft(sourceKey)?.creationTargetId === targetDocId;
     if (ownsSource) clearDraftIfMatches(sourceKey, captured);
     if (keyRef.current === targetKey || (ownsSource && keyRef.current === sourceKey)) {
-      retireKnownCopies(captured, recoveryKey, ownsSource ? keys : [targetKey]);
+      const writerKey = keyRef.current;
+      const handoff = capturedEditedAt === undefined || !writerKey ? undefined : { key: writerKey, editedAt: capturedEditedAt };
+      retireKnownCopies(captured, recoveryKey, ownsSource ? keys : [targetKey], undefined, handoff);
       if (ourDraftRef.current?.value === serialised) ourDraftRef.current = null;
     }
   }, [uid, key, aggregate, writerId, creationTargetId, recoveryKey, retireKnownCopies]);
@@ -386,7 +434,8 @@ export function useDurableDraft<T>({
     const serialised = serializeContent(event.value);
     const sameEdit = event.editedAt === editRef.current.editedAt;
     if (sameEdit) capturedRef.current = { keys: [event.key], value: serialised };
-    retireKnownCopies(event.value as T, recoveryKeyRef.current, [event.key]);
+    const handoff = sameEdit && event.editedAt !== undefined ? { key: event.key, editedAt: event.editedAt } : undefined;
+    retireKnownCopies(event.value as T, recoveryKeyRef.current, [event.key], undefined, handoff);
     if (sameEdit && ourDraftRef.current?.value === serialised) ourDraftRef.current = null;
   }), [retireKnownCopies]);
 
@@ -407,5 +456,5 @@ export function useDurableDraft<T>({
     // A replacement at that address can never satisfy this old snapshot.
   }, [key, recoveryKey, retireKnownCopies, isRecoveredDraftSaved]);
 
-  return { editedAt: editRef.current.editedAt, recovered, recoveredKey, recoveries, selectRecovered, settleRecovered, acceptRecovered, discardRecovered, markCaptured, markSaved };
+  return { editedAt: editRef.current.editedAt, recovered, recoveredKey, recoveries, selectRecovered, settleRecovered, acceptRecovered, discardRecovered, holdAlternative, markCaptured, markSaved };
 }

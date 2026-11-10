@@ -81,6 +81,72 @@ afterEach(() => {
 });
 
 describe('the plan draft', () => {
+  it('reopens a held composition under the same cell without changing its stored text', () => {
+    const opening = render({ content: { p1: 'Incoming copy', p2: 'Unrelated point' } });
+    act(() => { opening.result.current.holdCellAlternative?.('p1', 'Confirmed composition'); });
+    opening.unmount();
+
+    const reopened = render({ content: { p1: 'Incoming copy', p2: 'Unrelated point' } });
+    expect(reopened.result.current.recovered).toEqual({ p1: 'Confirmed composition' });
+    expect(storedCell('p2')).toBeUndefined();
+    reopened.unmount();
+  });
+
+  it('retires the selected composition only after authored continuation reaches the durable checkpoint', () => {
+    const opening = render({ content: { p1: 'Incoming copy', p2: 'Unrelated point' } });
+    act(() => {
+      opening.result.current.markCellAuthored('p1', 'Confirmed composition');
+      opening.result.current.holdCellAlternative?.('p1', 'Confirmed composition')?.(true);
+    });
+    expect(findDraftCopies<string>(UID, SERMON, 'plan:p1').map(copy => copy.value)).toEqual(['Confirmed composition']);
+    const kept = findDraftCopies<string>(UID, SERMON, 'plan:p1')[0].key;
+    opening.rerender({ content: { p1: 'Incoming copy', p2: 'Other edit' }, modified: { p2: true }, pending: new Set(), live: new Set(['p1', 'p2']) });
+    act(() => { jest.advanceTimersByTime(300); });
+    expect(readDraft(kept)?.value).toBe('Confirmed composition');
+    act(() => opening.result.current.markCellAuthored('p1', 'Continued typing'));
+    opening.rerender({ content: { p1: 'Continued typing', p2: 'Other edit' }, modified: { p1: true, p2: true }, pending: new Set(), live: new Set(['p1', 'p2']) });
+    act(() => { jest.advanceTimersByTime(300); });
+    expect(readDraft(kept)?.value).toBe('Confirmed composition');
+    opening.rerender({ content: { p1: 'Continued typing', p2: 'Other edit' }, modified: { p2: true }, pending: new Set(),
+      live: new Set(['p1', 'p2']), durableState: durableState({ p1: 'Continued typing' }) });
+    act(() => { jest.advanceTimersByTime(300); });
+    expect(readDraft(kept)).toBeNull();
+    expect(storedCell('p2')).toBe('Other edit');
+    opening.unmount();
+  });
+
+  it('keeps selected words when a generator replaces the same cell before the draft write', () => {
+    const opening = render({ content: { p1: 'Incoming copy' } });
+    let choose: ((keep: boolean) => void) | undefined;
+    act(() => { choose = opening.result.current.holdCellAlternative('p1', 'Confirmed composition'); });
+    const kept = findDraftCopies<string>(UID, SERMON, 'plan:p1')[0].key;
+    act(() => {
+      opening.result.current.markCellAuthored('p1', 'Confirmed composition');
+      choose?.(true);
+    });
+    opening.rerender({ content: { p1: 'Background generation' }, modified: { p1: true }, pending: new Set(), live: new Set(['p1']) });
+    act(() => { jest.advanceTimersByTime(300); });
+    expect(readDraft(kept)?.value).toBe('Confirmed composition');
+    act(() => opening.result.current.markCellAuthored('p1', 'Background generation edited'));
+    opening.rerender({ content: { p1: 'Background generation edited' }, modified: { p1: true }, pending: new Set(), live: new Set(['p1']) });
+    opening.rerender({ content: { p1: 'Background generation edited' }, modified: {}, pending: new Set(), live: new Set(['p1']),
+      durableState: durableState({ p1: 'Background generation edited' }) });
+    act(() => { jest.advanceTimersByTime(300); });
+    expect(readDraft(kept)?.value).toBe('Confirmed composition');
+    opening.unmount();
+  });
+
+  it('discards only the physical composition copy that was shown', () => {
+    storeCells({ p1: 'Another kept copy' });
+    const opening = render({ content: { p1: 'Incoming copy' } });
+    let choose: ((keep: boolean) => void) | undefined;
+    act(() => { choose = opening.result.current.holdCellAlternative?.('p1', 'Confirmed composition'); });
+    expect(findDraftCopies<string>(UID, SERMON, 'plan:p1')).toHaveLength(2);
+    act(() => { choose?.(false); });
+    expect(findDraftCopies<string>(UID, SERMON, 'plan:p1').map(copy => copy.value)).toEqual(['Another kept copy']);
+    opening.unmount();
+  });
+
   it('requires durable owner, document and exact payload before retiring restored or own copies', () => {
     storeCells({ p1: 'Restored words' });
     const view = render({});

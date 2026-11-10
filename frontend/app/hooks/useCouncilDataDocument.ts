@@ -18,6 +18,13 @@ export type CouncilFinishUndo = () => Promise<void>;
 const COUNCIL_LIFECYCLE_ACTION = 'council-lifecycle';
 const missing = () => new Error('The council is not available for editing');
 
+function patchCouncilTopicSummary(topics: CouncilTopic[], id: string, summary: string) {
+  if (!topics?.some(topic => topic.id === id)) {
+    throw Object.assign(new Error('The section no longer exists'), { code: 'topic-gone' });
+  }
+  return topics.map(topic => topic.id === id ? { ...topic, summary } : topic);
+}
+
 /**
  * ONE COUNCIL, THROUGH THE SHARED EDITOR.
  *
@@ -64,6 +71,14 @@ export function useCouncilDataDocument(councilId: string) {
     if (field) await document.update(change, { action: field === 'title' ? 'council-title' : 'council-date' });
     else await document.update(change);
   }, [council, document, apply]);
+
+  const setTopicSummary = (topicId: string, summary: string) =>
+    document.update(apply(current => ({ ...current, topics: patchCouncilTopicSummary(current.topics, topicId, summary) })));
+  const holdTopicSummary = (topicId: string, summary: string) =>
+    document.holdDraftAlternative(confirmed => ({
+      ...confirmed,
+      topics: patchCouncilTopicSummary(confirmed.topics as unknown as CouncilTopic[], topicId, summary) as unknown as DocumentData['topics'],
+    }));
 
   const moveTopic = (topicId: string, toIndex: number) => {
     const opening = document.state?.checkpoint;
@@ -192,7 +207,12 @@ export function useCouncilDataDocument(councilId: string) {
       const { id, record } = source;
       const draft = record.checkpoint.draft as unknown as Council | null;
       const title = draft?.title ?? (record.checkpoint.confirmed.value as unknown as Council | null)?.title;
-      const preview = (draft?.topics ?? []).map(item => item?.title).filter(Boolean).join('\n').slice(0, 500);
+      const opening = (record.checkpoint.confirmed.value as unknown as Council | null)?.topics ?? [];
+      const topics = draft?.topics ?? [];
+      const summaries = new Map(opening.map(topic => [topic.id, topic.summary]));
+      const changedText = topics.filter(topic => topic.summary !== summaries.get(topic.id));
+      const preview = (changedText.length ? changedText : topics)
+        .flatMap(item => [item.title, changedText.length ? item.summary : undefined]).filter(Boolean).join('\n').slice(0, 500);
       return { id, title: typeof title === 'string' && title.trim() ? title : councilId, ...(preview ? { preview } : {}),
         discard: () => document.discardRecovery(source) };
     });
@@ -231,6 +251,8 @@ export function useCouncilDataDocument(councilId: string) {
     acceptRemote: document.acceptRemote,
     keepLocal: document.keepLocal,
     updateCouncil,
+    setTopicSummary,
+    holdTopicSummary,
     moveTopic,
     recordTopicOutcome,
     restoreTopicOutcome,

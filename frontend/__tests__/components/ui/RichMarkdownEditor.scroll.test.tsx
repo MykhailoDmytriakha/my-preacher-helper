@@ -1,5 +1,5 @@
 import { Editor } from '@tiptap/core';
-import { act, render, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, waitFor } from '@testing-library/react';
 import React from 'react';
 
 import { RichMarkdownEditor } from '@/components/ui/RichMarkdownEditor';
@@ -85,6 +85,20 @@ describe('RichMarkdownEditor caret viewport', () => {
             fixture.changeLayout(200, 90);
             fixture.type();
             expect(fixture.caretTop()).toBeGreaterThanOrEqual(290);
+        } finally { fixture.view.unmount(); }
+    });
+
+    it('does not reset the native view when an observed value changes during composition', async () => {
+        const fixture = await open(120);
+        try {
+            const reset = jest.spyOn(fixture.editor, 'setOptions');
+            fireEvent.compositionStart(fixture.editor.view.dom);
+            expect(fixture.editor.view.composing).toBe(true);
+            fixture.view.rerender(
+                <RichMarkdownEditor value="Observed words" onChange={fixture.onChange} stickyToolbarTop={120} />,
+            );
+            expect(reset).not.toHaveBeenCalled();
+            expect(fixture.editor.view.composing).toBe(true);
         } finally { fixture.view.unmount(); }
     });
 

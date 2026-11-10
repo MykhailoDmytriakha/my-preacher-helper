@@ -65,6 +65,8 @@ interface ManualPointCardProps {
   index: number;
   section: SermonSectionKey;
   conspectus: ManualConspectus;
+  onAuthorCell: (nodeId: string, text: string) => void;
+  onHoldCellText: (nodeId: string, text: string) => ((keep: boolean) => void) | undefined;
   /** The text each cell shows — the editor's cells, or the document itself on a copy for reading. */
   text: Record<string, string>;
   noteMode?: boolean;
@@ -136,7 +138,7 @@ const EditableTitle = ({
   );
 };
 
-const ManualPointCard = ({ point, index, section, conspectus, text, noteMode, readOnly = false }: ManualPointCardProps) => {
+const ManualPointCard = ({ point, index, section, conspectus, onHoldCellText, onAuthorCell, text, noteMode, readOnly = false }: ManualPointCardProps) => {
   const { t } = useTranslation();
   const [isEditing, setIsEditing] = useState(false);
   const tone = SECTION_TONE_CLASSES[section];
@@ -236,7 +238,11 @@ const ManualPointCard = ({ point, index, section, conspectus, text, noteMode, re
                 value={conspectus.contentByNodeId[node.id] ?? ""}
                 placeholder={t(NO_PLAN_CONTENT_KEY)}
                 minHeight={node.kind === "subPoint" ? "90px" : "120px"}
-                onChange={(text) => conspectus.setNodeContent(node.id, text)}
+                onChange={(text) => {
+                  onAuthorCell(node.id, text);
+                  return conspectus.setNodeContent(node.id, text);
+                }}
+                onHoldText={typed => onHoldCellText(node.id, typed)}
               />
             ) : (
               <div className="rounded-md border border-gray-200 bg-gray-50/70 p-4 dark:border-gray-700/70 dark:bg-gray-900/20">
@@ -562,6 +568,8 @@ function ManualConspectusContent({ source, readOnly: copyReadOnly = false }: { s
                   index={index}
                   section={section}
                   conspectus={conspectus}
+                  onHoldCellText={draft.holdCellAlternative}
+                  onAuthorCell={draft.markCellAuthored}
                   text={shownText}
                   noteMode={noteMode}
                   readOnly={locked}

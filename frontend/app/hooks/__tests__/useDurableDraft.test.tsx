@@ -1,7 +1,7 @@
 import { act, renderHook } from '@testing-library/react';
 
 import { useDraftQuestion, useDurableDraft, useSettleShownDraft, type UseDurableDraftOptions } from '@/hooks/useDurableDraft';
-import { draftKey, moveDraft, readDraft, retireDraftCapture, saveDraft } from '@/utils/durableDraft';
+import { draftKey, findDraftCopies, moveDraft, readDraft, retireDraftCapture, saveDraft } from '@/utils/durableDraft';
 
 const KEY = draftKey('uid-1', 'note-1', 'note');
 
@@ -28,6 +28,53 @@ describe('useDurableDraft', () => {
 
   afterEach(() => {
     jest.useRealTimers();
+  });
+
+  it('reopens the held alternative without writing over the accepted value', () => {
+    const first = render('Updated version', { writerId: 'first' });
+    act(() => { first.result.current.holdAlternative('Confirmed typing'); });
+    const held = findDraftCopies<string>('uid-1', 'note-1', 'note');
+    expect(held.map(copy => copy.value)).toEqual(['Confirmed typing']);
+    first.unmount();
+
+    const reopened = render('Updated version', { writerId: 'second' });
+    expect(reopened.result.current.recovered).toBe('Confirmed typing');
+    expect(reopened.result.current.recoveredKey).toBe(held[0].key);
+    act(() => reopened.result.current.discardRecovered());
+    expect(readDraft(held[0].key)).toBeNull();
+  });
+
+  it('keeps the chosen alternative if the editor leaves before it takes ownership', () => {
+    const view = render('Updated version', { writerId: 'current' });
+    act(() => { view.result.current.holdAlternative('Confirmed typing')?.(true); });
+    view.unmount();
+    expect(findDraftCopies<string>('uid-1', 'note-1', 'note').map(copy => copy.value)).toEqual(['Confirmed typing']);
+  });
+
+  it.each(['draft write', 'queue capture'] as const)('retires a selected alternative once further typing is safe by %s', mode => {
+    const view = render('Updated version', { writerId: 'current' });
+    act(() => { view.result.current.holdAlternative('Confirmed typing')?.(true); });
+    const held = findDraftCopies<string>('uid-1', 'note-1', 'note')[0];
+    view.rerender({ value: 'Confirmed typing continued' });
+    if (mode === 'draft write') act(() => jest.advanceTimersByTime(300));
+    else act(() => view.result.current.markCaptured('Confirmed typing continued', 'note-1', view.result.current.editedAt));
+    expect(readDraft(held.key)).toBeNull();
+  });
+
+  it.each([true, false])('retires only the held physical copy after keep=%s', keep => {
+    const siblingKey = draftKey('uid-1', 'note-1', 'note', 'other-opening');
+    saveDraft(siblingKey, 'Confirmed typing');
+    const view = render('Updated version', { writerId: 'current' });
+    let settle: ((keep: boolean) => void) | undefined;
+    act(() => { settle = view.result.current.holdAlternative('Confirmed typing'); });
+    const held = findDraftCopies<string>('uid-1', 'note-1', 'note').find(copy => copy.key !== siblingKey)!;
+    act(() => settle?.(keep));
+    if (keep) {
+      expect(readDraft(held.key)).not.toBeNull();
+      act(() => view.result.current.markCaptured('Confirmed typing', 'note-1'));
+    }
+    expect(readDraft(held.key)).toBeNull();
+    expect(readDraft(siblingKey)?.value).toBe('Confirmed typing');
   });
 
   it.each(['server acceptance', 'explicit capture', 'capture event'] as const)(

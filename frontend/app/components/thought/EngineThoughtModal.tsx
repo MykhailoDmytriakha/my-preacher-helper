@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
@@ -24,6 +24,7 @@ import { ThoughtTagHistory } from './ThoughtTagHistory';
 import { ThoughtTagsField } from './ThoughtTagsField';
 import { ThoughtTextHeader } from './ThoughtTextHeader';
 
+import type { ObservedTextAppend } from '../ui/richMarkdownComposition';
 import type { DocumentData, Json } from '@/data-engine/types';
 import type { Sermon, Thought } from '@/models/models';
 import type { ThoughtFieldPatch } from '@/utils/sermonThoughtEdits';
@@ -90,6 +91,7 @@ export function EngineThoughtModal({ sermonId, thoughtId, boardSection, initialO
         : addThought(value, patch));
     }).catch(() => undefined);
   };
+  const recordedAppend = useRef<{ scope: object; append: ObservedTextAppend } | null>(null);
   const dictation = useTextDictation({
     acceptAfterText: true,
     recordingContext: { context: 'thought', contextId: JSON.stringify([sermonId, thoughtId ?? 'new']) },
@@ -98,12 +100,18 @@ export function EngineThoughtModal({ sermonId, thoughtId, boardSection, initialO
       await form.update(current => {
         const value = current as unknown as Sermon;
         const existing = value.thoughts.find(item => item.id === shown.id);
-        const patch = { text: `${existing?.text ?? ''}${existing?.text ? '\n\n' : ''}${text}` };
+        const before = existing?.text ?? '';
+        const after = [before, text].filter(Boolean).join('\n\n');
+        const previous = recordedAppend.current;
+        const first = previous?.scope === form.recoveryIdentity && previous.append.after === before ? previous.append.before : before;
+        recordedAppend.current = { scope: form.recoveryIdentity, append: { before: first, after } };
+        const patch = { text: after };
         return json(existing ? patchSermonThought(value, existing.id, patch) : addThought(value, patch));
       });
     },
     onEmpty: () => toast.error(t('errors.audioProcessing')), onError: words => toast.error(sayFailure(words, t)),
   });
+  const observedAppend = recordedAppend.current?.scope === form.recoveryIdentity ? recordedAppend.current.append : undefined;
   const isBusy = form.busy || dictation.isProcessing || dictation.isRecording;
   const recovery = useRecoveryDiscovery({ identity: form.recoveryIdentity, enabled: !loading && form.recoveryReady, version: form.recoveryVersion,
     list: async () => (await form.listRecoverable()).map(source => ({ id: source.scopeId,
@@ -184,7 +192,7 @@ export function EngineThoughtModal({ sermonId, thoughtId, boardSection, initialO
       <div className="space-y-3">
         <ThoughtTextHeader dictation={dictation} saving={form.busy} readOnly={readOnly} />
         {readOnly ? <pre className="whitespace-pre-wrap font-sans">{shown.text}</pre>
-          : <RichMarkdownEditor value={shown.text} onChange={text => change({ text })} placeholder={t('manualThought.placeholder')} />}
+          : <RichMarkdownEditor value={shown.text} observedAppend={observedAppend} onChange={text => change({ text })} placeholder={t('manualThought.placeholder')} />}
       </div>
     </div>
   </FormDialog>{discardDialog}</>;

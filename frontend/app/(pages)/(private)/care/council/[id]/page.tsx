@@ -162,6 +162,8 @@ function EngineCouncilDetailWorkspace({ councilId }: { councilId: string }) {
     updateCouncil: (id: string, updater: (current: Council) => Council, field?: CouncilTimedField) => {
       void document.updateCouncil(id, updater, field).catch(report);
     },
+    setTopicSummary: document.setTopicSummary,
+    holdTopicSummary: document.holdTopicSummary,
     moveTopic: (topicId: string, toIndex: number) => { void document.moveTopic(topicId, toIndex).catch(report); },
     recordTopicOutcome: (topicId: string, outcome: TopicOutcome, trackChanges: boolean) => {
       void document.recordTopicOutcome(topicId, outcome, trackChanges).catch(report);
@@ -203,6 +205,8 @@ interface CouncilDetailSource {
   readFailed: boolean;
   refresh: () => unknown;
   updateCouncil: (id: string, updater: (current: Council) => Council, field?: CouncilTimedField) => void;
+  setTopicSummary: (topicId: string, summary: string) => Promise<void>;
+  holdTopicSummary: (topicId: string, summary: string) => (keep: boolean, chosenWrite?: void | Promise<unknown>) => void;
   moveTopic: (topicId: string, toIndex: number) => void;
   recordTopicOutcome: (id: string, outcome: TopicOutcome, trackChanges: boolean) => void;
   restoreTopicOutcome: (topic: CouncilTopic, outcome: CouncilOutcome) => Promise<void>;
@@ -546,6 +550,8 @@ function CouncilDetailContent({ source, engineCouncilId }: { source: CouncilDeta
                 onEdit={() => setEditingTopicId(topic.id)}
                 onDone={() => setEditingTopicId(null)}
                 onChange={(updater) => patchTopic(topic.id, updater)}
+                onChangeSummary={summary => source.setTopicSummary(topic.id, summary)}
+                onHoldSummary={summary => source.holdTopicSummary(topic.id, summary)}
                 onOutcome={(outcome, trackChanges) => source.recordTopicOutcome(topic.id, outcome, trackChanges)}
                 onRename={(title) => {
                   void source.renameTopic(topic.id, title).catch(error => toast.error(actionFailureMessage(error, t, 'council.save.refused')));
@@ -630,6 +636,8 @@ function TopicCard({
   onEdit,
   onDone,
   onChange,
+  onChangeSummary,
+  onHoldSummary,
   onOutcome,
   onRename,
   onSetAssembly,
@@ -650,6 +658,8 @@ function TopicCard({
   onEdit: () => void;
   onDone: () => void;
   onChange: (updater: TopicUpdater) => void;
+  onChangeSummary: (summary: string) => Promise<void>;
+  onHoldSummary: (summary: string) => (keep: boolean, chosenWrite?: void | Promise<unknown>) => void;
   onOutcome: (outcome: TopicOutcome, trackChanges: boolean) => void;
   onRename: (title: string) => void;
   onSetAssembly: (selected: boolean) => void;
@@ -708,7 +718,8 @@ function TopicCard({
         <span className={`mt-0.5 w-6 shrink-0 text-sm font-extrabold ${tone.count}`}>{index}</span>
         <div className="min-w-0 flex-1">
           {editing ? (
-            <TopicEditor subjectId={subjectId} topic={topic} onChange={onChange} onRename={onRename} onSetAssembly={onSetAssembly} onChangeKind={onChangeKind} onRemove={onRemove} onDone={onDone} />
+            <TopicEditor subjectId={subjectId} topic={topic} onChange={onChange}
+              onChangeSummary={onChangeSummary} onHoldSummary={onHoldSummary} onRename={onRename} onSetAssembly={onSetAssembly} onChangeKind={onChangeKind} onRemove={onRemove} onDone={onDone} />
           ) : (
             <>
               <div className="flex flex-wrap items-center gap-2">
@@ -1003,6 +1014,8 @@ function TopicEditor({
   subjectId,
   topic,
   onChange,
+  onChangeSummary,
+  onHoldSummary,
   onRename,
   onSetAssembly,
   onChangeKind,
@@ -1012,6 +1025,8 @@ function TopicEditor({
   subjectId: string;
   topic: CouncilTopic;
   onChange: (updater: TopicUpdater) => void;
+  onChangeSummary: (summary: string) => Promise<void>;
+  onHoldSummary: (summary: string) => (keep: boolean, chosenWrite?: void | Promise<unknown>) => void;
   onRename: (title: string) => void;
   onSetAssembly: (selected: boolean) => void;
   onChangeKind: (kind: 'decision' | 'info') => Promise<void>;
@@ -1140,7 +1155,8 @@ function TopicEditor({
         <div className="mt-1.5">
           <RichMarkdownEditor
             value={topic.summary ?? ''}
-            onChange={(markdown) => onChange((current) => ({ ...current, summary: markdown }))}
+            onChange={onChangeSummary}
+            onHoldText={onHoldSummary}
             placeholder={t('council.topic.summaryPlaceholder')}
             minHeight="120px"
           />

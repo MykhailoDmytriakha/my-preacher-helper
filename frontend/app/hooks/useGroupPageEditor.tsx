@@ -104,6 +104,7 @@ export function useGroupPageEditor(groupId: string): GroupPageEditor {
     description: group?.description ?? '', setDescription: next => change(current => ({ ...current, description: nextValue(next, current.description ?? '') })),
     status: group?.status ?? 'draft', setStatus: next => { void editStatus(next).catch(() => undefined); }, statusHistory, templates: group?.templates ?? [], setTemplates: field('templates'),
     renameBlock, renameStep, setBlockStatus, setStepDuration, flowTitleScope: historyScope,
+    setBlockContent: data.setBlockContent, holdBlockContent: data.holdBlockContent,
     flow: group?.flow ?? [], setFlow: field('flow'),
     updateFlowPlan: mutate => {
       void data.saveFlowPlan(current => {

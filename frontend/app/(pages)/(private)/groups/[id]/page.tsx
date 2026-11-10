@@ -99,7 +99,7 @@ function GroupDetailView({ editor }: { editor: GroupPageEditor }) {
   const fitEditorToWindow = useWindowFittedPanel(editorTop, '--flow-editor-max-h');
   const { user } = useAuth();
   const { group, loading, title, setTitle, description, setDescription, status, setStatus,
-    templates, setTemplates, flow, setFlow, updateFlowPlan, moveStep, meetingDate, setMeetingDate, meetingLocation, setMeetingLocation,
+    templates, flow, setFlow, updateFlowPlan, moveStep, meetingDate, setMeetingDate, meetingLocation, setMeetingLocation,
     meetingAudience, setMeetingAudience, deleteGroupDetail, feedback,
     meetingFieldsEnabled, meetingHistory, meetingFieldHistory, titleHistory, statusHistory } = editor;
   const [selectedFlowItemId, setSelectedFlowItemId] = useState<string | null>(null);
@@ -186,20 +186,6 @@ function GroupDetailView({ editor }: { editor: GroupPageEditor }) {
       flow: normalizeFlow([...plan.flow, { ...nextFlowItem, order: plan.flow.length + 1 }]),
     }));
     setSelectedFlowItemId(nextFlowItem.id);
-  };
-
-  const updateTemplate = (templateId: string, updates: Partial<GroupBlockTemplate>) => {
-    setTemplates((prev) =>
-      prev.map((template) =>
-        template.id === templateId
-          ? {
-            ...template,
-            ...updates,
-            updatedAt: new Date().toISOString(),
-          }
-          : template
-      )
-    );
   };
 
   const removeFlowBlock = async (flowItemId: string) => {
@@ -568,7 +554,8 @@ function GroupDetailView({ editor }: { editor: GroupPageEditor }) {
               <FlowEditor
                 flowItem={selectedFlowItem}
                 template={selectedTemplate}
-                onUpdateTemplate={(updates) => updateTemplate(selectedTemplate.id, updates)}
+                onUpdateTemplate={({ content }) => content === undefined ? undefined : editor.setBlockContent(selectedTemplate, content)}
+                onHoldContent={content => editor.holdBlockContent(selectedTemplate, content)}
                 titleScope={editor.flowTitleScope}
                 onRenameBlock={title => editor.renameBlock(selectedTemplate, title)}
                 onSetStatus={status => editor.setBlockStatus(selectedTemplate, status)}

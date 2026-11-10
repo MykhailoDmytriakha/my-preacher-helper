@@ -56,6 +56,7 @@ function makeEditor() {
   const emit = () => listeners.forEach(listener => listener());
   let sequence = 0;
   const editor: ManagedEditor = {
+    holdDraftAlternative: jest.fn(),
     editTemplateTitle: jest.fn(), commitWithReceipt: jest.fn(), removeWithReceipt: jest.fn(),
     getActions: jest.fn(() => []), carryCouncilTopicToNew: jest.fn(), carryCouncilTopicToExisting: jest.fn(), discardAction: jest.fn(),
     form: jest.fn(),

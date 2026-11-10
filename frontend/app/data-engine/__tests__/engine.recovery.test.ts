@@ -40,6 +40,44 @@ function setup(creating = false) {
 }
 
 describe('DataEngine explicit recovery', () => {
+  it('keeps an unchosen editor alternative independently of the open draft and the delivery queue', async () => {
+    const s = setup();
+    try {
+      s.records.clear();
+      const editor = await s.engine.openEditor(resource, 'ordinary');
+      await editor.edit({ ...snapshot.value, userId: 'owner', title: 'Another local edit' });
+      const alternative = await editor.holdDraftAlternative?.(confirmed => ({ ...confirmed, content: 'Confirmed keyboard text' }));
+      expect(editor.getState().checkpoint.draft).toMatchObject({ content: 'base', title: 'Another local edit' });
+      expect(await s.commits.list('owner')).toEqual([]);
+      const copies = await s.engine.listRecoverable(resource);
+      expect(copies.map(copy => copy.record.checkpoint.draft)).toEqual([{ userId: 'owner', content: 'Confirmed keyboard text' }]);
+      expect(alternative?.id).toBe(copies[0].id);
+      editor.close({ flush: false });
+      const reopened = await s.engine.recoverEditor(resource, 'restored-alternative', copies[0].id);
+      expect(reopened.getState().checkpoint.draft).toEqual({ userId: 'owner', content: 'Confirmed keyboard text' });
+      expect(await s.commits.list('owner')).toEqual([]);
+      reopened.dispose();
+    } finally { s.engine.dispose(); }
+  });
+
+  it('proves the exact selected field reached a durable checkpoint before it can retire the alternative', async () => {
+    const s = setup();
+    try {
+      s.records.clear();
+      const editor = await s.engine.openEditor(resource, 'ordinary');
+      const alternative = await editor.holdDraftAlternative(confirmed => ({ ...confirmed, content: 'Confirmed keyboard text' }));
+      expect(alternative).not.toBeNull();
+      jest.mocked(s.store.put).mockResolvedValueOnce(undefined);
+      await editor.edit({ ...snapshot.value, userId: 'owner', content: 'Confirmed keyboard text' });
+      expect(editor.getState().checkpoint.draft?.content).toBe('Confirmed keyboard text');
+      expect(await alternative?.isStaged?.()).toBe(false);
+      await editor.edit({ ...snapshot.value, userId: 'owner', content: 'Different input' });
+      expect(await alternative?.isStaged?.()).toBe(false);
+      await editor.edit({ ...snapshot.value, userId: 'owner', content: 'Confirmed keyboard text', title: 'Independent edit' });
+      expect(await alternative?.isStaged?.()).toBe(true);
+    } finally { s.engine.dispose(); }
+  });
+
   it('does not read queued Saves when there is no saved editor to recover', async () => {
     const s = setup();
     try {

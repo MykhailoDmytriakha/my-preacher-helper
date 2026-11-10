@@ -25,6 +25,9 @@ export interface GroupPageEditor {
   templates: Group['templates'];
   setTemplates: Dispatch<SetStateAction<Group['templates']>>;
   flowTitleScope?: { owner: string; generation: string; groupId: string; disabled: boolean };
+  setBlockContent: (block: Pick<GroupBlockTemplate, 'id' | 'createdAt'>, content: string) => Promise<void>;
+  holdBlockContent: (block: Pick<GroupBlockTemplate, 'id' | 'createdAt'>, content: string) =>
+    (keep: boolean, chosenWrite?: void | Promise<unknown>) => void;
   setBlockStatus: (block: Pick<GroupBlockTemplate, 'id' | 'createdAt'>, status: GroupBlockStatus) => Promise<void>;
   renameBlock: (block: Pick<GroupBlockTemplate, 'id' | 'createdAt'>, title: string) => Promise<void>;
   setStepDuration: (step: Pick<GroupFlowItem, 'id' | 'templateId'>, durationMin: number | null) => Promise<void>;

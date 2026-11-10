@@ -192,6 +192,8 @@ interface PlanMainLayoutContextValue {
   onToggleEditMode: (outlinePointId: string) => void;
   onSyncPairHeights: (section: SermonSectionKey, pointId: string) => void;
   onUpdateCombinedPlan: (outlinePointId: string, content: string, section: SermonSectionKey) => void;
+  onAuthorCell?: (nodeId: string, text: string) => void;
+  onHoldCellText?: (nodeId: string, text: string) => ((keep: boolean) => void) | undefined;
   setGeneratedContent: React.Dispatch<React.SetStateAction<Record<string, string>>>;
   setModifiedContent: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
   onSwitchToStructure: () => void;
@@ -368,6 +370,8 @@ const PlanOutlinePointEditor = React.forwardRef<HTMLDivElement, PlanOutlinePoint
     onToggleEditMode,
     onSyncPairHeights,
     onUpdateCombinedPlan,
+    onHoldCellText,
+    onAuthorCell,
     setGeneratedContent,
     setModifiedContent,
     readOnly,
@@ -451,9 +455,11 @@ const PlanOutlinePointEditor = React.forwardRef<HTMLDivElement, PlanOutlinePoint
               {isEditMode ? (
                 <RichMarkdownEditor
                   value={nodeContent}
+                  onHoldText={typed => onHoldCellText?.(node.id, typed)}
                   placeholder={noContentText}
                   minHeight={node.kind === "subPoint" ? "90px" : "150px"}
                   onChange={(newContent) => {
+                    onAuthorCell?.(node.id, newContent);
                     setGeneratedContent((prev) => ({ ...prev, [node.id]: newContent }));
                     setModifiedContent((prev) => ({ ...prev, [node.id]: newContent !== nodeSaved }));
                     onUpdateCombinedPlan(node.id, newContent, sectionKey);
@@ -650,6 +656,8 @@ export interface PlanMainLayoutProps {
   onToggleEditMode: (outlinePointId: string) => void;
   onSyncPairHeights: (section: SermonSectionKey, pointId: string) => void;
   onUpdateCombinedPlan: (outlinePointId: string, content: string, section: SermonSectionKey) => void;
+  onAuthorCell?: (nodeId: string, text: string) => void;
+  onHoldCellText?: (nodeId: string, text: string) => ((keep: boolean) => void) | undefined;
   setGeneratedContent: React.Dispatch<React.SetStateAction<Record<string, string>>>;
   setModifiedContent: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
   onSwitchToStructure: () => void;
@@ -691,6 +699,8 @@ export default function PlanMainLayout({
   onToggleEditMode,
   onSyncPairHeights,
   onUpdateCombinedPlan,
+  onHoldCellText,
+  onAuthorCell,
   setGeneratedContent,
   setModifiedContent,
   onSwitchToStructure,
@@ -724,6 +734,8 @@ export default function PlanMainLayout({
     onToggleEditMode,
     onSyncPairHeights,
     onUpdateCombinedPlan,
+    onHoldCellText,
+    onAuthorCell,
     setGeneratedContent,
     setModifiedContent,
     onSwitchToStructure,

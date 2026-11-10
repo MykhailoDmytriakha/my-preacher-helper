@@ -1244,6 +1244,18 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
       cancelScheduledSave();
       return run(editor => capture ? editor.commit(updater, capture) : editor.commit(updater));
     },
+    holdDraftAlternative: (updater: (confirmed: DocumentData) => DocumentData) => {
+      const held = run(editor => editor.holdDraftAlternative(updater));
+      void held.catch(() => undefined);
+      return (keep: boolean, chosenWrite?: void | Promise<unknown>) => {
+        // Selecting a copy is not durable ownership. If the chosen edit cannot
+        // be staged, its separately held checkpoint remains recoverable.
+        if (keep && !chosenWrite) return;
+        void Promise.all([held, keep ? chosenWrite : undefined]).then(async ([source]) => {
+          if (source && browser && isCurrent() && (!keep || await source.isStaged()) && isCurrent()) await browser.engine.discardRecovery(source);
+        }).catch(failure => { if (isCurrent()) setError(failure); });
+      };
+    },
     actions: current?.actions ?? [],
     carryCouncilTopicToNew: (topicId: string, title: string) => {
       cancelScheduledSave();

@@ -25,6 +25,11 @@ export function useBufferedText(value: string, onChange: (next: string) => void 
 
   return {
     draft,
+    takeObserved: () => {
+      pending.current = null;
+      attempts.current++;
+      setDraft(latest.current);
+    },
     change: (next: string) => {
       pending.current = next === latest.current ? null : next;
       const attempt = ++attempts.current;
@@ -37,6 +42,7 @@ export function useBufferedText(value: string, onChange: (next: string) => void 
       outcome.catch(() => {
         if (attempt === attempts.current) pending.current = null;
       });
+      return outcome;
     },
   };
 }

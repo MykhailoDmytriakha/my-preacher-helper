@@ -15,7 +15,7 @@ import { EditorController, InactiveEditorError, type CheckpointRecoveryStore, ty
 import { captureCouncilCarry, pinCouncilDestination } from './councilCarry';
 import { canReplaceDocumentIntent, isDirectLegacyDocumentIntent, requiresWholeActionResolution, savedDocumentAnswer } from './documentDelivery';
 import { capturePlanTemplateName, capturePrayerTitle, captureSermonPlanMode, captureStudyNoteTitle, captureStudyNoteType, captureTagColor, matchesPlanTemplateNameRequest, matchesPrayerStatusOpening, matchesPrayerTitleRequest, permitsSermonPlanModePredecessor, matchesStudyNoteTitleRequest, matchesStudyNoteTypeRequest, matchesTagColorRequest, sermonPlanModeOpening, studyNoteTitleValue, studyNoteTypeValue, validatedTitleCapture } from './documentFieldAction';
-import { ACTION_SLOT, areDifferentTabManualParents, editorSlot, isManualChoiceRecoveryIdentity, manualScopeIdentity, readManualScopeIdentity } from './editorIdentity';
+import { ACTION_SLOT, areDifferentTabManualParents, editorSlot, isManualChoiceRecoveryIdentity, manualScopeIdentity, readManualScopeIdentity, recoveryEditorIdentity } from './editorIdentity';
 import { AddressedFailures, eachFailure, PausedReadFailure } from './failures';
 import { collectionHeadRef } from './feed';
 import { firstGroupMeetingReview } from './groupFirstMeeting';
@@ -116,6 +116,10 @@ export interface ManagedManualForm {
 
 type ClosingSaveIntent = { checkpoint: SessionCheckpoint; action?: EditorCommitAction };
 
+interface HeldDraftAlternative extends RecoveryCheckpoint {
+  isStaged: () => Promise<boolean>;
+}
+
 export interface ManagedEditor {
   getState(): EditorState;
   getObservation(): Observation;
@@ -131,6 +135,8 @@ export interface ManagedEditor {
   subscribe(listener: () => void): () => void;
   /** `shown` is the copy the screen showed while the person typed (`DataSession.edit`). */
   edit(value: DocumentData | null, shown?: ShownCopy, autosaveStamp?: AutosaveFieldStamp): Promise<void>;
+  /** Keep a distinct, unsent alternative based on the confirmed copy, without replacing the open draft. */
+  holdDraftAlternative(updater: (confirmed: DocumentData) => DocumentData): Promise<HeldDraftAlternative | null>;
   editTemplateTitle(shown: SessionCheckpoint, opening: OutlineTitleOpening, title: string, time?: ActionTime | null): Promise<void>;
   /** Capture, stage and durably save one invocation without including later typing. */
   commit(updater: (current: DocumentData | null) => DocumentData | null, action?: EditorCommitAction): Promise<void>;
@@ -2215,6 +2221,50 @@ export class DataEngine {
           return () => { entry.listeners.delete(subscription); };
         },
         edit: (value, shown, autosaveStamp) => { active(); return controller.edit(value, shown, autosaveStamp); },
+        holdDraftAlternative: async updater => {
+          active();
+          const confirmed = controller.getState().checkpoint.confirmed;
+          if (!confirmed.value || confirmed.metadata?.deleted) {
+            throw Object.assign(new Error('The record is not available for this alternative'), { code: 'decision-changed' });
+          }
+          const session = new DataSession(confirmed);
+          session.edit(updater(copy(confirmed.value)));
+          const checkpoint = session.checkpoint();
+          if (!checkpoint.dirty) return null;
+
+          const alternativeId = recoveryEditorIdentity(editorId, this.options.operationId());
+          const record = validateRecoveryRecord({
+            owner, editorId: alternativeId, checkpoint, prepared: null, unfinalized: [],
+          }, owner, alternativeId, frozen);
+          const store = this.recoveryStore();
+          await store.create(record);
+          this.assertCurrent(owner, generation);
+          const stored = await store.read(owner, alternativeId);
+          this.assertCurrent(owner, generation);
+          if (!stored) throw new Error('The alternative checkpoint is missing after its write');
+          const matches = (basis: ResourceSnapshot, value: DocumentData | null) => {
+            const birth = confirmed.value?.createdAt;
+            const sameGeneration = confirmed.metadata
+              ? basis.metadata?.generation === confirmed.metadata.generation
+              : basis.metadata === null && typeof birth === 'string' && basis.value?.createdAt === birth;
+            if (!sameGeneration || !value || basis.metadata?.deleted) return false;
+            try { return equalValues(updater(copy(value)), value); } catch { return false; }
+          };
+          return {
+            id: recoveryCheckpointId(owner, alternativeId),
+            record: validateRecoveryRecord(stored, owner, alternativeId, frozen),
+            isStaged: async () => {
+              active();
+              const live = controller.getState().checkpoint.confirmed;
+              if (matches(live, live.value)) return true;
+              const primary = await store.read(owner, editorId);
+              active();
+              if (!primary) return false;
+              const { checkpoint } = validateRecoveryRecord(primary, owner, editorId, frozen);
+              return matches(checkpoint.confirmed, checkpoint.draft);
+            },
+          };
+        },
         editTemplateTitle: (shown, opening, title, time) => { active(); return controller.editTemplateTitle(shown, opening, title, time); },
         commit: (updater, action) => commit(updater, undefined, undefined, action),
         commitWithReceipt: (updater, options) => withReceipt(captured => commit(updater, captured, options?.captureScope, options?.action)),

@@ -16,8 +16,16 @@ jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
 jest.mock('@/providers/ConnectionProvider', () => ({ useConnection: () => ({ isMagicAvailable: false }) }));
 jest.mock('@/hooks/useTextDictation', () => ({ useTextDictation: jest.fn(() => ({ accept: jest.fn(async () => undefined), discard: jest.fn(async () => undefined) })) }));
 jest.mock('@/components/thought/ThoughtTextHeader', () => ({ ThoughtTextHeader: () => null }));
-jest.mock('@/components/ui/RichMarkdownEditor', () => ({ RichMarkdownEditor: ({ value, onChange }: { value: string; onChange: (value: string) => void }) =>
-  <textarea aria-label="Thought" value={value} onChange={event => onChange(event.target.value)} /> }));
+jest.mock('@/components/ui/RichMarkdownEditor', () => ({
+  RichMarkdownEditor: ({ value, onChange, observedAppend }: {
+    value: string;
+    onChange: (value: string) => void;
+    observedAppend?: { before: string; after: string };
+  }) => (
+    <textarea aria-label="Thought" value={value} onChange={event => onChange(event.target.value)}
+      data-append-before={observedAppend?.before} data-append-after={observedAppend?.after} />
+  ),
+}));
 const resource = { collection: 'sermons', id: 'sermon' };
 const a = { id: 'a', text: 'Opening thought', tags: [], date: '2026-09-19' };
 const b = { id: 'b', text: 'Sibling', tags: [], date: '2026-09-19' };
@@ -226,6 +234,8 @@ it('stages consecutive dictated fragments and tag changes without sending before
   const callbacks = jest.mocked(useTextDictation).mock.calls.at(-1)![0];
   await act(async () => { await callbacks.onText('First'); await callbacks.onText('Second'); await settleEngine(); });
   await ready('First\n\nSecond');
+  expect(screen.getByLabelText('Thought')).toHaveAttribute('data-append-before', '');
+  expect(screen.getByLabelText('Thought')).toHaveAttribute('data-append-after', 'First\n\nSecond');
   fireEvent.click(screen.getByRole('button', { name: 'thought.addTagAria' })); await settle();
   expect(screen.getByRole('button', { name: 'thought.removeTagAria' })).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'thought.removeTagAria' })); await settle();

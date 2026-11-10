@@ -362,6 +362,16 @@
     "copyFailed": "Automatic copying failed. Select the report text and copy it manually.",
     "localOnly": "The report stays on this device and is not sent automatically. History contains up to {{maxEvents}} events from the last {{hours}} hours."
   },
+  "richEditor": {
+    "compositionChoice": {
+      "title": "The text changed while you were typing",
+      "description": "Both versions are shown below. Choose which one to keep.",
+      "keepUpdated": "Keep the updated text",
+      "keepTyped": "Keep my typed text",
+      "typed": "Your typing",
+      "updated": "Updated text"
+    }
+  },
   "freshness": {
     "checkOnlyHint": "Checking does not replace the text on this screen.",
     "previouslyDifferent": "The last check found differences from the server version.",
