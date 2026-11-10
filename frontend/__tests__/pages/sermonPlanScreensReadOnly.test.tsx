@@ -213,11 +213,11 @@ describe('the AI plan screen on a copy for reading', () => {
 
   it('keeps the way to write from the note for when writing is possible again', () => {
     mockSermon = sermonFixture({ thoughts: [], structure: undefined, planText: {}, sourceNoteIds: ['note-1'] } as Partial<Sermon>);
-    renderPage(<AiPlanPage />);
+    const readOnlyPlan = renderPage(<AiPlanPage />);
     expect(screen.queryByRole('button', { name: 'plan.fromNote.entry' })).toBeNull();
     expect(writes).toEqual([]);
 
-    document.body.innerHTML = '';
+    readOnlyPlan.unmount();
     mockReadOnly = false;
     renderPage(<AiPlanPage />);
     expect(screen.getByRole('button', { name: 'plan.fromNote.entry' })).toBeInTheDocument();

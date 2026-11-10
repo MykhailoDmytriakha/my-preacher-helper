@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import React from 'react';
 
 import '@testing-library/jest-dom';
@@ -192,7 +192,7 @@ describe('the plan volume the preacher picked', () => {
     const handed = styleSelectorProps.at(-1);
     act(() => { handed?.onChange?.('exegetical'); });
 
-    document.body.innerHTML = '';
+    cleanup();
     styleSelectorProps.length = 0;
     await renderPage(<ManualConspectusPage />);
 
@@ -205,7 +205,7 @@ describe('the plan volume the preacher picked', () => {
     await renderPage(<ManualConspectusPage />);
     act(() => { styleSelectorProps.at(-1)?.onChange?.('narrative'); });
 
-    document.body.innerHTML = '';
+    cleanup();
     styleSelectorProps.length = 0;
     mockSearchParams = new URLSearchParams();
     await renderPage(<AiPlanPage />);
@@ -251,7 +251,7 @@ describe('the plan header is the same in every mode', () => {
     await renderPage(<AiPlanPage />);
     const paired = headerOrder();
 
-    document.body.innerHTML = '';
+    cleanup();
 
     await renderPage(<ManualConspectusPage />);
     const handWritten = headerOrder();
@@ -275,7 +275,7 @@ describe('the plan header is the same in every mode', () => {
       'plan.fromThoughtsSubtitle'
     );
 
-    document.body.innerHTML = '';
+    cleanup();
 
     await renderPage(<ManualConspectusPage />);
     expect(screen.getByTestId('plan-header-subtitle')).toHaveTextContent('plan.manualSubtitle');
@@ -300,7 +300,7 @@ describe('the plan header is the same in every mode', () => {
     expect(pairedChip).toHaveAttribute('target', '_blank');
     expect(pairedChip).toHaveAttribute('href', '/studies/note-1');
 
-    document.body.innerHTML = '';
+    cleanup();
 
     await renderPage(<ManualConspectusPage />);
     expect(
@@ -328,10 +328,25 @@ describe('the plan header is the same in every mode', () => {
     await renderPage(<AiPlanPage />);
     expect(await openVerse()).toEqual(expect.objectContaining({ book: '1-chronicles', at: '4:9', to: '10', from: '/sermons/sermon-1/plan' }));
 
-    document.body.innerHTML = '';
+    // Simulate leaving the route by unmounting its React tree and verse portal together.
+    cleanup();
     mockPathname = '/sermons/sermon-1/plan/manual';
     await renderPage(<ManualConspectusPage />);
     expect(await openVerse()).toEqual(expect.objectContaining({ book: '1-chronicles', at: '4:9', to: '10', from: '/sermons/sermon-1/plan/manual' }));
+  });
+
+  it('leaves the plan cleanly while the verse window is still open', async () => {
+    await renderPage(<AiPlanPage />);
+    const reference = within(screen.getByTestId('plan-header-verse')).getByRole('button', { name: '1 Chronicles 4:9-10' });
+    act(() => { reference.click(); });
+    const dialog = await screen.findByRole('dialog', { name: '1 Chronicles 4:9-10' });
+
+    cleanup();
+    mockPathname = '/sermons/sermon-1/plan/manual';
+    await renderPage(<ManualConspectusPage />);
+
+    expect(dialog).not.toBeInTheDocument();
+    expect(screen.getByTestId('plan-header-subtitle')).toHaveTextContent('plan.manualSubtitle');
   });
 
   /**
