@@ -15,6 +15,18 @@ export const isOrderedMeetingFieldValue = (value: unknown): value is string | nu
 /** An empty date means an undated meeting; unfinished typing is not a scheduled day. */
 export const isReadyGroupMeetingDate = (date: string) => date.trim() === '' || isDateOnlyKey(date.trim());
 
+export type MeetingOpening = { id: string; createdAt: string; date: '' };
+
+/** A vacant first meeting slot is shared by devices. Only writes to meetings advance its revision. */
+export function firstGroupMeetingIdentity(group: { createdAt?: unknown; rev?: unknown } | null | undefined): MeetingOpening | undefined {
+  if (!group || typeof group.createdAt !== 'string' || !group.createdAt) return;
+  const rev = group.rev;
+  const revision = rev && typeof rev === 'object' && 'meetingDates' in rev ? rev.meetingDates : 0;
+  if (typeof revision === 'number' && Number.isSafeInteger(revision) && revision >= 0) {
+    return { id: 'first-meeting-' + revision, createdAt: group.createdAt, date: '' };
+  }
+}
+
 /** Editing one field never deletes the meeting, replaces its identity, or drops its siblings. */
 export function editFirstGroupMeeting(meetings: GroupMeetingDate[], patch: Partial<Pick<GroupMeetingDate, 'date' | 'location' | 'audience'>>,
   identity: Pick<GroupMeetingDate, 'id' | 'createdAt'>): GroupMeetingDate[] {

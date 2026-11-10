@@ -227,6 +227,7 @@ export function initializeCommit(record: CommitRequest, records: readonly Commit
     const assembly = record.councilAssemblyActions?.forAssembly;
     const topicKind = record.councilTopicKindActions?.kind;
     const canOrder = sameGeneration && rebased.conflicts.every(conflict => isDateConflict(conflict)
+      || (record.groupFirstMeetingChange && conflict.path[0] === 'meetingDates')
       || isCapturedPreachStatusConflict(conflict, record.preachStatusActions)
       || (flag !== undefined && conflict.path.length === 1 && conflict.path[0] === 'isPreached')
       || isCapturedPreachDateFieldConflict(conflict, record.preachDateFieldActions)

@@ -1635,6 +1635,202 @@ describe('transactional DataEngine server', () => {
     expect(await listDocuments('owner-1', 'sermons', { limit: 1, cursor: 'a' })).toEqual({ snapshots: [expect.objectContaining({ resource: { collection: 'sermons', id: 'b' }, value: null })], nextCursor: null, version: 0 });
   });
 
+  describe('the first meeting slot', () => {
+    const resource = { collection: 'groups', id: 'first-slot' };
+    const owner = 'owner-1';
+    const base = { protocol: 1 as const, owner, resource, dependsOn: [] };
+    const createdAt = '2026-11-08T00:00:00.000Z';
+    const opening = { id: 'first-meeting-0', date: '', createdAt };
+    const present = (value: unknown) => ({ exists: true, value });
+    const seed = (withEmptyList = false) => processCommand(owner, {
+      ...base, kind: 'create', operationId: 'group-born', generation: null,
+      value: { userId: owner, title: 'Group', status: 'draft', flow: [], templates: [], createdAt, updatedAt: createdAt,
+        ...(withEmptyList && { meetingDates: [] }) },
+    });
+    const save = (operationId: string, before: unknown, after: unknown) => ({
+      ...base, kind: 'update' as const, operationId, generation: 'group-born',
+      changes: [{ path: ['meetingDates'], before: before === undefined ? { exists: false } : present(before), after: present(after) }],
+    });
+    const action = (operationId: string, field: 'date' | 'location' | 'audience', after: string, offset: number) => {
+      const time = { earliestMs: 1_800_000_000_000 + offset, latestMs: 1_800_000_000_010 + offset };
+      const proof = { rowId: opening.id, before: field === 'date' ? '' : null, after, observedRevision: 1, time };
+      return { ...save(operationId, [], [{ ...opening, [field]: after }]),
+        ...(field === 'date' ? { meetingDateAction: proof }
+          : { groupMeetingFieldActions: { [field]: { ...proof, rowCreatedAt: createdAt } } }) };
+    };
+
+    it.each([
+      ['date', '2026-12-13', '2026-12-20'],
+      ['location', 'Main room', 'Side room'],
+      ['audience', 'Leaders', 'All'],
+    ] as const)('uses the proven latest initial %s in both delivery orders and asks on overlap', async (field, early, late) => {
+      for (const scenario of ['early-first', 'late-first', 'overlap'] as const) {
+        const ownResource = { ...resource, id: scenario };
+        const createSlot = (operation: string, value: string, at: number) => ({
+          ...action(operation + '-' + scenario, field, value, at), resource: ownResource, generation: 'born-' + scenario,
+        });
+        expect(await processCommand(owner, { ...base, resource: ownResource, kind: 'create', operationId: 'born-' + scenario,
+          generation: null, value: { userId: owner, title: 'Group', status: 'draft', flow: [], templates: [],
+            createdAt, updatedAt: createdAt } })).toMatchObject({ kind: 'acknowledged' });
+        const earlier = createSlot('earlier', early, scenario === 'overlap' ? 45 : 10);
+        const later = createSlot('later', late, 40);
+        const [first, second] = scenario === 'early-first' ? [earlier, later] : [later, earlier];
+        expect(await processCommand(owner, first)).toMatchObject({ kind: 'acknowledged' });
+        const answer = await processCommand(owner, second);
+        expect(answer).toMatchObject({ kind: scenario === 'overlap' ? 'conflict' : 'acknowledged',
+          snapshot: { value: { meetingDates: [{ ...opening, [field]: late }] } } });
+        if (scenario === 'overlap') expect(answer).toMatchObject({ conflicts: expect.arrayContaining([expect.objectContaining({ path: ['meetingDates', 'id:' + opening.id, field] })]) });
+      }
+    });
+
+    it('accepts a first place and date separately and orders the next competing date', async () => {
+      expect(await seed()).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(owner, { ...base, kind: 'update', operationId: 'rename', generation: 'group-born',
+        changes: [{ path: ['title'], before: present('Group'), after: present('Renamed group') }] })).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(owner, action('place', 'location', 'Main room', 10))).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(owner, action('date', 'date', '2026-12-20', 40))).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(owner, action('earlier-date', 'date', '2026-12-13', 20))).toMatchObject({
+        kind: 'acknowledged', snapshot: { value: { title: 'Renamed group', meetingDates: [{ ...opening, location: 'Main room', date: '2026-12-20' }] } },
+      });
+    });
+
+    it('does not infer the order of a third date from two equal dates whose action times overlapped', async () => {
+      expect(await seed()).toMatchObject({ kind: 'acknowledged' });
+      const date = '2026-12-13';
+      expect(await processCommand(owner, action('earlier-window', 'date', date, 10))).toMatchObject({ kind: 'acknowledged' });
+      const overlapping = action('overlapping-window', 'date', date, 15);
+      if (!('meetingDateAction' in overlapping)) throw new Error('Missing date evidence');
+      expect(await processCommand(owner, { ...overlapping, meetingDateAction: { ...overlapping.meetingDateAction,
+        time: { earliestMs: 1_800_000_000_015, latestMs: 1_800_000_000_055 } } })).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(owner, action('inside-window', 'date', '2026-12-20', 30))).toMatchObject({
+        kind: 'conflict', snapshot: { value: { meetingDates: [{ ...opening, date }] } },
+      });
+      expect(await processCommand(owner, action('after-both-windows', 'date', '2026-12-27', 60))).toMatchObject({
+        kind: 'acknowledged', snapshot: { value: { meetingDates: [{ ...opening, date: '2026-12-27' }] } },
+      });
+    });
+
+    it.each([
+      ['date', '2026-12-13', '2026-12-20'],
+      ['location', 'Main room', 'Side room'],
+      ['audience', 'Leaders', 'All'],
+    ] as const)('does not infer the order of another initial %s after an unclocked reaffirmation', async (field, value, laterValue) => {
+      expect(await seed()).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(owner, action('first', field, value, 10))).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(owner, save('same-without-clock', [], [{ ...opening, [field]: value }]))).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(owner, action('different-with-clock', field, laterValue, 30))).toMatchObject({
+        kind: 'conflict', snapshot: { value: { meetingDates: [{ ...opening, [field]: value }] } },
+      });
+    });
+
+    it('offers the two audience choices with the same independent date and proven location', async () => {
+      expect(await seed()).toMatchObject({ kind: 'acknowledged' });
+      const saved = { ...opening, location: 'Saved later room', audience: 'Leaders' };
+      const incoming = { ...opening, date: '2026-12-13', location: 'Earlier room', audience: 'All' };
+      const stamp = (after: string, at: number) => ({
+        rowId: opening.id, rowCreatedAt: createdAt, before: null, after, observedRevision: 1,
+        time: { earliestMs: 1_800_000_000_000 + at, latestMs: 1_800_000_000_010 + at },
+      });
+      expect(await processCommand(owner, { ...save('stored', [], [saved]), groupMeetingFieldActions: {
+        location: stamp(saved.location, 40), audience: stamp(saved.audience, 60),
+      } })).toMatchObject({ kind: 'acknowledged' });
+      const result = await processCommand(owner, { ...save('mine', [], [incoming]), groupMeetingFieldActions: {
+        location: stamp(incoming.location, 10), audience: stamp(incoming.audience, 65),
+      } });
+      expect(result).toMatchObject({ kind: 'conflict', snapshot: { value: { meetingDates: [saved] } },
+        conflicts: expect.arrayContaining([
+          expect.objectContaining({ path: ['meetingDates', 'id:' + opening.id, 'audience'] }),
+          expect.objectContaining({ code: 'first-group-meeting-comparison', base: present(saved),
+            mine: present({ ...saved, date: incoming.date, audience: incoming.audience }),
+            theirs: present({ ...saved, date: incoming.date }),
+          }),
+        ]) });
+    });
+
+    it.each(['date', 'location'] as const)('keeps the explicit clear of initial %s visible when a delayed fill lacks time', async field => {
+      expect(await seed()).toMatchObject({ kind: 'acknowledged' });
+      const first = { ...opening, [field]: field === 'date' ? '2026-12-20' : 'Main room' };
+      expect(await processCommand(owner, save('first', [], [first]))).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(owner, save('clear', [first], [opening]))).toMatchObject({ kind: 'acknowledged' });
+      const stale = { ...opening, [field]: field === 'date' ? '2026-12-13' : 'Side room' };
+      expect(await processCommand(owner, save('earlier-without-clock', [], [stale]))).toMatchObject({
+        kind: 'conflict', snapshot: { value: { meetingDates: [opening] } },
+        conflicts: expect.arrayContaining([expect.objectContaining({ path: ['meetingDates', 'id:' + opening.id, field] })]),
+      });
+    });
+
+    it.each([true, false])('asks about an old initial Save with its own ID (legacy arrives first: %s)', async legacyFirst => {
+      expect(await seed(true)).toMatchObject({ kind: 'acknowledged' });
+      const modern = { ...opening, date: '2026-12-20' };
+      const legacy = { ...opening, id: 'legacy-meeting', location: 'Side room' };
+      const [first, second] = legacyFirst ? [legacy, modern] : [modern, legacy];
+      expect(await processCommand(owner, save('first', [], [first]))).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(owner, save('second', [], [second]))).toMatchObject({
+        kind: 'conflict', snapshot: { value: { meetingDates: [first] } },
+        conflicts: expect.arrayContaining([expect.objectContaining({ path: ['meetingDates'] })]),
+      });
+      const another = { ...legacy, id: 'another-meeting' };
+      expect(await processCommand(owner, save('explicit-add', [first], [first, another]))).toMatchObject({
+        kind: 'acknowledged', snapshot: { value: { meetingDates: [first, another] } },
+      });
+    });
+
+    it.each([true, false])('keeps both initial fields when the first Save adopts a versionless group (date first: %s)', async dateFirst => {
+      documents.set('groups/first-slot', { userId: owner, title: 'Old group', status: 'draft', flow: [], templates: [],
+        meetingDates: [], createdAt, updatedAt: createdAt });
+      const place = { ...opening, location: 'Side room' };
+      const date = { ...opening, date: '2026-12-13' };
+      const [first, second] = dateFirst ? [date, place] : [place, date];
+      expect(await processCommand(owner, { ...save('first', [], [first]), generation: null })).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(owner, { ...base, kind: 'update', operationId: 'rename', generation: 'first',
+        changes: [{ path: ['title'], before: present('Old group'), after: present('Renamed') }] })).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(owner, { ...save('second', [], [second]), generation: null })).toMatchObject({
+        kind: 'acknowledged', snapshot: { value: { title: 'Renamed', meetingDates: [{ ...date, location: place.location }] } },
+      });
+      expect(await processCommand(owner, { ...save('remove', [{ ...date, location: place.location }], []), generation: 'first' })).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(owner, { ...save('late-after-removal', [], [second]), generation: null })).toMatchObject({
+        kind: 'refused', code: 'generation-mismatch',
+      });
+    });
+
+    it('keeps the first meeting opening when a title Save adopts a versionless group', async () => {
+      documents.set('groups/first-slot', { userId: owner, title: 'Old group', status: 'draft', flow: [], templates: [],
+        meetingDates: [], createdAt, updatedAt: createdAt });
+      expect(await processCommand(owner, { ...base, kind: 'update', operationId: 'rename', generation: null,
+        changes: [{ path: ['title'], before: present('Old group'), after: present('Renamed') }] })).toMatchObject({ kind: 'acknowledged' });
+      const place = { ...opening, location: 'Side room' };
+      const date = { ...opening, date: '2026-12-13' };
+      expect(await processCommand(owner, { ...save('place', [], [place]), generation: null })).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(owner, { ...save('date', [], [date]), generation: null })).toMatchObject({
+        kind: 'acknowledged', snapshot: { value: { title: 'Renamed', meetingDates: [{ ...date, location: place.location }] } },
+      });
+    });
+
+    it('does not allow a generationless Save into a group born with a version', async () => {
+      expect(await seed()).toMatchObject({ kind: 'acknowledged' });
+      const first = { ...opening, date: '2026-12-13' };
+      expect(await processCommand(owner, save('date', [], [first]))).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(owner, { ...save('old-generation', [], [{ ...opening, location: 'Side room' }]), generation: null })).toMatchObject({
+        kind: 'refused', code: 'generation-mismatch',
+      });
+    });
+
+    it('does not recreate a removed first meeting or join an unproven row', async () => {
+      expect(await seed()).toMatchObject({ kind: 'acknowledged' });
+      const first = { ...opening, location: 'Main room' };
+      expect(await processCommand(owner, save('place', [], [first]))).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(owner, save('remove', [first], []))).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(owner, action('old-date', 'date', '2026-12-13', 10))).toMatchObject({
+        kind: 'conflict', snapshot: { value: { meetingDates: [] } },
+      });
+      const newMeeting = { ...first, id: 'first-meeting-2' };
+      expect(await processCommand(owner, save('different-slot', [], [newMeeting]))).toMatchObject({ kind: 'acknowledged' });
+      expect(await processCommand(owner, action('still-old-date', 'date', '2026-12-13', 20))).toMatchObject({
+        kind: 'conflict', snapshot: { value: { meetingDates: [newMeeting] } },
+      });
+    });
+  });
+
   it.each([
     { scenario: 'earlier date', offset: 20, phone: '2026-12-20', winner: '2026-12-27', archived: '2026-12-20', kind: 'acknowledged' },
     { scenario: 'legacy starting date', offset: 60, phone: '2026-12-20', winner: '2026-12-20', archived: '2026-12-27', kind: 'acknowledged' },

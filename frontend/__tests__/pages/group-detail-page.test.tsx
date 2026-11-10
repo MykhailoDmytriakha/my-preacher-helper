@@ -534,6 +534,40 @@ describe('GroupDetailPage', () => {
     expect(stored.meetingDates[0]).toEqual(expect.objectContaining({ date: '2026-03-01' }));
   });
 
+  it.each([
+    ['date', []],
+    ['place', []],
+    ['date', undefined],
+    ['place', undefined],
+  ] as const)('keeps the date and place of the first meeting when %s is delivered first (opening %j)', async (first, meetingDates) => {
+    const capture = async (placeholder: string, value: string) => {
+      const { harness, view, delivered } = setupGroupPage({ meetingDates });
+      await screen.findByDisplayValue('Family Group');
+      const input = screen.getByPlaceholderText(placeholder);
+      await waitFor(() => expect(input).toBeEnabled());
+      const opening = harness.server;
+      fireEvent.change(input, { target: { value } });
+      await delivered();
+      expect(harness.transport.send).toHaveBeenCalledTimes(1);
+      const command = jest.mocked(harness.transport.send).mock.calls[0][0];
+      view.unmount();
+      return { opening, command };
+    };
+
+    const date = await capture('No date', '2026-03-01');
+    const place = await capture('Location', 'Side room');
+    const commands = first === 'date' ? [date.command, place.command] : [place.command, date.command];
+    let canonical = date.opening;
+    for (const [index, command] of commands.entries()) {
+      const result = applyCommand({ ...command, operationId: `device-${index}` }, canonical);
+      expect(result.kind).toBe('acknowledged');
+      if (result.kind === 'acknowledged') canonical = result.snapshot;
+    }
+    expect(canonical.value?.meetingDates).toEqual([
+      expect.objectContaining({ date: '2026-03-01', location: 'Side room' }),
+    ]);
+  });
+
   it('clears only the date while preserving the meeting and all its details', async () => {
     const { delivered } = setupGroupPage();
     const dateInput = await screen.findByDisplayValue('2026-02-11');

@@ -4,7 +4,7 @@ import { useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
 import { useAutoSave } from '@/hooks/useAutoSave';
 import { fillRequiredFieldError } from '@/utils/actionFailureMessage';
 import { newClientId } from '@/utils/clientId';
-import { editFirstGroupMeeting, groupMeetingDay, isOrderedMeetingFieldValue, isReadyGroupMeetingDate } from '@/utils/groupMeeting';
+import { editFirstGroupMeeting, firstGroupMeetingIdentity, groupMeetingDay, isOrderedMeetingFieldValue, isReadyGroupMeetingDate } from '@/utils/groupMeeting';
 
 import type { DatedRowActionCapture } from '@/data-engine/datedRowAction';
 import type { GroupMeetingField } from '@/data-engine/groupMeetingFieldAction';
@@ -67,16 +67,16 @@ export function useGroupMeetingEditor(groupId: string, stored: GroupMeetingDate[
         discard: () => form.discardRecovery(source) };
     }), recover: form.recover });
   const field = (key: 'date' | 'location' | 'audience'): Dispatch<SetStateAction<string>> => next => {
-    const identity = { id: newClientId(), createdAt: new Date().toISOString() };
     if (!form.active || needsRefresh) return;
-    const input = key !== 'date' && first ? form.captureMeetingField(key, first.id) : undefined;
+    const identity = firstGroupMeetingIdentity(form.initialData) ?? { id: newClientId(), createdAt: new Date().toISOString() };
+    const input = key !== 'date' ? form.captureMeetingField(key, first?.id ?? identity.id) : undefined;
     let ready = false;
     void form.update(current => {
       const previous = meetings(current), value = previous[0]?.[key] ?? '';
       const edited = editFirstGroupMeeting(previous, { [key]: typeof next === 'function' ? next(value) : next }, identity);
       ready = canSave({ meetingDates: edited } as unknown as DocumentData, form.initialData);
       if (key === 'date' && edited[0]?.date !== previous[0]?.date) {
-        const action = ready && previous[0] && edited[0] ? form.captureDateAction(previous[0].id, edited[0].date.trim()) : undefined;
+        const action = ready && edited[0] ? form.captureDateAction(edited[0].id, edited[0].date.trim()) : undefined;
         dateAction.current = { scope: form.recoveryIdentity, action };
       }
       return { ...current, meetingDates: edited } as unknown as DocumentData;

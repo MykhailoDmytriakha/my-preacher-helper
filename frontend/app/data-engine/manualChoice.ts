@@ -6,8 +6,9 @@ import { isAuthoredListComparison } from './authoredStringList';
 import { orderCommitRequests } from './commits';
 import { captureCouncilTopicPlacement, projectCouncilTopicOnDocument } from './councilTopicPlacement';
 import { autosaveFieldTargets } from './documentFieldAction';
-import { manualChoiceRecoveryIdentity } from './editorIdentity';
+import { manualChoiceRecoveryIdentity, readManualScopeIdentity } from './editorIdentity';
 import { writeField } from './fieldValues';
+import { firstGroupMeetingReview, projectFirstGroupMeetingChoice } from './groupFirstMeeting';
 import { captureGroupStepPlacement, carryAnchoredDraftChronology, groupPlacementSteps, mergeEditsAfterAnchoredPlacement, mergeGroupFlowRebase, projectGroupStepOnDocument } from './groupStepPlacement';
 import { projectHomileticReview, reviewedHomileticList } from './homileticPlanChoice';
 import { chooseLocalPlacement } from './localPlacementChoice';
@@ -61,7 +62,13 @@ export function exactManualRequest(stage: ManualStage | undefined, checkpoint: S
       const markedList = request.result?.kind === 'conflict' && (request.result.conflicts.some(({ code, path }) =>
         isAuthoredListComparison(code) && record.selection.some(selected => equalValues(selected, path)))
         || reviewedHomileticList(request.result.conflicts, record.selection));
-      if (recovered || (record.scopeId === request.editorId && (markedList || hasLaterScope(request, requests)))) return request;
+      const meeting = request.result?.kind === 'conflict' && firstGroupMeetingReview(request.result.conflicts)
+        && record.selection.some(path => equalValues(path, ['meetingDates']));
+      const savedForm = meeting && readManualScopeIdentity(request.editorId);
+      const shownForm = meeting && readManualScopeIdentity(record.scopeId);
+      const sameMeetingForm = savedForm && shownForm && savedForm.slot === 'group-meeting' && shownForm.slot === savedForm.slot
+        && savedForm.parentEditorId === shownForm.parentEditorId;
+      if (recovered || sameMeetingForm || (record.scopeId === request.editorId && (markedList || meeting || hasLaterScope(request, requests)))) return request;
     }
     id = request.predecessor ?? undefined;
   }
@@ -105,7 +112,14 @@ export function projectExactManualChoice(record: EditorRecord, decision: ExactMa
   const basis = prepared ? request.working : request.baseline;
   const reviewed = prepared ? replaySavedChoiceDelta(stored.resource, request.value, decision.value, request.intended) : decision.value;
   const homiletic = request.result?.kind === 'conflict' && reviewedHomileticList(request.result.conflicts, decision.selection);
-  if (homiletic && stored.value && request.result?.kind === 'conflict') {
+  const meeting = request.result?.kind === 'conflict' && decision.selection.some(path => equalValues(path, ['meetingDates']))
+    && firstGroupMeetingReview(request.result.conflicts);
+  if (meeting && stored.value) {
+    const amendment = decision.choice === 'local' ? { before: request.value, after: decision.value } : undefined;
+    const chosen = projectFirstGroupMeetingChoice(stored.value, meeting, decision.choice, amendment);
+    if (!chosen) throw Object.assign(new Error('The first meeting comparison changed'), { code: 'decision-changed' });
+    draft = projectManualSelection(stored.value, chosen, decision.selection);
+  } else if (homiletic && stored.value && request.result?.kind === 'conflict') {
     const chosen = projectHomileticReview(basis.value, reviewed, stored.value, request.result.snapshot.value,
       homiletic, request.result.conflicts, decision.choice, prepared ? request.intended : request.value);
     if (!chosen) throw Object.assign(new Error('The Homiletic plan comparison changed'), { code: 'decision-changed' });

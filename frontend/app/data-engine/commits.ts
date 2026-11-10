@@ -25,6 +25,7 @@ import { areDifferentTabManualParents, readManualScopeIdentity, sharesEditorOpen
 import { captureExegeticalPointActions, matchingExegeticalPointActions, restoreExegeticalQueueBasis, type ExegeticalQueueBasis } from './exegeticalPointCapture';
 import { AddressedFailures, type AddressedFailure } from './failures';
 import { writeField } from './fieldValues';
+import { captureFirstGroupMeetingChange } from './groupFirstMeeting';
 import { matchingGroupFlowCopySources, matchingGroupFlowRetirements } from './groupFlowTopology';
 import { captureMeetingFieldActions, GROUP_MEETING_FIELD_POLICY, matchingMeetingFieldActions } from './groupMeetingFieldAction';
 import { groupStepPlacementPredecessor, groupStepWitness, projectGroupStepOnDocument } from './groupStepPlacement';
@@ -65,7 +66,7 @@ import type { SermonChurchFill } from './sermonChurchFill';
 import type { SessionCheckpoint } from './session';
 import type { TagMembershipAction } from './tagMembershipOrder';
 import type { ThoughtTagAction } from './thoughtTagAction';
-import type { CommandResult, CouncilTopicPlacementCapture, DataCommand, DocumentData, EditorCommitAction, EngineMetadata, FieldValue, GroupFlowStepPlacementCapture, OutlinePointPlacementCapture, ResourceRef, ResourceSnapshot, ServiceOrderPlacementCapture, ServiceOrderStepPlacementCapture } from './types';
+import type { CommandResult, CouncilTopicPlacementCapture, DataCommand, DocumentData, EditorCommitAction, EngineMetadata, FieldChange, FieldValue, GroupFlowStepPlacementCapture, OutlinePointPlacementCapture, ResourceRef, ResourceSnapshot, ServiceOrderPlacementCapture, ServiceOrderStepPlacementCapture } from './types';
 
 export interface CommitRequest extends CouncilFieldActions, PrayerStatusObservations, AutosaveRowFieldActions {
   id: string;
@@ -103,6 +104,7 @@ export interface CommitRequest extends CouncilFieldActions, PrayerStatusObservat
   preachDateAction?: DatedRowActionEvidence;
   meetingDateAction?: DatedRowActionEvidence;
   groupMeetingFieldActions?: GroupMeetingFieldActions;
+  groupFirstMeetingChange?: FieldChange;
   preachDateFieldActions?: PreachDateFieldActions;
   preachStatusActions?: PreachStatusAction[];
   deferPreachDateRebase?: true;
@@ -302,6 +304,7 @@ export function assertCommitCapture(current: CommitRequest, incoming: CommitRequ
     || !equalValues(current.preachDateAction ?? null, incoming.preachDateAction ?? null)
     || !equalValues(current.meetingDateAction ?? null, incoming.meetingDateAction ?? null)
     || !equalValues(current.groupMeetingFieldActions ?? null, incoming.groupMeetingFieldActions ?? null)
+    || !equalValues(current.groupFirstMeetingChange ?? null, incoming.groupFirstMeetingChange ?? null)
     || !equalValues(current.preachDateFieldActions ?? null, incoming.preachDateFieldActions ?? null)
     || !equalValues(current.preachStatusActions ?? null, incoming.preachStatusActions ?? null)
     || !equalValues(current.value, incoming.value) || !equalValues(current.atomic ?? null, incoming.atomic ?? null)
@@ -410,8 +413,13 @@ function pendingRowFields(record: CommitRequest) {
   ];
 }
 
+function initialMeetingChange(record: CommitRequest): FieldChange | undefined {
+  if (record.sequence !== 0 || record.working.metadata?.generation !== record.baseline.metadata?.generation) return;
+  return record.groupFirstMeetingChange;
+}
+
 function hasTimedAncestor(record: CommitRequest): boolean {
-  return record.sequence === 0 && Boolean(record.sourceNoteLink || record.seriesMembership || record.serviceOrderPlacement || record.serviceOrderStepPlacement || record.outlinePointPlacement || record.groupFlowStepPlacement || record.councilTopicPlacement || record.serviceOrderTitleAction || record.prayerTitleAction || record.planTemplateNameAction || record.tagColorAction || record.studyNoteTitleAction || record.studyNoteTypeAction || record.commentKindAction || record.commentPlaceAction || record.prayerStatusAction || record.prayerAnsweredAtAction || record.sermonTitleAction || record.sermonVerseAction || record.sermonChurchAction || record.sermonGoalTypeAction || record.sermonThesisFieldActions || record.sermonRepeatedWordsAction || record.sermonPlanModeAction || record.accountPreferenceActions || record.sermonPreparationCheckActions || record.exegeticalPlanActions?.length || record.homileticTitleActions || record.homileticMoveActions || record.seriesFieldActions || record.groupTitleAction || record.groupStatusAction || record.councilTitleAction || record.councilDateAction || record.councilLifecycleAction || pendingBibleMarkRebase(record) || pendingMeetingDateRebase(record) || pendingDocumentTags(record).length || pendingRowFields(record).length || pendingPreachStatusActions(record).length);
+  return record.sequence === 0 && Boolean(record.sourceNoteLink || record.seriesMembership || record.serviceOrderPlacement || record.serviceOrderStepPlacement || record.outlinePointPlacement || record.groupFlowStepPlacement || record.councilTopicPlacement || record.serviceOrderTitleAction || record.prayerTitleAction || record.planTemplateNameAction || record.tagColorAction || record.studyNoteTitleAction || record.studyNoteTypeAction || record.commentKindAction || record.commentPlaceAction || record.prayerStatusAction || record.prayerAnsweredAtAction || record.sermonTitleAction || record.sermonVerseAction || record.sermonChurchAction || record.sermonGoalTypeAction || record.sermonThesisFieldActions || record.sermonRepeatedWordsAction || record.sermonPlanModeAction || record.accountPreferenceActions || record.sermonPreparationCheckActions || record.exegeticalPlanActions?.length || record.homileticTitleActions || record.homileticMoveActions || record.seriesFieldActions || record.groupTitleAction || record.groupStatusAction || record.councilTitleAction || record.councilDateAction || record.councilLifecycleAction || pendingBibleMarkRebase(record) || initialMeetingChange(record) || pendingMeetingDateRebase(record) || pendingDocumentTags(record).length || pendingRowFields(record).length || pendingPreachStatusActions(record).length);
 }
 
 function freezeSaveOptions(options: CommitSaveOptions | undefined): CommitSaveOptions | undefined {
@@ -752,6 +760,7 @@ export class CommitQueue {
     const preachDateFieldActions = capturePreachDateFields(baseline, predecessor, intent.draft, frozenOptions?.preachDateFieldSave, records);
     const preachStatusActions = capturePreachStatusActions(baseline, predecessor, intent.draft, frozenOptions?.preachStatusCapture, records);
     const basis = predecessor?.value ?? baseline.value;
+    const firstMeeting = baseline.resource.collection === 'groups' ? captureFirstGroupMeetingChange(basis, intent.draft) : undefined;
     const templateMove = outlineMove && baseline.resource.collection === 'planTemplates';
     const value = groupMove ? projectGroupStepOnDocument(basis, groupMove)
       : councilMove ? projectCouncilTopicOnDocument(basis, councilMove)
@@ -799,6 +808,7 @@ export class CommitQueue {
       ...(sourceNoteLink && { sourceNoteLink }),
       ...(editorAction?.kind === 'sermon-note-text' && { sermonNoteText: editorAction.opening }),
       ...(groupMeetingFieldActions && { groupMeetingFieldActions }),
+      ...(firstMeeting && { groupFirstMeetingChange: firstMeeting }),
       ...(preachDateFieldActions && { preachDateFieldActions }),
       ...(preachStatusActions && { preachStatusActions }),
       ...(dateTarget && action && { [dateTarget.evidence]: action }),
@@ -1338,6 +1348,8 @@ export class CommitQueue {
     }
     const mode = record.sequence === 0 ? record.sermonPlanModeAction : undefined;
     if (mode && equalValues(mode.before, mode.after)) retainedRoots.push('planMode');
+    const firstMeeting = initialMeetingChange(record);
+    if (firstMeeting) retainedRoots.push('meetingDates');
     try {
       const participant = seriesCommandParticipant(record);
       prepared = participant.captured
@@ -1355,6 +1367,9 @@ export class CommitQueue {
     }
     if (!resourceMatches(prepared.command.resource, record.baseline.resource)) throw new Error('Commit resource changed');
     const { command } = prepared;
+    if (firstMeeting && command.kind === 'update') {
+      command.changes = command.changes.map(change => change.path[0] === 'meetingDates' ? clone(firstMeeting) : change);
+    }
     if (command.kind === 'update' && record.sequence === 0 && record.rebasedGroupCopySources) {
       const live = command.groupFlowCopySources ?? [];
       const liveIds = new Set(live.map(source => source.id));

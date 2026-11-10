@@ -32,6 +32,8 @@ import { exegeticalPointConflictId } from './exegeticalPointAction';
 import { EXEGETICAL_POINT_HISTORY, metadataAfterExegeticalPoints, orderExegeticalPoints, retainedExegeticalPointHistory } from './exegeticalPointOrder.server';
 import { equalValues, object, readField } from './fieldValues';
 import { GROUP_BLOCK_STATUS_POLICY } from './groupBlockStatusAction';
+import { groupFirstMeetingComparison } from './groupFirstMeeting';
+import { adoptLegacyFirstGroupMeeting, firstGroupMeetingLegacyMetadata, prepareFirstGroupMeetingOrder, rawFirstGroupMeetingOpening } from './groupFirstMeetingOrder.server';
 import { GROUP_BLOCK_TITLE_POLICY, GROUP_STEP_TITLE_POLICY, type GroupFlowHistoryPage } from './groupFlowTitleAction';
 import { metadataAfterGroupFlowTopology } from './groupFlowTopology.server';
 import { GROUP_MEETING_FIELD_POLICY, type GroupMeetingFieldHistoryPage } from './groupMeetingFieldAction';
@@ -47,7 +49,7 @@ import { OUTLINE_TITLE_HISTORY, OUTLINE_TITLE_QUEUED, OUTLINE_TITLE_REVIEW, OUTL
 import { boundOutlineTitleMetadata, orderOutlineTitles, outlineTitleProofPolicy } from './outlineTitleOrder.server';
 import { PREACH_DATE_FIELD_POLICY, type PreachDateField, type PreachDateFieldHistoryPage, type PreachDateFieldValue } from './preachDateFieldAction';
 import { alignPreachStatusCommand, PREACH_STATUS_POLICY, type PreachStatusHistoryPage, type PreachStatusValue } from './preachStatusAction';
-import { advanceResourceSnapshot, commandFingerprint, getResourcePolicy, isValidIdentifier, TOMBSTONE_OWNER_FIELD, validateCommand } from './protocol';
+import { mergeFields, advanceResourceSnapshot, commandFingerprint, getResourcePolicy, isValidIdentifier, TOMBSTONE_OWNER_FIELD, validateCommand } from './protocol';
 import { validateResourceDocument } from './resourceSchemas';
 import { metadataAfterRowDetails, orderRowDetails, type RowDetailOrder } from './rowDetailOrder.server';
 import { existingRowField } from './rowFieldAction';
@@ -653,8 +655,9 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
       ? { [TOMBSTONE_OWNER_FIELD]: owner }
       : preserveStoredTypes(raw, snapshot.value) as Record<string, unknown>;
     const primary = key === primaryKey;
-    const dated = metadataAfterDatedRow(snapshot, raw, primary ? command : undefined, primary ? dateOrder : undefined);
-    const meeting = metadataAfterGroupMeetingFields({ ...snapshot, metadata: dated }, raw, primary ? meetingOrder : undefined);
+    const meetingOpening = primary ? rawFirstGroupMeetingOpening(command, snapshot, raw) : raw;
+    const dated = metadataAfterDatedRow(snapshot, meetingOpening, primary ? command : undefined, primary ? dateOrder : undefined);
+    const meeting = metadataAfterGroupMeetingFields({ ...snapshot, metadata: dated }, meetingOpening, primary ? meetingOrder : undefined);
     const blockTitle = metadataAfterRowDetails({ ...snapshot, metadata: meeting }, raw, GROUP_BLOCK_TITLE_POLICY, primary ? groupFlowOrder?.block : undefined);
     const groupStepTitle = metadataAfterRowDetails({ ...snapshot, metadata: blockTitle }, raw, GROUP_STEP_TITLE_POLICY, primary ? groupFlowOrder?.step : undefined);
     const groupBlockStatus = metadataAfterRowDetails({ ...snapshot, metadata: groupStepTitle }, raw, GROUP_BLOCK_STATUS_POLICY, primary ? groupFlowOrder?.blockStatus : undefined);
@@ -706,7 +709,8 @@ async function persistAcceptedCommand(transaction: Transaction, { owner, command
       : snapshot.resource.collection === 'groups' ? metadataAfterGroupFlowTopology(listMetadata, raw?._dataEngine, groupPlanBefore, snapshot.value)
       : listMetadata;
     transaction.set(adminDb.collection(snapshot.resource.collection).doc(snapshot.resource.id), { ...value,
-      _dataEngine: { ...boundOutlineTitleMetadata(value, bounded), ...(seriesDeletionVersion !== undefined && { [SERIES_MEMBERSHIP_DELETION]: seriesDeletionVersion }) } });
+      _dataEngine: { ...boundOutlineTitleMetadata(value, bounded), ...firstGroupMeetingLegacyMetadata(snapshot, raw, primary ? command : undefined),
+        ...(seriesDeletionVersion !== undefined && { [SERIES_MEMBERSHIP_DELETION]: seriesDeletionVersion }) } });
   }
   for (const [index, addition] of (listOrder?.discarded ?? []).entries()) {
     const collection = command.resource.collection === 'serviceOrders' ? SERVICE_ORDER_STEP_SCRIPTURE_POLICY.history : DOCUMENT_METADATA_HISTORY;
@@ -971,10 +975,13 @@ export async function processCommand(owner: string, input: unknown, tagCleanup?:
       }
       const current = snapshotFromRaw(command.resource, raw);
       const serverMs = stored.readTime?.toMillis();
-      listOrder = orderAuthoredListAdditions(command, current, raw?._dataEngine, serverMs);
-      dateOrder = orderDatedRow(listOrder.command, current, raw?._dataEngine, serverMs);
-      meetingOrder = orderGroupMeetingFields(dateOrder.command, current, raw?._dataEngine, serverMs);
-      groupFlowOrder = orderGroupFlowFields(meetingOrder.command, current, raw?._dataEngine, serverMs);
+      const compatible = adoptLegacyFirstGroupMeeting(command, current, raw?._dataEngine);
+      listOrder = orderAuthoredListAdditions(compatible, current, raw?._dataEngine, serverMs);
+      const initialMeeting = prepareFirstGroupMeetingOrder(listOrder.command, current);
+      const meetingOpening = initialMeeting?.current ?? current;
+      dateOrder = orderDatedRow(initialMeeting?.command ?? listOrder.command, meetingOpening, raw?._dataEngine, serverMs, initialMeeting?.rowId);
+      meetingOrder = orderGroupMeetingFields(dateOrder.command, meetingOpening, raw?._dataEngine, serverMs, initialMeeting?.rowId);
+      groupFlowOrder = orderGroupFlowFields(initialMeeting?.restoreOpening(meetingOrder.command) ?? meetingOrder.command, current, raw?._dataEngine, serverMs);
       preachingOrder = orderRowDetails(groupFlowOrder.duration.command, current, raw?._dataEngine, serverMs, PREACH_DATE_FIELD_POLICY);
       const statusCommand = alignPreachStatusCommand(preachingOrder.command, current);
       statusOrder = orderRowDetails(statusCommand, current, raw?._dataEngine, serverMs, PREACH_STATUS_POLICY);
@@ -996,7 +1003,8 @@ export async function processCommand(owner: string, input: unknown, tagCleanup?:
       exegeticalOrder = orderExegeticalPoints(fieldOrder.command, current, raw?._dataEngine, serverMs);
       homileticOrder = orderHomileticPlans(exegeticalOrder.command, current, raw?._dataEngine, serverMs);
       outlineTitleOrder = orderOutlineTitles(homileticOrder.command, current, raw?._dataEngine, serverMs);
-      const planned = await planDataCommand(outlineTitleOrder?.command ?? homileticOrder.command, current, {
+      const orderedCommand = outlineTitleOrder?.command ?? homileticOrder.command;
+      const planned = await planDataCommand(orderedCommand, current, {
         serviceOrderPlacement: { rawMetadata: raw?._dataEngine, serverMs },
         seriesPlacementMetadata: resource => rawDocuments.get(resourceKey(resource))?._dataEngine,
         ...(serverMs !== undefined && { seriesMembershipOrder: { serverMs,
@@ -1026,6 +1034,13 @@ export async function processCommand(owner: string, input: unknown, tagCleanup?:
       uncertain.push(...homileticOrder.uncertain, ...(outlineTitleOrder?.uncertain ?? []));
       const blockedByComparison = planned.result.kind === 'conflict' || uncertain.length > 0;
       const plan = retainUncertainChronology(planned, command, current, blockedByComparison ? [...uncertain, ...listOrder.rejectedChoices, ...homileticOrder.settled, ...(outlineTitleOrder?.settled ?? [])] : uncertain);
+      if (plan.result.kind === 'conflict' && command.kind === 'update' && command.resource.collection === 'groups'
+        && orderedCommand.kind === 'update' && current.value) {
+        const sent = command.changes.find(change => change.path[0] === 'meetingDates');
+        const ordered = orderedCommand.changes.find(change => change.path[0] === 'meetingDates');
+        const comparison = sent && ordered && groupFirstMeetingComparison(sent, ordered, current.value, plan.result.conflicts, mergeFields);
+        if (comparison) plan.result.conflicts.push(comparison);
+      }
       const acceptedAt = new Date().toISOString();
       // The planner exposes writes only for acknowledged commands.
       effects = plan.writes.map(effect => stampAcceptedResource(snapshotFromRaw(effect.resource, rawDocuments.get(resourceKey(effect.resource))), effect, acceptedAt));

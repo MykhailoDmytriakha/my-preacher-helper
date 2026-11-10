@@ -2,6 +2,7 @@ import { isDateOnlyKey, shownDayOf } from '@/utils/dateOnly';
 import { groupMeetingDay } from '@/utils/groupMeeting';
 
 import { isActionTime, type ActionTime } from './actionClock';
+import { firstMeetingProofChanges, withFirstMeetingOpening } from './groupFirstMeeting';
 import { MEETING_ROW_BIRTH } from './groupMeetingFieldAction';
 import { PREACH_ROW_BIRTH } from './preachDateFieldAction';
 import { existingRowField, isCapturedRowConflict, isRowChange, matchesRowAction, replaceExistingRowField } from './rowFieldAction';
@@ -77,7 +78,8 @@ export function captureDatedRowAction(baseline: ResourceSnapshot, predecessor: C
   after: DocumentData | null, capture: DatedRowActionCapture | undefined, records: readonly CommitRequest[]): DatedRowActionEvidence | undefined {
   const target = datedRowTarget(baseline.resource.collection);
   if (!target || !baseline.metadata?.generation || !capture || !isActionTime(capture.time)) return undefined;
-  const before = predecessor ? predecessor.value : baseline.value;
+  const rawBefore = predecessor ? predecessor.value : baseline.value;
+  const before = target === MEETING_DATE_TARGET ? withFirstMeetingOpening(rawBefore, after) : rawBefore;
   const previousDate = existingRowDate(before?.[target.field], capture.rowId, target);
   const nextDate = existingRowDate(after?.[target.field], capture.rowId, target);
   if (previousDate === undefined || nextDate === undefined || previousDate === nextDate
@@ -98,7 +100,7 @@ export function isDateChange(change: FieldChange, target: DatedRowTarget): boole
 }
 
 export function matchesDatedRowChange(changes: FieldChange[], evidence: DatedRowActionEvidence, target: DatedRowTarget): boolean {
-  return matchesRowAction(changes, evidence, target);
+  return matchesRowAction(target === MEETING_DATE_TARGET ? firstMeetingProofChanges(changes) : changes, evidence, target);
 }
 
 export function isCapturedDateConflict(conflict: { path: string[]; base: FieldValue; mine: FieldValue; theirs: FieldValue },

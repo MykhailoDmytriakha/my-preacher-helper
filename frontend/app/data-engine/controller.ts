@@ -20,6 +20,7 @@ import { keepUncontestedDocumentTagFields } from './documentTagChoice';
 import { requiredDomainTargets } from './domainPolicy';
 import { areDifferentTabManualParents, editorSlot, readManualScopeIdentity } from './editorIdentity';
 import { readField, writeField } from './fieldValues';
+import { firstGroupMeetingReview, projectFirstGroupMeetingChoice } from './groupFirstMeeting';
 import { retryGroupStepPlacement } from './groupStepPlacement';
 import { liveSubmittedWork, sameLiveAtomicProof } from './liveSubmittedWork';
 import { chooseLocalPlacement } from './localPlacementChoice';
@@ -994,14 +995,17 @@ export class EditorController {
             ? mergeDocumentFields(decided.confirmed.value,
               writeField(local, chosenPath, readField(decided.confirmed.value, chosenPath)), decided.remoteCandidate.value) : undefined;
           if (retainedFields?.conflicts.length) throw Object.assign(new Error('Other changes need review'), { code: 'decision-changed' });
-          const retained = !selection && ((retainedFields?.value.exists ? retainedFields.value.value as DocumentData : undefined)
+          const meeting = decided.confirmed.resource.collection === 'groups' && firstGroupMeetingReview(decided.conflicts);
+          const retainedMeeting = meeting && decided.remoteCandidate?.value
+            ? projectFirstGroupMeetingChoice(decided.remoteCandidate.value, meeting, 'remote') : undefined;
+          const retained = retainedMeeting ?? (!selection && ((retainedFields?.value.exists ? retainedFields.value.value as DocumentData : undefined)
             ?? (scriptureRow ? keepUncontestedServiceStepScripture(decided, local, scriptureRow) : undefined)
             ?? keepUncontestedOutlineTitle(decided.confirmed, local, decided.remoteCandidate, decided.conflicts)
             ?? keepUncontestedSermonFields(decided.confirmed, local, decided.remoteCandidate, decided.conflicts)
             ?? keepUncontestedDocumentTagFields(decided.confirmed, local, decided.remoteCandidate, decided.conflicts)
             ?? keepUncontestedStudyNoteFields(decided.confirmed, local, decided.remoteCandidate, decided.conflicts)
             ?? keepUncontestedCommentFields(decided.confirmed, local, decided.remoteCandidate, decided.conflicts)
-            ?? keepUncontestedCommentPlace(decided.confirmed, local, decided.remoteCandidate, decided.conflicts));
+            ?? keepUncontestedCommentPlace(decided.confirmed, local, decided.remoteCandidate, decided.conflicts)));
           session.acceptRemote(atChoice);
           if (retained) {
             const accepted = session.checkpoint();

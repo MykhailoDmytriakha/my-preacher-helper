@@ -1,6 +1,7 @@
 import { isOrderedMeetingFieldValue } from '@/utils/groupMeeting';
 
 import { boundedActionTime } from './actionClock';
+import { firstMeetingProofChanges, withFirstMeetingOpening } from './groupFirstMeeting';
 import { replacedRowDetail, type RowDetailAction, type RowDetailActions, type RowDetailHistoryEntry, type RowDetailPolicy } from './rowDetailAction';
 import { captureRowDetailActions, matchingRowDetailActions, type RowDetailCaptures } from './rowDetailCapture';
 import { boundedRowId, existingRowField } from './rowFieldAction';
@@ -41,15 +42,16 @@ export const GROUP_MEETING_FIELD_POLICY: RowDetailPolicy<GroupMeetingField, Grou
 export function stageMeetingFieldCaptures(previous: GroupMeetingFieldCaptures | undefined, current: DocumentData, next: DocumentData,
   input?: GroupMeetingFieldInput): GroupMeetingFieldCaptures | undefined {
   if (!previous && !input) return undefined;
+  const opening = withFirstMeetingOpening(current, next);
   const captures = GROUP_MEETING_FIELDS.flatMap(field => {
     const time = input?.field === field ? boundedActionTime(input.time) : undefined;
     const existing = previous?.[field];
     const rowId = time ? input!.rowId : existing?.rowId;
     if (!boundedRowId(rowId)) return [];
     const target = meetingFieldTarget(field);
-    const before = existingRowField(current.meetingDates, rowId, target);
+    const before = existingRowField(opening?.meetingDates, rowId, target);
     const after = existingRowField(next.meetingDates, rowId, target);
-    const rowCreatedAt = existingRowField(current.meetingDates, rowId, MEETING_ROW_BIRTH);
+    const rowCreatedAt = existingRowField(opening?.meetingDates, rowId, MEETING_ROW_BIRTH);
     if (after === undefined || before === undefined || !rowCreatedAt
       || rowCreatedAt !== existingRowField(next.meetingDates, rowId, MEETING_ROW_BIRTH)) return [];
     if (time && before !== after) return [[field, { rowId, rowCreatedAt, after, time }]] as const;
@@ -60,11 +62,15 @@ export function stageMeetingFieldCaptures(previous: GroupMeetingFieldCaptures | 
 
 export function captureMeetingFieldActions(baseline: ResourceSnapshot, predecessor: CommitRequest | undefined,
   draft: DocumentData | null, captures: GroupMeetingFieldCaptures | undefined, records: readonly CommitRequest[]): GroupMeetingFieldActions | undefined {
-  return captureRowDetailActions(baseline, predecessor, draft, captures, records, GROUP_MEETING_FIELD_POLICY, request => request.groupMeetingFieldActions);
+  const source = predecessor ? predecessor.value : baseline.value;
+  const opening = withFirstMeetingOpening(source, draft);
+  const basis = !predecessor && opening !== source ? { ...baseline, value: opening } : baseline;
+  const prior = predecessor && opening !== source ? { ...predecessor, value: opening } : predecessor;
+  return captureRowDetailActions(basis, prior, draft, captures, records, GROUP_MEETING_FIELD_POLICY, request => request.groupMeetingFieldActions);
 }
 
 export function matchingMeetingFieldActions(changes: FieldChange[], actions: GroupMeetingFieldActions | undefined): GroupMeetingFieldActions | undefined {
-  return matchingRowDetailActions(changes, actions, GROUP_MEETING_FIELD_POLICY);
+  return matchingRowDetailActions(firstMeetingProofChanges(changes), actions, GROUP_MEETING_FIELD_POLICY);
 }
 
 export function replacedMeetingField(current: ResourceSnapshot, field: GroupMeetingField, action: GroupMeetingFieldAction): ConflictDetail | undefined {

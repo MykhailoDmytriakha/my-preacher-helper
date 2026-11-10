@@ -12,7 +12,7 @@ import type { ConflictDetail, DataCommand, ResourceSnapshot } from './types';
 const MAX_PROOFS = 32;
 type Proof = { rowId: string; date: string; time: ActionTime | null; revision: number; operationId?: string; rowCreatedAt?: string };
 type DateOrder = { command: DataCommand; target?: DatedRowTarget; action?: DatedRowActionEvidence; displaced?: DisplacedRowDate;
-  kept?: Proof; uncertain?: ConflictDetail[] };
+  kept?: Proof; coalesced?: Pick<Proof, 'rowId' | 'date' | 'time'>; uncertain?: ConflictDetail[] };
 
 function proofs(rawMetadata: unknown, target: DatedRowTarget): Proof[] {
   const entries = object(rawMetadata) ? rawMetadata[target.proofs] : undefined;
@@ -43,7 +43,14 @@ function compareUnobservedDate(command: Extract<DataCommand, { kind: 'update' }>
   const { chronology, displaced } = ordered;
   if (date === action.after) {
     if (chronology > 0) return { command, action };
-    return chronology < 0 || target === MEETING_DATE_TARGET ? { command, kept: previous } : { command };
+    if (chronology < 0) return { command, kept: previous };
+    if (target === MEETING_DATE_TARGET) {
+      // The later of two equal actions can fall anywhere in this combined interval.
+      const latest = time ? { earliestMs: Math.max(time.earliestMs, action.time.earliestMs),
+        latestMs: Math.max(time.latestMs, action.time.latestMs) } : null;
+      return { command, coalesced: { rowId: action.rowId, date, time: latest } };
+    }
+    return { command };
   }
   if (!displaced) {
     return target === MEETING_DATE_TARGET && action.before === date ? uncertainMeetingDate(command, action) : { command };
@@ -55,13 +62,29 @@ function compareUnobservedDate(command: Extract<DataCommand, { kind: 'update' }>
 }
 
 /** The ordinary merge still decides every neighboring field, row identity and permission. */
-export function orderDatedRow(command: DataCommand, current: ResourceSnapshot, rawMetadata: unknown, readTimeMs: number): DateOrder {
+export function orderDatedRow(command: DataCommand, current: ResourceSnapshot, rawMetadata: unknown, readTimeMs: number, knownOpeningRow?: string): DateOrder {
   const target = datedRowTarget(command.resource.collection);
   if (!target || command.kind !== 'update' || !current.metadata
     || current.metadata.deleted || command.generation !== current.metadata.generation) return { command };
   const submitted = command[target.evidence];
   const action = readRowAction(command, submitted, target, readTimeMs);
-  if (!action || action.observedRevision > current.metadata.revision) return { command };
+  if (!action || action.observedRevision > current.metadata.revision) {
+    if (target === MEETING_DATE_TARGET && knownOpeningRow) {
+      const change = command.changes.find(item => isDateChange(item, target));
+      const after = existingRowDate(change?.after.value, knownOpeningRow, target);
+      const before = existingRowDate(change?.before.value, knownOpeningRow, target);
+      const live = existingRowDate(current.value?.meetingDates, knownOpeningRow, target);
+      if (before === '' && after && live === after) {
+        return { command, coalesced: { rowId: knownOpeningRow, date: after, time: null } };
+      }
+      const cleared = proofs(rawMetadata, target).some(proof => proof.rowId === knownOpeningRow && proof.date === ''
+        && proof.revision <= current.metadata!.revision);
+      if (before === '' && live === '' && after && (cleared || meetingProofFloor(rawMetadata) > 0)) {
+        return { command, uncertain: [uncertainRowChange({ rowId: knownOpeningRow, before, after, time: null, observedRevision: 0 }, target)] };
+      }
+    }
+    return { command };
+  }
   const currentDate = existingRowDate(current.value?.[target.field], action.rowId, target);
   if (currentDate === undefined) return { command };
   const previous = proofs(rawMetadata, target).find(item => item.rowId === action.rowId && item.date === currentDate
@@ -78,7 +101,9 @@ export function orderDatedRow(command: DataCommand, current: ResourceSnapshot, r
   }
   if (!previous && target === MEETING_DATE_TARGET && currentDate === action.before
     && action.observedRevision < Math.min(meetingProofFloor(rawMetadata), current.metadata.revision)) return uncertainMeetingDate(command, action);
-  if (!previous && (currentDate === action.after || (target === MEETING_DATE_TARGET && action.observedRevision < current.metadata.revision))) return { command };
+  const matchesKnownOpening = knownOpeningRow === action.rowId && currentDate === action.before;
+  if (!previous && (currentDate === action.after || (target === MEETING_DATE_TARGET && action.observedRevision < current.metadata.revision
+    && !matchesKnownOpening))) return { command };
   return { command, action };
 }
 
@@ -110,6 +135,8 @@ export function metadataAfterDatedRow(snapshot: ResourceSnapshot, raw: Record<st
     const { operationId, revision } = snapshot.metadata;
     keep.unshift({ rowId: action.rowId, date: action.after, time: action.time, revision,
       ...(operationId && rowCreatedAt && { operationId, rowCreatedAt }) });
+  } else if (order?.coalesced && existingRowDate(rows, order.coalesced.rowId, target) === order.coalesced.date) {
+    keep.unshift({ ...order.coalesced, revision: snapshot.metadata.revision });
   } else if (order?.kept) keep.unshift(order.kept);
   const unique = [...new Map(keep.slice().reverse().map(proof => [proof.rowId, proof])).values()].reverse();
   const retained = unique.slice(0, MAX_PROOFS);

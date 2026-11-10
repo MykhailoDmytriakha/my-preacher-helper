@@ -14,6 +14,7 @@ import { matchesCommentKindPlace } from './commentKindAction';
 import { matchesCommentPlaceScope, placeOfCommentChange, validCommentPlaceStamp } from './commentPlaceAction';
 import { councilTopicConflictCode, councilTopicTransitionRefusal, mergeCouncilTopicHistory, replaceCouncilOutcomeConflicts, retainCouncilTopicFrame } from './councilTopicTransition';
 import { equalValues, object, own, readField } from './fieldValues';
+import { mergeFirstGroupMeeting, mergeFirstGroupMeetingCommand } from './groupFirstMeeting';
 import { groupPlan, groupPlanFields, matchingGroupFlowCopySources, matchingGroupFlowRetirements, mergeGroupPlan } from './groupFlowTopology';
 import { mergeIdentityTree } from './identityTreeMerge';
 import { outlinePlacementField } from './outlinePlacementResource';
@@ -594,6 +595,10 @@ export function mergeFields(base: FieldValue, mine: FieldValue, theirs: FieldVal
       if (merged) return merged;
     }
   }
+  if (path.length === 1 && path[0] === 'meetingDates') {
+    const initial = mergeFirstGroupMeeting(base, mine, theirs, path, mergeFields);
+    if (initial) return initial;
+  }
   const newMap = !base.exists && path.length > 0 && !path[path.length - 1].startsWith('id:');
   if (mine.exists && theirs.exists && object(mine.value) && object(theirs.value)
     && !isAtomicScriptureReference(path) && (newMap || (base.exists && object(base.value)))) {
@@ -884,8 +889,10 @@ function applyExistingFields(command: Extract<DataCommand, { kind: 'update' | 'd
     if (frameChanges.includes(change) || groupChanges.includes(change) || change === planText || change === preachedFlag) continue;
     // Keep the wire candidate valid for legacy documents missing metadata. The accepted
     // write replaces this provisional value; a client clock never arbitrates content.
-    const merged = change.path[0] === 'updatedAt' ? { value: change.after, conflicts: [] }
-      : mergeFields(change.before, change.after, readField(value, change.path), change.path);
+    const initialMeeting = command.resource.collection === 'groups' && change.path[0] === 'meetingDates'
+      ? mergeFirstGroupMeetingCommand(change, previous, mergeFields) : undefined;
+    const merged = initialMeeting ?? (change.path[0] === 'updatedAt' ? { value: change.after, conflicts: [] }
+      : mergeFields(change.before, change.after, readField(value, change.path), change.path));
     putField(value, change.path, merged.value);
     conflicts.push(...merged.conflicts);
   }
@@ -923,7 +930,12 @@ function applyPlanTextUpdate(command: Extract<DataCommand, { kind: 'update' }>, 
 }
 
 function commandFields(command: Exclude<DataCommand, { kind: 'relation' }>, value: DocumentData, previous: DocumentData | null): string[] {
-  if (command.kind !== 'update') return Object.keys(value);
+  if (command.kind !== 'update') {
+    const fields = Object.keys(value);
+    // An empty group has the same first-meeting opening before and after its create ACK.
+    return command.kind === 'create' && command.resource.collection === 'groups' && Array.isArray(value.meetingDates) && value.meetingDates.length === 0
+      ? fields.filter(field => field !== 'meetingDates') : fields;
+  }
   const fields = command.changes.map(change => change.path[0]);
   if ((command.groupFlowCopySources?.length || command.groupFlowRetirements?.length) && !fields.includes('templates')
     && !equalValues(previous?.templates, value.templates)) fields.push('templates');

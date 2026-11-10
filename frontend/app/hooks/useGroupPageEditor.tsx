@@ -8,6 +8,7 @@ import { hydrateGroup, isGroupStatus } from '@/utils/groupDocument';
 import { useTranslation } from '@locales/useTranslation';
 
 import type { GroupPageEditor } from './groupPageEditor';
+import type { DocumentData } from '@/data-engine/types';
 import type { Group, GroupBlockTemplate, GroupFlowItem } from '@/models/models';
 import type { Dispatch, SetStateAction } from 'react';
 
@@ -70,7 +71,20 @@ export function useGroupPageEditor(groupId: string): GroupPageEditor {
   const setStepDuration: GroupPageEditor['setStepDuration'] = (step, durationMin) =>
     editStep(step, 'group-step-duration', row => ({ ...row, durationMin }));
   const checkpoint = data.document.state?.checkpoint;
-  const comparison = useGroupFlowComparison(manual ? undefined : checkpoint, t);
+  const flowComparison = useGroupFlowComparison(manual ? undefined : checkpoint, t);
+  const reviewedMeeting = manual && meeting.form.comparison?.kind === 'first-group-meeting' ? meeting.form.comparison : undefined;
+  const meetingWords = (value: DocumentData | null) => {
+    const row = (value?.meetingDates as unknown as Group['meetingDates'])?.[0];
+    const date = row?.date || t('workspaces.groups.meetings.datePlaceholder');
+    const unset = t('workspaces.groups.meetings.historyUnset');
+    return [date, t('workspaces.groups.meetings.location') + ' · ' + (row?.location || unset),
+      t('workspaces.groups.meetings.audience') + ' · ' + (row?.audience || unset)].join('\n');
+  };
+  const comparison = reviewedMeeting ? {
+    identity: reviewedMeeting.identity, title: t('workspaces.groups.meetings.title'), valueKind: 'field' as const, scopedChoice: true as const,
+    mine: meetingWords(reviewedMeeting.mine), stored: meetingWords(reviewedMeeting.remotePreview ?? reviewedMeeting.stored.value),
+    keepMineDisabled: reviewedMeeting.canKeepLocal === false,
+  } : flowComparison;
   const titleHistory = historyScope && { ...historyScope, restore: editTitle };
   const statusHistory = historyScope && { ...historyScope, field: 'status' as const, restore: async (next: string) => {
     if (!isGroupStatus(next)) throw new Error('Invalid group status');

@@ -15,6 +15,7 @@ import { ACTION_SLOT, editorSlot } from './editorIdentity';
 import { exegeticalPointConflictId } from './exegeticalPointAction';
 import { mergeExegeticalPointChoice, stageExegeticalPoint } from './exegeticalPointCapture';
 import { readField, writeField } from './fieldValues';
+import { firstGroupMeetingReview, projectFirstGroupMeetingChoice } from './groupFirstMeeting';
 import { GROUP_FLOW_COPY_CONTENT_MISSING, keepGroupFlowCopyContent } from './groupFlowTopology';
 import { carryAnchoredDraftChronology, groupPlacementMergeFrame, mergeEditsAfterAnchoredPlacement, mergeGroupFlowRebase, restoreGroupPlacementOrder } from './groupStepPlacement';
 import { chooseLocalPlacement } from './localPlacementChoice';
@@ -525,13 +526,17 @@ export class DataSession {
       const explicit = withRows && planMode ? writeField(withRows, ['planMode'], planMode.mine)
         : withRows && chosenRefs !== undefined ? { ...withRows, scriptureRefs: chosenRefs } : withRows;
       const resolved = recoveringCopy ? keepGroupFlowCopyContent(explicit, draft, this.state.conflicts) : explicit;
+      const meeting = candidate.resource.collection === 'groups' && firstGroupMeetingReview(this.state.conflicts);
+      const meetingChoice = meeting && candidate.value && projectFirstGroupMeetingChoice(candidate.value, meeting, 'local');
+      if (meeting && !meetingChoice) throw Object.assign(new Error('The first meeting comparison changed'), { code: 'decision-changed' });
+      const chosenGroup = meetingChoice && resolved ? writeField(resolved, ['meetingDates'], readField(meetingChoice, ['meetingDates'])) : resolved;
       const council = this.state.confirmed.resource.collection === 'councils';
       const lifecycle = council ? councilLifecycleValue(this.state.draft) : undefined;
       const openingLifecycle = council ? councilLifecycleValue(this.state.confirmed.value) : undefined;
       this.state.confirmed = copy(candidate);
       // A restored held time owns the status even if that status had not changed on this device.
-      this.state.draft = copy(resolved && lifecycle && openingLifecycle && !equalValues(lifecycle, openingLifecycle)
-        ? withCouncilLifecycle(resolved, lifecycle) : resolved);
+      this.state.draft = copy(chosenGroup && lifecycle && openingLifecycle && !equalValues(lifecycle, openingLifecycle)
+        ? withCouncilLifecycle(chosenGroup, lifecycle) : chosenGroup);
     }
     this.clearAutosaveFieldDrafts();
     if (placementFields) carryAnchoredDraftChronology(placementFields, this.state, this.state.conflicts);

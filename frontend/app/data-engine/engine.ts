@@ -18,6 +18,7 @@ import { capturePlanTemplateName, capturePrayerTitle, captureSermonPlanMode, cap
 import { ACTION_SLOT, areDifferentTabManualParents, editorSlot, isManualChoiceRecoveryIdentity, manualScopeIdentity, readManualScopeIdentity } from './editorIdentity';
 import { AddressedFailures, eachFailure, PausedReadFailure } from './failures';
 import { collectionHeadRef } from './feed';
+import { firstGroupMeetingReview } from './groupFirstMeeting';
 import { HOMILETIC_POSITION_PROJECTION, HOMILETIC_POSITION_REVIEW } from './homileticPlan';
 import { reviewedHomileticList } from './homileticPlanChoice';
 import { submittedEditorCheckpoint } from './liveSubmittedWork';
@@ -2369,6 +2370,7 @@ export class DataEngine {
     const about = copy(checkpoint.confirmed.resource);
     const pending = checkpoint.pending;
     const preference = readAccountPreferenceComparison(checkpoint);
+    const meeting = checkpoint.confirmed.resource.collection === 'groups' && firstGroupMeetingReview(checkpoint.conflicts);
     const affected = [...this.manualForms.values()].filter(item => {
       if (item.parent !== parent || !item.scope) return false;
       const state = item.scope.getState();
@@ -2379,7 +2381,7 @@ export class DataEngine {
       if (choice === 'remote') {
         await controller.acceptRemote(undefined, expected);
         const resolved = controller.getState().checkpoint;
-        if ((preference || resolved.sourceNoteLinkRetry || readOutlineTitleComparison(checkpoint) || (checkpoint.confirmed.resource.collection === 'sermons'
+        if ((preference || meeting || resolved.sourceNoteLinkRetry || readOutlineTitleComparison(checkpoint) || (checkpoint.confirmed.resource.collection === 'sermons'
           && comparableSermonFields(checkpoint.conflicts))) && resolved.dirty) {
           await controller.save(); this.assertCurrent(owner, generation);
         }
@@ -2387,7 +2389,7 @@ export class DataEngine {
         await controller.keepLocal(undefined, undefined, expected, choiceTime);
         // The explicit document choice owns its replacement; field stages keep their later words.
         const resolved = controller.getState().checkpoint;
-        if (affected.length || (preference && resolved.accountPreferenceRetry) || resolved.outlinePointPlacementRetry || resolved.groupFlowStepPlacementRetry || resolved.councilTopicPlacementRetry || resolved.sourceNoteLinkRetry) {
+        if (affected.length || meeting || (preference && resolved.accountPreferenceRetry) || resolved.outlinePointPlacementRetry || resolved.groupFlowStepPlacementRetry || resolved.councilTopicPlacementRetry || resolved.sourceNoteLinkRetry) {
           await controller.save(); this.assertCurrent(owner, generation);
         }
       }
@@ -2620,7 +2622,14 @@ export class DataEngine {
         if (staged?.choiceRequired) { await this.observeManualChoice(parent, owner, generation, staged.record.predecessor!.id); active(); assertComparison(); }
         const expectedParent = checked ? parent.controller!.captureRecoveryChoice() : undefined;
         if (choice === 'remote') {
-          await parent.controller!.acceptRemote(selection, expectedParent); active();
+          const controller = parent.controller!;
+          const shown = controller.getState().checkpoint;
+          const meeting = shown.confirmed.resource.collection === 'groups' && firstGroupMeetingReview(shown.conflicts);
+          await controller.acceptRemote(selection, expectedParent); active();
+          if (meeting && controller.getState().checkpoint.dirty) {
+            await controller.save(undefined, selection); active();
+            this.prepareCommitsInBackground(); this.backgroundDrain();
+          }
           if (amendment && scope) await scope.cancel();
         } else {
           await parent.controller!.keepLocal(selection, amendment, expectedParent); active();

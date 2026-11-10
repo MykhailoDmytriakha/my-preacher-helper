@@ -103,7 +103,7 @@ function nextPriorFrames(prior: Proof | undefined, hasOpening: boolean, changed:
 }
 
 function orderField<Field extends string, Value extends RowValue>(command: Update, current: ResourceSnapshot, raw: unknown, serverMs: number,
-  field: Field, policy: RowDetailPolicy<Field, Value>, submitted: unknown, queueDigest?: string): FieldPlan<Field, Value> {
+  field: Field, policy: RowDetailPolicy<Field, Value>, submitted: unknown, queueDigest?: string, knownOpeningRow?: string): FieldPlan<Field, Value> {
   const target = policy.target(field);
   const evidence = readRowObservation(command, submitted, target, serverMs, {
     allowUnclocked: policy.allowUnclocked,
@@ -185,7 +185,9 @@ function orderField<Field extends string, Value extends RowValue>(command: Updat
     if (followsPredecessor) return { command, stamp: timed };
     return orderUnobservedRowDetail(command, timed, field, target, value, previous, scope, policy.atomicChoice);
   }
-  return { command, ...((sameIntent || !equalValues(value, action.after)) && (previous || action.observedRevision === revision) ? { stamp: timed } : {}) };
+  const matchesKnownOpening = knownOpeningRow === action.rowId && matchesOpening;
+  return { command, ...((sameIntent || !equalValues(value, action.after))
+    && (previous || action.observedRevision === revision || matchesKnownOpening) ? { stamp: timed } : {}) };
 }
 
 function orderUnobservedRowDetail<Field extends string, Value extends RowValue>(command: Update, action: RowDetailAction<Value>,
@@ -217,7 +219,7 @@ function submissions<Field extends string, Value extends RowValue>(command: Upda
 }
 
 export function orderRowDetails<Field extends string, Value extends RowValue>(command: DataCommand, current: ResourceSnapshot,
-  raw: unknown, serverMs: number, policy: RowDetailPolicy<Field, Value>, queueDigest?: string) {
+  raw: unknown, serverMs: number, policy: RowDetailPolicy<Field, Value>, queueDigest?: string, knownOpeningRow?: string) {
   const fields = new Map<Field, FieldPlan<Field, Value>[]>();
   if (command.resource.collection === policy.collection && command.kind === 'update' && current.metadata && !current.metadata.deleted
     && command.generation === current.metadata.generation) {
@@ -225,7 +227,7 @@ export function orderRowDetails<Field extends string, Value extends RowValue>(co
     for (const field of policy.fields) {
       const plans: FieldPlan<Field, Value>[] = [];
       for (const submitted of submissions(ordered, field, policy)) {
-        const plan: FieldPlan<Field, Value> = orderField(ordered, current, raw, serverMs, field, policy, submitted, queueDigest);
+        const plan: FieldPlan<Field, Value> = orderField(ordered, current, raw, serverMs, field, policy, submitted, queueDigest, knownOpeningRow);
         plans.push(plan);
         ordered = plan.command;
       }

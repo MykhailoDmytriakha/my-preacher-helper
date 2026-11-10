@@ -775,6 +775,82 @@ describe('Durable commit requests', () => {
     }));
   });
 
+  it('delivers the first meeting entered immediately after creating a group offline', async () => {
+    const opening: ResourceSnapshot = { resource: { collection: 'groups', id: 'new-group' }, value: null, metadata: null };
+    const s = setup({ opening });
+    const { queue } = s.makeQueue();
+    const editor = new DataSession(opening);
+    const createdAt = '2026-11-08';
+    const group = { userId: 'owner', title: 'New group', status: 'draft', flow: [], templates: [], meetingDates: [], createdAt, updatedAt: createdAt };
+    editor.edit(group);
+    const creation = (await queue.save('group', editor.checkpoint()))!;
+    const first = { id: 'first-meeting-0', date: '', location: 'Side room', createdAt };
+    editor.edit({ ...group, meetingDates: [first] });
+    const pending = (await queue.save('meeting', editor.checkpoint(), { predecessorId: creation.id }))!;
+    await s.makeQueue().queue.drain(true);
+    expect((await s.requests.list('owner')).find(record => record.id === pending.id)).toMatchObject({ state: 'acknowledged' });
+    expect(s.server().value?.meetingDates).toEqual([first]);
+  });
+
+  it('sends the blank first meeting opening even if a preceding group ACK already carries its date', async () => {
+    const opening: ResourceSnapshot = {
+      resource: { collection: 'groups', id: 'group' }, metadata: initial().metadata,
+      value: { userId: 'owner', title: 'Group', description: 'Old', status: 'draft', flow: [], templates: [],
+        meetingDates: [], createdAt: '2026-11-08', updatedAt: '2026-11-08' },
+    };
+    const s = setup({ opening });
+    const { queue } = s.makeQueue();
+    const editor = new DataSession(opening);
+    const group = { ...opening.value, description: 'New words' };
+    editor.edit(group);
+    const predecessor = (await queue.save('meeting', editor.checkpoint()))!;
+    const first = { id: 'first-meeting-0', date: '', createdAt: '2026-11-08', location: 'Side room' };
+    editor.edit({ ...group, meetingDates: [first] });
+    const time = { earliestMs: 1_800_000_000_040, latestMs: 1_800_000_000_045 };
+    const request = (await queue.save('meeting', editor.checkpoint(), { predecessorId: predecessor.id, groupMeetingFieldCaptures: {
+      location: { rowId: first.id, rowCreatedAt: first.createdAt, after: first.location, time },
+    } }))!;
+    const ack = { ...opening, value: { ...group, meetingDates: [{ id: first.id, createdAt: first.createdAt, date: '2026-12-13' }],
+      rev: { meetingDates: 1 } }, metadata: { ...opening.metadata!, revision: 3, operationId: predecessor.id } };
+    s.replace(ack);
+    jest.mocked(s.transport.send).mockResolvedValueOnce({ kind: 'acknowledged', operationId: predecessor.id, snapshot: ack });
+    await s.makeQueue().queue.drain(true);
+    expect(s.transport.send).toHaveBeenCalledWith(expect.objectContaining({
+      operationId: request.id,
+      changes: [{ path: ['meetingDates'], before: { exists: true, value: [] }, after: { exists: true, value: [first] } }],
+      groupMeetingFieldActions: { location: { rowId: first.id, rowCreatedAt: first.createdAt, before: null,
+        after: first.location, observedRevision: 1, time } },
+    }));
+    expect(s.server().value).toMatchObject({ description: 'New words', meetingDates: [{ ...first, date: '2026-12-13' }] });
+  });
+
+  it('sends the first meeting to the server for exact choices when an earlier group ACK already contains another place', async () => {
+    const opening: ResourceSnapshot = {
+      resource: { collection: 'groups', id: 'group' }, metadata: initial().metadata,
+      value: { userId: 'owner', title: 'Group', description: 'Old', status: 'draft', flow: [], templates: [],
+        meetingDates: [], createdAt: '2026-11-08', updatedAt: '2026-11-08' },
+    };
+    const s = setup({ opening });
+    const { queue } = s.makeQueue();
+    const editor = new DataSession(opening);
+    const group = { ...opening.value, description: 'New words' };
+    editor.edit(group);
+    const predecessor = (await queue.save('meeting', editor.checkpoint()))!;
+    const first = { id: 'first-meeting-0', date: '2026-12-13', createdAt: '2026-11-08', location: 'Side room' };
+    editor.edit({ ...group, meetingDates: [first] });
+    const request = (await queue.save('meeting', editor.checkpoint(), { predecessorId: predecessor.id }))!;
+    const ack = { ...opening, value: { ...group, meetingDates: [{ ...first, date: '', location: 'Saved hall' }],
+      rev: { meetingDates: 1 } }, metadata: { ...opening.metadata!, revision: 3, operationId: predecessor.id } };
+    s.replace(ack);
+    jest.mocked(s.transport.send).mockResolvedValueOnce({ kind: 'acknowledged', operationId: predecessor.id, snapshot: ack });
+    await s.makeQueue().queue.drain(true);
+    expect(s.transport.send).toHaveBeenCalledWith(expect.objectContaining({
+      operationId: request.id,
+      changes: [{ path: ['meetingDates'], before: { exists: true, value: [] }, after: { exists: true, value: [first] } }],
+    }));
+    expect(s.server().value?.meetingDates).toEqual(ack.value.meetingDates);
+  });
+
   it('carries both meeting field times and exact ancestors across a predecessor ACK', async () => {
     const s = setup();
     const { queue } = s.makeQueue();

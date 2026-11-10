@@ -1,5 +1,6 @@
 import { keepReviewedAuthoredLists } from './authoredListChoice';
 import { AUTHORED_LIST_PROJECTION, isAuthoredListComparison } from './authoredStringList';
+import { firstGroupMeetingReview, projectFirstGroupMeetingChoice } from './groupFirstMeeting';
 import { projectHomileticReview, reviewedHomileticList } from './homileticPlanChoice';
 import { exactManualWords, replaySavedChoiceDelta } from './manualChoice';
 import { sameManualSelection } from './manualScope';
@@ -11,7 +12,7 @@ import type { ManualScope } from './manualScope';
 import type { SessionCheckpoint } from './session';
 import type { ConflictDetail, DocumentData, ResourceSnapshot } from './types';
 
-export interface ManualComparison { identity: string; requestId: string; conflictPaths: readonly (readonly string[])[]; mine: DocumentData; stored: ResourceSnapshot; remotePreview?: DocumentData; canKeepLocal?: false }
+export interface ManualComparison { identity: string; requestId: string; conflictPaths: readonly (readonly string[])[]; mine: DocumentData; stored: ResourceSnapshot; remotePreview?: DocumentData; canKeepLocal?: false; kind?: 'first-group-meeting' }
 
 function exactSermonVerse(request: CommitRequest, conflicts: readonly ConflictDetail[], mine: DocumentData, stored: ResourceSnapshot,
   selection: ReturnType<ManualScope['getState']>['record']['selection']): boolean {
@@ -39,6 +40,14 @@ export function manualComparison(form: ReturnType<ManualScope['getState']>, pare
       const authored = exact ? exactManualWords(form, exact) : form.value;
       const mine = keepReviewedAuthoredLists(stored.resource.collection, authored,
         conflicts.filter(item => item.code === AUTHORED_LIST_PROJECTION)) ?? authored;
+      const meeting = firstGroupMeetingReview(conflicts);
+      if (meeting && form.record.selection.some(path => equalValues(path, ['meetingDates']))) {
+        const local = projectFirstGroupMeetingChoice(stored.value, meeting, 'local', { before: request.value, after: authored });
+        const remote = projectFirstGroupMeetingChoice(stored.value, meeting, 'remote');
+        return { kind: 'first-group-meeting', identity: JSON.stringify([form.record.scopeId, request.id, form.record.stage, stored]),
+          requestId: request.id, conflictPaths: conflicts.filter(item => item !== meeting).map(item => item.path),
+          mine: local ?? authored, stored, ...(remote && { remotePreview: remote }), ...(!local && { canKeepLocal: false as const }) };
+      }
       const homiletic = reviewedHomileticList(conflicts, form.record.selection);
       if (homiletic) {
         const prepared = request.initialized && request.command;
